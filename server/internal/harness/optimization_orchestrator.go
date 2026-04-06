@@ -17,6 +17,8 @@ const (
 type OptimizationReason string
 
 const (
+	OptimizationReasonRuntimeSkillFailure OptimizationReason = "runtime_skill_failure"
+	OptimizationReasonRuntimeSkillCapture OptimizationReason = "runtime_skill_capture"
 	OptimizationReasonSelectorGateFailed  OptimizationReason = "selector_gate_failed"
 	OptimizationReasonExecutionGateFailed OptimizationReason = "execution_gate_failed"
 	OptimizationReasonBudgetGateFailed    OptimizationReason = "budget_gate_failed"
@@ -68,7 +70,9 @@ func shouldTriggerOptimization(event OptimizationTrigger) bool {
 		return false
 	}
 	switch event.Reason {
-	case OptimizationReasonSelectorGateFailed,
+	case OptimizationReasonRuntimeSkillFailure,
+		OptimizationReasonRuntimeSkillCapture,
+		OptimizationReasonSelectorGateFailed,
 		OptimizationReasonExecutionGateFailed,
 		OptimizationReasonBudgetGateFailed,
 		OptimizationReasonCutoverBlocking:

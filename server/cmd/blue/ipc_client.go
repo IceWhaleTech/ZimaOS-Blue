@@ -27,7 +27,10 @@ const (
 
 // dialSock connects to the blue IPC socket.
 func dialSock() (net.Conn, error) {
-	paths := candidateIPCSocketPaths()
+	return dialSockWithCandidates(candidateIPCSocketPaths(), "blue.sock")
+}
+
+func dialSockWithCandidates(paths []string, socketName string) (net.Conn, error) {
 	var lastErr error
 	for _, p := range paths {
 		conn, err := net.DialTimeout("unix", p, 5*time.Second)
@@ -36,12 +39,20 @@ func dialSock() (net.Conn, error) {
 		}
 		lastErr = err
 	}
-	return nil, fmt.Errorf("cannot connect to blue.sock: %w", lastErr)
+	return nil, fmt.Errorf("cannot connect to %s: %w", socketName, lastErr)
 }
 
 // ipcRoundTrip sends a JSON request and reads the JSON response.
 func ipcRoundTrip(req *sockipc.Request) (*sockipc.Response, error) {
-	conn, err := dialSock()
+	return ipcRoundTripWithCandidates(req, candidateIPCSocketPaths())
+}
+
+func ipcRoundTripWithCandidates(req *sockipc.Request, paths []string) (*sockipc.Response, error) {
+	return ipcRoundTripWithSocketName(req, paths, "blue.sock")
+}
+
+func ipcRoundTripWithSocketName(req *sockipc.Request, paths []string, socketName string) (*sockipc.Response, error) {
+	conn, err := dialSockWithCandidates(paths, socketName)
 	if err != nil {
 		return nil, err
 	}

@@ -134,10 +134,10 @@ func TestRuntimeSupportBundles_RegisterRoutesExposeGuardAndSessionSurfaces(t *te
 		t.Fatal("expected convert routes to register")
 	}
 
-	if !routeExists(e, "GET", "/api/v1/browser/approvals/sites") || !routeExists(e, "GET", "/api/v1/ask-user-question/pending") {
+	if !routeExists(e, "GET", "/api/v1/browser/approvals/sites") {
 		t.Fatalf("expected ask/browser support routes, got %#v", e.Routes())
 	}
-	if !routeExists(e, "GET", "/api/v1/exec/approvals/pending") || !routeExists(e, "DELETE", "/api/v1/exec/approvals/directories/:id") {
+	if !routeExists(e, "DELETE", "/api/v1/exec/approvals/directories/:id") {
 		t.Fatalf("expected exec approval routes, got %#v", e.Routes())
 	}
 	if !routeExists(e, "GET", "/api/convert/capabilities") {

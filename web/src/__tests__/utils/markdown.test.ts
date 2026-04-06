@@ -172,6 +172,7 @@ Cell 1   | Cell 2`
 | 1 | 2 |`
         const result = renderMarkdown(markdown)
         expect(result).toContain('overflow-x-auto')
+        expect(result).toContain('markdown-table-wrap')
         expect(result).toContain('border-collapse')
         expect(result).toContain('border-gray-300')
         expect(result).toContain('dark:border-gray-600')

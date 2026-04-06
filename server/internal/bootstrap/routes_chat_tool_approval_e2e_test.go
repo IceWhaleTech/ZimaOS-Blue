@@ -275,26 +275,31 @@ func routeApprovalAuthRequest(method, path, token string, body *bytes.Buffer) *h
 	return req
 }
 
-func routeApprovalPending(t *testing.T, e *echo.Echo, token, sessionID string) []networkapi.PendingRequest {
+func routeApprovalPending(t *testing.T, handler *networkapi.ApprovalHandler, sessionID string) []networkapi.PendingRequest {
 	t.Helper()
-	req := routeApprovalAuthRequest(http.MethodGet, "/api/v1/approval/pending?session_id="+sessionID, token, nil)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("pending status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	if handler == nil {
+		return nil
 	}
-	var pending []networkapi.PendingRequest
-	if err := json.Unmarshal(rec.Body.Bytes(), &pending); err != nil {
-		t.Fatalf("decode pending approvals: %v", err)
+	payload := handler.GetPendingBySession(sessionID)
+	if payload == nil {
+		return nil
 	}
-	return pending
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pending approval payload: %v", err)
+	}
+	var pending networkapi.PendingRequest
+	if err := json.Unmarshal(raw, &pending); err != nil {
+		t.Fatalf("decode pending approval payload: %v", err)
+	}
+	return []networkapi.PendingRequest{pending}
 }
 
-func waitForRouteApprovalPending(t *testing.T, e *echo.Echo, token, sessionID string) networkapi.PendingRequest {
+func waitForRouteApprovalPending(t *testing.T, handler *networkapi.ApprovalHandler, sessionID string) networkapi.PendingRequest {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		pending := routeApprovalPending(t, e, token, sessionID)
+		pending := routeApprovalPending(t, handler, sessionID)
 		if len(pending) > 0 {
 			return pending[0]
 		}
@@ -333,7 +338,7 @@ func TestBootstrapChatApprovalRoutes_EscalateAndResumeWithLLMRiskScore(t *testin
 
 	rec, done := routeApprovalRunStreamAsync(t, h.echo, h.token, h.convID)
 
-	pending := waitForRouteApprovalPending(t, h.echo, h.token, h.convID)
+	pending := waitForRouteApprovalPending(t, h.approvalHandler, h.convID)
 	if pending.ToolName != "file_write" {
 		t.Fatalf("pending tool = %q, want file_write", pending.ToolName)
 	}
@@ -381,7 +386,7 @@ func TestBootstrapChatApprovalRoutes_EscalateAndResumeWithLLMRiskScore(t *testin
 	if got := h.proxyHandler.snapshot(); got != 1 {
 		t.Fatalf("proxy call count after approval = %d, want 1", got)
 	}
-	if pendingAfter := routeApprovalPending(t, h.echo, h.token, h.convID); len(pendingAfter) != 0 {
+	if pendingAfter := routeApprovalPending(t, h.approvalHandler, h.convID); len(pendingAfter) != 0 {
 		t.Fatalf("expected no pending approvals after resolution, got=%+v", pendingAfter)
 	}
 	if _, ok := h.riskProvider.RequestAt(0); !ok {
@@ -415,7 +420,7 @@ func TestBootstrapChatApprovalRoutes_SkipEscalationWithoutActiveSSEClient(t *tes
 	if calls != 1 || path != "approved.txt" || content != "hello after approval" {
 		t.Fatalf("unexpected write capture path=%q content=%q calls=%d", path, content, calls)
 	}
-	if pending := routeApprovalPending(t, h.echo, h.token, h.convID); len(pending) != 0 {
+	if pending := routeApprovalPending(t, h.approvalHandler, h.convID); len(pending) != 0 {
 		t.Fatalf("expected no pending approvals without active SSE client, got=%+v", pending)
 	}
 	if _, ok := h.riskProvider.RequestAt(0); ok {

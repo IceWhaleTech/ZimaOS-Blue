@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 
+	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 )
 
@@ -49,6 +50,10 @@ func bindRuntimeActivationApproval(
 	activation runtimeActivationResult,
 	options runtimeActivationDeferredSupportOptions,
 ) {
+	if chatHandler, ok := options.chatApprover.(*serverpkg.ChatHandler); ok {
+		chatHandler.SetConversationBootstrapToolApprovalSource(options.approvalHandler)
+		chatHandler.SetConversationBootstrapExecApprovalSource(options.execApprovals)
+	}
 	approverTargets := make([]runtimeToolApproverTarget, 0, 2)
 	if options.chatApprover != nil {
 		approverTargets = append(approverTargets, options.chatApprover)

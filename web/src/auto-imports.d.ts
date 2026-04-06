@@ -104,6 +104,7 @@ declare global {
   const useGlobalShortcuts: typeof import('./composables/useKeyboardShortcuts').useGlobalShortcuts
   const useId: typeof import('vue').useId
   const useKeyboardShortcuts: typeof import('./composables/useKeyboardShortcuts').useKeyboardShortcuts
+  const useKnowledgeJobs: typeof import('./composables/useKnowledgeJobs').useKnowledgeJobs
   const useLink: typeof import('vue-router').useLink
   const useLocalStorage: typeof import('@vueuse/core').useLocalStorage
   const useLocaleStore: typeof import('./stores/locale').useLocaleStore
@@ -292,6 +293,7 @@ declare module 'vue' {
     readonly useGlobalShortcuts: UnwrapRef<typeof import('./composables/useKeyboardShortcuts')['useGlobalShortcuts']>
     readonly useId: UnwrapRef<typeof import('vue')['useId']>
     readonly useKeyboardShortcuts: UnwrapRef<typeof import('./composables/useKeyboardShortcuts')['useKeyboardShortcuts']>
+    readonly useKnowledgeJobs: UnwrapRef<typeof import('./composables/useKnowledgeJobs')['useKnowledgeJobs']>
     readonly useLink: UnwrapRef<typeof import('vue-router')['useLink']>
     readonly useLocalStorage: UnwrapRef<typeof import('@vueuse/core')['useLocalStorage']>
     readonly useLocaleStore: UnwrapRef<typeof import('./stores/locale')['useLocaleStore']>

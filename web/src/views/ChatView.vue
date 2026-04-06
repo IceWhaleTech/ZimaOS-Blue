@@ -13,6 +13,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import type { ComponentPublicInstance } from 'vue'
+import type { Message as ChatMessageRecord } from '@/api/chat'
 import { useChatStore, type ActiveMessageStreamState, type StreamUIState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useProviderPoolStore } from '@/stores/providerPool'
@@ -761,11 +762,30 @@ const contextMenuSelectedText = ref('')
 
 // Provider config dialog state
 const showProviderConfigDialog = ref(false)
-const providerConfigDialogMode = ref<'unconfigured' | 'unavailable'>('unconfigured')
+type ProviderAttentionMode = 'unconfigured' | 'unavailable' | 'recoverable'
+const providerConfigDialogMode = ref<ProviderAttentionMode>('unconfigured')
 const providerConfigDialogHasDraft = ref(false)
 
 function providerAppearsAvailable(status?: string) {
   return status !== 'error' && status !== 'inactive'
+}
+
+function providerStatusIsPending(status?: string) {
+  return status !== 'active' && status !== 'inactive' && status !== 'error'
+}
+
+function normalizeProviderIssue(error?: string) {
+  return String(error || '').trim()
+}
+
+function isRecoverableProviderIssue(error?: string) {
+  const normalized = normalizeProviderIssue(error)
+  if (!normalized) return false
+  if (normalized.startsWith('auth_error:')) return false
+  if (normalized === 'certificate_error') return false
+  if (normalized === 'endpoint_not_found') return false
+  if (normalized.startsWith('base_url_not_configured')) return false
+  return true
 }
 
 function chatTextWithFallback(key: string, fallback: string) {
@@ -823,7 +843,7 @@ function providerStatusLabel(status: Provider['status']) {
 }
 
 function summarizeProviderIssue(error?: string, status?: Provider['status']) {
-  const normalized = String(error || '').trim()
+  const normalized = normalizeProviderIssue(error)
   if (!normalized) {
     if (status === 'inactive') {
       return chatTextWithFallback(
@@ -869,15 +889,36 @@ function summarizeProviderIssue(error?: string, status?: Provider['status']) {
   }
   if (normalized.startsWith('unexpected_status:')) {
     const code = normalized.split(':')[1] || ''
-    return chatTextWithFallback(
+    return chatTextWithNamedFallback(
       'chat.noProvider.issueUnexpectedStatus',
-      `The provider returned an unexpected status${code ? ` (${code})` : ''}.`
+      `The provider returned an unexpected status${code ? ` (${code})` : ''}.`,
+      {
+        code: code ? `(${code})` : '',
+      }
     )
   }
   return normalized
 }
 
-function buildProviderGuidanceCopy(mode: 'unconfigured' | 'unavailable') {
+function buildProviderGuidanceCopy(mode: ProviderAttentionMode) {
+  if (mode === 'recoverable') {
+    return {
+      eyebrow: chatTextWithFallback(
+        'chat.noProvider.recoverableEyebrow',
+        'Temporary provider issue'
+      ),
+      title: chatTextWithFallback('chat.noProvider.recoverableTitle', 'Provider needs attention'),
+      description: chatTextWithFallback(
+        'chat.noProvider.recoverableDescription',
+        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.'
+      ),
+      primaryAction: chatTextWithFallback('chat.noProvider.retry', 'Retry Provider'),
+      secondaryAction: chatTextWithFallback('chat.noProvider.reviewSingle', 'Review Provider'),
+      iconWrapperClass: 'bg-amber-100 dark:bg-amber-900/30',
+      iconClass: 'text-amber-600 dark:text-amber-400',
+    }
+  }
+
   if (mode === 'unavailable') {
     return {
       eyebrow: chatTextWithFallback(
@@ -936,8 +977,98 @@ const modelAutoFallbackTargetLabel = computed(() => {
 const activeTodoPanelCollapsed = ref(loadActiveTodoPanelCollapsed())
 const focusedTodoMessageId = ref<string | null>(null)
 let focusedTodoMessageTimer: ReturnType<typeof setTimeout> | null = null
+type TodoAwareToolResult = {
+  name?: unknown
+  icon?: unknown
+}
+
+type TodoAwareMessage = ChatMessageRecord & {
+  local_process_tool_results?: TodoAwareToolResult[]
+}
+
+const TODO_COMPLETION_WRITE_TOOL_NAMES = new Set([
+  'apply_patch',
+  'append',
+  'edit',
+  'file_write',
+  'write_commit',
+])
+
+function normalizeTodoSignalText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function isTodoChecklistMessageContent(content?: string): boolean {
+  return /(^|\n)[ \t]*[-*]\s+\[(?: |x|X)\]\s+/.test(content || '')
+}
+
+function matchesTodoCompletionSignal(
+  message: TodoAwareMessage,
+  completionSignal: { messageId?: string; todoCardId?: string } | null | undefined
+): boolean {
+  if (!completionSignal) return false
+  const normalizedMessageId = normalizeTodoSignalText(completionSignal.messageId)
+  const normalizedTodoCardId = normalizeTodoSignalText(completionSignal.todoCardId)
+  if (!normalizedMessageId && !normalizedTodoCardId) return false
+
+  if (normalizedTodoCardId && normalizeTodoSignalText(message.todo_card_id) === normalizedTodoCardId) {
+    return true
+  }
+
+  if (!normalizedMessageId) return false
+  return (
+    normalizedMessageId === normalizeTodoSignalText(message.id) ||
+    normalizedMessageId === normalizeTodoSignalText(message.render_key)
+  )
+}
+
+function isSuccessfulTodoArtifactWriteResult(result: TodoAwareToolResult | null | undefined): boolean {
+  if (!result) return false
+  const name = normalizeTodoSignalText(result.name).toLowerCase()
+  const icon = normalizeTodoSignalText(result.icon)
+  return icon === '✓' && TODO_COMPLETION_WRITE_TOOL_NAMES.has(name)
+}
+
+function hasTodoCompletionArtifactWriteSuccess(
+  messages: TodoAwareMessage[],
+  completionSignal: { messageId?: string; todoCardId?: string } | null | undefined
+): boolean {
+  if (!completionSignal) return false
+  return messages.some((message) => {
+    if (message.role !== 'assistant') return false
+    if (!matchesTodoCompletionSignal(message, completionSignal)) return false
+    if (!Array.isArray(message.local_process_tool_results)) return false
+    return message.local_process_tool_results.some((result) =>
+      isSuccessfulTodoArtifactWriteResult(result)
+    )
+  })
+}
+
+const todoCompletionArtifactWriteSucceeded = computed(() =>
+  hasTodoCompletionArtifactWriteSuccess(
+    chatStore.messages as TodoAwareMessage[],
+    chatStore.recentTodoCompletion
+  )
+)
+const shouldDeferTodoFinalization = computed(
+  () => showStreamStatusRail.value && !todoCompletionArtifactWriteSucceeded.value
+)
+const activeTodoMessages = computed(() => {
+  if (!shouldDeferTodoFinalization.value) return chatStore.messages
+  return chatStore.messages.filter((message) => {
+    if (message.role !== 'assistant') return true
+    const messageId = normalizeTodoSignalText(message.id)
+    if (!messageId.startsWith('streaming-')) return true
+    return isTodoChecklistMessageContent(message.content)
+  })
+})
+const activeTodoCompletionSignal = computed(() =>
+  shouldDeferTodoFinalization.value ? null : chatStore.recentTodoCompletion
+)
 const activeTodoSummary = computed(() =>
-  findLatestTodoChecklistSummary(chatStore.messages, chatStore.recentTodoCompletion)
+  findLatestTodoChecklistSummary(activeTodoMessages.value, activeTodoCompletionSignal.value, {
+    allowCompletedChecklist: shouldDeferTodoFinalization.value,
+  })
 )
 const activeTodoProgressText = computed(() => {
   const summary = activeTodoSummary.value
@@ -974,8 +1105,18 @@ const activeLlmProviders = computed(() =>
 const hasProvisionallyAvailableProviders = computed(() =>
   enabledLlmProviders.value.some((provider) => providerAppearsAvailable(provider.status))
 )
+const recoverableAttentionProvider = computed<Provider | null>(() => {
+  if (enabledLlmProviders.value.length !== 1) return null
+  const provider = enabledLlmProviders.value[0]
+  if (!provider) return null
+  if (provider.status !== 'error') return null
+  return isRecoverableProviderIssue(provider.last_error) ? provider : null
+})
 const hasConfiguredProviders = computed(() => enabledLlmProviders.value.length > 0)
 const hasActiveProviders = computed(() => activeLlmProviders.value.length > 0)
+const hasPendingProviderStatus = computed(() =>
+  enabledLlmProviders.value.some((provider) => providerStatusIsPending(provider.status))
+)
 const allProvidersFailed = computed(
   () =>
     hasConfiguredProviders.value &&
@@ -994,13 +1135,25 @@ const providerStatus = computed(() => {
   if (hasActiveProviders.value) {
     return { status: 'active', color: 'green', message: t('chat.providerActive') }
   }
-  // Some providers enabled but not yet checked
-  return { status: 'pending', color: 'yellow', message: t('chat.providerPending') }
+  if (hasPendingProviderStatus.value) {
+    return { status: 'pending', color: 'yellow', message: t('chat.providerPending') }
+  }
+  return {
+    status: 'error',
+    color: 'red',
+    message: chatTextWithFallback(
+      'chat.providerNeedsAttention',
+      'Provider needs attention. Click to check settings.'
+    ),
+  }
 })
 
-const providerAttentionMode = computed<'unconfigured' | 'unavailable'>(() =>
-  hasConfiguredProviders.value ? 'unavailable' : 'unconfigured'
-)
+const providerAttentionMode = computed<ProviderAttentionMode>(() => {
+  if (recoverableAttentionProvider.value) {
+    return 'recoverable'
+  }
+  return hasConfiguredProviders.value ? 'unavailable' : 'unconfigured'
+})
 const needsProviderAttention = computed(() => !hasProvisionallyAvailableProviders.value)
 const providerInlineGuidanceCopy = computed(() =>
   buildProviderGuidanceCopy(providerAttentionMode.value)
@@ -1065,8 +1218,56 @@ const localActiveCount = computed(
 const enabledChatProviders = computed(() =>
   providerPoolStore.enabledProviders.filter((provider) => provider.type !== 'media')
 )
+const enabledChatProviderIds = computed(
+  () => new Set(enabledChatProviders.value.map((provider) => provider.id))
+)
 const totalActiveProviderCount = computed(() => cloudActiveCount.value + localActiveCount.value)
 const isSingleModelMode = computed(() => chatStore.modelPreference !== 'auto')
+const providerScopedAutoProviderLabel = computed(() => {
+  const providerId = chatStore.selectedProviderId?.trim() || ''
+  if (
+    !chatStore.providerPinOnlyActive ||
+    !providerId ||
+    !enabledChatProviderIds.value.has(providerId)
+  ) {
+    return ''
+  }
+  return providerPoolStore.getProviderDisplayName(providerId)
+})
+const providerScopedAutoStrategyLabel = computed(() => {
+  if (!providerScopedAutoProviderLabel.value) return ''
+  return `${t('chat.routingMode.auto')} · ${providerScopedAutoProviderLabel.value}`
+})
+const showProviderScopedAutoNotice = computed(() => providerScopedAutoProviderLabel.value !== '')
+const providerScopedAutoNoticeTitle = computed(() =>
+  chatTextWithFallback('chat.routingMode.providerPinnedTitle', 'Pinned Provider')
+)
+const providerScopedAutoNoticeDescription = computed(() => {
+  if (!providerScopedAutoProviderLabel.value) return ''
+  return chatTextWithNamedFallback(
+    'chat.routingMode.providerPinnedDesc',
+    `This conversation stays on ${providerScopedAutoProviderLabel.value}, but the model is still automatic.`,
+    {
+      provider: providerScopedAutoProviderLabel.value,
+    }
+  )
+})
+const providerScopedAutoResetLabel = computed(() =>
+  chatTextWithFallback('chat.routingMode.providerPinnedReset', 'Use all providers')
+)
+const providerScopedAutoDescription = computed(() => {
+  if (!providerScopedAutoProviderLabel.value) return t('chat.routingMode.modelAuto')
+  return `${t('chat.routingMode.modelAuto')} · ${providerScopedAutoProviderLabel.value}`
+})
+const providerScopedAutoOptions = computed(() =>
+  enabledChatProviders.value.map((provider) => ({
+    id: provider.id,
+    label: providerPoolStore.getProviderDisplayName(provider.id),
+  }))
+)
+const showProviderScopedAutoOptions = computed(
+  () => !isSingleModelMode.value && providerScopedAutoOptions.value.length > 1
+)
 
 const fixedModelOptions = computed(() => {
   const enabledProviderIds = new Set(
@@ -1103,6 +1304,7 @@ const showLocationRoutingOptions = computed(
 )
 
 const fixedModelLabel = computed(() => {
+  if (providerScopedAutoProviderLabel.value) return providerScopedAutoProviderLabel.value
   if (chatStore.modelPreference === 'auto') return t('chat.routingMode.highAvailability')
   return (
     chatStore.splitModelPreference(chatStore.modelPreference).selected_model_id ||
@@ -1114,18 +1316,19 @@ const routingButtonTitle = computed(
   () => `${t('chat.routingMode.title')} · ${routingModeInfo.value.label} · ${fixedModelLabel.value}`
 )
 
-const showRoutingStatusDot = computed(() => providerStatus.value.status !== 'active')
-
-const routingStatusDotClasses = computed(() => ({
-  'is-error': providerStatus.value.status === 'error',
-  'is-pending': providerStatus.value.status === 'pending',
-  'is-none': providerStatus.value.status === 'none',
-}))
+const routingMenuStatusMessage = computed(() =>
+  needsProviderAttention.value
+    ? chatTextWithFallback(
+        'chat.providerNeedsAttention',
+        'Provider needs attention. Click to check settings.'
+      )
+    : providerStatus.value.message
+)
 
 const routingStrategyLabel = computed(() =>
   isSingleModelMode.value
     ? t('chat.routingMode.fixedModel')
-    : t('chat.routingMode.highAvailability')
+    : providerScopedAutoStrategyLabel.value || t('chat.routingMode.highAvailability')
 )
 
 function getMessageHeightKey(message: {
@@ -1725,6 +1928,16 @@ function setAutoModelPreference() {
   if (isMobile.value) showRoutingMenu.value = false
 }
 
+function selectProviderScopedAuto(providerId: string) {
+  const normalizedProviderId = providerId.trim()
+  if (!normalizedProviderId) return
+  if (chatStore.providerPinOnlyActive && chatStore.selectedProviderId === normalizedProviderId) {
+    setAutoModelPreference()
+    return
+  }
+  chatStore.setProviderPinOnly(normalizedProviderId)
+}
+
 function enableSingleModelMode() {
   if (chatStore.modelPreference !== 'auto') return
   const firstModel = fixedModelOptions.value[0]?.value
@@ -1905,9 +2118,18 @@ function handleStreamRetry() {
   chatStore.regenerateMessage()
 }
 
-function handleOpenProviderSettings() {
+function handleOpenProviderSettings(providerId?: string) {
   closeProviderConfigDialog()
-  void router.push('/settings?tab=llm')
+  void router.push({
+    path: '/settings',
+    query: providerId ? { tab: 'llm', provider: providerId } : { tab: 'llm' },
+  })
+}
+
+async function handleProviderGuidanceRetry() {
+  const provider = recoverableAttentionProvider.value
+  if (!provider) return
+  await providerPoolStore.clearProviderError(provider.id)
 }
 
 function dismissModelAutoFallbackDialog() {
@@ -2456,7 +2678,7 @@ onUnmounted(() => {
               >
                 <div class="px-3 py-2 border-b border-gray-200 dark:border-slate-700">
                   <div class="text-xs font-medium text-gray-700 dark:text-slate-300">
-                    {{ providerStatus.message }}
+                    {{ routingMenuStatusMessage }}
                   </div>
                 </div>
 
@@ -2482,7 +2704,7 @@ onUnmounted(() => {
                   }}</span>
                 </router-link>
 
-                <template v-else>
+                <div>
                   <div class="p-3 space-y-1.5">
                     <button
                       class="routing-option-row w-full"
@@ -2624,11 +2846,73 @@ onUnmounted(() => {
                         {{ t('chat.routingMode.fixedModel') }}
                       </button>
                     </div>
-                    <div
-                      v-if="!isSingleModelMode"
-                      class="mt-2 text-xs text-gray-600 dark:text-slate-400"
-                    >
-                      {{ t('chat.routingMode.modelAuto') }}
+                    <div v-if="!isSingleModelMode">
+                      <div
+                        v-if="!showProviderScopedAutoNotice"
+                        class="mt-2 text-xs text-gray-600 dark:text-slate-400"
+                      >
+                        {{ providerScopedAutoDescription }}
+                      </div>
+                      <div
+                        v-if="showProviderScopedAutoNotice"
+                        data-testid="routing-provider-pin-notice"
+                        class="mt-2 rounded-xl border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-100"
+                      >
+                        <div class="font-semibold">
+                          {{ providerScopedAutoNoticeTitle }}
+                        </div>
+                        <div class="mt-1 leading-5">
+                          {{ providerScopedAutoNoticeDescription }}
+                        </div>
+                        <button
+                          data-testid="routing-provider-pin-clear"
+                          class="mt-2 inline-flex items-center text-[11px] font-semibold text-sky-700 transition-colors hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
+                          @click="setAutoModelPreference"
+                        >
+                          {{ providerScopedAutoResetLabel }}
+                        </button>
+                      </div>
+                      <div
+                        v-if="showProviderScopedAutoOptions"
+                        class="mt-3 space-y-1"
+                      >
+                        <div class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400">
+                          {{ providerScopedAutoNoticeTitle }}
+                        </div>
+                        <button
+                          v-for="option in providerScopedAutoOptions"
+                          :key="option.id"
+                          :data-testid="`routing-provider-pin-row-${option.id}`"
+                          class="routing-model-row w-full"
+                          :class="{
+                            'is-selected':
+                              chatStore.providerPinOnlyActive &&
+                              chatStore.selectedProviderId === option.id,
+                          }"
+                          @click="selectProviderScopedAuto(option.id)"
+                        >
+                          <span class="truncate" style="padding-inline-end: 0.75rem">
+                            {{ option.label }}
+                          </span>
+                          <svg
+                            v-if="
+                              chatStore.providerPinOnlyActive &&
+                              chatStore.selectedProviderId === option.id
+                            "
+                            class="w-4 h-4 text-sky-500 flex-shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
                     <div v-else class="mt-2 max-h-40 overflow-y-auto space-y-1">
                       <button
@@ -2687,7 +2971,7 @@ onUnmounted(() => {
                     </span>
                     <span class="text-xs text-gray-500 dark:text-slate-500">→</span>
                   </router-link>
-                </template>
+                </div>
               </div>
             </Transition>
           </Teleport>
@@ -2724,9 +3008,9 @@ onUnmounted(() => {
                       }}</span>
                     </router-link>
 
-                    <template v-else>
+                    <div>
                       <div class="text-xs text-gray-700 dark:text-slate-300 px-1 pb-1">
-                        {{ providerStatus.message }}
+                        {{ routingMenuStatusMessage }}
                       </div>
 
                       <button
@@ -2872,11 +3156,73 @@ onUnmounted(() => {
                         </button>
                       </div>
 
-                      <div
-                        v-if="!isSingleModelMode"
-                        class="px-1 pt-2 text-xs text-gray-600 dark:text-slate-400"
-                      >
-                        {{ t('chat.routingMode.modelAuto') }}
+                      <div v-if="!isSingleModelMode">
+                        <div
+                          v-if="!showProviderScopedAutoNotice"
+                          class="px-1 pt-2 text-xs text-gray-600 dark:text-slate-400"
+                        >
+                          {{ providerScopedAutoDescription }}
+                        </div>
+                        <div
+                          v-if="showProviderScopedAutoNotice"
+                          data-testid="routing-provider-pin-notice"
+                          class="mx-1 mt-2 rounded-xl border border-sky-200/80 bg-sky-50/90 px-3 py-2 text-xs text-sky-900 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-100"
+                        >
+                          <div class="font-semibold">
+                            {{ providerScopedAutoNoticeTitle }}
+                          </div>
+                          <div class="mt-1 leading-5">
+                            {{ providerScopedAutoNoticeDescription }}
+                          </div>
+                          <button
+                            data-testid="routing-provider-pin-clear"
+                            class="mt-2 inline-flex items-center text-[11px] font-semibold text-sky-700 transition-colors hover:text-sky-900 dark:text-sky-300 dark:hover:text-sky-100"
+                            @click="setAutoModelPreference"
+                          >
+                            {{ providerScopedAutoResetLabel }}
+                          </button>
+                        </div>
+                        <div
+                          v-if="showProviderScopedAutoOptions"
+                          class="space-y-1 pt-3"
+                        >
+                          <div class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400">
+                            {{ providerScopedAutoNoticeTitle }}
+                          </div>
+                          <button
+                            v-for="option in providerScopedAutoOptions"
+                            :key="option.id"
+                            :data-testid="`routing-provider-pin-row-${option.id}`"
+                            class="routing-model-row w-full"
+                            :class="{
+                              'is-selected':
+                                chatStore.providerPinOnlyActive &&
+                                chatStore.selectedProviderId === option.id,
+                            }"
+                            @click="selectProviderScopedAuto(option.id)"
+                          >
+                            <span class="truncate" style="padding-inline-end: 0.75rem">
+                              {{ option.label }}
+                            </span>
+                            <svg
+                              v-if="
+                                chatStore.providerPinOnlyActive &&
+                                chatStore.selectedProviderId === option.id
+                              "
+                              class="w-4 h-4 text-sky-500 flex-shrink-0"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                            >
+                              <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M5 13l4 4L19 7"
+                              />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       <div v-else class="max-h-44 overflow-y-auto space-y-1 pt-2">
                         <button
@@ -2938,7 +3284,7 @@ onUnmounted(() => {
                         </span>
                         <span class="text-xs text-gray-500 dark:text-slate-400">→</span>
                       </router-link>
-                    </template>
+                    </div>
                   </div>
                   <div class="h-[env(safe-area-inset-bottom)]" />
                 </div>
@@ -3169,11 +3515,6 @@ onUnmounted(() => {
                     />
                   </svg>
                   <span>{{ t('chat.routingMode.title') }}</span>
-                  <span
-                    v-if="showRoutingStatusDot"
-                    class="chat-thread-routing-btn__status"
-                    :class="routingStatusDotClasses"
-                  />
                 </button>
               </div>
             </div>
@@ -3362,7 +3703,7 @@ onUnmounted(() => {
                       </p>
                       <div
                         v-if="
-                          providerAttentionMode === 'unavailable' &&
+                          providerAttentionMode !== 'unconfigured' &&
                           providerAttentionItems.length > 0
                         "
                         class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-3 dark:border-slate-700 dark:bg-slate-950/50"
@@ -3419,11 +3760,35 @@ onUnmounted(() => {
                       </div>
                       <div class="mt-4 flex flex-wrap gap-3">
                         <button
-                          data-testid="chat-provider-guidance-action"
+                          v-if="providerAttentionMode === 'recoverable'"
+                          data-testid="chat-provider-guidance-retry"
                           class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
-                          @click="handleOpenProviderSettings"
+                          @click="handleProviderGuidanceRetry"
                         >
                           {{ providerInlineGuidanceCopy.primaryAction }}
+                        </button>
+                        <button
+                          :data-testid="
+                            providerAttentionMode === 'recoverable'
+                              ? 'chat-provider-guidance-review'
+                              : 'chat-provider-guidance-action'
+                          "
+                          :class="
+                            providerAttentionMode === 'recoverable'
+                              ? 'inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                              : 'inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
+                          "
+                          @click="
+                            handleOpenProviderSettings(
+                              recoverableAttentionProvider?.id || providerAttentionItems[0]?.id
+                            )
+                          "
+                        >
+                          {{
+                            providerAttentionMode === 'recoverable'
+                              ? providerInlineGuidanceCopy.secondaryAction
+                              : providerInlineGuidanceCopy.primaryAction
+                          }}
                         </button>
                       </div>
                     </div>
@@ -4282,7 +4647,7 @@ onUnmounted(() => {
                 </button>
                 <button
                   class="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
-                  @click="handleOpenProviderSettings"
+                  @click="handleOpenProviderSettings()"
                 >
                   {{ providerConfigDialogCopy.primaryAction }}
                 </button>
@@ -4615,27 +4980,6 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 .chat-thread-routing-btn {
   margin-inline-start: 0.12rem;
   position: relative;
-}
-
-.chat-thread-routing-btn__status {
-  width: 0.46rem;
-  height: 0.46rem;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.9);
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.92);
-  flex-shrink: 0;
-}
-
-.chat-thread-routing-btn__status.is-error {
-  background: rgb(244, 63, 94);
-}
-
-.chat-thread-routing-btn__status.is-pending {
-  background: rgb(245, 158, 11);
-}
-
-.chat-thread-routing-btn__status.is-none {
-  background: rgb(148, 163, 184);
 }
 
 .chat-topbar {
@@ -5369,11 +5713,6 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
   box-shadow:
     inset 0 0 0 1px rgba(14, 165, 233, 0.28),
     0 12px 24px -22px rgba(14, 165, 233, 0.42);
-}
-
-:root.dark .chat-thread-routing-btn__status,
-[data-theme='dark'] .chat-thread-routing-btn__status {
-  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.92);
 }
 
 :root.dark .chat-section-label,

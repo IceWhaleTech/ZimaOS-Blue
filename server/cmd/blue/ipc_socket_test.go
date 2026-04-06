@@ -30,3 +30,21 @@ func TestAppendSocketCandidate_DeduplicatesAndSkipsEmpty(t *testing.T) {
 		t.Fatalf("appendSocketCandidate() = %v, want %v", got, want)
 	}
 }
+
+func TestCandidateAuditIPCSocketPaths_Defaults(t *testing.T) {
+	t.Setenv("BLUE_AUDIT_IPC_SOCKET", "")
+	got := candidateAuditIPCSocketPaths()
+	want := []string{getDataDir() + "/session_audit.sock", "/tmp/session_audit.sock"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("candidateAuditIPCSocketPaths() = %v, want %v", got, want)
+	}
+}
+
+func TestCandidateAuditIPCSocketPaths_EnvOverride(t *testing.T) {
+	t.Setenv("BLUE_AUDIT_IPC_SOCKET", "/tmp/blue-audit.sock")
+	got := candidateAuditIPCSocketPaths()
+	want := []string{"/tmp/blue-audit.sock"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("candidateAuditIPCSocketPaths() = %v, want %v", got, want)
+	}
+}

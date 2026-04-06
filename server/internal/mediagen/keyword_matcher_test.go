@@ -119,6 +119,27 @@ func TestAhoKeywordCueMatcher_MatchesScanBehavior(t *testing.T) {
 	}
 }
 
+func TestAhoKeywordCueMatcher_InitializesMatcherOnDemand(t *testing.T) {
+	matcher, ok := newAhoKeywordCueMatcher([]string{"image", "photo"}).(*ahoKeywordCueMatcher)
+	if !ok {
+		t.Fatal("expected aho keyword cue matcher implementation")
+	}
+	if matcher.matcher != nil {
+		t.Fatal("expected aho matcher to start nil")
+	}
+
+	if !matcher.Contains("Please generate an image") {
+		t.Fatal("expected matcher to initialize on first access")
+	}
+	if matcher.matcher == nil {
+		t.Fatal("expected aho matcher inner to initialize lazily")
+	}
+
+	if got := matcher.CountDistinct("photo image"); got != 2 {
+		t.Fatalf("CountDistinct = %d, want 2", got)
+	}
+}
+
 func sortCueMatches(matches []cueMatch) {
 	sort.Slice(matches, func(i, j int) bool {
 		if matches[i].start == matches[j].start {

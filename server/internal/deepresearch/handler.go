@@ -16,10 +16,20 @@ import (
 )
 
 type Handler struct {
-	service *Service
-	creator interface {
-		CreateJob(ctx context.Context, req CreateJobRequest) (*Job, error)
-	}
+	service jobService
+	creator jobCreator
+}
+
+type jobCreator interface {
+	CreateJob(ctx context.Context, req CreateJobRequest) (*Job, error)
+}
+
+type jobService interface {
+	ListJobsForUser(userID, tenantID string, activeOnly bool) ([]JobSummary, error)
+	GetJobForUser(id, userID, tenantID string) (*Job, error)
+	GetReportForUser(id, userID, tenantID string) (*Report, error)
+	CancelJobForUser(id, userID, tenantID string) error
+	SubscribeForUser(jobID, userID, tenantID string) (<-chan Event, func(), error)
 }
 
 const (
@@ -38,6 +48,19 @@ func (h *Handler) SetJobCreator(creator interface {
 		return
 	}
 	h.creator = creator
+}
+
+func (h *Handler) SetJobService(service interface {
+	ListJobsForUser(userID, tenantID string, activeOnly bool) ([]JobSummary, error)
+	GetJobForUser(id, userID, tenantID string) (*Job, error)
+	GetReportForUser(id, userID, tenantID string) (*Report, error)
+	CancelJobForUser(id, userID, tenantID string) error
+	SubscribeForUser(jobID, userID, tenantID string) (<-chan Event, func(), error)
+}) {
+	if h == nil || service == nil {
+		return
+	}
+	h.service = service
 }
 
 func (h *Handler) RegisterRoutes(e *echo.Echo) {
@@ -68,7 +91,12 @@ func (h *Handler) CreateJob(c echo.Context) error {
 
 	creator := h.creator
 	if creator == nil {
-		creator = h.service
+		if fallback, ok := h.service.(jobCreator); ok {
+			creator = fallback
+		}
+	}
+	if creator == nil {
+		return writeServiceError(c, http.StatusServiceUnavailable, "runtime_unavailable", fmt.Errorf("deep research runtime unavailable"))
 	}
 	job, err := creator.CreateJob(c.Request().Context(), req)
 	if err != nil {

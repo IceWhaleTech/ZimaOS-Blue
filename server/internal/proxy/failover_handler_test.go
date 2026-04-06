@@ -1,11 +1,14 @@
 package proxy
 
 import (
+	stdjson "encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/resilience"
 	"github.com/labstack/echo/v4"
 )
 
@@ -43,5 +46,73 @@ func TestFailoverAPIHandler_UpdateConfig_ProviderRace(t *testing.T) {
 	}
 	if !raceUpdated {
 		t.Fatal("onProviderRaceChange callback was not invoked")
+	}
+}
+
+func TestFailoverAPIHandler_GetOverview_AggregatesSparseFailoverState(t *testing.T) {
+	e := echo.New()
+	cfg := DefaultProxyConfig().Routing.Failover
+	cfg.Enabled = true
+	cfg.CircuitBreaker = true
+	cfg.StreamingAnomaly.Enabled = true
+
+	smart := NewSmartFailoverHandler(&cfg, nil)
+	smart.metrics.RecordFailover("provider-a", "provider-b", true)
+	smart.metrics.RecordError("provider-a", &ErrorClassification{Type: ErrorTypeTimeout})
+
+	breaker := smart.FailoverHandler.getBreaker("provider-a")
+	now := time.Now().UTC()
+	breaker.LoadState(resilience.StateOpen, 2, 0, now, now)
+
+	h := NewFailoverAPIHandler(smart, &cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/overview", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.GetOverview(c); err != nil {
+		t.Fatalf("GetOverview() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var body struct {
+		Metrics struct {
+			ErrorsByType    map[string]int64            `json:"errors_by_type"`
+			FailoverTotal   int64                       `json:"failover_total"`
+			FailoverSuccess int64                       `json:"failover_success"`
+			ProviderErrors  map[string]map[string]int64 `json:"provider_errors"`
+		} `json:"metrics"`
+		Config struct {
+			Enabled          bool `json:"enabled"`
+			CircuitBreaker   bool `json:"circuit_breaker"`
+			StreamingAnomaly struct {
+				Enabled bool `json:"enabled"`
+			} `json:"streaming_anomaly"`
+		} `json:"config"`
+		CircuitBreakers map[string]struct {
+			State    string `json:"state"`
+			Failures int    `json:"failures"`
+		} `json:"circuit_breakers"`
+	}
+	if err := stdjson.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+
+	if body.Metrics.FailoverTotal != 1 || body.Metrics.FailoverSuccess != 1 {
+		t.Fatalf("unexpected metrics payload: %+v", body.Metrics)
+	}
+	if body.Metrics.ErrorsByType[string(ErrorTypeTimeout)] != 1 {
+		t.Fatalf("unexpected error counts: %+v", body.Metrics.ErrorsByType)
+	}
+	if body.Metrics.ProviderErrors["provider-a"][string(ErrorTypeTimeout)] != 1 {
+		t.Fatalf("unexpected provider error counts: %+v", body.Metrics.ProviderErrors)
+	}
+	if !body.Config.Enabled || !body.Config.CircuitBreaker || !body.Config.StreamingAnomaly.Enabled {
+		t.Fatalf("unexpected config payload: %+v", body.Config)
+	}
+	if body.CircuitBreakers["provider-a"].State != "open" || body.CircuitBreakers["provider-a"].Failures != 2 {
+		t.Fatalf("unexpected breaker payload: %+v", body.CircuitBreakers)
 	}
 }

@@ -100,6 +100,8 @@ func TestT_AllLanguagesHaveWorkspaceRootEscapeError(t *testing.T) {
 }
 
 func TestTranslations_AllLanguagesHaveToolLoopKeys(t *testing.T) {
+	ensureTranslations()
+
 	keys := []string{
 		MsgToolLoopAbortRepeatedOverwrite,
 		MsgToolLoopAbortIdenticalRepeat,

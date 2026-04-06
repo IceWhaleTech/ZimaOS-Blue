@@ -1,0 +1,160 @@
+---
+title: "Settings and Provider Pool"
+summary: "How Blue's settings surface now brings together runtime behavior, provider routing, external agents, memory, and recovery."
+---
+
+# Settings and Provider Pool
+
+The settings area is now the main operator surface for configuring Blue's runtime, not just a small preferences page.
+
+## Settings tabs at a glance
+
+The current app groups settings into five tabs:
+
+- `General`: language, theme, device behavior, network entry, and update flow
+- `LLM`: provider pool, model routing, and external agent connectivity
+- `Proxy`: request-routing helpers and lightweight runtime behavior
+- `Speech`: speech input, output, and voice pipeline preferences
+- `User Data`: memory, export, backup, and restore flows
+
+## Provider pool basics
+
+The provider pool is the current control plane for model access. In the UI you can:
+
+- Browse providers by type such as built-in, platform, custom, trial, and media
+- Pick a default provider
+- Drag-sort providers to control routing preference
+- Verify providers before trusting them in production traffic
+- Refresh provider model inventories
+- Inspect pricing or capability metadata where available
+
+## Adding a custom provider
+
+The custom-provider flow supports more than a base URL and key. You can set:
+
+- Provider name
+- Base URL
+- API key
+- Routing priority
+- API compatibility format such as `auto`, `openai`, `responses`, `anthropic`, or `google`
+- Location metadata to mark a provider as `cloud` or `local`
+
+These fields make it easier to run the same Blue runtime against hosted APIs, local gateways, or compatibility layers without rewriting the rest of your product.
+
+## Model controls
+
+After a provider is connected, Blue can expose:
+
+- Allowed-model controls so you can limit which models the app may route to
+- Verification results before enabling a provider for normal traffic
+- IDE or runtime discovery helpers where supported
+- Per-provider model refresh so you do not need to restart the whole app to pick up upstream catalog changes
+
+For the routing behavior itself, continue with [Providers and Models](/guides/providers-models).
+
+## External agents
+
+Blue can also manage external agent profiles from the settings surface. The current implementation supports:
+
+- ACP and A2A style profiles
+- Built-in or template profiles
+- Command, working-directory, and environment overrides for ACP profiles
+- Endpoint URL and header wiring for remote-style profiles
+- Credential-provider and auth-method attachment
+- Verify and health-check actions before you rely on the profile
+
+This is useful when Blue needs to coordinate with a coding agent, research agent, or another runtime without collapsing everything into one monolith.
+
+Blue already exposes a real external-agent control plane behind this settings flow. In practice that means:
+
+- The web app can manage external agent profiles
+- The service can create, message, cancel, close, and stream external agent sessions
+- The `blue agent-sessions` CLI can operate the same surface from the terminal
+
+### ACP command defaults
+
+Blue's built-in ACP templates now default to binary-first commands:
+
+- Claude: `claude-agent-acp`
+- Codex: `codex-acp`
+- Gemini: `gemini --acp`
+
+That means:
+
+- If the adapter binary is already on `PATH`, Blue uses it directly
+- For Codex, that works well with downloaded release binaries or other direct installs
+- For Gemini, the CLI already exposes ACP mode directly through `gemini --acp`
+- For Claude and Codex, Blue still preserves the existing npm fallback when the binary is missing
+
+Current fallback behavior:
+
+- `claude-agent-acp` falls back to `npx -y @zed-industries/claude-agent-acp`
+- `codex-acp` falls back to `npx @zed-industries/codex-acp`
+
+Operationally, this means you can prefer direct binaries or globally installed commands, while still keeping older npm-based setups working.
+
+## Using Agentcore Runner as a Blue-facing ACP or A2A bridge
+
+If you want to put the protocol boundary on `agentcore-runner`, the current repository now supports that directly.
+
+Build the runner from the server module:
+
+```bash
+cd server
+go build ./cmd/agentcore-runner
+```
+
+Run ACP mode and point it at Blue:
+
+```bash
+./agentcore-runner acp --blue-url http://127.0.0.1:18080
+```
+
+Run A2A mode and expose an HTTP endpoint backed by Blue:
+
+```bash
+./agentcore-runner a2a --listen 127.0.0.1:7788 --blue-url http://127.0.0.1:18080
+```
+
+If your Blue deployment needs extra headers such as bearer auth, add one or more `--blue-header` flags:
+
+```bash
+./agentcore-runner acp \
+  --blue-url http://127.0.0.1:18080 \
+  --blue-header "Authorization=Bearer <token>"
+```
+
+Current bridge behavior:
+
+- The first prompt creates a Blue conversation and later prompts reuse it
+- Blue's streaming message deltas are forwarded through ACP `session/update` or A2A `message/stream`
+- Cancel requests are forwarded back to Blue's conversation cancel endpoint
+- If you omit `--blue-url`, the runner keeps its default local stub behavior for testing and harness workflows
+
+Use this pattern when you want Blue to remain the conversation runtime, but another system expects an ACP process or an A2A HTTP endpoint at the edge.
+
+## Speech, memory, and recovery
+
+Settings is also where Blue collects the day-two controls that usually get scattered across smaller apps:
+
+- Speech preferences and voice pipeline behavior
+- Memory recall mode and user-data export
+- Backup creation, restore, and deletion
+- General runtime behaviors such as update and service settings
+
+## Recommended operator path
+
+If you are setting up a new Blue deployment, this sequence is usually the shortest path:
+
+1. Finish installation and open the web app
+2. Configure providers and verify the ones you plan to use
+3. Restrict or review allowed models if needed
+4. Add any external agents Blue should coordinate with
+5. Set speech, memory, and backup preferences before sharing the system with more users
+
+## Related pages
+
+- [Providers and Models](/guides/providers-models)
+- [Automation](/guides/automation)
+- [Harness and Evolution](/guides/harness-evolution)
+- [Admin and Operations](/guides/admin-operations)

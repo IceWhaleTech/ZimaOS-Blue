@@ -97,44 +97,28 @@ func TestProviderStatusAndStop(t *testing.T) {
 	}
 }
 
-func TestResearchCommandKeepsDeepAlias(t *testing.T) {
-	deps := &fakeDeps{
-		state: CommandState{
-			ConversationID:      "conv-1",
-			WebSearchEnabled:    true,
-			DeepResearchEnabled: false,
-		},
-	}
+func TestLegacyLocalToolToggleCommandsRemoved(t *testing.T) {
+	deps := &fakeDeps{}
 
-	result, handled := deps.executor().Execute(context.Background(), "conv-1", "/deep on")
-	if !handled {
-		t.Fatal("expected legacy deep alias to be handled")
-	}
-	if !deps.state.DeepResearchEnabled {
-		t.Fatalf("expected research mode to be enabled, got %+v", deps.state)
-	}
-	if !strings.Contains(result.Content, "Research mode is now ON.") {
-		t.Fatalf("unexpected toggle result: %s", result.Content)
-	}
-
-	result, handled = deps.executor().Execute(context.Background(), "conv-1", "/research status")
-	if !handled {
-		t.Fatal("expected research command to be handled")
-	}
-	if !strings.Contains(result.Content, "Research mode status: ON") {
-		t.Fatalf("unexpected research status: %s", result.Content)
+	for _, command := range []string{"/deep on", "/research status", "/web off"} {
+		result, handled := deps.executor().Execute(context.Background(), "conv-1", command)
+		if !handled {
+			t.Fatalf("expected %q to surface as an unknown command", command)
+		}
+		if !strings.Contains(result.Content, "Unknown command") {
+			t.Fatalf("expected unknown command result for %q, got %q", command, result.Content)
+		}
 	}
 }
 
-func TestHelpPrefersResearchCommand(t *testing.T) {
+func TestHelpOmitsRemovedLocalToolToggleCommands(t *testing.T) {
 	result, handled := (&fakeDeps{}).executor().Execute(context.Background(), "conv-1", "/help")
 	if !handled {
 		t.Fatal("expected help command to be handled")
 	}
-	if !strings.Contains(result.Content, "/research on|off|status") {
-		t.Fatalf("expected help to advertise research command, got %s", result.Content)
-	}
-	if strings.Contains(result.Content, "/deep on|off|status") {
-		t.Fatalf("expected help to stop advertising legacy deep usage, got %s", result.Content)
+	for _, removed := range []string{"/research on|off|status", "/deep on|off|status", "/web on|off|status"} {
+		if strings.Contains(result.Content, removed) {
+			t.Fatalf("expected help to omit removed toggle command %q, got %s", removed, result.Content)
+		}
 	}
 }

@@ -11,14 +11,17 @@ import (
 
 // MetricsHandler handles metrics-related API endpoints
 type MetricsHandler struct {
-	collector *metrics.Collector
+	collector     *metrics.Collector
+	cacheProvider ChatCacheFootprintProvider
 }
 
 // NewMetricsHandler creates a new metrics handler
-func NewMetricsHandler(collector *metrics.Collector) *MetricsHandler {
-	return &MetricsHandler{
-		collector: collector,
+func NewMetricsHandler(collector *metrics.Collector, cacheProvider ...ChatCacheFootprintProvider) *MetricsHandler {
+	var provider ChatCacheFootprintProvider
+	if len(cacheProvider) > 0 {
+		provider = cacheProvider[0]
 	}
+	return &MetricsHandler{collector: collector, cacheProvider: provider}
 }
 
 // RegisterRoutes registers metrics routes on the given group
@@ -29,13 +32,25 @@ func (h *MetricsHandler) RegisterRoutes(g *echo.Group) {
 
 // GetCurrentMetrics returns the current system metrics
 func (h *MetricsHandler) GetCurrentMetrics(c echo.Context) error {
-	latest := h.collector.GetLatest()
-	if latest == nil {
-		return c.JSON(http.StatusOK, metrics.SystemMetrics{
-			Timestamp: timeutil.NowTime(),
-		})
+	snapshot := metrics.SystemMetrics{
+		Timestamp: timeutil.NowTime(),
 	}
-	return c.JSON(http.StatusOK, latest)
+	latest := h.collector.GetLatest()
+	if latest != nil {
+		snapshot = *latest
+	}
+	if h.cacheProvider != nil {
+		footprint := h.cacheProvider.ChatCacheFootprint()
+		snapshot.ConversationCacheEntries = footprint.ConversationCacheEntries
+		snapshot.ConversationCacheBytes = footprint.ConversationCacheBytes
+		snapshot.WarmupCacheEntries = footprint.WarmupCacheEntries
+		snapshot.WarmupCacheBytes = footprint.WarmupCacheBytes
+		snapshot.PromptToolSurfaceRefs = footprint.PromptToolSurfaceRefs
+		snapshot.PromptToolSurfaceSharedEntries = footprint.PromptToolSurfaceSharedEntries
+		snapshot.PromptToolSurfaceSharedBytes = footprint.PromptToolSurfaceSharedBytes
+		snapshot.ProviderAffinityEntries = footprint.ProviderAffinityEntries
+	}
+	return c.JSON(http.StatusOK, snapshot)
 }
 
 // GetMetricsHistory returns historical metrics data

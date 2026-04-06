@@ -3,16 +3,14 @@ import { hasStoredSessionHint } from '@/utils/authStorage'
 import { shouldDeferLocaleEnhancementsOnDesktopStartup } from '@/utils/desktopStartup'
 import buildBuiltinSkillBackfill from './builtin-skill-backfills'
 import builtinToolBackfills from './builtin-tool-backfills'
-import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
 import { localeKeys, localeOptions, type LocaleKey } from './locale-catalog'
-import smallModelFallbackReasonOverrides from './small-model-fallback-reason-overrides'
-import systemDashboardCardOverrides from './system-dashboard-card-overrides'
 
 export { localeKeys, localeOptions }
 export type { LocaleKey }
 
 type LocaleMessages = Record<string, unknown>
 type LocaleModule = { default: LocaleMessages }
+type LocaleLoader = () => Promise<LocaleModule>
 type LocaleOverrideCatalog = Partial<Record<LocaleKey, LocaleMessages>>
 type LocaleEnhancerModule = {
   mergeHarnessLocale: <T extends Record<string, unknown>>(localeKey: LocaleKey, messages: T) => T
@@ -47,6 +45,7 @@ const LOCALE_CACHE_VERSION = 'v1'
 const LOCALE_CACHE_KEY_PREFIX = `zimaos-blue-locale-cache:${LOCALE_CACHE_VERSION}:`
 const RTL_LANGUAGE_CODES = new Set(['ar', 'ckb', 'fa', 'he', 'ps', 'ur'])
 const localeKeySet = new Set<LocaleKey>(localeKeys)
+const fallbackLocale: LocaleKey = localeKeySet.has('en-US') ? 'en-US' : (localeKeys[0] ?? 'en-US')
 
 // Map browser language codes to our locale keys.
 const browserLocaleMap: Record<string, LocaleKey> = {
@@ -84,6 +83,40 @@ const browserLocaleMap: Record<string, LocaleKey> = {
   'zh-HK': 'zh-TW',
 }
 
+function resolvePreferredLocale(locale: string | null | undefined): LocaleKey | null {
+  const normalized = locale?.trim()
+  if (!normalized) {
+    return null
+  }
+
+  const exactMatch = browserLocaleMap[normalized]
+  if (exactMatch && localeKeySet.has(exactMatch)) {
+    return exactMatch
+  }
+
+  const langCode = normalized.split(/[-_]/)[0]
+  if (langCode) {
+    const langMatch = browserLocaleMap[langCode]
+    if (langMatch && localeKeySet.has(langMatch)) {
+      return langMatch
+    }
+
+    if (langCode === 'zh' && localeKeySet.has('zh-CN')) {
+      return 'zh-CN'
+    }
+
+    if (langCode === 'en' && localeKeySet.has('en-US')) {
+      return 'en-US'
+    }
+  }
+
+  return null
+}
+
+function resolveSupportedLocale(locale: LocaleKey | string): LocaleKey {
+  return resolvePreferredLocale(locale) ?? fallbackLocale
+}
+
 export function getLocaleDirection(locale: string): LocaleDirection {
   const normalized = locale.trim().toLowerCase()
   const languageCode = normalized.split(/[-_]/)[0]
@@ -102,26 +135,14 @@ function hasLocalStorageApi(): boolean {
 function getDefaultLocale(): LocaleKey {
   if (hasLocalStorageApi()) {
     const saved = localStorage.getItem(LOCALE_KEY)
-    if (saved && localeKeySet.has(saved as LocaleKey)) {
-      return saved as LocaleKey
+    const savedLocale = resolvePreferredLocale(saved)
+    if (savedLocale) {
+      return savedLocale
     }
   }
 
-  const browserLang = typeof navigator !== 'undefined' ? navigator.language : 'en-US'
-  const exactMatch = browserLocaleMap[browserLang]
-  if (exactMatch) {
-    return exactMatch
-  }
-
-  const langCode = browserLang.split('-')[0]
-  if (langCode) {
-    const langMatch = browserLocaleMap[langCode]
-    if (langMatch) {
-      return langMatch
-    }
-  }
-
-  return 'en-US'
+  const browserLang = typeof navigator !== 'undefined' ? navigator.language : fallbackLocale
+  return resolvePreferredLocale(browserLang) ?? fallbackLocale
 }
 
 function localeCacheKey(locale: LocaleKey): string {
@@ -163,17 +184,18 @@ function writeCachedLocaleMessages(locale: LocaleKey, messages: LocaleMessages):
 const initialLocale = getDefaultLocale()
 const initialCachedMessages = readCachedLocaleMessages(initialLocale)
 const initialMessages: any = {
-  'en-US': initialLocale === 'en-US' ? initialCachedMessages ?? minimalMessages : minimalMessages,
+  [fallbackLocale]:
+    initialLocale === fallbackLocale ? (initialCachedMessages ?? minimalMessages) : minimalMessages,
 }
 
-if (initialLocale !== 'en-US') {
+if (initialLocale !== fallbackLocale) {
   initialMessages[initialLocale] = initialCachedMessages ?? minimalMessages
 }
 
 const rawI18n = createI18n({
   legacy: false,
   locale: initialLocale,
-  fallbackLocale: 'en-US',
+  fallbackLocale,
   missingWarn: false,
   fallbackWarn: false,
   messages: initialMessages,
@@ -187,7 +209,7 @@ type LocaleComposerBridge = {
   locale: { value: string }
 }
 
-const localeLoaders: Record<LocaleKey, () => Promise<LocaleModule>> = {
+const localeLoaders = {
   'ca-ES': () => import('./locales/ca-ES'),
   'cs-CZ': () => import('./locales/cs-CZ'),
   'da-DK': () => import('./locales/da-DK'),
@@ -215,7 +237,7 @@ const localeLoaders: Record<LocaleKey, () => Promise<LocaleModule>> = {
   'sv-SE': () => import('./locales/sv-SE'),
   'zh-CN': () => import('./locales/zh-CN'),
   'zh-TW': () => import('./locales/zh-TW'),
-}
+} satisfies Record<LocaleKey, LocaleLoader>
 
 const loadedLocales = new Set<LocaleKey>()
 const enhancedLocales = new Set<LocaleKey>()
@@ -248,52 +270,12 @@ function deepMergeMessages(base: LocaleMessages, overrides: LocaleMessages): Loc
   return merged
 }
 
-function mergeOverrideCatalogs(
-  base: LocaleOverrideCatalog,
-  overrides: LocaleOverrideCatalog
-): LocaleOverrideCatalog {
-  const merged: LocaleOverrideCatalog = { ...base }
-
-  for (const [localeKey, localeOverrides] of Object.entries(overrides) as Array<
-    [LocaleKey, LocaleMessages]
-  >) {
-    const current = merged[localeKey]
-    merged[localeKey] =
-      current && isPlainObject(current)
-        ? deepMergeMessages(current, localeOverrides)
-        : localeOverrides
-  }
-
-  return merged
-}
-
 async function loadLocaleOverrides(): Promise<LocaleOverrideCatalog> {
   if (localeOverridesPromise) {
     return localeOverridesPromise
   }
 
-  localeOverridesPromise = (async () => {
-    const [priorityModule, translationModule] = await Promise.all([
-      import('./priority-overrides').catch(() => ({ default: {} as LocaleOverrideCatalog })),
-      import('./priority-translation-overrides').catch(
-        () => ({ default: {} as LocaleOverrideCatalog })
-      ),
-    ])
-
-    return mergeOverrideCatalogs(
-      mergeOverrideCatalogs(
-        mergeOverrideCatalogs(
-          mergeOverrideCatalogs(
-            mergeOverrideCatalogs(priorityModule.default, translationModule.default),
-            builtinToolBackfills as LocaleOverrideCatalog
-          ),
-          systemDashboardCardOverrides as LocaleOverrideCatalog
-        ),
-        dashboardCardCopyOverrides as LocaleOverrideCatalog
-      ),
-      smallModelFallbackReasonOverrides as LocaleOverrideCatalog
-    )
-  })()
+  localeOverridesPromise = Promise.resolve(builtinToolBackfills as LocaleOverrideCatalog)
 
   return localeOverridesPromise
 }
@@ -303,7 +285,7 @@ async function loadLocaleEnhancer(): Promise<LocaleEnhancerModule> {
     return localeEnhancerPromise
   }
 
-  localeEnhancerPromise = import('./harnessLocaleAdditions')
+  localeEnhancerPromise = import('./harness-locale-additions')
   return localeEnhancerPromise
 }
 
@@ -343,7 +325,10 @@ async function buildLocaleMessages(
     const enhancedMessages = await applyLocaleEnhancements(locale, messages)
     return { messages: enhancedMessages, enhanced: true }
   } catch (error) {
-    console.warn(`Failed to load locale enhancements for ${locale}, using base locale messages`, error)
+    console.warn(
+      `Failed to load locale enhancements for ${locale}, using base locale messages`,
+      error
+    )
     return { messages, enhanced: false }
   }
 }
@@ -360,7 +345,9 @@ async function ensureLocaleEnhancements(locale: LocaleKey): Promise<LocaleKey> {
 
   const pending = (async () => {
     try {
-      const currentMessages = (i18n.global as unknown as LocaleComposerBridge).getLocaleMessage(locale)
+      const currentMessages = (i18n.global as unknown as LocaleComposerBridge).getLocaleMessage(
+        locale
+      )
       const baseMessages = isPlainObject(currentMessages) ? currentMessages : {}
       const { messages, enhanced } = await buildLocaleMessages(locale, baseMessages, true)
       storeLoadedLocaleMessages(locale, messages, { enhanced })
@@ -374,10 +361,7 @@ async function ensureLocaleEnhancements(locale: LocaleKey): Promise<LocaleKey> {
   return pending
 }
 
-function scheduleLocaleEnhancement(
-  locale: LocaleKey,
-  options: { minDelayMs?: number } = {}
-): void {
+function scheduleLocaleEnhancement(locale: LocaleKey, options: { minDelayMs?: number } = {}): void {
   if (enhancedLocales.has(locale) || scheduledLocaleEnhancements.has(locale)) {
     return
   }
@@ -477,8 +461,13 @@ async function loadLocaleMessages(
 
   const pending = (async () => {
     try {
+      const localeLoader = localeLoaders[locale]
+      if (!localeLoader) {
+        throw new Error(`No locale loader configured for ${locale}`)
+      }
+
       const [module, localeOverrides] = await Promise.all([
-        localeLoaders[locale](),
+        localeLoader(),
         loadLocaleOverrides(),
       ])
       const mergedMessages = deepMergeMessages(module.default, localeOverrides[locale] || {})
@@ -506,13 +495,13 @@ async function loadLocaleMessages(
 
       return locale
     } catch (error) {
-      if (locale === 'en-US') {
+      if (locale === fallbackLocale) {
         console.warn(`Failed to load locale ${locale}, continuing with minimal fallback`, error)
-        return 'en-US'
+        return fallbackLocale
       }
 
-      console.warn(`Failed to load locale ${locale}, falling back to en-US`, error)
-      return loadLocaleMessages('en-US')
+      console.warn(`Failed to load locale ${locale}, falling back to ${fallbackLocale}`, error)
+      return loadLocaleMessages(fallbackLocale)
     } finally {
       loadingLocales.delete(locale)
     }
@@ -566,7 +555,9 @@ function scheduleLocaleRefresh(
 }
 
 export async function setLocale(locale: LocaleKey): Promise<void> {
-  const resolvedLocale = await loadLocaleMessages(locale, { requireEnhancements: true })
+  const resolvedLocale = await loadLocaleMessages(resolveSupportedLocale(locale), {
+    requireEnhancements: true,
+  })
   applyLocaleState(resolvedLocale)
 }
 

@@ -180,11 +180,261 @@ func (c *Controller) CreateEvalSpec(ctx context.Context, spec EvalSpecSpec) (*Ev
 	return c.store.GetEvalSpec(ctx, evalSpec.ID)
 }
 
+func (c *Controller) ImportDatasetBundle(ctx context.Context, req ImportDatasetBundleRequest) (*ImportDatasetBundleResult, error) {
+	if c == nil || c.store == nil {
+		return nil, fmt.Errorf("harness controller is not configured")
+	}
+	if _, err := validateImportDatasetBundleRequest(&req); err != nil {
+		return nil, err
+	}
+
+	var (
+		datasetID   string
+		versionID   string
+		evalSpecIDs []string
+	)
+	err := c.store.withTx(ctx, func(tx *sql.Tx) error {
+		dataset, err := c.upsertImportedDataset(ctx, tx, req.Dataset)
+		if err != nil {
+			return err
+		}
+		version, err := c.upsertImportedDatasetVersion(ctx, tx, dataset, req)
+		if err != nil {
+			return err
+		}
+		if req.MakeActive && dataset.ActiveVersionID != version.ID {
+			dataset.ActiveVersionID = version.ID
+			if err := c.store.updateDatasetTx(ctx, tx, dataset); err != nil {
+				return err
+			}
+		}
+		datasetID = dataset.ID
+		versionID = version.ID
+		evalSpecIDs = evalSpecIDs[:0]
+		for _, spec := range req.EvalSpecs {
+			evalSpec, err := c.upsertImportedEvalSpec(ctx, tx, dataset, version, spec)
+			if err != nil {
+				return err
+			}
+			evalSpecIDs = append(evalSpecIDs, evalSpec.ID)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	dataset, err := c.store.GetDataset(ctx, datasetID)
+	if err != nil {
+		return nil, err
+	}
+	version, err := c.store.GetDatasetVersion(ctx, versionID)
+	if err != nil {
+		return nil, err
+	}
+	result := &ImportDatasetBundleResult{
+		Dataset:        dataset,
+		DatasetVersion: version,
+		EvalSpecs:      make([]EvalSpec, 0, len(evalSpecIDs)),
+	}
+	for _, evalSpecID := range evalSpecIDs {
+		evalSpec, err := c.store.GetEvalSpec(ctx, evalSpecID)
+		if err != nil {
+			return nil, err
+		}
+		result.EvalSpecs = append(result.EvalSpecs, *evalSpec)
+	}
+	return result, nil
+}
+
+func validateImportDatasetBundleRequest(req *ImportDatasetBundleRequest) (int, error) {
+	if req == nil {
+		return 0, fmt.Errorf("dataset bundle request is required")
+	}
+	if strings.TrimSpace(req.Dataset.Name) == "" {
+		return 0, fmt.Errorf("dataset name is required")
+	}
+	if len(req.Version.Manifest) == 0 {
+		return 0, fmt.Errorf("dataset version manifest is required")
+	}
+	itemCount, err := manifestItemCount(req.Version.Manifest)
+	if err != nil {
+		return 0, fmt.Errorf("invalid manifest: %w", err)
+	}
+	for _, spec := range req.EvalSpecs {
+		name := strings.TrimSpace(spec.Name)
+		if name == "" {
+			return 0, fmt.Errorf("eval spec name is required")
+		}
+		runKind := spec.RunKind
+		if runKind == "" {
+			runKind = req.Dataset.DefaultRunKind
+		}
+		if runKind == "" {
+			return 0, fmt.Errorf("eval spec %q run kind is required", name)
+		}
+	}
+	return itemCount, nil
+}
+
 func (c *Controller) GetEvalSpec(ctx context.Context, id string) (*EvalSpec, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("harness controller is not configured")
 	}
 	return c.store.GetEvalSpec(ctx, strings.TrimSpace(id))
+}
+
+func (c *Controller) upsertImportedDataset(ctx context.Context, tx *sql.Tx, spec DatasetSpec) (*Dataset, error) {
+	ownerUserID := strings.TrimSpace(spec.OwnerUserID)
+	name := strings.TrimSpace(spec.Name)
+	existing, err := c.store.findDatasetByOwnerAndNameWithDB(ctx, tx, ownerUserID, name)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if existing == nil {
+		now := timeutil.NowTime()
+		dataset := &Dataset{
+			ID:             uuid.NewString(),
+			Name:           name,
+			Description:    strings.TrimSpace(spec.Description),
+			OwnerUserID:    ownerUserID,
+			Subject:        strings.TrimSpace(spec.Subject),
+			DefaultRunKind: spec.DefaultRunKind,
+			DefaultProfile: strings.TrimSpace(spec.DefaultProfile),
+			Metadata:       cloneMetadataMap(spec.Metadata),
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}
+		if err := c.store.createDatasetTx(ctx, tx, dataset); err != nil {
+			return nil, err
+		}
+		return dataset, nil
+	}
+	next := *existing
+	next.Description = strings.TrimSpace(spec.Description)
+	next.Subject = strings.TrimSpace(spec.Subject)
+	if strings.TrimSpace(spec.OwnerUserID) != "" {
+		next.OwnerUserID = strings.TrimSpace(spec.OwnerUserID)
+	}
+	if spec.DefaultRunKind != "" {
+		next.DefaultRunKind = spec.DefaultRunKind
+	}
+	next.DefaultProfile = strings.TrimSpace(spec.DefaultProfile)
+	next.Metadata = cloneMetadataMap(spec.Metadata)
+	if err := c.store.updateDatasetTx(ctx, tx, &next); err != nil {
+		return nil, err
+	}
+	return &next, nil
+}
+
+func (c *Controller) upsertImportedDatasetVersion(ctx context.Context, tx *sql.Tx, dataset *Dataset, req ImportDatasetBundleRequest) (*DatasetVersion, error) {
+	if dataset == nil {
+		return nil, fmt.Errorf("dataset is required")
+	}
+	versionSpec := req.Version
+	versionSpec.SourceType = firstNonEmpty(strings.TrimSpace(req.SourceType), strings.TrimSpace(versionSpec.SourceType))
+	versionSpec.SourceRef = firstNonEmpty(strings.TrimSpace(req.SourceRef), strings.TrimSpace(versionSpec.SourceRef))
+	versionSpec.CreatedBy = firstNonEmpty(strings.TrimSpace(versionSpec.CreatedBy), strings.TrimSpace(dataset.OwnerUserID))
+	versionSpec.Version = normalizeDatasetVersion(versionSpec.Version)
+
+	existing, err := c.store.findDatasetVersionByDatasetAndVersionWithDB(ctx, tx, dataset.ID, versionSpec.Version)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	nextHash := manifestSHA256(versionSpec.Manifest)
+	if existing != nil {
+		if strings.TrimSpace(existing.ManifestSHA256) != strings.TrimSpace(nextHash) {
+			return nil, fmt.Errorf("dataset version %s already exists with a different manifest hash; use a version bump", versionSpec.Version)
+		}
+		return existing, nil
+	}
+
+	itemCount, err := manifestItemCount(versionSpec.Manifest)
+	if err != nil {
+		return nil, fmt.Errorf("invalid manifest: %w", err)
+	}
+	version := &DatasetVersion{
+		ID:             uuid.NewString(),
+		DatasetID:      dataset.ID,
+		Version:        versionSpec.Version,
+		ManifestSHA256: nextHash,
+		ItemCount:      itemCount,
+		SourceType:     strings.TrimSpace(versionSpec.SourceType),
+		SourceRef:      strings.TrimSpace(versionSpec.SourceRef),
+		Manifest:       cloneMetadataMap(versionSpec.Manifest),
+		Metadata:       cloneMetadataMap(versionSpec.Metadata),
+		CreatedBy:      strings.TrimSpace(versionSpec.CreatedBy),
+		CreatedAt:      timeutil.NowTime(),
+	}
+	if err := c.store.createDatasetVersionTx(ctx, tx, version); err != nil {
+		return nil, err
+	}
+	return version, nil
+}
+
+func (c *Controller) upsertImportedEvalSpec(ctx context.Context, tx *sql.Tx, dataset *Dataset, version *DatasetVersion, spec ImportDatasetBundleEvalSpec) (*EvalSpec, error) {
+	if dataset == nil || version == nil {
+		return nil, fmt.Errorf("dataset and dataset version are required")
+	}
+	name := strings.TrimSpace(spec.Name)
+	if name == "" {
+		return nil, fmt.Errorf("eval spec name is required")
+	}
+	ownerUserID := firstNonEmpty(strings.TrimSpace(spec.OwnerUserID), strings.TrimSpace(dataset.OwnerUserID))
+	runKind := spec.RunKind
+	if runKind == "" {
+		runKind = dataset.DefaultRunKind
+	}
+	if runKind == "" {
+		return nil, fmt.Errorf("run kind is required")
+	}
+	subject := firstNonEmpty(strings.TrimSpace(spec.Subject), strings.TrimSpace(dataset.Subject))
+	profile := firstNonEmpty(strings.TrimSpace(spec.Profile), strings.TrimSpace(dataset.DefaultProfile))
+
+	existing, err := c.store.findEvalSpecByOwnerDatasetAndNameWithDB(ctx, tx, ownerUserID, dataset.ID, name)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	if existing == nil {
+		now := timeutil.NowTime()
+		evalSpec := &EvalSpec{
+			ID:               uuid.NewString(),
+			Name:             name,
+			OwnerUserID:      ownerUserID,
+			Subject:          subject,
+			RunKind:          runKind,
+			Profile:          profile,
+			DatasetID:        dataset.ID,
+			DatasetVersionID: version.ID,
+			SchedulerConfig:  spec.SchedulerConfig,
+			ScoringConfig:    spec.ScoringConfig,
+			RuntimePolicy:    cloneMetadataMap(spec.RuntimePolicy),
+			Metadata:         cloneMetadataMap(spec.Metadata),
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+		if err := c.store.createEvalSpecTx(ctx, tx, evalSpec); err != nil {
+			return nil, err
+		}
+		return evalSpec, nil
+	}
+
+	next := *existing
+	next.Name = name
+	next.OwnerUserID = ownerUserID
+	next.Subject = subject
+	next.RunKind = runKind
+	next.Profile = profile
+	next.DatasetID = dataset.ID
+	next.DatasetVersionID = version.ID
+	next.SchedulerConfig = spec.SchedulerConfig
+	next.ScoringConfig = spec.ScoringConfig
+	next.RuntimePolicy = cloneMetadataMap(spec.RuntimePolicy)
+	next.Metadata = cloneMetadataMap(spec.Metadata)
+	if err := c.store.updateEvalSpecTx(ctx, tx, &next); err != nil {
+		return nil, err
+	}
+	return &next, nil
 }
 
 func (c *Controller) ListEvalSpecs(ctx context.Context, filter EvalSpecFilter) ([]EvalSpec, error) {

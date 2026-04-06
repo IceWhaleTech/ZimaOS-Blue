@@ -1,0 +1,611 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	harnesspkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
+)
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
+
+func TestRunHarnessDatasetImportEImportsLocalBundle(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	bundleDir := writeHarnessDatasetBundleFixture(t, t.TempDir())
+	var importCalls int
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/harness/dataset-bundles/import", func(w http.ResponseWriter, r *http.Request) {
+		importCalls++
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		var req harnesspkg.ImportDatasetBundleRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode import request: %v", err)
+		}
+		if req.SourceType != "dataset_bundle_local" {
+			t.Fatalf("source_type = %q, want dataset_bundle_local", req.SourceType)
+		}
+		if req.SourceRef != bundleDir {
+			t.Fatalf("source_ref = %q, want %q", req.SourceRef, bundleDir)
+		}
+		if req.Dataset.Name != "demo-bundle" || req.Dataset.OwnerUserID != "bundle-user" {
+			t.Fatalf("dataset = %#v, want demo-bundle owned by bundle-user", req.Dataset)
+		}
+		if req.Version.Version != "v1" || req.Version.SourceType != "dataset_bundle_local" || req.Version.SourceRef != bundleDir {
+			t.Fatalf("version = %#v, want v1 local bundle provenance", req.Version)
+		}
+		if len(req.EvalSpecs) != 1 || req.EvalSpecs[0].Name != "Default Demo Eval" {
+			t.Fatalf("eval_specs = %#v, want Default Demo Eval", req.EvalSpecs)
+		}
+
+		_ = json.NewEncoder(w).Encode(harnesspkg.ImportDatasetBundleResult{
+			Dataset:        &harnesspkg.Dataset{ID: "dataset-1", Name: req.Dataset.Name, OwnerUserID: req.Dataset.OwnerUserID},
+			DatasetVersion: &harnesspkg.DatasetVersion{ID: "version-1", Version: req.Version.Version, SourceType: req.SourceType, SourceRef: req.SourceRef},
+			EvalSpecs: []harnesspkg.EvalSpec{
+				{ID: "eval-spec-1", Name: req.EvalSpecs[0].Name, OwnerUserID: req.Dataset.OwnerUserID, DatasetVersionID: "version-1"},
+			},
+		})
+	})
+
+	addr := setupHarnessCLIServer(t, mux)
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	t.Setenv("BLUE_SERVER_HOST", host)
+	t.Setenv("BLUE_SERVER_PORT", portStr)
+	t.Setenv("BLUE_USER_ID", "bundle-user")
+
+	harnessDatasetBundleLocalPath = bundleDir
+
+	out := captureStdout(t, func() {
+		err = runHarnessDatasetImportE(nil, nil)
+	})
+	if err != nil {
+		t.Fatalf("runHarnessDatasetImportE error: %v", err)
+	}
+	if importCalls != 1 {
+		t.Fatalf("importCalls = %d, want 1", importCalls)
+	}
+
+	var result harnesspkg.ImportDatasetBundleResult
+	if decodeErr := json.Unmarshal([]byte(out), &result); decodeErr != nil {
+		t.Fatalf("decode import output: %v\n%s", decodeErr, out)
+	}
+	if result.Dataset == nil || result.Dataset.Name != "demo-bundle" {
+		t.Fatalf("result.dataset = %#v, want demo-bundle", result.Dataset)
+	}
+	if result.DatasetVersion == nil || result.DatasetVersion.SourceRef != bundleDir {
+		t.Fatalf("result.dataset_version = %#v, want source_ref %q", result.DatasetVersion, bundleDir)
+	}
+}
+
+func TestRunHarnessDatasetPullEFetchesGitHubBundleWithFallback(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	datasetYAML, manifestJSON, evalSpecYAML := harnessDatasetBundleFixtureContents()
+	var importCalls int
+	var requests []string
+
+	oldClient := harnessDatasetBundleHTTPClient
+	harnessDatasetBundleHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			requests = append(requests, req.URL.String())
+			switch req.URL.Host {
+			case "raw.githubusercontent.com", "raw.gitmirror.com", "cdn.jsdelivr.net":
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+					Header:     make(http.Header),
+				}, nil
+			case "ghproxy.com":
+				body := ""
+				switch {
+				case strings.Contains(req.URL.String(), "/demo-bundle/dataset.yaml"):
+					body = datasetYAML
+				case strings.Contains(req.URL.String(), "/demo-bundle/versions/v1/manifest.json"):
+					body = manifestJSON
+				case strings.Contains(req.URL.String(), "/demo-bundle/versions/v1/eval-specs/default.yaml"):
+					body = evalSpecYAML
+				default:
+					return &http.Response{
+						StatusCode: http.StatusNotFound,
+						Body:       io.NopCloser(strings.NewReader("not found")),
+						Header:     make(http.Header),
+					}, nil
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Header:     make(http.Header),
+				}, nil
+			default:
+				return nil, fmt.Errorf("unexpected host %q", req.URL.Host)
+			}
+		}),
+	}
+	t.Cleanup(func() {
+		harnessDatasetBundleHTTPClient = oldClient
+	})
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/harness/dataset-bundles/import", func(w http.ResponseWriter, r *http.Request) {
+		importCalls++
+		var req harnesspkg.ImportDatasetBundleRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode import request: %v", err)
+		}
+		if req.SourceType != "dataset_bundle_github" {
+			t.Fatalf("source_type = %q, want dataset_bundle_github", req.SourceType)
+		}
+		if req.SourceRef != "https://github.com/example/harness-datasets/tree/main/demo-bundle" {
+			t.Fatalf("source_ref = %q, want canonical tree url", req.SourceRef)
+		}
+		if req.Dataset.Name != "demo-bundle" || req.Version.Version != "v1" {
+			t.Fatalf("request = %#v, want demo-bundle/v1", req)
+		}
+		_ = json.NewEncoder(w).Encode(harnesspkg.ImportDatasetBundleResult{
+			Dataset:        &harnesspkg.Dataset{ID: "dataset-1", Name: req.Dataset.Name, OwnerUserID: req.Dataset.OwnerUserID},
+			DatasetVersion: &harnesspkg.DatasetVersion{ID: "version-1", Version: req.Version.Version, SourceType: req.SourceType, SourceRef: req.SourceRef},
+			EvalSpecs: []harnesspkg.EvalSpec{
+				{ID: "eval-spec-1", Name: "Default Demo Eval", OwnerUserID: req.Dataset.OwnerUserID, DatasetVersionID: "version-1"},
+			},
+		})
+	})
+
+	addr := setupHarnessCLIServer(t, mux)
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	t.Setenv("BLUE_SERVER_HOST", host)
+	t.Setenv("BLUE_SERVER_PORT", portStr)
+	t.Setenv("BLUE_USER_ID", "bundle-user")
+
+	harnessDatasetBundleSource = "https://github.com/example/harness-datasets/tree/main/demo-bundle"
+
+	out := captureStdout(t, func() {
+		err = runHarnessDatasetPullE(nil, nil)
+	})
+	if err != nil {
+		t.Fatalf("runHarnessDatasetPullE error: %v", err)
+	}
+	if importCalls != 1 {
+		t.Fatalf("importCalls = %d, want 1", importCalls)
+	}
+	if len(requests) < 4 {
+		t.Fatalf("requests = %v, want at least four fallback attempts", requests)
+	}
+	if !strings.Contains(requests[0], "raw.githubusercontent.com") || !strings.Contains(requests[1], "raw.gitmirror.com") || !strings.Contains(requests[2], "cdn.jsdelivr.net/gh") || !strings.Contains(requests[3], "ghproxy.com") {
+		t.Fatalf("fallback order = %v, want raw -> gitmirror -> jsdelivr -> ghproxy", requests[:minInt(len(requests), 4)])
+	}
+
+	var result harnesspkg.ImportDatasetBundleResult
+	if decodeErr := json.Unmarshal([]byte(out), &result); decodeErr != nil {
+		t.Fatalf("decode pull output: %v\n%s", decodeErr, out)
+	}
+	if result.Dataset == nil || result.Dataset.Name != "demo-bundle" {
+		t.Fatalf("result.dataset = %#v, want demo-bundle", result.Dataset)
+	}
+}
+
+func TestLoadHarnessDatasetBundleFromGitHubRepoURLWithBundlePath(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	datasetYAML, manifestJSON, evalSpecYAML := harnessDatasetBundleFixtureContents()
+	oldClient := harnessDatasetBundleHTTPClient
+	harnessDatasetBundleHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			var body string
+			switch {
+			case strings.Contains(req.URL.String(), "/main/demo-bundle/dataset.yaml"):
+				body = datasetYAML
+			case strings.Contains(req.URL.String(), "/main/demo-bundle/versions/v1/manifest.json"):
+				body = manifestJSON
+			case strings.Contains(req.URL.String(), "/main/demo-bundle/versions/v1/eval-specs/default.yaml"):
+				body = evalSpecYAML
+			default:
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	t.Cleanup(func() {
+		harnessDatasetBundleHTTPClient = oldClient
+	})
+
+	req, err := loadHarnessDatasetBundleFromGitHubSource("https://github.com/example/harness-datasets", "demo-bundle", "")
+	if err != nil {
+		t.Fatalf("loadHarnessDatasetBundleFromGitHubSource: %v", err)
+	}
+	if req.SourceType != "dataset_bundle_github" {
+		t.Fatalf("source_type = %q, want dataset_bundle_github", req.SourceType)
+	}
+	if req.SourceRef != "https://github.com/example/harness-datasets/tree/main/demo-bundle" {
+		t.Fatalf("source_ref = %q, want canonical main tree url", req.SourceRef)
+	}
+	if req.Dataset.Name != "demo-bundle" || req.Version.Version != "v1" {
+		t.Fatalf("request = %#v, want demo-bundle/v1", req)
+	}
+}
+
+func TestLoadHarnessDatasetBundleFromDirUsesRequestedVersionOverride(t *testing.T) {
+	bundleDir := writeHarnessDatasetBundleMultiVersionFixture(t, t.TempDir())
+
+	req, err := loadHarnessDatasetBundleFromDir(bundleDir, "v2")
+	if err != nil {
+		t.Fatalf("loadHarnessDatasetBundleFromDir: %v", err)
+	}
+	if req.Version.Version != "v2" {
+		t.Fatalf("version = %q, want v2", req.Version.Version)
+	}
+	if len(req.EvalSpecs) != 1 || req.EvalSpecs[0].Name != "V2 Demo Eval" {
+		t.Fatalf("eval_specs = %#v, want V2 Demo Eval", req.EvalSpecs)
+	}
+}
+
+func TestLoadHarnessDatasetBundleFromGitHubSourceUsesRequestedVersionOverride(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	datasetYAML, v1ManifestJSON, v1EvalSpecYAML, v2ManifestJSON, v2EvalSpecYAML := harnessDatasetBundleMultiVersionFixtureContents()
+	oldClient := harnessDatasetBundleHTTPClient
+	harnessDatasetBundleHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			var body string
+			switch {
+			case strings.Contains(req.URL.String(), "/demo-bundle/dataset.yaml"):
+				body = datasetYAML
+			case strings.Contains(req.URL.String(), "/demo-bundle/versions/v1/manifest.json"):
+				body = v1ManifestJSON
+			case strings.Contains(req.URL.String(), "/demo-bundle/versions/v1/eval-specs/default.yaml"):
+				body = v1EvalSpecYAML
+			case strings.Contains(req.URL.String(), "/demo-bundle/versions/v2/manifest.json"):
+				body = v2ManifestJSON
+			case strings.Contains(req.URL.String(), "/demo-bundle/versions/v2/eval-specs/default.yaml"):
+				body = v2EvalSpecYAML
+			default:
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	t.Cleanup(func() {
+		harnessDatasetBundleHTTPClient = oldClient
+	})
+
+	req, err := loadHarnessDatasetBundleFromGitHubSource("https://github.com/example/harness-datasets/tree/main/demo-bundle", "", "v2")
+	if err != nil {
+		t.Fatalf("loadHarnessDatasetBundleFromGitHubSource: %v", err)
+	}
+	if req.Version.Version != "v2" {
+		t.Fatalf("version = %q, want v2", req.Version.Version)
+	}
+	if len(req.EvalSpecs) != 1 || req.EvalSpecs[0].Name != "V2 Demo Eval" {
+		t.Fatalf("eval_specs = %#v, want V2 Demo Eval", req.EvalSpecs)
+	}
+}
+
+func TestLoadHarnessDatasetBundleFromDirRejectsMissingManifest(t *testing.T) {
+	bundleDir := filepath.Join(t.TempDir(), "broken-bundle")
+	if err := os.MkdirAll(filepath.Join(bundleDir, "versions", "v1"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "dataset.yaml"), []byte("api_version: harness.blue/v1alpha1\nkind: dataset_bundle\nname: broken\ndefault_version: v1\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile dataset.yaml: %v", err)
+	}
+
+	_, err := loadHarnessDatasetBundleFromDir(bundleDir, "")
+	if err == nil {
+		t.Fatal("expected missing manifest error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "manifest") {
+		t.Fatalf("error = %v, want manifest-related failure", err)
+	}
+}
+
+func TestLoadHarnessDatasetBundleFromDirRejectsInvalidDatasetYAML(t *testing.T) {
+	bundleDir := filepath.Join(t.TempDir(), "broken-bundle")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "dataset.yaml"), []byte(":\n  invalid"), 0o600); err != nil {
+		t.Fatalf("WriteFile dataset.yaml: %v", err)
+	}
+
+	_, err := loadHarnessDatasetBundleFromDir(bundleDir, "")
+	if err == nil {
+		t.Fatal("expected invalid dataset yaml error")
+	}
+}
+
+func TestLoadHarnessDatasetBundleFromDirRejectsInvalidEvalSpecYAML(t *testing.T) {
+	bundleDir := filepath.Join(t.TempDir(), "broken-bundle")
+	if err := os.MkdirAll(filepath.Join(bundleDir, "versions", "v1", "eval-specs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "dataset.yaml"), []byte(`api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: broken
+default_version: v1
+versions:
+  v1:
+    eval_specs:
+      - invalid.yaml
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile dataset.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v1", "manifest.json"), []byte(`{"items":[]}`), 0o600); err != nil {
+		t.Fatalf("WriteFile manifest.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v1", "eval-specs", "invalid.yaml"), []byte("subject: demo_subject\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile invalid eval spec: %v", err)
+	}
+
+	_, err := loadHarnessDatasetBundleFromDir(bundleDir, "")
+	if err == nil {
+		t.Fatal("expected invalid eval spec yaml error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "eval spec") && !strings.Contains(strings.ToLower(err.Error()), "name") {
+		t.Fatalf("error = %v, want eval-spec validation failure", err)
+	}
+}
+
+func TestLoadHarnessDatasetBundleFromCommittedFixture(t *testing.T) {
+	workdir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	bundleDir := filepath.Join(workdir, "..", "..", "..", "harness", "datasets", "demo-bundle")
+
+	req, err := loadHarnessDatasetBundleFromDir(bundleDir, "")
+	if err != nil {
+		t.Fatalf("loadHarnessDatasetBundleFromDir fixture: %v", err)
+	}
+	if req.SourceType != "dataset_bundle_local" {
+		t.Fatalf("source_type = %q, want dataset_bundle_local", req.SourceType)
+	}
+	if req.Dataset.Name != "demo-bundle" || req.Version.Version != "v1" {
+		t.Fatalf("request = %#v, want demo-bundle/v1", req)
+	}
+	if len(req.EvalSpecs) != 1 || req.EvalSpecs[0].Name != "Default Demo Eval" {
+		t.Fatalf("eval_specs = %#v, want one Default Demo Eval", req.EvalSpecs)
+	}
+}
+
+func TestResolveHarnessDatasetGitHubSourceRequiresBundlePathForRepoURL(t *testing.T) {
+	_, err := resolveHarnessDatasetGitHubSource("https://github.com/example/harness-datasets", "")
+	if err == nil {
+		t.Fatal("expected missing bundle-path error")
+	}
+	if !strings.Contains(err.Error(), "--bundle-path is required") {
+		t.Fatalf("error = %v, want bundle-path guidance", err)
+	}
+}
+
+func writeHarnessDatasetBundleFixture(t *testing.T, root string) string {
+	t.Helper()
+
+	bundleDir := filepath.Join(root, "demo-bundle")
+	if err := os.MkdirAll(filepath.Join(bundleDir, "versions", "v1", "eval-specs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll fixture: %v", err)
+	}
+	datasetYAML, manifestJSON, evalSpecYAML := harnessDatasetBundleFixtureContents()
+	if err := os.WriteFile(filepath.Join(bundleDir, "dataset.yaml"), []byte(datasetYAML), 0o600); err != nil {
+		t.Fatalf("WriteFile dataset.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v1", "manifest.json"), []byte(manifestJSON), 0o600); err != nil {
+		t.Fatalf("WriteFile manifest.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v1", "eval-specs", "default.yaml"), []byte(evalSpecYAML), 0o600); err != nil {
+		t.Fatalf("WriteFile eval spec: %v", err)
+	}
+	return bundleDir
+}
+
+func writeHarnessDatasetBundleMultiVersionFixture(t *testing.T, root string) string {
+	t.Helper()
+
+	bundleDir := filepath.Join(root, "demo-bundle")
+	if err := os.MkdirAll(filepath.Join(bundleDir, "versions", "v1", "eval-specs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll v1 fixture: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(bundleDir, "versions", "v2", "eval-specs"), 0o755); err != nil {
+		t.Fatalf("MkdirAll v2 fixture: %v", err)
+	}
+	datasetYAML, v1ManifestJSON, v1EvalSpecYAML, v2ManifestJSON, v2EvalSpecYAML := harnessDatasetBundleMultiVersionFixtureContents()
+	if err := os.WriteFile(filepath.Join(bundleDir, "dataset.yaml"), []byte(datasetYAML), 0o600); err != nil {
+		t.Fatalf("WriteFile dataset.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v1", "manifest.json"), []byte(v1ManifestJSON), 0o600); err != nil {
+		t.Fatalf("WriteFile v1 manifest.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v1", "eval-specs", "default.yaml"), []byte(v1EvalSpecYAML), 0o600); err != nil {
+		t.Fatalf("WriteFile v1 eval spec: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v2", "manifest.json"), []byte(v2ManifestJSON), 0o600); err != nil {
+		t.Fatalf("WriteFile v2 manifest.json: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(bundleDir, "versions", "v2", "eval-specs", "default.yaml"), []byte(v2EvalSpecYAML), 0o600); err != nil {
+		t.Fatalf("WriteFile v2 eval spec: %v", err)
+	}
+	return bundleDir
+}
+
+func harnessDatasetBundleFixtureContents() (string, string, string) {
+	return `api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: demo-bundle
+description: Demo bundle dataset
+subject: demo_subject
+default_run_kind: agent_task
+default_profile: demo-profile
+default_version: v1
+metadata:
+  suite: demo
+versions:
+  v1:
+    eval_specs:
+      - default.yaml
+`,
+		`{
+  "dataset": {
+    "name": "demo-bundle",
+    "subject": "demo_subject"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "profile": "demo-profile",
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    }
+  },
+  "items": [
+    {
+      "id": "case-1",
+      "run_kind": "agent_task",
+      "profile": "demo-profile",
+      "input": {
+        "goal": "Run demo imported bundle"
+      },
+      "expected": {
+        "result": "completed"
+      },
+      "metadata": {
+        "critical": true
+      }
+    }
+  ]
+}
+`,
+		`name: Default Demo Eval
+subject: demo_subject
+run_kind: agent_task
+profile: demo-profile
+scoring:
+  mode: rule
+  pass_threshold: 1
+metadata:
+  lane: default
+`
+}
+
+func harnessDatasetBundleMultiVersionFixtureContents() (string, string, string, string, string) {
+	return `api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: demo-bundle
+description: Demo bundle dataset
+subject: demo_subject
+default_run_kind: agent_task
+default_profile: demo-profile
+default_version: v1
+metadata:
+  suite: demo
+versions:
+  v1:
+    eval_specs:
+      - default.yaml
+  v2:
+    eval_specs:
+      - default.yaml
+`,
+		`{
+  "dataset": {
+    "name": "demo-bundle",
+    "subject": "demo_subject"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "profile": "demo-profile"
+  },
+  "items": [
+    {
+      "id": "case-v1",
+      "run_kind": "agent_task",
+      "profile": "demo-profile",
+      "input": {
+        "goal": "Run demo v1 bundle"
+      }
+    }
+  ]
+}
+`,
+		`name: Default Demo Eval
+subject: demo_subject
+run_kind: agent_task
+profile: demo-profile
+scoring:
+  mode: rule
+  pass_threshold: 1
+metadata:
+  lane: v1
+`,
+		`{
+  "dataset": {
+    "name": "demo-bundle",
+    "subject": "demo_subject"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "profile": "demo-profile-v2"
+  },
+  "items": [
+    {
+      "id": "case-v2",
+      "run_kind": "agent_task",
+      "profile": "demo-profile-v2",
+      "input": {
+        "goal": "Run demo v2 bundle"
+      }
+    }
+  ]
+}
+`,
+		`name: V2 Demo Eval
+subject: demo_subject
+run_kind: agent_task
+profile: demo-profile-v2
+scoring:
+  mode: rule
+  pass_threshold: 1
+metadata:
+  lane: v2
+`
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

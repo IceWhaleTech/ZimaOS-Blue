@@ -14,6 +14,8 @@ type ConversationCache struct {
 	mu             sync.RWMutex
 	ttl            time.Duration
 	maxSize        int
+	maxBytes       uint64
+	totalBytes     uint64
 	initOnce       sync.Once
 	closeOnce      sync.Once
 	stopCh         chan struct{}
@@ -25,17 +27,19 @@ type ConversationCache struct {
 type cacheEntry struct {
 	messages  []memory.Message
 	timestamp time.Time
+	sizeBytes uint64
 }
 
 // NewConversationCache creates a new conversation cache.
 // The cleanup goroutine is lazily started on first write to reduce startup overhead.
 func NewConversationCache(ttl time.Duration, maxSize int) *ConversationCache {
 	return &ConversationCache{
-		entries: make(map[string]*cacheEntry),
-		ttl:     ttl,
-		maxSize: maxSize,
-		stopCh:  make(chan struct{}),
-		doneCh:  make(chan struct{}),
+		entries:  make(map[string]*cacheEntry),
+		ttl:      ttl,
+		maxSize:  maxSize,
+		maxBytes: defaultConversationCacheMaxBytes,
+		stopCh:   make(chan struct{}),
+		doneCh:   make(chan struct{}),
 	}
 }
 
@@ -77,36 +81,35 @@ func (c *ConversationCache) Get(conversationID string) ([]memory.Message, bool) 
 		return nil, false
 	}
 
-	// Return a copy to prevent external modification
-	messages := make([]memory.Message, len(entry.messages))
-	copy(messages, entry.messages)
-
+	// Return a deep lightweight copy to prevent external modification.
+	messages, _ := cloneCacheableMessages(entry.messages)
 	return messages, true
 }
 
 // Set stores messages in cache.
 func (c *ConversationCache) Set(conversationID string, messages []memory.Message) {
 	c.ensureCleanupStarted()
+	messageCopy, sizeBytes := cloneCacheableMessages(messages)
+	now := timeutil.NowTime()
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
 		return
 	}
 
-	// Check cache size limit
-	if len(c.entries) >= c.maxSize {
-		// Evict oldest entry (simple LRU)
-		c.evictOldest()
+	c.cleanupExpiredLocked(now)
+	if existing := c.entries[conversationID]; existing != nil {
+		c.subtractBytesLocked(existing.sizeBytes)
 	}
-
-	// Store a copy to prevent external modification
-	messageCopy := make([]memory.Message, len(messages))
-	copy(messageCopy, messages)
 
 	c.entries[conversationID] = &cacheEntry{
 		messages:  messageCopy,
-		timestamp: timeutil.NowTime(),
+		timestamp: now,
+		sizeBytes: sizeBytes,
 	}
+	c.totalBytes += sizeBytes
+	c.enforceBudgetsLocked()
 }
 
 // Invalidate removes a conversation from cache.
@@ -117,6 +120,9 @@ func (c *ConversationCache) Invalidate(conversationID string) {
 		return
 	}
 
+	if existing := c.entries[conversationID]; existing != nil {
+		c.subtractBytesLocked(existing.sizeBytes)
+	}
 	delete(c.entries, conversationID)
 }
 
@@ -129,6 +135,7 @@ func (c *ConversationCache) Clear() {
 	}
 
 	c.entries = make(map[string]*cacheEntry)
+	c.totalBytes = 0
 }
 
 // Stats returns cache statistics.
@@ -140,15 +147,20 @@ func (c *ConversationCache) Stats() CacheStats {
 		Size:    len(c.entries),
 		MaxSize: c.maxSize,
 		TTL:     c.ttl,
+		Bytes:   c.totalBytes,
 	}
 }
 
 // evictOldest removes the oldest entry from cache (must be called with lock held).
-func (c *ConversationCache) evictOldest() {
+func (c *ConversationCache) evictOldestLocked() {
 	var oldestID string
 	var oldestTime time.Time
 
 	for id, entry := range c.entries {
+		if entry == nil {
+			oldestID = id
+			break
+		}
 		if oldestID == "" || entry.timestamp.Before(oldestTime) {
 			oldestID = id
 			oldestTime = entry.timestamp
@@ -156,6 +168,9 @@ func (c *ConversationCache) evictOldest() {
 	}
 
 	if oldestID != "" {
+		if entry := c.entries[oldestID]; entry != nil {
+			c.subtractBytesLocked(entry.sizeBytes)
+		}
 		delete(c.entries, oldestID)
 	}
 }
@@ -181,12 +196,7 @@ func (c *ConversationCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := timeutil.NowTime()
-	for id, entry := range c.entries {
-		if now.Sub(entry.timestamp) > c.ttl {
-			delete(c.entries, id)
-		}
-	}
+	c.cleanupExpiredLocked(timeutil.NowTime())
 }
 
 // Close stops the background cleanup loop and clears cached entries.
@@ -198,6 +208,7 @@ func (c *ConversationCache) Close() {
 		c.mu.Lock()
 		c.closed = true
 		c.entries = make(map[string]*cacheEntry)
+		c.totalBytes = 0
 		started := c.cleanupStarted
 		c.mu.Unlock()
 
@@ -215,4 +226,53 @@ type CacheStats struct {
 	Size    int
 	MaxSize int
 	TTL     time.Duration
+	Bytes   uint64
+}
+
+func (c *ConversationCache) cleanupExpiredLocked(now time.Time) {
+	for id, entry := range c.entries {
+		if entry == nil || now.Sub(entry.timestamp) > c.ttl {
+			if entry != nil {
+				c.subtractBytesLocked(entry.sizeBytes)
+			}
+			delete(c.entries, id)
+		}
+	}
+}
+
+func (c *ConversationCache) enforceBudgetsLocked() {
+	for {
+		overSize := c.maxSize > 0 && len(c.entries) > c.maxSize
+		overBytes := c.maxBytes > 0 && c.totalBytes > c.maxBytes
+		if !overSize && !overBytes {
+			return
+		}
+		if len(c.entries) == 0 {
+			c.totalBytes = 0
+			return
+		}
+		c.evictOldestLocked()
+	}
+}
+
+func (c *ConversationCache) subtractBytesLocked(size uint64) {
+	if c.totalBytes >= size {
+		c.totalBytes -= size
+		return
+	}
+	c.totalBytes = 0
+}
+
+func estimateMessagesBytes(messages []memory.Message) uint64 {
+	var total uint64
+	for _, msg := range messages {
+		total += uint64(len(msg.Role) + len(msg.Content) + len(msg.ToolCallID) + len(msg.ToolName) + len(msg.Provider) + len(msg.Model))
+		for _, call := range msg.ToolCalls {
+			total += uint64(len(call.ID) + len(call.Name) + len(call.Arguments))
+		}
+		for _, att := range msg.Attachments {
+			total += uint64(len(att.Type) + len(att.Name) + len(att.MimeType) + len(att.Data))
+		}
+	}
+	return total
 }

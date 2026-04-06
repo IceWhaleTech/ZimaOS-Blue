@@ -20,7 +20,6 @@ require (
 	github.com/go-rod/stealth v0.4.9
 	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/go-webauthn/webauthn v0.15.0
-	github.com/goccy/go-json v0.10.5
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
@@ -175,5 +174,9 @@ require (
 // Replace gopacket with a minimal stub — the real gopacket/layers adds ~7.8MB
 // to the binary but is only used by cloudflared's ICMP proxy (disabled).
 replace github.com/google/gopacket v1.1.19 => ./internal/gopacket-stub
+
+replace github.com/danlock/gogosseract => ./internal/gogosseract-fork
+
+replace github.com/klippa-app/go-pdfium => ./internal/go-pdfium-fork
 
 replace github.com/nlpodyssey/cybertron => github.com/orca-zhang/cybertron v0.2.1

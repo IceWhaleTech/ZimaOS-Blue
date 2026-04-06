@@ -7,56 +7,34 @@ import (
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/chatcmd"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/labstack/echo/v4"
 )
 
 type conversationCommandStateResponse struct {
-	ConversationID      string `json:"conversation_id,omitempty"`
-	SelectedProviderID  string `json:"selected_provider_id,omitempty"`
-	SelectedModelID     string `json:"selected_model_id,omitempty"`
-	Offline             bool   `json:"offline"`
-	WebSearchEnabled    bool   `json:"web_search_enabled"`
-	DeepResearchEnabled bool   `json:"deep_research_enabled"`
-	ResearchModeEnabled bool   `json:"research_mode_enabled"`
+	ConversationID     string `json:"conversation_id,omitempty"`
+	SelectedProviderID string `json:"selected_provider_id,omitempty"`
+	SelectedModelID    string `json:"selected_model_id,omitempty"`
+	Offline            bool   `json:"offline"`
 }
 
 type conversationCommandStatePatchRequest struct {
-	SelectedProviderID  *string `json:"selected_provider_id,omitempty"`
-	SelectedModelID     *string `json:"selected_model_id,omitempty"`
-	Offline             *bool   `json:"offline,omitempty"`
-	WebSearchEnabled    *bool   `json:"web_search_enabled,omitempty"`
-	DeepResearchEnabled *bool   `json:"deep_research_enabled,omitempty"`
-	ResearchModeEnabled *bool   `json:"research_mode_enabled,omitempty"`
-}
-
-func (r *conversationCommandStatePatchRequest) normalizeResearchModeAlias() {
-	if r == nil {
-		return
-	}
-	if r.ResearchModeEnabled != nil {
-		r.DeepResearchEnabled = r.ResearchModeEnabled
-		return
-	}
-	if r.DeepResearchEnabled != nil {
-		r.ResearchModeEnabled = r.DeepResearchEnabled
-	}
+	SelectedProviderID *string `json:"selected_provider_id,omitempty"`
+	SelectedModelID    *string `json:"selected_model_id,omitempty"`
+	Offline            *bool   `json:"offline,omitempty"`
 }
 
 func commandStateToResponse(state memory.ConversationCommandState) conversationCommandStateResponse {
 	return conversationCommandStateResponse{
-		ConversationID:      state.ConversationID,
-		SelectedProviderID:  state.SelectedProviderID,
-		SelectedModelID:     state.SelectedModelID,
-		Offline:             state.Offline,
-		WebSearchEnabled:    state.WebSearchEnabled,
-		DeepResearchEnabled: state.DeepResearchEnabled,
-		ResearchModeEnabled: state.DeepResearchEnabled,
+		ConversationID:     state.ConversationID,
+		SelectedProviderID: state.SelectedProviderID,
+		SelectedModelID:    state.SelectedModelID,
+		Offline:            state.Offline,
 	}
 }
 
 func memoryCommandStateToCore(state memory.ConversationCommandState) chatcmd.CommandState {
+	state = normalizeConversationCommandToolState(state)
 	return chatcmd.CommandState{
 		ConversationID:      state.ConversationID,
 		SelectedProviderID:  state.SelectedProviderID,
@@ -68,30 +46,30 @@ func memoryCommandStateToCore(state memory.ConversationCommandState) chatcmd.Com
 }
 
 func coreCommandStateToMemory(state chatcmd.CommandState) memory.ConversationCommandState {
-	return memory.ConversationCommandState{
+	return normalizeConversationCommandToolState(memory.ConversationCommandState{
 		ConversationID:      state.ConversationID,
 		SelectedProviderID:  state.SelectedProviderID,
 		SelectedModelID:     state.SelectedModelID,
 		Offline:             state.Offline,
 		WebSearchEnabled:    state.WebSearchEnabled,
 		DeepResearchEnabled: state.DeepResearchEnabled,
-	}
+	})
 }
 
 func (h *ChatHandler) getConversationCommandState(ctx context.Context, convID string) (memory.ConversationCommandState, error) {
-	return h.store.GetConversationCommandState(ctx, convID)
+	state, err := h.store.GetConversationCommandState(ctx, convID)
+	if err != nil {
+		return state, err
+	}
+	return normalizeConversationCommandToolState(state), nil
 }
 
 func (h *ChatHandler) conversationCommandStateOrDefault(ctx context.Context, convID string) memory.ConversationCommandState {
-	state, err := h.store.GetConversationCommandState(ctx, convID)
+	state, err := h.getConversationCommandState(ctx, convID)
 	if err != nil {
-		return memory.ConversationCommandState{
-			ConversationID:      convID,
-			WebSearchEnabled:    true,
-			DeepResearchEnabled: false,
-		}
+		return defaultConversationCommandState(convID)
 	}
-	return state
+	return normalizeConversationCommandToolState(state)
 }
 
 func hasPersistedConversationCommandState(state memory.ConversationCommandState) bool {
@@ -103,40 +81,16 @@ func (h *ChatHandler) applyCommandStateToRequest(ctx context.Context, convID str
 	if req == nil {
 		return state
 	}
-	req.normalizeResearchModeAlias()
-
-	shouldPersist := false
-	if req.WebSearchEnabled != nil && state.WebSearchEnabled != *req.WebSearchEnabled {
-		state.WebSearchEnabled = *req.WebSearchEnabled
-		shouldPersist = true
-	}
-	if req.DeepResearchEnabled != nil && state.DeepResearchEnabled != *req.DeepResearchEnabled {
-		state.DeepResearchEnabled = *req.DeepResearchEnabled
-		shouldPersist = true
-	}
-	if shouldPersist {
-		if err := h.saveConversationCommandState(ctx, state); err != nil {
-			logger.Warn().
-				Err(err).
-				Str("conversation_id", convID).
-				Msg("[chat] failed to persist capability flags from request")
-		}
-	}
-
-	if hasPersistedConversationCommandState(state) {
-		if req.WebSearchEnabled == nil {
-			value := state.WebSearchEnabled
-			req.WebSearchEnabled = &value
-		}
-		if req.DeepResearchEnabled == nil {
-			req.setResearchModeEnabled(state.DeepResearchEnabled)
-		}
-	}
+	// Progressive local tool exposure is the sole authority now. Legacy request
+	// toggles are ignored so callers cannot disable local tool families.
+	req.WebSearchEnabled = nil
+	req.DeepResearchEnabled = nil
+	req.ResearchModeEnabled = nil
 	return state
 }
 
 func (h *ChatHandler) saveConversationCommandState(ctx context.Context, state memory.ConversationCommandState) error {
-	return h.store.UpsertConversationCommandState(ctx, state)
+	return h.store.UpsertConversationCommandState(ctx, normalizeConversationCommandToolState(state))
 }
 
 func (h *ChatHandler) clearCommandStateForRoutingChange(ctx context.Context, convID string) {
@@ -274,7 +228,7 @@ func (h *ChatHandler) commandExecutor() *chatcmd.Executor {
 		GetCommandState: func(ctx context.Context, conversationID string) (chatcmd.CommandState, error) {
 			state, err := h.getConversationCommandState(ctx, conversationID)
 			if err != nil {
-				return chatcmd.CommandState{ConversationID: conversationID, WebSearchEnabled: true}, err
+				return memoryCommandStateToCore(defaultConversationCommandState(conversationID)), err
 			}
 			return memoryCommandStateToCore(state), nil
 		},
@@ -331,18 +285,6 @@ func (h *ChatHandler) executeSlashCommand(ctx context.Context, convID, message s
 	return h.executeChatCommand(ctx, convID, message)
 }
 
-func (h *ChatHandler) GetConversationCommandState(c echo.Context) error {
-	convID := c.Param("id")
-	if _, err := h.checkConversationOwnership(c, convID); err != nil {
-		return err
-	}
-	state, err := h.store.GetConversationCommandState(c.Request().Context(), convID)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load command state")
-	}
-	return c.JSON(http.StatusOK, commandStateToResponse(state))
-}
-
 func (h *ChatHandler) PatchConversationCommandState(c echo.Context) error {
 	convID := c.Param("id")
 	if _, err := h.checkConversationOwnership(c, convID); err != nil {
@@ -352,7 +294,6 @@ func (h *ChatHandler) PatchConversationCommandState(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
-	req.normalizeResearchModeAlias()
 	state, err := h.store.GetConversationCommandState(c.Request().Context(), convID)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to load command state")
@@ -368,12 +309,7 @@ func (h *ChatHandler) PatchConversationCommandState(c echo.Context) error {
 	if req.Offline != nil {
 		state.Offline = *req.Offline
 	}
-	if req.WebSearchEnabled != nil {
-		state.WebSearchEnabled = *req.WebSearchEnabled
-	}
-	if req.DeepResearchEnabled != nil {
-		state.DeepResearchEnabled = *req.DeepResearchEnabled
-	}
+	state = normalizeConversationCommandToolState(state)
 	if err := h.store.UpsertConversationCommandState(c.Request().Context(), state); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to save command state")
 	}
@@ -381,4 +317,10 @@ func (h *ChatHandler) PatchConversationCommandState(c echo.Context) error {
 		h.clearCommandStateForRoutingChange(c.Request().Context(), convID)
 	}
 	return c.JSON(http.StatusOK, commandStateToResponse(state))
+}
+
+func normalizeConversationCommandToolState(state memory.ConversationCommandState) memory.ConversationCommandState {
+	state.WebSearchEnabled = true
+	state.DeepResearchEnabled = true
+	return state
 }

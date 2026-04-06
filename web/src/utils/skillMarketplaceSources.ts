@@ -74,11 +74,6 @@ const sourceLocaleCatalog = {
     description: 'Mirror endpoint for the ClawHub catalog.',
     iconUrl: 'https://clawhub.ai/favicon.ico',
   },
-  skillstack: {
-    label: 'SkillStack',
-    description: 'Community catalog focused on reusable skill collections.',
-    iconUrl: 'https://www.skillstack.me/favicon.ico?favicon.2c8f7c32.ico',
-  },
   llmskills: {
     label: 'LLMSkills',
     description: 'LLMSkills community marketplace catalog.',
@@ -150,7 +145,6 @@ const sourceLocaleAliases: Record<string, MarketplaceSourceKey> = {
   clawhub: 'clawhub',
   'clawhub-mirror': 'clawhubMirror',
   'clawhub mirror': 'clawhubMirror',
-  skillstack: 'skillstack',
   llmskills: 'llmskills',
   minimax: 'minimax',
   'minimax-ai': 'minimax',

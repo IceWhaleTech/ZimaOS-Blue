@@ -3,19 +3,36 @@ package drivers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
+type researchModeExecutor interface {
+	Execute(ctx context.Context, args map[string]interface{}) (interface{}, error)
+}
+
+type localResearchRunState struct {
+	cancel      context.CancelFunc
+	steps       map[string]string
+	completions int
+}
+
 type ResearchDriver struct {
-	service *deepresearch.Service
-	manager *harness.Controller
-	next    deepresearch.EventPublisher
+	service  *deepresearch.Service
+	manager  *harness.Controller
+	analyze  researchModeExecutor
+	uiReview researchModeExecutor
+	next     deepresearch.EventPublisher
+	mu       sync.Mutex
+	local    map[string]*localResearchRunState
 }
 
 func NewResearchDriver(service *deepresearch.Service, manager *harness.Controller) *ResearchDriver {
@@ -25,16 +42,41 @@ func NewResearchDriver(service *deepresearch.Service, manager *harness.Controlle
 func (d *ResearchDriver) Kind() harness.RunKind { return harness.RunKindResearch }
 
 func (d *ResearchDriver) Validate(spec harness.RunSpec) error {
-	if d == nil || d.service == nil || d.manager == nil {
+	if d == nil || d.manager == nil {
 		return fmt.Errorf("research runtime is not available")
 	}
 	if strings.TrimSpace(spec.Goal) == "" {
 		return fmt.Errorf("goal is required")
 	}
+	switch resolveResearchFamilyMode(spec.Goal, spec.Metadata) {
+	case "analyze":
+		if d.analyze == nil {
+			return fmt.Errorf("analyze runtime is not available")
+		}
+	case "ui_review":
+		if d.uiReview == nil {
+			return fmt.Errorf("ui review runtime is not available")
+		}
+	default:
+		if d.service == nil {
+			return fmt.Errorf("research runtime is not available")
+		}
+	}
 	return nil
 }
 
-func (d *ResearchDriver) Start(ctx context.Context, run *harness.Run, _ harness.RunEnv) error {
+func (d *ResearchDriver) Start(ctx context.Context, run *harness.Run, env harness.RunEnv) error {
+	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
+	case "analyze":
+		return d.startLocalMode(ctx, run, env, "analyze", d.analyze)
+	case "ui_review":
+		return d.startLocalMode(ctx, run, env, "ui_review", d.uiReview)
+	default:
+		return d.startDeepResearch(ctx, run)
+	}
+}
+
+func (d *ResearchDriver) startDeepResearch(ctx context.Context, run *harness.Run) error {
 	if d == nil || d.service == nil {
 		return fmt.Errorf("research runtime is not available")
 	}
@@ -45,7 +87,7 @@ func (d *ResearchDriver) Start(ctx context.Context, run *harness.Run, _ harness.
 		Query:          run.Goal,
 		RetryContext:   metadataString(run.Metadata, "retry_context"),
 		RetryFeedback:  metadataMap(run.Metadata["retry_feedback"]),
-		Mode:           deepresearch.Mode(metadataString(run.Metadata, "mode")),
+		Mode:           deepresearch.Mode(resolveResearchDepth(run.Metadata)),
 		RouteMode:      deepresearch.RouteMode(metadataString(run.Metadata, "route_mode")),
 		Lang:           metadataString(run.Metadata, "lang"),
 		ReportStyle:    metadataString(run.Metadata, "report_style"),
@@ -66,7 +108,22 @@ func (d *ResearchDriver) Start(ctx context.Context, run *harness.Run, _ harness.
 }
 
 func (d *ResearchDriver) Cancel(_ context.Context, run *harness.Run) error {
-	if d == nil || d.service == nil || run == nil {
+	if d == nil || run == nil {
+		return fmt.Errorf("research runtime is not available")
+	}
+	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
+	case "analyze", "ui_review":
+		d.cancelLocalRun(run.ID)
+		cancelled := cloneRunSnapshot(run)
+		cancelled.Status = harness.RunStatusCancelled
+		cancelled.Progress = 100
+		cancelled.UpdatedAt = timeutil.NowTime()
+		finished := cancelled.UpdatedAt
+		cancelled.FinishedAt = &finished
+		d.publishResearchJobEvent(cancelled, "deep_research.job_cancelled")
+		return nil
+	}
+	if d.service == nil {
 		return fmt.Errorf("research runtime is not available")
 	}
 	if strings.TrimSpace(run.UserID) != "" {
@@ -76,7 +133,22 @@ func (d *ResearchDriver) Cancel(_ context.Context, run *harness.Run) error {
 }
 
 func (d *ResearchDriver) Sync(ctx context.Context, run *harness.Run) (*harness.Run, error) {
-	if d == nil || d.service == nil || run == nil {
+	if d == nil || run == nil {
+		return run, nil
+	}
+	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
+	case "analyze", "ui_review":
+		controller := researchDriverManager(d.manager, nil)
+		if controller == nil {
+			return run, nil
+		}
+		stored, err := controller.GetStored(ctx, run.ID)
+		if err != nil {
+			return run, nil
+		}
+		return stored, nil
+	}
+	if d.service == nil {
 		return run, nil
 	}
 	job, err := d.service.GetJob(run.ID)
@@ -92,6 +164,24 @@ func (d *ResearchDriver) Sync(ctx context.Context, run *harness.Run) (*harness.R
 
 func (d *ResearchDriver) SetNextPublisher(next deepresearch.EventPublisher) {
 	d.next = next
+}
+
+func (d *ResearchDriver) SetAnalyzeExecutor(executor researchModeExecutor) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.analyze = executor
+}
+
+func (d *ResearchDriver) SetUIReviewExecutor(executor researchModeExecutor) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.uiReview = executor
 }
 
 func (d *ResearchDriver) Publish(userID string, eventType string, data any) {
@@ -122,6 +212,277 @@ func (d *ResearchDriver) Publish(userID string, eventType string, data any) {
 		PayloadJSON: payloadJSON,
 		CreatedAt:   timeutil.NowTime(),
 	})
+}
+
+func (d *ResearchDriver) startLocalMode(
+	ctx context.Context,
+	run *harness.Run,
+	env harness.RunEnv,
+	mode string,
+	executor researchModeExecutor,
+) error {
+	if d == nil || executor == nil || run == nil {
+		return fmt.Errorf("research runtime is not available")
+	}
+	controller := researchDriverManager(d.manager, env.Manager)
+	if controller == nil {
+		return fmt.Errorf("research runtime is not available")
+	}
+
+	execCtx, cancel := context.WithCancel(withLocalResearchToolContext(context.WithoutCancel(ctx), run))
+	d.storeLocalRun(run.ID, cancel)
+
+	starting := cloneRunSnapshot(run)
+	if starting.Metadata == nil {
+		starting.Metadata = map[string]interface{}{}
+	}
+	starting.Status = harness.RunStatusExecuting
+	starting.Progress = max(starting.Progress, 1)
+	starting.Metadata["mode"] = mode
+	starting.UpdatedAt = timeutil.NowTime()
+	if starting.StartedAt == nil {
+		started := starting.UpdatedAt
+		starting.StartedAt = &started
+	}
+	if err := controller.SyncSnapshot(ctx, starting); err != nil {
+		d.clearLocalRun(run.ID)
+		cancel()
+		return err
+	}
+	d.publishResearchJobEvent(starting, "deep_research.job_created")
+
+	execCtx = tools.WithCardEmitter(execCtx, func(card map[string]interface{}) {
+		d.handleLocalProgress(controller, run.ID, mode, card)
+	})
+	go d.executeLocalMode(execCtx, controller, run, mode, executor)
+	return nil
+}
+
+func (d *ResearchDriver) executeLocalMode(
+	ctx context.Context,
+	controller *harness.Controller,
+	run *harness.Run,
+	mode string,
+	executor researchModeExecutor,
+) {
+	defer d.clearLocalRun(run.ID)
+
+	result, err := executor.Execute(ctx, researchToolArgs(run, mode))
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			return
+		}
+		failed := d.loadLocalSnapshot(controller, run)
+		if failed.Metadata == nil {
+			failed.Metadata = map[string]interface{}{}
+		}
+		failed.Metadata["mode"] = mode
+		failed.Status = harness.RunStatusFailed
+		failed.Error = strings.TrimSpace(err.Error())
+		failed.Progress = 100
+		failed.UpdatedAt = timeutil.NowTime()
+		if failed.StartedAt == nil {
+			started := failed.UpdatedAt
+			failed.StartedAt = &started
+		}
+		finished := failed.UpdatedAt
+		failed.FinishedAt = &finished
+		_ = controller.SyncSnapshot(context.Background(), failed)
+		d.publishResearchJobEvent(failed, "deep_research.job_failed")
+		return
+	}
+
+	completed := d.loadLocalSnapshot(controller, run)
+	if completed.Metadata == nil {
+		completed.Metadata = map[string]interface{}{}
+	}
+	completed.Metadata["mode"] = mode
+	completed.Status = harness.RunStatusCompleted
+	completed.Result = normalizeResearchExecutorResult(result)
+	completed.Error = ""
+	completed.Progress = 100
+	completed.UpdatedAt = timeutil.NowTime()
+	if completed.StartedAt == nil {
+		started := completed.UpdatedAt
+		completed.StartedAt = &started
+	}
+	finished := completed.UpdatedAt
+	completed.FinishedAt = &finished
+	if err := controller.SyncSnapshot(context.Background(), completed); err == nil {
+		if stored, getErr := controller.GetStored(context.Background(), run.ID); getErr == nil && stored != nil {
+			completed = stored
+		}
+	}
+	d.publishResearchJobEvent(completed, "deep_research.job_completed")
+}
+
+func (d *ResearchDriver) loadLocalSnapshot(controller *harness.Controller, run *harness.Run) *harness.Run {
+	if controller != nil && run != nil {
+		if stored, err := controller.GetStored(context.Background(), run.ID); err == nil && stored != nil {
+			return cloneRunSnapshot(stored)
+		}
+	}
+	return cloneRunSnapshot(run)
+}
+
+func (d *ResearchDriver) handleLocalProgress(
+	controller *harness.Controller,
+	runID string,
+	mode string,
+	card map[string]interface{},
+) {
+	if controller == nil || strings.TrimSpace(runID) == "" || len(card) == 0 {
+		return
+	}
+	run, err := controller.GetStored(context.Background(), runID)
+	if err != nil || run == nil {
+		return
+	}
+	snapshot := cloneRunSnapshot(run)
+	if snapshot.Metadata == nil {
+		snapshot.Metadata = map[string]interface{}{}
+	}
+	snapshot.Metadata["mode"] = mode
+	if step := strings.TrimSpace(fmt.Sprint(card["step"])); step != "" {
+		snapshot.Metadata["stage"] = step
+	}
+	if name := strings.TrimSpace(fmt.Sprint(card["name"])); name != "" {
+		snapshot.Metadata["latest_action"] = name
+	}
+	snapshot.Status = harness.RunStatusExecuting
+	snapshot.Progress = d.trackLocalProgress(runID, strings.TrimSpace(fmt.Sprint(card["step"])), strings.TrimSpace(fmt.Sprint(card["status"])))
+	snapshot.UpdatedAt = timeutil.NowTime()
+	_ = controller.SyncSnapshot(context.Background(), snapshot)
+	d.appendLocalProgressEvent(controller, snapshot, card)
+	d.publishResearchJobEvent(snapshot, "deep_research.job_updated")
+}
+
+func (d *ResearchDriver) appendLocalProgressEvent(
+	controller *harness.Controller,
+	run *harness.Run,
+	card map[string]interface{},
+) {
+	if controller == nil || run == nil || len(card) == 0 {
+		return
+	}
+	payloadJSON := ""
+	if raw, err := json.Marshal(card); err == nil {
+		payloadJSON = string(raw)
+	}
+	status := strings.TrimSpace(fmt.Sprint(card["status"]))
+	eventType := "state_changed"
+	switch status {
+	case "running":
+		eventType = "step_started"
+	case "success", "skipped":
+		eventType = "step_finished"
+	case "failed":
+		eventType = "step_failed"
+	}
+	_ = controller.AppendEvent(context.Background(), harness.RunEvent{
+		RunID:       run.ID,
+		RootRunID:   run.RootRunID,
+		ParentRunID: run.ParentRunID,
+		Type:        eventType,
+		Message:     strings.TrimSpace(fmt.Sprint(card["name"])),
+		PayloadJSON: payloadJSON,
+		CreatedAt:   timeutil.NowTime(),
+	})
+}
+
+func (d *ResearchDriver) storeLocalRun(runID string, cancel context.CancelFunc) {
+	if d == nil || strings.TrimSpace(runID) == "" || cancel == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.local == nil {
+		d.local = make(map[string]*localResearchRunState)
+	}
+	d.local[runID] = &localResearchRunState{
+		cancel: cancel,
+		steps:  map[string]string{},
+	}
+}
+
+func (d *ResearchDriver) clearLocalRun(runID string) {
+	if d == nil || strings.TrimSpace(runID) == "" {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	delete(d.local, runID)
+}
+
+func (d *ResearchDriver) cancelLocalRun(runID string) {
+	if d == nil || strings.TrimSpace(runID) == "" {
+		return
+	}
+	d.mu.Lock()
+	state := d.local[runID]
+	d.mu.Unlock()
+	if state != nil && state.cancel != nil {
+		state.cancel()
+	}
+}
+
+func (d *ResearchDriver) trackLocalProgress(runID string, step string, status string) int {
+	if d == nil || strings.TrimSpace(runID) == "" {
+		return 0
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.local == nil {
+		return 0
+	}
+	state := d.local[runID]
+	if state == nil {
+		return 0
+	}
+	if state.steps == nil {
+		state.steps = map[string]string{}
+	}
+	step = strings.TrimSpace(step)
+	status = strings.TrimSpace(status)
+	if step != "" {
+		previous := state.steps[step]
+		state.steps[step] = status
+		if previous != status && (status == "success" || status == "skipped" || status == "failed") {
+			state.completions++
+		}
+	}
+	total := len(state.steps)
+	if total == 0 {
+		return 1
+	}
+	progress := (state.completions * 90) / total
+	if progress < 1 {
+		progress = 1
+	}
+	if progress > 95 {
+		progress = 95
+	}
+	return progress
+}
+
+func (d *ResearchDriver) publishResearchJobEvent(run *harness.Run, eventType string) {
+	if d == nil || run == nil || strings.TrimSpace(run.ID) == "" {
+		return
+	}
+	payload := map[string]interface{}{
+		"id":              run.ID,
+		"job_id":          run.ID,
+		"query":           strings.TrimSpace(run.Goal),
+		"status":          strings.TrimSpace(string(run.Status)),
+		"stage":           metadataString(run.Metadata, "stage"),
+		"progress":        run.Progress,
+		"iteration":       metadataInt(run.Metadata["iteration"]),
+		"latest_action":   metadataString(run.Metadata, "latest_action"),
+		"latest_gap":      metadataString(run.Metadata, "latest_gap"),
+		"conversation_id": strings.TrimSpace(run.ConversationID),
+		"updated_at":      run.UpdatedAt,
+	}
+	d.Publish(run.UserID, eventType, payload)
 }
 
 func mapResearchEventType(eventType string) string {
@@ -191,7 +552,8 @@ func jobToRun(existing *harness.Run, job *deepresearch.Job) *harness.Run {
 	run.Metadata["latest_action"] = strings.TrimSpace(job.LatestAction)
 	run.Metadata["latest_gap"] = strings.TrimSpace(job.LatestGap)
 	if strings.TrimSpace(string(job.Mode)) != "" {
-		run.Metadata["mode"] = string(job.Mode)
+		run.Metadata["mode"] = "deep_research"
+		run.Metadata["research_depth"] = string(job.Mode)
 	}
 	if strings.TrimSpace(string(job.RequestedRouteMode)) != "" {
 		run.Metadata["route_mode"] = string(job.RequestedRouteMode)
@@ -236,6 +598,147 @@ func jobStatusToRunStatus(status deepresearch.JobStatus) harness.RunStatus {
 	default:
 		return harness.RunStatusPending
 	}
+}
+
+func resolveResearchFamilyMode(goal string, metadata map[string]interface{}) string {
+	mode := strings.ToLower(strings.TrimSpace(metadataString(metadata, "mode")))
+	switch mode {
+	case "analyze", "ui_review", "deep_research":
+		return mode
+	case "fast", "standard", "deep":
+		if metadata != nil && strings.TrimSpace(metadataString(metadata, "research_depth")) == "" {
+			metadata["research_depth"] = mode
+		}
+		return "deep_research"
+	case "auto", "":
+		if looksLikeUIReviewMode(goal, metadata) {
+			return "ui_review"
+		}
+		if looksLikeAnalyzeMode(goal, metadata) {
+			return "analyze"
+		}
+		return "deep_research"
+	default:
+		return mode
+	}
+}
+
+func resolveResearchDepth(metadata map[string]interface{}) string {
+	depth := strings.ToLower(strings.TrimSpace(metadataString(metadata, "research_depth")))
+	switch depth {
+	case "fast", "standard", "deep":
+		return depth
+	}
+	mode := strings.ToLower(strings.TrimSpace(metadataString(metadata, "mode")))
+	switch mode {
+	case "fast", "standard", "deep":
+		return mode
+	default:
+		return ""
+	}
+}
+
+func looksLikeAnalyzeMode(goal string, metadata map[string]interface{}) bool {
+	if strings.TrimSpace(metadataString(metadata, "topic")) != "" ||
+		len(metadataStringSlice(metadata["search_queries"])) > 0 ||
+		len(metadataStringSlice(metadata["urls"])) > 0 ||
+		strings.TrimSpace(metadataString(metadata, "text")) != "" {
+		return true
+	}
+	q := strings.ToLower(strings.TrimSpace(goal))
+	return strings.Contains(q, "analyze") || strings.Contains(q, "analysis") || strings.Contains(q, "report") || strings.Contains(q, "summarize")
+}
+
+func looksLikeUIReviewMode(goal string, metadata map[string]interface{}) bool {
+	if strings.TrimSpace(metadataString(metadata, "image")) != "" {
+		return true
+	}
+	action := strings.ToLower(strings.TrimSpace(metadataString(metadata, "action")))
+	switch action {
+	case "review_url", "review_image", "check_accessibility":
+		return true
+	}
+	q := strings.ToLower(strings.TrimSpace(goal))
+	return strings.Contains(q, "ui") || strings.Contains(q, "ux") || strings.Contains(q, "accessibility") || strings.Contains(q, "screenshot")
+}
+
+func withLocalResearchToolContext(ctx context.Context, run *harness.Run) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if run == nil {
+		return ctx
+	}
+	if lang := strings.TrimSpace(metadataString(run.Metadata, "lang")); lang != "" {
+		ctx = tools.WithLang(ctx, lang)
+	}
+	if channel := strings.TrimSpace(metadataString(run.Metadata, "channel")); channel != "" {
+		ctx = tools.WithChannel(ctx, channel)
+	}
+	if device := strings.TrimSpace(metadataString(run.Metadata, "device")); device != "" {
+		ctx = tools.WithDevice(ctx, device)
+	}
+	return ctx
+}
+
+func researchToolArgs(run *harness.Run, mode string) map[string]interface{} {
+	args := map[string]interface{}{}
+	if run != nil && run.Metadata != nil {
+		args = cloneMap(run.Metadata)
+	}
+	if args == nil {
+		args = map[string]interface{}{}
+	}
+	args["mode"] = mode
+	switch mode {
+	case "analyze":
+		if strings.TrimSpace(metadataString(args, "topic")) == "" && run != nil {
+			args["topic"] = strings.TrimSpace(run.Goal)
+		}
+	case "ui_review":
+		if strings.TrimSpace(metadataString(args, "url")) == "" && run != nil && looksLikeURL(run.Goal) {
+			args["url"] = strings.TrimSpace(run.Goal)
+		}
+	}
+	return args
+}
+
+func normalizeResearchExecutorResult(result interface{}) string {
+	switch typed := result.(type) {
+	case nil:
+		return ""
+	case string:
+		return strings.TrimSpace(typed)
+	case []byte:
+		return strings.TrimSpace(string(typed))
+	default:
+		raw, err := json.Marshal(typed)
+		if err != nil {
+			return strings.TrimSpace(fmt.Sprint(result))
+		}
+		return string(raw)
+	}
+}
+
+func cloneRunSnapshot(run *harness.Run) *harness.Run {
+	if run == nil {
+		return nil
+	}
+	snapshot := *run
+	snapshot.Metadata = cloneMap(run.Metadata)
+	return &snapshot
+}
+
+func researchDriverManager(primary *harness.Controller, secondary *harness.Controller) *harness.Controller {
+	if secondary != nil {
+		return secondary
+	}
+	return primary
+}
+
+func looksLikeURL(value string) bool {
+	trimmed := strings.ToLower(strings.TrimSpace(value))
+	return strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://")
 }
 
 func metadataStringSlice(raw any) []string {

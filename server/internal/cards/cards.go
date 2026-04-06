@@ -44,8 +44,11 @@ var (
 	registry   = map[string]CardFunc{}
 )
 
-var genericCardImageURLSuffix = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp|bmp|svg)(?:[?#].*)?$`)
-var genericCardWindowsAbsPath = regexp.MustCompile(`^(?:[a-zA-Z]:[\\/]|\\\\)`)
+var (
+	genericCardImageURLSuffix *regexp.Regexp
+	genericCardWindowsAbsPath *regexp.Regexp
+	genericCardRegexesOnce    sync.Once
+)
 
 const (
 	noErrorDetailsText = "Operation failed (no error details provided)"
@@ -58,19 +61,35 @@ type textRedactionRule struct {
 	replacement string
 }
 
-var sensitiveTextRedactionRules = []textRedactionRule{
-	{re: regexp.MustCompile(`(?is)-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----.*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----`), replacement: "[PRIVATE_KEY_REDACTED]"},
-	{re: regexp.MustCompile(`(?i)\bbearer\s+[a-z0-9._=-]{8,}`), replacement: "Bearer [TOKEN_REDACTED]"},
-	{re: regexp.MustCompile(`\beyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+\b`), replacement: "[JWT_REDACTED]"},
-	{re: regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`), replacement: "[AWS_KEY_REDACTED]"},
-	{re: regexp.MustCompile(`(?i)([?&](?:token|access_token|refresh_token|api_key|apikey|secret|password|authorization)=)[^&#\s]+`), replacement: "${1}[REDACTED]"},
-	{re: regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:)([^@\s/]+)@`), replacement: "${1}[REDACTED]@"},
-	{re: regexp.MustCompile(`(?i)(\b(?:cookie|set-cookie)\b\s*[:=]\s*)([^\n\r]+)`), replacement: "${1}[COOKIE_REDACTED]"},
-	{re: regexp.MustCompile(`(?i)(--?(?:api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|auth[-_]?token|session[-_]?token|token|secret|password|passwd|pwd|authorization|cookie))(=|\s+)(\"?[^\s\"']+\"?)`), replacement: "${1}${2}[REDACTED]"},
-	{re: regexp.MustCompile(fmt.Sprintf(`(?i)("%s"\s*:\s*")([^"\n\r]+)(")`, sensitiveValueKey)), replacement: "${1}[REDACTED]${3}"},
-	{re: regexp.MustCompile(fmt.Sprintf(`(?i)(\b%s\b\s*[:=]\s*)(\"?[^\s\"',;]+\"?)`, sensitiveValueKey)), replacement: "${1}[REDACTED]"},
-	{re: regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`), replacement: "[EMAIL_REDACTED]"},
-	{re: regexp.MustCompile(`\b(?:10(?:\.\d{1,3}){3}|127(?:\.\d{1,3}){3}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|localhost)\b`), replacement: "[IP_REDACTED]"},
+var (
+	sensitiveTextRedactionRules     []textRedactionRule
+	sensitiveTextRedactionRulesOnce sync.Once
+)
+
+func ensureGenericCardRegexes() {
+	genericCardRegexesOnce.Do(func() {
+		genericCardImageURLSuffix = regexp.MustCompile(`(?i)\.(png|jpe?g|gif|webp|bmp|svg)(?:[?#].*)?$`)
+		genericCardWindowsAbsPath = regexp.MustCompile(`^(?:[a-zA-Z]:[\\/]|\\\\)`)
+	})
+}
+
+func ensureSensitiveTextRedactionRules() {
+	sensitiveTextRedactionRulesOnce.Do(func() {
+		sensitiveTextRedactionRules = []textRedactionRule{
+			{re: regexp.MustCompile(`(?is)-----BEGIN(?: [A-Z0-9]+)? PRIVATE KEY-----.*?-----END(?: [A-Z0-9]+)? PRIVATE KEY-----`), replacement: "[PRIVATE_KEY_REDACTED]"},
+			{re: regexp.MustCompile(`(?i)\bbearer\s+[a-z0-9._=-]{8,}`), replacement: "Bearer [TOKEN_REDACTED]"},
+			{re: regexp.MustCompile(`\beyJ[a-zA-Z0-9_-]*\.[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+\b`), replacement: "[JWT_REDACTED]"},
+			{re: regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`), replacement: "[AWS_KEY_REDACTED]"},
+			{re: regexp.MustCompile(`(?i)([?&](?:token|access_token|refresh_token|api_key|apikey|secret|password|authorization)=)[^&#\s]+`), replacement: "${1}[REDACTED]"},
+			{re: regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:)([^@\s/]+)@`), replacement: "${1}[REDACTED]@"},
+			{re: regexp.MustCompile(`(?i)(\b(?:cookie|set-cookie)\b\s*[:=]\s*)([^\n\r]+)`), replacement: "${1}[COOKIE_REDACTED]"},
+			{re: regexp.MustCompile(`(?i)(--?(?:api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|auth[-_]?token|session[-_]?token|token|secret|password|passwd|pwd|authorization|cookie))(=|\s+)(\"?[^\s\"']+\"?)`), replacement: "${1}${2}[REDACTED]"},
+			{re: regexp.MustCompile(fmt.Sprintf(`(?i)("%s"\s*:\s*")([^"\n\r]+)(")`, sensitiveValueKey)), replacement: "${1}[REDACTED]${3}"},
+			{re: regexp.MustCompile(fmt.Sprintf(`(?i)(\b%s\b\s*[:=]\s*)(\"?[^\s\"',;]+\"?)`, sensitiveValueKey)), replacement: "${1}[REDACTED]"},
+			{re: regexp.MustCompile(`[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}`), replacement: "[EMAIL_REDACTED]"},
+			{re: regexp.MustCompile(`\b(?:10(?:\.\d{1,3}){3}|127(?:\.\d{1,3}){3}|169\.254(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2}|192\.168(?:\.\d{1,3}){2}|localhost)\b`), replacement: "[IP_REDACTED]"},
+		}
+	})
 }
 
 // RedactSensitiveText masks obvious secrets/PII while preserving readable structure.
@@ -78,6 +97,7 @@ func RedactSensitiveText(input string) string {
 	if input == "" {
 		return ""
 	}
+	ensureSensitiveTextRedactionRules()
 	redacted := input
 	for _, rule := range sensitiveTextRedactionRules {
 		redacted = rule.re.ReplaceAllString(redacted, rule.replacement)
@@ -210,6 +230,7 @@ func isGenericCardLocalAbsolutePath(raw string) bool {
 	if strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://") {
 		return false
 	}
+	ensureGenericCardRegexes()
 	if genericCardWindowsAbsPath.MatchString(trimmed) {
 		return true
 	}
@@ -273,6 +294,7 @@ func looksLikeImageString(raw, label, mimeType string) bool {
 		strings.HasPrefix(trimmed, "https://") ||
 		isGenericCardAPIPath(trimmed) ||
 		isGenericCardLocalAbsolutePath(trimmed) {
+		ensureGenericCardRegexes()
 		return isGenericCardImageField(label) || genericCardImageURLSuffix.MatchString(trimmed)
 	}
 	return isGenericCardImageField(label) && looksLikeBase64ImagePayload(trimmed)
@@ -1400,27 +1422,51 @@ func analyzeCard(content string) map[string]interface{} {
 		return nil
 	}
 	if hasNonEmptyError(data) {
-		return buildErrorCard("result", "analyze", data)
+		title := firstCardNonEmpty(
+			strings.TrimSpace(formatValue(data["topic"])),
+			strings.TrimSpace(formatValue(data["title"])),
+			"analyze",
+		)
+		return buildErrorCard("analyze", title, data)
 	}
-	topic, _ := data["topic"].(string)
-	reportURL, _ := data["report_url"].(string)
+	title := firstCardNonEmpty(
+		strings.TrimSpace(formatValue(data["topic"])),
+		strings.TrimSpace(formatValue(data["title"])),
+		"analyze",
+	)
 
 	card := map[string]interface{}{
-		"type":   "result",
-		"title":  "analyze",
+		"type":   "analyze",
+		"title":  title,
 		"status": "success",
 	}
 	if id := analyzeCardID(data); id != "" {
 		card["id"] = id
 	}
-	if topic != "" {
-		card["message"] = topic
-	}
-	if reportURL != "" {
-		card["details"] = []map[string]interface{}{
-			{"label": "report_url", "value": reportURL},
+
+	for _, key := range []string{
+		"topic",
+		"answer",
+		"message",
+		"analysis",
+		"output_mode",
+		"report_url",
+		"report_style",
+		"report_template_version",
+	} {
+		if value, ok := data[key]; ok {
+			card[key] = value
 		}
 	}
+
+	if _, ok := card["output_mode"]; !ok {
+		if strings.TrimSpace(formatValue(data["report_url"])) != "" {
+			card["output_mode"] = "report"
+		} else {
+			card["output_mode"] = "inline"
+		}
+	}
+
 	return card
 }
 

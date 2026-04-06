@@ -8,6 +8,9 @@ import (
 // InferSkill returns a high-confidence canonical skill match for a localized
 // query using the curated routing cue catalog.
 func InferSkill(query string) (string, bool) {
+	ensureLocalizedSkillExamples()
+	ensureLocalizedURLBypassExamples()
+
 	query = normalizeCueText(query)
 	if query == "" {
 		return "", false
@@ -47,6 +50,9 @@ func InferSkill(query string) (string, bool) {
 }
 
 func inferSkillCandidates() []string {
+	ensureLocalizedSkillExamples()
+	ensureLocalizedURLBypassExamples()
+
 	seen := make(map[string]struct{}, len(localizedSkillExamples)+len(localizedURLBypassExamples))
 	out := make([]string, 0, len(seen))
 	for skill := range localizedSkillExamples {

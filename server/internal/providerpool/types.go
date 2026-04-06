@@ -120,11 +120,10 @@ type Provider struct {
 	// Model Parameters (defaults for this provider)
 	ModelParams *ModelParams `json:"model_params,omitempty"`
 
-	// Allowed Models holds the allowlist when AllowlistConfigured is true.
-	// Nil/empty here are interpreted by discovery using AllowlistConfigured.
+	// Allowed Models holds the normalized model allowlist.
+	// Nil/empty means no allowlist is configured.
 	AllowedModels []string `json:"allowed_models,omitempty"`
-	// AllowlistConfigured tracks whether model allowlist mode is enabled.
-	// This preserves "configured but empty" semantics across JSON persistence.
+	// AllowlistConfigured tracks whether a non-empty model allowlist is enabled.
 	AllowlistConfigured bool `json:"allowlist_configured,omitempty"`
 
 	// Metadata
@@ -245,6 +244,37 @@ type RateLimitConfig struct {
 	RequestsPerMinute int `json:"requests_per_minute,omitempty"`
 	TokensPerMinute   int `json:"tokens_per_minute,omitempty"`
 	TokensPerDay      int `json:"tokens_per_day,omitempty"`
+}
+
+func normalizeAllowedModels(allowedModels []string) []string {
+	if len(allowedModels) == 0 {
+		return nil
+	}
+
+	normalized := make([]string, 0, len(allowedModels))
+	seen := make(map[string]struct{}, len(allowedModels))
+	for _, allowed := range allowedModels {
+		allowed = strings.TrimSpace(allowed)
+		if allowed == "" {
+			continue
+		}
+		if _, exists := seen[allowed]; exists {
+			continue
+		}
+		seen[allowed] = struct{}{}
+		normalized = append(normalized, allowed)
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func effectiveAllowedModels(provider *Provider) []string {
+	if provider == nil {
+		return nil
+	}
+	return normalizeAllowedModels(provider.AllowedModels)
 }
 
 // ModelParams represents default model parameters for a provider

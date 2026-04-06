@@ -533,6 +533,16 @@ func TestResolveProviderVerificationModelCandidates_PrefersHigherVersion(t *test
 	}
 }
 
+func TestResolveProviderVerificationModelCandidates_PreservesOrderForEqualScores(t *testing.T) {
+	candidates := resolveProviderVerificationModelCandidates("", `{"data":[{"id":"plain-a"},{"id":"plain-b"},{"id":"plain-c"}]}`)
+	if len(candidates) != 3 {
+		t.Fatalf("candidates length = %d, want 3", len(candidates))
+	}
+	if candidates[0] != "plain-a" || candidates[1] != "plain-b" || candidates[2] != "plain-c" {
+		t.Fatalf("candidates = %v, want original order preserved", candidates)
+	}
+}
+
 func TestExtractModelIDsFromModelsResponse_SupportsCommonShapes(t *testing.T) {
 	tests := []struct {
 		name string
@@ -571,6 +581,55 @@ func TestExtractModelIDsFromModelsResponse_SupportsCommonShapes(t *testing.T) {
 				if got[i] != tt.want[i] {
 					t.Fatalf("got[%d]=%q, want=%q, got=%v", i, got[i], tt.want[i], got)
 				}
+			}
+		})
+	}
+}
+
+func TestExtractProviderVerificationString(t *testing.T) {
+	tests := []struct {
+		name  string
+		body  string
+		field string
+		want  string
+	}{
+		{
+			name:  "preferred field wins",
+			body:  `{"status":"completed","error":{"message":"ignored"}}`,
+			field: "status",
+			want:  "completed",
+		},
+		{
+			name:  "error message fallback",
+			body:  `{"error":{"message":"model not found"}}`,
+			field: "status",
+			want:  "model not found",
+		},
+		{
+			name:  "empty field extracts error only",
+			body:  `{"error":{"message":"bad request"}}`,
+			field: "",
+			want:  "bad request",
+		},
+		{
+			name:  "top level message fallback",
+			body:  `{"message":"plain failure"}`,
+			field: "status",
+			want:  "plain failure",
+		},
+		{
+			name:  "invalid json returns empty",
+			body:  `not-json`,
+			field: "status",
+			want:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := extractProviderVerificationString(tt.body, tt.field)
+			if got != tt.want {
+				t.Fatalf("extractProviderVerificationString(%q, %q) = %q, want %q", tt.body, tt.field, got, tt.want)
 			}
 		})
 	}

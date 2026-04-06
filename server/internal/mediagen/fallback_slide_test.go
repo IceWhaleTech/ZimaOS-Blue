@@ -6,10 +6,16 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/slidespec"
+	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gomono"
+	"golang.org/x/image/font/gofont/gomonobold"
+	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/basicfont"
 )
 
@@ -294,6 +300,7 @@ func TestDrawSlideWrappedAlignedTextRespectsLineHeightMultiplier(t *testing.T) {
 }
 
 func TestLoadSlideFontVariantSupportsControlledFamilies(t *testing.T) {
+	configureSlideFontRuntimeDataDir(writeSlideRuntimeTestFonts(t))
 	sansBold, err := loadSlideFontVariant("sans", "bold")
 	if err != nil || sansBold == nil {
 		t.Fatalf("load sans bold font: font=%v err=%v", sansBold, err)
@@ -309,12 +316,70 @@ func TestLoadSlideFontVariantSupportsControlledFamilies(t *testing.T) {
 	if sansBold == monoBold {
 		t.Fatal("expected mono font variant to differ from sans font variant")
 	}
-	if sansBold == displayRegular {
-		t.Fatal("expected display font variant to differ from sans font variant")
+	if sansBold != displayRegular {
+		t.Fatal("expected display font variant to reuse the sans bold runtime font")
+	}
+}
+
+func TestCanonicalSlideFontRuntimeRequestCollapsesFamiliesAndWeights(t *testing.T) {
+	cases := []struct {
+		name   string
+		family string
+		weight string
+		want   slideFontRuntimeRequest
+	}{
+		{name: "sans italic", family: "sans", weight: "italic", want: slideFontRuntimeRequest{family: "sans", weight: "italic"}},
+		{name: "sans medium", family: "sans", weight: "medium", want: slideFontRuntimeRequest{family: "sans", weight: "bold"}},
+		{name: "mono italic", family: "mono", weight: "italic", want: slideFontRuntimeRequest{family: "mono", weight: "regular"}},
+		{name: "mono bold italic", family: "mono", weight: "bold_italic", want: slideFontRuntimeRequest{family: "mono", weight: "bold"}},
+		{name: "display regular", family: "display", weight: "regular", want: slideFontRuntimeRequest{family: "sans", weight: "bold"}},
+		{name: "display italic", family: "display", weight: "italic", want: slideFontRuntimeRequest{family: "sans", weight: "bold"}},
+		{name: "display bold italic", family: "display", weight: "bold_italic", want: slideFontRuntimeRequest{family: "sans", weight: "bold"}},
+		{name: "sans medium italic", family: "sans", weight: "medium_italic", want: slideFontRuntimeRequest{family: "sans", weight: "bold"}},
+		{name: "sans bold italic", family: "sans", weight: "bold_italic", want: slideFontRuntimeRequest{family: "sans", weight: "bold"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := canonicalSlideFontRuntimeRequest(tc.family, tc.weight)
+			if got != tc.want {
+				t.Fatalf("canonicalSlideFontRuntimeRequest(%q, %q) = %#v, want %#v", tc.family, tc.weight, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveSlideFontRuntimeSourcePrefersExternalFontFiles(t *testing.T) {
+	dataDir := writeSlideRuntimeTestFonts(t)
+
+	cases := []struct {
+		name      string
+		family    string
+		weight    string
+		wantSuffix string
+	}{
+		{name: "sans regular", family: "sans", weight: "regular", wantSuffix: filepath.Join("media", "fonts", "sans-regular.ttf")},
+		{name: "sans bold via display", family: "display", weight: "regular", wantSuffix: filepath.Join("media", "fonts", "sans-bold.ttf")},
+		{name: "mono bold", family: "mono", weight: "bold", wantSuffix: filepath.Join("media", "fonts", "mono-bold.ttf")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			configureSlideFontRuntimeDataDir(dataDir)
+			path, index, err := resolveSlideFontRuntimeSource(tc.family, tc.weight)
+			if err != nil {
+				t.Fatalf("resolveSlideFontRuntimeSource(%q, %q) error: %v", tc.family, tc.weight, err)
+			}
+			if index != 0 {
+				t.Fatalf("resolveSlideFontRuntimeSource(%q, %q) index = %d, want 0", tc.family, tc.weight, index)
+			}
+			if !strings.HasSuffix(path, tc.wantSuffix) {
+				t.Fatalf("resolveSlideFontRuntimeSource(%q, %q) path = %q, want suffix %q", tc.family, tc.weight, path, tc.wantSuffix)
+			}
+		})
 	}
 }
 
 func TestSlideLayoutFontFaceUsesExplicitFamilyAndWeight(t *testing.T) {
+	configureSlideFontRuntimeDataDir(writeSlideRuntimeTestFonts(t))
 	defaultFonts := newSlideFontPack(slideCanvasSpec{width: 1280, height: 720}, slidespec.TemplateTextOnly)
 	defer defaultFonts.close()
 
@@ -338,6 +403,31 @@ func TestSlideLayoutFontFaceUsesExplicitFamilyAndWeight(t *testing.T) {
 	if measureSlideText(defaultFace, "111111") == measureSlideText(overrideFace, "111111") {
 		t.Fatalf("expected mono bold face width to differ from default sans face width")
 	}
+}
+
+func writeSlideRuntimeTestFonts(t *testing.T) string {
+	t.Helper()
+
+	dataDir := t.TempDir()
+	fontDir := filepath.Join(dataDir, "media", "fonts")
+	if err := os.MkdirAll(fontDir, 0o755); err != nil {
+		t.Fatalf("mkdir font dir: %v", err)
+	}
+	fonts := map[string][]byte{
+		"sans-regular.ttf": goregular.TTF,
+		"sans-bold.ttf":    gobold.TTF,
+		"mono-regular.ttf": gomono.TTF,
+		"mono-bold.ttf":    gomonobold.TTF,
+	}
+	for name, data := range fonts {
+		if err := os.WriteFile(filepath.Join(fontDir, name), data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+	t.Cleanup(func() {
+		configureSlideFontRuntimeDataDir("")
+	})
+	return dataDir
 }
 
 func TestRenderSlidePNGWithLayoutRendersProgressChart(t *testing.T) {

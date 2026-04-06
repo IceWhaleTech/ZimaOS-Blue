@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -86,8 +85,7 @@ func (s *approvalObserverStub) OnApprovalResolved(event tools.ApprovalRuntimeEve
 	s.resolved = append(s.resolved, event)
 }
 
-func TestApprovalListPendingFiltersBySessionID(t *testing.T) {
-	e := echo.New()
+func TestApprovalGetPendingBySessionFiltersBySessionID(t *testing.T) {
 	h := NewApprovalHandler(nil)
 	h.pending["req-1"] = &PendingRequest{
 		ID:        "req-1",
@@ -100,29 +98,26 @@ func TestApprovalListPendingFiltersBySessionID(t *testing.T) {
 		SessionID: "conv-2",
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/approval/pending?session_id=conv-2", nil)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
+	got := h.GetPendingBySession("conv-2")
+	if got == nil {
+		t.Fatal("GetPendingBySession(conv-2) = nil, want non-nil")
+	}
+	if got["id"] != "req-2" {
+		t.Fatalf("id = %v, want %q", got["id"], "req-2")
+	}
+	if got["session_id"] != "conv-2" {
+		t.Fatalf("session_id = %v, want %q", got["session_id"], "conv-2")
+	}
+}
 
-	if err := h.ListPending(c); err != nil {
-		t.Fatalf("ListPending() error = %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
-	}
+func TestApprovalRegisterRoutesDoesNotExposeStandalonePendingRoute(t *testing.T) {
+	e := echo.New()
+	NewApprovalHandler(nil).RegisterRoutes(e.Group("/api/v1"))
 
-	var got []PendingRequest
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("len(got) = %d, want 1", len(got))
-	}
-	if got[0].ID != "req-2" {
-		t.Fatalf("got[0].ID = %q, want %q", got[0].ID, "req-2")
-	}
-	if got[0].SessionID != "conv-2" {
-		t.Fatalf("got[0].SessionID = %q, want %q", got[0].SessionID, "conv-2")
+	for _, route := range e.Routes() {
+		if route.Method == http.MethodGet && route.Path == "/api/v1/approval/pending" {
+			t.Fatalf("did not expect standalone approval pending route to remain registered")
+		}
 	}
 }
 

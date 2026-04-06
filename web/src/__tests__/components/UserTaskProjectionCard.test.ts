@@ -165,7 +165,7 @@ describe('UserTaskProjectionCard', () => {
           verification_status: 'partial',
           score: 0.76,
           evidence_count: 5,
-          detail_href: '/automation/harness/group-1',
+          detail_href: '/operations/harness/group-1',
           updated_at: '2026-03-20T12:00:00.000Z',
         },
       },
@@ -188,7 +188,7 @@ describe('UserTaskProjectionCard', () => {
       .find((button) => button.text() === 'View run details')!
       .trigger('click')
 
-    expect(wrapper.emitted('navigate')?.[0]).toEqual(['/automation/harness/group-1'])
+    expect(wrapper.emitted('navigate')?.[0]).toEqual(['/operations/harness/group-1'])
   })
 
   it('renders subagent summary chips and the latest child run label', () => {

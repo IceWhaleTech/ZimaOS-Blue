@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PresetQuestion } from '@/api/preview'
 import {
+  PRESET_FEED_INITIAL_LOAD_COUNT,
   createDefaultTryFeedState,
   rankPresetQuestions,
   recordPresetQuestionSend,
@@ -8,7 +9,10 @@ import {
 
 function question(
   id: string,
-  options: Partial<PresetQuestion> & { category: PresetQuestion['category']; editorial_score: number }
+  options: Partial<PresetQuestion> & {
+    category: PresetQuestion['category']
+    editorial_score: number
+  }
 ): PresetQuestion {
   return {
     id,
@@ -25,6 +29,10 @@ function question(
 }
 
 describe('presetQuestionFeed', () => {
+  it('keeps the first paint load smaller than the full 12-slot feed', () => {
+    expect(PRESET_FEED_INITIAL_LOAD_COUNT).toBe(4)
+  })
+
   it('uses editorial score as the default cold-start order', () => {
     const questions = [
       question('b', { category: 'learning-growth', editorial_score: 100 }),

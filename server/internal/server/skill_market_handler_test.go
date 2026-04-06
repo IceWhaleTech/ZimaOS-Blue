@@ -654,7 +654,6 @@ func TestMarketDiscoverSkillsStartsAsyncAndReportsStatus(t *testing.T) {
 	cfg.GitHubAPIBaseURL = server.URL
 	cfg.ClawHubBaseURL = server.URL
 	cfg.SkillHubBaseURL = server.URL
-	cfg.SkillStackBaseURL = server.URL
 	cfg.LLMSkillsBaseURL = server.URL
 	cfg.DiscoveryPageURLs = nil
 	market, err := skillmarket.NewService(db, skillmarket.Options{
@@ -833,7 +832,6 @@ func TestMarketDiscoverSkillsUsesSingleFlightWhileRunning(t *testing.T) {
 	cfg.GitHubAPIBaseURL = server.URL
 	cfg.ClawHubBaseURL = server.URL
 	cfg.SkillHubBaseURL = server.URL
-	cfg.SkillStackBaseURL = server.URL
 	cfg.LLMSkillsBaseURL = server.URL
 	cfg.DiscoveryPageURLs = nil
 	market, err := skillmarket.NewService(db, skillmarket.Options{

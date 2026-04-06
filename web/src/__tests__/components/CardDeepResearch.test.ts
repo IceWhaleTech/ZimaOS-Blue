@@ -5,6 +5,8 @@ import { createPinia } from 'pinia'
 
 import CardDeepResearch from '@/components/typeless/CardDeepResearch.vue'
 import CardDeepResearchProgress from '@/components/typeless/CardDeepResearchProgress.vue'
+import zhCN from '@/i18n/locales/zh-CN'
+import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 
 function createTestI18n(locale = 'en-US') {
   return createI18n({
@@ -59,6 +61,8 @@ function createTestI18n(locale = 'en-US') {
           deepResearchActionLoopStopped: 'Research loop stopped',
           deepResearchActionSynthesizing: 'Synthesizing report',
           deepResearchActionCompleted: 'Completed',
+          deepResearchPlannedTasks: 'Planned tasks',
+          deepResearchLiveSources: 'Live sources',
           deepResearchExpandDetails: 'Expand research details',
           deepResearchCollapseDetails: 'Collapse research details',
           deepResearchProgress: 'Deep Research in progress',
@@ -84,6 +88,8 @@ function createTestI18n(locale = 'en-US') {
           deepResearchTasks: 'Tasks',
           deepResearchDomains: 'Domains',
           deepResearchObjectMap: 'Object Map',
+          deepResearchRetainedSearches: 'Retained web searches',
+          deepResearchReportStyleKnowledgeBase: 'Knowledge base',
           deepResearchOpenQuestions: 'Open questions',
           deepResearchCitations: 'Citations',
           deepResearchViewTask: 'View task',
@@ -111,8 +117,24 @@ function createTestI18n(locale = 'en-US') {
           deepResearchGapNeedBroaderSourceDiversity: '需要更广泛的来源多样性',
           deepResearchGapNeedFresherSources: '需要更新的来源',
           deepResearchGapResolveConflictingClaims: '需要解决冲突说法',
+          deepResearchRetainedSearches: '保留的网页搜索',
+          deepResearchReportStyleKnowledgeBase: '知识库',
         },
       },
+    },
+  })
+}
+
+function createRuntimeLocaleI18n(locale = 'zh-CN') {
+  const baseMessages =
+    locale === 'zh-CN' ? (zhCN as Record<string, unknown>) : ({ chat: {} } as Record<string, unknown>)
+
+  return createI18n({
+    legacy: false,
+    locale,
+    fallbackLocale: 'en-US',
+    messages: {
+      [locale]: mergeHarnessLocale(locale as any, baseMessages),
     },
   })
 }
@@ -272,6 +294,8 @@ describe('Deep research cards', () => {
 
     await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
 
+    expect(wrapper.text()).toContain('Knowledge base')
+    expect(wrapper.text()).not.toContain('knowledge_base')
     expect(wrapper.text()).toContain('Workflow phases')
     expect(wrapper.text()).toContain('Coverage Summary')
     expect(wrapper.text()).toContain('Calibration')
@@ -331,6 +355,7 @@ describe('Deep research cards', () => {
     await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
 
     expect(wrapper.text()).toContain('Retained web searches')
+    expect(wrapper.text()).not.toContain('knowledge_base')
     expect(wrapper.text()).toContain('topic overview official')
     expect(wrapper.text()).toContain('Official docs')
     expect(wrapper.text()).toContain('Release notes')
@@ -423,6 +448,89 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).not.toContain('example.com · law')
   })
 
+  it('localizes object map labels for zh-CN runtime locales instead of exposing english tokens', async () => {
+    const wrapper = mount(CardDeepResearch, {
+      props: {
+        uiStateKey: 'deep-research:test-zh-runtime-object-map',
+        card: {
+          type: 'deep-research',
+          query: 'topic zh object map',
+          mode: 'standard',
+          report_style: 'knowledge_base',
+          answer: 'Answer',
+          status: 'completed',
+          object_map: [
+            {
+              id: 'overview',
+              label: 'Overview',
+              task_count: 2,
+              status_counts: { completed: 1, pending: 1 },
+              questions: ['What is the product?'],
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createRuntimeLocaleI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('对象地图')
+    expect(wrapper.text()).toContain('概览')
+    expect(wrapper.text()).not.toContain('Overview')
+  })
+
+  it('localizes runtime deep research axis, focus, and time window tokens for zh-CN cards', async () => {
+    const wrapper = mount(CardDeepResearch, {
+      props: {
+        uiStateKey: 'deep-research:test-zh-runtime-token-labels',
+        card: {
+          type: 'deep-research',
+          query: 'topic zh runtime tokens',
+          mode: 'standard',
+          report_style: 'knowledge_base',
+          answer: 'Answer',
+          status: 'completed',
+          time_windows: ['recent'],
+          object_map: [
+            {
+              id: 'latest',
+              label: 'Latest',
+              task_count: 1,
+              time_windows: ['earlier', '2025-2026'],
+              status_counts: { completed: 1 },
+              questions: ['What changed in this period?'],
+            },
+          ],
+          research_trace: [
+            {
+              iteration: 1,
+              focus: 'Claim validation',
+              verification_outcome: 'current',
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createRuntimeLocaleI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('最新动态')
+    expect(wrapper.text()).toContain('结论核验')
+    expect(wrapper.text()).toContain('早期')
+    expect(wrapper.text()).toContain('近期')
+    expect(wrapper.text()).toContain('2025-2026')
+    expect(wrapper.text()).not.toContain('Latest')
+    expect(wrapper.text()).not.toContain('Claim validation')
+    expect(wrapper.text()).not.toContain('earlier')
+    expect(wrapper.text()).not.toContain('recent')
+  })
+
   it('renders verify-stage progress with buttons', () => {
     const wrapper = mount(CardDeepResearchProgress, {
       props: {
@@ -449,7 +557,7 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).toContain('Verifying')
     expect(wrapper.text()).toContain('Iteration 2')
     expect(wrapper.text()).toContain('Verification completed')
-    expect(wrapper.text()).toContain('Need official sources')
+    expect(wrapper.text()).toContain('Need primary or official sources')
     expect(wrapper.text()).toContain('View task')
     expect(wrapper.text()).toContain('Cancel')
   })

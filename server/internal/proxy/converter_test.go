@@ -4,6 +4,13 @@ import (
 	"testing"
 )
 
+func TestAnthropicToolResultStringSupportsRawJSONMessage(t *testing.T) {
+	got := anthropicToolResultString(rawJSONMessage(`{"ok":true,"count":2}`))
+	if got != `{"ok":true,"count":2}` {
+		t.Fatalf("anthropicToolResultString(raw json) = %q, want %q", got, `{"ok":true,"count":2}`)
+	}
+}
+
 func TestDetectProviderType(t *testing.T) {
 	fc := NewFormatConverter()
 

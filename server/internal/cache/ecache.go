@@ -2,13 +2,19 @@
 package cache
 
 import (
+	"container/list"
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/orca-zhang/ecache"
-	ecache2 "github.com/orca-zhang/ecache2"
-	"github.com/orca-zhang/ecache2/stats"
+)
+
+const (
+	genericCacheMaxBucketCount = 16
+	genericCacheTargetLoad     = 50
 )
 
 // ECache wraps ecache.Cache with the Cache interface.
@@ -288,62 +294,80 @@ func (c *ECache2) Close() error {
 	return nil
 }
 
-// GenericCache is a generic cache using ecache2 with type-safe keys.
-// K can be string, int, int64, uint64, etc.
-type GenericCache[K ecache2.Hashable] struct {
-	cache  *ecache2.Cache[K]
-	config Config
-	pool   string
+type genericCacheKey interface {
+	comparable
 }
 
-// NewGenericCache creates a new generic cache with LRU-2 mode.
-func NewGenericCache[K ecache2.Hashable](config Config) *GenericCache[K] {
+type genericCacheEntry[K genericCacheKey] struct {
+	key       K
+	value     interface{}
+	expiresAt int64
+}
+
+// GenericCache is a lightweight generic cache with type-safe keys.
+// K can be string, int, int64, uint64, etc.
+type GenericCache[K genericCacheKey] struct {
+	config Config
+	pool   string
+
+	mu    sync.Mutex
+	items map[K]*list.Element
+	order *list.List
+
+	hits      atomic.Int64
+	misses    atomic.Int64
+	sets      atomic.Int64
+	deletes   atomic.Int64
+	evictions atomic.Int64
+
+	stopCh chan struct{}
+	closed bool
+}
+
+func computeGenericCacheLayout(maxSize int) (bucketCount, bucketSize, secondLevelSize uint16) {
+	if maxSize <= 0 {
+		maxSize = 1000
+	}
+
+	shards := (maxSize + genericCacheTargetLoad - 1) / genericCacheTargetLoad
+	if shards < 1 {
+		shards = 1
+	}
+	if shards > genericCacheMaxBucketCount {
+		shards = genericCacheMaxBucketCount
+	}
+
+	perBucket := (maxSize + shards - 1) / shards
+	if perBucket < 1 {
+		perBucket = 1
+	}
+
+	secondLevel := perBucket / 4
+	if secondLevel < 1 {
+		secondLevel = 1
+	}
+
+	return uint16(shards), uint16(perBucket), uint16(secondLevel)
+}
+
+// NewGenericCache creates a new generic cache.
+func NewGenericCache[K genericCacheKey](config Config) *GenericCache[K] {
 	if config.MaxSize <= 0 {
 		config.MaxSize = 1000
 	}
 
-	bucketCount := 16
-	bucketSize := config.MaxSize / bucketCount
-	if bucketSize < 10 {
-		bucketSize = 10
-	}
-
-	ttl := config.DefaultTTL
-	if ttl <= 0 {
-		ttl = 5 * time.Minute
-	}
-
 	return &GenericCache[K]{
-		cache:  ecache2.NewLRUCache[K](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4)),
 		config: config,
 	}
 }
 
-// NewGenericCacheWithStats creates a new generic cache with stats tracking.
-// Only works with string keys due to stats plugin limitation.
+// NewGenericCacheWithStats creates a new generic cache with local stats tracking.
 func NewGenericCacheWithStats(config Config, poolName string) *GenericCache[string] {
 	if config.MaxSize <= 0 {
 		config.MaxSize = 1000
 	}
 
-	bucketCount := 16
-	bucketSize := config.MaxSize / bucketCount
-	if bucketSize < 10 {
-		bucketSize = 10
-	}
-
-	ttl := config.DefaultTTL
-	if ttl <= 0 {
-		ttl = 5 * time.Minute
-	}
-
-	cache := ecache2.NewLRUCache[string](uint16(bucketCount), uint16(bucketSize), ttl).LRU2(uint16(bucketSize / 4))
-
-	// Bind stats
-	stats.Bind(poolName, cache)
-
 	return &GenericCache[string]{
-		cache:  cache,
 		config: config,
 		pool:   poolName,
 	}
@@ -351,47 +375,195 @@ func NewGenericCacheWithStats(config Config, poolName string) *GenericCache[stri
 
 // Get retrieves a value from the cache.
 func (c *GenericCache[K]) Get(key K) (interface{}, bool) {
-	return c.cache.Get(key)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.items == nil {
+		c.misses.Add(1)
+		return nil, false
+	}
+
+	el, ok := c.items[key]
+	if !ok {
+		c.misses.Add(1)
+		return nil, false
+	}
+
+	entry := el.Value.(*genericCacheEntry[K])
+	if entry.expiresAt != 0 && timeutil.NowNano() > entry.expiresAt {
+		c.removeLocked(el)
+		c.misses.Add(1)
+		return nil, false
+	}
+
+	c.order.MoveToFront(el)
+	c.hits.Add(1)
+	return entry.value, true
 }
 
 // GetInt64 retrieves an int64 value from the cache.
 func (c *GenericCache[K]) GetInt64(key K) (int64, bool) {
-	return c.cache.GetInt64(key)
+	v, ok := c.Get(key)
+	if !ok {
+		return 0, false
+	}
+	i, ok := v.(int64)
+	return i, ok
 }
 
 // Put stores a value in the cache.
 func (c *GenericCache[K]) Put(key K, value interface{}) {
-	c.cache.Put(key, value)
+	c.putValue(key, value)
 }
 
 // PutInt64 stores an int64 value in the cache.
 func (c *GenericCache[K]) PutInt64(key K, value int64) {
-	c.cache.PutInt64(key, value)
+	c.putValue(key, value)
 }
 
 // Del removes a key from the cache.
 func (c *GenericCache[K]) Del(key K) {
-	c.cache.Del(key)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.items == nil {
+		return
+	}
+	el, ok := c.items[key]
+	if !ok {
+		return
+	}
+	c.removeLocked(el)
+	c.deletes.Add(1)
 }
 
-// Stats returns cache statistics from the stats plugin.
+// Stats returns local cache statistics.
 func (c *GenericCache[K]) Stats() CacheStats {
-	if c.pool == "" {
-		return CacheStats{Capacity: int64(c.config.MaxSize)}
+	hits := c.hits.Load()
+	misses := c.misses.Load()
+	total := hits + misses
+
+	var hitRate float64
+	if total > 0 {
+		hitRate = float64(hits) / float64(total) * 100
 	}
 
-	v, ok := stats.Stats().Load(c.pool)
-	if !ok {
-		return CacheStats{Capacity: int64(c.config.MaxSize)}
-	}
+	c.mu.Lock()
+	size := int64(len(c.items))
+	c.mu.Unlock()
 
-	node := v.(*stats.StatsNode)
 	return CacheStats{
-		Hits:     int64(node.GetHit),
-		Misses:   int64(node.GetMiss),
-		Sets:     int64(node.Added + node.Updated),
-		Deletes:  int64(node.DelHit),
+		Hits:      hits,
+		Misses:    misses,
+		Sets:      c.sets.Load(),
+		Deletes:   c.deletes.Load(),
+		Evictions: c.evictions.Load(),
+		Size:      size,
 		Capacity: int64(c.config.MaxSize),
-		HitRate:  node.HitRate() * 100,
+		HitRate:  hitRate,
+	}
+}
+
+func (c *GenericCache[K]) putValue(key K, value interface{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	c.ensureStorageLocked()
+	c.startCleanupLoopLocked()
+
+	expiresAt := c.expiryForWrite()
+	if el, ok := c.items[key]; ok {
+		entry := el.Value.(*genericCacheEntry[K])
+		entry.value = value
+		entry.expiresAt = expiresAt
+		c.order.MoveToFront(el)
+		c.sets.Add(1)
+		return
+	}
+
+	c.cleanupExpiredLocked(timeutil.NowNano())
+	for len(c.items) >= c.config.MaxSize {
+		c.evictLocked()
+	}
+
+	el := c.order.PushFront(&genericCacheEntry[K]{
+		key:       key,
+		value:     value,
+		expiresAt: expiresAt,
+	})
+	c.items[key] = el
+	c.sets.Add(1)
+}
+
+func (c *GenericCache[K]) ensureStorageLocked() {
+	if c.items == nil {
+		c.items = make(map[K]*list.Element)
+	}
+	if c.order == nil {
+		c.order = list.New()
+	}
+}
+
+func (c *GenericCache[K]) startCleanupLoopLocked() {
+	if c.config.CleanupInterval <= 0 || c.stopCh != nil || c.closed {
+		return
+	}
+	c.stopCh = make(chan struct{})
+	go c.cleanupLoop()
+}
+
+func (c *GenericCache[K]) expiryForWrite() int64 {
+	ttl := c.config.DefaultTTL
+	if ttl <= 0 {
+		return 0
+	}
+	return timeutil.NowNano() + int64(ttl)
+}
+
+func (c *GenericCache[K]) evictLocked() {
+	if c.order == nil {
+		return
+	}
+	el := c.order.Back()
+	if el == nil {
+		return
+	}
+	c.removeLocked(el)
+	c.evictions.Add(1)
+}
+
+func (c *GenericCache[K]) removeLocked(el *list.Element) {
+	entry := el.Value.(*genericCacheEntry[K])
+	delete(c.items, entry.key)
+	c.order.Remove(el)
+}
+
+func (c *GenericCache[K]) cleanupLoop() {
+	ticker := time.NewTicker(c.config.CleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.mu.Lock()
+			c.cleanupExpiredLocked(timeutil.NowNano())
+			c.mu.Unlock()
+		case <-c.stopCh:
+			return
+		}
+	}
+}
+
+func (c *GenericCache[K]) cleanupExpiredLocked(now int64) {
+	if c.order == nil {
+		return
+	}
+	for el := c.order.Back(); el != nil; {
+		prev := el.Prev()
+		entry := el.Value.(*genericCacheEntry[K])
+		if entry.expiresAt != 0 && now > entry.expiresAt {
+			c.removeLocked(el)
+		}
+		el = prev
 	}
 }

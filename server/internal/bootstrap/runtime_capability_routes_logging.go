@@ -10,6 +10,9 @@ func logTaskSurfaceRegistration(options runtimeTaskSurfaceOptions, registration 
 	if registration.harnessResearchRegistered {
 		options.logger.Info("Harness research capability routes registered")
 	}
+	if registration.knowledgeRoutesRegistered || registration.knowledgeCronRegistered {
+		options.logger.Info("Knowledge runtime routes registered")
+	}
 	if registration.harnessRoutesRegistered {
 		options.logger.Info("Harness control-plane routes registered")
 	}

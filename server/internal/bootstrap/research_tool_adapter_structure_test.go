@@ -21,7 +21,7 @@ func TestResearchAdapters_AreSplitByRole(t *testing.T) {
 			},
 		},
 		"research_harness_submit.go": {
-			maxLines: 110,
+			maxLines: 115,
 			tokens: []string{
 				"type researchHarnessRunSubmitter interface {",
 				"type researchHarnessJobStore interface {",
@@ -39,15 +39,15 @@ func TestResearchAdapters_AreSplitByRole(t *testing.T) {
 			},
 		},
 		"research_tool_adapter_create.go": {
-			maxLines: 45,
+			maxLines: 46,
 			tokens: []string{
 				"func (a *deepResearchToolAdapter) CreateJob(",
 				"func toDeepResearchCreateJobRequest(",
-				"submitResearchHarnessJob(ctx, a.manager, a.service",
+				"submitCanonicalResearchHarnessJob(ctx, a.manager, a.service",
 			},
 		},
 		"research_tool_adapter_convert.go": {
-			maxLines: 75,
+			maxLines: 77,
 			tokens: []string{
 				"func toDeepResearchBudget(",
 				"func toToolResearchJob(",

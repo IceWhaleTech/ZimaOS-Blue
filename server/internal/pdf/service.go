@@ -1,11 +1,10 @@
 package pdf
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"image/png"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,23 +13,27 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	ocrruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ocr"
-	"github.com/klippa-app/go-pdfium"
-	"github.com/klippa-app/go-pdfium/references"
-	"github.com/klippa-app/go-pdfium/requests"
-	"github.com/klippa-app/go-pdfium/responses"
-	"github.com/klippa-app/go-pdfium/webassembly"
 	"go.uber.org/zap"
 )
 
 const (
-	defaultMaxPages        = 20
-	hardMaxPages           = 200
-	defaultMaxChars        = 50000
-	hardMaxChars           = 200000
-	instanceAcquireTimeout = 30 * time.Second
-	engineName             = "pdfium/webassembly"
-	ocrRenderDPI           = 200
+	defaultMaxPages            = 20
+	hardMaxPages               = 200
+	defaultMaxChars            = 50000
+	hardMaxChars               = 200000
+	instanceAcquireTimeout     = 30 * time.Second
+	defaultRequestTimeout      = 2 * time.Minute
+	engineName                 = "pdfium/webassembly"
+	ocrRenderDPI               = 200
+	pdfiumRuntimeFileName      = "pdfium.wasm"
+	pdfiumRuntimeRepoOwner     = "klippa-app"
+	pdfiumRuntimeRepoName      = "go-pdfium"
+	pdfiumRuntimeRepoRef       = "852818152bff9c1e366b8737a0802481f3a80e0f"
+	pdfiumRuntimeSourcePath    = "webassembly/pdfium.wasm"
+	defaultRuntimeDirBaseName  = "zimaos-blue"
+	defaultRuntimeDirAssetName = "pdfium"
 )
 
 var pdfTextRuneReplacer = strings.NewReplacer(
@@ -81,6 +84,26 @@ var pdfTextRuneReplacer = strings.NewReplacer(
 type OCRService interface {
 	Extract(ctx context.Context, imagePNG []byte) (ocrruntime.Result, error)
 }
+
+type ServiceConfig struct {
+	RuntimeDir   string
+	AutoDownload bool
+	HTTPClient   *http.Client
+}
+
+type assetDownloader func(ctx context.Context, url, path string) error
+
+type pdfRuntimeConfig struct {
+	MinIdle      int
+	MaxIdle      int
+	MaxTotal     int
+	ReuseWorkers bool
+	Stdout       io.Writer
+	Stderr       io.Writer
+	WASM         []byte
+}
+
+type pdfRuntimePoolFactory func(config pdfRuntimeConfig) (any, error)
 
 // DocumentInfo describes a PDF document.
 type DocumentInfo struct {
@@ -146,21 +169,45 @@ type ExtractResult struct {
 
 // Service extracts metadata and structured text from PDFs.
 type Service struct {
-	mu       sync.RWMutex
-	logger   *zap.Logger
-	ocr      OCRService
-	vision   VisionService
-	initOnce sync.Once
-	initErr  error
-	pool     pdfium.Pool
+	mu           sync.RWMutex
+	logger       *zap.Logger
+	ocr          OCRService
+	vision       VisionService
+	runtimeDir   string
+	autoDownload bool
+	httpClient   *http.Client
+	initOnce     sync.Once
+	initErr      error
+	pool         any
+	initPool     pdfRuntimePoolFactory
+	download     assetDownloader
 }
 
 // NewService creates a new PDF extraction service.
-func NewService(logger *zap.Logger, ocr OCRService) *Service {
+func NewService(logger *zap.Logger, ocr OCRService, configs ...ServiceConfig) *Service {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
-	return &Service{logger: logger, ocr: ocr}
+	var cfg ServiceConfig
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
+	if cfg.RuntimeDir == "" {
+		cfg.RuntimeDir = filepath.Join(os.TempDir(), defaultRuntimeDirBaseName, defaultRuntimeDirAssetName)
+	}
+	if cfg.HTTPClient == nil {
+		cfg.HTTPClient = network.NewPooledHTTPClient(defaultRequestTimeout)
+	}
+	svc := &Service{
+		logger:       logger,
+		ocr:          ocr,
+		runtimeDir:   cfg.RuntimeDir,
+		autoDownload: cfg.AutoDownload,
+		httpClient:   cfg.HTTPClient,
+	}
+	svc.initPool = defaultPDFRuntimePoolFactory()
+	svc.download = svc.downloadFile
+	return svc
 }
 
 // SetVisionService wires an optional LLM vision fallback.
@@ -187,142 +234,10 @@ func (s *Service) Close() error {
 	if s == nil || s.pool == nil {
 		return nil
 	}
-	return s.pool.Close()
-}
-
-// Info reads document-level information for a PDF file.
-func (s *Service) Info(ctx context.Context, path string) (DocumentInfo, error) {
-	if err := ctx.Err(); err != nil {
-		return DocumentInfo{}, err
+	if closer, ok := s.pool.(interface{ Close() error }); ok {
+		return closer.Close()
 	}
-	resolvedPath, stat, err := resolvePath(path)
-	if err != nil {
-		return DocumentInfo{}, err
-	}
-	instance, err := s.getInstance()
-	if err != nil {
-		if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
-			if nativeErr != nil {
-				return DocumentInfo{}, nativeErr
-			}
-			return nativeInfo, nil
-		}
-		return DocumentInfo{}, err
-	}
-	defer instance.Close()
-
-	doc, err := openDocument(instance, resolvedPath)
-	if err != nil {
-		if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
-			if nativeErr != nil {
-				return DocumentInfo{}, nativeErr
-			}
-			return nativeInfo, nil
-		}
-		return DocumentInfo{}, err
-	}
-	defer closeDocument(instance, doc.Document)
-
-	info, infoErr := buildDocumentInfo(instance, resolvedPath, stat, doc.Document)
-	if infoErr == nil {
-		return info, nil
-	}
-	if nativeInfo, ok, nativeErr := tryNativePDFInfo(ctx, resolvedPath, stat); ok {
-		if nativeErr != nil {
-			return DocumentInfo{}, nativeErr
-		}
-		return nativeInfo, nil
-	}
-	return DocumentInfo{}, infoErr
-}
-
-// Extract reads text content from a PDF file.
-func (s *Service) Extract(ctx context.Context, req ExtractRequest) (ExtractResult, error) {
-	if err := ctx.Err(); err != nil {
-		return ExtractResult{}, err
-	}
-	resolvedPath, stat, err := resolvePath(req.Path)
-	if err != nil {
-		return ExtractResult{}, err
-	}
-	result, err := s.extractWithPDFium(ctx, req, resolvedPath, stat)
-	if err == nil {
-		return result, nil
-	}
-	if nativeResult, ok, nativeErr := tryNativePDFExtract(ctx, req, resolvedPath, stat); ok {
-		if nativeErr != nil {
-			return ExtractResult{}, nativeErr
-		}
-		return nativeResult, nil
-	}
-	return ExtractResult{}, err
-}
-
-func (s *Service) extractPageOCR(ctx context.Context, instance pdfium.Pdfium, document references.FPDF_DOCUMENT, pageNumber int) (ocrruntime.Result, error) {
-	rendered, err := instance.RenderPageInDPI(&requests.RenderPageInDPI{
-		DPI:  ocrRenderDPI,
-		Page: requests.Page{ByIndex: &requests.PageByIndex{Document: document, Index: pageNumber - 1}},
-	})
-	if err != nil {
-		return ocrruntime.Result{}, fmt.Errorf("render page: %w", err)
-	}
-	defer rendered.Cleanup()
-
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, rendered.Result.Image); err != nil {
-		return ocrruntime.Result{}, fmt.Errorf("encode page image: %w", err)
-	}
-	return s.ocr.Extract(ctx, buf.Bytes())
-}
-
-func (s *Service) extractPageVision(ctx context.Context, instance pdfium.Pdfium, document references.FPDF_DOCUMENT, pageNumber int, vision VisionService) (VisionResult, error) {
-	rendered, err := instance.RenderPageInDPI(&requests.RenderPageInDPI{
-		DPI:  ocrRenderDPI,
-		Page: requests.Page{ByIndex: &requests.PageByIndex{Document: document, Index: pageNumber - 1}},
-	})
-	if err != nil {
-		return VisionResult{}, fmt.Errorf("render page: %w", err)
-	}
-	defer rendered.Cleanup()
-
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, rendered.Result.Image); err != nil {
-		return VisionResult{}, fmt.Errorf("encode page image: %w", err)
-	}
-	return vision.Extract(ctx, buf.Bytes())
-}
-
-func (s *Service) getInstance() (pdfium.Pdfium, error) {
-	if err := s.ensureReady(); err != nil {
-		return nil, err
-	}
-	instance, err := s.pool.GetInstance(instanceAcquireTimeout)
-	if err != nil {
-		return nil, fmt.Errorf("acquire pdfium instance: %w", err)
-	}
-	return instance, nil
-}
-
-func (s *Service) ensureReady() error {
-	s.initOnce.Do(func() {
-		s.pool, s.initErr = webassembly.Init(webassembly.Config{MinIdle: 1, MaxIdle: 1, MaxTotal: 1, ReuseWorkers: true, Stdout: io.Discard, Stderr: io.Discard})
-		if s.initErr != nil {
-			s.initErr = fmt.Errorf("init pdfium: %w", s.initErr)
-		}
-	})
-	return s.initErr
-}
-
-func buildDocumentInfo(instance pdfium.Pdfium, path string, stat os.FileInfo, document references.FPDF_DOCUMENT) (DocumentInfo, error) {
-	pageCount, err := instance.FPDF_GetPageCount(&requests.FPDF_GetPageCount{Document: document})
-	if err != nil {
-		return DocumentInfo{}, fmt.Errorf("get page count: %w", err)
-	}
-	info := DocumentInfo{Path: path, FileName: filepath.Base(path), SizeBytes: stat.Size(), ModifiedAt: stat.ModTime().UTC(), PageCount: pageCount.PageCount, Engine: engineName}
-	if metadata, err := instance.GetMetaData(&requests.GetMetaData{Document: document}); err == nil && metadata != nil {
-		info.Metadata = metadataToMap(metadata.Tags)
-	}
-	return info, nil
+	return nil
 }
 
 func resolvePath(path string) (string, os.FileInfo, error) {
@@ -347,38 +262,54 @@ func resolvePath(path string) (string, os.FileInfo, error) {
 	return resolved, stat, nil
 }
 
-func openDocument(instance pdfium.Pdfium, path string) (*responses.OpenDocument, error) {
-	doc, err := instance.OpenDocument(&requests.OpenDocument{FilePath: &path})
-	if err != nil {
-		return nil, fmt.Errorf("open pdf: %w", err)
-	}
-	return doc, nil
-}
-
-func closeDocument(instance pdfium.Pdfium, document references.FPDF_DOCUMENT) {
-	if document == "" {
-		return
-	}
-	_, _ = instance.FPDF_CloseDocument(&requests.FPDF_CloseDocument{Document: document})
-}
-
-func metadataToMap(tags []responses.GetMetaDataTag) map[string]string {
-	if len(tags) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(tags))
-	for _, tag := range tags {
-		key := strings.TrimSpace(tag.Tag)
-		value := strings.TrimSpace(tag.Value)
-		if key == "" || value == "" {
-			continue
+func (s *Service) downloadWithFallback(ctx context.Context, urls []string, path string, assetName string) error {
+	var lastErr error
+	for _, url := range urls {
+		if err := s.download(ctx, url, path); err == nil {
+			return nil
+		} else {
+			lastErr = err
 		}
-		out[key] = value
 	}
-	if len(out) == 0 {
-		return nil
+	if lastErr == nil {
+		return fmt.Errorf("no %s download sources configured", assetName)
 	}
-	return out
+	return fmt.Errorf("download %s: %w", assetName, lastErr)
+}
+
+func (s *Service) downloadFile(ctx context.Context, url, path string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build download request: %w", err)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("download file: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("unexpected status %s", resp.Status)
+	}
+	tmpPath := path + ".tmp"
+	file, err := os.Create(tmpPath)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	if _, err := io.Copy(file, resp.Body); err != nil {
+		file.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("write file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close file: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("store file: %w", err)
+	}
+	s.logger.Info("downloaded PDF asset", zap.String("path", path), zap.String("url", url))
+	return nil
 }
 
 func resolveSelectedPages(pageCount int, requested []int, maxPages int) ([]int, []string, error) {

@@ -4,6 +4,35 @@ import (
 	"testing"
 )
 
+func TestNewTokenTracker_ReusesSharedDefaultPricingBacking(t *testing.T) {
+	first := NewTokenTracker()
+	second := NewTokenTracker()
+
+	if len(first.pricing) == 0 || len(second.pricing) == 0 {
+		t.Fatal("expected default pricing entries")
+	}
+	if &first.pricing[0] != &second.pricing[0] {
+		t.Fatal("expected NewTokenTracker to reuse shared default pricing backing")
+	}
+}
+
+func TestDefaultTokenPricing_ReturnsIndependentCopy(t *testing.T) {
+	first := DefaultTokenPricing()
+	second := DefaultTokenPricing()
+
+	if len(first) == 0 || len(second) == 0 {
+		t.Fatal("expected default pricing entries")
+	}
+	if &first[0] == &second[0] {
+		t.Fatal("expected DefaultTokenPricing to return independent copies")
+	}
+
+	first[0].InputPrice = 999
+	if second[0].InputPrice == 999 {
+		t.Fatal("expected modifying one DefaultTokenPricing result not to affect another")
+	}
+}
+
 func TestTokenTracker_RecordTokenUsage(t *testing.T) {
 	tracker := NewTokenTracker()
 

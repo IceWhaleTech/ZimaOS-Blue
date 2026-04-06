@@ -41,12 +41,12 @@ type Config struct {
 	Media       MediaConfig          `yaml:"media"`
 	SkillMarket SkillMarketConfig    `yaml:"skill_market"`
 	Browser     browser.Config       `yaml:"browser"`
-	Agents      AgentsConfig         `yaml:"agents"`    // v0.11.0
-	Research    ResearchConfig       `yaml:"research"`  // v0.11.x
-	Harness     HarnessConfig        `yaml:"harness"`   // v0.11.x
-	Proxy       *proxy.ProxyConfig   `yaml:"proxy"`     // v0.10.5.1: API Proxy
-	Pruner      *pruner.Config       `yaml:"pruner"`    // v0.10.27: Context Pruner
-	Update      UpdateConfig         `yaml:"update"`    // OTA Update
+	Agents      AgentsConfig         `yaml:"agents"`   // v0.11.0
+	Research    ResearchConfig       `yaml:"research"` // v0.11.x
+	Harness     HarnessConfig        `yaml:"harness"`  // v0.11.x
+	Proxy       *proxy.ProxyConfig   `yaml:"proxy"`    // v0.10.5.1: API Proxy
+	Pruner      *pruner.Config       `yaml:"pruner"`   // v0.10.27: Context Pruner
+	Update      UpdateConfig         `yaml:"update"`   // OTA Update
 }
 
 // CompanionConfig holds Echo Companion monitoring configuration (v0.9.1).
@@ -473,6 +473,11 @@ func applyEnvOverrides(cfg *Config) {
 			cfg.ToolCalling.WebFetch.LayeredFetchEnabled = enabled
 		}
 	}
+	if v := os.Getenv("BLUE_SESSION_AUDIT_IPC_ENABLED"); v != "" {
+		if enabled, err := strconv.ParseBool(v); err == nil {
+			cfg.Session.Audit.IPCEnabled = enabled
+		}
+	}
 	if v := os.Getenv("BLUE_WEB_FETCH_SESSION_MEMORY_ENABLED"); v != "" {
 		if enabled, err := strconv.ParseBool(v); err == nil {
 			cfg.ToolCalling.WebFetch.SessionMemoryEnabled = enabled
@@ -687,6 +692,7 @@ func defaults() Config {
 			IdleTimeout:                 30 * time.Minute,
 			ChatDBDurability:            "normal",
 			ChatPersistAsync:            true,
+			ChatPersistFlushOnResponse:  false,
 			ChatReadLite:                true,
 			ChatAttachmentExternalStore: true,
 			Compaction:                  SessionCompactionConfig{Enabled: true, Threshold: 0.8, Strategy: "summarize", SummaryMaxTokens: 500, PreserveRecent: 5, AutoCompact: true, AutoCompactInterval: 5 * time.Minute},
@@ -696,6 +702,7 @@ func defaults() Config {
 			Audit: SessionAuditConfig{
 				Enabled:          true,
 				Path:             "",
+				IPCEnabled:       false,
 				RetentionDays:    30,
 				CleanupInterval:  6 * time.Hour,
 				CleanupBatchSize: 500,

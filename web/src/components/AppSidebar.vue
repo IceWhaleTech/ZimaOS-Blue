@@ -210,11 +210,7 @@ function setStorageItem(key: string, value: string): void {
   }
 }
 
-function tr(
-  key: string,
-  fallback: string,
-  values?: Record<string, string | number>
-): string {
+function tr(key: string, fallback: string, values?: Record<string, string | number>): string {
   if (te(key)) return values ? t(key, values) : t(key)
   return fallback
 }
@@ -798,7 +794,7 @@ const configurationNavItemsConfig: NavItem[] = [
   {
     id: 'automation',
     name: 'nav.automation',
-    path: '/automation',
+    path: '/operations',
     icon: 'M12 4l1.4 3.6L17 9l-3.6 1.4L12 14l-1.4-3.6L7 9l3.6-1.4L12 4zm6.5 7.5l.75 1.75L21 14l-1.75.75L18.5 16.5l-.75-1.75L16 14l1.75-.75.75-1.75zM5.5 14.5l1 2.5L9 18l-2.5 1L5.5 21.5l-1-2.5L2 18l2.5-1 1-2.5z',
     permission: PagePermissions.AUTOMATION,
     adminOnly: true,
@@ -970,7 +966,9 @@ const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
   return baseRows.map((row) => {
     const entryPathKey = toPathKey(String(row.entry.path || ''))
     const generatedRecord =
-      row.directGeneratedRecord || (entryPathKey ? inheritedRecordByTreePath.get(entryPathKey) : null) || null
+      row.directGeneratedRecord ||
+      (entryPathKey ? inheritedRecordByTreePath.get(entryPathKey) : null) ||
+      null
     const isCurrentConversation =
       !!generatedRecord &&
       !!currentConversationId &&
@@ -1087,7 +1085,10 @@ const workspaceTreeFilterLabel = computed(() => {
 })
 
 const workspaceTreeCurrentConversationFilterLabel = computed(() => {
-  if (workspaceTreeFocusCurrentConversation.value && workspaceTreeHasCurrentConversationMatches.value) {
+  if (
+    workspaceTreeFocusCurrentConversation.value &&
+    workspaceTreeHasCurrentConversationMatches.value
+  ) {
     return tr('nav.workspaceTreeShowAllConversations', 'Show all conversations')
   }
   return tr('nav.workspaceTreeFocusCurrentConversation', 'Current conversation')
@@ -1796,10 +1797,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                 v-if="workspaceStats"
                 class="text-xs px-2 py-1 rounded-full flex-shrink-0"
                 :title="
-                  tr(
-                    'workspace.coreTokensHint',
-                    'Counts only the core workspace files shown here.'
-                  )
+                  tr('workspace.coreTokensHint', 'Counts only the core workspace files shown here.')
                 "
                 :class="
                   coreWorkspaceTokenTotal > 4096
@@ -1956,7 +1954,9 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               >
                 <span
                   class="h-1.5 w-1.5 rounded-full"
-                  :class="workspaceTreeFocusCurrentConversation ? 'bg-white animate-pulse' : 'bg-blue-500'"
+                  :class="
+                    workspaceTreeFocusCurrentConversation ? 'bg-white animate-pulse' : 'bg-blue-500'
+                  "
                 />
                 <span>{{ workspaceTreeCurrentConversationFilterLabel }}</span>
                 <span
@@ -2038,7 +2038,9 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                           v-if="row.isCurrentConversation"
                           class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200 flex-shrink-0"
                         >
-                          {{ tr('nav.workspaceTreeCurrentConversationBadge', 'Current conversation') }}
+                          {{
+                            tr('nav.workspaceTreeCurrentConversationBadge', 'Current conversation')
+                          }}
                         </span>
                         <span
                           v-if="row.isRecentCurrentConversationDirectMatch"

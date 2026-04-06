@@ -16,12 +16,14 @@ func toToolResearchJob(job *deepresearch.Job) *tools.ResearchJob {
 	if job == nil {
 		return nil
 	}
+	mode, researchDepth := toolResearchModeAndDepth(job.Mode)
 	out := &tools.ResearchJob{
 		ID:                 job.ID,
 		ConversationID:     job.ConversationID,
 		Status:             string(job.Status),
 		Query:              job.Query,
-		Mode:               string(job.Mode),
+		Mode:               mode,
+		ResearchDepth:      researchDepth,
 		RequestedRouteMode: string(job.RequestedRouteMode),
 		EffectiveRouteMode: string(job.EffectiveRouteMode),
 		RouteReason:        job.RouteReason,

@@ -10,7 +10,7 @@ const routeComponents: Record<string, () => Promise<unknown>> = {
   Home: () => import('@/views/HomeView.vue'),
   Chat: () => import('@/views/ChatView.vue'),
   Channels: () => import('@/views/ChannelsView.vue'),
-  CronJobs: () => import('@/views/CronView.vue'),
+  Operations: () => import('@/views/CronView.vue'),
   Settings: () => import('@/views/SettingsView.vue'),
   Plugins: () => import('@/views/PluginsView.vue'),
   Profile: () => import('@/views/ProfileView.vue'),

@@ -245,6 +245,17 @@ type SessionRouteProvider interface {
 	CaptureBrowserSessionScreenshot(ctx context.Context, id string) (*SessionScreenshotResponse, error)
 }
 
+type BrowserOverviewTaskQuery struct {
+	UserID         string
+	ConversationID string
+	Scope          string
+	Limit          int
+}
+
+type BrowserOverviewTaskProvider interface {
+	List(ctx context.Context, query BrowserOverviewTaskQuery) ([]map[string]any, error)
+}
+
 // BrowserStrategy selects how Blue routes browser work.
 type BrowserStrategy string
 

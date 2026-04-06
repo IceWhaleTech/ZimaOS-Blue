@@ -5,6 +5,7 @@ import { previewApi, type PresetQuestion, type PresetQuestionAttachment } from '
 import PresetQuestionCard from './PresetQuestionCard.vue'
 import type { FileAttachment } from '@/components/ChatInput.vue'
 import {
+  PRESET_FEED_INITIAL_LOAD_COUNT,
   PRESET_FEED_INTERESTS,
   PRESET_FEED_INTEREST_I18N_KEYS,
   PRESET_FEED_PAGE_SIZE,
@@ -28,6 +29,10 @@ const emit = defineEmits<{
 
 const questions = ref<PresetQuestion[]>([])
 const loading = ref(false)
+const loadingMore = ref(false)
+const totalQuestions = ref(0)
+const nextOffset = ref(0)
+const hasMore = ref(false)
 const feedState = ref(loadTryFeedState())
 const scrollContainerRef = ref<HTMLDivElement | null>(null)
 
@@ -81,49 +86,64 @@ const filteredQuestions = computed(() => {
 })
 
 const visibleQuestions = computed(() => filteredQuestions.value.slice(0, PRESET_FEED_PAGE_SIZE))
+const placeholderCount = computed(() => {
+  if (loading.value) {
+    return PRESET_FEED_PAGE_SIZE
+  }
+  if (!hasMore.value) {
+    return 0
+  }
+
+  const reservedSlots = Math.min(
+    PRESET_FEED_PAGE_SIZE,
+    Math.max(totalQuestions.value, questions.value.length)
+  )
+  return Math.max(0, reservedSlots - questions.value.length)
+})
 
 function getLangCode(): string {
   return isChineseLocale.value ? 'zh' : 'en'
 }
 
-// Map of placeholder names to real sample file paths
-const sampleFilePaths: Record<string, { path: string; mimeType: string }> = {
-  'sample-image': { path: '/samples/landscape.jpg', mimeType: 'image/jpeg' },
-  'sample-photo': { path: '/samples/room.jpg', mimeType: 'image/jpeg' },
-  'sample-scene': { path: '/samples/cityscape.jpg', mimeType: 'image/jpeg' },
-  'sample-chart': { path: '/samples/chart.png', mimeType: 'image/png' },
-  'sample-text-image': { path: '/samples/invoice.jpg', mimeType: 'image/jpeg' },
-  'sample-code': { path: '/samples/hello.py', mimeType: 'text/x-python' },
-  'sample-document': { path: '/samples/report.txt', mimeType: 'text/plain' },
-  'sample-csv': { path: '/samples/sales_data.csv', mimeType: 'text/csv' },
-  'sample-json': { path: '/samples/config.json', mimeType: 'application/json' },
-  'sample-js': { path: '/samples/buggy_calculator.js', mimeType: 'text/javascript' },
+function isBundledSampleAttachment(attachment: PresetQuestionAttachment): boolean {
+  return String(attachment.placeholder || '').startsWith('sample-')
 }
 
-// Fetch a real sample file from the public folder
-async function fetchSampleFile(
-  placeholder: string
-): Promise<{ blob: Blob; preview?: string } | null> {
-  const fileInfo = sampleFilePaths[placeholder]
-  if (!fileInfo) return null
-
-  try {
-    const response = await fetch(fileInfo.path)
-    if (!response.ok) return null
-
-    const blob = await response.blob()
-
-    // Generate preview for images
-    let preview: string | undefined
-    if (fileInfo.mimeType.startsWith('image/')) {
-      preview = URL.createObjectURL(blob)
-    }
-
-    return { blob, preview }
-  } catch (error) {
-    console.error(`Failed to fetch sample file: ${placeholder}`, error)
-    return null
+function stripBundledSampleAttachments(question: PresetQuestion): PresetQuestion {
+  if (!question.attachments?.length) {
+    return question
   }
+
+  const attachments = question.attachments.filter((attachment) => !isBundledSampleAttachment(attachment))
+  if (attachments.length === question.attachments.length) {
+    return question
+  }
+  if (attachments.length === 0) {
+    return { ...question, attachments: undefined }
+  }
+  return { ...question, attachments }
+}
+
+function applyQuestionPage(
+  response: { questions: PresetQuestion[]; total: number; next_offset: number; has_more: boolean },
+  append = false
+) {
+  const normalizedQuestions = response.questions.map(stripBundledSampleAttachments)
+  const mergedQuestions = append ? [...questions.value, ...normalizedQuestions] : normalizedQuestions
+  const seen = new Set<string>()
+  questions.value = mergedQuestions.filter((question) => {
+    if (seen.has(question.id)) {
+      return false
+    }
+    seen.add(question.id)
+    return true
+  })
+
+  totalQuestions.value = Number.isFinite(response.total) ? response.total : questions.value.length
+  nextOffset.value = Number.isFinite(response.next_offset)
+    ? response.next_offset
+    : questions.value.length
+  hasMore.value = Boolean(response.has_more) && nextOffset.value < totalQuestions.value
 }
 
 // Convert preset question attachments to FileAttachment format
@@ -137,26 +157,8 @@ async function convertAttachments(
   const attachments: FileAttachment[] = []
 
   for (const att of presetAttachments) {
-    if (!att.placeholder) continue
-    // Try to fetch real sample file first
-    const sampleFile = await fetchSampleFile(att.placeholder)
-
-    if (sampleFile) {
-      const file = new File([sampleFile.blob], att.name, { type: att.mime_type })
-
-      attachments.push({
-        id: Math.random().toString(36).substring(2, 15),
-        file,
-        name: att.name,
-        size: file.size,
-        type: att.mime_type,
-        preview: sampleFile.preview,
-      })
-    } else {
-      console.warn(
-        '[PresetQuestions] Failed to fetch sample file for placeholder:',
-        att.placeholder
-      )
+    if (isBundledSampleAttachment(att)) {
+      continue
     }
   }
 
@@ -164,14 +166,57 @@ async function convertAttachments(
 }
 
 async function fetchQuestions() {
+  let shouldLoadRemaining = false
   try {
     loading.value = true
-    const response = await previewApi.getPresetQuestions(PRESET_FEED_PAGE_SIZE, getLangCode())
-    questions.value = response.data.questions
+    loadingMore.value = false
+    questions.value = []
+    totalQuestions.value = 0
+    nextOffset.value = 0
+    hasMore.value = false
+
+    const response = await previewApi.getPresetQuestions(
+      PRESET_FEED_INITIAL_LOAD_COUNT,
+      getLangCode(),
+      0
+    )
+    applyQuestionPage(response.data)
+    shouldLoadRemaining = feedState.value.selectedTags.length > 0 && hasMore.value
   } catch (error) {
     console.error('Failed to fetch preset questions:', error)
   } finally {
     loading.value = false
+  }
+
+  if (shouldLoadRemaining) {
+    void loadRemainingQuestions()
+  }
+}
+
+async function loadRemainingQuestions() {
+  if (loading.value || loadingMore.value || !hasMore.value) {
+    return
+  }
+
+  const remainingSlots =
+    Math.min(PRESET_FEED_PAGE_SIZE, totalQuestions.value) - questions.value.length
+  if (remainingSlots <= 0) {
+    hasMore.value = false
+    return
+  }
+
+  try {
+    loadingMore.value = true
+    const response = await previewApi.getPresetQuestions(
+      remainingSlots,
+      getLangCode(),
+      nextOffset.value
+    )
+    applyQuestionPage(response.data, true)
+  } catch (error) {
+    console.error('Failed to load more preset questions:', error)
+  } finally {
+    loadingMore.value = false
   }
 }
 
@@ -198,6 +243,9 @@ function toggleInterest(interest: PresetFeedInterestId) {
   }
   persistFeedState()
   resetScrollPosition()
+  if (hasMore.value) {
+    void loadRemainingQuestions()
+  }
 }
 
 function tagLabel(tag: PresetFeedInterestId): string {
@@ -216,6 +264,18 @@ async function handleQuestionClick(question: PresetQuestion) {
   feedState.value = recordPresetQuestionSend(feedState.value, question)
   persistFeedState()
   emit('select', question.prompt || question.text, attachments.length > 0 ? attachments : undefined)
+}
+
+function handleScroll() {
+  const container = scrollContainerRef.value
+  if (!container || loading.value || loadingMore.value || !hasMore.value) {
+    return
+  }
+
+  const remainingDistance = container.scrollHeight - (container.scrollTop + container.clientHeight)
+  if (remainingDistance <= 64) {
+    void loadRemainingQuestions()
+  }
 }
 
 onMounted(() => {
@@ -262,10 +322,11 @@ watch(
       ref="scrollContainerRef"
       class="preset-questions-scroll mt-2 overflow-y-auto pe-1"
       data-testid="preset-questions-scroll"
+      @scroll.passive="handleScroll"
     >
       <div v-if="loading" class="preset-questions-list flex flex-col">
         <div
-          v-for="i in 4"
+          v-for="i in PRESET_FEED_PAGE_SIZE"
           :key="i"
           class="h-[var(--preset-question-row-height)] animate-pulse rounded-[1.25rem] bg-gray-100 dark:bg-gray-800"
         />
@@ -278,6 +339,14 @@ watch(
           :tag-labels="resolveQuestionTagLabels(question)"
           @click="handleQuestionClick"
         />
+        <div
+          v-for="i in placeholderCount"
+          :key="`placeholder-${i}`"
+          class="h-[var(--preset-question-row-height)] rounded-[1.25rem] border border-dashed border-slate-200/80 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/60"
+          data-testid="preset-question-placeholder"
+        >
+          <div class="h-full animate-pulse rounded-[1rem] bg-slate-200/80 dark:bg-slate-800/80" />
+        </div>
       </div>
     </div>
   </div>

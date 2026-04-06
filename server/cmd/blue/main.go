@@ -47,7 +47,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/password"
 	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
@@ -74,7 +73,7 @@ import (
 )
 
 var (
-	version   = "0.10.38"
+	version   = "0.10.39"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -583,7 +582,7 @@ func runServerOnce() serverRunOutcome {
 	chatStoreOpts.CheckpointInterval = 0
 	chatStoreOpts.AttachmentExternalStore = cfg.Session.ChatAttachmentExternalStore
 	if chatStoreOpts.AttachmentExternalStore {
-		chatStoreOpts.AttachmentDir = filepath.Join(dataDir, "message_attachments")
+		chatStoreOpts.AttachmentDir = memory.DefaultChatAttachmentDir(dataDir)
 	}
 	memoryStore, err := memory.NewStoreWithOptions(chatDBPath, chatStoreOpts)
 	if err != nil {
@@ -646,20 +645,14 @@ func runServerOnce() serverRunOutcome {
 	}
 	logger.Info().Int("count", skillRegistry.Count()).Msg("Built-in skills registered")
 
-	// Initialize plugin registry and store
-	pluginRegistry := plugin.NewRegistry()
-	pluginStoreConfig := plugin.DefaultStoreConfig()
-	pluginStoreConfig.CacheDir = filepath.Join(getDataDir(), "plugin-cache")
-	pluginStore := plugin.NewStore(pluginStoreConfig, pluginRegistry)
-	logger.Info().Msg("Plugin store initialized")
-
 	var a2uiManager *a2ui.Manager
 	var ocrService *ocrruntime.TesseractService
 	var pdfService *pdfextract.Service
+	var auditStore *sessionaudit.Store
 
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(memoryStore, llmRegistry, toolRegistry)
-	chatHandler.SetPersistenceOptions(cfg.Session.ChatPersistAsync, cfg.Session.ChatReadLite)
+	chatHandler.SetPersistenceOptions(cfg.Session.ChatPersistAsync, cfg.Session.ChatReadLite, cfg.Session.ChatPersistFlushOnResponse)
 	if cfg.Session.Audit.Enabled {
 		auditCfg := sessionaudit.StoreConfig{
 			RetentionDays:      cfg.Session.Audit.RetentionDays,
@@ -669,21 +662,29 @@ func runServerOnce() serverRunOutcome {
 			WALAutoCheckpoint:  4000,
 			CheckpointInterval: 0,
 		}
-		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
-		var (
-			auditStore *sessionaudit.Store
-			err        error
-		)
-		if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
-			logger.Warn().Err(mkErr).Str("path", auditDBPath).Msg("Failed to create session audit directory")
+		var err error
+		auditPath := strings.TrimSpace(cfg.Session.Audit.Path)
+		if auditPath == "" {
+			auditStore, err = sessionaudit.NewJSONLStore(dataDir, auditCfg)
+			if err != nil {
+				logger.Warn().Err(err).Str("path", sessionaudit.ResolveRawLogDir(dataDir)).Msg("Failed to initialize session audit JSONL store")
+			} else if auditStore != nil {
+				chatHandler.SetSessionAuditStore(auditStore)
+				logger.Info().Str("path", sessionaudit.ResolveRawLogDir(dataDir)).Int("retention_days", cfg.Session.Audit.RetentionDays).Msg("Session tool payload audit store enabled (jsonl)")
+			}
 		} else {
-			auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
-		}
-		if err != nil {
-			logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to initialize session audit store")
-		} else if auditStore != nil {
-			chatHandler.SetSessionAuditStore(auditStore)
-			logger.Info().Str("path", auditDBPath).Int("retention_days", cfg.Session.Audit.RetentionDays).Msg("Session tool payload audit store enabled")
+			auditDBPath := sessionaudit.ResolveDBPath(dataDir, auditPath)
+			if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
+				logger.Warn().Err(mkErr).Str("path", auditDBPath).Msg("Failed to create session audit directory")
+			} else {
+				auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
+			}
+			if err != nil {
+				logger.Warn().Err(err).Str("path", auditDBPath).Msg("Failed to initialize session audit SQLite store")
+			} else if auditStore != nil {
+				chatHandler.SetSessionAuditStore(auditStore)
+				logger.Info().Str("path", auditDBPath).Int("retention_days", cfg.Session.Audit.RetentionDays).Msg("Session tool payload audit store enabled (sqlite)")
+			}
 		}
 	}
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -692,7 +693,6 @@ func runServerOnce() serverRunOutcome {
 		_ = memoryStore.Close()
 		return nil
 	})
-
 	// Initialize external auth service (for OAuth/OIDC providers)
 	extauthService, err := extauth.NewService(&extauth.ServiceConfig{
 		Providers:    []*extauth.ProviderConfig{}, // No providers configured by default
@@ -789,14 +789,31 @@ func runServerOnce() serverRunOutcome {
 	userHandler.SetJWTService(jwtService)
 
 	// Initialize auto-reply service and handler
-	zapLogger, _ := zap.NewProduction()
+	zapLogger, _ := newAuxServiceLogger()
+	if cfg.Session.Audit.Enabled && cfg.Session.Audit.IPCEnabled && auditStore != nil {
+		auditSockPath := bootstrap.ResolveAuditIPCSocketPath(dataDir)
+		auditIPCSrv := sockipc.NewServer(auditSockPath, zapLogger)
+		sockipc.RegisterAuditHandlers(auditIPCSrv, auditStore, zapLogger)
+		if err := auditIPCSrv.Start(); err != nil {
+			logger.Warn().Err(err).Str("path", auditSockPath).Msg("Failed to start session audit IPC server")
+		} else {
+			lm.RegisterShutdownHook(func(ctx context.Context) error {
+				_ = ctx
+				return auditIPCSrv.Close()
+			})
+			logger.Info().Str("path", auditSockPath).Msg("Session audit IPC server started")
+		}
+	}
 	a2uiManager = a2ui.NewManager(zapLogger)
 	ocrService = ocrruntime.NewTesseractService(zapLogger, ocrruntime.Config{
 		ModelDir:     filepath.Join(dataDir, "models", "tesseract"),
 		AutoDownload: true,
 		WorkerCount:  1,
 	})
-	pdfService = pdfextract.NewService(zapLogger, ocrService)
+	pdfService = pdfextract.NewService(zapLogger, ocrService, pdfextract.ServiceConfig{
+		RuntimeDir:   filepath.Join(dataDir, "models", "pdfium"),
+		AutoDownload: true,
+	})
 	tools.RegisterCanvasTools(toolRegistry, a2uiManager)
 	tools.AttachPDFServiceToWebTools(toolRegistry, pdfService)
 	tools.RegisterPDFTool(toolRegistry, pdfService)
@@ -820,7 +837,6 @@ func runServerOnce() serverRunOutcome {
 		ttsService        tts.Service
 		voiceHandler      *voice.Handler
 		workflowHandler   *workflow.Handler
-		formfillerStore   *formfiller.Store
 		formfillerHandler *formfiller.Handler
 		ngrokTunnelMgr    *ngrok.SDKTunnelManager
 		ngrokConfigStore  *ngrok.ConfigStore
@@ -1282,17 +1298,8 @@ func runServerOnce() serverRunOutcome {
 	// This avoids heavy initialization at startup
 	logger.Info().Msg("TTS/STT services will be initialized on demand (when chat page is opened)")
 
-	initPool.Go(func() {
-		// Form filler store
-		var err error
-		formfillerStore, err = formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
-		if err != nil {
-			logger.Warn().Err(err).Msg("Failed to initialize form filler store, form filler features will be disabled")
-			return
-		}
-		formfillerHandler = formfiller.NewHandler(formfillerStore)
-		logger.Info().Msg("Form filler handler initialized")
-	})
+	formfillerHandler = bootstrap.NewRuntimeFormfillerHandler()
+	logger.Info().Msg("Form filler is disabled")
 
 	var companionHandler *companion.Handler
 	var companionWSHandler *companion.WebSocketHandler
@@ -1401,7 +1408,7 @@ func runServerOnce() serverRunOutcome {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, pluginRegistry, pluginStore, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, dbConn, db, dbReader, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, lightpandaShimSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, dbConn, db, dbReader, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, lightpandaShimSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1528,7 +1535,7 @@ func runServerOnce() serverRunOutcome {
 	return serverRunOutcome{RestartRequested: restartController.Requested()}
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, pluginRegistry *plugin.Registry, pluginStore *plugin.Store, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, dbConn *dbutil.SQLiteConn, db, dbReader *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, dbConn *dbutil.SQLiteConn, db, dbReader *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1809,8 +1816,6 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		MetricsWriter:    metricsWriter,
 		MetricsCollector: metricsCollector,
 		ChatHandler:      chatHandler,
-		PluginRegistry:   pluginRegistry,
-		PluginStore:      pluginStore,
 		ExtauthHandler:   extauthHandler,
 		AutoreplyService: autoreplyService,
 		AutoreplyHandler: autoreplyHandler,

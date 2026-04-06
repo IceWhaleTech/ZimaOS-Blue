@@ -33,6 +33,13 @@ type MigrationResult struct {
 	BackupPath    string   `json:"backup_path,omitempty"`
 }
 
+type legacyProviderDefaults struct {
+	DisplayName string
+	BaseURL     string
+	Priority    int
+	Type        ProviderType
+}
+
 // MigrateFromLegacy migrates provider settings from the old format to the new Provider Pool format
 func MigrateFromLegacy(dataDir string, pool *Pool) (*MigrationResult, error) {
 	result := &MigrationResult{}
@@ -81,28 +88,37 @@ func MigrateFromLegacy(dataDir string, pool *Pool) (*MigrationResult, error) {
 			continue
 		}
 
-		// Determine provider type: custom providers should be ProviderTypeCustom
+		defaults, hasDefaults := lookupLegacyProviderDefaults(providerID)
+
 		providerType := ProviderTypeCustom
-		if isBuiltinProvider(providerID) {
-			providerType = getBuiltinProviderType(providerID)
+		if hasDefaults {
+			providerType = defaults.Type
+		} else if builtinType, ok := lookupBuiltinProviderType(providerID); ok {
+			providerType = builtinType
+		}
+
+		displayName := providerID
+		baseURL := legacyProvider.BaseURL
+		priority := 50
+		if hasDefaults {
+			displayName = defaults.DisplayName
+			priority = defaults.Priority
+			if baseURL == "" {
+				baseURL = defaults.BaseURL
+			}
 		}
 
 		// Create new provider
 		provider := &Provider{
 			ID:        providerID,
-			Name:      getProviderDisplayName(providerID),
+			Name:      displayName,
 			Type:      providerType,
 			Enabled:   legacyProvider.Enabled,
 			Status:    ProviderStatusInactive,
-			BaseURL:   legacyProvider.BaseURL,
-			Priority:  getDefaultPriority(providerID),
+			BaseURL:   baseURL,
+			Priority:  priority,
 			CreatedAt: timeutil.NowTime(),
 			UpdatedAt: timeutil.NowTime(),
-		}
-
-		// Set default base URL if not specified
-		if provider.BaseURL == "" {
-			provider.BaseURL = getDefaultBaseURL(providerID)
 		}
 
 		// Add API key if present
@@ -146,70 +162,78 @@ func MigrateFromLegacy(dataDir string, pool *Pool) (*MigrationResult, error) {
 
 // mapLegacyProviderName maps old provider names to new provider IDs
 func mapLegacyProviderName(name string) string {
-	mapping := map[string]string{
-		"claude": "anthropic",
-		"openai": "openai",
-		"ollama": "ollama",
-		"custom": "custom",
-	}
-
-	if id, ok := mapping[name]; ok {
-		return id
-	}
-	return name
-}
-
-// getProviderDisplayName returns the display name for a provider ID
-func getProviderDisplayName(id string) string {
-	names := map[string]string{
-		"anthropic": "Anthropic",
-		"openai":    "OpenAI",
-		"ollama":    "Ollama",
-		"custom":    "Custom Provider",
-		"deepseek":  "DeepSeek",
-		"google":    "Google AI",
-		"moonshot":  "Moonshot",
-	}
-
-	if name, ok := names[id]; ok {
+	switch name {
+	case "claude":
+		return "anthropic"
+	case "openai", "ollama", "custom":
+		return name
+	default:
 		return name
 	}
-	return id
 }
 
-// getDefaultBaseURL returns the default base URL for a provider
-func getDefaultBaseURL(id string) string {
-	urls := map[string]string{
-		"anthropic": "https://api.anthropic.com",
-		"openai":    "https://api.openai.com/v1",
-		"ollama":    "http://localhost:11434",
-		"deepseek":  "https://api.deepseek.com",
-		"google":    "https://generativelanguage.googleapis.com",
-		"moonshot":  "https://api.moonshot.cn/v1",
+func lookupLegacyProviderDefaults(id string) (legacyProviderDefaults, bool) {
+	switch id {
+	case "anthropic":
+		return legacyProviderDefaults{
+			DisplayName: "Anthropic",
+			BaseURL:     "https://api.anthropic.com",
+			Priority:    100,
+			Type:        ProviderTypeBuiltin,
+		}, true
+	case "openai":
+		return legacyProviderDefaults{
+			DisplayName: "OpenAI",
+			BaseURL:     "https://api.openai.com/v1",
+			Priority:    90,
+			Type:        ProviderTypeBuiltin,
+		}, true
+	case "ollama":
+		return legacyProviderDefaults{
+			DisplayName: "Ollama",
+			BaseURL:     "http://localhost:11434",
+			Priority:    50,
+			Type:        ProviderTypeBuiltin,
+		}, true
+	case "custom":
+		return legacyProviderDefaults{
+			DisplayName: "Custom Provider",
+			Priority:    40,
+			Type:        ProviderTypeCustom,
+		}, true
+	case "deepseek":
+		return legacyProviderDefaults{
+			DisplayName: "DeepSeek",
+			BaseURL:     "https://api.deepseek.com",
+			Priority:    80,
+			Type:        ProviderTypeBuiltin,
+		}, true
+	case "google":
+		return legacyProviderDefaults{
+			DisplayName: "Google AI",
+			BaseURL:     "https://generativelanguage.googleapis.com",
+			Priority:    70,
+			Type:        ProviderTypeBuiltin,
+		}, true
+	case "moonshot":
+		return legacyProviderDefaults{
+			DisplayName: "Moonshot",
+			BaseURL:     "https://api.moonshot.cn/v1",
+			Priority:    60,
+			Type:        ProviderTypeBuiltin,
+		}, true
+	default:
+		return legacyProviderDefaults{Type: ProviderTypeCustom}, false
 	}
-
-	if url, ok := urls[id]; ok {
-		return url
-	}
-	return ""
 }
 
-// getDefaultPriority returns the default priority for a provider
-func getDefaultPriority(id string) int {
-	priorities := map[string]int{
-		"anthropic": 100,
-		"openai":    90,
-		"deepseek":  80,
-		"google":    70,
-		"moonshot":  60,
-		"ollama":    50,
-		"custom":    40,
+func lookupBuiltinProviderType(id string) (ProviderType, bool) {
+	for _, p := range BuiltinProviders() {
+		if p.ID == id {
+			return p.Type, true
+		}
 	}
-
-	if priority, ok := priorities[id]; ok {
-		return priority
-	}
-	return 50
+	return "", false
 }
 
 // hashAPIKey creates a hash representation of an API key for display
@@ -234,26 +258,6 @@ func CheckMigrationNeeded(dataDir string) bool {
 	legacyPath := filepath.Join(dataDir, "provider_settings.json")
 	_, err := os.Stat(legacyPath)
 	return err == nil
-}
-
-// isBuiltinProvider checks if a provider ID is a built-in provider
-func isBuiltinProvider(id string) bool {
-	for _, p := range BuiltinProviders() {
-		if p.ID == id {
-			return true
-		}
-	}
-	return false
-}
-
-// getBuiltinProviderType returns the type for a known builtin/platform provider.
-func getBuiltinProviderType(id string) ProviderType {
-	for _, p := range BuiltinProviders() {
-		if p.ID == id {
-			return p.Type
-		}
-	}
-	return ProviderTypeCustom
 }
 
 // DeduplicateResult contains the result of a deduplication operation

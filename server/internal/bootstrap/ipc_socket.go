@@ -15,3 +15,13 @@ func resolveIPCSocketPath(dataDir string) string {
 	}
 	return "/tmp/blue.sock"
 }
+
+func ResolveAuditIPCSocketPath(dataDir string) string {
+	if sockPath := strings.TrimSpace(os.Getenv("BLUE_AUDIT_IPC_SOCKET")); sockPath != "" {
+		return sockPath
+	}
+	if dataDir = strings.TrimSpace(dataDir); dataDir != "" {
+		return filepath.Join(dataDir, "session_audit.sock")
+	}
+	return "/tmp/session_audit.sock"
+}

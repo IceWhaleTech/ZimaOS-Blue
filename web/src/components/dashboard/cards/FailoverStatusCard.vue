@@ -79,14 +79,10 @@ const healthyBreakersCount = computed(() => {
 // Methods
 async function fetchData() {
   try {
-    const [metricsRes, configRes, breakersRes] = await Promise.all([
-      providerPoolApi.getFailoverMetrics(),
-      providerPoolApi.getFailoverConfig(),
-      providerPoolApi.getCircuitBreakerStatus(),
-    ])
-    metrics.value = metricsRes.data
-    config.value = configRes.data
-    circuitBreakers.value = breakersRes.data
+    const overviewRes = await providerPoolApi.getFailoverOverview()
+    metrics.value = overviewRes.data.metrics
+    config.value = overviewRes.data.config
+    circuitBreakers.value = overviewRes.data.circuit_breakers
   } catch (e) {
     console.error('Failed to fetch failover data:', e)
   } finally {

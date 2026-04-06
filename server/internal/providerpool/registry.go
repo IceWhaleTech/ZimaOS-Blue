@@ -340,22 +340,34 @@ func (r *Registry) UpdateStatus(id string, status ProviderStatus, lastError stri
 	id = validatedID
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	provider, exists := r.providers[id]
 	if !exists {
+		r.mu.Unlock()
 		return ErrProviderNotFound
 	}
 
+	oldStatus := provider.Status
 	provider.Status = status
 	provider.UpdatedAt = timeutil.NowTime()
 	if lastError != "" {
 		provider.LastError = lastError
 		provider.LastErrorTime = timeutil.NowTime()
+	} else if status != ProviderStatusError {
+		provider.LastError = ""
+		provider.LastErrorTime = time.Time{}
 	}
 
 	if err := r.storage.SaveProvider(provider); err != nil {
+		r.mu.Unlock()
 		return err
+	}
+
+	callback := r.onStatusChange
+	r.mu.Unlock()
+
+	if callback != nil && oldStatus != status {
+		callback(id, oldStatus, status)
 	}
 
 	return nil
@@ -370,20 +382,29 @@ func (r *Registry) ClearError(id string) error {
 	id = validatedID
 
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	provider, exists := r.providers[id]
 	if !exists {
+		r.mu.Unlock()
 		return ErrProviderNotFound
 	}
 
+	oldStatus := provider.Status
 	// Clear error state
 	provider.LastError = ""
 	provider.LastErrorTime = time.Time{}
 	provider.Status = ProviderStatusActive
 
 	if err := r.storage.SaveProvider(provider); err != nil {
+		r.mu.Unlock()
 		return err
+	}
+
+	callback := r.onStatusChange
+	r.mu.Unlock()
+
+	if callback != nil && oldStatus != provider.Status {
+		callback(id, oldStatus, provider.Status)
 	}
 
 	return nil
@@ -422,6 +443,7 @@ func (r *Registry) AddAPIKey(providerID string, key *APIKey) error {
 	}
 
 	provider.APIKeys = append(provider.APIKeys, *key)
+	provider.Enabled = true
 	provider.UpdatedAt = timeutil.NowTime()
 	if err := r.storage.SaveProvider(provider); err != nil {
 		return err
@@ -463,6 +485,10 @@ func (r *Registry) RemoveAPIKey(providerID, keyID string) error {
 	}
 
 	provider.APIKeys = newKeys
+	if len(provider.APIKeys) == 0 && (provider.OAuth == nil || !provider.OAuth.Connected) {
+		provider.Enabled = false
+		provider.Status = ProviderStatusInactive
+	}
 	provider.UpdatedAt = timeutil.NowTime()
 	if err := r.storage.SaveProvider(provider); err != nil {
 		return err

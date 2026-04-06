@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -50,6 +51,7 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages after login or click flows", "blue browser.navigate url=https://example.com", "browser", "login", "click", "page")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze multiple links and synthesize a report", `blue analyze topic="multi-link report" --json`, "analysis", "report", "summary", "link", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "deep_research", "perform cited timeline comparisons and deep research", `blue deep_research query="OpenAI vs Anthropic agent runtime"`, "research", "citation", "timeline", "compare")
+	writeSettingsSelectorSkill(t, workspaceDir, "ui_reviewer", "review screenshots and UI layouts for accessibility and visual issues", `blue ui_reviewer target="https://example.com"`, "ui", "review", "screenshot", "layout", "accessibility")
 	writeSettingsSelectorSkill(t, workspaceDir, "config", "manage providers settings channels skills tools health and proxy diagnostics", "blue config.providers.list", "admin", "settings", "providers", "diagnostics")
 
 	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
@@ -396,7 +398,7 @@ func TestSelectChatToolSurfacesForRequest_GenericDocxResearchKeepsOfficeWorkflow
 	}
 }
 
-func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testing.T) {
+func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesNoLongerFilterTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
@@ -419,14 +421,9 @@ func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesFilterTools(t *testi
 	)
 
 	names := toolNameSet(got)
-	for _, forbidden := range []string{"deep_research", "web_query"} {
-		if _, ok := names[forbidden]; ok {
-			t.Fatalf("expected %q to be removed by explicit capability toggle, got=%v", forbidden, got)
-		}
-	}
-	for _, required := range []string{"plan_create", "read"} {
+	for _, required := range []string{"deep_research", "plan_create", "read", "web_query"} {
 		if _, ok := names[required]; !ok {
-			t.Fatalf("expected %q to remain visible, got=%v", required, got)
+			t.Fatalf("expected %q to remain visible despite explicit legacy capability toggles, got=%v", required, got)
 		}
 	}
 }
@@ -570,6 +567,7 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 		name              string
 		query             string
 		wantCanonical     agentcore.CanonicalSkillID
+		wantResearchMode  string
 		wantProfile       agentcore.ExecutionProfile
 		wantNativeMode    chatNativeToolSurfaceMode
 		wantDiscoveryMode agentcore.NativeSurfaceMode
@@ -593,15 +591,26 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 		{
 			name:              "report_routes_to_analyze",
 			query:             "汇总这几个链接并给我一份报告：https://example.com/a https://example.com/b",
-			wantCanonical:     agentcore.CanonicalAnalyze,
-			wantProfile:       agentcore.ExecutionProfilePreferFork,
+			wantCanonical:     agentcore.CanonicalResearch,
+			wantResearchMode:  "analyze",
+			wantProfile:       agentcore.ExecutionProfileRequireFork,
 			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
 			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
 		},
 		{
 			name:              "cited_research_routes_to_deep_research",
 			query:             "Investigate https://example.com/pricing and compare the claims with citations, evidence, and a timeline.",
-			wantCanonical:     agentcore.CanonicalDeepResearch,
+			wantCanonical:     agentcore.CanonicalResearch,
+			wantResearchMode:  "deep_research",
+			wantProfile:       agentcore.ExecutionProfileRequireFork,
+			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
+			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
+		},
+		{
+			name:              "ui_review_routes_to_ui_reviewer",
+			query:             "Review the UI of https://example.com/pricing for accessibility and layout issues.",
+			wantCanonical:     agentcore.CanonicalResearch,
+			wantResearchMode:  "ui_review",
 			wantProfile:       agentcore.ExecutionProfileRequireFork,
 			wantNativeMode:    chatNativeToolSurfaceModeSkillExec,
 			wantDiscoveryMode: agentcore.NativeSurfaceModeSkillExec,
@@ -651,6 +660,14 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 			if selection.DiscoveryDecision.CanonicalTarget != tc.wantCanonical {
 				t.Fatalf("CanonicalTarget = %q, want %q", selection.DiscoveryDecision.CanonicalTarget, tc.wantCanonical)
 			}
+			if tc.wantResearchMode != "" {
+				if selection.SkillDecision == nil {
+					t.Fatal("expected SkillDecision for research-family selection")
+				}
+				if selection.SkillDecision.ResearchMode != tc.wantResearchMode {
+					t.Fatalf("ResearchMode = %q, want %q", selection.SkillDecision.ResearchMode, tc.wantResearchMode)
+				}
+			}
 			if selection.DiscoveryDecision.ExecutionProfile != tc.wantProfile {
 				t.Fatalf("ExecutionProfile = %q, want %q", selection.DiscoveryDecision.ExecutionProfile, tc.wantProfile)
 			}
@@ -661,7 +678,7 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstCanonicalCutovers(t *test
 	}
 }
 
-func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndToggleFallback(t *testing.T) {
+func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndLegacyFlagsDoNotBlockCutover(t *testing.T) {
 	handler := newDiscoverFirstSelectionHandler(t, true)
 
 	clarifySelection := handler.selectChatToolSurfacesForRequest(context.Background(), "看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？", tools.ToolPolicyRequest{
@@ -683,18 +700,14 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndToggleFallback(
 		Model:     "claude-3-5-haiku-20241022",
 		RouteKind: tools.ToolRouteKindChat,
 	}, &webSearchEnabled, nil)
-	if fallbackSelection.NativeMode != chatNativeToolSurfaceModeLegacy {
-		t.Fatalf("toggle NativeMode = %q, want legacy fallback", fallbackSelection.NativeMode)
+	if fallbackSelection.NativeMode != chatNativeToolSurfaceModeSkillExec {
+		t.Fatalf("legacy-flag NativeMode = %q, want discover-first skill exec cutover", fallbackSelection.NativeMode)
 	}
-	if got := selectedToolNames(fallbackSelection.NativeDefs); len(got) == 1 && got[0] == "exec" {
-		t.Fatalf("toggle NativeDefs = %v, want legacy multi-tool surface instead of exec-only cutover", got)
-	}
-	names := toolNameSet(fallbackSelection.NativeDefs)
-	if _, ok := names["web_query"]; ok {
-		t.Fatalf("toggle NativeDefs = %v, want web_query filtered by preference", selectedToolNames(fallbackSelection.NativeDefs))
+	if got := selectedToolNames(fallbackSelection.NativeDefs); len(got) != 2 || got[0] != "exec" || got[1] != "tool_search" {
+		t.Fatalf("legacy-flag NativeDefs = %v, want [exec tool_search]", got)
 	}
 	if fallbackSelection.DiscoveryDecision == nil || fallbackSelection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
-		t.Fatalf("toggle DiscoveryDecision = %#v, want canonical web_query", fallbackSelection.DiscoveryDecision)
+		t.Fatalf("legacy-flag DiscoveryDecision = %#v, want canonical web_query", fallbackSelection.DiscoveryDecision)
 	}
 }
 
@@ -777,9 +790,7 @@ func TestSelectChatToolsForRequest_CutoverSkipsPromptCacheStickyUnion(t *testing
 	})
 
 	handler.setPromptCacheToolSurface("conv-cutover", &promptCacheToolSurface{
-		ProviderID:          "anthropic-test",
-		WebSearchEnabled:    true,
-		DeepResearchEnabled: false,
+		ProviderID: "anthropic-test",
 		Tools: []tools.ToolDefinition{
 			{Name: "read"},
 			{Name: "write"},
@@ -823,9 +834,7 @@ func TestSelectChatToolsForRequest_DiscoverFirstCutoverSkipsPromptCacheStickyUni
 	})
 
 	handler.setPromptCacheToolSurface("conv-discover-cutover", &promptCacheToolSurface{
-		ProviderID:          "anthropic-test",
-		WebSearchEnabled:    true,
-		DeepResearchEnabled: false,
+		ProviderID: "anthropic-test",
 		Tools: []tools.ToolDefinition{
 			{Name: "read"},
 			{Name: "write"},
@@ -1017,5 +1026,41 @@ func TestStabilizePromptCacheToolSurface_NonAnthropicDoesNotStick(t *testing.T) 
 	}
 	if cached := handler.getPromptCacheToolSurface("conv-1"); cached != nil {
 		t.Fatalf("expected no cached sticky tool surface for non-anthropic provider, got=%v", selectedToolNames(cached.Tools))
+	}
+}
+
+func TestPromptCacheToolSurface_SharedAcrossConversations(t *testing.T) {
+	handler := newChatToolSelectionTestHandler(tools.NewRegistry())
+	defer handler.Close()
+
+	surface := &promptCacheToolSurface{
+		ProviderID:       "anthropic-test",
+		RegistryVersion:  7,
+		PromptPolicyHash: "policy-1",
+		Tools: []tools.ToolDefinition{
+			{Name: "read", Description: "Read files"},
+			{Name: "write", Description: "Write files"},
+		},
+		ExpiresAt: time.Now().Add(time.Minute),
+	}
+
+	for i := 0; i < 100; i++ {
+		handler.setPromptCacheToolSurface(fmt.Sprintf("conv-%03d", i), surface)
+	}
+
+	footprint := handler.ChatCacheFootprint()
+	if footprint.PromptToolSurfaceRefs != 100 {
+		t.Fatalf("prompt tool surface refs = %d, want 100", footprint.PromptToolSurfaceRefs)
+	}
+	if footprint.PromptToolSurfaceSharedEntries != 1 {
+		t.Fatalf("prompt tool surface shared entries = %d, want 1", footprint.PromptToolSurfaceSharedEntries)
+	}
+
+	cached := handler.getPromptCacheToolSurface("conv-042")
+	if cached == nil {
+		t.Fatal("expected shared prompt tool surface to remain available")
+	}
+	if got := selectedToolNames(cached.Tools); len(got) != 2 || got[0] != "read" || got[1] != "write" {
+		t.Fatalf("shared prompt tool surface tools = %v, want [read write]", got)
 	}
 }

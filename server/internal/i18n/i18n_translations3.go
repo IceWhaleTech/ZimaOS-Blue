@@ -1,6 +1,6 @@
 package i18n
 
-func init() {
+func registerTranslationsPart3() {
 	// --- ro-RO (Romanian) ---
 	for k, v := range map[string]string{
 		MsgProcessingError:          "Ne pare rău, a apărut o eroare la procesarea mesajului dvs.: %v",

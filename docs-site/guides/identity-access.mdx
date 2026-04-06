@@ -1,0 +1,80 @@
+---
+title: "Identity and Access"
+summary: "How Blue handles preview bootstrap, sign-in providers, user management, profile controls, MFA, WebAuthn, and API keys."
+---
+
+# Identity and Access
+
+Blue now exposes a full identity and access layer across preview onboarding, external sign-in providers, user administration, and personal security controls.
+
+## Preview mode and first-run bootstrap
+
+Preview mode is designed for first-run or controlled demo setups where the product should be explorable before full account bootstrap. The current implementation includes:
+
+- System mode detection for `preview` versus `normal`
+- Temporary preview tokens
+- Preset starter questions in empty chat
+- Onboarding state tracking
+- Upgrade flow that creates the first admin account and exits preview mode
+
+This makes preview mode part of the real onboarding story, not just a hidden developer toggle.
+
+## User profile and personal controls
+
+The profile area is where an individual user manages their own access surface. Current capabilities include:
+
+- Email and password updates
+- Linked external accounts
+- MFA settings
+- WebAuthn settings
+- Scoped API key creation, listing, deletion, and regeneration
+
+The API key flow is especially useful for external clients or automation that should not reuse browser sessions.
+
+## Linked external accounts
+
+Blue can let a signed-in user attach external identities to their profile. The current flow supports:
+
+- Listing linked accounts
+- Starting a provider-specific link flow
+- OAuth/OIDC callback handling
+- Unlinking accounts later
+
+This is useful when teams want one account surface inside Blue but flexible external identity sources.
+
+## User administration
+
+The admin user-management view is more than a member list. It currently supports:
+
+- Pagination and filtering by search, role, and status
+- Create and edit flows
+- Lock, unlock, and delete actions
+- Password reset
+- Role and permission management
+
+Blue therefore supports both role-based defaults and more granular page or action permissions where needed.
+
+## Auth-provider administration
+
+The auth-provider admin page is the operator surface for configuring external sign-in. The current implementation supports:
+
+- Generic OIDC plus Google, GitHub, Microsoft, Keycloak, Authentik, and Auth0
+- Provider ordering and enable or disable state
+- Client credentials and issuer/auth/token/userinfo endpoints
+- Redirect URL management
+- Scope configuration
+- Auto-create-user behavior
+- Default role assignment
+- Allowed-domain restrictions
+
+This makes it possible to run Blue with local auth only, external auth only, or a mixed setup depending on your deployment constraints.
+
+## Where this fits with other admin surfaces
+
+Use this page when the question is about who can enter the system and what credentials they use. Use [Admin and Operations](/guides/admin-operations) when the question is about runtime governance, billing, audit, tenants, or security monitoring.
+
+## Related pages
+
+- [Admin and Operations](/guides/admin-operations)
+- [Settings and Provider Pool](/guides/settings-provider-pool)
+- [Troubleshooting](/help/troubleshooting)

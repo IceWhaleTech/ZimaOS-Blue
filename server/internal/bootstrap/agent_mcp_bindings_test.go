@@ -2,78 +2,18 @@ package bootstrap
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agent"
-	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
-	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
 )
 
 type stubAgentLLMCaller struct{}
 
 func (stubAgentLLMCaller) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	return &llm.ChatResponse{}, nil
-}
-
-func TestRegisterRuntimeAgentRoutesUsesReadDBFromServices(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "agent-routes.db")
-	dbConn, err := dbutil.OpenSQLite(dbPath, nil)
-	if err != nil {
-		t.Fatalf("OpenSQLite: %v", err)
-	}
-	defer dbConn.Close()
-
-	store, err := agent.NewStore(dbConn.Writer)
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	task := &agent.Task{
-		ID:     "task-reader",
-		UserID: "user-1",
-		Goal:   "verify route reads can use reader pool",
-	}
-	if err := store.Create(context.Background(), task); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-
-	e := echo.New()
-	deps := &RoutesDeps{
-		DB:        dbConn.Writer,
-		Services:  &Services{DBConn: dbConn},
-		SSEBroker: sse.NewBroker(),
-	}
-	runner := registerRuntimeAgentRoutes(
-		e.Group("/api/v1"),
-		routeToolRuntimeBinding{workspaceDir: t.TempDir()},
-		deps,
-		zap.NewNop(),
-		stubAgentLLMCaller{},
-		nil,
-	)
-	if runner == nil {
-		t.Fatal("expected agent runner to be registered")
-	}
-
-	if err := dbConn.Writer.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
-	}
-	dbConn.Writer = nil
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/tasks/"+task.ID, nil)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
-	}
 }
 
 func TestAgentMCPBindingsGo_DelegatesProxyBridgeSurface(t *testing.T) {

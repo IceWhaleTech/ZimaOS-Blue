@@ -1,7 +1,7 @@
 {
   "name": "web",
   "private": true,
-  "version": "0.10.38",
+  "version": "0.10.39",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "feature-intent:sync": "node scripts/sync-feature-intent-terms.mjs",
     "i18n:audit": "node scripts/i18n-audit.mjs",
+    "i18n:audit:strict": "node scripts/i18n-audit.mjs --fail-on-unknown-static-keys",
     "i18n:audit:details": "node scripts/i18n-audit.mjs --details",
+    "i18n:prune-unused": "node scripts/i18n-prune-unused.mjs",
     "i18n:size-report": "node scripts/locale-size-report.mjs",
     "rtl:audit": "node scripts/rtl-audit.mjs",
     "rtl:audit:details": "node scripts/rtl-audit.mjs --details",

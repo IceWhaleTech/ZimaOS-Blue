@@ -1,0 +1,100 @@
+---
+title: "管理与运维"
+summary: "当前面向运营者的安全、审计、计费、租户、认证与治理入口。"
+---
+
+# 管理与运维
+
+Blue 现在已经有了完整得多的 day-two 运维面。
+
+## 首页仪表盘与系统可见性
+
+`Home` 现在不只是落地页，也承担轻量运维面作用，当前可以看到：
+
+- 系统状态
+- Uptime、CPU、内存、goroutine 卡片
+- 可刷新的运行时指标历史
+- 可选的 OS、硬件、运行时、磁盘、GPU、网络详细信息
+
+如果你想先回答“当前运行时健康吗”，这里通常是最快入口。
+
+## 安全
+
+当前安全能力包括：
+
+- 活跃会话查看与撤销
+- 安全设置与策略
+- 威胁统计与最近威胁事件
+- Blocked IP 管理
+- Security scan、fix preview 与 fix 执行
+- Prompt firewall
+- CORS
+- TLS 与 ACME 状态
+- Sandbox 运行时信息与网络开关
+- Tool approval policy
+- 持久化目录审批与浏览器站点审批
+
+## 审计
+
+审计页当前支持：
+
+- 过滤审计记录
+- 查看状态与动作统计
+- 导出 JSON 或 CSV
+- 按时间窗口回溯
+
+## 计费与使用情况
+
+当前 billing 更像模型用量可观测性，而不是订阅结算页。它可以提供：
+
+- token、请求数、成功率、预计成本汇总
+- 按天、Provider、模型拆分
+- 带延迟和成功状态的明细
+- CSV 导出
+- 异常峰值 drilldown
+
+## 租户与工作区治理
+
+多租户面当前支持：
+
+- 创建、编辑、切换、删除工作区
+- 成员、邀请、设置、限额管理
+- 角色感知的操作
+- 工作区级语言与时区默认值
+
+## 身份与访问管理
+
+Blue 现在还有独立的身份层，覆盖：
+
+- 个人资料编辑与 API Key 管理
+- MFA 与 WebAuthn
+- 外部账号绑定
+- 用户管理里的锁定、解锁、重置密码与权限操作
+- OIDC 与常见托管身份提供方的认证配置
+- Preview bootstrap 与首个管理员创建流程
+
+当问题是“谁能进入系统、用什么身份、权限怎么发”时，继续看 [身份与访问](/zh-CN/guides/identity-access)。
+
+## 认证提供方与预览模式
+
+当前应用还包含：
+
+- 认证提供方管理与 callback 流程
+- 预览模式感知路由
+- preview token 与连接错误回退路径
+
+## 推荐运维顺序
+
+1. 在 [设置与 Provider Pool](/zh-CN/guides/settings-provider-pool) 完成基础配置
+2. 先看首页仪表盘确认运行时健康
+3. 确认安全、prompt firewall、sandbox 与 approval 控制
+4. 打开审计与导出路径
+5. 上线后跟踪 billing 趋势
+6. 再配置租户、成员、认证提供方与用户管理策略
+
+## 相关页面
+
+- [身份与访问](/zh-CN/guides/identity-access)
+- [设置与 Provider Pool](/zh-CN/guides/settings-provider-pool)
+- [Harness 与 Evolution](/zh-CN/guides/harness-evolution)
+- [语音与表单填充](/zh-CN/guides/voice-form-filling)

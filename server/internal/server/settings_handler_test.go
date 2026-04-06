@@ -143,12 +143,32 @@ func assertSelectorDryRunSelected(t *testing.T, body map[string]any, skill strin
 	if !ok {
 		t.Fatalf("expected skill_decision payload, got=%T", body["skill_decision"])
 	}
-	if skillDecision["selected_skill"] != skill {
-		t.Fatalf("expected skill_decision.selected_skill=%s, got=%v", skill, skillDecision["selected_skill"])
-	}
+	wantSelected := skill
 	wantCanonical := skill
-	if canonical, ok := agentcore.ResolveCanonicalSkill(skill); ok {
-		wantCanonical = string(canonical)
+	wantResearchMode := ""
+	switch skill {
+	case "analyze":
+		wantSelected = "research"
+		wantCanonical = string(agentcore.CanonicalResearch)
+		wantResearchMode = "analyze"
+	case "deep_research":
+		wantSelected = "research"
+		wantCanonical = string(agentcore.CanonicalResearch)
+		wantResearchMode = "deep_research"
+	case "ui_reviewer":
+		wantSelected = "research"
+		wantCanonical = string(agentcore.CanonicalResearch)
+		wantResearchMode = "ui_review"
+	default:
+		if canonical, ok := agentcore.ResolveCanonicalSkill(skill); ok {
+			wantCanonical = string(canonical)
+		}
+	}
+	if skillDecision["selected_skill"] != wantSelected {
+		t.Fatalf("expected skill_decision.selected_skill=%s, got=%v", wantSelected, skillDecision["selected_skill"])
+	}
+	if wantResearchMode != "" && skillDecision["research_mode"] != wantResearchMode {
+		t.Fatalf("expected skill_decision.research_mode=%s, got=%v", wantResearchMode, skillDecision["research_mode"])
 	}
 	if body["canonical_skill_id"] != wantCanonical {
 		t.Fatalf("expected canonical_skill_id=%s, got=%v", wantCanonical, body["canonical_skill_id"])
@@ -834,12 +854,13 @@ func TestSelectorDryRun_DynamicExposureCollapsesReminderUIReviewerAndHimalayaToE
 	h := newSelectorDryRunTestHandler(t)
 
 	tests := []struct {
-		name          string
-		query         string
-		wantCanonical string
+		name             string
+		query            string
+		wantCanonical    string
+		wantResearchMode string
 	}{
 		{name: "reminder", query: "帮我明早 9 点提醒", wantCanonical: "reminder"},
-		{name: "ui_reviewer", query: "帮我 review 一下 https://example.com 的 UI", wantCanonical: "ui_reviewer"},
+		{name: "ui_reviewer", query: "帮我 review 一下 https://example.com 的 UI", wantCanonical: "research", wantResearchMode: "ui_review"},
 		{name: "himalaya", query: "帮我回复最新那封邮件", wantCanonical: "himalaya"},
 	}
 
@@ -848,6 +869,15 @@ func TestSelectorDryRun_DynamicExposureCollapsesReminderUIReviewerAndHimalayaToE
 			body := runSelectorDryRun(t, h, tc.query)
 			if body["canonical_skill_id"] != tc.wantCanonical {
 				t.Fatalf("canonical_skill_id = %#v, want %s", body["canonical_skill_id"], tc.wantCanonical)
+			}
+			if tc.wantResearchMode != "" {
+				skillDecision, ok := body["skill_decision"].(map[string]any)
+				if !ok {
+					t.Fatalf("expected skill_decision payload, got=%T", body["skill_decision"])
+				}
+				if skillDecision["research_mode"] != tc.wantResearchMode {
+					t.Fatalf("skill_decision.research_mode = %#v, want %s", skillDecision["research_mode"], tc.wantResearchMode)
+				}
 			}
 			selectedNativeTools, ok := body["selected_native_tools"].([]any)
 			if !ok {

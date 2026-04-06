@@ -422,6 +422,21 @@ function supportsProviderAccountStatus(provider?: Provider | null): boolean {
   return provider?.id === 'openrouter' || provider?.id === 'openrouter-free' || provider?.id === 'deepseek'
 }
 
+function providerHasUsableSetup(provider?: Provider | null): boolean {
+  if (!provider) return false
+  if (provider.type === 'trial') return true
+  if (provider.api_keys?.some((key) => key.enabled)) return true
+  if (provider.oauth?.connected) return true
+  if (getEffectiveProviderLocation(provider) === 'local') return true
+  if (provider.type === 'custom' && !!provider.base_url) return true
+  return false
+}
+
+function shouldShowProviderToggle(provider?: Provider | null): boolean {
+  if (!provider) return false
+  return provider.enabled || providerHasUsableSetup(provider)
+}
+
 function getProviderAccountStatusKey(provider?: Provider | null): string | undefined {
   if (!provider?.api_keys?.length) return undefined
   return provider.api_keys.find((key) => key.enabled)?.id || provider.api_keys[0]?.id
@@ -947,7 +962,10 @@ async function addCustomProvider() {
 
     // Step 3: Auto-enable if we found available models
     if (available > 0) {
-      await store.enableProvider(providerId)
+      const createdProvider = store.providers.find((item) => item.id === providerId)
+      if (!createdProvider?.enabled) {
+        await store.enableProvider(providerId)
+      }
       notification.success(
         t('providerPool.providerAdded'),
         t('providerPool.providerAddedWithModels', { count: available }),
@@ -1904,6 +1922,22 @@ onMounted(() => {
       { immediate: true }
     )
   }
+
+  const requestedProviderId = Array.isArray(route.query.provider)
+    ? route.query.provider[0]
+    : route.query.provider
+  if (typeof requestedProviderId === 'string' && requestedProviderId) {
+    const stop = watch(
+      visibleProviders,
+      (providers) => {
+        if (providers.some((provider) => provider.id === requestedProviderId)) {
+          store.selectProvider(requestedProviderId)
+          stop()
+        }
+      },
+      { immediate: true }
+    )
+  }
 })
 </script>
 
@@ -2205,7 +2239,12 @@ onMounted(() => {
               >
                 {{ getStatusIcon(provider.status, provider.enabled) }}
               </span>
-              <label class="relative inline-flex items-center cursor-pointer" @click.stop>
+              <label
+                v-if="shouldShowProviderToggle(provider)"
+                data-testid="provider-row-toggle"
+                class="relative inline-flex items-center cursor-pointer"
+                @click.stop
+              >
                 <input
                   type="checkbox"
                   :checked="provider.enabled"
@@ -2216,6 +2255,13 @@ onMounted(() => {
                   class="provider-switch-track w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
                 ></div>
               </label>
+              <span
+                v-else
+                data-testid="provider-row-setup-chip"
+                class="inline-flex items-center rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:border-slate-600 dark:bg-slate-800 dark:text-gray-300"
+              >
+                {{ tr('providerPool.configure', 'Configure') }}
+              </span>
             </div>
           </div>
         </div>

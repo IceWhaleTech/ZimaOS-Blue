@@ -148,7 +148,7 @@ const isCompact = ref(false)
 const isMobile = ref(false)
 const showMobileMenu = ref(false)
 const mobileMenuRef = ref<HTMLDivElement | null>(null)
-const compactModeInfoCard = ref<null | 'research' | 'loop' | 'report' | 'ui'>(null)
+const compactModeInfoCard = ref<null | 'research' | 'loop'>(null)
 const isMobileUserAgent = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
   navigator.userAgent.toLowerCase()
 )
@@ -352,7 +352,6 @@ const activeSkillAdvice = computed<MarketplaceAdviceResponse | null>(() => {
 const showFeatureHint = computed(() => {
   if (props.disabled || props.streaming) return false
   if (!message.value.trim()) return false
-  if (featureIntent.value.deepResearch && !chatStore.deepResearchEnabled) return true
   if (featureIntent.value.agentMode && !settingsStore.agentMode) return true
   return false
 })
@@ -441,16 +440,19 @@ const skillAdviceDescription = computed(() => {
   )
 })
 
-const deepResearchInfoTags = computed(() => [
-  t('chat.deepResearchStageRetrieve', 'Retrieve'),
-  t('chat.deepResearchStageVerify', 'Verify'),
-  t('chat.deepResearchCitations', 'Citations'),
-])
+const researchFamilyHoverDescription = computed(() =>
+  t(
+    'chat.deepResearchHoverDescription',
+    'Prefer the research family and let routing choose the best fit: Deep Research returns citation-first, multi-source findings with evidence and timelines, Analysis Report turns known URLs or pasted text into a bounded report, and UI Review evaluates a page or screenshot for UX and accessibility issues.'
+  )
+)
 
-const analyzeReportInfoTags = computed(() => [
-  t('chat.analyzeReportHoverTagReport', 'Report'),
-  t('chat.analyzeReportHoverTagInsights', 'Insights'),
-  t('chat.analyzeReportHoverTagRecommendations', 'Recommendations'),
+const researchFamilyInfoTags = computed(() => [
+  t('chat.deepResearchStageRetrieve', 'Retrieve'),
+  t('chat.deepResearchCitations', 'Citations'),
+  t('chat.analyzeReportShortcutTitle', 'Analysis Report'),
+  t('chat.uiReviewShortcutTitle', 'UI Review'),
+  t('chat.deepResearchStageVerify', 'Verify'),
 ])
 
 const ralphLoopAutoConfirmStateLabel = computed(() =>
@@ -464,25 +466,14 @@ const ralphLoopInfoTags = computed(() => [
   `${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel.value}`,
 ])
 
-const uiReviewInfoTags = computed(() => [
-  t('uiReview.visual', 'Visual'),
-  t('chat.uiReviewHoverUsability', 'Usability'),
-  t('uiReview.accessibility', 'Accessibility'),
-])
-
 const compactModeInfoCardMeta = computed(() => {
   if (compactModeInfoCard.value === 'research') {
     return {
       kind: 'research' as const,
       title: researchModeTitle.value,
-      state: chatStore.deepResearchEnabled
-        ? t('common.enabled', 'Enabled')
-        : t('common.disabled', 'Disabled'),
-      description: t(
-        'chat.deepResearchHoverDescription',
-        'Launch a structured research workflow with retrieval, verification, traceable runs, and linked run details.'
-      ),
-      tags: deepResearchInfoTags.value,
+      state: t('chat.alwaysOn', 'Always on'),
+      description: researchFamilyHoverDescription.value,
+      tags: researchFamilyInfoTags.value,
     }
   }
 
@@ -498,32 +489,6 @@ const compactModeInfoCardMeta = computed(() => {
         'Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly.'
       ),
       tags: ralphLoopInfoTags.value,
-    }
-  }
-
-  if (compactModeInfoCard.value === 'report') {
-    return {
-      kind: 'report' as const,
-      title: t('chat.analyzeReportShortcutTitle', 'Analysis Report'),
-      state: t('chat.analyzeReportHoverState', 'Prompt template'),
-      description: t(
-        'chat.analyzeReportHoverDescription',
-        'Turn URLs, search results, or pasted text into a structured report with findings, comparisons, and recommendations.'
-      ),
-      tags: analyzeReportInfoTags.value,
-    }
-  }
-
-  if (compactModeInfoCard.value === 'ui') {
-    return {
-      kind: 'ui' as const,
-      title: t('chat.uiReviewShortcutTitle', 'UI Review'),
-      state: t('chat.uiReviewHoverState', 'Prompt template'),
-      description: t(
-        'chat.uiReviewHoverDescription',
-        'Audit a page or screenshot for visual quality, interaction clarity, and accessibility, then list concrete issues and fixes.'
-      ),
-      tags: uiReviewInfoTags.value,
     }
   }
 
@@ -837,59 +802,12 @@ function clearMessage() {
   textareaRef.value?.focus()
 }
 
-function insertShortcutPrompt(prompt: string) {
-  const trimmedPrompt = prompt.trim()
-  if (!trimmedPrompt) return
-
-  if (isCompact.value && voiceMode.value) {
-    voiceMode.value = false
-  }
-  compactModeInfoCard.value = null
-
-  const currentMessage = message.value.trimEnd()
-  if (currentMessage.endsWith(trimmedPrompt)) {
-    nextTick(() => textareaRef.value?.focus())
-    return
-  }
-
-  message.value = currentMessage ? `${currentMessage}\n\n${trimmedPrompt}` : trimmedPrompt
-  handleInput()
-  nextTick(() => {
-    textareaRef.value?.focus()
-    const end = message.value.length
-    textareaRef.value?.setSelectionRange(end, end)
-  })
-}
-
-function handleAnalyzeReportShortcut() {
-  insertShortcutPrompt(
-    t(
-      'chat.analyzeReportPrompt',
-      'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:'
-    )
-  )
-}
-
-function handleUIReviewShortcut() {
-  insertShortcutPrompt(
-    t(
-      'chat.uiReviewPrompt',
-      'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility'
-    )
-  )
-}
-
-function toggleCompactModeInfo(kind: 'research' | 'loop' | 'report' | 'ui') {
+function toggleCompactModeInfo(kind: 'research' | 'loop') {
   compactModeInfoCard.value = compactModeInfoCard.value === kind ? null : kind
 }
 
 function closeCompactModeInfo() {
   compactModeInfoCard.value = null
-}
-
-function toggleDeepResearch() {
-  compactModeInfoCard.value = null
-  chatStore.setDeepResearchEnabled(!chatStore.deepResearchEnabled)
 }
 
 function toggleAgentMode() {
@@ -1442,11 +1360,6 @@ function handleMobileTalkMode() {
   emit('openTalkMode')
 }
 
-function toggleDeepResearchFromHint(event: Event) {
-  const checked = (event.target as HTMLInputElement).checked
-  chatStore.setDeepResearchEnabled(checked)
-}
-
 function toggleAgentModeFromHint(event: Event) {
   const checked = (event.target as HTMLInputElement).checked
   settingsStore.setAgentMode(checked).catch((err) => {
@@ -1697,18 +1610,6 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           t('chat.featureHintTapToEnable')
         }}</span>
         <label
-          v-if="featureIntent.deepResearch && !chatStore.deepResearchEnabled"
-          class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-emerald-200/80 dark:border-emerald-700/70 bg-emerald-50/70 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 cursor-pointer"
-        >
-          <input
-            type="checkbox"
-            class="h-3.5 w-3.5 accent-emerald-500"
-            :checked="chatStore.deepResearchEnabled"
-            @change="toggleDeepResearchFromHint"
-          />
-          <span>{{ researchModeTitle }}</span>
-        </label>
-        <label
           v-if="featureIntent.agentMode && !settingsStore.agentMode"
           class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-blue-200/80 dark:border-blue-700/70 bg-blue-50/70 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 cursor-pointer"
         >
@@ -1811,11 +1712,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         <div class="composer-mode-row">
           <div class="compact-mode-action">
             <button
-              class="mode-chip mode-chip-research"
-              :class="{ 'is-active': chatStore.deepResearchEnabled }"
-              :aria-pressed="chatStore.deepResearchEnabled"
+              class="mode-chip mode-chip-research is-active"
               :title="researchModeTitle"
-              @click="toggleDeepResearch"
             >
               <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
@@ -1876,85 +1774,6 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               :aria-expanded="compactModeInfoCard === 'loop'"
               :title="t('chat.showShortcutDetails', 'Show details')"
               @click.stop="toggleCompactModeInfo('loop')"
-            >
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.8"
-                  d="M12 10.5v4.25M12 7.9h.01"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <div class="compact-mode-action">
-            <button
-              class="mode-chip mode-chip-report"
-              :title="t('chat.analyzeReportShortcutTitle', 'Analysis Report')"
-              @click="handleAnalyzeReportShortcut"
-            >
-              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                  d="M7.75 4.75h6.5L18.25 8.75v8.5A1.75 1.75 0 0116.5 19h-8A1.75 1.75 0 016.75 17.25V6.5A1.75 1.75 0 018.5 4.75z"
-                />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                  d="M10 11.25h4M10 14h5M10 16.75h3.25M14.25 4.75V8.5h3.75"
-                />
-              </svg>
-              <span class="mode-chip__label">{{
-                t('chat.analyzeReportShortcutTitle', 'Analysis Report')
-              }}</span>
-            </button>
-            <button
-              class="compact-mode-info-toggle compact-mode-info-toggle--report"
-              :aria-expanded="compactModeInfoCard === 'report'"
-              :title="t('chat.showShortcutDetails', 'Show details')"
-              @click.stop="toggleCompactModeInfo('report')"
-            >
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.8"
-                  d="M12 10.5v4.25M12 7.9h.01"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <div class="compact-mode-action">
-            <button
-              class="mode-chip mode-chip-ui"
-              :title="t('chat.uiReviewShortcutTitle', 'UI Review')"
-              @click="handleUIReviewShortcut"
-            >
-              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="1.7"
-                  d="M2.75 12s3.25-5.25 9.25-5.25S21.25 12 21.25 12s-3.25 5.25-9.25 5.25S2.75 12 2.75 12z"
-                />
-                <circle cx="12" cy="12" r="2.5" stroke-width="1.7" />
-              </svg>
-              <span class="mode-chip__label">{{
-                t('chat.uiReviewShortcutTitle', 'UI Review')
-              }}</span>
-            </button>
-            <button
-              class="compact-mode-info-toggle compact-mode-info-toggle--ui"
-              :aria-expanded="compactModeInfoCard === 'ui'"
-              :title="t('chat.showShortcutDetails', 'Show details')"
-              @click.stop="toggleCompactModeInfo('ui')"
             >
               <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
@@ -2511,11 +2330,8 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               <div class="desktop-toolbar-right">
                 <div class="mode-chip-hover-shell mode-chip-hover-shell--research">
                   <button
-                    class="mode-chip desktop-mode-chip mode-chip-research"
-                    :class="{ 'is-active': chatStore.deepResearchEnabled }"
+                    class="mode-chip desktop-mode-chip mode-chip-research is-active"
                     :aria-label="researchModeTitle"
-                    :aria-pressed="chatStore.deepResearchEnabled"
-                    @click="toggleDeepResearch"
                   >
                     <svg
                       class="mode-chip__icon"
@@ -2551,26 +2367,15 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                         <span></span>
                         <span></span>
                       </div>
-                      <span class="mode-info-card__state">
-                        {{
-                          chatStore.deepResearchEnabled
-                            ? t('common.enabled', 'Enabled')
-                            : t('common.disabled', 'Disabled')
-                        }}
-                      </span>
+                      <span class="mode-info-card__state">{{ t('chat.alwaysOn', 'Always on') }}</span>
                     </div>
                     <div class="mode-info-card__title">{{ researchModeTitle }}</div>
                     <p class="mode-info-card__description">
-                      {{
-                        t(
-                          'chat.deepResearchHoverDescription',
-                          'Launch a structured research workflow with retrieval, verification, and source-backed answers.'
-                        )
-                      }}
+                      {{ researchFamilyHoverDescription }}
                     </p>
                     <div class="mode-info-card__chips">
                       <span
-                        v-for="tag in deepResearchInfoTags"
+                        v-for="tag in researchFamilyInfoTags"
                         :key="tag"
                         class="mode-info-card__chip"
                       >
@@ -2656,148 +2461,6 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                         :key="tag"
                         class="mode-info-card__chip"
                       >
-                        {{ tag }}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div class="mode-chip-hover-shell mode-chip-hover-shell--report">
-                  <button
-                    class="mode-chip desktop-mode-chip mode-chip-report"
-                    :aria-label="t('chat.analyzeReportShortcutTitle', 'Analysis Report')"
-                    @click="handleAnalyzeReportShortcut"
-                  >
-                    <svg
-                      class="mode-chip__icon"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="1.7"
-                        d="M7.75 4.75h6.5L18.25 8.75v8.5A1.75 1.75 0 0116.5 19h-8A1.75 1.75 0 016.75 17.25V6.5A1.75 1.75 0 018.5 4.75z"
-                      />
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="1.7"
-                        d="M10 11.25h4M10 14h5M10 16.75h3.25M14.25 4.75V8.5h3.75"
-                      />
-                    </svg>
-                    <span class="mode-chip__label">{{
-                      t('chat.analyzeReportShortcutTitle', 'Analysis Report')
-                    }}</span>
-                  </button>
-                  <div class="mode-info-card mode-info-card--report" aria-hidden="true">
-                    <div class="mode-info-card__hero">
-                      <div class="mode-info-card__hero-orb">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="1.7"
-                            d="M7.75 4.75h6.5L18.25 8.75v8.5A1.75 1.75 0 0116.5 19h-8A1.75 1.75 0 016.75 17.25V6.5A1.75 1.75 0 018.5 4.75z"
-                          />
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="1.7"
-                            d="M10 11.25h4M10 14h5M10 16.75h3.25M14.25 4.75V8.5h3.75"
-                          />
-                        </svg>
-                      </div>
-                      <div class="mode-info-card__hero-meters" aria-hidden="true">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
-                      <span class="mode-info-card__state">{{
-                        t('chat.analyzeReportHoverState', 'Prompt template')
-                      }}</span>
-                    </div>
-                    <div class="mode-info-card__title">
-                      {{ t('chat.analyzeReportShortcutTitle', 'Analysis Report') }}
-                    </div>
-                    <p class="mode-info-card__description">
-                      {{
-                        t(
-                          'chat.analyzeReportHoverDescription',
-                          'Turn URLs, search results, or pasted text into a structured report with findings, comparisons, and recommendations.'
-                        )
-                      }}
-                    </p>
-                    <div class="mode-info-card__chips">
-                      <span
-                        v-for="tag in analyzeReportInfoTags"
-                        :key="tag"
-                        class="mode-info-card__chip"
-                      >
-                        {{ tag }}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <div class="mode-chip-hover-shell mode-chip-hover-shell--ui">
-                  <button
-                    class="mode-chip desktop-mode-chip mode-chip-ui"
-                    :aria-label="t('chat.uiReviewShortcutTitle', 'UI Review')"
-                    @click="handleUIReviewShortcut"
-                  >
-                    <svg
-                      class="mode-chip__icon"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="1.7"
-                        d="M2.75 12s3.25-5.25 9.25-5.25S21.25 12 21.25 12s-3.25 5.25-9.25 5.25S2.75 12 2.75 12z"
-                      />
-                      <circle cx="12" cy="12" r="2.5" stroke-width="1.7" />
-                    </svg>
-                    <span class="mode-chip__label">{{
-                      t('chat.uiReviewShortcutTitle', 'UI Review')
-                    }}</span>
-                  </button>
-                  <div class="mode-info-card mode-info-card--ui" aria-hidden="true">
-                    <div class="mode-info-card__hero">
-                      <div class="mode-info-card__hero-orb">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="1.7"
-                            d="M2.75 12s3.25-5.25 9.25-5.25S21.25 12 21.25 12s-3.25 5.25-9.25 5.25S2.75 12 2.75 12z"
-                          />
-                          <circle cx="12" cy="12" r="2.5" stroke-width="1.7" />
-                        </svg>
-                      </div>
-                      <div class="mode-info-card__hero-meters" aria-hidden="true">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                      </div>
-                      <span class="mode-info-card__state">{{
-                        t('chat.uiReviewHoverState', 'Prompt template')
-                      }}</span>
-                    </div>
-                    <div class="mode-info-card__title">
-                      {{ t('chat.uiReviewShortcutTitle', 'UI Review') }}
-                    </div>
-                    <p class="mode-info-card__description">
-                      {{
-                        t(
-                          'chat.uiReviewHoverDescription',
-                          'Audit a page or screenshot for visual quality, interaction clarity, and accessibility, then list concrete issues and fixes.'
-                        )
-                      }}
-                    </p>
-                    <div class="mode-info-card__chips">
-                      <span v-for="tag in uiReviewInfoTags" :key="tag" class="mode-info-card__chip">
                         {{ tag }}
                       </span>
                     </div>

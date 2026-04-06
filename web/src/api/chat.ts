@@ -58,9 +58,6 @@ export interface SendMessageRequest {
   max_tokens?: number
   attachments?: MessageAttachment[]
   regenerate?: boolean // True if this is a regenerate request
-  web_search_enabled?: boolean
-  deep_research_enabled?: boolean
-  research_mode_enabled?: boolean
 }
 
 export interface SendMessageResponse {
@@ -82,18 +79,12 @@ export interface ConversationCommandState {
   selected_provider_id?: string
   selected_model_id?: string
   offline: boolean
-  web_search_enabled: boolean
-  deep_research_enabled?: boolean
-  research_mode_enabled?: boolean
 }
 
 export interface ConversationCommandStatePatch {
   selected_provider_id?: string
   selected_model_id?: string
   offline?: boolean
-  web_search_enabled?: boolean
-  deep_research_enabled?: boolean
-  research_mode_enabled?: boolean
 }
 
 export interface ConversationActiveStreamState {
@@ -125,6 +116,7 @@ export type StreamProcessStatus = 'info' | 'pending' | 'active' | 'success' | 'e
 export interface StreamChunk {
   delta: string
   done: boolean
+  finalization_mode?: 'replace' | 'merge_process_cards'
   error?: string
   stream_progress?: string
   stream_id?: string
@@ -207,9 +199,6 @@ export const conversationApi = {
   search: (query: string, limit = 20) =>
     api.get<Conversation[]>('/conversations', { params: { q: query, limit } }),
 
-  getCommandState: (id: string) =>
-    api.get<ConversationCommandState>(`/conversations/${id}/command-state`),
-
   patchCommandState: (id: string, patch: ConversationCommandStatePatch) =>
     api.patch<ConversationCommandState>(`/conversations/${id}/command-state`, patch),
 }
@@ -237,11 +226,6 @@ export const messageApi = {
     api.post<{ success: boolean; stream_id: string; message: string }>(
       `/conversations/${conversationId}/messages/cancel`,
       { stream_id: streamId }
-    ),
-
-  getActiveStreamState: (conversationId: string) =>
-    api.get<ConversationActiveStreamState>(
-      `/conversations/${conversationId}/messages/active-stream`
     ),
 }
 
@@ -352,25 +336,4 @@ export interface AgentQuestionAnswer {
   question_id: string
   values: string[]
   other_text?: string
-}
-
-export const agentApi = {
-  createTask: (goal: string, conversationId?: string, context?: string) =>
-    api.post<AgentTask>('/agent/tasks', { goal, conversation_id: conversationId, context }),
-
-  listTasks: () => api.get<AgentTask[]>('/agent/tasks'),
-
-  getTask: (id: string) => api.get<AgentTask>(`/agent/tasks/${id}`),
-
-  cancelTask: (id: string) => api.post(`/agent/tasks/${id}/cancel`),
-
-  deleteTask: (id: string) => api.delete(`/agent/tasks/${id}`),
-
-  /** Send a message to a running agent task. Queued for injection at next natural boundary. */
-  sendMessage: (taskId: string, message: string) =>
-    api.post<{ status: string }>(`/agent/tasks/${taskId}/message`, { message }),
-
-  /** Submit answers to a pending ask_user question. */
-  submitAnswers: (taskId: string, answers: AgentQuestionAnswer[]) =>
-    api.post<{ status: string }>(`/agent/tasks/${taskId}/answer`, { answers }),
 }

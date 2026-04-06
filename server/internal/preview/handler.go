@@ -126,17 +126,27 @@ func (h *Handler) Upgrade(c echo.Context) error {
 
 // PresetQuestionsResponse represents the preset questions response.
 type PresetQuestionsResponse struct {
-	Questions []PresetQuestion `json:"questions"`
+	Questions  []PresetQuestion `json:"questions"`
+	Total      int              `json:"total"`
+	NextOffset int              `json:"next_offset"`
+	HasMore    bool             `json:"has_more"`
 }
 
 // GetPresetQuestions returns a random selection of preset questions.
-// GET /api/v1/preset-questions?count=5&lang=en
+// GET /api/v1/preset-questions?count=4&offset=0&lang=en
 func (h *Handler) GetPresetQuestions(c echo.Context) error {
 	countStr := c.QueryParam("count")
-	count := 5 // default
+	count := 4 // default
 	if countStr != "" {
 		if n, err := strconv.Atoi(countStr); err == nil && n > 0 {
 			count = n
+		}
+	}
+	offsetStr := c.QueryParam("offset")
+	offset := 0
+	if offsetStr != "" {
+		if n, err := strconv.Atoi(offsetStr); err == nil && n >= 0 {
+			offset = n
 		}
 	}
 
@@ -161,9 +171,13 @@ func (h *Handler) GetPresetQuestions(c echo.Context) error {
 		lang = "en"
 	}
 
-	questions := h.questionsService.GetPresetQuestions(count, lang)
+	questions, total := h.questionsService.GetPresetQuestionPage(offset, count, lang)
+	nextOffset := offset + len(questions)
 	return c.JSON(http.StatusOK, PresetQuestionsResponse{
-		Questions: questions,
+		Questions:  questions,
+		Total:      total,
+		NextOffset: nextOffset,
+		HasMore:    nextOffset < total,
 	})
 }
 

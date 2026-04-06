@@ -255,7 +255,7 @@ func (m *Manager) EnsureWorkspace() error {
 		return fmt.Errorf("workspace: mkdir %s: %w", memDir, err)
 	}
 
-	ts := getTemplates(DetectLocale())
+	ts := resolveTemplates(DetectLocale())
 
 	// Write templates for files that don't exist yet (best-effort — don't abort on individual failures)
 	for name, tmpl := range ts.templateMap() {
@@ -561,7 +561,7 @@ func isDefaultUserTemplate(path string) bool {
 func isDefaultUserContent(content string) bool {
 	trimmed := strings.TrimSpace(content)
 	for _, locale := range availableLocales() {
-		ts := getTemplates(locale)
+		ts := resolveTemplates(locale)
 		if trimmed == strings.TrimSpace(ts.user) {
 			return true
 		}

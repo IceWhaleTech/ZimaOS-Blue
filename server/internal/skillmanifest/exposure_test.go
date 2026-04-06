@@ -40,6 +40,27 @@ func hasString(values []string, want string) bool {
 	return false
 }
 
+func TestNewSkillExposureManager_DefersMutableMapAllocation(t *testing.T) {
+	workspaceDir := t.TempDir()
+
+	manager := NewSkillExposureManager(workspaceDir)
+	if manager.touchedPaths != nil || manager.discoveredRoots != nil || manager.activatedConditionalSkillSet != nil {
+		t.Fatalf(
+			"expected mutable maps to start nil, got touched=%v discovered=%v activated=%v",
+			manager.touchedPaths != nil,
+			manager.discoveredRoots != nil,
+			manager.activatedConditionalSkillSet != nil,
+		)
+	}
+
+	manager.SetDynamicExposureEnabledFunc(func() bool { return true })
+	manager.ObserveToolPath("read", filepath.Join(workspaceDir, "pkg", "main.go"))
+
+	if len(manager.touchedPaths) != 1 {
+		t.Fatalf("len(touchedPaths) = %d, want 1 after first observed path", len(manager.touchedPaths))
+	}
+}
+
 func TestSkillExposureManager_ConditionalActivation(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()

@@ -41,21 +41,167 @@ type persistenceOp struct {
 	ack            chan struct{}
 }
 
+type pendingPersistenceEntry struct {
+	op          persistenceOp
+	active      bool
+	coalesceKey string
+}
+
 type pendingPersistence struct {
-	previousResponse map[string]persistenceOp
-	messages         map[string]persistenceOp
-	audit            []persistenceOp
+	ops              []pendingPersistenceEntry
+	previousResponse map[string]int
+	messages         map[string]int
+	activeCount      int
 }
 
 func newPendingPersistence() pendingPersistence {
 	return pendingPersistence{
-		previousResponse: make(map[string]persistenceOp),
-		messages:         make(map[string]persistenceOp),
+		ops:              make([]pendingPersistenceEntry, 0, chatPersistMaxBatchSize),
+		previousResponse: make(map[string]int),
+		messages:         make(map[string]int),
 	}
 }
 
 func (p pendingPersistence) count() int {
-	return len(p.previousResponse) + len(p.messages) + len(p.audit)
+	return p.activeCount
+}
+
+func (p *pendingPersistence) enqueue(op persistenceOp) {
+	if p == nil {
+		return
+	}
+
+	switch op.kind {
+	case persistenceOpPreviousResponse:
+		key := strings.TrimSpace(op.conversationID)
+		if key == "" || strings.TrimSpace(op.responseID) == "" {
+			return
+		}
+		p.supersede(p.previousResponse, key)
+		p.previousResponse[key] = len(p.ops)
+		p.ops = append(p.ops, pendingPersistenceEntry{
+			op:          op,
+			active:      true,
+			coalesceKey: key,
+		})
+		p.activeCount++
+	case persistenceOpMessageUpdate:
+		key := strings.TrimSpace(op.message.ID)
+		if key == "" || strings.TrimSpace(op.message.ConversationID) == "" {
+			return
+		}
+		p.supersede(p.messages, key)
+		p.messages[key] = len(p.ops)
+		p.ops = append(p.ops, pendingPersistenceEntry{
+			op:          op,
+			active:      true,
+			coalesceKey: key,
+		})
+		p.activeCount++
+	case persistenceOpAudit:
+		p.ops = append(p.ops, pendingPersistenceEntry{
+			op:     op,
+			active: true,
+		})
+		p.activeCount++
+	}
+}
+
+func (p *pendingPersistence) supersede(indexes map[string]int, key string) {
+	if p == nil || key == "" {
+		return
+	}
+	idx, ok := indexes[key]
+	if !ok {
+		return
+	}
+	if idx < 0 || idx >= len(p.ops) {
+		delete(indexes, key)
+		return
+	}
+	if p.ops[idx].active {
+		p.ops[idx].active = false
+		if p.activeCount > 0 {
+			p.activeCount--
+		}
+	}
+}
+
+func (p *pendingPersistence) takeBatch(max int) pendingBatch {
+	batch := pendingBatch{
+		ops: make([]persistenceOp, 0, max),
+	}
+	if p == nil || max <= 0 || p.activeCount == 0 {
+		return batch
+	}
+
+	scanned := 0
+	for scanned < len(p.ops) && len(batch.ops) < max {
+		entry := p.ops[scanned]
+		scanned++
+		if !entry.active {
+			continue
+		}
+
+		batch.ops = append(batch.ops, entry.op)
+		if p.activeCount > 0 {
+			p.activeCount--
+		}
+
+		switch entry.op.kind {
+		case persistenceOpPreviousResponse:
+			if idx, ok := p.previousResponse[entry.coalesceKey]; ok && idx == scanned-1 {
+				delete(p.previousResponse, entry.coalesceKey)
+			}
+		case persistenceOpMessageUpdate:
+			if idx, ok := p.messages[entry.coalesceKey]; ok && idx == scanned-1 {
+				delete(p.messages, entry.coalesceKey)
+			}
+		}
+	}
+
+	p.trimPrefix(scanned)
+	return batch
+}
+
+func (p *pendingPersistence) trimPrefix(count int) {
+	if p == nil || count <= 0 {
+		return
+	}
+	if count >= len(p.ops) {
+		p.ops = p.ops[:0]
+		clearPendingIndexMap(p.previousResponse)
+		clearPendingIndexMap(p.messages)
+		return
+	}
+
+	copy(p.ops, p.ops[count:])
+	p.ops = p.ops[:len(p.ops)-count]
+	p.rebaseIndexes(count)
+}
+
+func (p *pendingPersistence) rebaseIndexes(offset int) {
+	if p == nil || offset <= 0 {
+		return
+	}
+	rebasePendingIndexMap(p.previousResponse, offset)
+	rebasePendingIndexMap(p.messages, offset)
+}
+
+func clearPendingIndexMap(indexes map[string]int) {
+	for key := range indexes {
+		delete(indexes, key)
+	}
+}
+
+func rebasePendingIndexMap(indexes map[string]int, offset int) {
+	for key, idx := range indexes {
+		if idx < offset {
+			delete(indexes, key)
+			continue
+		}
+		indexes[key] = idx - offset
+	}
 }
 
 type PersistenceCoordinator struct {
@@ -239,15 +385,11 @@ func (p *PersistenceCoordinator) run() {
 		case op := <-p.queue:
 			switch op.kind {
 			case persistenceOpPreviousResponse:
-				if strings.TrimSpace(op.conversationID) != "" && strings.TrimSpace(op.responseID) != "" {
-					pending.previousResponse[op.conversationID] = op
-				}
+				pending.enqueue(op)
 			case persistenceOpMessageUpdate:
-				if strings.TrimSpace(op.message.ID) != "" {
-					pending.messages[op.message.ID] = op
-				}
+				pending.enqueue(op)
 			case persistenceOpAudit:
-				pending.audit = append(pending.audit, op)
+				pending.enqueue(op)
 			case persistenceOpFlush:
 				p.flushAll(&pending)
 				close(op.ack)
@@ -279,54 +421,65 @@ func (p *PersistenceCoordinator) flushOnce(pending *pendingPersistence) {
 	}
 
 	start := time.Now()
-	batch := takePendingBatch(pending, chatPersistMaxBatchSize)
+	batch := pending.takeBatch(chatPersistMaxBatchSize)
 	flushed := 0
 
-	for _, op := range batch.previousResponse {
-		if p.isStoreDegraded() {
-			p.recordCounterValue("chat_db_dropped_ops_total", 1, map[string]string{"kind": string(op.kind), "db": "chat"})
-			continue
-		}
-		if err := p.store.SetConversationPreviousResponseID(context.Background(), op.conversationID, op.responseID); err != nil {
-			if !p.handleStoreError(err, 1) || p.store.SetConversationPreviousResponseID(context.Background(), op.conversationID, op.responseID) != nil {
+	for i := 0; i < len(batch.ops); {
+		op := batch.ops[i]
+		switch op.kind {
+		case persistenceOpPreviousResponse:
+			if p.isStoreDegraded() {
 				p.recordCounterValue("chat_db_dropped_ops_total", 1, map[string]string{"kind": string(op.kind), "db": "chat"})
+				i++
 				continue
 			}
-		}
-		flushed++
-	}
-
-	for _, op := range batch.messages {
-		if p.isStoreDegraded() {
-			p.recordCounterValue("chat_db_dropped_ops_total", 1, map[string]string{"kind": string(op.kind), "db": "chat"})
-			continue
-		}
-		if err := p.store.UpsertMessageContentFullTrusted(context.Background(), op.message); err != nil {
-			if !p.handleStoreError(err, 1) || p.store.UpsertMessageContentFullTrusted(context.Background(), op.message) != nil {
+			if err := p.store.SetConversationPreviousResponseID(context.Background(), op.conversationID, op.responseID); err != nil {
+				if !p.handleStoreError(err, 1) || p.store.SetConversationPreviousResponseID(context.Background(), op.conversationID, op.responseID) != nil {
+					p.recordCounterValue("chat_db_dropped_ops_total", 1, map[string]string{"kind": string(op.kind), "db": "chat"})
+					i++
+					continue
+				}
+			}
+			flushed++
+			i++
+		case persistenceOpMessageUpdate:
+			if p.isStoreDegraded() {
 				p.recordCounterValue("chat_db_dropped_ops_total", 1, map[string]string{"kind": string(op.kind), "db": "chat"})
+				i++
 				continue
 			}
-		}
-		flushed++
-	}
-
-	if len(batch.audit) > 0 {
-		if p.isAuditDegraded() || p.currentAuditStore() == nil {
-			p.recordCounterValue("chat_db_dropped_ops_total", int64(len(batch.audit)), map[string]string{"kind": string(persistenceOpAudit), "db": "audit"})
-		} else {
-			entries := make([]sessionaudit.Entry, 0, len(batch.audit))
-			for _, op := range batch.audit {
-				entries = append(entries, op.auditEntry)
+			if err := p.store.UpsertMessageContentFullTrusted(context.Background(), op.message); err != nil {
+				if !p.handleStoreError(err, 1) || p.store.UpsertMessageContentFullTrusted(context.Background(), op.message) != nil {
+					p.recordCounterValue("chat_db_dropped_ops_total", 1, map[string]string{"kind": string(op.kind), "db": "chat"})
+					i++
+					continue
+				}
+			}
+			flushed++
+			i++
+		case persistenceOpAudit:
+			entries := make([]sessionaudit.Entry, 0, len(batch.ops)-i)
+			j := i
+			for j < len(batch.ops) && batch.ops[j].kind == persistenceOpAudit {
+				entries = append(entries, batch.ops[j].auditEntry)
+				j++
+			}
+			if p.isAuditDegraded() || p.currentAuditStore() == nil {
+				p.recordCounterValue("chat_db_dropped_ops_total", int64(len(entries)), map[string]string{"kind": string(persistenceOpAudit), "db": "audit"})
+				i = j
+				continue
 			}
 			if err := p.currentAuditStore().RecordBatch(context.Background(), entries); err != nil {
 				if !p.handleAuditError(err, len(entries)) || p.currentAuditStore() == nil || p.currentAuditStore().RecordBatch(context.Background(), entries) != nil {
 					p.recordCounterValue("chat_db_dropped_ops_total", int64(len(entries)), map[string]string{"kind": string(persistenceOpAudit), "db": "audit"})
-				} else {
-					flushed += len(entries)
+					i = j
+					continue
 				}
-			} else {
-				flushed += len(entries)
 			}
+			flushed += len(entries)
+			i = j
+		default:
+			i++
 		}
 	}
 
@@ -336,46 +489,7 @@ func (p *PersistenceCoordinator) flushOnce(pending *pendingPersistence) {
 }
 
 type pendingBatch struct {
-	previousResponse []persistenceOp
-	messages         []persistenceOp
-	audit            []persistenceOp
-}
-
-func takePendingBatch(pending *pendingPersistence, max int) pendingBatch {
-	batch := pendingBatch{
-		previousResponse: make([]persistenceOp, 0, max),
-		messages:         make([]persistenceOp, 0, max),
-		audit:            make([]persistenceOp, 0, max),
-	}
-	if pending == nil || max <= 0 {
-		return batch
-	}
-
-	remaining := max
-	for key, op := range pending.previousResponse {
-		if remaining == 0 {
-			return batch
-		}
-		batch.previousResponse = append(batch.previousResponse, op)
-		delete(pending.previousResponse, key)
-		remaining--
-	}
-	for key, op := range pending.messages {
-		if remaining == 0 {
-			return batch
-		}
-		batch.messages = append(batch.messages, op)
-		delete(pending.messages, key)
-		remaining--
-	}
-	if remaining > 0 && len(pending.audit) > 0 {
-		if remaining > len(pending.audit) {
-			remaining = len(pending.audit)
-		}
-		batch.audit = append(batch.audit, pending.audit[:remaining]...)
-		pending.audit = pending.audit[remaining:]
-	}
-	return batch
+	ops []persistenceOp
 }
 
 func (p *PersistenceCoordinator) handleStoreError(err error, batchSize int) bool {
@@ -518,10 +632,7 @@ func (h *ChatHandler) ensurePersistenceCoordinator() {
 		return
 	}
 	if h.persistCoordinator != nil {
-		h.persistCoordinator.SetAuditStore(h.sessionAuditStore)
-		if metrics, ok := h.metricsRecorder.(runtimeCounterRecorder); ok {
-			h.persistCoordinator.SetMetrics(metrics)
-		}
+		h.syncPersistenceCoordinatorConfig()
 		return
 	}
 	var metrics runtimeCounterRecorder
@@ -529,6 +640,16 @@ func (h *ChatHandler) ensurePersistenceCoordinator() {
 		metrics = recorder
 	}
 	h.persistCoordinator = NewPersistenceCoordinator(h.store, h.sessionAuditStore, metrics)
+}
+
+func (h *ChatHandler) syncPersistenceCoordinatorConfig() {
+	if h == nil || h.persistCoordinator == nil {
+		return
+	}
+	h.persistCoordinator.SetAuditStore(h.sessionAuditStore)
+	if metrics, ok := h.metricsRecorder.(runtimeCounterRecorder); ok {
+		h.persistCoordinator.SetMetrics(metrics)
+	}
 }
 
 func (h *ChatHandler) persistAsyncMessage(msg memory.Message, forceFlush bool) string {
@@ -541,6 +662,7 @@ func (h *ChatHandler) persistAsyncMessage(msg memory.Message, forceFlush bool) s
 	}
 	if h.chatPersistAsync && h.persistCoordinator != nil {
 		h.persistCoordinator.EnqueueMessageUpdate(msg)
+		h.recordSearchableMessageAudit(msg)
 		if forceFlush {
 			h.persistCoordinator.FlushMessage(msg.ID)
 		}
@@ -554,7 +676,52 @@ func (h *ChatHandler) persistAsyncMessage(msg memory.Message, forceFlush bool) s
 		logger.Warn().Err(err).Str("message_id", msg.ID).Msg("[chat] failed to persist assistant message")
 		return ""
 	}
+	h.recordSearchableMessageAudit(msg)
 	return msg.ID
+}
+
+func (h *ChatHandler) shouldBlockOnResponsePersistence() bool {
+	return h != nil && h.chatPersistAsync && h.chatPersistFlushOnResponse && h.persistCoordinator != nil
+}
+
+func (h *ChatHandler) persistResponsePathMessage(msg memory.Message) string {
+	return h.persistAsyncMessage(msg, h.shouldBlockOnResponsePersistence())
+}
+
+func (h *ChatHandler) persistConversationMessages(conversationID string, barrier bool, messages ...memory.Message) []string {
+	if h == nil || h.store == nil {
+		return nil
+	}
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" || len(messages) == 0 {
+		return nil
+	}
+
+	ids := make([]string, 0, len(messages))
+	for _, msg := range messages {
+		msg.ConversationID = conversationID
+		id := h.persistAsyncMessage(msg, false)
+		ids = append(ids, id)
+	}
+
+	if barrier && h.chatPersistAsync && h.persistCoordinator != nil {
+		h.persistCoordinator.FlushConversation(conversationID)
+	}
+	return ids
+}
+
+func (h *ChatHandler) flushPersistedMessageOnResponse(messageID string) {
+	if h == nil || !h.shouldBlockOnResponsePersistence() {
+		return
+	}
+	h.flushPersistedMessage(messageID)
+}
+
+func (h *ChatHandler) flushConversationOnResponse(conversationID string) {
+	if h == nil || !h.shouldBlockOnResponsePersistence() || strings.TrimSpace(conversationID) == "" {
+		return
+	}
+	h.persistCoordinator.FlushConversation(conversationID)
 }
 
 func (h *ChatHandler) persistBestEffortMessageContent(messageID, conversationID, role, content, provider, model string, stats *memory.MessageStats, forceFlush bool) string {
@@ -610,7 +777,7 @@ func (h *ChatHandler) persistAuditEntry(entry sessionaudit.Entry) {
 		return
 	}
 	h.ensurePersistenceCoordinator()
-	if h.chatPersistAsync && h.persistCoordinator != nil {
+	if h.persistCoordinator != nil {
 		h.persistCoordinator.EnqueueAudit(entry)
 		return
 	}
@@ -624,6 +791,33 @@ func (h *ChatHandler) persistAuditEntry(entry sessionaudit.Entry) {
 			Str("tool", entry.ToolName).
 			Msg("failed to persist tool payload audit log")
 	}
+}
+
+func (h *ChatHandler) recordSearchableMessageAudit(msg memory.Message) {
+	if h == nil || h.sessionAuditStore == nil {
+		return
+	}
+	role := strings.ToLower(strings.TrimSpace(msg.Role))
+	eventType := ""
+	switch role {
+	case "user":
+		eventType = "user_message"
+	case "assistant":
+		eventType = "assistant_message"
+	default:
+		return
+	}
+	payload := strings.TrimSpace(msg.Content)
+	if payload == "" || strings.TrimSpace(msg.ConversationID) == "" {
+		return
+	}
+	h.persistAuditEntry(sessionaudit.Entry{
+		ConversationID: strings.TrimSpace(msg.ConversationID),
+		SessionID:      strings.TrimSpace(msg.ConversationID),
+		EventType:      eventType,
+		Role:           role,
+		Payload:        payload,
+	})
 }
 
 func (h *ChatHandler) getRecentMessagesForContext(ctx context.Context, conversationID string, limit int) ([]memory.Message, error) {

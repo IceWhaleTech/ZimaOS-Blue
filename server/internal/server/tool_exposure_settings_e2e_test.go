@@ -108,7 +108,7 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		}
 	})
 
-	t.Run("explicit capability toggles still filter first turn", func(t *testing.T) {
+	t.Run("legacy capability toggles no longer filter first turn", func(t *testing.T) {
 		conv, err := store.CreateConversation(context.Background(), "tool exposure toggles e2e")
 		if err != nil {
 			t.Fatalf("create conversation: %v", err)
@@ -135,19 +135,14 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		for _, tool := range capture.LastRequest().Tools {
 			names[tool.Name] = struct{}{}
 		}
-		for _, forbidden := range []string{"deep_research", "web_query"} {
-			if _, ok := names[forbidden]; ok {
-				t.Fatalf("expected %q to be removed, got=%v", forbidden, capture.LastRequest().Tools)
-			}
-		}
-		for _, required := range []string{"plan_create", "read", "write"} {
+		for _, required := range []string{"deep_research", "plan_create", "read", "web_query", "write"} {
 			if _, ok := names[required]; !ok {
-				t.Fatalf("expected %q to remain visible, got=%v", required, capture.LastRequest().Tools)
+				t.Fatalf("expected %q to remain visible despite legacy request flags, got=%v", required, capture.LastRequest().Tools)
 			}
 		}
 	})
 
-	t.Run("persisted command-state toggles also filter first turn", func(t *testing.T) {
+	t.Run("persisted command-state toggles no longer filter first turn", func(t *testing.T) {
 		conv, err := store.CreateConversation(context.Background(), "tool exposure persisted toggles e2e")
 		if err != nil {
 			t.Fatalf("create conversation: %v", err)
@@ -179,14 +174,9 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		for _, tool := range capture.LastRequest().Tools {
 			names[tool.Name] = struct{}{}
 		}
-		for _, forbidden := range []string{"deep_research", "web_query"} {
-			if _, ok := names[forbidden]; ok {
-				t.Fatalf("expected %q to be removed by persisted command state, got=%v", forbidden, capture.LastRequest().Tools)
-			}
-		}
-		for _, required := range []string{"plan_create", "read", "write"} {
+		for _, required := range []string{"deep_research", "plan_create", "read", "web_query", "write"} {
 			if _, ok := names[required]; !ok {
-				t.Fatalf("expected %q to remain visible, got=%v", required, capture.LastRequest().Tools)
+				t.Fatalf("expected %q to remain visible despite persisted legacy toggles, got=%v", required, capture.LastRequest().Tools)
 			}
 		}
 	})
@@ -232,6 +222,7 @@ func TestChatToolExposureHTTPE2E_DiscoverFirstCutoverExecOnly(t *testing.T) {
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages after login or click flows", "blue browser.navigate url=https://example.com", "browser", "login", "click")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze multiple links and synthesize a report", `blue analyze topic="multi-link report" --json`, "analysis", "report", "summary", "link", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "deep_research", "perform cited timeline comparisons and deep research", `blue deep_research query="OpenAI vs Anthropic agent runtime"`, "research", "citation", "timeline", "compare")
+	writeSettingsSelectorSkill(t, workspaceDir, "ui_reviewer", "review screenshots and UI layouts for accessibility and visual issues", `blue ui_reviewer target="https://example.com"`, "ui", "review", "screenshot", "layout", "accessibility")
 	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
 
 	e := echo.New()
@@ -269,7 +260,7 @@ func TestChatToolExposureHTTPE2E_DiscoverFirstCutoverExecOnly(t *testing.T) {
 		}
 	})
 
-	t.Run("capability toggle blocks cutover and web route", func(t *testing.T) {
+	t.Run("legacy capability toggle no longer blocks cutover", func(t *testing.T) {
 		conv, err := store.CreateConversation(context.Background(), "discover-first toggle blocked")
 		if err != nil {
 			t.Fatalf("create conversation: %v", err)
@@ -291,15 +282,60 @@ func TestChatToolExposureHTTPE2E_DiscoverFirstCutoverExecOnly(t *testing.T) {
 			t.Fatalf("status = %d, want 200", resp.StatusCode)
 		}
 
-		names := make(map[string]struct{}, len(capture.LastRequest().Tools))
-		for _, tool := range capture.LastRequest().Tools {
-			names[tool.Name] = struct{}{}
+		got := capture.LastRequest().Tools
+		if len(got) != 1 || got[0].Name != "exec" {
+			t.Fatalf("provider tools = %#v, want exec-only cutover even when legacy flags are false", got)
 		}
-		if len(capture.LastRequest().Tools) == 1 && capture.LastRequest().Tools[0].Name == "exec" {
-			t.Fatalf("expected legacy multi-tool surface after toggle block, got=%v", capture.LastRequest().Tools)
+	})
+
+	t.Run("merged research family cutovers stay exec only even when legacy toggles are false", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			message string
+		}{
+			{
+				name:    "analyze",
+				message: "汇总这几个链接并给我一份报告：https://example.com/a https://example.com/b",
+			},
+			{
+				name:    "deep_research",
+				message: "Investigate https://example.com/pricing and compare the claims with citations, evidence, and a timeline.",
+			},
+			{
+				name:    "ui_review",
+				message: "Review the UI of https://example.com/pricing for accessibility and layout issues.",
+			},
 		}
-		if _, ok := names["web_query"]; ok {
-			t.Fatalf("expected web_query to be filtered by toggle, got=%v", capture.LastRequest().Tools)
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				conv, err := store.CreateConversation(context.Background(), "discover-first research family "+tc.name)
+				if err != nil {
+					t.Fatalf("create conversation: %v", err)
+				}
+
+				body := map[string]any{
+					"message":               tc.message,
+					"provider":              "capture",
+					"model":                 "capture-model",
+					"web_search_enabled":    false,
+					"deep_research_enabled": false,
+				}
+				reqBody, _ := json.Marshal(body)
+				resp, err := http.Post(server.URL+"/api/v1/conversations/"+conv.ID+"/messages", "application/json", bytes.NewReader(reqBody))
+				if err != nil {
+					t.Fatalf("post send message: %v", err)
+				}
+				defer resp.Body.Close()
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("status = %d, want 200", resp.StatusCode)
+				}
+
+				got := capture.LastRequest().Tools
+				if len(got) != 1 || got[0].Name != "exec" {
+					t.Fatalf("provider tools = %#v, want exec-only research-family cutover", got)
+				}
+			})
 		}
 	})
 

@@ -74,7 +74,6 @@ type Config struct {
 	TencentSkillHubAPIBaseURL  string
 	SkillHubBaseURL            string
 	SkillHubAPIKey             string
-	SkillStackBaseURL          string
 	LLMSkillsBaseURL           string
 	DiscoveryPageURLs          []string
 	CrawlIncrementalInterval   time.Duration
@@ -111,7 +110,6 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 		ClawHubMirrorBaseURLs:      nil,
 		TencentSkillHubAPIBaseURL:  "https://lightmake.site",
 		SkillHubBaseURL:            "https://www.skillhub.club",
-		SkillStackBaseURL:          "https://www.skillstack.me",
 		LLMSkillsBaseURL:           "https://llmskills.org",
 		DiscoveryPageURLs:          append([]string(nil), defaultDiscoveryPageURLs...),
 		CrawlIncrementalInterval:   24 * time.Hour,

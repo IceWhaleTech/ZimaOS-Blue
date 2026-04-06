@@ -8,9 +8,15 @@ import type {
   TypelessCardDeepResearchTimeline,
 } from '@/types/typeless'
 import {
+  localizeDeepResearchAction,
   localizeDeepResearchGap,
+  localizeDeepResearchStage,
+  localizeDeepResearchStopReason,
   localizeDeepResearchMode,
+  localizeDeepResearchSegment,
   localizeDeepResearchStructuredValue,
+  localizeDeepResearchSummary,
+  localizeDeepResearchTimeWindow,
   localizeDeepResearchStatus,
   localizeResearchProgressLabel,
   localizeResearchSurfaceTitle,
@@ -106,47 +112,15 @@ const progressClass = computed(() => {
 })
 
 function stageLabel(rawStage?: string): string {
-  const stageKey = String(rawStage || '')
-    .trim()
-    .toLowerCase()
-  const labels: Record<string, string> = {
-    intake: resolveLabel('chat.deepResearchStageIntake', 'Intake'),
-    planning: resolveLabel('chat.deepResearchStagePlanning', 'Planning'),
-    retrieve: resolveLabel('chat.deepResearchStageRetrieve', 'Retrieving'),
-    verify: resolveLabel('chat.deepResearchStageVerify', 'Verifying'),
-    synthesize: resolveLabel('chat.deepResearchStageSynthesize', 'Synthesizing'),
-    completed: resolveLabel('chat.deepResearchStageCompleted', 'Completed'),
-    failed: resolveLabel('chat.deepResearchStageFailed', 'Failed'),
-    cancelled: resolveLabel('chat.deepResearchStageCancelled', 'Cancelled'),
-  }
   return (
-    labels[stageKey] || rawStage || resolveLabel('chat.deepResearchProcess', 'Research process')
+    localizeDeepResearchStage(rawStage, resolveLabel) ||
+    rawStage ||
+    resolveLabel('chat.deepResearchProcess', 'Research process')
   )
 }
 
 function latestActionLabel(action?: string): string {
-  switch (String(action || '').trim()) {
-    case 'augment_query':
-      return resolveLabel('chat.deepResearchActionAugmentQuery', 'Augmenting query')
-    case 'initial_retrieve':
-      return resolveLabel('chat.deepResearchActionInitialRetrieve', 'Running initial retrieval')
-    case 'followup_retrieve':
-      return resolveLabel('chat.deepResearchActionFollowupRetrieve', 'Running follow-up retrieval')
-    case 'verification':
-      return resolveLabel('chat.deepResearchActionVerification', 'Verifying evidence')
-    case 'verification_completed':
-      return resolveLabel('chat.deepResearchActionVerificationCompleted', 'Verification completed')
-    case 'followup_planned':
-      return resolveLabel('chat.deepResearchActionFollowupPlanned', 'Follow-up planned')
-    case 'loop_stopped':
-      return resolveLabel('chat.deepResearchActionLoopStopped', 'Research loop stopped')
-    case 'synthesizing':
-      return resolveLabel('chat.deepResearchActionSynthesizing', 'Synthesizing report')
-    case 'completed':
-      return resolveLabel('chat.deepResearchActionCompleted', 'Completed')
-    default:
-      return String(action || '').trim()
-  }
+  return localizeDeepResearchAction(action, resolveLabel) || String(action || '').trim()
 }
 
 function stepKindLabel(step: DeepResearchTimelineStep): string {
@@ -170,7 +144,7 @@ function stepKindLabel(step: DeepResearchTimelineStep): string {
 
 function stepSummary(step: DeepResearchTimelineStep): string {
   const summary = String(step.summary || '').trim()
-  if (summary) return summary
+  if (summary) return localizeDeepResearchSummary(summary, resolveLabel) || summary
   if (step.type === 'deep-research-progress') {
     return latestActionLabel(step.latest_action)
   }
@@ -220,9 +194,16 @@ function stepDotClass(step: DeepResearchTimelineStep): string {
 }
 
 function taskMeta(task: DeepResearchPlannedTask): string[] {
-  return [task.axis, task.category, task.time_window]
-    .map((value) => localizeDeepResearchStructuredValue(value, resolveLabel))
-    .filter((value): value is string => !!value)
+  return [
+    localizeDeepResearchStructuredValue(task.axis, resolveLabel) ||
+      localizeDeepResearchSegment(task.axis, resolveLabel) ||
+      String(task.axis || '').trim(),
+    localizeDeepResearchStructuredValue(task.category, resolveLabel) ||
+      localizeDeepResearchSegment(task.category, resolveLabel) ||
+      String(task.category || '').trim(),
+    localizeDeepResearchTimeWindow(task.time_window, resolveLabel) ||
+      String(task.time_window || '').trim(),
+  ].filter((value): value is string => !!value)
 }
 
 function domainOf(source: DeepResearchLiveSource): string {
@@ -408,7 +389,7 @@ const emptyStateLabel = computed(() => {
                     :key="window"
                     class="rounded-full bg-white px-2.5 py-1 dark:bg-slate-800"
                   >
-                    {{ window }}
+                    {{ localizeDeepResearchTimeWindow(window, resolveLabel) }}
                   </span>
                 </div>
                 <div v-if="step.brief.must_verify_claims?.length" class="mt-3">
@@ -584,7 +565,13 @@ const emptyStateLabel = computed(() => {
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchFocus', 'Focus') }}
                   </div>
-                  <div class="mt-1 break-words">{{ step.focus }}</div>
+                  <div class="mt-1 break-words">
+                    {{
+                      localizeDeepResearchStructuredValue(step.focus, resolveLabel) ||
+                      localizeDeepResearchSegment(step.focus, resolveLabel) ||
+                      step.focus
+                    }}
+                  </div>
                 </div>
                 <div
                   v-if="step.source_title"
@@ -602,7 +589,12 @@ const emptyStateLabel = computed(() => {
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchStopReason', 'Stop reason') }}
                   </div>
-                  <div class="mt-1 break-words">{{ step.stop_reason }}</div>
+                  <div class="mt-1 break-words">
+                    {{
+                      localizeDeepResearchStopReason(step.stop_reason, resolveLabel) ||
+                      step.stop_reason
+                    }}
+                  </div>
                 </div>
               </div>
             </div>

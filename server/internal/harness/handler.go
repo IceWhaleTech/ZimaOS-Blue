@@ -2,6 +2,7 @@ package harness
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -60,6 +61,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/datasets/:id/versions", h.CreateDatasetVersion)
 	g.GET("/datasets/:id/versions", h.ListDatasetVersions)
 	g.GET("/dataset-versions/:id", h.GetDatasetVersion)
+	g.POST("/dataset-bundles/import", h.ImportDatasetBundle)
+	g.POST("/dataset-bundles/preview-source", h.PreviewDatasetBundleFromSource)
+	g.POST("/dataset-bundles/import-source", h.ImportDatasetBundleFromSource)
 	g.POST("/eval-specs", h.CreateEvalSpec)
 	g.GET("/eval-specs", h.ListEvalSpecs)
 	g.GET("/eval-specs/:id", h.GetEvalSpec)
@@ -78,8 +82,12 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/baselines", h.ListBaselines)
 	g.POST("/skills/:skill_id/optimize", h.OptimizeSkill)
 	g.GET("/skills/:skill_id/revisions", h.ListSkillRevisions)
+	g.GET("/skills/:skill_id/decision-history", h.ListSkillDecisionHistory)
+	g.GET("/skills/:skill_id/evolution-cases", h.ListSkillEvolutionCases)
 	g.GET("/skill-revisions/:id", h.GetSkillRevision)
+	g.GET("/skill-evolution-cases/:id", h.GetSkillEvolutionCase)
 	g.POST("/skill-revisions/:id/promote", h.PromoteSkillRevision)
+	g.POST("/skill-revisions/:id/rollback", h.RollbackSkillRevision)
 	g.POST("/selector-curated/ensure", h.EnsureSelectorCuratedAssets)
 	g.POST("/execution-batch1/ensure", h.EnsureBatch1ExecutionAssets)
 	g.POST("/groups", h.CreateGroup)
@@ -191,6 +199,126 @@ func (h *Handler) GetDatasetVersion(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "dataset version not found"})
 	}
 	return c.JSON(http.StatusOK, version)
+}
+
+func (h *Handler) ImportDatasetBundle(c echo.Context) error {
+	var req ImportDatasetBundleRequest
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	if userID := harnessUserID(c); userID != "" {
+		req.Dataset.OwnerUserID = userID
+		req.Version.CreatedBy = userID
+		for i := range req.EvalSpecs {
+			req.EvalSpecs[i].OwnerUserID = userID
+		}
+	}
+	result, err := h.manager.ImportDatasetBundle(c.Request().Context(), req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) PreviewDatasetBundleFromSource(c echo.Context) error {
+	importReq, err := h.loadImportDatasetBundleRequestFromSource(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	preview, err := previewDatasetBundleImportRequest(importReq)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, preview)
+}
+
+func (h *Handler) ImportDatasetBundleFromSource(c echo.Context) error {
+	importReq, err := h.loadImportDatasetBundleRequestFromSource(c)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	result, err := h.manager.ImportDatasetBundle(c.Request().Context(), *importReq)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) loadImportDatasetBundleRequestFromSource(c echo.Context) (*ImportDatasetBundleRequest, error) {
+	var req ImportDatasetBundleFromSourceRequest
+	if err := c.Bind(&req); err != nil {
+		return nil, fmt.Errorf("invalid request")
+	}
+
+	var (
+		importReq *ImportDatasetBundleRequest
+		err       error
+	)
+	switch strings.TrimSpace(req.SourceType) {
+	case "local":
+		importReq, err = loadImportDatasetBundleRequestFromDir(req.Path, req.Version)
+	case "github":
+		importReq, err = loadImportDatasetBundleRequestFromGitHubSource(req.Source, req.BundlePath, req.Version)
+	default:
+		return nil, fmt.Errorf("source_type must be local or github")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if userID := harnessUserID(c); userID != "" {
+		importReq.Dataset.OwnerUserID = userID
+		importReq.Version.CreatedBy = userID
+		for i := range importReq.EvalSpecs {
+			importReq.EvalSpecs[i].OwnerUserID = userID
+		}
+	}
+	if req.MakeActive != nil {
+		importReq.MakeActive = *req.MakeActive
+	}
+	return importReq, nil
+}
+
+func previewDatasetBundleImportRequest(req *ImportDatasetBundleRequest) (*DatasetBundleSourcePreview, error) {
+	itemCount, err := validateImportDatasetBundleRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	preview := &DatasetBundleSourcePreview{
+		SourceType: strings.TrimSpace(req.SourceType),
+		SourceRef:  strings.TrimSpace(req.SourceRef),
+		Dataset: DatasetSpec{
+			Name:           strings.TrimSpace(req.Dataset.Name),
+			Description:    strings.TrimSpace(req.Dataset.Description),
+			OwnerUserID:    strings.TrimSpace(req.Dataset.OwnerUserID),
+			Subject:        strings.TrimSpace(req.Dataset.Subject),
+			DefaultRunKind: req.Dataset.DefaultRunKind,
+			DefaultProfile: strings.TrimSpace(req.Dataset.DefaultProfile),
+			Metadata:       cloneMetadataMap(req.Dataset.Metadata),
+		},
+		Version: DatasetBundleVersionPreview{
+			Version:        normalizeDatasetVersion(req.Version.Version),
+			ItemCount:      itemCount,
+			ManifestSHA256: manifestSHA256(req.Version.Manifest),
+			SourceType:     firstNonEmpty(strings.TrimSpace(req.Version.SourceType), strings.TrimSpace(req.SourceType)),
+			SourceRef:      firstNonEmpty(strings.TrimSpace(req.Version.SourceRef), strings.TrimSpace(req.SourceRef)),
+		},
+		EvalSpecs:  make([]ImportDatasetBundleEvalSpec, 0, len(req.EvalSpecs)),
+		MakeActive: req.MakeActive,
+	}
+	for _, spec := range req.EvalSpecs {
+		preview.EvalSpecs = append(preview.EvalSpecs, ImportDatasetBundleEvalSpec{
+			Name:            strings.TrimSpace(spec.Name),
+			OwnerUserID:     strings.TrimSpace(spec.OwnerUserID),
+			Subject:         strings.TrimSpace(spec.Subject),
+			RunKind:         spec.RunKind,
+			Profile:         strings.TrimSpace(spec.Profile),
+			SchedulerConfig: spec.SchedulerConfig,
+			ScoringConfig:   spec.ScoringConfig,
+			RuntimePolicy:   cloneMetadataMap(spec.RuntimePolicy),
+			Metadata:        cloneMetadataMap(spec.Metadata),
+		})
+	}
+	return preview, nil
 }
 
 func (h *Handler) CreateEvalSpec(c echo.Context) error {
@@ -348,6 +476,47 @@ func (h *Handler) ListSkillRevisions(c echo.Context) error {
 	return c.JSON(http.StatusOK, revisions)
 }
 
+func (h *Handler) ListSkillDecisionHistory(c echo.Context) error {
+	filter := SkillDecisionHistoryFilter{
+		SkillID: strings.TrimSpace(c.Param("skill_id")),
+		Limit:   50,
+	}
+	if rawLimit := strings.TrimSpace(c.QueryParam("limit")); rawLimit != "" {
+		if limit, err := strconv.Atoi(rawLimit); err == nil && limit > 0 {
+			filter.Limit = limit
+		}
+	}
+	if actions := parseSkillRevisionDecisionActions(c.QueryParams()["action"], c.QueryParams()["actions"]); len(actions) > 0 {
+		filter.Actions = actions
+	}
+	history, err := h.manager.ListSkillDecisionHistory(c.Request().Context(), filter)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, history)
+}
+
+func (h *Handler) ListSkillEvolutionCases(c echo.Context) error {
+	filter := SkillEvolutionCaseFilter{
+		SkillID:     strings.TrimSpace(c.Param("skill_id")),
+		OwnerUserID: harnessUserID(c),
+		Limit:       50,
+	}
+	if rawLimit := strings.TrimSpace(c.QueryParam("limit")); rawLimit != "" {
+		if limit, err := strconv.Atoi(rawLimit); err == nil && limit > 0 {
+			filter.Limit = limit
+		}
+	}
+	if statuses := parseSkillEvolutionCaseStatuses(c.QueryParams()["status"], c.QueryParams()["statuses"]); len(statuses) > 0 {
+		filter.Statuses = statuses
+	}
+	cases, err := h.manager.ListSkillEvolutionCases(c.Request().Context(), filter)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, cases)
+}
+
 func (h *Handler) GetSkillRevision(c echo.Context) error {
 	revision, err := h.manager.GetSkillRevision(c.Request().Context(), c.Param("id"))
 	if err != nil {
@@ -356,8 +525,38 @@ func (h *Handler) GetSkillRevision(c echo.Context) error {
 	return c.JSON(http.StatusOK, revision)
 }
 
+func (h *Handler) GetSkillEvolutionCase(c echo.Context) error {
+	evolutionCase, err := h.scopedSkillEvolutionCase(c)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "skill evolution case not found"})
+	}
+	detail, err := h.manager.BuildSkillEvolutionCaseDetail(c.Request().Context(), evolutionCase)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, detail)
+}
+
 func (h *Handler) PromoteSkillRevision(c echo.Context) error {
-	result, err := h.manager.PromoteSkillRevision(c.Request().Context(), c.Param("id"))
+	var req SkillRevisionDecisionRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	req.ReviewedBy = harnessUserID(c)
+	result, err := h.manager.PromoteSkillRevision(c.Request().Context(), c.Param("id"), req)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, result)
+}
+
+func (h *Handler) RollbackSkillRevision(c echo.Context) error {
+	var req SkillRevisionDecisionRequest
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request"})
+	}
+	req.ReviewedBy = harnessUserID(c)
+	result, err := h.manager.RollbackSkillRevision(c.Request().Context(), c.Param("id"), req)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
@@ -842,6 +1041,17 @@ func harnessUserID(c echo.Context) string {
 	return ""
 }
 
+func (h *Handler) scopedSkillEvolutionCase(c echo.Context) (*SkillEvolutionCase, error) {
+	evolutionCase, err := h.manager.GetSkillEvolutionCase(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return nil, err
+	}
+	if userID := harnessUserID(c); userID != "" && evolutionCase.OwnerUserID != "" && evolutionCase.OwnerUserID != userID {
+		return nil, echo.ErrNotFound
+	}
+	return evolutionCase, nil
+}
+
 func (h *Handler) scopedRun(c echo.Context) (*Run, error) {
 	run, err := h.manager.Get(c.Request().Context(), c.Param("id"))
 	if err != nil {
@@ -1022,6 +1232,42 @@ func parseSkillRevisionStatuses(values ...[]string) []SkillRevisionStatus {
 	seen := make(map[SkillRevisionStatus]struct{}, len(raw))
 	for _, item := range raw {
 		status := SkillRevisionStatus(strings.TrimSpace(item))
+		if status == "" {
+			continue
+		}
+		if _, ok := seen[status]; ok {
+			continue
+		}
+		seen[status] = struct{}{}
+		out = append(out, status)
+	}
+	return out
+}
+
+func parseSkillRevisionDecisionActions(values ...[]string) []SkillRevisionDecisionAction {
+	raw := flattenQueryValues(values...)
+	out := make([]SkillRevisionDecisionAction, 0, len(raw))
+	seen := make(map[SkillRevisionDecisionAction]struct{}, len(raw))
+	for _, item := range raw {
+		action := SkillRevisionDecisionAction(strings.TrimSpace(item))
+		if action == "" {
+			continue
+		}
+		if _, ok := seen[action]; ok {
+			continue
+		}
+		seen[action] = struct{}{}
+		out = append(out, action)
+	}
+	return out
+}
+
+func parseSkillEvolutionCaseStatuses(values ...[]string) []SkillEvolutionCaseStatus {
+	raw := flattenQueryValues(values...)
+	out := make([]SkillEvolutionCaseStatus, 0, len(raw))
+	seen := make(map[SkillEvolutionCaseStatus]struct{}, len(raw))
+	for _, item := range raw {
+		status := SkillEvolutionCaseStatus(strings.TrimSpace(item))
 		if status == "" {
 			continue
 		}

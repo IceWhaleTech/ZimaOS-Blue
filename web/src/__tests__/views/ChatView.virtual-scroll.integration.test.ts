@@ -89,13 +89,6 @@ const mocks = vi.hoisted(() => ({
     switchCategory: vi.fn(),
   },
   speechGetStatus: vi.fn(),
-  agentApi: {
-    listTasks: vi.fn(),
-    cancelTask: vi.fn(),
-    deleteTask: vi.fn(),
-    sendMessage: vi.fn(),
-    submitAnswers: vi.fn(),
-  },
   authFetch: vi.fn(),
   apiGet: vi.fn(),
   apiPost: vi.fn(),
@@ -110,7 +103,6 @@ const mocks = vi.hoisted(() => ({
   warmupTrigger: vi.fn(),
   injectMessage: vi.fn(),
   approvalApi: {
-    listPending: vi.fn(),
     resolve: vi.fn(),
     getConfig: vi.fn(),
     updateConfig: vi.fn(),
@@ -125,7 +117,6 @@ vi.mock('@/api/chat', () => ({
     get: vi.fn(),
     delete: vi.fn(),
     search: vi.fn(),
-    getCommandState: vi.fn(),
     patchCommandState: vi.fn(),
   },
   messageApi: {
@@ -141,13 +132,6 @@ vi.mock('@/api/chat', () => ({
   },
   cardActionApi: {
     submit: vi.fn(),
-  },
-  agentApi: {
-    listTasks: (...args: unknown[]) => mocks.agentApi.listTasks(...args),
-    cancelTask: (...args: unknown[]) => mocks.agentApi.cancelTask(...args),
-    deleteTask: (...args: unknown[]) => mocks.agentApi.deleteTask(...args),
-    sendMessage: (...args: unknown[]) => mocks.agentApi.sendMessage(...args),
-    submitAnswers: (...args: unknown[]) => mocks.agentApi.submitAnswers(...args),
   },
 }))
 
@@ -193,7 +177,6 @@ vi.mock('@/api/client', () => ({
 
 vi.mock('@/api/approval', () => ({
   approvalApi: {
-    listPending: (...args: unknown[]) => mocks.approvalApi.listPending(...args),
     resolve: (...args: unknown[]) => mocks.approvalApi.resolve(...args),
     getConfig: (...args: unknown[]) => mocks.approvalApi.getConfig(...args),
     updateConfig: (...args: unknown[]) => mocks.approvalApi.updateConfig(...args),
@@ -392,6 +375,46 @@ const CONVERSATION = {
   updated_at: '2026-03-08T00:00:02.000Z',
 }
 
+function makeBootstrapResponse(
+  conversationId: string,
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    data: {
+      command_state: {
+        conversation_id: conversationId,
+        selected_provider_id: '',
+        selected_model_id: '',
+        offline: false,
+      },
+      active_stream: {
+        conversation_id: conversationId,
+        active: false,
+      },
+      current_tasks: [],
+      background_tasks: [],
+      pending_approval: null,
+      pending_question: null,
+      pending_exec_approval: null,
+      ...overrides,
+    },
+  }
+}
+
+async function defaultApiGet(path: string) {
+  if (path.includes('/ask-user-question/pending')) {
+    return { data: { pending: false } }
+  }
+  if (path.includes('/exec/approvals/pending')) {
+    return { data: { pending: false } }
+  }
+  const bootstrapMatch = String(path).match(/^\/conversations\/([^/]+)\/bootstrap$/)
+  if (bootstrapMatch) {
+    return makeBootstrapResponse(bootstrapMatch[1] ?? '')
+  }
+  return { data: {} }
+}
+
 function mockRect(top: number, height = 40): DOMRect {
   return {
     top,
@@ -545,20 +568,13 @@ describe('ChatView virtual scroll integration', () => {
     mocks.mediaGenerate.switchCategory.mockReset()
 
     mocks.speechGetStatus.mockReset().mockResolvedValue({ data: {} })
-    mocks.agentApi.listTasks.mockReset().mockResolvedValue({ data: [] })
-    mocks.agentApi.cancelTask.mockReset().mockResolvedValue({})
-    mocks.agentApi.deleteTask.mockReset().mockResolvedValue({})
-    mocks.agentApi.sendMessage.mockReset().mockResolvedValue({})
-    mocks.agentApi.submitAnswers.mockReset().mockResolvedValue({})
-
     mocks.authFetch.mockReset().mockResolvedValue({})
-    mocks.apiGet.mockReset().mockResolvedValue({ data: { pending: false } })
+    mocks.apiGet.mockReset().mockImplementation(defaultApiGet)
     mocks.apiPost.mockReset().mockResolvedValue({})
     mocks.onSSEEvent.mockReset()
     mocks.offSSEEvent.mockReset()
     mocks.warmupTrigger.mockReset().mockResolvedValue(undefined)
     mocks.injectMessage.mockReset().mockResolvedValue({})
-    mocks.approvalApi.listPending.mockReset().mockResolvedValue({ data: [] })
     mocks.approvalApi.resolve.mockReset().mockResolvedValue({})
     mocks.approvalApi.getConfig.mockReset().mockResolvedValue({ data: { auto_approve_tools: [] } })
     mocks.approvalApi.updateConfig.mockReset().mockResolvedValue({})
@@ -571,18 +587,6 @@ describe('ChatView virtual scroll integration', () => {
     vi.mocked(conversationApi.get).mockReset()
     vi.mocked(conversationApi.delete).mockReset()
     vi.mocked(conversationApi.search).mockReset()
-    vi.mocked(conversationApi.getCommandState)
-      .mockReset()
-      .mockResolvedValue({
-        data: {
-          conversation_id: CONVERSATION.id,
-          selected_provider_id: '',
-          selected_model_id: '',
-          offline: false,
-          web_search_enabled: true,
-          deep_research_enabled: false,
-        },
-      } as never)
     vi.mocked(conversationApi.patchCommandState)
       .mockReset()
       .mockResolvedValue({
@@ -591,8 +595,6 @@ describe('ChatView virtual scroll integration', () => {
           selected_provider_id: '',
           selected_model_id: '',
           offline: false,
-          web_search_enabled: true,
-          deep_research_enabled: false,
         },
       } as never)
 

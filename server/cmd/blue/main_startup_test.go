@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"go.uber.org/zap"
+)
 
 func TestRunServerRestartsInProcessUntilStable(t *testing.T) {
 	original := runServerIteration
@@ -86,5 +90,36 @@ func TestShouldSkipStartupSTTAuthorization(t *testing.T) {
 				t.Fatalf("shouldSkipStartupSTTAuthorization(%v) = %v, want %v", tc.args, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestAuxServiceLoggerConfig_DisablesSampling(t *testing.T) {
+	cfg := auxServiceLoggerConfig()
+	if cfg.Sampling != nil {
+		t.Fatalf("expected aux service logger sampling to be disabled, got %+v", cfg.Sampling)
+	}
+
+	production := zap.NewProductionConfig()
+	if cfg.Level.Level() != production.Level.Level() {
+		t.Fatalf("expected production log level %d, got %d", production.Level.Level(), cfg.Level.Level())
+	}
+	if cfg.Encoding != production.Encoding {
+		t.Fatalf("expected production encoding %q, got %q", production.Encoding, cfg.Encoding)
+	}
+}
+
+func TestRootCommand_DisablesCobraDefaultCompletionCommand(t *testing.T) {
+	if !rootCmd.CompletionOptions.DisableDefaultCmd {
+		t.Fatalf("expected cobra default completion command to be disabled")
+	}
+}
+
+func TestRootCommand_RegistersCustomCompletionCommand(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"completion"})
+	if err != nil {
+		t.Fatalf("rootCmd.Find(completion): %v", err)
+	}
+	if cmd == nil || cmd.Name() != "completion" {
+		t.Fatalf("expected custom completion command to be registered, got %#v", cmd)
 	}
 }

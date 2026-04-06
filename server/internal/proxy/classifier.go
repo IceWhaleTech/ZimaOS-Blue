@@ -4,6 +4,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -83,6 +84,11 @@ type APIErrorClassifier struct {
 	patterns map[string][]ErrorPattern
 }
 
+var (
+	defaultAPIErrorPatternsOnce sync.Once
+	defaultAPIErrorPatterns     map[string][]ErrorPattern
+)
+
 // IsContextWindowExceededMessage returns true when an error message clearly
 // indicates input/context overflow, including relay-wrapped variants that may
 // be surfaced with a generic 5xx status code.
@@ -102,17 +108,25 @@ func IsContextWindowExceededMessage(msg string) bool {
 
 // NewAPIErrorClassifier creates a new error classifier with default patterns
 func NewAPIErrorClassifier() *APIErrorClassifier {
-	c := &APIErrorClassifier{
-		patterns: make(map[string][]ErrorPattern),
-	}
-	c.initDefaultPatterns()
-	return c
+	return &APIErrorClassifier{}
 }
 
-// initDefaultPatterns initializes error patterns for known providers
-func (c *APIErrorClassifier) initDefaultPatterns() {
+func (c *APIErrorClassifier) ensurePatterns() {
+	if c == nil || c.patterns != nil {
+		return
+	}
+	defaultAPIErrorPatternsOnce.Do(func() {
+		defaultAPIErrorPatterns = buildDefaultAPIErrorPatterns()
+	})
+	c.patterns = defaultAPIErrorPatterns
+}
+
+// buildDefaultAPIErrorPatterns initializes error patterns for known providers.
+func buildDefaultAPIErrorPatterns() map[string][]ErrorPattern {
+	patterns := make(map[string][]ErrorPattern)
+
 	// Anthropic patterns
-	c.patterns["anthropic"] = []ErrorPattern{
+	patterns["anthropic"] = []ErrorPattern{
 		{
 			Type:        ErrorTypeContextTooLong,
 			Category:    ErrorCategoryFailover,
@@ -189,7 +203,7 @@ func (c *APIErrorClassifier) initDefaultPatterns() {
 	}
 
 	// OpenAI patterns
-	c.patterns["openai"] = []ErrorPattern{
+	patterns["openai"] = []ErrorPattern{
 		{
 			Type:        ErrorTypeContextTooLong,
 			Category:    ErrorCategoryFailover,
@@ -231,7 +245,7 @@ func (c *APIErrorClassifier) initDefaultPatterns() {
 	}
 
 	// DeepSeek patterns
-	c.patterns["deepseek"] = []ErrorPattern{
+	patterns["deepseek"] = []ErrorPattern{
 		{
 			Type:        ErrorTypeContextTooLong,
 			Category:    ErrorCategoryFailover,
@@ -253,7 +267,7 @@ func (c *APIErrorClassifier) initDefaultPatterns() {
 	}
 
 	// Google/Gemini patterns
-	c.patterns["google"] = []ErrorPattern{
+	patterns["google"] = []ErrorPattern{
 		{
 			Type:        ErrorTypeContextTooLong,
 			Category:    ErrorCategoryFailover,
@@ -275,7 +289,7 @@ func (c *APIErrorClassifier) initDefaultPatterns() {
 	}
 
 	// Generic patterns (fallback for unknown providers)
-	c.patterns["generic"] = []ErrorPattern{
+	patterns["generic"] = []ErrorPattern{
 		{
 			Type:        ErrorTypeContextTooLong,
 			Category:    ErrorCategoryFailover,
@@ -329,6 +343,8 @@ func (c *APIErrorClassifier) initDefaultPatterns() {
 			},
 		},
 	}
+
+	return patterns
 }
 
 // ClassifyError analyzes response and returns error classification
@@ -337,6 +353,8 @@ func (c *APIErrorClassifier) ClassifyError(
 	statusCode int,
 	responseBody []byte,
 ) *ErrorClassification {
+	c.ensurePatterns()
+
 	// Parse error response - try multiple formats
 	message := c.extractErrorMessage(responseBody)
 	if statusCode >= 400 && IsContextWindowExceededMessage(message) {

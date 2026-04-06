@@ -8,14 +8,14 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providercatalogseed"
 )
 
 func main() {
 	check := flag.Bool("check", false, "verify files match generated catalog instead of writing them")
 	flag.Parse()
 
-	content, err := providerpool.GenerateOfficialProviderCatalogJSON()
+	content, err := providercatalogseed.GenerateOfficialProviderCatalogJSON()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "generate provider catalog: %v\n", err)
 		os.Exit(1)

@@ -399,6 +399,60 @@ export interface HarnessDatasetVersionSpec {
   metadata?: Record<string, unknown> | null
 }
 
+export interface HarnessDatasetBundleImportSourceRequest {
+  source_type: 'local' | 'github'
+  path?: string
+  source?: string
+  bundle_path?: string
+  version?: string
+  make_active?: boolean
+}
+
+export interface HarnessDatasetBundlePreviewVersion {
+  version?: string
+  item_count: number
+  manifest_sha256?: string
+  source_type?: string
+  source_ref?: string
+}
+
+export interface HarnessDatasetBundlePreviewEvalSpec {
+  name: string
+  owner_user_id?: string
+  subject?: string
+  run_kind?: HarnessRunKind
+  profile?: string
+  scheduler?: {
+    max_concurrency?: number
+    max_attempts?: number
+    lease_ttl?: number
+    retry_backoff?: number
+  }
+  scoring?: {
+    mode?: HarnessScoringMode
+    rule_profile?: string
+    judge_model?: string
+    pass_threshold?: number
+  }
+  runtime_policy?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null
+}
+
+export interface HarnessDatasetBundleSourcePreview {
+  source_type?: string
+  source_ref?: string
+  dataset: HarnessDatasetSpec
+  version: HarnessDatasetBundlePreviewVersion
+  eval_specs?: HarnessDatasetBundlePreviewEvalSpec[]
+  make_active?: boolean
+}
+
+export interface HarnessDatasetBundleImportResult {
+  dataset?: HarnessDataset | null
+  dataset_version?: HarnessDatasetVersion | null
+  eval_specs?: HarnessEvalSpec[]
+}
+
 export interface HarnessPromoteGroupSpec {
   dataset_name: string
   description?: string
@@ -520,6 +574,122 @@ export interface HarnessBaselineSpec {
   metadata?: Record<string, unknown> | null
 }
 
+export type SkillRevisionStatus =
+  | 'candidate'
+  | 'accepted'
+  | 'rejected'
+  | 'promoted'
+  | 'backup'
+
+export type SkillRevisionDecisionAction = 'promote' | 'rollback'
+
+export interface SkillRevisionDecisionRequest {
+  review_note?: string
+}
+
+export interface SkillRevision {
+  id: string
+  skill_id: string
+  status: SkillRevisionStatus
+  source_path?: string
+  candidate_id?: string
+  base_content_sha256?: string
+  origin_case_id?: string
+  parent_revision_id?: string
+  backup_of_revision_id?: string
+  eval_run_id?: string
+  optimization_run_id?: string
+  followup_gate?: string
+  optimization_surface?: string
+  decision_action?: SkillRevisionDecisionAction
+  review_note?: string
+  reviewed_by?: string
+  decision_log_json?: string
+  content?: string
+  content_sha256?: string
+  created_at: string
+  reviewed_at?: string | null
+  promoted_at?: string | null
+}
+
+export interface SkillDecisionHistoryEntry {
+  revision_id: string
+  skill_id: string
+  status: SkillRevisionStatus
+  source_path?: string
+  candidate_id?: string
+  base_content_sha256?: string
+  origin_case_id?: string
+  parent_revision_id?: string
+  backup_of_revision_id?: string
+  eval_run_id?: string
+  optimization_run_id?: string
+  followup_gate?: string
+  optimization_surface?: string
+  decision_action?: SkillRevisionDecisionAction
+  review_note?: string
+  reviewed_by?: string
+  decision_log?: Record<string, unknown> | null
+  decision_log_json?: string
+  decision_at: string
+  created_at: string
+  reviewed_at?: string | null
+  promoted_at?: string | null
+}
+
+export type SkillEvolutionMode = 'fix' | 'capture'
+export type SkillEvolutionReason =
+  | 'runtime_failure'
+  | 'runtime_capture'
+  | 'selector_gate_failed'
+  | 'execution_gate_failed'
+  | 'budget_gate_failed'
+  | 'manual'
+export type SkillEvolutionCaseStatus =
+  | 'open'
+  | 'candidate_created'
+  | 'accepted'
+  | 'rejected'
+  | 'promoted'
+  | 'skipped'
+
+export interface SkillEvolutionCase {
+  id: string
+  skill_id: string
+  owner_user_id?: string
+  mode: SkillEvolutionMode
+  reason: SkillEvolutionReason
+  source_kind?: string
+  source_id?: string
+  candidate_id?: string
+  base_content_sha256?: string
+  failure_signature?: string
+  dedup_key?: string
+  summary?: string
+  evidence_json?: string
+  revision_id?: string
+  status: SkillEvolutionCaseStatus
+  skipped_reason?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SkillEvolutionCaseDetail extends SkillEvolutionCase {
+  linked_revision?: SkillRevision | null
+  source_run_id?: string
+  source_run?: HarnessRun | null
+  source_eval_run_id?: string
+  source_eval_run?: HarnessEvalRun | null
+  linked_eval_run_id?: string
+  linked_eval_run?: HarnessEvalRun | null
+}
+
+export interface SkillPromoteResult {
+  promoted_revision_id: string
+  backup_revision_id: string
+  written_source_path: string
+}
+
 export interface HarnessComparisonCaseDelta {
   key: string
   label?: string
@@ -598,6 +768,37 @@ export interface HarnessEvalRunListParams {
 export interface HarnessBaselineListParams {
   limit?: number
   evalSpecID?: string
+}
+
+export interface SkillRevisionListParams {
+  limit?: number
+  status?: SkillRevisionStatus | SkillRevisionStatus[]
+}
+
+export interface SkillDecisionHistoryListParams {
+  limit?: number
+  action?: SkillRevisionDecisionAction | SkillRevisionDecisionAction[]
+}
+
+export interface SkillEvolutionCaseListParams {
+  limit?: number
+  status?: SkillEvolutionCaseStatus | SkillEvolutionCaseStatus[]
+}
+
+export interface SkillOptimizeRequest {
+  eval_run_id: string
+  candidate_id?: string
+  source_path?: string
+}
+
+export interface HarnessOptimizationTrigger {
+  reason: string
+  candidate_id?: string
+  eval_run_id?: string
+  base_eval_run_id?: string
+  optimization_run?: boolean
+  optimization_surface?: string
+  metadata?: Record<string, unknown> | null
 }
 
 export interface HarnessCompareEvalRunRequest {
@@ -679,6 +880,12 @@ export const harnessApi = {
   createDatasetVersion: (datasetID: string, payload: HarnessDatasetVersionSpec) =>
     api.post<HarnessDatasetVersion>(`/harness/datasets/${datasetID}/versions`, payload),
 
+  previewDatasetBundleFromSource: (payload: HarnessDatasetBundleImportSourceRequest) =>
+    api.post<HarnessDatasetBundleSourcePreview>('/harness/dataset-bundles/preview-source', payload),
+
+  importDatasetBundleFromSource: (payload: HarnessDatasetBundleImportSourceRequest) =>
+    api.post<HarnessDatasetBundleImportResult>('/harness/dataset-bundles/import-source', payload),
+
   listEvalSpecs: (params: HarnessEvalSpecListParams = {}) =>
     api.get<HarnessEvalSpec[]>('/harness/eval-specs', {
       params: {
@@ -724,4 +931,42 @@ export const harnessApi = {
 
   createBaseline: (payload: HarnessBaselineSpec) =>
     api.post<HarnessBaseline>('/harness/baselines', payload),
+
+  listSkillRevisions: (skillID: string, params: SkillRevisionListParams = {}) =>
+    api.get<SkillRevision[]>(`/harness/skills/${skillID}/revisions`, {
+      params: {
+        limit: params.limit,
+        statuses: normalizeQueryArray(params.status),
+      },
+    }),
+
+  listSkillDecisionHistory: (skillID: string, params: SkillDecisionHistoryListParams = {}) =>
+    api.get<SkillDecisionHistoryEntry[]>(`/harness/skills/${skillID}/decision-history`, {
+      params: {
+        limit: params.limit,
+        actions: normalizeQueryArray(params.action),
+      },
+    }),
+
+  getSkillRevision: (id: string) => api.get<SkillRevision>(`/harness/skill-revisions/${id}`),
+
+  listSkillEvolutionCases: (skillID: string, params: SkillEvolutionCaseListParams = {}) =>
+    api.get<SkillEvolutionCase[]>(`/harness/skills/${skillID}/evolution-cases`, {
+      params: {
+        limit: params.limit,
+        statuses: normalizeQueryArray(params.status),
+      },
+    }),
+
+  getSkillEvolutionCase: (id: string) =>
+    api.get<SkillEvolutionCaseDetail>(`/harness/skill-evolution-cases/${id}`),
+
+  promoteSkillRevision: (id: string, payload?: SkillRevisionDecisionRequest) =>
+    api.post<SkillPromoteResult>(`/harness/skill-revisions/${id}/promote`, payload),
+
+  rollbackSkillRevision: (id: string, payload?: SkillRevisionDecisionRequest) =>
+    api.post<SkillPromoteResult>(`/harness/skill-revisions/${id}/rollback`, payload),
+
+  optimizeSkill: (skillID: string, payload: SkillOptimizeRequest) =>
+    api.post<HarnessOptimizationTrigger>(`/harness/skills/${skillID}/optimize`, payload),
 }

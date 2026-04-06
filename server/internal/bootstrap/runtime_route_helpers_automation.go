@@ -34,8 +34,7 @@ func registerBrowserAutomationRoutes(apiProtected *echo.Group, browserHandler ro
 	}
 
 	stub := featureDisabled("browser")
-	browserGroup.GET("/tasks", stub)
-	browserGroup.GET("/sessions", stub)
+	browserGroup.GET("/overview", stub)
 	browserGroup.GET("/security", stub)
 	browserGroup.Any("/*", stub)
 }

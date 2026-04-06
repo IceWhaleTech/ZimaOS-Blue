@@ -30,6 +30,8 @@ jobs:
         run: |
           npm ci
           npm run audit:ci
+          npm run i18n:audit:strict
+          npm run test:run -- src/i18n/locale-integrity.test.ts src/i18n/agentcore-runner-locales.test.ts
           npm run build
 
 

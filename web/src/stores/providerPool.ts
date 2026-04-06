@@ -706,6 +706,7 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
           provider.api_keys = []
         }
         provider.api_keys.push(response.data)
+        provider.enabled = true
       }
       // Backend auto-triggers model fetch for the new key.
       // Fetch key models after a short delay to let the backend finish.
@@ -734,6 +735,10 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       await providerPoolApi.removeAPIKey(providerId, keyId)
       if (provider && provider.api_keys) {
         provider.api_keys = provider.api_keys.filter((k) => k.id !== keyId)
+        if (provider.api_keys.length === 0 && !provider.oauth?.connected) {
+          provider.enabled = false
+          provider.status = 'inactive'
+        }
       }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to remove API key'

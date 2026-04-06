@@ -1,6 +1,6 @@
 package i18n
 
-func init() {
+func registerTranslationsPart2() {
 	// --- pl-PL (Polish) ---
 	for k, v := range map[string]string{
 		MsgProcessingError:          "Przepraszamy, wystąpił błąd podczas przetwarzania wiadomości: %v",

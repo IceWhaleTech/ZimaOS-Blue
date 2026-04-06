@@ -167,7 +167,6 @@ func (h *ApprovalHandler) RegisterRoutes(g *echo.Group) {
 	ag := g.Group("/approval")
 	ag.GET("/config", h.GetConfig)
 	ag.PUT("/config", h.UpdateConfig)
-	ag.GET("/pending", h.ListPending)
 	ag.POST("/resolve", h.Resolve)
 }
 
@@ -194,21 +193,6 @@ func (h *ApprovalHandler) UpdateConfig(c echo.Context) error {
 	return c.JSON(http.StatusOK, cfg)
 }
 
-// ListPending returns all pending approval requests.
-func (h *ApprovalHandler) ListPending(c echo.Context) error {
-	sessionID := strings.TrimSpace(c.QueryParam("session_id"))
-	h.mu.RLock()
-	out := make([]*PendingRequest, 0, len(h.pending))
-	for _, r := range h.pending {
-		if sessionID != "" && strings.TrimSpace(r.SessionID) != sessionID {
-			continue
-		}
-		out = append(out, r)
-	}
-	h.mu.RUnlock()
-	return c.JSON(http.StatusOK, out)
-}
-
 // GetPendingByRun returns the first pending tool approval request for a harness run.
 func (h *ApprovalHandler) GetPendingByRun(runID string) *PendingRequest {
 	runID = strings.TrimSpace(runID)
@@ -224,6 +208,108 @@ func (h *ApprovalHandler) GetPendingByRun(runID string) *PendingRequest {
 		}
 	}
 	return nil
+}
+
+// GetPending returns the most recent pending tool approval request for a user.
+func (h *ApprovalHandler) GetPending(userID string) map[string]any {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		userID = "default"
+	}
+	nowMs := timeutil.NowMilli()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var latest *PendingRequest
+	var latestCreated time.Time
+	for id, req := range h.pending {
+		if req == nil || (req.ExpiresAt > 0 && req.ExpiresAt <= nowMs) {
+			delete(h.pending, id)
+			delete(h.waiters, id)
+			continue
+		}
+		if req.UserID != userID && req.UserID != "default" && userID != "default" {
+			continue
+		}
+		created := parsePendingRequestCreatedAt(req)
+		if latest == nil || created.After(latestCreated) {
+			latest = req
+			latestCreated = created
+		}
+	}
+	return clonePendingRequestPayload(latest)
+}
+
+// GetPendingBySession returns the most recent pending tool approval request for a session.
+func (h *ApprovalHandler) GetPendingBySession(sessionID string) map[string]any {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return nil
+	}
+	nowMs := timeutil.NowMilli()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var latest *PendingRequest
+	var latestCreated time.Time
+	for id, req := range h.pending {
+		if req == nil || (req.ExpiresAt > 0 && req.ExpiresAt <= nowMs) {
+			delete(h.pending, id)
+			delete(h.waiters, id)
+			continue
+		}
+		if strings.TrimSpace(req.SessionID) != sessionID {
+			continue
+		}
+		created := parsePendingRequestCreatedAt(req)
+		if latest == nil || created.After(latestCreated) {
+			latest = req
+			latestCreated = created
+		}
+	}
+	return clonePendingRequestPayload(latest)
+}
+
+func parsePendingRequestCreatedAt(req *PendingRequest) time.Time {
+	if req == nil {
+		return time.Time{}
+	}
+	createdAt := strings.TrimSpace(req.CreatedAt)
+	if createdAt == "" {
+		return time.Time{}
+	}
+	parsed, err := time.Parse(time.RFC3339, createdAt)
+	if err != nil {
+		return time.Time{}
+	}
+	return parsed
+}
+
+func clonePendingRequestPayload(req *PendingRequest) map[string]any {
+	if req == nil {
+		return nil
+	}
+	arguments := make(map[string]any, len(req.Arguments))
+	for key, value := range req.Arguments {
+		arguments[key] = value
+	}
+	return map[string]any{
+		"id":            strings.TrimSpace(req.ID),
+		"run_id":        strings.TrimSpace(req.RunID),
+		"step_index":    req.StepIndex,
+		"tool_name":     strings.TrimSpace(req.ToolName),
+		"tool_call_id":  strings.TrimSpace(req.ToolCallID),
+		"arguments":     arguments,
+		"session_id":    strings.TrimSpace(req.SessionID),
+		"route_kind":    strings.TrimSpace(req.RouteKind),
+		"provider":      strings.TrimSpace(req.Provider),
+		"provider_id":   strings.TrimSpace(req.ProviderID),
+		"model":         strings.TrimSpace(req.Model),
+		"agent_id":      strings.TrimSpace(req.AgentID),
+		"policy_source": strings.TrimSpace(req.PolicySource),
+		"risk_level":    strings.TrimSpace(req.RiskLevel),
+		"binding_hash":  strings.TrimSpace(req.BindingHash),
+		"created_at":    strings.TrimSpace(req.CreatedAt),
+		"expires_at":    req.ExpiresAt,
+	}
 }
 
 // resolveRequest is the JSON body for POST /approval/resolve.

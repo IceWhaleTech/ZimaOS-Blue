@@ -90,6 +90,45 @@ var fallbackComplexKeywords = []string{
 	"多镜头",
 }
 
+type localizedTitleAffix struct {
+	prefix string
+	suffix string
+}
+
+// Covers the repository's 27 supported locales plus a few punctuation variants
+// observed around Google Images result alt text boilerplate.
+var fallbackGoogleImageResultTitleAffixes = []localizedTitleAffix{
+	{prefix: "Resultat d'imatge per a "},
+	{prefix: "Výsledek obrázku pro "},
+	{prefix: "Billedresultat for "},
+	{prefix: "Bildergebnis für "},
+	{prefix: "Αποτέλεσμα εικόνας για "},
+	{prefix: "Image result for "},
+	{prefix: "Resultado de imagen para "},
+	{prefix: "Résultat d'image pour "},
+	{prefix: "Résultat de l'image pour "},
+	{prefix: "Toradh íomhá do "},
+	{prefix: "Rezultat slike za "},
+	{prefix: "Képeredmény az ", suffix: " kifejezésre"},
+	{prefix: "Risultato immagine per "},
+	{suffix: "の画像結果"},
+	{prefix: "「", suffix: "」の画像結果"},
+	{suffix: "에 대한 이미지 검색결과"},
+	{suffix: "-നുള്ള ചിത്ര ഫലം"},
+	{prefix: "Bilderesultat for "},
+	{prefix: "Afbeeldingsresultaat voor "},
+	{prefix: "Wynik obrazu dla "},
+	{prefix: "Resultado de imagem para "},
+	{prefix: "Rezultat imagine pentru "},
+	{prefix: "Результат изображения для "},
+	{prefix: "Výsledok obrázka pre "},
+	{prefix: "Bildresultat för "},
+	{suffix: " 的图像结果"},
+	{suffix: " 的圖像結果"},
+	{suffix: "的图像结果"},
+	{suffix: "的圖像結果"},
+}
+
 var fallbackPosterStopWords = map[string]struct{}{
 	"a": {}, "an": {}, "the": {}, "and": {}, "for": {}, "with": {}, "from": {}, "into": {}, "that": {}, "this": {},
 	"your": {}, "you": {}, "show": {}, "make": {}, "image": {}, "photo": {}, "poster": {}, "video": {}, "draw": {},
@@ -433,6 +472,7 @@ type FallbackEngine struct {
 // NewFallbackEngine creates a new no-key fallback engine.
 func NewFallbackEngine(cfg FallbackConfig, storage *MediaStorage, searcher FallbackSearcher, browserSvc func() FallbackBrowserService, locale string) *FallbackEngine {
 	cfg = normalizeFallbackConfig(cfg)
+	configureSlideFontRuntimeDataDir(cfg.DataDir)
 	engine := &FallbackEngine{
 		config:       cfg,
 		storage:      storage,
@@ -2854,7 +2894,7 @@ func parseGoogleImageScrapeResults(resp *browser.ScrapeResponse, maxResults int)
 		seen[imageURL] = struct{}{}
 		title := ""
 		if idx < len(alts) {
-			title = strings.TrimSpace(alts[idx])
+			title = normalizeGoogleImageResultTitle(alts[idx])
 		}
 		results = append(results, FallbackSearchResult{
 			Title:           title,
@@ -2869,6 +2909,48 @@ func parseGoogleImageScrapeResults(resp *browser.ScrapeResponse, maxResults int)
 		}
 	}
 	return results
+}
+
+func normalizeGoogleImageResultTitle(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	for {
+		next := trimGoogleImageResultBoilerplate(trimmed)
+		if next == trimmed {
+			break
+		}
+		trimmed = next
+	}
+	return trimmed
+}
+
+func trimGoogleImageResultBoilerplate(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	for _, affix := range fallbackGoogleImageResultTitleAffixes {
+		next := trimmed
+		if affix.prefix != "" {
+			if !strings.HasPrefix(next, affix.prefix) {
+				continue
+			}
+			next = strings.TrimSpace(next[len(affix.prefix):])
+		}
+		if affix.suffix != "" {
+			if !strings.HasSuffix(next, affix.suffix) {
+				continue
+			}
+			next = strings.TrimSpace(next[:len(next)-len(affix.suffix)])
+		}
+		next = strings.TrimSpace(strings.Trim(next, "\"'`“”‘’[](){}<>《》〈〉「」『』【】"))
+		if next != "" && next != trimmed {
+			return next
+		}
+	}
+	return trimmed
 }
 
 func fallbackLooksLikeCraiyonImageURL(raw string) bool {

@@ -187,12 +187,13 @@ func TestBindCoreSupportRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 		method string
 		path   string
 	}{
-		{method: "GET", path: "/api/v1/ask-user-question/pending"},
-		{method: "GET", path: "/api/v1/exec/approvals/pending"},
 		{method: "GET", path: "/api/convert/tasks"},
 	} {
 		if !routeExists(e, route.method, route.path) {
 			t.Fatalf("expected %s %s to be registered through core support contract, got %#v", route.method, route.path, e.Routes())
 		}
+	}
+	if routeExists(e, "GET", "/api/v1/pending-confirmations") {
+		t.Fatalf("did not expect standalone pending-confirmations route to remain registered")
 	}
 }

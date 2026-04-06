@@ -41,6 +41,11 @@ var (
 	ErrRunNotFound         = publicagentcore.ErrRunNotFound
 )
 
+const (
+	ProfileVerifyMessageCodeProfileVerified = publicagentcore.ProfileVerifyMessageCodeProfileVerified
+	ProfileHealthMessageCodeRuntimeHealthy  = publicagentcore.ProfileHealthMessageCodeRuntimeHealthy
+)
+
 type AgentProfile = publicagentcore.AgentProfile
 type ExternalSession = publicagentcore.ExternalSession
 type ExternalRun = publicagentcore.ExternalRun

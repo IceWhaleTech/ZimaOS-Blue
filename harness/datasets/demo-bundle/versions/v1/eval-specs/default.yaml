@@ -1,0 +1,9 @@
+name: Default Demo Eval
+subject: demo_subject
+run_kind: agent_task
+profile: demo-profile
+scoring:
+  mode: rule
+  pass_threshold: 1
+metadata:
+  lane: default

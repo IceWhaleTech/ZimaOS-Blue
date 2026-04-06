@@ -128,6 +128,8 @@ func (u *PricingUpdater) fetchAndApply() {
 		return
 	}
 
+	ensureBuiltinPricingData()
+
 	applied := 0
 	for modelID, item := range data.Models {
 		BuiltinModelPricing[modelID] = &ModelPricing{

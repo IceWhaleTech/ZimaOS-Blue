@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import router from '@/router'
+import { chatBootstrapApi } from '@/api/chatBootstrap'
 import { i18n } from '@/i18n'
 import { offSSEEvent, onSSEEvent } from '@/composables/useEventStream'
 import type {
@@ -533,34 +534,37 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     sseListening = false
   }
 
-  async function fetchCurrentTasks(conversationId: string) {
-    if (!conversationId) {
-      currentTasks.value = []
-      return
-    }
-    const { taskProjectionApi } = await loadTasksApiModule()
-    const response = await taskProjectionApi.listTasks({
-      conversation_id: conversationId,
-      scope: 'current',
-      limit: 10,
-    })
-    currentTasks.value = (response.data || [])
+  function normalizeTaskProjectionList(
+    tasks: UserTaskProjection[] | Partial<UserTaskProjection>[] | null | undefined
+  ): UserTaskProjection[] {
+    return (tasks || [])
       .map((task) => normalizeTaskSnapshot(task))
       .filter((task): task is UserTaskProjection => !!task)
       .sort(compareTasksByUpdatedAt)
   }
 
-  async function fetchBackgroundTasks(conversationId: string) {
-    const { taskProjectionApi } = await loadTasksApiModule()
-    const response = await taskProjectionApi.listTasks({
-      conversation_id: conversationId || undefined,
-      scope: 'background',
-      limit: 5,
-    })
-    backgroundTasks.value = (response.data || [])
-      .map((task) => normalizeTaskSnapshot(task))
-      .filter((task): task is UserTaskProjection => !!task)
-      .sort(compareTasksByUpdatedAt)
+  async function fetchBootstrapTaskSnapshot(conversationId: string): Promise<{
+    currentTasks: UserTaskProjection[]
+    backgroundTasks: UserTaskProjection[]
+  }> {
+    if (!conversationId) {
+      return {
+        currentTasks: [],
+        backgroundTasks: [],
+      }
+    }
+    try {
+      const response = await chatBootstrapApi.getConversationBootstrap(conversationId)
+      return {
+        currentTasks: normalizeTaskProjectionList(response.data?.current_tasks),
+        backgroundTasks: normalizeTaskProjectionList(response.data?.background_tasks),
+      }
+    } catch {
+      return {
+        currentTasks: [],
+        backgroundTasks: [],
+      }
+    }
   }
 
   function notifyTaskTerminalState(task: UserTaskProjection) {
@@ -664,7 +668,9 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     activeRefresh.value = (async () => {
       loading.value = true
       try {
-        await Promise.all([fetchCurrentTasks(conversationId), fetchBackgroundTasks(conversationId)])
+        const bootstrapSnapshot = await fetchBootstrapTaskSnapshot(conversationId)
+        currentTasks.value = bootstrapSnapshot.currentTasks
+        backgroundTasks.value = bootstrapSnapshot.backgroundTasks
         hydrated.value = true
         await handleTaskTransitions(conversationId)
       } finally {

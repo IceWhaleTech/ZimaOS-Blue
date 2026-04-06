@@ -125,7 +125,7 @@ function makeTasks() {
       verification_status: 'partial',
       score: 0.84,
       evidence_count: 3,
-      detail_href: '/automation/harness/group-1',
+      detail_href: '/operations/harness/group-1',
       updated_at: '2026-03-20T11:56:00.000Z',
     },
   ]
@@ -195,6 +195,6 @@ describe('UserTaskProjectionDock', () => {
       expect.objectContaining({ id: 'task-1' }),
       'cancel',
     ])
-    expect(wrapper.emitted('navigate')?.[0]).toEqual(['/automation/harness/group-1'])
+    expect(wrapper.emitted('navigate')?.[0]).toEqual(['/operations/harness/group-1'])
   })
 })

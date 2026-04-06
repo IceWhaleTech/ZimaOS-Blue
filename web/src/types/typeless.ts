@@ -41,6 +41,7 @@ export type TypelessCardType =
   | 'ui-review'
   | 'ui-review-progress'
   | 'media-generate'
+  | 'analyze'
   | 'analyze-progress'
   | 'browser-progress'
   | 'web-fetch'
@@ -878,6 +879,20 @@ export interface TypelessCardMediaGenerate extends TypelessCardBase {
   images?: GalleryImage[]
 }
 
+export interface TypelessCardAnalyze extends TypelessCardBase {
+  type: 'analyze'
+  title?: string
+  topic?: string
+  status?: 'success' | 'error' | 'warning' | 'info'
+  message?: string
+  answer?: string
+  output_mode?: 'inline' | 'report' | string
+  report_url?: string
+  report_style?: string
+  report_template_version?: string
+  analysis?: Record<string, unknown>
+}
+
 // Analyze Progress card — streaming step-by-step progress during analysis
 export interface AnalyzeProgressStep {
   step: string
@@ -1088,6 +1103,7 @@ export type TypelessCard =
   | TypelessCardUIReview
   | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate
+  | TypelessCardAnalyze
   | TypelessCardAnalyzeProgress
   | TypelessCardBrowserProgress
   | TypelessCardWebFetch

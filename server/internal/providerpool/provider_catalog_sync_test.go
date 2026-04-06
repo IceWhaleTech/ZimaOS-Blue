@@ -1,4 +1,4 @@
-package providerpool
+package providerpool_test
 
 import (
 	"encoding/json"
@@ -7,7 +7,20 @@ import (
 	"regexp"
 	"runtime"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providercatalogseed"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 )
+
+type officialProviderCatalog struct {
+	Models           map[string][]officialProviderCatalogModel `json:"models"`
+	PinchBenchModels map[string][]officialProviderCatalogModel `json:"pinchbench_models,omitempty"`
+}
+
+type officialProviderCatalogModel struct {
+	ID            string `json:"id"`
+	PinchBenchURL string `json:"pinchbench_url,omitempty"`
+}
 
 func TestEmbeddedProviderCatalogMatchesDocsCatalog(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
@@ -35,7 +48,7 @@ func TestEmbeddedProviderCatalogMatchesDocsCatalog(t *testing.T) {
 
 func TestDocsProviderCatalogCoversBuiltinCatalogModels(t *testing.T) {
 	catalog := loadDocsProviderCatalog(t)
-	builtinModels := builtinModelsFallback()
+	builtinModels := providerpool.BuiltinModelsSnapshot()
 
 	for _, providerID := range []string{"openai", "anthropic", "google", "qwen", "deepseek", "moonshot", "grok", "glm", "minimax", "ollama", "bedrock"} {
 		docModels := catalog.Models[providerID]
@@ -78,7 +91,7 @@ func TestDocsProviderCatalogMatchesGeneratedCatalog(t *testing.T) {
 		t.Fatalf("read docs catalog: %v", err)
 	}
 
-	generatedBytes, err := GenerateOfficialProviderCatalogJSON()
+	generatedBytes, err := providercatalogseed.GenerateOfficialProviderCatalogJSON()
 	if err != nil {
 		t.Fatalf("generate provider catalog json: %v", err)
 	}

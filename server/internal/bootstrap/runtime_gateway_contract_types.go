@@ -4,7 +4,6 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/gateway"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -18,7 +17,6 @@ type routeRuntimeContractGatewayOptions struct {
 	browserBackend tools.BrowserBackend
 	mediaDir       string
 	chat           *serverpkg.ChatHandler
-	pluginRegistry *plugin.Registry
 	closers        *[]interface{ Close() error }
 }
 

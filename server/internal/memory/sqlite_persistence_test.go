@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -61,7 +62,6 @@ func TestStoreExternalAttachmentsRoundTripAndLegacyFallback(t *testing.T) {
 	dbDir := t.TempDir()
 	opts := DefaultChatStoreOptions(filepath.Join(dbDir, "chat.db"))
 	opts.AttachmentExternalStore = true
-	opts.AttachmentDir = filepath.Join(dbDir, "attachments")
 	store, err := NewStoreWithOptions(filepath.Join(dbDir, "chat.db"), opts)
 	if err != nil {
 		t.Fatalf("NewStoreWithOptions: %v", err)
@@ -97,6 +97,10 @@ func TestStoreExternalAttachmentsRoundTripAndLegacyFallback(t *testing.T) {
 	}
 	if legacy.Valid && legacy.String != "" {
 		t.Fatalf("legacy attachments column = %q, want empty when externalized", legacy.String)
+	}
+	attachmentPath := filepath.Join(dbDir, "media", "message_attachments", msg.ID, "0000.json")
+	if _, err := os.Stat(attachmentPath); err != nil {
+		t.Fatalf("expected external attachment at %q: %v", attachmentPath, err)
 	}
 
 	got, err := store.GetMessages(ctx, conv.ID, 10, 0)

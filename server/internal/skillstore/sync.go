@@ -75,9 +75,6 @@ func NewSyncService(store *Store, config SyncServiceConfig, log *slog.Logger) *S
 		progress: make(map[string]*SyncProgress),
 	}
 
-	// Initialize README fetcher
-	svc.readmeFetcher = NewReadmeFetcher(store, log)
-
 	// Register default sources
 	svc.RegisterSource(&Source{
 		ID:          "clawhub",
@@ -137,19 +134,20 @@ func (s *SyncService) Stop() {
 
 func (s *SyncService) ensureWorkersStarted(ctx context.Context) {
 	s.startOnce.Do(func() {
-		if s.readmeFetcher == nil {
-			return
-		}
 		startCtx := ctx
-		s.mu.RLock()
+		s.mu.Lock()
 		if s.backgroundCtx != nil {
 			startCtx = s.backgroundCtx
 		}
-		s.mu.RUnlock()
+		if s.readmeFetcher == nil {
+			s.readmeFetcher = NewReadmeFetcher(s.store, s.logger)
+		}
+		fetcher := s.readmeFetcher
+		s.mu.Unlock()
 		if startCtx == nil {
 			startCtx = context.Background()
 		}
-		s.readmeFetcher.Start(startCtx)
+		fetcher.Start(startCtx)
 	})
 }
 

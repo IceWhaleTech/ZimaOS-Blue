@@ -3,13 +3,13 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
+  getBrowserOverview,
   getSessionMonitor,
-  getSessions,
   type BrowserSession,
   type BrowserSessionMonitorResponse,
   type BrowserSessionScreenshot,
 } from '@/api/browser'
-import { taskProjectionApi, type UserTaskProjection } from '@/api/tasks'
+import type { UserTaskProjection } from '@/api/tasks'
 import { useBrowserMonitor } from '@/composables/useBrowserMonitor'
 import { offSSEEvent, onSSEEvent } from '@/composables/useEventStream'
 import { useChatStore } from '@/stores/chat'
@@ -802,23 +802,14 @@ function observePanelSize() {
 }
 
 async function refreshTasks() {
-  if (effectiveTaskScope.value === 'current' && !activeTaskConversationId.value) {
-    tasks.value = []
-    return
-  }
-
-  const response = await taskProjectionApi.listTasks({
+  const overview = await getBrowserOverview({
     scope: effectiveTaskScope.value,
-    conversation_id:
-      effectiveTaskScope.value === 'current' ? activeTaskConversationId.value : undefined,
+    conversationId:
+      effectiveTaskScope.value === 'current' ? activeTaskConversationId.value || undefined : undefined,
     limit: 12,
   })
-  tasks.value = (response.data || []).slice().sort(compareTasks)
-}
-
-async function refreshSessions() {
-  const nextSessions = await getSessions()
-  sessions.value = nextSessions.slice().sort((left, right) => {
+  tasks.value = overview.tasks.slice().sort(compareTasks)
+  sessions.value = overview.sessions.slice().sort((left, right) => {
     if (left.status === right.status) return 0
     if (left.status === 'active') return -1
     if (right.status === 'active') return 1
@@ -830,7 +821,7 @@ async function refreshOverview() {
   overviewLoading.value = true
   overviewError.value = ''
   try {
-    await Promise.all([refreshTasks(), refreshSessions()])
+    await refreshTasks()
   } catch (error) {
     overviewError.value =
       error instanceof Error ? error.message : tr('browserMonitor.overviewError', 'Refresh failed')

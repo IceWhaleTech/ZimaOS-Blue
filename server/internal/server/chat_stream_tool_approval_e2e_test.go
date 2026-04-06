@@ -214,26 +214,31 @@ func newApprovalRoutesEcho(handler *networkapi.ApprovalHandler) *echo.Echo {
 	return e
 }
 
-func fetchPendingToolApprovals(t *testing.T, e *echo.Echo, sessionID string) []networkapi.PendingRequest {
+func fetchPendingToolApprovals(t *testing.T, handler *networkapi.ApprovalHandler, sessionID string) []networkapi.PendingRequest {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/approval/pending?session_id="+sessionID, nil)
-	rec := httptest.NewRecorder()
-	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("pending status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	if handler == nil {
+		return nil
 	}
-	var pending []networkapi.PendingRequest
-	if err := json.Unmarshal(rec.Body.Bytes(), &pending); err != nil {
-		t.Fatalf("decode pending approvals: %v", err)
+	payload := handler.GetPendingBySession(sessionID)
+	if payload == nil {
+		return nil
 	}
-	return pending
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pending approval payload: %v", err)
+	}
+	var pending networkapi.PendingRequest
+	if err := json.Unmarshal(raw, &pending); err != nil {
+		t.Fatalf("decode pending approval payload: %v", err)
+	}
+	return []networkapi.PendingRequest{pending}
 }
 
-func waitForPendingToolApproval(t *testing.T, e *echo.Echo, sessionID string) networkapi.PendingRequest {
+func waitForPendingToolApproval(t *testing.T, handler *networkapi.ApprovalHandler, sessionID string) networkapi.PendingRequest {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		pending := fetchPendingToolApprovals(t, e, sessionID)
+		pending := fetchPendingToolApprovals(t, handler, sessionID)
 		if len(pending) > 0 {
 			return pending[0]
 		}
@@ -323,7 +328,7 @@ func TestStreamMessageE2E_LLMRiskApprovalEscalationResolvesAndContinues(t *testi
 		`{"message":"请把结果写入 approved.txt","model":"gpt-5.3-codex-spark"}`,
 	)
 
-	pending := waitForPendingToolApproval(t, approvalRoutes, conv.ID)
+	pending := waitForPendingToolApproval(t, approvalHandler, conv.ID)
 	if pending.ToolName != "file_write" {
 		t.Fatalf("pending tool = %q, want file_write", pending.ToolName)
 	}
@@ -389,7 +394,7 @@ func TestStreamMessageE2E_LLMRiskApprovalEscalationResolvesAndContinues(t *testi
 		t.Fatalf("expected write-completion flow to finish without a second model follow-up, got saw=%v content=%q", sawToolResult, toolContent)
 	}
 
-	if pendingAfter := fetchPendingToolApprovals(t, approvalRoutes, conv.ID); len(pendingAfter) != 0 {
+	if pendingAfter := fetchPendingToolApprovals(t, approvalHandler, conv.ID); len(pendingAfter) != 0 {
 		t.Fatalf("expected approvals to be resolved, got=%+v", pendingAfter)
 	}
 	if _, ok := riskProvider.RequestAt(0); !ok {
@@ -429,7 +434,6 @@ func TestStreamMessageE2E_LLMRiskApprovalSkipsEscalationWithoutActiveSSEClient(t
 	approvalHandler.SetRiskScorer(networkapi.NewLLMToolApprovalRiskScorer(riskProvider, toolRegistry))
 	handler.SetToolApprover(approvalHandler)
 
-	approvalRoutes := newApprovalRoutesEcho(approvalHandler)
 	body := runStreamTurnAsUser(
 		t,
 		handler,
@@ -464,7 +468,7 @@ func TestStreamMessageE2E_LLMRiskApprovalSkipsEscalationWithoutActiveSSEClient(t
 		t.Fatalf("expected auto-allowed write flow to finish without a second model follow-up, got saw=%v content=%q", sawToolResult, toolContent)
 	}
 
-	if pending := fetchPendingToolApprovals(t, approvalRoutes, conv.ID); len(pending) != 0 {
+	if pending := fetchPendingToolApprovals(t, approvalHandler, conv.ID); len(pending) != 0 {
 		t.Fatalf("expected no pending approvals without active SSE client, got=%+v", pending)
 	}
 	if _, ok := riskProvider.RequestAt(0); ok {

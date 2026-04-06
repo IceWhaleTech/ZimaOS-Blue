@@ -1,0 +1,37 @@
+---
+title: "渠道集成"
+summary: "Blue 当前支持的消息渠道与配置方式概览。"
+---
+
+# 渠道集成
+
+Blue 的渠道不是独立运行时，而是统一 runtime 之上的交互入口。
+
+## 当前文档里应当这样理解渠道
+
+- 渠道共享同一套模型、自动化与安全层
+- 不同渠道只是在接入凭证和配对方式上不同
+- Web 界面的 `Channels` 视图是日常配置入口
+- 服务端配置文件适合声明式部署
+
+## 当前可见的集成范围
+
+仓库与当前界面已经覆盖大量 IM 平台，包括：
+
+- Telegram、Discord、Slack、WhatsApp、Signal
+- Microsoft Teams、Mattermost、Nextcloud Talk、Google Chat
+- Feishu、DingTalk、QQ、WeChat、Matrix
+- iMessage、BlueBubbles、LINE、Messenger、Viber
+- X 私信、Instagram 私信、Twitch 等
+
+## 配置建议
+
+- 先用 Web 界面做首轮配置与验证
+- 批量部署时再切到配置文件或托管配置
+- 自托管渠道通常需要 Blue 进程能访问对应 `server_url`
+
+## 继续阅读
+
+- [Providers 与 Models](/zh-CN/guides/providers-models)
+- [Automation](/zh-CN/guides/automation)
+- [管理与运维](/zh-CN/guides/admin-operations)

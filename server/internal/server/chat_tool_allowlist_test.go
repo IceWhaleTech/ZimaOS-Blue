@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -14,10 +15,10 @@ func TestNormalizeAssistantToolCallNameForAllowedSet_RewritesCompatAlias(t *test
 }
 
 func TestNormalizeAssistantToolCallNameForAllowedSet_RewritesDeepResearchAliases(t *testing.T) {
-	allowed := []llm.Tool{{Name: "deep_research"}}
-	for _, raw := range []string{"research_run", "research_status", "deep-research"} {
-		if got := normalizeAssistantToolCallNameForAllowedSet(raw, allowed); got != "deep_research" {
-			t.Fatalf("normalizeAssistantToolCallNameForAllowedSet(%q) = %q, want %q", raw, got, "deep_research")
+	allowed := []llm.Tool{{Name: "research"}}
+	for _, raw := range []string{"research_run", "research_status", "deep-research", "deep_research"} {
+		if got := normalizeAssistantToolCallNameForAllowedSet(raw, allowed); got != "research" {
+			t.Fatalf("normalizeAssistantToolCallNameForAllowedSet(%q) = %q, want %q", raw, got, "research")
 		}
 	}
 }
@@ -41,5 +42,31 @@ func TestSanitizeAssistantToolCallsForAllowedSet_DropsCallsOutsideAllowedSet(t *
 	}
 	if got[0].ID != "call_auto_1" {
 		t.Fatalf("tool id = %q, want %q", got[0].ID, "call_auto_1")
+	}
+}
+
+func TestSanitizeAssistantToolCallsForAllowedSet_RewritesDisallowedToToolSearchWhenPresent(t *testing.T) {
+	allowed := []llm.Tool{{Name: "exec"}, {Name: "tool_search"}}
+	calls := []llm.ToolCall{
+		{ID: "call-1", Name: "deep_research", Arguments: `{"query":"x"}`},
+	}
+
+	got, dropped := sanitizeAssistantToolCallsForAllowedSet(calls, allowed)
+	if len(dropped) != 0 {
+		t.Fatalf("dropped = %#v, want none", dropped)
+	}
+	if len(got) != 1 {
+		t.Fatalf("len(got) = %d, want 1", len(got))
+	}
+	if got[0].Name != "tool_search" {
+		t.Fatalf("tool name = %q, want %q", got[0].Name, "tool_search")
+	}
+
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(got[0].Arguments), &args); err != nil {
+		t.Fatalf("failed to decode tool_search args: %v", err)
+	}
+	if args["query"] != "select:research" {
+		t.Fatalf("args.query = %#v, want %#v", args["query"], "select:research")
 	}
 }

@@ -77,7 +77,7 @@ func TestSubmitVoiceWakeMessageUsesNormalSendPipeline(t *testing.T) {
 		ConversationID:      conv.ID,
 		Offline:             true,
 		WebSearchEnabled:    true,
-		DeepResearchEnabled: false,
+		DeepResearchEnabled: true,
 	}); err != nil {
 		t.Fatalf("UpsertConversationCommandState() error = %v", err)
 	}

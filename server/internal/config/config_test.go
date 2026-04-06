@@ -383,6 +383,7 @@ func TestLoad_FromEnv(t *testing.T) {
 	os.Setenv("BLUE_WEB_FETCH_JINA_READER_ENABLED", "true")
 	os.Setenv("BLUE_WEB_FETCH_JINA_READER_TIMEOUT", "21s")
 	os.Setenv("BLUE_WEB_FETCH_PROXY_FETCHER_PROVIDERS", "jina_reader,firecrawl")
+	os.Setenv("BLUE_SESSION_AUDIT_IPC_ENABLED", "true")
 	defer func() {
 		os.Unsetenv("BLUE_SERVER_HOST")
 		os.Unsetenv("BLUE_SERVER_PORT")
@@ -396,6 +397,7 @@ func TestLoad_FromEnv(t *testing.T) {
 		os.Unsetenv("BLUE_WEB_FETCH_JINA_READER_ENABLED")
 		os.Unsetenv("BLUE_WEB_FETCH_JINA_READER_TIMEOUT")
 		os.Unsetenv("BLUE_WEB_FETCH_PROXY_FETCHER_PROVIDERS")
+		os.Unsetenv("BLUE_SESSION_AUDIT_IPC_ENABLED")
 	}()
 
 	cfg, err := Load("")
@@ -429,6 +431,9 @@ func TestLoad_FromEnv(t *testing.T) {
 	}
 	if cfg.ToolCalling.WebFetch.FirecrawlTimeout != 18*time.Second {
 		t.Fatalf("ToolCalling.WebFetch.FirecrawlTimeout = %v, want %v", cfg.ToolCalling.WebFetch.FirecrawlTimeout, 18*time.Second)
+	}
+	if !cfg.Session.Audit.IPCEnabled {
+		t.Fatalf("Session.Audit.IPCEnabled = %v, want true", cfg.Session.Audit.IPCEnabled)
 	}
 	if !cfg.ToolCalling.WebFetch.JinaReaderEnabled {
 		t.Fatalf("ToolCalling.WebFetch.JinaReaderEnabled = %v, want true", cfg.ToolCalling.WebFetch.JinaReaderEnabled)

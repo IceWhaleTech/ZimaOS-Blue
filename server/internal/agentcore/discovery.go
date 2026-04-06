@@ -16,6 +16,7 @@ const (
 	CanonicalUIReviewer   CanonicalSkillID = "ui_reviewer"
 	CanonicalHimalaya     CanonicalSkillID = "himalaya"
 	CanonicalDeepResearch CanonicalSkillID = "deep_research"
+	CanonicalResearch     CanonicalSkillID = "research"
 	CanonicalConfig       CanonicalSkillID = "config"
 	CanonicalExec         CanonicalSkillID = "exec"
 	CanonicalUnknown      CanonicalSkillID = "unknown"
@@ -122,8 +123,8 @@ func init() {
 			CapabilityTags:    []string{"analysis", "synthesis", "report"},
 			ExecutionProfile:  ExecutionProfilePreferFork,
 			NativeSurfaceMode: NativeSurfaceModeSkillExec,
-			CutoverEligible:   true,
-			Description:       "Synthesized analysis on topics",
+			CutoverEligible:   false,
+			Description:       "Legacy analyze capability; prefer research with mode=analyze",
 		},
 		CanonicalReminder: {
 			CanonicalID:       CanonicalReminder,
@@ -144,8 +145,8 @@ func init() {
 			CapabilityTags:    []string{"ui", "review", "screenshot"},
 			ExecutionProfile:  ExecutionProfileInline,
 			NativeSurfaceMode: NativeSurfaceModeSkillExec,
-			CutoverEligible:   true,
-			Description:       "Review UI screenshots and pages for quality issues",
+			CutoverEligible:   false,
+			Description:       "Legacy UI reviewer capability; prefer research with mode=ui_review",
 		},
 		CanonicalHimalaya: {
 			CanonicalID:       CanonicalHimalaya,
@@ -161,13 +162,24 @@ func init() {
 		CanonicalDeepResearch: {
 			CanonicalID:       CanonicalDeepResearch,
 			Kind:              "skill",
-			Aliases:           []string{"research", "deep_research"},
+			Aliases:           []string{},
 			SearchHints:       []string{"research", "citations", "evidence", "timeline", "compare"},
 			CapabilityTags:    []string{"research", "citations", "evidence"},
 			ExecutionProfile:  ExecutionProfileRequireFork,
 			NativeSurfaceMode: NativeSurfaceModeSkillExec,
+			CutoverEligible:   false,
+			Description:       "Legacy deep research capability; prefer research with mode=deep_research",
+		},
+		CanonicalResearch: {
+			CanonicalID:       CanonicalResearch,
+			Kind:              "skill",
+			Aliases:           []string{},
+			SearchHints:       []string{"research", "citations", "evidence", "timeline", "compare", "analyze", "report", "synthesize", "ui", "ux", "review", "audit"},
+			CapabilityTags:    []string{"research", "citations", "evidence", "analysis", "synthesis", "ui", "review"},
+			ExecutionProfile:  ExecutionProfileRequireFork,
+			NativeSurfaceMode: NativeSurfaceModeSkillExec,
 			CutoverEligible:   true,
-			Description:       "Multi-step cited research",
+			Description:       "Unified research family covering deep_research, analyze, and ui_review",
 		},
 		CanonicalConfig: {
 			CanonicalID:       CanonicalConfig,
@@ -198,7 +210,9 @@ func init() {
 func buildAliasToCanonical() map[string]CanonicalSkillID {
 	m := make(map[string]CanonicalSkillID)
 	for canonical, entry := range canonicalRegistry {
-		m[string(canonical)] = canonical
+		if discoverableCanonical(canonical) {
+			m[string(canonical)] = canonical
+		}
 		for _, alias := range entry.Aliases {
 			m[normalizeAlias(alias)] = canonical
 		}
@@ -206,8 +220,28 @@ func buildAliasToCanonical() map[string]CanonicalSkillID {
 	return m
 }
 
+func discoverableCanonical(id CanonicalSkillID) bool {
+	switch id {
+	case CanonicalAnalyze, CanonicalUIReviewer, CanonicalDeepResearch:
+		return false
+	default:
+		return true
+	}
+}
+
 func normalizeAlias(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
+}
+
+func normalizeResearchFamilySelection(raw string) (canonical CanonicalSkillID, alias string, ok bool) {
+	switch normalizeAlias(raw) {
+	case "research":
+		return CanonicalResearch, "research", true
+	case "deep_research", "analyze", "ui_reviewer", "ui_review":
+		return CanonicalResearch, "research", true
+	default:
+		return CanonicalUnknown, "", false
+	}
 }
 
 // ResolveCanonicalSkill resolves a raw skill name/alias to its canonical ID.
@@ -249,9 +283,15 @@ func NativeSurfaceModeForSkill(id CanonicalSkillID) NativeSurfaceMode {
 // BuildDiscoveryDecision creates a CapabilityDiscoveryDecision from an agentcore Decision.
 func BuildDiscoveryDecision(d Decision, skillDynamicExposure bool) CapabilityDiscoveryDecision {
 	selectedSkill := strings.TrimSpace(d.SelectedSkill)
-	canonical, ok := ResolveCanonicalSkill(d.SelectedSkill)
+	resolvedAlias := selectedSkill
+	canonical, normalizedAlias, ok := normalizeResearchFamilySelection(selectedSkill)
 	if !ok {
-		canonical = CanonicalUnknown
+		canonical, ok = ResolveCanonicalSkill(selectedSkill)
+		if !ok {
+			canonical = CanonicalUnknown
+		}
+	} else {
+		resolvedAlias = normalizedAlias
 	}
 
 	nativeMode := NativeSurfaceModeLegacy
@@ -275,7 +315,7 @@ func BuildDiscoveryDecision(d Decision, skillDynamicExposure bool) CapabilityDis
 
 	return CapabilityDiscoveryDecision{
 		CanonicalTarget:   canonical,
-		AliasResolved:     d.SelectedSkill,
+		AliasResolved:     resolvedAlias,
 		NeedClarify:       d.NeedClarify,
 		ClarifyReason:     d.Reason,
 		ExecutionProfile:  execProfile,

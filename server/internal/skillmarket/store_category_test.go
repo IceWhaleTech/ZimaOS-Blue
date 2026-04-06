@@ -123,18 +123,18 @@ func TestStoreGetFiltersMergesSourcesByGroup(t *testing.T) {
 			SourceType:    "html_catalog",
 		},
 		{
-			ID:            "skillstack-alpha",
-			Slug:          "skillstack-alpha",
-			Name:          "SkillStack Alpha",
+			ID:            "community-alpha",
+			Slug:          "community-alpha",
+			Name:          "Community Alpha",
 			Description:   "Independent source group",
 			LatestVersion: "1.0.0",
 			Installable:   true,
 			InstallType:   InstallTypeRawSkill,
 			ArtifactKind:  ArtifactKindOpenSource,
 			Published:     true,
-			SourceID:      "skillstack",
-			SourceName:    "SkillStack",
-			SourceGroup:   "skillstack",
+			SourceID:      "community-catalog",
+			SourceName:    "Community Catalog",
+			SourceGroup:   "community-catalog",
 			SourceType:    "html_catalog",
 		},
 	}
@@ -160,8 +160,8 @@ func TestStoreGetFiltersMergesSourcesByGroup(t *testing.T) {
 	if got := filters.Sources[1]; got.Value != "custom-source" || got.Count != 1 {
 		t.Fatalf("filters.Sources[1] = %+v, want custom-source fallback bucket", got)
 	}
-	if got := filters.Sources[2]; got.Value != "skillstack" || got.Count != 1 {
-		t.Fatalf("filters.Sources[2] = %+v, want skillstack bucket", got)
+	if got := filters.Sources[2]; got.Value != "community-catalog" || got.Count != 1 {
+		t.Fatalf("filters.Sources[2] = %+v, want community-catalog bucket", got)
 	}
 }
 
@@ -206,9 +206,9 @@ func TestStoreExcludesBlockedMarketplaceSourceBucketEverywhere(t *testing.T) {
 		InstallType:   InstallTypeRawSkill,
 		ArtifactKind:  ArtifactKindOpenSource,
 		Published:     true,
-		SourceID:      "skillstack",
-		SourceName:    "SkillStack",
-		SourceGroup:   "skillstack",
+		SourceID:      "community-catalog",
+		SourceName:    "Community Catalog",
+		SourceGroup:   "community-catalog",
 		SourceType:    "html_catalog",
 		Category:      "development_tools",
 		TrendingScore: 10,
@@ -227,8 +227,8 @@ func TestStoreExcludesBlockedMarketplaceSourceBucketEverywhere(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetFilters() error = %v", err)
 	}
-	if len(filters.Sources) != 1 || filters.Sources[0].Value != "skillstack" {
-		t.Fatalf("filters.Sources = %+v, want only skillstack", filters.Sources)
+	if len(filters.Sources) != 1 || filters.Sources[0].Value != "community-catalog" {
+		t.Fatalf("filters.Sources = %+v, want only community-catalog", filters.Sources)
 	}
 
 	browse, err := store.Search(ctx, SearchQuery{Page: 1, PageSize: 10})

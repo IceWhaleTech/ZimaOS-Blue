@@ -29,6 +29,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxybridge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sessionaudit"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -2774,6 +2775,215 @@ func TestChatHandlerListConversationsPreviewIncludesLegacyData(t *testing.T) {
 	}
 	if !titles["Legacy Conv"] || !titles["Preview Conv"] {
 		t.Fatalf("expected preview list to include legacy and preview conversations, got %#v", titles)
+	}
+}
+
+func TestChatHandlerListConversationsQueryIncludesSessionAuditRecall(t *testing.T) {
+	ctx := context.Background()
+	dbDir := t.TempDir()
+
+	store, err := memory.NewStoreWithOptions(filepath.Join(dbDir, "chat.db"), memory.DefaultChatStoreOptions(filepath.Join(dbDir, "chat.db")))
+	if err != nil {
+		t.Fatalf("NewStoreWithOptions: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(ctx, "Maintenance Notes")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	auditStore, err := sessionaudit.NewSQLiteStore(filepath.Join(dbDir, sessionaudit.DefaultDBFilename), sessionaudit.StoreConfig{
+		RetentionDays:    30,
+		CleanupInterval:  0,
+		CleanupBatchSize: 50,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer auditStore.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetPersistenceOptions(true, true, true)
+	handler.SetSessionAuditStore(auditStore)
+	defer handler.Close()
+	if handler.persistCoordinator != nil {
+		defer handler.persistCoordinator.ShutdownFlush()
+	}
+
+	if msgID := handler.persistBestEffortMessageContent("", conv.ID, "user", "Router rollback failed after the firmware update", "", "", nil, false); strings.TrimSpace(msgID) == "" {
+		t.Fatalf("persistBestEffortMessageContent() returned empty message id")
+	}
+	handler.persistCoordinator.FlushConversation(conv.ID)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?q=rollback", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListConversations(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp []memory.Conversation
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(resp) != 1 {
+		t.Fatalf("len(response) = %d, want 1", len(resp))
+	}
+	if resp[0].ID != conv.ID {
+		t.Fatalf("response[0].ID = %q, want %q", resp[0].ID, conv.ID)
+	}
+	if resp[0].Title != conv.Title {
+		t.Fatalf("response[0].Title = %q, want %q", resp[0].Title, conv.Title)
+	}
+}
+
+func TestChatHandlerListConversationsQueryMergesTitleAndAuditMatchesWithoutDuplicates(t *testing.T) {
+	ctx := context.Background()
+	dbDir := t.TempDir()
+
+	store, err := memory.NewStoreWithOptions(filepath.Join(dbDir, "chat.db"), memory.DefaultChatStoreOptions(filepath.Join(dbDir, "chat.db")))
+	if err != nil {
+		t.Fatalf("NewStoreWithOptions: %v", err)
+	}
+	defer store.Close()
+
+	titleMatch, err := store.CreateConversation(ctx, "Rollback Tracker")
+	if err != nil {
+		t.Fatalf("CreateConversation titleMatch: %v", err)
+	}
+	auditMatch, err := store.CreateConversation(ctx, "Maintenance Notes")
+	if err != nil {
+		t.Fatalf("CreateConversation auditMatch: %v", err)
+	}
+
+	auditStore, err := sessionaudit.NewSQLiteStore(filepath.Join(dbDir, sessionaudit.DefaultDBFilename), sessionaudit.StoreConfig{
+		RetentionDays:    30,
+		CleanupInterval:  0,
+		CleanupBatchSize: 50,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer auditStore.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetPersistenceOptions(true, true, true)
+	handler.SetSessionAuditStore(auditStore)
+	defer handler.Close()
+	if handler.persistCoordinator != nil {
+		defer handler.persistCoordinator.ShutdownFlush()
+	}
+
+	if msgID := handler.persistBestEffortMessageContent("", titleMatch.ID, "assistant", "Rollback plan captured in the last run", "", "", nil, false); strings.TrimSpace(msgID) == "" {
+		t.Fatalf("persistBestEffortMessageContent(titleMatch) returned empty message id")
+	}
+	if msgID := handler.persistBestEffortMessageContent("", auditMatch.ID, "user", "Router rollback failed after the firmware update", "", "", nil, false); strings.TrimSpace(msgID) == "" {
+		t.Fatalf("persistBestEffortMessageContent(auditMatch) returned empty message id")
+	}
+	handler.persistCoordinator.FlushConversation(titleMatch.ID)
+	handler.persistCoordinator.FlushConversation(auditMatch.ID)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?q=rollback", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListConversations(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp []memory.Conversation
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(resp) != 2 {
+		t.Fatalf("len(response) = %d, want 2", len(resp))
+	}
+
+	seen := map[string]int{}
+	for _, conv := range resp {
+		seen[conv.ID]++
+	}
+	if seen[titleMatch.ID] != 1 {
+		t.Fatalf("titleMatch occurrences = %d, want 1; response = %+v", seen[titleMatch.ID], resp)
+	}
+	if seen[auditMatch.ID] != 1 {
+		t.Fatalf("auditMatch occurrences = %d, want 1; response = %+v", seen[auditMatch.ID], resp)
+	}
+}
+
+func TestChatHandlerListConversationsQueryIncludesSessionAuditRecallForScopedUser(t *testing.T) {
+	ctx := context.Background()
+	dbDir := t.TempDir()
+
+	store, err := memory.NewStoreWithOptions(filepath.Join(dbDir, "chat.db"), memory.DefaultChatStoreOptions(filepath.Join(dbDir, "chat.db")))
+	if err != nil {
+		t.Fatalf("NewStoreWithOptions: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(ctx, "Maintenance Notes", "scoped-user")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+
+	auditStore, err := sessionaudit.NewSQLiteStore(filepath.Join(dbDir, sessionaudit.DefaultDBFilename), sessionaudit.StoreConfig{
+		RetentionDays:    30,
+		CleanupInterval:  0,
+		CleanupBatchSize: 50,
+	})
+	if err != nil {
+		t.Fatalf("NewSQLiteStore: %v", err)
+	}
+	defer auditStore.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler.SetPersistenceOptions(true, true, true)
+	handler.SetSessionAuditStore(auditStore)
+	defer handler.Close()
+	if handler.persistCoordinator != nil {
+		defer handler.persistCoordinator.ShutdownFlush()
+	}
+
+	if msgID := handler.persistBestEffortMessageContent("", conv.ID, "user", "Rollback checklist for scoped user conversation", "", "", nil, false); strings.TrimSpace(msgID) == "" {
+		t.Fatalf("persistBestEffortMessageContent() returned empty message id")
+	}
+	handler.persistCoordinator.FlushConversation(conv.ID)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations?q=rollback", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
+		UserID: "scoped-user",
+		Role:   "user",
+	}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListConversations(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp []memory.Conversation
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	if len(resp) != 1 {
+		t.Fatalf("len(response) = %d, want 1", len(resp))
+	}
+	if resp[0].ID != conv.ID {
+		t.Fatalf("response[0].ID = %q, want %q", resp[0].ID, conv.ID)
 	}
 }
 
@@ -5601,7 +5811,7 @@ func TestChatHandlerSendMessage_RecoversPseudoBlueDeepResearchIntoRealToolExecut
 	}
 	var sawToolResult bool
 	for _, msg := range secondReq.Messages {
-		if msg.Role == llm.RoleTool && msg.ToolName == "deep_research" && strings.Contains(msg.Content, "AAPL mock deep research answer") {
+		if msg.Role == llm.RoleTool && msg.ToolName == "research" && strings.Contains(msg.Content, "AAPL mock deep research answer") {
 			sawToolResult = true
 		}
 		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
@@ -7521,7 +7731,7 @@ func TestApplyDeepResearchPreference_NilKeepsTool(t *testing.T) {
 	}
 }
 
-func TestApplyDeepResearchPreference_FalseRemovesTool(t *testing.T) {
+func TestApplyDeepResearchPreference_FalseKeepsTool(t *testing.T) {
 	disabled := false
 	defs := []tools.ToolDefinition{
 		{Name: "web_search"},
@@ -7531,11 +7741,8 @@ func TestApplyDeepResearchPreference_FalseRemovesTool(t *testing.T) {
 		{Name: "research_status"},
 	}
 	got := applyDeepResearchPreference(defs, &disabled)
-	if len(got) != 1 {
-		t.Fatalf("got %d defs, want 1", len(got))
-	}
-	if got[0].Name != "web_search" {
-		t.Fatalf("got first tool %q, want web_search", got[0].Name)
+	if len(got) != len(defs) {
+		t.Fatalf("got %d defs, want %d", len(got), len(defs))
 	}
 }
 

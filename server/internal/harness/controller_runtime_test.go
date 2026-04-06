@@ -2,21 +2,17 @@ package harness
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
+	"sync"
 	"testing"
 	"time"
 
-	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
-	"github.com/labstack/echo/v4"
+	"github.com/google/uuid"
 )
 
 type blockingQuestionDriver struct {
@@ -77,7 +73,7 @@ func (d *blockingQuestionDriver) Cancel(_ context.Context, _ *Run) error {
 
 type blockingToolApprovalDriver struct {
 	kind      RunKind
-	approvals *networkapi.ApprovalHandler
+	approvals *testToolApprovalHandler
 	cancel    context.CancelFunc
 	done      chan error
 	lastErr   error
@@ -128,6 +124,219 @@ func (d *blockingToolApprovalDriver) Cancel(_ context.Context, _ *Run) error {
 	case <-time.After(2 * time.Second):
 		return fmt.Errorf("timed out waiting for approval driver shutdown")
 	}
+}
+
+type testToolApprovalConfig struct {
+	Enabled       bool
+	DefaultPolicy string
+	ToolPolicies  map[string]string
+}
+
+type testPendingToolApproval struct {
+	ID           string
+	RunID        string
+	StepIndex    int
+	ToolName     string
+	ToolCallID   string
+	SessionID    string
+	UserID       string
+	PolicySource string
+	RiskLevel    string
+	BindingHash  string
+	ExpiresAt    int64
+}
+
+type testToolApprovalHandler struct {
+	mu       sync.Mutex
+	config   testToolApprovalConfig
+	pending  map[string]*testPendingToolApproval
+	waiters  map[string]chan string
+	timeout  time.Duration
+	observer tools.RuntimeEventObserver
+}
+
+func newTestToolApprovalHandler() *testToolApprovalHandler {
+	return &testToolApprovalHandler{
+		config: testToolApprovalConfig{
+			Enabled:       true,
+			DefaultPolicy: "auto",
+			ToolPolicies:  map[string]string{},
+		},
+		pending: make(map[string]*testPendingToolApproval),
+		waiters: make(map[string]chan string),
+		timeout: 2 * time.Minute,
+	}
+}
+
+func (h *testToolApprovalHandler) SetObserver(observer tools.RuntimeEventObserver) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.observer = observer
+}
+
+func (h *testToolApprovalHandler) SetConfig(cfg testToolApprovalConfig) {
+	if cfg.ToolPolicies == nil {
+		cfg.ToolPolicies = map[string]string{}
+	}
+	h.mu.Lock()
+	h.config = cfg
+	h.mu.Unlock()
+}
+
+func (h *testToolApprovalHandler) GetPendingByRun(runID string) *testPendingToolApproval {
+	if runID == "" {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, pending := range h.pending {
+		if pending != nil && pending.RunID == runID {
+			out := *pending
+			return &out
+		}
+	}
+	return nil
+}
+
+func (h *testToolApprovalHandler) AuthorizeToolCall(ctx context.Context, req tools.ToolApprovalRequest) (tools.ToolApprovalDecision, error) {
+	h.mu.Lock()
+	cfg := h.config
+	observer := h.observer
+	h.mu.Unlock()
+
+	mode := cfg.DefaultPolicy
+	if policy, ok := cfg.ToolPolicies[req.ToolName]; ok && policy != "" {
+		mode = policy
+	}
+	if !cfg.Enabled && mode == "" {
+		mode = "auto"
+	}
+	if mode == "" {
+		mode = "auto"
+	}
+
+	decision := tools.ToolApprovalDecision{
+		Allowed: true,
+		Approval: tools.ToolApprovalEnvelope{
+			Mode:         mode,
+			PolicySource: "harness_test",
+			RiskLevel:    req.RiskLevel,
+			BindingHash:  req.BindingHash,
+		},
+	}
+	switch mode {
+	case "deny":
+		decision.Allowed = false
+		decision.Approval.Required = true
+		decision.Approval.Reason = fmt.Sprintf("tool %q blocked by approval policy", req.ToolName)
+		return decision, nil
+	case "ask":
+		pending := &testPendingToolApproval{
+			ID:           uuid.NewString(),
+			RunID:        tools.GetRunID(ctx),
+			StepIndex:    tools.GetRunStep(ctx),
+			ToolName:     req.ToolName,
+			ToolCallID:   req.ToolCallID,
+			SessionID:    req.SessionID,
+			UserID:       firstNonEmptyRuntimeApprovalTestValue(req.UserID, tools.GetUserID(ctx), "default"),
+			PolicySource: "harness_test",
+			RiskLevel:    req.RiskLevel,
+			BindingHash:  req.BindingHash,
+			ExpiresAt:    time.Now().Add(h.timeout).UnixMilli(),
+		}
+		ch := make(chan string, 1)
+		h.mu.Lock()
+		h.pending[pending.ID] = pending
+		h.waiters[pending.ID] = ch
+		h.mu.Unlock()
+		defer func() {
+			h.mu.Lock()
+			delete(h.pending, pending.ID)
+			delete(h.waiters, pending.ID)
+			h.mu.Unlock()
+		}()
+
+		decision.Approval.Required = true
+		decision.Approval.ID = pending.ID
+		decision.Approval.ExpiresAt = pending.ExpiresAt
+
+		if observer != nil {
+			observer.OnApprovalRequested(tools.ApprovalRuntimeEvent{
+				RunID:        pending.RunID,
+				StepIndex:    pending.StepIndex,
+				Kind:         "tool",
+				ID:           pending.ID,
+				ToolName:     pending.ToolName,
+				ToolCallID:   pending.ToolCallID,
+				SessionID:    pending.SessionID,
+				UserID:       pending.UserID,
+				PolicySource: pending.PolicySource,
+				RiskLevel:    pending.RiskLevel,
+				BindingHash:  pending.BindingHash,
+				ExpiresAt:    pending.ExpiresAt,
+			})
+		}
+
+		select {
+		case resolution := <-ch:
+			allowed := resolution == "approve" || resolution == "allow" || resolution == "allow-once" || resolution == "allow-always"
+			decision.Allowed = allowed
+			if !allowed {
+				decision.Approval.Reason = "tool approval denied"
+			}
+			if observer != nil {
+				observer.OnApprovalResolved(tools.ApprovalRuntimeEvent{
+					RunID:        pending.RunID,
+					StepIndex:    pending.StepIndex,
+					Kind:         "tool",
+					ID:           pending.ID,
+					ToolName:     pending.ToolName,
+					ToolCallID:   pending.ToolCallID,
+					SessionID:    pending.SessionID,
+					UserID:       pending.UserID,
+					PolicySource: pending.PolicySource,
+					RiskLevel:    pending.RiskLevel,
+					BindingHash:  pending.BindingHash,
+					ExpiresAt:    pending.ExpiresAt,
+					Decision:     resolution,
+				})
+			}
+			return decision, nil
+		case <-ctx.Done():
+			decision.Allowed = false
+			decision.Approval.Reason = ctx.Err().Error()
+			if observer != nil {
+				observer.OnApprovalResolved(tools.ApprovalRuntimeEvent{
+					RunID:        pending.RunID,
+					StepIndex:    pending.StepIndex,
+					Kind:         "tool",
+					ID:           pending.ID,
+					ToolName:     pending.ToolName,
+					ToolCallID:   pending.ToolCallID,
+					SessionID:    pending.SessionID,
+					UserID:       pending.UserID,
+					PolicySource: pending.PolicySource,
+					RiskLevel:    pending.RiskLevel,
+					BindingHash:  pending.BindingHash,
+					ExpiresAt:    pending.ExpiresAt,
+					Decision:     "deny",
+					Error:        ctx.Err().Error(),
+				})
+			}
+			return decision, ctx.Err()
+		}
+	default:
+		return decision, nil
+	}
+}
+
+func firstNonEmptyRuntimeApprovalTestValue(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func TestController_SubmitDefaultsWorkspaceRootAndCreatesIt(t *testing.T) {
@@ -217,9 +426,9 @@ func TestController_CancelClearsPendingQuestionWhileBlocked(t *testing.T) {
 
 func TestController_CancelClearsPendingToolApprovalWhileBlocked(t *testing.T) {
 	controller := newTestController(t)
-	approvals := networkapi.NewApprovalHandler(nil)
+	approvals := newTestToolApprovalHandler()
 	approvals.SetObserver(NewRuntimeObserver(controller))
-	updateApprovalConfig(t, approvals, networkapi.ApprovalConfig{
+	approvals.SetConfig(testToolApprovalConfig{
 		Enabled:       true,
 		DefaultPolicy: "ask",
 		ToolPolicies:  map[string]string{},
@@ -297,24 +506,5 @@ func assertEventTypes(t *testing.T, events []RunEvent, want ...string) {
 		if !seen[eventType] {
 			t.Fatalf("missing event type %q in %#v", eventType, events)
 		}
-	}
-}
-
-func updateApprovalConfig(t *testing.T, handler *networkapi.ApprovalHandler, cfg networkapi.ApprovalConfig) {
-	t.Helper()
-	e := echo.New()
-	body, err := json.Marshal(cfg)
-	if err != nil {
-		t.Fatalf("marshal approval config: %v", err)
-	}
-	req := httptest.NewRequest(http.MethodPut, "/approval/config", strings.NewReader(string(body)))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	if err := handler.UpdateConfig(c); err != nil {
-		t.Fatalf("UpdateConfig returned error: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("UpdateConfig status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }

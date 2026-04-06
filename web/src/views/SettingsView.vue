@@ -16,6 +16,7 @@ import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ExternalAgentsSection from '@/components/settings/ExternalAgentsSection.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
+import KnowledgeManagerCard from '@/components/KnowledgeManagerCard.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import { proxyCacheApi, type PrunerConfig } from '@/api/proxyCache'
 import { useTauri } from '@/composables/useTauri'
@@ -1000,11 +1001,813 @@ onUnmounted(() => {
             <ApiProxySettings @status-change="showSaveStatus" />
           </section>
 
-          <section v-if="globalPrunerConfig" class="settings-module">
-            <div class="dashboard-card-subsurface settings-feature-card p-4">
+          <section class="settings-module">
+            <div class="settings-module__header">
+              <div>
+                <span class="settings-module__eyebrow">{{
+                  t('settings.localAcceleration', '本地加速')
+                }}</span>
+                <h2 class="settings-module__title">
+                  {{ t('settings.smallModel.title', '轻量加速') }}
+                </h2>
+              </div>
+            </div>
+
+            <div data-testid="small-model-sections" class="space-y-4">
+              <div class="dashboard-card-subsurface settings-feature-card p-4">
+                <div data-testid="small-model-main-section-header" class="mb-4 space-y-3">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {{
+                          t(
+                            'settings.smallModel.description',
+                            'Use a lightweight model for faster simple tasks, with automatic fallback if unavailable.'
+                          )
+                        }}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      :aria-checked="settingsStore.smallModelEnabled"
+                      :disabled="smallModelToggleDisabled"
+                      class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                      :class="
+                        settingsStore.smallModelEnabled
+                          ? 'bg-green-600 dark:bg-green-500'
+                          : 'bg-gray-300 dark:bg-gray-600'
+                      "
+                      @click="handleSmallModelEnabledChange(!settingsStore.smallModelEnabled)"
+                    >
+                      <span
+                        class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                        :class="settingsStore.smallModelEnabled ? 'translate-x-5' : 'translate-x-0'"
+                      />
+                    </button>
+                  </div>
+
+                  <div
+                    data-testid="small-model-resource-status-row"
+                    class="flex flex-wrap items-start justify-between gap-3"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs font-medium text-gray-700 dark:text-gray-200">
+                        {{ t('settings.smallModel.resourceTitle', 'Resource Footprint') }}
+                      </div>
+                      <div
+                        class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
+                      >
+                        <span data-testid="small-model-storage-usage">
+                          {{
+                            t('settings.smallModel.storageUsage', {
+                              storage: smallModelStorageText,
+                            })
+                          }}
+                        </span>
+                        <span data-testid="small-model-runtime-usage">
+                          {{
+                            t('settings.smallModel.runtimeUsage', {
+                              runtime: smallModelRuntimeHintText,
+                            })
+                          }}
+                        </span>
+                      </div>
+                    </div>
+                    <span
+                      data-testid="small-model-status-badge"
+                      class="text-xs px-2 py-1 rounded-full whitespace-nowrap"
+                      :class="
+                        smallModelReady
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                          : smallModelDownloading
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                            : 'bg-gray-100 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300'
+                      "
+                    >
+                      {{
+                        smallModelReady
+                          ? t('settings.smallModel.ready', 'Ready')
+                          : smallModelDownloading
+                            ? t('settings.smallModel.downloading', 'Downloading')
+                            : t('settings.smallModel.notReady', 'Not Ready')
+                      }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="space-y-3">
+                  <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                    <h4 class="text-sm text-gray-800 dark:text-gray-100">
+                      {{ t('settings.smallModel.userGuideTitle', 'What this does') }}
+                    </h4>
+                    <ul
+                      class="settings-inline-list mt-1.5 list-disc space-y-1 text-xs text-gray-600 dark:text-gray-300"
+                    >
+                      <li>
+                        {{
+                          t(
+                            'settings.smallModel.userGuideItem1',
+                            'Prioritizes the lightweight model for simple tasks to improve response speed.'
+                          )
+                        }}
+                      </li>
+                      <li>
+                        {{
+                          t(
+                            'settings.smallModel.userGuideItem2',
+                            'Automatically falls back to the main model when the lightweight model is unavailable.'
+                          )
+                        }}
+                      </li>
+                      <li>
+                        {{
+                          t(
+                            'settings.smallModel.userGuideItem3',
+                            'Download the lightweight model before first use.'
+                          )
+                        }}
+                      </li>
+                    </ul>
+                  </div>
+
+                  <div data-testid="small-model-feature-layout" class="small-model-feature-layout">
+                    <div class="small-model-feature-card small-model-feature-card--summary">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{ t('settings.smallModel.summary', 'Summary / Compression') }}
+                        </div>
+                        <button
+                          data-testid="small-model-summary-switch"
+                          type="button"
+                          role="switch"
+                          :aria-checked="settingsStore.smallModelSummaryEnabled"
+                          :disabled="smallModelSaving"
+                          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                          :class="
+                            settingsStore.smallModelSummaryEnabled
+                              ? 'bg-green-600 dark:bg-green-500'
+                              : 'bg-gray-300 dark:bg-gray-600'
+                          "
+                          @click="
+                            handleSmallModelSummaryEnabledChange(
+                              !settingsStore.smallModelSummaryEnabled
+                            )
+                          "
+                        >
+                          <span
+                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                            :class="
+                              settingsStore.smallModelSummaryEnabled
+                                ? 'translate-x-5'
+                                : 'translate-x-0'
+                            "
+                          />
+                        </button>
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {{
+                          settingsStore.smallModelSummaryEnabled
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </div>
+                    </div>
+
+                    <div
+                      data-testid="small-model-context-section"
+                      class="small-model-feature-card small-model-feature-card--context"
+                    >
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{ t('settings.smallModel.contextCompression', 'Context Compression') }}
+                        </div>
+                        <button
+                          data-testid="small-model-context-compress-switch"
+                          type="button"
+                          role="switch"
+                          :aria-checked="settingsStore.smallModelContextCompressEnabled"
+                          :disabled="smallModelSaving"
+                          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                          :class="
+                            settingsStore.smallModelContextCompressEnabled
+                              ? 'bg-green-600 dark:bg-green-500'
+                              : 'bg-gray-300 dark:bg-gray-600'
+                          "
+                          @click="
+                            handleSmallModelContextCompressEnabledChange(
+                              !settingsStore.smallModelContextCompressEnabled
+                            )
+                          "
+                        >
+                          <span
+                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                            :class="
+                              settingsStore.smallModelContextCompressEnabled
+                                ? 'translate-x-5'
+                                : 'translate-x-0'
+                            "
+                          />
+                        </button>
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {{
+                          settingsStore.smallModelContextCompressEnabled
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </div>
+                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          t(
+                            'settings.smallModel.contextCompressionHint',
+                            'Lets the lightweight model compress long history, while the latest user message still decides what happens now.'
+                          )
+                        }}
+                      </div>
+                      <div class="mt-3">
+                        <label class="text-xs font-medium text-gray-600 dark:text-gray-300">
+                          {{ t('settings.smallModel.contextCompressionMode', 'Compression Mode') }}
+                        </label>
+                        <select
+                          data-testid="context-compression-mode-select"
+                          :value="settingsStore.contextCompressionMode"
+                          class="settings-select"
+                          :disabled="smallModelSaving"
+                          @change="
+                            handleContextCompressionModeChange(
+                              ($event.target as HTMLSelectElement).value as ContextCompressionMode
+                            )
+                          "
+                        >
+                          <option v-for="mode in contextCompressionModes" :key="mode" :value="mode">
+                            {{
+                              mode === 'auto'
+                                ? t(
+                                    'settings.smallModel.contextCompressionModeAuto',
+                                    'Auto: prefer small-model compression, fallback to offline'
+                                  )
+                                : mode === 'small_model'
+                                  ? t(
+                                      'settings.smallModel.contextCompressionModeSmallModel',
+                                      'Small Model First'
+                                    )
+                                  : t(
+                                      'settings.smallModel.contextCompressionModeOffline',
+                                      'Offline Deterministic'
+                                    )
+                            }}
+                          </option>
+                        </select>
+                        <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                          {{
+                            t(
+                              'settings.smallModel.contextCompressionModeHint',
+                              'Compression triggers automatically under context pressure. This only chooses which compression path to prefer.'
+                            )
+                          }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="small-model-feature-card small-model-feature-card--doc">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{ t('settings.smallModel.docExtract', 'Workflow Document Extraction') }}
+                        </div>
+                        <button
+                          data-testid="small-model-doc-extract-switch"
+                          type="button"
+                          role="switch"
+                          :aria-checked="settingsStore.smallModelDocExtractEnabled"
+                          :disabled="smallModelSaving"
+                          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                          :class="
+                            settingsStore.smallModelDocExtractEnabled
+                              ? 'bg-green-600 dark:bg-green-500'
+                              : 'bg-gray-300 dark:bg-gray-600'
+                          "
+                          @click="
+                            handleSmallModelDocExtractEnabledChange(
+                              !settingsStore.smallModelDocExtractEnabled
+                            )
+                          "
+                        >
+                          <span
+                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                            :class="
+                              settingsStore.smallModelDocExtractEnabled
+                                ? 'translate-x-5'
+                                : 'translate-x-0'
+                            "
+                          />
+                        </button>
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {{
+                          settingsStore.smallModelDocExtractEnabled
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </div>
+                    </div>
+
+                    <div class="small-model-feature-card small-model-feature-card--image">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{ t('settings.smallModel.imageQA', 'Image Recognition Acceleration') }}
+                        </div>
+                        <button
+                          data-testid="small-model-image-qa-switch"
+                          type="button"
+                          role="switch"
+                          :aria-checked="settingsStore.smallModelRouteImageQAEnabled"
+                          :disabled="smallModelSaving"
+                          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                          :class="
+                            settingsStore.smallModelRouteImageQAEnabled
+                              ? 'bg-green-600 dark:bg-green-500'
+                              : 'bg-gray-300 dark:bg-gray-600'
+                          "
+                          @click="
+                            handleSmallModelRouteImageQAEnabledChange(
+                              !settingsStore.smallModelRouteImageQAEnabled
+                            )
+                          "
+                        >
+                          <span
+                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                            :class="
+                              settingsStore.smallModelRouteImageQAEnabled
+                                ? 'translate-x-5'
+                                : 'translate-x-0'
+                            "
+                          />
+                        </button>
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {{
+                          settingsStore.smallModelRouteImageQAEnabled
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </div>
+                    </div>
+
+                    <div class="small-model-feature-card small-model-feature-card--short">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{ t('settings.smallModel.shortQA', 'Short QA Routing') }}
+                        </div>
+                        <button
+                          data-testid="small-model-short-qa-switch"
+                          type="button"
+                          role="switch"
+                          :aria-checked="settingsStore.smallModelRouteShortQAEnabled"
+                          :disabled="smallModelSaving"
+                          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                          :class="
+                            settingsStore.smallModelRouteShortQAEnabled
+                              ? 'bg-green-600 dark:bg-green-500'
+                              : 'bg-gray-300 dark:bg-gray-600'
+                          "
+                          @click="
+                            handleSmallModelRouteShortQAEnabledChange(
+                              !settingsStore.smallModelRouteShortQAEnabled
+                            )
+                          "
+                        >
+                          <span
+                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                            :class="
+                              settingsStore.smallModelRouteShortQAEnabled
+                                ? 'translate-x-5'
+                                : 'translate-x-0'
+                            "
+                          />
+                        </button>
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {{
+                          settingsStore.smallModelRouteShortQAEnabled
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+                    <button
+                      data-testid="small-model-stats-toggle"
+                      type="button"
+                      class="w-full flex items-center justify-between gap-2 text-start"
+                      @click="smallModelStatsExpanded = !smallModelStatsExpanded"
+                    >
+                      <h4 class="text-sm text-gray-800 dark:text-gray-100">
+                        {{ t('settings.smallModel.statsTitle', 'Runtime Stats') }}
+                      </h4>
+                      <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                        smallModelStatsExpanded
+                          ? t('settings.smallModel.collapse', 'Collapse')
+                          : t('settings.smallModel.expand', 'Expand')
+                      }}</span>
+                    </button>
+                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {{
+                        t(
+                          'settings.smallModel.statsHint',
+                          'For troubleshooting and tuning. Daily use usually does not require attention.'
+                        )
+                      }}
+                    </p>
+
+                    <div v-if="smallModelStatsExpanded" class="mt-3 space-y-3">
+                      <div class="flex items-center justify-end gap-2">
+                        <button
+                          data-testid="small-model-stats-refresh"
+                          class="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
+                          :disabled="settingsStore.smallModelStatsLoading"
+                          @click="fetchSmallModelStats"
+                        >
+                          {{ t('common.refresh', 'Refresh') }}
+                        </button>
+                        <button
+                          data-testid="small-model-stats-reset"
+                          class="px-2 py-1 rounded border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
+                          :disabled="smallModelStatsResetting"
+                          @click="resetSmallModelStats"
+                        >
+                          {{ t('settings.smallModel.resetStats', 'Reset') }}
+                        </button>
+                      </div>
+
+                      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.shortQAAttempts', 'Short QA Attempts') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ settingsStore.smallModelStats?.short_qa_route_attempts ?? 0 }}
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.shortQASuccessRate', 'Short QA Success') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ shortQASuccessRate }}%
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{
+                              t('settings.smallModel.imageQAAttempts', 'Image Recognition Attempts')
+                            }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ settingsStore.smallModelStats?.image_qa_route_attempts ?? 0 }}
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{
+                              t(
+                                'settings.smallModel.imageQASuccessRate',
+                                'Image Recognition Success'
+                              )
+                            }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ imageQASuccessRate }}%
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{
+                              t('settings.smallModel.deepResearchFallbacks', 'Research Fallbacks')
+                            }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ settingsStore.smallModelStats?.no_provider_deepresearch_total ?? 0 }}
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.irTakeovers', 'Strategy Takeovers') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ settingsStore.smallModelStats?.ir_takeover_total ?? 0 }}
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.autoRollbacks', 'Auto Rollbacks') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ settingsStore.smallModelStats?.auto_rollback_total ?? 0 }}
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.fallbackTotal', 'Fallback Total') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ settingsStore.smallModelStats?.small_model_fallback_total ?? 0 }}
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.timeoutTotal', 'Timeout Total') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ settingsStore.smallModelStats?.small_model_timeout_total ?? 0 }}
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.latencyMs', 'Small-model Latency') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{
+                              (settingsStore.smallModelStats?.small_model_latency_ms ?? 0).toFixed(
+                                1
+                              )
+                            }}ms
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.shortQALatencyMs', 'Short QA Latency') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{
+                              (settingsStore.smallModelStats?.short_qa_latency_ms ?? 0).toFixed(1)
+                            }}ms
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{
+                              t('settings.smallModel.imageQALatencyMs', 'Image Recognition Latency')
+                            }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{
+                              (settingsStore.smallModelStats?.image_qa_latency_ms ?? 0).toFixed(1)
+                            }}ms
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{ t('settings.smallModel.summaryLatencyMs', 'Summary Latency') }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{
+                              (settingsStore.smallModelStats?.summary_latency_ms ?? 0).toFixed(1)
+                            }}ms
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{
+                              t(
+                                'settings.smallModel.contextCompressionSuccessRate',
+                                'Context Compression Hit Rate'
+                              )
+                            }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{ contextCompressSuccessRate }}%
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{
+                              t(
+                                'settings.smallModel.contextCompressionLatencyMs',
+                                'Context Compression Latency'
+                              )
+                            }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{
+                              (
+                                settingsStore.smallModelStats?.context_compress_latency_ms ?? 0
+                              ).toFixed(1)
+                            }}ms
+                          </div>
+                        </div>
+                        <div
+                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
+                        >
+                          <div class="text-gray-500 dark:text-gray-400">
+                            {{
+                              t('settings.smallModel.docExtractLatencyMs', 'Doc Extract Latency')
+                            }}
+                          </div>
+                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
+                            {{
+                              (settingsStore.smallModelStats?.doc_extract_latency_ms ?? 0).toFixed(
+                                1
+                              )
+                            }}ms
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          {{ t('settings.smallModel.fallbackReasons', 'Fallback Reasons') }}
+                        </div>
+                        <div
+                          v-if="fallbackReasonEntries.length === 0"
+                          class="text-xs text-gray-500 dark:text-gray-400"
+                        >
+                          {{
+                            t(
+                              'settings.smallModel.noFallbackReasons',
+                              'No fallback reasons recorded'
+                            )
+                          }}
+                        </div>
+                        <div v-else class="space-y-1">
+                          <div
+                            v-for="[reason, count] in fallbackReasonEntries"
+                            :key="reason"
+                            class="flex items-center justify-between text-xs rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5"
+                          >
+                            <span class="text-gray-700 dark:text-gray-200">{{
+                              formatFallbackReason(reason)
+                            }}</span>
+                            <span class="text-gray-900 dark:text-white font-medium">{{
+                              count
+                            }}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <template v-if="settingsStore.smallModelStatus && smallModelDownloading">
+                    <div
+                      v-if="
+                        settingsStore.smallModelStatus.state === 'connecting' &&
+                        settingsStore.smallModelStatus.progress
+                      "
+                      class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
+                    >
+                      <div
+                        class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
+                      >
+                        <span
+                          >{{ settingsStore.smallModelStatus.progress.file }} ({{
+                            settingsStore.smallModelStatus.progress.file_index + 1
+                          }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span
+                        >
+                        <span>{{ t('settings.smallModel.connecting', 'Connecting') }}</span>
+                      </div>
+                      <div
+                        class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
+                      >
+                        <div
+                          class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"
+                        ></div>
+                      </div>
+                    </div>
+                    <div
+                      v-else-if="
+                        settingsStore.smallModelStatus.state === 'downloading' &&
+                        settingsStore.smallModelStatus.progress
+                      "
+                      class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
+                    >
+                      <div
+                        class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
+                      >
+                        <span
+                          >{{ settingsStore.smallModelStatus.progress.file }} ({{
+                            settingsStore.smallModelStatus.progress.file_index + 1
+                          }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span
+                        >
+                        <span
+                          >{{
+                            settingsStore.smallModelStatus.progress.percentage.toFixed(1)
+                          }}%</span
+                        >
+                      </div>
+                      <div
+                        class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
+                      >
+                        <div
+                          class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
+                          :style="{
+                            width: settingsStore.smallModelStatus.progress.percentage + '%',
+                          }"
+                        ></div>
+                      </div>
+                      <div
+                        class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500"
+                      >
+                        <span
+                          >{{ formatBytes(settingsStore.smallModelStatus.progress.downloaded) }} /
+                          {{
+                            settingsStore.smallModelStatus.progress.total > 0
+                              ? formatBytes(settingsStore.smallModelStatus.progress.total)
+                              : '...'
+                          }}</span
+                        >
+                        <span
+                          >{{ settingsStore.smallModelStatus.progress.speed_human }} &middot;
+                          {{ settingsStore.smallModelStatus.progress.eta || '...' }}</span
+                        >
+                      </div>
+                    </div>
+                  </template>
+
+                  <div
+                    v-if="
+                      settingsStore.smallModelStatus?.state === 'error' &&
+                      settingsStore.smallModelStatus.error
+                    "
+                    class="px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-between"
+                  >
+                    <p class="text-xs text-red-600 dark:text-red-400">
+                      {{ settingsStore.smallModelStatus.error }}
+                    </p>
+                    <button
+                      class="settings-inline-gap-sm text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white flex-shrink-0"
+                      @click="startSmallModelDownload"
+                    >
+                      {{ t('common.retry') }}
+                    </button>
+                  </div>
+
+                  <div class="flex items-center justify-end gap-2">
+                    <button
+                      data-testid="small-model-status-refresh"
+                      class="px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      @click="fetchSmallModelStatus"
+                    >
+                      {{ t('common.refresh', 'Refresh') }}
+                    </button>
+                    <button
+                      v-if="!smallModelDownloading"
+                      data-testid="small-model-download"
+                      class="px-3 py-1.5 rounded-md text-xs text-white bg-gray-800 hover:bg-gray-900 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-white"
+                      @click="startSmallModelDownload"
+                    >
+                      {{
+                        smallModelReady
+                          ? t('settings.smallModel.redownload', 'Re-download')
+                          : t('settings.smallModel.download', 'Download Model')
+                      }}
+                    </button>
+                    <button
+                      v-else
+                      data-testid="small-model-download-cancel"
+                      class="px-3 py-1.5 rounded-md text-xs text-red-600 border border-red-200 dark:text-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      @click="cancelSmallModelDownload"
+                    >
+                      {{ t('common.cancel') }}
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div
-                data-testid="proxy-pruner-card"
-                class="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-slate-800/50"
+                v-if="globalPrunerConfig"
+                data-testid="small-model-pruner-section"
+                class="dashboard-card-subsurface settings-feature-card flex items-start justify-between gap-3 p-4"
               >
                 <div class="min-w-0 flex-1">
                   <div class="text-sm font-medium text-gray-900 dark:text-white">
@@ -1039,797 +1842,6 @@ onUnmounted(() => {
                     :class="globalPrunerEnabled ? 'translate-x-5' : 'translate-x-0'"
                   />
                 </button>
-              </div>
-            </div>
-          </section>
-
-          <section class="settings-module">
-            <div class="settings-module__header">
-              <div>
-                <span class="settings-module__eyebrow">{{
-                  t('settings.localAcceleration', '本地加速')
-                }}</span>
-                <h2 class="settings-module__title">
-                  {{ t('settings.smallModel.title', '轻量加速') }}
-                </h2>
-              </div>
-            </div>
-
-            <div class="dashboard-card-subsurface settings-feature-card p-4">
-              <div data-testid="small-model-main-section-header" class="mb-4 space-y-3">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                      {{
-                        t(
-                          'settings.smallModel.description',
-                          'Use a lightweight model for faster simple tasks, with automatic fallback if unavailable.'
-                        )
-                      }}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    :aria-checked="settingsStore.smallModelEnabled"
-                    :disabled="smallModelToggleDisabled"
-                    class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                    :class="
-                      settingsStore.smallModelEnabled
-                        ? 'bg-green-600 dark:bg-green-500'
-                        : 'bg-gray-300 dark:bg-gray-600'
-                    "
-                    @click="handleSmallModelEnabledChange(!settingsStore.smallModelEnabled)"
-                  >
-                    <span
-                      class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                      :class="settingsStore.smallModelEnabled ? 'translate-x-5' : 'translate-x-0'"
-                    />
-                  </button>
-                </div>
-
-                <div
-                  data-testid="small-model-resource-status-row"
-                  class="flex flex-wrap items-start justify-between gap-3"
-                >
-                  <div class="min-w-0 flex-1">
-                    <div class="text-xs font-medium text-gray-700 dark:text-gray-200">
-                      {{ t('settings.smallModel.resourceTitle', 'Resource Footprint') }}
-                    </div>
-                    <div
-                      class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400"
-                    >
-                      <span data-testid="small-model-storage-usage">
-                        {{
-                          t('settings.smallModel.storageUsage', { storage: smallModelStorageText })
-                        }}
-                      </span>
-                      <span data-testid="small-model-runtime-usage">
-                        {{
-                          t('settings.smallModel.runtimeUsage', {
-                            runtime: smallModelRuntimeHintText,
-                          })
-                        }}
-                      </span>
-                    </div>
-                  </div>
-                  <span
-                    data-testid="small-model-status-badge"
-                    class="text-xs px-2 py-1 rounded-full whitespace-nowrap"
-                    :class="
-                      smallModelReady
-                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                        : smallModelDownloading
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                          : 'bg-gray-100 text-gray-600 dark:bg-gray-700/60 dark:text-gray-300'
-                    "
-                  >
-                    {{
-                      smallModelReady
-                        ? t('settings.smallModel.ready', 'Ready')
-                        : smallModelDownloading
-                          ? t('settings.smallModel.downloading', 'Downloading')
-                          : t('settings.smallModel.notReady', 'Not Ready')
-                    }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="space-y-3">
-                <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
-                  <h4 class="text-sm text-gray-800 dark:text-gray-100">
-                    {{ t('settings.smallModel.userGuideTitle', 'What this does') }}
-                  </h4>
-                  <ul
-                    class="settings-inline-list mt-1.5 list-disc space-y-1 text-xs text-gray-600 dark:text-gray-300"
-                  >
-                    <li>
-                      {{
-                        t(
-                          'settings.smallModel.userGuideItem1',
-                          'Prioritizes the lightweight model for simple tasks to improve response speed.'
-                        )
-                      }}
-                    </li>
-                    <li>
-                      {{
-                        t(
-                          'settings.smallModel.userGuideItem2',
-                          'Automatically falls back to the main model when the lightweight model is unavailable.'
-                        )
-                      }}
-                    </li>
-                    <li>
-                      {{
-                        t(
-                          'settings.smallModel.userGuideItem3',
-                          'Download the lightweight model before first use.'
-                        )
-                      }}
-                    </li>
-                  </ul>
-                </div>
-
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div
-                    class="w-full px-3 py-2 rounded-lg text-sm border bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-gray-900 dark:text-white">
-                        {{ t('settings.smallModel.summary', 'Summary / Compression') }}
-                      </div>
-                      <button
-                        data-testid="small-model-summary-switch"
-                        type="button"
-                        role="switch"
-                        :aria-checked="settingsStore.smallModelSummaryEnabled"
-                        :disabled="smallModelSaving"
-                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                        :class="
-                          settingsStore.smallModelSummaryEnabled
-                            ? 'bg-green-600 dark:bg-green-500'
-                            : 'bg-gray-300 dark:bg-gray-600'
-                        "
-                        @click="
-                          handleSmallModelSummaryEnabledChange(
-                            !settingsStore.smallModelSummaryEnabled
-                          )
-                        "
-                      >
-                        <span
-                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                          :class="
-                            settingsStore.smallModelSummaryEnabled
-                              ? 'translate-x-5'
-                              : 'translate-x-0'
-                          "
-                        />
-                      </button>
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {{
-                        settingsStore.smallModelSummaryEnabled
-                          ? t('common.enabled', 'Enabled')
-                          : t('common.disabled', 'Disabled')
-                      }}
-                    </div>
-                  </div>
-
-                  <div
-                    class="w-full px-3 py-2 rounded-lg text-sm border bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-gray-900 dark:text-white">
-                        {{ t('settings.smallModel.contextCompression', 'Context Compression') }}
-                      </div>
-                      <button
-                        data-testid="small-model-context-compress-switch"
-                        type="button"
-                        role="switch"
-                        :aria-checked="settingsStore.smallModelContextCompressEnabled"
-                        :disabled="smallModelSaving"
-                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                        :class="
-                          settingsStore.smallModelContextCompressEnabled
-                            ? 'bg-green-600 dark:bg-green-500'
-                            : 'bg-gray-300 dark:bg-gray-600'
-                        "
-                        @click="
-                          handleSmallModelContextCompressEnabledChange(
-                            !settingsStore.smallModelContextCompressEnabled
-                          )
-                        "
-                      >
-                        <span
-                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                          :class="
-                            settingsStore.smallModelContextCompressEnabled
-                              ? 'translate-x-5'
-                              : 'translate-x-0'
-                          "
-                        />
-                      </button>
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {{
-                        settingsStore.smallModelContextCompressEnabled
-                          ? t('common.enabled', 'Enabled')
-                          : t('common.disabled', 'Disabled')
-                      }}
-                    </div>
-                    <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                      {{
-                        t(
-                          'settings.smallModel.contextCompressionHint',
-                          'Lets the lightweight model compress long history, while the latest user message still decides what happens now.'
-                        )
-                      }}
-                    </div>
-                    <div class="mt-3">
-                      <label class="text-xs font-medium text-gray-600 dark:text-gray-300">
-                        {{ t('settings.smallModel.contextCompressionMode', 'Compression Mode') }}
-                      </label>
-                      <select
-                        data-testid="context-compression-mode-select"
-                        :value="settingsStore.contextCompressionMode"
-                        class="settings-select"
-                        :disabled="smallModelSaving"
-                        @change="
-                          handleContextCompressionModeChange(
-                            ($event.target as HTMLSelectElement).value as ContextCompressionMode
-                          )
-                        "
-                      >
-                        <option v-for="mode in contextCompressionModes" :key="mode" :value="mode">
-                          {{
-                            mode === 'auto'
-                              ? t(
-                                  'settings.smallModel.contextCompressionModeAuto',
-                                  'Auto: prefer small-model compression, fallback to offline'
-                                )
-                              : mode === 'small_model'
-                                ? t(
-                                    'settings.smallModel.contextCompressionModeSmallModel',
-                                    'Small Model First'
-                                  )
-                                : t(
-                                    'settings.smallModel.contextCompressionModeOffline',
-                                    'Offline Deterministic'
-                                  )
-                          }}
-                        </option>
-                      </select>
-                      <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        {{
-                          t(
-                            'settings.smallModel.contextCompressionModeHint',
-                            'Compression triggers automatically under context pressure. This only chooses which compression path to prefer.'
-                          )
-                        }}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    class="w-full px-3 py-2 rounded-lg text-sm border bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-gray-900 dark:text-white">
-                        {{ t('settings.smallModel.docExtract', 'Workflow Document Extraction') }}
-                      </div>
-                      <button
-                        data-testid="small-model-doc-extract-switch"
-                        type="button"
-                        role="switch"
-                        :aria-checked="settingsStore.smallModelDocExtractEnabled"
-                        :disabled="smallModelSaving"
-                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                        :class="
-                          settingsStore.smallModelDocExtractEnabled
-                            ? 'bg-green-600 dark:bg-green-500'
-                            : 'bg-gray-300 dark:bg-gray-600'
-                        "
-                        @click="
-                          handleSmallModelDocExtractEnabledChange(
-                            !settingsStore.smallModelDocExtractEnabled
-                          )
-                        "
-                      >
-                        <span
-                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                          :class="
-                            settingsStore.smallModelDocExtractEnabled
-                              ? 'translate-x-5'
-                              : 'translate-x-0'
-                          "
-                        />
-                      </button>
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {{
-                        settingsStore.smallModelDocExtractEnabled
-                          ? t('common.enabled', 'Enabled')
-                          : t('common.disabled', 'Disabled')
-                      }}
-                    </div>
-                  </div>
-
-                  <div
-                    class="w-full px-3 py-2 rounded-lg text-sm border bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-gray-900 dark:text-white">
-                        {{ t('settings.smallModel.imageQA', 'Image Recognition Acceleration') }}
-                      </div>
-                      <button
-                        data-testid="small-model-image-qa-switch"
-                        type="button"
-                        role="switch"
-                        :aria-checked="settingsStore.smallModelRouteImageQAEnabled"
-                        :disabled="smallModelSaving"
-                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                        :class="
-                          settingsStore.smallModelRouteImageQAEnabled
-                            ? 'bg-green-600 dark:bg-green-500'
-                            : 'bg-gray-300 dark:bg-gray-600'
-                        "
-                        @click="
-                          handleSmallModelRouteImageQAEnabledChange(
-                            !settingsStore.smallModelRouteImageQAEnabled
-                          )
-                        "
-                      >
-                        <span
-                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                          :class="
-                            settingsStore.smallModelRouteImageQAEnabled
-                              ? 'translate-x-5'
-                              : 'translate-x-0'
-                          "
-                        />
-                      </button>
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {{
-                        settingsStore.smallModelRouteImageQAEnabled
-                          ? t('common.enabled', 'Enabled')
-                          : t('common.disabled', 'Disabled')
-                      }}
-                    </div>
-                  </div>
-
-                  <div
-                    class="w-full px-3 py-2 rounded-lg text-sm border bg-gray-50 dark:bg-slate-700/30 border-gray-200 dark:border-slate-600 text-gray-700 dark:text-slate-300"
-                  >
-                    <div class="flex items-center justify-between gap-3">
-                      <div class="font-medium text-gray-900 dark:text-white">
-                        {{ t('settings.smallModel.shortQA', 'Short QA Routing') }}
-                      </div>
-                      <button
-                        data-testid="small-model-short-qa-switch"
-                        type="button"
-                        role="switch"
-                        :aria-checked="settingsStore.smallModelRouteShortQAEnabled"
-                        :disabled="smallModelSaving"
-                        class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                        :class="
-                          settingsStore.smallModelRouteShortQAEnabled
-                            ? 'bg-green-600 dark:bg-green-500'
-                            : 'bg-gray-300 dark:bg-gray-600'
-                        "
-                        @click="
-                          handleSmallModelRouteShortQAEnabledChange(
-                            !settingsStore.smallModelRouteShortQAEnabled
-                          )
-                        "
-                      >
-                        <span
-                          class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                          :class="
-                            settingsStore.smallModelRouteShortQAEnabled
-                              ? 'translate-x-5'
-                              : 'translate-x-0'
-                          "
-                        />
-                      </button>
-                    </div>
-                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {{
-                        settingsStore.smallModelRouteShortQAEnabled
-                          ? t('common.enabled', 'Enabled')
-                          : t('common.disabled', 'Disabled')
-                      }}
-                    </div>
-                  </div>
-                </div>
-
-                <div class="py-2.5 px-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
-                  <button
-                    data-testid="small-model-stats-toggle"
-                    type="button"
-                    class="w-full flex items-center justify-between gap-2 text-start"
-                    @click="smallModelStatsExpanded = !smallModelStatsExpanded"
-                  >
-                    <h4 class="text-sm text-gray-800 dark:text-gray-100">
-                      {{ t('settings.smallModel.statsTitle', 'Runtime Stats') }}
-                    </h4>
-                    <span class="text-xs text-gray-500 dark:text-gray-400">{{
-                      smallModelStatsExpanded
-                        ? t('settings.smallModel.collapse', 'Collapse')
-                        : t('settings.smallModel.expand', 'Expand')
-                    }}</span>
-                  </button>
-                  <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {{
-                      t(
-                        'settings.smallModel.statsHint',
-                        'For troubleshooting and tuning. Daily use usually does not require attention.'
-                      )
-                    }}
-                  </p>
-
-                  <div v-if="smallModelStatsExpanded" class="mt-3 space-y-3">
-                    <div class="flex items-center justify-end gap-2">
-                      <button
-                        data-testid="small-model-stats-refresh"
-                        class="px-2 py-1 rounded border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50"
-                        :disabled="settingsStore.smallModelStatsLoading"
-                        @click="fetchSmallModelStats"
-                      >
-                        {{ t('common.refresh', 'Refresh') }}
-                      </button>
-                      <button
-                        data-testid="small-model-stats-reset"
-                        class="px-2 py-1 rounded border border-red-200 dark:border-red-800 text-xs text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
-                        :disabled="smallModelStatsResetting"
-                        @click="resetSmallModelStats"
-                      >
-                        {{ t('settings.smallModel.resetStats', 'Reset') }}
-                      </button>
-                    </div>
-
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.shortQAAttempts', 'Short QA Attempts') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.short_qa_route_attempts ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.shortQASuccessRate', 'Short QA Success') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ shortQASuccessRate }}%
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t('settings.smallModel.imageQAAttempts', 'Image Recognition Attempts')
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.image_qa_route_attempts ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t('settings.smallModel.imageQASuccessRate', 'Image Recognition Success')
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ imageQASuccessRate }}%
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t('settings.smallModel.deepResearchFallbacks', 'Research Fallbacks')
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.no_provider_deepresearch_total ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.irTakeovers', 'Strategy Takeovers') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.ir_takeover_total ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.autoRollbacks', 'Auto Rollbacks') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.auto_rollback_total ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.fallbackTotal', 'Fallback Total') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.small_model_fallback_total ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.timeoutTotal', 'Timeout Total') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ settingsStore.smallModelStats?.small_model_timeout_total ?? 0 }}
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.latencyMs', 'Small-model Latency') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{
-                            (settingsStore.smallModelStats?.small_model_latency_ms ?? 0).toFixed(1)
-                          }}ms
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.shortQALatencyMs', 'Short QA Latency') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{
-                            (settingsStore.smallModelStats?.short_qa_latency_ms ?? 0).toFixed(1)
-                          }}ms
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t('settings.smallModel.imageQALatencyMs', 'Image Recognition Latency')
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{
-                            (settingsStore.smallModelStats?.image_qa_latency_ms ?? 0).toFixed(1)
-                          }}ms
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.summaryLatencyMs', 'Summary Latency') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{
-                            (settingsStore.smallModelStats?.summary_latency_ms ?? 0).toFixed(1)
-                          }}ms
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t(
-                              'settings.smallModel.contextCompressionSuccessRate',
-                              'Context Compression Hit Rate'
-                            )
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{ contextCompressSuccessRate }}%
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{
-                            t(
-                              'settings.smallModel.contextCompressionLatencyMs',
-                              'Context Compression Latency'
-                            )
-                          }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{
-                            (
-                              settingsStore.smallModelStats?.context_compress_latency_ms ?? 0
-                            ).toFixed(1)
-                          }}ms
-                        </div>
-                      </div>
-                      <div
-                        class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                      >
-                        <div class="text-gray-500 dark:text-gray-400">
-                          {{ t('settings.smallModel.docExtractLatencyMs', 'Doc Extract Latency') }}
-                        </div>
-                        <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                          {{
-                            (settingsStore.smallModelStats?.doc_extract_latency_ms ?? 0).toFixed(1)
-                          }}ms
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                        {{ t('settings.smallModel.fallbackReasons', 'Fallback Reasons') }}
-                      </div>
-                      <div
-                        v-if="fallbackReasonEntries.length === 0"
-                        class="text-xs text-gray-500 dark:text-gray-400"
-                      >
-                        {{
-                          t('settings.smallModel.noFallbackReasons', 'No fallback reasons recorded')
-                        }}
-                      </div>
-                      <div v-else class="space-y-1">
-                        <div
-                          v-for="[reason, count] in fallbackReasonEntries"
-                          :key="reason"
-                          class="flex items-center justify-between text-xs rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5"
-                        >
-                          <span class="text-gray-700 dark:text-gray-200">{{
-                            formatFallbackReason(reason)
-                          }}</span>
-                          <span class="text-gray-900 dark:text-white font-medium">{{ count }}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <template v-if="settingsStore.smallModelStatus && smallModelDownloading">
-                  <div
-                    v-if="
-                      settingsStore.smallModelStatus.state === 'connecting' &&
-                      settingsStore.smallModelStatus.progress
-                    "
-                    class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
-                  >
-                    <div
-                      class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
-                    >
-                      <span
-                        >{{ settingsStore.smallModelStatus.progress.file }} ({{
-                          settingsStore.smallModelStatus.progress.file_index + 1
-                        }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span
-                      >
-                      <span>{{ t('settings.smallModel.connecting', 'Connecting') }}</span>
-                    </div>
-                    <div
-                      class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
-                    >
-                      <div
-                        class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"
-                      ></div>
-                    </div>
-                  </div>
-                  <div
-                    v-else-if="
-                      settingsStore.smallModelStatus.state === 'downloading' &&
-                      settingsStore.smallModelStatus.progress
-                    "
-                    class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
-                  >
-                    <div
-                      class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
-                    >
-                      <span
-                        >{{ settingsStore.smallModelStatus.progress.file }} ({{
-                          settingsStore.smallModelStatus.progress.file_index + 1
-                        }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span
-                      >
-                      <span
-                        >{{ settingsStore.smallModelStatus.progress.percentage.toFixed(1) }}%</span
-                      >
-                    </div>
-                    <div
-                      class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
-                    >
-                      <div
-                        class="h-full bg-blue-500 dark:bg-blue-400 rounded-full transition-all duration-300"
-                        :style="{ width: settingsStore.smallModelStatus.progress.percentage + '%' }"
-                      ></div>
-                    </div>
-                    <div
-                      class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500"
-                    >
-                      <span
-                        >{{ formatBytes(settingsStore.smallModelStatus.progress.downloaded) }} /
-                        {{
-                          settingsStore.smallModelStatus.progress.total > 0
-                            ? formatBytes(settingsStore.smallModelStatus.progress.total)
-                            : '...'
-                        }}</span
-                      >
-                      <span
-                        >{{ settingsStore.smallModelStatus.progress.speed_human }} &middot;
-                        {{ settingsStore.smallModelStatus.progress.eta || '...' }}</span
-                      >
-                    </div>
-                  </div>
-                </template>
-
-                <div
-                  v-if="
-                    settingsStore.smallModelStatus?.state === 'error' &&
-                    settingsStore.smallModelStatus.error
-                  "
-                  class="px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-between"
-                >
-                  <p class="text-xs text-red-600 dark:text-red-400">
-                    {{ settingsStore.smallModelStatus.error }}
-                  </p>
-                  <button
-                    class="settings-inline-gap-sm text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white flex-shrink-0"
-                    @click="startSmallModelDownload"
-                  >
-                    {{ t('common.retry') }}
-                  </button>
-                </div>
-
-                <div class="flex items-center justify-end gap-2">
-                  <button
-                    data-testid="small-model-status-refresh"
-                    class="px-3 py-1.5 rounded-md border border-gray-200 dark:border-gray-600 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                    @click="fetchSmallModelStatus"
-                  >
-                    {{ t('common.refresh', 'Refresh') }}
-                  </button>
-                  <button
-                    v-if="!smallModelDownloading"
-                    data-testid="small-model-download"
-                    class="px-3 py-1.5 rounded-md text-xs text-white bg-gray-800 hover:bg-gray-900 dark:bg-gray-200 dark:text-gray-900 dark:hover:bg-white"
-                    @click="startSmallModelDownload"
-                  >
-                    {{
-                      smallModelReady
-                        ? t('settings.smallModel.redownload', 'Re-download')
-                        : t('settings.smallModel.download', 'Download Model')
-                    }}
-                  </button>
-                  <button
-                    v-else
-                    data-testid="small-model-download-cancel"
-                    class="px-3 py-1.5 rounded-md text-xs text-red-600 border border-red-200 dark:text-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20"
-                    @click="cancelSmallModelDownload"
-                  >
-                    {{ t('common.cancel') }}
-                  </button>
-                </div>
               </div>
             </div>
           </section>
@@ -1870,9 +1882,25 @@ onUnmounted(() => {
             <MemoryManager
               class="settings-embedded-section mx-auto w-full max-w-6xl"
               :memory-recall-mode="settingsStore.memoryRecallMode"
-              :agent-auto-reflect="settingsStore.agentAutoReflect"
               @status-change="showSaveStatus"
               @memory-recall-mode-change="handleMemoryRecallModeChange"
+            />
+          </section>
+
+          <section class="settings-module">
+            <div class="settings-module__header">
+              <div>
+                <span class="settings-module__eyebrow">{{
+                  t('settings.knowledgeSurface', '知识空间')
+                }}</span>
+                <h2 class="settings-module__title">
+                  {{ t('settings.knowledgeManagement', '知识维护与编译') }}
+                </h2>
+              </div>
+            </div>
+            <KnowledgeManagerCard
+              class="settings-embedded-section mx-auto w-full max-w-6xl"
+              @status-change="showSaveStatus"
             />
           </section>
 
@@ -2240,6 +2268,47 @@ input[type='range']::-moz-range-thumb {
   box-shadow: 0 0 0 4px rgba(var(--settings-accent), 0.12);
 }
 
+.small-model-feature-layout {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-areas:
+    'summary'
+    'context'
+    'doc'
+    'image'
+    'short';
+}
+
+.small-model-feature-card {
+  width: 100%;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(229, 231, 235, 1);
+  background: rgb(249, 250, 251);
+  color: #374151;
+}
+
+.small-model-feature-card--summary {
+  grid-area: summary;
+}
+
+.small-model-feature-card--context {
+  grid-area: context;
+}
+
+.small-model-feature-card--doc {
+  grid-area: doc;
+}
+
+.small-model-feature-card--image {
+  grid-area: image;
+}
+
+.small-model-feature-card--short {
+  grid-area: short;
+}
+
 .settings-pill-group {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
@@ -2527,6 +2596,14 @@ html.dark .settings-pill-button {
   color: #e2e8f0;
 }
 
+:root.dark .small-model-feature-card,
+[data-theme='dark'] .small-model-feature-card,
+html.dark .small-model-feature-card {
+  border-color: rgba(71, 85, 105, 0.7);
+  background: rgba(51, 65, 85, 0.3);
+  color: #cbd5e1;
+}
+
 :root.dark .settings-field-label,
 [data-theme='dark'] .settings-field-label,
 html.dark .settings-field-label {
@@ -2659,6 +2736,18 @@ html.dark .settings-tab-button--active .settings-tab-button__state {
 @media (max-width: 900px) {
   .settings-tab-nav {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .small-model-feature-layout {
+    align-items: start;
+    grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    grid-template-areas:
+      'summary context'
+      'doc context'
+      'image context'
+      'short short';
   }
 }
 

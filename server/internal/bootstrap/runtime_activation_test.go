@@ -181,8 +181,11 @@ func TestActivateRuntimeActivation_WiresUnifiedRuntimeBundle(t *testing.T) {
 	if !routeExists(e, http.MethodGet, "/api/v1/proxy/masking/stats") {
 		t.Fatalf("expected masking routes, got %#v", e.Routes())
 	}
-	if !routeExists(e, http.MethodGet, "/api/v1/agent/tasks") {
+	if !routeExists(e, http.MethodPost, "/api/v1/agent/tasks") {
 		t.Fatalf("expected agent routes, got %#v", e.Routes())
+	}
+	if routeExists(e, http.MethodGet, "/api/v1/agent/tasks") {
+		t.Fatalf("did not expect standalone agent task list route to remain registered, got %#v", e.Routes())
 	}
 	if !routeExists(e, http.MethodPost, "/api/v1/mcp/message") {
 		t.Fatalf("expected mcp routes, got %#v", e.Routes())
@@ -293,8 +296,11 @@ func TestActivateRouteRuntimeActivation_UsesRoutePermissionClosures(t *testing.T
 	if result.agentLLMCaller != runtimeLLM {
 		t.Fatalf("expected runtime llm caller to replace default, got %#v", result.agentLLMCaller)
 	}
-	if !routeExists(e, http.MethodGet, "/api/v1/agent/tasks") {
+	if !routeExists(e, http.MethodPost, "/api/v1/agent/tasks") {
 		t.Fatalf("expected agent routes, got %#v", e.Routes())
+	}
+	if routeExists(e, http.MethodGet, "/api/v1/agent/tasks") {
+		t.Fatalf("did not expect standalone agent task list route to remain registered, got %#v", e.Routes())
 	}
 	if !routeExists(e, http.MethodGet, "/api/v1/proxy/cache/stats") {
 		t.Fatalf("expected proxy cache routes, got %#v", e.Routes())

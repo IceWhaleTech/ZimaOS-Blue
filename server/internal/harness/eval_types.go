@@ -314,6 +314,59 @@ type GroupPromotionResult struct {
 	EvalSpec       *EvalSpec       `json:"eval_spec,omitempty"`
 }
 
+type ImportDatasetBundleEvalSpec struct {
+	Name            string                 `json:"name"`
+	OwnerUserID     string                 `json:"owner_user_id,omitempty"`
+	Subject         string                 `json:"subject,omitempty"`
+	RunKind         RunKind                `json:"run_kind,omitempty"`
+	Profile         string                 `json:"profile,omitempty"`
+	SchedulerConfig GroupSchedulerConfig   `json:"scheduler,omitempty"`
+	ScoringConfig   GroupScoringConfig     `json:"scoring,omitempty"`
+	RuntimePolicy   map[string]interface{} `json:"runtime_policy,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+}
+
+type ImportDatasetBundleRequest struct {
+	SourceType string                        `json:"source_type,omitempty"`
+	SourceRef  string                        `json:"source_ref,omitempty"`
+	Dataset    DatasetSpec                   `json:"dataset"`
+	Version    DatasetVersionSpec            `json:"version"`
+	EvalSpecs  []ImportDatasetBundleEvalSpec `json:"eval_specs,omitempty"`
+	MakeActive bool                          `json:"make_active,omitempty"`
+}
+
+type ImportDatasetBundleFromSourceRequest struct {
+	SourceType string `json:"source_type,omitempty"`
+	Path       string `json:"path,omitempty"`
+	Source     string `json:"source,omitempty"`
+	BundlePath string `json:"bundle_path,omitempty"`
+	Version    string `json:"version,omitempty"`
+	MakeActive *bool  `json:"make_active,omitempty"`
+}
+
+type DatasetBundleVersionPreview struct {
+	Version        string `json:"version,omitempty"`
+	ItemCount      int    `json:"item_count"`
+	ManifestSHA256 string `json:"manifest_sha256,omitempty"`
+	SourceType     string `json:"source_type,omitempty"`
+	SourceRef      string `json:"source_ref,omitempty"`
+}
+
+type DatasetBundleSourcePreview struct {
+	SourceType string                        `json:"source_type,omitempty"`
+	SourceRef  string                        `json:"source_ref,omitempty"`
+	Dataset    DatasetSpec                   `json:"dataset"`
+	Version    DatasetBundleVersionPreview   `json:"version"`
+	EvalSpecs  []ImportDatasetBundleEvalSpec `json:"eval_specs,omitempty"`
+	MakeActive bool                          `json:"make_active,omitempty"`
+}
+
+type ImportDatasetBundleResult struct {
+	Dataset        *Dataset        `json:"dataset,omitempty"`
+	DatasetVersion *DatasetVersion `json:"dataset_version,omitempty"`
+	EvalSpecs      []EvalSpec      `json:"eval_specs,omitempty"`
+}
+
 type DatasetManifest struct {
 	Dataset  DatasetManifestMeta     `json:"dataset,omitempty"`
 	Defaults DatasetManifestDefaults `json:"defaults,omitempty"`

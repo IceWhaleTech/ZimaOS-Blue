@@ -6,6 +6,7 @@ server/bin/
 web/dist/
 docs-site/.vitepress/dist/
 docs-site/.vitepress/cache/
+docs/plans/
 docs/results/
 
 # Tauri build outputs

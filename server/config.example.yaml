@@ -386,11 +386,13 @@ session:
   max_tokens: 0                  # 0 = auto-resolve from model context window; use a positive value to force a fixed history budget
   chat_db_durability: "normal"   # normal, full
   chat_persist_async: true
+  chat_persist_flush_on_response: false  # true = block final response on DB barrier; false = let queued writes finish in background
   chat_read_lite: true
   chat_attachment_external_store: true
   audit:
     enabled: true
-    path: ""                      # empty = data/session_audit.db; set a file path to override
+    path: ""                      # empty = JSONL-only under data/session_audit_logs; set a .db file path to enable SQLite-backed audit storage
+    ipc_enabled: false            # false = do not start session_audit.sock; true = opt-in local audit.recent IPC on a dedicated audit socket
     retention_days: 30
     cleanup_interval: "6h"
     cleanup_batch_size: 500

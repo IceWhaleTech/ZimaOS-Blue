@@ -122,7 +122,7 @@ func TestChatHandlerCancelStream_RejectsStreamFromDifferentConversation(t *testi
 	}
 }
 
-func TestChatHandlerGetConversationActiveStream_ReportsOwnedConversationState(t *testing.T) {
+func TestChatHandlerGetConversationBootstrap_ReportsOwnedConversationActiveStreamState(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -143,25 +143,28 @@ func TestChatHandlerGetConversationActiveStream_ReportsOwnedConversationState(t 
 	handler.convStreamMu.Unlock()
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conv.ID+"/messages/active-stream", nil)
-	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
-		UserID: "user-a",
-		Role:   "user",
-	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conv.ID+"/bootstrap", nil)
+	req = requestWithUser(req, "user-a")
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 	c.SetParamNames("id")
 	c.SetParamValues(conv.ID)
+	c.Set("user", &auth.Claims{
+		UserClaims: auth.UserClaims{
+			UserID: "user-a",
+			Role:   "user",
+		},
+	})
 
-	if err := handler.GetConversationActiveStream(c); err != nil {
-		t.Fatalf("GetConversationActiveStream: %v", err)
+	if err := handler.GetConversationBootstrap(c); err != nil {
+		t.Fatalf("GetConversationBootstrap: %v", err)
 	}
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
 
 	body := rec.Body.String()
-	if !strings.Contains(body, `"active":true`) {
+	if !strings.Contains(body, `"active_stream":{"conversation_id":"`+conv.ID+`","active":true`) {
 		t.Fatalf("expected active stream in response, body=%s", body)
 	}
 	if !strings.Contains(body, `"stream_id":"stream-a"`) {

@@ -136,6 +136,10 @@ export interface TodoChecklistCompletionSignal {
   todoCardId?: string
 }
 
+export interface TodoChecklistSummaryOptions {
+  allowCompletedChecklist?: boolean
+}
+
 export function extractFirstTodoChecklistBlock(content: string): string | null {
   const match = TODO_CHECKLIST_BLOCK_RE.exec(content)
   return match?.[2] ?? null
@@ -210,9 +214,11 @@ export function summarizeTodoChecklist(
 
 export function findLatestTodoChecklistSummary(
   messages: Message[],
-  completionSignal?: TodoChecklistCompletionSignal | null
+  completionSignal?: TodoChecklistCompletionSignal | null,
+  options: TodoChecklistSummaryOptions = {}
 ): TodoChecklistSummary | null {
   const activeScopeStartIndex = findActiveTodoScopeStartIndex(messages)
+  const allowCompletedChecklist = options.allowCompletedChecklist === true
 
   for (let index = messages.length - 1; index >= 0; index--) {
     if (index < activeScopeStartIndex) {
@@ -227,15 +233,18 @@ export function findLatestTodoChecklistSummary(
     const canonicalMessage = findCanonicalTodoChecklistMessage(messages, message)
     const summaryMessage = canonicalMessage.id === message.id ? message : canonicalMessage
     const summary = summarizeTodoChecklist(summaryMessage.content) ?? latestSummary
-    if (summary.allCompleted) {
+    if (summary.allCompleted && !allowCompletedChecklist) {
       return null
     }
-    if (matchesExplicitTodoCompletion(summaryMessage, canonicalMessage, completionSignal)) {
+    if (
+      !allowCompletedChecklist &&
+      matchesExplicitTodoCompletion(summaryMessage, canonicalMessage, completionSignal)
+    ) {
       return null
     }
 
     const completionSeen = messages
-      .slice(index)
+      .slice(index + 1)
       .some(
         (candidate) =>
           candidate?.role === 'assistant' && isLikelyTodoFinalizationMessage(candidate.content || '')

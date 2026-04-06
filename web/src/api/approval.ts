@@ -41,11 +41,6 @@ export const approvalApi = {
 
   updateConfig: (config: ApprovalConfig) => api.put<ApprovalConfig>('/approval/config', config),
 
-  listPending: (sessionId?: string) =>
-    api.get<PendingRequest[]>('/approval/pending', {
-      params: sessionId ? { session_id: sessionId } : undefined,
-    }),
-
   resolve: (requestId: string, decision: Decision | ExecDecision, bindingHash?: string) =>
     api.post<{ status: string }>('/approval/resolve', {
       request_id: requestId,

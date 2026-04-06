@@ -165,6 +165,20 @@ func saveRunnableACPProfile(t *testing.T, store *SQLiteStore, id string) {
 	})
 }
 
+func saveTemplateOnlyACPProfile(t *testing.T, store *SQLiteStore, id string, command []string) {
+	t.Helper()
+	saveTestProfile(t, store, &AgentProfile{
+		ID:                   id,
+		Protocol:             ProtocolACP,
+		Name:                 id,
+		Title:                strings.ToUpper(id[:1]) + id[1:] + " Template ACP",
+		Description:          "Template-only ACP profile for tests.",
+		TemplateOnly:         true,
+		Command:              append([]string(nil), command...),
+		CredentialProviderID: "openai-codex",
+	})
+}
+
 func saveSessionForTest(t *testing.T, store *SQLiteStore, session *ExternalSession) {
 	t.Helper()
 	if err := store.SaveSession(session); err != nil {
@@ -448,7 +462,12 @@ func TestSeedBuiltinProfilesNormalizesAcpTemplatesAndKeepsGenericA2ARunnable(t *
 		t.Fatal("expected service to be initialized")
 	}
 
-	for _, id := range []string{"claude", "codex", "gemini"} {
+	expectedCommands := map[string][]string{
+		"claude": {"claude-agent-acp"},
+		"codex":  {"codex-acp"},
+		"gemini": {"gemini", "--acp"},
+	}
+	for id, wantCommand := range expectedCommands {
 		profile, err := store.GetProfile(id)
 		if err != nil {
 			t.Fatalf("GetProfile(%s) error = %v", id, err)
@@ -459,8 +478,8 @@ func TestSeedBuiltinProfilesNormalizesAcpTemplatesAndKeepsGenericA2ARunnable(t *
 		if !profile.TemplateOnly {
 			t.Fatalf("%s template_only = false, want true", id)
 		}
-		if len(profile.Command) != 0 {
-			t.Fatalf("%s command = %v, want empty", id, profile.Command)
+		if strings.Join(profile.Command, "\n") != strings.Join(wantCommand, "\n") {
+			t.Fatalf("%s command = %v, want %v", id, profile.Command, wantCommand)
 		}
 	}
 
@@ -517,8 +536,8 @@ func TestNewServiceMigratesLegacyBuiltinAcpSessionsToCustomProfile(t *testing.T)
 	if !builtin.Builtin || !builtin.TemplateOnly {
 		t.Fatalf("builtin codex = %+v, want builtin template-only", builtin)
 	}
-	if len(builtin.Command) != 0 {
-		t.Fatalf("builtin codex command = %v, want empty", builtin.Command)
+	if len(builtin.Command) == 0 {
+		t.Fatal("builtin codex command = empty, want seeded suggestion")
 	}
 
 	profiles, err := store.ListProfiles()
@@ -555,27 +574,29 @@ func TestNewServiceMigratesLegacyBuiltinAcpSessionsToCustomProfile(t *testing.T)
 	}
 }
 
-func TestServiceVerifyProfileRejectsTemplateOnlyACPProfile(t *testing.T) {
-	service, _ := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+func TestServiceVerifyProfileRejectsTemplateOnlyACPProfileWithoutCommand(t *testing.T) {
+	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
 		ProtocolACP: &stubProtocolRuntime{},
 		ProtocolA2A: &stubProtocolRuntime{},
 	})
+	saveTemplateOnlyACPProfile(t, store, "empty-acp", nil)
 
-	_, err := service.VerifyProfile(context.Background(), "codex", nil)
+	_, err := service.VerifyProfile(context.Background(), "empty-acp", nil)
 	if err == nil || !strings.Contains(err.Error(), "setup template") {
-		t.Fatalf("VerifyProfile(codex) err = %v, want setup template error", err)
+		t.Fatalf("VerifyProfile(empty-acp) err = %v, want setup template error", err)
 	}
 }
 
-func TestServiceHealthProfileRejectsTemplateOnlyACPProfile(t *testing.T) {
-	service, _ := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+func TestServiceHealthProfileRejectsTemplateOnlyACPProfileWithoutCommand(t *testing.T) {
+	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
 		ProtocolACP: &stubProtocolRuntime{},
 		ProtocolA2A: &stubProtocolRuntime{},
 	})
+	saveTemplateOnlyACPProfile(t, store, "empty-acp", nil)
 
-	_, err := service.HealthProfile(context.Background(), "codex")
+	_, err := service.HealthProfile(context.Background(), "empty-acp")
 	if err == nil || !strings.Contains(err.Error(), "setup template") {
-		t.Fatalf("HealthProfile(codex) err = %v, want setup template error", err)
+		t.Fatalf("HealthProfile(empty-acp) err = %v, want setup template error", err)
 	}
 }
 
@@ -649,29 +670,31 @@ func TestServiceDeleteProfileRejectsProfileInUse(t *testing.T) {
 	}
 }
 
-func TestServiceCreateSessionRejectsTemplateOnlyACPProfile(t *testing.T) {
-	service, _ := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
-		ProtocolACP: &stubProtocolRuntime{},
-		ProtocolA2A: &stubProtocolRuntime{},
-	})
-
-	_, err := service.CreateSession(context.Background(), CreateSessionParams{
-		ProfileID: "codex",
-		Name:      "Template Session",
-	})
-	if err == nil || !strings.Contains(err.Error(), "setup template") {
-		t.Fatalf("CreateSession(codex) err = %v, want setup template error", err)
-	}
-}
-
-func TestServiceSendMessageRejectsTemplateOnlyACPProfileSession(t *testing.T) {
+func TestServiceCreateSessionRejectsTemplateOnlyACPProfileWithoutCommand(t *testing.T) {
 	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
 		ProtocolACP: &stubProtocolRuntime{},
 		ProtocolA2A: &stubProtocolRuntime{},
 	})
+	saveTemplateOnlyACPProfile(t, store, "empty-acp", nil)
+
+	_, err := service.CreateSession(context.Background(), CreateSessionParams{
+		ProfileID: "empty-acp",
+		Name:      "Template Session",
+	})
+	if err == nil || !strings.Contains(err.Error(), "setup template") {
+		t.Fatalf("CreateSession(empty-acp) err = %v, want setup template error", err)
+	}
+}
+
+func TestServiceSendMessageRejectsTemplateOnlyACPProfileSessionWithoutCommand(t *testing.T) {
+	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+		ProtocolACP: &stubProtocolRuntime{},
+		ProtocolA2A: &stubProtocolRuntime{},
+	})
+	saveTemplateOnlyACPProfile(t, store, "empty-acp", nil)
 	saveSessionForTest(t, store, &ExternalSession{
 		ID:        "sess-template-codex",
-		ProfileID: "codex",
+		ProfileID: "empty-acp",
 		Protocol:  ProtocolACP,
 		Name:      "Template Codex Session",
 		Status:    SessionStatusIdle,
@@ -694,14 +717,15 @@ func TestServiceSendMessageRejectsTemplateOnlyACPProfileSession(t *testing.T) {
 	}
 }
 
-func TestServiceProcessRunFailsTemplateOnlyACPProfileSession(t *testing.T) {
+func TestServiceProcessRunFailsTemplateOnlyACPProfileSessionWithoutCommand(t *testing.T) {
 	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
 		ProtocolACP: &stubProtocolRuntime{},
 		ProtocolA2A: &stubProtocolRuntime{},
 	})
+	saveTemplateOnlyACPProfile(t, store, "empty-acp", nil)
 	saveSessionForTest(t, store, &ExternalSession{
 		ID:        "sess-template-process",
-		ProfileID: "codex",
+		ProfileID: "empty-acp",
 		Protocol:  ProtocolACP,
 		Name:      "Template Process Session",
 		Status:    SessionStatusIdle,
@@ -734,5 +758,78 @@ func TestServiceProcessRunFailsTemplateOnlyACPProfileSession(t *testing.T) {
 	}
 	if storedRun.Status != RunStatusFailed {
 		t.Fatalf("run status = %s, want %s", storedRun.Status, RunStatusFailed)
+	}
+}
+
+// Tests for directly runnable built-in ACP profiles
+func TestServiceBuiltinACPWithCommandAllowsDirectVerify(t *testing.T) {
+	service, _ := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+		ProtocolACP: &stubProtocolRuntime{
+			verifyResult: &ProfileVerifyResult{OK: true, Message: "builtin verified"},
+		},
+		ProtocolA2A: &stubProtocolRuntime{},
+	})
+
+	// codex is a built-in ACP profile with a seeded command
+	result, err := service.VerifyProfile(context.Background(), "codex", nil)
+	if err != nil {
+		t.Fatalf("VerifyProfile(codex) err = %v, want success", err)
+	}
+	if !result.OK {
+		t.Fatalf("VerifyProfile(codex) ok = false, want true")
+	}
+	if result.MessageCode != ProfileVerifyMessageCodeProfileVerified {
+		t.Fatalf("VerifyProfile(codex) message_code = %q, want %q", result.MessageCode, ProfileVerifyMessageCodeProfileVerified)
+	}
+}
+
+func TestServiceBuiltinACPWithCommandAllowsDirectHealth(t *testing.T) {
+	service, _ := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+		ProtocolACP: &stubProtocolRuntime{
+			healthResult: &ProfileHealthResult{Healthy: true, Message: "builtin healthy"},
+		},
+		ProtocolA2A: &stubProtocolRuntime{},
+	})
+
+	result, err := service.HealthProfile(context.Background(), "codex")
+	if err != nil {
+		t.Fatalf("HealthProfile(codex) err = %v, want success", err)
+	}
+	if !result.Healthy {
+		t.Fatalf("HealthProfile(codex) healthy = false, want true")
+	}
+	if result.MessageCode != ProfileHealthMessageCodeRuntimeHealthy {
+		t.Fatalf("HealthProfile(codex) message_code = %q, want %q", result.MessageCode, ProfileHealthMessageCodeRuntimeHealthy)
+	}
+}
+
+func TestServiceBuiltinACPWithCommandAllowsDirectSession(t *testing.T) {
+	service, store := newTestAgentSessionService(t, map[ProtocolKind]ProtocolRuntime{
+		ProtocolACP: &stubProtocolRuntime{
+			ensureResult: &EnsureSessionResult{RemoteSessionID: "remote-builtin"},
+			submitResult: &SubmitRunResult{RemoteRunID: "run-builtin"},
+		},
+		ProtocolA2A: &stubProtocolRuntime{},
+	})
+
+	// Create session with built-in codex profile
+	detail, err := service.CreateSession(context.Background(), CreateSessionParams{
+		ProfileID: "codex",
+		Name:      "Builtin Codex Session",
+	})
+	if err != nil {
+		t.Fatalf("CreateSession(codex) err = %v, want success", err)
+	}
+	if detail.Session.ProfileID != "codex" {
+		t.Fatalf("session profile_id = %q, want codex", detail.Session.ProfileID)
+	}
+
+	// Verify the session exists
+	session, err := store.GetSession(detail.Session.ID)
+	if err != nil {
+		t.Fatalf("GetSession error = %v", err)
+	}
+	if session.Status != SessionStatusIdle {
+		t.Fatalf("session status = %s, want idle", session.Status)
 	}
 }

@@ -1,6 +1,6 @@
 ---
 title: "Automation"
-summary: "An overview of the automation surfaces already present across the repository and web UI."
+summary: "How Blue exposes scheduled, browser, workflow, and tracked automation entry points."
 ---
 
 # Automation
@@ -9,11 +9,12 @@ Blue is more than a chat surface. The repository and product UI already expose s
 
 ## Automation surfaces in the current product
 
-- Cron jobs via the dedicated `cron` route and view
-- Webhooks and workflow-oriented entry points
-- Auto-reply and browser-automation related paths
-- Form filling and integration-focused runtime services
-- Backend packages for cron, workflow, browser, tunnel, crawler, and related integrations
+- Cron jobs via the main automation route
+- Workflow and webhook entry points
+- Browser automation and redirect paths for older browser-oriented routes
+- Auto-reply and channel-linked automation patterns
+- Form-filling services for structured browser interactions
+- Harness-backed tracked runs for repeatable experiments and evaluations
 
 ## When automation becomes valuable
 
@@ -21,9 +22,32 @@ Blue is more than a chat surface. The repository and product UI already expose s
 - You want external systems to trigger agent behavior through webhooks
 - You want browser or workflow steps wrapped inside the same runtime
 - You want automation to inherit the same security, provider, and audit model as chat
+- You want repeatable evals, scorecards, and reports instead of one-off manual checks
+
+## Automation tabs in the web app
+
+The web router currently groups several workflows under automation:
+
+- Main automation and cron entry points
+- Harness run groups and run-group detail pages
+- Evolution pages for skill optimization and instruction review
+- Redirects from older `cron`, `webhooks`, `workflows`, and browser automation routes into the current automation structure
+
+## Tracked automation vs one-off execution
+
+Use plain automation when you want a scheduled or trigger-driven workflow. Use Harness when you need:
+
+- A reusable dataset or eval spec
+- Scoring and pass thresholds
+- Baselines and comparison reports
+- Artifacts, traces, and reviewable evidence
+
+Read [Harness and Evolution](/guides/harness-evolution) for that control plane.
 
 ## Pair automation with these layers
 
 - [Providers and Models](/guides/providers-models) for runtime selection
+- [Settings and Provider Pool](/guides/settings-provider-pool) for provider and agent connectivity
+- [Voice and Form Filling](/guides/voice-form-filling) for voice and structured browser workflows
 - [Architecture](/product/architecture) for system boundaries
 - [Troubleshooting](/help/troubleshooting) for validation and debugging

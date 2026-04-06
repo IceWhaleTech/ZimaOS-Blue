@@ -117,6 +117,10 @@ func resetHarnessCLIState(t *testing.T) {
 	oldSkillEvalRunID := harnessSkillEvalRunID
 	oldSkillCandidateID := harnessSkillCandidateID
 	oldSkillSourcePath := harnessSkillSourcePath
+	oldDatasetBundleLocalPath := harnessDatasetBundleLocalPath
+	oldDatasetBundleSource := harnessDatasetBundleSource
+	oldDatasetBundlePath := harnessDatasetBundlePath
+	oldDatasetBundleVersion := harnessDatasetBundleVersion
 
 	t.Cleanup(func() {
 		jsonOutput = oldJSONOutput
@@ -173,6 +177,10 @@ func resetHarnessCLIState(t *testing.T) {
 		harnessSkillEvalRunID = oldSkillEvalRunID
 		harnessSkillCandidateID = oldSkillCandidateID
 		harnessSkillSourcePath = oldSkillSourcePath
+		harnessDatasetBundleLocalPath = oldDatasetBundleLocalPath
+		harnessDatasetBundleSource = oldDatasetBundleSource
+		harnessDatasetBundlePath = oldDatasetBundlePath
+		harnessDatasetBundleVersion = oldDatasetBundleVersion
 	})
 
 	jsonOutput = true
@@ -229,6 +237,10 @@ func resetHarnessCLIState(t *testing.T) {
 	harnessSkillEvalRunID = ""
 	harnessSkillCandidateID = ""
 	harnessSkillSourcePath = ""
+	harnessDatasetBundleLocalPath = ""
+	harnessDatasetBundleSource = ""
+	harnessDatasetBundlePath = ""
+	harnessDatasetBundleVersion = ""
 }
 
 func writeHarnessCLITestConfig(t *testing.T, jwtSecret string) string {

@@ -1,0 +1,30 @@
+{
+  "dataset": {
+    "name": "demo-bundle",
+    "subject": "demo_subject"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "profile": "demo-profile",
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    }
+  },
+  "items": [
+    {
+      "id": "case-1",
+      "run_kind": "agent_task",
+      "profile": "demo-profile",
+      "input": {
+        "goal": "Run demo imported bundle"
+      },
+      "expected": {
+        "result": "completed"
+      },
+      "metadata": {
+        "critical": true
+      }
+    }
+  ]
+}

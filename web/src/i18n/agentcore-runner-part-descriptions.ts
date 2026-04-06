@@ -5,24 +5,16 @@ type AgentcoreRunnerPartDescriptionSettings = Record<string, unknown>
 export const agentcoreRunnerPartDescriptionBase: AgentcoreRunnerPartDescriptionSettings = {
   partDescriptions: {
     constraints: 'Defines the hard limits and guardrails the runner must follow.',
-    skill_definition:
-      'Describes the skill contract, responsibilities, and expected capabilities.',
-    prompt_template:
-      'Shapes the reusable instructions and response structure sent to the model.',
+    skill_definition: 'Describes the skill contract, responsibilities, and expected capabilities.',
+    prompt_template: 'Shapes the reusable instructions and response structure sent to the model.',
     context_assembly:
       'Controls how evidence, state, and workspace context are gathered before each run.',
-    coordinator_policy:
-      'Decides how top-level tasks are broken down, sequenced, and handed off.',
-    orchestrator_policy:
-      'Governs multi-step flow control, retries, and cross-stage coordination.',
-    tool_exposure:
-      'Chooses which tools are available to the runner and how they are presented.',
-    verification_policy:
-      'Defines how outputs are checked before they are accepted or persisted.',
-    runner_code:
-      'Implements the runtime logic that executes the agent loop and integrations.',
-    build_recipe:
-      'Specifies how the runner is prepared, built, and packaged for execution.',
+    coordinator_policy: 'Decides how top-level tasks are broken down, sequenced, and handed off.',
+    orchestrator_policy: 'Governs multi-step flow control, retries, and cross-stage coordination.',
+    tool_exposure: 'Chooses which tools are available to the runner and how they are presented.',
+    verification_policy: 'Defines how outputs are checked before they are accepted or persisted.',
+    runner_code: 'Implements the runtime logic that executes the agent loop and integrations.',
+    build_recipe: 'Specifies how the runner is prepared, built, and packaged for execution.',
   },
 }
 
@@ -42,8 +34,7 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Decideix com es descomponen, s’ordenen i es deleguen les tasques de nivell superior.',
       orchestrator_policy:
         'Regula el control del flux multietapa, els reintents i la coordinació entre etapes.',
-      tool_exposure:
-        'Tria quines eines estan disponibles per al runner i com es presenten.',
+      tool_exposure: 'Tria quines eines estan disponibles per al runner i com es presenten.',
       verification_policy:
         'Defineix com es comproven les sortides abans d’acceptar-les o persistir-les.',
       runner_code:
@@ -55,47 +46,36 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
   'cs-CZ': {
     partDescriptions: {
       constraints: 'Definuje pevné limity a mantinely, které musí runner dodržovat.',
-      skill_definition:
-        'Popisuje kontrakt dovednosti, odpovědnosti a očekávané schopnosti.',
+      skill_definition: 'Popisuje kontrakt dovednosti, odpovědnosti a očekávané schopnosti.',
       prompt_template:
         'Určuje opakovaně použitelné instrukce a strukturu odpovědi posílanou modelu.',
       context_assembly:
         'Řídí, jak se před každým během shromažďují důkazy, stav a kontext pracovního prostoru.',
-      coordinator_policy:
-        'Rozhoduje, jak se úkoly nejvyšší úrovně rozdělují, řadí a předávají.',
-      orchestrator_policy:
-        'Řídí vícekrokový tok, opakování pokusů a koordinaci mezi fázemi.',
-      tool_exposure:
-        'Určuje, které nástroje má runner k dispozici a jak jsou prezentovány.',
-      verification_policy:
-        'Definuje, jak se výstupy kontrolují před přijetím nebo uložením.',
-      runner_code:
-        'Implementuje běhovou logiku, která vykonává smyčku agenta a integrace.',
-      build_recipe:
-        'Určuje, jak se runner připravuje, sestavuje a balí pro spuštění.',
+      coordinator_policy: 'Rozhoduje, jak se úkoly nejvyšší úrovně rozdělují, řadí a předávají.',
+      orchestrator_policy: 'Řídí vícekrokový tok, opakování pokusů a koordinaci mezi fázemi.',
+      tool_exposure: 'Určuje, které nástroje má runner k dispozici a jak jsou prezentovány.',
+      verification_policy: 'Definuje, jak se výstupy kontrolují před přijetím nebo uložením.',
+      runner_code: 'Implementuje běhovou logiku, která vykonává smyčku agenta a integrace.',
+      build_recipe: 'Určuje, jak se runner připravuje, sestavuje a balí pro spuštění.',
     },
   },
   'da-DK': {
     partDescriptions: {
       constraints: 'Definerer de faste grænser og værn, som runneren skal følge.',
-      skill_definition:
-        'Beskriver skill-kontrakten, ansvarsområderne og de forventede evner.',
+      skill_definition: 'Beskriver skill-kontrakten, ansvarsområderne og de forventede evner.',
       prompt_template:
         'Former de genbrugelige instruktioner og svarstrukturen, der sendes til modellen.',
       context_assembly:
         'Styrer, hvordan evidens, tilstand og arbejdsområdekontekst samles før hvert kørsel.',
       coordinator_policy:
         'Afgør, hvordan opgaver på øverste niveau opdeles, sekventeres og overdrages.',
-      orchestrator_policy:
-        'Styrer flertrins-flow, genforsøg og koordinering på tværs af faser.',
+      orchestrator_policy: 'Styrer flertrins-flow, genforsøg og koordinering på tværs af faser.',
       tool_exposure:
         'Vælger hvilke værktøjer der er tilgængelige for runneren, og hvordan de præsenteres.',
       verification_policy:
         'Definerer, hvordan output kontrolleres, før det accepteres eller gemmes.',
-      runner_code:
-        'Implementerer runtime-logikken, der udfører agent-loopet og integrationerne.',
-      build_recipe:
-        'Angiver, hvordan runneren forberedes, bygges og pakkes til eksekvering.',
+      runner_code: 'Implementerer runtime-logikken, der udfører agent-loopet og integrationerne.',
+      build_recipe: 'Angiver, hvordan runneren forberedes, bygges og pakkes til eksekvering.',
     },
   },
   'de-DE': {
@@ -134,14 +114,31 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Αποφασίζει πώς αναλύονται, δρομολογούνται και ανατίθενται οι εργασίες ανώτερου επιπέδου.',
       orchestrator_policy:
         'Ρυθμίζει τον πολυβηματικό έλεγχο ροής, τις επαναλήψεις και τον συντονισμό μεταξύ σταδίων.',
-      tool_exposure:
-        'Επιλέγει ποια εργαλεία είναι διαθέσιμα στον runner και πώς παρουσιάζονται.',
+      tool_exposure: 'Επιλέγει ποια εργαλεία είναι διαθέσιμα στον runner και πώς παρουσιάζονται.',
       verification_policy:
         'Ορίζει πώς ελέγχονται τα αποτελέσματα πριν γίνουν αποδεκτά ή αποθηκευτούν.',
       runner_code:
         'Υλοποιεί τη λογική εκτέλεσης που τρέχει τον βρόχο του agent και τις ενσωματώσεις.',
       build_recipe:
         'Καθορίζει πώς προετοιμάζεται, γίνεται build και πακετάρεται ο runner για εκτέλεση.',
+    },
+  },
+  'en-GB': {
+    partDescriptions: {
+      constraints: 'Defines the hard limits and guardrails the runner must follow.',
+      skill_definition:
+        'Describes the skill contract, responsibilities, and expected capabilities.',
+      prompt_template:
+        'Shapes the reusable instructions and response structure sent to the model.',
+      context_assembly:
+        'Controls how evidence, state, and workspace context are gathered before each run.',
+      coordinator_policy: 'Decides how top-level tasks are broken down, sequenced, and handed off.',
+      orchestrator_policy: 'Governs multi-step flow control, retries, and cross-stage coordination.',
+      tool_exposure: 'Chooses which tools are available to the runner and how they are presented.',
+      verification_policy:
+        'Defines how outputs are checked before they are accepted or persisted.',
+      runner_code: 'Implements the runtime logic that executes the agent loop and integrations.',
+      build_recipe: 'Specifies how the runner is prepared, built, and packaged for execution.',
     },
   },
   'es-ES': {
@@ -157,14 +154,12 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Decide cómo se descomponen, ordenan y delegan las tareas de nivel superior.',
       orchestrator_policy:
         'Gobierna el flujo de varios pasos, los reintentos y la coordinación entre etapas.',
-      tool_exposure:
-        'Elige qué herramientas están disponibles para el runner y cómo se presentan.',
+      tool_exposure: 'Elige qué herramientas están disponibles para el runner y cómo se presentan.',
       verification_policy:
         'Define cómo se verifican las salidas antes de aceptarlas o persistirlas.',
       runner_code:
         'Implementa la lógica de ejecución que lleva el bucle del agente y las integraciones.',
-      build_recipe:
-        'Especifica cómo se prepara, compila y empaqueta el runner para ejecutarlo.',
+      build_recipe: 'Especifica cómo se prepara, compila y empaqueta el runner para ejecutarlo.',
     },
   },
   'fr-FR': {
@@ -186,13 +181,13 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Définit la manière dont les sorties sont vérifiées avant d’être acceptées ou persistées.',
       runner_code:
         'Implémente la logique d’exécution qui fait tourner la boucle d’agent et les intégrations.',
-      build_recipe:
-        'Précise comment le runner est préparé, compilé et empaqueté pour l’exécution.',
+      build_recipe: 'Précise comment le runner est préparé, compilé et empaqueté pour l’exécution.',
     },
   },
   'ga-IE': {
     partDescriptions: {
-      constraints: 'Sainmhíníonn sé na teorainneacha crua agus na ráillí cosanta nach mór don runner a leanúint.',
+      constraints:
+        'Sainmhíníonn sé na teorainneacha crua agus na ráillí cosanta nach mór don runner a leanúint.',
       skill_definition:
         'Déanann sé cur síos ar chonradh na scile, ar na freagrachtaí agus ar na cumais a bhfuiltear ag súil leo.',
       prompt_template:
@@ -215,32 +210,27 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
   },
   'hr-HR': {
     partDescriptions: {
-      constraints: 'Definira čvrsta ograničenja i zaštitne okvire kojih se runner mora pridržavati.',
-      skill_definition:
-        'Opisuje ugovor skilla, odgovornosti i očekivane sposobnosti.',
-      prompt_template:
-        'Oblikuje višekratne upute i strukturu odgovora koja se šalje modelu.',
+      constraints:
+        'Definira čvrsta ograničenja i zaštitne okvire kojih se runner mora pridržavati.',
+      skill_definition: 'Opisuje ugovor skilla, odgovornosti i očekivane sposobnosti.',
+      prompt_template: 'Oblikuje višekratne upute i strukturu odgovora koja se šalje modelu.',
       context_assembly:
         'Upravlja time kako se prije svakog izvođenja prikupljaju dokazi, stanje i kontekst radnog prostora.',
-      coordinator_policy:
-        'Odlučuje kako se zadaci najviše razine razlažu, redaju i predaju dalje.',
+      coordinator_policy: 'Odlučuje kako se zadaci najviše razine razlažu, redaju i predaju dalje.',
       orchestrator_policy:
         'Upravlja višekoračnim tokom, ponovnim pokušajima i koordinacijom između faza.',
-      tool_exposure:
-        'Odabire koji su alati dostupni runneru i kako su predstavljeni.',
+      tool_exposure: 'Odabire koji su alati dostupni runneru i kako su predstavljeni.',
       verification_policy:
         'Definira kako se izlazi provjeravaju prije prihvaćanja ili trajne pohrane.',
-      runner_code:
-        'Implementira runtime logiku koja izvršava petlju agenta i integracije.',
-      build_recipe:
-        'Određuje kako se runner priprema, gradi i pakira za izvršavanje.',
+      runner_code: 'Implementira runtime logiku koja izvršava petlju agenta i integracije.',
+      build_recipe: 'Određuje kako se runner priprema, gradi i pakira za izvršavanje.',
     },
   },
   'hu-HU': {
     partDescriptions: {
-      constraints: 'Meghatározza a szigorú korlátokat és védőkereteket, amelyeket a runnernek követnie kell.',
-      skill_definition:
-        'Leírja a skill szerződését, felelősségi köreit és az elvárt képességeket.',
+      constraints:
+        'Meghatározza a szigorú korlátokat és védőkereteket, amelyeket a runnernek követnie kell.',
+      skill_definition: 'Leírja a skill szerződését, felelősségi köreit és az elvárt képességeket.',
       prompt_template:
         'Formálja az újrahasználható utasításokat és a modellnek küldött válaszstruktúrát.',
       context_assembly:
@@ -270,14 +260,12 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Controlla come vengono raccolti evidenze, stato e contesto del workspace prima di ogni esecuzione.',
       coordinator_policy:
         'Decide come i task di livello superiore vengono scomposti, ordinati e passati.',
-      orchestrator_policy:
-        'Governa il flusso multi-step, i retry e il coordinamento tra le fasi.',
+      orchestrator_policy: 'Governa il flusso multi-step, i retry e il coordinamento tra le fasi.',
       tool_exposure:
         'Sceglie quali strumenti sono disponibili per il runner e come vengono presentati.',
       verification_policy:
         'Definisce come gli output vengono verificati prima di essere accettati o persistiti.',
-      runner_code:
-        'Implementa la logica runtime che esegue il loop dell’agente e le integrazioni.',
+      runner_code: 'Implementa la logica runtime che esegue il loop dell’agente e le integrazioni.',
       build_recipe:
         'Specifica come il runner viene preparato, compilato e impacchettato per l’esecuzione.',
     },
@@ -285,47 +273,30 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
   'ja-JP': {
     partDescriptions: {
       constraints: '実行系が従うべき厳格な制約とガードレールを定義します。',
-      skill_definition:
-        'スキルの契約、責務、期待される能力を説明します。',
-      prompt_template:
-        'モデルへ送る再利用可能な指示と応答構造を形作ります。',
-      context_assembly:
-        '各実行の前に、証拠・状態・ワークスペース文脈をどう集めるかを制御します。',
-      coordinator_policy:
-        '上位タスクをどう分解し、順序付けし、引き渡すかを決めます。',
-      orchestrator_policy:
-        '複数段階のフロー制御、再試行、段階間の調整を司ります。',
-      tool_exposure:
-        'どのツールを実行系に公開し、どう見せるかを決めます。',
-      verification_policy:
-        '出力を受け入れたり保存したりする前に、どう検証するかを定義します。',
-      runner_code:
-        'エージェントループと各種統合を実行するランタイムロジックを実装します。',
-      build_recipe:
-        '実行用に runner をどう準備し、ビルドし、パッケージ化するかを指定します。',
+      skill_definition: 'スキルの契約、責務、期待される能力を説明します。',
+      prompt_template: 'モデルへ送る再利用可能な指示と応答構造を形作ります。',
+      context_assembly: '各実行の前に、証拠・状態・ワークスペース文脈をどう集めるかを制御します。',
+      coordinator_policy: '上位タスクをどう分解し、順序付けし、引き渡すかを決めます。',
+      orchestrator_policy: '複数段階のフロー制御、再試行、段階間の調整を司ります。',
+      tool_exposure: 'どのツールを実行系に公開し、どう見せるかを決めます。',
+      verification_policy: '出力を受け入れたり保存したりする前に、どう検証するかを定義します。',
+      runner_code: 'エージェントループと各種統合を実行するランタイムロジックを実装します。',
+      build_recipe: '実行用に runner をどう準備し、ビルドし、パッケージ化するかを指定します。',
     },
   },
   'ko-KR': {
     partDescriptions: {
       constraints: '러너가 따라야 하는 엄격한 한계와 가드레일을 정의합니다.',
-      skill_definition:
-        '스킬 계약, 책임, 기대되는 역량을 설명합니다.',
-      prompt_template:
-        '모델에 보내는 재사용 가능한 지시문과 응답 구조를 설계합니다.',
+      skill_definition: '스킬 계약, 책임, 기대되는 역량을 설명합니다.',
+      prompt_template: '모델에 보내는 재사용 가능한 지시문과 응답 구조를 설계합니다.',
       context_assembly:
         '각 실행 전에 근거, 상태, 워크스페이스 컨텍스트를 어떻게 수집할지 제어합니다.',
-      coordinator_policy:
-        '상위 수준 작업을 어떻게 분해하고, 순서를 정하고, 넘길지 결정합니다.',
-      orchestrator_policy:
-        '다단계 흐름 제어, 재시도, 단계 간 조정을 관리합니다.',
-      tool_exposure:
-        '러너에서 어떤 도구를 사용할 수 있게 할지와 그 표시 방식을 정합니다.',
-      verification_policy:
-        '출력을 수용하거나 저장하기 전에 어떻게 검증할지 정의합니다.',
-      runner_code:
-        '에이전트 루프와 통합을 실행하는 런타임 로직을 구현합니다.',
-      build_recipe:
-        '실행을 위해 러너를 어떻게 준비하고, 빌드하고, 패키징할지 지정합니다.',
+      coordinator_policy: '상위 수준 작업을 어떻게 분해하고, 순서를 정하고, 넘길지 결정합니다.',
+      orchestrator_policy: '다단계 흐름 제어, 재시도, 단계 간 조정을 관리합니다.',
+      tool_exposure: '러너에서 어떤 도구를 사용할 수 있게 할지와 그 표시 방식을 정합니다.',
+      verification_policy: '출력을 수용하거나 저장하기 전에 어떻게 검증할지 정의합니다.',
+      runner_code: '에이전트 루프와 통합을 실행하는 런타임 로직을 구현합니다.',
+      build_recipe: '실행을 위해 러너를 어떻게 준비하고, 빌드하고, 패키징할지 지정합니다.',
     },
   },
   'ml-IN': {
@@ -354,8 +325,7 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
   'nb-NO': {
     partDescriptions: {
       constraints: 'Definerer de faste grensene og vernene runneren må følge.',
-      skill_definition:
-        'Beskriver skill-kontrakten, ansvarsområdene og de forventede evnene.',
+      skill_definition: 'Beskriver skill-kontrakten, ansvarsområdene og de forventede evnene.',
       prompt_template:
         'Former de gjenbrukbare instruksjonene og svarstrukturen som sendes til modellen.',
       context_assembly:
@@ -366,12 +336,9 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Styrer flertrinns flytkontroll, nye forsøk og koordinering mellom faser.',
       tool_exposure:
         'Velger hvilke verktøy som er tilgjengelige for runneren og hvordan de presenteres.',
-      verification_policy:
-        'Definerer hvordan resultater kontrolleres før de godtas eller lagres.',
-      runner_code:
-        'Implementerer kjøretidslogikken som utfører agentløkken og integrasjonene.',
-      build_recipe:
-        'Angir hvordan runneren forberedes, bygges og pakkes for kjøring.',
+      verification_policy: 'Definerer hvordan resultater kontrolleres før de godtas eller lagres.',
+      runner_code: 'Implementerer kjøretidslogikken som utfører agentløkken og integrasjonene.',
+      build_recipe: 'Angir hvordan runneren forberedes, bygges og pakkes for kjøring.',
     },
   },
   'nl-NL': {
@@ -385,23 +352,21 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Stuurt hoe bewijs, status en werkruimtecontext vóór elke run worden verzameld.',
       coordinator_policy:
         'Bepaalt hoe taken op hoog niveau worden opgesplitst, geordend en overgedragen.',
-      orchestrator_policy:
-        'Regelt meerstaps-flow, retries en coördinatie tussen fasen.',
+      orchestrator_policy: 'Regelt meerstaps-flow, retries en coördinatie tussen fasen.',
       tool_exposure:
         'Kiest welke tools beschikbaar zijn voor de runner en hoe ze worden gepresenteerd.',
       verification_policy:
         'Definieert hoe outputs worden gecontroleerd voordat ze worden geaccepteerd of opgeslagen.',
-      runner_code:
-        'Implementeert de runtime-logica die de agentlus en integraties uitvoert.',
+      runner_code: 'Implementeert de runtime-logica die de agentlus en integraties uitvoert.',
       build_recipe:
         'Specificeert hoe de runner wordt voorbereid, gebouwd en verpakt voor uitvoering.',
     },
   },
   'pl-PL': {
     partDescriptions: {
-      constraints: 'Definiuje twarde ograniczenia i zabezpieczenia, których runner musi przestrzegać.',
-      skill_definition:
-        'Opisuje kontrakt skilla, odpowiedzialności i oczekiwane możliwości.',
+      constraints:
+        'Definiuje twarde ograniczenia i zabezpieczenia, których runner musi przestrzegać.',
+      skill_definition: 'Opisuje kontrakt skilla, odpowiedzialności i oczekiwane możliwości.',
       prompt_template:
         'Kształtuje wielokrotnego użytku instrukcje i strukturę odpowiedzi wysyłaną do modelu.',
       context_assembly:
@@ -410,14 +375,10 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Decyduje, jak zadania wysokiego poziomu są rozbijane, porządkowane i przekazywane.',
       orchestrator_policy:
         'Steruje wieloetapowym przepływem, ponownymi próbami i koordynacją między etapami.',
-      tool_exposure:
-        'Wybiera, jakie narzędzia są dostępne dla runnera i jak są prezentowane.',
-      verification_policy:
-        'Definiuje, jak wyniki są sprawdzane przed akceptacją lub utrwaleniem.',
-      runner_code:
-        'Implementuje logikę runtime, która wykonuje pętlę agenta i integracje.',
-      build_recipe:
-        'Określa, jak runner jest przygotowywany, budowany i pakowany do uruchomienia.',
+      tool_exposure: 'Wybiera, jakie narzędzia są dostępne dla runnera i jak są prezentowane.',
+      verification_policy: 'Definiuje, jak wyniki są sprawdzane przed akceptacją lub utrwaleniem.',
+      runner_code: 'Implementuje logikę runtime, która wykonuje pętlę agenta i integracje.',
+      build_recipe: 'Określa, jak runner jest przygotowywany, budowany i pakowany do uruchomienia.',
     },
   },
   'pt-BR': {
@@ -437,10 +398,8 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Escolhe quais ferramentas ficam disponíveis para o runner e como são apresentadas.',
       verification_policy:
         'Define como as saídas são verificadas antes de serem aceitas ou persistidas.',
-      runner_code:
-        'Implementa a lógica de runtime que executa o loop do agente e as integrações.',
-      build_recipe:
-        'Especifica como o runner é preparado, compilado e empacotado para execução.',
+      runner_code: 'Implementa a lógica de runtime que executa o loop do agente e as integrações.',
+      build_recipe: 'Especifica como o runner é preparado, compilado e empacotado para execução.',
     },
   },
   'pt-PT': {
@@ -460,15 +419,14 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Escolhe que ferramentas ficam disponíveis para o runner e como são apresentadas.',
       verification_policy:
         'Define como as saídas são verificadas antes de serem aceites ou persistidas.',
-      runner_code:
-        'Implementa a lógica de runtime que executa o ciclo do agente e as integrações.',
-      build_recipe:
-        'Especifica como o runner é preparado, compilado e empacotado para execução.',
+      runner_code: 'Implementa a lógica de runtime que executa o ciclo do agente e as integrações.',
+      build_recipe: 'Especifica como o runner é preparado, compilado e empacotado para execução.',
     },
   },
   'ro-RO': {
     partDescriptions: {
-      constraints: 'Definește limitele stricte și gardurile de siguranță pe care runnerul trebuie să le respecte.',
+      constraints:
+        'Definește limitele stricte și gardurile de siguranță pe care runnerul trebuie să le respecte.',
       skill_definition:
         'Descrie contractul skill-ului, responsabilitățile și capabilitățile așteptate.',
       prompt_template:
@@ -479,21 +437,19 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Decide cum sunt descompuse, ordonate și predate sarcinile de nivel înalt.',
       orchestrator_policy:
         'Guvernează controlul fluxului pe mai mulți pași, reîncercările și coordonarea între etape.',
-      tool_exposure:
-        'Alege ce unelte sunt disponibile pentru runner și cum sunt prezentate.',
+      tool_exposure: 'Alege ce unelte sunt disponibile pentru runner și cum sunt prezentate.',
       verification_policy:
         'Definește cum sunt verificate ieșirile înainte de a fi acceptate sau persistate.',
-      runner_code:
-        'Implementează logica de runtime care execută bucla agentului și integrările.',
+      runner_code: 'Implementează logica de runtime care execută bucla agentului și integrările.',
       build_recipe:
         'Specifică modul în care runnerul este pregătit, construit și împachetat pentru execuție.',
     },
   },
   'ru-RU': {
     partDescriptions: {
-      constraints: 'Определяет жёсткие ограничения и защитные рамки, которым должен следовать runner.',
-      skill_definition:
-        'Описывает контракт навыка, обязанности и ожидаемые возможности.',
+      constraints:
+        'Определяет жёсткие ограничения и защитные рамки, которым должен следовать runner.',
+      skill_definition: 'Описывает контракт навыка, обязанности и ожидаемые возможности.',
       prompt_template:
         'Формирует переиспользуемые инструкции и структуру ответа, отправляемые модели.',
       context_assembly:
@@ -502,12 +458,10 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
         'Решает, как задачи верхнего уровня разбиваются, упорядочиваются и передаются дальше.',
       orchestrator_policy:
         'Управляет многошаговым потоком, повторами и координацией между этапами.',
-      tool_exposure:
-        'Выбирает, какие инструменты доступны runner и как они представлены.',
+      tool_exposure: 'Выбирает, какие инструменты доступны runner и как они представлены.',
       verification_policy:
         'Определяет, как проверяются результаты перед принятием или сохранением.',
-      runner_code:
-        'Реализует runtime-логику, которая выполняет цикл агента и интеграции.',
+      runner_code: 'Реализует runtime-логику, которая выполняет цикл агента и интеграции.',
       build_recipe:
         'Определяет, как runner подготавливается, собирается и упаковывается для запуска.',
     },
@@ -515,47 +469,34 @@ export const agentcoreRunnerPartDescriptionOverrides: Partial<
   'sk-SK': {
     partDescriptions: {
       constraints: 'Definuje pevné limity a ochranné mantinely, ktoré musí runner dodržiavať.',
-      skill_definition:
-        'Opisuje kontrakt zručnosti, zodpovednosti a očakávané schopnosti.',
-      prompt_template:
-        'Formuje znovupoužiteľné inštrukcie a štruktúru odpovede odosielanú modelu.',
+      skill_definition: 'Opisuje kontrakt zručnosti, zodpovednosti a očakávané schopnosti.',
+      prompt_template: 'Formuje znovupoužiteľné inštrukcie a štruktúru odpovede odosielanú modelu.',
       context_assembly:
         'Riadi, ako sa pred každým spustením zhromažďujú dôkazy, stav a kontext pracovného priestoru.',
       coordinator_policy:
         'Rozhoduje, ako sa úlohy vyššej úrovne rozkladajú, zoraďujú a odovzdávajú.',
-      orchestrator_policy:
-        'Riadi viacstupňový tok, opakované pokusy a koordináciu medzi etapami.',
-      tool_exposure:
-        'Vyberá, ktoré nástroje sú runneru dostupné a ako sú prezentované.',
-      verification_policy:
-        'Definuje, ako sa výstupy kontrolujú pred prijatím alebo uložením.',
-      runner_code:
-        'Implementuje runtime logiku, ktorá vykonáva slučku agenta a integrácie.',
-      build_recipe:
-        'Určuje, ako sa runner pripravuje, zostavuje a balí na spustenie.',
+      orchestrator_policy: 'Riadi viacstupňový tok, opakované pokusy a koordináciu medzi etapami.',
+      tool_exposure: 'Vyberá, ktoré nástroje sú runneru dostupné a ako sú prezentované.',
+      verification_policy: 'Definuje, ako sa výstupy kontrolujú pred prijatím alebo uložením.',
+      runner_code: 'Implementuje runtime logiku, ktorá vykonáva slučku agenta a integrácie.',
+      build_recipe: 'Určuje, ako sa runner pripravuje, zostavuje a balí na spustenie.',
     },
   },
   'sv-SE': {
     partDescriptions: {
       constraints: 'Definierar de hårda gränser och skyddsräcken som runnern måste följa.',
-      skill_definition:
-        'Beskriver skill-kontraktet, ansvarsområdena och de förväntade förmågorna.',
+      skill_definition: 'Beskriver skill-kontraktet, ansvarsområdena och de förväntade förmågorna.',
       prompt_template:
         'Formar de återanvändbara instruktionerna och svarsstrukturen som skickas till modellen.',
       context_assembly:
         'Styr hur bevis, tillstånd och arbetsytekontext samlas in före varje körning.',
-      coordinator_policy:
-        'Avgör hur uppgifter på hög nivå bryts ned, sekvenseras och lämnas över.',
+      coordinator_policy: 'Avgör hur uppgifter på hög nivå bryts ned, sekvenseras och lämnas över.',
       orchestrator_policy:
         'Styr flödeskontroll i flera steg, återförsök och samordning mellan steg.',
-      tool_exposure:
-        'Väljer vilka verktyg som är tillgängliga för runnern och hur de presenteras.',
-      verification_policy:
-        'Definierar hur utdata kontrolleras innan de accepteras eller sparas.',
-      runner_code:
-        'Implementerar runtime-logiken som kör agentloopen och integrationerna.',
-      build_recipe:
-        'Anger hur runnern förbereds, byggs och paketeras för körning.',
+      tool_exposure: 'Väljer vilka verktyg som är tillgängliga för runnern och hur de presenteras.',
+      verification_policy: 'Definierar hur utdata kontrolleras innan de accepteras eller sparas.',
+      runner_code: 'Implementerar runtime-logiken som kör agentloopen och integrationerna.',
+      build_recipe: 'Anger hur runnern förbereds, byggs och paketeras för körning.',
     },
   },
   'zh-CN': {

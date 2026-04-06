@@ -1,49 +1,85 @@
 ---
 title: "Features"
-summary: "Key product capabilities pulled from the current README and implementation surfaces."
+summary: "A current, user-facing map of the major Blue capabilities now visible across the runtime and web app."
 ---
 
 # Features
 
 ![Feature overview](/assets/features.png)
 
-## Local-first and extensible
+Blue has moved beyond a minimal chat shell. The current product surface spans runtime setup, provider routing, automation, evaluation, extensions, voice, and day-two operations.
 
-Blue is built for private, self-hosted agent deployments. The product direction in this repository focuses on keeping model access, runtime control, and integration choices in the user's hands.
+## Local-first runtime
 
-## Fast and lightweight runtime
+- Go-native runtime with low startup and memory overhead
+- Desktop, server, NAS, edge, and Raspberry Pi style deployment targets
+- Local-first execution model with auditable boundaries
+- Preview-aware startup and onboarding flows for first-run or single-user environments
 
-The README benchmarks position Blue around a Go-native runtime with low startup time and low memory usage compared with heavier Node-based references.
+## Interaction surfaces
 
-## Multi-surface interaction
-
-Current product surfaces in this repository include:
-
-- Web application views for chat, channels, settings, security, cron, tenants, backups, and audit
-- Voice-oriented experiences and audio handling
+- Web chat plus dedicated settings, channels, security, audit, automation, billing, tenant, and extension views
 - Messaging integrations across more than twenty platforms
-- Automation surfaces such as cron, webhooks, and workflow-oriented pages
+- Voice chat with speech-to-text, text-to-speech, session handling, and streaming responses
+- Form-filling helpers for browser workflows and repeated data entry
+- External agent sessions that let Blue coordinate ACP and A2A style agents beside the main runtime
+- One `Research` entry in chat that can auto-route between deep research, bounded analysis, and UI review while keeping distinct final result cards
 
-## Provider flexibility
+## Unified research workflows
+
+Blue now treats research as one family instead of three unrelated public entry points.
+
+- `research` is the canonical public entry
+- `mode=auto` can choose between `deep_research`, `analyze`, and `ui_review`
+- The runtime shares one research-family job model internally
+- Final user-facing outputs still remain mode-specific
+
+Read [Research Workflows](/guides/research-workflows) for the routing cues, mode-specific inputs, and public-interface guidance.
+
+## Provider and model control plane
 
 ![Provider overview](/assets/providers.png)
 
-The provider layer is intended to support:
+- Built-in, platform, custom, trial, and media provider categories in one provider pool
+- Custom provider onboarding with base URL, API key, routing priority, API format, and cloud or local location metadata
+- Verification, model refresh, pricing review, allowed-model controls, and IDE-assisted discovery
+- Default provider selection, drag-sort ordering, failover, health checks, and provider racing
+- Model-family routing and fallback patterns that separate product behavior from a single vendor contract
 
-- Open ecosystem model usage
-- Default provider selection
-- Priority, weighted, and round-robin routing
-- Failover and provider racing
-- Model-family routing for common naming patterns
+Read [Settings and Provider Pool](/guides/settings-provider-pool) and [Providers and Models](/guides/providers-models) for the operator view.
 
-## Security and governance
+## Automation, harness, and evolution
 
-The repository README explicitly highlights:
+- Cron, workflow, webhook, browser-automation, and form-oriented entry points
+- Harness run groups for experiments, batches, and reusable evaluations
+- Dataset, dataset version, eval spec, baseline, and report management
+- Scoring modes for rule, judge, or hybrid evaluation
+- Run artifacts, traces, approvals, and evidence-backed reporting
+- Evolution workflows for skill revisions, rollback or promote decisions, and self-reflection proposals with patch previews
+
+Read [Automation](/guides/automation) and [Harness and Evolution](/guides/harness-evolution) for the tracked execution workflow.
+
+## Extensions and knowledge surfaces
+
+- Local skill management plus remote skill-store browsing
+- Skill source import preview, curated ranking, and search across multiple sources
+- Security badges, install-type metadata, artifact classification, and vulnerability signals before install
+- Tool catalog surfaces alongside skills so teams can govern reusable capabilities in one place
+
+Read [Extensions](/guides/extensions) for the extension lifecycle.
+
+## Security, governance, and operations
 
 - Sandbox execution
 - Prompt injection defense
-- Session auditing
+- Session auditing and audit-log export
+- Security scan, threat visibility, blocked IP management, and prompt firewall controls
+- Billing summaries for token, cost, latency, and anomaly-style drilldowns
+- Tenant and workspace management, user membership, invitations, and limits
 - RBAC and WebAuthn support
+- Backup, restore, memory, and user-data management inside settings workflows
+
+Read [Admin and Operations](/guides/admin-operations) for the day-two operator story.
 
 ## Product philosophy
 

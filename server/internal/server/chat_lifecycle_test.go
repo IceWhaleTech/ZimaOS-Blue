@@ -67,3 +67,36 @@ func TestChatHandlerCloseClearsTransientCaches(t *testing.T) {
 		t.Fatal("expected conversationCache to be closed and cleared")
 	}
 }
+
+func TestChatHandlerCleanupTransientCaches_RemovesExpiredEntriesWithoutAccess(t *testing.T) {
+	handler := NewChatHandler(nil, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+
+	expired := time.Now().Add(-time.Minute)
+
+	handler.warmupMu.Lock()
+	handler.warmupCache["conv-warmup"] = &warmupResult{
+		preloadedMessages: []memory.Message{{Role: "user", Content: "stale"}},
+		createdAt:         expired,
+	}
+	handler.warmupMu.Unlock()
+
+	handler.providerAffinityMu.Lock()
+	handler.providerAffinityMap["conv-affinity"] = &providerAffinity{
+		ProviderID: "provider-a",
+		ExpiresAt:  expired,
+	}
+	handler.providerAffinityMu.Unlock()
+
+	handler.setPromptCacheToolSurface("conv-surface", &promptCacheToolSurface{
+		ProviderID: "provider-a",
+		Tools:      []tools.ToolDefinition{{Name: "read"}},
+		ExpiresAt:  expired,
+	})
+
+	handler.cleanupTransientCaches(expired.Add(time.Second))
+
+	if got := handler.ChatCacheFootprint(); got.WarmupCacheEntries != 0 || got.ProviderAffinityEntries != 0 || got.PromptToolSurfaceRefs != 0 || got.PromptToolSurfaceSharedEntries != 0 {
+		t.Fatalf("cleanup footprint = %+v, want all transient entries removed", got)
+	}
+}

@@ -15,6 +15,13 @@ type deepResearchJobCreatorTarget interface {
 	SetJobCreator(creator interface {
 		CreateJob(ctx context.Context, req deepresearch.CreateJobRequest) (*deepresearch.Job, error)
 	})
+	SetJobService(service interface {
+		ListJobsForUser(userID, tenantID string, activeOnly bool) ([]deepresearch.JobSummary, error)
+		GetJobForUser(id, userID, tenantID string) (*deepresearch.Job, error)
+		GetReportForUser(id, userID, tenantID string) (*deepresearch.Report, error)
+		CancelJobForUser(id, userID, tenantID string) error
+		SubscribeForUser(jobID, userID, tenantID string) (<-chan deepresearch.Event, func(), error)
+	})
 }
 
 type deepResearchRuntimeRouteTarget interface {

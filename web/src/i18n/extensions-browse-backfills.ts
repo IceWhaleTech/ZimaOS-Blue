@@ -5,7 +5,7 @@ const extensionsBrowseBackfills: Partial<Record<LocaleKey, object>> = {
     extensions: {
       browse: {
         skillManagementHint:
-          "Les habilitats integrades es poden activar o desactivar aquí. La desinstal·lació només està disponible per a les habilitats locals.",
+          'Les habilitats integrades es poden activar o desactivar aquí. La desinstal·lació només està disponible per a les habilitats locals.',
         toolManagementHint:
           "Les eines integrades es poden activar o desactivar aquí. La seva disponibilitat encara pot estar limitada per la política d'eines del runtime.",
         builtinSkillDetailHint:

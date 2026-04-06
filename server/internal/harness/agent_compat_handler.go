@@ -30,8 +30,6 @@ func (h *AgentCompatHandler) RegisterRoutes(g *echo.Group) {
 		return
 	}
 	g.POST("/tasks", h.CreateTask)
-	g.GET("/tasks", h.ListTasks)
-	g.GET("/tasks/:id", h.GetTask)
 	g.POST("/tasks/:id/cancel", h.CancelTask)
 	g.POST("/tasks/:id/message", h.SendMessage)
 	g.POST("/tasks/:id/answer", h.SubmitAnswer)
@@ -63,43 +61,6 @@ func (h *AgentCompatHandler) CreateTask(c echo.Context) error {
 		return c.JSON(http.StatusCreated, run)
 	}
 	return c.JSON(http.StatusCreated, task)
-}
-
-func (h *AgentCompatHandler) ListTasks(c echo.Context) error {
-	runs, err := h.manager.List(c.Request().Context(), RunFilter{
-		UserID: harnessUserID(c),
-		Kind:   RunKindAgentTask,
-		Limit:  50,
-	})
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	tasks := make([]*agentpkg.Task, 0, len(runs))
-	for _, run := range runs {
-		task, err := h.store.Get(c.Request().Context(), run.ID, harnessUserID(c))
-		if err == nil {
-			tasks = append(tasks, task)
-			continue
-		}
-		tasks = append(tasks, runToTask(run))
-	}
-	return c.JSON(http.StatusOK, tasks)
-}
-
-func (h *AgentCompatHandler) GetTask(c echo.Context) error {
-	run, err := h.manager.Get(c.Request().Context(), c.Param("id"))
-	if err != nil || run.Kind != RunKindAgentTask {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
-	}
-	userID := harnessUserID(c)
-	if userID != "" && run.UserID != "" && run.UserID != userID {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
-	}
-	task, err := h.store.Get(c.Request().Context(), run.ID, userID)
-	if err == nil {
-		return c.JSON(http.StatusOK, task)
-	}
-	return c.JSON(http.StatusOK, runToTask(*run))
 }
 
 func (h *AgentCompatHandler) CancelTask(c echo.Context) error {
@@ -156,42 +117,4 @@ func (h *AgentCompatHandler) SubmitAnswer(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "no pending question for this task"})
 	}
 	return c.JSON(http.StatusOK, map[string]string{"status": "answered"})
-}
-
-func runToTask(run Run) *agentpkg.Task {
-	return &agentpkg.Task{
-		ID:             run.ID,
-		UserID:         run.UserID,
-		ConversationID: run.ConversationID,
-		Goal:           run.Goal,
-		Status:         taskStatusFromRun(run.Status),
-		RuntimeState:   run.RuntimeState,
-		CurrentStep:    run.CurrentStep,
-		Progress:       run.Progress,
-		Result:         run.Result,
-		Error:          run.Error,
-		CreatedAt:      run.CreatedAt,
-		UpdatedAt:      run.UpdatedAt,
-	}
-}
-
-func taskStatusFromRun(status RunStatus) agentpkg.TaskStatus {
-	switch status {
-	case RunStatusPlanning:
-		return agentpkg.TaskStatusPlanning
-	case RunStatusWaitingInput:
-		return agentpkg.TaskStatusWaitingInput
-	case RunStatusExecuting, RunStatusVerifying:
-		return agentpkg.TaskStatusExecuting
-	case RunStatusCompleted:
-		return agentpkg.TaskStatusCompleted
-	case RunStatusFailed:
-		return agentpkg.TaskStatusFailed
-	case RunStatusCancelled:
-		return agentpkg.TaskStatusCancelled
-	case RunStatusAborted:
-		return agentpkg.TaskStatusAborted
-	default:
-		return agentpkg.TaskStatusPending
-	}
 }

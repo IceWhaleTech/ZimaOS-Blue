@@ -62,6 +62,13 @@ vi.mock('@/components/MemoryManager.vue', () => ({
   default: { name: 'MemoryManager', template: '<div class="memory-manager-stub" />' },
 }))
 
+vi.mock('@/components/KnowledgeManagerCard.vue', () => ({
+  default: {
+    name: 'KnowledgeManagerCard',
+    template: '<div class="knowledge-manager-card-stub" />',
+  },
+}))
+
 vi.mock('@/components/BackupManager.vue', () => ({
   default: { name: 'BackupManager', template: '<div class="backup-manager-stub" />' },
 }))

@@ -853,12 +853,16 @@ func (s *Store) GetLatestAssistantMessage(ctx context.Context, conversationID st
 	return &msg, nil
 }
 
+func normalizeConversationCommandStateToolDefaults(state ConversationCommandState) ConversationCommandState {
+	state.WebSearchEnabled = true
+	state.DeepResearchEnabled = true
+	return state
+}
+
 func defaultConversationCommandState(conversationID string) ConversationCommandState {
-	return ConversationCommandState{
-		ConversationID:      strings.TrimSpace(conversationID),
-		WebSearchEnabled:    true,
-		DeepResearchEnabled: false,
-	}
+	return normalizeConversationCommandStateToolDefaults(ConversationCommandState{
+		ConversationID: strings.TrimSpace(conversationID),
+	})
 }
 
 func (s *Store) getConversationCommandStateScope(ctx context.Context, conversationID string) (string, error) {
@@ -952,12 +956,12 @@ func (s *Store) getLatestLegacyConversationCommandStateForUser(ctx context.Conte
 	state.WebSearchEnabled = lookupZormBool(rows[0], "web_search_enabled", "conversation_command_state.web_search_enabled")
 	state.DeepResearchEnabled = lookupZormBool(rows[0], "deep_research_enabled", "conversation_command_state.deep_research_enabled")
 	state.UpdatedAt = parseStoreTime(lookupZormString(rows[0], "updated_at", "conversation_command_state.updated_at"))
-	return state, true, nil
+	return normalizeConversationCommandStateToolDefaults(state), true, nil
 }
 
 // GetConversationCommandState returns persisted deterministic command state for a conversation.
 // For authenticated conversations (with user_id), state is user-scoped and shared across sessions.
-// Missing rows fall back to defaults: provider/model auto, offline=false, web=true, deep=false.
+// Missing rows fall back to defaults: provider/model auto, offline=false, web=true, deep=true.
 func (s *Store) GetConversationCommandState(ctx context.Context, conversationID string) (ConversationCommandState, error) {
 	conversationID = strings.TrimSpace(conversationID)
 	state := defaultConversationCommandState(conversationID)
@@ -1016,6 +1020,7 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 	state.ConversationID = conversationID
 	state.SelectedProviderID = strings.TrimSpace(state.SelectedProviderID)
 	state.SelectedModelID = strings.TrimSpace(state.SelectedModelID)
+	state = normalizeConversationCommandStateToolDefaults(state)
 	state.UpdatedAt = timeutil.NowTime()
 
 	s.mu.Lock()

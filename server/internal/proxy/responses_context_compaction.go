@@ -19,11 +19,21 @@ const (
 )
 
 var (
-	reContinuationChoice     = regexp.MustCompile(`(?i)^(?:[a-e](?:[\.\)])?|[1-9][0-9]?)$`)
-	reContinuationContextCue = regexp.MustCompile(`(?i)\b(above|previous|same|continue|that|this|former|latter)\b|上面|上文|刚才|之前|继续|这个|那个|同上`)
-	reContinuationOrdinalCue = regexp.MustCompile(`(?i)\b(first|second|third|fourth|fifth|option)\b|第[一二三四五六七八九十0-9]+个|选项`)
-	reAssistantOptionLine    = regexp.MustCompile(`(?m)^[ \t]*(?:[A-Ea-e]|[1-9][0-9]?)[\.\)]\s+\S.*$`)
+	reContinuationChoice             *regexp.Regexp
+	reContinuationContextCue         *regexp.Regexp
+	reContinuationOrdinalCue         *regexp.Regexp
+	reAssistantOptionLine            *regexp.Regexp
+	responsesContinuationRegexesOnce sync.Once
 )
+
+func ensureResponsesContinuationRegexes() {
+	responsesContinuationRegexesOnce.Do(func() {
+		reContinuationChoice = regexp.MustCompile(`(?i)^(?:[a-e](?:[\.\)])?|[1-9][0-9]?)$`)
+		reContinuationContextCue = regexp.MustCompile(`(?i)\b(above|previous|same|continue|that|this|former|latter)\b|上面|上文|刚才|之前|继续|这个|那个|同上`)
+		reContinuationOrdinalCue = regexp.MustCompile(`(?i)\b(first|second|third|fourth|fifth|option)\b|第[一二三四五六七八九十0-9]+个|选项`)
+		reAssistantOptionLine = regexp.MustCompile(`(?m)^[ \t]*(?:[A-Ea-e]|[1-9][0-9]?)[\.\)]\s+\S.*$`)
+	})
+}
 
 type ResponsesAssistantCompressionMode string
 
@@ -58,6 +68,7 @@ func (heuristicResponsesContextCompressor) CompressAssistantContext(input Respon
 		return "", nil
 	}
 	if input.Mode == ResponsesAssistantCompressionModeChoice {
+		ensureResponsesContinuationRegexes()
 		if optionLines := strings.TrimSpace(strings.Join(reAssistantOptionLine.FindAllString(assistantText, 10), "\n")); optionLines != "" {
 			return truncateContinuationRunes(optionLines, maxRunes, responsesContinuationTrimMarker), nil
 		}
@@ -488,6 +499,7 @@ func isLikelyContextDependentContinuationText(text string) bool {
 	if s == "" {
 		return true
 	}
+	ensureResponsesContinuationRegexes()
 	if reContinuationChoice.MatchString(s) {
 		return true
 	}

@@ -37,6 +37,8 @@ func TestToCard(t *testing.T) {
 		{"ui_reviewer", "ui_reviewer", `{"url":"http://x.com","overall":80,"pass":true}`, "ui-review", false},
 		{"ui_reviewer_error", "ui_reviewer", `{"error":"fail"}`, "ui-review", false},
 		{"ui_reviewer_invalid", "ui_reviewer", `not json`, "", true},
+		{"analyze", "analyze", `{"topic":"Market analysis","answer":"summary","output_mode":"inline"}`, "analyze", false},
+		{"analyze_error", "analyze", `{"error":"fail"}`, "analyze", false},
 		{"image", "image", `{"task_id":"img-1","status":"succeeded","image_urls":["/api/v1/media/files/a.png"]}`, "media-generate", false},
 		{"image_generate", "image_generate", `{"status":"processing","task_id":"img-2","message":"still working"}`, "media-generate", false},
 		{"ppt", "ppt", `{"task_id":"slide-1","image_urls":["/api/media/generated/images/a.png"],"thumbnail_urls":["/api/media/generated/thumbnails/a.png"],"review_summary":"score 92/100"}`, "media-generate", false},
@@ -396,6 +398,35 @@ func TestAnalyzeCard_StableID(t *testing.T) {
 	}
 	if got := card["id"]; got != "analyze-%2Freports%2Fr1.html" {
 		t.Fatalf("id=%v, want analyze-%%2Freports%%2Fr1.html", got)
+	}
+}
+
+func TestAnalyzeCard_UsesDedicatedAnalyzeFields(t *testing.T) {
+	content := `{"topic":"Market analysis","answer":"Key findings go here.","message":"Analysis report generated: Market analysis","output_mode":"report","report_url":"/api/v1/media/analyze/r1.html","report_style":"dashboard","analysis":{"summary":"structured"}}`
+	card := ToCard("analyze", content)
+	if card == nil {
+		t.Fatal("expected non-nil analyze card")
+	}
+	if got := card["type"]; got != "analyze" {
+		t.Fatalf("type=%v, want analyze", got)
+	}
+	if got := card["title"]; got != "Market analysis" {
+		t.Fatalf("title=%v, want Market analysis", got)
+	}
+	if got := card["answer"]; got != "Key findings go here." {
+		t.Fatalf("answer=%v, want inline answer", got)
+	}
+	if got := card["output_mode"]; got != "report" {
+		t.Fatalf("output_mode=%v, want report", got)
+	}
+	if got := card["report_url"]; got != "/api/v1/media/analyze/r1.html" {
+		t.Fatalf("report_url=%v, want report link", got)
+	}
+	if got := card["report_style"]; got != "dashboard" {
+		t.Fatalf("report_style=%v, want dashboard", got)
+	}
+	if _, ok := card["analysis"].(map[string]interface{}); !ok {
+		t.Fatalf("analysis=%T, want structured payload", card["analysis"])
 	}
 }
 

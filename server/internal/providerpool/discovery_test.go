@@ -391,7 +391,7 @@ func TestModelCaching(t *testing.T) {
 	}
 }
 
-func TestGetFilteredModels_AllowlistConfiguredEmptyPersists(t *testing.T) {
+func TestGetFilteredModels_EmptyAllowlistFallsBackToAllModelsAfterReload(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "allowlist-persist-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -435,8 +435,11 @@ func TestGetFilteredModels_AllowlistConfiguredEmptyPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetFilteredModels failed: %v", err)
 	}
-	if len(filtered) != 0 {
-		t.Fatalf("Expected 0 models when allowlist configured empty, got %d", len(filtered))
+	if len(filtered) != 1 {
+		t.Fatalf("Expected 1 model when allowlist is empty, got %d", len(filtered))
+	}
+	if filtered[0].ID != "gpt-4o" {
+		t.Fatalf("Expected gpt-4o when allowlist is empty, got %s", filtered[0].ID)
 	}
 }
 

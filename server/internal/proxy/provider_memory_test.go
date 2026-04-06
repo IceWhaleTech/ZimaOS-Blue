@@ -5,6 +5,28 @@ import (
 	"time"
 )
 
+func TestProviderMemory_InitializesCacheOnDemand(t *testing.T) {
+	pm := NewProviderMemory()
+	if pm.cache != nil {
+		t.Fatal("expected provider memory cache to start nil")
+	}
+
+	if _, ok := pm.RecallFormat("p1", "https://api.example.com"); ok {
+		t.Fatal("expected miss on empty cache")
+	}
+	if pm.cache != nil {
+		t.Fatal("expected recall miss to avoid allocating the provider memory cache")
+	}
+
+	pm.RememberFormat("p1", "https://api.example.com", string(ProviderTypeOpenAI))
+	if pm.cache == nil {
+		t.Fatal("expected provider memory cache to initialize on first write")
+	}
+	if got, ok := pm.RecallFormat("p1", "https://api.example.com"); !ok || got != string(ProviderTypeOpenAI) {
+		t.Fatalf("RecallFormat() = %q, %v; want %q, true", got, ok, string(ProviderTypeOpenAI))
+	}
+}
+
 func TestProviderMemory_Format(t *testing.T) {
 	pm := NewProviderMemory()
 

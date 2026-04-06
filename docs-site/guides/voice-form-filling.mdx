@@ -1,0 +1,67 @@
+---
+title: "Voice and Form Filling"
+summary: "How Blue handles speech interaction and structured browser form workflows."
+---
+
+# Voice and Form Filling
+
+Blue is not limited to typed chat. The current product also includes voice interaction and structured form-filling helpers for browser-style workflows.
+
+## Voice capabilities
+
+The voice stack now includes:
+
+- Speech-to-text transcription
+- Text-to-speech synthesis
+- Voice-session creation and lifecycle management
+- Voice listing and language selection
+- Streaming audio-response support
+- WebSocket-based conversational loops with runtime state transitions
+
+In practical terms, Blue can listen, transcribe, respond, synthesize speech, and keep state as the session moves between `idle`, `listening`, `processing`, and `speaking`.
+
+## Voice settings you should expect
+
+The current voice/session model supports preferences such as:
+
+- Language
+- Voice selection
+- Wake word and wake-word enablement
+- Continuous listening
+- Auto-play response behavior
+
+These are the controls to review before you treat voice as an always-on assistant surface.
+
+## Form-filling capabilities
+
+The form-filler surface is aimed at repeated structured entry rather than free-form browsing. The current model includes:
+
+- Saved fill templates
+- Field-pattern libraries
+- Site-specific mappings
+- Field detection with confidence scores
+- Detection sources such as attributes, labels, patterns, and optional LLM fallback
+
+This makes Blue useful for browser flows where repeated forms or corrections would otherwise become manual work every time.
+
+## Learning loop
+
+Form filling is not only a one-shot autofill action. The current configuration also accounts for:
+
+- Automatic widget behavior
+- Confidence thresholds
+- Detection scan intervals
+- Learning enablement and optional sync
+- Limits on stored site mappings
+
+That lets teams decide how aggressive or conservative the form helper should be.
+
+## When to use these surfaces
+
+Use voice when you want hands-free or conversational interaction. Use form filling when you want repeatable structured data entry inside browser-oriented workflows. Both surfaces work best when paired with the same provider, automation, and security controls that Blue uses elsewhere.
+
+## Related pages
+
+- [Settings and Provider Pool](/guides/settings-provider-pool)
+- [Automation](/guides/automation)
+- [Admin and Operations](/guides/admin-operations)

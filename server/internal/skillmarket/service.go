@@ -44,6 +44,10 @@ var deprecatedDefaultGitHubCodeSearchSources = []Source{
 	{ID: "github-agent-md", Type: "github_code_search", BaseURL: "filename:AGENT.md"},
 }
 
+var deprecatedDefaultSourceIDs = []string{
+	"skillstack",
+}
+
 type Options struct {
 	Config                   Config
 	Logger                   *zap.Logger
@@ -1051,7 +1055,6 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 		{ID: "vercel", Type: "seed_page", BaseURL: vercelSkillsSourceURL, DisplayName: "Vercel", SourceGroup: "vercel", AuthMode: "none", Enabled: true, RateLimitPerMinute: 10, Priority: 29},
 		{ID: "clawhub", Type: "clawhub", BaseURL: strings.TrimRight(s.cfg.ClawHubBaseURL, "/"), DisplayName: "ClawHub", SourceGroup: "clawhub", AuthMode: "none", Enabled: true, RateLimitPerMinute: 60, Priority: 10},
 		{ID: "skillhub-club", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.SkillHubBaseURL, "/"), DisplayName: "SkillHub Club", SourceGroup: "skillhub", AuthMode: "optional_api_key", Enabled: true, RateLimitPerMinute: 20, Priority: 40},
-		{ID: "skillstack", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.SkillStackBaseURL, "/"), DisplayName: "SkillStack", SourceGroup: "skillstack", AuthMode: "none", Enabled: true, RateLimitPerMinute: 20, Priority: 41},
 		{ID: "llmskills", Type: "html_catalog", BaseURL: strings.TrimRight(s.cfg.LLMSkillsBaseURL, "/"), DisplayName: "LLMSkills", SourceGroup: "llmskills", AuthMode: "none", Enabled: true, RateLimitPerMinute: 20, Priority: 43},
 	}
 	if token := strings.TrimSpace(s.cfg.SkillHubAPIKey); token != "" {
@@ -1106,6 +1109,11 @@ func (s *Service) ensureDefaultSources(ctx context.Context) error {
 }
 
 func (s *Service) disableDeprecatedDefaultSources(ctx context.Context) error {
+	for _, sourceID := range deprecatedDefaultSourceIDs {
+		if err := s.store.SetSourceEnabled(ctx, sourceID, false); err != nil {
+			return err
+		}
+	}
 	for _, source := range deprecatedDefaultGitHubCodeSearchSources {
 		if err := s.store.SetSourceEnabledByIdentity(ctx, source.ID, source.Type, source.BaseURL, false); err != nil {
 			return err

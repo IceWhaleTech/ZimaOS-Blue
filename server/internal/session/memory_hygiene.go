@@ -3,6 +3,7 @@ package session
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
 
 type memoryIntentBucket int
@@ -13,20 +14,32 @@ const (
 	memoryIntentSessionSummary
 )
 
-var memoryBulletPrefixRE = regexp.MustCompile(`^\s*(?:[-*•]+|\d+[.)])\s*`)
-var memoryWhitespaceRE = regexp.MustCompile(`\s+`)
+var (
+	memoryBulletPrefixRE        *regexp.Regexp
+	memoryWhitespaceRE          *regexp.Regexp
+	transientMemoryLinePatterns []*regexp.Regexp
+	memoryHygieneRegexOnce      sync.Once
+)
 
-var transientMemoryLinePatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?i)(?:/tmp/|\.tmp/|/mnt/user-data/(?:workspace|uploads|outputs)|\bworkspace_root\b|\bartifact_root\b)`),
-	regexp.MustCompile(`(?i)\b(?:stdout|stderr|exit code|trace id|run id|approval requested|approval resolved|pending approval|tool call|tool output|audit trail|stack trace|debug log)\b`),
-	regexp.MustCompile(`(?i)\b(?:uploaded (?:file|files|attachment)|attachment path|screenshot attached|temporary file|temp file|ephemeral upload)\b`),
-	regexp.MustCompile(`(?i)\b(?:session id|conversation id)\b`),
-	regexp.MustCompile(`(?i)\b(?:system prompt|prompt injection defense|raw tool payload)\b`),
+func ensureMemoryHygieneRegex() {
+	memoryHygieneRegexOnce.Do(func() {
+		memoryBulletPrefixRE = regexp.MustCompile(`^\s*(?:[-*•]+|\d+[.)])\s*`)
+		memoryWhitespaceRE = regexp.MustCompile(`\s+`)
+		transientMemoryLinePatterns = []*regexp.Regexp{
+			regexp.MustCompile(`(?i)(?:/tmp/|\.tmp/|/mnt/user-data/(?:workspace|uploads|outputs)|\bworkspace_root\b|\bartifact_root\b)`),
+			regexp.MustCompile(`(?i)\b(?:stdout|stderr|exit code|trace id|run id|approval requested|approval resolved|pending approval|tool call|tool output|audit trail|stack trace|debug log)\b`),
+			regexp.MustCompile(`(?i)\b(?:uploaded (?:file|files|attachment)|attachment path|screenshot attached|temporary file|temp file|ephemeral upload)\b`),
+			regexp.MustCompile(`(?i)\b(?:session id|conversation id)\b`),
+			regexp.MustCompile(`(?i)\b(?:system prompt|prompt injection defense|raw tool payload)\b`),
+		}
+	})
 }
 
 // NormalizeExtractedMemoryForStorage cleans extracted session memory so that
 // only durable user/project context is persisted into long-term storage.
 func NormalizeExtractedMemoryForStorage(extracted string) string {
+	ensureMemoryHygieneRegex()
+
 	content := strings.TrimSpace(extracted)
 	if content == "" || strings.EqualFold(content, "NO_MEMORY_NEEDED") {
 		return content
@@ -72,6 +85,8 @@ func NormalizeExtractedMemoryForStorage(extracted string) string {
 
 // NormalizeMemoryFingerprint returns a canonical form used for dedupe.
 func NormalizeMemoryFingerprint(content string) string {
+	ensureMemoryHygieneRegex()
+
 	line := normalizeMemoryLine(content)
 	line = strings.ToLower(line)
 	line = strings.Trim(line, " .,:;`\"'")
@@ -80,6 +95,8 @@ func NormalizeMemoryFingerprint(content string) string {
 }
 
 func normalizeMemoryLine(raw string) string {
+	ensureMemoryHygieneRegex()
+
 	line := strings.TrimSpace(raw)
 	if line == "" {
 		return ""
@@ -91,6 +108,8 @@ func normalizeMemoryLine(raw string) string {
 }
 
 func isTransientMemoryLine(line string) bool {
+	ensureMemoryHygieneRegex()
+
 	for _, pattern := range transientMemoryLinePatterns {
 		if pattern.MatchString(line) {
 			return true

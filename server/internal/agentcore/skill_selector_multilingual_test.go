@@ -20,13 +20,15 @@ func TestSkillSelector_MultilingualCuratedRoutes(t *testing.T) {
 
 	selector := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
 	cases := []struct {
-		skill string
+		skill         string
+		wantSkill     string
+		wantResearch  string
 	}{
-		{skill: "web_query"},
-		{skill: "analyze"},
-		{skill: "reminder"},
-		{skill: "browser"},
-		{skill: "ui_reviewer"},
+		{skill: "web_query", wantSkill: "web_query"},
+		{skill: "analyze", wantSkill: "research", wantResearch: "analyze"},
+		{skill: "reminder", wantSkill: "reminder"},
+		{skill: "browser", wantSkill: "browser"},
+		{skill: "ui_reviewer", wantSkill: "research", wantResearch: "ui_review"},
 	}
 
 	for _, tc := range cases {
@@ -40,8 +42,11 @@ func TestSkillSelector_MultilingualCuratedRoutes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s locale=%s select error: %v", tc.skill, example.Locale, err)
 			}
-			if decision.SelectedSkill != tc.skill {
-				t.Fatalf("%s locale=%s expected %s got %+v", tc.skill, example.Locale, tc.skill, decision)
+			if decision.SelectedSkill != tc.wantSkill {
+				t.Fatalf("%s locale=%s expected skill=%s got %+v", tc.skill, example.Locale, tc.wantSkill, decision)
+			}
+			if tc.wantResearch != "" && decision.ResearchMode != tc.wantResearch {
+				t.Fatalf("%s locale=%s expected research_mode=%s got %+v", tc.skill, example.Locale, tc.wantResearch, decision)
 			}
 			if decision.NeedClarify {
 				t.Fatalf("%s locale=%s should not need clarify, got %+v", tc.skill, example.Locale, decision)
@@ -69,8 +74,8 @@ func TestSkillSelector_MultilingualURLAnalyzeBypassesBrowserRule(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Select error for %q: %v", query, err)
 		}
-		if decision.SelectedSkill != "analyze" {
-			t.Fatalf("expected analyze for %q, got %+v", query, decision)
+		if decision.SelectedSkill != "research" || decision.ResearchMode != "analyze" {
+			t.Fatalf("expected research/analyze for %q, got %+v", query, decision)
 		}
 	}
 }
@@ -94,8 +99,8 @@ func TestSkillSelector_MultilingualURLUIReviewBypassesBrowserRule(t *testing.T) 
 		if err != nil {
 			t.Fatalf("Select error for %q: %v", query, err)
 		}
-		if decision.SelectedSkill != "ui_reviewer" {
-			t.Fatalf("expected ui_reviewer for %q, got %+v", query, decision)
+		if decision.SelectedSkill != "research" || decision.ResearchMode != "ui_review" {
+			t.Fatalf("expected research/ui_review for %q, got %+v", query, decision)
 		}
 	}
 }

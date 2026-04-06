@@ -14,6 +14,24 @@ type stubPromptMemoryBackend struct {
 	results []memory.SearchResult
 }
 
+func newPromptLayeredMemoryServiceForTest(t *testing.T) (*memory.LayeredMemoryService, *memory.UnifiedMemoryService) {
+	t.Helper()
+	memDir := t.TempDir()
+	mdBackend, err := memory.NewPureMarkdownBackend(memDir)
+	if err != nil {
+		t.Fatalf("create markdown backend: %v", err)
+	}
+	baseSvc := memory.NewUnifiedMemoryService(mdBackend)
+	layeredSvc, err := memory.NewLayeredMemoryService(baseSvc, memory.LayeredMemoryConfig{
+		BaseDir:     memDir,
+		LongTermDir: memDir,
+	})
+	if err != nil {
+		t.Fatalf("create layered memory service: %v", err)
+	}
+	return layeredSvc, baseSvc
+}
+
 func (s *stubPromptMemoryBackend) Remember(context.Context, string, []string) (*memory.MemoryChunk, error) {
 	return nil, nil
 }
@@ -40,7 +58,7 @@ func (s *stubPromptMemoryBackend) Stats(context.Context) (*memory.MemoryStats, e
 func (s *stubPromptMemoryBackend) Name() string { return "stub" }
 
 func TestChatRecallMemories_SkipsLatestWebDocsQueries(t *testing.T) {
-	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	layered, baseSvc := newPromptLayeredMemoryServiceForTest(t)
 	backend := &stubPromptMemoryBackend{
 		results: []memory.SearchResult{{
 			Chunk: memory.MemoryChunk{
@@ -63,7 +81,7 @@ func TestChatRecallMemories_SkipsLatestWebDocsQueries(t *testing.T) {
 }
 
 func TestChatRecallMemories_SkipsLocalizedWebQueryRoutes(t *testing.T) {
-	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	layered, baseSvc := newPromptLayeredMemoryServiceForTest(t)
 	backend := &stubPromptMemoryBackend{
 		results: []memory.SearchResult{{
 			Chunk: memory.MemoryChunk{
@@ -86,7 +104,7 @@ func TestChatRecallMemories_SkipsLocalizedWebQueryRoutes(t *testing.T) {
 }
 
 func TestChatRecallMemories_SkipsSessionCompactionForGenericPrompt(t *testing.T) {
-	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	layered, baseSvc := newPromptLayeredMemoryServiceForTest(t)
 	backend := &stubPromptMemoryBackend{
 		results: []memory.SearchResult{{
 			Chunk: memory.MemoryChunk{
@@ -108,8 +126,31 @@ func TestChatRecallMemories_SkipsSessionCompactionForGenericPrompt(t *testing.T)
 	}
 }
 
+func TestChatRecallMemories_SkipsKnowledgeTaggedPromptMemory(t *testing.T) {
+	layered, baseSvc := newPromptLayeredMemoryServiceForTest(t)
+	backend := &stubPromptMemoryBackend{
+		results: []memory.SearchResult{{
+			Chunk: memory.MemoryChunk{
+				Content:  "Blue docs say the workspace keeps compiled knowledge pages.",
+				Metadata: map[string]string{"tag_0": "knowledge", "tag_1": "knowledge-page", "tag_2": "blue-workspace"},
+			},
+			Score: 0.94,
+		}},
+	}
+	baseSvc.SetBackend(backend)
+	handler := &ChatHandler{layeredMemory: layered}
+
+	got := handler.recallMemories(context.Background(), "What preference did I mention for release timelines?", MemoryRecallModeBalanced)
+	if got != "" {
+		t.Fatalf("expected knowledge-tagged prompt memory to be skipped, got %q", got)
+	}
+	if !backend.called {
+		t.Fatal("expected backend recall call so result filtering is exercised")
+	}
+}
+
 func TestChatRecallMemories_LabelsLongTermMemorySource(t *testing.T) {
-	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	layered, baseSvc := newPromptLayeredMemoryServiceForTest(t)
 	backend := &stubPromptMemoryBackend{
 		results: []memory.SearchResult{{
 			Chunk: memory.MemoryChunk{
@@ -134,7 +175,7 @@ func TestChatRecallMemories_LabelsLongTermMemorySource(t *testing.T) {
 }
 
 func TestChatRecallMemories_FiltersSessionCompactionForRetrospectiveWeekPromptWithoutTimeWindowSpecialCase(t *testing.T) {
-	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	layered, baseSvc := newPromptLayeredMemoryServiceForTest(t)
 	backend := &stubPromptMemoryBackend{
 		results: []memory.SearchResult{{
 			Chunk: memory.MemoryChunk{
@@ -162,8 +203,46 @@ func TestShouldSkipPromptMemoryRecall_DoesNotTreatRecentAsFreshPublicSignalByIts
 	}
 }
 
+func TestIsKnowledgeFirstPrompt_TightensGenericWorkspaceAndMemoryTerms(t *testing.T) {
+	tests := []struct {
+		name    string
+		message string
+		want    bool
+	}{
+		{
+			name:    "generic workspace preference request stays out of knowledge-first",
+			message: "Remember my workspace preference for release timelines.",
+			want:    false,
+		},
+		{
+			name:    "generic memory follow-up stays out of knowledge-first",
+			message: "What did I say my memory preference was before?",
+			want:    false,
+		},
+		{
+			name:    "product memory architecture stays knowledge-first",
+			message: "Explain Blue memory architecture.",
+			want:    true,
+		},
+		{
+			name:    "docs request stays knowledge-first",
+			message: "Show me the ZimaOS documentation for knowledge compile.",
+			want:    true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isKnowledgeFirstPrompt(tc.message)
+			if got != tc.want {
+				t.Fatalf("isKnowledgeFirstPrompt(%q) = %v, want %v", tc.message, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestChatRecallMemories_RealBackendProjectFactStillInjects(t *testing.T) {
-	layered, baseSvc := newLayeredMemoryServiceForTest(t)
+	layered, baseSvc := newPromptLayeredMemoryServiceForTest(t)
 	if _, err := baseSvc.Remember(context.Background(), "Alpha project timeline April 2026", []string{"project"}); err != nil {
 		t.Fatalf("Remember: %v", err)
 	}

@@ -4,6 +4,7 @@ package security
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
 
 // ExternalContentSanitizer provides utilities for sanitizing external content
@@ -31,81 +32,90 @@ type SuspiciousPattern struct {
 	Severity    string // "low", "medium", "high"
 }
 
+var (
+	suspiciousPatterns     []SuspiciousPattern
+	suspiciousPatternsOnce sync.Once
+)
+
 // Common suspicious patterns that may indicate prompt injection attempts.
-var suspiciousPatterns = []SuspiciousPattern{
-	{
-		Name:        "ignore_instructions",
-		Pattern:     regexp.MustCompile("(?i)(ignore|disregard|forget)\\s+(all\\s+)?(previous|prior|above|earlier)\\s+(instructions?|prompts?|rules?|guidelines?)"),
-		Description: "Attempts to override previous instructions",
-		Severity:    "high",
-	},
-	{
-		Name:        "new_instructions",
-		Pattern:     regexp.MustCompile("(?i)(new|updated?|revised?|actual)\\s+(instructions?|prompts?|rules?|guidelines?|system\\s+prompt)"),
-		Description: "Claims to provide new instructions",
-		Severity:    "high",
-	},
-	{
-		Name:        "role_override",
-		Pattern:     regexp.MustCompile("(?i)(you\\s+are\\s+now|act\\s+as|pretend\\s+to\\s+be|roleplay\\s+as|your\\s+new\\s+role)"),
-		Description: "Attempts to change the AI's role",
-		Severity:    "high",
-	},
-	{
-		Name:        "system_prompt",
-		Pattern:     regexp.MustCompile("(?i)(system\\s*:?\\s*prompt|<\\s*system\\s*>|<<\\s*SYS\\s*>>|\\[SYSTEM\\])"),
-		Description: "Attempts to inject system-level prompts",
-		Severity:    "high",
-	},
-	{
-		Name:        "jailbreak",
-		Pattern:     regexp.MustCompile("(?i)(jailbreak|DAN|do\\s+anything\\s+now|bypass\\s+(safety|filter|restriction))"),
-		Description: "Known jailbreak attempts",
-		Severity:    "high",
-	},
-	{
-		Name:        "command_execution",
-		Pattern:     regexp.MustCompile("(?i)(execute|run|perform)\\s+(this\\s+)?(command|code|script|action)"),
-		Description: "Requests to execute commands",
-		Severity:    "medium",
-	},
-	{
-		Name:        "data_exfiltration",
-		Pattern:     regexp.MustCompile("(?i)(send|transmit|upload|post)\\s+(to|data|information|secrets?|credentials?|passwords?|keys?)"),
-		Description: "Potential data exfiltration attempts",
-		Severity:    "high",
-	},
-	{
-		Name:        "delimiter_injection",
-		Pattern:     regexp.MustCompile("(?i)(---+|\\*\\*\\*+|###)"),
-		Description: "Markdown delimiters that may confuse parsing",
-		Severity:    "low",
-	},
-	// New patterns from clawdbot
-	{
-		Name:        "elevated_access",
-		Pattern:     regexp.MustCompile("(?i)elevated\\s*=\\s*true"),
-		Description: "Attempts to claim elevated access",
-		Severity:    "high",
-	},
-	{
-		Name:        "rm_rf",
-		Pattern:     regexp.MustCompile("(?i)rm\\s+-rf"),
-		Description: "Dangerous file deletion command",
-		Severity:    "high",
-	},
-	{
-		Name:        "delete_all",
-		Pattern:     regexp.MustCompile("(?i)delete\\s+all\\s+(emails?|files?|data)"),
-		Description: "Mass deletion request",
-		Severity:    "high",
-	},
-	{
-		Name:        "role_separator",
-		Pattern:     regexp.MustCompile("(?i)\\]\\s*\\n\\s*\\[?(system|assistant|user)\\]?:"),
-		Description: "Attempts to inject role separators",
-		Severity:    "high",
-	},
+func ensureSuspiciousPatterns() {
+	suspiciousPatternsOnce.Do(func() {
+		suspiciousPatterns = []SuspiciousPattern{
+			{
+				Name:        "ignore_instructions",
+				Pattern:     regexp.MustCompile("(?i)(ignore|disregard|forget)\\s+(all\\s+)?(previous|prior|above|earlier)\\s+(instructions?|prompts?|rules?|guidelines?)"),
+				Description: "Attempts to override previous instructions",
+				Severity:    "high",
+			},
+			{
+				Name:        "new_instructions",
+				Pattern:     regexp.MustCompile("(?i)(new|updated?|revised?|actual)\\s+(instructions?|prompts?|rules?|guidelines?|system\\s+prompt)"),
+				Description: "Claims to provide new instructions",
+				Severity:    "high",
+			},
+			{
+				Name:        "role_override",
+				Pattern:     regexp.MustCompile("(?i)(you\\s+are\\s+now|act\\s+as|pretend\\s+to\\s+be|roleplay\\s+as|your\\s+new\\s+role)"),
+				Description: "Attempts to change the AI's role",
+				Severity:    "high",
+			},
+			{
+				Name:        "system_prompt",
+				Pattern:     regexp.MustCompile("(?i)(system\\s*:?\\s*prompt|<\\s*system\\s*>|<<\\s*SYS\\s*>>|\\[SYSTEM\\])"),
+				Description: "Attempts to inject system-level prompts",
+				Severity:    "high",
+			},
+			{
+				Name:        "jailbreak",
+				Pattern:     regexp.MustCompile("(?i)(jailbreak|DAN|do\\s+anything\\s+now|bypass\\s+(safety|filter|restriction))"),
+				Description: "Known jailbreak attempts",
+				Severity:    "high",
+			},
+			{
+				Name:        "command_execution",
+				Pattern:     regexp.MustCompile("(?i)(execute|run|perform)\\s+(this\\s+)?(command|code|script|action)"),
+				Description: "Requests to execute commands",
+				Severity:    "medium",
+			},
+			{
+				Name:        "data_exfiltration",
+				Pattern:     regexp.MustCompile("(?i)(send|transmit|upload|post)\\s+(to|data|information|secrets?|credentials?|passwords?|keys?)"),
+				Description: "Potential data exfiltration attempts",
+				Severity:    "high",
+			},
+			{
+				Name:        "delimiter_injection",
+				Pattern:     regexp.MustCompile("(?i)(---+|\\*\\*\\*+|###)"),
+				Description: "Markdown delimiters that may confuse parsing",
+				Severity:    "low",
+			},
+			// New patterns from clawdbot
+			{
+				Name:        "elevated_access",
+				Pattern:     regexp.MustCompile("(?i)elevated\\s*=\\s*true"),
+				Description: "Attempts to claim elevated access",
+				Severity:    "high",
+			},
+			{
+				Name:        "rm_rf",
+				Pattern:     regexp.MustCompile("(?i)rm\\s+-rf"),
+				Description: "Dangerous file deletion command",
+				Severity:    "high",
+			},
+			{
+				Name:        "delete_all",
+				Pattern:     regexp.MustCompile("(?i)delete\\s+all\\s+(emails?|files?|data)"),
+				Description: "Mass deletion request",
+				Severity:    "high",
+			},
+			{
+				Name:        "role_separator",
+				Pattern:     regexp.MustCompile("(?i)\\]\\s*\\n\\s*\\[?(system|assistant|user)\\]?:"),
+				Description: "Attempts to inject role separators",
+				Severity:    "high",
+			},
+		}
+	})
 }
 
 // DetectionResult contains the result of suspicious pattern detection.
@@ -127,6 +137,8 @@ type PatternMatch struct {
 
 // DetectSuspiciousPatterns scans content for potential prompt injection patterns.
 func (s *ExternalContentSanitizer) DetectSuspiciousPatterns(content string) *DetectionResult {
+	ensureSuspiciousPatterns()
+
 	result := &DetectionResult{
 		IsSuspicious:    false,
 		Matches:         []PatternMatch{},

@@ -10,6 +10,11 @@ var (
 	trialLicense string // Ed25519-signed license injected at build time
 )
 
+var (
+	builtinModelsSnapshotLookup = BuiltinModels
+	builtinModelsProviderLookup = GetBuiltinModels
+)
+
 // builtinProvidersFallback returns the embedded fallback snapshot of built-in providers.
 // The trial provider is only included if a trial API key was injected at build time.
 func builtinProvidersFallback() []*Provider {
@@ -529,11 +534,11 @@ func builtinModelsFallback() map[string][]*Model {
 					JSON:         true,
 					SystemPrompt: true,
 				},
-				ContextWindow: 400000,  // 400K tokens per official spec
-				MaxOutput:     128000,  // 128K per official spec
-				InputPrice:    0.20,    // $0.20 per 1M input tokens
-				OutputPrice:   1.25,    // $1.25 per 1M output tokens
-				CachePrice:    0.02,    // $0.02 per 1M cached input tokens
+				ContextWindow: 400000, // 400K tokens per official spec
+				MaxOutput:     128000, // 128K per official spec
+				InputPrice:    0.20,   // $0.20 per 1M input tokens
+				OutputPrice:   1.25,   // $1.25 per 1M output tokens
+				CachePrice:    0.02,   // $0.02 per 1M cached input tokens
 			},
 			{
 				ID:          "gpt-5.4-pro",
@@ -1743,7 +1748,7 @@ func builtinModelsFallback() map[string][]*Model {
 }
 
 // BuiltinProviders returns the effective built-in provider list with remote catalog overrides applied.
-func BuiltinProviders() []*Provider {
+func BuiltinProvidersSnapshot() []*Provider {
 	providers := builtinProvidersFallback()
 	for _, provider := range providers {
 		if provider == nil || provider.MetadataMode != "" {
@@ -1751,13 +1756,23 @@ func BuiltinProviders() []*Provider {
 		}
 		provider.MetadataMode = defaultProviderMetadataMode(provider)
 	}
-	applyOfficialProviderCatalogToProviders(providers)
 	return providers
 }
 
 // BuiltinModels returns effective built-in models with remote catalog overrides applied.
+func BuiltinProviders() []*Provider {
+	providers := BuiltinProvidersSnapshot()
+	applyOfficialProviderCatalogToProviders(providers)
+	return providers
+}
+
+func BuiltinModelsSnapshot() map[string][]*Model {
+	return builtinModelsFallback()
+}
+
+// BuiltinModels returns effective built-in models with remote catalog overrides applied.
 func BuiltinModels() map[string][]*Model {
-	models := builtinModelsFallback()
+	models := BuiltinModelsSnapshot()
 	applyOfficialProviderCatalogToModels(models)
 	return models
 }

@@ -55,9 +55,9 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
     extensions: {
       browse: {
         builtinSkillUninstallBlocked:
-          "Les habilitats integrades es poden desactivar, però no es poden desinstal·lar.",
+          'Les habilitats integrades es poden desactivar, però no es poden desinstal·lar.',
         builtinToolUninstallBlocked:
-          "Les eines integrades es poden desactivar, però no es poden desinstal·lar.",
+          'Les eines integrades es poden desactivar, però no es poden desinstal·lar.',
       },
     },
     skillStore: buildGitHubAwesomeSkillsBackfill(
@@ -71,8 +71,7 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
       browse: {
         builtinSkillUninstallBlocked:
           'Vestavěné dovednosti lze zakázat, ale nelze je odinstalovat.',
-        builtinToolUninstallBlocked:
-          'Vestavěné nástroje lze zakázat, ale nelze je odinstalovat.',
+        builtinToolUninstallBlocked: 'Vestavěné nástroje lze zakázat, ale nelze je odinstalovat.',
       },
     },
     skillStore: buildGitHubAwesomeSkillsBackfill(
@@ -204,10 +203,8 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
     common: { backToTop: 'Vissza a tetejére' },
     extensions: {
       browse: {
-        builtinSkillUninstallBlocked:
-          'A beépített készségek letilthatók, de nem távolíthatók el.',
-        builtinToolUninstallBlocked:
-          'A beépített eszközök letilthatók, de nem távolíthatók el.',
+        builtinSkillUninstallBlocked: 'A beépített készségek letilthatók, de nem távolíthatók el.',
+        builtinToolUninstallBlocked: 'A beépített eszközök letilthatók, de nem távolíthatók el.',
       },
     },
     skillStore: buildGitHubAwesomeSkillsBackfill(
@@ -249,10 +246,8 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
     common: { backToTop: '맨 위로' },
     extensions: {
       browse: {
-        builtinSkillUninstallBlocked:
-          '내장 스킬은 비활성화할 수 있지만 제거할 수는 없습니다.',
-        builtinToolUninstallBlocked:
-          '내장 도구는 비활성화할 수 있지만 제거할 수는 없습니다.',
+        builtinSkillUninstallBlocked: '내장 스킬은 비활성화할 수 있지만 제거할 수는 없습니다.',
+        builtinToolUninstallBlocked: '내장 도구는 비활성화할 수 있지만 제거할 수는 없습니다.',
       },
     },
     skillStore: buildGitHubAwesomeSkillsBackfill(
@@ -369,10 +364,8 @@ const localeFollowupBackfills: Partial<Record<LocaleKey, object>> = {
     common: { backToTop: 'Наверх' },
     extensions: {
       browse: {
-        builtinSkillUninstallBlocked:
-          'Встроенные навыки можно отключить, но нельзя удалить.',
-        builtinToolUninstallBlocked:
-          'Встроенные инструменты можно отключить, но нельзя удалить.',
+        builtinSkillUninstallBlocked: 'Встроенные навыки можно отключить, но нельзя удалить.',
+        builtinToolUninstallBlocked: 'Встроенные инструменты можно отключить, но нельзя удалить.',
       },
     },
     skillStore: buildGitHubAwesomeSkillsBackfill(

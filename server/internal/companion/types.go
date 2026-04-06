@@ -281,13 +281,13 @@ type Stats struct {
 
 // DailyStats represents daily aggregated statistics.
 type DailyStats struct {
-	Date               string           `json:"date"` // YYYY-MM-DD
-	TotalSessions      int              `json:"total_sessions"`
-	TotalEvents        int              `json:"total_events"`
-	TotalAlerts        int              `json:"total_alerts"`
-	SessionsByPlatform map[Platform]int `json:"sessions_by_platform"`
+	Date               string              `json:"date"` // YYYY-MM-DD
+	TotalSessions      int                 `json:"total_sessions"`
+	TotalEvents        int                 `json:"total_events"`
+	TotalAlerts        int                 `json:"total_alerts"`
+	SessionsByPlatform map[Platform]int    `json:"sessions_by_platform"`
 	ThreatsByLevel     map[ThreatLevel]int `json:"threats_by_level"`
-	AvgSessionDuration DurationMs       `json:"avg_session_duration"`
+	AvgSessionDuration DurationMs          `json:"avg_session_duration"`
 }
 
 // ListOptions contains options for listing resources.
@@ -358,8 +358,8 @@ type RetentionConfig struct {
 
 // AlertConfig contains alert configuration.
 type AlertConfig struct {
-	Enabled         bool          `json:"enabled" yaml:"enabled"`
-	ThreatThreshold ThreatLevel   `json:"threat_threshold" yaml:"threat_threshold"`
+	Enabled         bool           `json:"enabled" yaml:"enabled"`
+	ThreatThreshold ThreatLevel    `json:"threat_threshold" yaml:"threat_threshold"`
 	Channels        []AlertChannel `json:"channels" yaml:"channels"`
 }
 
@@ -416,7 +416,7 @@ func DefaultConfig() *Config {
 		},
 		Performance: PerformanceConfig{
 			MaxConcurrentSessions: 1000,
-			EventBufferSize:       10000,
+			EventBufferSize:       1024,
 			BatchWriteInterval:    time.Second,
 		},
 	}

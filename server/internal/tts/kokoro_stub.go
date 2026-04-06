@@ -1,4 +1,4 @@
-//go:build !kokoro || windows
+//go:build !kokoro || windows || !linux || !cgo
 
 package tts
 
@@ -12,9 +12,9 @@ type kokoroStub struct{}
 
 func NewKokoroProvider(_ string) *kokoroStub { return &kokoroStub{} }
 
-func (k *kokoroStub) Name() string                    { return "Kokoro" }
-func (k *kokoroStub) Type() ProviderType               { return ProviderKokoro }
-func (k *kokoroStub) Available() bool                   { return false }
+func (k *kokoroStub) Name() string       { return "Kokoro" }
+func (k *kokoroStub) Type() ProviderType { return ProviderKokoro }
+func (k *kokoroStub) Available() bool    { return false }
 func (k *kokoroStub) Synthesize(_ context.Context, _ *SynthesizeRequest) (*SynthesizeResponse, error) {
 	return nil, ErrProviderDisabled
 }

@@ -57,6 +57,7 @@ V3 goals:
 - make datasets reusable and versioned
 - make eval definitions reusable and auditable
 - make reruns and comparisons first-class
+- make evidence-backed skill and instruction evolution first-class
 - make scorer composition pluggable
 - make scheduling ready for multi-worker execution without replacing SQLite on day one
 - make release gating and regression analysis possible from persisted platform objects
@@ -208,6 +209,168 @@ Recommended mapping:
 - `Scorecard` -> per-item scoring result
 - `ComparisonReport` -> post-run regression analysis
 
+## Relationship To Evolution
+
+Evolution should not be modeled as a parallel system next to Harness.
+It should be the review and adoption layer built on top of Harness V3 evidence.
+
+The practical evidence chain is:
+
+- `EvalRun` materializes a candidate attempt
+- `ComparisonReport` turns baseline-vs-candidate results into regressions, improvements, and scorer deltas
+- `SkillEvolutionCase` captures why a skill now needs review or optimization
+- `SkillRevision` stores the concrete candidate, accepted, promoted, and backup snapshots used for operator decisions
+- decision history provides an auditable record of promote and rollback actions
+- self-reflect proposals extend the same review loop to instruction-level takeaways and patch previews
+
+Runtime-origin intake is now part of this chain as well:
+
+- terminal Harness runs that selected a canonical built-in skill can emit runtime skill evolution triggers directly
+- failed or aborted runs enter the chain as `runtime_failure` fix cases
+- successful runs enter the chain as `runtime_capture` cases only after repeated grounded lessons cross the capture threshold
+- runtime-origin cases carry source run identity plus runtime evidence such as duration, token usage, quality or verification hints, and compact event summaries
+- follow-up eval and gate handling remain the only authority for moving a candidate from `candidate_created` to `accepted` or `rejected`
+
+### SkillEvolutionCase
+
+Represents an actionable evolution issue or capture opportunity attached to a skill.
+
+Suggested fields:
+
+- `id`
+- `skill_id`
+- `owner_user_id`
+- `mode`
+- `reason`
+- `source_kind`
+- `source_id`
+- `candidate_id`
+- `base_content_sha256`
+- `failure_signature`
+- `dedup_key`
+- `summary`
+- `evidence_json`
+- `revision_id`
+- `status`
+- `skipped_reason`
+- `created_at`
+- `updated_at`
+
+Current reason values already in code:
+
+- `runtime_failure`
+- `runtime_capture`
+- `selector_gate_failed`
+- `execution_gate_failed`
+- `budget_gate_failed`
+- `manual`
+
+Current status values already in code:
+
+- `open`
+- `candidate_created`
+- `accepted`
+- `rejected`
+- `promoted`
+- `skipped`
+
+Rules:
+
+- a case may exist before any revision is created
+- cases should be dedupable enough to avoid reopening the same failure as unlimited noise
+- a case should preserve the source run, gate, or manual trigger that created it
+
+### SkillRevision
+
+Represents a concrete snapshot of candidate or adopted skill content.
+
+Suggested fields:
+
+- `id`
+- `skill_id`
+- `status`
+- `source_path`
+- `candidate_id`
+- `base_content_sha256`
+- `origin_case_id`
+- `parent_revision_id`
+- `backup_of_revision_id`
+- `eval_run_id`
+- `optimization_run_id`
+- `followup_gate`
+- `optimization_surface`
+- `decision_action`
+- `review_note`
+- `reviewed_by`
+- `decision_log_json`
+- `content`
+- `content_sha256`
+- `created_at`
+- `reviewed_at`
+- `promoted_at`
+
+Current status values already in code:
+
+- `candidate`
+- `accepted`
+- `rejected`
+- `promoted`
+- `backup`
+
+Rules:
+
+- a revision should keep lineage back to the case, eval run, and base content snapshot that produced it
+- promote should write reviewed content back to the canonical skill source path and create a backup revision
+- rollback should restore from a backup-derived revision and still emit a new auditable promotion result instead of mutating history in place
+
+### Self-Reflect Proposal
+
+Represents instruction-level review work that lives adjacent to Harness but appears in the same operator evolution loop.
+
+Suggested fields:
+
+- `id`
+- `owner_user_id`
+- `source_kind`
+- `source_id`
+- `proposal_mode`
+- `target_file`
+- `target_section`
+- `status`
+- `dedup_key`
+- `lesson`
+- `when_to_apply`
+- `evidence`
+- `evidence_ids`
+- `evaluation_summary`
+- `calibration_summary`
+- `patch_preview`
+- `review_note`
+- `created_at`
+- `updated_at`
+- `reviewed_at`
+
+Current status values already in code:
+
+- `pending`
+- `approved`
+- `rejected`
+
+Rule:
+
+- proposals are a sibling review plane, not a replacement for Harness objects; they should attach evidence and patch previews to instruction updates without overloading `EvalRun` or `ComparisonReport`
+
+### Current Evolution Workflow
+
+The current operator loop should read like this:
+
+1. Run or compare a candidate through Harness
+2. Let runtime failures, gate failures, captures, or manual review create a `SkillEvolutionCase`
+3. Generate or inspect a `SkillRevision` linked back to the case, eval run, and candidate id
+4. Review comparison evidence, revision content, and decision history before adoption
+5. Promote the accepted revision, or roll back through the backup lineage if the promoted state proves wrong later
+6. Review self-reflect proposals when the follow-up belongs in instructions or AGENTS-level operational guidance instead of the skill file itself
+
 ## API Shape
 
 V3 should add a new platform API surface while preserving current V2 routes.
@@ -229,6 +392,9 @@ Add:
 - `POST /api/v1/harness/datasets/:id/versions`
 - `GET /api/v1/harness/datasets/:id/versions`
 - `GET /api/v1/harness/dataset-versions/:id`
+- `POST /api/v1/harness/dataset-bundles/import`
+- `POST /api/v1/harness/dataset-bundles/preview-source`
+- `POST /api/v1/harness/dataset-bundles/import-source`
 - `POST /api/v1/harness/eval-specs`
 - `GET /api/v1/harness/eval-specs`
 - `GET /api/v1/harness/eval-specs/:id`
@@ -241,11 +407,90 @@ Add:
 - `GET /api/v1/harness/comparison-reports/:id`
 - `POST /api/v1/harness/baselines`
 - `GET /api/v1/harness/baselines`
+- `POST /api/v1/harness/skills/:skill_id/optimize`
+- `GET /api/v1/harness/skills/:skill_id/revisions`
+- `GET /api/v1/harness/skills/:skill_id/decision-history`
+- `GET /api/v1/harness/skills/:skill_id/evolution-cases`
+- `GET /api/v1/harness/skill-revisions/:id`
+- `GET /api/v1/harness/skill-evolution-cases/:id`
+- `POST /api/v1/harness/skill-revisions/:id/promote`
+- `POST /api/v1/harness/skill-revisions/:id/rollback`
+- `GET /api/v1/self-reflect/proposals`
+- `GET /api/v1/self-reflect/proposals/:id`
+- `GET /api/v1/self-reflect/proposals/:id/patch`
+- `POST /api/v1/self-reflect/proposals/:id/approve`
+- `POST /api/v1/self-reflect/proposals/:id/reject`
 
 Compatibility rule:
 
 - `RunGroup` remains visible and directly operable
 - `EvalRun` becomes the preferred platform entrypoint for reproducible evaluations
+- Evolution remains an evidence consumer built on Harness objects rather than a second execution runtime
+
+## Dataset Bundle Authoring
+
+Harness now supports a declarative dataset bundle format for both first-party and third-party authored datasets.
+
+First-party bundles live in this repo under `harness/datasets/<bundle>/`.
+
+Third-party bundles can live in separate GitHub repos as long as they keep the same layout:
+
+```text
+<bundle>/
+  dataset.yaml
+  versions/
+    <version>/
+      manifest.json
+      eval-specs/
+        *.yaml
+```
+
+`dataset.yaml` carries stable bundle metadata plus the default version to import.
+`manifest.json` uses the existing `DatasetManifest` wire shape.
+`eval-specs/*.yaml` are reusable eval templates bound to that imported dataset version.
+
+V1 remains manual-only:
+
+```bash
+blue harness dataset import --path harness/datasets/demo-bundle
+
+blue harness dataset import \
+  --path harness/datasets/demo-bundle \
+  --version v1 \
+  --owner <user-id>
+
+blue harness dataset pull \
+  --source https://github.com/example/harness-datasets/tree/main/demo-bundle \
+  --version v1 \
+  --owner <user-id>
+
+blue harness dataset pull \
+  --source https://github.com/example/harness-datasets \
+  --bundle-path harness/datasets/demo-bundle
+```
+
+The web UI now exposes the same manual flow from `Automation -> Harness -> Datasets & versions -> Import bundle`.
+
+The UI supports:
+
+- importing a local repo bundle
+- importing a third-party GitHub bundle
+- previewing the selected version before import
+- showing case count, manifest hash, and bundled eval specs before anything is written
+
+The preview/import source APIs are:
+
+- `POST /api/v1/harness/dataset-bundles/preview-source`
+- `POST /api/v1/harness/dataset-bundles/import-source`
+
+For GitHub-hosted bundles, declare the eval spec filenames under `dataset.yaml` `versions.<version>.eval_specs` so the CLI can fetch exact files over the project-standard 4-source raw GitHub fallback chain:
+
+1. `raw.githubusercontent.com`
+2. `raw.gitmirror.com`
+3. `cdn.jsdelivr.net/gh`
+4. `ghproxy.com` proxying raw GitHub
+
+Imported bundles are frozen into ordinary Harness `DatasetVersion` and `EvalSpec` records, so the existing dataset, eval-spec, and eval-run APIs keep working unchanged after import.
 
 ## Selector Gate Workflow
 

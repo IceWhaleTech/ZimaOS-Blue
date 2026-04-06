@@ -4,7 +4,7 @@ package i18n
 // Only IM-facing messages (errors + media generation) are translated here.
 // UI Review and iMessage keys fall back to en-US for non-translated languages.
 
-func init() {
+func registerTranslationsPart1() {
 	// --- en-GB (English, UK) ---
 	// Shares en-US translations (fallback handles it), only override where needed.
 

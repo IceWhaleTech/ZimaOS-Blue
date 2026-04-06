@@ -1,0 +1,81 @@
+---
+title: "身份与访问"
+summary: "理解 Blue 当前的预览模式引导、登录提供方、用户管理、个人安全设置、MFA、WebAuthn 与 API Key。"
+---
+
+# 身份与访问
+
+Blue 现在已经具备完整的身份与访问层，不再只是一个单一登录框。
+
+## 预览模式与首次引导
+
+预览模式用于首次启动或受控演示场景，当前实现已经包括：
+
+- `preview` / `normal` 系统模式判断
+- 临时 preview token
+- 空聊天页里的 preset questions
+- onboarding 状态记录
+- 创建首个管理员并退出 preview mode 的升级流程
+
+这意味着 preview mode 是正式 onboarding 流程的一部分，而不是隐藏开关。
+
+## 个人资料与个人安全控制
+
+`Profile` 页当前支持：
+
+- 邮箱与密码更新
+- 外部账号绑定
+- MFA 设置
+- WebAuthn 设置
+- 带 scope 的 API Key 创建、查看、删除、再生成
+
+对于外部客户端或自动化来说，API Key 很重要，因为它不需要复用浏览器会话。
+
+## 外部账号绑定
+
+当前账号绑定流程支持：
+
+- 查看已绑定账号
+- 发起 provider 绑定
+- 处理 OAuth / OIDC callback
+- 后续解绑
+
+这样 Blue 可以保持统一账号面，同时允许多种外部身份来源。
+
+## 用户管理
+
+`Users` 页当前不是简单成员列表，而是完整的管理面，支持：
+
+- 按搜索、角色、状态过滤
+- 分页
+- 创建与编辑用户
+- 锁定、解锁、删除
+- 重置密码
+- 角色与权限管理
+
+因此 Blue 既支持角色默认权限，也支持更细粒度的页面或动作权限。
+
+## 认证提供方管理
+
+认证提供方管理页当前支持：
+
+- Generic OIDC 以及 Google、GitHub、Microsoft、Keycloak、Authentik、Auth0
+- Provider 排序与启停
+- Client credentials 与 issuer/auth/token/userinfo 配置
+- Redirect URL
+- Scopes
+- Auto-create-user
+- Default role
+- Allowed domains
+
+这让 Blue 可以按部署需要选择本地登录、外部登录，或两者混合。
+
+## 什么时候看这页
+
+当问题是“谁能进入系统、怎么登录、权限怎么发放”时看这页。若问题是运行治理、审计、计费、租户或安全监控，则继续看 [管理与运维](/zh-CN/guides/admin-operations)。
+
+## 相关页面
+
+- [管理与运维](/zh-CN/guides/admin-operations)
+- [设置与 Provider Pool](/zh-CN/guides/settings-provider-pool)
+- [故障排查](/zh-CN/help/troubleshooting)

@@ -20,8 +20,17 @@ func TestSupportedLocales_MatchWebLocaleCatalog(t *testing.T) {
 		t.Fatalf("read locale catalog: %v", err)
 	}
 
-	sectionPattern := regexp.MustCompile(`(?s)export const localeKeys = \[(.*?)\] as const`)
-	sectionMatch := sectionPattern.FindSubmatch(data)
+	sectionPatterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?s)export const localeKeys = \[(.*?)\] as const`),
+		regexp.MustCompile(`(?s)const ALL_LOCALE_KEYS = \[(.*?)\] as const`),
+	}
+	var sectionMatch [][]byte
+	for _, sectionPattern := range sectionPatterns {
+		sectionMatch = sectionPattern.FindSubmatch(data)
+		if len(sectionMatch) >= 2 {
+			break
+		}
+	}
 	if len(sectionMatch) < 2 {
 		t.Fatalf("failed to locate localeKeys in %s", localeCatalogPath)
 	}

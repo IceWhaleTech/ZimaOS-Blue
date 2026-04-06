@@ -1,0 +1,328 @@
+package harness
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/labstack/echo/v4"
+)
+
+func TestController_ImportDatasetBundleCreatesReusableEvalAssets(t *testing.T) {
+	controller := newTestController(t)
+	controller.RegisterDriver(&stubDriver{kind: RunKindAgentTask})
+
+	req := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", false)
+	req.MakeActive = true
+
+	result, err := controller.ImportDatasetBundle(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ImportDatasetBundle failed: %v", err)
+	}
+	if result == nil || result.Dataset == nil || result.DatasetVersion == nil {
+		t.Fatalf("result = %#v, want dataset and dataset version", result)
+	}
+	if result.Dataset.Name != "bundle-dataset" {
+		t.Fatalf("dataset name = %q, want bundle-dataset", result.Dataset.Name)
+	}
+	if result.Dataset.ActiveVersionID != result.DatasetVersion.ID {
+		t.Fatalf("active_version_id = %q, want %q", result.Dataset.ActiveVersionID, result.DatasetVersion.ID)
+	}
+	if result.DatasetVersion.SourceType != "dataset_bundle_local" {
+		t.Fatalf("source_type = %q, want dataset_bundle_local", result.DatasetVersion.SourceType)
+	}
+	if result.DatasetVersion.SourceRef != "/tmp/bundle-dataset" {
+		t.Fatalf("source_ref = %q, want /tmp/bundle-dataset", result.DatasetVersion.SourceRef)
+	}
+	if len(result.EvalSpecs) != 1 {
+		t.Fatalf("eval specs len = %d, want 1", len(result.EvalSpecs))
+	}
+	if result.EvalSpecs[0].DatasetID != result.Dataset.ID || result.EvalSpecs[0].DatasetVersionID != result.DatasetVersion.ID {
+		t.Fatalf("eval spec binding = (%q, %q), want (%q, %q)", result.EvalSpecs[0].DatasetID, result.EvalSpecs[0].DatasetVersionID, result.Dataset.ID, result.DatasetVersion.ID)
+	}
+
+	evalRun, err := controller.SubmitEvalRun(context.Background(), EvalRunSpec{
+		EvalSpecID:  result.EvalSpecs[0].ID,
+		OwnerUserID: "bundle-owner",
+		Title:       "bundle eval run",
+	})
+	if err != nil {
+		t.Fatalf("SubmitEvalRun failed: %v", err)
+	}
+	if evalRun == nil || evalRun.EvalSpecID != result.EvalSpecs[0].ID {
+		t.Fatalf("eval run = %#v, want eval spec %q", evalRun, result.EvalSpecs[0].ID)
+	}
+}
+
+func TestController_ImportDatasetBundleReusesMatchingVersionAndUpdatesEvalSpec(t *testing.T) {
+	controller := newTestController(t)
+
+	firstReq := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", false)
+	firstReq.MakeActive = true
+	first, err := controller.ImportDatasetBundle(context.Background(), firstReq)
+	if err != nil {
+		t.Fatalf("ImportDatasetBundle(first) failed: %v", err)
+	}
+
+	secondReq := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", false)
+	secondReq.MakeActive = true
+	secondReq.EvalSpecs[0].Profile = "bundle-profile-updated"
+	secondReq.EvalSpecs[0].Metadata = map[string]interface{}{
+		"lane":    "default",
+		"updated": "true",
+	}
+	second, err := controller.ImportDatasetBundle(context.Background(), secondReq)
+	if err != nil {
+		t.Fatalf("ImportDatasetBundle(second) failed: %v", err)
+	}
+
+	if second.Dataset.ID != first.Dataset.ID {
+		t.Fatalf("dataset id = %q, want %q", second.Dataset.ID, first.Dataset.ID)
+	}
+	if second.DatasetVersion.ID != first.DatasetVersion.ID {
+		t.Fatalf("dataset version id = %q, want %q", second.DatasetVersion.ID, first.DatasetVersion.ID)
+	}
+	if len(second.EvalSpecs) != 1 || len(first.EvalSpecs) != 1 {
+		t.Fatalf("eval spec counts first=%d second=%d, want 1/1", len(first.EvalSpecs), len(second.EvalSpecs))
+	}
+	if second.EvalSpecs[0].ID != first.EvalSpecs[0].ID {
+		t.Fatalf("eval spec id = %q, want %q", second.EvalSpecs[0].ID, first.EvalSpecs[0].ID)
+	}
+	if second.EvalSpecs[0].Profile != "bundle-profile-updated" {
+		t.Fatalf("updated profile = %q, want bundle-profile-updated", second.EvalSpecs[0].Profile)
+	}
+	if got := metadataString(second.EvalSpecs[0].Metadata, "updated"); got != "true" {
+		t.Fatalf("updated metadata = %q, want true", got)
+	}
+
+	specs, err := controller.ListEvalSpecs(context.Background(), EvalSpecFilter{
+		OwnerUserID: "bundle-owner",
+		DatasetID:   first.Dataset.ID,
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListEvalSpecs failed: %v", err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("eval specs len = %d, want 1", len(specs))
+	}
+}
+
+func TestController_ImportDatasetBundleRejectsVersionHashConflict(t *testing.T) {
+	controller := newTestController(t)
+
+	firstReq := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", false)
+	if _, err := controller.ImportDatasetBundle(context.Background(), firstReq); err != nil {
+		t.Fatalf("ImportDatasetBundle(first) failed: %v", err)
+	}
+
+	conflictReq := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", true)
+	_, err := controller.ImportDatasetBundle(context.Background(), conflictReq)
+	if err == nil {
+		t.Fatal("expected dataset version conflict error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "version bump") {
+		t.Fatalf("error = %v, want version bump guidance", err)
+	}
+
+	datasets, err := controller.ListDatasets(context.Background(), DatasetFilter{
+		OwnerUserID: "bundle-owner",
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListDatasets failed: %v", err)
+	}
+	if len(datasets) != 1 {
+		t.Fatalf("datasets len = %d, want 1", len(datasets))
+	}
+	versions, err := controller.ListDatasetVersions(context.Background(), datasets[0].ID, 10)
+	if err != nil {
+		t.Fatalf("ListDatasetVersions failed: %v", err)
+	}
+	if len(versions) != 1 {
+		t.Fatalf("dataset versions len = %d, want 1", len(versions))
+	}
+}
+
+func TestController_ImportDatasetBundleAllowsZeroEvalSpecs(t *testing.T) {
+	controller := newTestController(t)
+
+	req := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", false)
+	req.EvalSpecs = nil
+
+	result, err := controller.ImportDatasetBundle(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ImportDatasetBundle failed: %v", err)
+	}
+	if result == nil || result.Dataset == nil || result.DatasetVersion == nil {
+		t.Fatalf("result = %#v, want dataset and dataset version", result)
+	}
+	if len(result.EvalSpecs) != 0 {
+		t.Fatalf("eval specs len = %d, want 0", len(result.EvalSpecs))
+	}
+}
+
+func TestController_ImportDatasetBundleRollsBackWhenEvalSpecImportFails(t *testing.T) {
+	controller := newTestController(t)
+
+	req := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", false)
+	req.Dataset.DefaultRunKind = ""
+	if len(req.EvalSpecs) != 1 {
+		t.Fatalf("eval specs len = %d, want 1", len(req.EvalSpecs))
+	}
+	req.EvalSpecs[0].RunKind = ""
+
+	_, err := controller.ImportDatasetBundle(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected import error")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "run kind is required") {
+		t.Fatalf("error = %v, want run kind validation", err)
+	}
+
+	datasets, listErr := controller.ListDatasets(context.Background(), DatasetFilter{
+		OwnerUserID: "bundle-owner",
+		Limit:       10,
+	})
+	if listErr != nil {
+		t.Fatalf("ListDatasets failed: %v", listErr)
+	}
+	if len(datasets) != 0 {
+		t.Fatalf("datasets = %#v, want rollback to leave no imported dataset", datasets)
+	}
+}
+
+func TestHandler_ImportDatasetBundleUsesScopedUser(t *testing.T) {
+	controller := newTestController(t)
+	handler := NewHandler(controller)
+	e := echo.New()
+
+	reqBody := testDatasetBundleImportRequest(t, "bundle-dataset", "v1", "bundle-profile", false)
+	reqBody.Dataset.OwnerUserID = ""
+	reqBody.Version.CreatedBy = ""
+	if len(reqBody.EvalSpecs) != 1 {
+		t.Fatalf("eval specs len = %d, want 1", len(reqBody.EvalSpecs))
+	}
+	reqBody.EvalSpecs[0].OwnerUserID = ""
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		t.Fatalf("json.Marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/dataset-bundles/import", strings.NewReader(string(body)))
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ImportDatasetBundle(c); err != nil {
+		t.Fatalf("ImportDatasetBundle returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var result ImportDatasetBundleResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if result.Dataset == nil || result.Dataset.OwnerUserID != "user-1" {
+		t.Fatalf("dataset = %#v, want owner user-1", result.Dataset)
+	}
+	if result.DatasetVersion == nil || result.DatasetVersion.CreatedBy != "user-1" {
+		t.Fatalf("dataset version = %#v, want created_by user-1", result.DatasetVersion)
+	}
+	if len(result.EvalSpecs) != 1 || result.EvalSpecs[0].OwnerUserID != "user-1" {
+		t.Fatalf("eval specs = %#v, want owner user-1", result.EvalSpecs)
+	}
+}
+
+func testDatasetBundleImportRequest(t *testing.T, datasetName, version, profile string, alternateManifest bool) ImportDatasetBundleRequest {
+	t.Helper()
+
+	manifest := DatasetManifest{
+		Dataset: DatasetManifestMeta{
+			Name:    datasetName,
+			Subject: "bundle_subject",
+		},
+		Defaults: DatasetManifestDefaults{
+			RunKind: RunKindAgentTask,
+			Profile: profile,
+			Scoring: GroupScoringConfig{
+				Mode:          ScoringModeRule,
+				PassThreshold: 1,
+			},
+		},
+		Items: []DatasetManifestItem{{
+			ID:      "case-1",
+			RunKind: RunKindAgentTask,
+			Profile: profile,
+			Input: map[string]interface{}{
+				"goal": "Run imported harness dataset",
+			},
+			Expected: map[string]interface{}{
+				"result": "completed",
+			},
+			Metadata: map[string]interface{}{
+				"critical": !alternateManifest,
+			},
+		}},
+	}
+	if alternateManifest {
+		manifest.Items[0].Metadata["critical"] = false
+		manifest.Items[0].Metadata["variant"] = "updated"
+	}
+	manifestRaw, err := datasetManifestMap(manifest)
+	if err != nil {
+		t.Fatalf("datasetManifestMap failed: %v", err)
+	}
+
+	specMetadata := map[string]interface{}{
+		"lane": "default",
+	}
+	if alternateManifest {
+		specMetadata["updated"] = "true"
+	}
+
+	return ImportDatasetBundleRequest{
+		SourceType: "dataset_bundle_local",
+		SourceRef:  "/tmp/" + datasetName,
+		Dataset: DatasetSpec{
+			Name:           datasetName,
+			Description:    "Test dataset bundle",
+			OwnerUserID:    "bundle-owner",
+			Subject:        "bundle_subject",
+			DefaultRunKind: RunKindAgentTask,
+			DefaultProfile: profile,
+			Metadata: map[string]interface{}{
+				"bundle": "true",
+			},
+		},
+		Version: DatasetVersionSpec{
+			Version:    version,
+			SourceType: "dataset_bundle_local",
+			SourceRef:  "/tmp/" + datasetName,
+			Manifest:   manifestRaw,
+			Metadata: map[string]interface{}{
+				"bundle_version": version,
+			},
+			CreatedBy: "bundle-owner",
+		},
+		EvalSpecs: []ImportDatasetBundleEvalSpec{{
+			Name:        "Default Bundle Eval",
+			OwnerUserID: "bundle-owner",
+			Subject:     "bundle_subject",
+			RunKind:     RunKindAgentTask,
+			Profile:     profile,
+			ScoringConfig: GroupScoringConfig{
+				Mode:          ScoringModeRule,
+				PassThreshold: 1,
+			},
+			Metadata: specMetadata,
+		}},
+	}
+}

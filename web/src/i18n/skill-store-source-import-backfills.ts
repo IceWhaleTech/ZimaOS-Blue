@@ -38,12 +38,11 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     analyzing: 'Analitzant...',
     seedDetected: 'S’ha detectat una llavor puntual',
     unsupportedDetected: 'No s’ha pogut classificar la font',
-    installResultHeading: "Resultat de la instal·lació",
+    installResultHeading: 'Resultat de la instal·lació',
     installResultDismiss: 'Tanca el resultat de la instal·lació',
     sourceType: 'Font',
     sourcePreviewMessage: 'Aquesta URL es pot desar com una font reutilitzable del mercat.',
-    seedPreviewMessage:
-      'Això sembla un candidat d’importació puntual i no una font permanent.',
+    seedPreviewMessage: 'Això sembla un candidat d’importació puntual i no una font permanent.',
     unsupportedPreviewMessage:
       'No hem pogut classificar aquesta entrada com una font de mercat compatible.',
     seedHint:
@@ -62,8 +61,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Vložte URL obchodu nebo katalogu. Určíme, zda ji uložit jako znovupoužitelný zdroj, nebo ji brát jako jednorázový seed.',
     configuredTitle: 'Nakonfigurované zdroje',
-    configuredHint:
-      'Vestavěné zdroje zůstávají chráněné. Vlastní zdroje zde můžete odebrat.',
+    configuredHint: 'Vestavěné zdroje zůstávají chráněné. Vlastní zdroje zde můžete odebrat.',
     preview: 'Analyzovat zdroj',
     analyzing: 'Analyzuji...',
     seedDetected: 'Byl zjištěn jednorázový seed',
@@ -129,7 +127,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Installationsergebnis',
     installResultDismiss: 'Installationsergebnis schließen',
     sourceType: 'Quelle',
-    sourcePreviewMessage: 'Diese URL kann als wiederverwendbare Marktplatzquelle gespeichert werden.',
+    sourcePreviewMessage:
+      'Diese URL kann als wiederverwendbare Marktplatzquelle gespeichert werden.',
     seedPreviewMessage:
       'Das sieht nach einem einmaligen Importkandidaten aus und nicht nach einer dauerhaften Quelle.',
     unsupportedPreviewMessage:
@@ -159,10 +158,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Αποτέλεσμα εγκατάστασης',
     installResultDismiss: 'Κλείσιμο αποτελέσματος εγκατάστασης',
     sourceType: 'Πηγή',
-    sourcePreviewMessage:
-      'Αυτό το URL μπορεί να αποθηκευτεί ως επαναχρησιμοποιήσιμη πηγή αγοράς.',
-    seedPreviewMessage:
-      'Αυτό μοιάζει με υποψήφια εφάπαξ εισαγωγή και όχι με μόνιμη πηγή.',
+    sourcePreviewMessage: 'Αυτό το URL μπορεί να αποθηκευτεί ως επαναχρησιμοποιήσιμη πηγή αγοράς.',
+    seedPreviewMessage: 'Αυτό μοιάζει με υποψήφια εφάπαξ εισαγωγή και όχι με μόνιμη πηγή.',
     unsupportedPreviewMessage:
       'Δεν μπορέσαμε να ταξινομήσουμε αυτή την είσοδο ως υποστηριζόμενη πηγή αγοράς.',
     seedHint:
@@ -181,8 +178,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Paste a store or catalogue URL. We will infer whether it should be saved as a reusable source or treated as a one-off seed.',
     configuredTitle: 'Configured sources',
-    configuredHint:
-      'Built-in sources stay protected. You can remove custom sources here.',
+    configuredHint: 'Built-in sources stay protected. You can remove custom sources here.',
     preview: 'Analyse source',
     analyzing: 'Analysing...',
     seedDetected: 'Detected one-off seed',
@@ -211,8 +207,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Paste a store or catalog URL. We will infer whether it should be saved as a reusable source or treated as a one-off seed.',
     configuredTitle: 'Configured sources',
-    configuredHint:
-      'Built-in sources stay protected. You can remove custom sources here.',
+    configuredHint: 'Built-in sources stay protected. You can remove custom sources here.',
     preview: 'Analyze source',
     analyzing: 'Analyzing...',
     seedDetected: 'Detected one-off seed',
@@ -250,8 +245,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Resultado de la instalación',
     installResultDismiss: 'Cerrar resultado de la instalación',
     sourceType: 'Fuente',
-    sourcePreviewMessage:
-      'Esta URL puede guardarse como una fuente reutilizable del marketplace.',
+    sourcePreviewMessage: 'Esta URL puede guardarse como una fuente reutilizable del marketplace.',
     seedPreviewMessage:
       'Esto parece un candidato de importación puntual y no una fuente permanente.',
     unsupportedPreviewMessage:
@@ -281,10 +275,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: "Résultat de l'installation",
     installResultDismiss: "Fermer le résultat de l'installation",
     sourceType: 'Source',
-    sourcePreviewMessage:
-      'Cette URL peut être enregistrée comme source de marché réutilisable.',
-    seedPreviewMessage:
-      'Cela ressemble à un import ponctuel plutôt qu’à une source durable.',
+    sourcePreviewMessage: 'Cette URL peut être enregistrée comme source de marché réutilisable.',
+    seedPreviewMessage: 'Cela ressemble à un import ponctuel plutôt qu’à une source durable.',
     unsupportedPreviewMessage:
       'Nous n’avons pas pu classer cette entrée comme source de marché prise en charge.',
     seedHint:
@@ -312,10 +304,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Toradh na suiteála',
     installResultDismiss: 'Dún toradh na suiteála',
     sourceType: 'Foinse',
-    sourcePreviewMessage:
-      'Is féidir an URL seo a shábháil mar fhoinse mhargaidh in-athúsáidte.',
-    seedPreviewMessage:
-      'Is cosúil gur iarrthóir iompórtála aonuaire é seo seachas foinse bhuan.',
+    sourcePreviewMessage: 'Is féidir an URL seo a shábháil mar fhoinse mhargaidh in-athúsáidte.',
+    seedPreviewMessage: 'Is cosúil gur iarrthóir iompórtála aonuaire é seo seachas foinse bhuan.',
     unsupportedPreviewMessage:
       'Níorbh fhéidir linn an t-ionchur seo a rangú mar fhoinse mhargaidh thacaithe.',
     seedHint:
@@ -334,8 +324,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Zalijepite URL trgovine ili kataloga. Procijenit ćemo treba li ga spremiti kao višekratni izvor ili tretirati kao jednokratni seed.',
     configuredTitle: 'Konfigurirani izvori',
-    configuredHint:
-      'Ugrađeni izvori ostaju zaštićeni. Ovdje možete ukloniti prilagođene izvore.',
+    configuredHint: 'Ugrađeni izvori ostaju zaštićeni. Ovdje možete ukloniti prilagođene izvore.',
     preview: 'Analiziraj izvor',
     analyzing: 'Analiziram...',
     seedDetected: 'Otkriven je jednokratni seed',
@@ -344,10 +333,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultDismiss: 'Zatvori rezultat instalacije',
     sourceType: 'Izvor',
     sourcePreviewMessage: 'Ovaj URL može se spremiti kao višekratni izvor trgovine.',
-    seedPreviewMessage:
-      'Ovo izgleda kao kandidat za jednokratni uvoz, a ne kao trajni izvor.',
-    unsupportedPreviewMessage:
-      'Nismo mogli klasificirati ovaj unos kao podržani izvor trgovine.',
+    seedPreviewMessage: 'Ovo izgleda kao kandidat za jednokratni uvoz, a ne kao trajni izvor.',
+    unsupportedPreviewMessage: 'Nismo mogli klasificirati ovaj unos kao podržani izvor trgovine.',
     seedHint:
       'Ovo izgleda kao jednokratni seed ({type}: {value}) i ne bi se smjelo spremati kao trajni izvor.',
     alreadyConfigured: 'Već konfigurirano: {name}',
@@ -373,12 +360,9 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Telepítési eredmény',
     installResultDismiss: 'Telepítési eredmény bezárása',
     sourceType: 'Forrás',
-    sourcePreviewMessage:
-      'Ez az URL újrahasználható piactérforrásként menthető.',
-    seedPreviewMessage:
-      'Ez inkább egyszeri importjelöltnek tűnik, nem hosszú távú forrásnak.',
-    unsupportedPreviewMessage:
-      'Ezt a bemenetet nem tudtuk támogatott piactérforrásként besorolni.',
+    sourcePreviewMessage: 'Ez az URL újrahasználható piactérforrásként menthető.',
+    seedPreviewMessage: 'Ez inkább egyszeri importjelöltnek tűnik, nem hosszú távú forrásnak.',
+    unsupportedPreviewMessage: 'Ezt a bemenetet nem tudtuk támogatott piactérforrásként besorolni.',
     seedHint:
       'Ez egyszeri seednek tűnik ({type}: {value}), és nem szabad tartós forrásként menteni.',
     alreadyConfigured: 'Már beállítva: {name}',
@@ -404,10 +388,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Risultato installazione',
     installResultDismiss: 'Chiudi risultato installazione',
     sourceType: 'Fonte',
-    sourcePreviewMessage:
-      'Questo URL può essere salvato come fonte marketplace riutilizzabile.',
-    seedPreviewMessage:
-      'Sembra un candidato di importazione una tantum, non una fonte permanente.',
+    sourcePreviewMessage: 'Questo URL può essere salvato come fonte marketplace riutilizzabile.',
+    seedPreviewMessage: 'Sembra un candidato di importazione una tantum, non una fonte permanente.',
     unsupportedPreviewMessage:
       'Non siamo riusciti a classificare questo input come fonte marketplace supportata.',
     seedHint:
@@ -426,8 +408,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'ストアまたはカタログの URL を貼り付けてください。再利用可能なソースとして保存するか、一度きりのシードとして扱うかを判定します。',
     configuredTitle: '設定済みソース',
-    configuredHint:
-      '組み込みソースは保護されたままです。ここではカスタムソースのみ削除できます。',
+    configuredHint: '組み込みソースは保護されたままです。ここではカスタムソースのみ削除できます。',
     preview: 'ソースを解析',
     analyzing: '解析中...',
     seedDetected: '単発シードを検出',
@@ -435,10 +416,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'インストール結果',
     installResultDismiss: 'インストール結果を閉じる',
     sourceType: 'ソース',
-    sourcePreviewMessage:
-      'この URL は再利用可能なマーケットプレイスソースとして保存できます。',
-    seedPreviewMessage:
-      'これは長期的なソースではなく、一度きりの取り込み候補のようです。',
+    sourcePreviewMessage: 'この URL は再利用可能なマーケットプレイスソースとして保存できます。',
+    seedPreviewMessage: 'これは長期的なソースではなく、一度きりの取り込み候補のようです。',
     unsupportedPreviewMessage:
       'この入力を対応するマーケットプレイスソースとして分類できませんでした。',
     seedHint:
@@ -457,8 +436,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       '스토어 또는 카탈로그 URL을 붙여넣으세요. 재사용 가능한 소스로 저장할지, 일회성 시드로 처리할지 판별합니다.',
     configuredTitle: '구성된 소스',
-    configuredHint:
-      '내장 소스는 계속 보호됩니다. 여기서 사용자 지정 소스를 제거할 수 있습니다.',
+    configuredHint: '내장 소스는 계속 보호됩니다. 여기서 사용자 지정 소스를 제거할 수 있습니다.',
     preview: '소스 분석',
     analyzing: '분석 중...',
     seedDetected: '일회성 시드 감지',
@@ -466,14 +444,10 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: '설치 결과',
     installResultDismiss: '설치 결과 닫기',
     sourceType: '소스',
-    sourcePreviewMessage:
-      '이 URL은 재사용 가능한 마켓플레이스 소스로 저장할 수 있습니다.',
-    seedPreviewMessage:
-      '이 항목은 장기 소스라기보다 일회성 가져오기 후보로 보입니다.',
-    unsupportedPreviewMessage:
-      '이 입력을 지원되는 마켓플레이스 소스로 분류할 수 없습니다.',
-    seedHint:
-      '이 항목은 일회성 시드로 보이며 ({type}: {value}) 장기 소스로 저장하면 안 됩니다.',
+    sourcePreviewMessage: '이 URL은 재사용 가능한 마켓플레이스 소스로 저장할 수 있습니다.',
+    seedPreviewMessage: '이 항목은 장기 소스라기보다 일회성 가져오기 후보로 보입니다.',
+    unsupportedPreviewMessage: '이 입력을 지원되는 마켓플레이스 소스로 분류할 수 없습니다.',
+    seedHint: '이 항목은 일회성 시드로 보이며 ({type}: {value}) 장기 소스로 저장하면 안 됩니다.',
     alreadyConfigured: '이미 구성됨: {name}',
     builtinManaged: '내장 소스가 이미 관리되고 있습니다: {name}',
     typeApiCatalog: 'API 카탈로그',
@@ -497,8 +471,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'ഇൻസ്റ്റാൾ ഫലം',
     installResultDismiss: 'ഇൻസ്റ്റാൾ ഫലം അടയ്ക്കുക',
     sourceType: 'ഉറവിടം',
-    sourcePreviewMessage:
-      'ഈ URL വീണ്ടും ഉപയോഗിക്കാവുന്ന മാർക്കറ്റ്പ്ലേസ് ഉറവിടമായി സംരക്ഷിക്കാം.',
+    sourcePreviewMessage: 'ഈ URL വീണ്ടും ഉപയോഗിക്കാവുന്ന മാർക്കറ്റ്പ്ലേസ് ഉറവിടമായി സംരക്ഷിക്കാം.',
     seedPreviewMessage:
       'ഇത് ദീർഘകാല ഉറവിടത്തേക്കാൾ ഒറ്റത്തവണ ഇറക്കുമതി സ്ഥാനാർത്ഥിയെന്ന പോലെ തോന്നുന്നു.',
     unsupportedPreviewMessage:
@@ -519,8 +492,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Lim inn en butikk- eller katalog-URL. Vi finner ut om den skal lagres som en gjenbrukbar kilde eller behandles som et engangs-seed.',
     configuredTitle: 'Konfigurerte kilder',
-    configuredHint:
-      'Innebygde kilder forblir beskyttet. Du kan fjerne egendefinerte kilder her.',
+    configuredHint: 'Innebygde kilder forblir beskyttet. Du kan fjerne egendefinerte kilder her.',
     preview: 'Analyser kilde',
     analyzing: 'Analyserer...',
     seedDetected: 'Engangs-seed oppdaget',
@@ -529,8 +501,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultDismiss: 'Lukk installeringsresultat',
     sourceType: 'Kilde',
     sourcePreviewMessage: 'Denne URL-en kan lagres som en gjenbrukbar markedskilde.',
-    seedPreviewMessage:
-      'Dette ser ut som en engangsimport i stedet for en varig kilde.',
+    seedPreviewMessage: 'Dette ser ut som en engangsimport i stedet for en varig kilde.',
     unsupportedPreviewMessage:
       'Vi kunne ikke klassifisere denne inndataen som en støttet markedskilde.',
     seedHint:
@@ -558,8 +529,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Installatieresultaat',
     installResultDismiss: 'Installatieresultaat sluiten',
     sourceType: 'Bron',
-    sourcePreviewMessage:
-      'Deze URL kan worden opgeslagen als een herbruikbare marktplaatsbron.',
+    sourcePreviewMessage: 'Deze URL kan worden opgeslagen als een herbruikbare marktplaatsbron.',
     seedPreviewMessage:
       'Dit lijkt op een eenmalige importkandidaat in plaats van op een blijvende bron.',
     unsupportedPreviewMessage:
@@ -580,8 +550,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Wklej adres URL sklepu lub katalogu. Określimy, czy należy go zapisać jako źródło wielokrotnego użytku, czy potraktować jako jednorazowy seed.',
     configuredTitle: 'Skonfigurowane źródła',
-    configuredHint:
-      'Wbudowane źródła pozostają chronione. Tutaj możesz usunąć własne źródła.',
+    configuredHint: 'Wbudowane źródła pozostają chronione. Tutaj możesz usunąć własne źródła.',
     preview: 'Analizuj źródło',
     analyzing: 'Analizowanie...',
     seedDetected: 'Wykryto jednorazowy seed',
@@ -591,8 +560,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     sourceType: 'Źródło',
     sourcePreviewMessage:
       'Ten adres URL można zapisać jako źródło marketplace do wielokrotnego użycia.',
-    seedPreviewMessage:
-      'Wygląda to na jednorazowy import, a nie na długoterminowe źródło.',
+    seedPreviewMessage: 'Wygląda to na jednorazowy import, a nie na długoterminowe źródło.',
     unsupportedPreviewMessage:
       'Nie udało się sklasyfikować tego wejścia jako obsługiwanego źródła marketplace.',
     seedHint:
@@ -620,10 +588,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Resultado da instalação',
     installResultDismiss: 'Fechar resultado da instalação',
     sourceType: 'Fonte',
-    sourcePreviewMessage:
-      'Esta URL pode ser salva como uma fonte reutilizável do marketplace.',
-    seedPreviewMessage:
-      'Isso parece um candidato de importação única, e não uma fonte duradoura.',
+    sourcePreviewMessage: 'Esta URL pode ser salva como uma fonte reutilizável do marketplace.',
+    seedPreviewMessage: 'Isso parece um candidato de importação única, e não uma fonte duradoura.',
     unsupportedPreviewMessage:
       'Não conseguimos classificar esta entrada como uma fonte de marketplace compatível.',
     seedHint:
@@ -651,10 +617,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Resultado da instalação',
     installResultDismiss: 'Fechar resultado da instalação',
     sourceType: 'Fonte',
-    sourcePreviewMessage:
-      'Este URL pode ser guardado como uma fonte reutilizável do marketplace.',
-    seedPreviewMessage:
-      'Isto parece um candidato de importação única, não uma fonte duradoura.',
+    sourcePreviewMessage: 'Este URL pode ser guardado como uma fonte reutilizável do marketplace.',
+    seedPreviewMessage: 'Isto parece um candidato de importação única, não uma fonte duradoura.',
     unsupportedPreviewMessage:
       'Não conseguimos classificar esta entrada como uma fonte de marketplace suportada.',
     seedHint:
@@ -673,8 +637,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Lipește un URL de magazin sau catalog. Vom stabili dacă trebuie salvat ca sursă reutilizabilă sau tratat ca seed unic.',
     configuredTitle: 'Surse configurate',
-    configuredHint:
-      'Sursele integrate rămân protejate. Poți elimina aici sursele personalizate.',
+    configuredHint: 'Sursele integrate rămân protejate. Poți elimina aici sursele personalizate.',
     preview: 'Analizează sursa',
     analyzing: 'Se analizează...',
     seedDetected: 'Seed unic detectat',
@@ -682,10 +645,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Rezultatul instalării',
     installResultDismiss: 'Închide rezultatul instalării',
     sourceType: 'Sursă',
-    sourcePreviewMessage:
-      'Acest URL poate fi salvat ca sursă marketplace reutilizabilă.',
-    seedPreviewMessage:
-      'Acesta pare un candidat de import unic, nu o sursă de lungă durată.',
+    sourcePreviewMessage: 'Acest URL poate fi salvat ca sursă marketplace reutilizabilă.',
+    seedPreviewMessage: 'Acesta pare un candidat de import unic, nu o sursă de lungă durată.',
     unsupportedPreviewMessage:
       'Nu am putut clasifica această intrare ca sursă marketplace acceptată.',
     seedHint:
@@ -713,10 +674,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Результат установки',
     installResultDismiss: 'Закрыть результат установки',
     sourceType: 'Источник',
-    sourcePreviewMessage:
-      'Этот URL можно сохранить как переиспользуемый источник маркетплейса.',
-    seedPreviewMessage:
-      'Это похоже на одноразовый импорт, а не на долговременный источник.',
+    sourcePreviewMessage: 'Этот URL можно сохранить как переиспользуемый источник маркетплейса.',
+    seedPreviewMessage: 'Это похоже на одноразовый импорт, а не на долговременный источник.',
     unsupportedPreviewMessage:
       'Мы не смогли классифицировать этот ввод как поддерживаемый источник маркетплейса.',
     seedHint:
@@ -735,8 +694,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Vložte URL obchodu alebo katalógu. Určíme, či ho uložiť ako opakovane použiteľný zdroj, alebo ho brať ako jednorazový seed.',
     configuredTitle: 'Nakonfigurované zdroje',
-    configuredHint:
-      'Vstavané zdroje zostávajú chránené. Vlastné zdroje tu môžete odstrániť.',
+    configuredHint: 'Vstavané zdroje zostávajú chránené. Vlastné zdroje tu môžete odstrániť.',
     preview: 'Analyzovať zdroj',
     analyzing: 'Analyzujem...',
     seedDetected: 'Zistený jednorazový seed',
@@ -744,10 +702,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Výsledok inštalácie',
     installResultDismiss: 'Zavrieť výsledok inštalácie',
     sourceType: 'Zdroj',
-    sourcePreviewMessage:
-      'Túto URL možno uložiť ako opakovane použiteľný zdroj marketplace.',
-    seedPreviewMessage:
-      'Vyzerá to ako jednorazový import, nie ako dlhodobý zdroj.',
+    sourcePreviewMessage: 'Túto URL možno uložiť ako opakovane použiteľný zdroj marketplace.',
+    seedPreviewMessage: 'Vyzerá to ako jednorazový import, nie ako dlhodobý zdroj.',
     unsupportedPreviewMessage:
       'Tento vstup sme nedokázali klasifikovať ako podporovaný zdroj marketplace.',
     seedHint:
@@ -766,8 +722,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     description:
       'Klistra in en butiks- eller katalog-URL. Vi avgör om den ska sparas som en återanvändbar källa eller behandlas som ett engångs-seed.',
     configuredTitle: 'Konfigurerade källor',
-    configuredHint:
-      'Inbyggda källor förblir skyddade. Här kan du ta bort egna källor.',
+    configuredHint: 'Inbyggda källor förblir skyddade. Här kan du ta bort egna källor.',
     preview: 'Analysera källa',
     analyzing: 'Analyserar...',
     seedDetected: 'Engångs-seed upptäckt',
@@ -775,10 +730,8 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
     installResultHeading: 'Installationsresultat',
     installResultDismiss: 'Stäng installationsresultat',
     sourceType: 'Källa',
-    sourcePreviewMessage:
-      'Den här URL:en kan sparas som en återanvändbar marknadskälla.',
-    seedPreviewMessage:
-      'Det här ser ut som en engångsimport snarare än en långlivad källa.',
+    sourcePreviewMessage: 'Den här URL:en kan sparas som en återanvändbar marknadskälla.',
+    seedPreviewMessage: 'Det här ser ut som en engångsimport snarare än en långlivad källa.',
     unsupportedPreviewMessage:
       'Vi kunde inte klassificera den här inmatningen som en stödd marknadskälla.',
     seedHint:
@@ -794,8 +747,7 @@ const skillStoreSourceImportBackfills: Record<LocaleKey, SkillStoreSourceImportT
   },
   'zh-CN': {
     title: '从 URL 导入技能市场来源',
-    description:
-      '粘贴商店或目录 URL。系统会判断它应该保存为可复用来源，还是作为一次性种子处理。',
+    description: '粘贴商店或目录 URL。系统会判断它应该保存为可复用来源，还是作为一次性种子处理。',
     configuredTitle: '已配置来源',
     configuredHint: '内建来源会保持受保护状态。你可以在这里移除自定义来源。',
     preview: '分析来源',

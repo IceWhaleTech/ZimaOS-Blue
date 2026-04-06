@@ -132,6 +132,7 @@ func builtinProfiles() []AgentProfile {
 			Description:          "Setup template for Claude Code ACP runtimes.",
 			Builtin:              true,
 			TemplateOnly:         true,
+			Command:              []string{"claude-agent-acp"},
 			CredentialProviderID: "anthropic",
 			Metadata: map[string]interface{}{
 				"reference": "openclaw/acpx",
@@ -147,6 +148,7 @@ func builtinProfiles() []AgentProfile {
 			Description:          "Setup template for Codex ACP runtimes.",
 			Builtin:              true,
 			TemplateOnly:         true,
+			Command:              []string{"codex-acp"},
 			CredentialProviderID: "openai-codex",
 			Metadata: map[string]interface{}{
 				"reference": "openclaw/acpx",
@@ -162,6 +164,7 @@ func builtinProfiles() []AgentProfile {
 			Description:          "Setup template for Gemini CLI ACP runtimes.",
 			Builtin:              true,
 			TemplateOnly:         true,
+			Command:              []string{"gemini", "--acp"},
 			CredentialProviderID: "google-gemini-cli",
 			Metadata: map[string]interface{}{
 				"reference": "openclaw/acpx",
@@ -249,6 +252,7 @@ func (s *Service) VerifyProfile(ctx context.Context, id string, candidate *Agent
 	if err != nil {
 		return nil, err
 	}
+	result = normalizeVerifyResultMessageCode(result)
 	profile.LastVerifiedAt = timeutil.NowTime().UTC()
 	profile.HealthStatus = "verified"
 	profile.HealthMessage = result.Message
@@ -272,6 +276,7 @@ func (s *Service) HealthProfile(ctx context.Context, id string) (*ProfileHealthR
 	if err != nil {
 		return nil, err
 	}
+	result = normalizeHealthResultMessageCode(result)
 	profile.LastHealthAt = timeutil.NowTime().UTC()
 	if result.Healthy {
 		profile.HealthStatus = "healthy"
@@ -281,6 +286,26 @@ func (s *Service) HealthProfile(ctx context.Context, id string) (*ProfileHealthR
 	profile.HealthMessage = result.Message
 	_ = s.store.SaveProfile(profile)
 	return result, nil
+}
+
+func normalizeVerifyResultMessageCode(result *ProfileVerifyResult) *ProfileVerifyResult {
+	if result == nil {
+		return nil
+	}
+	if result.OK && strings.TrimSpace(result.MessageCode) == "" {
+		result.MessageCode = ProfileVerifyMessageCodeProfileVerified
+	}
+	return result
+}
+
+func normalizeHealthResultMessageCode(result *ProfileHealthResult) *ProfileHealthResult {
+	if result == nil {
+		return nil
+	}
+	if result.Healthy && strings.TrimSpace(result.MessageCode) == "" {
+		result.MessageCode = ProfileHealthMessageCodeRuntimeHealthy
+	}
+	return result
 }
 
 func (s *Service) ListSessions(limit, offset int, userID string, protocol ProtocolKind) ([]ExternalSession, error) {
@@ -733,6 +758,9 @@ func validateRunnableACPProfile(profile *AgentProfile) error {
 		return nil
 	}
 	if profile.Protocol != ProtocolACP {
+		return nil
+	}
+	if len(profile.Command) > 0 {
 		return nil
 	}
 	if !profile.TemplateOnly {

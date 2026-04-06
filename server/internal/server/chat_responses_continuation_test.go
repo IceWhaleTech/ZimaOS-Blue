@@ -10,6 +10,7 @@ func TestSupportsResponsesContinuationModel(t *testing.T) {
 	}{
 		{name: "explicit responses model", model: "gpt-5-responses", want: true},
 		{name: "codex model", model: "gpt-5.3-codex-spark", want: true},
+		{name: "gpt-5.4-pro model", model: "gpt-5.4-pro", want: true},
 		{name: "regular model", model: "gpt-4.1", want: false},
 	}
 
@@ -17,6 +18,27 @@ func TestSupportsResponsesContinuationModel(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := supportsResponsesContinuation(tc.model); got != tc.want {
 				t.Fatalf("supportsResponsesContinuation(%q) = %v, want %v", tc.model, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsResponsesNativeModel(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  bool
+	}{
+		{name: "explicit responses model", model: "gpt-5-responses", want: true},
+		{name: "codex model", model: "gpt-5.3-codex-spark", want: true},
+		{name: "gpt-5.4-pro model", model: "gpt-5.4-pro", want: true},
+		{name: "regular model", model: "gpt-4.1", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := isResponsesNativeModel(tc.model); got != tc.want {
+				t.Fatalf("isResponsesNativeModel(%q) = %v, want %v", tc.model, got, tc.want)
 			}
 		})
 	}

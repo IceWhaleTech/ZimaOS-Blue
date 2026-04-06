@@ -1522,6 +1522,65 @@ func TestGenerateWebCanvasPhotoPromptFallsBackToGoogleImageBrowserResults(t *tes
 	}
 }
 
+func TestParseGoogleImageScrapeResultsStripsLocalizedImageResultBoilerplate(t *testing.T) {
+	const query = "xqzv-12345"
+
+	testCases := []struct {
+		locale string
+		raw    string
+	}{
+		{locale: "ca-ES", raw: "Resultat d'imatge per a " + query},
+		{locale: "cs-CZ", raw: "Výsledek obrázku pro " + query},
+		{locale: "da-DK", raw: "Billedresultat for " + query},
+		{locale: "de-DE", raw: "Bildergebnis für " + query},
+		{locale: "el-GR", raw: "Αποτέλεσμα εικόνας για " + query},
+		{locale: "en-GB", raw: "Image result for " + query},
+		{locale: "en-US", raw: "Image result for " + query},
+		{locale: "es-ES", raw: "Resultado de imagen para " + query},
+		{locale: "fr-FR", raw: "Résultat d'image pour " + query},
+		{locale: "ga-IE", raw: "Toradh íomhá do " + query},
+		{locale: "hr-HR", raw: "Rezultat slike za " + query},
+		{locale: "hu-HU", raw: "Képeredmény az " + query + " kifejezésre"},
+		{locale: "it-IT", raw: "Risultato immagine per " + query},
+		{locale: "ja-JP", raw: "「" + query + "」の画像結果"},
+		{locale: "ko-KR", raw: query + "에 대한 이미지 검색결과"},
+		{locale: "ml-IN", raw: query + "-നുള്ള ചിത്ര ഫലം"},
+		{locale: "nb-NO", raw: "Bilderesultat for " + query},
+		{locale: "nl-NL", raw: "Afbeeldingsresultaat voor " + query},
+		{locale: "pl-PL", raw: "Wynik obrazu dla " + query},
+		{locale: "pt-BR", raw: "Resultado de imagem para " + query},
+		{locale: "pt-PT", raw: "Resultado de imagem para " + query},
+		{locale: "ro-RO", raw: "Rezultat imagine pentru " + query},
+		{locale: "ru-RU", raw: "Результат изображения для " + query},
+		{locale: "sk-SK", raw: "Výsledok obrázka pre " + query},
+		{locale: "sv-SE", raw: "Bildresultat för " + query},
+		{locale: "zh-CN", raw: query + " 的图像结果"},
+		{locale: "zh-TW", raw: query + " 的圖像結果"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.locale, func(t *testing.T) {
+			resp := &browser.ScrapeResponse{
+				URL: "https://www.google.com/search?tbm=isch&q=" + url.QueryEscape(query),
+				Data: map[string]interface{}{
+					"result_links": []string{
+						"/imgres?imgurl=" + url.QueryEscape("https://cdn.example.com/snow.png") + "&imgrefurl=" + url.QueryEscape("https://example.com/teddy-in-snow"),
+					},
+					"image_alts": []string{tc.raw},
+				},
+			}
+
+			results := parseGoogleImageScrapeResults(resp, 1)
+			if len(results) != 1 {
+				t.Fatalf("results = %#v, want one parsed result", results)
+			}
+			if results[0].Title != query {
+				t.Fatalf("title = %q, want %q for locale %s", results[0].Title, query, tc.locale)
+			}
+		})
+	}
+}
+
 func TestGenerateWebCanvasPhotoPromptDirectDownloadsRandomBrowserPick(t *testing.T) {
 	prevRandomIndex := fallbackBrowserRandomIndex
 	fallbackBrowserRandomIndex = func(size int) int {

@@ -3,12 +3,21 @@ package downloader
 import (
 	"fmt"
 	"regexp"
+	"sync"
 )
 
 var (
-	reJsDelivr  = regexp.MustCompile(`^https://cdn\.jsdelivr\.net/gh/([^/]+)/([^@]+)@([^/]+)/(.*)$`)
-	reGitHubRaw = regexp.MustCompile(`^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$`)
+	reJsDelivr              *regexp.Regexp
+	reGitHubRaw             *regexp.Regexp
+	expandGitHubRegexesOnce sync.Once
 )
+
+func ensureExpandGitHubRegexes() {
+	expandGitHubRegexesOnce.Do(func() {
+		reJsDelivr = regexp.MustCompile(`^https://cdn\.jsdelivr\.net/gh/([^/]+)/([^@]+)@([^/]+)/(.*)$`)
+		reGitHubRaw = regexp.MustCompile(`^https://raw\.githubusercontent\.com/([^/]+)/([^/]+)/([^/]+)/(.*)$`)
+	})
+}
 
 type GitHubParts struct {
 	User   string
@@ -20,6 +29,8 @@ type GitHubParts struct {
 
 // ExpandGitHubURL generates all mirror URLs with the input format first.
 func ExpandGitHubURL(input string) []string {
+	ensureExpandGitHubRegexes()
+
 	var p *GitHubParts
 	switch {
 	case reGitHubRaw.MatchString(input):

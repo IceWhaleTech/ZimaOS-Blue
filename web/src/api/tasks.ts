@@ -108,9 +108,6 @@ export interface UserTaskProjection {
 }
 
 export const taskProjectionApi = {
-  listTasks: (params?: { conversation_id?: string; scope?: UserTaskScope; limit?: number }) =>
-    api.get<UserTaskProjection[]>('/tasks', { params }),
-
   getTask: (id: string, conversationId?: string) =>
     api.get<UserTaskProjection>(`/tasks/${id}`, {
       params: conversationId ? { conversation_id: conversationId } : undefined,

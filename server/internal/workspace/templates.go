@@ -244,12 +244,12 @@ func NormalizeDefaultTemplateToEnglish(name, content string) string {
 	if trimmed == "" {
 		return content
 	}
-	en := strings.TrimSpace(templateContentByFile(getTemplates("en"), name))
+	en := strings.TrimSpace(templateContentByFile(resolveTemplates("en"), name))
 	if en == "" {
 		return content
 	}
 	for _, locale := range availableLocales() {
-		ts := getTemplates(locale)
+		ts := resolveTemplates(locale)
 		if strings.TrimSpace(templateContentByFile(ts, name)) == trimmed {
 			return en
 		}

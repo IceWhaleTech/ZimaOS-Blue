@@ -1,0 +1,14 @@
+api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: demo-bundle
+description: Demo bundle dataset
+subject: demo_subject
+default_run_kind: agent_task
+default_profile: demo-profile
+default_version: v1
+metadata:
+  suite: demo
+versions:
+  v1:
+    eval_specs:
+      - default.yaml

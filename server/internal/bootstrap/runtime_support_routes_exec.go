@@ -14,22 +14,6 @@ func registerExecApprovalRoutes(execGroup *echo.Group, execApprovals *tools.Appr
 		return
 	}
 
-	execGroup.GET("/approvals/pending", func(c echo.Context) error {
-		sessionID := strings.TrimSpace(c.QueryParam("session_id"))
-		var req *tools.ApprovalRequest
-		if sessionID != "" {
-			req = execApprovals.GetPendingBySession(sessionID)
-		}
-		if req == nil {
-			userID := resolveRequestUserID(c)
-			req = execApprovals.GetPending(userID)
-		}
-		if req == nil {
-			return c.JSON(200, map[string]interface{}{"pending": false})
-		}
-		return c.JSON(200, map[string]interface{}{"pending": true, "approval": req})
-	})
-
 	execGroup.POST("/approvals/:id", func(c echo.Context) error {
 		id := c.Param("id")
 		var body struct {

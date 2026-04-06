@@ -16,10 +16,13 @@ import type {
 } from '@/types/typeless'
 import {
   localizeDeepResearchGap,
+  localizeDeepResearchReportStyle,
   localizeDeepResearchMode,
   localizeDeepResearchSegment,
   localizeDeepResearchSourceType,
+  localizeDeepResearchStopReason,
   localizeDeepResearchStructuredValue,
+  localizeDeepResearchTimeWindow,
   localizeDeepResearchStatus,
   localizeResearchSurfaceTitle,
 } from '@/utils/deepResearchText'
@@ -52,6 +55,7 @@ const modeLabel = computed(() => localizeDeepResearchMode(props.card.mode || 'st
 const researchTitle = computed(() => localizeResearchSurfaceTitle(tr))
 const searchCards = computed(() => (props.card.search_cards || []).filter(validSearchCard))
 const reportStyle = computed(() => props.card.report_style || '')
+const reportStyleLabel = computed(() => localizeDeepResearchReportStyle(reportStyle.value, tr))
 const isKnowledgeBase = computed(() => reportStyle.value === 'knowledge_base')
 const supportCount = computed(() => props.card.support_count || 0)
 const conflictCount = computed(() => props.card.conflict_count || 0)
@@ -181,20 +185,12 @@ function verificationStatusLabel(status?: string): string {
 }
 
 function stopReasonLabel(reason?: string): string {
-  switch (reason) {
-    case 'coverage_sufficient':
-      return t('chat.deepResearchStopReasonCoverage', 'Coverage target reached')
-    case 'no_new_canonical_evidence':
-      return t('chat.deepResearchStopReasonNoNewEvidence', 'No new canonical evidence found')
-    case 'budget_exhausted':
-      return t('chat.deepResearchStopReasonBudget', 'Research budget exhausted')
-    default:
-      return reason || '--'
-  }
+  return localizeDeepResearchStopReason(reason, tr) || reason || '--'
 }
 
 function verificationTitle(item: DeepResearchVerificationItem): string {
   return (
+    localizeDeepResearchStructuredValue(item.focus, tr) ||
     item.focus ||
     localizeDeepResearchGap(item.gap, tr) ||
     t('chat.deepResearchVerificationSummary', 'Verification')
@@ -325,9 +321,9 @@ function conflictRiskLabel(risk?: string): string {
                 >{{ modeLabel }}</span
               >
               <span
-                v-if="reportStyle"
+                v-if="reportStyleLabel"
                 class="rounded-full bg-purple-100 px-2.5 py-0.5 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200"
-                >{{ reportStyle }}</span
+                >{{ reportStyleLabel }}</span
               >
               <span
                 class="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -385,7 +381,7 @@ function conflictRiskLabel(risk?: string): string {
                 :key="window"
                 class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
               >
-                {{ window }}
+                {{ localizeDeepResearchTimeWindow(window, tr) }}
               </span>
             </div>
             <div v-if="workflowPhases.length" class="mt-4 space-y-2">
@@ -645,7 +641,13 @@ function conflictRiskLabel(risk?: string): string {
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
-                    {{ item.label || item.id || '--' }}
+                    {{
+                      localizeDeepResearchStructuredValue(item.label || item.id, tr) ||
+                      localizeDeepResearchSegment(item.label || item.id, tr) ||
+                      item.label ||
+                      item.id ||
+                      '--'
+                    }}
                   </div>
                   <span
                     class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -658,7 +660,7 @@ function conflictRiskLabel(risk?: string): string {
                     v-for="window in item.time_windows"
                     :key="window"
                     class="rounded-full bg-white px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                    >{{ window }}</span
+                    >{{ localizeDeepResearchTimeWindow(window, tr) }}</span
                   >
                 </div>
                 <div v-if="objectStatusBadges(item).length" class="mt-2 flex flex-wrap gap-2">
@@ -753,7 +755,11 @@ function conflictRiskLabel(risk?: string): string {
                 class="rounded-lg bg-slate-50 px-3 py-2.5 dark:bg-slate-900/60"
               >
                 <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
-                  {{ section.label }}
+                  {{
+                    localizeDeepResearchStructuredValue(section.label, tr) ||
+                    localizeDeepResearchSegment(section.label, tr) ||
+                    section.label
+                  }}
                 </div>
                 <ul
                   v-if="section.highlights?.length"
@@ -899,7 +905,11 @@ function conflictRiskLabel(risk?: string): string {
               v-if="entry.focus"
               class="mt-2 text-sm font-medium text-slate-800 dark:text-slate-100 break-words"
             >
-              {{ entry.focus }}
+              {{
+                localizeDeepResearchStructuredValue(entry.focus, tr) ||
+                localizeDeepResearchSegment(entry.focus, tr) ||
+                entry.focus
+              }}
             </div>
             <div
               v-if="entry.gap"

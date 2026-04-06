@@ -294,7 +294,7 @@ func TestUserTaskProjectionService_ListsWorkflowRuns(t *testing.T) {
 	}
 }
 
-func TestUserTaskProjectionHandler_ListAndCancel(t *testing.T) {
+func TestUserTaskProjectionHandler_CancelTask(t *testing.T) {
 	controller := newTestController(t)
 	driver := &stubDriver{kind: RunKindAgentTask}
 	controller.RegisterDriver(driver)
@@ -313,35 +313,9 @@ func TestUserTaskProjectionHandler_ListAndCancel(t *testing.T) {
 	if err := controller.store.UpdateRun(context.Background(), run); err != nil {
 		t.Fatalf("UpdateRun failed: %v", err)
 	}
-	if _, err := controller.Submit(context.Background(), RunSpec{
-		Kind:           RunKindAgentTask,
-		Goal:           "Someone else's task",
-		UserID:         "user-2",
-		ConversationID: "conv-2",
-	}); err != nil {
-		t.Fatalf("Submit other task failed: %v", err)
-	}
 
 	handler := NewUserTaskProjectionHandler(controller, nil)
 	e := echo.New()
-
-	req := httptest.NewRequest(http.MethodGet, "/tasks?scope=current&conversation_id=conv-1", nil)
-	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
-	rec := httptest.NewRecorder()
-	c := e.NewContext(req, rec)
-	if err := handler.ListTasks(c); err != nil {
-		t.Fatalf("ListTasks returned error: %v", err)
-	}
-	if rec.Code != http.StatusOK {
-		t.Fatalf("ListTasks status = %d, want %d", rec.Code, http.StatusOK)
-	}
-	var projections []UserTaskProjection
-	if err := json.Unmarshal(rec.Body.Bytes(), &projections); err != nil {
-		t.Fatalf("unmarshal ListTasks response: %v", err)
-	}
-	if len(projections) != 1 || projections[0].ID != run.ID {
-		t.Fatalf("unexpected projections: %#v", projections)
-	}
 
 	cancelReq := httptest.NewRequest(http.MethodPost, "/tasks/"+run.ID+"/cancel", nil)
 	cancelReq = cancelReq.WithContext(context.WithValue(cancelReq.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))

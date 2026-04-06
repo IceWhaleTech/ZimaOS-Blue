@@ -19,13 +19,13 @@ function browseText(key: string, fallback: string): string {
 const galleryHint = computed(() =>
   browseText(
     'extensions.browse.toolGalleryHint',
-    'Browse tools as cards, review what they do, and toggle them on or off quickly.'
+    'Browse tools as cards and review what they do.'
   )
 )
 const toolManagementHint = computed(() =>
   browseText(
     'extensions.browse.toolManagementHint',
-    'Built-in tools can be enabled or disabled here. Their availability can still be limited by runtime tool policy.'
+    'Tool availability can be limited by runtime tool policy.'
   )
 )
 
@@ -281,14 +281,6 @@ const categories = computed(() => {
 onMounted(async () => {
   await toolStore.fetchTools()
 })
-
-async function handleToggle(tool: Tool) {
-  if (tool.enabled) {
-    await toolStore.disableTool(tool.id)
-  } else {
-    await toolStore.enableTool(tool.id)
-  }
-}
 </script>
 
 <template>
@@ -425,15 +417,6 @@ async function handleToggle(tool: Tool) {
               <span class="tool-showcase-card__state-dot"></span>
               {{ tool.enabled ? t('common.enabled') : t('common.disabled') }}
             </span>
-            <label class="toggle-switch" @click.stop>
-              <input
-                type="checkbox"
-                :checked="tool.enabled"
-                :disabled="toolStore.loading"
-                @change="handleToggle(tool)"
-              />
-              <span class="toggle-slider"></span>
-            </label>
           </div>
         </div>
 

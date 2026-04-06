@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -90,13 +90,6 @@ const mocks = vi.hoisted(() => ({
     switchCategory: vi.fn(),
   },
   speechGetStatus: vi.fn(),
-  agentApi: {
-    listTasks: vi.fn(),
-    cancelTask: vi.fn(),
-    deleteTask: vi.fn(),
-    sendMessage: vi.fn(),
-    submitAnswers: vi.fn(),
-  },
   authFetch: vi.fn(),
   apiGet: vi.fn(),
   apiPost: vi.fn(),
@@ -111,7 +104,6 @@ const mocks = vi.hoisted(() => ({
   warmupTrigger: vi.fn(),
   injectMessage: vi.fn(),
   approvalApi: {
-    listPending: vi.fn(),
     resolve: vi.fn(),
     getConfig: vi.fn(),
     updateConfig: vi.fn(),
@@ -126,14 +118,12 @@ vi.mock('@/api/chat', () => ({
     get: vi.fn(),
     delete: vi.fn(),
     search: vi.fn(),
-    getCommandState: vi.fn(),
     patchCommandState: vi.fn(),
   },
   messageApi: {
     list: vi.fn(),
     send: vi.fn(),
     cancelStream: vi.fn(),
-    getActiveStreamState: vi.fn(),
   },
   warmupApi: {
     trigger: (...args: unknown[]) => mocks.warmupTrigger(...args),
@@ -143,13 +133,6 @@ vi.mock('@/api/chat', () => ({
   },
   cardActionApi: {
     submit: (...args: unknown[]) => mocks.cardActionSubmit(...args),
-  },
-  agentApi: {
-    listTasks: (...args: unknown[]) => mocks.agentApi.listTasks(...args),
-    cancelTask: (...args: unknown[]) => mocks.agentApi.cancelTask(...args),
-    deleteTask: (...args: unknown[]) => mocks.agentApi.deleteTask(...args),
-    sendMessage: (...args: unknown[]) => mocks.agentApi.sendMessage(...args),
-    submitAnswers: (...args: unknown[]) => mocks.agentApi.submitAnswers(...args),
   },
 }))
 
@@ -195,7 +178,6 @@ vi.mock('@/api/client', () => ({
 
 vi.mock('@/api/approval', () => ({
   approvalApi: {
-    listPending: (...args: unknown[]) => mocks.approvalApi.listPending(...args),
     resolve: (...args: unknown[]) => mocks.approvalApi.resolve(...args),
     getConfig: (...args: unknown[]) => mocks.approvalApi.getConfig(...args),
     updateConfig: (...args: unknown[]) => mocks.approvalApi.updateConfig(...args),
@@ -415,6 +397,48 @@ const CONVERSATION = {
   updated_at: '2026-03-08T00:00:02.000Z',
 }
 
+const mountedWrappers: Array<ReturnType<typeof mount>> = []
+
+function makeBootstrapResponse(
+  conversationId: string,
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    data: {
+      command_state: {
+        conversation_id: conversationId,
+        selected_provider_id: '',
+        selected_model_id: '',
+        offline: false,
+      },
+      active_stream: {
+        conversation_id: conversationId,
+        active: false,
+      },
+      current_tasks: [],
+      background_tasks: [],
+      pending_approval: null,
+      pending_question: null,
+      pending_exec_approval: null,
+      ...overrides,
+    },
+  }
+}
+
+async function defaultApiGet(path: string) {
+  if (path.includes('/ask-user-question/pending')) {
+    return { data: { pending: false } }
+  }
+  if (path.includes('/exec/approvals/pending')) {
+    return { data: { pending: false } }
+  }
+  const bootstrapMatch = String(path).match(/^\/conversations\/([^/]+)\/bootstrap$/)
+  if (bootstrapMatch) {
+    return makeBootstrapResponse(bootstrapMatch[1] ?? '')
+  }
+  return { data: {} }
+}
+
 function makeTypelessBlock(payload: Record<string, unknown>) {
   return ['```typeless', JSON.stringify(payload), '```'].join('\n')
 }
@@ -426,6 +450,13 @@ function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
 async function settleView() {
   await flushPromises()
   await vi.dynamicImportSettled()
+  await new Promise<void>((resolve) => {
+    const scheduleFrame =
+      typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame.bind(window)
+        : (callback: FrameRequestCallback) => window.setTimeout(() => callback(Date.now()), 0)
+    scheduleFrame(() => resolve())
+  })
   await flushPromises()
   await new Promise((resolve) => setTimeout(resolve, 0))
   await flushPromises()
@@ -456,8 +487,18 @@ async function mountIntegratedChatView() {
       },
     },
   })
+  mountedWrappers.push(wrapper)
 
   await settleView()
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const initialMessageLoad = vi.mocked(messageApi.list).mock.results[0]
+    if (initialMessageLoad?.type === 'return') {
+      await initialMessageLoad.value
+      await settleView()
+      break
+    }
+    await settleView()
+  }
   return { wrapper, store: useChatStore() }
 }
 
@@ -530,14 +571,8 @@ describe('ChatView streaming card chain integration', () => {
     mocks.mediaGenerate.switchCategory.mockReset()
 
     mocks.speechGetStatus.mockReset().mockResolvedValue({ data: {} })
-    mocks.agentApi.listTasks.mockReset().mockResolvedValue({ data: [] })
-    mocks.agentApi.cancelTask.mockReset().mockResolvedValue({})
-    mocks.agentApi.deleteTask.mockReset().mockResolvedValue({})
-    mocks.agentApi.sendMessage.mockReset().mockResolvedValue({})
-    mocks.agentApi.submitAnswers.mockReset().mockResolvedValue({})
-
     mocks.authFetch.mockReset().mockResolvedValue({})
-    mocks.apiGet.mockReset().mockResolvedValue({ data: { pending: false } })
+    mocks.apiGet.mockReset().mockImplementation(defaultApiGet)
     mocks.apiPost.mockReset().mockResolvedValue({})
     mocks.onSSEEvent.mockReset()
     mocks.offSSEEvent.mockReset()
@@ -549,7 +584,6 @@ describe('ChatView streaming card chain integration', () => {
 
     mocks.warmupTrigger.mockReset().mockResolvedValue(undefined)
     mocks.injectMessage.mockReset().mockResolvedValue({})
-    mocks.approvalApi.listPending.mockReset().mockResolvedValue({ data: [] })
     mocks.approvalApi.resolve.mockReset().mockResolvedValue({})
     mocks.approvalApi.getConfig.mockReset().mockResolvedValue({ data: { auto_approve_tools: [] } })
     mocks.approvalApi.updateConfig.mockReset().mockResolvedValue({})
@@ -581,18 +615,6 @@ describe('ChatView streaming card chain integration', () => {
     vi.mocked(conversationApi.get).mockReset()
     vi.mocked(conversationApi.delete).mockReset()
     vi.mocked(conversationApi.search).mockReset()
-    vi.mocked(conversationApi.getCommandState)
-      .mockReset()
-      .mockResolvedValue({
-        data: {
-          conversation_id: 'conv-1',
-          selected_provider_id: '',
-          selected_model_id: '',
-          offline: false,
-          web_search_enabled: true,
-          deep_research_enabled: false,
-        },
-      } as never)
     vi.mocked(conversationApi.patchCommandState)
       .mockReset()
       .mockResolvedValue({
@@ -601,8 +623,6 @@ describe('ChatView streaming card chain integration', () => {
           selected_provider_id: '',
           selected_model_id: '',
           offline: false,
-          web_search_enabled: true,
-          deep_research_enabled: false,
         },
       } as never)
 
@@ -611,9 +631,13 @@ describe('ChatView streaming card chain integration', () => {
       .mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.send).mockReset()
     vi.mocked(messageApi.cancelStream).mockReset()
-    vi.mocked(messageApi.getActiveStreamState)
-      .mockReset()
-      .mockResolvedValue({ data: { conversation_id: 'conv-1', active: false } } as never)
+  })
+
+  afterEach(async () => {
+    while (mountedWrappers.length > 0) {
+      mountedWrappers.pop()?.unmount()
+    }
+    await flushPromises()
   })
 
   it('sends a question from ChatView and renders the completed assistant reply', async () => {
@@ -655,8 +679,6 @@ describe('ChatView streaming card chain integration', () => {
       expect(request).toEqual(
         expect.objectContaining({
           message: question,
-          web_search_enabled: true,
-          deep_research_enabled: false,
         })
       )
 
@@ -714,13 +736,18 @@ describe('ChatView streaming card chain integration', () => {
     ]
 
     vi.mocked(messageApi.list).mockResolvedValue({ data: persistedMessages } as never)
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
-      data: {
-        conversation_id: 'conv-1',
-        active: true,
-        stream_id: 'stream-preview-1',
-      },
-    } as never)
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path === '/conversations/conv-1/bootstrap') {
+        return makeBootstrapResponse('conv-1', {
+          active_stream: {
+            conversation_id: 'conv-1',
+            active: true,
+            stream_id: 'stream-preview-1',
+          },
+        })
+      }
+      return defaultApiGet(path)
+    })
 
     const { wrapper, store } = await mountIntegratedChatView()
 
@@ -735,13 +762,18 @@ describe('ChatView streaming card chain integration', () => {
 
   it('shows an executing rail and stop control when the server reports an active stream without preview text', async () => {
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
-      data: {
-        conversation_id: 'conv-1',
-        active: true,
-        stream_id: 'stream-live-1',
-      },
-    } as never)
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path === '/conversations/conv-1/bootstrap') {
+        return makeBootstrapResponse('conv-1', {
+          active_stream: {
+            conversation_id: 'conv-1',
+            active: true,
+            stream_id: 'stream-live-1',
+          },
+        })
+      }
+      return defaultApiGet(path)
+    })
 
     const { wrapper, store } = await mountIntegratedChatView()
 
@@ -774,13 +806,18 @@ describe('ChatView streaming card chain integration', () => {
         },
       ],
     } as never)
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
-      data: {
-        conversation_id: 'conv-1',
-        active: true,
-        stream_id: 'stream-live-2',
-      },
-    } as never)
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path === '/conversations/conv-1/bootstrap') {
+        return makeBootstrapResponse('conv-1', {
+          active_stream: {
+            conversation_id: 'conv-1',
+            active: true,
+            stream_id: 'stream-live-2',
+          },
+        })
+      }
+      return defaultApiGet(path)
+    })
 
     const { wrapper, store } = await mountIntegratedChatView()
 
@@ -875,8 +912,6 @@ describe('ChatView streaming card chain integration', () => {
       expect(request).toEqual(
         expect.objectContaining({
           message: `Inspect ${WEB_FETCH_URL}`,
-          web_search_enabled: true,
-          deep_research_enabled: false,
         })
       )
 
@@ -1063,6 +1098,72 @@ describe('ChatView streaming card chain integration', () => {
     expect(webFetchCard.text()).toContain('Use browser')
   })
 
+  it('keeps browser progress visible when final local finalization only returns the web-fetch result block', async () => {
+    const browserProgressBlock = makeTypelessBlock({
+      type: 'browser-progress',
+      id: 'browser-progress-chain',
+      steps: [
+        {
+          step: 'navigate',
+          name: 'Navigating',
+          status: 'completed',
+          url: 'https://openai.com/blog',
+        },
+        {
+          step: 'snapshot',
+          name: 'Reading page',
+          status: 'running',
+          url: 'https://openai.com/blog',
+        },
+      ],
+    })
+    const webFetchBlock = makeTypelessBlock({
+      type: 'web-fetch',
+      id: 'web-fetch-chain',
+      title: 'web_fetch',
+      url: 'https://openai.com/blog',
+      status: 'success',
+      content: 'Expanded page content from the OpenAI blog.',
+    })
+
+    vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+
+    mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+      expect(_conversationId).toBe('conv-1')
+      expect(request).toEqual(
+        expect.objectContaining({
+          message: 'Check the latest OpenAI updates',
+        })
+      )
+
+      options.onMessage({ delta: browserProgressBlock, done: false })
+      options.onComplete?.({
+        done: true,
+        message_id: 'msg-assistant-browser-final',
+        content: webFetchBlock,
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+      })
+    })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    await store.sendMessage('Check the latest OpenAI updates')
+    await settleView()
+
+    expect(wrapper.find('#browser-progress-chain').exists()).toBe(true)
+    expect(wrapper.find('#web-fetch-chain').exists()).toBe(true)
+
+    await wrapper.get('#browser-progress-chain button').trigger('click')
+    await settleView()
+    expect(wrapper.text()).toContain('Navigating')
+    expect(wrapper.text()).toContain('Reading page')
+
+    await wrapper.get('#web-fetch-chain button').trigger('click')
+    await settleView()
+    expect(wrapper.text()).toContain('Expanded page content from the OpenAI blog.')
+  })
+
   it('keeps fallback boilerplate when chat history contains extracted tool summaries', async () => {
     const searchBlock = makeTypelessBlock({
       type: 'search',
@@ -1167,8 +1268,6 @@ describe('ChatView streaming card chain integration', () => {
       expect(request).toEqual(
         expect.objectContaining({
           message: 'Inspect ' + WEB_FETCH_URL,
-          web_search_enabled: true,
-          deep_research_enabled: false,
         })
       )
 
@@ -1267,8 +1366,6 @@ describe('ChatView streaming card chain integration', () => {
       expect(request).toEqual(
         expect.objectContaining({
           message: 'Inspect ' + WEB_FETCH_URL,
-          web_search_enabled: true,
-          deep_research_enabled: false,
         })
       )
 
@@ -1289,6 +1386,7 @@ describe('ChatView streaming card chain integration', () => {
     await settleView()
 
     expect(store.messages).toEqual(persistedMessages)
+    await settleView()
     const challengeCard = wrapper.get(`[id="${WEB_FETCH_CARD_ID}"]`)
     expect(challengeCard.text()).toContain('Verification required')
     expect(challengeCard.text()).not.toContain('verification challenge')
@@ -1530,8 +1628,6 @@ describe('ChatView streaming card chain integration', () => {
       expect(request).toEqual(
         expect.objectContaining({
           message: 'Research EU AI Act provider obligations.',
-          web_search_enabled: true,
-          deep_research_enabled: false,
         })
       )
 
@@ -1551,8 +1647,9 @@ describe('ChatView streaming card chain integration', () => {
     expect(store.messages).toEqual(persistedMessages)
     expect(wrapper.find('#dr-progress-1').exists()).toBe(true)
     expect(wrapper.find('#dr-result-1').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Planned 5 research task(s)')
-    expect(wrapper.text()).toContain('Collected 3 source(s)')
+    expect(wrapper.text()).toContain('Planned tasks')
+    expect(wrapper.text()).toContain('Review provider duties')
+    expect(wrapper.text()).toContain('EU AI Act text')
     expect(wrapper.text()).toContain('Provider obligations are organized by role and timeline.')
     expect(
       wrapper
@@ -1568,6 +1665,92 @@ describe('ChatView streaming card chain integration', () => {
 
     const timelineRoot = wrapper.get('#dr-progress-1').element as HTMLElement
     expect(timelineRoot.closest('.chat-assistant-bubble')).not.toBeNull()
+  })
+
+  it('keeps deep research process cards visible when final local finalization only returns the final result block', async () => {
+    const initialProgressBlock = makeTypelessBlock({
+      type: 'deep-research-progress',
+      id: 'deep-research-progress-job-1',
+      job_id: 'job-1',
+      conversation_id: 'conv-1',
+      query: 'Deep research this topic',
+      mode: 'deep',
+      stage: 'retrieve',
+      status: 'running',
+      progress: 42,
+      iteration: 1,
+      latest_action: 'initial_retrieve',
+    })
+    const planningBlock = makeTypelessBlock({
+      type: 'deep-research-event',
+      id: 'deep-research-event-job-1-01',
+      job_id: 'job-1',
+      conversation_id: 'conv-1',
+      query: 'Deep research this topic',
+      mode: 'deep',
+      event_kind: 'planning',
+      status: 'info',
+      summary: 'Planned 4 research task(s)',
+      iteration: 1,
+      task_count: 4,
+    })
+    const fullContextBlock = makeTypelessBlock({
+      type: 'deep-research-progress',
+      id: 'deep-research-progress-job-1',
+      job_id: 'job-1',
+      conversation_id: 'conv-1',
+      query: 'Deep research this topic',
+      mode: 'deep',
+      stage: 'fullcontext',
+      status: 'running',
+      progress: 91,
+      iteration: 1,
+      latest_action: 'synthesize_full_context',
+    })
+    const finalResultBlock = makeTypelessBlock({
+      type: 'deep-research',
+      id: 'deep-research-result-job-1',
+      job_id: 'job-1',
+      query: 'Deep research this topic',
+      mode: 'deep',
+      status: 'completed',
+      answer: 'Final synthesized answer',
+    })
+
+    vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+
+    mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+      expect(_conversationId).toBe('conv-1')
+      expect(request).toEqual(
+        expect.objectContaining({
+          message: 'Deep research this topic',
+        })
+      )
+
+      options.onMessage({ delta: `${initialProgressBlock}\n\n`, done: false })
+      options.onMessage({ delta: `${planningBlock}\n\n`, done: false })
+      options.onMessage({ delta: fullContextBlock, done: false })
+      options.onComplete?.({
+        done: true,
+        message_id: 'msg-assistant-dr-final',
+        content: finalResultBlock,
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+      })
+    })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    await store.sendMessage('Deep research this topic')
+    await settleView()
+
+    expect(wrapper.find('#deep-research-event-job-1-01').exists()).toBe(true)
+    expect(wrapper.find('#deep-research-result-job-1').exists()).toBe(true)
+    expect(wrapper.text()).toContain('Planned tasks: 4')
+    expect(wrapper.text()).toContain('Final synthesized answer')
+
+    const timelineRoot = wrapper.get('#deep-research-event-job-1-01').element as HTMLElement
+    expect(timelineRoot.closest('[data-message-id="msg-assistant-dr-final"]')).not.toBeNull()
   })
 
   it('opens the app sidebar from mobile chat view when the global header is hidden', async () => {

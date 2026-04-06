@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import builtinToolBackfills from '@/i18n/builtin-tool-backfills'
-import priorityTranslationOverrides from '@/i18n/priority-translation-overrides'
 
 type LocaleMessages = Record<string, unknown>
 
@@ -51,8 +50,7 @@ const visibleBuiltinToolLocaleCoverage = {
   'tools.names.tool_search': 'Tool Search',
   'tools.descriptions.find': 'Find files and directories by glob pattern',
   'tools.descriptions.ls': 'List files and directories',
-  'tools.descriptions.tool_search':
-    'Search tools, skills, and agents by capability',
+  'tools.descriptions.tool_search': 'Search tools, skills, and agents by capability',
 } as const
 
 describe('tool locale labels', () => {
@@ -63,13 +61,9 @@ describe('tool locale labels', () => {
     for (const [modulePath, mod] of entries) {
       const locale = getLocaleCode(modulePath)
       const file = fileNameFromModulePath(modulePath)
-      const priorityOverrides =
-        (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
-      const builtinToolOverrides = (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
-      const messages = deepMergeMessages(
-        deepMergeMessages(mod.default, priorityOverrides),
-        builtinToolOverrides
-      )
+      const builtinToolOverrides =
+        (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
+      const messages = deepMergeMessages(mod.default, builtinToolOverrides)
 
       const commonDetails = getPathValue(messages, 'common.details')
       const extensionsDetails = getPathValue(messages, 'extensions.actions.details')
@@ -84,9 +78,7 @@ describe('tool locale labels', () => {
       expect(typeof skillStoreActionDetails, `${file} missing skillStore.actions.details`).toBe(
         'string'
       )
-      expect(typeof skillStoreDetailTitle, `${file} missing skillStore.detail.title`).toBe(
-        'string'
-      )
+      expect(typeof skillStoreDetailTitle, `${file} missing skillStore.detail.title`).toBe('string')
       expect(
         typeof skillStoreSectionDetails,
         `${file} missing skillStore.detail.sections.details`
@@ -97,7 +89,9 @@ describe('tool locale labels', () => {
       expect(extensionsDetails, `${file} extensions details label`).toBe(commonDetails)
       expect(skillStoreActionDetails, `${file} skillStore action details label`).toBe(commonDetails)
       expect(skillStoreDetailTitle, `${file} skillStore detail title`).toBe(commonDetails)
-      expect(skillStoreSectionDetails, `${file} skillStore detail section label`).toBe(commonDetails)
+      expect(skillStoreSectionDetails, `${file} skillStore detail section label`).toBe(
+        commonDetails
+      )
 
       if (locale === 'en-US' || locale === 'en-GB') {
         expect(commonDetails, `${file} English details label`).toBe('Details')
@@ -109,9 +103,7 @@ describe('tool locale labels', () => {
       }
 
       expect(commonDetails, `${file} should not fall back to English details`).not.toBe('Details')
-      expect(memoryTags, `${file} should not fall back to English tags`).not.toBe(
-        'Tags (optional)'
-      )
+      expect(memoryTags, `${file} should not fall back to English tags`).not.toBe('Tags (optional)')
       expect(
         memoryTagsPlaceholder,
         `${file} should not fall back to English tag placeholders`
@@ -126,13 +118,9 @@ describe('tool locale labels', () => {
     for (const [modulePath, mod] of entries) {
       const locale = getLocaleCode(modulePath)
       const file = fileNameFromModulePath(modulePath)
-      const priorityOverrides =
-        (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
-      const builtinToolOverrides = (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
-      const messages = deepMergeMessages(
-        deepMergeMessages(mod.default, priorityOverrides),
-        builtinToolOverrides
-      )
+      const builtinToolOverrides =
+        (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
+      const messages = deepMergeMessages(mod.default, builtinToolOverrides)
 
       for (const [path, englishValue] of Object.entries(visibleBuiltinToolLocaleCoverage)) {
         const localizedValue = getPathValue(messages, path)

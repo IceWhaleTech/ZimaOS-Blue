@@ -11,6 +11,36 @@ import {
 
 type NoticeTone = 'info' | 'success' | 'error'
 
+const localizedVerifySuccessMessages = new Set([
+  'profile verified',
+  'acp profile verified',
+  'a2a profile verified',
+])
+
+const localizedHealthSuccessMessages = new Set([
+  'runtime is healthy',
+  'acp runtime is healthy',
+  'a2a runtime is healthy',
+])
+
+function localizeVerifyMessageCode(messageCode: string | undefined): string | null {
+  switch ((messageCode || '').trim().toLowerCase()) {
+    case 'profile_verified':
+      return t('settings.externalAgents.verifyOk')
+    default:
+      return null
+  }
+}
+
+function localizeHealthMessageCode(messageCode: string | undefined): string | null {
+  switch ((messageCode || '').trim().toLowerCase()) {
+    case 'runtime_healthy':
+      return t('settings.externalAgents.healthOk')
+    default:
+      return null
+  }
+}
+
 interface ProfileDraft {
   id: string
   protocol: ProtocolKind
@@ -46,6 +76,12 @@ const selectedProfile = computed(
 )
 const isBuiltinSelection = computed(() => selectedProfile.value?.builtin === true)
 const isTemplateOnlySelection = computed(() => isTemplateOnlyACPProfile(selectedProfile.value))
+const templateRuntimeBlocked = computed(
+  () => isTemplateOnlySelection.value && parseCommandText(draft.value.commandText).length === 0
+)
+const showMetadataField = computed(
+  () => !isBuiltinSelection.value || draft.value.metadataText.trim().length > 0
+)
 const currentSelectionLabel = computed(
   () => draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
 )
@@ -55,6 +91,9 @@ const currentSelectionMeta = computed(() => {
   }
   return protocolTitle(draft.value.protocol)
 })
+const lockedHeadingText = computed(() =>
+  selectedProfile.value ? profileModeLabel(selectedProfile.value) : t('settings.externalAgents.builtinProfile')
+)
 const lockedHelpText = computed(() =>
   isTemplateOnlySelection.value
     ? t('settings.externalAgents.acpTemplateHelp')
@@ -91,6 +130,17 @@ function isTemplateOnlyACPProfile(profile?: AgentProfile | null): boolean {
   return profile?.protocol === 'acp' && profile.template_only === true
 }
 
+function sanitizeDraftMetadata(profile: AgentProfile): Record<string, unknown> | undefined {
+  if (!profile.metadata || Object.keys(profile.metadata).length === 0) {
+    return undefined
+  }
+  const next = { ...profile.metadata }
+  if (profile.builtin) {
+    delete next.reference
+  }
+  return Object.keys(next).length > 0 ? next : undefined
+}
+
 function profileToDraft(profile: AgentProfile): ProfileDraft {
   return {
     id: profile.id || '',
@@ -106,7 +156,7 @@ function profileToDraft(profile: AgentProfile): ProfileDraft {
     headersText: stringifyObject(profile.headers),
     credentialProviderId: profile.credential_provider_id || '',
     authMethodId: profile.auth_method_id || '',
-    metadataText: stringifyObject(profile.metadata),
+    metadataText: stringifyObject(sanitizeDraftMetadata(profile)),
   }
 }
 
@@ -262,6 +312,10 @@ function showNotice(message: string, tone: NoticeTone) {
   noticeTone.value = tone
 }
 
+function normalizeBackendMessage(message?: string): string {
+  return message?.trim().replace(/\s+/g, ' ').toLowerCase() || ''
+}
+
 function extractErrorMessage(error: unknown, fallback: string): string {
   const apiError = (error as { response?: { data?: { error?: string } } })?.response?.data?.error
   if (typeof apiError === 'string' && apiError.trim()) {
@@ -313,10 +367,25 @@ function summarizeProfile(profile: AgentProfile): string {
   return profile.endpoint_url || profile.card_url || t('settings.externalAgents.remoteAgent')
 }
 
-function profileModeLabel(profile: AgentProfile): string {
-  return profile.builtin
+function builtinModeLabel(profile: AgentProfile): string {
+  return isTemplateOnlyACPProfile(profile) && (profile.command || []).length === 0
     ? t('settings.externalAgents.builtinTemplate')
-    : t('settings.externalAgents.customProfile')
+    : t('settings.externalAgents.builtinProfile')
+}
+
+function profileModeLabel(profile: AgentProfile): string {
+  return profile.builtin ? builtinModeLabel(profile) : t('settings.externalAgents.customProfile')
+}
+
+function profileSidebarMeta(profile: AgentProfile): string {
+  return profile.builtin ? builtinModeLabel(profile) : statusLabel(profile)
+}
+
+function profileSidebarSummary(profile: AgentProfile): string {
+  if (profile.builtin) {
+    return ''
+  }
+  return summarizeProfile(profile)
 }
 
 function translateProfileStatus(status: string): string | null {
@@ -424,6 +493,13 @@ async function deleteCurrent() {
 }
 
 function verifyMessage(result: ProfileVerifyResult): string {
+  const localizedByCode = localizeVerifyMessageCode(result.message_code)
+  if (localizedByCode) {
+    return localizedByCode
+  }
+  if (localizedVerifySuccessMessages.has(normalizeBackendMessage(result.message))) {
+    return t('settings.externalAgents.verifyOk')
+  }
   if (result.message) {
     return result.message
   }
@@ -433,6 +509,13 @@ function verifyMessage(result: ProfileVerifyResult): string {
 }
 
 function healthMessage(result: ProfileHealthResult): string {
+  const localizedByCode = localizeHealthMessageCode(result.message_code)
+  if (localizedByCode) {
+    return localizedByCode
+  }
+  if (localizedHealthSuccessMessages.has(normalizeBackendMessage(result.message))) {
+    return t('settings.externalAgents.healthOk')
+  }
   if (result.message) {
     return result.message
   }
@@ -442,7 +525,7 @@ function healthMessage(result: ProfileHealthResult): string {
 }
 
 async function verifyCurrent() {
-  if (isTemplateOnlySelection.value) {
+  if (templateRuntimeBlocked.value) {
     showNotice(t('settings.externalAgents.acpTemplateActionDisabled'), 'info')
     return
   }
@@ -467,7 +550,7 @@ async function verifyCurrent() {
 }
 
 async function checkCurrentHealth() {
-  if (isTemplateOnlySelection.value) {
+  if (templateRuntimeBlocked.value) {
     showNotice(t('settings.externalAgents.acpTemplateActionDisabled'), 'info')
     return
   }
@@ -557,31 +640,26 @@ onMounted(() => {
             data-testid="external-agents-profile-card"
             @click="selectProfile(profile.id)"
           >
-            <div class="external-agents__profile-header">
-              <div class="external-agents__profile-identity">
-                <div class="external-agents__profile-icon-shell">
-                  <span class="external-agents__profile-icon">{{ profile.protocol.toUpperCase() }}</span>
+            <div class="external-agents__profile-top">
+              <div class="external-agents__profile-main">
+                <div class="external-agents__profile-heading">
+                  <h3 class="external-agents__profile-name">{{ profile.title || profile.name }}</h3>
+                  <span
+                    class="external-agents__badge external-agents__badge--protocol"
+                    :class="`external-agents__badge--${profile.protocol}`"
+                  >
+                    {{ profile.protocol.toUpperCase() }}
+                  </span>
                 </div>
-                <div class="external-agents__profile-copy">
-                  <div class="external-agents__profile-title-row">
-                    <h3 class="external-agents__profile-name">{{ profile.title || profile.name }}</h3>
-                    <span
-                      v-if="profile.builtin"
-                      class="external-agents__badge external-agents__badge--builtin"
-                    >
-                      {{ t('settings.externalAgents.builtinTemplate') }}
-                    </span>
-                    <span
-                      v-else
-                      class="external-agents__badge external-agents__badge--status"
-                      :class="`external-agents__badge--${profileStatusTone(profile)}`"
-                    >
-                      <span class="external-agents__badge-dot"></span>
-                      {{ statusLabel(profile) }}
-                    </span>
-                  </div>
-                  <p class="external-agents__profile-summary">{{ summarizeProfile(profile) }}</p>
-                </div>
+                <p
+                  class="external-agents__profile-meta"
+                  :class="`external-agents__profile-meta--${profileStatusTone(profile)}`"
+                >
+                  {{ profileSidebarMeta(profile) }}
+                </p>
+                <p v-if="profileSidebarSummary(profile)" class="external-agents__profile-summary">
+                  {{ profileSidebarSummary(profile) }}
+                </p>
               </div>
             </div>
           </button>
@@ -619,7 +697,7 @@ onMounted(() => {
               type="button"
               class="external-agents__button external-agents__button--quiet"
               data-testid="external-agents-verify-current"
-              :disabled="verifying || isTemplateOnlySelection"
+              :disabled="verifying || templateRuntimeBlocked"
               @click="verifyCurrent"
             >
               {{ t('settings.externalAgents.verify') }}
@@ -628,7 +706,7 @@ onMounted(() => {
               type="button"
               class="external-agents__button external-agents__button--quiet"
               data-testid="external-agents-health-current"
-              :disabled="checkingHealth || !selectedProfile || isTemplateOnlySelection"
+              :disabled="checkingHealth || !selectedProfile || templateRuntimeBlocked"
               @click="checkCurrentHealth"
             >
               {{ t('settings.externalAgents.health') }}
@@ -647,7 +725,7 @@ onMounted(() => {
 
         <div v-if="isBuiltinSelection" class="external-agents__locked">
           <div>
-            <strong>{{ t('settings.externalAgents.builtinTemplate') }}</strong>
+            <strong>{{ lockedHeadingText }}</strong>
             <p>{{ lockedHelpText }}</p>
           </div>
           <button
@@ -824,7 +902,10 @@ onMounted(() => {
               />
             </label>
 
-            <label class="external-agents__field external-agents__field--full">
+            <label
+              v-if="showMetadataField"
+              class="external-agents__field external-agents__field--full"
+            >
               <span>{{ t('settings.externalAgents.metadata') }}</span>
               <textarea
                 v-model="draft.metadataText"
@@ -914,6 +995,7 @@ onMounted(() => {
 }
 
 .external-agents__editor-meta,
+.external-agents__profile-meta,
 .external-agents__profile-summary,
 .external-agents__locked p,
 .external-agents__empty,
@@ -1086,6 +1168,18 @@ onMounted(() => {
   border-color: rgba(203, 213, 225, 0.98);
 }
 
+.external-agents__profile-card--healthy {
+  border-color: rgba(187, 247, 208, 0.92);
+}
+
+.external-agents__profile-card--warning {
+  border-color: rgba(253, 230, 138, 0.92);
+}
+
+.external-agents__profile-card--error {
+  border-color: rgba(254, 202, 202, 0.94);
+}
+
 .external-agents__profile-card--active {
   background: rgba(241, 245, 249, 0.88);
   border-color: rgba(203, 213, 225, 0.98);
@@ -1103,6 +1197,31 @@ onMounted(() => {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.24rem;
+}
+
+.external-agents__profile-meta {
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.external-agents__profile-meta--healthy {
+  color: rgba(21, 128, 61, 0.94);
+}
+
+.external-agents__profile-meta--warning {
+  color: rgba(180, 83, 9, 0.94);
+}
+
+.external-agents__profile-meta--error {
+  color: rgba(185, 28, 28, 0.94);
+}
+
+.external-agents__profile-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .external-agents__profile-placeholder {
@@ -1302,6 +1421,7 @@ onMounted(() => {
 }
 
 :global(.dark) .external-agents__editor-meta,
+:global(.dark) .external-agents__profile-meta,
 :global(.dark) .external-agents__profile-summary,
 :global(.dark) .external-agents__profile-placeholder,
 :global(.dark) .external-agents__locked p,
@@ -1335,6 +1455,18 @@ onMounted(() => {
 :global(.dark) .external-agents__profile-card--active {
   background: rgba(55, 65, 81, 0.2);
   border-color: rgba(75, 85, 99, 0.88);
+}
+
+:global(.dark) .external-agents__profile-card--healthy {
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+:global(.dark) .external-agents__profile-card--warning {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+:global(.dark) .external-agents__profile-card--error {
+  border-color: rgba(248, 113, 113, 0.42);
 }
 
 :global(.dark) .external-agents__button--primary,
@@ -1385,6 +1517,18 @@ onMounted(() => {
 :global(.dark) .external-agents__badge--error {
   background: rgba(127, 29, 29, 0.45);
   border-color: rgba(248, 113, 113, 0.24);
+  color: rgba(254, 202, 202, 0.94);
+}
+
+:global(.dark) .external-agents__profile-meta--healthy {
+  color: rgba(187, 247, 208, 0.94);
+}
+
+:global(.dark) .external-agents__profile-meta--warning {
+  color: rgba(253, 224, 71, 0.94);
+}
+
+:global(.dark) .external-agents__profile-meta--error {
   color: rgba(254, 202, 202, 0.94);
 }
 </style>

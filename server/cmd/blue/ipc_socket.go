@@ -13,6 +13,13 @@ func candidateIPCSocketPaths() []string {
 	return appendSocketCandidate(nil, filepath.Join(getDataDir(), "blue.sock"), "/tmp/blue.sock")
 }
 
+func candidateAuditIPCSocketPaths() []string {
+	if sockPath := strings.TrimSpace(os.Getenv("BLUE_AUDIT_IPC_SOCKET")); sockPath != "" {
+		return []string{sockPath}
+	}
+	return appendSocketCandidate(nil, filepath.Join(getDataDir(), "session_audit.sock"), "/tmp/session_audit.sock")
+}
+
 func appendSocketCandidate(paths []string, candidates ...string) []string {
 	for _, candidate := range candidates {
 		candidate = strings.TrimSpace(candidate)

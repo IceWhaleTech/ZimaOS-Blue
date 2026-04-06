@@ -62,6 +62,8 @@ func BenchmarkKeywordCueMatcherFindMatches(b *testing.B) {
 }
 
 func BenchmarkClassifyMediaIntentSegment(b *testing.B) {
+	ensureMediaIntentKeywords()
+
 	segment := "Please generate a highly detailed image of a moonlit harbor with watercolor textures, warm reflections, and soft cinematic lighting."
 	segmentMeta := "IR匹配关键词的时候，也需要考虑关键词命中的密度吧，比如在一大段文本内部出现了生成图片可能就不是这个意图。"
 
@@ -101,6 +103,8 @@ func benchmarkMatcherFactories() []struct {
 }
 
 func benchmarkMergedCues() []string {
+	ensureMediaIntentKeywords()
+
 	merged := make([]string, 0, 256)
 	for _, kw := range allLangKeywords {
 		merged = append(merged, kw.actions...)

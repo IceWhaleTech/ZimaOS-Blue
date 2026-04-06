@@ -321,54 +321,111 @@ func IsBrowserActionHighRisk(action, actType, recipe string) bool {
 	}
 }
 
-var browserCheckpointApproveTokens = map[string]struct{}{
-	"k": {}, "kk": {}, "sure": {}, "go": {}, "go ahead": {}, "lets go": {}, "let's go": {},
-	"1": {}, "y": {}, "yes": {}, "ok": {}, "okay": {}, "continue": {}, "proceed": {}, "confirm": {},
-	"好": {}, "好的": {}, "行": {}, "可以": {}, "继续": {}, "继续吧": {}, "继续执行": {}, "确认": {}, "繼續": {}, "確認": {}, "嗯": {}, "嗯嗯": {}, "收到": {}, "明白": {},
-	"oui": {}, "continuer": {}, "confirmer": {},
-	"ja": {}, "weiter": {}, "bestätigen": {}, "bestaetigen": {},
-	"sí": {}, "si": {}, "continuar": {}, "confirmar": {}, "continúa": {}, "continua": {},
-	"sì": {}, "conferma": {},
-	"sim": {},
-	"да":  {}, "продолжить": {}, "подтвердить": {},
-	"はい": {}, "続行": {}, "確認する": {},
-	"네": {}, "예": {}, "계속": {}, "확인": {},
-	"ano": {}, "pokračovat": {}, "pokracovat": {}, "potvrdit": {},
-	"tak": {}, "kontynuuj": {}, "potwierdz": {},
-	"نعم": {},
-	"ναι": {}, "συνέχεια": {}, "συνεχίστε": {}, "συνεχισε": {},
-	"igen": {}, "folytatás": {}, "folytatas": {}, "megerősít": {}, "megerosit": {},
-	"da": {}, "nastavi": {}, "potvrdi": {}, "confirmă": {}, "confirma": {},
-	"fortsett": {}, "bekreft": {},
-	"fortsätt": {}, "fortsaett": {}, "bekräfta": {}, "bekrafta": {},
-	"lean ar aghaidh": {}, "deimhnigh": {},
-	"അതെ": {}, "തുടരുക": {}, "സ്ഥിരീകരിക്കുക": {},
+var browserCheckpointApproveTokenSeeds = []string{
+	"k", "kk", "sure", "go", "go ahead", "lets go", "let's go",
+	"1", "y", "yes", "ok", "okay", "continue", "proceed", "confirm",
+	"好", "好的", "行", "可以", "继续", "继续吧", "继续执行", "确认", "繼續", "確認", "嗯", "嗯嗯", "收到", "明白",
+	"oui", "continuer", "confirmer",
+	"ja", "weiter", "bestätigen", "bestaetigen",
+	"sí", "si", "continuar", "confirmar", "continúa", "continua",
+	"sì", "conferma",
+	"sim",
+	"да", "продолжить", "подтвердить",
+	"はい", "続行", "確認する",
+	"네", "예", "계속", "확인",
+	"ano", "pokračovat", "pokracovat", "potvrdit",
+	"tak", "kontynuuj", "potwierdz",
+	"نعم",
+	"ναι", "συνέχεια", "συνεχίστε", "συνεχισε",
+	"igen", "folytatás", "folytatas", "megerősít", "megerosit",
+	"da", "nastavi", "potvrdi", "confirmă", "confirma",
+	"fortsett", "bekreft",
+	"fortsätt", "fortsaett", "bekräfta", "bekrafta",
+	"lean ar aghaidh", "deimhnigh",
+	"അതെ", "തുടരുക", "സ്ഥിരീകരിക്കുക",
 }
 
-var browserCheckpointDenyTokens = map[string]struct{}{
-	"nah": {}, "nope": {}, "pass": {}, "cancel it": {}, "stop it": {}, "don't": {}, "dont": {},
-	"2": {}, "n": {}, "no": {}, "cancel": {}, "stop": {}, "deny": {}, "reject": {}, "abort": {},
-	"取消": {}, "拒绝": {}, "不要": {}, "停止": {}, "中止": {}, "取消吧": {}, "拒絕": {}, "算了": {}, "不用了": {}, "别继续": {}, "不继续": {},
-	"non": {}, "annuler": {}, "arrêter": {}, "arreter": {}, "refuser": {},
-	"nein": {}, "abbrechen": {}, "stopp": {}, "ablehnen": {},
-	"cancelar": {}, "detener": {}, "rechazar": {},
-	"annulla": {}, "ferma": {}, "rifiuta": {},
-	"não": {}, "nao": {}, "parar": {}, "recusar": {},
-	"нет": {}, "отмена": {}, "стоп": {}, "отклонить": {},
-	"いいえ": {}, "キャンセル": {}, "拒否": {},
-	"아니요": {}, "아니오": {}, "취소": {}, "중지": {}, "거부": {},
-	"ne": {}, "zrušit": {}, "zrusit": {}, "zamítnout": {}, "zamitnout": {},
-	"nie": {}, "anuluj": {}, "odrzuć": {}, "odrzuc": {},
-	"όχι": {}, "ακύρωση": {}, "ακυρωση": {}, "σταμάτα": {}, "σταματα": {},
-	"nem": {}, "mégse": {}, "megse": {}, "elutasít": {}, "elutasit": {},
-	"otkaži": {}, "otkazi": {}, "odbij": {},
-	"nu": {}, "anulează": {}, "anuleaza": {}, "respinge": {},
-	"stans": {}, "afbryd": {},
-	"nei": {}, "avbryt": {},
-	"nej": {},
-	"ná":  {}, "na": {}, "cealaigh": {}, "diúltaigh": {}, "diultaigh": {},
-	"ഇല്ല": {}, "റദ്ദാക്കുക": {}, "നിർത്തുക": {},
+var browserCheckpointDenyTokenSeeds = []string{
+	"nah", "nope", "pass", "cancel it", "stop it", "don't", "dont",
+	"2", "n", "no", "cancel", "stop", "deny", "reject", "abort",
+	"取消", "拒绝", "不要", "停止", "中止", "取消吧", "拒絕", "算了", "不用了", "别继续", "不继续",
+	"non", "annuler", "arrêter", "arreter", "refuser",
+	"nein", "abbrechen", "stopp", "ablehnen",
+	"cancelar", "detener", "rechazar",
+	"annulla", "ferma", "rifiuta",
+	"não", "nao", "parar", "recusar",
+	"нет", "отмена", "стоп", "отклонить",
+	"いいえ", "キャンセル", "拒否",
+	"아니요", "아니오", "취소", "중지", "거부",
+	"ne", "zrušit", "zrusit", "zamítnout", "zamitnout",
+	"nie", "anuluj", "odrzuć", "odrzuc",
+	"όχι", "ακύρωση", "ακυρωση", "σταμάτα", "σταματα",
+	"nem", "mégse", "megse", "elutasít", "elutasit",
+	"otkaži", "otkazi", "odbij",
+	"nu", "anulează", "anuleaza", "respinge",
+	"stans", "afbryd",
+	"nei", "avbryt",
+	"nej",
+	"ná", "na", "cealaigh", "diúltaigh", "diultaigh",
+	"ഇല്ല", "റദ്ദാക്കുക", "നിർത്തുക",
 }
+
+var browserCheckpointApproveTokenExtras = []string{
+	"alright", "carry on", "please continue", "continue please", "please proceed", "do it",
+	"同意", "允许", "允許", "批准",
+	"endavant", "segueix",
+	"pokračuj", "pokracuj",
+	"fortsæt", "fortsaet", "bekræft", "bekraeft",
+	"fortfahren", "bestätige", "bestaetige",
+	"επιβεβαίωσε", "επιβεβαιωσε", "συνέχισε", "συνεχισε",
+	"adelante", "sigue",
+	"continuez", "d'accord", "daccord",
+	"ceadaigh",
+	"folytasd", "rendben",
+	"procedi",
+	"進めて", "承認",
+	"계속해", "승인",
+	"ശരി", "തുടരാം",
+	"doorgaan", "bevestig", "bevestigen", "akkoord",
+	"dalej", "zatwierdź", "zatwierdz",
+	"prosseguir", "seguir",
+	"continuă", "continua",
+	"продолжай", "подтверждаю",
+	"potvrdiť",
+	"kör på", "kor pa",
+}
+
+var browserCheckpointDenyTokenExtras = []string{
+	"not now", "never mind", "please cancel", "cancel please",
+	"不同意", "取消操作", "不要继续", "不要繼續",
+	"atura", "cancel·la",
+	"odmítnout", "odmitnout", "zastav", "zastavit",
+	"annuller",
+	"stoppen",
+	"σταμάτησε", "σταματησε", "απόρριψε", "απορριψε",
+	"rechaza", "cancela", "para",
+	"refuse", "arrête", "arrete",
+	"stad",
+	"prekini",
+	"állj", "allj",
+	"fermati",
+	"やめて", "中止して",
+	"멈춰", "중단",
+	"വേണ്ട",
+	"annuleren", "weiger",
+	"przerwij", "zatrzymaj",
+	"cancele", "rejeite", "pare",
+	"oprește", "opreste",
+	"отмени", "откажи",
+	"odmietni",
+	"stoppa",
+}
+
+var (
+	browserCheckpointApproveTokens map[string]struct{}
+	browserCheckpointDenyTokens    map[string]struct{}
+	browserCheckpointTokensOnce    sync.Once
+)
 
 func addBrowserCheckpointTokens(tokens map[string]struct{}, values ...string) {
 	for _, value := range values {
@@ -380,60 +437,10 @@ func addBrowserCheckpointTokens(tokens map[string]struct{}, values ...string) {
 	}
 }
 
-func init() {
-	addBrowserCheckpointTokens(browserCheckpointApproveTokens,
-		"alright", "carry on", "please continue", "continue please", "please proceed", "do it",
-		"同意", "允许", "允許", "批准",
-		"endavant", "segueix",
-		"pokračuj", "pokracuj",
-		"fortsæt", "fortsaet", "bekræft", "bekraeft",
-		"fortfahren", "bestätige", "bestaetige",
-		"επιβεβαίωσε", "επιβεβαιωσε", "συνέχισε", "συνεχισε",
-		"adelante", "sigue",
-		"continuez", "d'accord", "daccord",
-		"ceadaigh",
-		"folytasd", "rendben",
-		"procedi",
-		"進めて", "承認",
-		"계속해", "승인",
-		"ശരി", "തുടരാം",
-		"doorgaan", "bevestig", "bevestigen", "akkoord",
-		"dalej", "zatwierdź", "zatwierdz",
-		"prosseguir", "seguir",
-		"continuă", "continua",
-		"продолжай", "подтверждаю",
-		"potvrdiť",
-		"kör på", "kor pa",
-	)
-	addBrowserCheckpointTokens(browserCheckpointDenyTokens,
-		"not now", "never mind", "please cancel", "cancel please",
-		"不同意", "取消操作", "不要继续", "不要繼續",
-		"atura", "cancel·la",
-		"odmítnout", "odmitnout", "zastav", "zastavit",
-		"annuller",
-		"stoppen",
-		"σταμάτησε", "σταματησε", "απόρριψε", "απορριψε",
-		"rechaza", "cancela", "para",
-		"refuse", "arrête", "arrete",
-		"stad",
-		"prekini",
-		"állj", "allj",
-		"fermati",
-		"やめて", "中止して",
-		"멈춰", "중단",
-		"വേണ്ട",
-		"annuleren", "weiger",
-		"przerwij", "zatrzymaj",
-		"cancele", "rejeite", "pare",
-		"oprește", "opreste",
-		"отмени", "откажи",
-		"odmietni",
-		"stoppa",
-	)
-}
-
 // ParseBrowserCheckpointDecision parses a free-text IM/voice reply into a decision.
 func ParseBrowserCheckpointDecision(text string) (BrowserCheckpointDecision, bool) {
+	ensureBrowserCheckpointTokenSets()
+
 	normalized := strings.ToLower(strings.TrimSpace(text))
 	normalized = strings.Trim(normalized, " \t\r\n.,!?;:，。！？；：、~～`'\"“”‘’()（）[]【】")
 	normalized = strings.Join(strings.Fields(normalized), " ")
@@ -447,4 +454,17 @@ func ParseBrowserCheckpointDecision(text string) (BrowserCheckpointDecision, boo
 		return BrowserCheckpointDeny, true
 	}
 	return BrowserCheckpointPending, false
+}
+
+func ensureBrowserCheckpointTokenSets() {
+	browserCheckpointTokensOnce.Do(func() {
+		approve := make(map[string]struct{}, len(browserCheckpointApproveTokenSeeds)+len(browserCheckpointApproveTokenExtras))
+		deny := make(map[string]struct{}, len(browserCheckpointDenyTokenSeeds)+len(browserCheckpointDenyTokenExtras))
+		addBrowserCheckpointTokens(approve, browserCheckpointApproveTokenSeeds...)
+		addBrowserCheckpointTokens(approve, browserCheckpointApproveTokenExtras...)
+		addBrowserCheckpointTokens(deny, browserCheckpointDenyTokenSeeds...)
+		addBrowserCheckpointTokens(deny, browserCheckpointDenyTokenExtras...)
+		browserCheckpointApproveTokens = approve
+		browserCheckpointDenyTokens = deny
+	})
 }

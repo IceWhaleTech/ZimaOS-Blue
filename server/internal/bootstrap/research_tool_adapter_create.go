@@ -12,7 +12,7 @@ func (a *deepResearchToolAdapter) CreateJob(ctx context.Context, req tools.Resea
 		return nil, deepresearch.ErrJobNotFound
 	}
 	if a.manager != nil {
-		job, _, err := submitResearchHarnessJob(ctx, a.manager, a.service, toDeepResearchCreateJobRequest(req), a.defaultWorkspaceRoot)
+		job, _, err := submitCanonicalResearchHarnessJob(ctx, a.manager, a.service, req, a.defaultWorkspaceRoot)
 		if err != nil {
 			return nil, err
 		}
@@ -26,11 +26,15 @@ func (a *deepResearchToolAdapter) CreateJob(ctx context.Context, req tools.Resea
 }
 
 func toDeepResearchCreateJobRequest(req tools.ResearchCreateJobRequest) deepresearch.CreateJobRequest {
+	mode := req.ResearchDepth
+	if mode == "" {
+		mode = req.Mode
+	}
 	return deepresearch.CreateJobRequest{
 		UserID:         req.UserID,
 		ConversationID: req.ConversationID,
 		Query:          req.Query,
-		Mode:           deepresearch.Mode(req.Mode),
+		Mode:           deepresearch.Mode(mode),
 		RouteMode:      deepresearch.RouteMode(req.RouteMode),
 		Lang:           req.Lang,
 		Budget:         toDeepResearchBudget(req.Budget),

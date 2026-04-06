@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -123,6 +124,37 @@ func TestParseBrowserCheckpointDecision(t *testing.T) {
 
 	if decision, ok := ParseBrowserCheckpointDecision("maybe later"); ok || decision != BrowserCheckpointPending {
 		t.Fatalf("expected pending/false for unrecognized input, got decision=%s ok=%v", decision, ok)
+	}
+}
+
+func TestParseBrowserCheckpointDecision_InitializesTokenSetsOnDemand(t *testing.T) {
+	originalApprove := browserCheckpointApproveTokens
+	originalDeny := browserCheckpointDenyTokens
+	browserCheckpointApproveTokens = nil
+	browserCheckpointDenyTokens = nil
+	browserCheckpointTokensOnce = sync.Once{}
+	t.Cleanup(func() {
+		browserCheckpointApproveTokens = originalApprove
+		browserCheckpointDenyTokens = originalDeny
+		browserCheckpointTokensOnce = sync.Once{}
+	})
+
+	if browserCheckpointApproveTokens != nil {
+		t.Fatal("expected approve token set to start nil")
+	}
+	if browserCheckpointDenyTokens != nil {
+		t.Fatal("expected deny token set to start nil")
+	}
+
+	decision, ok := ParseBrowserCheckpointDecision("yes")
+	if !ok || decision != BrowserCheckpointApprove {
+		t.Fatalf("expected approve after lazy init, got decision=%s ok=%v", decision, ok)
+	}
+	if len(browserCheckpointApproveTokens) == 0 {
+		t.Fatal("expected approve token set to initialize on first parse")
+	}
+	if len(browserCheckpointDenyTokens) == 0 {
+		t.Fatal("expected deny token set to initialize on first parse")
 	}
 }
 

@@ -1,7 +1,7 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import ChatView from '@/views/ChatView.vue'
 import { i18n, setLocale } from '@/i18n'
 
@@ -21,7 +21,6 @@ const mocks = vi.hoisted(() => ({
       updated_at: '2026-03-08T00:00:00.000Z',
     },
     currentConversationId: 'conv-1',
-    deepResearchEnabled: false,
     error: null,
     hasMoreMessages: false,
     isMultiSelectMode: false,
@@ -60,7 +59,6 @@ const mocks = vi.hoisted(() => ({
     loadMoreMessages: vi.fn(),
     searchConversations: vi.fn(),
     setModelPreference: vi.fn(),
-    setDeepResearchEnabled: vi.fn(),
     createConversation: vi.fn(),
     deleteConversation: vi.fn(),
     pinConversation: vi.fn(),
@@ -161,13 +159,6 @@ const mocks = vi.hoisted(() => ({
   },
   cardActionSubmit: vi.fn(),
   speechGetStatus: vi.fn(),
-  agentApi: {
-    listTasks: vi.fn(),
-    cancelTask: vi.fn(),
-    deleteTask: vi.fn(),
-    sendMessage: vi.fn(),
-    submitAnswers: vi.fn(),
-  },
   authFetch: vi.fn(),
   onSSEEvent: vi.fn(),
   offSSEEvent: vi.fn(),
@@ -225,13 +216,6 @@ vi.mock('@/stores/notification', () => ({
 vi.mock('@/api/chat', () => ({
   cardActionApi: {
     submit: (...args: unknown[]) => mocks.cardActionSubmit(...args),
-  },
-  agentApi: {
-    listTasks: (...args: unknown[]) => mocks.agentApi.listTasks(...args),
-    cancelTask: (...args: unknown[]) => mocks.agentApi.cancelTask(...args),
-    deleteTask: (...args: unknown[]) => mocks.agentApi.deleteTask(...args),
-    sendMessage: (...args: unknown[]) => mocks.agentApi.sendMessage(...args),
-    submitAnswers: (...args: unknown[]) => mocks.agentApi.submitAnswers(...args),
   },
 }))
 
@@ -383,7 +367,7 @@ vi.mock('@/components/DeepResearchTaskDock.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'DeepResearchTaskDock',
     setup() {
-      return { store: mocks.deepResearchJobsStore, expanded: false }
+      return { store: mocks.deepResearchJobsStore, expanded: ref(false) }
     },
     template: `
       <section
@@ -577,6 +561,7 @@ async function mountChatViewWithMessages(
     content: string
     role?: 'assistant' | 'user'
     todo_card_id?: string
+    extra?: Record<string, unknown>
   }>
 ) {
   mocks.chatStore.messages = messages.map((message) => ({
@@ -586,6 +571,7 @@ async function mountChatViewWithMessages(
     content: message.content,
     created_at: '2026-03-08T00:00:00.000Z',
     ...(message.todo_card_id ? { todo_card_id: message.todo_card_id } : {}),
+    ...(message.extra || {}),
   }))
 
   const router = createRouter({
@@ -594,7 +580,7 @@ async function mountChatViewWithMessages(
       { path: '/chat', component: { template: '<div />' } },
       { path: '/settings', component: { template: '<div />' } },
       { path: '/security', component: { template: '<div />' } },
-      { path: '/automation/harness/:id', component: { template: '<div />' } },
+      { path: '/operations/harness/:id', component: { template: '<div />' } },
     ],
   })
   router.push('/chat')
@@ -613,8 +599,11 @@ async function mountChatViewWithMessages(
   await flushPromises()
   await vi.dynamicImportSettled()
   await flushPromises()
+  mountedWrappers.push(wrapper)
   return wrapper
 }
+
+const mountedWrappers: Array<{ unmount: () => void }> = []
 
 async function mountChatView(content: string) {
   return mountChatViewWithMessages([{ id: 'msg-1', content }])
@@ -638,6 +627,18 @@ describe('ChatView page-level card actions', () => {
   beforeAll(async () => {
     await setLocale('zh-CN')
     await setLocale('en-US')
+  })
+
+  afterEach(() => {
+    while (mountedWrappers.length > 0) {
+      const wrapper = mountedWrappers.pop()
+      try {
+        wrapper?.unmount()
+      } catch {
+        // ignore duplicate unmounts from tests that already cleaned up explicitly
+      }
+    }
+    vi.useRealTimers()
   })
 
   beforeEach(() => {
@@ -664,7 +665,6 @@ describe('ChatView page-level card actions', () => {
       updated_at: '2026-03-08T00:00:00.000Z',
     }
     mocks.chatStore.currentConversationId = 'conv-1'
-    mocks.chatStore.deepResearchEnabled = false
     mocks.chatStore.error = null
     mocks.chatStore.hasMoreMessages = false
     mocks.chatStore.isMultiSelectMode = false
@@ -702,7 +702,6 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.loadMoreMessages.mockReset()
     mocks.chatStore.searchConversations.mockReset()
     mocks.chatStore.setModelPreference.mockReset()
-    mocks.chatStore.setDeepResearchEnabled.mockReset()
     mocks.chatStore.createConversation.mockReset()
     mocks.chatStore.deleteConversation.mockReset()
     mocks.chatStore.pinConversation.mockReset()
@@ -789,12 +788,6 @@ describe('ChatView page-level card actions', () => {
 
     mocks.cardActionSubmit.mockReset()
     mocks.speechGetStatus.mockReset().mockResolvedValue({ data: {} })
-
-    mocks.agentApi.listTasks.mockReset().mockResolvedValue({ data: [] })
-    mocks.agentApi.cancelTask.mockReset().mockResolvedValue({})
-    mocks.agentApi.deleteTask.mockReset().mockResolvedValue({})
-    mocks.agentApi.sendMessage.mockReset().mockResolvedValue({})
-    mocks.agentApi.submitAnswers.mockReset().mockResolvedValue({})
 
     mocks.authFetch.mockReset().mockResolvedValue({})
     mocks.onSSEEvent.mockReset()
@@ -1018,6 +1011,67 @@ describe('ChatView page-level card actions', () => {
         id: 'msg-checklist',
         content: '- [x] 收集信息\n- [ ] 输出最终总结',
         todo_card_id: 'todo-checklist-msg-checklist',
+      },
+    ])
+
+    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(false)
+  })
+
+  it('keeps the active todo panel visible while a completed checklist is still in-flight', async () => {
+    mocks.chatStore.streaming = true
+    mocks.chatStore.streamUIState = { phase: 'streaming', label: 'Streaming' }
+    mocks.chatStore.recentTodoCompletion = {
+      messageId: 'msg-checklist',
+      todoCardId: 'todo-checklist-msg-checklist',
+    }
+
+    const wrapper = await mountChatViewWithMessages([
+      {
+        id: 'msg-checklist',
+        content: '- [x] 收集信息\n- [x] 输出最终总结',
+        todo_card_id: 'todo-checklist-msg-checklist',
+      },
+    ])
+
+    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('2 out of 2 tasks completed')
+  })
+
+  it('keeps the active todo panel visible while a completion summary is only streaming text', async () => {
+    mocks.chatStore.streaming = true
+    mocks.chatStore.streamUIState = { phase: 'streaming', label: 'Streaming' }
+
+    const wrapper = await mountChatViewWithMessages([
+      {
+        id: 'msg-checklist',
+        content: '- [x] 收集信息\n- [ ] 输出最终总结',
+        todo_card_id: 'todo-checklist-msg-checklist',
+      },
+      {
+        id: 'streaming-summary',
+        content: '任务已完成。\n完成内容：已输出最终结论。\n使用方法：直接查看上面的结果。',
+      },
+    ])
+
+    expect(wrapper.find('[data-testid="active-todo-panel"]').exists()).toBe(true)
+  })
+
+  it('hides the active todo panel during streaming once the checklist message recorded a successful file write', async () => {
+    mocks.chatStore.streaming = true
+    mocks.chatStore.streamUIState = { phase: 'executing', label: 'Working' }
+    mocks.chatStore.recentTodoCompletion = {
+      messageId: 'msg-checklist',
+      todoCardId: 'todo-checklist-msg-checklist',
+    }
+
+    const wrapper = await mountChatViewWithMessages([
+      {
+        id: 'msg-checklist',
+        content: '- [x] 收集信息\n- [x] 将完整报告写入 reports/final.md',
+        todo_card_id: 'todo-checklist-msg-checklist',
+        extra: {
+          local_process_tool_results: [{ name: 'write_commit', icon: '✓' }],
+        },
       },
     ])
 
@@ -1460,7 +1514,7 @@ describe('ChatView page-level card actions', () => {
       stage: 'partial',
       progress: 100,
       actions: { items: [] },
-      detail_href: '/automation/harness/group-1',
+      detail_href: '/operations/harness/group-1',
       updated_at: '2026-03-20T12:00:00.000Z',
     }
 
@@ -1473,7 +1527,7 @@ describe('ChatView page-level card actions', () => {
     await wrapper.get('.task-projection-card-navigate-stub').trigger('click')
     await flushPromises()
 
-    expect(wrapper.vm.$route.path).toBe('/automation/harness/group-1')
+    expect(wrapper.vm.$route.path).toBe('/operations/harness/group-1')
   })
 
   it('submits use_browser from a web-fetch card rendered inside ChatView', async () => {

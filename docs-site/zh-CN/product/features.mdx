@@ -1,13 +1,15 @@
 ---
 title: "产品能力"
-summary: "基于当前 README 与仓库实现整理的首批能力概览。"
+summary: "按当前运行时与 Web 应用能力整理的最新 Blue 产品能力概览。"
 ---
 
 # 产品能力
 
 ![Feature overview](/assets/features.png)
 
-## 本地优先
+Blue 现在已经不只是“聊天 + 模型接入”，而是覆盖运行时配置、Provider 路由、自动化评测、扩展、语音与运维治理的一整套产品面。
+
+## 本地优先运行时
 
 Blue 的定位是自托管、本地优先、可审计的 AI 代理运行时。
 
@@ -21,19 +23,58 @@ Blue 的定位是自托管、本地优先、可审计的 AI 代理运行时。
 - 聊天与消息渠道
 - 语音相关能力
 - 定时任务、Webhook 与自动化入口
+- 表单填充与结构化浏览器辅助能力
+- 外部代理协同入口
+- 聊天里统一的 `Research` 入口，可在 deep research、analyze 与 UI review 之间自动路由，同时保留不同的最终结果呈现
 
-## 提供方与模型灵活性
+## 统一的 Research 工作流
+
+Blue 现在把研究相关能力统一成一个 family，而不是三个互相独立的对外入口。
+
+- `research` 是统一的公开入口
+- `mode=auto` 可以在 `deep_research`、`analyze`、`ui_review` 之间自动选择
+- 内部运行时共享一个 research-family job 模型
+- 最终面向用户的结果仍然按 mode 分开呈现
+
+继续阅读 [Research 工作流](/zh-CN/guides/research-workflows) 了解路由线索、各 mode 的输入结构和对外接口约定。
+
+## 提供方与模型控制面
 
 ![Provider overview](/assets/providers.png)
 
 - 默认提供方选择
-- 多提供方路由
-- 故障转移与健康检查
-- 模型家族匹配与回退
+- 多提供方分类与路由
+- 自定义 Provider、API 格式与本地/云位置元数据
+- 故障转移、provider racing 与健康检查
+- 模型家族匹配、可用模型限制与目录刷新
+
+继续阅读 [设置与 Provider Pool](/zh-CN/guides/settings-provider-pool) 与 [Providers 与 Models](/zh-CN/guides/providers-models)。
+
+## 自动化、Harness 与 Evolution
+
+- 自动化主入口、定时任务、工作流、Webhook 与浏览器辅助能力
+- Harness 的 dataset、eval spec、baseline、report、artifact、trace
+- Evolution 的 skill revision、promote、rollback、optimize 与指令提案审阅
+
+继续阅读 [自动化](/zh-CN/guides/automation) 与 [Harness 与 Evolution](/zh-CN/guides/harness-evolution)。
+
+## 扩展与技能生态
+
+- 本地技能管理
+- 远程 skill store
+- 工具目录
+- 安装前安全徽章、安装类型、artifact 类型与漏洞风险信号
+
+继续阅读 [扩展中心](/zh-CN/guides/extensions)。
 
 ## 安全与治理
 
 - 沙箱执行
 - Prompt 注入防护
 - 会话审计
+- Security scan、Prompt firewall、Blocked IP 管理
+- Billing 可观测性
+- 多租户与工作区治理
 - RBAC 与 WebAuthn
+
+继续阅读 [管理与运维](/zh-CN/guides/admin-operations)。

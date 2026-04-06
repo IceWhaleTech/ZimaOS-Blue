@@ -231,6 +231,16 @@ type pendingTodoNoProviderAfterToolProxyHandler struct {
 	thirdRequestToolArgsJSON string
 }
 
+type delayedScriptedStreamProvider struct {
+	name      string
+	responses []llm.ChatResponse
+	delays    []time.Duration
+
+	mu        sync.Mutex
+	callCount int
+	requests  []llm.ChatRequest
+}
+
 // actionPledgeThenToolCallProxyHandler simulates:
 // 1) first round returns an action-pledge placeholder (toolless)
 // 2) auto-continue round emits a structured tool_call
@@ -301,6 +311,93 @@ func hasMissingNextStepsNudge(s string) bool {
 		strings.Contains(s, "If you'd like, I can help with") ||
 		strings.Contains(s, "If you'd like, I can also help with") ||
 		strings.Contains(s, "WITHOUT calling tools")
+}
+
+func (p *delayedScriptedStreamProvider) Name() string {
+	if strings.TrimSpace(p.name) != "" {
+		return p.name
+	}
+	return "delayed-scripted-stream"
+}
+
+func (p *delayedScriptedStreamProvider) Models() []string {
+	return []string{"gpt-5.3-codex-spark", "gpt-5.3-codex"}
+}
+
+func (p *delayedScriptedStreamProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	p.mu.Lock()
+	p.callCount++
+	p.requests = append(p.requests, cloneChatRequestForTest(req))
+	rawIdx := p.callCount - 1
+	idx := rawIdx
+	if idx >= len(p.responses) {
+		idx = len(p.responses) - 1
+	}
+	var delay time.Duration
+	if rawIdx >= 0 && rawIdx < len(p.delays) {
+		delay = p.delays[rawIdx]
+	}
+	p.mu.Unlock()
+
+	if delay > 0 {
+		timer := time.NewTimer(delay)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+	}
+
+	if idx < 0 {
+		return &llm.ChatResponse{
+			ID:      "delayed-scripted-default",
+			Model:   req.Model,
+			Message: llm.Message{Role: llm.RoleAssistant, Content: "ok"},
+		}, nil
+	}
+	resp := p.responses[idx]
+	return &resp, nil
+}
+
+func (p *delayedScriptedStreamProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 1)
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		close(ch)
+		return nil, err
+	}
+	ch <- llm.StreamChunk{
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (p *delayedScriptedStreamProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		return err
+	}
+	return callback(llm.StreamChunk{
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
+	})
 }
 
 // secondTurnTimeoutProxyHandler simulates a provider that succeeds on the first
@@ -4722,6 +4819,117 @@ func TestStreamMessage_AutoContinue_RetriesErrorAfterToolRound(t *testing.T) {
 	last := fourthReq.Messages[len(fourthReq.Messages)-1]
 	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "The tools above have been executed successfully") {
 		t.Fatalf("expected post-tool continuation nudge in fourth request, got role=%s content=%q", last.Role, last.Content)
+	}
+}
+
+func TestStreamMessage_EmitsPostToolTimingEventBeforeNextToolAction(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test post-tool timing event")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{Name: "web_query"},
+		result: map[string]interface{}{
+			"query":   "AAPL stock price today",
+			"results": []map[string]interface{}{{"title": "AAPL quote", "url": "https://example.com/aapl"}},
+		},
+	})
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{Name: "write"},
+		result: map[string]interface{}{
+			"success": true,
+			"path":    "stock_report.txt",
+		},
+	})
+
+	registry := llm.NewProviderRegistry()
+	scripted := &delayedScriptedStreamProvider{
+		name: "scripted-post-tool-timing",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "post-tool-timing-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_post_tool_search_1",
+						Name:      "web_query",
+						Arguments: `{"query":"AAPL stock price today"}`,
+					}},
+				},
+			},
+			{
+				ID:    "post-tool-timing-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_post_tool_write_1",
+						Name:      "write",
+						Arguments: `{"path":"stock_report.txt","content":"AAPL summary"}`,
+					}},
+				},
+			},
+			{
+				ID:      "post-tool-timing-round-3",
+				Model:   "gpt-5.3-codex-spark",
+				Message: llm.Message{Role: llm.RoleAssistant, Content: "已完成整理并写入 stock_report.txt。"},
+			},
+		},
+		delays: []time.Duration{0, 15 * time.Millisecond, 0},
+	}
+	registry.Register(scripted)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Research the current stock price of Apple (AAPL) and save it to stock_report.txt with the price, date, and a brief market summary.","provider":"scripted-post-tool-timing","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	events := extractJSONSSEEvents(t, rec.Body.String())
+	var timingEvent map[string]interface{}
+	for _, event := range events {
+		if action, _ := event["post_tool_next_action"].(string); action == "tool_call" {
+			timingEvent = event
+			break
+		}
+	}
+	if timingEvent == nil {
+		t.Fatalf("expected post-tool timing event before next tool action, events=%v", events)
+	}
+	if got := timingEvent["post_tool_source_round"]; got != float64(0) {
+		t.Fatalf("post_tool_source_round = %v, want 0", got)
+	}
+	if got := timingEvent["post_tool_gap_ms"]; got == nil {
+		t.Fatalf("expected post_tool_gap_ms in event, got=%v", timingEvent)
+	} else if gap, ok := got.(float64); !ok || gap <= 0 {
+		t.Fatalf("post_tool_gap_ms = %v, want > 0", got)
+	}
+	nextTools, ok := timingEvent["post_tool_next_tool_names"].([]interface{})
+	if !ok || len(nextTools) != 1 || nextTools[0] != "write" {
+		t.Fatalf("post_tool_next_tool_names = %#v, want [write]", timingEvent["post_tool_next_tool_names"])
+	}
+	sourceTools, ok := timingEvent["post_tool_source_tool_names"].([]interface{})
+	if !ok || len(sourceTools) != 1 || sourceTools[0] != "web_query" {
+		t.Fatalf("post_tool_source_tool_names = %#v, want [web_query]", timingEvent["post_tool_source_tool_names"])
 	}
 }
 

@@ -6,6 +6,7 @@
  */
 
 import { shallowRef, type Component, type ShallowRef, markRaw } from 'vue'
+import { loadMermaidCardComponent } from './mermaidCardLoader'
 
 // ============================================================================
 // Types
@@ -100,7 +101,7 @@ class ComponentPool {
       diff: () => import('@/components/typeless/CardDiff.vue'),
       terminal: () => import('@/components/typeless/CardTerminal.vue'),
       video: () => import('@/components/typeless/CardVideo.vue'),
-      mermaid: () => import('@/components/typeless/CardMermaid.vue'),
+      mermaid: loadMermaidCardComponent,
       search: () => import('@/components/typeless/CardSearch.vue'),
       'deep-research': () => import('@/components/typeless/CardDeepResearch.vue'),
       'deep-research-timeline': () => import('@/components/typeless/CardDeepResearchTimeline.vue'),
@@ -109,6 +110,7 @@ class ComponentPool {
       'ui-review': () => import('@/components/typeless/CardUIReview.vue'),
       'ui-review-progress': () => import('@/components/typeless/CardUIReviewProgress.vue'),
       'media-generate': () => import('@/components/typeless/CardMediaGenerate.vue'),
+      analyze: () => import('@/components/typeless/CardAnalyze.vue'),
       'analyze-progress': () => import('@/components/typeless/CardAnalyzeProgress.vue'),
       'browser-progress': () => import('@/components/typeless/CardBrowserProgress.vue'),
       'web-fetch': () => import('@/components/typeless/CardWebFetch.vue'),

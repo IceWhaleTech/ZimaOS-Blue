@@ -153,8 +153,6 @@ func runtimeURLs() []string {
 
 func runtimeFilename() string {
 	switch runtime.GOOS + "/" + runtime.GOARCH {
-	case "darwin/arm64":
-		return "onnxruntime-osx-arm64-" + ortVersion + ".tgz"
 	case "linux/amd64":
 		return "onnxruntime-linux-x64-" + ortVersion + ".tgz"
 	case "linux/arm64":

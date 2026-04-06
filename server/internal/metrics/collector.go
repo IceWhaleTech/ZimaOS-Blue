@@ -11,16 +11,24 @@ import (
 
 // SystemMetrics represents a snapshot of system metrics at a point in time
 type SystemMetrics struct {
-	Timestamp       time.Time `json:"timestamp"`
-	CPUPercent      float64   `json:"cpu_percent"`
-	MemoryUsedBytes uint64    `json:"memory_used_bytes"`
-	MemoryRSSBytes  uint64    `json:"memory_rss_bytes"`
-	MemoryTotalBytes uint64   `json:"memory_total_bytes"`
-	Goroutines      int       `json:"goroutines"`
-	GCPauseNs       uint64    `json:"gc_pause_ns"`
-	HeapAllocBytes  uint64    `json:"heap_alloc_bytes"`
-	HeapSysBytes    uint64    `json:"heap_sys_bytes"`
-	StackInuseBytes uint64    `json:"stack_inuse_bytes"`
+	Timestamp                     time.Time `json:"timestamp"`
+	CPUPercent                    float64   `json:"cpu_percent"`
+	MemoryUsedBytes               uint64    `json:"memory_used_bytes"`
+	MemoryRSSBytes                uint64    `json:"memory_rss_bytes"`
+	MemoryTotalBytes              uint64    `json:"memory_total_bytes"`
+	Goroutines                    int       `json:"goroutines"`
+	GCPauseNs                     uint64    `json:"gc_pause_ns"`
+	HeapAllocBytes                uint64    `json:"heap_alloc_bytes"`
+	HeapSysBytes                  uint64    `json:"heap_sys_bytes"`
+	StackInuseBytes               uint64    `json:"stack_inuse_bytes"`
+	ConversationCacheEntries      int       `json:"conversation_cache_entries,omitempty"`
+	ConversationCacheBytes        uint64    `json:"conversation_cache_bytes,omitempty"`
+	WarmupCacheEntries            int       `json:"warmup_cache_entries,omitempty"`
+	WarmupCacheBytes              uint64    `json:"warmup_cache_bytes,omitempty"`
+	PromptToolSurfaceRefs         int       `json:"prompt_tool_surface_refs,omitempty"`
+	PromptToolSurfaceSharedEntries int      `json:"prompt_tool_surface_shared_entries,omitempty"`
+	PromptToolSurfaceSharedBytes  uint64    `json:"prompt_tool_surface_shared_bytes,omitempty"`
+	ProviderAffinityEntries       int       `json:"provider_affinity_entries,omitempty"`
 }
 
 // MetricsHistory contains historical metrics data

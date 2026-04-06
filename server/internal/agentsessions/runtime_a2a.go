@@ -49,6 +49,7 @@ func (r *A2ARuntime) VerifyProfile(ctx context.Context, profile AgentProfile) (*
 	}
 	return &ProfileVerifyResult{
 		OK:           true,
+		MessageCode:  ProfileVerifyMessageCodeProfileVerified,
 		Message:      "A2A profile verified",
 		Capabilities: []string{"message/send", "message/stream", "tasks/cancel"},
 		Details: map[string]interface{}{
@@ -186,9 +187,10 @@ func (r *A2ARuntime) Health(ctx context.Context, profile AgentProfile) (*Profile
 		return &ProfileHealthResult{Healthy: false, Message: err.Error()}, nil
 	}
 	return &ProfileHealthResult{
-		Healthy: true,
-		Message: "A2A runtime is healthy",
-		Details: map[string]interface{}{"endpoint": endpoint},
+		Healthy:     true,
+		MessageCode: ProfileHealthMessageCodeRuntimeHealthy,
+		Message:     "A2A runtime is healthy",
+		Details:     map[string]interface{}{"endpoint": endpoint},
 	}, nil
 }
 

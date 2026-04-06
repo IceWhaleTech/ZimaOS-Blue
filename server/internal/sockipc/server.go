@@ -12,13 +12,18 @@ import (
 // Handler processes an incoming IPC request and returns a response.
 type Handler func(ctx context.Context, req *Request) *Response
 
+// StreamHandler processes one IPC request and can write multiple length-prefixed
+// responses to the same connection before returning.
+type StreamHandler func(ctx context.Context, req *Request, conn net.Conn) error
+
 // Server listens on a Unix domain socket (or Windows named pipe) and dispatches
 // incoming JSON messages to registered command handlers.
 type Server struct {
-	path     string
-	handlers map[string]Handler
-	fallback Handler // called when no handler matches
-	log      *zap.Logger
+	path           string
+	handlers       map[string]Handler
+	streamHandlers map[string]StreamHandler
+	fallback       Handler // called when no handler matches
+	log            *zap.Logger
 
 	mu       sync.Mutex
 	listener net.Listener
@@ -33,16 +38,22 @@ func NewServer(path string, log *zap.Logger) *Server {
 		log = zap.NewNop()
 	}
 	return &Server{
-		path:     path,
-		handlers: make(map[string]Handler),
-		conns:    make(map[net.Conn]struct{}),
-		log:      log,
+		path:           path,
+		handlers:       make(map[string]Handler),
+		streamHandlers: make(map[string]StreamHandler),
+		conns:          make(map[net.Conn]struct{}),
+		log:            log,
 	}
 }
 
 // Handle registers a handler for the given command name.
 func (s *Server) Handle(cmd string, h Handler) {
 	s.handlers[cmd] = h
+}
+
+// HandleStream registers a streaming handler for the given command name.
+func (s *Server) HandleStream(cmd string, h StreamHandler) {
+	s.streamHandlers[cmd] = h
 }
 
 // HandleFallback sets a fallback handler for unmatched commands.
@@ -156,6 +167,20 @@ func (s *Server) handleConn(conn net.Conn) {
 		if req.Cmd == "" {
 			WriteJSON(conn, ErrResponse("missing cmd"))
 			continue
+		}
+
+		if stream, ok := s.streamHandlers[req.Cmd]; ok {
+			ctx, cancel := context.WithCancel(context.Background())
+			go func() {
+				var one [1]byte
+				_, _ = conn.Read(one[:])
+				cancel()
+			}()
+			if err := stream(ctx, req, conn); err != nil {
+				s.log.Warn("sockipc stream handler error", zap.String("cmd", req.Cmd), zap.Error(err))
+			}
+			cancel()
+			return
 		}
 
 		h, ok := s.handlers[req.Cmd]

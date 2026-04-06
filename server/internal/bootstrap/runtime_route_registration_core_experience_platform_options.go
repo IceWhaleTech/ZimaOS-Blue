@@ -2,11 +2,13 @@ package bootstrap
 
 func newRouteRuntimeExperiencePlatformOptions(state *routeRegistrationState) routeRuntimeContractPlatformSurfaceOptions {
 	return routeRuntimeContractPlatformSurfaceOptions{
+		e:                     state.e,
 		v1:                    state.v1,
 		protected:             state.protected,
 		authPageV1Group:       state.authSurface.authPageV1Group,
 		requirePagePermission: state.authSurface.requirePagePermission,
 		authMiddleware:        state.authSurface.authMiddleware,
+		appConfig:             state.deps.Config,
 		serverConfig:          state.cfg,
 		logger:                state.logger,
 		billingPool:           state.deps.ProviderPool,
@@ -14,8 +16,6 @@ func newRouteRuntimeExperiencePlatformOptions(state *routeRegistrationState) rou
 		metricsWriter:         state.deps.MetricsWriter,
 		metricsTarget:         state.deps.ChatHandler,
 		connectionManager:     state.connManager,
-		pluginRegistry:        state.deps.PluginRegistry,
-		pluginStore:           state.deps.PluginStore,
 		toolRegistry:          state.services.ToolRegistry,
 	}
 }

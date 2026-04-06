@@ -1,0 +1,60 @@
+---
+title: "语音与表单填充"
+summary: "理解 Blue 当前的语音交互能力与结构化浏览器表单辅助能力。"
+---
+
+# 语音与表单填充
+
+Blue 现在已经不局限于文字聊天，还包含语音交互和结构化表单填充能力。
+
+## 语音能力
+
+当前语音链路包括：
+
+- 语音转文字
+- 文字转语音
+- voice session 生命周期管理
+- voice 列表与语言选择
+- 音频流式响应
+- 基于 WebSocket 的状态机交互
+
+在运行时里，session 会在 `idle`、`listening`、`processing`、`speaking` 等状态间切换。
+
+## 当前可配置项
+
+- 语言
+- Voice 选择
+- Wake word 与开关
+- Continuous listening
+- Auto-play response
+
+## 表单填充能力
+
+表单填充当前支持：
+
+- 可复用模板
+- 字段 pattern 库
+- 站点级 mapping
+- 带置信度的字段检测
+- 基于 attributes、labels、patterns 或可选 LLM fallback 的识别来源
+
+## 学习与控制
+
+当前配置还支持：
+
+- widget 行为
+- 置信度阈值
+- 扫描间隔
+- learning 开关与同步
+- 站点映射数量限制
+
+## 什么时候使用
+
+- 想做免手操作或对话式交互时用语音
+- 想在浏览器流程里重复填写结构化信息时用表单填充
+
+## 相关页面
+
+- [设置与 Provider Pool](/zh-CN/guides/settings-provider-pool)
+- [自动化](/zh-CN/guides/automation)
+- [管理与运维](/zh-CN/guides/admin-operations)

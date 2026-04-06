@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { mergeHarnessLocale } from '@/i18n/harnessLocaleAdditions'
+import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 import type { LocaleKey } from '@/i18n/locale-catalog'
 
 import {
   localizeDeepResearchAction,
   localizeDeepResearchGap,
+  localizeDeepResearchReportStyle,
   localizeDeepResearchSegment,
+  localizeDeepResearchStopReason,
+  localizeDeepResearchStructuredValue,
   localizeDeepResearchStatus,
+  localizeDeepResearchSummary,
+  localizeDeepResearchTimeWindow,
   localizeResearchProgressLabel,
   localizeResearchRunningElsewhereLabel,
   localizeResearchRunningTasksLabel,
@@ -79,6 +84,29 @@ describe('Deep research locale coverage', () => {
       expect(localizeDeepResearchSegment('[completed]', translate), `${file} segment []`).toBe(
         stageCompleted
       )
+    }
+  })
+
+  it('keeps info and warning status badges localized for all 27 locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    for (const [modulePath, mod] of entries) {
+      const file = fileNameFromModulePath(modulePath)
+      const runtimeMessages = resolveRuntimeMessages(
+        file.replace(/\.ts$/, '') as LocaleKey,
+        mod.default
+      )
+      const translate = translateFor(runtimeMessages)
+      const warning = getPathValue(runtimeMessages, 'system.warning')
+      const info = getPathValue(runtimeMessages, 'system.info')
+
+      expect(typeof warning, `${file} missing system.warning`).toBe('string')
+      expect(typeof info, `${file} missing system.info`).toBe('string')
+      expect(localizeDeepResearchStatus('warning', translate), `${file} warning status`).toBe(
+        warning
+      )
+      expect(localizeDeepResearchStatus('info', translate), `${file} info status`).toBe(info)
     }
   })
 
@@ -307,12 +335,126 @@ describe('Deep research locale coverage', () => {
       const file = fileNameFromModulePath(modulePath)
       const locale = file.replace(/\.ts$/, '')
       const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+      const runtimeTranslate = translateFor(runtimeMessages)
 
       for (const path of requiredPaths) {
         const value = getPathValue(runtimeMessages, path)
         expect(typeof value, `${file} missing runtime ${path}`).toBe('string')
         expect(String(value).trim().length, `${file} empty runtime ${path}`).toBeGreaterThan(0)
       }
+
+      const overviewLabel = getPathValue(runtimeMessages, 'harness.group.overview')
+      expect(typeof overviewLabel, `${file} missing runtime harness.group.overview`).toBe('string')
+      expect(
+        localizeDeepResearchStructuredValue('Overview', runtimeTranslate),
+        `${file} overview structured value`
+      ).toBe(overviewLabel)
+
+      const latestLabel = getPathValue(runtimeMessages, 'chat.deepResearchAxisLatest')
+      const claimValidationLabel = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchFocusClaimValidation'
+      )
+      const earlierWindowLabel = getPathValue(runtimeMessages, 'chat.deepResearchTimeWindowEarlier')
+      const recentWindowLabel = getPathValue(runtimeMessages, 'chat.deepResearchTimeWindowRecent')
+
+      expect(typeof latestLabel, `${file} missing runtime chat.deepResearchAxisLatest`).toBe(
+        'string'
+      )
+      expect(
+        typeof claimValidationLabel,
+        `${file} missing runtime chat.deepResearchFocusClaimValidation`
+      ).toBe('string')
+      expect(
+        typeof earlierWindowLabel,
+        `${file} missing runtime chat.deepResearchTimeWindowEarlier`
+      ).toBe('string')
+      expect(
+        typeof recentWindowLabel,
+        `${file} missing runtime chat.deepResearchTimeWindowRecent`
+      ).toBe('string')
+
+      expect(
+        localizeDeepResearchStructuredValue('Latest', runtimeTranslate),
+        `${file} latest structured value`
+      ).toBe(latestLabel)
+      expect(
+        localizeDeepResearchStructuredValue('Claim validation', runtimeTranslate),
+        `${file} claim validation structured value`
+      ).toBe(claimValidationLabel)
+      expect(
+        localizeDeepResearchTimeWindow('earlier', runtimeTranslate),
+        `${file} earlier time window`
+      ).toBe(earlierWindowLabel)
+      expect(
+        localizeDeepResearchTimeWindow('recent', runtimeTranslate),
+        `${file} recent time window`
+      ).toBe(recentWindowLabel)
+      expect(
+        localizeDeepResearchTimeWindow('2025-2026', runtimeTranslate),
+        `${file} raw time window fallback`
+      ).toBe('2025-2026')
+    }
+  })
+
+  it('provides runtime copy for retained searches, report style, and payload normalization', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    for (const [modulePath, mod] of entries) {
+      const file = fileNameFromModulePath(modulePath)
+      const locale = file.replace(/\.ts$/, '')
+      const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+      const translate = translateFor(runtimeMessages)
+      const retainedSearches = getPathValue(runtimeMessages, 'chat.deepResearchRetainedSearches')
+      const knowledgeBase = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchReportStyleKnowledgeBase'
+      )
+      const plannedTasks = getPathValue(runtimeMessages, 'chat.deepResearchPlannedTasks')
+      const liveSources = getPathValue(runtimeMessages, 'chat.deepResearchLiveSources')
+      const primaryOrOfficialSources = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchGapNeedPrimaryOrOfficialSources'
+      )
+      const coverageReached = getPathValue(runtimeMessages, 'chat.deepResearchStopReasonCoverage')
+
+      expect(typeof retainedSearches, `${file} missing runtime chat.deepResearchRetainedSearches`).toBe(
+        'string'
+      )
+      expect(
+        typeof knowledgeBase,
+        `${file} missing runtime chat.deepResearchReportStyleKnowledgeBase`
+      ).toBe('string')
+      expect(typeof plannedTasks, `${file} missing runtime chat.deepResearchPlannedTasks`).toBe(
+        'string'
+      )
+      expect(typeof liveSources, `${file} missing runtime chat.deepResearchLiveSources`).toBe(
+        'string'
+      )
+      expect(
+        typeof primaryOrOfficialSources,
+        `${file} missing runtime chat.deepResearchGapNeedPrimaryOrOfficialSources`
+      ).toBe('string')
+      expect(typeof coverageReached, `${file} missing runtime chat.deepResearchStopReasonCoverage`).toBe(
+        'string'
+      )
+
+      expect(localizeDeepResearchReportStyle('knowledge_base', translate), `${file} report style`).toBe(
+        knowledgeBase
+      )
+      expect(localizeDeepResearchSummary('Planned 5 research task(s)', translate), `${file} planned summary`).toBe(
+        `${plannedTasks}: 5`
+      )
+      expect(localizeDeepResearchSummary('Collected 3 source(s)', translate), `${file} source summary`).toBe(
+        `${liveSources}: 3`
+      )
+      expect(localizeDeepResearchGap('Need official source', translate), `${file} primary source gap`).toBe(
+        primaryOrOfficialSources
+      )
+      expect(localizeDeepResearchStopReason('coverage_sufficient', translate), `${file} stop reason`).toBe(
+        coverageReached
+      )
     }
   })
 })

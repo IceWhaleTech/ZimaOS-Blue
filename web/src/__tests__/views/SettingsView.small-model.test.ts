@@ -70,10 +70,15 @@ vi.mock('@/components/MemoryManager.vue', () => ({
   default: { name: 'MemoryManager', template: '<div />' },
 }))
 
+vi.mock('@/components/KnowledgeManagerCard.vue', () => ({
+  default: { name: 'KnowledgeManagerCard', template: '<div />' },
+}))
+
 vi.mock('@/components/BackupManager.vue', () => ({
   default: {
     name: 'BackupManager',
-    template: '<button data-testid="mock-backup-restore" @click="$emit(\'restore\', \'backup-1\')" />',
+    template:
+      '<button data-testid="mock-backup-restore" @click="$emit(\'restore\', \'backup-1\')" />',
   },
 }))
 
@@ -391,10 +396,13 @@ describe('SettingsView small-model controls', () => {
     tauriState.restartServerRuntime.mockResolvedValue(true)
     await setLocale('en-US')
     primeApiMocks()
-    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true)
+    )
   })
 
-  it('triggers the standalone proxy-pruner toggle, download, and stats reset on proxy tab', async () => {
+  it('triggers the light-acceleration proxy-pruner toggle, download, and stats reset on proxy tab', async () => {
     routeTab = 'proxy'
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -419,8 +427,18 @@ describe('SettingsView small-model controls', () => {
     await settleSettingsAsyncTabComponents()
 
     expect(wrapper.find('[data-testid="small-model-context-prune-switch"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="small-model-sections"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="small-model-feature-layout"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="small-model-context-section"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')).toHaveLength(5)
+    expect(wrapper.find('[data-testid="small-model-pruner-section"]').exists()).toBe(true)
+    expect(
+      wrapper
+        .get('[data-testid="small-model-sections"]')
+        .find('[data-testid="small-model-pruner-section"]')
+        .exists()
+    ).toBe(true)
     expect(wrapper.find('[data-testid="proxy-pruner-switch"]').exists()).toBe(true)
-    expect(wrapper.find('[data-testid="proxy-pruner-card"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="smart-tool-selection-switch"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="small-model-ir-master-switch"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="small-model-media-intent-switch"]').exists()).toBe(false)
@@ -503,7 +521,7 @@ describe('SettingsView small-model controls', () => {
     wrapper.unmount()
   })
 
-  it('keeps standalone optimization section headers free of duplicate titles', async () => {
+  it('keeps light-acceleration section headers free of duplicate titles', async () => {
     routeTab = 'proxy'
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -516,11 +534,14 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="small-model-ir-section-header"]').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="proxy-pruner-card"]').find('h3').exists()).toBe(false)
-    expect(wrapper.get('[data-testid="proxy-pruner-card"]').text()).toContain(
+    expect(wrapper.get('[data-testid="small-model-sections"]').findAll('h3')).toHaveLength(0)
+    expect(wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')).toHaveLength(5)
+    expect(wrapper.get('[data-testid="small-model-context-section"]').find('[data-testid="context-compression-mode-select"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="small-model-pruner-section"]').find('h3').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="small-model-pruner-section"]').text()).toContain(
       i18n.global.t('apiProxy.prunerTitle', 'Global Context Pruner')
     )
-    expect(wrapper.text()).not.toContain(i18n.global.t('settings.assistiveRouting'))
+    expect(wrapper.text()).not.toContain('Assistive Routing')
     expect(wrapper.get('[data-testid="small-model-main-section-header"]').find('h3').exists()).toBe(
       false
     )
@@ -569,7 +590,9 @@ describe('SettingsView small-model controls', () => {
       i18n.global.t('settings.smallModel.fallbackReasonLabels.deepresearch_unavailable')
     )
     expect(wrapper.text()).toContain(
-      i18n.global.t('settings.smallModel.fallbackReasonLabels.auto_rollback_doc_extract_fallback_rate')
+      i18n.global.t(
+        'settings.smallModel.fallbackReasonLabels.auto_rollback_doc_extract_fallback_rate'
+      )
     )
     expect(wrapper.text()).not.toContain('deepresearch_unavailable')
     expect(wrapper.text()).not.toContain('auto_rollback_doc_extract_fallback_rate')

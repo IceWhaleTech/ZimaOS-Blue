@@ -86,15 +86,8 @@ func TestRegisterRuntimeAgentAndMCPRoutes_ProxyDisabled(t *testing.T) {
 	}
 
 	// Agent routes should be real routes, not feature-disabled stubs.
-	agentListReq := httptest.NewRequest(http.MethodGet, "/api/v1/agent/tasks", nil)
-	agentListRec := httptest.NewRecorder()
-	e.ServeHTTP(agentListRec, agentListReq)
-	if agentListRec.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/agent/tasks status=%d body=%s", agentListRec.Code, agentListRec.Body.String())
-	}
-	var tasks []map[string]interface{}
-	if err := json.Unmarshal(agentListRec.Body.Bytes(), &tasks); err != nil {
-		t.Fatalf("expected task list JSON array, got body=%q err=%v", agentListRec.Body.String(), err)
+	if routeExists(e, http.MethodGet, "/api/v1/agent/tasks") {
+		t.Fatalf("did not expect standalone agent task list route to remain registered, got %#v", e.Routes())
 	}
 
 	agentCreateReq := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks", strings.NewReader(`{"goal":"verify route works"}`))
@@ -172,11 +165,12 @@ func TestRegisterRuntimeAgentRoutes_RegistersAgentRoutesWhenReady(t *testing.T) 
 	}
 	defer runner.Shutdown()
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/agent/tasks", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/agent/tasks", strings.NewReader(`{"goal":"verify route works"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /api/v1/agent/tasks status=%d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("POST /api/v1/agent/tasks status=%d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -406,8 +400,11 @@ func TestRouteToolRuntimeBinding_ActivateAgentSurface_WiresSelfReflectSkill(t *t
 		t.Fatal("expected activated agent surface to return runner")
 	}
 	defer runner.Shutdown()
-	if !routeExists(e, "GET", "/api/v1/agent/tasks") {
+	if !routeExists(e, "POST", "/api/v1/agent/tasks") {
 		t.Fatalf("expected agent routes to be registered, got %#v", e.Routes())
+	}
+	if routeExists(e, "GET", "/api/v1/agent/tasks") {
+		t.Fatalf("did not expect standalone agent task list route to remain registered, got %#v", e.Routes())
 	}
 
 	result, execErr := reflectSkill.Execute(context.Background(), map[string]any{

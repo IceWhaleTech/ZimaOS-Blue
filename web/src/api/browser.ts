@@ -1,5 +1,6 @@
 import api from './index'
 import type { AxiosError } from 'axios'
+import type { UserTaskProjection, UserTaskScope } from './tasks'
 
 // Returns true if the error is a 404 (feature not enabled on backend)
 function isNotFound(error: unknown): boolean {
@@ -7,19 +8,6 @@ function isNotFound(error: unknown): boolean {
 }
 
 // Types
-export interface BrowserTask {
-  id: string
-  name: string
-  description?: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  steps: TaskStep[]
-  created_at: string
-  started_at?: string
-  completed_at?: string
-  error?: string
-  result?: TaskResult
-}
-
 export interface TaskStep {
   id: string
   type: StepType
@@ -48,13 +36,6 @@ export interface StepResult {
   element_found?: boolean
   page_title?: string
   page_url?: string
-}
-
-export interface TaskResult {
-  screenshots: string[]
-  extracted_data: Record<string, unknown>
-  final_url: string
-  duration_ms: number
 }
 
 export interface BrowserSession {
@@ -108,18 +89,9 @@ export interface BrowserSessionMonitorResponse {
   error?: string
 }
 
-export interface CreateTaskRequest {
-  name: string
-  description?: string
-  steps: Omit<TaskStep, 'id' | 'status' | 'result' | 'error'>[]
-}
-
-export interface TaskTemplate {
-  id: string
-  name: string
-  description: string
-  category: string
-  steps: Omit<TaskStep, 'id' | 'status' | 'result' | 'error'>[]
+export interface BrowserOverviewResponse {
+  tasks: UserTaskProjection[]
+  sessions: BrowserSession[]
 }
 
 function normalizeSession(payload: unknown): BrowserSession {
@@ -156,53 +128,31 @@ function normalizeSession(payload: unknown): BrowserSession {
   }
 }
 
-// API functions
-// Note: Browser routes are registered under /api/browser/* (without /v1)
-export async function getTasks(): Promise<BrowserTask[]> {
+export async function getBrowserOverview(params?: {
+  conversationId?: string
+  scope?: UserTaskScope
+  limit?: number
+}): Promise<BrowserOverviewResponse> {
   try {
-    const response = await api.get('/browser/tasks', { baseURL: '/api' })
-    return response.data
+    const response = await api.get('/browser/overview', {
+      baseURL: '/api',
+      params: {
+        conversation_id: params?.conversationId,
+        scope: params?.scope,
+        limit: params?.limit,
+      },
+    })
+    const payload = response.data || {}
+    return {
+      tasks: Array.isArray(payload.tasks)
+        ? payload.tasks.filter((item: unknown): item is UserTaskProjection => !!item)
+        : [],
+      sessions: Array.isArray(payload.sessions) ? payload.sessions.map(normalizeSession) : [],
+    }
   } catch (e) {
-    if (isNotFound(e)) return []
+    if (isNotFound(e)) return { tasks: [], sessions: [] }
     throw e
   }
-}
-
-export async function getTask(taskId: string): Promise<BrowserTask> {
-  const response = await api.get(`/browser/tasks/${taskId}`, { baseURL: '/api' })
-  return response.data
-}
-
-export async function createTask(request: CreateTaskRequest): Promise<BrowserTask> {
-  const response = await api.post('/browser/tasks', request, { baseURL: '/api' })
-  return response.data
-}
-
-export async function runTask(taskId: string): Promise<void> {
-  await api.post(`/browser/tasks/${taskId}/run`, null, { baseURL: '/api' })
-}
-
-export async function cancelTask(taskId: string): Promise<void> {
-  await api.post(`/browser/tasks/${taskId}/cancel`, null, { baseURL: '/api' })
-}
-
-export async function deleteTask(taskId: string): Promise<void> {
-  await api.delete(`/browser/tasks/${taskId}`, { baseURL: '/api' })
-}
-
-export async function getSessions(): Promise<BrowserSession[]> {
-  try {
-    const response = await api.get('/browser/sessions', { baseURL: '/api' })
-    return Array.isArray(response.data) ? response.data.map(normalizeSession) : []
-  } catch (e) {
-    if (isNotFound(e)) return []
-    throw e
-  }
-}
-
-export async function getSession(sessionId: string): Promise<BrowserSession> {
-  const response = await api.get(`/browser/sessions/${sessionId}`, { baseURL: '/api' })
-  return normalizeSession(response.data)
 }
 
 export async function createSession(): Promise<BrowserSession> {
@@ -282,95 +232,6 @@ export async function executeStep(
     baseURL: '/api',
   })
   return response.data
-}
-
-// Task templates
-export const taskTemplates: TaskTemplate[] = [
-  {
-    id: 'web-scrape',
-    name: 'Web Scraping',
-    description: 'Extract data from a webpage',
-    category: 'Data',
-    steps: [
-      { type: 'navigate', params: { url: '' } },
-      { type: 'wait', params: { selector: 'body', timeout: 5000 } },
-      { type: 'extract', params: { selector: '', attribute: 'text' } },
-      { type: 'screenshot', params: { fullPage: false } },
-    ],
-  },
-  {
-    id: 'form-fill',
-    name: 'Form Filling',
-    description: 'Automatically fill out a web form',
-    category: 'Automation',
-    steps: [
-      { type: 'navigate', params: { url: '' } },
-      { type: 'wait', params: { selector: 'form', timeout: 5000 } },
-      { type: 'type', params: { selector: '', text: '' } },
-      { type: 'click', params: { selector: 'button[type="submit"]' } },
-      { type: 'screenshot', params: { fullPage: false } },
-    ],
-  },
-  {
-    id: 'page-monitor',
-    name: 'Page Monitor',
-    description: 'Take screenshots of a page for monitoring',
-    category: 'Monitoring',
-    steps: [
-      { type: 'navigate', params: { url: '' } },
-      { type: 'wait', params: { timeout: 3000 } },
-      { type: 'screenshot', params: { fullPage: true } },
-    ],
-  },
-  {
-    id: 'login-test',
-    name: 'Login Test',
-    description: 'Test a login flow',
-    category: 'Testing',
-    steps: [
-      { type: 'navigate', params: { url: '' } },
-      { type: 'type', params: { selector: 'input[name="username"]', text: '' } },
-      { type: 'type', params: { selector: 'input[name="password"]', text: '' } },
-      { type: 'click', params: { selector: 'button[type="submit"]' } },
-      { type: 'wait', params: { timeout: 3000 } },
-      { type: 'screenshot', params: { fullPage: false } },
-    ],
-  },
-]
-
-// Helper functions
-export function getStepIcon(type: StepType): string {
-  const icons: Record<StepType, string> = {
-    navigate: '🌐',
-    click: '👆',
-    type: '⌨️',
-    screenshot: '📷',
-    wait: '⏳',
-    extract: '📋',
-    scroll: '📜',
-    select: '📝',
-    hover: '🖱️',
-    press_key: '⌨️',
-    evaluate: '🔧',
-  }
-  return icons[type] || '❓'
-}
-
-export function getStepLabel(type: StepType): string {
-  const labels: Record<StepType, string> = {
-    navigate: 'Navigate to URL',
-    click: 'Click Element',
-    type: 'Type Text',
-    screenshot: 'Take Screenshot',
-    wait: 'Wait',
-    extract: 'Extract Data',
-    scroll: 'Scroll Page',
-    select: 'Select Option',
-    hover: 'Hover Element',
-    press_key: 'Press Key',
-    evaluate: 'Run JavaScript',
-  }
-  return labels[type] || type
 }
 
 export function getStatusColor(status: string): string {

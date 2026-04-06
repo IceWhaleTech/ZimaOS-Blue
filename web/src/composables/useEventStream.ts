@@ -123,7 +123,6 @@ export function useEventStream() {
 
   function handleEvent(type: string, data: any) {
     try {
-      console.log('[EventStream] handleEvent called with type:', type, 'data:', data)
       // Dispatch to global listeners first
       const cbs = listeners.get(type)
       if (cbs) {
@@ -142,7 +141,6 @@ export function useEventStream() {
         return
       }
 
-      console.log('[EventStream] Entering switch with type:', type)
       switch (type) {
         case 'push': {
           const reminderTextRaw = String(data.message || t('push.defaultMessage'))
@@ -228,11 +226,10 @@ export function useEventStream() {
 
         case 'provider_status_changed': {
           if (data.provider_id && data.status) {
-            const hasProvider = providerPoolStore.providers.some((p) => p.id === data.provider_id)
             providerPoolStore.updateProviderStatus(data.provider_id, data.status)
-            if (!hasProvider || providerPoolStore.providers.length === 0) {
-              scheduleProviderResync()
-            }
+            // Status-only SSE payloads can leave stale last_error/details in memory.
+            // Always resync the full provider list after a status transition.
+            scheduleProviderResync()
           }
           break
         }

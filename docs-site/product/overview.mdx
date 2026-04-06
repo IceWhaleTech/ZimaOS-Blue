@@ -1,35 +1,38 @@
 ---
 title: "Overview"
-summary: "A concise product overview based on the repository README and current codebase shape."
+summary: "A concise product overview of the current Blue runtime, operator surfaces, and extension model."
 ---
 
 # Overview
 
-ZimaOS Blue is positioned in this repository as an open-source, auditable, production-ready runtime for personal and team AI agents.
+ZimaOS Blue is an open-source, auditable runtime for building and operating local-first AI agents across personal and team environments.
 
 ## Core product position
 
 - **Local-first**: run on your own hardware and network boundaries
 - **Lightweight**: written in Go and designed for low runtime overhead
 - **Cross-device**: intended for desktop, server, NAS, edge, and Raspberry Pi style deployments
-- **Composable**: combine chat, voice, automation, memory, and tools without locking into one provider
+- **Composable**: combine chat, voice, automation, memory, evaluation, and tools without locking into one provider
 
 ## What Blue includes
 
 - Gateway and server layers for runtime orchestration
-- Provider pool and model routing
+- Provider pool, model routing, and external-agent connectivity
 - Context, memory, tooling, and personality layers for agents
 - Channel integrations for messaging and remote interaction
-- Security, auth, sandboxing, and audit controls
-- Voice, browser, workflow, and automation capabilities
+- Security, auth, sandboxing, audit, billing, and tenant controls
+- Voice, browser, workflow, form-filling, and automation capabilities
+- Harness and Evolution surfaces for tracked execution, scoring, and skill iteration
+- Skills, skill-store discovery, and tool catalog surfaces for extensibility
 
 ## Why teams reach for it
 
-The current README emphasizes four promises:
+The current product shape emphasizes five operator promises:
 
 - Fast zero-to-one setup
 - Rapid prototyping for scenario-specific agent products
+- Evaluatable and auditable execution instead of black-box orchestration
 - Multi-language reach
 - Open model ecosystem without vendor lock-in
 
-Read [Features](/product/features) next for the user-facing version of these ideas, or [Architecture](/product/architecture) if you want the package and flow view.
+Read [Features](/product/features) next for the capability map, [Settings and Provider Pool](/guides/settings-provider-pool) for runtime setup, or [Architecture](/product/architecture) if you want the package and flow view.

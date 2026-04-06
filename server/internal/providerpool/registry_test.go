@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestRegistry(t *testing.T) {
@@ -124,23 +125,38 @@ func TestRegistry(t *testing.T) {
 	})
 
 	t.Run("APIKeyManagement", func(t *testing.T) {
+		if err := registry.Register(&Provider{
+			ID:       "api-key-provider",
+			Name:     "API Key Provider",
+			Type:     ProviderTypeCustom,
+			Enabled:  false,
+			Status:   ProviderStatusInactive,
+			BaseURL:  "https://api.example.com/v1",
+			Priority: 5,
+		}); err != nil {
+			t.Fatalf("Register api-key-provider failed: %v", err)
+		}
+
 		key := &APIKey{
 			Key:     "sk-test-key-12345",
 			Label:   "Test Key",
 			Enabled: true,
 		}
 
-		if err := registry.AddAPIKey("test-provider", key); err != nil {
+		if err := registry.AddAPIKey("api-key-provider", key); err != nil {
 			t.Fatalf("AddAPIKey failed: %v", err)
 		}
 
-		provider, _ := registry.Get("test-provider")
+		provider, _ := registry.Get("api-key-provider")
 		if len(provider.APIKeys) != 1 {
 			t.Fatalf("Expected 1 API key, got %d", len(provider.APIKeys))
 		}
+		if !provider.Enabled {
+			t.Fatalf("Provider should auto-enable after adding an API key")
+		}
 
 		// Get API key
-		apiKey, err := registry.GetAPIKey("test-provider")
+		apiKey, err := registry.GetAPIKey("api-key-provider")
 		if err != nil {
 			t.Fatalf("GetAPIKey failed: %v", err)
 		}
@@ -149,13 +165,19 @@ func TestRegistry(t *testing.T) {
 		}
 
 		// Remove API key
-		if err := registry.RemoveAPIKey("test-provider", provider.APIKeys[0].ID); err != nil {
+		if err := registry.RemoveAPIKey("api-key-provider", provider.APIKeys[0].ID); err != nil {
 			t.Fatalf("RemoveAPIKey failed: %v", err)
 		}
 
-		provider, _ = registry.Get("test-provider")
+		provider, _ = registry.Get("api-key-provider")
 		if len(provider.APIKeys) != 0 {
 			t.Errorf("Expected 0 API keys, got %d", len(provider.APIKeys))
+		}
+		if provider.Enabled {
+			t.Errorf("Provider should auto-disable after removing the last API key")
+		}
+		if provider.Status != ProviderStatusInactive {
+			t.Errorf("Status = %q, want %q", provider.Status, ProviderStatusInactive)
 		}
 	})
 
@@ -223,6 +245,152 @@ func TestRegistryWithCallback(t *testing.T) {
 		if actions[i] != action {
 			t.Errorf("Action %d: expected %s, got %s", i, action, actions[i])
 		}
+	}
+}
+
+func TestRegistryUpdateStatusClearsErrorAndEmitsStatusChange(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "registry-status-update-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+
+	if err := registry.Register(&Provider{
+		ID:            "status-provider",
+		Name:          "Status Provider",
+		Type:          ProviderTypeCustom,
+		Enabled:       true,
+		Status:        ProviderStatusError,
+		LastError:     "dial tcp timeout",
+		LastErrorTime: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	var gotProviderID string
+	var gotOldStatus ProviderStatus
+	var gotNewStatus ProviderStatus
+	var callbackCount int
+	registry.SetOnStatusChange(func(providerID string, oldStatus, newStatus ProviderStatus) {
+		callbackCount++
+		gotProviderID = providerID
+		gotOldStatus = oldStatus
+		gotNewStatus = newStatus
+	})
+
+	if err := registry.UpdateStatus("status-provider", ProviderStatusActive, ""); err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+
+	provider, err := registry.Get("status-provider")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if provider.Status != ProviderStatusActive {
+		t.Fatalf("Status = %q, want %q", provider.Status, ProviderStatusActive)
+	}
+	if provider.LastError != "" {
+		t.Fatalf("LastError = %q, want empty", provider.LastError)
+	}
+	if !provider.LastErrorTime.IsZero() {
+		t.Fatalf("LastErrorTime = %v, want zero", provider.LastErrorTime)
+	}
+	if callbackCount != 1 {
+		t.Fatalf("callbackCount = %d, want 1", callbackCount)
+	}
+	if gotProviderID != "status-provider" || gotOldStatus != ProviderStatusError || gotNewStatus != ProviderStatusActive {
+		t.Fatalf(
+			"status transition = (%q, %q -> %q), want (%q, %q -> %q)",
+			gotProviderID,
+			gotOldStatus,
+			gotNewStatus,
+			"status-provider",
+			ProviderStatusError,
+			ProviderStatusActive,
+		)
+	}
+}
+
+func TestRegistryClearErrorEmitsStatusChange(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "registry-clear-error-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+
+	if err := registry.Register(&Provider{
+		ID:            "clear-error-provider",
+		Name:          "Clear Error Provider",
+		Type:          ProviderTypeCustom,
+		Enabled:       true,
+		Status:        ProviderStatusError,
+		LastError:     "auth_error:invalid_api_key",
+		LastErrorTime: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	var gotProviderID string
+	var gotOldStatus ProviderStatus
+	var gotNewStatus ProviderStatus
+	var callbackCount int
+	registry.SetOnStatusChange(func(providerID string, oldStatus, newStatus ProviderStatus) {
+		callbackCount++
+		gotProviderID = providerID
+		gotOldStatus = oldStatus
+		gotNewStatus = newStatus
+	})
+
+	if err := registry.ClearError("clear-error-provider"); err != nil {
+		t.Fatalf("ClearError failed: %v", err)
+	}
+
+	provider, err := registry.Get("clear-error-provider")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if provider.Status != ProviderStatusActive {
+		t.Fatalf("Status = %q, want %q", provider.Status, ProviderStatusActive)
+	}
+	if provider.LastError != "" {
+		t.Fatalf("LastError = %q, want empty", provider.LastError)
+	}
+	if !provider.LastErrorTime.IsZero() {
+		t.Fatalf("LastErrorTime = %v, want zero", provider.LastErrorTime)
+	}
+	if callbackCount != 1 {
+		t.Fatalf("callbackCount = %d, want 1", callbackCount)
+	}
+	if gotProviderID != "clear-error-provider" || gotOldStatus != ProviderStatusError || gotNewStatus != ProviderStatusActive {
+		t.Fatalf(
+			"status transition = (%q, %q -> %q), want (%q, %q -> %q)",
+			gotProviderID,
+			gotOldStatus,
+			gotNewStatus,
+			"clear-error-provider",
+			ProviderStatusError,
+			ProviderStatusActive,
+		)
 	}
 }
 

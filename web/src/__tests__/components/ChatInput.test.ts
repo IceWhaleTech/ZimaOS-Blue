@@ -626,7 +626,7 @@ describe('ChatInput cancel affordance', () => {
     expect(setAgentAutoConfirm).toHaveBeenCalledWith(true)
   })
 
-  it('fills the composer with the analysis report template when the shortcut is clicked', async () => {
+  it('keeps research as the only research-family desktop chip and folds analyze/ui guidance into its hover card', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
 
@@ -643,78 +643,21 @@ describe('ChatInput cancel affordance', () => {
 
     await wrapper.vm.$nextTick()
 
-    const reportButton = wrapper.find('button.mode-chip-report')
-    expect(reportButton.exists()).toBe(true)
+    expect(wrapper.find('button.mode-chip-research').exists()).toBe(true)
+    expect(wrapper.find('button.mode-chip-report').exists()).toBe(false)
+    expect(wrapper.find('button.mode-chip-ui').exists()).toBe(false)
 
-    await reportButton.trigger('click')
-
-    const textarea = wrapper.find('textarea')
-    expect((textarea.element as HTMLTextAreaElement).value).toContain(
-      'Create a structured analysis report.'
-    )
-    expect((textarea.element as HTMLTextAreaElement).value).toContain('- Topic:')
+    const researchCard = wrapper.find('.mode-info-card--research')
+    expect(researchCard.exists()).toBe(true)
+    expect(researchCard.text()).toContain('Research')
+    expect(researchCard.text()).toContain('Always on')
+    expect(researchCard.text()).toContain('Retrieve')
+    expect(researchCard.text()).toContain('Analysis Report')
+    expect(researchCard.text()).toContain('UI Review')
+    expect(researchCard.text()).toContain('Verify')
   })
 
-  it('fills the composer with the UI review template when the shortcut is clicked', async () => {
-    const pinia = createPinia()
-    setActivePinia(pinia)
-
-    const wrapper = mount(ChatInput, {
-      shallow: true,
-      global: {
-        plugins: [pinia, i18n],
-        stubs: {
-          ImagePreview: true,
-          ModelDownloadPrompt: true,
-        },
-      },
-    })
-
-    await wrapper.vm.$nextTick()
-
-    const uiReviewButton = wrapper.find('button.mode-chip-ui')
-    expect(uiReviewButton.exists()).toBe(true)
-
-    await uiReviewButton.trigger('click')
-
-    const textarea = wrapper.find('textarea')
-    expect((textarea.element as HTMLTextAreaElement).value).toContain(
-      'Please run a UI review and return clear findings plus improvement suggestions.'
-    )
-    expect((textarea.element as HTMLTextAreaElement).value).toContain('- Page URL or screenshot:')
-  })
-
-  it('shows a compact info card for the analysis report shortcut', async () => {
-    Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
-    Object.defineProperty(window.navigator, 'userAgent', { value: 'iphone', configurable: true })
-
-    const pinia = createPinia()
-    setActivePinia(pinia)
-
-    const wrapper = mount(ChatInput, {
-      shallow: true,
-      global: {
-        plugins: [pinia, i18n],
-        stubs: {
-          ImagePreview: true,
-          ModelDownloadPrompt: true,
-        },
-      },
-    })
-
-    await wrapper.vm.$nextTick()
-
-    const infoButton = wrapper.find('.compact-mode-info-toggle--report')
-    expect(infoButton.exists()).toBe(true)
-
-    await infoButton.trigger('click')
-
-    expect(wrapper.find('.compact-mode-info-card--report').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Prompt template')
-    expect(wrapper.text()).toContain('Analysis Report')
-  })
-
-  it('shows a compact info card for deep research', async () => {
+  it('keeps only the unified research compact info card and explains all three research modes', async () => {
     Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
     Object.defineProperty(window.navigator, 'userAgent', { value: 'iphone', configurable: true })
 
@@ -736,12 +679,18 @@ describe('ChatInput cancel affordance', () => {
 
     const infoButton = wrapper.find('.compact-mode-info-toggle--research')
     expect(infoButton.exists()).toBe(true)
+    expect(wrapper.find('.compact-mode-info-toggle--report').exists()).toBe(false)
+    expect(wrapper.find('.compact-mode-info-toggle--ui').exists()).toBe(false)
 
     await infoButton.trigger('click')
 
-    expect(wrapper.find('.compact-mode-info-card--research').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Research')
-    expect(wrapper.text()).toContain('Disabled')
+    const researchCard = wrapper.find('.compact-mode-info-card--research')
+    expect(researchCard.exists()).toBe(true)
+    expect(researchCard.text()).toContain('Research')
+    expect(researchCard.text()).toContain('Always on')
+    expect(researchCard.text()).toContain('Analysis Report')
+    expect(researchCard.text()).toContain('UI Review')
+    expect(researchCard.text()).toContain('Verify')
   })
 
   it('shows a compact info card for Ralph Loop', async () => {
@@ -774,33 +723,4 @@ describe('ChatInput cancel affordance', () => {
     expect(wrapper.text()).toContain('Plan')
   })
 
-  it('shows a compact info card for the UI review shortcut', async () => {
-    Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
-    Object.defineProperty(window.navigator, 'userAgent', { value: 'iphone', configurable: true })
-
-    const pinia = createPinia()
-    setActivePinia(pinia)
-
-    const wrapper = mount(ChatInput, {
-      shallow: true,
-      global: {
-        plugins: [pinia, i18n],
-        stubs: {
-          ImagePreview: true,
-          ModelDownloadPrompt: true,
-        },
-      },
-    })
-
-    await wrapper.vm.$nextTick()
-
-    const infoButton = wrapper.find('.compact-mode-info-toggle--ui')
-    expect(infoButton.exists()).toBe(true)
-
-    await infoButton.trigger('click')
-
-    expect(wrapper.find('.compact-mode-info-card--ui').exists()).toBe(true)
-    expect(wrapper.text()).toContain('UI Review')
-    expect(wrapper.text()).toContain('Visual')
-  })
 })

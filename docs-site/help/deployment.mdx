@@ -10,7 +10,7 @@ ZimaOS Blue docs are prepared for **Mintlify-managed deployment**.
 ## What this repository already provides
 
 - Site config in `docs-site/docs.json`
-- Curated English canonical pages plus first-batch Simplified Chinese pages
+- Curated English canonical pages plus expanded Simplified Chinese mirrors
 - Local smoke validation via `npm --prefix docs-site run build`
 - CI validation on docs-related changes
 
@@ -52,3 +52,12 @@ npm --prefix docs-site run build
 - Verify the generated preview site
 - Add the production docs domain
 - Replace repository-relative docs links in `README.md` with the public docs URL once the domain is live
+
+## After docs updates land
+
+For routine content updates like new product guides or navigation changes:
+
+1. Run `npm --prefix docs-site run build`
+2. Verify new pages are present in `docs-site/docs.json`
+3. Confirm English and Simplified Chinese navigation stay aligned where mirrors exist
+4. Then rely on Mintlify preview or production sync for publishing

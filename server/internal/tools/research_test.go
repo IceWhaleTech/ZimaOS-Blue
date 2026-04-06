@@ -120,18 +120,29 @@ func TestResearchRunToolSupportsNestedCamelCaseArgs(t *testing.T) {
 	}
 }
 
-func TestDeepResearchToolAcceptsInputAlias(t *testing.T) {
+func TestResearchToolUsesCanonicalDefinitionName(t *testing.T) {
+	tool := NewDeepResearchTool(nil)
+	if got := tool.Definition().Name; got != "research" {
+		t.Fatalf("definition name = %q, want research", got)
+	}
+}
+
+func TestResearchToolAutoSelectsAnalyzeMode(t *testing.T) {
 	service := &mockResearchService{
 		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
-			if req.Query != "research via input alias" {
-				t.Fatalf("query = %q, want %q", req.Query, "research via input alias")
+			if req.Query != "Analyze https://example.com/blog and summarize the key findings into a short report." {
+				t.Fatalf("query = %q, want url analysis query", req.Query)
 			}
-			return &ResearchJob{ID: "job-input", Status: "pending", Query: req.Query, EffectiveRouteMode: "web"}, nil
+			if req.Mode != "analyze" {
+				t.Fatalf("mode = %q, want analyze", req.Mode)
+			}
+			return &ResearchJob{ID: "job-auto", Status: "pending", Query: req.Query, Mode: req.Mode, EffectiveRouteMode: "web"}, nil
 		},
 	}
 	tool := NewDeepResearchTool(service)
 	res, err := tool.Execute(context.Background(), map[string]interface{}{
-		"input": "research via input alias",
+		"query": "Analyze https://example.com/blog and summarize the key findings into a short report.",
+		"mode":  "auto",
 		"wait":  false,
 	})
 	if err != nil {
@@ -141,8 +152,155 @@ func TestDeepResearchToolAcceptsInputAlias(t *testing.T) {
 	if got := payload["accepted"]; got != true {
 		t.Fatalf("accepted = %v, want true", got)
 	}
-	if got := payload["query"]; got != "research via input alias" {
-		t.Fatalf("query = %v, want research via input alias", got)
+	if got := payload["mode"]; got != "analyze" {
+		t.Fatalf("mode = %v, want analyze", got)
+	}
+}
+
+func TestResearchToolExplicitModeBypassesAutoSelection(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Mode != "ui_review" {
+				t.Fatalf("mode = %q, want ui_review", req.Mode)
+			}
+			return &ResearchJob{ID: "job-ui", Status: "pending", Query: req.Query, Mode: req.Mode, EffectiveRouteMode: "web"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query": "Review https://example.com/pricing for accessibility and layout issues.",
+		"mode":  "ui_review",
+		"wait":  false,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["mode"]; got != "ui_review" {
+		t.Fatalf("mode = %v, want ui_review", got)
+	}
+}
+
+func TestResearchToolForwardsAnalyzeModeSpecificArgs(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Mode != "analyze" {
+				t.Fatalf("mode = %q, want analyze", req.Mode)
+			}
+			if req.Query != "Competitive pricing snapshot" {
+				t.Fatalf("query = %q, want topic fallback", req.Query)
+			}
+			if req.Topic != "Competitive pricing snapshot" {
+				t.Fatalf("topic = %q, want forwarded topic", req.Topic)
+			}
+			if len(req.URLs) != 2 || req.URLs[0] != "https://example.com/pricing" || req.URLs[1] != "https://example.com/blog" {
+				t.Fatalf("urls = %#v, want forwarded urls", req.URLs)
+			}
+			if len(req.SearchQueries) != 2 || req.SearchQueries[0] != "example pricing comparison" || req.SearchQueries[1] != "competitor plan changes" {
+				t.Fatalf("search queries = %#v, want forwarded search queries", req.SearchQueries)
+			}
+			if req.Text != "Use internal pricing notes too." {
+				t.Fatalf("text = %q, want forwarded text", req.Text)
+			}
+			if req.OutputMode != "report" {
+				t.Fatalf("output mode = %q, want report", req.OutputMode)
+			}
+			if req.ReportStyle != "briefing" {
+				t.Fatalf("report style = %q, want briefing", req.ReportStyle)
+			}
+			if req.Lang != "en-US" {
+				t.Fatalf("lang = %q, want en-US", req.Lang)
+			}
+			return &ResearchJob{ID: "job-analyze", Status: "pending", Query: req.Query, Mode: req.Mode, EffectiveRouteMode: "web"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"mode": "analyze",
+		"wait": false,
+		"input": map[string]interface{}{
+			"topic":         "Competitive pricing snapshot",
+			"urls":          []interface{}{"https://example.com/pricing", "https://example.com/blog"},
+			"searchQueries": []interface{}{"example pricing comparison", "competitor plan changes"},
+			"text":          "Use internal pricing notes too.",
+			"outputMode":    "report",
+			"reportStyle":   "briefing",
+			"language":      "en-US",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+	if got := payload["mode"]; got != "analyze" {
+		t.Fatalf("mode = %v, want analyze", got)
+	}
+}
+
+func TestResearchToolForwardsUIReviewModeSpecificArgs(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Mode != "ui_review" {
+				t.Fatalf("mode = %q, want ui_review", req.Mode)
+			}
+			if req.Query != "https://example.com/pricing" {
+				t.Fatalf("query = %q, want url fallback", req.Query)
+			}
+			if req.Action != "check_accessibility" {
+				t.Fatalf("action = %q, want check_accessibility", req.Action)
+			}
+			if req.URL != "https://example.com/pricing" {
+				t.Fatalf("url = %q, want forwarded url", req.URL)
+			}
+			if req.Device != "mobile" || req.Channel != "telegram" {
+				t.Fatalf("device/channel = %q/%q, want mobile/telegram", req.Device, req.Channel)
+			}
+			if req.WaitMS != 1500 {
+				t.Fatalf("wait_ms = %d, want 1500", req.WaitMS)
+			}
+			if req.Threshold != 82.5 {
+				t.Fatalf("threshold = %v, want 82.5", req.Threshold)
+			}
+			if req.Format != "human" {
+				t.Fatalf("format = %q, want human", req.Format)
+			}
+			if req.Profile != "ppt" {
+				t.Fatalf("profile = %q, want ppt", req.Profile)
+			}
+			if req.Lang != "zh-CN" {
+				t.Fatalf("lang = %q, want zh-CN", req.Lang)
+			}
+			return &ResearchJob{ID: "job-ui-review", Status: "pending", Query: req.Query, Mode: req.Mode, EffectiveRouteMode: "web"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"mode": "ui_review",
+		"wait": false,
+		"input": map[string]interface{}{
+			"action":    "check_accessibility",
+			"url":       "https://example.com/pricing",
+			"device":    "mobile",
+			"channel":   "telegram",
+			"wait_ms":   1500,
+			"threshold": 82.5,
+			"format":    "human",
+			"profile":   "ppt",
+			"lang":      "zh-CN",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+	if got := payload["mode"]; got != "ui_review" {
+		t.Fatalf("mode = %v, want ui_review", got)
 	}
 }
 

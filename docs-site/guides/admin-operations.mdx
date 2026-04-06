@@ -1,0 +1,109 @@
+---
+title: "Admin and Operations"
+summary: "The operator-facing surfaces for security, audit, billing, tenants, auth providers, and day-two governance."
+---
+
+# Admin and Operations
+
+Blue now exposes a broad day-two operations story. The current web app includes dedicated surfaces for dashboard visibility, security, audit, billing, tenancy, and auth administration.
+
+## Home dashboard and system visibility
+
+The home surface is not just a landing page. It acts as a lightweight operator dashboard with:
+
+- System status
+- Uptime, CPU, memory, and goroutine cards
+- Refreshable runtime metrics history
+- Optional detailed OS, hardware, runtime, disk, GPU, and network information
+
+This is the fastest place to answer "is the runtime healthy right now?" before diving into deeper logs or traces.
+
+## Security
+
+The security area goes beyond password settings. Current APIs and views cover:
+
+- Active-session listing and session revocation
+- Security settings and policy controls
+- Threat stats and recent threat events
+- Blocked IP management
+- Security scans with fix preview and fix execution
+- Prompt firewall rules
+- CORS configuration
+- TLS and ACME status
+- Sandbox runtime information and network toggle
+- Tool approval policy
+- Persistent approved directories and browser-site approvals
+
+This is the right surface when you are hardening a deployment, reviewing exposure, or preparing for production rollout.
+
+## Audit
+
+The audit area helps operators answer what happened and who did it. The current view supports:
+
+- Filtered audit entries
+- Status and action breakdowns
+- Export to JSON or CSV
+- Time-window filtering for incident review
+
+## Billing and usage
+
+Billing is currently framed as observability for model usage rather than a subscription checkout page. The product can expose:
+
+- Summary totals for tokens, requests, success rate, and estimated cost
+- Breakdowns by day, provider, or model
+- Line-item views with latency and success data
+- CSV export
+- Anomaly-style drilldowns for unusual usage spikes
+
+This makes the billing area useful for cost control, debugging, and provider comparison.
+
+## Tenants and workspace governance
+
+Blue also includes a multi-tenant surface with:
+
+- Workspace creation, editing, selection, and deletion
+- Tenant detail pages for members, invitations, settings, and limits
+- Role-aware management actions
+- Workspace-level language and timezone defaults
+
+If you are operating Blue for more than one team, tenant setup becomes part of the core product rather than an optional extra.
+
+## Identity and access administration
+
+Blue also has a distinct identity layer for:
+
+- Profile editing and personal API key management
+- MFA and WebAuthn
+- Linked external accounts
+- User administration with lock, unlock, reset-password, and permission actions
+- Auth-provider administration for OIDC and common hosted identity providers
+- Preview bootstrap and first-admin upgrade flow
+
+Read [Identity and Access](/guides/identity-access) when the question is about who can enter the system and how credentials are managed.
+
+## Auth providers and preview mode
+
+The current app also includes:
+
+- Auth-provider management and callback flows
+- Preview-aware routing for setups that allow access before full user bootstrap
+- Preview-token handling and connection-error fallback paths
+
+These features matter most during onboarding, first-run experience, and controlled shared deployments.
+
+## Recommended operator checklist
+
+1. Review provider and runtime setup in [Settings and Provider Pool](/guides/settings-provider-pool)
+2. Check the dashboard and system visibility surface for runtime health
+3. Harden security posture and review prompt-firewall, sandbox, and approval controls
+4. Confirm audit visibility and export paths
+5. Track billing trends after real traffic begins
+6. Set up tenants, members, auth providers, and user-management rules before broad rollout
+
+## Related pages
+
+- [Identity and Access](/guides/identity-access)
+- [Settings and Provider Pool](/guides/settings-provider-pool)
+- [Harness and Evolution](/guides/harness-evolution)
+- [Voice and Form Filling](/guides/voice-form-filling)
+- [Troubleshooting](/help/troubleshooting)

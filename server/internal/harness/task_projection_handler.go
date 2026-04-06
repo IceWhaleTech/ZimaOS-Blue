@@ -2,7 +2,6 @@ package harness
 
 import (
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -27,7 +26,6 @@ func (h *UserTaskProjectionHandler) RegisterRoutes(g *echo.Group) {
 	if h == nil || h.manager == nil || h.service == nil || g == nil {
 		return
 	}
-	g.GET("/tasks", h.ListTasks)
 	g.GET("/tasks/:id", h.GetTask)
 	g.POST("/tasks/:id/actions/:action", h.PerformTaskAction)
 	g.POST("/tasks/:id/cancel", h.CancelTask)
@@ -37,21 +35,6 @@ func (h *UserTaskProjectionHandler) RegisterRoutes(g *echo.Group) {
 type userTaskResumeRequest struct {
 	Decision string                 `json:"decision,omitempty"`
 	Payload  map[string]interface{} `json:"payload,omitempty"`
-}
-
-func (h *UserTaskProjectionHandler) ListTasks(c echo.Context) error {
-	scope := normalizedProjectionScope(c.QueryParam("scope"))
-	limit := normalizedProjectionLimit(scope, parsePositiveInt(c.QueryParam("limit")))
-	projections, err := h.service.List(c.Request().Context(), UserTaskProjectionFilter{
-		UserID:         harnessUserID(c),
-		ConversationID: strings.TrimSpace(c.QueryParam("conversation_id")),
-		Scope:          scope,
-		Limit:          limit,
-	})
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	return c.JSON(http.StatusOK, projections)
 }
 
 func (h *UserTaskProjectionHandler) GetTask(c echo.Context) error {
@@ -212,12 +195,4 @@ func projectionScopeForConversation(requestedConversationID string, taskConversa
 		return "current"
 	}
 	return "background"
-}
-
-func parsePositiveInt(raw string) int {
-	value, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || value <= 0 {
-		return 0
-	}
-	return value
 }

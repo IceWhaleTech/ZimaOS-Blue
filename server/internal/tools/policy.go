@@ -33,27 +33,27 @@ type ToolPolicyResolver struct {
 // intentionally small. Richer capabilities remain available through exec-routed
 // skills or compat paths without inflating the default tool list.
 var defaultChatDirectToolAllowlist = map[string]struct{}{
-	"ask":           {},
-	"bash":          {},
-	"browser":       {},
-	"calendar":      {},
-	"convert":       {},
-	"edit":          {},
-	"email":         {},
-	"find":          {},
-	"grep":          {},
-	"image":         {},
-	"ls":            {},
-	"pdf":           {},
-	"plan_append":   {},
-	"plan_create":   {},
-	"plan_update":   {},
-	"read":          {},
-	"deep_research": {},
-	"sessions":      {},
-	"tool_search":   {},
-	"web":           {},
-	"write":         {},
+	"ask":         {},
+	"bash":        {},
+	"browser":     {},
+	"calendar":    {},
+	"convert":     {},
+	"edit":        {},
+	"email":       {},
+	"find":        {},
+	"grep":        {},
+	"image":       {},
+	"ls":          {},
+	"pdf":         {},
+	"plan_append": {},
+	"plan_create": {},
+	"plan_update": {},
+	"read":        {},
+	"research":    {},
+	"sessions":    {},
+	"tool_search": {},
+	"web":         {},
+	"write":       {},
 }
 
 // NewToolPolicyResolver creates a resolver from app config.
@@ -274,7 +274,7 @@ func normalizeToolPolicyName(name string) string {
 	case "image", "image_generation", "generate_image", "generateimage":
 		return "image"
 	case "deep_research", "deep-research", "research_run", "research_status":
-		return "deep_research"
+		return "research"
 	default:
 		return strings.ToLower(strings.TrimSpace(name))
 	}

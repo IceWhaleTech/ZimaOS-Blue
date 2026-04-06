@@ -1,0 +1,1 @@
+declare const __EMBED_DISABLE_MERMAID__: boolean

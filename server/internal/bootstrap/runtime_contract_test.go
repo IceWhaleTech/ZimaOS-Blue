@@ -123,7 +123,11 @@ func TestRuntimeContractBinding_BindsChatAndRegistersTaskSurface(t *testing.T) {
 	if contract.approvalDetailTarget() != registration.detailProvider {
 		t.Fatalf("expected contract approval detail target to track registration detail provider, got target=%#v registration=%#v", contract.approvalDetailTarget(), registration.detailProvider)
 	}
-	if !routeExists(e, "POST", "/api/deep-research/jobs") || !routeExists(e, "POST", "/api/harness/research/jobs") || !routeExists(e, "GET", "/api/harness/runs") || !routeExists(e, "GET", "/api/self-reflect/proposals") {
+	if !routeExists(e, "POST", "/api/deep-research/jobs") ||
+		!routeExists(e, "POST", "/api/harness/research/jobs") ||
+		!routeExists(e, "GET", "/api/harness/runs") ||
+		!routeExists(e, "POST", "/api/harness/skill-revisions/:id/rollback") ||
+		!routeExists(e, "GET", "/api/self-reflect/proposals") {
 		t.Fatalf("expected runtime contract task routes to register, got %#v", e.Routes())
 	}
 }

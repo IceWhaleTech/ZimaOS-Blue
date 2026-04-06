@@ -32,13 +32,13 @@ function browseText(key: string, fallback: string): string {
 const galleryHint = computed(() =>
   browseText(
     'extensions.browse.skillGalleryHint',
-    'Browse skills as cards. Open any skill to review docs and manage its status.'
+    'Browse skills as cards. Open any skill to review docs.'
   )
 )
 const skillManagementHint = computed(() =>
   browseText(
     'extensions.browse.skillManagementHint',
-    'Built-in skills can be enabled or disabled here. Uninstall is available only for local skills.'
+    'Uninstall is available only for local skills.'
   )
 )
 const closeDetailLabel = computed(() =>
@@ -48,7 +48,7 @@ const sourceMetaLabel = computed(() => browseText('extensions.browse.sourceLabel
 const builtinSkillDetailHint = computed(() =>
   browseText(
     'extensions.browse.builtinSkillDetailHint',
-    'This built-in skill can be enabled or disabled here, but it cannot be uninstalled.'
+    'This is a built-in skill and cannot be uninstalled.'
   )
 )
 
@@ -377,14 +377,6 @@ async function openSkillDetail(skill: Skill) {
 
 function closeSkillDetail() {
   showDetailModal.value = false
-}
-
-async function handleToggle(skill: Skill) {
-  if (skill.enabled) {
-    await skillStore.disableSkill(skill.id)
-  } else {
-    await skillStore.enableSkill(skill.id)
-  }
 }
 
 async function handleUninstall(skill: Skill) {
@@ -731,16 +723,6 @@ async function handleUninstall(skill: Skill) {
                   <span class="skill-showcase-card__state-dot"></span>
                   {{ selectedSkill.enabled ? t('common.enabled') : t('common.disabled') }}
                 </span>
-
-                <label class="toggle-switch">
-                  <input
-                    type="checkbox"
-                    :checked="selectedSkill.enabled"
-                    :disabled="skillStore.loading"
-                    @change="handleToggle(selectedSkill)"
-                  />
-                  <span class="toggle-slider"></span>
-                </label>
 
                 <button
                   v-if="canUninstallSelectedSkill"
@@ -1929,15 +1911,7 @@ async function handleUninstall(skill: Skill) {
 }
 
 .detail-docs__surface {
-  border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--skills-detail-section-border) 92%, transparent);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--skills-detail-section-bg-strong) 80%, white 2%) 0%,
-    color-mix(in srgb, var(--skills-detail-section-bg) 94%, transparent) 100%
-  );
-  padding: 18px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  padding: 2px 0 0;
 }
 
 .list-empty {
@@ -2013,9 +1987,10 @@ async function handleUninstall(skill: Skill) {
   margin: 0 0 4px;
 }
 
-.skill-content :deep(.overflow-x-auto) {
+.skill-content :deep(.markdown-table-wrap) {
   margin: 14px 0;
   overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--skills-detail-section-border);
   border-radius: 18px;
   background: color-mix(in srgb, var(--skills-detail-section-bg-strong) 92%, transparent);
@@ -2028,6 +2003,7 @@ async function handleUninstall(skill: Skill) {
   min-width: 520px;
   border-collapse: separate;
   border-spacing: 0;
+  border: 0;
   color: var(--text-primary);
 }
 
@@ -2037,8 +2013,7 @@ async function handleUninstall(skill: Skill) {
 
 .skill-content :deep(th),
 .skill-content :deep(td) {
-  border-inline-end: 1px solid var(--skills-detail-section-border);
-  border-bottom: 1px solid var(--skills-detail-section-border);
+  border: 0;
   padding: 10px 12px;
   text-align: start;
   vertical-align: top;
@@ -2046,28 +2021,12 @@ async function handleUninstall(skill: Skill) {
   line-height: 1.55;
 }
 
-.skill-content :deep(tr > *:first-child) {
-  border-inline-start: 1px solid var(--skills-detail-section-border);
+.skill-content :deep(tr > *:not(:last-child)) {
+  border-inline-end: 1px solid var(--skills-detail-section-border);
 }
 
-.skill-content :deep(thead tr:first-child > *) {
-  border-top: 1px solid var(--skills-detail-section-border);
-}
-
-.skill-content :deep(thead tr:first-child > *:first-child) {
-  border-top-left-radius: 16px;
-}
-
-.skill-content :deep(thead tr:first-child > *:last-child) {
-  border-top-right-radius: 16px;
-}
-
-.skill-content :deep(tbody tr:last-child > *:first-child) {
-  border-bottom-left-radius: 16px;
-}
-
-.skill-content :deep(tbody tr:last-child > *:last-child) {
-  border-bottom-right-radius: 16px;
+.skill-content :deep(tr:not(:last-child) > *) {
+  border-bottom: 1px solid var(--skills-detail-section-border);
 }
 
 .skill-content :deep(th) {

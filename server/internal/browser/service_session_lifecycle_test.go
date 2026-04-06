@@ -130,11 +130,12 @@ func TestRodServiceSessionScreenshotLifecycleE2E(t *testing.T) {
 	assert.Equal(t, firstShot.Screenshot, secondShot.History[1].Data)
 	assert.Contains(t, secondShot.History[1].URL, "/first")
 
-	sessionsRec := performBrowserJSONRequest(echoServer, http.MethodGet, "/browser/sessions", "")
-	require.Equal(t, http.StatusOK, sessionsRec.Code, sessionsRec.Body.String())
+	overviewRec := performBrowserJSONRequest(echoServer, http.MethodGet, "/browser/overview", "")
+	require.Equal(t, http.StatusOK, overviewRec.Code, overviewRec.Body.String())
 
-	var sessions []SessionInfo
-	require.NoError(t, json.Unmarshal(sessionsRec.Body.Bytes(), &sessions))
+	var overview browserOverviewResponse
+	require.NoError(t, json.Unmarshal(overviewRec.Body.Bytes(), &overview))
+	sessions := overview.Sessions
 	require.Len(t, sessions, 1)
 	assert.Equal(t, tab.TargetID, sessions[0].ID)
 
@@ -215,11 +216,12 @@ func TestRodServiceDetachedScreenshotAppearsInMonitorSessionsE2E(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, firstResp.Data)
 
-	sessionsRec := performBrowserJSONRequest(echoServer, http.MethodGet, "/browser/sessions", "")
-	require.Equal(t, http.StatusOK, sessionsRec.Code, sessionsRec.Body.String())
+	overviewRec := performBrowserJSONRequest(echoServer, http.MethodGet, "/browser/overview", "")
+	require.Equal(t, http.StatusOK, overviewRec.Code, overviewRec.Body.String())
 
-	var sessions []SessionInfo
-	require.NoError(t, json.Unmarshal(sessionsRec.Body.Bytes(), &sessions))
+	var overview browserOverviewResponse
+	require.NoError(t, json.Unmarshal(overviewRec.Body.Bytes(), &overview))
+	sessions := overview.Sessions
 	require.Len(t, sessions, 1)
 	assert.Equal(t, detachedMonitorTargetID, sessions[0].ID)
 	assert.Equal(t, "Detached First", sessions[0].PageTitle)

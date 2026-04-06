@@ -212,8 +212,8 @@ func TestShouldForceResearchToolExposure(t *testing.T) {
 		t.Fatal("expected best-practices prompt to force research tool exposure")
 	}
 
-	if shouldForceResearchToolExposure("What are the current best practices for agent memory systems?", &disabled) {
-		t.Fatal("expected disabled deep research toggle not to force research tool exposure")
+	if !shouldForceResearchToolExposure("What are the current best practices for agent memory systems?", &disabled) {
+		t.Fatal("expected legacy deep research toggle to be ignored for forced research exposure")
 	}
 }
 
@@ -2061,7 +2061,7 @@ func TestApplyReminderToolPreference(t *testing.T) {
 	}
 }
 
-func TestApplyWebSearchPreference_FiltersCanonicalWebQueryCompatFamily(t *testing.T) {
+func TestApplyWebSearchPreference_DoesNotFilterCanonicalWebQueryCompatFamily(t *testing.T) {
 	defs := []tools.ToolDefinition{
 		{Name: "web_query"},
 		{Name: "web_search"},
@@ -2072,8 +2072,8 @@ func TestApplyWebSearchPreference_FiltersCanonicalWebQueryCompatFamily(t *testin
 
 	disabled := false
 	filtered := applyWebSearchPreference(defs, &disabled)
-	if got := toolNames(filtered); strings.Join(got, ",") != "browser,read" {
-		t.Fatalf("expected web tool family to be filtered when web search is disabled, got=%v", got)
+	if got := toolNames(filtered); strings.Join(got, ",") != "web_query,web_search,web_fetch,browser,read" {
+		t.Fatalf("expected web tool family to stay exposed under progressive tool exposure, got=%v", got)
 	}
 }
 

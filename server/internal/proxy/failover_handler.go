@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -25,6 +26,7 @@ func NewFailoverAPIHandler(smartFailover *SmartFailoverHandler, config *Failover
 
 // RegisterRoutes registers failover API routes
 func (h *FailoverAPIHandler) RegisterRoutes(g *echo.Group) {
+	g.GET("/overview", h.GetOverview)
 	g.GET("/metrics", h.GetMetrics)
 	g.GET("/config", h.GetConfig)
 	g.PUT("/config", h.UpdateConfig)
@@ -56,6 +58,16 @@ func (h *FailoverAPIHandler) GetMetrics(c echo.Context) error {
 
 	metrics := h.smartFailover.GetMetrics()
 	return c.JSON(http.StatusOK, metrics.GetStats())
+}
+
+// GetOverview returns aggregated failover state for sparse dashboard/status surfaces.
+// GET /api/v1/proxy/failover/overview
+func (h *FailoverAPIHandler) GetOverview(c echo.Context) error {
+	return c.JSON(http.StatusOK, FailoverOverviewResponse{
+		Metrics:         h.failoverMetricsPayload(),
+		Config:          h.failoverConfigPayload(),
+		CircuitBreakers: h.failoverCircuitBreakerPayload(),
+	})
 }
 
 // GetConfig returns failover configuration
@@ -222,11 +234,120 @@ type FailoverMetricsResponse struct {
 	StreamAnomalies   int64                       `json:"stream_anomalies"`
 }
 
+type FailoverCircuitBreakerStatusResponse struct {
+	State       string `json:"state"`
+	Failures    int    `json:"failures"`
+	LastFailure string `json:"last_failure,omitempty"`
+}
+
+type FailoverOverviewResponse struct {
+	Metrics         FailoverMetricsResponse                         `json:"metrics"`
+	Config          FailoverConfig                                  `json:"config"`
+	CircuitBreakers map[string]FailoverCircuitBreakerStatusResponse `json:"circuit_breakers"`
+}
+
+func (h *FailoverAPIHandler) failoverMetricsPayload() FailoverMetricsResponse {
+	if h == nil || h.smartFailover == nil || h.smartFailover.metrics == nil {
+		return FailoverMetricsResponse{
+			ErrorsByType:      map[string]int64{},
+			ProviderErrors:    map[string]map[string]int64{},
+			ProviderFailovers: map[string]int64{},
+		}
+	}
+
+	metrics := h.smartFailover.metrics
+	metrics.mu.RLock()
+	defer metrics.mu.RUnlock()
+
+	errorsByType := make(map[string]int64, len(metrics.ErrorsByType))
+	for errorType, count := range metrics.ErrorsByType {
+		errorsByType[string(errorType)] = count
+	}
+
+	providerErrors := make(map[string]map[string]int64, len(metrics.ProviderErrors))
+	for provider, counts := range metrics.ProviderErrors {
+		providerErrors[provider] = make(map[string]int64, len(counts))
+		for errorType, count := range counts {
+			providerErrors[provider][string(errorType)] = count
+		}
+	}
+
+	providerFailovers := make(map[string]int64, len(metrics.ProviderFailovers))
+	for provider, count := range metrics.ProviderFailovers {
+		providerFailovers[provider] = count
+	}
+
+	return FailoverMetricsResponse{
+		ErrorsByType:      errorsByType,
+		FailoverTotal:     metrics.FailoverTotal,
+		FailoverSuccess:   metrics.FailoverSuccess,
+		FailoverFailure:   metrics.FailoverFailure,
+		ProviderErrors:    providerErrors,
+		ProviderFailovers: providerFailovers,
+		StreamAnomalies:   atomic.LoadInt64(&metrics.StreamAnomalies),
+	}
+}
+
+func (h *FailoverAPIHandler) failoverConfigPayload() FailoverConfig {
+	if h == nil || h.config == nil {
+		return DefaultProxyConfig().Routing.Failover
+	}
+	return *h.config
+}
+
+func (h *FailoverAPIHandler) failoverCircuitBreakerPayload() map[string]FailoverCircuitBreakerStatusResponse {
+	if h == nil || h.smartFailover == nil {
+		return map[string]FailoverCircuitBreakerStatusResponse{}
+	}
+
+	stats := h.smartFailover.GetBreakerStats()
+	result := make(map[string]FailoverCircuitBreakerStatusResponse, len(stats))
+	for name, stat := range stats {
+		payload := FailoverCircuitBreakerStatusResponse{
+			State: "unknown",
+		}
+		if statMap, ok := stat.(map[string]interface{}); ok {
+			if state, ok := statMap["state"].(string); ok && state != "" {
+				payload.State = state
+			}
+			switch failures := statMap["failures"].(type) {
+			case int:
+				payload.Failures = failures
+			case int64:
+				payload.Failures = int(failures)
+			case float64:
+				payload.Failures = int(failures)
+			}
+			switch lastFailure := statMap["last_failure"].(type) {
+			case time.Time:
+				if !lastFailure.IsZero() {
+					payload.LastFailure = lastFailure.UTC().Format(time.RFC3339)
+				}
+			case string:
+				payload.LastFailure = lastFailure
+			}
+		}
+		result[name] = payload
+	}
+	return result
+}
+
 // ServeHTTP implements http.Handler for standalone use
 func (h *FailoverAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	switch r.URL.Path {
+	case "/overview":
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		json.NewEncoder(w).Encode(FailoverOverviewResponse{
+			Metrics:         h.failoverMetricsPayload(),
+			Config:          h.failoverConfigPayload(),
+			CircuitBreakers: h.failoverCircuitBreakerPayload(),
+		})
+
 	case "/metrics":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

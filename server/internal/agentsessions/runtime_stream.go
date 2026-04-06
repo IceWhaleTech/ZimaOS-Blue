@@ -6,6 +6,8 @@ type runtimeStreamImpl struct {
 	events chan RuntimeEvent
 	done   chan error
 	once   sync.Once
+	mu     sync.Mutex
+	closed bool
 }
 
 func newRuntimeStream(buffer int) *runtimeStreamImpl {
@@ -31,14 +33,21 @@ func (s *runtimeStreamImpl) Wait() error {
 }
 
 func (s *runtimeStreamImpl) push(event RuntimeEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
 	s.events <- event
 }
 
 func (s *runtimeStreamImpl) finish(err error) {
 	s.once.Do(func() {
+		s.mu.Lock()
+		s.closed = true
 		close(s.events)
 		s.done <- err
 		close(s.done)
+		s.mu.Unlock()
 	})
 }
-

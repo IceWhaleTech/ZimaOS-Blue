@@ -22,8 +22,6 @@ func NewHandler(store *Store, runner *Runner) *Handler {
 // RegisterRoutes registers agent API routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/tasks", h.CreateTask)
-	g.GET("/tasks", h.ListTasks)
-	g.GET("/tasks/:id", h.GetTask)
 	g.POST("/tasks/:id/cancel", h.CancelTask)
 	g.POST("/tasks/:id/message", h.SendMessage)
 	g.POST("/tasks/:id/answer", h.SubmitAnswer)
@@ -62,28 +60,6 @@ func (h *Handler) CreateTask(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, task)
-}
-
-// ListTasks handles GET /api/v1/agent/tasks
-func (h *Handler) ListTasks(c echo.Context) error {
-	userID := getUserID(c)
-	tasks, err := h.store.ListByUser(c.Request().Context(), userID, 50)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-	if tasks == nil {
-		tasks = []*Task{}
-	}
-	return c.JSON(http.StatusOK, tasks)
-}
-
-// GetTask handles GET /api/v1/agent/tasks/:id
-func (h *Handler) GetTask(c echo.Context) error {
-	task, err := h.getScopedTask(c, c.Param("id"))
-	if err != nil {
-		return c.JSON(http.StatusNotFound, map[string]string{"error": "task not found"})
-	}
-	return c.JSON(http.StatusOK, task)
 }
 
 // CancelTask handles POST /api/v1/agent/tasks/:id/cancel

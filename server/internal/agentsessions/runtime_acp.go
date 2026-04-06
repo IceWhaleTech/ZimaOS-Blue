@@ -86,6 +86,7 @@ func (r *ACPRuntime) VerifyProfile(ctx context.Context, profile AgentProfile) (*
 	}
 	return &ProfileVerifyResult{
 		OK:           true,
+		MessageCode:  ProfileVerifyMessageCodeProfileVerified,
 		Message:      "ACP profile verified",
 		Capabilities: capabilities,
 		Details: map[string]interface{}{
@@ -229,8 +230,9 @@ func (r *ACPRuntime) Health(ctx context.Context, profile AgentProfile) (*Profile
 	}
 	defer proc.close()
 	return &ProfileHealthResult{
-		Healthy: true,
-		Message: "ACP runtime is healthy",
+		Healthy:     true,
+		MessageCode: ProfileHealthMessageCodeRuntimeHealthy,
+		Message:     "ACP runtime is healthy",
 	}, nil
 }
 
@@ -303,12 +305,11 @@ func (r *ACPRuntime) ensureRuntimeSession(ctx context.Context, profile AgentProf
 }
 
 func (r *ACPRuntime) spawnACPProcess(ctx context.Context, profile AgentProfile) (*acpProcess, *acpInitInfo, error) {
-	command, args, err := splitCommand(profile.Command)
+	command, args, err := resolveACPCommand(profile.Command, exec.LookPath, "")
 	if err != nil {
 		return nil, nil, err
 	}
-	resolvedCommand := resolveACPCommandBinary(command, exec.LookPath, "")
-	if resolvedCommand != command && r.logger != nil {
+	if resolvedCommand := resolveACPCommandBinary(command, exec.LookPath, ""); resolvedCommand != command && r.logger != nil {
 		r.logger.Debug("resolved ACP runtime command from scenario path",
 			zap.String("profile_id", profile.ID),
 			zap.String("requested_command", command),
@@ -316,7 +317,7 @@ func (r *ACPRuntime) spawnACPProcess(ctx context.Context, profile AgentProfile) 
 		)
 	}
 	cwd := resolveProcessCWD(profile)
-	cmd := exec.CommandContext(ctx, resolvedCommand, args...)
+	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = cwd
 
 	runtimeEnv := mergeStringMap(nil, profile.Env)
@@ -819,6 +820,36 @@ func splitCommand(command []string) (string, []string, error) {
 	return command[0], append([]string(nil), command[1:]...), nil
 }
 
+func resolveACPCommand(command []string, lookPath func(string) (string, error), homeDir string) (string, []string, error) {
+	binary, args, err := splitCommand(command)
+	if err != nil {
+		return "", nil, err
+	}
+	trimmed := strings.TrimSpace(binary)
+	if trimmed == "" {
+		return "", nil, fmt.Errorf("ACP profile command is required")
+	}
+	if filepath.Base(trimmed) != trimmed {
+		return trimmed, args, nil
+	}
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	if resolved, err := lookPath(trimmed); err == nil && strings.TrimSpace(resolved) != "" {
+		return resolved, args, nil
+	}
+	if scenarioPath := resolveACPCommandScenarioPath(trimmed, homeDir); scenarioPath != "" {
+		return scenarioPath, args, nil
+	}
+	if fallbackCommand, fallbackArgs, ok := resolveACPCommandFallback(trimmed, args); ok {
+		if resolved, err := lookPath(fallbackCommand); err == nil && strings.TrimSpace(resolved) != "" {
+			return resolved, fallbackArgs, nil
+		}
+		return fallbackCommand, fallbackArgs, nil
+	}
+	return trimmed, args, nil
+}
+
 func resolveACPCommandBinary(command string, lookPath func(string) (string, error), homeDir string) string {
 	trimmed := strings.TrimSpace(command)
 	if trimmed == "" {
@@ -837,6 +868,17 @@ func resolveACPCommandBinary(command string, lookPath func(string) (string, erro
 		return scenarioPath
 	}
 	return trimmed
+}
+
+func resolveACPCommandFallback(command string, args []string) (string, []string, bool) {
+	switch normalizedCommandBinary([]string{command}) {
+	case "claude-agent-acp":
+		return "npx", append([]string{"-y", "@zed-industries/claude-agent-acp"}, args...), true
+	case "codex-acp":
+		return "npx", append([]string{"@zed-industries/codex-acp"}, args...), true
+	default:
+		return "", nil, false
+	}
 }
 
 func resolveACPCommandScenarioPath(command, homeDir string) string {

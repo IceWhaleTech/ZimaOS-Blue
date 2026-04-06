@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/labstack/echo/v4"
@@ -15,13 +16,12 @@ import (
 
 // Handler handles browser automation HTTP requests.
 type Handler struct {
-	service        Service
-	serviceFactory func() Service
-	lazy           *reclaim.Managed[Service]
-	relayInfo      func() RelayInfo
-	sessionRoutes  SessionRouteProvider
-	tasks          map[string]*BrowserTask
-	tasksMu        sync.RWMutex
+	service         Service
+	serviceFactory  func() Service
+	lazy            *reclaim.Managed[Service]
+	relayInfo       func() RelayInfo
+	sessionRoutes   SessionRouteProvider
+	taskProjections BrowserOverviewTaskProvider
 }
 
 const (
@@ -29,18 +29,9 @@ const (
 	browserSessionNavigateTimeout = 60 * time.Second
 )
 
-// BrowserTask represents a browser automation task.
-type BrowserTask struct {
-	ID          string      `json:"id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description,omitempty"`
-	Status      string      `json:"status"`
-	Steps       interface{} `json:"steps"`
-	CreatedAt   string      `json:"created_at"`
-	StartedAt   string      `json:"started_at,omitempty"`
-	CompletedAt string      `json:"completed_at,omitempty"`
-	Error       string      `json:"error,omitempty"`
-	Result      interface{} `json:"result,omitempty"`
+type browserOverviewResponse struct {
+	Tasks    []map[string]any `json:"tasks"`
+	Sessions []SessionInfo    `json:"sessions"`
 }
 
 type browserViewportScreenshoter interface {
@@ -59,7 +50,6 @@ type browserSessionScreenshotHistoryProvider interface {
 func NewHandler(service Service) *Handler {
 	return &Handler{
 		service: service,
-		tasks:   make(map[string]*BrowserTask),
 	}
 }
 
@@ -67,7 +57,6 @@ func NewHandler(service Service) *Handler {
 func NewLazyHandler(factory func() Service) *Handler {
 	h := &Handler{
 		serviceFactory: factory,
-		tasks:          make(map[string]*BrowserTask),
 	}
 	h.lazy = reclaim.NewManaged[Service](0, func() (Service, error) {
 		if h.serviceFactory == nil {
@@ -177,6 +166,11 @@ func (h *Handler) SetSessionRouteProvider(provider SessionRouteProvider) {
 	h.sessionRoutes = provider
 }
 
+// SetTaskProjectionService configures the task provider used by the browser overview route.
+func (h *Handler) SetTaskProjectionService(provider BrowserOverviewTaskProvider) {
+	h.taskProjections = provider
+}
+
 // RegisterRoutes registers the browser routes.
 func (h *Handler) RegisterRoutes(g *echo.Group) {
 	// Status and control
@@ -213,18 +207,9 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/recipes", h.ListRecipes)
 	g.POST("/recipe", h.ExecuteRecipe)
 
-	// Task management (stub endpoints for frontend compatibility)
-	g.GET("/tasks", h.ListTasks)
-	g.POST("/tasks", h.CreateTask)
-	g.GET("/tasks/:id", h.GetTask)
-	g.POST("/tasks/:id/run", h.RunTask)
-	g.POST("/tasks/:id/cancel", h.CancelTask)
-	g.DELETE("/tasks/:id", h.DeleteTask)
-
 	// Session management (stub endpoints for frontend compatibility)
-	g.GET("/sessions", h.ListSessions)
+	g.GET("/overview", h.Overview)
 	g.POST("/sessions", h.CreateSession)
-	g.GET("/sessions/:id", h.GetSession)
 	g.DELETE("/sessions/:id", h.CloseSession)
 	g.POST("/sessions/:id/monitor", h.SessionMonitor)
 	g.POST("/sessions/:id/screenshot", h.SessionScreenshot)
@@ -247,59 +232,6 @@ func (h *Handler) RelayInfo(c echo.Context) error {
 		return c.JSON(http.StatusOK, RelayInfo{})
 	}
 	return c.JSON(http.StatusOK, h.relayInfo())
-}
-
-// ListTasks returns all browser automation tasks.
-func (h *Handler) ListTasks(c echo.Context) error {
-	h.tasksMu.RLock()
-	defer h.tasksMu.RUnlock()
-
-	tasks := make([]*BrowserTask, 0, len(h.tasks))
-	for _, task := range h.tasks {
-		tasks = append(tasks, task)
-	}
-	return c.JSON(http.StatusOK, tasks)
-}
-
-// CreateTask creates a new browser automation task.
-func (h *Handler) CreateTask(c echo.Context) error {
-	var req struct {
-		Name        string      `json:"name"`
-		Description string      `json:"description"`
-		Steps       interface{} `json:"steps"`
-	}
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
-
-	// Generate unique ID
-	id := timeutil.NowTime().Format("20060102150405") + "-" + randomString(6)
-
-	task := &BrowserTask{
-		ID:          id,
-		Name:        req.Name,
-		Description: req.Description,
-		Status:      "pending",
-		Steps:       req.Steps,
-		CreatedAt:   timeutil.NowTime().Format(time.RFC3339),
-	}
-
-	h.tasksMu.Lock()
-	h.tasks[id] = task
-	h.tasksMu.Unlock()
-
-	return c.JSON(http.StatusOK, task)
-}
-
-// randomString generates a random string of given length.
-func randomString(n int) string {
-	const letters = "abcdefghijklmnopqrstuvwxyz0180789"
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letters[timeutil.NowNano()%int64(len(letters))]
-		time.Sleep(time.Nanosecond)
-	}
-	return string(b)
 }
 
 func newBrowserSessionResponse(tab *Tab, now time.Time) SessionInfo {
@@ -344,116 +276,106 @@ func findTabByTargetID(tabs []*Tab, id string) *Tab {
 	return nil
 }
 
-// GetTask returns a specific task.
-func (h *Handler) GetTask(c echo.Context) error {
-	id := c.Param("id")
-
-	h.tasksMu.RLock()
-	task, exists := h.tasks[id]
-	h.tasksMu.RUnlock()
-
-	if !exists {
-		return echo.NewHTTPError(http.StatusNotFound, "task not found")
+// Overview returns the Browser Monitor overview payload in one request.
+func (h *Handler) Overview(c echo.Context) error {
+	sessions, err := h.listSessionInfo(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
 	}
-	return c.JSON(http.StatusOK, task)
+
+	tasks, err := h.listOverviewTasks(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(http.StatusOK, browserOverviewResponse{
+		Tasks:    tasks,
+		Sessions: sessions,
+	})
 }
 
-// RunTask runs a task.
-func (h *Handler) RunTask(c echo.Context) error {
-	id := c.Param("id")
-
-	h.tasksMu.Lock()
-	task, exists := h.tasks[id]
-	if exists {
-		task.Status = "running"
-		task.StartedAt = timeutil.NowTime().Format(time.RFC3339)
-	}
-	h.tasksMu.Unlock()
-
-	if !exists {
-		return echo.NewHTTPError(http.StatusNotFound, "task not found")
-	}
-
-	// Simulate task completion after a short delay (in production, this would be async)
-	go func() {
-		time.Sleep(2 * time.Second)
-		h.tasksMu.Lock()
-		if t, ok := h.tasks[id]; ok {
-			if t.Status == "running" {
-				t.Status = "completed"
-				t.CompletedAt = timeutil.NowTime().Format(time.RFC3339)
-			}
-		}
-		h.tasksMu.Unlock()
-	}()
-
-	return c.JSON(http.StatusOK, map[string]string{"status": "started"})
-}
-
-// CancelTask cancels a running task.
-func (h *Handler) CancelTask(c echo.Context) error {
-	id := c.Param("id")
-
-	h.tasksMu.Lock()
-	task, exists := h.tasks[id]
-	if exists && (task.Status == "pending" || task.Status == "running") {
-		task.Status = "cancelled"
-		task.CompletedAt = timeutil.NowTime().Format(time.RFC3339)
-	}
-	h.tasksMu.Unlock()
-
-	if !exists {
-		return echo.NewHTTPError(http.StatusNotFound, "task not found")
-	}
-	return c.JSON(http.StatusOK, map[string]string{"status": "cancelled"})
-}
-
-// DeleteTask deletes a task.
-func (h *Handler) DeleteTask(c echo.Context) error {
-	id := c.Param("id")
-
-	h.tasksMu.Lock()
-	delete(h.tasks, id)
-	h.tasksMu.Unlock()
-
-	return c.NoContent(http.StatusNoContent)
-}
-
-// ListSessions returns all browser sessions.
-func (h *Handler) ListSessions(c echo.Context) error {
+func (h *Handler) listSessionInfo(parent context.Context) ([]SessionInfo, error) {
 	if h.sessionRoutes != nil {
-		ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 		defer cancel()
 		sessions, err := h.sessionRoutes.ListBrowserSessions(ctx)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+			return nil, err
 		}
 		if sessions == nil {
-			sessions = []SessionInfo{}
+			return []SessionInfo{}, nil
 		}
-		return c.JSON(http.StatusOK, sessions)
+		return sessions, nil
 	}
 
 	service := h.peekService()
 	if service == nil {
-		return c.JSON(http.StatusOK, []SessionInfo{})
+		return []SessionInfo{}, nil
 	}
 
-	// Create a context with timeout
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 	defer cancel()
 
 	status, err := service.Status(ctx)
 	if err != nil || status == nil || !status.Running {
-		return c.JSON(http.StatusOK, []SessionInfo{})
+		return []SessionInfo{}, nil
 	}
 
-	// Return tabs as sessions for compatibility
 	tabs, err := service.Tabs(ctx)
 	if err != nil {
-		return c.JSON(http.StatusOK, []SessionInfo{})
+		return []SessionInfo{}, nil
 	}
-	return c.JSON(http.StatusOK, browserSessionResponsesFromTabs(tabs, timeutil.NowTime()))
+	return browserSessionResponsesFromTabs(tabs, timeutil.NowTime()), nil
+}
+
+func (h *Handler) listOverviewTasks(c echo.Context) ([]map[string]any, error) {
+	if h == nil || h.taskProjections == nil {
+		return []map[string]any{}, nil
+	}
+
+	scope := normalizedBrowserOverviewTaskScope(c.QueryParam("scope"))
+	limit := normalizedBrowserOverviewTaskLimit(c.QueryParam("limit"))
+	query := BrowserOverviewTaskQuery{
+		UserID:         browserUserID(c),
+		ConversationID: strings.TrimSpace(c.QueryParam("conversation_id")),
+		Scope:          scope,
+		Limit:          limit,
+	}
+	tasks, err := h.taskProjections.List(c.Request().Context(), query)
+	if err != nil {
+		return nil, err
+	}
+	if tasks == nil {
+		return []map[string]any{}, nil
+	}
+	return tasks, nil
+}
+
+func browserUserID(c echo.Context) string {
+	if claims := auth.GetUserFromContext(c); claims != nil {
+		return strings.TrimSpace(claims.UserID)
+	}
+	raw, _ := c.Get("user_id").(string)
+	return strings.TrimSpace(raw)
+}
+
+func normalizedBrowserOverviewTaskScope(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "background":
+		return "background"
+	case "all":
+		return "all"
+	default:
+		return "current"
+	}
+}
+
+func normalizedBrowserOverviewTaskLimit(raw string) int {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || value <= 0 {
+		return 12
+	}
+	return value
 }
 
 // CreateSession creates a new browser session.
@@ -514,49 +436,6 @@ func (h *Handler) CreateSession(c echo.Context) error {
 		"created_at":    timeutil.NowTime().Format(time.RFC3339),
 		"last_activity": timeutil.NowTime().Format(time.RFC3339),
 	})
-}
-
-// GetSession returns a specific session.
-func (h *Handler) GetSession(c echo.Context) error {
-	id := c.Param("id")
-	if h.sessionRoutes != nil {
-		ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
-		defer cancel()
-		session, err := h.sessionRoutes.GetBrowserSession(ctx, id)
-		if err != nil {
-			if errors.Is(err, ErrTabNotFound) {
-				return echo.NewHTTPError(http.StatusNotFound, "session not found")
-			}
-			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-		}
-		return c.JSON(http.StatusOK, session)
-	}
-
-	service, release, err := h.acquireStartedService(c.Request().Context())
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	if release != nil {
-		defer release()
-	}
-	if service == nil {
-		return echo.NewHTTPError(http.StatusNotFound, "session not found")
-	}
-
-	ctx, cancel := context.WithTimeout(c.Request().Context(), 3*time.Second)
-	defer cancel()
-
-	tabs, err := service.Tabs(ctx)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-
-	tab := findTabByTargetID(tabs, id)
-	if tab == nil {
-		return echo.NewHTTPError(http.StatusNotFound, "session not found")
-	}
-
-	return c.JSON(http.StatusOK, newBrowserSessionResponse(tab, timeutil.NowTime()))
 }
 
 // CloseSession closes a browser session.

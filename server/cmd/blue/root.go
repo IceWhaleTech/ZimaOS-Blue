@@ -26,7 +26,7 @@ var rootCmd = &cobra.Command{
 	Long: `ZimaOS-Blue is a A Local-first Agent Runtime for Builders with Bolder Mind that provides
 AI assistant capabilities with local-first architecture.
 
-It supports multiple LLM providers, plugins, skills, and
+It supports multiple LLM providers, skills, and
 integrates with various automation and productivity services.`,
 	Version: version,
 	// Run the server by default if no subcommand is provided

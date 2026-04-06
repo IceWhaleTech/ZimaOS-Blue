@@ -71,3 +71,44 @@ func TestChatRoutesOptionalAuthenticateCarriesUserContext(t *testing.T) {
 		t.Fatalf("conversation user_id = %q, want %q", conv.UserID, claims.UserID)
 	}
 }
+
+func TestChatRoutesRegisterConversationBootstrapRoute(t *testing.T) {
+	store, err := memory.NewStore(filepath.Join(t.TempDir(), "chat.db"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	handler := server.NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+
+	e := echo.New()
+	api := e.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	if !routeExists(e, http.MethodGet, "/api/v1/conversations/:id/bootstrap") {
+		t.Fatalf("expected chat bootstrap route to be registered, got %#v", e.Routes())
+	}
+}
+
+func TestChatRoutesDoNotRegisterStandaloneSparseReadRoutes(t *testing.T) {
+	store, err := memory.NewStore(filepath.Join(t.TempDir(), "chat.db"))
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	handler := server.NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+
+	e := echo.New()
+	api := e.Group("/api/v1")
+	handler.RegisterRoutes(api)
+
+	if routeExists(e, http.MethodGet, "/api/v1/conversations/:id/command-state") {
+		t.Fatalf("did not expect standalone command-state read route to remain registered")
+	}
+	if routeExists(e, http.MethodGet, "/api/v1/conversations/:id/messages/active-stream") {
+		t.Fatalf("did not expect standalone active-stream read route to remain registered")
+	}
+}

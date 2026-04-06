@@ -8,6 +8,8 @@ const listDatasetVersionsMock = vi.fn()
 const listEvalSpecsMock = vi.fn()
 const listEvalRunsMock = vi.fn()
 const listBaselinesMock = vi.fn()
+const previewDatasetBundleFromSourceMock = vi.fn()
+const importDatasetBundleFromSourceMock = vi.fn()
 const getEvalRunReportMock = vi.fn()
 const compareEvalRunMock = vi.fn()
 const getGroupReportMock = vi.fn()
@@ -23,8 +25,9 @@ const notificationErrorMock = vi.fn()
 
 const mountedWrappers: Array<{ unmount: () => void }> = []
 const routeMock = {
-  path: '/automation/harness/group-1',
+  path: '/operations/harness/group-1',
   params: { id: 'group-1' },
+  query: {} as Record<string, string>,
 }
 
 vi.mock('@/api/harness', () => ({
@@ -35,6 +38,8 @@ vi.mock('@/api/harness', () => ({
     listEvalSpecs: listEvalSpecsMock,
     listEvalRuns: listEvalRunsMock,
     listBaselines: listBaselinesMock,
+    previewDatasetBundleFromSource: previewDatasetBundleFromSourceMock,
+    importDatasetBundleFromSource: importDatasetBundleFromSourceMock,
     getEvalRunReport: getEvalRunReportMock,
     compareEvalRun: compareEvalRunMock,
     getGroupReport: getGroupReportMock,
@@ -82,7 +87,7 @@ function createTestI18n() {
     messages: {
       'en-US': {
         nav: {
-          automation: 'Automation',
+          automation: 'Operations',
           harness: 'Harness',
         },
         common: {
@@ -676,7 +681,8 @@ function createEvalRunReport(overrides: Record<string, unknown> = {}) {
       ...((overrides.dataset_version as Record<string, unknown>) || {}),
     },
     group_report: createGroupReport(
-      (overrides.group_report as Record<string, unknown>) || (base.group_report as Record<string, unknown>)
+      (overrides.group_report as Record<string, unknown>) ||
+        (base.group_report as Record<string, unknown>)
     ),
   }
 }
@@ -730,8 +736,9 @@ function createComparisonReport(overrides: Record<string, unknown> = {}) {
 }
 
 async function mountHarnessGroupDetail(width = 1280) {
-  routeMock.path = '/automation/harness/group-1'
+  routeMock.path = '/operations/harness/group-1'
   routeMock.params = { id: 'group-1' }
+  routeMock.query = {}
   setWindowWidth(width)
   const HarnessGroupDetailView = (await import('@/views/HarnessGroupDetailView.vue')).default
   const wrapper = mount(HarnessGroupDetailView, {
@@ -739,7 +746,8 @@ async function mountHarnessGroupDetail(width = 1280) {
       plugins: [createTestI18n()],
       stubs: {
         AgentcoreRunnerPanel: {
-          template: '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
+          template:
+            '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
         },
         RouterLink: {
           props: ['to'],
@@ -754,7 +762,7 @@ async function mountHarnessGroupDetail(width = 1280) {
 }
 
 async function mountHarnessGroupsView(i18n = createTestI18n()) {
-  routeMock.path = '/automation/harness'
+  routeMock.path = '/operations/harness'
   routeMock.params = { id: '' }
   const HarnessGroupsView = (await import('@/views/HarnessGroupsView.vue')).default
   const wrapper = mount(HarnessGroupsView, {
@@ -762,7 +770,8 @@ async function mountHarnessGroupsView(i18n = createTestI18n()) {
       plugins: [i18n],
       stubs: {
         AgentcoreRunnerPanel: {
-          template: '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
+          template:
+            '<div data-testid="agentcore-runner-card" class="agentcore-runner-panel-stub" />',
         },
         RouterLink: {
           props: ['to'],
@@ -780,8 +789,9 @@ describe('Harness views', () => {
   beforeEach(() => {
     vi.useRealTimers()
     vi.clearAllMocks()
-    routeMock.path = '/automation/harness/group-1'
+    routeMock.path = '/operations/harness/group-1'
     routeMock.params = { id: 'group-1' }
+    routeMock.query = {}
     setWindowWidth(1280)
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
@@ -793,6 +803,70 @@ describe('Harness views', () => {
     listEvalSpecsMock.mockResolvedValue({ data: [] })
     listEvalRunsMock.mockResolvedValue({ data: [] })
     listBaselinesMock.mockResolvedValue({ data: [] })
+    previewDatasetBundleFromSourceMock.mockResolvedValue({
+      data: {
+        source_type: 'dataset_bundle_local',
+        source_ref: '/tmp/demo-bundle',
+        dataset: {
+          name: 'Demo Bundle',
+          description: 'Demo bundle dataset',
+          subject: 'demo_subject',
+          default_run_kind: 'agent_task',
+          default_profile: 'demo-profile',
+        },
+        version: {
+          version: 'v1',
+          item_count: 1,
+          manifest_sha256: 'preview-sha',
+          source_type: 'dataset_bundle_local',
+          source_ref: '/tmp/demo-bundle',
+        },
+        eval_specs: [
+          {
+            name: 'Demo Bundle Eval',
+            subject: 'demo_subject',
+            run_kind: 'agent_task',
+            profile: 'demo-profile',
+            scoring: {
+              mode: 'rule',
+              pass_threshold: 1,
+            },
+          },
+        ],
+        make_active: true,
+      },
+    })
+    importDatasetBundleFromSourceMock.mockResolvedValue({
+      data: {
+        dataset: {
+          id: 'dataset-imported',
+          name: 'Demo Bundle',
+          active_version_id: 'dataset-version-imported',
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+        dataset_version: {
+          id: 'dataset-version-imported',
+          dataset_id: 'dataset-imported',
+          version: 'v1',
+          item_count: 1,
+          source_type: 'dataset_bundle_local',
+          source_ref: '/tmp/demo-bundle',
+          created_at: '2026-03-20T09:10:00Z',
+        },
+        eval_specs: [
+          {
+            id: 'eval-spec-imported',
+            name: 'Demo Bundle Eval',
+            dataset_id: 'dataset-imported',
+            dataset_version_id: 'dataset-version-imported',
+            run_kind: 'agent_task',
+            created_at: '2026-03-20T09:15:00Z',
+            updated_at: '2026-03-20T09:15:00Z',
+          },
+        ],
+      },
+    })
     getEvalRunReportMock.mockResolvedValue({ data: null })
     compareEvalRunMock.mockResolvedValue({ data: null })
     listConversationsMock.mockResolvedValue({ data: [] })
@@ -813,7 +887,7 @@ describe('Harness views', () => {
   })
 
   it('renders the restored harness console and filters group records', async () => {
-    routeMock.path = '/automation/harness'
+    routeMock.path = '/operations/harness'
     routeMock.params = { id: '' }
     listGroupsMock.mockResolvedValue({
       data: [
@@ -888,7 +962,12 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('Quick Eval')
     expect(wrapper.text()).toContain('Datasets & versions')
     expect(wrapper.text()).toContain('Eval runs')
-    expect(wrapper.find('[data-testid="agentcore-runner-card"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="harness-explainer-panel"]').text()).toContain(
+      'Harness, in plain language'
+    )
+    expect(wrapper.text()).toContain('What it is')
+    expect(wrapper.text()).toContain('What it does in the system')
+    expect(wrapper.find('[data-testid="agentcore-runner-card"]').exists()).toBe(false)
     expect(wrapper.find('.stats-toolbar .refresh-button').exists()).toBe(false)
     expect(wrapper.text()).toContain('Regression batch')
     expect(wrapper.text()).toContain('Nightly snapshot')
@@ -909,6 +988,143 @@ describe('Harness views', () => {
     await terminalButton!.trigger('click')
     expect(wrapper.findAll('.group-card-link')).toHaveLength(1)
     expect(wrapper.text()).toContain('Nightly snapshot')
+  })
+
+  it('opens the visible bundle import entry and submits a local bundle import', async () => {
+    const wrapper = await mountHarnessGroupsView()
+
+    expect(wrapper.text()).toContain('Import bundle')
+
+    await wrapper.get('[data-testid="harness-import-bundle-entry"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('input[name="dataset-bundle-path"]').setValue('harness/datasets/demo-bundle')
+    await wrapper.get('[data-testid="harness-bundle-preview-button"]').trigger('click')
+    await flushPromises()
+    expect(previewDatasetBundleFromSourceMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_type: 'local',
+        path: 'harness/datasets/demo-bundle',
+        make_active: true,
+      })
+    )
+    await wrapper.get('[data-testid="harness-bundle-import-form"]').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(importDatasetBundleFromSourceMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source_type: 'local',
+        path: 'harness/datasets/demo-bundle',
+        make_active: true,
+      })
+    )
+    expect(notificationSuccessMock).toHaveBeenCalledWith('Harness', 'Dataset bundle imported')
+  })
+
+  it('submits a GitHub bundle import from the advanced import card', async () => {
+    const wrapper = await mountHarnessGroupsView()
+
+    await wrapper.get('[data-testid="harness-import-bundle-entry"]').trigger('click')
+    await flushPromises()
+
+    const githubButton = wrapper
+      .findAll('.segment-button')
+      .find((button) => button.text().trim() === 'GitHub bundle')
+
+    expect(githubButton).toBeTruthy()
+
+    await githubButton!.trigger('click')
+    await flushPromises()
+
+    await wrapper
+      .get('input[name="dataset-bundle-source"]')
+      .setValue('https://github.com/example/harness-datasets')
+    await wrapper
+      .get('input[name="dataset-bundle-bundle-path"]')
+      .setValue('harness/datasets/demo-bundle')
+    await wrapper.get('input[name="dataset-bundle-version"]').setValue('v2')
+    previewDatasetBundleFromSourceMock.mockResolvedValueOnce({
+      data: {
+        source_type: 'dataset_bundle_github',
+        source_ref: 'https://github.com/example/harness-datasets/tree/main/harness/datasets/demo-bundle',
+        dataset: {
+          name: 'Demo Bundle',
+          description: 'Demo bundle dataset',
+          subject: 'demo_subject',
+          default_run_kind: 'agent_task',
+          default_profile: 'demo-profile',
+        },
+        version: {
+          version: 'v2',
+          item_count: 1,
+          manifest_sha256: 'preview-sha-v2',
+          source_type: 'dataset_bundle_github',
+          source_ref:
+            'https://github.com/example/harness-datasets/tree/main/harness/datasets/demo-bundle',
+        },
+        eval_specs: [
+          {
+            name: 'Demo Bundle Eval',
+            subject: 'demo_subject',
+            run_kind: 'agent_task',
+            profile: 'demo-profile',
+            scoring: {
+              mode: 'rule',
+              pass_threshold: 1,
+            },
+          },
+        ],
+        make_active: true,
+      },
+    })
+    await wrapper.get('[data-testid="harness-bundle-preview-button"]').trigger('click')
+    await flushPromises()
+    expect(previewDatasetBundleFromSourceMock).toHaveBeenCalledWith({
+      source_type: 'github',
+      source: 'https://github.com/example/harness-datasets',
+      bundle_path: 'harness/datasets/demo-bundle',
+      version: 'v2',
+      make_active: true,
+    })
+    await wrapper.get('[data-testid="harness-bundle-import-form"]').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(importDatasetBundleFromSourceMock).toHaveBeenCalledWith({
+      source_type: 'github',
+      source: 'https://github.com/example/harness-datasets',
+      bundle_path: 'harness/datasets/demo-bundle',
+      version: 'v2',
+      make_active: true,
+    })
+    expect(notificationSuccessMock).toHaveBeenCalledWith('Harness', 'Dataset bundle imported')
+  })
+
+  it('shows preview errors inline and clears them after bundle inputs change', async () => {
+    previewDatasetBundleFromSourceMock.mockRejectedValueOnce(new Error('manifest is invalid'))
+
+    const wrapper = await mountHarnessGroupsView()
+
+    await wrapper.get('[data-testid="harness-import-bundle-entry"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('input[name="dataset-bundle-path"]').setValue('harness/datasets/broken-bundle')
+    await wrapper.get('[data-testid="harness-bundle-preview-button"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="harness-bundle-preview-error"]').text()).toContain(
+      'manifest is invalid'
+    )
+    expect(notificationErrorMock).toHaveBeenCalledWith('Harness', 'manifest is invalid')
+    expect(
+      wrapper.get('[data-testid="harness-bundle-import-form"] button.primary-button').attributes(
+        'disabled'
+      )
+    ).toBeDefined()
+
+    await wrapper.get('input[name="dataset-bundle-path"]').setValue('harness/datasets/demo-bundle')
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="harness-bundle-preview-error"]').exists()).toBe(false)
   })
 
   it('renders context pack summary inside the selected eval run linked report', async () => {
@@ -995,6 +1211,81 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('community/forum/contextpack-recipes')
     expect(wrapper.text()).toContain('official')
     expect(wrapper.text()).toContain('web_query')
+  })
+
+  it('auto-opens the requested eval run when evalRunId is present in the route query', async () => {
+    routeMock.query = { evalRunId: 'eval-run-1' }
+
+    listGroupsMock.mockResolvedValue({ data: [] })
+    listDatasetsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-1',
+          name: 'Nightly Dataset',
+          active_version_id: 'dataset-version-1',
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listDatasetVersionsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'dataset-version-1',
+          dataset_id: 'dataset-1',
+          version: 'v3',
+          item_count: 12,
+          created_at: '2026-03-20T09:00:00Z',
+          updated_at: '2026-03-20T09:05:00Z',
+        },
+      ],
+    })
+    listEvalSpecsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-spec-1',
+          dataset_id: 'dataset-1',
+          dataset_version_id: 'dataset-version-1',
+          name: 'Nightly Spec',
+          run_kind: 'agent_task',
+          profile: 'default',
+          scoring_config: {
+            mode: 'rule',
+            pass_threshold: 0.7,
+          },
+          created_at: '2026-03-20T09:10:00Z',
+          updated_at: '2026-03-20T09:15:00Z',
+        },
+      ],
+    })
+    listEvalRunsMock.mockResolvedValue({
+      data: [
+        {
+          id: 'eval-run-1',
+          eval_spec_id: 'eval-spec-1',
+          group_id: 'group-1',
+          dataset_version_id: 'dataset-version-1',
+          title: 'Nightly Eval Run',
+          status: 'running',
+          trigger_kind: 'manual',
+          summary: {
+            pass_rate: 0.8,
+            overall_score: 0.61,
+          },
+          created_at: '2026-03-20T10:00:00Z',
+          updated_at: '2026-03-20T10:05:00Z',
+        },
+      ],
+    })
+    getEvalRunReportMock.mockResolvedValue({
+      data: createEvalRunReport(),
+    })
+
+    const wrapper = await mountHarnessGroupsView()
+
+    expect(getEvalRunReportMock).toHaveBeenCalledWith('eval-run-1')
+    expect(wrapper.text()).toContain('Nightly Eval Run')
+    expect(wrapper.text()).toContain('Linked report')
   })
 
   it('localizes quick eval trigger labels and auto-created run titles', async () => {

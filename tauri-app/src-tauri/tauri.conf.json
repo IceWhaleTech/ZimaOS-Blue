@@ -3,7 +3,7 @@
   "productName": "ZimaOS Blue",
   "mainBinaryName": "blue",
   "identifier": "com.zimaos.blue",
-  "version": "0.10.38",
+  "version": "0.10.39",
   "build": {
     "beforeBuildCommand": ""
   },

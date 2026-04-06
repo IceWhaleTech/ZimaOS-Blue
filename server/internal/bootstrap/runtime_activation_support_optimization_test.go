@@ -427,6 +427,41 @@ Prefer high-signal browsing steps.
 	if got, want := revision.OptimizationRunID, current.LastOptimizationRunID; got != want {
 		t.Fatalf("revision optimization_run_id = %q, want %q", got, want)
 	}
+	if got, want := revision.FollowupGate, "selector"; got != want {
+		t.Fatalf("revision followup_gate = %q, want %q", got, want)
+	}
+	if got, want := revision.OptimizationSurface, harness.OptimizationSurfaceSkillDefinition; got != want {
+		t.Fatalf("revision optimization_surface = %q, want %q", got, want)
+	}
+	if strings.TrimSpace(revision.OriginCaseID) == "" {
+		t.Fatal("expected revision OriginCaseID to be populated")
+	}
+	if strings.TrimSpace(revision.BaseContentSHA256) == "" {
+		t.Fatal("expected revision BaseContentSHA256 to be populated")
+	}
+	evolutionCases, err := controller.ListSkillEvolutionCases(context.Background(), harness.SkillEvolutionCaseFilter{
+		SkillID:     "browser",
+		OwnerUserID: "user-1",
+		Limit:       10,
+	})
+	if err != nil {
+		t.Fatalf("ListSkillEvolutionCases(browser): %v", err)
+	}
+	if len(evolutionCases) != 1 {
+		t.Fatalf("evolution cases len = %d, want 1", len(evolutionCases))
+	}
+	if got, want := evolutionCases[0].RevisionID, skillRevisionID; got != want {
+		t.Fatalf("evolution case revision_id = %q, want %q", got, want)
+	}
+	if got, want := evolutionCases[0].CandidateID, "candidate-browser-optimized"; got != want {
+		t.Fatalf("evolution case candidate_id = %q, want %q", got, want)
+	}
+	if got, want := evolutionCases[0].Status, harness.SkillEvolutionCaseStatusCandidateCreated; got != want {
+		t.Fatalf("evolution case status = %q, want %q", got, want)
+	}
+	if got, want := revision.OriginCaseID, evolutionCases[0].ID; got != want {
+		t.Fatalf("revision OriginCaseID = %q, want %q", got, want)
+	}
 }
 
 func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(t *testing.T) {
@@ -452,11 +487,32 @@ func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(
 		"optimization_run_id":        "opt-accepted",
 		"optimization_parent_run_id": "parent-eval-run",
 	})
+	evolutionCase, err := controller.CreateSkillEvolutionCase(context.Background(), harness.SkillEvolutionCase{
+		SkillID:           "browser",
+		OwnerUserID:       "user-1",
+		Mode:              harness.SkillEvolutionModeFix,
+		Reason:            harness.SkillEvolutionReasonSelectorGateFailed,
+		SourceKind:        "eval_run",
+		SourceID:          "parent-eval-run",
+		CandidateID:       "candidate-browser-optimized",
+		BaseContentSHA256: "base-browser-accepted",
+		FailureSignature:  "selector-gate-failed",
+		Summary:           "Selector gate produced a candidate browser revision.",
+		EvidenceJSON:      `{"followup":"selector"}`,
+		Status:            harness.SkillEvolutionCaseStatusCandidateCreated,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase failed: %v", err)
+	}
 	revision, err := controller.CreateSkillRevision(context.Background(), harness.SkillRevision{
 		SkillID:           "browser",
 		Status:            harness.SkillRevisionStatusCandidate,
 		SourcePath:        "assets/skills/browser/SKILL.md",
 		CandidateID:       "candidate-browser-optimized",
+		BaseContentSHA256: "base-browser-accepted",
+		OriginCaseID:      evolutionCase.ID,
 		EvalRunID:         "parent-eval-run",
 		OptimizationRunID: "opt-accepted",
 		Content:           "# Browser\nAccepted candidate.\n",
@@ -503,6 +559,13 @@ func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(
 	if got, want := reloadedRevision.Status, harness.SkillRevisionStatusAccepted; got != want {
 		t.Fatalf("revision status = %q, want %q", got, want)
 	}
+	reloadedCase, err := controller.GetSkillEvolutionCase(context.Background(), evolutionCase.ID)
+	if err != nil {
+		t.Fatalf("GetSkillEvolutionCase(evolutionCase.ID): %v", err)
+	}
+	if got, want := reloadedCase.Status, harness.SkillEvolutionCaseStatusAccepted; got != want {
+		t.Fatalf("evolution case status = %q, want %q", got, want)
+	}
 
 	status := adapter.GetStatus(context.Background())
 	if got := strings.TrimSpace(status.LastOptimizationState); got != "accepted" {
@@ -530,11 +593,32 @@ func TestHarnessOptimizationManagerAdapterMarksRunningFollowupEval(t *testing.T)
 	if err != nil {
 		t.Fatalf("SubmitEvalRun pending followup failed: %v", err)
 	}
+	evolutionCase, err := controller.CreateSkillEvolutionCase(context.Background(), harness.SkillEvolutionCase{
+		SkillID:           "browser",
+		OwnerUserID:       "user-1",
+		Mode:              harness.SkillEvolutionModeFix,
+		Reason:            harness.SkillEvolutionReasonSelectorGateFailed,
+		SourceKind:        "eval_run",
+		SourceID:          "parent-eval-run",
+		CandidateID:       "candidate-pending",
+		BaseContentSHA256: "base-browser-pending",
+		FailureSignature:  "selector-gate-failed",
+		Summary:           "Selector gate produced a pending candidate browser revision.",
+		EvidenceJSON:      `{"followup":"selector"}`,
+		Status:            harness.SkillEvolutionCaseStatusCandidateCreated,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase failed: %v", err)
+	}
 	revision, err := controller.CreateSkillRevision(context.Background(), harness.SkillRevision{
 		SkillID:           "browser",
 		Status:            harness.SkillRevisionStatusCandidate,
 		SourcePath:        "assets/skills/browser/SKILL.md",
 		CandidateID:       "candidate-pending",
+		BaseContentSHA256: "base-browser-pending",
+		OriginCaseID:      evolutionCase.ID,
 		EvalRunID:         "parent-eval-run",
 		OptimizationRunID: "opt-running",
 		Content:           "# Browser\nPending candidate.\n",
@@ -571,6 +655,13 @@ func TestHarnessOptimizationManagerAdapterMarksRunningFollowupEval(t *testing.T)
 	}
 	if got, want := reloadedRevision.Status, harness.SkillRevisionStatusCandidate; got != want {
 		t.Fatalf("revision status = %q, want %q", got, want)
+	}
+	reloadedCase, err := controller.GetSkillEvolutionCase(context.Background(), evolutionCase.ID)
+	if err != nil {
+		t.Fatalf("GetSkillEvolutionCase(evolutionCase.ID): %v", err)
+	}
+	if got, want := reloadedCase.Status, harness.SkillEvolutionCaseStatusCandidateCreated; got != want {
+		t.Fatalf("evolution case status = %q, want %q", got, want)
 	}
 
 	status := adapter.GetStatus(context.Background())

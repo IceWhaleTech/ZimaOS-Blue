@@ -1,8 +1,6 @@
 package preview
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestGetPresetQuestions_ReturnsQuestions(t *testing.T) {
 	service := NewQuestionsService()
@@ -14,6 +12,71 @@ func TestGetPresetQuestions_ReturnsQuestions(t *testing.T) {
 	}
 	if len(questions) > 5 {
 		t.Errorf("GetPresetQuestions(5) returned %d questions, want <= 5", len(questions))
+	}
+}
+
+func TestQuestionsService_InitializesQuestionsOnDemand(t *testing.T) {
+	service := NewQuestionsService()
+	if service.questions != nil {
+		t.Fatal("expected questions to start nil")
+	}
+
+	questions := service.GetPresetQuestions(2, "en")
+	if len(questions) == 0 {
+		t.Fatal("expected lazy initialization to populate questions")
+	}
+	if service.questions == nil {
+		t.Fatal("expected questions to initialize on first access")
+	}
+}
+
+func TestQuestionsService_BuildsRequestedLanguageOnly(t *testing.T) {
+	service := NewQuestionsService()
+
+	questions := service.GetPresetQuestions(2, "en")
+	if len(questions) == 0 {
+		t.Fatal("expected english questions")
+	}
+	if len(service.questions) != 1 {
+		t.Fatalf("built language count = %d, want 1", len(service.questions))
+	}
+	if _, ok := service.questions["en"]; !ok {
+		t.Fatal("expected english question set to be cached")
+	}
+}
+
+func TestGetPresetQuestionPage_ReturnsLeadingFourQuestionsAndTotal(t *testing.T) {
+	service := NewQuestionsService()
+
+	questions, total := service.GetPresetQuestionPage(0, 4, "en")
+	if got := len(questions); got != 4 {
+		t.Fatalf("GetPresetQuestionPage len = %d, want 4", got)
+	}
+	if total != 12 {
+		t.Fatalf("total = %d, want 12", total)
+	}
+
+	gotIDs := []string{questions[0].ID, questions[1].ID, questions[2].ID, questions[3].ID}
+	wantIDs := []string{"memory-bank", "reading-companion", "growth-map", "content-planner"}
+	for i := range wantIDs {
+		if gotIDs[i] != wantIDs[i] {
+			t.Fatalf("question[%d] id = %q, want %q (full=%v)", i, gotIDs[i], wantIDs[i], gotIDs)
+		}
+	}
+}
+
+func TestGetPresetQuestionPage_ReturnsRemainingEightQuestions(t *testing.T) {
+	service := NewQuestionsService()
+
+	questions, total := service.GetPresetQuestionPage(4, 8, "en")
+	if got := len(questions); got != 8 {
+		t.Fatalf("GetPresetQuestionPage len = %d, want 8", got)
+	}
+	if total != 12 {
+		t.Fatalf("total = %d, want 12", total)
+	}
+	if questions[0].ID != "chip-market-briefing" {
+		t.Fatalf("first remaining id = %q, want %q", questions[0].ID, "chip-market-briefing")
 	}
 }
 

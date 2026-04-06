@@ -226,14 +226,44 @@ CREATE TABLE IF NOT EXISTS harness_skill_revisions (
 	status TEXT NOT NULL,
 	source_path TEXT DEFAULT '',
 	candidate_id TEXT DEFAULT '',
+	base_content_sha256 TEXT DEFAULT '',
+	origin_case_id TEXT DEFAULT '',
 	parent_revision_id TEXT DEFAULT '',
 	backup_of_revision_id TEXT DEFAULT '',
 	eval_run_id TEXT DEFAULT '',
 	optimization_run_id TEXT DEFAULT '',
+	followup_gate TEXT DEFAULT '',
+	optimization_surface TEXT DEFAULT '',
+	decision_action TEXT DEFAULT '',
+	review_note TEXT DEFAULT '',
+	reviewed_by TEXT DEFAULT '',
+	decision_log_json TEXT DEFAULT '',
 	content TEXT NOT NULL DEFAULT '',
 	content_sha256 TEXT NOT NULL DEFAULT '',
 	created_at DATETIME NOT NULL,
+	reviewed_at DATETIME,
 	promoted_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS harness_skill_evolution_cases (
+	id TEXT PRIMARY KEY,
+	skill_id TEXT NOT NULL,
+	owner_user_id TEXT DEFAULT '',
+	mode TEXT NOT NULL,
+	reason TEXT NOT NULL,
+	source_kind TEXT DEFAULT '',
+	source_id TEXT DEFAULT '',
+	candidate_id TEXT DEFAULT '',
+	base_content_sha256 TEXT DEFAULT '',
+	failure_signature TEXT DEFAULT '',
+	dedup_key TEXT DEFAULT '',
+	summary TEXT DEFAULT '',
+	evidence_json TEXT NOT NULL DEFAULT '{}',
+	revision_id TEXT DEFAULT '',
+	status TEXT NOT NULL,
+	skipped_reason TEXT DEFAULT '',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
 );
 `
 
@@ -272,6 +302,12 @@ CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_skill ON harness_skill_re
 CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_status ON harness_skill_revisions(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_eval_run ON harness_skill_revisions(eval_run_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_harness_skill_revisions_optimization_run ON harness_skill_revisions(optimization_run_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_evolution_cases_skill ON harness_skill_evolution_cases(skill_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_evolution_cases_owner ON harness_skill_evolution_cases(owner_user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_evolution_cases_status ON harness_skill_evolution_cases(status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_evolution_cases_revision ON harness_skill_evolution_cases(revision_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_evolution_cases_candidate ON harness_skill_evolution_cases(candidate_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_harness_skill_evolution_cases_dedup ON harness_skill_evolution_cases(skill_id, dedup_key, updated_at DESC);
 `
 
 type SQLiteStore struct {
@@ -721,6 +757,26 @@ func (s *SQLiteStore) beginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx
 		return nil, runErr
 	}
 	return tx, nil
+}
+
+func (s *SQLiteStore) withTx(ctx context.Context, fn func(*sql.Tx) error) (err error) {
+	if s == nil {
+		return fmt.Errorf("harness store is not configured")
+	}
+	tx, err := s.beginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if err = fn(tx); err != nil {
+		return err
+	}
+	err = tx.Commit()
+	return err
 }
 
 func txExecContextWithBusyRetry(ctx context.Context, tx *sql.Tx, query string, args ...interface{}) (sql.Result, error) {
@@ -1369,6 +1425,33 @@ func (s *SQLiteStore) migrateSchema(ctx context.Context) error {
 		return err
 	}
 	if err := s.ensureColumn(ctx, "harness_runs", "attempt_index", `ALTER TABLE harness_runs ADD COLUMN attempt_index INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "base_content_sha256", `ALTER TABLE harness_skill_revisions ADD COLUMN base_content_sha256 TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "origin_case_id", `ALTER TABLE harness_skill_revisions ADD COLUMN origin_case_id TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "followup_gate", `ALTER TABLE harness_skill_revisions ADD COLUMN followup_gate TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "optimization_surface", `ALTER TABLE harness_skill_revisions ADD COLUMN optimization_surface TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "decision_action", `ALTER TABLE harness_skill_revisions ADD COLUMN decision_action TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "review_note", `ALTER TABLE harness_skill_revisions ADD COLUMN review_note TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "reviewed_by", `ALTER TABLE harness_skill_revisions ADD COLUMN reviewed_by TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "decision_log_json", `ALTER TABLE harness_skill_revisions ADD COLUMN decision_log_json TEXT DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := s.ensureColumn(ctx, "harness_skill_revisions", "reviewed_at", `ALTER TABLE harness_skill_revisions ADD COLUMN reviewed_at DATETIME`); err != nil {
 		return err
 	}
 	return nil

@@ -1,12 +1,12 @@
 # ZimaOS Blue Docs
 
-This directory contains the first public-style documentation site for ZimaOS Blue.
+This directory contains the current Mintlify documentation site for ZimaOS Blue.
 
 ## What lives here
 
 - Mintlify site config in `docs-site/docs.json`
 - English canonical docs under `docs-site/`
-- Simplified Chinese user-facing docs under `docs-site/zh-CN/`
+- Simplified Chinese mirrored docs under `docs-site/zh-CN/`
 - Local copies of required assets under `docs-site/assets/`
 - A stable external wiki entry via `https://deepwiki.com/IceWhaleTech/ZimaOS-Blue`
 - Recommended repository research flow: DeepWiki first for broad context, GitHub second for primary-source verification

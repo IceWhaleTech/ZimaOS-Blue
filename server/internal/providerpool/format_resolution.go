@@ -74,6 +74,19 @@ func ResolveAPIFormatPlan(req FormatResolutionRequest) FormatResolutionPlan {
 
 	mode := ProviderAPIFormatMode(provider)
 	if mode == APIFormatModePinned {
+		if provider.APIFormatMode != APIFormatModePinned && shouldPreferResponsesForUnknownOpenAIModel(provider, req.ModelID) {
+			candidates := buildAutoCandidateFormats(req.ModelID, provider, "", req.DetectedFormat, req.ProviderMemoryFormat)
+			selected := APIFormatOpenAI
+			if len(candidates) > 0 {
+				selected = candidates[0]
+			}
+			return FormatResolutionPlan{
+				SelectedFormat:   selected,
+				CandidateFormats: candidates,
+				Source:           FormatResolutionSourceFamilyDefault,
+				BaseURLMode:      baseURLMode,
+			}
+		}
 		selected := firstNonEmptyFormat(provider.APIFormat, req.DetectedFormat, provider.DetectedFormat, canonicalAPIFormatForProvider(provider))
 		if selected == "" {
 			selected = APIFormatOpenAI
@@ -176,7 +189,7 @@ func buildAutoCandidateFormats(modelID string, provider *Provider, selected APIF
 		candidates = append(candidates, format)
 	}
 
-	for _, format := range preferredAPIFormatsForModel(modelID) {
+	for _, format := range preferredAPIFormatsForProviderModel(provider, modelID) {
 		add(format)
 	}
 	add(selected)

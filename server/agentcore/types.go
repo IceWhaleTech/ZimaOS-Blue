@@ -134,17 +134,24 @@ type SessionHistoryItem struct {
 	CreatedAt time.Time              `json:"created_at"`
 }
 
+const (
+	ProfileVerifyMessageCodeProfileVerified = "profile_verified"
+	ProfileHealthMessageCodeRuntimeHealthy  = "runtime_healthy"
+)
+
 type ProfileVerifyResult struct {
 	OK           bool                   `json:"ok"`
+	MessageCode  string                 `json:"message_code,omitempty"`
 	Message      string                 `json:"message,omitempty"`
 	Capabilities []string               `json:"capabilities,omitempty"`
 	Details      map[string]interface{} `json:"details,omitempty"`
 }
 
 type ProfileHealthResult struct {
-	Healthy bool                   `json:"healthy"`
-	Message string                 `json:"message,omitempty"`
-	Details map[string]interface{} `json:"details,omitempty"`
+	Healthy     bool                   `json:"healthy"`
+	MessageCode string                 `json:"message_code,omitempty"`
+	Message     string                 `json:"message,omitempty"`
+	Details     map[string]interface{} `json:"details,omitempty"`
 }
 
 type EnsureSessionRequest struct {

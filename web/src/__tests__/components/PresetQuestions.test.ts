@@ -4,7 +4,7 @@ import PresetQuestions from '@/components/onboarding/PresetQuestions.vue'
 import PresetQuestionCard from '@/components/onboarding/PresetQuestionCard.vue'
 import { i18n, setLocale } from '@/i18n'
 import { previewApi } from '@/api/preview'
-import type { PresetQuestion } from '@/api/preview'
+import type { PresetQuestion, PresetQuestionAttachment } from '@/api/preview'
 
 vi.mock('@/api/preview', async () => {
   const actual = await vi.importActual<typeof import('@/api/preview')>('@/api/preview')
@@ -17,7 +17,10 @@ vi.mock('@/api/preview', async () => {
   }
 })
 
-function buildQuestion(index: number): PresetQuestion {
+function buildQuestion(
+  index: number,
+  overrides: Partial<PresetQuestion> = {}
+): PresetQuestion {
   return {
     id: `q-${index}`,
     title: `Title ${index}`,
@@ -28,6 +31,20 @@ function buildQuestion(index: number): PresetQuestion {
     tags: [index % 2 === 0 ? 'product-design' : 'market-investing'],
     editorial_score: 200 - index,
     icon: '✨',
+    ...overrides,
+  }
+}
+
+function buildQuestionPage(offset: number, count: number) {
+  const allQuestions = Array.from({ length: 12 }, (_, index) => buildQuestion(index + 1))
+  const questions = allQuestions.slice(offset, offset + count)
+  const nextOffset = offset + questions.length
+
+  return {
+    questions,
+    total: allQuestions.length,
+    next_offset: nextOffset,
+    has_more: nextOffset < allQuestions.length,
   }
 }
 
@@ -58,15 +75,17 @@ describe('PresetQuestions', () => {
       value: storage,
     })
 
-    vi.mocked(previewApi.getPresetQuestions).mockResolvedValue({
-      data: {
-        questions: Array.from({ length: 12 }, (_, index) => buildQuestion(index + 1)),
-      },
-    } as Awaited<ReturnType<typeof previewApi.getPresetQuestions>>)
+    vi.mocked(previewApi.getPresetQuestions).mockReset()
+    vi.mocked(previewApi.getPresetQuestions).mockImplementation(
+      async (count = 4, _lang?: string, offset = 0) =>
+        ({
+          data: buildQuestionPage(offset, count),
+        }) as Awaited<ReturnType<typeof previewApi.getPresetQuestions>>
+    )
     await setLocale('zh-CN')
   })
 
-  it('renders the full 12-item scrollable list immediately', async () => {
+  it('renders 4 real cards first while preserving 12 total slots with placeholders', async () => {
     const wrapper = mount(PresetQuestions, {
       props: { contextText: '' },
       global: {
@@ -77,7 +96,9 @@ describe('PresetQuestions', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="preset-questions-scroll"]').exists()).toBe(true)
-    expect(wrapper.findAll('[data-testid^="preset-question-card-"]')).toHaveLength(12)
+    expect(vi.mocked(previewApi.getPresetQuestions)).toHaveBeenCalledWith(4, 'zh', 0)
+    expect(wrapper.findAll('[data-testid^="preset-question-card-"]')).toHaveLength(4)
+    expect(wrapper.findAll('[data-testid="preset-question-placeholder"]')).toHaveLength(8)
     expect(wrapper.text()).not.toContain('12/12')
   })
 
@@ -97,7 +118,75 @@ describe('PresetQuestions', () => {
     expect(wrapper.emitted('select')?.[0]?.[0]).toBe('Prompt 1')
   })
 
-  it('filters cards by the selected interest chip instead of reordering them', async () => {
+  it('strips bundled sample attachments from rendered questions and emitted payloads', async () => {
+    const sampleAttachment: PresetQuestionAttachment = {
+      type: 'image',
+      name: 'chart.png',
+      mime_type: 'image/png',
+      placeholder: 'sample-chart',
+    }
+
+    vi.mocked(previewApi.getPresetQuestions).mockResolvedValueOnce({
+      data: {
+        questions: [buildQuestion(1, { attachments: [sampleAttachment] })],
+        total: 1,
+        next_offset: 1,
+        has_more: false,
+      },
+    } as Awaited<ReturnType<typeof previewApi.getPresetQuestions>>)
+
+    const wrapper = mount(PresetQuestions, {
+      props: { contextText: '' },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+
+    const renderedQuestion = wrapper.getComponent(PresetQuestionCard).props('question') as PresetQuestion
+    expect(renderedQuestion.attachments).toBeUndefined()
+
+    await wrapper.get('[data-testid="preset-question-card-q-1"]').trigger('click')
+
+    expect(wrapper.emitted('select')).toBeTruthy()
+    expect(wrapper.emitted('select')?.[0]).toEqual(['Prompt 1', undefined])
+  })
+
+  it('loads the remaining questions when the list scrolls near the bottom', async () => {
+    const wrapper = mount(PresetQuestions, {
+      props: { contextText: '' },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+
+    const scrollContainer = wrapper.get('[data-testid="preset-questions-scroll"]').element
+    Object.defineProperty(scrollContainer, 'clientHeight', {
+      configurable: true,
+      value: 240,
+    })
+    Object.defineProperty(scrollContainer, 'scrollHeight', {
+      configurable: true,
+      value: 720,
+    })
+    Object.defineProperty(scrollContainer, 'scrollTop', {
+      configurable: true,
+      writable: true,
+      value: 432,
+    })
+
+    await wrapper.get('[data-testid="preset-questions-scroll"]').trigger('scroll')
+    await flushPromises()
+
+    expect(vi.mocked(previewApi.getPresetQuestions)).toHaveBeenNthCalledWith(2, 8, 'zh', 4)
+    expect(wrapper.findAll('[data-testid^="preset-question-card-"]')).toHaveLength(12)
+    expect(wrapper.findAll('[data-testid="preset-question-placeholder"]')).toHaveLength(0)
+  })
+
+  it('loads the remaining questions before filtering cards by the selected interest chip', async () => {
     const wrapper = mount(PresetQuestions, {
       props: { contextText: '' },
       global: {
@@ -108,9 +197,12 @@ describe('PresetQuestions', () => {
     await flushPromises()
 
     await wrapper.get('[data-testid="preset-interest-chip-product-design"]').trigger('click')
+    await flushPromises()
 
     const cards = wrapper.findAll('[data-testid^="preset-question-card-"]')
+    expect(vi.mocked(previewApi.getPresetQuestions)).toHaveBeenNthCalledWith(2, 8, 'zh', 4)
     expect(cards).toHaveLength(6)
+    expect(wrapper.findAll('[data-testid="preset-question-placeholder"]')).toHaveLength(0)
     expect(cards.map((card) => card.attributes('data-testid'))).toEqual([
       'preset-question-card-q-2',
       'preset-question-card-q-4',

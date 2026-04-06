@@ -143,18 +143,25 @@ const (
 
 // Message keys for tool-loop abort/recovery prompts.
 const (
-	MsgToolLoopAbortRepeatedOverwrite  = "tool_loop.abort.repeated_overwrite"
-	MsgToolLoopAbortIdenticalRepeat    = "tool_loop.abort.identical_repeat"
-	MsgToolLoopAbortErrorRepeat        = "tool_loop.abort.error_repeat"
-	MsgToolLoopAbortPingPong           = "tool_loop.abort.ping_pong"
-	MsgToolLoopAbortPollingNoProgress  = "tool_loop.abort.polling_no_progress"
-	MsgToolLoopAbortGeneric            = "tool_loop.abort.generic"
+	MsgToolLoopAbortRepeatedOverwrite    = "tool_loop.abort.repeated_overwrite"
+	MsgToolLoopAbortIdenticalRepeat      = "tool_loop.abort.identical_repeat"
+	MsgToolLoopAbortErrorRepeat          = "tool_loop.abort.error_repeat"
+	MsgToolLoopAbortPingPong             = "tool_loop.abort.ping_pong"
+	MsgToolLoopAbortPollingNoProgress    = "tool_loop.abort.polling_no_progress"
+	MsgToolLoopAbortGeneric              = "tool_loop.abort.generic"
 	MsgToolLoopRecoveryRepeatedOverwrite = "tool_loop.recovery.repeated_overwrite"
-	MsgToolLoopRecoveryGeneric         = "tool_loop.recovery.generic"
+	MsgToolLoopRecoveryGeneric           = "tool_loop.recovery.generic"
 )
 
 var (
-	translations = map[Language]map[string]string{
+	translations           map[Language]map[string]string
+	translationBuildTarget map[Language]map[string]string
+	translationsOnce       sync.Once
+	mu                     sync.RWMutex
+)
+
+func buildBaseTranslations() map[Language]map[string]string {
+	return map[Language]map[string]string{
 		LangEnUS: {
 			MsgProcessingError:          "Sorry, an error occurred while processing your message: %v",
 			MsgChannelNotConnected:      "The channel is not connected. Please try again later.",
@@ -738,12 +745,34 @@ var (
 			MsgDurationHr:          "%dമ",
 		},
 	}
-	mu sync.RWMutex
-)
+}
+
+func ensureTranslations() {
+	translationsOnce.Do(func() {
+		target := buildBaseTranslations()
+
+		mu.Lock()
+		translationBuildTarget = target
+		mu.Unlock()
+
+		registerTranslationsPart1()
+		registerTranslationsPart2()
+		registerTranslationsPart3()
+		registerSecurityTranslations()
+		registerToolLoopTranslations()
+
+		mu.Lock()
+		translations = target
+		translationBuildTarget = nil
+		mu.Unlock()
+	})
+}
 
 // T translates a message key to the specified language.
 // If the key is not found, it returns the key itself.
 func T(lang Language, key string, args ...interface{}) string {
+	ensureTranslations()
+
 	mu.RLock()
 	defer mu.RUnlock()
 
@@ -878,13 +907,24 @@ func ParseLanguage(lang string) Language {
 
 // AddTranslation adds or updates a translation for a specific language and key.
 func AddTranslation(lang Language, key, value string) {
-	mu.Lock()
-	defer mu.Unlock()
+	for {
+		mu.Lock()
+		target := translationBuildTarget
+		if target == nil {
+			target = translations
+		}
+		if target != nil {
+			if _, ok := target[lang]; !ok {
+				target[lang] = make(map[string]string)
+			}
+			target[lang][key] = value
+			mu.Unlock()
+			return
+		}
+		mu.Unlock()
 
-	if _, ok := translations[lang]; !ok {
-		translations[lang] = make(map[string]string)
+		ensureTranslations()
 	}
-	translations[lang][key] = value
 }
 
 // Message keys for security pattern descriptions (external content sanitizer)

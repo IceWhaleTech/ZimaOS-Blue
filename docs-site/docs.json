@@ -77,11 +77,23 @@
             "tab": "Guides",
             "groups": [
               {
-                "group": "Core Guides",
+                "group": "Setup and Routing",
                 "pages": [
-                  "guides/channels",
+                  "guides/settings-provider-pool",
+                  "guides/identity-access",
                   "guides/providers-models",
+                  "guides/research-workflows",
+                  "guides/channels",
                   "guides/automation"
+                ]
+              },
+              {
+                "group": "Advanced Workflows",
+                "pages": [
+                  "guides/harness-evolution",
+                  "guides/extensions",
+                  "guides/voice-form-filling",
+                  "guides/admin-operations"
                 ]
               }
             ]
@@ -136,13 +148,39 @@
             ]
           },
           {
+            "tab": "指南",
+            "groups": [
+              {
+                "group": "设置与路由",
+                "pages": [
+                  "zh-CN/guides/settings-provider-pool",
+                  "zh-CN/guides/identity-access",
+                  "zh-CN/guides/providers-models",
+                  "zh-CN/guides/research-workflows",
+                  "zh-CN/guides/channels",
+                  "zh-CN/guides/automation"
+                ]
+              },
+              {
+                "group": "进阶能力",
+                "pages": [
+                  "zh-CN/guides/harness-evolution",
+                  "zh-CN/guides/extensions",
+                  "zh-CN/guides/voice-form-filling",
+                  "zh-CN/guides/admin-operations"
+                ]
+              }
+            ]
+          },
+          {
             "tab": "帮助",
             "groups": [
               {
                 "group": "支持",
                 "pages": [
                   "zh-CN/help/faq",
-                  "zh-CN/help/troubleshooting"
+                  "zh-CN/help/troubleshooting",
+                  "zh-CN/help/deployment"
                 ]
               }
             ]

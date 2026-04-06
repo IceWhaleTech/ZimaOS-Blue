@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import type { TypelessCardDeepResearchProgress } from '@/types/typeless'
 import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
 import {
+  localizeDeepResearchAction,
   localizeDeepResearchGap,
   localizeDeepResearchMode,
   localizeResearchProgressLabel,
@@ -94,28 +95,7 @@ const progressClass = computed(() => {
 })
 
 function latestActionLabel(action?: string): string {
-  switch (action) {
-    case 'augment_query':
-      return t('chat.deepResearchActionAugmentQuery', 'Augmenting query')
-    case 'initial_retrieve':
-      return t('chat.deepResearchActionInitialRetrieve', 'Running initial retrieval')
-    case 'followup_retrieve':
-      return t('chat.deepResearchActionFollowupRetrieve', 'Running follow-up retrieval')
-    case 'verification':
-      return t('chat.deepResearchActionVerification', 'Verifying evidence')
-    case 'verification_completed':
-      return t('chat.deepResearchActionVerificationCompleted', 'Verification completed')
-    case 'followup_planned':
-      return t('chat.deepResearchActionFollowupPlanned', 'Follow-up planned')
-    case 'loop_stopped':
-      return t('chat.deepResearchActionLoopStopped', 'Research loop stopped')
-    case 'synthesizing':
-      return t('chat.deepResearchActionSynthesizing', 'Synthesizing report')
-    case 'completed':
-      return t('chat.deepResearchActionCompleted', 'Completed')
-    default:
-      return action || ''
-  }
+  return localizeDeepResearchAction(action, tr) || action || ''
 }
 
 async function handleView() {

@@ -1,0 +1,68 @@
+---
+title: "扩展中心"
+summary: "Blue 当前已经把本地技能、远程技能商店与工具目录整合到同一个扩展入口。"
+---
+
+# 扩展中心
+
+Blue 的扩展页已经从简单插件列表演进成统一的能力管理入口。
+
+## 当前三条主线
+
+扩展页现在分成三个主标签：
+
+- `Skills`：当前运行时已有或已安装的技能
+- `Skill Store`：远程技能发现、搜索与安装
+- `Tools`：与技能并列的可复用工具能力
+
+## 本地技能
+
+本地技能页关注当前已经落地到运行时的能力，包括：
+
+- 技能名称与版本
+- 描述、分类、标签
+- builtin / installed 区分
+- 新旧 contract 元数据
+
+## 远程技能商店
+
+当前 skill store 不只是“搜一下然后安装”，还包含：
+
+- 多来源技能源
+- 搜索、过滤、分类浏览
+- curated ranking 与趋势信号
+- 新来源接入前的 import preview
+- 远程技能与本地技能区分
+
+## 安全与安装元数据
+
+这是这次新增能力里很值得写清楚的一块。当前 skill 模型已经能暴露：
+
+- security badge 与 risk level
+- install type
+- artifact kind
+- vulnerability status
+- prompt injection、shell injection、data exfiltration 风险信号
+
+因此扩展页既是目录，也是安装前审查界面。
+
+## 安装方式
+
+当前界面支持：
+
+- 通过 URL 安装技能
+- 通过文件上传安装技能
+
+安装成功后还可以查看返回的 contract 结果，而不是只看到一个成功提示。
+
+## 推荐阅读顺序
+
+1. 先看本地已有技能
+2. 再去 skill store 搜缺的能力
+3. 安装前确认来源、契约和安全元数据
+4. 如果能力很关键，再去 Harness 做可追踪评测
+
+## 相关页面
+
+- [Harness 与 Evolution](/zh-CN/guides/harness-evolution)
+- [设置与 Provider Pool](/zh-CN/guides/settings-provider-pool)

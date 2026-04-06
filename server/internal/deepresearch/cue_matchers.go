@@ -2,23 +2,37 @@ package deepresearch
 
 import (
 	"regexp"
+	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
 )
 
 type foldedCueMatcher struct {
+	once  sync.Once
+	cues  []string
 	inner *textmatch.FoldedAhoMatcher
 }
 
 func newFoldedCueMatcher(cues []string) *foldedCueMatcher {
-	return &foldedCueMatcher{inner: textmatch.NewFoldedAhoMatcher(cues)}
+	return &foldedCueMatcher{cues: append([]string(nil), cues...)}
+}
+
+func (m *foldedCueMatcher) ensureInner() *textmatch.FoldedAhoMatcher {
+	if m == nil {
+		return nil
+	}
+	m.once.Do(func() {
+		m.inner = textmatch.NewFoldedAhoMatcher(m.cues)
+	})
+	return m.inner
 }
 
 func (m *foldedCueMatcher) Contains(text string) bool {
-	if m == nil || m.inner == nil {
+	inner := m.ensureInner()
+	if inner == nil {
 		return false
 	}
-	return m.inner.ContainsAnyFold(text)
+	return inner.ContainsAnyFold(text)
 }
 
 var (

@@ -2273,8 +2273,8 @@ func TestEnsureDefaultSourcesAppliesOptionalAPIKeysToCorrectSources(t *testing.T
 	if len(byID["clawhub"].Headers) != 0 {
 		t.Fatalf("clawhub headers = %#v, want none", byID["clawhub"].Headers)
 	}
-	if len(byID["skillstack"].Headers) != 0 {
-		t.Fatalf("skillstack headers = %#v, want none", byID["skillstack"].Headers)
+	if _, exists := byID["skillstack"]; exists {
+		t.Fatalf("expected skillstack to be absent from default sources, got %+v", byID["skillstack"])
 	}
 	if _, exists := byID["skillsmp"]; exists {
 		t.Fatalf("expected skillsmp to be absent from default sources, got %+v", byID["skillsmp"])
@@ -2349,7 +2349,6 @@ func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 		"clawhub",
 		"vercel",
 		"skillhub-club",
-		"skillstack",
 		"llmskills",
 	}
 	for i := range defaultDiscoveryPageURLs {
@@ -2444,6 +2443,69 @@ func TestEnsureDefaultSourcesDisablesDeprecatedGitHubCodeSearchSources(t *testin
 		if enabled != 0 {
 			t.Fatalf("%s enabled = %d, want 0", legacyID, enabled)
 		}
+	}
+}
+
+func TestEnsureDefaultSourcesDisablesDeprecatedSkillStackSource(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	store, err := NewStore(db)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	legacy := Source{
+		ID:                 "skillstack",
+		Type:               "html_catalog",
+		BaseURL:            "https://mirror.example.com/skillstack",
+		DisplayName:        "SkillStack",
+		SourceGroup:        "skillstack",
+		AuthMode:           "none",
+		Enabled:            true,
+		RateLimitPerMinute: 20,
+		Priority:           41,
+	}
+	if err := store.UpsertSource(context.Background(), legacy); err != nil {
+		t.Fatalf("UpsertSource(skillstack) error = %v", err)
+	}
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := DefaultConfig(t.TempDir(), activeDir)
+	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+	cfg.DiscoveryPageURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	sources, err := svc.store.ListSources(context.Background())
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	for _, source := range sources {
+		if source.ID == "skillstack" {
+			t.Fatalf("expected deprecated skillstack source to be disabled, got %+v", source)
+		}
+	}
+
+	var enabled int
+	if err := db.QueryRow(`SELECT enabled FROM skill_sources WHERE id = ?`, "skillstack").Scan(&enabled); err != nil {
+		t.Fatalf("lookup skillstack enabled flag: %v", err)
+	}
+	if enabled != 0 {
+		t.Fatalf("skillstack enabled = %d, want 0", enabled)
 	}
 }
 

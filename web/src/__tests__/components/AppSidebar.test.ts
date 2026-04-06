@@ -91,20 +91,24 @@ function createTestRouter() {
       { path: '/', redirect: '/chat' },
       { path: '/home', name: 'Home', component: { template: '<div>Home</div>' } },
       { path: '/chat', name: 'Chat', component: { template: '<div>Chat</div>' } },
-      { path: '/automation', name: 'Cron', component: { template: '<div>Automation</div>' } },
-      { path: '/cron', redirect: '/automation' },
+      { path: '/operations', name: 'Operations', component: { template: '<div>Operations</div>' } },
       {
-        path: '/automation/harness',
+        path: '/operations/harness',
         name: 'HarnessGroups',
         component: { template: '<div>Harness</div>' },
       },
       {
-        path: '/automation/harness/:id',
+        path: '/operations/harness/:id',
         name: 'HarnessGroupDetail',
         component: { template: '<div>Harness Detail</div>' },
       },
       { path: '/channels', name: 'Channels', component: { template: '<div>Channels</div>' } },
       { path: '/plugins', name: 'Plugins', component: { template: '<div>Plugins</div>' } },
+      {
+        path: '/operations/knowledge',
+        name: 'Knowledge',
+        component: { template: '<div>Knowledge</div>' },
+      },
       { path: '/security', name: 'Security', component: { template: '<div>Security</div>' } },
       { path: '/settings', name: 'Settings', component: { template: '<div>Settings</div>' } },
       { path: '/profile', name: 'Profile', component: { template: '<div>Profile</div>' } },
@@ -271,8 +275,8 @@ describe('AppSidebar', () => {
     )
   })
 
-  it('highlights automation inside the configuration section on the automation route', async () => {
-    const { wrapper } = await mountSidebar('/automation')
+  it('highlights operations inside the configuration section on the operations route', async () => {
+    const { wrapper } = await mountSidebar('/operations')
 
     expect(wrapper.get('[data-testid="sidebar-nav-automation"]').classes()).toContain(
       'sidebar-nav-item-active'
@@ -280,8 +284,8 @@ describe('AppSidebar', () => {
     expect(wrapper.get('[data-testid="sidebar-nav-settings"]').exists()).toBe(true)
   })
 
-  it('keeps automation highlighted on canonical harness routes', async () => {
-    const { wrapper } = await mountSidebar('/automation/harness/group-1')
+  it('keeps operations highlighted on canonical harness routes', async () => {
+    const { wrapper } = await mountSidebar('/operations/harness/group-1')
 
     expect(wrapper.get('[data-testid="sidebar-nav-automation"]').classes()).toContain(
       'sidebar-nav-item-active'
@@ -548,7 +552,9 @@ describe('AppSidebar', () => {
     await vi.dynamicImportSettled()
     await flushPromises()
 
-    const currentConversationFilter = wrapper.get('[data-testid="workspace-current-conversation-filter"]')
+    const currentConversationFilter = wrapper.get(
+      '[data-testid="workspace-current-conversation-filter"]'
+    )
     expect(currentConversationFilter.text()).toContain('1')
 
     const highlightedRows = wrapper.findAll('[data-current-conversation="true"]')

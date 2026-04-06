@@ -73,6 +73,12 @@ func TestSubmitResearchHarnessJobUsesExistingResearchJobWhenAvailable(t *testing
 	if spec.WorkspaceRoot != "/tmp/workspace" || spec.ConversationID != "conv-1" || spec.UserID != "user-1" {
 		t.Fatalf("spec = %#v, want workspace/user/session binding", spec)
 	}
+	if got := spec.Metadata["mode"]; got != "deep_research" {
+		t.Fatalf("spec.Metadata[mode] = %#v, want deep_research", got)
+	}
+	if got := spec.Metadata["research_depth"]; got != "deep" {
+		t.Fatalf("spec.Metadata[research_depth] = %#v, want deep", got)
+	}
 	if got := spec.Metadata["max_sources"]; got != 7 {
 		t.Fatalf("spec.Metadata[max_sources] = %#v, want 7", got)
 	}
@@ -133,5 +139,61 @@ func TestDeepResearchToolAdapterCreateJobFallsBackToService(t *testing.T) {
 	}
 	if job.ID == "" || job.Status == "" {
 		t.Fatalf("job = %#v, want populated id and status", job)
+	}
+}
+
+func TestDeepResearchToolAdapterCreateJobUsesCanonicalHarnessSpecForAnalyze(t *testing.T) {
+	submitter := &stubResearchHarnessSubmitter{
+		run: &harness.Run{
+			ID:             "run-analyze",
+			UserID:         "user-4",
+			ConversationID: "conv-4",
+			Goal:           "Competitive pricing snapshot",
+			Status:         harness.RunStatusPlanning,
+			Metadata: map[string]interface{}{
+				"mode":           "analyze",
+				"topic":          "Competitive pricing snapshot",
+				"urls":           []string{"https://example.com/pricing"},
+				"search_queries": []string{"example pricing comparison"},
+				"output_mode":    "report",
+			},
+		},
+	}
+	adapter := newDeepResearchToolAdapter(deepresearch.NewService(nil, stubDeepResearchSearcher{}), submitter, "/tmp/workspace")
+
+	job, err := adapter.CreateJob(context.Background(), tools.ResearchCreateJobRequest{
+		UserID:         "user-4",
+		ConversationID: "conv-4",
+		Mode:           "analyze",
+		Topic:          "Competitive pricing snapshot",
+		URLs:           []string{"https://example.com/pricing"},
+		SearchQueries:  []string{"example pricing comparison"},
+		OutputMode:     "report",
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	if len(submitter.specs) != 1 {
+		t.Fatalf("submit specs = %d, want 1", len(submitter.specs))
+	}
+	spec := submitter.specs[0]
+	if spec.Kind != harness.RunKindResearch || spec.Goal != "Competitive pricing snapshot" {
+		t.Fatalf("spec = %#v, want analyze harness run", spec)
+	}
+	if got := spec.Metadata["mode"]; got != "analyze" {
+		t.Fatalf("spec.Metadata[mode] = %#v, want analyze", got)
+	}
+	if got := spec.Metadata["topic"]; got != "Competitive pricing snapshot" {
+		t.Fatalf("spec.Metadata[topic] = %#v, want forwarded topic", got)
+	}
+	if got := spec.Metadata["output_mode"]; got != "report" {
+		t.Fatalf("spec.Metadata[output_mode] = %#v, want report", got)
+	}
+	urls, ok := spec.Metadata["urls"].([]string)
+	if !ok || len(urls) != 1 || urls[0] != "https://example.com/pricing" {
+		t.Fatalf("spec.Metadata[urls] = %#v, want forwarded urls", spec.Metadata["urls"])
+	}
+	if job == nil || job.Mode != "analyze" || job.Query != "Competitive pricing snapshot" {
+		t.Fatalf("job = %#v, want synthesized analyze job", job)
 	}
 }

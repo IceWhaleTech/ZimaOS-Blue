@@ -213,14 +213,29 @@ function onResultMouseLeave() {
   hidePreview()
 }
 
+function findChatMainShell(row: HTMLElement | null): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  const nearest = row?.closest('.chat-main-shell')
+  if (nearest instanceof HTMLElement) return nearest
+  const fallback = document.querySelector('.chat-main-shell')
+  return fallback instanceof HTMLElement ? fallback : null
+}
+
 function updatePreviewPosition(event: MouseEvent) {
   if (typeof window === 'undefined') return
   const row = event.currentTarget as HTMLElement | null
   const rect = row?.getBoundingClientRect()
+  const chatMainShellRect = findChatMainShell(row)?.getBoundingClientRect()
   const previewWidth = 320
   const previewHeight = 260
   const fallbackX = Math.max(window.innerWidth - previewWidth - 16, 16)
-  const x = rect ? Math.min(rect.right + 12, fallbackX) : 16
+  const chatAlignedX = chatMainShellRect
+    ? Math.max(
+        Math.max(16, Math.min(chatMainShellRect.left + 16, fallbackX)),
+        Math.min(chatMainShellRect.right - previewWidth - 16, fallbackX)
+      )
+    : null
+  const x = chatAlignedX ?? (rect ? Math.min(rect.right + 12, fallbackX) : 16)
   const y = Math.max(
     16,
     Math.min(event.clientY - 72, Math.max(window.innerHeight - previewHeight - 16, 16))

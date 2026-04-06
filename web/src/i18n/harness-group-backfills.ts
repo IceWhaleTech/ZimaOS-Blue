@@ -37,8 +37,10 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'No hi ha aprovacions pendents.',
       noPendingItems: 'No hi ha aprovacions ni preguntes pendents per a aquesta execució.',
       noPendingQuestions: 'No hi ha preguntes pendents.',
-      noRuntimeTrace: "Encara no hi ha disponible cap instantània de traça de runtime per a aquesta execució.",
-      noTimelineEvents: "No s'ha registrat cap esdeveniment a la línia temporal per a aquesta execució.",
+      noRuntimeTrace:
+        'Encara no hi ha disponible cap instantània de traça de runtime per a aquesta execució.',
+      noTimelineEvents:
+        "No s'ha registrat cap esdeveniment a la línia temporal per a aquesta execució.",
       oneCompletedWorker: '1 completat',
       oneCoordinator: '1 coordinador',
       oneDetachedWorker: 'Treballadors desvinculats: 1',
@@ -63,7 +65,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       runtimeTrace: 'Traça del runtime',
       sandboxMode: 'Mode sandbox',
       selectRun: 'Selecciona una execució',
-      selectRunPrompt: 'Selecciona una execució per inspeccionar-ne la línia temporal i els artefactes.',
+      selectRunPrompt:
+        'Selecciona una execució per inspeccionar-ne la línia temporal i els artefactes.',
       showAllEvents: 'Mostra tots els esdeveniments',
       spawnedOneWorker: "S'ha creat 1 treballador",
       spawningWorker: "S'està creant 1 treballador",
@@ -187,7 +190,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'Ingen ventende godkendelser.',
       noPendingItems: 'Ingen ventende godkendelser eller spørgsmål for dette run.',
       noPendingQuestions: 'Ingen ventende spørgsmål.',
-      noRuntimeTrace: 'Der er endnu ikke noget snapshot af runtime-sporet tilgængeligt for dette run.',
+      noRuntimeTrace:
+        'Der er endnu ikke noget snapshot af runtime-sporet tilgængeligt for dette run.',
       noTimelineEvents: 'Der blev ikke registreret nogen tidslinjehændelser for dette run.',
       oneCompletedWorker: '1 fuldført',
       oneCoordinator: '1 koordinator',
@@ -337,7 +341,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'Δεν υπάρχουν εκκρεμείς εγκρίσεις.',
       noPendingItems: 'Δεν υπάρχουν εκκρεμείς εγκρίσεις ή ερωτήσεις για αυτή την εκτέλεση.',
       noPendingQuestions: 'Δεν υπάρχουν εκκρεμείς ερωτήσεις.',
-      noRuntimeTrace: 'Δεν υπάρχει ακόμη διαθέσιμο στιγμιότυπο ίχνους runtime για αυτή την εκτέλεση.',
+      noRuntimeTrace:
+        'Δεν υπάρχει ακόμη διαθέσιμο στιγμιότυπο ίχνους runtime για αυτή την εκτέλεση.',
       noTimelineEvents: 'Δεν καταγράφηκαν συμβάντα χρονολογίου για αυτή την εκτέλεση.',
       oneCompletedWorker: '1 ολοκληρωμένος',
       oneCoordinator: '1 συντονιστής',
@@ -363,7 +368,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       runtimeTrace: 'Ίχνος runtime',
       sandboxMode: 'Λειτουργία sandbox',
       selectRun: 'Επιλέξτε μια εκτέλεση',
-      selectRunPrompt: 'Επιλέξτε μια εκτέλεση για να επιθεωρήσετε το χρονολόγιο και τα τεχνουργήματά της.',
+      selectRunPrompt:
+        'Επιλέξτε μια εκτέλεση για να επιθεωρήσετε το χρονολόγιο και τα τεχνουργήματά της.',
       showAllEvents: 'Εμφάνιση όλων των συμβάντων',
       spawnedOneWorker: 'Δημιουργήθηκε 1 κόμβος εργασίας',
       spawningWorker: 'Δημιουργείται 1 κόμβος εργασίας',
@@ -412,7 +418,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'No hay aprobaciones pendientes.',
       noPendingItems: 'No hay aprobaciones ni preguntas pendientes para esta ejecución.',
       noPendingQuestions: 'No hay preguntas pendientes.',
-      noRuntimeTrace: 'Todavía no hay ninguna instantánea de traza de runtime disponible para esta ejecución.',
+      noRuntimeTrace:
+        'Todavía no hay ninguna instantánea de traza de runtime disponible para esta ejecución.',
       noTimelineEvents: 'No se registraron eventos de línea temporal para esta ejecución.',
       oneCompletedWorker: '1 completado',
       oneCoordinator: '1 coordinador',
@@ -438,7 +445,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       runtimeTrace: 'Traza de runtime',
       sandboxMode: 'Modo sandbox',
       selectRun: 'Selecciona una ejecución',
-      selectRunPrompt: 'Selecciona una ejecución para inspeccionar su línea temporal y sus artefactos.',
+      selectRunPrompt:
+        'Selecciona una ejecución para inspeccionar su línea temporal y sus artefactos.',
       showAllEvents: 'Mostrar todos los eventos',
       spawnedOneWorker: 'Se generó 1 worker',
       spawningWorker: 'Generando 1 worker',
@@ -487,7 +495,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'Aucune approbation en attente.',
       noPendingItems: 'Aucune approbation ni question en attente pour cette exécution.',
       noPendingQuestions: 'Aucune question en attente.',
-      noRuntimeTrace: 'Aucun instantané de trace d’exécution n’est encore disponible pour cette exécution.',
+      noRuntimeTrace:
+        'Aucun instantané de trace d’exécution n’est encore disponible pour cette exécution.',
       noTimelineEvents: 'Aucun événement de chronologie n’a été enregistré pour cette exécution.',
       oneCompletedWorker: '1 terminé',
       oneCoordinator: '1 coordinateur',
@@ -787,7 +796,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'Nessuna approvazione in sospeso.',
       noPendingItems: 'Nessuna approvazione o domanda in sospeso per questa esecuzione.',
       noPendingQuestions: 'Nessuna domanda in sospeso.',
-      noRuntimeTrace: 'Non è ancora disponibile alcuna istantanea della traccia runtime per questa esecuzione.',
+      noRuntimeTrace:
+        'Non è ancora disponibile alcuna istantanea della traccia runtime per questa esecuzione.',
       noTimelineEvents: 'Non sono stati registrati eventi della timeline per questa esecuzione.',
       oneCompletedWorker: '1 completato',
       oneCoordinator: '1 coordinatore',
@@ -922,8 +932,7 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       coordinatorRole: '코디네이터',
       depth: '깊이',
       detachedWorkers: '분리된 워커 노드',
-      detachedWorkersHint:
-        '이 워커 노드들은 누락된 상위 실행을 참조하므로 별도로 그룹화됩니다.',
+      detachedWorkersHint: '이 워커 노드들은 누락된 상위 실행을 참조하므로 별도로 그룹화됩니다.',
       durationNow: '1초 미만',
       executionSummary: '실행 요약',
       executionSummaryHint:
@@ -1086,7 +1095,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'Ingen ventende godkjenninger.',
       noPendingItems: 'Ingen ventende godkjenninger eller spørsmål for denne kjøringen.',
       noPendingQuestions: 'Ingen ventende spørsmål.',
-      noRuntimeTrace: 'Det er ennå ikke tilgjengelig noe øyeblikksbilde av runtime-sporet for denne kjøringen.',
+      noRuntimeTrace:
+        'Det er ennå ikke tilgjengelig noe øyeblikksbilde av runtime-sporet for denne kjøringen.',
       noTimelineEvents: 'Det ble ikke registrert noen tidslinjehendelser for denne kjøringen.',
       oneCompletedWorker: '1 fullført',
       oneCoordinator: '1 koordinator',
@@ -1337,7 +1347,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       runtimeTrace: 'Trace de runtime',
       sandboxMode: 'Modo sandbox',
       selectRun: 'Selecione uma execução',
-      selectRunPrompt: 'Selecione uma execução para inspecionar sua linha do tempo e seus artefatos.',
+      selectRunPrompt:
+        'Selecione uma execução para inspecionar sua linha do tempo e seus artefatos.',
       showAllEvents: 'Mostrar todos os eventos',
       spawnedOneWorker: '1 worker gerado',
       spawningWorker: 'Gerando 1 worker',
@@ -1386,7 +1397,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'Não existem aprovações pendentes.',
       noPendingItems: 'Não existem aprovações nem perguntas pendentes para esta execução.',
       noPendingQuestions: 'Não existem perguntas pendentes.',
-      noRuntimeTrace: 'Ainda não existe uma captura do trace de runtime disponível para esta execução.',
+      noRuntimeTrace:
+        'Ainda não existe uma captura do trace de runtime disponível para esta execução.',
       noTimelineEvents: 'Não foram registados eventos da linha temporal para esta execução.',
       oneCompletedWorker: '1 concluído',
       oneCoordinator: '1 coordenador',
@@ -1412,7 +1424,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       runtimeTrace: 'Trace de runtime',
       sandboxMode: 'Modo sandbox',
       selectRun: 'Selecione uma execução',
-      selectRunPrompt: 'Selecione uma execução para inspecionar a respetiva linha temporal e artefactos.',
+      selectRunPrompt:
+        'Selecione uma execução para inspecionar a respetiva linha temporal e artefactos.',
       showAllEvents: 'Mostrar todos os eventos',
       spawnedOneWorker: '1 worker gerado',
       spawningWorker: 'A gerar 1 worker',
@@ -1456,12 +1469,14 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       expandBatch: 'Extinde',
       groupedWorker: '1 worker grupat',
       model: 'Model',
-      noGoalSummary: 'Nu a fost înregistrat niciun rezumat al obiectivului pentru această execuție.',
+      noGoalSummary:
+        'Nu a fost înregistrat niciun rezumat al obiectivului pentru această execuție.',
       noItems: 'Nu au fost înregistrate elemente în cel mai recent raport.',
       noPendingApprovals: 'Nu există aprobări în așteptare.',
       noPendingItems: 'Nu există aprobări sau întrebări în așteptare pentru această execuție.',
       noPendingQuestions: 'Nu există întrebări în așteptare.',
-      noRuntimeTrace: 'Nu este încă disponibilă nicio instantanee a urmei runtime pentru această execuție.',
+      noRuntimeTrace:
+        'Nu este încă disponibilă nicio instantanee a urmei runtime pentru această execuție.',
       noTimelineEvents: 'Nu au fost înregistrate evenimente în cronologie pentru această execuție.',
       oneCompletedWorker: '1 finalizat',
       oneCoordinator: '1 coordonator',
@@ -1686,7 +1701,8 @@ const harnessGroupBackfills: Partial<Record<LocaleKey, HarnessBackfill>> = {
       noPendingApprovals: 'Inga väntande godkännanden.',
       noPendingItems: 'Inga väntande godkännanden eller frågor för den här körningen.',
       noPendingQuestions: 'Inga väntande frågor.',
-      noRuntimeTrace: 'Det finns ännu ingen ögonblicksbild av runtime-spåret för den här körningen.',
+      noRuntimeTrace:
+        'Det finns ännu ingen ögonblicksbild av runtime-spåret för den här körningen.',
       noTimelineEvents: 'Inga tidslinjehändelser registrerades för den här körningen.',
       oneCompletedWorker: '1 klar',
       oneCoordinator: '1 koordinator',

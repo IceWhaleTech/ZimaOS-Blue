@@ -231,6 +231,54 @@ func TestManagerDelete(t *testing.T) {
 	}
 }
 
+func TestNewManagerRemovesOrphanedBackupArchiveWhenMetadataIsMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "config")
+
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("failed to create data dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "test.db"), []byte("test"), 0644); err != nil {
+		t.Fatalf("failed to write test db: %v", err)
+	}
+
+	cfg := Config{
+		Enabled:       true,
+		RetentionDays: 7,
+		Path:          backupDir,
+	}
+
+	m1, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create initial manager: %v", err)
+	}
+
+	info, err := m1.Create(context.Background(), BackupTypeData)
+	if err != nil {
+		t.Fatalf("failed to create backup: %v", err)
+	}
+
+	metadataPath := info.Path + ".json"
+	if err := os.Remove(metadataPath); err != nil {
+		t.Fatalf("failed to remove metadata file: %v", err)
+	}
+
+	m2, err := NewManager(cfg, dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create second manager: %v", err)
+	}
+
+	if got := len(m2.List()); got != 0 {
+		t.Fatalf("expected no loaded backups after metadata deletion, got %d", got)
+	}
+
+	if _, err := os.Stat(info.Path); !os.IsNotExist(err) {
+		t.Fatalf("expected orphaned backup archive to be removed, stat err=%v", err)
+	}
+}
+
 func TestManagerVerify(t *testing.T) {
 	tmpDir := t.TempDir()
 	backupDir := filepath.Join(tmpDir, "backups")

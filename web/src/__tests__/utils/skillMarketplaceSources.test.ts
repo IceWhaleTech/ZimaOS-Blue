@@ -51,6 +51,7 @@ describe('skillMarketplaceSources', () => {
     expect(localizeMarketplaceSource('vercel', 'description', translate)).toBe(
       'Vercel 官方 skills 来源'
     )
+    expect(localizeMarketplaceSource('skillstack', 'label', translate)).toBe('')
   })
 
   it('supports seed and mirror source instances with params', () => {
@@ -110,5 +111,6 @@ describe('skillMarketplaceSources', () => {
       iconUrl: 'https://www.skillhub.club/favicon-48x48.png',
     })
     expect(resolveMarketplaceSourceBrand('custom-source')).toBeNull()
+    expect(resolveMarketplaceSourceBrand('skillstack')).toBeNull()
   })
 })

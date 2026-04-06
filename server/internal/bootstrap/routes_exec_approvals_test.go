@@ -70,7 +70,7 @@ func mustExecApprovalAccessToken(t *testing.T, jwtSvc *auth.JWTService, userID s
 	return token
 }
 
-func TestExecApprovalRoutesExposePendingAndResolveWithBinding(t *testing.T) {
+func TestExecApprovalRoutesResolveWithBindingAndDoNotExposeStandalonePendingRoute(t *testing.T) {
 	e, approvals, _, broker, jwtSvc := newExecApprovalRoutesTestHarness(t)
 	sub := broker.Subscribe("user-a")
 	t.Cleanup(func() { broker.Unsubscribe("user-a", sub) })
@@ -107,19 +107,8 @@ func TestExecApprovalRoutesExposePendingAndResolveWithBinding(t *testing.T) {
 	reqPending.Header.Set(echo.HeaderAuthorization, "Bearer "+mustExecApprovalAccessToken(t, jwtSvc, "user-a"))
 	recPending := httptest.NewRecorder()
 	e.ServeHTTP(recPending, reqPending)
-	if recPending.Code != http.StatusOK {
-		t.Fatalf("pending status=%d, want 200, body=%s", recPending.Code, recPending.Body.String())
-	}
-
-	var pendingBody struct {
-		Pending  bool                   `json:"pending"`
-		Approval *tools.ApprovalRequest `json:"approval"`
-	}
-	if err := json.Unmarshal(recPending.Body.Bytes(), &pendingBody); err != nil {
-		t.Fatalf("decode pending response: %v", err)
-	}
-	if !pendingBody.Pending || pendingBody.Approval == nil || pendingBody.Approval.ID != pending.ID {
-		t.Fatalf("unexpected pending payload: %+v", pendingBody)
+	if recPending.Code != http.StatusNotFound {
+		t.Fatalf("pending status=%d, want 404, body=%s", recPending.Code, recPending.Body.String())
 	}
 
 	reqResolve := httptest.NewRequest(http.MethodPost, "/api/v1/exec/approvals/"+pending.ID, strings.NewReader(`{"decision":"allow-once","binding_hash":"`+pending.BindingHash+`"}`))
@@ -222,7 +211,7 @@ func TestExecDirectoryApprovalRoutesListAndDeleteEnforceOwnership(t *testing.T) 
 	}
 }
 
-func TestExecApprovalRoutesPreferSessionScopedPendingWhenMultipleSessionsExist(t *testing.T) {
+func TestExecApprovalRoutesKeepSessionScopedPendingAndDoNotExposeStandalonePendingRoute(t *testing.T) {
 	e, approvals, _, broker, jwtSvc := newExecApprovalRoutesTestHarness(t)
 	sub := broker.Subscribe("user-a")
 	t.Cleanup(func() { broker.Unsubscribe("user-a", sub) })
@@ -270,25 +259,8 @@ func TestExecApprovalRoutesPreferSessionScopedPendingWhenMultipleSessionsExist(t
 	reqPending.Header.Set(echo.HeaderAuthorization, "Bearer "+mustExecApprovalAccessToken(t, jwtSvc, "user-a"))
 	recPending := httptest.NewRecorder()
 	e.ServeHTTP(recPending, reqPending)
-	if recPending.Code != http.StatusOK {
-		t.Fatalf("pending status=%d, want 200, body=%s", recPending.Code, recPending.Body.String())
-	}
-
-	var pendingBody struct {
-		Pending  bool                   `json:"pending"`
-		Approval *tools.ApprovalRequest `json:"approval"`
-	}
-	if err := json.Unmarshal(recPending.Body.Bytes(), &pendingBody); err != nil {
-		t.Fatalf("decode pending response: %v", err)
-	}
-	if !pendingBody.Pending || pendingBody.Approval == nil {
-		t.Fatalf("unexpected pending payload: %+v", pendingBody)
-	}
-	if pendingBody.Approval.ID != pending1.ID {
-		t.Fatalf("approval id = %q, want session-1 approval %q", pendingBody.Approval.ID, pending1.ID)
-	}
-	if pendingBody.Approval.SessionID != "session-1" {
-		t.Fatalf("session_id = %q, want %q", pendingBody.Approval.SessionID, "session-1")
+	if recPending.Code != http.StatusNotFound {
+		t.Fatalf("pending status=%d, want 404, body=%s", recPending.Code, recPending.Body.String())
 	}
 
 	if !approvals.ResolveApprovalWithBinding(pending1.ID, tools.ApprovalDeny, pending1.BindingHash) {

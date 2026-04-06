@@ -25,7 +25,49 @@ func requestWithUser(req *http.Request, userID string) *http.Request {
 	return req.WithContext(ctx)
 }
 
-func TestConversationCommandStateAPI(t *testing.T) {
+func getBootstrapCommandState(
+	t *testing.T,
+	handler *ChatHandler,
+	e *echo.Echo,
+	conversationID string,
+	userID string,
+) conversationCommandStateResponse {
+	t.Helper()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conversationID+"/bootstrap", nil)
+	if strings.TrimSpace(userID) != "" {
+		req = requestWithUser(req, userID)
+	}
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conversationID)
+	if strings.TrimSpace(userID) != "" {
+		c.Set("user", &auth.Claims{
+			UserClaims: auth.UserClaims{
+				UserID: userID,
+				Role:   "user",
+			},
+		})
+	}
+
+	if err := handler.GetConversationBootstrap(c); err != nil {
+		t.Fatalf("GetConversationBootstrap: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bootstrap status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var body struct {
+		CommandState conversationCommandStateResponse `json:"command_state"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("json.Unmarshal bootstrap: %v", err)
+	}
+	return body.CommandState
+}
+
+func TestConversationCommandStatePatchSurfacesInBootstrap(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -40,7 +82,7 @@ func TestConversationCommandStateAPI(t *testing.T) {
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	e := echo.New()
 
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"web_search_enabled":false,"research_mode_enabled":true}`))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true}`))
 	patchReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	patchRec := httptest.NewRecorder()
 	patchCtx := e.NewContext(patchReq, patchRec)
@@ -53,30 +95,16 @@ func TestConversationCommandStateAPI(t *testing.T) {
 		t.Fatalf("patch status = %d, want 200", patchRec.Code)
 	}
 
-	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conv.ID+"/command-state", nil)
-	getRec := httptest.NewRecorder()
-	getCtx := e.NewContext(getReq, getRec)
-	getCtx.SetParamNames("id")
-	getCtx.SetParamValues(conv.ID)
-	if err := handler.GetConversationCommandState(getCtx); err != nil {
-		t.Fatalf("GetConversationCommandState: %v", err)
+	state := getBootstrapCommandState(t, handler, e, conv.ID, "")
+	if state.SelectedProviderID != "openai" || state.SelectedModelID != "gpt-5" {
+		t.Fatalf("unexpected command state: %+v", state)
 	}
-	if getRec.Code != http.StatusOK {
-		t.Fatalf("get status = %d, want 200", getRec.Code)
-	}
-	var state map[string]any
-	if err := json.Unmarshal(getRec.Body.Bytes(), &state); err != nil {
-		t.Fatalf("json.Unmarshal: %v", err)
-	}
-	if state["selected_provider_id"] != "openai" || state["selected_model_id"] != "gpt-5" {
-		t.Fatalf("unexpected command state: %v", state)
-	}
-	if state["web_search_enabled"] != false || state["deep_research_enabled"] != true || state["research_mode_enabled"] != true {
-		t.Fatalf("unexpected preference flags: %v", state)
+	if !state.Offline {
+		t.Fatalf("expected offline command state to survive bootstrap: %+v", state)
 	}
 }
 
-func TestConversationCommandStateAPISharedAcrossConversationsForSameUser(t *testing.T) {
+func TestConversationCommandStatePatchSharedAcrossConversationsForSameUserInBootstrap(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -99,7 +127,7 @@ func TestConversationCommandStateAPISharedAcrossConversationsForSameUser(t *test
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	e := echo.New()
 
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv1.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"web_search_enabled":false,"research_mode_enabled":true}`))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv1.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true}`))
 	patchReq = requestWithUser(patchReq, "user-a")
 	patchReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	patchRec := httptest.NewRecorder()
@@ -113,51 +141,21 @@ func TestConversationCommandStateAPISharedAcrossConversationsForSameUser(t *test
 		t.Fatalf("patch status = %d, want 200", patchRec.Code)
 	}
 
-	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+conv2.ID+"/command-state", nil)
-	getReq = requestWithUser(getReq, "user-a")
-	getRec := httptest.NewRecorder()
-	getCtx := e.NewContext(getReq, getRec)
-	getCtx.SetParamNames("id")
-	getCtx.SetParamValues(conv2.ID)
-	if err := handler.GetConversationCommandState(getCtx); err != nil {
-		t.Fatalf("GetConversationCommandState(user-a #2): %v", err)
+	userAState := getBootstrapCommandState(t, handler, e, conv2.ID, "user-a")
+	if userAState.SelectedProviderID != "openai" || userAState.SelectedModelID != "gpt-5" {
+		t.Fatalf("unexpected shared user-a state: %+v", userAState)
 	}
-	if getRec.Code != http.StatusOK {
-		t.Fatalf("get status = %d, want 200", getRec.Code)
-	}
-	var userAState map[string]any
-	if err := json.Unmarshal(getRec.Body.Bytes(), &userAState); err != nil {
-		t.Fatalf("json.Unmarshal(user-a): %v", err)
-	}
-	if userAState["selected_provider_id"] != "openai" || userAState["selected_model_id"] != "gpt-5" {
-		t.Fatalf("unexpected shared user-a state: %v", userAState)
-	}
-	if userAState["offline"] != true || userAState["web_search_enabled"] != false || userAState["deep_research_enabled"] != true || userAState["research_mode_enabled"] != true {
-		t.Fatalf("unexpected shared user-a flags: %v", userAState)
+	if !userAState.Offline {
+		t.Fatalf("unexpected shared user-a flags: %+v", userAState)
 	}
 
-	getReqB := httptest.NewRequest(http.MethodGet, "/api/v1/conversations/"+convB.ID+"/command-state", nil)
-	getReqB = requestWithUser(getReqB, "user-b")
-	getRecB := httptest.NewRecorder()
-	getCtxB := e.NewContext(getReqB, getRecB)
-	getCtxB.SetParamNames("id")
-	getCtxB.SetParamValues(convB.ID)
-	if err := handler.GetConversationCommandState(getCtxB); err != nil {
-		t.Fatalf("GetConversationCommandState(user-b): %v", err)
-	}
-	if getRecB.Code != http.StatusOK {
-		t.Fatalf("user-b get status = %d, want 200", getRecB.Code)
-	}
-	var userBState conversationCommandStateResponse
-	if err := json.Unmarshal(getRecB.Body.Bytes(), &userBState); err != nil {
-		t.Fatalf("json.Unmarshal(user-b): %v", err)
-	}
-	if userBState.SelectedProviderID != "" || userBState.SelectedModelID != "" || userBState.Offline || !userBState.WebSearchEnabled || userBState.DeepResearchEnabled {
+	userBState := getBootstrapCommandState(t, handler, e, convB.ID, "user-b")
+	if userBState.SelectedProviderID != "" || userBState.SelectedModelID != "" || userBState.Offline {
 		t.Fatalf("unexpected isolated user-b state: %v", userBState)
 	}
 }
 
-func TestApplyCommandStateToRequestLeavesFallbackFlagsNilWithoutPersistedState(t *testing.T) {
+func TestApplyCommandStateToRequestLeavesLegacyToolFlagsNilWithoutPersistedState(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -176,7 +174,7 @@ func TestApplyCommandStateToRequestLeavesFallbackFlagsNilWithoutPersistedState(t
 	if req.WebSearchEnabled != nil || req.DeepResearchEnabled != nil {
 		t.Fatalf("expected nil request flags without persisted state, got web=%v deep=%v", req.WebSearchEnabled, req.DeepResearchEnabled)
 	}
-	if !state.WebSearchEnabled || state.DeepResearchEnabled {
+	if !state.WebSearchEnabled || !state.DeepResearchEnabled {
 		t.Fatalf("expected default response state, got %+v", state)
 	}
 
@@ -190,18 +188,12 @@ func TestApplyCommandStateToRequestLeavesFallbackFlagsNilWithoutPersistedState(t
 
 	req = &SendMessageRequest{}
 	handler.applyCommandStateToRequest(ctx, conv.ID, req)
-	if req.WebSearchEnabled == nil || *req.WebSearchEnabled {
-		t.Fatalf("expected persisted web flag false, got %v", req.WebSearchEnabled)
-	}
-	if req.DeepResearchEnabled == nil || !*req.DeepResearchEnabled {
-		t.Fatalf("expected persisted deep flag true, got %v", req.DeepResearchEnabled)
-	}
-	if req.ResearchModeEnabled == nil || !*req.ResearchModeEnabled {
-		t.Fatalf("expected persisted research flag true, got %v", req.ResearchModeEnabled)
+	if req.WebSearchEnabled != nil || req.DeepResearchEnabled != nil || req.ResearchModeEnabled != nil {
+		t.Fatalf("expected persisted legacy tool flags to stay ignored, got web=%v deep=%v research=%v", req.WebSearchEnabled, req.DeepResearchEnabled, req.ResearchModeEnabled)
 	}
 }
 
-func TestApplyCommandStateToRequestPersistsExplicitCapabilityFlags(t *testing.T) {
+func TestApplyCommandStateToRequestIgnoresExplicitLegacyCapabilityFlags(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
@@ -223,25 +215,19 @@ func TestApplyCommandStateToRequestPersistsExplicitCapabilityFlags(t *testing.T)
 	}
 
 	state := handler.applyCommandStateToRequest(ctx, conv.ID, req)
-	if state.WebSearchEnabled || !state.DeepResearchEnabled {
-		t.Fatalf("expected explicit request flags to win immediately, got %+v", state)
+	if !state.WebSearchEnabled || !state.DeepResearchEnabled {
+		t.Fatalf("expected legacy request flags to be ignored, got %+v", state)
 	}
-	if req.WebSearchEnabled == nil || *req.WebSearchEnabled {
-		t.Fatalf("expected explicit web flag to be preserved, got %v", req.WebSearchEnabled)
-	}
-	if req.DeepResearchEnabled == nil || !*req.DeepResearchEnabled {
-		t.Fatalf("expected explicit deep flag to be preserved, got %v", req.DeepResearchEnabled)
-	}
-	if req.ResearchModeEnabled == nil || !*req.ResearchModeEnabled {
-		t.Fatalf("expected explicit research flag to be preserved, got %v", req.ResearchModeEnabled)
+	if req.WebSearchEnabled != nil || req.DeepResearchEnabled != nil || req.ResearchModeEnabled != nil {
+		t.Fatalf("expected legacy capability flags to be cleared from request, got web=%v deep=%v research=%v", req.WebSearchEnabled, req.DeepResearchEnabled, req.ResearchModeEnabled)
 	}
 
-	persisted, err := store.GetConversationCommandState(ctx, conv.ID)
+	persisted, err := handler.getConversationCommandState(ctx, conv.ID)
 	if err != nil {
-		t.Fatalf("GetConversationCommandState: %v", err)
+		t.Fatalf("getConversationCommandState: %v", err)
 	}
-	if persisted.WebSearchEnabled || !persisted.DeepResearchEnabled {
-		t.Fatalf("expected explicit request flags to persist to command state, got %+v", persisted)
+	if !persisted.WebSearchEnabled || !persisted.DeepResearchEnabled {
+		t.Fatalf("expected normalized command state to stay fully enabled for local tools, got %+v", persisted)
 	}
 }
 
@@ -292,7 +278,7 @@ func TestChatHandlerClearResetsCommandState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetConversationCommandState: %v", err)
 	}
-	if state.SelectedProviderID != "" || state.SelectedModelID != "" || state.Offline || !state.WebSearchEnabled || state.DeepResearchEnabled {
+	if state.SelectedProviderID != "" || state.SelectedModelID != "" || state.Offline || !state.WebSearchEnabled || !state.DeepResearchEnabled {
 		t.Fatalf("expected cleared command state, got %+v", state)
 	}
 }

@@ -78,6 +78,22 @@ func TestHandler_ListRunsSupportsTreeFilters(t *testing.T) {
 	}
 }
 
+func TestHandler_RegisterRoutesIncludesDatasetBundleSourceEndpoints(t *testing.T) {
+	controller := newTestController(t)
+	handler := NewHandler(controller)
+	e := echo.New()
+	group := e.Group("/harness")
+
+	handler.RegisterRoutes(group)
+
+	if !handlerRouteExists(e, http.MethodPost, "/harness/dataset-bundles/preview-source") {
+		t.Fatalf("expected preview-source route to be registered, got %#v", e.Routes())
+	}
+	if !handlerRouteExists(e, http.MethodPost, "/harness/dataset-bundles/import-source") {
+		t.Fatalf("expected import-source route to be registered, got %#v", e.Routes())
+	}
+}
+
 func TestHandler_GetRunDetailIncludesAvailableActions(t *testing.T) {
 	controller := newTestController(t)
 	driver := &stubDriver{kind: RunKindWorkflow}
@@ -151,6 +167,15 @@ func TestHandler_GetRunDetailIncludesAvailableActions(t *testing.T) {
 	if detail.Actions.Items[1].Input.Fields[1].Kind != "textarea" || detail.Actions.Items[1].Input.Fields[1].PayloadKey != "comment" {
 		t.Fatalf("resume descriptor payload schema = %#v, want text comment payload", detail.Actions.Items[1].Input.Fields)
 	}
+}
+
+func handlerRouteExists(e *echo.Echo, method string, path string) bool {
+	for _, route := range e.Routes() {
+		if route.Method == method && route.Path == path {
+			return true
+		}
+	}
+	return false
 }
 
 func TestHandler_GetRunDetailIncludesRunTrace(t *testing.T) {
@@ -460,6 +485,134 @@ func TestHandler_ListSkillRevisionsReturnsSkillScopedResults(t *testing.T) {
 	}
 }
 
+func TestHandler_ListSkillEvolutionCasesReturnsSkillAndUserScopedResults(t *testing.T) {
+	controller := newTestController(t)
+	_, err := controller.CreateSkillEvolutionCase(context.Background(), SkillEvolutionCase{
+		SkillID:           "browser",
+		OwnerUserID:       "user-1",
+		Mode:              SkillEvolutionModeFix,
+		Reason:            SkillEvolutionReasonRuntimeFailure,
+		SourceKind:        "runtime_task",
+		SourceID:          "task-1",
+		BaseContentSHA256: "base-browser-sha",
+		FailureSignature:  "missing-title",
+		Summary:           "Browser failure",
+		EvidenceJSON:      `{"task_id":"task-1"}`,
+		Status:            SkillEvolutionCaseStatusOpen,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase(browser) failed: %v", err)
+	}
+	_, err = controller.CreateSkillEvolutionCase(context.Background(), SkillEvolutionCase{
+		SkillID:           "browser",
+		OwnerUserID:       "user-2",
+		Mode:              SkillEvolutionModeFix,
+		Reason:            SkillEvolutionReasonRuntimeFailure,
+		SourceKind:        "runtime_task",
+		SourceID:          "task-2",
+		BaseContentSHA256: "base-browser-sha",
+		FailureSignature:  "missing-title",
+		Summary:           "Other user failure",
+		EvidenceJSON:      `{"task_id":"task-2"}`,
+		Status:            SkillEvolutionCaseStatusOpen,
+		CreatedAt:         time.Now().UTC().Add(time.Second),
+		UpdatedAt:         time.Now().UTC().Add(time.Second),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase(user-2) failed: %v", err)
+	}
+	_, err = controller.CreateSkillEvolutionCase(context.Background(), SkillEvolutionCase{
+		SkillID:           "reminder",
+		OwnerUserID:       "user-1",
+		Mode:              SkillEvolutionModeCapture,
+		Reason:            SkillEvolutionReasonRuntimeCapture,
+		SourceKind:        "runtime_task",
+		SourceID:          "task-3",
+		BaseContentSHA256: "base-reminder-sha",
+		FailureSignature:  "capture-example",
+		Summary:           "Reminder capture",
+		EvidenceJSON:      `{"task_id":"task-3"}`,
+		Status:            SkillEvolutionCaseStatusOpen,
+		CreatedAt:         time.Now().UTC().Add(2 * time.Second),
+		UpdatedAt:         time.Now().UTC().Add(2 * time.Second),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase(reminder) failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/browser/evolution-cases?status=open", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("skill_id")
+	c.SetParamValues("browser")
+
+	if err := handler.ListSkillEvolutionCases(c); err != nil {
+		t.Fatalf("ListSkillEvolutionCases returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var cases []SkillEvolutionCase
+	if err := json.Unmarshal(rec.Body.Bytes(), &cases); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(cases) != 1 || cases[0].SkillID != "browser" || cases[0].OwnerUserID != "user-1" {
+		t.Fatalf("cases = %#v, want one browser case for user-1", cases)
+	}
+}
+
+func TestHandler_GetSkillEvolutionCaseReturnsStoredCase(t *testing.T) {
+	controller := newTestController(t)
+	evolutionCase, err := controller.CreateSkillEvolutionCase(context.Background(), SkillEvolutionCase{
+		SkillID:           "browser",
+		OwnerUserID:       "user-1",
+		Mode:              SkillEvolutionModeFix,
+		Reason:            SkillEvolutionReasonRuntimeFailure,
+		SourceKind:        "runtime_task",
+		SourceID:          "task-1",
+		BaseContentSHA256: "base-browser-sha",
+		FailureSignature:  "missing-title",
+		Summary:           "Browser failure",
+		EvidenceJSON:      `{"task_id":"task-1"}`,
+		Status:            SkillEvolutionCaseStatusCandidateCreated,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skill-evolution-cases/"+evolutionCase.ID, nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(evolutionCase.ID)
+
+	if err := handler.GetSkillEvolutionCase(c); err != nil {
+		t.Fatalf("GetSkillEvolutionCase returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var got SkillEvolutionCase
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if got.ID != evolutionCase.ID || got.SkillID != "browser" || got.OwnerUserID != "user-1" {
+		t.Fatalf("evolution case = %#v, want browser case %q", got, evolutionCase.ID)
+	}
+}
+
 func TestHandler_GetSkillRevisionReturnsStoredRevision(t *testing.T) {
 	controller := newTestController(t)
 	revision, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
@@ -545,6 +698,69 @@ func TestHandler_PromoteSkillRevisionReturnsPromotionResult(t *testing.T) {
 	}
 	if result.PromotedRevisionID != revision.ID || strings.TrimSpace(result.BackupRevisionID) == "" {
 		t.Fatalf("result = %#v, want promoted revision and backup id", result)
+	}
+}
+
+func TestHandler_RollbackSkillRevisionReturnsPromotionResult(t *testing.T) {
+	controller := newTestController(t)
+	repoRoot := t.TempDir()
+	skillDir := filepath.Join(repoRoot, "assets", "skills", "browser")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll skillDir: %v", err)
+	}
+	canonicalPath := filepath.Join(skillDir, "SKILL.md")
+	currentCanonicalContent := "# Browser\nCurrent canonical.\n"
+	if err := os.WriteFile(canonicalPath, []byte(currentCanonicalContent), 0o644); err != nil {
+		t.Fatalf("WriteFile canonicalPath: %v", err)
+	}
+	restoreWD := chdirForSkillRevisionTest(t, repoRoot)
+	defer restoreWD()
+
+	currentRevision, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		SkillID:       "browser",
+		Status:        SkillRevisionStatusPromoted,
+		SourcePath:    "assets/skills/browser/SKILL.md",
+		Content:       currentCanonicalContent,
+		ContentSHA256: sha256HexForSkillRevisionTest(currentCanonicalContent),
+		CreatedAt:     time.Now().UTC().Add(-time.Minute),
+		PromotedAt:    ptrTimeForSkillRevisionTest(time.Now().UTC().Add(-time.Minute)),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision(current promoted) failed: %v", err)
+	}
+	backupRevision, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		SkillID:            "browser",
+		Status:             SkillRevisionStatusBackup,
+		SourcePath:         "assets/skills/browser/SKILL.md",
+		BackupOfRevisionID: currentRevision.ID,
+		Content:            "# Browser\nPrevious canonical.\n",
+		CreatedAt:          time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision(backup) failed: %v", err)
+	}
+
+	handler := NewHandler(controller)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/skill-revisions/"+backupRevision.ID+"/rollback", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(backupRevision.ID)
+
+	if err := handler.RollbackSkillRevision(c); err != nil {
+		t.Fatalf("RollbackSkillRevision returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var result SkillPromoteResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if strings.TrimSpace(result.PromotedRevisionID) == "" || strings.TrimSpace(result.BackupRevisionID) == "" {
+		t.Fatalf("result = %#v, want rollback promotion ids", result)
 	}
 }
 

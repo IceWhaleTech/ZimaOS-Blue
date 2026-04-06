@@ -1,4 +1,4 @@
-//go:build espeak && !windows
+//go:build espeak && linux && cgo
 
 package tts
 

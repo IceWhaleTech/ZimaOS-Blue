@@ -389,6 +389,63 @@ describe('SSE Client', () => {
       expect(onMessage).toHaveBeenCalledTimes(3)
     })
 
+    it('should preserve finalization_mode metadata on the final chunk passed to onComplete', async () => {
+      const encoder = new TextEncoder()
+      let callCount = 0
+      const mockReader = {
+        read: vi.fn().mockImplementation(() => {
+          callCount++
+          if (callCount === 1) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: {"delta":"Thinking..."}\n\n'),
+            })
+          }
+          if (callCount === 2) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode(
+                'data: {"delta":"","done":true,"message_id":"msg-final","content":"```typeless\\n{\\"type\\":\\"deep-research\\",\\"id\\":\\"deep-research-result-job-1\\"}\\n```","finalization_mode":"merge_process_cards"}\n\n'
+              ),
+            })
+          }
+          if (callCount === 3) {
+            return Promise.resolve({
+              done: false,
+              value: encoder.encode('data: [DONE]\n\n'),
+            })
+          }
+          return Promise.resolve({ done: true, value: undefined })
+        }),
+      }
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        body: { getReader: () => mockReader },
+      })
+      global.fetch = mockFetch
+
+      const onMessage = vi.fn()
+      const onError = vi.fn()
+      const onComplete = vi.fn()
+
+      await client.connect(
+        'conv-1',
+        { message: 'test', provider: 'openai', model: 'gpt-4o' },
+        { onMessage, onError, onComplete }
+      )
+
+      expect(onError).not.toHaveBeenCalled()
+      expect(onComplete).toHaveBeenCalledTimes(1)
+      expect(onComplete).toHaveBeenCalledWith(
+        expect.objectContaining({
+          done: true,
+          message_id: 'msg-final',
+          finalization_mode: 'merge_process_cards',
+        })
+      )
+    })
+
     it('should fire onComplete with metadata when stream closes after done:true but before [DONE]', async () => {
       // Edge case: connection drops after done:true but before [DONE]
       const encoder = new TextEncoder()

@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-summary: "Current package map and high-level data flows from the repository README."
+summary: "Current package map and the high-level runtime flows that matter most for operators and builders."
 ---
 
 # Architecture
@@ -23,6 +23,7 @@ summary: "Current package map and high-level data flows from the repository READ
 | Observe | metrics, profiling, leak detection style services |
 | Plugin | plugin, skill, skillstore |
 | Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
+| Evaluation | harness, self-reflect, tracked run and score surfaces |
 | Scheduler | scheduler, worker, workerpool, pool |
 | Core | lifecycle, config, logger, database, cache, ratelimit, retry, sync |
 | System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
@@ -49,8 +50,26 @@ Chat Platform -> Channel Manager -> AutoReply
 Audio Stream -> STT -> LLM Processing -> TTS -> Audio Stream
 ```
 
+## Hot path: tracked evaluation
+
+```text
+Operator -> Harness UI/API -> Dataset / Eval Spec / Run Group
+  -> Agent or Workflow Execution -> Scorecard / Artifact / Report
+  -> Comparison / Baseline Review -> Evolution Decision
+```
+
+## Hot path: extension install and review
+
+```text
+Operator -> Extensions UI -> Skill Source / Store Search
+  -> Security Metadata / Contract Review -> Install
+  -> Skill or Tool becomes available to runtime surfaces
+```
+
 ## What matters most
 
 - Gateway and provider routing are central control points
-- Messaging, voice, and web UI are interaction surfaces over the same runtime core
+- Messaging, voice, automation, and web UI are interaction surfaces over the same runtime core
+- Harness and Evolution are part of the runtime architecture, not side diagnostics
+- Extension safety metadata is now part of the operator experience, not an afterthought
 - Security, audit, and sandboxing are first-class design constraints, not bolt-ons

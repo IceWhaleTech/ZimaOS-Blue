@@ -53,6 +53,7 @@ function createTestI18n() {
           deepResearchStageRetrieve: 'Retrieving',
           deepResearchStageVerify: 'Verifying',
           deepResearchStageSynthesize: 'Synthesizing',
+          deepResearchGapNeedPrimaryOrOfficialSources: 'Need primary or official sources',
           researchRunningTasks: 'Running research tasks',
           researchRunningElsewhere: 'Track active research tasks across conversations.',
           deepResearchRunningTasks: 'Running Deep Research tasks',
@@ -140,7 +141,7 @@ describe('DeepResearchTaskDock', () => {
     ).toBe('true')
     expect(wrapper.text()).toContain('Track active Deep Research tasks across conversations.')
     expect(wrapper.text()).toContain('Compare browser grounding changes')
-    expect(wrapper.text()).toContain('Need one primary source')
+    expect(wrapper.text()).toContain('Need primary or official sources')
   })
 
   it('restores expanded state and keeps view and cancel actions working', async () => {

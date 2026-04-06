@@ -42,7 +42,8 @@ func researchHarnessRunInputFromJobRequest(req deepresearch.CreateJobRequest, wo
 		UserID:         req.UserID,
 		ConversationID: req.ConversationID,
 		WorkspaceRoot:  strings.TrimSpace(workspaceRoot),
-		Mode:           string(req.Mode),
+		Mode:           "deep_research",
+		ResearchDepth:  string(req.Mode),
 		RouteMode:      string(req.RouteMode),
 		Lang:           req.Lang,
 		ReportStyle:    req.ReportStyle,
@@ -81,12 +82,20 @@ func synthesizeResearchJobFromRun(run *harness.Run) *deepresearch.Job {
 	if run == nil {
 		return nil
 	}
+	mode := strings.TrimSpace(fmt.Sprint(run.Metadata["research_depth"]))
+	if mode == "" || mode == "<nil>" {
+		mode = strings.TrimSpace(fmt.Sprint(run.Metadata["mode"]))
+	}
+	if mode == "<nil>" {
+		mode = ""
+	}
 	return &deepresearch.Job{
 		ID:             run.ID,
 		ConversationID: run.ConversationID,
 		UserID:         run.UserID,
 		Query:          run.Goal,
 		Status:         deepresearch.JobStatus(run.Status),
+		Mode:           deepresearch.Mode(mode),
 	}
 }
 

@@ -97,6 +97,51 @@ const nextUpcomingValue = computed(() => {
   return jobs.value.length === 0 ? t('cron.noJobs') : t('cron.calculating')
 })
 
+const cronSummaryCards = computed(() => [
+  {
+    key: 'total',
+    label: t('cron.title'),
+    value: loading.value ? t('common.loading') : new Intl.NumberFormat().format(sortedJobs.value.length),
+    details: loading.value
+      ? t('common.loading')
+      : `${new Intl.NumberFormat().format(enabledJobsCount.value)} ${t('automation.stats.activeJobs')}${
+          disabledJobsCount.value > 0
+            ? ` · ${new Intl.NumberFormat().format(disabledJobsCount.value)} ${t('cron.disabled')}`
+            : ''
+        }`,
+  },
+  {
+    key: 'active',
+    label: t('automation.stats.activeJobs'),
+    value: loading.value ? t('common.loading') : new Intl.NumberFormat().format(enabledJobsCount.value),
+    details: loading.value ? t('common.loading') : t('automation.tabs.cronDesc'),
+  },
+  {
+    key: 'disabled',
+    label: t('cron.disabled'),
+    value: loading.value
+      ? t('common.loading')
+      : new Intl.NumberFormat().format(disabledJobsCount.value),
+    details: loading.value
+      ? t('common.loading')
+      : `${new Intl.NumberFormat().format(sortedJobs.value.length)} ${t('cron.title')}`,
+  },
+  {
+    key: 'next',
+    label: t('cron.nextRun'),
+    value: loading.value
+      ? t('common.loading')
+      : nextUpcomingJob.value
+        ? getJobDisplayName(nextUpcomingJob.value)
+        : jobs.value.length === 0
+          ? t('cron.noJobs')
+          : enabledJobsCount.value === 0
+            ? t('cron.disabled')
+            : t('cron.calculating'),
+    details: loading.value ? t('common.loading') : nextUpcomingValue.value,
+  },
+])
+
 onMounted(async () => {
   await loadJobs()
 })
@@ -561,23 +606,54 @@ function getJobPreview(job: CronJob): string {
 
 <template>
   <div class="cron-page dashboard-page-frame">
-    <section class="automation-stage dashboard-page-stage configuration-page-stage">
-      <section class="automation-hero dashboard-page-hero configuration-page-hero">
-        <div class="automation-copy dashboard-page-copy configuration-page-copy">
-          <p class="automation-kicker dashboard-page-eyebrow">{{ t('nav.automation') }}</p>
-          <h1 class="automation-title dashboard-page-title configuration-page-title">
-            {{ t('cron.title') }}
-          </h1>
-          <p
-            class="automation-description dashboard-page-description configuration-page-description"
-          >
-            {{ t('automation.tabs.cronDesc') }}
-          </p>
-        </div>
-      </section>
-
+    <div class="mx-auto flex w-full max-w-7xl flex-col gap-4">
       <AutomationTabs class="automation-tab-strip" />
 
+      <section
+        class="overflow-hidden rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(245,158,11,0.16),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.14),_transparent_36%),linear-gradient(135deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.96))] shadow-sm"
+      >
+        <div class="flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 sm:px-5">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div class="space-y-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                {{ t('nav.automation') }}
+              </p>
+              <h1 class="text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">
+                {{ t('cron.title') }}
+              </h1>
+              <p class="max-w-2xl text-sm leading-5 text-slate-600">
+                {{ t('automation.tabs.cronDesc') }}
+              </p>
+            </div>
+            <div
+              class="inline-flex items-center rounded-full border border-white/70 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:text-sm"
+            >
+              {{ enabledJobsCount }} {{ t('automation.stats.activeJobs') }}
+            </div>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <article
+              v-for="card in cronSummaryCards"
+              :key="card.key"
+              class="rounded-2xl border border-slate-200 bg-white/85 px-3 py-3"
+            >
+              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {{ card.label }}
+              </div>
+              <div class="mt-2 text-lg font-semibold text-slate-950 sm:text-xl">
+                {{ card.value }}
+              </div>
+              <div class="mt-1.5 text-xs leading-4 text-slate-500">
+                {{ card.details }}
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="automation-stage dashboard-page-stage configuration-page-stage">
       <section class="automation-shell">
         <section class="automation-surface-panel automation-panel-card automation-library-card">
           <div class="automation-list-header">

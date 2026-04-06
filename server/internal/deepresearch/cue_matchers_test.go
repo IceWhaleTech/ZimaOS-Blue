@@ -76,3 +76,17 @@ func TestClassifyClaimPolarity_UsesCompiledCueMatchers(t *testing.T) {
 		t.Fatalf("neutral polarity = %v, want %v", got, claimPolarityNeutral)
 	}
 }
+
+func TestFoldedCueMatcher_InitializesOnDemand(t *testing.T) {
+	matcher := newFoldedCueMatcher([]string{"latest", "official"})
+	if matcher.inner != nil {
+		t.Fatal("expected folded cue matcher inner to start nil")
+	}
+
+	if !matcher.Contains("latest official update") {
+		t.Fatal("expected matcher to initialize on first access")
+	}
+	if matcher.inner == nil {
+		t.Fatal("expected folded cue matcher inner to initialize lazily")
+	}
+}

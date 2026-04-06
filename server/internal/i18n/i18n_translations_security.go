@@ -1,6 +1,6 @@
 package i18n
 
-func init() {
+func registerSecurityTranslations() {
 	// --- en-US (English) ---
 	for k, v := range map[string]string{
 		MsgSecPatternJailbreak:          "Known jailbreak attempts",

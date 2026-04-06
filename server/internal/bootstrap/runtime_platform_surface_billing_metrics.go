@@ -19,7 +19,7 @@ func registerRouteRuntimeBillingSurface(options routeRuntimeContractPlatformSurf
 func registerRouteRuntimeMetricsSurface(options routeRuntimeContractPlatformSurfaceOptions) {
 	var metricsSummaryHandler routeRegistrar
 	if options.metricsCollector != nil {
-		metricsSummaryHandler = serverpkg.NewMetricsHandler(options.metricsCollector)
+		metricsSummaryHandler = serverpkg.NewMetricsHandler(options.metricsCollector, routeRuntimeChatCacheFootprintProvider(options.metricsTarget))
 	}
 
 	var detailedMetricsHandler routeRegistrar

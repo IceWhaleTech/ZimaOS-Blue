@@ -178,7 +178,10 @@ func TestBindOperationalRuntime_ReturnsTaskSurfaceAndSupportSnapshot(t *testing.
 	if result.support.activationSupportApplied || result.support.deferredSupportApplied {
 		t.Fatalf("expected minimal operational runtime to skip optional support wiring, got %#v", result.support)
 	}
-	if !routeExists(e, "POST", "/api/deep-research/jobs") || !routeExists(e, "GET", "/api/harness/runs") || !routeExists(e, "GET", "/api/self-reflect/proposals") {
+	if !routeExists(e, "POST", "/api/deep-research/jobs") ||
+		!routeExists(e, "GET", "/api/harness/runs") ||
+		!routeExists(e, "POST", "/api/harness/skill-revisions/:id/rollback") ||
+		!routeExists(e, "GET", "/api/self-reflect/proposals") {
 		t.Fatalf("expected operational runtime task routes to register, got %#v", e.Routes())
 	}
 }

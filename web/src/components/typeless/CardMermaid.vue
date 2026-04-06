@@ -2,6 +2,11 @@
 import { ref, computed, onMounted, watch, nextTick, shallowRef, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TypelessCardMermaid } from '@/types/typeless'
+import {
+  embeddedMermaidBundleDisabled,
+  loadMermaidRuntime,
+  type MermaidRuntime,
+} from '@/utils/mermaidRuntimeLoader'
 
 const props = defineProps<{
   card: TypelessCardMermaid
@@ -13,8 +18,9 @@ const svgContent = ref('')
 const error = ref<string | null>(null)
 const copied = ref(false)
 const loading = ref(true)
-// Use shallowRef for the mermaid module to avoid reactivity issues
-const mermaidModule = shallowRef<typeof import('mermaid') | null>(null)
+const remoteFallback = ref(false)
+// Use shallowRef for the Mermaid runtime to avoid reactivity issues
+const mermaidModule = shallowRef<MermaidRuntime | null>(null)
 // Track render count to generate unique IDs
 let renderCount = 0
 // Track latest render request to avoid stale async updates
@@ -71,7 +77,7 @@ const diagramTypeDisplay = computed(() => {
 // Initialize mermaid with theme
 async function initMermaid() {
   if (!mermaidModule.value) {
-    mermaidModule.value = await import('mermaid')
+    mermaidModule.value = await loadMermaidRuntime()
   }
 
   const isDark = document.documentElement.classList.contains('dark')
@@ -93,6 +99,7 @@ async function renderDiagram() {
   if (!code) {
     svgContent.value = ''
     error.value = null
+    remoteFallback.value = false
     loading.value = false
     return
   }
@@ -104,6 +111,7 @@ async function renderDiagram() {
   }
 
   error.value = null
+  remoteFallback.value = false
   // Keep old diagram visible during re-render to avoid flicker.
   if (!svgContent.value) {
     loading.value = true
@@ -133,6 +141,12 @@ async function renderDiagram() {
   } catch (err) {
     if (token !== renderToken) return
     const message = err instanceof Error ? err.message : String(err)
+    if (embeddedMermaidBundleDisabled && !mermaidModule.value) {
+      svgContent.value = ''
+      error.value = null
+      remoteFallback.value = true
+      return
+    }
     // Parse/lexical/syntax errors are expected while streaming; ignore silently and keep last valid render.
     if (isParseLikeError(message)) {
       error.value = null
@@ -269,8 +283,13 @@ onUnmounted(() => {
       ref="containerRef"
       class="flex-1 overflow-auto flex items-center justify-center min-h-[200px]"
     >
+      <pre
+        v-if="remoteFallback"
+        class="w-full h-full overflow-auto p-4 text-sm leading-6 bg-gray-50 dark:bg-gray-900/40 text-gray-800 dark:text-gray-100 whitespace-pre-wrap break-words"
+      ><code>{{ card.code }}</code></pre>
+
       <!-- Error state -->
-      <div v-if="error" class="flex items-center gap-2 text-red-500 dark:text-red-400 p-4">
+      <div v-else-if="error" class="flex items-center gap-2 text-red-500 dark:text-red-400 p-4">
         <svg
           xmlns="http://www.w3.org/2000/svg"
           class="h-5 w-5"

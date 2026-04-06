@@ -10,19 +10,34 @@ function tr(key: string, fallback: string): string {
   return te(key) ? t(key) : fallback
 }
 
+const currentPath = computed(() => String(route.path ?? ''))
+
 const tabs = computed(() => [
   {
     id: 'cron',
-    to: '/automation',
+    to: '/operations',
     label: tr('automation.tabs.cron', 'Scheduled Tasks'),
     description: tr('automation.tabs.cronDesc', 'Manage cron jobs and scheduled executions'),
     icon:
       '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 6.75v5.25l3 1.75"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>',
-    active: route.path === '/automation' || route.path === '/cron',
+    active: currentPath.value === '/operations',
+  },
+  {
+    id: 'knowledge',
+    to: '/operations/knowledge',
+    label: tr('automation.tabs.knowledge', 'Knowledge'),
+    badge: 'Beta',
+    description: tr(
+      'automation.tabs.knowledgeDesc',
+      'Browse compiled pages, maintain lint health, and query the knowledge workspace.'
+    ),
+    icon:
+      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 5.25A2.25 2.25 0 019 3h7.25A1.75 1.75 0 0118 4.75v14.5a.75.75 0 01-1.21.59L14 17.75H9A2.25 2.25 0 016.75 15.5v-10.25z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 7.75h5.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 11h4.25"/>',
+    active: currentPath.value.startsWith('/operations/knowledge'),
   },
   {
     id: 'harness',
-    to: '/automation/harness',
+    to: '/operations/harness',
     label: tr('automation.tabs.harness', 'Harness'),
     badge: 'Beta',
     description: tr(
@@ -31,13 +46,26 @@ const tabs = computed(() => [
     ),
     icon:
       '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.75 18.25h14.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7.75 15.25V10.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 15.25V7.25"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16.25 15.25v-2.5"/>',
-    active: route.path.startsWith('/automation/harness') || route.path.startsWith('/harness'),
+    active: currentPath.value.startsWith('/operations/harness'),
+  },
+  {
+    id: 'evolution',
+    to: '/operations/evolution',
+    label: tr('automation.tabs.evolution', 'Evolution'),
+    badge: 'Beta',
+    description: tr(
+      'automation.tabs.evolutionDesc',
+      'Review skill, runner, and instruction evolution evidence.'
+    ),
+    icon:
+      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3.75v4.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8.25 7.5h7.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 12a5.25 5.25 0 109.11 3.59"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.25 12a5.25 5.25 0 10-9.11-3.59"/>',
+    active: currentPath.value.startsWith('/operations/evolution'),
   },
 ])
 </script>
 
 <template>
-  <nav class="automation-tab-nav" :aria-label="tr('nav.automation', 'Automation')">
+  <nav class="automation-tab-nav" :aria-label="tr('nav.automation', 'Operations')">
     <RouterLink
       v-for="tab in tabs"
       :key="tab.id"
@@ -57,6 +85,7 @@ const tabs = computed(() => [
           <span class="automation-tab-button__label">{{ tab.label }}</span>
           <span v-if="tab.badge" class="automation-tab-beta">{{ tab.badge }}</span>
         </span>
+        <span class="automation-tab-button__description">{{ tab.description }}</span>
       </span>
       <span class="automation-tab-button__state" aria-hidden="true"></span>
     </RouterLink>
@@ -66,7 +95,7 @@ const tabs = computed(() => [
 <style scoped>
 .automation-tab-nav {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   gap: 10px;
   margin-bottom: 0.6rem;
   padding: 0;
@@ -131,7 +160,7 @@ const tabs = computed(() => [
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.32rem;
+  gap: 0.35rem;
 }
 
 .automation-tab-button__label {
@@ -145,6 +174,12 @@ const tabs = computed(() => [
   align-items: center;
   flex-wrap: wrap;
   gap: 0.45rem;
+}
+
+.automation-tab-button__description {
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: #64748b;
 }
 
 .automation-tab-beta {
@@ -175,6 +210,10 @@ const tabs = computed(() => [
 .automation-tab-button--active .automation-tab-button__state {
   transform: scale(1.05);
   background: #64748b;
+}
+
+.automation-tab-button--active .automation-tab-button__description {
+  color: #475569;
 }
 
 :root.dark .automation-tab-button,
@@ -222,6 +261,18 @@ html.dark .automation-tab-button__state {
 [data-theme='dark'] .automation-tab-button--active .automation-tab-button__state,
 html.dark .automation-tab-button--active .automation-tab-button__state {
   background: #e2e8f0;
+}
+
+:root.dark .automation-tab-button__description,
+[data-theme='dark'] .automation-tab-button__description,
+html.dark .automation-tab-button__description {
+  color: #94a3b8;
+}
+
+:root.dark .automation-tab-button--active .automation-tab-button__description,
+[data-theme='dark'] .automation-tab-button--active .automation-tab-button__description,
+html.dark .automation-tab-button--active .automation-tab-button__description {
+  color: #cbd5e1;
 }
 
 :root.dark .automation-tab-beta,

@@ -1,3 +1,5 @@
+//go:build !darwin
+
 package ocr
 
 import (
@@ -15,33 +17,23 @@ import (
 	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/danlock/gogosseract"
 	"github.com/tetratelabs/wazero"
 	"go.uber.org/zap"
 )
 
 const (
-	engineName            = "tesseract/wasm"
-	defaultWorkerCount    = 1
-	defaultModelBaseURL   = "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_best@main/"
-	defaultRequestTimeout = 2 * time.Minute
+	tesseractEngineName        = "tesseract/wasm"
+	defaultWorkerCount         = 1
+	defaultModelBaseURL        = "https://cdn.jsdelivr.net/gh/tesseract-ocr/tessdata_best@main/"
+	defaultRequestTimeout      = 2 * time.Minute
+	tesseractRuntimeFileName   = "tesseract-core.wasm"
+	tesseractRuntimeRepoOwner  = "danlock"
+	tesseractRuntimeRepoName   = "gogosseract"
+	tesseractRuntimeRepoRef    = "0ad342167d77c5393aac6369e1f4bb36fec77482"
+	tesseractRuntimeSourcePath = "internal/wasm/tesseract-core.wasm"
 )
-
-type Result struct {
-	Text           string   `json:"text"`
-	Engine         string   `json:"engine,omitempty"`
-	Model          string   `json:"model,omitempty"`
-	Warnings       []string `json:"warnings,omitempty"`
-	AutoDownloaded []string `json:"auto_downloaded,omitempty"`
-}
-
-type Config struct {
-	ModelDir        string
-	AutoDownload    bool
-	WorkerCount     uint
-	PreferredModels []string
-	HTTPClient      *http.Client
-}
 
 type modelSpec struct {
 	Name string
@@ -66,10 +58,11 @@ type TesseractService struct {
 	httpClient      *http.Client
 	cache           wazero.CompilationCache
 
-	mu       sync.Mutex
-	pools    map[string]parsePool
-	newPool  poolFactory
-	download modelDownloader
+	mu        sync.Mutex
+	pools     map[string]parsePool
+	wasmBytes []byte
+	newPool   poolFactory
+	download  modelDownloader
 }
 
 func NewTesseractService(logger *zap.Logger, cfg Config) *TesseractService {
@@ -96,7 +89,7 @@ func NewTesseractService(logger *zap.Logger, cfg Config) *TesseractService {
 		pools:           map[string]parsePool{},
 	}
 	service.newPool = service.defaultPoolFactory
-	service.download = service.downloadModel
+	service.download = service.downloadFile
 	return service
 }
 
@@ -110,6 +103,7 @@ func (s *TesseractService) Close() error {
 		pools = append(pools, pool)
 	}
 	s.pools = map[string]parsePool{}
+	s.wasmBytes = nil
 	cache := s.cache
 	s.cache = nil
 	s.mu.Unlock()
@@ -156,7 +150,7 @@ func (s *TesseractService) Extract(ctx context.Context, imagePNG []byte) (Result
 		score := scoreText(text)
 		if score > bestScore || (score == bestScore && utf8.RuneCountInString(text) > utf8.RuneCountInString(best.Text)) {
 			bestScore = score
-			best = Result{Text: text, Engine: engineName, Model: spec.Name}
+			best = Result{Text: text, Engine: tesseractEngineName, Model: spec.Name}
 		}
 	}
 	best.Warnings = warnings
@@ -180,6 +174,15 @@ func (s *TesseractService) specs() []modelSpec {
 		out = append(out, modelSpec{Name: trimmed, URL: defaultModelBaseURL + trimmed + ".traineddata"})
 	}
 	return out
+}
+
+func tesseractRuntimeURLCandidates() []string {
+	return skillbundle.GitHubRawURLCandidates(
+		tesseractRuntimeRepoOwner,
+		tesseractRuntimeRepoName,
+		tesseractRuntimeRepoRef,
+		tesseractRuntimeSourcePath,
+	)
 }
 
 func (s *TesseractService) ensurePool(ctx context.Context, spec modelSpec) (parsePool, bool, error) {
@@ -211,9 +214,14 @@ func (s *TesseractService) ensurePool(ctx context.Context, spec modelSpec) (pars
 	if err != nil {
 		return nil, false, fmt.Errorf("read OCR model: %w", err)
 	}
+	wasmBytes, err := s.ensureRuntimeWASMBytes(ctx)
+	if err != nil {
+		return nil, false, err
+	}
 	ocrCfg := gogosseract.Config{Language: spec.Name, WASMCache: s.cache}
 	ocrCfg.Stdout = io.Discard
 	ocrCfg.Stderr = io.Discard
+	ocrCfg.WASMBytes = wasmBytes
 	pool, err := s.newPool(ctx, s.workerCount, gogosseract.PoolConfig{
 		Config:            ocrCfg,
 		TrainingDataBytes: modelBytes,
@@ -237,44 +245,92 @@ func (s *TesseractService) defaultPoolFactory(ctx context.Context, count uint, c
 	return gogosseract.NewPool(ctx, count, cfg)
 }
 
-func (s *TesseractService) downloadModel(ctx context.Context, url, path string) error {
+func (s *TesseractService) ensureRuntimeWASMBytes(ctx context.Context) ([]byte, error) {
+	s.mu.Lock()
+	if len(s.wasmBytes) != 0 {
+		wasmBytes := s.wasmBytes
+		s.mu.Unlock()
+		return wasmBytes, nil
+	}
+	s.mu.Unlock()
+
+	wasmPath := filepath.Join(s.modelDir, tesseractRuntimeFileName)
+	if _, err := os.Stat(wasmPath); err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("stat OCR runtime: %w", err)
+		}
+		if !s.autoDownload {
+			return nil, fmt.Errorf("missing OCR runtime %s", tesseractRuntimeFileName)
+		}
+		if err := os.MkdirAll(s.modelDir, 0o750); err != nil {
+			return nil, fmt.Errorf("create OCR model dir: %w", err)
+		}
+		if err := s.downloadWithFallback(ctx, tesseractRuntimeURLCandidates(), wasmPath, "OCR runtime"); err != nil {
+			return nil, err
+		}
+	}
+	wasmBytes, err := os.ReadFile(wasmPath)
+	if err != nil {
+		return nil, fmt.Errorf("read OCR runtime: %w", err)
+	}
+
+	s.mu.Lock()
+	if len(s.wasmBytes) == 0 {
+		s.wasmBytes = wasmBytes
+	}
+	wasmBytes = s.wasmBytes
+	s.mu.Unlock()
+	return wasmBytes, nil
+}
+
+func (s *TesseractService) downloadWithFallback(ctx context.Context, urls []string, path string, assetName string) error {
+	var lastErr error
+	for _, url := range urls {
+		if err := s.download(ctx, url, path); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	if lastErr == nil {
+		return fmt.Errorf("no %s download sources configured", assetName)
+	}
+	return fmt.Errorf("download %s: %w", assetName, lastErr)
+}
+
+func (s *TesseractService) downloadFile(ctx context.Context, url, path string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("build OCR model request: %w", err)
+		return fmt.Errorf("build download request: %w", err)
 	}
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("download OCR model: %w", err)
+		return fmt.Errorf("download file: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("download OCR model: unexpected status %s", resp.Status)
+		return fmt.Errorf("unexpected status %s", resp.Status)
 	}
 	tmpPath := path + ".tmp"
 	file, err := os.Create(tmpPath)
 	if err != nil {
-		return fmt.Errorf("create OCR model file: %w", err)
+		return fmt.Errorf("create file: %w", err)
 	}
 	if _, err := io.Copy(file, resp.Body); err != nil {
 		file.Close()
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("write OCR model: %w", err)
+		return fmt.Errorf("write file: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("close OCR model file: %w", err)
+		return fmt.Errorf("close file: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("store OCR model: %w", err)
+		return fmt.Errorf("store file: %w", err)
 	}
-	s.logger.Info("downloaded OCR model", zap.String("path", path), zap.String("url", url))
+	s.logger.Info("downloaded OCR asset", zap.String("path", path), zap.String("url", url))
 	return nil
-}
-
-func normalizeText(text string) string {
-	text = strings.ReplaceAll(text, "\x00", "")
-	return strings.TrimSpace(text)
 }
 
 func scoreText(text string) int {

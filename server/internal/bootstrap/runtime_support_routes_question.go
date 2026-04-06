@@ -1,34 +1,16 @@
 package bootstrap
 
 import (
-	"strings"
-
-	"github.com/labstack/echo/v4"
-
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+	"github.com/labstack/echo/v4"
 )
 
 func registerAskUserQuestionRoutes(v1 *echo.Group, authMiddleware, pageMiddleware echo.MiddlewareFunc, questionMgr *tools.QuestionManager) {
 	if v1 == nil || questionMgr == nil {
 		return
 	}
-
 	askGroup := v1.Group("/ask-user-question", filterRouteMiddlewares(authMiddleware, pageMiddleware)...)
-	askGroup.GET("/pending", func(c echo.Context) error {
-		sessionID := strings.TrimSpace(c.QueryParam("session_id"))
-		var req *tools.QuestionRequest
-		if sessionID != "" {
-			req = questionMgr.GetPendingBySession(sessionID)
-		}
-		if req == nil {
-			userID := resolveRequestUserID(c)
-			req = questionMgr.GetPending(userID)
-		}
-		if req == nil {
-			return c.JSON(200, map[string]interface{}{"pending": false})
-		}
-		return c.JSON(200, map[string]interface{}{"pending": true, "question": req})
-	})
+	// Note: GET /pending removed - chat surfaces recover pending questions through conversation bootstrap.
 	askGroup.POST("/:id/answer", func(c echo.Context) error {
 		id := c.Param("id")
 		var body struct {

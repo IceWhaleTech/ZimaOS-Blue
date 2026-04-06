@@ -401,6 +401,18 @@ export interface FailoverConfig {
   }
 }
 
+export interface FailoverCircuitBreakerStatus {
+  state: string
+  failures: number
+  last_failure?: string
+}
+
+export interface FailoverOverview {
+  metrics: FailoverMetrics
+  config: FailoverConfig
+  circuit_breakers: Record<string, FailoverCircuitBreakerStatus>
+}
+
 // API functions
 export const providerPoolApi = {
   // Provider operations
@@ -551,6 +563,8 @@ export const providerPoolApi = {
     }>('/pricing/recalculate', null, { params: { period } }),
 
   // Failover operations
+  getFailoverOverview: () => api.get<FailoverOverview>('/proxy/failover/overview'),
+
   getFailoverMetrics: () => api.get<FailoverMetrics>('/proxy/failover/metrics'),
 
   getFailoverConfig: () => api.get<FailoverConfig>('/proxy/failover/config'),

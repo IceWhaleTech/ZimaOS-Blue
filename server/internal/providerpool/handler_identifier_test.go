@@ -74,6 +74,34 @@ func TestHandlerAddProviderRejectsInvalidProviderID(t *testing.T) {
 	}
 }
 
+func TestHandlerAddProviderWithAPIKeyAutoEnablesProvider(t *testing.T) {
+	_, e := newTestProviderHandler(t)
+
+	body := `{"name":"Ready Provider","base_url":"https://example.com/v1","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPost, "/providers", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var provider Provider
+	if err := json.Unmarshal(rec.Body.Bytes(), &provider); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if !provider.Enabled {
+		t.Fatalf("enabled = %v, want true", provider.Enabled)
+	}
+	if provider.Status != ProviderStatusInactive {
+		t.Fatalf("status = %q, want %q", provider.Status, ProviderStatusInactive)
+	}
+	if len(provider.APIKeys) != 1 {
+		t.Fatalf("api_keys len = %d, want 1", len(provider.APIKeys))
+	}
+}
+
 func TestHandlerUpdateProviderSwitchesCustomFormatBackToAutoImmediately(t *testing.T) {
 	h, e := newTestProviderHandler(t)
 
@@ -226,6 +254,71 @@ func TestHandlerUpdateProviderKeepsCatalogProviderCanonicalFields(t *testing.T) 
 	}
 	if updated.DetectedFormat != "" {
 		t.Fatalf("detected_format = %q, want empty", updated.DetectedFormat)
+	}
+}
+
+func TestHandlerUpdateAllowedModelsEmptyArrayDisablesAllowlist(t *testing.T) {
+	h, e := newTestProviderHandler(t)
+
+	err := h.pool.Registry.Register(&Provider{
+		ID:                  "custom-provider",
+		Name:                "Custom Provider",
+		Type:                ProviderTypeCustom,
+		Location:            ProviderLocationCloud,
+		Enabled:             true,
+		Status:              ProviderStatusActive,
+		APIKeys:             []APIKey{{ID: "k1", Key: "sk-test", Enabled: true}},
+		AllowedModels:       []string{"gpt-4o"},
+		AllowlistConfigured: true,
+	})
+	if err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+	if err := h.pool.Storage.SaveModels("custom-provider", []*Model{
+		{ID: "gpt-4o", ProviderID: "custom-provider", Name: "gpt-4o", Enabled: true},
+		{ID: "gpt-4.1", ProviderID: "custom-provider", Name: "gpt-4.1", Enabled: true},
+	}); err != nil {
+		t.Fatalf("save models failed: %v", err)
+	}
+	h.pool.Router = NewRouter(h.pool.Registry, h.pool.Discovery, RoutingStrategyPriority)
+
+	req := httptest.NewRequest(http.MethodPut, "/providers/custom-provider/allowed-models", strings.NewReader(`{"allowed_models":[]}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	updated, err := h.pool.Registry.Get("custom-provider")
+	if err != nil {
+		t.Fatalf("get provider failed: %v", err)
+	}
+	if updated.AllowlistConfigured {
+		t.Fatalf("allowlist_configured = %v, want false", updated.AllowlistConfigured)
+	}
+	if updated.AllowedModels != nil {
+		t.Fatalf("allowed_models = %#v, want nil", updated.AllowedModels)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/providers/custom-provider/models", nil)
+	listRec := httptest.NewRecorder()
+	e.ServeHTTP(listRec, listReq)
+
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want %d, body=%s", listRec.Code, http.StatusOK, listRec.Body.String())
+	}
+
+	var resp struct {
+		Models []map[string]interface{} `json:"models"`
+		Total  int                      `json:"total"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if resp.Total != 2 || len(resp.Models) != 2 {
+		t.Fatalf("expected 2 models after empty allowlist disables filtering, got total=%d len=%d body=%s", resp.Total, len(resp.Models), listRec.Body.String())
 	}
 }
 

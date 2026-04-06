@@ -1,4 +1,4 @@
-//go:build !kokoro || windows
+//go:build !kokoro || windows || !linux || !cgo
 
 package tts
 

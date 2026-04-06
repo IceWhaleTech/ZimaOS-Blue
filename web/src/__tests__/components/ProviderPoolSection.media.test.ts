@@ -27,6 +27,9 @@ const mocks = vi.hoisted(() => ({
     refreshModels: vi.fn(),
     probeModels: vi.fn(),
     testProvider: vi.fn(),
+    enableProvider: vi.fn(),
+    disableProvider: vi.fn(),
+    selectProvider: vi.fn(),
     updateProvider: vi.fn(),
     updateProviderPriorityLocal: vi.fn(),
     syncPrioritiesToBackend: vi.fn(),
@@ -213,6 +216,9 @@ describe('ProviderPoolSection media verification gating', () => {
       results: [],
     })
     mocks.providerPoolStore.testProvider.mockResolvedValue({ healthy: true })
+    mocks.providerPoolStore.enableProvider.mockResolvedValue(undefined)
+    mocks.providerPoolStore.disableProvider.mockResolvedValue(undefined)
+    mocks.providerPoolStore.selectProvider.mockResolvedValue(undefined)
     mocks.providerPoolStore.updateProvider.mockImplementation(async (_id, updates) => ({
       ...(mocks.providerPoolStore.selectedProvider || {}),
       ...updates,
@@ -746,6 +752,78 @@ describe('ProviderPoolSection media verification gating', () => {
 
     expect(remoteCard?.text()).toContain('云端')
     expect(localCard?.text()).toContain('本地')
+  })
+
+  it('shows a setup chip instead of the toggle for unconfigured cloud providers', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'openai',
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      enabled: false,
+      status: 'inactive',
+      api_keys: [],
+      oauth: {
+        connected: false,
+      },
+    }
+    mocks.providerPoolStore.providers = [provider]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-row-setup-chip"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-row-setup-chip"]').text()).toContain('配置')
+    expect(wrapper.find('[data-testid="provider-row-toggle"]').exists()).toBe(false)
+  })
+
+  it('keeps the toggle visible once a provider has API key access', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      enabled: false,
+      status: 'inactive',
+      api_keys: [
+        {
+          id: 'key-1',
+          key_hash: 'sk-test-1',
+          usage_count: 0,
+          created_at: '',
+          enabled: true,
+        },
+      ],
+    }
+    mocks.providerPoolStore.providers = [provider]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-row-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-row-setup-chip"]').exists()).toBe(false)
+  })
+
+  it('keeps the toggle visible for local providers that do not need API keys', async () => {
+    const provider = {
+      ...createProvider('custom'),
+      id: 'ollama',
+      name: 'Ollama',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      location: 'local',
+      enabled: false,
+      status: 'inactive',
+      api_keys: [],
+      oauth: {
+        connected: false,
+      },
+    }
+    mocks.providerPoolStore.providers = [provider]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    expect(wrapper.find('[data-testid="provider-row-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="provider-row-setup-chip"]').exists()).toBe(false)
   })
 
   it('renders a clickable PinchBench badge for models with score metadata', async () => {

@@ -253,40 +253,79 @@ func prependSystemMessages(messages []llm.Message, systemMessages []llm.Message)
 }
 
 // reSystemReminder matches <system-reminder>...</system-reminder> blocks that LLMs sometimes echo back.
-var reSystemReminder = regexp.MustCompile(`<system-reminder>[\s\S]*?</system-reminder>`)
-var reThinkBlock = regexp.MustCompile(`<think>[\s\S]*?</think>`)
-var reAwaitingUserInputTag = regexp.MustCompile(`(?is)<awaiting_user_input>\s*true\s*</awaiting_user_input>`)
-var reAskGateBlock = regexp.MustCompile(`(?is)<ask_gate>[\s\S]*?</ask_gate>`)
-var rePseudoDirectiveRecipientFunctions = regexp.MustCompile(`(?i)["']recipient_name["']\s*:\s*["']functions\.`)
-var rePseudoDirectiveCommandWorkdir = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:blue [^"]*|\.{3}|…[^"]*)"[^}]*"workdir"\s*:`)
-var rePseudoDirectiveCommandPlaceholder = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:\.{3}|…[^"]*)"`)
-var rePseudoDirectivePayloadJSON = regexp.MustCompile(`(?i)^\s*\{"(?:command|parameters|tool_uses)"\s*:`)
-var rePseudoToolCallBlock = regexp.MustCompile(`(?is)<(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>[\s\S]*?</(?:[a-z0-9_.-]+:)?tool_call>`)
-var rePseudoToolCallTag = regexp.MustCompile(`(?is)</?(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>`)
-var rePseudoBracketedToolCallBlock = regexp.MustCompile(`(?is)\[(?:[a-z0-9_.-]+:)?tool_call\][\s\S]*?\[/(?:[a-z0-9_.-]+:)?tool_call\]`)
-var rePseudoBracketedToolCallTag = regexp.MustCompile(`(?is)\[/?(?:[a-z0-9_.-]+:)?tool_call\]`)
-var rePseudoInlineTokenFunctions = regexp.MustCompile(`(?i)to\s*=\s*functions\.[a-z0-9_.-]+`)
-var rePseudoInlineTokenParallel = regexp.MustCompile(`(?i)to\s*=\s*multi_tool_use\.parallel`)
-var rePseudoInlineTokenRecipient = regexp.MustCompile(`(?i)\brecipient_?name\b|\bwith\s+recipient\b`)
-var rePseudoInlineTokenToolUses = regexp.MustCompile(`(?i)\btool_?uses\b`)
-var rePseudoInlineTokenJSONWord = regexp.MustCompile(`(?i)\b[\p{L}\p{N}_-]*json\b`)
-var rePseudoInlineTokenLetsDo = regexp.MustCompile(`(?i)\blet'?s do (?:that|it)(?: again| correctly)?\.?`)
-var reExecWebSearchQuery = regexp.MustCompile(`(?i)\bquery=(?:"([^"]+)"|'([^']+)'|([^\s]+))`)
-var reTodoUnchecked = regexp.MustCompile(`(?m)^([ \t]*[-*]\s+)\[ \]\s+([^\n]+)$`)
-var reTodoAnyItem = regexp.MustCompile(`(?m)^[ \t]*[-*]\s+\[([ xX])\]\s+(?:~~)?([^\n~]+?)(?:~~)?\s*$`)
-var reTodoChecklistBlock = regexp.MustCompile(`(?m)(^|\n)([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+(?:\n[ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+)*)`)
-var reTypelessBlock = regexp.MustCompile("(?s)```typeless\\s*\\n(.*?)\\n```")
-var reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
-var reShortAffirmativeEN = regexp.MustCompile(`(?i)^(ok|okay|yes|y|sure|go ahead|continue|sounds good|do it|please continue|let'?s go)$`)
-var reExplicitWorkspaceCollectionCount = regexp.MustCompile(`(?i)\b(\d{1,3})\s+(?:email\s+files?|emails?|files?|documents?|messages?)\b`)
-var reShortAffirmativeIntl = regexp.MustCompile(`(?i)^(继续|继续吧|继续执行|接着|接着做|好的|好|可以|行|嗯|收到|明白|同意|同意了|` +
-	`sí|vale|de acuerdo|continúa|continuar|` +
-	`oui|d'accord|continue|` +
-	`ja|weiter|einverstanden|` +
-	`sim|continuar|continue|` +
-	`да|хорошо|продолжай|продолжить|` +
-	`はい|続けて|続行|` +
-	`네|예|계속|계속해)$`)
+var (
+	reSystemReminder                    *regexp.Regexp
+	reThinkBlock                        *regexp.Regexp
+	reAwaitingUserInputTag              *regexp.Regexp
+	reAskGateBlock                      *regexp.Regexp
+	rePseudoDirectiveRecipientFunctions *regexp.Regexp
+	rePseudoDirectiveCommandWorkdir     *regexp.Regexp
+	rePseudoDirectiveCommandPlaceholder *regexp.Regexp
+	rePseudoDirectivePayloadJSON        *regexp.Regexp
+	rePseudoToolCallBlock               *regexp.Regexp
+	rePseudoToolCallTag                 *regexp.Regexp
+	rePseudoBracketedToolCallBlock      *regexp.Regexp
+	rePseudoBracketedToolCallTag        *regexp.Regexp
+	rePseudoInlineTokenFunctions        *regexp.Regexp
+	rePseudoInlineTokenParallel         *regexp.Regexp
+	rePseudoInlineTokenRecipient        *regexp.Regexp
+	rePseudoInlineTokenToolUses         *regexp.Regexp
+	rePseudoInlineTokenJSONWord         *regexp.Regexp
+	rePseudoInlineTokenLetsDo           *regexp.Regexp
+	reExecWebSearchQuery                *regexp.Regexp
+	reTodoUnchecked                     *regexp.Regexp
+	reTodoAnyItem                       *regexp.Regexp
+	reTodoChecklistBlock                *regexp.Regexp
+	reTypelessBlock                     *regexp.Regexp
+	reAskOptionLine                     *regexp.Regexp
+	reShortAffirmativeEN                *regexp.Regexp
+	reExplicitWorkspaceCollectionCount  *regexp.Regexp
+	reShortAffirmativeIntl              *regexp.Regexp
+	reMemoryPreamble                    *regexp.Regexp
+	ansiPattern                         *regexp.Regexp
+	chatMiscRegexesOnce                 sync.Once
+)
+
+func ensureChatMiscRegexes() {
+	chatMiscRegexesOnce.Do(func() {
+		reSystemReminder = regexp.MustCompile(`<system-reminder>[\s\S]*?</system-reminder>`)
+		reThinkBlock = regexp.MustCompile(`<think>[\s\S]*?</think>`)
+		reAwaitingUserInputTag = regexp.MustCompile(`(?is)<awaiting_user_input>\s*true\s*</awaiting_user_input>`)
+		reAskGateBlock = regexp.MustCompile(`(?is)<ask_gate>[\s\S]*?</ask_gate>`)
+		rePseudoDirectiveRecipientFunctions = regexp.MustCompile(`(?i)["']recipient_name["']\s*:\s*["']functions\.`)
+		rePseudoDirectiveCommandWorkdir = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:blue [^"]*|\.{3}|…[^"]*)"[^}]*"workdir"\s*:`)
+		rePseudoDirectiveCommandPlaceholder = regexp.MustCompile(`(?i)\{"command"\s*:\s*"(?:\.{3}|…[^"]*)"`)
+		rePseudoDirectivePayloadJSON = regexp.MustCompile(`(?i)^\s*\{"(?:command|parameters|tool_uses)"\s*:`)
+		rePseudoToolCallBlock = regexp.MustCompile(`(?is)<(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>[\s\S]*?</(?:[a-z0-9_.-]+:)?tool_call>`)
+		rePseudoToolCallTag = regexp.MustCompile(`(?is)</?(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>`)
+		rePseudoBracketedToolCallBlock = regexp.MustCompile(`(?is)\[(?:[a-z0-9_.-]+:)?tool_call\][\s\S]*?\[/(?:[a-z0-9_.-]+:)?tool_call\]`)
+		rePseudoBracketedToolCallTag = regexp.MustCompile(`(?is)\[/?(?:[a-z0-9_.-]+:)?tool_call\]`)
+		rePseudoInlineTokenFunctions = regexp.MustCompile(`(?i)to\s*=\s*functions\.[a-z0-9_.-]+`)
+		rePseudoInlineTokenParallel = regexp.MustCompile(`(?i)to\s*=\s*multi_tool_use\.parallel`)
+		rePseudoInlineTokenRecipient = regexp.MustCompile(`(?i)\brecipient_?name\b|\bwith\s+recipient\b`)
+		rePseudoInlineTokenToolUses = regexp.MustCompile(`(?i)\btool_?uses\b`)
+		rePseudoInlineTokenJSONWord = regexp.MustCompile(`(?i)\b[\p{L}\p{N}_-]*json\b`)
+		rePseudoInlineTokenLetsDo = regexp.MustCompile(`(?i)\blet'?s do (?:that|it)(?: again| correctly)?\.?`)
+		reExecWebSearchQuery = regexp.MustCompile(`(?i)\bquery=(?:"([^"]+)"|'([^']+)'|([^\s]+))`)
+		reTodoUnchecked = regexp.MustCompile(`(?m)^([ \t]*[-*]\s+)\[ \]\s+([^\n]+)$`)
+		reTodoAnyItem = regexp.MustCompile(`(?m)^[ \t]*[-*]\s+\[([ xX])\]\s+(?:~~)?([^\n~]+?)(?:~~)?\s*$`)
+		reTodoChecklistBlock = regexp.MustCompile(`(?m)(^|\n)([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+(?:\n[ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+)*)`)
+		reTypelessBlock = regexp.MustCompile("(?s)```typeless\\s*\\n(.*?)\\n```")
+		reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
+		reShortAffirmativeEN = regexp.MustCompile(`(?i)^(ok|okay|yes|y|sure|go ahead|continue|sounds good|do it|please continue|let'?s go)$`)
+		reExplicitWorkspaceCollectionCount = regexp.MustCompile(`(?i)\b(\d{1,3})\s+(?:email\s+files?|emails?|files?|documents?|messages?)\b`)
+		reShortAffirmativeIntl = regexp.MustCompile(`(?i)^(继续|继续吧|继续执行|接着|接着做|好的|好|可以|行|嗯|收到|明白|同意|同意了|` +
+			`sí|vale|de acuerdo|continúa|continuar|` +
+			`oui|d'accord|continue|` +
+			`ja|weiter|einverstanden|` +
+			`sim|continuar|continue|` +
+			`да|хорошо|продолжай|продолжить|` +
+			`はい|続けて|続行|` +
+			`네|예|계속|계속해)$`)
+		reMemoryPreamble = regexp.MustCompile(`(?im)^(I'll extract|Based on this|Here are|Let me extract|From this conversation|Looking at|The key facts|Key facts|Memory Extraction)[^\n]*\n*`)
+		ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x1b\a]*(?:\a|\x1b\\)|\x1b[()][0-9A-B]`)
+	})
+}
 
 type responseSanitizeProfile string
 
@@ -346,6 +385,7 @@ func normalizeAckText(s string) string {
 }
 
 func isAffirmativeContinuationMessage(content string) bool {
+	ensureChatMiscRegexes()
 	s := normalizeAckText(content)
 	if s == "" {
 		return false
@@ -1132,6 +1172,7 @@ func extractSearchQueryFromToolCall(tc llm.ToolCall) string {
 }
 
 func extractSearchQueryFromExecCommand(command string) string {
+	ensureChatMiscRegexes()
 	cmd := strings.TrimSpace(command)
 	if cmd == "" {
 		return ""
@@ -1154,6 +1195,7 @@ func extractSearchQueryFromExecCommand(command string) string {
 // lightweight "go-ahead" while already committing to a concrete next action.
 // Example: "如果你同意，我下一步会按这个范围整理……"
 func hasSoftConsentContinuationOffer(content string) bool {
+	ensureChatMiscRegexes()
 	s := strings.TrimSpace(content)
 	if s == "" {
 		return false
@@ -1729,6 +1771,7 @@ func hasPendingTodo(content string) bool {
 // the user for missing parameters/confirmation. In that case we should not
 // auto-continue tool execution.
 func isAwaitingUserInput(content string) bool {
+	ensureChatMiscRegexes()
 	s := strings.TrimSpace(content)
 	if s == "" {
 		return false
@@ -2347,6 +2390,7 @@ func shouldAutoContinueForActionPledge(currentContent string) bool {
 }
 
 func pseudoDirectiveStartIndex(delta string, allowedTools []llm.Tool) int {
+	ensureChatMiscRegexes()
 	if strings.TrimSpace(delta) == "" {
 		return -1
 	}
@@ -2465,6 +2509,7 @@ func looksLikeLeakedToolExecEnvelope(lower string) bool {
 }
 
 func looksLikeXMLToolCallLeak(s string) bool {
+	ensureChatMiscRegexes()
 	trimmed := strings.TrimSpace(maskPseudoRecoveryExcludedRanges(s, nil))
 	if trimmed == "" {
 		return false
@@ -2487,6 +2532,7 @@ func looksLikeXMLToolCallLeak(s string) bool {
 }
 
 func looksLikeBracketedToolCallLeak(s string) bool {
+	ensureChatMiscRegexes()
 	trimmed := strings.TrimSpace(maskPseudoRecoveryExcludedRanges(s, nil))
 	if trimmed == "" {
 		return false
@@ -2569,6 +2615,7 @@ func looksLikeToolProtocolDeliberationLeak(s string) bool {
 }
 
 func isPseudoDirectiveNoiseChunk(delta string) bool {
+	ensureChatMiscRegexes()
 	s := strings.TrimSpace(delta)
 	if s == "" {
 		return false
@@ -3895,6 +3942,7 @@ func resolveResponseSanitizeProfile(provider, providerID, model string) response
 }
 
 func shouldStripPseudoDirectiveArtifacts(trimmed string, profile responseSanitizeProfile) bool {
+	ensureChatMiscRegexes()
 	if strings.TrimSpace(trimmed) == "" {
 		return false
 	}
@@ -3951,6 +3999,7 @@ func shouldStripPseudoDirectiveArtifacts(trimmed string, profile responseSanitiz
 }
 
 func stripPseudoDirectiveArtifactsWithProfile(s string, profile responseSanitizeProfile) string {
+	ensureChatMiscRegexes()
 	trimmed := strings.TrimSpace(s)
 	if trimmed == "" {
 		return ""
@@ -3999,16 +4048,11 @@ func stripPseudoDirectiveArtifacts(s string) string {
 	return stripPseudoDirectiveArtifactsWithProfile(s, responseSanitizeProfileBalanced)
 }
 
-// reMemoryPreamble matches LLM preamble lines that precede actual extracted facts.
-// e.g. "I'll extract the key facts from this conversation:"
-//
-//	"Based on this conversation, here are the key facts worth remembering:"
-var reMemoryPreamble = regexp.MustCompile(`(?im)^(I'll extract|Based on this|Here are|Let me extract|From this conversation|Looking at|The key facts|Key facts|Memory Extraction)[^\n]*\n*`)
-
 // sanitizeResponseContent strips internal control markers from LLM output
 // before sending to web/IM clients. This prevents prompt-engineering artifacts
 // from leaking into the user-visible response.
 func sanitizeResponseContentWithProvider(s, provider, providerID, model string) string {
+	ensureChatMiscRegexes()
 	s = strings.ReplaceAll(s, "[SILENT_REPLY]", "")
 	s = strings.ReplaceAll(s, "<system_placeholder />", "")
 	s = reSystemReminder.ReplaceAllString(s, "")
@@ -4113,6 +4157,7 @@ func (h *ChatHandler) resolveResponseModelWithFallback(requestModel, routedModel
 }
 
 func completeAllTodoItems(content string) (string, bool) {
+	ensureChatMiscRegexes()
 	if !reTodoUnchecked.MatchString(content) {
 		return content, false
 	}
@@ -4121,6 +4166,7 @@ func completeAllTodoItems(content string) (string, bool) {
 }
 
 func extractFirstTodoChecklist(content string) (string, bool) {
+	ensureChatMiscRegexes()
 	loc := reTodoChecklistBlock.FindStringSubmatchIndex(content)
 	if len(loc) < 6 || loc[4] < 0 || loc[5] < 0 {
 		return "", false
@@ -4133,6 +4179,7 @@ func extractFirstTodoChecklist(content string) (string, bool) {
 }
 
 func todoChecklistSignature(content string) string {
+	ensureChatMiscRegexes()
 	checklist, ok := extractFirstTodoChecklist(content)
 	if !ok {
 		return ""
@@ -4155,6 +4202,7 @@ func todoChecklistSignature(content string) string {
 }
 
 func stripFirstTodoChecklist(content string) string {
+	ensureChatMiscRegexes()
 	loc := reTodoChecklistBlock.FindStringSubmatchIndex(content)
 	if len(loc) < 6 || loc[4] < 0 || loc[5] < 0 {
 		return strings.TrimSpace(content)
@@ -4190,6 +4238,7 @@ func stripDuplicateTodoChecklistForPersistence(content, trackedTodoContent strin
 }
 
 func stripDuplicateTodoChecklistFromTypelessCards(content, trackedTodoContent string) string {
+	ensureChatMiscRegexes()
 	trackedSig := todoChecklistSignature(trackedTodoContent)
 	if trackedSig == "" || !strings.Contains(content, "```typeless") {
 		return content
@@ -6043,6 +6092,12 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 		}
 		selection.NativeDefs = []tools.ToolDefinition{execDef}
+		// Deep research is a first-class workflow; expose `research` even under the
+		// exec-only native surface so the model doesn't emit out-of-surface
+		// deep_research tool calls that get dropped.
+		if discoveryDecision.CanonicalTarget == agentcore.CanonicalResearch || discoveryDecision.CanonicalTarget == agentcore.CanonicalDeepResearch {
+			selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, filterToolDefsToNames(selection.RoutedDefs, "research"))
+		}
 		selection.NativeMode = chatNativeToolSurfaceModeSkillExec
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	default:
@@ -6052,15 +6107,8 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 }
 
 // discoveryCutoverAllowedByPreferences checks if a canonical skill is allowed by capability toggles.
-func discoveryCutoverAllowedByPreferences(canonical agentcore.CanonicalSkillID, webSearchEnabled, deepResearchEnabled *bool) bool {
-	switch canonical {
-	case agentcore.CanonicalWebQuery:
-		return webSearchEnabled == nil || *webSearchEnabled
-	case agentcore.CanonicalDeepResearch:
-		return deepResearchEnabled == nil || *deepResearchEnabled
-	default:
-		return true
-	}
+func discoveryCutoverAllowedByPreferences(_ agentcore.CanonicalSkillID, _ *bool, _ *bool) bool {
+	return true
 }
 
 // logDiscoveryDecision logs observability for discover-first cutover decisions.
@@ -6078,15 +6126,8 @@ func (h *ChatHandler) logDiscoveryDecision(query string, d agentcore.CapabilityD
 		Str("fallback_reason", obs.FallbackReason).
 		Msg("[chat] discover-first decision")
 }
-func cutoverSkillAllowedByPreferences(skill string, webSearchEnabled, deepResearchEnabled *bool) bool {
-	switch strings.ToLower(strings.TrimSpace(skill)) {
-	case "web_search", "web", "web-query", "web_query":
-		return webSearchEnabled == nil || *webSearchEnabled
-	case "deep_research", "deep-research", "research_run", "research_status":
-		return deepResearchEnabled == nil || *deepResearchEnabled
-	default:
-		return true
-	}
+func cutoverSkillAllowedByPreferences(_ string, _ *bool, _ *bool) bool {
+	return true
 }
 
 func (h *ChatHandler) lookupCutoverNativeExecToolDefinition(kind tools.ToolRouteKind) (tools.ToolDefinition, bool) {
@@ -6362,6 +6403,11 @@ type MediaInterceptor interface {
 	ClassifyAndGenerate(ctx context.Context, message string, hasImages bool, imageCount int, locale string, source string) (taskID string, isMedia bool, err error)
 }
 
+type KnowledgeRetriever interface {
+	RetrieveContext(ctx context.Context, query string, limit int) (string, error)
+	RetrieveAnswer(ctx context.Context, query string) (string, error)
+}
+
 // ChatHandler handles chat-related API endpoints.
 type ChatHandler struct {
 	store              *memory.Store
@@ -6389,6 +6435,8 @@ type ChatHandler struct {
 
 	// Memory service for auto-extraction after conversations
 	layeredMemory *memory.LayeredMemoryService
+	// Compiled knowledge retriever for product/docs/architecture prompts.
+	knowledgeRetriever KnowledgeRetriever
 	// Optional threshold-triggered memory extractor.
 	memoryCompactor   *session.CompactorMemoryIntegration
 	memoryMaxTokens   int
@@ -6404,6 +6452,10 @@ type ChatHandler struct {
 	sseBroker interface {
 		Publish(userID string, eventType string, data any)
 	}
+	taskProjectionService     chatBootstrapTaskProjectionService
+	toolApprovalPendingSource ConversationBootstrapToolApprovalSource
+	questionPendingSource     ConversationBootstrapQuestionSource
+	execApprovalPendingSource ConversationBootstrapExecApprovalSource
 
 	// Ask dialog manager used for browser checkpoints in web/voice.
 	questionManager *tools.QuestionManager
@@ -6421,17 +6473,19 @@ type ChatHandler struct {
 	channelMessageUpdater func(ctx context.Context, channelName string, chatID string, messageID string, out channel.OutgoingMessage) error
 
 	// Performance optimization: async event queue
-	eventQueue       chan func()
-	eventStop        chan struct{}
-	closeOnce        sync.Once
-	chatPersistAsync bool
-	chatReadLite     bool
+	eventQueue                 chan func()
+	eventStop                  chan struct{}
+	closeOnce                  sync.Once
+	chatPersistAsync           bool
+	chatPersistFlushOnResponse bool
+	chatReadLite               bool
 
 	// Performance optimization: Conversation message cache
 	conversationCache *ConversationCache
 	// Warmup cache + provider-side hidden warmup lifecycle.
 	warmupCache       map[string]*warmupResult
 	warmupMu          sync.Mutex
+	warmupCacheBytes  uint64
 	warmupTokens      map[string]string
 	warmupTokenMu     sync.Mutex
 	providerWarmups   map[string]*providerWarmupState
@@ -6486,10 +6540,13 @@ type ChatHandler struct {
 
 	// Provider affinity: tracks last successful provider per conversation
 	// to maximize Anthropic prompt cache hits across turns.
-	providerAffinityMap sync.Map // convID → *providerAffinity
+	providerAffinityMap map[string]*providerAffinity
+	providerAffinityMu  sync.Mutex
 	// Prompt-cache tool affinity: keeps Anthropic tool surfaces stable within a conversation
 	// so provider-side prompt caching can reuse the tool prefix across turns.
-	promptCacheToolSurfaceMap sync.Map // convID → *promptCacheToolSurface
+	promptCacheToolSurfaceMap    map[string]*promptCacheToolSurfaceRef
+	promptCacheToolSurfaceShared map[string]*promptCacheToolSurfaceSharedEntry
+	promptCacheToolSurfaceMu     sync.Mutex
 
 	// Auto-rollback gate baseline for short-qa route (windowed failure-rate check).
 	smallModelGateMu           sync.Mutex
@@ -6575,13 +6632,11 @@ type providerAffinity struct {
 }
 
 type promptCacheToolSurface struct {
-	ProviderID          string
-	WebSearchEnabled    bool
-	DeepResearchEnabled bool
-	RegistryVersion     uint64
-	PromptPolicyHash    string
-	Tools               []tools.ToolDefinition
-	ExpiresAt           time.Time
+	ProviderID       string
+	RegistryVersion  uint64
+	PromptPolicyHash string
+	Tools            []tools.ToolDefinition
+	ExpiresAt        time.Time
 }
 
 const providerAffinityTTL = 10 * time.Minute // 2× Anthropic cache TTL
@@ -6609,6 +6664,11 @@ func (h *ChatHandler) SetDeepResearchService(svc *deepresearch.Service) {
 		return
 	}
 	h.deepResearchExec = deepresearch.NewSkillExecutor(svc)
+}
+
+// SetKnowledgeRetriever wires compiled knowledge retrieval into prompt-memory recall and IR fallback.
+func (h *ChatHandler) SetKnowledgeRetriever(retriever KnowledgeRetriever) {
+	h.knowledgeRetriever = retriever
 }
 
 // SetSmallModelRuntime wires fixed local small-model runtime.
@@ -6963,39 +7023,17 @@ func (h *ChatHandler) selectTools(userMessage string, policyReq tools.ToolPolicy
 }
 
 func applyWebSearchPreference(defs []tools.ToolDefinition, webSearchEnabled *bool) []tools.ToolDefinition {
-	if webSearchEnabled == nil || *webSearchEnabled {
-		return defs
-	}
-	filtered := make([]tools.ToolDefinition, 0, len(defs))
-	for _, def := range defs {
-		switch normalizeFileToolCompatName(def.Name) {
-		case "web", "web_search":
-			continue
-		}
-		filtered = append(filtered, def)
-	}
-	return filtered
+	_ = webSearchEnabled
+	return defs
 }
 
 func applyDeepResearchPreference(defs []tools.ToolDefinition, deepResearchEnabled *bool) []tools.ToolDefinition {
-	if deepResearchEnabled == nil || *deepResearchEnabled {
-		return defs
-	}
-	filtered := make([]tools.ToolDefinition, 0, len(defs))
-	for _, def := range defs {
-		switch strings.ToLower(strings.TrimSpace(def.Name)) {
-		case "deep_research", "deep-research", "research_run", "research_status":
-			continue
-		}
-		filtered = append(filtered, def)
-	}
-	return filtered
+	_ = deepResearchEnabled
+	return defs
 }
 
 func shouldForceResearchToolExposure(userMessage string, deepResearchEnabled *bool) bool {
-	if deepResearchEnabled == nil || !*deepResearchEnabled {
-		return false
-	}
+	_ = deepResearchEnabled
 	lower := strings.ToLower(strings.TrimSpace(userMessage))
 	if lower == "" {
 		return false
@@ -7009,7 +7047,7 @@ func shouldForceResearchToolExposure(userMessage string, deepResearchEnabled *bo
 	if isReminderIntentMessage(lower) || isEmailIntentMessage(lower) || isCalendarIntentMessage(lower) || isImageGenerationIntentMessage(lower) {
 		return false
 	}
-	if shouldPreferDeepSearchReport(lower) || shouldUseHeavyResearchWorkflow(lower) {
+	if hasExplicitHeavyResearchIntent(lower) {
 		return true
 	}
 	if deepResearchForceStrongCueMatcher.ContainsAnyFold(lower) {
@@ -7475,14 +7513,14 @@ func normalizeFileToolCompatName(name string) string {
 	case "image", "image_generation", "generate_image", "generateimage":
 		return "image"
 	case "deep_research", "deep-research", "research_run", "research_status":
-		return "deep_research"
+		return "research"
 	default:
 		return strings.ToLower(strings.TrimSpace(name))
 	}
 }
 
 func isDeepResearchCompatToolName(name string) bool {
-	return normalizeFileToolCompatName(name) == "deep_research"
+	return normalizeFileToolCompatName(name) == "research"
 }
 
 func normalizeAssistantToolCallNameForAllowedSet(raw string, allowedTools []llm.Tool) string {
@@ -7543,6 +7581,7 @@ func sanitizeAssistantToolCallsForAllowedSet(toolCalls []llm.ToolCall, allowedTo
 	dropped := make([]string, 0)
 	usedIDs := make(map[string]struct{}, len(toolCalls))
 	nextAutoID := 1
+	hasToolSearch := containsLLMToolName(allowedTools, "tool_search")
 	for _, tc := range toolCalls {
 		rawName := strings.TrimSpace(tc.Name)
 		tc.Name = normalizeAssistantToolCallNameForAllowedSet(tc.Name, allowedTools)
@@ -7556,8 +7595,31 @@ func sanitizeAssistantToolCallsForAllowedSet(toolCalls []llm.ToolCall, allowedTo
 		}
 		tc.Name = name
 		if len(allowedTools) > 0 && !containsLLMToolName(allowedTools, name) {
-			dropped = append(dropped, name)
-			continue
+			// Discover-first tool surfaces often expose only `exec` + `tool_search`.
+			// If the model emits a non-exposed tool call (e.g. deep_research), rewrite
+			// it into a `tool_search` activation so the next turn can overlay the
+			// requested capability rather than dead-ending with an empty response.
+			if hasToolSearch {
+				activationName := strings.TrimSpace(normalizeFileToolCompatName(name))
+				if activationName == "" {
+					activationName = name
+				}
+				args := map[string]interface{}{
+					"query":       fmt.Sprintf("select:%s", activationName),
+					"max_results": 5,
+				}
+				if argsRaw, err := json.Marshal(args); err == nil {
+					tc.Name = "tool_search"
+					tc.Arguments = string(argsRaw)
+					// Allow tool_search to proceed even if the original capability was disallowed.
+				} else {
+					dropped = append(dropped, name)
+					continue
+				}
+			} else {
+				dropped = append(dropped, name)
+				continue
+			}
 		}
 		id := strings.TrimSpace(tc.ID)
 		if id == "" {
@@ -7876,17 +7938,23 @@ func forcedSkillSelectionHint(userMessage, skill string) string {
 }
 
 func (h *ChatHandler) resolveSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
-	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
-		return forcedSkillSelectionDecision(userMessage, "deep_research"), true
+	if decision, ok := h.resolveSkillDecision(ctx, userMessage); ok {
+		return decision, true
 	}
-	return h.resolveSkillDecision(ctx, userMessage)
+	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
+		return forcedSkillSelectionDecision(userMessage, "research"), true
+	}
+	return agentcore.Decision{}, false
 }
 
 func (h *ChatHandler) previewSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
-	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
-		return forcedSkillSelectionDecision(userMessage, "deep_research"), true
+	if decision, ok := h.resolveSkillDecisionWithOverride(ctx, userMessage, true); ok {
+		return decision, true
 	}
-	return h.resolveSkillDecisionWithOverride(ctx, userMessage, true)
+	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
+		return forcedSkillSelectionDecision(userMessage, "research"), true
+	}
+	return agentcore.Decision{}, false
 }
 
 func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, userMessage string, policyReq tools.ToolPolicyRequest, webSearchEnabled, deepResearchEnabled *bool) chatToolSurfaceSelection {
@@ -7940,6 +8008,9 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	}
 
 	selection.NativeDefs = []tools.ToolDefinition{execDef}
+	if discoveryDecision.CanonicalTarget == agentcore.CanonicalResearch || discoveryDecision.CanonicalTarget == agentcore.CanonicalDeepResearch {
+		selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, filterToolDefsToNames(selection.RoutedDefs, "research"))
+	}
 	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
 	return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 }
@@ -8330,9 +8401,7 @@ func isNoProviderError(err error) bool {
 }
 
 func shouldTriggerDeepResearchFallbackByIntent(routingMessage string, deepResearchEnabled *bool) bool {
-	if deepResearchEnabled != nil {
-		return *deepResearchEnabled
-	}
+	_ = deepResearchEnabled
 	return shouldUseHeavyResearchWorkflow(routingMessage)
 }
 
@@ -9005,6 +9074,14 @@ func (h *ChatHandler) runLocalIRFallback(ctx context.Context, convID, query stri
 		}
 		return "", errNoIRLocalSignal
 	}
+	if h != nil && h.knowledgeRetriever != nil && isKnowledgeFirstPrompt(query) {
+		knowledgeCtx, cancel := context.WithTimeout(ctx, 90*time.Millisecond)
+		answer, err := h.knowledgeRetriever.RetrieveAnswer(knowledgeCtx, query)
+		cancel()
+		if err == nil && strings.TrimSpace(answer) != "" {
+			return answer, nil
+		}
+	}
 	msgs, err := h.getRecentMessagesForContext(ctx, convID, 24)
 	if err != nil {
 		if allowGeneric {
@@ -9098,7 +9175,8 @@ type autonomousToolFallbackResult struct {
 }
 
 func isFallbackToolEnabled(v *bool) bool {
-	return v == nil || *v
+	_ = v
+	return true
 }
 
 // runAutonomousResearchFallback tries direct tool execution when LLM and deep-research
@@ -10304,6 +10382,9 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		warmupCache:                    make(map[string]*warmupResult),
 		warmupTokens:                   make(map[string]string),
 		providerWarmups:                make(map[string]*providerWarmupState),
+		providerAffinityMap:            make(map[string]*providerAffinity),
+		promptCacheToolSurfaceMap:      make(map[string]*promptCacheToolSurfaceRef),
+		promptCacheToolSurfaceShared:   make(map[string]*promptCacheToolSurfaceSharedEntry),
 		summaryCache:                   cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute}),
 		memoryRecallStats:              &MemoryRecallStats{},
 		smallModelStats:                NewSmallModelStats(),
@@ -10325,6 +10406,7 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 	h.turnHooks.Register(NewMemoryTurnHook(h))
 	// Start async event processor
 	go h.processEventQueue()
+	go h.runTransientCacheJanitor()
 	return h
 }
 
@@ -10410,6 +10492,7 @@ func (h *ChatHandler) resetTransientCaches() {
 	}
 	h.warmupMu.Lock()
 	h.warmupCache = make(map[string]*warmupResult)
+	h.warmupCacheBytes = 0
 	h.warmupMu.Unlock()
 
 	h.warmupTokenMu.Lock()
@@ -10420,8 +10503,15 @@ func (h *ChatHandler) resetTransientCaches() {
 	h.providerWarmups = make(map[string]*providerWarmupState)
 	h.providerWarmupsMu.Unlock()
 
+	h.providerAffinityMu.Lock()
+	h.providerAffinityMap = make(map[string]*providerAffinity)
+	h.providerAffinityMu.Unlock()
+
 	h.summaryCache = cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute})
-	h.promptCacheToolSurfaceMap = sync.Map{}
+	h.promptCacheToolSurfaceMu.Lock()
+	h.promptCacheToolSurfaceMap = make(map[string]*promptCacheToolSurfaceRef)
+	h.promptCacheToolSurfaceShared = make(map[string]*promptCacheToolSurfaceSharedEntry)
+	h.promptCacheToolSurfaceMu.Unlock()
 }
 
 // queueEvent queues an event for async processing. Falls back to sync if queue is full.
@@ -10441,7 +10531,7 @@ func (h *ChatHandler) SetMetricsRecorder(recorder MetricsRecorder) {
 	if counterRecorder, ok := recorder.(runtimeCounterRecorder); ok && h.toolGateway != nil {
 		h.toolGateway.SetMetricsRecorder(counterRecorder)
 	}
-	h.ensurePersistenceCoordinator()
+	h.syncPersistenceCoordinatorConfig()
 }
 
 func (h *ChatHandler) toolSurfaceAuditSnapshot() tools.ToolSurfaceAuditSnapshot {
@@ -10491,17 +10581,18 @@ func (h *ChatHandler) recordToolSurfaceExecCutover(source string) {
 // SetSessionAuditStore sets an isolated audit store for raw tool payload logs.
 func (h *ChatHandler) SetSessionAuditStore(store *sessionaudit.Store) {
 	h.sessionAuditStore = store
-	h.ensurePersistenceCoordinator()
+	h.syncPersistenceCoordinatorConfig()
 }
 
 // SetPersistenceOptions toggles chat persistence optimizations.
-func (h *ChatHandler) SetPersistenceOptions(async, readLite bool) {
+func (h *ChatHandler) SetPersistenceOptions(async, readLite, flushOnResponse bool) {
 	if h == nil {
 		return
 	}
 	h.chatPersistAsync = async
 	h.chatReadLite = readLite
-	h.ensurePersistenceCoordinator()
+	h.chatPersistFlushOnResponse = flushOnResponse
+	h.syncPersistenceCoordinatorConfig()
 }
 
 // SetSystemPromptBuilder sets the system prompt builder for channel messages.
@@ -10628,6 +10719,7 @@ func (h *ChatHandler) SetMediaDir(dir string) {
 // SetQuestionManager sets ask dialog manager for browser checkpoint confirmations.
 func (h *ChatHandler) SetQuestionManager(mgr *tools.QuestionManager) {
 	h.questionManager = mgr
+	h.questionPendingSource = mgr
 }
 
 // SetBrowserCheckpointManager sets browser checkpoint manager.
@@ -12110,12 +12202,13 @@ func (h *ChatHandler) persistChannelUserMessage(ctx context.Context, convID, con
 	if h.store == nil {
 		return
 	}
-	_, err := h.store.AddMessage(ctx, convID, memory.Message{
+	_ = ctx
+	ids := h.persistConversationMessages(convID, false, memory.Message{
 		Role:    "user",
 		Content: content,
 	})
-	if err != nil {
-		logger.Warn().Err(err).Str("conv_id", convID).Msg("failed to persist IM user message")
+	if len(ids) == 0 || strings.TrimSpace(ids[0]) == "" {
+		logger.Warn().Str("conv_id", convID).Msg("failed to persist IM user message")
 		return
 	}
 	h.conversationCache.Invalidate(convID)
@@ -12629,7 +12722,10 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	if memoryMessages := h.beforeModelCallHooks(ctx, turnHookCtx); len(memoryMessages) > 0 {
 		messages = append(memoryMessages, messages...)
 	}
-	skillPrompt, selectedSkill := h.resolveSkillSelectionForRequest(ctx, routingMessage, channelDeepResearchEnabled)
+	skillPrompt, selectedSkill := "", ""
+	if h.settingsHandler == nil || h.settingsHandler.GetFeatureIntentIREnabled() {
+		skillPrompt, selectedSkill = h.resolveSkillSelectionForRequest(ctx, routingMessage, channelDeepResearchEnabled)
+	}
 	promptCtx := h.buildContextPackRequestContext(ctx, convID, msg.UserID, string(lang), msg.ChannelName, routingMessage, selectedSkill)
 	extraPrompt := mergeExtraPrompt(
 		skillPrompt,
@@ -13164,16 +13260,19 @@ func (h *ChatHandler) persistChannelResponseMessage(ctx context.Context, convID,
 	if h.store == nil {
 		return nil, nil
 	}
-	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	assistantMsg, err := h.store.AddMessage(persistCtx, convID, memory.Message{
-		Role:    "assistant",
-		Content: content,
-	})
-	if err != nil {
+	_ = ctx
+	assistantMsg := &memory.Message{
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        content,
+	}
+	ids := h.persistConversationMessages(convID, false, *assistantMsg)
+	if len(ids) == 0 || strings.TrimSpace(ids[0]) == "" {
+		err := fmt.Errorf("failed to persist IM assistant message")
 		logger.Warn().Err(err).Str("conv_id", convID).Msg("failed to persist IM assistant message")
 		return nil, err
 	}
+	assistantMsg.ID = ids[0]
 	h.conversationCache.Invalidate(convID)
 	h.refreshConversationSummaryAfterPersist(convID, "")
 	return assistantMsg, nil
@@ -13325,11 +13424,23 @@ func promptMemoryTrustLabel(metadata map[string]string) string {
 // Returns empty string if no relevant memories found or if recall times out.
 // Chunk count/length limits are controlled by memory recall mode.
 func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mode MemoryRecallMode) string {
-	if h.layeredMemory == nil || userMessage == "" {
+	if userMessage == "" {
 		return ""
 	}
 	if shouldSkipPromptMemoryRecall(userMessage) {
 		return ""
+	}
+	knowledgeContext := ""
+	if h.knowledgeRetriever != nil && isKnowledgeFirstPrompt(userMessage) {
+		knowledgeCtx, cancel := context.WithTimeout(ctx, memoryRecallTimeout/2)
+		content, err := h.knowledgeRetriever.RetrieveContext(knowledgeCtx, userMessage, 3)
+		cancel()
+		if err == nil {
+			knowledgeContext = strings.TrimSpace(content)
+		}
+	}
+	if h.layeredMemory == nil {
+		return knowledgeContext
 	}
 	limits := recallLimitsForMode(mode)
 	minScore := recallMinScoreForMode(mode)
@@ -13358,6 +13469,10 @@ func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mo
 			preview = preview[:80] + "..."
 		}
 		if r.Chunk.Content == "" {
+			continue
+		}
+		if promptMemoryHasTag(r.Chunk.Metadata, "knowledge") || promptMemoryHasTag(r.Chunk.Metadata, "knowledge-page") {
+			logger.Debug().Str("preview", preview).Msg("[memory] skipped knowledge-derived memory for prompt recall")
 			continue
 		}
 		if promptMemoryHasTag(r.Chunk.Metadata, "session-compaction") && !shouldUsePromptSessionCompactionMemory(userMessage) {
@@ -13391,7 +13506,7 @@ func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mo
 
 	if len(kept) == 0 {
 		logger.Debug().Str("query", userMessage).Msg("[memory] no relevant memories found")
-		return ""
+		return knowledgeContext
 	}
 
 	logger.Info().Int("count", len(kept)).Str("query", userMessage).Msg("[memory] injecting recalled memories")
@@ -13418,7 +13533,45 @@ func (h *ChatHandler) recallMemories(ctx context.Context, userMessage string, mo
 		totalRunes += len(mr)
 	}
 	sb.WriteString("</memory_context>")
-	return sb.String()
+	memoryContext := sb.String()
+	if knowledgeContext == "" {
+		return memoryContext
+	}
+	return knowledgeContext + "\n" + memoryContext
+}
+
+func isKnowledgeFirstPrompt(message string) bool {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+	for _, token := range []string{
+		"knowledge", "knowledge space", "knowledge compile", "compiled knowledge", "knowledge page",
+		"knowledge pages", "knowledge base", "docs", "documentation", "文档", "知识", "知识库", "知识空间",
+	} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	productMarker := false
+	for _, token := range []string{"blue", "zimaos", "zimaos blue"} {
+		if strings.Contains(lower, token) {
+			productMarker = true
+			break
+		}
+	}
+	if !productMarker {
+		return false
+	}
+	for _, token := range []string{
+		"architecture", "workspace", "memory", "deep research", "second brain", "compile", "lint",
+		"架构", "工作区", "记忆", "知识编译", "编译", "lint",
+	} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
 }
 
 // maxToolRounds limits the default number of tool call round-trips.
@@ -13858,6 +14011,7 @@ func shouldRequireExhaustiveWorkspaceArtifactRead(userMessage string) bool {
 }
 
 func extractExplicitWorkspaceCollectionCount(userMessage string) int {
+	ensureChatMiscRegexes()
 	match := reExplicitWorkspaceCollectionCount.FindStringSubmatch(strings.TrimSpace(userMessage))
 	if len(match) != 2 {
 		return 0
@@ -16329,11 +16483,30 @@ func isResearchRecoveryToolName(name string) bool {
 	}
 }
 
-var requestedArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))\\b")
-var savedGeneratedImagePathRegex = regexp.MustCompile(`(?i)\bsaved generated image to\s+["']?([^"'\n]+?\.(?:png|jpe?g|webp|gif))["']?`)
-var artifactWriteTargetPrepCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}(?:to|into|in|under|at)\s*$|(?:写(?:到|入|进)|保存(?:到|在)|输出到|导出到|生成到|存(?:到|入|在)|记录到|整理到|总结到|提取到)\s*$`)
-var artifactWriteTargetAsCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}\bas\s*$|(?:写(?:成|为)|保存为|输出为|导出为|生成为|存为|记录为|整理为|总结为|提取为)\s*$`)
-var artifactWriteTargetDirectCueRegex = regexp.MustCompile(`(?is)(?:create|generate|generated|draft|produce|output|export|write)\s*$|(?:创建|生成|写入|写出)\s*$`)
+var (
+	requestedArtifactPathRegex        *regexp.Regexp
+	savedGeneratedImagePathRegex      *regexp.Regexp
+	artifactWriteTargetPrepCueRegex   *regexp.Regexp
+	artifactWriteTargetAsCueRegex     *regexp.Regexp
+	artifactWriteTargetDirectCueRegex *regexp.Regexp
+	artifactPathRegexesOnce           sync.Once
+	artifactWriteTargetRegexesOnce    sync.Once
+)
+
+func ensureArtifactPathRegexes() {
+	artifactPathRegexesOnce.Do(func() {
+		requestedArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))\\b")
+		savedGeneratedImagePathRegex = regexp.MustCompile(`(?i)\bsaved generated image to\s+["']?([^"'\n]+?\.(?:png|jpe?g|webp|gif))["']?`)
+	})
+}
+
+func ensureArtifactWriteTargetRegexes() {
+	artifactWriteTargetRegexesOnce.Do(func() {
+		artifactWriteTargetPrepCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}(?:to|into|in|under|at)\s*$|(?:写(?:到|入|进)|保存(?:到|在)|输出到|导出到|生成到|存(?:到|入|在)|记录到|整理到|总结到|提取到)\s*$`)
+		artifactWriteTargetAsCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}\bas\s*$|(?:写(?:成|为)|保存为|输出为|导出为|生成为|存为|记录为|整理为|总结为|提取为)\s*$`)
+		artifactWriteTargetDirectCueRegex = regexp.MustCompile(`(?is)(?:create|generate|generated|draft|produce|output|export|write)\s*$|(?:创建|生成|写入|写出)\s*$`)
+	})
+}
 
 type artifactPathCandidate struct {
 	path  string
@@ -16388,6 +16561,7 @@ func extractArtifactPathCandidates(userMessage string) []artifactPathCandidate {
 	if strings.TrimSpace(userMessage) == "" {
 		return nil
 	}
+	ensureArtifactPathRegexes()
 	matches := requestedArtifactPathRegex.FindAllStringSubmatchIndex(userMessage, -1)
 	if len(matches) == 0 {
 		return nil
@@ -16455,6 +16629,7 @@ func scoreArtifactWriteTargetCandidate(userMessage string, candidate artifactPat
 	if candidate.start < 0 || candidate.end < candidate.start || candidate.start > len(userMessage) {
 		return 0
 	}
+	ensureArtifactWriteTargetRegexes()
 	beforeStart := max(0, candidate.start-128)
 	before := strings.TrimSpace(strings.ToLower(userMessage[beforeStart:candidate.start]))
 	before = strings.TrimRight(before, " \t\r\n`'\"")
@@ -16578,6 +16753,7 @@ func extractImageArtifactPathFromMessage(message string) string {
 	if message == "" {
 		return ""
 	}
+	ensureArtifactPathRegexes()
 	match := savedGeneratedImagePathRegex.FindStringSubmatch(message)
 	if len(match) < 2 {
 		return ""
@@ -18879,14 +19055,12 @@ func recompactToolResultForLLMBudget(toolName, content string, budget int) strin
 	return truncateUTF8Bytes(content, budget)
 }
 
-// ansiPattern matches ANSI escape sequences (CSI, OSC, simple escapes).
-var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x1b\a]*(?:\a|\x1b\\)|\x1b[()][0-9A-B]`)
-
 // stripANSI removes ANSI escape codes from s.
 func stripANSI(s string) string {
 	if !strings.Contains(s, "\x1b") {
 		return s
 	}
+	ensureChatMiscRegexes()
 	return ansiPattern.ReplaceAllString(s, "")
 }
 
@@ -18909,6 +19083,7 @@ func (h *ChatHandler) extractMemoryAfterTurn(convID, source, model string) bool 
 }
 
 func (h *ChatHandler) extractMemoryWithMode(convID, source, model string, mode memoryExtractionMode) bool {
+	ensureChatMiscRegexes()
 	if h.store == nil {
 		return false
 	}
@@ -19134,14 +19309,82 @@ func (h *ChatHandler) ListConversations(c echo.Context) error {
 	var convs []memory.Conversation
 	var err error
 	userID := h.listFilterUserID(c)
+	ctx := c.Request().Context()
 
 	if query != "" {
-		// Search conversations by title
-		convs, err = h.store.SearchConversations(c.Request().Context(), query, limit, userID)
+		// Search conversations by title first, then enrich with session audit recall hits.
+		convs, err = h.store.SearchConversations(ctx, query, limit, userID)
+		if err == nil && h.sessionAuditStore != nil {
+			recallLimit := limit * 4
+			if recallLimit < limit {
+				recallLimit = limit
+			}
+			recallResults, recallErr := h.sessionAuditStore.SearchConversations(ctx, sessionaudit.SearchOptions{
+				Query:                query,
+				Limit:                recallLimit,
+				PerConversationLimit: 1,
+				SnippetLength:        120,
+			})
+			if recallErr != nil {
+				logger.Warn().Err(recallErr).Str("query", query).Str("user_id", userID).Msg("[chat] session audit conversation recall failed")
+			} else if len(recallResults) > 0 {
+				seen := make(map[string]struct{}, len(convs)+len(recallResults))
+				merged := make([]memory.Conversation, 0, len(convs)+len(recallResults))
+				for _, conv := range convs {
+					if strings.TrimSpace(conv.ID) == "" {
+						continue
+					}
+					if _, ok := seen[conv.ID]; ok {
+						continue
+					}
+					seen[conv.ID] = struct{}{}
+					merged = append(merged, conv)
+				}
+				for _, recall := range recallResults {
+					convID := strings.TrimSpace(recall.ConversationID)
+					if convID == "" {
+						continue
+					}
+					if _, ok := seen[convID]; ok {
+						continue
+					}
+					var conv *memory.Conversation
+					if userID != "" {
+						conv, recallErr = h.store.GetConversation(ctx, convID, userID)
+					} else {
+						conv, recallErr = h.store.GetConversation(ctx, convID)
+					}
+					if recallErr != nil {
+						if recallErr != memory.ErrNotFound {
+							logger.Warn().Err(recallErr).Str("conversation_id", convID).Msg("[chat] failed to hydrate recalled conversation")
+						}
+						continue
+					}
+					seen[conv.ID] = struct{}{}
+					merged = append(merged, *conv)
+				}
+				sort.SliceStable(merged, func(i, j int) bool {
+					if merged[i].Pinned != merged[j].Pinned {
+						return merged[i].Pinned && !merged[j].Pinned
+					}
+					if !merged[i].UpdatedAt.Equal(merged[j].UpdatedAt) {
+						return merged[i].UpdatedAt.After(merged[j].UpdatedAt)
+					}
+					if !merged[i].CreatedAt.Equal(merged[j].CreatedAt) {
+						return merged[i].CreatedAt.After(merged[j].CreatedAt)
+					}
+					return strings.Compare(merged[i].ID, merged[j].ID) > 0
+				})
+				if len(merged) > limit {
+					merged = merged[:limit]
+				}
+				convs = merged
+			}
+		}
 	} else {
 		// List all conversations with pagination
 		offset, _ := strconv.Atoi(c.QueryParam("offset"))
-		convs, err = h.store.ListConversations(c.Request().Context(), limit, offset, userID)
+		convs, err = h.store.ListConversations(ctx, limit, offset, userID)
 	}
 
 	if err != nil {
@@ -19295,11 +19538,10 @@ type SendMessageRequest struct {
 	MaxTokens   int                 `json:"max_tokens,omitempty"`
 	Attachments []MessageAttachment `json:"attachments,omitempty"`
 	Regenerate  bool                `json:"regenerate,omitempty"`
-	// Nil means default behavior (enabled). False removes the public web tool family
-	// from the tool list, including canonical web_query and legacy compat aliases.
-	WebSearchEnabled    *bool `json:"web_search_enabled,omitempty"`
-	DeepResearchEnabled *bool `json:"deep_research_enabled,omitempty"`
-	ResearchModeEnabled *bool `json:"research_mode_enabled,omitempty"`
+	// Internal-only legacy flags retained for server-side normalization paths.
+	WebSearchEnabled    *bool `json:"-"`
+	DeepResearchEnabled *bool `json:"-"`
+	ResearchModeEnabled *bool `json:"-"`
 }
 
 func (r *SendMessageRequest) normalizeResearchModeAlias() {
@@ -19655,12 +19897,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	if !req.Regenerate {
 		// Store user message
 		memoryAttachments := toMemoryMessageAttachments(req.Attachments)
-		_, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
+		ids := h.persistConversationMessages(convID, true, memory.Message{
 			Role:        "user",
 			Content:     req.Message,
 			Attachments: memoryAttachments,
 		})
-		if err != nil {
+		if len(ids) == 0 || strings.TrimSpace(ids[0]) == "" {
 			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
 		}
 
@@ -19857,7 +20099,6 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		Int("messages", len(chatReq.Messages)).
 		Int("tools", len(chatReq.Tools)).
 		Bool("request_agent_mode", requestAgentModeEnabled).
-		Bool("deep_research_enabled", req.DeepResearchEnabled != nil && *req.DeepResearchEnabled).
 		Str("prompt_policy_hash", h.resolvePromptPolicy().Hash).
 		Bool("has_system_prompt", h.systemPromptBuilder != nil).
 		Msg("[chat] SendMessage request")
@@ -21144,7 +21385,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			LatencyMs:    int64(latencyMs),
 		},
 	}
-	if persistedID := h.persistAsyncMessage(*assistantMsg, true); persistedID == "" {
+	if persistedID := h.persistResponsePathMessage(*assistantMsg); persistedID == "" {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to store response")
 	} else {
 		assistantMsg.ID = persistedID
@@ -21178,9 +21419,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			TokensAfter:    pruneStats.TokensAfter,
 		}
 	}
-	if h.chatPersistAsync && h.persistCoordinator != nil {
-		h.persistCoordinator.FlushConversation(convID)
-	}
+	h.flushConversationOnResponse(convID)
 	return c.JSON(http.StatusOK, SendMessageResponse{
 		ID:          assistantMsg.ID,
 		Role:        "assistant",
@@ -21300,8 +21539,7 @@ func (h *ChatHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/conversations/:id/pin", h.PinConversation)
 	g.POST("/conversations/:id/unpin", h.UnpinConversation)
 	g.GET("/conversations/:id/messages", h.GetMessages)
-	g.GET("/conversations/:id/messages/active-stream", h.GetConversationActiveStream)
-	g.GET("/conversations/:id/command-state", h.GetConversationCommandState)
+	g.GET("/conversations/:id/bootstrap", h.GetConversationBootstrap)
 	g.PATCH("/conversations/:id/command-state", h.PatchConversationCommandState)
 	g.POST("/conversations/:id/messages", h.SendMessage, chatBodyLimit)
 	g.DELETE("/conversations/:id/messages", h.DeleteMessages)
@@ -21331,66 +21569,122 @@ func (h *ChatHandler) setProviderAffinity(convID, providerID, baseURL string) {
 	if providerID == "" {
 		return
 	}
-	h.providerAffinityMap.Store(convID, &providerAffinity{
+	h.providerAffinityMu.Lock()
+	h.providerAffinityMap[convID] = &providerAffinity{
 		ProviderID: providerID,
 		BaseURL:    baseURL,
 		ExpiresAt:  timeutil.NowTime().Add(providerAffinityTTL),
-	})
+	}
+	h.providerAffinityMu.Unlock()
 	logger.Debug().Str("conv_id", convID).Str("provider_id", providerID).Msg("[affinity] set provider affinity")
 }
 
 // getProviderAffinity returns the preferred provider for a conversation, or nil if expired/absent.
 func (h *ChatHandler) getProviderAffinity(convID string) *providerAffinity {
-	v, ok := h.providerAffinityMap.Load(convID)
+	h.providerAffinityMu.Lock()
+	defer h.providerAffinityMu.Unlock()
+
+	aff, ok := h.providerAffinityMap[convID]
 	if !ok {
 		return nil
 	}
-	aff := v.(*providerAffinity)
 	if timeutil.NowTime().After(aff.ExpiresAt) {
-		h.providerAffinityMap.Delete(convID)
+		delete(h.providerAffinityMap, convID)
 		return nil
 	}
-	return aff
+	affCopy := *aff
+	return &affCopy
 }
 
 // clearProviderAffinity removes provider affinity for a conversation (e.g., on deletion).
 func (h *ChatHandler) clearProviderAffinity(convID string) {
-	h.providerAffinityMap.Delete(convID)
+	h.providerAffinityMu.Lock()
+	delete(h.providerAffinityMap, convID)
+	h.providerAffinityMu.Unlock()
 }
 
 func (h *ChatHandler) getPromptCacheToolSurface(convID string) *promptCacheToolSurface {
-	v, ok := h.promptCacheToolSurfaceMap.Load(convID)
+	h.promptCacheToolSurfaceMu.Lock()
+	defer h.promptCacheToolSurfaceMu.Unlock()
+
+	ref, ok := h.promptCacheToolSurfaceMap[convID]
 	if !ok {
 		return nil
 	}
-	surface := v.(*promptCacheToolSurface)
-	if timeutil.NowTime().After(surface.ExpiresAt) {
-		h.promptCacheToolSurfaceMap.Delete(convID)
+	now := timeutil.NowTime()
+	if ref == nil || now.After(ref.ExpiresAt) {
+		h.removePromptCacheToolSurfaceRefLocked(convID)
 		return nil
 	}
-	return surface
+
+	shared := h.promptCacheToolSurfaceShared[ref.Key]
+	if shared == nil {
+		delete(h.promptCacheToolSurfaceMap, convID)
+		return nil
+	}
+	if now.After(shared.Surface.ExpiresAt) && shared.RefCount <= 0 {
+		delete(h.promptCacheToolSurfaceShared, ref.Key)
+		delete(h.promptCacheToolSurfaceMap, convID)
+		return nil
+	}
+
+	surface := shared.Surface
+	surface.Tools = cloneToolDefs(shared.Surface.Tools)
+	surface.ExpiresAt = ref.ExpiresAt
+	return &surface
 }
 
 func (h *ChatHandler) setPromptCacheToolSurface(convID string, surface *promptCacheToolSurface) {
 	if strings.TrimSpace(convID) == "" || surface == nil {
 		return
 	}
+
+	now := timeutil.NowTime()
 	surfaceCopy := *surface
 	surfaceCopy.Tools = cloneToolDefs(surface.Tools)
 	if surfaceCopy.ExpiresAt.IsZero() {
-		surfaceCopy.ExpiresAt = timeutil.NowTime().Add(promptCacheToolSurfaceTTL)
+		surfaceCopy.ExpiresAt = now.Add(promptCacheToolSurfaceTTL)
 	}
-	h.promptCacheToolSurfaceMap.Store(convID, &surfaceCopy)
+	key := promptCacheToolSurfaceCacheKey(&surfaceCopy)
+	if key == "" {
+		return
+	}
+
+	h.promptCacheToolSurfaceMu.Lock()
+	defer h.promptCacheToolSurfaceMu.Unlock()
+
+	h.removePromptCacheToolSurfaceRefLocked(convID)
+
+	shared := h.promptCacheToolSurfaceShared[key]
+	if shared == nil {
+		shared = &promptCacheToolSurfaceSharedEntry{}
+		h.promptCacheToolSurfaceShared[key] = shared
+	}
+	shared.Surface = surfaceCopy
+	shared.SizeBytes = estimateToolDefinitionsBytes(surfaceCopy.Tools)
+	shared.UpdatedAt = now
+	shared.RefCount++
+
+	h.promptCacheToolSurfaceMap[convID] = &promptCacheToolSurfaceRef{
+		Key:       key,
+		ExpiresAt: surfaceCopy.ExpiresAt,
+		UpdatedAt: now,
+	}
+	h.cleanupPromptCacheToolSurfacesLocked(now)
+	h.enforcePromptCacheToolSurfaceBudgetsLocked(now)
 }
 
 func (h *ChatHandler) clearPromptCacheToolSurface(convID string) {
-	h.promptCacheToolSurfaceMap.Delete(convID)
+	h.promptCacheToolSurfaceMu.Lock()
+	h.removePromptCacheToolSurfaceRefLocked(convID)
+	h.promptCacheToolSurfaceMu.Unlock()
 }
 
 func (h *ChatHandler) stabilizePromptCacheToolSurface(convID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool, defs []tools.ToolDefinition) []tools.ToolDefinition {
 	if h == nil || len(defs) == 0 || strings.TrimSpace(convID) == "" {
 		return defs
 	}
+	_, _ = webSearchEnabled, deepResearchEnabled
 	targetProviderID, targetProvider, ok := h.promptCacheTargetProvider(convID, explicitProviderID, state)
 	if !ok || !supportsAnthropicPromptCaching(targetProvider) {
 		h.clearPromptCacheToolSurface(convID)
@@ -21402,18 +21696,14 @@ func (h *ChatHandler) stabilizePromptCacheToolSurface(convID, explicitProviderID
 		registryVersion = h.toolRegistry.Version()
 	}
 	key := promptCacheToolSurface{
-		ProviderID:          strings.TrimSpace(targetProviderID),
-		WebSearchEnabled:    resolvePromptCacheToolToggle(webSearchEnabled, state.WebSearchEnabled),
-		DeepResearchEnabled: resolvePromptCacheToolToggle(deepResearchEnabled, state.DeepResearchEnabled),
-		RegistryVersion:     registryVersion,
-		PromptPolicyHash:    h.resolvePromptPolicy().Hash,
+		ProviderID:       strings.TrimSpace(targetProviderID),
+		RegistryVersion:  registryVersion,
+		PromptPolicyHash: h.resolvePromptPolicy().Hash,
 	}
 
 	canonical := sortToolDefsByName(defs)
 	if cached := h.getPromptCacheToolSurface(convID); cached != nil &&
 		cached.ProviderID == key.ProviderID &&
-		cached.WebSearchEnabled == key.WebSearchEnabled &&
-		cached.DeepResearchEnabled == key.DeepResearchEnabled &&
 		cached.RegistryVersion == key.RegistryVersion &&
 		cached.PromptPolicyHash == key.PromptPolicyHash {
 		merged := sortToolDefsByName(mergeToolDefsByName(cached.Tools, canonical))
@@ -21427,13 +21717,6 @@ func (h *ChatHandler) stabilizePromptCacheToolSurface(convID, explicitProviderID
 	key.ExpiresAt = timeutil.NowTime().Add(promptCacheToolSurfaceTTL)
 	h.setPromptCacheToolSurface(convID, &key)
 	return canonical
-}
-
-func resolvePromptCacheToolToggle(explicit *bool, fallback bool) bool {
-	if explicit != nil {
-		return *explicit
-	}
-	return fallback
 }
 
 func sortToolDefsByName(defs []tools.ToolDefinition) []tools.ToolDefinition {
@@ -21687,21 +21970,25 @@ func (h *ChatHandler) recoveryAvailableModelIDs(ctx context.Context) []string {
 }
 
 func (h *ChatHandler) storeUserAndAssistantLocal(ctx context.Context, convID, userMessage, assistantMessage, model string) (*memory.Message, error) {
-	if _, err := h.store.AddMessage(ctx, convID, memory.Message{
-		Role:    "user",
-		Content: userMessage,
-	}); err != nil {
-		return nil, err
+	_ = ctx
+	assistantMsg := &memory.Message{
+		ConversationID: convID,
+		Role:           "assistant",
+		Content:        assistantMessage,
+		Provider:       "local",
+		Model:          model,
 	}
-	assistantMsg, err := h.store.AddMessage(ctx, convID, memory.Message{
-		Role:     "assistant",
-		Content:  assistantMessage,
-		Provider: "local",
-		Model:    model,
-	})
-	if err != nil {
-		return nil, err
+	ids := h.persistConversationMessages(convID, h.shouldBlockOnResponsePersistence(),
+		memory.Message{
+			Role:    "user",
+			Content: userMessage,
+		},
+		*assistantMsg,
+	)
+	if len(ids) != 2 || strings.TrimSpace(ids[0]) == "" || strings.TrimSpace(ids[1]) == "" {
+		return nil, fmt.Errorf("failed to persist local conversation")
 	}
+	assistantMsg.ID = ids[1]
 	h.conversationCache.Invalidate(convID)
 	h.refreshConversationSummaryAfterPersist(convID, model)
 	return assistantMsg, nil
@@ -21812,21 +22099,22 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 				Duration: att.Duration,
 			})
 		}
-		if _, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
-			Role:        "user",
-			Content:     req.Message,
-			Attachments: memoryAttachments,
-		}); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store offline request")
-		}
 		reply := buildOfflineEchoResponse(req.Message)
-		if _, err := h.store.AddMessage(c.Request().Context(), convID, memory.Message{
-			Role:     "assistant",
-			Content:  reply,
-			Provider: "local",
-			Model:    "offline",
-		}); err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store offline response")
+		ids := h.persistConversationMessages(convID, h.shouldBlockOnResponsePersistence(),
+			memory.Message{
+				Role:        "user",
+				Content:     req.Message,
+				Attachments: memoryAttachments,
+			},
+			memory.Message{
+				Role:     "assistant",
+				Content:  reply,
+				Provider: "local",
+				Model:    "offline",
+			},
+		)
+		if len(ids) != 2 || strings.TrimSpace(ids[0]) == "" || strings.TrimSpace(ids[1]) == "" {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store offline conversation")
 		}
 		h.conversationCache.Invalidate(convID)
 		h.refreshConversationSummaryAfterPersist(convID, "offline")
@@ -21894,13 +22182,13 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Store user message with attachments (skip for resume-after-cancel and regenerate)
 	if !isResumeAfterCancel && !req.Regenerate {
 		memoryAttachments := toMemoryMessageAttachments(req.Attachments)
-		_, err = h.store.AddMessage(c.Request().Context(), convID, memory.Message{
+		ids := h.persistConversationMessages(convID, true, memory.Message{
 			Role:        "user",
 			Content:     req.Message,
 			Attachments: memoryAttachments,
 		})
-		if err != nil {
-			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message: "+err.Error())
+		if len(ids) == 0 || strings.TrimSpace(ids[0]) == "" {
+			return echo.NewHTTPError(http.StatusInternalServerError, "failed to store message")
 		}
 
 		// Invalidate cache after storing user message so history fetch below is fresh
@@ -22163,7 +22451,6 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		Int("messages", len(chatReq.Messages)).
 		Int("tools", len(chatReq.Tools)).
 		Bool("request_agent_mode", requestAgentModeEnabled).
-		Bool("deep_research_enabled", req.DeepResearchEnabled != nil && *req.DeepResearchEnabled).
 		Str("prompt_policy_hash", h.resolvePromptPolicy().Hash).
 		Bool("has_system_prompt", h.systemPromptBuilder != nil).
 		Msg("[chat] StreamMessage request")
@@ -22630,6 +22917,93 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		}
 		emitSSE(payload)
 	}
+	type postToolGapTrace struct {
+		active          bool
+		startedAt       time.Time
+		sourceRound     int
+		sourceToolNames []string
+	}
+	var pendingPostToolGapTrace postToolGapTrace
+	toolCallNamesForTrace := func(toolCalls []llm.ToolCall) []string {
+		if len(toolCalls) == 0 {
+			return nil
+		}
+		names := make([]string, 0, len(toolCalls))
+		for _, tc := range toolCalls {
+			if name := strings.TrimSpace(tc.Name); name != "" {
+				names = append(names, name)
+			}
+		}
+		if len(names) == 0 {
+			return nil
+		}
+		return names
+	}
+	clearPostToolGapTrace := func() {
+		pendingPostToolGapTrace = postToolGapTrace{}
+	}
+	beginPostToolGapTrace := func(sourceRound int, toolCalls []llm.ToolCall) {
+		sourceToolNames := toolCallNamesForTrace(toolCalls)
+		if len(sourceToolNames) == 0 {
+			clearPostToolGapTrace()
+			return
+		}
+		pendingPostToolGapTrace = postToolGapTrace{
+			active:          true,
+			startedAt:       timeutil.NowTime(),
+			sourceRound:     sourceRound,
+			sourceToolNames: sourceToolNames,
+		}
+	}
+	emitPostToolGapTrace := func(nextAction string, nextToolNames []string, extra map[string]interface{}) {
+		if !pendingPostToolGapTrace.active {
+			return
+		}
+		action := strings.TrimSpace(nextAction)
+		if action == "" {
+			action = "unknown"
+		}
+		gapMs := timeutil.SinceTime(pendingPostToolGapTrace.startedAt).Milliseconds()
+		if gapMs < 0 {
+			gapMs = 0
+		}
+		sourceToolNames := append([]string(nil), pendingPostToolGapTrace.sourceToolNames...)
+		nextToolNames = append([]string(nil), nextToolNames...)
+		payload := map[string]interface{}{
+			"post_tool_gap":               true,
+			"post_tool_source_round":      pendingPostToolGapTrace.sourceRound,
+			"post_tool_gap_ms":            gapMs,
+			"post_tool_next_action":       action,
+			"post_tool_source_tool_names": sourceToolNames,
+			"stream_id":                   streamID,
+		}
+		if len(nextToolNames) > 0 {
+			payload["post_tool_next_tool_names"] = nextToolNames
+		}
+		for key, value := range extra {
+			if value == nil {
+				continue
+			}
+			payload[key] = value
+		}
+		emitSSE(payload)
+		logEvent := logger.Info().
+			Str("stream_id", streamID).
+			Int("post_tool_source_round", pendingPostToolGapTrace.sourceRound).
+			Int64("post_tool_gap_ms", gapMs).
+			Str("post_tool_next_action", action)
+		if len(sourceToolNames) > 0 {
+			logEvent = logEvent.Strs("post_tool_source_tool_names", sourceToolNames)
+		}
+		if len(nextToolNames) > 0 {
+			logEvent = logEvent.Strs("post_tool_next_tool_names", nextToolNames)
+		}
+		if nextRound, ok := extra["post_tool_next_round"].(int); ok {
+			logEvent = logEvent.Int("post_tool_next_round", nextRound)
+		}
+		logEvent.Msg("[chat] stream: observed next action after tool_results")
+		clearPostToolGapTrace()
+	}
 	maybeCompleteImplicitSummaryTodo := func(currentContent string) {
 		candidateMsgID := todoMsgID
 		candidateTodoContent, changed := syncTrackedTodoAfterCompletionSignal(todoContent, currentContent)
@@ -22921,9 +23295,9 @@ STREAM_LOOP:
 				if fullContent != "" {
 					if streamingMsgID != "" {
 						h.updateMessageBestEffort(streamingMsgID, convID, "assistant", fullContent, "", "", nil)
-						h.flushPersistedMessage(streamingMsgID)
+						h.flushPersistedMessageOnResponse(streamingMsgID)
 					} else {
-						h.store.AddMessage(context.Background(), convID, memory.Message{
+						h.persistResponsePathMessage(memory.Message{
 							Role:     "assistant",
 							Content:  fullContent,
 							Provider: actualProvider,
@@ -22955,6 +23329,9 @@ STREAM_LOOP:
 					}
 				}
 				if visibleDelta != "" {
+					emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+						"post_tool_next_round": toolRound,
+					})
 					totalDeltaChars += len(visibleDelta)
 					queueDelta(visibleDelta)
 				}
@@ -23840,6 +24217,9 @@ STREAM_LOOP:
 					toolStatus["sandbox_available"] = true
 				}
 			}
+			emitPostToolGapTrace("tool_call", toolNames, map[string]interface{}{
+				"post_tool_next_round": toolRound,
+			})
 			emitSSE(toolStatus)
 
 			// Execute tools (detached context — survives SSE disconnect)
@@ -23887,6 +24267,7 @@ STREAM_LOOP:
 				"stream_id":    streamID,
 			}
 			emitSSE(toolResultsEvent)
+			beginPostToolGapTrace(toolRound, streamToolCalls)
 
 			// Persist tool execution details as typeless cards (full-fidelity),
 			// so re-opening the conversation shows the exact execution trail.
@@ -23966,6 +24347,10 @@ STREAM_LOOP:
 					delta = "\n\n" + completion
 				}
 				if !strings.Contains(fullContent, completion) {
+					emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+						"post_tool_next_round": toolRound,
+						"post_tool_terminal":   true,
+					})
 					fullContent += delta
 					totalDeltaChars += len(delta)
 					emitSSE(map[string]interface{}{
@@ -24132,11 +24517,12 @@ STREAM_LOOP:
 				if streamingMsgID != "" {
 					h.updateMessageBestEffort(streamingMsgID, convID, "assistant", persistedRoundContent, "", "", nil)
 				} else {
-					if m, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-						Role:    "assistant",
-						Content: persistedRoundContent,
-					}); addErr == nil {
-						streamingMsgID = m.ID
+					if persistedID := h.persistAsyncMessage(memory.Message{
+						ConversationID: convID,
+						Role:           "assistant",
+						Content:        persistedRoundContent,
+					}, false); persistedID != "" {
+						streamingMsgID = persistedID
 					}
 				}
 				h.conversationCache.Invalidate(convID)
@@ -24334,6 +24720,11 @@ STREAM_LOOP:
 			if err != nil && roundState.autoContinueFollowUp {
 				fallback := strings.TrimSpace(streamContinuationFailureText(streamLocale))
 				if fallback != "" {
+					emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+						"post_tool_next_round": toolRound,
+						"post_tool_terminal":   true,
+						"post_tool_fallback":   true,
+					})
 					emitSSE(map[string]interface{}{
 						"delta":     fallback,
 						"done":      false,
@@ -24440,6 +24831,11 @@ STREAM_LOOP:
 				if toolResultCount > 0 {
 					logger.Warn().Err(err).Int("tool_round", toolRound).Int("tool_results", toolResultCount).
 						Msg("[chat] stream: tool round failed, using fallback from previous tool results")
+					emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+						"post_tool_next_round": toolRound,
+						"post_tool_terminal":   true,
+						"post_tool_fallback":   true,
+					})
 					emitSSE(map[string]interface{}{
 						"delta":     fallbackContent,
 						"done":      false,
@@ -24496,12 +24892,13 @@ STREAM_LOOP:
 				persistedMsgID = todoMsgID
 			} else {
 				persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, false)
-				if m, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:    "assistant",
-					Content: persistedRoundContent,
-				}); addErr == nil {
-					streamingMsgID = m.ID
-					persistedMsgID = m.ID
+				if persistedID := h.persistAsyncMessage(memory.Message{
+					ConversationID: convID,
+					Role:           "assistant",
+					Content:        persistedRoundContent,
+				}, false); persistedID != "" {
+					streamingMsgID = persistedID
+					persistedMsgID = persistedID
 				}
 			}
 			if persistedMsgID != "" {
@@ -24741,12 +25138,13 @@ STREAM_LOOP:
 						persistedMsgID = todoMsgID
 					} else {
 						persistedRoundContent = todoAwarePersistedContent(roundContent, todoContent, false)
-						if m, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-							Role:    "assistant",
-							Content: persistedRoundContent,
-						}); addErr == nil {
-							streamingMsgID = m.ID
-							persistedMsgID = m.ID
+						if persistedID := h.persistAsyncMessage(memory.Message{
+							ConversationID: convID,
+							Role:           "assistant",
+							Content:        persistedRoundContent,
+						}, false); persistedID != "" {
+							streamingMsgID = persistedID
+							persistedMsgID = persistedID
 						}
 					}
 					if persistedMsgID != "" {
@@ -24913,6 +25311,10 @@ STREAM_LOOP:
 			if strings.TrimSpace(fullContent) != "" {
 				delta = "\n\n" + delta
 			}
+			emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+				"post_tool_terminal": true,
+				"post_tool_fallback": true,
+			})
 			emitSSE(map[string]interface{}{
 				"delta":     delta,
 				"done":      false,
@@ -24958,6 +25360,10 @@ STREAM_LOOP:
 				}
 			}
 			if strings.TrimSpace(fallbackContent) != "" {
+				emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+					"post_tool_terminal": true,
+					"post_tool_fallback": true,
+				})
 				emitSSE(map[string]interface{}{
 					"delta":     fallbackContent,
 					"done":      false,
@@ -25008,6 +25414,10 @@ STREAM_LOOP:
 		if fullContent == "" {
 			donePayload["empty_response"] = true
 		}
+		emitPostToolGapTrace("done", nil, map[string]interface{}{
+			"post_tool_terminal":       true,
+			"post_tool_empty_response": fullContent == "",
+		})
 		emitResolvedProviderModel()
 		emitSSE(donePayload)
 	}
@@ -25022,20 +25432,25 @@ STREAM_LOOP:
 					if streamingMsgID != "" {
 						h.updateMessageBestEffort(streamingMsgID, convID, "assistant", fullContent, "", "", nil)
 					} else {
-						h.store.AddMessage(context.Background(), convID, memory.Message{
-							Role:     "assistant",
-							Content:  fullContent,
-							Provider: actualProvider,
-							Model:    actualModel,
-						})
+						h.persistAsyncMessage(memory.Message{
+							ConversationID: convID,
+							Role:           "assistant",
+							Content:        fullContent,
+							Provider:       actualProvider,
+							Model:          actualModel,
+						}, false)
 					}
 				}
 
 				// Store the new user message
-				h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:    "user",
-					Content: injectedMsg,
-				})
+				h.persistAsyncMessage(memory.Message{
+					ConversationID: convID,
+					Role:           "user",
+					Content:        injectedMsg,
+				}, false)
+				if h.chatPersistAsync && h.persistCoordinator != nil {
+					h.persistCoordinator.FlushConversation(convID)
+				}
 				h.conversationCache.Invalidate(convID)
 
 				// Send injection SSE event to client
@@ -25207,6 +25622,7 @@ STREAM_LOOP:
 				actualProvider = ""
 				actualProviderID = ""
 				startTime = timeutil.NowTime()
+				clearPostToolGapTrace()
 
 				// Jump back to the tool loop
 				goto STREAM_LOOP
@@ -25220,9 +25636,9 @@ STREAM_LOOP:
 			if fullContent != "" {
 				if streamingMsgID != "" {
 					h.updateMessageBestEffort(streamingMsgID, convID, "assistant", fullContent+"\n\n[Response interrupted]", "", "", nil)
-					h.flushPersistedMessage(streamingMsgID)
+					h.flushPersistedMessageOnResponse(streamingMsgID)
 				} else {
-					h.store.AddMessage(context.Background(), convID, memory.Message{
+					h.persistResponsePathMessage(memory.Message{
 						Role:    "assistant",
 						Content: fullContent + "\n\n[Response interrupted]",
 					})
@@ -25232,9 +25648,8 @@ STREAM_LOOP:
 				"cancelled": true,
 				"done":      true,
 			}
-			if h.chatPersistAsync && h.persistCoordinator != nil {
-				h.persistCoordinator.FlushConversation(convID)
-			}
+			clearPostToolGapTrace()
+			h.flushConversationOnResponse(convID)
 			emitSSE(data)
 			return nil
 		}
@@ -25281,24 +25696,31 @@ STREAM_LOOP:
 				usageOut := estimateTokens(fallbackContent)
 				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				persistedMsgID := ""
-				if assistantMsg, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:     "assistant",
-					Content:  fallbackContent,
-					Provider: "deepresearch",
-					Model:    "deepresearch-fallback",
+				assistantMsg := memory.Message{
+					ID:             generateMessageID(),
+					ConversationID: convID,
+					Role:           "assistant",
+					Content:        fallbackContent,
+					Provider:       "deepresearch",
+					Model:          "deepresearch-fallback",
 					Stats: &memory.MessageStats{
 						InputTokens:  totalInputTokens,
 						OutputTokens: usageOut,
 						TotalTokens:  totalInputTokens + usageOut,
 						LatencyMs:    int64(latencyMs),
 					},
-				}); addErr == nil {
-					persistedMsgID = assistantMsg.ID
+				}
+				if persistedID := h.persistResponsePathMessage(assistantMsg); persistedID != "" {
+					persistedMsgID = persistedID
 					h.conversationCache.Invalidate(convID)
 				}
 				if h.metricsRecorder != nil {
 					h.metricsRecorder.RecordAPICallForUser(userID, "deepresearch-fallback", true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
 				}
+				emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+					"post_tool_terminal": true,
+					"post_tool_fallback": true,
+				})
 				emitSSE(map[string]interface{}{
 					"delta":     fallbackContent,
 					"done":      false,
@@ -25341,24 +25763,31 @@ STREAM_LOOP:
 				usageOut := estimateTokens(toolContent)
 				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				persistedMsgID := ""
-				if assistantMsg, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:     "assistant",
-					Content:  toolContent,
-					Provider: toolFallback.Provider,
-					Model:    toolFallback.Model,
+				assistantMsg := memory.Message{
+					ID:             generateMessageID(),
+					ConversationID: convID,
+					Role:           "assistant",
+					Content:        toolContent,
+					Provider:       toolFallback.Provider,
+					Model:          toolFallback.Model,
 					Stats: &memory.MessageStats{
 						InputTokens:  totalInputTokens,
 						OutputTokens: usageOut,
 						TotalTokens:  totalInputTokens + usageOut,
 						LatencyMs:    int64(latencyMs),
 					},
-				}); addErr == nil {
-					persistedMsgID = assistantMsg.ID
+				}
+				if persistedID := h.persistResponsePathMessage(assistantMsg); persistedID != "" {
+					persistedMsgID = persistedID
 					h.conversationCache.Invalidate(convID)
 				}
 				if h.metricsRecorder != nil {
 					h.metricsRecorder.RecordAPICallForUser(userID, toolFallback.Model, true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
 				}
+				emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+					"post_tool_terminal": true,
+					"post_tool_fallback": true,
+				})
 				emitSSE(map[string]interface{}{
 					"delta":     toolContent,
 					"done":      false,
@@ -25406,24 +25835,31 @@ STREAM_LOOP:
 				usageOut := estimateTokens(irContent)
 				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				persistedMsgID := ""
-				if assistantMsg, addErr := h.store.AddMessage(context.Background(), convID, memory.Message{
-					Role:     "assistant",
-					Content:  irContent,
-					Provider: "ir",
-					Model:    "ir-only-fallback",
+				assistantMsg := memory.Message{
+					ID:             generateMessageID(),
+					ConversationID: convID,
+					Role:           "assistant",
+					Content:        irContent,
+					Provider:       "ir",
+					Model:          "ir-only-fallback",
 					Stats: &memory.MessageStats{
 						InputTokens:  totalInputTokens,
 						OutputTokens: usageOut,
 						TotalTokens:  totalInputTokens + usageOut,
 						LatencyMs:    int64(latencyMs),
 					},
-				}); addErr == nil {
-					persistedMsgID = assistantMsg.ID
+				}
+				if persistedID := h.persistResponsePathMessage(assistantMsg); persistedID != "" {
+					persistedMsgID = persistedID
 					h.conversationCache.Invalidate(convID)
 				}
 				if h.metricsRecorder != nil {
 					h.metricsRecorder.RecordAPICallForUser(userID, "ir-only-fallback", true, latencyMs, int64(totalInputTokens), int64(usageOut), 0, 0, "")
 				}
+				emitPostToolGapTrace("assistant_delta", nil, map[string]interface{}{
+					"post_tool_terminal": true,
+					"post_tool_fallback": true,
+				})
 				emitSSE(map[string]interface{}{
 					"delta":     irContent,
 					"done":      false,
@@ -25471,9 +25907,9 @@ STREAM_LOOP:
 			safeContent := sanitizeResponseContentWithProvider(fullContent, actualProvider, actualProviderID, sanitizeModelHint(actualModel, chatReq.Model))
 			if streamingMsgID != "" {
 				h.updateMessageBestEffort(streamingMsgID, convID, "assistant", safeContent, "", "", nil)
-				h.flushPersistedMessage(streamingMsgID)
+				h.flushPersistedMessageOnResponse(streamingMsgID)
 			} else {
-				h.store.AddMessage(context.Background(), convID, memory.Message{
+				h.persistResponsePathMessage(memory.Message{
 					Role:     "assistant",
 					Content:  safeContent,
 					Provider: actualProvider,
@@ -25482,6 +25918,10 @@ STREAM_LOOP:
 			}
 			h.conversationCache.Invalidate(convID)
 		}
+		emitPostToolGapTrace("error", nil, map[string]interface{}{
+			"post_tool_terminal": true,
+			"post_tool_error":    errMsg,
+		})
 		emitSSE(map[string]interface{}{
 			"error":     errMsg,
 			"done":      true,
@@ -25490,9 +25930,7 @@ STREAM_LOOP:
 			"model":     actualModel,
 			"stream_id": streamID,
 		})
-		if h.chatPersistAsync && h.persistCoordinator != nil {
-			h.persistCoordinator.FlushConversation(convID)
-		}
+		h.flushConversationOnResponse(convID)
 		return nil
 	}
 
@@ -25593,7 +26031,7 @@ STREAM_LOOP:
 			if _, hasChecklist := extractFirstTodoChecklist(persistedFinalContent); !hasChecklist &&
 				strings.TrimSpace(persistedFinalContent) != strings.TrimSpace(todoContent) {
 				h.updateMessageBestEffort(todoMsgID, convID, "assistant", todoContent, "", "", nil)
-				h.flushPersistedMessage(todoMsgID)
+				h.flushPersistedMessageOnResponse(todoMsgID)
 				h.conversationCache.Invalidate(convID)
 				streamingMsgID = ""
 			}
@@ -25602,7 +26040,7 @@ STREAM_LOOP:
 		if streamingMsgID != "" {
 			// Update the incrementally-persisted message with final content + stats + actual provider/model
 			h.updateMessageBestEffort(streamingMsgID, convID, "assistant", persistedFinalContent, actualProvider, actualModel, finalStats)
-			h.flushPersistedMessage(streamingMsgID)
+			h.flushPersistedMessageOnResponse(streamingMsgID)
 			finalPersistedMsgID = streamingMsgID
 			assistantMsgForHook = &memory.Message{
 				ID:             streamingMsgID,
@@ -25624,7 +26062,7 @@ STREAM_LOOP:
 				Model:          actualModel,
 				Stats:          finalStats,
 			}
-			if persistedID := h.persistAsyncMessage(*assistantMsg, true); persistedID == "" {
+			if persistedID := h.persistResponsePathMessage(*assistantMsg); persistedID == "" {
 				logger.Error().Str("conv_id", convID).Msg("[chat] failed to persist assistant message")
 			} else {
 				assistantMsg.ID = persistedID
@@ -25655,7 +26093,7 @@ STREAM_LOOP:
 						continue
 					}
 					h.updateMessageBestEffort(messages[i].ID, convID, "assistant", updatedChecklist, "", "", nil)
-					h.flushPersistedMessage(messages[i].ID)
+					h.flushPersistedMessageOnResponse(messages[i].ID)
 					implicitSummaryTodoMsgID = messages[i].ID
 					implicitSummaryTodoContent = updatedChecklist
 					todoMsgID = messages[i].ID
@@ -25677,21 +26115,20 @@ STREAM_LOOP:
 			"tokens_per_second": finalStats.TokensPerSecond,
 		}
 		finalDonePayload := map[string]interface{}{
-			"delta":     "",
-			"done":      true,
-			"stream_id": streamID,
-			"provider":  actualProvider,
-			"model":     actualModel,
-			"content":   persistedFinalContent,
-			"stats":     emitFinalStats,
+			"delta":             "",
+			"done":              true,
+			"stream_id":         streamID,
+			"provider":          actualProvider,
+			"model":             actualModel,
+			"content":           persistedFinalContent,
+			"finalization_mode": resolveFinalStreamContentMode(fullContent, persistedFinalContent),
+			"stats":             emitFinalStats,
 		}
 		if finalPersistedMsgID != "" {
 			finalDonePayload["message_id"] = finalPersistedMsgID
 		}
 		finalDonePayload["draft_db_updates"] = draftDBUpdateCount
-		if h.chatPersistAsync && h.persistCoordinator != nil {
-			h.persistCoordinator.FlushConversation(convID)
-		}
+		h.flushConversationOnResponse(convID)
 		emitSSE(finalDonePayload)
 		streamDoneSent = true
 
@@ -26235,6 +26672,7 @@ func extractMarkdownHeading(content string) string {
 // are poor conversation titles, so skip heading extraction when the response
 // also contains a markdown checkbox checklist.
 func extractConversationTitleFromAIResponse(content string) string {
+	ensureChatMiscRegexes()
 	title := extractMarkdownHeading(content)
 	if title == "" {
 		return ""
@@ -26548,13 +26986,14 @@ func (h *ChatHandler) doWarmupWithToken(convID, token string) {
 		h.refreshSummaryAsync(convID, messages)
 	}
 
-	// 5. Store result (with all messages — buildSmartContext will select at request time)
-	preloadedCopy := make([]memory.Message, len(messages))
-	copy(preloadedCopy, messages)
+	// 5. Store result (with lightweight cached messages — buildSmartContext will select at request time)
+	preloadedCopy, preloadedBytes := cloneCacheableMessages(messages)
+	systemPromptCopy := cloneLLMMessages(systemPromptMessages)
 	result := &warmupResult{
-		systemPromptMessages: systemPromptMessages,
+		systemPromptMessages: systemPromptCopy,
 		preloadedMessages:    preloadedCopy,
 		createdAt:            timeutil.NowTime(),
+		sizeBytes:            preloadedBytes + estimateLLMMessagesBytes(systemPromptCopy),
 	}
 	if token != "" && !h.isWarmupTokenCurrent(convID, token) {
 		logger.Debug().Str("conv_id", convID).Msg("[warmup] discarded precomputed context: stale token before cache store")
@@ -26562,7 +27001,16 @@ func (h *ChatHandler) doWarmupWithToken(convID, token string) {
 	}
 
 	h.warmupMu.Lock()
+	if existing := h.warmupCache[convID]; existing != nil {
+		if h.warmupCacheBytes >= existing.sizeBytes {
+			h.warmupCacheBytes -= existing.sizeBytes
+		} else {
+			h.warmupCacheBytes = 0
+		}
+	}
 	h.warmupCache[convID] = result
+	h.warmupCacheBytes += result.sizeBytes
+	h.enforceWarmupBudgetLocked()
 	h.warmupMu.Unlock()
 
 	if token != "" && h.isWarmupTokenCurrent(convID, token) {
@@ -26598,7 +27046,7 @@ func (h *ChatHandler) consumeWarmup(convID string) *warmupResult {
 	if !ok {
 		return nil
 	}
-	delete(h.warmupCache, convID)
+	h.deleteWarmupLocked(convID)
 
 	// Check TTL
 	if timeutil.SinceTime(result.createdAt) > warmupTTL {
@@ -26612,7 +27060,7 @@ func (h *ChatHandler) consumeWarmup(convID string) *warmupResult {
 // invalidateWarmup removes any cached warmup for the given conversation.
 func (h *ChatHandler) invalidateWarmup(convID string) {
 	h.warmupMu.Lock()
-	delete(h.warmupCache, convID)
+	h.deleteWarmupLocked(convID)
 	h.warmupMu.Unlock()
 }
 
@@ -26653,21 +27101,6 @@ func (h *ChatHandler) CancelStream(c echo.Context) error {
 		"success":   false,
 		"stream_id": req.StreamID,
 		"message":   "Stream not found or already completed",
-	})
-}
-
-// GetConversationActiveStream reports whether the conversation currently has an active stream.
-func (h *ChatHandler) GetConversationActiveStream(c echo.Context) error {
-	convID := c.Param("id")
-	if _, err := h.checkConversationOwnership(c, convID); err != nil {
-		return err
-	}
-
-	streamID := strings.TrimSpace(h.activeStreamIDForConversation(convID))
-	return c.JSON(http.StatusOK, ConversationActiveStreamResponse{
-		ConversationID: convID,
-		Active:         streamID != "",
-		StreamID:       streamID,
 	})
 }
 
@@ -26876,12 +27309,18 @@ func (h *ChatHandler) consumeCancelledResponsesContinuation(convID string) bool 
 }
 
 func isResponsesNativeModel(model string) bool {
-	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "responses")
+	id := strings.ToLower(strings.TrimSpace(model))
+	if slash := strings.LastIndex(id, "/"); slash >= 0 && slash < len(id)-1 {
+		id = id[slash+1:]
+	}
+	return strings.Contains(id, "responses") ||
+		strings.Contains(id, "codex") ||
+		id == "gpt-5.4-pro" ||
+		strings.HasPrefix(id, "gpt-5.4-pro-")
 }
 
 func supportsResponsesContinuation(model string) bool {
-	m := strings.ToLower(strings.TrimSpace(model))
-	return strings.Contains(m, "responses") || strings.Contains(m, "codex")
+	return isResponsesNativeModel(model)
 }
 
 func shouldSkipCompressedTierRecallForContinuation(model, previousResponseID string, reason MemoryRecallReason) bool {

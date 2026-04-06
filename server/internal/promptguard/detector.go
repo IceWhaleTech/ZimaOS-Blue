@@ -122,6 +122,7 @@ func DefaultDetectorConfig() *DetectorConfig {
 type Detector struct {
 	config   *DetectorConfig
 	patterns map[string][]*compiledPattern
+	patternsReady bool
 	mu       sync.RWMutex
 }
 
@@ -138,11 +139,8 @@ func NewDetector(config *DetectorConfig) *Detector {
 	}
 
 	d := &Detector{
-		config:   config,
-		patterns: make(map[string][]*compiledPattern),
+		config: config,
 	}
-
-	d.initPatterns()
 	return d
 }
 
@@ -150,6 +148,10 @@ func NewDetector(config *DetectorConfig) *Detector {
 func (d *Detector) initPatterns() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	d.initPatternsLocked()
+}
+
+func (d *Detector) initPatternsLocked() {
 	d.patterns = make(map[string][]*compiledPattern)
 
 	// Role injection patterns
@@ -221,6 +223,23 @@ func (d *Detector) initPatterns() {
 	if len(d.config.CustomPatterns) > 0 {
 		d.patterns["custom"] = d.compilePatterns(d.config.CustomPatterns)
 	}
+	d.patternsReady = true
+}
+
+func (d *Detector) ensurePatterns() {
+	d.mu.RLock()
+	if d.patternsReady {
+		d.mu.RUnlock()
+		return
+	}
+	d.mu.RUnlock()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.patternsReady {
+		return
+	}
+	d.initPatternsLocked()
 }
 
 // compilePatterns compiles a list of pattern rules.
@@ -241,6 +260,8 @@ func (d *Detector) compilePatterns(rules []PatternRule) []*compiledPattern {
 
 // Detect analyzes input for prompt injection attempts.
 func (d *Detector) Detect(input string) *DetectionResult {
+	d.ensurePatterns()
+
 	result := &DetectionResult{
 		Detections: make([]Detection, 0),
 	}
@@ -429,6 +450,8 @@ func (d *Detector) calculateThreatLevel(detections []Detection) (ThreatLevel, in
 
 // sanitize removes or neutralizes detected threats from input.
 func (d *Detector) sanitize(input string) string {
+	d.ensurePatterns()
+
 	sanitized := input
 
 	// Remove or escape dangerous patterns
@@ -448,6 +471,8 @@ func (d *Detector) sanitize(input string) string {
 
 // AddPattern adds a custom detection pattern.
 func (d *Detector) AddPattern(rule PatternRule) error {
+	d.ensurePatterns()
+
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -483,6 +508,12 @@ func (d *Detector) GetConfig() *DetectorConfig {
 
 // UpdateConfig updates the detector configuration and reinitializes patterns.
 func (d *Detector) UpdateConfig(config *DetectorConfig) {
+	if config == nil {
+		config = DefaultDetectorConfig()
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	d.config = config
-	d.initPatterns()
+	d.patterns = nil
+	d.patternsReady = false
 }

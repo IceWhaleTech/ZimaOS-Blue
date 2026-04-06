@@ -41,10 +41,35 @@ type QuestionsService struct {
 // NewQuestionsService creates a new QuestionsService with default questions.
 func NewQuestionsService() *QuestionsService {
 	return &QuestionsService{
-		questions:    defaultPresetQuestions(),
 		rng:          rand.New(rand.NewSource(timeutil.NowNano())),
 		lastSelected: make([]string, 0),
 	}
+}
+
+func (s *QuestionsService) questionsForLangLocked(lang string) []PresetQuestion {
+	if s == nil {
+		return nil
+	}
+	if s.questions == nil {
+		s.questions = make(map[string][]PresetQuestion)
+	}
+	if questions, ok := s.questions[lang]; ok {
+		return questions
+	}
+
+	builder, ok := presetQuestionBuilders[lang]
+	cacheKey := lang
+	if !ok {
+		builder = presetQuestionBuilders["en"]
+		cacheKey = "en"
+		if questions, ok := s.questions[cacheKey]; ok {
+			return questions
+		}
+	}
+
+	questions := builder()
+	s.questions[cacheKey] = questions
+	return questions
 }
 
 // GetPresetQuestions returns a random selection of preset questions.
@@ -54,10 +79,7 @@ func (s *QuestionsService) GetPresetQuestions(count int, lang string) []PresetQu
 	defer s.mu.Unlock()
 
 	// Get questions for the specified language, fallback to English
-	questions, ok := s.questions[lang]
-	if !ok {
-		questions = s.questions["en"]
-	}
+	questions := s.questionsForLangLocked(lang)
 
 	if count <= 0 {
 		return []PresetQuestion{}
@@ -108,6 +130,28 @@ func (s *QuestionsService) GetPresetQuestions(count int, lang string) []PresetQu
 	return result
 }
 
+// GetPresetQuestionPage returns a deterministic slice of preset questions for incremental loading.
+func (s *QuestionsService) GetPresetQuestionPage(offset, count int, lang string) ([]PresetQuestion, int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	questions := s.questionsForLangLocked(lang)
+	total := len(questions)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= total || count <= 0 {
+		return []PresetQuestion{}, total
+	}
+	end := offset + count
+	if end > total {
+		end = total
+	}
+	result := make([]PresetQuestion, end-offset)
+	copy(result, questions[offset:end])
+	return result, total
+}
+
 // updateLastSelected updates the last selected question IDs
 func (s *QuestionsService) updateLastSelected(questions []PresetQuestion) {
 	s.lastSelected = make([]string, len(questions))
@@ -118,10 +162,10 @@ func (s *QuestionsService) updateLastSelected(questions []PresetQuestion) {
 
 // GetAllQuestions returns all preset questions for a language.
 func (s *QuestionsService) GetAllQuestions(lang string) []PresetQuestion {
-	questions, ok := s.questions[lang]
-	if !ok {
-		questions = s.questions["en"]
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	questions := s.questionsForLangLocked(lang)
 	result := make([]PresetQuestion, len(questions))
 	copy(result, questions)
 	return result
@@ -129,10 +173,10 @@ func (s *QuestionsService) GetAllQuestions(lang string) []PresetQuestion {
 
 // GetQuestionsByCategory returns questions filtered by category.
 func (s *QuestionsService) GetQuestionsByCategory(category string, lang string) []PresetQuestion {
-	questions, ok := s.questions[lang]
-	if !ok {
-		questions = s.questions["en"]
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	questions := s.questionsForLangLocked(lang)
 	var result []PresetQuestion
 	for _, q := range questions {
 		if q.Category == category {
@@ -142,36 +186,33 @@ func (s *QuestionsService) GetQuestionsByCategory(category string, lang string) 
 	return result
 }
 
-// defaultPresetQuestions returns the default set of preset questions for all languages.
-func defaultPresetQuestions() map[string][]PresetQuestion {
-	return map[string][]PresetQuestion{
-		"zh":    chinesePresetQuestions(),
-		"en":    englishPresetQuestions(),
-		"ja":    japanesePresetQuestions(),
-		"ko":    koreanPresetQuestions(),
-		"zh-TW": traditionalChinesePresetQuestions(),
-		"de":    germanPresetQuestions(),
-		"fr":    frenchPresetQuestions(),
-		"es":    spanishPresetQuestions(),
-		"it":    italianPresetQuestions(),
-		"pt-BR": brazilianPortuguesePresetQuestions(),
-		"ru":    russianPresetQuestions(),
-		"nl":    dutchPresetQuestions(),
-		"pl":    polishPresetQuestions(),
-		"sv":    swedishPresetQuestions(),
-		"da":    danishPresetQuestions(),
-		"nb":    norwegianPresetQuestions(),
-		"cs":    czechPresetQuestions(),
-		"sk":    slovakPresetQuestions(),
-		"hu":    hungarianPresetQuestions(),
-		"ro":    romanianPresetQuestions(),
-		"hr":    croatianPresetQuestions(),
-		"el":    greekPresetQuestions(),
-		"ca":    catalanPresetQuestions(),
-		"ga":    irishPresetQuestions(),
-		"ml":    malayalamPresetQuestions(),
-		"pt-PT": europeanPortuguesePresetQuestions(),
-	}
+var presetQuestionBuilders = map[string]func() []PresetQuestion{
+	"zh":    chinesePresetQuestions,
+	"en":    englishPresetQuestions,
+	"ja":    japanesePresetQuestions,
+	"ko":    koreanPresetQuestions,
+	"zh-TW": traditionalChinesePresetQuestions,
+	"de":    germanPresetQuestions,
+	"fr":    frenchPresetQuestions,
+	"es":    spanishPresetQuestions,
+	"it":    italianPresetQuestions,
+	"pt-BR": brazilianPortuguesePresetQuestions,
+	"ru":    russianPresetQuestions,
+	"nl":    dutchPresetQuestions,
+	"pl":    polishPresetQuestions,
+	"sv":    swedishPresetQuestions,
+	"da":    danishPresetQuestions,
+	"nb":    norwegianPresetQuestions,
+	"cs":    czechPresetQuestions,
+	"sk":    slovakPresetQuestions,
+	"hu":    hungarianPresetQuestions,
+	"ro":    romanianPresetQuestions,
+	"hr":    croatianPresetQuestions,
+	"el":    greekPresetQuestions,
+	"ca":    catalanPresetQuestions,
+	"ga":    irishPresetQuestions,
+	"ml":    malayalamPresetQuestions,
+	"pt-PT": europeanPortuguesePresetQuestions,
 }
 
 func curatedPresetQuestion(

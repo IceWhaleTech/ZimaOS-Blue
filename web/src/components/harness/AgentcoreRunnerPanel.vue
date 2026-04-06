@@ -7,9 +7,11 @@ import { useSettingsStore } from '@/stores/settings'
 const props = withDefaults(
   defineProps<{
     showRefreshButton?: boolean
+    embedded?: boolean
   }>(),
   {
     showRefreshButton: true,
+    embedded: false,
   }
 )
 
@@ -79,6 +81,7 @@ const AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP_FALLBACK =
 const agentcoreRunnerSaving = ref(false)
 const agentcoreRunnerPreparing = ref(false)
 const agentcoreRunnerRefreshing = ref(false)
+const agentcoreRunnerSourceExpanded = ref(false)
 const agentcoreRunnerStatusExpanded = ref(false)
 const agentcoreRunnerRepoURL = ref('')
 const agentcoreRunnerRef = ref('')
@@ -86,6 +89,26 @@ const agentcoreRunnerTags = ref<AgentcoreRunnerTagList | null>(null)
 const agentcoreRunnerTagsLoading = ref(false)
 const agentcoreRunnerTranscriptExpanded = ref(false)
 const agentcoreRunnerTranscriptPreviewCount = 2
+const agentcoreRunnerRootClass = computed(() =>
+  props.embedded
+    ? 'agentcore-runner-panel agentcore-runner-panel--embedded'
+    : 'agentcore-runner-panel dashboard-card-surface'
+)
+const agentcoreRunnerBodyClass = computed(() =>
+  props.embedded
+    ? 'agentcore-runner-panel__body agentcore-runner-panel__body--embedded space-y-4'
+    : 'dashboard-card-subsurface agentcore-runner-panel__body p-4 space-y-4'
+)
+const agentcoreRunnerSectionCardClass = computed(() =>
+  props.embedded
+    ? 'rounded-2xl bg-slate-50/85 p-4 ring-1 ring-slate-200/80 dark:bg-slate-900/55 dark:ring-slate-800/80'
+    : 'rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-slate-900/60'
+)
+const agentcoreRunnerLastRunCardClass = computed(() =>
+  props.embedded
+    ? 'mt-2 space-y-2 rounded-xl bg-white/90 p-3 ring-1 ring-slate-200/80 dark:bg-slate-950/60 dark:ring-slate-800/80'
+    : 'mt-2 space-y-2 rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-slate-950/50'
+)
 
 const agentcoreRunnerStatus = computed(() => settingsStore.agentcoreRunnerStatus)
 const agentcoreRunnerLastRun = computed(() => settingsStore.agentcoreRunnerLastRun)
@@ -115,6 +138,12 @@ const agentcoreRunnerBusy = computed(
     agentcoreRunnerSaving.value ||
     agentcoreRunnerPreparing.value ||
     agentcoreRunnerRefreshing.value
+)
+const agentcoreRunnerSourceRepoSummary = computed(() =>
+  formatAgentcoreRunnerRepoSummary(agentcoreRunnerRepoURL.value)
+)
+const agentcoreRunnerSourceRefSummary = computed(() =>
+  normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value)
 )
 const agentcoreRunnerLastRunMeta = computed(() => {
   const run = agentcoreRunnerLastRun.value
@@ -302,6 +331,14 @@ function normalizeAgentcoreRunnerRefValue(value: unknown) {
   return 'main'
 }
 
+function formatAgentcoreRunnerRepoSummary(value: unknown) {
+  const repoURL = normalizeAgentcoreRunnerRepoURLValue(value)
+  return repoURL
+    .replace(/^https?:\/\/github\.com\//i, '')
+    .replace(/\.git$/i, '')
+    .replace(/\/+$/, '')
+}
+
 async function fetchAgentcoreRunnerStatus() {
   try {
     await settingsStore.fetchAgentcoreRunnerStatus()
@@ -424,8 +461,8 @@ async function prepareAgentcoreRunner() {
 </script>
 
 <template>
-  <section class="agentcore-runner-panel dashboard-card-surface" data-testid="agentcore-runner-card">
-    <div class="space-y-1.5">
+  <section :class="agentcoreRunnerRootClass" data-testid="agentcore-runner-card">
+    <div v-if="!embedded" class="space-y-1.5">
       <span class="settings-module__eyebrow agentcore-runner-panel__eyebrow inline-flex w-fit">{{
         t('settings.agentcoreRunner.eyebrow', 'Harness · Beta')
       }}</span>
@@ -447,7 +484,7 @@ async function prepareAgentcoreRunner() {
       </p>
     </div>
 
-    <div class="dashboard-card-subsurface agentcore-runner-panel__body p-4 space-y-4">
+    <div :class="agentcoreRunnerBodyClass">
       <div class="settings-field-card__row flex items-start justify-between gap-3">
         <div class="settings-card-heading min-w-0">
           <label class="settings-field-label block font-medium text-gray-900 dark:text-gray-100">{{
@@ -483,52 +520,93 @@ async function prepareAgentcoreRunner() {
         </button>
       </div>
 
-      <div class="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
-        <label class="block">
-          <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-            {{ t('settings.agentcoreRunner.repoUrl', 'GitHub Repo URL') }}
-          </span>
-          <input
-            data-testid="agentcore-runner-repo-input"
-            v-model="agentcoreRunnerRepoURL"
-            type="text"
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
-            :placeholder="
-              t(
-                'settings.agentcoreRunner.repoPlaceholder',
-                'https://github.com/owner/repo or owner/repo'
-              )
-            "
-            @blur="saveAgentcoreRunnerConfig"
-          />
-        </label>
+      <div
+        :class="agentcoreRunnerSectionCardClass"
+      >
+        <button
+          data-testid="agentcore-runner-source-toggle"
+          type="button"
+          :aria-expanded="agentcoreRunnerSourceExpanded ? 'true' : 'false'"
+          class="flex w-full items-center justify-between gap-3 text-left"
+          @click="agentcoreRunnerSourceExpanded = !agentcoreRunnerSourceExpanded"
+        >
+          <div class="min-w-0">
+            <div class="text-sm font-medium text-gray-800 dark:text-gray-100">
+              {{ t('settings.agentcoreRunner.source', 'GitHub Repo & Ref') }}
+            </div>
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <span
+                class="max-w-full break-all rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200"
+              >
+                {{ agentcoreRunnerSourceRepoSummary }}
+              </span>
+              <span
+                class="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-700 dark:border-gray-700 dark:bg-slate-950/60 dark:text-gray-200"
+              >
+                {{ agentcoreRunnerSourceRefSummary }}
+              </span>
+            </div>
+          </div>
+          <span class="shrink-0 text-xs text-gray-500 dark:text-gray-400">{{
+            agentcoreRunnerSourceExpanded
+              ? t('settings.smallModel.collapse', 'Collapse')
+              : t('settings.smallModel.expand', 'Expand')
+          }}</span>
+        </button>
 
-        <label class="block">
-          <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
-            {{ t('settings.agentcoreRunner.ref', 'Ref') }}
-          </span>
-          <select
-            data-testid="agentcore-runner-ref-input"
-            v-model="agentcoreRunnerRef"
-            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
-            :disabled="agentcoreRunnerSaving"
-            @change="saveAgentcoreRunnerConfig"
-          >
-            <option v-for="option in agentcoreRunnerRefOptions" :key="option" :value="option">
-              {{ option }}
-            </option>
-          </select>
-          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {{
-              agentcoreRunnerTagsLoading
-                ? t('settings.agentcoreRunner.refLoading', 'Loading tags...')
-                : t(
-                    'settings.agentcoreRunner.refHint',
-                    'Defaults to main and lists tags from the selected repo.'
+        <div
+          v-if="agentcoreRunnerSourceExpanded"
+          data-testid="agentcore-runner-source-content"
+          class="mt-3"
+        >
+          <div class="grid gap-3 md:grid-cols-[minmax(0,1fr),180px]">
+            <label class="block">
+              <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+                {{ t('settings.agentcoreRunner.repoUrl', 'GitHub Repo URL') }}
+              </span>
+              <input
+                data-testid="agentcore-runner-repo-input"
+                v-model="agentcoreRunnerRepoURL"
+                type="text"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
+                :placeholder="
+                  t(
+                    'settings.agentcoreRunner.repoPlaceholder',
+                    'https://github.com/owner/repo or owner/repo'
                   )
-            }}
-          </p>
-        </label>
+                "
+                @blur="saveAgentcoreRunnerConfig"
+              />
+            </label>
+
+            <label class="block">
+              <span class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-200">
+                {{ t('settings.agentcoreRunner.ref', 'Ref') }}
+              </span>
+              <select
+                data-testid="agentcore-runner-ref-input"
+                v-model="agentcoreRunnerRef"
+                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
+                :disabled="agentcoreRunnerSaving"
+                @change="saveAgentcoreRunnerConfig"
+              >
+                <option v-for="option in agentcoreRunnerRefOptions" :key="option" :value="option">
+                  {{ option }}
+                </option>
+              </select>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{
+                  agentcoreRunnerTagsLoading
+                    ? t('settings.agentcoreRunner.refLoading', 'Loading tags...')
+                    : t(
+                        'settings.agentcoreRunner.refHint',
+                        'Defaults to main and lists tags from the selected repo.'
+                      )
+                }}
+              </p>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div class="agentcore-runner-panel__actions flex items-center justify-between gap-3">
@@ -567,12 +645,11 @@ async function prepareAgentcoreRunner() {
         </div>
       </div>
 
-      <div
-        class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-slate-900/60"
-      >
+      <div :class="agentcoreRunnerSectionCardClass">
         <button
           data-testid="agentcore-runner-status-toggle"
           type="button"
+          :aria-expanded="agentcoreRunnerStatusExpanded ? 'true' : 'false'"
           class="flex w-full items-center justify-between gap-3 text-left"
           @click="agentcoreRunnerStatusExpanded = !agentcoreRunnerStatusExpanded"
         >
@@ -779,7 +856,7 @@ async function prepareAgentcoreRunner() {
             <div
               v-if="agentcoreRunnerLastRun"
               data-testid="agentcore-runner-last-run-detail"
-              class="mt-2 space-y-2 rounded-lg border border-gray-200 bg-white/80 p-3 dark:border-gray-700 dark:bg-slate-950/50"
+              :class="agentcoreRunnerLastRunCardClass"
             >
               <div
                 v-if="agentcoreRunnerLastRunMeta.length > 0"
@@ -879,14 +956,31 @@ async function prepareAgentcoreRunner() {
   box-shadow: none;
 }
 
+.agentcore-runner-panel--embedded {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .agentcore-runner-panel__title {
   margin: 0;
   font-size: 1.22rem;
   line-height: 1.15;
 }
 
+.agentcore-runner-panel__eyebrow {
+  color: rgb(var(--dashboard-page-accent, 37, 99, 235));
+}
+
 .agentcore-runner-panel__body {
   border-radius: 1rem;
+}
+
+.agentcore-runner-panel__body--embedded {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .agentcore-runner-panel__actions {
@@ -896,6 +990,10 @@ async function prepareAgentcoreRunner() {
 @media (max-width: 768px) {
   .agentcore-runner-panel {
     padding: 1rem;
+  }
+
+  .agentcore-runner-panel--embedded {
+    padding: 0;
   }
 
   .agentcore-runner-panel__actions {

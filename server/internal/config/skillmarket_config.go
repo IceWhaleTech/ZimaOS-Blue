@@ -20,7 +20,6 @@ type SkillMarketConfig struct {
 	TencentSkillHubAPIBaseURL string        `yaml:"tencent_skillhub_api_base_url"`
 	SkillHubBaseURL           string        `yaml:"skillhub_base_url"`
 	SkillHubAPIKey            string        `yaml:"skillhub_api_key"`
-	SkillStackBaseURL         string        `yaml:"skillstack_base_url"`
 	LLMSkillsBaseURL          string        `yaml:"llmskills_base_url"`
 	CuratedConfigPath         string        `yaml:"curated_config_path"`
 	CuratedConfigURLs         []string      `yaml:"curated_config_urls"`
@@ -39,7 +38,6 @@ func DefaultSkillMarketConfig() *SkillMarketConfig {
 		ClawHubMirrorBaseURLs:     nil,
 		TencentSkillHubAPIBaseURL: "https://lightmake.site",
 		SkillHubBaseURL:           "https://www.skillhub.club",
-		SkillStackBaseURL:         "https://www.skillstack.me",
 		LLMSkillsBaseURL:          "https://llmskills.org",
 		CuratedConfigPath:         "server/skillmarket_curated.yaml",
 		CuratedConfigURLs: []string{

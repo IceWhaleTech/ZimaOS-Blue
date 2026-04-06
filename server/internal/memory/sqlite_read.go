@@ -281,7 +281,7 @@ func rowToConversationCommandState(conversationID string, row conversationComman
 	state.WebSearchEnabled = row.WebSearchEnabled
 	state.DeepResearchEnabled = row.DeepResearchEnabled
 	state.UpdatedAt = parseStoreTime(row.UpdatedAt)
-	return state
+	return normalizeConversationCommandStateToolDefaults(state)
 }
 
 func parseStoreTime(raw string) time.Time {

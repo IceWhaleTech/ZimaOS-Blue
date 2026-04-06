@@ -50,6 +50,9 @@ export interface PresetQuestion {
 
 export interface PresetQuestionsResponse {
   questions: PresetQuestion[]
+  total: number
+  next_offset: number
+  has_more: boolean
 }
 
 export interface PreviewTokenResponse {
@@ -82,9 +85,11 @@ export const previewApi = {
    * Get preset questions for empty chat area
    * @param count Number of questions to return
    * @param lang Language code (e.g., 'en', 'zh')
+   * @param offset Starting offset for incremental loading
    */
-  getPresetQuestions: (count = 5, lang?: string) => {
+  getPresetQuestions: (count = 4, lang?: string, offset = 0) => {
     const params = new URLSearchParams({ count: String(count) })
+    params.append('offset', String(offset))
     if (lang) {
       params.append('lang', lang)
     }

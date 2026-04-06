@@ -16,7 +16,6 @@ const mocks = vi.hoisted(() => ({
     contextTrimInfo: null,
     currentConversation: null as null | Record<string, unknown>,
     currentConversationId: null as null | string,
-    deepResearchEnabled: false,
     error: null as null | string,
     executingConversationIds: [] as string[],
     hasMoreMessages: false,
@@ -29,8 +28,10 @@ const mocks = vi.hoisted(() => ({
     messages: [] as Array<Record<string, unknown>>,
     modelPreference: 'auto',
     pendingModelAutoFallback: null as null | Record<string, unknown>,
+    providerPinOnlyActive: false,
     searching: false,
     securityBlocked: null as null | Record<string, unknown>,
+    selectedProviderId: '',
     selectedMessageIds: new Set<string>(),
     sending: false,
     streamError: null as null | string,
@@ -53,11 +54,11 @@ const mocks = vi.hoisted(() => ({
     loadMoreMessages: vi.fn(),
     searchConversations: vi.fn(),
     setModelPreference: vi.fn(),
+    setProviderPinOnly: vi.fn(),
     splitModelPreference: vi.fn((value: string) => {
       const [provider_id = '', selected_model_id = value] = value.split('/', 2)
       return { provider_id, selected_model_id }
     }),
-    setDeepResearchEnabled: vi.fn(),
     createConversation: vi.fn(),
     deleteConversation: vi.fn(),
     pinConversation: vi.fn(),
@@ -93,6 +94,7 @@ const mocks = vi.hoisted(() => ({
   providerPoolStore: {
     activeProviders: [] as unknown[],
     cloudProviders: [] as unknown[],
+    clearProviderError: vi.fn(),
     enabledProviders: [] as unknown[],
     hasCloudProviders: false,
     hasLocalProviders: false,
@@ -163,13 +165,6 @@ const mocks = vi.hoisted(() => ({
   authFetch: vi.fn(),
   onSSEEvent: vi.fn(),
   offSSEEvent: vi.fn(),
-  agentApi: {
-    listTasks: vi.fn(),
-    cancelTask: vi.fn(),
-    deleteTask: vi.fn(),
-    sendMessage: vi.fn(),
-    submitAnswers: vi.fn(),
-  },
 }))
 
 mocks.chatStore = reactive(mocks.chatStore)
@@ -204,13 +199,6 @@ vi.mock('@/stores/notification', () => ({
 }))
 
 vi.mock('@/api/chat', () => ({
-  agentApi: {
-    listTasks: (...args: unknown[]) => mocks.agentApi.listTasks(...args),
-    cancelTask: (...args: unknown[]) => mocks.agentApi.cancelTask(...args),
-    deleteTask: (...args: unknown[]) => mocks.agentApi.deleteTask(...args),
-    sendMessage: (...args: unknown[]) => mocks.agentApi.sendMessage(...args),
-    submitAnswers: (...args: unknown[]) => mocks.agentApi.submitAnswers(...args),
-  },
 }))
 
 vi.mock('@/api/client', () => ({
@@ -329,6 +317,9 @@ describe('ChatView provider gating', () => {
     mocks.chatStore.streamUIState = { phase: 'idle' }
     mocks.providerPoolStore.fetchProviders.mockResolvedValue(undefined)
     mocks.providerPoolStore.fetchRoutingMode.mockResolvedValue(undefined)
+    mocks.providerPoolStore.getProviderDisplayName.mockImplementation(
+      (providerId: string) => providerId
+    )
     mocks.providerPoolStore.setRoutingMode.mockImplementation((mode: string) => {
       mocks.providerPoolStore.routingMode = mode as 'auto' | 'cloud' | 'local'
     })
@@ -336,8 +327,22 @@ describe('ChatView provider gating', () => {
     mocks.chatStore.fetchConversations.mockResolvedValue(undefined)
     mocks.chatStore.selectConversation.mockResolvedValue(undefined)
     mocks.chatStore.modelPreference = 'auto'
+    mocks.chatStore.providerPinOnlyActive = false
+    mocks.chatStore.selectedProviderId = ''
     mocks.chatStore.setModelPreference.mockImplementation((value: string) => {
       mocks.chatStore.modelPreference = value
+      mocks.chatStore.providerPinOnlyActive = false
+      if (value === 'auto') {
+        mocks.chatStore.selectedProviderId = ''
+        return
+      }
+      const [providerId = ''] = value.split('/', 2)
+      mocks.chatStore.selectedProviderId = value.includes('/') ? providerId : ''
+    })
+    mocks.chatStore.setProviderPinOnly.mockImplementation((providerId: string) => {
+      mocks.chatStore.modelPreference = 'auto'
+      mocks.chatStore.selectedProviderId = providerId
+      mocks.chatStore.providerPinOnlyActive = !!providerId
     })
     mocks.taskProjectionsStore.currentTasks = []
     mocks.taskProjectionsStore.currentActiveTasks = []
@@ -524,6 +529,75 @@ describe('ChatView provider gating', () => {
     )
   })
 
+  it('treats a single errored provider as recoverable attention instead of global unavailable', async () => {
+    mocks.providerPoolStore.providers = [
+      {
+        id: 'openai',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'unexpected_status:500',
+      } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
+    mocks.providerPoolStore.activeProviders = []
+
+    const wrapper = await mountChatView()
+
+    expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
+      'Provider needs attention'
+    )
+    expect(wrapper.get('[data-testid="chat-provider-guidance-card"]').text()).toContain(
+      'The provider returned an unexpected status (500).'
+    )
+    expect(wrapper.text()).not.toContain('No AI provider is available right now')
+    expect(wrapper.get('[data-testid="chat-provider-guidance-retry"]').text()).toContain(
+      'Retry Provider'
+    )
+    expect(wrapper.get('[data-testid="chat-provider-guidance-review"]').text()).toContain(
+      'Review Provider'
+    )
+  })
+
+  it('can clear the only errored provider directly from chat guidance', async () => {
+    mocks.providerPoolStore.providers = [
+      {
+        id: 'openai',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'unexpected_status:500',
+      } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
+    mocks.providerPoolStore.activeProviders = []
+
+    const wrapper = await mountChatView()
+    await wrapper.get('[data-testid="chat-provider-guidance-retry"]').trigger('click')
+
+    expect(mocks.providerPoolStore.clearProviderError).toHaveBeenCalledWith('openai')
+  })
+
+  it('opens provider settings focused on the affected provider from recoverable guidance', async () => {
+    mocks.providerPoolStore.providers = [
+      {
+        id: 'openai',
+        type: 'builtin',
+        enabled: true,
+        status: 'error',
+        last_error: 'unexpected_status:500',
+      } as Record<string, unknown>,
+    ]
+    mocks.providerPoolStore.enabledProviders = [...mocks.providerPoolStore.providers]
+    mocks.providerPoolStore.activeProviders = []
+
+    const { wrapper, router } = await mountChatViewHarness()
+    await wrapper.get('[data-testid="chat-provider-guidance-review"]').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.fullPath).toBe('/settings?tab=llm&provider=openai')
+  })
+
   it('still reaches media intent classification when configured providers are unavailable', async () => {
     mocks.providerPoolStore.providers = [
       {
@@ -611,6 +685,177 @@ describe('ChatView provider gating', () => {
     await settleView()
 
     expect(wrapper.findAll('.routing-option-row')).toHaveLength(1)
+  })
+
+  it('keeps routing controls visible without a warning dot when providers need attention', async () => {
+    const provider = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'error',
+      last_error: 'auth_error:invalid_api_key',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.enabledProviders = [provider]
+    mocks.providerPoolStore.activeProviders = []
+    mocks.providerPoolStore.cloudProviders = [provider]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+
+    const wrapper = await mountChatView()
+
+    expect(wrapper.find('.chat-thread-routing-btn').exists()).toBe(true)
+    expect(wrapper.find('.chat-thread-routing-btn__status').exists()).toBe(false)
+
+    await wrapper.get('.chat-thread-routing-btn').trigger('click')
+    await settleView()
+
+    expect(wrapper.text()).toContain('Provider needs attention. Click to check settings.')
+    expect(wrapper.findAll('.routing-option-row')).toHaveLength(1)
+    expect(wrapper.find('.routing-manage-row').exists()).toBe(true)
+  })
+
+  it('shows provider-scoped auto status when a conversation is pinned to a provider only', async () => {
+    const provider = {
+      id: 'openrouter',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.enabledProviders = [provider]
+    mocks.providerPoolStore.activeProviders = [provider]
+    mocks.providerPoolStore.cloudProviders = [provider]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+    mocks.providerPoolStore.getProviderDisplayName.mockImplementation((providerId: string) =>
+      providerId === 'openrouter' ? 'OpenRouter' : providerId
+    )
+    mocks.chatStore.modelPreference = 'auto'
+    mocks.chatStore.selectedProviderId = 'openrouter'
+    mocks.chatStore.providerPinOnlyActive = true
+
+    const wrapper = await mountChatView()
+
+    expect(wrapper.get('.chat-thread-routing-btn').attributes('title')).toContain(
+      'Routing Mode · Auto · OpenRouter'
+    )
+
+    await wrapper.get('.chat-thread-routing-btn').trigger('click')
+    await settleView()
+
+    expect(wrapper.get('.routing-option-status-chip').text()).toContain('Auto · OpenRouter')
+    expect(wrapper.get('[data-testid="routing-provider-pin-notice"]').text()).toContain(
+      'Pinned Provider'
+    )
+    expect(wrapper.get('[data-testid="routing-provider-pin-notice"]').text()).toContain(
+      'This conversation stays on OpenRouter'
+    )
+
+    await wrapper.get('[data-testid="routing-provider-pin-clear"]').trigger('click')
+    await settleView()
+
+    expect(mocks.chatStore.setModelPreference).toHaveBeenCalledWith('auto')
+    expect(wrapper.find('[data-testid="routing-provider-pin-notice"]').exists()).toBe(false)
+  })
+
+  it('hides provider-scoped auto copy when the pinned provider is no longer enabled', async () => {
+    const enabledProvider = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [enabledProvider]
+    mocks.providerPoolStore.enabledProviders = [enabledProvider]
+    mocks.providerPoolStore.activeProviders = [enabledProvider]
+    mocks.providerPoolStore.cloudProviders = [enabledProvider]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+    mocks.chatStore.modelPreference = 'auto'
+    mocks.chatStore.selectedProviderId = 'openrouter'
+    mocks.chatStore.providerPinOnlyActive = true
+
+    const wrapper = await mountChatView()
+
+    expect(wrapper.get('.chat-thread-routing-btn').attributes('title')).not.toContain('openrouter')
+
+    await wrapper.get('.chat-thread-routing-btn').trigger('click')
+    await settleView()
+
+    expect(wrapper.find('[data-testid="routing-provider-pin-notice"]').exists()).toBe(false)
+    expect(wrapper.get('.routing-option-status-chip').text()).not.toContain('openrouter')
+  })
+
+  it('lets users pin a provider while keeping model selection automatic', async () => {
+    const providerA = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    const providerB = {
+      id: 'openrouter',
+      type: 'builtin',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [providerA, providerB]
+    mocks.providerPoolStore.enabledProviders = [providerA, providerB]
+    mocks.providerPoolStore.activeProviders = [providerA, providerB]
+    mocks.providerPoolStore.cloudProviders = [providerA, providerB]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+    mocks.providerPoolStore.getProviderDisplayName.mockImplementation((providerId: string) =>
+      providerId === 'openrouter' ? 'OpenRouter' : providerId === 'openai' ? 'OpenAI' : providerId
+    )
+
+    const wrapper = await mountChatView()
+
+    await wrapper.get('.chat-thread-routing-btn').trigger('click')
+    await settleView()
+
+    await wrapper.get('[data-testid="routing-provider-pin-row-openrouter"]').trigger('click')
+    await settleView()
+
+    expect(mocks.chatStore.setProviderPinOnly).toHaveBeenCalledWith('openrouter')
+    expect(wrapper.get('[data-testid="routing-provider-pin-notice"]').text()).toContain(
+      'This conversation stays on OpenRouter'
+    )
+  })
+
+  it('does not label an inactive provider as still checking in routing controls', async () => {
+    const provider = {
+      id: 'openai',
+      type: 'builtin',
+      enabled: true,
+      status: 'inactive',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.enabledProviders = [provider]
+    mocks.providerPoolStore.activeProviders = []
+    mocks.providerPoolStore.cloudProviders = [provider]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+
+    const wrapper = await mountChatView()
+
+    await wrapper.get('.chat-thread-routing-btn').trigger('click')
+    await settleView()
+
+    expect(wrapper.text()).not.toContain('Provider status is being checked...')
+    expect(wrapper.text()).toContain('Provider needs attention. Click to check settings.')
   })
 
   it('shows the fixed-model fallback dialog and confirms auto retry', async () => {

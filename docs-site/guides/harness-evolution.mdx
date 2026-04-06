@@ -1,0 +1,177 @@
+---
+title: "Harness and Evolution"
+summary: "Use Harness for tracked execution and evaluation, then use Evolution to inspect, compare, and adopt better skill or instruction revisions."
+---
+
+# Harness and Evolution
+
+Blue's automation surface now includes a full tracked execution and evaluation layer. Harness is the durable control plane. Evolution is the review and adoption surface built on top of that evidence.
+
+## What Harness manages
+
+Harness is for runs you want to inspect, score, compare, and revisit later. The current data model includes:
+
+- Run groups for `eval`, `experiment`, and `batch` work
+- Run kinds such as `agent_task`, `research`, `subagent`, and `workflow`
+- Group items with retry, concurrency, and attempt tracking
+- Datasets and dataset versions
+- Eval specs and concrete eval runs
+- Scorecards, artifacts, reports, and runtime traces
+- Approvals and pending questions when a run needs human input
+
+## What you can do from the UI
+
+The current web views let operators:
+
+- Create datasets and dataset versions
+- Import a local repo bundle or third-party GitHub bundle from the Datasets and versions section
+- Preview bundle case counts and bundled eval specs before import
+- Create eval specs with scoring settings
+- Launch eval runs and compare them against baselines
+- Inspect group status, pass rate, score, and failure hints
+- Open run reports, artifacts, and runtime evidence
+
+The main scoring modes are:
+
+- `rule`: use deterministic checks and thresholds
+- `judge`: use a judge model to score outcomes
+- `hybrid`: combine both approaches
+
+## When to use Harness
+
+Use Harness when you need more than a one-off run:
+
+- You want repeatable evaluation inputs
+- You need pass thresholds or baselines
+- You want artifacts and traces for later review
+- You need to compare candidates instead of trusting intuition
+
+If you only need a scheduled or trigger-based workflow, start with [Automation](/guides/automation) and move into Harness when repeatability starts to matter.
+
+## Bundle datasets
+
+Harness supports a declarative bundle format for reusable datasets:
+
+```text
+<bundle>/
+  dataset.yaml
+  versions/
+    <version>/
+      manifest.json
+      eval-specs/
+        *.yaml
+```
+
+Use the UI entry `Automation -> Harness -> Datasets & versions -> Import bundle` when you want to preview and import a bundle manually.
+
+Use the CLI when you want a terminal-driven workflow:
+
+```bash
+blue harness dataset import --path harness/datasets/<bundle>
+
+blue harness dataset pull --source <github-tree-url>
+
+blue harness dataset pull \
+  --source <github-repo-url> \
+  --bundle-path <path>
+```
+
+The current bundle flow is intentionally manual and safe:
+
+- local bundles can live in this repo under `harness/datasets/<bundle>`
+- third-party bundles can live in separate GitHub repos if they keep the same layout
+- the UI previews the selected version before import
+- imported content becomes ordinary dataset versions and eval specs
+- there is no background sync and no remote scorer or plugin loading in this phase
+
+## What Evolution adds
+
+Evolution builds on Harness evidence to help operators improve and adopt better skill or instruction revisions. The current implementation includes:
+
+- Skill revision history
+- Skill evolution cases
+- Revision reports and metric deltas
+- Promote, rollback, and optimize actions
+- Instruction-review proposals generated from self-reflection
+- Patch previews plus approve or reject review actions
+
+In practice, this means Blue can show not just that a candidate exists, but why it looks better and which evidence supports the switch.
+
+## What now triggers automatically at runtime
+
+OpenSpace-style evolution is no longer limited to manual optimize actions or gate failures. Blue now emits runtime-origin skill evolution cases when all of the following are true:
+
+- the run selected a built-in canonical skill under `assets/skills/*/SKILL.md`
+- the run reaches a terminal state
+- the run is not itself an optimization child run
+
+The current runtime rules are intentionally conservative:
+
+- failed or aborted runs create `fix`-style runtime evolution intake
+- successful runs create `capture`-style intake only when grounded lessons repeat enough to clear the capture threshold
+- runtime-origin cases still go through the same candidate revision, follow-up eval, gate, lineage, and explicit human promote path as any other skill evolution
+- automatic promote is still disabled
+
+## How the Evolution UI is organized
+
+The current Evolution console is split into three review lanes so execution evidence, live switching, and instruction approval do not blur together:
+
+- `Skills`: review canonical skill lineage, case evidence, comparison deltas, candidate diff patches, decision history, promote actions, and rollback safety
+- `Runner`: inspect the last optimization run, optimized parts, source and follow-up eval identifiers, runtime transcript, candidate diff, and links back into the linked skill revision
+- `Instructions`: review self-reflect proposals, including `AGENTS.md` and other instruction files, with patch preview plus explicit approve or reject actions
+
+This separation is intentional. A runner record can explain why a better candidate exists, but it does not by itself switch the live skill.
+
+## How the UI shows a better version
+
+The current console already exposes the main operator answers directly in the `Skills` lane:
+
+- the accepted revision is the version that passed the follow-up gate and is therefore the current “better version” candidate
+- the scorecard and comparison cards show quality, verification, runtime, token, and evidence signals for that candidate when a linked eval report exists
+- runtime-origin cases now also surface direct runtime evidence such as source run identity, runtime duration, token usage, and runtime quality or verification hints even before the deeper eval report is opened
+- the diff patch and lineage panels show exactly what would change in the canonical skill and how that version relates to the current live and backup revisions
+
+The live switch still remains explicit:
+
+- `Promote` writes an accepted revision into the canonical skill file only after human confirmation
+- `Rollback` restores from a backup revision only when the lineage guard still matches
+- if the canonical file hash has moved since the candidate was produced, promote is rejected as stale instead of overwriting newer content
+
+## Decision and safety boundaries
+
+Evolution is designed so the evidence path is rich but the live-switch path stays conservative:
+
+- Follow-up selector, execution, or budget gates decide whether a skill candidate is accepted or rejected before any human promote step
+- Promote and rollback happen from the `Skills` lane, not from the `Runner` lane
+- `AGENTS.md` remains explicitly human-approved even when the intake came from grounded self-reflect or runner evidence
+- Promote checks the current canonical file hash against the revision base hash; stale candidates are rejected instead of overwriting a newer live version
+- Rollback restores from backup-derived revisions and still leaves an auditable decision trail rather than mutating history in place
+- Decision history records promote and rollback outcomes so operators can compare who changed what, when, and based on which linked evidence
+
+## Evidence-first workflow
+
+A typical workflow looks like this:
+
+1. Create or import a dataset
+2. Define an eval spec and scoring mode
+3. Run a candidate against the dataset
+4. Compare it with a baseline eval run or let the runtime trigger a follow-up optimization run
+5. Review reports, artifacts, follow-up gate results, and linked evidence in `Runner` or `Skills`
+6. Open the linked skill revision, inspect diff, metrics, and decision history in `Skills`
+7. Approve or reject instruction proposals in `Instructions` when the lesson belongs in `AGENTS.md` or another instruction file
+8. Promote the accepted revision or roll back if needed
+
+## Why this matters
+
+Without Harness and Evolution, skill changes are easy to ship but hard to trust. With them, Blue can support:
+
+- Safer skill iteration
+- Explicit evidence for adoption decisions
+- Clearer failure diagnosis
+- Better reuse of successful datasets and scoring rules
+
+## Related pages
+
+- [Automation](/guides/automation)
+- [Extensions](/guides/extensions)
+- [Admin and Operations](/guides/admin-operations)

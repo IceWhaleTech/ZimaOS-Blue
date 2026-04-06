@@ -37,7 +37,6 @@ import (
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedding"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/extauth"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/formfiller"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
@@ -45,7 +44,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/reclaim"
@@ -69,7 +67,7 @@ import (
 )
 
 var (
-	version   = "0.10.38"
+	version   = "0.10.39"
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )
@@ -541,7 +539,8 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize chat handler
 	chatHandler := server.NewChatHandler(services.MemoryStore, services.LLMRegistry, services.ToolRegistry)
-	chatHandler.SetPersistenceOptions(cfg.Session.ChatPersistAsync, cfg.Session.ChatReadLite)
+	chatHandler.SetPersistenceOptions(cfg.Session.ChatPersistAsync, cfg.Session.ChatReadLite, cfg.Session.ChatPersistFlushOnResponse)
+	var auditStore *sessionaudit.Store
 	metricsReadDB := services.DB
 	if services.DBConn != nil && services.DBConn.Reader != nil {
 		metricsReadDB = services.DBConn.Reader
@@ -564,24 +563,48 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 			WALAutoCheckpoint:  4000,
 			CheckpointInterval: 0,
 		}
-		auditDBPath := sessionaudit.ResolveDBPath(dataDir, cfg.Session.Audit.Path)
-		var (
-			auditStore *sessionaudit.Store
-			err        error
-		)
-		if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
-			zapLogger.Warn("Failed to create session audit directory", zap.String("path", auditDBPath), zap.Error(mkErr))
+		var err error
+		auditPath := strings.TrimSpace(cfg.Session.Audit.Path)
+		if auditPath == "" {
+			auditStore, err = sessionaudit.NewJSONLStore(dataDir, auditCfg)
+			if err != nil {
+				zapLogger.Warn("Failed to initialize session audit JSONL store", zap.String("path", sessionaudit.ResolveRawLogDir(dataDir)), zap.Error(err))
+			} else if auditStore != nil {
+				chatHandler.SetSessionAuditStore(auditStore)
+				registerCleanup(func() error {
+					return auditStore.Close()
+				})
+				zapLogger.Info("Session tool payload audit store enabled (jsonl)", zap.String("path", sessionaudit.ResolveRawLogDir(dataDir)), zap.Int("retention_days", cfg.Session.Audit.RetentionDays))
+			}
 		} else {
-			auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
+			auditDBPath := sessionaudit.ResolveDBPath(dataDir, auditPath)
+			if mkErr := os.MkdirAll(filepath.Dir(auditDBPath), 0o750); mkErr != nil {
+				zapLogger.Warn("Failed to create session audit directory", zap.String("path", auditDBPath), zap.Error(mkErr))
+			} else {
+				auditStore, err = sessionaudit.NewSQLiteStore(auditDBPath, auditCfg)
+			}
+			if err != nil {
+				zapLogger.Warn("Failed to initialize session audit SQLite store", zap.String("path", auditDBPath), zap.Error(err))
+			} else if auditStore != nil {
+				chatHandler.SetSessionAuditStore(auditStore)
+				registerCleanup(func() error {
+					return auditStore.Close()
+				})
+				zapLogger.Info("Session tool payload audit store enabled (sqlite)", zap.String("path", auditDBPath), zap.Int("retention_days", cfg.Session.Audit.RetentionDays))
+			}
 		}
-		if err != nil {
-			zapLogger.Warn("Failed to initialize session audit store", zap.String("path", auditDBPath), zap.Error(err))
-		} else if auditStore != nil {
-			chatHandler.SetSessionAuditStore(auditStore)
+	}
+	if cfg.Session.Audit.Enabled && cfg.Session.Audit.IPCEnabled && auditStore != nil {
+		auditSockPath := bootstrap.ResolveAuditIPCSocketPath(dataDir)
+		auditIPCSrv := sockipc.NewServer(auditSockPath, zapLogger)
+		sockipc.RegisterAuditHandlers(auditIPCSrv, auditStore, zapLogger)
+		if err := auditIPCSrv.Start(); err != nil {
+			zapLogger.Warn("Failed to start session audit IPC server", zap.String("path", auditSockPath), zap.Error(err))
+		} else {
 			registerCleanup(func() error {
-				return auditStore.Close()
+				return auditIPCSrv.Close()
 			})
-			zapLogger.Info("Session tool payload audit store enabled", zap.String("path", auditDBPath), zap.Int("retention_days", cfg.Session.Audit.RetentionDays))
+			zapLogger.Info("Session audit IPC server started", zap.String("path", auditSockPath))
 		}
 	}
 	trace.Mark("chat_metrics_ready")
@@ -594,10 +617,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		UserStore:    nil,
 	})
 	extauthHandler := extauth.NewHandler(extauthService)
-
-	// Initialize plugin registry and store
-	pluginRegistry := plugin.NewRegistry()
-	pluginStore := plugin.NewStore(plugin.DefaultStoreConfig(), pluginRegistry)
 
 	// Initialize auto-reply service
 	autoreplyService := autoreply.NewService(autoreply.DefaultConfig(), zapLogger)
@@ -728,15 +747,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	browserHandler.SetIdleReclaim(cfg.Performance.ResourceReclaim.BrowserIdleAfter)
 	browserHandler.SetRelayInfoProvider(relayInfoProvider)
 
-	// Initialize formfiller handler
-	formfillerHandler := formfiller.NewLazyHandler(func() (*formfiller.Store, error) {
-		formfillerStore, err := formfiller.NewStore(filepath.Join(dataDir, "formfiller"))
-		if err != nil {
-			zapLogger.Warn("Failed to initialize form filler store lazily", zap.Error(err))
-			return nil, err
-		}
-		return formfillerStore, nil
-	})
+	formfillerHandler := bootstrap.NewRuntimeFormfillerHandler()
 	trace.Mark("browser_formfiller_ready", zap.Bool("browser_handler", browserHandler != nil), zap.Bool("formfiller_handler", formfillerHandler != nil))
 
 	// Initialize workflow handler lazily to avoid repository setup on the critical startup path.
@@ -1425,8 +1436,6 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		MetricsWriter:      metricsWriter,
 		MetricsCollector:   metricsCollector,
 		ChatHandler:        chatHandler,
-		PluginRegistry:     pluginRegistry,
-		PluginStore:        pluginStore,
 		ExtauthService:     extauthService,
 		ExtauthHandler:     extauthHandler,
 		AutoreplyService:   autoreplyService,

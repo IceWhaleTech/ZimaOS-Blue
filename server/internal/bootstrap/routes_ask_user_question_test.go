@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,7 +57,7 @@ func mustAskUserQuestionAccessToken(t *testing.T, jwtSvc *auth.JWTService, userI
 	return token
 }
 
-func TestAskUserQuestionRoutesExposePendingAndResolveAnswers(t *testing.T) {
+func TestAskUserQuestionRoutesResolveAnswersAndDoNotExposeStandalonePendingRoute(t *testing.T) {
 	e, questionMgr, broker, jwtSvc := newAskUserQuestionRoutesTestHarness(t)
 	sub := broker.Subscribe("user-a")
 	t.Cleanup(func() { broker.Unsubscribe("user-a", sub) })
@@ -102,19 +101,8 @@ func TestAskUserQuestionRoutesExposePendingAndResolveAnswers(t *testing.T) {
 	reqPending.Header.Set(echo.HeaderAuthorization, "Bearer "+mustAskUserQuestionAccessToken(t, jwtSvc, "user-a"))
 	recPending := httptest.NewRecorder()
 	e.ServeHTTP(recPending, reqPending)
-	if recPending.Code != http.StatusOK {
-		t.Fatalf("pending status=%d, want 200, body=%s", recPending.Code, recPending.Body.String())
-	}
-
-	var pendingBody struct {
-		Pending  bool                   `json:"pending"`
-		Question *tools.QuestionRequest `json:"question"`
-	}
-	if err := json.Unmarshal(recPending.Body.Bytes(), &pendingBody); err != nil {
-		t.Fatalf("decode pending response: %v", err)
-	}
-	if !pendingBody.Pending || pendingBody.Question == nil || pendingBody.Question.ID != pending.ID {
-		t.Fatalf("unexpected pending payload: %+v", pendingBody)
+	if recPending.Code != http.StatusNotFound {
+		t.Fatalf("pending status=%d, want 404, body=%s", recPending.Code, recPending.Body.String())
 	}
 
 	reqAnswer := httptest.NewRequest(http.MethodPost, "/api/v1/ask-user-question/"+pending.ID+"/answer", strings.NewReader(`{"answers":[{"question_id":"q1","selected":["continue"]}]}`))
@@ -141,7 +129,7 @@ func TestAskUserQuestionRoutesExposePendingAndResolveAnswers(t *testing.T) {
 	}
 }
 
-func TestAskUserQuestionRoutesPreferSessionScopedPendingWhenMultipleSessionsExist(t *testing.T) {
+func TestAskUserQuestionRoutesKeepSessionScopedPendingAndDoNotExposeStandalonePendingRoute(t *testing.T) {
 	e, questionMgr, broker, jwtSvc := newAskUserQuestionRoutesTestHarness(t)
 	sub := broker.Subscribe("user-a")
 	t.Cleanup(func() { broker.Unsubscribe("user-a", sub) })
@@ -193,25 +181,8 @@ func TestAskUserQuestionRoutesPreferSessionScopedPendingWhenMultipleSessionsExis
 	reqPending.Header.Set(echo.HeaderAuthorization, "Bearer "+mustAskUserQuestionAccessToken(t, jwtSvc, "user-a"))
 	recPending := httptest.NewRecorder()
 	e.ServeHTTP(recPending, reqPending)
-	if recPending.Code != http.StatusOK {
-		t.Fatalf("pending status=%d, want 200, body=%s", recPending.Code, recPending.Body.String())
-	}
-
-	var pendingBody struct {
-		Pending  bool                   `json:"pending"`
-		Question *tools.QuestionRequest `json:"question"`
-	}
-	if err := json.Unmarshal(recPending.Body.Bytes(), &pendingBody); err != nil {
-		t.Fatalf("decode pending response: %v", err)
-	}
-	if !pendingBody.Pending || pendingBody.Question == nil {
-		t.Fatalf("unexpected pending payload: %+v", pendingBody)
-	}
-	if pendingBody.Question.ID != pending1.ID {
-		t.Fatalf("question id = %q, want session-1 question %q", pendingBody.Question.ID, pending1.ID)
-	}
-	if pendingBody.Question.SessionID != "session-1" {
-		t.Fatalf("session_id = %q, want %q", pendingBody.Question.SessionID, "session-1")
+	if recPending.Code != http.StatusNotFound {
+		t.Fatalf("pending status=%d, want 404, body=%s", recPending.Code, recPending.Body.String())
 	}
 
 	if !questionMgr.ResolveAnswer(pending1.ID, []tools.QuestionAnswerResult{{QuestionID: "q1", Selected: []string{"continue"}}}) {

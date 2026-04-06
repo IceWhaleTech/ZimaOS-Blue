@@ -135,6 +135,31 @@ describe('todo checklist rendering helpers', () => {
     expect(findLatestTodoChecklistSummary(messages)).toBeNull()
   })
 
+  it('can keep a fully completed checklist visible while the turn is still in progress', () => {
+    const messages = [
+      userMessage('msg-u1', '继续'),
+      assistantMessage('msg-a1', '- [x] 收集信息\n- [x] 写总结'),
+    ]
+
+    expect(
+      findLatestTodoChecklistSummary(messages, null, {
+        allowCompletedChecklist: true,
+      })
+    ).toEqual({
+      messageId: 'msg-a1',
+      focusMessageId: 'msg-a1',
+      todoCardId: undefined,
+      items: [
+        { checked: true, text: '收集信息' },
+        { checked: true, text: '写总结' },
+      ],
+      totalCount: 2,
+      completedCount: 2,
+      pendingCount: 0,
+      allCompleted: true,
+    })
+  })
+
   it('keeps active summary pinned to the canonical checklist for duplicate echoes', () => {
     const canonical = assistantMessage('msg-a1', '- [ ] 收集信息\n- [ ] 写总结', {
       todo_card_id: 'todo-checklist-msg-a1',
@@ -176,6 +201,31 @@ describe('todo checklist rendering helpers', () => {
         todoCardId: 'todo-checklist-msg-a1',
       })
     ).toBeNull()
+  })
+
+  it('ignores the explicit completion signal when completed checklists should stay visible', () => {
+    const canonical = assistantMessage('msg-a1', '- [x] 收集信息\n- [x] 写总结', {
+      todo_card_id: 'todo-checklist-msg-a1',
+    })
+
+    expect(
+      findLatestTodoChecklistSummary(
+        [canonical],
+        {
+          messageId: 'msg-a1',
+          todoCardId: 'todo-checklist-msg-a1',
+        },
+        {
+          allowCompletedChecklist: true,
+        }
+      )
+    ).toEqual(
+      expect.objectContaining({
+        messageId: 'msg-a1',
+        todoCardId: 'todo-checklist-msg-a1',
+        allCompleted: true,
+      })
+    )
   })
 
   it('suppresses duplicate checklist echoes after affirmative continuation turns', () => {

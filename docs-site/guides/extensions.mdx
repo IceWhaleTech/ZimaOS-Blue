@@ -1,0 +1,81 @@
+---
+title: "Extensions"
+summary: "How Blue's extension surface now combines local skills, remote skill stores, and reusable tools."
+---
+
+# Extensions
+
+Blue's extension surface has grown from a simple plugin idea into a broader workspace for skills, remote skill discovery, and reusable tools.
+
+## Three extension lanes
+
+The current extensions page is organized into three top-level tabs:
+
+- `Skills`: local or installed skills already available in the runtime
+- `Skill Store`: remote discovery, browsing, and install flow
+- `Tools`: reusable tool surfaces exposed alongside skills
+
+This lets operators manage what Blue can do, where those capabilities came from, and how safe they appear before installation.
+
+## Local skills
+
+Local skills are the capabilities already present on disk or installed into the runtime. The app can surface:
+
+- Skill identity and version
+- Description, category, and tags
+- Built-in versus installed status
+- Contract metadata for newer or legacy skill manifests
+
+This is the right place to confirm what is already active before you start pulling in more sources.
+
+## Remote skill store
+
+The skill-store flow is designed for discovery and governance, not just search-and-click install. The current data model supports:
+
+- Multiple skill sources
+- Search, filter, and category browsing
+- Curated ranking and trending-style signals
+- Source import preview before adding a new remote source
+- Remote versus local skill distinction
+
+That matters if you want a controlled marketplace-like experience without hiding where a skill came from.
+
+## Security and install metadata
+
+One of the newer extension improvements is the amount of install metadata Blue can surface before you trust a skill. The current skill model can carry:
+
+- Security badge and risk level
+- Install type such as raw skill, repo, script package, binary package, or manual external setup
+- Artifact kind such as open-source, mixed, closed binary, or unknown
+- Vulnerability status and scanner evidence
+- Signals for prompt injection, shell injection, or data exfiltration risk
+
+This makes the extension page part catalog and part operator review surface.
+
+## Installation paths
+
+The current UI supports both URL-based and file-based install flows for skills. A successful install can also return contract details so you can review what landed instead of treating install as a black box.
+
+## Where plugins fit
+
+Blue still exposes plugin concepts and plugin-store APIs, but the main user-facing extension workflow now centers on:
+
+- Skills as reusable capability packages
+- Skill sources and remote catalogs
+- Tool surfaces for direct operator use
+
+If your team is deciding what to allow into a shared runtime, start here before enabling broad access.
+
+## Recommended operator path
+
+1. Review local skills already present
+2. Search the skill store for the missing capability
+3. Check source, install metadata, and security badge
+4. Install by URL or file only after the contract and risk surface make sense
+5. Revisit Harness or Evolution if the new capability needs tracked evaluation
+
+## Related pages
+
+- [Harness and Evolution](/guides/harness-evolution)
+- [Settings and Provider Pool](/guides/settings-provider-pool)
+- [Admin and Operations](/guides/admin-operations)

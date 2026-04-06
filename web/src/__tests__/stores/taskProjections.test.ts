@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   routerPush: vi.fn(),
   onSSEEvent: vi.fn(),
   offSSEEvent: vi.fn(),
+  bootstrapGet: vi.fn(),
   chatStore: {
     selectConversation: vi.fn(),
   },
@@ -36,9 +37,14 @@ vi.mock('@/composables/useEventStream', () => ({
   offSSEEvent: (...args: unknown[]) => mocks.offSSEEvent(...args),
 }))
 
+vi.mock('@/api/chatBootstrap', () => ({
+  chatBootstrapApi: {
+    getConversationBootstrap: (...args: unknown[]) => mocks.bootstrapGet(...args),
+  },
+}))
+
 vi.mock('@/api/tasks', () => ({
   taskProjectionApi: {
-    listTasks: vi.fn(),
     getTask: vi.fn(),
     performTaskAction: vi.fn(),
     performTaskActionDescriptor: vi.fn(),
@@ -52,7 +58,20 @@ describe('taskProjections store', () => {
     vi.clearAllMocks()
     mocks.routerPush.mockResolvedValue(undefined)
     mocks.chatStore.selectConversation.mockResolvedValue(undefined)
-    vi.mocked(taskProjectionApi.listTasks).mockResolvedValue({ data: [] } as never)
+    mocks.bootstrapGet.mockResolvedValue({
+      data: {
+        command_state: {
+          conversation_id: 'conv-1',
+          offline: false,
+        },
+        active_stream: {
+          conversation_id: 'conv-1',
+          active: false,
+        },
+        current_tasks: [],
+        background_tasks: [],
+      },
+    })
     vi.mocked(taskProjectionApi.getTask).mockResolvedValue({ data: null } as never)
     vi.mocked(taskProjectionApi.performTaskAction).mockResolvedValue({ data: {} } as never)
     vi.mocked(taskProjectionApi.performTaskActionDescriptor).mockResolvedValue({
@@ -72,18 +91,25 @@ describe('taskProjections store', () => {
   })
 
   it('hydrates current and background projections through the unified tasks API', async () => {
-    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
-      if (scope === 'current') {
-        return {
-          data: [
-            {
-              id: 'task-current',
-              kind: 'agent_task',
-              scope: 'current',
-              conversation_id: 'conv-1',
-              title: 'Current task',
-              status: 'running',
-              stage: 'working',
+    mocks.bootstrapGet.mockResolvedValue({
+      data: {
+        command_state: {
+          conversation_id: 'conv-1',
+          offline: false,
+        },
+        active_stream: {
+          conversation_id: 'conv-1',
+          active: false,
+        },
+        current_tasks: [
+          {
+            id: 'task-current',
+            kind: 'agent_task',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Current task',
+            status: 'running',
+            stage: 'working',
             progress: 45,
             subagent_summary: {
               total: 2,
@@ -96,45 +122,42 @@ describe('taskProjections store', () => {
             actions: {
               items: [
                 {
-                    id: 'cancel',
-                    label: 'Cancel',
-                    method: 'POST',
-                    path: '/tasks/task-current/actions/cancel',
-                    variant: 'danger',
-                  },
-                  {
-                    id: 'send_update',
-                    label: 'Send update',
-                    method: 'POST',
-                    path: '/agent/tasks/task-current/message',
-                    requires_input: true,
-                  },
-                ],
-              },
-              updated_at: '2026-03-20T12:00:00.000Z',
+                  id: 'cancel',
+                  label: 'Cancel',
+                  method: 'POST',
+                  path: '/tasks/task-current/actions/cancel',
+                  variant: 'danger',
+                },
+                {
+                  id: 'send_update',
+                  label: 'Send update',
+                  method: 'POST',
+                  path: '/agent/tasks/task-current/message',
+                  requires_input: true,
+                },
+              ],
             },
-            {
-              id: 'task-terminal',
-              kind: 'agent_task',
-              scope: 'current',
-              conversation_id: 'conv-1',
-              title: 'Completed task',
-              status: 'completed',
-              stage: 'completed',
-              progress: 100,
-              actions: { items: [] },
-              run_status: 'completed',
-              verification_status: 'passed',
-              score: 0.91,
-              evidence_count: 4,
-              detail_href: '/automation/harness/group-1',
-              updated_at: '2026-03-20T11:59:00.000Z',
-            },
-          ],
-        } as never
-      }
-      return {
-        data: [
+            updated_at: '2026-03-20T12:00:00.000Z',
+          },
+          {
+            id: 'task-terminal',
+            kind: 'agent_task',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Completed task',
+            status: 'completed',
+            stage: 'completed',
+            progress: 100,
+            actions: { items: [] },
+            run_status: 'completed',
+            verification_status: 'passed',
+            score: 0.91,
+            evidence_count: 4,
+            detail_href: '/operations/harness/group-1',
+            updated_at: '2026-03-20T11:59:00.000Z',
+          },
+        ],
+        background_tasks: [
           {
             id: 'task-background',
             kind: 'research',
@@ -158,13 +181,14 @@ describe('taskProjections store', () => {
             updated_at: '2026-03-20T12:01:00.000Z',
           },
         ],
-      } as never
+      },
     })
 
     const store = useTaskProjectionsStore()
     await store.setConversation('conv-1')
 
-    expect(taskProjectionApi.listTasks).toHaveBeenCalledTimes(2)
+    expect(mocks.bootstrapGet).toHaveBeenCalledWith('conv-1')
+    expect(mocks.bootstrapGet).toHaveBeenCalledTimes(1)
     expect(store.currentTasks).toHaveLength(2)
     expect(store.currentActiveTasks).toHaveLength(1)
     expect(store.currentTerminalTasks).toHaveLength(1)
@@ -184,33 +208,52 @@ describe('taskProjections store', () => {
       verification_status: 'passed',
       score: 0.91,
       evidence_count: 4,
-      detail_href: '/automation/harness/group-1',
+      detail_href: '/operations/harness/group-1',
     })
 
     store.stopPolling()
   })
 
+  it('does not fall back to standalone task list reads when bootstrap task hydration fails', async () => {
+    mocks.bootstrapGet.mockRejectedValue(new Error('bootstrap unavailable'))
+
+    const store = useTaskProjectionsStore()
+    await store.setConversation('conv-1')
+
+    expect(mocks.bootstrapGet).toHaveBeenCalledWith('conv-1')
+    expect(store.currentTasks).toEqual([])
+    expect(store.backgroundTasks).toEqual([])
+
+    store.stopPolling()
+  })
+
   it('applies task_progress SSE updates locally for known tasks without a full list refresh', async () => {
-    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
-      if (scope === 'current') {
-        return {
-          data: [
-            {
-              id: 'task-current',
-              kind: 'agent_task',
-              scope: 'current',
-              conversation_id: 'conv-1',
-              title: 'Current task',
-              status: 'running',
-              stage: 'planning',
-              progress: 10,
-              actions: { items: [] },
-              updated_at: '2026-03-20T12:00:00.000Z',
-            },
-          ],
-        } as never
-      }
-      return { data: [] } as never
+    mocks.bootstrapGet.mockResolvedValue({
+      data: {
+        command_state: {
+          conversation_id: 'conv-1',
+          offline: false,
+        },
+        active_stream: {
+          conversation_id: 'conv-1',
+          active: false,
+        },
+        current_tasks: [
+          {
+            id: 'task-current',
+            kind: 'agent_task',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Current task',
+            status: 'running',
+            stage: 'planning',
+            progress: 10,
+            actions: { items: [] },
+            updated_at: '2026-03-20T12:00:00.000Z',
+          },
+        ],
+        background_tasks: [],
+      },
     })
 
     const store = useTaskProjectionsStore()
@@ -221,7 +264,7 @@ describe('taskProjections store', () => {
     )?.[1] as ((payload: unknown) => void) | undefined
 
     expect(taskProgressHandler).toBeTypeOf('function')
-    expect(taskProjectionApi.listTasks).toHaveBeenCalledTimes(2)
+    expect(mocks.bootstrapGet).toHaveBeenCalledWith('conv-1')
 
     taskProgressHandler?.({
       task_id: 'task-current',
@@ -236,7 +279,6 @@ describe('taskProjections store', () => {
       status: 'running',
       stage: 'working',
     })
-    expect(taskProjectionApi.listTasks).toHaveBeenCalledTimes(2)
     expect(taskProjectionApi.getTask).not.toHaveBeenCalled()
 
     store.stopPolling()
@@ -302,12 +344,18 @@ describe('taskProjections store', () => {
 
   it('notifies when a background task becomes terminal on refresh', async () => {
     let backgroundActive = true
-    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
-      if (scope === 'current') {
-        return { data: [] } as never
-      }
-      return {
-        data: backgroundActive
+    mocks.bootstrapGet.mockImplementation(async () => ({
+      data: {
+        command_state: {
+          conversation_id: 'conv-1',
+          offline: false,
+        },
+        active_stream: {
+          conversation_id: 'conv-1',
+          active: false,
+        },
+        current_tasks: [],
+        background_tasks: backgroundActive
           ? [
               {
                 id: 'task-bg-1',
@@ -333,8 +381,8 @@ describe('taskProjections store', () => {
               },
             ]
           : [],
-      } as never
-    })
+      },
+    }))
     vi.mocked(taskProjectionApi.getTask).mockResolvedValue({
       data: {
         id: 'task-bg-1',
@@ -370,45 +418,51 @@ describe('taskProjections store', () => {
 
   it('captures current task terminal transitions and allows recent outcomes to be dismissed or expire', async () => {
     let currentStatus: 'running' | 'completed' = 'running'
-    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
-      if (scope === 'current') {
-        return {
-          data: [
-            {
-              id: 'task-current-transition',
-              kind: 'agent_task',
-              scope: 'current',
-              conversation_id: 'conv-1',
-              title: 'Current task',
-              status: currentStatus,
-              stage: currentStatus === 'completed' ? 'completed' : 'working',
-              progress: currentStatus === 'completed' ? 100 : 55,
-              result_preview:
-                currentStatus === 'completed' ? 'The fix landed and verification passed.' : '',
-              actions: {
-                items:
-                  currentStatus === 'completed'
-                    ? []
-                    : [
-                        {
-                          id: 'cancel',
-                          label: 'Cancel',
-                          method: 'POST',
-                          path: '/tasks/task-current-transition/actions/cancel',
-                          variant: 'danger',
-                        },
-                      ],
-              },
-              updated_at:
+    mocks.bootstrapGet.mockImplementation(async () => ({
+      data: {
+        command_state: {
+          conversation_id: 'conv-1',
+          offline: false,
+        },
+        active_stream: {
+          conversation_id: 'conv-1',
+          active: false,
+        },
+        current_tasks: [
+          {
+            id: 'task-current-transition',
+            kind: 'agent_task',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Current task',
+            status: currentStatus,
+            stage: currentStatus === 'completed' ? 'completed' : 'working',
+            progress: currentStatus === 'completed' ? 100 : 55,
+            result_preview:
+              currentStatus === 'completed' ? 'The fix landed and verification passed.' : '',
+            actions: {
+              items:
                 currentStatus === 'completed'
-                  ? '2026-03-20T12:15:00.000Z'
-                  : '2026-03-20T12:10:00.000Z',
+                  ? []
+                  : [
+                      {
+                        id: 'cancel',
+                        label: 'Cancel',
+                        method: 'POST',
+                        path: '/tasks/task-current-transition/actions/cancel',
+                        variant: 'danger',
+                      },
+                    ],
             },
-          ],
-        } as never
-      }
-      return { data: [] } as never
-    })
+            updated_at:
+              currentStatus === 'completed'
+                ? '2026-03-20T12:15:00.000Z'
+                : '2026-03-20T12:10:00.000Z',
+          },
+        ],
+        background_tasks: [],
+      },
+    }))
 
     const store = useTaskProjectionsStore()
     await store.setConversation('conv-1')
@@ -454,51 +508,57 @@ describe('taskProjections store', () => {
   })
 
   it('performs task actions through descriptors when available', async () => {
-    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
-      if (scope === 'current') {
-        return {
-          data: [
-            {
-              id: 'task-workflow',
-              kind: 'workflow',
-              scope: 'current',
-              conversation_id: 'conv-1',
-              title: 'Workflow gate',
-              status: 'waiting_user',
-              stage: 'waiting_user',
-              progress: 75,
-              actions: {
-                items: [
-                  {
-                    id: 'resume',
-                    label: 'Resume workflow',
-                    method: 'POST',
-                    path: '/tasks/task-workflow/actions/resume',
-                    requires_input: true,
-                    input: {
-                      fields: [
-                        {
-                          key: 'response',
-                          label: 'Response',
-                          kind: 'textarea',
-                          target: 'payload',
-                          payload_key: 'response',
-                          required: true,
-                          placeholder: 'Provide the missing detail',
-                        },
-                      ],
-                      title: 'Provide clarification',
-                      submit_label: 'Send response',
-                    },
+    mocks.bootstrapGet.mockResolvedValue({
+      data: {
+        command_state: {
+          conversation_id: 'conv-1',
+          offline: false,
+        },
+        active_stream: {
+          conversation_id: 'conv-1',
+          active: false,
+        },
+        current_tasks: [
+          {
+            id: 'task-workflow',
+            kind: 'workflow',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Workflow gate',
+            status: 'waiting_user',
+            stage: 'waiting_user',
+            progress: 75,
+            actions: {
+              items: [
+                {
+                  id: 'resume',
+                  label: 'Resume workflow',
+                  method: 'POST',
+                  path: '/tasks/task-workflow/actions/resume',
+                  requires_input: true,
+                  input: {
+                    fields: [
+                      {
+                        key: 'response',
+                        label: 'Response',
+                        kind: 'textarea',
+                        target: 'payload',
+                        payload_key: 'response',
+                        required: true,
+                        placeholder: 'Provide the missing detail',
+                      },
+                    ],
+                    title: 'Provide clarification',
+                    submit_label: 'Send response',
                   },
-                ],
-              },
-              updated_at: '2026-03-20T12:00:00.000Z',
+                },
+              ],
             },
-          ],
-        } as never
-      }
-      return { data: [] } as never
+            updated_at: '2026-03-20T12:00:00.000Z',
+          },
+        ],
+        background_tasks: [],
+      },
     })
 
     const store = useTaskProjectionsStore()
@@ -535,46 +595,52 @@ describe('taskProjections store', () => {
   })
 
   it('retains legacy input hints on normalized descriptors when schema fields are absent', async () => {
-    vi.mocked(taskProjectionApi.listTasks).mockImplementation(async ({ scope }) => {
-      if (scope === 'current') {
-        return {
-          data: [
-            {
-              id: 'task-legacy-workflow',
-              kind: 'workflow',
-              scope: 'current',
-              conversation_id: 'conv-1',
-              title: 'Workflow gate',
-              status: 'waiting_user',
-              stage: 'waiting_user',
-              progress: 75,
-              actions: {
-                items: [
-                  {
-                    id: 'resume',
-                    label: 'Resume workflow',
-                    method: 'POST',
-                    path: '/tasks/task-legacy-workflow/actions/resume',
-                    requires_input: true,
-                    input: {
-                      title: 'Provide clarification',
-                      submit_label: 'Send response',
-                      mode: 'payload',
-                      payload_label: 'Response',
-                      payload_required: true,
-                      payload_format: 'text',
-                      payload_text_key: 'response',
-                      payload_placeholder: 'Provide the missing detail',
-                    },
+    mocks.bootstrapGet.mockResolvedValue({
+      data: {
+        command_state: {
+          conversation_id: 'conv-1',
+          offline: false,
+        },
+        active_stream: {
+          conversation_id: 'conv-1',
+          active: false,
+        },
+        current_tasks: [
+          {
+            id: 'task-legacy-workflow',
+            kind: 'workflow',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Workflow gate',
+            status: 'waiting_user',
+            stage: 'waiting_user',
+            progress: 75,
+            actions: {
+              items: [
+                {
+                  id: 'resume',
+                  label: 'Resume workflow',
+                  method: 'POST',
+                  path: '/tasks/task-legacy-workflow/actions/resume',
+                  requires_input: true,
+                  input: {
+                    title: 'Provide clarification',
+                    submit_label: 'Send response',
+                    mode: 'payload',
+                    payload_label: 'Response',
+                    payload_required: true,
+                    payload_format: 'text',
+                    payload_text_key: 'response',
+                    payload_placeholder: 'Provide the missing detail',
                   },
-                ],
-              },
-              updated_at: '2026-03-20T12:00:00.000Z',
+                },
+              ],
             },
-          ],
-        } as never
-      }
-      return { data: [] } as never
+            updated_at: '2026-03-20T12:00:00.000Z',
+          },
+        ],
+        background_tasks: [],
+      },
     })
 
     const store = useTaskProjectionsStore()

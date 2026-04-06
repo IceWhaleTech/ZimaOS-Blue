@@ -10,7 +10,6 @@ func newRouteRuntimeInfrastructureGatewayOptions(state *routeRegistrationState) 
 		browserBackend: state.deps.BrowserBackend,
 		mediaDir:       state.mediaDir,
 		chat:           state.deps.ChatHandler,
-		pluginRegistry: state.deps.PluginRegistry,
 		closers:        &state.deps.Closers,
 	}
 }

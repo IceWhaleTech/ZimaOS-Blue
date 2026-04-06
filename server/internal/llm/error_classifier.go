@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -109,9 +110,30 @@ type DefaultErrorClassifier struct {
 	maxRetryDelay          time.Duration
 }
 
+type defaultErrorClassifierPatterns struct {
+	retryablePatterns      []*regexp.Regexp
+	nonRetryablePatterns   []*regexp.Regexp
+	quotaPatterns          []*regexp.Regexp
+	contextTooLongPatterns []*regexp.Regexp
+	contentFilterPatterns  []*regexp.Regexp
+	modelUnavailPatterns   []*regexp.Regexp
+}
+
+var (
+	defaultErrorClassifierPatternsOnce sync.Once
+	sharedDefaultErrorClassifier       defaultErrorClassifierPatterns
+)
+
 // NewDefaultErrorClassifier creates a new DefaultErrorClassifier with common patterns.
 func NewDefaultErrorClassifier() *DefaultErrorClassifier {
 	return &DefaultErrorClassifier{
+		baseRetryDelay: 1 * time.Second,
+		maxRetryDelay:  30 * time.Second,
+	}
+}
+
+func buildDefaultErrorClassifierPatterns() defaultErrorClassifierPatterns {
+	return defaultErrorClassifierPatterns{
 		retryablePatterns: []*regexp.Regexp{
 			regexp.MustCompile(`(?i)rate.?limit`),
 			regexp.MustCompile(`(?i)too.?many.?requests`),
@@ -164,9 +186,22 @@ func NewDefaultErrorClassifier() *DefaultErrorClassifier {
 			regexp.MustCompile(`(?i)model.?does.?not.?exist`),
 			regexp.MustCompile(`(?i)invalid.?model`),
 		},
-		baseRetryDelay: 1 * time.Second,
-		maxRetryDelay:  30 * time.Second,
 	}
+}
+
+func (c *DefaultErrorClassifier) ensurePatterns() {
+	if c == nil || c.retryablePatterns != nil {
+		return
+	}
+	defaultErrorClassifierPatternsOnce.Do(func() {
+		sharedDefaultErrorClassifier = buildDefaultErrorClassifierPatterns()
+	})
+	c.retryablePatterns = sharedDefaultErrorClassifier.retryablePatterns
+	c.nonRetryablePatterns = sharedDefaultErrorClassifier.nonRetryablePatterns
+	c.quotaPatterns = sharedDefaultErrorClassifier.quotaPatterns
+	c.contextTooLongPatterns = sharedDefaultErrorClassifier.contextTooLongPatterns
+	c.contentFilterPatterns = sharedDefaultErrorClassifier.contentFilterPatterns
+	c.modelUnavailPatterns = sharedDefaultErrorClassifier.modelUnavailPatterns
 }
 
 // Classify returns the error type for the given error.
@@ -174,6 +209,7 @@ func (c *DefaultErrorClassifier) Classify(err error) ErrorType {
 	if err == nil {
 		return ErrorTypeUnknown
 	}
+	c.ensurePatterns()
 
 	// Check if it's an LLMError with status code
 	var llmErr *LLMError

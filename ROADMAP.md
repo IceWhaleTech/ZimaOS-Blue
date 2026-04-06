@@ -420,9 +420,11 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | Mar 16–18, 2026 | — | Approved browser sites management; database auto-recovery coverage; Security/Settings/Plugins layout refresh; embedding disabled by default |
 | Mar 19–20, 2026 | — | Harness rollout (tab, groups, locale overlays); SQLite transcript auditing; media model localization and chat settings polish |
 | Mar 21–22, 2026 | — | Chat streaming interruption recovery and compact interaction polish; Harness compare flow and scorecard diagnostics; session/transcript audit storage hardening; Deep Research routing and source-detail improvements; built-in web search and information acquisition uplift in progress |
-| Mar 23–25, 2026 | v0.10.33 | Channel config persistence; IM cache invalidation fixes; conversation response ID cleanup |
-| Mar 29–30, 2026 | v0.10.35 | GPT-5.4/5.3-codex compatibility; MiniMax regional routing; MuleRouter image generation fixes; External Agents settings; OpenRouter stream error recovery; Harness scorecard diagnostics |
+| Mar 23–25, 2026 | v0.10.33: Harness Group Foundation, Browser Approval Controls, and Productivity Tooling | Channel config persistence; IM cache invalidation fixes; conversation response ID cleanup |
+| Mar 29–30, 2026 | v0.10.35: Harness V3 Operations, Browser Relay, and Context Compression | GPT-5.4/5.3-codex compatibility; MiniMax regional routing; MuleRouter image generation fixes; External Agents settings; OpenRouter stream error recovery; Harness scorecard diagnostics |
 | Mar 31–Apr 1, 2026 | v0.10.36 | SQLite transcript auditing enhancements; Harness i18n overlays and group management; streaming tool parsing fixes; SkillTab/ToolTab UI polish; embedding disabled by default; **Skill Store performance optimization** (search caching, debouncing, request cancellation) |
+| Apr 1, 2026 | v0.10.37: Runtime Trace Contract, Skill+Exec Cutover Closeout, Operator Polish, and Desktop Restore Hardening | Runtime trace contract hardening; Harness context-pack visibility; gated `tool -> skill + exec` cutover closeout; External Agents settings; Agentcore Runner beta; chat recovery hardening; channel/browser/task workspace polish |
+| Apr 5, 2026 | v0.10.38: GitHub Repository Support, Marketplace Catalog Follow-Ups, and Localization Polish | GitHub repository support; marketplace source-catalog and tool-registration follow-ups; Agentcore Runner settings and context-pack/operator visibility; Skill Store/Plugins install-result feedback; exec approval dialog hinting; companion reliability and desktop restore handling; viewport polish |
 
 ---
 

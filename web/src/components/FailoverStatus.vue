@@ -60,28 +60,12 @@ const providerFailoverStats = computed(() => {
 // Methods
 async function fetchMetrics() {
   try {
-    const response = await providerPoolApi.getFailoverMetrics()
-    metrics.value = response.data
+    const response = await providerPoolApi.getFailoverOverview()
+    metrics.value = response.data.metrics
+    config.value = response.data.config
+    circuitBreakers.value = response.data.circuit_breakers
   } catch (e) {
-    console.error('Failed to fetch failover metrics:', e)
-  }
-}
-
-async function fetchConfig() {
-  try {
-    const response = await providerPoolApi.getFailoverConfig()
-    config.value = response.data
-  } catch (e) {
-    console.error('Failed to fetch failover config:', e)
-  }
-}
-
-async function fetchCircuitBreakers() {
-  try {
-    const response = await providerPoolApi.getCircuitBreakerStatus()
-    circuitBreakers.value = response.data
-  } catch (e) {
-    console.error('Failed to fetch circuit breakers:', e)
+    console.error('Failed to fetch failover overview:', e)
   }
 }
 
@@ -89,7 +73,7 @@ async function resetBreakers() {
   loading.value = true
   try {
     await providerPoolApi.resetCircuitBreakers()
-    await fetchCircuitBreakers()
+    await fetchMetrics()
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Failed to reset circuit breakers'
   } finally {
@@ -98,7 +82,7 @@ async function resetBreakers() {
 }
 
 async function refresh() {
-  await Promise.all([fetchMetrics(), fetchCircuitBreakers()])
+  await fetchMetrics()
 }
 
 function getStateColor(state: string): string {
@@ -129,7 +113,7 @@ function getStateBgColor(state: string): string {
 
 // Lifecycle
 onMounted(async () => {
-  await Promise.all([fetchMetrics(), fetchConfig(), fetchCircuitBreakers()])
+  await fetchMetrics()
   // Auto-refresh every 30 seconds
   refreshInterval.value = window.setInterval(refresh, 30000)
 })

@@ -25,7 +25,7 @@ func (s *stubBrowserService) Start(context.Context) error {
 	s.running = true
 	return nil
 }
-func (s *stubBrowserService) Stop(context.Context) error  { return nil }
+func (s *stubBrowserService) Stop(context.Context) error { return nil }
 func (s *stubBrowserService) Tabs(context.Context) ([]*Tab, error) {
 	return nil, nil
 }
@@ -128,7 +128,7 @@ func TestLazyHandlerIdleReclaimsAndRecreatesService(t *testing.T) {
 	}
 }
 
-func TestLazyHandlerListSessionsDoesNotInitializeService(t *testing.T) {
+func TestLazyHandlerOverviewDoesNotInitializeService(t *testing.T) {
 	var created int
 	h := NewLazyHandler(func() Service {
 		created++
@@ -136,12 +136,12 @@ func TestLazyHandlerListSessionsDoesNotInitializeService(t *testing.T) {
 	})
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/overview", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	if err := h.ListSessions(c); err != nil {
-		t.Fatalf("ListSessions() error = %v", err)
+	if err := h.Overview(c); err != nil {
+		t.Fatalf("Overview() error = %v", err)
 	}
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusOK)
@@ -151,17 +151,17 @@ func TestLazyHandlerListSessionsDoesNotInitializeService(t *testing.T) {
 	}
 }
 
-func TestListSessionsDoesNotStartIdleService(t *testing.T) {
+func TestOverviewDoesNotStartIdleService(t *testing.T) {
 	service := &stubBrowserService{}
 	h := NewHandler(service)
 
 	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/sessions", nil)
+	req := httptest.NewRequest(http.MethodGet, "/overview", nil)
 	rec := httptest.NewRecorder()
 	c := e.NewContext(req, rec)
 
-	if err := h.ListSessions(c); err != nil {
-		t.Fatalf("ListSessions() error = %v", err)
+	if err := h.Overview(c); err != nil {
+		t.Fatalf("Overview() error = %v", err)
 	}
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status code = %d, want %d", rec.Code, http.StatusOK)

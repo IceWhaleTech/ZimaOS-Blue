@@ -1,5 +1,202 @@
 import type { LocaleKey } from './locale-catalog'
 
+type SkillStoreRiskSecurityCopy = {
+  riskDetails: string
+  showRiskDetails: string
+  hideRiskDetails: string
+  riskDetailsHint: string
+}
+
+const riskSecurityCopy: Record<LocaleKey, SkillStoreRiskSecurityCopy> = {
+  'ca-ES': {
+    riskDetails: 'Detalls del risc',
+    showRiskDetails: 'Mostra els detalls del risc',
+    hideRiskDetails: 'Amaga els detalls del risc',
+    riskDetailsHint:
+      "Els permisos, els manifests de dependències i les evidències estan plegats per defecte. Desplega'ls per revisar-los.",
+  },
+  'cs-CZ': {
+    riskDetails: 'Podrobnosti rizika',
+    showRiskDetails: 'Zobrazit podrobnosti rizika',
+    hideRiskDetails: 'Skrýt podrobnosti rizika',
+    riskDetailsHint:
+      'Oprávnění, manifesty závislostí a důkazy jsou ve výchozím stavu sbalené. Rozbalte je pro kontrolu.',
+  },
+  'da-DK': {
+    riskDetails: 'Risikodetaljer',
+    showRiskDetails: 'Vis risikodetaljer',
+    hideRiskDetails: 'Skjul risikodetaljer',
+    riskDetailsHint:
+      'Tilladelser, afhængighedsmanifester og beviser er som standard skjult. Udvid dem for at gennemgå dem.',
+  },
+  'de-DE': {
+    riskDetails: 'Risikodetails',
+    showRiskDetails: 'Risikodetails anzeigen',
+    hideRiskDetails: 'Risikodetails ausblenden',
+    riskDetailsHint:
+      'Berechtigungen, Abhängigkeitsmanifeste und Nachweise sind standardmäßig eingeklappt. Erweitern Sie sie zur Prüfung.',
+  },
+  'el-GR': {
+    riskDetails: 'Λεπτομέρειες κινδύνου',
+    showRiskDetails: 'Εμφάνιση λεπτομερειών κινδύνου',
+    hideRiskDetails: 'Απόκρυψη λεπτομερειών κινδύνου',
+    riskDetailsHint:
+      'Τα δικαιώματα, τα manifests εξαρτήσεων και τα αποδεικτικά στοιχεία είναι προεπιλεγμένα σε σύμπτυξη. Επεκτείνετέ τα για έλεγχο.',
+  },
+  'en-GB': {
+    riskDetails: 'Risk details',
+    showRiskDetails: 'Show risk details',
+    hideRiskDetails: 'Hide risk details',
+    riskDetailsHint:
+      'Permissions, dependency manifests, and evidence are collapsed by default. Expand to review them.',
+  },
+  'en-US': {
+    riskDetails: 'Risk details',
+    showRiskDetails: 'Show risk details',
+    hideRiskDetails: 'Hide risk details',
+    riskDetailsHint:
+      'Permissions, dependency manifests, and evidence are collapsed by default. Expand to review them.',
+  },
+  'es-ES': {
+    riskDetails: 'Detalles del riesgo',
+    showRiskDetails: 'Mostrar detalles del riesgo',
+    hideRiskDetails: 'Ocultar detalles del riesgo',
+    riskDetailsHint:
+      'Los permisos, los manifiestos de dependencias y las evidencias están contraídos por defecto. Ábralos para revisarlos.',
+  },
+  'fr-FR': {
+    riskDetails: 'Détails du risque',
+    showRiskDetails: 'Afficher les détails du risque',
+    hideRiskDetails: 'Masquer les détails du risque',
+    riskDetailsHint:
+      'Les autorisations, manifestes de dépendances et preuves sont réduits par défaut. Développez-les pour les examiner.',
+  },
+  'ga-IE': {
+    riskDetails: 'Sonraí riosca',
+    showRiskDetails: 'Taispeáin sonraí riosca',
+    hideRiskDetails: 'Folaigh sonraí riosca',
+    riskDetailsHint:
+      'Tá ceadanna, manifests spleáchais agus fianaise cúngaithe de réir réamhshocraithe. Leathnaigh iad chun iad a athbhreithniú.',
+  },
+  'hr-HR': {
+    riskDetails: 'Pojedinosti rizika',
+    showRiskDetails: 'Prikaži pojedinosti rizika',
+    hideRiskDetails: 'Sakrij pojedinosti rizika',
+    riskDetailsHint:
+      'Dozvole, manifesti ovisnosti i dokazi zadano su sažeti. Proširite ih za pregled.',
+  },
+  'hu-HU': {
+    riskDetails: 'Kockázati részletek',
+    showRiskDetails: 'Kockázati részletek megjelenítése',
+    hideRiskDetails: 'Kockázati részletek elrejtése',
+    riskDetailsHint:
+      'Az engedélyek, a függőségi jegyzékek és a bizonyítékok alapértelmezetten összecsukva jelennek meg. Bontsa ki őket az áttekintéshez.',
+  },
+  'it-IT': {
+    riskDetails: 'Dettagli del rischio',
+    showRiskDetails: 'Mostra i dettagli del rischio',
+    hideRiskDetails: 'Nascondi i dettagli del rischio',
+    riskDetailsHint:
+      'Autorizzazioni, manifest delle dipendenze ed evidenze sono compressi per impostazione predefinita. Espandili per esaminarli.',
+  },
+  'ja-JP': {
+    riskDetails: 'リスク詳細',
+    showRiskDetails: 'リスク詳細を表示',
+    hideRiskDetails: 'リスク詳細を非表示',
+    riskDetailsHint:
+      '権限、依存関係マニフェスト、証拠は既定で折りたたまれています。展開して確認してください。',
+  },
+  'ko-KR': {
+    riskDetails: '위험 세부정보',
+    showRiskDetails: '위험 세부정보 표시',
+    hideRiskDetails: '위험 세부정보 숨기기',
+    riskDetailsHint:
+      '권한, 의존성 매니페스트, 증거는 기본적으로 접혀 있습니다. 검토하려면 펼치세요.',
+  },
+  'ml-IN': {
+    riskDetails: 'അപകടസാധ്യതയുടെ വിശദാംശങ്ങൾ',
+    showRiskDetails: 'അപകടസാധ്യതയുടെ വിശദാംശങ്ങൾ കാണിക്കുക',
+    hideRiskDetails: 'അപകടസാധ്യതയുടെ വിശദാംശങ്ങൾ മറയ്ക്കുക',
+    riskDetailsHint:
+      'അനുമതികൾ, ഡിപ്പൻഡൻസി മാനിഫെസ്റ്റുകൾ, തെളിവുകൾ എന്നിവ ഡീഫോൾട്ടായി ചുരുക്കിയിരിക്കുന്നു. അവ പരിശോധിക്കാൻ വിപുലീകരിക്കുക.',
+  },
+  'nb-NO': {
+    riskDetails: 'Risikodetaljer',
+    showRiskDetails: 'Vis risikodetaljer',
+    hideRiskDetails: 'Skjul risikodetaljer',
+    riskDetailsHint:
+      'Tillatelser, avhengighetsmanifest og bevis er skjult som standard. Utvid dem for å gjennomgå dem.',
+  },
+  'nl-NL': {
+    riskDetails: 'Risicodetails',
+    showRiskDetails: 'Risicodetails tonen',
+    hideRiskDetails: 'Risicodetails verbergen',
+    riskDetailsHint:
+      'Machtigingen, afhankelijkheidsmanifesten en bewijsmateriaal zijn standaard ingeklapt. Klap ze uit om ze te bekijken.',
+  },
+  'pl-PL': {
+    riskDetails: 'Szczegóły ryzyka',
+    showRiskDetails: 'Pokaż szczegóły ryzyka',
+    hideRiskDetails: 'Ukryj szczegóły ryzyka',
+    riskDetailsHint:
+      'Uprawnienia, manifesty zależności i dowody są domyślnie zwinięte. Rozwiń je, aby je przejrzeć.',
+  },
+  'pt-BR': {
+    riskDetails: 'Detalhes do risco',
+    showRiskDetails: 'Mostrar detalhes do risco',
+    hideRiskDetails: 'Ocultar detalhes do risco',
+    riskDetailsHint:
+      'Permissões, manifestos de dependências e evidências ficam recolhidos por padrão. Expanda para revisá-los.',
+  },
+  'pt-PT': {
+    riskDetails: 'Detalhes do risco',
+    showRiskDetails: 'Mostrar detalhes do risco',
+    hideRiskDetails: 'Ocultar detalhes do risco',
+    riskDetailsHint:
+      'As permissões, os manifestos de dependências e as evidências ficam recolhidos por predefinição. Expanda-os para os rever.',
+  },
+  'ro-RO': {
+    riskDetails: 'Detalii de risc',
+    showRiskDetails: 'Afișează detaliile de risc',
+    hideRiskDetails: 'Ascunde detaliile de risc',
+    riskDetailsHint:
+      'Permisiunile, manifestele dependențelor și dovezile sunt restrânse implicit. Extinde-le pentru a le revizui.',
+  },
+  'ru-RU': {
+    riskDetails: 'Сведения о риске',
+    showRiskDetails: 'Показать сведения о риске',
+    hideRiskDetails: 'Скрыть сведения о риске',
+    riskDetailsHint:
+      'Разрешения, манифесты зависимостей и доказательства по умолчанию свернуты. Разверните их для проверки.',
+  },
+  'sk-SK': {
+    riskDetails: 'Podrobnosti rizika',
+    showRiskDetails: 'Zobraziť podrobnosti rizika',
+    hideRiskDetails: 'Skryť podrobnosti rizika',
+    riskDetailsHint:
+      'Oprávnenia, manifesty závislostí a dôkazy sú predvolene zbalené. Rozbaľte ich na kontrolu.',
+  },
+  'sv-SE': {
+    riskDetails: 'Riskdetaljer',
+    showRiskDetails: 'Visa riskdetaljer',
+    hideRiskDetails: 'Dölj riskdetaljer',
+    riskDetailsHint:
+      'Behörigheter, beroendemanifest och bevis är hopfällda som standard. Expandera dem för att granska dem.',
+  },
+  'zh-CN': {
+    riskDetails: '风险细节',
+    showRiskDetails: '展开风险细节',
+    hideRiskDetails: '收起风险细节',
+    riskDetailsHint: '权限、依赖清单和证据默认折叠显示，展开后可查看完整风险细节。',
+  },
+  'zh-TW': {
+    riskDetails: '風險細節',
+    showRiskDetails: '展開風險細節',
+    hideRiskDetails: '收起風險細節',
+    riskDetailsHint: '權限、依賴清單與證據預設折疊顯示，展開後可查看完整風險細節。',
+  },
+}
+
 const skillStoreHighRiskBackfills = {
   'ca-ES': {
     skillStore: { marketplace: { modal: { highRiskWarning: 'Risc alt', highRiskInstallTitle: "Confirmació d'instal·lació d'alt risc", highRiskInstallBody: "{name} està bloquejada actualment per la política de seguretat perquè està marcada com d'alt risc. Encara la pots instal·lar si entens i acceptes el risc.", confirmForceInstall: 'Instal·la igualment' } } },
@@ -83,5 +280,13 @@ const skillStoreHighRiskBackfills = {
     skillStore: { marketplace: { modal: { highRiskWarning: '高風險', highRiskInstallTitle: '高風險安裝確認', highRiskInstallBody: '{name} 因被標記為高風險，目前已被安全策略阻止。只要你理解並接受風險，仍然可以安裝。', confirmForceInstall: '仍要安裝' } } },
   },
 } satisfies Partial<Record<LocaleKey, Record<string, unknown>>>
+
+for (const localeKey of Object.keys(riskSecurityCopy) as LocaleKey[]) {
+  const localeNode = skillStoreHighRiskBackfills[localeKey] as
+    | { skillStore?: { marketplace?: Record<string, unknown> } }
+    | undefined
+  if (!localeNode?.skillStore?.marketplace) continue
+  localeNode.skillStore.marketplace.security = riskSecurityCopy[localeKey]
+}
 
 export default skillStoreHighRiskBackfills

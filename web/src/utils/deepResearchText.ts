@@ -2,6 +2,7 @@ type Translate = (key: string, fallback: string) => string
 
 const DEEP_RESEARCH_WRAPPER_PREFIX_RE = /^[\[\(\{<【「『"'`]+/
 const DEEP_RESEARCH_WRAPPER_SUFFIX_RE = /[\]\)\}>】」』"'`]+$/
+const DEEP_RESEARCH_EDGE_PUNCTUATION_RE = /^[,.:;!?]+|[,.:;!?]+$/g
 
 const DEEP_RESEARCH_STAGE_KEYS: Record<string, [key: string, fallback: string]> = {
   intake: ['chat.deepResearchStageIntake', 'Intake'],
@@ -30,6 +31,14 @@ const DEEP_RESEARCH_ACTION_KEYS: Record<string, [key: string, fallback: string]>
   completed: ['chat.deepResearchActionCompleted', 'Completed'],
 }
 
+const DEEP_RESEARCH_ACTION_ALIASES: Record<string, string> = {
+  verification_pass_completed: 'verification_completed',
+  planned_a_followup_research_pass: 'followup_planned',
+  planned_a_follow_up_research_pass: 'followup_planned',
+  deep_research_loop_stopped: 'loop_stopped',
+  research_loop_stopped: 'loop_stopped',
+}
+
 const DEEP_RESEARCH_STATUS_KEYS: Record<string, [key: string, fallback: string]> = {
   running: ['chat.deepResearchProgress', 'Deep Research in progress'],
   pending: ['chat.deepResearchStagePlanning', 'Planning'],
@@ -51,6 +60,8 @@ const DEEP_RESEARCH_AUX_STATUS_KEYS: Record<string, [key: string, fallback: stri
   conflicted: ['chat.deepResearchVerificationConflicted', 'Conflicted'],
   insufficient: ['chat.deepResearchVerificationInsufficient', 'Insufficient'],
   success: ['common.success', 'Success'],
+  warning: ['system.warning', 'Warning'],
+  info: ['system.info', 'Info'],
   error: ['common.error', 'Error'],
 }
 
@@ -75,17 +86,69 @@ const DEEP_RESEARCH_GAP_KEYS: Record<string, [key: string, fallback: string]> = 
   ],
 }
 
+const DEEP_RESEARCH_GAP_ALIASES: Record<string, string> = {
+  need_primary_evidence: 'need_primary_or_official_sources',
+  need_primary_source: 'need_primary_or_official_sources',
+  need_primary_sources: 'need_primary_or_official_sources',
+  need_one_primary_source: 'need_primary_or_official_sources',
+  need_one_more_primary_source: 'need_primary_or_official_sources',
+  need_another_primary_source: 'need_primary_or_official_sources',
+  need_official_source: 'need_primary_or_official_sources',
+  need_official_sources: 'need_primary_or_official_sources',
+  need_one_official_source: 'need_primary_or_official_sources',
+  need_one_more_official_source: 'need_primary_or_official_sources',
+  need_another_official_source: 'need_primary_or_official_sources',
+  need_primary_or_official_source: 'need_primary_or_official_sources',
+}
+
+const DEEP_RESEARCH_TOKEN_KEYS: Record<string, [key: string, fallback: string]> = {
+  identity_validation: ['chat.deepResearchAxisIdentityValidation', 'Identity verification'],
+  internet_footprint: ['chat.deepResearchAxisInternetFootprint', 'Internet footprint'],
+  overview: ['harness.group.overview', 'Overview'],
+  latest: ['chat.deepResearchAxisLatest', 'Latest developments'],
+  official: ['chat.deepResearchAxisOfficial', 'Official sources'],
+  comparison: ['chat.deepResearchAxisComparison', 'Comparative information'],
+  best_practices: ['chat.deepResearchAxisBestPractices', 'Best practices'],
+  retry: ['chat.deepResearchAxisRetry', 'Retry correction'],
+  research: ['chat.deepResearchAxisResearch', 'Research'],
+  source_diversity: ['chat.deepResearchFocusSourceDiversity', 'Source diversity'],
+  freshness: ['chat.deepResearchFocusFreshness', 'Freshness'],
+  claim_validation: ['chat.deepResearchFocusClaimValidation', 'Claim validation'],
+  earlier: ['chat.deepResearchTimeWindowEarlier', 'Early'],
+  early: ['chat.deepResearchTimeWindowEarlier', 'Early'],
+  middle: ['chat.deepResearchTimeWindowMiddle', 'Middle'],
+  recent: ['chat.deepResearchTimeWindowRecent', 'Recent'],
+}
+
 const DEEP_RESEARCH_STRUCTURED_VALUE_KEYS: Record<string, [key: string, fallback: string]> = {
   law: ['chat.deepResearchSourceTypeLaw', 'Law'],
   filing: ['chat.deepResearchSourceTypeFiling', 'Filing'],
   paper: ['chat.deepResearchSourceTypePaper', 'Paper'],
   web: ['chat.deepResearchSourceTypeWeb', 'Web'],
-  official: ['chat.deepResearchMetaOfficial', 'Official'],
   financial: ['chat.deepResearchMetaFinancial', 'Financial'],
   scope: ['chat.deepResearchWorkflowScope', 'Scope'],
   sources: ['chat.deepResearchWorkflowSources', 'Sources'],
   extraction: ['chat.deepResearchWorkflowExtraction', 'Extraction'],
+  audit: ['chat.deepResearchVerificationSummary', 'Verification'],
+  synthesis: ['chat.deepResearchStageSynthesize', 'Synthesizing'],
 }
+
+const DEEP_RESEARCH_STOP_REASON_KEYS: Record<string, [key: string, fallback: string]> = {
+  coverage_sufficient: ['chat.deepResearchStopReasonCoverage', 'Coverage target reached'],
+  no_new_canonical_evidence: [
+    'chat.deepResearchStopReasonNoNewEvidence',
+    'No new canonical evidence found',
+  ],
+  budget_exhausted: ['chat.deepResearchStopReasonBudget', 'Research budget exhausted'],
+}
+
+const DEEP_RESEARCH_REPORT_STYLE_KEYS: Record<string, [key: string, fallback: string]> = {
+  knowledge_base: ['chat.deepResearchReportStyleKnowledgeBase', 'Knowledge base'],
+  timeline: ['chat.deepResearchTimeline', 'Timeline'],
+}
+
+const DEEP_RESEARCH_PLANNED_TASKS_RE = /^planned\s+(\d+)\s+research\s+task(?:\(s\)|s)?$/i
+const DEEP_RESEARCH_COLLECTED_SOURCES_RE = /^collected\s+(\d+)\s+source(?:\(s\)|s)?$/i
 
 function humanizeDeepResearchToken(value: string | null | undefined): string {
   const trimmed = unwrapDeepResearchToken(String(value || ''))
@@ -110,9 +173,14 @@ function unwrapDeepResearchToken(value: string): string {
 
 function normalizeDeepResearchToken(value: string): string {
   return unwrapDeepResearchToken(value)
+    .replace(DEEP_RESEARCH_EDGE_PUNCTUATION_RE, '')
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
+}
+
+function resolveTokenAlias(token: string, aliases: Record<string, string>): string {
+  return aliases[token] || token
 }
 
 function translateKnownToken(
@@ -128,6 +196,10 @@ function optionalTranslate(key: string, translate: Translate): string {
   const marker = `__missing__${key}`
   const value = translate(key, marker)
   return value === marker ? '' : value
+}
+
+function formatDeepResearchCount(label: string, count: string): string {
+  return `${label}: ${count}`
 }
 
 export function localizeResearchSurfaceTitle(translate: Translate): string {
@@ -178,7 +250,10 @@ export function localizeDeepResearchAction(
   value: string | null | undefined,
   translate: Translate
 ): string {
-  const token = normalizeDeepResearchToken(String(value || ''))
+  const token = resolveTokenAlias(
+    normalizeDeepResearchToken(String(value || '')),
+    DEEP_RESEARCH_ACTION_ALIASES
+  )
   return (
     translateKnownToken(token, DEEP_RESEARCH_AUX_STATUS_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_ACTION_KEYS, translate) ||
@@ -217,13 +292,20 @@ export function localizeDeepResearchSegment(
 ): string {
   const trimmed = String(value || '').trim()
   if (!trimmed) return ''
-  const token = normalizeDeepResearchToken(trimmed)
+  const token = resolveTokenAlias(normalizeDeepResearchToken(trimmed), DEEP_RESEARCH_ACTION_ALIASES)
+  const humanized = humanizeDeepResearchToken(trimmed)
+  const stopReason = localizeDeepResearchStopReason(trimmed, translate)
+  const gap = localizeDeepResearchGap(trimmed, translate)
+  const structured = localizeDeepResearchStructuredValue(trimmed, translate)
   return (
     translateKnownToken(token, DEEP_RESEARCH_AUX_STATUS_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_STAGE_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_ACTION_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_STATUS_KEYS, translate) ||
-    humanizeDeepResearchToken(trimmed)
+    (stopReason !== trimmed ? stopReason : '') ||
+    (gap !== trimmed ? gap : '') ||
+    (structured !== humanized ? structured : '') ||
+    humanized
   )
 }
 
@@ -237,7 +319,7 @@ export function localizeDeepResearchGap(
   if (parts.length > 1) {
     return parts.map((part) => localizeDeepResearchGap(part, translate) || part).join(' · ')
   }
-  const token = normalizeDeepResearchToken(trimmed)
+  const token = resolveTokenAlias(normalizeDeepResearchToken(trimmed), DEEP_RESEARCH_GAP_ALIASES)
   return translateKnownToken(token, DEEP_RESEARCH_GAP_KEYS, translate) || trimmed
 }
 
@@ -249,12 +331,97 @@ export function localizeDeepResearchStructuredValue(
   if (!trimmed) return ''
   const token = normalizeDeepResearchToken(trimmed)
   return (
+    translateKnownToken(token, DEEP_RESEARCH_TOKEN_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_STRUCTURED_VALUE_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_STAGE_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_ACTION_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_STATUS_KEYS, translate) ||
     humanizeDeepResearchToken(trimmed)
   )
+}
+
+export function localizeDeepResearchTimeWindow(
+  value: string | null | undefined,
+  translate: Translate
+): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  const token = normalizeDeepResearchToken(trimmed)
+  return (
+    translateKnownToken(token, DEEP_RESEARCH_TOKEN_KEYS, translate) ||
+    translateKnownToken(token, DEEP_RESEARCH_STAGE_KEYS, translate) ||
+    trimmed
+  )
+}
+
+export function localizeDeepResearchStopReason(
+  value: string | null | undefined,
+  translate: Translate
+): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  const token = normalizeDeepResearchToken(trimmed)
+  return translateKnownToken(token, DEEP_RESEARCH_STOP_REASON_KEYS, translate) || trimmed
+}
+
+export function localizeDeepResearchReportStyle(
+  value: string | null | undefined,
+  translate: Translate
+): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+  const token = normalizeDeepResearchToken(trimmed)
+  return (
+    translateKnownToken(token, DEEP_RESEARCH_REPORT_STYLE_KEYS, translate) ||
+    humanizeDeepResearchToken(trimmed)
+  )
+}
+
+export function localizeDeepResearchSummary(
+  value: string | null | undefined,
+  translate: Translate
+): string {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+
+  const action = localizeDeepResearchAction(trimmed, translate)
+  const humanized = humanizeDeepResearchToken(trimmed)
+  if (action !== humanized) {
+    return action
+  }
+
+  const gap = localizeDeepResearchGap(trimmed, translate)
+  if (gap !== trimmed) {
+    return gap
+  }
+
+  const stopReason = localizeDeepResearchStopReason(trimmed, translate)
+  if (stopReason !== trimmed) {
+    return stopReason
+  }
+
+  const plannedTasksMatch = trimmed.match(DEEP_RESEARCH_PLANNED_TASKS_RE)
+  if (plannedTasksMatch) {
+    return formatDeepResearchCount(
+      translate('chat.deepResearchPlannedTasks', 'Planned tasks'),
+      plannedTasksMatch[1] ?? '0'
+    )
+  }
+
+  const collectedSourcesMatch = trimmed.match(DEEP_RESEARCH_COLLECTED_SOURCES_RE)
+  if (collectedSourcesMatch) {
+    return formatDeepResearchCount(
+      translate('chat.deepResearchLiveSources', 'Live sources'),
+      collectedSourcesMatch[1] ?? '0'
+    )
+  }
+
+  const structured = localizeDeepResearchStructuredValue(trimmed, translate)
+  if (structured !== humanized) {
+    return structured
+  }
+
+  return trimmed
 }
 
 export function localizeDeepResearchSourceType(

@@ -15,11 +15,16 @@ func bindHarnessRuntimeToDeepResearchHandler(
 	if handler == nil {
 		return false
 	}
+	bound := false
+	if runtimeService := newHarnessResearchRuntimeService(harnessRuntimeController(bundle), service); runtimeService != nil {
+		handler.SetJobService(runtimeService)
+		bound = true
+	}
 	if creator := newHarnessResearchCreator(harnessRuntimeController(bundle), service, workspaceDir); creator != nil {
 		handler.SetJobCreator(creator)
-		return true
+		bound = true
 	}
-	return false
+	return bound
 }
 
 func registerDeepResearchRouteGroups(handler deepResearchRuntimeRouteTarget, groups []*echo.Group) bool {

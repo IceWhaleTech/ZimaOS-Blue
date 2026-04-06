@@ -23,7 +23,11 @@ const seededProfiles: AgentProfile[] = [
     title: 'Codex ACP',
     builtin: true,
     template_only: true,
+    command: ['codex-acp'],
     credential_provider_id: 'openai-codex',
+    metadata: {
+      reference: 'openclaw/acpx',
+    },
     health_status: 'ready',
   },
   {
@@ -50,14 +54,22 @@ describe('ExternalAgentsSection', () => {
       data: { profiles: seededProfiles },
     } as never)
     vi.mocked(agentSessionsApi.verifyProfile).mockResolvedValue({
-      data: { ok: true, message: 'profile verified' },
+      data: {
+        ok: true,
+        message_code: 'profile_verified',
+        message: 'ACP runtime handshake passed',
+      },
     } as never)
     vi.mocked(agentSessionsApi.healthProfile).mockResolvedValue({
-      data: { healthy: true, message: 'profile healthy' },
+      data: {
+        healthy: true,
+        message_code: 'runtime_healthy',
+        message: 'ACP transport ping ok',
+      },
     } as never)
   })
 
-  it('renders built-in ACP entries as setup templates and disables runtime actions for them', async () => {
+  it('renders built-in ACP entries as setup templates and keeps direct runtime actions available', async () => {
     const wrapper = mount(ExternalAgentsSection, {
       global: {
         plugins: [i18n],
@@ -68,24 +80,39 @@ describe('ExternalAgentsSection', () => {
 
     expect(agentSessionsApi.listProfiles).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Codex ACP')
-    expect(wrapper.text()).toContain('复制后填写可执行命令')
-    expect(wrapper.get('[data-testid="external-agents-verify-current"]').attributes()).toHaveProperty(
-      'disabled'
-    )
-    expect(wrapper.get('[data-testid="external-agents-health-current"]').attributes()).toHaveProperty(
-      'disabled'
-    )
+    expect(wrapper.text()).toContain('可直接验证或使用')
+    expect(wrapper.text()).not.toContain('元数据')
+    expect(
+      wrapper.get('[data-testid="external-agents-verify-current"]').attributes('disabled')
+    ).toBeUndefined()
+    expect(
+      wrapper.get('[data-testid="external-agents-health-current"]').attributes('disabled')
+    ).toBeUndefined()
     expect(wrapper.get('[data-testid="external-agents-save"]').attributes()).toHaveProperty(
       'disabled'
     )
     expect(wrapper.find('[data-testid="external-agents-delete-current"]').exists()).toBe(false)
 
     await wrapper.get('[data-testid="external-agents-verify-current"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).toContain(
+      '配置验证成功。'
+    )
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).not.toContain(
+      'ACP runtime handshake passed'
+    )
+
     await wrapper.get('[data-testid="external-agents-health-current"]').trigger('click')
     await flushPromises()
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).toContain(
+      '健康检查成功。'
+    )
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).not.toContain(
+      'ACP transport ping ok'
+    )
 
-    expect(agentSessionsApi.verifyProfile).not.toHaveBeenCalled()
-    expect(agentSessionsApi.healthProfile).not.toHaveBeenCalled()
+    expect(agentSessionsApi.verifyProfile).toHaveBeenCalledWith({ id: 'codex' })
+    expect(agentSessionsApi.healthProfile).toHaveBeenCalledWith('codex')
 
     wrapper.unmount()
   })
@@ -141,6 +168,20 @@ describe('ExternalAgentsSection', () => {
     const healthyProfiles: AgentProfile[] = seededProfiles.map((profile) =>
       profile.id === 'generic-a2a' ? { ...profile, health_status: 'healthy' } : profile
     )
+    vi.mocked(agentSessionsApi.verifyProfile).mockResolvedValueOnce({
+      data: {
+        ok: true,
+        message_code: 'profile_verified',
+        message: 'A2A card probe completed successfully',
+      },
+    } as never)
+    vi.mocked(agentSessionsApi.healthProfile).mockResolvedValueOnce({
+      data: {
+        healthy: true,
+        message_code: 'runtime_healthy',
+        message: 'A2A endpoint probe completed successfully',
+      },
+    } as never)
     vi.mocked(agentSessionsApi.listProfiles)
       .mockResolvedValueOnce({
         data: { profiles: seededProfiles },
@@ -163,12 +204,13 @@ describe('ExternalAgentsSection', () => {
     expect(agentSessionsApi.listProfiles).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Codex ACP')
     expect(wrapper.text()).toContain('Generic Remote A2A Agent')
-    expect(wrapper.text()).toContain('复制后填写可执行命令')
+    expect(wrapper.text()).toContain('可直接验证或使用')
 
     const profileCards = wrapper.findAll('[data-testid="external-agents-profile-card"]')
-    expect(profileCards[0]!.text()).toContain('内置模板')
+    expect(profileCards[0]!.text()).toContain('内置配置')
     expect(profileCards[0]!.text()).not.toContain('就绪')
-    expect(profileCards[1]!.text()).toContain('内置模板')
+    expect(profileCards[0]!.text()).not.toContain('复制后填写可执行命令')
+    expect(profileCards[1]!.text()).toContain('内置配置')
     expect(profileCards[1]!.text()).not.toContain('已验证')
 
     await profileCards[1]!.trigger('click')
@@ -177,15 +219,24 @@ describe('ExternalAgentsSection', () => {
     await wrapper.get('[data-testid="external-agents-verify-current"]').trigger('click')
     await flushPromises()
     expect(agentSessionsApi.verifyProfile).toHaveBeenCalledWith({ id: 'generic-a2a' })
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).toContain(
+      '配置验证成功。'
+    )
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).not.toContain(
+      'A2A card probe completed successfully'
+    )
 
     await wrapper.get('[data-testid="external-agents-health-current"]').trigger('click')
     await flushPromises()
     expect(agentSessionsApi.healthProfile).toHaveBeenCalledWith('generic-a2a')
     expect(wrapper.get('[data-testid="external-agents-notice"]').text()).toContain(
-      'profile healthy'
+      '健康检查成功。'
+    )
+    expect(wrapper.get('[data-testid="external-agents-notice"]').text()).not.toContain(
+      'A2A endpoint probe completed successfully'
     )
     expect(wrapper.findAll('[data-testid="external-agents-profile-card"]')[1]!.text()).toContain(
-      '内置模板'
+      '内置配置'
     )
 
     wrapper.unmount()
@@ -223,6 +274,7 @@ describe('ExternalAgentsSection', () => {
     await flushPromises()
 
     expect(wrapper.get('[data-testid="external-agents-command"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="external-agents-command"]').element.value).toBe('codex-acp')
     await wrapper.get('[data-testid="external-agents-name"]').setValue('codex-copy')
     await wrapper
       .get('[data-testid="external-agents-command"]')
@@ -237,6 +289,9 @@ describe('ExternalAgentsSection', () => {
         command: ['/opt/acp/bin/codex', 'serve'],
         credential_provider_id: 'openai-codex',
       })
+    )
+    expect(vi.mocked(agentSessionsApi.saveProfile).mock.calls[0]?.[0]).not.toHaveProperty(
+      'metadata'
     )
     expect(wrapper.text()).toContain('Codex ACP Copy')
 
@@ -286,7 +341,7 @@ describe('ExternalAgentsSection', () => {
         endpoint_url: 'https://remote.example.com/rpc',
       })
     )
-    expect(wrapper.text()).toContain('Remote Agent')
+    expect(agentSessionsApi.listProfiles).toHaveBeenCalledTimes(2)
 
     wrapper.unmount()
   })

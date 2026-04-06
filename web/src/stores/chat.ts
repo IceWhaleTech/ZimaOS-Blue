@@ -11,6 +11,8 @@ import type {
   ConversationCommandStatePatch,
   StreamChunk,
 } from '@/api/chat'
+import { chatBootstrapApi } from '@/api/chatBootstrap'
+import type { ConversationBootstrapResponse } from '@/api/chatBootstrap'
 import type { Decision, ExecDecision } from '@/api/approval'
 import { SSEClient } from '@/utils/sse'
 import type { SSEClientOptions } from '@/utils/sse'
@@ -25,6 +27,11 @@ import {
 } from '@/utils/processTrace'
 import { localizeResearchSurfaceTitle } from '@/utils/deepResearchText'
 import { reportStartupMark } from '@/utils/startupTrace'
+
+type PendingConfirmationSnapshot = Pick<
+  ConversationBootstrapResponse,
+  'pending_approval' | 'pending_question' | 'pending_exec_approval'
+>
 
 type ChatApiModule = typeof import('@/api/chat')
 type ApprovalApiModule = typeof import('@/api/approval')
@@ -105,8 +112,14 @@ const systemApi = createLazyApiProxy<SystemApiModule['systemApi']>(loadSystemApi
 const PAGE_SIZE = 50
 const CHAT_MODEL_PREF_KEY = 'chat.modelPreference'
 const CHAT_OFFLINE_MODE_KEY = 'chat.offlineMode'
-const CHAT_WEB_SEARCH_ENABLED_KEY = 'chat.webSearchEnabled'
-const CHAT_DEEP_RESEARCH_ENABLED_KEY = 'chat.deepResearchEnabled'
+const STREAM_PROCESS_CARD_TYPES = new Set([
+  'ui-review-progress',
+  'analyze-progress',
+  'browser-progress',
+  'deep-research-progress',
+  'deep-research-event',
+  'deep-research-timeline',
+])
 
 /** Structured tool result for collapsible detail cards. */
 export interface ToolResultItem {
@@ -147,6 +160,87 @@ function formatToolWarningCode(code: string): string {
         ? resolve('toolWarnings.statuses.unknown', 'Warning: ' + normalized, { code: normalized })
         : ''
   }
+}
+
+function extractTypelessBlocksByType(
+  content: string
+): Array<{ raw: string; type: string; key: string }> {
+  if (!content.includes('```typeless')) return []
+
+  const blocks: Array<{ raw: string; type: string; key: string }> = []
+  const blockRegex = /```typeless\s*\n([\s\S]*?)\n```/g
+  let match: RegExpExecArray | null = null
+
+  while ((match = blockRegex.exec(content)) !== null) {
+    const raw = match[0]?.trim()
+    const payload = match[1]?.trim()
+    if (!raw || !payload) continue
+
+    try {
+      const parsed = JSON.parse(payload) as { type?: unknown; id?: unknown }
+      const type = typeof parsed.type === 'string' ? parsed.type.trim() : ''
+      if (!type) continue
+      const id = typeof parsed.id === 'string' ? parsed.id.trim() : ''
+      blocks.push({ raw, type, key: id ? `${type}:${id}` : raw })
+    } catch {
+      continue
+    }
+  }
+
+  return blocks
+}
+
+function dedupeBlocksByLastKey(
+  blocks: Array<{ raw: string; type: string; key: string }>
+): Array<{ raw: string; type: string; key: string }> {
+  const seen = new Set<string>()
+  const deduped: Array<{ raw: string; type: string; key: string }> = []
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index]
+    if (!block || seen.has(block.key)) continue
+    seen.add(block.key)
+    deduped.unshift(block)
+  }
+  return deduped
+}
+
+function mergeMissingProcessCardsIntoFinalContent(
+  previousContent: string,
+  nextContent: string,
+  finalizationMode?: StreamChunk['finalization_mode']
+): string {
+  const normalizedPrevious = previousContent.trim()
+  const normalizedNext = nextContent.trim()
+  if (!normalizedPrevious || !normalizedNext) return nextContent
+  if (finalizationMode === 'replace') return nextContent
+
+  const previousProcessBlocks = dedupeBlocksByLastKey(
+    extractTypelessBlocksByType(normalizedPrevious).filter((block) =>
+      STREAM_PROCESS_CARD_TYPES.has(block.type)
+    )
+  )
+  if (previousProcessBlocks.length === 0) {
+    return nextContent
+  }
+
+  const nextProcessKeys = new Set(
+    extractTypelessBlocksByType(normalizedNext)
+      .filter((block) => STREAM_PROCESS_CARD_TYPES.has(block.type))
+      .map((block) => block.key)
+  )
+  const missingBlocks = previousProcessBlocks.filter((block) => !nextProcessKeys.has(block.key))
+  if (missingBlocks.length === 0) {
+    return nextContent
+  }
+
+  const mergedPrefix = missingBlocks.map((block) => block.raw).join(
+    '\n\n'
+  )
+  if (!mergedPrefix) {
+    return nextContent
+  }
+
+  return `${mergedPrefix}\n\n${nextContent}`
 }
 
 function formatScreenshotCapturedStatus(): string {
@@ -630,54 +724,6 @@ type RuntimeProcessMessage = Message & {
   local_process_tool_results?: ToolResultItem[]
 }
 
-type ResearchModeTogglePayload = {
-  deep_research_enabled?: boolean
-  research_mode_enabled?: boolean
-}
-
-function resolveResearchModeEnabled(payload: ResearchModeTogglePayload): boolean {
-  if (typeof payload.research_mode_enabled === 'boolean') {
-    return payload.research_mode_enabled
-  }
-  return payload.deep_research_enabled === true
-}
-
-function normalizeCommandStatePatchResearchMode(
-  patch: ConversationCommandStatePatch
-): ConversationCommandStatePatch {
-  const researchModeEnabled =
-    typeof patch.research_mode_enabled === 'boolean'
-      ? patch.research_mode_enabled
-      : typeof patch.deep_research_enabled === 'boolean'
-        ? patch.deep_research_enabled
-        : undefined
-  if (typeof researchModeEnabled !== 'boolean') {
-    return patch
-  }
-  return {
-    ...patch,
-    research_mode_enabled: researchModeEnabled,
-    deep_research_enabled: researchModeEnabled,
-  }
-}
-
-function normalizeSendMessageRequestResearchMode(request: SendMessageRequest): SendMessageRequest {
-  const researchModeEnabled =
-    typeof request.research_mode_enabled === 'boolean'
-      ? request.research_mode_enabled
-      : typeof request.deep_research_enabled === 'boolean'
-        ? request.deep_research_enabled
-        : undefined
-  if (typeof researchModeEnabled !== 'boolean') {
-    return request
-  }
-  return {
-    ...request,
-    research_mode_enabled: researchModeEnabled,
-    deep_research_enabled: researchModeEnabled,
-  }
-}
-
 function createStreamUIState(
   phase: StreamUIPhase,
   overrides: Partial<StreamUIState> = {}
@@ -721,40 +767,26 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  const loadWebSearchEnabled = (): boolean => {
-    try {
-      const value = localStorage.getItem(CHAT_WEB_SEARCH_ENABLED_KEY)
-      if (value === null) return true
-      return value !== '0'
-    } catch {
-      return true
-    }
+  function getEnabledChatProviderIds(): Set<string> {
+    return new Set(
+      (providerPoolStore.enabledProviders || [])
+        .filter((provider) => provider.type !== 'media')
+        .map((provider) => provider.id)
+    )
   }
 
-  const saveWebSearchEnabled = (enabled: boolean) => {
-    try {
-      localStorage.setItem(CHAT_WEB_SEARCH_ENABLED_KEY, enabled ? '1' : '0')
-    } catch {
-      // ignore storage errors
-    }
+  function hasLoadedChatProviderInventory(): boolean {
+    return (providerPoolStore.providers || []).some((provider) => provider.type !== 'media')
   }
 
-  const loadDeepResearchEnabled = (): boolean => {
-    try {
-      const value = localStorage.getItem(CHAT_DEEP_RESEARCH_ENABLED_KEY)
-      if (value === null) return false
-      return value !== '0'
-    } catch {
-      return false
+  function normalizeEnabledChatProviderId(providerIdRaw: string): string {
+    const providerId = providerIdRaw.trim()
+    if (!providerId) return ''
+    const enabledProviderIds = getEnabledChatProviderIds()
+    if (enabledProviderIds.size === 0 && !hasLoadedChatProviderInventory()) {
+      return providerId
     }
-  }
-
-  const saveDeepResearchEnabled = (enabled: boolean) => {
-    try {
-      localStorage.setItem(CHAT_DEEP_RESEARCH_ENABLED_KEY, enabled ? '1' : '0')
-    } catch {
-      // ignore storage errors
-    }
+    return enabledProviderIds.has(providerId) ? providerId : ''
   }
 
   function splitModelPreference(value: string): {
@@ -781,6 +813,27 @@ export const useChatStore = defineStore('chat', () => {
     return 'auto'
   }
 
+  function resolveCommandStateSelection(state: ConversationCommandState) {
+    const selectedProviderId = state.selected_provider_id?.trim() || ''
+    const selectedModelId = state.selected_model_id?.trim() || ''
+    if (selectedProviderId && !selectedModelId) {
+      const normalizedProviderId = normalizeEnabledChatProviderId(selectedProviderId)
+      if (!normalizedProviderId) {
+        return {
+          selected_provider_id: '',
+          selected_model_id: '',
+          model_preference: 'auto',
+        }
+      }
+      return {
+        selected_provider_id: normalizedProviderId,
+        selected_model_id: '',
+        model_preference: 'auto',
+      }
+    }
+    return resolveModelSelection(selectedProviderId, commandStateToModelPreference(state))
+  }
+
   function resolveModelSelection(providerIdRaw: string, modelPreferenceRaw: string) {
     const providerId = providerIdRaw.trim()
     const trimmed = modelPreferenceRaw.trim()
@@ -804,17 +857,15 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    const enabledProviderIds = new Set(
-      (providerPoolStore.enabledProviders || [])
-        .filter((provider) => provider.type !== 'media')
-        .map((provider) => provider.id)
-    )
+    const enabledProviderIds = getEnabledChatProviderIds()
+    const normalizedRequestedProviderId = normalizeEnabledChatProviderId(requestedProviderId)
     const enabledModels = (providerPoolStore.models || []).filter(
       (model) => model.enabled && enabledProviderIds.has(model.provider_id)
     )
 
     const exactMatch = enabledModels.find(
-      (model) => model.provider_id === requestedProviderId && model.id === requestedModelId
+      (model) =>
+        model.provider_id === normalizedRequestedProviderId && model.id === requestedModelId
     )
     if (exactMatch) {
       return {
@@ -826,7 +877,8 @@ export const useChatStore = defineStore('chat', () => {
 
     const providerScopedSuffixMatch = enabledModels.find(
       (model) =>
-        model.provider_id === requestedProviderId && model.id.endsWith(`/${requestedModelId}`)
+        model.provider_id === normalizedRequestedProviderId &&
+        model.id.endsWith(`/${requestedModelId}`)
     )
     if (providerScopedSuffixMatch) {
       return {
@@ -874,11 +926,11 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    if (requestedProviderId) {
+    if (normalizedRequestedProviderId) {
       return {
-        selected_provider_id: requestedProviderId,
+        selected_provider_id: normalizedRequestedProviderId,
         selected_model_id: requestedModelId,
-        model_preference: `${requestedProviderId}/${requestedModelId}`,
+        model_preference: `${normalizedRequestedProviderId}/${requestedModelId}`,
       }
     }
 
@@ -887,6 +939,67 @@ export const useChatStore = defineStore('chat', () => {
       selected_model_id: requestedModelId,
       model_preference: requestedModelId,
     }
+  }
+
+  function resolveRequestModelSelection(
+    providerIdRaw: string,
+    modelPreferenceRaw: string,
+    preserveProviderPin = false
+  ) {
+    const resolved = resolveModelSelection(providerIdRaw, modelPreferenceRaw)
+    if (preserveProviderPin && resolved.model_preference === 'auto') {
+      const providerId = normalizeEnabledChatProviderId(providerIdRaw)
+      if (providerId) {
+        return {
+          selected_provider_id: providerId,
+          selected_model_id: '',
+          model_preference: 'auto',
+        }
+      }
+    }
+    return resolved
+  }
+
+  function syncResolvedModelSelectionState(
+    resolved: ReturnType<typeof resolveRequestModelSelection>
+  ): boolean {
+    const nextProviderId = resolved.selected_provider_id
+    const nextModelPreference = resolved.model_preference
+    const nextProviderPinOnlyActive =
+      nextModelPreference === 'auto' && !!nextProviderId && !resolved.selected_model_id
+
+    const changed =
+      selectedProviderId.value !== nextProviderId ||
+      modelPreference.value !== nextModelPreference ||
+      providerPinOnlyActive.value !== nextProviderPinOnlyActive
+
+    if (!changed) return false
+
+    selectedProviderId.value = nextProviderId
+    modelPreference.value = nextModelPreference
+    providerPinOnlyActive.value = nextProviderPinOnlyActive
+    saveModelPreference(nextModelPreference)
+    return true
+  }
+
+  function getCurrentRequestModelSelection(options?: {
+    conversationId?: string | null
+    persistIfChanged?: boolean
+  }) {
+    const resolved = resolveRequestModelSelection(
+      selectedProviderId.value,
+      modelPreference.value,
+      providerPinOnlyActive.value
+    )
+    const changed = syncResolvedModelSelectionState(resolved)
+    const conversationId = normalizeConversationId(options?.conversationId)
+    if (changed && options?.persistIfChanged && conversationId) {
+      void patchCommandState(conversationId, {
+        selected_provider_id: resolved.selected_provider_id,
+        selected_model_id: resolved.selected_model_id,
+      }).catch(() => {})
+    }
+    return resolved
   }
 
   // State
@@ -1009,14 +1122,15 @@ export const useChatStore = defineStore('chat', () => {
   const isMultiSelectMode = ref(false)
   const selectedProviderId = ref<string>('')
   const modelPreference = ref<string>(loadModelPreference())
+  const providerPinOnlyActive = ref(false)
   const pendingModelAutoFallback = ref<PendingModelAutoFallback | null>(null)
   const offlineMode = ref<boolean>(loadOfflineMode())
-  const webSearchEnabled = ref<boolean>(loadWebSearchEnabled())
-  const deepResearchEnabled = ref<boolean>(loadDeepResearchEnabled())
   const activeStreamId = ref<string | null>(null)
   const activeStreamState = ref<ActiveConversationStreamState | null>(null)
   const commandStateHydrated = ref(false)
+  let commandStateHydratedConversationId: string | null = null
   let commandStateHydratePromise: Promise<ConversationCommandState> | null = null
+  let commandStateHydratePromiseConversationId: string | null = null
 
   // SSE client for streaming
   const sseClient = new SSEClient()
@@ -1024,6 +1138,8 @@ export const useChatStore = defineStore('chat', () => {
   const pendingRecoveryRetryLimit = 8
   let pendingRecoveryRetryCount = 0
   let pendingRecoveryRetryTimer: ReturnType<typeof setTimeout> | null = null
+  const pendingConfirmationRecoveryChecks = new Set<string>()
+  const pendingConfirmationRecoveryRequests = new Map<string, Promise<void>>()
   const streamRecoveryRetryDelayMs = 900
   const streamRecoveryRetryLimit = 4
   let streamRecoveryTimer: ReturnType<typeof setTimeout> | null = null
@@ -1084,22 +1200,15 @@ export const useChatStore = defineStore('chat', () => {
     const fieldMessage = resolveProcessTraceField('message', 'Message')
     const fieldProvider = resolveProcessTraceField('provider', 'Provider')
     const fieldModel = resolveProcessTraceField('model', 'Model')
-    const fieldWebSearch = resolveProcessTraceField('webSearch', 'Web search')
-    const fieldDeepResearch = resolveProcessTraceField('deepResearch', 'Deep Research')
     const fieldAttachments = resolveProcessTraceField('attachments', 'Attachments')
     const fieldAuto = resolveProcessTraceField('auto', 'Auto')
     const fieldFile = resolveProcessTraceField('file', 'file')
-    const enabledLabel = resolveProcessTraceField('on', 'On')
-    const disabledLabel = resolveProcessTraceField('off', 'Off')
     const provider = request.provider?.trim() || fieldAuto
     const model = request.model?.trim() || fieldAuto
 
     if (summary) lines.push(`${fieldMessage}: ${summary}`)
     lines.push(`${fieldProvider}: ${provider}`)
     lines.push(`${fieldModel}: ${model}`)
-    lines.push(
-      `${fieldWebSearch}: ${request.web_search_enabled === false ? disabledLabel : enabledLabel} · ${fieldDeepResearch}: ${resolveResearchModeEnabled(request) ? enabledLabel : disabledLabel}`
-    )
     if (attachments.length > 0) {
       lines.push(
         `${fieldAttachments}: ${attachments.length} (${attachmentTypes.join(', ') || fieldFile}) · ${formatBytes(attachmentBytes)}`
@@ -1924,71 +2033,122 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function applyCommandState(state: ConversationCommandState) {
-    const resolved = resolveModelSelection(
-      state.selected_provider_id?.trim() || '',
-      commandStateToModelPreference(state)
-    )
+    const resolved = resolveCommandStateSelection(state)
     selectedProviderId.value = resolved.selected_provider_id
     modelPreference.value = resolved.model_preference
+    providerPinOnlyActive.value =
+      !!resolved.selected_provider_id && !resolved.selected_model_id
     offlineMode.value = !!state.offline
-    webSearchEnabled.value = state.web_search_enabled !== false
-    deepResearchEnabled.value = resolveResearchModeEnabled(state)
+  }
+
+  function normalizeConversationId(conversationId?: string | null): string {
+    return conversationId?.trim() || ''
+  }
+
+  function isCommandStateHydratedForConversation(conversationId?: string | null): boolean {
+    const normalized = normalizeConversationId(conversationId)
+    return (
+      normalized !== '' &&
+      commandStateHydrated.value &&
+      commandStateHydratedConversationId === normalized
+    )
+  }
+
+  function markCommandStateHydrated(conversationId?: string | null) {
+    const normalized = normalizeConversationId(conversationId)
+    commandStateHydrated.value = normalized !== ''
+    commandStateHydratedConversationId = normalized || null
+  }
+
+  function resetCommandStateHydration(conversationId?: string | null) {
+    const normalized = normalizeConversationId(conversationId)
+    if (!normalized || commandStateHydratedConversationId === normalized) {
+      commandStateHydrated.value = false
+      commandStateHydratedConversationId = null
+    }
+    if (!normalized || commandStateHydratePromiseConversationId === normalized) {
+      commandStateHydratePromise = null
+      commandStateHydratePromiseConversationId = null
+    }
   }
 
   function getLocalCommandStateSeed(): ConversationCommandState {
-    const resolved = resolveModelSelection('', loadModelPreference())
+    const resolved = getCurrentRequestModelSelection()
     return {
       selected_provider_id: resolved.selected_provider_id,
       selected_model_id: resolved.selected_model_id,
       offline: loadOfflineMode(),
-      web_search_enabled: loadWebSearchEnabled(),
-      deep_research_enabled: loadDeepResearchEnabled(),
-      research_mode_enabled: loadDeepResearchEnabled(),
     }
   }
 
   async function fetchCommandState(conversationId: string, options?: { force?: boolean }) {
     const force = !!options?.force
-    if (!force && commandStateHydrated.value) {
+    if (!force && isCommandStateHydratedForConversation(conversationId)) {
+      const resolved = getCurrentRequestModelSelection()
       const cached: ConversationCommandState = {
         conversation_id: conversationId,
-        selected_provider_id: selectedProviderId.value,
-        selected_model_id: splitModelPreference(modelPreference.value).selected_model_id || '',
+        selected_provider_id: resolved.selected_provider_id,
+        selected_model_id: resolved.selected_model_id,
         offline: offlineMode.value,
-        web_search_enabled: webSearchEnabled.value,
-        deep_research_enabled: deepResearchEnabled.value,
-        research_mode_enabled: deepResearchEnabled.value,
       }
       return cached
     }
-    if (!force && commandStateHydratePromise) {
+    if (
+      !force &&
+      commandStateHydratePromise &&
+      commandStateHydratePromiseConversationId === normalizeConversationId(conversationId)
+    ) {
       return commandStateHydratePromise
     }
-    const req = conversationApi
-      .getCommandState(conversationId)
+    const req = chatBootstrapApi
+      .getConversationBootstrap(conversationId)
       .then((response) => {
-        applyCommandState(response.data)
-        commandStateHydrated.value = true
-        return response.data
+        const state: ConversationCommandState = response.data?.command_state || {
+          conversation_id: conversationId,
+          ...getLocalCommandStateSeed(),
+        }
+        if (currentConversationId.value === conversationId) {
+          applyCommandState(state)
+          markCommandStateHydrated(conversationId)
+        }
+        return state
       })
       .finally(() => {
-        commandStateHydratePromise = null
+        if (commandStateHydratePromiseConversationId === normalizeConversationId(conversationId)) {
+          commandStateHydratePromise = null
+          commandStateHydratePromiseConversationId = null
+        }
       })
     commandStateHydratePromise = req
+    commandStateHydratePromiseConversationId = normalizeConversationId(conversationId)
     return req
   }
 
   async function patchCommandState(conversationId: string, patch: ConversationCommandStatePatch) {
-    const normalizedPatch = normalizeCommandStatePatchResearchMode(patch)
-    const response = await conversationApi.patchCommandState(conversationId, normalizedPatch)
-    applyCommandState(response.data)
-    commandStateHydrated.value = true
+    const response = await conversationApi.patchCommandState(conversationId, patch)
+    if (currentConversationId.value === conversationId) {
+      applyCommandState(response.data)
+      markCommandStateHydrated(conversationId)
+    }
     return response.data
   }
 
-  async function seedConversationCommandState(conversationId: string) {
-    if (commandStateHydrated.value) return
-    const seed = getLocalCommandStateSeed()
+  function shouldSeedConversationCommandState(state: ConversationCommandState): boolean {
+    const selectedProviderId = state.selected_provider_id?.trim() || ''
+    const selectedModelId = state.selected_model_id?.trim() || ''
+    return (
+      !commandStateHydrated.value ||
+      !!selectedProviderId ||
+      !!selectedModelId ||
+      !!state.offline
+    )
+  }
+
+  async function seedConversationCommandState(
+    conversationId: string,
+    seed: ConversationCommandState = getLocalCommandStateSeed()
+  ) {
+    if (!shouldSeedConversationCommandState(seed)) return
     await patchCommandState(conversationId, seed)
   }
 
@@ -2030,6 +2190,7 @@ export const useChatStore = defineStore('chat', () => {
     modelPreference.value = resolved.model_preference
     saveModelPreference(modelPreference.value)
     selectedProviderId.value = resolved.selected_provider_id
+    providerPinOnlyActive.value = false
     clearPendingModelAutoFallback()
 
     if (!conversationId) return
@@ -2046,6 +2207,27 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     await patchCommandState(conversationId, patch)
+  }
+
+  async function applyProviderPinOnly(providerIdRaw: string, conversationId?: string | null) {
+    const providerId = providerIdRaw.trim()
+    if (!providerId) {
+      await applyModelPreference('auto', conversationId)
+      return
+    }
+
+    modelPreference.value = 'auto'
+    saveModelPreference('auto')
+    selectedProviderId.value = providerId
+    providerPinOnlyActive.value = true
+    clearPendingModelAutoFallback()
+
+    if (!conversationId) return
+
+    await patchCommandState(conversationId, {
+      selected_provider_id: providerId,
+      selected_model_id: '',
+    })
   }
 
   async function confirmModelAutoFallbackRetry() {
@@ -2294,33 +2476,37 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk): boolean {
-    if (currentConversationId.value !== conversationId) return false
-    const persistedMessageId = finalChunk?.message_id?.trim()
-    if (!persistedMessageId) return false
+function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk): boolean {
+  if (currentConversationId.value !== conversationId) return false
+  const persistedMessageId = finalChunk?.message_id?.trim()
+  if (!persistedMessageId) return false
 
-    const lastIndex = messages.value.length - 1
-    if (lastIndex < 0) return false
-    const lastMsg = messages.value[lastIndex]
-    if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.id.startsWith('streaming-')) {
-      return false
-    }
-
-    const nextContent = finalChunk?.content ?? streamingContent.value
-    const nextMessage: Message = {
-      ...lastMsg,
-      id: persistedMessageId,
-      render_key: lastMsg.render_key || lastMsg.id,
-      content: nextContent,
-      provider: finalChunk?.provider || lastMsg.provider,
-      model: finalChunk?.model || lastMsg.model,
-      stats: finalChunk?.stats || lastMsg.stats,
-    }
-    const nextMessages = [...messages.value]
-    nextMessages[lastIndex] = nextMessage
-    messages.value = nextMessages
-    return true
+  const lastIndex = messages.value.length - 1
+  if (lastIndex < 0) return false
+  const lastMsg = messages.value[lastIndex]
+  if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.id.startsWith('streaming-')) {
+    return false
   }
+
+  const nextContent = mergeMissingProcessCardsIntoFinalContent(
+    lastMsg.content,
+    finalChunk?.content ?? streamingContent.value,
+    finalChunk?.finalization_mode
+  )
+  const nextMessage: Message = {
+    ...lastMsg,
+    id: persistedMessageId,
+    render_key: lastMsg.render_key || lastMsg.id,
+    content: nextContent,
+    provider: finalChunk?.provider || lastMsg.provider,
+    model: finalChunk?.model || lastMsg.model,
+    stats: finalChunk?.stats || lastMsg.stats,
+  }
+  const nextMessages = [...messages.value]
+  nextMessages[lastIndex] = nextMessage
+  messages.value = nextMessages
+  return true
+}
 
   watch(pendingQuestion, (q) => {
     if (q) {
@@ -2354,6 +2540,39 @@ export const useChatStore = defineStore('chat', () => {
       return String(value)
     }
     return undefined
+  }
+
+  function hasPendingConfirmationState(
+    data: Partial<PendingConfirmationSnapshot> | null | undefined
+  ): data is PendingConfirmationSnapshot {
+    if (!data || typeof data !== 'object') return false
+    return (
+      Object.prototype.hasOwnProperty.call(data, 'pending_approval') &&
+      Object.prototype.hasOwnProperty.call(data, 'pending_question') &&
+      Object.prototype.hasOwnProperty.call(data, 'pending_exec_approval')
+    )
+  }
+
+  function applyPendingConfirmations(data: PendingConfirmationSnapshot) {
+    setPendingApproval(null)
+    setPendingQuestion(null)
+    setPendingExecApproval(null)
+
+    if (data.pending_approval) {
+      setPendingApproval(data.pending_approval)
+    }
+    if (data.pending_question) {
+      setPendingQuestion(data.pending_question)
+    }
+    if (data.pending_exec_approval) {
+      setPendingExecApproval(data.pending_exec_approval)
+    }
+
+    if (hasPendingConfirmations()) {
+      awaitingConfirmation.value = true
+    } else if (!streaming.value) {
+      awaitingConfirmation.value = false
+    }
   }
 
   function normalizePendingExecApproval(data: any): {
@@ -2427,6 +2646,62 @@ export const useChatStore = defineStore('chat', () => {
       pendingRecoveryRetryTimer = null
     }
     pendingRecoveryRetryCount = 0
+  }
+
+  function resolvePendingConfirmationRecoveryKey(sessionId?: string): string {
+    const normalizedSessionId =
+      typeof sessionId === 'string' ? sessionId.trim() : currentConversationId.value?.trim() || ''
+    return normalizedSessionId ? `session:${normalizedSessionId}` : 'global'
+  }
+
+  function markPendingConfirmationRecoveryChecked(sessionId?: string) {
+    pendingConfirmationRecoveryChecks.add(resolvePendingConfirmationRecoveryKey(sessionId))
+  }
+
+  async function checkPendingConfirmationsFromBootstrap(force = false): Promise<boolean> {
+    const sessionId = currentConversationId.value?.trim() || ''
+    if (!sessionId) {
+      return false
+    }
+
+    const recoveryKey = resolvePendingConfirmationRecoveryKey(sessionId)
+    if (!force && pendingConfirmationRecoveryChecks.has(recoveryKey)) {
+      return true
+    }
+
+    const pendingRequest = pendingConfirmationRecoveryRequests.get(recoveryKey)
+    if (pendingRequest) {
+      await pendingRequest
+      return true
+    }
+
+    let recovered = false
+    const request = chatBootstrapApi
+      .getConversationBootstrap(sessionId)
+      .then((response) => {
+        const data = response.data
+        if (hasPendingConfirmationState(data)) {
+          applyPendingConfirmations(data)
+        } else if (!streaming.value) {
+          setPendingApproval(null)
+          setPendingQuestion(null)
+          setPendingExecApproval(null)
+        }
+        if (!force) {
+          pendingConfirmationRecoveryChecks.add(recoveryKey)
+        }
+        recovered = true
+      })
+      .catch(() => {
+        // Bootstrap may be temporarily unavailable during startup/reconnect.
+      })
+      .finally(() => {
+        pendingConfirmationRecoveryRequests.delete(recoveryKey)
+      })
+
+    pendingConfirmationRecoveryRequests.set(recoveryKey, request)
+    await request
+    return recovered
   }
 
   function clearAwaitingConfirmationForSession(sessionId?: string) {
@@ -2539,7 +2814,8 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function recoverPendingConfirmations(allowInlineFallback = false): Promise<void> {
-    await Promise.all([checkPendingApprovals(), checkPendingQuestion(), checkPendingExecApproval()])
+    const forceBootstrapRefresh = allowInlineFallback || awaitingConfirmation.value
+    await checkPendingConfirmationsFromBootstrap(forceBootstrapRefresh)
     if (hasPendingConfirmations()) {
       clearPendingRecoveryRetryTimer()
       awaitingConfirmation.value = true
@@ -2815,14 +3091,20 @@ export const useChatStore = defineStore('chat', () => {
       const response = await conversationApi.create(title)
       conversations.value.unshift(response.data)
       currentConversationId.value = response.data.id
+      resetCommandStateHydration()
       messages.value = []
       hasMoreMessages.value = false
       currentPage.value = 0
-      if (!commandStateHydrated.value) {
+      const seed = getLocalCommandStateSeed()
+      if (shouldSeedConversationCommandState(seed)) {
         try {
-          await seedConversationCommandState(response.data.id)
+          await seedConversationCommandState(response.data.id, seed)
         } catch {
-          applyCommandState(getLocalCommandStateSeed())
+          applyCommandState({
+            conversation_id: response.data.id,
+            ...seed,
+          })
+          markCommandStateHydrated(response.data.id)
         }
       }
       return response.data
@@ -2838,6 +3120,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       await conversationApi.delete(id)
       conversations.value = conversations.value.filter((c) => c.id !== id)
+      resetCommandStateHydration(id)
       if (currentConversationId.value === id) {
         currentConversationId.value = null
         messages.value = []
@@ -2885,21 +3168,29 @@ export const useChatStore = defineStore('chat', () => {
     clearRecentTodoCompletion()
 
     currentConversationId.value = id
+    resetCommandStateHydration()
     reportStartupMark('chat_select_conversation_start')
     // Don't clear messages immediately to avoid flash
     // Reset pagination state
     hasMoreMessages.value = false
     currentPage.value = 0
+    let bootstrapData: ConversationBootstrapResponse | null = null
+    let bootstrapHasPendingConfirmationState = false
 
     try {
       // Fetch messages without setting loading state to avoid flash
       error.value = null
-      const [messageResponse, _commandStateResponse, activeStreamResponse] = await Promise.all([
+      const [messageResponse, bootstrapResponse] = await Promise.all([
         messageApi.list(id, PAGE_SIZE, 0),
-        fetchCommandState(id).catch(() => null),
-        messageApi.getActiveStreamState(id).catch(() => null),
+        chatBootstrapApi.getConversationBootstrap(id).catch(() => null),
       ])
       const fetchedMessages = messageResponse.data
+      bootstrapData = bootstrapResponse?.data || null
+      const commandStateResponse = bootstrapData?.command_state || null
+      const activeStreamResponse = bootstrapData?.active_stream || null
+      bootstrapHasPendingConfirmationState = Boolean(
+        bootstrapData && hasPendingConfirmationState(bootstrapData)
+      )
 
       // Only update if we're still on the same conversation
       if (currentConversationId.value === id) {
@@ -2910,6 +3201,19 @@ export const useChatStore = defineStore('chat', () => {
         reportStartupMark('chat_select_conversation_done', {
           message_count: fetchedMessages.length,
         })
+        if (commandStateResponse) {
+          applyCommandState(commandStateResponse)
+          markCommandStateHydrated(id)
+        } else {
+          applyCommandState({
+            conversation_id: id,
+            ...getLocalCommandStateSeed(),
+          })
+          markCommandStateHydrated(id)
+        }
+        if (bootstrapData && hasPendingConfirmationState(bootstrapData)) {
+          applyPendingConfirmations(bootstrapData)
+        }
 
         const detachedState = getActiveStreamState(id)
         if (detachedState) {
@@ -2925,12 +3229,16 @@ export const useChatStore = defineStore('chat', () => {
           if (detachedState.uiState.phase === 'recovering') {
             startInterruptedStreamRecovery(id)
           }
-          void recoverPendingConfirmations(true)
+          if (!bootstrapHasPendingConfirmationState) {
+            void recoverPendingConfirmations(true)
+          }
           return
         }
 
-        if (restoreServerActiveStreamState(id, activeStreamResponse?.data)) {
-          void recoverPendingConfirmations(true)
+        if (restoreServerActiveStreamState(id, activeStreamResponse)) {
+          if (!bootstrapHasPendingConfirmationState) {
+            void recoverPendingConfirmations(true)
+          }
           return
         }
       }
@@ -2943,7 +3251,9 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // Restore pending confirmations for this conversation if any.
-    void recoverPendingConfirmations(false)
+    if (!bootstrapHasPendingConfirmationState) {
+      void recoverPendingConfirmations(false)
+    }
   }
 
   async function fetchMessages(conversationId: string, page = 0) {
@@ -3119,21 +3429,18 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value = [...messages.value, userMessage]
 
-    const resolvedModelSelection = resolveModelSelection(
-      selectedProviderId.value,
-      modelPreference.value
-    )
-    const request: SendMessageRequest = normalizeSendMessageRequestResearchMode({
+    const resolvedModelSelection = getCurrentRequestModelSelection({
+      conversationId,
+      persistIfChanged: true,
+    })
+    const request: SendMessageRequest = {
       message: content,
       provider: resolvedModelSelection.selected_provider_id || '',
       model: resolvedModelSelection.selected_model_id || '',
       temperature: settingsStore.temperature,
       max_tokens: settingsStore.maxTokens,
       attachments: attachments.length > 0 ? attachments : undefined,
-      web_search_enabled: webSearchEnabled.value,
-      deep_research_enabled: deepResearchEnabled.value,
-      research_mode_enabled: deepResearchEnabled.value,
-    })
+    }
 
     try {
       sending.value = true
@@ -3687,20 +3994,17 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = [...messages.value, assistantMessage]
 
       const modelSelection = splitModelPreference(modelPreference.value)
-      const resolvedModelSelection = resolveModelSelection(
-        selectedProviderId.value,
-        modelPreference.value
-      )
-      request = normalizeSendMessageRequestResearchMode({
+      const resolvedModelSelection = getCurrentRequestModelSelection({
+        conversationId: convId,
+        persistIfChanged: true,
+      })
+      request = {
         message: '[CONTINUE_AFTER_CANCEL]',
         provider: resolvedModelSelection.selected_provider_id || '',
         model: resolvedModelSelection.selected_model_id || modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
-        web_search_enabled: webSearchEnabled.value,
-        deep_research_enabled: deepResearchEnabled.value,
-        research_mode_enabled: deepResearchEnabled.value,
-      })
+      }
 
       await connectConversationStream(convId, request, {
         onStreamId: (streamId) => {
@@ -3878,20 +4182,17 @@ export const useChatStore = defineStore('chat', () => {
       error.value = null
 
       const modelSelection = splitModelPreference(modelPreference.value)
-      const resolvedModelSelection = resolveModelSelection(
-        selectedProviderId.value,
-        modelPreference.value
-      )
-      request = normalizeSendMessageRequestResearchMode({
+      const resolvedModelSelection = getCurrentRequestModelSelection({
+        conversationId,
+        persistIfChanged: true,
+      })
+      request = {
         message: '[CONTINUE]', // Special marker for continue
         provider: resolvedModelSelection.selected_provider_id || '',
         model: resolvedModelSelection.selected_model_id || modelSelection.selected_model_id || '',
         temperature: settingsStore.temperature,
         max_tokens: settingsStore.maxTokens,
-        web_search_enabled: webSearchEnabled.value,
-        deep_research_enabled: deepResearchEnabled.value,
-        research_mode_enabled: deepResearchEnabled.value,
-      })
+      }
 
       await connectConversationStream(conversationId, request, {
         onStreamId: (streamId) => {
@@ -4092,11 +4393,11 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = [...messages.value, assistantMessage]
 
       const modelSelection = splitModelPreference(modelPreference.value)
-      const resolvedModelSelection = resolveModelSelection(
-        selectedProviderId.value,
-        modelPreference.value
-      )
-      request = normalizeSendMessageRequestResearchMode({
+      const resolvedModelSelection = getCurrentRequestModelSelection({
+        conversationId,
+        persistIfChanged: true,
+      })
+      request = {
         message: lastUserMessage.content,
         provider: resolvedModelSelection.selected_provider_id || '',
         model: resolvedModelSelection.selected_model_id || modelSelection.selected_model_id || '',
@@ -4104,10 +4405,7 @@ export const useChatStore = defineStore('chat', () => {
         max_tokens: settingsStore.maxTokens,
         attachments: lastUserMessage.attachments,
         regenerate: true,
-        web_search_enabled: webSearchEnabled.value,
-        deep_research_enabled: deepResearchEnabled.value,
-        research_mode_enabled: deepResearchEnabled.value,
-      })
+      }
 
       await connectConversationStream(conversationId, request, {
         onStreamId: (streamId) => {
@@ -4438,23 +4736,22 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function checkPendingApprovals() {
-    try {
-      const response = await approvalApi.listPending(currentConversationId.value || undefined)
-      const pending = response.data
-      if (pending && pending.length > 0) {
-        const first = pending[0]
-        if (first) {
-          setPendingApproval(first)
-        }
-      } else if (!streaming.value) {
-        pendingApproval.value = null
-      }
-    } catch {
-      // Approval endpoint may not exist yet — ignore
+    if (await checkPendingConfirmationsFromBootstrap(false)) {
+      return
+    }
+    if (!streaming.value) {
+      setPendingApproval(null)
     }
   }
 
   function setPendingApproval(data: any) {
+    if (!data) {
+      pendingApproval.value = null
+      if (!streaming.value && !pendingQuestion.value && !pendingExecApproval.value) {
+        awaitingConfirmation.value = false
+      }
+      return
+    }
     const requestId = data?.id || data?.request_id
     if (!requestId) return
     const sessionId = normalizePendingSessionId(data)
@@ -4478,7 +4775,6 @@ export const useChatStore = defineStore('chat', () => {
 
   // --- Ask-user-question methods ---
   function setPendingQuestion(data: any) {
-    console.log('[ChatStore] setPendingQuestion called with:', data)
     const sessionId = normalizePendingSessionId(data)
     if (sessionId) {
       updateActiveStreamState(sessionId, { awaitingConfirmation: !!data })
@@ -4486,12 +4782,14 @@ export const useChatStore = defineStore('chat', () => {
     if (data && !shouldSurfacePendingForCurrentConversation(sessionId)) {
       return
     }
+    if (data) {
+      markPendingConfirmationRecoveryChecked(sessionId)
+    }
     pendingQuestion.value = data
     if (data) {
       clearPendingRecoveryRetryTimer()
     }
     awaitingConfirmation.value = !!data
-    console.log('[ChatStore] pendingQuestion.value is now:', pendingQuestion.value)
   }
 
   async function submitQuestionAnswers(
@@ -4547,24 +4845,8 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  async function checkPendingQuestion() {
-    try {
-      const params: Record<string, string> = {}
-      if (currentConversationId.value) {
-        params.session_id = currentConversationId.value
-      }
-      const res = await api.get<{ pending: boolean; question?: any }>(
-        '/ask-user-question/pending',
-        { params }
-      )
-      if (res.data.pending && res.data.question) {
-        setPendingQuestion(res.data.question)
-      } else if (!streaming.value) {
-        setPendingQuestion(null)
-      }
-    } catch {
-      // endpoint may not exist — ignore
-    }
+  async function checkPendingQuestion(force = false) {
+    await checkPendingConfirmationsFromBootstrap(force)
   }
 
   // --- Exec approval methods ---
@@ -4587,21 +4869,11 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   async function checkPendingExecApproval() {
-    try {
-      const params: Record<string, string> = {}
-      if (currentConversationId.value) {
-        params.session_id = currentConversationId.value
-      }
-      const res = await api.get<{ pending: boolean; approval?: any }>('/exec/approvals/pending', {
-        params,
-      })
-      if (res.data.pending && res.data.approval) {
-        setPendingExecApproval(res.data.approval)
-      } else if (!streaming.value) {
-        setPendingExecApproval(null)
-      }
-    } catch {
-      // endpoint may not exist — ignore
+    if (await checkPendingConfirmationsFromBootstrap(false)) {
+      return
+    }
+    if (!streaming.value) {
+      setPendingExecApproval(null)
     }
   }
 
@@ -4632,6 +4904,7 @@ export const useChatStore = defineStore('chat', () => {
       }
       conversations.value = []
       currentConversationId.value = null
+      resetCommandStateHydration()
       clearRecentTodoCompletion()
       messages.value = []
       hasMoreMessages.value = false
@@ -4656,26 +4929,12 @@ export const useChatStore = defineStore('chat', () => {
     warmupApi.trigger(convId).catch(() => {})
   }
 
-  function setWebSearchEnabled(enabled: boolean) {
-    webSearchEnabled.value = enabled
-    saveWebSearchEnabled(enabled)
-    const convId = currentConversationId.value
-    if (convId) {
-      void patchCommandState(convId, { web_search_enabled: enabled }).catch(() => {})
-    }
+  async function setModelPreference(value: string) {
+    await applyModelPreference(value, currentConversationId.value).catch(() => {})
   }
 
-  function setModelPreference(value: string) {
-    void applyModelPreference(value, currentConversationId.value).catch(() => {})
-  }
-
-  function setDeepResearchEnabled(enabled: boolean) {
-    deepResearchEnabled.value = enabled
-    saveDeepResearchEnabled(enabled)
-    const convId = currentConversationId.value
-    if (convId) {
-      void patchCommandState(convId, { research_mode_enabled: enabled }).catch(() => {})
-    }
+  async function setProviderPinOnly(providerId: string) {
+    await applyProviderPinOnly(providerId, currentConversationId.value).catch(() => {})
   }
 
   // Reset warmup tracking (call when conversation changes)
@@ -4726,11 +4985,10 @@ export const useChatStore = defineStore('chat', () => {
     awaitingConfirmation,
     pendingExecApproval,
     selectedProviderId,
+    providerPinOnlyActive,
     modelPreference,
     pendingModelAutoFallback,
     offlineMode,
-    webSearchEnabled,
-    deepResearchEnabled,
     isRecovering,
     isStreamInterrupted,
 
@@ -4755,6 +5013,7 @@ export const useChatStore = defineStore('chat', () => {
     cancelStreaming,
     retryInterruptedStreamRecovery,
     cancelPreTTFT,
+    setProviderPinOnly,
     continueMessage,
     regenerateMessage,
     editMessageAndResubmit,
@@ -4788,8 +5047,6 @@ export const useChatStore = defineStore('chat', () => {
     warmupConversation,
     resetWarmup,
     setModelPreference,
-    setWebSearchEnabled,
-    setDeepResearchEnabled,
     confirmModelAutoFallbackRetry,
     dismissModelAutoFallbackRetry,
   }

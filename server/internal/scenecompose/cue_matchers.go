@@ -1,8 +1,14 @@
 package scenecompose
 
-import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
+import (
+	"sync"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
+)
 
 type foldedCueMatcher struct {
+	once  sync.Once
+	cues  []string
 	inner *textmatch.FoldedAhoMatcher
 }
 
@@ -12,22 +18,34 @@ type cueChoice struct {
 }
 
 func newFoldedCueMatcher(cues []string) *foldedCueMatcher {
-	return &foldedCueMatcher{inner: textmatch.NewFoldedAhoMatcher(cues)}
+	return &foldedCueMatcher{cues: append([]string(nil), cues...)}
+}
+
+func (m *foldedCueMatcher) ensureInner() *textmatch.FoldedAhoMatcher {
+	if m == nil {
+		return nil
+	}
+	m.once.Do(func() {
+		m.inner = textmatch.NewFoldedAhoMatcher(m.cues)
+	})
+	return m.inner
 }
 
 func (m *foldedCueMatcher) Contains(text string) bool {
-	if m == nil || m.inner == nil {
+	inner := m.ensureInner()
+	if inner == nil {
 		return false
 	}
-	return m.inner.ContainsAnyFold(text)
+	return inner.ContainsAnyFold(text)
 }
 
 func (m *foldedCueMatcher) Count(text string) int {
-	if m == nil || m.inner == nil {
+	inner := m.ensureInner()
+	if inner == nil {
 		return 0
 	}
 	seen := make(map[int]struct{}, 8)
-	m.inner.ScanFold(text, func(match textmatch.FoldedMatch) bool {
+	inner.ScanFold(text, func(match textmatch.FoldedMatch) bool {
 		seen[match.PatternIndex] = struct{}{}
 		return false
 	})

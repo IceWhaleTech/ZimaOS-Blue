@@ -79,7 +79,6 @@ func TestSkillMarketDiscoverSSEEndToEnd(t *testing.T) {
 	cfg.GitHubAPIBaseURL = upstream.URL
 	cfg.ClawHubBaseURL = upstream.URL
 	cfg.SkillHubBaseURL = upstream.URL
-	cfg.SkillStackBaseURL = upstream.URL
 	cfg.LLMSkillsBaseURL = upstream.URL
 
 	broker := sse.NewBroker()

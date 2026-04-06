@@ -125,7 +125,8 @@ type Handler struct {
 	sfGroup singleflight.Group
 
 	// cache for security scan results
-	scanCache *cache.GenericCache[string]
+	scanCache     *cache.GenericCache[string]
+	scanCacheOnce sync.Once
 }
 
 // NewHandler creates a new security handler.
@@ -153,14 +154,20 @@ func NewHandler(detector *ThreatDetector) *Handler {
 			Rules:            []PromptFirewallRule{},
 			BuiltinRuleState: defaultPromptFirewallBuiltinRuleState(),
 		},
-		scanCache: cache.NewGenericCacheWithStats(cache.Config{
-			MaxSize:    10,
-			DefaultTTL: 30 * time.Second, // Cache scan results for 30s
-		}, "security_scan"),
 	}
 	// Initialize scanner with default config
 	h.scanner = NewSecurityScanner(h, nil)
 	return h
+}
+
+func (h *Handler) ensureScanCache() *cache.GenericCache[string] {
+	h.scanCacheOnce.Do(func() {
+		h.scanCache = cache.NewGenericCacheWithStats(cache.Config{
+			MaxSize:    10,
+			DefaultTTL: 30 * time.Second, // Cache scan results for 30s
+		}, "security_scan")
+	})
+	return h.scanCache
 }
 
 // SetDataDir sets the data directory for system checks.
@@ -682,9 +689,11 @@ func (h *Handler) ScanInput(c echo.Context) error {
 // RunSecurityScan handles GET /api/v1/security/scan/run
 // This endpoint performs a comprehensive security scan of the system.
 func (h *Handler) RunSecurityScan(c echo.Context) error {
+	scanCache := h.ensureScanCache()
+
 	// Try cache first
 	cacheKey := "security_scan_result"
-	if cached, ok := h.scanCache.Get(cacheKey); ok {
+	if cached, ok := scanCache.Get(cacheKey); ok {
 		return c.JSON(http.StatusOK, cached)
 	}
 
@@ -716,7 +725,7 @@ func (h *Handler) RunSecurityScan(c echo.Context) error {
 		}
 
 		// Cache the result
-		h.scanCache.Put(cacheKey, scanResult)
+		scanCache.Put(cacheKey, scanResult)
 		return scanResult, nil
 	})
 

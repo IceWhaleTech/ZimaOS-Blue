@@ -298,7 +298,7 @@ func newChatPerfFixture(b *testing.B, dir string, scenario chatPerfScenario, str
 	handler := NewChatHandler(store, registry, tools.NewRegistry())
 	metrics := &chatPerfMetricsStub{counters: make(map[string]int64)}
 	handler.SetMetricsRecorder(metrics)
-	handler.SetPersistenceOptions(scenario.persistAsync, scenario.readLite)
+	handler.SetPersistenceOptions(scenario.persistAsync, scenario.readLite, scenario.persistAsync)
 
 	conv, err := store.CreateConversation(context.Background(), "Benchmark conversation")
 	if err != nil {

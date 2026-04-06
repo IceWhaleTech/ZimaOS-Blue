@@ -1,25 +1,30 @@
+//go:build !darwin
+
 package pdf
 
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/klippa-app/go-pdfium"
 	"go.uber.org/zap"
 )
 
 func TestServiceInfoAndExtractTextPDF(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "sample.pdf")
+	path := filepath.Join(t.TempDir(), "sample.pdf")
 	if err := os.WriteFile(path, buildTextPDF("Hello PDF"), 0o644); err != nil {
 		t.Fatalf("write pdf fixture: %v", err)
 	}
 
-	svc := NewService(zap.NewNop(), nil)
+	svc := NewService(zap.NewNop(), nil, ServiceConfig{
+		RuntimeDir:   "testdata",
+		AutoDownload: false,
+	})
 	defer func() {
 		_ = svc.Close()
 	}()
@@ -31,8 +36,8 @@ func TestServiceInfoAndExtractTextPDF(t *testing.T) {
 	if info.PageCount != 1 {
 		t.Fatalf("page count = %d, want 1", info.PageCount)
 	}
-	if info.Engine != engineName {
-		t.Fatalf("engine = %q, want %q", info.Engine, engineName)
+	if info.Engine != nativePDFEngineName() {
+		t.Fatalf("engine = %q, want %q", info.Engine, nativePDFEngineName())
 	}
 
 	result, err := svc.Extract(context.Background(), ExtractRequest{Path: path, IncludePages: true})
@@ -48,6 +53,9 @@ func TestServiceInfoAndExtractTextPDF(t *testing.T) {
 	if len(result.SelectedPages) != 1 || result.SelectedPages[0] != 1 {
 		t.Fatalf("selected pages = %#v, want [1]", result.SelectedPages)
 	}
+	if result.Document.Engine != nativePDFEngineName() {
+		t.Fatalf("result engine = %q, want %q", result.Document.Engine, nativePDFEngineName())
+	}
 	if result.OCRUsed {
 		t.Fatal("expected OCRUsed=false for text PDF")
 	}
@@ -56,6 +64,90 @@ func TestServiceInfoAndExtractTextPDF(t *testing.T) {
 	}
 	if len(result.Pages) != 1 || !strings.Contains(result.Pages[0].Text, "Hello PDF") {
 		t.Fatalf("pages = %#v", result.Pages)
+	}
+}
+
+type fakePDFiumPool struct{}
+
+func (p *fakePDFiumPool) GetInstance(timeout time.Duration) (pdfium.Pdfium, error) {
+	_ = timeout
+	return nil, nil
+}
+
+func (p *fakePDFiumPool) Close() error { return nil }
+
+func TestPDFiumRuntimeURLCandidates(t *testing.T) {
+	got := pdfiumRuntimeURLCandidates()
+	want := []string{
+		"https://raw.githubusercontent.com/klippa-app/go-pdfium/852818152bff9c1e366b8737a0802481f3a80e0f/webassembly/pdfium.wasm",
+		"https://raw.gitmirror.com/klippa-app/go-pdfium/852818152bff9c1e366b8737a0802481f3a80e0f/webassembly/pdfium.wasm",
+		"https://cdn.jsdelivr.net/gh/klippa-app/go-pdfium@852818152bff9c1e366b8737a0802481f3a80e0f/webassembly/pdfium.wasm",
+		"https://ghproxy.com/https://raw.githubusercontent.com/klippa-app/go-pdfium/852818152bff9c1e366b8737a0802481f3a80e0f/webassembly/pdfium.wasm",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("len(urls) = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("urls[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestServiceEnsureReadyRequiresRuntimeWhenAutoDownloadDisabled(t *testing.T) {
+	svc := NewService(zap.NewNop(), nil, ServiceConfig{
+		RuntimeDir:   t.TempDir(),
+		AutoDownload: false,
+	})
+	svc.initPool = func(cfg pdfRuntimeConfig) (any, error) {
+		_ = cfg
+		t.Fatal("expected missing runtime to fail before pdfium init")
+		return nil, nil
+	}
+
+	err := svc.ensureReady(context.Background())
+	if err == nil {
+		t.Fatal("expected ensureReady to fail when runtime wasm is missing")
+	}
+	if !strings.Contains(err.Error(), "missing PDF runtime") {
+		t.Fatalf("error = %v, want missing PDF runtime", err)
+	}
+}
+
+func TestServiceEnsureReadyAutoDownloadsMissingRuntime(t *testing.T) {
+	dir := t.TempDir()
+	svc := NewService(zap.NewNop(), nil, ServiceConfig{
+		RuntimeDir:   dir,
+		AutoDownload: true,
+	})
+	downloaded := false
+	svc.download = func(ctx context.Context, url, path string) error {
+		_ = ctx
+		downloaded = true
+		if !strings.HasSuffix(path, pdfiumRuntimeFileName) {
+			t.Fatalf("download path = %q, want runtime wasm path", path)
+		}
+		if !strings.Contains(url, "/webassembly/pdfium.wasm") {
+			t.Fatalf("download url = %q, want pdfium runtime source", url)
+		}
+		return os.WriteFile(path, []byte("pdfium-runtime"), 0o644)
+	}
+	pool := &fakePDFiumPool{}
+	svc.initPool = func(cfg pdfRuntimeConfig) (any, error) {
+		if !bytes.Equal(cfg.WASM, []byte("pdfium-runtime")) {
+			t.Fatalf("cfg.WASM = %q, want %q", string(cfg.WASM), "pdfium-runtime")
+		}
+		return pool, nil
+	}
+
+	if err := svc.ensureReady(context.Background()); err != nil {
+		t.Fatalf("ensureReady returned error: %v", err)
+	}
+	if !downloaded {
+		t.Fatal("expected runtime download to run")
+	}
+	if svc.pool != pool {
+		t.Fatalf("pool = %#v, want %#v", svc.pool, pool)
 	}
 }
 
@@ -92,36 +184,4 @@ func TestNormalizeText_CleansWrappedListsAndParagraphs(t *testing.T) {
 	if got != want {
 		t.Fatalf("normalizeText() = %q, want %q", got, want)
 	}
-}
-
-func buildTextPDF(text string) []byte {
-	stream := fmt.Sprintf("BT\n/F1 24 Tf\n72 96 Td\n(%s) Tj\nET\n", escapePDFText(text))
-	objects := []string{
-		"<< /Type /Catalog /Pages 2 0 R >>",
-		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
-		fmt.Sprintf("<< /Length %d >>\nstream\n%sendstream", len(stream), stream),
-		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-	}
-
-	var buf bytes.Buffer
-	buf.WriteString("%PDF-1.4\n")
-	offsets := make([]int, len(objects)+1)
-	for index, obj := range objects {
-		offsets[index+1] = buf.Len()
-		fmt.Fprintf(&buf, "%d 0 obj\n%s\nendobj\n", index+1, obj)
-	}
-	xrefStart := buf.Len()
-	fmt.Fprintf(&buf, "xref\n0 %d\n", len(objects)+1)
-	buf.WriteString("0000000000 65535 f \n")
-	for index := 1; index <= len(objects); index++ {
-		fmt.Fprintf(&buf, "%010d 00000 n \n", offsets[index])
-	}
-	fmt.Fprintf(&buf, "trailer\n<< /Root 1 0 R /Size %d >>\nstartxref\n%d\n%%%%EOF\n", len(objects)+1, xrefStart)
-	return buf.Bytes()
-}
-
-func escapePDFText(text string) string {
-	replacer := strings.NewReplacer("\\", "\\\\", "(", "\\(", ")", "\\)")
-	return replacer.Replace(text)
 }

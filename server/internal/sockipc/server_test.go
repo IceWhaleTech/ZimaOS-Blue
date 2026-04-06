@@ -2,6 +2,7 @@ package sockipc
 
 import (
 	"context"
+	"io"
 	"net"
 	"os"
 	"testing"
@@ -145,5 +146,55 @@ func TestServerCloseDisconnectsIdleClients(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Close() blocked with an idle client connection")
+	}
+}
+
+func TestServerStreamHandlerWritesMultipleResponses(t *testing.T) {
+	sock := shortSock(t)
+	srv := NewServer(sock, zap.NewNop())
+	srv.HandleStream("watch", func(ctx context.Context, req *Request, conn net.Conn) error {
+		if got := req.Params["conversation_id"]; got != "conv-stream" {
+			t.Fatalf("conversation_id = %q, want conv-stream", got)
+		}
+		if err := WriteJSON(conn, OkResponse(map[string]string{"mode": "snapshot", "seq": "1"})); err != nil {
+			return err
+		}
+		return WriteJSON(conn, OkResponse(map[string]string{"mode": "event", "seq": "2"}))
+	})
+
+	startServerOrSkip(t, srv)
+	defer srv.Close()
+
+	conn, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	if err := WriteJSON(conn, &Request{
+		Cmd:    "watch",
+		Params: map[string]string{"conversation_id": "conv-stream"},
+	}); err != nil {
+		t.Fatalf("WriteJSON(request) error = %v", err)
+	}
+
+	resp1, err := ReadJSON[Response](conn)
+	if err != nil {
+		t.Fatalf("ReadJSON(resp1) error = %v", err)
+	}
+	if got := resp1.Data["seq"]; got != "1" {
+		t.Fatalf("first response seq = %q, want 1", got)
+	}
+
+	resp2, err := ReadJSON[Response](conn)
+	if err != nil {
+		t.Fatalf("ReadJSON(resp2) error = %v", err)
+	}
+	if got := resp2.Data["seq"]; got != "2" {
+		t.Fatalf("second response seq = %q, want 2", got)
+	}
+
+	if _, err := ReadJSON[Response](conn); err != io.EOF {
+		t.Fatalf("final read error = %v, want io.EOF", err)
 	}
 }

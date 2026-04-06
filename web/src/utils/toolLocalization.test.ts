@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import builtinToolBackfills from '@/i18n/builtin-tool-backfills'
-import priorityTranslationOverrides from '@/i18n/priority-translation-overrides'
 
 import { getLocalizedToolDescription, getLocalizedToolName } from './toolLocalization'
 
@@ -65,10 +64,9 @@ function deepMergeMessages(base: LocaleMessages, override: LocaleMessages): Loca
 
 function getMergedLocaleMessages(locale: string): LocaleMessages {
   const base = getLocaleMessages(locale)
-  const priorityOverrides =
-    (priorityTranslationOverrides as Record<string, LocaleMessages>)[locale] || {}
-  const builtinToolOverrides = (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
-  return deepMergeMessages(deepMergeMessages(base, priorityOverrides), builtinToolOverrides)
+  const builtinToolOverrides =
+    (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
+  return deepMergeMessages(base, builtinToolOverrides)
 }
 
 const nameCoverage = [
@@ -382,7 +380,10 @@ function nameResourceKeysFor(toolName: string): string[] {
 
 function descriptionResourceKeysFor(toolName: string): string[] {
   const preferredToolName = preferredToolNameMap[toolName] || toolName
-  return [...(toolDescriptionKeyMap[preferredToolName] || []), `tools.descriptions.${preferredToolName}`]
+  return [
+    ...(toolDescriptionKeyMap[preferredToolName] || []),
+    `tools.descriptions.${preferredToolName}`,
+  ]
 }
 
 describe('tool page localization coverage', () => {
@@ -481,7 +482,10 @@ describe('tool page localization coverage', () => {
           te
         )
 
-        expect(localizedName.trim().length, `${locale} should localize name for ${tool.name}`).toBeGreaterThan(0)
+        expect(
+          localizedName.trim().length,
+          `${locale} should localize name for ${tool.name}`
+        ).toBeGreaterThan(0)
         expect(
           localizedDescription.trim().length,
           `${locale} should localize description for ${tool.name}`
@@ -495,9 +499,10 @@ describe('tool page localization coverage', () => {
           continue
         }
 
-        expect(localizedName, `${locale} should not fall back to English label for ${tool.name}`).not.toBe(
-          tool.englishLabel
-        )
+        expect(
+          localizedName,
+          `${locale} should not fall back to English label for ${tool.name}`
+        ).not.toBe(tool.englishLabel)
         expect(
           localizedDescription,
           `${locale} should not fall back to English description for ${tool.name}`

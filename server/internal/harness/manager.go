@@ -560,6 +560,7 @@ func (c *Controller) SyncSnapshot(ctx context.Context, snapshot *Run) error {
 			"status": snapshot.Status,
 			"error":  strings.TrimSpace(snapshot.Error),
 		})
+		c.maybeEmitRuntimeSkillEvolutionTrigger(ctx, current, snapshot)
 	}
 	return nil
 }

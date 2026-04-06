@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"strings"
+	"sync"
 )
 
 type officeTheme struct {
@@ -30,106 +31,117 @@ type officeTheme struct {
 	MonospaceFont string
 }
 
-var officeThemeCatalog = map[string]officeTheme{
-	"analysis": {
-		Name:          "analysis",
-		Primary:       "#1A6FC4",
-		PrimaryDark:   "#0D4A8A",
-		PrimaryTint:   "#EAF4FF",
-		Accent:        "#0EA5E9",
-		AccentTint:    "#E0F2FE",
-		Success:       "#166534",
-		SuccessTint:   "#DCFCE7",
-		Warning:       "#B45309",
-		WarningTint:   "#FEF3C7",
-		Danger:        "#B91C1C",
-		DangerTint:    "#FEE2E2",
-		Slate:         "#475569",
-		SlateTint:     "#E2E8F0",
-		Border:        "#CBD5E1",
-		Surface:       "#FFFFFF",
-		SurfaceAlt:    "#F8FAFC",
-		SurfaceMuted:  "#F1F5F9",
-		DisplayFont:   "Aptos Display",
-		BodyFont:      "Aptos",
-		EastAsiaFont:  "PingFang SC",
-		MonospaceFont: "Aptos Mono",
-	},
-	"ui_review": {
-		Name:          "ui_review",
-		Primary:       "#0369A1",
-		PrimaryDark:   "#0F172A",
-		PrimaryTint:   "#E0F2FE",
-		Accent:        "#6D28D9",
-		AccentTint:    "#EDE9FE",
-		Success:       "#166534",
-		SuccessTint:   "#DCFCE7",
-		Warning:       "#B45309",
-		WarningTint:   "#FEF3C7",
-		Danger:        "#B91C1C",
-		DangerTint:    "#FEE2E2",
-		Slate:         "#475569",
-		SlateTint:     "#E2E8F0",
-		Border:        "#CBD5E1",
-		Surface:       "#FFFFFF",
-		SurfaceAlt:    "#F8FAFC",
-		SurfaceMuted:  "#F1F5F9",
-		DisplayFont:   "Aptos Display",
-		BodyFont:      "Aptos",
-		EastAsiaFont:  "PingFang SC",
-		MonospaceFont: "Aptos Mono",
-	},
-	"executive": {
-		Name:          "executive",
-		Primary:       "#1E3A8A",
-		PrimaryDark:   "#172554",
-		PrimaryTint:   "#DBEAFE",
-		Accent:        "#0F766E",
-		AccentTint:    "#CCFBF1",
-		Success:       "#166534",
-		SuccessTint:   "#DCFCE7",
-		Warning:       "#92400E",
-		WarningTint:   "#FDE68A",
-		Danger:        "#991B1B",
-		DangerTint:    "#FECACA",
-		Slate:         "#334155",
-		SlateTint:     "#E2E8F0",
-		Border:        "#CBD5E1",
-		Surface:       "#FFFFFF",
-		SurfaceAlt:    "#F8FAFC",
-		SurfaceMuted:  "#F1F5F9",
-		DisplayFont:   "Aptos Display",
-		BodyFont:      "Aptos",
-		EastAsiaFont:  "PingFang SC",
-		MonospaceFont: "Aptos Mono",
-	},
-	"clean": {
-		Name:          "clean",
-		Primary:       "#334155",
-		PrimaryDark:   "#0F172A",
-		PrimaryTint:   "#F1F5F9",
-		Accent:        "#2563EB",
-		AccentTint:    "#DBEAFE",
-		Success:       "#15803D",
-		SuccessTint:   "#DCFCE7",
-		Warning:       "#A16207",
-		WarningTint:   "#FEF3C7",
-		Danger:        "#B91C1C",
-		DangerTint:    "#FEE2E2",
-		Slate:         "#475569",
-		SlateTint:     "#E2E8F0",
-		Border:        "#CBD5E1",
-		Surface:       "#FFFFFF",
-		SurfaceAlt:    "#F8FAFC",
-		SurfaceMuted:  "#F1F5F9",
-		DisplayFont:   "Aptos Display",
-		BodyFont:      "Aptos",
-		EastAsiaFont:  "PingFang SC",
-		MonospaceFont: "Aptos Mono",
-	},
+var (
+	officeThemeCatalog     map[string]officeTheme
+	officeThemeCatalogOnce sync.Once
+)
+
+func ensureOfficeThemeCatalog() {
+	officeThemeCatalogOnce.Do(func() {
+		officeThemeCatalog = map[string]officeTheme{
+			"analysis": {
+				Name:          "analysis",
+				Primary:       "#1A6FC4",
+				PrimaryDark:   "#0D4A8A",
+				PrimaryTint:   "#EAF4FF",
+				Accent:        "#0EA5E9",
+				AccentTint:    "#E0F2FE",
+				Success:       "#166534",
+				SuccessTint:   "#DCFCE7",
+				Warning:       "#B45309",
+				WarningTint:   "#FEF3C7",
+				Danger:        "#B91C1C",
+				DangerTint:    "#FEE2E2",
+				Slate:         "#475569",
+				SlateTint:     "#E2E8F0",
+				Border:        "#CBD5E1",
+				Surface:       "#FFFFFF",
+				SurfaceAlt:    "#F8FAFC",
+				SurfaceMuted:  "#F1F5F9",
+				DisplayFont:   "Aptos Display",
+				BodyFont:      "Aptos",
+				EastAsiaFont:  "PingFang SC",
+				MonospaceFont: "Aptos Mono",
+			},
+			"ui_review": {
+				Name:          "ui_review",
+				Primary:       "#0369A1",
+				PrimaryDark:   "#0F172A",
+				PrimaryTint:   "#E0F2FE",
+				Accent:        "#6D28D9",
+				AccentTint:    "#EDE9FE",
+				Success:       "#166534",
+				SuccessTint:   "#DCFCE7",
+				Warning:       "#B45309",
+				WarningTint:   "#FEF3C7",
+				Danger:        "#B91C1C",
+				DangerTint:    "#FEE2E2",
+				Slate:         "#475569",
+				SlateTint:     "#E2E8F0",
+				Border:        "#CBD5E1",
+				Surface:       "#FFFFFF",
+				SurfaceAlt:    "#F8FAFC",
+				SurfaceMuted:  "#F1F5F9",
+				DisplayFont:   "Aptos Display",
+				BodyFont:      "Aptos",
+				EastAsiaFont:  "PingFang SC",
+				MonospaceFont: "Aptos Mono",
+			},
+			"executive": {
+				Name:          "executive",
+				Primary:       "#1E3A8A",
+				PrimaryDark:   "#172554",
+				PrimaryTint:   "#DBEAFE",
+				Accent:        "#0F766E",
+				AccentTint:    "#CCFBF1",
+				Success:       "#166534",
+				SuccessTint:   "#DCFCE7",
+				Warning:       "#92400E",
+				WarningTint:   "#FDE68A",
+				Danger:        "#991B1B",
+				DangerTint:    "#FECACA",
+				Slate:         "#334155",
+				SlateTint:     "#E2E8F0",
+				Border:        "#CBD5E1",
+				Surface:       "#FFFFFF",
+				SurfaceAlt:    "#F8FAFC",
+				SurfaceMuted:  "#F1F5F9",
+				DisplayFont:   "Aptos Display",
+				BodyFont:      "Aptos",
+				EastAsiaFont:  "PingFang SC",
+				MonospaceFont: "Aptos Mono",
+			},
+			"clean": {
+				Name:          "clean",
+				Primary:       "#334155",
+				PrimaryDark:   "#0F172A",
+				PrimaryTint:   "#F1F5F9",
+				Accent:        "#2563EB",
+				AccentTint:    "#DBEAFE",
+				Success:       "#15803D",
+				SuccessTint:   "#DCFCE7",
+				Warning:       "#A16207",
+				WarningTint:   "#FEF3C7",
+				Danger:        "#B91C1C",
+				DangerTint:    "#FEE2E2",
+				Slate:         "#475569",
+				SlateTint:     "#E2E8F0",
+				Border:        "#CBD5E1",
+				Surface:       "#FFFFFF",
+				SurfaceAlt:    "#F8FAFC",
+				SurfaceMuted:  "#F1F5F9",
+				DisplayFont:   "Aptos Display",
+				BodyFont:      "Aptos",
+				EastAsiaFont:  "PingFang SC",
+				MonospaceFont: "Aptos Mono",
+			},
+		}
+	})
 }
 
 func resolveOfficeTheme(name, styleHint string) officeTheme {
+	ensureOfficeThemeCatalog()
+
 	key := strings.ToLower(strings.TrimSpace(name))
 	if theme, ok := officeThemeCatalog[key]; ok {
 		return theme
@@ -182,6 +194,8 @@ func officeHex(raw string) string {
 }
 
 func officeThemeByName(name string) (officeTheme, error) {
+	ensureOfficeThemeCatalog()
+
 	key := strings.ToLower(strings.TrimSpace(name))
 	theme, ok := officeThemeCatalog[key]
 	if !ok {

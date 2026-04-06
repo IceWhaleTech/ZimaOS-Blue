@@ -6,7 +6,7 @@ import "embed"
 // The file is copied into this directory by the Makefile before building.
 var embeddedBluecli []byte
 
-// embeddedDist contains the web frontend assets as a tar.gz archive.
+// embeddedDist contains the web frontend assets as a tar or tar.gz archive.
 // The file is copied into this directory by the Makefile before building.
 var embeddedDist []byte
 
@@ -18,10 +18,14 @@ var embeddedDist []byte
 var embeddedLauncherFiles embed.FS
 
 func init() {
-	if b, err := embeddedLauncherFiles.ReadFile("bluecli"); err == nil {
+	if b, err := embeddedLauncherFiles.ReadFile("bluecli.gz"); err == nil {
+		embeddedBluecli = b
+	} else if b, err := embeddedLauncherFiles.ReadFile("bluecli"); err == nil {
 		embeddedBluecli = b
 	}
-	if b, err := embeddedLauncherFiles.ReadFile("dist.tar.gz"); err == nil {
+	if b, err := embeddedLauncherFiles.ReadFile("dist.tar"); err == nil {
+		embeddedDist = b
+	} else if b, err := embeddedLauncherFiles.ReadFile("dist.tar.gz"); err == nil {
 		embeddedDist = b
 	}
 }

@@ -1,5 +1,6 @@
-import dashboardCardCopyOverrides from './dashboard-card-copy-overrides'
+import { deepResearchRuntimeBackfills } from './deep-research-runtime-backfills'
 import { deepResearchStructuredBackfills } from './deep-research-structured-backfills'
+import { deepResearchTokenBackfills } from './deep-research-token-backfills'
 import type { LocaleKey } from './locale-catalog'
 
 type LocaleLeaf = string | number | boolean | null
@@ -62,288 +63,687 @@ const commonFilterLabels: Record<LocaleKey, string> = {
   'zh-TW': '篩選',
 }
 
-const localePostMergeOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
+type ProviderRecoveryLocalePatch = {
+  recoverableEyebrow: string
+  recoverableTitle: string
+  recoverableDescription: string
+  retry: string
+  reviewSingle: string
+  providerNeedsAttention: string
+  builtinProfile: string
+}
+
+const providerRecoveryEnglishDefaults: ProviderRecoveryLocalePatch = {
+  recoverableEyebrow: 'Temporary provider issue',
+  recoverableTitle: 'Provider needs attention',
+  recoverableDescription:
+    'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
+  retry: 'Retry Provider',
+  reviewSingle: 'Review Provider',
+  providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+  builtinProfile: 'Built-in profile',
+}
+
+const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecoveryLocalePatch>> = {
+  'ca-ES': {
+    recoverableEyebrow: 'Incidència temporal del proveïdor',
+    recoverableTitle: 'El proveïdor necessita atenció',
+    recoverableDescription:
+      'El proveïdor configurat ha trobat un error temporal. Reviseu el motiu més recent a continuació, reinicieu el proveïdor i torneu-ho a provar.',
+    retry: 'Torna a provar el proveïdor',
+    reviewSingle: 'Revisa el proveïdor',
+    providerNeedsAttention:
+      'El proveïdor necessita atenció. Feu clic per revisar la configuració.',
+    builtinProfile: 'Perfil integrat',
+  },
+  'cs-CZ': {
+    recoverableEyebrow: 'Dočasný problém poskytovatele',
+    recoverableTitle: 'Poskytovatel vyžaduje pozornost',
+    recoverableDescription:
+      'Nakonfigurovaný poskytovatel narazil na dočasnou chybu. Níže zkontrolujte poslední důvod, resetujte poskytovatele a zkuste to znovu.',
+    retry: 'Zkusit poskytovatele znovu',
+    reviewSingle: 'Zkontrolovat poskytovatele',
+    providerNeedsAttention:
+      'Poskytovatel vyžaduje pozornost. Kliknutím zkontrolujte nastavení.',
+    builtinProfile: 'Vestavěný profil',
+  },
+  'da-DK': {
+    recoverableEyebrow: 'Midlertidigt problem med udbyderen',
+    recoverableTitle: 'Udbyderen kræver opmærksomhed',
+    recoverableDescription:
+      'Din konfigurerede udbyder ramte en midlertidig fejl. Gennemgå den seneste årsag nedenfor, nulstil udbyderen, og prøv igen.',
+    retry: 'Prøv udbyderen igen',
+    reviewSingle: 'Gennemgå udbyderen',
+    providerNeedsAttention:
+      'Udbyderen kræver opmærksomhed. Klik for at kontrollere indstillingerne.',
+    builtinProfile: 'Indbygget profil',
+  },
   'de-DE': {
-    skillStore: {
-      modal: {
-        skillNameOptional: 'Skill-Name (Optional)',
-      },
-      search: {
-        sourceStore: 'Marktplatz',
-      },
-      tabs: {
-        store: 'Marktplatz',
-      },
-    },
+    recoverableEyebrow: 'Vorübergehendes Anbieterproblem',
+    recoverableTitle: 'Anbieter benötigt Aufmerksamkeit',
+    recoverableDescription:
+      'Ihr konfigurierter Anbieter ist auf einen vorübergehenden Fehler gestoßen. Prüfen Sie unten den neuesten Grund, setzen Sie den Anbieter zurück und versuchen Sie es dann erneut.',
+    retry: 'Anbieter erneut versuchen',
+    reviewSingle: 'Anbieter prüfen',
+    providerNeedsAttention:
+      'Anbieter benötigt Aufmerksamkeit. Klicken Sie, um die Einstellungen zu prüfen.',
+    builtinProfile: 'Integriertes Profil',
   },
   'el-GR': {
-    skillStore: {
-      marketplace: {
-        security: {
-          score: 'Βαθμολογία',
-        },
-      },
-    },
+    recoverableEyebrow: 'Προσωρινό πρόβλημα παρόχου',
+    recoverableTitle: 'Ο πάροχος χρειάζεται προσοχή',
+    recoverableDescription:
+      'Ο ρυθμισμένος πάροχός σας αντιμετώπισε ένα προσωρινό σφάλμα. Δείτε παρακάτω την πιο πρόσφατη αιτία, επαναφέρετε τον πάροχο και δοκιμάστε ξανά.',
+    retry: 'Δοκιμάστε τον πάροχο ξανά',
+    reviewSingle: 'Ελέγξτε τον πάροχο',
+    providerNeedsAttention:
+      'Ο πάροχος χρειάζεται προσοχή. Κάντε κλικ για να ελέγξετε τις ρυθμίσεις.',
+    builtinProfile: 'Ενσωματωμένο προφίλ',
+  },
+  'es-ES': {
+    recoverableEyebrow: 'Incidencia temporal del proveedor',
+    recoverableTitle: 'El proveedor necesita atención',
+    recoverableDescription:
+      'El proveedor configurado encontró un error temporal. Revise abajo la razón más reciente, restablezca el proveedor y vuelva a intentarlo.',
+    retry: 'Reintentar el proveedor',
+    reviewSingle: 'Revisar proveedor',
+    providerNeedsAttention:
+      'El proveedor necesita atención. Haga clic para revisar la configuración.',
+    builtinProfile: 'Perfil integrado',
   },
   'fr-FR': {
-    chat: {
-      taskHarnessVerificationStatus: 'Vérification',
-    },
-    skillStore: {
-      detail: {
-        sections: {
-          description: 'Descriptif',
-        },
-      },
-      marketplace: {
-        detail: {
-          title: 'Détails',
-        },
-      },
-      status: {
-        initializingProgress: 'Sources synchronisées {processed}/{total}',
-      },
-    },
+    recoverableEyebrow: 'Incident temporaire du fournisseur',
+    recoverableTitle: 'Le fournisseur nécessite une attention',
+    recoverableDescription:
+      'Le fournisseur configuré a rencontré une erreur temporaire. Vérifiez la raison la plus récente ci-dessous, réinitialisez le fournisseur, puis réessayez.',
+    retry: 'Réessayer le fournisseur',
+    reviewSingle: 'Vérifier le fournisseur',
+    providerNeedsAttention:
+      'Le fournisseur nécessite une attention. Cliquez pour vérifier les paramètres.',
+    builtinProfile: 'Profil intégré',
+  },
+  'ga-IE': {
+    recoverableEyebrow: 'Fadhb shealadach leis an soláthraí',
+    recoverableTitle: 'Teastaíonn aird ón soláthraí',
+    recoverableDescription:
+      'Bhain earráid shealadach leis an soláthraí atá cumraithe agat. Féach ar an gcúis is déanaí thíos, athshocraigh an soláthraí agus bain triail eile as.',
+    retry: 'Bain triail eile as an soláthraí',
+    reviewSingle: 'Déan athbhreithniú ar an soláthraí',
+    providerNeedsAttention:
+      'Teastaíonn aird ón soláthraí. Cliceáil chun na socruithe a sheiceáil.',
+    builtinProfile: 'Próifíl ionsuite',
+  },
+  'hr-HR': {
+    recoverableEyebrow: 'Privremeni problem s pružateljem',
+    recoverableTitle: 'Pružatelj zahtijeva pažnju',
+    recoverableDescription:
+      'Vaš konfigurirani pružatelj naišao je na privremenu pogrešku. Pregledajte najnoviji razlog u nastavku, resetirajte pružatelja i zatim pokušajte ponovno.',
+    retry: 'Pokušaj ponovno s pružateljem',
+    reviewSingle: 'Pregledaj pružatelja',
+    providerNeedsAttention:
+      'Pružatelj zahtijeva pažnju. Kliknite za provjeru postavki.',
+    builtinProfile: 'Ugrađeni profil',
+  },
+  'hu-HU': {
+    recoverableEyebrow: 'Ideiglenes szolgáltatói probléma',
+    recoverableTitle: 'A szolgáltató figyelmet igényel',
+    recoverableDescription:
+      'A konfigurált szolgáltató ideiglenes hibába ütközött. Nézze meg alább a legutóbbi okot, állítsa vissza a szolgáltatót, majd próbálja újra.',
+    retry: 'Szolgáltató újrapróbálása',
+    reviewSingle: 'Szolgáltató ellenőrzése',
+    providerNeedsAttention:
+      'A szolgáltató figyelmet igényel. Kattintson a beállítások ellenőrzéséhez.',
+    builtinProfile: 'Beépített profil',
   },
   'it-IT': {
-    settings: {
-      failover: {
-        errorTypes: {
-          timeout: 'Tempo scaduto',
-        },
-      },
-    },
-    skillStore: {
-      search: {
-        sourceStore: 'Negozio',
-      },
-      tabs: {
-        store: 'Negozio',
-      },
-    },
+    recoverableEyebrow: 'Problema temporaneo del provider',
+    recoverableTitle: 'Il provider richiede attenzione',
+    recoverableDescription:
+      'Il provider configurato ha riscontrato un errore temporaneo. Controlla qui sotto il motivo più recente, reimposta il provider e poi riprova.',
+    retry: 'Riprova il provider',
+    reviewSingle: 'Controlla il provider',
+    providerNeedsAttention:
+      'Il provider richiede attenzione. Fai clic per controllare le impostazioni.',
+    builtinProfile: 'Profilo integrato',
+  },
+  'ja-JP': {
+    recoverableEyebrow: '一時的なプロバイダーの問題',
+    recoverableTitle: 'プロバイダーに対応が必要です',
+    recoverableDescription:
+      '設定済みのプロバイダーで一時的なエラーが発生しました。下にある最新の理由を確認し、プロバイダーをリセットしてからもう一度お試しください。',
+    retry: 'プロバイダーを再試行',
+    reviewSingle: 'プロバイダーを確認',
+    providerNeedsAttention:
+      'プロバイダーに対応が必要です。クリックして設定を確認してください。',
+    builtinProfile: '組み込みプロファイル',
+  },
+  'ko-KR': {
+    recoverableEyebrow: '일시적인 공급자 문제',
+    recoverableTitle: '공급자 확인이 필요합니다',
+    recoverableDescription:
+      '구성된 공급자에서 일시적인 오류가 발생했습니다. 아래의 최신 원인을 확인하고 공급자를 재설정한 다음 다시 시도하세요.',
+    retry: '공급자 다시 시도',
+    reviewSingle: '공급자 검토',
+    providerNeedsAttention:
+      '공급자 확인이 필요합니다. 클릭하여 설정을 확인하세요.',
+    builtinProfile: '내장 프로필',
+  },
+  'ml-IN': {
+    recoverableEyebrow: 'താൽക്കാലിക പ്രൊവൈഡർ പ്രശ്നം',
+    recoverableTitle: 'പ്രൊവൈഡറിന് ശ്രദ്ധ ആവശ്യമാണ്',
+    recoverableDescription:
+      'നിങ്ങൾ ക്രമീകരിച്ച പ്രൊവൈഡറിൽ താൽക്കാലിക പിശക് സംഭവിച്ചു. താഴെ കാണുന്ന പുതിയ കാരണം പരിശോധിച്ച് പ്രൊവൈഡർ റീസെറ്റ് ചെയ്ത് വീണ്ടും ശ്രമിക്കുക.',
+    retry: 'പ്രൊവൈഡർ വീണ്ടും ശ്രമിക്കുക',
+    reviewSingle: 'പ്രൊവൈഡർ പരിശോധിക്കുക',
+    providerNeedsAttention:
+      'പ്രൊവൈഡറിന് ശ്രദ്ധ ആവശ്യമാണ്. ക്രമീകരണങ്ങൾ പരിശോധിക്കാൻ ക്ലിക്ക് ചെയ്യുക.',
+    builtinProfile: 'ബിൽറ്റ്-ഇൻ പ്രൊഫൈൽ',
   },
   'nb-NO': {
-    skillStore: {
-      marketplace: {
-        embedding: {
-          phaseStandby: 'I beredskap',
-        },
-      },
-    },
+    recoverableEyebrow: 'Midlertidig leverandørproblem',
+    recoverableTitle: 'Leverandøren trenger oppmerksomhet',
+    recoverableDescription:
+      'Den konfigurerte leverandøren traff en midlertidig feil. Se den nyeste årsaken nedenfor, tilbakestill leverandøren og prøv igjen.',
+    retry: 'Prøv leverandøren igjen',
+    reviewSingle: 'Se gjennom leverandøren',
+    providerNeedsAttention:
+      'Leverandøren trenger oppmerksomhet. Klikk for å kontrollere innstillingene.',
+    builtinProfile: 'Innebygd profil',
   },
   'nl-NL': {
-    chat: {
-      taskHarnessRunStatus: 'Uitvoering',
-    },
-    settings: {
-      failover: {
-        chips: {
-          open: 'Geopend',
-        },
-      },
-    },
+    recoverableEyebrow: 'Tijdelijk probleem met de provider',
+    recoverableTitle: 'Provider heeft aandacht nodig',
+    recoverableDescription:
+      'Je geconfigureerde provider kreeg een tijdelijke fout. Bekijk hieronder de nieuwste reden, reset de provider en probeer het daarna opnieuw.',
+    retry: 'Provider opnieuw proberen',
+    reviewSingle: 'Provider controleren',
+    providerNeedsAttention:
+      'Provider heeft aandacht nodig. Klik om de instellingen te controleren.',
+    builtinProfile: 'Ingebouwd profiel',
+  },
+  'pl-PL': {
+    recoverableEyebrow: 'Tymczasowy problem z dostawcą',
+    recoverableTitle: 'Dostawca wymaga uwagi',
+    recoverableDescription:
+      'Skonfigurowany dostawca napotkał tymczasowy błąd. Sprawdź poniżej najnowszy powód, zresetuj dostawcę i spróbuj ponownie.',
+    retry: 'Spróbuj ponownie z dostawcą',
+    reviewSingle: 'Sprawdź dostawcę',
+    providerNeedsAttention:
+      'Dostawca wymaga uwagi. Kliknij, aby sprawdzić ustawienia.',
+    builtinProfile: 'Wbudowany profil',
+  },
+  'pt-BR': {
+    recoverableEyebrow: 'Problema temporário no provedor',
+    recoverableTitle: 'O provedor precisa de atenção',
+    recoverableDescription:
+      'O provedor configurado encontrou um erro temporário. Revise abaixo o motivo mais recente, redefina o provedor e tente novamente.',
+    retry: 'Tentar provedor novamente',
+    reviewSingle: 'Revisar provedor',
+    providerNeedsAttention:
+      'O provedor precisa de atenção. Clique para verificar as configurações.',
+    builtinProfile: 'Perfil integrado',
   },
   'pt-PT': {
-    companion: {
-      flow: {
-        nodeTypes: {
-          security: 'Seguranca',
-        },
-      },
-    },
-    skillStore: {
-      marketplace: {
-        actions: {
-          blocked: 'Bloqueado',
-        },
-        artifactKinds: {
-          unknown: 'Desconhecido',
-        },
-        detail: {
-          title: 'Detalhes',
-        },
-        evidenceTypes: {
-          permission: 'Permissoes',
-        },
-        filters: {
-          category: 'Categoria',
-          security: 'Seguranca',
-          source: 'Fonte',
-        },
-        installTypes: {
-          unknown: 'Desconhecido',
-        },
-        security: {
-          score: 'Pontuacao',
-          title: 'Seguranca',
-        },
-      },
-    },
+    recoverableEyebrow: 'Problema temporário no fornecedor',
+    recoverableTitle: 'O fornecedor precisa de atenção',
+    recoverableDescription:
+      'O fornecedor configurado encontrou um erro temporário. Reveja abaixo o motivo mais recente, reponha o fornecedor e tente novamente.',
+    retry: 'Tentar fornecedor novamente',
+    reviewSingle: 'Rever fornecedor',
+    providerNeedsAttention:
+      'O fornecedor precisa de atenção. Clique para verificar as definições.',
+    builtinProfile: 'Perfil integrado',
   },
-  'zh-TW': {
-    apiProxy: {
-      prunerBackend: '後端',
-      prunerDisabled: '上下文裁剪器已停用',
-      prunerEnabled: '上下文裁剪器已啟用',
-      prunerNoData: '尚未記錄任何裁剪請求。',
-      prunerThreshold: '閾值',
-    },
-    askQuestion: {
-      browserCheckpoint: {
-        allowSite: '一律允許此網站',
-        allowSiteDescription: '之後對 {site} 不再重複確認',
-        cancelDescription: '封鎖這次瀏覽器操作',
-        continueDescription: '只允許這次瀏覽器操作',
-        continueOnce: '僅此一次繼續',
-      },
-    },
-    authProviders: {
-      placeholderClientId: 'OAuth 用戶端 ID',
-      placeholderClientSecret: 'OAuth 用戶端密鑰',
-      placeholderDomain: '例如：company.com',
-      placeholderId: '例如：google、github',
-      placeholderName: '例如：Google、GitHub',
-      placeholderScopes: '例如：openid、profile、email',
-    },
-    channels: {
-      feishuSessionMode: '會話模式（傳送時不回覆原訊息）',
-    },
-    chat: {
-      activeTodo: {
-        collapse: '收合待辦清單',
-        completed: '已完成',
-        expand: '展開待辦清單',
-        inProgress: '進行中',
-        jumpToMessage: '跳到清單訊息',
-        progress: '已完成 {completed} / {total} 項任務',
-      },
-      contextWindowExceeded:
-        '這次請求超出了模型的上下文視窗。請縮短對話、系統提示詞或工具內容後再試一次。',
-      editAndResubmit: '編輯後重新送出',
-      inputPlaceholderShort: '輸入訊息...',
-      noProvider: {
-        dismiss: '稍後再說',
-        draftSaved: '您的訊息已儲存在本機。完成設定後即可繼續。',
-        issueAuth: '驗證失敗。請重新檢查 API Key 或 OAuth 連線。',
-        issueCertificate: '此 Provider 的 TLS 憑證驗證失敗。',
-        issueEndpoint: '此 Provider 的 Endpoint 設定似乎不正確。',
-        issueGeneric: '請開啟 Provider 設定查看最新健康狀態。',
-        issueInactive: '請檢查 API Key、OAuth 連線或允許使用的模型是否已設定完成。',
-        issueNetwork: '網路連線失敗。請檢查 Endpoint 與目前的網路環境。',
-        issueTimeout: 'Provider 已逾時。請稍後再試，或切換到其他路由。',
-        issueUnexpectedStatus: '此 Provider 回傳了非預期的狀態。',
-        moreProviders: '還有 {count} 個 Provider 也需要處理。',
-        providerSummary: '需要處理的已設定 Provider',
-        review: '檢查 Provider',
-        statusActive: '正常',
-        statusError: '錯誤',
-        statusInactive: '未就緒',
-        unavailableDescription:
-          '偵測到您已經啟用 Provider，但它們目前無法使用。請前往設定檢查連線、金鑰或模型狀態後再試。',
-        unavailableEyebrow: '暫時無法使用',
-        unavailableTitle: '目前沒有可用的 AI Provider',
-        unconfiguredDescription:
-          '您目前還沒有可用的 LLM Provider。完成設定後，就可以從剛剛中斷的地方繼續。',
-        unconfiguredEyebrow: '還差一步',
-        unconfiguredTitle: '先設定一個 AI Provider 再開始聊天',
-      },
-      requestBuildFailed:
-        '上游中繼在建立這次請求時失敗，通常代表請求結構或工具參數無效。請簡化請求或檢查工具輸入後再試。',
-      requestTooLarge:
-        '這次請求過大，上游中繼無法建立請求。請縮短對話、附件或工具負載後再試。',
-      saveAndResubmit: '儲存並重新送出',
-    },
-    common: {
-      openLocation: '開啟所在位置',
-      saveFailed: '儲存失敗',
-      searchLogsPlaceholder: '搜尋日誌...',
-    },
-    companion: {
-      platforms: {
-        web: '網頁',
-        'web-user': '網頁使用者',
-      },
-    },
-    cron: {
-      handlers: {
-        http: 'HTTP 請求',
-      },
-      optionalSettings: '可選設定',
-      optionalSettingsHint: '描述、逾時與處理器專屬的額外設定',
-    },
-    nav: {
-      configuration: '設定',
-      openWorkspaceIn: '在檔案管理員中開啟',
-      openWorkspaceInExplorer: '在 Explorer 中開啟',
-      openWorkspaceInFinder: '在 Finder 中開啟',
-      workspace: '工作區',
-      workspaceFiles: '檔案',
-      workspaceFilesLoadFailed: '載入工作區檔案失敗',
-      workspaceLoadFailed: '載入工作區資訊失敗',
-      workspaceLoading: '正在載入工作區檔案...',
-      workspaceNoFiles: '目前沒有可用的工作區檔案',
-      workspaceOpenFailed: '無法在檔案管理員中開啟工作區',
-      workspacePanelTitle: '工作區檔案',
-      workspacePathUnavailable: '工作區路徑不可用',
-      workspaceSelectFileHint: '選取檔案後即可預覽或下載',
-    },
-    onboarding: {
-      skipForNow: '稍後再說',
-    },
-    providerPool: {
-      apiFormatAutoDetected: '目前自動偵測的格式：{format}',
-      apiFormatHint: '預設使用自動偵測，但您也可以固定指定 API 格式，變更會立即生效。',
-      apiFormatLabel: '格式類型',
-      apiFormatOptions: {
-        auto: '自動偵測',
-        openai: 'OpenAI 相容',
-      },
-    },
-    search: {
-      summaryTitle: '網頁搜尋',
-    },
-    settings: {
-      antigravity: {
-        tokenPlaceholder: '輸入您的 Antigravity 存取權杖',
-      },
-    },
-    speech: {
-      asrModelInfo: {
-        sensevoiceSmall: {
-          name: 'SenseVoice Small（多語言）',
-        },
-        zipformerEn: {
-          name: 'Zipformer EN（串流）',
-        },
-      },
-    },
-    tools: {
-      descriptions: {
-        read: '讀取本機檔案並擷取支援的文件內容',
-        write: '將文字內容寫入本機檔案',
-      },
-    },
-    users: {
-      confirmPasswordPlaceholder: '確認密碼',
-      emailPlaceholder: '輸入電子郵件（選填）',
-      newPasswordPlaceholder: '輸入新密碼',
-      passwordPlaceholder: '輸入密碼',
-      usernamePlaceholder: '輸入使用者名稱',
-    },
-    webFetchCard: {
-      collapseContent: '收合網頁內容',
-      collapseHint: '隱藏擷取的網頁內容',
-      contentLabel: '網頁內容',
-      expandContent: '展開網頁內容',
-      expandHint: '查看擷取的網頁內容',
-    },
-    workflow: {
-      descriptionPlaceholder: '這個工作流程是做什麼的？',
-      namePlaceholder: '例如：每日報告',
-      nodeNamePlaceholder: '例如：傳送電子郵件',
-      searchPlaceholder: '搜尋工作流程...',
-    },
+  'ro-RO': {
+    recoverableEyebrow: 'Problemă temporară a furnizorului',
+    recoverableTitle: 'Furnizorul necesită atenție',
+    recoverableDescription:
+      'Furnizorul configurat a întâmpinat o eroare temporară. Verificați mai jos cel mai recent motiv, resetați furnizorul și încercați din nou.',
+    retry: 'Reîncearcă furnizorul',
+    reviewSingle: 'Verifică furnizorul',
+    providerNeedsAttention:
+      'Furnizorul necesită atenție. Faceți clic pentru a verifica setările.',
+    builtinProfile: 'Profil integrat',
   },
+  'ru-RU': {
+    recoverableEyebrow: 'Временная проблема с провайдером',
+    recoverableTitle: 'Провайдеру требуется внимание',
+    recoverableDescription:
+      'У настроенного провайдера возникла временная ошибка. Проверьте ниже последнюю причину, сбросьте провайдера и попробуйте снова.',
+    retry: 'Повторить попытку с провайдером',
+    reviewSingle: 'Проверить провайдера',
+    providerNeedsAttention:
+      'Провайдеру требуется внимание. Нажмите, чтобы проверить настройки.',
+    builtinProfile: 'Встроенный профиль',
+  },
+  'sk-SK': {
+    recoverableEyebrow: 'Dočasný problém poskytovateľa',
+    recoverableTitle: 'Poskytovateľ vyžaduje pozornosť',
+    recoverableDescription:
+      'Nakonfigurovaný poskytovateľ narazil na dočasnú chybu. Nižšie skontrolujte posledný dôvod, resetujte poskytovateľa a potom to skúste znova.',
+    retry: 'Skúsiť poskytovateľa znova',
+    reviewSingle: 'Skontrolovať poskytovateľa',
+    providerNeedsAttention:
+      'Poskytovateľ vyžaduje pozornosť. Kliknutím skontrolujte nastavenia.',
+    builtinProfile: 'Vstavaný profil',
+  },
+  'sv-SE': {
+    recoverableEyebrow: 'Tillfälligt leverantörsproblem',
+    recoverableTitle: 'Leverantören behöver uppmärksamhet',
+    recoverableDescription:
+      'Din konfigurerade leverantör råkade ut för ett tillfälligt fel. Granska den senaste orsaken nedan, återställ leverantören och försök igen.',
+    retry: 'Försök med leverantören igen',
+    reviewSingle: 'Granska leverantören',
+    providerNeedsAttention:
+      'Leverantören behöver uppmärksamhet. Klicka för att kontrollera inställningarna.',
+    builtinProfile: 'Inbyggd profil',
+  },
+}
+
+type RoutingModePinnedLocalePatch = {
+  providerPinnedTitle: string
+  providerPinnedDesc: string
+  providerPinnedReset: string
+}
+
+const routingModePinnedBackfills: Partial<Record<LocaleKey, RoutingModePinnedLocalePatch>> = {
+  'ca-ES': {
+    providerPinnedTitle: 'Proveïdor fixat',
+    providerPinnedDesc:
+      'Aquesta conversa es manté a {provider}, però el model continua en mode automàtic.',
+    providerPinnedReset: 'Fes servir tots els proveïdors',
+  },
+  'cs-CZ': {
+    providerPinnedTitle: 'Připnutý poskytovatel',
+    providerPinnedDesc:
+      'Tato konverzace zůstává u {provider}, ale model je stále automatický.',
+    providerPinnedReset: 'Použít všechny poskytovatele',
+  },
+  'da-DK': {
+    providerPinnedTitle: 'Fastgjort udbyder',
+    providerPinnedDesc: 'Denne samtale bliver hos {provider}, men modellen er stadig automatisk.',
+    providerPinnedReset: 'Brug alle udbydere',
+  },
+  'de-DE': {
+    providerPinnedTitle: 'Angehefteter Anbieter',
+    providerPinnedDesc:
+      'Diese Unterhaltung bleibt bei {provider}, aber das Modell bleibt weiterhin automatisch.',
+    providerPinnedReset: 'Alle Anbieter verwenden',
+  },
+  'el-GR': {
+    providerPinnedTitle: 'Καρφιτσωμένος πάροχος',
+    providerPinnedDesc:
+      'Αυτή η συνομιλία παραμένει στο {provider}, αλλά το μοντέλο εξακολουθεί να είναι αυτόματο.',
+    providerPinnedReset: 'Χρήση όλων των παρόχων',
+  },
+  'en-GB': {
+    providerPinnedTitle: 'Pinned Provider',
+    providerPinnedDesc:
+      'This conversation stays on {provider}, but the model is still automatic.',
+    providerPinnedReset: 'Use all providers',
+  },
+  'es-ES': {
+    providerPinnedTitle: 'Proveedor fijado',
+    providerPinnedDesc:
+      'Esta conversación se mantiene en {provider}, pero el modelo sigue siendo automático.',
+    providerPinnedReset: 'Usar todos los proveedores',
+  },
+  'fr-FR': {
+    providerPinnedTitle: 'Fournisseur épinglé',
+    providerPinnedDesc:
+      'Cette conversation reste sur {provider}, mais le modèle reste automatique.',
+    providerPinnedReset: 'Utiliser tous les fournisseurs',
+  },
+  'ga-IE': {
+    providerPinnedTitle: 'Soláthraí greamaithe',
+    providerPinnedDesc:
+      'Fanann an comhrá seo ar {provider}, ach tá an tsamhail fós uathoibríoch.',
+    providerPinnedReset: 'Úsáid gach soláthraí',
+  },
+  'hr-HR': {
+    providerPinnedTitle: 'Prikvačeni pružatelj',
+    providerPinnedDesc:
+      'Ovaj razgovor ostaje na {provider}, ali model je i dalje automatski.',
+    providerPinnedReset: 'Koristi sve pružatelje',
+  },
+  'hu-HU': {
+    providerPinnedTitle: 'Rögzített szolgáltató',
+    providerPinnedDesc:
+      'Ez a beszélgetés a(z) {provider} szolgáltatón marad, de a modell továbbra is automatikus.',
+    providerPinnedReset: 'Összes szolgáltató használata',
+  },
+  'it-IT': {
+    providerPinnedTitle: 'Provider bloccato',
+    providerPinnedDesc:
+      'Questa conversazione resta su {provider}, ma il modello è ancora automatico.',
+    providerPinnedReset: 'Usa tutti i provider',
+  },
+  'ja-JP': {
+    providerPinnedTitle: '固定されたプロバイダー',
+    providerPinnedDesc: 'この会話は {provider} に固定されますが、モデルは引き続き自動です。',
+    providerPinnedReset: 'すべてのプロバイダーを使う',
+  },
+  'ko-KR': {
+    providerPinnedTitle: '고정된 공급자',
+    providerPinnedDesc: '이 대화는 {provider}에 고정되지만 모델은 계속 자동입니다.',
+    providerPinnedReset: '모든 공급자 사용',
+  },
+  'ml-IN': {
+    providerPinnedTitle: 'പിൻ ചെയ്ത പ്രൊവൈഡർ',
+    providerPinnedDesc:
+      'ഈ സംഭാഷണം {provider} ല്‍ തന്നെയിരിക്കും, പക്ഷേ മോഡൽ ഇപ്പോഴും ഓട്ടോമാറ്റിക്കാണ്.',
+    providerPinnedReset: 'എല്ലാ പ്രൊവൈഡറുകളും ഉപയോഗിക്കുക',
+  },
+  'nb-NO': {
+    providerPinnedTitle: 'Festet leverandør',
+    providerPinnedDesc:
+      'Denne samtalen holder seg på {provider}, men modellen er fortsatt automatisk.',
+    providerPinnedReset: 'Bruk alle leverandører',
+  },
+  'nl-NL': {
+    providerPinnedTitle: 'Vastgezette provider',
+    providerPinnedDesc: 'Dit gesprek blijft op {provider}, maar het model blijft automatisch.',
+    providerPinnedReset: 'Gebruik alle providers',
+  },
+  'pl-PL': {
+    providerPinnedTitle: 'Przypięty dostawca',
+    providerPinnedDesc:
+      'Ta rozmowa pozostaje przy {provider}, ale model nadal działa automatycznie.',
+    providerPinnedReset: 'Użyj wszystkich dostawców',
+  },
+  'pt-BR': {
+    providerPinnedTitle: 'Provedor fixado',
+    providerPinnedDesc: 'Esta conversa fica em {provider}, mas o modelo continua automático.',
+    providerPinnedReset: 'Usar todos os provedores',
+  },
+  'pt-PT': {
+    providerPinnedTitle: 'Fornecedor fixado',
+    providerPinnedDesc: 'Esta conversa fica em {provider}, mas o modelo continua automático.',
+    providerPinnedReset: 'Usar todos os fornecedores',
+  },
+  'ro-RO': {
+    providerPinnedTitle: 'Furnizor fixat',
+    providerPinnedDesc:
+      'Această conversație rămâne pe {provider}, dar modelul este în continuare automat.',
+    providerPinnedReset: 'Folosește toți furnizorii',
+  },
+  'ru-RU': {
+    providerPinnedTitle: 'Закреплённый провайдер',
+    providerPinnedDesc:
+      'Этот чат остаётся на {provider}, но модель по-прежнему выбирается автоматически.',
+    providerPinnedReset: 'Использовать всех провайдеров',
+  },
+  'sk-SK': {
+    providerPinnedTitle: 'Pripnutý poskytovateľ',
+    providerPinnedDesc:
+      'Tento rozhovor zostáva na {provider}, ale model je stále automatický.',
+    providerPinnedReset: 'Použiť všetkých poskytovateľov',
+  },
+  'sv-SE': {
+    providerPinnedTitle: 'Fäst leverantör',
+    providerPinnedDesc:
+      'Den här konversationen stannar på {provider}, men modellen är fortfarande automatisk.',
+    providerPinnedReset: 'Använd alla leverantörer',
+  },
+}
+
+const failoverHealthyLabels: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'V pořádku',
+  'da-DK': 'Sund',
+  'de-DE': 'Gesund',
+  'el-GR': 'Υγιές',
+  'es-ES': 'Saludable',
+  'fr-FR': 'Sain',
+  'hu-HU': 'Egészséges',
+  'it-IT': 'Sano',
+  'nb-NO': 'Frisk',
+  'nl-NL': 'Gezond',
+  'pl-PL': 'Zdrowy',
+  'pt-BR': 'Saudável',
+  'pt-PT': 'Saudável',
+  'ro-RO': 'Sănătos',
+  'ru-RU': 'Работает',
+  'sk-SK': 'V poriadku',
+  'sv-SE': 'Frisk',
+}
+
+const localizedWebTermLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Lloc web',
+  'cs-CZ': 'Webová stránka',
+  'da-DK': 'Webside',
+  'de-DE': 'Webseite',
+  'es-ES': 'Sitio web',
+  'fr-FR': 'Site web',
+  'hr-HR': 'Web-stranica',
+  'hu-HU': 'Weboldal',
+  'it-IT': 'Sito web',
+  'nb-NO': 'Nettsted',
+  'nl-NL': 'Website',
+  'pt-BR': 'Site',
+  'pt-PT': 'Site',
+  'ro-RO': 'Site web',
+  'sk-SK': 'Webová stránka',
+}
+
+const localizedCacheTermLabels: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'Mezipaměť',
+  'da-DK': 'Mellemlager',
+  'de-DE': 'Zwischenspeicher',
+  'fr-FR': 'Mémoire cache',
+  'it-IT': 'Memoria cache',
+  'nb-NO': 'Mellomlager',
+  'nl-NL': 'Cachegeheugen',
+  'pt-BR': 'Memória cache',
+  'pt-PT': 'Memória cache',
+  'ro-RO': 'Memorie cache',
+  'sk-SK': 'Vyrovnávacia pamäť',
+  'sv-SE': 'Cacheminne',
+}
+
+const localizedDirectoryWhitelistAliasLabels: Partial<Record<LocaleKey, string>> = {
+  'da-DK': 'Aliasnavn',
+  'de-DE': 'Aliasname',
+  'es-ES': 'Nombre alternativo',
+  'fr-FR': 'Nom alternatif',
+  'hr-HR': 'Pseudonim',
+  'it-IT': 'Nome alternativo',
+  'nb-NO': 'Aliasnavn',
+  'nl-NL': 'Aliasnaam',
+  'pl-PL': 'Pseudonim',
+  'pt-BR': 'Apelido',
+  'pt-PT': 'Apelido',
+  'ro-RO': 'Pseudonim',
+  'sk-SK': 'Prezývka',
+  'sv-SE': 'Aliasnamn',
+}
+
+const localizedOnlineLabels: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'Připojeno',
+  'da-DK': 'Forbundet',
+  'de-DE': 'Verbunden',
+  'hr-HR': 'Povezano',
+  'hu-HU': 'Kapcsolódva',
+  'nb-NO': 'Tilkoblet',
+  'nl-NL': 'Verbonden',
+  'ro-RO': 'Conectat',
+  'sk-SK': 'Pripojené',
+  'sv-SE': 'Ansluten',
+}
+
+const localizedBackendLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Back-end',
+  'cs-CZ': 'Back-end',
+  'da-DK': 'Bagende',
+  'de-DE': 'Back-end',
+  'el-GR': 'Παρασκήνιο',
+  'it-IT': 'Back-end',
+  'nb-NO': 'Bakende',
+  'ro-RO': 'Back-end',
+  'sk-SK': 'Back-end',
+  'sv-SE': 'Bakände',
+}
+
+const localizedMetricsMinLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Mín.',
+  'cs-CZ': 'Min.',
+  'da-DK': 'Min.',
+  'de-DE': 'Min.',
+  'ga-IE': 'Íos.',
+  'hr-HR': 'Min.',
+  'hu-HU': 'Min.',
+  'nb-NO': 'Min.',
+  'nl-NL': 'Min.',
+  'pl-PL': 'Min.',
+  'ro-RO': 'Min.',
+  'sk-SK': 'Min.',
+  'sv-SE': 'Min.',
+}
+
+const localizedTaskKindAgentLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Agent IA',
+  'cs-CZ': 'AI agent',
+  'da-DK': 'AI-agent',
+  'de-DE': 'KI-Agent',
+  'fr-FR': 'Agent IA',
+  'hr-HR': 'AI agent',
+  'nb-NO': 'KI-agent',
+  'nl-NL': 'AI-agent',
+  'pl-PL': 'Agent AI',
+  'ro-RO': 'Agent AI',
+  'sv-SE': 'AI-agent',
+}
+
+const localizedCliEtaLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Temps estimat: {time}',
+  'da-DK': 'Anslået tid: {time}',
+  'de-DE': 'Geschätzte Zeit: {time}',
+  'hr-HR': 'Procijenjeno vrijeme: {time}',
+  'it-IT': 'Tempo stimato: {time}',
+  'ml-IN': 'കണക്കാക്കിയ സമയം: {time}',
+  'nb-NO': 'Estimert tid: {time}',
+  'pl-PL': 'Szacowany czas: {time}',
+  'ro-RO': 'Timp estimat: {time}',
+  'sk-SK': 'Odhadovaný čas: {time}',
+  'sv-SE': 'Beräknad tid: {time}',
+}
+
+const localizedWorkspaceTreeDirCountLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'directoris',
+  'cs-CZ': 'adresáře',
+  'da-DK': 'mapper',
+  'hr-HR': 'mape',
+  'hu-HU': 'könyvtárak',
+  'nb-NO': 'mapper',
+  'nl-NL': 'mappen',
+  'ro-RO': 'directoare',
+  'sk-SK': 'adresáre',
+  'sv-SE': 'mappar',
+}
+
+const localizedMountPointLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Punt de muntatge',
+  'cs-CZ': 'Přípojný bod',
+  'da-DK': 'Monteringspunkt',
+  'de-DE': 'Einhängepunkt',
+  'el-GR': 'Σημείο προσάρτησης',
+  'hu-HU': 'Csatolási pont',
+  'nb-NO': 'Monteringspunkt',
+  'ro-RO': 'Punct de montare',
+  'sk-SK': 'Prípojný bod',
+  'sv-SE': 'Monteringspunkt',
+}
+
+const localizedAdminLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Administrador',
+  'cs-CZ': 'Správce',
+  'da-DK': 'Administrator',
+  'de-DE': 'Administrator',
+  'hu-HU': 'Rendszergazda',
+  'nb-NO': 'Administrator',
+  'ro-RO': 'Administrator',
+  'sk-SK': 'Správca',
+  'sv-SE': 'Administratör',
+}
+
+const localizedVideoPreviewLabels: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'Videozáznam',
+  'da-DK': 'Videofil',
+  'de-DE': 'Videodatei',
+  'hr-HR': 'Videozapis',
+  'it-IT': 'File video',
+  'nb-NO': 'Videofil',
+  'nl-NL': 'Videobestand',
+  'ro-RO': 'Fișier video',
+  'sk-SK': 'Videozáznam',
+  'sv-SE': 'Videofil',
+}
+
+const localizedGoroutineLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Rutines',
+  'cs-CZ': 'Goroutiny',
+  'fr-FR': 'Routines',
+  'ga-IE': 'Gnáthaimh',
+  'hr-HR': 'Rutine',
+  'nl-NL': 'Routines',
+  'pt-BR': 'Rotinas',
+  'pt-PT': 'Rotinas',
+  'sk-SK': 'Gorutiny',
+}
+
+const localizedGoroutineChartLabels: Partial<Record<LocaleKey, string>> = {
+  'ca-ES': 'Rutines',
+  'ga-IE': 'Gnáthaimh',
+  'hr-HR': 'Rutine',
+  'nl-NL': 'Routines',
+}
+
+const localizedAuthTokenLabels: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'Autentizační token',
+  'da-DK': 'Godkendelsestoken',
+  'hr-HR': 'Token za autentikaciju',
+  'hu-HU': 'Hitelesítési token',
+  'nb-NO': 'Autentiseringstoken',
+  'sk-SK': 'Autentifikačný token',
+  'sv-SE': 'Autentiseringstoken',
+}
+
+const localizedViberAuthTokenPlaceholders: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'Autentizační token pro Viber',
+  'da-DK': 'Viber-godkendelsestoken',
+  'el-GR': 'Διακριτικό ελέγχου ταυτότητας Viber',
+  'hr-HR': 'Viber token za autentikaciju',
+  'hu-HU': 'Viber hitelesítési token',
+  'nb-NO': 'Viber-autentiseringstoken',
+  'ro-RO': 'Jeton de autentificare Viber',
+  'sk-SK': 'Autentifikačný token pre Viber',
+  'sv-SE': 'Viber-autentiseringstoken',
+}
+
+const localizedSystemInfoLabels: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'Informace',
+  'da-DK': 'Information',
+  'hr-HR': 'Informacije',
+  'hu-HU': 'Információ',
+  'nb-NO': 'Informasjon',
+  'ro-RO': 'Informații',
+  'sk-SK': 'Informácie',
+  'sv-SE': 'Information',
+}
+
+const localizedKernelLabels: Partial<Record<LocaleKey, string>> = {
+  'cs-CZ': 'Jádro',
+  'da-DK': 'Kerne',
+  'de-DE': 'Kern',
+  'hr-HR': 'Jezgra',
+  'hu-HU': 'Rendszermag',
+  'nl-NL': 'Kern',
+  'ro-RO': 'Nucleu',
+  'sk-SK': 'Jadro',
+}
+
+const localizedHeapAllocLabels: Partial<Record<LocaleKey, string>> = {
+  'da-DK': 'Heap-allokering',
+  'nb-NO': 'Heap-allokering',
 }
 
 function isPlainObject(value: unknown): value is LocaleNode {
@@ -367,21 +767,6 @@ function getValue(root: unknown, path: string): unknown {
 
 function hasKeys(node: LocaleNode): boolean {
   return Object.keys(node).length > 0
-}
-
-function mergeLocaleNodes(base: LocaleNode, patch: LocaleNode): LocaleNode {
-  const merged: LocaleNode = { ...base }
-
-  for (const [key, value] of Object.entries(patch)) {
-    const baseValue = merged[key]
-    if (isPlainObject(baseValue) && isPlainObject(value)) {
-      merged[key] = mergeLocaleNodes(baseValue, value)
-      continue
-    }
-    merged[key] = value
-  }
-
-  return merged
 }
 
 function buildHarnessTermGlossary(messages: Record<string, unknown>): HarnessTermGlossary | null {
@@ -470,39 +855,74 @@ export function buildLocalePostMergeBackfill(
   localeKey: LocaleKey,
   messages: Record<string, unknown>
 ): LocaleNode {
-  const failoverSource = dashboardCardCopyOverrides[localeKey]
+  const cliPatch: LocaleNode = {}
+  const deepResearchRuntimeCopy = deepResearchRuntimeBackfills[localeKey]
   const deepResearchStructuredCopy = deepResearchStructuredBackfills[localeKey]
+  const deepResearchTokenCopy = deepResearchTokenBackfills[localeKey]
   const commonPatch: LocaleNode = {}
+  const channelsPatch: LocaleNode = {}
+  const dashboardPatch: LocaleNode = {}
+  const dashboardCardsPatch: LocaleNode = {}
   const execCardPatch: LocaleNode = {}
+  const metricsPatch: LocaleNode = {}
   const settingsPatch: LocaleNode = {}
   const failoverPatch: LocaleNode = {}
   const failoverChipsPatch: LocaleNode = {}
   const failoverErrorTypesPatch: LocaleNode = {}
+  const apiProxyPatch: LocaleNode = {}
   const chatPatch: LocaleNode = {}
+  const noProviderPatch: LocaleNode = {}
+  const navPatch: LocaleNode = {}
+  const profilePatch: LocaleNode = {}
+  const resultCardPatch: LocaleNode = {}
+  const resultCardLabelsPatch: LocaleNode = {}
+  const routingModePatch: LocaleNode = {}
+  const companionPatch: LocaleNode = {}
+  const companionPlatformsPatch: LocaleNode = {}
+  const externalAgentsPatch: LocaleNode = {}
+  const securityPatch: LocaleNode = {}
+  const skillStoreSignalsPatch: LocaleNode = {}
+  const speechPatch: LocaleNode = {}
+  const speechConvertTaskPatch: LocaleNode = {}
+  const speechConvertTaskPreviewKindPatch: LocaleNode = {}
+  const systemPatch: LocaleNode = {}
+  const tokenEconomyPatch: LocaleNode = {}
+  const toolsPatch: LocaleNode = {}
+  const toolsNamesPatch: LocaleNode = {}
+  const userdataPatch: LocaleNode = {}
+  const userdataMemoryPatch: LocaleNode = {}
+  const usersPatch: LocaleNode = {}
+  const usersRolesPatch: LocaleNode = {}
   const harnessTermGlossary = buildHarnessTermGlossary(messages)
 
   const mirrors: Array<[LocaleNode, string, string | null]> = [
     [
       failoverChipsPatch,
       'healthy',
-      getString(messages, 'dashboard.healthy') ??
-        getString(failoverSource, 'settings.failover.chips.healthy'),
+      (() => {
+        const currentHealthy = getString(messages, 'settings.failover.chips.healthy')
+        const dashboardHealthy = getString(messages, 'dashboard.healthy')
+        const localizedHealthy = failoverHealthyLabels[localeKey]
+        if (localizedHealthy && (!currentHealthy || currentHealthy === 'Healthy' || currentHealthy === 'OK')) {
+          return localizedHealthy
+        }
+        if (currentHealthy && currentHealthy !== 'Healthy' && currentHealthy !== 'OK') {
+          return currentHealthy
+        }
+        return dashboardHealthy ?? currentHealthy
+      })(),
     ],
-    [
-      failoverChipsPatch,
-      'halfOpen',
-      getString(failoverSource, 'settings.failover.chips.halfOpen'),
-    ],
-    [failoverChipsPatch, 'open', getString(failoverSource, 'settings.failover.chips.open')],
+    [failoverChipsPatch, 'halfOpen', getString(messages, 'settings.failover.chips.halfOpen')],
+    [failoverChipsPatch, 'open', getString(messages, 'settings.failover.chips.open')],
     [
       failoverErrorTypesPatch,
       'timeout',
-      getString(failoverSource, 'settings.failover.errorTypes.timeout'),
+      getString(messages, 'settings.failover.errorTypes.timeout'),
     ],
     [
       failoverErrorTypesPatch,
       'unknown',
-      getString(failoverSource, 'settings.failover.errorTypes.unknown'),
+      getString(messages, 'settings.failover.errorTypes.unknown'),
     ],
     [execCardPatch, 'noCommand', execCardNoCommandLabels[localeKey] ?? null],
   ]
@@ -555,8 +975,392 @@ export function buildLocalePostMergeBackfill(
     chatPatch.deepResearchWorkflowSources = deepResearchStructuredCopy.workflowSources
     chatPatch.deepResearchWorkflowExtraction = deepResearchStructuredCopy.workflowExtraction
   }
+  if (deepResearchRuntimeCopy) {
+    chatPatch.deepResearchRetainedSearches = deepResearchRuntimeCopy.retainedSearches
+    chatPatch.deepResearchReportStyleKnowledgeBase =
+      deepResearchRuntimeCopy.reportStyleKnowledgeBase
+  }
+  if (deepResearchTokenCopy) {
+    chatPatch.deepResearchAxisIdentityValidation = deepResearchTokenCopy.axisIdentityValidation
+    chatPatch.deepResearchAxisInternetFootprint = deepResearchTokenCopy.axisInternetFootprint
+    chatPatch.deepResearchAxisLatest = deepResearchTokenCopy.axisLatest
+    chatPatch.deepResearchAxisOfficial = deepResearchTokenCopy.axisOfficial
+    chatPatch.deepResearchAxisComparison = deepResearchTokenCopy.axisComparison
+    chatPatch.deepResearchAxisBestPractices = deepResearchTokenCopy.axisBestPractices
+    chatPatch.deepResearchAxisRetry = deepResearchTokenCopy.axisRetry
+    chatPatch.deepResearchAxisResearch = deepResearchTokenCopy.axisResearch
+    chatPatch.deepResearchFocusSourceDiversity = deepResearchTokenCopy.focusSourceDiversity
+    chatPatch.deepResearchFocusFreshness = deepResearchTokenCopy.focusFreshness
+    chatPatch.deepResearchFocusClaimValidation = deepResearchTokenCopy.focusClaimValidation
+    chatPatch.deepResearchTimeWindowEarlier = deepResearchTokenCopy.timeWindowEarlier
+    chatPatch.deepResearchTimeWindowMiddle = deepResearchTokenCopy.timeWindowMiddle
+    chatPatch.deepResearchTimeWindowRecent = deepResearchTokenCopy.timeWindowRecent
+  }
+  const localizedWebTerm = localizedWebTermLabels[localeKey]
+  if (localizedWebTerm) {
+    const maybeFillEnglishWebFallback = (target: LocaleNode, key: string, path: string) => {
+      const current = getString(messages, path)
+      if (!current || current === 'Web') {
+        target[key] = localizedWebTerm
+      }
+    }
+
+    maybeFillEnglishWebFallback(
+      chatPatch,
+      'deepResearchSourceTypeWeb',
+      'chat.deepResearchSourceTypeWeb'
+    )
+    maybeFillEnglishWebFallback(companionPlatformsPatch, 'web', 'companion.platforms.web')
+    maybeFillEnglishWebFallback(toolsNamesPatch, 'web', 'tools.names.web')
+  }
+  const localizedCacheTerm = localizedCacheTermLabels[localeKey]
+  if (localizedCacheTerm) {
+    const maybeFillEnglishCacheFallback = (target: LocaleNode, key: string, path: string) => {
+      const current = getString(messages, path)
+      if (!current || current === 'Cache') {
+        target[key] = localizedCacheTerm
+      }
+    }
+
+    maybeFillEnglishCacheFallback(navPatch, 'cache', 'nav.cache')
+    maybeFillEnglishCacheFallback(tokenEconomyPatch, 'cache', 'tokenEconomy.cache')
+    maybeFillEnglishCacheFallback(systemPatch, 'cpuCache', 'system.cpuCache')
+  }
+  const localizedDirectoryWhitelistAlias =
+    localizedDirectoryWhitelistAliasLabels[localeKey]
+  if (localizedDirectoryWhitelistAlias) {
+    const currentDirectoryWhitelistAlias = getString(messages, 'security.directoryWhitelistAlias')
+    if (!currentDirectoryWhitelistAlias || currentDirectoryWhitelistAlias === 'Alias') {
+      securityPatch.directoryWhitelistAlias = localizedDirectoryWhitelistAlias
+    }
+  }
+  const localizedOnline = localizedOnlineLabels[localeKey]
+  if (localizedOnline) {
+    const maybeFillEnglishOnlineFallback = (target: LocaleNode, key: string, path: string) => {
+      const current = getString(messages, path)
+      if (!current || current === 'Online') {
+        target[key] = localizedOnline
+      }
+    }
+
+    maybeFillEnglishOnlineFallback(commonPatch, 'online', 'common.online')
+    maybeFillEnglishOnlineFallback(speechPatch, 'online', 'speech.online')
+  }
+  const localizedBackend = localizedBackendLabels[localeKey]
+  if (localizedBackend) {
+    const maybeFillEnglishBackendFallback = (target: LocaleNode, key: string, path: string) => {
+      const current = getString(messages, path)
+      if (!current || current === 'Backend') {
+        target[key] = localizedBackend
+      }
+    }
+
+    maybeFillEnglishBackendFallback(apiProxyPatch, 'prunerBackend', 'apiProxy.prunerBackend')
+    maybeFillEnglishBackendFallback(resultCardLabelsPatch, 'backend', 'resultCard.labels.backend')
+    maybeFillEnglishBackendFallback(userdataMemoryPatch, 'backend', 'userdata.memory.backend')
+  }
+  const localizedMetricsMin = localizedMetricsMinLabels[localeKey]
+  if (localizedMetricsMin) {
+    const currentMetricsMin = getString(messages, 'metrics.min')
+    if (!currentMetricsMin || currentMetricsMin === 'Min') {
+      metricsPatch.min = localizedMetricsMin
+    }
+  }
+  const localizedTaskKindAgent = localizedTaskKindAgentLabels[localeKey]
+  if (localizedTaskKindAgent) {
+    const currentTaskKindAgent = getString(messages, 'chat.taskKindAgent')
+    if (!currentTaskKindAgent || currentTaskKindAgent === 'Agent') {
+      chatPatch.taskKindAgent = localizedTaskKindAgent
+    }
+  }
+  const localizedRoutingModeAuto = getString(messages, 'chat.processTrace.fields.auto')
+  if (localizedRoutingModeAuto && localizedRoutingModeAuto !== 'Auto') {
+    const currentRoutingModeAuto = getString(messages, 'chat.routingMode.auto')
+    if (!currentRoutingModeAuto || currentRoutingModeAuto === 'Auto') {
+      routingModePatch.auto = localizedRoutingModeAuto
+    }
+  }
+  const localizedCliEta = localizedCliEtaLabels[localeKey]
+  if (localizedCliEta) {
+    const currentCliEta = getString(messages, 'cli.eta')
+    if (!currentCliEta || currentCliEta === 'ETA: {time}') {
+      cliPatch.eta = localizedCliEta
+    }
+  }
+  const localizedWorkspaceTreeDirCount = localizedWorkspaceTreeDirCountLabels[localeKey]
+  if (localizedWorkspaceTreeDirCount) {
+    const currentWorkspaceTreeDirCount = getString(messages, 'nav.workspaceTreeDirCount')
+    if (!currentWorkspaceTreeDirCount || currentWorkspaceTreeDirCount === 'Dirs') {
+      navPatch.workspaceTreeDirCount = localizedWorkspaceTreeDirCount
+    }
+  }
+  const localizedMountPoint = localizedMountPointLabels[localeKey]
+  if (localizedMountPoint) {
+    const currentMountPoint = getString(messages, 'system.mountPoint')
+    if (!currentMountPoint || currentMountPoint === 'Mount Point') {
+      systemPatch.mountPoint = localizedMountPoint
+    }
+  }
+  const currentHeapAllocation = getString(messages, 'system.heapAllocation')
+  const localizedHeapAllocation =
+    currentHeapAllocation && currentHeapAllocation !== 'Heap Allocation'
+      ? currentHeapAllocation
+      : localizedHeapAllocLabels[localeKey] ?? null
+  const currentHeapAlloc = getString(messages, 'system.heapAlloc')
+  if (
+    (!currentHeapAlloc || currentHeapAlloc === 'Heap Alloc') &&
+    localizedHeapAllocation &&
+    localizedHeapAllocation !== 'Heap Allocation'
+  ) {
+    systemPatch.heapAlloc = localizedHeapAllocation
+  }
+  const localizedSystemInfo = localizedSystemInfoLabels[localeKey]
+  if (localizedSystemInfo) {
+    const currentSystemInfo = getString(messages, 'system.info')
+    if (!currentSystemInfo || currentSystemInfo === 'Info') {
+      systemPatch.info = localizedSystemInfo
+    }
+  }
+  const localizedKernel = localizedKernelLabels[localeKey]
+  if (localizedKernel) {
+    const currentSystemKernel = getString(messages, 'system.kernel')
+    if (!currentSystemKernel || currentSystemKernel === 'Kernel') {
+      systemPatch.kernel = localizedKernel
+    }
+  }
+  const localizedAdmin = localizedAdminLabels[localeKey]
+  if (localizedAdmin) {
+    const currentProfileScopeAdmin = getString(messages, 'profile.scopeAdmin')
+    if (!currentProfileScopeAdmin || currentProfileScopeAdmin === 'Admin') {
+      profilePatch.scopeAdmin = localizedAdmin
+    }
+    const currentUserRoleAdmin = getString(messages, 'users.roles.admin')
+    if (!currentUserRoleAdmin || currentUserRoleAdmin === 'Admin') {
+      usersRolesPatch.admin = localizedAdmin
+    }
+  }
+  const localizedUsersRoleAdmin = getString(messages, 'users.roles.admin')
+  const localizedUserRoleAdmin =
+    localizedUsersRoleAdmin && localizedUsersRoleAdmin !== 'Admin'
+      ? localizedUsersRoleAdmin
+      : localizedAdmin
+  if (localizedUserRoleAdmin && localizedUserRoleAdmin !== 'Admin') {
+    const currentUserRoleAdminLabel = getString(messages, 'users.roleAdmin')
+    if (!currentUserRoleAdminLabel || currentUserRoleAdminLabel === 'Admin') {
+      usersPatch.roleAdmin = localizedUserRoleAdmin
+    }
+  }
+  const localizedVideoPreview = localizedVideoPreviewLabels[localeKey]
+  if (localizedVideoPreview) {
+    const currentVideoPreviewKind = getString(messages, 'speech.convertTask.previewKind.video')
+    if (!currentVideoPreviewKind || currentVideoPreviewKind === 'Video') {
+      speechConvertTaskPreviewKindPatch.video = localizedVideoPreview
+    }
+  }
+  const localizedGoroutine = localizedGoroutineLabels[localeKey]
+  if (localizedGoroutine) {
+    const maybeFillEnglishGoroutineFallback = (target: LocaleNode, key: string, path: string) => {
+      const current = getString(messages, path)
+      if (!current || current === 'Goroutines') {
+        target[key] = localizedGoroutine
+      }
+    }
+
+    maybeFillEnglishGoroutineFallback(dashboardPatch, 'goroutines', 'dashboard.goroutines')
+    maybeFillEnglishGoroutineFallback(
+      dashboardCardsPatch,
+      'goroutines',
+      'dashboard.cards.goroutines'
+    )
+    maybeFillEnglishGoroutineFallback(systemPatch, 'goroutines', 'system.goroutines')
+    maybeFillEnglishGoroutineFallback(systemPatch, 'numGoroutines', 'system.numGoroutines')
+  }
+  const localizedGoroutineChart = localizedGoroutineChartLabels[localeKey]
+  if (localizedGoroutineChart) {
+    const currentGoroutineChart = getString(messages, 'dashboard.cards.goroutinesChart')
+    if (!currentGoroutineChart || currentGoroutineChart === 'Goroutines') {
+      dashboardCardsPatch.goroutinesChart = localizedGoroutineChart
+    }
+  }
+  const localizedAuthToken = localizedAuthTokenLabels[localeKey]
+  if (localizedAuthToken) {
+    const currentAuthToken = getString(messages, 'channels.authToken')
+    if (!currentAuthToken || currentAuthToken === 'Auth Token') {
+      channelsPatch.authToken = localizedAuthToken
+    }
+  }
+  const localizedViberAuthTokenPlaceholder = localizedViberAuthTokenPlaceholders[localeKey]
+  if (localizedViberAuthTokenPlaceholder) {
+    const currentViberAuthTokenPlaceholder = getString(messages, 'channels.placeholderViberAuthToken')
+    if (!currentViberAuthTokenPlaceholder || currentViberAuthTokenPlaceholder === 'Viber Auth Token') {
+      channelsPatch.placeholderViberAuthToken = localizedViberAuthTokenPlaceholder
+    }
+  }
+  const providerRecoveryBackfill = providerRecoveryLocaleBackfills[localeKey]
+  if (providerRecoveryBackfill) {
+    const maybeFillEnglishFallback = (
+      target: LocaleNode,
+      key: keyof ProviderRecoveryLocalePatch,
+      path: string
+    ) => {
+      const current = getString(messages, path)
+      const english = providerRecoveryEnglishDefaults[key]
+      if (!current || current === english) {
+        target[key] = providerRecoveryBackfill[key]
+      }
+    }
+
+    maybeFillEnglishFallback(
+      noProviderPatch,
+      'recoverableEyebrow',
+      'chat.noProvider.recoverableEyebrow'
+    )
+    maybeFillEnglishFallback(
+      noProviderPatch,
+      'recoverableTitle',
+      'chat.noProvider.recoverableTitle'
+    )
+    maybeFillEnglishFallback(
+      noProviderPatch,
+      'recoverableDescription',
+      'chat.noProvider.recoverableDescription'
+    )
+    maybeFillEnglishFallback(noProviderPatch, 'retry', 'chat.noProvider.retry')
+    maybeFillEnglishFallback(noProviderPatch, 'reviewSingle', 'chat.noProvider.reviewSingle')
+    maybeFillEnglishFallback(
+      chatPatch,
+      'providerNeedsAttention',
+      'chat.providerNeedsAttention'
+    )
+    maybeFillEnglishFallback(
+      externalAgentsPatch,
+      'builtinProfile',
+      'settings.externalAgents.builtinProfile'
+    )
+  }
+  const routingModePinnedBackfill = routingModePinnedBackfills[localeKey]
+  if (routingModePinnedBackfill) {
+    if (!getString(messages, 'chat.routingMode.providerPinnedTitle')) {
+      routingModePatch.providerPinnedTitle = routingModePinnedBackfill.providerPinnedTitle
+    }
+    if (!getString(messages, 'chat.routingMode.providerPinnedDesc')) {
+      routingModePatch.providerPinnedDesc = routingModePinnedBackfill.providerPinnedDesc
+    }
+    if (!getString(messages, 'chat.routingMode.providerPinnedReset')) {
+      routingModePatch.providerPinnedReset = routingModePinnedBackfill.providerPinnedReset
+    }
+  }
+  const currentSignalVulnerabilities = getString(messages, 'skillStore.marketplace.signals.vulnerabilities')
+  const localizedFilterVulnerabilities = getString(
+    messages,
+    'skillStore.marketplace.filters.vulnerabilities'
+  )
+  if (
+    currentSignalVulnerabilities === 'Vuln' &&
+    localizedFilterVulnerabilities &&
+    localizedFilterVulnerabilities !== 'Vulnerabilities'
+  ) {
+    skillStoreSignalsPatch.vulnerabilities = localizedFilterVulnerabilities
+  }
+  if (hasKeys(noProviderPatch)) {
+    chatPatch.noProvider = noProviderPatch
+  }
+  if (hasKeys(routingModePatch)) {
+    chatPatch.routingMode = routingModePatch
+  }
   if (hasKeys(chatPatch)) {
     patch.chat = chatPatch
+  }
+  if (hasKeys(apiProxyPatch)) {
+    patch.apiProxy = apiProxyPatch
+  }
+  if (hasKeys(cliPatch)) {
+    patch.cli = cliPatch
+  }
+  if (hasKeys(navPatch)) {
+    patch.nav = navPatch
+  }
+  if (hasKeys(profilePatch)) {
+    patch.profile = profilePatch
+  }
+  if (hasKeys(companionPlatformsPatch)) {
+    companionPatch.platforms = companionPlatformsPatch
+  }
+  if (hasKeys(companionPatch)) {
+    patch.companion = companionPatch
+  }
+  if (hasKeys(externalAgentsPatch)) {
+    patch.settings = {
+      ...(patch.settings as LocaleNode | undefined),
+      externalAgents: externalAgentsPatch,
+    }
+  }
+  if (hasKeys(skillStoreSignalsPatch)) {
+    patch.skillStore = {
+      marketplace: {
+        signals: skillStoreSignalsPatch,
+      },
+    }
+  }
+  if (hasKeys(securityPatch)) {
+    patch.security = securityPatch
+  }
+  if (hasKeys(resultCardLabelsPatch)) {
+    resultCardPatch.labels = resultCardLabelsPatch
+  }
+  if (hasKeys(resultCardPatch)) {
+    patch.resultCard = resultCardPatch
+  }
+  if (hasKeys(channelsPatch)) {
+    patch.channels = channelsPatch
+  }
+  if (hasKeys(dashboardCardsPatch)) {
+    dashboardPatch.cards = dashboardCardsPatch
+  }
+  if (hasKeys(dashboardPatch)) {
+    patch.dashboard = dashboardPatch
+  }
+  if (hasKeys(metricsPatch)) {
+    patch.metrics = metricsPatch
+  }
+  if (hasKeys(systemPatch)) {
+    patch.system = {
+      ...(patch.system as LocaleNode | undefined),
+      ...systemPatch,
+    }
+  }
+  if (hasKeys(speechPatch)) {
+    patch.speech = speechPatch
+  }
+  if (hasKeys(speechConvertTaskPreviewKindPatch)) {
+    speechConvertTaskPatch.previewKind = speechConvertTaskPreviewKindPatch
+  }
+  if (hasKeys(speechConvertTaskPatch)) {
+    patch.speech = {
+      ...(patch.speech as LocaleNode | undefined),
+      convertTask: speechConvertTaskPatch,
+    }
+  }
+  if (hasKeys(tokenEconomyPatch)) {
+    patch.tokenEconomy = tokenEconomyPatch
+  }
+  if (hasKeys(toolsNamesPatch)) {
+    toolsPatch.names = toolsNamesPatch
+  }
+  if (hasKeys(toolsPatch)) {
+    patch.tools = toolsPatch
+  }
+  if (hasKeys(userdataMemoryPatch)) {
+    userdataPatch.memory = userdataMemoryPatch
+  }
+  if (hasKeys(userdataPatch)) {
+    patch.userdata = userdataPatch
+  }
+  if (hasKeys(usersRolesPatch)) {
+    usersPatch.roles = usersRolesPatch
+  }
+  if (hasKeys(usersPatch)) {
+    patch.users = usersPatch
   }
   commonPatch.filter = commonFilterLabels[localeKey]
   if (hasKeys(commonPatch)) {
@@ -566,5 +1370,5 @@ export function buildLocalePostMergeBackfill(
     patch.execCard = execCardPatch
   }
 
-  return mergeLocaleNodes(patch, (localePostMergeOverrides[localeKey] ?? {}) as LocaleNode)
+  return patch
 }

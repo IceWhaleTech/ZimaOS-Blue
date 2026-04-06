@@ -18,6 +18,24 @@ const (
 	defaultStoreRuntimeStateCleanupInterval = 10 * time.Minute
 )
 
+// DefaultChatAttachmentDir returns the canonical external attachment directory
+// under the runtime data dir.
+func DefaultChatAttachmentDir(dataDir string) string {
+	trimmed := strings.TrimSpace(dataDir)
+	if trimmed == "" {
+		return filepath.Join("media", "message_attachments")
+	}
+	return filepath.Join(trimmed, "media", "message_attachments")
+}
+
+func defaultChatAttachmentDirFromDBPath(dbPath string) string {
+	trimmed := strings.TrimSpace(dbPath)
+	if trimmed == "" || trimmed == ":memory:" {
+		return ""
+	}
+	return DefaultChatAttachmentDir(filepath.Dir(trimmed))
+}
+
 // StoreOptions controls owned SQLite chat-store behavior.
 type StoreOptions struct {
 	Durability                  string
@@ -51,7 +69,7 @@ func DefaultChatStoreOptions(dbPath string) StoreOptions {
 		MaxIdleConns:                4,
 	}
 	if strings.TrimSpace(dbPath) != "" && strings.TrimSpace(dbPath) != ":memory:" {
-		opts.AttachmentDir = filepath.Join(filepath.Dir(dbPath), "message_attachments")
+		opts.AttachmentDir = defaultChatAttachmentDirFromDBPath(dbPath)
 	}
 	return opts
 }
@@ -83,7 +101,7 @@ func normalizeStoreOptions(dbPath string, opts StoreOptions) StoreOptions {
 	}
 	if opts.AttachmentExternalStore && strings.TrimSpace(opts.AttachmentDir) == "" {
 		if trimmed := strings.TrimSpace(dbPath); trimmed != "" && trimmed != ":memory:" {
-			opts.AttachmentDir = filepath.Join(filepath.Dir(trimmed), "message_attachments")
+			opts.AttachmentDir = defaultChatAttachmentDirFromDBPath(trimmed)
 		}
 	}
 	if strings.TrimSpace(dbPath) == "" || strings.TrimSpace(dbPath) == ":memory:" {

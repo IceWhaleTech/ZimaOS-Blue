@@ -515,6 +515,68 @@ func TestSkillHandler_PreviewSourceImport(t *testing.T) {
 			t.Fatalf("seed_value = %q, want %q", payload.SeedValue, "demo/skills-repo")
 		}
 	})
+
+	t.Run("classifies GitHub skills directory as source", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/sources/preview", strings.NewReader(`{"url":"https://github.com/MiniMax-AI/skills/tree/main/skills"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.PreviewSourceImport(c); err != nil {
+			t.Fatalf("PreviewSourceImport failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload previewResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+		if payload.Kind != "source" {
+			t.Fatalf("kind = %q, want %q", payload.Kind, "source")
+		}
+		if payload.SuggestedSource == nil {
+			t.Fatal("expected suggested_source for GitHub skills directory")
+		}
+		if payload.SuggestedSource.Type != "seed_page" {
+			t.Fatalf("suggested_source.type = %q, want %q", payload.SuggestedSource.Type, "seed_page")
+		}
+		if payload.SuggestedSource.BaseURL != "https://github.com/MiniMax-AI/skills/tree/main/skills" {
+			t.Fatalf("suggested_source.base_url = %q, want %q", payload.SuggestedSource.BaseURL, "https://github.com/MiniMax-AI/skills/tree/main/skills")
+		}
+	})
+
+	t.Run("does not classify skillstack as built-in source", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/sources/preview", strings.NewReader(`{"url":"https://skillstack.me/marketplace"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.PreviewSourceImport(c); err != nil {
+			t.Fatalf("PreviewSourceImport failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload previewResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+		if payload.Kind != "source" {
+			t.Fatalf("kind = %q, want %q", payload.Kind, "source")
+		}
+		if payload.SuggestedSource == nil {
+			t.Fatal("expected suggested_source for source preview")
+		}
+		if payload.SuggestedSource.ID == "skillstack" {
+			t.Fatalf("suggested_source.id = %q, want non-built-in id", payload.SuggestedSource.ID)
+		}
+		if payload.SuggestedSource.Type != "html_catalog" {
+			t.Fatalf("suggested_source.type = %q, want %q", payload.SuggestedSource.Type, "html_catalog")
+		}
+	})
 }
 
 func TestSkillHandler_BrowseSkills(t *testing.T) {

@@ -23,7 +23,7 @@ func performAgentJSONRequest(e *echo.Echo, method, path, body string) *httptest.
 	return rec
 }
 
-func waitForTaskStatusFromAPI(t *testing.T, e *echo.Echo, taskID string, timeout time.Duration, wanted ...TaskStatus) *Task {
+func waitForTaskStatusFromStore(t *testing.T, store *Store, taskID string, timeout time.Duration, wanted ...TaskStatus) *Task {
 	t.Helper()
 	want := make(map[TaskStatus]struct{}, len(wanted))
 	for _, status := range wanted {
@@ -32,13 +32,10 @@ func waitForTaskStatusFromAPI(t *testing.T, e *echo.Echo, taskID string, timeout
 
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		rec := performAgentJSONRequest(e, http.MethodGet, "/api/v1/agent/tasks/"+taskID, "")
-		if rec.Code == http.StatusOK {
-			var task Task
-			if err := json.Unmarshal(rec.Body.Bytes(), &task); err == nil {
-				if _, ok := want[task.Status]; ok {
-					return &task
-				}
+		task, err := store.Get(context.Background(), taskID)
+		if err == nil {
+			if _, ok := want[task.Status]; ok {
+				return task
 			}
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -94,7 +91,7 @@ func TestAgentHandlerSmoke_CreateAskAnswerComplete(t *testing.T) {
 		t.Fatalf("create response missing task id: %s", createRec.Body.String())
 	}
 
-	waiting := waitForTaskStatusFromAPI(t, e, created.ID, 3*time.Second, TaskStatusWaitingInput)
+	waiting := waitForTaskStatusFromStore(t, store, created.ID, 3*time.Second, TaskStatusWaitingInput)
 	if waiting.RuntimeState != RuntimeStateClarify {
 		t.Fatalf("runtime_state=%q, want %q while waiting for answer", waiting.RuntimeState, RuntimeStateClarify)
 	}
@@ -105,7 +102,7 @@ func TestAgentHandlerSmoke_CreateAskAnswerComplete(t *testing.T) {
 		t.Fatalf("submit answer status=%d body=%s", answerRec.Code, answerRec.Body.String())
 	}
 
-	done := waitForTaskStatusFromAPI(t, e, created.ID, 6*time.Second, TaskStatusCompleted, TaskStatusFailed, TaskStatusAborted)
+	done := waitForTaskStatusFromStore(t, store, created.ID, 6*time.Second, TaskStatusCompleted, TaskStatusFailed, TaskStatusAborted)
 	if done.Status != TaskStatusCompleted {
 		t.Fatalf("final status=%q, want completed; error=%s", done.Status, done.Error)
 	}
@@ -158,7 +155,7 @@ func TestAgentHandlerSmoke_ConfirmGateAbortHighRiskCall(t *testing.T) {
 		t.Fatalf("create response missing task id: %s", createRec.Body.String())
 	}
 
-	waiting := waitForTaskStatusFromAPI(t, e, created.ID, 4*time.Second, TaskStatusWaitingInput)
+	waiting := waitForTaskStatusFromStore(t, store, created.ID, 4*time.Second, TaskStatusWaitingInput)
 	if waiting.RuntimeState != RuntimeStateConfirmGate {
 		t.Fatalf("runtime_state=%q, want %q while waiting for confirmation", waiting.RuntimeState, RuntimeStateConfirmGate)
 	}
@@ -169,7 +166,7 @@ func TestAgentHandlerSmoke_ConfirmGateAbortHighRiskCall(t *testing.T) {
 		t.Fatalf("submit answer status=%d body=%s", answerRec.Code, answerRec.Body.String())
 	}
 
-	done := waitForTaskStatusFromAPI(t, e, created.ID, 6*time.Second, TaskStatusCompleted, TaskStatusFailed, TaskStatusAborted)
+	done := waitForTaskStatusFromStore(t, store, created.ID, 6*time.Second, TaskStatusCompleted, TaskStatusFailed, TaskStatusAborted)
 	if done.Status != TaskStatusAborted {
 		t.Fatalf("final status=%q, want aborted; error=%s", done.Status, done.Error)
 	}

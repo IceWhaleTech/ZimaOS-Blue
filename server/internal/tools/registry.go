@@ -379,8 +379,8 @@ func normalizeCompatToolName(name string) string {
 		"memory_write", "memory_remember", "memory_store",
 		"memory_forget", "memory_delete":
 		return "memory"
-	case "deep-research", "research_run", "research_status":
-		return "deep_research"
+	case "deep_research", "deep-research", "research_run", "research_status":
+		return "research"
 	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return "web_query"
 	default:
@@ -416,7 +416,7 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 		return normalizeWebCompatArgs(rawName, args)
 	case "browser":
 		return normalizeBrowserCompatArgs(rawName, args)
-	case "deep_research", "research_run", "research_status", "deep-research":
+	case "research", "deep_research", "research_run", "research_status", "deep-research":
 		return normalizeDeepResearchCompatArgs(rawName, args)
 	default:
 		return args

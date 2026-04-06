@@ -8,6 +8,7 @@ import {
 const messages: Record<string, string> = {
   'chat.deepResearchStagePlanning': '规划中',
   'chat.deepResearchActionVerificationCompleted': '验证已完成',
+  'chat.deepResearchGapNeedPrimaryOrOfficialSources': '需要一手或官方来源',
   'chat.taskRuntimeExecute': '执行中',
   'chat.taskDefaultResearchTitle': '研究任务',
   'chat.taskDefaultAgentTitle': '智能体任务',
@@ -30,7 +31,7 @@ describe('taskProjectionText', () => {
         'research',
         translate
       )
-    ).toBe('规划中 · 验证已完成 · Need official source')
+    ).toBe('规划中 · 验证已完成 · 需要一手或官方来源')
   })
 
   it('localizes default task titles', () => {

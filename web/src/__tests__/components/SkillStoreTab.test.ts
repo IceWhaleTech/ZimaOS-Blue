@@ -1137,6 +1137,55 @@ describe('SkillStoreTab', () => {
     wrapper.unmount()
   })
 
+  it('collapses risky security details by default in the detail modal', async () => {
+    const skill = makeSkill({
+      security_badge: 'yellow',
+      risk_level: 'medium',
+    })
+    const detail = makeDetailResponse(skill)
+    detail.data.security = {
+      ...detail.data.security,
+      permissions: ['network'],
+      install_surface: {
+        ...detail.data.security.install_surface,
+        dependency_manifests: ['package.json'],
+      },
+      evidence: [
+        {
+          type: 'command_injection',
+          severity: 'high',
+          title: 'Command injection attempt detected',
+          description: 'Shell or command injection pattern from shared threat detector',
+          value: 'Matched: rm -rf /tmp/example',
+        },
+      ],
+    }
+
+    vi.mocked(skillApi.getMarketplaceSkill).mockResolvedValue(detail as never)
+
+    const wrapper = await mountSkillStore()
+
+    await wrapper.get('.skill-card').trigger('click')
+    await flushPromises()
+
+    const toggle = document.body.querySelector('.security-disclosure__toggle') as
+      | HTMLButtonElement
+      | null
+    expect(toggle).not.toBeNull()
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false')
+    expect(document.body.querySelector('.evidence-item')).toBeNull()
+    expect(document.body.textContent || '').not.toContain('Command injection attempt detected')
+
+    toggle?.click()
+    await flushPromises()
+
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true')
+    expect(document.body.querySelector('.evidence-item')).not.toBeNull()
+    expect(document.body.textContent || '').toContain('Command injection attempt detected')
+
+    wrapper.unmount()
+  })
+
   it('shows a toast when a skill is blocked by policy', async () => {
     const blockedSkill = makeSkill({
       security_badge: 'red',
@@ -1246,6 +1295,12 @@ describe('SkillStoreTab', () => {
     const wrapper = await mountSkillStore()
 
     await wrapper.get('.skill-card').trigger('click')
+    await flushPromises()
+
+    const toggle = document.body.querySelector('.security-disclosure__toggle') as
+      | HTMLButtonElement
+      | null
+    toggle?.click()
     await flushPromises()
 
     const bodyText = document.body.textContent || ''

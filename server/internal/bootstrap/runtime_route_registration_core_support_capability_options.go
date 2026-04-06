@@ -9,6 +9,7 @@ func newRouteRuntimeCoreCapabilitySupportOptions(state *routeRegistrationState) 
 		authMiddleware:        state.deps.AuthMiddleware,
 		authRouteMiddleware:   state.authSurface.authMiddleware,
 		requirePagePermission: state.authSurface.requirePagePermission,
+		approvalHandler:       state.bootstrapSupport.approvalHandler,
 		dataDir:               state.cfg.DataDir,
 		deps:                  state.deps,
 		flagEvaluator:         state.flagEvaluator,

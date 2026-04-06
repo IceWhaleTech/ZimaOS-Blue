@@ -103,7 +103,7 @@ func TestStore_UsesReaderDBForCommandAndResponseStateReads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetConversationCommandState via reader: %v", err)
 	}
-	if state.SelectedProviderID != "openai" || state.SelectedModelID != "gpt-5" || !state.Offline || state.WebSearchEnabled || !state.DeepResearchEnabled {
+	if state.SelectedProviderID != "openai" || state.SelectedModelID != "gpt-5" || !state.Offline || !state.WebSearchEnabled || !state.DeepResearchEnabled {
 		t.Fatalf("unexpected command state via reader: %+v", state)
 	}
 

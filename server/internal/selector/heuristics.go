@@ -49,25 +49,25 @@ func AnalyzeQuery(query string) QueryIntentSignals {
 		return signals
 	}
 
-	signals.QuestionPrefix = questionPrefixMatcher.HasAnyPrefix(lower)
-	signals.HowToQuestion = howToPrefixMatcher.HasAnyPrefix(lower) ||
-		(signals.QuestionPrefix && usageMetaTermMatcher.ContainsAnyFold(lower))
-	signals.MetaIntent = metaIntentTermMatcher.ContainsAnyFold(lower)
-	signals.URLPresent = urlPresentTermMatcher.ContainsAnyFold(lower)
+	signals.QuestionPrefix = staticCueMatchers.questionPrefixMatcher().HasAnyPrefix(lower)
+	signals.HowToQuestion = staticCueMatchers.howToPrefixMatcher().HasAnyPrefix(lower) ||
+		(signals.QuestionPrefix && staticCueMatchers.usageMetaTermMatcher().ContainsAnyFold(lower))
+	signals.MetaIntent = staticCueMatchers.metaIntentTermMatcher().ContainsAnyFold(lower)
+	signals.URLPresent = staticCueMatchers.urlPresentTermMatcher().ContainsAnyFold(lower)
 	signals.LocalWorkspace = detectLocalWorkspace(lower)
-	signals.LiveWeb = signals.URLPresent || liveWebTermMatcher.ContainsAnyFold(lower)
-	signals.Productivity = productivityTermMatcher.ContainsAnyFold(lower)
-	signals.UIArtifact = uiArtifactTermMatcher.ContainsAnyFold(lower)
-	signals.HighRisk = highRiskTermMatcher.ContainsAnyFold(lower)
-	if signals.LiveWeb && signals.Productivity && !signals.URLPresent && !liveWebStrongTermMatcher.ContainsAnyFold(lower) {
+	signals.LiveWeb = signals.URLPresent || staticCueMatchers.liveWebTermMatcher().ContainsAnyFold(lower)
+	signals.Productivity = staticCueMatchers.productivityTermMatcher().ContainsAnyFold(lower)
+	signals.UIArtifact = staticCueMatchers.uiArtifactTermMatcher().ContainsAnyFold(lower)
+	signals.HighRisk = staticCueMatchers.highRiskTermMatcher().ContainsAnyFold(lower)
+	if signals.LiveWeb && signals.Productivity && !signals.URLPresent && !staticCueMatchers.liveWebStrongTermMatcher().ContainsAnyFold(lower) {
 		signals.LiveWeb = false
 	}
 
 	operational := signals.LocalWorkspace || signals.LiveWeb || signals.Productivity ||
-		signals.UIArtifact || signals.URLPresent || operationalTermMatcher.ContainsAnyFold(lower)
+		signals.UIArtifact || signals.URLPresent || staticCueMatchers.operationalTermMatcher().ContainsAnyFold(lower)
 
-	signals.PlainReply = plainReplyTermMatcher.ContainsAnyFold(lower) && !operational
-	signals.Smalltalk = smalltalkPrefixMatcher.HasAnyPrefix(lower) && !operational
+	signals.PlainReply = staticCueMatchers.plainReplyTermMatcher().ContainsAnyFold(lower) && !operational
+	signals.Smalltalk = staticCueMatchers.smalltalkPrefixMatcher().HasAnyPrefix(lower) && !operational
 	signals.Negated = detectNegation(lower)
 
 	return signals
@@ -334,8 +334,9 @@ func HumanizeName(name string) string {
 }
 
 func detectLocalWorkspace(lower string) bool {
-	hasContainer := workspaceContainerMatcher.ContainsAnyFold(lower)
-	hasFile := workspaceFileExtMatcher.ContainsAnyFold(lower) && workspaceFileContextMatcher.ContainsAnyFold(lower)
+	hasContainer := staticCueMatchers.workspaceContainerMatcher().ContainsAnyFold(lower)
+	hasFile := staticCueMatchers.workspaceFileExtMatcher().ContainsAnyFold(lower) &&
+		staticCueMatchers.workspaceFileContextMatcher().ContainsAnyFold(lower)
 	return hasContainer || hasFile
 }
 
@@ -343,7 +344,7 @@ func detectNegation(lower string) bool {
 	if lower == "" {
 		return false
 	}
-	match, ok := negationTermMatcher.FirstMatchFold(lower)
+	match, ok := staticCueMatchers.negationTermMatcher().FirstMatchFold(lower)
 	if !ok {
 		return false
 	}
@@ -351,7 +352,7 @@ func detectNegation(lower string) bool {
 		return true
 	}
 	after := strings.TrimLeftFunc(string([]rune(lower)[match.Start:]), unicode.IsSpace)
-	return followupActionTermMatcher.ContainsAnyFold(after)
+	return staticCueMatchers.followupActionTermMatcher().ContainsAnyFold(after)
 }
 
 func prefixedSignals(prefix string, values []string) []string {

@@ -82,6 +82,7 @@ const selectedSkillId = ref<string | null>(null)
 const selectedDetail = ref<MarketplaceSkillDetail | null>(null)
 const detailLoading = ref(false)
 const showDetailModal = ref(false)
+const showSecurityRiskDetails = ref(false)
 const skillAdvice = ref<MarketplaceAdviceResponse | null>(null)
 const adviceLoading = ref(false)
 const showSourceImport = ref(false)
@@ -124,7 +125,6 @@ const protectedSkillStoreSourceIDs = new Set([
   'github-skill-md',
   'clawhub',
   'skillhub-club',
-  'skillstack',
   'llmskills',
   'moltbot',
 ])
@@ -723,6 +723,7 @@ watch(
 )
 
 watch(selectedSkillId, (id) => {
+  showSecurityRiskDetails.value = false
   if (id) {
     void fetchSkillDetail(id)
   } else {
@@ -1696,12 +1697,17 @@ async function fetchSkillDetail(id: string) {
 }
 
 function selectSkill(skill: RemoteSkill) {
+  showSecurityRiskDetails.value = false
   selectedSkillId.value = skill.id
   showDetailModal.value = true
 }
 
 function closeSkillDetail() {
   showDetailModal.value = false
+}
+
+function toggleSecurityRiskDetails() {
+  showSecurityRiskDetails.value = !showSecurityRiskDetails.value
 }
 
 function sleep(ms: number) {
@@ -2666,6 +2672,42 @@ const selectedSecuritySignals = computed(() => {
   }
   return items
 })
+
+const securityRiskDetailSections = computed(() => {
+  const report = selectedSecurity.value
+  const sections: Array<{ key: string; label: string; count: number }> = []
+  if (report?.permissions?.length) {
+    sections.push({
+      key: 'permissions',
+      label: marketplaceText('security.permissions', 'Permissions'),
+      count: report.permissions.length,
+    })
+  }
+  if (report?.install_surface?.dependency_manifests?.length) {
+    sections.push({
+      key: 'dependencyManifests',
+      label: marketplaceText('security.dependencyManifests', 'Dependency manifests'),
+      count: report.install_surface.dependency_manifests.length,
+    })
+  }
+  if (report?.evidence?.length) {
+    sections.push({
+      key: 'evidence',
+      label: marketplaceText('security.evidence', 'Evidence'),
+      count: report.evidence.length,
+    })
+  }
+  return sections
+})
+const hasSecurityRiskDetails = computed(() => securityRiskDetailSections.value.length > 0)
+const securityRiskDetailsSummary = computed(() =>
+  securityRiskDetailSections.value.map((item) => `${item.label} ${item.count}`).join(' / ')
+)
+const securityRiskDetailsToggleLabel = computed(() =>
+  showSecurityRiskDetails.value
+    ? marketplaceText('security.hideRiskDetails', 'Hide risk details')
+    : marketplaceText('security.showRiskDetails', 'Show risk details')
+)
 
 const visibleSecurityEvidence = computed(() => (selectedSecurity.value?.evidence || []).slice(0, 4))
 const hiddenSecurityEvidenceCount = computed(() => {
@@ -3900,72 +3942,117 @@ onBeforeUnmount(() => {
                   </p>
                 </div>
 
-                <div v-if="selectedSecurity.permissions?.length" class="list-block">
-                  <span class="section-label">{{
-                    marketplaceText('security.permissions', 'Permissions')
-                  }}</span>
-                  <div class="chip-row">
-                    <span
-                      v-for="permission in selectedSecurity.permissions"
-                      :key="permission"
-                      class="meta-chip meta-chip-soft"
-                    >
-                      {{ permissionLabel(permission) }}
+                <div v-if="hasSecurityRiskDetails" class="security-disclosure">
+                  <button
+                    type="button"
+                    class="security-disclosure__toggle"
+                    :aria-expanded="showSecurityRiskDetails ? 'true' : 'false'"
+                    aria-controls="skill-store-security-risk-details"
+                    @click="toggleSecurityRiskDetails"
+                  >
+                    <span class="security-disclosure__toggle-copy">
+                      <span class="section-label">{{
+                        marketplaceText('security.riskDetails', 'Risk details')
+                      }}</span>
+                      <small>{{ securityRiskDetailsSummary }}</small>
                     </span>
-                  </div>
-                </div>
-
-                <div
-                  v-if="selectedSecurity.install_surface?.dependency_manifests?.length"
-                  class="list-block"
-                >
-                  <span class="section-label">{{
-                    marketplaceText('security.dependencyManifests', 'Dependency manifests')
-                  }}</span>
-                  <div class="chip-row">
-                    <span
-                      v-for="manifest in selectedSecurity.install_surface.dependency_manifests"
-                      :key="manifest"
-                      class="meta-chip meta-chip-soft"
-                    >
-                      {{ manifest }}
+                    <span class="security-disclosure__toggle-meta">
+                      {{ securityRiskDetailsToggleLabel }}
                     </span>
-                  </div>
-                </div>
-
-                <div v-if="visibleSecurityEvidence.length" class="list-block">
-                  <span class="section-label section-label--compact">{{
-                    marketplaceText('security.evidence', 'Evidence')
-                  }}</span>
-                  <div class="evidence-list">
-                    <article
-                      v-for="item in visibleSecurityEvidence as SkillSecurityEvidence[]"
-                      :key="`${item.type}-${item.title}-${item.value}`"
-                      class="evidence-item"
-                    >
-                      <header>
-                        <strong>{{ evidenceGroupLabel(item.type) }}</strong>
-                        <span :class="['severity-chip', evidenceSeverityClass(item.severity)]">{{
-                          evidenceSeverityLabel(item.severity)
-                        }}</span>
-                      </header>
-                      <p>{{ localizedSecurityText(item.title) }}</p>
-                      <small v-if="item.description">{{
-                        localizedSecurityText(item.description)
-                      }}</small>
-                      <code v-if="item.value">{{ localizedSecurityText(item.value) }}</code>
-                    </article>
-                  </div>
+                    <span
+                      :class="[
+                        'security-disclosure__chevron',
+                        { 'security-disclosure__chevron--open': showSecurityRiskDetails },
+                      ]"
+                      aria-hidden="true"
+                    ></span>
+                  </button>
                   <p
-                    v-if="hiddenSecurityEvidenceCount"
-                    class="detail-placeholder detail-placeholder-inline"
+                    v-if="!showSecurityRiskDetails"
+                    class="detail-placeholder detail-placeholder-inline security-disclosure__hint"
                   >
                     {{
-                      marketplaceText('security.moreEvidence', '+{count} more evidence items', {
-                        count: hiddenSecurityEvidenceCount,
-                      })
+                      marketplaceText(
+                        'security.riskDetailsHint',
+                        'Permissions, dependency manifests, and evidence are collapsed by default. Expand to review them.'
+                      )
                     }}
                   </p>
+                  <div
+                    v-if="showSecurityRiskDetails"
+                    id="skill-store-security-risk-details"
+                    class="security-disclosure__panel"
+                    role="region"
+                    :aria-label="marketplaceText('security.riskDetails', 'Risk details')"
+                  >
+                    <div v-if="selectedSecurity.permissions?.length" class="list-block">
+                      <span class="section-label">{{
+                        marketplaceText('security.permissions', 'Permissions')
+                      }}</span>
+                      <div class="chip-row">
+                        <span
+                          v-for="permission in selectedSecurity.permissions"
+                          :key="permission"
+                          class="meta-chip meta-chip-soft"
+                        >
+                          {{ permissionLabel(permission) }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      v-if="selectedSecurity.install_surface?.dependency_manifests?.length"
+                      class="list-block"
+                    >
+                      <span class="section-label">{{
+                        marketplaceText('security.dependencyManifests', 'Dependency manifests')
+                      }}</span>
+                      <div class="chip-row">
+                        <span
+                          v-for="manifest in selectedSecurity.install_surface.dependency_manifests"
+                          :key="manifest"
+                          class="meta-chip meta-chip-soft"
+                        >
+                          {{ manifest }}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div v-if="visibleSecurityEvidence.length" class="list-block">
+                      <span class="section-label section-label--compact">{{
+                        marketplaceText('security.evidence', 'Evidence')
+                      }}</span>
+                      <div class="evidence-list">
+                        <article
+                          v-for="item in visibleSecurityEvidence as SkillSecurityEvidence[]"
+                          :key="`${item.type}-${item.title}-${item.value}`"
+                          class="evidence-item"
+                        >
+                          <header>
+                            <strong>{{ evidenceGroupLabel(item.type) }}</strong>
+                            <span :class="['severity-chip', evidenceSeverityClass(item.severity)]">{{
+                              evidenceSeverityLabel(item.severity)
+                            }}</span>
+                          </header>
+                          <p>{{ localizedSecurityText(item.title) }}</p>
+                          <small v-if="item.description">{{
+                            localizedSecurityText(item.description)
+                          }}</small>
+                          <code v-if="item.value">{{ localizedSecurityText(item.value) }}</code>
+                        </article>
+                      </div>
+                      <p
+                        v-if="hiddenSecurityEvidenceCount"
+                        class="detail-placeholder detail-placeholder-inline"
+                      >
+                        {{
+                          marketplaceText('security.moreEvidence', '+{count} more evidence items', {
+                            count: hiddenSecurityEvidenceCount,
+                          })
+                        }}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </template>
               <p v-else class="detail-placeholder">
@@ -6011,6 +6098,90 @@ onBeforeUnmount(() => {
 
 .list-block {
   margin-top: 8px;
+}
+
+.security-disclosure {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--security-yellow-border) 58%, var(--border));
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--security-yellow-bg) 48%, var(--panel-bg-strong)) 0%,
+      color-mix(in srgb, var(--panel-bg) 88%, var(--security-yellow-bg) 12%) 100%
+    );
+}
+
+.security-disclosure__toggle {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.security-disclosure__toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--security-yellow-text) 58%, #f59e0b);
+  outline-offset: 4px;
+  border-radius: 10px;
+}
+
+.security-disclosure__toggle-copy {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.security-disclosure__toggle-copy .section-label {
+  margin: 0;
+}
+
+.security-disclosure__toggle-copy small {
+  color: var(--text-secondary);
+  font-size: 8.5px;
+  line-height: 1.4;
+}
+
+.security-disclosure__toggle-meta {
+  color: var(--text-secondary);
+  font-size: 8.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.security-disclosure__chevron {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform 180ms ease;
+  color: var(--text-secondary);
+}
+
+.security-disclosure__chevron--open {
+  transform: rotate(225deg);
+}
+
+.security-disclosure__hint {
+  margin-top: 6px;
+}
+
+.security-disclosure__panel {
+  margin-top: 8px;
+}
+
+.security-disclosure__panel .list-block:first-child {
+  margin-top: 0;
 }
 
 .evidence-list {

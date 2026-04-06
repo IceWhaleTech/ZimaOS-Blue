@@ -124,6 +124,26 @@ func TestBuildSkillIndex_AgentsRootOverridesClaudeRoot(t *testing.T) {
 	}
 }
 
+func TestNewSkillSelector_DefersDecisionCacheAllocation(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	selector := NewSkillSelector(workspaceDir, nil)
+	if selector.cache != nil {
+		t.Fatal("expected decision cache to start unallocated")
+	}
+
+	selector.setCachedDecision("demo", Decision{SelectedSkill: "web_query"})
+
+	if len(selector.cache) != 1 {
+		t.Fatalf("len(cache) = %d, want 1 after first cached decision", len(selector.cache))
+	}
+	if got, ok := selector.getCachedDecision("demo"); !ok || got.SelectedSkill != "web_query" {
+		t.Fatalf("getCachedDecision(demo) = (%+v, %v), want selected skill web_query and ok=true", got, ok)
+	}
+}
+
 func TestSkillSelector_Select_IR(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -753,8 +773,8 @@ func TestSkillSelector_UIReviewerNeedsUIEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select error: %v", err)
 	}
-	if decision.SelectedSkill != "ui_reviewer" {
-		t.Fatalf("expected ui_reviewer with screenshot/UI evidence, got=%+v", decision)
+	if decision.SelectedSkill != "research" || decision.ResearchMode != "ui_review" {
+		t.Fatalf("expected research/ui_review with screenshot/UI evidence, got=%+v", decision)
 	}
 }
 
@@ -789,8 +809,8 @@ func TestSkillSelector_URLUIReviewBypassesBrowserRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select error: %v", err)
 	}
-	if decision.SelectedSkill != "ui_reviewer" {
-		t.Fatalf("expected ui_reviewer for URL UI audit, got=%+v", decision)
+	if decision.SelectedSkill != "research" || decision.ResearchMode != "ui_review" {
+		t.Fatalf("expected research/ui_review for URL UI audit, got=%+v", decision)
 	}
 }
 
@@ -825,8 +845,8 @@ func TestSkillSelector_URLAnalyzeBypassesBrowserRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select error: %v", err)
 	}
-	if decision.SelectedSkill != "analyze" {
-		t.Fatalf("expected analyze for URL analysis request, got=%+v", decision)
+	if decision.SelectedSkill != "research" || decision.ResearchMode != "analyze" {
+		t.Fatalf("expected research/analyze for URL analysis request, got=%+v", decision)
 	}
 }
 
@@ -862,7 +882,7 @@ func TestSkillSelector_URLDeepResearchBypassesBrowserRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select error: %v", err)
 	}
-	if decision.SelectedSkill != "deep_research" {
-		t.Fatalf("expected deep_research for URL research request, got=%+v", decision)
+	if decision.SelectedSkill != "research" || decision.ResearchMode != "deep_research" {
+		t.Fatalf("expected research/deep_research for URL research request, got=%+v", decision)
 	}
 }

@@ -1294,6 +1294,7 @@ const RESULT_CARD_TYPES = new Set([
   'media-generate',
   'ui-review',
   'deep-research',
+  'analyze',
   'detection',
   'ui-review-progress',
   'analyze-progress',

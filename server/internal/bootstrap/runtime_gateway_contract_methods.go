@@ -94,28 +94,6 @@ func registerRouteRuntimeGatewayMethods(gw *gateway.Gateway, options routeRuntim
 		})
 	})
 
-	gw.RegisterHandler("hooks.wake", func(ctx context.Context, _ *gateway.Connection, msg *gateway.Message) (*gateway.Message, error) {
-		if options.pluginRegistry == nil {
-			return nil, fmt.Errorf("plugin registry not configured")
-		}
-		var req struct {
-			HookID  string      `json:"hook_id"`
-			Payload interface{} `json:"payload"`
-		}
-		if err := decodeRouteRuntimeGatewayPayload(msg, &req); err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(req.HookID) == "" {
-			return nil, fmt.Errorf("hook_id is required")
-		}
-		if err := options.pluginRegistry.TriggerHook(ctx, req.HookID, req.Payload); err != nil {
-			return nil, err
-		}
-		return gatewayRouteRuntimeMessageWithPayload(map[string]interface{}{
-			"hook_id": req.HookID,
-			"woke":    true,
-		})
-	})
 }
 
 func decodeRouteRuntimeGatewayPayload(msg *gateway.Message, out interface{}) error {

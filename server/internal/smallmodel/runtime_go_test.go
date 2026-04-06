@@ -1,10 +1,10 @@
+//go:build linux && cgo
+
 package smallmodel
 
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -77,18 +77,5 @@ func TestGoRuntimeGenerateRejectsEmptyPrompt(t *testing.T) {
 	_, err := rt.Generate(context.Background(), GenerateRequest{Prompt: " \n\t "})
 	if err == nil || !strings.Contains(err.Error(), "empty prompt") {
 		t.Fatalf("Generate() error = %v, want empty prompt", err)
-	}
-}
-
-func createReadyModelFiles(t *testing.T, m *Manager) {
-	t.Helper()
-	for _, f := range requiredModelFiles(m.assets) {
-		p := filepath.Join(m.ModelDir(), f.Filename)
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			t.Fatalf("mkdir %s: %v", filepath.Dir(p), err)
-		}
-		if err := os.WriteFile(p, []byte("ok"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", p, err)
-		}
 	}
 }

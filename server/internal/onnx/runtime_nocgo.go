@@ -1,4 +1,4 @@
-//go:build !cgo
+//go:build !linux || !cgo
 
 package onnx
 
@@ -7,7 +7,12 @@ import (
 	"runtime"
 )
 
-var errRuntimeNoCGO = fmt.Errorf("onnx runtime requires cgo (build with CGO_ENABLED=1)")
+func runtimeUnavailableError() error {
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("onnx runtime is only supported on linux with cgo; current platform %s/%s", runtime.GOOS, runtime.GOARCH)
+	}
+	return fmt.Errorf("onnx runtime requires cgo on linux (build with CGO_ENABLED=1)")
+}
 
 func libName() string {
 	switch runtime.GOOS {
@@ -28,7 +33,7 @@ func SetDataDir(string) {}
 
 // InitializeRuntime reports ONNX runtime unavailability in !cgo builds.
 func InitializeRuntime() error {
-	return errRuntimeNoCGO
+	return runtimeUnavailableError()
 }
 
 // Session is a no-cgo compatibility stub.
@@ -36,13 +41,13 @@ type Session struct{}
 
 // NewSession reports ONNX runtime unavailability in !cgo builds.
 func NewSession(string, []string, []string, []any, []any) (*Session, error) {
-	return nil, errRuntimeNoCGO
+	return nil, runtimeUnavailableError()
 }
 
 // Run reports ONNX runtime unavailability in !cgo builds.
 func (s *Session) Run() error {
 	_ = s
-	return errRuntimeNoCGO
+	return runtimeUnavailableError()
 }
 
 // Close is a no-op in !cgo builds.
@@ -56,7 +61,7 @@ type DynamicSession struct{}
 
 // NewDynamicSession reports ONNX runtime unavailability in !cgo builds.
 func NewDynamicSession(string, []string, []string) (*DynamicSession, error) {
-	return nil, errRuntimeNoCGO
+	return nil, runtimeUnavailableError()
 }
 
 // Close is a no-op in !cgo builds.

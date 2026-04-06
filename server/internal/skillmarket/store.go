@@ -2063,6 +2063,18 @@ func (s *Store) SetSourceEnabledByIdentity(ctx context.Context, sourceID, source
 	return err
 }
 
+func (s *Store) SetSourceEnabled(ctx context.Context, sourceID string, enabled bool) error {
+	_, err := s.table(ctx, "skill_sources").Update(
+		z.V{
+			"enabled":    boolToInt(enabled),
+			"updated_at": timeutil.NowTime(),
+		},
+		z.Fields("enabled", "updated_at"),
+		z.Where(z.Eq("id", sourceID)),
+	)
+	return err
+}
+
 func (s *Store) ListSources(ctx context.Context) ([]Source, error) {
 	var rows []sourceRow
 	if _, err := s.readTable(ctx, "skill_sources").Select(&rows,

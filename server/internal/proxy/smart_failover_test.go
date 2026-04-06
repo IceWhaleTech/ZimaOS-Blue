@@ -154,6 +154,28 @@ func TestAPIErrorClassifier_ClassifyError(t *testing.T) {
 	}
 }
 
+func TestAPIErrorClassifier_InitializesPatternsOnDemand(t *testing.T) {
+	classifier := NewAPIErrorClassifier()
+	if classifier.patterns != nil {
+		t.Fatal("expected classifier patterns to start nil")
+	}
+
+	classification := classifier.ClassifyError(
+		"anthropic",
+		400,
+		[]byte(`{"error":{"message":"Request context size (202154 tokens) exceeds maximum allowed (200000 tokens)"}}`),
+	)
+	if classification == nil {
+		t.Fatal("expected classification result")
+	}
+	if classification.Type != ErrorTypeContextTooLong {
+		t.Fatalf("classification.Type = %s, want %s", classification.Type, ErrorTypeContextTooLong)
+	}
+	if len(classifier.patterns) == 0 {
+		t.Fatal("expected classifier patterns to initialize on first classify")
+	}
+}
+
 func TestAPIErrorClassifier_ExtractContextSize(t *testing.T) {
 	classifier := NewAPIErrorClassifier()
 

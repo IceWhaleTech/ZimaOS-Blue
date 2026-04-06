@@ -1,0 +1,49 @@
+---
+title: "自动化"
+summary: "Blue 当前已经暴露出的计划任务、工作流、浏览器与可追踪执行入口。"
+---
+
+# 自动化
+
+Blue 现在不只是聊天界面，自动化入口已经成为正式产品能力的一部分。
+
+## 当前自动化面
+
+- 定时任务
+- 工作流与 Webhook 入口
+- 浏览器自动化相关路径
+- Auto-reply 与渠道联动能力
+- 表单填充等结构化浏览器辅助能力
+- Harness 支撑的可追踪执行与评测
+
+## 什么时候该用自动化
+
+- 你需要定时执行而不是临时提问
+- 你想让外部系统通过 webhook 触发 Blue
+- 你希望浏览器或工作流步骤复用同一套 Provider 与安全体系
+- 你需要可重复的评测与报告，而不是一次性跑完就结束
+
+## 当前路由组织方式
+
+Web 界面现在把这些入口收敛到了自动化相关区域：
+
+- 自动化主入口与 cron
+- Harness run groups 与详情页
+- Evolution 页面
+- 旧的 `cron`、`workflows`、`webhooks`、浏览器自动化路由会跳转到新的结构
+
+## 什么时候进入 Harness
+
+普通自动化适合触发和调度。Harness 适合：
+
+- 需要 dataset 或 eval spec
+- 需要评分和阈值
+- 需要 baseline 对比
+- 需要 artifacts、trace 和证据
+
+继续看 [Harness 与 Evolution](/zh-CN/guides/harness-evolution)。
+
+## 相关页面
+
+- [设置与 Provider Pool](/zh-CN/guides/settings-provider-pool)
+- [语音与表单填充](/zh-CN/guides/voice-form-filling)

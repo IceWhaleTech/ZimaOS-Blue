@@ -7,9 +7,14 @@ import type {
   DeepResearchLiveSource,
 } from '@/types/typeless'
 import {
+  localizeDeepResearchAction,
   localizeDeepResearchGap,
+  localizeDeepResearchSegment,
   localizeDeepResearchStatus,
+  localizeDeepResearchStopReason,
   localizeDeepResearchStructuredValue,
+  localizeDeepResearchSummary,
+  localizeDeepResearchTimeWindow,
 } from '@/utils/deepResearchText'
 
 const { t, te } = useI18n()
@@ -35,6 +40,14 @@ function resolveLabel(key: string, fallback: string): string {
   return te(key) ? String(t(key)) : fallback
 }
 
+const summaryLabel = computed(() => {
+  return (
+    localizeDeepResearchSummary(props.card.summary, resolveLabel) ||
+    props.card.summary ||
+    t('chat.deepResearchProcess', 'Research process')
+  )
+})
+
 const statusClass = computed(() => {
   switch (props.card.status) {
     case 'warning':
@@ -59,7 +72,12 @@ const kindLabel = computed(() => {
     synthesis: t('chat.deepResearchActionSynthesizing', 'Synthesizing report'),
     'loop-stopped': t('chat.deepResearchActionLoopStopped', 'Research loop stopped'),
   }
-  return labels[eventKind] || eventKind || t('chat.deepResearchProcess', 'Research process')
+  return (
+    labels[eventKind] ||
+    localizeDeepResearchAction(eventKind, resolveLabel) ||
+    eventKind ||
+    t('chat.deepResearchProcess', 'Research process')
+  )
 })
 
 const hasDetailSections = computed(() => {
@@ -93,9 +111,16 @@ function domainOf(source: DeepResearchLiveSource): string {
 }
 
 function taskMeta(task: DeepResearchPlannedTask): string[] {
-  return [task.axis, task.category, task.time_window]
-    .map((value) => localizeDeepResearchStructuredValue(value, resolveLabel))
-    .filter((value): value is string => !!value)
+  return [
+    localizeDeepResearchStructuredValue(task.axis, resolveLabel) ||
+      localizeDeepResearchSegment(task.axis, resolveLabel) ||
+      String(task.axis || '').trim(),
+    localizeDeepResearchStructuredValue(task.category, resolveLabel) ||
+      localizeDeepResearchSegment(task.category, resolveLabel) ||
+      String(task.category || '').trim(),
+    localizeDeepResearchTimeWindow(task.time_window, resolveLabel) ||
+      String(task.time_window || '').trim(),
+  ].filter((value): value is string => !!value)
 }
 </script>
 
@@ -136,7 +161,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
           <div
             class="mt-1.5 text-[13px] font-semibold text-slate-800 dark:text-slate-100 break-words"
           >
-            {{ card.summary || t('chat.deepResearchProcess', 'Research process') }}
+            {{ summaryLabel }}
           </div>
           <div
             v-if="card.query"
@@ -213,7 +238,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
                 :key="window"
                 class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300"
               >
-                {{ window }}
+                {{ localizeDeepResearchTimeWindow(window, resolveLabel) }}
               </span>
             </div>
             <div v-if="brief.must_verify_claims?.length" class="mt-3">
@@ -323,7 +348,13 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
             <div class="text-xs font-medium text-amber-700 dark:text-amber-200">
               {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}
             </div>
-            <div v-if="card.focus" class="mt-2 text-sm break-words">{{ card.focus }}</div>
+            <div v-if="card.focus" class="mt-2 text-sm break-words">
+              {{
+                localizeDeepResearchStructuredValue(card.focus, resolveLabel) ||
+                localizeDeepResearchSegment(card.focus, resolveLabel) ||
+                card.focus
+              }}
+            </div>
             <div v-if="card.gap" class="mt-1 text-sm break-words">
               {{ localizeDeepResearchGap(card.gap, resolveLabel) }}
             </div>
@@ -343,7 +374,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
               v-if="card.stop_reason"
               class="mt-1 text-xs text-amber-700/80 dark:text-amber-200/80"
             >
-              {{ card.stop_reason }}
+              {{ localizeDeepResearchStopReason(card.stop_reason, resolveLabel) || card.stop_reason }}
             </div>
           </div>
         </div>

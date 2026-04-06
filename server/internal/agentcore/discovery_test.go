@@ -15,14 +15,14 @@ func TestResolveCanonicalSkill(t *testing.T) {
 		{"search", CanonicalWebQuery, true},
 		{"ask", CanonicalAsk, true},
 		{"browser", CanonicalBrowser, true},
-		{"analyze", CanonicalAnalyze, true},
+		{"analyze", CanonicalUnknown, false},
 		{"reminder", CanonicalReminder, true},
-		{"ui_reviewer", CanonicalUIReviewer, true},
+		{"ui_reviewer", CanonicalUnknown, false},
 		{"himalaya", CanonicalHimalaya, true},
-		{"deep_research", CanonicalDeepResearch, true},
+		{"deep_research", CanonicalUnknown, false},
 		{"config", CanonicalConfig, true},
 		{"mgmt", CanonicalUnknown, false},
-		{"research", CanonicalDeepResearch, true},
+		{"research", CanonicalResearch, true},
 		{"exec", CanonicalExec, true},
 		{"unknown_skill", CanonicalUnknown, false},
 		{"WEB_SEARCH", CanonicalWebQuery, true},
@@ -48,14 +48,11 @@ func TestIsCutoverEligibleCanonical(t *testing.T) {
 	if !IsCutoverEligibleCanonical(CanonicalAsk) {
 		t.Error("ask should be cutover eligible")
 	}
-	if !IsCutoverEligibleCanonical(CanonicalDeepResearch) {
-		t.Error("deep_research should be cutover eligible")
+	if !IsCutoverEligibleCanonical(CanonicalResearch) {
+		t.Error("research should be cutover eligible")
 	}
 	if !IsCutoverEligibleCanonical(CanonicalReminder) {
 		t.Error("reminder should be cutover eligible")
-	}
-	if !IsCutoverEligibleCanonical(CanonicalUIReviewer) {
-		t.Error("ui_reviewer should be cutover eligible")
 	}
 	if !IsCutoverEligibleCanonical(CanonicalHimalaya) {
 		t.Error("himalaya should be cutover eligible")
@@ -72,8 +69,8 @@ func TestIsCutoverEligibleCanonical(t *testing.T) {
 }
 
 func TestExecutionProfileForSkill(t *testing.T) {
-	if ExecutionProfileForSkill(CanonicalDeepResearch) != ExecutionProfileRequireFork {
-		t.Error("deep_research should require_fork")
+	if ExecutionProfileForSkill(CanonicalResearch) != ExecutionProfileRequireFork {
+		t.Error("research should require_fork")
 	}
 	if ExecutionProfileForSkill(CanonicalWebQuery) != ExecutionProfilePreferFork {
 		t.Error("web_query should prefer_fork")
@@ -83,9 +80,6 @@ func TestExecutionProfileForSkill(t *testing.T) {
 	}
 	if ExecutionProfileForSkill(CanonicalReminder) != ExecutionProfileInline {
 		t.Error("reminder should be inline")
-	}
-	if ExecutionProfileForSkill(CanonicalUIReviewer) != ExecutionProfileInline {
-		t.Error("ui_reviewer should be inline")
 	}
 	if ExecutionProfileForSkill(CanonicalHimalaya) != ExecutionProfileInline {
 		t.Error("himalaya should be inline")
@@ -108,8 +102,8 @@ func TestNativeSurfaceModeForSkill(t *testing.T) {
 	if NativeSurfaceModeForSkill(CanonicalReminder) != NativeSurfaceModeSkillExec {
 		t.Error("reminder should be skill_exec")
 	}
-	if NativeSurfaceModeForSkill(CanonicalUIReviewer) != NativeSurfaceModeSkillExec {
-		t.Error("ui_reviewer should be skill_exec")
+	if NativeSurfaceModeForSkill(CanonicalResearch) != NativeSurfaceModeSkillExec {
+		t.Error("research should be skill_exec")
 	}
 	if NativeSurfaceModeForSkill(CanonicalHimalaya) != NativeSurfaceModeSkillExec {
 		t.Error("himalaya should be skill_exec")
@@ -159,12 +153,12 @@ func TestBuildDiscoveryDecision_UsesCanonicalCutoverOnlyForEligibleDynamicRoutes
 		t.Fatalf("reminder NativeSurfaceMode = %q, want %q", reminder.NativeSurfaceMode, NativeSurfaceModeSkillExec)
 	}
 
-	uiReviewer := BuildDiscoveryDecision(Decision{SelectedSkill: "ui_reviewer"}, true)
-	if uiReviewer.CanonicalTarget != CanonicalUIReviewer {
-		t.Fatalf("ui_reviewer CanonicalTarget = %q, want %q", uiReviewer.CanonicalTarget, CanonicalUIReviewer)
+	research := BuildDiscoveryDecision(Decision{SelectedSkill: "research", ResearchMode: "ui_review"}, true)
+	if research.CanonicalTarget != CanonicalResearch {
+		t.Fatalf("research CanonicalTarget = %q, want %q", research.CanonicalTarget, CanonicalResearch)
 	}
-	if uiReviewer.NativeSurfaceMode != NativeSurfaceModeSkillExec {
-		t.Fatalf("ui_reviewer NativeSurfaceMode = %q, want %q", uiReviewer.NativeSurfaceMode, NativeSurfaceModeSkillExec)
+	if research.NativeSurfaceMode != NativeSurfaceModeSkillExec {
+		t.Fatalf("research NativeSurfaceMode = %q, want %q", research.NativeSurfaceMode, NativeSurfaceModeSkillExec)
 	}
 
 	himalaya := BuildDiscoveryDecision(Decision{SelectedSkill: "himalaya"}, true)
@@ -194,7 +188,7 @@ func TestBuildDiscoveryDecision_CutoverCoversAskConfigAndExecRoutes(t *testing.T
 		{name: "ask", selected: "ask", wantTarget: CanonicalAsk, wantProfile: ExecutionProfileInline},
 		{name: "reminder", selected: "reminder", wantTarget: CanonicalReminder, wantProfile: ExecutionProfileInline},
 		{name: "config", selected: "config", wantTarget: CanonicalConfig, wantProfile: ExecutionProfileInline},
-		{name: "ui_reviewer", selected: "ui_reviewer", wantTarget: CanonicalUIReviewer, wantProfile: ExecutionProfileInline},
+		{name: "research", selected: "research", wantTarget: CanonicalResearch, wantProfile: ExecutionProfileRequireFork},
 		{name: "himalaya", selected: "himalaya", wantTarget: CanonicalHimalaya, wantProfile: ExecutionProfileInline},
 		{name: "exec", selected: "exec", wantTarget: CanonicalExec, wantProfile: ExecutionProfileInline},
 	}
@@ -232,15 +226,16 @@ func TestBuildDiscoveryDecision_ClarifyOverridesCutover(t *testing.T) {
 
 func TestCapabilityDiscoveryDecisionToObservation(t *testing.T) {
 	observation := BuildDiscoveryDecision(Decision{
-		SelectedSkill: "deep_research",
+		SelectedSkill: "research",
+		ResearchMode:  "deep_research",
 		Reason:        "ir_ranked",
 	}, true).ToObservation()
 
-	if observation.SelectedCanonicalSkill != string(CanonicalDeepResearch) {
-		t.Fatalf("SelectedCanonicalSkill = %q, want %q", observation.SelectedCanonicalSkill, CanonicalDeepResearch)
+	if observation.SelectedCanonicalSkill != string(CanonicalResearch) {
+		t.Fatalf("SelectedCanonicalSkill = %q, want %q", observation.SelectedCanonicalSkill, CanonicalResearch)
 	}
-	if observation.SelectedAlias != "deep_research" {
-		t.Fatalf("SelectedAlias = %q, want deep_research", observation.SelectedAlias)
+	if observation.SelectedAlias != "research" {
+		t.Fatalf("SelectedAlias = %q, want research", observation.SelectedAlias)
 	}
 	if observation.ExecutionProfile != ExecutionProfileRequireFork {
 		t.Fatalf("ExecutionProfile = %q, want %q", observation.ExecutionProfile, ExecutionProfileRequireFork)

@@ -23,18 +23,6 @@ import (
 	"golang.org/x/image/draw"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
-	"golang.org/x/image/font/gofont/gobold"
-	"golang.org/x/image/font/gofont/gobolditalic"
-	"golang.org/x/image/font/gofont/goitalic"
-	"golang.org/x/image/font/gofont/gomedium"
-	"golang.org/x/image/font/gofont/gomediumitalic"
-	"golang.org/x/image/font/gofont/gomono"
-	"golang.org/x/image/font/gofont/gomonobold"
-	"golang.org/x/image/font/gofont/gomonobolditalic"
-	"golang.org/x/image/font/gofont/gomonoitalic"
-	"golang.org/x/image/font/gofont/goregular"
-	"golang.org/x/image/font/gofont/gosmallcaps"
-	"golang.org/x/image/font/gofont/gosmallcapsitalic"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
 )
@@ -1269,7 +1257,7 @@ func loadSlideFontVariant(family, weight string) (*opentype.Font, error) {
 		return parsed, err
 	}
 
-	parsed, err = opentype.Parse(slideFontTTFBytes(family, weight))
+	parsed, err = loadSlideRuntimeFont(family, weight)
 
 	slideFontRegistryMu.Lock()
 	slideFontRegistry[key] = parsed
@@ -1280,45 +1268,8 @@ func loadSlideFontVariant(family, weight string) (*opentype.Font, error) {
 }
 
 func slideFontVariantKey(family, weight string) string {
-	return normalizeSlideFontFamily(family) + ":" + normalizeSlideFontWeight(weight)
-}
-
-func slideFontTTFBytes(family, weight string) []byte {
-	switch normalizeSlideFontFamily(family) {
-	case "mono":
-		switch normalizeSlideFontWeight(weight) {
-		case "bold":
-			return gomonobold.TTF
-		case "italic":
-			return gomonoitalic.TTF
-		case "bold_italic":
-			return gomonobolditalic.TTF
-		default:
-			return gomono.TTF
-		}
-	case "display":
-		switch normalizeSlideFontWeight(weight) {
-		case "italic", "bold_italic":
-			return gosmallcapsitalic.TTF
-		default:
-			return gosmallcaps.TTF
-		}
-	default:
-		switch normalizeSlideFontWeight(weight) {
-		case "medium":
-			return gomedium.TTF
-		case "bold":
-			return gobold.TTF
-		case "italic":
-			return goitalic.TTF
-		case "medium_italic":
-			return gomediumitalic.TTF
-		case "bold_italic":
-			return gobolditalic.TTF
-		default:
-			return goregular.TTF
-		}
-	}
+	req := canonicalSlideFontRuntimeRequest(family, weight)
+	return req.family + ":" + req.weight
 }
 
 func normalizeSlideFontFamily(value string) string {

@@ -63,6 +63,7 @@ type SessionConfig struct {
 	IdleTimeout                 time.Duration            `yaml:"idle_timeout"`
 	ChatDBDurability            string                   `yaml:"chat_db_durability"`
 	ChatPersistAsync            bool                     `yaml:"chat_persist_async"`
+	ChatPersistFlushOnResponse  bool                     `yaml:"chat_persist_flush_on_response"`
 	ChatReadLite                bool                     `yaml:"chat_read_lite"`
 	ChatAttachmentExternalStore bool                     `yaml:"chat_attachment_external_store"`
 	Compaction                  SessionCompactionConfig  `yaml:"compaction"`
@@ -112,6 +113,7 @@ type SessionCleanupConfig struct {
 type SessionAuditConfig struct {
 	Enabled          bool          `yaml:"enabled"`
 	Path             string        `yaml:"path"`
+	IPCEnabled       bool          `yaml:"ipc_enabled"`
 	RetentionDays    int           `yaml:"retention_days"`
 	CleanupInterval  time.Duration `yaml:"cleanup_interval"`
 	CleanupBatchSize int           `yaml:"cleanup_batch_size"`

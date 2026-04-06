@@ -2964,6 +2964,63 @@ func TestRouterStrictCandidates_RespectsAllowedModels(t *testing.T) {
 	}
 }
 
+func TestRouterStrictCandidates_EmptyAllowlistDoesNotBlockRequestedModel(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "router-empty-allowlist-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	router := NewRouter(registry, discovery, RoutingStrategyPriority)
+
+	providerA := &Provider{
+		ID: "provider-a", Name: "Provider A", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 100,
+		Location:            ProviderLocationCloud,
+		APIKeys:             []APIKey{{ID: "k1", Key: "key-a", Enabled: true}},
+		AllowedModels:       []string{},
+		AllowlistConfigured: true,
+	}
+	providerB := &Provider{
+		ID: "provider-b", Name: "Provider B", Type: ProviderTypeCustom,
+		Enabled: true, Status: ProviderStatusActive, Priority: 80,
+		Location: ProviderLocationCloud,
+		APIKeys:  []APIKey{{ID: "k2", Key: "key-b", Enabled: true}},
+	}
+	registry.Register(providerA)
+	registry.Register(providerB)
+
+	storage.SaveModels("provider-a", []*Model{{
+		ID: "special-model", ProviderID: "provider-a", Name: "special-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	storage.SaveModels("provider-b", []*Model{{
+		ID: "special-model", ProviderID: "provider-b", Name: "special-model",
+		Enabled: true, Capabilities: ModelCapabilities{Chat: true},
+	}})
+	router.RebuildCandidates()
+
+	var tried []string
+	err = router.RouteWithFallback(context.Background(), &RouteRequest{
+		ModelID: "special-model",
+	}, func(result *RouteResult) error {
+		tried = append(tried, result.Provider.ID)
+		return errors.New("upstream error")
+	})
+	if err == nil || err.Error() != "upstream error" {
+		t.Fatalf("expected upstream error from routed candidate, got: %v", err)
+	}
+	if len(tried) == 0 {
+		t.Fatal("expected at least one routing attempt")
+	}
+	if tried[0] != "provider-a" {
+		t.Fatalf("expected provider-a to remain routable with empty allowlist, got %v", tried)
+	}
+}
+
 // --- OAuth provider routing tests ---
 
 // setupOAuthRouterTest creates a router with one API-key provider and one OAuth-only provider.

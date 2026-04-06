@@ -135,8 +135,21 @@ func needsExtraction(dir, cliPath, distPath string) bool {
 
 // embeddedVersion returns a hash of the embedded bluecli binary.
 func embeddedVersion() string {
-	h := sha256.Sum256(embeddedBluecli)
-	return hex.EncodeToString(h[:8]) // 16-char hex
+	h := sha256.New()
+	reader, closeReader, err := newEmbeddedBluecliReader()
+	if err != nil {
+		sum := sha256.Sum256(embeddedBluecli)
+		return hex.EncodeToString(sum[:8])
+	}
+	defer closeReader()
+
+	if _, err := io.Copy(h, reader); err != nil {
+		sum := sha256.Sum256(embeddedBluecli)
+		return hex.EncodeToString(sum[:8])
+	}
+
+	sum := h.Sum(nil)
+	return hex.EncodeToString(sum[:8]) // 16-char hex
 }
 
 func writeVersion(dir string) error {
@@ -147,6 +160,11 @@ func extractBluecli(dst string) error {
 	if len(embeddedBluecli) == 0 {
 		return fmt.Errorf("embedded bluecli asset is missing; build via `make build-launcher`")
 	}
+	reader, closeReader, err := newEmbeddedBluecliReader()
+	if err != nil {
+		return err
+	}
+	defer closeReader()
 
 	// Write to a new inode then atomically replace. On macOS, in-place truncation
 	// of an existing executable can leave AMFI/Syspolicy seeing stale signature
@@ -164,7 +182,7 @@ func extractBluecli(dst string) error {
 		}
 	}()
 
-	if _, err := tmp.Write(embeddedBluecli); err != nil {
+	if _, err := io.Copy(tmp, reader); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("write temp bluecli: %w", err)
 	}
@@ -198,13 +216,12 @@ func extractDist(dst string) error {
 		return fmt.Errorf("embedded dist asset is missing; build via `make build-launcher`")
 	}
 	os.RemoveAll(dst)
-	gr, err := gzip.NewReader(bytes.NewReader(embeddedDist))
+	tr, closeReader, err := newEmbeddedDistTarReader()
 	if err != nil {
-		return fmt.Errorf("gzip: %w", err)
+		return err
 	}
-	defer gr.Close()
+	defer closeReader()
 
-	tr := tar.NewReader(gr)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
@@ -231,4 +248,29 @@ func extractDist(dst string) error {
 		}
 	}
 	return nil
+}
+
+func newEmbeddedDistTarReader() (*tar.Reader, func() error, error) {
+	reader, closeReader, err := newEmbeddedPayloadReader(embeddedDist)
+	if err != nil {
+		return nil, nil, err
+	}
+	return tar.NewReader(reader), closeReader, nil
+}
+
+func newEmbeddedBluecliReader() (io.Reader, func() error, error) {
+	return newEmbeddedPayloadReader(embeddedBluecli)
+}
+
+func newEmbeddedPayloadReader(payload []byte) (io.Reader, func() error, error) {
+	reader := bytes.NewReader(payload)
+	if len(payload) >= 2 && payload[0] == 0x1f && payload[1] == 0x8b {
+		gr, err := gzip.NewReader(reader)
+		if err != nil {
+			return nil, nil, fmt.Errorf("gzip: %w", err)
+		}
+		return gr, gr.Close, nil
+	}
+
+	return reader, func() error { return nil }, nil
 }

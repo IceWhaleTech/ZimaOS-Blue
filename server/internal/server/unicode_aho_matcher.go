@@ -1,25 +1,43 @@
 package server
 
-import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
+import (
+	"sync"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
+)
 
 type unicodeAhoMatcher struct {
-	inner *textmatch.FoldedAhoMatcher
+	once     sync.Once
+	patterns []string
+	inner    *textmatch.FoldedAhoMatcher
 }
 
 func newUnicodeAhoMatcher(patterns []string) *unicodeAhoMatcher {
-	return &unicodeAhoMatcher{inner: textmatch.NewFoldedAhoMatcher(patterns)}
+	return &unicodeAhoMatcher{patterns: append([]string(nil), patterns...)}
+}
+
+func (m *unicodeAhoMatcher) ensureInner() *textmatch.FoldedAhoMatcher {
+	if m == nil {
+		return nil
+	}
+	m.once.Do(func() {
+		m.inner = textmatch.NewFoldedAhoMatcher(m.patterns)
+	})
+	return m.inner
 }
 
 func (m *unicodeAhoMatcher) ContainsAnyFold(text string) bool {
-	if m == nil || m.inner == nil {
+	inner := m.ensureInner()
+	if inner == nil {
 		return false
 	}
-	return m.inner.ContainsAnyFold(text)
+	return inner.ContainsAnyFold(text)
 }
 
 func (m *unicodeAhoMatcher) HasAnyPrefixFold(text string) bool {
-	if m == nil || m.inner == nil {
+	inner := m.ensureInner()
+	if inner == nil {
 		return false
 	}
-	return m.inner.HasAnyPrefixFold(text)
+	return inner.HasAnyPrefixFold(text)
 }

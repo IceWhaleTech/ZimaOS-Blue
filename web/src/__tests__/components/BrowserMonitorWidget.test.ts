@@ -3,15 +3,17 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
 import BrowserMonitorWidget from '@/components/BrowserMonitorWidget.vue'
-import {
-  __resetBrowserMonitorStateForTests,
-  useBrowserMonitor,
-} from '@/composables/useBrowserMonitor'
+import { __resetBrowserMonitorStateForTests, useBrowserMonitor } from '@/composables/useBrowserMonitor'
 
-const { pushMock, listTasksMock, getSessionsMock, getSessionMonitorMock, onSSEEventMock, offSSEEventMock } = vi.hoisted(() => ({
+const {
+  pushMock,
+  getBrowserOverviewMock,
+  getSessionMonitorMock,
+  onSSEEventMock,
+  offSSEEventMock,
+} = vi.hoisted(() => ({
   pushMock: vi.fn(),
-  listTasksMock: vi.fn(),
-  getSessionsMock: vi.fn(),
+  getBrowserOverviewMock: vi.fn(),
   getSessionMonitorMock: vi.fn(),
   onSSEEventMock: vi.fn(),
   offSSEEventMock: vi.fn(),
@@ -64,14 +66,8 @@ vi.mock('@/stores/chat', () => ({
   }),
 }))
 
-vi.mock('@/api/tasks', () => ({
-  taskProjectionApi: {
-    listTasks: listTasksMock,
-  },
-}))
-
 vi.mock('@/api/browser', () => ({
-  getSessions: getSessionsMock,
+  getBrowserOverview: getBrowserOverviewMock,
   getSessionMonitor: getSessionMonitorMock,
 }))
 
@@ -155,6 +151,7 @@ function createTestI18n() {
           textTreeIdle: '等待结构化树预览...',
         },
         chat: {
+          deepResearchGapNeedPrimaryOrOfficialSources: '需要一手或官方来源',
           taskStagePlanning: '规划中',
           taskStageWorking: '执行中',
           taskStageVerifying: '验证中',
@@ -181,11 +178,23 @@ function createTestI18n() {
   })
 }
 
+function makeBrowserOverviewResponse({
+  tasks = [],
+  sessions = [],
+}: {
+  tasks?: Array<Record<string, unknown>>
+  sessions?: Array<Record<string, unknown>>
+} = {}) {
+  return {
+    tasks,
+    sessions,
+  }
+}
+
 describe('BrowserMonitorWidget', () => {
   beforeEach(() => {
     pushMock.mockReset()
-    listTasksMock.mockReset()
-    getSessionsMock.mockReset()
+    getBrowserOverviewMock.mockReset()
     getSessionMonitorMock.mockReset()
     onSSEEventMock.mockReset()
     offSSEEventMock.mockReset()
@@ -196,42 +205,64 @@ describe('BrowserMonitorWidget', () => {
     monitor.setOpen(true)
     monitor.setCollapsed(false)
 
-    listTasksMock.mockResolvedValue({
-      data: [
-        {
-          id: 'task-1',
-          kind: 'research',
-          scope: 'current',
-          conversation_id: 'conv-1',
-          title: 'Research task',
-          subtitle: 'planning • verification_completed • Need official source',
-          status: 'running',
-          stage: 'planning',
-          progress: 42,
-          actions: { items: [] },
-          updated_at: '2026-03-23T00:00:00.000Z',
-        },
-        {
-          id: 'task-2',
-          kind: 'agent_task',
-          scope: 'current',
-          conversation_id: 'conv-1',
-          title: 'Agent task',
-          subtitle: 'execute',
-          status: 'running',
-          stage: 'working',
-          progress: 67,
-          actions: { items: [] },
-          updated_at: '2026-03-22T23:59:00.000Z',
-        },
-      ],
-    })
-    getSessionsMock.mockResolvedValue([])
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [
+          {
+            id: 'task-1',
+            kind: 'research',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Research task',
+            subtitle: 'planning • verification_completed • Need official source',
+            status: 'running',
+            stage: 'planning',
+            progress: 42,
+            actions: { items: [] },
+            updated_at: '2026-03-23T00:00:00.000Z',
+          },
+          {
+            id: 'task-2',
+            kind: 'agent_task',
+            scope: 'current',
+            conversation_id: 'conv-1',
+            title: 'Agent task',
+            subtitle: 'execute',
+            status: 'running',
+            stage: 'working',
+            progress: 67,
+            actions: { items: [] },
+            updated_at: '2026-03-22T23:59:00.000Z',
+          },
+        ],
+      })
+    )
     getSessionMonitorMock.mockResolvedValue({
       kind: 'image',
       image: { screenshot: '', history: [] },
       error: '',
     })
+  })
+
+  it('hydrates browser monitor from the aggregated browser overview API without legacy sparse readers', async () => {
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(getBrowserOverviewMock).toHaveBeenCalledWith({
+      scope: 'current',
+      conversationId: 'conv-1',
+      limit: 12,
+    })
+
+    wrapper.unmount()
   })
 
   it('refreshes the task overview immediately when task SSE events arrive', async () => {
@@ -247,8 +278,7 @@ describe('BrowserMonitorWidget', () => {
     await flushPromises()
 
     expect(onSSEEventMock).toHaveBeenCalledWith('task_progress', expect.any(Function))
-    const initialTaskFetches = listTasksMock.mock.calls.length
-    const initialSessionFetches = getSessionsMock.mock.calls.length
+    const initialOverviewFetches = getBrowserOverviewMock.mock.calls.length
 
     const taskProgressHandler = onSSEEventMock.mock.calls.find(
       ([eventType]) => eventType === 'task_progress'
@@ -260,8 +290,52 @@ describe('BrowserMonitorWidget', () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     await flushPromises()
 
-    expect(listTasksMock.mock.calls.length).toBeGreaterThan(initialTaskFetches)
-    expect(getSessionsMock.mock.calls.length).toBeGreaterThan(initialSessionFetches)
+    expect(getBrowserOverviewMock.mock.calls.length).toBeGreaterThan(initialOverviewFetches)
+
+    wrapper.unmount()
+  })
+
+  it('reads current-conversation tasks from browser overview', async () => {
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(getBrowserOverviewMock).toHaveBeenCalledWith({
+      scope: 'current',
+      conversationId: 'conv-1',
+      limit: 12,
+    })
+    expect(wrapper.text()).toContain('研究任务')
+
+    wrapper.unmount()
+  })
+
+  it('uses browser overview for all-tasks mode', async () => {
+    localStorage.setItem('zima.browser.monitor.task.view.v1', 'all')
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(getBrowserOverviewMock).toHaveBeenCalledWith({
+      scope: 'all',
+      conversationId: undefined,
+      limit: 12,
+    })
 
     wrapper.unmount()
   })
@@ -280,7 +354,7 @@ describe('BrowserMonitorWidget', () => {
 
     expect(wrapper.text()).toContain('当前任务动态')
     expect(wrapper.text()).toContain('研究任务')
-    expect(wrapper.text()).toContain('规划中 · 验证已完成 · Need official source')
+    expect(wrapper.text()).toContain('规划中 · 验证已完成 · 需要一手或官方来源')
     expect(wrapper.text()).toContain('智能体任务')
     expect(wrapper.text()).toContain('执行中')
     expect(wrapper.find('.browser-monitor__task-list').exists()).toBe(true)
@@ -293,7 +367,7 @@ describe('BrowserMonitorWidget', () => {
   it('restores the closed launcher position from storage and still opens on click', async () => {
     const monitor = useBrowserMonitor()
     monitor.setOpen(false)
-    listTasksMock.mockResolvedValue({ data: [] })
+    getBrowserOverviewMock.mockResolvedValue(makeBrowserOverviewResponse())
     localStorage.setItem('zima.browser.monitor.launcher.position.v1', '{"x":980,"y":668}')
 
     const wrapper = mount(BrowserMonitorWidget, {
@@ -319,7 +393,7 @@ describe('BrowserMonitorWidget', () => {
   it('registers pointer listeners for launcher dragging on touch-style input', async () => {
     const monitor = useBrowserMonitor()
     monitor.setOpen(false)
-    listTasksMock.mockResolvedValue({ data: [] })
+    getBrowserOverviewMock.mockResolvedValue(makeBrowserOverviewResponse())
     localStorage.setItem('zima.browser.monitor.launcher.position.v1', '{"x":980,"y":668}')
     const addEventListenerSpy = vi.spyOn(document, 'addEventListener')
     const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener')
@@ -358,18 +432,23 @@ describe('BrowserMonitorWidget', () => {
   })
 
   it('renders session screenshot history and updates screenshot info when switching frames', async () => {
-    getSessionsMock.mockResolvedValue([
-      {
-        id: 'tab-1',
-        status: 'active',
-        current_url: 'https://live.example.com',
-        page_title: 'Live Session',
-        created_at: '2026-03-23T00:00:00.000Z',
-        last_activity: '2026-03-23T00:00:00.000Z',
-        engine: 'chromium_managed',
-        monitor_kind: 'image',
-      },
-    ])
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://live.example.com',
+            page_title: 'Live Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
     getSessionMonitorMock.mockResolvedValue({
       kind: 'image',
       image: {
@@ -425,19 +504,23 @@ describe('BrowserMonitorWidget', () => {
   })
 
   it('keeps session page metadata focused in the preview when only one session is active', async () => {
-    listTasksMock.mockResolvedValue({ data: [] })
-    getSessionsMock.mockResolvedValue([
-      {
-        id: 'tab-1',
-        status: 'active',
-        current_url: 'https://live.example.com',
-        page_title: 'Live Session',
-        created_at: '2026-03-23T00:00:00.000Z',
-        last_activity: '2026-03-23T00:00:00.000Z',
-        engine: 'chromium_managed',
-        monitor_kind: 'image',
-      },
-    ])
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://live.example.com',
+            page_title: 'Live Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
     getSessionMonitorMock.mockResolvedValue({
       kind: 'image',
       image: {
@@ -481,29 +564,33 @@ describe('BrowserMonitorWidget', () => {
   })
 
   it('shows session tabs without repeating raw urls', async () => {
-    listTasksMock.mockResolvedValue({ data: [] })
-    getSessionsMock.mockResolvedValue([
-      {
-        id: 'tab-1',
-        status: 'active',
-        current_url: 'https://first.example.com',
-        page_title: 'First Session',
-        created_at: '2026-03-23T00:00:00.000Z',
-        last_activity: '2026-03-23T00:00:00.000Z',
-        engine: 'chromium_managed',
-        monitor_kind: 'image',
-      },
-      {
-        id: 'tab-2',
-        status: 'idle',
-        current_url: 'https://second.example.com',
-        page_title: 'Second Session',
-        created_at: '2026-03-23T00:00:00.000Z',
-        last_activity: '2026-03-23T00:00:00.000Z',
-        engine: 'chromium_managed',
-        monitor_kind: 'image',
-      },
-    ])
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://first.example.com',
+            page_title: 'First Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+          {
+            id: 'tab-2',
+            status: 'idle',
+            current_url: 'https://second.example.com',
+            page_title: 'Second Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
     getSessionMonitorMock.mockResolvedValue({
       kind: 'image',
       image: {
@@ -544,20 +631,25 @@ describe('BrowserMonitorWidget', () => {
   })
 
   it('renders text monitor sessions without requiring screenshot data', async () => {
-    getSessionsMock.mockResolvedValue([
-      {
-        id: 'lp-1',
-        status: 'active',
-        current_url: 'https://docs.example.com',
-        page_title: 'Docs',
-        created_at: '2026-03-23T00:00:00.000Z',
-        last_activity: '2026-03-23T00:00:00.000Z',
-        engine: 'lightpanda',
-        engine_detail: 'lightpanda_shim',
-        session_layer: 'read',
-        monitor_kind: 'text',
-      },
-    ])
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'lp-1',
+            status: 'active',
+            current_url: 'https://docs.example.com',
+            page_title: 'Docs',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'lightpanda',
+            engine_detail: 'lightpanda_shim',
+            session_layer: 'read',
+            monitor_kind: 'text',
+          },
+        ],
+      })
+    )
     getSessionMonitorMock.mockResolvedValue({
       kind: 'text',
       text: {
@@ -594,18 +686,23 @@ describe('BrowserMonitorWidget', () => {
   })
 
   it('keeps the last successful screenshot when later refreshes return no frame', async () => {
-    getSessionsMock.mockResolvedValue([
-      {
-        id: 'tab-1',
-        status: 'active',
-        current_url: 'https://example.com',
-        page_title: 'Example',
-        created_at: '2026-03-23T00:00:00.000Z',
-        last_activity: '2026-03-23T00:00:00.000Z',
-        engine: 'chromium_managed',
-        monitor_kind: 'image',
-      },
-    ])
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://example.com',
+            page_title: 'Example',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
     getSessionMonitorMock.mockResolvedValue({
       kind: 'image',
       image: {
@@ -650,7 +747,7 @@ describe('BrowserMonitorWidget', () => {
     expect(wrapper.get('.browser-monitor__image').attributes('src')).toContain('stable-base64')
     expect(wrapper.text()).toContain('capture failed')
 
-    getSessionsMock.mockResolvedValue([])
+    getBrowserOverviewMock.mockResolvedValue(makeBrowserOverviewResponse())
     await refreshButton.trigger('click')
     await flushPromises()
 

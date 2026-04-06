@@ -59,6 +59,9 @@ function getRouteRuntimeBundle(id: string): string | undefined {
 
 // https://vite.dev/config/
 export default defineConfig({
+  define: {
+    __EMBED_DISABLE_MERMAID__: JSON.stringify(process.env.VITE_EMBED_DISABLE_MERMAID === '1'),
+  },
   plugins: [
     vue(),
     // Auto import Vue APIs and composables

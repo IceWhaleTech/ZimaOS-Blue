@@ -1,14 +1,14 @@
 # Makefile for ZimaOS-Blue
 # Supports building single binary with embedded frontend
 
-.PHONY: all build build-frontend build-backend dev clean help
+.PHONY: all build build-frontend build-frontend-embedded build-backend dev clean help
 .PHONY: build-linux build-darwin build-windows build-all
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar tauri-verify-macos-package
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
 .PHONY: provider-catalog provider-catalog-check
 
 # Version info
-VERSION ?= 0.10.38
+VERSION ?= 0.10.39
 BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
@@ -22,6 +22,7 @@ TAURI_DIR := $(PROJECT_ROOT)/tauri-app
 TAURI_LIB_DIR := $(TAURI_DIR)/src-tauri/lib
 SKILLS_SRC := $(PROJECT_ROOT)/assets/skills
 SKILLS_EMBED := $(SERVER_DIR)/internal/skill/embedded/skills
+EMBEDDED_DISABLE_MERMAID ?= 1
 
 # Go build flags
 LDFLAGS := -s -w
@@ -41,14 +42,19 @@ build-frontend:
 	@echo "Building frontend..."
 	@cd $(WEB_DIR) && npm install && npm run build
 
+# Build the embedded frontend bundle for the macOS launcher/CLI path
+build-frontend-embedded:
+	@echo "Building embedded frontend (all locales, Mermaid fallback: $(EMBEDDED_DISABLE_MERMAID))..."
+	@cd $(WEB_DIR) && npm install && VITE_EMBED_DISABLE_MERMAID="$(EMBEDDED_DISABLE_MERMAID)" npm run build
+
 # Copy frontend to embed directory (exclude source maps)
 copy-frontend:
 	@echo "Copying frontend to embed directory..."
 	@rm -rf $(EMBED_DIR)
 	@mkdir -p $(EMBED_DIR)
-	@cd $(WEB_DIR)/dist && find . -type f ! -name '*.map' -exec cp --parents {} $(EMBED_DIR)/ \; 2>/dev/null || \
-		cd $(WEB_DIR)/dist && rsync -av --exclude='*.map' . $(EMBED_DIR)/ 2>/dev/null || \
-		(cd $(WEB_DIR)/dist && for f in $$(find . -type f ! -name '*.map'); do mkdir -p $(EMBED_DIR)/$$(dirname $$f) && cp $$f $(EMBED_DIR)/$$f; done)
+	@cd $(WEB_DIR)/dist && find . -type f ! -name '*.map' ! -name '.DS_Store' -exec cp --parents {} $(EMBED_DIR)/ \; 2>/dev/null || \
+		cd $(WEB_DIR)/dist && rsync -av --exclude='*.map' --exclude='.DS_Store' . $(EMBED_DIR)/ 2>/dev/null || \
+		(cd $(WEB_DIR)/dist && for f in $$(find . -type f ! -name '*.map' ! -name '.DS_Store'); do mkdir -p $(EMBED_DIR)/$$(dirname $$f) && cp $$f $(EMBED_DIR)/$$f; done)
 
 # Copy canonical skills from assets/skills/ to server/internal/skill/embedded/skills/ for go:embed
 copy-skills:
@@ -235,6 +241,7 @@ help:
 	@echo "Go Binary Targets:"
 	@echo "  build              Build binary"
 	@echo "  build-frontend     Build frontend only"
+	@echo "  build-frontend-embedded Build embedded frontend with all locales and Mermaid fallback"
 	@echo "  build-backend      Build backend only (requires frontend to be built)"
 	@echo "  dev                Show development mode instructions"
 	@echo "  build-linux        Build for Linux (amd64)"

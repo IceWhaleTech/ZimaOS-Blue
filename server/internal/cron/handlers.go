@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
@@ -24,20 +25,25 @@ type CommandResult struct {
 	Duration string `json:"duration"`
 }
 
-// Security: Dangerous shell patterns that could indicate command injection
-var dangerousPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`[;&|]`),                   // Command chaining
-	regexp.MustCompile(`\$\(`),                    // Command substitution $(...)
-	regexp.MustCompile("`"),                       // Backtick command substitution
-	regexp.MustCompile(`\$\{`),                    // Variable expansion ${...}
-	regexp.MustCompile(`>\s*[/~]`),                // Output redirection to absolute path
-	regexp.MustCompile(`<\s*[/~]`),                // Input redirection from absolute path
-	regexp.MustCompile(`\.\./`),                   // Path traversal
-	regexp.MustCompile(`(?i)(rm|dd|mkfs|format)`), // Destructive commands
-	regexp.MustCompile(`(?i)/etc/`),               // System config access
-	regexp.MustCompile(`(?i)/proc/`),              // Proc filesystem access
-	regexp.MustCompile(`(?i)/sys/`),               // Sys filesystem access
+var dangerousPatternExprs = []string{
+	`[;&|]`,                   // Command chaining
+	`\$\(`,                    // Command substitution $(...)
+	"`",                       // Backtick command substitution
+	`\$\{`,                    // Variable expansion ${...}
+	`>\s*[/~]`,                // Output redirection to absolute path
+	`<\s*[/~]`,                // Input redirection from absolute path
+	`\.\./`,                   // Path traversal
+	`(?i)(rm|dd|mkfs|format)`, // Destructive commands
+	`(?i)/etc/`,               // System config access
+	`(?i)/proc/`,              // Proc filesystem access
+	`(?i)/sys/`,               // Sys filesystem access
 }
+
+// Security: Dangerous shell patterns that could indicate command injection.
+var (
+	dangerousPatterns     []*regexp.Regexp
+	dangerousPatternsOnce sync.Once
+)
 
 // Security: Allowed commands whitelist (empty means all commands blocked by default)
 // In production, this should be configured via config file
@@ -155,6 +161,7 @@ func validateCommand(cmdStr string) error {
 	if cmdStr == "" {
 		return fmt.Errorf("command cannot be empty")
 	}
+	ensureDangerousPatterns()
 
 	// Check for dangerous patterns
 	for _, pattern := range dangerousPatterns {
@@ -186,6 +193,16 @@ func validateCommand(cmdStr string) error {
 	}
 
 	return nil
+}
+
+func ensureDangerousPatterns() {
+	dangerousPatternsOnce.Do(func() {
+		patterns := make([]*regexp.Regexp, 0, len(dangerousPatternExprs))
+		for _, expr := range dangerousPatternExprs {
+			patterns = append(patterns, regexp.MustCompile(expr))
+		}
+		dangerousPatterns = patterns
+	})
 }
 
 // commandHandler executes a shell command.

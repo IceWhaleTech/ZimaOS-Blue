@@ -240,12 +240,47 @@ func (s *SQLiteStore) CreateDataset(ctx context.Context, dataset *Dataset) error
 	return err
 }
 
+func (s *SQLiteStore) createDatasetTx(ctx context.Context, tx *sql.Tx, dataset *Dataset) error {
+	if dataset == nil {
+		return fmt.Errorf("dataset is required")
+	}
+	now := timeutil.NowTime()
+	if dataset.CreatedAt.IsZero() {
+		dataset.CreatedAt = now
+	}
+	if dataset.UpdatedAt.IsZero() {
+		dataset.UpdatedAt = dataset.CreatedAt
+	}
+	_, err := txExecContextWithBusyRetry(ctx, tx, `INSERT INTO harness_datasets (
+		id, name, description, owner_user_id, subject, default_run_kind, default_profile, active_version_id, metadata_json,
+		created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		dataset.ID, dataset.Name, dataset.Description, dataset.OwnerUserID, dataset.Subject, string(dataset.DefaultRunKind),
+		dataset.DefaultProfile, dataset.ActiveVersionID, marshalMetadata(dataset.Metadata), dataset.CreatedAt, dataset.UpdatedAt,
+	)
+	return err
+}
+
 func (s *SQLiteStore) UpdateDataset(ctx context.Context, dataset *Dataset) error {
 	if dataset == nil {
 		return fmt.Errorf("dataset is required")
 	}
 	dataset.UpdatedAt = timeutil.NowTime()
 	_, err := s.execContext(ctx, `UPDATE harness_datasets SET
+		name=?, description=?, owner_user_id=?, subject=?, default_run_kind=?, default_profile=?, active_version_id=?, metadata_json=?, updated_at=?
+		WHERE id=?`,
+		dataset.Name, dataset.Description, dataset.OwnerUserID, dataset.Subject, string(dataset.DefaultRunKind), dataset.DefaultProfile,
+		dataset.ActiveVersionID, marshalMetadata(dataset.Metadata), dataset.UpdatedAt, dataset.ID,
+	)
+	return err
+}
+
+func (s *SQLiteStore) updateDatasetTx(ctx context.Context, tx *sql.Tx, dataset *Dataset) error {
+	if dataset == nil {
+		return fmt.Errorf("dataset is required")
+	}
+	dataset.UpdatedAt = timeutil.NowTime()
+	_, err := txExecContextWithBusyRetry(ctx, tx, `UPDATE harness_datasets SET
 		name=?, description=?, owner_user_id=?, subject=?, default_run_kind=?, default_profile=?, active_version_id=?, metadata_json=?, updated_at=?
 		WHERE id=?`,
 		dataset.Name, dataset.Description, dataset.OwnerUserID, dataset.Subject, string(dataset.DefaultRunKind), dataset.DefaultProfile,
@@ -315,6 +350,29 @@ func (s *SQLiteStore) ListDatasets(ctx context.Context, filter DatasetFilter) ([
 	return out, nil
 }
 
+func (s *SQLiteStore) FindDatasetByOwnerAndName(ctx context.Context, ownerUserID, name string) (*Dataset, error) {
+	return s.findDatasetByOwnerAndNameWithDB(ctx, s.reader(), ownerUserID, name)
+}
+
+func (s *SQLiteStore) findDatasetByOwnerAndNameWithDB(ctx context.Context, db z.ZormDBIFace, ownerUserID, name string) (*Dataset, error) {
+	var rows []datasetRow
+	if _, err := z.TableContext(ctx, db, "harness_datasets").Select(&rows,
+		z.Where(
+			z.Eq("owner_user_id", strings.TrimSpace(ownerUserID)),
+			z.Eq("name", strings.TrimSpace(name)),
+		),
+		z.OrderBy("created_at DESC, updated_at DESC, rowid DESC"),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	dataset := datasetFromRow(rows[0])
+	return &dataset, nil
+}
+
 func (s *SQLiteStore) CreateDatasetVersion(ctx context.Context, version *DatasetVersion) error {
 	if version == nil {
 		return fmt.Errorf("dataset version is required")
@@ -323,6 +381,22 @@ func (s *SQLiteStore) CreateDatasetVersion(ctx context.Context, version *Dataset
 		version.CreatedAt = timeutil.NowTime()
 	}
 	_, err := s.execContext(ctx, `INSERT INTO harness_dataset_versions (
+		id, dataset_id, version, manifest_sha256, item_count, source_type, source_ref, manifest_json, metadata_json, created_by, created_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		version.ID, version.DatasetID, version.Version, version.ManifestSHA256, version.ItemCount, version.SourceType, version.SourceRef,
+		marshalMetadata(version.Manifest), marshalMetadata(version.Metadata), version.CreatedBy, version.CreatedAt,
+	)
+	return err
+}
+
+func (s *SQLiteStore) createDatasetVersionTx(ctx context.Context, tx *sql.Tx, version *DatasetVersion) error {
+	if version == nil {
+		return fmt.Errorf("dataset version is required")
+	}
+	if version.CreatedAt.IsZero() {
+		version.CreatedAt = timeutil.NowTime()
+	}
+	_, err := txExecContextWithBusyRetry(ctx, tx, `INSERT INTO harness_dataset_versions (
 		id, dataset_id, version, manifest_sha256, item_count, source_type, source_ref, manifest_json, metadata_json, created_by, created_at
 	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		version.ID, version.DatasetID, version.Version, version.ManifestSHA256, version.ItemCount, version.SourceType, version.SourceRef,
@@ -387,6 +461,29 @@ func (s *SQLiteStore) ListDatasetVersions(ctx context.Context, datasetID string,
 	return out, nil
 }
 
+func (s *SQLiteStore) FindDatasetVersionByDatasetAndVersion(ctx context.Context, datasetID, version string) (*DatasetVersion, error) {
+	return s.findDatasetVersionByDatasetAndVersionWithDB(ctx, s.reader(), datasetID, version)
+}
+
+func (s *SQLiteStore) findDatasetVersionByDatasetAndVersionWithDB(ctx context.Context, db z.ZormDBIFace, datasetID, version string) (*DatasetVersion, error) {
+	var rows []datasetVersionRow
+	if _, err := z.TableContext(ctx, db, "harness_dataset_versions").Select(&rows,
+		z.Where(
+			z.Eq("dataset_id", strings.TrimSpace(datasetID)),
+			z.Eq("version", strings.TrimSpace(version)),
+		),
+		z.OrderBy("created_at DESC"),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	versionRow := datasetVersionFromRow(rows[0])
+	return &versionRow, nil
+}
+
 func (s *SQLiteStore) CreateEvalSpec(ctx context.Context, spec *EvalSpec) error {
 	if spec == nil {
 		return fmt.Errorf("eval spec is required")
@@ -409,12 +506,49 @@ func (s *SQLiteStore) CreateEvalSpec(ctx context.Context, spec *EvalSpec) error 
 	return err
 }
 
+func (s *SQLiteStore) createEvalSpecTx(ctx context.Context, tx *sql.Tx, spec *EvalSpec) error {
+	if spec == nil {
+		return fmt.Errorf("eval spec is required")
+	}
+	now := timeutil.NowTime()
+	if spec.CreatedAt.IsZero() {
+		spec.CreatedAt = now
+	}
+	if spec.UpdatedAt.IsZero() {
+		spec.UpdatedAt = spec.CreatedAt
+	}
+	_, err := txExecContextWithBusyRetry(ctx, tx, `INSERT INTO harness_eval_specs (
+		id, name, owner_user_id, subject, run_kind, profile, dataset_id, dataset_version_id, scheduler_json, scoring_json, runtime_policy_json, metadata_json,
+		created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		spec.ID, spec.Name, spec.OwnerUserID, spec.Subject, string(spec.RunKind), spec.Profile, spec.DatasetID, spec.DatasetVersionID,
+		marshalInterface(spec.SchedulerConfig), marshalInterface(spec.ScoringConfig), marshalMetadata(spec.RuntimePolicy), marshalMetadata(spec.Metadata),
+		spec.CreatedAt, spec.UpdatedAt,
+	)
+	return err
+}
+
 func (s *SQLiteStore) UpdateEvalSpec(ctx context.Context, spec *EvalSpec) error {
 	if spec == nil {
 		return fmt.Errorf("eval spec is required")
 	}
 	spec.UpdatedAt = timeutil.NowTime()
 	_, err := s.execContext(ctx, `UPDATE harness_eval_specs SET
+		name=?, owner_user_id=?, subject=?, run_kind=?, profile=?, dataset_id=?, dataset_version_id=?, scheduler_json=?, scoring_json=?, runtime_policy_json=?, metadata_json=?, updated_at=?
+		WHERE id=?`,
+		spec.Name, spec.OwnerUserID, spec.Subject, string(spec.RunKind), spec.Profile, spec.DatasetID, spec.DatasetVersionID,
+		marshalInterface(spec.SchedulerConfig), marshalInterface(spec.ScoringConfig), marshalMetadata(spec.RuntimePolicy), marshalMetadata(spec.Metadata),
+		spec.UpdatedAt, spec.ID,
+	)
+	return err
+}
+
+func (s *SQLiteStore) updateEvalSpecTx(ctx context.Context, tx *sql.Tx, spec *EvalSpec) error {
+	if spec == nil {
+		return fmt.Errorf("eval spec is required")
+	}
+	spec.UpdatedAt = timeutil.NowTime()
+	_, err := txExecContextWithBusyRetry(ctx, tx, `UPDATE harness_eval_specs SET
 		name=?, owner_user_id=?, subject=?, run_kind=?, profile=?, dataset_id=?, dataset_version_id=?, scheduler_json=?, scoring_json=?, runtime_policy_json=?, metadata_json=?, updated_at=?
 		WHERE id=?`,
 		spec.Name, spec.OwnerUserID, spec.Subject, string(spec.RunKind), spec.Profile, spec.DatasetID, spec.DatasetVersionID,
@@ -486,6 +620,30 @@ func (s *SQLiteStore) ListEvalSpecs(ctx context.Context, filter EvalSpecFilter) 
 		out = append(out, evalSpecFromRow(rows[i]))
 	}
 	return out, nil
+}
+
+func (s *SQLiteStore) FindEvalSpecByOwnerDatasetAndName(ctx context.Context, ownerUserID, datasetID, name string) (*EvalSpec, error) {
+	return s.findEvalSpecByOwnerDatasetAndNameWithDB(ctx, s.reader(), ownerUserID, datasetID, name)
+}
+
+func (s *SQLiteStore) findEvalSpecByOwnerDatasetAndNameWithDB(ctx context.Context, db z.ZormDBIFace, ownerUserID, datasetID, name string) (*EvalSpec, error) {
+	var rows []evalSpecRow
+	if _, err := z.TableContext(ctx, db, "harness_eval_specs").Select(&rows,
+		z.Where(
+			z.Eq("owner_user_id", strings.TrimSpace(ownerUserID)),
+			z.Eq("dataset_id", strings.TrimSpace(datasetID)),
+			z.Eq("name", strings.TrimSpace(name)),
+		),
+		z.OrderBy("created_at DESC"),
+		z.Limit(1),
+	); err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, sql.ErrNoRows
+	}
+	spec := evalSpecFromRow(rows[0])
+	return &spec, nil
 }
 
 func (s *SQLiteStore) CreateEvalRun(ctx context.Context, evalRun *EvalRun) error {

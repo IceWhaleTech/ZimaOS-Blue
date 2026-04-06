@@ -34,6 +34,7 @@ type warmupResult struct {
 	systemPromptMessages []llm.Message
 	preloadedMessages    []memory.Message
 	createdAt            time.Time
+	sizeBytes            uint64
 }
 
 type providerWarmupState struct {

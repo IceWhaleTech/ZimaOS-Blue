@@ -37,7 +37,6 @@ func bindRouteRuntimeSkillMarketplace(
 		marketCfg.TencentSkillHubAPIBaseURL = options.appConfig.SkillMarket.TencentSkillHubAPIBaseURL
 		marketCfg.SkillHubBaseURL = options.appConfig.SkillMarket.SkillHubBaseURL
 		marketCfg.SkillHubAPIKey = strings.TrimSpace(options.appConfig.SkillMarket.SkillHubAPIKey)
-		marketCfg.SkillStackBaseURL = options.appConfig.SkillMarket.SkillStackBaseURL
 		marketCfg.LLMSkillsBaseURL = options.appConfig.SkillMarket.LLMSkillsBaseURL
 		marketCfg.CuratedConfigPath = options.appConfig.SkillMarket.CuratedConfigPath
 		marketCfg.CuratedConfigURLs = append([]string{}, options.appConfig.SkillMarket.CuratedConfigURLs...)

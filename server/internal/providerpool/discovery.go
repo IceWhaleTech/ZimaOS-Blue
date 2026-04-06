@@ -245,29 +245,20 @@ func (d *ModelDiscovery) GetFilteredModels(providerID string) ([]*Model, error) 
 		return models, nil // Return all models if provider not found
 	}
 
-	// Backward compatibility:
-	// Older persisted providers may have AllowedModels set without AllowlistConfigured.
-	allowlistConfigured := provider.AllowlistConfigured || provider.AllowedModels != nil
-	if !allowlistConfigured {
+	allowedModels := effectiveAllowedModels(provider)
+	if len(allowedModels) == 0 {
 		return sortModelsByPreference(models), nil
-	}
-	// Configured with an empty/nil list means block all models.
-	if len(provider.AllowedModels) == 0 {
-		return []*Model{}, nil
 	}
 
 	// Filter models by AllowedModels while preserving the user's configured order.
-	return filterModelsByAllowed(models, provider.AllowedModels), nil
+	return filterModelsByAllowed(models, allowedModels), nil
 }
 
 // filterModelsByAllowed filters models to only include those in the allowed list
 func filterModelsByAllowed(models []*Model, allowedModels []string) []*Model {
-	// nil means "no filter" (all allowed), empty slice means "none allowed"
-	if allowedModels == nil {
-		return models
-	}
+	allowedModels = normalizeAllowedModels(allowedModels)
 	if len(allowedModels) == 0 {
-		return []*Model{}
+		return models
 	}
 
 	byID := make(map[string]*Model, len(models))
@@ -302,10 +293,6 @@ func filterModelsByAllowed(models []*Model, allowedModels []string) []*Model {
 	}
 
 	for _, allowed := range allowedModels {
-		allowed = strings.TrimSpace(allowed)
-		if allowed == "" {
-			continue
-		}
 		if model := byID[allowed]; model != nil {
 			appendUnique(model)
 			continue

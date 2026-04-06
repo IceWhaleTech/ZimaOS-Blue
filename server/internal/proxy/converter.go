@@ -3,14 +3,13 @@ package proxy
 import (
 	"bufio"
 	"bytes"
+	stdjson "encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"sort"
 	"strings"
 	"sync"
-
-	gojson "github.com/goccy/go-json"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -124,17 +123,17 @@ type OpenAIToolCallFunc struct {
 func (f *OpenAIToolCallFunc) UnmarshalJSON(data []byte) error {
 	// Use an alias to avoid infinite recursion.
 	type alias struct {
-		Name      string            `json:"name"`
-		Arguments gojson.RawMessage `json:"arguments"`
+		Name      string         `json:"name"`
+		Arguments rawJSONMessage `json:"arguments"`
 	}
 	var raw alias
-	if err := gojson.Unmarshal(data, &raw); err != nil {
+	if err := stdjson.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	f.Name = raw.Name
 	if len(raw.Arguments) > 0 && raw.Arguments[0] == '"' {
 		// It's a JSON string — unmarshal to get the actual string value.
-		return gojson.Unmarshal(raw.Arguments, &f.Arguments)
+		return stdjson.Unmarshal(raw.Arguments, &f.Arguments)
 	}
 	// It's a JSON object (or other non-string) — keep as raw JSON string.
 	f.Arguments = string(raw.Arguments)
@@ -832,7 +831,7 @@ func anthropicToolResultString(content interface{}) string {
 		return ""
 	case string:
 		return v
-	case gojson.RawMessage:
+	case rawJSONMessage:
 		raw := strings.TrimSpace(string(v))
 		if raw == "" || raw == "null" {
 			return ""

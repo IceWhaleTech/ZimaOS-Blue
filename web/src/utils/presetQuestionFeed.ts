@@ -2,6 +2,7 @@ import type { PresetQuestion } from '@/api/preview'
 
 export const PRESET_FEED_STORAGE_KEY = 'zima.chat.try_feed.v1'
 export const PRESET_FEED_PAGE_SIZE = 12
+export const PRESET_FEED_INITIAL_LOAD_COUNT = 4
 export const PRESET_FEED_MAX_LAST_SENT = 6
 
 export const PRESET_FEED_INTERESTS = [
@@ -370,7 +371,11 @@ export function rankPresetQuestions(
       }
 
       const currentBest = remaining[bestIndex]
-      if (effectiveScore === bestScore && currentBest && compareRankedQuestions(candidate, currentBest) < 0) {
+      if (
+        effectiveScore === bestScore &&
+        currentBest &&
+        compareRankedQuestions(candidate, currentBest) < 0
+      ) {
         bestIndex = index
       }
     }
@@ -383,7 +388,10 @@ export function rankPresetQuestions(
   return ordered.map((entry) => entry.question)
 }
 
-export function recordPresetQuestionSend(state: TryFeedState, question: PresetQuestion): TryFeedState {
+export function recordPresetQuestionSend(
+  state: TryFeedState,
+  question: PresetQuestion
+): TryFeedState {
   const normalized = normalizeTryFeedState(state)
   const nextClickCounts = { ...normalized.clickCounts }
 

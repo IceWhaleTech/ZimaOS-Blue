@@ -22,12 +22,27 @@ type ResearchBudget struct {
 type ResearchCreateJobRequest struct {
 	Query          string
 	Mode           string
+	ResearchDepth  string
 	RouteMode      string
 	Lang           string
 	Budget         *ResearchBudget
 	StrictEntity   *bool
 	TimeWindows    []string
 	ReportStyle    string
+	Topic          string
+	URLs           []string
+	Text           string
+	SearchQueries  []string
+	OutputMode     string
+	Action         string
+	URL            string
+	Image          string
+	Device         string
+	Channel        string
+	WaitMS         int
+	Threshold      float64
+	Format         string
+	Profile        string
 	UserID         string
 	ConversationID string
 }
@@ -38,6 +53,7 @@ type ResearchJob struct {
 	Status             string
 	Query              string
 	Mode               string
+	ResearchDepth      string
 	RequestedRouteMode string
 	EffectiveRouteMode string
 	RouteReason        string
@@ -87,7 +103,7 @@ func RegisterResearchTools(registry *Registry, service ResearchService) {
 
 func (t *DeepResearchTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "deep_research",
+		Name:        "research",
 		Description: "Run a research workflow or poll the status of an existing research job. Use action=run to start Harness research and action=status to resume or poll a job.",
 		Icon:        "research",
 		Parameters: map[string]interface{}{
@@ -100,7 +116,8 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 				},
 				"query":                map[string]interface{}{"type": "string", "description": "Research query or objective. Required for action=run."},
 				"input":                map[string]interface{}{"type": "string", "description": "Alias for query. Accepted for compatibility when older callers send input=..."},
-				"mode":                 map[string]interface{}{"type": "string", "description": "Research depth: fast, standard, deep"},
+				"mode":                 map[string]interface{}{"type": "string", "description": "Research family mode: auto|deep_research|analyze|ui_review"},
+				"research_depth":       map[string]interface{}{"type": "string", "description": "Deep-research depth: fast|standard|deep. Only applies when mode resolves to deep_research."},
 				"route_mode":           map[string]interface{}{"type": "string", "description": "Routing mode: web"},
 				"lang":                 map[string]interface{}{"type": "string", "description": "Preferred output language"},
 				"max_sources":          map[string]interface{}{"type": "integer", "description": "Optional source budget override"},
@@ -108,6 +125,20 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 				"strict_entity":        map[string]interface{}{"type": "boolean", "description": "Enable strict same-entity filtering"},
 				"time_windows":         map[string]interface{}{"type": "array", "description": "Optional timeline windows", "items": map[string]interface{}{"type": "string"}},
 				"report_style":         map[string]interface{}{"type": "string", "description": "summary|timeline|knowledge_base"},
+				"topic":                map[string]interface{}{"type": "string", "description": "Analyze-mode topic/title. Required for bounded synthesis when no explicit query is supplied."},
+				"urls":                 map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Analyze-mode source URLs."},
+				"text":                 map[string]interface{}{"type": "string", "description": "Analyze-mode direct text input."},
+				"search_queries":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Analyze-mode supplemental search queries."},
+				"output_mode":          map[string]interface{}{"type": "string", "description": "Analyze-mode output: inline|report"},
+				"review_action":        map[string]interface{}{"type": "string", "description": "UI-review action alias for callers that keep top-level action reserved for run/status. Accepted values: review_url, review_image, check_accessibility."},
+				"url":                  map[string]interface{}{"type": "string", "description": "UI-review target URL."},
+				"image":                map[string]interface{}{"type": "string", "description": "UI-review base64 image."},
+				"device":               map[string]interface{}{"type": "string", "description": "UI-review device hint: desktop or mobile."},
+				"channel":              map[string]interface{}{"type": "string", "description": "UI-review channel hint used for device inference."},
+				"wait_ms":              map[string]interface{}{"type": "integer", "description": "UI-review wait time in milliseconds after page load."},
+				"threshold":            map[string]interface{}{"type": "number", "description": "UI-review pass threshold."},
+				"format":               map[string]interface{}{"type": "string", "description": "UI-review output format: json or human."},
+				"profile":              map[string]interface{}{"type": "string", "description": "UI-review rubric profile."},
 				"wait":                 map[string]interface{}{"type": "boolean", "description": "Whether to wait for completion when action=run (default true)"},
 				"wait_timeout_seconds": map[string]interface{}{"type": "integer", "description": "Optional max wait time before returning pending status"},
 				"poll_interval_ms":     map[string]interface{}{"type": "integer", "description": "Polling interval when wait=true (default 500ms)"},
@@ -126,6 +157,15 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 				},
 				map[string]interface{}{
 					"required": []string{"id"},
+				},
+				map[string]interface{}{
+					"required": []string{"topic"},
+				},
+				map[string]interface{}{
+					"required": []string{"url"},
+				},
+				map[string]interface{}{
+					"required": []string{"image"},
 				},
 			},
 		},
@@ -149,6 +189,20 @@ func firstDeepResearchQuery(args map[string]interface{}) string {
 	))
 }
 
+func firstResearchGoal(args map[string]interface{}) string {
+	return strings.TrimSpace(firstCompatString(
+		args,
+		"query",
+		"q",
+		"search",
+		"input",
+		"objective",
+		"prompt",
+		"message",
+		"question",
+	))
+}
+
 func normalizeDeepResearchAction(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "", DeepResearchActionRun:
@@ -163,10 +217,16 @@ func normalizeDeepResearchAction(raw string) string {
 func resolveDeepResearchAction(args map[string]interface{}) string {
 	action := normalizeDeepResearchAction(firstCompatString(args, "action"))
 	if action != "" && action != DeepResearchActionRun {
+		if action == DeepResearchActionStatus {
+			return action
+		}
+		if parseResearchUIAction(args) != "" {
+			return DeepResearchActionRun
+		}
 		return action
 	}
 	if strings.TrimSpace(firstCompatString(args, "job_id", "jobId", "id")) != "" &&
-		firstDeepResearchQuery(args) == "" {
+		firstResearchGoal(args) == "" {
 		return DeepResearchActionStatus
 	}
 	return DeepResearchActionRun
@@ -214,27 +274,90 @@ func (t *ResearchStatusTool) Definition() ToolDefinition {
 	}
 }
 
+func autoSelectResearchMode(query string, requestedMode string) string {
+	mode := strings.ToLower(strings.TrimSpace(requestedMode))
+	if mode != "" && mode != "auto" {
+		return mode
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+
+	// UI/UX review signals
+	uiSignals := []string{"ui", "ux", "interface", "layout", "design", "mockup", "wireframe",
+		"component", "visual", "accessibility", "a11y", "screenshot", "review ui", "ui review",
+		"design audit", "界面", "布局", "设计", "视觉", "无障碍", "可访问性", "评审"}
+	for _, s := range uiSignals {
+		if strings.Contains(q, s) {
+			return "ui_review"
+		}
+	}
+
+	// Deep research signals
+	deepSignals := []string{"citations", "evidence", "timeline", "tradeoff", "benchmark",
+		"multi-source", "investigate", "study", "research deeply", "深入", "引用", "证据",
+		"时间线", "权衡", "基准", "多来源", "调研"}
+	for _, s := range deepSignals {
+		if strings.Contains(q, s) {
+			return "deep_research"
+		}
+	}
+
+	// Analyze signals (bounded synthesis)
+	analyzeSignals := []string{"analyze", "analysis", "summarize", "summary", "synthesize",
+		"compare", "report", "insight", "findings", "extract", "分析", "总结", "提炼",
+		"比较", "报告", "洞察", "归纳"}
+	for _, s := range analyzeSignals {
+		if strings.Contains(q, s) {
+			return "analyze"
+		}
+	}
+
+	// Default to deep_research for generic research queries
+	return "deep_research"
+}
+
+func normalizeResearchDepth(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "fast", "standard", "deep":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return ""
+	}
+}
+
+func resolveResearchExecutionMode(query string, args map[string]interface{}) (string, string) {
+	requestedMode := strings.ToLower(strings.TrimSpace(firstCompatString(args, "mode")))
+	requestedDepth := normalizeResearchDepth(firstCompatString(args, "research_depth", "researchDepth", "depth"))
+
+	// Backward compatibility for older deep-research callers that used mode as depth.
+	if depth := normalizeResearchDepth(requestedMode); depth != "" {
+		if requestedDepth == "" {
+			requestedDepth = depth
+		}
+		return "deep_research", requestedDepth
+	}
+
+	effectiveMode := autoSelectResearchMode(query, requestedMode)
+	if inferredMode := inferResearchModeFromArgs(args); inferredMode != "" {
+		if strings.TrimSpace(query) == "" || effectiveMode == "deep_research" {
+			effectiveMode = inferredMode
+		}
+	}
+	if effectiveMode == "deep_research" && requestedDepth == "" {
+		requestedDepth = "deep"
+	}
+	return effectiveMode, requestedDepth
+}
+
 func (t *DeepResearchTool) executeRun(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	if t == nil || t.service == nil {
 		return nil, errors.New("research service not available")
 	}
-	query := firstDeepResearchQuery(args)
-	if query == "" {
-		return nil, errors.New("query is required")
+	req, err := buildResearchCreateJobRequest(ctx, args)
+	if err != nil {
+		return nil, err
 	}
-	userID := GetUserID(ctx)
-	job, err := t.service.CreateJob(ctx, ResearchCreateJobRequest{
-		Query:          query,
-		Mode:           strings.TrimSpace(firstCompatString(args, "mode")),
-		RouteMode:      strings.TrimSpace(firstCompatString(args, "route_mode", "routeMode")),
-		Lang:           strings.TrimSpace(firstCompatString(args, "lang", "language")),
-		Budget:         parseResearchBudget(args),
-		StrictEntity:   parseResearchBoolArg(args, "strict_entity", "strictEntity"),
-		TimeWindows:    parseResearchStringSliceArgs(args, "time_windows", "timeWindows"),
-		ReportStyle:    strings.TrimSpace(firstCompatString(args, "report_style", "reportStyle")),
-		UserID:         userID,
-		ConversationID: strings.TrimSpace(GetSessionID(ctx)),
-	})
+
+	job, err := t.service.CreateJob(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -275,7 +398,7 @@ func (t *DeepResearchTool) executeRun(ctx context.Context, args map[string]inter
 	} else {
 		waitCtx = ctx
 	}
-	finalJob, err := waitForResearchJob(waitCtx, t.service, job.ID, userID, pollInterval)
+	finalJob, err := waitForResearchJob(waitCtx, t.service, job.ID, req.UserID, pollInterval)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			payload := researchJobToMap(job)
@@ -365,6 +488,7 @@ func researchJobToMap(job *ResearchJob) map[string]interface{} {
 		"status":               job.Status,
 		"query":                job.Query,
 		"mode":                 job.Mode,
+		"research_depth":       job.ResearchDepth,
 		"requested_route_mode": job.RequestedRouteMode,
 		"effective_route_mode": job.EffectiveRouteMode,
 		"route_reason":         job.RouteReason,
@@ -472,4 +596,195 @@ func parseResearchStringSlice(v interface{}) []string {
 		}
 	}
 	return nil
+}
+
+func buildResearchCreateJobRequest(ctx context.Context, args map[string]interface{}) (ResearchCreateJobRequest, error) {
+	goal := firstResearchGoal(args)
+	effectiveMode, researchDepth := resolveResearchExecutionMode(goal, args)
+
+	req := ResearchCreateJobRequest{
+		Mode:           effectiveMode,
+		ResearchDepth:  researchDepth,
+		RouteMode:      strings.TrimSpace(firstCompatString(args, "route_mode", "routeMode")),
+		Lang:           strings.TrimSpace(firstCompatString(args, "lang", "language")),
+		Budget:         parseResearchBudget(args),
+		StrictEntity:   parseResearchBoolArg(args, "strict_entity", "strictEntity"),
+		TimeWindows:    parseResearchStringSliceArgs(args, "time_windows", "timeWindows"),
+		ReportStyle:    strings.TrimSpace(firstCompatString(args, "report_style", "reportStyle")),
+		UserID:         GetUserID(ctx),
+		ConversationID: strings.TrimSpace(GetSessionID(ctx)),
+	}
+	// Deep-research jobs use mode as the depth selector (fast|standard|deep) in the
+	// underlying harness; keep `ResearchDepth` populated for diagnostics/forward
+	// compatibility, but always pass the depth via `Mode`.
+	if effectiveMode == "deep_research" {
+		if researchDepth != "" {
+			req.Mode = researchDepth
+		} else {
+			req.Mode = "deep"
+		}
+		if req.RouteMode == "" {
+			req.RouteMode = "web"
+		}
+	}
+
+	switch effectiveMode {
+	case "analyze":
+		normalized := cloneResearchArgs(args)
+		normalizeAnalyzeToolArgs(normalized)
+		req.Topic = strings.TrimSpace(firstCompatString(normalized, "topic", "subject"))
+		req.URLs = parseResearchStringSliceArgs(normalized, "urls")
+		req.Text = strings.TrimSpace(firstCompatString(normalized, "text"))
+		req.SearchQueries = parseResearchStringSliceArgs(normalized, "search_queries", "searchQueries", "queries")
+		req.OutputMode = resolveAnalyzeOutputMode(normalized)
+		if reportStyle := resolveAnalyzeReportStyle(normalized, req.Topic); reportStyle != "" {
+			req.ReportStyle = reportStyle
+		}
+		req.Query = firstNonEmptyResearchValue(
+			goal,
+			req.Topic,
+			firstResearchListValue(req.URLs),
+			firstResearchListValue(req.SearchQueries),
+		)
+	case "ui_review":
+		req.URL = strings.TrimSpace(firstCompatString(args, "url", "href"))
+		if req.URL == "" {
+			req.URL = firstResearchEmbeddedURL(goal)
+		}
+		req.Image = strings.TrimSpace(firstCompatString(args, "image", "image_base64", "imageBase64"))
+		action, err := parseResearchUICanonicalAction(args, req.URL, req.Image)
+		if err != nil {
+			return ResearchCreateJobRequest{}, err
+		}
+		req.Action = action
+		req.Device = strings.TrimSpace(firstCompatString(args, "device"))
+		req.Channel = strings.TrimSpace(firstCompatString(args, "channel"))
+		req.WaitMS = parseResearchIntArg(firstResearchCompatValue(args, "wait_ms", "waitMs"))
+		req.Threshold = compatFloat64(args, "threshold")
+		req.Format = strings.TrimSpace(firstCompatString(args, "format", "output_format", "outputFormat"))
+		req.Profile = strings.TrimSpace(firstCompatString(args, "profile", "quality_profile", "qualityProfile"))
+		req.Query = firstNonEmptyResearchValue(
+			goal,
+			req.URL,
+		)
+		if req.Query == "" && req.Image != "" {
+			req.Query = "Review provided image"
+		}
+	default:
+		req.Query = firstNonEmptyResearchValue(goal, strings.TrimSpace(firstCompatString(args, "text", "content")))
+	}
+
+	if req.Query == "" {
+		switch effectiveMode {
+		case "deep_research":
+			return ResearchCreateJobRequest{}, errors.New("query is required")
+		case "ui_review":
+			return ResearchCreateJobRequest{}, errors.New("url or image is required for ui_review")
+		case "analyze":
+			return ResearchCreateJobRequest{}, errors.New("topic, urls, text, or search_queries are required for analyze")
+		default:
+			return ResearchCreateJobRequest{}, errors.New("query is required")
+		}
+	}
+
+	return req, nil
+}
+
+func inferResearchModeFromArgs(args map[string]interface{}) string {
+	if strings.TrimSpace(parseResearchUIAction(args)) != "" ||
+		strings.TrimSpace(firstCompatString(args, "image", "image_base64", "imageBase64")) != "" {
+		return "ui_review"
+	}
+	if url := strings.TrimSpace(firstCompatString(args, "url", "href")); url != "" {
+		if strings.TrimSpace(firstCompatString(args, "device", "channel", "format", "profile", "review_action", "reviewAction", "ui_review_action", "uiReviewAction")) != "" ||
+			firstResearchCompatValue(args, "wait_ms", "waitMs") != nil ||
+			firstResearchCompatValue(args, "threshold") != nil ||
+			(strings.TrimSpace(firstCompatString(args, "topic", "subject")) == "" &&
+				len(parseResearchStringSliceArgs(args, "urls")) == 0 &&
+				len(parseResearchStringSliceArgs(args, "search_queries", "searchQueries", "queries")) == 0 &&
+				strings.TrimSpace(firstCompatString(args, "text")) == "") {
+			return "ui_review"
+		}
+	}
+	if strings.TrimSpace(firstCompatString(args, "topic", "subject")) != "" ||
+		len(parseResearchStringSliceArgs(args, "urls")) > 0 ||
+		len(parseResearchStringSliceArgs(args, "search_queries", "searchQueries", "queries")) > 0 ||
+		strings.TrimSpace(firstCompatString(args, "text")) != "" ||
+		strings.TrimSpace(firstCompatString(args, "output_mode", "outputMode")) != "" ||
+		parseResearchBoolArg(args, "report", "generate_report", "generateReport", "html_report", "htmlReport") != nil {
+		return "analyze"
+	}
+	return ""
+}
+
+func parseResearchUICanonicalAction(args map[string]interface{}, url string, image string) (string, error) {
+	action := strings.TrimSpace(parseResearchUIAction(args))
+	return CanonicalizeUIReviewAction(action, url, image)
+}
+
+func parseResearchUIAction(args map[string]interface{}) string {
+	if args == nil {
+		return ""
+	}
+	if action := strings.TrimSpace(firstCompatString(args, "review_action", "reviewAction", "ui_review_action", "uiReviewAction")); action != "" {
+		return action
+	}
+	for _, containerKey := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(args[containerKey])
+		if !ok {
+			continue
+		}
+		if action := strings.TrimSpace(firstCompatString(nested, "action", "op", "operation", "command")); action != "" {
+			return action
+		}
+	}
+	if raw, ok := args["action"]; ok {
+		action := strings.TrimSpace(fmt.Sprint(raw))
+		if normalized := normalizeDeepResearchAction(action); normalized != DeepResearchActionRun && normalized != DeepResearchActionStatus {
+			return action
+		}
+	}
+	return ""
+}
+
+func firstResearchCompatValue(args map[string]interface{}, keys ...string) interface{} {
+	if args == nil {
+		return nil
+	}
+	value, ok := compatArgValue(args, keys...)
+	if !ok {
+		return nil
+	}
+	return value
+}
+
+func cloneResearchArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return map[string]interface{}{}
+	}
+	cloned := make(map[string]interface{}, len(args))
+	for key, value := range args {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func firstResearchListValue(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(values[0])
+}
+
+func firstResearchEmbeddedURL(value string) string {
+	return strings.TrimSpace(analyzeTopicURLPattern.FindString(strings.TrimSpace(value)))
+}
+
+func firstNonEmptyResearchValue(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

@@ -829,7 +829,36 @@ func (m *Manager) loadBackups() error {
 		}
 	}
 
+	m.cleanupOrphanBackupArchives(entries)
+
 	return nil
+}
+
+func (m *Manager) cleanupOrphanBackupArchives(entries []os.DirEntry) {
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.ToLower(entry.Name())
+		if !strings.HasSuffix(name, ".tar.gz") && !strings.HasSuffix(name, ".tgz") {
+			continue
+		}
+
+		archivePath := filepath.Join(m.config.Path, entry.Name())
+		metadataPath := archivePath + ".json"
+		if _, err := os.Stat(metadataPath); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			backupLogf("load orphan cleanup skipped archive=%s metadata=%s error=%v", archivePath, metadataPath, err)
+			continue
+		}
+
+		if err := os.Remove(archivePath); err != nil && !os.IsNotExist(err) {
+			backupLogf("load orphan cleanup failed archive=%s error=%v", archivePath, err)
+			continue
+		}
+		backupLogf("load orphan cleanup removed archive=%s", archivePath)
+	}
 }
 
 func (m *Manager) saveMetadata(info *BackupInfo) error {

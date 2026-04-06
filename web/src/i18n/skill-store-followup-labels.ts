@@ -89,7 +89,7 @@ const skillStoreFollowupLabels: Record<LocaleKey, SkillStoreFollowupLabelSet> = 
     ready: 'Bereit',
     resultsCount: '{count} Ergebnisse für "{query}"',
     scanLocal: 'Lokal scannen',
-    store: 'Store',
+    store: 'Marktplatz',
     uninstallError: 'Skill konnte nicht deinstalliert werden',
   },
   'el-GR': {
@@ -251,7 +251,7 @@ const skillStoreFollowupLabels: Record<LocaleKey, SkillStoreFollowupLabelSet> = 
     ready: 'Pronto',
     resultsCount: '{count} risultati per "{query}"',
     scanLocal: 'Scansiona locale',
-    store: 'Store',
+    store: 'Negozio',
     uninstallError: 'Impossibile disinstallare la skill',
   },
   'ja-JP': {

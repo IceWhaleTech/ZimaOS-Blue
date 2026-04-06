@@ -1,10 +1,12 @@
 package providerpool
 
 import (
+	"net/url"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type modelFamilyHint int
@@ -12,12 +14,22 @@ type modelFamilyHint int
 const (
 	modelFamilyDefault modelFamilyHint = iota
 	modelFamilyClaude
-	modelFamilyCodex
+	modelFamilyResponsesNative
 )
 
 const preferredModelPriorityThreshold = 100
 
-var modelVersionNumberRe = regexp.MustCompile(`\d+`)
+var (
+	modelVersionNumberRe     *regexp.Regexp
+	modelVersionNumberReOnce sync.Once
+)
+
+func modelVersionRegexp() *regexp.Regexp {
+	modelVersionNumberReOnce.Do(func() {
+		modelVersionNumberRe = regexp.MustCompile(`\d+`)
+	})
+	return modelVersionNumberRe
+}
 
 func shouldPrioritizePreferredModels(total int) bool {
 	return total >= preferredModelPriorityThreshold
@@ -49,8 +61,8 @@ func inferModelFamily(modelID string) modelFamilyHint {
 	if id == "" {
 		return modelFamilyDefault
 	}
-	if strings.Contains(id, "codex") {
-		return modelFamilyCodex
+	if isResponsesNativeModelID(id) {
+		return modelFamilyResponsesNative
 	}
 	if strings.Contains(id, "claude") ||
 		strings.Contains(id, "sonnet") ||
@@ -59,6 +71,17 @@ func inferModelFamily(modelID string) modelFamilyHint {
 		return modelFamilyClaude
 	}
 	return modelFamilyDefault
+}
+
+func isResponsesNativeModelID(modelID string) bool {
+	id := normalizeModelPreferenceID(modelID)
+	if id == "" {
+		return false
+	}
+	return strings.Contains(id, "responses") ||
+		strings.Contains(id, "codex") ||
+		id == "gpt-5.4-pro" ||
+		strings.HasPrefix(id, "gpt-5.4-pro-")
 }
 
 func PreferredAPIFormatsForModel(modelID string) []APIFormat {
@@ -71,13 +94,91 @@ func preferredAPIFormatsForModel(modelID string) []APIFormat {
 	switch inferModelFamily(modelID) {
 	case modelFamilyClaude:
 		preferred = []APIFormat{APIFormatAnthropic, APIFormatOpenAI, APIFormatResponses}
-	case modelFamilyCodex:
+	case modelFamilyResponsesNative:
 		preferred = []APIFormat{APIFormatResponses, APIFormatOpenAI, APIFormatAnthropic}
 	default:
 		preferred = []APIFormat{APIFormatOpenAI, APIFormatAnthropic, APIFormatResponses}
 	}
 
 	return preferred
+}
+
+func preferredAPIFormatsForProviderModel(provider *Provider, modelID string) []APIFormat {
+	if shouldPreferResponsesForUnknownOpenAIModel(provider, modelID) {
+		return []APIFormat{APIFormatResponses, APIFormatOpenAI, APIFormatAnthropic}
+	}
+	return preferredAPIFormatsForModel(modelID)
+}
+
+func shouldPreferResponsesForUnknownOpenAIModel(provider *Provider, modelID string) bool {
+	normalized := normalizeModelPreferenceID(modelID)
+	if normalized == "" {
+		return false
+	}
+	if isResponsesNativeModelID(normalized) {
+		return false
+	}
+	if !isOpenAIFirstPartyProvider(provider) {
+		return false
+	}
+	return !isKnownOpenAIBuiltinModel(normalized)
+}
+
+func isKnownOpenAIBuiltinModel(modelID string) bool {
+	normalized := normalizeModelPreferenceID(modelID)
+	if normalized == "" {
+		return false
+	}
+	for _, model := range GetBuiltinModels("openai") {
+		if model == nil {
+			continue
+		}
+		if normalizeModelPreferenceID(model.ID) == normalized || normalizeModelPreferenceID(model.Name) == normalized {
+			return true
+		}
+	}
+	return false
+}
+
+func isOpenAIFirstPartyProvider(provider *Provider) bool {
+	if provider == nil {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(provider.ID), "openai") {
+		return true
+	}
+	return isOpenAIFirstPartyURL(provider.EffectiveBaseURL()) ||
+		isOpenAIFirstPartyURL(provider.BaseURL) ||
+		isOpenAIFirstPartyURL(provider.DetectedEndpoint) ||
+		isOpenAIFirstPartyURL(provider.Website)
+}
+
+func isOpenAIFirstPartyURL(raw string) bool {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return false
+	}
+	u, err := url.Parse(raw)
+	host := ""
+	if err == nil {
+		host = u.Hostname()
+	}
+	if host == "" {
+		host = strings.SplitN(strings.TrimPrefix(strings.TrimPrefix(raw, "https://"), "http://"), "/", 2)[0]
+	}
+	return isOpenAIFirstPartyHost(host)
+}
+
+func isOpenAIFirstPartyHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "" {
+		return false
+	}
+	switch host {
+	case "openai.com", "api.openai.com", "chat.openai.com", "platform.openai.com", "chatgpt.com":
+		return true
+	}
+	return strings.HasSuffix(host, ".openai.com")
 }
 
 func recommendedAPIFormatForModel(modelID string, detectedFormat APIFormat, anthropicReachable, openAIReachable, responsesReachable, responsesOnly bool) APIFormat {
@@ -120,6 +221,7 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 		return 0
 	}
 
+	preferredFormats := preferredAPIFormatsForProviderModel(provider, modelID)
 	plan := ResolveAPIFormatPlan(FormatResolutionRequest{
 		Provider:       provider,
 		ModelID:        modelID,
@@ -132,9 +234,9 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 	nativeFormat := firstNonEmptyFormat(provider.APIFormat, provider.DetectedFormat, canonicalAPIFormatForProvider(provider))
 
 	score := 0
-	for index, preferred := range preferredAPIFormatsForModel(modelID) {
+	for index, preferred := range preferredFormats {
 		if format == preferred {
-			score = (len(preferredAPIFormatsForModel(modelID)) - index) * 100
+			score = (len(preferredFormats) - index) * 100
 			break
 		}
 	}
@@ -145,7 +247,7 @@ func providerFormatAffinityScore(modelID string, provider *Provider) int {
 		if nativeFormat == APIFormatAnthropic || strings.Contains(providerID, "anthropic") {
 			score += 25
 		}
-	case modelFamilyCodex:
+	case modelFamilyResponsesNative:
 		if nativeFormat == APIFormatResponses || strings.Contains(providerID, "codex") {
 			score += 25
 		}
@@ -204,7 +306,7 @@ func compareModelPreference(left, right string) int {
 }
 
 func modelVersionScore(modelID string) int {
-	matches := modelVersionNumberRe.FindAllString(normalizeModelPreferenceID(modelID), -1)
+	matches := modelVersionRegexp().FindAllString(normalizeModelPreferenceID(modelID), -1)
 	if len(matches) == 0 {
 		return 0
 	}

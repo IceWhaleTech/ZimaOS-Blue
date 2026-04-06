@@ -1,6 +1,6 @@
 ---
 title: "Providers and Models"
-summary: "How Blue approaches provider routing, failover, and model-family selection."
+summary: "How Blue's provider pool, model routing, and verification flows work in the current product."
 ---
 
 # Providers and Models
@@ -9,29 +9,55 @@ ZimaOS Blue is designed around an open provider ecosystem.
 
 ## Provider pool basics
 
-The sample server configuration shows a provider routing layer with:
+Blue centralizes model access through a provider pool instead of scattering vendor-specific setup across the product. The current UI and server config expose:
 
 - A default provider
-- Multiple providers in a priority or weighted order
+- Multiple providers in a sorted routing order
 - Health checks per provider
 - Failover settings with retry and recovery controls
 - Optional provider racing for parallel attempts
+- Cloud or local location metadata
+- Provider-specific model refresh and verification actions
 
-## Example providers in the sample config
+## Provider types you will see in the UI
 
-- Anthropic
-- OpenAI
-- Gemini
+- Built-in providers for common hosted APIs
+- Platform and trial providers exposed by the runtime
+- Custom providers you add manually with a base URL and key
+- Media-oriented providers for speech or multimodal flows
 
-The README also positions Blue as compatible with bring-your-own model strategies, including local and open model workflows.
+The provider pool page groups these categories into tabs so operators can keep routing changes in one place.
+
+## What a custom provider can carry
+
+The custom-provider flow in the web app supports:
+
+- Provider name and base URL
+- API key
+- Routing priority
+- API compatibility format such as `auto`, `openai`, `responses`, `anthropic`, or `google`
+- Cloud or local location metadata
+
+After creation, operators can verify the provider, refresh models, review pricing, and control allowed models.
 
 ## Model routing
 
-The sample config also defines model families and fallback patterns. In practice this means Blue can:
+Blue supports model families and fallback patterns. In practice this means Blue can:
 
 - Match a requested model name to a provider family
 - Send the request to the right upstream provider
 - Fall back to a safer or cheaper sibling model when configured
+- Keep provider choice separate from the rest of the app's product logic
+
+## Verification and control loops
+
+The current provider surface is not only about static config. Operators can also:
+
+- Verify a provider before trusting it in production traffic
+- Refresh remote model inventories
+- Restrict which models are eligible for routing
+- Inspect provider pricing and metadata
+- Use IDE or runtime discovery helpers where supported
 
 ## Why this matters
 
@@ -41,6 +67,7 @@ The sample config also defines model families and fallback patterns. In practice
 
 ## Related pages
 
+- [Settings and Provider Pool](/guides/settings-provider-pool)
 - [Overview](/product/overview)
 - [Features](/product/features)
 - [Architecture](/product/architecture)

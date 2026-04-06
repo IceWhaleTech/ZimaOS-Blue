@@ -175,7 +175,6 @@ var protectedSkillStoreSourceIDs = map[string]struct{}{
 	"github-skill-md":  {},
 	"clawhub":          {},
 	"skillhub-club":    {},
-	"skillstack":       {},
 	"llmskills":        {},
 	"moltbot":          {},
 }
@@ -369,6 +368,20 @@ func classifySkillStoreImport(rawURL string) (SkillSourceImportPreviewResponse, 
 		return previewSourceSuggestion(source, "high", "Looks like a reusable GitHub code search source."), nil
 	}
 
+	if owner, repo, _, skillRoot, ok := parseGitHubSkillsDirectoryURL(normalized); ok {
+		source := skillmarket.Source{
+			ID:                 userDefinedSourceID("github-" + owner + "-" + repo + "-" + strings.ReplaceAll(skillRoot, "/", "-")),
+			Type:               "seed_page",
+			BaseURL:            normalized,
+			DisplayName:        "GitHub Discovery Page",
+			SourceGroup:        "seed",
+			AuthMode:           "none",
+			Enabled:            true,
+			RateLimitPerMinute: 10,
+			Priority:           240,
+		}
+		return previewSourceSuggestion(source, "high", "Looks like a GitHub skills directory. Treating it as a reusable discovery page source."), nil
+	}
 	if isGitHubDirURL(normalized) {
 		return previewSeedSuggestion(normalized, "skill_url", normalized, "high", "Looks like a one-off GitHub skill path. Import it as a seed or install it directly by URL."), nil
 	}
@@ -448,18 +461,6 @@ func classifySkillStoreImport(rawURL string) (SkillSourceImportPreviewResponse, 
 			Enabled:            true,
 			RateLimitPerMinute: 20,
 			Priority:           215,
-		}, "high", "Looks like a supported HTML catalog source."), nil
-	case "skillstack.me":
-		return previewSourceSuggestion(skillmarket.Source{
-			ID:                 "skillstack",
-			Type:               "html_catalog",
-			BaseURL:            normalized,
-			DisplayName:        "SkillStack",
-			SourceGroup:        "skillstack",
-			AuthMode:           "none",
-			Enabled:            true,
-			RateLimitPerMinute: 20,
-			Priority:           216,
 		}, "high", "Looks like a supported HTML catalog source."), nil
 	case "llmskills.org":
 		return previewSourceSuggestion(skillmarket.Source{
@@ -1974,6 +1975,21 @@ var errHTMLSkillDocument = errors.New("downloaded content is an HTML page, not a
 // Returns (owner, repo, ref, path, ok).
 func parseGitHubDirURL(u string) (string, string, string, string, bool) {
 	return skillbundle.ParseGitHubTreeURL(u)
+}
+
+func parseGitHubSkillsDirectoryURL(u string) (string, string, string, string, bool) {
+	owner, repo, ref, path, ok := parseGitHubDirURL(u)
+	if !ok {
+		return "", "", "", "", false
+	}
+	normalized := strings.Trim(strings.ToLower(path), "/")
+	if normalized == "" {
+		return "", "", "", "", false
+	}
+	if normalized == "skills" || strings.HasSuffix(normalized, "/skills") {
+		return owner, repo, ref, strings.Trim(path, "/"), true
+	}
+	return "", "", "", "", false
 }
 
 // isGitHubDirURL returns true if the URL points to a GitHub directory (tree).

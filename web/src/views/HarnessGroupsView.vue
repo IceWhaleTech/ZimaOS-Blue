@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { conversationApi, messageApi, type Conversation, type Message } from '@/api/chat'
 import {
   harnessApi,
@@ -10,6 +10,9 @@ import {
   type HarnessCompareEvalRunRequest,
   type HarnessComparisonReport,
   type HarnessDataset,
+  type HarnessDatasetBundleImportResult,
+  type HarnessDatasetBundleImportSourceRequest,
+  type HarnessDatasetBundleSourcePreview,
   type HarnessDatasetVersion,
   type HarnessDatasetSpec,
   type HarnessDatasetVersionSpec,
@@ -25,7 +28,6 @@ import {
   type HarnessScoringMode,
 } from '@/api/harness'
 import AutomationTabs from '@/components/automation/AutomationTabs.vue'
-import AgentcoreRunnerPanel from '@/components/harness/AgentcoreRunnerPanel.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { getErrorMessage } from '@/utils/error'
 import { harnessFailureLabelHint } from '@/utils/harnessFailureHints'
@@ -33,6 +35,7 @@ import { harnessFailureLabelHint } from '@/utils/harnessFailureHints'
 type GroupFilterMode = 'all' | 'active' | 'terminal'
 type QuickEvalSourceMode = 'manifest' | 'dataset' | 'conversation'
 type QuickEvalPreset = 'smoke' | 'regression' | 'research'
+type HarnessMobileSection = 'quick' | 'builder' | 'datasets' | 'specs' | 'runs' | 'groups'
 
 type DatasetFormState = {
   name: string
@@ -89,18 +92,32 @@ type QuickEvalFormState = {
   manifestText: string
 }
 
-type EvalRunDisplayRecord = Pick<
-  HarnessEvalRun,
-  'id' | 'title' | 'trigger_kind' | 'metadata'
->
+type DatasetBundleImportFormState = {
+  sourceType: 'local' | 'github'
+  path: string
+  source: string
+  bundlePath: string
+  version: string
+  makeActive: boolean
+}
+
+type EvalRunDisplayRecord = Pick<HarnessEvalRun, 'id' | 'title' | 'trigger_kind' | 'metadata'>
 
 const { t, te } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const notification = useNotificationStore()
 
 type NumberEntry = {
   key: string
   value: number
+}
+
+function routeQueryValue(raw: unknown): string {
+  if (Array.isArray(raw)) {
+    return String(raw[0] ?? '').trim()
+  }
+  return String(raw ?? '').trim()
 }
 
 const loading = ref(false)
@@ -117,16 +134,27 @@ const selectedEvalRunReport = ref<HarnessEvalRunReport | null>(null)
 const selectedComparisonReport = ref<HarnessComparisonReport | null>(null)
 const reportLoadingRunID = ref('')
 const compareLoadingRunID = ref('')
-const createAction = ref<'dataset' | 'version' | 'spec' | 'run' | 'quick' | ''>('')
+const createAction = ref<'bundle' | 'dataset' | 'version' | 'spec' | 'run' | 'quick' | ''>('')
 const cancelEvalRunID = ref('')
 const baselineCreateRunID = ref('')
 const advancedBuilderOpen = ref(false)
+const quickEvalSection = ref<HTMLElement | null>(null)
+const advancedBuilderSection = ref<HTMLElement | null>(null)
+const datasetsSection = ref<HTMLElement | null>(null)
+const evalSpecsSection = ref<HTMLElement | null>(null)
+const evalRunsSection = ref<HTMLElement | null>(null)
+const groupsSection = ref<HTMLElement | null>(null)
+const bundleLocalPathInput = ref<HTMLInputElement | null>(null)
+const bundleGitHubSourceInput = ref<HTMLInputElement | null>(null)
+const bundlePreviewLoading = ref(false)
+const bundlePreviewError = ref('')
 const quickEvalConversations = ref<Conversation[]>([])
 const quickEvalConversationMessagesByID = ref<Record<string, Message[]>>({})
 const quickEvalConversationLoaded = ref(false)
 const quickEvalConversationLoading = ref(false)
 const quickEvalConversationMessagesLoadingID = ref('')
 const quickEvalConversationError = ref('')
+const mobileHarnessSection = ref<HarnessMobileSection>('quick')
 
 const groupSearch = ref('')
 const groupFilterMode = ref<GroupFilterMode>('all')
@@ -205,6 +233,16 @@ const quickEvalForm = ref<QuickEvalFormState>({
   manifestText: defaultManifestExample,
 })
 
+const bundleImportForm = ref<DatasetBundleImportFormState>({
+  sourceType: 'local',
+  path: '',
+  source: '',
+  bundlePath: '',
+  version: '',
+  makeActive: true,
+})
+const bundleImportPreview = ref<HarnessDatasetBundleSourcePreview | null>(null)
+
 const runKindOptions: HarnessRunKind[] = ['agent_task', 'research', 'subagent']
 const scoringModeOptions: HarnessScoringMode[] = ['rule', 'judge', 'hybrid']
 const quickEvalPresetOptions: QuickEvalPreset[] = ['smoke', 'regression', 'research']
@@ -213,6 +251,33 @@ const terminalStatuses = new Set<HarnessRunGroupStatus>([
   'partial',
   'failed',
   'cancelled',
+])
+
+const mobileHarnessSections = computed(() => [
+  {
+    key: 'quick' as const,
+    label: tr('harness.quickEval.title', 'Quick Eval'),
+  },
+  {
+    key: 'builder' as const,
+    label: tr('harness.builder.title', 'Advanced'),
+  },
+  {
+    key: 'datasets' as const,
+    label: tr('harness.datasets.title', 'Datasets & versions'),
+  },
+  {
+    key: 'specs' as const,
+    label: tr('harness.evalSpecs.title', 'Eval specs'),
+  },
+  {
+    key: 'runs' as const,
+    label: tr('harness.evalRuns.title', 'Eval runs'),
+  },
+  {
+    key: 'groups' as const,
+    label: tr('harness.groups.title', 'Groups'),
+  },
 ])
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -246,13 +311,57 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string {
   return ''
 }
 
+function focusAdvancedBuilderSection() {
+  advancedBuilderOpen.value = true
+  mobileHarnessSection.value = 'builder'
+  void nextTick(() => {
+    advancedBuilderSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
+function toggleAdvancedBuilder() {
+  const next = !advancedBuilderOpen.value
+  advancedBuilderOpen.value = next
+  if (next) {
+    mobileHarnessSection.value = 'builder'
+    return
+  }
+  if (mobileHarnessSection.value === 'builder') {
+    mobileHarnessSection.value = 'quick'
+  }
+}
+
+function selectMobileHarnessSection(section: HarnessMobileSection) {
+  mobileHarnessSection.value = section
+  if (section === 'builder') {
+    advancedBuilderOpen.value = true
+  }
+  void nextTick(() => {
+    const target =
+      section === 'quick'
+        ? quickEvalSection.value
+        : section === 'builder'
+          ? advancedBuilderSection.value
+          : section === 'datasets'
+            ? datasetsSection.value
+            : section === 'specs'
+              ? evalSpecsSection.value
+              : section === 'runs'
+                ? evalRunsSection.value
+                : groupsSection.value
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
 }
 
 function normalizedEnumValue(value?: string | null): string {
-  return String(value || '').trim().toLowerCase()
+  return String(value || '')
+    .trim()
+    .toLowerCase()
 }
 
 function isQuickEvalRun(run?: Partial<EvalRunDisplayRecord> | null): boolean {
@@ -262,10 +371,7 @@ function isQuickEvalRun(run?: Partial<EvalRunDisplayRecord> | null): boolean {
   return Boolean(metadata?.quick_eval)
 }
 
-function evalRunDisplayTitle(
-  run?: Partial<EvalRunDisplayRecord> | null,
-  fallback = ''
-): string {
+function evalRunDisplayTitle(run?: Partial<EvalRunDisplayRecord> | null, fallback = ''): string {
   const title = firstNonEmpty(run?.title)
   if (title) return title
   if (isQuickEvalRun(run)) {
@@ -494,15 +600,8 @@ function percentLabel(value: number): string {
   return `${Math.round(value * 100)}%`
 }
 
-function handleAgentcoreRunnerStatusChange(payload: {
-  message: string
-  tone: 'success' | 'error'
-}) {
-  if (payload.tone === 'error') {
-    notification.error(payload.message)
-    return
-  }
-  notification.success(payload.message)
+function formatCount(value: number): string {
+  return new Intl.NumberFormat().format(value)
 }
 
 function fixedScore(value: number): string {
@@ -967,7 +1066,9 @@ const selectedFailureLabelEntries = computed(() =>
 )
 
 const selectedContextPackBreakdown = computed(() =>
-  asRecord(asRecord(selectedEvalRunReport.value?.group_report?.group?.summary)?.contextpack_breakdown)
+  asRecord(
+    asRecord(selectedEvalRunReport.value?.group_report?.group?.summary)?.contextpack_breakdown
+  )
 )
 
 const selectedContextPackItemsWithSnapshot = computed(() =>
@@ -1043,6 +1144,73 @@ const averageEvalPassRate = computed(() => {
   if (!rated.length) return 0
   return rated.reduce((sum, value) => sum + value, 0) / rated.length
 })
+
+const harnessSummaryCards = computed(() => [
+  {
+    key: 'datasets',
+    label: tr('harness.datasets.total', 'Datasets'),
+    value: loading.value ? tr('common.loading', 'Loading') : formatCount(datasets.value.length),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(evalSpecs.value.length)} ${tr('harness.evalSpecs.total', 'Eval specs')}`,
+  },
+  {
+    key: 'specs',
+    label: tr('harness.evalSpecs.total', 'Eval specs'),
+    value: loading.value ? tr('common.loading', 'Loading') : formatCount(evalSpecs.value.length),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(baselines.value.length)} ${tr('harness.baseline.total', 'Baselines')}`,
+  },
+  {
+    key: 'runs',
+    label: tr('harness.evalRuns.total', 'Eval runs'),
+    value: loading.value ? tr('common.loading', 'Loading') : formatCount(evalRuns.value.length),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(activeEvalRuns.value)} ${tr('harness.evalRuns.active', 'Active eval runs')}`,
+  },
+  {
+    key: 'groups',
+    label: tr('harness.groups.totalGroups', 'Groups'),
+    value: loading.value ? tr('common.loading', 'Loading') : formatCount(groups.value.length),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(activeGroups.value)} ${tr('common.active', 'Active')}`,
+  },
+  {
+    key: 'baselines',
+    label: tr('harness.baseline.total', 'Baselines'),
+    value: loading.value ? tr('common.loading', 'Loading') : formatCount(baselines.value.length),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(defaultBaselines.value)} ${tr('harness.baseline.defaultCount', 'Default baselines')}`,
+  },
+  {
+    key: 'activeRuns',
+    label: tr('harness.evalRuns.active', 'Active eval runs'),
+    value: loading.value ? tr('common.loading', 'Loading') : formatCount(activeEvalRuns.value),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(evalRuns.value.length)} ${tr('harness.evalRuns.total', 'Eval runs')}`,
+  },
+  {
+    key: 'passRate',
+    label: tr('harness.groups.avgPassRate', 'Average pass rate'),
+    value: loading.value ? tr('common.loading', 'Loading') : percentLabel(averageEvalPassRate.value),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(groups.value.length)} ${tr('harness.groups.totalGroups', 'Groups')}`,
+  },
+  {
+    key: 'defaultBaselines',
+    label: tr('harness.baseline.defaultCount', 'Default baselines'),
+    value: loading.value ? tr('common.loading', 'Loading') : formatCount(defaultBaselines.value),
+    details: loading.value
+      ? tr('common.loading', 'Loading')
+      : `${formatCount(baselines.value.length)} ${tr('harness.baseline.total', 'Baselines')}`,
+  },
+])
 
 async function loadDatasetVersions(datasetID: string, options: { force?: boolean } = {}) {
   const normalizedID = String(datasetID || '').trim()
@@ -1206,6 +1374,7 @@ async function loadEvalRunReport(runID: string, options: { silent?: boolean } = 
     return
   }
   selectedEvalRunID.value = normalizedID
+  mobileHarnessSection.value = 'runs'
   if (!options.silent) {
     reportLoadingRunID.value = normalizedID
   }
@@ -1244,7 +1413,10 @@ async function loadConsole(options: { silent?: boolean } = {}) {
     baselines.value = baselineResponse.data || []
     await hydrateDatasetVersions(datasets.value)
     ensureFormDefaults()
-    if (
+    const requestedEvalRunID = routeQueryValue(route.query.evalRunId)
+    if (requestedEvalRunID && evalRuns.value.some((run) => run.id === requestedEvalRunID)) {
+      await loadEvalRunReport(requestedEvalRunID, { silent: true })
+    } else if (
       selectedEvalRunID.value &&
       evalRuns.value.some((run) => run.id === selectedEvalRunID.value)
     ) {
@@ -1268,6 +1440,7 @@ function prefillVersionFromDataset(dataset: HarnessDataset) {
   datasetVersionForm.value.datasetID = dataset.id
   datasetVersionForm.value.version =
     activeVersionForDataset(dataset)?.version || datasetVersionForm.value.version || 'v1'
+  focusAdvancedBuilderSection()
 }
 
 function prefillSpecFromDataset(dataset: HarnessDataset, version?: HarnessDatasetVersion | null) {
@@ -1279,12 +1452,179 @@ function prefillSpecFromDataset(dataset: HarnessDataset, version?: HarnessDatase
   if (!evalSpecForm.value.name.trim()) {
     evalSpecForm.value.name = `${dataset.name} Eval`
   }
+  focusAdvancedBuilderSection()
 }
 
 function prefillRunFromSpec(spec: HarnessEvalSpec) {
   evalRunForm.value.evalSpecID = spec.id
   if (!evalRunForm.value.title.trim()) {
     evalRunForm.value.title = `${spec.name} Run`
+  }
+  focusAdvancedBuilderSection()
+}
+
+async function openBundleImportEntry() {
+  focusAdvancedBuilderSection()
+  await nextTick()
+  if (bundleImportForm.value.sourceType === 'github') {
+    bundleGitHubSourceInput.value?.focus()
+    return
+  }
+  bundleLocalPathInput.value?.focus()
+}
+
+function buildDatasetBundleImportPayload(): HarnessDatasetBundleImportSourceRequest {
+  const sourceType = bundleImportForm.value.sourceType
+  const path = bundleImportForm.value.path.trim()
+  const source = bundleImportForm.value.source.trim()
+  const bundlePath = bundleImportForm.value.bundlePath.trim()
+  const version = bundleImportForm.value.version.trim()
+
+  if (sourceType === 'local' && !path) {
+    throw new Error(tr('harness.dataset.bundlePathRequired', 'Bundle path is required'))
+  }
+  if (sourceType === 'github' && !source) {
+    throw new Error(tr('harness.dataset.bundleSourceRequired', 'GitHub source is required'))
+  }
+
+  const payload: HarnessDatasetBundleImportSourceRequest = {
+    source_type: sourceType,
+    make_active: bundleImportForm.value.makeActive,
+  }
+  if (sourceType === 'local') {
+    payload.path = path
+  } else {
+    payload.source = source
+    if (bundlePath) {
+      payload.bundle_path = bundlePath
+    }
+  }
+  if (version) {
+    payload.version = version
+  }
+  return payload
+}
+
+async function previewDatasetBundleImport() {
+  bundlePreviewLoading.value = true
+  bundlePreviewError.value = ''
+  bundleImportPreview.value = null
+  try {
+    const response = await harnessApi.previewDatasetBundleFromSource(buildDatasetBundleImportPayload())
+    bundleImportPreview.value = response.data || null
+    notification.info(
+      tr('automation.tabs.harness', 'Harness'),
+      tr('harness.dataset.previewLoaded', 'Bundle preview loaded')
+    )
+  } catch (err) {
+    bundlePreviewError.value = getErrorMessage(err)
+    notification.error(tr('automation.tabs.harness', 'Harness'), bundlePreviewError.value)
+  } finally {
+    bundlePreviewLoading.value = false
+  }
+}
+
+function prefillImportedBundle(result: HarnessDatasetBundleImportResult) {
+  const importedDataset =
+    (result.dataset?.id && datasetByID.value[result.dataset.id]) ||
+    result.dataset ||
+    (result.eval_specs?.[0]?.dataset_id && datasetByID.value[result.eval_specs[0].dataset_id]) ||
+    null
+  const importedVersion =
+    (result.dataset_version?.id && datasetVersionByID.value[result.dataset_version.id]) ||
+    result.dataset_version ||
+    (result.eval_specs?.[0]?.dataset_version_id &&
+      datasetVersionByID.value[result.eval_specs[0].dataset_version_id]) ||
+    null
+  const importedSpec =
+    (result.eval_specs?.[0]?.id && evalSpecByID.value[result.eval_specs[0].id]) ||
+    result.eval_specs?.[0] ||
+    null
+
+  if (importedDataset) {
+    datasetVersionForm.value.datasetID = importedDataset.id
+    if (importedVersion?.version) {
+      datasetVersionForm.value.version = importedVersion.version
+    }
+    if (importedVersion?.source_type) {
+      datasetVersionForm.value.sourceType = importedVersion.source_type
+    }
+    if (importedVersion?.source_ref) {
+      datasetVersionForm.value.sourceRef = importedVersion.source_ref
+    }
+    prefillSpecFromDataset(importedDataset, importedVersion)
+  }
+
+  if (importedVersion) {
+    evalSpecForm.value.datasetVersionID = importedVersion.id
+  }
+
+  if (!importedSpec) {
+    if (importedDataset) {
+      evalRunForm.value.evalSpecID = ''
+    }
+    return
+  }
+
+  evalSpecForm.value.name = importedSpec.name
+  evalSpecForm.value.datasetID = importedSpec.dataset_id
+  evalSpecForm.value.datasetVersionID = firstNonEmpty(
+    importedSpec.dataset_version_id,
+    importedVersion?.id,
+    evalSpecForm.value.datasetVersionID
+  )
+  evalSpecForm.value.subject = firstNonEmpty(importedSpec.subject, evalSpecForm.value.subject)
+  evalSpecForm.value.runKind = importedSpec.run_kind || evalSpecForm.value.runKind
+  evalSpecForm.value.profile = firstNonEmpty(importedSpec.profile, evalSpecForm.value.profile)
+  evalSpecForm.value.scoringMode =
+    importedSpec.scoring_config?.mode || evalSpecForm.value.scoringMode
+  if (importedSpec.scoring_config?.pass_threshold != null) {
+    evalSpecForm.value.passThreshold = String(importedSpec.scoring_config.pass_threshold)
+  }
+  evalSpecForm.value.ruleProfile = firstNonEmpty(
+    importedSpec.scoring_config?.rule_profile,
+    evalSpecForm.value.ruleProfile
+  )
+  evalSpecForm.value.judgeModel = firstNonEmpty(
+    importedSpec.scoring_config?.judge_model,
+    evalSpecForm.value.judgeModel
+  )
+  prefillRunFromSpec(importedSpec)
+}
+
+async function submitDatasetBundleImport() {
+  createAction.value = 'bundle'
+  bundlePreviewError.value = ''
+  try {
+    if (!bundleImportPreview.value) {
+      throw new Error(
+        tr('harness.dataset.bundlePreviewRequired', 'Preview the bundle before importing')
+      )
+    }
+
+    const payload = buildDatasetBundleImportPayload()
+
+    const response = await harnessApi.importDatasetBundleFromSource(payload)
+    const result = response.data || {}
+    const importedDatasetID = firstNonEmpty(
+      result.dataset?.id,
+      result.dataset_version?.dataset_id,
+      result.eval_specs?.[0]?.dataset_id
+    )
+    if (importedDatasetID) {
+      await loadDatasetVersions(importedDatasetID, { force: true })
+    }
+    await loadConsole({ silent: true })
+    prefillImportedBundle(result)
+    bundleImportPreview.value = null
+    notification.success(
+      tr('automation.tabs.harness', 'Harness'),
+      tr('harness.dataset.bundleImported', 'Dataset bundle imported')
+    )
+  } catch (err) {
+    notification.error(tr('automation.tabs.harness', 'Harness'), getErrorMessage(err))
+  } finally {
+    createAction.value = ''
   }
 }
 
@@ -1677,6 +2017,21 @@ function syncRefreshTimer() {
 }
 
 watch(
+  () => [
+    bundleImportForm.value.sourceType,
+    bundleImportForm.value.path,
+    bundleImportForm.value.source,
+    bundleImportForm.value.bundlePath,
+    bundleImportForm.value.version,
+    bundleImportForm.value.makeActive,
+  ],
+  () => {
+    bundleImportPreview.value = null
+    bundlePreviewError.value = ''
+  }
+)
+
+watch(
   () => datasetVersionForm.value.datasetID,
   async (datasetID) => {
     if (!datasetID) return
@@ -1755,74 +2110,93 @@ onUnmounted(() => {
 
 <template>
   <div class="harness-groups-page dashboard-page-frame">
-    <section class="harness-stage dashboard-page-stage configuration-page-stage">
-      <section class="harness-hero dashboard-page-hero configuration-page-hero">
-        <div class="harness-hero-copy dashboard-page-copy configuration-page-copy">
-          <p class="dashboard-page-eyebrow">{{ t('nav.automation') }}</p>
-          <h1 class="dashboard-page-title configuration-page-title">
-            {{ tr('automation.tabs.harness', 'Harness') }}
-          </h1>
-          <p
-            class="harness-hero-description dashboard-page-description configuration-page-description"
-          >
-            {{
-              tr(
-                'harness.groups.subtitle',
-                'Run the full eval loop from one place: define datasets, freeze versions, create reusable specs, launch runs, and still keep the raw group control plane in view.'
-              )
-            }}
-          </p>
-        </div>
-      </section>
-
+    <div class="mx-auto flex w-full max-w-7xl flex-col gap-4">
       <AutomationTabs class="automation-tab-strip" />
 
-      <AgentcoreRunnerPanel
-        class="harness-runner-stage"
-        :show-refresh-button="false"
-        @status-change="handleAgentcoreRunnerStatusChange"
-      />
+      <section
+        class="overflow-hidden rounded-2xl border border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_transparent_38%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(248,250,252,0.96))] shadow-sm"
+      >
+        <div class="flex flex-col gap-4 border-b border-slate-200/80 px-4 py-4 sm:px-5">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+            <div class="space-y-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">
+                {{ t('nav.automation') }}
+              </p>
+              <h1 class="text-xl font-semibold tracking-tight text-slate-950 sm:text-2xl">
+                {{ tr('automation.tabs.harness', 'Harness') }}
+              </h1>
+              <p class="max-w-2xl text-sm leading-5 text-slate-600">
+                {{
+                  tr(
+                    'harness.groups.subtitle',
+                    'Run the full eval loop from one place: define datasets, freeze versions, create reusable specs, launch runs, and still keep the raw group control plane in view.'
+                  )
+                }}
+              </p>
+            </div>
+            <div
+              class="inline-flex items-center rounded-full border border-white/70 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:text-sm"
+            >
+              {{ formatCount(activeEvalRuns) }}
+              {{ tr('harness.evalRuns.active', 'Active eval runs') }}
+            </div>
+          </div>
 
-      <div class="stats-toolbar">
-        <section class="stats-grid">
-          <article class="stat-card">
-            <span class="stat-label">{{ tr('harness.datasets.total', 'Datasets') }}</span>
-            <strong class="stat-value">{{ datasets.length }}</strong>
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <article
+              v-for="card in harnessSummaryCards"
+              :key="card.key"
+              class="rounded-2xl border border-slate-200 bg-white/80 px-3 py-3"
+            >
+              <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                {{ card.label }}
+              </div>
+              <div class="mt-2 text-lg font-semibold text-slate-950 sm:text-xl">
+                {{ card.value }}
+              </div>
+              <div class="mt-1.5 text-xs leading-4 text-slate-500">
+                {{ card.details }}
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="harness-stage dashboard-page-stage configuration-page-stage">
+      <section data-testid="harness-explainer-panel" class="panel harness-explainer-panel">
+        <div class="section-header">
+          <div>
+            <h2>{{ tr('harness.groups.explainerTitle', 'Harness, in plain language') }}</h2>
+          </div>
+        </div>
+
+        <div class="harness-explainer-grid">
+          <article class="detail-card harness-explainer-card">
+            <h3>{{ tr('harness.groups.explainerPlainTitle', 'What it is') }}</h3>
+            <p class="card-copy">
+              {{
+                tr(
+                  'harness.groups.explainerPlainBody',
+                  "Think of Harness as the system's test track. It reruns the same work in a controlled way so we can compare results, failures, and retries without guessing."
+                )
+              }}
+            </p>
           </article>
-          <article class="stat-card">
-            <span class="stat-label">{{ tr('harness.evalSpecs.total', 'Eval specs') }}</span>
-            <strong class="stat-value">{{ evalSpecs.length }}</strong>
+
+          <article class="detail-card harness-explainer-card">
+            <h3>{{ tr('harness.groups.explainerRoleTitle', 'What it does in the system') }}</h3>
+            <p class="card-copy">
+              {{
+                tr(
+                  'harness.groups.explainerRoleBody',
+                  'Harness is the evaluation layer behind datasets, specs, runs, baselines, and groups. It keeps the evidence and scores in one place so the system can spot regressions and decide whether a change is safe to keep.'
+                )
+              }}
+            </p>
           </article>
-          <article class="stat-card">
-            <span class="stat-label">{{ tr('harness.evalRuns.total', 'Eval runs') }}</span>
-            <strong class="stat-value">{{ evalRuns.length }}</strong>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">{{ tr('harness.baseline.total', 'Baselines') }}</span>
-            <strong class="stat-value">{{ baselines.length }}</strong>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">{{ tr('harness.evalRuns.active', 'Active eval runs') }}</span>
-            <strong class="stat-value">{{ activeEvalRuns }}</strong>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">{{ tr('harness.groups.totalGroups', 'Groups') }}</span>
-            <strong class="stat-value">{{ groups.length }}</strong>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">{{
-              tr('harness.groups.avgPassRate', 'Average pass rate')
-            }}</span>
-            <strong class="stat-value">{{ percentLabel(averageEvalPassRate) }}</strong>
-          </article>
-          <article class="stat-card">
-            <span class="stat-label">{{
-              tr('harness.baseline.defaultCount', 'Default baselines')
-            }}</span>
-            <strong class="stat-value">{{ defaultBaselines }}</strong>
-          </article>
-        </section>
-      </div>
+        </div>
+      </section>
 
       <div v-if="error" class="state-card is-error">
         <h2>{{ tr('common.error', 'Error') }}</h2>
@@ -1834,9 +2208,32 @@ onUnmounted(() => {
         <p>{{ tr('harness.groups.loading', 'Fetching the latest harness group summaries.') }}</p>
       </div>
 
-      <div v-else class="console-layout">
-        <aside class="console-rail">
-          <section class="panel rail-panel quick-eval-panel">
+      <template v-else>
+        <div class="mobile-section-nav" :aria-label="tr('automation.tabs.harness', 'Harness')">
+          <button
+            v-for="section in mobileHarnessSections"
+            :key="section.key"
+            type="button"
+            class="mobile-section-button"
+            :class="{ active: mobileHarnessSection === section.key }"
+            @click="selectMobileHarnessSection(section.key)"
+          >
+            {{ section.label }}
+          </button>
+        </div>
+
+        <div class="console-layout">
+        <aside
+          class="console-rail mobile-section-group"
+          :data-mobile-hidden="
+            mobileHarnessSection !== 'quick' && mobileHarnessSection !== 'builder'
+          "
+        >
+          <section
+            ref="quickEvalSection"
+            class="panel rail-panel quick-eval-panel mobile-section-panel"
+            :data-mobile-hidden="mobileHarnessSection !== 'quick'"
+          >
             <div class="section-header">
               <div>
                 <p class="section-eyebrow">{{ tr('harness.quickEval.eyebrow', 'Default Path') }}</p>
@@ -1853,7 +2250,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="secondary-button"
-                @click="advancedBuilderOpen = !advancedBuilderOpen"
+                @click="toggleAdvancedBuilder"
               >
                 {{
                   advancedBuilderOpen
@@ -2109,7 +2506,11 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="panel rail-panel">
+          <section
+            ref="advancedBuilderSection"
+            class="panel rail-panel mobile-section-panel"
+            :data-mobile-hidden="mobileHarnessSection !== 'builder'"
+          >
             <div class="section-header">
               <div>
                 <p class="section-eyebrow">
@@ -2128,7 +2529,7 @@ onUnmounted(() => {
               <button
                 type="button"
                 class="secondary-button"
-                @click="advancedBuilderOpen = !advancedBuilderOpen"
+                @click="toggleAdvancedBuilder"
               >
                 {{
                   advancedBuilderOpen
@@ -2139,9 +2540,253 @@ onUnmounted(() => {
             </div>
 
             <div v-if="advancedBuilderOpen" class="quickstart-grid">
-              <form class="action-card" @submit.prevent="submitDataset">
+              <form
+                class="action-card"
+                data-testid="harness-bundle-import-form"
+                @submit.prevent="submitDatasetBundleImport"
+              >
                 <div class="action-card-header">
                   <span class="step-chip">1</span>
+                  <div>
+                    <h3>{{ tr('harness.dataset.importBundle', 'Import bundle') }}</h3>
+                    <p>
+                      {{
+                        tr(
+                          'harness.dataset.importBundleHint',
+                          'Import a first-party repo bundle or a third-party GitHub bundle into a reusable dataset version and any bundled eval specs.'
+                        )
+                      }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  class="filter-segment source-segment"
+                  role="tablist"
+                  :aria-label="tr('harness.dataset.bundleSourceLabel', 'Bundle source type')"
+                >
+                  <button
+                    type="button"
+                    class="segment-button"
+                    :class="{ active: bundleImportForm.sourceType === 'local' }"
+                    @click="bundleImportForm.sourceType = 'local'"
+                  >
+                    {{ tr('harness.dataset.localBundle', 'Local bundle') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="segment-button"
+                    :class="{ active: bundleImportForm.sourceType === 'github' }"
+                    @click="bundleImportForm.sourceType = 'github'"
+                  >
+                    {{ tr('harness.dataset.githubBundle', 'GitHub bundle') }}
+                  </button>
+                </div>
+
+                <div class="form-grid">
+                  <label v-if="bundleImportForm.sourceType === 'local'" class="form-span-2">
+                    <span>{{ tr('harness.dataset.bundlePath', 'Bundle path') }}</span>
+                    <input
+                      ref="bundleLocalPathInput"
+                      v-model="bundleImportForm.path"
+                      name="dataset-bundle-path"
+                      placeholder="harness/datasets/demo-bundle"
+                      required
+                    />
+                    <small class="field-hint">
+                      {{
+                        tr(
+                          'harness.dataset.bundlePathHint',
+                          'Use a server-side path such as harness/datasets/... inside the current repo checkout.'
+                        )
+                      }}
+                    </small>
+                  </label>
+
+                  <template v-else>
+                    <label class="form-span-2">
+                      <span>{{ tr('harness.dataset.bundleSource', 'GitHub source') }}</span>
+                      <input
+                        ref="bundleGitHubSourceInput"
+                        v-model="bundleImportForm.source"
+                        name="dataset-bundle-source"
+                        placeholder="https://github.com/owner/repo/tree/main/harness/datasets/demo-bundle"
+                        required
+                      />
+                      <small class="field-hint">
+                        {{
+                          tr(
+                            'harness.dataset.bundleSourceHint',
+                            'Use either a GitHub tree URL that points at the bundle directory or a repo URL plus a bundle path below.'
+                          )
+                        }}
+                      </small>
+                    </label>
+                    <label class="form-span-2">
+                      <span>{{ tr('harness.dataset.bundlePath', 'Bundle path') }}</span>
+                      <input
+                        v-model="bundleImportForm.bundlePath"
+                        name="dataset-bundle-bundle-path"
+                        placeholder="harness/datasets/demo-bundle"
+                      />
+                      <small class="field-hint">
+                        {{
+                          tr(
+                            'harness.dataset.bundlePathOptionalHint',
+                            'Only required when the GitHub source is a repo URL instead of a tree URL.'
+                          )
+                        }}
+                      </small>
+                    </label>
+                  </template>
+
+                  <label>
+                    <span>{{ tr('harness.dataset.versionOverride', 'Version override') }}</span>
+                    <input
+                      v-model="bundleImportForm.version"
+                      name="dataset-bundle-version"
+                      placeholder="v1"
+                    />
+                  </label>
+                  <label class="checkbox-field form-span-2">
+                    <input
+                      v-model="bundleImportForm.makeActive"
+                      type="checkbox"
+                      name="dataset-bundle-make-active"
+                    />
+                    <span>{{
+                      tr('harness.dataset.makeImportedActive', 'Make imported version active')
+                    }}</span>
+                  </label>
+                </div>
+
+                <p class="card-copy">
+                  {{
+                    tr(
+                      'harness.dataset.bundleImportBehavior',
+                      'Imports are explicit and version-at-a-time. GitHub bundles are fetched on demand only and do not auto-sync later updates.'
+                    )
+                  }}
+                </p>
+
+                <p
+                  v-if="bundlePreviewLoading"
+                  class="card-copy muted"
+                  data-testid="harness-bundle-preview-loading"
+                >
+                  {{
+                    tr(
+                      'harness.dataset.previewLoading',
+                      'Checking bundle metadata, manifest, and bundled eval specs...'
+                    )
+                  }}
+                </p>
+
+                <div
+                  v-if="bundlePreviewError"
+                  class="quick-eval-summary quick-eval-summary-error"
+                  data-testid="harness-bundle-preview-error"
+                >
+                  <strong>{{ tr('harness.dataset.previewFailed', 'Bundle preview failed') }}</strong>
+                  <span>{{ bundlePreviewError }}</span>
+                </div>
+
+                <div
+                  v-if="bundleImportPreview"
+                  class="quick-eval-summary"
+                  data-testid="harness-bundle-preview-summary"
+                >
+                  <strong>{{
+                    tr('harness.dataset.previewReady', 'Bundle preview ready')
+                  }}</strong>
+                  <span>
+                    {{
+                      `${bundleImportPreview.dataset.name} · ${bundleImportPreview.version.version || tr('common.notAvailable', 'Not available')}`
+                    }}
+                  </span>
+                  <span>
+                    {{
+                      trp(
+                        'harness.dataset.previewCases',
+                        '{count} cases in this selected version',
+                        {
+                          count: bundleImportPreview.version.item_count,
+                        }
+                      )
+                    }}
+                  </span>
+                  <span>
+                    {{
+                      trp(
+                        'harness.dataset.previewEvalSpecs',
+                        '{count} bundled eval specs',
+                        {
+                          count: bundleImportPreview.eval_specs?.length || 0,
+                        }
+                      )
+                    }}
+                  </span>
+                  <div
+                    v-if="bundleImportPreview.eval_specs?.length"
+                    class="version-list"
+                  >
+                    <span
+                      v-for="spec in bundleImportPreview.eval_specs"
+                      :key="`bundle-preview-${spec.name}`"
+                      class="version-chip"
+                    >
+                      {{ spec.name }}
+                    </span>
+                  </div>
+                </div>
+
+                <div class="action-row">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    data-testid="harness-bundle-preview-button"
+                    :disabled="
+                      bundlePreviewLoading ||
+                      createAction === 'bundle' ||
+                      (bundleImportForm.sourceType === 'local'
+                        ? !bundleImportForm.path.trim()
+                        : !bundleImportForm.source.trim())
+                    "
+                    @click="previewDatasetBundleImport"
+                  >
+                    {{
+                      bundlePreviewLoading
+                        ? tr('common.loading', 'Loading')
+                        : bundleImportPreview
+                          ? tr('harness.dataset.refreshPreview', 'Refresh preview')
+                          : tr('harness.dataset.previewBundle', 'Preview bundle')
+                    }}
+                  </button>
+
+                  <button
+                    class="primary-button"
+                    type="submit"
+                    :disabled="
+                      createAction === 'bundle' ||
+                      bundlePreviewLoading ||
+                      !bundleImportPreview ||
+                      (bundleImportForm.sourceType === 'local'
+                        ? !bundleImportForm.path.trim()
+                        : !bundleImportForm.source.trim())
+                    "
+                  >
+                    {{
+                      createAction === 'bundle'
+                        ? tr('common.loading', 'Loading')
+                        : tr('harness.dataset.importBundle', 'Import bundle')
+                    }}
+                  </button>
+                </div>
+              </form>
+
+              <form class="action-card" @submit.prevent="submitDataset">
+                <div class="action-card-header">
+                  <span class="step-chip">2</span>
                   <div>
                     <h3>{{ tr('harness.dataset.create', 'Create dataset') }}</h3>
                     <p>
@@ -2195,7 +2840,7 @@ onUnmounted(() => {
 
               <form class="action-card" @submit.prevent="submitDatasetVersion">
                 <div class="action-card-header">
-                  <span class="step-chip">2</span>
+                  <span class="step-chip">3</span>
                   <div>
                     <h3>{{ tr('harness.dataset.publishVersion', 'Publish version') }}</h3>
                     <p>
@@ -2272,7 +2917,7 @@ onUnmounted(() => {
 
               <form class="action-card" @submit.prevent="submitEvalSpec">
                 <div class="action-card-header">
-                  <span class="step-chip">3</span>
+                  <span class="step-chip">4</span>
                   <div>
                     <h3>{{ tr('harness.evalSpec.create', 'Create eval spec') }}</h3>
                     <p>
@@ -2377,7 +3022,7 @@ onUnmounted(() => {
 
               <form class="action-card" @submit.prevent="submitEvalRun">
                 <div class="action-card-header">
-                  <span class="step-chip">4</span>
+                  <span class="step-chip">5</span>
                   <div>
                     <h3>{{ tr('harness.evalRun.launch', 'Launch eval run') }}</h3>
                     <p>
@@ -2450,8 +3095,17 @@ onUnmounted(() => {
         </aside>
 
         <div class="console-main">
-          <div class="content-split support-stack">
-            <section class="panel support-panel">
+          <div
+            class="content-split support-stack mobile-section-group"
+            :data-mobile-hidden="
+              mobileHarnessSection !== 'datasets' && mobileHarnessSection !== 'specs'
+            "
+          >
+            <section
+              ref="datasetsSection"
+              class="panel support-panel mobile-section-panel"
+              :data-mobile-hidden="mobileHarnessSection !== 'datasets'"
+            >
               <div class="section-header">
                 <div>
                   <p class="section-eyebrow">
@@ -2466,6 +3120,16 @@ onUnmounted(() => {
                       )
                     }}
                   </p>
+                </div>
+                <div class="section-actions">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    data-testid="harness-import-bundle-entry"
+                    @click="openBundleImportEntry"
+                  >
+                    {{ tr('harness.dataset.importBundle', 'Import bundle') }}
+                  </button>
                 </div>
               </div>
 
@@ -2561,7 +3225,11 @@ onUnmounted(() => {
               </div>
             </section>
 
-            <section class="panel support-panel">
+            <section
+              ref="evalSpecsSection"
+              class="panel support-panel mobile-section-panel"
+              :data-mobile-hidden="mobileHarnessSection !== 'specs'"
+            >
               <div class="section-header">
                 <div>
                   <p class="section-eyebrow">
@@ -2662,7 +3330,11 @@ onUnmounted(() => {
             </section>
           </div>
 
-          <section class="panel eval-runs-panel">
+          <section
+            ref="evalRunsSection"
+            class="panel eval-runs-panel mobile-section-panel"
+            :data-mobile-hidden="mobileHarnessSection !== 'runs'"
+          >
             <div class="section-header">
               <div>
                 <p class="section-eyebrow">
@@ -2702,8 +3374,8 @@ onUnmounted(() => {
                   @keydown.enter.prevent="loadEvalRunReport(run.id)"
                   @keydown.space.prevent="loadEvalRunReport(run.id)"
                 >
-                    <div class="list-card-main eval-run-card-main">
-                      <div class="entity-header compact">
+                  <div class="list-card-main eval-run-card-main">
+                    <div class="entity-header compact">
                       <div>
                         <h3>{{ evalRunDisplayTitle(run) }}</h3>
                         <p>
@@ -3005,7 +3677,11 @@ onUnmounted(() => {
                         <div>
                           <dt>{{ tr('harness.dataset.runKind', 'Run kind') }}</dt>
                           <dd>
-                            {{ runKindLabel(selectedEvalRunReport.eval_spec?.run_kind || 'agent_task') }}
+                            {{
+                              runKindLabel(
+                                selectedEvalRunReport.eval_spec?.run_kind || 'agent_task'
+                              )
+                            }}
                           </dd>
                         </div>
                         <div>
@@ -3031,11 +3707,9 @@ onUnmounted(() => {
                           <dt>{{ tr('harness.dataset.profile', 'Profile') }}</dt>
                           <dd>
                             {{
-                              (selectedEvalRunReport.eval_spec?.profile
+                              selectedEvalRunReport.eval_spec?.profile
                                 ? profileLabel(selectedEvalRunReport.eval_spec?.profile)
-                                :
-                                tr('common.notAvailable', 'Not available')
-                              )
+                                : tr('common.notAvailable', 'Not available')
                             }}
                           </dd>
                         </div>
@@ -3062,9 +3736,9 @@ onUnmounted(() => {
                           <dd>{{ selectedContextPackItemsWithSnapshot }}</dd>
                         </div>
                         <div>
-                          <dt>{{
-                            tr('harness.group.contextPackSelectedSkills', 'Selected skills')
-                          }}</dt>
+                          <dt>
+                            {{ tr('harness.group.contextPackSelectedSkills', 'Selected skills') }}
+                          </dt>
                           <dd>{{ selectedContextPackSkillEntries.length }}</dd>
                         </div>
                         <div>
@@ -3077,7 +3751,10 @@ onUnmounted(() => {
                         </div>
                       </dl>
 
-                      <div v-if="selectedContextPackSkillEntries.length" class="report-outcome-section">
+                      <div
+                        v-if="selectedContextPackSkillEntries.length"
+                        class="report-outcome-section"
+                      >
                         <p class="card-copy">
                           {{ tr('harness.group.contextPackSelectedSkills', 'Selected skills') }}
                         </p>
@@ -3431,7 +4108,9 @@ onUnmounted(() => {
                             </strong>
                           </article>
                           <article class="highlight-card">
-                            <span>{{ tr('harness.compare.contextPackDelta', 'Context pack delta') }}</span>
+                            <span>{{
+                              tr('harness.compare.contextPackDelta', 'Context pack delta')
+                            }}</span>
                             <strong>
                               {{
                                 signedIntegerLabel(
@@ -3727,7 +4406,11 @@ onUnmounted(() => {
             </div>
           </section>
 
-          <section class="panel groups-panel">
+          <section
+            ref="groupsSection"
+            class="panel groups-panel mobile-section-panel"
+            :data-mobile-hidden="mobileHarnessSection !== 'groups'"
+          >
             <div class="section-header">
               <div>
                 <p class="section-eyebrow">
@@ -3878,7 +4561,9 @@ onUnmounted(() => {
             </section>
           </section>
         </div>
-      </div>
+        </div>
+      </template>
+
     </section>
   </div>
 </template>
@@ -3886,6 +4571,7 @@ onUnmounted(() => {
 <style scoped>
 .harness-groups-page {
   --dashboard-page-accent: 37, 99, 235;
+  --harness-eyebrow-color: rgb(var(--dashboard-page-accent));
   --harness-title-color: var(--color-text);
   --harness-copy-color: var(--color-text-secondary);
   --harness-muted-color: var(--color-text-muted);
@@ -3917,6 +4603,48 @@ onUnmounted(() => {
 .automation-tab-strip {
   position: relative;
   z-index: 1;
+}
+
+.mobile-section-nav {
+  position: sticky;
+  top: 0.7rem;
+  z-index: 3;
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  margin-bottom: 0.7rem;
+  padding: 0.22rem;
+  border-radius: 999px;
+  border: 1px solid rgba(203, 213, 225, 0.96);
+  background: color-mix(in srgb, var(--harness-panel-bg) 92%, white 8%);
+  box-shadow:
+    0 14px 24px -26px rgba(15, 23, 42, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+}
+
+.mobile-section-button {
+  appearance: none;
+  border: 0;
+  flex: 0 0 auto;
+  padding: 0.42rem 0.72rem;
+  border-radius: 999px;
+  background: transparent;
+  color: #475569;
+  font-weight: 600;
+  font-size: 0.74rem;
+  line-height: 1.15;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.mobile-section-button.active {
+  background: var(--harness-card-bg);
+  color: var(--harness-strong-color);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
 }
 
 .console-layout {
@@ -3974,6 +4702,23 @@ onUnmounted(() => {
   grid-area: groups;
 }
 
+.harness-explainer-panel {
+  margin-top: 0.7rem;
+}
+
+.harness-explainer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.harness-explainer-card {
+  height: 100%;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(248, 250, 252, 0.92)),
+    var(--harness-card-bg);
+}
+
 .support-stack .entity-grid {
   grid-template-columns: 1fr;
 }
@@ -3984,7 +4729,7 @@ onUnmounted(() => {
   letter-spacing: 0.14em;
   font-size: 0.62rem;
   font-weight: 700;
-  color: var(--harness-title-color);
+  color: var(--harness-eyebrow-color);
 }
 
 .section-description {
@@ -4062,10 +4807,6 @@ onUnmounted(() => {
   min-width: 0;
 }
 
-.harness-runner-stage {
-  margin-bottom: 0.85rem;
-}
-
 .stat-card,
 .state-card,
 .group-card,
@@ -4108,6 +4849,13 @@ onUnmounted(() => {
   gap: 0.65rem;
   align-items: flex-start;
   margin-bottom: 0.65rem;
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
 }
 
 .section-header h2 {
@@ -4181,6 +4929,16 @@ onUnmounted(() => {
   background: var(--harness-subsurface-bg);
   border: 1px solid rgba(226, 232, 240, 0.96);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.quick-eval-summary-error {
+  background: rgba(254, 242, 242, 0.96);
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+.quick-eval-summary-error strong,
+.quick-eval-summary-error span {
+  color: #991b1b;
 }
 
 .quick-eval-summary strong {
@@ -4922,65 +5680,60 @@ onUnmounted(() => {
   line-height: 1.15;
 }
 
-.harness-groups-page :is(
-  .secondary-button,
-  .stat-value,
-  .quick-eval-summary strong,
-  .meta-grid dd,
-  .run-metric-pill strong,
-  .highlight-card strong,
-  .comparison-item strong,
-  .comparison-item span,
-  .metric strong,
-  .footer-row strong
-) {
+.harness-groups-page
+  :is(
+    .secondary-button,
+    .stat-value,
+    .quick-eval-summary strong,
+    .meta-grid dd,
+    .run-metric-pill strong,
+    .highlight-card strong,
+    .comparison-item strong,
+    .comparison-item span,
+    .metric strong,
+    .footer-row strong
+  ) {
   color: var(--harness-strong-color);
 }
 
-.harness-groups-page :is(
-  .section-description,
-  .state-card p,
-  .action-card-header p,
-  .field-hint,
-  .card-copy,
-  .entity-header p,
-  .report-hero-copy p,
-  .group-subject
-) {
+.harness-groups-page
+  :is(
+    .section-description,
+    .state-card p,
+    .action-card-header p,
+    .field-hint,
+    .card-copy,
+    .entity-header p,
+    .report-hero-copy p,
+    .group-subject
+  ) {
   color: var(--harness-copy-color);
 }
 
-.harness-groups-page :is(
-  .stat-label,
-  .form-grid span,
-  .meta-grid dt,
-  .run-metric-pill span,
-  .search-label,
-  .metric span,
-  .count-row,
-  .footer-row span,
-  .empty-panel,
-  .card-copy.muted,
-  .dot-separator
-) {
+.harness-groups-page
+  :is(
+    .stat-label,
+    .form-grid span,
+    .meta-grid dt,
+    .run-metric-pill span,
+    .search-label,
+    .metric span,
+    .count-row,
+    .footer-row span,
+    .empty-panel,
+    .card-copy.muted,
+    .dot-separator
+  ) {
   color: var(--harness-muted-color);
 }
 
-.harness-groups-page :is(
-  .quick-eval-summary,
-  .run-metric-pill,
-  .empty-panel
-) {
+.harness-groups-page :is(.quick-eval-summary, .run-metric-pill, .empty-panel) {
   border-color: var(--color-border);
   background: var(--harness-subsurface-bg);
 }
 
-.harness-groups-page :is(
-  .form-grid input,
-  .form-grid select,
-  .form-grid textarea,
-  .search-field input
-) {
+.harness-groups-page
+  :is(.form-grid input, .form-grid select, .form-grid textarea, .search-field input) {
   border-color: var(--color-border);
   background: var(--harness-input-bg);
   color: var(--harness-strong-color);
@@ -4996,6 +5749,15 @@ onUnmounted(() => {
 }
 
 @media (max-width: 1200px) {
+  .mobile-section-nav {
+    margin-top: 0.5rem;
+  }
+
+  .mobile-section-group[data-mobile-hidden='true'],
+  .mobile-section-panel[data-mobile-hidden='true'] {
+    display: none;
+  }
+
   .stats-toolbar {
     flex-direction: column;
   }
@@ -5073,10 +5835,15 @@ onUnmounted(() => {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .mobile-section-nav {
+    top: 0.5rem;
+  }
+
   .eval-runs-console,
   .quick-eval-layout,
   .quickstart-grid,
   .comparison-grid,
+  .harness-explainer-grid,
   .entity-grid,
   .groups-grid,
   .form-grid,
@@ -5086,6 +5853,20 @@ onUnmounted(() => {
 
   .run-compact-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .eval-runs-list,
+  .groups-grid {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(18rem, 82vw);
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+    scroll-snap-type: x proximity;
+  }
+
+  .eval-run-card,
+  .group-card {
+    scroll-snap-align: start;
   }
 
   .form-span-2 {

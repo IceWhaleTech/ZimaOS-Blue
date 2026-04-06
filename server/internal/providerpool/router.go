@@ -1424,15 +1424,11 @@ func providerAllowsModel(p *Provider, modelID string) bool {
 		return true
 	}
 
-	// Backward compatibility: pre-flag data with non-nil AllowedModels still means configured.
-	allowlistConfigured := p.AllowlistConfigured || p.AllowedModels != nil
-	if !allowlistConfigured {
+	allowedModels := effectiveAllowedModels(p)
+	if len(allowedModels) == 0 {
 		return true
 	}
-	if len(p.AllowedModels) == 0 {
-		return false
-	}
-	for _, allowed := range p.AllowedModels {
+	for _, allowed := range allowedModels {
 		if allowed == modelID {
 			return true
 		}

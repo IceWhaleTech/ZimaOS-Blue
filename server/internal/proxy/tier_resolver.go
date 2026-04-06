@@ -49,17 +49,24 @@ var builtinSmallModelPriority = []string{
 	"amazon.nova-lite-v1:0",
 }
 
-var builtinSmallModelRank = func() map[string]int {
-	rank := make(map[string]int, len(builtinSmallModelPriority))
-	for i, id := range builtinSmallModelPriority {
-		rank[id] = i
-	}
-	return rank
-}()
+var (
+	builtinSmallModelRank        map[string]int
+	builtinSmallModelSet         map[string]struct{}
+	builtinSmallModelCatalogOnce sync.Once
+)
 
-var builtinSmallModelSet = buildBuiltinSmallModelSet()
+func ensureBuiltinSmallModelCatalog() {
+	builtinSmallModelCatalogOnce.Do(func() {
+		rank := make(map[string]int, len(builtinSmallModelPriority))
+		for i, id := range builtinSmallModelPriority {
+			rank[id] = i
+		}
+		builtinSmallModelRank = rank
+		builtinSmallModelSet = buildBuiltinSmallModelSet(rank)
+	})
+}
 
-func buildBuiltinSmallModelSet() map[string]struct{} {
+func buildBuiltinSmallModelSet(rank map[string]int) map[string]struct{} {
 	out := make(map[string]struct{}, len(builtinSmallModelPriority))
 	for _, id := range builtinSmallModelPriority {
 		norm := normalizeModelID(id)
@@ -74,7 +81,7 @@ func buildBuiltinSmallModelSet() map[string]struct{} {
 			if id == "" {
 				continue
 			}
-			if _, ok := builtinSmallModelRank[id]; ok {
+			if _, ok := rank[id]; ok {
 				out[id] = struct{}{}
 			}
 		}
@@ -117,6 +124,8 @@ func NewTierResolver() *TierResolver {
 // Returns true when both tiers are present (smart routing viable).
 // Called on provider change (same hook as candidateSnapshot rebuild).
 func (tr *TierResolver) Resolve(models []*providerpool.Model) bool {
+	ensureBuiltinSmallModelCatalog()
+
 	tiers := make(map[ModelTier][]*TieredModel)
 	byModel := make(map[string]*TieredModel)
 

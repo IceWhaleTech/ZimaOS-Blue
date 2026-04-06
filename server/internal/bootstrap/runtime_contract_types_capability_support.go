@@ -4,6 +4,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
+	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
@@ -16,6 +17,7 @@ type routeRuntimeContractCapabilitySupportOptions struct {
 	authMiddleware        *auth.AuthMiddleware
 	authRouteMiddleware   echo.MiddlewareFunc
 	requirePagePermission func(string) echo.MiddlewareFunc
+	approvalHandler       *networkapi.ApprovalHandler
 	dataDir               string
 	deps                  *RoutesDeps
 	askSupport            runtimeAskSupportBundle

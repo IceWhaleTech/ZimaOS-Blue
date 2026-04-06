@@ -43,13 +43,11 @@ func TestBindRouteRuntimeCapabilitySupport_RegistersSupportRoutesThroughBoundary
 		method string
 		path   string
 	}{
-		{method: "GET", path: "/api/v1/ask-user-question/pending"},
-		{method: "GET", path: "/api/v1/exec/approvals/pending"},
 		{method: "GET", path: "/api/v1/backup"},
 		{method: "GET", path: "/api/v1/security/sessions"},
 		{method: "GET", path: "/api/v1/sandbox/info"},
 		{method: "GET", path: "/api/cron"},
-		{method: "GET", path: "/api/browser/tasks"},
+		{method: "GET", path: "/api/browser/overview"},
 		{method: "GET", path: "/api/v1/workflows"},
 		{method: "GET", path: "/api/v1/voice/voices"},
 		{method: "GET", path: "/api/v1/speech/status"},
@@ -58,5 +56,11 @@ func TestBindRouteRuntimeCapabilitySupport_RegistersSupportRoutesThroughBoundary
 		if !routeExists(e, route.method, route.path) {
 			t.Fatalf("expected %s %s to be registered through capability support boundary, got %#v", route.method, route.path, e.Routes())
 		}
+	}
+	if routeExists(e, "GET", "/api/v1/pending-confirmations") {
+		t.Fatalf("did not expect standalone pending-confirmations route to remain registered")
+	}
+	if routeExists(e, "GET", "/api/browser/tasks") {
+		t.Fatalf("did not expect standalone browser task route to remain registered")
 	}
 }

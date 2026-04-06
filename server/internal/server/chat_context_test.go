@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -233,6 +234,73 @@ func TestMemoryRecallDecisionReason(t *testing.T) {
 					gotRecall, gotReason, tt.wantRecall, tt.wantReason)
 			}
 		})
+	}
+}
+
+func TestBuildSmartContext_RefetchesAfterConversationCacheBudgetEviction(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+	handler.conversationCache.maxBytes = 120
+	handler.conversationCache.ttl = time.Minute
+
+	convA, err := store.CreateConversation(context.Background(), "cache-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(cache-a): %v", err)
+	}
+	convB, err := store.CreateConversation(context.Background(), "cache-b")
+	if err != nil {
+		t.Fatalf("CreateConversation(cache-b): %v", err)
+	}
+
+	for _, msg := range []memory.Message{
+		{Role: "user", Content: "Explain the first cache entry"},
+		{Role: "assistant", Content: "Here is the first cached answer."},
+	} {
+		if _, err := store.AddMessage(context.Background(), convA.ID, msg); err != nil {
+			t.Fatalf("AddMessage(convA): %v", err)
+		}
+	}
+	if _, err := store.AddMessage(context.Background(), convB.ID, memory.Message{
+		Role:    "user",
+		Content: strings.Repeat("x", 256),
+	}); err != nil {
+		t.Fatalf("AddMessage(convB): %v", err)
+	}
+
+	first := handler.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:      convA.ID,
+		UserMessage: "继续",
+		Model:       "gpt-4o-mini",
+	})
+	if first.MessageCountBefore != 2 {
+		t.Fatalf("first MessageCountBefore = %d, want 2", first.MessageCountBefore)
+	}
+
+	largeMessages, err := store.GetMessages(context.Background(), convB.ID, 16, 0)
+	if err != nil {
+		t.Fatalf("GetMessages(convB): %v", err)
+	}
+	handler.conversationCache.Set(convB.ID, largeMessages)
+	if _, hit := handler.conversationCache.Get(convA.ID); hit {
+		t.Fatal("expected conversation A cache entry to be evicted by byte budget")
+	}
+
+	second := handler.buildSmartContext(context.Background(), smartContextParams{
+		ConvID:      convA.ID,
+		UserMessage: "继续",
+		Model:       "gpt-4o-mini",
+	})
+	if second.MessageCountBefore != first.MessageCountBefore {
+		t.Fatalf("second MessageCountBefore = %d, want %d after refetch", second.MessageCountBefore, first.MessageCountBefore)
+	}
+	if len(second.Messages) != len(first.Messages) {
+		t.Fatalf("second Messages len = %d, want %d", len(second.Messages), len(first.Messages))
 	}
 }
 

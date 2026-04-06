@@ -28,7 +28,7 @@ func initServicesMemoryAndMedia(
 	chatStoreOpts.CheckpointInterval = 0
 	chatStoreOpts.AttachmentExternalStore = appCfg.Session.ChatAttachmentExternalStore
 	if chatStoreOpts.AttachmentExternalStore {
-		chatStoreOpts.AttachmentDir = filepath.Join(cfg.DataDir, "message_attachments")
+		chatStoreOpts.AttachmentDir = memory.DefaultChatAttachmentDir(cfg.DataDir)
 	}
 	store, err := memory.NewStoreWithOptions(chatDBPath, chatStoreOpts)
 	if err != nil {
@@ -44,7 +44,10 @@ func initServicesMemoryAndMedia(
 		AutoDownload: true,
 		WorkerCount:  1,
 	})
-	s.PDFService = pdfextract.NewService(s.Logger, s.OCRService)
+	s.PDFService = pdfextract.NewService(s.Logger, s.OCRService, pdfextract.ServiceConfig{
+		RuntimeDir:   filepath.Join(cfg.DataDir, "models", "pdfium"),
+		AutoDownload: true,
+	})
 	trace.Mark("ocr_pdf_ready")
 	return nil
 }

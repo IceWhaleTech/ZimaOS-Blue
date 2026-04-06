@@ -3,12 +3,12 @@ package bootstrap
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -102,7 +102,8 @@ func TestNewResearchHarnessRunSpecCopiesNormalizedFields(t *testing.T) {
 		UserID:         " user-1 ",
 		ConversationID: " conv-1 ",
 		WorkspaceRoot:  " /tmp/workspace ",
-		Mode:           "deep",
+		Mode:           "auto",
+		ResearchDepth:  "deep",
 		RouteMode:      "hybrid",
 		Lang:           "en",
 		ReportStyle:    "brief",
@@ -118,8 +119,54 @@ func TestNewResearchHarnessRunSpecCopiesNormalizedFields(t *testing.T) {
 	if spec.WorkspaceRoot != "/tmp/workspace" {
 		t.Fatalf("WorkspaceRoot = %q, want /tmp/workspace", spec.WorkspaceRoot)
 	}
+	if spec.Metadata["mode"] != "auto" || spec.Metadata["research_depth"] != "deep" {
+		t.Fatalf("unexpected research mode metadata: %#v", spec.Metadata)
+	}
 	if spec.Metadata["strict_entity"] != true || spec.Metadata["max_sources"] != 8 || spec.Metadata["max_seconds"] != 120 {
 		t.Fatalf("unexpected metadata: %#v", spec.Metadata)
+	}
+}
+
+func TestNewResearchHarnessRunSpecIncludesModeSpecificMetadata(t *testing.T) {
+	spec := newResearchHarnessRunSpec(researchHarnessRunInput{
+		Query:         " Competitive pricing snapshot ",
+		Mode:          "analyze",
+		Topic:         " Pricing snapshot ",
+		URLs:          []string{"https://example.com/pricing", "https://example.com/blog"},
+		Text:          " Internal notes ",
+		SearchQueries: []string{"example pricing comparison", "competitor plan changes"},
+		OutputMode:    "report",
+		Action:        "check_accessibility",
+		URL:           " https://example.com/app ",
+		Image:         " base64-image ",
+		Device:        " mobile ",
+		Channel:       " telegram ",
+		WaitMS:        1500,
+		Threshold:     82.5,
+		Format:        " human ",
+		Profile:       " ppt ",
+	})
+
+	if spec.Metadata["topic"] != "Pricing snapshot" {
+		t.Fatalf("topic metadata = %#v, want trimmed topic", spec.Metadata["topic"])
+	}
+	if got, ok := spec.Metadata["urls"].([]string); !ok || !reflect.DeepEqual(got, []string{"https://example.com/pricing", "https://example.com/blog"}) {
+		t.Fatalf("urls metadata = %#v, want forwarded urls", spec.Metadata["urls"])
+	}
+	if got, ok := spec.Metadata["search_queries"].([]string); !ok || !reflect.DeepEqual(got, []string{"example pricing comparison", "competitor plan changes"}) {
+		t.Fatalf("search_queries metadata = %#v, want forwarded search queries", spec.Metadata["search_queries"])
+	}
+	if spec.Metadata["text"] != "Internal notes" || spec.Metadata["output_mode"] != "report" {
+		t.Fatalf("unexpected analyze metadata: %#v", spec.Metadata)
+	}
+	if spec.Metadata["action"] != "check_accessibility" || spec.Metadata["url"] != "https://example.com/app" || spec.Metadata["image"] != "base64-image" {
+		t.Fatalf("unexpected ui-review metadata: %#v", spec.Metadata)
+	}
+	if spec.Metadata["device"] != "mobile" || spec.Metadata["channel"] != "telegram" || spec.Metadata["wait_ms"] != 1500 {
+		t.Fatalf("unexpected ui-review metadata: %#v", spec.Metadata)
+	}
+	if spec.Metadata["threshold"] != 82.5 || spec.Metadata["format"] != "human" || spec.Metadata["profile"] != "ppt" {
+		t.Fatalf("unexpected ui-review metadata: %#v", spec.Metadata)
 	}
 }
 
@@ -227,8 +274,8 @@ func TestNewChatResearchRuntimeBinding_AppliesFallbackWithoutHarnessRuntime(t *t
 
 	registry := tools.NewRegistry()
 	binding.register(nil, registry)
-	if registry.Get("deep_research") == nil {
-		t.Fatalf("expected deep_research tool to be registered, got %#v", registry.List())
+	if registry.Get("research") == nil {
+		t.Fatalf("expected research tool to be registered, got %#v", registry.List())
 	}
 }
 
@@ -270,8 +317,8 @@ func TestNewChatResearchRuntimeBinding_UsesHarnessRuntimeEdgesWhenPresent(t *tes
 
 	registry := tools.NewRegistry()
 	binding.register(harnessRuntimeController(bundle), registry)
-	if registry.Get("deep_research") == nil {
-		t.Fatalf("expected deep_research tool to be registered, got %#v", registry.List())
+	if registry.Get("research") == nil {
+		t.Fatalf("expected research tool to be registered, got %#v", registry.List())
 	}
 }
 
@@ -400,8 +447,11 @@ func TestRegisterHarnessRuntimeAgentFeature_RegistersAgentRoutesWhenReady(t *tes
 	if runner == nil {
 		t.Fatal("expected agent runner to be registered")
 	}
-	if !routeExists(e, "POST", "/agent/tasks") || !routeExists(e, "GET", "/agent/tasks") {
+	if !routeExists(e, "POST", "/agent/tasks") {
 		t.Fatalf("expected agent task routes to be registered, got %#v", e.Routes())
+	}
+	if routeExists(e, "GET", "/agent/tasks") {
+		t.Fatalf("did not expect standalone agent task list route to remain registered, got %#v", e.Routes())
 	}
 }
 
@@ -3447,17 +3497,10 @@ func TestNewApprovalRuntimeBinding_WiresLLMRiskScorerWhenAuxiliaryPresent(t *tes
 
 	var requestID string
 	for i := 0; i < 100; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/approval/pending?session_id=conv-binding-risk", nil)
-		rec := httptest.NewRecorder()
-		if err := handler.ListPending(e.NewContext(req, rec)); err != nil {
-			t.Fatalf("ListPending() error = %v", err)
-		}
-		var pending []networkapi.PendingRequest
-		if err := json.Unmarshal(rec.Body.Bytes(), &pending); err != nil {
-			t.Fatalf("decode pending approvals: %v", err)
-		}
-		if len(pending) > 0 {
-			requestID = pending[0].ID
+		if pending := handler.GetPendingBySession("conv-binding-risk"); pending != nil {
+			if id, ok := pending["id"].(string); ok {
+				requestID = strings.TrimSpace(id)
+			}
 		}
 		if requestID != "" {
 			break
@@ -3653,8 +3696,11 @@ func TestRegisterHarnessRuntimeTaskRoutes_RegistersDeepResearchAndHarnessWithBun
 	if !routeExists(e, "POST", "/harness/research/jobs") || !routeExists(e, "POST", "/api/harness/research/jobs") {
 		t.Fatalf("expected harness research capability routes to be registered, got %#v", e.Routes())
 	}
-	if !routeExists(e, "POST", "/harness/runs") || !routeExists(e, "POST", "/harness/runs/:id/actions/:action") || !routeExists(e, "POST", "/harness/groups/:id/actions/:action") || !routeExists(e, "GET", "/tasks") || !routeExists(e, "POST", "/tasks/:id/actions/:action") {
+	if !routeExists(e, "POST", "/harness/runs") || !routeExists(e, "POST", "/harness/runs/:id/actions/:action") || !routeExists(e, "POST", "/harness/groups/:id/actions/:action") || !routeExists(e, "GET", "/tasks/:id") || !routeExists(e, "POST", "/tasks/:id/actions/:action") {
 		t.Fatalf("expected harness routes to be registered, got %#v", e.Routes())
+	}
+	if routeExists(e, "GET", "/tasks") {
+		t.Fatalf("expected standalone task list route to stay removed, got %#v", e.Routes())
 	}
 }
 
@@ -3710,8 +3756,11 @@ func TestRegisterHarnessRuntimeWithDetail_RegistersRoutesAndReturnsDetailProvide
 	if detailProvider.execApprovals != execApprovals || detailProvider.questionMgr != questionMgr {
 		t.Fatalf("expected detail provider to keep approval/question sources, got %#v", detailProvider)
 	}
-	if !routeExists(e, "POST", "/harness/runs") || !routeExists(e, "POST", "/harness/runs/:id/actions/:action") || !routeExists(e, "POST", "/harness/groups/:id/actions/:action") || !routeExists(e, "GET", "/tasks") || !routeExists(e, "POST", "/tasks/:id/actions/:action") {
+	if !routeExists(e, "POST", "/harness/runs") || !routeExists(e, "POST", "/harness/runs/:id/actions/:action") || !routeExists(e, "POST", "/harness/groups/:id/actions/:action") || !routeExists(e, "GET", "/tasks/:id") || !routeExists(e, "POST", "/tasks/:id/actions/:action") {
 		t.Fatalf("expected harness and projection routes to be registered, got %#v", e.Routes())
+	}
+	if routeExists(e, "GET", "/tasks") {
+		t.Fatalf("expected standalone task list route to stay removed, got %#v", e.Routes())
 	}
 }
 
@@ -3752,8 +3801,11 @@ func TestRegisterHarnessRuntimeRoutes_RegistersHarnessAndProjectionEndpoints(t *
 	if !routeExists(e, "POST", "/harness/runs") || !routeExists(e, "POST", "/harness/runs/:id/actions/:action") || !routeExists(e, "POST", "/harness/groups/:id/actions/:action") || !routeExists(e, "POST", "/tasks/:id/actions/:action") {
 		t.Fatalf("expected harness run route to be registered, got %#v", e.Routes())
 	}
-	if !routeExists(e, "GET", "/tasks") {
-		t.Fatalf("expected task projection route to be registered, got %#v", e.Routes())
+	if routeExists(e, "GET", "/tasks") {
+		t.Fatalf("expected standalone task list route to stay removed, got %#v", e.Routes())
+	}
+	if !routeExists(e, "GET", "/tasks/:id") {
+		t.Fatalf("expected task detail route to be registered, got %#v", e.Routes())
 	}
 }
 
@@ -4887,7 +4939,15 @@ type stubDeepResearchJobCreatorTarget struct {
 	creator interface {
 		CreateJob(ctx context.Context, req deepresearch.CreateJobRequest) (*deepresearch.Job, error)
 	}
-	calls int
+	service interface {
+		ListJobsForUser(userID, tenantID string, activeOnly bool) ([]deepresearch.JobSummary, error)
+		GetJobForUser(id, userID, tenantID string) (*deepresearch.Job, error)
+		GetReportForUser(id, userID, tenantID string) (*deepresearch.Report, error)
+		CancelJobForUser(id, userID, tenantID string) error
+		SubscribeForUser(jobID, userID, tenantID string) (<-chan deepresearch.Event, func(), error)
+	}
+	calls        int
+	serviceCalls int
 }
 
 func (s *stubDeepResearchJobCreatorTarget) SetJobCreator(creator interface {
@@ -4897,11 +4957,30 @@ func (s *stubDeepResearchJobCreatorTarget) SetJobCreator(creator interface {
 	s.calls++
 }
 
+func (s *stubDeepResearchJobCreatorTarget) SetJobService(service interface {
+	ListJobsForUser(userID, tenantID string, activeOnly bool) ([]deepresearch.JobSummary, error)
+	GetJobForUser(id, userID, tenantID string) (*deepresearch.Job, error)
+	GetReportForUser(id, userID, tenantID string) (*deepresearch.Report, error)
+	CancelJobForUser(id, userID, tenantID string) error
+	SubscribeForUser(jobID, userID, tenantID string) (<-chan deepresearch.Event, func(), error)
+}) {
+	s.service = service
+	s.serviceCalls++
+}
+
 type stubDeepResearchRuntimeRouteTarget struct {
 	creator interface {
 		CreateJob(ctx context.Context, req deepresearch.CreateJobRequest) (*deepresearch.Job, error)
 	}
+	service interface {
+		ListJobsForUser(userID, tenantID string, activeOnly bool) ([]deepresearch.JobSummary, error)
+		GetJobForUser(id, userID, tenantID string) (*deepresearch.Job, error)
+		GetReportForUser(id, userID, tenantID string) (*deepresearch.Report, error)
+		CancelJobForUser(id, userID, tenantID string) error
+		SubscribeForUser(jobID, userID, tenantID string) (<-chan deepresearch.Event, func(), error)
+	}
 	creatorCalls  int
+	serviceCalls  int
 	groups        []*echo.Group
 	registerCalls int
 }
@@ -4911,6 +4990,17 @@ func (s *stubDeepResearchRuntimeRouteTarget) SetJobCreator(creator interface {
 }) {
 	s.creator = creator
 	s.creatorCalls++
+}
+
+func (s *stubDeepResearchRuntimeRouteTarget) SetJobService(service interface {
+	ListJobsForUser(userID, tenantID string, activeOnly bool) ([]deepresearch.JobSummary, error)
+	GetJobForUser(id, userID, tenantID string) (*deepresearch.Job, error)
+	GetReportForUser(id, userID, tenantID string) (*deepresearch.Report, error)
+	CancelJobForUser(id, userID, tenantID string) error
+	SubscribeForUser(jobID, userID, tenantID string) (<-chan deepresearch.Event, func(), error)
+}) {
+	s.service = service
+	s.serviceCalls++
 }
 
 func (s *stubDeepResearchRuntimeRouteTarget) RegisterGroup(group *echo.Group) {
@@ -5168,16 +5258,16 @@ func TestNewRuntimeAskPolicyBinding_QuestionManagerNeverGetsSilentFunc(t *testin
 		timeoutAction:  "default",
 	}
 	binding := newRuntimeAskPolicyBinding(settings)
-	
+
 	questionTarget := &stubQuestionRuntimePolicyTarget{}
 	binding.applyQuestionManager(questionTarget)
-	
+
 	// Key assertion: silentFunc should be nil even when auto-confirm is enabled
 	// This ensures ask-user-question always requires user interaction
 	if questionTarget.silentFunc != nil {
 		t.Fatalf("questionTarget.silentFunc should be nil even with auto-confirm=true; ask-user-question must never auto-answer")
 	}
-	
+
 	// Timeout settings should still be applied
 	if questionTarget.timeoutFunc == nil {
 		t.Fatalf("expected timeoutFunc to be set")
@@ -5197,10 +5287,10 @@ func TestNewRuntimeAskPolicyBinding_AgentSettingsStillWork(t *testing.T) {
 		autoReflect:    true,
 	}
 	binding := newRuntimeAskPolicyBinding(settings)
-	
+
 	agentTarget := &stubAgentRuntimePolicyTarget{}
 	binding.applyAgent(agentTarget)
-	
+
 	// Agent should still get all settings
 	if agentTarget.askTimeoutFunc == nil {
 		t.Fatalf("expected agent askTimeoutFunc to be set")
@@ -5214,7 +5304,7 @@ func TestNewRuntimeAskPolicyBinding_AgentSettingsStillWork(t *testing.T) {
 	if agentTarget.autoReflectFunc == nil {
 		t.Fatalf("expected agent autoReflectFunc to be set")
 	}
-	
+
 	// Verify the values
 	if agentTarget.askTimeoutFunc() != 30*time.Second {
 		t.Fatalf("askTimeout = %v, want 30s", agentTarget.askTimeoutFunc())

@@ -61,6 +61,7 @@ type SkillCandidate struct {
 type Decision struct {
 	Query              string           `json:"query"`
 	SelectedSkill      string           `json:"selected_skill"`
+	ResearchMode       string           `json:"research_mode,omitempty"`
 	Confidence         float64          `json:"confidence"`
 	NeedClarify        bool             `json:"need_clarify"`
 	Reason             string           `json:"reason"`
@@ -180,7 +181,6 @@ func NewSkillSelector(workspaceDir string, reranker SkillReranker) *SkillSelecto
 		workspaceDir: workspaceDir,
 		reranker:     reranker,
 		exposure:     skillmanifest.SharedSkillExposureManager(workspaceDir),
-		cache:        make(map[string]cachedSkillDecision),
 		cacheTTL:     defaultSkillSelectCacheTTL,
 	}
 }
@@ -322,8 +322,30 @@ func (s *SkillSelector) Select(ctx context.Context, query string, opts SelectOpt
 
 func (s *SkillSelector) finalizeDecision(cacheKey string, decision Decision, docs []SkillDoc, opts SelectOptions) (Decision, error) {
 	decision, budgetErr := applyTokenBudgetToDecision(decision, docs, opts.TokenBudget, opts.StrictTokenBudget)
+	decision = normalizeResearchFamilyDecision(decision)
 	s.setCachedDecision(cacheKey, decision)
 	return decision, budgetErr
+}
+
+func normalizeResearchFamilyDecision(decision Decision) Decision {
+	switch strings.ToLower(strings.TrimSpace(decision.SelectedSkill)) {
+	case "deep_research":
+		decision.SelectedSkill = "research"
+		if strings.TrimSpace(decision.ResearchMode) == "" {
+			decision.ResearchMode = "deep_research"
+		}
+	case "analyze":
+		decision.SelectedSkill = "research"
+		if strings.TrimSpace(decision.ResearchMode) == "" {
+			decision.ResearchMode = "analyze"
+		}
+	case "ui_reviewer", "ui_review":
+		decision.SelectedSkill = "research"
+		if strings.TrimSpace(decision.ResearchMode) == "" {
+			decision.ResearchMode = "ui_review"
+		}
+	}
+	return decision
 }
 
 func (s *SkillSelector) stage1IR(query string, docs []skillIndexEntry, threshold float64) Decision {
@@ -553,6 +575,18 @@ func stage0RuleRoute(query string) Decision {
 			ConfidenceReason: "explicit_rule",
 		}
 	}
+	selectResearch := func(mode, reason string) Decision {
+		return Decision{
+			Query:            query,
+			SelectedSkill:    "research",
+			ResearchMode:     mode,
+			Confidence:       0.95,
+			NeedClarify:      false,
+			Reason:           reason,
+			Stage:            "rule",
+			ConfidenceReason: "explicit_rule",
+		}
+	}
 
 	if strings.HasPrefix(lower, "ask ") || strings.HasPrefix(lower, "blue ask ") {
 		return selectSkill("ask", "rule_ask")
@@ -562,13 +596,13 @@ func stage0RuleRoute(query string) Decision {
 	}
 	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) && shouldBypassURLBrowserRule(lower) {
 		if shouldRouteURLBypassToUIReviewer(lower) {
-			return selectSkill("ui_reviewer", "rule_url_ui_review")
+			return selectResearch("ui_review", "rule_url_ui_review")
 		}
 		if shouldRouteURLBypassToDeepResearch(lower) {
-			return selectSkill("deep_research", "rule_url_deep_research")
+			return selectResearch("deep_research", "rule_url_deep_research")
 		}
 		if shouldRouteURLBypassToAnalyze(lower) {
-			return selectSkill("analyze", "rule_url_analyze")
+			return selectResearch("analyze", "rule_url_analyze")
 		}
 	}
 	if signals.LocalWorkspace && !signals.LiveWeb && !signals.Productivity &&
@@ -901,6 +935,9 @@ func estimateSkillDocTokens(doc SkillDoc, budget TokenBudget) int {
 func (s *SkillSelector) getCachedDecision(key string) (Decision, bool) {
 	s.cacheMu.RLock()
 	defer s.cacheMu.RUnlock()
+	if s.cache == nil {
+		return Decision{}, false
+	}
 	entry, ok := s.cache[key]
 	if !ok || time.Now().After(entry.expires) {
 		return Decision{}, false
@@ -911,6 +948,9 @@ func (s *SkillSelector) getCachedDecision(key string) (Decision, bool) {
 func (s *SkillSelector) setCachedDecision(key string, d Decision) {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
+	if s.cache == nil {
+		s.cache = make(map[string]cachedSkillDecision)
+	}
 	s.cache[key] = cachedSkillDecision{decision: d, expires: time.Now().Add(s.cacheTTL)}
 }
 

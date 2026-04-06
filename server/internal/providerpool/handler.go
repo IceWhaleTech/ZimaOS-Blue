@@ -498,11 +498,12 @@ func (p *Pool) applyOfficialProviderCatalog() {
 		return
 	}
 
+	builtinModels := builtinModelsSnapshotLookup()
 	for _, provider := range BuiltinProviders() {
 		if !isCatalogMetadataProvider(provider) {
 			continue
 		}
-		models := sortModelsByPreference(GetBuiltinModels(provider.ID))
+		models := sortModelsByPreference(builtinModels[provider.ID])
 		if len(models) == 0 {
 			continue
 		}
@@ -530,14 +531,14 @@ func isStaleBuiltinURL(providerID, url string) bool {
 // syncBuiltinModels ensures stored models for a builtin provider stay in sync
 // with the current builtin definitions. Adds new models and removes stale ones.
 func syncBuiltinModels(storage Storage, providerID string) {
-	builtinModels := GetBuiltinModels(providerID)
-	if len(builtinModels) == 0 {
-		return
-	}
-
 	storedModels, err := storage.LoadModels(providerID)
 	if err != nil || len(storedModels) == 0 {
 		// No stored models — nothing to sync (builtin fallback will be used)
+		return
+	}
+
+	builtinModels := builtinModelsProviderLookup(providerID)
+	if len(builtinModels) == 0 {
 		return
 	}
 
@@ -1174,6 +1175,7 @@ func (h *Handler) AddProvider(c echo.Context) error {
 			KeyHash: HashAPIKey(req.APIKeyStr),
 			Enabled: true,
 		})
+		provider.Enabled = true
 	}
 
 	explicitFormat := provider.APIFormat != ""
@@ -1569,13 +1571,15 @@ func (h *Handler) UpdateAllowedModels(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	// nil => disable allowlist (all models allowed)
-	// empty/non-empty slice => enable allowlist
-	if req.AllowedModels == nil {
+	normalizedAllowedModels := normalizeAllowedModels(req.AllowedModels)
+
+	// nil/empty => disable allowlist (all discovered models allowed)
+	// non-empty => enable allowlist
+	if len(normalizedAllowedModels) == 0 {
 		provider.AllowedModels = nil
 		provider.AllowlistConfigured = false
 	} else {
-		provider.AllowedModels = req.AllowedModels
+		provider.AllowedModels = normalizedAllowedModels
 		provider.AllowlistConfigured = true
 	}
 	provider.UpdatedAt = timeutil.NowTime()
@@ -2982,6 +2986,10 @@ func (h *Handler) DisconnectOAuth(c echo.Context) error {
 			provider.OAuth.Connected = false
 			provider.OAuth.Email = ""
 			provider.OAuth.AccountCount = 0
+			if len(provider.APIKeys) == 0 {
+				provider.Enabled = false
+				provider.Status = ProviderStatusInactive
+			}
 		} else {
 			provider.OAuth.AccountCount = len(remaining)
 			provider.OAuth.Email = remaining[0].Email

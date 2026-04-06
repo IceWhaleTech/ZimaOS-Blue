@@ -64,8 +64,13 @@ function createMatchMediaMock(matches = true) {
   }))
 }
 
-function mountSearchCard(card: Record<string, unknown>, locale = 'en-US') {
+function mountSearchCard(
+  card: Record<string, unknown>,
+  locale = 'en-US',
+  options: { attachTo?: Element | string } = {}
+) {
   return mount(CardSearch, {
+    attachTo: options.attachTo,
     props: {
       uiStateKey: String(card.id || 'search-card'),
       card,
@@ -97,6 +102,7 @@ describe('CardSearch', () => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
     window.localStorage?.clear?.()
+    document.body.innerHTML = ''
   })
 
   it('shows two collapsed previews and a remaining-count hint before expanding the full result list', async () => {
@@ -234,6 +240,79 @@ describe('CardSearch', () => {
     expect(preview.text()).toContain('ZimaOS Release Notes')
     expect(preview.text()).toContain('Official release summary')
     expect(preview.text()).toContain('example.com')
+  })
+
+  it('anchors the hover preview to the right edge of the chat pane when available', async () => {
+    vi.useFakeTimers()
+    mockApiGet.mockRejectedValueOnce(new Error('preview failed'))
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 1400,
+    })
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      writable: true,
+      value: 900,
+    })
+
+    const host = document.createElement('main')
+    host.className = 'chat-main-shell'
+    document.body.appendChild(host)
+    vi.spyOn(host, 'getBoundingClientRect').mockReturnValue({
+      width: 920,
+      height: 760,
+      top: 40,
+      right: 1240,
+      bottom: 800,
+      left: 320,
+      x: 320,
+      y: 40,
+      toJSON: () => ({}),
+    })
+
+    const wrapper = mountSearchCard(
+      {
+        type: 'search',
+        id: 'search-preview-chat-pane',
+        query: 'ZimaOS release notes',
+        results: [
+          {
+            title: 'ZimaOS Release Notes',
+            url: 'https://example.com/release',
+            description: 'Official release summary',
+          },
+        ],
+      },
+      'en-US',
+      { attachTo: host }
+    )
+
+    await wrapper.get('button').trigger('click')
+    await settleCard()
+
+    const row = wrapper.get('a[href=\"https://example.com/release\"]').element as HTMLElement
+    vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({
+      width: 420,
+      height: 64,
+      top: 180,
+      right: 760,
+      bottom: 244,
+      left: 340,
+      x: 340,
+      y: 180,
+      toJSON: () => ({}),
+    })
+
+    await wrapper.get('a[href=\"https://example.com/release\"]').trigger('mouseenter', {
+      clientY: 260,
+    })
+    await nextTick()
+    vi.advanceTimersByTime(400)
+    await settleCard()
+
+    const preview = wrapper.get('.search-card__preview-popover')
+    expect(preview.attributes('style')).toContain('left: 904px;')
   })
 
   it('disables hover preview fetching on coarse-pointer devices', async () => {

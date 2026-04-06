@@ -1,4 +1,4 @@
-export const localeKeys = [
+const ALL_LOCALE_KEYS = [
   'ca-ES',
   'cs-CZ',
   'da-DK',
@@ -28,9 +28,10 @@ export const localeKeys = [
   'zh-TW',
 ] as const
 
-export type LocaleKey = (typeof localeKeys)[number]
+export type LocaleKey = (typeof ALL_LOCALE_KEYS)[number]
+type LocaleOption = { value: LocaleKey; label: string }
 
-export const localeOptions = [
+const ALL_LOCALE_OPTIONS = [
   { value: 'ca-ES', label: 'Català' },
   { value: 'cs-CZ', label: 'Čeština' },
   { value: 'da-DK', label: 'Dansk' },
@@ -58,4 +59,8 @@ export const localeOptions = [
   { value: 'sv-SE', label: 'Svenska' },
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁體中文' },
-] as const satisfies readonly { value: LocaleKey; label: string }[]
+] as const satisfies readonly LocaleOption[]
+
+export const localeKeys: readonly LocaleKey[] = ALL_LOCALE_KEYS
+
+export const localeOptions: readonly LocaleOption[] = ALL_LOCALE_OPTIONS

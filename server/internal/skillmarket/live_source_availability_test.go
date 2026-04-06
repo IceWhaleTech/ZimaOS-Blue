@@ -56,8 +56,8 @@ func TestLiveSkillMarketAvailabilityReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListSources() error = %v", err)
 	}
-	if len(sources) != 9 {
-		t.Fatalf("enabled source count = %d, want 9", len(sources))
+	if len(sources) != 8 {
+		t.Fatalf("enabled source count = %d, want 8", len(sources))
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

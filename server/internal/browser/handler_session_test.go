@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 )
 
 type sessionAwareStubBrowserService struct {
@@ -112,7 +114,23 @@ func (s *stubSessionRouteProvider) CaptureBrowserSessionScreenshot(_ context.Con
 	return s.screenshot, nil
 }
 
-func TestBrowserListSessionsMapsTabsToSessions(t *testing.T) {
+type stubBrowserTaskProjectionService struct {
+	list      func(ctx context.Context, query BrowserOverviewTaskQuery) ([]map[string]any, error)
+	lastQuery BrowserOverviewTaskQuery
+}
+
+func (s *stubBrowserTaskProjectionService) List(
+	ctx context.Context,
+	query BrowserOverviewTaskQuery,
+) ([]map[string]any, error) {
+	s.lastQuery = query
+	if s.list == nil {
+		return nil, nil
+	}
+	return s.list(ctx, query)
+}
+
+func TestBrowserOverviewMapsTabsToSessions(t *testing.T) {
 	service := &sessionAwareStubBrowserService{
 		stubBrowserService: &stubBrowserService{running: true},
 		tabs: []*Tab{
@@ -133,15 +151,16 @@ func TestBrowserListSessionsMapsTabsToSessions(t *testing.T) {
 	e := echo.New()
 	h.RegisterRoutes(e.Group("/browser"))
 
-	rec := performBrowserJSONRequest(e, http.MethodGet, "/browser/sessions", "")
+	rec := performBrowserJSONRequest(e, http.MethodGet, "/browser/overview", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var sessions []SessionInfo
-	if err := json.Unmarshal(rec.Body.Bytes(), &sessions); err != nil {
-		t.Fatalf("decode sessions failed: %v", err)
+	var payload browserOverviewResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode overview failed: %v", err)
 	}
+	sessions := payload.Sessions
 	if len(sessions) != 2 {
 		t.Fatalf("len(sessions)=%d, want 2", len(sessions))
 	}
@@ -159,6 +178,22 @@ func TestBrowserListSessionsMapsTabsToSessions(t *testing.T) {
 	}
 	if sessions[1].Status != "idle" {
 		t.Fatalf("sessions[1].Status=%q, want %q", sessions[1].Status, "idle")
+	}
+}
+
+func TestBrowserStandaloneSessionReadRoutesRemoved(t *testing.T) {
+	h := NewHandler(&stubBrowserService{running: true})
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	listRec := performBrowserJSONRequest(e, http.MethodGet, "/browser/sessions", "")
+	if listRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /browser/sessions status=%d, want %d", listRec.Code, http.StatusMethodNotAllowed)
+	}
+
+	detailRec := performBrowserJSONRequest(e, http.MethodGet, "/browser/sessions/tab-1", "")
+	if detailRec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /browser/sessions/:id status=%d, want %d", detailRec.Code, http.StatusMethodNotAllowed)
 	}
 }
 
@@ -260,6 +295,73 @@ func TestBrowserSessionMonitorWrapsLegacyImagePreview(t *testing.T) {
 	}
 }
 
+func TestBrowserOverviewAggregatesSessionsAndTaskProjections(t *testing.T) {
+	provider := &stubSessionRouteProvider{
+		sessions: []SessionInfo{{
+			ID:           "session-1",
+			Status:       "active",
+			CurrentURL:   "https://example.com",
+			PageTitle:    "Example",
+			CreatedAt:    "2026-03-23T00:00:00Z",
+			LastActivity: "2026-03-23T00:00:00Z",
+			Engine:       SessionEngineChromiumManaged,
+			MonitorKind:  SessionMonitorKindImage,
+		}},
+	}
+	taskService := &stubBrowserTaskProjectionService{
+		list: func(_ context.Context, query BrowserOverviewTaskQuery) ([]map[string]any, error) {
+			return []map[string]any{{
+				"id":              "task-1",
+				"kind":            "research",
+				"conversation_id": query.ConversationID,
+				"scope":           query.Scope,
+				"title":           "Research task",
+				"status":          "running",
+				"stage":           "working",
+				"progress":        55,
+				"actions":         map[string]any{"items": []any{}},
+				"updated_at":      "2026-03-23T00:00:00Z",
+			}}, nil
+		},
+	}
+
+	h := NewHandler(nil)
+	h.SetSessionRouteProvider(provider)
+	h.SetTaskProjectionService(taskService)
+
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	req := httptest.NewRequest(http.MethodGet, "/browser/overview?scope=all&conversation_id=conv-1&limit=12", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Overview(c); err != nil {
+		t.Fatalf("Overview() error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload struct {
+		Tasks    []map[string]any `json:"tasks"`
+		Sessions []SessionInfo    `json:"sessions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode overview failed: %v", err)
+	}
+	if len(payload.Tasks) != 1 || payload.Tasks[0]["id"] != "task-1" {
+		t.Fatalf("unexpected tasks payload: %#v", payload.Tasks)
+	}
+	if len(payload.Sessions) != 1 || payload.Sessions[0].ID != "session-1" {
+		t.Fatalf("unexpected sessions payload: %#v", payload.Sessions)
+	}
+	if taskService.lastQuery.UserID != "user-1" || taskService.lastQuery.Scope != "all" || taskService.lastQuery.ConversationID != "conv-1" || taskService.lastQuery.Limit != 12 {
+		t.Fatalf("unexpected task query: %#v", taskService.lastQuery)
+	}
+}
+
 func TestBrowserSessionNavigateUsesSessionTargetID(t *testing.T) {
 	service := &sessionAwareStubBrowserService{
 		stubBrowserService: &stubBrowserService{running: true},
@@ -324,15 +426,16 @@ func TestBrowserSessionRoutesUseProviderWhenConfigured(t *testing.T) {
 	e := echo.New()
 	h.RegisterRoutes(e.Group("/browser"))
 
-	sessionsRec := performBrowserJSONRequest(e, http.MethodGet, "/browser/sessions", "")
-	if sessionsRec.Code != http.StatusOK {
-		t.Fatalf("status=%d body=%s", sessionsRec.Code, sessionsRec.Body.String())
+	overviewRec := performBrowserJSONRequest(e, http.MethodGet, "/browser/overview", "")
+	if overviewRec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", overviewRec.Code, overviewRec.Body.String())
 	}
 
-	var sessions []SessionInfo
-	if err := json.Unmarshal(sessionsRec.Body.Bytes(), &sessions); err != nil {
-		t.Fatalf("decode sessions failed: %v", err)
+	var payload browserOverviewResponse
+	if err := json.Unmarshal(overviewRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode overview failed: %v", err)
 	}
+	sessions := payload.Sessions
 	if len(sessions) != 1 || sessions[0].Engine != SessionEngineLightpanda {
 		t.Fatalf("sessions=%#v, want lightpanda provider session", sessions)
 	}

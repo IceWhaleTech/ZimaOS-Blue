@@ -24,13 +24,14 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Llista fitxers i directoris',
     toolSearchDescription: 'Cerca eines, habilitats i agents per capacitat',
     agentsListDescription: 'Llista els agents configurats i la configuració predeterminada.',
-    bashDescription: "Executa una ordre de shell i retorna stdout, stderr i el codi de sortida.",
+    bashDescription: 'Executa una ordre de shell i retorna stdout, stderr i el codi de sortida.',
     canvasDescription: "Crea i gestiona canvases lleugers d'Agent-to-UI.",
     editDescription: 'Fa una substitució precisa de text dins d’un fitxer.',
     gatewayDescription:
       'Inspecciona l’estat de la passarel·la i les connexions actives, i pot tancar connexions bloquejades.',
     grepDescription: 'Cerca un patró de text entre fitxers.',
-    imageDescription: 'Genera imatges, revisa entrades d’imatge o crea recursos de diapositives PPT.',
+    imageDescription:
+      'Genera imatges, revisa entrades d’imatge o crea recursos de diapositives PPT.',
     nodesDescription: 'Gestiona fluxos de treball i automatitzacions basades en nodes.',
     officeDescription: 'Crea fulls de càlcul .xlsx i informes .docx amb tema.',
     pdfDescription: 'Llegeix metadades PDF o extreu text de PDFs locals o remots.',
@@ -62,10 +63,10 @@ const visibleBuiltinToolLocaleTerms = {
     bashDescription: 'Spustí shellový příkaz a vrátí stdout, stderr a návratový kód.',
     canvasDescription: 'Vytváří a spravuje lehká plátna Agent-to-UI.',
     editDescription: 'Provede přesnou náhradu textu přímo v souboru.',
-    gatewayDescription:
-      'Zobrazí stav brány a aktivní spojení a může zavřít zaseknutá spojení.',
+    gatewayDescription: 'Zobrazí stav brány a aktivní spojení a může zavřít zaseknutá spojení.',
     grepDescription: 'Vyhledá textový vzor napříč soubory.',
-    imageDescription: 'Generuje obrázky, kontroluje obrazové vstupy nebo vytváří podklady pro snímky PPT.',
+    imageDescription:
+      'Generuje obrázky, kontroluje obrazové vstupy nebo vytváří podklady pro snímky PPT.',
     nodesDescription: 'Spravuje grafy workflow a automatizace založené na uzlech.',
     officeDescription: 'Vytváří tematické tabulky .xlsx a zprávy .docx.',
     pdfDescription: 'Čte metadata PDF nebo extrahuje text z místních či vzdálených PDF.',
@@ -136,15 +137,13 @@ const visibleBuiltinToolLocaleTerms = {
     gatewayDescription:
       'Prüft Gateway-Status und aktive Verbindungen und kann blockierte Verbindungen schließen.',
     grepDescription: 'Sucht dateiübergreifend nach einem Textmuster.',
-    imageDescription:
-      'Erzeugt Bilder, prüft Bildeingaben oder erstellt Assets für PPT-Folien.',
+    imageDescription: 'Erzeugt Bilder, prüft Bildeingaben oder erstellt Assets für PPT-Folien.',
     nodesDescription: 'Verwaltet Workflow-Graphen und nodebasierte Automatisierungen.',
     officeDescription: 'Erstellt thematisierte .xlsx-Tabellen und .docx-Berichte.',
     pdfDescription:
       'Liest PDF-Metadaten oder extrahiert Text aus lokalen oder entfernten PDF-Dateien.',
     subagentsDescription: 'Prüft Subagenten-Richtlinien oder startet einen Child-Agenten.',
-    ttsDescription:
-      'Erzeugt Sprachaudio, zeigt Stimmen und Status an oder stoppt die Wiedergabe.',
+    ttsDescription: 'Erzeugt Sprachaudio, zeigt Stimmen und Status an oder stoppt die Wiedergabe.',
     mcpDescription: 'Ruft Werkzeuge über den einheitlichen MCP-Dispatcher auf.',
     memoryDescription: 'Durchsucht und verwaltet gespeicherte persönliche Erinnerungen.',
   },
@@ -168,8 +167,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Λίστα αρχείων και καταλόγων',
     toolSearchDescription: 'Αναζήτηση εργαλείων, δεξιοτήτων και πρακτόρων ανά δυνατότητα',
     agentsListDescription: 'Παραθέτει τους ρυθμισμένους πράκτορες και τις προεπιλογές.',
-    bashDescription:
-      'Εκτελεί μια εντολή shell και επιστρέφει stdout, stderr και κωδικό εξόδου.',
+    bashDescription: 'Εκτελεί μια εντολή shell και επιστρέφει stdout, stderr και κωδικό εξόδου.',
     canvasDescription: 'Δημιουργεί και διαχειρίζεται ελαφριούς καμβάδες Agent-to-UI.',
     editDescription: 'Κάνει ακριβή αντικατάσταση κειμένου μέσα σε αρχείο.',
     gatewayDescription:
@@ -177,13 +175,12 @@ const visibleBuiltinToolLocaleTerms = {
     grepDescription: 'Αναζητά μοτίβο κειμένου σε αρχεία.',
     imageDescription:
       'Δημιουργεί εικόνες, εξετάζει εισόδους εικόνας ή δημιουργεί υλικά διαφανειών PPT.',
-    nodesDescription: 'Διαχειρίζεται γράφους ροών εργασίας και αυτοματισμούς βασισμένους σε κόμβους.',
+    nodesDescription:
+      'Διαχειρίζεται γράφους ροών εργασίας και αυτοματισμούς βασισμένους σε κόμβους.',
     officeDescription: 'Δημιουργεί θεματικά υπολογιστικά φύλλα .xlsx και αναφορές .docx.',
-    pdfDescription:
-      'Διαβάζει μεταδεδομένα PDF ή εξάγει κείμενο από τοπικά ή απομακρυσμένα PDF.',
+    pdfDescription: 'Διαβάζει μεταδεδομένα PDF ή εξάγει κείμενο από τοπικά ή απομακρυσμένα PDF.',
     subagentsDescription: 'Ελέγχει την πολιτική υποπρακτόρων ή εκκινεί έναν θυγατρικό πράκτορα.',
-    ttsDescription:
-      'Παράγει ήχο ομιλίας, εμφανίζει φωνές και κατάσταση ή σταματά την αναπαραγωγή.',
+    ttsDescription: 'Παράγει ήχο ομιλίας, εμφανίζει φωνές και κατάσταση ή σταματά την αναπαραγωγή.',
     mcpDescription: 'Καλεί εργαλεία μέσω του ενοποιημένου MCP dispatcher.',
     memoryDescription: 'Αναζητά και διαχειρίζεται αποθηκευμένη προσωπική μνήμη.',
   },
@@ -210,7 +207,8 @@ const visibleBuiltinToolLocaleTerms = {
     bashDescription: 'Run a shell command and return stdout, stderr, and exit code.',
     canvasDescription: 'Create and manage lightweight Agent-to-UI canvases.',
     editDescription: 'Make a precise in-place text replacement in a file.',
-    gatewayDescription: 'Inspect gateway status and active connections, and close stuck connections.',
+    gatewayDescription:
+      'Inspect gateway status and active connections, and close stuck connections.',
     grepDescription: 'Search for a text pattern across files.',
     imageDescription: 'Generate images, review image inputs, or build PPT slide assets.',
     nodesDescription: 'Manage workflow graphs and node-based automations.',
@@ -244,7 +242,8 @@ const visibleBuiltinToolLocaleTerms = {
     bashDescription: 'Run a shell command and return stdout, stderr, and exit code.',
     canvasDescription: 'Create and manage lightweight Agent-to-UI canvases.',
     editDescription: 'Make a precise in-place text replacement in a file.',
-    gatewayDescription: 'Inspect gateway status and active connections, and close stuck connections.',
+    gatewayDescription:
+      'Inspect gateway status and active connections, and close stuck connections.',
     grepDescription: 'Search for a text pattern across files.',
     imageDescription: 'Generate images, review image inputs, or build PPT slide assets.',
     nodesDescription: 'Manage workflow graphs and node-based automations.',
@@ -275,8 +274,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Listar archivos y directorios',
     toolSearchDescription: 'Buscar herramientas, habilidades y agentes por capacidad',
     agentsListDescription: 'Enumera los agentes configurados y los ajustes predeterminados.',
-    bashDescription:
-      'Ejecuta un comando de shell y devuelve stdout, stderr y el código de salida.',
+    bashDescription: 'Ejecuta un comando de shell y devuelve stdout, stderr y el código de salida.',
     canvasDescription: 'Crea y gestiona lienzos ligeros de Agent-to-UI.',
     editDescription: 'Hace un reemplazo preciso de texto dentro de un archivo.',
     gatewayDescription:
@@ -312,8 +310,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Lister les fichiers et dossiers',
     toolSearchDescription: 'Rechercher des outils, compétences et agents par capacité',
     agentsListDescription: 'Liste les agents configurés et les paramètres par défaut.',
-    bashDescription:
-      'Exécute une commande shell et renvoie stdout, stderr et le code de sortie.',
+    bashDescription: 'Exécute une commande shell et renvoie stdout, stderr et le code de sortie.',
     canvasDescription: 'Crée et gère des canevas Agent-to-UI légers.',
     editDescription: 'Effectue un remplacement précis de texte dans un fichier.',
     gatewayDescription:
@@ -321,13 +318,11 @@ const visibleBuiltinToolLocaleTerms = {
     grepDescription: 'Recherche un motif de texte dans les fichiers.',
     imageDescription:
       'Génère des images, examine des entrées d’image ou crée des ressources pour des diapositives PPT.',
-    nodesDescription:
-      'Gère des graphes de workflow et des automatisations basées sur des nœuds.',
+    nodesDescription: 'Gère des graphes de workflow et des automatisations basées sur des nœuds.',
     officeDescription: 'Crée des feuilles .xlsx et des rapports .docx avec thème.',
     pdfDescription: 'Lit les métadonnées PDF ou extrait le texte de PDF locaux ou distants.',
     subagentsDescription: 'Inspecte la politique des sous-agents ou lance un agent enfant.',
-    ttsDescription:
-      'Génère de la voix, affiche les voix et le statut, ou arrête la lecture.',
+    ttsDescription: 'Génère de la voix, affiche les voix et le statut, ou arrête la lecture.',
     mcpDescription: 'Appelle des outils via le répartiteur MCP unifié.',
     memoryDescription: 'Recherche et gère la mémoire personnelle enregistrée.',
   },
@@ -351,8 +346,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Liostaigh comhaid agus fillteáin',
     toolSearchDescription: 'Cuardaigh uirlisí, scileanna agus gníomhairí de réir cumais',
     agentsListDescription: 'Liostaíonn sé gníomhairí cumraithe agus socruithe réamhshocraithe.',
-    bashDescription:
-      'Ritheann sé ordú sliogáin agus filleann sé stdout, stderr agus cód scoir.',
+    bashDescription: 'Ritheann sé ordú sliogáin agus filleann sé stdout, stderr agus cód scoir.',
     canvasDescription: 'Cruthaíonn agus bainistíonn sé canbháis éadroma Agent-to-UI.',
     editDescription: 'Déanann sé athsholáthar cruinn téacs i gcomhad.',
     gatewayDescription:
@@ -389,8 +383,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Prikaži datoteke i direktorije',
     toolSearchDescription: 'Pretraži alate, vještine i agente prema mogućnostima',
     agentsListDescription: 'Prikazuje konfigurirane agente i zadane postavke.',
-    bashDescription:
-      'Pokreće shell naredbu i vraća stdout, stderr i izlazni kod.',
+    bashDescription: 'Pokreće shell naredbu i vraća stdout, stderr i izlazni kod.',
     canvasDescription: 'Stvara i upravlja laganim Agent-to-UI platnima.',
     editDescription: 'Radi preciznu zamjenu teksta unutar datoteke.',
     gatewayDescription:
@@ -425,7 +418,8 @@ const visibleBuiltinToolLocaleTerms = {
     findDescription: 'Fájlok és könyvtárak keresése glob minta alapján',
     lsDescription: 'Fájlok és könyvtárak listázása',
     toolSearchDescription: 'Eszközök, készségek és ügynökök keresése képesség alapján',
-    agentsListDescription: 'Felsorolja a beállított ügynököket és az alapértelmezett beállításokat.',
+    agentsListDescription:
+      'Felsorolja a beállított ügynököket és az alapértelmezett beállításokat.',
     bashDescription:
       'Shell parancsot futtat, majd visszaadja a stdout, stderr és a kilépési kód értékét.',
     canvasDescription: 'Könnyű Agent-to-UI vásznakat hoz létre és kezel.',
@@ -439,7 +433,8 @@ const visibleBuiltinToolLocaleTerms = {
     officeDescription: 'Tematikus .xlsx táblázatokat és .docx jelentéseket készít.',
     pdfDescription: 'PDF metaadatokat olvas vagy szöveget emel ki helyi vagy távoli PDF-ekből.',
     subagentsDescription: 'Áttekinti az alügynök-szabályokat vagy elindít egy gyermek ügynököt.',
-    ttsDescription: 'Beszédhangot generál, megjeleníti a hangokat és az állapotot, vagy leállítja a lejátszást.',
+    ttsDescription:
+      'Beszédhangot generál, megjeleníti a hangokat és az állapotot, vagy leállítja a lejátszást.',
     mcpDescription: 'Eszközöket hív az egységes MCP-közvetítőn keresztül.',
     memoryDescription: 'Keresi és kezeli a mentett személyes memóriát.',
   },
@@ -463,15 +458,13 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Elenca file e directory',
     toolSearchDescription: 'Cerca strumenti, competenze e agenti per capacità',
     agentsListDescription: 'Elenca gli agenti configurati e le impostazioni predefinite.',
-    bashDescription:
-      'Esegue un comando shell e restituisce stdout, stderr e codice di uscita.',
+    bashDescription: 'Esegue un comando shell e restituisce stdout, stderr e codice di uscita.',
     canvasDescription: 'Crea e gestisce canvas leggeri Agent-to-UI.',
     editDescription: 'Esegue una sostituzione precisa del testo all’interno di un file.',
     gatewayDescription:
       'Controlla lo stato del gateway e le connessioni attive e può chiudere le connessioni bloccate.',
     grepDescription: 'Cerca un pattern di testo nei file.',
-    imageDescription:
-      'Genera immagini, esamina input immagine o crea risorse per slide PPT.',
+    imageDescription: 'Genera immagini, esamina input immagine o crea risorse per slide PPT.',
     nodesDescription: 'Gestisce grafi di workflow e automazioni basate su nodi.',
     officeDescription: 'Crea fogli .xlsx e report .docx con tema.',
     pdfDescription: 'Legge i metadati PDF o estrae testo da PDF locali o remoti.',
@@ -506,11 +499,11 @@ const visibleBuiltinToolLocaleTerms = {
     gatewayDescription:
       'ゲートウェイの状態とアクティブ接続を確認し、固まった接続を閉じることができます。',
     grepDescription: '複数ファイルを横断してテキストパターンを検索します。',
-    imageDescription:
-      '画像を生成し、画像入力をレビューし、または PPT スライド素材を作成します。',
+    imageDescription: '画像を生成し、画像入力をレビューし、または PPT スライド素材を作成します。',
     nodesDescription: 'ワークフローのグラフとノードベースの自動化を管理します。',
     officeDescription: 'テーマ付きの .xlsx 表計算ファイルと .docx レポートを作成します。',
-    pdfDescription: 'PDF メタデータを読み取るか、ローカルまたはリモートの PDF からテキストを抽出します。',
+    pdfDescription:
+      'PDF メタデータを読み取るか、ローカルまたはリモートの PDF からテキストを抽出します。',
     subagentsDescription: 'サブエージェント方針を確認するか、子エージェントを起動します。',
     ttsDescription: '音声を生成し、音声一覧と状態を表示し、または再生を停止します。',
     mcpDescription: '統合 MCP ディスパッチャー経由でツールを呼び出します。',
@@ -539,8 +532,7 @@ const visibleBuiltinToolLocaleTerms = {
     bashDescription: '셸 명령을 실행하고 stdout, stderr, 종료 코드를 반환합니다.',
     canvasDescription: '가벼운 Agent-to-UI 캔버스를 만들고 관리합니다.',
     editDescription: '파일 안에서 텍스트를 정확하게 치환합니다.',
-    gatewayDescription:
-      '게이트웨이 상태와 활성 연결을 확인하고, 멈춘 연결을 닫을 수 있습니다.',
+    gatewayDescription: '게이트웨이 상태와 활성 연결을 확인하고, 멈춘 연결을 닫을 수 있습니다.',
     grepDescription: '여러 파일에서 텍스트 패턴을 검색합니다.',
     imageDescription: '이미지를 생성하고, 이미지 입력을 검토하거나, PPT 슬라이드 자산을 만듭니다.',
     nodesDescription: '워크플로 그래프와 노드 기반 자동화를 관리합니다.',
@@ -571,8 +563,10 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'ഫയലുകളും ഡയറക്ടറികളും പട്ടികപ്പെടുത്തുക',
     toolSearchDescription: 'ശേഷി അനുസരിച്ച് ഉപകരണങ്ങളും സ്കില്ലുകളും ഏജന്റുകളും തിരയുക',
     agentsListDescription: 'ക്രമീകരിച്ച ഏജന്റുകളും ഡീഫോൾട്ട് സജ്ജീകരണങ്ങളും പട്ടികപ്പെടുത്തുന്നു.',
-    bashDescription: 'ഒരു shell കമാൻഡ് പ്രവർത്തിപ്പിച്ച് stdout, stderr, exit code എന്നിവ തിരികെ നൽകുന്നു.',
-    canvasDescription: 'ലഘുഭാരമുള്ള Agent-to-UI canvasകൾ സൃഷ്ടിക്കുകയും നിയന്ത്രിക്കുകയും ചെയ്യുന്നു.',
+    bashDescription:
+      'ഒരു shell കമാൻഡ് പ്രവർത്തിപ്പിച്ച് stdout, stderr, exit code എന്നിവ തിരികെ നൽകുന്നു.',
+    canvasDescription:
+      'ലഘുഭാരമുള്ള Agent-to-UI canvasകൾ സൃഷ്ടിക്കുകയും നിയന്ത്രിക്കുകയും ചെയ്യുന്നു.',
     editDescription: 'ഒരു ഫയലിനുള്ളിൽ കൃത്യമായ ടെക്സ്റ്റ് പകരംവയ്ക്കൽ നടത്തുന്നു.',
     gatewayDescription:
       'gateway നിലയും സജീവ കണക്ഷനുകളും പരിശോധിക്കുകയും കുടുങ്ങിയ കണക്ഷനുകൾ അടയ്ക്കുകയും ചെയ്യാം.',
@@ -581,9 +575,11 @@ const visibleBuiltinToolLocaleTerms = {
       'ചിത്രങ്ങൾ സൃഷ്ടിക്കുന്നു, ചിത്ര ഇൻപുട്ടുകൾ അവലോകനം ചെയ്യുന്നു, അല്ലെങ്കിൽ PPT slide ആസ്തികൾ നിർമ്മിക്കുന്നു.',
     nodesDescription: 'workflow ഗ്രാഫുകളും node അടിസ്ഥാനമാക്കിയ automationകളും നിയന്ത്രിക്കുന്നു.',
     officeDescription: 'തീം ചെയ്ത .xlsx സ്പ്രെഡ്ഷീറ്റുകളും .docx റിപ്പോർട്ടുകളും സൃഷ്ടിക്കുന്നു.',
-    pdfDescription: 'PDF metadata വായിക്കുകയോ local/remote PDFകളിൽ നിന്ന് ടെക്സ്റ്റ് എടുക്കുകയോ ചെയ്യുന്നു.',
+    pdfDescription:
+      'PDF metadata വായിക്കുകയോ local/remote PDFകളിൽ നിന്ന് ടെക്സ്റ്റ് എടുക്കുകയോ ചെയ്യുന്നു.',
     subagentsDescription: 'ഉപഏജന്റ് നയം പരിശോധിക്കുകയോ ഒരു child agent സൃഷ്ടിക്കുകയോ ചെയ്യുന്നു.',
-    ttsDescription: 'ശബ്ദ ഓഡിയോ സൃഷ്ടിക്കുന്നു, voiceകളും നിലയും കാണിക്കുന്നു, അല്ലെങ്കിൽ പ്ലേബാക്ക് നിർത്തുന്നു.',
+    ttsDescription:
+      'ശബ്ദ ഓഡിയോ സൃഷ്ടിക്കുന്നു, voiceകളും നിലയും കാണിക്കുന്നു, അല്ലെങ്കിൽ പ്ലേബാക്ക് നിർത്തുന്നു.',
     mcpDescription: 'ഏകീകൃത MCP dispatcher വഴി ഉപകരണങ്ങളെ വിളിക്കുന്നു.',
     memoryDescription: 'സംരക്ഷിച്ച വ്യക്തിഗത മെമ്മറി തിരയുകയും നിയന്ത്രിക്കുകയും ചെയ്യുന്നു.',
   },
@@ -652,8 +648,7 @@ const visibleBuiltinToolLocaleTerms = {
       'Genereert afbeeldingen, beoordeelt beeldinvoer of maakt middelen voor PPT-dia’s.',
     nodesDescription: 'Beheert workflowgrafen en op knooppunten gebaseerde automatiseringen.',
     officeDescription: 'Maakt thematische .xlsx-spreadsheets en .docx-rapporten.',
-    pdfDescription:
-      'Leest PDF-metadata of haalt tekst uit lokale of externe PDF-bestanden.',
+    pdfDescription: 'Leest PDF-metadata of haalt tekst uit lokale of externe PDF-bestanden.',
     subagentsDescription: 'Controleert subagentbeleid of start een kindagent.',
     ttsDescription: 'Genereert spraakaudio, toont stemmen en status, of stopt afspelen.',
     mcpDescription: 'Roept tools aan via de uniforme MCP-dispatcher.',
@@ -679,8 +674,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Wyświetl pliki i katalogi',
     toolSearchDescription: 'Wyszukuj narzędzia, umiejętności i agentów według możliwości',
     agentsListDescription: 'Wyświetla skonfigurowanych agentów i ustawienia domyślne.',
-    bashDescription:
-      'Uruchamia polecenie shell i zwraca stdout, stderr oraz kod zakończenia.',
+    bashDescription: 'Uruchamia polecenie shell i zwraca stdout, stderr oraz kod zakończenia.',
     canvasDescription: 'Tworzy i zarządza lekkimi kanwami Agent-to-UI.',
     editDescription: 'Wykonuje precyzyjną zamianę tekstu w pliku.',
     gatewayDescription:
@@ -716,15 +710,13 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Listar arquivos e diretórios',
     toolSearchDescription: 'Buscar ferramentas, habilidades e agentes por capacidade',
     agentsListDescription: 'Lista os agentes configurados e as configurações padrão.',
-    bashDescription:
-      'Executa um comando de shell e retorna stdout, stderr e código de saída.',
+    bashDescription: 'Executa um comando de shell e retorna stdout, stderr e código de saída.',
     canvasDescription: 'Cria e gerencia canvases leves de Agent-to-UI.',
     editDescription: 'Faz uma substituição precisa de texto dentro de um arquivo.',
     gatewayDescription:
       'Inspeciona o status do gateway e as conexões ativas, e pode fechar conexões travadas.',
     grepDescription: 'Procura um padrão de texto em arquivos.',
-    imageDescription:
-      'Gera imagens, revisa entradas de imagem ou cria recursos para slides PPT.',
+    imageDescription: 'Gera imagens, revisa entradas de imagem ou cria recursos para slides PPT.',
     nodesDescription: 'Gerencia grafos de workflow e automações baseadas em nós.',
     officeDescription: 'Cria planilhas .xlsx e relatórios .docx com tema.',
     pdfDescription: 'Lê metadados de PDF ou extrai texto de PDFs locais ou remotos.',
@@ -753,8 +745,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Listar ficheiros e diretórios',
     toolSearchDescription: 'Pesquisar ferramentas, competências e agentes por capacidade',
     agentsListDescription: 'Lista os agentes configurados e as definições predefinidas.',
-    bashDescription:
-      'Executa um comando de shell e devolve stdout, stderr e código de saída.',
+    bashDescription: 'Executa um comando de shell e devolve stdout, stderr e código de saída.',
     canvasDescription: 'Cria e gere canvases leves de Agent-to-UI.',
     editDescription: 'Faz uma substituição precisa de texto dentro de um ficheiro.',
     gatewayDescription:
@@ -790,8 +781,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Listează fișiere și directoare',
     toolSearchDescription: 'Caută unelte, abilități și agenți după capacitate',
     agentsListDescription: 'Listează agenții configurați și setările implicite.',
-    bashDescription:
-      'Rulează o comandă shell și returnează stdout, stderr și codul de ieșire.',
+    bashDescription: 'Rulează o comandă shell și returnează stdout, stderr și codul de ieșire.',
     canvasDescription: 'Creează și gestionează pânze ușoare Agent-to-UI.',
     editDescription: 'Face o înlocuire precisă de text într-un fișier.',
     gatewayDescription:
@@ -863,8 +853,7 @@ const visibleBuiltinToolLocaleTerms = {
     lsDescription: 'Vypíše súbory a priečinky',
     toolSearchDescription: 'Vyhľadáva nástroje, zručnosti a agentov podľa schopností',
     agentsListDescription: 'Vypíše nakonfigurovaných agentov a predvolené nastavenia.',
-    bashDescription:
-      'Spustí shellový príkaz a vráti stdout, stderr a návratový kód.',
+    bashDescription: 'Spustí shellový príkaz a vráti stdout, stderr a návratový kód.',
     canvasDescription: 'Vytvára a spravuje ľahké Agent-to-UI plátna.',
     editDescription: 'Vykoná presnú náhradu textu priamo v súbore.',
     gatewayDescription:
@@ -906,10 +895,12 @@ const visibleBuiltinToolLocaleTerms = {
     gatewayDescription:
       'Inspekterar gateway-status och aktiva anslutningar och kan stänga fastnade anslutningar.',
     grepDescription: 'Söker efter ett textmönster i filer.',
-    imageDescription: 'Genererar bilder, granskar bildinmatning eller bygger tillgångar för PPT-bilder.',
+    imageDescription:
+      'Genererar bilder, granskar bildinmatning eller bygger tillgångar för PPT-bilder.',
     nodesDescription: 'Hanterar arbetsflödesgrafer och nodbaserade automatiseringar.',
     officeDescription: 'Skapar tematiska .xlsx-kalkylblad och .docx-rapporter.',
-    pdfDescription: 'Läser PDF-metadata eller extraherar text från lokala eller fjärranslutna PDF-filer.',
+    pdfDescription:
+      'Läser PDF-metadata eller extraherar text från lokala eller fjärranslutna PDF-filer.',
     subagentsDescription: 'Inspekterar policy för underagenter eller startar en barnagent.',
     ttsDescription: 'Genererar tal, visar röster och status eller stoppar uppspelning.',
     mcpDescription: 'Anropar verktyg via den enhetliga MCP-dispatchern.',

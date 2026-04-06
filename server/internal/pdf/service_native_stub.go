@@ -11,6 +11,18 @@ func nativePDFEngineName() string {
 	return engineName
 }
 
+func nativePDFShouldPreferInfo() bool {
+	return false
+}
+
+func nativePDFShouldPreferExtract(_ ExtractRequest) bool {
+	return false
+}
+
+func nativePDFResultShouldShortCircuit(_ ExtractRequest, _ ExtractResult) bool {
+	return false
+}
+
 func tryNativePDFInfo(_ context.Context, _ string, _ os.FileInfo) (DocumentInfo, bool, error) {
 	return DocumentInfo{}, false, nil
 }

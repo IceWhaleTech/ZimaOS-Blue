@@ -759,4 +759,191 @@ const localeStructuralBackfills = {
   },
 } satisfies Partial<Record<LocaleKey, Record<string, unknown>>>
 
+const cacheTermBackfills: Partial<
+  Record<
+    LocaleKey,
+    { nav: { cache: string }; tokenEconomy: { cache: string }; system: { cpuCache: string } }
+  >
+> = {
+  'cs-CZ': {
+    nav: { cache: 'Mezipaměť' },
+    tokenEconomy: { cache: 'Mezipaměť' },
+    system: { cpuCache: 'Mezipaměť' },
+  },
+  'da-DK': {
+    nav: { cache: 'Cachelager' },
+    tokenEconomy: { cache: 'Cachelager' },
+    system: { cpuCache: 'Cachelager' },
+  },
+  'de-DE': {
+    nav: { cache: 'Zwischenspeicher' },
+    tokenEconomy: { cache: 'Zwischenspeicher' },
+    system: { cpuCache: 'Zwischenspeicher' },
+  },
+  'fr-FR': {
+    nav: { cache: 'Mémoire cache' },
+    tokenEconomy: { cache: 'Mémoire cache' },
+    system: { cpuCache: 'Mémoire cache' },
+  },
+  'it-IT': {
+    nav: { cache: 'Memoria cache' },
+    tokenEconomy: { cache: 'Memoria cache' },
+    system: { cpuCache: 'Memoria cache' },
+  },
+  'nb-NO': {
+    nav: { cache: 'Hurtigbuffer' },
+    tokenEconomy: { cache: 'Hurtigbuffer' },
+    system: { cpuCache: 'Hurtigbuffer' },
+  },
+  'nl-NL': {
+    nav: { cache: 'Cachegeheugen' },
+    tokenEconomy: { cache: 'Cachegeheugen' },
+    system: { cpuCache: 'Cachegeheugen' },
+  },
+  'pt-BR': {
+    nav: { cache: 'Memória cache' },
+    tokenEconomy: { cache: 'Memória cache' },
+    system: { cpuCache: 'Memória cache' },
+  },
+  'pt-PT': {
+    nav: { cache: 'Memória cache' },
+    tokenEconomy: { cache: 'Memória cache' },
+    system: { cpuCache: 'Memória cache' },
+  },
+  'ro-RO': {
+    nav: { cache: 'Memorie cache' },
+    tokenEconomy: { cache: 'Memorie cache' },
+    system: { cpuCache: 'Memorie cache' },
+  },
+  'sk-SK': {
+    nav: { cache: 'Vyrovnávacia pamäť' },
+    tokenEconomy: { cache: 'Vyrovnávacia pamäť' },
+    system: { cpuCache: 'Vyrovnávacia pamäť' },
+  },
+  'sv-SE': {
+    nav: { cache: 'Cacheminne' },
+    tokenEconomy: { cache: 'Cacheminne' },
+    system: { cpuCache: 'Cacheminne' },
+  },
+}
+
+const backendTermBackfills: Partial<Record<LocaleKey, { backend: string }>> = {
+  'ca-ES': { backend: 'Servidor' },
+  'cs-CZ': { backend: 'Serverová část' },
+  'da-DK': { backend: 'Serverside' },
+  'de-DE': { backend: 'Serverteil' },
+  'el-GR': { backend: 'Εξυπηρετητής' },
+  'it-IT': { backend: 'Back-end' },
+  'nb-NO': { backend: 'Baksystem' },
+  'ro-RO': { backend: 'Server' },
+  'sk-SK': { backend: 'Serverová časť' },
+  'sv-SE': { backend: 'Serversida' },
+}
+
+const webTermBackfills: Partial<Record<LocaleKey, { web: string }>> = {
+  'ca-ES': { web: 'Lloc web' },
+  'cs-CZ': { web: 'Webový' },
+  'da-DK': { web: 'Net' },
+  'de-DE': { web: 'Netz' },
+  'es-ES': { web: 'Sitio web' },
+  'fr-FR': { web: 'Site web' },
+  'hr-HR': { web: 'Mreža' },
+  'hu-HU': { web: 'Webes' },
+  'nl-NL': { web: 'Website' },
+  'ro-RO': { web: 'Webul' },
+  'sk-SK': { web: 'Webový' },
+}
+
+const mutableLocaleStructuralBackfills =
+  localeStructuralBackfills as Partial<Record<LocaleKey, Record<string, unknown>>>
+
+for (const [localeKey, patch] of Object.entries(cacheTermBackfills) as Array<
+  [
+    LocaleKey,
+    { nav: { cache: string }; tokenEconomy: { cache: string }; system: { cpuCache: string } },
+  ]
+>) {
+  const current = (mutableLocaleStructuralBackfills[localeKey] ?? {}) as Record<string, unknown>
+  const currentNav = (current.nav ?? {}) as Record<string, unknown>
+  const currentTokenEconomy = (current.tokenEconomy ?? {}) as Record<string, unknown>
+  const currentSystem = (current.system ?? {}) as Record<string, unknown>
+
+  mutableLocaleStructuralBackfills[localeKey] = {
+    ...current,
+    nav: {
+      ...currentNav,
+      ...patch.nav,
+    },
+    tokenEconomy: {
+      ...currentTokenEconomy,
+      ...patch.tokenEconomy,
+    },
+    system: {
+      ...currentSystem,
+      ...patch.system,
+    },
+  }
+}
+
+for (const [localeKey, patch] of Object.entries(backendTermBackfills) as Array<
+  [LocaleKey, { backend: string }]
+>) {
+  const current = (mutableLocaleStructuralBackfills[localeKey] ?? {}) as Record<string, unknown>
+  const currentApiProxy = (current.apiProxy ?? {}) as Record<string, unknown>
+  const currentResultCard = (current.resultCard ?? {}) as Record<string, unknown>
+  const currentResultCardLabels = (currentResultCard.labels ?? {}) as Record<string, unknown>
+  const currentUserdata = (current.userdata ?? {}) as Record<string, unknown>
+  const currentUserdataMemory = (currentUserdata.memory ?? {}) as Record<string, unknown>
+
+  mutableLocaleStructuralBackfills[localeKey] = {
+    ...current,
+    apiProxy: {
+      ...currentApiProxy,
+      prunerBackend: patch.backend,
+    },
+    resultCard: {
+      ...currentResultCard,
+      labels: {
+        ...currentResultCardLabels,
+        backend: patch.backend,
+      },
+    },
+    userdata: {
+      ...currentUserdata,
+      memory: {
+        ...currentUserdataMemory,
+        backend: patch.backend,
+      },
+    },
+  }
+}
+
+for (const [localeKey, patch] of Object.entries(webTermBackfills) as Array<
+  [LocaleKey, { web: string }]
+>) {
+  const current = (mutableLocaleStructuralBackfills[localeKey] ?? {}) as Record<string, unknown>
+  const currentCompanion = (current.companion ?? {}) as Record<string, unknown>
+  const currentCompanionPlatforms = (currentCompanion.platforms ?? {}) as Record<string, unknown>
+  const currentTools = (current.tools ?? {}) as Record<string, unknown>
+  const currentToolNames = (currentTools.names ?? {}) as Record<string, unknown>
+
+  mutableLocaleStructuralBackfills[localeKey] = {
+    ...current,
+    companion: {
+      ...currentCompanion,
+      platforms: {
+        ...currentCompanionPlatforms,
+        web: patch.web,
+      },
+    },
+    tools: {
+      ...currentTools,
+      names: {
+        ...currentToolNames,
+        web: patch.web,
+      },
+    },
+  }
+}
+
 export default localeStructuralBackfills

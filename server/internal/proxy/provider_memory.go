@@ -3,6 +3,7 @@ package proxy
 import (
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	ecache2 "github.com/orca-zhang/ecache2"
@@ -21,14 +22,36 @@ const (
 // ProviderMemory remembers provider capabilities discovered at runtime.
 // Uses a single ecache2 with uint64 keys (FNV-1a hashes) for zero-alloc lookups.
 type ProviderMemory struct {
-	cache *ecache2.Cache[uint64]
+	cacheOnce sync.Once
+	cacheMu   sync.RWMutex
+	cache     *ecache2.Cache[uint64]
 }
 
 // NewProviderMemory creates a new provider memory with sensible TTLs.
 func NewProviderMemory() *ProviderMemory {
-	return &ProviderMemory{
-		cache: ecache2.NewLRUCache[uint64](4, 512, 24*time.Hour),
+	return &ProviderMemory{}
+}
+
+func (pm *ProviderMemory) cacheOrNil() *ecache2.Cache[uint64] {
+	if pm == nil {
+		return nil
 	}
+	pm.cacheMu.RLock()
+	defer pm.cacheMu.RUnlock()
+	return pm.cache
+}
+
+func (pm *ProviderMemory) ensureCache() *ecache2.Cache[uint64] {
+	if pm == nil {
+		return nil
+	}
+	pm.cacheOnce.Do(func() {
+		cache := ecache2.NewLRUCache[uint64](4, 512, 24*time.Hour)
+		pm.cacheMu.Lock()
+		pm.cache = cache
+		pm.cacheMu.Unlock()
+	})
+	return pm.cacheOrNil()
 }
 
 // memKey builds a cache key as a raw FNV-1a uint64 hash.
@@ -140,7 +163,11 @@ func memKeyWithFullBaseURL(prefix, providerID, baseURL, suffix string) uint64 {
 
 // RecallFormat returns the remembered API format for a provider (as a raw string).
 func (pm *ProviderMemory) RecallFormat(providerID, baseURL string) (string, bool) {
-	if v, ok := pm.cache.Get(memKey("fmt:", providerID, baseURL)); ok {
+	cache := pm.cacheOrNil()
+	if cache == nil {
+		return "", false
+	}
+	if v, ok := cache.Get(memKey("fmt:", providerID, baseURL)); ok {
 		if pt, ok := v.(string); ok {
 			return pt, true
 		}
@@ -150,18 +177,24 @@ func (pm *ProviderMemory) RecallFormat(providerID, baseURL string) (string, bool
 
 // RememberFormat caches the API format that worked for a provider.
 func (pm *ProviderMemory) RememberFormat(providerID, baseURL string, format string) {
-	pm.cache.Put(memKey("fmt:", providerID, baseURL), format)
+	pm.ensureCache().Put(memKey("fmt:", providerID, baseURL), format)
 	slog.Debug("[provider-memory] remembered format", "provider", providerID, "format", format)
 }
 
 // ForgetFormat evicts the cached format.
 func (pm *ProviderMemory) ForgetFormat(providerID, baseURL string) {
-	pm.cache.Del(memKey("fmt:", providerID, baseURL))
+	if cache := pm.cacheOrNil(); cache != nil {
+		cache.Del(memKey("fmt:", providerID, baseURL))
+	}
 }
 
 // RecallModelFormat returns the remembered API format for a specific provider+baseURL+requested model.
 func (pm *ProviderMemory) RecallModelFormat(providerID, baseURL, requestedModel string) (string, bool) {
-	if v, ok := pm.cache.Get(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel)); ok {
+	cache := pm.cacheOrNil()
+	if cache == nil {
+		return "", false
+	}
+	if v, ok := cache.Get(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel)); ok {
 		if s, ok := v.(string); ok {
 			return s, true
 		}
@@ -171,20 +204,26 @@ func (pm *ProviderMemory) RecallModelFormat(providerID, baseURL, requestedModel 
 
 // RememberModelFormat caches the API format that worked for a specific requested model.
 func (pm *ProviderMemory) RememberModelFormat(providerID, baseURL, requestedModel, format string) {
-	pm.cache.Put(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel), format)
+	pm.ensureCache().Put(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel), format)
 	slog.Debug("[provider-memory] remembered model format", "provider", providerID, "base_url", normalizeMemoryBaseURL(baseURL), "requested", strings.TrimSpace(requestedModel), "format", format)
 }
 
 // ForgetModelFormat evicts the cached model-scoped format.
 func (pm *ProviderMemory) ForgetModelFormat(providerID, baseURL, requestedModel string) {
-	pm.cache.Del(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel))
+	if cache := pm.cacheOrNil(); cache != nil {
+		cache.Del(memKeyWithFullBaseURL("model-fmt:", providerID, baseURL, requestedModel))
+	}
 }
 
 // --- Model alias memory ---
 
 // RecallModelAlias returns the actual model name that worked for a requested model.
 func (pm *ProviderMemory) RecallModelAlias(providerID, baseURL, requestedModel string) (string, bool) {
-	if v, ok := pm.cache.Get(memKeyWithSuffix("model:", providerID, baseURL, requestedModel)); ok {
+	cache := pm.cacheOrNil()
+	if cache == nil {
+		return "", false
+	}
+	if v, ok := cache.Get(memKeyWithSuffix("model:", providerID, baseURL, requestedModel)); ok {
 		if s, ok := v.(string); ok {
 			return s, true
 		}
@@ -194,20 +233,26 @@ func (pm *ProviderMemory) RecallModelAlias(providerID, baseURL, requestedModel s
 
 // RememberModelAlias caches a model name mapping that worked.
 func (pm *ProviderMemory) RememberModelAlias(providerID, baseURL, requestedModel, actualModel string) {
-	pm.cache.Put(memKeyWithSuffix("model:", providerID, baseURL, requestedModel), actualModel)
+	pm.ensureCache().Put(memKeyWithSuffix("model:", providerID, baseURL, requestedModel), actualModel)
 	slog.Debug("[provider-memory] remembered model alias", "provider", providerID, "requested", requestedModel, "actual", actualModel)
 }
 
 // ForgetModelAlias evicts a cached model alias.
 func (pm *ProviderMemory) ForgetModelAlias(providerID, baseURL, requestedModel string) {
-	pm.cache.Del(memKeyWithSuffix("model:", providerID, baseURL, requestedModel))
+	if cache := pm.cacheOrNil(); cache != nil {
+		cache.Del(memKeyWithSuffix("model:", providerID, baseURL, requestedModel))
+	}
 }
 
 // --- Tool capability memory ---
 
 // RecallToolCap returns the remembered tool capability level.
 func (pm *ProviderMemory) RecallToolCap(providerID, baseURL string) (ToolCapLevel, bool) {
-	if v, ok := pm.cache.Get(memKey("tool:", providerID, baseURL)); ok {
+	cache := pm.cacheOrNil()
+	if cache == nil {
+		return ToolCapUnknown, false
+	}
+	if v, ok := cache.Get(memKey("tool:", providerID, baseURL)); ok {
 		if level, ok := v.(ToolCapLevel); ok {
 			return level, true
 		}
@@ -217,13 +262,15 @@ func (pm *ProviderMemory) RecallToolCap(providerID, baseURL string) (ToolCapLeve
 
 // RememberToolCap caches the tool capability level that worked.
 func (pm *ProviderMemory) RememberToolCap(providerID, baseURL string, level ToolCapLevel) {
-	pm.cache.Put(memKey("tool:", providerID, baseURL), level)
+	pm.ensureCache().Put(memKey("tool:", providerID, baseURL), level)
 	slog.Debug("[provider-memory] remembered tool cap", "provider", providerID, "level", level)
 }
 
 // ForgetToolCap evicts the cached tool capability.
 func (pm *ProviderMemory) ForgetToolCap(providerID, baseURL string) {
-	pm.cache.Del(memKey("tool:", providerID, baseURL))
+	if cache := pm.cacheOrNil(); cache != nil {
+		cache.Del(memKey("tool:", providerID, baseURL))
+	}
 }
 
 // --- Throttle memory ---
@@ -236,7 +283,11 @@ func (pm *ProviderMemory) IsThrottled(providerID, baseURL string) bool {
 
 // ThrottleUntil returns the time until which a provider remains throttled.
 func (pm *ProviderMemory) ThrottleUntil(providerID, baseURL string) (time.Time, bool) {
-	if v, ok := pm.cache.Get(memKey("throttle:", providerID, baseURL)); ok {
+	cache := pm.cacheOrNil()
+	if cache == nil {
+		return time.Time{}, false
+	}
+	if v, ok := cache.Get(memKey("throttle:", providerID, baseURL)); ok {
 		if untilUnix, ok := v.(int64); ok {
 			until := time.Unix(0, untilUnix)
 			if time.Now().Before(until) {
@@ -262,38 +313,48 @@ func (pm *ProviderMemory) RememberThrottle(providerID, baseURL string, retryAfte
 		retryAfter = 30 * time.Second
 	}
 	until := time.Now().Add(retryAfter).UnixNano()
-	pm.cache.Put(memKey("throttle:", providerID, baseURL), until)
+	pm.ensureCache().Put(memKey("throttle:", providerID, baseURL), until)
 	slog.Info("[provider-memory] throttled provider", "provider", providerID, "retry_after", retryAfter)
 }
 
 // ForgetThrottle clears the throttle for a provider.
 func (pm *ProviderMemory) ForgetThrottle(providerID, baseURL string) {
-	pm.cache.Del(memKey("throttle:", providerID, baseURL))
+	if cache := pm.cacheOrNil(); cache != nil {
+		cache.Del(memKey("throttle:", providerID, baseURL))
+	}
 }
 
 // --- Model blacklist memory ---
 
 // IsModelBlacklisted returns true if a model is known to be unavailable on this provider.
 func (pm *ProviderMemory) IsModelBlacklisted(providerID, baseURL, model string) bool {
-	_, ok := pm.cache.Get(memKeyWithSuffix("bl:", providerID, baseURL, model))
+	cache := pm.cacheOrNil()
+	if cache == nil {
+		return false
+	}
+	_, ok := cache.Get(memKeyWithSuffix("bl:", providerID, baseURL, model))
 	return ok
 }
 
 // BlacklistModel marks a model as unavailable on this provider (skip it next time).
 func (pm *ProviderMemory) BlacklistModel(providerID, baseURL, model string) {
-	pm.cache.Put(memKeyWithSuffix("bl:", providerID, baseURL, model), true)
+	pm.ensureCache().Put(memKeyWithSuffix("bl:", providerID, baseURL, model), true)
 	slog.Debug("[provider-memory] blacklisted model", "provider", providerID, "model", model)
 }
 
 // ClearModelBlacklist removes a model from the blacklist (user can retry after quota recharge, etc).
 func (pm *ProviderMemory) ClearModelBlacklist(providerID, baseURL, model string) {
-	pm.cache.Del(memKeyWithSuffix("bl:", providerID, baseURL, model))
+	if cache := pm.cacheOrNil(); cache != nil {
+		cache.Del(memKeyWithSuffix("bl:", providerID, baseURL, model))
+	}
 	slog.Info("[provider-memory] cleared model blacklist", "provider", providerID, "model", model)
 }
 
 // ClearThrottle removes throttle restriction (user can retry after service recovery).
 func (pm *ProviderMemory) ClearThrottle(providerID, baseURL string) {
-	pm.cache.Del(memKey("throttle:", providerID, baseURL))
+	if cache := pm.cacheOrNil(); cache != nil {
+		cache.Del(memKey("throttle:", providerID, baseURL))
+	}
 	slog.Info("[provider-memory] cleared throttle", "provider", providerID)
 }
 

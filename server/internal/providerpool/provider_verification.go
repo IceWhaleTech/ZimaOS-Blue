@@ -119,12 +119,12 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 	}
 	anthropicStatus, _, anthropicErr := doProviderVerificationRequest(ctx, client, http.MethodPost, urls.anthropicURL, anthropicProbeBody(probeModel), req.APIKey, APIFormatAnthropic)
 
-	chatError := extractErrorMessage(chatBody)
+	chatError := extractProviderVerificationString(chatBody, "")
 	if probeModel == "" && isMissingModelRequiredError(chatError) {
 		// Model-less probe can trigger expected parameter errors on strict endpoints.
 		chatError = ""
 	}
-	responsesStatus := extractFieldOrError(respV1Body, "status")
+	responsesStatus := extractProviderVerificationString(respV1Body, "status")
 	responsesOnly := indicatesResponsesOnlyProvider(chatStatus, chatBody)
 	anthropicReachable := isProviderVerificationReachable(anthropicStatus)
 	openAIReachable := isProviderVerificationReachable(chatStatus)
@@ -168,16 +168,6 @@ func verifyProviderCandidate(ctx context.Context, req providerVerificationReques
 		// For non-responses formats, prefer root base URL rather than a /responses suffix.
 		recommendedBaseURL = rootBaseURL
 	}
-	// responses-only providers should prefer a /responses endpoint base.
-	if recommendedFormat == APIFormatResponses && responsesOnly && !strings.HasSuffix(strings.TrimSuffix(recommendedBaseURL, "/"), "/responses") {
-		switch {
-		case responsesV1Reachable:
-			recommendedBaseURL = urls.responsesV1
-		case responsesRawReachable:
-			recommendedBaseURL = urls.responsesRaw
-		}
-	}
-
 	probes := map[string]providerVerificationProbe{
 		"models": {
 			URL:        urls.modelsURL,
@@ -541,7 +531,7 @@ func isProviderVerificationResponsesReachable(status int, body string) bool {
 	return !looksLikeProviderHTMLDocument(body)
 }
 
-func extractErrorMessage(body string) string {
+func extractProviderVerificationString(body, field string) string {
 	if strings.TrimSpace(body) == "" {
 		return ""
 	}
@@ -549,27 +539,10 @@ func extractErrorMessage(body string) string {
 	if err := json.Unmarshal([]byte(body), &payload); err != nil {
 		return ""
 	}
-	if errObj, ok := payload["error"].(map[string]interface{}); ok {
-		if msg, ok := errObj["message"].(string); ok {
-			return strings.TrimSpace(msg)
+	if field != "" {
+		if val, ok := payload[field].(string); ok {
+			return strings.TrimSpace(val)
 		}
-	}
-	if msg, ok := payload["message"].(string); ok {
-		return strings.TrimSpace(msg)
-	}
-	return ""
-}
-
-func extractFieldOrError(body, field string) string {
-	if strings.TrimSpace(body) == "" {
-		return ""
-	}
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(body), &payload); err != nil {
-		return ""
-	}
-	if val, ok := payload[field].(string); ok {
-		return strings.TrimSpace(val)
 	}
 	if errObj, ok := payload["error"].(map[string]interface{}); ok {
 		if msg, ok := errObj["message"].(string); ok {
@@ -598,33 +571,10 @@ func resolveProviderVerificationModelCandidates(requestedModel, modelsBody strin
 		return nil
 	}
 
-	type scoredModel struct {
-		id    string
-		score int
-		index int
-	}
-
-	scored := make([]scoredModel, 0, len(modelIDs))
-	for idx, modelID := range modelIDs {
-		scored = append(scored, scoredModel{
-			id:    modelID,
-			score: modelIntelligenceScore(modelID),
-			index: idx,
-		})
-	}
-
-	sort.SliceStable(scored, func(i, j int) bool {
-		if scored[i].score == scored[j].score {
-			return scored[i].index < scored[j].index
-		}
-		return scored[i].score > scored[j].score
+	sort.SliceStable(modelIDs, func(i, j int) bool {
+		return modelIntelligenceScore(modelIDs[i]) > modelIntelligenceScore(modelIDs[j])
 	})
-
-	out := make([]string, 0, len(scored))
-	for _, item := range scored {
-		out = append(out, item.id)
-	}
-	return out
+	return modelIDs
 }
 
 func extractModelIDsFromModelsResponse(body string) []string {

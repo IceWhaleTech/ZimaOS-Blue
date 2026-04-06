@@ -564,7 +564,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
 
   const flushTable = () => {
     if (inTable && tableRows.length > 0) {
-      result.push('<div class="overflow-x-auto my-3">')
+      result.push('<div class="markdown-table-wrap overflow-x-auto my-3">')
       result.push(
         '<table class="min-w-full border-collapse border border-gray-300 dark:border-gray-600">'
       )

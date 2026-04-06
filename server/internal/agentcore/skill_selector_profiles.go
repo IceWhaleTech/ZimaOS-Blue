@@ -25,106 +25,69 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 	human := sel.HumanizeName(name)
 	profile := sel.SelectorProfile{
 		Name:         doc.Name,
-		ExactAliases: compactSelectorTerms(name, human),
-		Objects:      compactSelectorTerms(doc.Tags...),
-		ContextCues:  compactSelectorTerms(doc.Category, doc.Example),
+		ExactAliases: sel.CompactTerms(name, human),
+		Objects:      sel.CompactTerms(doc.Tags...),
+		ContextCues:  sel.CompactTerms(doc.Category, doc.Example),
 	}
+	profile, sharedPresetApplied := sel.ApplyCommonProfilePreset(profile, name)
 
 	for _, route := range doc.TaskRoutes {
-		profile.ContextCues = compactSelectorTerms(append(profile.ContextCues, route.Intent, route.Action)...)
+		profile.ContextCues = sel.CompactTerms(append(profile.ContextCues, route.Intent, route.Action)...)
 	}
 
 	switch name {
-	case "ask":
-		profile.Actions = compactSelectorTerms("ask", "clarify", "confirm", "question", "询问", "澄清", "确认", "提问")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "question", "choice", "clarification", "问题", "选项", "澄清")...)
-	case "browser":
-		profile.Actions = compactSelectorTerms("open", "visit", "navigate", "browse", "打开", "访问", "跳转", "浏览")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "url", "web", "website", "site", "web page", "webpage", "网页", "网站", "网址")...)
-		profile.ContextCues = compactSelectorTerms(append(profile.ContextCues, "http://", "https://", "www.")...)
-		profile.PreferredDomains = []string{sel.DomainLiveWeb, sel.DomainURLPresent}
 	case "web_query", "web_search":
-		profile.Actions = compactSelectorTerms("search", "look up", "lookup", "find", "check", "latest", "news", "搜索", "检索", "查找", "最新", "新闻")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "web", "news", "sources", "citations", "references", "docs", "documentation", "manual", "文档", "官方文档", "网页", "新闻", "来源", "引用")...)
+		profile.Actions = sel.CompactTerms("search", "look up", "lookup", "find", "check", "latest", "news", "搜索", "检索", "查找", "最新", "新闻")
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "web", "news", "sources", "citations", "references", "docs", "documentation", "manual", "文档", "官方文档", "网页", "新闻", "来源", "引用")...)
 		profile.PreferredDomains = []string{sel.DomainLiveWeb}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
 	case "deep_research":
-		profile.Actions = compactSelectorTerms("research", "investigate", "compare", "study", "benchmark", "timeline", "调研", "研究", "查阅", "梳理", "比较", "基准", "时间线")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "sources", "citations", "evidence", "references", "multi-source", "comparison", "tradeoff", "views", "timeline", "benchmark", "来源", "引用", "证据", "多来源", "对比", "权衡", "观点", "时期", "基准")...)
+		profile.Actions = sel.CompactTerms("research", "investigate", "compare", "study", "benchmark", "timeline", "调研", "研究", "查阅", "梳理", "比较", "基准", "时间线")
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "sources", "citations", "evidence", "references", "multi-source", "comparison", "tradeoff", "views", "timeline", "benchmark", "来源", "引用", "证据", "多来源", "对比", "权衡", "观点", "时期", "基准")...)
 		profile.PreferredDomains = []string{sel.DomainLiveWeb}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
-	case "ui_reviewer":
-		profile.Actions = compactSelectorTerms("review", "audit", "inspect", "evaluate", "critique", "score", "rate", "assess", "accessibility check", "评审", "审查", "检查", "点评", "打分", "评分", "无障碍检查")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "ui", "ux", "screen", "screenshot", "design", "mockup", "layout", "component", "website", "site", "webpage", "landing page", "app", "accessibility", "a11y", "visual", "界面", "截图", "设计稿", "布局", "组件", "网站", "网页", "落地页", "应用", "无障碍", "可访问性", "视觉")...)
-		profile.RequireAnyDomains = []string{sel.DomainUIArtifact}
-		profile.PreferredDomains = []string{sel.DomainUIArtifact}
-		profile.ConflictDomains = []string{sel.DomainLocalWorkspace, sel.DomainProductivity}
 	case "analyze":
-		profile.Actions = compactSelectorTerms("analyze", "summarize", "compare", "synthesize", "inspect", "review", "report", "分析", "总结", "比较", "提炼", "查看", "归纳", "报告")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "report", "text", "data", "content", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "document", "documents", "http://", "https://", "www.", "报告", "文本", "数据", "内容", "网址", "链接", "页面", "网站", "主题", "文章", "文档")...)
+		profile.Actions = sel.CompactTerms("analyze", "summarize", "compare", "synthesize", "inspect", "review", "report", "分析", "总结", "比较", "提炼", "查看", "归纳", "报告")
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "report", "text", "data", "content", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "document", "documents", "http://", "https://", "www.", "报告", "文本", "数据", "内容", "网址", "链接", "页面", "网站", "主题", "文章", "文档")...)
 		profile.PreferredDomains = []string{sel.DomainLiveWeb}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
 	case "himalaya":
-		profile.Actions = compactSelectorTerms("email", "mail", "imap", "smtp", "reply", "forward", "compose", "send", "archive", "search", "triage", "download attachment", "邮件", "邮箱", "回复", "转发", "发送", "归档", "检索", "整理")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "email", "mail", "inbox", "folder", "message", "attachment", "account", "imap", "smtp", "notmuch", "maildir", "收件箱", "邮件", "附件", "账户")...)
+		profile.Actions = sel.CompactTerms("email", "mail", "imap", "smtp", "reply", "forward", "compose", "send", "archive", "search", "triage", "download attachment", "邮件", "邮箱", "回复", "转发", "发送", "归档", "检索", "整理")
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "email", "mail", "inbox", "folder", "message", "attachment", "account", "imap", "smtp", "notmuch", "maildir", "收件箱", "邮件", "附件", "账户")...)
 		profile.PreferredDomains = []string{sel.DomainProductivity}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
 	case "config":
-		profile.Actions = compactSelectorTerms("manage", "configure", "set", "update", "enable", "disable", "管理", "配置", "设置", "更新", "启用", "关闭")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "settings", "providers", "config", "runtime", "设置", "提供商", "配置", "运行时")...)
+		profile.Actions = sel.CompactTerms("manage", "configure", "set", "update", "enable", "disable", "管理", "配置", "设置", "更新", "启用", "关闭")
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "settings", "providers", "config", "runtime", "设置", "提供商", "配置", "运行时")...)
 	case "mediagen":
-		profile.Actions = compactSelectorTerms("generate", "create", "draw", "edit", "animate", "生成", "创建", "绘制", "编辑", "动画")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "image", "video", "picture", "illustration", "图片", "图像", "视频", "插画")...)
+		profile.Actions = sel.CompactTerms("generate", "create", "draw", "edit", "animate", "生成", "创建", "绘制", "编辑", "动画")
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "image", "video", "picture", "illustration", "图片", "图像", "视频", "插画")...)
 	case "reminder":
-		profile.Actions = compactSelectorTerms("remind", "notify", "schedule", "提醒", "通知", "安排")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "reminder", "task", "notification", "提醒", "任务", "通知")...)
-		profile.PreferredDomains = []string{sel.DomainProductivity}
+		profile.Actions = sel.CompactTerms(append(profile.Actions, "schedule", "安排")...)
 	case "scheduler":
-		profile.Actions = compactSelectorTerms("schedule", "cron", "run every", "every hour", "定时", "调度", "计划任务")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "schedule", "job", "workflow", "日程", "任务", "工作流")...)
-		profile.PreferredDomains = []string{sel.DomainProductivity}
-	case "datetime":
-		profile.Actions = compactSelectorTerms("time", "date", "today", "tomorrow", "timezone", "时间", "日期", "今天", "明天", "时区")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "time", "date", "timezone", "clock", "时间", "日期", "时区")...)
-	case "tasks":
-		profile.Actions = compactSelectorTerms("task", "todo", "track", "manage", "任务", "待办", "跟踪", "管理")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "task", "todo", "priority", "status", "任务", "待办", "优先级", "状态")...)
-		profile.PreferredDomains = []string{sel.DomainProductivity}
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "任务")...)
 	case "plan_create":
-		profile.ExactAliases = compactSelectorTerms(append(profile.ExactAliases, "plan_create", "plan update", "plan_update", "plan append", "plan_append")...)
-		profile.Actions = compactSelectorTerms("plan", "update", "append", "checklist", "规划", "计划", "更新", "清单")
-		profile.Objects = compactSelectorTerms(append(profile.Objects, "plan", "task", "checklist", "计划", "任务", "清单")...)
+		profile.ExactAliases = sel.CompactTerms(append(profile.ExactAliases, "plan_create", "plan update", "plan_update", "plan append", "plan_append")...)
+		profile.Actions = sel.CompactTerms("plan", "update", "append", "checklist", "规划", "计划", "更新", "清单")
+		profile.Objects = sel.CompactTerms(append(profile.Objects, "plan", "task", "checklist", "计划", "任务", "清单")...)
+	default:
+		if !sharedPresetApplied {
+			// No shared preset or package-specific override; keep the base profile.
+		}
 	}
 
 	if terms := routingcue.SkillTerms(name); len(terms.Actions) > 0 || len(terms.Objects) > 0 || len(terms.Context) > 0 || len(terms.Examples) > 0 {
-		profile.ExactAliases = compactSelectorTerms(append(profile.ExactAliases, terms.Examples...)...)
-		profile.Actions = compactSelectorTerms(append(profile.Actions, terms.Actions...)...)
-		profile.Objects = compactSelectorTerms(append(profile.Objects, terms.Objects...)...)
-		profile.ContextCues = compactSelectorTerms(append(profile.ContextCues, terms.Context...)...)
+		profile.ExactAliases = sel.CompactTerms(append(profile.ExactAliases, terms.Examples...)...)
+		profile.Actions = sel.CompactTerms(append(profile.Actions, terms.Actions...)...)
+		profile.Objects = sel.CompactTerms(append(profile.Objects, terms.Objects...)...)
+		profile.ContextCues = sel.CompactTerms(append(profile.ContextCues, terms.Context...)...)
 	}
 	if terms := routingcue.URLBypassTermsForSkill(name); len(terms) > 0 {
-		profile.ExactAliases = compactSelectorTerms(append(profile.ExactAliases, terms...)...)
-		profile.Actions = compactSelectorTerms(append(profile.Actions, terms...)...)
-		profile.Objects = compactSelectorTerms(append(profile.Objects, terms...)...)
-		profile.ContextCues = compactSelectorTerms(append(profile.ContextCues, terms...)...)
+		profile.ExactAliases = sel.CompactTerms(append(profile.ExactAliases, terms...)...)
+		profile.Actions = sel.CompactTerms(append(profile.Actions, terms...)...)
+		profile.Objects = sel.CompactTerms(append(profile.Objects, terms...)...)
+		profile.ContextCues = sel.CompactTerms(append(profile.ContextCues, terms...)...)
 	}
 
 	return profile
-}
-
-func compactSelectorTerms(terms ...string) []string {
-	seen := make(map[string]struct{}, len(terms))
-	out := make([]string, 0, len(terms))
-	for _, term := range terms {
-		term = strings.ToLower(strings.TrimSpace(term))
-		if term == "" {
-			continue
-		}
-		if _, ok := seen[term]; ok {
-			continue
-		}
-		seen[term] = struct{}{}
-		out = append(out, term)
-	}
-	return out
 }

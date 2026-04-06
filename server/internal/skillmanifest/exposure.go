@@ -110,10 +110,7 @@ func SharedSkillExposureManager(workspaceDir string) *SkillExposureManager {
 
 func NewSkillExposureManager(workspaceDir string) *SkillExposureManager {
 	return &SkillExposureManager{
-		workspaceDir:                 cleanWorkspaceDir(workspaceDir),
-		touchedPaths:                 make(map[string]struct{}),
-		discoveredRoots:              make(map[string]discoveredSkillRoot),
-		activatedConditionalSkillSet: make(map[string]struct{}),
+		workspaceDir: cleanWorkspaceDir(workspaceDir),
 	}
 }
 
@@ -176,9 +173,15 @@ func (m *SkillExposureManager) ObserveToolPath(toolName, absPath string) {
 	defer m.mu.Unlock()
 
 	if _, exists := m.touchedPaths[relPath]; !exists {
+		if m.touchedPaths == nil {
+			m.touchedPaths = make(map[string]struct{})
+		}
 		m.touchedPaths[relPath] = struct{}{}
 	}
 	for _, root := range newRoots {
+		if m.discoveredRoots == nil {
+			m.discoveredRoots = make(map[string]discoveredSkillRoot)
+		}
 		if _, exists := m.discoveredRoots[root.Root]; exists {
 			continue
 		}
@@ -226,9 +229,12 @@ func (m *SkillExposureManager) cloneState() skillExposureState {
 	}
 	sort.Strings(touched)
 
-	discoveredRoots := make(map[string]discoveredSkillRoot, len(m.discoveredRoots))
-	for root, info := range m.discoveredRoots {
-		discoveredRoots[root] = info
+	var discoveredRoots map[string]discoveredSkillRoot
+	if len(m.discoveredRoots) > 0 {
+		discoveredRoots = make(map[string]discoveredSkillRoot, len(m.discoveredRoots))
+		for root, info := range m.discoveredRoots {
+			discoveredRoots[root] = info
+		}
 	}
 
 	return skillExposureState{
@@ -254,6 +260,9 @@ func (m *SkillExposureManager) recordActivatedConditionalSkills(snapshot *SkillE
 		key := skillExposureViewKey(view)
 		if key == "" {
 			continue
+		}
+		if m.activatedConditionalSkillSet == nil {
+			m.activatedConditionalSkillSet = make(map[string]struct{})
 		}
 		if _, exists := m.activatedConditionalSkillSet[key]; exists {
 			continue

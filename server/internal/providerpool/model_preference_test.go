@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestPreferredAPIFormatsForModel_GPT54ProPrefersResponses(t *testing.T) {
+	formats := PreferredAPIFormatsForModel("gpt-5.4-pro")
+	if len(formats) == 0 {
+		t.Fatal("PreferredAPIFormatsForModel returned no formats")
+	}
+	if formats[0] != APIFormatResponses {
+		t.Fatalf("first preferred format = %q, want %q", formats[0], APIFormatResponses)
+	}
+}
+
 func TestSortModelIDsByPreference_SortsSmallListsDescending(t *testing.T) {
 	models := []string{
 		"o3-mini",

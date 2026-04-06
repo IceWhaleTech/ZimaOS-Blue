@@ -105,6 +105,19 @@ describe('AgentcoreRunnerPanel', () => {
     })
 
     await flushPromises()
+    expect(wrapper.find('[data-testid="agentcore-runner-source-content"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="agentcore-runner-source-toggle"]').text()).toContain(
+      'GitHub Repo & Ref'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-source-toggle"]').text()).toContain(
+      'IceWhaleTech/ZimaOS-Blue'
+    )
+    expect(wrapper.get('[data-testid="agentcore-runner-source-toggle"]').text()).toContain('main')
+    await wrapper.get('[data-testid="agentcore-runner-source-toggle"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[data-testid="agentcore-runner-source-content"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="agentcore-runner-repo-input"]').element).toBeTruthy()
+    expect(wrapper.get('[data-testid="agentcore-runner-ref-input"]').element).toBeTruthy()
     await wrapper.get('[data-testid="agentcore-runner-status-toggle"]').trigger('click')
     await flushPromises()
 
@@ -129,5 +142,27 @@ describe('AgentcoreRunnerPanel', () => {
         .get('[data-testid="agentcore-runner-evolvable-part"][data-part="orchestrator_policy"]')
         .attributes('title')
     ).toContain('This part was optimized in the current candidate')
+  })
+
+  it('renders a flatter embedded variant for evolution surfaces', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(AgentcoreRunnerPanel, {
+      props: {
+        embedded: true,
+      },
+      global: {
+        plugins: [pinia, createTestI18n()],
+      },
+    })
+
+    await flushPromises()
+
+    const card = wrapper.get('[data-testid="agentcore-runner-card"]')
+    expect(card.classes()).toContain('agentcore-runner-panel--embedded')
+    expect(card.classes()).not.toContain('dashboard-card-surface')
+    expect(wrapper.find('.agentcore-runner-panel__title').exists()).toBe(false)
+    expect(wrapper.find('.dashboard-card-subsurface').exists()).toBe(false)
   })
 })

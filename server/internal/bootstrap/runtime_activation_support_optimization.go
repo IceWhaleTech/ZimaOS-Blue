@@ -268,11 +268,48 @@ func (a *harnessOptimizationManagerAdapter) reconcileSkillRevisionDecision(ctx c
 	if err != nil {
 		return err
 	}
-	if revision == nil || revision.Status == status {
+	if revision == nil {
 		return nil
 	}
-	revision.Status = status
-	_, err = a.controller.UpdateSkillRevision(ctx, *revision)
+	if revision.Status != status {
+		revision.Status = status
+		revision, err = a.controller.UpdateSkillRevision(ctx, *revision)
+		if err != nil {
+			return err
+		}
+	}
+	return a.reconcileSkillEvolutionCaseDecision(ctx, revision, skillEvolutionCaseStatusForRevisionStatus(status))
+}
+
+func (a *harnessOptimizationManagerAdapter) reconcileSkillEvolutionCaseDecision(ctx context.Context, revision *harness.SkillRevision, status harness.SkillEvolutionCaseStatus) error {
+	if a == nil || a.controller == nil || revision == nil || status == "" {
+		return nil
+	}
+	caseID := strings.TrimSpace(revision.OriginCaseID)
+	if caseID == "" {
+		return nil
+	}
+	evolutionCase, err := a.controller.GetSkillEvolutionCase(ctx, caseID)
+	if err != nil {
+		return err
+	}
+	if evolutionCase == nil {
+		return nil
+	}
+	changed := false
+	if evolutionCase.Status != status {
+		evolutionCase.Status = status
+		changed = true
+	}
+	if strings.TrimSpace(evolutionCase.RevisionID) == "" {
+		evolutionCase.RevisionID = strings.TrimSpace(revision.ID)
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
+	evolutionCase.UpdatedAt = time.Now().UTC()
+	_, err = a.controller.UpdateSkillEvolutionCase(ctx, *evolutionCase)
 	return err
 }
 
@@ -287,11 +324,28 @@ func skillRevisionStatusForDecision(decision string) harness.SkillRevisionStatus
 	}
 }
 
+func skillEvolutionCaseStatusForRevisionStatus(status harness.SkillRevisionStatus) harness.SkillEvolutionCaseStatus {
+	switch status {
+	case harness.SkillRevisionStatusAccepted:
+		return harness.SkillEvolutionCaseStatusAccepted
+	case harness.SkillRevisionStatusRejected:
+		return harness.SkillEvolutionCaseStatusRejected
+	case harness.SkillRevisionStatusPromoted:
+		return harness.SkillEvolutionCaseStatusPromoted
+	case harness.SkillRevisionStatusCandidate:
+		return harness.SkillEvolutionCaseStatusCandidateCreated
+	default:
+		return harness.SkillEvolutionCaseStatusOpen
+	}
+}
+
 func optimizationFollowupGate(record map[string]interface{}) string {
 	if gate := optimizationMetadataString(record, "followup_gate"); gate != "" {
 		return gate
 	}
 	switch harness.OptimizationReason(optimizationMetadataString(record, "reason")) {
+	case harness.OptimizationReasonRuntimeSkillFailure, harness.OptimizationReasonRuntimeSkillCapture:
+		return "execution"
 	case harness.OptimizationReasonSelectorGateFailed, harness.OptimizationReasonSelectorGatePassed:
 		return "selector"
 	case harness.OptimizationReasonExecutionGateFailed, harness.OptimizationReasonExecutionGatePassed:
@@ -447,6 +501,12 @@ func (t *harnessOptimizationTriggerer) TriggerOptimization(ctx context.Context, 
 			}
 			if len(followup.SkillCandidate) > 0 {
 				record["materialized_skill_candidate"] = followup.SkillCandidate
+			}
+			if skippedReason := strings.TrimSpace(followup.SkippedReason); skippedReason != "" {
+				record["followup_skipped_reason"] = skippedReason
+			}
+			if followup.EvolutionCase != nil {
+				record["skill_evolution_case_id"] = strings.TrimSpace(followup.EvolutionCase.ID)
 			}
 			if followup.SkillRevision != nil {
 				record["skill_revision_id"] = strings.TrimSpace(followup.SkillRevision.ID)
@@ -604,7 +664,9 @@ func filterEmptyOptimizationPromptParts(parts []string) []string {
 type optimizationFollowupOutcome struct {
 	State          string
 	Message        string
+	SkippedReason  string
 	SkillCandidate map[string]interface{}
+	EvolutionCase  *harness.SkillEvolutionCase
 	SkillRevision  *harness.SkillRevision
 	EvalRun        *harness.EvalRun
 }
@@ -628,11 +690,6 @@ func (t *harnessOptimizationTriggerer) maybeSubmitOptimizationFollowupEval(ctx c
 		return outcome, nil
 	}
 	if defaultOptimizationSurface(event.OptimizationSurface) != string(harness.OptimizationSurfaceSkillDefinition) {
-		return outcome, nil
-	}
-	if strings.TrimSpace(event.EvalRunID) == "" {
-		outcome.State = "skipped"
-		outcome.Message = "missing eval_run_id"
 		return outcome, nil
 	}
 
@@ -668,30 +725,121 @@ func (t *harnessOptimizationTriggerer) maybeSubmitOptimizationFollowupEval(ctx c
 		return outcome, err
 	}
 	outcome.SkillCandidate = skillCandidate
-	revision, err := t.controller.CreateSkillRevision(ctx, harness.SkillRevision{
-		SkillID:           optimizationMetadataString(skillCandidate, "skill_id"),
-		Status:            harness.SkillRevisionStatusCandidate,
-		SourcePath:        optimizationMetadataString(skillCandidate, "source_path"),
-		CandidateID:       optimizationMetadataString(skillCandidate, "candidate_id"),
-		EvalRunID:         strings.TrimSpace(event.EvalRunID),
-		OptimizationRunID: strings.TrimSpace(optimizationRunID),
-		Content:           optimizationMetadataRawString(skillCandidate, "content"),
-	})
+
+	var parentEvalRun *harness.EvalRun
+	if strings.TrimSpace(event.EvalRunID) != "" {
+		parentEvalRun, err = t.controller.GetEvalRun(ctx, event.EvalRunID)
+		if err != nil {
+			return outcome, err
+		}
+	}
+	sourceState, err := harness.ResolveCanonicalSkillSourceState(
+		optimizationMetadataString(skillCandidate, "skill_id"),
+		optimizationMetadataString(skillCandidate, "source_path"),
+	)
+	if err != nil {
+		outcome.State = "skipped"
+		outcome.SkippedReason = strings.TrimSpace(err.Error())
+		outcome.Message = firstNonEmptyOptimizationValue(
+			outcome.Message,
+			"skill evolution v1 only supports canonical assets/skills/*/SKILL.md skills",
+		)
+		return outcome, nil
+	}
+	evolutionCase, created, err := t.ensureOptimizationSkillEvolutionCase(ctx, optimizationRunID, event, parentEvalRun, skillCandidate, sourceState)
 	if err != nil {
 		outcome.State = "candidate_invalid"
 		return outcome, err
 	}
-	outcome.SkillRevision = revision
-
-	parentEvalRun, err := t.controller.GetEvalRun(ctx, event.EvalRunID)
+	outcome.EvolutionCase = evolutionCase
+	if !created && evolutionCase != nil && strings.TrimSpace(evolutionCase.RevisionID) != "" {
+		revision, getErr := t.controller.GetSkillRevision(ctx, evolutionCase.RevisionID)
+		if getErr != nil {
+			return outcome, getErr
+		}
+		outcome.SkillRevision = revision
+		outcome.State = "deduped"
+		outcome.Message = firstNonEmptyOptimizationValue(outcome.Message, "reused existing skill evolution candidate")
+		return outcome, nil
+	}
+	originCaseID := ""
+	if evolutionCase != nil {
+		originCaseID = strings.TrimSpace(evolutionCase.ID)
+	}
+	followupGate := firstNonEmptyOptimizationValue(
+		optimizationMetadataString(event.Metadata, "followup_gate"),
+		optimizationFollowupGate(map[string]interface{}{"reason": string(event.Reason)}),
+	)
+	followupTarget, err := t.resolveOptimizationFollowupTarget(ctx, event, parentEvalRun, followupGate)
 	if err != nil {
-		return outcome, err
+		outcome.State = "skipped"
+		outcome.SkippedReason = strings.TrimSpace(err.Error())
+		outcome.Message = firstNonEmptyOptimizationValue(outcome.Message, "runtime follow-up assets are not ready")
+		return outcome, nil
+	}
+	revisionID := optimizationMetadataString(event.Metadata, "candidate_revision_id")
+	var revision *harness.SkillRevision
+	if revisionID != "" {
+		existingRevision, getErr := t.controller.GetSkillRevision(ctx, revisionID)
+		if getErr != nil {
+			return outcome, getErr
+		}
+		if existingRevision != nil {
+			existingRevision.SkillID = optimizationMetadataString(skillCandidate, "skill_id")
+			existingRevision.Status = harness.SkillRevisionStatusCandidate
+			existingRevision.SourcePath = strings.TrimSpace(sourceState.NormalizedPath)
+			existingRevision.CandidateID = optimizationMetadataString(skillCandidate, "candidate_id")
+			existingRevision.BaseContentSHA256 = strings.TrimSpace(sourceState.ContentSHA256)
+			existingRevision.OriginCaseID = originCaseID
+			existingRevision.EvalRunID = strings.TrimSpace(event.EvalRunID)
+			existingRevision.OptimizationRunID = strings.TrimSpace(optimizationRunID)
+			existingRevision.FollowupGate = followupGate
+			existingRevision.OptimizationSurface = harness.OptimizationSurface(defaultOptimizationSurface(event.OptimizationSurface))
+			existingRevision.Content = optimizationMetadataRawString(skillCandidate, "content")
+			revision, err = t.controller.UpdateSkillRevision(ctx, *existingRevision)
+			if err != nil {
+				outcome.State = "candidate_invalid"
+				return outcome, err
+			}
+		}
+	}
+	if revision == nil {
+		revision, err = t.controller.CreateSkillRevision(ctx, harness.SkillRevision{
+			SkillID:             optimizationMetadataString(skillCandidate, "skill_id"),
+			Status:              harness.SkillRevisionStatusCandidate,
+			SourcePath:          strings.TrimSpace(sourceState.NormalizedPath),
+			CandidateID:         optimizationMetadataString(skillCandidate, "candidate_id"),
+			BaseContentSHA256:   strings.TrimSpace(sourceState.ContentSHA256),
+			OriginCaseID:        originCaseID,
+			EvalRunID:           strings.TrimSpace(event.EvalRunID),
+			OptimizationRunID:   strings.TrimSpace(optimizationRunID),
+			FollowupGate:        followupGate,
+			OptimizationSurface: harness.OptimizationSurface(defaultOptimizationSurface(event.OptimizationSurface)),
+			Content:             optimizationMetadataRawString(skillCandidate, "content"),
+		})
+		if err != nil {
+			outcome.State = "candidate_invalid"
+			return outcome, err
+		}
+	}
+	outcome.SkillRevision = revision
+	if evolutionCase != nil {
+		evolutionCase.CandidateID = optimizationMetadataString(skillCandidate, "candidate_id")
+		evolutionCase.BaseContentSHA256 = strings.TrimSpace(sourceState.ContentSHA256)
+		evolutionCase.RevisionID = strings.TrimSpace(revision.ID)
+		evolutionCase.Status = harness.SkillEvolutionCaseStatusCandidateCreated
+		evolutionCase.UpdatedAt = time.Now().UTC()
+		evolutionCase, err = t.controller.UpdateSkillEvolutionCase(ctx, *evolutionCase)
+		if err != nil {
+			return outcome, err
+		}
+		outcome.EvolutionCase = evolutionCase
 	}
 	followupEvalRun, err := t.controller.SubmitEvalRun(ctx, harness.EvalRunSpec{
-		EvalSpecID:        strings.TrimSpace(parentEvalRun.EvalSpecID),
-		BaselineEvalRunID: firstNonEmptyOptimizationValue(strings.TrimSpace(event.BaseEvalRunID), strings.TrimSpace(parentEvalRun.BaselineEvalRunID)),
-		Title:             buildOptimizationFollowupTitle(parentEvalRun, optimizationMetadataString(skillCandidate, "candidate_id")),
-		OwnerUserID:       strings.TrimSpace(parentEvalRun.OwnerUserID),
+		EvalSpecID:        strings.TrimSpace(followupTarget.EvalSpecID),
+		BaselineEvalRunID: strings.TrimSpace(followupTarget.BaseEvalRunID),
+		Title:             buildOptimizationFollowupTitle(parentEvalRun, followupTarget.TitleBase, optimizationMetadataString(skillCandidate, "candidate_id")),
+		OwnerUserID:       strings.TrimSpace(followupTarget.OwnerUserID),
 		TriggerKind:       "optimization_followup",
 		TriggerRef:        strings.TrimSpace(optimizationRunID),
 		Metadata:          buildOptimizationFollowupMetadata(event, optimizationRunID, skillCandidate, revision),
@@ -699,9 +847,47 @@ func (t *harnessOptimizationTriggerer) maybeSubmitOptimizationFollowupEval(ctx c
 	if err != nil {
 		return outcome, err
 	}
+	if revision != nil && strings.TrimSpace(revision.EvalRunID) != strings.TrimSpace(followupEvalRun.ID) {
+		revision.EvalRunID = strings.TrimSpace(followupEvalRun.ID)
+		revision, err = t.controller.UpdateSkillRevision(ctx, *revision)
+		if err != nil {
+			return outcome, err
+		}
+		outcome.SkillRevision = revision
+	}
 	outcome.State = "submitted"
 	outcome.EvalRun = followupEvalRun
 	return outcome, nil
+}
+
+func (t *harnessOptimizationTriggerer) ensureOptimizationSkillEvolutionCase(
+	ctx context.Context,
+	optimizationRunID string,
+	event harness.OptimizationTrigger,
+	parentEvalRun *harness.EvalRun,
+	skillCandidate map[string]interface{},
+	sourceState *harness.CanonicalSkillSourceState,
+) (*harness.SkillEvolutionCase, bool, error) {
+	if t == nil || t.controller == nil || len(skillCandidate) == 0 || sourceState == nil {
+		return nil, false, nil
+	}
+	evidence, err := json.Marshal(buildOptimizationSkillEvolutionEvidence(optimizationRunID, event, parentEvalRun, skillCandidate, sourceState))
+	if err != nil {
+		return nil, false, err
+	}
+	return t.controller.EnsureSkillEvolutionCase(ctx, harness.SkillEvolutionCaseSpec{
+		SkillID:           optimizationMetadataString(skillCandidate, "skill_id"),
+		OwnerUserID:       optimizationFollowupOwnerUserID(event, parentEvalRun),
+		Mode:              skillEvolutionModeForOptimizationReason(event.Reason),
+		Reason:            skillEvolutionReasonForOptimizationReason(event.Reason),
+		SourceKind:        optimizationSkillEvolutionSourceKind(event, parentEvalRun),
+		SourceID:          optimizationSkillEvolutionSourceID(event, optimizationRunID, parentEvalRun),
+		CandidateID:       optimizationMetadataString(skillCandidate, "candidate_id"),
+		BaseContentSHA256: strings.TrimSpace(sourceState.ContentSHA256),
+		FailureSignature:  optimizationSkillEvolutionFailureSignature(event),
+		Summary:           buildOptimizationSkillEvolutionSummary(event, skillCandidate),
+		EvidenceJSON:      string(evidence),
+	})
 }
 
 func parseOptimizationSkillCandidateResponse(responseText string) (*optimizationSkillCandidateResponse, error) {
@@ -766,6 +952,173 @@ func materializeOptimizationSkillCandidate(event harness.OptimizationTrigger, ca
 	return materialized, nil
 }
 
+func buildOptimizationSkillEvolutionEvidence(
+	optimizationRunID string,
+	event harness.OptimizationTrigger,
+	parentEvalRun *harness.EvalRun,
+	skillCandidate map[string]interface{},
+	sourceState *harness.CanonicalSkillSourceState,
+) map[string]interface{} {
+	evidence := map[string]interface{}{
+		"optimization_run_id": strings.TrimSpace(optimizationRunID),
+		"reason":              strings.TrimSpace(string(event.Reason)),
+		"eval_run_id":         strings.TrimSpace(event.EvalRunID),
+		"base_eval_run_id":    strings.TrimSpace(event.BaseEvalRunID),
+		"followup_gate": firstNonEmptyOptimizationValue(
+			optimizationMetadataString(event.Metadata, "followup_gate"),
+			optimizationFollowupGate(map[string]interface{}{"reason": string(event.Reason)}),
+		),
+		"skill_candidate":     skillCandidate,
+		"base_content_sha256": strings.TrimSpace(sourceState.ContentSHA256),
+		"source_path":         strings.TrimSpace(sourceState.NormalizedPath),
+		"owner_user_id":       optimizationFollowupOwnerUserID(event, parentEvalRun),
+	}
+	if parentEvalRun != nil && strings.TrimSpace(parentEvalRun.Title) != "" {
+		evidence["parent_eval_title"] = strings.TrimSpace(parentEvalRun.Title)
+	}
+	for _, key := range []string{
+		"runtime_run_id",
+		"runtime_kind",
+		"runtime_model",
+		"runtime_status",
+		"runtime_state",
+		"goal",
+		"result_summary",
+		"error",
+		"selected_canonical_skill",
+		"failure_signature",
+		"runtime_failure_signature",
+		"capture_signature",
+		"runtime_reason_summary",
+	} {
+		if value := optimizationMetadataString(event.Metadata, key); value != "" {
+			evidence[key] = value
+		}
+	}
+	for _, key := range []string{
+		"runtime_metrics",
+		"runtime_usage",
+		"runtime_quality",
+		"validation",
+		"selector_dry_run_response",
+		"skill_candidate",
+	} {
+		if value := optimizationMetadataMap(event.Metadata, key); len(value) > 0 {
+			evidence[key] = cloneOptimizationMetadata(value)
+		}
+	}
+	for _, key := range []string{
+		"runtime_event_summaries",
+		"runtime_capture_lessons",
+	} {
+		if raw, ok := event.Metadata[key]; ok && raw != nil {
+			evidence[key] = raw
+		}
+	}
+	if occurrences := optimizationMetadataString(event.Metadata, "runtime_capture_occurrences"); occurrences != "" {
+		evidence["runtime_capture_occurrences"] = occurrences
+	}
+	if threshold := optimizationMetadataString(event.Metadata, "runtime_capture_threshold"); threshold != "" {
+		evidence["runtime_capture_threshold"] = threshold
+	}
+	return evidence
+}
+
+func skillEvolutionModeForOptimizationReason(reason harness.OptimizationReason) harness.SkillEvolutionMode {
+	switch reason {
+	case harness.OptimizationReasonRuntimeSkillCapture:
+		return harness.SkillEvolutionModeCapture
+	default:
+		return harness.SkillEvolutionModeFix
+	}
+}
+
+func skillEvolutionReasonForOptimizationReason(reason harness.OptimizationReason) harness.SkillEvolutionReason {
+	switch reason {
+	case harness.OptimizationReasonRuntimeSkillFailure:
+		return harness.SkillEvolutionReasonRuntimeFailure
+	case harness.OptimizationReasonRuntimeSkillCapture:
+		return harness.SkillEvolutionReasonRuntimeCapture
+	case harness.OptimizationReasonSelectorGateFailed, harness.OptimizationReasonSelectorGatePassed:
+		return harness.SkillEvolutionReasonSelectorGateFailed
+	case harness.OptimizationReasonExecutionGateFailed, harness.OptimizationReasonExecutionGatePassed:
+		return harness.SkillEvolutionReasonExecutionGateFailed
+	case harness.OptimizationReasonBudgetGateFailed, harness.OptimizationReasonBudgetGatePassed:
+		return harness.SkillEvolutionReasonBudgetGateFailed
+	default:
+		return harness.SkillEvolutionReasonManual
+	}
+}
+
+func optimizationSkillEvolutionFailureSignature(event harness.OptimizationTrigger) string {
+	for _, key := range []string{"failure_signature", "runtime_failure_signature", "capture_signature"} {
+		if value := optimizationMetadataString(event.Metadata, key); value != "" {
+			return value
+		}
+	}
+	switch event.Reason {
+	case harness.OptimizationReasonSelectorGateFailed, harness.OptimizationReasonSelectorGatePassed:
+		return "selector-gate-failed"
+	case harness.OptimizationReasonExecutionGateFailed, harness.OptimizationReasonExecutionGatePassed:
+		return "execution-gate-failed"
+	case harness.OptimizationReasonBudgetGateFailed, harness.OptimizationReasonBudgetGatePassed:
+		return "budget-gate-failed"
+	case harness.OptimizationReasonRuntimeSkillCapture:
+		return "runtime-capture"
+	case harness.OptimizationReasonRuntimeSkillFailure:
+		return "runtime-failure"
+	default:
+		return strings.ReplaceAll(strings.TrimSpace(string(event.Reason)), "_", "-")
+	}
+}
+
+func buildOptimizationSkillEvolutionSummary(event harness.OptimizationTrigger, skillCandidate map[string]interface{}) string {
+	skillID := optimizationMetadataString(skillCandidate, "skill_id")
+	switch skillEvolutionModeForOptimizationReason(event.Reason) {
+	case harness.SkillEvolutionModeCapture:
+		return fmt.Sprintf("Captured new grounded runtime experience for skill %s.", skillID)
+	default:
+		return fmt.Sprintf("Generated a candidate revision to repair skill %s.", skillID)
+	}
+}
+
+func optimizationEvalOwnerUserID(evalRun *harness.EvalRun) string {
+	if evalRun == nil {
+		return ""
+	}
+	return strings.TrimSpace(evalRun.OwnerUserID)
+}
+
+func optimizationFollowupOwnerUserID(event harness.OptimizationTrigger, evalRun *harness.EvalRun) string {
+	if ownerUserID := optimizationEvalOwnerUserID(evalRun); ownerUserID != "" {
+		return ownerUserID
+	}
+	return strings.TrimSpace(optimizationMetadataString(event.Metadata, "owner_user_id"))
+}
+
+func optimizationSkillEvolutionSourceKind(event harness.OptimizationTrigger, parentEvalRun *harness.EvalRun) string {
+	if runtimeRunID := optimizationMetadataString(event.Metadata, "runtime_run_id"); runtimeRunID != "" {
+		return "runtime_run"
+	}
+	if parentEvalRun != nil || strings.TrimSpace(event.EvalRunID) != "" {
+		return "eval_run"
+	}
+	return "optimization_run"
+}
+
+func optimizationSkillEvolutionSourceID(event harness.OptimizationTrigger, optimizationRunID string, parentEvalRun *harness.EvalRun) string {
+	if runtimeRunID := optimizationMetadataString(event.Metadata, "runtime_run_id"); runtimeRunID != "" {
+		return runtimeRunID
+	}
+	if parentEvalRun != nil && strings.TrimSpace(parentEvalRun.ID) != "" {
+		return strings.TrimSpace(parentEvalRun.ID)
+	}
+	if strings.TrimSpace(event.EvalRunID) != "" {
+		return strings.TrimSpace(event.EvalRunID)
+	}
+	return strings.TrimSpace(optimizationRunID)
+}
+
 func buildOptimizationFollowupMetadata(event harness.OptimizationTrigger, optimizationRunID string, skillCandidate map[string]interface{}, revision *harness.SkillRevision) map[string]interface{} {
 	metadata := cloneOptimizationMetadata(event.Metadata)
 	if metadata == nil {
@@ -773,9 +1126,18 @@ func buildOptimizationFollowupMetadata(event harness.OptimizationTrigger, optimi
 	}
 	optimizedParts, _ := optimization.NormalizeRequestedEvolvableParts([]string{defaultOptimizationSurface(event.OptimizationSurface)})
 	metadata["optimization_run"] = true
-	metadata["optimization_parent_run_id"] = strings.TrimSpace(event.EvalRunID)
+	metadata["optimization_parent_run_id"] = firstNonEmptyOptimizationValue(
+		strings.TrimSpace(event.EvalRunID),
+		optimizationMetadataString(metadata, "runtime_run_id"),
+	)
 	metadata["optimization_run_id"] = strings.TrimSpace(optimizationRunID)
 	metadata["optimization_surface"] = defaultOptimizationSurface(event.OptimizationSurface)
+	if gate := firstNonEmptyOptimizationValue(
+		optimizationMetadataString(metadata, "followup_gate"),
+		optimizationFollowupGate(map[string]interface{}{"reason": string(event.Reason)}),
+	); gate != "" {
+		metadata["followup_gate"] = gate
+	}
 	metadata["supported_parts"] = optimization.DefaultSupportedEvolvableParts()
 	metadata["optimized_parts"] = optimizedParts
 	if len(optimizedParts) > 0 {
@@ -786,13 +1148,23 @@ func buildOptimizationFollowupMetadata(event harness.OptimizationTrigger, optimi
 	}
 	if revision != nil && strings.TrimSpace(revision.ID) != "" {
 		metadata["skill_revision_id"] = strings.TrimSpace(revision.ID)
+		metadata["candidate_revision_id"] = strings.TrimSpace(revision.ID)
+	}
+	if revision != nil && strings.TrimSpace(revision.OriginCaseID) != "" {
+		metadata["origin_case_id"] = strings.TrimSpace(revision.OriginCaseID)
+	}
+	if revision != nil && strings.TrimSpace(revision.BaseContentSHA256) != "" {
+		metadata["base_content_sha256"] = strings.TrimSpace(revision.BaseContentSHA256)
 	}
 	metadata["skill_candidate"] = skillCandidate
 	return metadata
 }
 
-func buildOptimizationFollowupTitle(parentEvalRun *harness.EvalRun, candidateID string) string {
-	base := "optimization follow-up"
+func buildOptimizationFollowupTitle(parentEvalRun *harness.EvalRun, titleBase string, candidateID string) string {
+	base := strings.TrimSpace(titleBase)
+	if base == "" {
+		base = "optimization follow-up"
+	}
 	if parentEvalRun != nil && strings.TrimSpace(parentEvalRun.Title) != "" {
 		base = strings.TrimSpace(parentEvalRun.Title)
 	}
@@ -800,4 +1172,56 @@ func buildOptimizationFollowupTitle(parentEvalRun *harness.EvalRun, candidateID 
 		return base
 	}
 	return fmt.Sprintf("%s / %s", base, strings.TrimSpace(candidateID))
+}
+
+type optimizationFollowupTarget struct {
+	EvalSpecID    string
+	BaseEvalRunID string
+	OwnerUserID   string
+	TitleBase     string
+}
+
+func (t *harnessOptimizationTriggerer) resolveOptimizationFollowupTarget(ctx context.Context, event harness.OptimizationTrigger, parentEvalRun *harness.EvalRun, followupGate string) (*optimizationFollowupTarget, error) {
+	if parentEvalRun != nil {
+		return &optimizationFollowupTarget{
+			EvalSpecID:    strings.TrimSpace(parentEvalRun.EvalSpecID),
+			BaseEvalRunID: firstNonEmptyOptimizationValue(strings.TrimSpace(event.BaseEvalRunID), strings.TrimSpace(parentEvalRun.BaselineEvalRunID)),
+			OwnerUserID:   strings.TrimSpace(parentEvalRun.OwnerUserID),
+			TitleBase:     strings.TrimSpace(parentEvalRun.Title),
+		}, nil
+	}
+	ownerUserID := strings.TrimSpace(optimizationMetadataString(event.Metadata, "owner_user_id"))
+	if ownerUserID == "" {
+		return nil, fmt.Errorf("runtime follow-up requires owner_user_id")
+	}
+	switch strings.TrimSpace(followupGate) {
+	case "", "execution":
+		assets, err := t.controller.EnsureBatch1ExecutionAssets(ctx, ownerUserID)
+		if err != nil {
+			return nil, err
+		}
+		if assets == nil || assets.EvalSpec == nil || strings.TrimSpace(assets.EvalSpec.ID) == "" {
+			return nil, fmt.Errorf("runtime execution follow-up eval spec is unavailable")
+		}
+		return &optimizationFollowupTarget{
+			EvalSpecID:  strings.TrimSpace(assets.EvalSpec.ID),
+			OwnerUserID: ownerUserID,
+			TitleBase:   "runtime skill optimization follow-up",
+		}, nil
+	case "selector":
+		assets, err := t.controller.EnsureSelectorCuratedAssets(ctx, ownerUserID)
+		if err != nil {
+			return nil, err
+		}
+		if assets == nil || assets.EvalSpec == nil || strings.TrimSpace(assets.EvalSpec.ID) == "" {
+			return nil, fmt.Errorf("runtime selector follow-up eval spec is unavailable")
+		}
+		return &optimizationFollowupTarget{
+			EvalSpecID:  strings.TrimSpace(assets.EvalSpec.ID),
+			OwnerUserID: ownerUserID,
+			TitleBase:   "runtime skill optimization follow-up",
+		}, nil
+	default:
+		return nil, fmt.Errorf("runtime follow-up gate %q is unsupported", followupGate)
+	}
 }

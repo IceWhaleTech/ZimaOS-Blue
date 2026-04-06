@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
@@ -13,6 +14,48 @@ func makeModel(id, providerID string, inputPrice, outputPrice float64) *provider
 		Enabled:     true,
 		InputPrice:  inputPrice,
 		OutputPrice: outputPrice,
+	}
+}
+
+func resetBuiltinSmallModelCatalogForTest(t *testing.T) {
+	t.Helper()
+
+	originalRank := builtinSmallModelRank
+	originalSet := builtinSmallModelSet
+
+	builtinSmallModelRank = nil
+	builtinSmallModelSet = nil
+	builtinSmallModelCatalogOnce = sync.Once{}
+
+	t.Cleanup(func() {
+		builtinSmallModelRank = originalRank
+		builtinSmallModelSet = originalSet
+		builtinSmallModelCatalogOnce = sync.Once{}
+		if len(originalRank) > 0 || len(originalSet) > 0 {
+			builtinSmallModelCatalogOnce.Do(func() {})
+		}
+	})
+}
+
+func TestTierResolver_InitializesBuiltinSmallModelCatalogOnDemand(t *testing.T) {
+	resetBuiltinSmallModelCatalogForTest(t)
+
+	if builtinSmallModelRank != nil || builtinSmallModelSet != nil {
+		t.Fatal("expected builtin small-model catalog to start uninitialized")
+	}
+
+	tr := NewTierResolver()
+	if ok := tr.Resolve([]*providerpool.Model{
+		makeModel("gpt-4o", "openai", 2.5, 10.0),
+		makeModel("gpt-4o-mini", "openai", 0.15, 0.6),
+	}); !ok {
+		t.Fatal("Resolve() = false, want true after lazy builtin small-model catalog initialization")
+	}
+	if len(builtinSmallModelRank) == 0 || len(builtinSmallModelSet) == 0 {
+		t.Fatal("expected builtin small-model catalog to initialize on first tier resolution")
+	}
+	if got := tr.BestModelForTier(TierSmall); got != "gpt-4o-mini" {
+		t.Fatalf("BestModelForTier(TierSmall) = %q, want %q", got, "gpt-4o-mini")
 	}
 }
 

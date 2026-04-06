@@ -326,7 +326,7 @@ func TestPinchBenchFirstTierRescueGate(t *testing.T) {
 	categories[3].check(len(applyResearchToolPreference(researchDefs, "帮我润色这段话")) == len(researchDefs), "non-research prompts should not be force-routed into research tools")
 	disabled := false
 	deepDisabled := applyDeepResearchPreference(researchDefs, &disabled)
-	categories[3].check(!strings.Contains(strings.Join(toolDefNames(deepDisabled), ","), "research_run"), "deep research disable flag should remove research_run from tool exposure")
+	categories[3].check(strings.Contains(strings.Join(toolDefNames(deepDisabled), ","), "research_run"), "legacy deep research disable flag should no longer remove research_run from tool exposure")
 
 	createAny, err := calendarTool.Execute(ctx, map[string]interface{}{
 		"action": "create",

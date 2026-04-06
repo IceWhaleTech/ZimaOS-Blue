@@ -130,8 +130,11 @@ func TestActivateRuntimeToolSurfaces_RegistersAgentAndMCPRoutes(t *testing.T) {
 	if !result.mcpRegistered {
 		t.Fatal("expected runtime tool surfaces to register MCP routes")
 	}
-	if !routeExists(e, http.MethodGet, "/api/v1/agent/tasks") {
+	if !routeExists(e, http.MethodPost, "/api/v1/agent/tasks") {
 		t.Fatalf("expected agent routes, got %#v", e.Routes())
+	}
+	if routeExists(e, http.MethodGet, "/api/v1/agent/tasks") {
+		t.Fatalf("did not expect standalone agent task list route to remain registered, got %#v", e.Routes())
 	}
 	if !routeExists(e, http.MethodPost, "/api/v1/mcp/message") {
 		t.Fatalf("expected mcp routes, got %#v", e.Routes())

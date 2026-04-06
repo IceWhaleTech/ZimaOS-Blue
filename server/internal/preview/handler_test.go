@@ -140,6 +140,76 @@ func TestHandler_GetPreviewStatus_Active(t *testing.T) {
 	}
 }
 
+func TestHandler_GetPresetQuestions_DefaultPageMetadata(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset-questions?lang=en", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.GetPresetQuestions(c)
+	if err != nil {
+		t.Fatalf("GetPresetQuestions() error = %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GetPresetQuestions() status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp PresetQuestionsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if got := len(resp.Questions); got != 4 {
+		t.Fatalf("len(resp.Questions) = %d, want 4", got)
+	}
+	if resp.Total != 12 {
+		t.Fatalf("resp.Total = %d, want 12", resp.Total)
+	}
+	if resp.NextOffset != 4 {
+		t.Fatalf("resp.NextOffset = %d, want 4", resp.NextOffset)
+	}
+	if !resp.HasMore {
+		t.Fatal("resp.HasMore = false, want true")
+	}
+}
+
+func TestHandler_GetPresetQuestions_OffsetPageMetadata(t *testing.T) {
+	handler, _, cleanup := setupTestHandler(t)
+	defer cleanup()
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset-questions?lang=en&count=8&offset=4", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.GetPresetQuestions(c)
+	if err != nil {
+		t.Fatalf("GetPresetQuestions() error = %v", err)
+	}
+
+	var resp PresetQuestionsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if got := len(resp.Questions); got != 8 {
+		t.Fatalf("len(resp.Questions) = %d, want 8", got)
+	}
+	if resp.Total != 12 {
+		t.Fatalf("resp.Total = %d, want 12", resp.Total)
+	}
+	if resp.NextOffset != 12 {
+		t.Fatalf("resp.NextOffset = %d, want 12", resp.NextOffset)
+	}
+	if resp.HasMore {
+		t.Fatal("resp.HasMore = true, want false")
+	}
+}
+
 func TestHandler_Upgrade_Success(t *testing.T) {
 	handler, _, cleanup := setupTestHandler(t)
 	defer cleanup()

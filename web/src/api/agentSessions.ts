@@ -29,6 +29,7 @@ export interface AgentProfile {
 
 export interface ProfileVerifyResult {
   ok: boolean
+  message_code?: string
   message?: string
   capabilities?: string[]
   details?: Record<string, unknown>
@@ -36,6 +37,7 @@ export interface ProfileVerifyResult {
 
 export interface ProfileHealthResult {
   healthy: boolean
+  message_code?: string
   message?: string
   details?: Record<string, unknown>
 }

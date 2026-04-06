@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { parseToolResults, useChatStore } from '@/stores/chat'
 import { i18n } from '@/i18n'
-import { conversationApi, messageApi } from '@/api/chat'
+import {
+  conversationApi,
+  messageApi,
+  type ConversationCommandState,
+  type ConversationCommandStatePatch,
+} from '@/api/chat'
 import { approvalApi } from '@/api/approval'
 
 const mocks = vi.hoisted(() => ({
@@ -13,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   providerPoolStore: {
     fetchTrialQuota: vi.fn(),
     enabledProviders: [] as Array<{ id: string; type?: string }>,
+    providers: [] as Array<{ id: string; type?: string }>,
     models: [] as Array<{ id: string; provider_id: string; enabled: boolean }>,
     getProviderDisplayName: vi.fn((providerId: string) => providerId),
   },
@@ -25,7 +31,6 @@ vi.mock('@/api/chat', () => ({
     get: vi.fn(),
     delete: vi.fn(),
     search: vi.fn(),
-    getCommandState: vi.fn(),
     patchCommandState: vi.fn(),
   },
   messageApi: {
@@ -33,7 +38,6 @@ vi.mock('@/api/chat', () => ({
     send: vi.fn(),
     delete: vi.fn(),
     cancelStream: vi.fn(),
-    getActiveStreamState: vi.fn(),
   },
 }))
 
@@ -41,7 +45,6 @@ vi.mock('@/api/approval', () => ({
   approvalApi: {
     getConfig: vi.fn(),
     updateConfig: vi.fn(),
-    listPending: vi.fn(),
     resolve: vi.fn(),
   },
 }))
@@ -93,58 +96,92 @@ async function flushMicrotasks() {
   await Promise.resolve()
 }
 
+const commandStateByConversation = new Map<string, ConversationCommandState>()
+
+function makeCommandState(
+  conversationId: string,
+  overrides: Partial<ConversationCommandState> = {}
+): ConversationCommandState {
+  return {
+    conversation_id: conversationId,
+    selected_provider_id: '',
+    selected_model_id: '',
+    offline: false,
+    ...overrides,
+  }
+}
+
+function applyCommandStatePatch(
+  conversationId: string,
+  patch: ConversationCommandStatePatch
+): ConversationCommandState {
+  const current = commandStateByConversation.get(conversationId) ?? makeCommandState(conversationId)
+  const next: ConversationCommandState = {
+    ...current,
+    ...patch,
+    conversation_id: conversationId,
+  }
+
+  commandStateByConversation.set(conversationId, next)
+  return next
+}
+
+function makeBootstrapResponse(
+  conversationId: string,
+  overrides: Record<string, unknown> = {}
+) {
+  return {
+    data: {
+      command_state: commandStateByConversation.get(conversationId) ?? makeCommandState(conversationId),
+      active_stream: {
+        conversation_id: conversationId,
+        active: false,
+      },
+      current_tasks: [],
+      background_tasks: [],
+      pending_approval: null,
+      pending_question: null,
+      pending_exec_approval: null,
+      ...overrides,
+    },
+  } as never
+}
+
+async function defaultApiGet(path: string) {
+  const bootstrapMatch = String(path).match(/^\/conversations\/([^/]+)\/bootstrap$/)
+  if (bootstrapMatch) {
+    return makeBootstrapResponse(bootstrapMatch[1] ?? '')
+  }
+  return { data: {} } as never
+}
+
 describe('Chat Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    vi.useRealTimers()
     vi.clearAllMocks()
+    commandStateByConversation.clear()
     i18n.global.locale.value = 'en-US'
+    globalThis.localStorage?.clear?.()
     mocks.sseConnect.mockReset().mockResolvedValue(undefined)
     mocks.sseDisconnect.mockReset()
-    mocks.apiGet.mockReset().mockImplementation(async (path: string) => {
-      if (path.includes('/ask-user-question/pending')) {
-        return { data: { pending: false } } as never
-      }
-      if (path.includes('/exec/approvals/pending')) {
-        return { data: { pending: false } } as never
-      }
-      return { data: {} } as never
-    })
+    mocks.apiGet.mockReset().mockImplementation(defaultApiGet)
     mocks.apiPost.mockReset().mockResolvedValue({ data: {} } as never)
     mocks.providerPoolStore.fetchTrialQuota.mockReset().mockResolvedValue(undefined)
     mocks.providerPoolStore.enabledProviders = []
+    mocks.providerPoolStore.providers = []
     mocks.providerPoolStore.models = []
     mocks.providerPoolStore.getProviderDisplayName.mockImplementation(
       (providerId: string) => providerId
     )
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
-    vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
-      data: { conversation_id: '', active: false },
-    } as never)
     vi.mocked(messageApi.delete).mockResolvedValue({ data: { success: true, deleted: 0 } } as never)
-    vi.mocked(approvalApi.listPending).mockResolvedValue({ data: [] } as never)
-    vi.mocked(conversationApi.getCommandState).mockResolvedValue({
-      data: {
-        conversation_id: '1',
-        selected_provider_id: '',
-        selected_model_id: '',
-        offline: false,
-        web_search_enabled: true,
-        deep_research_enabled: false,
-        research_mode_enabled: false,
-      },
-    } as never)
-    vi.mocked(conversationApi.patchCommandState).mockResolvedValue({
-      data: {
-        conversation_id: '1',
-        selected_provider_id: '',
-        selected_model_id: '',
-        offline: false,
-        web_search_enabled: true,
-        deep_research_enabled: false,
-        research_mode_enabled: false,
-      },
-    } as never)
+    vi.mocked(conversationApi.patchCommandState).mockImplementation(async (conversationId, patch) => {
+      return {
+        data: applyCommandStatePatch(conversationId, patch),
+      } as never
+    })
   })
 
   describe('fetchConversations', () => {
@@ -172,6 +209,64 @@ describe('Chat Store', () => {
 
       expect(store.error).toBe('Network error')
       expect(store.loading).toBe(false)
+    })
+  })
+
+  describe('pending confirmation recovery', () => {
+    it('only requests bootstrap once per conversation during non-forced recovery', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+
+      await store.recoverPendingConfirmations(false)
+      await store.recoverPendingConfirmations(false)
+
+      const bootstrapCalls = mocks.apiGet.mock.calls.filter(([path]) =>
+        String(path).includes('/conversations/conv-1/bootstrap')
+      )
+
+      expect(bootstrapCalls).toHaveLength(1)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+      ).toBe(false)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
+      ).toBe(false)
+    })
+
+    it('rechecks bootstrap during forced recovery', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+
+      await store.recoverPendingConfirmations(false)
+      await store.recoverPendingConfirmations(true)
+
+      const bootstrapCalls = mocks.apiGet.mock.calls.filter(([path]) =>
+        String(path).includes('/conversations/conv-1/bootstrap')
+      )
+
+      expect(bootstrapCalls).toHaveLength(2)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+      ).toBe(false)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
+      ).toBe(false)
+    })
+
+    it('does not hit pending confirmation routes when no conversation is selected', async () => {
+      const store = useChatStore()
+
+      await store.checkPendingQuestion()
+
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))
+      ).toBe(false)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/pending-confirmations'))
+      ).toBe(false)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+      ).toBe(false)
     })
   })
 
@@ -253,6 +348,141 @@ describe('Chat Store', () => {
       expect(store.messages).toEqual(mockMessages)
     })
 
+    it('hydrates sparse conversation state from the bootstrap endpoint when available', async () => {
+      const mockMessages = [
+        {
+          id: 'm1',
+          conversation_id: '1',
+          role: 'assistant',
+          content: 'Bootstrapped',
+          created_at: '2024-01-01',
+        },
+      ]
+      vi.mocked(messageApi.list).mockResolvedValue({ data: mockMessages } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return {
+            data: {
+              command_state: {
+                conversation_id: '1',
+                selected_provider_id: '',
+                selected_model_id: '',
+                offline: false,
+              },
+              active_stream: {
+                conversation_id: '1',
+                active: true,
+                stream_id: 'stream-1',
+              },
+              current_tasks: [],
+              background_tasks: [],
+            },
+          } as never
+        }
+        if (path.includes('/ask-user-question/pending')) {
+          return { data: { pending: false } } as never
+        }
+        if (path.includes('/exec/approvals/pending')) {
+          return { data: { pending: false } } as never
+        }
+        return { data: {} } as never
+      })
+
+      const store = useChatStore()
+      await store.selectConversation('1')
+
+      expect(store.streaming).toBe(true)
+      expect(store.streamUIState.phase).toBe('streaming')
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/messages/active-stream'))
+      ).toBe(false)
+    })
+
+    it('hydrates pending confirmations from bootstrap without falling back to sparse pending endpoints', async () => {
+      vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return {
+            data: {
+              command_state: {
+                conversation_id: '1',
+                selected_provider_id: '',
+                selected_model_id: '',
+                offline: false,
+              },
+              active_stream: {
+                conversation_id: '1',
+                active: false,
+              },
+              current_tasks: [],
+              background_tasks: [],
+              pending_approval: {
+                id: 'approval-1',
+                tool_name: 'browser',
+                tool_call_id: 'tool-1',
+                arguments: { url: 'https://example.com' },
+                session_id: '1',
+                binding_hash: 'bind-1',
+              },
+              pending_question: {
+                id: 'question-1',
+                session_id: '1',
+                questions: [{ id: 'q1', question: 'Need input?', header: 'Question' }],
+                expires_at: Date.now() + 60_000,
+              },
+              pending_exec_approval: {
+                id: 'exec-1',
+                session_id: '1',
+                type: 'command',
+                command: 'ls -la',
+                expires_at: Date.now() + 60_000,
+              },
+            },
+          } as never
+        }
+        if (path.includes('/ask-user-question/pending')) {
+          return { data: { pending: false } } as never
+        }
+        if (path.includes('/exec/approvals/pending')) {
+          return { data: { pending: false } } as never
+        }
+        return { data: {} } as never
+      })
+
+      const store = useChatStore()
+      await store.selectConversation('1')
+
+      expect(store.pendingApproval).toEqual({
+        request_id: 'approval-1',
+        tool_name: 'browser',
+        tool_call_id: 'tool-1',
+        arguments: { url: 'https://example.com' },
+        session_id: '1',
+        binding_hash: 'bind-1',
+      })
+      expect(store.pendingQuestion).toEqual(
+        expect.objectContaining({
+          id: 'question-1',
+          session_id: '1',
+        })
+      )
+      expect(store.pendingExecApproval).toEqual(
+        expect.objectContaining({
+          id: 'exec-1',
+          session_id: '1',
+          type: 'command',
+          command: 'ls -la',
+        })
+      )
+      expect(store.awaitingConfirmation).toBe(true)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+      ).toBe(false)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
+      ).toBe(false)
+    })
+
     it('should not refetch if same conversation is selected', async () => {
       const store = useChatStore()
       store.currentConversationId = '1'
@@ -262,33 +492,161 @@ describe('Chat Store', () => {
       expect(messageApi.list).not.toHaveBeenCalled()
     })
 
-    it('should hydrate command state once and reuse it across conversation switches', async () => {
+    it('hydrates command state from bootstrap for each selected conversation', async () => {
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: {
+              conversation_id: '1',
+              selected_provider_id: '',
+              selected_model_id: '',
+              offline: false,
+            },
+          })
+        }
+        if (path === '/conversations/2/bootstrap') {
+          return makeBootstrapResponse('2', {
+            command_state: {
+              conversation_id: '2',
+              selected_provider_id: '',
+              selected_model_id: '',
+              offline: false,
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
+
       const store = useChatStore()
 
       await store.selectConversation('1')
       await store.selectConversation('2')
 
-      expect(conversationApi.getCommandState).toHaveBeenCalledTimes(1)
-      expect(conversationApi.getCommandState).toHaveBeenCalledWith('1')
+      expect(
+        mocks.apiGet.mock.calls
+          .map(([path]) => String(path))
+          .filter((path) => path.endsWith('/bootstrap'))
+      ).toEqual(['/conversations/1/bootstrap', '/conversations/2/bootstrap'])
       expect(store.currentConversationId).toBe('2')
     })
 
-    it('hydrates research_mode_enabled from command state responses', async () => {
-      vi.mocked(conversationApi.getCommandState).mockResolvedValue({
-        data: {
-          conversation_id: '1',
-          selected_provider_id: '',
-          selected_model_id: '',
-          offline: false,
-          web_search_enabled: true,
-          research_mode_enabled: true,
-        },
-      } as never)
+    it('hydrates bootstrap command state responses without legacy toggle fields', async () => {
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: {
+              conversation_id: '1',
+              selected_provider_id: '',
+              selected_model_id: '',
+              offline: false,
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
 
       const store = useChatStore()
       await store.selectConversation('1')
 
-      expect(store.deepResearchEnabled).toBe(true)
+    })
+
+    it('does not reuse another conversation command state when bootstrap omits it', async () => {
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: {
+              conversation_id: '1',
+              selected_provider_id: '',
+              selected_model_id: '',
+              offline: false,
+            },
+          })
+        }
+        if (path === '/conversations/2/bootstrap') {
+          return makeBootstrapResponse('2', {
+            command_state: null,
+          })
+        }
+        return defaultApiGet(path)
+      })
+
+      const store = useChatStore()
+
+      await store.selectConversation('1')
+      await store.selectConversation('2')
+
+      expect(store.currentConversationId).toBe('2')
+    })
+
+    it('refreshes slash-command command state from bootstrap instead of the standalone command-state API', async () => {
+      const store = useChatStore()
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Commands',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+
+      let bootstrapReadCount = 0
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/conv-1/bootstrap') {
+          bootstrapReadCount++
+          return {
+            data: {
+              command_state: {
+                conversation_id: 'conv-1',
+                selected_provider_id: '',
+                selected_model_id: '',
+                offline: bootstrapReadCount >= 2,
+              },
+              active_stream: {
+                conversation_id: 'conv-1',
+                active: false,
+              },
+              current_tasks: [],
+              background_tasks: [],
+              pending_approval: null,
+              pending_question: null,
+              pending_exec_approval: null,
+            },
+          } as never
+        }
+        if (path.includes('/ask-user-question/pending')) {
+          return { data: { pending: false } } as never
+        }
+        if (path.includes('/exec/approvals/pending')) {
+          return { data: { pending: false } } as never
+        }
+        return { data: {} } as never
+      })
+
+      await store.selectConversation('conv-1')
+      expect(store.offlineMode).toBe(false)
+
+      let streamOptions: any
+      let resolveStream: (() => void) | null = null
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        streamOptions = options
+        await new Promise<void>((resolve) => {
+          resolveStream = resolve
+        })
+      })
+
+      const sendPromise = store.sendMessage('/offline on')
+      await flushMicrotasks()
+
+      streamOptions.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+      resolveStream?.()
+      await sendPromise
+      await settleAsyncWork()
+
+      expect(bootstrapReadCount).toBe(2)
+      expect(store.offlineMode).toBe(true)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/command-state'))
+      ).toBe(false)
     })
 
     it('should keep chronological order across multi-page loadMore', async () => {
@@ -416,34 +774,61 @@ describe('Chat Store', () => {
       expect(store.awaitingConfirmation).toBe(true)
     })
 
-    it('should query tool approvals scoped to the current conversation', async () => {
+    it('does not poll the standalone exec approval endpoint without an active conversation', async () => {
+      const store = useChatStore()
+
+      await store.checkPendingExecApproval()
+
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
+      ).toBe(false)
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))
+      ).toBe(false)
+      expect(store.pendingExecApproval).toBeNull()
+    })
+
+    it('hydrates tool approvals scoped to the current conversation from bootstrap', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
 
-      vi.mocked(approvalApi.listPending).mockResolvedValue({
-        data: [
-          {
-            id: 'approval-1',
-            tool_name: 'browser',
-            tool_call_id: 'tool-1',
-            arguments: { url: 'https://example.com' },
-            session_id: 'conv-1',
-            created_at: '2026-03-11T00:00:00.000Z',
-          },
-        ],
-      } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/conv-1/bootstrap') {
+          return makeBootstrapResponse('conv-1', {
+            pending_approval: {
+              id: 'approval-1',
+              tool_name: 'browser',
+              tool_call_id: 'tool-1',
+              arguments: { url: 'https://example.com' },
+              session_id: 'conv-1',
+              binding_hash: 'binding-1',
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
 
       await store.checkPendingApprovals()
 
-      expect(approvalApi.listPending).toHaveBeenCalledWith('conv-1')
       expect(store.pendingApproval).toEqual({
         request_id: 'approval-1',
         tool_name: 'browser',
         tool_call_id: 'tool-1',
         arguments: { url: 'https://example.com' },
         session_id: 'conv-1',
-        binding_hash: undefined,
+        binding_hash: 'binding-1',
       })
+    })
+
+    it('does not poll the standalone tool approval endpoint without an active conversation', async () => {
+      const store = useChatStore()
+
+      await store.checkPendingApprovals()
+
+      expect(
+        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))
+      ).toBe(false)
+      expect(store.pendingApproval).toBeNull()
     })
 
     it('clears waiting-for-confirmation state after resolving a tool approval', async () => {
@@ -535,16 +920,19 @@ describe('Chat Store', () => {
           enabled: true,
         },
       ]
-      vi.mocked(conversationApi.getCommandState).mockResolvedValue({
-        data: {
-          conversation_id: '1',
-          selected_provider_id: 'minimax',
-          selected_model_id: 'minimax-m2.7',
-          offline: false,
-          web_search_enabled: true,
-          deep_research_enabled: false,
-        },
-      } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: {
+              conversation_id: '1',
+              selected_provider_id: 'minimax',
+              selected_model_id: 'minimax-m2.7',
+              offline: false,
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
 
       const store = useChatStore()
       await store.selectConversation('1')
@@ -560,16 +948,110 @@ describe('Chat Store', () => {
       )
     })
 
+    it('preserves a provider-only command-state pin and uses it for requests', async () => {
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: {
+              conversation_id: '1',
+              selected_provider_id: 'openrouter',
+              selected_model_id: '',
+              offline: false,
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
+
+      const store = useChatStore()
+      await store.selectConversation('1')
+
+      expect(store.selectedProviderId).toBe('openrouter')
+      expect(store.modelPreference).toBe('auto')
+
+      await store.sendMessage('hi')
+
+      expect(mocks.sseConnect).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          provider: 'openrouter',
+          model: '',
+        }),
+        expect.any(Object)
+      )
+    })
+
+    it('drops an invalid provider-only pin from bootstrap when the provider is no longer enabled', async () => {
+      mocks.providerPoolStore.enabledProviders = [{ id: 'openrouter', type: 'builtin' }]
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: makeCommandState('1', {
+              selected_provider_id: 'removed-provider',
+              selected_model_id: '',
+            }),
+          })
+        }
+        return defaultApiGet(path)
+      })
+
+      const store = useChatStore()
+      await store.selectConversation('1')
+
+      expect(store.selectedProviderId).toBe('')
+      expect(store.providerPinOnlyActive).toBe(false)
+      expect(store.modelPreference).toBe('auto')
+
+      await store.sendMessage('hi')
+
+      expect(mocks.sseConnect).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          provider: '',
+          model: '',
+        }),
+        expect.any(Object)
+      )
+    })
+
+    it('clears a provider-only pin before sending when that provider is no longer enabled', async () => {
+      const provider = { id: 'openrouter', type: 'builtin' }
+      mocks.providerPoolStore.providers = [provider]
+      mocks.providerPoolStore.enabledProviders = [provider]
+
+      const store = useChatStore()
+      store.currentConversationId = '1'
+      await store.setProviderPinOnly('openrouter')
+
+      mocks.providerPoolStore.providers = [provider]
+      mocks.providerPoolStore.enabledProviders = []
+
+      await store.sendMessage('hi')
+
+      expect(store.selectedProviderId).toBe('')
+      expect(store.providerPinOnlyActive).toBe(false)
+      expect(store.modelPreference).toBe('auto')
+      expect(mocks.sseConnect).toHaveBeenCalledWith(
+        '1',
+        expect.objectContaining({
+          provider: '',
+          model: '',
+        }),
+        expect.any(Object)
+      )
+    })
+
     it('clears the pinned provider when switching back to auto', async () => {
       const store = useChatStore()
       store.currentConversationId = '1'
       store.selectedProviderId = 'openrouter'
+      store.providerPinOnlyActive = true
       store.modelPreference = 'openrouter/gpt-5'
 
-      store.setModelPreference('auto')
-      await flushMicrotasks()
+      await store.setModelPreference('auto')
 
       expect(store.selectedProviderId).toBe('')
+      expect(store.providerPinOnlyActive).toBe(false)
       expect(store.modelPreference).toBe('auto')
       expect(conversationApi.patchCommandState).toHaveBeenCalledWith('1', {
         selected_provider_id: '',
@@ -577,30 +1059,83 @@ describe('Chat Store', () => {
       })
     })
 
-    it('writes research_mode_enabled alongside the legacy field when toggling research mode', async () => {
-      vi.mocked(conversationApi.patchCommandState).mockResolvedValue({
+    it('sets a provider-only pin and persists it as provider plus auto model', async () => {
+      const store = useChatStore()
+      store.currentConversationId = '1'
+
+      await store.setProviderPinOnly('openrouter')
+
+      expect(store.selectedProviderId).toBe('openrouter')
+      expect(store.providerPinOnlyActive).toBe(true)
+      expect(store.modelPreference).toBe('auto')
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('1', {
+        selected_provider_id: 'openrouter',
+        selected_model_id: '',
+      })
+    })
+
+    it('seeds a new conversation with a provider-only pin selected before the first send', async () => {
+      vi.mocked(conversationApi.create).mockResolvedValue({
         data: {
-          conversation_id: '1',
-          selected_provider_id: '',
-          selected_model_id: '',
-          offline: false,
-          web_search_enabled: true,
-          deep_research_enabled: true,
-          research_mode_enabled: true,
+          id: 'new-id',
+          title: 'New Chat',
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
         },
       } as never)
 
       const store = useChatStore()
-      store.currentConversationId = '1'
+      await store.setProviderPinOnly('openrouter')
 
-      store.setDeepResearchEnabled(true)
-      await flushMicrotasks()
+      await store.createConversation('New Chat')
 
-      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('1', {
-        research_mode_enabled: true,
-        deep_research_enabled: true,
+      expect(store.selectedProviderId).toBe('openrouter')
+      expect(store.providerPinOnlyActive).toBe(true)
+      expect(store.modelPreference).toBe('auto')
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('new-id', {
+        selected_provider_id: 'openrouter',
+        selected_model_id: '',
+        offline: false,
       })
-      expect(store.deepResearchEnabled).toBe(true)
+    })
+
+    it('seeds a new conversation with the current provider-only pin after hydrating another conversation', async () => {
+      vi.mocked(conversationApi.create).mockResolvedValue({
+        data: {
+          id: 'new-id',
+          title: 'New Chat',
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
+        },
+      } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: makeCommandState('1', {
+              selected_provider_id: 'openrouter',
+              selected_model_id: '',
+            }),
+          })
+        }
+        return defaultApiGet(path)
+      })
+
+      const store = useChatStore()
+      await store.selectConversation('1')
+
+      expect(store.selectedProviderId).toBe('openrouter')
+      expect(store.providerPinOnlyActive).toBe(true)
+
+      await store.createConversation('New Chat')
+
+      expect(store.currentConversationId).toBe('new-id')
+      expect(store.selectedProviderId).toBe('openrouter')
+      expect(store.providerPinOnlyActive).toBe(true)
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('new-id', {
+        selected_provider_id: 'openrouter',
+        selected_model_id: '',
+        offline: false,
+      })
     })
 
     it('does not send a provider when auto routing is selected', async () => {
@@ -966,8 +1501,6 @@ describe('Chat Store', () => {
         expect(request).toEqual(
           expect.objectContaining({
             message: 'Need a decision',
-            web_search_enabled: true,
-            deep_research_enabled: false,
           })
         )
         streamOptions = options
@@ -1136,13 +1669,18 @@ describe('Chat Store', () => {
           },
         ],
       } as never)
-      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
-        data: {
-          conversation_id: 'conv-1',
-          active: true,
-          stream_id: 'stream-preview-1',
-        },
-      } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/conv-1/bootstrap') {
+          return makeBootstrapResponse('conv-1', {
+            active_stream: {
+              conversation_id: 'conv-1',
+              active: true,
+              stream_id: 'stream-preview-1',
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
 
       await store.selectConversation('conv-1')
 
@@ -1160,13 +1698,18 @@ describe('Chat Store', () => {
       const store = useChatStore()
 
       vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
-      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
-        data: {
-          conversation_id: 'conv-1',
-          active: true,
-          stream_id: 'stream-live-1',
-        },
-      } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/conv-1/bootstrap') {
+          return makeBootstrapResponse('conv-1', {
+            active_stream: {
+              conversation_id: 'conv-1',
+              active: true,
+              stream_id: 'stream-live-1',
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
 
       await store.selectConversation('conv-1')
 
@@ -1202,13 +1745,18 @@ describe('Chat Store', () => {
           },
         ],
       } as never)
-      vi.mocked(messageApi.getActiveStreamState).mockResolvedValue({
-        data: {
-          conversation_id: 'conv-1',
-          active: true,
-          stream_id: 'stream-live-2',
-        },
-      } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/conv-1/bootstrap') {
+          return makeBootstrapResponse('conv-1', {
+            active_stream: {
+              conversation_id: 'conv-1',
+              active: true,
+              stream_id: 'stream-live-2',
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
 
       await store.selectConversation('conv-1')
 
@@ -1428,8 +1976,8 @@ describe('Chat Store', () => {
       expect(store.processTrace[0]?.detail).toContain('消息: 继续上一条回复')
       expect(store.processTrace[0]?.detail).toContain('提供商: 自动')
       expect(store.processTrace[0]?.detail).toContain('模型: 自动')
-      expect(store.processTrace[0]?.detail).toContain('网页搜索: 开启')
-      expect(store.processTrace[0]?.detail).toContain('深度研究: 关闭')
+      expect(store.processTrace[0]?.detail).not.toContain('网页搜索')
+      expect(store.processTrace[0]?.detail).not.toContain('深度研究')
       expect(store.processTrace[1]?.detail).toBe('正在等待服务器接受请求并开始响应。')
       expect(store.processTrace[2]?.detail).toBe('请求已被接受。正在等待第一段可见输出。')
 
@@ -1601,8 +2149,6 @@ describe('Chat Store', () => {
         expect(request).toEqual(
           expect.objectContaining({
             message: 'Inspect https://www.reddit.com/r/test',
-            web_search_enabled: true,
-            deep_research_enabled: false,
           })
         )
 
@@ -1709,6 +2255,161 @@ describe('Chat Store', () => {
       expect(splitSnapshot[2]?.content).toBe('')
     })
 
+    it('preserves streamed deep research process cards when the final chunk only carries the final result card', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Deep research streaming',
+          created_at: '2026-03-18T00:00:00.000Z',
+          updated_at: '2026-03-18T00:00:00.000Z',
+        },
+      ]
+
+      const initialProgressBlock = makeTypelessBlock({
+        type: 'deep-research-progress',
+        id: 'deep-research-progress-job-1',
+        job_id: 'job-1',
+        conversation_id: 'conv-1',
+        query: 'Deep research this topic',
+        mode: 'deep',
+        stage: 'retrieve',
+        status: 'running',
+        progress: 42,
+        iteration: 1,
+        latest_action: 'initial_retrieve',
+      })
+      const planningBlock = makeTypelessBlock({
+        type: 'deep-research-event',
+        id: 'deep-research-event-job-1-01',
+        job_id: 'job-1',
+        conversation_id: 'conv-1',
+        query: 'Deep research this topic',
+        mode: 'deep',
+        event_kind: 'planning',
+        status: 'info',
+        summary: 'Planned 4 research task(s)',
+        iteration: 1,
+        task_count: 4,
+      })
+      const fullContextBlock = makeTypelessBlock({
+        type: 'deep-research-progress',
+        id: 'deep-research-progress-job-1',
+        job_id: 'job-1',
+        conversation_id: 'conv-1',
+        query: 'Deep research this topic',
+        mode: 'deep',
+        stage: 'fullcontext',
+        status: 'running',
+        progress: 91,
+        iteration: 1,
+        latest_action: 'synthesize_full_context',
+      })
+      const finalResultBlock = makeTypelessBlock({
+        type: 'deep-research',
+        id: 'deep-research-result-job-1',
+        job_id: 'job-1',
+        query: 'Deep research this topic',
+        mode: 'deep',
+        status: 'completed',
+        answer: 'Final synthesized answer',
+      })
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(_conversationId).toBe('conv-1')
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: 'Deep research this topic',
+          })
+        )
+
+        options.onMessage?.({ delta: `${initialProgressBlock}\n\n`, done: false })
+        options.onMessage?.({ delta: `${planningBlock}\n\n`, done: false })
+        options.onMessage?.({ delta: fullContextBlock, done: false })
+        options.onComplete?.({
+          done: true,
+          message_id: 'msg-assistant-final',
+          content: finalResultBlock,
+        })
+      })
+
+      await store.sendMessage('Deep research this topic')
+      await settleAsyncWork()
+
+      expect(store.messages).toHaveLength(2)
+      expect(store.messages[0]?.role).toBe('user')
+      expect(store.messages[1]?.id).toBe('msg-assistant-final')
+      expect(store.messages[1]?.content).not.toContain(initialProgressBlock)
+      expect(store.messages[1]?.content).toContain(planningBlock)
+      expect(store.messages[1]?.content).toContain(fullContextBlock)
+      expect(store.messages[1]?.content).toContain(finalResultBlock)
+    })
+
+    it('preserves streamed browser progress cards when the final chunk only carries the final result card', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Browser progress streaming',
+          created_at: '2026-03-18T00:00:00.000Z',
+          updated_at: '2026-03-18T00:00:00.000Z',
+        },
+      ]
+
+      const browserProgressBlock = makeTypelessBlock({
+        type: 'browser-progress',
+        id: 'browser-progress-chain',
+        steps: [
+          {
+            step: 'navigate',
+            name: 'Navigating',
+            status: 'completed',
+            url: 'https://openai.com/blog',
+          },
+          {
+            step: 'snapshot',
+            name: 'Reading page',
+            status: 'running',
+            url: 'https://openai.com/blog',
+          },
+        ],
+      })
+      const webFetchBlock = makeTypelessBlock({
+        type: 'web-fetch',
+        id: 'web-fetch-chain',
+        title: 'web_fetch',
+        url: 'https://openai.com/blog',
+        status: 'success',
+        content: 'Expanded page content from the OpenAI blog.',
+      })
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(_conversationId).toBe('conv-1')
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: 'Check the latest OpenAI updates',
+          })
+        )
+
+        options.onMessage?.({ delta: browserProgressBlock, done: false })
+        options.onComplete?.({
+          done: true,
+          message_id: 'msg-assistant-browser-final',
+          content: webFetchBlock,
+        })
+      })
+
+      await store.sendMessage('Check the latest OpenAI updates')
+      await settleAsyncWork()
+
+      expect(store.messages).toHaveLength(2)
+      expect(store.messages[1]?.id).toBe('msg-assistant-browser-final')
+      expect(store.messages[1]?.content).toContain(browserProgressBlock)
+      expect(store.messages[1]?.content).toContain(webFetchBlock)
+    })
+
     it('updates the most recent checklist bubble when todo_updated cannot match a local message id', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'
@@ -1749,8 +2450,6 @@ describe('Chat Store', () => {
         expect(request).toEqual(
           expect.objectContaining({
             message: 'Continue the current work',
-            web_search_enabled: true,
-            deep_research_enabled: false,
           })
         )
 
@@ -1910,8 +2609,6 @@ describe('Chat Store', () => {
               data: 'ZmFrZS1pbWFnZQ==',
             },
           ],
-          web_search_enabled: true,
-          deep_research_enabled: false,
         }),
         expect.any(Object)
       )
@@ -1980,8 +2677,6 @@ describe('Chat Store', () => {
           expect.objectContaining({
             message: 'Deep research this topic',
             regenerate: true,
-            web_search_enabled: true,
-            deep_research_enabled: false,
           })
         )
         snapshotDuringRegenerate = store.messages.map((message) => message.id)

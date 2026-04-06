@@ -440,48 +440,40 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, permission: PagePermissions.CHAT },
   },
   {
-    path: '/browser-automation',
-    redirect: '/automation',
-  },
-  {
-    path: '/auto-reply',
-    redirect: '/automation',
-  },
-  {
     path: '/channels',
     name: 'Channels',
     component: () => import('@/views/ChannelsView.vue'),
     meta: { requiresAuth: true, permission: PagePermissions.CHANNELS },
   },
   {
-    path: '/workflows',
-    redirect: '/automation',
-  },
-  {
-    path: '/webhooks',
-    redirect: '/automation',
-  },
-  {
-    path: '/automation/harness',
+    path: '/operations/harness',
     name: 'HarnessGroups',
     component: () => import('@/views/HarnessGroupsView.vue'),
     meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
-    path: '/automation/harness/:id',
+    path: '/operations/harness/:id',
     name: 'HarnessGroupDetail',
     component: () => import('@/views/HarnessGroupDetailView.vue'),
     meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
-    path: '/automation',
-    name: 'CronJobs',
-    component: () => import('@/views/CronView.vue'),
+    path: '/operations/knowledge',
+    name: 'Knowledge',
+    component: () => import('@/views/KnowledgeView.vue'),
     meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
-    path: '/cron',
-    redirect: '/automation',
+    path: '/operations/evolution',
+    name: 'Evolution',
+    component: () => import('@/views/EvolutionView.vue'),
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
+  },
+  {
+    path: '/operations',
+    name: 'Operations',
+    component: () => import('@/views/CronView.vue'),
+    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
     path: '/audit',
@@ -512,23 +504,6 @@ const routes: RouteRecordRaw[] = [
       params: { id: to.params.id },
     }),
     meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
-  },
-  {
-    path: '/harness',
-    redirect: { name: 'HarnessGroups' },
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
-  },
-  {
-    path: '/harness/:id',
-    redirect: (to) => ({
-      name: 'HarnessGroupDetail',
-      params: { id: to.params.id },
-    }),
-    meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
-  },
-  {
-    path: '/sandbox',
-    redirect: '/automation',
   },
   {
     path: '/tenants',

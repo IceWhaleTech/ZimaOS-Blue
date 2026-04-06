@@ -128,8 +128,8 @@ async function loadPermissions() {
       },
       {
         key: PagePermissions.AUTOMATION,
-        name: 'Automation',
-        description: 'Access to automation',
+        name: 'Operations',
+        description: 'Access to operations',
         category: 'advanced',
       },
       {

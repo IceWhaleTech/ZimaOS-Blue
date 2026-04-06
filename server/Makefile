@@ -1,4 +1,4 @@
-.PHONY: all build build-full build-bluecli build-launcher test lint clean run trim-dist bump-version copy-skills verify-provider verify-provider-e2e verify-ota-self-update verify-deep-research-post-release verify-deep-research-smoke
+.PHONY: all build build-full build-bluecli build-launcher maybe-upx-bluecli test lint clean run trim-dist bump-version copy-skills verify-provider verify-provider-e2e verify-ota-self-update verify-deep-research-post-release verify-deep-research-smoke
 
 # Variables
 BINARY_NAME=blue
@@ -15,15 +15,20 @@ TRIAL_LICENSE?=$(ZIMAOS_TRIAL_LICENSE)
 # Build flags
 # -s: Omit symbol table and debug info
 # -w: Omit DWARF symbol table
-BASE_LDFLAGS=-s -w -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$(TRIAL_LICENSE)
+GO_BUILD_FLAGS=-trimpath -buildvcs=false
+BASE_LDFLAGS=-s -w -buildid= -X main.version=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildTime=$(BUILD_TIME) -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$(TRIAL_LICENSE)
+ENABLE_UPX?=0
+UPX?=upx
+UPX_LEVEL?=-1
 
 # On macOS, embed Info.plist into __TEXT,__info_plist for NSBundle.mainBundle to read.
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
-LDFLAGS=-ldflags "$(BASE_LDFLAGS) -extldflags '-sectcreate __TEXT __info_plist Info.plist'"
+LDFLAGS=-ldflags "$(BASE_LDFLAGS) -linkmode external -extldflags '-Wl,-dead_strip -sectcreate __TEXT __info_plist Info.plist'"
 else
 LDFLAGS=-ldflags "$(BASE_LDFLAGS)"
 endif
+LAUNCHER_LDFLAGS=-ldflags "-s -w -buildid="
 
 # CGO is required for mattn/go-sqlite3
 # Windows users: install MinGW-w64 first (https://winlibs.com or `scoop install mingw`)
@@ -52,6 +57,7 @@ trim-dist:
 	@rm -f internal/web/dist/stats.html.gz
 	@find internal/web/dist -name "*.gz" -delete 2>/dev/null || true
 	@find internal/web/dist -name "*.br" -delete 2>/dev/null || true
+	@find internal/web/dist -name ".DS_Store" -delete 2>/dev/null || true
 	@echo "Dist size: $$(du -sh internal/web/dist/ | cut -f1)"
 
 # Pack dist.tar.gz into binary (append + 8-byte LE offset trailer)
@@ -92,24 +98,43 @@ copy-skills:
 	@mkdir -p $(SKILLS_EMBED)
 	@cp -r $(SKILLS_SRC)/* $(SKILLS_EMBED)/
 
+# Optionally compress bluecli for smaller Linux/Windows CLI artifacts.
+maybe-upx-bluecli:
+ifeq ($(ENABLE_UPX),1)
+ifeq ($(UNAME_S),Darwin)
+	@echo "Skipping UPX for $(BLUECLI_NAME) on macOS (preserve code signing and startup behavior)"
+else
+	@command -v $(UPX) >/dev/null 2>&1 || { echo "UPX not found: $(UPX)"; exit 1; }
+	@echo "Compressing $(BUILD_DIR)/$(BLUECLI_NAME) with $(UPX) $(UPX_LEVEL)..."
+	@$(UPX) $(UPX_LEVEL) $(BUILD_DIR)/$(BLUECLI_NAME)
+	@echo "Compressed $(BLUECLI_NAME): $$(du -h $(BUILD_DIR)/$(BLUECLI_NAME) | cut -f1)"
+endif
+else
+	@true
+endif
+
 # Build bluecli (the actual server binary, with CGo)
 build-bluecli: copy-skills
 	@echo "Building $(BLUECLI_NAME)..."
 	@mkdir -p $(BUILD_DIR)
-	go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BLUECLI_NAME) ./cmd/blue
+	go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BLUECLI_NAME) ./cmd/blue
+	@$(MAKE) maybe-upx-bluecli
 ifeq ($(UNAME_S),Darwin)
 	@$(MAKE) codesign
 endif
+	@echo "$(BLUECLI_NAME): $$(du -h $(BUILD_DIR)/$(BLUECLI_NAME) | cut -f1)"
 
 # Build launcher (embeds bluecli + dist.tar.gz, no CGo)
 build-launcher:
 	@echo "Preparing launcher assets..."
+	@rm -f $(BUILD_DIR)/dist.tar $(BUILD_DIR)/dist.tar.gz
+	@rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/bluecli.gz $(LAUNCHER_DIR)/dist.tar $(LAUNCHER_DIR)/dist.tar.gz
 	@tar czf $(BUILD_DIR)/dist.tar.gz -C internal/web/dist .
-	@cp $(BUILD_DIR)/$(BLUECLI_NAME) $(LAUNCHER_DIR)/bluecli
+	@gzip -c -n $(BUILD_DIR)/$(BLUECLI_NAME) > $(LAUNCHER_DIR)/bluecli.gz
 	@cp $(BUILD_DIR)/dist.tar.gz $(LAUNCHER_DIR)/dist.tar.gz
 	@echo "Building launcher..."
-	CGO_ENABLED=0 go build -ldflags "-s -w" -o $(BUILD_DIR)/$(BINARY_NAME) ./$(LAUNCHER_DIR)
-	@rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/dist.tar.gz
+	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) $(LAUNCHER_LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./$(LAUNCHER_DIR)
+	@rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/bluecli.gz $(LAUNCHER_DIR)/dist.tar $(LAUNCHER_DIR)/dist.tar.gz
 ifeq ($(UNAME_S),Darwin)
 	@$(MAKE) codesign CODESIGN_TARGET=$(BINARY_NAME)
 endif
@@ -125,7 +150,7 @@ ifeq ($(UNAME_S),Darwin)
 	@$(MAKE) build-launcher
 else
 	@echo "Building $(BINARY_NAME)..."
-	go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
+	go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
 	@$(MAKE) pack-dist
 endif
 
@@ -134,12 +159,12 @@ build-full: trim-dist copy-skills
 	@mkdir -p $(BUILD_DIR)
 ifeq ($(UNAME_S),Darwin)
 	@echo "Building $(BLUECLI_NAME) (full, with ASR)..."
-	go build $(TAGS_FULL) $(LDFLAGS) -o $(BUILD_DIR)/$(BLUECLI_NAME) ./cmd/blue
+	go build $(GO_BUILD_FLAGS) $(TAGS_FULL) $(LDFLAGS) -o $(BUILD_DIR)/$(BLUECLI_NAME) ./cmd/blue
 	@$(MAKE) codesign
 	@$(MAKE) build-launcher
 else
 	@echo "Building $(BINARY_NAME) (full, with ASR)..."
-	go build $(TAGS_FULL) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
+	go build $(GO_BUILD_FLAGS) $(TAGS_FULL) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/blue
 	@$(MAKE) pack-dist
 endif
 
@@ -165,7 +190,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 	rm -rf $(SKILLS_EMBED)
 	rm -f coverage.out coverage.html
-	rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/dist.tar.gz
+	rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/dist.tar $(LAUNCHER_DIR)/dist.tar.gz
 
 # Run the application
 run: build
@@ -186,11 +211,11 @@ mocks:
 build-all:
 	@echo "Building for multiple platforms..."
 	@mkdir -p $(BUILD_DIR)
-	GOOS=linux GOARCH=amd64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/blue
-	GOOS=linux GOARCH=arm64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/blue
-	GOOS=darwin GOARCH=amd64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/blue
-	GOOS=darwin GOARCH=arm64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/blue
-	GOOS=windows GOARCH=amd64 go build $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/blue
+	GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-amd64 ./cmd/blue
+	GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/blue
+	GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/blue
+	GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/blue
+	GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/blue
 
 # Docker build
 docker-build:
@@ -210,6 +235,8 @@ help:
 	@echo "  clean        - Clean build artifacts"
 	@echo "  run          - Build and run the application"
 	@echo "  deps         - Download and tidy dependencies"
+	@echo "  ENABLE_UPX=1 - Optionally UPX-compress bluecli on Linux/Windows"
+	@echo "  UPX_LEVEL=-1 - Fast, low-compression UPX level for smaller binaries"
 	@echo "  build-all    - Cross-compile for multiple platforms"
 	@echo "  docker-build - Build Docker image"
 	@echo "  verify-provider - Verify responses-only/provider compatibility"

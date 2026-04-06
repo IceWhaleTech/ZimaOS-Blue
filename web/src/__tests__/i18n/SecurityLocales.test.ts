@@ -118,6 +118,7 @@ describe('security locale compilation', () => {
       'security.approvedBrowserSites',
       'security.approvedBrowserSitesDesc',
       'security.noApprovedBrowserSites',
+      'security.lastUsed',
       'security.tabs.overview',
       'security.tabs.network',
       'security.tabs.monitoring',

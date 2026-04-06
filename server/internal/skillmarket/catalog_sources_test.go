@@ -405,13 +405,13 @@ func TestDiscoverFromHTMLCatalogSkipsMaintenancePlaceholderPages(t *testing.T) {
 		_, _ = w.Write([]byte(`
 <html>
   <head>
-    <title>SkillStack - Under Construction | SkillStack</title>
-    <meta name="description" content="Stop giving away your best agents. Package, validate, and sell your Claude Code skills.">
+    <title>Catalog - Under Construction</title>
+    <meta name="description" content="Catalog is currently under maintenance.">
   </head>
   <body>
-    <h1>SkillStack</h1>
+    <h1>Catalog</h1>
     <h2>We're making things better</h2>
-    <p>SkillStack is currently under construction. We'll be back soon with an improved experience.</p>
+    <p>The catalog is currently under construction. We'll be back soon with an improved experience.</p>
   </body>
 </html>`))
 	})
@@ -442,11 +442,11 @@ func TestDiscoverFromHTMLCatalogSkipsMaintenancePlaceholderPages(t *testing.T) {
 
 	run := &CrawlRun{}
 	source := Source{
-		ID:          "skillstack",
+		ID:          "maintenance-catalog",
 		Type:        "html_catalog",
 		BaseURL:     server.URL + "/marketplace",
-		DisplayName: "SkillStack",
-		SourceGroup: "skillstack",
+		DisplayName: "Maintenance Catalog",
+		SourceGroup: "maintenance-catalog",
 		Enabled:     true,
 	}
 	if err := svc.discoverFromHTMLCatalog(context.Background(), source, 0, &DiscoverResult{}, run); err != nil {

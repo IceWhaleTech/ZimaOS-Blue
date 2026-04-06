@@ -9,6 +9,21 @@ import (
 	"testing"
 )
 
+func resetTemplateCacheForTest(t *testing.T) {
+	t.Helper()
+
+	templateCacheMu.Lock()
+	original := templateCache
+	templateCache = map[string]*templateSet{}
+	templateCacheMu.Unlock()
+
+	t.Cleanup(func() {
+		templateCacheMu.Lock()
+		templateCache = original
+		templateCacheMu.Unlock()
+	})
+}
+
 func TestEnsureWorkspace(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager(dir)
@@ -453,6 +468,25 @@ func TestEnsureWorkspace_WritesDetectedAgentsTemplate(t *testing.T) {
 	}
 }
 
+func TestEnsureWorkspace_DoesNotPopulateTemplateCache(t *testing.T) {
+	resetTemplateCacheForTest(t)
+	t.Setenv("LANG", "zh_CN.UTF-8")
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANGUAGE", "")
+
+	mgr := NewManager(t.TempDir())
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("EnsureWorkspace: %v", err)
+	}
+
+	templateCacheMu.RLock()
+	cacheSize := len(templateCache)
+	templateCacheMu.RUnlock()
+	if cacheSize != 0 {
+		t.Fatalf("template cache size = %d, want 0 after EnsureWorkspace startup path", cacheSize)
+	}
+}
+
 func TestLocalizedAgentsTemplate_RemainsLocalizedAfterPlatformSplit(t *testing.T) {
 	ts := getTemplates("fr")
 	if ts == nil {
@@ -468,11 +502,13 @@ func TestLocalizedAgentsTemplate_RemainsLocalizedAfterPlatformSplit(t *testing.T
 }
 
 func TestNormalizeDefaultTemplateToEnglish(t *testing.T) {
-	zh := getTemplates("zh")
+	resetTemplateCacheForTest(t)
+
+	zh := resolveTemplates("zh")
 	if zh == nil {
 		t.Fatal("expected zh templates")
 	}
-	en := getTemplates("en")
+	en := resolveTemplates("en")
 	if en == nil {
 		t.Fatal("expected en templates")
 	}
@@ -486,6 +522,13 @@ func TestNormalizeDefaultTemplateToEnglish(t *testing.T) {
 	got = NormalizeDefaultTemplateToEnglish(FileSOUL, custom)
 	if got != custom {
 		t.Fatal("expected custom content to remain unchanged")
+	}
+
+	templateCacheMu.RLock()
+	cacheSize := len(templateCache)
+	templateCacheMu.RUnlock()
+	if cacheSize != 0 {
+		t.Fatalf("template cache size = %d, want 0 after normalization-only path", cacheSize)
 	}
 }
 

@@ -19,13 +19,15 @@ type LogEntry struct {
 
 // RingBuffer is a thread-safe circular buffer for log entries
 type RingBuffer struct {
-	mu       sync.RWMutex
-	entries  []LogEntry
-	size     int
-	head     int
-	count    int
-	maxSize  int
+	mu      sync.RWMutex
+	entries []LogEntry
+	size    int
+	head    int
+	count   int
+	maxSize int
 }
+
+const defaultInitialBufferCapacity = 256
 
 // NewRingBuffer creates a new ring buffer with the specified capacity
 func NewRingBuffer(capacity int) *RingBuffer {
@@ -33,7 +35,6 @@ func NewRingBuffer(capacity int) *RingBuffer {
 		capacity = 1000
 	}
 	return &RingBuffer{
-		entries: make([]LogEntry, capacity),
 		maxSize: capacity,
 	}
 }
@@ -52,8 +53,9 @@ func (rb *RingBuffer) Add(entry LogEntry) {
 	rb.mu.Lock()
 	defer rb.mu.Unlock()
 
+	rb.ensureWriteCapacityLocked()
 	rb.entries[rb.head] = entry
-	rb.head = (rb.head + 1) % rb.maxSize
+	rb.head = (rb.head + 1) % len(rb.entries)
 	if rb.count < rb.maxSize {
 		rb.count++
 	}
@@ -64,22 +66,7 @@ func (rb *RingBuffer) GetAll() []LogEntry {
 	rb.mu.RLock()
 	defer rb.mu.RUnlock()
 
-	result := make([]LogEntry, rb.count)
-	if rb.count == 0 {
-		return result
-	}
-
-	start := 0
-	if rb.count == rb.maxSize {
-		start = rb.head
-	}
-
-	for i := 0; i < rb.count; i++ {
-		idx := (start + i) % rb.maxSize
-		result[i] = rb.entries[idx]
-	}
-
-	return result
+	return rb.snapshotLocked()
 }
 
 // Query returns log entries matching the given criteria
@@ -148,6 +135,60 @@ func (rb *RingBuffer) Clear() {
 	defer rb.mu.Unlock()
 	rb.head = 0
 	rb.count = 0
+}
+
+func (rb *RingBuffer) ensureWriteCapacityLocked() {
+	if rb.maxSize <= 0 {
+		rb.maxSize = 1000
+	}
+	if len(rb.entries) == 0 {
+		initial := rb.maxSize
+		if initial > defaultInitialBufferCapacity {
+			initial = defaultInitialBufferCapacity
+		}
+		rb.entries = make([]LogEntry, initial)
+		rb.head = 0
+		return
+	}
+	if rb.count < len(rb.entries) || len(rb.entries) >= rb.maxSize {
+		return
+	}
+
+	newCap := len(rb.entries) * 2
+	if newCap < defaultInitialBufferCapacity {
+		newCap = defaultInitialBufferCapacity
+	}
+	if newCap > rb.maxSize {
+		newCap = rb.maxSize
+	}
+	if newCap <= len(rb.entries) {
+		return
+	}
+
+	ordered := rb.snapshotLocked()
+	expanded := make([]LogEntry, newCap)
+	copy(expanded, ordered)
+	rb.entries = expanded
+	rb.head = rb.count
+}
+
+func (rb *RingBuffer) snapshotLocked() []LogEntry {
+	result := make([]LogEntry, rb.count)
+	if rb.count == 0 || len(rb.entries) == 0 {
+		return result
+	}
+
+	start := 0
+	if rb.count == len(rb.entries) {
+		start = rb.head
+	}
+
+	for i := 0; i < rb.count; i++ {
+		idx := (start + i) % len(rb.entries)
+		result[i] = rb.entries[idx]
+	}
+
+	return result
 }
 
 // known keys excluded from Fields

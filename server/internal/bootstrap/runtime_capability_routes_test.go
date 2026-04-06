@@ -22,6 +22,9 @@ func TestRuntimeCapabilityContractRegisterTaskSurface_RegistersResearchAndReflec
 	if !registration.deepResearchRegistered {
 		t.Fatalf("expected deep research routes to register, got %#v", registration)
 	}
+	if !registration.knowledgeRoutesRegistered {
+		t.Fatalf("expected knowledge routes to register, got %#v", registration)
+	}
 	if !registration.harnessResearchRegistered {
 		t.Fatalf("expected harness research capability routes to register, got %#v", registration)
 	}
@@ -39,6 +42,9 @@ func TestRuntimeCapabilityContractRegisterTaskSurface_RegistersResearchAndReflec
 	}
 	if !routeExists(e, "POST", "/api/deep-research/jobs") || !routeExists(e, "POST", "/api/v1/deep-research/jobs") {
 		t.Fatalf("expected deep research routes on protected/api groups, got %#v", e.Routes())
+	}
+	if !routeExists(e, "POST", "/api/knowledge/jobs") || !routeExists(e, "POST", "/api/v1/knowledge/jobs") {
+		t.Fatalf("expected knowledge routes on protected/api groups, got %#v", e.Routes())
 	}
 	if !routeExists(e, "POST", "/api/harness/research/jobs") || !routeExists(e, "POST", "/api/v1/harness/research/jobs") {
 		t.Fatalf("expected harness research capability routes on protected/api groups, got %#v", e.Routes())
@@ -63,8 +69,8 @@ func TestRuntimeCapabilityContractRegisterTaskSurface_RegistersHarnessRoutesWhen
 		logger:       zap.NewNop(),
 	})
 
-	if !registration.deepResearchRegistered || !registration.harnessResearchRegistered || !registration.harnessRoutesRegistered {
-		t.Fatalf("expected deep research, harness research, and harness routes to register, got %#v", registration)
+	if !registration.deepResearchRegistered || !registration.knowledgeRoutesRegistered || !registration.harnessResearchRegistered || !registration.harnessRoutesRegistered {
+		t.Fatalf("expected deep research, knowledge, harness research, and harness routes to register, got %#v", registration)
 	}
 	if !registration.research.creatorBound || !registration.research.deepResearchRegistered || !registration.research.harnessResearchRegistered {
 		t.Fatalf("expected first-class research lane registration to record creator/route state, got %#v", registration.research)
@@ -75,10 +81,19 @@ func TestRuntimeCapabilityContractRegisterTaskSurface_RegistersHarnessRoutesWhen
 	if !routeExists(e, "GET", "/api/harness/runs") || !routeExists(e, "GET", "/api/v1/harness/runs") {
 		t.Fatalf("expected harness routes on protected/api groups, got %#v", e.Routes())
 	}
+	if !routeExists(e, "GET", "/api/knowledge/pages") || !routeExists(e, "GET", "/api/v1/knowledge/pages") {
+		t.Fatalf("expected knowledge browse routes on protected/api groups, got %#v", e.Routes())
+	}
 	if !routeExists(e, "POST", "/api/harness/research/jobs") || !routeExists(e, "POST", "/api/v1/harness/research/jobs") {
 		t.Fatalf("expected harness research capability routes on protected/api groups, got %#v", e.Routes())
 	}
-	if !routeExists(e, "GET", "/api/tasks") || !routeExists(e, "GET", "/api/v1/tasks") {
-		t.Fatalf("expected task projection routes on protected/api groups, got %#v", e.Routes())
+	if routeExists(e, "GET", "/api/tasks") || routeExists(e, "GET", "/api/v1/tasks") {
+		t.Fatalf("expected standalone task list routes to stay removed, got %#v", e.Routes())
+	}
+	if !routeExists(e, "GET", "/api/tasks/:id") || !routeExists(e, "GET", "/api/v1/tasks/:id") {
+		t.Fatalf("expected task detail routes on protected/api groups, got %#v", e.Routes())
+	}
+	if !routeExists(e, "POST", "/api/tasks/:id/actions/:action") || !routeExists(e, "POST", "/api/v1/tasks/:id/actions/:action") {
+		t.Fatalf("expected task action routes on protected/api groups, got %#v", e.Routes())
 	}
 }

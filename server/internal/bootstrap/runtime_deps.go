@@ -22,7 +22,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/metrics"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ngrok"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/plugin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/push"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
@@ -53,8 +52,6 @@ type RoutesDeps struct {
 	MetricsCollector   *metrics.Collector
 	FlagEvaluator      *config.FlagEvaluator
 	ChatHandler        *server.ChatHandler
-	PluginRegistry     *plugin.Registry
-	PluginStore        *plugin.Store
 	ExtauthService     extauth.Service
 	ExtauthHandler     *extauth.Handler
 	AutoreplyService   *autoreply.Service

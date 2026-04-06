@@ -72,10 +72,15 @@ vi.mock('@/components/MemoryManager.vue', () => ({
   default: { name: 'MemoryManager', template: '<div />' },
 }))
 
+vi.mock('@/components/KnowledgeManagerCard.vue', () => ({
+  default: { name: 'KnowledgeManagerCard', template: '<div />' },
+}))
+
 vi.mock('@/components/BackupManager.vue', () => ({
   default: {
     name: 'BackupManager',
-    template: '<button data-testid="mock-backup-restore" @click="$emit(\'restore\', \'backup-1\')" />',
+    template:
+      '<button data-testid="mock-backup-restore" @click="$emit(\'restore\', \'backup-1\')" />',
   },
 }))
 
@@ -241,7 +246,10 @@ describe('SettingsView restore runtime integration', () => {
     tauriState.restartServerRuntime.mockResolvedValue(true)
     await setLocale('en-US')
     primeApiMocks()
-    vi.stubGlobal('confirm', vi.fn(() => true))
+    vi.stubGlobal(
+      'confirm',
+      vi.fn(() => true)
+    )
   })
 
   it('routes restore through the desktop shell and keeps restart in-process', async () => {

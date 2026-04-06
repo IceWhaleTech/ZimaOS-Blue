@@ -2,6 +2,7 @@ package mediagen
 
 import (
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
@@ -130,6 +131,7 @@ type cuePattern struct {
 
 type ahoKeywordCueMatcher struct {
 	patterns []cuePattern
+	once     sync.Once
 	matcher  *textmatch.FoldedAhoMatcher
 }
 
@@ -137,17 +139,27 @@ func newAhoKeywordCueMatcher(cues []string) keywordCueMatcher {
 	patterns := dedupeCuePatterns(cues)
 	return &ahoKeywordCueMatcher{
 		patterns: patterns,
-		matcher:  textmatch.NewFoldedAhoMatcher(patternCueStrings(patterns)),
 	}
 }
 
+func (m *ahoKeywordCueMatcher) ensureMatcher() *textmatch.FoldedAhoMatcher {
+	if m == nil {
+		return nil
+	}
+	m.once.Do(func() {
+		m.matcher = textmatch.NewFoldedAhoMatcher(patternCueStrings(m.patterns))
+	})
+	return m.matcher
+}
+
 func (m *ahoKeywordCueMatcher) Contains(text string) bool {
-	if m == nil || m.matcher == nil {
+	matcher := m.ensureMatcher()
+	if matcher == nil {
 		return false
 	}
 	textRunes := []rune(strings.ToLower(strings.TrimSpace(text)))
 	contains := false
-	m.matcher.ScanFold(text, func(match textmatch.FoldedMatch) bool {
+	matcher.ScanFold(text, func(match textmatch.FoldedMatch) bool {
 		pattern := m.patterns[match.PatternIndex]
 		if pattern.requireWordBoundary && !isRuneWordMatch(textRunes, match.Start, len(pattern.runes)) {
 			return false
@@ -159,12 +171,13 @@ func (m *ahoKeywordCueMatcher) Contains(text string) bool {
 }
 
 func (m *ahoKeywordCueMatcher) CountDistinct(text string) int {
-	if m == nil || m.matcher == nil {
+	matcher := m.ensureMatcher()
+	if matcher == nil {
 		return 0
 	}
 	textRunes := []rune(strings.ToLower(strings.TrimSpace(text)))
 	seen := make(map[int]struct{}, len(m.patterns))
-	m.matcher.ScanFold(text, func(match textmatch.FoldedMatch) bool {
+	matcher.ScanFold(text, func(match textmatch.FoldedMatch) bool {
 		pattern := m.patterns[match.PatternIndex]
 		if pattern.requireWordBoundary && !isRuneWordMatch(textRunes, match.Start, len(pattern.runes)) {
 			return false
@@ -176,12 +189,13 @@ func (m *ahoKeywordCueMatcher) CountDistinct(text string) int {
 }
 
 func (m *ahoKeywordCueMatcher) FindMatches(text string) []cueMatch {
-	if m == nil || m.matcher == nil {
+	matcher := m.ensureMatcher()
+	if matcher == nil {
 		return nil
 	}
 	textRunes := []rune(strings.ToLower(strings.TrimSpace(text)))
 	matches := make([]cueMatch, 0)
-	m.matcher.ScanFold(text, func(match textmatch.FoldedMatch) bool {
+	matcher.ScanFold(text, func(match textmatch.FoldedMatch) bool {
 		pattern := m.patterns[match.PatternIndex]
 		if pattern.requireWordBoundary && !isRuneWordMatch(textRunes, match.Start, len(pattern.runes)) {
 			return false

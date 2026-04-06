@@ -8,6 +8,7 @@ func (binding *runtimeContractBinding) BindPlatformSurfaceRuntime(options routeR
 }
 
 func bindRouteRuntimePlatformSurfaces(options routeRuntimeContractPlatformSurfaceOptions) {
+	registerRouteRuntimeProfilingSurface(options)
 	registerRouteRuntimeBillingSurface(options)
 	registerRouteRuntimeNetworkSurface(options)
 	registerRouteRuntimeMetricsSurface(options)

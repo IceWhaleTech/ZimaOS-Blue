@@ -49,8 +49,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'Administrer runtime-indstillinger, udbydere, brugere og administrationskontroller.',
     himalayaName: 'Himalaya e-mail-CLI',
-    himalayaDescription:
-      'Brug den eksterne Himalaya e-mail-CLI til rigtige mail-workflows.',
+    himalayaDescription: 'Brug den eksterne Himalaya e-mail-CLI til rigtige mail-workflows.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Omskriv en lokal tekstfil til mere naturligt sprog.',
     planAppendName: 'Tilfoj til plan',
@@ -67,11 +66,9 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     webQueryDescription: 'Sog eller laes offentlige websider ud fra en foresporgsel eller URL.',
   },
   'de-DE': {
-    configDescription:
-      'Verwalte Laufzeiteinstellungen, Anbieter, Benutzer und Admin-Steuerungen.',
+    configDescription: 'Verwalte Laufzeiteinstellungen, Anbieter, Benutzer und Admin-Steuerungen.',
     himalayaName: 'Himalaya E-Mail-CLI',
-    himalayaDescription:
-      'Nutze die externe Himalaya-E-Mail-CLI fur echte Mail-Workflows.',
+    himalayaDescription: 'Nutze die externe Himalaya-E-Mail-CLI fur echte Mail-Workflows.',
     humanizerName: 'Text-Humanizer',
     humanizerDescription: 'Schreibe eine lokale Textdatei in naturlicherer Sprache um.',
     planAppendName: 'Plan erweitern',
@@ -83,8 +80,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'Selbstreflexion',
     selfReflectDescription: 'Halte Erkenntnisse aus einer abgeschlossenen Aufgabe fest.',
     summarizeName: 'Zusammenfassen',
-    summarizeDescription:
-      'Nutze summarize.sh, um URLs, Dateien und Transkripte zusammenzufassen.',
+    summarizeDescription: 'Nutze summarize.sh, um URLs, Dateien und Transkripte zusammenzufassen.',
     webQueryName: 'Web-Abfrage',
     webQueryDescription: 'Suche oder lies offentliche Webseiten anhand einer Anfrage oder URL.',
   },
@@ -130,8 +126,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'Gestiona ajustes de ejecucion, proveedores, usuarios y controles de administracion.',
     himalayaName: 'CLI de correo Himalaya',
-    himalayaDescription:
-      'Usa la CLI de correo externa Himalaya para flujos de correo reales.',
+    himalayaDescription: 'Usa la CLI de correo externa Himalaya para flujos de correo reales.',
     humanizerName: 'Humanizador',
     humanizerDescription: 'Reescribe un archivo de texto local con un lenguaje mas natural.',
     planAppendName: 'Anadir al plan',
@@ -173,8 +168,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'Gestisci impostazioni di runtime, provider, utenti e controlli amministrativi.',
     himalayaName: 'CLI email Himalaya',
-    himalayaDescription:
-      'Usa la CLI email esterna Himalaya per flussi email reali.',
+    himalayaDescription: 'Usa la CLI email esterna Himalaya per flussi email reali.',
     humanizerName: 'Umanizzatore',
     humanizerDescription: 'Riscrivi un file di testo locale con un linguaggio piu naturale.',
     planAppendName: 'Aggiungi al piano',
@@ -191,11 +185,9 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     webQueryDescription: 'Cerca o leggi pagine web pubbliche da una query o URL.',
   },
   'nl-NL': {
-    configDescription:
-      'Beheer runtime-instellingen, providers, gebruikers en beheerdersbediening.',
+    configDescription: 'Beheer runtime-instellingen, providers, gebruikers en beheerdersbediening.',
     himalayaName: 'Himalaya e-mail-CLI',
-    himalayaDescription:
-      'Gebruik de externe Himalaya e-mail-CLI voor echte mailworkflows.',
+    himalayaDescription: 'Gebruik de externe Himalaya e-mail-CLI voor echte mailworkflows.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Herschrijf een lokaal tekstbestand in natuurlijkere taal.',
     planAppendName: 'Aan plan toevoegen',
@@ -207,7 +199,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'Zelfreflectie',
     selfReflectDescription: 'Leg geleerde lessen van een voltooide taak vast.',
     summarizeName: 'Samenvatten',
-    summarizeDescription: "Gebruik summarize.sh om URL's, bestanden en transcripties samen te vatten.",
+    summarizeDescription:
+      "Gebruik summarize.sh om URL's, bestanden en transcripties samen te vatten.",
     webQueryName: 'Webquery',
     webQueryDescription: "Zoek of lees openbare webpagina's via een zoekopdracht of URL.",
   },
@@ -229,7 +222,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     summarizeName: 'Resumir',
     summarizeDescription: 'Use o summarize.sh para resumir URLs, arquivos e transcricoes.',
     webQueryName: 'Consulta web',
-    webQueryDescription: 'Pesquise ou leia paginas publicas da web a partir de uma consulta ou URL.',
+    webQueryDescription:
+      'Pesquise ou leia paginas publicas da web a partir de uma consulta ou URL.',
   },
   'pt-PT': {
     configDescription:
@@ -249,15 +243,13 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     summarizeName: 'Resumir',
     summarizeDescription: 'Usa o summarize.sh para resumir URLs, ficheiros e transcricoes.',
     webQueryName: 'Consulta web',
-    webQueryDescription:
-      'Pesquisa ou le paginas web publicas a partir de uma consulta ou URL.',
+    webQueryDescription: 'Pesquisa ou le paginas web publicas a partir de uma consulta ou URL.',
   },
   'sv-SE': {
     configDescription:
       'Hantera runtime-installningar, leverantorer, anvandare och administrationskontroller.',
     himalayaName: 'Himalaya e-post-CLI',
-    himalayaDescription:
-      'Anvand den externa Himalaya e-post-CLI:n for riktiga e-postfloden.',
+    himalayaDescription: 'Anvand den externa Himalaya e-post-CLI:n for riktiga e-postfloden.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Skriv om en lokal textfil till mer naturligt sprak.',
     planAppendName: 'Lagg till i plan',
@@ -269,7 +261,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'Sjalvreflektion',
     selfReflectDescription: 'Samla lardomar fran en slutford uppgift.',
     summarizeName: 'Sammanfatta',
-    summarizeDescription: 'Anvand summarize.sh for att sammanfatta URLer, filer och transkriptioner.',
+    summarizeDescription:
+      'Anvand summarize.sh for att sammanfatta URLer, filer och transkriptioner.',
     webQueryName: 'Webbfraga',
     webQueryDescription: 'Sok efter eller las offentliga webbsidor fran en fraga eller URL.',
   },
@@ -315,8 +308,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'Spravujte nastaveni behu, poskytovatele, uzivatele a administratorske ovladani.',
     himalayaName: 'E-mailove CLI Himalaya',
-    himalayaDescription:
-      'Pouzijte externi e-mailove CLI Himalaya pro skutecne mailove workflow.',
+    himalayaDescription: 'Pouzijte externi e-mailove CLI Himalaya pro skutecne mailove workflow.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Prepiste mistni textovy soubor prirozenejsim jazykem.',
     planAppendName: 'Pridat do planu',
@@ -349,7 +341,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'Autoanastochasmos',
     selfReflectDescription: 'Katagrapste mathimata apo mia olokliromeni ergasia.',
     summarizeName: 'Synopsi',
-    summarizeDescription: 'Xrisimopoiiste to summarize.sh gia synopsi URL, archeion kai apomagnitofoniseon.',
+    summarizeDescription:
+      'Xrisimopoiiste to summarize.sh gia synopsi URL, archeion kai apomagnitofoniseon.',
     webQueryName: 'Erotima istou',
     webQueryDescription: 'Anazitiste i diavaste dimosies istoselides apo erotima i URL.',
   },
@@ -370,7 +363,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'Feinmhachnamh',
     selfReflectDescription: 'Taifead ceachtanna o thasc criochnaithe.',
     summarizeName: 'Achoimrigh',
-    summarizeDescription: 'Usaid summarize.sh chun URLanna, comhaid agus tras-scribhinní a achoimriu.',
+    summarizeDescription:
+      'Usaid summarize.sh chun URLanna, comhaid agus tras-scribhinní a achoimriu.',
     webQueryName: 'Ceist Ghréasáin',
     webQueryDescription: 'Cuardaigh no leigh leathanaigh ghréasáin phoibli o cheist no URL.',
   },
@@ -378,8 +372,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'Upravljajte postavkama izvodenja, pruzateljima, korisnicima i administratorskim kontrolama.',
     himalayaName: 'Himalaya e-mail CLI',
-    himalayaDescription:
-      'Koristite vanjski Himalaya e-mail CLI za stvarne mail tokove rada.',
+    himalayaDescription: 'Koristite vanjski Himalaya e-mail CLI za stvarne mail tokove rada.',
     humanizerName: 'Humanizator',
     humanizerDescription: 'Prepisite lokalnu tekstnu datoteku prirodnijim jezikom.',
     planAppendName: 'Dodaj u plan',
@@ -412,9 +405,11 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'Onreflexio',
     selfReflectDescription: 'Rogzitsd a befejezett feladat tanulsagait.',
     summarizeName: 'Osszefoglalas',
-    summarizeDescription: 'A summarize.sh segitsegevel foglalj ossze URL-eket, fajlokat es atiratokat.',
+    summarizeDescription:
+      'A summarize.sh segitsegevel foglalj ossze URL-eket, fajlokat es atiratokat.',
     webQueryName: 'Webes lekerdezes',
-    webQueryDescription: 'Nyilvanos weboldalakat kereshetsz vagy olvashatsz lekerdezesbol vagy URL-bol.',
+    webQueryDescription:
+      'Nyilvanos weboldalakat kereshetsz vagy olvashatsz lekerdezesbol vagy URL-bol.',
   },
   'ja-JP': {
     configDescription: 'ランタイム設定、プロバイダー、ユーザー、管理コントロールを管理します。',
@@ -458,10 +453,10 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'റൺടൈം സജ്ജീകരണങ്ങൾ, പ്രൊവൈഡർമാർ, ഉപയോക്താക്കൾ, അഡ്മിൻ നിയന്ത്രണങ്ങൾ എന്നിവ നിയന്ത്രിക്കുക.',
     himalayaName: 'Himalaya ഇമെയിൽ CLI',
-    himalayaDescription:
-      'യഥാർത്ഥ മെയിൽ പ്രവാഹങ്ങൾക്കായി പുറം Himalaya ഇമെയിൽ CLI ഉപയോഗിക്കുക.',
+    himalayaDescription: 'യഥാർത്ഥ മെയിൽ പ്രവാഹങ്ങൾക്കായി പുറം Himalaya ഇമെയിൽ CLI ഉപയോഗിക്കുക.',
     humanizerName: 'ഹ്യൂമനൈസർ',
-    humanizerDescription: 'പ്രാദേശിക ടെക്സ്റ്റ് ഫയൽ കൂടുതൽ സ്വാഭാവികമായ ഭാഷയാക്കി പുനരാഖ്യാനം ചെയ്യുക.',
+    humanizerDescription:
+      'പ്രാദേശിക ടെക്സ്റ്റ് ഫയൽ കൂടുതൽ സ്വാഭാവികമായ ഭാഷയാക്കി പുനരാഖ്യാനം ചെയ്യുക.',
     planAppendName: 'പദ്ധതിയിലേക്ക് ചേർക്കുക',
     planAppendDescription: 'നിലവിലുള്ള പദ്ധതിയിലേക്ക് ഒരു പ്രവർത്തി ചേർക്കുക.',
     planCreateName: 'പദ്ധതി സൃഷ്ടിക്കുക',
@@ -471,16 +466,17 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'സ്വയംപരിശോധന',
     selfReflectDescription: 'പൂർത്തിയായ ഒരു പ്രവർത്തിയിൽ നിന്നുള്ള പാഠങ്ങൾ രേഖപ്പെടുത്തുക.',
     summarizeName: 'സംഗ്രഹിക്കുക',
-    summarizeDescription: 'URL-കൾ, ഫയലുകൾ, ട്രാൻസ്ക്രിപ്റ്റുകൾ എന്നിവ സംഗ്രഹിക്കാൻ summarize.sh ഉപയോഗിക്കുക.',
+    summarizeDescription:
+      'URL-കൾ, ഫയലുകൾ, ട്രാൻസ്ക്രിപ്റ്റുകൾ എന്നിവ സംഗ്രഹിക്കാൻ summarize.sh ഉപയോഗിക്കുക.',
     webQueryName: 'വെബ് ക്വറി',
-    webQueryDescription: 'ചോദ്യമോ URL-മോ ഉപയോഗിച്ച് പൊതുവായ വെബ് പേജുകൾ തിരയുകയോ വായിക്കുകയോ ചെയ്യുക.',
+    webQueryDescription:
+      'ചോദ്യമോ URL-മോ ഉപയോഗിച്ച് പൊതുവായ വെബ് പേജുകൾ തിരയുകയോ വായിക്കുകയോ ചെയ്യുക.',
   },
   'nb-NO': {
     configDescription:
       'Administrer kjoretidsinnstillinger, leverandorer, brukere og admin-kontroller.',
     himalayaName: 'Himalaya e-post-CLI',
-    himalayaDescription:
-      'Bruk den eksterne Himalaya e-post-CLI-en for ekte e-postflyter.',
+    himalayaDescription: 'Bruk den eksterne Himalaya e-post-CLI-en for ekte e-postflyter.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Omskriv en lokal tekstfil til mer naturlig sprak.',
     planAppendName: 'Legg til i plan',
@@ -521,8 +517,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'Gestioneaza setarile runtime, furnizorii, utilizatorii si controalele administrative.',
     himalayaName: 'CLI email Himalaya',
-    himalayaDescription:
-      'Foloseste CLI-ul extern de email Himalaya pentru fluxuri reale de posta.',
+    himalayaDescription: 'Foloseste CLI-ul extern de email Himalaya pentru fluxuri reale de posta.',
     humanizerName: 'Humanizator',
     humanizerDescription: 'Rescrie un fisier text local intr-un limbaj mai natural.',
     planAppendName: 'Adauga la plan',
@@ -555,7 +550,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     selfReflectName: 'Samorefleksiya',
     selfReflectDescription: 'Zafiksiruyte vyvody iz zavershennoy zadachi.',
     summarizeName: 'Summarizatsiya',
-    summarizeDescription: 'Ispolzuyte summarize.sh dlya kratkogo izlozheniya URL, faylov i rasshifrovok.',
+    summarizeDescription:
+      'Ispolzuyte summarize.sh dlya kratkogo izlozheniya URL, faylov i rasshifrovok.',
     webQueryName: 'Veb-zapros',
     webQueryDescription: 'Ishchite ili chitajte publichnye veb-stranitsy po zaprosu ili URL.',
   },
@@ -563,8 +559,7 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     configDescription:
       'Spravujte nastavenia behu, poskytovatelov, pouzivatelov a administratorske ovladanie.',
     himalayaName: 'E-mailove CLI Himalaya',
-    himalayaDescription:
-      'Pouzite externe e-mailove CLI Himalaya pre skutocne mailove workflow.',
+    himalayaDescription: 'Pouzite externe e-mailove CLI Himalaya pre skutocne mailove workflow.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Prepiste lokalny textovy subor prirodzenejsim jazykom.',
     planAppendName: 'Pridat do planu',
@@ -578,7 +573,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
     summarizeName: 'Zhrnut',
     summarizeDescription: 'Pouzite summarize.sh na zhrnutie URL, suborov a prepisov.',
     webQueryName: 'Webovy dotaz',
-    webQueryDescription: 'Vyhladavajte alebo citajte verejne webove stranky podla dotazu alebo URL.',
+    webQueryDescription:
+      'Vyhladavajte alebo citajte verejne webove stranky podla dotazu alebo URL.',
   },
 }
 
@@ -627,9 +623,12 @@ export function buildBuiltinSkillBackfill(
 
   const catalog: LocaleNode = {}
 
-  setCatalogEntry(catalog, 'ask', firstString(messages, ['tools.names.ask']), firstString(messages, [
-    'tools.descriptions.ask',
-  ]))
+  setCatalogEntry(
+    catalog,
+    'ask',
+    firstString(messages, ['tools.names.ask']),
+    firstString(messages, ['tools.descriptions.ask'])
+  )
   setCatalogEntry(
     catalog,
     'calendar',
@@ -650,10 +649,7 @@ export function buildBuiltinSkillBackfill(
     catalog,
     'deep_research',
     firstString(messages, ['tools.names.deep_research', 'tools.names.research_run']),
-    firstString(messages, [
-      'tools.descriptions.deep_research',
-      'tools.descriptions.research_run',
-    ])
+    firstString(messages, ['tools.descriptions.deep_research', 'tools.descriptions.research_run'])
   )
   setCatalogEntry(
     catalog,
