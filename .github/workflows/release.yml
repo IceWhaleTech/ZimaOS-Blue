@@ -102,14 +102,14 @@ jobs:
 
       - name: Download web dist
         if: matrix.goos != 'darwin'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: server/internal/web/dist/
 
       - name: Download embedded web dist
         if: matrix.goos == 'darwin'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist-embedded
           path: server/internal/web/dist/
@@ -342,7 +342,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Download web dist
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist/
@@ -483,7 +483,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ./artifacts
           pattern: blue-*
