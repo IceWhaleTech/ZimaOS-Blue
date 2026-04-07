@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
@@ -637,7 +638,7 @@ func (c *Controller) PromoteSkillRevision(ctx context.Context, revisionID string
 	if revision.Status != SkillRevisionStatusAccepted {
 		return nil, fmt.Errorf("skill revision must be accepted before promote")
 	}
-	sourceState, err := ResolveCanonicalSkillSourceState(revision.SkillID, revision.SourcePath)
+	sourceState, err := ResolveWritableSkillSourceState(revision.SkillID, revision.SourcePath)
 	if err != nil {
 		return nil, err
 	}
@@ -739,7 +740,7 @@ func (c *Controller) RollbackSkillRevision(ctx context.Context, revisionID strin
 	if err != nil {
 		return nil, err
 	}
-	sourceState, err := ResolveCanonicalSkillSourceState(backupRevision.SkillID, backupRevision.SourcePath)
+	sourceState, err := ResolveWritableSkillSourceState(backupRevision.SkillID, backupRevision.SourcePath)
 	if err != nil {
 		return nil, err
 	}
@@ -861,7 +862,7 @@ func (c *Controller) OptimizeSkill(ctx context.Context, skillID string, req Skil
 		metadataString(sourceCandidate, "source_path"),
 		normalizeSkillSourcePath(filepath.Join("assets", "skills", skillID, "SKILL.md")),
 	)
-	sourceState, err := ResolveCanonicalSkillSourceState(skillID, sourcePath)
+	sourceState, err := ResolveWritableSkillSourceState(skillID, sourcePath)
 	if err != nil {
 		return nil, err
 	}
@@ -1007,6 +1008,90 @@ func ResolveCanonicalSkillSourceState(skillID string, sourcePath string) (*Canon
 		Content:        string(content),
 		ContentSHA256:  skillRevisionSHA256(string(content)),
 	}, nil
+}
+
+func resolveManagedSkillSourcePath(skillID string, sourcePath string) (string, string, error) {
+	if !filepath.IsAbs(sourcePath) {
+		return "", "", fmt.Errorf("managed skill source_path must be absolute: %s", normalizeSkillSourcePath(sourcePath))
+	}
+
+	absPath := filepath.Clean(sourcePath)
+	if filepath.Base(absPath) != "SKILL.md" {
+		return "", "", fmt.Errorf("skill revision source_path must point to SKILL.md")
+	}
+
+	skillDir := filepath.Dir(absPath)
+	managedRoot := filepath.Dir(skillDir)
+	if filepath.Base(managedRoot) != "skills" {
+		return "", "", fmt.Errorf("skill revision source_path must stay under a managed .agents/.claude skills root: %s", absPath)
+	}
+	switch filepath.Base(filepath.Dir(managedRoot)) {
+	case ".agents", ".claude":
+	default:
+		return "", "", fmt.Errorf("skill revision source_path must stay under a managed .agents/.claude skills root: %s", absPath)
+	}
+	if !pathWithinRoot(managedRoot, absPath) {
+		return "", "", fmt.Errorf("skill revision source_path must stay under %s", managedRoot)
+	}
+
+	bundle, err := skillmanifest.ValidateInstalledDir(skillDir, "", skillmanifest.Options{})
+	if err != nil {
+		return "", "", fmt.Errorf("skill revision source_path must resolve to an installed skill bundle: %w", err)
+	}
+	if strings.TrimSpace(skillID) != "" && !skillSourceMatchesRequestedID(skillID,
+		filepath.Base(skillDir),
+		bundle.Document.ID,
+		bundle.Document.Name,
+	) {
+		return "", "", fmt.Errorf("skill revision source_path does not match requested skill %q", skillID)
+	}
+	return absPath, normalizeSkillSourcePath(absPath), nil
+}
+
+func ResolveWritableSkillSourceState(skillID string, sourcePath string) (*CanonicalSkillSourceState, error) {
+	absPath, normalizedPath, err := resolveCanonicalSkillSourcePath(skillID, sourcePath)
+	if err != nil {
+		absPath, normalizedPath, err = resolveManagedSkillSourcePath(skillID, sourcePath)
+		if err != nil {
+			return nil, err
+		}
+	}
+	content, err := os.ReadFile(absPath)
+	if err != nil {
+		return nil, err
+	}
+	return &CanonicalSkillSourceState{
+		AbsolutePath:   absPath,
+		NormalizedPath: normalizedPath,
+		Content:        string(content),
+		ContentSHA256:  skillRevisionSHA256(string(content)),
+	}, nil
+}
+
+func skillSourceMatchesRequestedID(skillID string, values ...string) bool {
+	requested := make(map[string]struct{})
+	for _, candidate := range skillmanifest.CandidateIDs(skillID) {
+		candidate = strings.ToLower(strings.TrimSpace(candidate))
+		if candidate == "" {
+			continue
+		}
+		requested[candidate] = struct{}{}
+	}
+	if len(requested) == 0 {
+		return false
+	}
+	for _, value := range values {
+		for _, candidate := range skillmanifest.CandidateIDs(value) {
+			candidate = strings.ToLower(strings.TrimSpace(candidate))
+			if candidate == "" {
+				continue
+			}
+			if _, ok := requested[candidate]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func inferSkillOptimizeFollowupGate(evalRun *EvalRun, evalSpec *EvalSpec) (string, error) {

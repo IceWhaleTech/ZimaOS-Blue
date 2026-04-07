@@ -381,7 +381,7 @@ func normalizeCompatToolName(name string) string {
 		return "memory"
 	case "deep_research", "deep-research", "research_run", "research_status":
 		return "research"
-	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return "web_query"
 	default:
 		return name
@@ -412,7 +412,7 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 		return normalizeSessionsCompatArgs(rawName, args)
 	case "memory":
 		return normalizeMemoryCompatArgs(rawName, args)
-	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return normalizeWebCompatArgs(rawName, args)
 	case "browser":
 		return normalizeBrowserCompatArgs(rawName, args)
@@ -490,11 +490,6 @@ func normalizeWebCompatArgs(rawName string, args map[string]interface{}) map[str
 	switch strings.ToLower(strings.TrimSpace(rawName)) {
 	case "web_query":
 		return normalized
-	case "web":
-		if action := strings.ToLower(strings.TrimSpace(firstCompatStringDeep(normalized, "action", "op", "operation"))); action != "" {
-			normalized["action"] = action
-		}
-		return normalized
 	case "web_search":
 		normalized["action"] = "search"
 		applyLegacyWebInputAlias(normalized, firstCompatStringDeep(normalized, "query", "q"))
@@ -533,7 +528,7 @@ func applyLegacyWebInputAlias(args map[string]interface{}, value string) {
 func normalizeCompatFallbackTarget(rawName, normalizedName string, args map[string]interface{}) (string, map[string]interface{}) {
 	rawKey := strings.ToLower(strings.TrimSpace(rawName))
 	switch rawKey {
-	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return "web_query", normalizeWebCompatArgs(rawName, args)
 	case "browser":
 		return "browser", normalizeBrowserCompatArgs(rawName, args)
@@ -551,7 +546,7 @@ func shouldPreferCompatNormalizedTool(rawName, normalizedName string, registry *
 	}
 	rawName = strings.ToLower(strings.TrimSpace(rawName))
 	switch rawName {
-	case "web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
 		if normalizedName == "" || normalizedName == rawName {
 			return false
 		}

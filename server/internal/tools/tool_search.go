@@ -539,9 +539,11 @@ func (t *ToolSearchTool) visibleToolDefinitions(ctx context.Context, runtimeInfo
 }
 
 func toolSearchCapabilityAllowedByToggle(name string, runtimeInfo ToolSearchRuntimeInfo) bool {
-	switch normalizeCompatToolName(name) {
-	case "analyze":
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "analyze", "web":
 		return false
+	}
+	switch normalizeCompatToolName(name) {
 	case "web_query":
 		return runtimeInfo.WebSearchEnabled
 	case "deep_research":

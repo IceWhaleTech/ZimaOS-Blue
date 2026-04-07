@@ -44,112 +44,42 @@
 
 ## Wprowadzenie
 
-Zainspirowani przez Clawdbot, wierzymy, że **przyszłość** komputerów osobistych będzie **kształtowana przez zróżnicowanych, lokalnych agentów AI** działających na brzegu sieci.
+Zainspirowani Clawdbotem wierzymy, że przyszłość komputerów osobistych będzie kształtowana przez różnorodnych, lokalnych agentów AI działających na krawędzi.
 
-**ZimaOS Blue to nasza odpowiedź** — w pełni **otwartoźródłowe, audytowalne i gotowe produkcyjnie środowisko uruchomieniowe agentów oraz zestaw narzędzi**, który pozwala wdrażać prywatnych, samodzielnie hostowanych agentów bez żadnych przeszkód.
+ZimaOS Blue to nasza odpowiedź — środowisko wykonawcze agentów i zestaw narzędzi w pełni open source, podlegające audytowi, neutralne dla dostawców i gotowe do produkcji, umożliwiające dostarczanie prywatnych, hostowanych agentów bez żadnych problemów.
 
-Stworzony dla odważnych programistów, którzy chcą **tworzyć własnych agentów w dowolny sposób**, Blue jest **zoptymalizowany pod kątem wydajności**: napisany w **Go**, ze zużyciem pamięci już od 10 MB. Działa na **dowolnym x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — wszędzie, gdzie podłączysz zasilanie.
-
-![](../../docs/assets/features.png)
-
-## Najważniejsze cechy
-
-### Lokalne podejście i automatyczny dostęp do modeli
-
-Idąc dalej: oferuje natywne wsparcie dla **ponad 20 platform komunikacyjnych**, interfejsy **sterowane głosem** do naturalnego, kontekstowego dialogu, **automatyczne przełączanie modeli** ze skanowaniem IDE oraz wielowarstwowe osobowości SOUL.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Szybki, lekki
-
-Kompilowany natywnie w Go — bez interpretera, bez maszyny wirtualnej, bez narzutu. Działa cicho na wszystkim, od serwerów po urządzenia biurkowe.
-
-| Metryka | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|---------|-------------------|------------------------|
-| `help` zimny / ciepły start | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` czas wykonania (najlepszy z 3) | **< 0.01 s** | 5.98 s |
-| `help` szczytowe RSS | **~10 MB** | ~394 MB |
-| `status` szczytowe RSS | **~15 MB** | ~1.52 GB |
-| pamięć bezczynna `gateway run` po zimnym starcie | **~19 MB** | - |
-| Zależności uruchomieniowe | **Brak** | Node.js 18+ |
-
-> Powyższe wiersze CLI to historyczny mikrobenchmark `help` / `status` na tym samym hoście. Nowy wiersz `gateway run` pokazuje rzeczywistą pamięć bezczynności po zimnym starcie, mierzoną na macOS arm64 przez `vmmap Physical footprint` po ustabilizowaniu startu. Luty-kwiecień 2026.
-
-### Czysty Go, dowolne urządzenie
-
-100% Go, statyczny plik binarny. **Kompilacja krzyżowa na 5 platform** od razu (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Bez Node, bez Pythona, bez kontenerów. Wrzuć go na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, stary router x86 lub Maca — po prostu działa. **Następnie dodaj własny interfejs, logikę i umiejętności agenta** — jeden kod źródłowy, każda platforma.
-
-### Bezpieczeństwo i zarządzanie
-
-Wbudowany sidecar proxy API z wielowarstwową obroną:
-- **Izolowane wykonanie** – Wszystkie wywołania narzędzi działają w odizolowanych środowiskach.
-- **Obrona przed wstrzykiwaniem promptów** – Ponad 7 wbudowanych strategii przechwytywania.
-- **Audyt sesji** – Pełne monitorowanie sesji, każda interakcja jest śledzona.
-- **RBAC i WebAuthn** – Szczegółowa kontrola dostępu z uwierzytelnianiem bezhasłowym.
+Stworzony z myślą o odważnych programistach, którzy chcą nadać swoim agentom charakter lub tworzyć je ręcznie, Blue został zaprojektowany z myślą o wydajności: napisany w Go i zajmujący zaledwie 19 MB pamięci. Działa na każdym x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — gdziekolwiek podłączysz zasilanie.
 
 ## Dlaczego Blue
 
-Wierzymy, że **komputery osobiste nowej generacji** obejmują LLM — ale **kontrolowalni, audytowalni** agenci pozostają fundamentem zarówno dla osób indywidualnych, jak i zespołów. **Blue zapewnia**:
-- **Kompleksowy rdzeń** – Zaawansowane zarządzanie modelami, integracja z komunikatorami, rozbudowana persona i interfejsy języka naturalnego dostosowane do codziennych interakcji (słuchawki, głos, inteligentne okulary).
-- **Lokalne podejście, ultralekki, wieloplatformowy** – Nie wymaga wydajnego sprzętu. Działa na wszystkim, co potrafi obliczać.
-- **Bezpieczny i audytowalny** – Audyt sesji, sandboxing, kontrola uprawnień i wbudowany proxy API działający jako zapora warstwy aplikacji — każdy bajt wejścia/wyjścia jest widoczny.
-
-![](../../docs/assets/design_principle.png)
-
-Minimalizujemy szablonowy kod, abyś **skupił się na tym, co ważne**. Wierni <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filozofii projektowej ZimaOS**, Blue zapewnia:
-- **Od zera do jedynki jednym kliknięciem** – Natychmiastowe wdrożenie, bez skomplikowanej konfiguracji.
-- **Szybkie prototypowanie** – Twórz narzędzia, interakcje i pakiety aplikacji dopasowane do scenariuszy.
-- **Gotowy na cały świat** – **Świat jest ogromny** i nie domyślnie angielski. **Ponad 20 języków, natywnie**, bez barier.
-- **Otwarty ekosystem modeli** – Bez uzależnienia od dostawcy. Przynieś własne modele.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
-</summary>
 
-| Dostawca | Modele | Typ |
-|----------|--------|-----|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Chmura |
-| Anthropic | Claude 4.5, Claude 4 | Chmura |
-| Google | Gemini 2.5, Gemini 2.0 | Chmura |
-| Ollama | Llama, Qwen, Gemma, Phi itp. | Lokalny |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Chmura |
-| Grok | Grok-3, Grok-3-mini | Chmura |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Chmura |
-| GLM | GLM-4, GLM-4-Flash | Chmura |
-| Moonshot | Moonshot-v1 | Chmura |
-| MiniMax | abab6.5, abab5.5 | Chmura |
-| Venice | Llama, Mistral (prywatność) | Chmura |
-| AWS Bedrock | Claude, Llama, Titan | Chmura |
-| Azure | Modele OpenAI przez Azure | Chmura |
-| OpenRouter | 100+ zagregowanych modeli | Chmura |
-| AIHubMix | Agregator wielu dostawców | Chmura |
-| Codex | OpenAI Codex | Chmura |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Chmura |
-| Własny | Dowolne API kompatybilne z OpenAI / Anthropic / Gemini | Chmura / Lokalny |
+### Pure Go, dowolne urządzenie
 
-</details>
+100% Go, statyczny plik binarny. Kompiluje krzyżowo do 5 gotowych obiektów docelowych (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Żadnego środowiska wykonawczego Node, żadnego Pythona, żadnych kontenerów. Upuść go na serwerze NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, starym routerze x86 lub ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — po prostu działa. Następnie zastosuj własny interfejs użytkownika, logikę i umiejętności agenta — jedna baza kodu, każda platforma.
 
-### Obsługiwane IDE
+### Po wyjęciu z pudełka, gotowy do pracy
 
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+Każdy chce narzędzi, które są proste, niezawodne i skalowalne, gdy ich potrzebujesz. Narzędzia, które po prostu działają, dzięki czemu możesz skupić się na tym, co faktycznie budujesz.
+
+To nie jest nowa filozofia. To ten sam, który zbudował <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS: prosty, niezawodny i zbudowany tak, aby nie przeszkadzać. Blue to filozofia rozszerzona na stos agentów.
+
+### Zaprojektowane z myślą o Twoim życiu, zbudowane tak, aby pozostać lokalnymi
+
+Od dogłębnych badań, które dostarczają pełny raport HTML, po OCR, PDF, automatyzację przeglądarki i konwersję dokumentów, Blue obsługuje złożone, rzeczywiste przepływy pracy bez wysyłania danych do chmury. Wybudzanie głosowe, STT/TTS, Talk Mode i obsługa wnioskowania lokalnego sprawiają, że codzienne interakcje są natychmiastowe, prywatne i zawsze dostępne.
 
 ## Szybki start
 
-### Opcja 1: Pobierz aplikację desktopową (macOS i Windows)
+### Opcja 1: Pobierz aplikację komputerową
 
-Pobierz natywną aplikację — bez zależności, bez kompilacji. Wbudowana konfiguracja próbna, gotowa w sekundy — połącz się zdalnie i zacznij rozmawiać natychmiast, bez konfigurowania bota. Prawdziwe uruchomienie od razu.
+Uzyskaj natywną aplikację — bez zależności i bez kompilacji. Wbudowana konfiguracja próbna z możliwością wdrożenia w ciągu kilku sekund — natychmiast rozpocznij rozmowę za pośrednictwem połączenia zdalnego, bez konieczności konfigurowania bota. Prawdziwe, nieszablonowe doświadczenie.
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Pobierz DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Pobierz instalator](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### Opcja 2: Skrypt instalacyjny
+### Opcja 2: Zainstaluj skrypt
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### Opcja 3: Kompilacja ze źródeł
+### Opcja 3: Kompiluj ze źródła
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,124 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
+> **Uwaga:** Kompilacje systemu Windows wymagają:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) i [CMake](https://cmake.org/) dla natywnych zależności C (espeak-ng, whistle.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) dla bibliotek systemowych (winmm itp.)
+>
+> Upewnij się, że `gcc`, `cmake` znajdują się w Twoim `PATH`.
+
 ## Przegląd architektury
 
-<details>
-<summary>
-<img src="../../docs/assets/architecture.png" alt="Architecture" />
-</summary>
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### Mapa pakietów (`server/internal/`)
+Pójdź dalej: zapewnia natywną obsługę **ponad 20 platform komunikatorów**, **interfejsy sterowane głosem** umożliwiające naturalny dialog kontekstowy, **przełączanie modeli bez konfiguracji** ze skanowaniem IDE.
 
-| Warstwa | Pakiety |
-|---------|---------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Dostawca | providerpool, providers, llm |
-| Przycinanie | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Pamięć | memory, embedding, kvstore |
-| Kanał | channel, autoreply, i18n |
-| Bezpieczeństwo | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Głos | voice, tts, stt, speech |
-| Obserwacja | metrics, companion, profiling, leakdetect |
-| Wtyczka | plugin, skill, skillstore |
-| Integracja | browser, cron, workflow, formfiller, tunnel, crawler |
-| Harmonogram | scheduler, worker, workerpool, pool |
-| Rdzeń | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Wielodostęp | tenant, user, session, preview |
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-</details>
+## Jak budować
 
-### Przepływ danych
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**Żądanie czatu (gorąca ścieżka proxy)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+> ⚠️ [!IMPORTANT]
+>
+> Jeśli planujesz dalej dostrajać lub kodować wibracje na Blue, nie traktuj kilku dobrze wyglądających czatów jako dowodu wydania. Wszelkie zmiany wpływające na routing, zachowanie wykonania, powierzchnię narzędzia, kontrolę budżetu, wybór modelu lub strukturę wykonania należy zweryfikować za pomocą Blue Harness, a nie za pomocą doraźnych kontroli wyrywkowych.
+>
+> Blue powinien tu kierować się jedną prostą zasadą: najpierw dane, najpierw bramki, na końcu przecięcie. W praktyce oznacza to aktualizację odpowiedniego zestawu danych / specyfikacji eval Harness przed oceną zmiany, a następnie utrzymanie jednego stabilnego `candidate_id` przez całą próbę, tak aby raporty dotyczące selekcji, wykonania, budżetu i gotowości opisywały tego samego kandydata zamiast czterech niepowiązanych serii.
 
-**Przepływ wiadomości kanałowych**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+### Zalecany przepływ pracy Harness
 
-**Potok głosowy**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+1. Uruchom `blue harness selector verify`
+2. Uruchom `blue harness execution verify`
+3. Użyj ponownie przebiegu ewaluacyjnego selektora dla `blue harness budget gate`
+4. Zakończ `blue harness cutover-readiness`
 
-**Przepływ ewaluacji Harness**
-```
-Quick Eval / Harness API → Kontroler ewaluacji → Dispatcher grup uruchomień
-  → Zadanie agenta lub eval driver → Narzędzia + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector Gates
-  → Cutover Readiness / Decyzja kandydata
-```
+W przypadku iteracji lokalnej, conocnej walidacji lub gromadzenia dowodów CI wybierz `python3 scripts/cutover_candidate_pipeline.py`. Uruchamia sekwencję pełnego selektora -> wykonanie -> budżet -> gotowość w ramach jednego wspólnego kandydata, co ułatwia porównywanie, przeglądanie i wycinanie wyników.
 
+### Dodatkowe poręcze
 
-## Jak używać
+| Powierzchnia | Co obejrzeć |
+|------|----------------|
+| Stabilność podstawowa | Utrzymuj linię bazową, wersję zbioru danych i `candidate_id` na stabilnym poziomie, w przeciwnym razie porównanie będzie się wahać, a wynik nie będzie godny zaufania. |
+| Prawdziwe wyniki kompilacji | Odbuduj pakiet binarny lub interfejs frontendowy, którego dotyczy problem, przed uruchomieniem Harness, w przeciwnym razie zamiast bieżącej zmiany możesz sprawdzić nieaktualne zachowanie. |
+| Rejestracja trasy | Jeśli frontend i backend ulegną jednoczesnej zmianie, przed oceną funkcji na podstawie zachowania interfejsu użytkownika potwierdź, że wszystkie nowe trasy backendu są rzeczywiście zarejestrowane, ponieważ brak rejestracji często wygląda na błąd logiczny, ale w rzeczywistości jest `404`. |
+| Zwolnienie wyroku | Przepustka dostrajająca jest gotowa tylko wtedy, gdy Harness nie wykazuje znaczącej regresji, a gotowość do przełączenia potwierdza, że ​​kandydat jest rzeczywiście gotowy do przełączenia. |
 
-![](../../docs/assets/handcraft.png)
+Krótko mówiąc, dostrojenie Blue nie polega na tym, że „po kilku rozmowach poczujesz się lepiej”. Chodzi o umieszczenie kandydata w Harness, zebranie porównywalnych dowodów i pozwolenie, aby wyniki bramki i gotowości zadecydowały, czy zmiana jest naprawdę bezpieczna do utrzymania.
 
-## Harmonogram kamieni milowych
+## Funkcje
 
-<details>
-<summary>
-<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
-</summary>
+| Funkcja | Co to zapewnia |
+|--------|----------------------|
+| Wysoka dostępność pobierania z Internetu i środowisko wykonawcze przeglądarki | Jeden z **najostrzejszych wyróżników** Blue. Blue ujednolica **cztery ścieżki dostępu do sieci** w celu wyszukiwania, czytania, wyodrębniania i przeszukiwania; utrzymuje **trzy warstwy rezerwowe** w ramach protokołu HTTP, ekstrakcji proxy i sesji przeglądarki; obsługuje **strony antybotowe** z wykrywaniem wyzwań, ponownym wykorzystaniem plików cookie/sesji, ukrywaniem się i przekazywaniem przeglądarki; i trasy w **trzech silnikach przeglądarek**: `lightpanda`, zarządzanym Chromium i przekaźnikowym/lokalnym Chromium. |
+| Czas realizacji badań „trzy w jednym” | **Jeden publiczny wpis badawczy** może zostać przekierowany do `deep_research`, `analyze` i `ui_review`. Ten sam stos odkryć i dowodów tworzy następnie **badania oparte na cytowaniu**, **raporty ograniczone** i **ustrukturyzowane przeglądy interfejsu użytkownika/UX/dostępności**. |
+| Harness Ramy środowiska wykonawczego, oceny i ewolucji | Sprawia, że ​​ocena jest **prymitywnym elementem środowiska wykonawczego** w obszarze programowania, szkolenia i produkcji. Harness obejmuje **kontrolę regresji i dymu**, punktację, linie bazowe, raporty i walidację w czasie wykonywania, a następnie przenosi te same dowody do **ewolucji umiejętności**, oceny uzupełniającej, awansu lub wycofania oraz `AGENTS.md` lub przeglądu propozycji instrukcji. |
+| Multimodalne środowisko wykonawcze z możliwością natywną | Utrzymuje **głos, OCR, PDF, zadania przeglądarki, konwersję dokumentów, wypełnianie formularzy strukturalnych, przetwarzanie multimediów i generowanie multimediów** na **najpierw ścieżkach natywnych i lokalnych**, z **routowaniem modelu tylko wtedy, gdy jest to rzeczywiście potrzebne**. |
+| Bezpieczeństwo i zarządzanie | Obejmuje **wykonanie piaskownicy**, **obronę przed wstrzyknięciem podpowiedzi**, **audyt sesji**, uprawnienia, **RBAC**, **WebAuthn**, bariery operacyjne i **skanowanie bezpieczeństwa umiejętności**. |
+| LLM Wiki i przestrzeń wiedzy | Zamienia dane wyjściowe z pamięci, badań i środowiska wykonawczego w **powierzchnię wiedzy przypominającą wiki** z **stronami podsumowań**, indeksami, **linkami zwrotnymi**, **świeżością** i **przepływami pracy w archiwach**. |
+| Sklep i rynek umiejętności | Zapewnia **wbudowane odkrywanie umiejętności**, selekcję, synchronizację i **skanowanie lokalne**, dzięki czemu rozszerzalność jest dostępna **od pierwszego dnia**. |
+| Pula dostawców klasy produkcyjnej | Zapewnia prawdziwą pulę dostawców z **kontrolami stanu**, **automatycznym przełączaniem awaryjnym**, **wyłącznikami** i **wyścigami dostawców** w przypadku długotrwałych obciążeń. |
+| Wbudowane lokalne środowisko wykonawcze małego modelu | Zawiera wbudowane środowisko wykonawcze **`Qwen3.5-0.8B` + `llama.cpp`** do **lokalnych krótkich pytań i odpowiedzi**, rozpoznawania obrazów, wyznaczania tras narzędzi, podsumowań, **kompresji kontekstu** i **wstępnego przetwarzania dokumentów**. |
+| Długotrwała niezawodność | Traktuje **OTA aktualizacje**, **tworzenie kopii zapasowych i przywracanie**, **przeładowywanie konfiguracji na gorąco** i **odzyskiwanie po awarii** jako **wbudowane problemy operacyjne**. |
 
-| Wersja | Obszar | Kluczowa wartość | Status |
-|--------|--------|------------------|--------|
-| v0.1 | Rdzeń środowiska Go | Stabilne jądro, praca 24h | Done |
-| v0.2 | Podstawowe możliwości | Minimalnie użyteczny, integracja LLM | Done |
-| v0.3 | Integracja z NAS | Natywne wsparcie NAS, obsługa systemd | Done |
-| v0.4 | System wtyczek | Rozszerzalność, podstawy bezpieczeństwa | Done |
-| v0.5 | Baza produktowa | Gotowy produkcyjnie, dokumentacja | Done |
-| v0.6 | Kanały wiadomości | Obsługa wielu kanałów | Done |
-| v0.7 | Bezpieczeństwo | OIDC, MFA, audyt | Done |
-| v0.8 | Wydajność | Optymalizacja, cache, benchmarki | Done |
-| v0.9 | Ekosystem | Wielodostęp, automatyzacja przeglądarki, głos | Done |
-| v0.10.0 | Pakietowanie CLI | Pakietowanie CC CLI, wykrywanie, auto-aktualizacja | Done |
-| v0.10.1 | Monitorowanie metryk | Statystyki API, śledzenie tokenów, TTFT | Done |
-| v0.10.2 | Niezawodność CLI | Cykl życia procesów, odzyskiwanie po błędach | Done |
-| v0.10.3 | Integracja CLI | Kreator konfiguracji, auto-wykrywanie dostawców | Done |
-| v0.10.4 | Pakietowanie Tauri | Aplikacja desktopowa, zasobnik systemowy | Done |
-| v0.10.5 | Sidecar proxy API | Wybór tras, ochrona promptów, statystyki użycia | Done |
-| v0.10.6 | Pula dostawców | Routing wielu dostawców, health check, failover | Done |
-| v0.10.7 | Tryb podglądu | Dostęp bez uwierzytelnienia, bramkowanie funkcji | Done |
-| v0.10.8 | Sklep umiejętności | Infrastruktura sklepu umiejętności, walidacja kanałów | Done |
-| v0.10.9–10 | Zarządzanie użytkownikami | Podużytkownicy, uprawnienia na poziomie stron | Done |
-| v0.10.13–14 | Bezpieczeństwo i umiejętności | Strona bezpieczeństwa, przeprojektowanie sklepu umiejętności | Done |
-| v0.10.15 | Ulepszenia czatu | UX czatu, potok wiadomości | Done |
-| v0.10.16 | Moduł mowy | Sherpa TTS/ASR, eSpeak, przełączanie dostawców | Done |
-| v0.10.17 | Zdalny dostęp | Tunele Ngrok, Cloudflare, certyfikaty ACME | Done |
-| v0.10.18–20 | Sprint wydajności | Wydajność startu/czatu, cache kontekstu | Done |
-| v0.10.21–22 | Prompt i DingTalk | Prompt systemowy, kanał DingTalk | Done |
-| v0.10.23 | Aktualizacja OTA | System aktualizacji OTA | Done |
-| v0.10.24 | Rozbudowa kanałów | 10 kanałów zaktualizowanych ze stubów | Done |
-| v0.10.25 | CC Cache | Dwupoziomowy cache (L1 pamięć + L2 dysk) | Done |
-| v0.10.26 | Humanizer | Potok humanizacji odpowiedzi | Done |
-| v0.10.27 | Przycinanie kontekstu | 54% oszczędność tokenów na kodzie (SWE-bench oficjalnie), 46–47% na dokumentach ogólnych (lokalny IR), scoring BM25, segmentacja | Done |
-| v0.10.28 | Usługa pamięci | Wyszukiwanie progresywne, backend dual-write | Done |
+## Oś czasu kamieni milowych
 
-</details>
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+| Data | Wersja | Słowa kluczowe / funkcje |
+|------|---------|--------------------------------------|
+| 26 stycznia 2026 | `v0.1–v0.9` | Go runtime, system wtyczek, automatyzacja przeglądarki |
+| 27–28 stycznia 2026 r. | `v0.9.0–v0.9.2` | Widok zadań przeglądarki, Blue Companion, Smart Form Filler |
+| 29–31 stycznia 2026 r. | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, restrukturyzacja interfejsu użytkownika |
+| 1–3 lutego 2026 r. | `v0.10.1–v0.10.22` | Metryki, dostęp zdalny, pamięć podręczna kontekstu |
+| 5–18 lutego 2026 r. | `v0.10.25–v0.10.29` | i18n, pamięć podręczna CC, potok wydań |
+| 20–25 lutego 2026 r. | `v0.10.28–v0.10.29` | Program ładujący komputer stacjonarny, mobilny UX, przeprojektowanie pamięci |
+| 28 lutego – 2 marca 2026 | `v0.10.30` | Deep Research, zmiana rankingu umiejętności, skanowanie bezpieczeństwa |
+| 9–18 marca 2026 r. | `v0.10.31` | Remont panelu, refaktor VoiceChat, zatwierdzone strony |
+| 19–22 marca 2026 r. | `v0.10.32` | Harness wdrożenie, audyt transkrypcji, wyszukiwanie w Internecie |
+| 23–25 marca 2026 r. | `v0.10.33` | Harness grupy, zatwierdzenia przeglądarek, rynek umiejętności |
+| 29–30 marca 2026 r. | `v0.10.35` | Harness v3, przekaźnik przeglądarki, kompresja kontekstu |
+| 31 marca – 1 kwietnia 2026 | `v0.10.36` | Audyt transkrypcji, nakładki Harness, parsowanie narzędzi |
+| 1 kwietnia 2026 | `v0.10.37` | Utwardzanie środowiska wykonawczego, przełączanie Skill+Exec, polerowanie odzyskiwania |
+| 2–5 kwietnia 2026 r. | `v0.10.38` | GitHub wsparcie, udoskonalenie rynku, poprawa niezawodności |
+| 6–7 kwietnia 2026 r. | `v0.10.39` | Ujednolicenie badań, powierzchnie ewolucji, redukcja pamięci |
 
 ## Społeczność i wsparcie
 
-- **Zgłoszenia**: [Zgłaszaj błędy i propozycje funkcji tutaj](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Dyskusje**: [Discord](https://discord.gg/b3AgFDxe9v)
+- **Problemy**: [Tutaj prosimy o zgłaszanie błędów i propozycji nowych funkcji](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Dyskusje**: [Discord](https://discord.gg/zwWbKA4S2)
 - **Śledź nas** na [GitHub](https://github.com/IceWhaleTech)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Licencja
 
-Ten projekt jest udostępniony na licencji MIT — szczegóły w pliku [LICENSE](../../LICENSE). Wierzymy w open source i dzielenie się ze społecznością.
+Ten projekt jest objęty licencją MIT — szczegółowe informacje można znaleźć w pliku [LICENSE](../../LICENSE). Wierzymy w otwarte oprogramowanie i dawanie czegoś społeczności.
 
 ## Współtwórcy
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Dziękujemy wszystkim współpracownikom Blue:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Referencje
+
+1. **OpenClaw** — Lokalny agent open source. Pionier łączenia LLM z urządzeniami lokalnymi poprzez adaptery kanałów i wywoływanie narzędzi, bezpośrednio inspirując architekturę środowiska wykonawczego agentów Blue. https://github.com/openclaw/openclaw
+2. **MiroMind** — Tryb głębokich badań z syntezą popartą dowodami. Ukształtowano wbudowany w Blue potok głębokich badań: planowanie, równoległe wyszukiwanie, deduplikacja dowodów i generowanie raportów HTML. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM jako kompilator wiedzy. Przekształca LLM w celu budowania trwałych, rozwijających się przestrzeni wiedzy, wychodząc poza pułapkę akumulacji RAG.
+4. **OpenSpace (HKUDS)** — Samorozwijający się silnik umiejętności. Struktura oparta na DAG, w której agenci uczą się na błędach i czerpią specjalistyczne umiejętności. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — Wersjonowany rejestr dokumentacji API dla agentów kodujących. Rozwiązanie problemu halucynacji agentów i zapomnianej wiedzy sesyjnej. Zapewnia wyselekcjonowane, wersjonowane dokumenty z adnotacjami i pętlami informacji zwrotnych, przekształcając dokumentację w samodoskonalącą się warstwę wiedzy. https://github.com/andrewyng/context-hub
+6. **Notion** — Prosty, ludzki i celowo cichy. Zainspirowany minimalistycznym etosem Notion, Blue przywraca ciepło do sieci. Tam, gdzie wyrafinowany szeryf spotyka się z przemyślanym designem, tworząc przestrzeń, w której czujesz się jak w domu. https://www.notion.com/about
+7. **Matrix** — Wizualna inspiracja kultową estetyką cyfrowego deszczu. Kierunek estetyczny schematów technicznych Blue.
+8. **IceWhale** — Miłość, śmierć i roboty S2E2 „Lód”. Kolektyw, który gromadzi się na całym świecie, aby przebić się przez mury internetowych gigantów i przeciwstawić się koncentracji danych. Lodowy wieloryb symbolizuje społeczność budującą suwerenne narzędzia razem na krawędzi.
+9. **ZimaOS Blue** — Miłość, śmierć i roboty S1E14 „Zima Blue”. Metafora: inteligencja, która zaczyna się w służbie i ewoluuje, aby poznawać świat. Blue to agent mądrości zakorzenionej w prostocie i sięgającej głębi.
+10. **ZimaOS** — Uproszczone, ukierunkowane i otwarte zasady projektowania. Zarówno ZimaOS, jak i Blue podzielają przekonanie, że technologia powinna służyć użytkownikowi — wdrożyć ją w 30 sekund, uruchomić w dowolnym miejscu i zachować neutralność wobec dostawców. https://www.zimaspace.com/zimaos

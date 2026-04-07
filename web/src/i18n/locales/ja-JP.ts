@@ -1357,6 +1357,7 @@ export default mergeHarnessLocale('ja-JP', {
       newProfile: '新しいプロフィール',
       acpPlainTitle: 'ローカルツール (ACP)',
       a2aPlainTitle: 'リモート エージェント (A2A)',
+      genericA2ATitle: '汎用リモート A2A エージェント',
       loadFailed: '外部エージェント プロファイルのロードに失敗しました。',
       notAvailable: '利用できません',
       remoteAgent: 'リモートエージェント',
@@ -2263,6 +2264,9 @@ export default mergeHarnessLocale('ja-JP', {
       items: {
         ai_prompt_injection: {
           name: 'プロンプトインジェクション保護',
+        },
+        sandbox_enabled: {
+          description: 'コード実行がサンドボックス化されているか確認',
         },
       },
     },

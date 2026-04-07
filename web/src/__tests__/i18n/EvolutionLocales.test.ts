@@ -101,6 +101,26 @@ const protectedEvolutionPaths = [
       'Quality, runtime, and token metrics come from the linked follow-up eval report when available.',
     disallowPattern: /follow-up eval/i,
   },
+  {
+    path: 'evolution.skills.scorecardEvidenceHint',
+    englishValue: 'No structured evidence summary is attached to this revision yet.',
+    disallowPattern: /structured evidence summary/i,
+  },
+  {
+    path: 'evolution.skills.scorecardOpenComparison',
+    englishValue: 'Open comparison',
+    disallowPattern: /\bopen comparison\b/i,
+  },
+  {
+    path: 'evolution.skills.scorecardOpenMetrics',
+    englishValue: 'Open metrics',
+    disallowPattern: /\bopen metrics\b/i,
+  },
+  {
+    path: 'evolution.skills.scorecardOpenEvidence',
+    englishValue: 'Open evidence',
+    disallowPattern: /\bopen evidence\b/i,
+  },
 ] as const
 
 describe('Evolution locale coverage', () => {

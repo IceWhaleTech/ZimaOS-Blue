@@ -1359,6 +1359,7 @@ export default mergeHarnessLocale('hr-HR', {
       newProfile: 'Novi profil',
       acpPlainTitle: 'Lokalni alati (ACP)',
       a2aPlainTitle: 'Udaljeni agenti (A2A)',
+      genericA2ATitle: 'Generički udaljeni A2A agent',
       loadFailed: 'Nije uspjelo učitavanje profila vanjskog agenta.',
       notAvailable: 'Nije dostupno',
       remoteAgent: 'Udaljeni agent',
@@ -2274,6 +2275,9 @@ export default mergeHarnessLocale('hr-HR', {
       items: {
         ai_prompt_injection: {
           name: 'Zaštita od injekcije promptova',
+        },
+        sandbox_enabled: {
+          description: 'Provjerite izvršava li se kod u sandboxu.',
         },
       },
     },

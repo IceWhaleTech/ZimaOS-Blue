@@ -2249,11 +2249,6 @@ func RegisterImageTool(registry *Registry, reviewer ImageReviewService, generate
 	if webTool := GetWebQueryTool(registry); webTool != nil {
 		webTool.SetImageTool(native)
 	}
-	if legacyTool := registry.Get("web"); legacyTool != nil {
-		if webTool, ok := legacyTool.(*WebTool); ok {
-			webTool.SetImageTool(native)
-		}
-	}
 	for _, alias := range []string{"image_generation", "generate_image", "generateImage"} {
 		registry.Register(newImageCompatTool(alias, "Hidden legacy image generation alias.", native))
 		registry.Disable(alias)

@@ -52,7 +52,7 @@ var defaultChatDirectToolAllowlist = map[string]struct{}{
 	"research":    {},
 	"sessions":    {},
 	"tool_search": {},
-	"web":         {},
+	"web_query":   {},
 	"write":       {},
 }
 
@@ -270,7 +270,7 @@ func normalizeToolPolicyName(name string) string {
 	case "rg":
 		return "grep"
 	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
-		return "web"
+		return "web_query"
 	case "image", "image_generation", "generate_image", "generateimage":
 		return "image"
 	case "deep_research", "deep-research", "research_run", "research_status":

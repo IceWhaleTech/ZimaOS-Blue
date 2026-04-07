@@ -937,7 +937,7 @@ func newDeepSearchLoopState(userMessage string, selectedTools []tools.ToolDefini
 func hasSearchCapabilityInToolDefs(defs []tools.ToolDefinition) bool {
 	for _, def := range defs {
 		switch normalizeFileToolCompatName(def.Name) {
-		case "web", "deep_research", "browser", "bash":
+		case "web_query", "deep_research", "browser", "bash":
 			return true
 		}
 	}
@@ -1143,16 +1143,6 @@ func extractSearchQueryFromToolCall(tc llm.ToolCall) string {
 			if q := anyToStringForLLM(payload["input"]); q != "" {
 				return q
 			}
-			if q := anyToStringForLLM(payload["query"]); q != "" {
-				return q
-			}
-			if q := anyToStringForLLM(payload["q"]); q != "" {
-				return q
-			}
-		}
-	case "web":
-		var payload map[string]interface{}
-		if json.Unmarshal([]byte(args), &payload) == nil {
 			if q := anyToStringForLLM(payload["query"]); q != "" {
 				return q
 			}
@@ -7091,7 +7081,6 @@ func preferForcedDeepResearchTools(userMessage string, allDefs, current []tools.
 		"ask",
 		"deep_research",
 		"browser",
-		"web",
 		"web_query",
 		"web_fetch",
 		"web_read",
@@ -7132,7 +7121,6 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 	case shouldUseHeavyResearchWorkflow(userMessage):
 		keepNames = []string{
 			"browser",
-			"web",
 			"web_query",
 			"web_fetch",
 			"web_read",
@@ -7160,7 +7148,6 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 		}
 	case shouldPreferPublicArtifactResearchWorkflow(userMessage):
 		keepNames = []string{
-			"web",
 			"web_query",
 			"web_fetch",
 			"web_read",
@@ -7180,7 +7167,6 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 	case shouldPreferDeepSearchReport(userMessage):
 		keepNames = []string{
 			"browser",
-			"web",
 			"web_query",
 			"web_fetch",
 			"web_read",
@@ -7508,8 +7494,8 @@ func normalizeFileToolCompatName(name string) string {
 		return "file_delete"
 	case "rg":
 		return "grep"
-	case "web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
-		return "web"
+	case "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl":
+		return "web_query"
 	case "image", "image_generation", "generate_image", "generateimage":
 		return "image"
 	case "deep_research", "deep-research", "research_run", "research_status":
@@ -14644,7 +14630,7 @@ func buildReducedContinuationRecoveryTools(tools []llm.Tool, messages []llm.Mess
 	}
 
 	if len(needed) == 0 {
-		priority := []string{"bash", "web_query", "web", "read", "browser", "mcp"}
+		priority := []string{"bash", "web_query", "read", "browser", "mcp"}
 		indexByName := make(map[string]int, len(tools))
 		for i, t := range tools {
 			rawName := strings.ToLower(strings.TrimSpace(t.Name))
@@ -15195,7 +15181,7 @@ func contentForChatToolHistory(ctx context.Context, toolName, toolCallID, conten
 		}
 	}
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "web_query", "web":
+	case "web_query":
 		if compacted := compactWebQueryContentForLLM(ctx, content, auditPayload, toolCallID, maxLLMToolOutputBytes, tools.WebQueryLLMCompactionDefault, false); compacted != "" {
 			return compacted
 		}
@@ -16067,7 +16053,6 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 	}
 	priority := []string{
 		"web_query",
-		"web",
 		"web_fetch",
 		"web_read",
 		"web_extract",
@@ -16476,7 +16461,7 @@ func hasEmptyResearchToolResult(toolCalls []llm.ToolCall, toolResults []llm.Mess
 
 func isResearchRecoveryToolName(name string) bool {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "web", "web_query", "web_search", "deep_research", "deep-research", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
+	case "web_query", "web_search", "deep_research", "deep-research", "research_run", "research_status", "browser", "web_fetch", "web_read", "web_extract", "web_crawl":
 		return true
 	default:
 		return false
@@ -16814,17 +16799,6 @@ func isSearchLikeToolCallForLLM(tc llm.ToolCall) bool {
 	name := strings.ToLower(strings.TrimSpace(tc.Name))
 	if name == "web_query" || name == "web_search" {
 		return true
-	}
-	if name == "web" {
-		if strings.TrimSpace(tc.Arguments) == "" {
-			return true
-		}
-		var payload map[string]interface{}
-		if json.Unmarshal([]byte(tc.Arguments), &payload) != nil {
-			return true
-		}
-		action := strings.ToLower(strings.TrimSpace(anyToStringForLLM(payload["action"])))
-		return action == "" || action == "search" || action == "fetch" || action == "read" || action == "extract" || action == "crawl"
 	}
 	if name != "exec" {
 		return false

@@ -29,6 +29,26 @@ type ProviderPoolTabs = {
   media: string
 }
 
+type SecurityScanItemTerms = {
+  passwordName: string
+  passwordDescription: string
+  passwordDetailPassed: string
+  passwordDetailWarning: string
+  passwordDetailFailed: string
+  tokenName: string
+  tokenDescription: string
+  tokenDetailPassed: string
+  tokenDetailWarningHours: string
+  tokenDetailWarningTooLong: string
+  tokenDetailFailedNotSet: string
+  mfaName: string
+  mfaAvailableDescription: string
+  mfaEnabledDescription: string
+  mfaDetailPassed: string
+  mfaDetailWarning: string
+  mfaEnabledDetailPassed: string
+}
+
 function makeTerms(
   sandboxEnabled: string,
   knowledgeName: string,
@@ -139,12 +159,788 @@ const providerPoolTabs: Record<LocaleKey, ProviderPoolTabs> = {
   'zh-TW': makeTabs('全部', '試用', '內建', '平台', '其他', '自訂', '媒體'),
 }
 
-function buildLocalePatch(localeKey: LocaleKey, terms: LocaleTerms): object {
+const securityScanItemTerms: Record<LocaleKey, SecurityScanItemTerms> = {
+  'ca-ES': {
+    passwordName: 'Longitud mínima de la contrasenya',
+    passwordDescription:
+      'Comprova si la longitud mínima de la contrasenya compleix els requisits de seguretat (es recomana 12+)',
+    passwordDetailPassed:
+      'La longitud mínima de la contrasenya és de {length} caràcters (compleix el requisit)',
+    passwordDetailWarning:
+      'La longitud mínima de la contrasenya és de {length} caràcters. Es recomana augmentar-la a 12+ per a més seguretat.',
+    passwordDetailFailed:
+      'La longitud mínima de la contrasenya ({length}) és massa curta. Es requereixen almenys 8 caràcters i se\'n recomanen 12+.',
+    tokenName: "Temps d'expiració del token",
+    tokenDescription: "Comprova si l'expiració del token està configurada amb una durada raonable",
+    tokenDetailPassed: 'El token expira en {minutes} minuts',
+    tokenDetailWarningHours:
+      "L'expiració del token ({hours} hores) és llarga. Considera una durada més curta per a operacions sensibles.",
+    tokenDetailWarningTooLong:
+      "L'expiració del token supera les 8 hores. Això augmenta el risc de robatori de tokens.",
+    tokenDetailFailedNotSet:
+      "L'expiració del token no està configurada. Comprova `security.jwt.expiration` a la configuració de seguretat carregada.",
+    mfaName: 'Autenticació multifactor',
+    mfaAvailableDescription: "Comprova si l'MFA està disponible i s'aplica",
+    mfaEnabledDescription: "Comprova si l'MFA està disponible i configurada",
+    mfaDetailPassed: "L'MFA és obligatòria per a tots els usuaris",
+    mfaDetailWarning:
+      "L'MFA està disponible però no és obligatòria. Considera aplicar-la per millorar la seguretat.",
+    mfaEnabledDetailPassed: "L'MFA està disponible per als usuaris",
+  },
+  'cs-CZ': {
+    passwordName: 'Minimální délka hesla',
+    passwordDescription:
+      'Zkontroluje, zda minimální délka hesla splňuje bezpečnostní požadavky (doporučeno 12+)',
+    passwordDetailPassed: 'Minimální délka hesla je {length} znaků (splňuje požadavek)',
+    passwordDetailWarning:
+      'Minimální délka hesla je {length} znaků. Pro lepší zabezpečení doporučujeme zvýšit na 12+.',
+    passwordDetailFailed:
+      'Minimální délka hesla ({length}) je příliš krátká. Vyžaduje se alespoň 8 znaků, doporučeno 12+.',
+    tokenName: 'Doba platnosti tokenu',
+    tokenDescription: 'Zkontroluje, zda je platnost tokenu nastavena na rozumnou dobu',
+    tokenDetailPassed: 'Platnost tokenu končí za {minutes} minut',
+    tokenDetailWarningHours:
+      'Platnost tokenu ({hours} hodin) je dlouhá. U citlivých operací zvažte kratší dobu.',
+    tokenDetailWarningTooLong:
+      'Platnost tokenu přesahuje 8 hodin. To zvyšuje riziko krádeže tokenu.',
+    tokenDetailFailedNotSet:
+      'Platnost tokenu není nastavena. Zkontrolujte `security.jwt.expiration` v načtené konfiguraci zabezpečení.',
+    mfaName: 'Vícefaktorové ověřování',
+    mfaAvailableDescription: 'Zkontroluje, zda je MFA dostupné a vynucované',
+    mfaEnabledDescription: 'Zkontroluje, zda je MFA dostupné a nakonfigurované',
+    mfaDetailPassed: 'MFA je vyžadováno pro všechny uživatele',
+    mfaDetailWarning:
+      'MFA je dostupné, ale není vyžadováno. Zvažte jeho vynucení pro vyšší bezpečnost.',
+    mfaEnabledDetailPassed: 'MFA je uživatelům dostupné',
+  },
+  'da-DK': {
+    passwordName: 'Minimumslængde for adgangskode',
+    passwordDescription:
+      'Kontroller, om minimumslængden for adgangskoder opfylder sikkerhedskravene (12+ anbefales)',
+    passwordDetailPassed: 'Minimumslængden for adgangskoden er {length} tegn (opfylder kravet)',
+    passwordDetailWarning:
+      'Minimumslængden for adgangskoden er {length} tegn. Det anbefales at øge den til 12+ for bedre sikkerhed.',
+    passwordDetailFailed:
+      'Minimumslængden for adgangskoden ({length}) er for kort. Mindst 8 tegn kræves, og 12+ anbefales.',
+    tokenName: 'Token-udløbstid',
+    tokenDescription: 'Kontroller, om tokenets udløbstid er sat til en rimelig varighed',
+    tokenDetailPassed: 'Token udløber om {minutes} minutter',
+    tokenDetailWarningHours:
+      'Tokenets udløbstid ({hours} timer) er lang. Overvej en kortere varighed for følsomme handlinger.',
+    tokenDetailWarningTooLong:
+      'Tokenets udløbstid overstiger 8 timer. Det øger risikoen for token-tyveri.',
+    tokenDetailFailedNotSet:
+      'Tokenets udløbstid er ikke sat. Kontroller `security.jwt.expiration` i den indlæste sikkerhedskonfiguration.',
+    mfaName: 'Multifaktorgodkendelse',
+    mfaAvailableDescription: 'Kontroller, om MFA er tilgængelig og håndhæves',
+    mfaEnabledDescription: 'Kontroller, om MFA er tilgængelig og konfigureret',
+    mfaDetailPassed: 'MFA er påkrævet for alle brugere',
+    mfaDetailWarning:
+      'MFA er tilgængelig, men ikke påkrævet. Overvej at håndhæve MFA for bedre sikkerhed.',
+    mfaEnabledDetailPassed: 'MFA er tilgængelig for brugere',
+  },
+  'de-DE': {
+    passwordName: 'Minimale Passwortlänge',
+    passwordDescription:
+      'Prüft, ob die minimale Passwortlänge den Sicherheitsanforderungen entspricht (12+ empfohlen)',
+    passwordDetailPassed:
+      'Die minimale Passwortlänge beträgt {length} Zeichen (Anforderung erfüllt)',
+    passwordDetailWarning:
+      'Die minimale Passwortlänge beträgt {length} Zeichen. Für mehr Sicherheit wird 12+ empfohlen.',
+    passwordDetailFailed:
+      'Die minimale Passwortlänge ({length}) ist zu kurz. Mindestens 8 Zeichen sind erforderlich, 12+ werden empfohlen.',
+    tokenName: 'Token-Ablaufzeit',
+    tokenDescription: 'Prüft, ob die Ablaufzeit des Tokens sinnvoll gesetzt ist',
+    tokenDetailPassed: 'Das Token läuft in {minutes} Minuten ab',
+    tokenDetailWarningHours:
+      'Die Token-Ablaufzeit ({hours} Stunden) ist lang. Für sensible Vorgänge ist eine kürzere Dauer ratsam.',
+    tokenDetailWarningTooLong:
+      'Die Token-Ablaufzeit überschreitet 8 Stunden. Das erhöht das Risiko eines Token-Diebstahls.',
+    tokenDetailFailedNotSet:
+      'Für das Token ist keine Ablaufzeit gesetzt. Prüfen Sie `security.jwt.expiration` in der geladenen Sicherheitskonfiguration.',
+    mfaName: 'Multi-Faktor-Authentifizierung',
+    mfaAvailableDescription: 'Prüft, ob MFA verfügbar und erzwungen ist',
+    mfaEnabledDescription: 'Prüft, ob MFA verfügbar und konfiguriert ist',
+    mfaDetailPassed: 'MFA ist für alle Benutzer erforderlich',
+    mfaDetailWarning:
+      'MFA ist verfügbar, aber nicht verpflichtend. Erwägen Sie eine verpflichtende MFA für mehr Sicherheit.',
+    mfaEnabledDetailPassed: 'MFA ist für Benutzer verfügbar',
+  },
+  'el-GR': {
+    passwordName: 'Ελάχιστο μήκος κωδικού πρόσβασης',
+    passwordDescription:
+      'Ελέγχει αν το ελάχιστο μήκος κωδικού πρόσβασης πληροί τις απαιτήσεις ασφαλείας (συνιστάται 12+)',
+    passwordDetailPassed:
+      'Το ελάχιστο μήκος κωδικού πρόσβασης είναι {length} χαρακτήρες (πληροί την απαίτηση)',
+    passwordDetailWarning:
+      'Το ελάχιστο μήκος κωδικού πρόσβασης είναι {length} χαρακτήρες. Συνιστάται αύξηση σε 12+ για καλύτερη ασφάλεια.',
+    passwordDetailFailed:
+      'Το ελάχιστο μήκος κωδικού πρόσβασης ({length}) είναι πολύ μικρό. Απαιτούνται τουλάχιστον 8 χαρακτήρες και συνιστώνται 12+.',
+    tokenName: 'Χρόνος λήξης διακριτικού',
+    tokenDescription: 'Ελέγχει αν η λήξη του διακριτικού έχει οριστεί σε λογική διάρκεια',
+    tokenDetailPassed: 'Το διακριτικό λήγει σε {minutes} λεπτά',
+    tokenDetailWarningHours:
+      'Η λήξη του διακριτικού ({hours} ώρες) είναι μεγάλη. Εξετάστε μικρότερη διάρκεια για ευαίσθητες λειτουργίες.',
+    tokenDetailWarningTooLong:
+      'Η λήξη του διακριτικού υπερβαίνει τις 8 ώρες. Αυτό αυξάνει τον κίνδυνο κλοπής διακριτικού.',
+    tokenDetailFailedNotSet:
+      'Δεν έχει οριστεί λήξη διακριτικού. Ελέγξτε το `security.jwt.expiration` στη φορτωμένη διαμόρφωση ασφαλείας.',
+    mfaName: 'Πολυπαραγοντικός έλεγχος ταυτότητας',
+    mfaAvailableDescription: 'Ελέγχει αν το MFA είναι διαθέσιμο και επιβάλλεται',
+    mfaEnabledDescription: 'Ελέγχει αν το MFA είναι διαθέσιμο και ρυθμισμένο',
+    mfaDetailPassed: 'Το MFA απαιτείται για όλους τους χρήστες',
+    mfaDetailWarning:
+      'Το MFA είναι διαθέσιμο αλλά δεν απαιτείται. Εξετάστε την επιβολή του για ισχυρότερη ασφάλεια.',
+    mfaEnabledDetailPassed: 'Το MFA είναι διαθέσιμο για τους χρήστες',
+  },
+  'en-GB': {
+    passwordName: 'Password Minimum Length',
+    passwordDescription:
+      'Check if password minimum length meets security requirements (12+ recommended)',
+    passwordDetailPassed: 'Password minimum length is {length} characters (meets requirement)',
+    passwordDetailWarning:
+      'Password minimum length is {length} characters. Recommend increasing to 12+ for better security.',
+    passwordDetailFailed:
+      'Password minimum length ({length}) is too short. Minimum 8 characters required, 12+ recommended.',
+    tokenName: 'Token Expiration Time',
+    tokenDescription: 'Check if token expiration is set to a reasonable duration',
+    tokenDetailPassed: 'Token expires in {minutes} minutes',
+    tokenDetailWarningHours:
+      'Token expiration ({hours} hours) is long. Consider shorter duration for sensitive operations.',
+    tokenDetailWarningTooLong:
+      'Token expiration exceeds 8 hours. This increases risk of token theft.',
+    tokenDetailFailedNotSet:
+      'Token expiration is not set. Check security.jwt.expiration in the loaded security configuration.',
+    mfaName: 'Multi-Factor Authentication',
+    mfaAvailableDescription: 'Check if MFA is available and enforced',
+    mfaEnabledDescription: 'Check if MFA is available and configured',
+    mfaDetailPassed: 'MFA is required for all users',
+    mfaDetailWarning:
+      'MFA is available but not required. Consider enforcing MFA for enhanced security.',
+    mfaEnabledDetailPassed: 'MFA is available for users',
+  },
+  'en-US': {
+    passwordName: 'Password Minimum Length',
+    passwordDescription:
+      'Check if password minimum length meets security requirements (12+ recommended)',
+    passwordDetailPassed: 'Password minimum length is {length} characters (meets requirement)',
+    passwordDetailWarning:
+      'Password minimum length is {length} characters. Recommend increasing to 12+ for better security.',
+    passwordDetailFailed:
+      'Password minimum length ({length}) is too short. Minimum 8 characters required, 12+ recommended.',
+    tokenName: 'Token Expiration Time',
+    tokenDescription: 'Check if token expiration is set to a reasonable duration',
+    tokenDetailPassed: 'Token expires in {minutes} minutes',
+    tokenDetailWarningHours:
+      'Token expiration ({hours} hours) is long. Consider shorter duration for sensitive operations.',
+    tokenDetailWarningTooLong:
+      'Token expiration exceeds 8 hours. This increases risk of token theft.',
+    tokenDetailFailedNotSet:
+      'Token expiration is not set. Check security.jwt.expiration in the loaded security configuration.',
+    mfaName: 'Multi-Factor Authentication',
+    mfaAvailableDescription: 'Check if MFA is available and enforced',
+    mfaEnabledDescription: 'Check if MFA is available and configured',
+    mfaDetailPassed: 'MFA is required for all users',
+    mfaDetailWarning:
+      'MFA is available but not required. Consider enforcing MFA for enhanced security.',
+    mfaEnabledDetailPassed: 'MFA is available for users',
+  },
+  'es-ES': {
+    passwordName: 'Longitud mínima de la contraseña',
+    passwordDescription:
+      'Comprueba si la longitud mínima de la contraseña cumple los requisitos de seguridad (se recomienda 12+)',
+    passwordDetailPassed:
+      'La longitud mínima de la contraseña es de {length} caracteres (cumple el requisito)',
+    passwordDetailWarning:
+      'La longitud mínima de la contraseña es de {length} caracteres. Se recomienda aumentarla a 12+ para mayor seguridad.',
+    passwordDetailFailed:
+      'La longitud mínima de la contraseña ({length}) es demasiado corta. Se requieren al menos 8 caracteres y se recomiendan 12+.',
+    tokenName: 'Tiempo de expiración del token',
+    tokenDescription:
+      'Comprueba si la expiración del token está configurada con una duración razonable',
+    tokenDetailPassed: 'El token expira en {minutes} minutos',
+    tokenDetailWarningHours:
+      'La expiración del token ({hours} horas) es larga. Considera una duración más corta para operaciones sensibles.',
+    tokenDetailWarningTooLong:
+      'La expiración del token supera las 8 horas. Esto aumenta el riesgo de robo de tokens.',
+    tokenDetailFailedNotSet:
+      'La expiración del token no está configurada. Comprueba `security.jwt.expiration` en la configuración de seguridad cargada.',
+    mfaName: 'Autenticación multifactor',
+    mfaAvailableDescription: 'Comprueba si MFA está disponible y se aplica',
+    mfaEnabledDescription: 'Comprueba si MFA está disponible y configurada',
+    mfaDetailPassed: 'MFA es obligatoria para todos los usuarios',
+    mfaDetailWarning:
+      'MFA está disponible pero no es obligatoria. Considera exigir MFA para mejorar la seguridad.',
+    mfaEnabledDetailPassed: 'MFA está disponible para los usuarios',
+  },
+  'fr-FR': {
+    passwordName: 'Longueur minimale du mot de passe',
+    passwordDescription:
+      'Vérifie si la longueur minimale du mot de passe respecte les exigences de sécurité (12+ recommandé)',
+    passwordDetailPassed:
+      'La longueur minimale du mot de passe est de {length} caractères (exigence respectée)',
+    passwordDetailWarning:
+      'La longueur minimale du mot de passe est de {length} caractères. Il est recommandé de passer à 12+ pour une meilleure sécurité.',
+    passwordDetailFailed:
+      'La longueur minimale du mot de passe ({length}) est trop courte. Un minimum de 8 caractères est requis et 12+ est recommandé.',
+    tokenName: "Durée d'expiration du jeton",
+    tokenDescription:
+      "Vérifie si l'expiration du jeton est définie sur une durée raisonnable",
+    tokenDetailPassed: 'Le jeton expire dans {minutes} minutes',
+    tokenDetailWarningHours:
+      "La durée d'expiration du jeton ({hours} heures) est longue. Envisagez une durée plus courte pour les opérations sensibles.",
+    tokenDetailWarningTooLong:
+      "La durée d'expiration du jeton dépasse 8 heures. Cela augmente le risque de vol de jeton.",
+    tokenDetailFailedNotSet:
+      "L'expiration du jeton n'est pas définie. Vérifiez `security.jwt.expiration` dans la configuration de sécurité chargée.",
+    mfaName: 'Authentification multifacteur',
+    mfaAvailableDescription: 'Vérifie si la MFA est disponible et imposée',
+    mfaEnabledDescription: 'Vérifie si la MFA est disponible et configurée',
+    mfaDetailPassed: 'La MFA est obligatoire pour tous les utilisateurs',
+    mfaDetailWarning:
+      "La MFA est disponible mais pas obligatoire. Envisagez de l'imposer pour renforcer la sécurité.",
+    mfaEnabledDetailPassed: 'La MFA est disponible pour les utilisateurs',
+  },
+  'ga-IE': {
+    passwordName: 'Iosfhad an fhocail faire',
+    passwordDescription:
+      'Seiceálann sé an gcomhlíonann íosfhad an fhocail faire na riachtanais slándála (moltar 12+)',
+    passwordDetailPassed:
+      'Tá íosfhad an fhocail faire {length} carachtar (comhlíonann sé an riachtanas)',
+    passwordDetailWarning:
+      'Tá íosfhad an fhocail faire {length} carachtar. Moltar é a ardú go 12+ ar mhaithe le slándáil níos fearr.',
+    passwordDetailFailed:
+      'Tá íosfhad an fhocail faire ({length}) ró-ghearr. Tá 8 gcarachtar ar a laghad riachtanach, agus moltar 12+.',
+    tokenName: 'Am éaga an chomhartha',
+    tokenDescription:
+      'Seiceálann sé an bhfuil éaga an chomhartha socraithe go fad réasúnta',
+    tokenDetailPassed: 'Rachaidh an comhartha in éag i gceann {minutes} nóiméad',
+    tokenDetailWarningHours:
+      "Tá éaga an chomhartha ({hours} uair an chloig) fada. Smaoinigh ar thréimhse níos giorra d'oibríochtaí íogaire.",
+    tokenDetailWarningTooLong:
+      'Sáraíonn éaga an chomhartha 8 n-uaire an chloig. Méadaíonn sé sin an baol go ngoidfear comhartha.',
+    tokenDetailFailedNotSet:
+      'Níl éaga an chomhartha socraithe. Seiceáil `security.jwt.expiration` sa chumraíocht slándála luchtaithe.',
+    mfaName: 'Fíordheimhniú ilfhachtóra',
+    mfaAvailableDescription:
+      'Seiceálann sé an bhfuil MFA ar fáil agus curtha i bhfeidhm',
+    mfaEnabledDescription: 'Seiceálann sé an bhfuil MFA ar fáil agus cumraithe',
+    mfaDetailPassed: 'Tá MFA riachtanach do gach úsáideoir',
+    mfaDetailWarning:
+      'Tá MFA ar fáil ach níl sé riachtanach. Smaoinigh ar MFA a fhorfheidhmiú le haghaidh slándála níos láidre.',
+    mfaEnabledDetailPassed: "Tá MFA ar fáil d'úsáideoirí",
+  },
+  'hr-HR': {
+    passwordName: 'Minimalna duljina lozinke',
+    passwordDescription:
+      'Provjerava zadovoljava li minimalna duljina lozinke sigurnosne zahtjeve (preporučeno 12+)',
+    passwordDetailPassed:
+      'Minimalna duljina lozinke je {length} znakova (zadovoljava zahtjev)',
+    passwordDetailWarning:
+      'Minimalna duljina lozinke je {length} znakova. Preporučuje se povećanje na 12+ radi bolje sigurnosti.',
+    passwordDetailFailed:
+      'Minimalna duljina lozinke ({length}) je prekratka. Potrebno je najmanje 8 znakova, a preporučuje se 12+.',
+    tokenName: 'Vrijeme isteka tokena',
+    tokenDescription: 'Provjerava je li istek tokena postavljen na razumno trajanje',
+    tokenDetailPassed: 'Token istječe za {minutes} minuta',
+    tokenDetailWarningHours:
+      'Istek tokena ({hours} sati) je dug. Razmotrite kraće trajanje za osjetljive radnje.',
+    tokenDetailWarningTooLong:
+      'Istek tokena prelazi 8 sati. To povećava rizik od krađe tokena.',
+    tokenDetailFailedNotSet:
+      'Istek tokena nije postavljen. Provjerite `security.jwt.expiration` u učitanoj sigurnosnoj konfiguraciji.',
+    mfaName: 'Višefaktorska autentikacija',
+    mfaAvailableDescription: 'Provjerava je li MFA dostupna i obavezna',
+    mfaEnabledDescription: 'Provjerava je li MFA dostupna i konfigurirana',
+    mfaDetailPassed: 'MFA je obavezna za sve korisnike',
+    mfaDetailWarning:
+      'MFA je dostupna, ali nije obavezna. Razmotrite obveznu MFA radi bolje sigurnosti.',
+    mfaEnabledDetailPassed: 'MFA je dostupna korisnicima',
+  },
+  'hu-HU': {
+    passwordName: 'Jelszó minimális hossza',
+    passwordDescription:
+      'Ellenőrzi, hogy a jelszó minimális hossza megfelel-e a biztonsági követelményeknek (12+ ajánlott)',
+    passwordDetailPassed:
+      'A jelszó minimális hossza {length} karakter (megfelel a követelménynek)',
+    passwordDetailWarning:
+      'A jelszó minimális hossza {length} karakter. A jobb biztonság érdekében 12+ javasolt.',
+    passwordDetailFailed:
+      'A jelszó minimális hossza ({length}) túl rövid. Legalább 8 karakter szükséges, 12+ ajánlott.',
+    tokenName: 'Token lejárati ideje',
+    tokenDescription:
+      'Ellenőrzi, hogy a token lejárata ésszerű időtartamra van-e beállítva',
+    tokenDetailPassed: 'A token {minutes} perc múlva lejár',
+    tokenDetailWarningHours:
+      'A token lejárati ideje ({hours} óra) hosszú. Érzékeny műveleteknél rövidebb időtartam javasolt.',
+    tokenDetailWarningTooLong:
+      'A token lejárati ideje meghaladja a 8 órát. Ez növeli a tokenlopás kockázatát.',
+    tokenDetailFailedNotSet:
+      'A token lejárata nincs beállítva. Ellenőrizze a `security.jwt.expiration` értékét a betöltött biztonsági konfigurációban.',
+    mfaName: 'Többtényezős hitelesítés',
+    mfaAvailableDescription: 'Ellenőrzi, hogy az MFA elérhető és kikényszerített-e',
+    mfaEnabledDescription: 'Ellenőrzi, hogy az MFA elérhető és konfigurált-e',
+    mfaDetailPassed: 'Az MFA minden felhasználó számára kötelező',
+    mfaDetailWarning:
+      'Az MFA elérhető, de nem kötelező. A jobb biztonság érdekében érdemes kötelezővé tenni.',
+    mfaEnabledDetailPassed: 'Az MFA elérhető a felhasználók számára',
+  },
+  'it-IT': {
+    passwordName: 'Lunghezza minima della password',
+    passwordDescription:
+      'Verifica se la lunghezza minima della password soddisfa i requisiti di sicurezza (12+ consigliati)',
+    passwordDetailPassed:
+      'La lunghezza minima della password è di {length} caratteri (requisito soddisfatto)',
+    passwordDetailWarning:
+      'La lunghezza minima della password è di {length} caratteri. Si consiglia di aumentarla a 12+ per una sicurezza migliore.',
+    passwordDetailFailed:
+      'La lunghezza minima della password ({length}) è troppo corta. Sono richiesti almeno 8 caratteri e se ne consigliano 12+.',
+    tokenName: 'Tempo di scadenza del token',
+    tokenDescription:
+      'Verifica se la scadenza del token è impostata su una durata ragionevole',
+    tokenDetailPassed: 'Il token scade tra {minutes} minuti',
+    tokenDetailWarningHours:
+      'La scadenza del token ({hours} ore) è lunga. Valuta una durata più breve per le operazioni sensibili.',
+    tokenDetailWarningTooLong:
+      'La scadenza del token supera le 8 ore. Questo aumenta il rischio di furto del token.',
+    tokenDetailFailedNotSet:
+      'La scadenza del token non è impostata. Controlla `security.jwt.expiration` nella configurazione di sicurezza caricata.',
+    mfaName: 'Autenticazione a più fattori',
+    mfaAvailableDescription: 'Verifica se MFA è disponibile ed è applicata',
+    mfaEnabledDescription: 'Verifica se MFA è disponibile e configurata',
+    mfaDetailPassed: 'MFA è obbligatoria per tutti gli utenti',
+    mfaDetailWarning:
+      'MFA è disponibile ma non obbligatoria. Valuta di imporla per una sicurezza maggiore.',
+    mfaEnabledDetailPassed: 'MFA è disponibile per gli utenti',
+  },
+  'ja-JP': {
+    passwordName: 'パスワード最小文字数',
+    passwordDescription:
+      'パスワードの最小文字数がセキュリティ要件を満たしているかを確認します（12 文字以上推奨）',
+    passwordDetailPassed:
+      'パスワードの最小文字数は {length} 文字です（要件を満たしています）',
+    passwordDetailWarning:
+      'パスワードの最小文字数は {length} 文字です。より安全にするため 12 文字以上を推奨します。',
+    passwordDetailFailed:
+      'パスワードの最小文字数 ({length}) は短すぎます。最低 8 文字が必要で、12 文字以上を推奨します。',
+    tokenName: 'トークンの有効期限',
+    tokenDescription: 'トークンの有効期限が適切な長さに設定されているかを確認します',
+    tokenDetailPassed: 'トークンは {minutes} 分で期限切れになります',
+    tokenDetailWarningHours:
+      'トークンの有効期限（{hours} 時間）は長めです。機密性の高い操作では、より短い時間を検討してください。',
+    tokenDetailWarningTooLong:
+      'トークンの有効期限が 8 時間を超えています。トークン盗難のリスクが高まります。',
+    tokenDetailFailedNotSet:
+      'トークンの有効期限が設定されていません。読み込まれたセキュリティ設定の `security.jwt.expiration` を確認してください。',
+    mfaName: '多要素認証',
+    mfaAvailableDescription: 'MFA が利用可能で強制されているかを確認します',
+    mfaEnabledDescription: 'MFA が利用可能で設定されているかを確認します',
+    mfaDetailPassed: 'すべてのユーザーに MFA が必須です',
+    mfaDetailWarning:
+      'MFA は利用可能ですが必須ではありません。セキュリティ向上のため、MFA の強制を検討してください。',
+    mfaEnabledDetailPassed: 'MFA はユーザーが利用できます',
+  },
+  'ko-KR': {
+    passwordName: '비밀번호 최소 길이',
+    passwordDescription:
+      '비밀번호 최소 길이가 보안 요구 사항을 충족하는지 확인합니다(12자 이상 권장)',
+    passwordDetailPassed: '비밀번호 최소 길이는 {length}자입니다(요구 사항 충족)',
+    passwordDetailWarning:
+      '비밀번호 최소 길이는 {length}자입니다. 더 나은 보안을 위해 12자 이상으로 늘리는 것을 권장합니다.',
+    passwordDetailFailed:
+      '비밀번호 최소 길이({length}자)가 너무 짧습니다. 최소 8자가 필요하며 12자 이상을 권장합니다.',
+    tokenName: '토큰 만료 시간',
+    tokenDescription: '토큰 만료 기간이 적절하게 설정되어 있는지 확인합니다',
+    tokenDetailPassed: '토큰은 {minutes}분 후 만료됩니다',
+    tokenDetailWarningHours:
+      '토큰 만료 기간({hours}시간)이 깁니다. 민감한 작업에는 더 짧은 기간을 고려하세요.',
+    tokenDetailWarningTooLong:
+      '토큰 만료 기간이 8시간을 초과합니다. 이는 토큰 도난 위험을 높입니다.',
+    tokenDetailFailedNotSet:
+      '토큰 만료 시간이 설정되지 않았습니다. 로드된 보안 설정의 `security.jwt.expiration`을 확인하세요.',
+    mfaName: '다단계 인증',
+    mfaAvailableDescription: 'MFA를 사용할 수 있고 강제되는지 확인합니다',
+    mfaEnabledDescription: 'MFA를 사용할 수 있고 구성되어 있는지 확인합니다',
+    mfaDetailPassed: '모든 사용자에게 MFA가 필요합니다',
+    mfaDetailWarning:
+      'MFA를 사용할 수 있지만 필수는 아닙니다. 보안 강화를 위해 MFA 강제를 고려하세요.',
+    mfaEnabledDetailPassed: '사용자가 MFA를 사용할 수 있습니다',
+  },
+  'ml-IN': {
+    passwordName: 'പാസ്‌വേഡിന്റെ കുറഞ്ഞ നീളം',
+    passwordDescription:
+      'പാസ്‌വേഡിന്റെ കുറഞ്ഞ നീളം സുരക്ഷാ ആവശ്യകതകൾ പാലിക്കുന്നുണ്ടോ എന്ന് പരിശോധിക്കുക (12+ ശുപാർശ ചെയ്യുന്നു)',
+    passwordDetailPassed:
+      'പാസ്‌വേഡിന്റെ കുറഞ്ഞ നീളം {length} അക്ഷരങ്ങളാണ് (ആവശ്യകത നിറവേറ്റുന്നു)',
+    passwordDetailWarning:
+      'പാസ്‌വേഡിന്റെ കുറഞ്ഞ നീളം {length} അക്ഷരങ്ങളാണ്. കൂടുതൽ സുരക്ഷയ്ക്കായി 12+ ആയി വർധിപ്പിക്കാൻ ശുപാർശ ചെയ്യുന്നു.',
+    passwordDetailFailed:
+      'പാസ്‌വേഡിന്റെ കുറഞ്ഞ നീളം ({length}) വളരെ കുറവാണ്. കുറഞ്ഞത് 8 അക്ഷരങ്ങൾ ആവശ്യമാണ്, 12+ ശുപാർശ ചെയ്യുന്നു.',
+    tokenName: 'ടോക്കൺ കാലഹരണ സമയം',
+    tokenDescription:
+      'ടോക്കൺ കാലാവധി യുക്തിസഹമായ ദൈർഘ്യത്തിൽ സജ്ജീകരിച്ചിട്ടുണ്ടോ എന്ന് പരിശോധിക്കുക',
+    tokenDetailPassed: 'ടോക്കൺ {minutes} മിനിറ്റിനകം കാലഹരണപ്പെടും',
+    tokenDetailWarningHours:
+      'ടോക്കൺ കാലാവധി ({hours} മണിക്കൂർ) ദൈർഘ്യമേറിയതാണ്. സെൻസിറ്റീവ് പ്രവർത്തനങ്ങൾക്ക് കുറഞ്ഞ ദൈർഘ്യം പരിഗണിക്കുക.',
+    tokenDetailWarningTooLong:
+      'ടോക്കൺ കാലാവധി 8 മണിക്കൂറിന് മുകളിലാണ്. ഇത് ടോക്കൺ മോഷണത്തിന്റെ അപകടസാധ്യത ഉയർത്തുന്നു.',
+    tokenDetailFailedNotSet:
+      'ടോക്കൺ കാലാവധി സജ്ജീകരിച്ചിട്ടില്ല. ലോഡ് ചെയ്ത സുരക്ഷാ കോൺഫിഗറേഷനിലെ `security.jwt.expiration` പരിശോധിക്കുക.',
+    mfaName: 'മൾട്ടി-ഫാക്ടർ ഓതന്റിക്കേഷൻ',
+    mfaAvailableDescription:
+      'MFA ലഭ്യമാണോയും നിർബന്ധിതമാക്കിയിട്ടുണ്ടോയും പരിശോധിക്കുക',
+    mfaEnabledDescription: 'MFA ലഭ്യമാണോയും കോൺഫിഗർ ചെയ്തിട്ടുണ്ടോയും പരിശോധിക്കുക',
+    mfaDetailPassed: 'എല്ലാ ഉപയോക്താക്കൾക്കും MFA നിർബന്ധമാണ്',
+    mfaDetailWarning:
+      'MFA ലഭ്യമാണ്, പക്ഷേ നിർബന്ധമല്ല. കൂടുതൽ സുരക്ഷയ്ക്കായി MFA നിർബന്ധമാക്കുന്നത് പരിഗണിക്കുക.',
+    mfaEnabledDetailPassed: 'ഉപയോക്താക്കൾക്ക് MFA ലഭ്യമാണ്',
+  },
+  'nb-NO': {
+    passwordName: 'Minimum passordlengde',
+    passwordDescription:
+      'Kontroller om minimum passordlengde oppfyller sikkerhetskravene (12+ anbefales)',
+    passwordDetailPassed: 'Minimum passordlengde er {length} tegn (oppfyller kravet)',
+    passwordDetailWarning:
+      'Minimum passordlengde er {length} tegn. Det anbefales å øke til 12+ for bedre sikkerhet.',
+    passwordDetailFailed:
+      'Minimum passordlengde ({length}) er for kort. Minst 8 tegn kreves, og 12+ anbefales.',
+    tokenName: 'Utløpstid for token',
+    tokenDescription: 'Kontroller om tokenets utløpstid er satt til en rimelig varighet',
+    tokenDetailPassed: 'Tokenet utløper om {minutes} minutter',
+    tokenDetailWarningHours:
+      'Tokenets utløpstid ({hours} timer) er lang. Vurder kortere varighet for sensitive operasjoner.',
+    tokenDetailWarningTooLong:
+      'Tokenets utløpstid overstiger 8 timer. Dette øker risikoen for token-tyveri.',
+    tokenDetailFailedNotSet:
+      'Tokenets utløpstid er ikke satt. Kontroller `security.jwt.expiration` i den lastede sikkerhetskonfigurasjonen.',
+    mfaName: 'Flerfaktorautentisering',
+    mfaAvailableDescription: 'Kontroller om MFA er tilgjengelig og håndheves',
+    mfaEnabledDescription: 'Kontroller om MFA er tilgjengelig og konfigurert',
+    mfaDetailPassed: 'MFA er påkrevd for alle brukere',
+    mfaDetailWarning:
+      'MFA er tilgjengelig, men ikke påkrevd. Vurder å håndheve MFA for bedre sikkerhet.',
+    mfaEnabledDetailPassed: 'MFA er tilgjengelig for brukere',
+  },
+  'nl-NL': {
+    passwordName: 'Minimale wachtwoordlengte',
+    passwordDescription:
+      'Controleer of de minimale wachtwoordlengte voldoet aan de beveiligingseisen (12+ aanbevolen)',
+    passwordDetailPassed:
+      'De minimale wachtwoordlengte is {length} tekens (voldoet aan de eis)',
+    passwordDetailWarning:
+      'De minimale wachtwoordlengte is {length} tekens. Verhoog dit bij voorkeur naar 12+ voor betere beveiliging.',
+    passwordDetailFailed:
+      'De minimale wachtwoordlengte ({length}) is te kort. Minimaal 8 tekens zijn vereist, 12+ wordt aanbevolen.',
+    tokenName: 'Verlooptijd van token',
+    tokenDescription:
+      'Controleer of de verlooptijd van het token op een redelijke duur is ingesteld',
+    tokenDetailPassed: 'Het token verloopt over {minutes} minuten',
+    tokenDetailWarningHours:
+      'De verlooptijd van het token ({hours} uur) is lang. Overweeg een kortere duur voor gevoelige handelingen.',
+    tokenDetailWarningTooLong:
+      'De verlooptijd van het token is langer dan 8 uur. Dit vergroot het risico op tokendiefstal.',
+    tokenDetailFailedNotSet:
+      'De verlooptijd van het token is niet ingesteld. Controleer `security.jwt.expiration` in de geladen beveiligingsconfiguratie.',
+    mfaName: 'Multi-factor-authenticatie',
+    mfaAvailableDescription: 'Controleer of MFA beschikbaar is en wordt afgedwongen',
+    mfaEnabledDescription: 'Controleer of MFA beschikbaar is en geconfigureerd is',
+    mfaDetailPassed: 'MFA is vereist voor alle gebruikers',
+    mfaDetailWarning:
+      'MFA is beschikbaar maar niet verplicht. Overweeg MFA af te dwingen voor betere beveiliging.',
+    mfaEnabledDetailPassed: 'MFA is beschikbaar voor gebruikers',
+  },
+  'pl-PL': {
+    passwordName: 'Minimalna długość hasła',
+    passwordDescription:
+      'Sprawdza, czy minimalna długość hasła spełnia wymagania bezpieczeństwa (zalecane 12+)',
+    passwordDetailPassed:
+      'Minimalna długość hasła to {length} znaków (spełnia wymaganie)',
+    passwordDetailWarning:
+      'Minimalna długość hasła to {length} znaków. Dla lepszego bezpieczeństwa zaleca się zwiększenie do 12+.',
+    passwordDetailFailed:
+      'Minimalna długość hasła ({length}) jest zbyt mała. Wymagane jest co najmniej 8 znaków, zalecane 12+.',
+    tokenName: 'Czas wygaśnięcia tokenu',
+    tokenDescription:
+      'Sprawdza, czy czas wygaśnięcia tokenu jest ustawiony na rozsądny okres',
+    tokenDetailPassed: 'Token wygaśnie za {minutes} minut',
+    tokenDetailWarningHours:
+      'Czas wygaśnięcia tokenu ({hours} godzin) jest długi. Rozważ krótszy okres dla wrażliwych operacji.',
+    tokenDetailWarningTooLong:
+      'Czas wygaśnięcia tokenu przekracza 8 godzin. Zwiększa to ryzyko kradzieży tokenu.',
+    tokenDetailFailedNotSet:
+      'Czas wygaśnięcia tokenu nie jest ustawiony. Sprawdź `security.jwt.expiration` w załadowanej konfiguracji bezpieczeństwa.',
+    mfaName: 'Uwierzytelnianie wieloskładnikowe',
+    mfaAvailableDescription: 'Sprawdza, czy MFA jest dostępne i wymuszane',
+    mfaEnabledDescription: 'Sprawdza, czy MFA jest dostępne i skonfigurowane',
+    mfaDetailPassed: 'MFA jest wymagane dla wszystkich użytkowników',
+    mfaDetailWarning:
+      'MFA jest dostępne, ale nie jest wymagane. Rozważ wymuszenie MFA dla lepszego bezpieczeństwa.',
+    mfaEnabledDetailPassed: 'MFA jest dostępne dla użytkowników',
+  },
+  'pt-BR': {
+    passwordName: 'Comprimento mínimo da senha',
+    passwordDescription:
+      'Verifica se o comprimento mínimo da senha atende aos requisitos de segurança (12+ recomendado)',
+    passwordDetailPassed:
+      'O comprimento mínimo da senha é de {length} caracteres (atende ao requisito)',
+    passwordDetailWarning:
+      'O comprimento mínimo da senha é de {length} caracteres. Recomenda-se aumentar para 12+ para melhorar a segurança.',
+    passwordDetailFailed:
+      'O comprimento mínimo da senha ({length}) é muito curto. São necessários pelo menos 8 caracteres, e 12+ é recomendado.',
+    tokenName: 'Tempo de expiração do token',
+    tokenDescription:
+      'Verifica se a expiração do token está configurada com uma duração razoável',
+    tokenDetailPassed: 'O token expira em {minutes} minutos',
+    tokenDetailWarningHours:
+      'A expiração do token ({hours} horas) é longa. Considere uma duração menor para operações sensíveis.',
+    tokenDetailWarningTooLong:
+      'A expiração do token excede 8 horas. Isso aumenta o risco de roubo de token.',
+    tokenDetailFailedNotSet:
+      'A expiração do token não está configurada. Verifique `security.jwt.expiration` na configuração de segurança carregada.',
+    mfaName: 'Autenticação multifator',
+    mfaAvailableDescription: 'Verifica se o MFA está disponível e é exigido',
+    mfaEnabledDescription: 'Verifica se o MFA está disponível e configurado',
+    mfaDetailPassed: 'MFA é obrigatório para todos os usuários',
+    mfaDetailWarning:
+      'MFA está disponível, mas não é obrigatório. Considere exigir MFA para aumentar a segurança.',
+    mfaEnabledDetailPassed: 'MFA está disponível para os usuários',
+  },
+  'pt-PT': {
+    passwordName: 'Comprimento mínimo da palavra-passe',
+    passwordDescription:
+      'Verifica se o comprimento mínimo da palavra-passe cumpre os requisitos de segurança (12+ recomendado)',
+    passwordDetailPassed:
+      'O comprimento mínimo da palavra-passe é de {length} caracteres (cumpre o requisito)',
+    passwordDetailWarning:
+      'O comprimento mínimo da palavra-passe é de {length} caracteres. Recomenda-se aumentar para 12+ para melhorar a segurança.',
+    passwordDetailFailed:
+      'O comprimento mínimo da palavra-passe ({length}) é demasiado curto. São necessários pelo menos 8 caracteres e 12+ é recomendado.',
+    tokenName: 'Tempo de expiração do token',
+    tokenDescription:
+      'Verifica se a expiração do token está definida para uma duração razoável',
+    tokenDetailPassed: 'O token expira em {minutes} minutos',
+    tokenDetailWarningHours:
+      'A expiração do token ({hours} horas) é longa. Considere uma duração mais curta para operações sensíveis.',
+    tokenDetailWarningTooLong:
+      'A expiração do token excede 8 horas. Isto aumenta o risco de roubo do token.',
+    tokenDetailFailedNotSet:
+      'A expiração do token não está definida. Verifique `security.jwt.expiration` na configuração de segurança carregada.',
+    mfaName: 'Autenticação multifator',
+    mfaAvailableDescription: 'Verifica se o MFA está disponível e é imposto',
+    mfaEnabledDescription: 'Verifica se o MFA está disponível e configurado',
+    mfaDetailPassed: 'O MFA é obrigatório para todos os utilizadores',
+    mfaDetailWarning:
+      'O MFA está disponível, mas não é obrigatório. Considere impor MFA para reforçar a segurança.',
+    mfaEnabledDetailPassed: 'O MFA está disponível para os utilizadores',
+  },
+  'ro-RO': {
+    passwordName: 'Lungimea minimă a parolei',
+    passwordDescription:
+      'Verifică dacă lungimea minimă a parolei respectă cerințele de securitate (12+ recomandat)',
+    passwordDetailPassed:
+      'Lungimea minimă a parolei este de {length} caractere (respectă cerința)',
+    passwordDetailWarning:
+      'Lungimea minimă a parolei este de {length} caractere. Se recomandă creșterea la 12+ pentru o securitate mai bună.',
+    passwordDetailFailed:
+      'Lungimea minimă a parolei ({length}) este prea mică. Sunt necesare cel puțin 8 caractere, iar 12+ este recomandat.',
+    tokenName: 'Timpul de expirare al tokenului',
+    tokenDescription:
+      'Verifică dacă expirarea tokenului este setată la o durată rezonabilă',
+    tokenDetailPassed: 'Tokenul expiră în {minutes} minute',
+    tokenDetailWarningHours:
+      'Expirarea tokenului ({hours} ore) este lungă. Ia în considerare o durată mai scurtă pentru operațiunile sensibile.',
+    tokenDetailWarningTooLong:
+      'Expirarea tokenului depășește 8 ore. Acest lucru crește riscul de furt al tokenului.',
+    tokenDetailFailedNotSet:
+      'Expirarea tokenului nu este setată. Verifică `security.jwt.expiration` în configurația de securitate încărcată.',
+    mfaName: 'Autentificare multifactor',
+    mfaAvailableDescription: 'Verifică dacă MFA este disponibilă și impusă',
+    mfaEnabledDescription: 'Verifică dacă MFA este disponibilă și configurată',
+    mfaDetailPassed: 'MFA este obligatorie pentru toți utilizatorii',
+    mfaDetailWarning:
+      'MFA este disponibilă, dar nu este obligatorie. Ia în considerare impunerea MFA pentru o securitate sporită.',
+    mfaEnabledDetailPassed: 'MFA este disponibilă pentru utilizatori',
+  },
+  'ru-RU': {
+    passwordName: 'Минимальная длина пароля',
+    passwordDescription:
+      'Проверяет, соответствует ли минимальная длина пароля требованиям безопасности (рекомендуется 12+)',
+    passwordDetailPassed:
+      'Минимальная длина пароля составляет {length} символов (требование выполнено)',
+    passwordDetailWarning:
+      'Минимальная длина пароля составляет {length} символов. Для лучшей безопасности рекомендуется увеличить до 12+.',
+    passwordDetailFailed:
+      'Минимальная длина пароля ({length}) слишком короткая. Требуется минимум 8 символов, рекомендуется 12+.',
+    tokenName: 'Время истечения токена',
+    tokenDescription:
+      'Проверяет, установлено ли время истечения токена на разумный срок',
+    tokenDetailPassed: 'Срок действия токена истекает через {minutes} минут',
+    tokenDetailWarningHours:
+      'Время истечения токена ({hours} часов) слишком велико. Для чувствительных операций стоит выбрать более короткий срок.',
+    tokenDetailWarningTooLong:
+      'Время истечения токена превышает 8 часов. Это повышает риск кражи токена.',
+    tokenDetailFailedNotSet:
+      'Время истечения токена не задано. Проверьте `security.jwt.expiration` в загруженной конфигурации безопасности.',
+    mfaName: 'Многофакторная аутентификация',
+    mfaAvailableDescription: 'Проверяет, доступна ли MFA и принудительно ли она включена',
+    mfaEnabledDescription: 'Проверяет, доступна ли MFA и настроена ли она',
+    mfaDetailPassed: 'MFA обязательна для всех пользователей',
+    mfaDetailWarning:
+      'MFA доступна, но не обязательна. Рассмотрите принудительное включение MFA для усиления безопасности.',
+    mfaEnabledDetailPassed: 'MFA доступна пользователям',
+  },
+  'sk-SK': {
+    passwordName: 'Minimálna dĺžka hesla',
+    passwordDescription:
+      'Kontroluje, či minimálna dĺžka hesla spĺňa bezpečnostné požiadavky (odporúča sa 12+)',
+    passwordDetailPassed:
+      'Minimálna dĺžka hesla je {length} znakov (spĺňa požiadavku)',
+    passwordDetailWarning:
+      'Minimálna dĺžka hesla je {length} znakov. Pre lepšiu bezpečnosť sa odporúča zvýšiť ju na 12+.',
+    passwordDetailFailed:
+      'Minimálna dĺžka hesla ({length}) je príliš krátka. Vyžaduje sa aspoň 8 znakov, odporúča sa 12+.',
+    tokenName: 'Čas vypršania tokenu',
+    tokenDescription: 'Kontroluje, či je vypršanie tokenu nastavené na primeranú dobu',
+    tokenDetailPassed: 'Token vyprší o {minutes} minút',
+    tokenDetailWarningHours:
+      'Vypršanie tokenu ({hours} hodín) je dlhé. Pri citlivých operáciách zvážte kratšiu dobu.',
+    tokenDetailWarningTooLong:
+      'Vypršanie tokenu presahuje 8 hodín. Zvyšuje to riziko krádeže tokenu.',
+    tokenDetailFailedNotSet:
+      'Vypršanie tokenu nie je nastavené. Skontrolujte `security.jwt.expiration` v načítanej bezpečnostnej konfigurácii.',
+    mfaName: 'Viacfaktorové overenie',
+    mfaAvailableDescription: 'Kontroluje, či je MFA dostupné a vynucované',
+    mfaEnabledDescription: 'Kontroluje, či je MFA dostupné a nakonfigurované',
+    mfaDetailPassed: 'MFA je povinné pre všetkých používateľov',
+    mfaDetailWarning:
+      'MFA je dostupné, ale nie je povinné. Zvážte jeho vynútenie pre vyššiu bezpečnosť.',
+    mfaEnabledDetailPassed: 'MFA je dostupné pre používateľov',
+  },
+  'sv-SE': {
+    passwordName: 'Minsta lösenordslängd',
+    passwordDescription:
+      'Kontrollerar om minsta lösenordslängd uppfyller säkerhetskraven (12+ rekommenderas)',
+    passwordDetailPassed: 'Minsta lösenordslängd är {length} tecken (uppfyller kravet)',
+    passwordDetailWarning:
+      'Minsta lösenordslängd är {length} tecken. Det rekommenderas att öka till 12+ för bättre säkerhet.',
+    passwordDetailFailed:
+      'Minsta lösenordslängd ({length}) är för kort. Minst 8 tecken krävs och 12+ rekommenderas.',
+    tokenName: 'Tokenets utgångstid',
+    tokenDescription:
+      'Kontrollerar om tokenets utgångstid är satt till en rimlig varaktighet',
+    tokenDetailPassed: 'Tokenet går ut om {minutes} minuter',
+    tokenDetailWarningHours:
+      'Tokenets utgångstid ({hours} timmar) är lång. Överväg en kortare varaktighet för känsliga operationer.',
+    tokenDetailWarningTooLong:
+      'Tokenets utgångstid överstiger 8 timmar. Det ökar risken för tokenstöld.',
+    tokenDetailFailedNotSet:
+      'Tokenets utgångstid är inte satt. Kontrollera `security.jwt.expiration` i den inlästa säkerhetskonfigurationen.',
+    mfaName: 'Flerfaktorsautentisering',
+    mfaAvailableDescription: 'Kontrollerar om MFA är tillgängligt och krävs',
+    mfaEnabledDescription: 'Kontrollerar om MFA är tillgängligt och konfigurerat',
+    mfaDetailPassed: 'MFA krävs för alla användare',
+    mfaDetailWarning:
+      'MFA är tillgängligt men inte obligatoriskt. Överväg att kräva MFA för bättre säkerhet.',
+    mfaEnabledDetailPassed: 'MFA är tillgängligt för användare',
+  },
+  'zh-CN': {
+    passwordName: '密码最小长度',
+    passwordDescription: '检查密码最小长度是否符合安全要求（建议 12 位以上）',
+    passwordDetailPassed: '当前密码最小长度为 {length} 位（符合要求）',
+    passwordDetailWarning:
+      '当前密码最小长度为 {length} 位。建议提升到 12 位以上以增强安全性。',
+    passwordDetailFailed:
+      '当前密码最小长度（{length} 位）过短。至少需要 8 位，建议 12 位以上。',
+    tokenName: 'Token 过期时间',
+    tokenDescription: '检查 Token 过期时间是否设置在合理范围内',
+    tokenDetailPassed: 'Token 将在 {minutes} 分钟后过期',
+    tokenDetailWarningHours:
+      'Token 过期时间（{hours} 小时）偏长。对于敏感操作，建议缩短时长。',
+    tokenDetailWarningTooLong:
+      'Token 过期时间超过 8 小时，这会增加 Token 被盗用的风险。',
+    tokenDetailFailedNotSet:
+      '未设置 Token 过期时间。请检查已加载安全配置中的 `security.jwt.expiration`。',
+    mfaName: '多因素认证',
+    mfaAvailableDescription: '检查是否提供并强制执行 MFA',
+    mfaEnabledDescription: '检查是否提供并配置了 MFA',
+    mfaDetailPassed: '已为所有用户强制启用 MFA',
+    mfaDetailWarning:
+      '已提供 MFA，但尚未强制执行。建议启用强制 MFA 以提升安全性。',
+    mfaEnabledDetailPassed: '用户可使用 MFA',
+  },
+  'zh-TW': {
+    passwordName: '密碼最小長度',
+    passwordDescription: '檢查密碼最小長度是否符合安全要求（建議 12 位以上）',
+    passwordDetailPassed: '目前密碼最小長度為 {length} 位（符合要求）',
+    passwordDetailWarning:
+      '目前密碼最小長度為 {length} 位。建議提升到 12 位以上以增強安全性。',
+    passwordDetailFailed:
+      '目前密碼最小長度（{length} 位）過短。至少需要 8 位，建議 12 位以上。',
+    tokenName: 'Token 到期時間',
+    tokenDescription: '檢查 Token 到期時間是否設定在合理範圍內',
+    tokenDetailPassed: 'Token 將在 {minutes} 分鐘後到期',
+    tokenDetailWarningHours:
+      'Token 到期時間（{hours} 小時）偏長。對於敏感操作，建議縮短時長。',
+    tokenDetailWarningTooLong:
+      'Token 到期時間超過 8 小時，這會增加 Token 被盜用的風險。',
+    tokenDetailFailedNotSet:
+      '尚未設定 Token 到期時間。請檢查已載入安全設定中的 `security.jwt.expiration`。',
+    mfaName: '多因素驗證',
+    mfaAvailableDescription: '檢查 MFA 是否可用並已強制執行',
+    mfaEnabledDescription: '檢查 MFA 是否可用並已設定',
+    mfaDetailPassed: '已為所有使用者強制啟用 MFA',
+    mfaDetailWarning:
+      'MFA 已可用，但尚未強制執行。建議啟用強制 MFA 以提升安全性。',
+    mfaEnabledDetailPassed: '使用者可使用 MFA',
+  },
+}
+
+function buildLocalePatch(
+  localeKey: LocaleKey,
+  terms: LocaleTerms,
+  itemTerms: SecurityScanItemTerms
+): object {
   return {
     security: {
       scan: {
         detailMessages: {
           sandbox_enabled: terms.sandboxEnabled,
+        },
+        items: {
+          auth_password_length: {
+            name: itemTerms.passwordName,
+            description: itemTerms.passwordDescription,
+            details: {
+              passed: itemTerms.passwordDetailPassed,
+              warning: itemTerms.passwordDetailWarning,
+              failed: itemTerms.passwordDetailFailed,
+            },
+          },
+          auth_token_expiration: {
+            name: itemTerms.tokenName,
+            description: itemTerms.tokenDescription,
+            details: {
+              passed: itemTerms.tokenDetailPassed,
+              warningHours: itemTerms.tokenDetailWarningHours,
+              warningTooLong: itemTerms.tokenDetailWarningTooLong,
+              failedNotSet: itemTerms.tokenDetailFailedNotSet,
+            },
+          },
+          auth_mfa_available: {
+            name: itemTerms.mfaName,
+            description: itemTerms.mfaAvailableDescription,
+            details: {
+              passed: itemTerms.mfaDetailPassed,
+              warning: itemTerms.mfaDetailWarning,
+            },
+          },
+          auth_mfa_enabled: {
+            name: itemTerms.mfaName,
+            description: itemTerms.mfaEnabledDescription,
+            details: {
+              passed: itemTerms.mfaEnabledDetailPassed,
+            },
+          },
         },
       },
     },
@@ -186,7 +982,11 @@ function buildLocalePatch(localeKey: LocaleKey, terms: LocaleTerms): object {
 const securityCronMaskingBackfills = Object.fromEntries(
   Object.entries(localeTerms).map(([localeKey, terms]) => [
     localeKey,
-    buildLocalePatch(localeKey as LocaleKey, terms),
+    buildLocalePatch(
+      localeKey as LocaleKey,
+      terms,
+      securityScanItemTerms[localeKey as LocaleKey]
+    ),
   ])
 ) as Partial<Record<LocaleKey, object>>
 

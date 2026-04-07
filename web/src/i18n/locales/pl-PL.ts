@@ -1362,6 +1362,7 @@ export default mergeHarnessLocale('pl-PL', {
       newProfile: 'Nowy profil',
       acpPlainTitle: 'Narzędzia lokalne (ACP)',
       a2aPlainTitle: 'Zdalni agenci (A2A)',
+      genericA2ATitle: 'Ogólny zdalny agent A2A',
       loadFailed: 'Nie udało się załadować profili agentów zewnętrznych.',
       notAvailable: 'Niedostępne',
       remoteAgent: 'Zdalny agent',
@@ -2280,6 +2281,9 @@ export default mergeHarnessLocale('pl-PL', {
       items: {
         ai_prompt_injection: {
           name: 'Ochrona przed wstrzykiwaniem promptów',
+        },
+        sandbox_enabled: {
+          description: 'Sprawdź, czy wykonywanie kodu odbywa się w piaskownicy.',
         },
       },
     },

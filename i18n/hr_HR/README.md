@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="Status CI"></a>
   <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub izdanje"></a>
   <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT licenca"></a>
 </p>
@@ -44,112 +44,42 @@
 
 ## Uvod
 
-Inspirirani Clawdbotom, vjerujemo da će **budućnost** osobnog računarstva biti **oblikovana raznolikim, lokalno orijentiranim AI agentima** koji rade na rubu mreže.
+Inspirirani Clawdbotom, vjerujemo da će budućnost osobnog računalstva oblikovati različiti, lokalni AI agenti koji rade na rubu.
 
-**ZimaOS Blue je naš odgovor** — potpuno **otvorenog koda, provjerljivo i spremno za produkciju okruženje za pokretanje agenata i skup alata** koji vam omogućuje isporuku privatnih, samostalno hostanih agenata bez ikakvih prepreka.
+ZimaOS Blue je naš odgovor — potpuno otvoreno okruženje, koje se može revidirati, neovisno o prodavaču i spremno za proizvodnju, izvršavanje agenta i skup alata koji vam omogućuje isporuku privatnih agenata koji se sami hostiraju bez problema.
 
-Izgrađen za odvažne programere koji žele **kreativno ili ručno izraditi vlastite agente**, Blue je **projektiran za performanse**: napisan u **Go** jeziku, s potrošnjom memorije od samo 10 MB. Radi na **bilo kojem x86 sustavu, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-ju, Windowsu, macOS-u** — svugdje gdje ima struje.
-
-![](../../docs/assets/features.png)
-
-## Značajke
-
-### Lokalno orijentirani dizajn i automatski pristup modelima
-
-Idemo dalje: nativna podrška za **20+ IM platformi**, **glasovno upravljana** sučelja za prirodan, kontekstualno svjestan dijalog, **prebacivanje modela bez konfiguracije** s IDE skeniranjem i SOUL-slojevite osobnosti.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Brzo i lagano
-
-Nativno kompilirano u Go — bez interpretera, bez VM-a, bez opterećenja. Tiho radi na svemu, od servera do vaših stolnih uređaja.
-
-| Metrika | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|---------|-------------------|------------------------|
-| `help` hladno / toplo | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` vrijeme izvršavanja (najbolje od 3) | **< 0.01 s** | 5.98 s |
-| `help` vršni RSS | **~10 MB** | ~394 MB |
-| `status` vršni RSS | **~15 MB** | ~1.52 GB |
-| memorija mirovanja `gateway run` nakon hladnog pokretanja | **~19 MB** | - |
-| Ovisnosti za pokretanje | **Nema** | Node.js 18+ |
-
-> Gornji CLI retci su povijesni mikrobenchmark za `help` / `status` na istom hostu. Novi redak za `gateway run` prikazuje stvarnu memoriju mirovanja nakon hladnog pokretanja, mjerenu na macOS arm64 preko `vmmap Physical footprint` nakon što se pokretanje stabilizira. Velj-tra 2026.
-
-### Čisti Go, bilo koji uređaj
-
-100% Go, statička binarna datoteka. **Križna kompilacija za 5 ciljnih platformi** odmah dostupna (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Bez Node okruženja, bez Pythona, bez kontejnera. Stavite ga na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, stari x86 usmjerivač ili ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — jednostavno radi. **Zatim dodajte vlastito korisničko sučelje, logiku i vještine agenata** — jedna baza koda, svaka platforma.
-
-### Sigurnost i upravljanje
-
-Ugrađeni sidecar API proxy s dubinskom obranom:
-- **Izvršavanje u sandboxu** – Svi pozivi alata izvršavaju se u izoliranim okruženjima.
-- **Obrana od prompt injekcija** – 7+ ugrađenih strategija presretanja.
-- **Revizija sesija** – Potpuno praćenje sesija, svaka interakcija je sljediva.
-- **RBAC i WebAuthn** – Detaljno upravljanje pristupom s autentifikacijom bez lozinke.
+Napravljen za odvažne programere koji žele vibrirati ili ručno izraditi vlastite agente, Blue je projektiran za performanse: napisan u Go, s memorijskim otiskom od samo 19 MB. Radi na bilo kojem x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Piju, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windowsu, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-u — gdje god priključite napajanje.
 
 ## Zašto Blue
 
-Vjerujemo da **osobno računarstvo sljedeće generacije** prihvaća LLM-ove — ali **kontrolirani, provjerljivi** agenti ostaju temelj za pojedince i timove. **Blue pruža**:
-- **Sveobuhvatna jezgra** – Napredno upravljanje modelima, IM integracija, poboljšana persona i sučelja na prirodnom jeziku prilagođena svakodnevnim interakcijama (slušalice, glas, pametne naočale).
-- **Lokalno orijentirano, ultra lagano, višeuređajno** – Nije potreban vrhunski hardver. Radi na svemu što može računati.
-- **Sigurno i provjerljivo** – Revizija sesija, sandboxing, kontrole dozvola i ugrađeni API proxy koji djeluje kao vatrozid aplikacijskog sloja — svaki bajt ulaza/izlaza je vidljiv.
-
-![](../../docs/assets/design_principle.png)
-
-Smanjujemo predloške koda kako biste se **usredotočili na ono što je važno**. Vjerni <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **dizajnerskoj filozofiji ZimaOS-a**, Blue pruža:
-- **Od nule do jedan jednim klikom** – Trenutačna implementacija, bez složene konfiguracije.
-- **Brzo prototipiranje** – Kreativno ili ručno izradite alate, interakcije i pakete aplikacija specifične za scenarij.
-- **Globalno spremno** – **Svijet je velik** i ne govori zadano engleski. **20+ jezika, nativno**, bez prepreka.
-- **Otvoreni ekosustav modela** – Bez vezanosti za dobavljača. Donesite vlastite modele.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
-</summary>
 
-| Pružatelj | Modeli | Vrsta |
-|-----------|--------|-------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi itd. | Lokalno |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (privatnost na prvom mjestu) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | OpenAI modeli putem Azurea | Cloud |
-| OpenRouter | 100+ agregiranih modela | Cloud |
-| AIHubMix | Multi-provider agregator | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Prilagođeno | Bilo koji API kompatibilan s OpenAI / Anthropic / Gemini | Cloud / Lokalno |
+### Pure Go, bilo koji uređaj
 
-</details>
+100% Go, statički binarni. Unakrsno kompajliranje na 5 ciljeva izvan okvira (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Nema Node runtimea, nema Pythona, nisu potrebni spremnici. Stavite ga na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, stari x86 usmjerivač ili ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — jednostavno radi. Zatim slojite vlastito korisničko sučelje, logiku i agentske vještine — jedna baza koda, svaka platforma.
 
-### Podržana IDE okruženja
+### Izvan kutije, spreman za rad
 
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+Svatko želi alate koji su jednostavni, pouzdani i skaliraju kada su vam potrebni. Alati koji jednostavno rade, tako da se možete usredotočiti na ono što zapravo gradite.
+
+Ovo nije nova filozofija. Isti je onaj koji je napravio <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS: jednostavan, pouzdan i napravljen da vam ne smeta. Blue je ta filozofija, proširena na hrpu agenata.
+
+### Dizajniran za vaš život, stvoren da ostanete lokalni
+
+Od dubinskog istraživanja koje donosi potpuno HTML izvješće, do OCR, PDF, automatizacije preglednika i konverzije dokumenata, Blue upravlja složenim tijekovima rada u stvarnom svijetu bez slanja vaših podataka u oblak. Glasovno buđenje, STT/TTS, Talk Mode i podrška za lokalno zaključivanje čine svakodnevne interakcije trenutnim, privatnim i uvijek dostupnima.
 
 ## Brzi početak
 
-### Opcija 1: Preuzimanje desktop aplikacije
+### Opcija 1: Preuzmite aplikaciju za stolna računala
 
-Preuzmite nativnu aplikaciju — bez ovisnosti, bez kompiliranja.
+Nabavite izvornu aplikaciju — bez ovisnosti, bez kompilacije. Ugrađena probna konfiguracija s integracijom u nekoliko sekundi — odmah počnite razgovarati putem daljinske veze, nije potrebno postavljanje bota. Pravo iskustvo izvan okvira.
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Preuzmi DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Preuzmi instalacijski program](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### Opcija 2: Instalacijska skripta
+### Opcija 2: Instalirajte skriptu
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### Opcija 3: Izgradnja iz izvornog koda
+### Opcija 3: Izgradnja iz izvora
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,116 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
+> **Napomena:** Međuverzije sustava Windows zahtijevaju:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) i [CMake](https://cmake.org/) za izvorne C ovisnosti (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) za sistemske biblioteke (winmm, itd.)
+>
+> Provjerite jesu li `gcc`, `cmake` u vašem `PATH`.
 
 ## Pregled arhitekture
 
-![](../../docs/assets/architecture.png)
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### Tok podataka
+Idite dalje: pruža izvornu podršku za **20+ IM platformi**, **glasom vođena** sučelja za prirodan dijalog s obzirom na kontekst, **zamjenu modela bez konfiguracije** s IDE skeniranjem.
 
-**Chat zahtjev (Proxy vrući put)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-**Tok poruka kanala**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+## Kako graditi
 
-**Glasovni cjevovod**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**Tijek evaluacije Harnessa**
-```
-Quick Eval / Harness API → Kontroler evaluacije → Dispatcher grupa izvođenja
-  → Agent task ili eval driver → Alati + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector gates
-  → Cutover readiness / odluka o kandidatu
-```
+> ⚠️ [!IMPORTANT]
+>
+> Ako planirate nastaviti s ugađanjem ili kodiranjem vibe na Blue, nemojte smatrati nekoliko zgodnih razgovora dokazima za puštanje. Sve promjene koje utječu na usmjeravanje, ponašanje pri izvođenju, površinu alata, kontrolu proračuna, odabir modela ili okvir za izvođenje treba potvrditi pomoću Blue Harness, a ne ad hoc provjerama na licu mjesta.
+>
+> Blue bi ovdje trebao slijediti jedno jednostavno pravilo: prvo podaci, prvo vrata, zadnji rez. U praksi to znači ažuriranje relevantnog Harness skupa podataka/specifikacija procjene prije prosuđivanja promjene, zatim održavanje jednog stabilnog `candidate_id` tijekom cijelog pokušaja tako da izvješća o selektoru, izvršenju, proračunu i spremnosti opisuju istog kandidata umjesto četiri nepovezana pokretanja.
 
+### Preporučeni tijek rada Harness
 
-### Mapa paketa (`server/internal/`)
+1. Pokrenite `blue harness selector verify`
+2. Pokrenite `blue harness execution verify`
+3. Ponovno upotrijebite procjenu selektora za `blue harness budget gate`
+4. Završite s `blue harness cutover-readiness`
 
-| Sloj | Paketi |
-|------|--------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Pružatelj | providerpool, providers, llm |
-| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Memorija | memory, embedding, kvstore |
-| Kanal | channel, autoreply, i18n |
-| Sigurnost | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Glas | voice, tts, stt, speech |
-| Nadzor | metrics, companion, profiling, leakdetect |
-| Dodatak | plugin, skill, skillstore |
-| Integracija | browser, cron, workflow, formfiller, tunnel, crawler |
-| Raspoređivač | scheduler, worker, workerpool, pool |
-| Jezgra | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Sustav | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Višekorisničko | tenant, user, session, preview |
+Za lokalnu iteraciju, noćnu provjeru valjanosti ili prikupljanje CI dokaza preferirajte `python3 scripts/cutover_candidate_pipeline.py`. Pokreće cijeli selektor -> izvođenje -> proračun -> redoslijed spremnosti pod jednim zajedničkim kandidatom, što čini rezultat lakšim za usporedbu, pregled i prekid.
 
-## Kako koristiti
+### Dodatne zaštitne ograde
 
-![](../../docs/assets/handcraft.png)
+| Područje | Što gledati |
+|------|----------------|
+| Osnovna stabilnost | Držite osnovnu liniju, verziju skupa podataka i `candidate_id` stabilnima ili će se usporedba povući i rezultat neće biti pouzdan. |
+| Stvarni izlaz | Ponovno izgradite pogođeni binarni ili sučelni paket prije pokretanja Harness, inače biste mogli završiti s provjerom valjanosti ustajalog ponašanja umjesto trenutne promjene. |
+| Registracija rute | Ako se sučelje i pozadina mijenjaju zajedno, potvrdite da su sve nove pozadinske rute stvarno registrirane prije prosuđivanja značajke kroz ponašanje korisničkog sučelja, jer registracija koja nedostaje često izgleda kao logička pogreška, ali zapravo je `404`. |
+| Presuda o oslobađanju | Prolaz za ugađanje spreman je tek kada Harness ne pokaže značajnu regresiju i spremnost za presjecanje potvrđuje da je kandidat zapravo spreman za prelazak. |
 
-## Vremenski plan prekretnica
+Ukratko, ugađanje na Blue ne odnosi se na "osjećaj je bolji nakon nekoliko razgovora." Radi se o stavljanju kandidata u Harness, prikupljanju usporedivih dokaza i prepuštanju rezultatima izlaza i spremnosti da odluče je li promjena doista sigurna za zadržavanje.
 
-![](../../docs/assets/timeline.png)
+## Značajke
 
-| Version | Fokus | Ključna vrijednost | Status |
-|---------|-------|--------------------|--------|
-| v0.1 | Jezgra Go okruženja | Stabilna jezgra, 24h rad | Done |
-| v0.2 | Osnovne mogućnosti | Minimalno upotrebljivo, LLM integracija | Done |
-| v0.3 | NAS integracija | NAS nativno, systemd podrška | Done |
-| v0.4 | Sustav dodataka | Proširivo, osnove sigurnosti | Done |
-| v0.5 | Produktna osnova | Spremno za produkciju, dokumentacija | Done |
-| v0.6 | Kanali za poruke | Podrška za više kanala | Done |
-| v0.7 | Sigurnost | OIDC, MFA, revizija | Done |
-| v0.8 | Performanse | Optimizacija, predmemoriranje, mjerila | Done |
-| v0.9 | Ekosustav | Višekorisničko, automatizacija preglednika, glas | Done |
-| v0.10.0 | CLI pakiranje | CC CLI pakiranje, detekcija, automatsko ažuriranje | Done |
-| v0.10.1 | Praćenje metrika | API statistike, praćenje tokena, TTFT | Done |
-| v0.10.2 | CLI pouzdanost | Životni ciklus procesa, oporavak od grešaka | Done |
-| v0.10.3 | CLI integracija | Čarobnjak za postavljanje, automatska detekcija pružatelja | Done |
-| v0.10.4 | Tauri pakiranje | Desktop aplikacija, sistemska traka | Done |
-| v0.10.5 | API Proxy Sidecar | Odabir rute, zaštita upita, statistike korištenja | Done |
-| v0.10.6 | Skup pružatelja | Usmjeravanje više pružatelja, provjera zdravlja, prebacivanje | Done |
-| v0.10.7 | Način pregleda | Neautentificirani pristup, ograničavanje značajki | Done |
-| v0.10.8 | Trgovina vještina | Infrastruktura trgovine vještina, validacija kanala | Done |
-| v0.10.9–10 | Upravljanje korisnicima | Podkorisnici, dozvole na razini stranice | Done |
-| v0.10.13–14 | Sigurnost i vještine | Stranica sigurnosti, redizajn trgovine vještina | Done |
-| v0.10.15 | Poboljšanja chata | Chat UX, cjevovod poruka | Done |
-| v0.10.16 | Glasovni modul | Sherpa TTS/ASR, eSpeak, prebacivanje pružatelja | Done |
-| v0.10.17 | Udaljeni pristup | Ngrok, Cloudflare tuneli, ACME certifikati | Done |
-| v0.10.18–20 | Sprint performansi | Performanse pokretanja/chata, predmemorija konteksta | Done |
-| v0.10.21–22 | Prompt i DingTalk | Sistemski prompt, DingTalk kanal | Done |
-| v0.10.23 | OTA ažuriranje | Sustav OTA ažuriranja | Done |
-| v0.10.24 | Nadogradnja kanala | 10 kanala nadograđeno iz stubova | Done |
-| v0.10.25 | CC Cache | Dvoslojna predmemorija (L1 memorija + L2 disk) | Done |
-| v0.10.26 | Humanizer | Cjevovod humanizacije odgovora | Done |
-| v0.10.27 | Context Pruner | 54% ušteda tokena na kodu (SWE-bench službeno), 46–47% na općim dokumentima (lokalni IR), BM25 bodovanje, segmentacija | Done |
-| v0.10.28 | Memory Service | Progresivno pretraživanje, dual-write backend | Done |
+| Značajka | Što donosi |
+|---------|------------------|
+| Web-pretraživanje visoke dostupnosti i izvođenje preglednika | Jedan od Blue **najoštrijih razlika**. Blue objedinjuje **četiri staze pristupa webu** za pretraživanje, čitanje, izdvajanje i indeksiranje; čuva **tri rezervna sloja** preko HTTP-a, ekstrakcije proxyja i sesija preglednika; rukuje **anti-bot stranicama** s otkrivanjem izazova, ponovnim korištenjem kolačića/sesije, skrivenim pristupom i prijenosom preglednika; i rute preko **tri motora preglednika**: `lightpanda`, upravljani Chromium i relejni/lokalni Chromium. |
+| Vrijeme izvođenja istraživanja tri u jednom | **Jedan javni istraživački unos** može usmjeriti u `deep_research`, `analyze` i `ui_review`. Isti hrp otkrića i dokaza zatim proizvodi **istraživanje prvo s citatima**, **ograničena izvješća** i **strukturirane UI/UX/preglede pristupačnosti**. |
+| Harness okvir za izvođenje, evaluaciju i evoluciju | Čini evaluaciju **primitivom vremena izvođenja** u razvoju, obuci i proizvodnji. Harness pokriva **regresijske i dimne provjere**, bodovanje, osnovne linije, izvješća i provjeru vremena izvođenja, a zatim prenosi iste dokaze o **razvoju vještina**, naknadnoj evaluaciji, promociji ili povratu, te `AGENTS.md` ili pregledu prijedloga uputa. |
+| Multimodalna Native-Capability-First Runtime | Zadržava **glas, OCR, PDF, zadatke preglednika, pretvorbu dokumenata, strukturirano ispunjavanje obrazaca, obradu medija i generiranje medija** na **nativnim i lokalnim stazama prvo**, uz **usmjeravanje modela samo kada je stvarno potrebno**. |
+| Sigurnost i upravljanje | Uključuje **izvršenje u sandboxu**, **zaštitu od brzog ubacivanja**, **reviziju sesije**, dopuštenja, **RBAC**, **WebAuthn**, operativne zaštitne ograde i **sigurnosno skeniranje vještina**. |
+| LLM Wiki i prostor znanja | Pretvara memoriju, istraživanje i rezultate izvođenja u **površinu znanja nalik na wiki** sa **stranicama sažetka**, indeksima, **povratnim vezama**, **svježinom** i **arhivskim tijekovima rada**. |
+| Trgovina vještina i tržnica | Isporučuje **ugrađeno otkrivanje vještina**, upravljanje, sinkronizaciju i **lokalno skeniranje** tako da je proširivost dostupna **od prvog dana**. |
+| Grupa pružatelja produkcijske razine | Pruža pravi skup pružatelja usluga s **provjerama stanja**, **automatskim prebacivanjem u slučaju greške**, **prekidačima strujnog kruga** i **utrkom pružatelja usluga** za dugotrajna radna opterećenja. |
+| Ugrađeno lokalno vrijeme izvođenja malog modela | Isporučuje ugrađeno **`Qwen3.5-0.8B` + `llama.cpp`** runtime za **lokalna kratka pitanja i odgovore**, prepoznavanje slika, usmjeravanje alata, sažimanje, **kompresiju konteksta** i **pretprocesiranje dokumenata**. |
+| Dugotrajna pouzdanost | Tretira **OTA ažuriranja**, **sigurnosno kopiranje i vraćanje**, **vruće ponovno učitavanje konfiguracije** i **oporavak nakon kvara** kao **ugrađene radne probleme**. |
+
+## Vremenska traka prekretnica
+
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+| Datum | Verzija | Ključne riječi / značajke |
+|------|---------|--------------------|
+| 26. siječnja 2026. | `v0.1–v0.9` | Go runtime, sustav dodataka, automatizacija preglednika |
+| 27. – 28. siječnja 2026. | `v0.9.0–v0.9.2` | Prikaz zadataka preglednika, Blue Companion, Smart Form Filler |
+| 29. – 31. siječnja 2026. | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, restrukturiranje korisničkog sučelja |
+| 1. – 3. veljače 2026. | `v0.10.1–v0.10.22` | Mjerni podaci, daljinski pristup, predmemorija konteksta |
+| 5. – 18. veljače 2026. | `v0.10.25–v0.10.29` | i18n, CC predmemorija, cjevovod izdanja |
+| 20. – 25. veljače 2026. | `v0.10.28–v0.10.29` | Desktop loader, mobilni UX, redizajn memorije |
+| 28. veljače – 2. ožujka 2026. | `v0.10.30` | Deep Research, reranker vještina, sigurnosno skeniranje |
+| 9. – 18. ožujka 2026. | `v0.10.31` | Remont nadzorne ploče, VoiceChat refactor, odobrena mjesta |
+| 19. – 22. ožujka 2026. | `v0.10.32` | Harness uvođenje, revizija prijepisa, pretraživanje weba |
+| 23. – 25. ožujka 2026. | `v0.10.33` | Harness grupe, odobrenja preglednika, tržište vještina |
+| 29. – 30. ožujka 2026. | `v0.10.35` | Harness v3, relej preglednika, kompresija konteksta |
+| 31. ožujka – 1. travnja 2026. | `v0.10.36` | Revizija prijepisa, Harness preklapanja, raščlanjivanje alata |
+| 1. travnja 2026. | `v0.10.37` | Runtime hardening, Skill+Exec cutover, recovery polish |
+| 2. – 5. travnja 2026. | `v0.10.38` | GitHub podrška, usavršavanje tržišta, poboljšanja pouzdanosti |
+| 6. – 7. travnja 2026. | `v0.10.39` | Objedinjavanje istraživanja, površine evolucije, smanjenje memorije |
 
 ## Zajednica i podrška
 
-- **Problemi**: [Molimo prijavite greške i zahtjeve za značajke ovdje](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Rasprave**: [Discord](https://discord.gg/b3AgFDxe9v)
+- **Problemi**: [Ovdje prijavite greške i zahtjeve za značajke](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Rasprave**: [Discord](https://discord.gg/zwWbKA4S2)
 - **Pratite nas** na [GitHub](https://github.com/IceWhaleTech)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Licenca
 
-Ovaj projekt je licenciran pod MIT licencom — pogledajte datoteku [LICENSE](../../LICENSE) za detalje. Vjerujemo u otvoreni kod i vraćanje zajednici.
+Ovaj je projekt licenciran pod licencom MIT - pogledajte datoteku [LICENSE](../../LICENSE) za detalje. Vjerujemo u otvoreni kod i vraćanje zajednici.
 
 ## Suradnici
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Hvala svim Blue suradnicima:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Reference
+
+1. **OpenClaw** — prvi lokalni agent otvorenog koda. Pionir u povezivanju LLM-a s lokalnim uređajima putem adaptera kanala i pozivanja alata, izravno inspirirajući Blue arhitekturu vremena izvršavanja agenta. https://github.com/openclaw/openclaw
+2. **MiroMind** — način dubokog istraživanja sa sintezom potkrijepljenom dokazima. Oblikovan Blue ugrađeni cjevovod dubinskog istraživanja: planiranje, paralelno dohvaćanje, deduplikacija dokaza i HTML generiranje izvješća. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM kao kompilator znanja. Preoblikuje LLM kako bi izgradio postojane prostore znanja koji se razvijaju, nadilazeći RAG-ovu zamku akumulacije.
+4. **OpenSpace (HKUDS)** — Samorazvijajući motor vještina. Okvir temeljen na DAG-u u kojem agenti uče iz neuspjeha i stječu specijalizirane vještine. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — verzionirani API registar dokumentacije za agente kodiranja. Rješava halucinacije agenta i zaboravljeno znanje o sesiji. Pruža odabrane dokumente s verzijama s petljama primjedbi i povratnih informacija, pretvarajući dokumentaciju u sloj znanja koji se sam poboljšava. https://github.com/andrewyng/context-hub
+6. **Notion** — Jednostavno, ljudski i namjerno tiho. Nadahnut minimalističkim etosom Notion, Blue vraća toplinu u mrežu. Gdje se profinjeni serif susreće s promišljenim dizajnom, stvarajući prostor koji se osjeća kao kod kuće. https://www.notion.com/about
+7. **Matrix** — Vizualna inspiracija iz legendarne digitalne kišne estetike. Estetski smjer tehničkih dijagrama Blue.
+8. **IceWhale** — Ljubav, smrt i roboti S2E2 "Led". Kolektiv koji se okuplja diljem svijeta kako bi probio zidove internetskih divova i odupro se koncentraciji podataka. Ledeni kit simbolizira zajednicu koja zajedno na rubu gradi suverene alate.
+9. **ZimaOS Blue** — Ljubav, smrt i roboti S1E14 "Zima Blue". Metafora: inteligencija koja počinje u službi i razvija se kako bi istražila svijet. Blue je zastupnik mudrosti, ukorijenjen u jednostavnosti i posezanju za dubinom.
+10. **ZimaOS** — Pojednostavljena, fokusirana, otvorena načela dizajna. I ZimaOS i Blue dijele uvjerenje da tehnologija treba služiti korisniku — implementirati u 30 sekundi, pokrenuti bilo gdje, ostati neutralan prema dobavljaču. https://www.zimaspace.com/zimaos

@@ -227,8 +227,7 @@ describe('EvolutionView', () => {
           skill_id: 'browser',
           candidate_id: 'candidate-browser-runner',
           source_path: 'assets/skills/browser/SKILL.md',
-          content:
-            '# Browser\n\nUse the browser carefully and recover after navigation errors.\n',
+          content: '# Browser\n\nUse the browser carefully and recover after navigation errors.\n',
           sha256: 'sha-runner-candidate',
         },
       },
@@ -372,6 +371,7 @@ describe('EvolutionView', () => {
           version: '1.0.0',
           description: 'Browser automation skill',
           builtin: true,
+          writable: true,
           enabled: true,
         },
         {
@@ -380,14 +380,16 @@ describe('EvolutionView', () => {
           version: '1.0.0',
           description: 'Reflection skill',
           builtin: true,
+          writable: true,
           enabled: true,
         },
         {
-          id: 'workspace-note',
+          id: 'workspace_note',
           name: 'Workspace Note',
           version: '1.0.0',
           description: 'Local workspace skill',
           builtin: false,
+          writable: true,
           enabled: true,
         },
       ],
@@ -450,7 +452,8 @@ describe('EvolutionView', () => {
           source_path: 'assets/skills/browser/SKILL.md',
           candidate_id: 'candidate-browser-capture',
           origin_case_id: 'case-browser-capture',
-          content: '# Browser\n\nUse the browser carefully and include successful recovery examples.\n',
+          content:
+            '# Browser\n\nUse the browser carefully and include successful recovery examples.\n',
           content_sha256: 'sha-browser-capture',
           created_at: '2026-04-02T08:00:00Z',
         },
@@ -501,10 +504,13 @@ describe('EvolutionView', () => {
           source_id: 'eval-browser-capture',
           candidate_id: 'candidate-browser-capture',
           base_content_sha256: 'sha-browser-base',
-          summary: 'Recovered browser sessions revealed a reusable guidance pattern worth capturing.',
+          summary:
+            'Recovered browser sessions revealed a reusable guidance pattern worth capturing.',
           evidence_json: JSON.stringify({
-            lesson: 'Add a recovery example for browser sessions that resume successfully after navigation issues.',
-            when_to_apply: 'When the browser task succeeds only after the agent retries and restores state.',
+            lesson:
+              'Add a recovery example for browser sessions that resume successfully after navigation issues.',
+            when_to_apply:
+              'When the browser task succeeds only after the agent retries and restores state.',
             confidence: 0.86,
             groundedness: 0.91,
             evidence_ids: ['ev-cap-1', 'ev-cap-2'],
@@ -545,7 +551,8 @@ describe('EvolutionView', () => {
           source_id: 'run-browser-runtime',
           candidate_id: 'candidate-browser-runtime',
           base_content_sha256: 'sha-browser-base',
-          summary: 'A direct runtime browser failure generated a repair candidate before any eval group existed.',
+          summary:
+            'A direct runtime browser failure generated a repair candidate before any eval group existed.',
           evidence_json: JSON.stringify({
             runtime_run_id: 'run-browser-runtime',
             runtime_status: 'failed',
@@ -898,7 +905,8 @@ describe('EvolutionView', () => {
       status: 'approved',
       lesson: 'Capture rollout notes once the new evolution console actions are verified.',
       when_to_apply: 'When promoting or rolling back a live version changes the operator workflow.',
-      evidence: 'Operators need documented rollout steps after the console gains more direct controls.',
+      evidence:
+        'Operators need documented rollout steps after the console gains more direct controls.',
       evidence_ids: ['ev-ops-1'],
       patch_preview: '@@ docs/OPERATIONS.md @@\n+ Document the evolution rollout checklist.\n',
       created_at: '2026-04-04T08:00:00Z',
@@ -1033,7 +1041,7 @@ describe('EvolutionView', () => {
     expect(wrapper.text()).toContain('Review Queue')
     expect(wrapper.get('[data-testid="evolution-beta-badge"]').text()).toContain('Beta')
     expect(wrapper.text()).toContain('Browser')
-    expect(wrapper.text()).not.toContain('Workspace Note')
+    expect(wrapper.text()).toContain('Workspace Note')
     expect(wrapper.text()).toContain('Navigation recovery guidance was missing')
     expect(
       wrapper.get('[data-testid="evolution-skill-case-status-summary-case-browser-1"]').text()
@@ -1068,12 +1076,12 @@ describe('EvolutionView', () => {
     expect(
       wrapper.get('[data-testid="evolution-skill-evidence-summary-failure_count"]').text()
     ).toContain('3')
-    expect(wrapper.get('[data-testid="evolution-skill-evidence-review-why_changed"]').text()).toContain(
-      'Repair missing guidance'
-    )
-    expect(wrapper.get('[data-testid="evolution-skill-evidence-review-strength"]').text()).toContain(
-      'Runtime failure recovered'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-evidence-review-why_changed"]').text()
+    ).toContain('Repair missing guidance')
+    expect(
+      wrapper.get('[data-testid="evolution-skill-evidence-review-strength"]').text()
+    ).toContain('Runtime failure recovered')
     expect(wrapper.get('[data-testid="evolution-skill-diff-review-areas"]').text()).toContain(
       'Recovery guidance'
     )
@@ -1089,9 +1097,9 @@ describe('EvolutionView', () => {
     expect(wrapper.get('[data-testid="evolution-skill-switch-preview-current"]').text()).toContain(
       'rev-promoted'
     )
-    expect(wrapper.get('[data-testid="evolution-skill-switch-preview-candidate"]').text()).toContain(
-      'rev-accepted'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-switch-preview-candidate"]').text()
+    ).toContain('rev-accepted')
     expect(wrapper.get('[data-testid="evolution-skill-switch-preview-preserve"]').text()).toContain(
       'Current live preserved as backup'
     )
@@ -1107,12 +1115,12 @@ describe('EvolutionView', () => {
     expect(
       wrapper.get('[data-testid="evolution-skill-case-timeline-candidate_created"]').text()
     ).toContain('Candidate created')
-    expect(
-      wrapper.get('[data-testid="evolution-skill-case-timeline-accepted"]').text()
-    ).toContain('Accepted by gate')
-    expect(
-      wrapper.get('[data-testid="evolution-skill-case-timeline-promoted"]').text()
-    ).toContain('Promoted to canonical')
+    expect(wrapper.get('[data-testid="evolution-skill-case-timeline-accepted"]').text()).toContain(
+      'Accepted by gate'
+    )
+    expect(wrapper.get('[data-testid="evolution-skill-case-timeline-promoted"]').text()).toContain(
+      'Promoted to canonical'
+    )
     expect(wrapper.text()).toContain('Version Comparison')
     expect(wrapper.get('[data-testid="evolution-skill-baseline-id"]').text()).toContain(
       'eval-browser-baseline'
@@ -1202,9 +1210,9 @@ describe('EvolutionView', () => {
     expect(wrapper.get('[data-testid="evolution-instructions-review-title"]').text()).toContain(
       'AGENTS.md'
     )
-    expect(
-      wrapper.get('[data-testid="evolution-instructions-review-title"]').classes()
-    ).toContain('text-lg')
+    expect(wrapper.get('[data-testid="evolution-instructions-review-title"]').classes()).toContain(
+      'text-lg'
+    )
     expect(
       wrapper.get('[data-testid="evolution-instructions-review-title"]').classes()
     ).not.toContain('text-xl')
@@ -1215,12 +1223,12 @@ describe('EvolutionView', () => {
     expect(wrapper.get('[data-testid="evolution-instructions-review-meta"]').text()).toContain(
       '2026'
     )
-    expect(
-      wrapper.get('[data-testid="evolution-instructions-evidence-compact"]').text()
-    ).toContain('When To Apply')
-    expect(
-      wrapper.get('[data-testid="evolution-instructions-evidence-compact"]').text()
-    ).toContain('Evidence')
+    expect(wrapper.get('[data-testid="evolution-instructions-evidence-compact"]').text()).toContain(
+      'When To Apply'
+    )
+    expect(wrapper.get('[data-testid="evolution-instructions-evidence-compact"]').text()).toContain(
+      'Evidence'
+    )
     expect(wrapper.get('[data-testid="evolution-instructions-meta-compact"]').text()).toContain(
       'Source kind'
     )
@@ -1329,15 +1337,15 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-tab-runner"]').trigger('click')
     await flushPromises()
 
-    expect(
-      wrapper.get('[data-testid="evolution-runner-transcript-entry-0"]').classes()
-    ).toContain('px-3')
-    expect(
-      wrapper.get('[data-testid="evolution-runner-transcript-text-0"]').classes()
-    ).toContain('text-xs')
-    expect(
-      wrapper.get('[data-testid="evolution-runner-transcript-text-0"]').classes()
-    ).toContain('leading-5')
+    expect(wrapper.get('[data-testid="evolution-runner-transcript-entry-0"]').classes()).toContain(
+      'px-3'
+    )
+    expect(wrapper.get('[data-testid="evolution-runner-transcript-text-0"]').classes()).toContain(
+      'text-xs'
+    )
+    expect(wrapper.get('[data-testid="evolution-runner-transcript-text-0"]').classes()).toContain(
+      'leading-5'
+    )
   })
 
   it('keeps skill alerts and the selected-skill header compact after the list cards were tightened', async () => {
@@ -1346,15 +1354,15 @@ describe('EvolutionView', () => {
     expect(wrapper.get('[data-testid="evolution-skill-selected-title"]').classes()).toContain(
       'text-lg'
     )
-    expect(
-      wrapper.get('[data-testid="evolution-skill-selected-title"]').classes()
-    ).not.toContain('text-xl')
-    expect(
-      wrapper.get('[data-testid="evolution-skill-selected-description"]').classes()
-    ).toContain('leading-5')
-    expect(wrapper.get('[data-testid="evolution-skill-safe-rollback-details"]').classes()).toContain(
-      'text-xs'
+    expect(wrapper.get('[data-testid="evolution-skill-selected-title"]').classes()).not.toContain(
+      'text-xl'
     )
+    expect(wrapper.get('[data-testid="evolution-skill-selected-description"]').classes()).toContain(
+      'leading-5'
+    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-safe-rollback-details"]').classes()
+    ).toContain('text-xs')
 
     await wrapper.get('[data-testid="evolution-skill-search"]').setValue('self reflect')
     await flushPromises()
@@ -1464,7 +1472,9 @@ describe('EvolutionView', () => {
       wrapper.get('[data-testid="evolution-skill-decision-timeline-card-rev-promoted"]').classes()
     ).toContain('px-3')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-timeline-summary-rev-promoted"]').classes()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-timeline-summary-rev-promoted"]')
+        .classes()
     ).toContain('text-xs')
     expect(
       wrapper.get('[data-testid="evolution-skill-decision-history-entry-rev-promoted"]').classes()
@@ -1494,16 +1504,24 @@ describe('EvolutionView', () => {
     await flushPromises()
 
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-panel"]').classes()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-panel"]')
+        .classes()
     ).toContain('p-3')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-hint"]').classes()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-hint"]')
+        .classes()
     ).toContain('text-xs')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-overall_score"]').classes()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-overall_score"]')
+        .classes()
     ).toContain('px-3')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-overall_score"]').classes()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-overall_score"]')
+        .classes()
     ).toContain('py-2.5')
   })
 
@@ -1541,21 +1559,19 @@ describe('EvolutionView', () => {
     expect(
       wrapper.get('[data-testid="evolution-runner-report-followup-overall_score"]').classes()
     ).toContain('py-3')
-    expect(wrapper.get('[data-testid="evolution-runner-report-source-overall_score"]').classes()).toContain(
-      'px-3'
-    )
-    expect(wrapper.get('[data-testid="evolution-runner-report-source-overall_score"]').classes()).toContain(
-      'py-3'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-runner-report-source-overall_score"]').classes()
+    ).toContain('px-3')
+    expect(
+      wrapper.get('[data-testid="evolution-runner-report-source-overall_score"]').classes()
+    ).toContain('py-3')
   })
 
   it('sends operator rationale to promote and rollback endpoints when provided', async () => {
     const wrapper = await mountView()
     const confirmSpy = setConfirmResult(true)
 
-    await wrapper
-      .get('[data-testid="evolution-skill-review-note-suggestion-0"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-review-note-suggestion-0"]').trigger('click')
     await flushPromises()
 
     await wrapper.get('[data-testid="evolution-skill-promote"]').trigger('click')
@@ -1569,9 +1585,7 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-skill-revision-rev-backup"]').trigger('click')
     await flushPromises()
 
-    await wrapper
-      .get('[data-testid="evolution-skill-review-note-suggestion-0"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-review-note-suggestion-0"]').trigger('click')
     await flushPromises()
 
     await wrapper.get('[data-testid="evolution-skill-rollback"]').trigger('click')
@@ -1579,7 +1593,8 @@ describe('EvolutionView', () => {
 
     expect(confirmSpy).toHaveBeenCalledTimes(2)
     expect(harnessApi.rollbackSkillRevision).toHaveBeenCalledWith('rev-backup', {
-      review_note: 'Restore the previous stable canonical behavior while preserving the current live version as backup.',
+      review_note:
+        'Restore the previous stable canonical behavior while preserving the current live version as backup.',
     })
   })
 
@@ -1593,9 +1608,9 @@ describe('EvolutionView', () => {
     expect(
       wrapper.get('[data-testid="evolution-skill-case-timeline-candidate_created"]').text()
     ).toContain('Candidate created')
-    expect(
-      wrapper.get('[data-testid="evolution-skill-case-timeline-accepted"]').text()
-    ).toContain('Accepted by gate')
+    expect(wrapper.get('[data-testid="evolution-skill-case-timeline-accepted"]').text()).toContain(
+      'Accepted by gate'
+    )
     expect(wrapper.get('[data-testid="evolution-skill-evidence-summary-lesson"]').text()).toContain(
       'Add a recovery example'
     )
@@ -1611,9 +1626,9 @@ describe('EvolutionView', () => {
     expect(
       wrapper.get('[data-testid="evolution-skill-evidence-summary-evidence_ids"]').text()
     ).toContain('2')
-    expect(wrapper.get('[data-testid="evolution-skill-evidence-review-why_changed"]').text()).toContain(
-      'Capture learned guidance'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-evidence-review-why_changed"]').text()
+    ).toContain('Capture learned guidance')
     expect(wrapper.get('[data-testid="evolution-skill-diff-review-areas"]').text()).toContain(
       'Examples'
     )
@@ -1640,21 +1655,21 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-skill-revision-rev-runtime"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="evolution-skill-evidence-summary-duration_ms"]').text()).toContain(
-      '3.4 s'
-    )
-    expect(wrapper.get('[data-testid="evolution-skill-evidence-summary-total_tokens"]').text()).toContain(
-      '540'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-evidence-summary-duration_ms"]').text()
+    ).toContain('3.4 s')
+    expect(
+      wrapper.get('[data-testid="evolution-skill-evidence-summary-total_tokens"]').text()
+    ).toContain('540')
     expect(
       wrapper.get('[data-testid="evolution-skill-evidence-summary-verification_passed"]').text()
     ).toContain('No')
-    expect(wrapper.get('[data-testid="evolution-skill-evidence-summary-outcome_score"]').text()).toContain(
-      '42%'
-    )
-    expect(wrapper.get('[data-testid="evolution-skill-case-chip-case-browser-runtime-source_id"]').text()).toContain(
-      'run-browser-runtime'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-evidence-summary-outcome_score"]').text()
+    ).toContain('42%')
+    expect(
+      wrapper.get('[data-testid="evolution-skill-case-chip-case-browser-runtime-source_id"]').text()
+    ).toContain('run-browser-runtime')
   })
 
   it('opens the linked source eval run directly from a case card', async () => {
@@ -1705,6 +1720,8 @@ describe('EvolutionView', () => {
   it('supports searching skills and filtering cases and instruction proposals', async () => {
     const wrapper = await mountView()
 
+    expect(wrapper.find('[data-testid="evolution-skill-item-workspace_note"]').exists()).toBe(true)
+
     await wrapper.get('[data-testid="evolution-skill-search"]').setValue('self reflect')
     await flushPromises()
 
@@ -1715,12 +1732,10 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-skill-case-mode-filter"]').setValue('capture')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="evolution-skill-case-case-browser-1"]').exists()).toBe(
-      false
+    expect(wrapper.find('[data-testid="evolution-skill-case-case-browser-1"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="evolution-skill-case-case-browser-capture"]').exists()).toBe(
+      true
     )
-    expect(
-      wrapper.find('[data-testid="evolution-skill-case-case-browser-capture"]').exists()
-    ).toBe(true)
 
     await wrapper.get('[data-testid="evolution-tab-instructions"]').trigger('click')
     await flushPromises()
@@ -1729,12 +1744,12 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-instructions-status-filter"]').setValue('approved')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="evolution-instructions-proposal-proposal-1"]').exists()).toBe(
-      false
-    )
-    expect(wrapper.find('[data-testid="evolution-instructions-proposal-proposal-2"]').exists()).toBe(
-      true
-    )
+    expect(
+      wrapper.find('[data-testid="evolution-instructions-proposal-proposal-1"]').exists()
+    ).toBe(false)
+    expect(
+      wrapper.find('[data-testid="evolution-instructions-proposal-proposal-2"]').exists()
+    ).toBe(true)
   })
 
   it('surfaces the embedded knowledge lane with primary maintenance actions visible and advanced tools expandable on demand', async () => {
@@ -1789,16 +1804,16 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-skill-decision-live-action"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="evolution-skill-section-lineage"]').attributes('data-focused')).toBe(
-      'true'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-section-lineage"]').attributes('data-focused')
+    ).toBe('true')
 
     await wrapper.get('[data-testid="evolution-skill-decision-selected-action"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="evolution-skill-section-diff"]').attributes('data-focused')).toBe(
-      'true'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-section-diff"]').attributes('data-focused')
+    ).toBe('true')
 
     await wrapper.get('[data-testid="evolution-skill-decision-next_step-action"]').trigger('click')
     await flushPromises()
@@ -1836,9 +1851,9 @@ describe('EvolutionView', () => {
     expect(wrapper.get('[data-testid="evolution-skill-scorecard-quality"]').text()).toContain(
       'Score delta +0.07'
     )
-    expect(
-      wrapper.get('[data-testid="evolution-skill-scorecard-verification"]').text()
-    ).toContain('+12%')
+    expect(wrapper.get('[data-testid="evolution-skill-scorecard-verification"]').text()).toContain(
+      '+12%'
+    )
     expect(wrapper.get('[data-testid="evolution-skill-scorecard-runtime"]').text()).toContain(
       '1.9 s'
     )
@@ -1876,20 +1891,14 @@ describe('EvolutionView', () => {
     expect(wrapper.find('[data-testid="evolution-skill-revision-rev-promoted"]').exists()).toBe(
       false
     )
-    expect(wrapper.find('[data-testid="evolution-skill-revision-rev-backup"]').exists()).toBe(
-      true
-    )
+    expect(wrapper.find('[data-testid="evolution-skill-revision-rev-backup"]').exists()).toBe(true)
 
     await wrapper.get('[data-testid="evolution-skill-revision-status-filter"]').setValue('all')
     await wrapper.get('[data-testid="evolution-skill-revision-search"]').setValue('capture')
     await flushPromises()
 
-    expect(wrapper.find('[data-testid="evolution-skill-revision-rev-capture"]').exists()).toBe(
-      true
-    )
-    expect(wrapper.find('[data-testid="evolution-skill-revision-rev-backup"]').exists()).toBe(
-      false
-    )
+    expect(wrapper.find('[data-testid="evolution-skill-revision-rev-capture"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="evolution-skill-revision-rev-backup"]').exists()).toBe(false)
   })
 
   it('shows hidden-selection prompts and can reveal the selected skill, revision, case, and proposal', async () => {
@@ -1905,9 +1914,9 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-skill-hidden-selection-reveal"]').trigger('click')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="evolution-skill-search"]').element as HTMLInputElement).value).toBe(
-      ''
-    )
+    expect(
+      (wrapper.get('[data-testid="evolution-skill-search"]').element as HTMLInputElement).value
+    ).toBe('')
     expect(wrapper.find('[data-testid="evolution-skill-hidden-selection"]').exists()).toBe(false)
 
     await wrapper.get('[data-testid="evolution-skill-case-mode-filter"]').setValue('capture')
@@ -1929,7 +1938,9 @@ describe('EvolutionView', () => {
 
     await wrapper.get('[data-testid="evolution-skill-revision-rev-backup"]').trigger('click')
     await flushPromises()
-    await wrapper.get('[data-testid="evolution-skill-revision-status-filter"]').setValue('candidate')
+    await wrapper
+      .get('[data-testid="evolution-skill-revision-status-filter"]')
+      .setValue('candidate')
     await flushPromises()
 
     expect(
@@ -1942,8 +1953,10 @@ describe('EvolutionView', () => {
     await flushPromises()
 
     expect(
-      (wrapper.get('[data-testid="evolution-skill-revision-status-filter"]').element as HTMLSelectElement)
-        .value
+      (
+        wrapper.get('[data-testid="evolution-skill-revision-status-filter"]')
+          .element as HTMLSelectElement
+      ).value
     ).toBe('all')
 
     await wrapper.get('[data-testid="evolution-tab-instructions"]').trigger('click')
@@ -1961,8 +1974,10 @@ describe('EvolutionView', () => {
     await flushPromises()
 
     expect(
-      (wrapper.get('[data-testid="evolution-instructions-status-filter"]').element as HTMLSelectElement)
-        .value
+      (
+        wrapper.get('[data-testid="evolution-instructions-status-filter"]')
+          .element as HTMLSelectElement
+      ).value
     ).toBe('all')
   })
 
@@ -1996,7 +2011,8 @@ describe('EvolutionView', () => {
           source_path: 'assets/skills/browser/SKILL.md',
           candidate_id: 'candidate-browser-capture',
           origin_case_id: 'case-browser-capture',
-          content: '# Browser\n\nUse the browser carefully and include successful recovery examples.\n',
+          content:
+            '# Browser\n\nUse the browser carefully and include successful recovery examples.\n',
           content_sha256: 'sha-browser-capture',
           created_at: '2026-04-02T08:00:00Z',
         },
@@ -2030,9 +2046,7 @@ describe('EvolutionView', () => {
       'No cases yet'
     )
 
-    await wrapper
-      .get('[data-testid="evolution-skill-case-empty-open-harness"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-case-empty-open-harness"]').trigger('click')
     await flushPromises()
 
     expect(routerPushMock).toHaveBeenCalledWith({
@@ -2046,9 +2060,7 @@ describe('EvolutionView', () => {
       'No proposals yet'
     )
 
-    await wrapper
-      .get('[data-testid="evolution-instructions-empty-open-runner"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-instructions-empty-open-runner"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="agentcore-runner-panel-stub"]').text()).toContain(
@@ -2073,19 +2085,22 @@ describe('EvolutionView', () => {
     const wrapper = await mountView()
 
     expect(wrapper.text()).toContain('Instruction Review Queue')
-    expect((wrapper.get('[data-testid="evolution-instructions-search"]').element as HTMLInputElement).value).toBe(
-      'operations'
-    )
     expect(
-      (wrapper.get('[data-testid="evolution-instructions-status-filter"]').element as HTMLSelectElement)
+      (wrapper.get('[data-testid="evolution-instructions-search"]').element as HTMLInputElement)
         .value
+    ).toBe('operations')
+    expect(
+      (
+        wrapper.get('[data-testid="evolution-instructions-status-filter"]')
+          .element as HTMLSelectElement
+      ).value
     ).toBe('approved')
-    expect(wrapper.find('[data-testid="evolution-instructions-proposal-proposal-1"]').exists()).toBe(
-      false
-    )
-    expect(wrapper.find('[data-testid="evolution-instructions-proposal-proposal-2"]').exists()).toBe(
-      true
-    )
+    expect(
+      wrapper.find('[data-testid="evolution-instructions-proposal-proposal-1"]').exists()
+    ).toBe(false)
+    expect(
+      wrapper.find('[data-testid="evolution-instructions-proposal-proposal-2"]').exists()
+    ).toBe(true)
 
     routerReplaceMock.mockClear()
 
@@ -2096,8 +2111,10 @@ describe('EvolutionView', () => {
         .value
     ).toBe('capture')
     expect(
-      (wrapper.get('[data-testid="evolution-skill-revision-status-filter"]').element as HTMLSelectElement)
-        .value
+      (
+        wrapper.get('[data-testid="evolution-skill-revision-status-filter"]')
+          .element as HTMLSelectElement
+      ).value
     ).toBe('candidate')
     await wrapper.get('[data-testid="evolution-skill-case-status-filter"]').setValue('accepted')
     await flushPromises()
@@ -2150,14 +2167,15 @@ describe('EvolutionView', () => {
     const wrapper = await mountView()
     const confirmSpy = setConfirmResult(false)
 
-    await wrapper
-      .get('[data-testid="evolution-skill-review-note-suggestion-0"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-review-note-suggestion-0"]').trigger('click')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="evolution-skill-review-note-input"]').element as HTMLTextAreaElement).value).toContain(
-      'Passed gate with grounded evidence'
-    )
+    expect(
+      (
+        wrapper.get('[data-testid="evolution-skill-review-note-input"]')
+          .element as HTMLTextAreaElement
+      ).value
+    ).toContain('Passed gate with grounded evidence')
 
     await wrapper.get('[data-testid="evolution-skill-promote"]').trigger('click')
     await flushPromises()
@@ -2171,18 +2189,22 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-skill-revision-rev-backup"]').trigger('click')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="evolution-skill-review-note-input"]').element as HTMLTextAreaElement).value).toBe(
-      ''
-    )
+    expect(
+      (
+        wrapper.get('[data-testid="evolution-skill-review-note-input"]')
+          .element as HTMLTextAreaElement
+      ).value
+    ).toBe('')
 
-    await wrapper
-      .get('[data-testid="evolution-skill-review-note-suggestion-0"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-review-note-suggestion-0"]').trigger('click')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="evolution-skill-review-note-input"]').element as HTMLTextAreaElement).value).toContain(
-      'Restore the previous stable canonical behavior'
-    )
+    expect(
+      (
+        wrapper.get('[data-testid="evolution-skill-review-note-input"]')
+          .element as HTMLTextAreaElement
+      ).value
+    ).toContain('Restore the previous stable canonical behavior')
 
     await wrapper.get('[data-testid="evolution-skill-rollback"]').trigger('click')
     await flushPromises()
@@ -2196,9 +2218,12 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-skill-revision-rev-accepted"]').trigger('click')
     await flushPromises()
 
-    expect((wrapper.get('[data-testid="evolution-skill-review-note-input"]').element as HTMLTextAreaElement).value).toContain(
-      'Passed gate with grounded evidence'
-    )
+    expect(
+      (
+        wrapper.get('[data-testid="evolution-skill-review-note-input"]')
+          .element as HTMLTextAreaElement
+      ).value
+    ).toContain('Passed gate with grounded evidence')
   })
 
   it('renders operator sign-off and decision log previews for promote and rollback actions', async () => {
@@ -2220,9 +2245,7 @@ describe('EvolutionView', () => {
       'Not captured yet'
     )
 
-    await wrapper
-      .get('[data-testid="evolution-skill-review-note-suggestion-0"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-review-note-suggestion-0"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="evolution-skill-signoff-log-rationale"]').text()).toContain(
@@ -2245,9 +2268,7 @@ describe('EvolutionView', () => {
       'Not captured yet'
     )
 
-    await wrapper
-      .get('[data-testid="evolution-skill-review-note-suggestion-0"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-review-note-suggestion-0"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.get('[data-testid="evolution-skill-signoff-log-rationale"]').text()).toContain(
@@ -2266,22 +2287,32 @@ describe('EvolutionView', () => {
       wrapper.get('[data-testid="evolution-skill-decision-history-entry-rev-promoted"]').text()
     ).toContain('Promoted to canonical')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-badge-selected"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-badge-selected"]')
+        .text()
     ).toContain('Selected revision')
     expect(
       wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-badge-live"]').text()
     ).toContain('Live now')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-reviewed_by"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-reviewed_by"]')
+        .text()
     ).toContain('user-promote-handler')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-review_note"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-review_note"]')
+        .text()
     ).toContain('Promoted after explicit operator sign-off.')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-backup_revision"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-backup_revision"]')
+        .text()
     ).toContain('rev-backup')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-written_source_path"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-written_source_path"]')
+        .text()
     ).toContain('assets/skills/browser/SKILL.md')
     expect(harnessApi.listSkillDecisionHistory).toHaveBeenCalledWith('browser', { limit: 50 })
     expect(wrapper.text()).not.toContain('"target_revision_id":"rev-promoted"')
@@ -2458,18 +2489,26 @@ describe('EvolutionView', () => {
       wrapper.get('[data-testid="evolution-skill-decision-history-entry-rev-rollback-live"]').text()
     ).toContain('Rollback promoted live')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-rollback-live-source_revision"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-rollback-live-source_revision"]')
+        .text()
     ).toContain('rev-backup-old')
     expect(
-      wrapper.get(
-        '[data-testid="evolution-skill-decision-history-rev-rollback-live-current_live_revision"]'
-      ).text()
+      wrapper
+        .get(
+          '[data-testid="evolution-skill-decision-history-rev-rollback-live-current_live_revision"]'
+        )
+        .text()
     ).toContain('rev-promoted-old')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-rollback-live-backup_revision"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-rollback-live-backup_revision"]')
+        .text()
     ).toContain('rev-promoted-old-backup')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-rollback-live-review_note"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-rollback-live-review_note"]')
+        .text()
     ).toContain('Rollback restored the last stable browser flow.')
   })
 
@@ -2534,12 +2573,12 @@ describe('EvolutionView', () => {
     expect(wrapper.get('[data-testid="evolution-runner-link-linked-revision"]').text()).toContain(
       'rev-accepted'
     )
-    expect(wrapper.get('[data-testid="evolution-runner-report-followup-overall_score"]').text()).toContain(
-      '96%'
-    )
-    expect(wrapper.get('[data-testid="evolution-runner-report-followup-total_tokens"]').text()).toContain(
-      '2,600'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-runner-report-followup-overall_score"]').text()
+    ).toContain('96%')
+    expect(
+      wrapper.get('[data-testid="evolution-runner-report-followup-total_tokens"]').text()
+    ).toContain('2,600')
     expect(wrapper.get('[data-testid="evolution-runner-candidate-diff"]').text()).toContain(
       'recover after navigation errors'
     )
@@ -2571,9 +2610,9 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-runner-open-linked-revision"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="evolution-skill-revision-rev-accepted"]').attributes('data-active')).toBe(
-      'true'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-revision-rev-accepted"]').attributes('data-active')
+    ).toBe('true')
     expect(wrapper.get('[data-testid="evolution-skill-diff"]').text()).toContain(
       'recover after navigation errors'
     )
@@ -2748,33 +2787,53 @@ describe('EvolutionView', () => {
 
     // Should have view revision action for the rollback revision
     expect(
-      wrapper.find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-revision"]').exists()
+      wrapper
+        .find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-revision"]')
+        .exists()
     ).toBe(true)
 
     // Should have eval run link
     expect(
-      wrapper.find('[data-testid="evolution-skill-decision-history-rev-promoted-action-open-eval"]').exists()
+      wrapper
+        .find('[data-testid="evolution-skill-decision-history-rev-promoted-action-open-eval"]')
+        .exists()
     ).toBe(true)
 
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-overall_score"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-overall_score"]')
+        .text()
     ).toContain('93%')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-pass_rate"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-pass_rate"]')
+        .text()
     ).toContain('100%')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-avg_duration_ms"]').text()
+      wrapper
+        .get(
+          '[data-testid="evolution-skill-decision-history-rev-promoted-evidence-avg_duration_ms"]'
+        )
+        .text()
     ).toContain('1.9 s')
     expect(
-      wrapper.get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-total_tokens"]').text()
+      wrapper
+        .get('[data-testid="evolution-skill-decision-history-rev-promoted-evidence-total_tokens"]')
+        .text()
     ).toContain('4,200')
 
     expect(
-      wrapper.find('[data-testid="evolution-skill-decision-history-rev-promoted-action-compare-source-target"]').exists()
+      wrapper
+        .find(
+          '[data-testid="evolution-skill-decision-history-rev-promoted-action-compare-source-target"]'
+        )
+        .exists()
     ).toBe(true)
 
     await wrapper
-      .get('[data-testid="evolution-skill-decision-history-rev-promoted-action-compare-source-target"]')
+      .get(
+        '[data-testid="evolution-skill-decision-history-rev-promoted-action-compare-source-target"]'
+      )
       .trigger('click')
     await flushPromises()
 
@@ -2787,21 +2846,27 @@ describe('EvolutionView', () => {
     expect(wrapper.get('[data-testid="evolution-skill-history-comparison-left"]').text()).toContain(
       'rev-backup-old'
     )
-    expect(wrapper.get('[data-testid="evolution-skill-history-comparison-right"]').text()).toContain(
-      'rev-promoted'
-    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-history-comparison-right"]').text()
+    ).toContain('rev-promoted')
 
     // Should have view backup action for the preserved backup
     expect(
-      wrapper.find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-backup"]').exists()
+      wrapper
+        .find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-backup"]')
+        .exists()
     ).toBe(true)
 
     // Should show rollback-specific navigation options
     expect(
-      wrapper.find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-source"]').exists()
+      wrapper
+        .find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-source"]')
+        .exists()
     ).toBe(true)
     expect(
-      wrapper.find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-live"]').exists()
+      wrapper
+        .find('[data-testid="evolution-skill-decision-history-rev-promoted-action-view-live"]')
+        .exists()
     ).toBe(true)
   })
 })

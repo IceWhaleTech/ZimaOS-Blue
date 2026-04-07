@@ -74,6 +74,7 @@ func TestToolStoreHandlerListToolsHidesCompatFamiliesFromUI(t *testing.T) {
 		"memory_search",
 		"sessions_list",
 		"session_status",
+		"web",
 		"web_fetch",
 		"exec",
 		"process",
@@ -93,7 +94,6 @@ func TestToolStoreHandlerListToolsHidesCompatFamiliesFromUI(t *testing.T) {
 
 	for _, visible := range []string{
 		"sessions",
-		"web",
 		"read",
 		"write",
 		"bash",

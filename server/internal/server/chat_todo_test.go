@@ -2435,12 +2435,12 @@ func TestApplyImageToolPreference_DoesNotTriggerOnMetaDiscussion(t *testing.T) {
 		{Name: "image"},
 		{Name: "read"},
 		{Name: "write"},
-		{Name: "web"},
+		{Name: "web_query"},
 	}
 
 	msg := "IR匹配关键词的时候，也需要考虑关键词命中的密度吧，比如在一大段文本内部出现了生成图片可能就不是这个意图"
 	filtered := applyImageToolPreference(defs, msg)
-	if got := toolNames(filtered); strings.Join(got, ",") != "image,read,write,web" {
+	if got := toolNames(filtered); strings.Join(got, ",") != "image,read,write,web_query" {
 		t.Fatalf("expected meta discussion to keep original tool set, got=%v", got)
 	}
 }
@@ -2638,7 +2638,7 @@ func TestBuildToolLoopArtifactRecoveryNudge_ForRepeatedFileRead(t *testing.T) {
 
 func TestBuildToolLoopArtifactRecoveryTools_ForRepeatedFileRead(t *testing.T) {
 	reduced := buildToolLoopArtifactRecoveryTools([]llm.Tool{
-		{Name: "web"},
+		{Name: "web_query"},
 		{Name: "file_read"},
 		{Name: "file_write"},
 		{Name: "file_delete"},
@@ -2656,8 +2656,8 @@ func TestBuildToolLoopArtifactRecoveryTools_ForRepeatedFileRead(t *testing.T) {
 	if containsLLMToolName(reduced, "file_read") || containsLLMToolName(reduced, "find") || containsLLMToolName(reduced, "ls") {
 		t.Fatalf("expected repeated file-read loop recovery to force write-only workflow, got=%v", reduced)
 	}
-	if containsLLMToolName(reduced, "web") {
-		t.Fatalf("expected repeated file-read loop recovery to drop web, got=%v", reduced)
+	if containsLLMToolName(reduced, "web_query") {
+		t.Fatalf("expected repeated file-read loop recovery to drop web_query, got=%v", reduced)
 	}
 }
 

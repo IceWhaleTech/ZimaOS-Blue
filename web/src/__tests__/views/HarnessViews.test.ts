@@ -962,11 +962,7 @@ describe('Harness views', () => {
     expect(wrapper.text()).toContain('Quick Eval')
     expect(wrapper.text()).toContain('Datasets & versions')
     expect(wrapper.text()).toContain('Eval runs')
-    expect(wrapper.get('[data-testid="harness-explainer-panel"]').text()).toContain(
-      'Harness, in plain language'
-    )
-    expect(wrapper.text()).toContain('What it is')
-    expect(wrapper.text()).toContain('What it does in the system')
+    expect(wrapper.find('[data-testid="harness-explainer-panel"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="agentcore-runner-card"]').exists()).toBe(false)
     expect(wrapper.find('.stats-toolbar .refresh-button').exists()).toBe(false)
     expect(wrapper.text()).toContain('Regression batch')

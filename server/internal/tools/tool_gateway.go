@@ -1008,7 +1008,7 @@ func inferToolRiskLevel(toolName string) string {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
 	case "bash", "exec":
 		return string(RiskLevelHigh)
-	case "browser", "web", "web_query", "web_fetch", "web_extract", "web_crawl":
+	case "browser", "web_query", "web_fetch", "web_extract", "web_crawl":
 		return string(RiskLevelMedium)
 	default:
 		return string(RiskLevelLow)
@@ -1017,7 +1017,7 @@ func inferToolRiskLevel(toolName string) string {
 
 func isExternalContentTool(toolName string) bool {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "browser", "web", "web_query", "web_fetch", "web_read", "web_extract", "web_crawl", "web_search":
+	case "browser", "web_query", "web_fetch", "web_read", "web_extract", "web_crawl", "web_search":
 		return true
 	default:
 		return false

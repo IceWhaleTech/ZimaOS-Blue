@@ -222,15 +222,6 @@ func NewWebQueryTool(search, fetch, read, extract, crawl Tool) *WebTool {
 	)
 }
 
-// NewWebToolAlias creates the hidden legacy alias kept for compatibility.
-func NewWebToolAlias(search, fetch, read, extract, crawl Tool) *WebTool {
-	return newWebTool(
-		"web",
-		"Legacy alias for web_query. Prefer web_query for all new tool calls.",
-		search, fetch, read, extract, crawl,
-	)
-}
-
 func newWebTool(name, description string, search, fetch, read, extract, crawl Tool) *WebTool {
 	return &WebTool{
 		name:        name,

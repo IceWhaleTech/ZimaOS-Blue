@@ -203,7 +203,7 @@ describe('ExternalAgentsSection', () => {
 
     expect(agentSessionsApi.listProfiles).toHaveBeenCalledTimes(1)
     expect(wrapper.text()).toContain('Codex ACP')
-    expect(wrapper.text()).toContain('Generic Remote A2A Agent')
+    expect(wrapper.text()).toContain('通用远程 A2A 智能体')
     expect(wrapper.text()).toContain('可直接验证或使用')
 
     const profileCards = wrapper.findAll('[data-testid="external-agents-profile-card"]')

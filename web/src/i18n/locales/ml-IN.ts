@@ -1371,6 +1371,7 @@ export default mergeHarnessLocale('ml-IN', {
       newProfile: 'പുതിയ പ്രൊഫൈൽ',
       acpPlainTitle: 'പ്രാദേശിക ഉപകരണങ്ങൾ (ACP)',
       a2aPlainTitle: 'റിമോട്ട് ഏജൻ്റുകൾ (A2A)',
+      genericA2ATitle: 'ജനറിക് റിമോട്ട് A2A ഏജന്റ്',
       loadFailed: 'ബാഹ്യ ഏജൻ്റ് പ്രൊഫൈലുകൾ ലോഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു.',
       notAvailable: 'ലഭ്യമല്ല',
       remoteAgent: 'റിമോട്ട് ഏജൻ്റ്',
@@ -2301,6 +2302,9 @@ export default mergeHarnessLocale('ml-IN', {
       items: {
         ai_prompt_injection: {
           name: 'പ്രോംപ്റ്റ് ഇഞ്ചക്ഷൻ സംരക്ഷണം',
+        },
+        sandbox_enabled: {
+          description: 'കോഡ് പ്രവർത്തനം സാൻഡ്ബോക്സിലാണോ എന്ന് പരിശോധിക്കുക',
         },
       },
     },

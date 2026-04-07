@@ -1364,6 +1364,7 @@ export default mergeHarnessLocale('ro-RO', {
       newProfile: 'Profil nou',
       acpPlainTitle: 'Instrumente locale (ACP)',
       a2aPlainTitle: 'Agenți de la distanță (A2A)',
+      genericA2ATitle: 'Agent A2A la distanță generic',
       loadFailed: 'Nu s-au încărcat profilurile de agent extern.',
       notAvailable: 'Nu este disponibil',
       remoteAgent: 'Agent de la distanță',
@@ -2291,6 +2292,9 @@ export default mergeHarnessLocale('ro-RO', {
       items: {
         ai_prompt_injection: {
           name: 'Protecție împotriva injecției de prompturi',
+        },
+        sandbox_enabled: {
+          description: 'Verificați dacă execuția codului este izolată într-un sandbox.',
         },
       },
     },

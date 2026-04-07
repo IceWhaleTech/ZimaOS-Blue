@@ -44,112 +44,42 @@
 
 ## Bevezetés
 
-A Clawdbot által inspirálva hisszük, hogy a személyi számítástechnika **jövőjét** a **sokszínű, helyi-első AI ágensek** fogják alakítani a hálózat peremén.
+A Clawdbot által ihletett, úgy gondoljuk, hogy a személyi számítástechnika jövőjét a legkülönfélébb, helyileg elsőként működő mesterséges intelligenciaügynökök alakítják majd.
 
-**A ZimaOS Blue a mi válaszunk** — egy teljesen **nyílt forráskódú, auditálható és éles üzemre kész ágens futtatókörnyezet és eszközkészlet**, amellyel privát, saját üzemeltetésű ágenseket telepíthet súrlódásmentesen.
+A ZimaOS Blue a válaszunk – egy teljesen nyílt forráskódú, auditálható, szállító-semleges és termelésre kész ügynöki futtatókörnyezet és eszközkészlet, amely lehetővé teszi privát, saját üzemeltetésű ügynökök szállítását nulla súrlódás nélkül.
 
-Bátor fejlesztőknek készült, akik **saját ágenseiket kreatívan vagy kézzel szeretnék megalkotni**. A Blue **teljesítményre tervezett**: **Go** nyelven íródott, mindössze 10 MB memóriaigénnyel. Fut **bármilyen x86-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-n, Windowson, macOS-en** — bárhol, ahol van áram.
-
-![](../../docs/assets/features.png)
-
-## Kiemelkedő jellemzők
-
-### Helyi-első tervezés és automatikus modell-hozzáférés
-
-Tovább gondolva: natív támogatás **20+ IM platformhoz**, **hangvezérelt** felületek természetes, kontextus-tudatos párbeszédekhez, **konfiguráció nélküli modellváltás** IDE-felismeréssel, és SOUL-rétegű személyiségek.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Gyors és könnyű
-
-Natívan Go-ban fordítva — nincs interpreter, nincs VM, nincs többletterhelés. Csendben fut mindenen, a szerverektől az asztali eszközökig.
-
-| Metrika | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|---------|-------------------|------------------------|
-| `help` hideg / meleg | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` futásidő (legjobb 3-ból) | **< 0.01 s** | 5.98 s |
-| `help` csúcs RSS | **~10 MB** | ~394 MB |
-| `status` csúcs RSS | **~15 MB** | ~1.52 GB |
-| `gateway run` üresjárati memória hidegindítás után | **~19 MB** | - |
-| Futásidejű függőségek | **Nincs** | Node.js 18+ |
-
-> A fenti CLI sorok ugyanannak a gépnek a történeti `help` / `status` mikromérései. Az új `gateway run` sor a valós hidegindítás utáni üresjárati memóriaértéket mutatja, macOS arm64-en `vmmap Physical footprint` alapján, miután az indulás stabilizálódott. 2026. febr.-ápr.
-
-### Tiszta Go, bármilyen eszköz
-
-100% Go, statikus bináris. **5 célplatformra keresztfordítás** azonnal elérhető (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Nem kell Node futtatókörnyezet, Python vagy konténer. Tegye egy NAS-ra, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-re, régi x86 routerre vagy Mac-re — egyszerűen fut. **Aztán adja hozzá saját felületét, logikáját és ágens képességeit** — egy kódbázis, minden platform.
-
-### Biztonság és irányítás
-
-Beépített sidecar API proxy mélységi védelemmel:
-- **Sandbox végrehajtás** – Minden eszközhívás izolált környezetben fut.
-- **Prompt injection védelem** – 7+ beépített elfogási stratégia.
-- **Munkamenet-auditálás** – Teljes munkamenet-felügyelet, minden interakció nyomon követhető.
-- **RBAC és WebAuthn** – Finomhangolt hozzáférés-vezérlés jelszó nélküli hitelesítéssel.
+Azok a merész fejlesztők számára készült, akik saját ügynökeiket szeretnék megmozgatni vagy megalkotni, a Blue teljesítményre tervezték: Go nyelven íródott, 19 MB-os memóriaterülettel. Bármilyen x86-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-n, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-en fut – bárhol, ahol csatlakoztatja a tápfeszültséget.
 
 ## Miért Blue
 
-Hisszük, hogy a **következő generációs személyi számítástechnika** magába foglalja az LLM-eket — de az **irányítható, auditálható** ágensek maradnak az alapkő egyének és csapatok számára egyaránt. **A Blue nyújtja**:
-- **Átfogó mag** – Fejlett modellkezelés, IM integráció, bővített személyiség és természetes nyelvi felületek, amelyek a mindennapi interakciókra vannak hangolva (fejhallgatók, hang, okosszemüvegek).
-- **Helyi-első, ultrakönnyű, eszközök közötti** – Nem szükséges csúcskategóriás hardver. Fut mindenen, ami képes számítani.
-- **Biztonságos és auditálható** – Munkamenet-auditálás, sandboxing, jogosultság-kezelés és beépített API proxy, amely alkalmazásszintű tűzfalként működik — minden bejövő/kimenő bájt látható.
-
-![](../../docs/assets/design_principle.png)
-
-Minimalizáljuk a sablonkódot, hogy **arra összpontosíthasson, ami számít**. A <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS tervezési filozófiájához** hűen a Blue nyújtja:
-- **Nulláról egyre egy kattintással** – Azonnali telepítés, nincs bonyolult konfiguráció.
-- **Gyors prototípuskészítés** – Kreatívan vagy kézzel készítsen forgatókönyv-specifikus eszközöket, interakciókat és alkalmazáscsomagokat.
-- **Globálisan kész** – **A világ hatalmas**, és nem alapértelmezetten angol. **20+ nyelv, natívan**, akadályok nélkül.
-- **Nyílt modell-ökoszisztéma** – Nincs szállítói kötöttség. Hozza saját modelljeit.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Szolgáltató | Modellek | Típus |
-|-------------|----------|-------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi stb. | Lokális |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (adatvédelem-központú) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | OpenAI modellek Azure-on keresztül | Cloud |
-| OpenRouter | 100+ aggregált modell | Cloud |
-| AIHubMix | Több szolgáltatós aggregátor | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Egyéni | Bármely OpenAI / Anthropic / Gemini kompatibilis API | Cloud / Lokális |
-
-</details>
-
-### Támogatott IDE-k
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
 
-## Gyors kezdés
+### Pure Go, bármilyen eszköz
 
-### 1. lehetőség: Asztali alkalmazás letöltése (macOS és Windows)
+100% Go, statikus bináris. Keresztfordítást végez 5 célpontra (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Nincs Node futási idő, nincs Python, nincs szükség konténerekre. Tegye rá egy NAS-ra, egy ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-re, egy régi x86-os útválasztóra vagy egy ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac-re – csak fut. Ezután a saját felhasználói felületére, logikájára és ügynöki készségeire építsen – egy kódbázis, minden platformon.
 
-Töltse le a natív alkalmazást — nincs függőség, nincs fordítás.
+### A dobozból, munkára készen
+
+Mindenki olyan eszközöket szeretne, amelyek egyszerűek, megbízhatóak és méretezhetők, amikor szüksége van rájuk. Olyan eszközök, amelyek egyszerűen működnek, így arra összpontosíthat, amit valójában épít.
+
+Ez nem egy új filozófia. Ez ugyanaz, mint ami <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS: egyszerű, megbízható és úgy készült, hogy távol maradjon az útjából. Blue ez a filozófia, kiterjesztve az ügynökveremre.
+
+### Az Ön életére tervezve, helyben maradáshoz készült
+
+A teljes HTML jelentést készítő mélyreható kutatástól a OCR, PDF, böngészőautomatizálásig és dokumentumkonverzióig a Blue összetett, valós munkafolyamatokat kezel anélkül, hogy az adatokat a felhőbe küldené. A Voice Wake, STT/TTS, Talk Mode és a helyi következtetés támogatása azonnalivá, priváttá és mindig elérhetővé teszi a mindennapi interakciókat.
+
+## Gyorsindítás
+
+### 1. lehetőség: Töltse le az asztali alkalmazást
+
+Szerezze be a natív alkalmazást – nincs függőség, nincs fordítás. Beépített próbakonfiguráció másodpercek alatti beléptetéssel – azonnal elkezdhet csevegni távoli kapcsolaton keresztül, nincs szükség bot beállítására. Valódi készenléti élmény.
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [DMG letöltése](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Telepítő letöltése](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### 2. lehetőség: Telepítő szkript
+### 2. lehetőség: Szkript telepítése
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### 3. lehetőség: Fordítás forráskódból
+### 3. lehetőség: Build from Source
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,116 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
+> **Megjegyzés:** A Windows buildekhez:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) és [CMake](https://cmake.org/) a natív C-függőségekhez (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) rendszerkönyvtárak számára (winmm stb.)
+>
+> Győződjön meg arról, hogy `gcc`, `cmake` a `PATH`-ban van.
 
-## Architektúra áttekintés
+## Építészet áttekintése
 
-![](../../docs/assets/architecture.png)
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### Adatfolyam
+Lépjen tovább: natív támogatást nyújt **20+ IM platformhoz**, **hangvezérelt** interfészek a természetes, környezettudatos párbeszédhez, **nulla konfigurációjú modellváltás** IDE-kereséssel.
 
-**Chat kérés (Proxy gyors útvonal)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-**Csatorna üzenetfolyam**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+## Hogyan építsünk
 
-**Hang pipeline**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**Harness kiértékelési folyamat**
-```
-Quick Eval / Harness API → Kiértékelési vezérlő → Futási csoport dispatcher
-  → Agent task vagy eval driver → Eszközök + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector gates
-  → Cutover readiness / jelölti döntés
-```
+> ⚠️ [!IMPORTANT]
+>
+> Ha azt tervezi, hogy a hangolást vagy a hangulatkódolást a Blue tetején folytatja, ne tekintsen néhány jóképű csevegést a kiadás bizonyítékaként. Minden olyan változtatást, amely érinti az útválasztást, a végrehajtási viselkedést, a szerszámfelületet, a költségvetés-vezérlést, a modellválasztást vagy a végrehajtási keretrendszert, a Blue Harness segítségével kell érvényesíteni, nem pedig ad hoc helyszíni ellenőrzésekkel.
+>
+> Blue itt egy egyszerű szabályt kell követnie: az adatok először, a kapuk az elsők, a vágás az utolsó. A gyakorlatban ez azt jelenti, hogy frissíteni kell a megfelelő Harness adatkészletet / eval specifikációt a változás megítélése előtt, majd megtartani egy stabil `candidate_id` értéket a teljes kísérlet során, így a kiválasztási, végrehajtási, költségvetési és készenléti jelentések mind ugyanazt a jelöltet írják le a négy független futtatás helyett.
 
+### Ajánlott Harness munkafolyamat
 
-### Csomagtérkép (`server/internal/`)
+1. Futtassa a `blue harness selector verify` parancsot
+2. Futtassa a `blue harness execution verify` parancsot
+3. Használja újra a választó kiértékelési futtatását `blue harness budget gate`
+4. Fejezd be a `blue harness cutover-readiness` karakterrel
 
-| Réteg | Csomagok |
-|-------|----------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Szolgáltató | providerpool, providers, llm |
-| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Ágens | context, tools, personality, humanizer |
-| Memória | memory, embedding, kvstore |
-| Csatorna | channel, autoreply, i18n |
-| Biztonság | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Hang | voice, tts, stt, speech |
-| Megfigyelés | metrics, companion, profiling, leakdetect |
-| Bővítmény | plugin, skill, skillstore |
-| Integráció | browser, cron, workflow, formfiller, tunnel, crawler |
-| Ütemező | scheduler, worker, workerpool, pool |
-| Mag | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Rendszer | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Többbérlős | tenant, user, session, preview |
+Helyi iterációhoz, éjszakai érvényesítéshez vagy CI-bizonyítékok gyűjtéséhez előnyben részesítse a `python3 scripts/cutover_candidate_pipeline.py` címet. Egy megosztott jelölt alatt futtatja a teljes választó -> végrehajtás -> költségvetés -> készenléti szekvenciát, ami megkönnyíti az eredmény összehasonlítását, áttekintését és leválasztását.
 
-## Használat
+### Extra védőkorlátok
 
-![](../../docs/assets/handcraft.png)
+| Terület | Mit kell nézni |
+|------|-----------------|
+| Kiindulási stabilitás | Tartsa stabilan az alapvonalat, az adatkészlet-verziót és a `candidate_id`, különben az összehasonlítás eltolódik, és az eredmény nem lesz megbízható. |
+| Valódi összeállítási teljesítmény | A Harness futtatása előtt építse újra az érintett bináris vagy frontend csomagot, ellenkező esetben előfordulhat, hogy az elavult viselkedést fogja érvényesíteni a jelenlegi változás helyett. |
+| Útvonal regisztráció | Ha a frontend és a háttérrendszer együtt változik, győződjön meg arról, hogy minden új háttérútvonal valóban regisztrálva van, mielőtt a szolgáltatást a felhasználói felület viselkedése alapján ítélné meg, mert a regisztráció hiánya gyakran logikai hibának tűnik, de valójában `404`. |
+| Felmentési ítélet | A hangolás csak akkor készen áll, ha Harness nem mutat jelentős regressziót, és az átvágási készenlét megerősíti, hogy a jelölt valóban készen áll az átvágásra. |
 
-## Mérföldkő ütemterv
+Röviden, a Blue hangolása nem arról szól, hogy "néhány csevegés után jobban érzi magát." Arról van szó, hogy a jelöltet a Harness-ba helyezzük, összehasonlítható bizonyítékokat gyűjtünk, és hagyjuk, hogy a kapu és a készenléti eredmények eldöntsék, valóban biztonságos-e a változás megtartása.
 
-![](../../docs/assets/timeline.png)
+## Jellemzők
 
-| Verzió | Fókusz | Fő érték | Állapot |
-|--------|--------|----------|---------|
-| v0.1 | Go futtatókörnyezet mag | Stabil kernel, 24 órás üzem | Done |
-| v0.2 | Alapképességek | Minimálisan használható, LLM integráció | Done |
-| v0.3 | NAS integráció | NAS natív, systemd támogatás | Done |
-| v0.4 | Bővítményrendszer | Bővíthető, biztonsági alapok | Done |
-| v0.5 | Termék alapvonal | Éles üzemre kész, dokumentáció | Done |
-| v0.6 | Üzenetcsatornák | Többcsatornás támogatás | Done |
-| v0.7 | Biztonság | OIDC, MFA, audit | Done |
-| v0.8 | Teljesítmény | Optimalizálás, gyorsítótárazás, benchmarkok | Done |
-| v0.9 | Ökoszisztéma | Többbérlős, böngésző-automatizálás, hang | Done |
-| v0.10.0 | CLI csomagolás | CC CLI csomagolás, felismerés, automatikus frissítés | Done |
-| v0.10.1 | Metrika-felügyelet | API statisztikák, token követés, TTFT | Done |
-| v0.10.2 | CLI megbízhatóság | Folyamat-életciklus, hibakezelés | Done |
-| v0.10.3 | CLI integráció | Beállítási varázsló, szolgáltató automatikus felismerés | Done |
-| v0.10.4 | Tauri csomagolás | Asztali alkalmazás, rendszertálca | Done |
-| v0.10.5 | API Proxy Sidecar | Útvonalválasztás, prompt guard, használati statisztikák | Done |
-| v0.10.6 | Szolgáltató pool | Több szolgáltatós útválasztás, állapotellenőrzés, failover | Done |
-| v0.10.7 | Előnézeti mód | Hitelesítés nélküli hozzáférés, funkció-kapuzás | Done |
-| v0.10.8 | Skill Store | Skill store infrastruktúra, csatorna-validáció | Done |
-| v0.10.9–10 | Felhasználókezelés | Alfelhasználók, oldalszintű jogosultságok | Done |
-| v0.10.13–14 | Biztonság és skillek | Biztonsági oldal, skill store újratervezés | Done |
-| v0.10.15 | Chat fejlesztések | Chat UX, üzenet-pipeline | Done |
-| v0.10.16 | Beszédmodul | Sherpa TTS/ASR, eSpeak, szolgáltatóváltás | Done |
-| v0.10.17 | Távoli hozzáférés | Ngrok, Cloudflare alagutak, ACME tanúsítványok | Done |
-| v0.10.18–20 | Teljesítmény sprint | Indítási/chat teljesítmény, kontextus-gyorsítótár | Done |
-| v0.10.21–22 | Prompt és DingTalk | Rendszer prompt, DingTalk csatorna | Done |
-| v0.10.23 | OTA frissítés | OTA frissítési rendszer | Done |
-| v0.10.24 | Csatorna frissítés | 10 csatorna fejlesztése csonkokból | Done |
-| v0.10.25 | CC Cache | Kétszintű gyorsítótár (L1 memória + L2 lemez) | Done |
-| v0.10.26 | Humanizer | Válasz-humanizálási pipeline | Done |
-| v0.10.27 | Context Pruner | 54% token megtakarítás kódon (SWE-bench hivatalos), 46–47% általános dokumentumokon (helyi IR), BM25 pontozás, szegmentálás | Done |
-| v0.10.28 | Memory Service | Progresszív keresés, kettős írás backend | Done |
+| Funkció | Mit nyújt |
+|---------|--------------------|
+| Nagy rendelkezésre állású webes lekérdezés és böngészőfutási idő | Blue egyik **legélesebb megkülönböztetője**. A Blue **négy internetes elérési utat** egyesít a kereséshez, olvasáshoz, kibontáshoz és feltérképezéshez; **három tartalék réteget** tart fenn a HTTP, a proxy kibontása és a böngésző munkamenetei között; kezeli a **robotellenes oldalakat** kihívás észleléssel, cookie-k/munkamenetek újrafelhasználásával, lopakodással és böngésző átadás-átvétellel; és útvonalak **három böngészőmotoron**: `lightpanda`, felügyelt Chromium és közvetítő/helyi Chromium. |
+| Három az egyben kutatási futásidő | **Egy nyilvános kutatási bejegyzés** a `deep_research`, `analyze` és `ui_review` címekre irányítható. Ugyanez a felfedezés és bizonyítékhalmaz **hivatkozás-első kutatást**, **korlátozott jelentéseket** és **strukturált felhasználói felület/UX/akadálymentesítési áttekintéseket** készít. |
+| Harness Futásidejű, értékelési és evolúciós keretrendszer | Az értékelést **futásidejű primitívvé** teszi a fejlesztés, a képzés és a gyártás során. A Harness lefedi a **regresszió- és füstellenőrzést**, a pontozást, az alapvonalakat, a jelentéseket és a futásidejű érvényesítést, majd ugyanezeket a bizonyítékokat hordozza a **készségfejlesztés**, a nyomon követés értékelése, az előléptetés vagy a visszaállítás, valamint a `AGENTS.md` vagy az utasítási javaslatok áttekintése terén. |
+| Multimodális natív képességek első futási ideje | Megtartja a **hangot, OCR, PDF, böngészőfeladatokat, dokumentumkonverziót, strukturált űrlapkitöltést, adathordozó-feldolgozást és médiagenerálást** **elsősorban natív és helyi útvonalakon**, **modell-útválasztással csak akkor, ha valóban szükség van rá**. |
+| Biztonság és kormányzás | Tartalmazza a **sandbox végrehajtást**, **azonnali befecskendezési védelmet**, **munkamenet-auditálást**, engedélyeket, **RBAC**, **WebAuthn**, működési védőkorlátokat és **készséges biztonsági szkennelést**. |
+| LLM Wiki és Tudástér | A memóriát, a kutatást és a futásidejű kimeneteket **wikiszerű tudásfelületté** alakítja **összefoglaló oldalakkal**, indexekkel, **backlinkekkel**, **frissítéssel** és **archiválási munkafolyamatokkal**. |
+| Skill Store és piactér | **Beépített készségfeltárást**, gondozást, szinkronizálást és **helyi szkennelést** szállít, így a bővíthetőség **az első naptól kezdve** elérhető. |
+| Gyártási fokozatú szolgáltatók csoportja | Valódi szolgáltatói készletet biztosít **állapotellenőrzéssel**, **automatikus feladatátvétellel**, **megszakítókkal** és **szolgáltatói versenyfutással** a hosszan tartó terhelésekhez. |
+| Beépített helyi kismodell futásidejű | Beépített **`Qwen3.5-0.8B` + `llama.cpp`** futásidejű **helyi rövid kérdések és válaszok**, képfelismerés, eszközútválasztás, összegzés, **környezettömörítés** és **dokumentum-előfeldolgozás**. |
+| Hosszú távú megbízhatóság | A **OTA frissítéseket**, a **biztonsági mentést és visszaállítást**, a **konfiguráció gyors újratöltését** és a **hiba utáni helyreállítást** **beépített működési problémaként** kezeli. |
+
+## Mérföldkő idővonal
+
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+| Dátum | Verzió | Kulcsszavak / Jellemzők |
+|------|---------|----------------------|
+| 2026. január 26. | `v0.1–v0.9` | Go runtime, plugin rendszer, böngésző automatizálás |
+| 2026. január 27–28. | `v0.9.0–v0.9.2` | Böngésző feladat nézet, Blue Companion, Smart Form Filler |
+| 2026. január 29–31. | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, UI átalakítás |
+| 2026. február 1–3. | `v0.10.1–v0.10.22` | Metrikák, távoli hozzáférés, kontextus gyorsítótár |
+| 2026. február 5–18. | `v0.10.25–v0.10.29` | i18n, CC gyorsítótár, kiadási folyamat |
+| 2026. február 20–25. | `v0.10.28–v0.10.29` | Asztali betöltő, mobil UX, memória újratervezés |
+| 2026. február 28–március 2. | `v0.10.30` | Deep Research, készség átrendező, biztonsági vizsgálat |
+| 2026. március 9–18. | `v0.10.31` | Irányítópult felújítása, VoiceChat refaktor, jóváhagyott helyek |
+| 2026. március 19–22. | `v0.10.32` | Harness közzététel, átirat-ellenőrzés, webes keresés |
+| 2026. március 23–25. | `v0.10.33` | Harness csoportok, böngésző jóváhagyások, képességpiac |
+| 2026. március 29–30. | `v0.10.35` | Harness v3, böngésző relé, környezettömörítés |
+| 2026. március 31–ápr. 1. | `v0.10.36` | Átirat-ellenőrzés, Harness átfedések, eszközelemzés |
+| 2026. április 1. | `v0.10.37` | Üzemidejű edzés, Skill+Exec cutover, regeneráló polírozás |
+| 2026. április 2–5. | `v0.10.38` | GitHub támogatás, piactér finomítása, megbízhatósági fejlesztések |
+| 2026. április 6–7. | `v0.10.39` | Kutatás egyesítése, evolúciós felületek, memóriacsökkentés |
 
 ## Közösség és támogatás
 
-- **Hibajegyek**: [Kérjük, itt jelezze a hibákat és funkciókéréseket](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Beszélgetések**: [Discord](https://discord.gg/b3AgFDxe9v)
-- **Kövessen minket** a [GitHubon](https://github.com/IceWhaleTech)
+- **Problémák**: [Kérjük, ide küldje el a hibákat és a funkciókra vonatkozó kéréseket](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Megbeszélések**: [Discord](https://discord.gg/zwWbKA4S2)
+- **Kövessen minket** a [GitHub](https://github.com/IceWhaleTech) címen
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Licenc
 
-Ez a projekt az MIT licenc alatt áll — a részletekért lásd a [LICENSE](../../LICENSE) fájlt. Hiszünk a nyílt forráskódban és a közösségnek való visszaadásban.
+Ez a projekt az MIT Licenc alatt van licencelve – a részletekért lásd a [LICENSE](../../LICENSE) fájlt. Hiszünk a nyílt forráskódban és a közösségnek való visszaadásban.
 
 ## Közreműködők
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Köszönet minden Blue közreműködőnek:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Referenciák
+
+1. **OpenClaw** — Helyi első nyílt forráskódú ügynök. Az LLM-ek helyi eszközökhöz való csatlakoztatásának úttörője csatornaadapterek és eszközhívások révén, közvetlenül inspirálva a Blue ügynök futásidejű architektúráját. https://github.com/openclaw/openclaw
+2. **MiroMind** — Mély kutatási mód bizonyítékokkal alátámasztott szintézissel. Megalakította Blue beépített mély kutatási folyamatát: tervezés, párhuzamos visszakeresés, bizonyítékok deduplikációja és HTML jelentések generálása. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM mint tudásfordító. Átalakítja az LLM-eket, hogy kitartó, fejlődő tudástereket építsen ki, túllépve a RAG felhalmozási csapdáján.
+4. **OpenSpace (HKUDS)** — Önfejlesztő készségmotor. DAG-alapú keretrendszer, amelyben az ügynökök tanulnak a kudarcokból, és speciális készségekre tesznek szert. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — Verziózott API dokumentációs nyilvántartás kódoló ügynökök számára. Az ügynök hallucinációival és az elfelejtett munkamenet-ismeretekkel foglalkozik. Feljegyzésekkel és visszacsatolási hurkokkal ellátott kurált, verziózott dokumentumokat biztosít, így a dokumentációt önfejlesztő tudásréteggé alakítja. https://github.com/andrewyng/context-hub
+6. **Notion** – Egyszerű, emberi és szándékosan halk. A Notion minimalista szellemisége által ihletett Blue melegséget hoz vissza a hálózatba. Ahol a kifinomult serif találkozik az átgondolt dizájnnal, otthonos teret teremtve. https://www.notion.com/about
+7. **Matrix** — Vizuális inspiráció az ikonikus digitális esőesztétikából. Blue műszaki diagramjainak esztétikai iránya.
+8. **IceWhale** — Love, Death & Robots S2E2 "Jég". Egy kollektíva, amely világszerte összegyűlik, hogy áttörje az internetes óriások falait, és ellenálljon az adatkoncentrációnak. A jégbálna egy közösséget jelképez, amely szuverén eszközöket épít össze a szélén.
+9. **ZimaOS Blue** — Love, Death & Robots S1E14 "Zima Blue". Metafora: az intelligencia, amely a szolgálatban kezdődik, és a világ felfedezésére fejlődik. A Blue a bölcsesség ügynöke, amely az egyszerűségben gyökerezik és mélységig nyúlik.
+10. **ZimaOS** – Egyszerűsített, fókuszált, nyitott tervezési elvek. Mind a ZimaOS, mind a Blue hisz abban, hogy a technológiának ki kell szolgálnia a felhasználót – 30 másodperc alatt telepíthető, bárhol futhat, szállítósemleges marad. https://www.zimaspace.com/zimaos

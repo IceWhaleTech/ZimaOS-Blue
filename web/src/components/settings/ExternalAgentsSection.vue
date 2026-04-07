@@ -82,9 +82,18 @@ const templateRuntimeBlocked = computed(
 const showMetadataField = computed(
   () => !isBuiltinSelection.value || draft.value.metadataText.trim().length > 0
 )
-const currentSelectionLabel = computed(
-  () => draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
-)
+const currentSelectionLabel = computed(() => {
+  if (selectedProfile.value) {
+    return profileDisplayTitle(selectedProfile.value) || t('settings.externalAgents.newProfile')
+  }
+  return draft.value.title || draft.value.name || t('settings.externalAgents.newProfile')
+})
+const draftTitleValue = computed(() => {
+  if (selectedProfile.value && isBuiltinSelection.value) {
+    return profileDisplayTitle(selectedProfile.value)
+  }
+  return draft.value.title
+})
 const currentSelectionMeta = computed(() => {
   if (selectedProfile.value) {
     return profileModeLabel(selectedProfile.value)
@@ -160,6 +169,22 @@ function profileToDraft(profile: AgentProfile): ProfileDraft {
   }
 }
 
+function localizedBuiltinProfileTitle(profile?: AgentProfile | null): string | null {
+  if (!profile?.builtin) {
+    return null
+  }
+  switch (profile.id) {
+    case 'generic-a2a':
+      return t('settings.externalAgents.genericA2ATitle')
+    default:
+      return null
+  }
+}
+
+function profileDisplayTitle(profile?: AgentProfile | null): string {
+  return localizedBuiltinProfileTitle(profile) || profile?.title || profile?.name || ''
+}
+
 function protocolTitle(protocol: ProtocolKind): string {
   return protocol === 'acp'
     ? t('settings.externalAgents.acpPlainTitle')
@@ -189,6 +214,10 @@ function setDraftProtocol(protocol: ProtocolKind) {
     return
   }
   draft.value.protocol = protocol
+}
+
+function updateDraftTitle(event: Event) {
+  draft.value.title = (event.target as HTMLInputElement).value
 }
 
 function duplicateSelection() {
@@ -641,9 +670,9 @@ onMounted(() => {
             @click="selectProfile(profile.id)"
           >
             <div class="external-agents__profile-top">
-              <div class="external-agents__profile-main">
+                <div class="external-agents__profile-main">
                 <div class="external-agents__profile-heading">
-                  <h3 class="external-agents__profile-name">{{ profile.title || profile.name }}</h3>
+                  <h3 class="external-agents__profile-name">{{ profileDisplayTitle(profile) }}</h3>
                   <span
                     class="external-agents__badge external-agents__badge--protocol"
                     :class="`external-agents__badge--${profile.protocol}`"
@@ -824,9 +853,10 @@ onMounted(() => {
             <label class="external-agents__field">
               <span>{{ t('common.title', 'Title') }}</span>
               <input
-                v-model="draft.title"
+                :value="draftTitleValue"
                 class="external-agents__input"
                 :disabled="isBuiltinSelection"
+                @input="updateDraftTitle"
               />
             </label>
 

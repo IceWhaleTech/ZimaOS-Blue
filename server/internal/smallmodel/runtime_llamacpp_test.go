@@ -13,6 +13,29 @@ import (
 	"time"
 )
 
+type fakeLlamaCppDirectBackend struct {
+	ensureErr     error
+	generateErr   error
+	text          string
+	ensureCalls   int
+	generateCalls int
+	lastReq       llamaCppDirectGenerateRequest
+}
+
+func (b *fakeLlamaCppDirectBackend) EnsureLoaded() error {
+	b.ensureCalls++
+	return b.ensureErr
+}
+
+func (b *fakeLlamaCppDirectBackend) Generate(_ context.Context, req llamaCppDirectGenerateRequest) (string, error) {
+	b.generateCalls++
+	b.lastReq = req
+	if b.generateErr != nil {
+		return "", b.generateErr
+	}
+	return b.text, nil
+}
+
 func TestLlamaCppRuntimeReadinessReasonRuntimeNil(t *testing.T) {
 	var rt *LlamaCppRuntime
 	if got := rt.ReadinessReason(); got != "runtime_nil" {
@@ -66,6 +89,46 @@ func TestLlamaCppRuntimeGenerateNotReadyWhenModelMissing(t *testing.T) {
 	_, err := rt.Generate(context.Background(), GenerateRequest{Prompt: "hello"})
 	if !errors.Is(err, ErrNotReady) {
 		t.Fatalf("expected ErrNotReady, got %v", err)
+	}
+}
+
+func TestLlamaCppRuntimeGenerateUsesDirectBackendInFFIMode(t *testing.T) {
+	m := NewManager(t.TempDir())
+	createReadyModelFiles(t, m)
+
+	rt := NewLlamaCppRuntime(m, LlamaCppRuntimeOptions{
+		Mode:      "ffi",
+		ServerURL: "http://127.0.0.1:1",
+		CLIPath:   "/definitely/missing/llama-cli",
+	})
+	fake := &fakeLlamaCppDirectBackend{text: "ffi answer"}
+	rt.ffiBackend = fake
+
+	resp, err := rt.Generate(context.Background(), GenerateRequest{
+		Prompt:      "hello from ffi",
+		MaxTokens:   17,
+		Temperature: 0.5,
+	})
+	if err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+	if resp == nil || resp.Text != "ffi answer" {
+		t.Fatalf("Generate() = %#v, want ffi answer", resp)
+	}
+	if fake.ensureCalls != 1 {
+		t.Fatalf("EnsureLoaded() calls = %d, want 1", fake.ensureCalls)
+	}
+	if fake.generateCalls != 1 {
+		t.Fatalf("Generate() backend calls = %d, want 1", fake.generateCalls)
+	}
+	if fake.lastReq.ModelPath != m.ModelPath() {
+		t.Fatalf("backend model path = %q, want %q", fake.lastReq.ModelPath, m.ModelPath())
+	}
+	if fake.lastReq.Prompt != "hello from ffi" {
+		t.Fatalf("backend prompt = %q, want hello from ffi", fake.lastReq.Prompt)
+	}
+	if fake.lastReq.MaxTokens != 17 {
+		t.Fatalf("backend max tokens = %d, want 17", fake.lastReq.MaxTokens)
 	}
 }
 

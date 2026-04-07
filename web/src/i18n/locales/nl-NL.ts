@@ -1372,6 +1372,7 @@ export default mergeHarnessLocale('nl-NL', {
       newProfile: 'Nieuw profiel',
       acpPlainTitle: 'Lokale tools (ACP)',
       a2aPlainTitle: 'Agenten op afstand (A2A)',
+      genericA2ATitle: 'Generieke externe A2A-agent',
       loadFailed: 'Kan externe agentprofielen niet laden.',
       notAvailable: 'Niet beschikbaar',
       remoteAgent: 'Agent op afstand',
@@ -2292,6 +2293,9 @@ export default mergeHarnessLocale('nl-NL', {
       items: {
         ai_prompt_injection: {
           name: 'Prompt-injectiebescherming',
+        },
+        sandbox_enabled: {
+          description: 'Controleer of code-uitvoering in een sandbox plaatsvindt.',
         },
       },
     },

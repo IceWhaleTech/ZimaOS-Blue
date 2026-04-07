@@ -1062,6 +1062,7 @@ export default mergeHarnessLocale('zh-CN', {
       newProfile: '新建配置',
       acpPlainTitle: '本地工具 (ACP)',
       a2aPlainTitle: '远程智能体 (A2A)',
+      genericA2ATitle: '通用远程 A2A 智能体',
       loadFailed: '加载外部智能体配置失败。',
       notAvailable: '不可用',
       remoteAgent: '远程智能体',
@@ -2219,6 +2220,9 @@ export default mergeHarnessLocale('zh-CN', {
       items: {
         ai_prompt_injection: {
           name: '提示注入保护',
+        },
+        sandbox_enabled: {
+          description: '检查代码执行是否在沙箱中运行',
         },
       },
     },

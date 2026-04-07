@@ -5934,6 +5934,8 @@ func TestChatHandlerSendMessageAutoContinue_RetriesEmptyReplyAfterToolRound(t *t
 }
 
 func TestRecoverPseudoToolCallsFromContent(t *testing.T) {
+	ensureChatMiscRegexes()
+
 	t.Run("blue wrapper with nested args", func(t *testing.T) {
 		content := `<function_calls>
 <invoke name="$blue">
@@ -6084,6 +6086,27 @@ func TestRecoverPseudoToolCallsFromContent(t *testing.T) {
 		}
 		if got, _ := args["max_results"].(float64); got != 5 {
 			t.Fatalf("max_results = %v, want 5", args["max_results"])
+		}
+	})
+
+	t.Run("tool_code wrapper with inline cli-style args", func(t *testing.T) {
+		content := `<tool_code>web_query input="Aristotle Nicomachean Ethics virtue mean doctrine golden mean practical wisdom phronesis"</tool_code>`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "web_query"}})
+		if !ok {
+			t.Fatal("expected tool_code wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "web_query" {
+			t.Fatalf("call name = %q, want web_query", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["input"].(string); got != "Aristotle Nicomachean Ethics virtue mean doctrine golden mean practical wisdom phronesis" {
+			t.Fatalf("input = %q, want Aristotle Nicomachean Ethics virtue mean doctrine golden mean practical wisdom phronesis", got)
 		}
 	})
 

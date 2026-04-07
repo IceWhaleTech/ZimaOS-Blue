@@ -26,7 +26,8 @@ function expandFlatPaths(flat: Record<string, string>): object {
 const zhCNFlatBackfill: Record<string, string> = {
   'evolution.summary.visibleSkills': '可见技能',
   'evolution.summary.visibleSkillsHintFiltered': '已按当前规范技能搜索结果筛选。',
-  'evolution.summary.visibleSkillsHint': 'v1 仅允许内置规范技能进入演进流程。',
+  'evolution.summary.visibleSkillsHint':
+    'v1 允许可写的内置规范技能与本地托管已安装技能进入演进流程。',
   'evolution.summary.visibleRevisions': '可见修订',
   'evolution.summary.visibleRevisionsHintFiltered': '已按当前修订搜索或状态筛选。',
   'evolution.summary.visibleRevisionsHint': '已接受修订可用于提升，备份修订支持安全回滚。',
@@ -44,10 +45,14 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.health.visibilityClearDetails': '当前选中的技能、修订和案例仍在列表中可见。',
   'evolution.health.betterVersionSelectedDetails': '当前选中修订已通过关卡，复核证据后可显式提升。',
   'evolution.health.betterVersionReadyDetails': '这些修订已经通过关卡，复核证据后即可提升。',
-  'evolution.health.betterVersionEmptyDetails': '该技能目前还没有候选通过关卡，因此现行规范版本保持不变。',
-  'evolution.health.rollbackSelectedDetails': '只要当前规范谱系仍匹配该备份的基线修订，就可以恢复这个备份。',
-  'evolution.health.rollbackReadyDetails': '只要当前规范谱系仍匹配备份基线修订，就能保持安全回滚能力。',
-  'evolution.health.rollbackEmptyDetails': '第一次提升后，才会为该规范技能谱系创建第一个安全回滚点。',
+  'evolution.health.betterVersionEmptyDetails':
+    '该技能目前还没有候选通过关卡，因此现行规范版本保持不变。',
+  'evolution.health.rollbackSelectedDetails':
+    '只要当前规范谱系仍匹配该备份的基线修订，就可以恢复这个备份。',
+  'evolution.health.rollbackReadyDetails':
+    '只要当前规范谱系仍匹配备份基线修订，就能保持安全回滚能力。',
+  'evolution.health.rollbackEmptyDetails':
+    '第一次提升后，才会为该规范技能谱系创建第一个安全回滚点。',
   'evolution.health.instructionsFiltersActiveDetails': '当前收窄条件：{filters}。',
   'evolution.health.instructionsFiltersClearDetails': '指令审查队列当前展示所有已加载提案。',
   'evolution.health.instructionsVisibilityHiddenDetails': '被当前筛选隐藏：{items}。',
@@ -58,18 +63,29 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.health.reviewQueueClearDetails': '所有已加载的指令提案都已经批准或拒绝。',
   'evolution.health.agentsLoadingDetails': '正在检查 AGENTS.md 提案状态和显式审批状态。',
   'evolution.health.agentsNotLoadedDetails': 'AGENTS.md 的审查发生在 Instructions 轨道。',
-  'evolution.health.agentsEmptyDetails': '有依据的自反思经验仍可能产生后续 AGENTS.md 改动，但当前没有排队提案。',
-  'evolution.health.agentsPendingDetails': '即使改动来源于有依据的自反思经验，AGENTS.md 仍保持显式人工审批。',
-  'evolution.health.agentsReviewedDetails': '已跟踪的 AGENTS.md 提案都已经批准或拒绝；自反思仍然只负责提供入口信号。',
-  'evolution.health.skillReadinessDetails': 'Runner 证据可以推动更好的技能候选，但真正的线上切换仍发生在 Skills 轨道。',
-  'evolution.health.skillReadinessEmptyDetails': '当前还没有技能候选通过关卡，因此 Runner 仍只是证据与候选轨道。',
-  'evolution.health.runnerRollbackDetails': '只要规范谱系仍匹配备份基线修订，就可以在 Skills 轨道执行回滚。',
-  'evolution.health.runnerRollbackEmptyDetails': '第一次提升后，才会为该技能谱系创建初始安全回滚点。',
-  'evolution.health.switchBoundaryDetails': 'Runner 演进与技能提升/回滚保持隔离，因此执行证据本身不会直接切换线上版本。',
+  'evolution.health.agentsEmptyDetails':
+    '有依据的自反思经验仍可能产生后续 AGENTS.md 改动，但当前没有排队提案。',
+  'evolution.health.agentsPendingDetails':
+    '即使改动来源于有依据的自反思经验，AGENTS.md 仍保持显式人工审批。',
+  'evolution.health.agentsReviewedDetails':
+    '已跟踪的 AGENTS.md 提案都已经批准或拒绝；自反思仍然只负责提供入口信号。',
+  'evolution.health.skillReadinessDetails':
+    'Runner 证据可以推动更好的技能候选，但真正的线上切换仍发生在 Skills 轨道。',
+  'evolution.health.skillReadinessEmptyDetails':
+    '当前还没有技能候选通过关卡，因此 Runner 仍只是证据与候选轨道。',
+  'evolution.health.runnerRollbackDetails':
+    '只要规范谱系仍匹配备份基线修订，就可以在 Skills 轨道执行回滚。',
+  'evolution.health.runnerRollbackEmptyDetails':
+    '第一次提升后，才会为该技能谱系创建初始安全回滚点。',
+  'evolution.health.switchBoundaryDetails':
+    'Runner 演进与技能提升/回滚保持隔离，因此执行证据本身不会直接切换线上版本。',
   'evolution.health.instructionBoundaryPendingValue': '{count} 条 AGENTS.md 待处理',
-  'evolution.health.instructionBoundaryPendingDetails': 'Runner 发现可以产生 AGENTS.md 提案，但显式审批仍发生在 Instructions 轨道。',
-  'evolution.health.instructionBoundaryLoadedDetails': '指令提案仍与 Runner 候选保持分离，AGENTS.md 依然保持显式审批。',
-  'evolution.health.instructionBoundaryOpenDetails': 'Runner 发现可能生成 AGENTS.md 和其他指令提案，但真正审查发生在 Instructions 轨道。',
+  'evolution.health.instructionBoundaryPendingDetails':
+    'Runner 发现可以产生 AGENTS.md 提案，但显式审批仍发生在 Instructions 轨道。',
+  'evolution.health.instructionBoundaryLoadedDetails':
+    '指令提案仍与 Runner 候选保持分离，AGENTS.md 依然保持显式审批。',
+  'evolution.health.instructionBoundaryOpenDetails':
+    'Runner 发现可能生成 AGENTS.md 和其他指令提案，但真正审查发生在 Instructions 轨道。',
   'evolution.instructions.subtitle':
     '审查由有依据研究结论生成的 AGENTS.md 及相关指令补丁提案。最终批准仍然是明确的人类决策。',
   'evolution.instructions.emptyActionHint':
@@ -97,9 +113,12 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.runner.metrics.sourceSubtitle':
     '源指标解释了为什么最初会触发 Runner，也能帮助你对比改动前证据与后续结果。',
   'evolution.runner.summary.candidateHint': 'Runner 会把候选与关联修订和最终技能提升步骤分开管理。',
-  'evolution.runner.summary.followupHint': '关联的后续评估会决定该候选是被接受、拒绝，还是仍在运行中。',
-  'evolution.runner.summary.runtimeHint': '执行耗时和停止原因能解释本次优化在进入 follow-up 关卡前的实际表现。',
-  'evolution.runner.summary.partsHint': '优化部分只说明 Runner 哪些表面发生了变化，并不意味着线上技能已经切换。',
+  'evolution.runner.summary.followupHint':
+    '关联的后续评估会决定该候选是被接受、拒绝，还是仍在运行中。',
+  'evolution.runner.summary.runtimeHint':
+    '执行耗时和停止原因能解释本次优化在进入 follow-up 关卡前的实际表现。',
+  'evolution.runner.summary.partsHint':
+    '优化部分只说明 Runner 哪些表面发生了变化，并不意味着线上技能已经切换。',
   'evolution.runner.followupAccepted': '已通过 {gate} 关卡接受',
   'evolution.runner.followupRejected': '已被 {gate} 关卡拒绝',
   'evolution.runner.followupSubmitted': '已提交到 {gate} 关卡',
@@ -109,11 +128,12 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.rollbackSuccess': '已成功恢复备份修订。',
   'evolution.refreshing': '刷新中...',
   'evolution.skills.catalog': '规范技能',
-  'evolution.skills.catalogHint': 'v1 目前只会修订 `assets/skills/*/SKILL.md` 下的内置技能。',
-  'evolution.skills.empty': '当前还没有可用于演进审查的规范技能。',
-  'evolution.skills.searchPlaceholder': '按名称、ID 或描述搜索规范技能',
+  'evolution.skills.catalogHint':
+    'v1 目前会修订可写的内置规范技能，以及位于 `.agents/skills` / `.claude/skills` 的本地托管已安装技能。',
+  'evolution.skills.empty': '当前还没有可用于演进审查的可写技能。',
+  'evolution.skills.searchPlaceholder': '按名称、ID 或描述搜索可写技能',
   'evolution.skills.searchCount': '显示 {visible} / {total} 个技能',
-  'evolution.skills.searchEmpty': '当前搜索没有匹配的规范技能。',
+  'evolution.skills.searchEmpty': '当前搜索没有匹配的可写技能。',
   'evolution.skills.hiddenSelectionTitle': '当前搜索隐藏了所选技能',
   'evolution.skills.hiddenSelectionHint':
     '当前选中的技能仍驱动右侧详情面板，但它在筛选后的目录列表中暂不可见。',
@@ -131,21 +151,25 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.skills.promoteConfirm': '要把这条已接受修订提升为规范技能吗？',
   'evolution.skills.promoteConfirmSkill': '技能',
   'evolution.skills.promoteConfirmPath': '规范文件',
-  'evolution.skills.promoteConfirmHint': '这会把已接受内容写入规范技能文件，并创建一个备份修订用于安全回滚。',
+  'evolution.skills.promoteConfirmHint':
+    '这会把已接受内容写入规范技能文件，并创建一个备份修订用于安全回滚。',
   'evolution.skills.rollbackConfirm': '要把这份备份恢复为规范技能吗？',
   'evolution.skills.rollbackConfirmSkill': '技能',
   'evolution.skills.rollbackConfirmPath': '规范文件',
-  'evolution.skills.rollbackConfirmHint': '只有当前规范文件仍匹配这个备份创建时所基于的谱系，回滚才是安全的。',
+  'evolution.skills.rollbackConfirmHint':
+    '只有当前规范文件仍匹配这个备份创建时所基于的谱系，回滚才是安全的。',
   'evolution.skills.reviewNoteTitle': '操作员理由',
   'evolution.skills.reviewNoteSubtitle':
     '在提升或回滚前记录这次人工决策的理由，让最终切换保持可解释。',
   'evolution.skills.reviewNoteLocalOnly': '仅保存在当前审查会话中的本地草稿。',
   'evolution.skills.reviewNotePlaceholder': '可选：说明为什么这次提升或回滚决策是合适的。',
   'evolution.skills.reviewNoteConfirmHint': '这段理由会出现在最终确认提示中。',
-  'evolution.skills.reviewNoteEmptyHint': '如果你希望最终确认包含操作员理由，可以先补一条简短说明。',
+  'evolution.skills.reviewNoteEmptyHint':
+    '如果你希望最终确认包含操作员理由，可以先补一条简短说明。',
   'evolution.skills.openSection': '打开分区',
   'evolution.skills.scorecard': '评估评分卡',
-  'evolution.skills.scorecardHint': '先对比质量、验证、运行时、令牌和有依据证据，再进入更深的审查分区。',
+  'evolution.skills.scorecardHint':
+    '先对比质量、验证、运行时、令牌和有依据证据，再进入更深的审查分区。',
   'evolution.skills.scorecardSubtle': '内容来自关联 Eval 报告和当前所选案例证据。',
   'evolution.skills.cases': '演进案例',
   'evolution.skills.casesHint': '每个案例都会记录系统为什么尝试修复或扩展某个技能。',
@@ -166,13 +190,15 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.skills.caseOpenRevision': '打开关联修订',
   'evolution.skills.caseOpenSource': '打开源 Eval 运行',
   'evolution.skills.revisions': '修订谱系',
-  'evolution.skills.revisionsHint': '已接受修订代表更优候选版本。Promote 才是切换到规范版本的显式动作。',
+  'evolution.skills.revisionsHint':
+    '已接受修订代表更优候选版本。Promote 才是切换到规范版本的显式动作。',
   'evolution.skills.promote': '提升为规范版本',
   'evolution.skills.revisionSearchPlaceholder': '按修订 ID、候选、案例、Eval 或路径搜索',
   'evolution.skills.revisionStatusAll': '全部状态',
   'evolution.skills.revisionFilterCount': '显示 {visible} / {total} 条修订',
   'evolution.skills.noAcceptedRevisionTitle': '还没有已接受修订',
-  'evolution.skills.noAcceptedRevisionHintCandidate': '当前还没有可供提升的已接受版本。下一步先查看最新候选修订。',
+  'evolution.skills.noAcceptedRevisionHintCandidate':
+    '当前还没有可供提升的已接受版本。下一步先查看最新候选修订。',
   'evolution.skills.noAcceptedRevisionHintHarness':
     '当前还没有可供提升的已接受版本。打开 Harness 评测收集更多运行时证据，再触发下一轮演进。',
   'evolution.skills.noAcceptedRevisionActionCandidate': '查看最新候选',
@@ -319,8 +345,7 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.skills.decision.waitGateHint':
     '这个候选还需要 follow-up 评测和关卡审查，之后才能判断是否更优。',
   'evolution.skills.decision.keepLive': '保持当前线上版本',
-  'evolution.skills.decision.keepLiveHint':
-    '这条修订已被关卡拒绝，因此应继续保留当前规范版本。',
+  'evolution.skills.decision.keepLiveHint': '这条修订已被关卡拒绝，因此应继续保留当前规范版本。',
   'evolution.skills.shortcutComparison': '对比',
   'evolution.skills.shortcutComparisonReady': '已附带基线',
   'evolution.skills.shortcutComparisonEmpty': '尚无基线',
@@ -369,7 +394,8 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.skills.evidenceSummary.failureCount': '失败次数',
   'evolution.skills.diffReview.areas': '受影响的指导区域',
   'evolution.skills.diffReview.generalGuidance': '通用指导',
-  'evolution.skills.diffReview.areasMore': '已展示 {shown} 项，共从补丁中推断出 {total} 个受影响区域。',
+  'evolution.skills.diffReview.areasMore':
+    '已展示 {shown} 项，共从补丁中推断出 {total} 个受影响区域。',
   'evolution.skills.diffReview.areasHint': '这些区域是根据改动行及附近的 Markdown 结构推断的。',
   'evolution.skills.diffReview.risk': '补丁风险',
   'evolution.skills.diffReview.scope': '补丁范围',
@@ -422,8 +448,7 @@ const zhCNFlatBackfill: Record<string, string> = {
     '结构化记录会保留最终操作、审查人、时间与相关修订。',
   'evolution.skills.decisionHistory.empty': '这条修订还没有记录任何已持久化的人工决策。',
   'evolution.skills.decisionHistory.timeline': '决策时间线',
-  'evolution.skills.decisionHistory.timelineHint':
-    '沿时间轴查看提升、回滚和只记录不切换的决策。',
+  'evolution.skills.decisionHistory.timelineHint': '沿时间轴查看提升、回滚和只记录不切换的决策。',
   'evolution.skills.decisionHistory.historyComparison': '历史对比',
   'evolution.skills.decisionHistory.leftRevision': '左侧修订',
   'evolution.skills.decisionHistory.rightRevision': '右侧修订',
@@ -440,7 +465,8 @@ const zhCNFlatBackfill: Record<string, string> = {
 const zhTWFlatBackfill: Record<string, string> = {
   'evolution.summary.visibleSkills': '可見技能',
   'evolution.summary.visibleSkillsHintFiltered': '已依目前規範技能搜尋結果篩選。',
-  'evolution.summary.visibleSkillsHint': 'v1 僅允許內建規範技能進入演進流程。',
+  'evolution.summary.visibleSkillsHint':
+    'v1 允許可寫的內建規範技能與本地託管已安裝技能進入演進流程。',
   'evolution.summary.visibleRevisions': '可見修訂',
   'evolution.summary.visibleRevisionsHintFiltered': '已依目前修訂搜尋或狀態篩選。',
   'evolution.summary.visibleRevisionsHint': '已接受修訂可用於提升，備份修訂支援安全回滾。',
@@ -458,10 +484,14 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.health.visibilityClearDetails': '目前選中的技能、修訂與案例仍在清單中可見。',
   'evolution.health.betterVersionSelectedDetails': '目前選中修訂已通過關卡，複核證據後可顯式提升。',
   'evolution.health.betterVersionReadyDetails': '這些修訂已經通過關卡，複核證據後即可提升。',
-  'evolution.health.betterVersionEmptyDetails': '這個技能目前還沒有候選通過關卡，因此現行規範版本保持不變。',
-  'evolution.health.rollbackSelectedDetails': '只要目前規範譜系仍匹配這個備份的基線修訂，就可以恢復這個備份。',
-  'evolution.health.rollbackReadyDetails': '只要目前規範譜系仍匹配備份基線修訂，就能維持安全回滾能力。',
-  'evolution.health.rollbackEmptyDetails': '第一次提升後，才會為該規範技能譜系建立第一個安全回滾點。',
+  'evolution.health.betterVersionEmptyDetails':
+    '這個技能目前還沒有候選通過關卡，因此現行規範版本保持不變。',
+  'evolution.health.rollbackSelectedDetails':
+    '只要目前規範譜系仍匹配這個備份的基線修訂，就可以恢復這個備份。',
+  'evolution.health.rollbackReadyDetails':
+    '只要目前規範譜系仍匹配備份基線修訂，就能維持安全回滾能力。',
+  'evolution.health.rollbackEmptyDetails':
+    '第一次提升後，才會為該規範技能譜系建立第一個安全回滾點。',
   'evolution.health.instructionsFiltersActiveDetails': '目前收斂條件：{filters}。',
   'evolution.health.instructionsFiltersClearDetails': '指令審查佇列目前顯示所有已載入提案。',
   'evolution.health.instructionsVisibilityHiddenDetails': '被目前篩選隱藏：{items}。',
@@ -472,18 +502,29 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.health.reviewQueueClearDetails': '所有已載入的指令提案都已經批准或拒絕。',
   'evolution.health.agentsLoadingDetails': '正在檢查 AGENTS.md 提案狀態與顯式審批狀態。',
   'evolution.health.agentsNotLoadedDetails': 'AGENTS.md 的審查發生在 Instructions 軌道。',
-  'evolution.health.agentsEmptyDetails': '有依據的自反思經驗仍可能產生後續 AGENTS.md 改動，但目前沒有排隊提案。',
-  'evolution.health.agentsPendingDetails': '即使改動來源於有依據的自反思經驗，AGENTS.md 仍維持顯式人工審批。',
-  'evolution.health.agentsReviewedDetails': '已追蹤的 AGENTS.md 提案都已經批准或拒絕；自反思仍然只負責提供入口訊號。',
-  'evolution.health.skillReadinessDetails': 'Runner 證據可以推動更好的技能候選，但真正的線上切換仍發生在 Skills 軌道。',
-  'evolution.health.skillReadinessEmptyDetails': '目前還沒有技能候選通過關卡，因此 Runner 仍只是證據與候選軌道。',
-  'evolution.health.runnerRollbackDetails': '只要規範譜系仍匹配備份基線修訂，就可以在 Skills 軌道執行回滾。',
-  'evolution.health.runnerRollbackEmptyDetails': '第一次提升後，才會為這個技能譜系建立初始安全回滾點。',
-  'evolution.health.switchBoundaryDetails': 'Runner 演進與技能提升/回滾保持隔離，因此執行證據本身不會直接切換線上版本。',
+  'evolution.health.agentsEmptyDetails':
+    '有依據的自反思經驗仍可能產生後續 AGENTS.md 改動，但目前沒有排隊提案。',
+  'evolution.health.agentsPendingDetails':
+    '即使改動來源於有依據的自反思經驗，AGENTS.md 仍維持顯式人工審批。',
+  'evolution.health.agentsReviewedDetails':
+    '已追蹤的 AGENTS.md 提案都已經批准或拒絕；自反思仍然只負責提供入口訊號。',
+  'evolution.health.skillReadinessDetails':
+    'Runner 證據可以推動更好的技能候選，但真正的線上切換仍發生在 Skills 軌道。',
+  'evolution.health.skillReadinessEmptyDetails':
+    '目前還沒有技能候選通過關卡，因此 Runner 仍只是證據與候選軌道。',
+  'evolution.health.runnerRollbackDetails':
+    '只要規範譜系仍匹配備份基線修訂，就可以在 Skills 軌道執行回滾。',
+  'evolution.health.runnerRollbackEmptyDetails':
+    '第一次提升後，才會為這個技能譜系建立初始安全回滾點。',
+  'evolution.health.switchBoundaryDetails':
+    'Runner 演進與技能提升/回滾保持隔離，因此執行證據本身不會直接切換線上版本。',
   'evolution.health.instructionBoundaryPendingValue': '{count} 條 AGENTS.md 待處理',
-  'evolution.health.instructionBoundaryPendingDetails': 'Runner 發現可以產生 AGENTS.md 提案，但顯式審批仍發生在 Instructions 軌道。',
-  'evolution.health.instructionBoundaryLoadedDetails': '指令提案仍與 Runner 候選保持分離，AGENTS.md 依然維持顯式審批。',
-  'evolution.health.instructionBoundaryOpenDetails': 'Runner 發現可能生成 AGENTS.md 和其他指令提案，但真正審查發生在 Instructions 軌道。',
+  'evolution.health.instructionBoundaryPendingDetails':
+    'Runner 發現可以產生 AGENTS.md 提案，但顯式審批仍發生在 Instructions 軌道。',
+  'evolution.health.instructionBoundaryLoadedDetails':
+    '指令提案仍與 Runner 候選保持分離，AGENTS.md 依然維持顯式審批。',
+  'evolution.health.instructionBoundaryOpenDetails':
+    'Runner 發現可能生成 AGENTS.md 和其他指令提案，但真正審查發生在 Instructions 軌道。',
   'evolution.instructions.subtitle':
     '審查由有依據研究結論生成的 AGENTS.md 及相關指令補丁提案。最終批准仍然是明確的人類決策。',
   'evolution.instructions.emptyActionHint':
@@ -511,9 +552,12 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.runner.metrics.sourceSubtitle':
     '來源指標解釋了為什麼最初會觸發 Runner，也能幫助你對比改動前證據與後續結果。',
   'evolution.runner.summary.candidateHint': 'Runner 會把候選與關聯修訂和最終技能提升步驟分開管理。',
-  'evolution.runner.summary.followupHint': '關聯的後續評估會決定該候選是被接受、拒絕，還是仍在執行中。',
-  'evolution.runner.summary.runtimeHint': '執行耗時與停止原因能解釋本次優化在進入 follow-up 關卡前的實際表現。',
-  'evolution.runner.summary.partsHint': '優化部分只說明 Runner 哪些表面發生了變化，並不代表線上技能已經切換。',
+  'evolution.runner.summary.followupHint':
+    '關聯的後續評估會決定該候選是被接受、拒絕，還是仍在執行中。',
+  'evolution.runner.summary.runtimeHint':
+    '執行耗時與停止原因能解釋本次優化在進入 follow-up 關卡前的實際表現。',
+  'evolution.runner.summary.partsHint':
+    '優化部分只說明 Runner 哪些表面發生了變化，並不代表線上技能已經切換。',
   'evolution.runner.followupAccepted': '已通過 {gate} 關卡接受',
   'evolution.runner.followupRejected': '已被 {gate} 關卡拒絕',
   'evolution.runner.followupSubmitted': '已提交到 {gate} 關卡',
@@ -523,11 +567,12 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.rollbackSuccess': '已成功恢復備份修訂。',
   'evolution.refreshing': '重新整理中...',
   'evolution.skills.catalog': '規範技能',
-  'evolution.skills.catalogHint': 'v1 目前只會修訂 `assets/skills/*/SKILL.md` 下的內建技能。',
-  'evolution.skills.empty': '目前還沒有可用於演進審查的規範技能。',
-  'evolution.skills.searchPlaceholder': '按名稱、ID 或描述搜尋規範技能',
+  'evolution.skills.catalogHint':
+    'v1 目前會修訂可寫的內建規範技能，以及位於 `.agents/skills` / `.claude/skills` 的本地託管已安裝技能。',
+  'evolution.skills.empty': '目前還沒有可用於演進審查的可寫技能。',
+  'evolution.skills.searchPlaceholder': '按名稱、ID 或描述搜尋可寫技能',
   'evolution.skills.searchCount': '顯示 {visible} / {total} 個技能',
-  'evolution.skills.searchEmpty': '目前搜尋沒有匹配的規範技能。',
+  'evolution.skills.searchEmpty': '目前搜尋沒有匹配的可寫技能。',
   'evolution.skills.hiddenSelectionTitle': '目前搜尋隱藏了所選技能',
   'evolution.skills.hiddenSelectionHint':
     '目前選中的技能仍驅動右側詳情面板，但它在篩選後的目錄清單中暫不可見。',
@@ -545,21 +590,25 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.skills.promoteConfirm': '要把這條已接受修訂提升為規範技能嗎？',
   'evolution.skills.promoteConfirmSkill': '技能',
   'evolution.skills.promoteConfirmPath': '規範檔案',
-  'evolution.skills.promoteConfirmHint': '這會把已接受內容寫入規範技能檔案，並建立一個備份修訂用於安全回滾。',
+  'evolution.skills.promoteConfirmHint':
+    '這會把已接受內容寫入規範技能檔案，並建立一個備份修訂用於安全回滾。',
   'evolution.skills.rollbackConfirm': '要把這份備份恢復為規範技能嗎？',
   'evolution.skills.rollbackConfirmSkill': '技能',
   'evolution.skills.rollbackConfirmPath': '規範檔案',
-  'evolution.skills.rollbackConfirmHint': '只有目前規範檔案仍匹配這個備份建立時所基於的譜系，回滾才是安全的。',
+  'evolution.skills.rollbackConfirmHint':
+    '只有目前規範檔案仍匹配這個備份建立時所基於的譜系，回滾才是安全的。',
   'evolution.skills.reviewNoteTitle': '操作員理由',
   'evolution.skills.reviewNoteSubtitle':
     '在提升或回滾前記錄這次人工決策的理由，讓最終切換保持可解釋。',
   'evolution.skills.reviewNoteLocalOnly': '僅保存在目前審查工作階段中的本地草稿。',
   'evolution.skills.reviewNotePlaceholder': '可選：說明為什麼這次提升或回滾決策是合適的。',
   'evolution.skills.reviewNoteConfirmHint': '這段理由會出現在最終確認提示中。',
-  'evolution.skills.reviewNoteEmptyHint': '如果你希望最終確認包含操作員理由，可以先補一條簡短說明。',
+  'evolution.skills.reviewNoteEmptyHint':
+    '如果你希望最終確認包含操作員理由，可以先補一條簡短說明。',
   'evolution.skills.openSection': '打開分區',
   'evolution.skills.scorecard': '評估評分卡',
-  'evolution.skills.scorecardHint': '先對比品質、驗證、執行時、令牌與有依據證據，再進入更深的審查分區。',
+  'evolution.skills.scorecardHint':
+    '先對比品質、驗證、執行時、令牌與有依據證據，再進入更深的審查分區。',
   'evolution.skills.scorecardSubtle': '內容來自關聯 Eval 報告與目前所選案例證據。',
   'evolution.skills.cases': '演進案例',
   'evolution.skills.casesHint': '每個案例都會記錄系統為什麼嘗試修復或擴展某個技能。',
@@ -580,13 +629,15 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.skills.caseOpenRevision': '打開關聯修訂',
   'evolution.skills.caseOpenSource': '打開來源 Eval 執行',
   'evolution.skills.revisions': '修訂譜系',
-  'evolution.skills.revisionsHint': '已接受修訂代表更優候選版本。Promote 才是切換到規範版本的顯式動作。',
+  'evolution.skills.revisionsHint':
+    '已接受修訂代表更優候選版本。Promote 才是切換到規範版本的顯式動作。',
   'evolution.skills.promote': '提升為規範版本',
   'evolution.skills.revisionSearchPlaceholder': '按修訂 ID、候選、案例、Eval 或路徑搜尋',
   'evolution.skills.revisionStatusAll': '全部狀態',
   'evolution.skills.revisionFilterCount': '顯示 {visible} / {total} 條修訂',
   'evolution.skills.noAcceptedRevisionTitle': '還沒有已接受修訂',
-  'evolution.skills.noAcceptedRevisionHintCandidate': '目前還沒有可供提升的已接受版本。下一步先查看最新候選修訂。',
+  'evolution.skills.noAcceptedRevisionHintCandidate':
+    '目前還沒有可供提升的已接受版本。下一步先查看最新候選修訂。',
   'evolution.skills.noAcceptedRevisionHintHarness':
     '目前還沒有可供提升的已接受版本。打開 Harness 評測收集更多執行時證據，再觸發下一輪演進。',
   'evolution.skills.noAcceptedRevisionActionCandidate': '查看最新候選',
@@ -733,8 +784,7 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.skills.decision.waitGateHint':
     '這個候選還需要 follow-up 評測和關卡審查，之後才能判定是否更優。',
   'evolution.skills.decision.keepLive': '保持目前線上版本',
-  'evolution.skills.decision.keepLiveHint':
-    '這條修訂已被關卡拒絕，因此應繼續保留目前規範版本。',
+  'evolution.skills.decision.keepLiveHint': '這條修訂已被關卡拒絕，因此應繼續保留目前規範版本。',
   'evolution.skills.shortcutComparison': '比較',
   'evolution.skills.shortcutComparisonReady': '已附帶基線',
   'evolution.skills.shortcutComparisonEmpty': '尚無基線',
@@ -783,7 +833,8 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.skills.evidenceSummary.failureCount': '失敗次數',
   'evolution.skills.diffReview.areas': '受影響的指引區域',
   'evolution.skills.diffReview.generalGuidance': '一般指引',
-  'evolution.skills.diffReview.areasMore': '已顯示 {shown} 項，共從補丁中推斷出 {total} 個受影響區域。',
+  'evolution.skills.diffReview.areasMore':
+    '已顯示 {shown} 項，共從補丁中推斷出 {total} 個受影響區域。',
   'evolution.skills.diffReview.areasHint': '這些區域是根據變更行及附近的 Markdown 結構推斷的。',
   'evolution.skills.diffReview.risk': '補丁風險',
   'evolution.skills.diffReview.scope': '補丁範圍',
@@ -836,8 +887,7 @@ const zhTWFlatBackfill: Record<string, string> = {
     '結構化記錄會保留最終操作、審查人、時間與相關修訂。',
   'evolution.skills.decisionHistory.empty': '這條修訂尚未記錄任何已持久化的人工作業決策。',
   'evolution.skills.decisionHistory.timeline': '決策時間線',
-  'evolution.skills.decisionHistory.timelineHint':
-    '沿時間軸查看提升、回滾與只記錄不切換的決策。',
+  'evolution.skills.decisionHistory.timelineHint': '沿時間軸查看提升、回滾與只記錄不切換的決策。',
   'evolution.skills.decisionHistory.historyComparison': '歷史比較',
   'evolution.skills.decisionHistory.leftRevision': '左側修訂',
   'evolution.skills.decisionHistory.rightRevision': '右側修訂',

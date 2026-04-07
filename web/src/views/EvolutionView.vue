@@ -492,7 +492,12 @@ function matchesSearchQuery(query: string, ...values: unknown[]): boolean {
 
 function parseEvolutionPaneQuery(raw: unknown): EvolutionPane {
   const value = routeQueryValue(raw)
-  if (value === 'knowledge' || value === 'runner' || value === 'instructions' || value === 'skills') {
+  if (
+    value === 'knowledge' ||
+    value === 'runner' ||
+    value === 'instructions' ||
+    value === 'skills'
+  ) {
     return value
   }
   return 'skills'
@@ -1272,13 +1277,10 @@ function boolSummaryLabel(value: boolean): string {
 }
 
 function skillFilter(skill: Skill): boolean {
-  return skill.builtin === true
+  return skill.writable === true
 }
 
-function buildSkillTranslationKeys(
-  skill: Skill,
-  field: 'name' | 'description'
-): string[] {
+function buildSkillTranslationKeys(skill: Skill, field: 'name' | 'description'): string[] {
   const normalizedIDs = Array.from(
     new Set(
       [skill.id, skill.id.replace(/-/g, '_'), skill.id.replace(/_/g, '-')].map((value) =>
@@ -3539,8 +3541,8 @@ const skillScorecard = computed<SkillScorecardCard[]>(() => {
       tone: scorecardToneForPercent(overallScore),
       actionLabel:
         overallScoreDelta != null || passRateDelta != null
-          ? tr('evolution.skills.scorecard.openComparison', 'Open comparison')
-          : tr('evolution.skills.scorecard.openMetrics', 'Open metrics'),
+          ? tr('evolution.skills.scorecardOpenComparison', 'Open comparison')
+          : tr('evolution.skills.scorecardOpenMetrics', 'Open metrics'),
       action:
         overallScoreDelta != null || passRateDelta != null
           ? () => focusSkillDetailSection('comparison')
@@ -3585,8 +3587,8 @@ const skillScorecard = computed<SkillScorecardCard[]>(() => {
       ),
       actionLabel:
         verificationPassRateDelta != null || evidenceBackedPassRateDelta != null
-          ? tr('evolution.skills.scorecard.openComparison', 'Open comparison')
-          : tr('evolution.skills.scorecard.openMetrics', 'Open metrics'),
+          ? tr('evolution.skills.scorecardOpenComparison', 'Open comparison')
+          : tr('evolution.skills.scorecardOpenMetrics', 'Open metrics'),
       action:
         verificationPassRateDelta != null || evidenceBackedPassRateDelta != null
           ? () => focusSkillDetailSection('comparison')
@@ -3613,7 +3615,7 @@ const skillScorecard = computed<SkillScorecardCard[]>(() => {
         .filter(Boolean)
         .join(' · '),
       tone: scorecardToneForDuration(runtimeValue),
-      actionLabel: tr('evolution.skills.scorecard.openMetrics', 'Open metrics'),
+      actionLabel: tr('evolution.skills.scorecardOpenMetrics', 'Open metrics'),
       action: () => focusSkillDetailSection('metrics'),
     },
     {
@@ -3637,7 +3639,7 @@ const skillScorecard = computed<SkillScorecardCard[]>(() => {
         .filter(Boolean)
         .join(' · '),
       tone: scorecardToneForTokens(totalTokens),
-      actionLabel: tr('evolution.skills.scorecard.openMetrics', 'Open metrics'),
+      actionLabel: tr('evolution.skills.scorecardOpenMetrics', 'Open metrics'),
       action: () => focusSkillDetailSection('metrics'),
     },
     {
@@ -3649,11 +3651,11 @@ const skillScorecard = computed<SkillScorecardCard[]>(() => {
       details:
         selectedSkillEvidenceSnapshot.value ||
         tr(
-          'evolution.skills.scorecard.evidenceHint',
+          'evolution.skills.scorecardEvidenceHint',
           'No structured evidence summary is attached to this revision yet.'
         ),
       tone: evidenceTone,
-      actionLabel: tr('evolution.skills.scorecard.openEvidence', 'Open evidence'),
+      actionLabel: tr('evolution.skills.scorecardOpenEvidence', 'Open evidence'),
       action: () => focusSkillDetailSection('evidence'),
     },
   ]
@@ -3826,16 +3828,16 @@ const evolutionLaneCards = computed<EvolutionLaneCard[]>(() => [
       knowledgeLaneSummaryLoading.value && knowledgeLaneSummary.value == null
         ? tr('common.loading', 'Loading')
         : knowledgeLaneSummary.value == null
-        ? tr('knowledge.eyebrow', 'Knowledge Space')
-        : (knowledgeLaneSummary.value.conflicts || 0) > 0
-          ? trp('knowledge.conflictCount', '{count} unresolved conflicts', {
-              count: knowledgeLaneSummary.value.conflicts,
-            })
-          : (knowledgeLaneSummary.value.gaps || 0) > 0
-            ? trp('knowledge.gapCount', '{count} open gaps', {
-                count: knowledgeLaneSummary.value.gaps,
+          ? tr('knowledge.eyebrow', 'Knowledge Space')
+          : (knowledgeLaneSummary.value.conflicts || 0) > 0
+            ? trp('knowledge.conflictCount', '{count} unresolved conflicts', {
+                count: knowledgeLaneSummary.value.conflicts,
               })
-            : tr('knowledge.pageList', 'Pages'),
+            : (knowledgeLaneSummary.value.gaps || 0) > 0
+              ? trp('knowledge.gapCount', '{count} open gaps', {
+                  count: knowledgeLaneSummary.value.gaps,
+                })
+              : tr('knowledge.pageList', 'Pages'),
   },
   {
     pane: 'skills',
@@ -4832,7 +4834,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     {{
                       tr(
                         'evolution.skills.catalogHint',
-                        'v1 only revises built-in skills under assets/skills/*/SKILL.md.'
+                        'v1 revises writable built-in skills and locally managed installed skills.'
                       )
                     }}
                   </p>
@@ -4870,7 +4872,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 {{
                   tr(
                     'evolution.skills.empty',
-                    'No canonical skills are available for evolution review yet.'
+                    'No writable skills are available for evolution review yet.'
                   )
                 }}
               </div>
@@ -4883,7 +4885,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   :placeholder="
                     tr(
                       'evolution.skills.searchPlaceholder',
-                      'Search canonical skills by name, id, or description'
+                      'Search writable skills by name, id, or description'
                     )
                   "
                 />
@@ -4976,10 +4978,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
               >
                 {{
-                  tr(
-                    'evolution.skills.searchEmpty',
-                    'No canonical skills match the current search.'
-                  )
+                  tr('evolution.skills.searchEmpty', 'No writable skills match the current search.')
                 }}
               </div>
             </div>
@@ -4996,7 +4995,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     {{
                       tr(
                         'evolution.skills.catalogHint',
-                        'v1 only revises built-in skills under assets/skills/*/SKILL.md.'
+                        'v1 revises writable built-in skills and locally managed installed skills.'
                       )
                     }}
                   </p>
@@ -6319,7 +6318,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       :data-testid="`evolution-skill-lineage-entry-${index}`"
                       class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
                     >
-                      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      >
                         {{ entry.label }}
                       </div>
                       <div
@@ -6778,7 +6779,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       :data-testid="`evolution-skill-version-meta-entry-${index}`"
                       class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
                     >
-                      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      >
                         {{ entry.label }}
                       </div>
                       <div
@@ -7031,7 +7034,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       :key="metric.key"
                       class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
                     >
-                      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      >
                         {{ metric.label }}
                       </div>
                       <div class="mt-1.5 text-base font-semibold text-slate-950">
@@ -7097,7 +7102,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       class="rounded-2xl border px-3 py-3"
                       :class="evidenceSummaryClasses(entry.tone)"
                     >
-                      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      >
                         {{ entry.label }}
                       </div>
                       <div
@@ -7152,7 +7159,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                       <div v-for="entry in selectedCaseMeta" :key="entry.label" class="space-y-1">
-                        <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        <div
+                          class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                        >
                           {{ entry.label }}
                         </div>
                         <div class="break-all text-sm leading-5 text-slate-700">
@@ -7215,7 +7224,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       :data-testid="`evolution-skill-diff-summary-${entry.key}`"
                       class="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3"
                     >
-                      <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <div
+                        class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                      >
                         {{ entry.label }}
                       </div>
                       <div
@@ -8060,7 +8071,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
               >
                 <div class="grid gap-4 lg:grid-cols-2">
                   <div class="space-y-1.5">
-                    <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <div
+                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                    >
                       {{ tr('evolution.instructions.whenToApply', 'When To Apply') }}
                     </div>
                     <div class="text-sm leading-5 text-slate-700">
@@ -8069,8 +8082,12 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       }}
                     </div>
                   </div>
-                  <div class="space-y-1.5 border-t border-slate-200 pt-4 lg:border-t-0 lg:border-l lg:pl-4 lg:pt-0">
-                    <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <div
+                    class="space-y-1.5 border-t border-slate-200 pt-4 lg:border-t-0 lg:border-l lg:pl-4 lg:pt-0"
+                  >
+                    <div
+                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                    >
                       {{ tr('evolution.instructions.evidenceText', 'Evidence') }}
                     </div>
                     <div class="text-sm leading-5 text-slate-700">
@@ -8086,7 +8103,9 @@ async function reviewSelectedProposal(action: ProposalAction) {
               >
                 <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
                   <div v-for="entry in selectedProposalMeta" :key="entry.label" class="space-y-1">
-                    <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <div
+                      class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
+                    >
                       {{ entry.label }}
                     </div>
                     <div class="break-all text-sm leading-5 text-slate-700">

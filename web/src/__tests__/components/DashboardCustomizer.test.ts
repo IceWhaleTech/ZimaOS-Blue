@@ -45,6 +45,10 @@ const messages = {
         metrics: '指标',
       },
       cards: {
+        uptime: '运行时间',
+        memoryUsage: '内存使用',
+        goroutines: '协程数',
+        cpuChart: 'CPU 使用率',
         metricsOverview: '指标总览',
         tokenUsageChart: 'Token 使用情况',
         latencyChart: '请求延迟',
@@ -108,6 +112,42 @@ describe('DashboardCustomizer', () => {
     expect(wrapper.find('.dashboard-customize-frame .dashboard-customize-foot').exists()).toBe(
       false
     )
+
+    wrapper.unmount()
+  })
+
+  it('shows uptime, memory usage, and goroutines under the system category', async () => {
+    const i18n = createI18n({
+      legacy: false,
+      locale: 'zh-CN',
+      messages,
+    })
+
+    const wrapper = mount(DashboardCustomizer, {
+      attachTo: document.body,
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          teleport: true,
+          transition: false,
+        },
+      },
+    })
+
+    await wrapper.get('.dashboard-customize-trigger').trigger('click')
+    await nextTick()
+
+    const tabs = wrapper.findAll('.dashboard-customize-tab')
+    await tabs[2]?.trigger('click')
+    await nextTick()
+
+    const visibleTitles = wrapper
+      .findAll('.dashboard-customize-item-title')
+      .map((node) => node.text())
+
+    expect(visibleTitles).toContain('运行时间')
+    expect(visibleTitles).toContain('内存使用')
+    expect(visibleTitles).toContain('协程数')
 
     wrapper.unmount()
   })

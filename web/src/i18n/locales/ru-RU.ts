@@ -1366,6 +1366,7 @@ export default mergeHarnessLocale('ru-RU', {
       newProfile: 'Новый профиль',
       acpPlainTitle: 'Локальные инструменты (ACP)',
       a2aPlainTitle: 'Удаленные агенты (A2A)',
+      genericA2ATitle: 'Универсальный удаленный агент A2A',
       loadFailed: 'Не удалось загрузить профили внешних агентов.',
       notAvailable: 'Недоступно',
       remoteAgent: 'Удаленный агент',
@@ -2288,6 +2289,9 @@ export default mergeHarnessLocale('ru-RU', {
       items: {
         ai_prompt_injection: {
           name: 'Защита от инъекций промптов',
+        },
+        sandbox_enabled: {
+          description: 'Проверить, выполняется ли код в песочнице.',
         },
       },
     },

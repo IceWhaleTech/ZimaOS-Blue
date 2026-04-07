@@ -29,8 +29,8 @@ func TestRegisterBuiltinToolsWithConfig_AppliesWebFetchConfig(t *testing.T) {
 	if GetWebQueryTool(registry) == nil {
 		t.Fatal("expected unified web_query tool to be registered")
 	}
-	if !registry.IsDisabled("web") {
-		t.Fatal("expected legacy web alias to be hidden")
+	if registry.Get("web") != nil {
+		t.Fatal("expected legacy web alias to be removed entirely")
 	}
 	if !tool.config.AllowPrivateHosts {
 		t.Fatal("expected AllowPrivateHosts to be applied")

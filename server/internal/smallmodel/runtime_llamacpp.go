@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,7 @@ type LlamaCppRuntimeOptions struct {
 	MaxParallel   int
 	BatchWindow   time.Duration
 	BatchMaxSize  int
+	AutoDownload  bool
 	CLIPath       string
 	Mode          string
 	ServerURL     string
@@ -81,7 +83,7 @@ type LlamaCppRuntime struct {
 	httpClient *http.Client
 	cgoOnce    sync.Once
 	cgoErr     error
-	ffiBackend *llamaCppFFIBackend
+	ffiBackend llamaCppDirectBackend
 
 	prefixMu        sync.Mutex
 	prefixEntries   map[string]*llamaPrefixEntry
@@ -92,6 +94,9 @@ type LlamaCppRuntime struct {
 	prefixEvictions atomic.Uint64
 
 	batcher *llamaBatchWindow
+
+	autoDownload   bool
+	runtimePackage *llamaCppRuntimePackageManager
 }
 
 var _ PrefixCachingRuntime = (*LlamaCppRuntime)(nil)
@@ -207,6 +212,7 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 		manager:             manager,
 		timeout:             timeout,
 		mode:                mode,
+		autoDownload:        opt.AutoDownload,
 		parallelSem:         make(chan struct{}, maxParallel),
 		configuredCLI:       cliPath,
 		configuredServerURL: serverURL,
@@ -221,6 +227,10 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 		httpClient: &http.Client{
 			Timeout: 90 * time.Second,
 		},
+	}
+	if manager != nil {
+		dataDir := filepath.Dir(filepath.Dir(manager.ModelDir()))
+		rt.runtimePackage = newLlamaCppRuntimePackageManager(dataDir)
 	}
 	if batchWindow > 0 && batchMaxSize > 1 {
 		rt.batcher = newLlamaBatchWindow(batchWindow, batchMaxSize)
@@ -385,31 +395,35 @@ func (r *LlamaCppRuntime) Generate(ctx context.Context, req GenerateRequest) (*G
 		if err := r.ensureCGOBackend(); err != nil {
 			return nil, ErrNotReady
 		}
-		fallthrough
 	case LlamaCppModeFFI:
-		if err := r.ensureFFIBackend(); err != nil {
+		if text, err := r.tryGenerateViaFFI(runCtx, prompt, maxTokens, temperature, req.Images); err == nil && strings.TrimSpace(text) != "" {
+			return &GenerateResponse{Text: strings.TrimSpace(text)}, nil
+		} else if r.resolveBackend() == LlamaCppModeFFI && errors.Is(err, ErrNotReady) {
 			return nil, ErrNotReady
 		}
-		fallthrough
-	default:
-		// server mode with CLI fallback.
-		text, err := r.dispatchServerTask(runCtx, func(execCtx context.Context) (string, error) {
-			return r.generateViaServer(execCtx, prompt, maxTokens, temperature, req.Images)
-		})
-		if err == nil && strings.TrimSpace(text) != "" {
+	}
+	if r.shouldTryAutoFFI() {
+		if text, err := r.tryGenerateViaFFI(runCtx, prompt, maxTokens, temperature, req.Images); err == nil && strings.TrimSpace(text) != "" {
 			return &GenerateResponse{Text: strings.TrimSpace(text)}, nil
 		}
-		cliText, cliErr := r.runWithParallelSlot(runCtx, func(execCtx context.Context) (string, error) {
-			return r.generateViaCLI(execCtx, prompt, maxTokens, temperature, req.Images)
-		})
-		if cliErr == nil && strings.TrimSpace(cliText) != "" {
-			return &GenerateResponse{Text: strings.TrimSpace(cliText)}, nil
-		}
-		if errors.Is(cliErr, ErrNotReady) {
-			return nil, ErrNotReady
-		}
-		return nil, fmt.Errorf("llama.cpp generation failed (server=%v, cli=%v)", err, cliErr)
 	}
+	// server mode with CLI fallback.
+	text, err := r.dispatchServerTask(runCtx, func(execCtx context.Context) (string, error) {
+		return r.generateViaServer(execCtx, prompt, maxTokens, temperature, req.Images)
+	})
+	if err == nil && strings.TrimSpace(text) != "" {
+		return &GenerateResponse{Text: strings.TrimSpace(text)}, nil
+	}
+	cliText, cliErr := r.runWithParallelSlot(runCtx, func(execCtx context.Context) (string, error) {
+		return r.generateViaCLI(execCtx, prompt, maxTokens, temperature, req.Images)
+	})
+	if cliErr == nil && strings.TrimSpace(cliText) != "" {
+		return &GenerateResponse{Text: strings.TrimSpace(cliText)}, nil
+	}
+	if errors.Is(cliErr, ErrNotReady) {
+		return nil, ErrNotReady
+	}
+	return nil, fmt.Errorf("llama.cpp generation failed (server=%v, cli=%v)", err, cliErr)
 }
 
 func (r *LlamaCppRuntime) Prefill(ctx context.Context, req PrefillRequest) (*PrefillResult, error) {
@@ -755,26 +769,51 @@ func (r *LlamaCppRuntime) readinessState() (string, string) {
 		if err := r.ensureCGOBackend(); err != nil {
 			return "llama_cpp_cgo_unavailable", err.Error()
 		}
-		fallthrough
 	case LlamaCppModeFFI:
+		if r.runtimePackage != nil {
+			if dir, ok := r.runtimePackage.readyLibraryDir(); ok && strings.TrimSpace(dir) != "" {
+				r.runtimePackage.applyRuntimeEnv()
+			} else if r.autoDownload {
+				r.runtimePackage.WarmupAsync()
+				if r.runtimePackage.isDownloading() {
+					return "llama_cpp_runtime_downloading", "llama.cpp runtime package is downloading"
+				}
+			}
+		}
 		if err := r.ensureFFIBackend(); err != nil {
 			return "llama_cpp_ffi_unavailable", err.Error()
 		}
-		fallthrough
-	default:
-		if r.configuredServerURL != "" {
-			if _, err := normalizeServerURL(r.configuredServerURL); err != nil {
-				return "llama_cpp_server_url_invalid", err.Error()
-			}
-			return "ready", ""
-		}
-		if _, err := r.resolveServerBinary(); err != nil {
-			if _, cliErr := r.resolveCLIPath(); cliErr != nil {
-				return "llama_cpp_server_or_cli_not_found", fmt.Sprintf("%v; %v", err, cliErr)
-			}
+		return "ready", ""
+	}
+	if r.configuredServerURL != "" {
+		if _, err := normalizeServerURL(r.configuredServerURL); err != nil {
+			return "llama_cpp_server_url_invalid", err.Error()
 		}
 		return "ready", ""
 	}
+	if r.runtimePackage != nil {
+		if dir, ok := r.runtimePackage.readyLibraryDir(); ok && strings.TrimSpace(dir) != "" {
+			r.runtimePackage.applyRuntimeEnv()
+		}
+		if _, ok := r.runtimePackage.readyPath("llama-server"); ok {
+			return "ready", ""
+		}
+		if _, ok := r.runtimePackage.readyPath("llama-cli"); ok {
+			return "ready", ""
+		}
+		if r.autoDownload {
+			r.runtimePackage.WarmupAsync()
+			if r.runtimePackage.isDownloading() {
+				return "llama_cpp_runtime_downloading", "llama.cpp runtime package is downloading"
+			}
+		}
+	}
+	if _, err := r.resolveServerBinary(); err != nil {
+		if _, cliErr := r.resolveCLIPath(); cliErr != nil {
+			return "llama_cpp_server_or_cli_not_found", fmt.Sprintf("%v; %v", err, cliErr)
+		}
+	}
+	return "ready", ""
 }
 
 func (r *LlamaCppRuntime) resolveBackend() LlamaCppMode {
@@ -822,6 +861,13 @@ func (r *LlamaCppRuntime) ensureFFIBackend() error {
 	if r == nil {
 		return fmt.Errorf("nil runtime")
 	}
+	if r.runtimePackage != nil {
+		if dir, ok := r.runtimePackage.readyLibraryDir(); ok && strings.TrimSpace(dir) != "" {
+			r.runtimePackage.applyRuntimeEnv()
+		} else if r.autoDownload {
+			r.runtimePackage.WarmupAsync()
+		}
+	}
 	r.serverMu.Lock()
 	if r.ffiBackend == nil {
 		r.ffiBackend = newLlamaCppFFIBackend()
@@ -829,6 +875,63 @@ func (r *LlamaCppRuntime) ensureFFIBackend() error {
 	backend := r.ffiBackend
 	r.serverMu.Unlock()
 	return backend.EnsureLoaded()
+}
+
+func (r *LlamaCppRuntime) shouldTryAutoFFI() bool {
+	if r == nil {
+		return false
+	}
+	if r.mode != LlamaCppModeAuto {
+		return false
+	}
+	if runtime.GOOS != "darwin" {
+		return false
+	}
+	if strings.TrimSpace(r.configuredServerURL) != "" {
+		return false
+	}
+	return true
+}
+
+func (r *LlamaCppRuntime) tryGenerateViaFFI(
+	ctx context.Context,
+	prompt string,
+	maxTokens int,
+	temperature float64,
+	images []ImageInput,
+) (string, error) {
+	if r.resolveBackend() != LlamaCppModeFFI {
+		if err := r.ensureFFIBackend(); err != nil {
+			return "", ErrNotReady
+		}
+	}
+	return r.runWithParallelSlot(ctx, func(execCtx context.Context) (string, error) {
+		text, err := r.generateViaFFI(execCtx, prompt, maxTokens, temperature, images)
+		if errors.Is(err, errLlamaCppDirectUnsupported) {
+			return "", err
+		}
+		return text, err
+	})
+}
+
+func (r *LlamaCppRuntime) generateViaFFI(
+	ctx context.Context,
+	prompt string,
+	maxTokens int,
+	temperature float64,
+	images []ImageInput,
+) (string, error) {
+	if r == nil || r.ffiBackend == nil {
+		return "", ErrNotReady
+	}
+	return r.ffiBackend.Generate(ctx, llamaCppDirectGenerateRequest{
+		ModelPath:   r.manager.ModelPath(),
+		MMProjPath:  r.manager.MMProjPath(),
+		Prompt:      prompt,
+		MaxTokens:   maxTokens,
+		Temperature: temperature,
+		Images:      images,
+	})
 }
 
 func (r *LlamaCppRuntime) generateViaServer(
@@ -1249,6 +1352,12 @@ func (r *LlamaCppRuntime) resolveCLIPath() (string, error) {
 	if r.resolvedCLI != "" {
 		return r.resolvedCLI, nil
 	}
+	if r.runtimePackage != nil {
+		if p, ok := r.runtimePackage.readyPath("llama-cli"); ok {
+			r.resolvedCLI = p
+			return p, nil
+		}
+	}
 
 	candidates := make([]string, 0, 4)
 	if cli := strings.TrimSpace(r.configuredCLI); cli != "" {
@@ -1286,6 +1395,13 @@ func (r *LlamaCppRuntime) resolveServerBinary() (string, error) {
 	defer r.resolveMu.Unlock()
 	if r.resolvedServerBin != "" {
 		return r.resolvedServerBin, nil
+	}
+	if r.runtimePackage != nil {
+		if p, ok := r.runtimePackage.readyPath("llama-server"); ok {
+			r.resolvedServerBin = p
+			r.resolveErrorCached = nil
+			return p, nil
+		}
 	}
 	if r.resolveErrorCached != nil {
 		return "", r.resolveErrorCached

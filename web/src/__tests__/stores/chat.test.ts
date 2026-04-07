@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { parseToolResults, useChatStore } from '@/stores/chat'
 import { i18n } from '@/i18n'
+import caESMessages from '@/i18n/locales/ca-ES'
 import {
   conversationApi,
   messageApi,
@@ -126,13 +127,11 @@ function applyCommandStatePatch(
   return next
 }
 
-function makeBootstrapResponse(
-  conversationId: string,
-  overrides: Record<string, unknown> = {}
-) {
+function makeBootstrapResponse(conversationId: string, overrides: Record<string, unknown> = {}) {
   return {
     data: {
-      command_state: commandStateByConversation.get(conversationId) ?? makeCommandState(conversationId),
+      command_state:
+        commandStateByConversation.get(conversationId) ?? makeCommandState(conversationId),
       active_stream: {
         conversation_id: conversationId,
         active: false,
@@ -177,11 +176,13 @@ describe('Chat Store', () => {
     vi.mocked(conversationApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
     vi.mocked(messageApi.delete).mockResolvedValue({ data: { success: true, deleted: 0 } } as never)
-    vi.mocked(conversationApi.patchCommandState).mockImplementation(async (conversationId, patch) => {
-      return {
-        data: applyCommandStatePatch(conversationId, patch),
-      } as never
-    })
+    vi.mocked(conversationApi.patchCommandState).mockImplementation(
+      async (conversationId, patch) => {
+        return {
+          data: applyCommandStatePatch(conversationId, patch),
+        } as never
+      }
+    )
   })
 
   describe('fetchConversations', () => {
@@ -226,7 +227,9 @@ describe('Chat Store', () => {
 
       expect(bootstrapCalls).toHaveLength(1)
       expect(
-        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+        mocks.apiGet.mock.calls.some(([path]) =>
+          String(path).includes('/ask-user-question/pending')
+        )
       ).toBe(false)
       expect(
         mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
@@ -246,7 +249,9 @@ describe('Chat Store', () => {
 
       expect(bootstrapCalls).toHaveLength(2)
       expect(
-        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+        mocks.apiGet.mock.calls.some(([path]) =>
+          String(path).includes('/ask-user-question/pending')
+        )
       ).toBe(false)
       expect(
         mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
@@ -258,14 +263,16 @@ describe('Chat Store', () => {
 
       await store.checkPendingQuestion()
 
-      expect(
-        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))
-      ).toBe(false)
+      expect(mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))).toBe(
+        false
+      )
       expect(
         mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/pending-confirmations'))
       ).toBe(false)
       expect(
-        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+        mocks.apiGet.mock.calls.some(([path]) =>
+          String(path).includes('/ask-user-question/pending')
+        )
       ).toBe(false)
     })
   })
@@ -476,7 +483,9 @@ describe('Chat Store', () => {
       )
       expect(store.awaitingConfirmation).toBe(true)
       expect(
-        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/ask-user-question/pending'))
+        mocks.apiGet.mock.calls.some(([path]) =>
+          String(path).includes('/ask-user-question/pending')
+        )
       ).toBe(false)
       expect(
         mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
@@ -547,7 +556,6 @@ describe('Chat Store', () => {
 
       const store = useChatStore()
       await store.selectConversation('1')
-
     })
 
     it('does not reuse another conversation command state when bootstrap omits it', async () => {
@@ -782,9 +790,9 @@ describe('Chat Store', () => {
       expect(
         mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/exec/approvals/pending'))
       ).toBe(false)
-      expect(
-        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))
-      ).toBe(false)
+      expect(mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))).toBe(
+        false
+      )
       expect(store.pendingExecApproval).toBeNull()
     })
 
@@ -825,9 +833,9 @@ describe('Chat Store', () => {
 
       await store.checkPendingApprovals()
 
-      expect(
-        mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))
-      ).toBe(false)
+      expect(mocks.apiGet.mock.calls.some(([path]) => String(path).includes('/bootstrap'))).toBe(
+        false
+      )
       expect(store.pendingApproval).toBeNull()
     })
 
@@ -2044,6 +2052,64 @@ describe('Chat Store', () => {
       ).toContain('模型: claude-haiku-4-5')
 
       streamOptions.onComplete?.({ delta: '', done: true })
+      resolveStream?.()
+      await sendPromise
+      i18n.global.locale.value = 'en-US'
+    })
+
+    it('uses bundled locale process trace copy without manual overrides', async () => {
+      i18n.global.setLocaleMessage('ca-ES', caESMessages as never)
+      i18n.global.locale.value = 'ca-ES'
+
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Localized progress',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:00:00.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list).mockResolvedValue({
+        data: [
+          {
+            id: 'msg-user-1',
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: 'Need a decision',
+            created_at: '2026-03-11T00:00:00.000Z',
+          },
+        ],
+      } as never)
+
+      let resolveStream: (() => void) | null = null
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, _options: any) => {
+        await new Promise<void>((resolve) => {
+          resolveStream = resolve
+        })
+      })
+
+      const sendPromise = store.sendMessage('[CONTINUE]')
+      await settleAsyncWork()
+
+      expect(store.processTrace.map((item) => item.label)).toEqual([
+        'Sol·licitud preparada',
+        'Sol·licitud enviada',
+        'En espera de resposta',
+      ])
+      expect(store.processTrace[0]?.detail).toContain('Missatge: Continua la resposta anterior')
+      expect(store.processTrace[0]?.detail).toContain('Proveïdor: Auto')
+      expect(store.processTrace[0]?.detail).toContain('Model: Auto')
+      expect(store.processTrace[1]?.detail).toBe(
+        "S'està esperant que el servidor accepti la sol·licitud i iniciï la resposta."
+      )
+      expect(store.processTrace[2]?.detail).toBe(
+        "La sol·licitud ha estat acceptada. S'està esperant la primera sortida visible."
+      )
+
       resolveStream?.()
       await sendPromise
       i18n.global.locale.value = 'en-US'

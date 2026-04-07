@@ -257,6 +257,9 @@ func TestSkillVisibility_GetSkillAcceptsHyphenAliasForUnderscoreInstall(t *testi
 		t.Fatalf("scan skills: %v", err)
 	}
 	handler.SetLocalScanner(scanner)
+	if _, err := handler.ensureInstalledSkillRegistered("workspace_note"); err != nil {
+		t.Fatalf("ensureInstalledSkillRegistered: %v", err)
+	}
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodGet, "/skills/word-docx", nil)
@@ -403,6 +406,66 @@ version: 1.0.0
 	}
 
 	t.Fatal("expected ask skill in skills list")
+}
+
+func TestSkillVisibility_ListSkillsMarksManagedInstalledSkillWritable(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	workspaceDir := t.TempDir()
+	handler.SetSkillsDir(filepath.Join(workspaceDir, ".claude", "skills"))
+
+	skillDir := filepath.Join(handler.skillsDir, "workspace_note")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: workspace_note
+description: Workspace note skill
+version: 1.0.0
+interaction_mode: stateless
+user_invocable: true
+---
+
+# Workspace Note
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListSkills(c); err != nil {
+		t.Fatalf("ListSkills failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var skills []map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &skills); err != nil {
+		t.Fatalf("failed to unmarshal skills: %v", err)
+	}
+
+	for _, entry := range skills {
+		if entry["id"] != "workspace_note" {
+			continue
+		}
+		if writable, ok := entry["writable"].(bool); !ok || !writable {
+			t.Fatalf("expected managed installed skill to be writable, got %#v", entry["writable"])
+		}
+		return
+	}
+
+	t.Fatal("expected workspace_note skill in skills list")
 }
 
 func TestSkillVisibility_GetSkillResolvesPeerAgentsRootWhenManagedDirIsClaude(t *testing.T) {

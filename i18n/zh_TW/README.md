@@ -50,109 +50,39 @@
 
 ## 簡介
 
-受 Clawdbot 啟發，我們相信**個人運算的未來**將由**多元化、本地優先的 AI 代理**在邊緣端塑造。
+受 Clawdbot 啟發，我們相信，個人運算的未來將由運行在邊緣端、形態多樣且本地優先的 AI Agent 所塑造。
 
-**ZimaOS Blue 是我們的答案** — 一個完全**開源、可審計、生產就緒的代理執行環境與工具包**，讓你零摩擦地部署私有、自託管的代理。
+ZimaOS Blue 就是我們的答案：一個完全開源、可稽核、供應商中立、可直接投入生產的 Agent Runtime 與工具套件，讓你幾乎零摩擦地交付私有、自託管的 Agent。
 
-專為勇於**自由創造或精心打造自己代理**的開發者而生，Blue **為效能而設計**：以 **Go** 編寫，記憶體佔用低至 10 MB。可在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS** 上運行 — 只要有電源就能啟動。
+面向想隨心折騰或親手打造 Agent 的開發者，Blue 從一開始就為效能而生：使用 Go 編寫，記憶體占用最低可至 19 MB。無論是 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows 還是 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS，只要能通電的地方，它都能跑起來。
 
-![](../../docs/assets/features.png)
-
-## 亮點
-
-### 本地優先設計與自動模型存取
-
-更進一步：原生支援 **20+ 即時通訊平台**、**語音驅動**介面實現自然的上下文感知對話、搭配 IDE 掃描的**零配置模型切換**，以及 SOUL 分層人格系統。
+## 為什麼 Blue
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
 
-### 快速、輕量
+### 純 Go，任意裝置
 
-以 Go 原生編譯 — 無直譯器、無虛擬機、無額外開銷。從伺服器到桌面裝置，靜默運行於一切設備上。
+100% Go，靜態二進位，開箱即可交叉編譯到 5 個目標（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`、`linux/arm64`、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`、`darwin/arm64`、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`）。不需要 Node 執行環境、不需要 Python，也不需要容器。把它丟到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、老舊 x86 路由器，或 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac 上，它就能直接跑。之後你再疊加自己的 UI、邏輯與 Agent 技能就好：一套程式碼庫，覆蓋每個平台。
 
-| 指標 | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|--------|-------------------|------------------------|
-| `help` 冷啟動 / 熱啟動 | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` 執行時間（最佳 3 次） | **< 0.01 s** | 5.98 s |
-| `help` 峰值 RSS | **~10 MB** | ~394 MB |
-| `status` 峰值 RSS | **~15 MB** | ~1.52 GB |
-| `gateway run` 首次冷啟動閒置記憶體 | **~19 MB** | - |
-| 執行期依賴 | **無** | Node.js 18+ |
+### 開箱即用，立即可用
 
-> 上方的 CLI 行對應的是同一台主機上的歷史 `help` / `status` 微基準。新增的 `gateway run` 行表示更貼近真實使用情境的冷啟動閒置記憶體，基於 macOS arm64 上啟動穩定後的 `vmmap Physical footprint` 測得。2026 年 2-4 月。
+大家都想要簡單、可靠，且在需要時能夠擴展的工具。最好是開箱就能用，讓你把注意力放回真正想打造的東西。
 
-### 純 Go，任何裝置
+這不是什麼新哲學。打造 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS 的，正是同樣的理念：簡單、可靠、不擋路。Blue 只是把這套理念延伸到了 Agent 技術棧。
 
-100% Go，靜態二進位檔。**開箱即可交叉編譯至 5 個目標平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。無需 Node 執行環境、無需 Python、無需容器。放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、舊的 x86 路由器或 Mac 上 — 直接運行。**然後疊加你自己的 UI、邏輯和代理技能** — 一套程式碼，所有平台。
+### 為真實生活而設計，堅持資料留在本地
 
-### 安全與治理
+從可輸出完整 HTML 報告的深度研究，到 OCR、PDF、瀏覽器自動化與文件轉換，Blue 都能在不把資料送上雲端的前提下處理複雜的真實工作流。語音喚醒、STT/TTS、Talk Mode，以及對本地推理的支援，讓日常互動更即時、更私密，也始終可用。
 
-內建側車 API 代理，具備縱深防禦：
-- **沙箱執行** – 所有工具呼叫在隔離環境中運行。
-- **提示注入防禦** – 7+ 種內建攔截策略。
-- **會話審計** – 完整的會話監控，每次互動皆可追溯。
-- **RBAC 與 WebAuthn** – 細粒度存取控制搭配無密碼認證。
-
-## 為何選擇 Blue
-
-我們相信**下一代個人運算**擁抱 LLM — 但**可控、可審計**的代理仍是個人與團隊的基石。**Blue 提供**：
-- **全面的核心** – 進階模型管理、即時通訊整合、增強人格，以及為日常互動（耳機、語音、智慧眼鏡）調校的自然語言介面。
-- **本地優先、超輕量、跨裝置** – 無需高階硬體。任何能運算的裝置都能運行。
-- **安全且可審計** – 會話審計、沙箱、權限控制，以及作為應用層防火牆的內建 API 代理 — 每一個位元組的進出皆可見。
-
-![](../../docs/assets/design_principle.png)
-
-我們最小化樣板程式碼，讓你**專注於真正重要的事**。秉持 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS 的設計哲學**，Blue 提供：
-- **一鍵從零到一** – 即時部署，無需複雜配置。
-- **快速原型開發** – 自由創造或精心打造場景專屬的工具、互動和應用套件。
-- **全球就緒** – **世界很大**，不以英語為預設。**20+ 種語言，原生支援**，無障礙。
-- **開放模型生態** – 無供應商鎖定。自帶模型。
-
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| 供應商 | 模型 | 類型 |
-|----------|--------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | 雲端 |
-| Anthropic | Claude 4.5, Claude 4 | 雲端 |
-| Google | Gemini 2.5, Gemini 2.0 | 雲端 |
-| Ollama | Llama, Qwen, Gemma, Phi 等 | 本地 |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | 雲端 |
-| Grok | Grok-3, Grok-3-mini | 雲端 |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | 雲端 |
-| GLM | GLM-4, GLM-4-Flash | 雲端 |
-| Moonshot | Moonshot-v1 | 雲端 |
-| MiniMax | abab6.5, abab5.5 | 雲端 |
-| Venice | Llama, Mistral（隱私優先） | 雲端 |
-| AWS Bedrock | Claude, Llama, Titan | 雲端 |
-| Azure | 透過 Azure 使用 OpenAI 模型 | 雲端 |
-| OpenRouter | 100+ 聚合模型 | 雲端 |
-| AIHubMix | 多供應商聚合器 | 雲端 |
-| Codex | OpenAI Codex | 雲端 |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | 雲端 |
-| 自訂 | 任何 OpenAI / Anthropic / Gemini 相容 API | 雲端 / 本地 |
-
-</details>
-
-### 支援的 IDE
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
-
-## 快速開始
+## 快速入門
 
 ### 選項 1：下載桌面應用程式
 
-取得原生應用程式 — 無需依賴、無需編譯。內建試用配置，秒級上手 — 透過遠端連線即刻開聊，無需配置機器人。真正的開箱即用。
+取得原生應用程式，無需依賴、無需編譯。內建試用配置，幾秒就能完成上手；透過遠端連線即可立刻開始聊天，不需要額外設定 bot。真正的開箱即用體驗。
 
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下載 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下載DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**：[下載安裝程式](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### 選項 2：安裝腳本
@@ -167,11 +97,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### 選項 3：從原始碼建置
+### 選項 3：從原始碼構建
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -184,126 +115,124 @@ sh build.sh
 .\build.bat
 ```
 
-> **注意：** Windows 建置需要 [MinGW-w64](https://www.mingw-w64.org/)（gcc）和 [CMake](https://cmake.org/) 來編譯原生 C 相依套件（espeak-ng、whisper.cpp、opus）。請確保 `gcc` 和 `cmake` 已加入 `PATH` 環境變數中。
+> **注意：** Windows 版本需要：
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) 和 [CMake](https://cmake.org/) 用於本機 C 依賴項（espeak-ng、whisper.cpp、opus、kokoro、onnx）
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) 用於系統函式庫（winmm 等）
+>
+> 確保`gcc`、`cmake` 位於您的`PATH`。
 
-## 架構概覽
+## 架構概述
 
-<details>
-<summary>
-<img src="../../docs/assets/architecture.png" alt="Architecture" />
-</summary>
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### 套件地圖（`server/internal/`）
+更進一步：它為 **20 多個 IM 平台**提供本機支持，**語音驅動**介面可實現自然的上下文感知對話，透過 IDE 掃描進行**零配置模型切換**。
 
-| 層級 | 套件 |
-|-------|----------|
-| 閘道層 | bootstrap, server, gateway |
-| 代理層 | proxy, connection, streaming, resilience |
-| 供應商層 | providerpool, providers, llm |
-| 裁剪層 | pruner (detector, segmenter, bm25, pipeline, cache) |
-| 智能體層 | context, tools, personality, humanizer |
-| 記憶層 | memory, embedding, kvstore |
-| 頻道層 | channel, autoreply, i18n |
-| 安全層 | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| 語音層 | voice, tts, stt, speech |
-| 觀測層 | metrics, companion, profiling, leakdetect |
-| 外掛層 | plugin, skill, skillstore |
-| 整合層 | browser, cron, workflow, formfiller, tunnel, crawler |
-| 排程層 | scheduler, worker, workerpool, pool |
-| 核心層 | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| 系統層 | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| 多租戶層 | tenant, user, session, preview |
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-</details>
+## 如何建構
 
-### 資料流
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**聊天請求（代理熱路徑）**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+> ⚠️ [!IMPORTANT]
+>
+> 如果你打算繼續在 Blue 之上做調優或 vibe coding，不要把幾次看起來不錯的聊天當成發版依據。任何會影響路由、執行行為、工具介面、預算控制、模型選擇或執行框架的改動，都應該透過 Blue Harness 驗證，而不是靠零散抽查。
+>
+> 在這件事上，Blue 只該遵循一條簡單規則：先看資料，先過 gate，最後再 cut over。實際操作中，這意味著先更新對應的 Harness 資料集或評測規格，再在整個驗證過程中維持同一個穩定的 `candidate_id`，這樣 selector、execution、budget 和 readiness 報告描述的才會是同一個候選版本，而不是四次互不相干的執行。
 
-**頻道訊息流**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+### 推薦的 Harness 工作流
 
-**語音管線**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+1. 執行 `blue harness selector verify`
+2. 執行 `blue harness execution verify`
+3. 重用 selector 的 eval 結果執行 `blue harness budget gate`
+4. 最後執行 `blue harness cutover-readiness`
 
-**Harness 評測流**
-```
-Quick Eval / Harness API → 評測控制器 → 執行群組調度器
-  → Agent Task 或 Eval Driver → Tools + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector Gates
-  → Cutover Readiness / 候選決策
-```
+對於本地迭代、夜間驗證或 CI 證據收集，優先使用 `python3 scripts/cutover_candidate_pipeline.py`。它會在同一個共享 candidate 下依序執行 selector -> execution -> budget -> readiness 全流程，讓結果更容易比較、審閱與 cut over。
 
+### 額外護欄
 
-## 使用方式
+| 關注點 | 需要留意什麼 |
+|------|----------------|
+| 基線穩定性 | 保持 baseline、資料集版本和 `candidate_id` 穩定，否則對比會漂移，結果也不可信。 |
+| 真實建置產物 | 在執行 Harness 前，先重新建置受影響的二進位或前端產物，否則你驗證的可能是舊行為，而不是目前的改動。 |
+| 路由註冊 | 如果前後端一起改動，在透過 UI 行為判斷功能前，先確認所有新的後端路由都已正確註冊，因為路由沒註冊常常看起來像邏輯 bug，實際上只是 `404`。 |
+| 發版判斷 | 只有當 Harness 沒有顯示出明顯回歸，且 cutover-readiness 確認候選版本確實可以切換時，這輪調優才算真正準備好。 |
 
-![](../../docs/assets/handcraft.png)
+簡而言之，在 Blue 之上做調優，不能只靠「幾次聊天感覺更好了」。你需要把候選版本放進 Harness，收集可比較的證據，再由 gate 和 readiness 的結果來決定這次改動是否真的安全可留。
 
-## 里程碑時間線
+## 功能特性
 
-<details>
-<summary>
-<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
-</summary>
+| 功能 | 提供能力 |
+|--------------------|--------------------|
+| 高可用 Web 擷取與瀏覽器運行時 | Blue **最鮮明的差異化能力**之一。它整合了用於搜尋、讀取、擷取與爬取的 **四條 Web 存取路徑**；在 HTTP、代理擷取與瀏覽器工作階段之間保留 **三層回退機制**；透過挑戰偵測、Cookie/工作階段重用、隱身與瀏覽器接管處理 **反機器人頁面**；並可在 **三種瀏覽器引擎** 之間路由：`lightpanda`、託管 Chromium，以及中繼/本地 Chromium。 |
+| 三合一研究運行時 | **一個公開研究入口** 可路由到 `deep_research`、`analyze` 和 `ui_review`。同一套發現與證據棧隨後可產出 **引用優先的研究結果**、**邊界清晰的報告**，以及 **結構化的 UI/UX/無障礙評審**。 |
+| Harness 運行時、評估與演化框架 | 讓評估成為貫穿開發、訓練與生產的 **運行時原語**。Harness 覆蓋 **回歸與 smoke 檢查**、評分、基線、報告與運行時驗證，並把同一份證據繼續用於 **技能演化**、後續評估、升級或回滾，以及 `AGENTS.md` 或指令提案審查。 |
+| 多模態原生能力優先運行時 | 讓 **語音、OCR、PDF、瀏覽器任務、文件轉換、結構化表單填寫、媒體處理與媒體生成** 優先走 **原生與本地路徑**，僅在確有必要時才做 **模型路由**。 |
+| 安全與治理 | 包含 **沙箱執行**、**提示注入防禦**、**工作階段審計**、權限、**RBAC**、**WebAuthn**、運行護欄，以及 **技能安全掃描**。 |
+| LLM Wiki 與知識空間 | 將記憶、研究和運行時輸出整理成 **類 Wiki 的知識介面**，包含 **摘要頁**、索引、**反向連結**、**新鮮度** 與 **封存工作流**。 |
+| 技能商店與市場 | 提供 **內建技能發現**、策展、同步與 **本地掃描**，讓擴充能力 **從第一天起就可用**。 |
+| 生產級 Provider Pool | 提供具備 **健康檢查**、**自動故障切換**、**熔斷器** 與 **Provider 競速** 的真實 Provider 池，用於支撐長時運行工作負載。 |
+| 內建本地小模型運行時 | 內建 **`Qwen3.5-0.8B` + `llama.cpp`** 運行時，用於 **本地短問答**、圖像辨識、工具路由、摘要、**上下文壓縮** 與 **文件預處理**。 |
+| 長時運行可靠性 | 將 **OTA 更新**、**備份與還原**、**設定熱重載** 與 **故障後恢復** 視為 **內建運行能力**。 |
 
-| 版本 | 重點 | 核心價值 | 狀態 |
-|---------|-------|-----------|--------|
-| v0.1 | Go 執行環境核心 | 穩定核心，24 小時運行 | Done |
-| v0.2 | 核心能力 | 最小可用，LLM 整合 | Done |
-| v0.3 | NAS 整合 | NAS 原生，systemd 支援 | Done |
-| v0.4 | 外掛系統 | 可擴展，安全基礎 | Done |
-| v0.5 | 產品基線 | 生產就緒，文件完善 | Done |
-| v0.6 | 訊息頻道 | 多頻道支援 | Done |
-| v0.7 | 安全性 | OIDC、MFA、審計 | Done |
-| v0.8 | 效能 | 最佳化、快取、基準測試 | Done |
-| v0.9 | 生態系統 | 多租戶、瀏覽器自動化、語音 | Done |
-| v0.10.0 | CLI 整合 | CC CLI 整合、偵測、自動更新 | Done |
-| v0.10.1 | 指標監控 | API 統計、Token 追蹤、TTFT | Done |
-| v0.10.2 | CLI 可靠性 | 程序生命週期、錯誤恢復 | Done |
-| v0.10.3 | CLI 整合 | 設定精靈、供應商自動偵測 | Done |
-| v0.10.4 | Tauri 打包 | 桌面應用、系統匣 | Done |
-| v0.10.5 | API 代理側車 | 路由選擇、提示防護、用量統計 | Done |
-| v0.10.6 | 供應商池 | 多供應商路由、健康檢查、故障轉移 | Done |
-| v0.10.7 | 預覽模式 | 免認證存取、功能閘控 | Done |
-| v0.10.8 | 技能商店 | 技能商店基礎設施、頻道驗證 | Done |
-| v0.10.9–10 | 使用者管理 | 子使用者、頁面級權限 | Done |
-| v0.10.13–14 | 安全與技能 | 安全頁面、技能商店重新設計 | Done |
-| v0.10.15 | 聊天增強 | 聊天體驗、訊息管線 | Done |
-| v0.10.16 | 語音模組 | Sherpa TTS/ASR、eSpeak、供應商切換 | Done |
-| v0.10.17 | 遠端存取 | Ngrok、Cloudflare 隧道、ACME 憑證 | Done |
-| v0.10.18–20 | 效能衝刺 | 啟動/聊天效能、上下文快取 | Done |
-| v0.10.21–22 | 提示與 DingTalk | 系統提示、DingTalk 頻道 | Done |
-| v0.10.23 | OTA 更新 | OTA 更新系統 | Done |
-| v0.10.24 | 頻道升級 | 10 個頻道從存根升級 | Done |
-| v0.10.25 | CC Cache | 兩級快取（L1 記憶體 + L2 磁碟） | Done |
-| v0.10.26 | Humanizer | 回應人性化管線 | Done |
-| v0.10.27 | 上下文裁剪器 | 代碼場景節省 54% token（SWE-bench 官方數據），通用文檔節省 46–47%（本地 IR），BM25 評分、分段 | Done |
-| v0.10.28 | 記憶服務 | 漸進式搜尋、雙寫後端 | Done |
+## 里程碑時間表
 
-</details>
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
 
-## 社群與支援
+|日期 |版本 |關鍵字/特點|
+|------|---------|---------------------|
+| 2026 年 1 月 26 日 | `v0.1–v0.9` | Go 運行時間、插件系統、瀏覽器自動化 |
+| 2026 年 1 月 27 日至 28 日 | `v0.9.0–v0.9.2` |瀏覽器任務視圖，Blue Companion，Smart Form Filler |
+| 2026 年 1 月 29 日至 31 日 | `v0.10.0–v0.10.9` | Claude Code CLI、API Proxy、UI重構 |
+| 2026 年 2 月 1 日至 3 日 | `v0.10.1–v0.10.22` |指標、遠端存取、上下文快取 |
+| 2026 年 2 月 5 日至 18 日 | `v0.10.25–v0.10.29` | i18n、CC 快取、發布管道 |
+| 2026 年 2 月 20 日至 25 日 | `v0.10.28–v0.10.29` |桌面載入程式、行動用戶體驗、記憶體重新設計 |
+| 2026 年 2 月 28 日至 3 月 2 日 | `v0.10.30` | Deep Research、技能重新排序、安全掃描 |
+| 2026 年 3 月 9 日至 18 日 | `v0.10.31` |儀表板大修、VoiceChat 重構、核准網站 |
+| 2026 年 3 月 19 日至 22 日 | `v0.10.32` | Harness 推出、成績單審核、網路搜尋 |
+| 2026 年 3 月 23 日至 25 日 | `v0.10.33` | Harness 群組、瀏覽器批准、技能市場 |
+| 2026 年 3 月 29 日至 30 日 | `v0.10.35` | Harness v3，瀏覽器中繼，上下文壓縮 |
+| 2026 年 3 月 31 日至 4 月 1 日 | `v0.10.36` |轉錄審核、Harness 覆蓋、工具解析 |
+| 2026 年 4 月 1 日 | `v0.10.37` |運行時強化、Skill+Exec 切換、恢復拋光 |
+| 2026 年 4 月 2 日至 5 日 | `v0.10.38` | GitHub 支援、市場完善、可靠性改善 |
+| 2026 年 4 月 6 日至 7 日 | `v0.10.39` |研究統一、演化表面、記憶減少 |
 
-- **問題回報**：[請在此提交錯誤與功能請求](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **討論交流**：[Discord](https://discord.gg/b3AgFDxe9v)
-- **關注我們**：[GitHub](https://github.com/IceWhaleTech)
+## 社區與支持
 
-## 授權條款
+- **問題**：[請在此提交錯誤和功能請求](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **討論**：[Discord](https://discord.gg/zwWbKA4S2)
+- **在 [GitHub](https://github.com/IceWhaleTech) 上關注我們**
 
-本專案採用 MIT 授權條款 — 詳見 [LICENSE](../../LICENSE) 檔案。我們信仰開源，並致力於回饋社群。
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
+
+## 許可證
+
+該項目根據 MIT 許可證獲得許可 - 有關詳細信息，請參閱 [LICENSE](../../LICENSE) 文件。我們相信開源並回饋社區。
 
 ## 貢獻者
 
-<p align="center">
-  由 <a href="https://github.com/IceWhaleTech">IceWhaleTech</a> 用心打造
-</p>
+感謝所有Blue 貢獻者：
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## 參考文獻
+
+1. **OpenClaw** — 本地優先的開源代理。率先透過通道適配器和工具呼叫將LLM連接到本機設備，直接啟發了Blue的代理程式執行時間架構。 https://github.com/openclaw/openclaw
+2. **MiroMind** — 具有證據支持的綜合的深度研究模式。塑造Blue的內建深度研究管道：規劃、並行檢索、重複證據刪除和HTML報告生成。 https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM 作為知識編譯器。重新建構法學碩士以建立持久的、不斷發展的知識空間，超越 RAG 的累積陷阱。
+4. **OpenSpace (HKUDS)** — 自我進化的技能引擎。基於 DAG 的框架，代理商可以從失敗中學習並獲得專業技能。 https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — 用於編碼代理程式的版本化 API 文件註冊表。解決座席幻覺和遺忘的會話知識。提供帶有註釋和回饋循環的精選、版本化文檔，將文檔轉變為自我改進的知識層。 https://github.com/andrewyng/context-hub
+6. **Notion** — 簡單、人性化且有意保持安靜。受到Notion 極簡主義精神的啟發，Blue 為網格帶來了溫暖。精緻的襯線與貼心的設計相結合，打造出一個有家的感覺的空間。 https://www.notion.com/about
+7. **Matrix** — 視覺靈感來自標誌性的數位雨美學。 Blue技術圖表的美學方向。
+8. **IceWhale** — 愛、死亡與機器人 S2E2「冰」。一個聚集在世界各地的集體，旨在突破網路巨頭的圍牆，抵制資料集中。冰鯨象徵著一個在邊緣共同建構主權工具的社群。
+9. **ZimaOS Blue** — 愛、死亡與機器人 S1E14「Zima Blue」。一個比喻：智能始於服務，並不斷發展以探索世界。 Blue 是智慧的代理人，根植於簡單，觸及深度。
+10. **ZimaOS** — 簡化、專注、開放的設計原則。 ZimaOS 和Blue 都堅信科技應該為用戶服務——30 秒內部署、在任何地方運作、保持供應商中立。 https://www.zimaspace.com/zimaos

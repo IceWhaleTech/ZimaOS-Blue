@@ -31,6 +31,7 @@ export interface Skill extends SkillContractMetadata {
   tags?: string[]
   enabled: boolean
   builtin: boolean
+  writable?: boolean
   inputs?: SkillParameter[]
   outputs?: SkillParameter[]
 }

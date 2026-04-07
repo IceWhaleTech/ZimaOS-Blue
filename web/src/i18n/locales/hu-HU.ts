@@ -1366,6 +1366,7 @@ export default mergeHarnessLocale('hu-HU', {
       newProfile: 'Új profil',
       acpPlainTitle: 'Helyi eszközök (ACP)',
       a2aPlainTitle: 'Távoli ügynökök (A2A)',
+      genericA2ATitle: 'Általános távoli A2A ügynök',
       loadFailed: 'Nem sikerült betölteni a külső ügynökprofilokat.',
       notAvailable: 'Nem elérhető',
       remoteAgent: 'Távoli ügynök',
@@ -2287,6 +2288,9 @@ export default mergeHarnessLocale('hu-HU', {
       items: {
         ai_prompt_injection: {
           name: 'Prompt injektálás védelem',
+        },
+        sandbox_enabled: {
+          description: 'Ellenőrizze, hogy a kódfuttatás sandboxban történik-e.',
         },
       },
     },

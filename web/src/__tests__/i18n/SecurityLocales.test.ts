@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
 import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
@@ -50,6 +52,35 @@ function collectLeafKeys(value: unknown, prefix = ''): string[] {
   }
   return keys
 }
+
+interface SecurityScannerItemDefinition {
+  id: string
+  name: string
+  description: string
+}
+
+function loadSecurityScannerItemDefinitions(): SecurityScannerItemDefinition[] {
+  const scannerSource = readFileSync(
+    resolve(process.cwd(), '../server/internal/security/scanner.go'),
+    'utf8'
+  )
+
+  return scannerSource
+    .split('SecurityScanItem{')
+    .slice(1)
+    .map((block) => {
+      const id = block.match(/ID:\s+"([^"]+)"/)?.[1]
+      const name = block.match(/Name:\s+"([^"]+)"/)?.[1]
+      const description = block.match(/Description:\s+"([^"]+)"/)?.[1]
+      if (!id || !name || !description) {
+        return null
+      }
+      return { id, name, description }
+    })
+    .filter((item): item is SecurityScannerItemDefinition => item !== null)
+}
+
+const securityScannerItemDefinitions = loadSecurityScannerItemDefinitions()
 
 describe('security locale compilation', () => {
   it('compiles every security and apiProxy string in every locale', () => {
@@ -247,6 +278,24 @@ describe('security locale compilation', () => {
     const enhancedReference = mergeHarnessLocale('en-US', localeModules[enUSPath]!.default)
     const localizedKeys = [
       'security.scan.detailMessages.sandbox_enabled',
+      'security.scan.items.auth_password_length.name',
+      'security.scan.items.auth_password_length.description',
+      'security.scan.items.auth_password_length.details.passed',
+      'security.scan.items.auth_password_length.details.warning',
+      'security.scan.items.auth_password_length.details.failed',
+      'security.scan.items.auth_token_expiration.name',
+      'security.scan.items.auth_token_expiration.description',
+      'security.scan.items.auth_token_expiration.details.passed',
+      'security.scan.items.auth_token_expiration.details.warningHours',
+      'security.scan.items.auth_token_expiration.details.warningTooLong',
+      'security.scan.items.auth_token_expiration.details.failedNotSet',
+      'security.scan.items.auth_mfa_available.name',
+      'security.scan.items.auth_mfa_available.description',
+      'security.scan.items.auth_mfa_available.details.passed',
+      'security.scan.items.auth_mfa_available.details.warning',
+      'security.scan.items.auth_mfa_enabled.name',
+      'security.scan.items.auth_mfa_enabled.description',
+      'security.scan.items.auth_mfa_enabled.details.passed',
       'apiProxy.maskingRuleNames.email',
       'apiProxy.maskingCategories.pii',
       'apiProxy.maskingDirections.response',
@@ -277,6 +326,51 @@ describe('security locale compilation', () => {
           getPathValue(enhancedMessages, key),
           `${locale} should localize ${key} beyond the English fallback`
         ).not.toBe(getPathValue(enhancedReference, key))
+      }
+    }
+  })
+
+  it('localizes every backend-defined security scan item name and description after locale enhancement', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    const enUSPath = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))?.[0]
+    expect(enUSPath).toBeTruthy()
+    if (!enUSPath) {
+      throw new Error('Missing en-US locale module')
+    }
+
+    expect(securityScannerItemDefinitions.length).toBeGreaterThan(0)
+
+    const enhancedReference = mergeHarnessLocale('en-US', localeModules[enUSPath]!.default)
+
+    for (const [modulePath, mod] of entries) {
+      const locale = fileNameFromModulePath(modulePath).replace(/\.ts$/, '')
+      const enhancedMessages = mergeHarnessLocale(locale as never, mod.default)
+
+      for (const item of securityScannerItemDefinitions) {
+        const nameKey = `security.scan.items.${item.id}.name`
+        const descriptionKey = `security.scan.items.${item.id}.description`
+
+        expect(
+          getPathValue(enhancedMessages, nameKey),
+          `${locale} should expose ${nameKey} after locale enhancement`
+        ).toBeTruthy()
+        expect(
+          getPathValue(enhancedMessages, descriptionKey),
+          `${locale} should expose ${descriptionKey} after locale enhancement`
+        ).toBeTruthy()
+
+        if (locale === 'en-US' || locale === 'en-GB') {
+          continue
+        }
+
+        expect(
+          getPathValue(enhancedMessages, nameKey),
+          `${locale} should localize ${nameKey} beyond the English fallback`
+        ).not.toBe(getPathValue(enhancedReference, nameKey))
+        expect(
+          getPathValue(enhancedMessages, descriptionKey),
+          `${locale} should localize ${descriptionKey} beyond the English fallback`
+        ).not.toBe(getPathValue(enhancedReference, descriptionKey))
       }
     }
   })

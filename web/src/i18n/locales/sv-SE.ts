@@ -1363,6 +1363,7 @@ export default mergeHarnessLocale('sv-SE', {
       newProfile: 'Ny profil',
       acpPlainTitle: 'Lokala verktyg (ACP)',
       a2aPlainTitle: 'Fjärragenter (A2A)',
+      genericA2ATitle: 'Generisk fjärr-A2A-agent',
       loadFailed: 'Det gick inte att läsa in externa agentprofiler.',
       notAvailable: 'Ej tillgängligt',
       remoteAgent: 'Fjärragent',
@@ -2277,6 +2278,9 @@ export default mergeHarnessLocale('sv-SE', {
       items: {
         ai_prompt_injection: {
           name: 'Promptinjektionsskydd',
+        },
+        sandbox_enabled: {
+          description: 'Kontrollera om kodkörning sker i en sandbox.',
         },
       },
     },

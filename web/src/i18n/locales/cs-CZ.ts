@@ -1358,6 +1358,7 @@ export default mergeHarnessLocale('cs-CZ', {
       newProfile: 'Nový profil',
       acpPlainTitle: 'Místní nástroje (ACP)',
       a2aPlainTitle: 'Vzdálení agenti (A2A)',
+      genericA2ATitle: 'Obecný vzdálený agent A2A',
       loadFailed: 'Načtení profilů externích agentů se nezdařilo.',
       notAvailable: 'Není k dispozici',
       remoteAgent: 'Vzdálený agent',
@@ -2269,6 +2270,9 @@ export default mergeHarnessLocale('cs-CZ', {
       items: {
         ai_prompt_injection: {
           name: 'Ochrana před injekcí promptů',
+        },
+        sandbox_enabled: {
+          description: 'Zkontrolujte, zda je spouštění kódu v sandboxu.',
         },
       },
     },

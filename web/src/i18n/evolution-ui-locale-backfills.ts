@@ -72,6 +72,34 @@ function buildEvolutionRuntimeBackfill(copy: EvolutionRuntimeLocaleCopy): Locale
   }
 }
 
+function buildEvolutionScorecardEvidenceHintBackfill(hint: string): LocaleNode {
+  return {
+    evolution: {
+      skills: {
+        scorecardEvidenceHint: hint,
+      },
+    },
+  }
+}
+
+type EvolutionScorecardActionCopy = {
+  openComparison: string
+  openMetrics: string
+  openEvidence: string
+}
+
+function buildEvolutionScorecardActionBackfill(copy: EvolutionScorecardActionCopy): LocaleNode {
+  return {
+    evolution: {
+      skills: {
+        scorecardOpenComparison: copy.openComparison,
+        scorecardOpenMetrics: copy.openMetrics,
+        scorecardOpenEvidence: copy.openEvidence,
+      },
+    },
+  }
+}
+
 const baseEvolutionUILocaleBackfills: Partial<Record<LocaleKey, object>> = {
   'ca-ES': {
     automation: {
@@ -729,7 +757,8 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Resum del llinatge de revisions',
     noDiff: 'Encara no hi ha cap pedaç candidat disponible.',
     caseStatusOpen: 'Entrada oberta, pendent de candidat',
-    timelineHint: "Segueix el cas seleccionat des de l'entrada fins a la promoció final en un sol lloc.",
+    timelineHint:
+      "Segueix el cas seleccionat des de l'entrada fins a la promoció final en un sol lloc.",
     followupEvalRun: "Execució de l'avaluació de seguiment",
     openFollowupEval: "Obre l'avaluació de seguiment",
     linksSubtitle:
@@ -739,10 +768,9 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: "Instantània de l'avaluació de seguiment",
     followupSubtitle:
       "Aquestes mètriques provenen de l'avaluació de seguiment vinculada i haurien de guiar l'acceptació o el rebuig abans de qualsevol promoció manual.",
-    followupEmpty:
-      "Encara no hi ha mètriques estructurades adjuntes de l'avaluació de seguiment.",
+    followupEmpty: "Encara no hi ha mètriques estructurades adjuntes de l'avaluació de seguiment.",
     comparisonHint:
-      "Quan una avaluació de seguiment inclou una línia base, aquestes diferències expliquen per què la revisió seleccionada és millor o pitjor que la versió anterior.",
+      'Quan una avaluació de seguiment inclou una línia base, aquestes diferències expliquen per què la revisió seleccionada és millor o pitjor que la versió anterior.',
     metricsHint:
       "Les mètriques de qualitat, temps d'execució i tokens provenen de l'informe de l'avaluació de seguiment vinculada quan està disponible.",
   }),
@@ -751,8 +779,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Souhrn návaznosti revizí',
     noDiff: 'Oprava kandidáta zatím není k dispozici.',
     caseStatusOpen: 'Příjem otevřen, čeká se na kandidáta',
-    timelineHint:
-      'Sledujte vybraný případ od příjmu až po finální povýšení na jednom místě.',
+    timelineHint: 'Sledujte vybraný případ od příjmu až po finální povýšení na jednom místě.',
     followupEvalRun: 'Běh následného vyhodnocení',
     openFollowupEval: 'Otevřít následné vyhodnocení',
     linksSubtitle:
@@ -783,8 +810,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Øjebliksbillede af opfølgende evaluering',
     followupSubtitle:
       'Disse målinger kommer fra den tilknyttede opfølgende evaluering og bør styre beslutningen om at acceptere eller afvise før enhver manuel promovering.',
-    followupEmpty:
-      'Ingen strukturerede målinger fra den opfølgende evaluering er vedhæftet endnu.',
+    followupEmpty: 'Ingen strukturerede målinger fra den opfølgende evaluering er vedhæftet endnu.',
     comparisonHint:
       'Når en opfølgende evaluering indeholder en baseline, forklarer disse deltaer, hvorfor den valgte revision er bedre eller dårligere end den forrige version.',
     metricsHint:
@@ -795,7 +821,8 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Zusammenfassung der Revisionslinie',
     noDiff: 'Es ist noch kein Kandidaten-Patch verfügbar.',
     caseStatusOpen: 'Aufnahme offen, Kandidat ausstehend',
-    timelineHint: 'Verfolge den ausgewählten Fall von der Aufnahme bis zur endgültigen Übernahme an einem Ort.',
+    timelineHint:
+      'Verfolge den ausgewählten Fall von der Aufnahme bis zur endgültigen Übernahme an einem Ort.',
     followupEvalRun: 'Lauf der Folgeauswertung',
     openFollowupEval: 'Folgeauswertung öffnen',
     linksSubtitle:
@@ -827,8 +854,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Στιγμιότυπο αξιολόγησης συνέχειας',
     followupSubtitle:
       'Αυτές οι μετρικές προέρχονται από τη συνδεδεμένη αξιολόγηση συνέχειας και πρέπει να καθοδηγούν την απόφαση αποδοχής ή απόρριψης πριν από οποιαδήποτε χειροκίνητη προώθηση.',
-    followupEmpty:
-      'Δεν έχουν επισυναφθεί ακόμη δομημένες μετρικές αξιολόγησης συνέχειας.',
+    followupEmpty: 'Δεν έχουν επισυναφθεί ακόμη δομημένες μετρικές αξιολόγησης συνέχειας.',
     comparisonHint:
       'Όταν μια αξιολόγηση συνέχειας περιλαμβάνει baseline, αυτές οι διαφορές εξηγούν γιατί η επιλεγμένη αναθεώρηση είναι καλύτερη ή χειρότερη από την προηγούμενη έκδοση.',
     metricsHint:
@@ -839,8 +865,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Revision Lineage Summary',
     noDiff: 'No candidate patch available yet.',
     caseStatusOpen: 'Open intake, waiting candidate',
-    timelineHint:
-      'Follow the selected case from intake to final promotion in one place.',
+    timelineHint: 'Follow the selected case from intake to final promotion in one place.',
     followupEvalRun: 'Follow-up eval run',
     openFollowupEval: 'Open follow-up eval',
     linksSubtitle:
@@ -906,8 +931,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Résumé de la lignée des révisions',
     noDiff: "Aucun correctif candidat n'est encore disponible.",
     caseStatusOpen: "Entrée ouverte, en attente d'un candidat",
-    timelineHint:
-      "Suivez le cas sélectionné de l'entrée à la promotion finale au même endroit.",
+    timelineHint: "Suivez le cas sélectionné de l'entrée à la promotion finale au même endroit.",
     followupEvalRun: "Exécution de l'évaluation de suivi",
     openFollowupEval: "Ouvrir l'évaluation de suivi",
     linksSubtitle:
@@ -917,8 +941,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: "Instantané de l'évaluation de suivi",
     followupSubtitle:
       "Ces métriques proviennent de l'évaluation de suivi liée et doivent guider la décision d'accepter ou de rejeter avant toute promotion manuelle.",
-    followupEmpty:
-      "Aucune métrique structurée de l'évaluation de suivi n'est encore jointe.",
+    followupEmpty: "Aucune métrique structurée de l'évaluation de suivi n'est encore jointe.",
     comparisonHint:
       "Lorsqu'une évaluation de suivi inclut une référence, ces écarts expliquent pourquoi la révision sélectionnée est meilleure ou pire que la version précédente.",
     metricsHint:
@@ -940,8 +963,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Léargas meastóireachta leantaí',
     followupSubtitle:
       'Tagann na méadrachtaí seo ón mheastóireacht leantach nasctha agus ba chóir dóibh an cinneadh glactha nó diúltaithe a threorú sula ndéantar aon chur chun cinn de láimh.',
-    followupEmpty:
-      'Níl aon mhéadrachtaí struchtúrtha meastóireachta leantaí ceangailte fós.',
+    followupEmpty: 'Níl aon mhéadrachtaí struchtúrtha meastóireachta leantaí ceangailte fós.',
     comparisonHint:
       'Nuair a chuimsíonn meastóireacht leantach bunlíne, míníonn na difríochtaí seo cén fáth a bhfuil an t-athbhreithniú roghnaithe níos fearr nó níos measa ná an leagan roimhe.',
     metricsHint:
@@ -952,8 +974,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Sažetak loze revizija',
     noDiff: 'Zakrpa kandidata još nije dostupna.',
     caseStatusOpen: 'Prijem otvoren, čeka se kandidat',
-    timelineHint:
-      'Pratite odabrani slučaj od prijema do konačne promocije na jednom mjestu.',
+    timelineHint: 'Pratite odabrani slučaj od prijema do konačne promocije na jednom mjestu.',
     followupEvalRun: 'Pokretanje naknadne procjene',
     openFollowupEval: 'Otvori naknadnu procjenu',
     linksSubtitle:
@@ -974,8 +995,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Revíziós leszármazási összefoglaló',
     noDiff: 'Még nincs elérhető jelöltfolt.',
     caseStatusOpen: 'Felvétel nyitva, jelöltre vár',
-    timelineHint:
-      'Kövesse a kiválasztott esetet a felvételtől a végső előléptetésig egy helyen.',
+    timelineHint: 'Kövesse a kiválasztott esetet a felvételtől a végső előléptetésig egy helyen.',
     followupEvalRun: 'Utókövetési értékelés futása',
     openFollowupEval: 'Utókövetési értékelés megnyitása',
     linksSubtitle:
@@ -985,8 +1005,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Utókövetési értékelési pillanatkép',
     followupSubtitle:
       'Ezek a metrikák a kapcsolt utókövetési értékelésből származnak, és minden kézi előléptetés előtt ezeknek kell irányítaniuk az elfogadási vagy elutasítási döntést.',
-    followupEmpty:
-      'Még nincsenek csatolva strukturált utókövetési értékelési metrikák.',
+    followupEmpty: 'Még nincsenek csatolva strukturált utókövetési értékelési metrikák.',
     comparisonHint:
       'Ha egy utókövetési értékelés tartalmaz alapvonalat, ezek az eltérések megmutatják, miért jobb vagy rosszabb a kiválasztott revízió az előző verziónál.',
     metricsHint:
@@ -1007,9 +1026,8 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
       'La valutazione successiva collegata decide se il candidato viene accettato, rifiutato o è ancora in esecuzione.',
     followupTitle: 'Istantanea della valutazione successiva',
     followupSubtitle:
-      "Queste metriche provengono dalla valutazione successiva collegata e dovrebbero guidare la decisione di accettare o rifiutare prima di qualsiasi promozione manuale.",
-    followupEmpty:
-      'Non sono ancora allegate metriche strutturate della valutazione successiva.',
+      'Queste metriche provengono dalla valutazione successiva collegata e dovrebbero guidare la decisione di accettare o rifiutare prima di qualsiasi promozione manuale.',
+    followupEmpty: 'Non sono ancora allegate metriche strutturate della valutazione successiva.',
     comparisonHint:
       'Quando una valutazione successiva include una baseline, queste differenze spiegano perché la revisione selezionata è migliore o peggiore della versione precedente.',
     metricsHint:
@@ -1023,8 +1041,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     timelineHint: '選択した案件を受付から最終昇格まで一か所で追跡できます。',
     followupEvalRun: '後続評価の実行',
     openFollowupEval: '後続評価を開く',
-    linksSubtitle:
-      'これらのリンクから、後続評価、関連スキル改訂、または元の評価を開けます。',
+    linksSubtitle: 'これらのリンクから、後続評価、関連スキル改訂、または元の評価を開けます。',
     followupHint:
       '関連する後続評価が、その候補を受け入れるか、却下するか、まだ実行中かを決定します。',
     followupTitle: '後続評価スナップショット',
@@ -1044,18 +1061,15 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     timelineHint: '선택한 사례를 접수부터 최종 승격까지 한곳에서 추적합니다.',
     followupEvalRun: '후속 평가 실행',
     openFollowupEval: '후속 평가 열기',
-    linksSubtitle:
-      '이 링크로 후속 평가, 연결된 스킬 리비전 또는 원본 평가를 열 수 있습니다.',
-    followupHint:
-      '연결된 후속 평가는 후보를 수락할지, 거절할지, 아직 실행 중인지 결정합니다.',
+    linksSubtitle: '이 링크로 후속 평가, 연결된 스킬 리비전 또는 원본 평가를 열 수 있습니다.',
+    followupHint: '연결된 후속 평가는 후보를 수락할지, 거절할지, 아직 실행 중인지 결정합니다.',
     followupTitle: '후속 평가 스냅샷',
     followupSubtitle:
       '이 지표는 연결된 후속 평가에서 오며, 수동 승격 전에 수락 또는 거절 판단을 이끌어야 합니다.',
     followupEmpty: '구조화된 후속 평가 지표가 아직 첨부되지 않았습니다.',
     comparisonHint:
       '후속 평가에 기준선이 포함되면, 이 차이가 선택한 리비전이 이전 버전보다 왜 더 좋은지 또는 나쁜지 보여 줍니다.',
-    metricsHint:
-      '품질, 실행 시간, 토큰 지표는 가능할 때 연결된 후속 평가 보고서에서 가져옵니다.',
+    metricsHint: '품질, 실행 시간, 토큰 지표는 가능할 때 연결된 후속 평가 보고서에서 가져옵니다.',
   }),
   'ml-IN': buildEvolutionRuntimeBackfill({
     timeline: 'കേസ് ജീവിതചക്രം',
@@ -1073,8 +1087,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'തുടർ മൂല്യനിർണയ സ്നാപ്ഷോട്ട്',
     followupSubtitle:
       'ഈ മെട്രിക്കുകൾ ബന്ധപ്പെട്ട തുടർ മൂല്യനിർണയത്തിൽ നിന്ന് വരുന്നു, അതിനാൽ കൈയോടെ പ്രമോഷൻ ചെയ്യുന്നതിന് മുമ്പ് സ്വീകരിക്കണമോ നിരസിക്കണമോ എന്നത് ഇതു നയിക്കണം.',
-    followupEmpty:
-      'ക്രമബദ്ധമായ തുടർ മൂല്യനിർണയ മെട്രിക്കുകൾ ഇതുവരെ ചേർത്തിട്ടില്ല.',
+    followupEmpty: 'ക്രമബദ്ധമായ തുടർ മൂല്യനിർണയ മെട്രിക്കുകൾ ഇതുവരെ ചേർത്തിട്ടില്ല.',
     comparisonHint:
       'ഒരു തുടർ മൂല്യനിർണയം ബേസ്ലൈൻ ഉൾക്കൊള്ളുമ്പോൾ, തിരഞ്ഞെടുത്ത റിവിഷൻ മുൻ പതിപ്പിനെക്കാൾ എന്തുകൊണ്ട് നല്ലതോ മോശമോ ആണെന്ന് ഈ വ്യത്യാസങ്ങൾ കാണിക്കുന്നു.',
     metricsHint:
@@ -1095,8 +1108,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Øyeblikksbilde av oppfølgingsvurdering',
     followupSubtitle:
       'Disse målingene kommer fra den tilknyttede oppfølgingsvurderingen og bør styre beslutningen om å godta eller avvise før manuell promotering.',
-    followupEmpty:
-      'Ingen strukturerte målinger fra oppfølgingsvurderingen er vedlagt ennå.',
+    followupEmpty: 'Ingen strukturerte målinger fra oppfølgingsvurderingen er vedlagt ennå.',
     comparisonHint:
       'Når en oppfølgingsvurdering inkluderer en basislinje, forklarer disse forskjellene hvorfor den valgte revisjonen er bedre eller dårligere enn forrige versjon.',
     metricsHint:
@@ -1117,8 +1129,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Momentopname van vervolgevaluatie',
     followupSubtitle:
       'Deze metrieken komen uit de gekoppelde vervolgevaluatie en moeten de beslissing om te accepteren of af te wijzen sturen vóór een handmatige promotie.',
-    followupEmpty:
-      'Er zijn nog geen gestructureerde metrieken van de vervolgevaluatie gekoppeld.',
+    followupEmpty: 'Er zijn nog geen gestructureerde metrieken van de vervolgevaluatie gekoppeld.',
     comparisonHint:
       'Wanneer een vervolgevaluatie een basislijn bevat, verklaren deze verschillen waarom de gekozen revisie beter of slechter is dan de vorige versie.',
     metricsHint:
@@ -1129,8 +1140,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Podsumowanie linii rewizji',
     noDiff: 'Łatka kandydata nie jest jeszcze dostępna.',
     caseStatusOpen: 'Przyjęcie otwarte, oczekiwanie na kandydata',
-    timelineHint:
-      'Śledź wybraną sprawę od przyjęcia do końcowej promocji w jednym miejscu.',
+    timelineHint: 'Śledź wybraną sprawę od przyjęcia do końcowej promocji w jednym miejscu.',
     followupEvalRun: 'Uruchomienie oceny uzupełniającej',
     openFollowupEval: 'Otwórz ocenę uzupełniającą',
     linksSubtitle:
@@ -1140,8 +1150,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Migawka oceny uzupełniającej',
     followupSubtitle:
       'Te metryki pochodzą z powiązanej oceny uzupełniającej i powinny kierować decyzją o przyjęciu lub odrzuceniu przed jakąkolwiek ręczną promocją.',
-    followupEmpty:
-      'Nie dołączono jeszcze uporządkowanych metryk oceny uzupełniającej.',
+    followupEmpty: 'Nie dołączono jeszcze uporządkowanych metryk oceny uzupełniającej.',
     comparisonHint:
       'Gdy ocena uzupełniająca zawiera linię bazową, te różnice wyjaśniają, dlaczego wybrana rewizja jest lepsza lub gorsza od poprzedniej wersji.',
     metricsHint:
@@ -1162,8 +1171,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Instantâneo da avaliação de acompanhamento',
     followupSubtitle:
       'Estas métricas vêm da avaliação de acompanhamento vinculada e devem orientar a decisão de aceitar ou rejeitar antes de qualquer promoção manual.',
-    followupEmpty:
-      'Ainda não há métricas estruturadas anexadas da avaliação de acompanhamento.',
+    followupEmpty: 'Ainda não há métricas estruturadas anexadas da avaliação de acompanhamento.',
     comparisonHint:
       'Quando uma avaliação de acompanhamento inclui uma linha de base, essas diferenças explicam por que a revisão selecionada é melhor ou pior que a versão anterior.',
     metricsHint:
@@ -1174,8 +1182,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Resumo da linhagem das revisões',
     noDiff: 'Ainda não há patch candidato disponível.',
     caseStatusOpen: 'Entrada aberta, a aguardar candidato',
-    timelineHint:
-      'Acompanhe o caso selecionado da entrada até à promoção final num só lugar.',
+    timelineHint: 'Acompanhe o caso selecionado da entrada até à promoção final num só lugar.',
     followupEvalRun: 'Execução da avaliação de acompanhamento',
     openFollowupEval: 'Abrir avaliação de acompanhamento',
     linksSubtitle:
@@ -1185,8 +1192,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Instantâneo da avaliação de acompanhamento',
     followupSubtitle:
       'Estas métricas vêm da avaliação de acompanhamento ligada e devem orientar a decisão de aceitar ou rejeitar antes de qualquer promoção manual.',
-    followupEmpty:
-      'Ainda não há métricas estruturadas anexadas da avaliação de acompanhamento.',
+    followupEmpty: 'Ainda não há métricas estruturadas anexadas da avaliação de acompanhamento.',
     comparisonHint:
       'Quando uma avaliação de acompanhamento inclui uma linha de base, estas diferenças explicam porque a revisão selecionada é melhor ou pior do que a versão anterior.',
     metricsHint:
@@ -1208,8 +1214,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Instantaneu al evaluării de urmărire',
     followupSubtitle:
       'Aceste metrici provin din evaluarea de urmărire legată și ar trebui să ghideze decizia de acceptare sau respingere înaintea oricărei promovări manuale.',
-    followupEmpty:
-      'Nu sunt atașate încă metrici structurate pentru evaluarea de urmărire.',
+    followupEmpty: 'Nu sunt atașate încă metrici structurate pentru evaluarea de urmărire.',
     comparisonHint:
       'Când o evaluare de urmărire include un reper, aceste diferențe explică de ce revizia selectată este mai bună sau mai slabă decât versiunea anterioară.',
     metricsHint:
@@ -1220,8 +1225,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Сводка родословной ревизий',
     noDiff: 'Патч-кандидат пока недоступен.',
     caseStatusOpen: 'Приём открыт, ожидание кандидата',
-    timelineHint:
-      'Отслеживайте выбранный кейс от приёма до финального продвижения в одном месте.',
+    timelineHint: 'Отслеживайте выбранный кейс от приёма до финального продвижения в одном месте.',
     followupEvalRun: 'Запуск последующей оценки',
     openFollowupEval: 'Открыть последующую оценку',
     linksSubtitle:
@@ -1231,8 +1235,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Снимок последующей оценки',
     followupSubtitle:
       'Эти метрики поступают из связанной последующей оценки и должны направлять решение о принятии или отклонении до любого ручного продвижения.',
-    followupEmpty:
-      'Структурированные метрики последующей оценки пока не прикреплены.',
+    followupEmpty: 'Структурированные метрики последующей оценки пока не прикреплены.',
     comparisonHint:
       'Когда последующая оценка включает базовую линию, эти различия объясняют, почему выбранная ревизия лучше или хуже предыдущей версии.',
     metricsHint:
@@ -1243,8 +1246,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Súhrn línie revízií',
     noDiff: 'Kandidátska záplata zatiaľ nie je k dispozícii.',
     caseStatusOpen: 'Príjem otvorený, čaká sa na kandidáta',
-    timelineHint:
-      'Sledujte vybraný prípad od príjmu až po finálne povýšenie na jednom mieste.',
+    timelineHint: 'Sledujte vybraný prípad od príjmu až po finálne povýšenie na jednom mieste.',
     followupEvalRun: 'Spustenie následného hodnotenia',
     openFollowupEval: 'Otvoriť následné hodnotenie',
     linksSubtitle:
@@ -1254,8 +1256,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Snímka následného hodnotenia',
     followupSubtitle:
       'Tieto metriky pochádzajú z prepojeného následného hodnotenia a mali by riadiť rozhodnutie o prijatí alebo zamietnutí pred akýmkoľvek ručným povýšením.',
-    followupEmpty:
-      'Zatiaľ nie sú pripojené žiadne štruktúrované metriky následného hodnotenia.',
+    followupEmpty: 'Zatiaľ nie sú pripojené žiadne štruktúrované metriky následného hodnotenia.',
     comparisonHint:
       'Keď následné hodnotenie obsahuje základnú líniu, tieto rozdiely vysvetľujú, prečo je vybraná revízia lepšia alebo horšia než predchádzajúca verzia.',
     metricsHint:
@@ -1266,8 +1267,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     lineage: 'Sammanfattning av revisionslinje',
     noDiff: 'Ingen kandidatpatch är tillgänglig ännu.',
     caseStatusOpen: 'Mottagning öppen, väntar på kandidat',
-    timelineHint:
-      'Följ det valda ärendet från mottagning till slutlig befordran på ett ställe.',
+    timelineHint: 'Följ det valda ärendet från mottagning till slutlig befordran på ett ställe.',
     followupEvalRun: 'Körning för uppföljningsutvärdering',
     openFollowupEval: 'Öppna uppföljningsutvärdering',
     linksSubtitle:
@@ -1277,8 +1277,7 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
     followupTitle: 'Ögonblicksbild av uppföljningsutvärdering',
     followupSubtitle:
       'Dessa mätvärden kommer från den länkade uppföljningsutvärderingen och bör styra beslutet att acceptera eller avvisa före någon manuell befordran.',
-    followupEmpty:
-      'Inga strukturerade mätvärden från uppföljningsutvärderingen är bifogade ännu.',
+    followupEmpty: 'Inga strukturerade mätvärden från uppföljningsutvärderingen är bifogade ännu.',
     comparisonHint:
       'När en uppföljningsutvärdering innehåller en baslinje förklarar dessa skillnader varför den valda revisionen är bättre eller sämre än den tidigare versionen.',
     metricsHint:
@@ -1318,17 +1317,243 @@ const evolutionRuntimeLocaleBackfills: Partial<Record<LocaleKey, object>> = {
   }),
 }
 
+const evolutionScorecardEvidenceHintBackfills: Record<LocaleKey, LocaleNode> = {
+  'ca-ES': buildEvolutionScorecardEvidenceHintBackfill(
+    "Encara no s'ha adjuntat cap resum estructurat d'evidències a aquesta revisió."
+  ),
+  'cs-CZ': buildEvolutionScorecardEvidenceHintBackfill(
+    'K této revizi zatím není připojeno žádné strukturované shrnutí důkazů.'
+  ),
+  'da-DK': buildEvolutionScorecardEvidenceHintBackfill(
+    'Der er endnu ikke knyttet nogen struktureret evidensopsummering til denne revision.'
+  ),
+  'de-DE': buildEvolutionScorecardEvidenceHintBackfill(
+    'Dieser Revision ist noch keine strukturierte Evidenzzusammenfassung beigefügt.'
+  ),
+  'el-GR': buildEvolutionScorecardEvidenceHintBackfill(
+    'Δεν έχει επισυναφθεί ακόμη δομημένη σύνοψη τεκμηρίων σε αυτή την αναθεώρηση.'
+  ),
+  'en-GB': buildEvolutionScorecardEvidenceHintBackfill(
+    'No structured evidence summary is attached to this revision yet.'
+  ),
+  'en-US': buildEvolutionScorecardEvidenceHintBackfill(
+    'No structured evidence summary is attached to this revision yet.'
+  ),
+  'es-ES': buildEvolutionScorecardEvidenceHintBackfill(
+    'Todavía no hay un resumen estructurado de evidencias adjunto a esta revisión.'
+  ),
+  'fr-FR': buildEvolutionScorecardEvidenceHintBackfill(
+    "Aucun résumé structuré des preuves n'est encore joint à cette révision."
+  ),
+  'ga-IE': buildEvolutionScorecardEvidenceHintBackfill(
+    'Níl aon achoimre struchtúrtha fianaise ceangailte leis an athbhreithniú seo fós.'
+  ),
+  'hr-HR': buildEvolutionScorecardEvidenceHintBackfill(
+    'Uz ovu reviziju još nije priložen strukturirani sažetak dokaza.'
+  ),
+  'hu-HU': buildEvolutionScorecardEvidenceHintBackfill(
+    'Ehhez a revízióhoz még nincs csatolva strukturált bizonyítékösszefoglaló.'
+  ),
+  'it-IT': buildEvolutionScorecardEvidenceHintBackfill(
+    'A questa revisione non è ancora allegato un riepilogo strutturato delle evidenze.'
+  ),
+  'ja-JP': buildEvolutionScorecardEvidenceHintBackfill(
+    'このリビジョンには、構造化されたエビデンス要約がまだ添付されていません。'
+  ),
+  'ko-KR': buildEvolutionScorecardEvidenceHintBackfill(
+    '이 리비전에 구조화된 근거 요약이 아직 첨부되지 않았습니다.'
+  ),
+  'ml-IN': buildEvolutionScorecardEvidenceHintBackfill(
+    'ഈ റിവിഷനോട് ഇതുവരെ ഘടനാപരമായ തെളിവ് സംഗ്രഹം ചേർത്തിട്ടില്ല.'
+  ),
+  'nb-NO': buildEvolutionScorecardEvidenceHintBackfill(
+    'Det er ennå ikke knyttet noe strukturert evidenssammendrag til denne revisjonen.'
+  ),
+  'nl-NL': buildEvolutionScorecardEvidenceHintBackfill(
+    'Er is nog geen gestructureerde samenvatting van bewijsmateriaal aan deze revisie gekoppeld.'
+  ),
+  'pl-PL': buildEvolutionScorecardEvidenceHintBackfill(
+    'Do tej rewizji nie dołączono jeszcze uporządkowanego podsumowania dowodów.'
+  ),
+  'pt-BR': buildEvolutionScorecardEvidenceHintBackfill(
+    'Ainda não há um resumo estruturado de evidências anexado a esta revisão.'
+  ),
+  'pt-PT': buildEvolutionScorecardEvidenceHintBackfill(
+    'Ainda não existe um resumo estruturado de evidências anexado a esta revisão.'
+  ),
+  'ro-RO': buildEvolutionScorecardEvidenceHintBackfill(
+    'Încă nu este atașat niciun rezumat structurat al dovezilor acestei revizii.'
+  ),
+  'ru-RU': buildEvolutionScorecardEvidenceHintBackfill(
+    'К этой ревизии пока не прикреплено структурированное резюме доказательств.'
+  ),
+  'sk-SK': buildEvolutionScorecardEvidenceHintBackfill(
+    'K tejto revízii zatiaľ nie je pripojené žiadne štruktúrované zhrnutie dôkazov.'
+  ),
+  'sv-SE': buildEvolutionScorecardEvidenceHintBackfill(
+    'Ingen strukturerad evidenssammanfattning är ännu bifogad till den här revisionen.'
+  ),
+  'zh-CN': buildEvolutionScorecardEvidenceHintBackfill('当前这次修订还没有附带结构化证据摘要。'),
+  'zh-TW': buildEvolutionScorecardEvidenceHintBackfill('目前這次修訂還沒有附帶結構化證據摘要。'),
+}
+
+const evolutionScorecardActionBackfills: Record<LocaleKey, LocaleNode> = {
+  'ca-ES': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Obre la comparació',
+    openMetrics: 'Obre les mètriques',
+    openEvidence: 'Obre les evidències',
+  }),
+  'cs-CZ': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Otevřít porovnání',
+    openMetrics: 'Otevřít metriky',
+    openEvidence: 'Otevřít důkazy',
+  }),
+  'da-DK': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Åbn sammenligning',
+    openMetrics: 'Åbn målinger',
+    openEvidence: 'Åbn evidens',
+  }),
+  'de-DE': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Vergleich öffnen',
+    openMetrics: 'Metriken öffnen',
+    openEvidence: 'Evidenz öffnen',
+  }),
+  'el-GR': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Άνοιγμα σύγκρισης',
+    openMetrics: 'Άνοιγμα μετρήσεων',
+    openEvidence: 'Άνοιγμα τεκμηρίων',
+  }),
+  'en-GB': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Open comparison',
+    openMetrics: 'Open metrics',
+    openEvidence: 'Open evidence',
+  }),
+  'en-US': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Open comparison',
+    openMetrics: 'Open metrics',
+    openEvidence: 'Open evidence',
+  }),
+  'es-ES': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Abrir comparación',
+    openMetrics: 'Abrir métricas',
+    openEvidence: 'Abrir evidencias',
+  }),
+  'fr-FR': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Ouvrir la comparaison',
+    openMetrics: 'Ouvrir les métriques',
+    openEvidence: 'Ouvrir les preuves',
+  }),
+  'ga-IE': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Oscail comparáid',
+    openMetrics: 'Oscail méadrachtaí',
+    openEvidence: 'Oscail fianaise',
+  }),
+  'hr-HR': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Otvori usporedbu',
+    openMetrics: 'Otvori metrike',
+    openEvidence: 'Otvori dokaze',
+  }),
+  'hu-HU': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Összehasonlítás megnyitása',
+    openMetrics: 'Metrikák megnyitása',
+    openEvidence: 'Bizonyítékok megnyitása',
+  }),
+  'it-IT': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Apri confronto',
+    openMetrics: 'Apri metriche',
+    openEvidence: 'Apri evidenze',
+  }),
+  'ja-JP': buildEvolutionScorecardActionBackfill({
+    openComparison: '比較を開く',
+    openMetrics: 'メトリクスを開く',
+    openEvidence: 'エビデンスを開く',
+  }),
+  'ko-KR': buildEvolutionScorecardActionBackfill({
+    openComparison: '비교 열기',
+    openMetrics: '지표 열기',
+    openEvidence: '근거 열기',
+  }),
+  'ml-IN': buildEvolutionScorecardActionBackfill({
+    openComparison: 'താരതമ്യം തുറക്കുക',
+    openMetrics: 'മെട്രിക്കുകൾ തുറക്കുക',
+    openEvidence: 'തെളിവ് തുറക്കുക',
+  }),
+  'nb-NO': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Åpne sammenligning',
+    openMetrics: 'Åpne målinger',
+    openEvidence: 'Åpne evidens',
+  }),
+  'nl-NL': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Vergelijking openen',
+    openMetrics: 'Metrieken openen',
+    openEvidence: 'Bewijs openen',
+  }),
+  'pl-PL': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Otwórz porównanie',
+    openMetrics: 'Otwórz metryki',
+    openEvidence: 'Otwórz dowody',
+  }),
+  'pt-BR': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Abrir comparação',
+    openMetrics: 'Abrir métricas',
+    openEvidence: 'Abrir evidências',
+  }),
+  'pt-PT': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Abrir comparação',
+    openMetrics: 'Abrir métricas',
+    openEvidence: 'Abrir evidências',
+  }),
+  'ro-RO': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Deschide comparația',
+    openMetrics: 'Deschide metricile',
+    openEvidence: 'Deschide dovezile',
+  }),
+  'ru-RU': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Открыть сравнение',
+    openMetrics: 'Открыть метрики',
+    openEvidence: 'Открыть доказательства',
+  }),
+  'sk-SK': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Otvoriť porovnanie',
+    openMetrics: 'Otvoriť metriky',
+    openEvidence: 'Otvoriť dôkazy',
+  }),
+  'sv-SE': buildEvolutionScorecardActionBackfill({
+    openComparison: 'Öppna jämförelse',
+    openMetrics: 'Öppna mätvärden',
+    openEvidence: 'Öppna bevis',
+  }),
+  'zh-CN': buildEvolutionScorecardActionBackfill({
+    openComparison: '打开对比',
+    openMetrics: '打开指标',
+    openEvidence: '打开证据',
+  }),
+  'zh-TW': buildEvolutionScorecardActionBackfill({
+    openComparison: '打開對比',
+    openMetrics: '打開指標',
+    openEvidence: '打開證據',
+  }),
+}
+
 const evolutionUILocaleBackfills = Object.fromEntries(
   Array.from(
     new Set([
       ...Object.keys(baseEvolutionUILocaleBackfills),
       ...Object.keys(evolutionRuntimeLocaleBackfills),
+      ...Object.keys(evolutionScorecardEvidenceHintBackfills),
+      ...Object.keys(evolutionScorecardActionBackfills),
     ])
   ).map((locale) => [
     locale,
     mergeLocaleNodes(
-      (baseEvolutionUILocaleBackfills[locale as LocaleKey] ?? {}) as LocaleNode,
-      (evolutionRuntimeLocaleBackfills[locale as LocaleKey] ?? {}) as LocaleNode
+      mergeLocaleNodes(
+        (baseEvolutionUILocaleBackfills[locale as LocaleKey] ?? {}) as LocaleNode,
+        (evolutionRuntimeLocaleBackfills[locale as LocaleKey] ?? {}) as LocaleNode
+      ),
+      mergeLocaleNodes(
+        evolutionScorecardEvidenceHintBackfills[locale as LocaleKey] ?? {},
+        evolutionScorecardActionBackfills[locale as LocaleKey] ?? {}
+      )
     ),
   ])
 ) as Partial<Record<LocaleKey, object>>

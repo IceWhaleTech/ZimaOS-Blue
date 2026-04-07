@@ -1368,6 +1368,7 @@ export default mergeHarnessLocale('ga-IE', {
       newProfile: 'Próifíl nua',
       acpPlainTitle: 'Uirlisí logánta (ACP)',
       a2aPlainTitle: 'Gníomhairí cianda (A2A)',
+      genericA2ATitle: 'Gníomhaire cianda A2A ginearálta',
       loadFailed: 'Theip ar lódáil próifílí gníomhairí seachtracha.',
       notAvailable: 'Níl sé ar fáil',
       remoteAgent: 'Gníomhaire cianda',
@@ -2293,6 +2294,9 @@ export default mergeHarnessLocale('ga-IE', {
       items: {
         ai_prompt_injection: {
           name: 'Cosaint instealladh spreagtha',
+        },
+        sandbox_enabled: {
+          description: 'Seiceáil an bhfuil forghníomhú an chóid i mbosca gainimh.',
         },
       },
     },

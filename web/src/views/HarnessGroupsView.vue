@@ -2137,40 +2137,6 @@ onUnmounted(() => {
     </div>
 
     <section class="harness-stage dashboard-page-stage configuration-page-stage">
-      <section data-testid="harness-explainer-panel" class="panel harness-explainer-panel">
-        <div class="section-header">
-          <div>
-            <h2>{{ tr('harness.groups.explainerTitle', 'Harness, in plain language') }}</h2>
-          </div>
-        </div>
-
-        <div class="harness-explainer-grid">
-          <article class="detail-card harness-explainer-card">
-            <h3>{{ tr('harness.groups.explainerPlainTitle', 'What it is') }}</h3>
-            <p class="card-copy">
-              {{
-                tr(
-                  'harness.groups.explainerPlainBody',
-                  "Think of Harness as the system's test track. It reruns the same work in a controlled way so we can compare results, failures, and retries without guessing."
-                )
-              }}
-            </p>
-          </article>
-
-          <article class="detail-card harness-explainer-card">
-            <h3>{{ tr('harness.groups.explainerRoleTitle', 'What it does in the system') }}</h3>
-            <p class="card-copy">
-              {{
-                tr(
-                  'harness.groups.explainerRoleBody',
-                  'Harness is the evaluation layer behind datasets, specs, runs, baselines, and groups. It keeps the evidence and scores in one place so the system can spot regressions and decide whether a change is safe to keep.'
-                )
-              }}
-            </p>
-          </article>
-        </div>
-      </section>
-
       <div v-if="error" class="state-card is-error">
         <h2>{{ tr('common.error', 'Error') }}</h2>
         <p>{{ error }}</p>
@@ -4675,23 +4641,6 @@ onUnmounted(() => {
   grid-area: groups;
 }
 
-.harness-explainer-panel {
-  margin-top: 0.7rem;
-}
-
-.harness-explainer-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.65rem;
-}
-
-.harness-explainer-card {
-  height: 100%;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(248, 250, 252, 0.92)),
-    var(--harness-card-bg);
-}
-
 .support-stack .entity-grid {
   grid-template-columns: 1fr;
 }
@@ -5816,7 +5765,6 @@ onUnmounted(() => {
   .quick-eval-layout,
   .quickstart-grid,
   .comparison-grid,
-  .harness-explainer-grid,
   .entity-grid,
   .groups-grid,
   .form-grid,

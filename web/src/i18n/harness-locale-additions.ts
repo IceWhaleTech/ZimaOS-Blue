@@ -15,7 +15,9 @@ import harnessGroupBackfills from './harness-group-backfills'
 import localeFollowupBackfills from './locale-followup-backfills'
 import { buildLocalePostMergeBackfill } from './locale-post-merge-backfills'
 import localeStructuralBackfills from './locale-structural-backfills'
+import processTraceLocaleBackfills from './process-trace-locale-backfills'
 import securityCronMaskingBackfills from './security-cron-masking-backfills'
+import securityScanItemBackfills from './security-scan-item-backfills'
 import smallModelKnowledgeFixBackfills from './smallmodel-knowledge-fix-backfills'
 import skillStoreHighRiskBackfills from './skill-store-high-risk-backfills'
 import { buildSkillStoreDerivedBackfill } from './skill-store-derived-backfills'
@@ -8978,11 +8980,15 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
         (evolutionUILocaleBackfills[localeKey] ?? {}) as LocaleNode
       )
     ),
-    (localeFollowupBackfills[localeKey] ?? {}) as LocaleNode
+    mergeLocaleNodes(
+      (localeFollowupBackfills[localeKey] ?? {}) as LocaleNode,
+      (processTraceLocaleBackfills[localeKey] ?? {}) as LocaleNode
+    )
   )
   const securityCronMaskingPatch = (securityCronMaskingBackfills[localeKey] ?? {}) as LocaleNode
+  const securityScanItemPatch = (securityScanItemBackfills[localeKey] ?? {}) as LocaleNode
   const mergedMessages = mergeLocaleNodes(
-    mergeLocaleNodes(structuralPatch, securityCronMaskingPatch),
+    mergeLocaleNodes(mergeLocaleNodes(structuralPatch, securityCronMaskingPatch), securityScanItemPatch),
     messages as unknown as LocaleNode
   )
   const skillStorePatch = buildSkillStoreDerivedBackfill(

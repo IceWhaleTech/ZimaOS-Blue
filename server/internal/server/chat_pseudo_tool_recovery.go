@@ -57,6 +57,7 @@ var defaultPseudoXMLToolNames = []string{
 }
 
 func recoverPseudoToolCallsFromContent(content string, allowedTools []llm.Tool) ([]llm.ToolCall, bool) {
+	ensureChatMiscRegexes()
 	if len(allowedTools) == 0 {
 		return nil, false
 	}
@@ -241,6 +242,11 @@ func collectRecoveredPseudoToolCalls(node *pseudoXMLNode, allowedTools []llm.Too
 			*out = append(*out, call)
 			return
 		}
+	case "tool_code":
+		if call, ok := recoverPseudoToolCodeWrapper(node, allowedTools); ok {
+			*out = append(*out, call)
+			return
+		}
 	case "invoke":
 		if call, ok := recoverPseudoInvokeToolCall(node, allowedTools); ok {
 			*out = append(*out, call)
@@ -332,6 +338,35 @@ func recoverPseudoToolCallWrapper(node *pseudoXMLNode, allowedTools []llm.Tool) 
 	}
 
 	rawToolName, argsValue, ok := extractPseudoToolCallWrapperPayload(node)
+	if !ok {
+		return llm.ToolCall{}, false
+	}
+	name, ok := resolveRecoveredPseudoToolName(rawToolName, allowedTools)
+	if !ok {
+		return llm.ToolCall{}, false
+	}
+	arguments, ok := marshalRecoveredPseudoToolArgs(name, argsValue, allowedTools)
+	if !ok {
+		return llm.ToolCall{}, false
+	}
+	return llm.ToolCall{Name: name, Arguments: arguments}, true
+}
+
+func recoverPseudoToolCodeWrapper(node *pseudoXMLNode, allowedTools []llm.Tool) (llm.ToolCall, bool) {
+	if node == nil || !strings.EqualFold(strings.TrimSpace(node.Name), "tool_code") {
+		return llm.ToolCall{}, false
+	}
+
+	scalar, ok := pseudoXMLNodeScalarValue(node)
+	if !ok {
+		return llm.ToolCall{}, false
+	}
+	body, ok := scalar.(string)
+	if !ok {
+		return llm.ToolCall{}, false
+	}
+
+	rawToolName, argsValue, ok := extractPseudoToolCodePayload(body)
 	if !ok {
 		return llm.ToolCall{}, false
 	}
@@ -603,7 +638,7 @@ func isPotentialPseudoXMLRecoveryTagName(name string, allowedTools []llm.Tool) b
 		return false
 	}
 	switch lower {
-	case "function_calls", "tool_call", "function_call", "invoke", "parameter":
+	case "function_calls", "tool_call", "function_call", "tool_code", "invoke", "parameter":
 		return true
 	}
 	for _, candidate := range pseudoXMLToolTagCandidates(allowedTools) {
@@ -939,6 +974,137 @@ func extractPseudoToolCallWrapperPayloadFromMap(values map[string]interface{}) (
 		return rawToolName, map[string]interface{}{}, true
 	}
 	return rawToolName, argsMap, true
+}
+
+func extractPseudoToolCodePayload(content string) (string, interface{}, bool) {
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return "", nil, false
+	}
+
+	nameEnd := 0
+	for nameEnd < len(trimmed) && !isPseudoToolCodeWhitespace(trimmed[nameEnd]) {
+		nameEnd++
+	}
+	rawToolName := strings.TrimSpace(trimmed[:nameEnd])
+	if rawToolName == "" {
+		return "", nil, false
+	}
+
+	rest := strings.TrimSpace(trimmed[nameEnd:])
+	if rest == "" {
+		return rawToolName, map[string]interface{}{}, true
+	}
+
+	args := make(map[string]interface{})
+	for len(rest) > 0 {
+		key, value, remaining, ok := consumePseudoToolCodeAssignment(rest)
+		if !ok {
+			return "", nil, false
+		}
+		appendPseudoXMLMapValue(args, key, value)
+		rest = strings.TrimSpace(remaining)
+	}
+	return rawToolName, args, true
+}
+
+func consumePseudoToolCodeAssignment(input string) (string, interface{}, string, bool) {
+	s := strings.TrimLeft(input, " \t\r\n")
+	if s == "" {
+		return "", nil, "", false
+	}
+
+	keyEnd := 0
+	for keyEnd < len(s) && isPseudoToolCodeKeyChar(s[keyEnd]) {
+		keyEnd++
+	}
+	if keyEnd == 0 {
+		return "", nil, "", false
+	}
+	key := strings.ReplaceAll(strings.TrimSpace(s[:keyEnd]), "-", "_")
+	s = strings.TrimLeft(s[keyEnd:], " \t\r\n")
+	if key == "" || s == "" || s[0] != '=' {
+		return "", nil, "", false
+	}
+
+	s = strings.TrimLeft(s[1:], " \t\r\n")
+	if s == "" {
+		return "", nil, "", false
+	}
+
+	var (
+		rawValue  string
+		remaining string
+		ok        bool
+	)
+	switch s[0] {
+	case '"':
+		rawValue, remaining, ok = consumePseudoToolCodeQuotedValue(s, '"')
+	case '\'':
+		rawValue, remaining, ok = consumePseudoToolCodeQuotedValue(s, '\'')
+	default:
+		valueEnd := 0
+		for valueEnd < len(s) && !isPseudoToolCodeWhitespace(s[valueEnd]) {
+			valueEnd++
+		}
+		rawValue = s[:valueEnd]
+		remaining = s[valueEnd:]
+		ok = strings.TrimSpace(rawValue) != ""
+	}
+	if !ok {
+		return "", nil, "", false
+	}
+
+	return key, coerceRecoveredPseudoToolScalar(rawValue), remaining, true
+}
+
+func consumePseudoToolCodeQuotedValue(input string, quote byte) (string, string, bool) {
+	if input == "" || input[0] != quote {
+		return "", "", false
+	}
+	escaped := false
+	for i := 1; i < len(input); i++ {
+		ch := input[i]
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			continue
+		}
+		if ch != quote {
+			continue
+		}
+
+		token := input[:i+1]
+		remaining := input[i+1:]
+		if quote == '"' {
+			if unquoted, err := strconv.Unquote(token); err == nil {
+				return unquoted, remaining, true
+			}
+		}
+		return token[1:i], remaining, true
+	}
+	return "", "", false
+}
+
+func isPseudoToolCodeWhitespace(ch byte) bool {
+	switch ch {
+	case ' ', '\t', '\r', '\n':
+		return true
+	default:
+		return false
+	}
+}
+
+func isPseudoToolCodeKeyChar(ch byte) bool {
+	return (ch >= 'a' && ch <= 'z') ||
+		(ch >= 'A' && ch <= 'Z') ||
+		(ch >= '0' && ch <= '9') ||
+		ch == '_' ||
+		ch == '-' ||
+		ch == '.'
 }
 
 func firstPseudoToolCallWrapperString(values map[string]interface{}, keys ...string) string {
@@ -1441,6 +1607,8 @@ func pseudoXMLToolTagCandidates(allowedTools []llm.Tool) []string {
 			}
 		}
 	}
+
+	add("tool_code")
 
 	out := make([]string, 0, len(set))
 	for name := range set {

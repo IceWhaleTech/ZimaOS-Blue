@@ -26,7 +26,6 @@ var factoryToolNames = []string{
 	"memory_get",
 	"memory_write",
 	"memory_forget",
-	"web",
 	"web_query",
 	"web_search",
 	"web_fetch",

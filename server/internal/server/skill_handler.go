@@ -21,6 +21,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cache"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/network"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
@@ -919,6 +920,7 @@ type SkillResponse struct {
 	Tags             []string          `json:"tags,omitempty"`
 	Enabled          bool              `json:"enabled"`
 	Builtin          bool              `json:"builtin"`
+	Writable         bool              `json:"writable"`
 	Inputs           []skill.Parameter `json:"inputs,omitempty"`
 	Outputs          []skill.Parameter `json:"outputs,omitempty"`
 	Paths            []string          `json:"paths,omitempty"`
@@ -976,6 +978,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			} else if info := h.registry.GetInfo(canonicalID); info != nil {
 				builtin = info.Builtin
 			}
+			writable := h.skillWritable(canonicalID, builtin)
 			item := SkillResponse{
 				ID:               canonicalID,
 				Name:             canonicalName,
@@ -986,6 +989,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 				Tags:             ls.Tags,
 				Enabled:          true,
 				Builtin:          builtin,
+				Writable:         writable,
 				Paths:            append([]string(nil), meta.Paths...),
 				UserInvocable:    meta.UserInvocable,
 				ModelInvocable:   meta.ModelInvocable,
@@ -1019,6 +1023,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 		if _, exists := seen[canonicalID]; exists {
 			continue
 		}
+		writable := h.skillWritable(canonicalID, info.Builtin)
 		item := SkillResponse{
 			ID:               canonicalID,
 			Name:             canonicalName,
@@ -1029,6 +1034,7 @@ func (h *SkillHandler) ListSkills(c echo.Context) error {
 			Tags:             info.Manifest.Tags,
 			Enabled:          info.Enabled,
 			Builtin:          info.Builtin,
+			Writable:         writable,
 			Inputs:           info.Manifest.Inputs,
 			Outputs:          info.Manifest.Outputs,
 			Paths:            append([]string(nil), meta.Paths...),
@@ -3260,6 +3266,33 @@ func (h *SkillHandler) managedSkillRoots() []string {
 		return nil
 	}
 	return skillmanifest.ResolvePeerRootsForManagedDir(h.skillsDir)
+}
+
+func (h *SkillHandler) skillWritable(skillID string, builtin bool) bool {
+	skillID = strings.TrimSpace(skillID)
+	if skillID == "" {
+		return false
+	}
+
+	if builtin {
+		if _, err := harness.ResolveWritableSkillSourceState(
+			skillID,
+			filepath.Join("assets", "skills", skillID, "SKILL.md"),
+		); err == nil {
+			return true
+		}
+	}
+
+	resolved, ok := h.resolveInstalledSkill(skillID)
+	if !ok {
+		return false
+	}
+	entryFile := strings.TrimSpace(resolved.Document.EntryFile)
+	if entryFile == "" {
+		entryFile = "SKILL.md"
+	}
+	_, err := harness.ResolveWritableSkillSourceState(skillID, filepath.Join(resolved.EntryDir, entryFile))
+	return err == nil
 }
 
 func (h *SkillHandler) resolveInstalledSkill(id string) (installedSkillResolution, bool) {

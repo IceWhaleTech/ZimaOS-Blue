@@ -1373,6 +1373,7 @@ export default mergeHarnessLocale('el-GR', {
       newProfile: 'Νέο προφίλ',
       acpPlainTitle: 'Τοπικά εργαλεία (ACP)',
       a2aPlainTitle: 'Απομακρυσμένοι πράκτορες (A2A)',
+      genericA2ATitle: 'Γενικός απομακρυσμένος πράκτορας A2A',
       loadFailed: 'Η φόρτωση των προφίλ εξωτερικών αντιπροσώπων απέτυχε.',
       notAvailable: 'Μη διαθέσιμο',
       remoteAgent: 'Απομακρυσμένος πράκτορας',
@@ -2302,6 +2303,9 @@ export default mergeHarnessLocale('el-GR', {
       items: {
         ai_prompt_injection: {
           name: 'Προστασία από prompt injection',
+        },
+        sandbox_enabled: {
+          description: 'Ελέγξτε αν η εκτέλεση κώδικα γίνεται σε sandbox.',
         },
       },
     },

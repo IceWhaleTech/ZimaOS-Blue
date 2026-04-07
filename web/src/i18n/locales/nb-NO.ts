@@ -1359,6 +1359,7 @@ export default mergeHarnessLocale('nb-NO', {
       newProfile: 'Ny profil',
       acpPlainTitle: 'Lokale verktøy (ACP)',
       a2aPlainTitle: 'Eksterne agenter (A2A)',
+      genericA2ATitle: 'Generisk ekstern A2A-agent',
       loadFailed: 'Kunne ikke laste inn eksterne agentprofiler.',
       notAvailable: 'Ikke tilgjengelig',
       remoteAgent: 'Ekstern agent',
@@ -2271,6 +2272,9 @@ export default mergeHarnessLocale('nb-NO', {
       items: {
         ai_prompt_injection: {
           name: 'Promptinjeksjonsbeskyttelse',
+        },
+        sandbox_enabled: {
+          description: 'Sjekk om kodekjøring skjer i en sandbox.',
         },
       },
     },

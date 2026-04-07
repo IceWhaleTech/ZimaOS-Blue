@@ -33,7 +33,7 @@
 <p align="center">
   <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
   <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT-licentie"></a>
 </p>
 
 <p align="center">
@@ -44,112 +44,42 @@
 
 ## Introductie
 
-Geïnspireerd door Clawdbot geloven wij dat de **toekomst** van persoonlijk computergebruik zal worden **gevormd door diverse, local-first AI-agents** die aan de edge draaien.
+Geïnspireerd door Clawdbot geloven wij dat de toekomst van personal computing zal worden gevormd door diverse, lokaal gerichte AI-agenten die aan de rand werken.
 
-**ZimaOS Blue is ons antwoord** — een volledig **open-source, auditeerbare en productieklare agent-runtime en toolkit** waarmee je privé, zelf-gehoste agents kunt uitrollen zonder enige frictie.
+ZimaOS Blue is ons antwoord: een volledig open source, controleerbare, leveranciersneutrale en productieklare agentruntime en toolkit waarmee u zonder problemen privé, zelfgehoste agenten kunt verzenden.
 
-Gebouwd voor gedurfde ontwikkelaars die hun **eigen agents willen viben of handmatig bouwen**, is Blue **ontworpen voor prestaties**: geschreven in **Go**, met een geheugengebruik van slechts 10 MB. Het draait op **elke x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — overal waar je stroom hebt.
-
-![](../../docs/assets/features.png)
-
-## Hoogtepunten
-
-### Local-First Ontwerp & Automatische Modeltoegang
-
-Ga verder: het biedt native ondersteuning voor **20+ IM-platformen**, **spraakgestuurde** interfaces voor natuurlijke, contextbewuste dialoog, **zero-config modelwisseling** met IDE-scanning, en SOUL-gelaagde persoonlijkheden.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Snel, Licht
-
-Native gecompileerd in Go — geen interpreter, geen VM, geen overhead. Draait geruisloos op alles, van servers tot je desktopapparaten.
-
-| Metriek | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|---------|-------------------|------------------------|
-| `help` koud / warm | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` runtime (beste van 3) | **< 0.01 s** | 5.98 s |
-| `help` piek RSS | **~10 MB** | ~394 MB |
-| `status` piek RSS | **~15 MB** | ~1.52 GB |
-| `gateway run` idle-geheugen na cold start | **~19 MB** | - |
-| Runtime-afhankelijkheden | **Geen** | Node.js 18+ |
-
-> De CLI-regels hierboven zijn de historische `help` / `status`-microbenchmark op dezelfde host. De nieuwe regel voor `gateway run` laat het echte idle-geheugen na een cold start zien, gemeten op macOS arm64 via `vmmap Physical footprint` nadat het opstarten is gestabiliseerd. Feb-apr 2026.
-
-### Pure Go, Elk Apparaat
-
-100% Go, statisch binair bestand. **Cross-compileert naar 5 doelplatformen** out of the box (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Geen Node-runtime, geen Python, geen containers nodig. Zet het op een NAS, een ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, een oude x86-router of een ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — het werkt gewoon. **Bouw er vervolgens je eigen UI, logica en agent-vaardigheden bovenop** — één codebase, elk platform.
-
-### Beveiliging & Governance
-
-Ingebouwde sidecar API-proxy met diepgaande verdediging:
-- **Sandbox-uitvoering** – Alle tool-aanroepen draaien in geïsoleerde omgevingen.
-- **Prompt Injection-verdediging** – 7+ ingebouwde onderscheppingsstrategieën.
-- **Sessie-auditing** – Volledige sessiemonitoring, elke interactie traceerbaar.
-- **RBAC & WebAuthn** – Fijnmazige toegangscontrole met wachtwoordloze authenticatie.
+Blue is gebouwd voor gedurfde ontwikkelaars die hun eigen agenten willen uitleven of met de hand willen maken. Het is ontworpen voor prestaties: geschreven in Go, met een geheugenoppervlak van slechts 19 MB. Het werkt op elke x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS - overal waar u een stopcontact aansluit.
 
 ## Waarom Blue
 
-Wij geloven dat **next-gen persoonlijk computergebruik** LLM's omarmt — maar **controleerbare, auditeerbare** agents blijven het fundament voor zowel individuen als teams. **Blue levert**:
-- **Uitgebreide Kern** – Geavanceerd modelbeheer, IM-integratie, verbeterde persona en natuurlijke taalinterfaces afgestemd op dagelijkse interacties (headsets, spraak, slimme brillen).
-- **Local-First, Ultralicht, Cross-Device** – Geen high-end hardware vereist. Draait op alles wat kan rekenen.
-- **Veilig & Auditeerbaar** – Sessie-auditing, sandboxing, permissiecontroles en een ingebouwde API-proxy die fungeert als applicatielaag-firewall — elke byte in/uit is zichtbaar.
-
-![](../../docs/assets/design_principle.png)
-
-We minimaliseren boilerplate zodat jij je **kunt focussen op wat ertoe doet**. Trouw aan de <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ontwerpfilosofie van ZimaOS** levert Blue:
-- **Van Nul naar Eén in Één Klik** – Direct uitrollen, geen complexe configuratie.
-- **Snel Prototypen** – Vibe of bouw handmatig scenariospecifieke tools, interacties en app-pakketten.
-- **Wereldwijd Klaar** – **De wereld is groot**, en Engels is niet de standaard. **20+ talen, native**, geen barrières.
-- **Open Model-ecosysteem** – Geen vendor lock-in. Breng je eigen modellen mee.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| Provider | Modellen | Type |
-|----------|----------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi etc. | Lokaal |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (privacy) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | OpenAI-modellen via Azure | Cloud |
-| OpenRouter | 100+ geaggregeerde modellen | Cloud |
-| AIHubMix | Multi-provider aggregator | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Aangepast | Elke OpenAI / Anthropic / Gemini compatibele API | Cloud / Lokaal |
-
-</details>
-
-### Ondersteunde IDE's
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
 
-## Snel Starten
+### Pure Go, elk apparaat
 
-### Optie 1: Download Desktop-app
+100% Go, statisch binair getal. Cross-compileert kant-en-klaar naar 5 doelen (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Geen Node-runtime, geen Python, geen containers vereist. Zet hem neer op een NAS, een ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, een oude x86-router of een ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac – hij werkt gewoon. Voeg vervolgens uw eigen UI, logica en agentvaardigheden toe: één codebase, elk platform.
 
-Download de native applicatie — geen afhankelijkheden, geen compilatie. Ingebouwde proefconfiguratie, direct aan de slag — begin met chatten via een externe verbinding, zonder bot-configuratie. Echt plug-and-play.
+### Direct uit de doos, klaar om te werken
 
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Download DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Download Installer](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+Iedereen wil tools die eenvoudig en betrouwbaar zijn en schaalbaar zijn wanneer je ze nodig hebt. Tools die gewoon werken, zodat u zich kunt concentreren op wat u daadwerkelijk bouwt.
 
-### Optie 2: Installatiescript
+Dit is geen nieuwe filosofie. Het is dezelfde die <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS heeft gebouwd: eenvoudig, betrouwbaar en gebouwd om uit de weg te blijven. Blue is die filosofie, uitgebreid naar de agentenstack.
+
+### Ontworpen voor jouw leven, gebouwd om lokaal te blijven
+
+Van diepgaand onderzoek dat een volledig HTML-rapport oplevert, tot OCR, PDF, browserautomatisering en documentconversie: Blue verwerkt complexe, realistische workflows zonder uw gegevens naar de cloud te sturen. Voice wake, STT/TTS, Talk Mode en ondersteuning voor lokale gevolgtrekking zorgen ervoor dat dagelijkse interacties direct, privé en altijd beschikbaar zijn.
+
+## Snelle start
+
+### Optie 1: Desktop-app downloaden
+
+Ontvang de native applicatie: geen afhankelijkheden, geen compilatie. Ingebouwde proefconfiguratie met onboarding binnen enkele seconden: begin direct met chatten via een externe verbinding, geen botconfiguratie vereist. Echte out-of-the-box-ervaring.
+
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [DMG downloaden](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Installatieprogramma downloaden](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+
+### Optie 2: Script installeren
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### Optie 3: Bouwen vanuit Broncode
+### Optie 3: Bouwen vanuit de bron
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,124 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
+> **Opmerking:** Windows-builds vereisen:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) en [CMake](https://cmake.org/) voor native C-afhankelijkheden (espeak-ng,fluister.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) voor systeembibliotheken (winmm, enz.)
+>
+> Zorg ervoor dat `gcc`, `cmake` in uw `PATH` staan.
+
 ## Architectuuroverzicht
 
-<details>
-<summary>
-<img src="../../docs/assets/architecture.png" alt="Architecture" />
-</summary>
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### Pakketoverzicht (`server/internal/`)
+Ga nog een stap verder: het biedt native ondersteuning voor **20+ IM-platforms**, **stemgestuurde** interfaces voor natuurlijke, contextbewuste dialoog, **zero-config modelwisseling** met IDE-scanning.
 
-| Laag | Pakketten |
-|------|-----------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Provider | providerpool, providers, llm |
-| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Memory | memory, embedding, kvstore |
-| Channel | channel, autoreply, i18n |
-| Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Voice | voice, tts, stt, speech |
-| Observe | metrics, companion, profiling, leakdetect |
-| Plugin | plugin, skill, skillstore |
-| Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
-| Scheduler | scheduler, worker, workerpool, pool |
-| Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Multi-tenant | tenant, user, session, preview |
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-</details>
+## Hoe te bouwen
 
-### Gegevensstroom
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**Chatverzoek (Proxy Hot Path)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+> ⚠️ [!IMPORTANT]
+>
+> Als je van plan bent om tuning of vibe-codering bovenop Blue te blijven doen, behandel dan een paar mooie chats niet als vrijgavebewijs. Elke wijziging die van invloed is op de routing, het uitvoeringsgedrag, het gereedschapsoppervlak, de budgetcontrole, de modelselectie of het uitvoeringsframework moet worden gevalideerd met Blue Harness, niet met ad hoc steekproeven.
+>
+> Blue zou hier één eenvoudige regel moeten volgen: eerst data, eerst poorten, als laatste oversnijden. In de praktijk betekent dit dat u de relevante Harness dataset/eval-specificatie moet bijwerken voordat u een wijziging beoordeelt, en vervolgens één stabiele `candidate_id` gedurende de hele poging moet behouden, zodat selector-, uitvoerings-, budget- en gereedheidsrapporten allemaal dezelfde kandidaat beschrijven in plaats van vier niet-gerelateerde runs.
 
-**Kanaalberichtstroom**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+### Aanbevolen Harness Werkstroom
 
-**Spraakpijplijn**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+1. Voer `blue harness selector verify` uit
+2. Voer `blue harness execution verify` uit
+3. Hergebruik de selector-evaluatierun voor `blue harness budget gate`
+4. Sluit af met `blue harness cutover-readiness`
 
-**Harness-evaluatiestroom**
-```
-Quick Eval / Harness API → Evaluatiecontroller → Dispatcher voor run-groepen
-  → Agenttaak of eval-driver → Tools + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector Gates
-  → Cutover Readiness / Kandidaatbeslissing
-```
+Voor lokale iteratie, nachtelijke validatie of verzameling van CI-bewijs geeft u de voorkeur aan `python3 scripts/cutover_candidate_pipeline.py`. Het voert de volledige selector -> uitvoering -> budget -> gereedheidsreeks uit onder één gedeelde kandidaat, waardoor het resultaat gemakkelijker te vergelijken, te beoordelen en te verwijderen is.
 
+### Extra leuningen
 
-## Gebruik
+| Gebied | Wat te bekijken |
+|------|---------------|
+| Basislijnstabiliteit | Houd de basislijn, de datasetversie en `candidate_id` stabiel, anders zal de vergelijking afwijken en zal het resultaat niet betrouwbaar zijn. |
+| Echte bouwoutput | Bouw de betreffende binaire of frontend-bundel opnieuw op voordat u Harness uitvoert, anders valideert u mogelijk verouderd gedrag in plaats van de huidige wijziging. |
+| Routeregistratie | Als frontend en backend samen veranderen, bevestig dan dat alle nieuwe backend-routes daadwerkelijk worden geregistreerd voordat u de functie beoordeelt via UI-gedrag, omdat ontbrekende registratie vaak op een logische bug lijkt, maar in werkelijkheid een `404` is. |
+| Vrijlating vonnis | Een tuning pass is alleen gereed als Harness geen betekenisvolle regressie vertoont en de gereedheid voor de overstap bevestigt dat de kandidaat daadwerkelijk klaar is om over te schakelen. |
 
-![](../../docs/assets/handcraft.png)
+Kortom, afstemmen op Blue gaat niet over "het voelt beter in een paar chats." Het gaat erom de kandidaat in Harness te plaatsen, vergelijkbaar bewijsmateriaal te verzamelen en de poort- en gereedheidsresultaten te laten beslissen of de verandering echt veilig is om te behouden.
 
-## Mijlpalen Tijdlijn
+## Kenmerken
 
-<details>
-<summary>
-<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
-</summary>
+| Kenmerk | Wat het oplevert |
+|---------|------------------|
+| Hoge beschikbaarheid via internet en browserruntime | Eén van Blue's **scherpste onderscheidende kenmerken**. Blue verenigt **vier webtoegangspaden** voor zoeken, lezen, uitpakken en crawlen; behoudt **drie fallback-lagen** voor HTTP, proxy-extractie en browsersessies; verwerkt **anti-botpagina's** met uitdagingsdetectie, hergebruik van cookies/sessies, stealth en browseroverdracht; en routes via **drie browser-engines**: `lightpanda`, beheerd Chromium en relay/lokaal Chromium. |
+| Drie-in-één onderzoeksruntime | **Eén openbare onderzoeksinzending** kan worden doorgestuurd naar `deep_research`, `analyze` en `ui_review`. Dezelfde ontdekkings- en bewijsstapel levert vervolgens **citatie-eerst onderzoek**, **gebonden rapporten** en **gestructureerde UI/UX/toegankelijkheidsbeoordelingen** op. |
+| Harness Runtime-, evaluatie- en evolutieframework | Maakt evaluatie een **runtime primitief** tijdens ontwikkeling, training en productie. Harness omvat **regressie- en rookcontroles**, scores, baselines, rapporten en runtime-validatie, en draagt ​​vervolgens hetzelfde bewijsmateriaal over in **vaardigheidsevolutie**, vervolgevaluatie, promotie of terugdraaiing, en `AGENTS.md` of beoordeling van instructievoorstellen. |
+| Multimodale native-capability-first runtime | Houdt **stem, OCR, PDF, browsertaken, documentconversie, gestructureerd invullen van formulieren, mediaverwerking en mediageneratie** op **eigen en lokale paden eerst**, met **modelroutering alleen wanneer dit daadwerkelijk nodig is**. |
+| Beveiliging en bestuur | Inclusief **sandbox-uitvoering**, **prompt-injectieverdediging**, **sessie-audit**, machtigingen, **RBAC**, **WebAuthn**, operationele vangrails en **vaardigheidsbeveiligingsscans**. |
+| LLM Wiki en kennisruimte | Verandert geheugen-, onderzoeks- en runtime-uitvoer in een **wiki-achtig kennisoppervlak** met **samenvattingspagina's**, indexen, **backlinks**, **nieuwheid** en **archiefworkflows**. |
+| Vaardigheidswinkel en marktplaats | Biedt **ingebouwde detectie van vaardigheden**, beheer, synchronisatie en **lokaal scannen**, zodat uitbreidbaarheid **vanaf dag één** beschikbaar is. |
+| Leverancierspool van productiekwaliteit | Biedt een echte providerpool met **gezondheidscontroles**, **automatische failover**, **stroomonderbrekers** en **providerracen** voor langlopende werklasten. |
+| Ingebouwde lokale runtime voor kleine modellen | Levert een ingebouwde **`Qwen3.5-0.8B` + `llama.cpp`** runtime voor **lokale korte vragen en antwoorden**, beeldherkenning, toolrouting, samenvatting, **contextcompressie** en **documentvoorverwerking**. |
+| Langdurige betrouwbaarheid | Behandelt **OTA-updates**, **back-up en herstel**, **hot reload van configuratie** en **herstel na een storing** als **ingebouwde operationele problemen**. |
 
-| Versie | Focus | Kernwaarde | Status |
-|--------|-------|------------|--------|
-| v0.1 | Go Runtime-kern | Stabiele kernel, 24u draaiend | Voltooid |
-| v0.2 | Kernfunctionaliteit | Minimaal bruikbaar, LLM-integratie | Voltooid |
-| v0.3 | NAS-integratie | NAS-native, systemd-ondersteuning | Voltooid |
-| v0.4 | Pluginsysteem | Uitbreidbaar, beveiligingsbasis | Voltooid |
-| v0.5 | Productbasislijn | Productieklaar, documentatie | Voltooid |
-| v0.6 | Berichtkanalen | Multi-kanaal ondersteuning | Voltooid |
-| v0.7 | Beveiliging | OIDC, MFA, audit | Voltooid |
-| v0.8 | Prestaties | Optimalisatie, caching, benchmarks | Voltooid |
-| v0.9 | Ecosysteem | Multi-tenant, browserautomatisering, spraak | Voltooid |
-| v0.10.0 | CLI-bundeling | CC CLI-bundeling, detectie, auto-update | Voltooid |
-| v0.10.1 | Metriekenmonitoring | API-statistieken, tokentracking, TTFT | Voltooid |
-| v0.10.2 | CLI-betrouwbaarheid | Proceslevenscyclus, foutherstel | Voltooid |
-| v0.10.3 | CLI-integratie | Installatiewizard, provider-autodetectie | Voltooid |
-| v0.10.4 | Tauri-verpakking | Desktop-app, systeemvak | Voltooid |
-| v0.10.5 | API Proxy Sidecar | Routeselectie, prompt guard, gebruiksstatistieken | Voltooid |
-| v0.10.6 | Provider Pool | Multi-provider routing, health check, failover | Voltooid |
-| v0.10.7 | Voorbeeldmodus | Ongeauthenticeerde toegang, feature gating | Voltooid |
-| v0.10.8 | Skill Store | Skill store-infrastructuur, kanaalvalidatie | Voltooid |
-| v0.10.9–10 | Gebruikersbeheer | Subgebruikers, paginaniveau-permissies | Voltooid |
-| v0.10.13–14 | Beveiliging & Vaardigheden | Beveiligingspagina, skill store-herontwerp | Voltooid |
-| v0.10.15 | Chatverbeteringen | Chat-UX, berichtpijplijn | Voltooid |
-| v0.10.16 | Spraakmodule | Sherpa TTS/ASR, eSpeak, providerwisseling | Voltooid |
-| v0.10.17 | Externe Toegang | Ngrok, Cloudflare-tunnels, ACME-certificaten | Voltooid |
-| v0.10.18–20 | Prestatiesprint | Opstart-/chatprestaties, contextcache | Voltooid |
-| v0.10.21–22 | Prompt & DingTalk | Systeemprompt, DingTalk-kanaal | Voltooid |
-| v0.10.23 | OTA-update | OTA-updatesysteem | Voltooid |
-| v0.10.24 | Kanaalupgrade | 10 kanalen geüpgraded van stubs | Voltooid |
-| v0.10.25 | CC Cache | Tweelaagsecache (L1 geheugen + L2 schijf) | Voltooid |
-| v0.10.26 | Humanizer | Responshumaniseringspijplijn | Voltooid |
-| v0.10.27 | Context Pruner | 54% tokenbesparing op code (SWE-bench officieel), 46–47% op algemene documenten (lokale IR), BM25-scoring, segmentatie | Voltooid |
-| v0.10.28 | Geheugenservice | Progressief zoeken, dual-write backend | Voltooid |
+## Mijlpaal-tijdlijn
 
-</details>
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
 
-## Community & Ondersteuning
+| Datum | Versie | Trefwoorden / Kenmerken |
+|------|---------|--------------------|
+| 26 januari 2026 | `v0.1–v0.9` | Go runtime, plug-insysteem, browserautomatisering |
+| 27–28 januari 2026 | `v0.9.0–v0.9.2` | Browsertaakweergave, Blue Companion, Smart Form Filler |
+| 29–31 januari 2026 | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, UI herstructureren |
+| 1–3 februari 2026 | `v0.10.1–v0.10.22` | Statistieken, externe toegang, contextcache |
+| 5–18 februari 2026 | `v0.10.25–v0.10.29` | i18n, CC Cache, releasepijplijn |
+| 20–25 februari 2026 | `v0.10.28–v0.10.29` | Desktoplader, mobiele UX, herontwerp van geheugen |
+| 28 februari–2 maart 2026 | `v0.10.30` | Deep Research, herrangschikking van vaardigheden, beveiligingsscan |
+| 9–18 maart 2026 | `v0.10.31` | Dashboardrevisie, VoiceChat refactor, goedgekeurde sites |
+| 19–22 maart 2026 | `v0.10.32` | Harness uitrol, transcriptieaudit, zoeken op internet |
+| 23–25 maart 2026 | `v0.10.33` | Harness groepen, browsergoedkeuringen, vaardighedenmarkt |
+| 29–30 maart 2026 | `v0.10.35` | Harness v3, browserrelay, contextcompressie |
+| 31 maart – 1 april 2026 | `v0.10.36` | Transcriptaudit, Harness overlays, parseren van tools |
+| 1 april 2026 | `v0.10.37` | Runtime-harding, Skill+Exec cutover, herstelpolish |
+| 2–5 april 2026 | `v0.10.38` | GitHub ondersteuning, marktverfijning, betrouwbaarheidsverbeteringen |
+| 6–7 april 2026 | `v0.10.39` | Onderzoeksunificatie, evolutieoppervlakken, geheugenreductie |
 
-- **Issues**: [Meld bugs en functieverzoeken hier](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Discussies**: [Discord](https://discord.gg/b3AgFDxe9v)
+## Gemeenschap en ondersteuning
+
+- **Problemen**: [Dien hier bugs en functieverzoeken in](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Discussies**: [Discord](https://discord.gg/zwWbKA4S2)
 - **Volg ons** op [GitHub](https://github.com/IceWhaleTech)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Licentie
 
-Dit project is gelicentieerd onder de MIT-licentie - zie het [LICENSE](../../LICENSE)-bestand voor details. Wij geloven in open source en het teruggeven aan de community.
+Dit project is gelicentieerd onder de MIT-licentie - zie het bestand [LICENSE](../../LICENSE) voor details. Wij geloven in open source en iets teruggeven aan de gemeenschap.
 
 ## Bijdragers
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Dank aan alle Blue bijdragers:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Referenties
+
+1. **OpenClaw** — Lokaal-eerste open source-agent. Was een pionier in het verbinden van LLM's met lokale apparaten via kanaaladapters en het aanroepen van tools, wat een directe inspiratie was voor de agent runtime-architectuur van Blue. https://github.com/openclaw/openclaw
+2. **MiroMind** — Diepgaande onderzoeksmodus met op bewijzen gebaseerde synthese. Vormgegeven aan de ingebouwde diepgaande onderzoekspijplijn van Blue: planning, parallel ophalen, ontdubbelen van bewijsmateriaal en het genereren van HTML-rapporten. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM als kenniscompiler. Herformuleert LLM's om persistente, evoluerende kennisruimten te bouwen, die verder gaan dan de accumulatievalkuil van RAG.
+4. **OpenSpace (HKUDS)** — Zelfontwikkelende vaardigheidsmotor. Een op DAG gebaseerd raamwerk waarin agenten leren van mislukkingen en gespecialiseerde vaardigheden afleiden. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — Versie-API-documentatieregister voor codeeragenten. Pakt agentenhallucinaties en vergeten sessiekennis aan. Biedt samengestelde, versiebeheerde documenten met annotaties en feedbackloops, waardoor documentatie wordt omgezet in een zichzelf verbeterende kennislaag. https://github.com/andrewyng/context-hub
+6. **Notion** — Eenvoudig, menselijk en opzettelijk stil. Geïnspireerd door het minimalistische ethos van Notion, brengt Blue warmte terug naar het grid. Waar verfijnde schreef en doordacht ontwerp samenkomen, ontstaat een ruimte die aanvoelt als thuis. https://www.notion.com/about
+7. **Matrix** — Visuele inspiratie uit de iconische digitale regenesthetiek. De esthetische richting voor de technische diagrammen van Blue.
+8. **IceWhale** — Liefde, dood en robots S2E2 "IJs". Een collectief dat wereldwijd samenkomt om de muren van internetgiganten te doorbreken en dataconcentratie tegen te gaan. De ijswalvis symboliseert een gemeenschap die samen aan de rand soevereine instrumenten bouwt.
+9. **ZimaOS Blue** — Liefde, dood en robots S1E14 "Zima Blue". Een metafoor: intelligentie die begint in dienstbaarheid en evolueert om de wereld te verkennen. Blue is een vertegenwoordiger van wijsheid, geworteld in eenvoud en reikend naar diepgang.
+10. **ZimaOS** — Vereenvoudigde, gerichte, open ontwerpprincipes. Zowel ZimaOS als Blue delen de overtuiging dat technologie de gebruiker moet dienen: binnen 30 seconden implementeren, overal draaien, leverancierneutraal blijven. https://www.zimaspace.com/zimaos

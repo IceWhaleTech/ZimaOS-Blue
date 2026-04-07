@@ -28,8 +28,8 @@ const LEGACY_DEFAULT_WIDTH = 860
 const LEGACY_DEFAULT_HEIGHT = 520
 const DEFAULT_WIDTH = 700
 const DEFAULT_HEIGHT = 430
-const DEFAULT_COLLAPSED_WIDTH = 340
-const DEFAULT_COLLAPSED_HEIGHT = 150
+const DEFAULT_COLLAPSED_WIDTH = 300
+const DEFAULT_COLLAPSED_HEIGHT = 252
 const DEFAULT_LAUNCHER_WIDTH = 180
 const DEFAULT_LAUNCHER_HEIGHT = 76
 const MIN_WIDTH = 600
@@ -120,6 +120,7 @@ let screenshotTimer: ReturnType<typeof setInterval> | null = null
 let panelResizeObserver: ResizeObserver | null = null
 let launcherClickResetTimer: ReturnType<typeof setTimeout> | null = null
 let taskOverviewEventRefreshTimer: ReturnType<typeof setTimeout> | null = null
+const compactPreviewWarmupInFlight = new Set<string>()
 
 function tr(key: string, fallback: string): string {
   return te(key) ? t(key) : fallback
@@ -413,6 +414,18 @@ function formatScreenshotScope(value: string | undefined): string {
         ? normalized.replace(/_/g, ' ')
         : tr('browserMonitor.previewScopeLatestFrame', 'Latest frame')
   }
+}
+
+function screenshotDataUrl(value: string | undefined | null): string {
+  const data = String(value || '').trim()
+  return data ? `data:image/png;base64,${data}` : ''
+}
+
+function sessionPreviewFallback(session: BrowserSession | null | undefined): string {
+  const source = String(session?.page_title || session?.current_url || '').trim()
+  const normalized = source.replace(/^https?:\/\//, '').trim()
+  const initial = normalized.charAt(0).toUpperCase()
+  return initial || '•'
 }
 
 function screenshotFrameKey(frame: Pick<BrowserSessionScreenshot, 'captured_at' | 'data'>): string {
@@ -805,7 +818,9 @@ async function refreshTasks() {
   const overview = await getBrowserOverview({
     scope: effectiveTaskScope.value,
     conversationId:
-      effectiveTaskScope.value === 'current' ? activeTaskConversationId.value || undefined : undefined,
+      effectiveTaskScope.value === 'current'
+        ? activeTaskConversationId.value || undefined
+        : undefined,
     limit: 12,
   })
   tasks.value = overview.tasks.slice().sort(compareTasks)
@@ -840,7 +855,7 @@ function scheduleOverviewRefreshFromEvent() {
 
 async function refreshScreenshot() {
   const session = selectedSession.value
-  if (!isOpen.value || isCollapsed.value || !session?.id) return
+  if (!isOpen.value || !session?.id) return
   const sessionID = session.id
   screenshotLoading.value = true
   screenshotError.value = ''
@@ -908,6 +923,41 @@ async function refreshScreenshot() {
   } finally {
     screenshotLoading.value = false
   }
+}
+
+async function warmCollapsedSessionPreviews() {
+  if (!isOpen.value || !isCollapsed.value || sessions.value.length < 2) return
+
+  const candidates = sessions.value
+    .filter((session) => {
+      if (!session.id || session.monitor_kind !== 'image') return false
+      if (session.id === selectedSession.value?.id) return false
+      if (getCachedScreenshotState(session.id)) return false
+      return !compactPreviewWarmupInFlight.has(session.id)
+    })
+    .slice(0, 6)
+
+  if (candidates.length === 0) return
+
+  await Promise.allSettled(
+    candidates.map(async (session) => {
+      compactPreviewWarmupInFlight.add(session.id)
+      try {
+        const response = await getSessionMonitor(session.id)
+        if (response.kind !== 'image') return
+        const nextHistory = normalizeScreenshotHistory(response.image?.history || [])
+        const nextScreenshot = String(response.image?.screenshot || '').trim()
+        const resolvedState = resolveScreenshotState(session, nextScreenshot, nextHistory)
+        if (resolvedState) {
+          rememberScreenshotState(session.id, resolvedState)
+        }
+      } catch {
+        // Ignore warmup failures and keep placeholder thumbnails for uncached sessions.
+      } finally {
+        compactPreviewWarmupInFlight.delete(session.id)
+      }
+    })
+  )
 }
 
 async function refreshAll() {
@@ -1030,10 +1080,23 @@ const previewUrl = computed(() => {
     tr('browserMonitor.previewIdleUrl', 'Open or reuse a browser tab to start the live feed.')
   )
 })
-const screenshotSrc = computed(() =>
-  activeScreenshotFrame.value?.data
-    ? `data:image/png;base64,${activeScreenshotFrame.value.data}`
-    : ''
+const screenshotSrc = computed(() => screenshotDataUrl(activeScreenshotFrame.value?.data))
+const compactSessionThumbnails = computed(() =>
+  sessions.value.map((session) => {
+    const cachedState =
+      session.id === selectedSession.value?.id ? null : getCachedScreenshotState(session.id)
+    const cachedData = String(cachedState?.history[0]?.data || cachedState?.screenshot || '').trim()
+    return {
+      session,
+      src:
+        session.id === selectedSession.value?.id
+          ? screenshotSrc.value
+          : screenshotDataUrl(cachedData),
+      fallback: sessionPreviewFallback(session),
+      isActive: session.id === selectedSession.value?.id,
+      label: session.page_title || tr('browserMonitor.untitledTab', 'Untitled tab'),
+    }
+  })
 )
 const activeFrameCapturedAt = computed(() =>
   String(activeScreenshotFrame.value?.captured_at || lastScreenshotAt.value || '').trim()
@@ -1239,6 +1302,17 @@ watch(
 )
 
 watch(
+  () =>
+    `${isOpen.value}:${isCollapsed.value}:${selectedSession.value?.id || ''}:${sessions.value
+      .map((session) => `${session.id}:${session.monitor_kind}`)
+      .join('|')}`,
+  () => {
+    void warmCollapsedSessionPreviews()
+  },
+  { immediate: true }
+)
+
+watch(
   previewFrames,
   (frames) => {
     if (frames.length === 0) {
@@ -1384,13 +1458,13 @@ onUnmounted(() => {
     >
       <header class="browser-monitor__header browser-monitor__handle">
         <div class="browser-monitor__title-group">
-          <span class="browser-monitor__eyebrow">{{
+          <span v-if="!isCollapsed" class="browser-monitor__eyebrow">{{
             tr('browserMonitor.eyebrow', 'Browser execution')
           }}</span>
-          <h3 class="browser-monitor__title">
+          <h3 class="browser-monitor__title" :class="{ 'is-compact': isCollapsed }">
             {{ tr('browserMonitor.title', 'Live monitor') }}
           </h3>
-          <p class="browser-monitor__subtitle">
+          <p v-if="!isCollapsed" class="browser-monitor__subtitle">
             {{ tr('browserMonitor.subtitle', 'Track the latest task and tab state here.') }}
           </p>
         </div>
@@ -1428,33 +1502,53 @@ onUnmounted(() => {
       </header>
 
       <div v-if="isCollapsed" class="browser-monitor__compact">
-        <div class="browser-monitor__compact-card">
-          <span class="browser-monitor__compact-label">{{
-            tr('browserMonitor.compactTask', 'Lead task')
-          }}</span>
-          <strong>{{
-            taskTitle(leadTask) || tr('browserMonitor.compactTaskIdle', 'No active task')
-          }}</strong>
-          <span>{{
-            leadTask
-              ? `${stageLabel(leadTask)} · ${Math.round(leadTask.progress || 0)}%`
-              : launcherMeta
-          }}</span>
+        <div v-if="compactSessionThumbnails.length > 1" class="browser-monitor__compact-strip">
+          <button
+            v-for="item in compactSessionThumbnails"
+            :key="item.session.id"
+            type="button"
+            class="browser-monitor__compact-thumb"
+            :class="{ 'is-active': item.isActive }"
+            :title="item.session.page_title || item.session.current_url || item.label"
+            @click="selectedSessionId = item.session.id"
+          >
+            <img
+              v-if="item.src"
+              :src="item.src"
+              :alt="item.label"
+              class="browser-monitor__compact-thumb-image"
+            />
+            <span v-else class="browser-monitor__compact-thumb-fallback">{{ item.fallback }}</span>
+          </button>
         </div>
-        <div class="browser-monitor__compact-card">
-          <span class="browser-monitor__compact-label">{{
-            tr('browserMonitor.compactTab', 'Active tab')
-          }}</span>
-          <strong>{{
-            selectedSession?.page_title ||
-            tr('browserMonitor.compactTabIdle', 'Waiting for browser activity')
-          }}</strong>
-          <span>{{
-            selectedSession?.current_url ||
-            (lastScreenshotAt
-              ? `${tr('browserMonitor.updated', 'Updated')} ${formatRelativeTime(lastScreenshotAt)}`
-              : tr('browserMonitor.compactTabHint', 'Preview resumes after expansion'))
-          }}</span>
+
+        <div class="browser-monitor__compact-frame">
+          <div v-if="isTextMonitor && activeTextMonitor" class="browser-monitor__compact-text">
+            <strong>{{ previewTitle }}</strong>
+            <p>
+              {{
+                activeTextMonitor.summary ||
+                tr('browserMonitor.textSummaryIdle', 'Waiting for readable summary...')
+              }}
+            </p>
+          </div>
+          <img
+            v-else-if="screenshotSrc"
+            :src="screenshotSrc"
+            :alt="tr('browserMonitor.previewAlt', 'Browser preview')"
+            class="browser-monitor__compact-image"
+          />
+          <div v-else class="browser-monitor__compact-frame-empty">
+            <strong>{{ tr('browserMonitor.previewEmptyTitle', 'No preview frame yet') }}</strong>
+            <span>{{
+              screenshotLoading
+                ? tr('browserMonitor.previewLoading', 'Capturing the current viewport...')
+                : tr(
+                    'browserMonitor.previewEmptyBody',
+                    'The monitor will show screenshots as soon as a browser tab is active.'
+                  )
+            }}</span>
+          </div>
         </div>
       </div>
 
@@ -1778,7 +1872,7 @@ onUnmounted(() => {
 }
 
 .browser-monitor.is-collapsed {
-  width: min(21.25rem, calc(100vw - 1.5rem));
+  width: min(18.75rem, calc(100vw - 1rem));
   height: auto;
 }
 
@@ -1793,6 +1887,12 @@ onUnmounted(() => {
   cursor: move;
   user-select: none;
   touch-action: none;
+}
+
+.browser-monitor.is-collapsed .browser-monitor__header {
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.48rem 0.54rem 0.44rem;
 }
 
 .browser-monitor__title-group {
@@ -1814,6 +1914,13 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+.browser-monitor__title.is-compact {
+  margin-top: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .browser-monitor__subtitle {
   margin-top: 0.22rem;
   max-width: 34rem;
@@ -1830,6 +1937,10 @@ onUnmounted(() => {
   gap: 0.36rem;
 }
 
+.browser-monitor.is-collapsed .browser-monitor__actions {
+  gap: 0.24rem;
+}
+
 .browser-monitor__icon-button {
   width: 1.86rem;
   height: 1.86rem;
@@ -1842,6 +1953,17 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.browser-monitor__icon-button:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.88);
+  outline-offset: 2px;
+}
+
+.browser-monitor.is-collapsed .browser-monitor__icon-button {
+  width: 1.55rem;
+  height: 1.55rem;
+  font-size: 0.78rem;
 }
 
 .browser-monitor__icon-button.is-close {
@@ -2389,37 +2511,120 @@ onUnmounted(() => {
 }
 
 .browser-monitor__compact {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.62rem;
-  padding: 0.78rem;
-}
-
-.browser-monitor__compact-card {
-  padding: 0.72rem;
-  border-radius: 0.88rem;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(226, 232, 240, 0.9);
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 0.46rem;
+  padding: 0.56rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(248, 250, 252, 0.9)),
+    rgba(255, 255, 255, 0.78);
 }
 
-.browser-monitor__compact-card strong {
-  color: #0f172a;
-  font-size: 0.78rem;
+.browser-monitor__compact-strip {
+  display: flex;
+  gap: 0.34rem;
+  overflow-x: auto;
+  padding-bottom: 0.08rem;
 }
 
-.browser-monitor__compact-card span {
-  font-size: 0.68rem;
-  color: #475569;
+.browser-monitor__compact-thumb {
+  width: 2.9rem;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  border-radius: 0.66rem;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(15, 23, 42, 0.14);
+  overflow: hidden;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
-.browser-monitor__compact-label {
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.6rem;
-  color: #94a3b8;
+.browser-monitor__compact-thumb.is-active {
+  border-color: rgba(14, 165, 233, 0.68);
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.42);
+}
+
+.browser-monitor__compact-thumb:focus-visible {
+  outline: 2px solid rgba(14, 165, 233, 0.82);
+  outline-offset: 2px;
+}
+
+.browser-monitor__compact-thumb-image,
+.browser-monitor__compact-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: rgba(15, 23, 42, 0.98);
+}
+
+.browser-monitor__compact-thumb-image {
+  object-fit: cover;
+}
+
+.browser-monitor__compact-thumb-fallback {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.22), transparent 55%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 41, 59, 0.94));
+  color: #e2e8f0;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.browser-monitor__compact-frame {
+  position: relative;
+  width: 100%;
+  min-height: 9.8rem;
+  aspect-ratio: 16 / 10;
+  border-radius: 0.92rem;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 32%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(15, 23, 42, 0.94));
+}
+
+.browser-monitor__compact-image {
+  object-fit: contain;
+}
+
+.browser-monitor__compact-text,
+.browser-monitor__compact-frame-empty {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.88rem;
+  text-align: center;
+}
+
+.browser-monitor__compact-text {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  text-align: left;
+  color: #e2e8f0;
+}
+
+.browser-monitor__compact-text strong,
+.browser-monitor__compact-frame-empty strong {
+  font-size: 0.74rem;
+  color: #f8fafc;
+}
+
+.browser-monitor__compact-text p,
+.browser-monitor__compact-frame-empty span {
+  margin: 0;
+  font-size: 0.66rem;
+  line-height: 1.45;
+  color: rgba(226, 232, 240, 0.82);
+  word-break: break-word;
 }
 
 .browser-monitor__resize-grip {
@@ -2463,8 +2668,8 @@ onUnmounted(() => {
     padding: 0.74rem 0.74rem 0.68rem;
   }
 
-  .browser-monitor__compact {
-    grid-template-columns: 1fr;
+  .browser-monitor.is-collapsed {
+    width: calc(100vw - 0.75rem);
   }
 
   .browser-monitor-launcher {
@@ -2502,7 +2707,6 @@ onUnmounted(() => {
 }
 
 :global([data-theme='dark']) .browser-monitor__panel,
-:global([data-theme='dark']) .browser-monitor__compact-card,
 :global([data-theme='dark']) .browser-monitor__task {
   background: rgba(15, 23, 42, 0.72);
   border-color: rgba(71, 85, 105, 0.4);
@@ -2526,8 +2730,7 @@ onUnmounted(() => {
 
 :global([data-theme='dark']) .browser-monitor__panel-heading,
 :global([data-theme='dark']) .browser-monitor__capability-label,
-:global([data-theme='dark']) .browser-monitor__task-title,
-:global([data-theme='dark']) .browser-monitor__compact-card strong {
+:global([data-theme='dark']) .browser-monitor__task-title {
   color: #f8fafc;
 }
 
@@ -2536,8 +2739,6 @@ onUnmounted(() => {
 :global([data-theme='dark']) .browser-monitor__task-meta,
 :global([data-theme='dark']) .browser-monitor__task-subtitle,
 :global([data-theme='dark']) .browser-monitor__task-blocker,
-:global([data-theme='dark']) .browser-monitor__compact-card span,
-:global([data-theme='dark']) .browser-monitor__compact-label,
 :global([data-theme='dark']) .browser-monitor__empty {
   color: #cbd5e1;
 }
@@ -2566,6 +2767,21 @@ onUnmounted(() => {
   border-color: rgba(125, 211, 252, 0.38);
   background: rgba(14, 165, 233, 0.18);
   color: #f8fafc;
+}
+
+:global([data-theme='dark']) .browser-monitor__compact {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.66), rgba(15, 23, 42, 0.82)), rgba(15, 23, 42, 0.76);
+}
+
+:global([data-theme='dark']) .browser-monitor__compact-thumb {
+  border-color: rgba(71, 85, 105, 0.48);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+:global([data-theme='dark']) .browser-monitor__compact-thumb.is-active {
+  border-color: rgba(125, 211, 252, 0.52);
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.24);
 }
 
 :global([data-theme='dark']) .browser-monitor__resize-grip {

@@ -435,6 +435,7 @@ func runServerOnce() serverRunOutcome {
 	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to create data directory")
 	}
+	bootstrap.ApplyRuntimeDataDirDefaults(cfg, dataDir)
 	previousCleanShutdown, startupIntegrityErr := dbutil.BeginStartupIntegritySession(dataDir)
 	if startupIntegrityErr != nil {
 		logger.Warn().Err(startupIntegrityErr).Msg("Failed to initialize startup integrity state")
@@ -476,6 +477,7 @@ func runServerOnce() serverRunOutcome {
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to load config from DB, using YAML defaults")
 	}
+	bootstrap.ApplyRuntimeDataDirDefaults(cfg, dataDir)
 	applyServerRuntimeOverrides(&cfg.Server)
 	hotReloader, err = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
 		Enabled:             true,

@@ -48,7 +48,7 @@ func newRuntimeKnowledgeAuthorCaller(runtimeLLM llm.Provider, smallModelManager 
 	}
 	caller := newAuxiliaryLLMCaller()
 	if smallModelManager != nil {
-		caller.SetSmallModel(smallmodel.NewLlamaCppRuntime(smallModelManager))
+		caller.SetSmallModel(smallmodel.NewLlamaCppRuntime(smallModelManager, smallmodel.LlamaCppRuntimeOptions{AutoDownload: true}))
 	}
 	if runtimeLLM != nil {
 		caller.SetFallback(runtimeLLM)

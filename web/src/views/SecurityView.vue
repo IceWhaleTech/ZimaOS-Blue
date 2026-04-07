@@ -29,6 +29,7 @@ import {
   formatSecurityScanSummary,
   getVisibleSecurityScanSummaryMetrics,
 } from '@/utils/securityScanSummary'
+import { getSecurityScanItemDetailI18n } from '@/utils/securityScanItemLocalization'
 
 const { t, te } = useI18n()
 const route = useRoute()
@@ -190,6 +191,10 @@ const DETAIL_MESSAGE_KEYS: Record<string, string> = {
 /** Use translated details when key exists (item id+status or detailMessages map), else API details. */
 function getItemDetails(item: ScanItem): string | undefined {
   if (!item.details) return undefined
+  const localizedDetail = getSecurityScanItemDetailI18n(item)
+  if (localizedDetail?.key && te(localizedDetail.key)) {
+    return t(localizedDetail.key, localizedDetail.params)
+  }
   const itemKey = `security.scan.items.${item.id}.details.${item.status}`
   if (te(itemKey)) return t(itemKey)
   const msgKey = DETAIL_MESSAGE_KEYS[item.details]

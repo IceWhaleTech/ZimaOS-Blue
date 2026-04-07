@@ -32,8 +32,8 @@
 
 <p align="center">
   <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/actions"><img src="https://img.shields.io/github/actions/workflow/status/IceWhaleTech/ZimaOS-Blue/ci.yml?branch=main&style=for-the-badge" alt="Stav CI"></a>
-  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="GitHub vydanie"></a>
-  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT licencia"></a>
+  <a href="https://github.com/IceWhaleTech/ZimaOS-Blue/releases"><img src="https://img.shields.io/github/v/release/IceWhaleTech/ZimaOS-Blue?include_prereleases&style=for-the-badge" alt="Vydanie GitHub"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="Licencia MIT"></a>
 </p>
 
 <p align="center">
@@ -44,112 +44,42 @@
 
 ## Úvod
 
-Inšpirovaní projektom Clawdbot veríme, že **budúcnosť** osobného počítačového sveta budú formovať **rozmanití, lokálne orientovaní AI agenti** bežiaci na okraji siete.
+Inšpirovaní Clawdbotom a veríme, že budúcnosť osobných počítačov bude formovať rôznorodá, lokálna umelá inteligencia fungujúca na okraji.
 
-**ZimaOS Blue je naša odpoveď** — plne **open-source, auditovateľné a produkčne pripravené agentové prostredie a sada nástrojov**, ktoré vám umožnia nasadiť súkromných, vlastne hostovaných agentov bez akéhokoľvek trenia.
+ZimaOS Blue je naša odpoveď – plne open source, auditovateľný, dodávateľsky neutrálny a produkčne pripravený agent runtime a súprava nástrojov, ktorá vám umožňuje odosielať súkromných agentov s vlastným hosťovaním s nulovým trením.
 
-Vytvorený pre odvážnych vývojárov, ktorí chcú **tvoriť vlastných agentov kreatívne alebo ručne**. Blue je **navrhnutý pre výkon**: napísaný v **Go**, s pamäťovou náročnosťou len 10 MB. Beží na **akomkoľvek x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — kdekoľvek, kde zapojíte napájanie.
-
-![](../../docs/assets/features.png)
-
-## Hlavné vlastnosti
-
-### Lokálne orientovaný dizajn a automatický prístup k modelom
-
-Ideme ešte ďalej: natívna podpora pre **20+ IM platforiem**, **hlasovo ovládané** rozhrania pre prirodzený, kontextovo uvedomelý dialóg, **bezúdržbové prepínanie modelov** s IDE skenovaním a SOUL-vrstvené osobnosti.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Rýchly a ľahký
-
-Natívne kompilovaný v Go — žiadny interpreter, žiadny VM, žiadna réžia. Beží ticho na všetkom od serverov po vaše stolné zariadenia.
-
-| Metrika | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|---------|-------------------|------------------------|
-| `help` studený / teplý | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` beh (najlepší z 3) | **< 0.01 s** | 5.98 s |
-| `help` špičkové RSS | **~10 MB** | ~394 MB |
-| `status` špičkové RSS | **~15 MB** | ~1.52 GB |
-| nečinná pamäť `gateway run` po studenom štarte | **~19 MB** | - |
-| Závislosti za behu | **Žiadne** | Node.js 18+ |
-
-> Riadky CLI vyššie sú historický mikrobenchmark `help` / `status` na rovnakom hostiteľovi. Nový riadok `gateway run` ukazuje skutočnú nečinnú pamäť po studenom štarte, meranú na macOS arm64 cez `vmmap Physical footprint` po ustálení štartu. Feb-Apr 2026.
-
-### Čisté Go, akékoľvek zariadenie
-
-100% Go, statický binárny súbor. **Krížová kompilácia pre 5 cieľov** priamo z krabice (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Žiadny Node runtime, žiadny Python, žiadne kontajnery. Položte ho na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, starý x86 router alebo ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — jednoducho beží. **Potom pridajte vlastné UI, logiku a agentové zručnosti** — jeden kód, každá platforma.
-
-### Bezpečnosť a správa
-
-Vstavaný sidecar API proxy s hĺbkovou obranou:
-- **Sandbox spúšťanie** – Všetky volania nástrojov bežia v izolovaných prostrediach.
-- **Obrana proti prompt injection** – 7+ vstavaných stratégií zachytávania.
-- **Audit relácií** – Úplné monitorovanie relácií, každá interakcia je sledovateľná.
-- **RBAC & WebAuthn** – Jemnozrnné riadenie prístupu s bezheslovým overovaním.
+Blue, stvorený pre odvážnych vývojárov, ktorí chcú vibrovať alebo ručne vyrábať svojich vlastných agentov, je navrhnutý pre výkon: napísaný v Go, s pamäťou len 19 MB. Beží na akomkoľvek x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS - kdekoľvek, kde pripojíte napájanie.
 
 ## Prečo Blue
 
-Veríme, že **osobné počítačové systémy novej generácie** prijímajú LLM — ale **kontrolovateľní, auditovateľní** agenti zostávajú základom pre jednotlivcov aj tímy. **Blue prináša**:
-- **Komplexné jadro** – Pokročilá správa modelov, IM integrácia, rozšírená persona a rozhrania v prirodzenom jazyku optimalizované pre každodenné interakcie (headsety, hlas, inteligentné okuliare).
-- **Lokálne orientovaný, ultra ľahký, multiplatformový** – Nevyžaduje výkonný hardvér. Beží na čomkoľvek, čo dokáže počítať.
-- **Bezpečný a auditovateľný** – Audit relácií, sandboxing, riadenie oprávnení a vstavaný API proxy fungujúci ako aplikačný firewall — každý bajt dnu/von je viditeľný.
-
-![](../../docs/assets/design_principle.png)
-
-Minimalizujeme šablónový kód, aby ste sa **sústredili na to, čo je dôležité**. Verní <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **dizajnovej filozofii ZimaOS**, Blue prináša:
-- **Od nuly k jednej jedným kliknutím** – Okamžité nasadenie, žiadna zložitá konfigurácia.
-- **Rýchle prototypovanie** – Tvorte kreatívne alebo ručne scenárovo špecifické nástroje, interakcie a balíčky aplikácií.
-- **Globálne pripravený** – **Svet je veľký** a nehovorí predvolene anglicky. **20+ jazykov, natívne**, žiadne bariéry.
-- **Otvorený ekosystém modelov** – Žiadne uzamknutie dodávateľom. Prineste si vlastné modely.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
-</summary>
 
-| Poskytovateľ | Modely | Typ |
-|--------------|--------|-----|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi atď. | Lokálny |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (zameranie na súkromie) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | Modely OpenAI cez Azure | Cloud |
-| OpenRouter | 100+ agregovaných modelov | Cloud |
-| AIHubMix | Multi-provider agregátor | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Vlastný | Akékoľvek API kompatibilné s OpenAI / Anthropic / Gemini | Cloud / Lokálny |
+### Pure Go, akékoľvek zariadenie
 
-</details>
+100% Go, statický binárny súbor. Krížová kompilácia na 5 cieľov po vybalení z krabice (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Nevyžaduje sa žiadny runtime uzla, Python, žiadne kontajnery. Položte ho na NAS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, starý x86 router alebo ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac – jednoducho to beží. Potom navrstvite svoje vlastné používateľské rozhranie, logiku a schopnosti agentov – jedna kódová základňa, každá platforma.
 
-### Podporované IDE
+### Po vybalení, pripravené na prácu
 
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+Každý chce nástroje, ktoré sú jednoduché, spoľahlivé a škálovateľné, keď ich potrebujete. Nástroje, ktoré jednoducho fungujú, takže sa môžete sústrediť na to, čo skutočne staviate.
+
+Toto nie je nová filozofia. Je to ten istý, ktorý postavil <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS: jednoduchý, spoľahlivý a vyrobený tak, aby vám neprekážal. Blue je táto filozofia rozšírená na zásobník agentov.
+
+### Navrhnuté pre váš život, vytvorené tak, aby zostali miestne
+
+Od hĺbkového výskumu, ktorý poskytuje úplnú správu HTML, po OCR, PDF, automatizáciu prehliadača a konverziu dokumentov, Blue zvláda zložité pracovné postupy v reálnom svete bez odosielania údajov do cloudu. Hlasové budenie, STT/TTS, Talk Mode a podpora miestneho vyvodzovania robia každodenné interakcie okamžitými, súkromnými a vždy dostupnými.
 
 ## Rýchly štart
 
-### Možnosť 1: Stiahnuť desktopovú aplikáciu
+### Možnosť 1: Stiahnite si aplikáciu pre stolné počítače
 
-Získajte natívnu aplikáciu — žiadne závislosti, žiadna kompilácia. Vstavaná skúšobná konfigurácia, pripravená za sekundy — pripojte sa vzdialene a začnite chatovať okamžite, bez nastavovania bota. Skutočný štart na prvý pokus.
+Získajte natívnu aplikáciu – žiadne závislosti, žiadna kompilácia. Zabudovaná skúšobná konfigurácia s integráciou v priebehu niekoľkých sekúnd — začnite chatovať okamžite cez vzdialené pripojenie, nie je potrebné žiadne nastavenie robota. Skutočný zážitok z krabice.
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Stiahnuť DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Stiahnuť inštalátor](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Stiahnuť inštalačný program](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### Možnosť 2: Inštalačný skript
+### Možnosť 2: Inštalácia skriptu
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### Možnosť 3: Zostaviť zo zdrojového kódu
+### Možnosť 3: Zostavte zo zdroja
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,124 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
+> **Poznámka:** Zostavy systému Windows vyžadujú:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) a [CMake](https://cmake.org/) pre natívne závislosti C (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) pre systémové knižnice (winmm atď.)
+>
+> Uistite sa, že `gcc`, `cmake` sú vo vašom `PATH`.
+
 ## Prehľad architektúry
 
-<details>
-<summary>
-<img src="../../docs/assets/architecture.png" alt="Architecture" />
-</summary>
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### Mapa balíčkov (`server/internal/`)
+Pokračujte ďalej: poskytuje natívnu podporu pre **20+ platforiem okamžitých správ**, **hlasom ovládané** rozhrania pre prirodzený, kontextový dialóg, **prepínanie modelov s nulovou konfiguráciou** so skenovaním IDE.
 
-| Vrstva | Balíčky |
-|--------|---------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Poskytovateľ | providerpool, providers, llm |
-| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Pamäť | memory, embedding, kvstore |
-| Kanál | channel, autoreply, i18n |
-| Bezpečnosť | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Hlas | voice, tts, stt, speech |
-| Pozorovanie | metrics, companion, profiling, leakdetect |
-| Plugin | plugin, skill, skillstore |
-| Integrácia | browser, cron, workflow, formfiller, tunnel, crawler |
-| Plánovač | scheduler, worker, workerpool, pool |
-| Jadro | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Systém | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Viacnájomníctvo | tenant, user, session, preview |
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-</details>
+## Ako stavať
 
-### Tok dát
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**Chatová požiadavka (Proxy Hot Path)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+> ⚠️ [!IMPORTANT]
+>
+> Ak plánujete pokračovať v ladení alebo kódovaní vibrácií nad Blue, nepovažujte pár dobre vyzerajúcich rozhovorov za dôkaz vydania. Akákoľvek zmena, ktorá ovplyvňuje smerovanie, správanie pri vykonávaní, povrch nástroja, kontrolu rozpočtu, výber modelu alebo rámec vykonávania, by sa mala overiť pomocou Blue Harness, nie náhodnými kontrolami.
+>
+> Blue by sa tu mal riadiť jedným jednoduchým pravidlom: dáta ako prvé, brány ako prvé, prerezané ako posledné. V praxi to znamená aktualizovať príslušnú množinu údajov Harness / eval spec pred posúdením zmeny a potom ponechať jednu stabilnú `candidate_id` počas celého pokusu, takže správy o výbere, realizácii, rozpočte a pripravenosti popisujú rovnakého kandidáta namiesto štyroch nesúvisiacich cyklov.
 
-**Tok správ kanálov**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+### Odporúčané Harness Pracovný postup
 
-**Hlasový pipeline**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+1. Spustite `blue harness selector verify`
+2. Spustite `blue harness execution verify`
+3. Opätovne použite výberové hodnotenie pre `blue harness budget gate`
+4. Dokončite pomocou `blue harness cutover-readiness`
 
-**Tok vyhodnotenia Harnessu**
-```
-Quick Eval / Harness API → Kontrolér vyhodnotenia → Dispečer skupín behov
-  → Agent task alebo eval driver → Nástroje + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector gates
-  → Cutover readiness / rozhodnutie o kandidátovi
-```
+Pre lokálnu iteráciu, nočnú validáciu alebo zber dôkazov CI uprednostnite `python3 scripts/cutover_candidate_pipeline.py`. Spustí celý výber -> realizácia -> rozpočet -> postupnosť pripravenosti pod jedným zdieľaným kandidátom, čo uľahčuje porovnávanie, kontrolu a oddeľovanie výsledkov.
 
+### Prídavné zábradlia
 
-## Ako používať
+| Oblasť | Čo pozerať |
+|------|----------------|
+| Základná stabilita | Udržujte základnú líniu, verziu súboru údajov a `candidate_id` stabilné, inak sa porovnanie posunie a výsledok nebude dôveryhodný. |
+| Skutočný stavebný výkon | Pred spustením Harness znova vytvorte ovplyvnený binárny alebo frontendový balík, inak sa môže stať, že namiesto aktuálnej zmeny overíte zastarané správanie. |
+| Registrácia trasy | Ak sa frontend a backend zmenia spoločne, pred posúdením funkcie prostredníctvom správania používateľského rozhrania sa uistite, že všetky nové backendové trasy sú skutočne zaregistrované, pretože chýbajúca registrácia často vyzerá ako logická chyba, ale v skutočnosti ide o `404`. |
+| Vydanie rozsudku | Tuning pass je pripravený len vtedy, keď Harness nevykazuje žiadnu zmysluplnú regresiu a pripravenosť na prerezanie potvrdí, že kandidát je skutočne pripravený prerezať. |
 
-![](../../docs/assets/handcraft.png)
+Stručne povedané, naladenie na Blue nie je o tom, že „po niekoľkých chatoch sa cíti lepšie“. Ide o zaradenie kandidáta do Harness, zhromaždenie porovnateľných dôkazov a o tom, či je skutočne bezpečné ponechať zmenu, nech rozhodnú výsledky brány a pripravenosti.
 
-## Časový plán míľnikov
+## Funkcie
 
-<details>
-<summary>
-<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
-</summary>
+| Funkcia | Čo prináša |
+|---------|-------------------|
+| Webové vyhľadávanie s vysokou dostupnosťou a spustenie prehliadača | Jeden z **najostrejších diferenciátorov** Blue. Blue zjednocuje **štyri webové prístupové cesty** na vyhľadávanie, čítanie, extrahovanie a prehľadávanie; zachováva **tri záložné vrstvy** cez HTTP, extrakciu proxy a relácie prehliadača; spracováva **stránky proti botom** s detekciou výziev, opätovným použitím súborov cookie/relácií, utajením a odovzdaním prehliadača; a trasy cez **tri motory prehliadača**: `lightpanda`, spravovaný prehliadač Chromium a prenosový/miestny prehliadač Chromium. |
+| Výskumná doba tri v jednom | **Jeden verejný výskumný záznam** môže smerovať do `deep_research`, `analyze` a `ui_review`. Rovnaký balík objavov a dôkazov potom vytvára **výskum založený na citáciách**, **ohraničené správy** a **štruktúrované prehľady používateľského rozhrania/UX/dostupnosti**. |
+| Harness Runtime, hodnotenie a vývojový rámec | Robí hodnotenie **primitívnym** počas vývoja, školenia a výroby. Harness pokrýva **regresné a dymové kontroly**, skórovanie, základné línie, správy a validáciu za behu, potom prináša rovnaké dôkazy do **vývoja zručností**, následného hodnotenia, povýšenia alebo vrátenia späť a `AGENTS.md` alebo preskúmania návrhu pokynov. |
+| Multimodálny Native-Capability-First Runtime | Udržuje **hlas, OCR, PDF, úlohy prehliadača, konverziu dokumentov, vypĺňanie štruktúrovaných formulárov, spracovanie médií a generovanie médií** najprv na **natívnych a lokálnych cestách**, s **smerovaním modelu iba vtedy, keď je to skutočne potrebné**. |
+| Bezpečnosť a správa | Zahŕňa **spustenie v karanténe**, **obranu rýchlej injekcie**, **audit relácie**, povolenia, **RBAC**, **WebAuthn**, operačné zábradlia a **bezpečnostné skenovanie**. |
+| LLM Wiki and Knowledge Space | Premení výstupy z pamäte, výskumu a runtime na **povrch znalostí podobný wiki** s **súhrnnými stránkami**, indexmi, **spätnými odkazmi**, **aktuálnosťou** a **pracovnými postupmi archivácie**. |
+| Skill Store and Marketplace | Dodáva **objavovanie vstavaných zručností**, kurátorstvo, synchronizáciu a **miestne skenovanie**, takže rozšíriteľnosť je dostupná **od prvého dňa**. |
+| Skupina poskytovateľov produkčnej úrovne | Poskytuje skutočný fond poskytovateľov s **kontrolami stavu**, **automatickým zlyhaním**, **ističmi** a **pretekaním poskytovateľov** pre dlhotrvajúce pracovné zaťaženie. |
+| Zabudovaný miestny beh malého modelu | Dodáva vstavaný **`Qwen3.5-0.8B` + `llama.cpp`** runtime pre **miestne krátke otázky a odpovede**, rozpoznávanie obrázkov, smerovanie nástrojov, sumarizáciu, **kompresiu kontextu** a **predspracovanie dokumentov**. |
+| Dlhodobá spoľahlivosť | **OTA aktualizácie**, **zálohovanie a obnovenie**, **obnovenie konfigurácie** a **obnovenie po zlyhaní** ako **vstavané prevádzkové problémy**. |
 
-| Verzia | Zameranie | Kľúčová hodnota | Stav |
-|--------|-----------|------------------|------|
-| v0.1 | Jadro Go runtime | Stabilný kernel, 24h beh | Done |
-| v0.2 | Základné schopnosti | Minimálne použiteľný, LLM integrácia | Done |
-| v0.3 | NAS integrácia | NAS natívny, podpora systemd | Done |
-| v0.4 | Systém pluginov | Rozšíriteľný, základy bezpečnosti | Done |
-| v0.5 | Produktový základ | Produkčne pripravený, dokumentácia | Done |
-| v0.6 | Kanály správ | Podpora viacerých kanálov | Done |
-| v0.7 | Bezpečnosť | OIDC, MFA, audit | Done |
-| v0.8 | Výkon | Optimalizácia, cachovanie, benchmarky | Done |
-| v0.9 | Ekosystém | Viacnájomníctvo, automatizácia prehliadača, hlas | Done |
-| v0.10.0 | Zväzovanie CLI | CC CLI zväzovanie, detekcia, auto-update | Done |
-| v0.10.1 | Monitorovanie metrík | API štatistiky, sledovanie tokenov, TTFT | Done |
-| v0.10.2 | Spoľahlivosť CLI | Životný cyklus procesov, obnova po chybách | Done |
-| v0.10.3 | Integrácia CLI | Sprievodca nastavením, auto-detekcia poskytovateľov | Done |
-| v0.10.4 | Balenie Tauri | Desktopová aplikácia, systémová lišta | Done |
-| v0.10.5 | API Proxy Sidecar | Výber trás, prompt guard, štatistiky využitia | Done |
-| v0.10.6 | Pool poskytovateľov | Multi-provider routing, kontrola zdravia, failover | Done |
-| v0.10.7 | Režim náhľadu | Neautentifikovaný prístup, feature gating | Done |
-| v0.10.8 | Skill Store | Infraštruktúra skill store, validácia kanálov | Done |
-| v0.10.9–10 | Správa používateľov | Podpoužívatelia, oprávnenia na úrovni stránok | Done |
-| v0.10.13–14 | Bezpečnosť & Skills | Stránka bezpečnosti, redizajn skill store | Done |
-| v0.10.15 | Vylepšenia chatu | Chat UX, pipeline správ | Done |
-| v0.10.16 | Hlasový modul | Sherpa TTS/ASR, eSpeak, prepínanie poskytovateľov | Done |
-| v0.10.17 | Vzdialený prístup | Ngrok, Cloudflare tunely, ACME certifikáty | Done |
-| v0.10.18–20 | Výkonnostný šprint | Výkon štartu/chatu, kontextový cache | Done |
-| v0.10.21–22 | Prompt & DingTalk | Systémový prompt, DingTalk kanál | Done |
-| v0.10.23 | OTA aktualizácia | Systém OTA aktualizácií | Done |
-| v0.10.24 | Upgrade kanálov | 10 kanálov povýšených zo stubov | Done |
-| v0.10.25 | CC Cache | Dvojúrovňový cache (L1 pamäť + L2 disk) | Done |
-| v0.10.26 | Humanizer | Pipeline humanizácie odpovedí | Done |
-| v0.10.27 | Context Pruner | 54% úspora tokenov na kóde (SWE-bench oficiálne), 46–47% na všeobecných dokumentoch (lokálny IR), BM25 skórovanie, segmentácia | Done |
-| v0.10.28 | Memory Service | Progresívne vyhľadávanie, dual-write backend | Done |
+## Časová os míľnika
 
-</details>
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+| Dátum | Verzia | Kľúčové slová / funkcie |
+|------|---------|---------------------|
+| 26. januára 2026 | `v0.1–v0.9` | Go runtime, plugin systém, automatizácia prehliadača |
+| 27. – 28. januára 2026 | `v0.9.0–v0.9.2` | Zobrazenie úloh prehliadača, Blue Companion, Smart Form Filler |
+| 29. – 31. januára 2026 | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, reštrukturalizácia používateľského rozhrania |
+| 1. – 3. februára 2026 | `v0.10.1–v0.10.22` | Metriky, vzdialený prístup, kontextová vyrovnávacia pamäť |
+| 5. – 18. február 2026 | `v0.10.25–v0.10.29` | i18n, vyrovnávacia pamäť CC, kanál uvoľnenia |
+| 20. – 25. február 2026 | `v0.10.28–v0.10.29` | Desktop loader, mobilné UX, redizajn pamäte |
+| 28. február – 2. marec 2026 | `v0.10.30` | Deep Research, prehodnotenie schopností, bezpečnostná kontrola |
+| 9. – 18. marec 2026 | `v0.10.31` | Generálna oprava prístrojovej dosky, VoiceChat refaktor, schválené miesta |
+| 19. – 22. marec 2026 | `v0.10.32` | Harness zavádzanie, audit prepisu, vyhľadávanie na webe |
+| 23. – 25. marec 2026 | `v0.10.33` | Harness skupiny, schválenia prehliadača, trh zručností |
+| 29. – 30. marec 2026 | `v0.10.35` | Harness v3, relé prehliadača, kompresia kontextu |
+| 31. marec – 1. apríl 2026 | `v0.10.36` | Audit prepisu, Harness prekrytia, analýza nástroja |
+| 1. apríla 2026 | `v0.10.37` | Vytvrdzovanie počas prevádzky, rez Skill+Exec, obnovovací lesk |
+| 2. – 5. apríla 2026 | `v0.10.38` | GitHub podpora, vylepšenie trhu, vylepšenia spoľahlivosti |
+| 6. – 7. apríla 2026 | `v0.10.39` | Zjednotenie výskumu, vývoj povrchov, redukcia pamäte |
 
 ## Komunita a podpora
 
-- **Issues**: [Prosím nahlasujte chyby a požiadavky na funkcie tu](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Diskusie**: [Discord](https://discord.gg/b3AgFDxe9v)
+- **Problémy**: [Prosím, tu nahláste chyby a požiadavky na funkcie](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Diskusie**: [Discord](https://discord.gg/zwWbKA4S2)
 - **Sledujte nás** na [GitHub](https://github.com/IceWhaleTech)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Licencia
 
-Tento projekt je licencovaný pod licenciou MIT — podrobnosti nájdete v súbore [LICENSE](../../LICENSE). Veríme v open source a v prínos pre komunitu.
+Tento projekt je licencovaný pod licenciou MIT – podrobnosti nájdete v súbore [LICENSE](../../LICENSE). Veríme v open source a dávame späť komunite.
 
 ## Prispievatelia
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Ďakujeme všetkým prispievateľom Blue:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Referencie
+
+1. **OpenClaw** — lokálny agent s otvoreným zdrojovým kódom. Bol priekopníkom pri pripájaní LLM k lokálnym zariadeniam prostredníctvom kanálových adaptérov a volania nástrojov, čo priamo inšpirovalo runtime architektúru agenta Blue. https://github.com/openclaw/openclaw
+2. **MiroMind** — Režim hlbokého výskumu so syntézou podloženou dôkazmi. Zabudovaný kanál hlbokého výskumu v tvare Blue: plánovanie, paralelné vyhľadávanie, deduplikácia dôkazov a generovanie správ HTML. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM ako kompilátor znalostí. Preformuluje LLM na vybudovanie trvalých, vyvíjajúcich sa znalostných priestorov, ktoré presahujú akumulačnú pascu RAG.
+4. **OpenSpace (HKUDS)** — Samovyvíjajúci sa motor zručností. Rámec založený na DAG, kde sa agenti učia zo zlyhaní a získavajú špecializované zručnosti. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — Register dokumentácie verzie API pre kódovacích agentov. Rieši halucinácie agentov a zabudnuté znalosti relácie. Poskytuje kurátorské dokumenty s verziou s anotačnými a spätnoväzbovými slučkami, čím sa dokumentácia mení na vedomostnú vrstvu, ktorá sa zlepšuje. https://github.com/andrewyng/context-hub
+6. **Notion** — Jednoduché, ľudské a zámerne tiché. Inšpirovaný minimalistickým étosom Notion, Blue prináša teplo späť do siete. Kde sa rafinovaný serif stretáva s premysleným dizajnom a vytvára priestor, ktorý sa cíti ako doma. https://www.notion.com/about
+7. **Matrix** — Vizuálna inšpirácia ikonickou estetikou digitálneho dažďa. Estetický smer pre technické schémy Blue.
+8. **IceWhale** — Láska, smrť a roboty S2E2 "Ľad". Kolektív, ktorý sa zhromažďuje po celom svete, aby prelomil múry internetových gigantov a odolal koncentrácii údajov. Ľadová veľryba symbolizuje komunitu, ktorá spolu na okraji vytvára suverénne nástroje.
+9. **ZimaOS Blue** — Láska, smrť a roboti S1E14 "Zima Blue". Metafora: inteligencia, ktorá začína v službe a vyvíja sa, aby preskúmala svet. Blue je agent múdrosti, zakorenený v jednoduchosti a siahajúci do hĺbky.
+10. **ZimaOS** — Princípy zjednodušeného, ​​sústredeného a otvoreného dizajnu. ZimaOS aj Blue zdieľajú presvedčenie, že technológia by mala slúžiť používateľovi – nasadiť do 30 sekúnd, spustiť kdekoľvek, zostať neutrálna voči predajcovi. https://www.zimaspace.com/zimaos

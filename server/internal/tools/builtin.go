@@ -967,17 +967,7 @@ func GetWebQueryTool(registry *Registry) *WebTool {
 }
 
 func GetWebTool(registry *Registry) *WebTool {
-	if tool := GetWebQueryTool(registry); tool != nil {
-		return tool
-	}
-	tool := registry.Get("web")
-	if tool == nil {
-		return nil
-	}
-	if t, ok := tool.(*WebTool); ok {
-		return t
-	}
-	return nil
+	return GetWebQueryTool(registry)
 }
 
 func GetWebReadTool(registry *Registry) *WebReadTool {
@@ -1078,10 +1068,8 @@ func registerWebTools(registry *Registry, webSearchConfig WebSearchConfig, webFe
 	extractTool := NewWebExtractTool(webFetchConfig)
 	crawlTool := NewWebCrawlTool(webFetchConfig)
 	webQueryTool := NewWebQueryTool(searchTool, fetchTool, readTool, extractTool, crawlTool)
-	webAliasTool := NewWebToolAlias(searchTool, fetchTool, readTool, extractTool, crawlTool)
 	if imageTool := registry.Get("image"); imageTool != nil {
 		webQueryTool.SetImageTool(imageTool)
-		webAliasTool.SetImageTool(imageTool)
 	}
 	registry.Register(searchTool)
 	registry.Register(fetchTool)
@@ -1089,8 +1077,7 @@ func registerWebTools(registry *Registry, webSearchConfig WebSearchConfig, webFe
 	registry.Register(extractTool)
 	registry.Register(crawlTool)
 	registry.Register(webQueryTool)
-	registry.Register(webAliasTool)
-	for _, name := range []string{"web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
+	for _, name := range []string{"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
 		registry.Disable(name)
 	}
 }

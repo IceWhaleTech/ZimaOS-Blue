@@ -49,112 +49,42 @@
 
 ## はじめに
 
-Clawdbotに触発され、私たちはパーソナルコンピューティングの**未来**は、エッジで動作する**多様なローカルファーストAIエージェント**によって**形作られる**と信じています。
+Clawdbot からインスピレーションを受け、パーソナル コンピューティングの未来は、エッジで実行されるローカルファーストの多様な AI エージェントによって形作られると私たちは考えています。
 
-**ZimaOS Blueはその答えです** — 完全に**オープンソースで、監査可能、かつ本番環境対応のエージェントランタイムおよびツールキット**であり、プライベートなセルフホスト型エージェントをゼロフリクションで提供できます。
+ZimaOS Blue が私たちの答えです。完全にオープンソースで監査可能、ベンダー中立、本番環境に対応したエージェント ランタイムとツールキットで、プライベートの自己ホスト型エージェントをスムーズに配布できます。
 
-大胆な開発者が**自分だけのエージェントをバイブコーディングまたは手作り**するために構築されたBlueは、**パフォーマンスを追求した設計**です：**Go**で記述され、メモリフットプリントはわずか10 MB。**あらゆるx86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、Windows、macOS**で動作します — 電源さえあればどこでも。
+Blue は、独自のエージェントを動かしたり手作りしたりしたい大胆な開発者向けに構築されており、パフォーマンスを重視して設計されています。Go で書かれており、メモリ使用量は 19 MB と低いです。 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS など、電源を接続すればどこでも動作します。
 
-![](../../docs/assets/features.png)
-
-## ハイライト
-
-### ローカルファースト設計と自動モデルアクセス
-
-さらに一歩先へ：**20以上のIMプラットフォーム**のネイティブサポート、自然で文脈を理解した対話のための**音声駆動**インターフェース、IDEスキャンによる**ゼロコンフィグモデル切り替え**、SOULレイヤードパーソナリティを提供します。
+## なぜ Blue
 
 <p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
 
-### 高速・軽量
+### Pure Go、どんなデバイスでも
 
-Goでネイティブコンパイル — インタプリタなし、VMなし、オーバーヘッドなし。サーバーからデスクトップデバイスまで、あらゆる環境で静かに動作します。
+100% Go、静的バイナリ。すぐに使用できる 5 つのターゲット (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`、`linux/arm64`、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`、`darwin/arm64`、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`) にクロスコンパイルします。 Node ランタイム、Python、コンテナーは必要ありません。 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、古い x86 ルーター、または ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac にドロップするだけで実行できます。次に、独自の UI、ロジック、エージェント スキルを 1 つのコードベース、すべてのプラットフォームに重ねていきます。
 
-| 指標 | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|--------|-------------------|------------------------|
-| `help` コールド / ウォーム | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` 実行時間 (3回中最速) | **< 0.01 s** | 5.98 s |
-| `help` ピークRSS | **~10 MB** | ~394 MB |
-| `status` ピークRSS | **~15 MB** | ~1.52 GB |
-| `gateway run` コールド開始後のアイドルメモリ | **~19 MB** | - |
-| ランタイム依存関係 | **なし** | Node.js 18+ |
+### 箱から出してすぐに使える
 
-> 上の CLI 行は、同一ホストでの履歴上の `help` / `status` マイクロベンチマークです。新しい `gateway run` 行は、起動が落ち着いた後に macOS arm64 で `vmmap Physical footprint` を使って測定した、実運用に近いコールドアイドル時のメモリを示します。2026年2月-4月。
+誰もが、シンプルで信頼性が高く、必要なときに拡張できるツールを望んでいます。機能するツールなので、実際に構築しているものに集中できます。
 
-### 純粋なGo、あらゆるデバイス
+これは新しい哲学ではありません。 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS を構築したものと同じです。シンプルで信頼性が高く、邪魔にならないように構築されています。 Blue はその哲学であり、エージェント スタックにも拡張されています。
 
-100% Go、静的バイナリ。**5つのターゲットにクロスコンパイル**可能（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。Nodeランタイム不要、Python不要、コンテナ不要。NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、古いx86ルーター、Macに置くだけ — そのまま動きます。**その上に独自のUI、ロジック、エージェントスキルを重ねましょう** — 1つのコードベースで、すべてのプラットフォームに対応。
+### あなたの生活に合わせてデザインされ、地元に留まるように作られています
 
-### セキュリティとガバナンス
-
-多層防御を備えた組み込みサイドカーAPIプロキシ：
-- **サンドボックス実行** – すべてのツール呼び出しは隔離された環境で実行されます。
-- **プロンプトインジェクション防御** – 7つ以上の組み込みインターセプト戦略。
-- **セッション監査** – 完全なセッション監視、すべてのインタラクションが追跡可能。
-- **RBAC & WebAuthn** – パスワードレス認証によるきめ細かなアクセス制御。
-
-## なぜBlueなのか
-
-私たちは**次世代パーソナルコンピューティング**がLLMを受け入れると信じています — しかし**制御可能で監査可能な**エージェントこそが、個人にもチームにも基盤であり続けます。**Blueが提供するもの**：
-- **包括的なコア** – 高度なモデル管理、IM統合、強化されたペルソナ、日常的なインタラクション（ヘッドセット、音声、スマートグラス）に最適化された自然言語インターフェース。
-- **ローカルファースト、超軽量、クロスデバイス** – ハイエンドハードウェア不要。計算能力があるものなら何でも動作します。
-- **安全で監査可能** – セッション監査、サンドボックス、権限制御、アプリケーション層ファイアウォールとして機能する組み込みAPIプロキシ — すべての入出力バイトが可視化されます。
-
-![](../../docs/assets/design_principle.png)
-
-ボイラープレートを最小限に抑え、**本当に重要なことに集中**できます。<a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOSの設計哲学**に忠実に、Blueは以下を提供します：
-- **ワンクリックでゼロからイチへ** – 複雑な設定なしで即座にデプロイ。
-- **ラピッドプロトタイピング** – シナリオ固有のツール、インタラクション、アプリパッケージをバイブコーディングまたは手作り。
-- **グローバル対応** – **世界は広い**、そして英語がデフォルトではありません。**20以上の言語をネイティブサポート**、障壁なし。
-- **オープンモデルエコシステム** – ベンダーロックインなし。お好みのモデルをお使いください。
-
-<details>
-<summary>
-<p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
-</p>
-</summary>
-
-| プロバイダー | モデル | タイプ |
-|----------|--------|------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | クラウド |
-| Anthropic | Claude 4.5, Claude 4 | クラウド |
-| Google | Gemini 2.5, Gemini 2.0 | クラウド |
-| Ollama | Llama, Qwen, Gemma, Phi 等 | ローカル |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | クラウド |
-| Grok | Grok-3, Grok-3-mini | クラウド |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | クラウド |
-| GLM | GLM-4, GLM-4-Flash | クラウド |
-| Moonshot | Moonshot-v1 | クラウド |
-| MiniMax | abab6.5, abab5.5 | クラウド |
-| Venice | Llama, Mistral（プライバシー優先） | クラウド |
-| AWS Bedrock | Claude, Llama, Titan | クラウド |
-| Azure | Azure経由のOpenAIモデル | クラウド |
-| OpenRouter | 100+ 集約モデル | クラウド |
-| AIHubMix | マルチプロバイダーアグリゲーター | クラウド |
-| Codex | OpenAI Codex | クラウド |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | クラウド |
-| カスタム | 任意のOpenAI / Anthropic / Gemini互換API | クラウド / ローカル |
-
-</details>
-
-### サポートされるIDE
-
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+完全な HTML レポートを提供する詳細な調査から、OCR、PDF、ブラウザの自動化、ドキュメント変換まで、Blue はデータをクラウドに送信せずに、複雑な現実世界のワークフローを処理します。音声ウェイク、STT/TTS、Talk Mode、およびローカル推論のサポートにより、日常の対話が瞬時に行われ、プライベートになり、いつでも利用できるようになります。
 
 ## クイックスタート
 
-### オプション1：デスクトップアプリをダウンロード
+### オプション 1: デスクトップ アプリをダウンロードする
 
-ネイティブアプリケーションを入手 — 依存関係なし、コンパイル不要。内蔵トライアル設定で数秒でオンボーディング — リモート接続で即座にチャット開始、ボット設定不要。真のすぐ使える体験。
+ネイティブ アプリケーションを入手します。依存関係やコンパイルは必要ありません。数秒でオンボーディングできる組み込みのトライアル構成 — ボットのセットアップは必要なく、リモート接続経由で即座にチャットを開始できます。すぐに使える真の体験。
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [DMGをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [インストーラーをダウンロード](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### オプション2：インストールスクリプト
+### オプション 2: スクリプトのインストール
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -166,11 +96,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### オプション3：ソースからビルド
+### オプション 3: ソースからビルドする
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -183,126 +114,124 @@ sh build.sh
 .\build.bat
 ```
 
-> **注意:** Windowsでのビルドには、ネイティブC依存関係（espeak-ng、whisper.cpp、opus）のために[MinGW-w64](https://www.mingw-w64.org/)（gcc）と[CMake](https://cmake.org/)が必要です。`gcc`と`cmake`が`PATH`に含まれていることを確認してください。
+> **注:** Windows ビルドには以下が必要です。
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) および [CMake](https://cmake.org/) ネイティブ C 依存関係 (espeak-ng、whisper.cpp、opus、kokoro、onnx) 用
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) システム ライブラリ (winmm など)
+>
+> `gcc`、`cmake` が `PATH` に含まれていることを確認してください。
 
-## アーキテクチャ概要
+## アーキテクチャの概要
 
-<details>
-<summary>
-<img src="../../docs/assets/architecture.png" alt="Architecture" />
-</summary>
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### パッケージマップ (`server/internal/`)
+さらに言えば、**20 以上の IM プラットフォーム** のネイティブ サポート、自然でコンテキストを意識した対話のための **音声駆動** インターフェイス、IDE スキャンによる **ゼロ設定モデルの切り替え** を提供します。
 
-| レイヤー | パッケージ |
-|-------|----------|
-| ゲートウェイ | bootstrap, server, gateway |
-| プロキシ | proxy, connection, streaming, resilience |
-| プロバイダー | providerpool, providers, llm |
-| プルーナー | pruner (detector, segmenter, bm25, pipeline, cache) |
-| エージェント | context, tools, personality, humanizer |
-| メモリ | memory, embedding, kvstore |
-| チャネル | channel, autoreply, i18n |
-| セキュリティ | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| 音声 | voice, tts, stt, speech |
-| 監視 | metrics, companion, profiling, leakdetect |
-| プラグイン | plugin, skill, skillstore |
-| 統合 | browser, cron, workflow, formfiller, tunnel, crawler |
-| スケジューラー | scheduler, worker, workerpool, pool |
-| コア | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| システム | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| マルチテナント | tenant, user, session, preview |
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-</details>
+## 構築方法
 
-### データフロー
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**チャットリクエスト（プロキシホットパス）**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+> ⚠️ [!IMPORTANT]
+>
+> Blue に基づいてチューニングやバイブ コーディングを継続する予定がある場合は、いくつかの見栄えの良いチャットをリリースの証拠として扱わないでください。ルーティング、実行動作、ツール サーフェス、予算管理、モデル選択、または実行フレームワークに影響を与える変更は、その場限りのスポット チェックではなく、Blue Harness で検証する必要があります。
+>
+> Blue は、ここでは 1 つの単純なルールに従う必要があります。つまり、データが最初、ゲートが最初、カットオーバーが最後です。実際には、これは、変更を判断する前に関連する Harness データセット / 評価仕様を更新し、試行全体にわたって 1 つの安定した `candidate_id` を維持することを意味します。これにより、セレクター、実行、予算、準備状況のレポートはすべて、無関係な 4 つの実行ではなく、同じ候補を記述します。
 
-**チャネルメッセージフロー**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+### 推奨される Harness ワークフロー
 
-**音声パイプライン**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+1. `blue harness selector verify` を実行します。
+2. `blue harness execution verify` を実行します。
+3. `blue harness budget gate` のセレクター評価実行を再利用します。
+4. `blue harness cutover-readiness` で終了します
 
-**Harness 評価フロー**
-```
-Quick Eval / Harness API → 評価コントローラ → 実行グループディスパッチャ
-  → Agent Task または Eval Driver → Tools + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector Gates
-  → Cutover Readiness / Candidate Decision
-```
+ローカルでの反復、夜間の検証、または CI 証拠収集の場合は、`python3 scripts/cutover_candidate_pipeline.py` を優先します。 1 つの共有候補の下で完全なセレクター -> 実行 -> 予算 -> 準備完了シーケンスを実行するため、結果の比較、レビュー、カットオーバーが容易になります。
 
+### 追加のガードレール
 
-## 使い方
+|エリア |何を見るべきか |
+|------|----------------|
+|ベースラインの安定性 |ベースライン、データセットのバージョン、`candidate_id` を安定したままにしておかないと、比較がずれて結果が信頼できなくなります。 |
+|実際のビルド出力 | Harness を実行する前に、影響を受けるバイナリまたはフロントエンド バンドルを再構築してください。そうしないと、現在の変更ではなく古い動作を検証することになる可能性があります。 |
+|ルート登録 |フロントエンドとバックエンドが一緒に変更される場合は、UI 動作を通じて機能を判断する前に、すべての新しいバックエンド ルートが実際に登録されていることを確認してください。登録の欠落はロジックのバグのように見えることがよくありますが、実際には `404` であるためです。 |
+|リリース判定 |調整パスは、Harness が意味のある回帰を示さず、カットオーバー準備状況で候補が実際にカットオーバーの準備ができていることを確認した場合にのみ準備が整っています。 |
 
-![](../../docs/assets/handcraft.png)
+つまり、Blue をベースにしたチューニングは、「数回のチャットで気分が良くなる」ということではありません。候補者を Harness に投入し、比較可能な証拠を収集し、ゲートと準備の結果に基づいて変更を保持しても本当に安全かどうかを判断させることが重要です。
 
-## マイルストーンタイムライン
+## 特徴
 
-<details>
-<summary>
-<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
-</summary>
+|特集 |提供するもの |
+|----------|--------|
+|高可用性 Web 検索とブラウザ ランタイム | Blue の **最も鋭い差別化要因** の 1 つ。 Blue は、検索、読み取り、抽出、クロールのための **4 つの Web アクセス パス**を統合します。 HTTP、プロキシ抽出、ブラウザ セッション全体で **3 つのフォールバック層**を維持します。チャレンジ検出、Cookie/セッションの再利用、ステルス、ブラウザーハンドオフを使用して**アンチボットページ**を処理します。 **3 つのブラウザ エンジン** (`lightpanda`、マネージド Chromium、リレー/ローカル Chromium) 間でルーティングします。 |
+| 3 つの機能を 1 つにまとめたリサーチ ランタイム | **1 つの公開研究エントリ** は、`deep_research`、`analyze`、および `ui_review` にルーティングできます。同じ発見と証拠の積み重ねから、**引用優先調査**、**制限付きレポート**、**構造化された UI/UX/アクセシビリティ レビュー**が生成されます。 |
+| Harness ランタイム、評価、進化フレームワーク |開発、トレーニング、運用全体にわたる評価を**実行時のプリミティブ**にします。 Harness は、**回帰チェックとスモーク チェック**、スコアリング、ベースライン、レポート、実行時検証をカバーし、同じ証拠を **スキル進化**、フォローアップ評価、昇進またはロールバック、`AGENTS.md` または指示提案のレビューに取り入れます。 |
+|マルチモーダル ネイティブ機能ファースト ランタイム | **音声、OCR、PDF、ブラウザ タスク、ドキュメント変換、構造化フォーム入力、メディア処理、およびメディア生成**を **最初にネイティブおよびローカル パス**で維持し、**実際に必要な場合にのみモデル ルーティング**を行います。 |
+|セキュリティとガバナンス | **サンドボックス実行**、**プロンプトインジェクション防御**、**セッション監査**、権限、**RBAC**、**WebAuthn**、運用上のガードレール、**スキル セキュリティ スキャン**が含まれます。 |
+| LLM Wiki とナレッジ スペース |メモリ、リサーチ、およびランタイムの出力を、**概要ページ**、インデックス、**バックリンク**、**鮮度**、**アーカイブ ワークフロー**を備えた **Wiki のようなナレッジ サーフェス**に変換します。 |
+|スキルストアとマーケットプレイス | **組み込みのスキル検出**、キュレーション、同期、**ローカル スキャン**が搭載されているため、**初日から**拡張性を利用できます。 |
+|実稼働グレードのプロバイダー プール |長時間実行されるワークロード向けに、**ヘルスチェック**、**自動フェイルオーバー**、**サーキットブレーカー**、**プロバイダーレーシング**を備えた実際のプロバイダープールを提供します。 |
+|組み込みのローカル小規模モデル ランタイム | **ローカルの短い Q&A**、画像認識、ツール ルーティング、要約、**コンテキスト圧縮**、**ドキュメント前処理**用の組み込み **`Qwen3.5-0.8B` + `llama.cpp`** ランタイムを同梱します。 |
+|長期にわたる信頼性 | **OTA 更新**、**バックアップと復元**、**構成ホット リロード**、**障害後の回復**を **組み込みの運用上の懸念事項**として扱います。 |
 
-| バージョン | フォーカス | 主な価値 | ステータス |
-|---------|-------|-----------|--------|
-| v0.1 | Goランタイムコア | 安定したカーネル、24時間稼働 | Done |
-| v0.2 | コア機能 | 最小限の使用可能状態、LLM統合 | Done |
-| v0.3 | NAS統合 | NASネイティブ、systemdサポート | Done |
-| v0.4 | プラグインシステム | 拡張可能、セキュリティ基盤 | Done |
-| v0.5 | 製品ベースライン | 本番環境対応、ドキュメント | Done |
-| v0.6 | メッセージチャネル | マルチチャネルサポート | Done |
-| v0.7 | セキュリティ | OIDC、MFA、監査 | Done |
-| v0.8 | パフォーマンス | 最適化、キャッシュ、ベンチマーク | Done |
-| v0.9 | エコシステム | マルチテナント、ブラウザ自動化、音声 | Done |
-| v0.10.0 | CLIバンドル | CC CLIバンドル、検出、自動更新 | Done |
-| v0.10.1 | メトリクス監視 | API統計、トークン追跡、TTFT | Done |
-| v0.10.2 | CLI信頼性 | プロセスライフサイクル、エラー回復 | Done |
-| v0.10.3 | CLI統合 | セットアップウィザード、プロバイダー自動検出 | Done |
-| v0.10.4 | Tauriパッケージング | デスクトップアプリ、システムトレイ | Done |
-| v0.10.5 | APIプロキシサイドカー | ルート選択、プロンプトガード、使用統計 | Done |
-| v0.10.6 | プロバイダープール | マルチプロバイダールーティング、ヘルスチェック、フェイルオーバー | Done |
-| v0.10.7 | プレビューモード | 未認証アクセス、機能ゲーティング | Done |
-| v0.10.8 | スキルストア | スキルストア基盤、チャネルバリデーション | Done |
-| v0.10.9–10 | ユーザー管理 | サブユーザー、ページレベル権限 | Done |
-| v0.10.13–14 | セキュリティ & スキル | セキュリティページ、スキルストア再設計 | Done |
-| v0.10.15 | チャット強化 | チャットUX、メッセージパイプライン | Done |
-| v0.10.16 | 音声モジュール | Sherpa TTS/ASR、eSpeak、プロバイダー切り替え | Done |
-| v0.10.17 | リモートアクセス | Ngrok、Cloudflareトンネル、ACME証明書 | Done |
-| v0.10.18–20 | パフォーマンススプリント | 起動/チャット性能、コンテキストキャッシュ | Done |
-| v0.10.21–22 | プロンプト & DingTalk | システムプロンプト、DingTalkチャネル | Done |
-| v0.10.23 | OTAアップデート | OTAアップデートシステム | Done |
-| v0.10.24 | チャネルアップグレード | 10チャネルをスタブからアップグレード | Done |
-| v0.10.25 | CCキャッシュ | 2層キャッシュ（L1メモリ + L2ディスク） | Done |
-| v0.10.26 | ヒューマナイザー | レスポンスヒューマナイゼーションパイプライン | Done |
-| v0.10.27 | コンテキストプルーナー | コードで54%トークン削減（SWE-bench公式）、一般文書で46–47%（ローカルIR）、BM25スコアリング、セグメンテーション | Done |
-| v0.10.28 | メモリサービス | プログレッシブ検索、デュアルライトバックエンド | Done |
+## マイルストーンのタイムライン
 
-</details>
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
 
-## コミュニティ & サポート
+|日付 |バージョン |キーワード・特徴 |
+|-----|----------|----------|
+| 2026 年 1 月 26 日 | `v0.1–v0.9` | Go ランタイム、プラグイン システム、ブラウザ自動化 |
+| 2026 年 1 月 27 ～ 28 日 | `v0.9.0–v0.9.2` |ブラウザタスクビュー、Blue Companion、Smart Form Filler |
+| 2026 年 1 月 29 ～ 31 日 | `v0.10.0–v0.10.9` | Claude Code CLI、API Proxy、UI の再構築 |
+| 2026 年 2 月 1 ～ 3 日 | `v0.10.1–v0.10.22` |メトリクス、リモート アクセス、コンテキスト キャッシュ |
+| 2026 年 2 月 5 ～ 18 日 | `v0.10.25–v0.10.29` | i18n、CC キャッシュ、リリース パイプライン |
+| 2026 年 2 月 20 ～ 25 日 | `v0.10.28–v0.10.29` |デスクトップローダー、モバイルUX、メモリの再設計 |
+| 2026 年 2 月 28 日～3 月 2 日 | `v0.10.30` | Deep Research、スキル リランカー、セキュリティ スキャン |
+| 2026 年 3 月 9 ～ 18 日 | `v0.10.31` |ダッシュボードのオーバーホール、VoiceChat リファクタリング、承認済みサイト |
+| 2026 年 3 月 19 ～ 22 日 | `v0.10.32` | Harness ロールアウト、トランスクリプト監査、Web 検索 |
+| 2026 年 3 月 23 ～ 25 日 | `v0.10.33` | Harness グループ、ブラウザ承認、スキル マーケット |
+| 2026 年 3 月 29 ～ 30 日 | `v0.10.35` | Harness v3、ブラウザリレー、コンテキスト圧縮 |
+| 2026 年 3 月 31 日～4 月 1 日 | `v0.10.36` |トランスクリプト監査、Harness オーバーレイ、ツール解析 |
+| 2026 年 4 月 1 日 | `v0.10.37` |ランタイム強化、Skill+Exec カットオーバー、リカバリ磨き |
+| 2026 年 4 月 2 ～ 5 日 | `v0.10.38` | GitHub サポート、マーケットプレイスの改善、信頼性の向上 |
+| 2026 年 4 月 6 ～ 7 日 | `v0.10.39` |研究の統合、進化面、記憶の削減 |
 
-- **Issues**: [バグ報告や機能リクエストはこちら](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **ディスカッション**: [Discord](https://discord.gg/b3AgFDxe9v)
-- **フォロー**: [GitHub](https://github.com/IceWhaleTech)
+## コミュニティとサポート
+
+- **問題**: [バグや機能リクエストはここに提出してください](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **ディスカッション**: [Discord](https://discord.gg/zwWbKA4S2)
+- **[GitHub](https://github.com/IceWhaleTech) で **フォローしてください**
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## ライセンス
 
-このプロジェクトはMITライセンスの下で公開されています — 詳細は[LICENSE](../../LICENSE)ファイルをご覧ください。私たちはオープンソースとコミュニティへの貢献を信じています。
+このプロジェクトは MIT ライセンスに基づいてライセンスされています。詳細については、[LICENSE](../../LICENSE) ファイルを参照してください。私たちはオープンソースとコミュニティへの還元を信じています。
 
-## コントリビューター
+## 貢献者
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Blue の寄稿者全員に感謝します。
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## 参考文献
+
+1. **OpenClaw** — ローカルファーストのオープンソース エージェント。チャネル アダプタとツール呼び出しを介して LLM をローカル デバイスに接続する先駆者であり、Blue のエージェント ランタイム アーキテクチャに直接影響を与えました。 https://github.com/openclaw/openclaw
+2. **MiroMind** — 証拠に裏付けられた合成による詳細な調査モード。 Blue の組み込みの詳細な調査パイプラインを形成: 計画、並行検索、証拠の重複排除、HTML レポートの生成。 https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — ナレッジ コンパイラとしての LLM。 LLM を再フレーム化して、永続的で進化する知識空間を構築し、RAG の蓄積トラップを超えます。
+4. **OpenSpace (HKUDS)** — 自己進化するスキル エンジン。エージェントが失敗から学習し、専門的なスキルを引き出す DAG ベースのフレームワーク。 https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — コーディング エージェント用のバージョン付き API ドキュメント レジストリ。エージェントの幻覚と忘れられたセッション知識に対処します。注釈とフィードバック ループを備えた厳選され、バージョン管理されたドキュメントを提供し、ドキュメントを自己改善型のナレッジ レイヤーに変えます。 https://github.com/andrewyng/context-hub
+6. **Notion** — シンプルで、人間的で、意図的に静かです。 Notion のミニマリスト精神にインスピレーションを受けて、Blue はグリッドに暖かさを取り戻します。洗練されたセリフと思慮深いデザインが融合し、まるで自宅にいるような空間が生まれます。 https://www.notion.com/about
+7. **Matrix** — 象徴的なデジタル雨の美学からの視覚的なインスピレーション。 Blue の技術図の美的方向性。
+8. **IceWhale** — ラブ、デス&ロボット S2E2「アイス」。インターネット巨人の壁を突破し、データ集中に抵抗するために世界中から集まる集団。氷のクジラは、エッジで主権ツールを一緒に構築するコミュニティを象徴しています。
+9. **ZimaOS Blue** — 愛と死とロボット S1E14「ジーマ Blue」。比喩: サービスに始まり、世界を探索するために進化する知性。 Blue は、シンプルさを根幹にしながら奥深さを追求する知恵のエージェントです。
+10. **ZimaOS** — シンプル、焦点を絞った、オープンな設計原則。 ZimaOS と Blue はどちらも、テクノロジーはユーザーに役立つべきである、つまり 30 秒で展開し、どこでも実行でき、ベンダー中立を保つべきであるという信念を共有しています。 https://www.zimaspace.com/zimaos

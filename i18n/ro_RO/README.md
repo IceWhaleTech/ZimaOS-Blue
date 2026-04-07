@@ -44,112 +44,42 @@
 
 ## Introducere
 
-Inspirați de Clawdbot, credem că **viitorul** informaticii personale va fi **modelat de agenți AI diversificați, cu prioritate locală**, care rulează la periferia rețelei.
+Inspirați de Clawdbot, credem că viitorul computerelor personale va fi modelat de agenți diverși de AI, primiți locali, care rulează la margine.
 
-**ZimaOS Blue este răspunsul nostru** — un **runtime și set de instrumente pentru agenți, complet open-source, auditabil și pregătit pentru producție**, care vă permite să implementați agenți privați, auto-găzduiți, fără nicio fricțiune.
+ZimaOS Blue este răspunsul nostru — un agent de rulare și un set de instrumente complet open-source, auditabil, neutru pentru furnizor și pregătit pentru producție, care vă permite să expediați agenți privați, auto-găzduiți, fără fricțiuni.
 
-Construit pentru dezvoltatori curajoși care doresc să-și **creeze propriii agenți liber sau manual**, Blue este **proiectat pentru performanță**: scris în **Go**, cu un consum de memorie de doar 10 MB. Rulează pe **orice x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — oriunde conectați la priză.
-
-![](../../docs/assets/features.png)
-
-## Caracteristici principale
-
-### Design cu prioritate locală și acces automat la modele
-
-Mergem mai departe: suport nativ pentru **peste 20 de platforme IM**, interfețe **controlate vocal** pentru dialog natural și conștient de context, **comutare automată a modelelor** cu scanare IDE și personalități bazate pe SOUL.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Rapid și ușor
-
-Compilat nativ în Go — fără interpretor, fără VM, fără overhead. Rulează silențios pe orice, de la servere la dispozitive desktop.
-
-| Metrică | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|---------|-------------------|------------------------|
-| `help` la rece / la cald | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` timp de execuție (cel mai bun din 3) | **< 0.01 s** | 5.98 s |
-| `help` RSS maxim | **~10 MB** | ~394 MB |
-| `status` RSS maxim | **~15 MB** | ~1.52 GB |
-| memorie idle `gateway run` după pornire la rece | **~19 MB** | - |
-| Dependențe de rulare | **Niciuna** | Node.js 18+ |
-
-> Rândurile CLI de mai sus reprezintă microbenchmark-ul istoric `help` / `status` pe aceeași gazdă. Noul rând `gateway run` arată memoria reală în idle după pornirea la rece, măsurată pe macOS arm64 prin `vmmap Physical footprint` după stabilizarea pornirii. Feb-apr 2026.
-
-### Go pur, orice dispozitiv
-
-100% Go, binar static. **Compilare încrucișată pentru 5 ținte** din start (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Fără runtime Node, fără Python, fără containere necesare. Puneți-l pe un NAS, un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, un router x86 vechi sau un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — pur și simplu funcționează. **Apoi adăugați propria interfață, logică și abilități de agent** — o singură bază de cod, orice platformă.
-
-### Securitate și guvernanță
-
-Proxy API sidecar integrat cu apărare în profunzime:
-- **Execuție în sandbox** – Toate apelurile de instrumente rulează în medii izolate.
-- **Apărare contra injecției de prompt** – Peste 7 strategii de interceptare integrate.
-- **Auditarea sesiunilor** – Monitorizare completă a sesiunilor, fiecare interacțiune trasabilă.
-- **RBAC și WebAuthn** – Control granular al accesului cu autentificare fără parolă.
+Creat pentru dezvoltatorii îndrăzneți care doresc să vibreze sau să își creeze manual propriii agenți, Blue este proiectat pentru performanță: scris în Go, cu o amprentă de memorie de până la 19 MB. Funcționează pe orice x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — oriunde vă conectați la curent.
 
 ## De ce Blue
 
-Credem că **informatica personală de nouă generație** îmbrățișează LLM-urile — dar agenții **controlabili și auditabili** rămân fundația atât pentru indivizi, cât și pentru echipe. **Blue oferă**:
-- **Nucleu complet** – Gestionare avansată a modelelor, integrare IM, personalitate îmbunătățită și interfețe în limbaj natural optimizate pentru interacțiuni zilnice (căști, voce, ochelari inteligenți).
-- **Prioritate locală, ultra-ușor, multi-dispozitiv** – Nu necesită hardware de ultimă generație. Rulează pe orice poate calcula.
-- **Securizat și auditabil** – Auditarea sesiunilor, sandboxing, controlul permisiunilor și un proxy API integrat care acționează ca un firewall la nivel de aplicație — fiecare octet de intrare/ieșire este vizibil.
-
-![](../../docs/assets/design_principle.png)
-
-Minimizăm codul repetitiv pentru ca dvs. să vă **concentrați pe ceea ce contează**. Fideli <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filozofiei de design a ZimaOS**, Blue oferă:
-- **De la zero la unu cu un singur clic** – Implementare instantanee, fără configurare complexă.
-- **Prototipare rapidă** – Creați liber sau manual instrumente, interacțiuni și pachete de aplicații specifice scenariului.
-- **Pregătit global** – **Lumea este mare** și nu vorbește implicit engleză. **Peste 20 de limbi, nativ**, fără bariere.
-- **Ecosistem deschis de modele** – Fără dependență de furnizor. Aduceți propriile modele.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
-</summary>
 
-| Furnizor | Modele | Tip |
-|----------|--------|-----|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi etc. | Local |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (confidențialitate prioritară) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | Modele OpenAI prin Azure | Cloud |
-| OpenRouter | 100+ modele agregate | Cloud |
-| AIHubMix | Agregator multi-furnizor | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Personalizat | Orice API compatibil OpenAI / Anthropic / Gemini | Cloud / Local |
+### Pure Go, orice dispozitiv
 
-</details>
+100% Go, binar static. Compilează încrucișat la 5 ținte din cutie (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Fără runtime Node, fără Python, fără containere necesare. Puneți-l pe un NAS, un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, un router x86 vechi sau un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac - pur și simplu rulează. Apoi stratificați-vă propriile abilități de interfață de utilizare, logică și agent — o bază de cod, fiecare platformă.
 
-### IDE-uri suportate
+### Din cutie, gata de lucru
 
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+Toată lumea își dorește instrumente simple, fiabile și scalabile atunci când aveți nevoie de ele. Instrumente care funcționează, astfel încât să vă puteți concentra pe ceea ce construiți de fapt.
+
+Aceasta nu este o filozofie nouă. Este același care a construit <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS: simplu, de încredere și construit pentru a nu vă împiedica. Blue este acea filozofie, extinsă la stiva de agenți.
+
+### Conceput pentru viața ta, construit pentru a rămâne local
+
+De la cercetare profundă care oferă un raport complet HTML, până la OCR, PDF, automatizarea browserului și conversia documentelor, Blue gestionează fluxuri de lucru complexe, din lumea reală, fără a trimite datele dumneavoastră în cloud. Activarea vocală, STT/TTS, Talk Mode și suportul pentru inferența locală fac interacțiunile de zi cu zi instantanee, private și întotdeauna disponibile.
 
 ## Pornire rapidă
 
 ### Opțiunea 1: Descărcați aplicația desktop
 
-Obțineți aplicația nativă — fără dependențe, fără compilare.
+Obțineți aplicația nativă - fără dependențe, fără compilare. Configurație de probă încorporată cu integrare în câteva secunde — începeți să conversați instantaneu prin conexiune la distanță, nu este necesară configurarea botului. Adevărata experiență ieșită din cutie.
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Descărcați DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Descărcați programul de instalare](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### Opțiunea 2: Script de instalare
+### Opțiunea 2: Instalați Scriptul
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### Opțiunea 3: Compilare din sursă
+### Opțiunea 3: Construiește din sursă
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,114 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
-## Prezentare generală a arhitecturii
+> **Notă:** versiunile Windows necesită:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) și [CMake](https://cmake.org/) pentru dependențe native C (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) pentru bibliotecile de sistem (winmm, etc.)
+>
+> Asigurați-vă că `gcc`, `cmake` sunt în `PATH` dvs.
 
-![](../../docs/assets/architecture.png)
+## Prezentare generală asupra arhitecturii
 
-### Fluxul de date
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-**Cerere de chat (calea rapidă a proxy-ului)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+Mergeți mai departe: oferă suport nativ pentru **20+ platforme IM**, interfețe **voice** pentru dialog natural, în funcție de context, **schimbare de model cu configurație zero** cu scanare IDE.
 
-**Fluxul mesajelor pe canale**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-**Pipeline vocal**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+## Cum se construiește
 
-**Flux de evaluare Harness**
-```
-Quick Eval / Harness API → Controler de evaluare → Dispatcher pentru grupuri de rulare
-  → Sarcină agent sau eval driver → Instrumente + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector Gates
-  → Cutover Readiness / Decizia candidatului
-```
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
+> ⚠️ [!IMPORTANT]
+>
+> Dacă intenționați să continuați reglarea sau codarea vibrațiilor pe lângă Blue, nu tratați câteva chat-uri arătoase drept dovezi de eliberare. Orice modificare care afectează rutarea, comportamentul execuției, suprafața sculei, controlul bugetului, selecția modelului sau cadrul de execuție trebuie validată cu Blue Harness, nu cu verificări ad-hoc la fața locului.
+>
+> Blue ar trebui să urmeze o regulă simplă aici: datele mai întâi, porțile întâi, tăiat peste ultimul. În practică, aceasta înseamnă actualizarea setului de date/eval relevant Harness înainte de a judeca o modificare, apoi păstrarea unui `candidate_id` stabil pe întreaga încercare, astfel încât rapoartele de selecție, execuție, buget și pregătire să descrie același candidat în loc de patru rulări fără legătură.
 
-### Harta pachetelor (`server/internal/`)
+### Flux de lucru Harness recomandat
 
-| Strat | Pachete |
-|-------|---------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Furnizor | providerpool, providers, llm |
-| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Memorie | memory, embedding, kvstore |
-| Canal | channel, autoreply, i18n |
-| Securitate | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Voce | voice, tts, stt, speech |
-| Observare | metrics, companion, profiling, leakdetect |
-| Plugin | plugin, skill, skillstore |
-| Integrare | browser, cron, workflow, formfiller, tunnel, crawler |
-| Planificator | scheduler, worker, workerpool, pool |
-| Nucleu | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Sistem | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Multi-tenant | tenant, user, session, preview |
+1. Rulați `blue harness selector verify`
+2. Rulați `blue harness execution verify`
+3. Reutilizați rularea de evaluare a selectorului pentru `blue harness budget gate`
+4. Terminați cu `blue harness cutover-readiness`
 
-## Mod de utilizare
+Pentru iterație locală, validare nocturnă sau colectare de dovezi CI, preferați `python3 scripts/cutover_candidate_pipeline.py`. Rulează selectorul complet -> execuție -> buget -> secvență de pregătire sub un candidat partajat, ceea ce face rezultatul mai ușor de comparat, revizuit și tăiat.
 
-![](../../docs/assets/handcraft.png)
+### Balustrade suplimentare
 
-## Cronologia etapelor
+| Zona | Ce să urmărești |
+|------|----------------|
+| Stabilitate de bază | Păstrați linia de bază, versiunea setului de date și `candidate_id` stabile, altfel comparația se va deplasa și rezultatul nu va fi de încredere. |
+| Real build output | Reconstruiți pachetul binar sau frontend afectat înainte de a rula Harness, altfel puteți ajunge să validați comportamentul învechit în loc de modificarea curentă. |
+| Înregistrarea traseului | Dacă front-end-ul și back-end-ul se schimbă împreună, confirmați că toate rutele back-end noi sunt de fapt înregistrate înainte de a judeca caracteristica prin comportamentul UI, deoarece înregistrarea lipsă arată adesea ca o eroare logică, dar este într-adevăr un `404`. |
+| Eliberare judecată | O trecere de reglare este gata numai atunci când Harness nu arată nicio regresie semnificativă și pregătirea pentru trecere confirmă că candidatul este de fapt gata să treacă. |
 
-![](../../docs/assets/timeline.png)
+Pe scurt, reglarea pe Blue nu se referă la „se simte mai bine în câteva conversații”. Este vorba despre introducerea candidatului în Harness, strângerea de dovezi comparabile și lăsarea rezultatelor poarta și pregătirea să decidă dacă schimbarea este cu adevărat sigură de păstrat.
 
-| Versiune | Focus | Valoare cheie | Status |
-|----------|-------|---------------|--------|
-| v0.1 | Nucleu runtime Go | Kernel stabil, funcționare 24h | Done |
-| v0.2 | Capabilități de bază | Minim utilizabil, integrare LLM | Done |
-| v0.3 | Integrare NAS | NAS nativ, suport systemd | Done |
-| v0.4 | Sistem de pluginuri | Extensibil, baze de securitate | Done |
-| v0.5 | Bază de produs | Pregătit pentru producție, documentație | Done |
-| v0.6 | Canale de mesagerie | Suport multi-canal | Done |
-| v0.7 | Securitate | OIDC, MFA, audit | Done |
-| v0.8 | Performanță | Optimizare, caching, benchmark-uri | Done |
-| v0.9 | Ecosistem | Multi-tenant, automatizare browser, voce | Done |
-| v0.10.0 | Împachetare CLI | Împachetare CC CLI, detectare, auto-actualizare | Done |
-| v0.10.1 | Monitorizare metrici | Statistici API, urmărire tokenuri, TTFT | Done |
-| v0.10.2 | Fiabilitate CLI | Ciclu de viață al proceselor, recuperare erori | Done |
-| v0.10.3 | Integrare CLI | Asistent de configurare, auto-detectare furnizor | Done |
-| v0.10.4 | Împachetare Tauri | Aplicație desktop, system tray | Done |
-| v0.10.5 | API Proxy Sidecar | Selecție rute, prompt guard, statistici utilizare | Done |
-| v0.10.6 | Pool de furnizori | Rutare multi-furnizor, verificare sănătate, failover | Done |
-| v0.10.7 | Mod previzualizare | Acces neautentificat, controlul funcționalităților | Done |
-| v0.10.8 | Skill Store | Infrastructură skill store, validare canale | Done |
-| v0.10.9–10 | Gestionare utilizatori | Sub-utilizatori, permisiuni la nivel de pagină | Done |
-| v0.10.13–14 | Securitate și abilități | Pagină de securitate, reproiectare skill store | Done |
-| v0.10.15 | Îmbunătățiri chat | UX chat, pipeline mesaje | Done |
-| v0.10.16 | Modul vocal | Sherpa TTS/ASR, eSpeak, comutare furnizor | Done |
-| v0.10.17 | Acces la distanță | Ngrok, tuneluri Cloudflare, certificate ACME | Done |
-| v0.10.18–20 | Sprint de performanță | Performanță pornire/chat, cache context | Done |
-| v0.10.21–22 | Prompt și DingTalk | Prompt de sistem, canal DingTalk | Done |
-| v0.10.23 | Actualizare OTA | Sistem de actualizare OTA | Done |
-| v0.10.24 | Upgrade canale | 10 canale actualizate din stub-uri | Done |
-| v0.10.25 | CC Cache | Cache pe două niveluri (L1 memorie + L2 disc) | Done |
-| v0.10.26 | Humanizer | Pipeline de umanizare a răspunsurilor | Done |
-| v0.10.27 | Context Pruner | 54% economie de tokeni pe cod (SWE-bench oficial), 46–47% pe documente generale (IR local), scorare BM25, segmentare | Done |
-| v0.10.28 | Memory Service | Căutare progresivă, backend cu scriere duală | Done |
+## Caracteristici
 
-## Comunitate și suport
+| Caracteristica | Ce oferă |
+|---------|--------------------|
+| Preluare Web de înaltă disponibilitate și timp de rulare a browserului | Unul dintre **cele mai clare diferențieri** ai lui Blue. Blue unifică **patru căi de acces la web** pentru căutare, citire, extragere și accesare cu crawlere; păstrează **trei straturi de rezervă** în sesiunile HTTP, extracție proxy și browser; gestionează **pagini anti-bot** cu detectarea provocării, reutilizarea cookie-urilor/sesiunii, ascuns și transferarea browserului; și rute prin **trei motoare de browser**: `lightpanda`, Chromium gestionat și Chromium releu/local. |
+| Timp de execuție de cercetare trei-în-unul | **O înregistrare publică de cercetare** poate fi direcționată către `deep_research`, `analyze` și `ui_review`. Aceeași stivă de descoperiri și dovezi generează apoi **cercetare care primește citare**, **rapoarte limitate** și **evaluări structurate UI/UX/accesibilitate**. |
+| Harness Cadru de rulare, evaluare și evoluție | Face din evaluare un **primitiv de rulare** în dezvoltare, instruire și producție. Harness acoperă **verificări de regresie și de fum**, scor, linii de bază, rapoarte și validarea timpului de execuție, apoi prezintă aceleași dovezi în **evoluția competențelor**, evaluare ulterioară, promovare sau derulare și `AGENTS.md` sau revizuirea propunerilor de instrucțiuni. |
+| Multimodal Native-Capability-First Runtime | Păstrează **voce, OCR, PDF, sarcini de browser, conversie de documente, completare structurată a formularelor, procesare media și generare media** pe **căile native și locale mai întâi**, cu **rutarea modelului numai atunci când este efectiv necesar**. |
+| Securitate și guvernare | Include **execuție sandbox**, **apărare prin injectare promptă**, **audit de sesiune**, permisiuni, **RBAC**, **WebAuthn**, balustrade operaționale și **scanare de securitate a competențelor**. |
+| LLM Wiki și spațiu de cunoaștere | Transformă memoria, cercetarea și rezultatele de rulare într-o **suprafață de cunoștințe asemănătoare wiki** cu **pagini de rezumat**, indexuri, **backlink-uri**, **prospețime** și **fluxuri de lucru de arhivă**. |
+| Magazin de abilități și piață | Se livrează **descoperirea abilităților încorporate**, curatarea, sincronizarea și **scanarea locală**, astfel încât extensibilitatea este disponibilă **din prima zi**. |
+| Grup de furnizori de nivel de producție | Oferă un grup real de furnizori cu **verificări de sănătate**, **recuperare automată la eroare**, **întrerupătoare de circuit** și **curse de furnizori** pentru sarcini de lucru de lungă durată. |
+| Timp de rulare a modelului mic local încorporat | Livrează un timp de rulare **`Qwen3.5-0.8B` + `llama.cpp`** încorporat pentru **Întrebări și răspunsuri scurte locale**, recunoaștere a imaginii, rutare a instrumentelor, rezumare, **comprimare a contextului** și **preprocesare a documentelor**. |
+| Fiabilitate de lungă durată | Tratează **actualizările OTA**, **backup și restaurare**, **reîncărcarea la cald a configurației** și **recuperarea după eșec** ca **preocupări de funcționare încorporate**. |
 
-- **Probleme**: [Vă rugăm să raportați erori și solicitări de funcționalități aici](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Discuții**: [Discord](https://discord.gg/b3AgFDxe9v)
+## Cronologie de reper
+
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+| Data | Versiune | Cuvinte cheie / Caracteristici |
+|------|----------|----------------------|
+| 26 ianuarie 2026 | `v0.1–v0.9` | Go runtime, sistem plugin, automatizare browser |
+| 27–28 ianuarie 2026 | `v0.9.0–v0.9.2` | Vizualizarea activității browser, Blue Companion, Smart Form Filler |
+| 29–31 ianuarie 2026 | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, restructurare UI |
+| 1–3 februarie 2026 | `v0.10.1–v0.10.22` | Valori, acces la distanță, cache context |
+| 5–18 februarie 2026 | `v0.10.25–v0.10.29` | i18n, CC Cache, conductă de lansare |
+| 20–25 februarie 2026 | `v0.10.28–v0.10.29` | Încărcător desktop, UX mobil, reproiectare memorie |
+| 28 februarie–2 martie 2026 | `v0.10.30` | Deep Research, reranker de aptitudini, scanare de securitate |
+| 9–18 martie 2026 | `v0.10.31` | Revizuirea tabloului de bord, VoiceChat refactor, site-uri aprobate |
+| 19–22 martie 2026 | `v0.10.32` | Harness lansare, audit de transcriere, căutare pe web |
+| 23–25 martie 2026 | `v0.10.33` | Harness grupuri, aprobări browser, piață de competențe |
+| 29–30 martie 2026 | `v0.10.35` | Harness v3, retransmitere browser, compresie context |
+| 31 martie–1 apr 2026 | `v0.10.36` | Audit transcriere, suprapuneri Harness, analiza instrumentului |
+| 1 apr 2026 | `v0.10.37` | Întărirea timpului de execuție, cutover Skill+Exec, lustruire de recuperare |
+| 2–5 aprilie 2026 | `v0.10.38` | Asistență GitHub, rafinament pe piață, îmbunătățiri ale fiabilității |
+| 6–7 aprilie 2026 | `v0.10.39` | Unificarea cercetării, suprafețele de evoluție, reducerea memoriei |
+
+## Comunitate și asistență
+
+- **Probleme**: [Te rugăm să înregistrezi erori și solicitări de funcții aici](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Discuții**: [Discord](https://discord.gg/zwWbKA4S2)
 - **Urmăriți-ne** pe [GitHub](https://github.com/IceWhaleTech)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Licență
 
-Acest proiect este licențiat sub Licența MIT — consultați fișierul [LICENSE](../../LICENSE) pentru detalii. Credem în open source și în a contribui înapoi comunității.
+Acest proiect este licențiat sub licența MIT - consultați fișierul [LICENȚĂ](../../LICENSE) pentru detalii. Credem în sursa deschisă și în redarea comunității.
 
-## Contribuitori
+## Colaboratori
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Mulțumim tuturor colaboratorilor Blue:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Referințe
+
+1. **OpenClaw** — Primul agent open source local. A fost pionier în conectarea LLM-urilor la dispozitive locale prin adaptoare de canal și apeluri de instrumente, inspirând direct arhitectura de rulare a agentului Blue. https://github.com/openclaw/openclaw
+2. **MiroMind** — Modul de cercetare profundă cu sinteză susținută de dovezi. Conținutul de cercetare profundă încorporat în Blue: planificare, extragere paralelă, deduplicare a dovezilor și generare de rapoarte HTML. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM ca compilator de cunoștințe. Reîncadrează LLM-urile pentru a construi spații de cunoștințe persistente și în evoluție, trecând dincolo de capcana de acumulare a RAG.
+4. **OpenSpace (HKUDS)** — Motor de abilități care evoluează singur. Un cadru bazat pe DAG în care agenții învață din eșecuri și obțin abilități specializate. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — Registrul de documentație API cu versiuni pentru agenții de codare. Abordează halucinațiile agenților și cunoștințele uitate ale sesiunii. Oferă documente organizate, versiuni, cu bucle de adnotări și feedback, transformând documentația într-un strat de cunoștințe care se auto-îmbunătățește. https://github.com/andrewyng/context-hub
+6. **Notion** — Simplu, uman și intenționat liniștit. Inspirat de etosul minimalist al lui Notion, Blue aduce căldura înapoi în grilă. Unde serif rafinat se întâlnește cu designul atent, creând un spațiu care se simte ca acasă. https://www.notion.com/about
+7. **Matrix** — Inspirație vizuală din estetica emblematică a ploaiei digitale. Direcția estetică pentru diagramele tehnice Blue.
+8. **IceWhale** — Dragoste, moarte și roboți S2E2 „Gheață”. Un colectiv care se adună în întreaga lume pentru a sparge zidurile giganților internetului și a rezista concentrării datelor. Balena de gheață simbolizează o comunitate care construiește unelte suverane împreună la margine.
+9. **ZimaOS Blue** — Dragoste, moarte și roboți S1E14 „Zima Blue”. O metaforă: inteligența care începe în serviciu și evoluează pentru a explora lumea. Blue este un agent al înțelepciunii, înrădăcinat în simplitate și care ajunge la profunzime.
+10. **ZimaOS** — Principii de design simplificate, concentrate, deschise. Atât ZimaOS, cât și Blue împărtășesc convingerea că tehnologia ar trebui să servească utilizatorului - implementați în 30 de secunde, rulați oriunde, rămâneți neutru față de furnizor. https://www.zimaspace.com/zimaos

@@ -3,21 +3,19 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
 import BrowserMonitorWidget from '@/components/BrowserMonitorWidget.vue'
-import { __resetBrowserMonitorStateForTests, useBrowserMonitor } from '@/composables/useBrowserMonitor'
+import {
+  __resetBrowserMonitorStateForTests,
+  useBrowserMonitor,
+} from '@/composables/useBrowserMonitor'
 
-const {
-  pushMock,
-  getBrowserOverviewMock,
-  getSessionMonitorMock,
-  onSSEEventMock,
-  offSSEEventMock,
-} = vi.hoisted(() => ({
-  pushMock: vi.fn(),
-  getBrowserOverviewMock: vi.fn(),
-  getSessionMonitorMock: vi.fn(),
-  onSSEEventMock: vi.fn(),
-  offSSEEventMock: vi.fn(),
-}))
+const { pushMock, getBrowserOverviewMock, getSessionMonitorMock, onSSEEventMock, offSSEEventMock } =
+  vi.hoisted(() => ({
+    pushMock: vi.fn(),
+    getBrowserOverviewMock: vi.fn(),
+    getSessionMonitorMock: vi.fn(),
+    onSSEEventMock: vi.fn(),
+    offSSEEventMock: vi.fn(),
+  }))
 
 const localStorageMock = (() => {
   let store: Record<string, string> = {}
@@ -503,6 +501,161 @@ describe('BrowserMonitorWidget', () => {
     expect(wrapper.text()).toContain('第 2/2 帧')
   })
 
+  it('renders a compact single-preview layout when collapsed with one session', async () => {
+    const monitor = useBrowserMonitor()
+    monitor.setCollapsed(true)
+
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://live.example.com',
+            page_title: 'Live Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: {
+        screenshot: 'compact-live-base64',
+        history: [
+          {
+            data: 'compact-live-base64',
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'Live Session',
+            url: 'https://live.example.com',
+            scope: 'viewport',
+          },
+        ],
+      },
+      error: '',
+    })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.browser-monitor__compact').exists()).toBe(true)
+    expect(wrapper.find('.browser-monitor__subtitle').exists()).toBe(false)
+    expect(wrapper.find('.browser-monitor__compact-strip').exists()).toBe(false)
+    expect(wrapper.get('.browser-monitor__compact-image').attributes('src')).toContain(
+      'compact-live-base64'
+    )
+  })
+
+  it('renders compact session thumbnails and switches the main preview when collapsed', async () => {
+    const monitor = useBrowserMonitor()
+    monitor.setCollapsed(true)
+
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://first.example.com',
+            page_title: 'First Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+          {
+            id: 'tab-2',
+            status: 'idle',
+            current_url: 'https://second.example.com',
+            page_title: 'Second Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
+    getSessionMonitorMock.mockImplementation(async (sessionId: string) => {
+      if (sessionId === 'tab-2') {
+        return {
+          kind: 'image',
+          image: {
+            screenshot: 'second-base64',
+            history: [
+              {
+                data: 'second-base64',
+                captured_at: '2026-03-23T00:01:00.000Z',
+                title: 'Second Session',
+                url: 'https://second.example.com',
+                scope: 'viewport',
+              },
+            ],
+          },
+          error: '',
+        }
+      }
+
+      return {
+        kind: 'image',
+        image: {
+          screenshot: 'first-base64',
+          history: [
+            {
+              data: 'first-base64',
+              captured_at: '2026-03-23T00:00:00.000Z',
+              title: 'First Session',
+              url: 'https://first.example.com',
+              scope: 'viewport',
+            },
+          ],
+        },
+        error: '',
+      }
+    })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const thumbnails = wrapper.findAll('.browser-monitor__compact-thumb')
+    expect(thumbnails).toHaveLength(2)
+    expect(wrapper.findAll('.browser-monitor__compact-thumb-image').length).toBeGreaterThanOrEqual(
+      2
+    )
+    expect(wrapper.get('.browser-monitor__compact-image').attributes('src')).toContain(
+      'first-base64'
+    )
+
+    await thumbnails[1].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.browser-monitor__compact-image').attributes('src')).toContain(
+      'second-base64'
+    )
+    expect(wrapper.findAll('.browser-monitor__compact-thumb')[1]?.classes()).toContain('is-active')
+  })
+
   it('keeps session page metadata focused in the preview when only one session is active', async () => {
     getBrowserOverviewMock.mockResolvedValue(
       makeBrowserOverviewResponse({
@@ -553,7 +706,9 @@ describe('BrowserMonitorWidget', () => {
       '在这里跟踪最新的任务和标签页状态。'
     )
     expect(wrapper.get('.browser-monitor__preview-title').text()).toContain('Live Session')
-    expect(wrapper.get('.browser-monitor__preview-url').text()).toContain('https://live.example.com')
+    expect(wrapper.get('.browser-monitor__preview-url').text()).toContain(
+      'https://live.example.com'
+    )
     expect(wrapper.findAll('.browser-monitor__capability-detail')[1].text()).toContain(
       '完整浏览器会话'
     )
@@ -626,7 +781,9 @@ describe('BrowserMonitorWidget', () => {
     )
     expect(wrapper.find('.browser-monitor__tab-kind').exists()).toBe(false)
     expect(
-      wrapper.findAll('.browser-monitor__tab-meta').every((node) => !node.text().includes('https://'))
+      wrapper
+        .findAll('.browser-monitor__tab-meta')
+        .every((node) => !node.text().includes('https://'))
     ).toBe(true)
   })
 

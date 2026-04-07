@@ -733,7 +733,7 @@ func (t *harnessOptimizationTriggerer) maybeSubmitOptimizationFollowupEval(ctx c
 			return outcome, err
 		}
 	}
-	sourceState, err := harness.ResolveCanonicalSkillSourceState(
+	sourceState, err := harness.ResolveWritableSkillSourceState(
 		optimizationMetadataString(skillCandidate, "skill_id"),
 		optimizationMetadataString(skillCandidate, "source_path"),
 	)
@@ -742,7 +742,7 @@ func (t *harnessOptimizationTriggerer) maybeSubmitOptimizationFollowupEval(ctx c
 		outcome.SkippedReason = strings.TrimSpace(err.Error())
 		outcome.Message = firstNonEmptyOptimizationValue(
 			outcome.Message,
-			"skill evolution v1 only supports canonical assets/skills/*/SKILL.md skills",
+			"skill evolution v1 only supports writable built-in skills and managed installed skills",
 		)
 		return outcome, nil
 	}

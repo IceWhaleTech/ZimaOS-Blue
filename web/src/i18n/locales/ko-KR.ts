@@ -1343,6 +1343,7 @@ export default mergeHarnessLocale('ko-KR', {
       newProfile: '새 프로필',
       acpPlainTitle: '로컬 도구(ACP)',
       a2aPlainTitle: '원격 에이전트(A2A)',
+      genericA2ATitle: '범용 원격 A2A 에이전트',
       loadFailed: '외부 에이전트 프로필을 로드하지 못했습니다.',
       notAvailable: '사용할 수 없음',
       remoteAgent: '원격 에이전트',
@@ -2240,6 +2241,9 @@ export default mergeHarnessLocale('ko-KR', {
       items: {
         ai_prompt_injection: {
           name: '프롬프트 인젝션 보호',
+        },
+        sandbox_enabled: {
+          description: '코드 실행이 샌드박스에서 이루어지는지 확인',
         },
       },
     },

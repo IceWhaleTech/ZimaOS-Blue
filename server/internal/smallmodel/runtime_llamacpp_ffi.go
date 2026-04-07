@@ -3,6 +3,7 @@
 package smallmodel
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -33,6 +34,13 @@ func (b *llamaCppFFIBackend) EnsureLoaded() error {
 		b.err = b.load()
 	})
 	return b.err
+}
+
+func (b *llamaCppFFIBackend) Generate(_ context.Context, _ llamaCppDirectGenerateRequest) (string, error) {
+	if err := b.EnsureLoaded(); err != nil {
+		return "", err
+	}
+	return "", errLlamaCppDirectUnsupported
 }
 
 func (b *llamaCppFFIBackend) load() error {

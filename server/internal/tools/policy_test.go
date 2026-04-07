@@ -61,7 +61,7 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "deep_research"},
 		{Name: "sessions"},
 		{Name: "tool_search"},
-		{Name: "web"},
+		{Name: "web_query"},
 		{Name: "apply_patch"},
 		{Name: "write_begin"},
 	}
@@ -74,7 +74,7 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		"bash":    true,
 		"browser": true, "calendar": true, "email": true, "file_read": true, "file_write": true,
 		"image": true, "pdf": true, "plan_append": true, "plan_create": true,
-		"plan_update": true, "deep_research": true, "sessions": true, "tool_search": true, "web": true,
+		"plan_update": true, "deep_research": true, "sessions": true, "tool_search": true, "web_query": true,
 	}
 	for _, def := range filtered {
 		if !allowed[def.Name] {
@@ -175,9 +175,9 @@ func TestToolPolicyResolver_ByProvider(t *testing.T) {
 		"gpt-5": {Deny: []string{"browser"}},
 	}
 	resolver := NewToolPolicyResolver(cfg)
-	defs := []ToolDefinition{{Name: "browser"}, {Name: "web"}}
+	defs := []ToolDefinition{{Name: "browser"}, {Name: "web_query"}}
 	filtered := resolver.Filter(ToolPolicyRequest{Model: "gpt-5"}, defs)
-	if len(filtered) != 1 || filtered[0].Name != "web" {
+	if len(filtered) != 1 || filtered[0].Name != "web_query" {
 		t.Fatalf("unexpected provider-filtered tools: %#v", filtered)
 	}
 }
@@ -191,7 +191,7 @@ func TestToolPolicyResolver_ByProviderID(t *testing.T) {
 		"provider-123/gpt-5": {Allow: []string{"browser"}},
 	}
 	resolver := NewToolPolicyResolver(cfg)
-	defs := []ToolDefinition{{Name: "browser"}, {Name: "web"}}
+	defs := []ToolDefinition{{Name: "browser"}, {Name: "web_query"}}
 	filtered := resolver.Filter(ToolPolicyRequest{ProviderID: "provider-123", Model: "gpt-5"}, defs)
 	if len(filtered) != 1 || filtered[0].Name != "browser" {
 		t.Fatalf("unexpected provider-id filtered tools: %#v", filtered)

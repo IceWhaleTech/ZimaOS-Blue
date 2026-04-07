@@ -317,3 +317,61 @@ Analyze links and produce a report.
 		t.Fatalf("expected no analyze activation, got %+v", result.Activated)
 	}
 }
+
+func TestToolSearchTool_HidesLegacyWebAliasFromUserFacingMatches(t *testing.T) {
+	registry := NewRegistry()
+	searchTool := NewToolSearchTool(registry)
+	registry.Register(searchTool)
+	registry.ExposeDefinition(ToolDefinition{
+		Name:        "web",
+		Description: "Legacy alias for web_query.",
+	})
+	registry.ExposeDefinition(ToolDefinition{
+		Name:        "web_query",
+		Description: "Search the web for latest sources.",
+	})
+
+	searchTool.SetToolPolicyResolver(NewToolPolicyResolver(&config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	}))
+	searchTool.SetRuntimeInfoSource(func(string) ToolSearchRuntimeInfo {
+		return ToolSearchRuntimeInfo{WebSearchEnabled: true}
+	})
+
+	ctx := WithSessionID(context.Background(), "conv-hide-web-alias")
+	ctx = WithRouteKind(ctx, ToolRouteKindChat)
+
+	resultAny, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:web", "max_results": 10})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	result := resultAny.(ToolSearchResult)
+	if len(result.Matches) != 0 {
+		t.Fatalf("expected legacy web alias to stay hidden from tool_search, got %+v", result.Matches)
+	}
+	if len(result.Activated.Tools) != 0 || result.Activated.Exec {
+		t.Fatalf("expected no legacy web activation, got %+v", result.Activated)
+	}
+
+	canonicalAny, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:web_query", "max_results": 10})
+	if err != nil {
+		t.Fatalf("Execute canonical returned error: %v", err)
+	}
+	canonical := canonicalAny.(ToolSearchResult)
+	if len(canonical.Matches) != 1 {
+		t.Fatalf("expected canonical web_query match, got %+v", canonical.Matches)
+	}
+	if canonical.Matches[0].Name != "web_query" || canonical.Matches[0].Kind != "tool" {
+		t.Fatalf("canonical match = %+v, want tool web_query", canonical.Matches[0])
+	}
+	if canonical.Matches[0].Availability != "loaded" {
+		t.Fatalf("canonical availability = %q, want loaded", canonical.Matches[0].Availability)
+	}
+	if len(canonical.Activated.Tools) != 0 {
+		t.Fatalf("canonical activated.tools = %+v, want no deferred activation for loaded web_query", canonical.Activated.Tools)
+	}
+	if len(canonical.Activated.Skipped) != 1 || canonical.Activated.Skipped[0].Reason != "already_loaded" {
+		t.Fatalf("canonical activated.skipped = %+v, want already_loaded", canonical.Activated.Skipped)
+	}
+}

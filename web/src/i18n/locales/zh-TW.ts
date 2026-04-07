@@ -1063,6 +1063,7 @@ export default mergeHarnessLocale('zh-TW', {
       newProfile: '新增設定檔',
       acpPlainTitle: '本機工具 (ACP)',
       a2aPlainTitle: '遠端智慧代理 (A2A)',
+      genericA2ATitle: '通用遠端 A2A 智慧代理',
       loadFailed: '載入外部智慧代理設定檔失敗。',
       notAvailable: '不可用',
       remoteAgent: '遠端智慧代理',
@@ -2218,6 +2219,9 @@ export default mergeHarnessLocale('zh-TW', {
       items: {
         ai_prompt_injection: {
           name: '提示注入保護',
+        },
+        sandbox_enabled: {
+          description: '檢查程式碼執行是否在沙箱中進行',
         },
       },
     },

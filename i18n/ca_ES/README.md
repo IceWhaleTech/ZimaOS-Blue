@@ -44,112 +44,42 @@
 
 ## Introducció
 
-Inspirats per Clawdbot, creiem que el **futur** de la informàtica personal serà **modelat per agents d'IA locals i diversos** que s'executen a la vora de la xarxa.
+Inspirats per Clawdbot, creiem que el futur de la informàtica personal estarà modelat per diversos agents d'IA locals que funcionen a la vora.
 
-**ZimaOS Blue és la nostra resposta** — un **entorn d'execució i conjunt d'eines per a agents totalment obert, auditable i preparat per a producció** que us permet desplegar agents privats i autoallotjats sense cap fricció.
+ZimaOS Blue és la nostra resposta: un conjunt d'eines i temps d'execució d'agents totalment de codi obert, auditable, neutral per a proveïdors i preparat per a la producció que us permet enviar agents privats i allotjats sense fricció.
 
-Dissenyat per a desenvolupadors audaços que volen **crear els seus propis agents amb inspiració o a mà**, Blue està **optimitzat per al rendiment**: escrit en **Go**, amb un consum de memòria tan baix com 10 MB. Funciona en **qualsevol x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** — allà on hi hagi corrent.
-
-![](../../docs/assets/features.png)
-
-## Característiques destacades
-
-### Disseny local-first i accés automàtic a models
-
-Aneu més enllà: ofereix suport natiu per a **més de 20 plataformes de missatgeria instantània**, interfícies **controlades per veu** per a diàlegs naturals i contextuals, **canvi de model sense configuració** amb escaneig d'IDE, i personalitats amb capes SOUL.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Ràpid i lleuger
-
-Compilat nativament en Go — sense intèrpret, sense VM, sense sobrecàrrega. Funciona silenciosament en tot, des de servidors fins als vostres dispositius d'escriptori.
-
-| Mètrica | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|---------|-------------------|------------------------|
-| `help` fred / calent | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` temps d'execució (millor de 3) | **< 0.01 s** | 5.98 s |
-| `help` RSS màxim | **~10 MB** | ~394 MB |
-| `status` RSS màxim | **~15 MB** | ~1.52 GB |
-| memòria idle de `gateway run` després d'arrencada en fred | **~19 MB** | - |
-| Dependències d'execució | **Cap** | Node.js 18+ |
-
-> Les files de CLI de dalt corresponen al microbenchmark històric de `help` / `status` al mateix host. La nova fila de `gateway run` reflecteix la memòria real en repòs després d'un arrencada en fred, mesurada a macOS arm64 amb `vmmap Physical footprint` un cop estabilitzat l'inici. Feb-abr 2026.
-
-### Go pur, qualsevol dispositiu
-
-100% Go, binari estàtic. **Compilació creuada per a 5 objectius** de sèrie (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Sense runtime de Node, sense Python, sense contenidors. Poseu-lo en un NAS, una ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, un router x86 antic o un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — simplement funciona. **Després afegiu la vostra pròpia interfície, lògica i habilitats d'agent** — un sol codi, totes les plataformes.
-
-### Seguretat i governança
-
-Proxy API sidecar integrat amb defensa en profunditat:
-- **Execució en sandbox** – Totes les crides a eines s'executen en entorns aïllats.
-- **Defensa contra injecció de prompts** – Més de 7 estratègies d'intercepció integrades.
-- **Auditoria de sessions** – Monitoratge complet de sessions, cada interacció és traçable.
-- **RBAC i WebAuthn** – Control d'accés granular amb autenticació sense contrasenya.
+Creat per a desenvolupadors atrevits que volen vibrar o crear els seus propis agents, Blue està dissenyat per al rendiment: escrit a Go, amb una empremta de memòria de tan sols 19 MB. S'executa a qualsevol x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS, a qualsevol lloc on connecteu l'alimentació.
 
 ## Per què Blue
 
-Creiem que la **informàtica personal de nova generació** abraça els LLM — però els agents **controlables i auditables** segueixen sent la base tant per a individus com per a equips. **Blue ofereix**:
-- **Nucli complet** – Gestió avançada de models, integració de missatgeria instantània, persona millorada i interfícies de llenguatge natural adaptades per a interaccions diàries (auriculars, veu, ulleres intel·ligents).
-- **Local-first, ultralleuger, multidispositiu** – No cal maquinari d'alta gamma. Funciona en qualsevol cosa que pugui computar.
-- **Segur i auditable** – Auditoria de sessions, sandboxing, controls de permisos i un proxy API integrat que actua com a tallafocs de capa d'aplicació — cada byte d'entrada/sortida és visible.
-
-![](../../docs/assets/design_principle.png)
-
-Minimitzem el codi repetitiu perquè us **concentreu en el que importa**. Fidels a la <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **filosofia de disseny de ZimaOS**, Blue ofereix:
-- **De zero a u amb un sol clic** – Desplegament instantani, sense configuració complexa.
-- **Prototipatge ràpid** – Creeu eines, interaccions i paquets d'aplicacions específics per a cada escenari.
-- **Preparat per al món** – **El món és gran**, i no parla anglès per defecte. **Més de 20 idiomes, natius**, sense barreres.
-- **Ecosistema de models obert** – Sense dependència de proveïdor. Porteu els vostres propis models.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
-</summary>
 
-| Proveïdor | Models | Tipus |
-|-----------|--------|-------|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Cloud |
-| Anthropic | Claude 4.5, Claude 4 | Cloud |
-| Google | Gemini 2.5, Gemini 2.0 | Cloud |
-| Ollama | Llama, Qwen, Gemma, Phi, etc. | Local |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Cloud |
-| Grok | Grok-3, Grok-3-mini | Cloud |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Cloud |
-| GLM | GLM-4, GLM-4-Flash | Cloud |
-| Moonshot | Moonshot-v1 | Cloud |
-| MiniMax | abab6.5, abab5.5 | Cloud |
-| Venice | Llama, Mistral (privadesa primer) | Cloud |
-| AWS Bedrock | Claude, Llama, Titan | Cloud |
-| Azure | Models OpenAI via Azure | Cloud |
-| OpenRouter | 100+ models agregats | Cloud |
-| AIHubMix | Agregador multi-proveïdor | Cloud |
-| Codex | OpenAI Codex | Cloud |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Cloud |
-| Personalitzat | Qualsevol API compatible amb OpenAI / Anthropic / Gemini | Cloud / Local |
+### Pure Go, qualsevol dispositiu
 
-</details>
+100% Go, binari estàtic. Compila encreuament a 5 objectius fora de la caixa (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Sense temps d'execució de Node, sense Python, no requereixen contenidors. Col·loqueu-lo en un NAS, un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, un antic encaminador x86 o un ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac: només s'executa. A continuació, poseu una capa de les vostres pròpies habilitats d'interfície d'usuari, lògica i agent: una base de codi, cada plataforma.
 
-### IDE compatibles
+### Fora de la caixa, llest per treballar
 
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+Tothom vol eines que siguin senzilles, fiables i escalables quan les necessiteu. Eines que només funcionen, perquè pugueu centrar-vos en allò que realment esteu construint.
+
+Aquesta no és una filosofia nova. És el mateix que va crear <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS: senzill, fiable i dissenyat per mantenir-se fora del teu camí. Blue és aquesta filosofia, estesa a la pila d'agents.
+
+### Dissenyat per a la teva vida, construït per mantenir-se local
+
+Des d'una investigació profunda que ofereix un informe complet HTML, fins a OCR, PDF, l'automatització del navegador i la conversió de documents, Blue gestiona fluxos de treball complexos i del món real sense enviar les vostres dades al núvol. La activació de veu, STT/TTS, Talk Mode i el suport per a la inferència local fan que les interaccions quotidianes siguin instantànies, privades i sempre disponibles.
 
 ## Inici ràpid
 
-### Opció 1: Descarregar l'aplicació d'escriptori
+### Opció 1: Baixeu l'aplicació d'escriptori
 
-Obteniu l'aplicació nativa — sense dependències, sense compilació.
+Obteniu l'aplicació nativa: sense dependències, sense compilació. Configuració de prova integrada amb incorporació en qüestió de segons: comenceu a xatejar a l'instant mitjançant connexió remota, sense necessitat de configuració de bot. Autèntica experiència fora de la caixa.
 
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Descarregar DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Descarregar instal·lador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Baixa DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Baixa l'instal·lador](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### Opció 2: Script d'instal·lació
+### Opció 2: instal·lar script
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### Opció 3: Compilar des del codi font
+### Opció 3: Crear des de la font
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,116 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
-> **Note:** Windows builds require [MinGW-w64](https://www.mingw-w64.org/) (gcc) and [CMake](https://cmake.org/) for native C dependencies (espeak-ng, whisper.cpp, opus). Make sure `gcc` and `cmake` are in your `PATH`.
+> **Nota:** Les compilacions de Windows requereixen:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) i [CMake](https://cmake.org/) per a dependències C natives (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) per a les biblioteques del sistema (winmm, etc.)
+>
+> Assegureu-vos que `gcc`, `cmake` estiguin al vostre `PATH`.
 
 ## Visió general de l'arquitectura
 
-![](../../docs/assets/architecture.png)
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### Flux de dades
+Porta-ho més lluny: ofereix suport natiu per a més de 20 plataformes de missatgeria instantània, interfícies **controlades per veu** per a un diàleg natural i conscient del context, **canvi de model de configuració zero** amb escaneig IDE.
 
-**Sol·licitud de xat (camí calent del proxy)**
-```
-Client [Clau API Proxy] → Porta d'autenticació → Guarda de prompts → Poda de context (opcional)
-  → Pool de proveïdors (ruta:auto/núvol/local) → CC Cache (L1→L2) comprovació
-  → LLM upstream → Resposta → Emmagatzematge en cache → Escriptor de mètriques → Client (flux SSE)
-```
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-**Flux de missatges de canal**
-```
-Telegram/Discord/... → Gestor de canals → Comprovació d'autoresposta
-  → (sense coincidència) → Gestor de xat → LLM → Humanitzador (MD→text) → Canal → Usuari
-```
+## Com construir
 
-**Pipeline de veu**
-```
-WebSocket àudio → STT (Whisper) → Processament LLM → TTS (eSpeak/Edge) → WebSocket àudio
-```
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**Flux d'avaluació del Harness**
-```
-Quick Eval / Harness API → Controlador d'avaluació → Dispatcher de grups d'execució
-  → Tasca d'agent o controlador d'avaluació → Eines + Workspace + Artifacts
-  → Scorecards / Reports / Gates de pressupost+execució+selector
-  → Cutover Readiness / Decisió del candidat
-```
+> ⚠️ [!IMPORTANT]
+>
+> Si teniu previst seguir ajustant o codificant vibracions a sobre de Blue, no considereu uns quants xats atractius com a proves d'alliberament. Qualsevol canvi que afecti l'encaminament, el comportament d'execució, la superfície de l'eina, el control del pressupost, la selecció de models o el marc d'execució s'ha de validar amb Blue Harness, no amb comprovacions puntuals ad hoc.
+>
+> Blue hauria de seguir una regla senzilla aquí: primer les dades, primer les portes, retallades per darrera. A la pràctica, això significa actualitzar el conjunt de dades/evaluació rellevant de Harness abans de jutjar un canvi i, a continuació, mantenir un `candidate_id` estable durant tot l'intent, de manera que els informes de selecció, execució, pressupost i preparació descriguin el mateix candidat en lloc de quatre execucions no relacionades.
 
+### Flux de treball Harness recomanat
 
-### Mapa de paquets (`server/internal/`)
+1. Executeu `blue harness selector verify`
+2. Executeu `blue harness execution verify`
+3. Reutilitza l'execució d'avaluació del selector per a `blue harness budget gate`
+4. Acaba amb `blue harness cutover-readiness`
 
-| Capa | Paquets |
-|------|---------|
-| Passarel·la | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Proveïdor | providerpool, providers, llm |
-| Poda | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Memòria | memory, embedding, kvstore |
-| Canal | channel, autoreply, i18n |
-| Seguretat | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Veu | voice, tts, stt, speech |
-| Observació | metrics, companion, profiling, leakdetect |
-| Connector | plugin, skill, skillstore |
-| Integració | browser, cron, workflow, formfiller, tunnel, crawler |
-| Planificador | scheduler, worker, workerpool, pool |
-| Nucli | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| Sistema | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Multi-inquilí | tenant, user, session, preview |
+Per a la iteració local, la validació nocturna o la recollida d'evidències de CI, preferiu `python3 scripts/cutover_candidate_pipeline.py`. Executa el selector complet -> execució -> pressupost -> seqüència de preparació sota un candidat compartit, cosa que fa que el resultat sigui més fàcil de comparar, revisar i retallar.
 
-## Com utilitzar-lo
+### Baranes addicionals
 
-![](../../docs/assets/handcraft.png)
+| Àrea | Què veure |
+|------|-----------------|
+| Estabilitat de base | Manteniu la línia de base, la versió del conjunt de dades i `candidate_id` estables, o la comparació es desviarà i el resultat no serà fiable. |
+| Sortida de construcció real | Reconstruïu el paquet binari o interfície afectat abans d'executar Harness, en cas contrari, podeu acabar validant el comportament obsolet en lloc del canvi actual. |
+| Registre de ruta | Si l'interfície i el backend canvien junts, confirmeu que totes les rutes de backend noves estan realment registrades abans de jutjar la funció a través del comportament de la interfície d'usuari, perquè el registre perdut sovint sembla un error de lògica, però realment és un `404`. |
+| Judici d'alliberament | Una passada de sintonització només està preparada quan Harness no mostra cap regressió significativa i la preparació per al tall confirma que el candidat està realment preparat per tallar-se. |
 
-## Cronologia de fites
+En resum, sintonitzar a la part superior de Blue no es tracta de "se sent millor en uns quants xats". Es tracta de posar el candidat a Harness, recollir proves comparables i deixar que els resultats de la porta i la preparació decideixin si el canvi és realment segur de mantenir.
 
-![](../../docs/assets/timeline.png)
+## Característiques
 
-| Versió | Focus | Valor clau | Estat |
-|--------|-------|------------|-------|
-| v0.1 | Nucli d'execució Go | Kernel estable, funcionament 24h | Done |
-| v0.2 | Capacitats bàsiques | Mínim usable, integració LLM | Done |
-| v0.3 | Integració NAS | NAS natiu, suport systemd | Done |
-| v0.4 | Sistema de connectors | Extensible, bases de seguretat | Done |
-| v0.5 | Línia base de producte | Preparat per a producció, documentació | Done |
-| v0.6 | Canals de missatgeria | Suport multicanal | Done |
-| v0.7 | Seguretat | OIDC, MFA, auditoria | Done |
-| v0.8 | Rendiment | Optimització, cache, benchmarks | Done |
-| v0.9 | Ecosistema | Multi-inquilí, automatització del navegador, veu | Done |
-| v0.10.0 | Empaquetament CLI | Empaquetament CC CLI, detecció, actualització automàtica | Done |
-| v0.10.1 | Monitoratge de mètriques | Estadístiques API, seguiment de tokens, TTFT | Done |
-| v0.10.2 | Fiabilitat CLI | Cicle de vida de processos, recuperació d'errors | Done |
-| v0.10.3 | Integració CLI | Assistent de configuració, autodetecció de proveïdors | Done |
-| v0.10.4 | Empaquetament Tauri | Aplicació d'escriptori, safata del sistema | Done |
-| v0.10.5 | Proxy API Sidecar | Selecció de rutes, guarda de prompts, estadístiques d'ús | Done |
-| v0.10.6 | Pool de proveïdors | Enrutament multiproveïdor, comprovació de salut, failover | Done |
-| v0.10.7 | Mode de previsualització | Accés sense autenticació, control de funcionalitats | Done |
-| v0.10.8 | Botiga d'habilitats | Infraestructura de botiga d'habilitats, validació de canals | Done |
-| v0.10.9–10 | Gestió d'usuaris | Subusuaris, permisos a nivell de pàgina | Done |
-| v0.10.13–14 | Seguretat i habilitats | Pàgina de seguretat, redisseny de la botiga d'habilitats | Done |
-| v0.10.15 | Millores de xat | UX de xat, pipeline de missatges | Done |
-| v0.10.16 | Mòdul de parla | Sherpa TTS/ASR, eSpeak, canvi de proveïdor | Done |
-| v0.10.17 | Accés remot | Túnels Ngrok, Cloudflare, certificats ACME | Done |
-| v0.10.18–20 | Sprint de rendiment | Rendiment d'inici/xat, cache de context | Done |
-| v0.10.21–22 | Prompt i DingTalk | Prompt del sistema, canal DingTalk | Done |
-| v0.10.23 | Actualització OTA | Sistema d'actualització OTA | Done |
-| v0.10.24 | Actualització de canals | 10 canals actualitzats des d'stubs | Done |
-| v0.10.25 | CC Cache | Cache de dos nivells (L1 memòria + L2 disc) | Done |
-| v0.10.26 | Humanitzador | Pipeline d'humanització de respostes | Done |
-| v0.10.27 | Poda de context | 54% estalvi de tokens en codi (SWE-bench oficial), 46–47% en documents generals (IR local), puntuació BM25, segmentació | Done |
-| v0.10.28 | Servei de memòria | Cerca progressiva, backend d'escriptura dual | Done |
+| Característica | Què ofereix |
+|---------|--------------------|
+| Recuperació web d'alta disponibilitat i temps d'execució del navegador | Un dels **diferenciadors més clars** de Blue. Blue unifica **quatre camins d'accés web** per cercar, llegir, extreure i rastrejar; manté **tres capes alternatives** a les sessions HTTP, extracció de proxy i navegador; gestiona **pàgines anti-bot** amb detecció de desafiaments, reutilització de galetes/sessió, sigil·lació i transferència del navegador; i rutes a través de **tres motors de navegador**: `lightpanda`, Chromium gestionat i Chromium de retransmissió/local. |
+| Temps d'execució d'investigació tres en un | **Una entrada de recerca pública** es pot dirigir a `deep_research`, `analyze` i `ui_review`. Aleshores, la mateixa pila de descobriments i proves produeix **recerca de primera cita**, **informes limitats** i **revisions estructurades d'IU/UX/accessibilitat**. |
+| Harness Temps d'execució, avaluació i marc d'evolució | Fa que l'avaluació sigui una **primitiva en temps d'execució** en desenvolupament, formació i producció. Harness cobreix **regressions i controls de fum**, puntuació, línies de base, informes i validació del temps d'execució, i després inclou la mateixa evidència en **evolució d'habilitats**, avaluació de seguiment, promoció o retrocés i `AGENTS.md` o revisió de propostes d'instruccions. |
+| Multimodal Native-Capability-First Runtime | Manté la **veu, OCR, PDF, les tasques del navegador, la conversió de documents, l'emplenament de formularis estructurats, el processament de mitjans i la generació de mitjans** als **cams natius i locals en primer lloc**, amb **enrutament del model només quan realment es necessita**. |
+| Seguretat i Governança | Inclou **execució sandbox**, **defensa d'injecció ràpida**, **auditoria de sessions**, permisos, **RBAC**, **WebAuthn**, baranes operatives i **exploració de seguretat d'habilitats**. |
+| LLM Wiki i Espai de Coneixement | Converteix les sortides de memòria, investigació i temps d'execució en una **superfície de coneixement semblant a la wiki** amb **pàgines de resum**, índexs, **enllaços d'entrada**, **frescos** i **fluxos de treball d'arxiu**. |
+| Botiga d'habilitats i mercat | S'envia **descobriment d'habilitats incorporats**, curació, sincronització i **escaneig local**, de manera que l'extensibilitat està disponible **des del primer dia**. |
+| Grup de proveïdors de grau de producció | Proporciona un grup de proveïdors real amb **controls de salut**, **conversió automàtica per error**, **interruptors** i **curses de proveïdors** per a càrregues de treball de llarga durada. |
+| Temps d'execució del model petit local integrat | Envia un temps d'execució **`Qwen3.5-0.8B` + `llama.cpp`** integrat per a **preguntes i respostes breus locals**, reconeixement d'imatges, encaminament d'eines, resum, **compressió de context** i **preprocessament de documents**. |
+| Fiabilitat a llarg termini | Tracta **OTA actualitzacions**, **còpia de seguretat i restauració**, **recàrrega en calent de configuració** i **recuperació després d'un error** com a **preocupacions operatives integrades**. |
+
+## Cronologia de la fita
+
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+| Data | Versió | Paraules clau / Característiques |
+|------|----------|----------------------|
+| 26 gener 2026 | `v0.1–v0.9` | Go d'execució, sistema de connectors, automatització del navegador |
+| Del 27 al 28 de gener de 2026 | `v0.9.0–v0.9.2` | Visualització de tasques del navegador, Blue Companion, Smart Form Filler |
+| Del 29 al 31 de gener de 2026 | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, reestructuració de la IU |
+| 1-3 de febrer de 2026 | `v0.10.1–v0.10.22` | Mètriques, accés remot, memòria cau de context |
+| Del 5 al 18 de febrer de 2026 | `v0.10.25–v0.10.29` | i18n, CC Cache, canal de llançament |
+| 20-25 de febrer de 2026 | `v0.10.28–v0.10.29` | Carregador d'escriptori, UX mòbil, redisseny de memòria |
+| 28 de febrer al 2 de març de 2026 | `v0.10.30` | Deep Research, reclassificador d'habilitats, exploració de seguretat |
+| Del 9 al 18 de març de 2026 | `v0.10.31` | Revisió del tauler, VoiceChat refactor, llocs aprovats |
+| 19-22 de març de 2026 | `v0.10.32` | Harness llançament, auditoria de transcripcions, cerca web |
+| 23-25 ​​de març de 2026 | `v0.10.33` | Harness grups, aprovacions de navegadors, mercat d'habilitats |
+| 29-30 de març de 2026 | `v0.10.35` | Harness v3, relé del navegador, compressió de context |
+| 31 de març a l'1 d'abril de 2026 | `v0.10.36` | Auditoria de transcripcions, superposicions Harness, anàlisi d'eines |
+| 1 d'abril de 2026 | `v0.10.37` | Enduriment del temps d'execució, reducció de Skill+Exec, poliment de recuperació |
+| Del 2 al 5 d'abril de 2026 | `v0.10.38` | Suport GitHub, perfeccionament del mercat, millores de fiabilitat |
+| Del 6 al 7 d'abril de 2026 | `v0.10.39` | Unificació de la recerca, superfícies d'evolució, reducció de la memòria |
 
 ## Comunitat i suport
 
-- **Incidències**: [Si us plau, reporteu errors i sol·licituds de funcionalitats aquí](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Discussions**: [Discord](https://discord.gg/b3AgFDxe9v)
-- **Seguiu-nos** a [GitHub](https://github.com/IceWhaleTech)
+- **Problemes**: [Arxiu d'errors i sol·licituds de funcions aquí](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Discussions**: [Discord](https://discord.gg/zwWbKA4S2)
+- **Segueix-nos** a [GitHub](https://github.com/IceWhaleTech)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Llicència
 
-Aquest projecte està llicenciat sota la Llicència MIT - consulteu el fitxer [LICENSE](../../LICENSE) per a més detalls. Creiem en el codi obert i en retornar a la comunitat.
+Aquest projecte té una llicència sota la llicència MIT; consulteu el fitxer [LICÈNCIA](../../LICÈNCIA) per obtenir més informació. Creiem en el codi obert i en el retorn a la comunitat.
 
 ## Col·laboradors
 
-<p align="center">
-  Fet amb ❤️ per <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Gràcies a tots els col·laboradors de Blue:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Referències
+
+1. **OpenClaw** — Primer agent de codi obert local. Va ser pioner en connectar LLM a dispositius locals mitjançant adaptadors de canal i trucades d'eines, inspirant directament l'arquitectura d'execució de l'agent Blue. https://github.com/openclaw/openclaw
+2. **MiroMind** — Mode d'investigació profunda amb síntesi recolzada per evidències. El canal d'investigació profund integrat de Blue: planificació, recuperació paral·lela, deduplicació d'evidències i generació d'informes HTML. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM com a compilador de coneixements. Reformula els LLM per construir espais de coneixement persistents i en evolució, avançant més enllà de la trampa d'acumulació de RAG.
+4. **OpenSpace (HKUDS)** — Motor d'habilitats autoevolució. Un marc basat en DAG on els agents aprenen dels errors i obtenen habilitats especialitzades. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — Registre de documentació de l'API amb versions per a agents de codificació. Aborda les al·lucinacions dels agents i el coneixement de la sessió oblidada. Proporciona documents curats i versionats amb bucles d'anotacions i comentaris, convertint la documentació en una capa de coneixement que es millora. https://github.com/andrewyng/context-hub
+6. **Notion** — Simple, humà i intencionadament tranquil. Inspirat en l'ethos minimalista de Notion, Blue retorna la calor a la graella. On el serif refinat es combina amb un disseny pensat, creant un espai que se senti com a casa. https://www.notion.com/about
+7. **Matrix** — Inspiració visual de l'emblemàtica estètica digital de la pluja. La direcció estètica dels esquemes tècnics de Blue.
+8. **IceWhale** — Love, Death & Robots S2E2 "Ice". Un col·lectiu que es reuneix arreu del món per trencar els murs dels gegants d'Internet i resistir la concentració de dades. La balena de gel simbolitza una comunitat que construeix eines sobiranes juntes a la vora.
+9. **ZimaOS Blue** — Amor, mort i robots S1E14 "Zima Blue". Una metàfora: la intel·ligència que comença en servei i evoluciona per explorar el món. Blue és un agent de saviesa, arrelat en la simplicitat i que arriba a la profunditat.
+10. **ZimaOS** — Principis de disseny simplificats, enfocats i oberts. Tant ZimaOS com Blue comparteixen la creença que la tecnologia hauria de servir per a l'usuari: desplegar-se en 30 segons, executar-se a qualsevol lloc, mantenir-se neutral envers el proveïdor. https://www.zimaspace.com/zimaos

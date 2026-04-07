@@ -385,6 +385,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 	trace.Mark("data_dir_ready")
+	bootstrap.ApplyRuntimeDataDirDefaults(cfg, dataDir)
 
 	previousCleanShutdown, startupIntegrityErr := dbutil.BeginStartupIntegritySession(dataDir)
 	if startupIntegrityErr != nil {
@@ -467,6 +468,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	if updatedCfg, err := cfgStore.LoadOrImport(cfg); err == nil {
 		cfg = updatedCfg
 	}
+	bootstrap.ApplyRuntimeDataDirDefaults(cfg, dataDir)
 	hotReloader, err = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
 		Enabled:             true,
 		WatchInterval:       5 * time.Second,

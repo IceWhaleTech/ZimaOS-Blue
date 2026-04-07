@@ -1379,6 +1379,7 @@ export default mergeHarnessLocale('de-DE', {
       newProfile: 'Neues Profil',
       acpPlainTitle: 'Lokale Tools (ACP)',
       a2aPlainTitle: 'Remote-Agenten (A2A)',
+      genericA2ATitle: 'Generischer Remote-A2A-Agent',
       loadFailed: 'Das Laden externer Agentenprofile ist fehlgeschlagen.',
       notAvailable: 'Nicht verfügbar',
       remoteAgent: 'Remote-Agent',
@@ -2303,6 +2304,9 @@ export default mergeHarnessLocale('de-DE', {
       items: {
         ai_prompt_injection: {
           name: 'Prompt-Injection-Schutz',
+        },
+        sandbox_enabled: {
+          description: 'Prüfen, ob die Codeausführung in einer Sandbox erfolgt.',
         },
       },
     },

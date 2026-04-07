@@ -44,112 +44,42 @@
 
 ## Introduktion
 
-Inspirerade av Clawdbot tror vi att **framtiden** för personlig databehandling kommer att **formas av mångfaldiga, lokalt-först AI-agenter** som körs vid nätverkskanten.
+Inspirerade av Clawdbot tror vi att framtiden för persondatorer kommer att formas av olika, lokala först AI-agenter som kör på kanten.
 
-**ZimaOS Blue är vårt svar** — en helt **öppen källkod, granskningsbar och produktionsklar agentkörningsmiljö och verktygslåda** som låter dig leverera privata, självhostade agenter utan friktion.
+ZimaOS Blue är vårt svar — en fullständigt öppen källkod, granskningsbar, leverantörsneutral och produktionsklar agentkörning och verktygslåda som låter dig skicka privata agenter med egen värd utan friktion.
 
-Byggt för modiga utvecklare som vill **vibba eller handgjort skapa sina egna agenter**, Blue är **konstruerat för prestanda**: skrivet i **Go**, med ett minnesavtryck så lågt som 10 MB. Det körs på **vilken x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS som helst** — överallt där du kopplar in ström.
-
-![](../../docs/assets/features.png)
-
-## Höjdpunkter
-
-### Lokalt-först-design och automatisk modelltillgång
-
-Ta det vidare: det levererar inbyggt stöd för **20+ IM-plattformar**, **röststyrda** gränssnitt för naturlig, kontextmedveten dialog, **nollkonfigurations-modellväxling** med IDE-skanning, och SOUL-skiktade personligheter.
-
-<p align="center">
-  <img src="../../docs/assets/channels.png" alt="Supported Channels" />
-</p>
-
-### Snabbt, lätt
-
-Nativt kompilerat i Go — ingen tolk, ingen VM, ingen overhead. Körs tyst på allt från servrar till dina stationära enheter.
-
-| Mätvärde | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|----------|-------------------|------------------------|
-| `help` kall / varm | **0,18 s / < 0,01 s** | 3,31 s / ~1,11 s |
-| `status` körtid (bästa av 3) | **< 0,01 s** | 5,98 s |
-| `help` topp-RSS | **~10 MB** | ~394 MB |
-| `status` topp-RSS | **~15 MB** | ~1,52 GB |
-| `gateway run` vilominne efter kallstart | **~19 MB** | - |
-| Körtidsberoenden | **Inga** | Node.js 18+ |
-
-> CLI-raderna ovan är den historiska `help` / `status`-mikrobenchmarken på samma värd. Den nya raden för `gateway run` visar verkligt vilominne efter kallstart, mätt på macOS arm64 via `vmmap Physical footprint` när uppstarten har stabiliserat sig. Feb-apr 2026.
-
-### Ren Go, vilken enhet som helst
-
-100% Go, statisk binär. **Korskompilerar till 5 mål** direkt ur lådan (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64). Ingen Node-körningsmiljö, ingen Python, inga containrar krävs. Lägg den på en NAS, en ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, en gammal x86-router eller en ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — den bara körs. **Lägg sedan till ditt eget gränssnitt, logik och agentfärdigheter** — en kodbas, varje plattform.
-
-### Säkerhet och styrning
-
-Inbyggd sidovagns-API-proxy med försvar på djupet:
-- **Sandlådeexekvering** – Alla verktygsanrop körs i isolerade miljöer.
-- **Prompt-injektionsförsvar** – 7+ inbyggda avlyssningsstrategier.
-- **Sessionsgranskning** – Fullständig sessionsövervakning, varje interaktion spårbar.
-- **RBAC & WebAuthn** – Finkornig åtkomstkontroll med lösenordsfri autentisering.
+Blue är byggt för djärva utvecklare som vill vibba eller hantverka sina egna agenter. Blue är konstruerad för prestanda: skriven i Go, med ett minnesutrymme så lite som 19 MB. Den körs på valfri x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — var som helst du kopplar in ström.
 
 ## Varför Blue
 
-Vi tror att **nästa generations personlig databehandling** omfamnar LLM:er — men **kontrollerbara, granskningsbara** agenter förblir grunden för både individer och team. **Blue levererar**:
-- **Omfattande kärna** – Avancerad modellhantering, IM-integration, förbättrad persona och naturliga språkgränssnitt anpassade för daglig interaktion (headset, röst, smarta glasögon).
-- **Lokalt-först, ultralätt, plattformsoberoende** – Ingen avancerad hårdvara krävs. Körs på allt som kan beräkna.
-- **Säkert och granskningsbart** – Sessionsgranskning, sandlådning, behörighetskontroller och en inbyggd API-proxy som fungerar som en applikationslager-brandvägg — varje byte in/ut är synlig.
-
-![](../../docs/assets/design_principle.png)
-
-Vi minimerar standardkod så att du **fokuserar på det som spelar roll**. Trogen <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS designfilosofi** levererar Blue:
-- **Noll till ett med ett klick** – Distribuera direkt, ingen komplex konfiguration.
-- **Snabb prototypning** – Vibba eller handgjort skapa scenariospecifika verktyg, interaktioner och apppaket.
-- **Globalt redo** – **Världen är stor**, och den har inte engelska som standard. **20+ språk, inbyggt**, inga barriärer.
-- **Öppet modellekosystem** – Ingen leverantörsinlåsning. Ta med dina egna modeller.
-
-<details>
-<summary>
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
-</summary>
 
-| Leverantör | Modeller | Typ |
-|------------|----------|-----|
-| OpenAI | GPT-4o, GPT-4, o1, o3 | Moln |
-| Anthropic | Claude 4.5, Claude 4 | Moln |
-| Google | Gemini 2.5, Gemini 2.0 | Moln |
-| Ollama | Llama, Qwen, Gemma, Phi m.fl. | Lokal |
-| DeepSeek | DeepSeek-V3, DeepSeek-R1 | Moln |
-| Grok | Grok-3, Grok-3-mini | Moln |
-| Qwen | Qwen-Max, Qwen-Plus, Qwen-Turbo | Moln |
-| GLM | GLM-4, GLM-4-Flash | Moln |
-| Moonshot | Moonshot-v1 | Moln |
-| MiniMax | abab6.5, abab5.5 | Moln |
-| Venice | Llama, Mistral (integritetsfokus) | Moln |
-| AWS Bedrock | Claude, Llama, Titan | Moln |
-| Azure | OpenAI-modeller via Azure | Moln |
-| OpenRouter | 100+ aggregerade modeller | Moln |
-| AIHubMix | Flerleverantörsaggregator | Moln |
-| Codex | OpenAI Codex | Moln |
-| SiliconFlow | DeepSeek, Qwen, Llama via SiliconFlow | Moln |
-| Anpassad | Alla OpenAI / Anthropic / Gemini-kompatibla API:er | Moln / Lokal |
+### Pure Go, vilken enhet som helst
 
-</details>
+100 % Go, statisk binär. Korskompilerar till 5 mål ur lådan (![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`, `linux/arm64`, ![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`, `darwin/arm64`, ![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`). Ingen nodkörning, ingen Python, inga behållare krävs. Släpp den på en NAS, en ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, en gammal x86-router eller en ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac — den bara körs. Lägg sedan på ditt eget användargränssnitt, logik och agentfärdigheter – en kodbas, varje plattform.
 
-### IDE-stöd
+### ur kartongen, redo att arbeta
 
-<p align="center">
-  <img src="../../docs/assets/ides.png" alt="Supported IDEs" />
-</p>
+Alla vill ha verktyg som är enkla, pålitliga och skalbara när du behöver dem. Verktyg som bara fungerar, så att du kan fokusera på det du faktiskt bygger.
+
+Det här är ingen ny filosofi. Det är samma som byggde <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS: enkel, pålitlig och byggd för att hålla sig ur vägen. Blue är den filosofin, utvidgad till agentstacken.
+
+### Designad för ditt liv, byggd för att förbli lokal
+
+Från djup forskning som levererar en fullständig HTML-rapport, till OCR, PDF, webbläsarautomation och dokumentkonvertering, Blue hanterar komplexa, verkliga arbetsflöden utan att skicka dina data till molnet. Voice wake, STT/TTS, Talk Mode, och stöd för lokal slutledning gör vardagliga interaktioner omedelbara, privata och alltid tillgängliga.
 
 ## Snabbstart
 
 ### Alternativ 1: Ladda ner skrivbordsappen
 
-Hämta den inbyggda applikationen — inga beroenden, ingen kompilering. Inbyggd provkonfiguration, redo på sekunder — anslut på distans och börja chatta direkt, utan att konfigurera en bot. Verklig igångkörning direkt.
+Skaffa den inbyggda applikationen - inga beroenden, ingen kompilering. Inbyggd provkonfiguration med onboarding på några sekunder — börja chatta direkt via fjärranslutning, ingen botinstallation krävs. Verklig upplevelse direkt.
 
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Ladda ner DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Ladda ner installationsprogram](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Ladda ned installationsprogram](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### Alternativ 2: Installationsskript
+### Alternativ 2: Installera skript
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -161,11 +91,12 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### Alternativ 3: Bygg från källkod
+### Alternativ 3: Bygg från källan
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
 cd ZimaOS-Blue
+git submodule update --init --recursive
 ```
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
@@ -178,124 +109,124 @@ sh build.sh
 .\build.bat
 ```
 
+> **Obs!** Windows-versioner kräver:
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) och [CMake](https://cmake.org/) för infödda C-beroenden (espeak-ng, whisper.cpp, opus, kokoro, onnx)
+> - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) för systembibliotek (winmm, etc.)
+>
+> Se till att `gcc`, `cmake` finns i din `PATH`.
+
 ## Arkitekturöversikt
 
-<details>
-<summary>
-<img src="../../docs/assets/architecture.png" alt="Architecture" />
-</summary>
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### Paketkarta (`server/internal/`)
+Ta det vidare: det ger inbyggt stöd för **20+ IM-plattformar**, **röstdrivna** gränssnitt för naturlig, sammanhangsmedveten dialog, **noll-konfigurerad modellväxling** med IDE-skanning.
 
-| Lager | Paket |
-|-------|-------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Leverantör | providerpool, providers, llm |
-| Beskärare | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Minne | memory, embedding, kvstore |
-| Kanal | channel, autoreply, i18n |
-| Säkerhet | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Röst | voice, tts, stt, speech |
-| Observera | metrics, companion, profiling, leakdetect |
-| Plugin | plugin, skill, skillstore |
-| Integrera | browser, cron, workflow, formfiller, tunnel, crawler |
-| Schemaläggare | scheduler, worker, workerpool, pool |
-| Kärna | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Flerhyresgäst | tenant, user, session, preview |
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-</details>
+## Hur man bygger
 
-### Dataflöde
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**Chattförfrågan (Proxy Hot Path)**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+> ⚠️ [!IMPORTANT]
+>
+> Om du planerar att fortsätta trimma eller vibba kodning ovanpå Blue, behandla inte några snygga chattar som releasebevis. Alla ändringar som påverkar routing, exekveringsbeteende, verktygsyta, budgetkontroll, modellval eller exekveringsramverket bör valideras med Blue Harness, inte med ad hoc-stickkontroller.
+>
+> Blue bör följa en enkel regel här: data först, grindar först, skär över sist. I praktiken innebär det att man uppdaterar den relevanta Harness-datauppsättningen/eval-specifikationen innan man bedömer en förändring, och sedan håller man en stabil `candidate_id` under hela försöket så att väljar-, utförande-, budget- och beredskapsrapporter alla beskriver samma kandidat istället för fyra orelaterade körningar.
 
-**Kanalmeddelande-flöde**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+### Rekommenderas Harness Arbetsflöde
 
-**Röstpipeline**
-```
-WebSocket audio → STT (Whisper) → LLM Processing → TTS (eSpeak/Edge) → WebSocket audio
-```
+1. Kör `blue harness selector verify`
+2. Kör `blue harness execution verify`
+3. Återanvänd väljarevalkörningen för `blue harness budget gate`
+4. Avsluta med `blue harness cutover-readiness`
 
-**Harness-utvärderingsflöde**
-```
-Quick Eval / Harness API → Utvärderingskontroller → Dispatcher för körgrupper
-  → Agentuppgift eller eval-driver → Verktyg + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector gates
-  → Cutover readiness / kandidatbeslut
-```
+För lokal iteration, nattlig validering eller insamling av CI-bevis, föredra `python3 scripts/cutover_candidate_pipeline.py`. Den kör hela väljaren -> utförande -> budget -> beredskapssekvensen under en delad kandidat, vilket gör resultatet lättare att jämföra, granska och skära över från.
 
+### Extra skyddsräcken
 
-## Hur man använder
+| Område | Vad man ska titta på |
+|------|----------------|
+| Baslinjestabilitet | Håll baslinjen, datauppsättningsversionen och `candidate_id` stabil, annars kommer jämförelsen att glida och resultatet blir inte tillförlitligt. |
+| Real build output | Bygg om det berörda binära eller frontend-paketet innan du kör Harness, annars kan du sluta med att validera inaktuellt beteende istället för den aktuella ändringen. |
+| Ruttregistrering | Om frontend och backend ändras tillsammans, bekräfta att alla nya backend-rutter faktiskt är registrerade innan du bedömer funktionen genom UI-beteende, eftersom saknad registrering ofta ser ut som en logisk bugg men är verkligen en `404`. |
+| Frigivningsdom | Ett trimpass är bara klart när Harness inte visar någon meningsfull regression och cutover-beredskap bekräftar att kandidaten faktiskt är redo att skära över. |
 
-![](../../docs/assets/handcraft.png)
+Kort sagt, att trimma ovanpå Blue handlar inte om "det känns bättre i några chattar." Det handlar om att sätta in kandidaten i Harness, samla in jämförbara bevis och låta porten och beredskapsresultaten avgöra om förändringen verkligen är säker att behålla.
 
-## Milstolpstidslinje
+## Funktioner
 
-<details>
-<summary>
-<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
-</summary>
+| Funktion | Vad det levererar |
+|--------|------------------------|
+| Webbhämtning och webbläsarkörning med hög tillgänglighet | En av Blues **skäraste differentiatorer**. Blue förenar **fyra webbåtkomstvägar** för sökning, läsning, extrahering och genomsökning; behåller **tre reservlager** över HTTP, proxyextraktion och webbläsarsessioner; hanterar **anti-bot-sidor** med utmaningsdetektering, återanvändning av cookies/sessioner, stealth och webbläsarhandoff; och rutter över **tre webbläsarmotorer**: `lightpanda`, hanterad Chromium och relä/lokal Chromium. |
+| Tre-i-ett forskning Runtime | **Ett offentligt forskningsbidrag** kan dirigeras till `deep_research`, `analyze` och `ui_review`. Samma upptäckt och bevisstack producerar sedan **citatförst forskning**, **avgränsade rapporter** och **strukturerade UI/UX/tillgänglighetsgranskningar**. |
+| Harness Framework för körning, utvärdering och utveckling | Gör utvärdering till en **runtime primitiv** över utveckling, utbildning och produktion. Harness täcker **regression och rökkontroller**, poängsättning, baslinjer, rapporter och körtidsvalidering, och bär sedan samma bevis i **kompetensutveckling**, uppföljningsutvärdering, marknadsföring eller återställning och `AGENTS.md` eller granskning av instruktionsförslag. |
+| Multimodal Native-Capability-First Runtime | Håller **röst, OCR, PDF, webbläsaruppgifter, dokumentkonvertering, ifyllning av strukturerade formulär, mediabearbetning och mediagenerering** på **infödda och lokala vägar först**, med **modellrouting endast när det verkligen behövs**. |
+| Säkerhet och styrning | Inkluderar **utförande av sandlåde**, **försvar av prompt-injektion**, **sessionsrevision**, behörigheter, **RBAC**, **WebAuthn**, operativa skyddsräcken och **säkerhetsskanning av skicklighet**. |
+| LLM Wiki och kunskapsutrymme | Förvandlar minne, forskning och körtidsutdata till en **wikiliknande kunskapsyta** med **sammanfattningssidor**, index, **bakåtlänkar**, **nyhet** och **arkivarbetsflöden**. |
+| Skicklighetsbutik och marknadsplats | Skickar **inbyggd kunskapsupptäckt**, kurering, synkronisering och **lokal skanning** så att utökningsbarhet är tillgänglig **från dag ett**. |
+| Produktionsklass leverantörspool | Ger en riktig leverantörspool med **hälsokontroller**, **automatisk failover**, **kretsbrytare** och **leverantörsracing** för långvariga arbetsbelastningar. |
+| Inbyggd lokal liten modell körtid | Skickar en inbyggd **`Qwen3.5-0.8B` + `llama.cpp`** körtid för **lokala korta frågor och svar**, bildigenkänning, verktygsdirigering, sammanfattning, **kontextkomprimering** och **dokumentförbehandling**. |
+| Långvarig tillförlitlighet | Behandlar **OTA-uppdateringar**, **säkerhetskopiering och återställning**, **varm omladdning av konfiguration** och **återställning efter fel** som **inbyggda driftsproblem**. |
 
-| Version | Fokus | Nyckelvärde | Status |
-|---------|-------|-------------|--------|
-| v0.1 | Go-körningsmiljökärna | Stabil kärna, 24h drift | Done |
-| v0.2 | Kärnfunktioner | Minimalt användbar, LLM-integration | Done |
-| v0.3 | NAS-integration | NAS-nativ, systemd-stöd | Done |
-| v0.4 | Pluginsystem | Utbyggbar, grundläggande säkerhet | Done |
-| v0.5 | Produktbaslinje | Produktionsklar, dokumentation | Done |
-| v0.6 | Meddelandekanaler | Flerkanalsstöd | Done |
-| v0.7 | Säkerhet | OIDC, MFA, granskning | Done |
-| v0.8 | Prestanda | Optimering, cachning, benchmarks | Done |
-| v0.9 | Ekosystem | Flerhyresgäst, webbläsarautomation, röst | Done |
-| v0.10.0 | CLI-paketering | CC CLI-paketering, detektering, automatisk uppdatering | Done |
-| v0.10.1 | Mätvärdesövervakning | API-statistik, tokenspårning, TTFT | Done |
-| v0.10.2 | CLI-tillförlitlighet | Processlivscykel, felåterställning | Done |
-| v0.10.3 | CLI-integration | Installationsguide, leverantörsautodetektering | Done |
-| v0.10.4 | Tauri-paketering | Skrivbordsapp, systemfält | Done |
-| v0.10.5 | API Proxy Sidecar | Ruttval, promptskydd, användningsstatistik | Done |
-| v0.10.6 | Leverantörspool | Flerleverantörsrouting, hälsokontroll, failover | Done |
-| v0.10.7 | Förhandsgranskningsläge | Oautentiserad åtkomst, funktionsstyrning | Done |
-| v0.10.8 | Färdighetsbutik | Färdighetsbutiksinfrastruktur, kanalvalidering | Done |
-| v0.10.9–10 | Användarhantering | Underanvändare, sidnivåbehörigheter | Done |
-| v0.10.13–14 | Säkerhet & färdigheter | Säkerhetssida, omdesign av färdighetsbutik | Done |
-| v0.10.15 | Chattförbättringar | Chatt-UX, meddelandepipeline | Done |
-| v0.10.16 | Talmodul | Sherpa TTS/ASR, eSpeak, leverantörsväxling | Done |
-| v0.10.17 | Fjärråtkomst | Ngrok, Cloudflare-tunnlar, ACME-certifikat | Done |
-| v0.10.18–20 | Prestandasprint | Start-/chattprestanda, kontextcache | Done |
-| v0.10.21–22 | Prompt & DingTalk | Systemprompt, DingTalk-kanal | Done |
-| v0.10.23 | OTA-uppdatering | OTA-uppdateringssystem | Done |
-| v0.10.24 | Kanaluppgradering | 10 kanaler uppgraderade från stubbar | Done |
-| v0.10.25 | CC Cache | Tvånivåcache (L1 minne + L2 disk) | Done |
-| v0.10.26 | Humaniserare | Responshumaniseringspipeline | Done |
-| v0.10.27 | Kontextbeskärare | 54% tokenbesparing på kod (SWE-bench officiellt), 46–47% på allmänna dokument (lokal IR), BM25-poängsättning, segmentering | Done |
-| v0.10.28 | Minnestjänst | Progressiv sökning, dubbelskrivningsbackend | Done |
+## Milstolpe Tidslinje
 
-</details>
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+| Datum | Version | Nyckelord / Funktioner |
+|------|--------|------------------------|
+| 26 januari 2026 | `v0.1–v0.9` | Go runtime, plugin-system, webbläsarautomatisering |
+| 27–28 januari 2026 | `v0.9.0–v0.9.2` | Webbläsaruppgiftsvy, Blue Companion, Smart Form Filler |
+| 29–31 januari 2026 | `v0.10.0–v0.10.9` | Claude Code CLI, API Proxy, UI-omstrukturering |
+| 1–3 februari 2026 | `v0.10.1–v0.10.22` | Mätvärden, fjärråtkomst, kontextcache |
+| 5–18 februari 2026 | `v0.10.25–v0.10.29` | i18n, CC-cache, releasepipeline |
+| 20–25 februari 2026 | `v0.10.28–v0.10.29` | Desktop loader, mobil UX, minne redesign |
+| 28 februari–2 mars 2026 | `v0.10.30` | Deep Research, omplacering av färdigheter, säkerhetsskanning |
+| 9–18 mars 2026 | `v0.10.31` | Översyn av instrumentbrädan, VoiceChat refactor, godkända platser |
+| 19–22 mars 2026 | `v0.10.32` | Harness utrullning, transkriptionsgranskning, webbsökning |
+| 23–25 mars 2026 | `v0.10.33` | Harness grupper, webbläsargodkännanden, kompetensmarknad |
+| 29–30 mars 2026 | `v0.10.35` | Harness v3, webbläsarrelä, kontextkomprimering |
+| 31 mars–1 april 2026 | `v0.10.36` | Transkriptionsgranskning, Harness överlagringar, verktygsanalys |
+| 1 april 2026 | `v0.10.37` | Runtime-härdning, Skill+Exec cutover, återvinningspolish |
+| 2–5 apr 2026 | `v0.10.38` | GitHub support, marknadsplatsförfining, tillförlitlighetsförbättringar |
+| 6–7 apr 2026 | `v0.10.39` | Forskningsförening, evolutionsytor, minnesminskning |
 
 ## Community och support
 
-- **Ärenden**: [Vänligen rapportera buggar och funktionsförfrågningar här](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **Diskussioner**: [Discord](https://discord.gg/b3AgFDxe9v)
+- **Problem**: [Var vänlig arkivera buggar och funktionsförfrågningar här](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **Diskusioner**: [Discord](https://discord.gg/zwWbKA4S2)
 - **Följ oss** på [GitHub](https://github.com/IceWhaleTech)
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## Licens
 
-Detta projekt är licensierat under MIT-licensen - se filen [LICENSE](../../LICENSE) för detaljer. Vi tror på öppen källkod och att ge tillbaka till communityn.
+Det här projektet är licensierat under MIT-licensen - se filen [LICENSE](../../LICENSE) för detaljer. Vi tror på öppen källkod och att ge tillbaka till samhället.
 
 ## Bidragsgivare
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+Tack till alla Blue bidragsgivare:
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## Referenser
+
+1. **OpenClaw** — Lokalt första öppen källkodsagent. Blev banbrytande för att ansluta LLM:er till lokala enheter genom kanaladaptrar och verktygsanrop, vilket direkt inspirerade Blues agentkörningsarkitektur. https://github.com/openclaw/openclaw
+2. **MiroMind** — Djupt forskningsläge med evidensstödd syntes. Formade Blues inbyggda djupa forskningspipeline: planering, parallell hämtning, bevisdeduplicering och HTML rapportgenerering. https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM som kunskapskompilator. Reframes LLMs för att bygga beständiga, utvecklande kunskapsutrymmen, som går bortom RAG:s ackumuleringsfälla.
+4. **OpenSpace (HKUDS)** — Självutvecklande skicklighetsmotor. Ett DAG-baserat ramverk där agenter lär sig av misslyckanden och får specialiserade färdigheter. https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — Versionerat API-dokumentationsregister för kodningsagenter. Tar upp agenthallucinationer och glömd sessionskunskap. Tillhandahåller utvalda, versionerade dokument med antecknings- och feedbackloopar, vilket gör dokumentation till ett självförbättrande kunskapsskikt. https://github.com/andrewyng/context-hub
+6. **Notion** — Enkelt, mänskligt och avsiktligt tyst. Inspirerad av Notions minimalistiska etos tar Blue tillbaka värmen till nätet. Där raffinerad serif möter genomtänkt design, skapa ett utrymme som känns som hemma. https://www.notion.com/about
+7. **Matrix** — Visuell inspiration från den ikoniska digitala regnestetiken. Den estetiska riktningen för Blues tekniska diagram.
+8. **IceWhale** — Love, Death & Robots S2E2 "Ice". Ett kollektiv som samlas över hela världen för att bryta igenom internetjättarnas väggar och motstå datakoncentration. Isvalen symboliserar ett samhälle som bygger suveräna verktyg tillsammans vid kanten.
+9. **ZimaOS Blue** — Love, Death & Robots S1E14 "Zima Blue". En metafor: intelligens som börjar i tjänst och utvecklas för att utforska världen. Blue är en agent för visdom, rotad i enkelhet och strävar efter djup.
+10. **ZimaOS** — Förenklade, fokuserade, öppna designprinciper. Både ZimaOS och Blue delar övertygelsen om att tekniken ska tjäna användaren - implementera på 30 sekunder, kör var som helst, förbli leverantörsneutral. https://www.zimaspace.com/zimaos

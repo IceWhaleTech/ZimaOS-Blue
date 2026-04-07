@@ -14,9 +14,13 @@ func bindRuntimeActivationDeferred(
 	runner agentRuntimePolicyTarget,
 ) {
 	bindHarnessRuntimeOptimization(options.settings, options.harnessRuntime)
+	autoDownload := true
+	if options.settings != nil {
+		autoDownload = options.settings.GetSmallModelAutoDownload()
+	}
 	bindDeferredRuntimeWiring(ctx, runtimeDeferredWiring{
 		settings:               options.settings,
-		smallRuntime:           smallmodel.NewLlamaCppRuntime(options.smallModelManager),
+		smallRuntime:           smallmodel.NewLlamaCppRuntime(options.smallModelManager, smallmodel.LlamaCppRuntimeOptions{AutoDownload: autoDownload}),
 		chatSmallModel:         options.chatSmallModel,
 		auxiliarySmallModel:    activation.auxiliaryLLM,
 		imageSmallModel:        runtimeActivationImageTool(options.services),

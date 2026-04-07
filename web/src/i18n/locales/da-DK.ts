@@ -1359,6 +1359,7 @@ export default mergeHarnessLocale('da-DK', {
       newProfile: 'Ny profil',
       acpPlainTitle: 'Lokale værktøjer (ACP)',
       a2aPlainTitle: 'Fjernagenter (A2A)',
+      genericA2ATitle: 'Generisk fjern-A2A-agent',
       loadFailed: 'Kunne ikke indlæse eksterne agentprofiler.',
       notAvailable: 'Ikke tilgængelig',
       remoteAgent: 'Fjernagent',
@@ -2274,6 +2275,9 @@ export default mergeHarnessLocale('da-DK', {
       items: {
         ai_prompt_injection: {
           name: 'Promptinjektionsbeskyttelse',
+        },
+        sandbox_enabled: {
+          description: 'Kontroller, om kodekørsel foregår i en sandbox.',
         },
       },
     },

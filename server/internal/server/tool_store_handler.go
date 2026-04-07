@@ -116,6 +116,7 @@ var hiddenToolNamesFromUI = map[string]bool{
 	"analyze":          true,
 	"exec":             true,
 	"process":          true,
+	"web":              true,
 	"rg":               true,
 	"file_read":        true,
 	"file_write":       true,

@@ -2844,13 +2844,16 @@ func TestRegisterBuiltinTools(t *testing.T) {
 			t.Errorf("did not expect legacy/internal tool %q in visible definitions", name)
 		}
 	}
-	for _, name := range []string{"web", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
+	for _, name := range []string{"web_search", "web_fetch", "web_read", "web_extract", "web_crawl"} {
 		if registry.Get(name) == nil {
 			t.Errorf("expected hidden compat tool '%s' to remain registered", name)
 		}
 		if !registry.IsDisabled(name) {
 			t.Errorf("expected hidden compat tool '%s' to be disabled", name)
 		}
+	}
+	if registry.Get("web") != nil {
+		t.Errorf("did not expect removed compat tool %q to remain registered", "web")
 	}
 	for _, name := range []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "rg"} {
 		if registry.Get(name) == nil {
@@ -2898,7 +2901,7 @@ func TestRegisterApprovalAwareFileTools_PreservesExistingReadServices(t *testing
 	}
 }
 
-func TestExecutorNormalizesCompatSessionsAndWebAliasesToUnifiedTools(t *testing.T) {
+func TestExecutorNormalizesCompatSessionsAndWebFamilyToUnifiedTools(t *testing.T) {
 	registry := NewRegistry()
 	sessionsTool := &captureArgsTool{
 		def: ToolDefinition{
@@ -2944,6 +2947,10 @@ func TestExecutorNormalizesCompatSessionsAndWebAliasesToUnifiedTools(t *testing.
 	}
 	if got := webTool.args["url"]; got != "https://example.com" {
 		t.Fatalf("web url = %v, want https://example.com", got)
+	}
+
+	if _, err := executor.Execute(context.Background(), "web", map[string]interface{}{"input": "https://example.com"}); !errors.Is(err, ErrToolNotFound) {
+		t.Fatalf("execute removed web alias error = %v, want ErrToolNotFound", err)
 	}
 }
 
@@ -3098,6 +3105,9 @@ func TestRegisterFactoryToolDefinitions(t *testing.T) {
 		if _, ok := names[name]; !ok {
 			t.Fatalf("expected definition %q to be exposed", name)
 		}
+	}
+	if _, ok := names["web"]; ok {
+		t.Fatal("did not expect removed web alias definition to be exposed")
 	}
 }
 

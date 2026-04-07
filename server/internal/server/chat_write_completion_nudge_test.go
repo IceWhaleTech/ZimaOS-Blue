@@ -197,7 +197,7 @@ func TestBuildPostWriteCompletionTools_RemovesWriteAfterSuccessfulArtifactWrite(
 		{Name: "file_read"},
 		{Name: "find"},
 		{Name: "ls"},
-		{Name: "web"},
+		{Name: "web_query"},
 	}
 
 	reduced := buildPostWriteCompletionTools(
@@ -210,8 +210,8 @@ func TestBuildPostWriteCompletionTools_RemovesWriteAfterSuccessfulArtifactWrite(
 	if !containsLLMToolName(reduced, "file_read") {
 		t.Fatalf("expected file_read to remain for final verification, got=%v", reduced)
 	}
-	if containsLLMToolName(reduced, "web") {
-		t.Fatalf("expected web tool to be removed after successful artifact write, got=%v", reduced)
+	if containsLLMToolName(reduced, "web_query") {
+		t.Fatalf("expected web_query tool to be removed after successful artifact write, got=%v", reduced)
 	}
 }
 

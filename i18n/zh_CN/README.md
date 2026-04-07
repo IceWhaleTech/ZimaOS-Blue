@@ -50,76 +50,42 @@
 
 ## 简介
 
-受 Clawdbot 启发，我们相信个人计算的**未来**将由**多样化的、本地优先的 AI 智能体**在边缘端塑造。
+受 Clawdbot 启发，我们相信，个人计算的未来将由运行在边缘侧、形态多样且本地优先的 AI Agent 所塑造。
 
-**ZimaOS Blue 是我们的答案** —— 一个完全**开源、可审计、生产就绪的智能体运行时与工具集**，让你零摩擦地交付私有、自托管的智能体。
+ZimaOS Blue 就是我们的答案：一个完全开源、可审计、厂商中立、可直接投入生产的 Agent Runtime 与工具包，让你几乎零门槛地交付私有、自托管的 Agent。
 
-为那些想要**随心构建或精心打造自己智能体**的大胆开发者而生，Blue **为性能而设计**：使用 **Go** 编写，内存占用低至 10 MB。它可以运行在**任何 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS** —— 只要有电的地方。
+面向想随心折腾或亲手打磨 Agent 的开发者，Blue 从一开始就为性能而生：使用 Go 编写，内存占用最低可至 19 MB。无论是 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows 还是 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS，只要能通电的地方，它都能跑起来。
 
-![](../../docs/assets/features.png)
-
-## 亮点
-
-### 本地优先设计与自动模型接入
-
-更进一步：它原生支持 **20+ 即时通讯平台**、**语音驱动**的自然上下文感知对话界面、**零配置模型切换**（支持 IDE 扫描）以及 SOUL 分层人格系统。
+## 为什么 Blue
 
 <p align="center">
-  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+  <img src="../../docs/assets/design_principle.png" alt="Design Principle" />
 </p>
-
-### 快速、轻量
-
-Go 原生编译 —— 无解释器、无虚拟机、无额外开销。从服务器到桌面设备，静默运行于一切之上。
-
-| 指标 | ZimaOS Blue (Go) | Reference Agent (Node + dist) |
-|--------|-------------------|------------------------|
-| `help` 冷启动 / 热启动 | **0.18 s / < 0.01 s** | 3.31 s / ~1.11 s |
-| `status` 运行时间（3 次最优） | **< 0.01 s** | 5.98 s |
-| `help` 峰值 RSS | **~10 MB** | ~394 MB |
-| `status` 峰值 RSS | **~15 MB** | ~1.52 GB |
-| `gateway run` 首次冷启动闲置内存 | **~19 MB** | - |
-| 运行时依赖 | **无** | Node.js 18+ |
-
-> 上面的 CLI 行对应的是同一台主机上的历史 `help` / `status` 微基准。新增的 `gateway run` 行表示更贴近真实使用场景的冷启动闲置内存，基于 macOS arm64 上启动稳定后的 `vmmap Physical footprint` 测得。2026 年 2-4 月。
 
 ### 纯 Go，任意设备
 
-100% Go，静态二进制。**开箱即可交叉编译至 5 个目标平台**（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) amd64/arm64、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) amd64/arm64、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) amd64）。无需 Node 运行时、无需 Python、无需容器。把它放到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、旧 x86 路由器或 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac 上 —— 直接运行。**然后叠加你自己的 UI、逻辑和智能体技能** —— 一套代码，全平台通用。
+100% Go，静态二进制，开箱即可交叉编译到 5 个目标（![linux](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png) `linux/amd64`、`linux/arm64`、![macOS](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png) `darwin/amd64`、`darwin/arm64`、![windows](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png) `windows/amd64`）。不需要 Node 运行时，不需要 Python，也不需要容器。把它丢到 NAS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、老旧 x86 路由器，或 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)Mac 上，它就能直接跑。之后你再叠加自己的 UI、逻辑和 Agent 技能就好：一套代码库，覆盖每个平台。
 
-### 安全与治理
+### 开箱即用，立即可用
 
-内置 Sidecar API 代理，纵深防御：
-- **沙箱执行** – 所有工具调用在隔离环境中运行。
-- **提示注入防御** – 7+ 种内置拦截策略。
-- **会话审计** – 全量会话监控，每次交互可追溯。
-- **RBAC 与 WebAuthn** – 细粒度访问控制，支持无密码认证。
+大家都希望工具简单、可靠，并且在需要时能够扩展。最好是开箱就能用，这样你才能把精力放在真正想构建的东西上。
 
-## 为什么选择 Blue
+这并不是什么新理念。打造 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS 的，正是同样的哲学：简单、可靠、不打扰。Blue 只是把这套哲学延伸到了 Agent 技术栈。
 
-我们相信**下一代个人计算**将拥抱 LLM —— 但**可控、可审计**的智能体仍然是个人和团队的基石。**Blue 提供**：
-- **全面的核心能力** – 高级模型管理、即时通讯集成、增强人格，以及为日常交互（耳机、语音、智能眼镜）调优的自然语言界面。
-- **本地优先、超轻量、跨设备** – 无需高端硬件。能计算的地方就能运行。
-- **安全可审计** – 会话审计、沙箱隔离、权限控制，以及内置的 API 代理充当应用层防火墙 —— 每一个字节的进出都清晰可见。
+### 为真实生活而设计，坚持本地优先
 
-我们最大限度减少样板代码，让你**专注于真正重要的事**。秉承 <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> **ZimaOS 的设计哲学**，Blue 提供：
-- **一键从零到一** – 即时部署，无需复杂配置。
-- **快速原型开发** – 随心或精心打造场景化工具、交互和应用包。
-- **全球化就绪** – **世界很大**，不应默认只有英语。**20+ 种语言，原生支持**，零障碍。
-- **开放模型生态** – 无供应商锁定。自带模型即可。
+从可输出完整 HTML 报告的深度研究，到 OCR、PDF、浏览器自动化和文档转换，Blue 都能在不把数据送上云端的前提下处理复杂的真实工作流。语音唤醒、STT/TTS、Talk Mode，以及对本地推理的支持，让日常交互更即时、更私密，也始终可用。
 
-![](../../docs/assets/design_principle.png)
+## 快速入门
 
-## 快速开始
+### 选项 1：下载桌面应用程序
 
-### 方式一：下载桌面应用
+获取原生应用，无需依赖、无需编译。内置试用配置，几秒即可完成上手；通过远程连接即可立即开始聊天，不需要额外配置 bot。真正的开箱即用体验。
 
-获取原生应用 —— 无依赖、无需编译。内置试用配置，秒级上手 —— 通过远程连接即刻开聊，无需配置机器人。真正的开箱即用。
-
-- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下载 DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下载DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**：[下载安装程序](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
-### 方式二：安装脚本
+### 选项 2：安装脚本
 
 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
@@ -131,7 +97,7 @@ curl -fsSL https://ota.zimaos.com/blue | sh
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
-### 方式三：从源码构建
+### 选项 3：从源代码构建
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
@@ -149,130 +115,124 @@ sh build.sh
 .\build.bat
 ```
 
-> **注意：** Windows 构建需要：
-> - [MinGW-w64](https://www.mingw-w64.org/)（gcc）和 [CMake](https://cmake.org/) 来编译原生 C 依赖（espeak-ng、whisper.cpp、opus、kokoro、onnx）
+> **注意：** Windows 版本需要：
+> - [MinGW-w64](https://www.mingw-w64.org/) (gcc) 和 [CMake](https://cmake.org/) 用于本机 C 依赖项（espeak-ng、whisper.cpp、opus、kokoro、onnx）
 > - [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) 用于系统库（winmm 等）
 >
-> 请确保 `gcc`、`cmake` 已添加到 `PATH` 环境变量中。
+> 确保`gcc`、`cmake` 位于您的`PATH` 中。
 
-## 架构概览
+## 架构概述
 
-<details>
-<summary>
-<img src="../../docs/assets/architecture.png" alt="Architecture" />
-</summary>
+<p align="center">
+  <img src="../../docs/assets/architecture.png" alt="architecture" />
+</p>
 
-### 包结构图（`server/internal/`）
+更进一步：它为 **20 多个 IM 平台**提供本机支持，**语音驱动**界面可实现自然的上下文感知对话，通过 IDE 扫描进行**零配置模型切换**。
 
-| 层级 | 包 |
-|-------|----------|
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Provider | providerpool, providers, llm |
-| Pruner | pruner (detector, segmenter, bm25, pipeline, cache) |
-| Agent | context, tools, personality, humanizer |
-| Memory | memory, embedding, kvstore |
-| Channel | channel, autoreply, i18n |
-| Security | security, auth, permission, rbac, mfa, password, oidc, extauth, sandbox, promptguard, audit |
-| Voice | voice, tts, stt, speech |
-| Observe | metrics, companion, profiling, leakdetect |
-| Plugin | plugin, skill, skillstore |
-| Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
-| Scheduler | scheduler, worker, workerpool, pool |
-| Core | lifecycle, config, logger, database, cache, ratelimit, retry, timeutil, sync |
-| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Multi-tenant | tenant, user, session, preview |
+<p align="center">
+  <img src="../../docs/assets/providers.png" alt="Supported Providers" />
+</p>
 
-</details>
+## 如何构建
 
-### 数据流
+<p align="center">
+  <img src="../../docs/assets/handcraft.png" alt="handcraft" />
+</p>
 
-**聊天请求（代理热路径）**
-```
-Client [Proxy API Key] → Auth Gate → Prompt Guard → Context Pruner (optional)
-  → Provider Pool (route:auto/cloud/local) → CC Cache (L1→L2) check
-  → Upstream LLM → Response → Cache Store → Metrics Writer → Client (SSE stream)
-```
+> ⚠️ [!IMPORTANT]
+>
+> 如果你计划继续在 Blue 之上做调优或 vibe coding，不要把几次看起来不错的聊天当作发布依据。任何会影响路由、执行行为、工具表面、预算控制、模型选择或执行框架的改动，都应该通过 Blue Harness 验证，而不是靠零散抽查。
+>
+> 在这件事上，Blue 只该遵循一条简单规则：先看数据，先过 gate，最后再 cut over。实际操作中，这意味着先更新对应的 Harness 数据集或评测规范，再在整个验证过程中保持同一个稳定的 `candidate_id`，这样 selector、execution、budget 和 readiness 报告描述的才会是同一个候选版本，而不是四次互不相关的运行。
 
-**频道消息流**
-```
-Telegram/Discord/... → Channel Manager → AutoReply check
-  → Chat Handler → LLM → Humanizer (MD→text) → Channel → User
-```
+### 推荐的 Harness 工作流
 
-**语音管线**
-```
-WebSocket 音频 → STT (Whisper) → LLM 处理 → TTS (eSpeak/Edge) → WebSocket 音频
-```
+1. 运行 `blue harness selector verify`
+2. 运行 `blue harness execution verify`
+3. 复用 selector 的 eval 结果运行 `blue harness budget gate`
+4. 最后运行 `blue harness cutover-readiness`
 
-**Harness 评测流**
-```
-Quick Eval / Harness API → 评测控制器 → 运行组调度器
-  → Agent Task 或 Eval Driver → Tools + Workspace + Artifacts
-  → Scorecards / Reports / Budget+Execution+Selector Gates
-  → Cutover Readiness / 候选决策
-```
+对于本地迭代、夜间验证或 CI 证据收集，优先使用 `python3 scripts/cutover_candidate_pipeline.py`。它会在同一个共享 candidate 下依次执行 selector -> execution -> budget -> readiness 全流程，让结果更容易比较、审阅和执行 cut over。
 
+### 额外护栏
 
-## 如何使用
+| 关注点 | 需要留意什么 |
+|------|----------------|
+| 基线稳定性 | 保持 baseline、数据集版本和 `candidate_id` 稳定，否则对比会漂移，结果也不可信。 |
+| 真实构建产物 | 在运行 Harness 前，先重新构建受影响的二进制或前端产物，否则你验证的可能是旧行为，而不是当前改动。 |
+| 路由注册 | 如果前后端一起改动，在通过 UI 行为判断功能前，先确认所有新的后端路由都已经正确注册，因为路由没注册常常看起来像逻辑 bug，实际上只是 `404`。 |
+| 发布判断 | 只有当 Harness 没有显示出明显回归，且 cutover-readiness 确认候选版本确实可以切换时，这轮调优才算真正准备好。 |
 
-![](../../docs/assets/handcraft.png)
+简而言之，在 Blue 之上做调优，不能只靠“几次聊天感觉更好了”。你需要把候选版本放进 Harness，收集可比较的证据，再由 gate 和 readiness 的结果来决定这次改动是否真的安全可留。
 
-## 里程碑时间线
+## 功能特性
 
-<details>
-<summary>
-<img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
-</summary>
+| 功能 | 提供能力 |
+|--------------------|--------------------|
+| 高可用 Web 检索与浏览器运行时 | Blue **最鲜明的差异化能力**之一。它统一了用于搜索、读取、提取与抓取的 **四条 Web 访问路径**；在 HTTP、代理提取与浏览器会话之间保留 **三层回退机制**；通过挑战检测、Cookie/会话复用、隐身与浏览器接管处理 **反机器人页面**；并可在 **三种浏览器引擎** 之间路由：`lightpanda`、托管 Chromium，以及中继/本地 Chromium。 |
+| 三合一研究运行时 | **一个公开研究入口** 可路由到 `deep_research`、`analyze` 和 `ui_review`。同一套发现与证据栈随后可产出 **引用优先的研究结果**、**边界清晰的报告**，以及 **结构化的 UI/UX/无障碍评审**。 |
+| Harness 运行时、评估与演化框架 | 让评估成为贯穿开发、训练与生产的 **运行时原语**。Harness 覆盖 **回归与 smoke 检查**、评分、基线、报告与运行时验证，并把同一份证据继续用于 **技能演化**、后续评估、晋级或回滚，以及 `AGENTS.md` 或指令提案审查。 |
+| 多模态原生能力优先运行时 | 让 **语音、OCR、PDF、浏览器任务、文档转换、结构化表单填写、媒体处理与媒体生成** 优先走 **原生与本地路径**，仅在确有必要时才做 **模型路由**。 |
+| 安全与治理 | 包含 **沙箱执行**、**提示注入防御**、**会话审计**、权限、**RBAC**、**WebAuthn**、运行护栏，以及 **技能安全扫描**。 |
+| LLM Wiki 与知识空间 | 将记忆、研究和运行时输出组织成 **类 Wiki 的知识界面**，包含 **摘要页**、索引、**反向链接**、**新鲜度** 与 **归档工作流**。 |
+| 技能商店与市场 | 提供 **内置技能发现**、策展、同步与 **本地扫描**，让扩展能力 **从第一天起就可用**。 |
+| 生产级 Provider Pool | 提供具备 **健康检查**、**自动故障切换**、**熔断器** 与 **Provider 竞速** 的真实 Provider 池，用于支撑长时运行工作负载。 |
+| 内置本地小模型运行时 | 内置 **`Qwen3.5-0.8B` + `llama.cpp`** 运行时，用于 **本地短问答**、图像识别、工具路由、摘要、**上下文压缩** 与 **文档预处理**。 |
+| 长时运行可靠性 | 将 **OTA 更新**、**备份与恢复**、**配置热重载** 与 **故障后恢复** 视为 **内建运行能力**。 |
 
-| 版本 | 重点 | 核心价值 | 状态 |
-|---------|-------|-----------|--------|
-| v0.1 | Go 运行时核心 | 稳定内核，24 小时运行 | 已完成 |
-| v0.2 | 核心能力 | 最小可用，LLM 集成 | 已完成 |
-| v0.3 | NAS 集成 | NAS 原生，systemd 支持 | 已完成 |
-| v0.4 | 插件系统 | 可扩展，安全基础 | 已完成 |
-| v0.5 | 产品基线 | 生产就绪，文档完善 | 已完成 |
-| v0.6 | 消息频道 | 多频道支持 | 已完成 |
-| v0.7 | 安全 | OIDC、MFA、审计 | 已完成 |
-| v0.8 | 性能 | 优化、缓存、基准测试 | 已完成 |
-| v0.9 | 生态系统 | 多租户、浏览器自动化、语音 | 已完成 |
-| v0.10.0 | CLI 打包 | CC CLI 打包、检测、自动更新 | 已完成 |
-| v0.10.1 | 指标监控 | API 统计、Token 追踪、TTFT | 已完成 |
-| v0.10.2 | CLI 可靠性 | 进程生命周期、错误恢复 | 已完成 |
-| v0.10.3 | CLI 集成 | 设置向导、提供商自动检测 | 已完成 |
-| v0.10.4 | Tauri 打包 | 桌面应用、系统托盘 | 已完成 |
-| v0.10.5 | API 代理 Sidecar | 路由选择、提示防护、用量统计 | 已完成 |
-| v0.10.6 | Provider Pool | 多提供商路由、健康检查、故障转移 | 已完成 |
-| v0.10.7 | 预览模式 | 免认证访问、功能门控 | 已完成 |
-| v0.10.8 | 技能商店 | 技能商店基础设施、频道验证 | 已完成 |
-| v0.10.9–10 | 用户管理 | 子用户、页面级权限 | 已完成 |
-| v0.10.13–14 | 安全与技能 | 安全页面、技能商店重构 | 已完成 |
-| v0.10.15 | 聊天增强 | 聊天体验、消息管线 | 已完成 |
-| v0.10.16 | 语音模块 | Sherpa TTS/ASR、eSpeak、提供商切换 | 已完成 |
-| v0.10.17 | 远程访问 | Ngrok、Cloudflare 隧道、ACME 证书 | 已完成 |
-| v0.10.18–20 | 性能冲刺 | 启动/聊天性能、上下文缓存 | 已完成 |
-| v0.10.21–22 | 提示词与钉钉 | 系统提示词、钉钉频道 | 已完成 |
-| v0.10.23 | OTA 更新 | OTA 更新系统 | 已完成 |
-| v0.10.24 | 频道升级 | 10 个频道从桩代码升级 | 已完成 |
-| v0.10.25 | CC Cache | 两级缓存（L1 内存 + L2 磁盘） | 已完成 |
-| v0.10.26 | Humanizer | 回复人性化管线 | 已完成 |
-| v0.10.27 | 上下文裁剪器 | 代码场景节省 54% token（SWE-bench 官方数据），通用文档节省 46–47%（本地 IR），BM25 评分、分段 | 已完成 |
-| v0.10.28 | 记忆服务 | 渐进式搜索、双写后端 | 已完成 |
+## 里程碑时间表
 
-</details>
+<p align="center">
+  <img src="../../docs/assets/timeline.png" alt="Milestone Timeline" />
+</p>
+
+|日期 |版本 |关键词/特点|
+|------|---------|---------------------|
+| 2026 年 1 月 26 日 | `v0.1–v0.9` | Go 运行时、插件系统、浏览器自动化 |
+| 2026 年 1 月 27 日至 28 日 | `v0.9.0–v0.9.2` |浏览器任务视图，Blue Companion，Smart Form Filler |
+| 2026 年 1 月 29 日至 31 日 | `v0.10.0–v0.10.9` | Claude Code CLI、API Proxy、UI重构 |
+| 2026 年 2 月 1 日至 3 日 | `v0.10.1–v0.10.22` |指标、远程访问、上下文缓存 |
+| 2026 年 2 月 5 日至 18 日 | `v0.10.25–v0.10.29` | i18n、CC 缓存、发布管道 |
+| 2026 年 2 月 20 日至 25 日 | `v0.10.28–v0.10.29` |桌面加载程序、移动用户体验、内存重新设计 |
+| 2026 年 2 月 28 日至 3 月 2 日 | `v0.10.30` | Deep Research、技能重新排序、安全扫描 |
+| 2026 年 3 月 9 日至 18 日 | `v0.10.31` |仪表板大修、VoiceChat 重构、批准站点 |
+| 2026 年 3 月 19 日至 22 日 | `v0.10.32` | Harness 推出、成绩单审核、网络搜索 |
+| 2026 年 3 月 23 日至 25 日 | `v0.10.33` | Harness 群组、浏览器批准、技能市场 |
+| 2026 年 3 月 29 日至 30 日 | `v0.10.35` | Harness v3，浏览器中继，上下文压缩 |
+| 2026 年 3 月 31 日至 4 月 1 日 | `v0.10.36` |转录审核、Harness 覆盖、工具解析 |
+| 2026 年 4 月 1 日 | `v0.10.37` |运行时强化、Skill+Exec 切换、恢复抛光 |
+| 2026 年 4 月 2 日至 5 日 | `v0.10.38` | GitHub 支持、市场完善、可靠性改进 |
+| 2026 年 4 月 6 日至 7 日 | `v0.10.39` |研究统一、进化表面、记忆减少 |
 
 ## 社区与支持
 
-- **问题反馈**：[请在此提交 Bug 和功能请求](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
-- **讨论交流**：[Discord](https://discord.gg/b3AgFDxe9v)
-- **关注我们**：[GitHub](https://github.com/IceWhaleTech)
+- **问题**：[请在此处提交错误和功能请求](https://github.com/IceWhaleTech/ZimaOS-Blue/issues)
+- **讨论**：[Discord](https://discord.gg/zwWbKA4S2)
+- **在 [GitHub](https://github.com/IceWhaleTech) 上关注我们**
+
+[![Star History Chart](https://api.star-history.com/svg?repos=IceWhaleTech/ZimaOS-Blue&type=Date)](https://star-history.com/#IceWhaleTech/ZimaOS-Blue&Date)
 
 ## 许可证
 
-本项目基于 MIT 许可证开源 - 详见 [LICENSE](../../LICENSE) 文件。我们信仰开源，致力于回馈社区。
+该项目根据 MIT 许可证获得许可 - 有关详细信息，请参阅 [LICENSE](../../LICENSE) 文件。我们相信开源并回馈社区。
 
 ## 贡献者
 
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/IceWhaleTech">IceWhaleTech</a>
-</p>
+感谢所有Blue 贡献者：
+
+<a href="https://community.vaunt.dev/board/IceWhaleTech/repository/ZimaOS-Blue">
+  <img src="https://api.vaunt.dev/v1/github/entities/IceWhaleTech/repositories/ZimaOS-Blue/contributors?format=svg&limit=30" width="450" />
+</a>
+
+## 参考文献
+
+1. **OpenClaw** — 本地优先的开源代理。率先通过通道适配器和工具调用将LLM连接到本地设备，直接启发了Blue的代理运行时架构。 https://github.com/openclaw/openclaw
+2. **MiroMind** — 具有证据支持的综合的深度研究模式。塑造Blue的内置深度研究管道：规划、并行检索、重复证据删除和HTML报告生成。 https://www.miromind.ai
+3. **Karpathy's LLM Wiki** — LLM 作为知识编译器。重新构建法学硕士以构建持久的、不断发展的知识空间，超越 RAG 的积累陷阱。
+4. **OpenSpace (HKUDS)** — 自我进化的技能引擎。基于 DAG 的框架，代理可以从失败中学习并获得专业技能。 https://github.com/HKUDS/OpenSpace
+5. **Andrew Ng's Context Hub** — 用于编码代理的版本化 API 文档注册表。解决座席幻觉和遗忘的会话知识。提供带有注释和反馈循环的精选、版本化文档，将文档转变为自我改进的知识层。 https://github.com/andrewyng/context-hub
+6. **Notion** — 简单、人性化且有意保持安静。受到Notion 极简主义精神的启发，Blue 为网格带来了温暖。精致的衬线与贴心的设计相结合，打造出一个有家的感觉的空间。 https://www.notion.com/about
+7. **Matrix** — 视觉灵感来自标志性的数字雨美学。 Blue技术图表的美学方向。
+8. **IceWhale** — 爱、死亡与机器人 S2E2“冰”。一个聚集在世界各地的集体，旨在突破互联网巨头的围墙，抵制数据集中。冰鲸象征着一个在边缘共同构建主权工具的社区。
+9. **ZimaOS Blue** — 爱、死亡与机器人 S1E14“Zima Blue”。一个比喻：智能始于服务，并不断发展以探索世界。 Blue 是智慧的代理人，植根于简单，触及深度。
+10. **ZimaOS** — 简化、专注、开放的设计原则。 ZimaOS 和Blue 都坚信技术应该为用户服务——30 秒内部署、在任何地方运行、保持供应商中立。 https://www.zimaspace.com/zimaos
