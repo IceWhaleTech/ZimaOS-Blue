@@ -133,11 +133,6 @@ var officialCatalogModelAugmentations = map[string][]officialProviderCatalogMode
 		},
 	},
 	"deepseek": {
-		{
-			ID:           "deepseek-v3.2",
-			DisplayName:  "DeepSeek V3.2",
-			Capabilities: catalogChatCapabilities(),
-		},
 	},
 	"glm": {
 		{
@@ -349,7 +344,6 @@ var officialCatalogPinchBenchSeeds = []officialCatalogPinchBenchSeed{
 	{ID: "stepfun/step-3.5-flash", Score: 85.3, URL: "https://pinchbench.com/submission/7419a7a1-bc80-4df2-9a03-2c6beccc942e"},
 	{ID: "google/gemini-3-flash-preview", Score: 85.2, URL: "https://pinchbench.com/submission/8892d4e7-1ba2-415d-883c-ca7ec30bf7e0"},
 	{ID: "moonshotai/kimi-k2.5", Score: 84.8, URL: "https://pinchbench.com/submission/ce9bbcbd-f78b-4655-af1f-c97781320ce6"},
-	{ID: "deepseek/deepseek-v3.2", Score: 84.3, URL: "https://pinchbench.com/submission/df86a99e-a26a-4785-9408-158577b05d7d"},
 	{ID: "xiaomi/mimo-v2-pro", Score: 84.0, URL: "https://pinchbench.com/submission/6236740b-edec-4725-a3ba-948ca7d7db14"},
 	{ID: "openrouter/hunter-alpha", Score: 83.3},
 	{ID: "x-ai/grok-4.1-fast", Score: 82.4},
