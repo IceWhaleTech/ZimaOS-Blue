@@ -1100,6 +1100,9 @@ func TestGetSmallModelDefaults(t *testing.T) {
 	if h.GetSmallModelSummaryEnabled() || h.GetSmallModelContextCompressEnabled() || h.GetSmallModelDocExtractEnabled() || h.GetSmallModelRerankEnabled() {
 		t.Fatal("expected phase1 enhancement switches default false")
 	}
+	if h.GetSmallModelKnowledgeFixEnabled() {
+		t.Fatal("expected knowledge-fix acceleration switch default false")
+	}
 	if !h.GetSmallModelContextPruneEnabled() {
 		t.Fatal("expected context prune switch default true")
 	}
@@ -1508,6 +1511,65 @@ func TestSetSmallModelSummaryEnabled_Persisted(t *testing.T) {
 	changed, err = h2.SetSmallModelSummaryEnabled(false)
 	if err != nil {
 		t.Fatalf("SetSmallModelSummaryEnabled(false) second call failed: %v", err)
+	}
+	if changed {
+		t.Fatal("expected changed=false when setting unchanged")
+	}
+}
+
+func TestPatchSmallModelKnowledgeFixEnabled_Persisted(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+	e := echo.New()
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/settings",
+		strings.NewReader(`{"small_model_knowledge_fix_enabled":true}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.Patch(c); err != nil {
+		t.Fatalf("Patch failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	if !h.GetSmallModelKnowledgeFixEnabled() {
+		t.Fatal("expected knowledge-fix acceleration switch enabled after patch")
+	}
+
+	h2 := NewSettingsHandler(store)
+	if !h2.GetSmallModelKnowledgeFixEnabled() {
+		t.Fatal("expected persisted knowledge-fix acceleration switch enabled")
+	}
+}
+
+func TestSetSmallModelKnowledgeFixEnabled_Persisted(t *testing.T) {
+	store := kvstore.NewMemoryStore()
+	h := NewSettingsHandler(store)
+
+	changed, err := h.SetSmallModelKnowledgeFixEnabled(true)
+	if err != nil {
+		t.Fatalf("SetSmallModelKnowledgeFixEnabled(true) failed: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true on first update")
+	}
+	if !h.GetSmallModelKnowledgeFixEnabled() {
+		t.Fatal("expected knowledge-fix acceleration switch enabled")
+	}
+
+	h2 := NewSettingsHandler(store)
+	if !h2.GetSmallModelKnowledgeFixEnabled() {
+		t.Fatal("expected persisted knowledge-fix acceleration switch enabled")
+	}
+
+	changed, err = h2.SetSmallModelKnowledgeFixEnabled(true)
+	if err != nil {
+		t.Fatalf("SetSmallModelKnowledgeFixEnabled(true) second call failed: %v", err)
 	}
 	if changed {
 		t.Fatal("expected changed=false when setting unchanged")

@@ -18,13 +18,14 @@ import (
 )
 
 type Service struct {
-	workspaceDir     string
-	repoRoot         string
-	memorySink       MemorySink
-	events           EventPublisher
-	author           KnowledgeAuthor
-	onCompileSuccess func(context.Context, *KnowledgeCompileReport)
-	now              func() time.Time
+	workspaceDir          string
+	repoRoot              string
+	memorySink            MemorySink
+	events                EventPublisher
+	author                KnowledgeAuthor
+	defaultLintProviderID func() string
+	onCompileSuccess      func(context.Context, *KnowledgeCompileReport)
+	now                   func() time.Time
 
 	mu           sync.RWMutex
 	jobs         map[string]*KnowledgeJob
@@ -93,12 +94,13 @@ func NewService(options ServiceOptions) *Service {
 		nowFn = func() time.Time { return time.Now().UTC() }
 	}
 	return &Service{
-		workspaceDir:     strings.TrimSpace(options.WorkspaceDir),
-		repoRoot:         strings.TrimSpace(options.RepoRoot),
-		memorySink:       options.MemorySink,
-		events:           options.EventPublisher,
-		author:           options.KnowledgeAuthor,
-		onCompileSuccess: options.OnCompileSuccess,
+		workspaceDir:          strings.TrimSpace(options.WorkspaceDir),
+		repoRoot:              strings.TrimSpace(options.RepoRoot),
+		memorySink:            options.MemorySink,
+		events:                options.EventPublisher,
+		author:                options.KnowledgeAuthor,
+		defaultLintProviderID: options.DefaultLintProviderID,
+		onCompileSuccess:      options.OnCompileSuccess,
 		now: func() time.Time {
 			return nowFn().UTC()
 		},
@@ -279,7 +281,7 @@ func (s *Service) ingestWithOptions(ctx context.Context, targetPaths []string, f
 }
 
 func (s *Service) Lint(ctx context.Context, req LintRequest) (*KnowledgeLintReport, error) {
-	ctx = applyKnowledgeProviderRouting(ctx, req.ProviderID)
+	ctx = applyKnowledgeProviderRouting(ctx, s.resolveLintProviderID(req.ProviderID))
 	if err := s.ensureKnowledgeDirs(); err != nil {
 		return nil, err
 	}
@@ -751,6 +753,11 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Knowled
 	if kind == JobKindAnswer && strings.TrimSpace(req.Query) == "" {
 		return nil, fmt.Errorf("query is required for answer jobs")
 	}
+	providerID := strings.TrimSpace(req.ProviderID)
+	if kind == JobKindLint {
+		providerID = s.resolveLintProviderID(providerID)
+	}
+	req.ProviderID = providerID
 	req.Kind = kind
 	jobID := strings.TrimSpace(req.RequestedID)
 	if jobID == "" {
@@ -761,7 +768,7 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Knowled
 		ID:         jobID,
 		UserID:     strings.TrimSpace(req.UserID),
 		TenantID:   strings.TrimSpace(req.TenantID),
-		ProviderID: strings.TrimSpace(req.ProviderID),
+		ProviderID: providerID,
 		Query:      strings.TrimSpace(req.Query),
 		Kind:       kind,
 		Status:     JobStatusPending,
@@ -769,7 +776,7 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Knowled
 		CreatedAt:  now,
 		UpdatedAt:  now,
 	}
-	runCtx, cancel := context.WithCancel(applyKnowledgeProviderRouting(context.Background(), req.ProviderID))
+	runCtx, cancel := context.WithCancel(applyKnowledgeProviderRouting(context.Background(), providerID))
 	s.mu.Lock()
 	s.jobs[job.ID] = job
 	s.cancelFuncs[job.ID] = cancel
@@ -971,6 +978,16 @@ func (s *Service) runJob(ctx context.Context, jobID string, req CreateJobRequest
 	}
 	s.finishJob(jobID, JobStatusCompleted, report, nil)
 	s.publishJobEventByID(jobID, "job_completed")
+}
+
+func (s *Service) resolveLintProviderID(explicit string) string {
+	if providerID := strings.TrimSpace(explicit); providerID != "" {
+		return providerID
+	}
+	if s == nil || s.defaultLintProviderID == nil {
+		return ""
+	}
+	return strings.TrimSpace(s.defaultLintProviderID())
 }
 
 func (s *Service) finishJob(jobID string, status JobStatus, report *KnowledgeJobReport, jobErr error) {

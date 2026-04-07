@@ -389,6 +389,10 @@ async function handleSmallModelSummaryEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelSummaryEnabled(next))
 }
 
+async function handleSmallModelKnowledgeFixEnabledChange(next: boolean) {
+  await withSmallModelSave(() => settingsStore.setSmallModelKnowledgeFixEnabled(next))
+}
+
 async function handleSmallModelContextCompressEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelContextCompressEnabled(next))
 }
@@ -1307,6 +1311,56 @@ onUnmounted(() => {
                           settingsStore.smallModelDocExtractEnabled
                             ? t('common.enabled', 'Enabled')
                             : t('common.disabled', 'Disabled')
+                        }}
+                      </div>
+                    </div>
+
+                    <div class="small-model-feature-card small-model-feature-card--knowledge">
+                      <div class="flex items-center justify-between gap-3">
+                        <div class="font-medium text-gray-900 dark:text-white">
+                          {{ t('settings.smallModel.knowledgeFix', 'Wiki Fix Acceleration') }}
+                        </div>
+                        <button
+                          data-testid="small-model-knowledge-fix-switch"
+                          type="button"
+                          role="switch"
+                          :aria-checked="settingsStore.smallModelKnowledgeFixEnabled"
+                          :disabled="smallModelSaving"
+                          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
+                          :class="
+                            settingsStore.smallModelKnowledgeFixEnabled
+                              ? 'bg-green-600 dark:bg-green-500'
+                              : 'bg-gray-300 dark:bg-gray-600'
+                          "
+                          @click="
+                            handleSmallModelKnowledgeFixEnabledChange(
+                              !settingsStore.smallModelKnowledgeFixEnabled
+                            )
+                          "
+                        >
+                          <span
+                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
+                            :class="
+                              settingsStore.smallModelKnowledgeFixEnabled
+                                ? 'translate-x-5'
+                                : 'translate-x-0'
+                            "
+                          />
+                        </button>
+                      </div>
+                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {{
+                          settingsStore.smallModelKnowledgeFixEnabled
+                            ? t('common.enabled', 'Enabled')
+                            : t('common.disabled', 'Disabled')
+                        }}
+                      </div>
+                      <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{
+                          t(
+                            'settings.smallModel.knowledgeFixHint',
+                            'Prefer the lightweight model when knowledge lint repairs low-quality wiki pages.'
+                          )
                         }}
                       </div>
                     </div>

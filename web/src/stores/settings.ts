@@ -507,6 +507,9 @@ export const useSettingsStore = defineStore('settings', () => {
   const smallModelSummaryEnabled = computed(
     () => backendSettings.value.small_model_summary_enabled ?? false
   )
+  const smallModelKnowledgeFixEnabled = computed(
+    () => backendSettings.value.small_model_knowledge_fix_enabled ?? false
+  )
   const smallModelContextCompressEnabled = computed(
     () => backendSettings.value.small_model_context_compress_enabled ?? false
   )
@@ -635,6 +638,10 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setSmallModelSummaryEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_summary_enabled: enabled })
+  }
+
+  async function setSmallModelKnowledgeFixEnabled(enabled: boolean) {
+    await updateBackendSettings({ small_model_knowledge_fix_enabled: enabled })
   }
 
   async function setSmallModelContextCompressEnabled(enabled: boolean) {
@@ -860,6 +867,7 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelID,
     smallModelAutoDownload,
     smallModelSummaryEnabled,
+    smallModelKnowledgeFixEnabled,
     smallModelContextCompressEnabled,
     smallModelDocExtractEnabled,
     smallModelRerankEnabled,
@@ -920,6 +928,7 @@ export const useSettingsStore = defineStore('settings', () => {
     setSmallModelEnabled,
     setSmallModelAutoDownload,
     setSmallModelSummaryEnabled,
+    setSmallModelKnowledgeFixEnabled,
     setSmallModelContextCompressEnabled,
     setSmallModelDocExtractEnabled,
     setSmallModelRerankEnabled,

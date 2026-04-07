@@ -148,6 +148,158 @@ func TestServiceLintUsesKnowledgeAuthorToRepairLowQualityPages(t *testing.T) {
 	}
 }
 
+func TestServiceLintUsesDefaultLintProviderWhenConfigured(t *testing.T) {
+	repoRoot := t.TempDir()
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	writeKnowledgeTestFile(t, filepath.Join(repoRoot, "README.md"), "# Blue Runtime\n\nKnowledge lint repair source content.\n")
+
+	svc := NewService(ServiceOptions{
+		WorkspaceDir:          workspaceDir,
+		RepoRoot:              repoRoot,
+		DefaultLintProviderID: func() string { return "smallmodel" },
+		Now: func() time.Time {
+			return time.Date(2026, 4, 7, 10, 30, 0, 0, time.UTC)
+		},
+	})
+
+	compileReport, err := svc.Compile(context.Background(), CompileRequest{})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	pagePath := filepath.Join(workspaceDir, "knowledge", "pages", compileReport.Pages[0].Slug+".md")
+	body, err := os.ReadFile(pagePath)
+	if err != nil {
+		t.Fatalf("read page: %v", err)
+	}
+	doc, err := parsePageDocument(string(body))
+	if err != nil {
+		t.Fatalf("parsePageDocument() error = %v", err)
+	}
+	doc.Summary.Summary = ""
+	doc.Content = "short"
+	writeKnowledgeTestFile(t, pagePath, renderPageDocument(doc))
+
+	repairAuthor := &captureKnowledgeAuthor{
+		build: func(req KnowledgeAuthorRequest) *KnowledgeAuthorResult {
+			return &KnowledgeAuthorResult{
+				Pages: []KnowledgePage{authoredKnowledgePage(req, "Repaired page body with enough detail for the smallmodel wiki-fix path.")},
+			}
+		},
+	}
+	svc.author = repairAuthor
+
+	lintReport, err := svc.Lint(context.Background(), LintRequest{})
+	if err != nil {
+		t.Fatalf("Lint() error = %v", err)
+	}
+	if repairAuthor.calls == 0 {
+		t.Fatal("expected lint to invoke knowledge author repair")
+	}
+	if repairAuthor.lastProviderID != "smallmodel" {
+		t.Fatalf("repair author provider_id = %q, want smallmodel", repairAuthor.lastProviderID)
+	}
+	if hasLintIssueKind(lintReport.Issues, IssueKindLowQuality) {
+		t.Fatalf("expected low-quality issue to be repaired, got %+v", lintReport.Issues)
+	}
+}
+
+func TestServiceLintPrefersExplicitProviderOverDefaultLintProvider(t *testing.T) {
+	repoRoot := t.TempDir()
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	writeKnowledgeTestFile(t, filepath.Join(repoRoot, "README.md"), "# Blue Runtime\n\nKnowledge lint repair source content.\n")
+
+	svc := NewService(ServiceOptions{
+		WorkspaceDir:          workspaceDir,
+		RepoRoot:              repoRoot,
+		DefaultLintProviderID: func() string { return "smallmodel" },
+		Now: func() time.Time {
+			return time.Date(2026, 4, 7, 10, 45, 0, 0, time.UTC)
+		},
+	})
+
+	compileReport, err := svc.Compile(context.Background(), CompileRequest{})
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	pagePath := filepath.Join(workspaceDir, "knowledge", "pages", compileReport.Pages[0].Slug+".md")
+	body, err := os.ReadFile(pagePath)
+	if err != nil {
+		t.Fatalf("read page: %v", err)
+	}
+	doc, err := parsePageDocument(string(body))
+	if err != nil {
+		t.Fatalf("parsePageDocument() error = %v", err)
+	}
+	doc.Summary.Summary = ""
+	doc.Content = "short"
+	writeKnowledgeTestFile(t, pagePath, renderPageDocument(doc))
+
+	repairAuthor := &captureKnowledgeAuthor{
+		build: func(req KnowledgeAuthorRequest) *KnowledgeAuthorResult {
+			return &KnowledgeAuthorResult{
+				Pages: []KnowledgePage{authoredKnowledgePage(req, "Repaired page body with enough detail for the explicit-provider wiki-fix path.")},
+			}
+		},
+	}
+	svc.author = repairAuthor
+
+	lintReport, err := svc.Lint(context.Background(), LintRequest{ProviderID: "openai-prod"})
+	if err != nil {
+		t.Fatalf("Lint() error = %v", err)
+	}
+	if repairAuthor.calls == 0 {
+		t.Fatal("expected lint to invoke knowledge author repair")
+	}
+	if repairAuthor.lastProviderID != "openai-prod" {
+		t.Fatalf("repair author provider_id = %q, want openai-prod", repairAuthor.lastProviderID)
+	}
+	if hasLintIssueKind(lintReport.Issues, IssueKindLowQuality) {
+		t.Fatalf("expected low-quality issue to be repaired, got %+v", lintReport.Issues)
+	}
+}
+
+func TestServiceCreateLintJobUsesDefaultLintProviderWhenConfigured(t *testing.T) {
+	repoRoot := t.TempDir()
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	writeKnowledgeTestFile(t, filepath.Join(repoRoot, "README.md"), "# Blue Runtime\n\nKnowledge lint routing source content.\n")
+
+	svc := NewService(ServiceOptions{
+		WorkspaceDir:          workspaceDir,
+		RepoRoot:              repoRoot,
+		DefaultLintProviderID: func() string { return "smallmodel" },
+		Now: func() time.Time {
+			return time.Date(2026, 4, 7, 11, 0, 0, 0, time.UTC)
+		},
+	})
+
+	if _, err := svc.Compile(context.Background(), CompileRequest{}); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Kind: JobKindLint})
+	if err != nil {
+		t.Fatalf("CreateJob() error = %v", err)
+	}
+	waitForTerminalKnowledgeJob(t, svc, job.ID, 2*time.Second)
+
+	stored, err := svc.GetJob(job.ID)
+	if err != nil {
+		t.Fatalf("GetJob() error = %v", err)
+	}
+	if stored.ProviderID != "smallmodel" {
+		t.Fatalf("job ProviderID = %q, want smallmodel", stored.ProviderID)
+	}
+}
+
 func authoredKnowledgePage(req KnowledgeAuthorRequest, content string) KnowledgePage {
 	return KnowledgePage{
 		KnowledgePageSummary: KnowledgePageSummary{

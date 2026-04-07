@@ -53,13 +53,14 @@ type SourceSnapshot struct {
 }
 
 type ServiceOptions struct {
-	WorkspaceDir     string
-	RepoRoot         string
-	MemorySink       MemorySink
-	EventPublisher   EventPublisher
-	KnowledgeAuthor  KnowledgeAuthor
-	OnCompileSuccess func(context.Context, *KnowledgeCompileReport)
-	Now              func() time.Time
+	WorkspaceDir          string
+	RepoRoot              string
+	MemorySink            MemorySink
+	EventPublisher        EventPublisher
+	KnowledgeAuthor       KnowledgeAuthor
+	DefaultLintProviderID func() string
+	OnCompileSuccess      func(context.Context, *KnowledgeCompileReport)
+	Now                   func() time.Time
 }
 
 type JobKind string

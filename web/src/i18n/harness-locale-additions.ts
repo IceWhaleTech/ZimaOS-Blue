@@ -16,6 +16,7 @@ import localeFollowupBackfills from './locale-followup-backfills'
 import { buildLocalePostMergeBackfill } from './locale-post-merge-backfills'
 import localeStructuralBackfills from './locale-structural-backfills'
 import securityCronMaskingBackfills from './security-cron-masking-backfills'
+import smallModelKnowledgeFixBackfills from './smallmodel-knowledge-fix-backfills'
 import skillStoreHighRiskBackfills from './skill-store-high-risk-backfills'
 import { buildSkillStoreDerivedBackfill } from './skill-store-derived-backfills'
 
@@ -358,7 +359,7 @@ const agentcoreRunnerSettingsOverrides: Partial<Record<LocaleKey, LocaleNode>> =
     refPlaceholder: 'main o etiqueta',
     refHint: 'Per defecte és main i mostra les etiquetes del repositori seleccionat.',
     refLoading: "S'estan carregant les etiquetes...",
-prepareHint:
+    prepareHint:
       'Prepare baixa el repositori, instal·la Go i compila ./cmd/agentcore-runner a la memòria cau gestionada.',
     prepare: 'Prepara el runner',
     preparing: 'Preparant...',
@@ -2023,8 +2024,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} enthaltene Eval Specs',
       previewFailed: 'Bundle-Vorschau fehlgeschlagen',
       previewLoaded: 'Bundle-Vorschau geladen',
-      previewLoading:
-        'Bundle-Metadaten, Manifest und enthaltene Eval Specs werden geprüft...',
+      previewLoading: 'Bundle-Metadaten, Manifest und enthaltene Eval Specs werden geprüft...',
       previewReady: 'Bundle-Vorschau bereit',
       refreshPreview: 'Vorschau aktualisieren',
       versionOverride: 'Versionsüberschreibung',
@@ -2211,8 +2211,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       bundlePath: 'Putanja bundlea',
       bundlePathHint:
         'Upotrijebite serversku putanju poput harness/datasets/... unutar trenutačnog checkouta repozitorija.',
-      bundlePathOptionalHint:
-        'Potrebno samo kada je GitHub izvor URL repozitorija, a ne tree URL.',
+      bundlePathOptionalHint: 'Potrebno samo kada je GitHub izvor URL repozitorija, a ne tree URL.',
       bundlePathRequired: 'Putanja bundlea je obavezna',
       bundleSource: 'GitHub izvor',
       bundleSourceHint:
@@ -2232,8 +2231,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} eval specs u bundleu',
       previewFailed: 'Pregled bundlea nije uspio',
       previewLoaded: 'Pregled bundlea je učitan',
-      previewLoading:
-        'Provjeravaju se metapodaci bundlea, manifest i uključene eval specs...',
+      previewLoading: 'Provjeravaju se metapodaci bundlea, manifest i uključene eval specs...',
       previewReady: 'Pregled bundlea je spreman',
       refreshPreview: 'Osvježi pregled',
       versionOverride: 'Nadjačavanje verzije',
@@ -2337,8 +2335,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: 'この bundle に含まれる eval spec 数: {count}',
       previewFailed: 'Bundle のプレビューに失敗しました',
       previewLoaded: 'Bundle のプレビューを読み込みました',
-      previewLoading:
-        'Bundle のメタデータ、manifest、含まれている eval spec を確認しています...',
+      previewLoading: 'Bundle のメタデータ、manifest、含まれている eval spec を確認しています...',
       previewReady: 'Bundle のプレビュー準備完了',
       refreshPreview: 'プレビューを更新',
       versionOverride: 'バージョン上書き',
@@ -2351,8 +2348,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       bundlePath: 'Bundle 경로',
       bundlePathHint:
         '현재 저장소 checkout 안에서 harness/datasets/... 같은 서버 측 경로를 사용하세요.',
-      bundlePathOptionalHint:
-        'GitHub 소스가 tree URL이 아니라 저장소 URL일 때만 필요합니다.',
+      bundlePathOptionalHint: 'GitHub 소스가 tree URL이 아니라 저장소 URL일 때만 필요합니다.',
       bundlePathRequired: 'Bundle 경로는 필수입니다',
       bundleSource: 'GitHub 소스',
       bundleSourceHint:
@@ -2372,8 +2368,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: 'bundle에 포함된 eval spec {count}개',
       previewFailed: 'Bundle 미리보기에 실패했습니다',
       previewLoaded: 'Bundle 미리보기를 불러왔습니다',
-      previewLoading:
-        'Bundle 메타데이터, manifest, 포함된 eval spec을 확인하는 중...',
+      previewLoading: 'Bundle 메타데이터, manifest, 포함된 eval spec을 확인하는 중...',
       previewReady: 'Bundle 미리보기가 준비되었습니다',
       refreshPreview: '미리보기 새로고침',
       versionOverride: '버전 재정의',
@@ -2476,8 +2471,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} meegeleverde eval specs',
       previewFailed: 'Voorbeeld van bundle mislukt',
       previewLoaded: 'Bundlevoorbeeld geladen',
-      previewLoading:
-        'Bundlemetadata, manifest en meegeleverde eval specs worden gecontroleerd...',
+      previewLoading: 'Bundlemetadata, manifest en meegeleverde eval specs worden gecontroleerd...',
       previewReady: 'Bundlevoorbeeld klaar',
       refreshPreview: 'Voorbeeld verversen',
       versionOverride: 'Versie overschrijven',
@@ -2511,8 +2505,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} dołączonych eval specs',
       previewFailed: 'Podgląd bundle nie powiódł się',
       previewLoaded: 'Załadowano podgląd bundle',
-      previewLoading:
-        'Sprawdzanie metadanych bundle, manifestu i dołączonych eval specs...',
+      previewLoading: 'Sprawdzanie metadanych bundle, manifestu i dołączonych eval specs...',
       previewReady: 'Podgląd bundle jest gotowy',
       refreshPreview: 'Odśwież podgląd',
       versionOverride: 'Nadpisanie wersji',
@@ -2546,8 +2539,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} eval specs incluídas no bundle',
       previewFailed: 'Falha ao visualizar o bundle',
       previewLoaded: 'Visualização do bundle carregada',
-      previewLoading:
-        'Verificando os metadados do bundle, o manifest e as eval specs incluídas...',
+      previewLoading: 'Verificando os metadados do bundle, o manifest e as eval specs incluídas...',
       previewReady: 'Visualização do bundle pronta',
       refreshPreview: 'Atualizar visualização',
       versionOverride: 'Substituição de versão',
@@ -2581,8 +2573,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} eval specs incluídas no bundle',
       previewFailed: 'Falha na pré-visualização do bundle',
       previewLoaded: 'Pré-visualização do bundle carregada',
-      previewLoading:
-        'A verificar os metadados do bundle, o manifest e as eval specs incluídas...',
+      previewLoading: 'A verificar os metadados do bundle, o manifest e as eval specs incluídas...',
       previewReady: 'Pré-visualização do bundle pronta',
       refreshPreview: 'Atualizar pré-visualização',
       versionOverride: 'Substituição de versão',
@@ -2616,8 +2607,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} eval specs incluse în bundle',
       previewFailed: 'Previzualizarea bundle-ului a eșuat',
       previewLoaded: 'Previzualizarea bundle-ului a fost încărcată',
-      previewLoading:
-        'Se verifică metadatele bundle-ului, manifestul și eval specs incluse...',
+      previewLoading: 'Se verifică metadatele bundle-ului, manifestul și eval specs incluse...',
       previewReady: 'Previzualizarea bundle-ului este gata',
       refreshPreview: 'Reîmprospătează previzualizarea',
       versionOverride: 'Suprascriere versiune',
@@ -2651,8 +2641,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} включенных eval specs',
       previewFailed: 'Не удалось показать preview bundle',
       previewLoaded: 'Preview bundle загружен',
-      previewLoading:
-        'Проверяются метаданные bundle, manifest и включенные eval specs...',
+      previewLoading: 'Проверяются метаданные bundle, manifest и включенные eval specs...',
       previewReady: 'Preview bundle готов',
       refreshPreview: 'Обновить preview',
       versionOverride: 'Переопределение версии',
@@ -2686,8 +2675,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} priložených eval specs',
       previewFailed: 'Náhľad bundle zlyhal',
       previewLoaded: 'Náhľad bundle bol načítaný',
-      previewLoading:
-        'Kontrolujú sa metadáta bundle, manifest a priložené eval specs...',
+      previewLoading: 'Kontrolujú sa metadáta bundle, manifest a priložené eval specs...',
       previewReady: 'Náhľad bundle je pripravený',
       refreshPreview: 'Obnoviť náhľad',
       versionOverride: 'Prepísanie verzie',
@@ -2721,8 +2709,7 @@ const bundleDatasetLocaleOverrides: Partial<Record<LocaleKey, LocaleNode>> = {
       previewEvalSpecs: '{count} medföljande eval specs',
       previewFailed: 'Förhandsgranskning av bundle misslyckades',
       previewLoaded: 'Förhandsgranskning av bundle inläst',
-      previewLoading:
-        'Kontrollerar bundle-metadata, manifest och medföljande eval specs...',
+      previewLoading: 'Kontrollerar bundle-metadata, manifest och medföljande eval specs...',
       previewReady: 'Förhandsgranskning av bundle klar',
       refreshPreview: 'Uppdatera förhandsgranskning',
       versionOverride: 'Versionsåsidosättning',
@@ -8477,10 +8464,12 @@ const legacyHarnessPatches: Partial<Record<LocaleKey, LocaleNode>> = {
         '导入是显式、逐版本进行的。GitHub bundle 只会在你手动触发时拉取，不会后台自动同步后续更新。',
       bundlePath: 'Bundle 路径',
       bundlePathHint: '填写当前仓库里的服务端路径，例如 harness/datasets/...。',
-      bundlePathOptionalHint: '只有当 GitHub source 是仓库 URL 而不是 tree URL 时，这个字段才必填。',
+      bundlePathOptionalHint:
+        '只有当 GitHub source 是仓库 URL 而不是 tree URL 时，这个字段才必填。',
       bundlePathRequired: 'Bundle 路径不能为空',
       bundleSource: 'GitHub 来源',
-      bundleSourceHint: '可以填直接指向 bundle 目录的 GitHub tree URL，或填写仓库 URL 再配合下面的 bundle 路径。',
+      bundleSourceHint:
+        '可以填直接指向 bundle 目录的 GitHub tree URL，或填写仓库 URL 再配合下面的 bundle 路径。',
       bundleSourceLabel: 'Bundle 来源类型',
       bundleSourceRequired: 'GitHub 来源不能为空',
       bundleImported: '数据集 bundle 已导入',
@@ -8717,7 +8706,8 @@ const legacyHarnessPatches: Partial<Record<LocaleKey, LocaleNode>> = {
         '匯入採明確、逐版本方式進行。GitHub bundle 只會在你主動觸發時抓取，不會在背景自動同步後續更新。',
       bundlePath: 'Bundle 路徑',
       bundlePathHint: '填寫目前倉庫中的伺服器端路徑，例如 harness/datasets/...。',
-      bundlePathOptionalHint: '只有當 GitHub source 是 repo URL 而不是 tree URL 時，這個欄位才需要填寫。',
+      bundlePathOptionalHint:
+        '只有當 GitHub source 是 repo URL 而不是 tree URL 時，這個欄位才需要填寫。',
       bundlePathRequired: 'Bundle 路徑不能為空',
       bundleSource: 'GitHub 來源',
       bundleSourceHint:
@@ -8980,7 +8970,10 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
             knowledgeLocaleBase,
             (extensionsBrowseBackfills[localeKey] ?? {}) as LocaleNode
           ),
-          (automationKnowledgeEvolutionBackfills[localeKey] ?? {}) as LocaleNode
+          mergeLocaleNodes(
+            (automationKnowledgeEvolutionBackfills[localeKey] ?? {}) as LocaleNode,
+            (smallModelKnowledgeFixBackfills[localeKey] ?? {}) as LocaleNode
+          )
         ),
         (evolutionUILocaleBackfills[localeKey] ?? {}) as LocaleNode
       )
@@ -9018,7 +9011,8 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
   const currentHarness = (mergedWithPostMerge.harness ?? {}) as LocaleNode
   const currentSettings = (mergedWithPostMerge.settings ?? {}) as LocaleNode
   const evolutionUIOverrides = (evolutionUILocaleBackfills[localeKey] ?? {}) as LocaleNode
-  const operationsRenameOverrides = (automationOperationsRenameBackfills[localeKey] ?? {}) as LocaleNode
+  const operationsRenameOverrides = (automationOperationsRenameBackfills[localeKey] ??
+    {}) as LocaleNode
   const evolutionChineseOperatorOverrides = (evolutionChineseOperatorBackfills[localeKey] ??
     {}) as LocaleNode
 

@@ -102,6 +102,7 @@ export interface KnowledgeJobReport {
 export interface KnowledgeJobSummary {
   id: string
   job_id: string
+  provider_id?: string
   query?: string
   kind: KnowledgeJobKind
   status: string
@@ -119,6 +120,7 @@ export interface KnowledgeJob extends KnowledgeJobSummary {
 
 export interface KnowledgeCreateJobRequest {
   kind: KnowledgeJobKind
+  provider_id?: string
   query?: string
   target_paths?: string[]
   page_slug?: string

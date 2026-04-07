@@ -38,6 +38,7 @@ export interface Settings {
   small_model_id?: SmallModelID // Fixed: qwen3.5-0.8b-gguf-q4km
   small_model_auto_download?: boolean // Auto download small model (default true)
   small_model_summary_enabled?: boolean // Phase1 default false
+  small_model_knowledge_fix_enabled?: boolean // Whether knowledge lint-triggered wiki fixes should prefer lightweight acceleration
   small_model_context_compress_enabled?: boolean // Whether to prefer the lightweight-model compression path when available
   small_model_doc_extract_enabled?: boolean // Phase1 default false
   small_model_rerank_enabled?: boolean // Phase1 default false
@@ -266,8 +267,10 @@ export const settingsApi = {
   downloadSmallModel: () =>
     api.post<{ success: boolean; message?: string }>('/settings/small-model/download'),
   cancelSmallModelDownload: () => api.post<{ success: boolean }>('/settings/small-model/cancel'),
-  getAgentcoreRunnerStatus: () => api.get<AgentcoreRunnerStatus>('/settings/agentcore-runner/status'),
-  getAgentcoreRunnerLastRun: () => api.get<AgentcoreRunnerLastRun | null>('/settings/agentcore-runner/last-run'),
+  getAgentcoreRunnerStatus: () =>
+    api.get<AgentcoreRunnerStatus>('/settings/agentcore-runner/status'),
+  getAgentcoreRunnerLastRun: () =>
+    api.get<AgentcoreRunnerLastRun | null>('/settings/agentcore-runner/last-run'),
   getAgentcoreRunnerTags: (repoURL?: string) =>
     api.get<AgentcoreRunnerTagList>('/settings/agentcore-runner/tags', {
       params: repoURL ? { repo_url: repoURL } : undefined,

@@ -188,6 +188,7 @@ function primeApiMocks() {
       small_model_runtime: 'llama.cpp',
       small_model_id: 'qwen3.5-0.8b-gguf-q4km',
       small_model_summary_enabled: true,
+      small_model_knowledge_fix_enabled: true,
       small_model_context_compress_enabled: true,
       small_model_doc_extract_enabled: true,
       context_compression_mode: 'auto',
@@ -409,6 +410,7 @@ describe('SettingsView small-model controls', () => {
     const store = useSettingsStore()
 
     const summarySpy = vi.spyOn(store, 'setSmallModelSummaryEnabled').mockResolvedValue()
+    const knowledgeFixSpy = vi.spyOn(store, 'setSmallModelKnowledgeFixEnabled').mockResolvedValue()
     const contextCompressSpy = vi
       .spyOn(store, 'setSmallModelContextCompressEnabled')
       .mockResolvedValue()
@@ -430,7 +432,9 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.find('[data-testid="small-model-sections"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-feature-layout"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="small-model-context-section"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')).toHaveLength(5)
+    expect(
+      wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')
+    ).toHaveLength(6)
     expect(wrapper.find('[data-testid="small-model-pruner-section"]').exists()).toBe(true)
     expect(
       wrapper
@@ -499,6 +503,10 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
     expect(docExtractSpy).toHaveBeenCalledWith(false)
 
+    await wrapper.get('[data-testid="small-model-knowledge-fix-switch"]').trigger('click')
+    await flushPromises()
+    expect(knowledgeFixSpy).toHaveBeenCalledWith(false)
+
     await wrapper.get('[data-testid="small-model-image-qa-switch"]').trigger('click')
     await flushPromises()
     expect(imageQASpy).toHaveBeenCalledWith(false)
@@ -535,9 +543,18 @@ describe('SettingsView small-model controls', () => {
 
     expect(wrapper.find('[data-testid="small-model-ir-section-header"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="small-model-sections"]').findAll('h3')).toHaveLength(0)
-    expect(wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')).toHaveLength(5)
-    expect(wrapper.get('[data-testid="small-model-context-section"]').find('[data-testid="context-compression-mode-select"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="small-model-pruner-section"]').find('h3').exists()).toBe(false)
+    expect(
+      wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')
+    ).toHaveLength(6)
+    expect(
+      wrapper
+        .get('[data-testid="small-model-context-section"]')
+        .find('[data-testid="context-compression-mode-select"]')
+        .exists()
+    ).toBe(true)
+    expect(wrapper.get('[data-testid="small-model-pruner-section"]').find('h3').exists()).toBe(
+      false
+    )
     expect(wrapper.get('[data-testid="small-model-pruner-section"]').text()).toContain(
       i18n.global.t('apiProxy.prunerTitle', 'Global Context Pruner')
     )

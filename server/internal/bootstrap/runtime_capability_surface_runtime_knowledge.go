@@ -47,10 +47,11 @@ func newRuntimeKnowledgeService(options runtimeTaskSurfaceOptions) *knowledge.Se
 		return nil
 	}
 	service := knowledge.NewService(knowledge.ServiceOptions{
-		WorkspaceDir:    workspaceDir,
-		RepoRoot:        resolveKnowledgeRepoRoot(workspaceDir),
-		MemorySink:      runtimeKnowledgeMemorySink{handler: options.memoryHandler},
-		KnowledgeAuthor: options.knowledgeAuthor,
+		WorkspaceDir:          workspaceDir,
+		RepoRoot:              resolveKnowledgeRepoRoot(workspaceDir),
+		MemorySink:            runtimeKnowledgeMemorySink{handler: options.memoryHandler},
+		KnowledgeAuthor:       options.knowledgeAuthor,
+		DefaultLintProviderID: runtimeKnowledgeLintProviderSelector(options.settingsHandler),
 		EventPublisher: runtimeKnowledgeEventPublisher{
 			broker: options.sseBroker,
 		},
@@ -71,6 +72,18 @@ func newRuntimeKnowledgeService(options runtimeTaskSurfaceOptions) *knowledge.Se
 		options.chatHandler.SetKnowledgeRetriever(service)
 	}
 	return service
+}
+
+func runtimeKnowledgeLintProviderSelector(settings *serverpkg.SettingsHandler) func() string {
+	if settings == nil {
+		return nil
+	}
+	return func() string {
+		if !settings.GetSmallModelEnabled() || !settings.GetSmallModelKnowledgeFixEnabled() {
+			return ""
+		}
+		return smallmodelProviderID
+	}
 }
 
 type runtimeKnowledgeMemorySink struct {

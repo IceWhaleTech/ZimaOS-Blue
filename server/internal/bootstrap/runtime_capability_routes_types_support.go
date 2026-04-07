@@ -10,6 +10,7 @@ import (
 type runtimeTaskSurfaceKnowledgeDeps struct {
 	memoryHandler   *serverpkg.MemoryHandler
 	cronHandler     *cron.Handler
+	settingsHandler *serverpkg.SettingsHandler
 	sseBroker       *sse.Broker
 	knowledgeAuthor knowledge.KnowledgeAuthor
 }
@@ -26,12 +27,14 @@ func newRuntimeTaskSurfaceKnowledgeDeps(state *routeRegistrationState) runtimeTa
 	deps := state.deps
 	if deps == nil {
 		return runtimeTaskSurfaceKnowledgeDeps{
+			settingsHandler: state.bootstrapSupport.settingsHandler,
 			knowledgeAuthor: newRuntimeKnowledgeAuthor(newRuntimeKnowledgeAuthorCaller(state.runtimeLLM, state.bootstrapSupport.smallModelManager)),
 		}
 	}
 	return runtimeTaskSurfaceKnowledgeDeps{
 		memoryHandler:   deps.MemoryHandler,
 		cronHandler:     deps.CronHandler,
+		settingsHandler: state.bootstrapSupport.settingsHandler,
 		sseBroker:       deps.SSEBroker,
 		knowledgeAuthor: newRuntimeKnowledgeAuthor(newRuntimeKnowledgeAuthorCaller(state.runtimeLLM, state.bootstrapSupport.smallModelManager)),
 	}

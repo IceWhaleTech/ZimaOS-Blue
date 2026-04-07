@@ -952,6 +952,20 @@ describe('EvolutionView', () => {
     return wrapper
   }
 
+  it('preloads the knowledge lane count on first load without mounting the full knowledge pane', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-testid="evolution-lane-metric-knowledge"]').text()).toBe('2')
+    expect(wrapper.get('[data-testid="evolution-lane-supporting-knowledge"]').text()).toContain(
+      '1 unresolved conflicts'
+    )
+    expect(knowledgeApi.listPages).toHaveBeenCalledTimes(1)
+    expect(knowledgeApi.getLatestLint).toHaveBeenCalledTimes(1)
+    expect(knowledgeApi.getSchema).not.toHaveBeenCalled()
+    expect(knowledgeApi.getLog).not.toHaveBeenCalled()
+    expect(knowledgeApi.getPage).not.toHaveBeenCalled()
+  })
+
   it('localizes evolution enum-driven labels for zh-CN', async () => {
     const wrapper = await mountView('zh-CN')
 
@@ -1288,7 +1302,7 @@ describe('EvolutionView', () => {
       'line-clamp-2'
     )
     expect(wrapper.get('[data-testid="evolution-lane-supporting-knowledge"]').text()).toContain(
-      'Knowledge'
+      '1 unresolved conflicts'
     )
     expect(wrapper.get('[data-testid="evolution-lane-supporting-knowledge"]').classes()).toContain(
       'text-[11px]'

@@ -12,6 +12,7 @@ import {
   type SkillEvolutionCaseDetail,
   type SkillRevision,
 } from '@/api/harness'
+import { knowledgeApi } from '@/api/knowledge'
 import { selfReflectApi, type SelfReflectProposal } from '@/api/selfReflect'
 import { skillApi, type Skill, type SkillContentResponse } from '@/api/skill'
 import AutomationTabs from '@/components/automation/AutomationTabs.vue'
@@ -201,6 +202,7 @@ const settingsStore = useSettingsStore()
 
 const activePane = ref<EvolutionPane>('skills')
 const knowledgeLaneSummary = ref<KnowledgeLaneSummary | null>(null)
+const knowledgeLaneSummaryLoading = ref(false)
 
 const skillsLoading = ref(false)
 const skillsError = ref('')
@@ -3774,6 +3776,38 @@ const selectedInstructionPatchSummary = computed(() =>
 
 function updateKnowledgeLaneSummary(summary: KnowledgeLaneSummary) {
   knowledgeLaneSummary.value = summary
+  knowledgeLaneSummaryLoading.value = false
+}
+
+async function loadKnowledgeLaneSummary() {
+  knowledgeLaneSummaryLoading.value = true
+  try {
+    const [pagesResult, lintResult] = await Promise.allSettled([
+      knowledgeApi.listPages(),
+      knowledgeApi.getLatestLint(),
+    ])
+
+    if (pagesResult.status !== 'fulfilled') throw pagesResult.reason
+
+    const pages = pagesResult.value.data || []
+    const issues = lintResult.status === 'fulfilled' ? lintResult.value.data?.issues || [] : []
+    const conflicts =
+      pages.filter((page) => page.status === 'conflicted').length ||
+      issues.filter((issue) => issue.category === 'review_required').length ||
+      0
+    const gaps = issues.filter((issue) => issue.category === 'research_suggestions').length || 0
+
+    knowledgeLaneSummary.value = {
+      visiblePages: pages.length,
+      totalPages: pages.length,
+      conflicts,
+      gaps,
+    }
+  } catch {
+    // Keep the lane best-effort. The detailed Knowledge pane still owns full error handling.
+  } finally {
+    knowledgeLaneSummaryLoading.value = false
+  }
 }
 
 const evolutionLaneCards = computed<EvolutionLaneCard[]>(() => [
@@ -3784,9 +3818,14 @@ const evolutionLaneCards = computed<EvolutionLaneCard[]>(() => [
       'evolution.lanes.knowledgeDescription',
       'Ground the workspace in compiled pages, source-backed queries, and conflict or gap signals.'
     ),
-    metric: formatCount(knowledgeLaneSummary.value?.visiblePages || 0),
+    metric:
+      knowledgeLaneSummaryLoading.value && knowledgeLaneSummary.value == null
+        ? '...'
+        : formatCount(knowledgeLaneSummary.value?.visiblePages || 0),
     supporting:
-      knowledgeLaneSummary.value == null
+      knowledgeLaneSummaryLoading.value && knowledgeLaneSummary.value == null
+        ? tr('common.loading', 'Loading')
+        : knowledgeLaneSummary.value == null
         ? tr('knowledge.eyebrow', 'Knowledge Space')
         : (knowledgeLaneSummary.value.conflicts || 0) > 0
           ? trp('knowledge.conflictCount', '{count} unresolved conflicts', {
@@ -4164,7 +4203,7 @@ watch(
 
 onMounted(async () => {
   applyRouteFiltersFromQuery()
-  await loadSkillCatalog()
+  await Promise.all([loadSkillCatalog(), loadKnowledgeLaneSummary()])
 })
 
 async function loadSkillCatalog() {

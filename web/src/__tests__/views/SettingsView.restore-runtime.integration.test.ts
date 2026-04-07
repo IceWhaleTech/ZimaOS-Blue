@@ -175,6 +175,7 @@ function primeApiMocks() {
       small_model_runtime: 'llama.cpp',
       small_model_id: 'qwen3.5-0.8b-gguf-q4km',
       small_model_summary_enabled: true,
+      small_model_knowledge_fix_enabled: true,
       small_model_context_compress_enabled: true,
       small_model_doc_extract_enabled: true,
       context_compression_mode: 'auto',

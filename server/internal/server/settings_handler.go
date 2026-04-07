@@ -91,6 +91,7 @@ type Settings struct {
 	SmallModelID                        string                    `json:"small_model_id,omitempty"`                            // fixed: qwen3.5-0.8b-gguf-q4km
 	SmallModelAutoDownload              *bool                     `json:"small_model_auto_download,omitempty"`                 // default true
 	SmallModelSummaryEnabled            *bool                     `json:"small_model_summary_enabled,omitempty"`               // default false
+	SmallModelKnowledgeFixEnabled       *bool                     `json:"small_model_knowledge_fix_enabled,omitempty"`         // default false
 	ContextCompressionMode              string                    `json:"context_compression_mode,omitempty"`                  // offline|small_model|auto (legacy "off" coerces to auto)
 	SmallModelContextCompressEnabled    *bool                     `json:"small_model_context_compress_enabled,omitempty"`      // default false
 	SmallModelDocExtractEnabled         *bool                     `json:"small_model_doc_extract_enabled,omitempty"`           // default false
@@ -923,6 +924,11 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 			h.settings.SmallModelSummaryEnabled = &b
 		}
 	}
+	if v, ok := updates["small_model_knowledge_fix_enabled"]; ok {
+		if b, isBool := v.(bool); isBool {
+			h.settings.SmallModelKnowledgeFixEnabled = &b
+		}
+	}
 	if mode, ok := updates["context_compression_mode"].(string); ok {
 		switch mode {
 		case "off":
@@ -1512,6 +1518,15 @@ func (h *SettingsHandler) GetSmallModelSummaryEnabled() bool {
 	return *h.settings.SmallModelSummaryEnabled
 }
 
+func (h *SettingsHandler) GetSmallModelKnowledgeFixEnabled() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if h.settings.SmallModelKnowledgeFixEnabled == nil {
+		return false
+	}
+	return *h.settings.SmallModelKnowledgeFixEnabled
+}
+
 func (h *SettingsHandler) GetContextCompressionMode() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -1683,6 +1698,22 @@ func (h *SettingsHandler) SetSmallModelSummaryEnabled(enabled bool) (bool, error
 		return false, nil
 	}
 	h.settings.SmallModelSummaryEnabled = &enabled
+	if err := h.save(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SetSmallModelKnowledgeFixEnabled updates the wiki-fix acceleration switch and persists it.
+// Returns true when value changed.
+func (h *SettingsHandler) SetSmallModelKnowledgeFixEnabled(enabled bool) (bool, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.settings.SmallModelKnowledgeFixEnabled != nil && *h.settings.SmallModelKnowledgeFixEnabled == enabled {
+		return false, nil
+	}
+	h.settings.SmallModelKnowledgeFixEnabled = &enabled
 	if err := h.save(); err != nil {
 		return false, err
 	}
