@@ -283,17 +283,6 @@
     ],
     "deepseek": [
       {
-        "id": "deepseek-v3.2",
-        "display_name": "DeepSeek V3.2",
-        "capabilities": [
-          "chat",
-          "function_call",
-          "streaming",
-          "json",
-          "system_prompt"
-        ]
-      },
-      {
         "id": "deepseek-chat",
         "display_name": "DeepSeek Chat (V3)",
         "context_window": 128000,
@@ -1169,12 +1158,6 @@
       }
     ],
     "deepseek": [
-      {
-        "id": "deepseek/deepseek-v3.2",
-        "display_name": "deepseek-v3.2",
-        "pinchbench_score": 84.3,
-        "pinchbench_url": "https://pinchbench.com/submission/df86a99e-a26a-4785-9408-158577b05d7d"
-      },
       {
         "id": "deepseek/deepseek-chat",
         "display_name": "deepseek-chat",
