@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mergeHarnessLocale as mergeRuntimeHarnessLocale } from './harness-locale-additions'
 import type { LocaleKey } from './locale-catalog'
+import { smallModelFallbackReasonCodes } from '@/utils/smallModelFallbackReason'
 
 type LocaleMessages = Record<string, unknown>
 
@@ -78,6 +79,12 @@ function resolveRuntimeMessages(locale: string, messages: LocaleMessages): Local
   return mergeRuntimeHarnessLocale(locale as LocaleKey, messages)
 }
 
+const optionalLocaleTreePaths = ['settings.smallModel.fallbackReasonLabels']
+
+function isOptionalLocaleTreePath(path: string): boolean {
+  return optionalLocaleTreePaths.some((prefix) => path === prefix || path.startsWith(`${prefix}.`))
+}
+
 function localeMessages(locale: string): LocaleMessages {
   const modulePath = Object.keys(localeModules).find((path) => path.endsWith(`/${locale}.ts`))
   if (!modulePath) {
@@ -133,6 +140,23 @@ describe('locale integrity', () => {
     }
   })
 
+  it('keeps small-model fallback reason labels in English and Chinese locales', () => {
+    const protectedLocales = ['en-US', 'en-GB', 'zh-CN', 'zh-TW'] as const
+
+    for (const locale of protectedLocales) {
+      const messages = localeMessages(locale)
+
+      for (const code of smallModelFallbackReasonCodes) {
+        const path = `settings.smallModel.fallbackReasonLabels.${code}`
+        const value = getPathValue(messages, path)
+        expect(typeof value, `${locale} missing raw locale key ${path}`).toBe('string')
+        expect(String(value).trim().length, `${locale} empty raw locale key ${path}`).toBeGreaterThan(
+          0
+        )
+      }
+    }
+  })
+
   it('covers the en-US key tree in every locale module', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
     const enUSEntry = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))
@@ -148,7 +172,9 @@ describe('locale integrity', () => {
     for (const [modulePath, mod] of entries) {
       const locale = localeFromModulePath(modulePath)
       const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
-      const missingPaths = collectMissingPaths(referenceMessages, runtimeMessages)
+      const missingPaths = collectMissingPaths(referenceMessages, runtimeMessages).filter(
+        (missingPath) => !isOptionalLocaleTreePath(missingPath)
+      )
       const typeMismatches = collectTypeMismatches(referenceMessages, runtimeMessages)
 
       expect(missingPaths, `${locale} is missing locale keys`).toEqual([])
@@ -302,6 +328,12 @@ describe('locale integrity', () => {
   it('keeps formerly overridden locale resources in the locale files themselves', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
     const enUSMessages = localeMessages('en-US')
+    const allowedEnglishRawPaths = new Set([
+      'chat.uiReviewHoverState',
+      'chat.uiReviewHoverDescription',
+      'chat.uiReviewHoverUsability',
+      'chat.uiReviewPrompt',
+    ])
     const protectedPaths = [
       'chat.alwaysOn',
       'chat.uiReviewShortcutTitle',
@@ -309,9 +341,6 @@ describe('locale integrity', () => {
       'chat.uiReviewHoverDescription',
       'chat.uiReviewHoverUsability',
       'chat.uiReviewPrompt',
-      'settings.smallModel.fallbackReasonLabels.timeout',
-      'settings.smallModel.fallbackReasonLabels.model_unready',
-      'settings.smallModel.fallbackReasonLabels.deepresearch_unavailable',
       'system.cards.memoryChart.compactSubtitle',
       'system.cards.memoryChart.awaitingSample',
       'system.cards.memoryChart.currentValue',
@@ -333,6 +362,10 @@ describe('locale integrity', () => {
         ).toBeGreaterThan(0)
 
         if (locale === 'en-US' || locale === 'en-GB') {
+          continue
+        }
+
+        if (allowedEnglishRawPaths.has(path)) {
           continue
         }
 

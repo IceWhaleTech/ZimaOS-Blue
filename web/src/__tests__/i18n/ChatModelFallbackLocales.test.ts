@@ -48,7 +48,7 @@ describe('chat model fallback locale coverage', () => {
 
     for (const [fileName, source] of sources) {
       expect(source, `${fileName} should declare chat.modelFallback`).toMatch(
-        /"modelFallback"\s*:/
+        /["']?modelFallback["']?\s*:/
       )
     }
   })

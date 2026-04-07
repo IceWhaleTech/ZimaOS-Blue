@@ -575,6 +575,7 @@ export function buildSkillStoreDerivedBackfill(
     [statusPatch, 'installed', getString(messages, 'extensions.status.installed')],
     [statusPatch, 'local', followup.local],
     [statusPatch, 'ready', followup.ready],
+    [detailPatch, 'title', getString(messages, 'common.details')],
     [detailPatch, 'emptyTitle', getString(messages, 'skills.detail.emptyTitle')],
     [detailPatch, 'emptyDescription', getString(messages, 'skills.detail.emptyDescription')],
     [detailPatch, 'noDetails', getString(messages, 'skills.noContent')],

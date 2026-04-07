@@ -102,7 +102,9 @@ describe('browser monitor locale coverage', () => {
     expect(sources.size).toBe(27)
 
     for (const [fileName, source] of sources) {
-      expect(source, `${fileName} should declare browserMonitor`).toMatch(/"browserMonitor"\s*:/)
+      expect(source, `${fileName} should declare browserMonitor`).toMatch(
+        /["']?browserMonitor["']?\s*:/
+      )
     }
   })
 

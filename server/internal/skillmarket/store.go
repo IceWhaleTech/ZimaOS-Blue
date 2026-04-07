@@ -130,12 +130,21 @@ type skillReportLookupRow struct {
 }
 
 type skillSourceIDRow struct {
-	SourceID       *string `zorm:"source_id"`
-	OriginSourceID *string `zorm:"origin_source_id"`
+	SourceID         *string `zorm:"source_id"`
+	SourceName       *string `zorm:"source_name"`
+	OriginSourceID   *string `zorm:"origin_source_id"`
+	OriginSourceName *string `zorm:"origin_source_name"`
+	OriginSourceURL  *string `zorm:"origin_source_url"`
 }
 
 type sourcePriorityRow struct {
 	Priority int `zorm:"priority"`
+}
+
+type sourceIdentity struct {
+	ID   string
+	Name string
+	URL  string
 }
 
 type skillLatestVersionRow struct {
@@ -1291,10 +1300,14 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, records []*SkillUpsertReco
 			result.Inserted++
 			continue
 		}
+		existingSource, err := lookupSkillSourceRecord(ctx, tx, record.Doc.ID)
+		if err != nil {
+			return nil, err
+		}
 		shouldReplaceDoc, err := shouldReplaceSkillDocument(
 			ctx,
 			tx,
-			record.Doc.ID,
+			existingSource,
 			record.Doc.SourceID,
 			record.Doc.OriginSourceID,
 		)
@@ -1302,8 +1315,22 @@ func (s *Store) UpsertSkillBatch(ctx context.Context, records []*SkillUpsertReco
 			return nil, err
 		}
 		if !shouldReplaceDoc {
+			_, err := s.mergeTencentClawAlternateSourceIntoExisting(
+				ctx,
+				tx,
+				record.Doc.ID,
+				existingSource,
+				record.Doc,
+			)
+			if err != nil {
+				return nil, err
+			}
 			result.Skipped++
 			continue
+		}
+		carryForwardOriginSource(record.Doc, existingSource)
+		if err := s.mergeTencentClawAlternateSourceIntoIncoming(ctx, tx, record.Doc, existingSource); err != nil {
+			return nil, err
 		}
 		updateRecords = append(updateRecords, record)
 		appliedRecords = append(appliedRecords, record)
@@ -1939,26 +1966,26 @@ func (s *Store) updateSkillReports(ctx context.Context, tx *sql.Tx, records []*S
 	return nil
 }
 
-func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomingSourceID, incomingOriginSourceID string) (bool, error) {
-	if strings.TrimSpace(skillID) == "" {
-		return true, nil
-	}
-	var rows []skillSourceIDRow
-	if _, err := z.TableContext(ctx, tx, "skills").Select(&rows,
-		z.Fields("source_id", "origin_source_id"),
-		z.Where(z.Eq("id", skillID)),
-		z.Limit(1),
-	); err != nil {
+func shouldReplaceSkillDocument(
+	ctx context.Context,
+	tx *sql.Tx,
+	existing skillSourceIDRow,
+	incomingSourceID,
+	incomingOriginSourceID string,
+) (bool, error) {
+	existingSourceID, err := effectivePrioritySourceID(
+		ctx,
+		tx,
+		nullableStringValue(existing.SourceID),
+		nullableStringValue(existing.OriginSourceID),
+	)
+	if err != nil {
 		return false, err
 	}
-	if len(rows) == 0 {
-		return true, nil
+	incomingSourceID, err = effectivePrioritySourceID(ctx, tx, incomingSourceID, incomingOriginSourceID)
+	if err != nil {
+		return false, err
 	}
-	existingSourceID := effectivePrioritySourceID(
-		nullableStringValue(rows[0].SourceID),
-		nullableStringValue(rows[0].OriginSourceID),
-	)
-	incomingSourceID = effectivePrioritySourceID(incomingSourceID, incomingOriginSourceID)
 	if existingSourceID == "" || incomingSourceID == "" || existingSourceID == incomingSourceID {
 		return true, nil
 	}
@@ -1974,11 +2001,50 @@ func shouldReplaceSkillDocument(ctx context.Context, tx *sql.Tx, skillID, incomi
 	return incomingPriority <= existingPriority, nil
 }
 
-func effectivePrioritySourceID(sourceID, originSourceID string) string {
-	if trimmed := strings.TrimSpace(originSourceID); trimmed != "" {
-		return trimmed
+func lookupSkillSourceRecord(ctx context.Context, tx *sql.Tx, skillID string) (skillSourceIDRow, error) {
+	var rows []skillSourceIDRow
+	if _, err := z.TableContext(ctx, tx, "skills").Select(&rows,
+		z.Fields("source_id", "source_name", "origin_source_id", "origin_source_name", "origin_source_url"),
+		z.Where(z.Eq("id", skillID)),
+		z.Limit(1),
+	); err != nil {
+		return skillSourceIDRow{}, err
 	}
-	return strings.TrimSpace(sourceID)
+	if len(rows) == 0 {
+		return skillSourceIDRow{}, nil
+	}
+	return rows[0], nil
+}
+
+func effectivePrioritySourceID(
+	ctx context.Context,
+	tx *sql.Tx,
+	sourceID,
+	originSourceID string,
+) (string, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	originSourceID = strings.TrimSpace(originSourceID)
+	if sourceID == "" {
+		return originSourceID, nil
+	}
+	if originSourceID == "" {
+		return sourceID, nil
+	}
+	sourcePriority, err := lookupSourcePriority(ctx, tx, sourceID)
+	if err != nil {
+		return "", err
+	}
+	originPriority, err := lookupSourcePriority(ctx, tx, originSourceID)
+	if err != nil {
+		return "", err
+	}
+	if originPriority < sourcePriority {
+		return originSourceID, nil
+	}
+	if sourcePriority < originPriority {
+		return sourceID, nil
+	}
+	return originSourceID, nil
 }
 
 func lookupSourcePriority(ctx context.Context, tx *sql.Tx, sourceID string) (int, error) {
@@ -1997,6 +2063,145 @@ func lookupSourcePriority(ctx context.Context, tx *sql.Tx, sourceID string) (int
 		return math.MaxInt32, nil
 	}
 	return rows[0].Priority, nil
+}
+
+func carryForwardOriginSource(doc *SkillDocument, existing skillSourceIDRow) {
+	if doc == nil || strings.TrimSpace(doc.OriginSourceID) != "" {
+		return
+	}
+	doc.OriginSourceID = nullableStringValue(existing.OriginSourceID)
+	doc.OriginSourceName = nullableStringValue(existing.OriginSourceName)
+	doc.OriginSourceURL = nullableStringValue(existing.OriginSourceURL)
+}
+
+func isTencentClawDuplicatePair(leftSourceID, rightSourceID string) bool {
+	left := strings.TrimSpace(leftSourceID)
+	right := strings.TrimSpace(rightSourceID)
+	if left == "" || right == "" || left == right {
+		return false
+	}
+	return (left == "tencent-skillhub" && right == "clawhub") ||
+		(left == "clawhub" && right == "tencent-skillhub")
+}
+
+func canApplyAlternateSource(currentOriginSourceID, alternateSourceID string) bool {
+	alternateSourceID = strings.TrimSpace(alternateSourceID)
+	if alternateSourceID == "" {
+		return false
+	}
+	currentOriginSourceID = strings.TrimSpace(currentOriginSourceID)
+	return currentOriginSourceID == "" || currentOriginSourceID == alternateSourceID
+}
+
+func lookupSourceIdentity(
+	ctx context.Context,
+	tx *sql.Tx,
+	sourceID,
+	fallbackName string,
+) (sourceIdentity, error) {
+	sourceID = strings.TrimSpace(sourceID)
+	fallbackName = strings.TrimSpace(fallbackName)
+	if sourceID == "" {
+		return sourceIdentity{}, nil
+	}
+	var rows []sourceRow
+	if _, err := z.TableContext(ctx, tx, "skill_sources").Select(&rows,
+		z.Fields("id", "base_url", "display_name"),
+		z.Where(z.Eq("id", sourceID)),
+		z.Limit(1),
+	); err != nil {
+		return sourceIdentity{}, err
+	}
+	if len(rows) == 0 {
+		return sourceIdentity{
+			ID:   sourceID,
+			Name: defaultString(fallbackName, sourceID),
+		}, nil
+	}
+	return sourceIdentity{
+		ID:   rows[0].ID,
+		Name: defaultString(nullableStringValue(rows[0].DisplayName), defaultString(fallbackName, rows[0].ID)),
+		URL:  strings.TrimSpace(rows[0].BaseURL),
+	}, nil
+}
+
+func (s *Store) mergeTencentClawAlternateSourceIntoExisting(
+	ctx context.Context,
+	tx *sql.Tx,
+	skillID string,
+	existing skillSourceIDRow,
+	incoming *SkillDocument,
+) (bool, error) {
+	if incoming == nil || !isTencentClawDuplicatePair(nullableStringValue(existing.SourceID), incoming.SourceID) {
+		return false, nil
+	}
+	alternate, err := lookupSourceIdentity(ctx, tx, incoming.SourceID, incoming.SourceName)
+	if err != nil {
+		return false, err
+	}
+	if !canApplyAlternateSource(nullableStringValue(existing.OriginSourceID), alternate.ID) {
+		return false, nil
+	}
+	values := z.V{}
+	fields := make([]string, 0, 4)
+	if strings.TrimSpace(nullableStringValue(existing.OriginSourceID)) == "" {
+		values["origin_source_id"] = alternate.ID
+		fields = append(fields, "origin_source_id")
+	}
+	if strings.TrimSpace(nullableStringValue(existing.OriginSourceName)) == "" && alternate.Name != "" {
+		values["origin_source_name"] = alternate.Name
+		fields = append(fields, "origin_source_name")
+	}
+	if strings.TrimSpace(nullableStringValue(existing.OriginSourceURL)) == "" && alternate.URL != "" {
+		values["origin_source_url"] = alternate.URL
+		fields = append(fields, "origin_source_url")
+	}
+	if len(fields) == 0 {
+		return false, nil
+	}
+	values["updated_at"] = timeutil.NowTime()
+	fields = append(fields, "updated_at")
+	if _, err := z.TableContext(ctx, tx, "skills").Update(
+		values,
+		z.Fields(fields...),
+		z.Where(z.Eq("id", skillID)),
+	); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) mergeTencentClawAlternateSourceIntoIncoming(
+	ctx context.Context,
+	tx *sql.Tx,
+	doc *SkillDocument,
+	existing skillSourceIDRow,
+) error {
+	if doc == nil || !isTencentClawDuplicatePair(nullableStringValue(existing.SourceID), doc.SourceID) {
+		return nil
+	}
+	alternate, err := lookupSourceIdentity(
+		ctx,
+		tx,
+		nullableStringValue(existing.SourceID),
+		nullableStringValue(existing.SourceName),
+	)
+	if err != nil {
+		return err
+	}
+	if !canApplyAlternateSource(doc.OriginSourceID, alternate.ID) {
+		return nil
+	}
+	if strings.TrimSpace(doc.OriginSourceID) == "" {
+		doc.OriginSourceID = alternate.ID
+	}
+	if strings.TrimSpace(doc.OriginSourceName) == "" {
+		doc.OriginSourceName = alternate.Name
+	}
+	if strings.TrimSpace(doc.OriginSourceURL) == "" {
+		doc.OriginSourceURL = alternate.URL
+	}
+	return nil
 }
 
 func (s *Store) UpsertSource(ctx context.Context, source Source) error {

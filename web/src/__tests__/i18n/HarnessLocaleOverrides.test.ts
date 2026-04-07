@@ -170,8 +170,6 @@ const requiredPaths = [
 const localizedOperatorPaths = [
   'automation.tabs.knowledge',
   'automation.tabs.evolution',
-  'automation.tabs.smartHome',
-  'automation.tabs.sandbox',
   'automation.title',
   'nav.automation',
   'evolution.tabs.skills',

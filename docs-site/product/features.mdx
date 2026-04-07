@@ -1,88 +1,31 @@
 ---
 title: "Features"
-summary: "A current, user-facing map of the major Blue capabilities now visible across the runtime and web app."
+summary: "A tighter capability matrix for the current Blue runtime and web product surface."
 ---
 
 # Features
 
 ![Feature overview](/assets/features.png)
 
-Blue has moved beyond a minimal chat shell. The current product surface spans runtime setup, provider routing, automation, evaluation, extensions, voice, and day-two operations.
+Blue is no longer just a chat shell with model wiring. It now reads more clearly as a local-first, evaluatable, evolvable, long-running agent runtime. The matrix below compresses the product surface into the main promises it already makes.
 
-## Local-first runtime
+| Capability | What It Delivers |
+| --- | --- |
+| Harness Runtime, Evaluation, and Evolution Framework | Makes agent evaluation a first-class runtime layer across development, training, and live operation. Blue can run regression and smoke-style checks, score runs, compare against baselines, inspect reports and evidence, and validate runtime behavior. The same Harness evidence path also covers skill evolution, follow-up evaluation, promotion or rollback decisions, and `AGENTS.md` or instruction proposal review. Those proposals can come from the execution loop through Ralph Loop, auto-confirm, and self-reflection. |
+| Multimodal Native-Capability-First Runtime | Brings voice, OCR, PDF, browser tasks, document conversion, structured form filling, media processing, and media generation into one native-first execution path. When the job can stay on system and local capabilities, Blue does not needlessly bounce it through an external model, which improves latency, reliability, cost, and always-on agent ergonomics. When needed, it can route by intent into native `t2i`, `t2v`, `i2v`, and `i2i` generation pipelines with no-key fallback, rather than stopping at media understanding. |
+| Three-in-One Research Runtime | Exposes one public `research` entry that can auto-route between `deep_research`, `analyze`, and `ui_review`. Underneath, Blue keeps a controllable discovery stack with concurrent providers, caching, deduplication, result fusion, policy-driven fetching, and page reading, then turns that into citation-first research, bounded analysis reports, and structured UI, UX, and accessibility review deliverables. |
+| Security and Governance | Blue includes sandbox execution, prompt-injection defense, session auditing, permission control, RBAC, WebAuthn, operational guardrails, and skill security auditing and scanning. |
+| LLM Wiki and Knowledge Space | Turns memory, research, and runtime outputs into a wiki-like knowledge surface instead of stopping at recall. The long-term shape includes knowledge compilation, summary pages, indexes, backlinks, freshness, and archive workflows. |
+| Skill Store and Marketplace | Provides built-in skill discovery, curation, sync, and local scanning so extensibility exists from day one. |
+| Production-Grade Provider Pool | Goes beyond a simple fallback chain. The routing layer already includes a provider pool, health checks, automatic failover, circuit breakers, and provider racing for long-running and production-style workloads. |
+| Built-In Local Small Model Runtime | Ships a built-in `Qwen3.5-0.8B + llama.cpp` small-model runtime with auto-download and local acceleration. It can absorb short Q&A, image recognition, tool routing, summarization, context compression, and document pre-processing locally. |
+| Long-Running Reliability | Treats OTA updates, backup and restore, config hot reload, and post-failure recovery as built-in operating concerns rather than afterthoughts. |
 
-- Go-native runtime with low startup and memory overhead
-- Desktop, server, NAS, edge, and Raspberry Pi style deployment targets
-- Local-first execution model with auditable boundaries
-- Preview-aware startup and onboarding flows for first-run or single-user environments
+## Keep Reading
 
-## Interaction surfaces
-
-- Web chat plus dedicated settings, channels, security, audit, automation, billing, tenant, and extension views
-- Messaging integrations across more than twenty platforms
-- Voice chat with speech-to-text, text-to-speech, session handling, and streaming responses
-- Form-filling helpers for browser workflows and repeated data entry
-- External agent sessions that let Blue coordinate ACP and A2A style agents beside the main runtime
-- One `Research` entry in chat that can auto-route between deep research, bounded analysis, and UI review while keeping distinct final result cards
-
-## Unified research workflows
-
-Blue now treats research as one family instead of three unrelated public entry points.
-
-- `research` is the canonical public entry
-- `mode=auto` can choose between `deep_research`, `analyze`, and `ui_review`
-- The runtime shares one research-family job model internally
-- Final user-facing outputs still remain mode-specific
-
-Read [Research Workflows](/guides/research-workflows) for the routing cues, mode-specific inputs, and public-interface guidance.
-
-## Provider and model control plane
-
-![Provider overview](/assets/providers.png)
-
-- Built-in, platform, custom, trial, and media provider categories in one provider pool
-- Custom provider onboarding with base URL, API key, routing priority, API format, and cloud or local location metadata
-- Verification, model refresh, pricing review, allowed-model controls, and IDE-assisted discovery
-- Default provider selection, drag-sort ordering, failover, health checks, and provider racing
-- Model-family routing and fallback patterns that separate product behavior from a single vendor contract
-
-Read [Settings and Provider Pool](/guides/settings-provider-pool) and [Providers and Models](/guides/providers-models) for the operator view.
-
-## Automation, harness, and evolution
-
-- Cron, workflow, webhook, browser-automation, and form-oriented entry points
-- Harness run groups for experiments, batches, and reusable evaluations
-- Dataset, dataset version, eval spec, baseline, and report management
-- Scoring modes for rule, judge, or hybrid evaluation
-- Run artifacts, traces, approvals, and evidence-backed reporting
-- Evolution workflows for skill revisions, rollback or promote decisions, and self-reflection proposals with patch previews
-
-Read [Automation](/guides/automation) and [Harness and Evolution](/guides/harness-evolution) for the tracked execution workflow.
-
-## Extensions and knowledge surfaces
-
-- Local skill management plus remote skill-store browsing
-- Skill source import preview, curated ranking, and search across multiple sources
-- Security badges, install-type metadata, artifact classification, and vulnerability signals before install
-- Tool catalog surfaces alongside skills so teams can govern reusable capabilities in one place
-
-Read [Extensions](/guides/extensions) for the extension lifecycle.
-
-## Security, governance, and operations
-
-- Sandbox execution
-- Prompt injection defense
-- Session auditing and audit-log export
-- Security scan, threat visibility, blocked IP management, and prompt firewall controls
-- Billing summaries for token, cost, latency, and anomaly-style drilldowns
-- Tenant and workspace management, user membership, invitations, and limits
-- RBAC and WebAuthn support
-- Backup, restore, memory, and user-data management inside settings workflows
-
-Read [Admin and Operations](/guides/admin-operations) for the day-two operator story.
-
-## Product philosophy
-
-![Design principles](/assets/design_principle.png)
-
-Blue aims to minimize boilerplate so builders can focus on agent behavior, product shape, and integrations instead of hand-assembling the runtime stack.
+- [Research Workflows](/guides/research-workflows)
+- [Settings and Provider Pool](/guides/settings-provider-pool)
+- [Harness and Evolution](/guides/harness-evolution)
+- [Extensions](/guides/extensions)
+- [Voice and Form Filling](/guides/voice-form-filling)
+- [Admin and Operations](/guides/admin-operations)

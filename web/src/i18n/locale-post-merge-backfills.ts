@@ -519,6 +519,7 @@ const localizedWebTermLabels: Partial<Record<LocaleKey, string>> = {
   'it-IT': 'Sito web',
   'nb-NO': 'Nettsted',
   'nl-NL': 'Website',
+  'pl-PL': 'Strona WWW',
   'pt-BR': 'Site',
   'pt-PT': 'Site',
   'ro-RO': 'Site web',

@@ -92,8 +92,11 @@ function findLocaleMessagesObject(sourceFile) {
     if (found) return
     if (ts.isCallExpression(node)) {
       const callee = node.expression
-      const calleeName =
-        ts.isIdentifier(callee) ? callee.text : ts.isPropertyAccessExpression(callee) ? callee.name.text : null
+      const calleeName = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee)
+          ? callee.name.text
+          : null
       if (calleeName === 'mergeHarnessLocale' && node.arguments.length >= 2) {
         const arg = node.arguments[1]
         if (ts.isObjectLiteralExpression(arg)) {
@@ -192,7 +195,9 @@ function collectUsedKeysFromCalls(content) {
     const head = rawArg[0]
     const tail = rawArg[rawArg.length - 1]
     const isQuoted =
-      (head === "'" && tail === "'") || (head === '"' && tail === '"') || (head === '`' && tail === '`')
+      (head === "'" && tail === "'") ||
+      (head === '"' && tail === '"') ||
+      (head === '`' && tail === '`')
 
     if (isQuoted) {
       const inner = rawArg.slice(1, -1)
@@ -241,7 +246,13 @@ function collectI18nKeyStringLiterals(content) {
 
 function pruneLocaleFile(filePath, usedKeys) {
   const raw = fs.readFileSync(filePath, 'utf8')
-  const sourceFile = ts.createSourceFile(filePath, raw, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS)
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    raw,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TS
+  )
   const messagesObject = findLocaleMessagesObject(sourceFile)
   if (!messagesObject) {
     throw new Error(`Unable to locate mergeHarnessLocale(..., { ... }) in ${filePath}`)
@@ -305,9 +316,21 @@ function pruneLocaleFile(filePath, usedKeys) {
 function main() {
   const { apply, details } = parseArgs(process.argv.slice(2))
 
+  if (apply) {
+    throw new Error(
+      'Automatic locale pruning is disabled. This codebase uses dynamic i18n scopes and runtime backfills, so candidate keys must be reviewed manually.'
+    )
+  }
+
   const enUSPath = path.join(LOCALES_DIR, 'en-US.ts')
   const enUSRaw = fs.readFileSync(enUSPath, 'utf8')
-  const enUSSourceFile = ts.createSourceFile(enUSPath, enUSRaw, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS)
+  const enUSSourceFile = ts.createSourceFile(
+    enUSPath,
+    enUSRaw,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TS
+  )
   const enUSMessages = findLocaleMessagesObject(enUSSourceFile)
   if (!enUSMessages) {
     throw new Error('en-US.ts does not contain mergeHarnessLocale(..., { ... })')
@@ -318,7 +341,7 @@ function main() {
   const allKeySet = new Set(allKeysArray)
 
   const webSourceFiles = collectFiles(SRC_DIR, ['.vue', '.ts', '.js']).filter(
-    (filePath) => !isExcludedSourceFile(filePath),
+    (filePath) => !isExcludedSourceFile(filePath)
   )
   const serverSourceFiles = fs.existsSync(SERVER_DIR) ? collectFiles(SERVER_DIR, ['.go']) : []
   const scannedSourceFiles = [...webSourceFiles, ...serverSourceFiles]
@@ -341,7 +364,7 @@ function main() {
 
       for (const { prefix, suffix } of usage.patterns) {
         const regex = new RegExp(
-          `^${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}.*${suffix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}$`,
+          `^${prefix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}.*${suffix.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}$`
         )
         const matches = allKeysArray.filter((key) => regex.test(key))
         if (matches.length === 0) {
@@ -416,24 +439,7 @@ function main() {
     }
   }
 
-  if (!apply) {
-    return
-  }
-
-  const localeFiles = fs
-    .readdirSync(LOCALES_DIR)
-    .filter((name) => name.endsWith('.ts'))
-    .sort()
-
-  let changedCount = 0
-  for (const fileName of localeFiles) {
-    const filePath = path.join(LOCALES_DIR, fileName)
-    const changed = pruneLocaleFile(filePath, usedKeys)
-    if (changed) changedCount += 1
-  }
-
-  // eslint-disable-next-line no-console
-  console.log(`\npruned locale files: ${changedCount}/${localeFiles.length}`)
+  return
 }
 
 try {
