@@ -48,11 +48,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Review skills, runner changes, and instruction proposals with evidence and safe approvals.',
       tabs: {
+        knowledge: 'Knowledge',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Review Queue',
       },
       lanes: {
+        knowledgeDescription:
+          'Ground the workspace in compiled pages, source-backed queries, and conflict or gap signals.',
         skillsDescription:
           'Review canonical skills, accepted revisions, and rollback readiness.',
         runnerDescription:
@@ -88,11 +91,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Review skills, runner changes, and instruction proposals with evidence and safe approvals.',
       tabs: {
+        knowledge: 'Knowledge',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Review Queue',
       },
       lanes: {
+        knowledgeDescription:
+          'Ground the workspace in compiled pages, source-backed queries, and conflict or gap signals.',
         skillsDescription:
           'Review canonical skills, accepted revisions, and rollback readiness.',
         runnerDescription:
@@ -114,10 +120,10 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
 	    knowledge: {
 	      controlEyebrow: '知识控制',
 	      controlTitle: '摄入并维护 Blue 知识',
-	      controlDescription: '运行摄入与检查任务，并进入 schema 与活动面板继续查看。',
+	      controlDescription: '运行摄入与检查任务，并进入结构定义与活动面板继续查看。',
 	      eyebrow: '知识空间',
 	      title: '增量摄入、持久 wiki 页面与查询沉淀',
-	      description: '将本地来源整理成持久知识 wiki，并在 schema、活动日志、冲突与查询沉淀之间持续演化。',
+	      description: '将本地来源整理成持久知识 wiki，并在结构定义、活动日志、冲突与查询沉淀之间持续演化。',
 	      pageList: '编译页面',
 	      pageCount: '{count} 个编译页面',
 	      searchResultCount: '{visible} / {total} 个页面',
@@ -205,12 +211,12 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
 	      queryHint: '查询 wiki、保存高质量答案，并将持久综合内容沉淀回知识空间。',
 	      queryPlaceholder: '这个知识空间最近发生了什么变化？哪些结论可信？我接下来该重点查什么？',
 	      activityTitle: '最近活动',
-	      activityHint: '查看最新的摄入、查询、检查与 schema 事件。',
-	      schemaTitle: 'Schema',
+	      activityHint: '查看最新的摄入、查询、检查与结构定义事件。',
+	      schemaTitle: '结构定义',
 	      schemaHint: '定义 wiki 应如何组织与分组。',
-	      openSchema: '打开 Schema',
+	      openSchema: '打开结构定义',
 	      openLog: '打开日志',
-	      saveSchema: '保存 Schema',
+	      saveSchema: '保存结构定义',
 	      saveAnswer: '保存答案历史',
       promoteToWiki: '提升为 Wiki 页面',
       query: '查询',
@@ -225,7 +231,8 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
 	      openGaps: '待补空洞',
 	      conflictCount: '{count} 个未解决冲突',
 	      gapCount: '{count} 个待补空洞',
-      schemaSaved: '知识 schema 已保存。',
+      active: '当前',
+      schemaSaved: '知识结构定义已保存。',
 	      promoted: '查询结果已沉淀到 wiki。',
 	      scopeAll: '全部',
 	      scopeCurrentPage: '当前页面',
@@ -236,11 +243,13 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
 	      title: '自修复与演进控制台',
 	      subtitle: '基于证据与安全审批，审查技能、运行器变更和指令提案。',
       tabs: {
+        knowledge: '知识',
         skills: '技能',
         runner: '运行器',
         instructions: '审查队列',
       },
       lanes: {
+        knowledgeDescription: '以编译页面、有依据的查询与冲突或空洞信号作为整个工作台的知识底座。',
         skillsDescription: '审查规范技能、已接受修订与回滚准备情况。',
         runnerDescription: '检查运行器候选、执行证据与切换边界。',
         instructionsDescription: '审查指令提案，并保持 AGENTS.md 审批显式可控。',
@@ -478,12 +487,12 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
 	      queryHint: '查詢 wiki、保存高品質答案，並將持久綜合內容沉澱回知識空間。',
 	      queryPlaceholder: '這個知識空間最近發生了什麼變化？哪些結論可信？我接下來該重點查什麼？',
 	      activityTitle: '最近活動',
-	      activityHint: '查看最新的匯入、查詢、檢查與 schema 事件。',
-	      schemaTitle: 'Schema',
+	      activityHint: '查看最新的匯入、查詢、檢查與結構定義事件。',
+	      schemaTitle: '結構定義',
 	      schemaHint: '定義 wiki 應如何組織與分組。',
-	      openSchema: '打開 Schema',
+	      openSchema: '打開結構定義',
 	      openLog: '打開日誌',
-	      saveSchema: '保存 Schema',
+	      saveSchema: '保存結構定義',
 	      saveAnswer: '保存答案歷史',
 	      promoteToWiki: '提升為 Wiki 頁面',
 	      query: '查詢',
@@ -498,7 +507,8 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
 	      openGaps: '待補空洞',
 	      conflictCount: '{count} 個未解決衝突',
 	      gapCount: '{count} 個待補空洞',
-	      schemaSaved: '知識 schema 已保存。',
+	      active: '當前',
+	      schemaSaved: '知識結構定義已保存。',
 	      promoted: '查詢結果已沉澱到 wiki。',
 	      scopeAll: '全部',
 	      scopeCurrentPage: '當前頁面',
@@ -509,11 +519,13 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
 	      title: '自我修復與演進主控台',
 	      subtitle: '基於證據與安全審批，審查技能、運行器變更與指令提案。',
       tabs: {
+        knowledge: '知識',
         skills: '技能',
         runner: '運行器',
         instructions: '審查佇列',
       },
       lanes: {
+        knowledgeDescription: '以編譯頁面、有依據的查詢與衝突或空洞訊號作為整個工作台的知識底座。',
         skillsDescription: '審查規範技能、已接受修訂與回滾準備情況。',
         runnerDescription: '檢查運行器候選、執行證據與切換邊界。',
         instructionsDescription: '審查指令提案，並保持 AGENTS.md 審批顯式可控。',
@@ -672,11 +684,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         '証拠と安全な承認にもとづいて、スキル、Runner 変更、指示提案を確認します。',
       tabs: {
+        knowledge: 'ナレッジ',
         skills: 'スキル',
         runner: 'Runner',
         instructions: 'レビューキュー',
       },
       lanes: {
+        knowledgeDescription:
+          'コンパイル済みページ、ソースに基づく質問、競合や欠落シグナルをこのワークスペースの土台として扱います。',
         skillsDescription: '正規スキル、承認済みリビジョン、ロールバック準備を確認します。',
         runnerDescription: 'Runner 候補、実行証拠、切り替え境界を確認します。',
         instructionsDescription: '指示提案を確認し、AGENTS.md 承認を明示的に保ちます。',
@@ -706,11 +721,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       title: '자가 복구 및 진화 콘솔',
       subtitle: '증거와 안전한 승인에 따라 스킬, Runner 변경, 지침 제안을 검토합니다.',
       tabs: {
+        knowledge: '지식',
         skills: '스킬',
         runner: 'Runner',
         instructions: '검토 대기열',
       },
       lanes: {
+        knowledgeDescription:
+          '컴파일된 페이지, 근거 있는 질의, 충돌 또는 공백 신호를 이 작업공간의 기반으로 삼습니다.',
         skillsDescription: '정식 스킬, 승인된 리비전, 롤백 준비 상태를 검토합니다.',
         runnerDescription: 'Runner 후보, 실행 증거, 전환 경계를 점검합니다.',
         instructionsDescription: '지침 제안을 검토하고 AGENTS.md 승인을 명시적으로 유지합니다.',
@@ -743,11 +761,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Examinez les skills, les changements du runner et les propositions d’instructions avec preuves et validations sûres.',
       tabs: {
+        knowledge: 'Connaissance',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'File de revue',
       },
       lanes: {
+        knowledgeDescription:
+          'Ancrez l’espace de travail dans les pages compilées, les requêtes appuyées sur des sources et les signaux de conflit ou de manque.',
         skillsDescription:
           'Examinez les skills canoniques, les révisions acceptées et la préparation au rollback.',
         runnerDescription:
@@ -783,11 +804,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Prüfen Sie Skills, Runner-Änderungen und Instruktionsvorschläge mit Belegen und sicheren Freigaben.',
       tabs: {
+        knowledge: 'Wissen',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Prüfwarteschlange',
       },
       lanes: {
+        knowledgeDescription:
+          'Verankern Sie den Arbeitsbereich in kompilierten Seiten, quellengestützten Abfragen sowie Konflikt- und Lückensignalen.',
         skillsDescription:
           'Prüfen Sie kanonische Skills, akzeptierte Revisionen und die Rollback-Bereitschaft.',
         runnerDescription:
@@ -823,11 +847,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Revisa skills, cambios del runner y propuestas de instrucciones con evidencia y aprobaciones seguras.',
       tabs: {
+        knowledge: 'Conocimiento',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Cola de revisión',
       },
       lanes: {
+        knowledgeDescription:
+          'Sustenta el espacio de trabajo con páginas compiladas, consultas respaldadas por fuentes y señales de conflictos o vacíos.',
         skillsDescription:
           'Revisa skills canónicas, revisiones aceptadas y preparación para rollback.',
         runnerDescription:
@@ -863,11 +890,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Revise skills, mudanças do runner e propostas de instruções com evidências e aprovações seguras.',
       tabs: {
+        knowledge: 'Conhecimento',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Fila de revisão',
       },
       lanes: {
+        knowledgeDescription:
+          'Baseie o workspace em páginas compiladas, consultas com respaldo em fontes e sinais de conflitos ou lacunas.',
         skillsDescription:
           'Revise skills canônicas, revisões aceitas e prontidão para rollback.',
         runnerDescription:
@@ -903,11 +933,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Reveja skills, alterações do runner e propostas de instruções com evidência e aprovações seguras.',
       tabs: {
+        knowledge: 'Conhecimento',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Fila de revisão',
       },
       lanes: {
+        knowledgeDescription:
+          'Baseie o workspace em páginas compiladas, consultas suportadas por fontes e sinais de conflitos ou lacunas.',
         skillsDescription:
           'Reveja skills canónicas, revisões aceites e preparação para rollback.',
         runnerDescription:
@@ -943,11 +976,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Esamina skill, cambiamenti del runner e proposte di istruzioni con evidenze e approvazioni sicure.',
       tabs: {
+        knowledge: 'Conoscenza',
         skills: 'Skill',
         runner: 'Runner',
         instructions: 'Coda di revisione',
       },
       lanes: {
+        knowledgeDescription:
+          'Radica il workspace in pagine compilate, query supportate da fonti e segnali di conflitti o lacune.',
         skillsDescription:
           'Esamina skill canoniche, revisioni accettate e preparazione al rollback.',
         runnerDescription:
@@ -983,11 +1019,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Bekijk skills, runner-wijzigingen en instructievoorstellen met bewijs en veilige goedkeuringen.',
       tabs: {
+        knowledge: 'Kennis',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Beoordelingswachtrij',
       },
       lanes: {
+        knowledgeDescription:
+          'Veranker de werkruimte in gecompileerde pagina’s, bron-onderbouwde query’s en signalen van conflicten of hiaten.',
         skillsDescription:
           'Bekijk canonieke skills, geaccepteerde revisies en rollback-gereedheid.',
         runnerDescription:
@@ -1023,11 +1062,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Przeglądaj skille, zmiany runnera i propozycje instrukcji z dowodami oraz bezpiecznymi akceptacjami.',
       tabs: {
+        knowledge: 'Wiedza',
         skills: 'Skille',
         runner: 'Runner',
         instructions: 'Kolejka przeglądu',
       },
       lanes: {
+        knowledgeDescription:
+          'Oprzyj przestrzeń roboczą na skompilowanych stronach, zapytaniach popartych źródłami oraz sygnałach konfliktów lub luk.',
         skillsDescription:
           'Przeglądaj kanoniczne skille, zaakceptowane rewizje i gotowość do rollbacku.',
         runnerDescription:
@@ -1063,11 +1105,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Проверяйте навыки, изменения runner и предложения по инструкциям с доказательствами и безопасными одобрениями.',
       tabs: {
+        knowledge: 'Знания',
         skills: 'Навыки',
         runner: 'Runner',
         instructions: 'Очередь проверки',
       },
       lanes: {
+        knowledgeDescription:
+          'Сделайте основой рабочего пространства скомпилированные страницы, запросы с опорой на источники и сигналы конфликтов или пробелов.',
         skillsDescription:
           'Проверяйте канонические навыки, принятые ревизии и готовность к откату.',
         runnerDescription:
@@ -1103,11 +1148,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Granska skills, runner-ändringar och instruktionsförslag med bevis och säkra godkännanden.',
       tabs: {
+        knowledge: 'Kunskap',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Granskningskö',
       },
       lanes: {
+        knowledgeDescription:
+          'Förankra arbetsytan i kompilerade sidor, källstödda frågor och signaler om konflikter eller luckor.',
         skillsDescription:
           'Granska kanoniska skills, accepterade revisioner och rollback-beredskap.',
         runnerDescription:
@@ -1143,11 +1191,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Gjennomgå ferdigheter, runner-endringer og instruksjonsforslag med bevis og trygge godkjenninger.',
       tabs: {
+        knowledge: 'Kunnskap',
         skills: 'Ferdigheter',
         runner: 'Runner',
         instructions: 'Vurderingskø',
       },
       lanes: {
+        knowledgeDescription:
+          'Forankre arbeidsområdet i kompilerte sider, kildebaserte spørsmål og signaler om konflikter eller hull.',
         skillsDescription:
           'Gjennomgå kanoniske ferdigheter, aksepterte revisjoner og rollback-beredskap.',
         runnerDescription:
@@ -1183,11 +1234,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Gennemse skills, runner-ændringer og instruktionsforslag med evidens og sikre godkendelser.',
       tabs: {
+        knowledge: 'Viden',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Gennemgangskø',
       },
       lanes: {
+        knowledgeDescription:
+          'Forankr arbejdsområdet i kompilerede sider, kildeunderbyggede forespørgsler og signaler om konflikter eller huller.',
         skillsDescription:
           'Gennemse kanoniske skills, accepterede revisioner og rollback-beredskab.',
         runnerDescription:
@@ -1223,11 +1277,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Kontrolujte dovednosti, změny runneru a návrhy instrukcí s důkazy a bezpečnými schváleními.',
       tabs: {
+        knowledge: 'Znalosti',
         skills: 'Dovednosti',
         runner: 'Runner',
         instructions: 'Fronta revize',
       },
       lanes: {
+        knowledgeDescription:
+          'Ukotvěte pracovní prostor v kompilovaných stránkách, dotazech podložených zdroji a signálech konfliktů nebo mezer.',
         skillsDescription:
           'Kontrolujte kanonické dovednosti, přijaté revize a připravenost na rollback.',
         runnerDescription:
@@ -1263,11 +1320,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Kontrolujte zručnosti, zmeny runnera a návrhy inštrukcií s dôkazmi a bezpečnými schváleniami.',
       tabs: {
+        knowledge: 'Znalosti',
         skills: 'Zručnosti',
         runner: 'Runner',
         instructions: 'Front kontrol',
       },
       lanes: {
+        knowledgeDescription:
+          'Ukotvite workspace v kompilovaných stránkach, otázkach podložených zdrojmi a signáloch konfliktov alebo medzier.',
         skillsDescription:
           'Kontrolujte kanonické zručnosti, prijaté revízie a pripravenosť na rollback.',
         runnerDescription:
@@ -1303,11 +1363,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Revizuiți skill-uri, schimbări ale runnerului și propuneri de instrucțiuni cu dovezi și aprobări sigure.',
       tabs: {
+        knowledge: 'Cunoștințe',
         skills: 'Skill-uri',
         runner: 'Runner',
         instructions: 'Coada de revizuire',
       },
       lanes: {
+        knowledgeDescription:
+          'Ancorați workspace-ul în pagini compilate, interogări susținute de surse și semnale despre conflicte sau goluri.',
         skillsDescription:
           'Revizuiți skill-urile canonice, reviziile acceptate și pregătirea pentru rollback.',
         runnerDescription:
@@ -1343,11 +1406,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Vizsgálja a skilleket, a runner változásait és az utasításjavaslatokat bizonyítékokkal és biztonságos jóváhagyásokkal.',
       tabs: {
+        knowledge: 'Tudás',
         skills: 'Skillek',
         runner: 'Runner',
         instructions: 'Felülvizsgálati sor',
       },
       lanes: {
+        knowledgeDescription:
+          'Az workspace alapját az összeállított oldalak, forrásokkal alátámasztott lekérdezések, valamint az ütközésekre vagy hiányokra utaló jelzések adják.',
         skillsDescription:
           'Vizsgálja a kanonikus skilleket, az elfogadott revíziókat és a rollback-készültséget.',
         runnerDescription:
@@ -1383,11 +1449,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Pregledajte vještine, promjene runnera i prijedloge uputa uz dokaze i sigurna odobrenja.',
       tabs: {
+        knowledge: 'Znanje',
         skills: 'Vještine',
         runner: 'Runner',
         instructions: 'Red za pregled',
       },
       lanes: {
+        knowledgeDescription:
+          'Utemeljite radni prostor na kompiliranim stranicama, upitima potkrijepljenima izvorima te signalima sukoba ili praznina.',
         skillsDescription:
           'Pregledajte kanonske vještine, prihvaćene revizije i spremnost za rollback.',
         runnerDescription:
@@ -1423,11 +1492,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Athbhreithnigh scileanna, athruithe runner agus tograí treoracha le fianaise agus ceaduithe sábháilte.',
       tabs: {
+        knowledge: 'Eolas',
         skills: 'Scileanna',
         runner: 'Runner',
         instructions: 'Scuaine athbhreithnithe',
       },
       lanes: {
+        knowledgeDescription:
+          'Bunaigh an workspace ar leathanaigh chomhdhlúite, ceisteanna le tacaíocht foinsí agus comharthaí coinbhleachta nó bearnaí.',
         skillsDescription:
           'Athbhreithnigh scileanna canónacha, leasuithe glactha agus ullmhacht rollback.',
         runnerDescription:
@@ -1463,11 +1535,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Revisa skills, canvis del runner i propostes d’instruccions amb evidència i aprovacions segures.',
       tabs: {
+        knowledge: 'Coneixement',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Cua de revisió',
       },
       lanes: {
+        knowledgeDescription:
+          'Arrela l’espai de treball en pàgines compilades, consultes sostingudes per fonts i senyals de conflictes o buits.',
         skillsDescription:
           'Revisa skills canòniques, revisions acceptades i preparació per al rollback.',
         runnerDescription:
@@ -1503,11 +1578,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'Ελέγξτε skills, αλλαγές runner και προτάσεις οδηγιών με αποδείξεις και ασφαλείς εγκρίσεις.',
       tabs: {
+        knowledge: 'Γνώση',
         skills: 'Skills',
         runner: 'Runner',
         instructions: 'Ουρά αξιολόγησης',
       },
       lanes: {
+        knowledgeDescription:
+          'Θεμελιώστε τον χώρο εργασίας σε μεταγλωττισμένες σελίδες, ερωτήματα με τεκμηρίωση από πηγές και σήματα συγκρούσεων ή κενών.',
         skillsDescription:
           'Ελέγξτε κανονικά skills, αποδεκτές αναθεωρήσεις και ετοιμότητα rollback.',
         runnerDescription:
@@ -1543,11 +1621,14 @@ const automationKnowledgeEvolutionBackfills: Partial<Record<LocaleKey, object>> 
       subtitle:
         'തെളിവുകളും സുരക്ഷിതമായ അംഗീകാരങ്ങളും ഉപയോഗിച്ച് സ്കില്ലുകൾ, runner മാറ്റങ്ങൾ, നിർദ്ദേശ നിർദേശങ്ങൾ എന്നിവ പരിശോധിക്കുക.',
       tabs: {
+        knowledge: 'ജ്ഞാനം',
         skills: 'സ്കില്ലുകൾ',
         runner: 'Runner',
         instructions: 'പരിശോധന ക്യൂ',
       },
       lanes: {
+        knowledgeDescription:
+          'കമ്പൈൽ ചെയ്ത പേജുകൾ, സ്രോതസ്സുകളുടെ പിന്തുണയുള്ള ചോദ്യങ്ങൾ, സംഘർഷങ്ങളുടെയോ പോരായ്മകളുടെയോ സൂചനകൾ എന്നിവയെ ഈ workspace-ന്റെ അടിത്തറയാക്കുക.',
         skillsDescription:
           'കാനോണിക്കൽ സ്കില്ലുകൾ, അംഗീകരിച്ച റിവിഷനുകൾ, rollback തയ്യാറെടുപ്പ് എന്നിവ പരിശോധിക്കുക.',
         runnerDescription:

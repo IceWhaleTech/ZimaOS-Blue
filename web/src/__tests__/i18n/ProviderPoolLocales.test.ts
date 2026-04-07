@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 
 type LocaleMessages = Record<string, unknown>
 
@@ -70,6 +71,41 @@ describe('provider pool locale coverage', () => {
       expect(getPathValue(messages, 'providerPool.locationLocal'), `${fileName} should localize Local`).not.toBe(
         'Local'
       )
+    }
+  })
+
+  it('backfills provider tab labels in every enhanced locale', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    const enUSPath = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))?.[0]
+    expect(enUSPath).toBeTruthy()
+    if (!enUSPath) {
+      throw new Error('Missing en-US locale module')
+    }
+
+    const enhancedReference = mergeHarnessLocale('en-US', localeModules[enUSPath]!.default)
+    const requiredTabKeys = ['all', 'trial', 'builtin', 'platform', 'other', 'custom', 'media']
+
+    for (const [modulePath, mod] of entries) {
+      const locale = fileNameFromModulePath(modulePath).replace(/\.ts$/, '')
+      const enhancedMessages = mergeHarnessLocale(locale as never, mod.default)
+
+      for (const key of requiredTabKeys) {
+        const value = getPathValue(enhancedMessages, `providerPool.tabs.${key}`)
+        expect(typeof value, `${locale} should expose providerPool.tabs.${key}`).toBe('string')
+        expect(
+          String(value).trim().length,
+          `${locale} should not leave providerPool.tabs.${key} empty`
+        ).toBeGreaterThan(0)
+      }
+
+      if (locale === 'en-US' || locale === 'en-GB') continue
+
+      for (const key of ['all', 'builtin', 'custom']) {
+        expect(
+          getPathValue(enhancedMessages, `providerPool.tabs.${key}`),
+          `${locale} should localize providerPool.tabs.${key}`
+        ).not.toBe(getPathValue(enhancedReference, `providerPool.tabs.${key}`))
+      }
     }
   })
 })

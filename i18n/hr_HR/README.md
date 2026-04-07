@@ -72,9 +72,10 @@ Nativno kompilirano u Go — bez interpretera, bez VM-a, bez opterećenja. Tiho 
 | `status` vrijeme izvršavanja (najbolje od 3) | **< 0.01 s** | 5.98 s |
 | `help` vršni RSS | **~10 MB** | ~394 MB |
 | `status` vršni RSS | **~15 MB** | ~1.52 GB |
+| memorija mirovanja `gateway run` nakon hladnog pokretanja | **~19 MB** | - |
 | Ovisnosti za pokretanje | **Nema** | Node.js 18+ |
 
-> Mjereno na macOS arm64, isti host, najbolje od 3 pokretanja. Velj. 2026.
+> Gornji CLI retci su povijesni mikrobenchmark za `help` / `status` na istom hostu. Novi redak za `gateway run` prikazuje stvarnu memoriju mirovanja nakon hladnog pokretanja, mjerenu na macOS arm64 preko `vmmap Physical footprint` nakon što se pokretanje stabilizira. Velj-tra 2026.
 
 ### Čisti Go, bilo koji uređaj
 

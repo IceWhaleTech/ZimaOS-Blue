@@ -1150,65 +1150,41 @@ const harnessSummaryCards = computed(() => [
     key: 'datasets',
     label: tr('harness.datasets.total', 'Datasets'),
     value: loading.value ? tr('common.loading', 'Loading') : formatCount(datasets.value.length),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(evalSpecs.value.length)} ${tr('harness.evalSpecs.total', 'Eval specs')}`,
   },
   {
     key: 'specs',
     label: tr('harness.evalSpecs.total', 'Eval specs'),
     value: loading.value ? tr('common.loading', 'Loading') : formatCount(evalSpecs.value.length),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(baselines.value.length)} ${tr('harness.baseline.total', 'Baselines')}`,
   },
   {
     key: 'runs',
     label: tr('harness.evalRuns.total', 'Eval runs'),
     value: loading.value ? tr('common.loading', 'Loading') : formatCount(evalRuns.value.length),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(activeEvalRuns.value)} ${tr('harness.evalRuns.active', 'Active eval runs')}`,
   },
   {
     key: 'groups',
     label: tr('harness.groups.totalGroups', 'Groups'),
     value: loading.value ? tr('common.loading', 'Loading') : formatCount(groups.value.length),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(activeGroups.value)} ${tr('common.active', 'Active')}`,
   },
   {
     key: 'baselines',
     label: tr('harness.baseline.total', 'Baselines'),
     value: loading.value ? tr('common.loading', 'Loading') : formatCount(baselines.value.length),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(defaultBaselines.value)} ${tr('harness.baseline.defaultCount', 'Default baselines')}`,
   },
   {
     key: 'activeRuns',
     label: tr('harness.evalRuns.active', 'Active eval runs'),
     value: loading.value ? tr('common.loading', 'Loading') : formatCount(activeEvalRuns.value),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(evalRuns.value.length)} ${tr('harness.evalRuns.total', 'Eval runs')}`,
   },
   {
     key: 'passRate',
     label: tr('harness.groups.avgPassRate', 'Average pass rate'),
     value: loading.value ? tr('common.loading', 'Loading') : percentLabel(averageEvalPassRate.value),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(groups.value.length)} ${tr('harness.groups.totalGroups', 'Groups')}`,
   },
   {
     key: 'defaultBaselines',
     label: tr('harness.baseline.defaultCount', 'Default baselines'),
     value: loading.value ? tr('common.loading', 'Loading') : formatCount(defaultBaselines.value),
-    details: loading.value
-      ? tr('common.loading', 'Loading')
-      : `${formatCount(baselines.value.length)} ${tr('harness.baseline.total', 'Baselines')}`,
   },
 ])
 
@@ -2146,16 +2122,13 @@ onUnmounted(() => {
             <article
               v-for="card in harnessSummaryCards"
               :key="card.key"
-              class="rounded-2xl border border-slate-200 bg-white/80 px-3 py-3"
+              class="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5"
             >
               <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                 {{ card.label }}
               </div>
               <div class="mt-2 text-lg font-semibold text-slate-950 sm:text-xl">
                 {{ card.value }}
-              </div>
-              <div class="mt-1.5 text-xs leading-4 text-slate-500">
-                {{ card.details }}
               </div>
             </article>
           </div>

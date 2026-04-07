@@ -136,6 +136,12 @@ export interface VerifyProviderByIDResponse {
   provider: Provider
 }
 
+export interface FetchProviderModelsResponse {
+  models: Model[]
+  total: number
+  provider?: Provider
+}
+
 export interface UsageSummary {
   provider_id?: string
   model_id?: string
@@ -463,7 +469,7 @@ export const providerPoolApi = {
     api.get<{ models: Model[]; total: number }>(`/providers/${providerId}/models`),
 
   fetchProviderModels: (providerId: string) =>
-    api.post<{ models: Model[]; total: number }>(`/providers/${providerId}/models/fetch`),
+    api.post<FetchProviderModelsResponse>(`/providers/${providerId}/models/fetch`),
 
   probeProviderModels: (providerId: string, concurrency = 5) =>
     api.post<{ results: ProbeResult[]; total: number; available: number; unavailable: number }>(

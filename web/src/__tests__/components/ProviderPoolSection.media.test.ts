@@ -234,14 +234,6 @@ describe('ProviderPoolSection media verification gating', () => {
     mocks.providerPoolStore.clearProviderError.mockResolvedValue(undefined)
   })
 
-  it('marks the provider settings root with the provider form filler scope', async () => {
-    const wrapper = mountSection()
-
-    await flushPromises()
-
-    expect(wrapper.attributes('data-form-filler-scope')).toBe('provider')
-  })
-
   it('hides verify and recommend for media providers', async () => {
     const provider = createProvider('media')
     mocks.providerPoolStore.providers = [provider]

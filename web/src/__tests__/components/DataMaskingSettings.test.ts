@@ -141,4 +141,23 @@ describe('DataMaskingSettings', () => {
     expect(wrapper.text()).toContain('Internal Ticket')
     expect(wrapper.text()).toContain('Custom rules')
   })
+
+  it('localizes built-in masking rule labels for zh-CN', async () => {
+    await setLocale('zh-CN')
+
+    const wrapper = mount(DataMaskingSettings, {
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('邮箱地址')
+    expect(wrapper.text()).toContain('个人信息')
+    expect(wrapper.text()).toContain('响应')
+    expect(wrapper.text()).not.toContain('Email Address')
+    expect(wrapper.text()).not.toContain('pii')
+    expect(wrapper.text()).not.toContain('response')
+  })
 })

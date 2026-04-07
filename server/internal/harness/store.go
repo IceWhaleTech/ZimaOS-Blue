@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS harness_runs (
 	session_id TEXT DEFAULT '',
 	agent_id TEXT DEFAULT '',
 	goal TEXT NOT NULL,
+	provider_id TEXT DEFAULT '',
 	model TEXT DEFAULT '',
 	result TEXT DEFAULT '',
 	error TEXT DEFAULT '',
@@ -415,6 +416,7 @@ type harnessRunRow struct {
 	SessionID      string       `zorm:"session_id"`
 	AgentID        string       `zorm:"agent_id"`
 	Goal           string       `zorm:"goal"`
+	ProviderID     string       `zorm:"provider_id"`
 	Model          string       `zorm:"model"`
 	Result         string       `zorm:"result"`
 	Error          string       `zorm:"error"`
@@ -528,6 +530,7 @@ func harnessRunFromRow(row harnessRunRow) Run {
 		SessionID:      row.SessionID,
 		AgentID:        row.AgentID,
 		Goal:           row.Goal,
+		ProviderID:     row.ProviderID,
 		Model:          row.Model,
 		Result:         row.Result,
 		Error:          row.Error,
@@ -807,12 +810,12 @@ func (s *SQLiteStore) CreateRun(ctx context.Context, run *Run) error {
 	}
 	_, err := s.execContext(ctx, `INSERT INTO harness_runs (
 		id, root_run_id, parent_run_id, group_id, group_item_id, attempt_index, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
-		goal, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
+		goal, provider_id, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
 		approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
 		created_at, updated_at, started_at, finished_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		run.ID, run.RootRunID, run.ParentRunID, run.GroupID, run.GroupItemID, run.AttemptIndex, string(run.Kind), string(run.Status), string(run.RuntimeState), run.UserID,
-		run.ConversationID, run.SessionID, run.AgentID, run.Goal, run.Model, run.Result, run.Error, run.Depth,
+		run.ConversationID, run.SessionID, run.AgentID, run.Goal, run.ProviderID, run.Model, run.Result, run.Error, run.Depth,
 		run.CurrentStep, run.Progress, run.WorkspaceRoot, run.ArtifactRoot, run.SandboxMode, string(run.ApprovalMode),
 		run.MaxDuration.Nanoseconds(), run.MaxSteps, run.MaxToolRounds, run.MaxSubagents, run.MaxDepth, marshalMetadata(run.Metadata),
 		run.CreatedAt, run.UpdatedAt, nullableTime(run.StartedAt), nullableTime(run.FinishedAt),
@@ -827,12 +830,12 @@ func (s *SQLiteStore) UpdateRun(ctx context.Context, run *Run) error {
 	run.UpdatedAt = timeutil.NowTime()
 	_, err := s.execContext(ctx, `UPDATE harness_runs SET
 		root_run_id=?, parent_run_id=?, group_id=?, group_item_id=?, attempt_index=?, kind=?, status=?, runtime_state=?, user_id=?, conversation_id=?, session_id=?, agent_id=?,
-		goal=?, model=?, result=?, error=?, depth=?, current_step=?, progress=?, workspace_root=?, artifact_root=?, sandbox_mode=?,
+		goal=?, provider_id=?, model=?, result=?, error=?, depth=?, current_step=?, progress=?, workspace_root=?, artifact_root=?, sandbox_mode=?,
 		approval_mode=?, max_duration_ns=?, max_steps=?, max_tool_rounds=?, max_subagents=?, max_depth=?, metadata_json=?,
 		updated_at=?, started_at=?, finished_at=?
 		WHERE id=?`,
 		run.RootRunID, run.ParentRunID, run.GroupID, run.GroupItemID, run.AttemptIndex, string(run.Kind), string(run.Status), string(run.RuntimeState), run.UserID,
-		run.ConversationID, run.SessionID, run.AgentID, run.Goal, run.Model, run.Result, run.Error, run.Depth,
+		run.ConversationID, run.SessionID, run.AgentID, run.Goal, run.ProviderID, run.Model, run.Result, run.Error, run.Depth,
 		run.CurrentStep, run.Progress, run.WorkspaceRoot, run.ArtifactRoot, run.SandboxMode, string(run.ApprovalMode),
 		run.MaxDuration.Nanoseconds(), run.MaxSteps, run.MaxToolRounds, run.MaxSubagents, run.MaxDepth, marshalMetadata(run.Metadata),
 		run.UpdatedAt, nullableTime(run.StartedAt), nullableTime(run.FinishedAt), run.ID,
@@ -963,7 +966,7 @@ func (s *SQLiteStore) FindRunByMetadata(ctx context.Context, kind RunKind, key, 
 	}
 	query := `SELECT
 		id, root_run_id, parent_run_id, group_id, group_item_id, attempt_index, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
-		goal, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
+		goal, provider_id, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
 		approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
 		created_at, updated_at, started_at, finished_at
 	FROM harness_runs
@@ -1427,6 +1430,9 @@ func (s *SQLiteStore) migrateSchema(ctx context.Context) error {
 	if err := s.ensureColumn(ctx, "harness_runs", "attempt_index", `ALTER TABLE harness_runs ADD COLUMN attempt_index INTEGER NOT NULL DEFAULT 0`); err != nil {
 		return err
 	}
+	if err := s.ensureColumn(ctx, "harness_runs", "provider_id", `ALTER TABLE harness_runs ADD COLUMN provider_id TEXT DEFAULT ''`); err != nil {
+		return err
+	}
 	if err := s.ensureColumn(ctx, "harness_skill_revisions", "base_content_sha256", `ALTER TABLE harness_skill_revisions ADD COLUMN base_content_sha256 TEXT DEFAULT ''`); err != nil {
 		return err
 	}
@@ -1509,7 +1515,7 @@ func scanRun(scanner rowScanner) (*Run, error) {
 	)
 	err := scanner.Scan(
 		&run.ID, &run.RootRunID, &run.ParentRunID, &run.GroupID, &run.GroupItemID, &run.AttemptIndex, &kind, &status, &runtimeState, &run.UserID, &run.ConversationID, &run.SessionID, &run.AgentID,
-		&run.Goal, &run.Model, &run.Result, &run.Error, &run.Depth, &run.CurrentStep, &run.Progress, &run.WorkspaceRoot, &run.ArtifactRoot, &run.SandboxMode,
+		&run.Goal, &run.ProviderID, &run.Model, &run.Result, &run.Error, &run.Depth, &run.CurrentStep, &run.Progress, &run.WorkspaceRoot, &run.ArtifactRoot, &run.SandboxMode,
 		&approvalMode, &maxDurationNs, &run.MaxSteps, &run.MaxToolRounds, &run.MaxSubagents, &run.MaxDepth, &metadataJSON,
 		&run.CreatedAt, &run.UpdatedAt, &startedAt, &finishedAt,
 	)

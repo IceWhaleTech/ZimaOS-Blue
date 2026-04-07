@@ -287,6 +287,31 @@ func applyProviderVerificationRecommendation(provider *Provider, result *provide
 	return changed
 }
 
+func providerVerificationIndicatesReady(result *providerVerificationResult) bool {
+	if result == nil {
+		return false
+	}
+
+	for name, probe := range result.Probes {
+		switch name {
+		case "models":
+			if probe.StatusCode >= 200 && probe.StatusCode < 300 {
+				return true
+			}
+		case "chat_completions", "responses_v1", "responses_plain", "anthropic_messages":
+			switch probe.StatusCode {
+			case http.StatusBadRequest, http.StatusMethodNotAllowed:
+				return true
+			}
+			if probe.StatusCode >= 200 && probe.StatusCode < 300 {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 func recommendedReachableFormatForPlan(plan FormatResolutionPlan, detectedFormat APIFormat, anthropicReachable, openAIReachable, responsesReachable, responsesOnly bool) APIFormat {
 	if responsesOnly && responsesReachable {
 		return APIFormatResponses

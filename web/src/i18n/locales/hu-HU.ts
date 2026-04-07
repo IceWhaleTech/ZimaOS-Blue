@@ -16,6 +16,8 @@ export default mergeHarnessLocale('hu-HU', {
     next: 'Következő',
     previous: 'Előző',
     close: 'Bezárás',
+    showPassword: 'Jelszó megjelenítése',
+    hidePassword: 'Jelszó elrejtése',
     comingSoon: 'Hamarosan',
     clear: 'Világos',
     copy: 'Másolás',
@@ -564,7 +566,7 @@ export default mergeHarnessLocale('hu-HU', {
     deepResearchObjectMap: 'Objektumtérkép',
     deepResearchBackToTask: 'Eredmény megtekintése',
     taskLoop: 'Ralph ciklus',
-    alwaysOn: 'Mindig bekapcsolva',
+    alwaysOn: 'Automatikus',
     deepResearchHoverDescription:
       'Inditson strukturalt kutatasi munkafolyamatot lekeressel, ellenorzessel, nyomon kovetheto futasokkal es kapcsolt futasreszletekkel.',
     analyzeReportShortcutTitle: 'Elemző jelentés',
@@ -788,12 +790,12 @@ export default mergeHarnessLocale('hu-HU', {
       unavailableTitle: 'Jelenleg nem érhető el mesterséges intelligencia-szolgáltató',
       unavailableDescription:
         'A beállított szolgáltatók jelenleg nem érhetők el. Ellenőrizze a kapcsolatukat, az API-kulcsot vagy a modell állapotát a Beállításokban, majd próbálja újra.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Ideiglenes szolgáltatói probléma',
+      recoverableTitle: 'A szolgáltató figyelmet igényel',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'A konfigurált szolgáltató ideiglenes hibába ütközött. Nézze meg alább a legutóbbi okot, állítsa vissza a szolgáltatót, majd próbálja újra.',
+      retry: 'Szolgáltató újrapróbálása',
+      reviewSingle: 'Szolgáltató ellenőrzése',
       providerSummary: 'Konfigurált szolgáltatók, akik figyelmet igényelnek',
       moreProviders: '{count} további szolgáltatók is figyelmet igényelnek.',
       statusActive: 'Aktív',
@@ -874,7 +876,7 @@ export default mergeHarnessLocale('hu-HU', {
     execDirectoryApprovalTimeout:
       'A parancs végrehajtása blokkolva lett, mert a könyvtár jóváhagyása időtúllépés miatt lejárt. Hagyja jóvá a könyvtárat, majd próbálja újra.',
     providerActive: 'A szolgáltató aktív és készen áll.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'A szolgáltató figyelmet igényel. Kattintson a beállítások ellenőrzéséhez.',
     providerPending: 'A szolgáltató állapota ellenőrzés alatt áll...',
     trialQuota: {
       remaining: '{tokens} token maradt',
@@ -1367,7 +1369,7 @@ export default mergeHarnessLocale('hu-HU', {
       loadFailed: 'Nem sikerült betölteni a külső ügynökprofilokat.',
       notAvailable: 'Nem elérhető',
       remoteAgent: 'Távoli ügynök',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Beépített profil',
       builtinTemplate: 'Beépített sablon',
       customProfile: 'Egyéni profil',
       health: 'Egészség',
@@ -4624,6 +4626,7 @@ export default mergeHarnessLocale('hu-HU', {
       'Auto Reply': 'Automatikus válasz',
       Workflows: 'Munkafolyamatok',
       web_query: 'Weblekeres',
+      research: 'Mélyreható kutatás',
       research_run: 'Mélyreható kutatás',
       research_status: 'A mélyreható kutatás állapota',
       configuration: 'Konfiguráció',
@@ -4649,6 +4652,8 @@ export default mergeHarnessLocale('hu-HU', {
       ask: 'A felhasznalonak tovabbi kerdeseket tesz fel a feladat folytatasahoz',
       mediagen: 'Kepeket, videokat es prezentaciokat general AI-modellekkel',
       web_query: 'URL alapjan letolt es feldolgoz egy weboldalt',
+      research:
+        'Mélyreható kutatást indít. Megvárhatja a végső jelentést, vagy kérhet egy feladatazonosítót későbbi ellenőrzéshez.',
       research_run:
         'Mélyreható kutatást indít. Megvárhatja a végső jelentést, vagy kérhet egy feladatazonosítót későbbi ellenőrzéshez.',
       research_status:

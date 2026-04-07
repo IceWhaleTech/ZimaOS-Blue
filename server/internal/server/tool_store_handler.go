@@ -113,6 +113,13 @@ type ToolResponse struct {
 // These are internal-only tools (e.g. memory is accessed via compat/internal routing).
 var hiddenToolNamesFromUI = map[string]bool{
 	"memory":           true,
+	"analyze":          true,
+	"exec":             true,
+	"process":          true,
+	"rg":               true,
+	"file_read":        true,
+	"file_write":       true,
+	"file_delete":      true,
 	"generate_image":   true,
 	"generateImage":    true,
 	"image_generation": true,
@@ -150,7 +157,6 @@ func toolHiddenFromUI(name string) bool {
 var skillsShownAsTools = []ToolResponse{
 	{ID: "browser", Name: "browser", Version: "1.0.0", Description: "Open a URL, read page content, interact with elements, take screenshots", Icon: "browser", Enabled: true, Builtin: true},
 	{ID: "ui_reviewer", Name: "ui_reviewer", Version: "1.0.0", Description: "Review and score UI/UX quality of a URL or screenshot", Icon: "eye", Enabled: true, Builtin: true},
-	{ID: "analyze", Name: "analyze", Version: "1.0.0", Description: "Deep-dive analysis: return an inline structured answer by default, or generate an HTML report when explicitly requested", Icon: "analyze", Enabled: true, Builtin: true},
 	{ID: "mediagen", Name: "mediagen", Version: "1.0.0", Description: "Generate images and videos using AI models", Icon: "mediagen", Enabled: true, Builtin: true},
 	{ID: "reminder", Name: "reminder", Version: "2.0.0", Description: "Manage reminders and scheduled alerts", Icon: "notifications", Enabled: true, Builtin: true},
 }

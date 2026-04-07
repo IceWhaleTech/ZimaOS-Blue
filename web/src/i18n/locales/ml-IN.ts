@@ -17,6 +17,8 @@ export default mergeHarnessLocale('ml-IN', {
     previous: 'മുമ്പത്തേത്',
     close: 'അടയ്ക്കുക',
     backToTop: 'മുകളിലേക്ക് മടങ്ങുക',
+    showPassword: 'പാസ്‌വേഡ് കാണിക്കുക',
+    hidePassword: 'പാസ്‌വേഡ് മറയ്ക്കുക',
     comingSoon: 'ഉടൻ വരുന്നു',
     clear: 'ക്ലിയർ',
     copy: 'പകർത്തുക',
@@ -564,7 +566,7 @@ export default mergeHarnessLocale('ml-IN', {
     deepResearchObjectMap: 'ഒബ്ജക്റ്റ് മാപ്പ്',
     deepResearchBackToTask: 'ഫലം കാണുക',
     taskLoop: 'Ralph ലൂപ്പ്',
-    alwaysOn: 'എപ്പോഴും സജീവം',
+    alwaysOn: 'ഓട്ടോ',
     deepResearchHoverDescription:
       'ശേഖരണം, സ്ഥിരീകരണം, പിന്തുടരാവുന്ന റൺകൾ, ബന്ധിപ്പിച്ച റൺ വിശദാംശങ്ങൾ എന്നിവയുള്ള ഘടനാപരമായ ഗവേഷണ പ്രവാഹം ആരംഭിക്കുക.',
     analyzeReportShortcutTitle: 'വിശകലന റിപ്പോർട്ട്',
@@ -790,12 +792,12 @@ export default mergeHarnessLocale('ml-IN', {
       unavailableTitle: 'AI ദാതാവ് ഇപ്പോൾ ലഭ്യമല്ല',
       unavailableDescription:
         'നിങ്ങളുടെ കോൺഫിഗർ ചെയ്ത ദാതാക്കൾ നിലവിൽ ലഭ്യമല്ല. ക്രമീകരണങ്ങളിൽ അവരുടെ കണക്ഷൻ, API കീ അല്ലെങ്കിൽ മോഡൽ നില പരിശോധിച്ച് വീണ്ടും ശ്രമിക്കുക.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'താൽക്കാലിക പ്രൊവൈഡർ പ്രശ്നം',
+      recoverableTitle: 'പ്രൊവൈഡറിന് ശ്രദ്ധ ആവശ്യമാണ്',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'നിങ്ങൾ ക്രമീകരിച്ച പ്രൊവൈഡറിൽ താൽക്കാലിക പിശക് സംഭവിച്ചു. താഴെ കാണുന്ന പുതിയ കാരണം പരിശോധിച്ച് പ്രൊവൈഡർ റീസെറ്റ് ചെയ്ത് വീണ്ടും ശ്രമിക്കുക.',
+      retry: 'പ്രൊവൈഡർ വീണ്ടും ശ്രമിക്കുക',
+      reviewSingle: 'പ്രൊവൈഡർ പരിശോധിക്കുക',
       providerSummary: 'ശ്രദ്ധ ആവശ്യമുള്ള കോൺഫിഗർ ചെയ്ത ദാതാക്കൾ',
       moreProviders: '{count} കൂടുതൽ ദാതാക്കൾക്കും ശ്രദ്ധ ആവശ്യമാണ്.',
       statusActive: 'സജീവമാണ്',
@@ -877,7 +879,7 @@ export default mergeHarnessLocale('ml-IN', {
     execDirectoryApprovalTimeout:
       'ഡയറക്ടറി അനുമതി സമയപരിധി കഴിഞ്ഞതിനാൽ കമാൻഡ് പ്രവർത്തനം തടയപ്പെട്ടു. ഡയറക്ടറി അനുമതിപ്പിച്ച് വീണ്ടും ശ്രമിക്കുക.',
     providerActive: 'ദാതാവ് സജീവവും തയ്യാറുമാണ്.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'പ്രൊവൈഡറിന് ശ്രദ്ധ ആവശ്യമാണ്. ക്രമീകരണങ്ങൾ പരിശോധിക്കാൻ ക്ലിക്ക് ചെയ്യുക.',
     providerPending: 'ദാതാവിൻ്റെ നില പരിശോധിക്കുന്നു...',
     trialQuota: {
       remaining: '{tokens} ടോക്കണുകൾ ശേഷിച്ചിരിക്കുന്നു',
@@ -1372,7 +1374,7 @@ export default mergeHarnessLocale('ml-IN', {
       loadFailed: 'ബാഹ്യ ഏജൻ്റ് പ്രൊഫൈലുകൾ ലോഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു.',
       notAvailable: 'ലഭ്യമല്ല',
       remoteAgent: 'റിമോട്ട് ഏജൻ്റ്',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'ബിൽറ്റ്-ഇൻ പ്രൊഫൈൽ',
       builtinTemplate: 'അന്തർനിർമ്മിത ടെംപ്ലേറ്റ്',
       customProfile: 'ഇഷ്ടാനുസൃത പ്രൊഫൈൽ',
       health: 'ആരോഗ്യം',
@@ -4640,6 +4642,7 @@ export default mergeHarnessLocale('ml-IN', {
       'Auto Reply': 'ഓട്ടോ മറുപടി',
       Workflows: 'വർക്ക്ഫ്ലോകൾ',
       web_query: 'വെബ് കൈപ്പറ്റല്‍',
+      research: 'ആഴത്തിലുള്ള ഗവേഷണം',
       research_run: 'ആഴത്തിലുള്ള ഗവേഷണം',
       research_status: 'ആഴത്തിലുള്ള ഗവേഷണ നില',
       configuration: 'ക്രമീകരണം',
@@ -4665,6 +4668,8 @@ export default mergeHarnessLocale('ml-IN', {
       ask: 'ടാസ്‌ക് തുടരാൻ ആവശ്യമായ അനുബന്ധ ചോദ്യങ്ങൾ ഉപയോക്താവിനോട് ചോദിക്കുന്നു',
       mediagen: 'AI മോഡലുകൾ ഉപയോഗിച്ച് ചിത്രങ്ങൾ, വീഡിയോകൾ, അവതരണങ്ങൾ സൃഷ്ടിക്കുന്നു',
       web_query: 'URL ഉപയോഗിച്ച് ഒരു വെബ് പേജ് നേടി പാഴ്സ് ചെയ്യുന്നു',
+      research:
+        'ആഴത്തിലുള്ള ഗവേഷണം പ്രവർത്തിപ്പിക്കുന്നു. അന്തിമ റിപ്പോർട്ടിനായി കാത്തിരിക്കുകയോ പിന്നീട് പരിശോധിക്കാൻ ഒരു ജോബ് ഐഡി നേടുകയോ ചെയ്യാം.',
       research_run:
         'ആഴത്തിലുള്ള ഗവേഷണം പ്രവർത്തിപ്പിക്കുന്നു. അന്തിമ റിപ്പോർട്ടിനായി കാത്തിരിക്കുകയോ പിന്നീട് പരിശോധിക്കാൻ ഒരു ജോബ് ഐഡി നേടുകയോ ചെയ്യാം.',
       research_status:

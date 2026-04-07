@@ -17,6 +17,8 @@ export default mergeHarnessLocale('ga-IE', {
     previous: 'Roimhe seo',
     close: 'Dún',
     backToTop: 'Ar ais go barr',
+    showPassword: 'Taispeáin an focal faire',
+    hidePassword: 'Folaigh an focal faire',
     comingSoon: 'Ag teacht go luath',
     clear: 'Glan',
     copy: 'Cóip',
@@ -565,7 +567,7 @@ export default mergeHarnessLocale('ga-IE', {
     deepResearchObjectMap: 'Léarscáil réad',
     deepResearchBackToTask: 'Féach ar an toradh',
     taskLoop: 'Lúb Ralph',
-    alwaysOn: 'Ar siúl i gcónaí',
+    alwaysOn: 'Uathoibríoch',
     deepResearchHoverDescription:
       'Tosaigh sreabhadh taighde struchturtha le haisghabhail, fioru, ritheanna inrianaithe agus sonrai rithe nasctha.',
     analyzeReportShortcutTitle: 'Tuarascáil Anailíse',
@@ -791,12 +793,12 @@ export default mergeHarnessLocale('ga-IE', {
       unavailableTitle: 'Níl aon soláthraí AI ar fáil faoi láthair',
       unavailableDescription:
         'Níl do sholáthraithe cumraithe ar fáil faoi láthair. Seiceáil a gceangal, eochair API, nó stádas múnla sna Socruithe agus ansin bain triail eile as.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Fadhb shealadach leis an soláthraí',
+      recoverableTitle: 'Teastaíonn aird ón soláthraí',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Bhain earráid shealadach leis an soláthraí atá cumraithe agat. Féach ar an gcúis is déanaí thíos, athshocraigh an soláthraí agus bain triail eile as.',
+      retry: 'Bain triail eile as an soláthraí',
+      reviewSingle: 'Déan athbhreithniú ar an soláthraí',
       providerSummary: 'Soláthraithe cumraithe a dteastaíonn aird orthu',
       moreProviders: '{count} teastaíonn aird níos mó ar sholáthraithe freisin.',
       statusActive: 'Gníomhach',
@@ -875,7 +877,7 @@ export default mergeHarnessLocale('ga-IE', {
     execDirectoryApprovalTimeout:
       'Cuireadh bac ar fheidhmiú an ordaithe mar chuaigh cead an eolaire in éag. Faomh an eolaire agus bain triail eile as.',
     providerActive: 'Tá an soláthraí gníomhach agus réidh.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Teastaíonn aird ón soláthraí. Cliceáil chun na socruithe a sheiceáil.',
     providerPending: 'Tá stádas an tsoláthraí á sheiceáil...',
     trialQuota: {
       remaining: '{tokens} tokens fágtha',
@@ -1369,7 +1371,7 @@ export default mergeHarnessLocale('ga-IE', {
       loadFailed: 'Theip ar lódáil próifílí gníomhairí seachtracha.',
       notAvailable: 'Níl sé ar fáil',
       remoteAgent: 'Gníomhaire cianda',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Próifíl ionsuite',
       builtinTemplate: 'Teimpléad ionsuite',
       customProfile: 'Próifíl saincheaptha',
       health: 'Sláinte',
@@ -4625,6 +4627,7 @@ export default mergeHarnessLocale('ga-IE', {
       'Auto Reply': 'Uathfhreagra',
       Workflows: 'Sreafaí oibre',
       web_query: 'Faigh web',
+      research: 'Taighde domhain',
       research_run: 'Taighde domhain',
       research_status: 'Stádas taighde domhain',
       configuration: 'Cumraíocht',
@@ -4650,6 +4653,8 @@ export default mergeHarnessLocale('ga-IE', {
       ask: 'Cuir ceisteanna leantacha ar an úsáideoir chun leanúint ar aghaidh leis an tasc',
       mediagen: 'Gin íomhánna, físeáin agus cur i láthair le samhlacha AI',
       web_query: 'Faigheann agus parsálann sé leathanach gréasáin trí URL',
+      research:
+        'Ritheann sé taighde domhain. Is féidir leat fanacht leis an tuarascáil deiridh nó aitheantas poist a fháil le seiceáil níos déanaí.',
       research_run:
         'Ritheann sé taighde domhain. Is féidir leat fanacht leis an tuarascáil deiridh nó aitheantas poist a fháil le seiceáil níos déanaí.',
       research_status:

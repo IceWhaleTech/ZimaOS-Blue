@@ -169,8 +169,7 @@ func (u *UIReviewer) Validate(input map[string]any) error {
 
 func normalizeUIReviewerSkillInput(input map[string]any) {
 	normalizeStringAlias(input, "action", "op", "operation", "command")
-	normalizeStringAlias(input, "url", "href")
-	normalizeStringAlias(input, "image", "image_base64", "imageBase64")
+	tools.NormalizeUIReviewCompatArgs(input)
 }
 
 func (u *UIReviewer) Execute(ctx context.Context, input map[string]any) (*skill.Result, error) {

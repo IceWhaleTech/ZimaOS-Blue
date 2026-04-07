@@ -106,6 +106,7 @@ type SystemPromptBuilder struct {
 	// staticCoreOnce caches the immutable portion of the STATIC block.
 	staticCoreOnce sync.Once
 	staticCoreStr  string
+	cacheInitOnce  sync.Once
 	staticCache    *ecache2.Cache[string]
 	staticCacheHit uint64
 
@@ -131,9 +132,14 @@ func NewSystemPromptBuilder(config *Config) *SystemPromptBuilder {
 	return &SystemPromptBuilder{
 		config:           config,
 		maxContextTokens: DefaultMaxContextTokens,
-		staticCache:      ecache2.NewLRUCache[string](2, 8, 24*time.Hour).LRU2(2),
-		configCache:      ecache2.NewLRUCache[string](4, 32, 10*time.Minute).LRU2(8),
 	}
+}
+
+func (b *SystemPromptBuilder) ensureCaches() {
+	b.cacheInitOnce.Do(func() {
+		b.staticCache = ecache2.NewLRUCache[string](2, 8, 24*time.Hour).LRU2(2)
+		b.configCache = ecache2.NewLRUCache[string](4, 32, 10*time.Minute).LRU2(8)
+	})
 }
 
 // SetToolRegistry sets the tool registry for including tool descriptions.
@@ -369,6 +375,7 @@ type systemPromptConfigCacheEntry struct {
 }
 
 func (b *SystemPromptBuilder) buildStaticSystem() string {
+	b.ensureCaches()
 	key := buildStaticSystemCacheKey(b.getLocale(), b.getTimezone())
 	if b.staticCache != nil {
 		if v, ok := b.staticCache.Get(key); ok {
@@ -402,6 +409,7 @@ func buildStaticSystemCacheKey(locale, zone string) string {
 }
 
 func (b *SystemPromptBuilder) getCachedConfigBlock(contextFiles map[string]string, gitRepo, hasTools, hasSandbox bool) (systemPromptConfigCacheEntry, bool) {
+	b.ensureCaches()
 	if b.configCache == nil {
 		return systemPromptConfigCacheEntry{}, false
 	}
@@ -417,6 +425,7 @@ func (b *SystemPromptBuilder) getCachedConfigBlock(contextFiles map[string]strin
 }
 
 func (b *SystemPromptBuilder) putCachedConfigBlock(contextFiles map[string]string, gitRepo, hasTools, hasSandbox bool, entry systemPromptConfigCacheEntry) {
+	b.ensureCaches()
 	if b.configCache == nil {
 		return
 	}

@@ -714,9 +714,7 @@ describe('SkillStoreTab', () => {
     expect(wrapper.get('[data-testid="source-import-preview-result"]').text()).toContain(
       'demo/skills-repo'
     )
-    expect(wrapper.get('[data-testid="source-import-install-seed"]').text()).toContain(
-      'From URL'
-    )
+    expect(wrapper.get('[data-testid="source-import-install-seed"]').text()).toContain('From URL')
 
     await wrapper.get('[data-testid="source-import-install-seed"]').trigger('click')
     await flushPromises()
@@ -1088,6 +1086,39 @@ describe('SkillStoreTab', () => {
     wrapper.unmount()
   })
 
+  it('merges Tencent SkillHub and ClawHub into a single dual-source presentation', async () => {
+    const dualSourceSkill = makeSkill({
+      origin_source_id: 'clawhub',
+      origin_source_name: 'ClawHub',
+      origin_source_url: 'https://www.clawhub.ai',
+      homepage: 'https://lightmake.site/skills/shared-skill',
+      source_url: 'https://lightmake.site/skills/shared-skill',
+      download_url: 'https://lightmake.site/api/v1/download?slug=shared-skill',
+    })
+    vi.mocked(skillApi.searchMarket).mockResolvedValue(
+      makeSearchResponse([dualSourceSkill]) as never
+    )
+    vi.mocked(skillApi.getMarketplaceSkill).mockResolvedValue(
+      makeDetailResponse(dualSourceSkill) as never
+    )
+
+    const wrapper = await mountSkillStore()
+
+    const sourceChip = wrapper.get('.source-chip')
+    expect(sourceChip.text()).toContain('Tencent SkillHub + ClawHub')
+    expect(sourceChip.attributes('title')).toContain('Upstream')
+    expect(sourceChip.attributes('title')).toContain('ClawHub')
+
+    await wrapper.get('.skill-card').trigger('click')
+    await flushPromises()
+
+    const detailMeta = document.body.querySelector('.store-detail-modal-card .detail-meta')
+    expect(detailMeta?.textContent || '').toContain('Tencent SkillHub + ClawHub')
+    expect(detailMeta?.textContent || '').not.toContain('Upstream')
+
+    wrapper.unmount()
+  })
+
   it('applies semantic tones to the security summary cards in the detail modal', async () => {
     const skill = makeSkill({
       security_badge: 'yellow',
@@ -1168,9 +1199,9 @@ describe('SkillStoreTab', () => {
     await wrapper.get('.skill-card').trigger('click')
     await flushPromises()
 
-    const toggle = document.body.querySelector('.security-disclosure__toggle') as
-      | HTMLButtonElement
-      | null
+    const toggle = document.body.querySelector(
+      '.security-disclosure__toggle'
+    ) as HTMLButtonElement | null
     expect(toggle).not.toBeNull()
     expect(toggle?.getAttribute('aria-expanded')).toBe('false')
     expect(document.body.querySelector('.evidence-item')).toBeNull()
@@ -1297,9 +1328,9 @@ describe('SkillStoreTab', () => {
     await wrapper.get('.skill-card').trigger('click')
     await flushPromises()
 
-    const toggle = document.body.querySelector('.security-disclosure__toggle') as
-      | HTMLButtonElement
-      | null
+    const toggle = document.body.querySelector(
+      '.security-disclosure__toggle'
+    ) as HTMLButtonElement | null
     toggle?.click()
     await flushPromises()
 

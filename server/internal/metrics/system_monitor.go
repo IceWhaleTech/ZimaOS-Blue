@@ -55,13 +55,9 @@ func NewSystemMonitor(maxHistory int, diskPath string) *SystemMonitor {
 	}
 
 	return &SystemMonitor{
-		current:     &SystemResourceMetrics{},
-		history:     make([]ResourceHistory, maxHistory), // Pre-allocate ring buffer
-		historyHead: 0,
-		historyLen:  0,
-		maxHistory:  maxHistory,
-		processes:   make(map[int32]*ProcessMetrics),
-		diskPath:    diskPath,
+		current:    &SystemResourceMetrics{},
+		maxHistory: maxHistory,
+		diskPath:   diskPath,
 	}
 }
 
@@ -111,15 +107,18 @@ func (m *SystemMonitor) Collect() error {
 	m.current = metrics
 
 	// Add to ring buffer history
-	m.history[m.historyHead] = ResourceHistory{
-		Timestamp: timeutil.NowTime(),
-		CPU:       metrics.CPUUsagePercent,
-		Memory:    metrics.MemoryPercent,
-		Disk:      metrics.DiskPercent,
-	}
-	m.historyHead = (m.historyHead + 1) % m.maxHistory
-	if m.historyLen < m.maxHistory {
-		m.historyLen++
+	if m.maxHistory > 0 {
+		m.ensureHistoryLocked()
+		m.history[m.historyHead] = ResourceHistory{
+			Timestamp: timeutil.NowTime(),
+			CPU:       metrics.CPUUsagePercent,
+			Memory:    metrics.MemoryPercent,
+			Disk:      metrics.DiskPercent,
+		}
+		m.historyHead = (m.historyHead + 1) % m.maxHistory
+		if m.historyLen < m.maxHistory {
+			m.historyLen++
+		}
 	}
 
 	return nil
@@ -233,6 +232,7 @@ func (m *SystemMonitor) CollectProcessMetrics(pid int32) (*ProcessMetrics, error
 	}
 
 	m.mu.Lock()
+	m.ensureProcessesLocked()
 	m.processes[pid] = metrics
 	m.mu.Unlock()
 
@@ -276,5 +276,23 @@ func (m *SystemMonitor) Reset() {
 	// Reset ring buffer without reallocating
 	m.historyHead = 0
 	m.historyLen = 0
-	m.processes = make(map[int32]*ProcessMetrics)
+	m.processes = nil
+}
+
+func (m *SystemMonitor) ensureHistoryLocked() {
+	if m.history == nil && m.maxHistory > 0 {
+		m.history = make([]ResourceHistory, m.maxHistory)
+	}
+}
+
+func (m *SystemMonitor) ensureProcessesLocked() {
+	if m.processes == nil {
+		m.processes = make(map[int32]*ProcessMetrics)
+	}
+}
+
+func (m *SystemMonitor) hasSamples() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.historyLen > 0
 }

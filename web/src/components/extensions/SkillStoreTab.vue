@@ -955,7 +955,47 @@ function sourceCandidates(skill?: RemoteSkill | null): Array<string | null | und
   return [skill?.author, skill?.homepage, skill?.source_url, skill?.download_url, ...baseCandidates]
 }
 
-function sourceLabel(skill?: RemoteSkill | null): string {
+function sourceIdentityCandidates(skill?: RemoteSkill | null): Array<string | null | undefined> {
+  return [skill?.source_id, skill?.source_name]
+}
+
+function originSourceCandidates(skill?: RemoteSkill | null): Array<string | null | undefined> {
+  return [skill?.origin_source_name, skill?.origin_source_id, skill?.origin_source_url]
+}
+
+function originSourceIdentityCandidates(
+  skill?: RemoteSkill | null
+): Array<string | null | undefined> {
+  return [skill?.origin_source_id, skill?.origin_source_name]
+}
+
+function normalizedSourceCandidateSet(candidates: Array<string | null | undefined>): Set<string> {
+  return new Set(
+    candidates
+      .map((value) => trimMarketplaceSourceToken(value).toLowerCase())
+      .filter((value) => value.length > 0)
+  )
+}
+
+function hasTencentSkillHubCandidate(candidates: Array<string | null | undefined>): boolean {
+  const values = normalizedSourceCandidateSet(candidates)
+  return values.has('tencent-skillhub') || values.has('tencent skillhub')
+}
+
+function hasClawHubCandidate(candidates: Array<string | null | undefined>): boolean {
+  return normalizedSourceCandidateSet(candidates).has('clawhub')
+}
+
+function isTencentClawDualSource(skill?: RemoteSkill | null): boolean {
+  const source = sourceIdentityCandidates(skill)
+  const origin = originSourceIdentityCandidates(skill)
+  return (
+    (hasTencentSkillHubCandidate(source) && hasClawHubCandidate(origin)) ||
+    (hasClawHubCandidate(source) && hasTencentSkillHubCandidate(origin))
+  )
+}
+
+function baseSourceLabel(skill?: RemoteSkill | null): string {
   const localized = localizeMarketplaceSourceFromCandidates(
     sourceCandidates(skill),
     'label',
@@ -972,7 +1012,16 @@ function sourceLabel(skill?: RemoteSkill | null): string {
   )
 }
 
-function sourceDescription(skill?: RemoteSkill | null): string {
+function sourceLabel(skill?: RemoteSkill | null): string {
+  if (isTencentClawDualSource(skill)) {
+    const primary = baseSourceLabel(skill)
+    const alternate = originSourceLabel(skill)
+    if (primary && alternate) return `${primary} + ${alternate}`
+  }
+  return baseSourceLabel(skill)
+}
+
+function baseSourceDescription(skill?: RemoteSkill | null): string {
   return localizeMarketplaceSourceFromCandidates(
     sourceCandidates(skill),
     'description',
@@ -980,12 +1029,18 @@ function sourceDescription(skill?: RemoteSkill | null): string {
   )
 }
 
-function sourceBrand(skill?: RemoteSkill | null): MarketplaceSourceBrand | null {
-  return resolveMarketplaceSourceBrandFromCandidates(sourceCandidates(skill))
+function sourceDescription(skill?: RemoteSkill | null): string {
+  const primary = baseSourceDescription(skill)
+  if (!isTencentClawDualSource(skill)) return primary
+  const alternate = originSourceDescription(skill) || originSourceLabel(skill)
+  if (primary && alternate) {
+    return `${primary} ${marketplaceText('detail.meta.upstream', 'Upstream')}: ${alternate}`
+  }
+  return primary || alternate
 }
 
-function originSourceCandidates(skill?: RemoteSkill | null): Array<string | null | undefined> {
-  return [skill?.origin_source_name, skill?.origin_source_id, skill?.origin_source_url]
+function sourceBrand(skill?: RemoteSkill | null): MarketplaceSourceBrand | null {
+  return resolveMarketplaceSourceBrandFromCandidates(sourceCandidates(skill))
 }
 
 function sourceCandidateMatches(
@@ -1002,6 +1057,7 @@ function sourceCandidateMatches(
 }
 
 function showOriginSource(skill?: RemoteSkill | null): boolean {
+  if (isTencentClawDualSource(skill)) return false
   const origin = originSourceCandidates(skill)
   const hasOrigin = origin.some((value) => trimMarketplaceSourceToken(value).length > 0)
   if (!hasOrigin) return false
@@ -4030,9 +4086,10 @@ onBeforeUnmount(() => {
                         >
                           <header>
                             <strong>{{ evidenceGroupLabel(item.type) }}</strong>
-                            <span :class="['severity-chip', evidenceSeverityClass(item.severity)]">{{
-                              evidenceSeverityLabel(item.severity)
-                            }}</span>
+                            <span
+                              :class="['severity-chip', evidenceSeverityClass(item.severity)]"
+                              >{{ evidenceSeverityLabel(item.severity) }}</span
+                            >
                           </header>
                           <p>{{ localizedSecurityText(item.title) }}</p>
                           <small v-if="item.description">{{
@@ -6105,12 +6162,11 @@ onBeforeUnmount(() => {
   padding: 10px 12px;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--security-yellow-border) 58%, var(--border));
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--security-yellow-bg) 48%, var(--panel-bg-strong)) 0%,
-      color-mix(in srgb, var(--panel-bg) 88%, var(--security-yellow-bg) 12%) 100%
-    );
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--security-yellow-bg) 48%, var(--panel-bg-strong)) 0%,
+    color-mix(in srgb, var(--panel-bg) 88%, var(--security-yellow-bg) 12%) 100%
+  );
 }
 
 .security-disclosure__toggle {

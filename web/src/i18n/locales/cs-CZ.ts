@@ -17,6 +17,8 @@ export default mergeHarnessLocale('cs-CZ', {
     previous: 'Předchozí',
     close: 'Zavřít',
     backToTop: 'Zpět nahoru',
+    showPassword: 'Zobrazit heslo',
+    hidePassword: 'Skrýt heslo',
     comingSoon: 'Již brzy',
     clear: 'Jasný',
     copy: 'Kopírovat',
@@ -564,7 +566,7 @@ export default mergeHarnessLocale('cs-CZ', {
     deepResearchObjectMap: 'Mapa objektů',
     deepResearchBackToTask: 'Zobrazit výsledek',
     taskLoop: 'Ralph smyčka',
-    alwaysOn: 'Vždy zapnuto',
+    alwaysOn: 'Automaticky',
     deepResearchHoverDescription:
       'Spustte strukturovany vyzkumny workflow se ziskavanim informaci, overovanim, sledovatelnymi behy a propojenymi detaily behu.',
     analyzeReportShortcutTitle: 'Zpráva o analýze',
@@ -790,12 +792,12 @@ export default mergeHarnessLocale('cs-CZ', {
       unavailableTitle: 'Momentálně není k dispozici žádný poskytovatel AI',
       unavailableDescription:
         'Vaši nakonfigurovaní poskytovatelé jsou momentálně nedostupní. Zkontrolujte jejich připojení, klíč API nebo stav modelu v Nastavení a zkuste to znovu.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Dočasný problém poskytovatele',
+      recoverableTitle: 'Poskytovatel vyžaduje pozornost',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Nakonfigurovaný poskytovatel narazil na dočasnou chybu. Níže zkontrolujte poslední důvod, resetujte poskytovatele a zkuste to znovu.',
+      retry: 'Zkusit poskytovatele znovu',
+      reviewSingle: 'Zkontrolovat poskytovatele',
       providerSummary: 'Nakonfigurovaní poskytovatelé vyžadující pozornost',
       moreProviders: 'Pozornost vyžaduje také {count} více poskytovatelů.',
       statusActive: 'Aktivní',
@@ -869,7 +871,7 @@ export default mergeHarnessLocale('cs-CZ', {
     execDirectoryApprovalTimeout:
       'Spuštění příkazu bylo zablokováno, protože schválení adresáře vypršelo. Schvalte adresář a zkuste to znovu.',
     providerActive: 'Poskytovatel je aktivní a připravený.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Poskytovatel vyžaduje pozornost. Kliknutím zkontrolujte nastavení.',
     providerPending: 'Stav poskytovatele se kontroluje...',
     trialQuota: {
       remaining: 'Zbývá {tokens} tokenů',
@@ -1359,7 +1361,7 @@ export default mergeHarnessLocale('cs-CZ', {
       loadFailed: 'Načtení profilů externích agentů se nezdařilo.',
       notAvailable: 'Není k dispozici',
       remoteAgent: 'Vzdálený agent',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Vestavěný profil',
       builtinTemplate: 'Vestavěná šablona',
       customProfile: 'Vlastní profil',
       health: 'Zdraví',
@@ -4585,6 +4587,7 @@ export default mergeHarnessLocale('cs-CZ', {
       'Auto Reply': 'Automatická odpověď',
       Workflows: 'Pracovní postupy',
       web_query: 'Nacteni webu',
+      research: 'Hloubkový výzkum',
       research_run: 'Hloubkový výzkum',
       research_status: 'Stav hloubkového výzkumu',
       configuration: 'Konfigurace',
@@ -4609,6 +4612,8 @@ export default mergeHarnessLocale('cs-CZ', {
       ask: 'Polozi uzivateli doplnujici otazky potrebne pro pokracovani ukolu',
       mediagen: 'Generuje obrazky, videa a prezentace pomoci AI modelu',
       web_query: 'Nacte a zpracuje webovou stranku podle URL',
+      research:
+        'Spustí hloubkový výzkum. Můžete počkat na závěrečnou zprávu nebo získat ID úlohy pro pozdější kontrolu.',
       research_run:
         'Spustí hloubkový výzkum. Můžete počkat na závěrečnou zprávu nebo získat ID úlohy pro pozdější kontrolu.',
       research_status: 'Získá aktuální stav nebo závěrečnou zprávu úlohy hloubkového výzkumu.',

@@ -1861,7 +1861,7 @@ onErrorCaptured((error, _instance, info) => {
 </script>
 
 <template>
-  <div class="channels-page dashboard-page-frame" data-form-filler-scope="channel">
+  <div class="channels-page dashboard-page-frame">
     <section class="channels-stage dashboard-page-stage configuration-page-stage">
       <div class="channels-shell">
         <header class="channels-header dashboard-page-hero configuration-page-hero">
@@ -2200,7 +2200,6 @@ onErrorCaptured((error, _instance, info) => {
       >
         <div
           class="channels-group-modal"
-          data-form-filler-scope="channel"
           role="dialog"
           aria-modal="true"
           aria-labelledby="channels-group-access-title"

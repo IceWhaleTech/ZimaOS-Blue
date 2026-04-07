@@ -17,6 +17,8 @@ export default mergeHarnessLocale('ko-KR', {
     previous: '이전',
     close: '닫기',
     backToTop: '맨 위로 돌아가기',
+    showPassword: '비밀번호 표시',
+    hidePassword: '비밀번호 숨기기',
     comingSoon: '출시 예정',
     clear: '지우기',
     copy: '복사',
@@ -561,7 +563,7 @@ export default mergeHarnessLocale('ko-KR', {
     deepResearchObjectMap: '객체 맵',
     deepResearchBackToTask: '결과 보기',
     taskLoop: 'Ralph 루프',
-    alwaysOn: '항상 켜짐',
+    alwaysOn: '자동',
     deepResearchHoverDescription:
       '검색, 검증, 추적 가능한 실행, 연결된 실행 세부 정보를 포함한 구조화된 리서치 워크플로를 시작합니다.',
     analyzeReportShortcutTitle: '분석 보고서',
@@ -784,12 +786,12 @@ export default mergeHarnessLocale('ko-KR', {
       unavailableTitle: '지금은 사용할 수 있는 AI 제공업체가 없습니다.',
       unavailableDescription:
         '구성한 제공업체를 현재 사용할 수 없습니다. 설정에서 연결, API 키 또는 모델 상태를 확인한 후 다시 시도하세요.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: '일시적인 공급자 문제',
+      recoverableTitle: '공급자 확인이 필요합니다',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        '구성된 공급자에서 일시적인 오류가 발생했습니다. 아래의 최신 원인을 확인하고 공급자를 재설정한 다음 다시 시도하세요.',
+      retry: '공급자 다시 시도',
+      reviewSingle: '공급자 검토',
       providerSummary: '주의가 필요한 구성된 제공업체',
       moreProviders: '{count} 더 많은 제공업체에도 주의가 필요합니다.',
       statusActive: '활성',
@@ -861,7 +863,7 @@ export default mergeHarnessLocale('ko-KR', {
     execDirectoryApprovalTimeout:
       '디렉터리 승인 시간이 초과되어 명령 실행이 차단되었습니다. 디렉터리를 승인한 뒤 다시 시도해 주세요.',
     providerActive: '공급자가 활성화되어 준비되었습니다.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: '공급자 확인이 필요합니다. 클릭하여 설정을 확인하세요.',
     providerPending: '공급자 상태 확인 중...',
     trialQuota: {
       remaining: '{tokens} 토큰 남음',
@@ -1344,7 +1346,7 @@ export default mergeHarnessLocale('ko-KR', {
       loadFailed: '외부 에이전트 프로필을 로드하지 못했습니다.',
       notAvailable: '사용할 수 없음',
       remoteAgent: '원격 에이전트',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: '내장 프로필',
       builtinTemplate: '내장 템플릿',
       customProfile: '맞춤 프로필',
       health: '건강',
@@ -4543,6 +4545,7 @@ export default mergeHarnessLocale('ko-KR', {
       'Auto Reply': '자동 응답',
       Workflows: '워크플로',
       web_query: '웹 가져오기',
+      research: '심층 연구',
       research_run: '심층 연구',
       research_status: '심층 연구 상태',
       configuration: '구성',
@@ -4567,6 +4570,8 @@ export default mergeHarnessLocale('ko-KR', {
       ask: '작업을 계속하기 위해 필요한 후속 질문을 사용자에게 합니다',
       mediagen: 'AI 모델로 이미지, 비디오, 프레젠테이션을 생성합니다',
       web_query: 'URL로 웹 페이지를 가져와 파싱합니다',
+      research:
+        '심층 연구를 실행합니다. 최종 보고서를 기다리거나 나중에 확인할 작업 ID를 받을 수 있습니다.',
       research_run:
         '심층 연구를 실행합니다. 최종 보고서를 기다리거나 나중에 확인할 작업 ID를 받을 수 있습니다.',
       research_status: '심층 연구 작업의 현재 상태 또는 최종 보고서를 가져옵니다.',

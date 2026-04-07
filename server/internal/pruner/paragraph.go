@@ -10,6 +10,7 @@ func SegmentizeParagraphs(text string) []Segment {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
+	ensureDetectorRegexes()
 
 	lines := strings.Split(text, "\n")
 	var segments []Segment

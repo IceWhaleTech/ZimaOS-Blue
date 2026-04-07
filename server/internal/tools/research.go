@@ -647,11 +647,11 @@ func buildResearchCreateJobRequest(ctx context.Context, args map[string]interfac
 			firstResearchListValue(req.SearchQueries),
 		)
 	case "ui_review":
-		req.URL = strings.TrimSpace(firstCompatString(args, "url", "href"))
+		req.URL = strings.TrimSpace(firstUIReviewCompatURL(args))
 		if req.URL == "" {
 			req.URL = firstResearchEmbeddedURL(goal)
 		}
-		req.Image = strings.TrimSpace(firstCompatString(args, "image", "image_base64", "imageBase64"))
+		req.Image = strings.TrimSpace(firstUIReviewCompatImage(args))
 		action, err := parseResearchUICanonicalAction(args, req.URL, req.Image)
 		if err != nil {
 			return ResearchCreateJobRequest{}, err
@@ -692,10 +692,10 @@ func buildResearchCreateJobRequest(ctx context.Context, args map[string]interfac
 
 func inferResearchModeFromArgs(args map[string]interface{}) string {
 	if strings.TrimSpace(parseResearchUIAction(args)) != "" ||
-		strings.TrimSpace(firstCompatString(args, "image", "image_base64", "imageBase64")) != "" {
+		strings.TrimSpace(firstUIReviewCompatImage(args)) != "" {
 		return "ui_review"
 	}
-	if url := strings.TrimSpace(firstCompatString(args, "url", "href")); url != "" {
+	if url := strings.TrimSpace(firstUIReviewCompatURL(args)); url != "" {
 		if strings.TrimSpace(firstCompatString(args, "device", "channel", "format", "profile", "review_action", "reviewAction", "ui_review_action", "uiReviewAction")) != "" ||
 			firstResearchCompatValue(args, "wait_ms", "waitMs") != nil ||
 			firstResearchCompatValue(args, "threshold") != nil ||

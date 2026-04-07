@@ -402,6 +402,108 @@ func TestLoadHarnessDatasetBundleFromCommittedFixture(t *testing.T) {
 	}
 }
 
+func TestLoadHarnessDatasetBundleFromCommittedPinchBenchSamplesFixture(t *testing.T) {
+	workdir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	bundleDir := filepath.Join(workdir, "..", "..", "..", "harness", "datasets", "pinchbench-samples")
+
+	req, err := loadHarnessDatasetBundleFromDir(bundleDir, "")
+	if err != nil {
+		t.Fatalf("loadHarnessDatasetBundleFromDir fixture: %v", err)
+	}
+	if req.SourceType != "dataset_bundle_local" {
+		t.Fatalf("source_type = %q, want dataset_bundle_local", req.SourceType)
+	}
+	if req.Dataset.Name != "pinchbench-samples" || req.Version.Version != "v1" {
+		t.Fatalf("request = %#v, want pinchbench-samples/v1", req)
+	}
+	if req.Dataset.Subject != "pinchbench_samples" {
+		t.Fatalf("dataset.subject = %q, want pinchbench_samples", req.Dataset.Subject)
+	}
+	if req.Dataset.DefaultRunKind != harnesspkg.RunKindAgentTask {
+		t.Fatalf("dataset.default_run_kind = %q, want %q", req.Dataset.DefaultRunKind, harnesspkg.RunKindAgentTask)
+	}
+	if req.Dataset.DefaultProfile != "pinchbench_samples" {
+		t.Fatalf("dataset.default_profile = %q, want pinchbench_samples", req.Dataset.DefaultProfile)
+	}
+	if got := fmt.Sprint(req.Dataset.Metadata["source_benchmark"]); got != "pinchbench" {
+		t.Fatalf("dataset.metadata.source_benchmark = %q, want pinchbench", got)
+	}
+	if got := fmt.Sprint(req.Dataset.Metadata["sample_scope"]); got != "deterministic_v1" {
+		t.Fatalf("dataset.metadata.sample_scope = %q, want deterministic_v1", got)
+	}
+
+	if len(req.EvalSpecs) != 1 || req.EvalSpecs[0].Name != "PinchBench Samples v1" {
+		t.Fatalf("eval_specs = %#v, want one PinchBench Samples v1", req.EvalSpecs)
+	}
+	if req.EvalSpecs[0].RunKind != harnesspkg.RunKindAgentTask {
+		t.Fatalf("eval_specs[0].run_kind = %q, want %q", req.EvalSpecs[0].RunKind, harnesspkg.RunKindAgentTask)
+	}
+	if req.EvalSpecs[0].Profile != "pinchbench_samples" {
+		t.Fatalf("eval_specs[0].profile = %q, want pinchbench_samples", req.EvalSpecs[0].Profile)
+	}
+	if req.EvalSpecs[0].ScoringConfig.Mode != harnesspkg.ScoringModeRule || req.EvalSpecs[0].ScoringConfig.PassThreshold != 1 {
+		t.Fatalf("eval_specs[0].scoring = %#v, want rule/1", req.EvalSpecs[0].ScoringConfig)
+	}
+	if req.EvalSpecs[0].SchedulerConfig.MaxConcurrency != 2 || req.EvalSpecs[0].SchedulerConfig.MaxAttempts != 2 {
+		t.Fatalf("eval_specs[0].scheduler = %#v, want max_concurrency/max_attempts = 2", req.EvalSpecs[0].SchedulerConfig)
+	}
+
+	manifest, err := (&harnesspkg.DatasetVersion{Manifest: req.Version.Manifest}).DecodeManifest()
+	if err != nil {
+		t.Fatalf("DecodeManifest: %v", err)
+	}
+	if len(manifest.Items) != 6 {
+		t.Fatalf("manifest items len = %d, want 6", len(manifest.Items))
+	}
+
+	seenIDs := make(map[string]struct{}, len(manifest.Items))
+	seenLocales := map[string]bool{
+		"en-US": false,
+		"zh-CN": false,
+	}
+	memoryGuardCount := 0
+
+	for _, item := range manifest.Items {
+		if item.ID == "" {
+			t.Fatal("manifest item has empty id")
+		}
+		if _, exists := seenIDs[item.ID]; exists {
+			t.Fatalf("duplicate manifest item id %q", item.ID)
+		}
+		seenIDs[item.ID] = struct{}{}
+
+		locale := fmt.Sprint(item.Metadata["locale"])
+		if _, ok := seenLocales[locale]; ok {
+			seenLocales[locale] = true
+		}
+
+		if fmt.Sprint(item.Metadata["sample_family"]) == "memory_guard" {
+			memoryGuardCount++
+			if len(harnesspkg.DecodeHarnessContract(item.Metadata).RequiredObservations) == 0 && len(harnesspkg.DecodeHarnessContract(item.Expected).RequiredObservations) == 0 {
+				t.Fatalf("%s missing required observations", item.ID)
+			}
+			if len(harnesspkg.DecodeHarnessContract(item.Metadata).ForbiddenObservations) == 0 && len(harnesspkg.DecodeHarnessContract(item.Expected).ForbiddenObservations) == 0 {
+				t.Fatalf("%s missing forbidden observations", item.ID)
+			}
+			if _, ok := item.Metadata["harness_memory_seed"]; !ok {
+				t.Fatalf("%s missing harness_memory_seed metadata", item.ID)
+			}
+		}
+	}
+
+	for locale, seen := range seenLocales {
+		if !seen {
+			t.Fatalf("locale %s missing from manifest", locale)
+		}
+	}
+	if memoryGuardCount != 2 {
+		t.Fatalf("memory guard case count = %d, want 2", memoryGuardCount)
+	}
+}
+
 func TestResolveHarnessDatasetGitHubSourceRequiresBundlePathForRepoURL(t *testing.T) {
 	_, err := resolveHarnessDatasetGitHubSource("https://github.com/example/harness-datasets", "")
 	if err == nil {

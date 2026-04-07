@@ -18,6 +18,16 @@ type HarnessTermGlossary = {
   prepare: string
 }
 
+type ResultCardWebQueryLabelBackfill = {
+  has_results: string
+  selected_result: string
+  key_facts: string
+  research_artifact_path: string
+  llm_compacted: string
+  materialized: string
+  mode: string
+}
+
 const execCardNoCommandLabels: Partial<Record<LocaleKey, string>> = {
   'ca-ES': 'Sense ordre',
   'cs-CZ': 'Bez příkazu',
@@ -92,8 +102,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'El proveïdor configurat ha trobat un error temporal. Reviseu el motiu més recent a continuació, reinicieu el proveïdor i torneu-ho a provar.',
     retry: 'Torna a provar el proveïdor',
     reviewSingle: 'Revisa el proveïdor',
-    providerNeedsAttention:
-      'El proveïdor necessita atenció. Feu clic per revisar la configuració.',
+    providerNeedsAttention: 'El proveïdor necessita atenció. Feu clic per revisar la configuració.',
     builtinProfile: 'Perfil integrat',
   },
   'cs-CZ': {
@@ -103,8 +112,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'Nakonfigurovaný poskytovatel narazil na dočasnou chybu. Níže zkontrolujte poslední důvod, resetujte poskytovatele a zkuste to znovu.',
     retry: 'Zkusit poskytovatele znovu',
     reviewSingle: 'Zkontrolovat poskytovatele',
-    providerNeedsAttention:
-      'Poskytovatel vyžaduje pozornost. Kliknutím zkontrolujte nastavení.',
+    providerNeedsAttention: 'Poskytovatel vyžaduje pozornost. Kliknutím zkontrolujte nastavení.',
     builtinProfile: 'Vestavěný profil',
   },
   'da-DK': {
@@ -169,8 +177,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'Bhain earráid shealadach leis an soláthraí atá cumraithe agat. Féach ar an gcúis is déanaí thíos, athshocraigh an soláthraí agus bain triail eile as.',
     retry: 'Bain triail eile as an soláthraí',
     reviewSingle: 'Déan athbhreithniú ar an soláthraí',
-    providerNeedsAttention:
-      'Teastaíonn aird ón soláthraí. Cliceáil chun na socruithe a sheiceáil.',
+    providerNeedsAttention: 'Teastaíonn aird ón soláthraí. Cliceáil chun na socruithe a sheiceáil.',
     builtinProfile: 'Próifíl ionsuite',
   },
   'hr-HR': {
@@ -180,8 +187,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'Vaš konfigurirani pružatelj naišao je na privremenu pogrešku. Pregledajte najnoviji razlog u nastavku, resetirajte pružatelja i zatim pokušajte ponovno.',
     retry: 'Pokušaj ponovno s pružateljem',
     reviewSingle: 'Pregledaj pružatelja',
-    providerNeedsAttention:
-      'Pružatelj zahtijeva pažnju. Kliknite za provjeru postavki.',
+    providerNeedsAttention: 'Pružatelj zahtijeva pažnju. Kliknite za provjeru postavki.',
     builtinProfile: 'Ugrađeni profil',
   },
   'hu-HU': {
@@ -213,8 +219,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       '設定済みのプロバイダーで一時的なエラーが発生しました。下にある最新の理由を確認し、プロバイダーをリセットしてからもう一度お試しください。',
     retry: 'プロバイダーを再試行',
     reviewSingle: 'プロバイダーを確認',
-    providerNeedsAttention:
-      'プロバイダーに対応が必要です。クリックして設定を確認してください。',
+    providerNeedsAttention: 'プロバイダーに対応が必要です。クリックして設定を確認してください。',
     builtinProfile: '組み込みプロファイル',
   },
   'ko-KR': {
@@ -224,8 +229,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       '구성된 공급자에서 일시적인 오류가 발생했습니다. 아래의 최신 원인을 확인하고 공급자를 재설정한 다음 다시 시도하세요.',
     retry: '공급자 다시 시도',
     reviewSingle: '공급자 검토',
-    providerNeedsAttention:
-      '공급자 확인이 필요합니다. 클릭하여 설정을 확인하세요.',
+    providerNeedsAttention: '공급자 확인이 필요합니다. 클릭하여 설정을 확인하세요.',
     builtinProfile: '내장 프로필',
   },
   'ml-IN': {
@@ -268,8 +272,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'Skonfigurowany dostawca napotkał tymczasowy błąd. Sprawdź poniżej najnowszy powód, zresetuj dostawcę i spróbuj ponownie.',
     retry: 'Spróbuj ponownie z dostawcą',
     reviewSingle: 'Sprawdź dostawcę',
-    providerNeedsAttention:
-      'Dostawca wymaga uwagi. Kliknij, aby sprawdzić ustawienia.',
+    providerNeedsAttention: 'Dostawca wymaga uwagi. Kliknij, aby sprawdzić ustawienia.',
     builtinProfile: 'Wbudowany profil',
   },
   'pt-BR': {
@@ -290,8 +293,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'O fornecedor configurado encontrou um erro temporário. Reveja abaixo o motivo mais recente, reponha o fornecedor e tente novamente.',
     retry: 'Tentar fornecedor novamente',
     reviewSingle: 'Rever fornecedor',
-    providerNeedsAttention:
-      'O fornecedor precisa de atenção. Clique para verificar as definições.',
+    providerNeedsAttention: 'O fornecedor precisa de atenção. Clique para verificar as definições.',
     builtinProfile: 'Perfil integrado',
   },
   'ro-RO': {
@@ -301,8 +303,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'Furnizorul configurat a întâmpinat o eroare temporară. Verificați mai jos cel mai recent motiv, resetați furnizorul și încercați din nou.',
     retry: 'Reîncearcă furnizorul',
     reviewSingle: 'Verifică furnizorul',
-    providerNeedsAttention:
-      'Furnizorul necesită atenție. Faceți clic pentru a verifica setările.',
+    providerNeedsAttention: 'Furnizorul necesită atenție. Faceți clic pentru a verifica setările.',
     builtinProfile: 'Profil integrat',
   },
   'ru-RU': {
@@ -312,8 +313,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'У настроенного провайдера возникла временная ошибка. Проверьте ниже последнюю причину, сбросьте провайдера и попробуйте снова.',
     retry: 'Повторить попытку с провайдером',
     reviewSingle: 'Проверить провайдера',
-    providerNeedsAttention:
-      'Провайдеру требуется внимание. Нажмите, чтобы проверить настройки.',
+    providerNeedsAttention: 'Провайдеру требуется внимание. Нажмите, чтобы проверить настройки.',
     builtinProfile: 'Встроенный профиль',
   },
   'sk-SK': {
@@ -323,8 +323,7 @@ const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecover
       'Nakonfigurovaný poskytovateľ narazil na dočasnú chybu. Nižšie skontrolujte posledný dôvod, resetujte poskytovateľa a potom to skúste znova.',
     retry: 'Skúsiť poskytovateľa znova',
     reviewSingle: 'Skontrolovať poskytovateľa',
-    providerNeedsAttention:
-      'Poskytovateľ vyžaduje pozornosť. Kliknutím skontrolujte nastavenia.',
+    providerNeedsAttention: 'Poskytovateľ vyžaduje pozornosť. Kliknutím skontrolujte nastavenia.',
     builtinProfile: 'Vstavaný profil',
   },
   'sv-SE': {
@@ -355,8 +354,7 @@ const routingModePinnedBackfills: Partial<Record<LocaleKey, RoutingModePinnedLoc
   },
   'cs-CZ': {
     providerPinnedTitle: 'Připnutý poskytovatel',
-    providerPinnedDesc:
-      'Tato konverzace zůstává u {provider}, ale model je stále automatický.',
+    providerPinnedDesc: 'Tato konverzace zůstává u {provider}, ale model je stále automatický.',
     providerPinnedReset: 'Použít všechny poskytovatele',
   },
   'da-DK': {
@@ -378,8 +376,7 @@ const routingModePinnedBackfills: Partial<Record<LocaleKey, RoutingModePinnedLoc
   },
   'en-GB': {
     providerPinnedTitle: 'Pinned Provider',
-    providerPinnedDesc:
-      'This conversation stays on {provider}, but the model is still automatic.',
+    providerPinnedDesc: 'This conversation stays on {provider}, but the model is still automatic.',
     providerPinnedReset: 'Use all providers',
   },
   'es-ES': {
@@ -396,14 +393,12 @@ const routingModePinnedBackfills: Partial<Record<LocaleKey, RoutingModePinnedLoc
   },
   'ga-IE': {
     providerPinnedTitle: 'Soláthraí greamaithe',
-    providerPinnedDesc:
-      'Fanann an comhrá seo ar {provider}, ach tá an tsamhail fós uathoibríoch.',
+    providerPinnedDesc: 'Fanann an comhrá seo ar {provider}, ach tá an tsamhail fós uathoibríoch.',
     providerPinnedReset: 'Úsáid gach soláthraí',
   },
   'hr-HR': {
     providerPinnedTitle: 'Prikvačeni pružatelj',
-    providerPinnedDesc:
-      'Ovaj razgovor ostaje na {provider}, ali model je i dalje automatski.',
+    providerPinnedDesc: 'Ovaj razgovor ostaje na {provider}, ali model je i dalje automatski.',
     providerPinnedReset: 'Koristi sve pružatelje',
   },
   'hu-HU': {
@@ -475,8 +470,7 @@ const routingModePinnedBackfills: Partial<Record<LocaleKey, RoutingModePinnedLoc
   },
   'sk-SK': {
     providerPinnedTitle: 'Pripnutý poskytovateľ',
-    providerPinnedDesc:
-      'Tento rozhovor zostáva na {provider}, ale model je stále automatický.',
+    providerPinnedDesc: 'Tento rozhovor zostáva na {provider}, ale model je stále automatický.',
     providerPinnedReset: 'Použiť všetkých poskytovateľov',
   },
   'sv-SE': {
@@ -582,6 +576,252 @@ const localizedBackendLabels: Partial<Record<LocaleKey, string>> = {
   'ro-RO': 'Back-end',
   'sk-SK': 'Back-end',
   'sv-SE': 'Bakände',
+}
+
+const webQueryResultCardLabelBackfills: Record<LocaleKey, ResultCardWebQueryLabelBackfill> = {
+  'ca-ES': {
+    has_results: 'Té resultats',
+    selected_result: 'Resultat seleccionat',
+    key_facts: 'Fets clau',
+    research_artifact_path: "Ruta de l'artefacte de recerca",
+    llm_compacted: 'Compactat per LLM',
+    materialized: 'Materialitzat',
+    mode: 'Mode',
+  },
+  'cs-CZ': {
+    has_results: 'Má výsledky',
+    selected_result: 'Vybraný výsledek',
+    key_facts: 'Klíčová fakta',
+    research_artifact_path: 'Cesta k artefaktu výzkumu',
+    llm_compacted: 'Zkompaktováno LLM',
+    materialized: 'Materializováno',
+    mode: 'Režim',
+  },
+  'da-DK': {
+    has_results: 'Har resultater',
+    selected_result: 'Valgt resultat',
+    key_facts: 'Nøglefakta',
+    research_artifact_path: 'Sti til research-artefakt',
+    llm_compacted: 'Komprimeret af LLM',
+    materialized: 'Materialiseret',
+    mode: 'Tilstand',
+  },
+  'de-DE': {
+    has_results: 'Hat Ergebnisse',
+    selected_result: 'Ausgewähltes Ergebnis',
+    key_facts: 'Kernfakten',
+    research_artifact_path: 'Pfad zum Recherche-Artefakt',
+    llm_compacted: 'Durch LLM komprimiert',
+    materialized: 'Materialisiert',
+    mode: 'Modus',
+  },
+  'el-GR': {
+    has_results: 'Έχει αποτελέσματα',
+    selected_result: 'Επιλεγμένο αποτέλεσμα',
+    key_facts: 'Βασικά στοιχεία',
+    research_artifact_path: 'Διαδρομή τεχνήματος έρευνας',
+    llm_compacted: 'Συμπτυγμένο από LLM',
+    materialized: 'Υλοποιημένο',
+    mode: 'Λειτουργία',
+  },
+  'en-GB': {
+    has_results: 'Has Results',
+    selected_result: 'Selected Result',
+    key_facts: 'Key Facts',
+    research_artifact_path: 'Research Artifact Path',
+    llm_compacted: 'LLM Compacted',
+    materialized: 'Materialized',
+    mode: 'Mode',
+  },
+  'en-US': {
+    has_results: 'Has Results',
+    selected_result: 'Selected Result',
+    key_facts: 'Key Facts',
+    research_artifact_path: 'Research Artifact Path',
+    llm_compacted: 'LLM Compacted',
+    materialized: 'Materialized',
+    mode: 'Mode',
+  },
+  'es-ES': {
+    has_results: 'Tiene resultados',
+    selected_result: 'Resultado seleccionado',
+    key_facts: 'Datos clave',
+    research_artifact_path: 'Ruta del artefacto de investigacion',
+    llm_compacted: 'Compactado por LLM',
+    materialized: 'Materializado',
+    mode: 'Modo',
+  },
+  'fr-FR': {
+    has_results: 'Contient des resultats',
+    selected_result: 'Resultat selectionne',
+    key_facts: 'Faits cles',
+    research_artifact_path: "Chemin de l'artefact de recherche",
+    llm_compacted: 'Compacte par le LLM',
+    materialized: 'Materialise',
+    mode: 'Mode',
+  },
+  'ga-IE': {
+    has_results: 'Tá torthaí ann',
+    selected_result: 'Toradh roghnaithe',
+    key_facts: 'Príomhfhíricí',
+    research_artifact_path: 'Conair go déantán taighde',
+    llm_compacted: 'Comhdhlúite ag LLM',
+    materialized: 'Cruthaithe',
+    mode: 'Mód',
+  },
+  'hr-HR': {
+    has_results: 'Ima rezultate',
+    selected_result: 'Odabrani rezultat',
+    key_facts: 'Ključne činjenice',
+    research_artifact_path: 'Putanja artefakta istraživanja',
+    llm_compacted: 'Kompaktirano LLM-om',
+    materialized: 'Materijalizirano',
+    mode: 'Način',
+  },
+  'hu-HU': {
+    has_results: 'Van találat',
+    selected_result: 'Kiválasztott eredmény',
+    key_facts: 'Kulcstények',
+    research_artifact_path: 'Kutatási artefaktum útvonala',
+    llm_compacted: 'LLM által tömörítve',
+    materialized: 'Materializálva',
+    mode: 'Mód',
+  },
+  'it-IT': {
+    has_results: 'Ha risultati',
+    selected_result: 'Risultato selezionato',
+    key_facts: 'Fatti chiave',
+    research_artifact_path: "Percorso dell'artefatto di ricerca",
+    llm_compacted: 'Compattato da LLM',
+    materialized: 'Materializzato',
+    mode: 'Modalità',
+  },
+  'ja-JP': {
+    has_results: '結果あり',
+    selected_result: '選択結果',
+    key_facts: '重要事項',
+    research_artifact_path: '調査成果物パス',
+    llm_compacted: 'LLM圧縮済み',
+    materialized: '実体化済み',
+    mode: 'モード',
+  },
+  'ko-KR': {
+    has_results: '결과 있음',
+    selected_result: '선택된 결과',
+    key_facts: '핵심 사실',
+    research_artifact_path: '조사 아티팩트 경로',
+    llm_compacted: 'LLM 압축됨',
+    materialized: '생성됨',
+    mode: '모드',
+  },
+  'ml-IN': {
+    has_results: 'ഫലങ്ങളുണ്ട്',
+    selected_result: 'തിരഞ്ഞെടുത്ത ഫലം',
+    key_facts: 'പ്രധാന വിവരങ്ങള്',
+    research_artifact_path: 'ഗവേഷണ ആര്‍ട്ടിഫാക്റ്റ് പാത',
+    llm_compacted: 'LLM ചുരുക്കിയത്',
+    materialized: 'സൃഷ്ടിച്ചത്',
+    mode: 'മോഡ്',
+  },
+  'nb-NO': {
+    has_results: 'Har resultater',
+    selected_result: 'Valgt resultat',
+    key_facts: 'Nøkkelfakta',
+    research_artifact_path: 'Sti til forskningsartefakt',
+    llm_compacted: 'Komprimert av LLM',
+    materialized: 'Materialisert',
+    mode: 'Modus',
+  },
+  'nl-NL': {
+    has_results: 'Heeft resultaten',
+    selected_result: 'Geselecteerd resultaat',
+    key_facts: 'Kernfeiten',
+    research_artifact_path: 'Pad naar onderzoeksartefact',
+    llm_compacted: 'Gecompacteerd door LLM',
+    materialized: 'Gematerialiseerd',
+    mode: 'Modus',
+  },
+  'pl-PL': {
+    has_results: 'Ma wyniki',
+    selected_result: 'Wybrany wynik',
+    key_facts: 'Kluczowe fakty',
+    research_artifact_path: 'Sciezka artefaktu badawczego',
+    llm_compacted: 'Skondensowane przez LLM',
+    materialized: 'Zmaterializowane',
+    mode: 'Tryb',
+  },
+  'pt-BR': {
+    has_results: 'Tem resultados',
+    selected_result: 'Resultado selecionado',
+    key_facts: 'Fatos-chave',
+    research_artifact_path: 'Caminho do artefato de pesquisa',
+    llm_compacted: 'Compactado por LLM',
+    materialized: 'Materializado',
+    mode: 'Modo',
+  },
+  'pt-PT': {
+    has_results: 'Tem resultados',
+    selected_result: 'Resultado selecionado',
+    key_facts: 'Factos-chave',
+    research_artifact_path: 'Caminho do artefacto de pesquisa',
+    llm_compacted: 'Compactado por LLM',
+    materialized: 'Materializado',
+    mode: 'Modo',
+  },
+  'ro-RO': {
+    has_results: 'Are rezultate',
+    selected_result: 'Rezultat selectat',
+    key_facts: 'Fapte cheie',
+    research_artifact_path: 'Calea artefactului de cercetare',
+    llm_compacted: 'Compactat de LLM',
+    materialized: 'Materializat',
+    mode: 'Mod',
+  },
+  'ru-RU': {
+    has_results: 'Есть результаты',
+    selected_result: 'Выбранный результат',
+    key_facts: 'Ключевые факты',
+    research_artifact_path: 'Путь к артефакту исследования',
+    llm_compacted: 'Сжато LLM',
+    materialized: 'Материализовано',
+    mode: 'Режим',
+  },
+  'sk-SK': {
+    has_results: 'Má výsledky',
+    selected_result: 'Vybraný výsledok',
+    key_facts: 'Kľúčové fakty',
+    research_artifact_path: 'Cesta k artefaktu výskumu',
+    llm_compacted: 'Zhutnené pomocou LLM',
+    materialized: 'Materializované',
+    mode: 'Režim',
+  },
+  'sv-SE': {
+    has_results: 'Har resultat',
+    selected_result: 'Valt resultat',
+    key_facts: 'Nyckelfakta',
+    research_artifact_path: 'Sökväg till forskningsartefakt',
+    llm_compacted: 'Kompakterad av LLM',
+    materialized: 'Materialiserad',
+    mode: 'Läge',
+  },
+  'zh-CN': {
+    has_results: '有结果',
+    selected_result: '已选结果',
+    key_facts: '关键信息',
+    research_artifact_path: '研究产物路径',
+    llm_compacted: 'LLM 压缩',
+    materialized: '已生成',
+    mode: '模式',
+  },
+  'zh-TW': {
+    has_results: '有結果',
+    selected_result: '已選結果',
+    key_facts: '關鍵資訊',
+    research_artifact_path: '研究產物路徑',
+    llm_compacted: 'LLM 壓縮',
+    materialized: '已生成',
+    mode: '模式',
+  },
 }
 
 const localizedMetricsMinLabels: Partial<Record<LocaleKey, string>> = {
@@ -904,7 +1144,10 @@ export function buildLocalePostMergeBackfill(
         const currentHealthy = getString(messages, 'settings.failover.chips.healthy')
         const dashboardHealthy = getString(messages, 'dashboard.healthy')
         const localizedHealthy = failoverHealthyLabels[localeKey]
-        if (localizedHealthy && (!currentHealthy || currentHealthy === 'Healthy' || currentHealthy === 'OK')) {
+        if (
+          localizedHealthy &&
+          (!currentHealthy || currentHealthy === 'Healthy' || currentHealthy === 'OK')
+        ) {
           return localizedHealthy
         }
         if (currentHealthy && currentHealthy !== 'Healthy' && currentHealthy !== 'OK') {
@@ -1027,8 +1270,7 @@ export function buildLocalePostMergeBackfill(
     maybeFillEnglishCacheFallback(tokenEconomyPatch, 'cache', 'tokenEconomy.cache')
     maybeFillEnglishCacheFallback(systemPatch, 'cpuCache', 'system.cpuCache')
   }
-  const localizedDirectoryWhitelistAlias =
-    localizedDirectoryWhitelistAliasLabels[localeKey]
+  const localizedDirectoryWhitelistAlias = localizedDirectoryWhitelistAliasLabels[localeKey]
   if (localizedDirectoryWhitelistAlias) {
     const currentDirectoryWhitelistAlias = getString(messages, 'security.directoryWhitelistAlias')
     if (!currentDirectoryWhitelistAlias || currentDirectoryWhitelistAlias === 'Alias') {
@@ -1059,6 +1301,47 @@ export function buildLocalePostMergeBackfill(
     maybeFillEnglishBackendFallback(apiProxyPatch, 'prunerBackend', 'apiProxy.prunerBackend')
     maybeFillEnglishBackendFallback(resultCardLabelsPatch, 'backend', 'resultCard.labels.backend')
     maybeFillEnglishBackendFallback(userdataMemoryPatch, 'backend', 'userdata.memory.backend')
+  }
+  const webQueryResultCardLabels = webQueryResultCardLabelBackfills[localeKey]
+  if (webQueryResultCardLabels) {
+    const maybeFillResultCardLabel = (
+      key: string,
+      localized: string | null,
+      englishFallback: string
+    ) => {
+      if (!localized) return
+      const current = getString(messages, `resultCard.labels.${key}`)
+      if (!current || current === englishFallback) {
+        resultCardLabelsPatch[key] = localized
+      }
+    }
+
+    maybeFillResultCardLabel('input', getString(messages, 'companion.llmDetails.input'), 'Input')
+    maybeFillResultCardLabel('provider', getString(messages, 'common.provider'), 'Provider')
+    maybeFillResultCardLabel('mode', webQueryResultCardLabels.mode, 'Mode')
+    maybeFillResultCardLabel('has_results', webQueryResultCardLabels.has_results, 'Has Results')
+    maybeFillResultCardLabel(
+      'selected_result',
+      webQueryResultCardLabels.selected_result,
+      'Selected Result'
+    )
+    maybeFillResultCardLabel('key_facts', webQueryResultCardLabels.key_facts, 'Key Facts')
+    maybeFillResultCardLabel(
+      'key_factsanalysis',
+      webQueryResultCardLabels.key_facts,
+      'Key Facts Analysis'
+    )
+    maybeFillResultCardLabel(
+      'research_artifact_path',
+      webQueryResultCardLabels.research_artifact_path,
+      'Research Artifact Path'
+    )
+    maybeFillResultCardLabel(
+      'llm_compacted',
+      webQueryResultCardLabels.llm_compacted,
+      'LLM Compacted'
+    )
+    maybeFillResultCardLabel('materialized', webQueryResultCardLabels.materialized, 'Materialized')
   }
   const localizedMetricsMin = localizedMetricsMinLabels[localeKey]
   if (localizedMetricsMin) {
@@ -1106,7 +1389,7 @@ export function buildLocalePostMergeBackfill(
   const localizedHeapAllocation =
     currentHeapAllocation && currentHeapAllocation !== 'Heap Allocation'
       ? currentHeapAllocation
-      : localizedHeapAllocLabels[localeKey] ?? null
+      : (localizedHeapAllocLabels[localeKey] ?? null)
   const currentHeapAlloc = getString(messages, 'system.heapAlloc')
   if (
     (!currentHeapAlloc || currentHeapAlloc === 'Heap Alloc') &&
@@ -1192,8 +1475,14 @@ export function buildLocalePostMergeBackfill(
   }
   const localizedViberAuthTokenPlaceholder = localizedViberAuthTokenPlaceholders[localeKey]
   if (localizedViberAuthTokenPlaceholder) {
-    const currentViberAuthTokenPlaceholder = getString(messages, 'channels.placeholderViberAuthToken')
-    if (!currentViberAuthTokenPlaceholder || currentViberAuthTokenPlaceholder === 'Viber Auth Token') {
+    const currentViberAuthTokenPlaceholder = getString(
+      messages,
+      'channels.placeholderViberAuthToken'
+    )
+    if (
+      !currentViberAuthTokenPlaceholder ||
+      currentViberAuthTokenPlaceholder === 'Viber Auth Token'
+    ) {
       channelsPatch.placeholderViberAuthToken = localizedViberAuthTokenPlaceholder
     }
   }
@@ -1228,11 +1517,7 @@ export function buildLocalePostMergeBackfill(
     )
     maybeFillEnglishFallback(noProviderPatch, 'retry', 'chat.noProvider.retry')
     maybeFillEnglishFallback(noProviderPatch, 'reviewSingle', 'chat.noProvider.reviewSingle')
-    maybeFillEnglishFallback(
-      chatPatch,
-      'providerNeedsAttention',
-      'chat.providerNeedsAttention'
-    )
+    maybeFillEnglishFallback(chatPatch, 'providerNeedsAttention', 'chat.providerNeedsAttention')
     maybeFillEnglishFallback(
       externalAgentsPatch,
       'builtinProfile',
@@ -1251,7 +1536,10 @@ export function buildLocalePostMergeBackfill(
       routingModePatch.providerPinnedReset = routingModePinnedBackfill.providerPinnedReset
     }
   }
-  const currentSignalVulnerabilities = getString(messages, 'skillStore.marketplace.signals.vulnerabilities')
+  const currentSignalVulnerabilities = getString(
+    messages,
+    'skillStore.marketplace.signals.vulnerabilities'
+  )
   const localizedFilterVulnerabilities = getString(
     messages,
     'skillStore.marketplace.filters.vulnerabilities'

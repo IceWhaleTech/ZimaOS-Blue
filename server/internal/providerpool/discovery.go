@@ -101,6 +101,24 @@ func (d *ModelDiscovery) storeResolvedModels(providerID string, models []*Model)
 	d.notifyModelsChanged(providerID)
 }
 
+func (d *ModelDiscovery) promoteProviderAfterSuccessfulFetch(providerID string) {
+	if d == nil || d.registry == nil {
+		return
+	}
+
+	provider, err := d.registry.Get(providerID)
+	if err != nil || provider == nil || !provider.Enabled {
+		return
+	}
+	if provider.Status == ProviderStatusActive && strings.TrimSpace(provider.LastError) == "" {
+		return
+	}
+
+	// Best-effort status promotion so UI/runtime consumers stop treating a
+	// successfully discovered provider as unavailable.
+	_ = d.registry.UpdateStatus(providerID, ProviderStatusActive, "")
+}
+
 // FetchModels fetches models from a provider
 func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]*Model, error) {
 	provider, err := d.registry.Get(providerID)
@@ -130,6 +148,7 @@ func (d *ModelDiscovery) FetchModels(ctx context.Context, providerID string) ([]
 	models = sortModelsByPreference(models)
 
 	d.storeResolvedModels(providerID, models)
+	d.promoteProviderAfterSuccessfulFetch(providerID)
 
 	return models, nil
 }

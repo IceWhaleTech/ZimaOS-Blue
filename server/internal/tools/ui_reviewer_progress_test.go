@@ -187,6 +187,29 @@ func TestUIReviewerExecuteInfersReviewImageActionFromImage(t *testing.T) {
 	}
 }
 
+func TestUIReviewerExecuteInfersReviewImageActionFromScreenshotAlias(t *testing.T) {
+	tool := NewUIReviewerTool()
+	tool.SetVLMBridge(&mockVLMBridge{})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"screenshot": "base64-image-data",
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("result type = %T, want string", result)
+	}
+	var payload UIReviewResult
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("failed to decode result: %v", err)
+	}
+	if payload.Visual.Score == 0 {
+		t.Fatalf("visual score = %v, want non-zero", payload.Visual.Score)
+	}
+}
+
 func TestBuildVLMPromptPPTProfile(t *testing.T) {
 	prompt := buildVLMPrompt("", i18n.LangEnUS, UIReviewProfilePPT)
 	if !strings.Contains(prompt, "typography_or_text_safety") {

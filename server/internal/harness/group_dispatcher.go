@@ -538,6 +538,10 @@ func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error)
 			firstMapString(item.Input, "agent_id", "agentId"),
 			firstMapString(metadata, "agent_id", "agentId"),
 		),
+		ProviderID: firstNonEmpty(
+			firstMapString(item.Input, "provider_id", "providerId"),
+			firstMapString(metadata, "provider_id", "providerId"),
+		),
 		Model: firstNonEmpty(
 			firstMapString(item.Input, "model"),
 			firstMapString(metadata, "model"),
@@ -559,6 +563,9 @@ func buildGroupItemRunSpec(group *RunGroup, item *RunGroupItem) (RunSpec, error)
 		MaxToolRounds: firstPositiveInt(item.Input, metadata, "max_tool_rounds", "maxToolRounds"),
 		MaxSubagents:  firstPositiveInt(item.Input, metadata, "max_subagents", "maxSubagents"),
 		MaxDepth:      firstPositiveInt(item.Input, metadata, "max_depth", "maxDepth"),
+	}
+	if strings.TrimSpace(spec.ProviderID) != "" && metadataString(metadata, "provider_id") == "" {
+		metadata["provider_id"] = strings.TrimSpace(spec.ProviderID)
 	}
 	if approval := firstNonEmpty(
 		firstMapString(item.Input, "approval_mode", "approvalMode"),

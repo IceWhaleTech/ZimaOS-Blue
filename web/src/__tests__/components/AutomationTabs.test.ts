@@ -31,8 +31,6 @@ function createTestI18n() {
           tabs: {
             cron: 'Scheduled Tasks',
             cronDesc: 'Manage cron jobs and scheduled executions',
-            knowledge: 'Knowledge',
-            knowledgeDesc: 'Browse compiled pages, lint health, and grounded answers.',
             harness: 'Harness',
             harnessDesc: 'Review run records, eval groups, and scoring results.',
             evolution: 'Evolution',
@@ -49,7 +47,7 @@ describe('AutomationTabs', () => {
     routeMock.path = '/operations/evolution'
   })
 
-  it('shows the dedicated evolution tab and marks it active on evolution routes', () => {
+  it('shows only the three top-level operations tabs and marks evolution active on evolution routes', () => {
     const wrapper = mount(AutomationTabs, {
       global: {
         plugins: [createTestI18n()],
@@ -70,7 +68,7 @@ describe('AutomationTabs', () => {
       'page'
     )
     expect(wrapper.get('[data-testid="automation-tab-evolution"]').text()).toContain('Beta')
-    expect(wrapper.get('[data-testid="automation-tab-knowledge"]').text()).toContain('Knowledge')
-    expect(wrapper.get('[data-testid="automation-tab-knowledge"]').text()).toContain('Beta')
+    expect(wrapper.find('[data-testid="automation-tab-knowledge"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid^="automation-tab-"]')).toHaveLength(3)
   })
 })

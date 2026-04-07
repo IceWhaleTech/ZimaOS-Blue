@@ -176,14 +176,6 @@ func NewPool(dataPath string, opts ...PoolOption) (*Pool, error) {
 		pool.applyOfficialProviderCatalog()
 	})
 
-	// Load embedded catalog first as fallback before remote updates
-	if err := pool.providerCatalogUpdater.LoadEmbeddedCatalog(); err != nil {
-		fmt.Printf("[Pool] Failed to load embedded catalog: %v\n", err)
-	}
-	// Initialize built-in providers and catalog-backed model metadata synchronously
-	// so chat can route immediately, even before background updaters start.
-	pool.applyOfficialProviderCatalog()
-
 	// Remove trial provider if quota is already exhausted (e.g. zero quota, expired, tampered)
 	if pool.TrialQuotaManager != nil && pool.TrialQuotaManager.IsExhausted() {
 		pool.TrialQuotaManager.DeleteTrialProvider()
@@ -482,7 +474,7 @@ func (p *Pool) initBuiltinProviders() {
 		} else {
 			// Register new builtin provider
 			syncCatalogProviderCanonicalFields(builtin)
-			p.Registry.Register(builtin)
+			p.Registry.register(builtin, false)
 		}
 	}
 }
@@ -1168,21 +1160,41 @@ func (h *Handler) AddProvider(c echo.Context) error {
 	}
 
 	// If an api_key string was provided, create an APIKey entry
-	if req.APIKeyStr != "" {
+	trimmedAPIKey := strings.TrimSpace(req.APIKeyStr)
+	if trimmedAPIKey != "" {
 		provider.APIKeys = append(provider.APIKeys, APIKey{
 			ID:      GenerateID("key"),
-			Key:     req.APIKeyStr,
-			KeyHash: HashAPIKey(req.APIKeyStr),
+			Key:     trimmedAPIKey,
+			KeyHash: HashAPIKey(trimmedAPIKey),
 			Enabled: true,
 		})
 		provider.Enabled = true
 	}
 
 	explicitFormat := provider.APIFormat != ""
+	verifiedProvider := false
+	if trimmedAPIKey != "" {
+		verifyResult, verifyErr := verifyProviderCandidate(c.Request().Context(), providerVerificationRequest{
+			BaseURL:       provider.BaseURL,
+			APIKey:        trimmedAPIKey,
+			SkipTLSVerify: provider.SkipTLSVerify,
+		})
+		if verifyErr == nil && verifyResult != nil {
+			verifiedProvider = true
+			if !explicitFormat {
+				applyProviderVerificationRecommendation(&provider, verifyResult, timeutil.NowTime())
+			}
+			if provider.Enabled && providerVerificationIndicatesReady(verifyResult) {
+				provider.Status = ProviderStatusActive
+				provider.LastError = ""
+				provider.LastErrorTime = time.Time{}
+			}
+		}
+	}
 	if explicitFormat && provider.APIFormatMode == "" {
 		provider.APIFormatMode = APIFormatModePinned
 	}
-	if !explicitFormat {
+	if !explicitFormat && !verifiedProvider {
 		// Auto-detect best API format for third-party/custom providers.
 		detectedFormat, detectedBaseURL := autoDetectAPIFormat(c.Request().Context(), &provider)
 		provider.APIFormat = detectedFormat
@@ -1476,7 +1488,18 @@ func (h *Handler) VerifyProviderByID(c echo.Context) error {
 
 	applied := false
 	if body.Apply {
-		if applyProviderVerificationRecommendation(provider, result, timeutil.NowTime()) {
+		now := timeutil.NowTime()
+		changed := applyProviderVerificationRecommendation(provider, result, now)
+		if provider.Enabled && providerVerificationIndicatesReady(result) {
+			if provider.Status != ProviderStatusActive || provider.LastError != "" || !provider.LastErrorTime.IsZero() {
+				provider.Status = ProviderStatusActive
+				provider.LastError = ""
+				provider.LastErrorTime = time.Time{}
+				provider.UpdatedAt = now
+				changed = true
+			}
+		}
+		if changed {
 			if err := h.pool.Registry.Update(provider); err != nil {
 				return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			}
@@ -1793,9 +1816,14 @@ func (h *Handler) FetchProviderModels(c echo.Context) error {
 
 	models := result.([]*Model)
 	resp := toModelResponses(models, h.pool.PricingManager, h.mediaPricingLookup)
+	var providerResp *providerResponse
+	if provider, getErr := h.pool.Registry.Get(id); getErr == nil {
+		providerResp = toProviderResponse(provider, models, h.pool.PricingManager, h.mediaPricingLookup)
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"models": resp,
-		"total":  len(resp),
+		"models":   resp,
+		"total":    len(resp),
+		"provider": providerResp,
 	})
 }
 

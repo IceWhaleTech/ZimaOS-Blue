@@ -30,6 +30,7 @@ func TestUIReviewerValidate(t *testing.T) {
 		{"infer review_url from href", map[string]any{"href": "http://example.com"}, false, "review_url"},
 		{"infer review_image from image", map[string]any{"image": "base64data"}, false, "review_image"},
 		{"infer review_image from image_base64", map[string]any{"image_base64": "base64data"}, false, "review_image"},
+		{"infer review_image from screenshot", map[string]any{"screenshot": "base64data"}, false, "review_image"},
 		{"canonicalize audit url alias", map[string]any{"action": "audit", "url": "http://example.com"}, false, "review_url"},
 		{"canonicalize audit image alias", map[string]any{"action": "audit", "image": "base64data"}, false, "review_image"},
 		{"canonicalize accessibility alias", map[string]any{"action": "a11y", "url": "http://example.com"}, false, "check_accessibility"},
@@ -104,6 +105,22 @@ func TestUIReviewerExecuteAcceptsImageBase64Alias(t *testing.T) {
 	ur := NewUIReviewer()
 	result, err := ur.Execute(context.Background(), map[string]any{
 		"image_base64": "base64data",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Success {
+		t.Fatal("expected failure when bridge not available")
+	}
+	if result.Error != "proxy bridge not available — cannot call VLM" {
+		t.Fatalf("error = %q, want proxy bridge error", result.Error)
+	}
+}
+
+func TestUIReviewerExecuteAcceptsScreenshotAlias(t *testing.T) {
+	ur := NewUIReviewer()
+	result, err := ur.Execute(context.Background(), map[string]any{
+		"screenshot": "base64data",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

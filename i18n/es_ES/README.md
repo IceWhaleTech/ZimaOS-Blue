@@ -72,9 +72,10 @@ Compilado nativamente en Go — sin intérprete, sin VM, sin sobrecarga. Se ejec
 | `status` tiempo de ejecución (mejor de 3) | **< 0.01 s** | 5.98 s |
 | `help` RSS pico | **~10 MB** | ~394 MB |
 | `status` RSS pico | **~15 MB** | ~1.52 GB |
+| memoria en reposo de `gateway run` tras arranque en frío | **~19 MB** | - |
 | Dependencias de ejecución | **Ninguna** | Node.js 18+ |
 
-> Pruebas realizadas en macOS arm64 (modo servidor, sin interfaz de escritorio), mismo equipo, mejor de 3 ejecuciones. Feb 2026.
+> Las filas de CLI anteriores corresponden al microbenchmark histórico de `help` / `status` en el mismo host. La nueva fila de `gateway run` refleja la memoria real en reposo tras un arranque en frío, medida en macOS arm64 mediante `vmmap Physical footprint` una vez estabilizado el arranque. Feb-abr 2026.
 
 ### Go Puro, Cualquier Dispositivo
 

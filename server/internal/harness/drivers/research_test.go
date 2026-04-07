@@ -114,6 +114,27 @@ func TestResearchDriverStart_PassesRetryMetadataToService(t *testing.T) {
 	}
 }
 
+func TestResearchDriverStart_PassesProviderIDToService(t *testing.T) {
+	svc := deepresearch.NewService(deepresearch.NewHeuristicPlanner(), testResearchSearcher{})
+	driver := &ResearchDriver{service: svc}
+
+	run := &harness.Run{
+		ID:         "research-provider-job",
+		UserID:     "user-1",
+		Goal:       "feature rollout",
+		ProviderID: "openai-prod",
+	}
+
+	if err := driver.Start(context.Background(), run, harness.RunEnv{}); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	current := waitForDeepResearchJob(t, svc, run.ID)
+	if current.ProviderID != "openai-prod" {
+		t.Fatalf("provider_id = %q, want openai-prod", current.ProviderID)
+	}
+}
+
 func TestResearchDriverStart_AnalyzeModeRunsInsideHarnessEnvelope(t *testing.T) {
 	controller := newDriverTestController(t)
 	analyzeTool := &stubResearchModeTool{

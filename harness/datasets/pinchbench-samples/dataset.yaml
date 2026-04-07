@@ -1,0 +1,18 @@
+api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: pinchbench-samples
+description: Deterministic PinchBench-inspired Harness samples for prompt-only and memory-seeded regression checks.
+subject: pinchbench_samples
+default_run_kind: agent_task
+default_profile: pinchbench_samples
+default_version: v1
+metadata:
+  source_benchmark: pinchbench
+  sample_scope: deterministic_v1
+  reference_tasks:
+    - task_15_daily_summary
+    - task_22_second_brain
+versions:
+  v1:
+    eval_specs:
+      - default.yaml

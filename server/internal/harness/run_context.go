@@ -88,6 +88,9 @@ func annotateRunExecutionContext(ctx context.Context, run *Run) context.Context 
 	if sessionID := strings.TrimSpace(run.SessionID); sessionID != "" {
 		ctx = tools.WithSessionID(ctx, sessionID)
 	}
+	if providerID := strings.TrimSpace(run.ProviderID); providerID != "" {
+		ctx = tools.WithProviderID(ctx, providerID)
+	}
 	if model := strings.TrimSpace(run.Model); model != "" {
 		ctx = tools.WithModel(ctx, model)
 	}

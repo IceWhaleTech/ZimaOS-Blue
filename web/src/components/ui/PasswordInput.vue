@@ -63,9 +63,7 @@ function handleInput(event: Event) {
     <button
       type="button"
       class="absolute end-3 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors cursor-pointer"
-      :title="
-        showPassword ? $t('formFiller.widget.hidePassword') : $t('formFiller.widget.showPassword')
-      "
+      :title="showPassword ? $t('common.hidePassword') : $t('common.showPassword')"
       @click="toggleVisibility"
     >
       <svg

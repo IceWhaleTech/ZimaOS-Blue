@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import KnowledgeView from '@/views/KnowledgeView.vue'
 import { i18n } from '@/i18n'
 import { knowledgeApi } from '@/api/knowledge'
+import automationKnowledgeEvolutionBackfills from '@/i18n/automation-knowledge-evolution-backfills'
 
 const routeState = {
   query: {} as Record<string, string>,
@@ -190,7 +191,7 @@ describe('KnowledgeView', () => {
     })) as never
   })
 
-  it('renders wiki-oriented overview state and forwards query jobs with scope controls', async () => {
+  it('renders the lighter knowledge workspace layout and keeps maintenance tools behind a secondary toggle', async () => {
     runJobMock.mockResolvedValue({
       id: 'job-answer',
       job_id: 'job-answer',
@@ -215,13 +216,29 @@ describe('KnowledgeView', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Knowledge Space')
-    expect(wrapper.text()).toContain('Recent activity')
     expect(wrapper.text()).toContain('Knowledge map')
-    expect(wrapper.text()).toContain('2 pages')
-    expect(wrapper.text()).toContain('1 unresolved conflicts')
-    expect(wrapper.text()).toContain('1 open gaps')
+    expect(wrapper.text()).toContain('Query')
     expect(wrapper.text()).toContain('Blue Knowledge')
+    expect(wrapper.get('[data-testid="knowledge-ingest-button"]').text()).toContain('Ingest')
+    expect(wrapper.get('[data-testid="knowledge-lint-button"]').text()).toContain('Lint')
+    expect(wrapper.find('[data-testid="knowledge-summary-value-pages"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-panel-log"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-schema-editor"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="knowledge-ingest-button"]').trigger('click')
+    expect(runJobMock).toHaveBeenNthCalledWith(1, { kind: 'ingest' })
+
+    await wrapper.get('[data-testid="knowledge-lint-button"]').trigger('click')
+    expect(runJobMock).toHaveBeenNthCalledWith(2, { kind: 'lint' })
+
+    await wrapper.get('[data-testid="knowledge-maintenance-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Recent activity')
+    expect(wrapper.get('[data-testid="knowledge-maintenance-panel"]').text()).toContain(
+      'Ingest and maintain Blue knowledge'
+    )
+    expect(wrapper.text()).toContain('Blue Architecture')
     expect(wrapper.text()).toContain('README.md')
     expect(wrapper.text()).toContain('Knowledge schema updated')
     expect(
@@ -234,7 +251,7 @@ describe('KnowledgeView', () => {
     await wrapper.get('[data-testid="knowledge-query-scope"]').setValue('selected_sources')
     await wrapper.get('[data-testid="knowledge-query-button"]').trigger('click')
 
-    expect(runJobMock).toHaveBeenCalledWith({
+    expect(runJobMock).toHaveBeenNthCalledWith(3, {
       kind: 'answer',
       query: 'How does Blue knowledge compilation work?',
       page_slug: 'readme',
@@ -242,5 +259,21 @@ describe('KnowledgeView', () => {
       query_scope: 'selected_sources',
       selected_refs: ['README.md'],
     })
+  })
+
+  it('stores translated schema labels for Chinese locales', () => {
+    const zhCN = automationKnowledgeEvolutionBackfills['zh-CN'] as {
+      knowledge?: Record<string, string>
+    }
+    const zhTW = automationKnowledgeEvolutionBackfills['zh-TW'] as {
+      knowledge?: Record<string, string>
+    }
+
+    expect(zhCN.knowledge?.schemaTitle).toBe('结构定义')
+    expect(zhCN.knowledge?.openSchema).toBe('打开结构定义')
+    expect(zhCN.knowledge?.saveSchema).toBe('保存结构定义')
+    expect(zhCN.knowledge?.active).toBe('当前')
+    expect(zhTW.knowledge?.schemaTitle).toBe('結構定義')
+    expect(zhTW.knowledge?.active).toBe('當前')
   })
 })

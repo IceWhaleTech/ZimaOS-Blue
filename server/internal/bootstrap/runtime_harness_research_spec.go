@@ -11,6 +11,7 @@ type researchHarnessRunInput struct {
 	UserID         string
 	ConversationID string
 	WorkspaceRoot  string
+	ProviderID     string
 	Mode           string
 	ResearchDepth  string
 	RouteMode      string
@@ -97,6 +98,7 @@ func newResearchHarnessRunSpec(input researchHarnessRunInput) harness.RunSpec {
 		UserID:         strings.TrimSpace(input.UserID),
 		ConversationID: strings.TrimSpace(input.ConversationID),
 		SessionID:      strings.TrimSpace(input.ConversationID),
+		ProviderID:     strings.TrimSpace(input.ProviderID),
 		WorkspaceRoot:  strings.TrimSpace(input.WorkspaceRoot),
 		Metadata:       metadata,
 	}

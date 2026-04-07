@@ -72,9 +72,10 @@ Nativ in Go kompiliert — kein Interpreter, keine VM, kein Overhead. Läuft una
 | `status` Laufzeit (bester von 3) | **< 0.01 s** | 5.98 s |
 | `help` Spitzen-RSS | **~10 MB** | ~394 MB |
 | `status` Spitzen-RSS | **~15 MB** | ~1.52 GB |
+| `gateway run` Leerlaufspeicher nach Kaltstart | **~19 MB** | - |
 | Laufzeitabhängigkeiten | **Keine** | Node.js 18+ |
 
-> Gemessen auf macOS arm64 (Servermodus, ohne Desktop-UI), gleicher Host, bester von 3 Durchläufen. Feb 2026.
+> Die obigen CLI-Zeilen sind der historische `help` / `status`-Mikrobenchmark auf demselben Host. Die neue Zeile für `gateway run` zeigt den realen Leerlaufspeicher nach Kaltstart, gemessen auf macOS arm64 über `vmmap Physical footprint`, nachdem sich der Start beruhigt hat. Feb-Apr 2026.
 
 ### Reines Go, Jedes Gerät
 

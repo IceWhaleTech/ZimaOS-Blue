@@ -72,9 +72,10 @@ Compilat nativament en Go — sense intèrpret, sense VM, sense sobrecàrrega. F
 | `status` temps d'execució (millor de 3) | **< 0.01 s** | 5.98 s |
 | `help` RSS màxim | **~10 MB** | ~394 MB |
 | `status` RSS màxim | **~15 MB** | ~1.52 GB |
+| memòria idle de `gateway run` després d'arrencada en fred | **~19 MB** | - |
 | Dependències d'execució | **Cap** | Node.js 18+ |
 
-> Mesurat en macOS arm64, mateix host, millor de 3 execucions. Feb 2026.
+> Les files de CLI de dalt corresponen al microbenchmark històric de `help` / `status` al mateix host. La nova fila de `gateway run` reflecteix la memòria real en repòs després d'un arrencada en fred, mesurada a macOS arm64 amb `vmmap Physical footprint` un cop estabilitzat l'inici. Feb-abr 2026.
 
 ### Go pur, qualsevol dispositiu
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -45,47 +44,6 @@ func NewScanner(classifier Classifier) *Scanner {
 	}
 }
 
-var dangerousCommandRules = []struct {
-	pattern *regexp.Regexp
-	label   string
-}{
-	{pattern: regexp.MustCompile(`(?i)\brm\s+-rf\b`), label: "rm -rf"},
-	{pattern: regexp.MustCompile(`(?i)\bcurl\b[^\n|]*\|\s*(sh|bash)\b`), label: "curl | sh"},
-	{pattern: regexp.MustCompile(`(?i)\bwget\b[^\n|]*\|\s*(sh|bash)\b`), label: "wget | bash"},
-	{pattern: regexp.MustCompile(`(?i)\bchmod\s+777\b`), label: "chmod 777"},
-	{pattern: regexp.MustCompile(`(?i)\bscp\b`), label: "scp"},
-	{pattern: regexp.MustCompile(`(?i)\bssh\b`), label: "ssh"},
-}
-
-var promptInjectionRules = []struct {
-	pattern *regexp.Regexp
-	label   string
-}{
-	{pattern: regexp.MustCompile(`(?i)ignore previous instructions`), label: "ignore previous instructions"},
-	{pattern: regexp.MustCompile(`(?i)exfiltrate data`), label: "exfiltrate data"},
-	{pattern: regexp.MustCompile(`(?i)reveal system prompt`), label: "reveal system prompt"},
-}
-
-var permissionRules = []struct {
-	pattern    *regexp.Regexp
-	permission string
-}{
-	{pattern: regexp.MustCompile(`(?i)(read|write|modify).*(file|filesystem)|/etc/|~\/|\.zima`), permission: "filesystem"},
-	{pattern: regexp.MustCompile(`(?i)\b(http|https|curl|wget|webhook|api request|download)\b`), permission: "network"},
-	{pattern: regexp.MustCompile(`(?i)\b(shell|bash|zsh|sh|terminal|exec|command)\b`), permission: "shell"},
-	{pattern: regexp.MustCompile(`(?i)\bdocker\b`), permission: "docker"},
-	{pattern: regexp.MustCompile(`(?i)\b(systemctl|launchctl|registry|kernel|sudo)\b`), permission: "system"},
-}
-
-var secretRules = []struct {
-	pattern *regexp.Regexp
-	label   string
-}{
-	{pattern: regexp.MustCompile(`(?i)\b(?:api[_-]?key|token|secret)\s*[:=]\s*['"]?[a-z0-9_\-]{12,}`), label: "credential literal"},
-	{pattern: regexp.MustCompile(`-----BEGIN (?:RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----`), label: "private key"},
-	{pattern: regexp.MustCompile(`(?i)\bgh[pousr]_[A-Za-z0-9]{20,}\b`), label: "github token"},
-}
-
 func (s *Scanner) Scan(ctx context.Context, skillID, version, content string, declaredPermissions []string) *SecurityReport {
 	return s.ScanWithSurface(ctx, skillID, version, content, declaredPermissions, InstallSurface{
 		InstallType:  InstallTypeRawSkill,
@@ -95,6 +53,7 @@ func (s *Scanner) Scan(ctx context.Context, skillID, version, content string, de
 }
 
 func (s *Scanner) ScanWithSurface(ctx context.Context, skillID, version, content string, declaredPermissions []string, surface InstallSurface) *SecurityReport {
+	ensureSkillMarketSecurityRules()
 	surface = normalizeInstallSurface(surface)
 	report := &SecurityReport{
 		SkillID:             skillID,

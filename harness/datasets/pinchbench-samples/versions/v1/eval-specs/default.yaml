@@ -1,0 +1,15 @@
+name: PinchBench Samples v1
+subject: pinchbench_samples
+run_kind: agent_task
+profile: pinchbench_samples
+scheduler:
+  maxconcurrency: 2
+  maxattempts: 2
+  retrybackoff: 10s
+scoring:
+  mode: rule
+  passthreshold: 1
+metadata:
+  lane: pinchbench_samples
+  source_benchmark: pinchbench
+  sample_scope: deterministic_v1

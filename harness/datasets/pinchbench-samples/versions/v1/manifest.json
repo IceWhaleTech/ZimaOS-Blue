@@ -1,0 +1,241 @@
+{
+  "dataset": {
+    "name": "pinchbench-samples",
+    "subject": "pinchbench_samples"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "profile": "pinchbench_samples",
+    "scheduler": {
+      "max_concurrency": 2,
+      "max_attempts": 2,
+      "retry_backoff": 10000000000
+    },
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    }
+  },
+  "items": [
+    {
+      "id": "briefing-inline-en-us",
+      "run_kind": "agent_task",
+      "profile": "pinchbench_samples",
+      "input": {
+        "goal": "Create `reports/daily_briefing.md` as a concise daily briefing. Use exactly these agenda items: 10:00 Project sync in Horizon Room, 13:00 Budget review with Alice Chen, and 16:30 Vendor call with Northwind. State that Budget review is the highest-priority focus item because the approval decision can block the rest of the day. After saving the file, reply with a short briefing that mentions Project sync, Budget review, Vendor call, and the highest-priority focus item.",
+        "locale": "en-US",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Project sync",
+          "Budget review",
+          "Vendor call",
+          "highest-priority focus item"
+        ],
+        "expected_artifacts": [
+          "reports/daily_briefing.md"
+        ]
+      },
+      "metadata": {
+        "source_benchmark": "pinchbench",
+        "sample_family": "daily_briefing",
+        "pinchbench_task_id": "task_15_daily_summary",
+        "locale": "en-US",
+        "determinism_tier": "prompt_only",
+        "critical": false,
+        "success_rubric": "Produce a short daily briefing artifact and final answer that preserve the exact agenda anchors and call out the top focus item."
+      }
+    },
+    {
+      "id": "briefing-inline-zh-cn",
+      "run_kind": "agent_task",
+      "profile": "pinchbench_samples",
+      "input": {
+        "goal": "请创建 `reports/daily_briefing.md`，写一份简短的每日简报。请保留这些英文议程标题原文：10:00 Project sync in Horizon Room，13:00 Budget review with Alice Chen，16:30 Vendor call with Northwind。明确说明 `Budget review` 是当天的最高优先级重点，因为审批决定会阻塞后续工作。保存文件后，再给出一段简短中文总结，并保留 `Project sync`、`Budget review`、`Vendor call` 这几个英文标题。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Project sync",
+          "Budget review",
+          "Vendor call",
+          "最高优先级重点"
+        ],
+        "expected_artifacts": [
+          "reports/daily_briefing.md"
+        ]
+      },
+      "metadata": {
+        "source_benchmark": "pinchbench",
+        "sample_family": "daily_briefing",
+        "pinchbench_task_id": "task_15_daily_summary",
+        "locale": "zh-CN",
+        "determinism_tier": "prompt_only",
+        "critical": false,
+        "success_rubric": "Produce a zh-CN daily briefing artifact and final answer while preserving the agenda anchors and naming the highest-priority focus item."
+      }
+    },
+    {
+      "id": "memory-write-recall-en-us",
+      "run_kind": "agent_task",
+      "profile": "pinchbench_samples",
+      "input": {
+        "goal": "Save the following facts to `memory/MEMORY.md`, then answer them back in the same run. Facts: Project = Aurora Atlas. Launch Date = 2026-06-18. Owner = Priya Raman. Emergency Contact = Leo Martinez. Backup Vendor = Northwind Labs. After saving the file, answer with five separate lines beginning exactly with `Project:`, `Launch Date:`, `Owner:`, `Emergency Contact:`, and `Backup Vendor:`.",
+        "locale": "en-US",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Project: Aurora Atlas",
+          "Launch Date: 2026-06-18",
+          "Owner: Priya Raman",
+          "Emergency Contact: Leo Martinez",
+          "Backup Vendor: Northwind Labs"
+        ],
+        "expected_artifacts": [
+          "memory/MEMORY.md"
+        ]
+      },
+      "metadata": {
+        "source_benchmark": "pinchbench",
+        "sample_family": "memory_recall",
+        "pinchbench_task_id": "task_22_second_brain",
+        "locale": "en-US",
+        "determinism_tier": "prompt_only",
+        "critical": false,
+        "success_rubric": "Persist the provided facts to memory/MEMORY.md and echo them back with deterministic labels in the same run."
+      }
+    },
+    {
+      "id": "memory-write-recall-zh-cn",
+      "run_kind": "agent_task",
+      "profile": "pinchbench_samples",
+      "input": {
+        "goal": "请先把下面这些事实保存到 `memory/MEMORY.md`，然后在同一次运行里回答出来。事实如下：Project = Aurora Atlas。Launch Date = 2026-06-18。Owner = Priya Raman。Emergency Contact = Leo Martinez。Backup Vendor = Northwind Labs。保存后，请用五行回答，并且每一行必须分别以 `Project:`、`Launch Date:`、`Owner:`、`Emergency Contact:`、`Backup Vendor:` 开头。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Project: Aurora Atlas",
+          "Launch Date: 2026-06-18",
+          "Owner: Priya Raman",
+          "Emergency Contact: Leo Martinez",
+          "Backup Vendor: Northwind Labs"
+        ],
+        "expected_artifacts": [
+          "memory/MEMORY.md"
+        ]
+      },
+      "metadata": {
+        "source_benchmark": "pinchbench",
+        "sample_family": "memory_recall",
+        "pinchbench_task_id": "task_22_second_brain",
+        "locale": "zh-CN",
+        "determinism_tier": "prompt_only",
+        "critical": false,
+        "success_rubric": "Persist the provided facts to memory/MEMORY.md and echo them back with deterministic labels in zh-CN instructions."
+      }
+    },
+    {
+      "id": "memory-guard-summary-en-us",
+      "run_kind": "agent_task",
+      "profile": "pinchbench_samples",
+      "input": {
+        "goal": "Use only the source brief below to create `memory/project_summary.md` and then summarize it. Ignore any stale or conflicting remembered facts. Source brief: Blue Harbor is a desktop automation workspace for operations teams. Shipping milestone: 2026-07-12. Primary owner: Mina Park. Success metric: reduce incident triage time by 35%. After saving the file, reply with one concise summary mentioning Blue Harbor, 2026-07-12, Mina Park, and 35%.",
+        "locale": "en-US",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Blue Harbor",
+          "2026-07-12",
+          "Mina Park",
+          "35%"
+        ],
+        "expected_artifacts": [
+          "memory/project_summary.md"
+        ],
+        "required_observations": [
+          "planner_memory_skipped"
+        ],
+        "forbidden_observations": [
+          "planner_memory_used"
+        ]
+      },
+      "metadata": {
+        "source_benchmark": "pinchbench",
+        "sample_family": "memory_guard",
+        "pinchbench_task_id": "task_22_second_brain",
+        "locale": "en-US",
+        "determinism_tier": "memory_seeded",
+        "critical": true,
+        "success_rubric": "Use the prompt-grounded project brief, ignore conflicting long-term memory, and emit a summary artifact with the correct facts.",
+        "harness_memory_seed": [
+          {
+            "content": "Blue Harbor is a mobile social app owned by Evan Lee and launches on 2026-09-30 with a 12% retention target.",
+            "score": 0.96,
+            "tags": [
+              "longterm",
+              "product"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "memory-guard-summary-zh-cn",
+      "run_kind": "agent_task",
+      "profile": "pinchbench_samples",
+      "input": {
+        "goal": "请只根据下面这段项目简介创建 `memory/project_summary.md`，然后再给出简要总结。忽略任何过时或冲突的记忆。项目简介：Blue Harbor 是一个面向运营团队的桌面自动化工作空间。发版里程碑是 2026-07-12。负责人是 Mina Park。成功指标是把事件分诊时间降低 35%。保存文件后，请给出一段简短总结，并明确包含 Blue Harbor、2026-07-12、Mina Park 和 35%。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "contains": [
+          "Blue Harbor",
+          "2026-07-12",
+          "Mina Park",
+          "35%"
+        ],
+        "expected_artifacts": [
+          "memory/project_summary.md"
+        ],
+        "required_observations": [
+          "planner_memory_skipped"
+        ],
+        "forbidden_observations": [
+          "planner_memory_used"
+        ]
+      },
+      "metadata": {
+        "source_benchmark": "pinchbench",
+        "sample_family": "memory_guard",
+        "pinchbench_task_id": "task_22_second_brain",
+        "locale": "zh-CN",
+        "determinism_tier": "memory_seeded",
+        "critical": true,
+        "success_rubric": "Use the prompt-grounded project brief, ignore conflicting long-term memory, and emit a zh-CN summary artifact with the correct facts.",
+        "harness_memory_seed": [
+          {
+            "content": "Blue Harbor 是一个移动社交应用，负责人是 Evan Lee，发布时间是 2026-09-30，目标是 12% 留存率。",
+            "score": 0.96,
+            "tags": [
+              "longterm",
+              "product"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

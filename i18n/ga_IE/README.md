@@ -72,9 +72,10 @@ Tiomsaithe go dúchasach i Go — gan ateangaire, gan VM, gan forchostais. Rithe
 | `status` am rite (is fearr as 3) | **< 0.01 s** | 5.98 s |
 | `help` buaic RSS | **~10 MB** | ~394 MB |
 | `status` buaic RSS | **~15 MB** | ~1.52 GB |
+| cuimhne díomhaoin `gateway run` tar éis tosaithe fuaire | **~19 MB** | - |
 | Spleáchais am rite | **Dada** | Node.js 18+ |
 
-> Tagarmharcáilte ar macOS arm64, an t-óstach céanna, is fearr as 3 rith. Feabhra 2026.
+> Is iad na línte CLI thuas an micribhencmhargadh stairiúil `help` / `status` ar an óstach céanna. Léiríonn an líne nua `gateway run` an chuimhne díomhaoin fhíorshaol tar éis tosaithe fuaire, tomhaiste ar macOS arm64 trí `vmmap Physical footprint` nuair a shocraíonn an tosú. Feabh-Aib 2026.
 
 ### Go Glan, Aon Ghléas
 

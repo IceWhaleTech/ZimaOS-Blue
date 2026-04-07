@@ -1727,6 +1727,7 @@ func (r *Runner) generatePlan(ctx context.Context, goal, conversationCtx string)
 }
 
 func (r *Runner) generatePlanForTask(ctx context.Context, task *Task, goal, conversationCtx string) (*planResult, error) {
+	ctx = applyTaskProviderRouting(ctx, task)
 	// Recall relevant memories for context
 	memoryTrace := r.recallPlannerMemory(ctx, goal, plannerTaskMetadata(task))
 	if task != nil {
@@ -1999,6 +2000,7 @@ func agentToolCallCommand(call llm.ToolCall) string {
 }
 
 func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex int, actionDescription, systemPrompt, userPrompt string, cachedTools []llm.Tool) (string, error) {
+	ctx = applyTaskProviderRouting(ctx, task)
 	messages := []llm.Message{
 		{Role: llm.RoleSystem, Content: systemPrompt},
 		{Role: llm.RoleUser, Content: userPrompt},
@@ -3023,6 +3025,7 @@ func buildSummarySystemPrompt() string {
 // generateSummary uses the LLM to create a summary with next-step suggestions.
 // Falls back to a simple count-based summary if the LLM call fails.
 func (r *Runner) generateSummary(ctx context.Context, task *Task, reflection *selfreflect.Result) string {
+	ctx = applyTaskProviderRouting(ctx, task)
 	// Build step results for context
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Goal: %s\n\nCompleted steps:\n", task.Goal))
@@ -3218,6 +3221,16 @@ func buildReflectionInput(task *Task, plan []PlanStep, finalStatus TaskStatus, f
 		ResultSummary:      task.Result,
 		FailureReason:      failureReason,
 	}
+}
+
+func applyTaskProviderRouting(ctx context.Context, task *Task) context.Context {
+	providerID := strings.TrimSpace(preferredTaskProviderID(task))
+	if providerID == "" {
+		return ctx
+	}
+	ctx = proxy.WithPinnedProvider(ctx, providerID)
+	ctx = tools.WithProviderID(ctx, providerID)
+	return ctx
 }
 
 func formatReflectionOutput(reflection *selfreflect.Result) string {

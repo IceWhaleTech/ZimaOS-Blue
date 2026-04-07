@@ -72,9 +72,10 @@ Nativně kompilovaný v Go — žádný interpret, žádný VM, žádná režie.
 | `status` runtime (nejlepší ze 3) | **< 0,01 s** | 5,98 s |
 | `help` špičková RSS | **~10 MB** | ~394 MB |
 | `status` špičková RSS | **~15 MB** | ~1,52 GB |
+| klidová paměť `gateway run` po studeném startu | **~19 MB** | - |
 | Runtime závislosti | **Žádné** | Node.js 18+ |
 
-> Měřeno na macOS arm64 (serverový režim, bez desktopového UI), stejný stroj, nejlepší ze 3 běhů. Únor 2026.
+> Řádky CLI výše odpovídají historickému mikrobenchmarku `help` / `status` na stejném hostiteli. Nový řádek `gateway run` zachycuje skutečnou paměť v nečinnosti po studeném startu, měřenou na macOS arm64 přes `vmmap Physical footprint` po ustálení startu. Únor-duben 2026.
 
 ### Čisté Go, jakékoli zařízení
 

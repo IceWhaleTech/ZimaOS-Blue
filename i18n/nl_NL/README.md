@@ -72,9 +72,10 @@ Native gecompileerd in Go — geen interpreter, geen VM, geen overhead. Draait g
 | `status` runtime (beste van 3) | **< 0.01 s** | 5.98 s |
 | `help` piek RSS | **~10 MB** | ~394 MB |
 | `status` piek RSS | **~15 MB** | ~1.52 GB |
+| `gateway run` idle-geheugen na cold start | **~19 MB** | - |
 | Runtime-afhankelijkheden | **Geen** | Node.js 18+ |
 
-> Benchmark op macOS arm64 (servermodus, geen desktop-UI), dezelfde host, beste van 3 runs. Feb 2026.
+> De CLI-regels hierboven zijn de historische `help` / `status`-microbenchmark op dezelfde host. De nieuwe regel voor `gateway run` laat het echte idle-geheugen na een cold start zien, gemeten op macOS arm64 via `vmmap Physical footprint` nadat het opstarten is gestabiliseerd. Feb-apr 2026.
 
 ### Pure Go, Elk Apparaat
 

@@ -72,9 +72,10 @@ Kompilowany natywnie w Go — bez interpretera, bez maszyny wirtualnej, bez narz
 | `status` czas wykonania (najlepszy z 3) | **< 0.01 s** | 5.98 s |
 | `help` szczytowe RSS | **~10 MB** | ~394 MB |
 | `status` szczytowe RSS | **~15 MB** | ~1.52 GB |
+| pamięć bezczynna `gateway run` po zimnym starcie | **~19 MB** | - |
 | Zależności uruchomieniowe | **Brak** | Node.js 18+ |
 
-> Testy przeprowadzone na macOS arm64 (tryb serwerowy, bez desktopowego UI), ten sam host, najlepszy z 3 przebiegów. Luty 2026.
+> Powyższe wiersze CLI to historyczny mikrobenchmark `help` / `status` na tym samym hoście. Nowy wiersz `gateway run` pokazuje rzeczywistą pamięć bezczynności po zimnym starcie, mierzoną na macOS arm64 przez `vmmap Physical footprint` po ustabilizowaniu startu. Luty-kwiecień 2026.
 
 ### Czysty Go, dowolne urządzenie
 

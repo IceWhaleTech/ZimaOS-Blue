@@ -1,7 +1,6 @@
 package humanizer
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 )
@@ -99,12 +98,10 @@ func parseFenceSpans(text string) []FenceSpan {
 	return spans
 }
 
-// fenceLineRe matches a Markdown fence line: 0-3 spaces indent + 3+ backticks or tildes.
-var fenceLineRe = regexp.MustCompile(`^( {0,3})(`+ "`{3,}" + `|~{3,})(.*)$`)
-
 // parseFenceLine checks if a line is a fence opener/closer.
 // Returns (indent, marker, true) or ("", "", false).
 func parseFenceLine(line string) (indent, marker string, ok bool) {
+	ensureHumanizerRegexes()
 	m := fenceLineRe.FindStringSubmatch(line)
 	if m == nil {
 		return "", "", false
@@ -344,13 +341,11 @@ func ChunkMarkdownText(text string, limit int) []string {
 	return chunks
 }
 
-// paragraphBreakRe matches paragraph boundaries: blank lines (possibly with whitespace).
-var paragraphBreakRe = regexp.MustCompile(`\n[\t ]*\n+`)
-
 // ChunkByParagraph splits text at paragraph boundaries (blank lines).
 // Fenced code blocks are respected — blank lines inside fences are not split points.
 // Falls back to ChunkText for oversized paragraphs.
 func ChunkByParagraph(text string, limit int) []string {
+	ensureHumanizerRegexes()
 	if text == "" {
 		return nil
 	}

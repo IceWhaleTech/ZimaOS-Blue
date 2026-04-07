@@ -1942,7 +1942,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div data-form-filler-scope="provider">
+  <div>
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
       <div>
@@ -1991,7 +1991,6 @@ onMounted(() => {
         type="text"
         :placeholder="t('providerPool.search')"
         autocomplete="off"
-        data-form-filler-ignore
         class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
       />
     </div>
@@ -3060,7 +3059,6 @@ onMounted(() => {
             >
               <div
                 class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4"
-                data-form-filler-scope="provider"
               >
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                   {{ t('providerPool.oauth.deviceFlow') }}
@@ -3479,7 +3477,6 @@ onMounted(() => {
       >
         <div
           class="bg-white dark:bg-slate-800 rounded-lg w-full max-w-4xl mx-4 max-h-[90vh] flex flex-col"
-          data-form-filler-scope="provider"
         >
           <div
             class="flex items-center justify-between p-5 border-b border-gray-200 dark:border-slate-700"
@@ -3513,7 +3510,6 @@ onMounted(() => {
               'flex max-h-[calc(100vh-2rem)] w-full flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-slate-800 sm:max-h-[90vh]',
               addProviderMode === 'chooser' ? 'max-w-5xl' : 'max-w-2xl',
             ]"
-            data-form-filler-scope="provider"
           >
             <template v-if="addProviderMode === 'chooser'">
               <div
@@ -3927,7 +3923,6 @@ onMounted(() => {
       >
         <div
           class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4"
-          data-form-filler-scope="provider"
         >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.addApiKey') }}
@@ -4029,7 +4024,6 @@ onMounted(() => {
       >
         <div
           class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4"
-          data-form-filler-scope="provider"
         >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.addModelPricing') }}
@@ -4164,7 +4158,6 @@ onMounted(() => {
       >
         <div
           class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-md mx-4"
-          data-form-filler-scope="provider"
         >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.editModelParams') }}
@@ -4251,7 +4244,6 @@ onMounted(() => {
       >
         <div
           class="bg-white dark:bg-slate-800 rounded-lg p-5 w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
-          data-form-filler-scope="provider"
         >
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-2">
             {{ t('providerPool.selectPreferredModels') }}

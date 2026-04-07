@@ -96,6 +96,7 @@ declare module 'vue' {
     DonutChart: typeof import('./components/DonutChart.vue')['default']
     EditUserModal: typeof import('./components/users/EditUserModal.vue')['default']
     ErrorBoundary: typeof import('./components/ErrorBoundary.vue')['default']
+    EvolutionKnowledgePane: typeof import('./components/automation/EvolutionKnowledgePane.vue')['default']
     ExecApprovalDialog: typeof import('./components/ExecApprovalDialog.vue')['default']
     ExportDialog: typeof import('./components/companion/ExportDialog.vue')['default']
     ExternalAgentsSection: typeof import('./components/settings/ExternalAgentsSection.vue')['default']

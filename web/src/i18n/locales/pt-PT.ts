@@ -17,6 +17,8 @@ export default mergeHarnessLocale('pt-PT', {
     previous: 'Anterior',
     close: 'Fechar',
     backToTop: 'Voltar ao topo',
+    showPassword: 'Mostrar palavra-passe',
+    hidePassword: 'Ocultar palavra-passe',
     comingSoon: 'Em breve',
     clear: 'Limpar',
     copy: 'Copiar',
@@ -567,7 +569,7 @@ export default mergeHarnessLocale('pt-PT', {
     deepResearchObjectMap: 'Mapa de objetos',
     deepResearchBackToTask: 'Ver resultado',
     taskLoop: 'Loop Ralph',
-    alwaysOn: 'Sempre ativo',
+    alwaysOn: 'Automático',
     deepResearchHoverDescription:
       'Inicie um fluxo de investigacao estruturado com recolha, verificacao, execucoes rastreaveis e detalhes de execucao associados.',
     analyzeReportShortcutTitle: 'Relatório de análise',
@@ -791,12 +793,12 @@ export default mergeHarnessLocale('pt-PT', {
       unavailableTitle: 'Nenhum fornecedor de IA está disponível no momento',
       unavailableDescription:
         'Os seus fornecedores configurados não estão disponíveis no momento. Verifique a ligação, a chave API ou o estado do modelo em Definições e tente novamente.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Problema temporário no fornecedor',
+      recoverableTitle: 'O fornecedor precisa de atenção',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'O fornecedor configurado encontrou um erro temporário. Reveja abaixo o motivo mais recente, reponha o fornecedor e tente novamente.',
+      retry: 'Tentar fornecedor novamente',
+      reviewSingle: 'Rever fornecedor',
       providerSummary: 'Fornecedores configurados que precisam de atenção',
       moreProviders: '{count} mais prestadores também precisam de atenção.',
       statusActive: 'Ativo',
@@ -873,7 +875,7 @@ export default mergeHarnessLocale('pt-PT', {
     execDirectoryApprovalTimeout:
       'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
     providerActive: 'O provedor está ativo e pronto.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'O fornecedor precisa de atenção. Clique para verificar as definições.',
     providerPending: 'Verificando o status do provedor...',
     trialQuota: {
       remaining: '{tokens} tokens restantes',
@@ -1366,7 +1368,7 @@ export default mergeHarnessLocale('pt-PT', {
       loadFailed: 'Falha ao carregar perfis de agentes externos.',
       notAvailable: 'Não disponível',
       remoteAgent: 'Agente remoto',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Perfil integrado',
       builtinTemplate: 'Modelo integrado',
       customProfile: 'Perfil personalizado',
       health: 'Saúde',
@@ -4619,6 +4621,7 @@ export default mergeHarnessLocale('pt-PT', {
       'Auto Reply': 'Resposta automática',
       Workflows: 'Fluxos de trabalho',
       web_query: 'Captura web',
+      research: 'Investigação aprofundada',
       research_run: 'Investigação aprofundada',
       research_status: 'Estado da investigação aprofundada',
       configuration: 'Configuração',
@@ -4644,6 +4647,8 @@ export default mergeHarnessLocale('pt-PT', {
       ask: 'Faz perguntas de seguimento ao utilizador para continuar a tarefa',
       mediagen: 'Gera imagens, videos e apresentacoes com modelos de IA',
       web_query: 'Obtém e analisa uma pagina web por URL',
+      research:
+        'Executa um fluxo de investigação aprofundada. Pode aguardar o relatório final ou obter um ID de tarefa para consultar mais tarde.',
       research_run:
         'Executa um fluxo de investigação aprofundada. Pode aguardar o relatório final ou obter um ID de tarefa para consultar mais tarde.',
       research_status:

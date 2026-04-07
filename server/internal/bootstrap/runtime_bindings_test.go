@@ -102,6 +102,7 @@ func TestNewResearchHarnessRunSpecCopiesNormalizedFields(t *testing.T) {
 		UserID:         " user-1 ",
 		ConversationID: " conv-1 ",
 		WorkspaceRoot:  " /tmp/workspace ",
+		ProviderID:     " openai-prod ",
 		Mode:           "auto",
 		ResearchDepth:  "deep",
 		RouteMode:      "hybrid",
@@ -118,6 +119,9 @@ func TestNewResearchHarnessRunSpecCopiesNormalizedFields(t *testing.T) {
 	}
 	if spec.WorkspaceRoot != "/tmp/workspace" {
 		t.Fatalf("WorkspaceRoot = %q, want /tmp/workspace", spec.WorkspaceRoot)
+	}
+	if spec.ProviderID != "openai-prod" {
+		t.Fatalf("ProviderID = %q, want openai-prod", spec.ProviderID)
 	}
 	if spec.Metadata["mode"] != "auto" || spec.Metadata["research_depth"] != "deep" {
 		t.Fatalf("unexpected research mode metadata: %#v", spec.Metadata)

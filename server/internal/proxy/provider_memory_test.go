@@ -197,8 +197,54 @@ func TestProviderMemory_MemKeyScoping(t *testing.T) {
 	}
 }
 
+func TestModelAliases_InitializeOnDemand(t *testing.T) {
+	originalAliases := ModelAliases
+	ModelAliases = nil
+	defer func() {
+		ModelAliases = originalAliases
+	}()
+
+	_ = NewProxyHandler(nil, nil, nil)
+	if ModelAliases != nil {
+		t.Fatal("expected creating the proxy handler to avoid initializing model aliases")
+	}
+
+	aliases, ok := modelAliasesFor("claude-3-5-haiku-20241022")
+	if !ok || len(aliases) == 0 {
+		t.Fatal("expected on-demand lookup to initialize model aliases")
+	}
+	if ModelAliases == nil {
+		t.Fatal("expected first model alias lookup to populate the catalog")
+	}
+}
+
+func TestAllModelsForProvider_LoadsModelAliasesOnDemand(t *testing.T) {
+	originalAliases := ModelAliases
+	ModelAliases = nil
+	defer func() {
+		ModelAliases = originalAliases
+	}()
+
+	ph := NewProxyHandler(nil, nil, nil)
+	models := ph.allModelsForProvider(nil, "relay", "https://relay.example.com", "claude-3-5-haiku-20241022", "claude-3-5-haiku-20241022", "", true)
+	if len(models) < 2 {
+		t.Fatalf("expected on-demand aliases to expand candidates, got %v", models)
+	}
+
+	foundAlias := false
+	for _, model := range models {
+		if model == "claude-haiku-4-5" {
+			foundAlias = true
+			break
+		}
+	}
+	if !foundAlias {
+		t.Fatalf("expected on-demand alias expansion to include claude-haiku-4-5, got %v", models)
+	}
+}
+
 func TestModelAliases(t *testing.T) {
-	aliases, ok := ModelAliases["claude-3-5-haiku-20241022"]
+	aliases, ok := modelAliasesFor("claude-3-5-haiku-20241022")
 	if !ok || len(aliases) == 0 {
 		t.Fatal("expected aliases for claude-3-5-haiku-20241022")
 	}
@@ -212,7 +258,7 @@ func TestModelAliases(t *testing.T) {
 		t.Fatal("expected claude-haiku-4-5 in aliases")
 	}
 
-	sonnetAliases, ok := ModelAliases["claude-3-5-sonnet-20241022"]
+	sonnetAliases, ok := modelAliasesFor("claude-3-5-sonnet-20241022")
 	if !ok || len(sonnetAliases) == 0 {
 		t.Fatal("expected aliases for claude-3-5-sonnet-20241022")
 	}

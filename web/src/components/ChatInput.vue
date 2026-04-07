@@ -471,7 +471,7 @@ const compactModeInfoCardMeta = computed(() => {
     return {
       kind: 'research' as const,
       title: researchModeTitle.value,
-      state: t('chat.alwaysOn', 'Always on'),
+      state: t('chat.alwaysOn', 'Automatic'),
       description: researchFamilyHoverDescription.value,
       tags: researchFamilyInfoTags.value,
     }
@@ -2367,7 +2367,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                         <span></span>
                         <span></span>
                       </div>
-                      <span class="mode-info-card__state">{{ t('chat.alwaysOn', 'Always on') }}</span>
+                      <span class="mode-info-card__state">{{ t('chat.alwaysOn', 'Automatic') }}</span>
                     </div>
                     <div class="mode-info-card__title">{{ researchModeTitle }}</div>
                     <p class="mode-info-card__description">

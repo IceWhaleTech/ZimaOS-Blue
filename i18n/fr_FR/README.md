@@ -72,9 +72,10 @@ Compilé nativement en Go — pas d'interpréteur, pas de VM, pas de surcharge. 
 | `status` exécution (meilleur sur 3) | **< 0.01 s** | 5.98 s |
 | `help` RSS max | **~10 Mo** | ~394 Mo |
 | `status` RSS max | **~15 Mo** | ~1.52 Go |
+| mémoire idle de `gateway run` après démarrage à froid | **~19 Mo** | - |
 | Dépendances d'exécution | **Aucune** | Node.js 18+ |
 
-> Benchmark réalisé sur macOS arm64 (mode serveur, sans interface de bureau), même machine, meilleur sur 3 exécutions. Fév. 2026.
+> Les lignes CLI ci-dessus correspondent au microbenchmark historique `help` / `status` sur la même machine. La nouvelle ligne `gateway run` reflète la mémoire idle réelle après démarrage à froid, mesurée sur macOS arm64 via `vmmap Physical footprint` une fois le démarrage stabilisé. Fév-avr 2026.
 
 ### Go pur, tout appareil
 

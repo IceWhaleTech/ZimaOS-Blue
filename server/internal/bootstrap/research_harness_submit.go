@@ -42,6 +42,7 @@ func researchHarnessRunInputFromJobRequest(req deepresearch.CreateJobRequest, wo
 		UserID:         req.UserID,
 		ConversationID: req.ConversationID,
 		WorkspaceRoot:  strings.TrimSpace(workspaceRoot),
+		ProviderID:     req.ProviderID,
 		Mode:           "deep_research",
 		ResearchDepth:  string(req.Mode),
 		RouteMode:      string(req.RouteMode),
@@ -93,22 +94,9 @@ func synthesizeResearchJobFromRun(run *harness.Run) *deepresearch.Job {
 		ID:             run.ID,
 		ConversationID: run.ConversationID,
 		UserID:         run.UserID,
+		ProviderID:     run.ProviderID,
 		Query:          run.Goal,
 		Status:         deepresearch.JobStatus(run.Status),
 		Mode:           deepresearch.Mode(mode),
 	}
-}
-
-func deepResearchBudgetMaxSources(budget *deepresearch.Budget) int {
-	if budget == nil {
-		return 0
-	}
-	return budget.MaxSources
-}
-
-func deepResearchBudgetMaxSeconds(budget *deepresearch.Budget) int {
-	if budget == nil {
-		return 0
-	}
-	return budget.MaxSeconds
 }

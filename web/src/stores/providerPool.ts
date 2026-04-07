@@ -338,6 +338,13 @@ export const useProviderPoolStore = defineStore('providerPool', () => {
       // Update models for this provider
       models.value = models.value.filter((m) => m.provider_id !== providerId)
       models.value.push(...(response.data.models || []))
+      const updatedProvider = response.data.provider
+      if (updatedProvider) {
+        const index = providers.value.findIndex((p) => p.id === providerId)
+        if (index !== -1) {
+          providers.value[index] = updatedProvider
+        }
+      }
       return { success: true, models: response.data.models || [] }
     } catch (e) {
       // Return error instead of setting store.error to avoid blocking UI

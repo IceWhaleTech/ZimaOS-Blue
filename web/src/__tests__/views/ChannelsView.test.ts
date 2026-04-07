@@ -187,7 +187,6 @@ describe('ChannelsView', () => {
     await flushPromises()
 
     expect(wrapper.find('.channels-page').exists()).toBe(true)
-    expect(wrapper.find('.channels-page').attributes('data-form-filler-scope')).toBe('channel')
     expect(wrapper.text()).toContain('Channels')
     expect(wrapper.text()).not.toContain('Loading')
     expect(wrapper.text()).toContain('Channels did not fully load')
@@ -217,9 +216,6 @@ describe('ChannelsView', () => {
     await wrapper.find('.channels-summary-button').trigger('click')
 
     expect(wrapper.find('.channels-group-modal').exists()).toBe(true)
-    expect(wrapper.find('.channels-group-modal').attributes('data-form-filler-scope')).toBe(
-      'channel'
-    )
     expect(wrapper.find('.channels-group-modal__title').text()).toBe('Group Access')
   })
 

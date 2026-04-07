@@ -159,6 +159,64 @@ func TestFetchOpenAIModels(t *testing.T) {
 	}
 }
 
+func TestFetchOpenAIModelsPromotesInactiveProviderToActive(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"data": [
+				{"id": "llama3.1", "object": "model", "created": 1687882411, "owned_by": "local"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	tmpDir, _ := os.MkdirTemp("", "fetch-promote-status-test-*")
+	defer os.RemoveAll(tmpDir)
+
+	storage, _ := NewFileStorage(tmpDir)
+	registry, _ := NewRegistry(storage)
+
+	provider := &Provider{
+		ID:        "custom-local",
+		Name:      "Custom Local",
+		Type:      ProviderTypeCustom,
+		Enabled:   true,
+		Status:    ProviderStatusInactive,
+		BaseURL:   server.URL,
+		APIKeys:   []APIKey{{ID: "key1", Key: "test-key", Enabled: true}},
+		LastError: "stale_inactive_state",
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+
+	models, err := discovery.FetchModels(context.Background(), "custom-local")
+	if err != nil {
+		t.Fatalf("FetchModels failed: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+
+	updated, err := registry.Get("custom-local")
+	if err != nil {
+		t.Fatalf("Registry.Get failed: %v", err)
+	}
+	if updated.Status != ProviderStatusActive {
+		t.Fatalf("Status = %q, want %q", updated.Status, ProviderStatusActive)
+	}
+	if updated.LastError != "" {
+		t.Fatalf("LastError = %q, want empty", updated.LastError)
+	}
+}
+
 func TestGetModelsForCatalogProviderMergesCatalogMetadataIntoStoredModels(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "catalog-models-test-*")
 	if err != nil {

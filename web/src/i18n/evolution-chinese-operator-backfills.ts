@@ -90,14 +90,14 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.runner.transcript.subtitle':
     '运行记录会保留整个优化交换过程，方便确认 Runner 是否真的使用了预期的提示、响应结构和停止条件。',
   'evolution.runner.links.subtitle':
-    '通过这些链接，你可以从 Runner 证据直接跳到 follow-up eval、关联技能修订，或触发这次优化的源 eval。',
+    '通过这些链接，你可以从 Runner 证据直接跳到后续评估、关联技能修订，或触发这次优化的源评估。',
   'evolution.runner.links.linkedRevisionHint': '在提升或回滚前，先到 Skills 轨道打开这条关联修订。',
   'evolution.runner.metrics.followupSubtitle':
-    '这些指标来自关联的 follow-up eval，任何人工提升前，都应该先用它们决定接受还是拒绝。',
+    '这些指标来自关联的后续评估，任何人工提升前，都应该先用它们决定接受还是拒绝。',
   'evolution.runner.metrics.sourceSubtitle':
     '源指标解释了为什么最初会触发 Runner，也能帮助你对比改动前证据与后续结果。',
   'evolution.runner.summary.candidateHint': 'Runner 会把候选与关联修订和最终技能提升步骤分开管理。',
-  'evolution.runner.summary.followupHint': '关联的 follow-up eval 会决定该候选是被接受、拒绝，还是仍在运行中。',
+  'evolution.runner.summary.followupHint': '关联的后续评估会决定该候选是被接受、拒绝，还是仍在运行中。',
   'evolution.runner.summary.runtimeHint': '执行耗时和停止原因能解释本次优化在进入 follow-up 关卡前的实际表现。',
   'evolution.runner.summary.partsHint': '优化部分只说明 Runner 哪些表面发生了变化，并不意味着线上技能已经切换。',
   'evolution.runner.followupAccepted': '已通过 {gate} 关卡接受',
@@ -184,7 +184,7 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.skills.revisionsEmpty': '该技能暂时还没有任何修订谱系。',
   'evolution.skills.revisionFilterEmpty': '当前筛选下没有匹配的修订。',
   'evolution.skills.timelineHint':
-    '无需再从零散时间戳拼凑历史，就能沿着所选案例追踪 intake、候选生成、关卡决策和最终提升。',
+    '无需再从零散时间戳拼凑历史，就能沿着所选案例追踪受理、候选生成、关卡决策和最终提升。',
   'evolution.skills.timelineEmpty': '当前案例还没有可用的生命周期数据。',
   'evolution.skills.lineageHint':
     '这些角色与关系标记可以帮助你区分当前规范版本、已接受候选、已提升历史和回滚备份。',
@@ -195,11 +195,11 @@ const zhCNFlatBackfill: Record<string, string> = {
   'evolution.skills.versionMetaEmpty': '这条修订当前没有更多版本元数据。',
   'evolution.skills.comparison': '版本对比',
   'evolution.skills.comparisonHint':
-    '当 follow-up eval 带有基线时，这些差异能清楚说明所选修订相比上一版本更好还是更差。',
+    '当后续评估带有基线时，这些差异能清楚说明所选修订相比上一版本更好还是更差。',
   'evolution.skills.comparisonEmpty': '这条修订当前还没有附带基线对比。',
   'evolution.skills.openBaselineEvalRun': '打开基线 Eval 运行',
   'evolution.skills.metrics': '上报指标',
-  'evolution.skills.metricsHint': '质量、运行时和令牌指标会在可用时来自关联的 follow-up eval 报告。',
+  'evolution.skills.metricsHint': '质量、运行时和令牌指标会在可用时来自关联的后续评估报告。',
   'evolution.skills.metricsEmpty': '这条修订当前还没有附带结构化指标。',
   'evolution.skills.evidence': '案例证据',
   'evolution.skills.evidenceHintCapture':
@@ -504,14 +504,14 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.runner.transcript.subtitle':
     '執行記錄會保留整個優化交換過程，方便確認 Runner 是否真的使用了預期的提示、回應結構與停止條件。',
   'evolution.runner.links.subtitle':
-    '透過這些連結，你可以從 Runner 證據直接跳到 follow-up eval、關聯技能修訂，或觸發這次優化的來源 eval。',
+    '透過這些連結，你可以從 Runner 證據直接跳到後續評估、關聯技能修訂，或觸發這次優化的來源評估。',
   'evolution.runner.links.linkedRevisionHint': '在提升或回滾前，先到 Skills 軌道打開這條關聯修訂。',
   'evolution.runner.metrics.followupSubtitle':
-    '這些指標來自關聯的 follow-up eval，任何人工提升前，都應該先用它們決定接受還是拒絕。',
+    '這些指標來自關聯的後續評估，任何人工提升前，都應該先用它們決定接受還是拒絕。',
   'evolution.runner.metrics.sourceSubtitle':
     '來源指標解釋了為什麼最初會觸發 Runner，也能幫助你對比改動前證據與後續結果。',
   'evolution.runner.summary.candidateHint': 'Runner 會把候選與關聯修訂和最終技能提升步驟分開管理。',
-  'evolution.runner.summary.followupHint': '關聯的 follow-up eval 會決定該候選是被接受、拒絕，還是仍在執行中。',
+  'evolution.runner.summary.followupHint': '關聯的後續評估會決定該候選是被接受、拒絕，還是仍在執行中。',
   'evolution.runner.summary.runtimeHint': '執行耗時與停止原因能解釋本次優化在進入 follow-up 關卡前的實際表現。',
   'evolution.runner.summary.partsHint': '優化部分只說明 Runner 哪些表面發生了變化，並不代表線上技能已經切換。',
   'evolution.runner.followupAccepted': '已通過 {gate} 關卡接受',
@@ -598,7 +598,7 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.skills.revisionsEmpty': '這個技能暫時還沒有任何修訂譜系。',
   'evolution.skills.revisionFilterEmpty': '目前篩選下沒有匹配的修訂。',
   'evolution.skills.timelineHint':
-    '無需再從零散時間戳拼湊歷史，就能沿著所選案例追蹤 intake、候選生成、關卡決策與最終提升。',
+    '無需再從零散時間戳拼湊歷史，就能沿著所選案例追蹤受理、候選生成、關卡決策與最終提升。',
   'evolution.skills.timelineEmpty': '目前案例還沒有可用的生命週期資料。',
   'evolution.skills.lineageHint':
     '這些角色與關係標記可以幫助你區分目前規範版本、已接受候選、已提升歷史與回滾備份。',
@@ -609,11 +609,11 @@ const zhTWFlatBackfill: Record<string, string> = {
   'evolution.skills.versionMetaEmpty': '這條修訂目前沒有更多版本中繼資料。',
   'evolution.skills.comparison': '版本比較',
   'evolution.skills.comparisonHint':
-    '當 follow-up eval 帶有基線時，這些差異能清楚說明所選修訂相比上一版本更好還是更差。',
+    '當後續評估帶有基線時，這些差異能清楚說明所選修訂相比上一版本更好還是更差。',
   'evolution.skills.comparisonEmpty': '這條修訂目前還沒有附帶基線比較。',
   'evolution.skills.openBaselineEvalRun': '打開基線 Eval 執行',
   'evolution.skills.metrics': '上報指標',
-  'evolution.skills.metricsHint': '品質、執行時與令牌指標會在可用時來自關聯的 follow-up eval 報告。',
+  'evolution.skills.metricsHint': '品質、執行時與令牌指標會在可用時來自關聯的後續評估報告。',
   'evolution.skills.metricsEmpty': '這條修訂目前還沒有附帶結構化指標。',
   'evolution.skills.evidence': '案例證據',
   'evolution.skills.evidenceHintCapture':

@@ -261,3 +261,59 @@ Inspect files under pkg when activated.
 		t.Fatal("expected dormant skill selection to avoid deferred activation state")
 	}
 }
+
+func TestToolSearchTool_HidesAnalyzeFromUserFacingMatches(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	skillDir := filepath.Join(workspaceDir, ".claude", "skills", "analyze")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	skillDoc := `---
+name: analyze
+description: Analyze multiple links and synthesize a report.
+invocation: "blue analyze topic=report --json"
+---
+
+Analyze links and produce a report.
+`
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(skillDoc), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	registry := NewRegistry()
+	searchTool := NewToolSearchTool(registry)
+	registry.Register(searchTool)
+	registry.ExposeDefinition(ToolDefinition{
+		Name:        "analyze",
+		Description: "Analyze URLs, files, and reports.",
+	})
+	registry.ExposeDefinition(ToolDefinition{
+		Name:        "exec",
+		Description: "Execute skill and shell commands.",
+	})
+
+	searchTool.SetToolPolicyResolver(NewToolPolicyResolver(&config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	}))
+	exposure := skillmanifest.SharedSkillExposureManager(workspaceDir)
+	searchTool.SetSkillExposureManager(exposure)
+
+	ctx := WithSessionID(context.Background(), "conv-hide-analyze")
+	ctx = WithRouteKind(ctx, ToolRouteKindChat)
+
+	resultAny, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:analyze", "max_results": 10})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	result := resultAny.(ToolSearchResult)
+	if len(result.Matches) != 0 {
+		t.Fatalf("expected analyze to stay hidden from tool_search, got %+v", result.Matches)
+	}
+	if len(result.Activated.Tools) != 0 || result.Activated.Exec {
+		t.Fatalf("expected no analyze activation, got %+v", result.Activated)
+	}
+}

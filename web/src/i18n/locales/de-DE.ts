@@ -17,6 +17,8 @@ export default mergeHarnessLocale('de-DE', {
     previous: 'Zurück',
     close: 'Schließen',
     backToTop: 'Nach oben',
+    showPassword: 'Passwort anzeigen',
+    hidePassword: 'Passwort ausblenden',
     comingSoon: 'Demnächst verfügbar',
     clear: 'Klar',
     copy: 'Kopieren',
@@ -566,7 +568,7 @@ export default mergeHarnessLocale('de-DE', {
     deepResearchObjectMap: 'Objektkarte',
     deepResearchBackToTask: 'Ergebnis ansehen',
     taskLoop: 'Ralph-Schleife',
-    alwaysOn: 'Immer aktiv',
+    alwaysOn: 'Automatisch',
     deepResearchHoverDescription:
       'Starten Sie einen strukturierten Rechercheablauf mit Abruf, Verifizierung, nachvollziehbaren Lauufen und verknupften Laufdetails.',
     analyzeReportShortcutTitle: 'Analysebericht',
@@ -791,12 +793,12 @@ export default mergeHarnessLocale('de-DE', {
       unavailableTitle: 'Derzeit ist kein KI-Anbieter verfügbar',
       unavailableDescription:
         'Ihre konfigurierten Anbieter sind derzeit nicht verfügbar. Überprüfen Sie die Verbindung, den API-Schlüssel oder den Modellstatus in den Einstellungen und versuchen Sie es dann erneut.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Vorübergehendes Anbieterproblem',
+      recoverableTitle: 'Anbieter benötigt Aufmerksamkeit',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Ihr konfigurierter Anbieter ist auf einen vorübergehenden Fehler gestoßen. Prüfen Sie unten den neuesten Grund, setzen Sie den Anbieter zurück und versuchen Sie es dann erneut.',
+      retry: 'Anbieter erneut versuchen',
+      reviewSingle: 'Anbieter prüfen',
       providerSummary: 'Konfigurierte Anbieter erfordern Aufmerksamkeit',
       moreProviders: '{count} Weitere Anbieter benötigen ebenfalls Aufmerksamkeit.',
       statusActive: 'Aktiv',
@@ -882,7 +884,7 @@ export default mergeHarnessLocale('de-DE', {
     execDirectoryApprovalTimeout:
       'Die Befehlsausführung wurde blockiert, weil die Verzeichnisfreigabe abgelaufen ist. Bitte das Verzeichnis freigeben und erneut versuchen.',
     providerActive: 'Anbieter ist aktiv und bereit.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Anbieter benötigt Aufmerksamkeit. Klicken Sie, um die Einstellungen zu prüfen.',
     providerPending: 'Anbieterstatus wird überprüft...',
     trialQuota: {
       remaining: '{tokens} Token verbleibend',
@@ -1380,7 +1382,7 @@ export default mergeHarnessLocale('de-DE', {
       loadFailed: 'Das Laden externer Agentenprofile ist fehlgeschlagen.',
       notAvailable: 'Nicht verfügbar',
       remoteAgent: 'Remote-Agent',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Integriertes Profil',
       builtinTemplate: 'Integrierte Vorlage',
       customProfile: 'Benutzerdefiniertes Profil',
       health: 'Gesundheit',
@@ -4640,6 +4642,7 @@ export default mergeHarnessLocale('de-DE', {
       'Auto Reply': 'Auto-Antwort',
       Workflows: 'Workflows',
       web_query: 'Webabruf',
+      research: 'Tiefenrecherche',
       research_run: 'Tiefenrecherche',
       research_status: 'Status der Tiefenrecherche',
       configuration: 'Konfiguration',
@@ -4665,6 +4668,8 @@ export default mergeHarnessLocale('de-DE', {
       ask: 'Stellt dem Nutzer Ruckfragen, um die Aufgabe fortzusetzen',
       mediagen: 'Erzeugt Bilder, Videos und Praesentationen mit KI-Modellen',
       web_query: 'Ruft eine Webseite per URL ab und analysiert sie',
+      research:
+        'Startet eine Tiefenrecherche. Sie können auf den Abschlussbericht warten oder eine Job-ID für eine spätere Abfrage erhalten.',
       research_run:
         'Startet eine Tiefenrecherche. Sie können auf den Abschlussbericht warten oder eine Job-ID für eine spätere Abfrage erhalten.',
       research_status:

@@ -78,9 +78,10 @@
 | `status` 執行時間（最佳 3 次） | **< 0.01 s** | 5.98 s |
 | `help` 峰值 RSS | **~10 MB** | ~394 MB |
 | `status` 峰值 RSS | **~15 MB** | ~1.52 GB |
+| `gateway run` 首次冷啟動閒置記憶體 | **~19 MB** | - |
 | 執行期依賴 | **無** | Node.js 18+ |
 
-> 基準測試環境：macOS arm64（伺服器模式，無桌面 UI），同一主機，3 次運行取最佳結果。2026 年 2 月。
+> 上方的 CLI 行對應的是同一台主機上的歷史 `help` / `status` 微基準。新增的 `gateway run` 行表示更貼近真實使用情境的冷啟動閒置記憶體，基於 macOS arm64 上啟動穩定後的 `vmmap Physical footprint` 測得。2026 年 2-4 月。
 
 ### 純 Go，任何裝置
 

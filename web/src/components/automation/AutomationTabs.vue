@@ -23,19 +23,6 @@ const tabs = computed(() => [
     active: currentPath.value === '/operations',
   },
   {
-    id: 'knowledge',
-    to: '/operations/knowledge',
-    label: tr('automation.tabs.knowledge', 'Knowledge'),
-    badge: 'Beta',
-    description: tr(
-      'automation.tabs.knowledgeDesc',
-      'Browse compiled pages, maintain lint health, and query the knowledge workspace.'
-    ),
-    icon:
-      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6.75 5.25A2.25 2.25 0 019 3h7.25A1.75 1.75 0 0118 4.75v14.5a.75.75 0 01-1.21.59L14 17.75H9A2.25 2.25 0 016.75 15.5v-10.25z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 7.75h5.5"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 11h4.25"/>',
-    active: currentPath.value.startsWith('/operations/knowledge'),
-  },
-  {
     id: 'harness',
     to: '/operations/harness',
     label: tr('automation.tabs.harness', 'Harness'),

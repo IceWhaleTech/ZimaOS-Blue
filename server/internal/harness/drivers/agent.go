@@ -60,6 +60,11 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 			metadata["model"] = model
 		}
 	}
+	if providerID := strings.TrimSpace(run.ProviderID); providerID != "" {
+		if _, ok := metadata["provider_id"]; !ok {
+			metadata["provider_id"] = providerID
+		}
+	}
 	task := &agentpkg.Task{
 		ID:              run.ID,
 		UserID:          run.UserID,

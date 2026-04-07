@@ -314,6 +314,34 @@ func TestBuildGroupItemRunSpec_UsesPolicyModelHintForAdaptivePolicyOnly(t *testi
 	}
 }
 
+func TestBuildGroupItemRunSpec_MapsProviderIDFromInput(t *testing.T) {
+	group := &RunGroup{
+		ID:          "group-1",
+		Title:       "provider pin",
+		OwnerUserID: "user-1",
+	}
+	item := &RunGroupItem{
+		ID:      "item-1",
+		RunKind: RunKindAgentTask,
+		Profile: "agent_task",
+		Input: map[string]interface{}{
+			"goal":        "collect rollout evidence",
+			"provider_id": "openai-prod",
+		},
+	}
+
+	spec, err := buildGroupItemRunSpec(group, item)
+	if err != nil {
+		t.Fatalf("buildGroupItemRunSpec failed: %v", err)
+	}
+	if spec.ProviderID != "openai-prod" {
+		t.Fatalf("spec.ProviderID = %q, want openai-prod", spec.ProviderID)
+	}
+	if got := metadataString(spec.Metadata, "provider_id"); got != "openai-prod" {
+		t.Fatalf("metadata provider_id = %q, want openai-prod", got)
+	}
+}
+
 func TestGroupDispatcher_RecoversExpiredLease(t *testing.T) {
 	controller := newTestController(t)
 	controller.RegisterDriver(&autoCompleteGroupDriver{

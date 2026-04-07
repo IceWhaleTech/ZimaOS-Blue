@@ -1,11 +1,11 @@
 ---
 name: ui_reviewer
 version: "1.0.0"
-description: "Review UI/UX quality and accessibility for a webpage or screenshot, with structured scoring and findings. Use when the user asks for UI review, design critique, accessibility check, or quality scoring. Canonical actions are review_url, review_image, and check_accessibility."
-invocation: "blue ui.review_url url=https://example.com --json"
+description: "Legacy wrapper for the unified Research family. Prefer Research with `mode=ui_review` for UI/UX, screenshot, and accessibility review."
+invocation: "blue deep_research mode=ui_review url=https://example.com/pricing --json"
 examples:
-  - "blue ui.review_url url=https://example.com --json"
-  - "blue ui.check_accessibility url=https://example.com --json"
+  - "blue deep_research mode=ui_review url=https://example.com/pricing --json"
+  - "blue deep_research mode=ui_review url=https://example.com/pricing review_action=check_accessibility --json"
 capability_tags:
   - ui
   - ux
@@ -14,61 +14,62 @@ interaction_mode: stateless
 card_support: both
 ---
 
-# UI Reviewer Skill
+# UI Reviewer (Legacy Wrapper)
 
-## Setup
+This file is kept for compatibility.
 
-No external dependencies required. Uses built-in browser + accessibility + VLM review pipeline.
+Prefer the unified Research family and use `ui_review` as a mode, not `ui_reviewer` as the primary long-term standalone entry.
 
----
-
-## Task Routing
-
-| User Intent | Action |
-|-------------|--------|
-| Review a live website UI/UX | `blue ui.review_url` |
-| Review a provided screenshot/image only | `blue ui.review_image` |
-| Accessibility-focused check only | `blue ui.check_accessibility` |
-
----
-
-## Command Usage
-
-### Review URL
+## Preferred Usage
 
 ```bash
-blue ui.review_url url=https://example.com --json
-blue ui.review_url url=https://example.com lang=zh-CN device=mobile --json
+blue deep_research mode=ui_review url=https://example.com/pricing --json
+blue deep_research mode=ui_review image=<base64_png_data> review_action=review_image --json
 ```
 
-### Review image (visual only)
+If the runtime exposes the canonical `research` entry directly, treat it as the same family and use the same `mode=ui_review` arguments there.
+
+## What `mode=ui_review` Is For
+
+Use `mode=ui_review` when the user wants:
+
+- UI/UX critique of a live webpage
+- screenshot-based visual review
+- accessibility-only evaluation
+
+This mode is best for quality evaluation, not for generic browsing or general web search.
+
+## Recommended Arguments
+
+- `url`: live page to review
+- `image`: screenshot to review
+- `review_action`: `review_url`, `review_image`, or `check_accessibility`
+- `device`, `channel`, `wait_ms`, `threshold`, `format`, `profile`: optional review controls
+
+Examples:
 
 ```bash
-blue ui.review_image image=<base64_png_data> lang=en-US --json
+blue deep_research mode=ui_review url=https://example.com/pricing review_action=review_url --json
+blue deep_research mode=ui_review url=https://example.com/pricing review_action=check_accessibility --json
+blue deep_research mode=ui_review image=<base64_png_data> review_action=review_image --json
 ```
 
-### Accessibility check only
+Important:
 
-```bash
-blue ui.check_accessibility url=https://example.com --json
-```
+- Top-level `action` is reserved for Research family control such as `run` and `status`.
+- Use `review_action` for the UI-review sub-action.
 
----
+## Route Elsewhere When
 
-## Error Handling
+- Need generic browsing, login flows, or live page interaction:
+  use `browser`
+- Need citation-first or comparison-heavy research:
+  use `mode=deep_research`
+- Need one bounded synthesized report:
+  use `mode=analyze`
 
-| Error | Resolution |
-|-------|------------|
-| Missing `url` | Provide valid URL for `blue ui.review_url` / `blue ui.check_accessibility` |
-| Missing `image` | Provide base64 image for `blue ui.review_image` |
-| Browser/VLM review failure | Retry, then reduce scope (accessibility-only or single viewport) |
+## Compatibility Notes
 
----
-
-## Notes
-
-- Prefer `--json` for structured output.
-- Use this skill for quality evaluation, not for generic browsing/search.
-- Canonical actions are `review_url`, `review_image`, and `check_accessibility`.
-- Runtime compatibility still normalizes legacy aliases such as `audit`, `review`, and `a11y`, but new docs and prompts should use the canonical action names above so routing stays deterministic.
-- Do not invent `audit` as a new first-class action name; use `blue ui.review_url` for live website reviews.
+- Older prompts, wrappers, or internal routes may still refer to `ui_reviewer`.
+- Treat that surface as compatibility-only and map it to Research with `mode=ui_review`.
+- Prefer the unified Research family wording in new docs, prompts, and examples.

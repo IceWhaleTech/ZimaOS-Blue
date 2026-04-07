@@ -126,6 +126,9 @@ func guardStagePayload(run *Run) map[string]interface{} {
 		"max_subagents":   run.MaxSubagents,
 		"max_depth":       run.MaxDepth,
 	}
+	if providerID := strings.TrimSpace(run.ProviderID); providerID != "" {
+		payload["provider_id"] = providerID
+	}
 	if run.ParentRunID != "" {
 		payload["parent_run_id"] = run.ParentRunID
 	}

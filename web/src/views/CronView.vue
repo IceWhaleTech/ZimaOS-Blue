@@ -102,19 +102,11 @@ const cronSummaryCards = computed(() => [
     key: 'total',
     label: t('cron.title'),
     value: loading.value ? t('common.loading') : new Intl.NumberFormat().format(sortedJobs.value.length),
-    details: loading.value
-      ? t('common.loading')
-      : `${new Intl.NumberFormat().format(enabledJobsCount.value)} ${t('automation.stats.activeJobs')}${
-          disabledJobsCount.value > 0
-            ? ` · ${new Intl.NumberFormat().format(disabledJobsCount.value)} ${t('cron.disabled')}`
-            : ''
-        }`,
   },
   {
     key: 'active',
     label: t('automation.stats.activeJobs'),
     value: loading.value ? t('common.loading') : new Intl.NumberFormat().format(enabledJobsCount.value),
-    details: loading.value ? t('common.loading') : t('automation.tabs.cronDesc'),
   },
   {
     key: 'disabled',
@@ -122,9 +114,6 @@ const cronSummaryCards = computed(() => [
     value: loading.value
       ? t('common.loading')
       : new Intl.NumberFormat().format(disabledJobsCount.value),
-    details: loading.value
-      ? t('common.loading')
-      : `${new Intl.NumberFormat().format(sortedJobs.value.length)} ${t('cron.title')}`,
   },
   {
     key: 'next',
@@ -138,7 +127,6 @@ const cronSummaryCards = computed(() => [
           : enabledJobsCount.value === 0
             ? t('cron.disabled')
             : t('cron.calculating'),
-    details: loading.value ? t('common.loading') : nextUpcomingValue.value,
   },
 ])
 
@@ -273,6 +261,41 @@ function humanizeMachineName(value: string): string {
   return spaced.replace(/\b([a-z])/g, (_, char: string) => char.toUpperCase())
 }
 
+const knownSystemJobTokenMap: Record<string, string> = {
+  'knowledge-lint': 'knowledgeNightlyLint',
+  'knowledge-nightly-lint': 'knowledgeNightlyLint',
+  'nightly-knowledge-lint': 'knowledgeNightlyLint',
+}
+
+function normalizeSystemJobToken(value: string | null | undefined): string {
+  return normalizeTitleText(value)
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
+    .replace(/[^a-z0-9-]+/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function resolveKnownSystemJobKey(...values: Array<string | null | undefined>): string {
+  for (const value of values) {
+    const normalized = normalizeSystemJobToken(value)
+    if (!normalized) continue
+    const knownKey = knownSystemJobTokenMap[normalized]
+    if (knownKey) return knownKey
+  }
+  return ''
+}
+
+function getLocalizedSystemJobName(...values: Array<string | null | undefined>): string {
+  const systemJobKey = resolveKnownSystemJobKey(...values)
+  return systemJobKey ? t(`cron.systemJobs.${systemJobKey}.name`) : ''
+}
+
+function getLocalizedSystemJobDescription(...values: Array<string | null | undefined>): string {
+  const systemJobKey = resolveKnownSystemJobKey(...values)
+  return systemJobKey ? t(`cron.systemJobs.${systemJobKey}.description`) : ''
+}
+
 function buildCommandAutoTitle(command: string): string {
   const normalized = normalizeTitleText(command)
   if (!normalized) return ''
@@ -355,11 +378,28 @@ function handleJobNameInput(event: Event) {
 
 function getJobDisplayName(job: CronJob | null | undefined): string {
   if (!job) return ''
+  const localizedSystemJobName = getLocalizedSystemJobName(job.name, job.handler, job.description)
+  if (localizedSystemJobName) {
+    return localizedSystemJobName
+  }
   const explicitName = normalizeTitleText(job.name)
   if (explicitName) {
     return looksLikeMachineName(explicitName) ? humanizeMachineName(explicitName) : explicitName
   }
   return buildAutoJobTitleFromJob(job, true)
+}
+
+function getJobDescription(job: CronJob | null | undefined): string {
+  if (!job) return ''
+  const localizedSystemJobDescription = getLocalizedSystemJobDescription(
+    job.description,
+    job.name,
+    job.handler
+  )
+  if (localizedSystemJobDescription) {
+    return localizedSystemJobDescription
+  }
+  return normalizeTitleText(job.description)
 }
 
 async function loadJobs() {
@@ -584,6 +624,10 @@ function getExecutionDurationMs(execution: JobExecution): number {
 function getJobHandlerLabel(handler: string): string {
   if (handler === 'command') return t('cron.handlers.command')
   if (handler === 'http') return t('cron.handlers.http')
+  const localizedSystemJobName = getLocalizedSystemJobName(handler)
+  if (localizedSystemJobName) {
+    return localizedSystemJobName
+  }
   return handler
 }
 
@@ -636,16 +680,13 @@ function getJobPreview(job: CronJob): string {
             <article
               v-for="card in cronSummaryCards"
               :key="card.key"
-              class="rounded-2xl border border-slate-200 bg-white/85 px-3 py-3"
+              class="rounded-2xl border border-slate-200 bg-white/85 px-3 py-2.5"
             >
               <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                 {{ card.label }}
               </div>
               <div class="mt-2 text-lg font-semibold text-slate-950 sm:text-xl">
                 {{ card.value }}
-              </div>
-              <div class="mt-1.5 text-xs leading-4 text-slate-500">
-                {{ card.details }}
               </div>
             </article>
           </div>
@@ -778,8 +819,8 @@ function getJobPreview(job: CronJob): string {
 
               <h3 class="automation-job-name">{{ getJobDisplayName(job) }}</h3>
 
-              <p v-if="job.description" class="automation-job-description">
-                {{ job.description }}
+            <p v-if="getJobDescription(job)" class="automation-job-description">
+                {{ getJobDescription(job) }}
               </p>
               <p
                 v-else-if="getJobPreview(job)"

@@ -17,6 +17,8 @@ export default mergeHarnessLocale('da-DK', {
     previous: 'Forrige',
     close: 'Luk',
     backToTop: 'Tilbage til toppen',
+    showPassword: 'Vis adgangskode',
+    hidePassword: 'Skjul adgangskode',
     comingSoon: 'Kommer snart',
     clear: 'Klar',
     copy: 'Kopiér',
@@ -564,7 +566,7 @@ export default mergeHarnessLocale('da-DK', {
     deepResearchObjectMap: 'Objektkort',
     deepResearchBackToTask: 'Se resultat',
     taskLoop: 'Ralph-loop',
-    alwaysOn: 'Altid aktiv',
+    alwaysOn: 'Automatisk',
     deepResearchHoverDescription:
       'Start et struktureret researchforlob med hentning, verifikation, sporbare korrsler og linkede korselsdetaljer.',
     analyzeReportShortcutTitle: 'Analyserapport',
@@ -787,12 +789,12 @@ export default mergeHarnessLocale('da-DK', {
       unavailableTitle: 'Ingen AI-udbyder er tilgængelig lige nu',
       unavailableDescription:
         'Dine konfigurerede udbydere er i øjeblikket ikke tilgængelige. Tjek deres forbindelse, API-nøgle eller modelstatus i Indstillinger, og prøv derefter igen.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Midlertidigt problem med udbyderen',
+      recoverableTitle: 'Udbyderen kræver opmærksomhed',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Din konfigurerede udbyder ramte en midlertidig fejl. Gennemgå den seneste årsag nedenfor, nulstil udbyderen, og prøv igen.',
+      retry: 'Prøv udbyderen igen',
+      reviewSingle: 'Gennemgå udbyderen',
       providerSummary: 'Konfigurerede udbydere har brug for opmærksomhed',
       moreProviders: '{count} flere udbydere har også brug for opmærksomhed.',
       statusActive: 'Aktiv',
@@ -866,7 +868,7 @@ export default mergeHarnessLocale('da-DK', {
     execDirectoryApprovalTimeout:
       'Kommandoets udførelse blev blokeret, fordi godkendelsen af mappen udløb. Godkend mappen, og prøv igen.',
     providerActive: 'Udbyderen er aktiv og klar.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Udbyderen kræver opmærksomhed. Klik for at kontrollere indstillingerne.',
     providerPending: 'Udbyderstatus bliver tjekket...',
     trialQuota: {
       remaining: '{tokens} tokens tilbage',
@@ -1360,7 +1362,7 @@ export default mergeHarnessLocale('da-DK', {
       loadFailed: 'Kunne ikke indlæse eksterne agentprofiler.',
       notAvailable: 'Ikke tilgængelig',
       remoteAgent: 'Fjernagent',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Indbygget profil',
       builtinTemplate: 'Indbygget skabelon',
       customProfile: 'Brugerdefineret profil',
       health: 'Sundhed',
@@ -4590,6 +4592,7 @@ export default mergeHarnessLocale('da-DK', {
       'Auto Reply': 'Autosvar',
       Workflows: 'Arbejdsgange',
       web_query: 'Webhentning',
+      research: 'Dybdegående forskning',
       research_run: 'Dybdegående forskning',
       research_status: 'Status for dybdegående forskning',
       configuration: 'Konfiguration',
@@ -4614,6 +4617,8 @@ export default mergeHarnessLocale('da-DK', {
       ask: 'Stiller brugeren opfolgende sporgsmal for at fortsaette opgaven',
       mediagen: 'Genererer billeder, videoer og praesentationer med AI-modeller',
       web_query: 'Henter og parser en webside via URL',
+      research:
+        'Kører en arbejdsgang for dybdegående forskning. Du kan vente på den endelige rapport eller få et job-id og tjekke senere.',
       research_run:
         'Kører en arbejdsgang for dybdegående forskning. Du kan vente på den endelige rapport eller få et job-id og tjekke senere.',
       research_status:

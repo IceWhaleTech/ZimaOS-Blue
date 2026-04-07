@@ -72,9 +72,10 @@ Compiled natively in Go — no interpreter, no VM, no overhead. Runs silently on
 | `status` runtime (best of 3) | **< 0.01 s** | 5.98 s |
 | `help` peak RSS | **~10 MB** | ~394 MB |
 | `status` peak RSS | **~15 MB** | ~1.52 GB |
+| fresh `gateway run` idle memory | **~19 MB** | - |
 | Runtime dependencies | **None** | Node.js 18+ |
 
-> Benchmarked on macOS arm64, same host, best of 3 runs. Feb 2026.
+> The CLI rows above are the historical `help` / `status` microbenchmark on the same host. The fresh `gateway run` row is the real-world cold-idle memory checkpoint, measured on macOS arm64 via `vmmap Physical footprint` after startup settles. Feb-Apr 2026.
 
 ### Pure Go, Any Device
 

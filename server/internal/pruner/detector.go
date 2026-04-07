@@ -1,7 +1,6 @@
 package pruner
 
 import (
-	"regexp"
 	"strings"
 )
 
@@ -17,12 +16,6 @@ var codeKeywords = []string{
 
 // codeBrackets are bracket patterns common in code.
 var codeBrackets = []string{"{", "}", "()", "[]", "=>", "->", "::"}
-
-// logTimestampRe matches common log timestamp patterns.
-var logTimestampRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}`)
-
-// markdownHeadingRe matches markdown headings.
-var markdownHeadingRe = regexp.MustCompile(`^#{1,6}\s+\S`)
 
 // IsCodeContent returns true if content appears to be source code
 // and exceeds the minimum line threshold.
@@ -61,6 +54,7 @@ func DetectContentType(content string, minLines int) ContentType {
 	logLines := 0
 	headingLines := 0
 	codeScore := 0
+	ensureDetectorRegexes()
 
 	// Scan sample line by line without allocating a []string
 	remaining := sample

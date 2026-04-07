@@ -16,6 +16,8 @@ export default mergeHarnessLocale('hr-HR', {
     next: 'Sljedeće',
     previous: 'Prethodno',
     close: 'Zatvori',
+    showPassword: 'Prikaži lozinku',
+    hidePassword: 'Sakrij lozinku',
     comingSoon: 'Dolazi uskoro',
     clear: 'čisto',
     copy: 'Kopiraj',
@@ -565,7 +567,7 @@ export default mergeHarnessLocale('hr-HR', {
     deepResearchObjectMap: 'Karta objekata',
     deepResearchBackToTask: 'Pogledaj rezultat',
     taskLoop: 'Ralph petlja',
-    alwaysOn: 'Uvijek aktivno',
+    alwaysOn: 'Automatski',
     deepResearchHoverDescription:
       'Pokrenite strukturirani istrazivacki tijek s dohvatom, provjerom, pracenim izvodenjima i povezanim detaljima izvodenja.',
     analyzeReportShortcutTitle: 'Izvješće o analizi',
@@ -789,12 +791,12 @@ export default mergeHarnessLocale('hr-HR', {
       unavailableTitle: 'Trenutačno nije dostupan nijedan AI pružatelj usluga',
       unavailableDescription:
         'Vaši konfigurirani pružatelji trenutno nisu dostupni. Provjerite njihovu vezu, API ključ ili status modela u Postavkama i pokušajte ponovno.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Privremeni problem s pružateljem',
+      recoverableTitle: 'Pružatelj zahtijeva pažnju',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Vaš konfigurirani pružatelj naišao je na privremenu pogrešku. Pregledajte najnoviji razlog u nastavku, resetirajte pružatelja i zatim pokušajte ponovno.',
+      retry: 'Pokušaj ponovno s pružateljem',
+      reviewSingle: 'Pregledaj pružatelja',
       providerSummary: 'Konfigurirani pružatelji usluga trebaju pozornost',
       moreProviders: '{count} više pružatelja usluga također zahtijevaju pozornost.',
       statusActive: 'Aktivno',
@@ -869,7 +871,7 @@ export default mergeHarnessLocale('hr-HR', {
     execDirectoryApprovalTimeout:
       'Izvršavanje naredbe je blokirano jer je odobrenje direktorija isteklo. Odobrite direktorij i pokušajte ponovno.',
     providerActive: 'Davatelj je aktivan i spreman.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Pružatelj zahtijeva pažnju. Kliknite za provjeru postavki.',
     providerPending: 'Status pružatelja usluga se provjerava...',
     trialQuota: {
       remaining: '{tokens} tokena preostalo',
@@ -1360,7 +1362,7 @@ export default mergeHarnessLocale('hr-HR', {
       loadFailed: 'Nije uspjelo učitavanje profila vanjskog agenta.',
       notAvailable: 'Nije dostupno',
       remoteAgent: 'Udaljeni agent',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Ugrađeni profil',
       builtinTemplate: 'Ugrađeni predložak',
       customProfile: 'Prilagođeni profil',
       health: 'zdravlje',
@@ -4597,6 +4599,7 @@ export default mergeHarnessLocale('hr-HR', {
       'Auto Reply': 'Automatski odgovor',
       Workflows: 'Radni tokovi',
       web_query: 'Dohvat weba',
+      research: 'Dubinsko istraživanje',
       research_run: 'Dubinsko istraživanje',
       research_status: 'Status dubinskog istraživanja',
       configuration: 'Konfiguracija',
@@ -4621,6 +4624,8 @@ export default mergeHarnessLocale('hr-HR', {
       ask: 'Postavlja korisniku dodatna pitanja potrebna za nastavak zadatka',
       mediagen: 'Generira slike, videozapise i prezentacije pomocu AI modela',
       web_query: 'Dohvaca i parsira web stranicu putem URL-a',
+      research:
+        'Pokreće dubinsko istraživanje. Možete pričekati završno izvješće ili dobiti ID zadatka za kasniju provjeru.',
       research_run:
         'Pokreće dubinsko istraživanje. Možete pričekati završno izvješće ili dobiti ID zadatka za kasniju provjeru.',
       research_status:

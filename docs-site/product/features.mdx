@@ -7,19 +7,21 @@ summary: "A tighter capability matrix for the current Blue runtime and web produ
 
 ![Feature overview](/assets/features.png)
 
-Blue is no longer just a chat shell with model wiring. It now reads more clearly as a local-first, evaluatable, evolvable, long-running agent runtime. The matrix below compresses the product surface into the main promises it already makes.
+Blue is no longer just a chat shell with model wiring.
+The standout surface is Blue's web retrieval and browser runtime.
 
 | Capability | What It Delivers |
 | --- | --- |
-| Harness Runtime, Evaluation, and Evolution Framework | Makes agent evaluation a first-class runtime layer across development, training, and live operation. Blue can run regression and smoke-style checks, score runs, compare against baselines, inspect reports and evidence, and validate runtime behavior. The same Harness evidence path also covers skill evolution, follow-up evaluation, promotion or rollback decisions, and `AGENTS.md` or instruction proposal review. Those proposals can come from the execution loop through Ralph Loop, auto-confirm, and self-reflection. |
-| Multimodal Native-Capability-First Runtime | Brings voice, OCR, PDF, browser tasks, document conversion, structured form filling, media processing, and media generation into one native-first execution path. When the job can stay on system and local capabilities, Blue does not needlessly bounce it through an external model, which improves latency, reliability, cost, and always-on agent ergonomics. When needed, it can route by intent into native `t2i`, `t2v`, `i2v`, and `i2i` generation pipelines with no-key fallback, rather than stopping at media understanding. |
-| Three-in-One Research Runtime | Exposes one public `research` entry that can auto-route between `deep_research`, `analyze`, and `ui_review`. Underneath, Blue keeps a controllable discovery stack with concurrent providers, caching, deduplication, result fusion, policy-driven fetching, and page reading, then turns that into citation-first research, bounded analysis reports, and structured UI, UX, and accessibility review deliverables. |
-| Security and Governance | Blue includes sandbox execution, prompt-injection defense, session auditing, permission control, RBAC, WebAuthn, operational guardrails, and skill security auditing and scanning. |
-| LLM Wiki and Knowledge Space | Turns memory, research, and runtime outputs into a wiki-like knowledge surface instead of stopping at recall. The long-term shape includes knowledge compilation, summary pages, indexes, backlinks, freshness, and archive workflows. |
-| Skill Store and Marketplace | Provides built-in skill discovery, curation, sync, and local scanning so extensibility exists from day one. |
-| Production-Grade Provider Pool | Goes beyond a simple fallback chain. The routing layer already includes a provider pool, health checks, automatic failover, circuit breakers, and provider racing for long-running and production-style workloads. |
-| Built-In Local Small Model Runtime | Ships a built-in `Qwen3.5-0.8B + llama.cpp` small-model runtime with auto-download and local acceleration. It can absorb short Q&A, image recognition, tool routing, summarization, context compression, and document pre-processing locally. |
-| Long-Running Reliability | Treats OTA updates, backup and restore, config hot reload, and post-failure recovery as built-in operating concerns rather than afterthoughts. |
+| High-Availability Web Retrieval and Browser Runtime | One of Blue's sharpest differentiators. Blue unifies four web access paths for search, read, extract, and crawl; keeps three fallback layers across HTTP, proxy extraction, and browser sessions; handles anti-bot pages with challenge detection, cookie/session reuse, stealth, and browser handoff; and routes across three browser engines: `lightpanda`, managed Chromium, and relay/local Chromium. |
+| Three-in-One Research Runtime | One public `research` entry can route into `deep_research`, `analyze`, and `ui_review`. The same discovery and evidence stack then produces citation-first research, bounded reports, and structured UI/UX/accessibility reviews. |
+| Harness Runtime, Evaluation, and Evolution Framework | Makes evaluation a runtime primitive across development, training, and production. Harness covers regression and smoke checks, scoring, baselines, reports, and runtime validation, then carries the same evidence into skill evolution, follow-up evaluation, promotion or rollback, and `AGENTS.md` or instruction proposal review. |
+| Multimodal Native-Capability-First Runtime | Keeps voice, OCR, PDF, browser tasks, document conversion, structured form filling, media processing, and media generation on native and local paths first, with model routing only when it is actually needed. |
+| Security and Governance | Includes sandbox execution, prompt-injection defense, session auditing, permissions, RBAC, WebAuthn, operational guardrails, and skill security scanning. |
+| LLM Wiki and Knowledge Space | Turns memory, research, and runtime outputs into a wiki-like knowledge surface with summary pages, indexes, backlinks, freshness, and archive workflows. |
+| Skill Store and Marketplace | Ships built-in skill discovery, curation, sync, and local scanning so extensibility is available from day one. |
+| Production-Grade Provider Pool | Provides a real provider pool with health checks, automatic failover, circuit breakers, and provider racing for long-running workloads. |
+| Built-In Local Small Model Runtime | Ships a built-in `Qwen3.5-0.8B + llama.cpp` runtime for local short Q&A, image recognition, tool routing, summarization, context compression, and document preprocessing. |
+| Long-Running Reliability | Treats OTA updates, backup and restore, config hot reload, and post-failure recovery as built-in operating concerns. |
 
 ## Keep Reading
 

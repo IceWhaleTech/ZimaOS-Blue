@@ -16,6 +16,8 @@ export default mergeHarnessLocale('sv-SE', {
     next: 'Nästa',
     previous: 'Föregående',
     close: 'Stäng',
+    showPassword: 'Visa lösenord',
+    hidePassword: 'Dölj lösenord',
     comingSoon: 'Kommer snart',
     clear: 'Rensa',
     copy: 'Kopiera',
@@ -564,7 +566,7 @@ export default mergeHarnessLocale('sv-SE', {
     deepResearchObjectMap: 'Objektkarta',
     deepResearchBackToTask: 'Visa resultat',
     taskLoop: 'Ralph-loop',
-    alwaysOn: 'Alltid på',
+    alwaysOn: 'Automatisk',
     deepResearchHoverDescription:
       'Starta ett strukturerat forskningsflode med hamtning, verifiering, sparbara korningar och lankade korningsdetaljer.',
     analyzeReportShortcutTitle: 'Analysrapport',
@@ -787,12 +789,12 @@ export default mergeHarnessLocale('sv-SE', {
       unavailableTitle: 'Ingen AI-leverantör är tillgänglig just nu',
       unavailableDescription:
         'Dina konfigurerade leverantörer är för närvarande inte tillgängliga. Kontrollera deras anslutning, API-nyckel eller modellstatus i Inställningar och försök sedan igen.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Tillfälligt leverantörsproblem',
+      recoverableTitle: 'Leverantören behöver uppmärksamhet',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Din konfigurerade leverantör råkade ut för ett tillfälligt fel. Granska den senaste orsaken nedan, återställ leverantören och försök igen.',
+      retry: 'Försök med leverantören igen',
+      reviewSingle: 'Granska leverantören',
       providerSummary: 'Konfigurerade leverantörer som behöver uppmärksamhet',
       moreProviders: '{count} fler leverantörer behöver också uppmärksamhet.',
       statusActive: 'Aktiv',
@@ -870,7 +872,7 @@ export default mergeHarnessLocale('sv-SE', {
     execDirectoryApprovalTimeout:
       'Kommando körning blockerades eftersom kataloggodkännandet tog för lång tid. Godkänn katalogen och försök igen.',
     providerActive: 'Leverantören är aktiv och redo.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Leverantören behöver uppmärksamhet. Klicka för att kontrollera inställningarna.',
     providerPending: 'Leverantörsstatus kontrolleras...',
     trialQuota: {
       remaining: '{tokens} tokens kvar',
@@ -1364,7 +1366,7 @@ export default mergeHarnessLocale('sv-SE', {
       loadFailed: 'Det gick inte att läsa in externa agentprofiler.',
       notAvailable: 'Ej tillgängligt',
       remoteAgent: 'Fjärragent',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Inbyggd profil',
       builtinTemplate: 'Inbyggd mall',
       customProfile: 'Anpassad profil',
       health: 'Hälsa',
@@ -4597,6 +4599,7 @@ export default mergeHarnessLocale('sv-SE', {
       'Auto Reply': 'Autosvar',
       Workflows: 'Arbetsflöden',
       web_query: 'Webbhamtning',
+      research: 'Djupgående forskning',
       research_run: 'Djupgående forskning',
       research_status: 'Status för djupgående forskning',
       configuration: 'Konfiguration',
@@ -4621,6 +4624,8 @@ export default mergeHarnessLocale('sv-SE', {
       ask: 'Staller foljdfragor till anvandaren for att fortsatta uppgiften',
       mediagen: 'Genererar bilder, videor och presentationer med AI-modeller',
       web_query: 'Hamta och tolka en webbsida via URL',
+      research:
+        'Kör ett arbetsflöde för djupgående forskning. Du kan vänta på slutrapporten eller få ett jobb-ID för att kontrollera senare.',
       research_run:
         'Kör ett arbetsflöde för djupgående forskning. Du kan vänta på slutrapporten eller få ett jobb-ID för att kontrollera senare.',
       research_status:

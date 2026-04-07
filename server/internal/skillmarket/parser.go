@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -35,137 +34,8 @@ type normalizedSkill struct {
 	SearchDoc string
 }
 
-var nonSlugChars = regexp.MustCompile(`[^a-z0-9._-]+`)
-var versionLikeCategoryPattern = regexp.MustCompile(`^(?:v?\d+(?:[._-]\d+){0,4}(?:[-+][a-z0-9._-]+)?|release[-_. ]?v?\d+(?:[._-]\d+){0,4}|latest|stable)$`)
-
-var marketplaceCategoryAliases = map[string]string{
-	"ai":                              "ai_intelligence",
-	"ai_intelligence":                 "ai_intelligence",
-	"ai_skills":                       "ai_intelligence",
-	"ai_tools":                        "ai_intelligence",
-	"agent":                           "ai_intelligence",
-	"agentic":                         "ai_intelligence",
-	"agents":                          "ai_intelligence",
-	"assistant":                       "ai_intelligence",
-	"chatbot":                         "ai_intelligence",
-	"claude":                          "ai_intelligence",
-	"copilot":                         "ai_intelligence",
-	"gpt":                             "ai_intelligence",
-	"llm":                             "ai_intelligence",
-	"model":                           "ai_intelligence",
-	"prompt":                          "ai_intelligence",
-	"rag":                             "ai_intelligence",
-	"workflow_ai":                     "ai_intelligence",
-	"人工智能":                            "ai_intelligence",
-	"智能":                              "ai_intelligence",
-	"ai智能":                            "ai_intelligence",
-	"ai_智能":                           "ai_intelligence",
-	"analytics":                       "data_analysis",
-	"analysis":                        "data_analysis",
-	"browser":                         "data_analysis",
-	"data":                            "data_analysis",
-	"data_analysis":                   "data_analysis",
-	"information":                     "data_analysis",
-	"research":                        "data_analysis",
-	"search":                          "data_analysis",
-	"web":                             "data_analysis",
-	"分析":                              "data_analysis",
-	"数据":                              "data_analysis",
-	"数据分析":                            "data_analysis",
-	"开发":                              "development_tools",
-	"开发工具":                            "development_tools",
-	"api":                             "development_tools",
-	"coding":                          "development_tools",
-	"connector":                       "development_tools",
-	"connectors":                      "development_tools",
-	"developer":                       "development_tools",
-	"developer_tools":                 "development_tools",
-	"developer-tools":                 "development_tools",
-	"development":                     "development_tools",
-	"development_tools":               "development_tools",
-	"dev":                             "development_tools",
-	"devops":                          "development_tools",
-	"extension":                       "development_tools",
-	"github":                          "development_tools",
-	"git":                             "development_tools",
-	"infrastructure":                  "development_tools",
-	"integration":                     "development_tools",
-	"integrations":                    "development_tools",
-	"plugin":                          "development_tools",
-	"plugins":                         "development_tools",
-	"sdk":                             "development_tools",
-	"tooling":                         "development_tools",
-	"webhook":                         "development_tools",
-	"communication":                   "communication_collaboration",
-	"communication_collaboration":     "communication_collaboration",
-	"collaboration":                   "communication_collaboration",
-	"crm":                             "communication_collaboration",
-	"chat":                            "communication_collaboration",
-	"discord":                         "communication_collaboration",
-	"email":                           "communication_collaboration",
-	"meeting":                         "communication_collaboration",
-	"messaging":                       "communication_collaboration",
-	"notion":                          "communication_collaboration",
-	"slack":                           "communication_collaboration",
-	"teams":                           "communication_collaboration",
-	"telegram":                        "communication_collaboration",
-	"协作":                              "communication_collaboration",
-	"通讯协作":                            "communication_collaboration",
-	"communication_and_collaboration": "communication_collaboration",
-	"content":                         "content_creation",
-	"content_creation":                "content_creation",
-	"copywriting":                     "content_creation",
-	"creative":                        "content_creation",
-	"design":                          "content_creation",
-	"documentation":                   "content_creation",
-	"image":                           "content_creation",
-	"marketing":                       "content_creation",
-	"media":                           "content_creation",
-	"presentation":                    "content_creation",
-	"social":                          "content_creation",
-	"translation":                     "content_creation",
-	"video":                           "content_creation",
-	"writing":                         "content_creation",
-	"内容创作":                            "content_creation",
-	"automation":                      "productivity",
-	"efficiency":                      "productivity",
-	"general":                         "productivity",
-	"productivity":                    "productivity",
-	"task":                            "productivity",
-	"todo":                            "productivity",
-	"tool":                            "productivity",
-	"tools":                           "productivity",
-	"utility":                         "productivity",
-	"utilities":                       "productivity",
-	"workflow":                        "productivity",
-	"效率":                              "productivity",
-	"效率提升":                            "productivity",
-	"compliance":                      "security_compliance",
-	"governance":                      "security_compliance",
-	"ops":                             "security_compliance",
-	"risk":                            "security_compliance",
-	"security":                        "security_compliance",
-	"security_compliance":             "security_compliance",
-	"system":                          "security_compliance",
-	"安全":                              "security_compliance",
-	"安全合规":                            "security_compliance",
-	"misc":                            "other",
-	"miscellaneous":                   "other",
-	"other":                           "other",
-}
-
-var categoryDisplayOrder = map[string]int{
-	"ai_intelligence":             10,
-	"development_tools":           20,
-	"productivity":                30,
-	"data_analysis":               40,
-	"content_creation":            50,
-	"security_compliance":         60,
-	"communication_collaboration": 70,
-	"other":                       999,
-}
-
 func normalizeSkillID(raw string) string {
+	ensureSkillMarketParserGlobals()
 	s := strings.TrimSpace(strings.ToLower(raw))
 	s = strings.ReplaceAll(s, " ", "-")
 	s = strings.ReplaceAll(s, "/", "-")
@@ -352,6 +222,7 @@ func containsAny(haystack string, needles ...string) bool {
 }
 
 func looksVersionLikeCategory(raw string) bool {
+	ensureSkillMarketParserGlobals()
 	value := normalizeSkillID(raw)
 	if value == "" {
 		return false
@@ -379,6 +250,7 @@ func categoryAliasKey(raw string) string {
 }
 
 func normalizeCategory(raw, content string, tags []string) string {
+	ensureSkillMarketParserGlobals()
 	if strings.TrimSpace(raw) == "" {
 		return inferCategory(content, tags)
 	}

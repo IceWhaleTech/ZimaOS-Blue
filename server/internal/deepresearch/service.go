@@ -239,6 +239,7 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Job, er
 		ConversationID:     strings.TrimSpace(req.ConversationID),
 		UserID:             userID,
 		TenantID:           tenantID,
+		ProviderID:         strings.TrimSpace(req.ProviderID),
 		Query:              query,
 		RetryContext:       retryContext,
 		RetryFeedback:      retryFeedback,

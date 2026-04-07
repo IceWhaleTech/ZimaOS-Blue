@@ -18,6 +18,8 @@ export default mergeHarnessLocale('en-US', {
     previous: 'Previous',
     close: 'Close',
     backToTop: 'Back to top',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
     comingSoon: 'Coming Soon',
     clear: 'Clear',
     copy: 'Copy',
@@ -562,7 +564,7 @@ export default mergeHarnessLocale('en-US', {
     deepResearchObjectMap: 'Object Map',
     deepResearchBackToTask: 'View result',
     taskLoop: 'Ralph Loop',
-    alwaysOn: 'Always on',
+    alwaysOn: 'Automatic',
     deepResearchHoverDescription:
       'Launch a structured research workflow with retrieval, verification, traceable runs, and linked run details.',
     analyzeReportShortcutTitle: 'Analysis Report',
@@ -4546,6 +4548,7 @@ export default mergeHarnessLocale('en-US', {
       analyze: 'Analysis Report',
       mediagen: 'Media Generation',
       ask: 'Ask',
+      research: 'Deep Research',
       research_run: 'Deep Research',
       research_status: 'Deep Research Status',
       configuration: 'Configuration',
@@ -4570,6 +4573,8 @@ export default mergeHarnessLocale('en-US', {
       analyze: 'Collect data from the web and generate a structured analysis report',
       ask: 'Ask the user follow-up questions needed to continue the task',
       mediagen: 'Generate images, videos, and slide decks with AI models',
+      research:
+        'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',
       research_run:
         'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',
       research_status: 'Get the current status or final report for a Deep Research job.',

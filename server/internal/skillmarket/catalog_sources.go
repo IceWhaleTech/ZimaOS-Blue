@@ -40,8 +40,6 @@ type catalogEmbeddedSkill struct {
 var githubBlobPattern = skillbundle.GitHubBlobURLPattern
 var githubRepoPattern = skillbundle.GitHubRepoURLPattern
 var githubRawPattern = skillbundle.GitHubRawURLPattern
-var skillHubStringRefPattern = regexp.MustCompile(`skillMdRaw":"\$([0-9A-Za-z]+)"`)
-var llmSkillsWebsitePattern = regexp.MustCompile(`(?s)"skill":\{.*?"website":"((?:\\.|[^"\\])*)".*?"installPath":"((?:\\.|[^"\\])*)"`)
 
 func (s *Service) discoverFromHTMLCatalog(ctx context.Context, source Source, processedSources int, total *DiscoverResult, run *CrawlRun) error {
 	job, err := buildDiscoverJob(s, source, run)
@@ -367,6 +365,7 @@ func trimCatalogSkillTitle(title string) string {
 }
 
 func extractCatalogEmbeddedSkill(pageURL, htmlBody string) *catalogEmbeddedSkill {
+	ensureSkillMarketCatalogRegexes()
 	normalizedBody := strings.ReplaceAll(htmlBody, `\"`, `"`)
 	if !strings.Contains(strings.ToLower(pageURL), "/skills/") || !strings.Contains(normalizedBody, `skillMdRaw":"$`) {
 		return nil
@@ -395,6 +394,7 @@ func extractCatalogEmbeddedSkill(pageURL, htmlBody string) *catalogEmbeddedSkill
 }
 
 func extractLLMSkillsFlightWebsite(pageURL, htmlBody string) string {
+	ensureSkillMarketCatalogRegexes()
 	if !strings.Contains(strings.ToLower(pageURL), "/skill/") {
 		return ""
 	}

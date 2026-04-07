@@ -3,6 +3,7 @@ package selector
 import (
 	"sync"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/routingcue"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/textmatch"
 )
 
@@ -40,12 +41,18 @@ type lazyCueMatchers struct {
 	usageMeta            lazyValue[*textmatch.FoldedTermMatcher]
 	metaIntent           lazyValue[*textmatch.FoldedTermMatcher]
 	urlPresent           lazyValue[*textmatch.FoldedTermMatcher]
+	workspaceContainerTerms lazyValue[[]string]
 	workspaceContainer   lazyValue[*textmatch.FoldedTermMatcher]
 	workspaceFileExt     lazyValue[*textmatch.FoldedTermMatcher]
+	workspaceFileContextTerms lazyValue[[]string]
 	workspaceFileContext lazyValue[*textmatch.FoldedTermMatcher]
+	liveWebTerms         lazyValue[[]string]
 	liveWeb              lazyValue[*textmatch.FoldedTermMatcher]
+	liveWebStrongTerms   lazyValue[[]string]
 	liveWebStrong        lazyValue[*textmatch.FoldedTermMatcher]
+	productivityTerms    lazyValue[[]string]
 	productivity         lazyValue[*textmatch.FoldedTermMatcher]
+	uiArtifactTerms      lazyValue[[]string]
 	uiArtifact           lazyValue[*textmatch.FoldedTermMatcher]
 	highRisk             lazyValue[*textmatch.FoldedTermMatcher]
 	operational          lazyValue[*textmatch.FoldedTermMatcher]
@@ -96,7 +103,7 @@ func (m *lazyCueMatchers) urlPresentTermMatcher() *textmatch.FoldedTermMatcher {
 
 func (m *lazyCueMatchers) workspaceContainerMatcher() *textmatch.FoldedTermMatcher {
 	return m.workspaceContainer.get(func() *textmatch.FoldedTermMatcher {
-		return textmatch.NewFoldedTermMatcher(workspaceContainerTerms)
+		return textmatch.NewFoldedTermMatcher(m.workspaceContainerTermList())
 	})
 }
 
@@ -108,31 +115,31 @@ func (m *lazyCueMatchers) workspaceFileExtMatcher() *textmatch.FoldedTermMatcher
 
 func (m *lazyCueMatchers) workspaceFileContextMatcher() *textmatch.FoldedTermMatcher {
 	return m.workspaceFileContext.get(func() *textmatch.FoldedTermMatcher {
-		return textmatch.NewFoldedTermMatcher(workspaceFileContextTerms)
+		return textmatch.NewFoldedTermMatcher(m.workspaceFileContextTermList())
 	})
 }
 
 func (m *lazyCueMatchers) liveWebTermMatcher() *textmatch.FoldedTermMatcher {
 	return m.liveWeb.get(func() *textmatch.FoldedTermMatcher {
-		return textmatch.NewFoldedTermMatcher(liveWebTerms)
+		return textmatch.NewFoldedTermMatcher(m.liveWebTermList())
 	})
 }
 
 func (m *lazyCueMatchers) liveWebStrongTermMatcher() *textmatch.FoldedTermMatcher {
 	return m.liveWebStrong.get(func() *textmatch.FoldedTermMatcher {
-		return textmatch.NewFoldedTermMatcher(liveWebStrongTerms)
+		return textmatch.NewFoldedTermMatcher(m.liveWebStrongTermList())
 	})
 }
 
 func (m *lazyCueMatchers) productivityTermMatcher() *textmatch.FoldedTermMatcher {
 	return m.productivity.get(func() *textmatch.FoldedTermMatcher {
-		return textmatch.NewFoldedTermMatcher(productivityTerms)
+		return textmatch.NewFoldedTermMatcher(m.productivityTermList())
 	})
 }
 
 func (m *lazyCueMatchers) uiArtifactTermMatcher() *textmatch.FoldedTermMatcher {
 	return m.uiArtifact.get(func() *textmatch.FoldedTermMatcher {
-		return textmatch.NewFoldedTermMatcher(uiArtifactTerms)
+		return textmatch.NewFoldedTermMatcher(m.uiArtifactTermList())
 	})
 }
 
@@ -164,6 +171,49 @@ func (m *lazyCueMatchers) followupActionTermMatcher() *textmatch.FoldedTermMatch
 	return m.followupAction.get(func() *textmatch.FoldedTermMatcher {
 		return textmatch.NewFoldedTermMatcher(followupActionTerms)
 	})
+}
+
+func (m *lazyCueMatchers) workspaceContainerTermList() []string {
+	return m.workspaceContainerTerms.get(func() []string {
+		return appendMergedTerms(workspaceContainerBaseTerms, routingcue.LocalWorkspaceTerms())
+	})
+}
+
+func (m *lazyCueMatchers) workspaceFileContextTermList() []string {
+	return m.workspaceFileContextTerms.get(func() []string {
+		return appendMergedTerms(workspaceFileContextBaseTerms, routingcue.LocalWorkspaceTerms())
+	})
+}
+
+func (m *lazyCueMatchers) liveWebTermList() []string {
+	return m.liveWebTerms.get(func() []string {
+		return appendMergedTerms(liveWebBaseTerms, routingcue.LiveWebTerms())
+	})
+}
+
+func (m *lazyCueMatchers) liveWebStrongTermList() []string {
+	return m.liveWebStrongTerms.get(func() []string {
+		webQueryTerms := routingcue.SkillTerms("web_query")
+		return appendMergedTerms(liveWebBaseTerms, append(webQueryTerms.Objects, webQueryTerms.Context...))
+	})
+}
+
+func (m *lazyCueMatchers) productivityTermList() []string {
+	return m.productivityTerms.get(func() []string {
+		return appendMergedTerms(productivityBaseTerms, routingcue.ProductivityTerms())
+	})
+}
+
+func (m *lazyCueMatchers) uiArtifactTermList() []string {
+	return m.uiArtifactTerms.get(func() []string {
+		return appendMergedTerms(uiArtifactBaseTerms, routingcue.UIArtifactTerms())
+	})
+}
+
+func appendMergedTerms(base, extra []string) []string {
+	out := append([]string(nil), base...)
+	out = append(out, extra...)
+	return out
 }
 
 var staticCueMatchers = newLazyCueMatchers()

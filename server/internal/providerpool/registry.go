@@ -82,6 +82,10 @@ func (r *Registry) loadProviders() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if len(providers) == 0 {
+		return nil
+	}
+
 	// Get builtin providers to merge AlternateBaseURLs for existing providers
 	builtinProviders := BuiltinProviders()
 	builtinMap := make(map[string]*Provider)
@@ -104,6 +108,10 @@ func (r *Registry) loadProviders() error {
 
 // Register adds a new provider to the registry
 func (r *Registry) Register(provider *Provider) error {
+	return r.register(provider, true)
+}
+
+func (r *Registry) register(provider *Provider, persist bool) error {
 	if provider == nil {
 		return ErrInvalidConfig
 	}
@@ -131,9 +139,11 @@ func (r *Registry) Register(provider *Provider) error {
 		provider.Status = ProviderStatusInactive
 	}
 
-	// Save to storage
-	if err := r.storage.SaveProvider(provider); err != nil {
-		return err
+	if persist {
+		// Save to storage
+		if err := r.storage.SaveProvider(provider); err != nil {
+			return err
+		}
 	}
 
 	r.providers[provider.ID] = provider

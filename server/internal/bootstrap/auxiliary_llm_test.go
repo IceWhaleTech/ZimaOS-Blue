@@ -8,6 +8,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 )
 
@@ -99,6 +100,51 @@ func TestAuxiliaryLLMCallerFallsBackWhenSmallModelUnavailable(t *testing.T) {
 	}
 	if resp == nil || resp.Message.Content != "proxy result" {
 		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestAuxiliaryLLMCallerBypassesSmallModelWhenProviderPinned(t *testing.T) {
+	caller := newAuxiliaryLLMCaller()
+	sm := &auxiliarySmallModelMock{ready: true, resp: "local summary"}
+	fallback := &auxiliaryFallbackMock{resp: &llm.ChatResponse{Message: llm.Message{Role: llm.RoleAssistant, Content: "provider result"}}}
+	caller.SetSmallModel(sm)
+	caller.SetFallback(fallback)
+
+	resp, err := caller.Chat(proxy.WithPinnedProvider(context.Background(), "openai-prod"), llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "rewrite this page"}},
+	})
+	if err != nil {
+		t.Fatalf("Chat() error = %v", err)
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0", sm.calls)
+	}
+	if fallback.calls != 1 {
+		t.Fatalf("fallback calls = %d, want 1", fallback.calls)
+	}
+	if resp == nil || resp.Message.Content != "provider result" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestAuxiliaryLLMCallerDoesNotFallbackWhenSmallModelPinned(t *testing.T) {
+	caller := newAuxiliaryLLMCaller()
+	sm := &auxiliarySmallModelMock{ready: false}
+	fallback := &auxiliaryFallbackMock{resp: &llm.ChatResponse{Message: llm.Message{Role: llm.RoleAssistant, Content: "provider result"}}}
+	caller.SetSmallModel(sm)
+	caller.SetFallback(fallback)
+
+	_, err := caller.Chat(proxy.WithPinnedProvider(context.Background(), "smallmodel"), llm.ChatRequest{
+		Messages: []llm.Message{{Role: llm.RoleUser, Content: "rewrite this page"}},
+	})
+	if !errors.Is(err, smallmodel.ErrNotReady) {
+		t.Fatalf("Chat() error = %v, want %v", err, smallmodel.ErrNotReady)
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0", sm.calls)
+	}
+	if fallback.calls != 0 {
+		t.Fatalf("fallback calls = %d, want 0", fallback.calls)
 	}
 }
 

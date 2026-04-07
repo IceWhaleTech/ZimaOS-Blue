@@ -72,9 +72,10 @@ Natívan Go-ban fordítva — nincs interpreter, nincs VM, nincs többletterhel�
 | `status` futásidő (legjobb 3-ból) | **< 0.01 s** | 5.98 s |
 | `help` csúcs RSS | **~10 MB** | ~394 MB |
 | `status` csúcs RSS | **~15 MB** | ~1.52 GB |
+| `gateway run` üresjárati memória hidegindítás után | **~19 MB** | - |
 | Futásidejű függőségek | **Nincs** | Node.js 18+ |
 
-> Mérés macOS arm64-en, azonos gépen, 3 futás legjobbja. 2026. feb.
+> A fenti CLI sorok ugyanannak a gépnek a történeti `help` / `status` mikromérései. Az új `gateway run` sor a valós hidegindítás utáni üresjárati memóriaértéket mutatja, macOS arm64-en `vmmap Physical footprint` alapján, miután az indulás stabilizálódott. 2026. febr.-ápr.
 
 ### Tiszta Go, bármilyen eszköz
 

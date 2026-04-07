@@ -84,6 +84,7 @@ func (d *ResearchDriver) startDeepResearch(ctx context.Context, run *harness.Run
 		RequestedID:    run.ID,
 		UserID:         run.UserID,
 		ConversationID: run.ConversationID,
+		ProviderID:     run.ProviderID,
 		Query:          run.Goal,
 		RetryContext:   metadataString(run.Metadata, "retry_context"),
 		RetryFeedback:  metadataMap(run.Metadata["retry_feedback"]),
@@ -527,6 +528,7 @@ func jobToRun(existing *harness.Run, job *deepresearch.Job) *harness.Run {
 	run.ConversationID = job.ConversationID
 	run.SessionID = job.ConversationID
 	run.Goal = job.Query
+	run.ProviderID = strings.TrimSpace(job.ProviderID)
 	run.Status = jobStatusToRunStatus(job.Status)
 	run.Progress = job.Progress
 	run.Result = ""
@@ -566,6 +568,9 @@ func jobToRun(existing *harness.Run, job *deepresearch.Job) *harness.Run {
 	}
 	if strings.TrimSpace(job.RetryContext) != "" {
 		run.Metadata["retry_context"] = strings.TrimSpace(job.RetryContext)
+	}
+	if strings.TrimSpace(job.ProviderID) != "" {
+		run.Metadata["provider_id"] = strings.TrimSpace(job.ProviderID)
 	}
 	if len(job.RetryFeedback) > 0 {
 		run.Metadata["retry_feedback"] = cloneMap(job.RetryFeedback)

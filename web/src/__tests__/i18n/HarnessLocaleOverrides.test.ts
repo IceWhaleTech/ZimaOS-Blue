@@ -64,9 +64,11 @@ const requiredPaths = [
   'knowledge.archiveAnswer',
   'evolution.title',
   'evolution.subtitle',
+  'evolution.tabs.knowledge',
   'evolution.tabs.skills',
   'evolution.tabs.runner',
   'evolution.tabs.instructions',
+  'evolution.lanes.knowledgeDescription',
   'evolution.lanes.skillsDescription',
   'evolution.lanes.runnerDescription',
   'evolution.lanes.instructionsDescription',
@@ -172,8 +174,10 @@ const localizedOperatorPaths = [
   'automation.tabs.evolution',
   'automation.title',
   'nav.automation',
+  'evolution.tabs.knowledge',
   'evolution.tabs.skills',
   'evolution.tabs.runner',
+  'evolution.lanes.knowledgeDescription',
   'settings.agentcoreRunner.source',
   'settings.agentcoreRunner.parts.orchestrator_policy',
   'harness.dataset.githubBundle',
@@ -376,6 +380,10 @@ describe('Harness locale coverage', () => {
     expect(getPathValue(zhCN, 'knowledge.title')).toBe('增量摄入、持久 wiki 页面与查询沉淀')
     expect(getPathValue(zhCN, 'knowledge.askTitle')).toBe('向编译后的知识空间提问')
     expect(getPathValue(zhCN, 'evolution.title')).toBe('自修复与演进控制台')
+    expect(getPathValue(zhCN, 'evolution.tabs.knowledge')).toBe('知识')
+    expect(getPathValue(zhCN, 'evolution.lanes.knowledgeDescription')).toBe(
+      '以编译页面、有依据的查询与冲突或空洞信号作为整个工作台的知识底座。'
+    )
     expect(getPathValue(zhCN, 'evolution.health.subtitle')).toBe(
       '快速查看当前轨道的筛选、审批与安全版本操作信号。'
     )
@@ -416,6 +424,10 @@ describe('Harness locale coverage', () => {
     expect(getPathValue(zhTW, 'knowledge.title')).toBe('編譯頁面、檢查健康與提問歸檔')
     expect(getPathValue(zhTW, 'knowledge.askTitle')).toBe('向編譯後的知識空間提問')
     expect(getPathValue(zhTW, 'evolution.title')).toBe('自我修復與演進主控台')
+    expect(getPathValue(zhTW, 'evolution.tabs.knowledge')).toBe('知識')
+    expect(getPathValue(zhTW, 'evolution.lanes.knowledgeDescription')).toBe(
+      '以編譯頁面、有依據的查詢與衝突或空洞訊號作為整個工作台的知識底座。'
+    )
     expect(getPathValue(zhTW, 'evolution.health.subtitle')).toBe(
       '快速查看目前軌道的篩選、審批與安全版本操作訊號。'
     )

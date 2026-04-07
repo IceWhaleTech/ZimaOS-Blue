@@ -304,6 +304,44 @@ func TestResearchToolForwardsUIReviewModeSpecificArgs(t *testing.T) {
 	}
 }
 
+func TestResearchToolInfersUIReviewImageActionFromScreenshotAlias(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Mode != "ui_review" {
+				t.Fatalf("mode = %q, want ui_review", req.Mode)
+			}
+			if req.Action != "review_image" {
+				t.Fatalf("action = %q, want review_image", req.Action)
+			}
+			if req.Image != "base64-image-data" {
+				t.Fatalf("image = %q, want forwarded screenshot alias", req.Image)
+			}
+			if req.Query != "Review provided image" {
+				t.Fatalf("query = %q, want image fallback query", req.Query)
+			}
+			return &ResearchJob{ID: "job-ui-review-image", Status: "pending", Query: req.Query, Mode: req.Mode, EffectiveRouteMode: "web"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"mode": "ui_review",
+		"wait": false,
+		"input": map[string]interface{}{
+			"screenshot": "base64-image-data",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+	if got := payload["mode"]; got != "ui_review" {
+		t.Fatalf("mode = %v, want ui_review", got)
+	}
+}
+
 func TestDeepResearchTool_StatusAction(t *testing.T) {
 	service := &mockResearchService{
 		get: func(id, userID string) (*ResearchJob, error) {

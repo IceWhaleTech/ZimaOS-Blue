@@ -72,9 +72,10 @@ Nativt kompilerat i Go — ingen tolk, ingen VM, ingen overhead. Körs tyst på 
 | `status` körtid (bästa av 3) | **< 0,01 s** | 5,98 s |
 | `help` topp-RSS | **~10 MB** | ~394 MB |
 | `status` topp-RSS | **~15 MB** | ~1,52 GB |
+| `gateway run` vilominne efter kallstart | **~19 MB** | - |
 | Körtidsberoenden | **Inga** | Node.js 18+ |
 
-> Benchmarkat på macOS arm64 (serverläge, utan skrivbords-UI), samma värd, bästa av 3 körningar. Feb 2026.
+> CLI-raderna ovan är den historiska `help` / `status`-mikrobenchmarken på samma värd. Den nya raden för `gateway run` visar verkligt vilominne efter kallstart, mätt på macOS arm64 via `vmmap Physical footprint` när uppstarten har stabiliserat sig. Feb-apr 2026.
 
 ### Ren Go, vilken enhet som helst
 

@@ -17,6 +17,8 @@ export default mergeHarnessLocale('fr-FR', {
     previous: 'Précédent',
     close: 'Fermer',
     backToTop: 'Retour en haut',
+    showPassword: 'Afficher le mot de passe',
+    hidePassword: 'Masquer le mot de passe',
     comingSoon: 'Bientôt disponible',
     clear: 'Effacer',
     copy: 'Copier',
@@ -570,7 +572,7 @@ export default mergeHarnessLocale('fr-FR', {
     deepResearchObjectMap: 'Carte des objets',
     deepResearchBackToTask: 'Voir le résultat',
     taskLoop: 'Boucle Ralph',
-    alwaysOn: 'Toujours actif',
+    alwaysOn: 'Automatique',
     deepResearchHoverDescription:
       'Lancez un flux de recherche structure avec recuperation, verification, executions tracables et details d’execution lies.',
     analyzeReportShortcutTitle: "Rapport d'analyse",
@@ -797,12 +799,12 @@ export default mergeHarnessLocale('fr-FR', {
       unavailableTitle: "Aucun fournisseur d'IA n'est disponible pour le moment",
       unavailableDescription:
         "Vos fournisseurs configurés sont actuellement indisponibles. Vérifiez leur connexion, leur clé API ou l'état du modèle dans Paramètres, puis réessayez.",
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Incident temporaire du fournisseur',
+      recoverableTitle: 'Le fournisseur nécessite une attention',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Le fournisseur configuré a rencontré une erreur temporaire. Vérifiez la raison la plus récente ci-dessous, réinitialisez le fournisseur, puis réessayez.',
+      retry: 'Réessayer le fournisseur',
+      reviewSingle: 'Vérifier le fournisseur',
       providerSummary: 'Fournisseurs configurés nécessitant une attention particulière',
       moreProviders: "{count} davantage de prestataires ont également besoin d'attention.",
       statusActive: 'Actif',
@@ -880,7 +882,7 @@ export default mergeHarnessLocale('fr-FR', {
     execDirectoryApprovalTimeout:
       "L'exécution de la commande a été bloquée car l'approbation du répertoire a expiré. Veuillez approuver le répertoire puis réessayer.",
     providerActive: 'Le fournisseur est actif et prêt.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Le fournisseur nécessite une attention. Cliquez pour vérifier les paramètres.',
     providerPending: 'Vérification du statut du fournisseur...',
     trialQuota: {
       remaining: '{tokens} tokens restants',
@@ -1377,7 +1379,7 @@ export default mergeHarnessLocale('fr-FR', {
       loadFailed: "Échec du chargement des profils d'agent externe.",
       notAvailable: 'Non disponible',
       remoteAgent: 'Agent distant',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Profil intégré',
       builtinTemplate: 'Modèle intégré',
       customProfile: 'Profil personnalisé',
       health: 'Santé',
@@ -4652,6 +4654,7 @@ export default mergeHarnessLocale('fr-FR', {
       'Auto Reply': 'Réponse auto',
       Workflows: 'Workflows',
       web_query: 'Capture web',
+      research: 'Recherche approfondie',
       research_run: 'Recherche approfondie',
       research_status: 'Statut de la recherche approfondie',
       configuration: 'Configuration',
@@ -4676,6 +4679,8 @@ export default mergeHarnessLocale('fr-FR', {
       ask: 'Pose a l utilisateur les questions de suivi necessaires pour poursuivre la tache',
       mediagen: 'Genere des images, des videos et des presentations avec des modeles IA',
       web_query: 'Recupere et analyse une page web via URL',
+      research:
+        'Lance une recherche approfondie. Vous pouvez attendre le rapport final ou obtenir un identifiant de tâche pour vérifier plus tard.',
       research_run:
         'Lance une recherche approfondie. Vous pouvez attendre le rapport final ou obtenir un identifiant de tâche pour vérifier plus tard.',
       research_status:

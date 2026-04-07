@@ -17,6 +17,8 @@ export default mergeHarnessLocale('el-GR', {
     previous: 'Προηγούμενο',
     close: 'Κλείσιμο',
     backToTop: 'Επιστροφή στην κορυφή',
+    showPassword: 'Εμφάνιση κωδικού',
+    hidePassword: 'Απόκρυψη κωδικού',
     comingSoon: 'Προσεχώς',
     clear: 'Καθαρό',
     copy: 'Αντιγραφή',
@@ -568,7 +570,7 @@ export default mergeHarnessLocale('el-GR', {
     deepResearchObjectMap: 'Χάρτης αντικειμένων',
     deepResearchBackToTask: 'Προβολή αποτελέσματος',
     taskLoop: 'Βρόχος Ralph',
-    alwaysOn: 'Πάντα ενεργό',
+    alwaysOn: 'Αυτόματο',
     deepResearchHoverDescription:
       'Ekiniste mia domimeni ro i erevnas me ανάκτηση, epivevaiosi, ichnilates ekteleseis kai syndedemena stoixeia ekteleseon.',
     analyzeReportShortcutTitle: 'Έκθεση ανάλυσης',
@@ -793,12 +795,12 @@ export default mergeHarnessLocale('el-GR', {
       unavailableTitle: 'Κανένας πάροχος AI δεν είναι διαθέσιμος αυτήν τη στιγμή',
       unavailableDescription:
         'Οι διαμορφωμένοι πάροχοι σας δεν είναι διαθέσιμοι αυτήν τη στιγμή. Ελέγξτε τη σύνδεσή τους, το κλειδί API ή την κατάσταση του μοντέλου στις Ρυθμίσεις και, στη συνέχεια, δοκιμάστε ξανά.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Προσωρινό πρόβλημα παρόχου',
+      recoverableTitle: 'Ο πάροχος χρειάζεται προσοχή',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Ο ρυθμισμένος πάροχός σας αντιμετώπισε ένα προσωρινό σφάλμα. Δείτε παρακάτω την πιο πρόσφατη αιτία, επαναφέρετε τον πάροχο και δοκιμάστε ξανά.',
+      retry: 'Δοκιμάστε τον πάροχο ξανά',
+      reviewSingle: 'Ελέγξτε τον πάροχο',
       providerSummary: 'Οι διαμορφωμένοι πάροχοι χρειάζονται προσοχή',
       moreProviders: '{count} άλλοι πάροχοι χρειάζονται επίσης προσοχή.',
       statusActive: 'Ενεργός',
@@ -877,7 +879,7 @@ export default mergeHarnessLocale('el-GR', {
     execDirectoryApprovalTimeout:
       'Η εκτέλεση εντολής αποκλείστηκε επειδή έληξε η έγκριση του καταλόγου. Εγκρίνετε τον κατάλογο και δοκιμάστε ξανά.',
     providerActive: 'Ο πάροχος είναι ενεργός και έτοιμος.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Ο πάροχος χρειάζεται προσοχή. Κάντε κλικ για να ελέγξετε τις ρυθμίσεις.',
     providerPending: 'Η κατάσταση του παρόχου ελέγχεται...',
     trialQuota: {
       remaining: '{tokens} tokens απομένουν',
@@ -1374,7 +1376,7 @@ export default mergeHarnessLocale('el-GR', {
       loadFailed: 'Η φόρτωση των προφίλ εξωτερικών αντιπροσώπων απέτυχε.',
       notAvailable: 'Μη διαθέσιμο',
       remoteAgent: 'Απομακρυσμένος πράκτορας',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Ενσωματωμένο προφίλ',
       builtinTemplate: 'Ενσωματωμένο πρότυπο',
       customProfile: 'Προσαρμοσμένο προφίλ',
       health: 'Υγεία',
@@ -4651,6 +4653,7 @@ export default mergeHarnessLocale('el-GR', {
       'Auto Reply': 'Αυτόματη απάντηση',
       Workflows: 'Ροές εργασίας',
       web_query: 'Λήψη web',
+      research: 'Έρευνα σε βάθος',
       research_run: 'Έρευνα σε βάθος',
       research_status: 'Κατάσταση έρευνας σε βάθος',
       configuration: 'Ρύθμιση',
@@ -4676,6 +4679,8 @@ export default mergeHarnessLocale('el-GR', {
       ask: 'Κανει διευκρινιστικες ερωτησεις στον χρηστη για να συνεχιστει η εργασια',
       mediagen: 'Δημιουργει εικονες, βιντεο και παρουσιάσεις με μοντελα AI',
       web_query: 'Ανακτά και αναλύει μια ιστοσελίδα μέσω URL',
+      research:
+        'Εκτελεί έρευνα σε βάθος. Μπορείτε να περιμένετε την τελική αναφορά ή να πάρετε ένα αναγνωριστικό εργασίας για έλεγχο αργότερα.',
       research_run:
         'Εκτελεί έρευνα σε βάθος. Μπορείτε να περιμένετε την τελική αναφορά ή να πάρετε ένα αναγνωριστικό εργασίας για έλεγχο αργότερα.',
       research_status:

@@ -82,6 +82,7 @@ const nameCoverage = [
   'analyze',
   'ask',
   'mediagen',
+  'research',
   'deep_research',
   'research_run',
   'research_status',
@@ -135,6 +136,11 @@ const descriptionCoverage = [
   {
     name: 'mediagen',
     description: 'Generate images and videos using AI models.',
+  },
+  {
+    name: 'research',
+    description:
+      'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',
   },
   {
     name: 'deep_research',
@@ -231,6 +237,7 @@ const runtimeVisibleToolCoverage = [
   'office',
   'pdf',
   'ppt',
+  'research',
   'read',
   'session_status',
   'sessions',
@@ -264,6 +271,7 @@ const preferredToolNameMap: Record<string, string> = {
   session_status: 'sessions',
   sessions_spawn: 'sessions',
   sessions_send: 'sessions',
+  research: 'research_run',
   deep_research: 'research_run',
   web_query: 'web',
   web_search: 'web',
@@ -310,6 +318,7 @@ const toolDescriptionKeyMap: Record<string, string[]> = {
   ppt: ['tools.descriptions.mediagen'],
   process: ['skills.builtin.processes.description'],
   file_read: ['tools.descriptions.file_read', 'tools.descriptions.read'],
+  research: ['tools.descriptions.research_run'],
   reminder: ['skills.builtin.reminder.description'],
   reminders: ['skills.builtin.reminder.description'],
   sandbox: ['skills.builtin.sandbox.description'],
@@ -449,9 +458,13 @@ describe('tool page localization coverage', () => {
     expect(getLocalizedToolName('generate_image', t, te)).toBe('Image')
     expect(getLocalizedToolName('generateImage', t, te)).toBe('Image')
     expect(getLocalizedToolName('sessions_list', t, te)).toBe('Sessions')
+    expect(getLocalizedToolName('research', t, te)).toBe('Deep Research')
     expect(getLocalizedToolName('deep_research', t, te)).toBe('Deep Research')
     expect(getLocalizedToolDescription('web_query', 'fallback', t, te)).toBe(
       'Unified web tool for searching, reading, extracting, or crawling web content'
+    )
+    expect(getLocalizedToolDescription('research', 'fallback', t, te)).toBe(
+      'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.'
     )
     expect(getLocalizedToolDescription('deep_research', 'fallback', t, te)).toBe(
       'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.'
@@ -512,7 +525,7 @@ describe('tool page localization coverage', () => {
   })
 
   it('keeps runtime-visible 37-tool resources available across all locales', () => {
-    expect(runtimeVisibleToolCoverage).toHaveLength(37)
+    expect(runtimeVisibleToolCoverage).toHaveLength(38)
     const missingResources: string[] = []
 
     for (const locale of localeCodes) {

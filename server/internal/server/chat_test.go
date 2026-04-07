@@ -9352,9 +9352,10 @@ func TestChatHandlerListTools(t *testing.T) {
 	var resp []map[string]interface{}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 
-	expected := len(toolRegistry.Definitions())
-	if len(resp) != expected {
-		t.Errorf("expected %d tools, got %d", expected, len(resp))
+	for _, item := range resp {
+		if item["name"] == "analyze" {
+			t.Fatalf("expected analyze to stay hidden from chat /tools surface, got %#v", item)
+		}
 	}
 }
 

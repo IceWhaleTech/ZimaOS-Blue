@@ -25,6 +25,28 @@ func TestAuthProber_Strategies_Default(t *testing.T) {
 	}
 }
 
+func TestAuthProber_InitializesCacheOnDemand(t *testing.T) {
+	ap := NewAuthProber()
+	if ap.cache != nil {
+		t.Fatal("expected auth prober cache to start nil")
+	}
+
+	if _, ok := ap.Recall("p1", authStrategyMemoryKey("https://relay.example.com", providerpool.APIFormatOpenAI)); ok {
+		t.Fatal("expected recall miss on empty auth cache")
+	}
+	if ap.cache != nil {
+		t.Fatal("expected recall miss to avoid allocating auth cache")
+	}
+
+	ap.Remember("p1", authStrategyMemoryKey("https://relay.example.com", providerpool.APIFormatOpenAI), AuthBearer)
+	if ap.cache == nil {
+		t.Fatal("expected auth cache to initialize on first write")
+	}
+	if got, ok := ap.Recall("p1", authStrategyMemoryKey("https://relay.example.com", providerpool.APIFormatOpenAI)); !ok || got != AuthBearer {
+		t.Fatalf("Recall() = %v, %v; want %v, true", got, ok, AuthBearer)
+	}
+}
+
 func TestAuthProber_Strategies_Anthropic(t *testing.T) {
 	ap := NewAuthProber()
 	provider := &providerpool.Provider{ID: "p1", BaseURL: "https://api.anthropic.com", APIFormat: providerpool.APIFormatAnthropic}

@@ -3,65 +3,13 @@ package humanizer
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
-)
-
-// Pre-compiled regexes for performance.
-var (
-	// Block-level patterns
-	codeFenceRe    = regexp.MustCompile("(?s)```[\\w]*\\n?(.*?)```")
-	headerRe       = regexp.MustCompile(`(?m)^#{1,6}\s+`)
-	horizontalRe   = regexp.MustCompile(`(?m)^[\s]*([-*_]){3,}\s*$`)
-	blockquoteRe   = regexp.MustCompile(`(?m)^>\s?`)
-	bulletDashRe   = regexp.MustCompile(`(?m)^(\s*)[-*+]\s`)
-	numberedListRe = regexp.MustCompile(`(?m)^(\s*)\d+\.\s`)
-
-	// Inline patterns
-	boldRe          = regexp.MustCompile(`\*\*(.+?)\*\*`)
-	boldUnderRe     = regexp.MustCompile(`__(.+?)__`)
-	italicRe        = regexp.MustCompile(`(?:^|[^*])\*([^*]+?)\*(?:[^*]|$)`)
-	italicUnderRe   = regexp.MustCompile(`(?:^|[^_])_([^_]+?)_(?:[^_]|$)`)
-	strikethroughRe = regexp.MustCompile(`~~(.+?)~~`)
-	inlineCodeRe    = regexp.MustCompile("`([^`]+)`")
-	linkRe          = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	imageRe         = regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`)
-	htmlTagRe       = regexp.MustCompile(`<[^>]+>`)
-
-	// Emoji pattern (comprehensive Unicode ranges)
-	emojiRe = regexp.MustCompile(`[\x{1F600}-\x{1F64F}]|[\x{1F300}-\x{1F5FF}]|[\x{1F680}-\x{1F6FF}]|[\x{1F1E0}-\x{1F1FF}]|[\x{2600}-\x{26FF}]|[\x{2700}-\x{27BF}]|[\x{FE00}-\x{FE0F}]|[\x{1F900}-\x{1F9FF}]|[\x{1FA00}-\x{1FA6F}]|[\x{1FA70}-\x{1FAFF}]|[\x{200D}]|[\x{20E3}]|[\x{FE0F}]|[\x{2300}-\x{23FF}]|[\x{2B05}-\x{2B07}]|[\x{2B1B}-\x{2B1C}]|[\x{2B50}]|[\x{2B55}]|[\x{3030}]|[\x{303D}]|[\x{3297}]|[\x{3299}]|[\x{1F3FB}-\x{1F3FF}]|[\x{E0020}-\x{E007F}]|[\x{200B}-\x{200F}]|[\x{2028}-\x{202F}]|[\x{2060}-\x{206F}]`)
-
-	// LaTeX math blocks: $$...$$ and $...$
-	mathBlockRe  = regexp.MustCompile(`(?s)\$\$(.+?)\$\$`)
-	mathInlineRe = regexp.MustCompile(`\$([^\$\n]+?)\$`)
-
-	// Bare URLs (not inside markdown link syntax)
-	bareURLRe = regexp.MustCompile(`https?://[^\s\)>\]]+`)
-
-	// Whitespace cleanup
-	multiBlankLineRe = regexp.MustCompile(`\n{3,}`)
-	trailingSpaceRe  = regexp.MustCompile(`(?m)[ \t]+$`)
-
-	// Typeless card blocks
-	typelessCardRe = regexp.MustCompile("(?s)```typeless\\n?(.*?)```")
-
-	// Function calls XML blocks
-	functionCallsRe = regexp.MustCompile(`(?s)<(?:antml:)?function_calls>(.*?)</(?:antml:)?function_calls>`)
-	invokeRe        = regexp.MustCompile(`(?s)<(?:antml:)?invoke\s+name="([^"]+)">(.*?)</(?:antml:)?invoke>`)
-	paramRe         = regexp.MustCompile(`(?s)<(?:antml:)?parameter\s+name="([^"]+)">(.*?)</(?:antml:)?parameter>`)
-
-	// Process detail blocks used by tool execution timeline rendering.
-	processCommentBlockRe = regexp.MustCompile(`(?s)<!--\s*process-start\s*-->.*?<!--\s*process-end\s*-->`)
-	processFenceBlockRe   = regexp.MustCompile("(?s)```process\\n?(.*?)```")
-
-	// Italic strip patterns (used in stripItalic)
-	italicStarStripRe  = regexp.MustCompile(`(?:^|\s)\*([^*\n]+?)\*(?:\s|$|[.,!?;:])`)
-	italicUnderStripRe = regexp.MustCompile(`(?:^|\s)_([^_\n]+?)_(?:\s|$|[.,!?;:])`)
 )
 
 // CompactForIM removes verbose execution-detail blocks from assistant output so
 // IM channels default to concise, stable rendering.
 func CompactForIM(text string) string {
+	ensureHumanizerRegexes()
 	if text == "" {
 		return ""
 	}
@@ -74,6 +22,7 @@ func CompactForIM(text string) string {
 // IM mode: removes fence markers, keeps content.
 // Voice mode: replaces entire block with a spoken indicator.
 func stripCodeFences(text string, mode Mode) string {
+	ensureHumanizerRegexes()
 	if mode == ModeVoice {
 		return codeFenceRe.ReplaceAllString(text, "(code omitted)")
 	}
@@ -83,21 +32,25 @@ func stripCodeFences(text string, mode Mode) string {
 
 // stripHeaders removes # header markers.
 func stripHeaders(text string) string {
+	ensureHumanizerRegexes()
 	return headerRe.ReplaceAllString(text, "")
 }
 
 // stripHorizontalRules removes ---, ***, ___ lines.
 func stripHorizontalRules(text string) string {
+	ensureHumanizerRegexes()
 	return horizontalRe.ReplaceAllString(text, "")
 }
 
 // stripBlockquotes removes > markers.
 func stripBlockquotes(text string) string {
+	ensureHumanizerRegexes()
 	return blockquoteRe.ReplaceAllString(text, "")
 }
 
 // stripBold removes ** and __ bold markers.
 func stripBold(text string) string {
+	ensureHumanizerRegexes()
 	text = boldRe.ReplaceAllString(text, "$1")
 	text = boldUnderRe.ReplaceAllString(text, "$1")
 	return text
@@ -106,6 +59,7 @@ func stripBold(text string) string {
 // stripItalic removes * and _ italic markers.
 // Careful not to match bold ** or already-stripped content.
 func stripItalic(text string) string {
+	ensureHumanizerRegexes()
 	// Simple approach: strip remaining single * and _ wrappers
 	text = italicStarStripRe.ReplaceAllStringFunc(text, func(m string) string {
 		inner := strings.TrimSpace(m)
@@ -141,11 +95,13 @@ func stripItalic(text string) string {
 
 // stripStrikethrough removes ~~ markers.
 func stripStrikethrough(text string) string {
+	ensureHumanizerRegexes()
 	return strikethroughRe.ReplaceAllString(text, "$1")
 }
 
 // stripInlineCode removes backtick markers around inline code.
 func stripInlineCode(text string) string {
+	ensureHumanizerRegexes()
 	return inlineCodeRe.ReplaceAllString(text, "$1")
 }
 
@@ -153,6 +109,7 @@ func stripInlineCode(text string) string {
 // IM mode: [text](url) → text (url)
 // Voice mode: [text](url) → text
 func stripLinks(text string, mode Mode) string {
+	ensureHumanizerRegexes()
 	if mode == ModeVoice {
 		return linkRe.ReplaceAllString(text, "$1")
 	}
@@ -163,6 +120,7 @@ func stripLinks(text string, mode Mode) string {
 // IM mode: ![alt](url) → (image: alt)
 // Voice mode: ![alt](url) → removed
 func stripImages(text string, mode Mode) string {
+	ensureHumanizerRegexes()
 	if mode == ModeVoice {
 		return imageRe.ReplaceAllString(text, "")
 	}
@@ -171,17 +129,20 @@ func stripImages(text string, mode Mode) string {
 
 // stripHTMLTags removes HTML tags.
 func stripHTMLTags(text string) string {
+	ensureHumanizerRegexes()
 	return htmlTagRe.ReplaceAllString(text, "")
 }
 
 // stripEmojis removes emoji characters.
 func stripEmojis(text string) string {
+	ensureHumanizerRegexes()
 	return emojiRe.ReplaceAllString(text, "")
 }
 
 // stripMathBlocks replaces LaTeX math with spoken description.
 // $$...$$ → "(公式已省略)", $...$ → "(公式)"
 func stripMathBlocks(text string) string {
+	ensureHumanizerRegexes()
 	text = mathBlockRe.ReplaceAllString(text, "(公式已省略)")
 	text = mathInlineRe.ReplaceAllString(text, "(公式)")
 	return text
@@ -189,6 +150,7 @@ func stripMathBlocks(text string) string {
 
 // stripBareURLs removes bare URLs not wrapped in markdown link syntax.
 func stripBareURLs(text string) string {
+	ensureHumanizerRegexes()
 	return bareURLRe.ReplaceAllString(text, "")
 }
 
@@ -196,6 +158,7 @@ func stripBareURLs(text string) string {
 // IM mode: - item → • item
 // Voice mode: - item → item
 func normalizeBullets(text string, mode Mode) string {
+	ensureHumanizerRegexes()
 	if mode == ModeVoice {
 		text = bulletDashRe.ReplaceAllString(text, "$1")
 		text = numberedListRe.ReplaceAllString(text, "$1")
@@ -208,6 +171,7 @@ func normalizeBullets(text string, mode Mode) string {
 
 // normalizeWhitespace cleans up excessive whitespace.
 func normalizeWhitespace(text string) string {
+	ensureHumanizerRegexes()
 	// Tabs to spaces
 	text = strings.ReplaceAll(text, "\t", "  ")
 	// Trailing whitespace per line
@@ -222,6 +186,7 @@ func normalizeWhitespace(text string) string {
 // stripTypelessCards converts typeless card JSON blocks to readable text.
 // Must run before stripCodeFences so the ```typeless blocks don't get generic-stripped.
 func stripTypelessCards(text string, mode Mode) string {
+	ensureHumanizerRegexes()
 	return typelessCardRe.ReplaceAllStringFunc(text, func(match string) string {
 		// Extract JSON content between markers
 		sub := typelessCardRe.FindStringSubmatch(match)
@@ -316,6 +281,7 @@ var keywordParams = map[string]bool{
 
 // stripFunctionCalls converts <function_calls> XML blocks to readable text for IM/Voice.
 func stripFunctionCalls(text string, mode Mode) string {
+	ensureHumanizerRegexes()
 	return functionCallsRe.ReplaceAllStringFunc(text, func(match string) string {
 		if mode == ModeVoice {
 			return "(工具调用已省略)"

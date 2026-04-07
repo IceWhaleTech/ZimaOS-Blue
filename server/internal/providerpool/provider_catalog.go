@@ -1,9 +1,12 @@
 package providerpool
 
 import (
+	"encoding/json"
 	"strings"
 	"sync"
 	"unicode"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool/embedded"
 )
 
 type officialProviderCatalog struct {
@@ -35,6 +38,43 @@ type officialProviderCatalogModel struct {
 var officialProviderCatalogState struct {
 	mu      sync.RWMutex
 	catalog officialProviderCatalog
+}
+
+var officialProviderCatalogLoadState struct {
+	mu     sync.Mutex
+	loaded bool
+}
+
+func markOfficialProviderCatalogLoaded() {
+	officialProviderCatalogLoadState.mu.Lock()
+	officialProviderCatalogLoadState.loaded = true
+	officialProviderCatalogLoadState.mu.Unlock()
+}
+
+func ensureOfficialProviderCatalogLoaded() {
+	officialProviderCatalogLoadState.mu.Lock()
+	if officialProviderCatalogLoadState.loaded {
+		officialProviderCatalogLoadState.mu.Unlock()
+		return
+	}
+	officialProviderCatalogLoadState.loaded = true
+	officialProviderCatalogLoadState.mu.Unlock()
+
+	content, err := embedded.ProviderCatalogFS.ReadFile("provider_catalog.json")
+	if err != nil {
+		officialProviderCatalogLoadState.mu.Lock()
+		officialProviderCatalogLoadState.loaded = false
+		officialProviderCatalogLoadState.mu.Unlock()
+		return
+	}
+	var catalog officialProviderCatalog
+	if err := json.Unmarshal(content, &catalog); err != nil {
+		officialProviderCatalogLoadState.mu.Lock()
+		officialProviderCatalogLoadState.loaded = false
+		officialProviderCatalogLoadState.mu.Unlock()
+		return
+	}
+	SetOfficialProviderCatalog(catalog)
 }
 
 func SetOfficialProviderCatalog(catalog officialProviderCatalog) {
@@ -99,6 +139,7 @@ func SetOfficialProviderCatalog(catalog officialProviderCatalog) {
 	}
 
 	officialProviderCatalogState.catalog = normalized
+	markOfficialProviderCatalogLoaded()
 }
 
 func ClearOfficialProviderCatalog() {
@@ -108,6 +149,7 @@ func ClearOfficialProviderCatalog() {
 }
 
 func applyOfficialProviderCatalogToProviders(providers []*Provider) {
+	ensureOfficialProviderCatalogLoaded()
 	officialProviderCatalogState.mu.RLock()
 	defer officialProviderCatalogState.mu.RUnlock()
 
@@ -154,6 +196,7 @@ func applyOfficialProviderCatalogToProviders(providers []*Provider) {
 }
 
 func applyOfficialProviderCatalogToModels(models map[string][]*Model) {
+	ensureOfficialProviderCatalogLoaded()
 	officialProviderCatalogState.mu.RLock()
 	defer officialProviderCatalogState.mu.RUnlock()
 

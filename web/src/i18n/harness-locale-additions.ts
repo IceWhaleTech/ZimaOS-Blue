@@ -15,6 +15,7 @@ import harnessGroupBackfills from './harness-group-backfills'
 import localeFollowupBackfills from './locale-followup-backfills'
 import { buildLocalePostMergeBackfill } from './locale-post-merge-backfills'
 import localeStructuralBackfills from './locale-structural-backfills'
+import securityCronMaskingBackfills from './security-cron-masking-backfills'
 import skillStoreHighRiskBackfills from './skill-store-high-risk-backfills'
 import { buildSkillStoreDerivedBackfill } from './skill-store-derived-backfills'
 
@@ -8915,6 +8916,7 @@ const knowledgeLocaleBase: LocaleNode = {
     eyebrow: 'Knowledge Space',
     title: 'Compiled pages, lint health, and ask-and-archive',
     description: 'Inspect compiled knowledge pages, run maintenance, and ask grounded questions.',
+    active: 'Active',
     controlTitle: 'Ingest and maintain Blue knowledge',
     controlDescription: 'Run ingest and lint jobs, then jump into the schema and activity panels.',
     ingest: 'Ingest',
@@ -8985,7 +8987,11 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
     ),
     (localeFollowupBackfills[localeKey] ?? {}) as LocaleNode
   )
-  const mergedMessages = mergeLocaleNodes(structuralPatch, messages as unknown as LocaleNode)
+  const securityCronMaskingPatch = (securityCronMaskingBackfills[localeKey] ?? {}) as LocaleNode
+  const mergedMessages = mergeLocaleNodes(
+    mergeLocaleNodes(structuralPatch, securityCronMaskingPatch),
+    messages as unknown as LocaleNode
+  )
   const skillStorePatch = buildSkillStoreDerivedBackfill(
     localeKey,
     mergedMessages as unknown as Record<string, unknown>

@@ -41,10 +41,3 @@ export function shouldDeferAskUserQuestionDialogOnDesktopStartup(
 ): boolean {
   return isDesktopChatStartupPath(isDesktop, path)
 }
-
-export function shouldDeferFormFillerWidgetOnDesktopStartup(
-  isDesktop: boolean,
-  path: string
-): boolean {
-  return isDesktopChatStartupPath(isDesktop, path)
-}

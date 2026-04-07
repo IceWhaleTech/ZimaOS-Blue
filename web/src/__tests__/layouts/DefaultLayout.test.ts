@@ -4,14 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import { fullscreenContent, isFullscreen } from '@/composables/useFullscreen'
 
-const {
-  setupFormFillerWidget,
-  cleanupFormFillerWidget,
-  settingsStoreState,
-  tauriState,
-} = vi.hoisted(() => ({
-  setupFormFillerWidget: vi.fn(),
-  cleanupFormFillerWidget: vi.fn(),
+const { settingsStoreState, tauriState } = vi.hoisted(() => ({
   settingsStoreState: {
     closeBehavior: 'minimize',
   },
@@ -43,13 +36,6 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-vi.mock('@/composables/useFormFillerWidget', () => ({
-  useFormFillerWidget: () => ({
-    setup: setupFormFillerWidget,
-    cleanup: cleanupFormFillerWidget,
-  }),
-}))
-
 vi.mock('@/composables/useTauri', () => ({
   useTauri: () => ({
     isTauri: { value: tauriState.isTauri },
@@ -68,13 +54,6 @@ vi.mock('@/components/AppSidebar.vue', () => ({
   ...helpers.asAsyncSFCModule({
     name: 'AppSidebar',
     template: '<aside class="app-sidebar-stub" />',
-  }),
-}))
-
-vi.mock('@/components/formfiller/FormFillerWidget.vue', () => ({
-  ...helpers.asAsyncSFCModule({
-    name: 'FormFillerWidget',
-    template: '<div class="form-filler-widget-stub" />',
   }),
 }))
 
@@ -218,30 +197,6 @@ describe('DefaultLayout', () => {
       await flushPromises()
 
       expect(wrapper.find('.browser-monitor-widget-stub').exists()).toBe(true)
-
-      wrapper.unmount()
-    } finally {
-      delete (window as any).__BLUE_DESKTOP__
-      vi.useRealTimers()
-    }
-  })
-
-  it('defers the form filler widget during desktop root startup until background startup work runs', async () => {
-    vi.useFakeTimers()
-    ;(window as any).__BLUE_DESKTOP__ = true
-
-    try {
-      const wrapper = await mountLayout('/')
-
-      expect(wrapper.find('.form-filler-widget-stub').exists()).toBe(false)
-
-      vi.advanceTimersByTime(600)
-      vi.runOnlyPendingTimers()
-      await flushPromises()
-      await vi.dynamicImportSettled()
-      await flushPromises()
-
-      expect(wrapper.find('.form-filler-widget-stub').exists()).toBe(true)
 
       wrapper.unmount()
     } finally {

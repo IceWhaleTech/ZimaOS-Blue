@@ -236,6 +236,25 @@ func TestGeneratePlanForTask_UsesPreferredTaskModel(t *testing.T) {
 	}
 }
 
+func TestGeneratePlanForTask_PinsPreferredProviderInContext(t *testing.T) {
+	llmStub := &captureRequestLLM{response: `{"goal":"test","subtasks":[{"description":"step one"}]}`}
+	runner := &Runner{llm: llmStub}
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"group_input": map[string]interface{}{
+				"provider_id": "openai-prod",
+			},
+		},
+	}
+
+	if _, err := runner.generatePlanForTask(context.Background(), task, "test", ""); err != nil {
+		t.Fatalf("generatePlanForTask failed: %v", err)
+	}
+	if llmStub.lastProviderID != "openai-prod" {
+		t.Fatalf("planner provider_id = %q, want openai-prod", llmStub.lastProviderID)
+	}
+}
+
 func TestGeneratePlanForTask_UsesPolicyModelHintWhenExplicitModelMissing(t *testing.T) {
 	llmStub := &captureRequestLLM{response: `{"goal":"test","subtasks":[{"description":"step one"}]}`}
 	runner := &Runner{llm: llmStub}
@@ -516,12 +535,14 @@ type routingDisableCaptureLLM struct {
 }
 
 type captureRequestLLM struct {
-	response  string
-	lastModel string
+	response       string
+	lastModel      string
+	lastProviderID string
 }
 
-func (m *captureRequestLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+func (m *captureRequestLLM) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	m.lastModel = req.Model
+	m.lastProviderID = proxy.GetPinnedProvider(ctx)
 	return &llm.ChatResponse{
 		Message: llm.Message{Role: llm.RoleAssistant, Content: m.response},
 	}, nil
@@ -564,10 +585,10 @@ func (m *routingDisableCaptureLLM) Chat(ctx context.Context, req llm.ChatRequest
 	case isVerificationPrompt(req):
 		m.verificationDisabled = proxy.DisableModelRoutingFromContext(ctx)
 		result := VerificationResult{
-			Status:         "pass",
-			Summary:        "External verification passed.",
+			Status:          "pass",
+			Summary:         "External verification passed.",
 			CriteriaResults: []CriterionResult{{Criterion: "evidence is grounded", Status: "pass", Evidence: "The task record includes grounded evidence."}},
-			ExecutedChecks: []string{"review task record"},
+			ExecutedChecks:  []string{"review task record"},
 		}
 		raw, _ := json.Marshal(result)
 		return &llm.ChatResponse{

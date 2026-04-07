@@ -392,6 +392,24 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 - [x] Deep Research routing and evidence presentation upgrades, including stronger intent matching and richer source details
 - [x] Built-in web search / web fetch capability uplift and broader information acquisition quality improvements
 
+**v0.10.37 - Runtime Trace Contract & Skill+Exec Cutover**
+- [x] Runtime trace contract hardening with richer Harness execution-stage, lifecycle, and context-pack visibility
+- [x] Gated `tool -> skill + exec` cutover closeout with canonical `web_query` routing and stronger contract drift protection
+- [x] External Agents settings, Agentcore Runner beta controls, and clearer skill-install/operator feedback
+- [x] Chat recovery hardening, desktop-managed restore handling, and channel/browser/task/mobile polish
+
+**v0.10.38 - GitHub Repository Support & Marketplace Follow-Ups**
+- [x] GitHub repository support and marketplace source-catalog / tool-registration follow-ups
+- [x] Agentcore Runner, context-pack, provider-pool, and operator-surface refinement
+- [x] Skill Store risk visualization, PluginsView install-result feedback, and clearer exec approval dialog hinting
+- [x] Management-skill canonicalization, localization cleanup, companion reliability hardening, and restore/shell polish
+
+**v0.10.39 - Workflow Consolidation & Recovery**
+- [x] Unified `Research` family with clearer discovery while preserving mode-specific output
+- [x] New `Knowledge` workspace for compiled pages, lint health, and ask-and-archive jobs
+- [x] New `Evolution` console plus local `blue audit` tooling for skill iteration and operational visibility
+- [x] Stronger chat bootstrap and pending-state recovery, Harness dataset readiness work, PDF/OCR extraction foundations, and failover/i18n integrity follow-ups
+
 ---
 
 ## Updates
@@ -425,6 +443,7 @@ Based on the design philosophy of [clawdbot](https://github.com/clawdbot/clawdbo
 | Mar 31–Apr 1, 2026 | v0.10.36 | SQLite transcript auditing enhancements; Harness i18n overlays and group management; streaming tool parsing fixes; SkillTab/ToolTab UI polish; embedding disabled by default; **Skill Store performance optimization** (search caching, debouncing, request cancellation) |
 | Apr 1, 2026 | v0.10.37: Runtime Trace Contract, Skill+Exec Cutover Closeout, Operator Polish, and Desktop Restore Hardening | Runtime trace contract hardening; Harness context-pack visibility; gated `tool -> skill + exec` cutover closeout; External Agents settings; Agentcore Runner beta; chat recovery hardening; channel/browser/task workspace polish |
 | Apr 5, 2026 | v0.10.38: GitHub Repository Support, Marketplace Catalog Follow-Ups, and Localization Polish | GitHub repository support; marketplace source-catalog and tool-registration follow-ups; Agentcore Runner settings and context-pack/operator visibility; Skill Store/Plugins install-result feedback; exec approval dialog hinting; companion reliability and desktop restore handling; viewport polish |
+| Apr 6–7, 2026 | v0.10.39: Research Family Unification, Knowledge & Evolution Surfaces, and Recovery Hardening | Unified `Research` family; new `Knowledge` workspace; new `Evolution` console and local `blue audit`; conversation bootstrap and pending-state recovery; Harness dataset tooling and evaluation readiness; i18n naming/integrity cleanup; PDF/OCR extraction foundations; failover and approval reliability follow-ups |
 
 ---
 

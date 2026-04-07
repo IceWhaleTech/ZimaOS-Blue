@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
+import { ref } from 'vue'
 import { createI18n } from 'vue-i18n'
 
+import { knowledgeApi } from '@/api/knowledge'
 import { skillApi } from '@/api/skill'
 import { harnessApi } from '@/api/harness'
 import { selfReflectApi } from '@/api/selfReflect'
@@ -15,6 +17,7 @@ const routerReplaceMock = vi.fn()
 const routeMock = {
   query: {} as Record<string, string>,
 }
+const runJobMock = vi.fn()
 
 vi.mock('@/api/skill', () => ({
   skillApi: {
@@ -44,6 +47,35 @@ vi.mock('@/api/selfReflect', () => ({
     approveProposal: vi.fn(),
     rejectProposal: vi.fn(),
   },
+}))
+
+vi.mock('@/api/knowledge', () => ({
+  knowledgeApi: {
+    createJob: vi.fn(),
+    listJobs: vi.fn(),
+    getJob: vi.fn(),
+    getReport: vi.fn(),
+    cancelJob: vi.fn(),
+    listPages: vi.fn(),
+    getPage: vi.fn(),
+    getIndex: vi.fn(),
+    getSchema: vi.fn(),
+    updateSchema: vi.fn(),
+    getLog: vi.fn(),
+    promoteQuery: vi.fn(),
+    getLatestLint: vi.fn(),
+  },
+}))
+
+vi.mock('@/composables/useKnowledgeJobs', () => ({
+  useKnowledgeJobs: () => ({
+    currentJob: ref(null),
+    latestReport: ref(null),
+    isRunning: ref(false),
+    runJob: runJobMock,
+    hydrateJob: vi.fn(),
+    hydrateReport: vi.fn(),
+  }),
 }))
 
 vi.mock('@/components/harness/AgentcoreRunnerPanel.vue', () => ({
@@ -133,6 +165,15 @@ describe('EvolutionView', () => {
       )
     })
     routeMock.query = {}
+    runJobMock.mockResolvedValue({
+      id: 'job-answer',
+      job_id: 'job-answer',
+      kind: 'answer',
+      status: 'pending',
+      progress: 0,
+      updated_at: '2026-04-05T12:00:00Z',
+      created_at: '2026-04-05T12:00:00Z',
+    })
     mockSettingsStore = {
       experimentalAgentcoreRunnerEnabled: true,
       agentcoreRunnerStatus: {
@@ -200,6 +241,128 @@ describe('EvolutionView', () => {
         id: 'opt-runner-1',
       }),
     }
+
+    vi.mocked(knowledgeApi.listPages).mockResolvedValue({
+      data: [
+        {
+          title: 'Blue Knowledge',
+          slug: 'readme',
+          page_type: 'source_summary',
+          summary: 'Compiled entry page.',
+          source_refs: ['README.md'],
+          keywords: ['blue', 'knowledge'],
+          backlinks: ['architecture'],
+          generated_at: '2026-04-05T12:00:00Z',
+          updated_at: '2026-04-05T12:00:00Z',
+          source_hash: 'hash-1',
+          status: 'active',
+          confidence: 'low',
+          conflicts_with: [],
+          superseded_by: [],
+          derived_from_query: '',
+        },
+        {
+          title: 'Blue Architecture',
+          slug: 'architecture',
+          page_type: 'source_summary',
+          summary: 'Architecture detail.',
+          source_refs: ['ARCHITECTURE.md'],
+          keywords: ['architecture'],
+          backlinks: ['readme'],
+          generated_at: '2026-04-05T12:00:00Z',
+          updated_at: '2026-04-05T12:00:00Z',
+          source_hash: 'hash-2',
+          status: 'conflicted',
+          confidence: 'low',
+          conflicts_with: ['readme'],
+          superseded_by: [],
+          derived_from_query: '',
+        },
+      ],
+    } as never)
+
+    vi.mocked(knowledgeApi.getLatestLint).mockResolvedValue({
+      data: {
+        generated_at: '2026-04-05T12:00:00Z',
+        issues: [
+          {
+            kind: 'missing_concept_page',
+            message: 'knowledge space has no concept pages yet',
+            category: 'research_suggestions',
+            severity: 'medium',
+          },
+          {
+            kind: 'conflicting_claim',
+            message: 'readme conflicts with architecture',
+            category: 'review_required',
+            severity: 'high',
+            related_pages: ['readme', 'architecture'],
+          },
+        ],
+      },
+    } as never)
+
+    vi.mocked(knowledgeApi.getSchema).mockResolvedValue({
+      data: {
+        content: '# Knowledge Space Schema\n\nKeep syntheses durable.\n',
+      },
+    } as never)
+
+    vi.mocked(knowledgeApi.getLog).mockResolvedValue({
+      data: [
+        {
+          timestamp: '2026-04-05T12:15:00Z',
+          operation: 'schema',
+          title: 'Knowledge schema updated',
+          reason: 'schema content updated',
+        },
+        {
+          timestamp: '2026-04-05T12:10:00Z',
+          operation: 'ingest',
+          title: 'Knowledge ingest',
+          sources: ['README.md'],
+          new_pages: ['readme'],
+          updated_pages: [],
+          conflicts: [],
+          gaps: ['Missing concept pages for recurring topics'],
+          reason: 'ingest updated the knowledge space',
+        },
+      ],
+    } as never)
+
+    vi.mocked(knowledgeApi.getPage).mockImplementation(async (slug: string) => ({
+      data: {
+        title: slug === 'architecture' ? 'Blue Architecture' : 'Blue Knowledge',
+        slug,
+        page_type: 'source_summary',
+        summary: slug === 'architecture' ? 'Architecture detail.' : 'Compiled entry page.',
+        source_refs: [slug === 'architecture' ? 'ARCHITECTURE.md' : 'README.md'],
+        keywords: [slug],
+        backlinks: slug === 'architecture' ? ['readme'] : ['architecture'],
+        generated_at: '2026-04-05T12:00:00Z',
+        updated_at: '2026-04-05T12:00:00Z',
+        source_hash: `hash-${slug}`,
+        status: slug === 'architecture' ? 'conflicted' : 'active',
+        confidence: 'low',
+        conflicts_with: slug === 'architecture' ? ['readme'] : [],
+        superseded_by: [],
+        derived_from_query: '',
+        content: `# ${slug}\n\nCompiled markdown`,
+        answers:
+          slug === 'readme'
+            ? [
+                {
+                  title: 'Knowledge Answer',
+                  path: '/tmp/workspace/knowledge/answers/readme.md',
+                  page_slug: 'readme',
+                  query: 'How does this work?',
+                  summary: 'A grounded answer.',
+                  generated_at: '2026-04-05T12:10:00Z',
+                },
+              ]
+            : [],
+      },
+    })) as never
 
     vi.mocked(skillApi.list).mockResolvedValue({
       data: [
@@ -792,6 +955,19 @@ describe('EvolutionView', () => {
   it('localizes evolution enum-driven labels for zh-CN', async () => {
     const wrapper = await mountView('zh-CN')
 
+    expect(wrapper.get('[data-testid="evolution-skill-item-mobile-title-browser"]').text()).toBe(
+      '浏览器'
+    )
+    expect(
+      wrapper.get('[data-testid="evolution-skill-item-mobile-description-browser"]').text()
+    ).toContain('使用浏览器浏览网页')
+    await wrapper.get('[data-testid="evolution-skill-item-mobile-browser"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="evolution-skill-selected-title"]').text()).toBe('浏览器')
+    expect(wrapper.get('[data-testid="evolution-skill-selected-description"]').text()).toContain(
+      '使用浏览器浏览网页'
+    )
+
     expect(wrapper.get('[data-testid="evolution-skill-case-case-browser-1"]').text()).toContain(
       '修复'
     )
@@ -824,16 +1000,20 @@ describe('EvolutionView', () => {
     await wrapper.get('[data-testid="evolution-tab-instructions"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="evolution-health-instructions-review_queue"]').text()).toContain(
-      '1 条提案待审'
-    )
     expect(wrapper.text()).toContain('待处理')
     expect(wrapper.text()).toContain('Harness 分组')
+
+    await wrapper.get('[data-testid="evolution-tab-knowledge"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('知识地图')
+    expect(wrapper.get('[data-testid="knowledge-maintenance-toggle"]').text()).toContain('维护')
   })
 
-  it('renders skills, runner, and instructions lanes and shows skill evidence with patch metrics', async () => {
+  it('renders knowledge, skills, runner, and instructions lanes and shows skill evidence with patch metrics', async () => {
     const wrapper = await mountView()
 
+    expect(wrapper.text()).toContain('Knowledge')
     expect(wrapper.text()).toContain('Skills')
     expect(wrapper.text()).toContain('Runner')
     expect(wrapper.text()).toContain('Review Queue')
@@ -1078,64 +1258,50 @@ describe('EvolutionView', () => {
     ).not.toContain('sm:text-xl')
   })
 
-  it('keeps the page header and top overview cards compact after the lower review sections were tightened', async () => {
+  it('keeps the page header compact and removes the redundant top summary and pane-health layers', async () => {
     const wrapper = await mountView()
 
     expect(wrapper.get('[data-testid="evolution-page-title"]').text()).toContain(
-      'Self-Repair And Evolution Console'
+      'Evolution Workspace'
     )
     expect(wrapper.get('[data-testid="evolution-page-title"]').classes()).toContain('text-lg')
     expect(wrapper.get('[data-testid="evolution-page-title"]').classes()).not.toContain(
       'sm:text-2xl'
     )
-
-    expect(wrapper.get('[data-testid="evolution-summary-visible-skills"]').classes()).toContain(
-      'text-lg'
-    )
-    expect(
-      wrapper.get('[data-testid="evolution-summary-visible-skills"]').classes()
-    ).not.toContain('sm:text-2xl')
-    expect(wrapper.get('[data-testid="evolution-summary-hint-skills"]').classes()).toContain(
-      'text-[11px]'
-    )
-    expect(wrapper.get('[data-testid="evolution-summary-hint-skills"]').classes()).toContain(
-      'leading-4'
-    )
+    expect(wrapper.find('[data-testid="evolution-summary-card-skills"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="evolution-pane-health"]').exists()).toBe(false)
   })
 
-  it('compacts lane switch cards and pane health details after the overview cards were tightened', async () => {
+  it('keeps the four lane switch cards compact after the redundant overview layers were removed', async () => {
     const wrapper = await mountView()
 
+    expect(wrapper.get('[data-testid="evolution-lane-description-knowledge"]').classes()).toContain(
+      'text-xs'
+    )
+    expect(wrapper.get('[data-testid="evolution-lane-description-knowledge"]').classes()).toContain(
+      'line-clamp-2'
+    )
     expect(wrapper.get('[data-testid="evolution-lane-description-skills"]').classes()).toContain(
       'text-xs'
     )
     expect(wrapper.get('[data-testid="evolution-lane-description-skills"]').classes()).toContain(
       'line-clamp-2'
     )
-    expect(wrapper.get('[data-testid="evolution-lane-supporting-skills"]').text()).toContain(
-      'Visible skills'
+    expect(wrapper.get('[data-testid="evolution-lane-supporting-knowledge"]').text()).toContain(
+      'Knowledge'
     )
-    expect(wrapper.get('[data-testid="evolution-lane-supporting-skills"]').classes()).toContain(
+    expect(wrapper.get('[data-testid="evolution-lane-supporting-knowledge"]').classes()).toContain(
       'text-[11px]'
     )
-    expect(
-      wrapper.get('[data-testid="evolution-health-skills-better_version-details"]').classes()
-    ).toContain('line-clamp-2')
-    expect(
-      wrapper.get('[data-testid="evolution-health-skills-better_version-details"]').classes()
-    ).toContain('text-[11px]')
-
-    await wrapper.get('[data-testid="evolution-tab-instructions"]').trigger('click')
-    await flushPromises()
-
-    expect(
-      wrapper.get('[data-testid="evolution-health-instructions-review_queue-details"]').classes()
-    ).toContain('line-clamp-2')
+    expect(wrapper.find('[data-testid="evolution-pane-health"]').exists()).toBe(false)
   })
 
   it('keeps skill list cards and runner transcript entries compact after the header and health cards were tightened', async () => {
     const wrapper = await mountView()
 
+    expect(wrapper.get('[data-testid="evolution-skill-item-mobile-browser"]').classes()).toContain(
+      'w-[12rem]'
+    )
     expect(wrapper.get('[data-testid="evolution-skill-item-title-browser"]').classes()).toContain(
       'text-xs'
     )
@@ -1530,8 +1696,6 @@ describe('EvolutionView', () => {
 
     expect(wrapper.find('[data-testid="evolution-skill-item-browser"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="evolution-skill-item-self_reflect"]').exists()).toBe(true)
-    expect(wrapper.get('[data-testid="evolution-summary-visible-skills"]').text()).toBe('1')
-    expect(wrapper.get('[data-testid="evolution-summary-total-skills"]').text()).toContain('2')
 
     await wrapper.get('[data-testid="evolution-skill-search"]').setValue('')
     await wrapper.get('[data-testid="evolution-skill-case-mode-filter"]').setValue('capture')
@@ -1543,8 +1707,6 @@ describe('EvolutionView', () => {
     expect(
       wrapper.find('[data-testid="evolution-skill-case-case-browser-capture"]').exists()
     ).toBe(true)
-    expect(wrapper.get('[data-testid="evolution-summary-visible-cases"]').text()).toBe('1')
-    expect(wrapper.get('[data-testid="evolution-summary-total-cases"]').text()).toContain('3')
 
     await wrapper.get('[data-testid="evolution-tab-instructions"]').trigger('click')
     await flushPromises()
@@ -1559,153 +1721,55 @@ describe('EvolutionView', () => {
     expect(wrapper.find('[data-testid="evolution-instructions-proposal-proposal-2"]').exists()).toBe(
       true
     )
-    expect(wrapper.get('[data-testid="evolution-summary-visible-instructions"]').text()).toBe('1')
-    expect(wrapper.get('[data-testid="evolution-summary-total-instructions"]').text()).toContain(
-      '2'
-    )
   })
 
-  it('shows pane health badges for version readiness, filters, AGENTS approvals, and runner boundaries', async () => {
+  it('surfaces the embedded knowledge lane with primary maintenance actions visible and advanced tools expandable on demand', async () => {
     const wrapper = await mountView()
 
-    expect(wrapper.get('[data-testid="evolution-health-skills-better_version"]').text()).toContain(
-      'Selected revision ready'
-    )
-    expect(wrapper.get('[data-testid="evolution-health-skills-rollback"]').text()).toContain(
-      'rollback backup ready'
-    )
-    expect(wrapper.get('[data-testid="evolution-health-skills-visibility"]').text()).toContain(
-      'All visible'
-    )
-
-    await wrapper.get('[data-testid="evolution-skill-search"]').setValue('self reflect')
+    await wrapper.get('[data-testid="evolution-tab-knowledge"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="evolution-health-skills-filters"]').text()).toContain(
-      '1 active filter'
+    expect(wrapper.text()).toContain('Knowledge map')
+    expect(wrapper.text()).toContain('Query')
+    expect(wrapper.find('[data-testid="knowledge-ingest-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="knowledge-lint-button"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="knowledge-maintenance-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-panel-log"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-schema-editor"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="knowledge-maintenance-toggle"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="knowledge-maintenance-panel"]').text()).toContain(
+      'Ingest and maintain Blue knowledge'
     )
-    expect(wrapper.get('[data-testid="evolution-health-skills-visibility"]').text()).toContain(
-      '1 hidden selection'
-    )
+    expect(wrapper.get('[data-testid="knowledge-panel-log"]').text()).toContain('Recent activity')
+    expect(wrapper.find('[data-testid="knowledge-schema-editor"]').exists()).toBe(true)
+  })
+
+  it('lets operators move between lanes directly without the removed pane-health shortcuts', async () => {
+    const wrapper = await mountView()
 
     await wrapper.get('[data-testid="evolution-tab-instructions"]').trigger('click')
     await flushPromises()
-
-    expect(wrapper.get('[data-testid="evolution-health-instructions-review_queue"]').text()).toContain(
-      '1 pending proposal'
-    )
-    expect(wrapper.get('[data-testid="evolution-health-instructions-agents"]').text()).toContain(
-      '1 approval waiting'
-    )
-    expect(wrapper.get('[data-testid="evolution-health-instructions-agents"]').text()).toContain(
-      'AGENTS.md'
-    )
-
-    await wrapper.get('[data-testid="evolution-instructions-status-filter"]').setValue('approved')
-    await flushPromises()
-
-    expect(wrapper.get('[data-testid="evolution-health-instructions-filters"]').text()).toContain(
-      '1 active filter'
-    )
-    expect(wrapper.get('[data-testid="evolution-health-instructions-visibility"]').text()).toContain(
-      '1 hidden selection'
-    )
+    expect(wrapper.text()).toContain('Instruction Review Queue')
 
     await wrapper.get('[data-testid="evolution-tab-runner"]').trigger('click')
     await flushPromises()
+    expect(wrapper.text()).toContain('Runner Evolution')
 
-    expect(wrapper.get('[data-testid="evolution-health-runner-switch_boundary"]').text()).toContain(
-      'Skills handles promote'
-    )
-    expect(
-      wrapper.get('[data-testid="evolution-health-runner-instruction_boundary"]').text()
-    ).toContain('AGENTS.md waiting')
-  })
-
-  it('lets operators use pane health actions to clear filters, switch versions, and jump to AGENTS review', async () => {
-    const wrapper = await mountView()
-
-    await wrapper.get('[data-testid="evolution-skill-revision-rev-backup"]').trigger('click')
+    await wrapper.get('[data-testid="evolution-tab-knowledge"]').trigger('click')
     await flushPromises()
 
-    await wrapper
-      .get('[data-testid="evolution-health-skills-better_version-action"]')
-      .trigger('click')
-    await flushPromises()
+    expect(wrapper.text()).toContain('Knowledge map')
 
-    expect(wrapper.get('[data-testid="evolution-skill-decision-selected"]').text()).toContain(
-      'Better candidate'
-    )
-
-    await wrapper.get('[data-testid="evolution-health-skills-rollback-action"]').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.get('[data-testid="evolution-skill-decision-selected"]').text()).toContain(
-      'Rollback backup'
-    )
-
-    await wrapper.get('[data-testid="evolution-skill-search"]').setValue('self reflect')
-    await flushPromises()
-
-    await wrapper.get('[data-testid="evolution-health-skills-filters-action"]').trigger('click')
-    await flushPromises()
-
-    expect((wrapper.get('[data-testid="evolution-skill-search"]').element as HTMLInputElement).value).toBe(
-      ''
-    )
-
-    await wrapper.get('[data-testid="evolution-tab-instructions"]').trigger('click')
-    await flushPromises()
-
-    await wrapper.get('[data-testid="evolution-instructions-status-filter"]').setValue('approved')
-    await flushPromises()
-
-    await wrapper
-      .get('[data-testid="evolution-health-instructions-filters-action"]')
-      .trigger('click')
-    await flushPromises()
-
-    expect(
-      (wrapper.get('[data-testid="evolution-instructions-status-filter"]').element as HTMLSelectElement)
-        .value
-    ).toBe('all')
-
-    await wrapper.get('[data-testid="evolution-instructions-proposal-proposal-2"]').trigger('click')
-    await flushPromises()
-
-    await wrapper
-      .get('[data-testid="evolution-health-instructions-agents-action"]')
-      .trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('AGENTS.md')
-    expect(wrapper.get('[data-testid="evolution-instructions-patch"]').text()).toContain(
-      'evolution review checkpoint'
-    )
-
-    await wrapper.get('[data-testid="evolution-tab-runner"]').trigger('click')
-    await flushPromises()
-
-    await wrapper
-      .get('[data-testid="evolution-health-runner-switch_boundary-action"]')
-      .trigger('click')
+    await wrapper.get('[data-testid="evolution-tab-skills"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Selected Skill')
-
-    await wrapper.get('[data-testid="evolution-tab-runner"]').trigger('click')
-    await flushPromises()
-
-    await wrapper
-      .get('[data-testid="evolution-health-runner-instruction_boundary-action"]')
-      .trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('Review Proposal')
-    expect(wrapper.text()).toContain('AGENTS.md')
   })
 
-  it('supports drill-down from decision cards and review shortcuts into comparison, metrics, evidence, and diff sections', async () => {
+  it('supports drill-down from decision cards and scorecard actions after the shortcut cards are removed', async () => {
     const wrapper = await mountView()
 
     await wrapper.get('[data-testid="evolution-skill-decision-live-action"]').trigger('click')
@@ -1729,14 +1793,21 @@ describe('EvolutionView', () => {
       wrapper.get('[data-testid="evolution-skill-section-comparison"]').attributes('data-focused')
     ).toBe('true')
 
-    await wrapper.get('[data-testid="evolution-skill-drilldown-metrics-action"]').trigger('click')
+    expect(wrapper.find('[data-testid="evolution-skill-drilldown-metrics-action"]').exists()).toBe(
+      false
+    )
+    expect(wrapper.find('[data-testid="evolution-skill-drilldown-evidence-action"]').exists()).toBe(
+      false
+    )
+
+    await wrapper.get('[data-testid="evolution-skill-scorecard-tokens-action"]').trigger('click')
     await flushPromises()
 
     expect(
       wrapper.get('[data-testid="evolution-skill-section-metrics"]').attributes('data-focused')
     ).toBe('true')
 
-    await wrapper.get('[data-testid="evolution-skill-drilldown-evidence-action"]').trigger('click')
+    await wrapper.get('[data-testid="evolution-skill-scorecard-evidence-action"]').trigger('click')
     await flushPromises()
 
     expect(
@@ -1794,8 +1865,6 @@ describe('EvolutionView', () => {
     expect(wrapper.find('[data-testid="evolution-skill-revision-rev-backup"]').exists()).toBe(
       true
     )
-    expect(wrapper.get('[data-testid="evolution-summary-visible-revisions"]').text()).toBe('1')
-    expect(wrapper.get('[data-testid="evolution-summary-total-revisions"]').text()).toContain('5')
 
     await wrapper.get('[data-testid="evolution-skill-revision-status-filter"]').setValue('all')
     await wrapper.get('[data-testid="evolution-skill-revision-search"]').setValue('capture')

@@ -207,8 +207,10 @@ describe('Deep research locale coverage', () => {
       const messages = mod.default
       const deepResearchTitle = getPathValue(messages, 'chat.deepResearchTitle')
       const resultCardResearch = getPathValue(messages, 'resultCard.titles.deep_research')
+      const canonicalResearchName = getPathValue(messages, 'tools.names.research')
       const researchRunName = getPathValue(messages, 'tools.names.research_run')
       const researchStatusName = getPathValue(messages, 'tools.names.research_status')
+      const canonicalResearchDescription = getPathValue(messages, 'tools.descriptions.research')
       const researchRunDescription = getPathValue(messages, 'tools.descriptions.research_run')
       const researchStatusDescription = getPathValue(messages, 'tools.descriptions.research_status')
 
@@ -216,10 +218,15 @@ describe('Deep research locale coverage', () => {
       expect(typeof resultCardResearch, `${file} missing resultCard.titles.deep_research`).toBe(
         'string'
       )
+      expect(typeof canonicalResearchName, `${file} missing tools.names.research`).toBe('string')
       expect(typeof researchRunName, `${file} missing tools.names.research_run`).toBe('string')
       expect(typeof researchStatusName, `${file} missing tools.names.research_status`).toBe(
         'string'
       )
+      expect(
+        typeof canonicalResearchDescription,
+        `${file} missing tools.descriptions.research`
+      ).toBe('string')
       expect(typeof researchRunDescription, `${file} missing tools.descriptions.research_run`).toBe(
         'string'
       )
@@ -229,7 +236,12 @@ describe('Deep research locale coverage', () => {
       ).toBe('string')
 
       expect(resultCardResearch, `${file} result card deep research title`).toBe(deepResearchTitle)
+      expect(canonicalResearchName, `${file} canonical research tool name`).toBe(deepResearchTitle)
       expect(researchRunName, `${file} deep research tool name`).toBe(deepResearchTitle)
+      expect(
+        canonicalResearchDescription,
+        `${file} canonical research tool description`
+      ).toBe(researchRunDescription)
       expect(
         (researchStatusName as string).trim().length,
         `${file} deep research status tool name`

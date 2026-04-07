@@ -282,6 +282,16 @@ describe('SettingsView restore runtime integration', () => {
     wrapper.unmount()
   })
 
+  it('does not render the knowledge management section in the data management tab', async () => {
+    const wrapper = mountRestoreView()
+    await settleSettingsAsyncTabComponents()
+
+    expect(wrapper.text()).not.toContain('Knowledge Space')
+    expect(wrapper.text()).not.toContain('Knowledge Maintenance & Compilation')
+
+    wrapper.unmount()
+  })
+
   it('keeps server-managed auto restart outside the desktop shell in browser mode', async () => {
     vi.mocked(backupApi.restore).mockResolvedValue({
       data: {

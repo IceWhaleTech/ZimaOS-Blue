@@ -68,6 +68,7 @@ func TestHarnessResearchRuntimeService_UsesHarnessRunsForAnalyzeJobs(t *testing.
 		Goal:           "Summarize the release notes",
 		UserID:         "user-harness-research",
 		ConversationID: "conv-harness-research",
+		ProviderID:     "openai-prod",
 		Metadata: map[string]interface{}{
 			"mode":  "analyze",
 			"topic": "Release notes summary",
@@ -101,6 +102,9 @@ func TestHarnessResearchRuntimeService_UsesHarnessRunsForAnalyzeJobs(t *testing.
 	}
 	if job.ID != run.ID || string(job.Mode) != "analyze" {
 		t.Fatalf("job = %#v, want analyze-mode harness projection", job)
+	}
+	if job.ProviderID != "openai-prod" {
+		t.Fatalf("job provider_id = %q, want openai-prod", job.ProviderID)
 	}
 	if job.Progress != 42 || job.Stage != "analysis" {
 		t.Fatalf("job = %#v, want projected progress/stage", job)

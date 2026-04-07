@@ -11,25 +11,6 @@ type segmentPattern struct {
 	kind SegmentKind
 }
 
-// Language-agnostic segment boundary patterns.
-// These detect function/method/class definitions across Go, Python, JS/TS, Rust, Java.
-var segmentPatterns = []segmentPattern{
-	// Go: func, type struct/interface
-	{re: regexp.MustCompile(`^\s*func\s+`), kind: SegmentFunction},
-	{re: regexp.MustCompile(`^\s*type\s+\w+\s+(struct|interface)\s*\{`), kind: SegmentClass},
-	// Python: def, class
-	{re: regexp.MustCompile(`^\s*def\s+\w+\s*\(`), kind: SegmentFunction},
-	{re: regexp.MustCompile(`^\s*class\s+\w+`), kind: SegmentClass},
-	// JS/TS: function, class, arrow (const x = (...) =>)
-	{re: regexp.MustCompile(`^\s*function\s+\w+`), kind: SegmentFunction},
-	{re: regexp.MustCompile(`^\s*class\s+\w+`), kind: SegmentClass},
-	// Rust: fn, impl, struct, enum
-	{re: regexp.MustCompile(`^\s*(pub\s+)?fn\s+\w+`), kind: SegmentFunction},
-	{re: regexp.MustCompile(`^\s*impl\s+`), kind: SegmentClass},
-	// Java: public/private/protected methods and classes
-	{re: regexp.MustCompile(`^\s*(public|private|protected)\s+class\s+`), kind: SegmentClass},
-}
-
 // Segmentize splits code into semantic segments (functions, classes, blocks).
 // It detects boundaries using regex patterns for multiple languages,
 // then groups remaining lines into SegmentLines blocks.
@@ -42,6 +23,7 @@ func Segmentize(code string) []Segment {
 	if len(lines) == 0 {
 		return nil
 	}
+	ensureSegmentPatterns()
 
 	// Find all boundary lines
 	type boundary struct {

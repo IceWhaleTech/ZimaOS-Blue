@@ -125,6 +125,7 @@ type CreateJobRequest struct {
 	RequestedID   string   `json:"requested_id,omitempty"`
 	UserID        string   `json:"user_id,omitempty"`
 	TenantID      string   `json:"tenant_id,omitempty"`
+	ProviderID    string   `json:"provider_id,omitempty"`
 	Query         string   `json:"query,omitempty"`
 	Kind          JobKind  `json:"kind"`
 	TargetPaths   []string `json:"target_paths,omitempty"`
@@ -136,10 +137,12 @@ type CreateJobRequest struct {
 
 type CompileRequest struct {
 	TargetPaths []string `json:"target_paths,omitempty"`
+	ProviderID  string   `json:"provider_id,omitempty"`
 }
 
 type LintRequest struct {
 	TargetPaths []string `json:"target_paths,omitempty"`
+	ProviderID  string   `json:"provider_id,omitempty"`
 }
 
 type AnswerRequest struct {
@@ -255,6 +258,7 @@ type KnowledgeJob struct {
 	ID          string              `json:"id"`
 	UserID      string              `json:"user_id,omitempty"`
 	TenantID    string              `json:"tenant_id,omitempty"`
+	ProviderID  string              `json:"provider_id,omitempty"`
 	Query       string              `json:"query,omitempty"`
 	Kind        JobKind             `json:"kind"`
 	Status      JobStatus           `json:"status"`
@@ -268,14 +272,15 @@ type KnowledgeJob struct {
 }
 
 type KnowledgeJobSummary struct {
-	ID        string    `json:"id"`
-	JobID     string    `json:"job_id"`
-	Query     string    `json:"query,omitempty"`
-	Kind      JobKind   `json:"kind"`
-	Status    JobStatus `json:"status"`
-	Progress  int       `json:"progress"`
-	Stage     string    `json:"stage,omitempty"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID         string    `json:"id"`
+	JobID      string    `json:"job_id"`
+	ProviderID string    `json:"provider_id,omitempty"`
+	Query      string    `json:"query,omitempty"`
+	Kind       JobKind   `json:"kind"`
+	Status     JobStatus `json:"status"`
+	Progress   int       `json:"progress"`
+	Stage      string    `json:"stage,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type KnowledgeSchemaDocument struct {

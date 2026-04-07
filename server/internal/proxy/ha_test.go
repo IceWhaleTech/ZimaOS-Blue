@@ -30,6 +30,15 @@ func forceProviderPoolReady(pool *providerpool.Pool) {
 	reflect.NewAt(field.Type(), unsafe.Pointer(field.UnsafeAddr())).Elem().Set(reflect.ValueOf(closedCh))
 }
 
+func mustModelAliases(t *testing.T, model string) []string {
+	t.Helper()
+	aliases, ok := modelAliasesFor(model)
+	if !ok {
+		t.Fatalf("expected aliases for %q", model)
+	}
+	return aliases
+}
+
 // --- Provider Memory HA Tests ---
 
 // TestProviderMemory_BlacklistDoesNotAffectOtherProviders verifies model blacklisting is per-provider
@@ -146,7 +155,7 @@ func TestAllModelsForProvider_AllBlacklisted(t *testing.T) {
 
 	// Blacklist original + all known aliases
 	ph.providerMemory.BlacklistModel(pid, burl, "claude-3-5-haiku-20241022")
-	for _, alias := range ModelAliases["claude-3-5-haiku-20241022"] {
+	for _, alias := range mustModelAliases(t, "claude-3-5-haiku-20241022") {
 		ph.providerMemory.BlacklistModel(pid, burl, alias)
 	}
 
@@ -182,7 +191,7 @@ func TestAllModelsForProvider_IgnoreBlacklist(t *testing.T) {
 	model := "claude-3-5-haiku-20241022"
 
 	ph.providerMemory.BlacklistModel(pid, burl, model)
-	for _, alias := range ModelAliases[model] {
+	for _, alias := range mustModelAliases(t, model) {
 		ph.providerMemory.BlacklistModel(pid, burl, alias)
 	}
 

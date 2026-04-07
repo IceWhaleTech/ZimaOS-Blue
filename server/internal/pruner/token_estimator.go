@@ -1,23 +1,9 @@
 package pruner
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-)
-
-var (
-	mdImageRe         = regexp.MustCompile(`!\[([^\]]*)\]\([^)]+\)`)
-	mdLinkRe          = regexp.MustCompile(`\[([^\]]+)\]\([^)]+\)`)
-	mdAutoLinkRe      = regexp.MustCompile(`<((?:https?|mailto):[^>]+)>`)
-	mdUnorderedListRe = regexp.MustCompile(`^\s*[-*+]\s+`)
-	mdOrderedListRe   = regexp.MustCompile(`^\s*\d+[.)]\s+`)
-	mdTaskListRe      = regexp.MustCompile(`^\[(?: |x|X)\]\s+`)
-	mdHeadingRe       = regexp.MustCompile(`^\s{0,3}#{1,6}\s+`)
-	mdBlockQuoteRe    = regexp.MustCompile(`^\s*>\s*`)
-	mdRuleRe          = regexp.MustCompile(`^\s*([-*_]\s*){3,}\s*$`)
-	mdInlineCleaner   = strings.NewReplacer("**", "", "__", "", "*", "", "_", "", "~~", "", "`", "")
 )
 
 // CompactMarkdown strips noise from markdown text to reduce token usage:
@@ -96,6 +82,7 @@ func MarkdownToText(s string) string {
 	if s == "" {
 		return ""
 	}
+	ensureMarkdownRegexes()
 
 	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
 	out := make([]string, 0, len(lines))

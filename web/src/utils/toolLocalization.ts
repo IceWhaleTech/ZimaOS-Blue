@@ -20,6 +20,7 @@ const PREFERRED_TOOL_NAME_MAP: Record<string, string> = {
   session_status: 'sessions',
   sessions_spawn: 'sessions',
   sessions_send: 'sessions',
+  research: 'research_run',
   deep_research: 'research_run',
   web_query: 'web',
   web_search: 'web',

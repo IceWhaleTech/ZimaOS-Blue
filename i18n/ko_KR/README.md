@@ -77,9 +77,10 @@ Go로 네이티브 컴파일 — 인터프리터 없음, VM 없음, 오버헤드
 | `status` 런타임 (3회 최고) | **< 0.01 s** | 5.98 s |
 | `help` 최대 RSS | **~10 MB** | ~394 MB |
 | `status` 최대 RSS | **~15 MB** | ~1.52 GB |
+| `gateway run` 콜드 시작 후 유휴 메모리 | **~19 MB** | - |
 | 런타임 의존성 | **없음** | Node.js 18+ |
 
-> 벤치마크 환경: macOS arm64 (서버 모드, 데스크톱 UI 없음), 동일 호스트, 3회 최고 기록. 2026년 2월.
+> 위 CLI 행은 동일 호스트에서 측정한 과거의 `help` / `status` 마이크로벤치마크입니다. 새 `gateway run` 행은 시작이 안정된 뒤 macOS arm64에서 `vmmap Physical footprint`로 측정한 실제 cold-idle 메모리를 뜻합니다. 2026년 2월-4월.
 
 ### 순수 Go, 모든 기기
 

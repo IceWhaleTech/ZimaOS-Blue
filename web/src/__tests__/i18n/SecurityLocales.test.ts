@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createI18n } from 'vue-i18n'
+import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 
 type LocaleLeaf = string | number | boolean | null | undefined
 type LocaleValue = LocaleLeaf | LocaleNode | LocaleLeaf[] | LocaleNode[]
@@ -232,6 +233,51 @@ describe('security locale compilation', () => {
         unexpectedSameAsEnglish,
         `${locale} should only keep intentional shared English security labels`
       ).toEqual([])
+    }
+  })
+
+  it('backfills sandbox detail messages, masking rule labels, and nightly knowledge lint copy', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    const enUSPath = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))?.[0]
+    expect(enUSPath).toBeTruthy()
+    if (!enUSPath) {
+      throw new Error('Missing en-US locale module')
+    }
+
+    const enhancedReference = mergeHarnessLocale('en-US', localeModules[enUSPath]!.default)
+    const localizedKeys = [
+      'security.scan.detailMessages.sandbox_enabled',
+      'apiProxy.maskingRuleNames.email',
+      'apiProxy.maskingCategories.pii',
+      'apiProxy.maskingDirections.response',
+      'cron.systemJobs.knowledgeNightlyLint.name',
+      'cron.systemJobs.knowledgeNightlyLint.description',
+    ]
+
+    for (const [modulePath, mod] of entries) {
+      const locale = fileNameFromModulePath(modulePath).replace(/\.ts$/, '')
+      const enhancedMessages = mergeHarnessLocale(locale as never, mod.default)
+
+      for (const key of localizedKeys) {
+        const value = getPathValue(enhancedMessages, key)
+        expect(typeof value, `${locale} should expose ${key} after locale enhancement`).toBe(
+          'string'
+        )
+        expect(String(value).trim().length, `${locale} should not leave ${key} empty`).toBeGreaterThan(
+          0
+        )
+      }
+
+      if (locale === 'en-US' || locale === 'en-GB') {
+        continue
+      }
+
+      for (const key of localizedKeys) {
+        expect(
+          getPathValue(enhancedMessages, key),
+          `${locale} should localize ${key} beyond the English fallback`
+        ).not.toBe(getPathValue(enhancedReference, key))
+      }
     }
   })
 })

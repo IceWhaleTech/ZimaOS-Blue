@@ -85,6 +85,23 @@ func preferredTaskModel(task *Task) string {
 	return "auto"
 }
 
+func preferredTaskProviderID(task *Task) string {
+	if task == nil {
+		return ""
+	}
+	for _, source := range []map[string]interface{}{
+		task.Metadata,
+		metadataMapValue(task.Metadata, "group_input"),
+	} {
+		for _, key := range []string{"provider_id", "providerId", "selected_provider_id", "selectedProviderID"} {
+			if providerID := metadataStringValue(source, key); providerID != "" {
+				return providerID
+			}
+		}
+	}
+	return ""
+}
+
 // PlanStep represents a single step in the agent's plan.
 type PlanStep struct {
 	Index       int        `json:"index"`

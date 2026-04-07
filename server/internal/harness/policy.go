@@ -164,6 +164,9 @@ func (r *PolicyResolver) ResolveChild(parent *Run, spec RunSpec) (RunSpec, error
 	if strings.TrimSpace(spec.Model) == "" {
 		spec.Model = parent.Model
 	}
+	if strings.TrimSpace(spec.ProviderID) == "" {
+		spec.ProviderID = parent.ProviderID
+	}
 	if strings.TrimSpace(spec.GroupID) == "" {
 		spec.GroupID = parent.GroupID
 	}

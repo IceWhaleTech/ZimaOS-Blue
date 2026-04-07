@@ -2280,7 +2280,7 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 
 // tryModelAliases attempts common model name aliases when the original gets model_not_found.
 func (ph *ProxyHandler) tryModelAliases(r *http.Request, result *providerpool.RouteResult, pr *parsedRequest, failedModel string, effectiveFormat providerpool.APIFormat) *http.Response {
-	aliases, ok := ModelAliases[failedModel]
+	aliases, ok := modelAliasesFor(failedModel)
 	if !ok {
 		return nil
 	}
@@ -2736,7 +2736,7 @@ func (ph *ProxyHandler) allModelsForProvider(provider *providerpool.Provider, pi
 	}
 
 	// 4. ModelAliases
-	if aliases, ok := ModelAliases[originalModel]; ok {
+	if aliases, ok := modelAliasesFor(originalModel); ok {
 		for _, alias := range aliases {
 			if !has(alias) && allow(alias) && (ignoreBlacklist || !ph.providerMemory.IsModelBlacklisted(pid, burl, alias)) {
 				add(alias)

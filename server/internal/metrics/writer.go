@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
@@ -27,6 +28,10 @@ type MetricsWriter struct {
 	done chan struct{}
 	wg   sync.WaitGroup
 	mu   sync.Mutex // Protects Stop() from being called multiple times
+
+	systemMonitorOnce     sync.Once
+	systemMetricsLoopOnce sync.Once
+	started               atomic.Bool
 }
 
 // WriterConfig contains configuration for the metrics writer.
@@ -77,17 +82,11 @@ func NewMetricsWriter(store MetricsStore, config *WriterConfig) *MetricsWriter {
 		config = DefaultWriterConfig()
 	}
 
-	var systemMonitor *SystemMonitor
-	if config.EnableSystemMetrics {
-		systemMonitor = NewSystemMonitor(config.MaxSamples, config.DiskPath)
-	}
-
 	w := &MetricsWriter{
 		store:          store,
 		callCollector:  NewCallCollector(config.MaxSamples, time.Hour),
 		tokenTracker:   NewTokenTracker(),
 		latencyTracker: NewLatencyTracker(config.MaxSamples),
-		systemMonitor:  systemMonitor,
 		config:         config,
 		done:           make(chan struct{}),
 	}
@@ -221,15 +220,15 @@ func (w *MetricsWriter) persistData() {
 func (w *MetricsWriter) Start() {
 	// Load persisted data if not already loaded
 	w.loadPersistedData()
+	w.started.Store(true)
 
 	// Start periodic flush
 	w.wg.Add(1)
 	go w.collectionLoop()
 
-	// Start system metrics collection if enabled
-	if w.config.EnableSystemMetrics {
-		w.wg.Add(1)
-		go w.systemMetricsLoop()
+	// Persisted/system-backed writers still start system metrics collection eagerly.
+	if w.config.EnableSystemMetrics && (w.store != nil || w.systemMonitor != nil) {
+		w.startSystemMetricsLoopIfNeeded()
 	}
 
 	// Start persistence loop if SQLite store is available
@@ -441,19 +440,20 @@ func (w *MetricsWriter) writeCollectedMetrics() {
 
 // collectSystemMetrics collects and writes system metrics.
 func (w *MetricsWriter) collectSystemMetrics() {
-	if w.systemMonitor == nil {
+	monitor := w.ensureSystemMonitor()
+	if monitor == nil {
 		return
 	}
 
 	// Collect system metrics
-	if err := w.systemMonitor.Collect(); err != nil {
+	if err := monitor.Collect(); err != nil {
 		return
 	}
 
 	// Write to store if available
 	if w.store != nil {
 		ctx := context.Background()
-		metrics := w.systemMonitor.GetSystemMetrics()
+		metrics := monitor.GetSystemMetrics()
 
 		point := NewPoint(MeasurementSystem).
 			AddField(FieldCPUPercent, metrics.CPUUsagePercent).
@@ -614,18 +614,20 @@ func (w *MetricsWriter) Reset() {
 
 // GetSystemMetrics returns current system metrics.
 func (w *MetricsWriter) GetSystemMetrics() *SystemResourceMetrics {
-	if w.systemMonitor == nil {
+	monitor := w.ensureSystemMonitorForAccess()
+	if monitor == nil {
 		return nil
 	}
-	return w.systemMonitor.GetSystemMetrics()
+	return monitor.GetSystemMetrics()
 }
 
 // GetResourceHistory returns resource history.
 func (w *MetricsWriter) GetResourceHistory() []ResourceHistory {
-	if w.systemMonitor == nil {
+	monitor := w.ensureSystemMonitorForAccess()
+	if monitor == nil {
 		return nil
 	}
-	return w.systemMonitor.GetResourceHistory()
+	return monitor.GetResourceHistory()
 }
 
 // GetDB returns the underlying *sql.DB for the metrics SQLite store.
@@ -648,8 +650,44 @@ func (w *MetricsWriter) GetReadDB() *sql.DB {
 
 // GetCurrentProcessMetrics returns metrics for the current process.
 func (w *MetricsWriter) GetCurrentProcessMetrics() (*ProcessMetrics, error) {
-	if w.systemMonitor == nil {
+	monitor := w.ensureSystemMonitorForAccess()
+	if monitor == nil {
 		return nil, nil
 	}
-	return w.systemMonitor.GetCurrentProcessMetrics()
+	return monitor.GetCurrentProcessMetrics()
+}
+
+func (w *MetricsWriter) ensureSystemMonitor() *SystemMonitor {
+	if w == nil || w.config == nil || !w.config.EnableSystemMetrics {
+		return nil
+	}
+	w.systemMonitorOnce.Do(func() {
+		w.systemMonitor = NewSystemMonitor(w.config.MaxSamples, w.config.DiskPath)
+	})
+	return w.systemMonitor
+}
+
+func (w *MetricsWriter) startSystemMetricsLoopIfNeeded() {
+	if w == nil || !w.started.Load() || w.config == nil || !w.config.EnableSystemMetrics {
+		return
+	}
+	if w.ensureSystemMonitor() == nil {
+		return
+	}
+	w.systemMetricsLoopOnce.Do(func() {
+		w.wg.Add(1)
+		go w.systemMetricsLoop()
+	})
+}
+
+func (w *MetricsWriter) ensureSystemMonitorForAccess() *SystemMonitor {
+	monitor := w.ensureSystemMonitor()
+	if monitor == nil {
+		return nil
+	}
+	if !monitor.hasSamples() {
+		_ = monitor.Collect()
+	}
+	w.startSystemMetricsLoopIfNeeded()
+	return monitor
 }

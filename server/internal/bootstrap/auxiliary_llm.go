@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -29,31 +28,25 @@ func newAuxiliaryLLMCaller() *auxiliaryLLMCaller {
 	return &auxiliaryLLMCaller{}
 }
 
-func (c *auxiliaryLLMCaller) Name() string {
-	return "smallmodel"
-}
-
-func (c *auxiliaryLLMCaller) Models() []string {
-	return []string{smallmodel.ModelID}
-}
-
-func (c *auxiliaryLLMCaller) SetSmallModel(rt smallmodel.Runtime) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.smallModel = rt
-}
-
-func (c *auxiliaryLLMCaller) SetFallback(fallback llmChatCaller) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.fallback = fallback
-}
-
 func (c *auxiliaryLLMCaller) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	c.mu.RLock()
 	runtime := c.smallModel
 	fallback := c.fallback
 	c.mu.RUnlock()
+
+	pinnedProviderID := normalizedPinnedProviderID(ctx)
+	switch {
+	case pinnedProviderID == smallmodelProviderID:
+		if runtime == nil || !runtime.Ready() {
+			return nil, smallmodel.ErrNotReady
+		}
+		return callAuxiliarySmallModel(ctx, runtime, req)
+	case pinnedProviderID != "":
+		if fallback == nil {
+			return nil, errAuxiliaryLLMUnavailable
+		}
+		return fallback.Chat(ctx, req)
+	}
 
 	if runtime != nil && runtime.Ready() {
 		resp, err := callAuxiliarySmallModel(ctx, runtime, req)
@@ -69,12 +62,4 @@ func (c *auxiliaryLLMCaller) Chat(ctx context.Context, req llm.ChatRequest) (*ll
 		return nil, errAuxiliaryLLMUnavailable
 	}
 	return fallback.Chat(ctx, req)
-}
-
-func (c *auxiliaryLLMCaller) ChatStream(_ context.Context, _ llm.ChatRequest) (<-chan llm.StreamChunk, error) {
-	return nil, fmt.Errorf("auxiliary llm does not support streaming")
-}
-
-func (c *auxiliaryLLMCaller) ChatStreamCallback(_ context.Context, _ llm.ChatRequest, _ llm.StreamCallback) error {
-	return fmt.Errorf("auxiliary llm does not support streaming")
 }

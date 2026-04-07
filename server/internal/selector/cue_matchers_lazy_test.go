@@ -56,3 +56,28 @@ func TestAnalyzeQuery_UsesLazyStaticCueMatchers(t *testing.T) {
 		t.Fatal("expected AnalyzeQuery to initialize URL matcher on demand")
 	}
 }
+
+func TestLazyCueMatchers_DelayRoutingCueBackedTermExpansion(t *testing.T) {
+	matchers := newLazyCueMatchers()
+
+	if matchers.workspaceContainerTerms.value != nil || matchers.liveWebTerms.value != nil || matchers.productivityTerms.value != nil || matchers.uiArtifactTerms.value != nil {
+		t.Fatal("expected routingcue-backed term lists to start cold")
+	}
+
+	if !matchers.questionPrefixMatcher().HasAnyPrefix("what is this") {
+		t.Fatal("expected question prefix matcher to work")
+	}
+	if matchers.workspaceContainerTerms.value != nil || matchers.liveWebTerms.value != nil || matchers.productivityTerms.value != nil || matchers.uiArtifactTerms.value != nil {
+		t.Fatal("expected unrelated routingcue-backed term lists to stay cold")
+	}
+
+	if !matchers.workspaceContainerMatcher().ContainsAnyFold("workspace") {
+		t.Fatal("expected workspace matcher to work after first access")
+	}
+	if len(matchers.workspaceContainerTerms.value) == 0 {
+		t.Fatal("expected workspace term list to initialize on first access")
+	}
+	if matchers.liveWebTerms.value != nil || matchers.productivityTerms.value != nil || matchers.uiArtifactTerms.value != nil {
+		t.Fatal("expected unrelated routingcue-backed term lists to remain cold")
+	}
+}

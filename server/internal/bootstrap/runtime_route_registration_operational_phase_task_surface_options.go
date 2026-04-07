@@ -3,7 +3,7 @@ package bootstrap
 import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 
 func newRouteRuntimeOperationalTaskSurfaceOptions(state *routeRegistrationState) runtimeTaskSurfaceOptions {
-	return withRuntimeTaskSurfaceKnowledgeDeps(state.deps, runtimeTaskSurfaceOptions{
+	return withRuntimeTaskSurfaceKnowledgeDeps(state, runtimeTaskSurfaceOptions{
 		protected:          state.protected,
 		apiProtected:       state.apiProtected,
 		chatPermission:     state.authSurface.requirePagePermission(permission.PageChat),

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import CronView from '@/views/CronView.vue'
-import { i18n } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 import { cronApi } from '@/api/cron'
 
 vi.mock('@/api/cron', () => ({
@@ -22,10 +22,32 @@ vi.mock('@/components/automation/AutomationTabs.vue', () => ({
   default: { name: 'AutomationTabs', template: '<div class="automation-tabs-stub"></div>' },
 }))
 
+const storageState = new Map<string, string>()
+const localStorageMock = {
+  getItem: (key: string) => storageState.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    storageState.set(key, value)
+  },
+  removeItem: (key: string) => {
+    storageState.delete(key)
+  },
+  clear: () => {
+    storageState.clear()
+  },
+}
+
 describe('CronView', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    storageState.clear()
+    vi.stubGlobal('localStorage', localStorageMock)
+    if (typeof window !== 'undefined') {
+      Object.defineProperty(window, 'localStorage', {
+        value: localStorageMock,
+        configurable: true,
+      })
+    }
     vi.mocked(cronApi.list).mockResolvedValue({
       data: [
         {
@@ -63,6 +85,7 @@ describe('CronView', () => {
         },
       ],
     } as never)
+    await setLocale('en-US')
   })
 
   it('renders next run from next_run_at', async () => {
@@ -117,7 +140,7 @@ describe('CronView', () => {
     })
 
     await flushPromises()
-    await wrapper.get('button[title="cron.viewExecutions"]').trigger('click')
+    await wrapper.get('button[title="View executions"]').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('2ms')
@@ -208,5 +231,40 @@ describe('CronView', () => {
         method: 'GET',
       },
     })
+  })
+
+  it('localizes the nightly knowledge lint system job in zh-CN', async () => {
+    await setLocale('zh-CN')
+    vi.mocked(cronApi.list).mockResolvedValueOnce({
+      data: [
+        {
+          id: 'job-knowledge-lint',
+          name: 'Knowledge Nightly Lint',
+          description: 'nightly knowledge lint',
+          schedule: '0 0 3 * * *',
+          handler: 'knowledge_lint',
+          enabled: true,
+          status: 'active',
+          created_at: '2026-03-01T00:00:00Z',
+          updated_at: '2026-03-01T00:00:00Z',
+          run_count: 4,
+          fail_count: 0,
+          payload: {},
+        },
+      ],
+    } as never)
+
+    const wrapper = mount(CronView, {
+      global: {
+        plugins: [createPinia(), i18n],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('知识夜间检查')
+    expect(wrapper.text()).toContain('每晚运行知识检查，维持编译知识健康度。')
+    expect(wrapper.text()).not.toContain('Knowledge Nightly Lint')
+    expect(wrapper.text()).not.toContain('nightly knowledge lint')
   })
 })

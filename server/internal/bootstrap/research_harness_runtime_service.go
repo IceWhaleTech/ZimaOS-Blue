@@ -169,6 +169,7 @@ func researchRunToJob(run *harness.Run) *deepresearch.Job {
 		ID:             run.ID,
 		ConversationID: strings.TrimSpace(run.ConversationID),
 		UserID:         strings.TrimSpace(run.UserID),
+		ProviderID:     strings.TrimSpace(run.ProviderID),
 		Query:          strings.TrimSpace(run.Goal),
 		Mode:           deepresearch.Mode(researchRunMode(run)),
 		Status:         researchRunToJobStatus(run.Status),

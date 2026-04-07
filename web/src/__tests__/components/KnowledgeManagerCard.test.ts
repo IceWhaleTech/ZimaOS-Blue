@@ -90,7 +90,7 @@ describe('KnowledgeManagerCard', () => {
     expect(knowledgeApi.createJob).toHaveBeenLastCalledWith({ kind: 'lint' })
   })
 
-  it('opens the knowledge route from the browse action', async () => {
+  it('opens the knowledge lane inside evolution from the browse action', async () => {
     const wrapper = mount(KnowledgeManagerCard, {
       global: {
         plugins: [i18n],
@@ -98,6 +98,9 @@ describe('KnowledgeManagerCard', () => {
     })
 
     await wrapper.get('[data-testid="knowledge-open-button"]').trigger('click')
-    expect(routerPush).toHaveBeenCalledWith('/operations/knowledge')
+    expect(routerPush).toHaveBeenCalledWith({
+      name: 'Evolution',
+      query: { pane: 'knowledge' },
+    })
   })
 })

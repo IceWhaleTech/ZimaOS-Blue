@@ -67,6 +67,7 @@ type runContextDriver struct {
 	toolRunID    string
 	toolUserID   string
 	toolSession  string
+	toolProvider string
 	toolModel    string
 	toolAgentID  string
 	startErr     error
@@ -87,6 +88,7 @@ func (d *runContextDriver) Start(ctx context.Context, run *Run, env RunEnv) erro
 	d.toolRunID = tools.GetRunID(ctx)
 	d.toolUserID = tools.GetUserID(ctx)
 	d.toolSession = tools.GetSessionID(ctx)
+	d.toolProvider = tools.GetProviderID(ctx)
 	d.toolModel = tools.GetModel(ctx)
 	d.toolAgentID = tools.GetAgentID(ctx)
 	if d.order != nil {
@@ -403,12 +405,13 @@ func TestController_SubmitExposesRunContextToMiddlewareAndDriver(t *testing.T) {
 	controller.RegisterDriver(driver)
 
 	run, err := controller.Submit(context.Background(), RunSpec{
-		Kind:      RunKindAgentTask,
-		Goal:      "ship harness middleware",
-		UserID:    "user-1",
-		SessionID: "session-1",
-		Model:     "gpt-test",
-		AgentID:   "main",
+		Kind:       RunKindAgentTask,
+		Goal:       "ship harness middleware",
+		UserID:     "user-1",
+		SessionID:  "session-1",
+		ProviderID: "openai-prod",
+		Model:      "gpt-test",
+		AgentID:    "main",
 	})
 	if err != nil {
 		t.Fatalf("Submit failed: %v", err)
@@ -445,6 +448,9 @@ func TestController_SubmitExposesRunContextToMiddlewareAndDriver(t *testing.T) {
 	}
 	if driver.toolSession != "session-1" {
 		t.Fatalf("tools session_id = %q, want %q", driver.toolSession, "session-1")
+	}
+	if driver.toolProvider != "openai-prod" {
+		t.Fatalf("tools provider_id = %q, want %q", driver.toolProvider, "openai-prod")
 	}
 	if driver.toolModel != "gpt-test" {
 		t.Fatalf("tools model = %q, want %q", driver.toolModel, "gpt-test")
@@ -782,6 +788,7 @@ func TestController_SpawnChildInheritsApprovalAndSandbox(t *testing.T) {
 		Kind:         RunKindAgentTask,
 		Goal:         "root",
 		UserID:       "user-1",
+		ProviderID:   "openai-prod",
 		ApprovalMode: ApprovalModeDeny,
 		SandboxMode:  "workspace",
 		MaxDepth:     2,
@@ -803,6 +810,9 @@ func TestController_SpawnChildInheritsApprovalAndSandbox(t *testing.T) {
 	}
 	if child.SandboxMode != "workspace" {
 		t.Fatalf("SandboxMode = %q, want %q", child.SandboxMode, "workspace")
+	}
+	if child.ProviderID != "openai-prod" {
+		t.Fatalf("ProviderID = %q, want %q", child.ProviderID, "openai-prod")
 	}
 }
 

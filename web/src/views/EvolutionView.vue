@@ -15,12 +15,13 @@ import {
 import { selfReflectApi, type SelfReflectProposal } from '@/api/selfReflect'
 import { skillApi, type Skill, type SkillContentResponse } from '@/api/skill'
 import AutomationTabs from '@/components/automation/AutomationTabs.vue'
+import EvolutionKnowledgePane from '@/components/automation/EvolutionKnowledgePane.vue'
 import AgentcoreRunnerPanel from '@/components/harness/AgentcoreRunnerPanel.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useSettingsStore } from '@/stores/settings'
 import { getErrorMessage } from '@/utils/error'
 
-type EvolutionPane = 'skills' | 'runner' | 'instructions'
+type EvolutionPane = 'knowledge' | 'skills' | 'runner' | 'instructions'
 type ProposalAction = 'approve' | 'reject'
 type SkillRevisionStatusFilter =
   | 'all'
@@ -72,7 +73,7 @@ type EvidenceSummaryEntry = {
   key: string
   label: string
   value: string
-  tone: 'emerald' | 'rose' | 'amber' | 'slate'
+  tone: 'sky' | 'emerald' | 'rose' | 'amber' | 'slate'
 }
 
 type CaseTimelineEntry = {
@@ -93,20 +94,19 @@ type CaseReferenceChip = {
   value: string
 }
 
-type EvolutionSummaryCard = {
-  key: 'skills' | 'revisions' | 'cases' | 'instructions'
-  label: string
-  visible: string
-  total: string
-  hint: string
-}
-
 type EvolutionLaneCard = {
   pane: EvolutionPane
   title: string
   description: string
   metric: string
   supporting: string
+}
+
+type KnowledgeLaneSummary = {
+  visiblePages: number
+  totalPages: number
+  conflicts: number
+  gaps: number
 }
 
 type DecisionSummaryCard = {
@@ -120,24 +120,6 @@ type DecisionSummaryCard = {
 }
 
 type SkillDetailSectionKey = 'lineage' | 'comparison' | 'metrics' | 'evidence' | 'diff'
-
-type PaneHealthCard = {
-  key: string
-  label: string
-  value: string
-  details: string
-  tone: 'sky' | 'emerald' | 'amber' | 'rose' | 'slate'
-  actionLabel?: string
-  action?: () => void | Promise<void>
-}
-
-type SkillDetailShortcutCard = {
-  key: SkillDetailSectionKey
-  label: string
-  value: string
-  details: string
-  tone: 'sky' | 'emerald' | 'amber' | 'rose' | 'slate'
-}
 
 type SkillScorecardCard = {
   key: 'quality' | 'verification' | 'runtime' | 'tokens' | 'evidence'
@@ -218,6 +200,7 @@ const notification = useNotificationStore()
 const settingsStore = useSettingsStore()
 
 const activePane = ref<EvolutionPane>('skills')
+const knowledgeLaneSummary = ref<KnowledgeLaneSummary | null>(null)
 
 const skillsLoading = ref(false)
 const skillsError = ref('')
@@ -507,7 +490,9 @@ function matchesSearchQuery(query: string, ...values: unknown[]): boolean {
 
 function parseEvolutionPaneQuery(raw: unknown): EvolutionPane {
   const value = routeQueryValue(raw)
-  if (value === 'runner' || value === 'instructions' || value === 'skills') return value
+  if (value === 'knowledge' || value === 'runner' || value === 'instructions' || value === 'skills') {
+    return value
+  }
   return 'skills'
 }
 
@@ -848,6 +833,8 @@ function revisionBadgeClasses(tone: RevisionBadge['tone']): string {
 
 function evidenceSummaryClasses(tone: EvidenceSummaryEntry['tone']): string {
   switch (tone) {
+    case 'sky':
+      return 'border-sky-200 bg-sky-50/70'
     case 'emerald':
       return 'border-emerald-200 bg-emerald-50/70'
     case 'rose':
@@ -861,6 +848,8 @@ function evidenceSummaryClasses(tone: EvidenceSummaryEntry['tone']): string {
 
 function evidenceSummaryValueClasses(tone: EvidenceSummaryEntry['tone']): string {
   switch (tone) {
+    case 'sky':
+      return 'text-sky-700'
     case 'emerald':
       return 'text-emerald-700'
     case 'rose':
@@ -1284,6 +1273,48 @@ function skillFilter(skill: Skill): boolean {
   return skill.builtin === true
 }
 
+function buildSkillTranslationKeys(
+  skill: Skill,
+  field: 'name' | 'description'
+): string[] {
+  const normalizedIDs = Array.from(
+    new Set(
+      [skill.id, skill.id.replace(/-/g, '_'), skill.id.replace(/_/g, '-')].map((value) =>
+        normalizeText(value)
+      )
+    )
+  ).filter(Boolean)
+  const keys: string[] = []
+
+  for (const id of normalizedIDs) {
+    if (skill.builtin) {
+      keys.push(`skills.builtin.${id}.${field}`)
+    }
+    keys.push(`skills.catalog.${id}.${field}`)
+    keys.push(field === 'name' ? `tools.names.${id}` : `tools.descriptions.${id}`)
+  }
+
+  if (field === 'name' && normalizeText(skill.name)) {
+    keys.push(`skills.names.${skill.name}`)
+  }
+
+  return keys
+}
+
+function localizedSkillName(skill: Skill): string {
+  for (const key of buildSkillTranslationKeys(skill, 'name')) {
+    if (te(key)) return t(key)
+  }
+  return skill.name || skill.id
+}
+
+function localizedSkillDescription(skill: Skill): string {
+  for (const key of buildSkillTranslationKeys(skill, 'description')) {
+    if (te(key)) return t(key)
+  }
+  return skill.description || ''
+}
+
 function selectInitialRevision(revisions: SkillRevision[]): string {
   if (revisions.length === 0) return ''
   const preferred = revisions.find((revision) => revision.status === 'accepted') || revisions[0]
@@ -1502,7 +1533,13 @@ function decisionHistoryRollbackRevision(entry: DecisionHistoryEntry): SkillRevi
 
 const filteredAvailableSkills = computed(() =>
   availableSkills.value.filter((skill) =>
-    matchesSearchQuery(skillSearch.value, skill.id, skill.name, skill.description, skill.version)
+    matchesSearchQuery(
+      skillSearch.value,
+      skill.id,
+      localizedSkillName(skill),
+      localizedSkillDescription(skill),
+      skill.version
+    )
   )
 )
 
@@ -1963,8 +2000,6 @@ const acceptedRevisions = computed(() =>
   selectedSkillRevisions.value.filter((revision) => revision.status === 'accepted')
 )
 
-const latestAcceptedRevision = computed(() => acceptedRevisions.value[0] || null)
-
 const selectedRevisionCanOptimize = computed(() => {
   const revision = selectedRevision.value
   return Boolean(revision?.eval_run_id && normalizeText(revision.skill_id))
@@ -2024,26 +2059,6 @@ const backupRevisions = computed(() =>
   selectedSkillRevisions.value.filter((revision) => revision.status === 'backup')
 )
 
-const latestBackupRevision = computed(() => backupRevisions.value[0] || null)
-
-const skillPaneActiveFilters = computed(() => {
-  const filters: string[] = []
-  if (skillSearch.value.trim()) {
-    filters.push(tr('evolution.health.skillCatalog', 'Skill catalog'))
-  }
-  if (revisionSearch.value.trim() || revisionStatusFilter.value !== 'all') {
-    filters.push(tr('evolution.health.revisionLineage', 'Revision lineage'))
-  }
-  if (
-    caseSearch.value.trim() ||
-    caseModeFilter.value !== 'all' ||
-    caseStatusFilter.value !== 'all'
-  ) {
-    filters.push(tr('evolution.health.caseQueue', 'Case queue'))
-  }
-  return filters
-})
-
 const filteredSelectedSkillRevisions = computed(() =>
   selectedSkillRevisions.value.filter((revision) => {
     const matchesStatus =
@@ -2073,20 +2088,6 @@ const selectedRevisionHiddenByFilters = computed(
       (revision) => revision.id === selectedRevision.value?.id
     )
 )
-
-const skillPaneHiddenSelections = computed(() => {
-  const hiddenSelections: string[] = []
-  if (selectedSkillHiddenByFilters.value) {
-    hiddenSelections.push(tr('evolution.health.hiddenSkill', 'Skill'))
-  }
-  if (selectedRevisionHiddenByFilters.value) {
-    hiddenSelections.push(tr('evolution.health.hiddenRevision', 'Revision'))
-  }
-  if (selectedSkillCaseHiddenByFilters.value) {
-    hiddenSelections.push(tr('evolution.health.hiddenCase', 'Case'))
-  }
-  return hiddenSelections
-})
 
 const filteredSelectedSkillCases = computed(() =>
   selectedSkillCases.value.filter((skillCase) => {
@@ -3476,83 +3477,6 @@ const selectedRevisionDecisionCards = computed<DecisionSummaryCard[]>(() => {
   ]
 })
 
-const skillDetailShortcuts = computed<SkillDetailShortcutCard[]>(() => [
-  {
-    key: 'comparison',
-    label: tr('evolution.skills.shortcutComparison', 'Comparison'),
-    value:
-      selectedSkillComparison.value.baselineEvalRunID ||
-      selectedSkillComparison.value.deltas.length > 0
-        ? tr('evolution.skills.shortcutComparisonReady', 'Baseline attached')
-        : tr('evolution.skills.shortcutComparisonEmpty', 'No baseline yet'),
-    details:
-      selectedSkillComparisonSnapshot.value ||
-      tr(
-        'evolution.skills.shortcutComparisonHint',
-        'Review score deltas against the previous baseline when follow-up evals include one.'
-      ),
-    tone:
-      selectedSkillComparison.value.baselineEvalRunID ||
-      selectedSkillComparison.value.deltas.length > 0
-        ? 'sky'
-        : 'slate',
-  },
-  {
-    key: 'metrics',
-    label: tr('evolution.skills.shortcutMetrics', 'Metrics'),
-    value:
-      selectedSkillMetrics.value.length > 0
-        ? formatEvolutionCountLabel('metricLoaded', selectedSkillMetrics.value.length)
-        : tr('evolution.skills.shortcutMetricsEmpty', 'No metrics yet'),
-    details:
-      selectedSkillMetricSnapshot.value ||
-      tr(
-        'evolution.skills.shortcutMetricsHint',
-        'Runtime, quality, and token measurements appear here when the linked eval report exposes them.'
-      ),
-    tone: selectedSkillMetrics.value.length > 0 ? 'emerald' : 'slate',
-  },
-  {
-    key: 'evidence',
-    label: tr('evolution.skills.shortcutEvidence', 'Evidence'),
-    value: selectedSkillCase.value
-      ? `${humanizeEnum(selectedSkillCase.value.mode)} · ${humanizeEnum(selectedSkillCase.value.status)}`
-      : tr('evolution.skills.shortcutEvidenceEmpty', 'No case selected'),
-    details:
-      selectedSkillEvidenceSnapshot.value ||
-      tr(
-        'evolution.skills.shortcutEvidenceHint',
-        'Grounded failure or capture evidence explains why this candidate exists.'
-      ),
-    tone:
-      selectedSkillCase.value?.mode === 'capture'
-        ? 'sky'
-        : selectedSkillCase.value
-          ? 'amber'
-          : 'slate',
-  },
-  {
-    key: 'diff',
-    label: tr('evolution.skills.shortcutDiff', 'Diff patch'),
-    value: selectedRevision.value?.content
-      ? trp('evolution.skills.shortcutDiffSections', '{count} change sections', {
-          count:
-            selectedSkillDiffSummary.value.find((entry) => entry.key === 'sections')?.value || '0',
-        })
-      : tr('evolution.skills.shortcutDiffEmpty', 'No patch yet'),
-    details: selectedRevision.value?.content
-      ? [
-          `+${selectedSkillDiffSummary.value.find((entry) => entry.key === 'additions')?.value || '0'}`,
-          `-${selectedSkillDiffSummary.value.find((entry) => entry.key === 'deletions')?.value || '0'}`,
-        ].join(' · ')
-      : tr(
-          'evolution.skills.shortcutDiffHint',
-          'Review the unified patch before deciding whether the candidate should replace the canonical skill.'
-        ),
-    tone: selectedRevision.value?.content ? 'amber' : 'slate',
-  },
-])
-
 const skillScorecard = computed<SkillScorecardCard[]>(() => {
   const report = selectedRevisionReport.value
   const overallScore = reportSummaryValue(
@@ -3794,10 +3718,6 @@ const pendingInstructionCount = computed(
   () => instructionProposals.value.filter((proposal) => proposal.status === 'pending').length
 )
 
-const latestPendingInstructionProposal = computed(
-  () => instructionProposals.value.find((proposal) => proposal.status === 'pending') || null
-)
-
 const filteredInstructionProposals = computed(() =>
   instructionProposals.value.filter((proposal) => {
     const matchesStatus =
@@ -3817,59 +3737,12 @@ const filteredInstructionProposals = computed(() =>
   })
 )
 
-const filteredPendingInstructionCount = computed(
-  () =>
-    filteredInstructionProposals.value.filter((proposal) => proposal.status === 'pending').length
-)
-
-const instructionPaneActiveFilters = computed(() => {
-  const filters: string[] = []
-  if (instructionSearch.value.trim()) {
-    filters.push(tr('evolution.health.instructionSearch', 'Proposal search'))
-  }
-  if (instructionStatusFilter.value !== 'all') {
-    filters.push(tr('evolution.health.instructionStatus', 'Status filter'))
-  }
-  return filters
-})
-
 const selectedProposalHiddenByFilters = computed(
   () =>
     Boolean(selectedProposal.value) &&
     !filteredInstructionProposals.value.some(
       (proposal) => proposal.id === selectedProposal.value?.id
     )
-)
-
-const instructionPaneHiddenSelections = computed(() => {
-  return selectedProposalHiddenByFilters.value
-    ? [tr('evolution.health.hiddenProposal', 'Proposal')]
-    : []
-})
-
-const trackedAgentsInstructionCount = computed(
-  () =>
-    instructionProposals.value.filter((proposal) =>
-      normalizedSearchText(proposal.target_file).includes('agents.md')
-    ).length
-)
-
-const pendingAgentsInstructionCount = computed(
-  () =>
-    instructionProposals.value.filter(
-      (proposal) =>
-        proposal.status === 'pending' &&
-        normalizedSearchText(proposal.target_file).includes('agents.md')
-    ).length
-)
-
-const latestPendingAgentsInstructionProposal = computed(
-  () =>
-    instructionProposals.value.find(
-      (proposal) =>
-        proposal.status === 'pending' &&
-        normalizedSearchText(proposal.target_file).includes('agents.md')
-    ) || null
 )
 
 const selectedProposalMeta = computed(() => {
@@ -3899,495 +3772,32 @@ const selectedInstructionPatchSummary = computed(() =>
   patchSummaryEntries(summarizePatch(selectedInstructionPatch.value))
 )
 
-const evolutionSummaryCards = computed<EvolutionSummaryCard[]>(() => [
-  {
-    key: 'skills',
-    label: tr('evolution.summary.visibleSkills', 'Visible skills'),
-    visible: new Intl.NumberFormat().format(filteredAvailableSkills.value.length),
-    total: new Intl.NumberFormat().format(availableSkills.value.length),
-    hint: skillSearch.value.trim()
-      ? tr(
-          'evolution.summary.visibleSkillsHintFiltered',
-          'Filtered by the current canonical skill search.'
-        )
-      : tr(
-          'evolution.summary.visibleSkillsHint',
-          'Only built-in canonical skills are eligible in v1.'
-        ),
-  },
-  {
-    key: 'revisions',
-    label: tr('evolution.summary.visibleRevisions', 'Visible revisions'),
-    visible: new Intl.NumberFormat().format(filteredSelectedSkillRevisions.value.length),
-    total: new Intl.NumberFormat().format(selectedSkillRevisions.value.length),
-    hint:
-      revisionSearch.value.trim() || revisionStatusFilter.value !== 'all'
-        ? tr(
-            'evolution.summary.visibleRevisionsHintFiltered',
-            'Filtered by the current revision search or status filter.'
-          )
-        : tr(
-            'evolution.summary.visibleRevisionsHint',
-            'Accepted revisions can be promoted; backup revisions support safe rollback.'
-          ),
-  },
-  {
-    key: 'cases',
-    label: tr('evolution.summary.visibleCases', 'Visible cases'),
-    visible: new Intl.NumberFormat().format(filteredSelectedSkillCases.value.length),
-    total: new Intl.NumberFormat().format(selectedSkillCases.value.length),
-    hint:
-      caseSearch.value.trim() || caseModeFilter.value !== 'all' || caseStatusFilter.value !== 'all'
-        ? tr(
-            'evolution.summary.visibleCasesHintFiltered',
-            'Filtered by the current case search or mode/status filters.'
-          )
-        : tr(
-            'evolution.summary.visibleCasesHint',
-            'Cases capture why the system attempted to repair or extend a skill.'
-          ),
-  },
-  {
-    key: 'instructions',
-    label: tr('evolution.summary.visibleInstructions', 'Visible instructions'),
-    visible: new Intl.NumberFormat().format(filteredInstructionProposals.value.length),
-    total: new Intl.NumberFormat().format(instructionProposals.value.length),
-    hint:
-      instructionSearch.value.trim() || instructionStatusFilter.value !== 'all'
-        ? trp(
-            'evolution.summary.visibleInstructionsHintFiltered',
-            '{pending} pending in the current filtered view.',
-            { pending: filteredPendingInstructionCount.value }
-          )
-        : trp(
-            'evolution.summary.visibleInstructionsHint',
-            '{pending} pending proposals still require explicit review.',
-            { pending: pendingInstructionCount.value }
-          ),
-  },
-])
-
-const skillPaneHealthCards = computed<PaneHealthCard[]>(() => {
-  const filterSections = skillPaneActiveFilters.value
-  const hiddenSelections = skillPaneHiddenSelections.value
-  const selectedStatus = normalizeText(selectedRevision.value?.status)
-
-  return [
-    filterSections.length > 0
-      ? {
-          key: 'filters',
-          label: tr('evolution.health.filters', 'Filter health'),
-          value: formatEvolutionCountLabel('activeFilter', filterSections.length),
-          details: trp('evolution.health.filtersActiveDetails', 'Narrowing: {filters}.', {
-            filters: filterSections.join(', '),
-          }),
-          tone: 'amber',
-          actionLabel: tr('evolution.health.clearFilters', 'Clear filters'),
-          action: clearSkillPaneFilters,
-        }
-      : {
-          key: 'filters',
-          label: tr('evolution.health.filters', 'Filter health'),
-          value: tr('evolution.health.filtersClear', 'Clear'),
-          details: tr(
-            'evolution.health.filtersClearDetails',
-            'Skill catalog, revision lineage, and case queue are fully visible.'
-          ),
-          tone: 'emerald',
-        },
-    hiddenSelections.length > 0
-      ? {
-          key: 'visibility',
-          label: tr('evolution.health.visibility', 'Selection visibility'),
-          value: formatEvolutionCountLabel('hiddenSelection', hiddenSelections.length),
-          details: trp(
-            'evolution.health.visibilityHiddenDetails',
-            'Hidden by current filters: {items}.',
-            {
-              items: hiddenSelections.join(', '),
-            }
-          ),
-          tone: 'amber',
-          actionLabel: tr('evolution.health.revealSelection', 'Reveal selection'),
-          action: revealAllSkillSelections,
-        }
-      : {
-          key: 'visibility',
-          label: tr('evolution.health.visibility', 'Selection visibility'),
-          value: tr('evolution.health.visibilityClear', 'All visible'),
-          details: tr(
-            'evolution.health.visibilityClearDetails',
-            'Selected skill, revision, and case remain visible inside the current lists.'
-          ),
-          tone: 'emerald',
-        },
-    acceptedRevisions.value.length > 0
-      ? {
-          key: 'better_version',
-          label: tr('evolution.health.betterVersion', 'Better version'),
-          value:
-            selectedStatus === 'accepted'
-              ? tr('evolution.health.betterVersionSelected', 'Selected revision ready')
-              : formatEvolutionCountLabel(
-                  'acceptedRevisionReady',
-                  acceptedRevisions.value.length
-                ),
-          details:
-            selectedStatus === 'accepted'
-              ? tr(
-                  'evolution.health.betterVersionSelectedDetails',
-                  'The selected revision passed the gate and can be promoted explicitly after evidence review.'
-                )
-              : tr(
-                  'evolution.health.betterVersionReadyDetails',
-                  'These revisions passed the gate and are ready to promote after evidence review.'
-                ),
-          tone: 'emerald',
-          actionLabel:
-            selectedStatus === 'accepted'
-              ? undefined
-              : tr('evolution.health.selectAcceptedRevision', 'Select accepted revision'),
-          action: selectedStatus === 'accepted' ? undefined : selectLatestAcceptedRevision,
-        }
-      : {
-          key: 'better_version',
-          label: tr('evolution.health.betterVersion', 'Better version'),
-          value: tr('evolution.health.betterVersionEmpty', 'No accepted revision'),
-          details: tr(
-            'evolution.health.betterVersionEmptyDetails',
-            'No candidate has passed the gate for this skill yet, so the live canonical version stays in place.'
-          ),
-          tone: 'slate',
-          actionLabel: latestCandidateRevision.value
-            ? tr('evolution.health.reviewLatestCandidate', 'Review latest candidate')
-            : undefined,
-          action: latestCandidateRevision.value ? reviewLatestCandidateRevision : undefined,
-        },
-    backupRevisions.value.length > 0
-      ? {
-          key: 'rollback',
-          label: tr('evolution.health.rollback', 'Rollback safety'),
-          value:
-            selectedStatus === 'backup'
-              ? tr('evolution.health.rollbackSelected', 'Selected backup ready')
-              : formatEvolutionCountLabel('rollbackBackupReady', backupRevisions.value.length),
-          details:
-            selectedStatus === 'backup'
-              ? tr(
-                  'evolution.health.rollbackSelectedDetails',
-                  'This backup can be restored while the current canonical lineage still matches its base revision.'
-                )
-              : tr(
-                  'evolution.health.rollbackReadyDetails',
-                  'Safe rollback stays available while the current canonical lineage still matches the backup base revision.'
-                ),
-          tone: 'sky',
-          actionLabel:
-            selectedStatus === 'backup'
-              ? undefined
-              : tr('evolution.health.openLatestBackup', 'Open latest backup'),
-          action: selectedStatus === 'backup' ? undefined : selectLatestBackupRevision,
-        }
-      : {
-          key: 'rollback',
-          label: tr('evolution.health.rollback', 'Rollback safety'),
-          value: tr('evolution.health.rollbackEmpty', 'No backup yet'),
-          details: tr(
-            'evolution.health.rollbackEmptyDetails',
-            'Promote creates the first safe rollback point for the canonical skill lineage.'
-          ),
-          tone: 'slate',
-        },
-  ]
-})
-
-const instructionsPaneHealthCards = computed<PaneHealthCard[]>(() => {
-  const filterSections = instructionPaneActiveFilters.value
-  const hiddenSelections = instructionPaneHiddenSelections.value
-
-  return [
-    filterSections.length > 0
-      ? {
-          key: 'filters',
-          label: tr('evolution.health.filters', 'Filter health'),
-          value: formatEvolutionCountLabel('activeFilter', filterSections.length),
-          details: trp(
-            'evolution.health.instructionsFiltersActiveDetails',
-            'Narrowing: {filters}.',
-            {
-              filters: filterSections.join(', '),
-            }
-          ),
-          tone: 'amber',
-          actionLabel: tr('evolution.health.clearFilters', 'Clear filters'),
-          action: clearInstructionPaneFilters,
-        }
-      : {
-          key: 'filters',
-          label: tr('evolution.health.filters', 'Filter health'),
-          value: tr('evolution.health.filtersClear', 'Clear'),
-          details: tr(
-            'evolution.health.instructionsFiltersClearDetails',
-            'The instruction queue is showing every loaded proposal.'
-          ),
-          tone: 'emerald',
-        },
-    hiddenSelections.length > 0
-      ? {
-          key: 'visibility',
-          label: tr('evolution.health.visibility', 'Selection visibility'),
-          value: formatEvolutionCountLabel('hiddenSelection', hiddenSelections.length),
-          details: trp(
-            'evolution.health.instructionsVisibilityHiddenDetails',
-            'Hidden by current filters: {items}.',
-            {
-              items: hiddenSelections.join(', '),
-            }
-          ),
-          tone: 'amber',
-          actionLabel: tr('evolution.health.revealSelection', 'Reveal selection'),
-          action: revealSelectedProposal,
-        }
-      : {
-          key: 'visibility',
-          label: tr('evolution.health.visibility', 'Selection visibility'),
-          value: tr('evolution.health.visibilityClear', 'All visible'),
-          details: tr(
-            'evolution.health.instructionsVisibilityClearDetails',
-            'The selected proposal remains visible inside the current queue.'
-          ),
-          tone: 'emerald',
-        },
-    instructionsLoading.value
-      ? {
-          key: 'review_queue',
-          label: tr('evolution.health.reviewQueue', 'Review queue'),
-          value: tr('evolution.health.reviewQueueLoading', 'Refreshing queue'),
-          details: tr(
-            'evolution.health.reviewQueueLoadingDetails',
-            'Loading instruction proposals and explicit review state.'
-          ),
-          tone: 'slate',
-        }
-      : !instructionsLoaded.value
-        ? {
-            key: 'review_queue',
-            label: tr('evolution.health.reviewQueue', 'Review queue'),
-            value: tr('evolution.health.reviewQueueNotLoaded', 'Not loaded yet'),
-            details: tr(
-              'evolution.health.reviewQueueNotLoadedDetails',
-              'Open the Instructions lane to load proposal review state.'
-            ),
-            tone: 'slate',
-            actionLabel: tr('evolution.health.loadProposals', 'Load proposals'),
-            action: loadInstructionProposals,
-          }
-        : pendingInstructionCount.value > 0
-          ? {
-              key: 'review_queue',
-              label: tr('evolution.health.reviewQueue', 'Review queue'),
-              value: formatEvolutionCountLabel('pendingProposal', pendingInstructionCount.value),
-              details: tr(
-                'evolution.health.reviewQueuePendingDetails',
-                'Instruction changes still require explicit human review before adoption.'
-              ),
-              tone: 'amber',
-              actionLabel: tr('evolution.health.openPendingProposal', 'Open pending proposal'),
-              action: reviewLatestPendingInstructionProposal,
-            }
-          : {
-              key: 'review_queue',
-              label: tr('evolution.health.reviewQueue', 'Review queue'),
-              value: tr('evolution.health.reviewQueueClear', 'Queue clear'),
-              details: tr(
-                'evolution.health.reviewQueueClearDetails',
-                'All loaded instruction proposals have already been approved or rejected.'
-              ),
-              tone: 'emerald',
-            },
-    instructionsLoading.value
-      ? {
-          key: 'agents',
-          label: tr('evolution.health.agents', 'AGENTS.md approvals'),
-          value: tr('evolution.health.agentsLoading', 'Loading AGENTS.md'),
-          details: tr(
-            'evolution.health.agentsLoadingDetails',
-            'Checking AGENTS.md proposal state and explicit approval status.'
-          ),
-          tone: 'slate',
-        }
-      : !instructionsLoaded.value
-        ? {
-            key: 'agents',
-            label: tr('evolution.health.agents', 'AGENTS.md approvals'),
-            value: tr('evolution.health.agentsNotLoaded', 'Not loaded yet'),
-            details: tr(
-              'evolution.health.agentsNotLoadedDetails',
-              'AGENTS.md reviews happen in the Instructions lane.'
-            ),
-            tone: 'slate',
-            actionLabel: tr('evolution.health.loadAgentsQueue', 'Load AGENTS.md queue'),
-            action: loadInstructionProposals,
-          }
-        : trackedAgentsInstructionCount.value === 0
-          ? {
-              key: 'agents',
-              label: tr('evolution.health.agents', 'AGENTS.md approvals'),
-              value: tr('evolution.health.agentsEmpty', 'No AGENTS.md proposal'),
-              details: tr(
-                'evolution.health.agentsEmptyDetails',
-                'Grounded self-reflect lessons can still feed future AGENTS.md changes, but none are queued right now.'
-              ),
-              tone: 'slate',
-            }
-          : pendingAgentsInstructionCount.value > 0
-            ? {
-                key: 'agents',
-                label: tr('evolution.health.agents', 'AGENTS.md approvals'),
-                value: formatEvolutionCountLabel(
-                  'approvalWaiting',
-                  pendingAgentsInstructionCount.value
-                ),
-                details: tr(
-                  'evolution.health.agentsPendingDetails',
-                  'AGENTS.md stays under explicit human approval, even when grounded self-reflect lessons propose the change.'
-                ),
-                tone: 'amber',
-                actionLabel: tr('evolution.health.reviewAgentsProposal', 'Review AGENTS.md'),
-                action: reviewLatestPendingAgentsInstructionProposal,
-              }
-            : {
-                key: 'agents',
-                label: tr('evolution.health.agents', 'AGENTS.md approvals'),
-                value: tr('evolution.health.agentsReviewed', 'Reviewed'),
-                details: tr(
-                  'evolution.health.agentsReviewedDetails',
-                  'Tracked AGENTS.md proposals have already been approved or rejected; grounded self-reflect still provides the intake signal.'
-                ),
-                tone: 'emerald',
-              },
-  ]
-})
-
-const runnerPaneHealthCards = computed<PaneHealthCard[]>(() => [
-  acceptedRevisions.value.length > 0
-    ? {
-        key: 'skill_readiness',
-        label: tr('evolution.health.skillReadiness', 'Skill readiness'),
-        value: formatEvolutionCountLabel('acceptedRevisionReady', acceptedRevisions.value.length),
-        details: tr(
-          'evolution.health.skillReadinessDetails',
-          'Runner evidence can feed better skill candidates, but the actual live switch still happens in the Skills lane.'
-        ),
-        tone: 'emerald',
-        actionLabel: tr('evolution.health.openInSkills', 'Open in Skills'),
-        action: openSkillsForLatestAcceptedRevision,
-      }
-    : {
-        key: 'skill_readiness',
-        label: tr('evolution.health.skillReadiness', 'Skill readiness'),
-        value: tr('evolution.health.skillReadinessEmpty', 'No accepted skill revision'),
-        details: tr(
-          'evolution.health.skillReadinessEmptyDetails',
-          'No skill candidate has passed the gate yet, so Runner remains an evidence and candidate lane.'
-        ),
-        tone: 'slate',
-        actionLabel: tr('evolution.health.openSkills', 'Open Skills'),
-        action: openSkillsEvolutionPane,
-      },
-  backupRevisions.value.length > 0
-    ? {
-        key: 'rollback',
-        label: tr('evolution.health.rollback', 'Rollback safety'),
-        value: formatEvolutionCountLabel('rollbackBackupReady', backupRevisions.value.length),
-        details: tr(
-          'evolution.health.runnerRollbackDetails',
-          'Rollback stays available through the Skills lane when canonical lineage still matches the backup base revision.'
-        ),
-        tone: 'sky',
-        actionLabel: tr('evolution.health.openBackupInSkills', 'Open backup in Skills'),
-        action: openSkillsForLatestBackupRevision,
-      }
-    : {
-        key: 'rollback',
-        label: tr('evolution.health.rollback', 'Rollback safety'),
-        value: tr('evolution.health.rollbackEmpty', 'No backup yet'),
-        details: tr(
-          'evolution.health.runnerRollbackEmptyDetails',
-          'The first promote creates the initial safe rollback point for the skill lineage.'
-        ),
-        tone: 'slate',
-        actionLabel: tr('evolution.health.openSkills', 'Open Skills'),
-        action: openSkillsEvolutionPane,
-      },
-  {
-    key: 'switch_boundary',
-    label: tr('evolution.health.switchBoundary', 'Switch boundary'),
-    value: tr('evolution.health.switchBoundaryValue', 'Skills handles promote'),
-    details: tr(
-      'evolution.health.switchBoundaryDetails',
-      'Runner evolution stays separate from skill promote and rollback so execution evidence never switches the live version by itself.'
-    ),
-    tone: 'sky',
-    actionLabel: tr('evolution.health.openSkills', 'Open Skills'),
-    action: openSkillsEvolutionPane,
-  },
-  instructionsLoaded.value
-    ? pendingAgentsInstructionCount.value > 0
-      ? {
-          key: 'instruction_boundary',
-          label: tr('evolution.health.instructionBoundary', 'Instruction boundary'),
-          value: trp(
-            'evolution.health.instructionBoundaryPendingValue',
-            '{count} AGENTS.md waiting',
-            { count: formatCount(pendingAgentsInstructionCount.value) }
-          ),
-          details: tr(
-            'evolution.health.instructionBoundaryPendingDetails',
-            'Runner discoveries can feed AGENTS.md proposals, but explicit approval still happens in the Instructions lane.'
-          ),
-          tone: 'amber',
-          actionLabel: tr('evolution.health.reviewAgentsProposal', 'Review AGENTS.md'),
-          action: openInstructionsForPendingAgentsProposal,
-        }
-      : {
-          key: 'instruction_boundary',
-          label: tr('evolution.health.instructionBoundary', 'Instruction boundary'),
-          value: tr('evolution.health.instructionBoundaryLoadedValue', 'Instructions reviewed'),
-          details: tr(
-            'evolution.health.instructionBoundaryLoadedDetails',
-            'Instruction proposals remain separate from runner candidates, and AGENTS.md still stays explicitly approved.'
-          ),
-          tone: 'emerald',
-          actionLabel: tr('evolution.health.openInstructions', 'Open Instructions'),
-          action: openInstructionsEvolutionPane,
-        }
-    : {
-        key: 'instruction_boundary',
-        label: tr('evolution.health.instructionBoundary', 'Instruction boundary'),
-        value: tr('evolution.health.instructionBoundaryOpenValue', 'Open Instructions'),
-        details: tr(
-          'evolution.health.instructionBoundaryOpenDetails',
-          'Runner discoveries may feed AGENTS.md and other instruction proposals, but review happens in the Instructions lane.'
-        ),
-        tone: 'slate',
-        actionLabel: tr('evolution.health.openInstructions', 'Open Instructions'),
-        action: openInstructionsEvolutionPane,
-      },
-])
-
-const activePaneHealthCards = computed<PaneHealthCard[]>(() => {
-  switch (activePane.value) {
-    case 'instructions':
-      return instructionsPaneHealthCards.value
-    case 'runner':
-      return runnerPaneHealthCards.value
-    default:
-      return skillPaneHealthCards.value
-  }
-})
+function updateKnowledgeLaneSummary(summary: KnowledgeLaneSummary) {
+  knowledgeLaneSummary.value = summary
+}
 
 const evolutionLaneCards = computed<EvolutionLaneCard[]>(() => [
+  {
+    pane: 'knowledge',
+    title: tr('evolution.tabs.knowledge', 'Knowledge'),
+    description: tr(
+      'evolution.lanes.knowledgeDescription',
+      'Ground the workspace in compiled pages, source-backed queries, and conflict or gap signals.'
+    ),
+    metric: formatCount(knowledgeLaneSummary.value?.visiblePages || 0),
+    supporting:
+      knowledgeLaneSummary.value == null
+        ? tr('knowledge.eyebrow', 'Knowledge Space')
+        : (knowledgeLaneSummary.value.conflicts || 0) > 0
+          ? trp('knowledge.conflictCount', '{count} unresolved conflicts', {
+              count: knowledgeLaneSummary.value.conflicts,
+            })
+          : (knowledgeLaneSummary.value.gaps || 0) > 0
+            ? trp('knowledge.gapCount', '{count} open gaps', {
+                count: knowledgeLaneSummary.value.gaps,
+              })
+            : tr('knowledge.pageList', 'Pages'),
+  },
   {
     pane: 'skills',
     title: tr('evolution.tabs.skills', 'Skills'),
@@ -4763,8 +4173,8 @@ async function loadSkillCatalog() {
     skillsError.value = ''
     const response = await skillApi.list()
     availableSkills.value = [...response.data].filter(skillFilter).sort((left, right) => {
-      return normalizeText(left.name || left.id).localeCompare(
-        normalizeText(right.name || right.id)
+      return normalizeText(localizedSkillName(left)).localeCompare(
+        normalizeText(localizedSkillName(right))
       )
     })
     applyRequestedSkillSelection()
@@ -5207,90 +4617,14 @@ function revealSelectedProposal() {
   instructionStatusFilter.value = 'all'
 }
 
-function clearSkillPaneFilters() {
-  skillSearch.value = ''
-  revisionSearch.value = ''
-  revisionStatusFilter.value = 'all'
-  caseSearch.value = ''
-  caseStatusFilter.value = 'all'
-  caseModeFilter.value = 'all'
-}
-
-function revealAllSkillSelections() {
-  if (selectedSkillHiddenByFilters.value) {
-    skillSearch.value = ''
-  }
-  if (selectedRevisionHiddenByFilters.value) {
-    revealSelectedRevision()
-  }
-  if (selectedSkillCaseHiddenByFilters.value) {
-    revealSelectedCase()
-  }
-}
-
-function clearInstructionPaneFilters() {
-  instructionSearch.value = ''
-  instructionStatusFilter.value = 'all'
-}
-
-function selectLatestAcceptedRevision() {
-  const revisionID = latestAcceptedRevision.value?.id
-  if (!revisionID) return
-  selectedRevisionID.value = revisionID
-}
-
-function selectLatestBackupRevision() {
-  const revisionID = latestBackupRevision.value?.id
-  if (!revisionID) return
-  selectedRevisionID.value = revisionID
-}
-
 function reviewLatestCandidateRevision() {
   const candidateRevisionID = latestCandidateRevision.value?.id
   if (!candidateRevisionID) return
   selectedRevisionID.value = candidateRevisionID
 }
 
-async function reviewLatestPendingInstructionProposal() {
-  const proposalID = latestPendingInstructionProposal.value?.id
-  if (!proposalID) return
-  await selectProposal(proposalID)
-}
-
-async function reviewLatestPendingAgentsInstructionProposal() {
-  const proposalID = latestPendingAgentsInstructionProposal.value?.id
-  if (!proposalID) return
-  await selectProposal(proposalID)
-}
-
-function openSkillsEvolutionPane() {
-  activePane.value = 'skills'
-}
-
 function openRunnerEvolutionPane() {
   activePane.value = 'runner'
-}
-
-async function openInstructionsEvolutionPane() {
-  activePane.value = 'instructions'
-  if (!instructionsLoaded.value) {
-    await loadInstructionProposals()
-  }
-}
-
-function openSkillsForLatestAcceptedRevision() {
-  openSkillsEvolutionPane()
-  selectLatestAcceptedRevision()
-}
-
-function openSkillsForLatestBackupRevision() {
-  openSkillsEvolutionPane()
-  selectLatestBackupRevision()
-}
-
-async function openInstructionsForPendingAgentsProposal() {
-  await openInstructionsEvolutionPane()
-  await reviewLatestPendingAgentsInstructionProposal()
 }
 
 async function reviewSelectedProposal(action: ProposalAction) {
@@ -5370,7 +4704,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 data-testid="evolution-page-title"
                 class="text-lg font-semibold tracking-tight text-slate-950 sm:text-xl"
               >
-                {{ tr('evolution.title', 'Self-Repair And Evolution Console') }}
+                {{ tr('evolution.title', 'Evolution Workspace') }}
               </h1>
               <p class="max-w-2xl text-sm leading-5 text-slate-600">
                 {{
@@ -5381,42 +4715,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 }}
               </p>
             </div>
-            <div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-              <div
-                v-for="card in evolutionSummaryCards"
-                :key="card.key"
-                :data-testid="`evolution-summary-card-${card.key}`"
-                class="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5"
-              >
-                <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  {{ card.label }}
-                </div>
-                <div class="mt-1.5 flex items-end gap-2">
-                  <span
-                    :data-testid="`evolution-summary-visible-${card.key}`"
-                    class="text-lg font-semibold text-slate-950 sm:text-xl"
-                  >
-                    {{ card.visible }}
-                  </span>
-                  <span
-                    :data-testid="`evolution-summary-total-${card.key}`"
-                    class="pb-0.5 text-xs font-medium uppercase tracking-[0.14em] text-slate-500"
-                  >
-                    {{ trp('evolution.summary.ofTotal', 'of {total}', { total: card.total }) }}
-                  </span>
-                </div>
-                <div
-                  :data-testid="`evolution-summary-hint-${card.key}`"
-                  class="mt-1 text-[11px] leading-4 text-slate-500"
-                >
-                  {{ card.hint }}
-                </div>
-              </div>
-            </div>
           </div>
 
           <div
-            class="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 xl:grid xl:grid-cols-3 xl:overflow-visible xl:pb-0"
+            class="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 xl:grid xl:grid-cols-4 xl:overflow-visible xl:pb-0"
           >
             <button
               v-for="lane in evolutionLaneCards"
@@ -5473,74 +4775,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
           </div>
         </div>
 
-        <div class="px-4 pb-0 sm:px-5">
-          <section
-            data-testid="evolution-pane-health"
-            class="rounded-2xl border border-slate-200 bg-white/85 p-3 shadow-sm sm:p-4"
-          >
-            <div class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  {{ tr('evolution.health.title', 'Pane health') }}
-                </div>
-                <p class="mt-1 text-sm leading-5 text-slate-600">
-                  {{
-                    tr(
-                      'evolution.health.subtitle',
-                      'Quick signals for filters, approvals, and safe version actions in the current lane.'
-                    )
-                  }}
-                </p>
-              </div>
-              <div class="text-xs text-slate-500">
-                {{
-                  activePane === 'skills'
-                    ? tr('evolution.health.skillsActive', 'Skills lane status')
-                    : activePane === 'runner'
-                      ? tr('evolution.health.runnerActive', 'Runner lane status')
-                      : tr('evolution.health.instructionsActive', 'Instructions lane status')
-                }}
-              </div>
-            </div>
-
-            <div class="mt-4 grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
-              <div
-                v-for="card in activePaneHealthCards"
-                :key="`${activePane}-${card.key}`"
-                :data-testid="`evolution-health-${activePane}-${card.key}`"
-                class="rounded-2xl border px-3 py-2.5"
-                :class="decisionSummaryCardClasses(card.tone)"
-              >
-                <div class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  {{ card.label }}
-                </div>
-                <div
-                  class="mt-1.5 text-sm font-semibold"
-                  :class="decisionSummaryValueClasses(card.tone)"
-                >
-                  {{ card.value }}
-                </div>
-                <div
-                  :data-testid="`evolution-health-${activePane}-${card.key}-details`"
-                  class="mt-1.5 line-clamp-2 text-[11px] leading-4 text-slate-700"
-                >
-                  {{ card.details }}
-                </div>
-                <button
-                  v-if="card.action && card.actionLabel"
-                  type="button"
-                  :data-testid="`evolution-health-${activePane}-${card.key}-action`"
-                  class="mt-3 rounded-full border border-current/20 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-current/40 hover:text-slate-950"
-                  @click="void card.action()"
-                >
-                  {{ card.actionLabel }}
-                </button>
-              </div>
-            </div>
-          </section>
+        <div v-if="activePane === 'knowledge'" class="space-y-4 p-4 sm:p-5">
+          <EvolutionKnowledgePane @summary-change="updateKnowledgeLaneSummary" />
         </div>
 
-        <div v-if="activePane === 'skills'" class="space-y-4 p-4 sm:p-5">
+        <div v-else-if="activePane === 'skills'" class="space-y-4 p-4 sm:p-5">
           <section class="sticky top-3 z-20 xl:top-6">
             <div
               class="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:p-4"
@@ -5657,7 +4896,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   v-for="skill in filteredAvailableSkills"
                   :key="`mobile-${skill.id}`"
                   type="button"
-                  class="min-w-[14rem] shrink-0 snap-start rounded-2xl border px-3 py-2.5 text-left transition"
+                  class="w-[12rem] shrink-0 snap-start rounded-2xl border px-3 py-2.5 text-left transition"
                   :data-testid="`evolution-skill-item-mobile-${skill.id}`"
                   :class="
                     selectedSkillID === skill.id
@@ -5672,7 +4911,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         :data-testid="`evolution-skill-item-mobile-title-${skill.id}`"
                         class="truncate text-xs font-semibold text-slate-950"
                       >
-                        {{ skill.name || skill.id }}
+                        {{ localizedSkillName(skill) }}
                       </div>
                       <div class="mt-1 truncate text-[11px] leading-4 text-slate-500">
                         {{ skill.id }}
@@ -5688,7 +4927,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     :data-testid="`evolution-skill-item-mobile-description-${skill.id}`"
                     class="mt-1.5 line-clamp-1 text-[11px] leading-4 text-slate-600"
                   >
-                    {{ skill.description }}
+                    {{ localizedSkillDescription(skill) }}
                   </p>
                 </button>
               </div>
@@ -5846,7 +5085,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         :data-testid="`evolution-skill-item-title-${skill.id}`"
                         class="text-xs font-semibold text-slate-950"
                       >
-                        {{ skill.name || skill.id }}
+                        {{ localizedSkillName(skill) }}
                       </div>
                       <div class="mt-1 text-[11px] leading-4 text-slate-500">
                         {{ skill.id }}
@@ -5862,7 +5101,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     :data-testid="`evolution-skill-item-description-${skill.id}`"
                     class="mt-1.5 line-clamp-1 text-[11px] leading-4 text-slate-600"
                   >
-                    {{ skill.description }}
+                    {{ localizedSkillDescription(skill) }}
                   </p>
                 </button>
               </div>
@@ -5899,14 +5138,18 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     data-testid="evolution-skill-selected-title"
                     class="mt-1.5 text-lg font-semibold text-slate-950"
                   >
-                    {{ selectedSkill?.name || tr('common.notAvailable', 'Not available') }}
+                    {{
+                      selectedSkill
+                        ? localizedSkillName(selectedSkill)
+                        : tr('common.notAvailable', 'Not available')
+                    }}
                   </h2>
                   <p
                     data-testid="evolution-skill-selected-description"
                     class="mt-1.5 max-w-3xl text-xs leading-5 text-slate-600"
                   >
                     {{
-                      selectedSkill?.description ||
+                      (selectedSkill ? localizedSkillDescription(selectedSkill) : '') ||
                       tr('evolution.skills.noDescription', 'No skill description is available.')
                     }}
                   </p>
@@ -6380,37 +5623,6 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div class="grid gap-4 lg:grid-cols-4" data-testid="evolution-skill-drilldown-cards">
-              <div
-                v-for="card in skillDetailShortcuts"
-                :key="card.key"
-                :data-testid="`evolution-skill-drilldown-${card.key}`"
-                class="rounded-3xl border px-4 py-4 shadow-sm"
-                :class="decisionSummaryCardClasses(card.tone)"
-              >
-                <div class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                  {{ card.label }}
-                </div>
-                <div
-                  class="mt-2 text-base font-semibold"
-                  :class="decisionSummaryValueClasses(card.tone)"
-                >
-                  {{ card.value }}
-                </div>
-                <div class="mt-2 text-sm leading-6 text-slate-700">
-                  {{ card.details }}
-                </div>
-                <button
-                  type="button"
-                  :data-testid="`evolution-skill-drilldown-${card.key}-action`"
-                  class="mt-3 rounded-full border border-current/20 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:border-current/40 hover:text-slate-950"
-                  @click="void focusSkillDetailSection(card.key)"
-                >
-                  {{ tr('evolution.skills.openSection', 'Open section') }}
-                </button>
               </div>
             </div>
 

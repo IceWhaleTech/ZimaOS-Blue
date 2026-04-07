@@ -11,16 +11,11 @@ import {
   defineAsyncComponent,
   type ComponentPublicInstance,
 } from 'vue'
-const FormFillerWidget = defineAsyncComponent(
-  () => import('@/components/formfiller/FormFillerWidget.vue')
-)
-import { useFormFillerWidget } from '@/composables/useFormFillerWidget'
 import { isFullscreen } from '@/composables/useFullscreen'
 import { refreshTauriDetection, useTauri } from '@/composables/useTauri'
 import { useSettingsStore } from '@/stores/settings'
 import {
   shouldDeferBrowserMonitorOnDesktopStartup,
-  shouldDeferFormFillerWidgetOnDesktopStartup,
 } from '@/utils/desktopStartup'
 import { rafThrottle } from '@/utils/rafThrottle'
 import { scheduleStartupBackgroundTask } from '@/utils/startupBackgroundTask'
@@ -70,12 +65,6 @@ const canShowBackToTop = computed(
 )
 const showBackToTopButton = computed(() => canShowBackToTop.value && backToTopVisible.value)
 const backToTopLabel = computed(() => t('common.backToTop', 'Back to top'))
-const formFillerWidgetReady = ref(
-  !shouldDeferFormFillerWidgetOnDesktopStartup(
-    typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__,
-    route.path
-  )
-)
 const browserMonitorReady = ref(
   !shouldDeferBrowserMonitorOnDesktopStartup(
     typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__,
@@ -94,7 +83,6 @@ const sidebarRef = ref<AppSidebarExposed | null>(null)
 const workspacePanelOpen = computed(() => Boolean(sidebarRef.value?.workspacePanelOpen))
 const sidebarCollapsed = computed(() => Boolean(sidebarRef.value?.isCollapsed))
 let windowResizePerfTimer: ReturnType<typeof window.setTimeout> | null = null
-let formFillerWidgetStartupCleanup: (() => void) | null = null
 let browserMonitorStartupCleanup: (() => void) | null = null
 
 function toggleSidebar() {
@@ -169,20 +157,10 @@ function handleWindowResize() {
   syncViewportStateOnResize()
 }
 
-// Form filler widget - now shows on input focus, no need for route watching
-const { setup, cleanup } = useFormFillerWidget()
-
 onMounted(() => {
   refreshTauriDetection()
   syncViewportState()
   window.addEventListener('resize', handleWindowResize)
-  setup()
-  if (!formFillerWidgetReady.value) {
-    formFillerWidgetStartupCleanup = scheduleStartupBackgroundTask(() => {
-      formFillerWidgetReady.value = true
-      formFillerWidgetStartupCleanup = null
-    }, 600)
-  }
   if (!browserMonitorReady.value) {
     browserMonitorStartupCleanup = scheduleStartupBackgroundTask(() => {
       browserMonitorReady.value = true
@@ -196,8 +174,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  formFillerWidgetStartupCleanup?.()
-  formFillerWidgetStartupCleanup = null
   browserMonitorStartupCleanup?.()
   browserMonitorStartupCleanup = null
   window.removeEventListener('resize', handleWindowResize)
@@ -205,7 +181,6 @@ onUnmounted(() => {
   syncViewportStateOnResize.cancel()
   syncBackToTopVisibilityOnScroll.cancel()
   clearWindowResizing()
-  cleanup()
 })
 
 watch(
@@ -360,8 +335,6 @@ watch(canShowBackToTop, () => {
         </main>
       </div>
     </div>
-    <!-- Form filler widget - lazy loaded, hidden on chat page -->
-    <FormFillerWidget v-if="!hideLayout && route.path !== '/chat' && formFillerWidgetReady" />
     <BrowserMonitorWidget v-if="!hideLayout && browserMonitorReady" />
     <GlobalVoiceWakeBanner v-if="!hideLayout" />
     <!-- Fullscreen modal for code/diff/terminal cards -->

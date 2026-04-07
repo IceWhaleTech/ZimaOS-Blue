@@ -17,6 +17,8 @@ export default mergeHarnessLocale('ja-JP', {
     previous: '前へ',
     close: '閉じる',
     backToTop: 'ページ上部へ戻る',
+    showPassword: 'パスワードを表示',
+    hidePassword: 'パスワードを非表示',
     comingSoon: '近日公開',
     clear: 'クリア',
     copy: 'コピー',
@@ -564,7 +566,7 @@ export default mergeHarnessLocale('ja-JP', {
     deepResearchObjectMap: 'オブジェクトマップ',
     deepResearchBackToTask: '結果を見る',
     taskLoop: 'Ralph ループ',
-    alwaysOn: '常時オン',
+    alwaysOn: '自動',
     deepResearchHoverDescription:
       '検索、検証、追跡可能な実行、関連する実行詳細を含む構造化リサーチフローを開始します。',
     analyzeReportShortcutTitle: '分析レポート',
@@ -788,12 +790,12 @@ export default mergeHarnessLocale('ja-JP', {
       unavailableTitle: '現在利用できる AI プロバイダーはありません',
       unavailableDescription:
         '構成されたプロバイダーは現在利用できません。設定で接続、API キー、またはモデルのステータスを確認して、再試行してください。',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: '一時的なプロバイダーの問題',
+      recoverableTitle: 'プロバイダーに対応が必要です',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        '設定済みのプロバイダーで一時的なエラーが発生しました。下にある最新の理由を確認し、プロバイダーをリセットしてからもう一度お試しください。',
+      retry: 'プロバイダーを再試行',
+      reviewSingle: 'プロバイダーを確認',
       providerSummary: '注意が必要な構成済みプロバイダー',
       moreProviders: '{count} 他のプロバイダーにも注意が必要です。',
       statusActive: 'アクティブ',
@@ -871,7 +873,7 @@ export default mergeHarnessLocale('ja-JP', {
     execDirectoryApprovalTimeout:
       'ディレクトリ承認のタイムアウトにより、コマンド実行がブロックされました。ディレクトリを承認してから再試行してください。',
     providerActive: 'プロバイダーがアクティブで準備ができています。',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'プロバイダーに対応が必要です。クリックして設定を確認してください。',
     providerPending: 'プロバイダーの状態を確認中...',
     trialQuota: {
       remaining: '残り {tokens} トークン',
@@ -1358,7 +1360,7 @@ export default mergeHarnessLocale('ja-JP', {
       loadFailed: '外部エージェント プロファイルのロードに失敗しました。',
       notAvailable: '利用できません',
       remoteAgent: 'リモートエージェント',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: '組み込みプロファイル',
       builtinTemplate: '内蔵テンプレート',
       customProfile: 'カスタムプロファイル',
       health: '健康',
@@ -4594,6 +4596,7 @@ export default mergeHarnessLocale('ja-JP', {
       Processes: 'プロセス',
       Search: '検索',
       web_query: 'Web取得',
+      research: 'ディープリサーチ',
       research_run: 'ディープリサーチ',
       research_status: 'ディープリサーチの状態',
       configuration: '設定',
@@ -4618,6 +4621,8 @@ export default mergeHarnessLocale('ja-JP', {
       ask: 'タスクを続けるために必要な確認質問をユーザーに行います',
       mediagen: 'AI モデルで画像、動画、スライドを生成します',
       web_query: 'URL からWebページを取得して解析します',
+      research:
+        'ディープリサーチを実行します。最終レポートを待つことも、後で確認するためのジョブ ID を受け取ることもできます。',
       research_run:
         'ディープリサーチを実行します。最終レポートを待つことも、後で確認するためのジョブ ID を受け取ることもできます。',
       research_status: 'ディープリサーチ ジョブの現在の状態または最終レポートを取得します。',

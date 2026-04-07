@@ -43,6 +43,19 @@ var unsupportedFactoryToolHints = map[string]string{
 	"pdf": "pdf is not enabled in this runtime yet.",
 }
 
+// Shared read-only schema for factory alias definitions.
+// Downstream consumers clone before adapting schemas for routing or locale output.
+var factoryToolInputSchema = map[string]interface{}{
+	"type": "object",
+	"properties": map[string]interface{}{
+		"input": map[string]interface{}{
+			"type":        "string",
+			"description": "Optional plain-text input.",
+		},
+	},
+	"additionalProperties": true,
+}
+
 func buildFactoryToolNameSet(names []string) map[string]struct{} {
 	out := make(map[string]struct{}, len(names))
 	for _, name := range names {
@@ -99,16 +112,7 @@ func factoryToolDefinition(name, desc string) ToolDefinition {
 	return ToolDefinition{
 		Name:        name,
 		Description: desc,
-		Parameters: map[string]interface{}{
-			"type": "object",
-			"properties": map[string]interface{}{
-				"input": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional plain-text input.",
-				},
-			},
-			"additionalProperties": true,
-		},
+		Parameters:  factoryToolInputSchema,
 	}
 }
 

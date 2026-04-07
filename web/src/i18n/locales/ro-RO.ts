@@ -16,6 +16,8 @@ export default mergeHarnessLocale('ro-RO', {
     next: 'Următorul',
     previous: 'Anterior',
     close: 'Închide',
+    showPassword: 'Arată parola',
+    hidePassword: 'Ascunde parola',
     comingSoon: 'În curând',
     clear: 'Clar',
     copy: 'Copiere',
@@ -565,7 +567,7 @@ export default mergeHarnessLocale('ro-RO', {
     deepResearchObjectMap: 'Hartă a obiectelor',
     deepResearchBackToTask: 'Vezi rezultatul',
     taskLoop: 'Bucla Ralph',
-    alwaysOn: 'Mereu activ',
+    alwaysOn: 'Automat',
     deepResearchHoverDescription:
       'Lanseaza un flux de cercetare structurat cu preluare, verificare, rulari trasabile si detalii de rulare asociate.',
     analyzeReportShortcutTitle: 'Raport de analiză',
@@ -791,12 +793,12 @@ export default mergeHarnessLocale('ro-RO', {
       unavailableTitle: 'Niciun furnizor de AI nu este disponibil momentan',
       unavailableDescription:
         'Furnizorii dvs. configurați nu sunt disponibili momentan. Verificați conexiunea, cheia API sau starea modelului în Setări și apoi încercați din nou.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Problemă temporară a furnizorului',
+      recoverableTitle: 'Furnizorul necesită atenție',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Furnizorul configurat a întâmpinat o eroare temporară. Verificați mai jos cel mai recent motiv, resetați furnizorul și încercați din nou.',
+      retry: 'Reîncearcă furnizorul',
+      reviewSingle: 'Verifică furnizorul',
       providerSummary: 'Furnizorii configurați care au nevoie de atenție',
       moreProviders: '{count} mai mulți furnizori au nevoie și de atenție.',
       statusActive: 'Activ',
@@ -873,7 +875,7 @@ export default mergeHarnessLocale('ro-RO', {
     execDirectoryApprovalTimeout:
       'Executarea comenzii a fost blocată deoarece aprobarea directorului a expirat. Aprobă directorul și încearcă din nou.',
     providerActive: 'Furnizorul este activ și gata.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Furnizorul necesită atenție. Faceți clic pentru a verifica setările.',
     providerPending: 'Starea furnizorului este verificată...',
     trialQuota: {
       remaining: '{tokens} tokeni rămași',
@@ -1365,7 +1367,7 @@ export default mergeHarnessLocale('ro-RO', {
       loadFailed: 'Nu s-au încărcat profilurile de agent extern.',
       notAvailable: 'Nu este disponibil',
       remoteAgent: 'Agent de la distanță',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Profil integrat',
       builtinTemplate: 'Șablon încorporat',
       customProfile: 'Profil personalizat',
       health: 'Sănătate',
@@ -4627,6 +4629,7 @@ export default mergeHarnessLocale('ro-RO', {
       'Auto Reply': 'Răspuns automat',
       Workflows: 'Fluxuri de lucru',
       web_query: 'Preluare web',
+      research: 'Cercetare aprofundată',
       research_run: 'Cercetare aprofundată',
       research_status: 'Starea cercetării aprofundate',
       configuration: 'Configurare',
@@ -4652,6 +4655,8 @@ export default mergeHarnessLocale('ro-RO', {
       ask: 'Pune utilizatorului intrebari suplimentare necesare pentru a continua sarcina',
       mediagen: 'Genereaza imagini, videoclipuri si prezentari cu modele AI',
       web_query: 'Preia si analizeaza o pagina web prin URL',
+      research:
+        'Rulează o cercetare aprofundată. Poți aștepta raportul final sau poți obține un ID de job pentru a verifica mai târziu.',
       research_run:
         'Rulează o cercetare aprofundată. Poți aștepta raportul final sau poți obține un ID de job pentru a verifica mai târziu.',
       research_status:

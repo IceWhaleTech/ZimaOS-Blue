@@ -38,6 +38,7 @@ func TestSQLiteStore_CreateGetListRun(t *testing.T) {
 		Status:        RunStatusPending,
 		UserID:        "user-1",
 		Goal:          "ship harness",
+		ProviderID:    "openai-prod",
 		ArtifactRoot:  "./data/harness/artifacts/run-1",
 		ApprovalMode:  ApprovalModeAsk,
 		MaxDuration:   2 * time.Minute,
@@ -55,6 +56,9 @@ func TestSQLiteStore_CreateGetListRun(t *testing.T) {
 	if got.ID != run.ID || got.Kind != run.Kind || got.UserID != run.UserID {
 		t.Fatalf("GetRun mismatch: %#v", got)
 	}
+	if got.ProviderID != "openai-prod" {
+		t.Fatalf("GetRun ProviderID = %q, want openai-prod", got.ProviderID)
+	}
 
 	runs, err := store.ListRuns(ctx, RunFilter{UserID: "user-1", Kind: RunKindAgentTask, Limit: 10})
 	if err != nil {
@@ -62,6 +66,9 @@ func TestSQLiteStore_CreateGetListRun(t *testing.T) {
 	}
 	if len(runs) != 1 || runs[0].ID != run.ID {
 		t.Fatalf("ListRuns returned %#v", runs)
+	}
+	if runs[0].ProviderID != "openai-prod" {
+		t.Fatalf("ListRuns ProviderID = %q, want openai-prod", runs[0].ProviderID)
 	}
 }
 
@@ -635,5 +642,105 @@ func TestMigrateLegacyStoreImportsIntoSharedDBAndArchivesLegacyDB(t *testing.T) 
 	}
 	if len(events) != 1 || events[0].ID != "event-legacy" {
 		t.Fatalf("unexpected shared events: %#v", events)
+	}
+}
+
+func TestSQLiteStore_MigrateSchemaAddsProviderIDToLegacyHarnessRuns(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "legacy-harness-test.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	_, err = db.Exec(`
+CREATE TABLE harness_runs (
+	id TEXT PRIMARY KEY,
+	root_run_id TEXT NOT NULL,
+	parent_run_id TEXT DEFAULT '',
+	kind TEXT NOT NULL,
+	status TEXT NOT NULL,
+	runtime_state TEXT DEFAULT '',
+	user_id TEXT DEFAULT '',
+	conversation_id TEXT DEFAULT '',
+	session_id TEXT DEFAULT '',
+	agent_id TEXT DEFAULT '',
+	goal TEXT NOT NULL,
+	model TEXT DEFAULT '',
+	result TEXT DEFAULT '',
+	error TEXT DEFAULT '',
+	depth INTEGER NOT NULL DEFAULT 0,
+	current_step INTEGER NOT NULL DEFAULT 0,
+	progress INTEGER NOT NULL DEFAULT 0,
+	workspace_root TEXT DEFAULT '',
+	artifact_root TEXT DEFAULT '',
+	sandbox_mode TEXT DEFAULT '',
+	approval_mode TEXT DEFAULT '',
+	max_duration_ns INTEGER NOT NULL DEFAULT 0,
+	max_steps INTEGER NOT NULL DEFAULT 0,
+	max_tool_rounds INTEGER NOT NULL DEFAULT 0,
+	max_subagents INTEGER NOT NULL DEFAULT 0,
+	max_depth INTEGER NOT NULL DEFAULT 0,
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL,
+	started_at DATETIME,
+	finished_at DATETIME
+)`)
+	if err != nil {
+		t.Fatalf("create legacy harness_runs failed: %v", err)
+	}
+
+	now := time.Now().UTC()
+	_, err = db.Exec(`
+INSERT INTO harness_runs (
+	id, root_run_id, parent_run_id, kind, status, runtime_state, user_id, conversation_id, session_id, agent_id,
+	goal, model, result, error, depth, current_step, progress, workspace_root, artifact_root, sandbox_mode,
+	approval_mode, max_duration_ns, max_steps, max_tool_rounds, max_subagents, max_depth, metadata_json,
+	created_at, updated_at, started_at, finished_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"legacy-run", "legacy-run", "", string(RunKindAgentTask), string(RunStatusPending), "", "user-1", "", "", "",
+		"legacy goal", "", "", "", 0, 0, 0, "", "", "",
+		string(ApprovalModeAsk), 0, 0, 0, 0, 0, `{}`,
+		now, now, nil, nil,
+	)
+	if err != nil {
+		t.Fatalf("insert legacy run failed: %v", err)
+	}
+
+	store, err := NewSQLiteStore(db)
+	if err != nil {
+		t.Fatalf("NewSQLiteStore failed: %v", err)
+	}
+
+	legacyRun, err := store.GetRun(ctx, "legacy-run")
+	if err != nil {
+		t.Fatalf("GetRun(legacy) failed: %v", err)
+	}
+	if legacyRun.ProviderID != "" {
+		t.Fatalf("legacy ProviderID = %q, want empty", legacyRun.ProviderID)
+	}
+
+	upgraded := &Run{
+		ID:         "upgraded-run",
+		RootRunID:  "upgraded-run",
+		Kind:       RunKindAgentTask,
+		Status:     RunStatusPending,
+		UserID:     "user-1",
+		Goal:       "post-migration write",
+		ProviderID: "openai-prod",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	if err := store.CreateRun(ctx, upgraded); err != nil {
+		t.Fatalf("CreateRun(upgraded) failed: %v", err)
+	}
+
+	got, err := store.GetRun(ctx, upgraded.ID)
+	if err != nil {
+		t.Fatalf("GetRun(upgraded) failed: %v", err)
+	}
+	if got.ProviderID != "openai-prod" {
+		t.Fatalf("upgraded ProviderID = %q, want openai-prod", got.ProviderID)
 	}
 }

@@ -47,9 +47,10 @@ func newRuntimeKnowledgeService(options runtimeTaskSurfaceOptions) *knowledge.Se
 		return nil
 	}
 	service := knowledge.NewService(knowledge.ServiceOptions{
-		WorkspaceDir: workspaceDir,
-		RepoRoot:     resolveKnowledgeRepoRoot(workspaceDir),
-		MemorySink:   runtimeKnowledgeMemorySink{handler: options.memoryHandler},
+		WorkspaceDir:    workspaceDir,
+		RepoRoot:        resolveKnowledgeRepoRoot(workspaceDir),
+		MemorySink:      runtimeKnowledgeMemorySink{handler: options.memoryHandler},
+		KnowledgeAuthor: options.knowledgeAuthor,
 		EventPublisher: runtimeKnowledgeEventPublisher{
 			broker: options.sseBroker,
 		},

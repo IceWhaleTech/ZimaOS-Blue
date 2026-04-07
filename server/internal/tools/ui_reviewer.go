@@ -304,10 +304,11 @@ func resolveWaitMS(args map[string]interface{}) int {
 
 // Execute runs the UI review tool.
 func (t *UIReviewerTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
-	url := firstCompatString(args, "url", "href")
-	img := firstCompatString(args, "image", "image_base64", "imageBase64")
+	NormalizeUIReviewCompatArgs(args)
+	url := strings.TrimSpace(asString(args["url"]))
+	img := strings.TrimSpace(asString(args["image"]))
 	action, err := CanonicalizeUIReviewAction(
-		firstCompatString(args, "action", "op", "operation", "command"),
+		strings.TrimSpace(asString(args["action"])),
 		url,
 		img,
 	)
@@ -341,7 +342,6 @@ func (t *UIReviewerTool) Execute(ctx context.Context, args map[string]interface{
 		}
 		result, err = t.reviewImage(ctx, img, threshold, format, lang, profile)
 	case "check_accessibility":
-		url := firstCompatString(args, "url")
 		if url == "" {
 			return nil, errors.New("url is required for check_accessibility")
 		}

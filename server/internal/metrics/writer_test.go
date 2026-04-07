@@ -26,6 +26,31 @@ func TestNewMetricsWriter(t *testing.T) {
 	}
 }
 
+func TestNewMetricsWriter_DelaysSystemMonitorForStorelessStartup(t *testing.T) {
+	config := DefaultWriterConfig()
+	writer := NewMetricsWriter(nil, config)
+
+	if writer.systemMonitor != nil {
+		t.Fatal("expected system monitor to stay nil for storeless startup until first metrics access")
+	}
+
+	metrics := writer.GetSystemMetrics()
+	if metrics == nil {
+		t.Fatal("expected GetSystemMetrics to initialize and return metrics on demand")
+	}
+	if metrics.CPUCount <= 0 {
+		t.Fatalf("expected on-demand system metrics collection to populate CPU count, got %d", metrics.CPUCount)
+	}
+	if writer.systemMonitor == nil {
+		t.Fatal("expected system monitor to initialize on first metrics access")
+	}
+
+	history := writer.GetResourceHistory()
+	if len(history) != 1 {
+		t.Fatalf("expected one collected history sample after first metrics access, got %d entries", len(history))
+	}
+}
+
 func TestMetricsWriter_RecordAPICall(t *testing.T) {
 	store := NewMockStore()
 	config := &WriterConfig{

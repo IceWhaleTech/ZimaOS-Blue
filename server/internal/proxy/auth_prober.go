@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	ecache2 "github.com/orca-zhang/ecache2"
@@ -41,14 +42,36 @@ func (s AuthStrategy) String() string {
 
 // AuthProber manages auth strategy probing and remembers what works.
 type AuthProber struct {
-	cache *ecache2.Cache[uint64] // key: FNV-1a hash of "providerID:baseURL[#format]" → AuthStrategy
+	cacheOnce sync.Once
+	cacheMu   sync.RWMutex
+	cache     *ecache2.Cache[uint64] // key: FNV-1a hash of "providerID:baseURL[#format]" → AuthStrategy
 }
 
 // NewAuthProber creates a new auth prober with 1-hour TTL memory.
 func NewAuthProber() *AuthProber {
-	return &AuthProber{
-		cache: ecache2.NewLRUCache[uint64](4, 64, 1*time.Hour),
+	return &AuthProber{}
+}
+
+func (ap *AuthProber) cacheOrNil() *ecache2.Cache[uint64] {
+	if ap == nil {
+		return nil
 	}
+	ap.cacheMu.RLock()
+	defer ap.cacheMu.RUnlock()
+	return ap.cache
+}
+
+func (ap *AuthProber) ensureCache() *ecache2.Cache[uint64] {
+	if ap == nil {
+		return nil
+	}
+	ap.cacheOnce.Do(func() {
+		cache := ecache2.NewLRUCache[uint64](4, 64, 1*time.Hour)
+		ap.cacheMu.Lock()
+		ap.cache = cache
+		ap.cacheMu.Unlock()
+	})
+	return ap.cacheOrNil()
 }
 
 func normalizeAuthStrategyMemoryKey(baseURL string) string {
@@ -89,7 +112,11 @@ func cacheKey(providerID, memoryKey string) uint64 {
 
 // Recall returns the cached winning strategy, if any.
 func (ap *AuthProber) Recall(providerID, memoryKey string) (AuthStrategy, bool) {
-	if v, ok := ap.cache.Get(cacheKey(providerID, memoryKey)); ok {
+	cache := ap.cacheOrNil()
+	if cache == nil {
+		return 0, false
+	}
+	if v, ok := cache.Get(cacheKey(providerID, memoryKey)); ok {
 		if s, ok := v.(AuthStrategy); ok {
 			return s, true
 		}
@@ -99,12 +126,16 @@ func (ap *AuthProber) Recall(providerID, memoryKey string) (AuthStrategy, bool) 
 
 // Remember caches the winning auth strategy for a provider+endpoint key.
 func (ap *AuthProber) Remember(providerID, memoryKey string, strategy AuthStrategy) {
-	ap.cache.Put(cacheKey(providerID, memoryKey), strategy)
+	if cache := ap.ensureCache(); cache != nil {
+		cache.Put(cacheKey(providerID, memoryKey), strategy)
+	}
 }
 
 // Forget evicts the cached strategy (e.g. on provider config change).
 func (ap *AuthProber) Forget(providerID, memoryKey string) {
-	ap.cache.Del(cacheKey(providerID, memoryKey))
+	if cache := ap.cacheOrNil(); cache != nil {
+		cache.Del(cacheKey(providerID, memoryKey))
+	}
 }
 
 // Pre-allocated strategy arrays — avoids slice allocation on every call.

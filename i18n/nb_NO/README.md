@@ -72,9 +72,10 @@ Kompilert direkte i Go — ingen tolk, ingen VM, ingen overhead. Kjører stille 
 | `status` kjøretid (beste av 3) | **< 0.01 s** | 5.98 s |
 | `help` topp-RSS | **~10 MB** | ~394 MB |
 | `status` topp-RSS | **~15 MB** | ~1.52 GB |
+| `gateway run` tomgangsminne etter kald oppstart | **~19 MB** | - |
 | Kjøretidsavhengigheter | **Ingen** | Node.js 18+ |
 
-> Benchmarket på macOS arm64 (servermodus, uten skrivebords-UI), samme vert, beste av 3 kjøringer. Feb 2026.
+> CLI-radene over er den historiske `help` / `status`-mikrobenchmarken på samme vert. Den nye `gateway run`-raden viser virkelig tomgangsminne etter kald oppstart, målt på macOS arm64 via `vmmap Physical footprint` etter at oppstarten har stabilisert seg. Feb-apr 2026.
 
 ### Ren Go, alle enheter
 

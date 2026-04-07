@@ -1,7 +1,6 @@
 package pruner
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 )
@@ -48,11 +47,6 @@ var DefaultMemorySignals = []string{
 	"密码", "密钥", "配置", "设置", "版本", "安装", "部署",
 }
 
-// sentenceSplitPattern splits text into sentences. Requires whitespace after
-// ASCII punctuation to avoid breaking emails/URLs. Chinese punctuation (。！？)
-// splits without requiring trailing whitespace.
-var sentenceSplitPattern = regexp.MustCompile(`(?:[.!?]+\s+)|[。！？]+|\n+`)
-
 // TextTokenize splits text into lowercase tokens with stopword removal.
 // Designed for non-code content (docs, logs, prose). Handles English and Chinese.
 func TextTokenize(text string) []string {
@@ -76,6 +70,7 @@ func TextTokenize(text string) []string {
 // SplitSentences splits text into sentences, handling both English and Chinese.
 // Requires whitespace after punctuation to avoid breaking emails/URLs.
 func SplitSentences(text string) []string {
+	ensureSentenceSplitPattern()
 	raw := sentenceSplitPattern.Split(text, -1)
 	var result []string
 	for _, s := range raw {

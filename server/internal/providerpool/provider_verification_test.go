@@ -1168,10 +1168,12 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 		Name:             "Custom Verify",
 		Type:             ProviderTypeCustom,
 		Enabled:          true,
+		Status:           ProviderStatusInactive,
 		BaseURL:          "https://relay.example.com/v1/responses",
 		DetectedEndpoint: "https://relay.example.com/v1/responses",
 		APIFormat:        APIFormatOpenAI,
 		DetectedFormat:   APIFormatResponses,
+		LastError:        "stale_inactive_state",
 		APIKeys: []APIKey{
 			{ID: "k1", Key: "sk-test", Enabled: true},
 		},
@@ -1223,6 +1225,12 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 	}
 	if updated.DetectedFormat != APIFormatResponses {
 		t.Fatalf("DetectedFormat = %q, want %q", updated.DetectedFormat, APIFormatResponses)
+	}
+	if updated.Status != ProviderStatusActive {
+		t.Fatalf("Status = %q, want %q", updated.Status, ProviderStatusActive)
+	}
+	if updated.LastError != "" {
+		t.Fatalf("LastError = %q, want empty", updated.LastError)
 	}
 }
 

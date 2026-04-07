@@ -110,10 +110,15 @@ func NewService(options ServiceOptions) *Service {
 }
 
 func (s *Service) Compile(ctx context.Context, req CompileRequest) (*KnowledgeCompileReport, error) {
+	ctx = applyKnowledgeProviderRouting(ctx, req.ProviderID)
 	return s.ingest(ctx, req.TargetPaths)
 }
 
 func (s *Service) ingest(ctx context.Context, targetPaths []string) (*KnowledgeIngestReport, error) {
+	return s.ingestWithOptions(ctx, targetPaths, false)
+}
+
+func (s *Service) ingestWithOptions(ctx context.Context, targetPaths []string, force bool) (*KnowledgeIngestReport, error) {
 	if err := s.ensureKnowledgeDirs(); err != nil {
 		return nil, err
 	}
@@ -159,7 +164,7 @@ func (s *Service) ingest(ctx context.Context, targetPaths []string) (*KnowledgeI
 			return nil, err
 		}
 		previous := manifestByRef[source.Ref]
-		if previous.SourceHash == source.SourceHash {
+		if !force && previous.SourceHash == source.SourceHash {
 			skippedSources = append(skippedSources, source.Ref)
 			previous.Status = "skipped"
 			manifestByRef[source.Ref] = previous
@@ -274,6 +279,7 @@ func (s *Service) ingest(ctx context.Context, targetPaths []string) (*KnowledgeI
 }
 
 func (s *Service) Lint(ctx context.Context, req LintRequest) (*KnowledgeLintReport, error) {
+	ctx = applyKnowledgeProviderRouting(ctx, req.ProviderID)
 	if err := s.ensureKnowledgeDirs(); err != nil {
 		return nil, err
 	}
@@ -281,10 +287,14 @@ func (s *Service) Lint(ctx context.Context, req LintRequest) (*KnowledgeLintRepo
 	if err != nil {
 		return nil, err
 	}
+	pages, repairedPaths, err := s.repairPagesForLint(ctx, pages, req.TargetPaths)
+	if err != nil {
+		return nil, err
+	}
 	expectedBacklinks := computeBacklinks(pages)
 	currentIndex, _ := s.GetIndexMarkdown(ctx)
 	issues := make([]LintIssue, 0)
-	fixedPaths := make([]string, 0)
+	fixedPaths := append([]string(nil), repairedPaths...)
 	seenTitles := make(map[string]string)
 	conflictPairs := make(map[string][]string)
 
@@ -748,17 +758,18 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Knowled
 	}
 	now := s.now()
 	job := &KnowledgeJob{
-		ID:        jobID,
-		UserID:    strings.TrimSpace(req.UserID),
-		TenantID:  strings.TrimSpace(req.TenantID),
-		Query:     strings.TrimSpace(req.Query),
-		Kind:      kind,
-		Status:    JobStatusPending,
-		Stage:     "queued",
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:         jobID,
+		UserID:     strings.TrimSpace(req.UserID),
+		TenantID:   strings.TrimSpace(req.TenantID),
+		ProviderID: strings.TrimSpace(req.ProviderID),
+		Query:      strings.TrimSpace(req.Query),
+		Kind:       kind,
+		Status:     JobStatusPending,
+		Stage:      "queued",
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
-	runCtx, cancel := context.WithCancel(context.Background())
+	runCtx, cancel := context.WithCancel(applyKnowledgeProviderRouting(context.Background(), req.ProviderID))
 	s.mu.Lock()
 	s.jobs[job.ID] = job
 	s.cancelFuncs[job.ID] = cancel
@@ -780,14 +791,15 @@ func (s *Service) ListJobsForUser(userID, tenantID string, activeOnly bool) ([]K
 			continue
 		}
 		summaries = append(summaries, KnowledgeJobSummary{
-			ID:        job.ID,
-			JobID:     job.ID,
-			Query:     job.Query,
-			Kind:      job.Kind,
-			Status:    job.Status,
-			Progress:  job.Progress,
-			Stage:     job.Stage,
-			UpdatedAt: job.UpdatedAt,
+			ID:         job.ID,
+			JobID:      job.ID,
+			ProviderID: job.ProviderID,
+			Query:      job.Query,
+			Kind:       job.Kind,
+			Status:     job.Status,
+			Progress:   job.Progress,
+			Stage:      job.Stage,
+			UpdatedAt:  job.UpdatedAt,
 		})
 	}
 	sort.SliceStable(summaries, func(i, j int) bool {
@@ -921,7 +933,7 @@ func (s *Service) runJob(ctx context.Context, jobID string, req CreateJobRequest
 	switch normalizeJobKind(req.Kind) {
 	case JobKindLint:
 		var lintReport *KnowledgeLintReport
-		lintReport, err = s.Lint(ctx, LintRequest{TargetPaths: append([]string(nil), req.TargetPaths...)})
+		lintReport, err = s.Lint(ctx, LintRequest{TargetPaths: append([]string(nil), req.TargetPaths...), ProviderID: req.ProviderID})
 		if lintReport != nil {
 			report = &KnowledgeJobReport{Kind: JobKindLint, Lint: lintReport}
 		}

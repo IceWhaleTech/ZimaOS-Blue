@@ -17,6 +17,8 @@ export default mergeHarnessLocale('ru-RU', {
     previous: 'Назад',
     close: 'Закрыть',
     backToTop: 'Наверх',
+    showPassword: 'Показать пароль',
+    hidePassword: 'Скрыть пароль',
     comingSoon: 'Скоро',
     clear: 'Очистить',
     copy: 'Копировать',
@@ -567,7 +569,7 @@ export default mergeHarnessLocale('ru-RU', {
     deepResearchObjectMap: 'Карта объектов',
     deepResearchBackToTask: 'Посмотреть результат',
     taskLoop: 'Цикл Ralph',
-    alwaysOn: 'Всегда включено',
+    alwaysOn: 'Авто',
     deepResearchHoverDescription:
       'Zapustite strukturirovannyy issledovatelskiy protsess s polucheniem dannykh, proverkoy, otslezhivaemymi zapuskami i svyazannymi detalyami zapuskov.',
     analyzeReportShortcutTitle: 'Аналитический отчет',
@@ -792,12 +794,12 @@ export default mergeHarnessLocale('ru-RU', {
       unavailableTitle: 'Ни один поставщик ИИ сейчас недоступен',
       unavailableDescription:
         'Настроенные вами провайдеры в настоящее время недоступны. Проверьте подключение, ключ API или статус модели в настройках и повторите попытку.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Временная проблема с провайдером',
+      recoverableTitle: 'Провайдеру требуется внимание',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'У настроенного провайдера возникла временная ошибка. Проверьте ниже последнюю причину, сбросьте провайдера и попробуйте снова.',
+      retry: 'Повторить попытку с провайдером',
+      reviewSingle: 'Проверить провайдера',
       providerSummary: 'Настроенные поставщики, требующие внимания',
       moreProviders: '{count} также требуют внимания и других поставщиков.',
       statusActive: 'Активный',
@@ -874,7 +876,7 @@ export default mergeHarnessLocale('ru-RU', {
     execDirectoryApprovalTimeout:
       'Выполнение команды заблокировано, так как истекло время ожидания одобрения каталога. Одобрите каталог и попробуйте снова.',
     providerActive: 'Провайдер активен и готов.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Провайдеру требуется внимание. Нажмите, чтобы проверить настройки.',
     providerPending: 'Статус провайдера проверяется...',
     trialQuota: {
       remaining: 'Осталось {tokens} токенов',
@@ -1367,7 +1369,7 @@ export default mergeHarnessLocale('ru-RU', {
       loadFailed: 'Не удалось загрузить профили внешних агентов.',
       notAvailable: 'Недоступно',
       remoteAgent: 'Удаленный агент',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Встроенный профиль',
       builtinTemplate: 'Встроенный шаблон',
       customProfile: 'Пользовательский профиль',
       health: 'Здоровье',
@@ -4609,6 +4611,7 @@ export default mergeHarnessLocale('ru-RU', {
       'Auto Reply': 'Автоответ',
       Workflows: 'Рабочие процессы',
       web_query: 'Получение web',
+      research: 'Глубокое исследование',
       research_run: 'Глубокое исследование',
       research_status: 'Статус глубокого исследования',
       configuration: 'Конфигурация',
@@ -4633,6 +4636,8 @@ export default mergeHarnessLocale('ru-RU', {
       ask: 'Задает пользователю уточняющие вопросы, чтобы продолжить задачу',
       mediagen: 'Создает изображения, видео и презентации с помощью моделей ИИ',
       web_query: 'Получает и разбирает веб-страницу по URL',
+      research:
+        'Запускает глубокое исследование. Можно дождаться итогового отчета или получить ID задачи, чтобы проверить позже.',
       research_run:
         'Запускает глубокое исследование. Можно дождаться итогового отчета или получить ID задачи, чтобы проверить позже.',
       research_status:

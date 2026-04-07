@@ -6,7 +6,6 @@ import {
   STORED_SESSION_DESKTOP_STARTUP_PREVIEW_CHECK_TIMEOUT_MS,
   shouldDeferAskUserQuestionDialogOnDesktopStartup,
   shouldDeferBrowserMonitorOnDesktopStartup,
-  shouldDeferFormFillerWidgetOnDesktopStartup,
   shouldDeferLocaleEnhancementsOnDesktopStartup,
   shouldPrefetchPreviewModeOnRouterInit,
 } from '@/utils/desktopStartup'
@@ -57,12 +56,5 @@ describe('desktopStartup', () => {
     expect(shouldDeferAskUserQuestionDialogOnDesktopStartup(true, '/chat')).toBe(true)
     expect(shouldDeferAskUserQuestionDialogOnDesktopStartup(true, '/profile')).toBe(false)
     expect(shouldDeferAskUserQuestionDialogOnDesktopStartup(false, '/chat')).toBe(false)
-  })
-
-  it('defers the form filler widget only for desktop chat startup routes', () => {
-    expect(shouldDeferFormFillerWidgetOnDesktopStartup(true, '/')).toBe(true)
-    expect(shouldDeferFormFillerWidgetOnDesktopStartup(true, '/chat')).toBe(true)
-    expect(shouldDeferFormFillerWidgetOnDesktopStartup(true, '/profile')).toBe(false)
-    expect(shouldDeferFormFillerWidgetOnDesktopStartup(false, '/chat')).toBe(false)
   })
 })

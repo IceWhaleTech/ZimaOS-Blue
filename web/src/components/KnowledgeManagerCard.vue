@@ -80,7 +80,10 @@ async function startJob(kind: 'compile' | 'lint') {
 }
 
 function openKnowledge() {
-  void router.push('/operations/knowledge')
+  void router.push({
+    name: 'Evolution',
+    query: { pane: 'knowledge' },
+  })
 }
 
 function formatGeneratedAt(value?: string) {

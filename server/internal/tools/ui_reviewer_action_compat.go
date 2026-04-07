@@ -5,6 +5,40 @@ import (
 	"strings"
 )
 
+var uiReviewImageCompatKeys = []string{
+	"image",
+	"image_base64",
+	"imageBase64",
+	"screenshot",
+	"screenshot_base64",
+	"screenshotBase64",
+	"base64",
+}
+
+func firstUIReviewCompatURL(args map[string]interface{}) string {
+	return firstCompatString(args, "url", "href")
+}
+
+func firstUIReviewCompatImage(args map[string]interface{}) string {
+	return firstCompatString(args, uiReviewImageCompatKeys...)
+}
+
+// NormalizeUIReviewCompatArgs lifts common UI-review aliases onto canonical keys.
+func NormalizeUIReviewCompatArgs(args map[string]interface{}) {
+	if args == nil {
+		return
+	}
+	if action := firstCompatString(args, "action", "op", "operation", "command"); action != "" {
+		args["action"] = action
+	}
+	if url := firstUIReviewCompatURL(args); url != "" {
+		args["url"] = url
+	}
+	if image := firstUIReviewCompatImage(args); image != "" {
+		args["image"] = image
+	}
+}
+
 // CanonicalizeUIReviewAction normalizes legacy or natural-language UI review
 // actions to the canonical runtime actions.
 func CanonicalizeUIReviewAction(action string, url string, image string) (string, error) {

@@ -16,6 +16,8 @@ export default mergeHarnessLocale('nb-NO', {
     next: 'Neste',
     previous: 'Forrige',
     close: 'Lukk',
+    showPassword: 'Vis passord',
+    hidePassword: 'Skjul passord',
     comingSoon: 'Kommer snart',
     clear: 'Klart',
     copy: 'Kopier',
@@ -563,7 +565,7 @@ export default mergeHarnessLocale('nb-NO', {
     deepResearchObjectMap: 'Objektkart',
     deepResearchBackToTask: 'Vis resultat',
     taskLoop: 'Ralph-løkke',
-    alwaysOn: 'Alltid på',
+    alwaysOn: 'Automatisk',
     deepResearchHoverDescription:
       'Start en strukturert forskningsflyt med innhenting, verifisering, sporbare kjoringer og koblede kjoringsdetaljer.',
     analyzeReportShortcutTitle: 'Analyserapport',
@@ -787,12 +789,12 @@ export default mergeHarnessLocale('nb-NO', {
       unavailableTitle: 'Ingen AI-leverandør er tilgjengelig akkurat nå',
       unavailableDescription:
         'Dine konfigurerte leverandører er for øyeblikket utilgjengelige. Sjekk deres tilkobling, API-nøkkel eller modellstatus i Innstillinger og prøv på nytt.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Midlertidig leverandørproblem',
+      recoverableTitle: 'Leverandøren trenger oppmerksomhet',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Den konfigurerte leverandøren traff en midlertidig feil. Se den nyeste årsaken nedenfor, tilbakestill leverandøren og prøv igjen.',
+      retry: 'Prøv leverandøren igjen',
+      reviewSingle: 'Se gjennom leverandøren',
       providerSummary: 'Konfigurerte leverandører som trenger oppmerksomhet',
       moreProviders: '{count} flere leverandører trenger også oppmerksomhet.',
       statusActive: 'Aktiv',
@@ -867,7 +869,7 @@ export default mergeHarnessLocale('nb-NO', {
     execDirectoryApprovalTimeout:
       'Kjøring av kommando ble blokkert fordi mappegodkjenningen gikk ut på tid. Godkjenn mappen og prøv igjen.',
     providerActive: 'Leverandøren er aktiv og klar.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Leverandøren trenger oppmerksomhet. Klikk for å kontrollere innstillingene.',
     providerPending: 'Leverandørstatus blir sjekket...',
     trialQuota: {
       remaining: '{tokens} tokens gjenstår',
@@ -1360,7 +1362,7 @@ export default mergeHarnessLocale('nb-NO', {
       loadFailed: 'Kunne ikke laste inn eksterne agentprofiler.',
       notAvailable: 'Ikke tilgjengelig',
       remoteAgent: 'Ekstern agent',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Innebygd profil',
       builtinTemplate: 'Innebygd mal',
       customProfile: 'Egendefinert profil',
       health: 'Helse',
@@ -4590,6 +4592,7 @@ export default mergeHarnessLocale('nb-NO', {
       'Auto Reply': 'Autosvar',
       Workflows: 'Arbeidsflyter',
       web_query: 'Webhenting',
+      research: 'Dyptgående forskning',
       research_run: 'Dyptgående forskning',
       research_status: 'Status for dyptgående forskning',
       configuration: 'Konfigurasjon',
@@ -4614,6 +4617,8 @@ export default mergeHarnessLocale('nb-NO', {
       ask: 'Stiller brukeren oppfolgingssporsmal som trengs for a fortsette oppgaven',
       mediagen: 'Genererer bilder, videoer og presentasjoner med AI-modeller',
       web_query: 'Henter og parser en nettside via URL',
+      research:
+        'Kjører en arbeidsflyt for dyptgående forskning. Du kan vente på den endelige rapporten eller få en jobb-ID for å sjekke senere.',
       research_run:
         'Kjører en arbeidsflyt for dyptgående forskning. Du kan vente på den endelige rapporten eller få en jobb-ID for å sjekke senere.',
       research_status:

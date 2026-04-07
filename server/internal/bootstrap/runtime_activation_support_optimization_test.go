@@ -44,6 +44,25 @@ func TestBindHarnessRuntimeOptimizationWiresControllerTriggerer(t *testing.T) {
 	}
 }
 
+func TestBuildOptimizationFollowupMetadata_PreservesProviderID(t *testing.T) {
+	metadata := buildOptimizationFollowupMetadata(
+		harness.OptimizationTrigger{
+			EvalRunID:           "parent-eval-run",
+			OptimizationSurface: harness.OptimizationSurfaceSkillDefinition,
+			Metadata: map[string]interface{}{
+				"provider_id": "openai-prod",
+			},
+		},
+		"optimization-run-1",
+		map[string]interface{}{"candidate_id": "candidate-browser-optimized"},
+		&harness.SkillRevision{ID: "revision-1"},
+	)
+
+	if got := strings.TrimSpace(asStringForOptimizationTest(metadata["provider_id"])); got != "openai-prod" {
+		t.Fatalf("provider_id = %q, want openai-prod", got)
+	}
+}
+
 func TestHarnessOptimizationTriggererExecutesPreparedRunnerAndPersistsTranscript(t *testing.T) {
 	bin := buildOptimizationTestRunnerBinary(t)
 	root := filepath.Join(t.TempDir(), "agentcore-runner")

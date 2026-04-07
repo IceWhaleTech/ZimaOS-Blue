@@ -16,6 +16,8 @@ export default mergeHarnessLocale('nl-NL', {
     next: 'Volgende',
     previous: 'Vorige',
     close: 'Sluiten',
+    showPassword: 'Wachtwoord tonen',
+    hidePassword: 'Wachtwoord verbergen',
     comingSoon: 'Binnenkort beschikbaar',
     clear: 'Duidelijk',
     copy: 'Kopieer',
@@ -564,7 +566,7 @@ export default mergeHarnessLocale('nl-NL', {
     deepResearchObjectMap: 'Objectkaart',
     deepResearchBackToTask: 'Resultaat bekijken',
     taskLoop: 'Ralph-lus',
-    alwaysOn: 'Altijd aan',
+    alwaysOn: 'Automatisch',
     deepResearchHoverDescription:
       'Start een gestructureerde onderzoeksworkflow met ophalen, verificatie, traceerbare runs en gekoppelde rundetails.',
     analyzeReportShortcutTitle: 'Analyserapport',
@@ -790,12 +792,12 @@ export default mergeHarnessLocale('nl-NL', {
       unavailableTitle: 'Er is momenteel geen AI-provider beschikbaar',
       unavailableDescription:
         'Uw geconfigureerde providers zijn momenteel niet beschikbaar. Controleer de verbinding, API-sleutel of modelstatus in Instellingen en probeer het opnieuw.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Tijdelijk probleem met de provider',
+      recoverableTitle: 'Provider heeft aandacht nodig',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Je geconfigureerde provider kreeg een tijdelijke fout. Bekijk hieronder de nieuwste reden, reset de provider en probeer het daarna opnieuw.',
+      retry: 'Provider opnieuw proberen',
+      reviewSingle: 'Provider controleren',
       providerSummary: 'Geconfigureerde providers hebben aandacht nodig',
       moreProviders: '{count} meer aanbieders hebben ook aandacht nodig.',
       statusActive: 'Actief',
@@ -875,7 +877,7 @@ export default mergeHarnessLocale('nl-NL', {
     execDirectoryApprovalTimeout:
       'De opdrachtuitvoering is geblokkeerd omdat de mapgoedkeuring is verlopen. Keur de map goed en probeer het opnieuw.',
     providerActive: 'Provider is actief en klaar.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Provider heeft aandacht nodig. Klik om de instellingen te controleren.',
     providerPending: 'Providerstatus wordt gecontroleerd...',
     trialQuota: {
       remaining: '{tokens} tokens resterend',
@@ -1373,7 +1375,7 @@ export default mergeHarnessLocale('nl-NL', {
       loadFailed: 'Kan externe agentprofielen niet laden.',
       notAvailable: 'Niet beschikbaar',
       remoteAgent: 'Agent op afstand',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Ingebouwd profiel',
       builtinTemplate: 'Ingebouwde sjabloon',
       customProfile: 'Aangepast profiel',
       health: 'Gezondheid',
@@ -4620,6 +4622,7 @@ export default mergeHarnessLocale('nl-NL', {
       'Auto Reply': 'Automatisch antwoord',
       Workflows: 'Workflows',
       web_query: 'Web ophalen',
+      research: 'Diepgaand onderzoek',
       research_run: 'Diepgaand onderzoek',
       research_status: 'Status van diepgaand onderzoek',
       configuration: 'Configuratie',
@@ -4645,6 +4648,8 @@ export default mergeHarnessLocale('nl-NL', {
       ask: 'Stelt de gebruiker vervolgvraag om de taak voort te zetten',
       mediagen: 'Genereert afbeeldingen, videos en presentaties met AI-modellen',
       web_query: 'Haalt een webpagina op en parseert die via URL',
+      research:
+        'Start diepgaand onderzoek. Je kunt wachten op het eindrapport of een taak-ID krijgen om later te controleren.',
       research_run:
         'Start diepgaand onderzoek. Je kunt wachten op het eindrapport of een taak-ID krijgen om later te controleren.',
       research_status:

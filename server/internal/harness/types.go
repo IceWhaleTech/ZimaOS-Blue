@@ -56,6 +56,7 @@ type Run struct {
 	SessionID      string                 `json:"session_id,omitempty"`
 	AgentID        string                 `json:"agent_id,omitempty"`
 	Goal           string                 `json:"goal"`
+	ProviderID     string                 `json:"provider_id,omitempty"`
 	Model          string                 `json:"model,omitempty"`
 	Result         string                 `json:"result,omitempty"`
 	Error          string                 `json:"error,omitempty"`
@@ -89,6 +90,7 @@ type RunSpec struct {
 	GroupItemID    string                 `json:"group_item_id,omitempty"`
 	AttemptIndex   int                    `json:"attempt_index,omitempty"`
 	AgentID        string                 `json:"agent_id,omitempty"`
+	ProviderID     string                 `json:"provider_id,omitempty"`
 	Model          string                 `json:"model,omitempty"`
 	WorkspaceRoot  string                 `json:"workspace_root,omitempty"`
 	SandboxMode    string                 `json:"sandbox_mode,omitempty"`

@@ -374,7 +374,7 @@ export function clearAllState(): void {
   clearStoredAuthSession()
 }
 
-const routes: RouteRecordRaw[] = [
+export const routes: RouteRecordRaw[] = [
   {
     path: '/',
     redirect: '/chat',
@@ -460,7 +460,13 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/operations/knowledge',
     name: 'Knowledge',
-    component: () => import('@/views/KnowledgeView.vue'),
+    redirect: (to) => ({
+      name: 'Evolution',
+      query: {
+        pane: 'knowledge',
+        ...to.query,
+      },
+    }),
     meta: { requiresAuth: true, permission: PagePermissions.AUTOMATION },
   },
   {
@@ -519,9 +525,7 @@ const routes: RouteRecordRaw[] = [
   },
   {
     path: '/form-filler',
-    name: 'FormFiller',
-    component: () => import('@/views/FormFillerView.vue'),
-    meta: { requiresAuth: true },
+    redirect: { name: 'Chat' },
   },
   {
     path: '/users',

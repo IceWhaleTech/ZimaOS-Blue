@@ -38,6 +38,7 @@ type Job struct {
 	ConversationID     string                 `json:"conversation_id,omitempty"`
 	UserID             string                 `json:"user_id,omitempty"`
 	TenantID           string                 `json:"tenant_id,omitempty"`
+	ProviderID         string                 `json:"provider_id,omitempty"`
 	Query              string                 `json:"query"`
 	RetryContext       string                 `json:"retry_context,omitempty"`
 	RetryFeedback      map[string]interface{} `json:"retry_feedback,omitempty"`
@@ -192,6 +193,7 @@ type CreateJobRequest struct {
 	UserID         string                 `json:"user_id,omitempty"`
 	TenantID       string                 `json:"tenant_id,omitempty"`
 	ConversationID string                 `json:"conversation_id,omitempty"`
+	ProviderID     string                 `json:"provider_id,omitempty"`
 	Query          string                 `json:"query"`
 	RetryContext   string                 `json:"retry_context,omitempty"`
 	RetryFeedback  map[string]interface{} `json:"retry_feedback,omitempty"`

@@ -18,6 +18,8 @@ export default mergeHarnessLocale('ca-ES', {
     previous: 'Anterior',
     close: 'Tancar',
     backToTop: 'Torna a dalt',
+    showPassword: 'Mostra la contrasenya',
+    hidePassword: 'Amaga la contrasenya',
     comingSoon: 'Aviat',
     clear: 'Clar',
     copy: 'Còpia',
@@ -567,7 +569,7 @@ export default mergeHarnessLocale('ca-ES', {
     deepResearchObjectMap: "Mapa d'objectes",
     deepResearchBackToTask: 'Veure resultat',
     taskLoop: 'Bucle Ralph',
-    alwaysOn: 'Sempre actiu',
+    alwaysOn: 'Automàtic',
     deepResearchHoverDescription:
       "Inicia un flux de recerca estructurat amb recuperacio, verificacio, execucions traçables i detalls d'execucio enllaçats.",
     analyzeReportShortcutTitle: "Informe d'anàlisi",
@@ -793,12 +795,12 @@ export default mergeHarnessLocale('ca-ES', {
       unavailableTitle: "No hi ha cap proveïdor d'IA disponible en aquests moments",
       unavailableDescription:
         "Els vostres proveïdors configurats no estan disponibles actualment. Comproveu la connexió, la clau d'API o l'estat del model a Configuració i torneu-ho a provar.",
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Incidència temporal del proveïdor',
+      recoverableTitle: 'El proveïdor necessita atenció',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'El proveïdor configurat ha trobat un error temporal. Reviseu el motiu més recent a continuació, reinicieu el proveïdor i torneu-ho a provar.',
+      retry: 'Torna a provar el proveïdor',
+      reviewSingle: 'Revisa el proveïdor',
       providerSummary: 'Proveïdors configurats que necessiten atenció',
       moreProviders: '{count} més proveïdors també necessiten atenció.',
       statusActive: 'Actius',
@@ -877,7 +879,7 @@ export default mergeHarnessLocale('ca-ES', {
     execDirectoryApprovalTimeout:
       "L'execució de l'ordre s'ha bloquejat perquè l'aprovació del directori ha expirat. Aprova el directori i torna-ho a provar.",
     providerActive: 'El proveïdor està actiu i preparat.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'El proveïdor necessita atenció. Feu clic per revisar la configuració.',
     providerPending: "S'està comprovant l'estat del proveïdor...",
     trialQuota: {
       remaining: '{tokens} tokens restants',
@@ -1373,7 +1375,7 @@ export default mergeHarnessLocale('ca-ES', {
       loadFailed: "No s'han pogut carregar els perfils d'agent extern.",
       notAvailable: 'No disponible',
       remoteAgent: 'Agent remot',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Perfil integrat',
       builtinTemplate: 'Plantilla integrada',
       customProfile: 'Perfil personalitzat',
       health: 'Salut',
@@ -4635,6 +4637,7 @@ export default mergeHarnessLocale('ca-ES', {
       'Auto Reply': 'Resposta automàtica',
       Workflows: 'Fluxos de treball',
       web_query: 'Captura web',
+      research: 'Recerca profunda',
       research_run: 'Recerca profunda',
       research_status: 'Estat de la recerca profunda',
       configuration: 'Configuració',
@@ -4659,6 +4662,8 @@ export default mergeHarnessLocale('ca-ES', {
       ask: 'Fa preguntes de seguiment a l usuari per continuar la tasca',
       mediagen: 'Genera imatges, videos i presentacions amb models d IA',
       web_query: 'Obte i analitza una pagina web per URL',
+      research:
+        "Executa el flux de treball de recerca profunda. Pots esperar l'informe final o obtenir un ID de tasca per consultar-lo més tard.",
       research_run:
         "Executa el flux de treball de recerca profunda. Pots esperar l'informe final o obtenir un ID de tasca per consultar-lo més tard.",
       research_status: "Obtén l'estat actual o l'informe final d'una tasca de recerca profunda.",

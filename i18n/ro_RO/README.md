@@ -72,9 +72,10 @@ Compilat nativ în Go — fără interpretor, fără VM, fără overhead. Ruleaz
 | `status` timp de execuție (cel mai bun din 3) | **< 0.01 s** | 5.98 s |
 | `help` RSS maxim | **~10 MB** | ~394 MB |
 | `status` RSS maxim | **~15 MB** | ~1.52 GB |
+| memorie idle `gateway run` după pornire la rece | **~19 MB** | - |
 | Dependențe de rulare | **Niciuna** | Node.js 18+ |
 
-> Testat pe macOS arm64, aceeași gazdă, cel mai bun din 3 rulări. Feb 2026.
+> Rândurile CLI de mai sus reprezintă microbenchmark-ul istoric `help` / `status` pe aceeași gazdă. Noul rând `gateway run` arată memoria reală în idle după pornirea la rece, măsurată pe macOS arm64 prin `vmmap Physical footprint` după stabilizarea pornirii. Feb-apr 2026.
 
 ### Go pur, orice dispozitiv
 

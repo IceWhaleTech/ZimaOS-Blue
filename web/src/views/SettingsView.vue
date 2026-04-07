@@ -16,7 +16,6 @@ import NetworkSettings from '@/components/settings/NetworkSettings.vue'
 import UpdateSettings from '@/components/settings/UpdateSettings.vue'
 import ExternalAgentsSection from '@/components/settings/ExternalAgentsSection.vue'
 import MemoryManager from '@/components/MemoryManager.vue'
-import KnowledgeManagerCard from '@/components/KnowledgeManagerCard.vue'
 import BackupManager from '@/components/BackupManager.vue'
 import { proxyCacheApi, type PrunerConfig } from '@/api/proxyCache'
 import { useTauri } from '@/composables/useTauri'
@@ -1884,23 +1883,6 @@ onUnmounted(() => {
               :memory-recall-mode="settingsStore.memoryRecallMode"
               @status-change="showSaveStatus"
               @memory-recall-mode-change="handleMemoryRecallModeChange"
-            />
-          </section>
-
-          <section class="settings-module">
-            <div class="settings-module__header">
-              <div>
-                <span class="settings-module__eyebrow">{{
-                  t('settings.knowledgeSurface', '知识空间')
-                }}</span>
-                <h2 class="settings-module__title">
-                  {{ t('settings.knowledgeManagement', '知识维护与编译') }}
-                </h2>
-              </div>
-            </div>
-            <KnowledgeManagerCard
-              class="settings-embedded-section mx-auto w-full max-w-6xl"
-              @status-change="showSaveStatus"
             />
           </section>
 

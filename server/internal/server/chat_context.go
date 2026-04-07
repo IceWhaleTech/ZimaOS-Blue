@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
@@ -127,46 +128,66 @@ var trimPolicyDefaultPruneSettings = trimPolicyPruneSettings{
 // Reference patterns for Chinese and English.
 // Detect pronouns, demonstratives, and continuity markers.
 var (
-	reChineseRef = regexp.MustCompile(
-		`(?:这个|那个|刚才|之前|上面|上次|前面|它们?|他们?|她们?|` +
-			`继续|然后|接着|还有|另外|再说|也是|同样|` +
-			`你说的|你提到|刚说|上一个|那个方案|这个方案|` +
-			`为什么|怎么回事|什么意思|` +
-			`对了|不过|但是|所以|因此)`)
-
-	reEnglishRef = regexp.MustCompile(
-		`(?i)\b(?:` +
-			`this|that|these|those|it|they|them|its|their|` +
-			`earlier|before|previous|previously|above|` +
-			`continue|also|furthermore|moreover|` +
-			`you said|you mentioned|as I said|the one|` +
-			`why did|what do you mean|go on|keep going|` +
-			`same|again|another|next)\b`)
-
-	reContinuation = regexp.MustCompile(
-		`(?i)^(继续|go on|keep going|continue|接着说|然后呢|next|more)\s*[.?!？。！]*$`)
+	reChineseRef               *regexp.Regexp
+	reEnglishRef               *regexp.Regexp
+	reContinuation             *regexp.Regexp
+	reChineseEllipsisRef       *regexp.Regexp
+	reMemoryCue                *regexp.Regexp
+	reTopicSwitchCue           *regexp.Regexp
+	chatContextReferenceOnce   sync.Once
+	chatContextMemoryCueOnce   sync.Once
+	chatContextTopicSwitchOnce sync.Once
 
 	// Chinese elliptical follow-ups are often short and omit explicit pronouns,
 	// e.g. "ZIMAOS上呢". Treat them as context-dependent questions.
-	reChineseEllipsisRef = regexp.MustCompile(
-		`(?i)^[\p{Han}A-Za-z0-9_\-\s]{1,32}(?:上|里|中)?呢[？?]?$`)
-
-	// Memory-intent hints: user explicitly asks for remembered preferences/facts.
-	reMemoryCue = regexp.MustCompile(
-		`(?i)(?:\bremember\b|\bmemory\b|\bmemories\b|\bpreference\b|\bprofile\b|` +
-			`\bcapability\b|\bcapabilities\b|\bsession\s*query\b|\bquery\s*sessions?\b|\bas i said\b|` +
-			`记得|记住|记忆|你还记得|我喜欢|我的偏好|之前说过|个人资料|习惯|会话查询|查询能力|工具能力|能力偏好)`)
-
-	// Topic-switch cues that explicitly ask to stop using prior discussion as
-	// continuation context in the current session.
-	reTopicSwitchCue = regexp.MustCompile(
-		`(?i)(?:` +
-			`换个话题|切换话题|换个问题|另起一个问题|重新开始|从头开始|先不说这个|` +
-			`忽略之前|忽略前面|抛开之前|我们聊点别的|聊点别的|` +
-			`new topic|change (?:the )?topic|switch (?:to )?(?:a )?new topic|` +
-			`let'?s talk about something else|ignore (?:the )?previous|` +
-			`forget (?:the )?previous|start over|from scratch)`)
 )
+
+func ensureChatContextReferenceRegexes() {
+	chatContextReferenceOnce.Do(func() {
+		reChineseRef = regexp.MustCompile(
+			`(?:这个|那个|刚才|之前|上面|上次|前面|它们?|他们?|她们?|` +
+				`继续|然后|接着|还有|另外|再说|也是|同样|` +
+				`你说的|你提到|刚说|上一个|那个方案|这个方案|` +
+				`为什么|怎么回事|什么意思|` +
+				`对了|不过|但是|所以|因此)`)
+
+		reEnglishRef = regexp.MustCompile(
+			`(?i)\b(?:` +
+				`this|that|these|those|it|they|them|its|their|` +
+				`earlier|before|previous|previously|above|` +
+				`continue|also|furthermore|moreover|` +
+				`you said|you mentioned|as I said|the one|` +
+				`why did|what do you mean|go on|keep going|` +
+				`same|again|another|next)\b`)
+
+		reContinuation = regexp.MustCompile(
+			`(?i)^(继续|go on|keep going|continue|接着说|然后呢|next|more)\s*[.?!？。！]*$`)
+
+		reChineseEllipsisRef = regexp.MustCompile(
+			`(?i)^[\p{Han}A-Za-z0-9_\-\s]{1,32}(?:上|里|中)?呢[？?]?$`)
+	})
+}
+
+func ensureChatContextMemoryCueRegex() {
+	chatContextMemoryCueOnce.Do(func() {
+		reMemoryCue = regexp.MustCompile(
+			`(?i)(?:\bremember\b|\bmemory\b|\bmemories\b|\bpreference\b|\bprofile\b|` +
+				`\bcapability\b|\bcapabilities\b|\bsession\s*query\b|\bquery\s*sessions?\b|\bas i said\b|` +
+				`记得|记住|记忆|你还记得|我喜欢|我的偏好|之前说过|个人资料|习惯|会话查询|查询能力|工具能力|能力偏好)`)
+	})
+}
+
+func ensureChatContextTopicSwitchRegex() {
+	chatContextTopicSwitchOnce.Do(func() {
+		reTopicSwitchCue = regexp.MustCompile(
+			`(?i)(?:` +
+				`换个话题|切换话题|换个问题|另起一个问题|重新开始|从头开始|先不说这个|` +
+				`忽略之前|忽略前面|抛开之前|我们聊点别的|聊点别的|` +
+				`new topic|change (?:the )?topic|switch (?:to )?(?:a )?new topic|` +
+				`let'?s talk about something else|ignore (?:the )?previous|` +
+				`forget (?:the )?previous|start over|from scratch)`)
+	})
+}
 
 // MemoryRecallReason indicates why memory recall was triggered or skipped.
 type MemoryRecallReason string
@@ -499,6 +520,7 @@ func classifyContext(userMessage string, messageCount int, isAgentMode, isRegene
 
 // hasReference checks if the message contains reference/continuity markers.
 func hasReference(msg string) bool {
+	ensureChatContextReferenceRegexes()
 	return reChineseRef.MatchString(msg) ||
 		reChineseEllipsisRef.MatchString(msg) ||
 		reEnglishRef.MatchString(msg) ||
@@ -506,6 +528,7 @@ func hasReference(msg string) bool {
 }
 
 func hasMemoryCue(msg string) bool {
+	ensureChatContextMemoryCueRegex()
 	return reMemoryCue.MatchString(msg)
 }
 
@@ -514,6 +537,7 @@ func hasTopicSwitchCue(msg string) bool {
 	if trimmed == "" {
 		return false
 	}
+	ensureChatContextTopicSwitchRegex()
 	return reTopicSwitchCue.MatchString(trimmed)
 }
 

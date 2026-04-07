@@ -2,11 +2,8 @@ package skillmarket
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 )
-
-var skillIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 
 // NormalizeSkillID converts a human-provided skill identifier into a safe slug.
 func NormalizeSkillID(raw string) string {
@@ -22,6 +19,7 @@ func NormalizeSkillID(raw string) string {
 
 // ValidateSkillID rejects identifiers that could escape installation roots or create ambiguous paths.
 func ValidateSkillID(raw string) (string, error) {
+	ensureSkillMarketIdentifierRegex()
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return "", fmt.Errorf("skill id is required")

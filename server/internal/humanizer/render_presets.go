@@ -1,11 +1,8 @@
 package humanizer
 
 import (
-	"regexp"
 	"strings"
 )
-
-var imageTextRe = regexp.MustCompile(`\(image: [^)]*\)`)
 
 // --- Discord ---
 
@@ -178,6 +175,7 @@ func RenderPlain(ir IR) string {
 // Emojis are stripped. Links show only the label text.
 // Bare URLs and table separators are stripped.
 func RenderVoice(ir IR) string {
+	ensureHumanizerRegexes()
 	text := ir.Text
 	if text == "" {
 		return ""

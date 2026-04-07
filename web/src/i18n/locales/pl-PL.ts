@@ -16,6 +16,8 @@ export default mergeHarnessLocale('pl-PL', {
     next: 'Dalej',
     previous: 'Wstecz',
     close: 'Zamknij',
+    showPassword: 'Pokaż hasło',
+    hidePassword: 'Ukryj hasło',
     comingSoon: 'Już wkrótce',
     clear: 'Jasne',
     copy: 'Kopiuj',
@@ -563,7 +565,7 @@ export default mergeHarnessLocale('pl-PL', {
     deepResearchObjectMap: 'Mapa obiektów',
     deepResearchBackToTask: 'Zobacz wynik',
     taskLoop: 'Pętla Ralph',
-    alwaysOn: 'Zawsze włączone',
+    alwaysOn: 'Automat',
     deepResearchHoverDescription:
       'Uruchom uporzadkowany proces badawczy z pobieraniem, weryfikacja, sledzalnymi uruchomieniami i powiazanymi szczegolami uruchomien.',
     analyzeReportShortcutTitle: 'Raport analityczny',
@@ -787,12 +789,12 @@ export default mergeHarnessLocale('pl-PL', {
       unavailableTitle: 'Żaden dostawca AI nie jest obecnie dostępny',
       unavailableDescription:
         'Skonfigurowani dostawcy są obecnie niedostępni. Sprawdź ich połączenie, klucz API lub stan modelu w Ustawieniach, a następnie spróbuj ponownie.',
-      recoverableEyebrow: 'Temporary provider issue',
-      recoverableTitle: 'Provider needs attention',
+      recoverableEyebrow: 'Tymczasowy problem z dostawcą',
+      recoverableTitle: 'Dostawca wymaga uwagi',
       recoverableDescription:
-        'Your configured provider hit a temporary error. Review the latest reason below, reset the provider, and then try again.',
-      retry: 'Retry Provider',
-      reviewSingle: 'Review Provider',
+        'Skonfigurowany dostawca napotkał tymczasowy błąd. Sprawdź poniżej najnowszy powód, zresetuj dostawcę i spróbuj ponownie.',
+      retry: 'Spróbuj ponownie z dostawcą',
+      reviewSingle: 'Sprawdź dostawcę',
       providerSummary: 'Skonfigurowani dostawcy wymagający uwagi',
       moreProviders: '{count} więcej dostawców również wymaga uwagi.',
       statusActive: 'Aktywny',
@@ -867,7 +869,7 @@ export default mergeHarnessLocale('pl-PL', {
     execDirectoryApprovalTimeout:
       'Wykonanie polecenia zostało zablokowane, ponieważ upłynął limit czasu zatwierdzenia katalogu. Zatwierdź katalog i spróbuj ponownie.',
     providerActive: 'Dostawca jest aktywny i gotowy.',
-    providerNeedsAttention: 'Provider needs attention. Click to check settings.',
+    providerNeedsAttention: 'Dostawca wymaga uwagi. Kliknij, aby sprawdzić ustawienia.',
     providerPending: 'Trwa sprawdzanie statusu dostawcy...',
     trialQuota: {
       remaining: 'Pozostało {tokens} tokenów',
@@ -1363,7 +1365,7 @@ export default mergeHarnessLocale('pl-PL', {
       loadFailed: 'Nie udało się załadować profili agentów zewnętrznych.',
       notAvailable: 'Niedostępne',
       remoteAgent: 'Zdalny agent',
-      builtinProfile: 'Built-in profile',
+      builtinProfile: 'Wbudowany profil',
       builtinTemplate: 'Wbudowany szablon',
       customProfile: 'Profil niestandardowy',
       health: 'Zdrowie',
@@ -4607,6 +4609,7 @@ export default mergeHarnessLocale('pl-PL', {
       'Auto Reply': 'Automatyczna odpowiedź',
       Workflows: 'Przepływy pracy',
       web_query: 'Pobieranie web',
+      research: 'Dogłębne badanie',
       research_run: 'Dogłębne badanie',
       research_status: 'Status dogłębnego badania',
       configuration: 'Konfiguracja',
@@ -4632,6 +4635,8 @@ export default mergeHarnessLocale('pl-PL', {
       ask: 'Zadaje uzytkownikowi pytania uzupelniajace potrzebne do kontynuowania zadania',
       mediagen: 'Generuje obrazy, wideo i prezentacje przy uzyciu modeli AI',
       web_query: 'Pobiera i analizuje strone WWW po adresie URL',
+      research:
+        'Uruchamia dogłębne badanie. Możesz poczekać na raport końcowy albo uzyskać identyfikator zadania, aby sprawdzić je później.',
       research_run:
         'Uruchamia dogłębne badanie. Możesz poczekać na raport końcowy albo uzyskać identyfikator zadania, aby sprawdzić je później.',
       research_status: 'Pobiera bieżący status lub raport końcowy dla zadania dogłębnego badania.',

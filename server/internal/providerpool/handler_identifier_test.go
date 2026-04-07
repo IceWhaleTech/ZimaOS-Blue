@@ -77,7 +77,7 @@ func TestHandlerAddProviderRejectsInvalidProviderID(t *testing.T) {
 func TestHandlerAddProviderWithAPIKeyAutoEnablesProvider(t *testing.T) {
 	_, e := newTestProviderHandler(t)
 
-	body := `{"name":"Ready Provider","base_url":"https://example.com/v1","api_key":"sk-test"}`
+	body := `{"name":"Ready Provider","base_url":"http://127.0.0.1:1/v1","api_key":"sk-test"}`
 	req := httptest.NewRequest(http.MethodPost, "/providers", strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
@@ -99,6 +99,156 @@ func TestHandlerAddProviderWithAPIKeyAutoEnablesProvider(t *testing.T) {
 	}
 	if len(provider.APIKeys) != 1 {
 		t.Fatalf("api_keys len = %d, want 1", len(provider.APIKeys))
+	}
+}
+
+func TestHandlerAddProviderWithVerifiedRelayStartsActive(t *testing.T) {
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusNotFound, `{"error":"not found"}`
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":{"message":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses."}}`
+		case "/v1/messages":
+			return http.StatusNotFound, `{"error":"not found"}`
+		case "/v1/responses", "/responses":
+			return http.StatusBadRequest, `{"error":"invalid_request"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusBadRequest, `{"error":{"message":"Unsupported legacy protocol: /v1/chat/completions is not supported. Please use /v1/responses."}}`
+		case "/v1/responses", "/responses":
+			return http.StatusBadRequest, `{"error":"invalid_request"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	_, e := newTestProviderHandler(t)
+
+	body := `{"name":"Relay Ready","base_url":"https://relay.example.com","api_key":"sk-test"}`
+	req := httptest.NewRequest(http.MethodPost, "/providers", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+
+	var provider Provider
+	if err := json.Unmarshal(rec.Body.Bytes(), &provider); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if !provider.Enabled {
+		t.Fatalf("enabled = %v, want true", provider.Enabled)
+	}
+	if provider.Status != ProviderStatusActive {
+		t.Fatalf("status = %q, want %q", provider.Status, ProviderStatusActive)
+	}
+	if provider.APIFormat != APIFormatResponses {
+		t.Fatalf("api_format = %q, want %q", provider.APIFormat, APIFormatResponses)
+	}
+	if provider.BaseURL != "https://relay.example.com" {
+		t.Fatalf("base_url = %q, want %q", provider.BaseURL, "https://relay.example.com")
+	}
+}
+
+func TestHandlerFetchProviderModelsReturnsUpdatedProvider(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"data": [
+				{"id": "llama3.1", "object": "model", "created": 1687882411, "owned_by": "local"}
+			]
+		}`))
+	}))
+	defer server.Close()
+
+	storage, err := NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
+	handler := NewHandler(&Pool{
+		Registry:     registry,
+		Discovery:    discovery,
+		UsageTracker: NewUsageTracker(storage),
+		Storage:      storage,
+	})
+	e := echo.New()
+	handler.RegisterRoutes(e.Group("/providers"))
+
+	provider := &Provider{
+		ID:        "custom-local",
+		Name:      "Custom Local",
+		Type:      ProviderTypeCustom,
+		Location:  ProviderLocationLocal,
+		Enabled:   true,
+		Status:    ProviderStatusInactive,
+		BaseURL:   server.URL,
+		Priority:  10,
+		APIKeys:   []APIKey{{ID: "key1", Key: "test-key", Enabled: true}},
+		LastError: "stale_inactive_state",
+	}
+	if err := registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/providers/custom-local/models/fetch", nil)
+	rec := httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp struct {
+		Models []map[string]interface{} `json:"models"`
+		Total  int                      `json:"total"`
+		Provider *struct {
+			ID     string         `json:"id"`
+			Status ProviderStatus `json:"status"`
+		} `json:"provider"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if resp.Total != 1 || len(resp.Models) != 1 {
+		t.Fatalf("models total=%d len=%d, want 1", resp.Total, len(resp.Models))
+	}
+	if resp.Provider == nil {
+		t.Fatalf("expected provider in response, body=%s", rec.Body.String())
+	}
+	if resp.Provider.Status != ProviderStatusActive {
+		t.Fatalf("provider status = %q, want %q", resp.Provider.Status, ProviderStatusActive)
+	}
+
+	updated, err := registry.Get("custom-local")
+	if err != nil {
+		t.Fatalf("registry get failed: %v", err)
+	}
+	if updated.Status != ProviderStatusActive {
+		t.Fatalf("registry status = %q, want %q", updated.Status, ProviderStatusActive)
+	}
+	if updated.LastError != "" {
+		t.Fatalf("registry last_error = %q, want empty", updated.LastError)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -3096,6 +3097,48 @@ func TestRegisterFactoryToolDefinitions(t *testing.T) {
 	} {
 		if _, ok := names[name]; !ok {
 			t.Fatalf("expected definition %q to be exposed", name)
+		}
+	}
+}
+
+func TestRegisterFactoryToolDefinitions_ReusesSharedSchema(t *testing.T) {
+	registry := NewRegistry()
+	RegisterFactoryToolDefinitions(registry)
+
+	defs := registry.Definitions()
+	if len(defs) < 2 {
+		t.Fatalf("expected multiple exposed definitions, got %d", len(defs))
+	}
+
+	firstParamsPtr := reflect.ValueOf(defs[0].Parameters).Pointer()
+	firstProps, ok := defs[0].Parameters["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("first definition properties = %#v, want object", defs[0].Parameters["properties"])
+	}
+	firstPropsPtr := reflect.ValueOf(firstProps).Pointer()
+	firstInput, ok := firstProps["input"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("first input schema = %#v, want object", firstProps["input"])
+	}
+	firstInputPtr := reflect.ValueOf(firstInput).Pointer()
+
+	for _, def := range defs[1:] {
+		if got := reflect.ValueOf(def.Parameters).Pointer(); got != firstParamsPtr {
+			t.Fatalf("definition %q parameters pointer = %x, want shared %x", def.Name, got, firstParamsPtr)
+		}
+		props, ok := def.Parameters["properties"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("definition %q properties = %#v, want object", def.Name, def.Parameters["properties"])
+		}
+		if got := reflect.ValueOf(props).Pointer(); got != firstPropsPtr {
+			t.Fatalf("definition %q properties pointer = %x, want shared %x", def.Name, got, firstPropsPtr)
+		}
+		input, ok := props["input"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("definition %q input schema = %#v, want object", def.Name, props["input"])
+		}
+		if got := reflect.ValueOf(input).Pointer(); got != firstInputPtr {
+			t.Fatalf("definition %q input schema pointer = %x, want shared %x", def.Name, got, firstInputPtr)
 		}
 	}
 }
