@@ -475,6 +475,7 @@ function getCustomProviderFormatValue(provider?: Provider | null): EditableCusto
 
 let providerSelectionSeq = 0
 let lastAutoRefreshSignature = ''
+let autoRefreshInFlightSignature = ''
 
 // Refresh models when provider changes
 watch(
@@ -504,6 +505,7 @@ watch(
   async ([providerId, baseURL, apiFormat, apiFormatMode, keyCount, oauthConnected]) => {
     if (!providerId) {
       lastAutoRefreshSignature = ''
+      autoRefreshInFlightSignature = ''
       return
     }
     const signature = [
@@ -514,28 +516,41 @@ watch(
       String(keyCount),
       String(oauthConnected),
     ].join('|')
-    if (signature === lastAutoRefreshSignature) return
+    if (signature === lastAutoRefreshSignature || signature === autoRefreshInFlightSignature) return
     lastAutoRefreshSignature = signature
+    autoRefreshInFlightSignature = signature
     const seq = ++providerSelectionSeq
 
-    // Fetch provider-level models (backend unions all keys automatically)
-    await store.refreshModels(providerId)
-    if (seq !== providerSelectionSeq) return
+    try {
+      const selectedProvider = store.providers.find((item) => item.id === providerId)
+      const shouldAutoRefreshModels = selectedProvider?.metadata_mode !== 'catalog'
 
-    fetchProviderUsage(providerId)
-    const provider = store.providers.find((item) => item.id === providerId)
-    if (supportsProviderAccountStatus(provider) && provider?.api_keys?.length) {
-      store.fetchAccountStatus(providerId, getProviderAccountStatusKey(provider))
-    } else {
-      store.clearAccountStatus(providerId)
-    }
-    // Fetch OAuth quota lazily when provider is selected
-    if (provider?.oauth?.connected) {
-      store.fetchOAuthQuota(providerId)
-    }
-    // Always fetch OAuth accounts list for OAuth-capable providers
-    if (provider?.oauth) {
-      fetchOAuthAccounts(providerId)
+      // Catalog providers already return built-in models in the provider list response.
+      // Skip /models/fetch auto-refresh to avoid unnecessary repeated requests.
+      if (shouldAutoRefreshModels) {
+        await store.refreshModels(providerId)
+        if (seq !== providerSelectionSeq) return
+      }
+
+      fetchProviderUsage(providerId)
+      const provider = store.providers.find((item) => item.id === providerId)
+      if (supportsProviderAccountStatus(provider) && provider?.api_keys?.length) {
+        store.fetchAccountStatus(providerId, getProviderAccountStatusKey(provider))
+      } else {
+        store.clearAccountStatus(providerId)
+      }
+      // Fetch OAuth quota lazily when provider is selected
+      if (provider?.oauth?.connected) {
+        store.fetchOAuthQuota(providerId)
+      }
+      // Always fetch OAuth accounts list for OAuth-capable providers
+      if (provider?.oauth) {
+        fetchOAuthAccounts(providerId)
+      }
+    } finally {
+      if (autoRefreshInFlightSignature === signature) {
+        autoRefreshInFlightSignature = ''
+      }
     }
   },
   { immediate: true }
