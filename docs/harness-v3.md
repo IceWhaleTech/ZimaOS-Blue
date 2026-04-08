@@ -745,7 +745,8 @@ GitHub Actions automation is available in [selector-gate.yml](/Users/orca/Docume
 
 GitHub Actions automation is also available in [cutover-candidate-pipeline.yml](/Users/orca/Documents/GitHub/ZimaOS-Blue/.github/workflows/cutover-candidate-pipeline.yml):
 
-- `workflow_dispatch` accepts the candidate baselines plus `require_consecutive_green`, `history_limit_runs`, and history output paths
+- `workflow_dispatch` accepts the server, owner, candidate/baseline identifiers, readiness knobs, and pipeline history controls while keeping threshold policy pinned to the default release gate values
+- use `scripts/cutover_candidate_pipeline.py` when you need custom threshold experiments that would otherwise overflow GitHub's 25-input `workflow_dispatch` limit
 - one run now produces both the aggregate single-attempt pipeline report and a candidate-scoped pipeline history summary
 - the workflow downloads prior `cutover-candidate-pipeline-report` artifacts, stages canonical reports into a local history cache, and fails if the focused candidate has not reached the required consecutive-green count
 - the history summary also pulls selector and execution locale or route drift hotspots up to the candidate level, so multilingual regressions remain visible during cutover review

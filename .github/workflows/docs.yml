@@ -42,6 +42,8 @@ env:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: docs-pages
@@ -51,33 +53,74 @@ jobs:
   build:
     name: Build docs
     runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.resolve.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - name: Resolve docs configuration
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          config_path=""
+          for candidate in \
+            docusaurus.config.ts \
+            docusaurus.config.mts \
+            docusaurus.config.cts \
+            docusaurus.config.js \
+            docusaurus.config.mjs \
+            docusaurus.config.cjs
+          do
+            if [ -f "$candidate" ]; then
+              config_path="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$config_path" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "skip_reason=No Docusaurus config file found at repo root. Add docusaurus.config.* before enabling the docs workflow."
+            } >> "$GITHUB_OUTPUT"
+            {
+              echo "## Docs"
+              echo
+              echo "Skipped: No Docusaurus config file found at repo root."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "config_path=$config_path" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/configure-pages@v5
+        if: steps.resolve.outputs.skip != 'true'
 
       - uses: actions/setup-node@v4
+        if: steps.resolve.outputs.skip != 'true'
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: package-lock.json
 
       - name: Install & build docs
+        if: steps.resolve.outputs.skip != 'true'
         run: |
           npm ci
-          npm run build
+          npm run build -- --config "${{ steps.resolve.outputs.config_path }}"
 
       - name: Upload Pages artifact
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.resolve.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: build
 
   deploy:
     name: Deploy docs
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && needs.build.outputs.skip != 'true'
     needs: build
     runs-on: ubuntu-latest
     permissions:

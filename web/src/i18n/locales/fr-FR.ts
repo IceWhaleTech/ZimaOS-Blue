@@ -598,6 +598,8 @@ export default mergeHarnessLocale('fr-FR', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Afficher les détails',
     hideShortcutDetails: 'Masquer les détails',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Tâche annulée',
     waitingThinking: 'Réflexion...',
     awaitingConfirmation: 'En attente de votre confirmation pour continuer',

@@ -146,17 +146,18 @@ jobs:
           cd third_party/espeak-ng
           mkdir -p build && cd build
           if [[ "${{ matrix.goos }}" == "windows" ]]; then
-            cmake .. -DBUILD_SHARED_LIBS=OFF -G "MinGW Makefiles"
+            cmake .. -DBUILD_SHARED_LIBS=OFF -DUSE_LIBPCAUDIO=OFF -G "MinGW Makefiles"
             cmake --build . --config Release
           elif [[ "${{ matrix.cross }}" == "true" ]]; then
             cmake .. -DBUILD_SHARED_LIBS=OFF \
+              -DUSE_LIBPCAUDIO=OFF \
               -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
               -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
               -DCMAKE_SYSTEM_NAME=Linux \
               -DCMAKE_SYSTEM_PROCESSOR=aarch64
             make -j$(nproc)
           else
-            cmake .. -DBUILD_SHARED_LIBS=OFF
+            cmake .. -DBUILD_SHARED_LIBS=OFF -DUSE_LIBPCAUDIO=OFF
             make -j$(nproc)
           fi
 

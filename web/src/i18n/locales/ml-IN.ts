@@ -592,6 +592,8 @@ export default mergeHarnessLocale('ml-IN', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'വിശദാംശങ്ങൾ കാണിക്കുക',
     hideShortcutDetails: 'വിശദാംശങ്ങൾ മറയ്ക്കുക',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'പ്രവർത്തനം റദ്ദാക്കി',
     waitingThinking: 'ചിന്തിക്കുന്നു...',
     awaitingConfirmation: 'തുടരാൻ നിങ്ങളുടെ സ്ഥിരീകരണം കാത്തിരിക്കുന്നു',

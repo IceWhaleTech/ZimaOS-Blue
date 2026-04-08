@@ -584,6 +584,8 @@ export default mergeHarnessLocale('zh-TW', {
       '請做一次 UI 評估，並輸出清楚的問題清單與改進建議。\n- 頁面網址或截圖：\n- 目標裝置：桌面端 / 行動端\n- 關注點：視覺層級、互動流程、可近用性',
     showShortcutDetails: '查看說明',
     hideShortcutDetails: '收起說明',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: '任務已取消',
     waitingThinking: '思考中...',
     awaitingConfirmation: '等待你的確認以繼續',

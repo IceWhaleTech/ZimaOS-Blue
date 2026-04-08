@@ -593,6 +593,8 @@ export default mergeHarnessLocale('ga-IE', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Taispeáin sonraí',
     hideShortcutDetails: 'Folaigh sonraí',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Cuireadh an tasc ar ceal',
     waitingThinking: 'Ag smaoineamh...',
     awaitingConfirmation: 'Ag fanacht le do dheimhniú chun leanúint ar aghaidh',

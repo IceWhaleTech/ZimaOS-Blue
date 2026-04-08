@@ -593,6 +593,8 @@ export default mergeHarnessLocale('ro-RO', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Afișați detalii',
     hideShortcutDetails: 'Ascunde detaliile',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Sarcină anulată',
     waitingThinking: 'Se gândește...',
     awaitingConfirmation: 'Se așteaptă confirmarea dvs. pentru a continua',

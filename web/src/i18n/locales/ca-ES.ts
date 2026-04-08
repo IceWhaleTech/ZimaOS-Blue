@@ -595,6 +595,8 @@ export default mergeHarnessLocale('ca-ES', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Mostra els detalls',
     hideShortcutDetails: 'Amaga els detalls',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Tasca cancel·lada',
     waitingThinking: 'Pensant...',
     awaitingConfirmation: "S'està esperant la teva confirmació per continuar",

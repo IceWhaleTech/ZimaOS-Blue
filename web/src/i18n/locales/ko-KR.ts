@@ -589,6 +589,8 @@ export default mergeHarnessLocale('ko-KR', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: '세부정보 표시',
     hideShortcutDetails: '세부정보 숨기기',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: '작업이 취소되었습니다',
     waitingThinking: '생각 중...',
     awaitingConfirmation: '계속하려면 확인을 기다리는 중입니다',

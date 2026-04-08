@@ -73,71 +73,6 @@ on:
         required: false
         type: string
         default: "5"
-      min_pass_rate:
-        description: Selector minimum curated pass rate
-        required: false
-        type: string
-        default: "0.98"
-      min_critical_pass_rate:
-        description: Selector minimum critical curated pass rate
-        required: false
-        type: string
-        default: "1.0"
-      min_route_agreement_rate:
-        description: Optional selector minimum route agreement rate
-        required: false
-        type: string
-        default: ""
-      min_route_compatible_rate:
-        description: Selector minimum route compatibility rate
-        required: false
-        type: string
-        default: "0.95"
-      max_clarify_rate_delta:
-        description: Selector maximum clarify-rate delta
-        required: false
-        type: string
-        default: "0.01"
-      selector_max_critical_regressions:
-        description: Maximum selector critical regressions
-        required: false
-        type: string
-        default: "0"
-      max_pass_rate_drop:
-        description: Execution maximum pass-rate drop
-        required: false
-        type: string
-        default: "0.01"
-      execution_max_critical_regressions:
-        description: Maximum execution critical regressions
-        required: false
-        type: string
-        default: "0"
-      max_verification_pass_rate_drop:
-        description: Execution maximum verification pass-rate drop
-        required: false
-        type: string
-        default: "0"
-      max_evidence_backed_pass_rate_drop:
-        description: Execution maximum evidence-backed pass-rate drop
-        required: false
-        type: string
-        default: "0"
-      min_median_schema_byte_reduction_rate:
-        description: Budget minimum schema-byte reduction rate
-        required: false
-        type: string
-        default: "0.80"
-      max_median_latency_increase_rate:
-        description: Budget maximum latency increase rate
-        required: false
-        type: string
-        default: "0.10"
-      allowed_final_native_tools:
-        description: Comma-separated allowed final native tools
-        required: false
-        type: string
-        default: "exec"
       require_consecutive_green:
         description: Require this many consecutive green full pipeline attempts
         required: false
@@ -179,19 +114,21 @@ jobs:
       INPUT_BUDGET_BASE_EVAL_RUN_ID: ${{ github.event.inputs.budget_base_eval_run_id || '' }}
       INPUT_REQUIRED_CONSECUTIVE_RUNS: ${{ github.event.inputs.required_consecutive_runs || '2' }}
       INPUT_MAX_ASSESSMENTS: ${{ github.event.inputs.max_assessments || '5' }}
-      INPUT_MIN_PASS_RATE: ${{ github.event.inputs.min_pass_rate || '0.98' }}
-      INPUT_MIN_CRITICAL_PASS_RATE: ${{ github.event.inputs.min_critical_pass_rate || '1.0' }}
-      INPUT_MIN_ROUTE_AGREEMENT_RATE: ${{ github.event.inputs.min_route_agreement_rate || '' }}
-      INPUT_MIN_ROUTE_COMPATIBLE_RATE: ${{ github.event.inputs.min_route_compatible_rate || '0.95' }}
-      INPUT_MAX_CLARIFY_RATE_DELTA: ${{ github.event.inputs.max_clarify_rate_delta || '0.01' }}
-      INPUT_SELECTOR_MAX_CRITICAL_REGRESSIONS: ${{ github.event.inputs.selector_max_critical_regressions || '0' }}
-      INPUT_MAX_PASS_RATE_DROP: ${{ github.event.inputs.max_pass_rate_drop || '0.01' }}
-      INPUT_EXECUTION_MAX_CRITICAL_REGRESSIONS: ${{ github.event.inputs.execution_max_critical_regressions || '0' }}
-      INPUT_MAX_VERIFICATION_PASS_RATE_DROP: ${{ github.event.inputs.max_verification_pass_rate_drop || '0' }}
-      INPUT_MAX_EVIDENCE_BACKED_PASS_RATE_DROP: ${{ github.event.inputs.max_evidence_backed_pass_rate_drop || '0' }}
-      INPUT_MIN_MEDIAN_SCHEMA_BYTE_REDUCTION_RATE: ${{ github.event.inputs.min_median_schema_byte_reduction_rate || '0.80' }}
-      INPUT_MAX_MEDIAN_LATENCY_INCREASE_RATE: ${{ github.event.inputs.max_median_latency_increase_rate || '0.10' }}
-      INPUT_ALLOWED_FINAL_NATIVE_TOOLS: ${{ github.event.inputs.allowed_final_native_tools || 'exec' }}
+      # Keep advanced gate thresholds pinned to the default release policy so the
+      # manual dispatch form stays within GitHub's 25-input workflow_dispatch cap.
+      INPUT_MIN_PASS_RATE: '0.98'
+      INPUT_MIN_CRITICAL_PASS_RATE: '1.0'
+      INPUT_MIN_ROUTE_AGREEMENT_RATE: ''
+      INPUT_MIN_ROUTE_COMPATIBLE_RATE: '0.95'
+      INPUT_MAX_CLARIFY_RATE_DELTA: '0.01'
+      INPUT_SELECTOR_MAX_CRITICAL_REGRESSIONS: '0'
+      INPUT_MAX_PASS_RATE_DROP: '0.01'
+      INPUT_EXECUTION_MAX_CRITICAL_REGRESSIONS: '0'
+      INPUT_MAX_VERIFICATION_PASS_RATE_DROP: '0'
+      INPUT_MAX_EVIDENCE_BACKED_PASS_RATE_DROP: '0'
+      INPUT_MIN_MEDIAN_SCHEMA_BYTE_REDUCTION_RATE: '0.80'
+      INPUT_MAX_MEDIAN_LATENCY_INCREASE_RATE: '0.10'
+      INPUT_ALLOWED_FINAL_NATIVE_TOOLS: 'exec'
       INPUT_REQUIRE_CONSECUTIVE_GREEN: ${{ github.event.inputs.require_consecutive_green || '2' }}
       INPUT_HISTORY_LIMIT_RUNS: ${{ github.event.inputs.history_limit_runs || '10' }}
       INPUT_HISTORY_BRANCH: ${{ github.event.inputs.history_branch || '' }}

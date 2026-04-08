@@ -592,6 +592,8 @@ export default mergeHarnessLocale('nl-NL', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Details tonen',
     hideShortcutDetails: 'Details verbergen',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Taak geannuleerd',
     waitingThinking: 'Aan het nadenken...',
     awaitingConfirmation: 'Wachten op je bevestiging om door te gaan',

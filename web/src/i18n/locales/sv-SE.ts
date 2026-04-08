@@ -592,6 +592,8 @@ export default mergeHarnessLocale('sv-SE', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Visa detaljer',
     hideShortcutDetails: 'Dölj detaljer',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Uppgift avbruten',
     waitingThinking: 'Tänker...',
     awaitingConfirmation: 'Väntar på din bekräftelse för att fortsätta',

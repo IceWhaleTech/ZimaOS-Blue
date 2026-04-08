@@ -591,6 +591,8 @@ export default mergeHarnessLocale('sk-SK', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Zobraziť podrobnosti',
     hideShortcutDetails: 'Skryť podrobnosti',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Úloha zrušená',
     waitingThinking: 'Premýšľam...',
     awaitingConfirmation: 'Čaká sa na vaše potvrdenie pre pokračovanie',

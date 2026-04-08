@@ -592,6 +592,8 @@ export default mergeHarnessLocale('ja-JP', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: '詳細を表示',
     hideShortcutDetails: '詳細を隠す',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'タスクをキャンセルしました',
     waitingThinking: '考え中...',
     awaitingConfirmation: '続行するには確認をお待ちしています',

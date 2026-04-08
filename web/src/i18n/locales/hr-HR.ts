@@ -593,6 +593,8 @@ export default mergeHarnessLocale('hr-HR', {
       'Please run a UI review and return clear findings plus improvement suggestions.\n- Page URL or screenshot:\n- Target device: desktop / mobile\n- Focus areas: visual hierarchy, interaction flow, accessibility',
     showShortcutDetails: 'Prikaži detalje',
     hideShortcutDetails: 'Sakrij detalje',
+    mobileFeatureEnableSmartResume: 'Enable Smart Resume',
+    mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Zadatak otkazan',
     waitingThinking: 'Razmišljam...',
     awaitingConfirmation: 'Čeka se vaša potvrda za nastavak',
