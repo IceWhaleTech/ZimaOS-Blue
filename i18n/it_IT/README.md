@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Un runtime per agenti <strong>local-first</strong> per costruttori audaci<br>
+  Pronto all'uso · Open source · Universale · Neutrale rispetto ai fornitori
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Ispirandoci a Clawdbot, crediamo che il futuro del personal computing sarà plas
 ZimaOS Blue è la nostra risposta: un runtime e un toolkit di agenti completamente open source, verificabili, indipendenti dal fornitore e pronti per la produzione che ti consentono di fornire agenti privati ​​e self-hosted senza alcun attrito.
 
 Realizzato per sviluppatori audaci che desiderano stimolare o creare manualmente i propri agenti, Blue è progettato per le prestazioni: scritto in Go, con un ingombro di memoria di soli 19 MB. Funziona su qualsiasi x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS, ovunque sia collegato all'alimentazione.
+
+## Demo
+
+### Conversazione ed esecuzione delle attività
+
+Una rapida demo del flusso di conversazione e dell'esecuzione delle attività in Blue.
+
+[Guarda la demo](<../../docs/assets/demo.mp4>)
+
+### Integrazione dei provider LLM
+
+Una rapida demo dell'esperienza di integrazione dei provider LLM in Blue.
+
+[Guarda la demo](<../../docs/assets/demo Provider.mp4>)
+
+### Panoramica rapida - Panoramica, canali e configurazione aggiuntiva
+
+Una rapida demo che copre la panoramica del prodotto, i canali e la configurazione aggiuntiva.
+
+[Guarda la demo](<../../docs/assets/demo quickv4.mp4>)
 
 ## Perché Blue
 
@@ -196,7 +221,7 @@ In breve, mettere a punto Blue non significa "ci si sente meglio in poche chiacc
 | 31 marzo – 1 aprile 2026 | `v0.10.36` | Controllo della trascrizione, sovrapposizioni Harness, analisi dello strumento |
 | 1 aprile 2026 | `v0.10.37` | Rafforzamento del runtime, cutover Skill+Exec, perfezionamento del ripristino |
 | 2–5 aprile 2026 | `v0.10.38` | GitHub supporto, perfezionamento del mercato, miglioramenti dell'affidabilità |
-| 6–7 aprile 2026 | `v0.10.39` | Unificazione della ricerca, superfici evolutive, riduzione della memoria |
+| 6–7 aprile 2026 | `v0.10.39` | Unificazione della ricerca, superfici evolutive, riduzione dell'impronta di memoria |
 
 ## Comunità e supporto
 

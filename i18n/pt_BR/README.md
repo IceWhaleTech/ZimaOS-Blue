@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Um runtime de agentes <strong>local-first</strong> para builders ousados<br>
+  Pronto para usar · Código aberto · Universal · Neutro em relação a fornecedores
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inspirados pelo Clawdbot, acreditamos que o futuro da computação pessoal será
 ZimaOS Blue é a nossa resposta: um kit de ferramentas e tempo de execução de agente totalmente aberto, auditável, neutro em termos de fornecedor e pronto para produção, que permite enviar agentes privados e auto-hospedados sem atrito.
 
 Criado para desenvolvedores ousados ​​que desejam criar ou criar seus próprios agentes, o Blue foi projetado para desempenho: escrito em Go, com consumo de memória de apenas 19 MB. Ele roda em qualquer x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS – em qualquer lugar onde você conecte a energia.
+
+## Demos
+
+### Conversa e execução de tarefas
+
+Uma demo rápida do fluxo de conversa e da execução de tarefas no Blue.
+
+[Ver demo](<../../docs/assets/demo.mp4>)
+
+### Integração de provedores LLM
+
+Uma demo rápida da experiência de integração de provedores LLM no Blue.
+
+[Ver demo](<../../docs/assets/demo Provider.mp4>)
+
+### Visão geral rápida - Visão geral, canais e configuração adicional
+
+Uma demo rápida que cobre a visão geral do produto, os canais e a configuração adicional.
+
+[Ver demo](<../../docs/assets/demo quickv4.mp4>)
 
 ## Por que Blue
 
@@ -196,7 +221,7 @@ Resumindo, sintonizar Blue não é "parece melhor em alguns bate-papos". Trata-s
 | 31 de março a 1º de abril de 2026 | `v0.10.36` | Auditoria de transcrição, sobreposições Harness, análise de ferramentas |
 | 1º de abril de 2026 | `v0.10.37` | Endurecimento em tempo de execução, corte Skill + Exec, polimento de recuperação |
 | 2 a 5 de abril de 2026 | `v0.10.38` | Suporte GitHub, refinamento de mercado, melhorias de confiabilidade |
-| 6 a 7 de abril de 2026 | `v0.10.39` | Unificação de pesquisas, superfícies de evolução, redução de memória |
+| 6 a 7 de abril de 2026 | `v0.10.39` | Unificação de pesquisas, superfícies de evolução, redução do uso de memória |
 
 ## Comunidade e suporte
 

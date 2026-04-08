@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Un runtime de agentes <strong>local-first</strong> para creadores audaces<br>
+  Listo desde el primer momento · Código abierto · Universal · Neutral frente a proveedores
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inspirándonos en Clawdbot, creemos que el futuro de la informática personal es
 ZimaOS Blue es nuestra respuesta: un conjunto de herramientas y tiempo de ejecución de agente totalmente de código abierto, auditable, neutral respecto al proveedor y listo para producción que le permite enviar agentes privados y autohospedados sin fricciones.
 
 Creado para desarrolladores audaces que desean darle vida o crear a sus propios agentes, Blue está diseñado para el rendimiento: escrito en Go, con una huella de memoria tan baja como 19 MB. Se ejecuta en cualquier x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS, en cualquier lugar donde se conecte la alimentación.
+
+## Demostraciones
+
+### Conversación y ejecución de tareas
+
+Una demostración rápida del flujo de conversación y la ejecución de tareas en Blue.
+
+[Ver la demostración](<../../docs/assets/demo.mp4>)
+
+### Integración de proveedores LLM
+
+Una demostración rápida de la experiencia de integración de proveedores LLM en Blue.
+
+[Ver la demostración](<../../docs/assets/demo Provider.mp4>)
+
+### Vista rápida - Vista general, canales y configuración adicional
+
+Una demostración rápida que cubre la vista general del producto, los canales y la configuración adicional.
+
+[Ver la demostración](<../../docs/assets/demo quickv4.mp4>)
 
 ## Por qué Blue
 
@@ -196,7 +221,7 @@ En resumen, sintonizar con Blue no se trata de "se siente mejor en unas cuantas 
 | 31 de marzo a 1 de abril de 2026 | `v0.10.36` | Auditoría de transcripciones, superposiciones Harness, análisis de herramientas |
 | 1 de abril de 2026 | `v0.10.37` | Endurecimiento del tiempo de ejecución, transición de Skill+Exec, pulido de recuperación |
 | 2 al 5 de abril de 2026 | `v0.10.38` | Soporte GitHub, refinamiento del mercado, mejoras en la confiabilidad |
-| 6 y 7 de abril de 2026 | `v0.10.39` | Unificación de investigaciones, superficies de evolución, reducción de memoria |
+| 6 y 7 de abril de 2026 | `v0.10.39` | Unificación de investigaciones, superficies de evolución, reducción de la huella de memoria |
 
 ## Comunidad y soporte
 

@@ -1,8 +1,8 @@
 ![](../../docs/assets/banner.png)
 
 <p align="center">
-  大胆なビルダーのための<strong>ローカルファースト</strong>エージェントランタイム<br>
-  すぐに使える · オープンソース · ユニバーサル · デュアル監視
+  ZimaOS Blue: 大胆なビルダーのための<strong>ローカルファースト</strong>エージェントランタイム<br>
+  すぐに使える · オープンソース · ユニバーサル · ベンダーニュートラル
 </p>
 
 <p align="center">
@@ -54,6 +54,26 @@ Clawdbot からインスピレーションを受け、パーソナル コンピ�
 ZimaOS Blue が私たちの答えです。完全にオープンソースで監査可能、ベンダー中立、本番環境に対応したエージェント ランタイムとツールキットで、プライベートの自己ホスト型エージェントをスムーズに配布できます。
 
 Blue は、独自のエージェントを動かしたり手作りしたりしたい大胆な開発者向けに構築されており、パフォーマンスを重視して設計されています。Go で書かれており、メモリ使用量は 19 MB と低いです。 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS など、電源を接続すればどこでも動作します。
+
+## デモ
+
+### 会話とタスク実行
+
+Blue における会話フローとタスク実行を手早く紹介するデモです。
+
+[デモを見る](<../../docs/assets/demo.mp4>)
+
+### LLM プロバイダー統合
+
+Blue の LLM プロバイダー統合体験を手早く紹介するデモです。
+
+[デモを見る](<../../docs/assets/demo Provider.mp4>)
+
+### クイック概要 - 概要、チャネル、追加設定
+
+製品全体の概要、チャネル、追加設定を手早く紹介するデモです。
+
+[デモを見る](<../../docs/assets/demo quickv4.mp4>)
 
 ## なぜ Blue
 
@@ -201,7 +221,7 @@ sh build.sh
 | 2026 年 3 月 31 日～4 月 1 日 | `v0.10.36` |トランスクリプト監査、Harness オーバーレイ、ツール解析 |
 | 2026 年 4 月 1 日 | `v0.10.37` |ランタイム強化、Skill+Exec カットオーバー、リカバリ磨き |
 | 2026 年 4 月 2 ～ 5 日 | `v0.10.38` | GitHub サポート、マーケットプレイスの改善、信頼性の向上 |
-| 2026 年 4 月 6 ～ 7 日 | `v0.10.39` |研究の統合、進化面、記憶の削減 |
+| 2026 年 4 月 6 ～ 7 日 | `v0.10.39` | 研究の統合、進化サーフェス、メモリ使用量の削減 |
 
 ## コミュニティとサポート
 

@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Un runtime d'agents <strong>local-first</strong> per a creadors valents<br>
+  A punt des del primer moment · Codi obert · Universal · Neutral amb els proveïdors
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <strong>Català</strong> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inspirats per Clawdbot, creiem que el futur de la informàtica personal estarà 
 ZimaOS Blue és la nostra resposta: un conjunt d'eines i temps d'execució d'agents totalment de codi obert, auditable, neutral per a proveïdors i preparat per a la producció que us permet enviar agents privats i allotjats sense fricció.
 
 Creat per a desenvolupadors atrevits que volen vibrar o crear els seus propis agents, Blue està dissenyat per al rendiment: escrit a Go, amb una empremta de memòria de tan sols 19 MB. S'executa a qualsevol x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS, a qualsevol lloc on connecteu l'alimentació.
+
+## Demostracions
+
+### Conversa i execució de tasques
+
+Una demostració ràpida del flux de conversa i de l'execució de tasques a Blue.
+
+[Mira la demostració](<../../docs/assets/demo.mp4>)
+
+### Integració de proveïdors LLM
+
+Una demostració ràpida de l'experiència d'integració de proveïdors LLM a Blue.
+
+[Mira la demostració](<../../docs/assets/demo Provider.mp4>)
+
+### Visió general ràpida - Vista general, canals i configuració addicional
+
+Una demostració ràpida que cobreix la vista general del producte, els canals i la configuració addicional.
+
+[Mira la demostració](<../../docs/assets/demo quickv4.mp4>)
 
 ## Per què Blue
 
@@ -196,7 +221,7 @@ En resum, sintonitzar a la part superior de Blue no es tracta de "se sent millor
 | 31 de març a l'1 d'abril de 2026 | `v0.10.36` | Auditoria de transcripcions, superposicions Harness, anàlisi d'eines |
 | 1 d'abril de 2026 | `v0.10.37` | Enduriment del temps d'execució, reducció de Skill+Exec, poliment de recuperació |
 | Del 2 al 5 d'abril de 2026 | `v0.10.38` | Suport GitHub, perfeccionament del mercat, millores de fiabilitat |
-| Del 6 al 7 d'abril de 2026 | `v0.10.39` | Unificació de la recerca, superfícies d'evolució, reducció de la memòria |
+| Del 6 al 7 d'abril de 2026 | `v0.10.39` | Unificació de la recerca, superfícies d'evolució, reducció de la petjada de memòria |
 
 ## Comunitat i suport
 

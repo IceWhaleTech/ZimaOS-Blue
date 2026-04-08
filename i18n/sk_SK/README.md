@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: <strong>Local-first</strong> runtime agentov pre odvážnych tvorcov<br>
+  Pripravené hneď po spustení · Open source · Univerzálne · Nezávislé od dodávateľa
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inšpirovaní Clawdbotom a veríme, že budúcnosť osobných počítačov bude 
 ZimaOS Blue je naša odpoveď – plne open source, auditovateľný, dodávateľsky neutrálny a produkčne pripravený agent runtime a súprava nástrojov, ktorá vám umožňuje odosielať súkromných agentov s vlastným hosťovaním s nulovým trením.
 
 Blue, stvorený pre odvážnych vývojárov, ktorí chcú vibrovať alebo ručne vyrábať svojich vlastných agentov, je navrhnutý pre výkon: napísaný v Go, s pamäťou len 19 MB. Beží na akomkoľvek x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS - kdekoľvek, kde pripojíte napájanie.
+
+## Ukážky
+
+### Konverzácia a vykonávanie úloh
+
+Krátka ukážka toku konverzácie a vykonávania úloh v Blue.
+
+[Pozrieť ukážku](<../../docs/assets/demo.mp4>)
+
+### Integrácia poskytovateľov LLM
+
+Krátka ukážka integrácie poskytovateľov LLM v Blue.
+
+[Pozrieť ukážku](<../../docs/assets/demo Provider.mp4>)
+
+### Rýchly prehľad - Prehľad, kanály a dodatočná konfigurácia
+
+Krátka ukážka, ktorá pokrýva celkový prehľad produktu, kanály a dodatočnú konfiguráciu.
+
+[Pozrieť ukážku](<../../docs/assets/demo quickv4.mp4>)
 
 ## Prečo Blue
 
@@ -196,7 +221,7 @@ Stručne povedané, naladenie na Blue nie je o tom, že „po niekoľkých chato
 | 31. marec – 1. apríl 2026 | `v0.10.36` | Audit prepisu, Harness prekrytia, analýza nástroja |
 | 1. apríla 2026 | `v0.10.37` | Vytvrdzovanie počas prevádzky, rez Skill+Exec, obnovovací lesk |
 | 2. – 5. apríla 2026 | `v0.10.38` | GitHub podpora, vylepšenie trhu, vylepšenia spoľahlivosti |
-| 6. – 7. apríla 2026 | `v0.10.39` | Zjednotenie výskumu, vývoj povrchov, redukcia pamäte |
+| 6. – 7. apríla 2026 | `v0.10.39` | Zjednotenie výskumu, vývojové plochy, zníženie pamäťových nárokov |
 
 ## Komunita a podpora
 

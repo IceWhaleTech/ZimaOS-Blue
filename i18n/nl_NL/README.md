@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Een <strong>local-first</strong> agentruntime voor gedurfde bouwers<br>
+  Direct klaar voor gebruik · Open source · Universeel · Leveranciersonafhankelijk
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Geïnspireerd door Clawdbot geloven wij dat de toekomst van personal computing z
 ZimaOS Blue is ons antwoord: een volledig open source, controleerbare, leveranciersneutrale en productieklare agentruntime en toolkit waarmee u zonder problemen privé, zelfgehoste agenten kunt verzenden.
 
 Blue is gebouwd voor gedurfde ontwikkelaars die hun eigen agenten willen uitleven of met de hand willen maken. Het is ontworpen voor prestaties: geschreven in Go, met een geheugenoppervlak van slechts 19 MB. Het werkt op elke x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS - overal waar u een stopcontact aansluit.
+
+## Demo's
+
+### Gesprek en taakuitvoering
+
+Een snelle demo van de gespreksstroom en taakuitvoering in Blue.
+
+[Bekijk de demo](<../../docs/assets/demo.mp4>)
+
+### LLM-providerintegratie
+
+Een snelle demo van de integratie-ervaring met LLM-providers in Blue.
+
+[Bekijk de demo](<../../docs/assets/demo Provider.mp4>)
+
+### Snel overzicht - Overzicht, kanalen en aanvullende configuratie
+
+Een snelle demo van het productoverzicht, de kanalen en de aanvullende configuratie.
+
+[Bekijk de demo](<../../docs/assets/demo quickv4.mp4>)
 
 ## Waarom Blue
 
@@ -196,7 +221,7 @@ Kortom, afstemmen op Blue gaat niet over "het voelt beter in een paar chats." He
 | 31 maart – 1 april 2026 | `v0.10.36` | Transcriptaudit, Harness overlays, parseren van tools |
 | 1 april 2026 | `v0.10.37` | Runtime-harding, Skill+Exec cutover, herstelpolish |
 | 2–5 april 2026 | `v0.10.38` | GitHub ondersteuning, marktverfijning, betrouwbaarheidsverbeteringen |
-| 6–7 april 2026 | `v0.10.39` | Onderzoeksunificatie, evolutieoppervlakken, geheugenreductie |
+| 6–7 april 2026 | `v0.10.39` | Onderzoeksunificatie, evolutieoppervlakken, vermindering van het geheugengebruik |
 
 ## Gemeenschap en ondersteuning
 

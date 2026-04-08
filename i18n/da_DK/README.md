@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: En <strong>lokal-først</strong> agent-runtime til modige byggere<br>
+  Klar fra start · Open source · Universel · Leverandørneutral
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inspireret af Clawdbot tror vi, at fremtiden for personlig computer vil blive fo
 ZimaOS Blue er vores svar - en fuld open source, reviderbar, leverandørneutral og produktionsklar agentruntime og værktøjssæt, der lader dig sende private, selv-hostede agenter uden friktion.
 
 Bygget til dristige udviklere, der ønsker at vibe eller håndlave deres egne agenter, Blue er udviklet til ydeevne: skrevet i Go, med et hukommelsesfodaftryk så lavt som 19 MB. Den kører på enhver x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS - hvor som helst du tilslutter strøm.
+
+## Demoer
+
+### Samtale og opgaveudførelse
+
+En hurtig demo af samtaleflow og opgaveudførelse i Blue.
+
+[Se demoen](<../../docs/assets/demo.mp4>)
+
+### Integration af LLM-udbydere
+
+En hurtig demo af Blues integrationsoplevelse for LLM-udbydere.
+
+[Se demoen](<../../docs/assets/demo Provider.mp4>)
+
+### Hurtigt overblik - Oversigt, kanaler og ekstra konfiguration
+
+En hurtig demo, der dækker det overordnede produktoverblik, kanaler og ekstra konfiguration.
+
+[Se demoen](<../../docs/assets/demo quickv4.mp4>)
 
 ## Hvorfor Blue
 
@@ -196,7 +221,7 @@ Kort sagt handler tuning oven på Blue ikke om "det føles bedre i et par chats.
 | 31. marts – 1. april 2026 | `v0.10.36` | Transskriptionsaudit, Harness overlejringer, værktøjsparsing |
 | 1. april 2026 | `v0.10.37` | Runtime hærdning, Skill+Exec cutover, gendannelsespolering |
 | 2.-5. april 2026 | `v0.10.38` | GitHub support, forfining af markedspladsen, forbedringer af pålidelighed |
-| 6-7 apr 2026 | `v0.10.39` | Forskningsforening, evolutionsflader, hukommelsesreduktion |
+| 6-7 apr 2026 | `v0.10.39` | Forskningssamling, udviklingsflader, reduceret hukommelsesforbrug |
 
 ## Fællesskab og support
 

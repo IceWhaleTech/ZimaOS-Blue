@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: <strong>Local-first</strong> ügynök-futtatókörnyezet merész alkotóknak<br>
+  Azonnal használható · Nyílt forráskódú · Univerzális · Szállítósemleges
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ A Clawdbot által ihletett, úgy gondoljuk, hogy a személyi számítástechnika
 A ZimaOS Blue a válaszunk – egy teljesen nyílt forráskódú, auditálható, szállító-semleges és termelésre kész ügynöki futtatókörnyezet és eszközkészlet, amely lehetővé teszi privát, saját üzemeltetésű ügynökök szállítását nulla súrlódás nélkül.
 
 Azok a merész fejlesztők számára készült, akik saját ügynökeiket szeretnék megmozgatni vagy megalkotni, a Blue teljesítményre tervezték: Go nyelven íródott, 19 MB-os memóriaterülettel. Bármilyen x86-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-n, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-en fut – bárhol, ahol csatlakoztatja a tápfeszültséget.
+
+## Demók
+
+### Beszélgetés és feladatvégrehajtás
+
+Egy gyors demó a Blue beszélgetési folyamatáról és feladatvégrehajtásáról.
+
+[Demó megtekintése](<../../docs/assets/demo.mp4>)
+
+### LLM-szolgáltatók integrációja
+
+Egy gyors demó a Blue LLM-szolgáltatói integrációs élményéről.
+
+[Demó megtekintése](<../../docs/assets/demo Provider.mp4>)
+
+### Gyors áttekintés - Áttekintés, csatornák és további konfiguráció
+
+Egy gyors demó, amely bemutatja a termék áttekintését, a csatornákat és a további konfigurációt.
+
+[Demó megtekintése](<../../docs/assets/demo quickv4.mp4>)
 
 ## Miért Blue
 
@@ -196,7 +221,7 @@ Röviden, a Blue hangolása nem arról szól, hogy "néhány csevegés után job
 | 2026. március 31–ápr. 1. | `v0.10.36` | Átirat-ellenőrzés, Harness átfedések, eszközelemzés |
 | 2026. április 1. | `v0.10.37` | Üzemidejű edzés, Skill+Exec cutover, regeneráló polírozás |
 | 2026. április 2–5. | `v0.10.38` | GitHub támogatás, piactér finomítása, megbízhatósági fejlesztések |
-| 2026. április 6–7. | `v0.10.39` | Kutatás egyesítése, evolúciós felületek, memóriacsökkentés |
+| 2026. április 6–7. | `v0.10.39` | Kutatási egységesítés, evolúciós felületek, memóriaigény csökkentése |
 
 ## Közösség és támogatás
 

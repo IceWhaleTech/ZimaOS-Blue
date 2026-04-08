@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: <strong>Lokalno-prvi</strong> runtime agenata za odvažne graditelje<br>
+  Spremno za rad odmah · Otvorenog koda · Univerzalno · Neutralno prema dobavljačima
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inspirirani Clawdbotom, vjerujemo da će budućnost osobnog računalstva oblikov
 ZimaOS Blue je naš odgovor — potpuno otvoreno okruženje, koje se može revidirati, neovisno o prodavaču i spremno za proizvodnju, izvršavanje agenta i skup alata koji vam omogućuje isporuku privatnih agenata koji se sami hostiraju bez problema.
 
 Napravljen za odvažne programere koji žele vibrirati ili ručno izraditi vlastite agente, Blue je projektiran za performanse: napisan u Go, s memorijskim otiskom od samo 19 MB. Radi na bilo kojem x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Piju, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windowsu, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-u — gdje god priključite napajanje.
+
+## Demo prikazi
+
+### Razgovor i izvršavanje zadataka
+
+Kratki demo tijeka razgovora i izvršavanja zadataka u Blueu.
+
+[Pogledaj demo](<../../docs/assets/demo.mp4>)
+
+### Integracija LLM pružatelja
+
+Kratki demo iskustva integracije LLM pružatelja u Blueu.
+
+[Pogledaj demo](<../../docs/assets/demo Provider.mp4>)
+
+### Brzi pregled - Pregled, kanali i dodatna konfiguracija
+
+Kratki demo koji pokriva pregled proizvoda, kanale i dodatnu konfiguraciju.
+
+[Pogledaj demo](<../../docs/assets/demo quickv4.mp4>)
 
 ## Zašto Blue
 
@@ -196,7 +221,7 @@ Ukratko, ugađanje na Blue ne odnosi se na "osjećaj je bolji nakon nekoliko raz
 | 31. ožujka – 1. travnja 2026. | `v0.10.36` | Revizija prijepisa, Harness preklapanja, raščlanjivanje alata |
 | 1. travnja 2026. | `v0.10.37` | Runtime hardening, Skill+Exec cutover, recovery polish |
 | 2. – 5. travnja 2026. | `v0.10.38` | GitHub podrška, usavršavanje tržišta, poboljšanja pouzdanosti |
-| 6. – 7. travnja 2026. | `v0.10.39` | Objedinjavanje istraživanja, površine evolucije, smanjenje memorije |
+| 6. – 7. travnja 2026. | `v0.10.39` | Objedinjavanje istraživanja, evolucijske površine, smanjenje memorijskog otiska |
 
 ## Zajednica i podrška
 

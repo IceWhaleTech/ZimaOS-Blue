@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Timpeallacht rith gníomhairí <strong>áitiúil ar dtús</strong> do thógálaithe dána<br>
+  Réidh le húsáid láithreach · Foinse oscailte · Uilíoch · Neodrach ó thaobh díoltóra de
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Arna spreagadh ag Clawdbot, creidimid go mbeidh todhchaí na ríomhaireachta pea
 Is é ZimaOS Blue ár bhfreagra - am rite agus foireann uirlisí gníomhaire lán-fhoinse oscailte, in-iniúchta, díoltóir-neodrach agus réidh le táirgeadh a ligeann duit gníomhairí príobháideacha féin-óstáilte a sheoladh le frithchuimilt nialasach.
 
 Tógtha d'fhorbróirí dána atá ag iarraidh a ngníomhairí féin a vibe nó lámhcheirde a dhéanamh, déantar innealtóireacht Blue le haghaidh feidhmíochta: scríofa in Go, le lorg cuimhne chomh híseal le 19 MB. Ritheann sé ar aon x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — áit ar bith a phlocálann tú cumhacht.
+
+## Taispeántais
+
+### Comhrá agus cur i gcrích tascanna
+
+Taispeántas gairid ar shreabhadh an chomhrá agus ar chur i gcrích tascanna i Blue.
+
+[Féach ar an taispeántas](<../../docs/assets/demo.mp4>)
+
+### Comhtháthú soláthraithe LLM
+
+Taispeántas gairid ar thaithí Blue maidir le comhtháthú soláthraithe LLM.
+
+[Féach ar an taispeántas](<../../docs/assets/demo Provider.mp4>)
+
+### Forbhreathnú tapa - Forbhreathnú, cainéil agus cumraíocht bhreise
+
+Taispeántas gairid a chlúdaíonn forbhreathnú an táirge, na cainéil agus an chumraíocht bhreise.
+
+[Féach ar an taispeántas](<../../docs/assets/demo quickv4.mp4>)
 
 ## Cén fáth Blue
 
@@ -196,7 +221,7 @@ I mbeagán focal, ní bhaineann tiúnadh ar bharr Blue le "mothaíonn sé níos 
 | 31 Márta – 1 Aibreán, 2026 | `v0.10.36` | Iniúchadh athscríbhinne, forleagan Harness, parsáil uirlisí |
 | 1 Aibreán, 2026 | `v0.10.37` | Cruanú ama rite, Scil+Exec cutover, snas aisghabhála |
 | 2–5 Aibreán, 2026 | `v0.10.38` | Tacaíocht GitHub, mionchoigeartú an mhargaidh, feabhsuithe iontaofachta |
-| Aibreán 6–7, 2026 | `v0.10.39` | Aontú taighde, dromchlaí éabhlóide, laghdú cuimhne |
+| Aibreán 6–7, 2026 | `v0.10.39` | Aontú taighde, dromchlaí éabhlóide, laghdú lorg cuimhne |
 
 ## Pobal & Tacaíocht
 

@@ -1,5 +1,9 @@
 ![](./docs/assets/bannerX.png)
 
+<h2 align="center">ZimaOS Blue: A Local-First Agent Runtime for Bold Builders</h2>
+
+<p align="center"><strong>Out-of-the-Box · Open-Source · Universal · Vendor-Neutral</strong></p>
+
 <p align="center">
   <strong>English</strong> |
   <a href="./i18n/ca_ES/README.md">Català</a> |
@@ -56,6 +60,26 @@ Inspired by Clawdbot, we believe the future of personal computing will be shaped
 ZimaOS Blue is our answer — a fully open-source, auditable, vendor-neutral, and production-ready agent runtime and toolkit that lets you ship private, self-hosted agents with zero friction.
 
 Built for bold developers who want to vibe or handcraft their own agents, Blue is engineered for performance: written in Go, with a memory footprint as low as 19 MB. It runs on any x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — anywhere you plug in power.
+
+## Demos
+
+### Conversation & Task Execution
+
+A quick demo of conversation flow and task execution in Blue.
+
+[Watch the demo](<./docs/assets/demo.mp4>)
+
+### LLM Providers Integration
+
+A quick demo of Blue's LLM providers integration experience.
+
+[Watch the demo](<./docs/assets/demo Provider.mp4>)
+
+### Quick Overview - Overview, Channels & Additional Configuration
+
+A quick demo covering the overall product overview, channels, and additional configuration.
+
+[Watch the demo](<./docs/assets/demo quickv4.mp4>)
 
 ## Why Blue
 
@@ -203,7 +227,7 @@ In short, tuning on top of Blue is not about "it feels better in a few chats." I
 | Mar 31–Apr 1, 2026 | `v0.10.36` | Transcript audit, Harness overlays, tool parsing |
 | Apr 1, 2026 | `v0.10.37` | Runtime hardening, Skill+Exec cutover, recovery polish |
 | Apr 2–5, 2026 | `v0.10.38` | GitHub support, marketplace refinement, reliability improvements |
-| Apr 6–7, 2026 | `v0.10.39` | Research unification, evolution surfaces, memory reduction |
+| Apr 6–7, 2026 | `v0.10.39` | Research unification, evolution surfaces, memory footprint reduction |
 
 ## Community & Support
 

@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: En <strong>lokal-först</strong> agent-runtime för djärva byggare<br>
+  Redo direkt från start · Öppen källkod · Universell · Leverantörsneutral
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inspirerade av Clawdbot tror vi att framtiden för persondatorer kommer att form
 ZimaOS Blue är vårt svar — en fullständigt öppen källkod, granskningsbar, leverantörsneutral och produktionsklar agentkörning och verktygslåda som låter dig skicka privata agenter med egen värd utan friktion.
 
 Blue är byggt för djärva utvecklare som vill vibba eller hantverka sina egna agenter. Blue är konstruerad för prestanda: skriven i Go, med ett minnesutrymme så lite som 19 MB. Den körs på valfri x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — var som helst du kopplar in ström.
+
+## Demor
+
+### Samtal och uppgiftskörning
+
+En snabb demo av samtalsflödet och uppgiftskörningen i Blue.
+
+[Se demon](<../../docs/assets/demo.mp4>)
+
+### Integration av LLM-leverantörer
+
+En snabb demo av Blues integration av LLM-leverantörer.
+
+[Se demon](<../../docs/assets/demo Provider.mp4>)
+
+### Snabb översikt - Översikt, kanaler och ytterligare konfiguration
+
+En snabb demo som täcker produktöversikten, kanalerna och ytterligare konfiguration.
+
+[Se demon](<../../docs/assets/demo quickv4.mp4>)
 
 ## Varför Blue
 
@@ -196,7 +221,7 @@ Kort sagt, att trimma ovanpå Blue handlar inte om "det känns bättre i några 
 | 31 mars–1 april 2026 | `v0.10.36` | Transkriptionsgranskning, Harness överlagringar, verktygsanalys |
 | 1 april 2026 | `v0.10.37` | Runtime-härdning, Skill+Exec cutover, återvinningspolish |
 | 2–5 apr 2026 | `v0.10.38` | GitHub support, marknadsplatsförfining, tillförlitlighetsförbättringar |
-| 6–7 apr 2026 | `v0.10.39` | Forskningsförening, evolutionsytor, minnesminskning |
+| 6–7 apr 2026 | `v0.10.39` | Forskningssamordning, evolutionsytor, minskat minnesfotavtryck |
 
 ## Community och support
 

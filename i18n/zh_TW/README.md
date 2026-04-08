@@ -1,7 +1,7 @@
 ![](../../docs/assets/banner.png)
 
 <p align="center">
-  面向大膽構建者的<strong>本地優先</strong>智能體運行時<br>
+  ZimaOS Blue：面向大膽構建者的<strong>本地優先</strong>智能體運行時<br>
   開箱即用 · 開源 · 通用 · 廠商中立
 </p>
 
@@ -55,6 +55,26 @@
 ZimaOS Blue 就是我們的答案：一個完全開源、可稽核、供應商中立、可直接投入生產的 Agent Runtime 與工具套件，讓你幾乎零摩擦地交付私有、自託管的 Agent。
 
 面向想隨心折騰或親手打造 Agent 的開發者，Blue 從一開始就為效能而生：使用 Go 編寫，記憶體占用最低可至 19 MB。無論是 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows 還是 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS，只要能通電的地方，它都能跑起來。
+
+## 示範
+
+### 對話與任務執行
+
+一個快速示範，展示 Blue 中的對話流程與任務執行。
+
+[觀看示範](<../../docs/assets/demo.mp4>)
+
+### LLM 供應商整合
+
+一個快速示範，展示 Blue 的 LLM 供應商整合體驗。
+
+[觀看示範](<../../docs/assets/demo Provider.mp4>)
+
+### 快速總覽 - 總覽、通道與附加配置
+
+一個快速示範，展示產品整體總覽、通道與附加配置。
+
+[觀看示範](<../../docs/assets/demo quickv4.mp4>)
 
 ## 為什麼 Blue
 
@@ -202,7 +222,7 @@ sh build.sh
 | 2026 年 3 月 31 日至 4 月 1 日 | `v0.10.36` |轉錄審核、Harness 覆蓋、工具解析 |
 | 2026 年 4 月 1 日 | `v0.10.37` |運行時強化、Skill+Exec 切換、恢復拋光 |
 | 2026 年 4 月 2 日至 5 日 | `v0.10.38` | GitHub 支援、市場完善、可靠性改善 |
-| 2026 年 4 月 6 日至 7 日 | `v0.10.39` |研究統一、演化表面、記憶減少 |
+| 2026 年 4 月 6 日至 7 日 | `v0.10.39` | 研究統一、演化表面、記憶體占用降低 |
 
 ## 社區與支持
 

@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Runtime agentów <strong>local-first</strong> dla odważnych twórców<br>
+  Gotowe od razu do użycia · Open source · Uniwersalne · Niezależne od dostawcy
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Zainspirowani Clawdbotem wierzymy, że przyszłość komputerów osobistych będ
 ZimaOS Blue to nasza odpowiedź — środowisko wykonawcze agentów i zestaw narzędzi w pełni open source, podlegające audytowi, neutralne dla dostawców i gotowe do produkcji, umożliwiające dostarczanie prywatnych, hostowanych agentów bez żadnych problemów.
 
 Stworzony z myślą o odważnych programistach, którzy chcą nadać swoim agentom charakter lub tworzyć je ręcznie, Blue został zaprojektowany z myślą o wydajności: napisany w Go i zajmujący zaledwie 19 MB pamięci. Działa na każdym x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — gdziekolwiek podłączysz zasilanie.
+
+## Demonstracje
+
+### Rozmowa i wykonywanie zadań
+
+Krótka demonstracja przepływu rozmowy i wykonywania zadań w Blue.
+
+[Obejrzyj demonstrację](<../../docs/assets/demo.mp4>)
+
+### Integracja dostawców LLM
+
+Krótka demonstracja integracji dostawców LLM w Blue.
+
+[Obejrzyj demonstrację](<../../docs/assets/demo Provider.mp4>)
+
+### Szybki przegląd - Przegląd, kanały i dodatkowa konfiguracja
+
+Krótka demonstracja obejmująca ogólny przegląd produktu, kanały i dodatkową konfigurację.
+
+[Obejrzyj demonstrację](<../../docs/assets/demo quickv4.mp4>)
 
 ## Dlaczego Blue
 
@@ -196,7 +221,7 @@ Krótko mówiąc, dostrojenie Blue nie polega na tym, że „po kilku rozmowach 
 | 31 marca – 1 kwietnia 2026 | `v0.10.36` | Audyt transkrypcji, nakładki Harness, parsowanie narzędzi |
 | 1 kwietnia 2026 | `v0.10.37` | Utwardzanie środowiska wykonawczego, przełączanie Skill+Exec, polerowanie odzyskiwania |
 | 2–5 kwietnia 2026 r. | `v0.10.38` | GitHub wsparcie, udoskonalenie rynku, poprawa niezawodności |
-| 6–7 kwietnia 2026 r. | `v0.10.39` | Ujednolicenie badań, powierzchnie ewolucji, redukcja pamięci |
+| 6–7 kwietnia 2026 r. | `v0.10.39` | Ujednolicenie badań, powierzchnie ewolucji, zmniejszenie zużycia pamięci |
 
 ## Społeczność i wsparcie
 

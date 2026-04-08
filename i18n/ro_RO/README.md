@@ -1,6 +1,11 @@
 ![](../../docs/assets/bannerX.png)
 
 <p align="center">
+  ZimaOS Blue: Un runtime de agenți <strong>local-first</strong> pentru creatori îndrăzneți<br>
+  Gata de folosit din prima · Open-source · Universal · Neutru față de furnizori
+</p>
+
+<p align="center">
   <a href="../../README.md">English</a> |
   <a href="../ca_ES/README.md">Català</a> |
   <a href="../cs_CZ/README.md">Čeština</a> |
@@ -49,6 +54,26 @@ Inspirați de Clawdbot, credem că viitorul computerelor personale va fi modelat
 ZimaOS Blue este răspunsul nostru — un agent de rulare și un set de instrumente complet open-source, auditabil, neutru pentru furnizor și pregătit pentru producție, care vă permite să expediați agenți privați, auto-găzduiți, fără fricțiuni.
 
 Creat pentru dezvoltatorii îndrăzneți care doresc să vibreze sau să își creeze manual propriii agenți, Blue este proiectat pentru performanță: scris în Go, cu o amprentă de memorie de până la 19 MB. Funcționează pe orice x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — oriunde vă conectați la curent.
+
+## Demonstrații
+
+### Conversație și execuția sarcinilor
+
+O demonstrație rapidă a fluxului de conversație și a execuției sarcinilor în Blue.
+
+[Vezi demonstrația](<../../docs/assets/demo.mp4>)
+
+### Integrarea furnizorilor LLM
+
+O demonstrație rapidă a experienței de integrare a furnizorilor LLM în Blue.
+
+[Vezi demonstrația](<../../docs/assets/demo Provider.mp4>)
+
+### Prezentare rapidă - Prezentare generală, canale și configurare suplimentară
+
+O demonstrație rapidă care acoperă prezentarea generală a produsului, canalele și configurarea suplimentară.
+
+[Vezi demonstrația](<../../docs/assets/demo quickv4.mp4>)
 
 ## De ce Blue
 
@@ -196,7 +221,7 @@ Pe scurt, reglarea pe Blue nu se referă la „se simte mai bine în câteva con
 | 31 martie–1 apr 2026 | `v0.10.36` | Audit transcriere, suprapuneri Harness, analiza instrumentului |
 | 1 apr 2026 | `v0.10.37` | Întărirea timpului de execuție, cutover Skill+Exec, lustruire de recuperare |
 | 2–5 aprilie 2026 | `v0.10.38` | Asistență GitHub, rafinament pe piață, îmbunătățiri ale fiabilității |
-| 6–7 aprilie 2026 | `v0.10.39` | Unificarea cercetării, suprafețele de evoluție, reducerea memoriei |
+| 6–7 aprilie 2026 | `v0.10.39` | Unificarea cercetării, suprafețe de evoluție, reducerea amprentei de memorie |
 
 ## Comunitate și asistență
 
