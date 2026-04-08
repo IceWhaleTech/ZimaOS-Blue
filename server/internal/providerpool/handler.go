@@ -1459,7 +1459,10 @@ func (h *Handler) VerifyProviderByID(c echo.Context) error {
 	verifyReq := providerVerificationRequest{
 		BaseURL:       provider.BaseURL,
 		SkipTLSVerify: provider.SkipTLSVerify,
-		Model:         body.Model,
+		Model:         strings.TrimSpace(body.Model),
+	}
+	if verifyReq.Model == "" {
+		verifyReq.Model = h.resolveProviderVerificationModel(provider)
 	}
 
 	if body.KeyID != "" {
@@ -1512,6 +1515,30 @@ func (h *Handler) VerifyProviderByID(c echo.Context) error {
 		"verification": result,
 		"provider":     provider,
 	})
+}
+
+func (h *Handler) resolveProviderVerificationModel(provider *Provider) string {
+	if provider == nil {
+		return ""
+	}
+
+	if allowed := effectiveAllowedModels(provider); len(allowed) > 0 {
+		return allowed[0]
+	}
+
+	if h == nil || h.pool == nil || h.pool.Discovery == nil {
+		return ""
+	}
+	models, err := h.pool.Discovery.GetFilteredModels(provider.ID)
+	if err != nil {
+		return ""
+	}
+	for _, model := range models {
+		if id := preferredModelID(model); id != "" {
+			return id
+		}
+	}
+	return ""
 }
 
 // UpdateModelParams updates model parameters for a provider

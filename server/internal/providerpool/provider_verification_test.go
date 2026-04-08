@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1234,6 +1235,198 @@ func TestHandlerVerifyProviderByID_Apply(t *testing.T) {
 	}
 }
 
+func TestHandlerVerifyProviderByID_DefaultModelUsesAllowedModelsFirst(t *testing.T) {
+	var (
+		mu              sync.Mutex
+		seenChatRequest string
+	)
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusNotFound, `{}`
+		case "/v1/chat/completions":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]interface{}
+			_ = json.Unmarshal(body, &payload)
+			if model, ok := payload["model"].(string); ok {
+				mu.Lock()
+				seenChatRequest = strings.TrimSpace(model)
+				mu.Unlock()
+			}
+			return http.StatusOK, `{"id":"chat-ok"}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":{"message":"probe"}}`
+		case "/v1/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		case "/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"id":"chat-ok"}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":"probe"}`
+		case "/v1/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	h := newProviderVerificationTestHandler(t)
+	provider := &Provider{
+		ID:            "verify-allowed-model",
+		Name:          "Verify Allowed Model",
+		Type:          ProviderTypeCustom,
+		Enabled:       true,
+		BaseURL:       "https://relay.example.com",
+		AllowedModels: []string{"MiniMax-M2.7", "MiniMax-Text-01"},
+		APIKeys: []APIKey{
+			{ID: "k1", Key: "sk-test", Enabled: true},
+		},
+	}
+	if err := h.pool.Registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/providers/verify-allowed-model/verify", strings.NewReader(`{"apply":false}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("verify-allowed-model")
+
+	if err := h.VerifyProviderByID(c); err != nil {
+		t.Fatalf("VerifyProviderByID returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var out struct {
+		Verification providerVerificationResult `json:"verification"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if out.Verification.Model != "MiniMax-M2.7" {
+		t.Fatalf("verification.model = %q, want %q", out.Verification.Model, "MiniMax-M2.7")
+	}
+
+	mu.Lock()
+	gotChatModel := seenChatRequest
+	mu.Unlock()
+	if gotChatModel != "MiniMax-M2.7" {
+		t.Fatalf("chat probe model = %q, want %q", gotChatModel, "MiniMax-M2.7")
+	}
+}
+
+func TestHandlerVerifyProviderByID_DefaultModelUsesCatalogWhenAllowlistEmpty(t *testing.T) {
+	var (
+		mu              sync.Mutex
+		seenChatRequest string
+	)
+	restoreVerify := installProviderVerifyTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/models":
+			return http.StatusNotFound, `{}`
+		case "/v1/chat/completions":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]interface{}
+			_ = json.Unmarshal(body, &payload)
+			if model, ok := payload["model"].(string); ok {
+				mu.Lock()
+				seenChatRequest = strings.TrimSpace(model)
+				mu.Unlock()
+			}
+			return http.StatusOK, `{"id":"chat-ok"}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":{"message":"probe"}}`
+		case "/v1/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		case "/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreVerify()
+
+	restoreProbe := installProbeTransport(func(r *http.Request) (int, string) {
+		switch r.URL.Path {
+		case "/v1/chat/completions":
+			return http.StatusOK, `{"id":"chat-ok"}`
+		case "/v1/messages":
+			return http.StatusUnauthorized, `{"error":"probe"}`
+		case "/v1/responses":
+			return http.StatusOK, `{"status":"completed"}`
+		default:
+			return http.StatusNotFound, `{}`
+		}
+	})
+	defer restoreProbe()
+
+	h := newProviderVerificationTestHandler(t)
+	provider := &Provider{
+		ID:      "verify-catalog-model",
+		Name:    "Verify Catalog Model",
+		Type:    ProviderTypeCustom,
+		Enabled: true,
+		BaseURL: "https://relay.example.com",
+		APIKeys: []APIKey{
+			{ID: "k1", Key: "sk-test", Enabled: true},
+		},
+	}
+	if err := h.pool.Registry.Register(provider); err != nil {
+		t.Fatalf("register provider failed: %v", err)
+	}
+	if err := h.pool.Storage.SaveModels(provider.ID, []*Model{
+		{ID: "catalog-first", ProviderID: provider.ID, Enabled: true},
+	}); err != nil {
+		t.Fatalf("save models failed: %v", err)
+	}
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/providers/verify-catalog-model/verify", strings.NewReader(`{"apply":false}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("verify-catalog-model")
+
+	if err := h.VerifyProviderByID(c); err != nil {
+		t.Fatalf("VerifyProviderByID returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+
+	var out struct {
+		Verification providerVerificationResult `json:"verification"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if out.Verification.Model != "catalog-first" {
+		t.Fatalf("verification.model = %q, want %q", out.Verification.Model, "catalog-first")
+	}
+
+	mu.Lock()
+	gotChatModel := seenChatRequest
+	mu.Unlock()
+	if gotChatModel != "catalog-first" {
+		t.Fatalf("chat probe model = %q, want %q", gotChatModel, "catalog-first")
+	}
+}
+
 func newProviderVerificationTestHandler(t *testing.T) *Handler {
 	t.Helper()
 	tmpDir, err := os.MkdirTemp("", "provider-verify-handler-*")
@@ -1250,8 +1443,13 @@ func newProviderVerificationTestHandler(t *testing.T) *Handler {
 	if err != nil {
 		t.Fatalf("create registry failed: %v", err)
 	}
+	discovery := NewModelDiscovery(registry, storage, time.Hour)
 
-	return NewHandler(&Pool{Registry: registry})
+	return NewHandler(&Pool{
+		Registry:  registry,
+		Discovery: discovery,
+		Storage:   storage,
+	})
 }
 
 func installProviderVerifyTransport(fn func(*http.Request) (int, string)) func() {
