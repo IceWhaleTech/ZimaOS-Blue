@@ -153,6 +153,15 @@ export class EnergyVAD {
     this._isListening = true
     this._isSpeaking = false
 
+    if (String(this.audioCtx.state) === 'suspended') {
+      try {
+        await this.audioCtx.resume()
+      } catch {
+        this.cleanup(true)
+        throw new Error('Audio context could not be resumed')
+      }
+    }
+
     // Start continuous recorder
     this.startRecorder()
 
@@ -184,8 +193,23 @@ export class EnergyVAD {
   }
 
   /** Resume VAD detection after pause. Mic stream is still alive. */
-  resume(): void {
-    if (!this._isListening) return
+  async resume(): Promise<boolean> {
+    if (!this._isListening) return false
+    if (!this.hasLiveAudioStream()) return false
+    if (!this.audioCtx || String(this.audioCtx.state) === 'closed') return false
+
+    if (String(this.audioCtx.state) === 'suspended') {
+      try {
+        await this.audioCtx.resume()
+      } catch {
+        return false
+      }
+    }
+    const audioContextState = String(this.audioCtx.state)
+    if (audioContextState === 'closed' || audioContextState === 'suspended') {
+      return false
+    }
+
     this.paused = false
     this.monitorBargeInWhilePaused = false
     this.state = 'idle'
@@ -195,7 +219,12 @@ export class EnergyVAD {
     this.bargeInActiveSince = 0
     this.bargeInTriggered = false
     // Restart recorder
-    this.startRecorder()
+    try {
+      this.startRecorder()
+    } catch {
+      return false
+    }
+    return true
   }
 
   destroy(): void {
@@ -354,6 +383,14 @@ export class EnergyVAD {
 
     this.bargeInFrameCount = 0
     this.bargeInActiveSince = 0
+  }
+
+  private hasLiveAudioStream(): boolean {
+    if (!this.stream) return false
+    const tracks =
+      typeof this.stream.getAudioTracks === 'function' ? this.stream.getAudioTracks() : []
+    if (tracks.length === 0) return !!this.stream.active
+    return tracks.some((track) => track.readyState === 'live')
   }
 
   private computeRMS(data: Uint8Array): number {

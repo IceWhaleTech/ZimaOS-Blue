@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { reactive } from 'vue'
 import TalkMode from '@/components/chat/TalkMode.vue'
 import { i18n } from '@/i18n'
+import type { VueWrapper } from '@vue/test-utils'
 
 const mocks = vi.hoisted(() => {
   const localStorage = {
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => {
   })
 
   return {
+    createdVADs: [] as any[],
     latestVADOptions: null as any,
     latestVAD: null as any,
     markdownModuleLoadCount: 0,
@@ -34,6 +36,9 @@ const mocks = vi.hoisted(() => {
     ttsStop: vi.fn(),
     ttsIsPlaying: vi.fn(),
     stopSpeaking: vi.fn(),
+    vadResumeResult: true,
+    vadResumeCallCount: 0,
+    vadStartCallCount: 0,
   }
 })
 
@@ -45,6 +50,8 @@ const chatStore = reactive({
   awaitingConfirmation: false,
   processTrace: [] as Array<Record<string, unknown>>,
 })
+
+const mountedWrappers: VueWrapper[] = []
 
 vi.mock('@/stores/chat', () => ({
   useChatStore: () => chatStore,
@@ -95,18 +102,22 @@ vi.mock('@/utils/vad', () => ({
     constructor(options: any) {
       mocks.latestVADOptions = options
       mocks.latestVAD = this
+      mocks.createdVADs.push(this)
     }
 
     async start() {
       this.isListening = true
+      mocks.vadStartCallCount += 1
     }
 
     pause() {
       this.isListening = true
     }
 
-    resume() {
-      this.isListening = true
+    async resume() {
+      mocks.vadResumeCallCount += 1
+      this.isListening = mocks.vadResumeResult
+      return mocks.vadResumeResult
     }
 
     destroy() {
@@ -130,6 +141,7 @@ async function mountTalkMode() {
       },
     },
   })
+  mountedWrappers.push(wrapper)
 
   await wrapper.setProps({ modelValue: true })
   await flushPromises()
@@ -147,6 +159,7 @@ describe('TalkMode', () => {
     chatStore.toolExecuting = false
     chatStore.awaitingConfirmation = false
     chatStore.processTrace = []
+    mocks.createdVADs = []
     mocks.latestVADOptions = null
     mocks.latestVAD = null
     mocks.markdownToText.mockClear()
@@ -165,6 +178,9 @@ describe('TalkMode', () => {
     mocks.ttsStop.mockReturnValue(true)
     mocks.ttsIsPlaying.mockReturnValue(false)
     mocks.stopSpeaking.mockResolvedValue(undefined)
+    mocks.vadResumeResult = true
+    mocks.vadResumeCallCount = 0
+    mocks.vadStartCallCount = 0
 
     mocks.localStorage.getItem.mockImplementation((key: string) => {
       if (key === 'tts-auto-play') return 'true'
@@ -188,6 +204,9 @@ describe('TalkMode', () => {
   })
 
   afterEach(() => {
+    while (mountedWrappers.length > 0) {
+      mountedWrappers.pop()?.unmount()
+    }
     vi.useRealTimers()
   })
 
@@ -206,6 +225,7 @@ describe('TalkMode', () => {
         },
       },
     })
+    mountedWrappers.push(wrapper)
 
     await flushPromises()
     expect(mocks.markdownModuleLoadCount).toBe(0)
@@ -250,12 +270,18 @@ describe('TalkMode', () => {
 
   it('stops TTS playback and returns to listening when barge-in is detected', async () => {
     let releasePlayback: (() => void) | null = null
+    let rejectPlayback: ((reason?: unknown) => void) | null = null
     mocks.ttsPlay.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<void>((resolve, reject) => {
           releasePlayback = resolve
+          rejectPlayback = reject
         })
     )
+    mocks.ttsStop.mockImplementation(() => {
+      rejectPlayback?.(new DOMException('Playback stopped', 'AbortError'))
+      return true
+    })
 
     const wrapper = await mountTalkMode()
 
@@ -282,8 +308,38 @@ describe('TalkMode', () => {
     expect(mocks.ttsStop).toHaveBeenCalled()
     expect(mocks.stopSpeaking).toHaveBeenCalled()
     expect(wrapper.text()).toContain('chat.stillListening')
+    expect(mocks.vadResumeCallCount).toBe(1)
 
     releasePlayback?.()
+  })
+
+  it('rebuilds VAD when TTS completion tries to resume a dead listening pipeline', async () => {
+    const wrapper = await mountTalkMode()
+    expect(mocks.createdVADs).toHaveLength(1)
+    expect(mocks.vadStartCallCount).toBe(1)
+
+    mocks.vadResumeResult = false
+    chatStore.messages = [
+      {
+        id: 'assistant-resume-fallback',
+        role: 'assistant',
+        content: 'Fresh reply',
+      },
+    ]
+    chatStore.streaming = true
+    await flushPromises()
+
+    chatStore.streaming = false
+    await flushPromises()
+    await vi.waitFor(() => {
+      expect(mocks.ttsPlay).toHaveBeenCalled()
+    })
+    await flushPromises()
+
+    expect(mocks.vadResumeCallCount).toBe(1)
+    expect(mocks.createdVADs).toHaveLength(2)
+    expect(mocks.vadStartCallCount).toBe(2)
+    expect(wrapper.text()).toContain('chat.talkMode.listening')
   })
 
   it('localizes talk-mode process details', async () => {

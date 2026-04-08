@@ -82,3 +82,46 @@ describe('EnergyVAD silence pending hysteresis', () => {
     expect(discardSpeech).not.toHaveBeenCalled()
   })
 })
+
+describe('EnergyVAD resume health checks', () => {
+  it('returns false when the retained microphone stream is no longer live', async () => {
+    const vad = new EnergyVAD() as any
+    vad._isListening = true
+    vad.stream = {
+      active: false,
+      getAudioTracks: () => [{ readyState: 'ended' }],
+    }
+    vad.audioCtx = {
+      state: 'running',
+      resume: vi.fn(),
+    }
+    vad.startRecorder = vi.fn()
+
+    const resumed = await vad.resume()
+
+    expect(resumed).toBe(false)
+    expect(vad.startRecorder).not.toHaveBeenCalled()
+  })
+
+  it('resumes a suspended audio context before restarting the recorder', async () => {
+    const vad = new EnergyVAD() as any
+    vad._isListening = true
+    vad.stream = {
+      active: true,
+      getAudioTracks: () => [{ readyState: 'live' }],
+    }
+    vad.audioCtx = {
+      state: 'suspended',
+      resume: vi.fn(async () => {
+        vad.audioCtx.state = 'running'
+      }),
+    }
+    vad.startRecorder = vi.fn()
+
+    const resumed = await vad.resume()
+
+    expect(resumed).toBe(true)
+    expect(vad.audioCtx.resume).toHaveBeenCalledTimes(1)
+    expect(vad.startRecorder).toHaveBeenCalledTimes(1)
+  })
+})

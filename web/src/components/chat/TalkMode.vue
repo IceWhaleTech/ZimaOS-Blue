@@ -310,7 +310,8 @@ function stopTTSPlayback() {
   }
 }
 
-function resumeListening(options?: { interrupted?: boolean }) {
+async function resumeListening(options?: { interrupted?: boolean }) {
+  if (!props.modelValue) return
   clearRequestPhaseTimer()
   setLocalPhase(null)
   uploadProgress.value = 0
@@ -318,12 +319,19 @@ function resumeListening(options?: { interrupted?: boolean }) {
     setInterruptionHint(t('chat.stillListening'))
   }
   if (vad && vad.isListening) {
-    vad.resume()
-    listeningReady.value = true
-    syncConversationState()
-    return
+    try {
+      const resumed = await vad.resume()
+      if (resumed) {
+        listeningReady.value = true
+        syncConversationState()
+        return
+      }
+    } catch {
+      // Fall through to a full restart when the retained audio pipeline is no longer healthy.
+    }
   }
-  void startListening()
+  if (!props.modelValue) return
+  await startListening()
 }
 
 function handleBargeIn() {
@@ -342,7 +350,7 @@ function handleBargeIn() {
     { replaceLatestByEvent: true }
   )
   stopTTSPlayback()
-  resumeListening({ interrupted: true })
+  void resumeListening({ interrupted: true })
 }
 
 function handleWindowBlur() {
@@ -520,7 +528,7 @@ async function startListening() {
       try {
         const wavBlob = await convertToWav(audioBlob)
         if (!wavBlob) {
-          resumeListening()
+          await resumeListening()
           return
         }
 
@@ -663,7 +671,7 @@ async function startListening() {
           }, 350)
           emit('transcript', transcript)
         } else {
-          resumeListening()
+          await resumeListening()
         }
       } catch (e: any) {
         console.error('Transcription failed:', e)
@@ -689,7 +697,7 @@ async function startListening() {
           },
           { replaceLatestByEvent: true }
         )
-        resumeListening()
+        await resumeListening()
       }
     },
     onVolumeChange: (level: number) => {
@@ -712,13 +720,14 @@ async function startListening() {
 
 async function playResponseTTS(text: string) {
   if (!text.trim() || !autoPlayTTS.value || isTtsSpeechMuted()) {
-    resumeListening()
+    await resumeListening()
     return
   }
 
   if (vad) {
     vad.pause({ monitorBargeIn: true })
   }
+  listeningReady.value = false
 
   ttsInterruptedByBargeIn = false
   setLocalPhase('tts_preparing')
@@ -784,8 +793,8 @@ async function playResponseTTS(text: string) {
   } finally {
     isSynthesizingTTS = false
     setLocalPhase(null)
-    if (props.modelValue && !chatStore.streaming) {
-      resumeListening()
+    if (props.modelValue && !chatStore.streaming && !ttsInterruptedByBargeIn) {
+      await resumeListening()
     }
   }
 }
@@ -841,7 +850,7 @@ watch(
         const { markdownToText } = await loadMarkdownModule()
         const plainText = markdownToText(lastMsg.content)
         if (lastSpokenAssistantMessageId.value === lastMsg.id) {
-          resumeListening()
+          await resumeListening()
           return
         }
         pushBubble('assistant', plainText)
@@ -849,7 +858,7 @@ watch(
         await playResponseTTS(plainText)
         lastSpokenAssistantMessageId.value = lastMsg.id
       } else if (props.modelValue && !isSynthesizingTTS) {
-        resumeListening()
+        await resumeListening()
       }
     }
   }
