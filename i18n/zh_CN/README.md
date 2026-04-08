@@ -53,7 +53,7 @@
 
 ZimaOS Blue 就是我们的答案：一个完全开源、可审计、厂商中立、可直接投入生产的 Agent Runtime 与工具包，让你几乎零门槛地交付私有、自托管的 Agent。
 
-面向想随心折腾或亲手打磨 Agent 的开发者，Blue 从一开始就为性能而生：使用 Go 编写，内存占用最低可至 19 MB。无论是 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows 还是 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS，只要能通电的地方，它都能跑起来。
+面向想随心折腾或亲手打磨 Agent 的开发者，Blue 从一开始就为性能而生：使用 Go 编写，内存占用最低可至 19 MB。无论是 x86、<a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows 还是 ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS，只要能通电的地方，它都能跑起来。
 
 ## 演示
 

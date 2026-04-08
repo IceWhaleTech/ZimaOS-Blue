@@ -52,7 +52,7 @@
 
 Η ZimaOS Blue είναι η απάντησή μας — ένα πλήρως ανοιχτού κώδικα, ελεγχόμενο, ουδέτερο από τον προμηθευτή και έτοιμο για παραγωγή χρόνου εκτέλεσης και εργαλειοθήκη που σας επιτρέπει να αποστέλλετε ιδιωτικούς πράκτορες που φιλοξενούνται μόνοι σας με μηδενική τριβή.
 
-Σχεδιασμένο για τολμηρούς προγραμματιστές που θέλουν να αισθάνονται ή να κάνουν χειροποίητα τους δικούς τους πράκτορες, το Blue έχει σχεδιαστεί για απόδοση: γραμμένο στο Go, με αποτύπωμα μνήμης έως και 19 MB. Λειτουργεί σε οποιοδήποτε x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — οπουδήποτε συνδέετε το ρεύμα.
+Σχεδιασμένο για τολμηρούς προγραμματιστές που θέλουν να αισθάνονται ή να κάνουν χειροποίητα τους δικούς τους πράκτορες, το Blue έχει σχεδιαστεί για απόδοση: γραμμένο στο Go, με αποτύπωμα μνήμης έως και 19 MB. Λειτουργεί σε οποιοδήποτε x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — οπουδήποτε συνδέετε το ρεύμα.
 
 ## Επιδείξεις
 

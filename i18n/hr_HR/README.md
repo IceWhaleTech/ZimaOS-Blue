@@ -52,7 +52,7 @@ Inspirirani OpenClawom, vjerujemo da će budućnost osobnog računalstva oblikov
 
 ZimaOS Blue je naš odgovor — potpuno otvoreno okruženje, koje se može revidirati, neovisno o prodavaču i spremno za proizvodnju, izvršavanje agenta i skup alata koji vam omogućuje isporuku privatnih agenata koji se sami hostiraju bez problema.
 
-Napravljen za odvažne programere koji žele vibrirati ili ručno izraditi vlastite agente, Blue je projektiran za performanse: napisan u Go, s memorijskim otiskom od samo 19 MB. Radi na bilo kojem x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Piju, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windowsu, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-u — gdje god priključite napajanje.
+Napravljen za odvažne programere koji žele vibrirati ili ručno izraditi vlastite agente, Blue je projektiran za performanse: napisan u Go, s memorijskim otiskom od samo 19 MB. Radi na bilo kojem x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Piju, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windowsu, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-u — gdje god priključite napajanje.
 
 ## Demo prikazi
 

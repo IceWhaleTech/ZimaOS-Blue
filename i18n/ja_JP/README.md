@@ -52,7 +52,7 @@ OpenClaw からインスピレーションを受け、パーソナル コンピ�
 
 ZimaOS Blue が私たちの答えです。完全にオープンソースで監査可能、ベンダー中立、本番環境に対応したエージェント ランタイムとツールキットで、プライベートの自己ホスト型エージェントをスムーズに配布できます。
 
-Blue は、独自のエージェントを動かしたり手作りしたりしたい大胆な開発者向けに構築されており、パフォーマンスを重視して設計されています。Go で書かれており、メモリ使用量は 19 MB と低いです。 x86、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS など、電源を接続すればどこでも動作します。
+Blue は、独自のエージェントを動かしたり手作りしたりしたい大胆な開発者向けに構築されており、パフォーマンスを重視して設計されています。Go で書かれており、メモリ使用量は 19 MB と低いです。 x86、<a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows、![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS など、電源を接続すればどこでも動作します。
 
 ## デモ
 

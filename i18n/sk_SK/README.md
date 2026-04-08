@@ -52,7 +52,7 @@ Inšpirovaní OpenClawom a veríme, že budúcnosť osobných počítačov bude 
 
 ZimaOS Blue je naša odpoveď – plne open source, auditovateľný, dodávateľsky neutrálny a produkčne pripravený agent runtime a súprava nástrojov, ktorá vám umožňuje odosielať súkromných agentov s vlastným hosťovaním s nulovým trením.
 
-Blue, stvorený pre odvážnych vývojárov, ktorí chcú vibrovať alebo ručne vyrábať svojich vlastných agentov, je navrhnutý pre výkon: napísaný v Go, s pamäťou len 19 MB. Beží na akomkoľvek x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS - kdekoľvek, kde pripojíte napájanie.
+Blue, stvorený pre odvážnych vývojárov, ktorí chcú vibrovať alebo ručne vyrábať svojich vlastných agentov, je navrhnutý pre výkon: napísaný v Go, s pamäťou len 19 MB. Beží na akomkoľvek x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS - kdekoľvek, kde pripojíte napájanie.
 
 ## Ukážky
 

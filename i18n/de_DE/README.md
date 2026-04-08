@@ -52,7 +52,7 @@ Inspiriert von OpenClaw glauben wir, dass die Zukunft des Personal Computing von
 
 ZimaOS Blue ist unsere Antwort – eine vollständig quelloffene, überprüfbare, herstellerneutrale und produktionsbereite Agentenlaufzeit und ein Toolkit, mit dem Sie private, selbst gehostete Agenten reibungslos bereitstellen können.
 
-Blue wurde für mutige Entwickler entwickelt, die ihre eigenen Agenten vibieren oder manuell erstellen möchten, und ist auf Leistung ausgelegt: geschrieben in Go, mit einem Speicherbedarf von nur 19 MB. Es läuft auf jedem x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS – überall dort, wo Sie Strom anschließen.
+Blue wurde für mutige Entwickler entwickelt, die ihre eigenen Agenten vibieren oder manuell erstellen möchten, und ist auf Leistung ausgelegt: geschrieben in Go, mit einem Speicherbedarf von nur 19 MB. Es läuft auf jedem x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS – überall dort, wo Sie Strom anschließen.
 
 ## Demos
 

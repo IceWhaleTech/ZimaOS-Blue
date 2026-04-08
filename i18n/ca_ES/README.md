@@ -52,7 +52,7 @@ Inspirats per OpenClaw, creiem que el futur de la informàtica personal estarà 
 
 ZimaOS Blue és la nostra resposta: un conjunt d'eines i temps d'execució d'agents totalment de codi obert, auditable, neutral per a proveïdors i preparat per a la producció que us permet enviar agents privats i allotjats sense fricció.
 
-Creat per a desenvolupadors atrevits que volen vibrar o crear els seus propis agents, Blue està dissenyat per al rendiment: escrit a Go, amb una empremta de memòria de tan sols 19 MB. S'executa a qualsevol x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS, a qualsevol lloc on connecteu l'alimentació.
+Creat per a desenvolupadors atrevits que volen vibrar o crear els seus propis agents, Blue està dissenyat per al rendiment: escrit a Go, amb una empremta de memòria de tan sols 19 MB. S'executa a qualsevol x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS, a qualsevol lloc on connecteu l'alimentació.
 
 ## Demostracions
 

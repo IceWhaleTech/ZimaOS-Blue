@@ -52,7 +52,7 @@ Arna spreagadh ag OpenClaw, creidimid go mbeidh todhchaí na ríomhaireachta pea
 
 Is é ZimaOS Blue ár bhfreagra - am rite agus foireann uirlisí gníomhaire lán-fhoinse oscailte, in-iniúchta, díoltóir-neodrach agus réidh le táirgeadh a ligeann duit gníomhairí príobháideacha féin-óstáilte a sheoladh le frithchuimilt nialasach.
 
-Tógtha d'fhorbróirí dána atá ag iarraidh a ngníomhairí féin a vibe nó lámhcheirde a dhéanamh, déantar innealtóireacht Blue le haghaidh feidhmíochta: scríofa in Go, le lorg cuimhne chomh híseal le 19 MB. Ritheann sé ar aon x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — áit ar bith a phlocálann tú cumhacht.
+Tógtha d'fhorbróirí dána atá ag iarraidh a ngníomhairí féin a vibe nó lámhcheirde a dhéanamh, déantar innealtóireacht Blue le haghaidh feidhmíochta: scríofa in Go, le lorg cuimhne chomh híseal le 19 MB. Ritheann sé ar aon x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — áit ar bith a phlocálann tú cumhacht.
 
 ## Taispeántais
 

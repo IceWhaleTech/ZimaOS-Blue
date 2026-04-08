@@ -52,7 +52,7 @@ Inspirert av OpenClaw tror vi fremtiden for personlig databehandling vil bli for
 
 ZimaOS Blue er svaret vårt – en fullstendig åpen kildekode, reviderbar, leverandørnøytral og produksjonsklar agentkjøring og verktøysett som lar deg sende private, selvvertsbaserte agenter uten friksjon.
 
-Blue er bygget for dristige utviklere som vil vibe eller håndlage sine egne agenter, og er utviklet for ytelse: skrevet i Go, med et minneavtrykk helt ned mot 19 MB. Den kjører på alle x86-systemer, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows og ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — hvor enn du har strøm.
+Blue er bygget for dristige utviklere som vil vibe eller håndlage sine egne agenter, og er utviklet for ytelse: skrevet i Go, med et minneavtrykk helt ned mot 19 MB. Den kjører på alle x86-systemer, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows og ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — hvor enn du har strøm.
 
 ## Demoer
 

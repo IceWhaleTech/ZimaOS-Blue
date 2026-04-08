@@ -52,7 +52,7 @@ Inspirați de OpenClaw, credem că viitorul computerelor personale va fi modelat
 
 ZimaOS Blue este răspunsul nostru — un agent de rulare și un set de instrumente complet open-source, auditabil, neutru pentru furnizor și pregătit pentru producție, care vă permite să expediați agenți privați, auto-găzduiți, fără fricțiuni.
 
-Creat pentru dezvoltatorii îndrăzneți care doresc să vibreze sau să își creeze manual propriii agenți, Blue este proiectat pentru performanță: scris în Go, cu o amprentă de memorie de până la 19 MB. Funcționează pe orice x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — oriunde vă conectați la curent.
+Creat pentru dezvoltatorii îndrăzneți care doresc să vibreze sau să își creeze manual propriii agenți, Blue este proiectat pentru performanță: scris în Go, cu o amprentă de memorie de până la 19 MB. Funcționează pe orice x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — oriunde vă conectați la curent.
 
 ## Demonstrații
 

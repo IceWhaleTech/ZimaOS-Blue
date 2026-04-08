@@ -52,7 +52,7 @@ Zainspirowani OpenClawem wierzymy, że przyszłość komputerów osobistych będ
 
 ZimaOS Blue to nasza odpowiedź — środowisko wykonawcze agentów i zestaw narzędzi w pełni open source, podlegające audytowi, neutralne dla dostawców i gotowe do produkcji, umożliwiające dostarczanie prywatnych, hostowanych agentów bez żadnych problemów.
 
-Stworzony z myślą o odważnych programistach, którzy chcą nadać swoim agentom charakter lub tworzyć je ręcznie, Blue został zaprojektowany z myślą o wydajności: napisany w Go i zajmujący zaledwie 19 MB pamięci. Działa na każdym x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — gdziekolwiek podłączysz zasilanie.
+Stworzony z myślą o odważnych programistach, którzy chcą nadać swoim agentom charakter lub tworzyć je ręcznie, Blue został zaprojektowany z myślą o wydajności: napisany w Go i zajmujący zaledwie 19 MB pamięci. Działa na każdym x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — gdziekolwiek podłączysz zasilanie.
 
 ## Demonstracje
 

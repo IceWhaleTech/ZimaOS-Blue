@@ -52,7 +52,7 @@ A OpenClaw által ihletett, úgy gondoljuk, hogy a személyi számítástechnika
 
 A ZimaOS Blue a válaszunk – egy teljesen nyílt forráskódú, auditálható, szállító-semleges és termelésre kész ügynöki futtatókörnyezet és eszközkészlet, amely lehetővé teszi privát, saját üzemeltetésű ügynökök szállítását nulla súrlódás nélkül.
 
-Azok a merész fejlesztők számára készült, akik saját ügynökeiket szeretnék megmozgatni vagy megalkotni, a Blue teljesítményre tervezték: Go nyelven íródott, 19 MB-os memóriaterülettel. Bármilyen x86-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-n, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-en fut – bárhol, ahol csatlakoztatja a tápfeszültséget.
+Azok a merész fejlesztők számára készült, akik saját ügynökeiket szeretnék megmozgatni vagy megalkotni, a Blue teljesítményre tervezték: Go nyelven íródott, 19 MB-os memóriaterülettel. Bármilyen x86-on, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi-n, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows-on, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS-en fut – bárhol, ahol csatlakoztatja a tápfeszültséget.
 
 ## Demók
 

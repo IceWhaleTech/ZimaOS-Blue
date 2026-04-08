@@ -52,7 +52,7 @@ OpenClaw에서 영감을 받아 개인 컴퓨팅의 미래는 엣지에서 실�
 
 ZimaOS Blue이 우리의 대답입니다. 완전한 오픈 소스, 감사 가능, 공급업체 중립적, 프로덕션 지원 에이전트 런타임 및 툴킷으로, 마찰 없이 비공개 자체 호스팅 에이전트를 제공할 수 있습니다.
 
-자신만의 에이전트를 개발하거나 직접 만들고 싶어하는 대담한 개발자를 위해 제작된 Blue은 성능을 위해 설계되었습니다. Go로 작성되었으며 메모리 공간은 19MB에 불과합니다. x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS 등 전원을 연결하는 모든 곳에서 실행됩니다.
+자신만의 에이전트를 개발하거나 직접 만들고 싶어하는 대담한 개발자를 위해 제작된 Blue은 성능을 위해 설계되었습니다. Go로 작성되었으며 메모리 공간은 19MB에 불과합니다. x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS 등 전원을 연결하는 모든 곳에서 실행됩니다.
 
 ## 데모
 

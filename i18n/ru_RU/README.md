@@ -52,7 +52,7 @@
 
 ZimaOS Blue — это наш ответ — среда выполнения агента и набор инструментов с полностью открытым исходным кодом, проверяемая, не зависящая от поставщика и готовая к использованию, которая позволяет вам без проблем поставлять частные, автономные агенты.
 
-Blue, созданный для смелых разработчиков, которые хотят создавать собственные агенты или создавать их вручную, создан для обеспечения высокой производительности: он написан на Go и занимает всего 19 МБ памяти. Он работает на любом x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — где бы вы ни подключили питание.
+Blue, созданный для смелых разработчиков, которые хотят создавать собственные агенты или создавать их вручную, создан для обеспечения высокой производительности: он написан на Go и занимает всего 19 МБ памяти. Он работает на любом x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — где бы вы ни подключили питание.
 
 ## Демо
 

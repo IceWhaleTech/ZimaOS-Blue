@@ -52,7 +52,7 @@ OpenClaw-ൽ നിന്ന് പ്രചോദനം ഉൾക്കൊണ�
 
 ZimaOS Blue എന്നതാണ് ഞങ്ങളുടെ ഉത്തരം — പൂർണ്ണമായും ഓപ്പൺ സോഴ്‌സ്, ഓഡിറ്റബിൾ, വെണ്ടർ-ന്യൂട്രൽ, പ്രൊഡക്ഷൻ-റെഡി ഏജൻ്റ് റൺടൈം, ടൂൾകിറ്റ് എന്നിവ സ്വകാര്യവും സ്വയം ഹോസ്റ്റ് ചെയ്യുന്നതുമായ ഏജൻ്റുമാരെ സീറോ ഘർഷണത്തോടെ അയയ്ക്കാൻ നിങ്ങളെ അനുവദിക്കുന്നു.
 
-സ്വന്തം ഏജൻ്റുമാരെ വൈബ് ചെയ്യാനോ കരകൗശലമാക്കാനോ ആഗ്രഹിക്കുന്ന ബോൾഡ് ഡെവലപ്പർമാർക്കായി നിർമ്മിച്ചതാണ്, Blue പ്രകടനത്തിനായി രൂപകൽപ്പന ചെയ്‌തതാണ്: Go- ൽ എഴുതിയത്, 19 MB-യിൽ താഴെയുള്ള മെമ്മറി ഫൂട്ട്‌പ്രിൻ്റ്. ഏത് x86, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — നിങ്ങൾ പവർ പ്ലഗ് ഇൻ ചെയ്യുന്ന എവിടെയും ഇത് പ്രവർത്തിക്കുന്നു.
+സ്വന്തം ഏജൻ്റുമാരെ വൈബ് ചെയ്യാനോ കരകൗശലമാക്കാനോ ആഗ്രഹിക്കുന്ന ബോൾഡ് ഡെവലപ്പർമാർക്കായി നിർമ്മിച്ചതാണ്, Blue പ്രകടനത്തിനായി രൂപകൽപ്പന ചെയ്‌തതാണ്: Go- ൽ എഴുതിയത്, 19 MB-യിൽ താഴെയുള്ള മെമ്മറി ഫൂട്ട്‌പ്രിൻ്റ്. ഏത് x86, <a href="https://www.zimaspace.com/zimaos?utm_source=blue"><img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="18" /></a> ZimaOS, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/RAS.png)Raspberry Pi, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)Windows, ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS — നിങ്ങൾ പവർ പ്ലഗ് ഇൻ ചെയ്യുന്ന എവിടെയും ഇത് പ്രവർത്തിക്കുന്നു.
 
 ## ഡെമോകൾ
 
