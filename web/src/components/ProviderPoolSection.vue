@@ -399,8 +399,7 @@ const supportsProviderVerification = computed(() => {
   return (
     !!provider &&
     provider.type !== 'trial' &&
-    provider.type !== 'media' &&
-    provider.metadata_mode !== 'catalog'
+    provider.type !== 'media'
   )
 })
 
@@ -475,15 +474,15 @@ function getCustomProviderFormatValue(provider?: Provider | null): EditableCusto
 }
 
 let providerSelectionSeq = 0
+let lastAutoRefreshSignature = ''
 
 // Refresh models when provider changes
 watch(
-  () =>
-    [
-      displayProvider.value?.id,
-      displayProvider.value?.api_format,
-      displayProvider.value?.api_format_mode,
-    ] as const,
+  [
+    () => displayProvider.value?.id ?? '',
+    () => displayProvider.value?.api_format ?? '',
+    () => displayProvider.value?.api_format_mode ?? '',
+  ],
   ([providerId]) => {
     if (providerId && savingCustomProviderFormat.value === providerId) {
       return
@@ -494,28 +493,48 @@ watch(
 )
 
 watch(
-  () => displayProvider.value,
-  async (provider) => {
-    if (!provider) return
+  [
+    () => displayProvider.value?.id ?? '',
+    () => displayProvider.value?.base_url ?? '',
+    () => displayProvider.value?.api_format ?? '',
+    () => displayProvider.value?.api_format_mode ?? '',
+    () => displayProvider.value?.api_keys?.length ?? 0,
+    () => (displayProvider.value?.oauth?.connected ? 1 : 0),
+  ],
+  async ([providerId, baseURL, apiFormat, apiFormatMode, keyCount, oauthConnected]) => {
+    if (!providerId) {
+      lastAutoRefreshSignature = ''
+      return
+    }
+    const signature = [
+      providerId,
+      baseURL,
+      apiFormat,
+      apiFormatMode,
+      String(keyCount),
+      String(oauthConnected),
+    ].join('|')
+    if (signature === lastAutoRefreshSignature) return
+    lastAutoRefreshSignature = signature
     const seq = ++providerSelectionSeq
-    const providerId = provider.id
 
     // Fetch provider-level models (backend unions all keys automatically)
     await store.refreshModels(providerId)
     if (seq !== providerSelectionSeq) return
 
     fetchProviderUsage(providerId)
-    if (supportsProviderAccountStatus(provider) && provider.api_keys?.length) {
+    const provider = store.providers.find((item) => item.id === providerId)
+    if (supportsProviderAccountStatus(provider) && provider?.api_keys?.length) {
       store.fetchAccountStatus(providerId, getProviderAccountStatusKey(provider))
     } else {
       store.clearAccountStatus(providerId)
     }
     // Fetch OAuth quota lazily when provider is selected
-    if (provider.oauth?.connected) {
+    if (provider?.oauth?.connected) {
       store.fetchOAuthQuota(providerId)
     }
     // Always fetch OAuth accounts list for OAuth-capable providers
-    if (provider.oauth) {
+    if (provider?.oauth) {
       fetchOAuthAccounts(providerId)
     }
   },

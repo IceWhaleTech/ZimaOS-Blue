@@ -258,7 +258,7 @@ describe('ProviderPoolSection media verification gating', () => {
     expect(wrapper.text()).toContain('验证与推荐')
   })
 
-  it('hides verify and recommend for catalog providers', async () => {
+  it('keeps verify and recommend for catalog providers', async () => {
     const provider = {
       ...createProvider('custom'),
       id: 'openai',
@@ -272,7 +272,7 @@ describe('ProviderPoolSection media verification gating', () => {
     const wrapper = mountSection()
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('验证与推荐')
+    expect(wrapper.text()).toContain('验证与推荐')
   })
 
   it('hides the base URL section for catalog providers', async () => {
