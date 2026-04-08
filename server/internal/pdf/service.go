@@ -409,6 +409,7 @@ func canonicalizePDFText(text string) string {
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 	text = strings.ReplaceAll(text, "\r", "\n")
 	text = pdfTextRuneReplacer.Replace(text)
+	text = repairMalformedPDFText(text)
 
 	var sb strings.Builder
 	sb.Grow(len(text))

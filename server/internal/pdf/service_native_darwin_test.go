@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	ocrruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ocr"
@@ -440,6 +441,78 @@ func TestServiceExtractUsesNativeRenderForOCRFallbackOnDarwin(t *testing.T) {
 	}
 	if _, err := png.Decode(bytes.NewReader(ocr.images[0])); err != nil {
 		t.Fatalf("expected OCR input to be valid PNG: %v", err)
+	}
+}
+
+func TestRunDarwinPDFKitExtractGoogleCXXGuideFixtureShowsMalformedRawText(t *testing.T) {
+	output, ok, err := runDarwinPDFKitExtract(context.Background(), filepath.Join("testdata", "Google_C++_Guide.pdf"))
+	if err != nil {
+		t.Fatalf("runDarwinPDFKitExtract returned error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected native PDF extractor to be available on darwin")
+	}
+	if output == nil || len(output.Pages) < 2 {
+		t.Fatalf("output = %#v, want at least 2 pages", output)
+	}
+
+	pageText := output.Pages[1].Text
+	if !strings.Contains(pageText, "智能挃针和其他 C++特性") {
+		t.Fatalf("page text = %q, want malformed raw native phrase", pageText)
+	}
+	if !strings.Contains(pageText, "觃则乊例外") {
+		t.Fatalf("page text = %q, want malformed raw native section title", pageText)
+	}
+
+	bodyPageText := output.Pages[19].Text
+	if !strings.Contains(bodyPageText, "智能指针和其他 C++特性") {
+		t.Fatalf("body page text = %q, want correct section heading on later native page", bodyPageText)
+	}
+	if !strings.Contains(bodyPageText, "如果确实需要使用智能挃针的话") {
+		t.Fatalf("body page text = %q, want malformed body phrase showing mixed unicode mapping", bodyPageText)
+	}
+}
+
+func TestServiceExtractGoogleCXXGuideChineseFixtureRepairsMalformedNativeText(t *testing.T) {
+	svc := NewService(zap.NewNop(), nil, ServiceConfig{
+		RuntimeDir:   t.TempDir(),
+		AutoDownload: false,
+	})
+	svc.initPool = func(cfg pdfRuntimeConfig) (any, error) {
+		_ = cfg
+		t.Fatal("expected lightweight darwin extraction to use native PDFKit without pdfium initialization")
+		return nil, nil
+	}
+
+	result, err := svc.Extract(context.Background(), ExtractRequest{
+		Path:          filepath.Join("testdata", "Google_C++_Guide.pdf"),
+		Pages:         []int{2},
+		IncludePages:  true,
+		DisableOCR:    true,
+		DisableVision: true,
+	})
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if result.Document.Engine != "pdfkit/native" {
+		t.Fatalf("engine = %q, want %q", result.Document.Engine, "pdfkit/native")
+	}
+	if len(result.Pages) != 1 {
+		t.Fatalf("pages len = %d, want 1", len(result.Pages))
+	}
+
+	pageText := result.Pages[0].Text
+	if !strings.Contains(pageText, "智能指针和其他 C++特性") {
+		t.Fatalf("page text = %q, want repaired phrase from native extraction", pageText)
+	}
+	if strings.Contains(pageText, "智能挃针和其他 C++特性") {
+		t.Fatalf("page text = %q, expected malformed PDF text fallback to repair current garbled phrase", pageText)
+	}
+	if !strings.Contains(pageText, "规则之例外") {
+		t.Fatalf("page text = %q, want repaired section title from native extraction", pageText)
+	}
+	if strings.Contains(pageText, "觃则乊例外") {
+		t.Fatalf("page text = %q, expected malformed PDF text fallback to repair current garbled section title", pageText)
 	}
 }
 

@@ -462,7 +462,7 @@ func extractDarwinPDFKit(ctx context.Context, path string) (*darwinPDFKitOutput,
 		page := document.Send(darwinPDFSelPageAtIndex, uintptr(index))
 		text := ""
 		if page != 0 {
-			text = darwinPDFGoString(page.Send(darwinPDFSelString))
+			text = darwinPDFObjectString(page.Send(darwinPDFSelString))
 		}
 		pages = append(pages, darwinPDFKitPage{
 			Number: index + 1,
@@ -576,10 +576,7 @@ func darwinPDFDocumentAttributes(document objc.ID) map[string]string {
 		if keyObject == 0 {
 			continue
 		}
-		key := strings.TrimSpace(darwinPDFGoString(keyObject))
-		if key == "" {
-			key = strings.TrimSpace(darwinPDFGoString(keyObject.Send(darwinPDFSelDescription)))
-		}
+		key := strings.TrimSpace(darwinPDFObjectString(keyObject))
 		if key == "" {
 			continue
 		}
@@ -587,10 +584,7 @@ func darwinPDFDocumentAttributes(document objc.ID) map[string]string {
 		if valueObject == 0 {
 			continue
 		}
-		value := strings.TrimSpace(darwinPDFGoString(valueObject))
-		if value == "" {
-			value = strings.TrimSpace(darwinPDFGoString(valueObject.Send(darwinPDFSelDescription)))
-		}
+		value := strings.TrimSpace(darwinPDFObjectString(valueObject))
 		if value == "" {
 			continue
 		}
@@ -616,7 +610,7 @@ func darwinPDFOutlineEntries(document objc.ID, node objc.ID, level int) []Outlin
 		if child == 0 {
 			continue
 		}
-		title := strings.TrimSpace(darwinPDFGoString(child.Send(darwinPDFSelLabel)))
+		title := strings.TrimSpace(darwinPDFObjectString(child.Send(darwinPDFSelLabel)))
 		if title != "" {
 			out = append(out, OutlineEntry{
 				Title:      title,
@@ -683,6 +677,19 @@ func darwinPDFGoString(nsStr objc.ID) string {
 		return ""
 	}
 	return darwinPDFCString(ptr)
+}
+
+func darwinPDFObjectString(object objc.ID) string {
+	if object == 0 {
+		return ""
+	}
+	description := object
+	if darwinPDFSelDescription != 0 {
+		if described := object.Send(darwinPDFSelDescription); described != 0 {
+			description = described
+		}
+	}
+	return darwinPDFGoString(description)
 }
 
 func darwinPDFDataBytes(data objc.ID) []byte {
