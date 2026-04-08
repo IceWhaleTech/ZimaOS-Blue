@@ -467,7 +467,7 @@ func (h *ChatHandler) buildSmallModelConversationCompression(ctx context.Context
 		"\nOutput ONLY the summary text.\n\nLatest user message (relevance hint only):\n"
 	suffix := truncateRunes(latestUser, 320) + "\n\nHistorical conversation snippets:\n" + transcript + "\nSummary:"
 
-	smCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	smCtx, cancel := context.WithTimeout(ctx, smallModelHistorySummaryTimeout)
 	defer cancel()
 
 	h.smallModelStats.RecordContextCompressAttempt()

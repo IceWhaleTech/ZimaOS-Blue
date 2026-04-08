@@ -148,6 +148,7 @@ type smallModelRuntimeMock struct {
 	calls    int
 	calledCh chan struct{}
 	lastReq  smallmodel.GenerateRequest
+	generate func(context.Context, smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error)
 }
 
 type staticToolMock struct {
@@ -350,7 +351,7 @@ func (m *smallModelRuntimeMock) Ready() bool {
 	return *m.ready
 }
 
-func (m *smallModelRuntimeMock) Generate(_ context.Context, req smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+func (m *smallModelRuntimeMock) Generate(ctx context.Context, req smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
 	m.calls++
 	m.lastReq = req
 	if m.calledCh != nil {
@@ -358,6 +359,9 @@ func (m *smallModelRuntimeMock) Generate(_ context.Context, req smallmodel.Gener
 		case m.calledCh <- struct{}{}:
 		default:
 		}
+	}
+	if m.generate != nil {
+		return m.generate(ctx, req)
 	}
 	if m.err != nil {
 		return nil, m.err
@@ -8791,6 +8795,43 @@ func TestGenerateConversationSummaryWithSmallModel_PreservesMultilineBullets(t *
 	}
 	if !strings.Contains(summary, "Goal") || !strings.Contains(summary, "Accomplished") || !strings.Contains(summary, "Relevant Files") {
 		t.Fatalf("summary = %q, want canonical structured sections preserved", summary)
+	}
+}
+
+func TestGenerateConversationSummaryWithSmallModel_UsesHistorySummaryTimeoutBudget(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{
+		generate: func(ctx context.Context, req smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatal("expected summary generation deadline")
+			}
+			if remaining := time.Until(deadline); remaining < 7*time.Second {
+				return nil, context.DeadlineExceeded
+			}
+			return &smallmodel.GenerateResponse{Text: "Summary: Keep auth/middleware.go and 2026-04-08 in context."}, nil
+		},
+	}
+	handler.SetSmallModelRuntime(sm)
+
+	summary := handler.generateConversationSummaryWithSmallModel(context.Background(), []llm.Message{
+		{Role: llm.RoleUser, Content: "Debug the login retry ordering."},
+		{Role: llm.RoleAssistant, Content: "I fixed auth/middleware.go and noted 2026-04-08."},
+	})
+	if summary == "" {
+		t.Fatal("expected non-empty summary when runtime gets the history-summary deadline budget")
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
 	}
 }
 

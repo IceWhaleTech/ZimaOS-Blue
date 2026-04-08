@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -1341,7 +1342,10 @@ func (h *ChatHandler) buildSmartContext(ctx context.Context, params smartContext
 	return result
 }
 
-const summaryCustomFocus = "Keep the total under 320 tokens. Include exact filenames, directories, IDs, and dates when they matter."
+const (
+	summaryCustomFocus              = "Keep the total under 320 tokens. Include exact filenames, directories, IDs, and dates when they matter."
+	smallModelHistorySummaryTimeout = 8 * time.Second
+)
 
 // generateSummarySync generates a compressed summary for older messages.
 // Called synchronously when no cached summary exists.

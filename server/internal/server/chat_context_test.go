@@ -10,6 +10,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -1378,6 +1379,68 @@ func TestGenerateSummarySync_UsesSmallModelContextCompressionWhenEnabled(t *test
 	}
 	if snap.SummaryAttempts != 0 {
 		t.Fatalf("summary attempts = %d, want 0 when context-compress route handled the request", snap.SummaryAttempts)
+	}
+}
+
+func TestGenerateSummarySync_ContextCompressionUsesHistorySummaryTimeoutBudget(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	h := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	smallModelEnabled := true
+	contextCompressEnabled := true
+	settings.settings.SmallModelEnabled = &smallModelEnabled
+	settings.settings.SmallModelContextCompressEnabled = &contextCompressEnabled
+	h.SetSettingsHandler(settings)
+
+	sm := &smallModelRuntimeMock{
+		generate: func(ctx context.Context, req smallmodel.GenerateRequest) (*smallmodel.GenerateResponse, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatal("expected context-compression deadline")
+			}
+			if remaining := time.Until(deadline); remaining < 7*time.Second {
+				return nil, context.DeadlineExceeded
+			}
+			return &smallmodel.GenerateResponse{Text: "Goal\n- Keep auth/middleware.go\n\nAccomplished\n- [carry-over] Preserve the 2026-04-08 regression note"}, nil
+		},
+	}
+	h.SetSmallModelRuntime(sm)
+
+	allMessages := []memory.Message{
+		{Role: "user", Content: "Keep auth/middleware.go in context."},
+		{Role: "assistant", Content: "I will preserve the file path."},
+		{Role: "user", Content: "Also keep the 2026-04-08 regression date."},
+		{Role: "assistant", Content: "Noted, I will keep that date."},
+		{Role: "user", Content: "Summarize older context only."},
+		{Role: "assistant", Content: "I will compress the history."},
+		{Role: "user", Content: "Answer the latest question briefly."},
+	}
+	recent := []llm.Message{
+		{Role: llm.RoleUser, Content: "Also keep the 2026-04-08 regression date."},
+		{Role: llm.RoleAssistant, Content: "Noted, I will keep that date."},
+		{Role: llm.RoleUser, Content: "Summarize older context only."},
+		{Role: llm.RoleAssistant, Content: "I will compress the history."},
+		{Role: llm.RoleUser, Content: "Answer the latest question briefly."},
+	}
+
+	got := h.generateSummarySync(context.Background(), "conv-small-context-timeout", allMessages, recent)
+	if got == "" {
+		t.Fatal("expected non-empty summary when context compression gets the history-summary deadline budget")
+	}
+	if !strings.Contains(got, "[carry-over]") {
+		t.Fatalf("summary = %q, want small-model context-compression output", got)
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	snap := h.smallModelStats.Snapshot()
+	if snap.ContextCompressSuccess != 1 {
+		t.Fatalf("context-compress success = %d, want 1", snap.ContextCompressSuccess)
 	}
 }
 

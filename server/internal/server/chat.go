@@ -26433,7 +26433,7 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 		"\nOutput ONLY the summary text.\n\nConversation snippets:\n"
 	suffix := transcript.String() + "\nSummary:"
 
-	smCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	smCtx, cancel := context.WithTimeout(ctx, smallModelHistorySummaryTimeout)
 	defer cancel()
 
 	h.smallModelStats.RecordSummaryAttempt()
