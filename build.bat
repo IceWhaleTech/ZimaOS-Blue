@@ -4,6 +4,12 @@ setlocal enabledelayedexpansion
 :: ZimaOS-Blue Development Script
 :: Usage: build.bat [command]
 :: Commands: start (default), server, web, build, clean, prd
+:: Optional signing env vars:
+::   WINDOWS_CERTIFICATE_THUMBPRINT=certificate SHA1 thumbprint (required to sign)
+::   WINDOWS_TIMESTAMP_URL=RFC3161 timestamp URL (default: http://timestamp.digicert.com)
+::   SIGNTOOL_PATH=full path to signtool.exe (optional)
+::   WINDOWS_SIGN_CSP=SafeNet CSP/KSP provider name (optional)
+::   WINDOWS_SIGN_KC=SafeNet key container name (optional)
 
 set "PROJECT_ROOT=%~dp0"
 set "COMMAND=%~1"
@@ -98,6 +104,64 @@ if "%AUDIT_STATUS%"=="1" (
     )
 )
 exit /b 0
+
+:pack_dist_into_binary
+set "BIN_PATH=%~1"
+set "DIST_DIR=%~2"
+set "ARCHIVE_PATH=%TEMP%\zimaos-dist.tar.gz"
+
+if "%BIN_PATH%"=="" (
+    echo [ERROR] Missing binary path for pack step.
+    exit /b 1
+)
+if "%DIST_DIR%"=="" (
+    echo [ERROR] Missing dist directory for pack step.
+    exit /b 1
+)
+
+if exist "%ARCHIVE_PATH%" del /f /q "%ARCHIVE_PATH%" >nul 2>&1
+
+echo [INFO] Packing dist into binary...
+tar czf "%ARCHIVE_PATH%" -C "%DIST_DIR%" .
+if errorlevel 1 (
+    echo [ERROR] Failed to create dist archive.
+    exit /b 1
+)
+
+for %%F in ("%BIN_PATH%") do set "OFFSET=%%~zF"
+if not defined OFFSET (
+    echo [ERROR] Failed to determine binary size before packing.
+    if exist "%ARCHIVE_PATH%" del /f /q "%ARCHIVE_PATH%" >nul 2>&1
+    exit /b 1
+)
+
+copy /b "%BIN_PATH%" + "%ARCHIVE_PATH%" "%BIN_PATH%" >nul
+if errorlevel 1 (
+    echo [ERROR] Failed to append dist archive to binary.
+    if exist "%ARCHIVE_PATH%" del /f /q "%ARCHIVE_PATH%" >nul 2>&1
+    exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$offset=[Int64]$env:OFFSET; $bytes=[System.BitConverter]::GetBytes($offset); $fs=[System.IO.File]::Open($env:BIN_PATH,[System.IO.FileMode]::Append,[System.IO.FileAccess]::Write,[System.IO.FileShare]::Read); try { $fs.Write($bytes,0,$bytes.Length) } finally { $fs.Dispose() }"
+if errorlevel 1 (
+    echo [ERROR] Failed to append binary trailer.
+    if exist "%ARCHIVE_PATH%" del /f /q "%ARCHIVE_PATH%" >nul 2>&1
+    exit /b 1
+)
+
+del /f /q "%ARCHIVE_PATH%" >nul 2>&1
+if exist "%ARCHIVE_PATH%" (
+    echo [ERROR] Failed to remove temporary dist archive: %ARCHIVE_PATH%
+    exit /b 1
+)
+
+set "OFFSET="
+set "ARCHIVE_PATH="
+set "DIST_DIR="
+set "BIN_PATH="
+exit /b 0
+
+:: Windows signing is handled by scripts\sign-windows.cmd
 
 :run
 goto :%COMMAND% 2>nul || (
@@ -220,12 +284,10 @@ if errorlevel 1 (
     exit /b 1
 )
 :: Pack dist into binary (tar.gz + 8-byte LE offset trailer)
-echo [INFO] Packing dist into binary...
-tar czf "%TEMP%\zimaos-dist.tar.gz" -C internal\web\dist .
-for %%F in (bin\blue.exe) do set "OFFSET=%%~zF"
-copy /b bin\blue.exe + "%TEMP%\zimaos-dist.tar.gz" bin\blue.exe >nul
-python3 -c "import struct,sys;sys.stdout.buffer.write(struct.pack('<q',%OFFSET%))" >> bin\blue.exe
-del "%TEMP%\zimaos-dist.tar.gz"
+call :pack_dist_into_binary "bin\blue.exe" "internal\web\dist"
+if errorlevel 1 exit /b 1
+call "%PROJECT_ROOT%scripts\sign-windows.cmd" "%PROJECT_ROOT%server\bin\blue.exe"
+if errorlevel 1 exit /b 1
 echo [OK] Server built: server\bin\blue.exe
 
 echo [OK] Production build complete!
@@ -288,12 +350,10 @@ if errorlevel 1 (
     exit /b 1
 )
 :: Pack dist into binary (tar.gz + 8-byte LE offset trailer)
-echo [INFO] Packing dist into binary...
-tar czf "%TEMP%\zimaos-dist.tar.gz" -C internal\web\dist .
-for %%F in (bin\blue.exe) do set "OFFSET=%%~zF"
-copy /b bin\blue.exe + "%TEMP%\zimaos-dist.tar.gz" bin\blue.exe >nul
-python3 -c "import struct,sys;sys.stdout.buffer.write(struct.pack('<q',%OFFSET%))" >> bin\blue.exe
-del "%TEMP%\zimaos-dist.tar.gz"
+call :pack_dist_into_binary "bin\blue.exe" "internal\web\dist"
+if errorlevel 1 exit /b 1
+call "%PROJECT_ROOT%scripts\sign-windows.cmd" "%PROJECT_ROOT%server\bin\blue.exe"
+if errorlevel 1 exit /b 1
 echo [OK] Server built: server\bin\blue.exe
 
 :: Run the built binary

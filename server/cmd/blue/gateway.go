@@ -32,8 +32,8 @@ Subcommands:
 var gatewayRunCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run the service in foreground",
-	Run: func(cmd *cobra.Command, args []string) {
-		runForegroundServer()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runForegroundServer()
 	},
 }
 

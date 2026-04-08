@@ -80,6 +80,12 @@ func createProvider(cfg ProviderConfig, dataPath string) (Provider, error) {
 		return NewEdgeTTSProvider(), nil
 	case ProviderMacOSNative:
 		return NewMacOSNativeTTS(), nil
+	case ProviderWindowsNative:
+		provider := NewWindowsNativeTTSProvider()
+		if provider == nil {
+			return nil, fmt.Errorf("windows native TTS not available")
+		}
+		return provider, nil
 	case ProviderKokoro:
 		return NewKokoroProvider(dataPath), nil
 	default:
@@ -150,6 +156,9 @@ func (s *service) ListProviders() []ProviderType {
 	}
 	if (&MacOSNativeTTS{}).Available() {
 		result = append(result, ProviderMacOSNative)
+	}
+	if WindowsNativeAvailable() {
+		result = append(result, ProviderWindowsNative)
 	}
 	// Kokoro is listed only when compiled in
 	if KokoroAvailable() {
@@ -306,10 +315,9 @@ func (s *service) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Close eSpeak-NG adapter if it exists
-	if p, ok := s.providers[ProviderEspeakNG]; ok {
-		if esp, ok := p.(*EspeakNGAdapter); ok {
-			esp.Close()
+	for _, provider := range s.providers {
+		if closer, ok := provider.(interface{ Close() }); ok {
+			closer.Close()
 		}
 	}
 }

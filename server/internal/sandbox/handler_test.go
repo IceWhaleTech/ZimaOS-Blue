@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,10 +48,11 @@ func TestHandler_Execute(t *testing.T) {
 	defer cleanup()
 
 	e := echo.New()
+	command, args := testEchoCommand("hello")
 
 	reqBody := ExecuteRequest{
-		Command:     "echo",
-		Args:        []string{"hello"},
+		Command:     command,
+		Args:        args,
 		TimeoutSecs: 5,
 	}
 	body, _ := json.Marshal(reqBody)
@@ -76,6 +78,9 @@ func TestHandler_Execute(t *testing.T) {
 
 	if result.ID == "" {
 		t.Error("Execute() result ID should not be empty")
+	}
+	if strings.TrimSpace(result.Stdout) != "hello" {
+		t.Errorf("Execute() stdout = %q, want hello", result.Stdout)
 	}
 }
 
@@ -123,10 +128,11 @@ func TestHandler_Execute_WithEnv(t *testing.T) {
 	defer cleanup()
 
 	e := echo.New()
+	command, args := testEnvCommand("TEST_VAR")
 
 	reqBody := ExecuteRequest{
-		Command:     "printenv",
-		Args:        []string{"TEST_VAR"},
+		Command:     command,
+		Args:        args,
 		Env:         map[string]string{"TEST_VAR": "test_value"},
 		TimeoutSecs: 5,
 	}
@@ -145,6 +151,14 @@ func TestHandler_Execute_WithEnv(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("Execute(env) status = %d, want %d", rec.Code, http.StatusOK)
 	}
+
+	var result ExecutionResult
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("Execute(env) failed to decode response: %v", err)
+	}
+	if strings.TrimSpace(result.Stdout) != "test_value" {
+		t.Errorf("Execute(env) stdout = %q, want test_value", result.Stdout)
+	}
 }
 
 func TestHandler_Execute_WithMemoryLimit(t *testing.T) {
@@ -152,10 +166,11 @@ func TestHandler_Execute_WithMemoryLimit(t *testing.T) {
 	defer cleanup()
 
 	e := echo.New()
+	command, args := testEchoCommand("hello")
 
 	reqBody := ExecuteRequest{
-		Command:     "echo",
-		Args:        []string{"hello"},
+		Command:     command,
+		Args:        args,
 		MemoryMB:    128,
 		TimeoutSecs: 5,
 	}
@@ -181,9 +196,13 @@ func TestHandler_GetStatus(t *testing.T) {
 	defer cleanup()
 
 	// First execute a command
-	req := NewExecutionRequest("echo", "hello")
+	command, args := testEchoCommand("hello")
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 5 * time.Second
-	result, _ := manager.Execute(context.Background(), req)
+	result, err := manager.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("manager.Execute() error = %v", err)
+	}
 
 	e := echo.New()
 	httpReq := httptest.NewRequest(http.MethodGet, "/api/v1/sandbox/status/"+result.ID, nil)
@@ -192,7 +211,7 @@ func TestHandler_GetStatus(t *testing.T) {
 	c.SetParamNames("id")
 	c.SetParamValues(result.ID)
 
-	err := handler.GetStatus(c)
+	err = handler.GetStatus(c)
 	if err != nil {
 		t.Fatalf("GetStatus() error = %v", err)
 	}
@@ -241,7 +260,8 @@ func TestHandler_Kill(t *testing.T) {
 	defer cleanup()
 
 	// Start a long-running command
-	req := NewExecutionRequest("sleep", "60")
+	command, args := testSleepCommand(60)
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 60 * time.Second
 
 	// Execute in goroutine

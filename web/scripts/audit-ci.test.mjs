@@ -114,3 +114,52 @@ test('keeps blocking vulnerability failures unchanged', () => {
   assert.match(capture.errors.join('\n'), /- semver/)
   assert.match(capture.errors.join('\n'), /12345: Regular Expression Denial of Service/)
 })
+
+test('uses npm.cmd on Windows when launching npm audit', () => {
+  const capture = createCapture()
+  let launchedCommand = null
+  let shellEnabled = null
+
+  const exitCode = main(['--no-allowlist'], {
+    ...capture,
+    env: { NPM_AUDIT_MAX_ATTEMPTS: '1' },
+    platform: 'win32',
+    spawn(command, _args, options) {
+      launchedCommand = command
+      shellEnabled = options?.shell
+      return {
+        stderr: '',
+        stdout: JSON.stringify({
+          vulnerabilities: {},
+        }),
+      }
+    },
+  })
+
+  assert.equal(exitCode, EXIT_CODES.ok)
+  assert.equal(launchedCommand, 'npm.cmd')
+  assert.equal(shellEnabled, true)
+})
+
+test('uses npm on non-Windows platforms when launching npm audit', () => {
+  const capture = createCapture()
+  let launchedCommand = null
+
+  const exitCode = main(['--no-allowlist'], {
+    ...capture,
+    env: { NPM_AUDIT_MAX_ATTEMPTS: '1' },
+    platform: 'linux',
+    spawn(command) {
+      launchedCommand = command
+      return {
+        stderr: '',
+        stdout: JSON.stringify({
+          vulnerabilities: {},
+        }),
+      }
+    },
+  })
+
+  assert.equal(exitCode, EXIT_CODES.ok)
+  assert.equal(launchedCommand, 'npm')
+})

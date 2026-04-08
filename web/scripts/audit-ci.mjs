@@ -157,20 +157,33 @@ function formatRetryMessage(failure, attempt, maxAttempts) {
   return `${failure.message}\nRetrying npm audit (${attempt + 1}/${maxAttempts})...`
 }
 
+function resolveNpmCommand(platform = process.platform) {
+  return platform === 'win32' ? 'npm.cmd' : 'npm'
+}
+
 function runNpmAudit(extraArgs, options = {}) {
   const {
     cwd = DEFAULT_CWD,
     env = process.env,
     error = console.error,
     maxAttempts = getMaxAttempts(env),
+    platform = process.platform,
     spawn = spawnSync,
   } = options
+  const npmCommand = resolveNpmCommand(platform)
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const result = spawn('npm', ['audit', '--json', ...extraArgs], {
+    const spawnOptions = {
       cwd,
       encoding: 'utf8',
       env,
+    }
+    if (platform === 'win32') {
+      spawnOptions.shell = true
+    }
+
+    const result = spawn(npmCommand, ['audit', '--json', ...extraArgs], {
+      ...spawnOptions,
     })
 
     if (result.error) {
@@ -295,7 +308,7 @@ function collectBlockedPackages(vulnerabilities, allowedAdvisoryIds) {
 }
 
 export function main(argv = process.argv.slice(2), options = {}) {
-  const { error = console.error, existsSync, log = console.log, readFileSync, spawn, env = process.env } = options
+  const { error = console.error, existsSync, log = console.log, readFileSync, spawn, env = process.env, platform = process.platform } = options
 
   let parsedArgs
   try {
@@ -317,6 +330,7 @@ export function main(argv = process.argv.slice(2), options = {}) {
     cwd: parsedArgs.cwd,
     env,
     error,
+    platform,
     spawn,
   })
 

@@ -3,7 +3,6 @@ package web
 import (
 	"archive/tar"
 	"compress/gzip"
-	"encoding/binary"
 	"io"
 	"io/fs"
 	"log"
@@ -87,26 +86,20 @@ func tryExtractAppended() bool {
 	}
 	defer f.Close()
 
-	// Read last 8 bytes: tar.gz start offset
-	if _, err := f.Seek(-8, io.SeekEnd); err != nil {
-		return false
-	}
-	var offset int64
-	if err := binary.Read(f, binary.LittleEndian, &offset); err != nil {
-		return false
-	}
-	// Sanity check: offset must be positive and less than file size
 	fi, err := f.Stat()
-	if err != nil || offset <= 0 || offset >= fi.Size()-8 {
+	if err != nil {
 		return false
 	}
 
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+	layout, ok := readAppendedLayoutFromReader(f, fi.Size())
+	if !ok {
 		return false
 	}
+
+	section := io.NewSectionReader(f, layout.offset, layout.dataEnd-layout.offset)
 
 	base := filepath.Join(extractDir(), "zimaos-blue-dist")
-	if err := extractTarGzFromReader(f, base); err != nil {
+	if err := extractTarGzFromReader(section, base); err != nil {
 		log.Printf("[web] extract: %v", err)
 		return false
 	}
@@ -124,7 +117,7 @@ func localDistCandidates() []string {
 			filepath.Join(wd, ".dist"),
 			filepath.Join(wd, "internal", "web", "dist"),
 			filepath.Join(wd, "server", "internal", "web", "dist"),
-			filepath.Join(wd, "web", "dist"),    // Project root: web/dist (Vite output)
+			filepath.Join(wd, "web", "dist"),       // Project root: web/dist (Vite output)
 			filepath.Join(wd, "..", "web", "dist"), // Running from server/: ../web/dist
 		)
 	}
@@ -146,8 +139,8 @@ func localDistCandidates() []string {
 		// Windows Tauri bundle: check multiple locations
 		if runtime.GOOS == "windows" {
 			candidates = append(candidates,
-				filepath.Join(dir, "dist"),           // Next to exe
-				filepath.Join(dir, "..", "dist"),     // Parent directory
+				filepath.Join(dir, "dist"),       // Next to exe
+				filepath.Join(dir, "..", "dist"), // Parent directory
 			)
 		}
 	}

@@ -292,9 +292,24 @@ func TestService_ListProviders(t *testing.T) {
 	}
 
 	providers := svc.ListProviders()
-	if len(providers) != 2 {
-		t.Errorf("expected 2 providers, got %d", len(providers))
+	if len(providers) == 0 {
+		t.Fatal("expected at least one provider")
 	}
+	if !containsProviderType(providers, ProviderEdge) {
+		t.Fatalf("expected provider list to include %q, got %v", ProviderEdge, providers)
+	}
+	if WindowsNativeAvailable() && !containsProviderType(providers, ProviderWindowsNative) {
+		t.Fatalf("expected provider list to include %q on Windows, got %v", ProviderWindowsNative, providers)
+	}
+}
+
+func containsProviderType(providers []ProviderType, target ProviderType) bool {
+	for _, provider := range providers {
+		if provider == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestService_GetDefaultProvider(t *testing.T) {
@@ -355,7 +370,15 @@ func TestAudioFormats(t *testing.T) {
 }
 
 func TestProviderTypes(t *testing.T) {
-	types := []ProviderType{ProviderOpenAI, ProviderElevenLabs, ProviderPiper, ProviderEspeakNG}
+	types := []ProviderType{
+		ProviderOpenAI,
+		ProviderElevenLabs,
+		ProviderPiper,
+		ProviderEspeakNG,
+		ProviderEdge,
+		ProviderMacOSNative,
+		ProviderWindowsNative,
+	}
 
 	for _, pt := range types {
 		if pt == "" {

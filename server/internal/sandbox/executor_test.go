@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 )
@@ -27,7 +28,8 @@ func TestBaseExecutor_Execute(t *testing.T) {
 	config := DefaultConfig()
 	executor := NewBaseExecutor(config)
 
-	req := NewExecutionRequest("echo", "hello")
+	command, args := testEchoCommand("hello")
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 5 * time.Second
 
 	ctx := context.Background()
@@ -52,15 +54,17 @@ func TestBaseExecutor_Execute(t *testing.T) {
 	if result.ExitCode != 0 {
 		t.Errorf("Execute() ExitCode = %d, want 0", result.ExitCode)
 	}
+	if strings.TrimSpace(result.Stdout) != "hello" {
+		t.Errorf("Execute() Stdout = %q, want hello", result.Stdout)
+	}
 }
 
 func TestBaseExecutor_Execute_WithStdin(t *testing.T) {
 	config := DefaultConfig()
 	executor := NewBaseExecutor(config)
 
-	// Use cat to echo stdin (works on Unix-like systems)
-	// On Windows, this test might need adjustment
-	req := NewExecutionRequest("cat")
+	command, args := testStdinCommand()
+	req := NewExecutionRequest(command, args...)
 	req.Stdin = "test input"
 	req.Timeout = 5 * time.Second
 
@@ -71,9 +75,11 @@ func TestBaseExecutor_Execute_WithStdin(t *testing.T) {
 		t.Fatalf("Execute(stdin) error = %v", err)
 	}
 
-	// Note: This test may fail on Windows without cat
-	if result.Status == StatusCompleted && result.Stdout != "test input" {
-		t.Errorf("Execute(stdin) Stdout = %v, want 'test input'", result.Stdout)
+	if result.Status != StatusCompleted {
+		t.Fatalf("Execute(stdin) Status = %v, want %v", result.Status, StatusCompleted)
+	}
+	if strings.TrimSpace(result.Stdout) != "test input" {
+		t.Errorf("Execute(stdin) Stdout = %q, want 'test input'", result.Stdout)
 	}
 }
 
@@ -81,8 +87,8 @@ func TestBaseExecutor_Execute_Timeout(t *testing.T) {
 	config := DefaultConfig()
 	executor := NewBaseExecutor(config)
 
-	// Use sleep command that will exceed timeout
-	req := NewExecutionRequest("sleep", "10")
+	command, args := testSleepCommand(10)
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 100 * time.Millisecond
 
 	ctx := context.Background()
@@ -101,8 +107,8 @@ func TestBaseExecutor_Execute_Failed(t *testing.T) {
 	config := DefaultConfig()
 	executor := NewBaseExecutor(config)
 
-	// Use a command that will fail
-	req := NewExecutionRequest("false") // Unix command that always returns 1
+	command, args := testFailCommand(1)
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 5 * time.Second
 
 	ctx := context.Background()
@@ -125,7 +131,8 @@ func TestBaseExecutor_Execute_WithEnv(t *testing.T) {
 	config := DefaultConfig()
 	executor := NewBaseExecutor(config)
 
-	req := NewExecutionRequest("printenv", "TEST_VAR")
+	command, args := testEnvCommand("TEST_VAR")
+	req := NewExecutionRequest(command, args...)
 	req.Env = map[string]string{"TEST_VAR": "test_value"}
 	req.Timeout = 5 * time.Second
 
@@ -136,12 +143,11 @@ func TestBaseExecutor_Execute_WithEnv(t *testing.T) {
 		t.Fatalf("Execute(env) error = %v", err)
 	}
 
-	// Note: This test may fail on Windows
-	if result.Status == StatusCompleted {
-		// Output should contain the env value
-		if result.Stdout == "" {
-			t.Log("Execute(env) Stdout is empty, printenv may not be available")
-		}
+	if result.Status != StatusCompleted {
+		t.Fatalf("Execute(env) Status = %v, want %v", result.Status, StatusCompleted)
+	}
+	if strings.TrimSpace(result.Stdout) != "test_value" {
+		t.Errorf("Execute(env) Stdout = %q, want test_value", result.Stdout)
 	}
 }
 
@@ -149,11 +155,15 @@ func TestBaseExecutor_GetStatus(t *testing.T) {
 	config := DefaultConfig()
 	executor := NewBaseExecutor(config)
 
-	req := NewExecutionRequest("echo", "hello")
+	command, args := testEchoCommand("hello")
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 5 * time.Second
 
 	ctx := context.Background()
-	result, _ := executor.Execute(ctx, req)
+	result, err := executor.Execute(ctx, req)
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
 
 	// Get status
 	status, err := executor.GetStatus(result.ID)
@@ -181,7 +191,8 @@ func TestBaseExecutor_Kill(t *testing.T) {
 	executor := NewBaseExecutor(config)
 
 	// Start a long-running command
-	req := NewExecutionRequest("sleep", "60")
+	command, args := testSleepCommand(60)
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 60 * time.Second
 
 	ctx := context.Background()
@@ -228,7 +239,8 @@ func TestBaseExecutor_Cleanup(t *testing.T) {
 	executor := NewBaseExecutor(config)
 
 	// Execute a command
-	req := NewExecutionRequest("echo", "hello")
+	command, args := testEchoCommand("hello")
+	req := NewExecutionRequest(command, args...)
 	req.Timeout = 5 * time.Second
 
 	ctx := context.Background()
@@ -300,7 +312,9 @@ func TestTruncateOutput(t *testing.T) {
 }
 
 func TestNewExecutionRequest(t *testing.T) {
-	req := NewExecutionRequest("echo", "hello", "world")
+	command, args := testEchoCommand("hello")
+	expectedArgs := append(append([]string{}, args...), "world")
+	req := NewExecutionRequest(command, expectedArgs...)
 
 	if req == nil {
 		t.Fatal("NewExecutionRequest() returned nil")
@@ -310,12 +324,12 @@ func TestNewExecutionRequest(t *testing.T) {
 		t.Error("NewExecutionRequest() ID should not be empty")
 	}
 
-	if req.Command != "echo" {
-		t.Errorf("NewExecutionRequest() Command = %v, want echo", req.Command)
+	if req.Command != command {
+		t.Errorf("NewExecutionRequest() Command = %v, want %v", req.Command, command)
 	}
 
-	if len(req.Args) != 2 {
-		t.Errorf("NewExecutionRequest() Args length = %d, want 2", len(req.Args))
+	if len(req.Args) != len(expectedArgs) {
+		t.Errorf("NewExecutionRequest() Args length = %d, want %d", len(req.Args), len(expectedArgs))
 	}
 
 	if req.Env == nil {

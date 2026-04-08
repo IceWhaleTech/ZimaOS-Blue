@@ -6,13 +6,33 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/rs/zerolog"
 )
 
-var log zerolog.Logger
+var (
+	log              zerolog.Logger
+	managedClosersMu sync.Mutex
+	managedClosers   []io.Closer
+)
+
+type initOptions struct {
+	additionalWriters []io.Writer
+}
+
+type InitOption func(*initOptions)
+
+func WithAdditionalWriter(writer io.Writer) InitOption {
+	return func(options *initOptions) {
+		if writer == nil {
+			return
+		}
+		options.additionalWriters = append(options.additionalWriters, writer)
+	}
+}
 
 // DefaultBufferSize is the default number of log entries to keep in memory
 const DefaultBufferSize = 5000
@@ -30,11 +50,9 @@ const (
 	colorGray    = "\033[90m"
 )
 
-func Init(cfg *config.LogConfig) error {
-	return InitWithMirror(cfg, "")
-}
+func Init(cfg *config.LogConfig, opts ...InitOption) error {
+	_ = Close()
 
-func InitWithMirror(cfg *config.LogConfig, mirrorPath string) error {
 	// Initialize the log buffer
 	InitBuffer(DefaultBufferSize)
 
@@ -47,6 +65,7 @@ func InitWithMirror(cfg *config.LogConfig, mirrorPath string) error {
 
 	// Set output
 	var output io.Writer
+	closers := make([]io.Closer, 0, 1)
 	switch cfg.Output {
 	case "stdout":
 		output = os.Stdout
@@ -58,19 +77,7 @@ func InitWithMirror(cfg *config.LogConfig, mirrorPath string) error {
 			return err
 		}
 		output = f
-	}
-
-	mirrorPath = strings.TrimSpace(mirrorPath)
-	var mirrorOutput io.Writer
-	if mirrorPath != "" && !sameLogTarget(cfg.Output, mirrorPath) {
-		if err := os.MkdirAll(filepath.Dir(mirrorPath), 0750); err != nil {
-			return err
-		}
-		f, err := os.OpenFile(mirrorPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return err
-		}
-		mirrorOutput = f
+		closers = appendUniqueCloser(closers, f)
 	}
 
 	// For console format, wrap the output with ConsoleWriter
@@ -113,19 +120,90 @@ func InitWithMirror(cfg *config.LogConfig, mirrorPath string) error {
 		}
 	}
 
-	// Write durable sinks first. If stdout/stderr becomes revoked after a detached
-	// launch, later sinks still capture the log entry before the terminal write fails.
-	// ConsoleWriter only affects the configured output; mirror files keep raw JSON
-	// for easier parsing after detached runs.
-	writers := []io.Writer{GetBuffer()}
-	if mirrorOutput != nil {
-		writers = append(writers, mirrorOutput)
+	var options initOptions
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&options)
+		}
 	}
+	for _, writer := range options.additionalWriters {
+		closers = appendManagedWriterCloser(closers, writer)
+	}
+
+	// Write durable/raw sinks first. If stdout/stderr becomes unavailable during
+	// detached runs, later terminal-write failures will not prevent the buffer or
+	// additional mirror writers from receiving the entry.
+	writers := make([]io.Writer, 0, 2+len(options.additionalWriters))
+	writers = append(writers, GetBuffer())
+	writers = append(writers, options.additionalWriters...)
 	writers = append(writers, output)
 	multiWriter := io.MultiWriter(writers...)
+	setManagedClosers(closers)
 
 	log = zerolog.New(multiWriter).With().Timestamp().Caller().Logger()
 	return nil
+}
+
+func InitWithMirror(cfg *config.LogConfig, mirrorPath string) error {
+	mirrorPath = strings.TrimSpace(mirrorPath)
+	if mirrorPath == "" || sameLogTarget(cfg.Output, mirrorPath) {
+		return Init(cfg)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(mirrorPath), 0750); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(mirrorPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	return Init(cfg, WithAdditionalWriter(f))
+}
+
+func Close() error {
+	managedClosersMu.Lock()
+	closers := managedClosers
+	managedClosers = nil
+	managedClosersMu.Unlock()
+
+	var firstErr error
+	for _, closer := range closers {
+		if closer == nil {
+			continue
+		}
+		if err := closer.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func setManagedClosers(closers []io.Closer) {
+	managedClosersMu.Lock()
+	defer managedClosersMu.Unlock()
+	managedClosers = closers
+}
+
+func appendManagedWriterCloser(closers []io.Closer, writer io.Writer) []io.Closer {
+	closer, ok := writer.(io.Closer)
+	if !ok {
+		return closers
+	}
+	if file, ok := writer.(*os.File); ok {
+		if file == os.Stdout || file == os.Stderr {
+			return closers
+		}
+	}
+	return appendUniqueCloser(closers, closer)
+}
+
+func appendUniqueCloser(closers []io.Closer, closer io.Closer) []io.Closer {
+	for _, existing := range closers {
+		if existing == closer {
+			return closers
+		}
+	}
+	return append(closers, closer)
 }
 
 func sameLogTarget(configuredOutput, mirrorPath string) bool {

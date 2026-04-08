@@ -97,19 +97,11 @@ func applyPendingBackupRestore(dataDir string) (bool, error) {
 
 // getDataDir returns the platform-specific data directory path
 func getDataDir() string {
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(os.ExpandEnv("$HOME"), "Library", "Application Support", "com.zimaos.blue")
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		home = os.ExpandEnv("$HOME")
 	}
-	if runtime.GOOS == "windows" {
-		localAppData := os.Getenv("LOCALAPPDATA")
-		if localAppData == "" {
-			localAppData = filepath.Join(os.Getenv("USERPROFILE"), "AppData", "Local")
-		}
-		return filepath.Join(localAppData, "ZimaOS Blue")
-	}
-	// Linux
-	home := os.ExpandEnv("$HOME")
-	return filepath.Join(home, ".zimaos-blue")
+	return filepath.Join(home, ".zimaos-blue", "data")
 }
 
 func getLogsDir() string {
@@ -262,7 +254,7 @@ func BlueServerStartWithArgs(port C.int, dataDir *C.char, args *C.char) C.int {
 				os.Setenv("BLUE_DEV", "1")
 				if goDataDir == getDataDir() {
 					home, _ := os.UserHomeDir()
-					goDataDir = filepath.Join(home, ".zimaos-blue-dev")
+					goDataDir = filepath.Join(home, ".zimaos-blue-dev", "data")
 				}
 			case "--verbose", "-v":
 				os.Setenv("BLUE_LOG_LEVEL", "debug")
@@ -806,13 +798,15 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		defaultTTSProvider := tts.ProviderEdge
 		if runtime.GOOS == "darwin" {
 			defaultTTSProvider = tts.ProviderMacOSNative
+		} else if runtime.GOOS == "windows" {
+			defaultTTSProvider = tts.ProviderWindowsNative
 		}
 
 		providers := []tts.ProviderConfig{
 			{Type: tts.ProviderEdge, Enabled: true},
 		}
-		if defaultTTSProvider == tts.ProviderMacOSNative {
-			providers = append(providers, tts.ProviderConfig{Type: tts.ProviderMacOSNative, Enabled: true})
+		if defaultTTSProvider != tts.ProviderEdge {
+			providers = append(providers, tts.ProviderConfig{Type: defaultTTSProvider, Enabled: true})
 		}
 
 		var err error
@@ -836,18 +830,21 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 
 	// Initialize speech handler with ASR provider
 	asrProvider := "whisper"
+	defaultTTSProvider := tts.ProviderEdge
 	if runtime.GOOS == "darwin" {
 		asrProvider = "macos-native"
+		defaultTTSProvider = tts.ProviderMacOSNative
 	} else if runtime.GOOS == "windows" {
 		asrProvider = "windows-native"
+		defaultTTSProvider = tts.ProviderWindowsNative
 	}
 	speechKV := configKV
 	speechService := speech.NewService(&speech.Config{
-		TTS: speech.TTSConfig{Provider: "edge"},
+		TTS: speech.TTSConfig{Provider: string(defaultTTSProvider)},
 		ASR: speech.ASRConfig{Enabled: true, Provider: asrProvider, EditBeforeSend: true},
 	}, nil, ttsService)
 	if ttsService != nil {
-		if provider := ttsService.GetProvider(tts.ProviderEdge); provider != nil {
+		if provider := ttsService.GetProvider(defaultTTSProvider); provider != nil {
 			speechService.SetTTSProvider(provider)
 		}
 	}

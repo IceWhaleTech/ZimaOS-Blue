@@ -53,8 +53,9 @@ func TestRunForegroundServerConfiguresStartupBrowserHandler(t *testing.T) {
 		handlerInstalled bool
 	)
 
-	runServerEntry = func() {
+	runServerEntry = func() error {
 		runCalled = true
+		return nil
 	}
 	setStartupURLHandler = func(handler func(string)) {
 		handlerInstalled = handler != nil
@@ -66,7 +67,9 @@ func TestRunForegroundServerConfiguresStartupBrowserHandler(t *testing.T) {
 	t.Setenv("BLUE_GATEWAY_SUPERVISOR", "")
 	jsonOutput = false
 
-	runForegroundServer()
+	if err := runForegroundServer(); err != nil {
+		t.Fatalf("runForegroundServer() error = %v", err)
+	}
 
 	if !handlerInstalled {
 		t.Fatal("expected runForegroundServer to install a startup browser handler")
@@ -89,8 +92,9 @@ func TestRunForegroundServerSkipsStartupBrowserHandlerWhenAutoOpenDisabled(t *te
 		gotNil    bool
 	)
 
-	runServerEntry = func() {
+	runServerEntry = func() error {
 		runCalled = true
+		return nil
 	}
 	setStartupURLHandler = func(handler func(string)) {
 		gotNil = handler == nil
@@ -99,7 +103,9 @@ func TestRunForegroundServerSkipsStartupBrowserHandlerWhenAutoOpenDisabled(t *te
 	t.Setenv("BLUE_GATEWAY_SUPERVISOR", "1")
 	jsonOutput = false
 
-	runForegroundServer()
+	if err := runForegroundServer(); err != nil {
+		t.Fatalf("runForegroundServer() error = %v", err)
+	}
 
 	if !gotNil {
 		t.Fatal("expected runForegroundServer to clear startup browser handler when auto-open is disabled")

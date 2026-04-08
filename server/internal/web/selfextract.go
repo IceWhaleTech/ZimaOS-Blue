@@ -3,14 +3,12 @@
 package web
 
 import (
-	"encoding/binary"
 	"io"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"syscall"
 )
 
 // SelfExtractAndRestart checks if the binary has appended dist data.
@@ -37,7 +35,7 @@ func SelfExtractAndRestart() bool {
 		return true
 	}
 
-	offset, ok := readAppendedOffset(exe)
+	layout, ok := readAppendedLayout(exe)
 	if !ok {
 		return true // no appended data, continue normally
 	}
@@ -46,18 +44,18 @@ func SelfExtractAndRestart() bool {
 
 	// Extract dist to sidecar directory next to binary
 	sidecar := filepath.Join(filepath.Dir(exe), "dist")
-	if err := extractAppendedDist(exe, offset, sidecar); err != nil {
+	if err := extractAppendedDist(exe, layout, sidecar); err != nil {
 		log.Printf("[web] sidecar extraction failed: %v", err)
 		return true // fall through, tryExtractAppended will handle it
 	}
 	log.Printf("[web] dist extracted to sidecar: %s", sidecar)
 
 	// Truncate binary to remove appended data, restoring clean Mach-O
-	if err := os.Truncate(exe, offset); err != nil {
+	if err := os.Truncate(exe, layout.offset); err != nil {
 		log.Printf("[web] truncate failed: %v", err)
 		return true // sidecar extracted, dist will work but TCC may fail
 	}
-	log.Printf("[web] binary truncated to %d bytes (clean Mach-O restored)", offset)
+	log.Printf("[web] binary truncated to %d bytes (clean Mach-O restored)", layout.offset)
 
 	// Fork: start a child process with the now-clean binary.
 	// The child gets a fresh TCC identity check against the clean Mach-O.
@@ -67,10 +65,7 @@ func SelfExtractAndRestart() bool {
 	child.Stderr = os.Stderr
 	child.Stdin = os.Stdin
 	child.Env = os.Environ()
-	// Inherit the process group so signals propagate (Unix/macOS only)
-	if runtime.GOOS != "windows" {
-		child.SysProcAttr = &syscall.SysProcAttr{Setpgid: false}
-	}
+	setSysProcAttr(child)
 
 	if err := child.Start(); err != nil {
 		log.Printf("[web] failed to start child: %v", err)
@@ -81,49 +76,30 @@ func SelfExtractAndRestart() bool {
 	return true // unreachable
 }
 
-// readAppendedOffset reads the 8-byte LE trailer from the binary.
+// readAppendedOffset reads the appended data layout from the binary.
 // Returns the offset where appended data starts, and true if valid.
 func readAppendedOffset(exe string) (int64, bool) {
-	f, err := os.Open(exe)
-	if err != nil {
+	layout, ok := readAppendedLayout(exe)
+	if !ok {
 		return 0, false
 	}
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		return 0, false
-	}
-	if fi.Size() < 16 {
-		return 0, false
-	}
-
-	if _, err := f.Seek(-8, io.SeekEnd); err != nil {
-		return 0, false
-	}
-	var offset int64
-	if err := binary.Read(f, binary.LittleEndian, &offset); err != nil {
-		return 0, false
-	}
-	if offset <= 0 || offset >= fi.Size()-8 {
-		return 0, false
-	}
-	return offset, true
+	return layout.offset, true
 }
 
-// extractAppendedDist extracts the tar.gz at the given offset to dst.
-func extractAppendedDist(exe string, offset int64, dst string) error {
+// extractAppendedDist extracts the tar.gz to dst.
+func extractAppendedDist(exe string, layout appendedLayout, dst string) error {
 	f, err := os.Open(exe)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	if _, err := f.Seek(offset, io.SeekStart); err != nil {
-		return err
+	if layout.dataEnd < layout.offset {
+		return io.ErrUnexpectedEOF
 	}
 
 	// Remove old sidecar if present
 	os.RemoveAll(dst)
-	return extractTarGzFromReader(f, dst)
+	section := io.NewSectionReader(f, layout.offset, layout.dataEnd-layout.offset)
+	return extractTarGzFromReader(section, dst)
 }

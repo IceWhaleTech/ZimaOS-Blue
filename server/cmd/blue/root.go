@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -30,18 +29,15 @@ It supports multiple LLM providers, skills, and
 integrates with various automation and productivity services.`,
 	Version: version,
 	// Run the server by default if no subcommand is provided
-	Run: func(cmd *cobra.Command, args []string) {
-		// If no subcommand, run the server
-		runForegroundServer()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		// If no subcommand, run the server in the normal foreground UX path.
+		return runForegroundServer()
 	},
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
-func Execute() {
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+func Execute() error {
+	return rootCmd.Execute()
 }
 
 func init() {

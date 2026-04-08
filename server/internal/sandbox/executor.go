@@ -3,9 +3,13 @@ package sandbox
 import (
 	"bytes"
 	"context"
-	"os/exec"
-	"sync"
+	"errors"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+	"sync"
 )
 
 // BaseExecutor provides common functionality for all executors.
@@ -134,7 +138,17 @@ func (e *BaseExecutor) Kill(id string) error {
 	}
 
 	if state.cmd != nil && state.cmd.Process != nil {
-		return state.cmd.Process.Kill()
+		err := state.cmd.Process.Kill()
+		if err == nil || errors.Is(err, os.ErrProcessDone) {
+			return nil
+		}
+		if strings.Contains(strings.ToLower(err.Error()), "process already finished") {
+			return nil
+		}
+		if runtime.GOOS == "windows" && strings.Contains(strings.ToLower(err.Error()), "access is denied") {
+			return nil
+		}
+		return err
 	}
 
 	return nil

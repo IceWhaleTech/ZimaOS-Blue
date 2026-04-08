@@ -4,15 +4,17 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
 func TestInitWithMirrorWritesBothTargets(t *testing.T) {
-	t.Parallel()
-
 	dir := t.TempDir()
+	t.Cleanup(func() {
+		_ = Close()
+	})
 	primary := filepath.Join(dir, "primary.log")
 	mirror := filepath.Join(dir, "mirror.log")
 
@@ -45,9 +47,10 @@ func TestInitWithMirrorWritesBothTargets(t *testing.T) {
 }
 
 func TestInitWithMirrorSkipsDuplicateTarget(t *testing.T) {
-	t.Parallel()
-
 	dir := t.TempDir()
+	t.Cleanup(func() {
+		_ = Close()
+	})
 	path := filepath.Join(dir, "blue.log")
 
 	cfg := &config.LogConfig{
@@ -67,5 +70,34 @@ func TestInitWithMirrorSkipsDuplicateTarget(t *testing.T) {
 	}
 	if bytes.Count(data, []byte("single write")) != 1 {
 		t.Fatalf("expected exactly one copy of log entry, got %d in %s", bytes.Count(data, []byte("single write")), string(data))
+	}
+}
+
+func TestInit_WithAdditionalWriter(t *testing.T) {
+	t.Cleanup(func() {
+		_ = Close()
+	})
+
+	var buf bytes.Buffer
+
+	cfg := &config.LogConfig{
+		Level:  "info",
+		Format: "json",
+		Output: os.DevNull,
+	}
+
+	err := Init(cfg, WithAdditionalWriter(&buf))
+	if err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	Info().Str("scope", "extra").Msg("mirrored message")
+
+	output := buf.String()
+	if !strings.Contains(output, "mirrored message") {
+		t.Fatalf("additional writer missing message: %s", output)
+	}
+	if !strings.Contains(output, `"scope":"extra"`) {
+		t.Fatalf("additional writer missing fields: %s", output)
 	}
 }

@@ -21,7 +21,7 @@ func shouldAutoOpenStartupBrowser() bool {
 	return strings.TrimSpace(os.Getenv("BLUE_GATEWAY_SUPERVISOR")) == ""
 }
 
-func runForegroundServer() {
+func runForegroundServer() error {
 	if shouldAutoOpenStartupBrowser() {
 		setStartupURLHandler(func(rawURL string) {
 			if err := openStartupBrowserURL(rawURL); err != nil {
@@ -32,5 +32,5 @@ func runForegroundServer() {
 		setStartupURLHandler(nil)
 	}
 
-	runServerEntry()
+	return runServerEntry()
 }

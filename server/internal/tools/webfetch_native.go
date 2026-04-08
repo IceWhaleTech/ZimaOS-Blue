@@ -183,7 +183,7 @@ func (c *libcurlHTTPNativeClient) ensureLoaded() error {
 func (c *libcurlHTTPNativeClient) load() error {
 	var lastErr error
 	for _, candidate := range c.libraryCandidates() {
-		lib, err := purego.Dlopen(candidate, purego.RTLD_LAZY)
+		lib, err := webFetchNativeOpenLibrary(candidate)
 		if err != nil {
 			lastErr = err
 			continue
@@ -447,7 +447,7 @@ func (c *libcurlHTTPNativeClient) errorString(code int32) string {
 }
 
 func registerWebFetchNativeFunc(handle uintptr, name string, out any) (err error) {
-	sym, err := purego.Dlsym(handle, name)
+	sym, err := webFetchNativeLookupSymbol(handle, name)
 	if err != nil {
 		return err
 	}
