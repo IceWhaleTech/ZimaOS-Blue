@@ -70,6 +70,34 @@ Blue 现在已经具备完整的身份与访问层，不再只是一个单一登
 
 这让 Blue 可以按部署需要选择本地登录、外部登录，或两者混合。
 
+## 最小认证提供方准备单
+
+在打开认证提供方管理页之前，建议先准备这些值：
+
+- 提供方类型，例如 `generic oidc`、`google`、`github`、`microsoft`、`keycloak`、`authentik`、`auth0`
+- Client ID 与 client secret
+- Issuer URL，或者在 generic OIDC 场景下准备 auth/token/userinfo 端点
+- Blue 管理页里显示的精确 redirect URL，并提前在身份提供方侧完成注册
+- 希望申请的 scopes
+- 是否启用 auto-create-user
+- 新用户默认角色
+- 允许登录的域名限制
+
+一个最小运维准备单可以长这样：
+
+```text
+Provider type: Generic OIDC
+Issuer: https://auth.example.com/realms/main
+Client ID: <client-id>
+Client Secret: <client-secret>
+Scopes: openid profile email
+Auto-create user: true
+Default role: member
+Allowed domains: example.com
+```
+
+不要自己猜 callback URL，直接使用 Blue 在认证提供方管理页里展示的 redirect 值。
+
 ## 什么时候看这页
 
 当问题是“谁能进入系统、怎么登录、权限怎么发放”时看这页。若问题是运行治理、审计、计费、租户或安全监控，则继续看 [管理与运维](/zh-CN/guides/admin-operations)。

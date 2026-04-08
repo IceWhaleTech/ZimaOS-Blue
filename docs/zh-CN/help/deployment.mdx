@@ -9,11 +9,11 @@ ZimaOS Blue 的文档站当前按 **GitHub Pages + GitHub Actions** 的方式准
 
 ## 仓库里已经具备的内容
 
-- `docs-site/docusaurus.config.ts` 站点配置
+- `docusaurus.config.ts` 站点配置
 - `docs/` 作为文档正文根目录
 - 英文主文档与扩展后的简体中文镜像页
-- `docs/assets` 下的静态图片资源
-- 本地构建校验命令 `npm --prefix docs-site run build`
+- `docs/assets` 下的静态图片资源会被站点直接复用
+- 本地构建校验命令 `npm run build`
 - 文档相关改动在 `main` 上自动部署到 GitHub Pages
 
 ## 推荐部署方式
@@ -28,7 +28,7 @@ ZimaOS Blue 的文档站当前按 **GitHub Pages + GitHub Actions** 的方式准
 
 ## 为什么这里使用 Pages 官方工作流
 
-这里明确使用 GitHub Pages 官方推荐的三步动作来发布 `docs-site/build`：
+这里明确使用 GitHub Pages 官方推荐的三步动作来发布 `build`：
 
 - `actions/configure-pages`
 - `actions/upload-pages-artifact`
@@ -40,8 +40,8 @@ ZimaOS Blue 的文档站当前按 **GitHub Pages + GitHub Actions** 的方式准
 
 在启用或重跑部署前，建议确认：
 
-- `npm --prefix docs-site ci` 成功
-- `npm --prefix docs-site run build` 成功
+- `npm ci` 成功
+- `npm run build` 成功
 - 仓库 `Settings -> Pages` 已设置为 `GitHub Actions`
 - Navbar 里的 GitHub、Releases、DeepWiki 链接正确
 - 默认分支包含最新文档内容
@@ -49,8 +49,8 @@ ZimaOS Blue 的文档站当前按 **GitHub Pages + GitHub Actions** 的方式准
 ## 本地校验
 
 ```bash
-npm --prefix docs-site ci
-npm --prefix docs-site run build
+npm ci
+npm run build
 ```
 
 ## 建议 rollout 顺序
@@ -65,7 +65,7 @@ npm --prefix docs-site run build
 
 当你新增页面、导航或功能说明时：
 
-1. 先跑 `npm --prefix docs-site run build`
+1. 先跑 `npm run build`
 2. 确认英文与简体中文导航在有镜像时保持一致
 3. 打开或更新 PR，让 CI 构建站点
 4. 合并到 `main` 后由 GitHub Pages 自动发布

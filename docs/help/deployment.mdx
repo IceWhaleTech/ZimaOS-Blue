@@ -9,11 +9,11 @@ ZimaOS Blue docs are prepared for **GitHub Pages deployment through GitHub Actio
 
 ## What this repository already provides
 
-- Docusaurus site config in `docs-site/docusaurus.config.ts`
+- Docusaurus site config in `docusaurus.config.ts`
 - Docs content rooted in `docs/`
 - Curated English canonical pages plus expanded Simplified Chinese mirrors
-- Static image assets under `docs/assets`
-- Local build validation via `npm --prefix docs-site run build`
+- Static image assets directly reused from `docs/assets`
+- Local build validation via `npm run build`
 - CI build plus Pages deployment on docs-related changes to `main`
 
 ## Recommended deployment model
@@ -28,7 +28,7 @@ The repository now follows this model:
 
 ## Why the workflow looks this way
 
-This repo intentionally builds a static site inside GitHub Actions and publishes the generated `docs-site/build` artifact through the official GitHub Pages actions:
+This repo intentionally builds a static site inside GitHub Actions and publishes the generated `build` artifact through the official GitHub Pages actions:
 
 - `actions/configure-pages`
 - `actions/upload-pages-artifact`
@@ -40,8 +40,8 @@ That keeps the deployment path explicit, reviewable, and independent from any ex
 
 Before enabling or re-running deployment, confirm:
 
-- `npm --prefix docs-site ci` succeeds
-- `npm --prefix docs-site run build` succeeds
+- `npm ci` succeeds
+- `npm run build` succeeds
 - Repository `Settings -> Pages` is set to `GitHub Actions`
 - The navbar links point to the correct GitHub, Releases, and DeepWiki URLs
 - The default branch contains the latest docs content
@@ -49,8 +49,8 @@ Before enabling or re-running deployment, confirm:
 ## Local validation
 
 ```bash
-npm --prefix docs-site ci
-npm --prefix docs-site run build
+npm ci
+npm run build
 ```
 
 ## Suggested rollout order
@@ -65,7 +65,7 @@ npm --prefix docs-site run build
 
 For routine content updates like new product guides or navigation changes:
 
-1. Run `npm --prefix docs-site run build`
+1. Run `npm run build`
 2. Verify English and Simplified Chinese navigation stay aligned where mirrors exist
 3. Open or update the pull request and let CI build the site
 4. Merge to `main` and let GitHub Pages deploy automatically

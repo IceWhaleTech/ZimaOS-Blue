@@ -1599,7 +1599,6 @@ func (s *Service) expandSourcePaths(targetPaths []string) ([]string, error) {
 		}
 	}
 	for _, dir := range []string{
-		filepath.Join(s.repoRoot, "docs-site"),
 		filepath.Join(s.repoRoot, "docs"),
 		filepath.Join(s.repoRoot, ".research", "web-query"),
 	} {
@@ -1795,7 +1794,7 @@ func classifySourceType(ref string) string {
 		return "context_pack"
 	case strings.Contains(lower, "architecture"):
 		return "architecture"
-	case strings.HasPrefix(lower, "docs-site/") || filepath.Base(lower) == "readme.md":
+	case strings.HasPrefix(lower, "docs/") || filepath.Base(lower) == "readme.md":
 		return "product_doc"
 	case strings.HasPrefix(lower, "workspace/"):
 		return "workspace_note"

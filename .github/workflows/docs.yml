@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs-site/**'
       - 'docs/index.mdx'
       - 'docs/start/**'
       - 'docs/product/**'
@@ -12,11 +11,16 @@ on:
       - 'docs/help/**'
       - 'docs/zh-CN/**'
       - 'docs/assets/**'
+      - 'docusaurus.config.ts'
+      - 'sidebars.js'
+      - 'plugins/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/docs.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'docs-site/**'
       - 'docs/index.mdx'
       - 'docs/start/**'
       - 'docs/product/**'
@@ -24,6 +28,12 @@ on:
       - 'docs/help/**'
       - 'docs/zh-CN/**'
       - 'docs/assets/**'
+      - 'docusaurus.config.ts'
+      - 'sidebars.js'
+      - 'plugins/**'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -39,7 +49,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build docs-site
+    name: Build docs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,10 +62,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: docs-site/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install & build docs-site
-        working-directory: docs-site
+      - name: Install & build docs
         run: |
           npm ci
           npm run build
@@ -64,10 +73,10 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs-site/build
+          path: build
 
   deploy:
-    name: Deploy docs-site
+    name: Deploy docs
     if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest

@@ -541,6 +541,23 @@ func TestBuildStructured_StaticIncludesPriorityAndGrounding(t *testing.T) {
 	}
 }
 
+func TestBuildStructured_StaticIncludesConfiguredDefaultLanguage(t *testing.T) {
+	b := NewSystemPromptBuilder(&Config{})
+	b.SetLocaleFunc(func() string { return "zh-CN" })
+
+	static := b.BuildStructured(context.Background(), "").Static
+
+	if !strings.Contains(static, `<default_language locale="zh-CN">`) {
+		t.Fatalf("expected static prompt to include configured default language tag, got: %s", static)
+	}
+	if !strings.Contains(static, "default reply language") {
+		t.Fatalf("expected static prompt to describe default reply language behavior, got: %s", static)
+	}
+	if !strings.Contains(static, "explicitly asks for another language") {
+		t.Fatalf("expected static prompt to allow explicit user language overrides, got: %s", static)
+	}
+}
+
 func TestBuild_IncludesPriorityAndGroundingGuidance(t *testing.T) {
 	b := NewSystemPromptBuilder(&Config{})
 	out := b.Build(context.Background(), "")

@@ -48,7 +48,7 @@
 
 ## 소개
 
-Clawdbot에서 영감을 받아 개인 컴퓨팅의 미래는 엣지에서 실행되는 다양한 로컬 우선 AI 에이전트에 의해 형성될 것이라고 믿습니다.
+OpenClaw에서 영감을 받아 개인 컴퓨팅의 미래는 엣지에서 실행되는 다양한 로컬 우선 AI 에이전트에 의해 형성될 것이라고 믿습니다.
 
 ZimaOS Blue이 우리의 대답입니다. 완전한 오픈 소스, 감사 가능, 공급업체 중립적, 프로덕션 지원 에이전트 런타임 및 툴킷으로, 마찰 없이 비공개 자체 호스팅 에이전트를 제공할 수 있습니다.
 
@@ -106,12 +106,13 @@ Blue의 LLM 제공업체 통합 경험을 빠르게 보여주는 데모입니다
 
 종속성이나 컴파일이 필요 없는 기본 애플리케이션을 받으세요. 몇 초 만에 온보딩이 가능한 평가판 구성이 내장되어 있습니다. 봇 설정이 필요 없이 원격 연결을 통해 즉시 채팅을 시작할 수 있습니다. 진정한 즉시 사용 가능한 경험.
 
+- <img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> **ZimaOS**: [ZimaOS에서 실행](https://www.zimaspace.com/zimaos?utm_source=blue)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [DMG 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [설치 프로그램 다운로드](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### 옵션 2: 스크립트 설치
 
-![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
+<img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> ZimaOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
@@ -129,7 +130,7 @@ cd ZimaOS-Blue
 git submodule update --init --recursive
 ```
 
-![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
+<img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> ZimaOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 sh build.sh
 ```

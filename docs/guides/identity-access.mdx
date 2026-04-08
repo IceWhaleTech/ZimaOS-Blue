@@ -69,6 +69,34 @@ The auth-provider admin page is the operator surface for configuring external si
 
 This makes it possible to run Blue with local auth only, external auth only, or a mixed setup depending on your deployment constraints.
 
+## Minimum auth-provider worksheet
+
+Before you open the auth-provider admin page, collect these values:
+
+- The provider type, such as `generic oidc`, `google`, `github`, `microsoft`, `keycloak`, `authentik`, or `auth0`
+- Client ID and client secret
+- The issuer URL, or the auth/token/userinfo endpoints if you are using generic OIDC
+- The exact redirect URL Blue shows in the admin page, registered on the identity-provider side
+- The scopes you want Blue to request
+- Whether Blue should auto-create users
+- The default role for newly created users
+- Any allowed-domain restrictions
+
+A minimal operator worksheet can look like this:
+
+```text
+Provider type: Generic OIDC
+Issuer: https://auth.example.com/realms/main
+Client ID: <client-id>
+Client Secret: <client-secret>
+Scopes: openid profile email
+Auto-create user: true
+Default role: member
+Allowed domains: example.com
+```
+
+Do not guess the callback URL. Register the exact redirect value that Blue shows in the auth-provider admin page.
+
 ## Where this fits with other admin surfaces
 
 Use this page when the question is about who can enter the system and what credentials they use. Use [Admin and Operations](/guides/admin-operations) when the question is about runtime governance, billing, audit, tenants, or security monitoring.

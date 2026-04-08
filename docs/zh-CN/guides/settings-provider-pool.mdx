@@ -41,6 +41,45 @@ Web 应用现在把设置分成五个标签：
 
 这让 Blue 可以同时接云端 API、本地网关和兼容层，而不用改上层产品逻辑。
 
+## 最小自定义 Provider 准备清单
+
+在点击 `Add provider` 前，建议先准备好这些最小信息：
+
+- Provider 显示名称
+- 可访问的 Base URL 或 endpoint
+- API Key 或 bearer token
+- Blue 应该使用的兼容格式，例如 `openai`、`responses`、`anthropic`、`google`
+- 这个 endpoint 应该标记成 `cloud` 还是 `local`
+- 如果你准备限制模型，再提前列出允许的精确模型名
+
+一个简单的运维准备单可以长这样：
+
+```text
+名称: OpenAI Prod
+Base URL: https://api.openai.com
+API key: <secret>
+格式: responses
+位置: cloud
+Allowed models: gpt-4.1, gpt-4o-mini
+```
+
+如果你更偏向 config-first 部署，仓库自带的示例配置已经给出了最小路由形态：
+
+```yaml
+proxy:
+  routing:
+    default_provider: "openai"
+    providers:
+      - name: "openai"
+        endpoint: "https://api.openai.com"
+        api_key: "${OPENAI_API_KEY}"
+        priority: 1
+        enabled: true
+        health_check: "/v1/models"
+```
+
+设置页里的 Provider Pool 会比这段最小配置更丰富，还会包含兼容格式、位置元数据、验证结果和 allowed-model 控制等状态。
+
 ## 模型与路由控制
 
 Provider 接入后，你还可以继续管理：

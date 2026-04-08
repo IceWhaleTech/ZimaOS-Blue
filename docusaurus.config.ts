@@ -18,13 +18,14 @@ const config: Config = {
   title: 'ZimaOS Blue',
   tagline:
     'Open-source, auditable, local-first agent runtime and toolkit for self-hosted personal AI agents.',
-  favicon: 'assets/bannerX.png',
+  favicon: 'bannerX.png',
 
   url,
   baseUrl,
   organizationName,
   projectName,
   trailingSlash: false,
+  staticDirectories: ['docs/assets'],
 
   onBrokenLinks: 'throw',
   markdown: {
@@ -43,7 +44,7 @@ const config: Config = {
       'classic',
       {
         docs: {
-          path: '../docs',
+          path: 'docs',
           routeBasePath: '/',
           include: [
             'index.mdx',
@@ -68,12 +69,12 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'assets/bannerX.png',
+    image: 'bannerX.png',
     navbar: {
       title: 'ZimaOS Blue',
       logo: {
         alt: 'ZimaOS Blue',
-        src: 'assets/bannerX.png',
+        src: 'bannerX.png',
       },
       items: [
         {

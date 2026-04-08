@@ -41,6 +41,45 @@ The custom-provider flow supports more than a base URL and key. You can set:
 
 These fields make it easier to run the same Blue runtime against hosted APIs, local gateways, or compatibility layers without rewriting the rest of your product.
 
+## Minimum custom-provider checklist
+
+Before opening `Add provider`, prepare these minimum values:
+
+- A provider display name
+- A reachable base URL or endpoint
+- An API key or bearer token
+- The compatibility format Blue should speak, such as `openai`, `responses`, `anthropic`, or `google`
+- Whether the endpoint should be treated as `cloud` or `local`
+- The exact model names you want to allow, if you plan to restrict them
+
+A simple operator worksheet can look like this:
+
+```text
+Name: OpenAI Prod
+Base URL: https://api.openai.com
+API key: <secret>
+Format: responses
+Location: cloud
+Allowed models: gpt-4.1, gpt-4o-mini
+```
+
+If you prefer config-first rollout, the checked-in example config already shows the minimal routing shape:
+
+```yaml
+proxy:
+  routing:
+    default_provider: "openai"
+    providers:
+      - name: "openai"
+        endpoint: "https://api.openai.com"
+        api_key: "${OPENAI_API_KEY}"
+        priority: 1
+        enabled: true
+        health_check: "/v1/models"
+```
+
+The settings UI can carry richer state than this minimal snippet, including compatibility format, location metadata, verification results, and allowed-model controls.
+
 ## Model controls
 
 After a provider is connected, Blue can expose:

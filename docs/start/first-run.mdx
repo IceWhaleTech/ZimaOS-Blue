@@ -1,0 +1,100 @@
+---
+title: "First Run"
+summary: "Launch Blue for the first time, understand preview mode, connect one provider, and validate a working chat response."
+---
+
+# First Run
+
+Use this page after installation when you want the shortest path to a working local instance.
+
+## 1. Choose how you want to launch Blue
+
+### Desktop app
+
+If you installed the desktop app, open it and continue to the web UI steps below.
+
+### Source, production-style
+
+From the repository root:
+
+```bash
+sh build.sh
+```
+
+This uses the default `prd` flow, bundles the web assets, builds the server, and starts Blue on `http://localhost`.
+
+### Source, development-style
+
+From the repository root:
+
+```bash
+./build.sh start
+```
+
+This starts the backend on `http://localhost` and the Vite frontend on `http://localhost:3000`.
+
+## 2. Know the default local address
+
+The checked-in example config uses:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 80
+```
+
+Blue normalizes that startup URL to `http://localhost` for local use.
+
+If port `80` is already taken, create a `config.yaml` and use another port:
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+```
+
+Blue looks for config in `./config.yaml`, `./config/config.yaml`, `/etc/zimaos-blue/config.yaml`, and `~/.zimaos-blue/config.yaml`. You can also start it with `blue --config /path/to/config.yaml`.
+
+## 3. Understand what happens on a brand-new instance
+
+If no user exists yet, Blue starts in `preview` mode. That first-run mode gives you:
+
+- Temporary preview access
+- Starter questions in empty chat
+- An upgrade flow that creates the first admin account
+
+As soon as the first user is created, the same data directory moves to `normal` mode and preview is no longer available for that instance.
+
+## 4. Finish the minimum operator setup
+
+1. Open the web UI.
+2. If you are in preview mode, explore briefly, then use the upgrade flow to create the first admin account.
+3. Open `Settings -> LLM`.
+4. Add or verify one provider you actually plan to use.
+5. Pick the default provider and review allowed models if needed.
+
+## 5. Run a first smoke test
+
+Send a short prompt such as:
+
+`Summarize what ZimaOS Blue is in one paragraph.`
+
+A good first-run pass looks like this:
+
+- The UI loads
+- Auth or preview access works
+- At least one provider verifies
+- The first chat response returns successfully
+
+## 6. If something blocks you
+
+- Provider or model issues: read [Settings and Provider Pool](/guides/settings-provider-pool)
+- Login, preview, first admin, or auth-provider issues: read [Identity and Access](/guides/identity-access)
+- General startup or routing problems: read [Troubleshooting](/help/troubleshooting)
+
+## What to read next
+
+- [Quick Start](/start/quick-start)
+- [Settings and Provider Pool](/guides/settings-provider-pool)
+- [Providers and Models](/guides/providers-models)
+- [Identity and Access](/guides/identity-access)

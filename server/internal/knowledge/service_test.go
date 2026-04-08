@@ -66,7 +66,7 @@ func TestServiceCompileBuildsPagesManifestAndWritesMemory(t *testing.T) {
 	}
 	writeKnowledgeTestFile(t, filepath.Join(repoRoot, "README.md"), "# Blue Knowledge\n\nBlue architecture and knowledge workflows.\n")
 	writeKnowledgeTestFile(t, filepath.Join(repoRoot, "ARCHITECTURE.md"), "# Blue Architecture\n\nArchitecture for the Blue knowledge runtime.\n")
-	writeKnowledgeTestFile(t, filepath.Join(repoRoot, "docs-site", "guides", "automation.mdx"), "# Automation\n\nBlue automation and knowledge maintenance.\n")
+	writeKnowledgeTestFile(t, filepath.Join(repoRoot, "docs", "guides", "automation.mdx"), "# Automation\n\nBlue automation and knowledge maintenance.\n")
 
 	sink := &memorySinkStub{}
 	svc := NewService(ServiceOptions{

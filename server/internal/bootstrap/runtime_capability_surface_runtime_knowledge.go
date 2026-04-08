@@ -163,7 +163,7 @@ func knowledgeRepoRootLooksValid(root string) bool {
 	for _, marker := range []string{
 		filepath.Join(root, "README.md"),
 		filepath.Join(root, "ARCHITECTURE.md"),
-		filepath.Join(root, "docs-site"),
+		filepath.Join(root, "docs"),
 	} {
 		if _, err := os.Stat(marker); err == nil {
 			return true

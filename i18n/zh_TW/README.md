@@ -49,7 +49,7 @@
 
 ## 簡介
 
-受 Clawdbot 啟發，我們相信，個人運算的未來將由運行在邊緣端、形態多樣且本地優先的 AI Agent 所塑造。
+受 OpenClaw 啟發，我們相信，個人運算的未來將由運行在邊緣端、形態多樣且本地優先的 AI Agent 所塑造。
 
 ZimaOS Blue 就是我們的答案：一個完全開源、可稽核、供應商中立、可直接投入生產的 Agent Runtime 與工具套件，讓你幾乎零摩擦地交付私有、自託管的 Agent。
 
@@ -107,12 +107,13 @@ ZimaOS Blue 就是我們的答案：一個完全開源、可稽核、供應商�
 
 取得原生應用程式，無需依賴、無需編譯。內建試用配置，幾秒就能完成上手；透過遠端連線即可立刻開始聊天，不需要額外設定 bot。真正的開箱即用體驗。
 
+- <img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> **ZimaOS**: [在 ZimaOS 上執行](https://www.zimaspace.com/zimaos?utm_source=blue)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**：[下載DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**：[下載安裝程式](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### 選項 2：安裝腳本
 
-![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
+<img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> ZimaOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
@@ -130,7 +131,7 @@ cd ZimaOS-Blue
 git submodule update --init --recursive
 ```
 
-![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
+<img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> ZimaOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 sh build.sh
 ```

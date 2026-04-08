@@ -612,6 +612,21 @@ func (b *SystemPromptBuilder) writePlatformInfoTo(sb *strings.Builder) {
 	sb.WriteString("</env>")
 }
 
+// writeDefaultLanguageTo writes the configured default reply language guidance.
+func (b *SystemPromptBuilder) writeDefaultLanguageTo(sb *strings.Builder) {
+	locale := strings.TrimSpace(b.getLocale())
+	if locale == "" {
+		locale = "en"
+	}
+	sb.WriteString("<default_language locale=\"")
+	sb.WriteString(locale)
+	sb.WriteString("\">")
+	sb.WriteString("The user's configured default reply language is ")
+	sb.WriteString(locale)
+	sb.WriteString(". Use this as the default reply language unless the user explicitly asks for another language or clearly writes in another language for this turn.")
+	sb.WriteString("</default_language>")
+}
+
 // writeWorkspaceInfoTo writes workspace information directly into sb.
 func (b *SystemPromptBuilder) writeWorkspaceInfoTo(sb *strings.Builder, gitRepo bool) {
 	sb.WriteString("<workspace dir=\"")
@@ -689,12 +704,20 @@ func (b *SystemPromptBuilder) staticCoreSections() []promptSection {
 }
 
 func (b *SystemPromptBuilder) staticRuntimeSections() []promptSection {
-	return []promptSection{{
-		Name:      "platform",
-		Stability: promptSectionStable,
-		Reason:    "locale and platform information change rarely and should stay in the cached prefix",
-		Content:   b.buildPlatformInfoSection(),
-	}}
+	return []promptSection{
+		{
+			Name:      "platform",
+			Stability: promptSectionStable,
+			Reason:    "locale and platform information change rarely and should stay in the cached prefix",
+			Content:   b.buildPlatformInfoSection(),
+		},
+		{
+			Name:      "default_language",
+			Stability: promptSectionStable,
+			Reason:    "configured default language changes rarely and should be explicit in the cached prefix",
+			Content:   b.buildDefaultLanguageSection(),
+		},
+	}
 }
 
 func (b *SystemPromptBuilder) configSections(contextFiles map[string]string, gitRepo, hasTools, hasSandbox bool) []promptSection {
@@ -800,6 +823,12 @@ func (b *SystemPromptBuilder) buildRuntimeInfoSection() string {
 func (b *SystemPromptBuilder) buildPlatformInfoSection() string {
 	var sb strings.Builder
 	b.writePlatformInfoTo(&sb)
+	return sb.String()
+}
+
+func (b *SystemPromptBuilder) buildDefaultLanguageSection() string {
+	var sb strings.Builder
+	b.writeDefaultLanguageTo(&sb)
 	return sb.String()
 }
 

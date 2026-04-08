@@ -48,7 +48,7 @@
 
 ## Εισαγωγή
 
-Εμπνευσμένοι από το Clawdbot, πιστεύουμε ότι το μέλλον των προσωπικών υπολογιστών θα διαμορφωθεί από διαφορετικούς, τοπικούς πράκτορες τεχνητής νοημοσύνης που θα τρέχουν στην άκρη.
+Εμπνευσμένοι από το OpenClaw, πιστεύουμε ότι το μέλλον των προσωπικών υπολογιστών θα διαμορφωθεί από διαφορετικούς, τοπικούς πράκτορες τεχνητής νοημοσύνης που θα τρέχουν στην άκρη.
 
 Η ZimaOS Blue είναι η απάντησή μας — ένα πλήρως ανοιχτού κώδικα, ελεγχόμενο, ουδέτερο από τον προμηθευτή και έτοιμο για παραγωγή χρόνου εκτέλεσης και εργαλειοθήκη που σας επιτρέπει να αποστέλλετε ιδιωτικούς πράκτορες που φιλοξενούνται μόνοι σας με μηδενική τριβή.
 
@@ -106,12 +106,13 @@
 
 Αποκτήστε την εγγενή εφαρμογή — χωρίς εξαρτήσεις, χωρίς μεταγλώττιση. Ενσωματωμένη δοκιμαστική διαμόρφωση με ενσωμάτωση σε δευτερόλεπτα — ξεκινήστε τη συνομιλία αμέσως μέσω απομακρυσμένης σύνδεσης, χωρίς να απαιτείται ρύθμιση bot. Πραγματική εμπειρία εκτός συσκευασίας.
 
+- <img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> **ZimaOS**: [Εκτέλεση στο ZimaOS](https://www.zimaspace.com/zimaos?utm_source=blue)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)**macOS**: [Λήψη DMG](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/WIN.png)**Windows**: [Λήψη προγράμματος εγκατάστασης](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
 ### Επιλογή 2: Εγκατάσταση σεναρίου
 
-![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
+<img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> ZimaOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
 ```
@@ -129,7 +130,7 @@ cd ZimaOS-Blue
 git submodule update --init --recursive
 ```
 
-![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
+<img src="https://raw.githubusercontent.com/IceWhaleTech/ZimaOS/main/assets/20241126-153324.png" alt="ZimaOS" height="16" /> ZimaOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/MAC.png)macOS / ![](https://raw.githubusercontent.com/drag-and-publish/operating-system-logos/master/src/16x16/LIN.png)linux
 ```bash
 sh build.sh
 ```
