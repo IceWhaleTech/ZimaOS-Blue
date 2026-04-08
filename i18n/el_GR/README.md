@@ -62,10 +62,7 @@
 Μια σύντομη επίδειξη της ροής συνομιλίας και της εκτέλεσης εργασιών στο Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Δείτε την επίδειξη</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Ενσωμάτωση παρόχων LLM
@@ -73,10 +70,7 @@
 Μια σύντομη επίδειξη της εμπειρίας ενσωμάτωσης παρόχων LLM στο Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Δείτε την επίδειξη</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Γρήγορη επισκόπηση - Επισκόπηση, κανάλια και επιπλέον ρυθμίσεις
@@ -84,10 +78,7 @@
 Μια σύντομη επίδειξη που καλύπτει τη συνολική επισκόπηση του προϊόντος, τα κανάλια και τις επιπλέον ρυθμίσεις.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Δείτε την επίδειξη</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Γιατί Blue

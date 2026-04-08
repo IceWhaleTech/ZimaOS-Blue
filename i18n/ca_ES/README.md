@@ -62,10 +62,7 @@ Creat per a desenvolupadors atrevits que volen vibrar o crear els seus propis ag
 Una demostració ràpida del flux de conversa i de l'execució de tasques a Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Mira la demostració</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Integració de proveïdors LLM
@@ -73,10 +70,7 @@ Una demostració ràpida del flux de conversa i de l'execució de tasques a Blue
 Una demostració ràpida de l'experiència d'integració de proveïdors LLM a Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Mira la demostració</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Visió general ràpida - Vista general, canals i configuració addicional
@@ -84,10 +78,7 @@ Una demostració ràpida de l'experiència d'integració de proveïdors LLM a Bl
 Una demostració ràpida que cobreix la vista general del producte, els canals i la configuració addicional.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Mira la demostració</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Per què Blue

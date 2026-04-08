@@ -62,10 +62,7 @@ ZimaOS Blue എന്നതാണ് ഞങ്ങളുടെ ഉത്തരം
 Blueയിലെ സംഭാഷണ പ്രവാഹവും ടാസ്‌ക് നിർവഹണവും കാണിക്കുന്ന ഒരു വേഗത്തിലുള്ള ഡെമോ.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">ഡെമോ കാണുക</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### LLM പ്രൊവൈഡർ ഇന്റഗ്രേഷൻ
@@ -73,10 +70,7 @@ Blueയിലെ സംഭാഷണ പ്രവാഹവും ടാസ്‌�
 Blueയിലെ LLM പ്രൊവൈഡർ ഇന്റഗ്രേഷൻ അനുഭവം കാണിക്കുന്ന ഒരു വേഗത്തിലുള്ള ഡെമോ.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">ഡെമോ കാണുക</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### ദ്രുത അവലോകനം - അവലോകനം, ചാനലുകൾ, അധിക കോൺഫിഗറേഷൻ
@@ -84,10 +78,7 @@ Blueയിലെ LLM പ്രൊവൈഡർ ഇന്റഗ്രേഷൻ അ
 ഉൽപ്പന്നത്തിന്റെ ആകെ അവലോകനം, ചാനലുകൾ, അധിക കോൺഫിഗറേഷൻ എന്നിവ കാണിക്കുന്ന ഒരു വേഗത്തിലുള്ള ഡെമോ.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">ഡെമോ കാണുക</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## എന്തുകൊണ്ട് Blue

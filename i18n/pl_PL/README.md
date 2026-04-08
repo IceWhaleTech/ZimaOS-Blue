@@ -62,10 +62,7 @@ Stworzony z myślą o odważnych programistach, którzy chcą nadać swoim agent
 Krótka demonstracja przepływu rozmowy i wykonywania zadań w Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Obejrzyj demonstrację</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Integracja dostawców LLM
@@ -73,10 +70,7 @@ Krótka demonstracja przepływu rozmowy i wykonywania zadań w Blue.
 Krótka demonstracja integracji dostawców LLM w Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Obejrzyj demonstrację</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Szybki przegląd - Przegląd, kanały i dodatkowa konfiguracja
@@ -84,10 +78,7 @@ Krótka demonstracja integracji dostawców LLM w Blue.
 Krótka demonstracja obejmująca ogólny przegląd produktu, kanały i dodatkową konfigurację.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Obejrzyj demonstrację</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Dlaczego Blue

@@ -62,10 +62,7 @@ Blue, созданный для смелых разработчиков, кот�
 Краткое демо потока диалога и выполнения задач в Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Смотреть демо</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Интеграция LLM-провайдеров
@@ -73,10 +70,7 @@ Blue, созданный для смелых разработчиков, кот�
 Краткое демо интеграции LLM-провайдеров в Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Смотреть демо</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Быстрый обзор - Обзор, каналы и дополнительная конфигурация
@@ -84,10 +78,7 @@ Blue, созданный для смелых разработчиков, кот�
 Краткое демо общего обзора продукта, каналов и дополнительной конфигурации.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Смотреть демо</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Почему Blue

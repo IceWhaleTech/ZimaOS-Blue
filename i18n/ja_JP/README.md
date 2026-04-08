@@ -62,10 +62,7 @@ Blue は、独自のエージェントを動かしたり手作りしたりした
 Blue における会話フローとタスク実行を手早く紹介するデモです。
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">デモを見る</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### LLM プロバイダー統合
@@ -73,10 +70,7 @@ Blue における会話フローとタスク実行を手早く紹介するデモ
 Blue の LLM プロバイダー統合体験を手早く紹介するデモです。
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">デモを見る</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### クイック概要 - 概要、チャネル、追加設定
@@ -84,10 +78,7 @@ Blue の LLM プロバイダー統合体験を手早く紹介するデモです�
 製品全体の概要、チャネル、追加設定を手早く紹介するデモです。
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">デモを見る</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## なぜ Blue

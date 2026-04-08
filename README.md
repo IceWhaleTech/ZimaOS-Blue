@@ -68,10 +68,7 @@ Built for bold developers who want to vibe or handcraft their own agents, Blue i
 A quick demo of conversation flow and task execution in Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="./docs/assets/demo.mp4" type="video/mp4" />
-    <a href="./docs/assets/demo.mp4">Watch the demo</a>
-  </video>
+  <img src="./docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### LLM Providers Integration
@@ -79,10 +76,7 @@ A quick demo of conversation flow and task execution in Blue.
 A quick demo of Blue's LLM providers integration experience.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="./docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="./docs/assets/demo Provider.mp4">Watch the demo</a>
-  </video>
+  <img src="./docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Quick Overview - Overview, Channels & Additional Configuration
@@ -90,10 +84,7 @@ A quick demo of Blue's LLM providers integration experience.
 A quick demo covering the overall product overview, channels, and additional configuration.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="./docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="./docs/assets/demo quickv4.mp4">Watch the demo</a>
-  </video>
+  <img src="./docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Why Blue

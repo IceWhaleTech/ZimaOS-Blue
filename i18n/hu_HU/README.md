@@ -62,10 +62,7 @@ Azok a merész fejlesztők számára készült, akik saját ügynökeiket szeret
 Egy gyors demó a Blue beszélgetési folyamatáról és feladatvégrehajtásáról.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Demó megtekintése</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### LLM-szolgáltatók integrációja
@@ -73,10 +70,7 @@ Egy gyors demó a Blue beszélgetési folyamatáról és feladatvégrehajtásár
 Egy gyors demó a Blue LLM-szolgáltatói integrációs élményéről.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Demó megtekintése</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Gyors áttekintés - Áttekintés, csatornák és további konfiguráció
@@ -84,10 +78,7 @@ Egy gyors demó a Blue LLM-szolgáltatói integrációs élményéről.
 Egy gyors demó, amely bemutatja a termék áttekintését, a csatornákat és a további konfigurációt.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Demó megtekintése</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Miért Blue

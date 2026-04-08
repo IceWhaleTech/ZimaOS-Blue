@@ -62,10 +62,7 @@ Conçu pour les développeurs audacieux qui souhaitent créer ou créer leurs pr
 Une démo rapide du flux de conversation et de l'exécution des tâches dans Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Voir la démo</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Intégration des fournisseurs LLM
@@ -73,10 +70,7 @@ Une démo rapide du flux de conversation et de l'exécution des tâches dans Blu
 Une démo rapide de l'expérience d'intégration des fournisseurs LLM dans Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Voir la démo</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Aperçu rapide - Vue d'ensemble, canaux et configuration supplémentaire
@@ -84,10 +78,7 @@ Une démo rapide de l'expérience d'intégration des fournisseurs LLM dans Blue.
 Une démo rapide couvrant la vue d'ensemble du produit, les canaux et la configuration supplémentaire.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Voir la démo</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Pourquoi Blue

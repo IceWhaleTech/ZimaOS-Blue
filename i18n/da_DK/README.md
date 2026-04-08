@@ -62,10 +62,7 @@ Bygget til dristige udviklere, der ønsker at vibe eller håndlave deres egne ag
 En hurtig demo af samtaleflow og opgaveudførelse i Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Se demoen</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Integration af LLM-udbydere
@@ -73,10 +70,7 @@ En hurtig demo af samtaleflow og opgaveudførelse i Blue.
 En hurtig demo af Blues integrationsoplevelse for LLM-udbydere.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Se demoen</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Hurtigt overblik - Oversigt, kanaler og ekstra konfiguration
@@ -84,10 +78,7 @@ En hurtig demo af Blues integrationsoplevelse for LLM-udbydere.
 En hurtig demo, der dækker det overordnede produktoverblik, kanaler og ekstra konfiguration.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Se demoen</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Hvorfor Blue

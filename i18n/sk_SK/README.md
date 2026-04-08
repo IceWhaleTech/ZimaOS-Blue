@@ -62,10 +62,7 @@ Blue, stvorený pre odvážnych vývojárov, ktorí chcú vibrovať alebo ručne
 Krátka ukážka toku konverzácie a vykonávania úloh v Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Pozrieť ukážku</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Integrácia poskytovateľov LLM
@@ -73,10 +70,7 @@ Krátka ukážka toku konverzácie a vykonávania úloh v Blue.
 Krátka ukážka integrácie poskytovateľov LLM v Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Pozrieť ukážku</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Rýchly prehľad - Prehľad, kanály a dodatočná konfigurácia
@@ -84,10 +78,7 @@ Krátka ukážka integrácie poskytovateľov LLM v Blue.
 Krátka ukážka, ktorá pokrýva celkový prehľad produktu, kanály a dodatočnú konfiguráciu.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Pozrieť ukážku</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Prečo Blue

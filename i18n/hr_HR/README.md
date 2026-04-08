@@ -62,10 +62,7 @@ Napravljen za odvažne programere koji žele vibrirati ili ručno izraditi vlast
 Kratki demo tijeka razgovora i izvršavanja zadataka u Blueu.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Pogledaj demo</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### Integracija LLM pružatelja
@@ -73,10 +70,7 @@ Kratki demo tijeka razgovora i izvršavanja zadataka u Blueu.
 Kratki demo iskustva integracije LLM pružatelja u Blueu.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Pogledaj demo</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Brzi pregled - Pregled, kanali i dodatna konfiguracija
@@ -84,10 +78,7 @@ Kratki demo iskustva integracije LLM pružatelja u Blueu.
 Kratki demo koji pokriva pregled proizvoda, kanale i dodatnu konfiguraciju.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Pogledaj demo</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Zašto Blue

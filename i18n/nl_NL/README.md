@@ -62,10 +62,7 @@ Blue is gebouwd voor gedurfde ontwikkelaars die hun eigen agenten willen uitleve
 Een snelle demo van de gespreksstroom en taakuitvoering in Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo.mp4">Bekijk de demo</a>
-  </video>
+  <img src="../../docs/assets/demo.gif" alt="Conversation & Task Execution demo" width="800" />
 </p>
 
 ### LLM-providerintegratie
@@ -73,10 +70,7 @@ Een snelle demo van de gespreksstroom en taakuitvoering in Blue.
 Een snelle demo van de integratie-ervaring met LLM-providers in Blue.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo Provider.mp4">Bekijk de demo</a>
-  </video>
+  <img src="../../docs/assets/demo Provider.gif" alt="LLM Providers Integration demo" width="800" />
 </p>
 
 ### Snel overzicht - Overzicht, kanalen en aanvullende configuratie
@@ -84,10 +78,7 @@ Een snelle demo van de integratie-ervaring met LLM-providers in Blue.
 Een snelle demo van het productoverzicht, de kanalen en de aanvullende configuratie.
 
 <p align="center">
-  <video controls preload="metadata" width="960">
-    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
-    <a href="../../docs/assets/demo quickv4.mp4">Bekijk de demo</a>
-  </video>
+  <img src="../../docs/assets/demo quickv4.gif" alt="Quick Overview demo" width="720" />
 </p>
 
 ## Waarom Blue
