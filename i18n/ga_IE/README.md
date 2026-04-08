@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: Timpeallacht rith gníomhairí <strong>áitiúil ar dtús</strong> do thógálaithe dána<br>
-  Réidh le húsáid láithreach · Foinse oscailte · Uilíoch · Neodrach ó thaobh díoltóra de
-</p>
+<h2 align="center">ZimaOS Blue: Timpeallacht rith gníomhairí áitiúil ar dtús do thógálaithe dána</h2>
+
+<p align="center"><strong>Réidh le húsáid láithreach · Foinse oscailte · Uilíoch · Neodrach ó thaobh díoltóra de</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

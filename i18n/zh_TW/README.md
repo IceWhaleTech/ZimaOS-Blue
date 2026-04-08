@@ -1,9 +1,8 @@
 ![](../../docs/assets/banner.png)
 
-<p align="center">
-  ZimaOS Blue：面向大膽構建者的<strong>本地優先</strong>智能體運行時<br>
-  開箱即用 · 開源 · 通用 · 廠商中立
-</p>
+<h2 align="center">ZimaOS Blue：面向大膽構建者的本地優先智能體運行時</h2>
+
+<p align="center"><strong>開箱即用 · 開源 · 通用 · 廠商中立</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

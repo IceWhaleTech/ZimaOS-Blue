@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: A Local-First Agent Runtime for Bold Builders<br>
-  Out-of-the-Box · Open-Source · Universal · Vendor-Neutral
-</p>
+<h2 align="center">ZimaOS Blue: A Local-First Agent Runtime for Bold Builders</h2>
+
+<p align="center"><strong>Out-of-the-Box · Open-Source · Universal · Vendor-Neutral</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

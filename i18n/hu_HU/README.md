@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: <strong>Local-first</strong> ügynök-futtatókörnyezet merész alkotóknak<br>
-  Azonnal használható · Nyílt forráskódú · Univerzális · Szállítósemleges
-</p>
+<h2 align="center">ZimaOS Blue: Local-first ügynök-futtatókörnyezet merész alkotóknak</h2>
+
+<p align="center"><strong>Azonnal használható · Nyílt forráskódú · Univerzális · Szállítósemleges</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

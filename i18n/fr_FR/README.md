@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue : Un runtime d'agents <strong>local-first</strong> pour les créateurs audacieux<br>
-  Prêt à l'emploi · Open source · Universel · Neutre vis-à-vis des fournisseurs
-</p>
+<h2 align="center">ZimaOS Blue : Un runtime d'agents local-first pour les créateurs audacieux</h2>
+
+<p align="center"><strong>Prêt à l'emploi · Open source · Universel · Neutre vis-à-vis des fournisseurs</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

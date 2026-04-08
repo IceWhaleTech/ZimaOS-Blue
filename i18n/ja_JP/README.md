@@ -1,9 +1,8 @@
 ![](../../docs/assets/banner.png)
 
-<p align="center">
-  ZimaOS Blue: 大胆なビルダーのための<strong>ローカルファースト</strong>エージェントランタイム<br>
-  すぐに使える · オープンソース · ユニバーサル · ベンダーニュートラル
-</p>
+<h2 align="center">ZimaOS Blue: 大胆なビルダーのためのローカルファーストエージェントランタイム</h2>
+
+<p align="center"><strong>すぐに使える · オープンソース · ユニバーサル · ベンダーニュートラル</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: <strong>Lokalno-prvi</strong> runtime agenata za odvažne graditelje<br>
-  Spremno za rad odmah · Otvorenog koda · Univerzalno · Neutralno prema dobavljačima
-</p>
+<h2 align="center">ZimaOS Blue: Lokalno-prvi runtime agenata za odvažne graditelje</h2>
+
+<p align="center"><strong>Spremno za rad odmah · Otvorenog koda · Univerzalno · Neutralno prema dobavljačima</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

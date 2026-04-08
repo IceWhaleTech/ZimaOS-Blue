@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: <strong>Local-first</strong> runtime agentov pre odvážnych tvorcov<br>
-  Pripravené hneď po spustení · Open source · Univerzálne · Nezávislé od dodávateľa
-</p>
+<h2 align="center">ZimaOS Blue: Local-first runtime agentov pre odvážnych tvorcov</h2>
+
+<p align="center"><strong>Pripravené hneď po spustení · Open source · Univerzálne · Nezávislé od dodávateľa</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

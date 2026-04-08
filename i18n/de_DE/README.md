@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: Eine <strong>Local-First</strong>-Agent-Laufzeit für mutige Builder<br>
-  Sofort einsatzbereit · Open Source · Universell · Anbieterneutral
-</p>
+<h2 align="center">ZimaOS Blue: Eine Local-First-Agent-Laufzeit für mutige Builder</h2>
+
+<p align="center"><strong>Sofort einsatzbereit · Open Source · Universell · Anbieterneutral</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

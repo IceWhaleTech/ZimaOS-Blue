@@ -1,9 +1,8 @@
 ![](../../docs/assets/banner.png)
 
-<p align="center">
-  ZimaOS Blue: 대담한 빌더를 위한 <strong>로컬 우선</strong> 에이전트 런타임<br>
-  즉시 사용 가능 · 오픈소스 · 범용 · 벤더 중립
-</p>
+<h2 align="center">ZimaOS Blue: 대담한 빌더를 위한 로컬 우선 에이전트 런타임</h2>
+
+<p align="center"><strong>즉시 사용 가능 · 오픈소스 · 범용 · 벤더 중립</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

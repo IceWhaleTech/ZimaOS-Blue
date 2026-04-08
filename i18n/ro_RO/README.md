@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: Un runtime de agenți <strong>local-first</strong> pentru creatori îndrăzneți<br>
-  Gata de folosit din prima · Open-source · Universal · Neutru față de furnizori
-</p>
+<h2 align="center">ZimaOS Blue: Un runtime de agenți local-first pentru creatori îndrăzneți</h2>
+
+<p align="center"><strong>Gata de folosit din prima · Open-source · Universal · Neutru față de furnizori</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

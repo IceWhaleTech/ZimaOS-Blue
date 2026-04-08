@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: Ένα <strong>local-first</strong> runtime πρακτόρων για τολμηρούς δημιουργούς<br>
-  Έτοιμο από την πρώτη στιγμή · Ανοιχτού κώδικα · Καθολικό · Ουδέτερο ως προς τον πάροχο
-</p>
+<h2 align="center">ZimaOS Blue: Ένα local-first runtime πρακτόρων για τολμηρούς δημιουργούς</h2>
+
+<p align="center"><strong>Έτοιμο από την πρώτη στιγμή · Ανοιχτού κώδικα · Καθολικό · Ουδέτερο ως προς τον πάροχο</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

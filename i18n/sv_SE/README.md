@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: En <strong>lokal-först</strong> agent-runtime för djärva byggare<br>
-  Redo direkt från start · Öppen källkod · Universell · Leverantörsneutral
-</p>
+<h2 align="center">ZimaOS Blue: En lokal-först agent-runtime för djärva byggare</h2>
+
+<p align="center"><strong>Redo direkt från start · Öppen källkod · Universell · Leverantörsneutral</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

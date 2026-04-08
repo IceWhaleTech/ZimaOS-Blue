@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: Um runtime de agentes <strong>local-first</strong> para criadores arrojados<br>
-  Pronto a usar · Código aberto · Universal · Neutro em relação a fornecedores
-</p>
+<h2 align="center">ZimaOS Blue: Um runtime de agentes local-first para criadores arrojados</h2>
+
+<p align="center"><strong>Pronto a usar · Código aberto · Universal · Neutro em relação a fornecedores</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |

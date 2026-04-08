@@ -1,9 +1,8 @@
 ![](../../docs/assets/bannerX.png)
 
-<p align="center">
-  ZimaOS Blue: En <strong>lokal-først</strong> agent-runtime til modige byggere<br>
-  Klar fra start · Open source · Universel · Leverandørneutral
-</p>
+<h2 align="center">ZimaOS Blue: En lokal-først agent-runtime til modige byggere</h2>
+
+<p align="center"><strong>Klar fra start · Open source · Universel · Leverandørneutral</strong></p>
 
 <p align="center">
   <a href="../../README.md">English</a> |
