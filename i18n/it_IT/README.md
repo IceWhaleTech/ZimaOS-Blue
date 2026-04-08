@@ -61,19 +61,34 @@ Realizzato per sviluppatori audaci che desiderano stimolare o creare manualmente
 
 Una rapida demo del flusso di conversazione e dell'esecuzione delle attività in Blue.
 
-[Guarda la demo](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Guarda la demo</a>
+  </video>
+</p>
 
 ### Integrazione dei provider LLM
 
 Una rapida demo dell'esperienza di integrazione dei provider LLM in Blue.
 
-[Guarda la demo](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Guarda la demo</a>
+  </video>
+</p>
 
 ### Panoramica rapida - Panoramica, canali e configurazione aggiuntiva
 
 Una rapida demo che copre la panoramica del prodotto, i canali e la configurazione aggiuntiva.
 
-[Guarda la demo](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Guarda la demo</a>
+  </video>
+</p>
 
 ## Perché Blue
 

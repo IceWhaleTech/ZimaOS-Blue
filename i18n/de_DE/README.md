@@ -61,19 +61,34 @@ Blue wurde für mutige Entwickler entwickelt, die ihre eigenen Agenten vibieren 
 
 Eine kurze Demo des Gesprächsablaufs und der Aufgabenausführung in Blue.
 
-[Demo ansehen](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Demo ansehen</a>
+  </video>
+</p>
 
 ### Integration von LLM-Anbietern
 
 Eine kurze Demo der LLM-Anbieterintegration in Blue.
 
-[Demo ansehen](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Demo ansehen</a>
+  </video>
+</p>
 
 ### Schneller Überblick - Übersicht, Kanäle und zusätzliche Konfiguration
 
 Eine kurze Demo, die die Produktübersicht, Kanäle und zusätzliche Konfiguration abdeckt.
 
-[Demo ansehen](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Demo ansehen</a>
+  </video>
+</p>
 
 ## Warum Blue
 

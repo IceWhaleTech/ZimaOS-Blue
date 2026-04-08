@@ -61,19 +61,34 @@ Blue, stvorený pre odvážnych vývojárov, ktorí chcú vibrovať alebo ručne
 
 Krátka ukážka toku konverzácie a vykonávania úloh v Blue.
 
-[Pozrieť ukážku](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Pozrieť ukážku</a>
+  </video>
+</p>
 
 ### Integrácia poskytovateľov LLM
 
 Krátka ukážka integrácie poskytovateľov LLM v Blue.
 
-[Pozrieť ukážku](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Pozrieť ukážku</a>
+  </video>
+</p>
 
 ### Rýchly prehľad - Prehľad, kanály a dodatočná konfigurácia
 
 Krátka ukážka, ktorá pokrýva celkový prehľad produktu, kanály a dodatočnú konfiguráciu.
 
-[Pozrieť ukážku](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Pozrieť ukážku</a>
+  </video>
+</p>
 
 ## Prečo Blue
 

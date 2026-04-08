@@ -61,19 +61,34 @@ Blue は、独自のエージェントを動かしたり手作りしたりした
 
 Blue における会話フローとタスク実行を手早く紹介するデモです。
 
-[デモを見る](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">デモを見る</a>
+  </video>
+</p>
 
 ### LLM プロバイダー統合
 
 Blue の LLM プロバイダー統合体験を手早く紹介するデモです。
 
-[デモを見る](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">デモを見る</a>
+  </video>
+</p>
 
 ### クイック概要 - 概要、チャネル、追加設定
 
 製品全体の概要、チャネル、追加設定を手早く紹介するデモです。
 
-[デモを見る](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">デモを見る</a>
+  </video>
+</p>
 
 ## なぜ Blue
 

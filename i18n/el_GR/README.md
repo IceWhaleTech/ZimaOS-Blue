@@ -61,19 +61,34 @@
 
 Μια σύντομη επίδειξη της ροής συνομιλίας και της εκτέλεσης εργασιών στο Blue.
 
-[Δείτε την επίδειξη](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Δείτε την επίδειξη</a>
+  </video>
+</p>
 
 ### Ενσωμάτωση παρόχων LLM
 
 Μια σύντομη επίδειξη της εμπειρίας ενσωμάτωσης παρόχων LLM στο Blue.
 
-[Δείτε την επίδειξη](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Δείτε την επίδειξη</a>
+  </video>
+</p>
 
 ### Γρήγορη επισκόπηση - Επισκόπηση, κανάλια και επιπλέον ρυθμίσεις
 
 Μια σύντομη επίδειξη που καλύπτει τη συνολική επισκόπηση του προϊόντος, τα κανάλια και τις επιπλέον ρυθμίσεις.
 
-[Δείτε την επίδειξη](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Δείτε την επίδειξη</a>
+  </video>
+</p>
 
 ## Γιατί Blue
 

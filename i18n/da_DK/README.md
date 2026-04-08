@@ -61,19 +61,34 @@ Bygget til dristige udviklere, der ønsker at vibe eller håndlave deres egne ag
 
 En hurtig demo af samtaleflow og opgaveudførelse i Blue.
 
-[Se demoen](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Se demoen</a>
+  </video>
+</p>
 
 ### Integration af LLM-udbydere
 
 En hurtig demo af Blues integrationsoplevelse for LLM-udbydere.
 
-[Se demoen](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Se demoen</a>
+  </video>
+</p>
 
 ### Hurtigt overblik - Oversigt, kanaler og ekstra konfiguration
 
 En hurtig demo, der dækker det overordnede produktoverblik, kanaler og ekstra konfiguration.
 
-[Se demoen](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Se demoen</a>
+  </video>
+</p>
 
 ## Hvorfor Blue
 

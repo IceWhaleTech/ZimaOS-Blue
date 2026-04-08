@@ -61,19 +61,34 @@ Napravljen za odvažne programere koji žele vibrirati ili ručno izraditi vlast
 
 Kratki demo tijeka razgovora i izvršavanja zadataka u Blueu.
 
-[Pogledaj demo](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Pogledaj demo</a>
+  </video>
+</p>
 
 ### Integracija LLM pružatelja
 
 Kratki demo iskustva integracije LLM pružatelja u Blueu.
 
-[Pogledaj demo](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Pogledaj demo</a>
+  </video>
+</p>
 
 ### Brzi pregled - Pregled, kanali i dodatna konfiguracija
 
 Kratki demo koji pokriva pregled proizvoda, kanale i dodatnu konfiguraciju.
 
-[Pogledaj demo](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Pogledaj demo</a>
+  </video>
+</p>
 
 ## Zašto Blue
 

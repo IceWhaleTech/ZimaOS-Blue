@@ -62,19 +62,34 @@ ZimaOS Blue 就是我們的答案：一個完全開源、可稽核、供應商�
 
 一個快速示範，展示 Blue 中的對話流程與任務執行。
 
-[觀看示範](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">觀看示範</a>
+  </video>
+</p>
 
 ### LLM 供應商整合
 
 一個快速示範，展示 Blue 的 LLM 供應商整合體驗。
 
-[觀看示範](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">觀看示範</a>
+  </video>
+</p>
 
 ### 快速總覽 - 總覽、通道與附加配置
 
 一個快速示範，展示產品整體總覽、通道與附加配置。
 
-[觀看示範](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">觀看示範</a>
+  </video>
+</p>
 
 ## 為什麼 Blue
 

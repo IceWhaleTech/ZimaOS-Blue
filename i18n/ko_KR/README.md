@@ -61,19 +61,34 @@ ZimaOS Blue이 우리의 대답입니다. 완전한 오픈 소스, 감사 가능
 
 Blue의 대화 흐름과 작업 실행을 빠르게 보여주는 데모입니다.
 
-[데모 보기](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">데모 보기</a>
+  </video>
+</p>
 
 ### LLM 제공업체 통합
 
 Blue의 LLM 제공업체 통합 경험을 빠르게 보여주는 데모입니다.
 
-[데모 보기](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">데모 보기</a>
+  </video>
+</p>
 
 ### 빠른 개요 - 개요, 채널 및 추가 구성
 
 제품 개요, 채널 및 추가 구성을 빠르게 보여주는 데모입니다.
 
-[데모 보기](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">데모 보기</a>
+  </video>
+</p>
 
 ## 왜 Blue
 

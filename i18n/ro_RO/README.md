@@ -61,19 +61,34 @@ Creat pentru dezvoltatorii îndrăzneți care doresc să vibreze sau să își c
 
 O demonstrație rapidă a fluxului de conversație și a execuției sarcinilor în Blue.
 
-[Vezi demonstrația](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Vezi demonstrația</a>
+  </video>
+</p>
 
 ### Integrarea furnizorilor LLM
 
 O demonstrație rapidă a experienței de integrare a furnizorilor LLM în Blue.
 
-[Vezi demonstrația](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Vezi demonstrația</a>
+  </video>
+</p>
 
 ### Prezentare rapidă - Prezentare generală, canale și configurare suplimentară
 
 O demonstrație rapidă care acoperă prezentarea generală a produsului, canalele și configurarea suplimentară.
 
-[Vezi demonstrația](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Vezi demonstrația</a>
+  </video>
+</p>
 
 ## De ce Blue
 

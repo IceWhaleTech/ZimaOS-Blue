@@ -61,19 +61,34 @@ Tógtha d'fhorbróirí dána atá ag iarraidh a ngníomhairí féin a vibe nó l
 
 Taispeántas gairid ar shreabhadh an chomhrá agus ar chur i gcrích tascanna i Blue.
 
-[Féach ar an taispeántas](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Féach ar an taispeántas</a>
+  </video>
+</p>
 
 ### Comhtháthú soláthraithe LLM
 
 Taispeántas gairid ar thaithí Blue maidir le comhtháthú soláthraithe LLM.
 
-[Féach ar an taispeántas](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Féach ar an taispeántas</a>
+  </video>
+</p>
 
 ### Forbhreathnú tapa - Forbhreathnú, cainéil agus cumraíocht bhreise
 
 Taispeántas gairid a chlúdaíonn forbhreathnú an táirge, na cainéil agus an chumraíocht bhreise.
 
-[Féach ar an taispeántas](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Féach ar an taispeántas</a>
+  </video>
+</p>
 
 ## Cén fáth Blue
 

@@ -61,19 +61,34 @@ Blue är byggt för djärva utvecklare som vill vibba eller hantverka sina egna 
 
 En snabb demo av samtalsflödet och uppgiftskörningen i Blue.
 
-[Se demon](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Se demon</a>
+  </video>
+</p>
 
 ### Integration av LLM-leverantörer
 
 En snabb demo av Blues integration av LLM-leverantörer.
 
-[Se demon](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Se demon</a>
+  </video>
+</p>
 
 ### Snabb översikt - Översikt, kanaler och ytterligare konfiguration
 
 En snabb demo som täcker produktöversikten, kanalerna och ytterligare konfiguration.
 
-[Se demon](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Se demon</a>
+  </video>
+</p>
 
 ## Varför Blue
 

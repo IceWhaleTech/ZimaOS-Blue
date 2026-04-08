@@ -61,19 +61,34 @@ Stworzony z myślą o odważnych programistach, którzy chcą nadać swoim agent
 
 Krótka demonstracja przepływu rozmowy i wykonywania zadań w Blue.
 
-[Obejrzyj demonstrację](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Obejrzyj demonstrację</a>
+  </video>
+</p>
 
 ### Integracja dostawców LLM
 
 Krótka demonstracja integracji dostawców LLM w Blue.
 
-[Obejrzyj demonstrację](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Obejrzyj demonstrację</a>
+  </video>
+</p>
 
 ### Szybki przegląd - Przegląd, kanały i dodatkowa konfiguracja
 
 Krótka demonstracja obejmująca ogólny przegląd produktu, kanały i dodatkową konfigurację.
 
-[Obejrzyj demonstrację](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Obejrzyj demonstrację</a>
+  </video>
+</p>
 
 ## Dlaczego Blue
 

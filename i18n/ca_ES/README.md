@@ -61,19 +61,34 @@ Creat per a desenvolupadors atrevits que volen vibrar o crear els seus propis ag
 
 Una demostració ràpida del flux de conversa i de l'execució de tasques a Blue.
 
-[Mira la demostració](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Mira la demostració</a>
+  </video>
+</p>
 
 ### Integració de proveïdors LLM
 
 Una demostració ràpida de l'experiència d'integració de proveïdors LLM a Blue.
 
-[Mira la demostració](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Mira la demostració</a>
+  </video>
+</p>
 
 ### Visió general ràpida - Vista general, canals i configuració addicional
 
 Una demostració ràpida que cobreix la vista general del producte, els canals i la configuració addicional.
 
-[Mira la demostració](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Mira la demostració</a>
+  </video>
+</p>
 
 ## Per què Blue
 

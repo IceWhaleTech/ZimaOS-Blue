@@ -62,19 +62,34 @@ ZimaOS Blue 就是我们的答案：一个完全开源、可审计、厂商中�
 
 一个快速演示，展示 Blue 中的对话流程与任务执行。
 
-[观看演示](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">观看演示</a>
+  </video>
+</p>
 
 ### LLM 提供商集成
 
 一个快速演示，展示 Blue 的 LLM 提供商集成体验。
 
-[观看演示](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">观看演示</a>
+  </video>
+</p>
 
 ### 快速总览 - 总览、通道与附加配置
 
 一个快速演示，展示产品整体总览、通道和附加配置。
 
-[观看演示](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">观看演示</a>
+  </video>
+</p>
 
 ## 为什么 Blue
 

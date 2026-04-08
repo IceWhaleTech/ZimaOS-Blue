@@ -61,19 +61,34 @@ Blue, созданный для смелых разработчиков, кот�
 
 Краткое демо потока диалога и выполнения задач в Blue.
 
-[Смотреть демо](<../../docs/assets/demo.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo.mp4">Смотреть демо</a>
+  </video>
+</p>
 
 ### Интеграция LLM-провайдеров
 
 Краткое демо интеграции LLM-провайдеров в Blue.
 
-[Смотреть демо](<../../docs/assets/demo Provider.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo Provider.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo Provider.mp4">Смотреть демо</a>
+  </video>
+</p>
 
 ### Быстрый обзор - Обзор, каналы и дополнительная конфигурация
 
 Краткое демо общего обзора продукта, каналов и дополнительной конфигурации.
 
-[Смотреть демо](<../../docs/assets/demo quickv4.mp4>)
+<p align="center">
+  <video controls preload="metadata" width="960">
+    <source src="../../docs/assets/demo quickv4.mp4" type="video/mp4" />
+    <a href="../../docs/assets/demo quickv4.mp4">Смотреть демо</a>
+  </video>
+</p>
 
 ## Почему Blue
 
