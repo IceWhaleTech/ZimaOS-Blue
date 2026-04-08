@@ -6,6 +6,7 @@ import { createI18n } from 'vue-i18n'
 import { knowledgeApi } from '@/api/knowledge'
 import { skillApi } from '@/api/skill'
 import { harnessApi } from '@/api/harness'
+import { evolutionApi } from '@/api/evolution'
 import { selfReflectApi } from '@/api/selfReflect'
 import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 import zhCN from '@/i18n/locales/zh-CN'
@@ -36,6 +37,12 @@ vi.mock('@/api/harness', () => ({
     promoteSkillRevision: vi.fn(),
     rollbackSkillRevision: vi.fn(),
     optimizeSkill: vi.fn(),
+  },
+}))
+
+vi.mock('@/api/evolution', () => ({
+  evolutionApi: {
+    getOverview: vi.fn(),
   },
 }))
 
@@ -881,6 +888,17 @@ describe('EvolutionView', () => {
         },
       },
     } as never)
+    vi.mocked(evolutionApi.getOverview).mockResolvedValue({
+      data: {
+        skill_id: 'browser',
+        revisions: {
+          accepted: 1,
+        },
+        instructions: {
+          pending: 1,
+        },
+      },
+    } as never)
 
     const proposal = {
       id: 'proposal-1',
@@ -949,7 +967,15 @@ describe('EvolutionView', () => {
     } as never)
   })
 
-  async function mountView(locale: 'en-US' | 'zh-CN' = 'en-US') {
+  async function mountView(
+    locale: 'en-US' | 'zh-CN' = 'en-US',
+    options: {
+      defaultPane?: 'knowledge' | 'skills' | 'runner' | 'instructions' | null
+    } = {}
+  ) {
+    if (Object.keys(routeMock.query).length === 0 && options.defaultPane !== null) {
+      routeMock.query = { pane: options.defaultPane ?? 'skills' }
+    }
     const EvolutionView = (await import('@/views/EvolutionView.vue')).default
     const wrapper = mount(EvolutionView, {
       global: {
@@ -959,6 +985,14 @@ describe('EvolutionView', () => {
     await flushPromises()
     return wrapper
   }
+
+  it('defaults to the knowledge lane when the route does not request another pane', async () => {
+    const wrapper = await mountView('en-US', { defaultPane: null })
+
+    expect(wrapper.text()).toContain('Knowledge map')
+    expect(wrapper.get('[data-testid="evolution-tab-knowledge"]').text()).toContain('Active')
+    expect(wrapper.find('[data-testid="knowledge-ingest-button"]').exists()).toBe(true)
+  })
 
   it('preloads the knowledge lane count on first load without mounting the full knowledge pane', async () => {
     const wrapper = await mountView()
@@ -972,6 +1006,23 @@ describe('EvolutionView', () => {
     expect(knowledgeApi.getSchema).not.toHaveBeenCalled()
     expect(knowledgeApi.getLog).not.toHaveBeenCalled()
     expect(knowledgeApi.getPage).not.toHaveBeenCalled()
+  })
+
+  it('loads the evolution overview on first load and defers selected skill detail lists until the skills lane opens', async () => {
+    const wrapper = await mountView('en-US', { defaultPane: null })
+
+    expect(evolutionApi.getOverview).toHaveBeenCalledWith({ skill_id: 'browser' })
+    expect(wrapper.get('[data-testid="evolution-lane-metric-runner"]').text()).toBe('1')
+    expect(harnessApi.listSkillRevisions).not.toHaveBeenCalled()
+    expect(harnessApi.listSkillEvolutionCases).not.toHaveBeenCalled()
+    expect(harnessApi.listSkillDecisionHistory).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-testid="evolution-tab-skills"]').trigger('click')
+    await flushPromises()
+
+    expect(harnessApi.listSkillRevisions).toHaveBeenCalledWith('browser', { limit: 50 })
+    expect(harnessApi.listSkillEvolutionCases).toHaveBeenCalledWith('browser', { limit: 50 })
+    expect(harnessApi.listSkillDecisionHistory).toHaveBeenCalledWith('browser', { limit: 50 })
   })
 
   it('localizes evolution enum-driven labels for zh-CN', async () => {
@@ -2122,6 +2173,7 @@ describe('EvolutionView', () => {
     expect(routerReplaceMock).toHaveBeenCalled()
     const lastCall = routerReplaceMock.mock.calls.at(-1)?.[0] as { query?: Record<string, string> }
     expect(lastCall.query).toMatchObject({
+      pane: 'skills',
       skill: 'browser',
       revision: 'rev-capture',
       skillSearch: 'browser',
@@ -2133,7 +2185,6 @@ describe('EvolutionView', () => {
       instructionSearch: 'operations',
       instructionStatus: 'approved',
     })
-    expect(lastCall.query?.pane).toBeUndefined()
   })
 
   it('triggers a fresh evolution run from the selected revision eval evidence', async () => {

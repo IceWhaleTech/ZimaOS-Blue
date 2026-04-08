@@ -38,7 +38,14 @@ func registerHarnessRuntimeTaskRoutes(
 	)
 	registration.deepResearchRegistered = researchRegistration.deepResearchRegistered
 	registration.harnessResearchRegistered = researchRegistration.harnessResearchRegistered
-	if detailProvider, ok := registerHarnessRuntimeWithDetail(bundle, execApprovals, questionMgr, harnessGroups, projectionGroups); ok {
+	if detailProvider, ok := registerHarnessRuntimeWithDetail(
+		bundle,
+		nil,
+		execApprovals,
+		questionMgr,
+		harnessGroups,
+		projectionGroups,
+	); ok {
 		registration.detailProvider = detailProvider
 		registration.harnessRoutesRegistered = true
 	}
@@ -54,6 +61,7 @@ func newHarnessRuntimeDetailProvider(execApprovals *tools.ApprovalManager, quest
 
 func registerHarnessRuntimeWithDetail(
 	bundle *HarnessRuntimeBundle,
+	proposalSummaryProvider harness.EvolutionProposalSummaryProvider,
 	execApprovals *tools.ApprovalManager,
 	questionMgr *tools.QuestionManager,
 	harnessGroups []*echo.Group,
@@ -63,7 +71,13 @@ func registerHarnessRuntimeWithDetail(
 		return nil, false
 	}
 	detailProvider := newHarnessRuntimeDetailProvider(execApprovals, questionMgr)
-	if !registerHarnessRuntimeRoutes(bundle, detailProvider, harnessGroups, projectionGroups) {
+	if !registerHarnessRuntimeRoutes(
+		bundle,
+		detailProvider,
+		proposalSummaryProvider,
+		harnessGroups,
+		projectionGroups,
+	) {
 		return nil, false
 	}
 	return detailProvider, true
@@ -72,6 +86,7 @@ func registerHarnessRuntimeWithDetail(
 func registerHarnessRuntimeRoutes(
 	bundle *HarnessRuntimeBundle,
 	detailProvider *harnessDetailProvider,
+	proposalSummaryProvider harness.EvolutionProposalSummaryProvider,
 	harnessGroups []*echo.Group,
 	projectionGroups []*echo.Group,
 ) bool {
@@ -82,6 +97,7 @@ func registerHarnessRuntimeRoutes(
 
 	harnessHandler := harness.NewHandler(controller)
 	harnessHandler.SetDetailProvider(detailProvider)
+	harnessHandler.SetEvolutionProposalSummaryProvider(proposalSummaryProvider)
 	for _, group := range harnessGroups {
 		if group != nil {
 			harnessHandler.RegisterRoutes(group)

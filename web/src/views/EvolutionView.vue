@@ -12,6 +12,10 @@ import {
   type SkillEvolutionCaseDetail,
   type SkillRevision,
 } from '@/api/harness'
+import {
+  evolutionApi,
+  type EvolutionOverview as EvolutionOverviewSummary,
+} from '@/api/evolution'
 import { knowledgeApi } from '@/api/knowledge'
 import { selfReflectApi, type SelfReflectProposal } from '@/api/selfReflect'
 import { skillApi, type Skill, type SkillContentResponse } from '@/api/skill'
@@ -200,9 +204,10 @@ const router = useRouter()
 const notification = useNotificationStore()
 const settingsStore = useSettingsStore()
 
-const activePane = ref<EvolutionPane>('skills')
+const activePane = ref<EvolutionPane>(parseEvolutionPaneQuery(route.query.pane))
 const knowledgeLaneSummary = ref<KnowledgeLaneSummary | null>(null)
 const knowledgeLaneSummaryLoading = ref(false)
+const evolutionOverview = ref<EvolutionOverviewSummary | null>(null)
 
 const skillsLoading = ref(false)
 const skillsError = ref('')
@@ -215,6 +220,7 @@ const selectedSkillCaseDetailsByID = ref<Record<string, SkillEvolutionCaseDetail
 const selectedSkillCaseDetailLoadingByID = ref<Record<string, boolean>>({})
 const selectedSkillDecisionHistoryRecords = ref<SkillDecisionHistoryRecord[]>([])
 const selectedSkillDecisionHistoryLoaded = ref(false)
+const loadedSkillDetailsID = ref('')
 const selectedRevisionID = ref('')
 const decisionHistoryComparisonPair = ref<DecisionHistoryComparisonPair | null>(null)
 const selectedRevisionReport = ref<HarnessEvalRunReport | null>(null)
@@ -500,7 +506,7 @@ function parseEvolutionPaneQuery(raw: unknown): EvolutionPane {
   ) {
     return value
   }
-  return 'skills'
+  return 'knowledge'
 }
 
 function parseSkillCaseStatusFilterQuery(raw: unknown): SkillCaseStatusFilter {
@@ -749,6 +755,18 @@ function metricDeltaTone(value: unknown): MetricDeltaEntry['tone'] {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric === 0) return 'neutral'
   return numeric > 0 ? 'positive' : 'negative'
+}
+
+function emptyEvolutionOverview(skillID = ''): EvolutionOverviewSummary {
+  return {
+    skill_id: skillID,
+    revisions: {
+      accepted: 0,
+    },
+    instructions: {
+      pending: evolutionOverview.value?.instructions.pending || 0,
+    },
+  }
 }
 
 function decisionHistoryEvidenceClasses(tone: DecisionHistoryEvidenceSummary['tone']): string {
@@ -2003,6 +2021,16 @@ const selectedSkillMetrics = computed<MetricEntry[]>(() => {
 const acceptedRevisions = computed(() =>
   selectedSkillRevisions.value.filter((revision) => revision.status === 'accepted')
 )
+
+const selectedSkillAcceptedRevisionCount = computed(() => {
+  if (loadedSkillDetailsID.value === selectedSkillID.value) {
+    return acceptedRevisions.value.length
+  }
+  if (evolutionOverview.value?.skill_id === selectedSkillID.value) {
+    return evolutionOverview.value.revisions.accepted
+  }
+  return 0
+})
 
 const selectedRevisionCanOptimize = computed(() => {
   const revision = selectedRevision.value
@@ -3718,8 +3746,10 @@ const selectedSkillCaseLinkedEvalRunID = computed(() =>
   )
 )
 
-const pendingInstructionCount = computed(
-  () => instructionProposals.value.filter((proposal) => proposal.status === 'pending').length
+const pendingInstructionCount = computed(() =>
+  instructionsLoaded.value
+    ? instructionProposals.value.filter((proposal) => proposal.status === 'pending').length
+    : (evolutionOverview.value?.instructions.pending ?? 0)
 )
 
 const filteredInstructionProposals = computed(() =>
@@ -3858,7 +3888,7 @@ const evolutionLaneCards = computed<EvolutionLaneCard[]>(() => [
       'evolution.lanes.runnerDescription',
       'Inspect runner candidates, execution evidence, and switch boundaries before cutover.'
     ),
-    metric: formatCount(acceptedRevisions.value.length),
+    metric: formatCount(selectedSkillAcceptedRevisionCount.value),
     supporting: tr('evolution.health.skillReadiness', 'Skill readiness'),
   },
   {
@@ -3889,7 +3919,7 @@ function applyRouteFiltersFromQuery() {
 
 function buildEvolutionRouteQuery(): Record<string, string> {
   const query: Record<string, string> = {}
-  if (activePane.value !== 'skills') query.pane = activePane.value
+  if (activePane.value !== 'knowledge') query.pane = activePane.value
   if (selectedSkillID.value) query.skill = selectedSkillID.value
   if (selectedRevisionID.value) query.revision = selectedRevisionID.value
   if (skillSearch.value.trim()) query.skillSearch = skillSearch.value.trim()
@@ -3997,6 +4027,10 @@ watch(
       await loadInstructionProposals()
       return
     }
+    if (pane === 'skills' && selectedSkillID.value && loadedSkillDetailsID.value !== selectedSkillID.value) {
+      await loadSkillDetails(selectedSkillID.value)
+      return
+    }
     if (pane === 'runner') {
       await ensureRunnerDataLoaded()
     }
@@ -4046,7 +4080,10 @@ watch(
   selectedSkillID,
   async (skillID) => {
     if (!skillID) return
-    await loadSkillDetails(skillID)
+    await loadEvolutionOverview(skillID)
+    if (activePane.value === 'skills') {
+      await loadSkillDetails(skillID)
+    }
   },
   { immediate: false }
 )
@@ -4206,6 +4243,13 @@ watch(
 onMounted(async () => {
   applyRouteFiltersFromQuery()
   await Promise.all([loadSkillCatalog(), loadKnowledgeLaneSummary()])
+  if (activePane.value === 'instructions' && !instructionsLoaded.value) {
+    await loadInstructionProposals()
+    return
+  }
+  if (activePane.value === 'runner') {
+    await ensureRunnerDataLoaded()
+  }
 })
 
 async function loadSkillCatalog() {
@@ -4219,9 +4263,6 @@ async function loadSkillCatalog() {
       )
     })
     applyRequestedSkillSelection()
-    if (selectedSkillID.value) {
-      await loadSkillDetails(selectedSkillID.value)
-    }
   } catch (error) {
     skillsError.value = getErrorMessage(error)
   } finally {
@@ -4229,16 +4270,42 @@ async function loadSkillCatalog() {
   }
 }
 
+async function loadEvolutionOverview(skillID: string) {
+  const normalizedSkillID = normalizeText(skillID)
+  if (!normalizedSkillID) {
+    evolutionOverview.value = emptyEvolutionOverview()
+    return
+  }
+  try {
+    const response = await evolutionApi.getOverview({ skill_id: normalizedSkillID })
+    if (selectedSkillID.value && selectedSkillID.value !== normalizedSkillID) return
+    evolutionOverview.value = {
+      skill_id: response.data.skill_id || normalizedSkillID,
+      revisions: {
+        accepted: response.data.revisions?.accepted || 0,
+      },
+      instructions: {
+        pending: response.data.instructions?.pending || 0,
+      },
+    }
+  } catch {
+    if (selectedSkillID.value && selectedSkillID.value !== normalizedSkillID) return
+    evolutionOverview.value = emptyEvolutionOverview(normalizedSkillID)
+  }
+}
+
 async function loadSkillDetails(skillID: string) {
+  const normalizedSkillID = normalizeText(skillID)
+  if (!normalizedSkillID) return
   try {
     skillsLoading.value = true
     skillsError.value = ''
     const [contentResult, revisionsResult, casesResult, decisionHistoryResult] =
       await Promise.allSettled([
-        skillApi.getContent(skillID),
-        harnessApi.listSkillRevisions(skillID, { limit: 50 }),
-        harnessApi.listSkillEvolutionCases(skillID, { limit: 50 }),
-        harnessApi.listSkillDecisionHistory(skillID, { limit: 50 }),
+        skillApi.getContent(normalizedSkillID),
+        harnessApi.listSkillRevisions(normalizedSkillID, { limit: 50 }),
+        harnessApi.listSkillEvolutionCases(normalizedSkillID, { limit: 50 }),
+        harnessApi.listSkillDecisionHistory(normalizedSkillID, { limit: 50 }),
       ])
 
     if (contentResult.status !== 'fulfilled') throw contentResult.reason
@@ -4259,6 +4326,7 @@ async function loadSkillDetails(skillID: string) {
       selectedSkillDecisionHistoryRecords.value = []
       selectedSkillDecisionHistoryLoaded.value = false
     }
+    loadedSkillDetailsID.value = normalizedSkillID
     const preferredRevisionID = routedRevisionID.value || selectedRevisionID.value
     if (
       preferredRevisionID &&
@@ -4277,6 +4345,7 @@ async function loadSkillDetails(skillID: string) {
     selectedSkillCaseDetailLoadingByID.value = {}
     selectedSkillDecisionHistoryRecords.value = []
     selectedSkillDecisionHistoryLoaded.value = false
+    loadedSkillDetailsID.value = ''
     selectedRevisionID.value = ''
   } finally {
     skillsLoading.value = false

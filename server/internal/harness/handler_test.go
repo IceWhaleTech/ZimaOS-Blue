@@ -94,6 +94,148 @@ func TestHandler_RegisterRoutesIncludesDatasetBundleSourceEndpoints(t *testing.T
 	}
 }
 
+func TestHandler_RegisterRoutesIncludesEvolutionOverviewEndpoint(t *testing.T) {
+	controller := newTestController(t)
+	handler := NewHandler(controller)
+	e := echo.New()
+	group := e.Group("/harness")
+
+	handler.RegisterRoutes(group)
+
+	if !handlerRouteExists(e, http.MethodGet, "/harness/evolution/overview") {
+		t.Fatalf("expected evolution overview route to be registered, got %#v", e.Routes())
+	}
+}
+
+func TestHandler_GetEvolutionOverviewReturnsHomepageCountsOnly(t *testing.T) {
+	controller := newTestController(t)
+	now := time.Now().UTC()
+
+	if _, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		ID:        "rev-browser-accepted",
+		SkillID:   "browser",
+		Status:    SkillRevisionStatusAccepted,
+		CreatedAt: now.Add(-4 * time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateSkillRevision(accepted): %v", err)
+	}
+	if _, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		ID:        "rev-browser-candidate",
+		SkillID:   "browser",
+		Status:    SkillRevisionStatusCandidate,
+		CreatedAt: now.Add(-3 * time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateSkillRevision(candidate): %v", err)
+	}
+	if _, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		ID:             "rev-browser-backup",
+		SkillID:        "browser",
+		Status:         SkillRevisionStatusBackup,
+		DecisionAction: SkillRevisionDecisionActionRollback,
+		ReviewNote:     "Rollback restored the previous browser version.",
+		ReviewedBy:     "user-1",
+		CreatedAt:      now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateSkillRevision(backup): %v", err)
+	}
+	if _, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		ID:             "rev-browser-promoted",
+		SkillID:        "browser",
+		Status:         SkillRevisionStatusPromoted,
+		DecisionAction: SkillRevisionDecisionActionPromote,
+		ReviewNote:     "Promoted after review.",
+		ReviewedBy:     "user-1",
+		CreatedAt:      now.Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateSkillRevision(promoted): %v", err)
+	}
+	if _, err := controller.CreateSkillRevision(context.Background(), SkillRevision{
+		ID:        "rev-other-accepted",
+		SkillID:   "workspace-note",
+		Status:    SkillRevisionStatusAccepted,
+		CreatedAt: now.Add(-30 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateSkillRevision(other skill): %v", err)
+	}
+
+	if _, err := controller.CreateSkillEvolutionCase(context.Background(), SkillEvolutionCase{
+		ID:          "case-browser-accepted",
+		SkillID:     "browser",
+		OwnerUserID: "user-1",
+		Mode:        SkillEvolutionModeFix,
+		Reason:      SkillEvolutionReasonRuntimeFailure,
+		Status:      SkillEvolutionCaseStatusAccepted,
+		CreatedAt:   now.Add(-40 * time.Minute),
+		UpdatedAt:   now.Add(-40 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateSkillEvolutionCase(accepted): %v", err)
+	}
+	if _, err := controller.CreateSkillEvolutionCase(context.Background(), SkillEvolutionCase{
+		ID:          "case-browser-candidate",
+		SkillID:     "browser",
+		OwnerUserID: "user-1",
+		Mode:        SkillEvolutionModeCapture,
+		Reason:      SkillEvolutionReasonRuntimeCapture,
+		Status:      SkillEvolutionCaseStatusCandidateCreated,
+		CreatedAt:   now.Add(-20 * time.Minute),
+		UpdatedAt:   now.Add(-20 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateSkillEvolutionCase(candidate_created): %v", err)
+	}
+	if _, err := controller.CreateSkillEvolutionCase(context.Background(), SkillEvolutionCase{
+		ID:          "case-browser-other-user",
+		SkillID:     "browser",
+		OwnerUserID: "user-2",
+		Mode:        SkillEvolutionModeFix,
+		Reason:      SkillEvolutionReasonManual,
+		Status:      SkillEvolutionCaseStatusRejected,
+		CreatedAt:   now.Add(-10 * time.Minute),
+		UpdatedAt:   now.Add(-10 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateSkillEvolutionCase(other user): %v", err)
+	}
+
+	handler := NewHandler(controller)
+	handler.SetEvolutionProposalSummaryProvider(stubEvolutionProposalSummaryProvider{pending: 3})
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/harness/evolution/overview?skill_id=browser", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.GetEvolutionOverview(c); err != nil {
+		t.Fatalf("GetEvolutionOverview returned error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatalf("unmarshal raw overview: %v", err)
+	}
+	if _, ok := raw["cases"]; ok {
+		t.Fatalf("overview unexpectedly includes cases: %s", rec.Body.String())
+	}
+	if _, ok := raw["decisions"]; ok {
+		t.Fatalf("overview unexpectedly includes decisions: %s", rec.Body.String())
+	}
+
+	var overview EvolutionOverview
+	if err := json.Unmarshal(rec.Body.Bytes(), &overview); err != nil {
+		t.Fatalf("unmarshal overview: %v", err)
+	}
+	if overview.SkillID != "browser" {
+		t.Fatalf("overview skill_id = %q, want browser", overview.SkillID)
+	}
+	if got, want := overview.Revisions.Accepted, 1; got != want {
+		t.Fatalf("revision accepted = %d, want %d", got, want)
+	}
+	if got, want := overview.Instructions.Pending, 3; got != want {
+		t.Fatalf("instructions pending = %d, want %d", got, want)
+	}
+}
+
 func TestHandler_GetRunDetailIncludesAvailableActions(t *testing.T) {
 	controller := newTestController(t)
 	driver := &stubDriver{kind: RunKindWorkflow}
@@ -176,6 +318,14 @@ func handlerRouteExists(e *echo.Echo, method string, path string) bool {
 		}
 	}
 	return false
+}
+
+type stubEvolutionProposalSummaryProvider struct {
+	pending int
+}
+
+func (s stubEvolutionProposalSummaryProvider) PendingProposalCount(context.Context, string) (int, error) {
+	return s.pending, nil
 }
 
 func TestHandler_GetRunDetailIncludesRunTrace(t *testing.T) {

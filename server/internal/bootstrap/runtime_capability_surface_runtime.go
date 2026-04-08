@@ -7,7 +7,7 @@ func registerRuntimeTaskSurface(
 	registration := finalizeRuntimeTaskSurfaceRegistration(runtimeTaskSurfaceRegistration{
 		research:                 registerRuntimeTaskResearchSurface(newRuntimeTaskResearchSurfaceOptions(contract, options)),
 		knowledge:                registerRuntimeTaskKnowledgeSurface(options),
-		harness:                  registerTaskHarnessSurface(contract.HarnessRuntime(), options),
+		harness:                  registerTaskHarnessSurface(contract.HarnessRuntime(), contract.ReflectService(), options),
 		selfReflectRoutesApplied: registerReflectTaskSurface(contract.ReflectService(), runtimeTaskSurfaceProjectionGroups(options, "", options.chatPermission)),
 	})
 	bindTaskSurfaceProjectionService(contract, options, registration.detailProvider)

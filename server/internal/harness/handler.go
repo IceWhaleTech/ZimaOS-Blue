@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,8 +14,9 @@ import (
 )
 
 type Handler struct {
-	manager        *Controller
-	detailProvider RunDetailProvider
+	manager                 *Controller
+	detailProvider          RunDetailProvider
+	evolutionProposalCounts EvolutionProposalSummaryProvider
 }
 
 func NewHandler(manager *Controller) *Handler {
@@ -24,6 +26,10 @@ func NewHandler(manager *Controller) *Handler {
 type RunDetailProvider interface {
 	PendingApprovals(runID string) []map[string]interface{}
 	PendingQuestions(runID string) []map[string]interface{}
+}
+
+type EvolutionProposalSummaryProvider interface {
+	PendingProposalCount(ctx context.Context, ownerUserID string) (int, error)
 }
 
 type RunDetail struct {
@@ -41,6 +47,13 @@ func (h *Handler) SetDetailProvider(provider RunDetailProvider) {
 		return
 	}
 	h.detailProvider = provider
+}
+
+func (h *Handler) SetEvolutionProposalSummaryProvider(provider EvolutionProposalSummaryProvider) {
+	if h == nil {
+		return
+	}
+	h.evolutionProposalCounts = provider
 }
 
 func (h *Handler) RegisterRoutes(g *echo.Group) {
@@ -81,6 +94,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/baselines", h.CreateBaseline)
 	g.GET("/baselines", h.ListBaselines)
 	g.POST("/skills/:skill_id/optimize", h.OptimizeSkill)
+	g.GET("/evolution/overview", h.GetEvolutionOverview)
 	g.GET("/skills/:skill_id/revisions", h.ListSkillRevisions)
 	g.GET("/skills/:skill_id/decision-history", h.ListSkillDecisionHistory)
 	g.GET("/skills/:skill_id/evolution-cases", h.ListSkillEvolutionCases)
@@ -454,6 +468,26 @@ func (h *Handler) OptimizeSkill(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusAccepted, event)
+}
+
+func (h *Handler) GetEvolutionOverview(c echo.Context) error {
+	overview, err := h.manager.BuildEvolutionOverview(
+		c.Request().Context(),
+		strings.TrimSpace(c.QueryParam("skill_id")),
+		harnessUserID(c),
+	)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+	if h.evolutionProposalCounts != nil {
+		if pending, countErr := h.evolutionProposalCounts.PendingProposalCount(
+			c.Request().Context(),
+			harnessUserID(c),
+		); countErr == nil {
+			overview.Instructions.Pending = pending
+		}
+	}
+	return c.JSON(http.StatusOK, overview)
 }
 
 func (h *Handler) ListSkillRevisions(c echo.Context) error {

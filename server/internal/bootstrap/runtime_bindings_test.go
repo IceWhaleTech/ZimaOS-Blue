@@ -3728,6 +3728,7 @@ func TestRegisterHarnessRuntimeWithDetail_SkipsWithoutController(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 		[]*echo.Group{e.Group("/harness")},
 		[]*echo.Group{e.Group("")},
 	)
@@ -3749,6 +3750,7 @@ func TestRegisterHarnessRuntimeWithDetail_RegistersRoutesAndReturnsDetailProvide
 
 	detailProvider, ok := registerHarnessRuntimeWithDetail(
 		bundle,
+		nil,
 		execApprovals,
 		questionMgr,
 		[]*echo.Group{e.Group("/harness")},
@@ -3775,6 +3777,7 @@ func TestRegisterHarnessRuntimeRoutes_SkipsWithoutController(t *testing.T) {
 	ok := registerHarnessRuntimeRoutes(
 		nil,
 		detailProvider,
+		nil,
 		[]*echo.Group{e.Group("/harness")},
 		[]*echo.Group{e.Group("")},
 	)
@@ -3796,6 +3799,7 @@ func TestRegisterHarnessRuntimeRoutes_RegistersHarnessAndProjectionEndpoints(t *
 	ok := registerHarnessRuntimeRoutes(
 		bundle,
 		detailProvider,
+		nil,
 		[]*echo.Group{e.Group("/harness")},
 		[]*echo.Group{e.Group("")},
 	)

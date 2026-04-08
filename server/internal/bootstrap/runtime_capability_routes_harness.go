@@ -1,13 +1,19 @@
 package bootstrap
 
-import "github.com/labstack/echo/v4"
+import (
+	"github.com/labstack/echo/v4"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
+)
 
 func registerTaskHarnessSurface(
 	bundle *HarnessRuntimeBundle,
+	reflectService *selfreflect.Service,
 	options runtimeTaskSurfaceOptions,
 ) runtimeTaskHarnessSurfaceRegistration {
 	detailProvider, ok := registerHarnessRuntimeWithDetail(
 		bundle,
+		newHarnessEvolutionProposalSummaryProvider(reflectService),
 		options.execApprovals,
 		options.questionMgr,
 		runtimeTaskSurfaceProjectionGroups(options, "/harness", options.securityPermission),
