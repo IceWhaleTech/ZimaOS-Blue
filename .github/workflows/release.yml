@@ -125,21 +125,11 @@ jobs:
       # macOS: install Apple certificate into temporary keychain for codesigning
       - name: Install Apple Certificate
         if: matrix.goos == 'darwin'
+        shell: bash
         env:
           CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-        run: |
-          CERT_FILE=$(mktemp)
-          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_FILE"
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
-          security create-keychain -p actions "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security unlock-keychain -p actions "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security import "$CERT_FILE" -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN_PATH"
-          rm "$CERT_FILE"
+        run: bash .github/scripts/install-apple-certificate.sh
 
       # Linux arm64 cross-compile needs aarch64 C toolchain for CGO (sqlite3)
       - name: Install cross-compiler (linux/arm64)
@@ -356,21 +346,11 @@ jobs:
           find server/internal/web/dist -name "*.br" -delete 2>/dev/null || true
 
       - name: Install Apple Certificate
+        shell: bash
         env:
           CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE }}
           CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-        run: |
-          CERT_FILE=$(mktemp)
-          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_FILE"
-          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
-          security create-keychain -p actions "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security unlock-keychain -p actions "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security import "$CERT_FILE" -k "$KEYCHAIN_PATH" -P "$CERTIFICATE_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -s -k actions "$KEYCHAIN_PATH"
-          rm "$CERT_FILE"
+        run: bash .github/scripts/install-apple-certificate.sh
 
       - name: Build Go static library
         working-directory: server
