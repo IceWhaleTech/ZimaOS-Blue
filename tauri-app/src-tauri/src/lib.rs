@@ -1286,112 +1286,27 @@ fn reveal_path_linux(path: &std::path::Path, is_dir: bool) -> Result<(), String>
 }
 
 #[cfg(target_os = "windows")]
-fn path_to_wide_null(path: &std::path::Path) -> Vec<u16> {
-    use std::os::windows::ffi::OsStrExt;
-    path.as_os_str()
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect()
-}
-
-#[cfg(target_os = "windows")]
 fn reveal_path_windows(path: &std::path::Path, is_dir: bool) -> Result<(), String> {
-    use std::ptr::{null, null_mut};
-    use windows_sys::Win32::Foundation::RPC_E_CHANGED_MODE;
-    use windows_sys::Win32::System::Com::{
-        CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_APARTMENTTHREADED,
-    };
-    use windows_sys::Win32::UI::Shell::{
-        SHOpenFolderAndSelectItems, SHParseDisplayName, ITEMIDLIST,
-    };
+    use std::ffi::OsString;
 
-    unsafe {
-        let mut should_uninitialize = false;
-        let hr_init = CoInitializeEx(null_mut(), COINIT_APARTMENTTHREADED);
-        if hr_init >= 0 {
-            should_uninitialize = true;
-        } else if hr_init != RPC_E_CHANGED_MODE {
-            return Err(format!(
-                "failed to initialize COM: 0x{:08X}",
-                hr_init as u32
-            ));
-        }
-
-        let mut item_pidl: *mut ITEMIDLIST = null_mut();
-        let result = (|| -> Result<(), String> {
-            let path_wide = path_to_wide_null(path);
-            let hr_parse = SHParseDisplayName(
-                path_wide.as_ptr(),
-                null_mut(),
-                &mut item_pidl,
-                0,
-                null_mut(),
-            );
-            if hr_parse < 0 || item_pidl.is_null() {
-                return Err(format!("failed to parse path: 0x{:08X}", hr_parse as u32));
-            }
-
-            if is_dir {
-                let hr = SHOpenFolderAndSelectItems(item_pidl as *const ITEMIDLIST, 0, null(), 0);
-                if hr < 0 {
-                    return Err(format!(
-                        "failed to open directory in Explorer: 0x{:08X}",
-                        hr as u32
-                    ));
-                }
-                return Ok(());
-            }
-
-            let parent = path
-                .parent()
-                .ok_or_else(|| "file path has no parent directory".to_string())?;
-            let mut folder_pidl: *mut ITEMIDLIST = null_mut();
-            let parent_wide = path_to_wide_null(parent);
-            let hr_parent = SHParseDisplayName(
-                parent_wide.as_ptr(),
-                null_mut(),
-                &mut folder_pidl,
-                0,
-                null_mut(),
-            );
-            if hr_parent < 0 || folder_pidl.is_null() {
-                return Err(format!(
-                    "failed to parse parent directory: 0x{:08X}",
-                    hr_parent as u32
-                ));
-            }
-
-            let selected: [*const ITEMIDLIST; 1] = [item_pidl as *const ITEMIDLIST];
-            let hr_open = SHOpenFolderAndSelectItems(
-                folder_pidl as *const ITEMIDLIST,
-                1,
-                selected.as_ptr(),
-                0,
-            );
-            CoTaskMemFree(folder_pidl as *const _);
-            if hr_open < 0 {
-                return Err(format!(
-                    "failed to reveal file in Explorer: 0x{:08X}",
-                    hr_open as u32
-                ));
-            }
-            Ok(())
-        })();
-
-        if !item_pidl.is_null() {
-            CoTaskMemFree(item_pidl as *const _);
-        }
-        if should_uninitialize {
-            CoUninitialize();
-        }
-
-        result
+    let mut command = std::process::Command::new("explorer.exe");
+    if is_dir {
+        command.arg(path.as_os_str());
+    } else {
+        let mut select_arg = OsString::from("/select,");
+        select_arg.push(path.as_os_str());
+        command.arg(select_arg);
     }
+
+    command
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("failed to invoke Explorer: {}", e))
 }
 
 /// Reveal a local absolute path in system file manager.
 /// - macOS: reveal file in Finder, or open directory.
-/// - Windows: COM-based Explorer selection/open.
+/// - Windows: Explorer selection/open.
 /// - Linux: xdg-open target directory.
 #[tauri::command]
 async fn reveal_path(path: String) -> Result<(), String> {
