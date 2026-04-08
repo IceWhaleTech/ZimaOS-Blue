@@ -182,6 +182,8 @@ const pageStack = ref<string[]>(_initMobile && _initConvId ? [_initConvId] : [])
 const showListPage = computed(() => isMobile.value && pageStack.value.length === 0)
 const mobileAnimationEnabled = ref(false) // Only animate after user interaction, not on page load
 const showTopbarMenu = ref(false)
+type MobileFeatureSheetKind = 'deep-research' | 'smart-resume'
+const activeMobileFeatureSheet = ref<MobileFeatureSheetKind | null>(null)
 const isRtl = computed(() => getLocaleDirection(locale.value) === 'rtl')
 
 const presetQuestionDraft = ref('')
@@ -1331,6 +1333,66 @@ const routingStrategyLabel = computed(() =>
     : providerScopedAutoStrategyLabel.value || t('chat.routingMode.highAvailability')
 )
 
+const deepResearchTitle = computed(() =>
+  chatTextWithFallback('ui.deepResearchTitle', 'Deep Research')
+)
+const smartResumeStateLabel = computed(() =>
+  settingsStore.agentMode
+    ? chatTextWithFallback('common.enabled', 'Enabled')
+    : chatTextWithFallback('common.disabled', 'Disabled')
+)
+const smartResumeAutoConfirmStateLabel = computed(() =>
+  settingsStore.agentAutoConfirm
+    ? chatTextWithFallback('common.enabled', 'Enabled')
+    : chatTextWithFallback('common.disabled', 'Disabled')
+)
+const mobileFeatureSheetMeta = computed(() => {
+  if (activeMobileFeatureSheet.value === 'deep-research') {
+    return {
+      kind: 'deep-research' as const,
+      state: chatTextWithFallback('chat.alwaysOn', 'Automatic'),
+      title: deepResearchTitle.value,
+      description: chatTextWithFallback(
+        'chat.deepResearchHoverDescription',
+        'Launch a structured research workflow with retrieval, verification, traceable runs, and linked run details.'
+      ),
+      tags: [
+        chatTextWithFallback('chat.deepResearchStageRetrieve', 'Retrieve'),
+        chatTextWithFallback('chat.deepResearchCitations', 'Citations'),
+        chatTextWithFallback('chat.deepResearchStageVerify', 'Verify'),
+      ],
+      primaryActionLabel: null,
+    }
+  }
+  if (activeMobileFeatureSheet.value === 'smart-resume') {
+    return {
+      kind: 'smart-resume' as const,
+      state: smartResumeStateLabel.value,
+      title: t('chat.taskLoop'),
+      description: chatTextWithFallback(
+        'chat.ralphLoopHoverDescription',
+        "Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly. Inspired by Ralph's relentless persistence."
+      ),
+      tags: [
+        chatTextWithFallback('chat.ralphLoopHoverPlan', 'Plan'),
+        chatTextWithFallback('chat.ralphLoopHoverAct', 'Act'),
+        chatTextWithFallback('chat.ralphLoopHoverCheck', 'Check'),
+        `${t('agent.autoConfirm')}: ${smartResumeAutoConfirmStateLabel.value}`,
+      ],
+      primaryActionLabel: settingsStore.agentMode
+        ? chatTextWithFallback(
+            'chat.mobileFeatureDisableSmartResume',
+            `Disable ${t('chat.taskLoop')}`
+          )
+        : chatTextWithFallback(
+            'chat.mobileFeatureEnableSmartResume',
+            `Enable ${t('chat.taskLoop')}`
+          ),
+    }
+  }
+  return null
+})
+
 function getMessageHeightKey(message: {
   conversation_id: string
   id: string
@@ -1890,6 +1952,7 @@ const scheduleRoutingMenuReposition = rafThrottle(() => {
 
 function toggleRoutingMenu(trigger?: HTMLElement | null) {
   showTopbarMenu.value = false
+  activeMobileFeatureSheet.value = null
   const anchor = resolveRoutingMenuAnchor(trigger)
   if (anchor) {
     routingMenuAnchorEl.value = anchor
@@ -1972,12 +2035,31 @@ watch(
 
 function toggleTopbarMenu() {
   showRoutingMenu.value = false
+  activeMobileFeatureSheet.value = null
   showTopbarMenu.value = !showTopbarMenu.value
 }
 
 function openTopbarMenu() {
   showRoutingMenu.value = false
+  activeMobileFeatureSheet.value = null
   showTopbarMenu.value = true
+}
+
+function openMobileFeatureSheet(kind: MobileFeatureSheetKind) {
+  showRoutingMenu.value = false
+  showTopbarMenu.value = false
+  activeMobileFeatureSheet.value = kind
+}
+
+function closeMobileFeatureSheet() {
+  activeMobileFeatureSheet.value = null
+}
+
+function handleMobileFeaturePrimaryAction() {
+  if (activeMobileFeatureSheet.value !== 'smart-resume') return
+  settingsStore.setAgentMode(!settingsStore.agentMode).catch((err) => {
+    console.error('Failed to update Smart Resume mode:', err)
+  })
 }
 
 function handleClickOutside(event: MouseEvent) {
@@ -2452,7 +2534,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="chat-view ui-density-standard flex relative"
+    class="chat-view ui-density-standard relative flex min-w-0 w-full"
     :class="{ 'mobile-view': isMobile && !showListPage, 'chat-desktop-shell': !isMobile }"
   >
     <!-- Overlay for narrow screen sidebar -->
@@ -2462,7 +2544,7 @@ onUnmounted(() => {
       @click="toggleSidebar"
     />
 
-    <div class="chat-workspace flex min-h-0 flex-1 flex-col">
+    <div class="chat-workspace flex min-h-0 min-w-0 w-full flex-1 flex-col">
       <header v-if="!isMobile" class="chat-page-header">
         <div class="chat-page-header-inner">
           <div class="chat-page-heading">
@@ -2517,16 +2599,17 @@ onUnmounted(() => {
       </header>
 
       <div
-        class="chat-body-shell flex min-h-0 flex-1"
+        class="chat-body-shell flex min-h-0 min-w-0 w-full flex-1"
         :class="{ 'chat-body-shell-mobile': isMobile }"
       >
         <!-- Sidebar / Conversation List -->
         <aside
           v-show="isMobile ? showListPage : showSidebar"
-          class="conversation-sidebar chat-sidebar-shell flex-shrink-0 transition-transform duration-300"
+          class="conversation-sidebar chat-sidebar-shell min-w-0 flex-shrink-0 transition-transform duration-300"
           :style="!isMobile && isNarrowScreen ? { insetInlineStart: '0' } : undefined"
           :class="{
             'w-[16.75rem]': !isMobile,
+            'w-full max-w-full': isMobile,
             'z-40': !isMobile,
             'absolute inset-y-0': !isMobile && isNarrowScreen,
             '-translate-x-full': !isMobile && isNarrowScreen && !showSidebar && !isRtl,
@@ -2642,6 +2725,7 @@ onUnmounted(() => {
                   :class="{
                     'bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-white': showTopbarMenu,
                   }"
+                  data-testid="chat-topbar-more-actions"
                   :title="t('chat.moreActions')"
                   @click.stop="toggleTopbarMenu"
                 >
@@ -3296,6 +3380,7 @@ onUnmounted(() => {
               <div
                 v-if="showTopbarMenu"
                 class="topbar-sheet fixed inset-0 z-[9999] flex items-end"
+                data-testid="mobile-topbar-sheet"
                 @click="showTopbarMenu = false"
               >
                 <div class="absolute inset-0 bg-black/50" />
@@ -3314,6 +3399,7 @@ onUnmounted(() => {
                   <div class="p-4">
                     <div class="grid grid-cols-2 gap-3">
                       <button
+                        data-testid="mobile-topbar-quick-action-tool-details"
                         class="quick-action-tile"
                         :class="{ 'is-active': settingsStore.showToolDetails }"
                         @click="toggleToolDetails"
@@ -3349,6 +3435,7 @@ onUnmounted(() => {
 
                       <button
                         v-if="showRoutingControl"
+                        data-testid="mobile-topbar-quick-action-routing"
                         class="quick-action-tile"
                         :class="{ 'is-active': showRoutingMenu }"
                         :title="routingButtonTitle"
@@ -3376,6 +3463,167 @@ onUnmounted(() => {
                         <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
                           {{ t('chat.routingMode.title') }}
                         </div>
+                      </button>
+
+                      <button
+                        data-testid="mobile-topbar-quick-action-deep-research"
+                        class="quick-action-tile"
+                        @click="openMobileFeatureSheet('deep-research')"
+                      >
+                        <div class="flex items-center justify-between">
+                          <svg
+                            class="w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="1.7"
+                              d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
+                            />
+                          </svg>
+                          <span class="quick-action-pill">{{
+                            chatTextWithFallback('chat.alwaysOn', 'Automatic')
+                          }}</span>
+                        </div>
+                        <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {{ deepResearchTitle }}
+                        </div>
+                      </button>
+
+                      <button
+                        data-testid="mobile-topbar-quick-action-smart-resume"
+                        class="quick-action-tile"
+                        :class="{ 'is-active': settingsStore.agentMode }"
+                        @click="openMobileFeatureSheet('smart-resume')"
+                      >
+                        <div class="flex items-center justify-between">
+                          <svg
+                            class="w-5 h-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="1.7"
+                              d="M9 4.75h6a1.75 1.75 0 011.75 1.75v10.75A1.75 1.75 0 0115 19H9a1.75 1.75 0 01-1.75-1.75V6.5A1.75 1.75 0 019 4.75z"
+                            />
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="1.7"
+                              d="M9.75 3h4.5M10.25 9h4M10.25 12h4M10.25 15h2.5"
+                            />
+                          </svg>
+                          <span class="quick-action-pill">{{ smartResumeStateLabel }}</span>
+                        </div>
+                        <div class="mt-2 text-sm font-semibold text-gray-800 dark:text-slate-100">
+                          {{ t('chat.taskLoop') }}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="h-[env(safe-area-inset-bottom)]" />
+                </div>
+              </div>
+            </Transition>
+          </Teleport>
+          <Teleport to="body">
+            <Transition name="sheet">
+              <div
+                v-if="mobileFeatureSheetMeta"
+                class="topbar-sheet fixed inset-0 z-[10000] flex items-end"
+                data-testid="mobile-feature-sheet"
+                @click="closeMobileFeatureSheet"
+              >
+                <div class="absolute inset-0 bg-black/55" />
+                <div class="mobile-feature-sheet-panel relative w-full shadow-2xl" @click.stop>
+                  <div class="flex justify-center pt-3 pb-2">
+                    <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+                  </div>
+                  <div class="mobile-feature-sheet-content px-4 pb-4">
+                    <div class="mobile-feature-sheet-hero">
+                      <div
+                        class="mobile-feature-sheet-icon"
+                        :class="`is-${mobileFeatureSheetMeta.kind}`"
+                      >
+                        <svg
+                          v-if="mobileFeatureSheetMeta.kind === 'deep-research'"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
+                          />
+                        </svg>
+                        <svg
+                          v-else
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M9 4.75h6a1.75 1.75 0 011.75 1.75v10.75A1.75 1.75 0 0115 19H9a1.75 1.75 0 01-1.75-1.75V6.5A1.75 1.75 0 019 4.75z"
+                          />
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="1.7"
+                            d="M9.75 3h4.5M10.25 9h4M10.25 12h4M10.25 15h2.5"
+                          />
+                        </svg>
+                      </div>
+                      <div class="min-w-0 flex-1">
+                        <span class="mobile-feature-sheet-state">{{
+                          mobileFeatureSheetMeta.state
+                        }}</span>
+                        <h3 class="mt-2 text-lg font-semibold text-gray-900 dark:text-white">
+                          {{ mobileFeatureSheetMeta.title }}
+                        </h3>
+                        <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-slate-300">
+                          {{ mobileFeatureSheetMeta.description }}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="mobile-feature-sheet-chips">
+                      <span
+                        v-for="tag in mobileFeatureSheetMeta.tags"
+                        :key="tag"
+                        class="mobile-feature-sheet-chip"
+                      >
+                        {{ tag }}
+                      </span>
+                    </div>
+
+                    <div class="mobile-feature-sheet-actions">
+                      <button
+                        v-if="mobileFeatureSheetMeta.primaryActionLabel"
+                        data-testid="mobile-feature-primary-action"
+                        class="mobile-feature-sheet-primary"
+                        @click="handleMobileFeaturePrimaryAction"
+                      >
+                        {{ mobileFeatureSheetMeta.primaryActionLabel }}
+                      </button>
+                      <button
+                        data-testid="mobile-feature-sheet-close"
+                        class="mobile-feature-sheet-secondary"
+                        @click="closeMobileFeatureSheet"
+                      >
+                        {{ t('common.close') }}
                       </button>
                     </div>
                   </div>
@@ -4745,6 +4993,8 @@ header,
 
 .chat-workspace {
   min-height: 0;
+  min-width: 0;
+  width: 100%;
 }
 
 .chat-desktop-shell .chat-workspace {
@@ -4757,7 +5007,10 @@ header,
 
 .chat-body-shell {
   min-height: 0;
+  min-width: 0;
+  width: 100%;
   position: relative;
+  overflow-x: hidden;
 }
 
 .chat-desktop-shell .chat-body-shell {
@@ -5774,6 +6027,174 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
   background: rgba(51, 65, 85, 0.88);
 }
 
+.mobile-feature-sheet-panel {
+  border-radius: 1.6rem 1.6rem 0 0;
+  border: 1px solid rgba(226, 232, 240, 0.94);
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.mobile-feature-sheet-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mobile-feature-sheet-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+}
+
+.mobile-feature-sheet-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  flex-shrink: 0;
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.94);
+  background: rgba(248, 250, 252, 0.94);
+  color: rgb(71, 85, 105);
+}
+
+.mobile-feature-sheet-icon svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.mobile-feature-sheet-icon.is-deep-research {
+  border-color: rgba(134, 239, 172, 0.42);
+  background: rgba(240, 253, 244, 0.94);
+  color: rgb(22, 101, 52);
+}
+
+.mobile-feature-sheet-icon.is-smart-resume {
+  border-color: rgba(125, 211, 252, 0.42);
+  background: rgba(240, 249, 255, 0.94);
+  color: rgb(3, 105, 161);
+}
+
+.mobile-feature-sheet-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+  border-radius: 999px;
+  padding: 0 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgb(71, 85, 105);
+  background: rgba(226, 232, 240, 0.84);
+}
+
+.mobile-feature-sheet-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.mobile-feature-sheet-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.6rem;
+  border-radius: 999px;
+  padding: 0 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgb(71, 85, 105);
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  background: rgba(248, 250, 252, 0.94);
+}
+
+.mobile-feature-sheet-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.mobile-feature-sheet-primary,
+.mobile-feature-sheet-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.85rem;
+  border-radius: 0.95rem;
+  padding: 0 1rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition:
+    background-color 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.mobile-feature-sheet-primary {
+  flex: 1 1 auto;
+  border: 1px solid rgba(2, 132, 199, 0.22);
+  background: rgb(2, 132, 199);
+  color: rgb(255, 255, 255);
+}
+
+.mobile-feature-sheet-secondary {
+  flex: 1 1 auto;
+  border: 1px solid rgba(203, 213, 225, 0.94);
+  background: rgba(248, 250, 252, 0.94);
+  color: rgb(51, 65, 85);
+}
+
+.mobile-feature-sheet-primary:active,
+.mobile-feature-sheet-secondary:active {
+  transform: scale(0.98);
+}
+
+:root.dark .mobile-feature-sheet-panel,
+[data-theme='dark'] .mobile-feature-sheet-panel {
+  border-color: rgba(51, 65, 85, 0.92);
+  background: rgba(15, 23, 42, 0.98);
+}
+
+:root.dark .mobile-feature-sheet-icon,
+[data-theme='dark'] .mobile-feature-sheet-icon {
+  border-color: rgba(71, 85, 105, 0.88);
+  background: rgba(30, 41, 59, 0.92);
+  color: rgb(203, 213, 225);
+}
+
+:root.dark .mobile-feature-sheet-icon.is-deep-research,
+[data-theme='dark'] .mobile-feature-sheet-icon.is-deep-research {
+  border-color: rgba(74, 222, 128, 0.28);
+  background: rgba(20, 83, 45, 0.42);
+  color: rgb(187, 247, 208);
+}
+
+:root.dark .mobile-feature-sheet-icon.is-smart-resume,
+[data-theme='dark'] .mobile-feature-sheet-icon.is-smart-resume {
+  border-color: rgba(56, 189, 248, 0.28);
+  background: rgba(8, 47, 73, 0.46);
+  color: rgb(186, 230, 253);
+}
+
+:root.dark .mobile-feature-sheet-state,
+[data-theme='dark'] .mobile-feature-sheet-state {
+  color: rgb(226, 232, 240);
+  background: rgba(51, 65, 85, 0.88);
+}
+
+:root.dark .mobile-feature-sheet-chip,
+[data-theme='dark'] .mobile-feature-sheet-chip {
+  color: rgb(203, 213, 225);
+  border-color: rgba(71, 85, 105, 0.88);
+  background: rgba(30, 41, 59, 0.9);
+}
+
+:root.dark .mobile-feature-sheet-secondary,
+[data-theme='dark'] .mobile-feature-sheet-secondary {
+  color: rgb(226, 232, 240);
+  border-color: rgba(71, 85, 105, 0.88);
+  background: rgba(30, 41, 59, 0.92);
+}
+
 .routing-trigger-btn {
   color: rgb(71, 85, 105);
   border-color: rgba(148, 163, 184, 0.28);
@@ -6291,9 +6712,11 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 /* Mobile conversation list page */
 .mobile-list-page {
   width: 100%;
+  max-width: 100%;
   height: 100%;
   border: none;
   background: transparent;
+  overflow-x: hidden;
 }
 
 :global(.dark) .mobile-list-page {
@@ -6301,8 +6724,11 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 }
 
 .chat-sidebar-mobile {
+  width: 100%;
+  max-width: 100%;
   padding-top: max(env(safe-area-inset-top), 0px);
   padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  overflow-x: hidden;
 }
 
 /* Mobile main chat area */
@@ -6338,13 +6764,23 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 .mobile-chat .chat-input-dock {
   position: relative !important;
   bottom: auto !important;
-  margin-top: -0.85rem;
+  margin-top: 0;
   background: transparent;
   padding-bottom: calc(max(env(safe-area-inset-bottom), 0px) + 0.75rem);
 }
 
 .mobile-chat .active-todo-panel-wrap {
   margin-bottom: 0.18rem;
+}
+
+@media (max-width: 767px) {
+  .chat-nav-btn,
+  .topbar-icon-btn {
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    padding: 0.6rem;
+    border-radius: 0.95rem;
+  }
 }
 
 .chat-topbar-mobile {

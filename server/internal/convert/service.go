@@ -39,6 +39,11 @@ type Service struct {
 	janitorStop  chan struct{}
 }
 
+const (
+	audioToolAfconvert = "afconvert"
+	audioToolFFmpeg    = "ffmpeg"
+)
+
 func NewService(db *sql.DB, dataDir string) (*Service, error) {
 	return NewServiceWithReadDB(db, db, dataDir)
 }
@@ -779,9 +784,9 @@ func (s *Service) executeASR(ctx context.Context, task *ConvertTask, req TaskReq
 
 	transcribePath := inputPath
 	format := sttFormatFromPath(inputPath)
-	if format == "" || strings.EqualFold(filepath.Ext(inputPath), ".m4a") {
+	if needsASRWAVNormalization(inputPath) {
 		wavPath := filepath.Join(s.outputDir(task.ID), "asr-input.wav")
-		if err := convertAudioFile(ctx, inputPath, wavPath, "wav", AudioOptions{}); err != nil {
+		if err := s.convertASRInputToWAV(ctx, inputPath, wavPath); err != nil {
 			return nil, "", "", err
 		}
 		transcribePath = wavPath
@@ -1292,6 +1297,68 @@ func convertAudioFile(ctx context.Context, src, dst, target string, options Audi
 	}
 	args = append(args, src, dst)
 	return runCommand(ctx, "afconvert", args...)
+}
+
+func needsASRWAVNormalization(path string) bool {
+	return sttFormatFromPath(path) != stt.FormatWAV
+}
+
+func preferredASRWAVConversionTools(path string) []string {
+	if !needsASRWAVNormalization(path) {
+		return nil
+	}
+	switch normalizeFormat(strings.TrimPrefix(strings.ToLower(filepath.Ext(path)), "."), "") {
+	case "webm", "ogg":
+		return []string{audioToolFFmpeg, audioToolAfconvert}
+	default:
+		return []string{audioToolAfconvert}
+	}
+}
+
+func (s *Service) convertASRInputToWAV(ctx context.Context, src, dst string) error {
+	tools := preferredASRWAVConversionTools(src)
+	if len(tools) == 0 {
+		return nil
+	}
+
+	var errs []string
+	for _, tool := range tools {
+		var err error
+		switch tool {
+		case audioToolFFmpeg:
+			err = runFFmpegToWAV(ctx, src, dst, s.locator)
+		case audioToolAfconvert:
+			err = convertAudioFile(ctx, src, dst, "wav", AudioOptions{})
+		default:
+			err = fmt.Errorf("unknown audio conversion tool: %s", tool)
+		}
+		if err == nil {
+			return nil
+		}
+		errs = append(errs, fmt.Sprintf("%s: %v", tool, err))
+	}
+
+	return fmt.Errorf("failed to convert %s to wav before ASR: %s", filepath.Base(src), strings.Join(errs, "; "))
+}
+
+func runFFmpegToWAV(ctx context.Context, src, dst string, locator commandLocator) error {
+	lookPath := locator.lookPath
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	ffmpegPath, err := lookPath(audioToolFFmpeg)
+	if err != nil {
+		return fmt.Errorf("ffmpeg unavailable: %w", err)
+	}
+	return runCommand(ctx, ffmpegPath,
+		"-y",
+		"-i", src,
+		"-vn",
+		"-ar", "16000",
+		"-ac", "1",
+		"-c:a", "pcm_s16le",
+		dst,
+	)
 }
 
 func afconvertArgs(target string, options AudioOptions) ([]string, error) {

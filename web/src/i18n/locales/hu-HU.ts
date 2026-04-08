@@ -565,7 +565,7 @@ export default mergeHarnessLocale('hu-HU', {
     deepResearchDomains: 'Domének',
     deepResearchObjectMap: 'Objektumtérkép',
     deepResearchBackToTask: 'Eredmény megtekintése',
-    taskLoop: 'Ralph ciklus',
+    taskLoop: 'Intelligens folytatás',
     alwaysOn: 'Automatikus',
     deepResearchHoverDescription:
       'Inditson strukturalt kutatasi munkafolyamatot lekeressel, ellenorzessel, nyomon kovetheto futasokkal es kapcsolt futasreszletekkel.',
@@ -579,7 +579,7 @@ export default mergeHarnessLocale('hu-HU', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Hagyd, hogy az ügynök tervezzen, eszközöket használjon, módosításokat alkalmazzon, és addig iteráljon, amíg a feladat tisztán célba nem ér.',
+      'Hagyd, hogy az ügynök tervezzen, eszközöket használjon, módosításokat alkalmazzon, és addig iteráljon, amíg a feladat tisztán célba nem ér. Ralph rendíthetetlen kitartása ihlette.',
     ralphLoopHoverPlan: 'Terv',
     ralphLoopHoverAct: 'Végrehajtás',
     ralphLoopHoverCheck: 'Ellenőrzés',

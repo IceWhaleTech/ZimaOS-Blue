@@ -562,7 +562,7 @@ export default mergeHarnessLocale('ko-KR', {
     deepResearchDomains: '도메인',
     deepResearchObjectMap: '객체 맵',
     deepResearchBackToTask: '결과 보기',
-    taskLoop: 'Ralph 루프',
+    taskLoop: '스마트 재개',
     alwaysOn: '자동',
     deepResearchHoverDescription:
       '검색, 검증, 추적 가능한 실행, 연결된 실행 세부 정보를 포함한 구조화된 리서치 워크플로를 시작합니다.',
@@ -576,7 +576,7 @@ export default mergeHarnessLocale('ko-KR', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      '에이전트가 계획하고, 도구를 사용하고, 변경을 적용하며, 작업이 깔끔하게 마무리될 때까지 계속 반복하도록 합니다.',
+      '에이전트가 계획하고, 도구를 사용하고, 변경을 적용하며, 작업이 깔끔하게 마무리될 때까지 계속 반복하도록 합니다. 끈질기게 밀고 나가는 랄프에게서 영감을 받았습니다.',
     ralphLoopHoverPlan: '계획',
     ralphLoopHoverAct: '실행',
     ralphLoopHoverCheck: '점검',

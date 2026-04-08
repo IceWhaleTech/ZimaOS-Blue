@@ -564,7 +564,7 @@ export default mergeHarnessLocale('nb-NO', {
     deepResearchDomains: 'Domener',
     deepResearchObjectMap: 'Objektkart',
     deepResearchBackToTask: 'Vis resultat',
-    taskLoop: 'Ralph-løkke',
+    taskLoop: 'Smart gjenopptakelse',
     alwaysOn: 'Automatisk',
     deepResearchHoverDescription:
       'Start en strukturert forskningsflyt med innhenting, verifisering, sporbare kjoringer og koblede kjoringsdetaljer.',
@@ -578,7 +578,7 @@ export default mergeHarnessLocale('nb-NO', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'La agenten planlegge, bruke verktøy, gjennomføre endringer og fortsette å iterere til oppgaven er løst på en ryddig måte.',
+      'La agenten planlegge, bruke verktøy, gjennomføre endringer og fortsette å iterere til oppgaven er løst på en ryddig måte. Inspirert av Ralphs sta utholdenhet.',
     ralphLoopHoverPlan: 'Planlegg',
     ralphLoopHoverAct: 'Utfør',
     ralphLoopHoverCheck: 'Sjekk',

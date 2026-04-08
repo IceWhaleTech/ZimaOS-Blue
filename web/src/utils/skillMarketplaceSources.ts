@@ -91,11 +91,6 @@ const sourceLocaleCatalog = {
     description: 'Public agent skill marketplace with HTML-embedded catalog data.',
     iconUrl: 'https://agentskills.to/favicon.svg',
   },
-  agensi: {
-    label: 'Agensi',
-    description: 'Skill marketplace with public discovery pages and structured client-side data.',
-    iconUrl: 'https://www.agensi.io/favicon.svg',
-  },
   skillmd: {
     label: 'SkillMD',
     description: 'SKILL.md registry with public skill snapshots and rendered detail pages.',
@@ -151,8 +146,6 @@ const sourceLocaleAliases: Record<string, MarketplaceSourceKey> = {
   'minimax ai': 'minimax',
   agentskills: 'agentskills',
   'agentskills.to': 'agentskills',
-  agensi: 'agensi',
-  'agensi.io': 'agensi',
   skillmd: 'skillmd',
   'skillmd.io': 'skillmd',
   external: 'external',

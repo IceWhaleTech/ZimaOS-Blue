@@ -565,7 +565,7 @@ export default mergeHarnessLocale('cs-CZ', {
     deepResearchDomains: 'Domény',
     deepResearchObjectMap: 'Mapa objektů',
     deepResearchBackToTask: 'Zobrazit výsledek',
-    taskLoop: 'Ralph smyčka',
+    taskLoop: 'Chytré pokračování',
     alwaysOn: 'Automaticky',
     deepResearchHoverDescription:
       'Spustte strukturovany vyzkumny workflow se ziskavanim informaci, overovanim, sledovatelnymi behy a propojenymi detaily behu.',
@@ -579,7 +579,7 @@ export default mergeHarnessLocale('cs-CZ', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Nechte agenta plánovat, používat nástroje, provádět změny a dál iterovat, dokud úkol nebude čistě dokončen.',
+      'Nechte agenta plánovat, používat nástroje, provádět změny a dál iterovat, dokud úkol nebude čistě dokončen. Inspirováno Ralphovou vytrvalou houževnatostí.',
     ralphLoopHoverPlan: 'Plán',
     ralphLoopHoverAct: 'Akce',
     ralphLoopHoverCheck: 'Kontrola',

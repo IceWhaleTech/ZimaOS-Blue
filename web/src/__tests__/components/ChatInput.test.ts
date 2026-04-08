@@ -139,7 +139,7 @@ describe('ChatInput cancel affordance', () => {
         accessibility: 'Accessibility',
       },
       chat: {
-        taskLoop: 'Ralph Loop',
+        taskLoop: 'Smart Resume',
         attachFile: 'Attach file',
         takePhoto: 'Take photo',
         moreActions: 'More actions',
@@ -657,9 +657,9 @@ describe('ChatInput cancel affordance', () => {
     expect(researchCard.text()).toContain('Verify')
   })
 
-  it('keeps only the unified research compact info card and explains all three research modes', async () => {
+  it('keeps only the unified research compact info card on narrow desktop layouts', async () => {
     Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
-    Object.defineProperty(window.navigator, 'userAgent', { value: 'iphone', configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
 
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -693,9 +693,59 @@ describe('ChatInput cancel affordance', () => {
     expect(researchCard.text()).toContain('Verify')
   })
 
-  it('shows a compact info card for Ralph Loop', async () => {
+  it('hides compact research and Smart Resume chips on phones', async () => {
     Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
     Object.defineProperty(window.navigator, 'userAgent', { value: 'iphone', configurable: true })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(ChatInput, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.compact-mode-section').exists()).toBe(false)
+    expect(wrapper.find('.compact-mode-info-toggle--research').exists()).toBe(false)
+    expect(wrapper.find('.compact-mode-info-toggle--loop').exists()).toBe(false)
+  })
+
+  it('uses a docked mobile shell instead of the floating rounded card on phones', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', { value: 'iphone', configurable: true })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(ChatInput, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.chat-input-wrapper--mobile').exists()).toBe(true)
+    expect(wrapper.find('.chat-input-container--mobile').exists()).toBe(true)
+    expect(wrapper.find('.chat-input-floating-shell').exists()).toBe(false)
+  })
+
+  it('shows a compact info card for Smart Resume on narrow desktop layouts', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', { value: 'desktop', configurable: true })
 
     const pinia = createPinia()
     setActivePinia(pinia)
@@ -719,7 +769,7 @@ describe('ChatInput cancel affordance', () => {
     await infoButton.trigger('click')
 
     expect(wrapper.find('.compact-mode-info-card--loop').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Ralph Loop')
+    expect(wrapper.text()).toContain('Smart Resume')
     expect(wrapper.text()).toContain('Plan')
   })
 

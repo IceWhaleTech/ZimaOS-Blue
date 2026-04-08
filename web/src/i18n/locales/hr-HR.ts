@@ -566,7 +566,7 @@ export default mergeHarnessLocale('hr-HR', {
     deepResearchDomains: 'Domene',
     deepResearchObjectMap: 'Karta objekata',
     deepResearchBackToTask: 'Pogledaj rezultat',
-    taskLoop: 'Ralph petlja',
+    taskLoop: 'Pametni nastavak',
     alwaysOn: 'Automatski',
     deepResearchHoverDescription:
       'Pokrenite strukturirani istrazivacki tijek s dohvatom, provjerom, pracenim izvodenjima i povezanim detaljima izvodenja.',
@@ -580,7 +580,7 @@ export default mergeHarnessLocale('hr-HR', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Pusti agentu da planira, koristi alate, primjenjuje izmjene i nastavi iterirati dok zadatak ne bude uredno dovršen.',
+      'Pusti agentu da planira, koristi alate, primjenjuje izmjene i nastavi iterirati dok zadatak ne bude uredno dovršen. Nadahnuto Ralphovom upornom ustrajnošću.',
     ralphLoopHoverPlan: 'Planirajte',
     ralphLoopHoverAct: 'Izvedi',
     ralphLoopHoverCheck: 'Provjeri',

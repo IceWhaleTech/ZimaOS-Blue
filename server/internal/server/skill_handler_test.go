@@ -386,6 +386,28 @@ func TestSkillHandler_AddSource_UsesMarketplaceInference(t *testing.T) {
 	}
 }
 
+func TestSkillHandler_AddSource_RejectsPaidMarketplaceInference(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler, _ := newTestSkillHandlerWithMarketplace(t, registry)
+
+	e := echo.New()
+	body := `{"url":"https://www.agensi.io/skills"}`
+	req := httptest.NewRequest(http.MethodPost, "/skill-store/sources", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.AddSource(c); err != nil {
+		t.Fatalf("AddSource failed: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "unsupported source input") {
+		t.Fatalf("body = %s, want unsupported source input error", rec.Body.String())
+	}
+}
+
 func TestSkillHandler_RemoveSource_UsesMarketplaceSoftDelete(t *testing.T) {
 	registry := skill.NewRegistry()
 	handler, market := newTestSkillHandlerWithMarketplace(t, registry)
@@ -575,6 +597,31 @@ func TestSkillHandler_PreviewSourceImport(t *testing.T) {
 		}
 		if payload.SuggestedSource.Type != "html_catalog" {
 			t.Fatalf("suggested_source.type = %q, want %q", payload.SuggestedSource.Type, "html_catalog")
+		}
+	})
+
+	t.Run("rejects paid agensi marketplace as unsupported source", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/skill-store/sources/preview", strings.NewReader(`{"url":"https://www.agensi.io/skills"}`))
+		req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+		rec := httptest.NewRecorder()
+		c := e.NewContext(req, rec)
+
+		if err := handler.PreviewSourceImport(c); err != nil {
+			t.Fatalf("PreviewSourceImport failed: %v", err)
+		}
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+		}
+
+		var payload previewResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+			t.Fatalf("json.Unmarshal() error = %v", err)
+		}
+		if payload.Kind != "unsupported" {
+			t.Fatalf("kind = %q, want %q", payload.Kind, "unsupported")
+		}
+		if payload.SuggestedSource != nil {
+			t.Fatal("expected no suggested_source for unsupported preview")
 		}
 	})
 }

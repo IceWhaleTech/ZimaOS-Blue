@@ -327,3 +327,53 @@ func TestApplyRequestedOutputPathMovesOutput(t *testing.T) {
 		t.Fatalf("expected source output to be moved away, got stat error %v", err)
 	}
 }
+
+func TestNeedsASRWAVNormalization(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "wav does not normalize", path: "/tmp/input.wav", want: false},
+		{name: "webm normalizes", path: "/tmp/input.webm", want: true},
+		{name: "ogg normalizes", path: "/tmp/input.ogg", want: true},
+		{name: "m4a normalizes", path: "/tmp/input.m4a", want: true},
+		{name: "mp3 normalizes", path: "/tmp/input.mp3", want: true},
+		{name: "unknown normalizes", path: "/tmp/input.bin", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := needsASRWAVNormalization(tc.path); got != tc.want {
+				t.Fatalf("needsASRWAVNormalization(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPreferredASRWAVConversionTools(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want []string
+	}{
+		{name: "webm prefers ffmpeg then afconvert", path: "/tmp/input.webm", want: []string{"ffmpeg", "afconvert"}},
+		{name: "ogg prefers ffmpeg then afconvert", path: "/tmp/input.ogg", want: []string{"ffmpeg", "afconvert"}},
+		{name: "mp3 uses afconvert only", path: "/tmp/input.mp3", want: []string{"afconvert"}},
+		{name: "m4a uses afconvert only", path: "/tmp/input.m4a", want: []string{"afconvert"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := preferredASRWAVConversionTools(tc.path)
+			if len(got) != len(tc.want) {
+				t.Fatalf("preferredASRWAVConversionTools(%q) len = %d, want %d (%v)", tc.path, len(got), len(tc.want), got)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Fatalf("preferredASRWAVConversionTools(%q)[%d] = %q, want %q", tc.path, i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}

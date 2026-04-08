@@ -961,6 +961,7 @@ interface TypelessCardAction {
 
 ### 16.4 卡片组件实现
 
+{% raw %}
 ```vue
 <!-- TypelessCard.vue -->
 <template>
@@ -1059,6 +1060,7 @@ function handleAction(action: TypelessCardAction) {
 }
 </script>
 ```
+{% endraw %}
 
 ### 16.5 在聊天消息中集成
 

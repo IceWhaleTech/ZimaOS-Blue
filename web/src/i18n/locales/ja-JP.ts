@@ -565,7 +565,7 @@ export default mergeHarnessLocale('ja-JP', {
     deepResearchDomains: 'ドメイン',
     deepResearchObjectMap: 'オブジェクトマップ',
     deepResearchBackToTask: '結果を見る',
-    taskLoop: 'Ralph ループ',
+    taskLoop: 'スマート続行',
     alwaysOn: '自動',
     deepResearchHoverDescription:
       '検索、検証、追跡可能な実行、関連する実行詳細を含む構造化リサーチフローを開始します。',
@@ -579,7 +579,7 @@ export default mergeHarnessLocale('ja-JP', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'エージェントに計画、ツール利用、変更の適用を任せ、タスクがきれいに完了するまで反復を続けます。',
+      'エージェントに計画、ツール利用、変更の適用を任せ、タスクがきれいに完了するまで反復を続けます。ひたむきにやり抜くラルフに着想を得ています。',
     ralphLoopHoverPlan: '計画',
     ralphLoopHoverAct: '実行',
     ralphLoopHoverCheck: '確認',

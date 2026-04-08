@@ -4,7 +4,7 @@ import ConversationList from '@/components/ConversationList.vue'
 import { i18n } from '@/i18n'
 
 describe('ConversationList mobile header', () => {
-  it('renders sidebar and more-actions buttons on mobile', async () => {
+  it('renders sidebar, create, and more-actions buttons on the mobile header', async () => {
     const toggleAppSidebar = vi.fn()
     const wrapper = mount(ConversationList, {
       props: {
@@ -26,23 +26,40 @@ describe('ConversationList mobile header', () => {
       },
     })
 
-    const buttons = wrapper.findAll('button')
-    const sidebarButton = buttons.find(
-      (button) => button.attributes('title') === i18n.global.t('nav.expandSidebar')
-    )
-    const moreActionsButton = buttons.find(
-      (button) => button.attributes('title') === i18n.global.t('chat.moreActions')
-    )
+    const sidebarButton = wrapper.get('[data-testid="conversation-list-expand-sidebar"]')
+    const createButton = wrapper.get('[data-testid="conversation-list-create"]')
+    const moreActionsButton = wrapper.get('[data-testid="conversation-list-more-actions"]')
 
-    expect(sidebarButton?.exists()).toBe(true)
-    expect(moreActionsButton?.exists()).toBe(true)
+    expect(sidebarButton.exists()).toBe(true)
+    expect(createButton.exists()).toBe(true)
+    expect(moreActionsButton.exists()).toBe(true)
+    expect(wrapper.find('.create-btn-inline').exists()).toBe(false)
     expect(wrapper.get('.search-input-wrap').classes()).toContain('min-w-0')
 
-    await sidebarButton!.trigger('click')
+    await sidebarButton.trigger('click')
     expect(toggleAppSidebar).toHaveBeenCalledTimes(1)
 
-    await moreActionsButton!.trigger('click')
+    await createButton.trigger('click')
+    expect(wrapper.emitted('create')).toHaveLength(1)
+
+    await moreActionsButton.trigger('click')
     expect(wrapper.emitted('more-actions')).toHaveLength(1)
+  })
+
+  it('keeps the inline create button on non-mobile layouts', () => {
+    const wrapper = mount(ConversationList, {
+      props: {
+        conversations: [],
+        currentId: null,
+        mobile: false,
+      },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    expect(wrapper.find('[data-testid="conversation-list-create"]').exists()).toBe(false)
+    expect(wrapper.find('.create-btn-inline').exists()).toBe(true)
   })
 
   it('shows a per-conversation action button on mobile and opens the bottom sheet', async () => {

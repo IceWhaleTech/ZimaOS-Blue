@@ -52,6 +52,7 @@ describe('skillMarketplaceSources', () => {
       'Vercel 官方 skills 来源'
     )
     expect(localizeMarketplaceSource('skillstack', 'label', translate)).toBe('')
+    expect(localizeMarketplaceSource('agensi.io', 'label', translate)).toBe('')
   })
 
   it('supports seed and mirror source instances with params', () => {
@@ -64,7 +65,11 @@ describe('skillMarketplaceSources', () => {
 
   it('walks candidates in order and falls back for options', () => {
     expect(
-      localizeMarketplaceSourceFromCandidates([undefined, 'Tencent SkillHub', 'skillhub'], 'label', translate)
+      localizeMarketplaceSourceFromCandidates(
+        [undefined, 'Tencent SkillHub', 'skillhub'],
+        'label',
+        translate
+      )
     ).toBe('腾讯 SkillHub')
     expect(
       localizeMarketplaceSourceOptionLabel(
@@ -80,7 +85,11 @@ describe('skillMarketplaceSources', () => {
       )
     ).toBe('聚合说明')
     expect(
-      localizeMarketplaceSourceOptionLabel({ value: 'custom-source', label: 'Custom Source' }, translate, 'Marketplace')
+      localizeMarketplaceSourceOptionLabel(
+        { value: 'custom-source', label: 'Custom Source' },
+        translate,
+        'Marketplace'
+      )
     ).toBe('Custom Source')
   })
 
@@ -105,6 +114,7 @@ describe('skillMarketplaceSources', () => {
     expect(resolveMarketplaceSourceBrand('agentskills.to')).toMatchObject({
       iconUrl: 'https://agentskills.to/favicon.svg',
     })
+    expect(resolveMarketplaceSourceBrand('agensi.io')).toBeNull()
     expect(
       resolveMarketplaceSourceBrandFromCandidates([undefined, 'Tencent SkillHub', 'skillhub'])
     ).toMatchObject({

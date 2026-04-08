@@ -557,7 +557,7 @@ export default mergeHarnessLocale('zh-TW', {
     deepResearchDomains: '網域數',
     deepResearchObjectMap: '物件地圖',
     deepResearchBackToTask: '查看結果',
-    taskLoop: 'Ralph 循環',
+    taskLoop: '智能續跑',
     alwaysOn: '自動開啟',
     deepResearchHoverDescription:
       '啟動結構化研究流程，完成檢索、核驗、可追蹤運行記錄與運行詳情查看。',
@@ -570,7 +570,8 @@ export default mergeHarnessLocale('zh-TW', {
     analyzeReportHoverTagRecommendations: '建議',
     analyzeReportPrompt:
       '請產生一份結構化分析報告。\n- 主題：\n- 來源連結、檔案或輸入文字：\n- 希望重點涵蓋的問題、對比項或結論：',
-    ralphLoopHoverDescription: '讓 Agent 自主規劃、調用工具、落地修改，並在任務完成前持續迭代。',
+    ralphLoopHoverDescription:
+      '讓 Agent 自主規劃、調用工具、落地修改，並在任務完成前持續迭代。源自堅持執著的拉爾夫。',
     ralphLoopHoverPlan: '規劃',
     ralphLoopHoverAct: '執行',
     ralphLoopHoverCheck: '複核',

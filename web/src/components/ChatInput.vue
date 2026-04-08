@@ -1468,15 +1468,22 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 <template>
   <div
     class="chat-input-wrapper"
-    :class="isMobile ? 'px-3 pb-0 pt-0' : isCompact ? 'px-3 pb-0 pt-0' : 'px-3 sm:px-4 pb-0 pt-0.5'"
+    :class="
+      isMobile
+        ? 'chat-input-wrapper--mobile'
+        : isCompact
+          ? 'px-3 pb-0 pt-0'
+          : 'px-3 sm:px-4 pb-0 pt-0.5'
+    "
   >
     <div
-      class="chat-input-container p-2.5 sm:px-3.5 sm:py-2.5 max-w-5xl mx-auto"
+      class="chat-input-container mx-auto"
       :class="[
-        isMobile || isCompact
-          ? 'chat-input-floating-shell'
-          : 'chat-input-desktop-shell rounded-2xl',
-        isMobile || isCompact ? 'chat-input-container--compact' : 'chat-input-container--desktop',
+        isMobile
+          ? 'chat-input-mobile-shell chat-input-container--mobile'
+          : isCompact
+            ? 'chat-input-floating-shell chat-input-container--compact p-2.5 sm:px-3.5 sm:py-2.5 max-w-5xl'
+            : 'chat-input-desktop-shell chat-input-container--desktop rounded-2xl p-2.5 sm:px-3.5 sm:py-2.5 max-w-5xl',
         { 'ring-2 ring-accent': dragOver },
       ]"
     >
@@ -1708,7 +1715,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         </div>
       </div>
 
-      <div v-if="isCompact" class="compact-mode-section mb-3">
+      <div v-if="isCompact && !isMobile" class="compact-mode-section mb-3">
         <div class="composer-mode-row">
           <div class="compact-mode-action">
             <button
@@ -2608,6 +2615,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   background: none;
 }
 
+.chat-input-wrapper--mobile {
+  padding: 0;
+}
+
 /* No gradient on mobile - flush to bottom */
 @media (max-width: 767px) {
   .chat-input-wrapper {
@@ -2649,8 +2660,23 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
   border-radius: 1.55rem;
 }
 
+.chat-input-mobile-shell {
+  border-top: 1px solid rgba(221, 223, 226, 0.94);
+  border-inline-width: 0;
+  border-bottom-width: 0;
+  border-radius: 0;
+  background: rgba(248, 250, 252, 0.96);
+  box-shadow: none;
+}
+
 .desktop-composer-root {
   width: 100%;
+}
+
+.chat-input-container--mobile {
+  width: 100%;
+  max-width: none;
+  padding: 0.78rem 0.9rem 0.18rem;
 }
 
 .chat-input-container--desktop {
@@ -4147,6 +4173,12 @@ html.dark .mode-info-card__chip {
   box-shadow:
     0 0 0 1px rgba(51, 65, 85, 0.7),
     0 18px 32px -24px rgba(2, 6, 23, 0.82);
+}
+
+:root.dark .chat-input-mobile-shell,
+[data-theme='dark'] .chat-input-mobile-shell {
+  border-top-color: rgba(71, 85, 105, 0.8);
+  background: rgba(15, 23, 42, 0.92);
 }
 
 textarea {

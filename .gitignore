@@ -129,6 +129,8 @@ pnpm-debug.log*
 # Claude
 .claude/
 
+# Codex
+.codex-debug/
 
 app.7z
 skin.zip

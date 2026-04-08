@@ -1,13 +1,13 @@
 # ZimaOS Blue Docs
 
-This directory contains the current Mintlify documentation site for ZimaOS Blue.
+This directory contains the GitHub Pages-ready Docusaurus documentation site for ZimaOS Blue.
 
 ## What lives here
 
-- Mintlify site config in `docs-site/docs.json`
-- English canonical docs under `docs-site/`
-- Simplified Chinese mirrored docs under `docs-site/zh-CN/`
-- Local copies of required assets under `docs-site/assets/`
+- Docusaurus site config in `docs-site/docusaurus.config.ts`
+- English canonical docs under `docs/`
+- Simplified Chinese mirrored docs under `docs/zh-CN/`
+- GitHub Pages image assets reused from `docs/assets/` through `docs-site/static/assets`
 - A stable external wiki entry via `https://deepwiki.com/IceWhaleTech/ZimaOS-Blue`
 - Recommended repository research flow: DeepWiki first for broad context, GitHub second for primary-source verification
 
@@ -20,7 +20,7 @@ npm --prefix docs-site ci
 npm --prefix docs-site run dev
 ```
 
-## Production smoke check
+## Production build
 
 ```bash
 npm --prefix docs-site ci
@@ -29,18 +29,18 @@ npm --prefix docs-site run build
 
 ## Deployment
 
-This repo is prepared for Mintlify-managed deployment rather than a static-site publish workflow.
+This repo now publishes docs through GitHub Pages with GitHub Actions.
 
-- Connect the repository in Mintlify via the GitHub App
-- Set the docs root to `docs-site`
-- Keep GitHub Actions focused on validation
-- Swap `README.md` docs links to the public docs URL after the domain is live
+- Keep the site config in `docs-site` and the docs content in `docs`
+- In repository `Settings -> Pages`, set the source to `GitHub Actions`
+- Push docs changes to `main` to trigger deployment
+- Use pull requests to validate docs builds before merge
 
-The helper script in `docs-site/scripts/run-mint.mjs` prefers the pinned local `mint` CLI from `docs-site/package.json`, then falls back to global and `npx` paths if needed. The `build` script maps to Mint's strict `validate` command for CI-friendly smoke checks.
+The site automatically adapts its `baseUrl` for GitHub Pages project-site deployment, so English docs publish under `/ZimaOS-Blue/` and Simplified Chinese docs under `/ZimaOS-Blue/zh-CN/`.
 
 ## Entry points
 
 - GitHub README entry: `README.md`
-- Docs site home: `docs-site/index.mdx`
-- Curated docs hub: `docs-site/start/docs-directory.mdx`
+- Docs site home: `docs/index.mdx`
+- Curated docs hub: `docs/start/docs-directory.mdx`
 - External wiki: `https://deepwiki.com/IceWhaleTech/ZimaOS-Blue`

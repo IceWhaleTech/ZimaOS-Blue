@@ -143,17 +143,17 @@ watch(searchQuery, (query) => {
 
 <template>
   <div
-    class="conversation-list h-full flex flex-col"
+    class="conversation-list flex h-full min-w-0 w-full max-w-full flex-col overflow-x-hidden"
     :class="{ 'conversation-list-mobile': mobile }"
   >
     <div class="list-header sticky top-0 z-10">
       <div v-if="mobile" class="list-headline">
-        <h2 class="list-title truncate">{{ t('nav.chat') }}</h2>
-        <div class="list-actions">
+        <div class="list-heading">
           <button
             v-if="!hasGlobalMobileSidebarToggle"
             class="list-menu-btn"
             type="button"
+            data-testid="conversation-list-expand-sidebar"
             :aria-label="t('nav.expandSidebar')"
             :title="t('nav.expandSidebar')"
             @click="handleOpenAppSidebar"
@@ -173,9 +173,36 @@ watch(searchQuery, (query) => {
               />
             </svg>
           </button>
+          <h2 class="list-title truncate">{{ t('nav.chat') }}</h2>
+        </div>
+        <div class="list-actions">
+          <button
+            class="create-btn create-btn-header transition-all duration-200"
+            type="button"
+            data-testid="conversation-list-create"
+            :aria-label="t('chat.newConversation')"
+            :title="t('chat.newConversation')"
+            @click="handleCreate"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2.3"
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+          </button>
           <button
             class="list-menu-btn"
             type="button"
+            data-testid="conversation-list-more-actions"
             :aria-label="t('chat.moreActions')"
             :title="t('chat.moreActions')"
             @click="handleOpenMoreActions"
@@ -243,7 +270,10 @@ watch(searchQuery, (query) => {
           </button>
         </div>
         <button
+          v-if="!mobile"
           class="create-btn create-btn-inline transition-all duration-200"
+          type="button"
+          :aria-label="t('chat.newConversation')"
           :title="t('chat.newChat')"
           @click="handleCreate"
         >
@@ -560,8 +590,12 @@ watch(searchQuery, (query) => {
   --cl-item-px: 0.82rem;
   --cl-item-py: 1rem;
   --cl-side-width: 3.75rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   background: rgba(255, 255, 255, 0.98);
   overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 :global(.chat-view.ui-density-compact) .conversation-list {
@@ -584,21 +618,39 @@ watch(searchQuery, (query) => {
   position: sticky;
   top: 0;
   z-index: 10;
+  width: 100%;
+  max-width: 100%;
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .list-headline {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   gap: 0.7rem;
   min-height: 3.35rem;
+  width: 100%;
+  max-width: 100%;
   padding: calc(max(env(safe-area-inset-top), 0px) + 0.72rem) var(--cl-header-px) 0.72rem;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.list-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.72rem;
+  min-width: 0;
+  flex: 1;
 }
 
 .list-title {
+  min-width: 0;
+  flex: 1;
   font-size: clamp(1.48rem, 5.7vw, 1.9rem);
   line-height: 0.94;
   font-weight: 700;
@@ -611,17 +663,19 @@ watch(searchQuery, (query) => {
   align-items: center;
   gap: 0.55rem;
   flex-shrink: 0;
+  justify-self: end;
+  max-width: 100%;
 }
 
 .list-menu-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.3rem;
-  height: 2.3rem;
+  width: 2.75rem;
+  height: 2.75rem;
   flex-shrink: 0;
   border: 1px solid rgba(226, 232, 240, 0.92);
-  border-radius: 0.78rem;
+  border-radius: 0.9rem;
   background: rgba(255, 255, 255, 0.94);
   color: rgb(100, 116, 139);
   transition:
@@ -643,11 +697,14 @@ watch(searchQuery, (query) => {
   display: flex;
   align-items: center;
   gap: 0.54rem;
+  width: 100%;
+  max-width: 100%;
   height: var(--cl-header-row-block-size);
   min-height: var(--cl-header-row-block-size);
   padding: var(--cl-header-row-pad-y) var(--cl-header-px);
   border-top: none;
   box-shadow: inset 0 -1px 0 var(--cl-border);
+  overflow: hidden;
 }
 
 .conversation-list-mobile .search-row {
@@ -720,12 +777,21 @@ watch(searchQuery, (query) => {
   flex-shrink: 0;
 }
 
+.create-btn-header {
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: 0.9rem;
+}
+
 .create-btn:hover {
   transform: translateY(-1px);
   filter: brightness(1.04);
 }
 
 .convo-scroll {
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
   scrollbar-gutter: stable;
   background: rgba(255, 255, 255, 0.98);

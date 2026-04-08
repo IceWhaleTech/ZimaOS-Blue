@@ -1,0 +1,71 @@
+---
+title: "Deployment"
+summary: "How to publish the docs site through GitHub Pages and what this repository already automates."
+---
+
+# Deployment
+
+ZimaOS Blue docs are prepared for **GitHub Pages deployment through GitHub Actions**.
+
+## What this repository already provides
+
+- Docusaurus site config in `docs-site/docusaurus.config.ts`
+- Docs content rooted in `docs/`
+- Curated English canonical pages plus expanded Simplified Chinese mirrors
+- Static image assets under `docs/assets`
+- Local build validation via `npm --prefix docs-site run build`
+- CI build plus Pages deployment on docs-related changes to `main`
+
+## Recommended deployment model
+
+The repository now follows this model:
+
+1. Open the repository's `Settings -> Pages`
+2. Set `Build and deployment` to `GitHub Actions`
+3. Keep the publishing branch as `main`
+4. Let `.github/workflows/docs.yml` build and deploy the site
+5. Optionally bind a custom docs domain later
+
+## Why the workflow looks this way
+
+This repo intentionally builds a static site inside GitHub Actions and publishes the generated `docs-site/build` artifact through the official GitHub Pages actions:
+
+- `actions/configure-pages`
+- `actions/upload-pages-artifact`
+- `actions/deploy-pages`
+
+That keeps the deployment path explicit, reviewable, and independent from any external hosted docs platform.
+
+## Pre-deploy checklist
+
+Before enabling or re-running deployment, confirm:
+
+- `npm --prefix docs-site ci` succeeds
+- `npm --prefix docs-site run build` succeeds
+- Repository `Settings -> Pages` is set to `GitHub Actions`
+- The navbar links point to the correct GitHub, Releases, and DeepWiki URLs
+- The default branch contains the latest docs content
+
+## Local validation
+
+```bash
+npm --prefix docs-site ci
+npm --prefix docs-site run build
+```
+
+## Suggested rollout order
+
+- Enable GitHub Pages for the repository
+- Push or merge docs changes into `main`
+- Verify the published English root and `/zh-CN/` pages
+- Add a custom docs domain later if needed
+- Replace repository-relative docs links in `README.md` with the public docs URL once the domain is live
+
+## After docs updates land
+
+For routine content updates like new product guides or navigation changes:
+
+1. Run `npm --prefix docs-site run build`
+2. Verify English and Simplified Chinese navigation stay aligned where mirrors exist
+3. Open or update the pull request and let CI build the site
+4. Merge to `main` and let GitHub Pages deploy automatically

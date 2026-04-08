@@ -388,7 +388,10 @@ describe('ChatView provider gating', () => {
       global: {
         plugins: [router, i18n],
         stubs: {
-          ConversationList: { template: '<div class="conversation-list-stub" />' },
+          ConversationList: {
+            template:
+              '<button class="conversation-list-stub" data-testid="conversation-list-more-actions-stub" @click="$emit(\'more-actions\')">more</button>',
+          },
           ChatMessage: { template: '<div class="chat-message-stub" />' },
           ChatInput: chatInputStub,
           VirtualScroll: { template: '<div class="virtual-scroll-stub"><slot /></div>' },
@@ -419,6 +422,44 @@ describe('ChatView provider gating', () => {
 
     expect(mocks.taskProjectionsStore.setConversation).toHaveBeenCalledWith('')
     expect(mocks.onSSEEvent).not.toHaveBeenCalled()
+
+    wrapper.unmount()
+  })
+
+  it('opens feature guidance for Deep Research and Smart Resume from the conversation list menu', async () => {
+    mocks.settingsStore.setAgentMode.mockImplementation(async (enabled: boolean) => {
+      mocks.settingsStore.agentMode = enabled
+    })
+
+    const wrapper = await mountChatView()
+
+    await wrapper.get('[data-testid="conversation-list-more-actions-stub"]').trigger('click')
+
+    const topbarSheet = wrapper.get('[data-testid="mobile-topbar-sheet"]')
+    expect(topbarSheet.text()).toContain('Deep Research')
+    expect(topbarSheet.text()).toContain('Smart Resume')
+
+    await wrapper.get('[data-testid="mobile-topbar-quick-action-deep-research"]').trigger('click')
+
+    const deepResearchSheet = wrapper.get('[data-testid="mobile-feature-sheet"]')
+    expect(deepResearchSheet.text()).toContain('Deep Research')
+    expect(deepResearchSheet.text()).toContain('Retrieving')
+    expect(deepResearchSheet.text()).toContain('Verifying')
+
+    await wrapper.get('[data-testid="mobile-feature-sheet-close"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="conversation-list-more-actions-stub"]').trigger('click')
+    await wrapper.get('[data-testid="mobile-topbar-quick-action-smart-resume"]').trigger('click')
+
+    const smartResumeSheet = wrapper.get('[data-testid="mobile-feature-sheet"]')
+    expect(smartResumeSheet.text()).toContain('Smart Resume')
+    expect(smartResumeSheet.text()).toContain('Plan')
+    expect(smartResumeSheet.text()).toContain('Auto-Confirm')
+
+    await wrapper.get('[data-testid="mobile-feature-primary-action"]').trigger('click')
+
+    expect(mocks.settingsStore.setAgentMode).toHaveBeenCalledWith(true)
 
     wrapper.unmount()
   })

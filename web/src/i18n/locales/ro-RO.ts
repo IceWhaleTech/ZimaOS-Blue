@@ -566,7 +566,7 @@ export default mergeHarnessLocale('ro-RO', {
     deepResearchDomains: 'Domenii',
     deepResearchObjectMap: 'Hartă a obiectelor',
     deepResearchBackToTask: 'Vezi rezultatul',
-    taskLoop: 'Bucla Ralph',
+    taskLoop: 'Reluare inteligentă',
     alwaysOn: 'Automat',
     deepResearchHoverDescription:
       'Lanseaza un flux de cercetare structurat cu preluare, verificare, rulari trasabile si detalii de rulare asociate.',
@@ -580,7 +580,7 @@ export default mergeHarnessLocale('ro-RO', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Lasă agentul să planifice, să folosească instrumente, să aplice modificări și să continue să itereze până când sarcina este încheiată curat.',
+      'Lasă agentul să planifice, să folosească instrumente, să aplice modificări și să continue să itereze până când sarcina este încheiată curat. Inspirată de perseverența încăpățânată a lui Ralph.',
     ralphLoopHoverPlan: 'Planifică',
     ralphLoopHoverAct: 'Acțiune',
     ralphLoopHoverCheck: 'Verificare',

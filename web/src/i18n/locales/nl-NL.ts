@@ -565,7 +565,7 @@ export default mergeHarnessLocale('nl-NL', {
     deepResearchDomains: 'Domeinen',
     deepResearchObjectMap: 'Objectkaart',
     deepResearchBackToTask: 'Resultaat bekijken',
-    taskLoop: 'Ralph-lus',
+    taskLoop: 'Slim hervatten',
     alwaysOn: 'Automatisch',
     deepResearchHoverDescription:
       'Start een gestructureerde onderzoeksworkflow met ophalen, verificatie, traceerbare runs en gekoppelde rundetails.',
@@ -579,7 +579,7 @@ export default mergeHarnessLocale('nl-NL', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Laat de agent plannen, tools gebruiken, wijzigingen toepassen en blijven itereren totdat de taak netjes is afgerond.',
+      'Laat de agent plannen, tools gebruiken, wijzigingen toepassen en blijven itereren totdat de taak netjes is afgerond. Geinspireerd door Ralphs vasthoudende volharding.',
     ralphLoopHoverPlan: 'Plannen',
     ralphLoopHoverAct: 'Uitvoeren',
     ralphLoopHoverCheck: 'Controleren',

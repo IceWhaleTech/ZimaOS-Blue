@@ -566,7 +566,7 @@ export default mergeHarnessLocale('ga-IE', {
     deepResearchDomains: 'Fearainn',
     deepResearchObjectMap: 'Léarscáil réad',
     deepResearchBackToTask: 'Féach ar an toradh',
-    taskLoop: 'Lúb Ralph',
+    taskLoop: 'Atosú cliste',
     alwaysOn: 'Uathoibríoch',
     deepResearchHoverDescription:
       'Tosaigh sreabhadh taighde struchturtha le haisghabhail, fioru, ritheanna inrianaithe agus sonrai rithe nasctha.',
@@ -580,7 +580,7 @@ export default mergeHarnessLocale('ga-IE', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Lig don ghníomhaire pleanáil, uirlisí a úsáid, athruithe a chur i bhfeidhm, agus leanúint ar aghaidh ag atriall go dtí go mbeidh an tasc curtha i gcrích go glan.',
+      'Lig don ghníomhaire pleanáil, uirlisí a úsáid, athruithe a chur i bhfeidhm, agus leanúint ar aghaidh ag atriall go dtí go mbeidh an tasc curtha i gcrích go glan. Spreagtha ag dianseasmhacht Ralph.',
     ralphLoopHoverPlan: 'Pleanáil',
     ralphLoopHoverAct: 'Gníomh',
     ralphLoopHoverCheck: 'Seiceáil',

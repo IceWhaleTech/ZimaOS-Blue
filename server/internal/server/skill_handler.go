@@ -240,6 +240,15 @@ func normalizeSourceHost(raw string) string {
 	return host
 }
 
+func blockedMarketplaceImportReason(host string) string {
+	switch normalizeSourceHost(host) {
+	case "agensi.io":
+		return "Agensi is a paid marketplace and is not supported as an importable skill source."
+	default:
+		return ""
+	}
+}
+
 func humanizeSourceHost(host string) string {
 	host = normalizeSourceHost(host)
 	if host == "" {
@@ -406,6 +415,9 @@ func classifySkillStoreImport(rawURL string) (SkillSourceImportPreviewResponse, 
 
 	host := normalizeSourceHost(parsed.Hostname())
 	pathValue := strings.Trim(strings.ToLower(parsed.Path), "/")
+	if reason := blockedMarketplaceImportReason(host); reason != "" {
+		return previewUnsupportedSource(normalized, reason), nil
+	}
 	if host == "github.com" && strings.HasPrefix(pathValue, "topics/") {
 		source := skillmarket.Source{
 			ID:                 userDefinedSourceID(host + "-" + pathValue),

@@ -568,7 +568,7 @@ export default mergeHarnessLocale('ru-RU', {
     deepResearchDomains: 'Домены',
     deepResearchObjectMap: 'Карта объектов',
     deepResearchBackToTask: 'Посмотреть результат',
-    taskLoop: 'Цикл Ralph',
+    taskLoop: 'Умное продолжение',
     alwaysOn: 'Авто',
     deepResearchHoverDescription:
       'Zapustite strukturirovannyy issledovatelskiy protsess s polucheniem dannykh, proverkoy, otslezhivaemymi zapuskami i svyazannymi detalyami zapuskov.',
@@ -582,7 +582,7 @@ export default mergeHarnessLocale('ru-RU', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Позвольте агенту планировать, использовать инструменты, вносить изменения и продолжать итерации, пока задача не будет аккуратно доведена до результата.',
+      'Позвольте агенту планировать, использовать инструменты, вносить изменения и продолжать итерации, пока задача не будет аккуратно доведена до результата. Вдохновлено упорной настойчивостью Ральфа.',
     ralphLoopHoverPlan: 'План',
     ralphLoopHoverAct: 'Действие',
     ralphLoopHoverCheck: 'Проверка',

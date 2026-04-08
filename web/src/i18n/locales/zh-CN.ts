@@ -558,7 +558,7 @@ export default mergeHarnessLocale('zh-CN', {
     deepResearchDomains: '域名数',
     deepResearchObjectMap: '对象地图',
     deepResearchBackToTask: '查看结果',
-    taskLoop: 'Ralph 循环',
+    taskLoop: '智能续跑',
     alwaysOn: '自动开启',
     deepResearchHoverDescription:
       '发起结构化研究流程，完成检索、核验、可追踪运行记录与运行详情查看。',
@@ -571,7 +571,8 @@ export default mergeHarnessLocale('zh-CN', {
     analyzeReportHoverTagRecommendations: '建议',
     analyzeReportPrompt:
       '请生成一份结构化分析报告。\n- 主题：\n- 来源链接、文件或输入文本：\n- 希望重点覆盖的问题、对比项或结论：',
-    ralphLoopHoverDescription: '让 Agent 自主规划、调用工具、落地修改，并在任务完成前持续迭代。',
+    ralphLoopHoverDescription:
+      '让 Agent 自主规划、调用工具、落地修改，并在任务完成前持续迭代。源自坚持执着的拉尔夫。',
     ralphLoopHoverPlan: '规划',
     ralphLoopHoverAct: '执行',
     ralphLoopHoverCheck: '复核',
@@ -584,6 +585,8 @@ export default mergeHarnessLocale('zh-CN', {
       '请做一次 UI 评估，并输出清晰的问题清单与改进建议。\n- 页面地址或截图：\n- 目标设备：桌面端 / 移动端\n- 关注点：视觉层级、交互流程、可访问性',
     showShortcutDetails: '查看说明',
     hideShortcutDetails: '收起说明',
+    mobileFeatureEnableSmartResume: '开启智能续跑',
+    mobileFeatureDisableSmartResume: '关闭智能续跑',
     taskCancelled: '任务已取消',
     waitingThinking: '思考中...',
     awaitingConfirmation: '等待你的确认以继续',

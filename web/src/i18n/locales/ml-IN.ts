@@ -565,7 +565,7 @@ export default mergeHarnessLocale('ml-IN', {
     deepResearchDomains: 'ഡൊമെയ്‌നുകൾ',
     deepResearchObjectMap: 'ഒബ്ജക്റ്റ് മാപ്പ്',
     deepResearchBackToTask: 'ഫലം കാണുക',
-    taskLoop: 'Ralph ലൂപ്പ്',
+    taskLoop: 'സ്മാർട്ട് തുടർച്ച',
     alwaysOn: 'ഓട്ടോ',
     deepResearchHoverDescription:
       'ശേഖരണം, സ്ഥിരീകരണം, പിന്തുടരാവുന്ന റൺകൾ, ബന്ധിപ്പിച്ച റൺ വിശദാംശങ്ങൾ എന്നിവയുള്ള ഘടനാപരമായ ഗവേഷണ പ്രവാഹം ആരംഭിക്കുക.',
@@ -579,7 +579,7 @@ export default mergeHarnessLocale('ml-IN', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'ഏജന്റിന് പദ്ധതിയിടാനും, ഉപകരണങ്ങൾ ഉപയോഗിക്കാനും, മാറ്റങ്ങൾ പ്രയോഗിക്കാനും, ജോലി വൃത്തിയായി പൂർത്തിയാകുന്നതുവരെ ആവർത്തിച്ച് തുടരാനും അനുവദിക്കുക.',
+      'ഏജന്റിന് പദ്ധതിയിടാനും, ഉപകരണങ്ങൾ ഉപയോഗിക്കാനും, മാറ്റങ്ങൾ പ്രയോഗിക്കാനും, ജോലി വൃത്തിയായി പൂർത്തിയാകുന്നതുവരെ ആവർത്തിച്ച് തുടരാനും അനുവദിക്കുക. റാൽഫിന്റെ ഉറച്ച പിടിവാശിയിലുള്ള സ്ഥിരതയിൽ നിന്ന് പ്രചോദനം നേടിയതാണ്.',
     ralphLoopHoverPlan: 'പദ്ധതി',
     ralphLoopHoverAct: 'നടപടി',
     ralphLoopHoverCheck: 'പരിശോധനം',

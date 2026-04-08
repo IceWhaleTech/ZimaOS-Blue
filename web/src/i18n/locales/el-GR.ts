@@ -569,7 +569,7 @@ export default mergeHarnessLocale('el-GR', {
     deepResearchDomains: 'Τομείς',
     deepResearchObjectMap: 'Χάρτης αντικειμένων',
     deepResearchBackToTask: 'Προβολή αποτελέσματος',
-    taskLoop: 'Βρόχος Ralph',
+    taskLoop: 'Έξυπνη συνέχιση',
     alwaysOn: 'Αυτόματο',
     deepResearchHoverDescription:
       'Ekiniste mia domimeni ro i erevnas me ανάκτηση, epivevaiosi, ichnilates ekteleseis kai syndedemena stoixeia ekteleseon.',
@@ -583,7 +583,7 @@ export default mergeHarnessLocale('el-GR', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Αφήστε τον agent να σχεδιάσει, να χρησιμοποιήσει εργαλεία, να εφαρμόσει αλλαγές και να συνεχίσει να επαναλαμβάνει μέχρι να ολοκληρωθεί καθαρά η εργασία.',
+      'Αφήστε τον agent να σχεδιάσει, να χρησιμοποιήσει εργαλεία, να εφαρμόσει αλλαγές και να συνεχίσει να επαναλαμβάνει μέχρι να ολοκληρωθεί καθαρά η εργασία. Εμπνευσμένο από την ακούραστη επιμονή του Ralph.',
     ralphLoopHoverPlan: 'Σχεδιασμός',
     ralphLoopHoverAct: 'Εκτέλεση',
     ralphLoopHoverCheck: 'Έλεγχος',

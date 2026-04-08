@@ -953,6 +953,7 @@ Not all LLM APIs support tool calling (function calling). This feature automatic
 
 For APIs that don't support native tool calling, CLIProxy converts tool calls to prompt-based interactions:
 
+{% raw %}
 ```go
 // CLIProxyAdapter converts tool calls to prompt-based format
 type CLIProxyAdapter struct {
@@ -977,6 +978,7 @@ func (a *CLIProxyAdapter) ToolCall(ctx context.Context, req *ToolCallRequest) (*
     return a.parseToolResponse(resp.Content)
 }
 ```
+{% endraw %}
 
 ### ccNexus Adapter
 

@@ -565,7 +565,7 @@ export default mergeHarnessLocale('sv-SE', {
     deepResearchDomains: 'Domäner',
     deepResearchObjectMap: 'Objektkarta',
     deepResearchBackToTask: 'Visa resultat',
-    taskLoop: 'Ralph-loop',
+    taskLoop: 'Smart återupptagning',
     alwaysOn: 'Automatisk',
     deepResearchHoverDescription:
       'Starta ett strukturerat forskningsflode med hamtning, verifiering, sparbara korningar och lankade korningsdetaljer.',
@@ -579,7 +579,7 @@ export default mergeHarnessLocale('sv-SE', {
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
     ralphLoopHoverDescription:
-      'Låt agenten planera, använda verktyg, tillämpa ändringar och fortsätta iterera tills uppgiften landar rent.',
+      'Låt agenten planera, använda verktyg, tillämpa ändringar och fortsätta iterera tills uppgiften landar rent. Inspirerad av Ralphs envisa uthållighet.',
     ralphLoopHoverPlan: 'Planera',
     ralphLoopHoverAct: 'Agera',
     ralphLoopHoverCheck: 'Kontrollera',

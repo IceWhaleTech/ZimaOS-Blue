@@ -1,0 +1,71 @@
+---
+title: "部署"
+summary: "如何通过 GitHub Pages 发布文档站，以及当前仓库已经自动化了哪些步骤。"
+---
+
+# 部署
+
+ZimaOS Blue 的文档站当前按 **GitHub Pages + GitHub Actions** 的方式准备。
+
+## 仓库里已经具备的内容
+
+- `docs-site/docusaurus.config.ts` 站点配置
+- `docs/` 作为文档正文根目录
+- 英文主文档与扩展后的简体中文镜像页
+- `docs/assets` 下的静态图片资源
+- 本地构建校验命令 `npm --prefix docs-site run build`
+- 文档相关改动在 `main` 上自动部署到 GitHub Pages
+
+## 推荐部署方式
+
+当前仓库的标准流程是：
+
+1. 打开仓库的 `Settings -> Pages`
+2. 把 `Build and deployment` 设置为 `GitHub Actions`
+3. 保持发布分支为 `main`
+4. 让 `.github/workflows/docs.yml` 负责构建和部署
+5. 后续按需绑定自定义域名
+
+## 为什么这里使用 Pages 官方工作流
+
+这里明确使用 GitHub Pages 官方推荐的三步动作来发布 `docs-site/build`：
+
+- `actions/configure-pages`
+- `actions/upload-pages-artifact`
+- `actions/deploy-pages`
+
+这样部署链路完全保留在仓库里，便于审查、复现和后续维护。
+
+## 发布前检查
+
+在启用或重跑部署前，建议确认：
+
+- `npm --prefix docs-site ci` 成功
+- `npm --prefix docs-site run build` 成功
+- 仓库 `Settings -> Pages` 已设置为 `GitHub Actions`
+- Navbar 里的 GitHub、Releases、DeepWiki 链接正确
+- 默认分支包含最新文档内容
+
+## 本地校验
+
+```bash
+npm --prefix docs-site ci
+npm --prefix docs-site run build
+```
+
+## 建议 rollout 顺序
+
+- 先在仓库里启用 GitHub Pages
+- 合并文档改动到 `main`
+- 验证英文首页和 `/zh-CN/` 中文入口
+- 后续按需绑定生产域名
+- 域名稳定后，把 `README.md` 里的文档入口换成公开文档 URL
+
+## 日常文档更新建议
+
+当你新增页面、导航或功能说明时：
+
+1. 先跑 `npm --prefix docs-site run build`
+2. 确认英文与简体中文导航在有镜像时保持一致
+3. 打开或更新 PR，让 CI 构建站点
+4. 合并到 `main` 后由 GitHub Pages 自动发布
