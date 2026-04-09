@@ -377,7 +377,7 @@ func NewFileWriteBeginTool(allowedPaths []string, sessions *WriteSessionManager)
 func (t *FileWriteBeginTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "write_begin",
-		Description: "Starts a transactional multi-part file write. Use this for very large files before sending repeated write_chunk calls and a final write_commit.",
+		Description: "Starts a transactional multi-part file write. Use this when the output would exceed 200 lines or 32 KiB in a single call, then send repeated write_chunk calls and a final write_commit.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -426,6 +426,7 @@ func (t *FileWriteBeginTool) Execute(ctx context.Context, args map[string]interf
 		"original_path":   session.OriginalPath,
 		"success":         true,
 		"max_chunk_bytes": maxFileWriteChunkBytes,
+		"max_chunk_lines": maxFileWriteChunkLines,
 		"max_total_bytes": t.sessions.maxFileSize,
 		"transactional":   true,
 	})
@@ -455,7 +456,7 @@ func optionalWriteSessionIDArg(args map[string]interface{}) (string, error) {
 func (t *FileWriteChunkTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "write_chunk",
-		Description: "Appends one chunk to an active transactional file write session started by write_begin.",
+		Description: "Appends one chunk to an active transactional file write session started by write_begin. Keep each chunk at or below 200 lines and 32 KiB.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -466,7 +467,7 @@ func (t *FileWriteChunkTool) Definition() ToolDefinition {
 				},
 				"content": map[string]interface{}{
 					"type":        "string",
-					"description": "One chunk of text content to append",
+					"description": "One chunk of text content to append. Keep each chunk at or below 200 lines and 32 KiB.",
 				},
 			},
 			"required": []string{"session_id", "content"},
@@ -483,8 +484,8 @@ func (t *FileWriteChunkTool) Execute(ctx context.Context, args map[string]interf
 	if err != nil {
 		return nil, errors.New("content must be text-compatible (string, number, boolean, object, or array)")
 	}
-	if len(content) > maxFileWriteChunkBytes {
-		return nil, fmt.Errorf("content chunk too large: %d bytes (max: %d bytes per write_chunk); split into smaller chunks", len(content), maxFileWriteChunkBytes)
+	if err := validateWriteContentChunk(content, "write_chunk", "split into smaller chunks"); err != nil {
+		return nil, err
 	}
 
 	session, err := t.sessions.Append(sessionID, GetUserID(ctx), content)

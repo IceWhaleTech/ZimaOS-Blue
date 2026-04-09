@@ -390,6 +390,68 @@ func TestDeepResearchCard_PrefersJobIDForStableID(t *testing.T) {
 	}
 }
 
+func TestDeepResearchCard_ResearchAliasUsesDedicatedFormatter(t *testing.T) {
+	content := `{"job_id":"job-99","query":"Aristotle works","mode":"deep_research","answer":"summary","confidence":0.77,"evidence_count":15}`
+	card := ToCard("research", content)
+	if card == nil {
+		t.Fatal("expected non-nil deep-research card for research alias")
+	}
+	if got := card["type"]; got != "deep-research" {
+		t.Fatalf("type=%v, want deep-research", got)
+	}
+	if got := card["id"]; got != "deep-research-job-99" {
+		t.Fatalf("id=%v, want deep-research-job-99", got)
+	}
+}
+
+func TestResearchAlias_AnalyzeModeUsesAnalyzeCard(t *testing.T) {
+	content := `{"job_id":"job-analyze-1","query":"Competitive pricing snapshot","mode":"analyze","report":{"topic":"Competitive pricing snapshot","answer":"summary","output_mode":"report","report_url":"/reports/pricing.html","report_style":"briefing"}}`
+	card := ToCard("research", content)
+	if card == nil {
+		t.Fatal("expected non-nil analyze card for research alias")
+	}
+	if got := card["type"]; got != "analyze" {
+		t.Fatalf("type=%v, want analyze", got)
+	}
+	if got := card["title"]; got != "Competitive pricing snapshot" {
+		t.Fatalf("title=%v, want Competitive pricing snapshot", got)
+	}
+	if got := card["report_url"]; got != "/reports/pricing.html" {
+		t.Fatalf("report_url=%v, want /reports/pricing.html", got)
+	}
+}
+
+func TestResearchAlias_UIReviewModeUsesUIReviewCard(t *testing.T) {
+	content := `{"job_id":"job-ui-1","query":"https://example.com/pricing","mode":"ui_review","report":{"url":"https://example.com/pricing","overall":80,"pass":true,"issues":[],"suggestions":[]}}`
+	card := ToCard("research", content)
+	if card == nil {
+		t.Fatal("expected non-nil ui-review card for research alias")
+	}
+	if got := card["type"]; got != "ui-review" {
+		t.Fatalf("type=%v, want ui-review", got)
+	}
+	if got := card["url"]; got != "https://example.com/pricing" {
+		t.Fatalf("url=%v, want https://example.com/pricing", got)
+	}
+	if got := card["pass"]; got != true {
+		t.Fatalf("pass=%v, want true", got)
+	}
+}
+
+func TestResearchStatusAlias_UsesCanonicalUnderscoreDispatch(t *testing.T) {
+	content := `{"job_id":"job-100","query":"Aristotle works","mode":"deep_research","answer":"summary","confidence":0.77,"evidence_count":15}`
+	card := ToCard("research_status", content)
+	if card == nil {
+		t.Fatal("expected non-nil deep-research card for research_status alias")
+	}
+	if got := card["type"]; got != "deep-research" {
+		t.Fatalf("type=%v, want deep-research", got)
+	}
+	if got := card["id"]; got != "deep-research-job-100" {
+		t.Fatalf("id=%v, want deep-research-job-100", got)
+	}
+}
+
 func TestAnalyzeCard_StableID(t *testing.T) {
 	content := `{"topic":"Market analysis","report_url":"/reports/r1.html"}`
 	card := ToCard("analyze", content)

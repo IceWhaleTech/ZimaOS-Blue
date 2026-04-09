@@ -2314,6 +2314,7 @@ func parseFloatArg(v interface{}, defaultVal float64) float64 {
 // to start at a word boundary or after whitespace/quotes.
 var absPathRe = regexp.MustCompile(`(?:^|[\s"'=])(/(?:[a-zA-Z0-9._~-]+/)*[a-zA-Z0-9._~-]+)`)
 var redirectionPrefixRe = regexp.MustCompile(`^(?:\d*>>?|\d*<<?|&>>?|&>)`)
+var heredocStartRe = regexp.MustCompile(`<<-?\s*(?:'([^'\r\n]+)'|"([^"\r\n]+)"|([^\s<>|&;()]+))`)
 
 // urlLikePathPrefixes are path prefixes that look like URL routes, not filesystem paths.
 // Paths starting with these are skipped by extractAbsolutePaths.
@@ -2327,6 +2328,7 @@ var urlLikePathPrefixes = []string{
 // command string. These are checked against the directory allowlist — the
 // prefix-based matching in isDirAllowed handles both file and directory paths.
 func extractAbsolutePaths(command string) []string {
+	command = stripHeredocBodies(command)
 	seen := make(map[string]struct{})
 	var paths []string
 
@@ -2357,6 +2359,7 @@ func extractAbsolutePaths(command string) []string {
 // workdir. It also tracks simple `cd <dir>` chains so later segments resolve
 // relative paths against the updated cwd.
 func extractCommandPaths(command, workdir string) []string {
+	command = stripHeredocBodies(command)
 	workdir = strings.TrimSpace(workdir)
 	if workdir == "" {
 		if cwd, err := os.Getwd(); err == nil {
@@ -2393,6 +2396,56 @@ func extractCommandPaths(command, workdir string) []string {
 		}
 	}
 	return paths
+}
+
+type heredocDelimiter struct {
+	value     string
+	allowTabs bool
+}
+
+func stripHeredocBodies(command string) string {
+	if strings.TrimSpace(command) == "" {
+		return command
+	}
+	normalized := strings.ReplaceAll(command, "\r\n", "\n")
+	lines := strings.Split(normalized, "\n")
+	if len(lines) <= 1 {
+		return normalized
+	}
+
+	out := make([]string, 0, len(lines))
+	pending := make([]heredocDelimiter, 0, 2)
+
+	for _, line := range lines {
+		if len(pending) > 0 {
+			candidate := line
+			if pending[0].allowTabs {
+				candidate = strings.TrimLeft(candidate, "\t")
+			}
+			if candidate == pending[0].value {
+				pending = pending[1:]
+			}
+			continue
+		}
+
+		out = append(out, line)
+		matches := heredocStartRe.FindAllStringSubmatch(line, -1)
+		for _, match := range matches {
+			if len(match) < 4 {
+				continue
+			}
+			delimiter := strings.TrimSpace(nonEmpty(match[1], nonEmpty(match[2], match[3])))
+			if delimiter == "" {
+				continue
+			}
+			pending = append(pending, heredocDelimiter{
+				value:     delimiter,
+				allowTabs: strings.HasPrefix(match[0], "<<-"),
+			})
+		}
+	}
+
+	return strings.Join(out, "\n")
 }
 
 func splitPipelineForPathExtraction(command string) []string {
@@ -2513,6 +2566,9 @@ func isBlueSlashCommandToken(commandName string, index int, token string) bool {
 func normalizeCommandPathToken(token string, cwd string, allowBare bool) string {
 	token = strings.TrimSpace(token)
 	if token == "" {
+		return ""
+	}
+	if strings.ContainsAny(token, "\r\n") {
 		return ""
 	}
 	token = redirectionPrefixRe.ReplaceAllString(token, "")

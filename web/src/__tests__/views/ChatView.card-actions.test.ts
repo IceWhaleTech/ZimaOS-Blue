@@ -555,7 +555,7 @@ function makeAgentcoreRunnerLastRun(overrides: Record<string, unknown> = {}) {
   }
 }
 
-async function mountChatViewWithMessages(
+async function mountChatViewWithMessagesHarness(
   messages: Array<{
     id: string
     content: string
@@ -600,6 +600,19 @@ async function mountChatViewWithMessages(
   await vi.dynamicImportSettled()
   await flushPromises()
   mountedWrappers.push(wrapper)
+  return { wrapper, router }
+}
+
+async function mountChatViewWithMessages(
+  messages: Array<{
+    id: string
+    content: string
+    role?: 'assistant' | 'user'
+    todo_card_id?: string
+    extra?: Record<string, unknown>
+  }>
+) {
+  const { wrapper } = await mountChatViewWithMessagesHarness(messages)
   return wrapper
 }
 
@@ -1244,6 +1257,52 @@ describe('ChatView page-level card actions', () => {
     expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
     expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
+  })
+
+  it('persists the selected desktop conversation in the route query so refresh can restore task controls', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.currentConversation = {
+      id: 'conv-1',
+      title: 'Test conversation',
+      created_at: '2026-03-08T00:00:00.000Z',
+      updated_at: '2026-03-08T00:00:00.000Z',
+    }
+    mocks.chatStore.sortedConversations = [
+      {
+        id: 'conv-1',
+        title: 'Test conversation',
+        created_at: '2026-03-08T00:00:00.000Z',
+        updated_at: '2026-03-08T00:00:00.000Z',
+      },
+      {
+        id: 'conv-2',
+        title: 'Other conversation',
+        created_at: '2026-03-08T00:00:01.000Z',
+        updated_at: '2026-03-08T00:00:01.000Z',
+      },
+    ]
+    mocks.chatStore.selectConversation.mockImplementation(async (id: string) => {
+      mocks.chatStore.currentConversationId = id
+      mocks.chatStore.currentConversation = {
+        id,
+        title: id === 'conv-1' ? 'Test conversation' : 'Other conversation',
+        created_at: '2026-03-08T00:00:00.000Z',
+        updated_at: '2026-03-08T00:00:01.000Z',
+      }
+    })
+
+    const { wrapper, router } = await mountChatViewWithMessagesHarness([
+      { id: 'msg-routing', content: 'Keep the selected conversation on refresh.' },
+    ])
+
+    const convoButtons = wrapper.findAll('.conversation-select-stub')
+    expect(convoButtons).toHaveLength(2)
+
+    await convoButtons[1]!.trigger('click')
+    await flushPromises()
+
+    expect(mocks.chatStore.selectConversation).toHaveBeenCalledWith('conv-2')
+    expect(router.currentRoute.value.fullPath).toBe('/chat?conversationId=conv-2')
   })
 
   it('keeps conversation running badges for local streams, agent tasks, and deep research jobs', async () => {

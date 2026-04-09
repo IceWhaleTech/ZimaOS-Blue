@@ -187,11 +187,16 @@ func normalizeCardToolName(toolName string) string {
 	if strings.HasPrefix(name, "browser.") {
 		return "browser"
 	}
+	// Canonical tool identifiers stay underscore-separated. Hyphenated spellings
+	// are compatibility-only inputs that should normalize to the underscore form
+	// before card dispatch.
 	switch name {
 	case "web-fetch":
 		return "web_fetch"
 	case "deep-research":
 		return "deep_research"
+	case "research_run", "research_status":
+		return "research"
 	case "file-read":
 		return "file_read"
 	case "file-write":
@@ -409,7 +414,9 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return webFetchCard(content)
 	case "web_search":
 		return webSearchCard(content)
-	case "deep_research", "deep-research":
+	case "research":
+		return researchCard(content)
+	case "deep_research":
 		return deepResearchCard(content)
 	case "ui_reviewer":
 		return uiReviewCard(content)
@@ -1065,6 +1072,132 @@ func deepResearchCard(content string) map[string]interface{} {
 		}
 	}
 	return card
+}
+
+func researchCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+
+	merged := flattenResearchCardPayload(data)
+	mode := detectResearchCardMode(merged)
+
+	switch mode {
+	case "analyze":
+		if strings.TrimSpace(formatValue(merged["topic"])) == "" {
+			if query := strings.TrimSpace(formatValue(merged["query"])); query != "" {
+				merged["topic"] = query
+			}
+		}
+		if encoded, err := json.Marshal(merged); err == nil {
+			if card := analyzeCard(string(encoded)); card != nil {
+				return card
+			}
+		}
+	case "ui_review":
+		if strings.TrimSpace(formatValue(merged["url"])) == "" {
+			if query := strings.TrimSpace(formatValue(merged["query"])); query != "" {
+				merged["url"] = query
+			}
+		}
+		if encoded, err := json.Marshal(merged); err == nil {
+			if card := uiReviewCard(string(encoded)); card != nil {
+				return card
+			}
+		}
+	case "deep_research":
+		if encoded, err := json.Marshal(merged); err == nil {
+			if card := deepResearchCard(string(encoded)); card != nil {
+				return card
+			}
+		}
+	}
+
+	return GenericCard("research", content)
+}
+
+func flattenResearchCardPayload(data map[string]interface{}) map[string]interface{} {
+	merged := make(map[string]interface{}, len(data)+8)
+	for key, value := range data {
+		if key == "report" {
+			continue
+		}
+		merged[key] = value
+	}
+	report, ok := data["report"].(map[string]interface{})
+	if !ok {
+		return merged
+	}
+	for key, value := range report {
+		merged[key] = value
+	}
+	return merged
+}
+
+func detectResearchCardMode(data map[string]interface{}) string {
+	mode := normalizeResearchModeValue(formatValue(data["mode"]))
+	switch mode {
+	case "analyze":
+		return "analyze"
+	case "ui_review":
+		return "ui_review"
+	case "deep_research", "deep", "standard", "fast":
+		return "deep_research"
+	}
+	if strings.TrimSpace(formatValue(data["research_depth"])) != "" {
+		return "deep_research"
+	}
+	for _, key := range []string{
+		"citations",
+		"citation_coverage",
+		"verification_summary",
+		"research_trace",
+		"timeline_sections",
+		"open_questions",
+		"support_count",
+		"conflict_count",
+		"has_conflict",
+	} {
+		if _, ok := data[key]; ok {
+			return "deep_research"
+		}
+	}
+	for _, key := range []string{
+		"overall",
+		"pass",
+		"issues",
+		"suggestions",
+		"viewports",
+		"visual",
+		"functional",
+		"accessibility",
+		"url",
+	} {
+		if _, ok := data[key]; ok {
+			return "ui_review"
+		}
+	}
+	for _, key := range []string{
+		"topic",
+		"analysis",
+		"output_mode",
+		"report_url",
+		"report_template_version",
+	} {
+		if _, ok := data[key]; ok {
+			return "analyze"
+		}
+	}
+	return ""
+}
+
+func normalizeResearchModeValue(raw string) string {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	if normalized == "" {
+		return ""
+	}
+	return strings.ReplaceAll(normalized, "-", "_")
 }
 
 func deepResearchCardID(data map[string]interface{}) string {

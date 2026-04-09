@@ -15,6 +15,8 @@ func setupTestRetentionManager(t *testing.T) (*RetentionManager, *sql.DB, func()
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	// Create audit_logs table
 	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS audit_logs (
@@ -67,6 +69,8 @@ func TestNewRetentionManager_DefaultConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	defer db.Close()
 
 	manager := NewRetentionManager(db, nil)

@@ -2407,6 +2407,10 @@ func TestExtractAbsolutePaths(t *testing.T) {
 		{"cd /var/log && cat syslog", []string{"/var/log"}},
 		{"echo /dev/null", nil}, // /dev/null skipped
 		{"ls /foo/bar /baz/qux", []string{"/foo/bar", "/baz/qux"}},
+		{
+			"cat > /Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js << 'STORE_EOF'\n</StoreContext.Provider>\nSTORE_EOF",
+			[]string{"/Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js"},
+		},
 	}
 	for _, tt := range tests {
 		got := extractAbsolutePaths(tt.command)
@@ -2441,6 +2445,17 @@ func TestExtractCommandPaths(t *testing.T) {
 		{name: "redirect", command: "echo ok > ../out.txt", want: []string{filepath.Join(parentDir, "out.txt")}},
 		{name: "option assignment", command: "tool --output=./report.txt", want: []string{filepath.Join(workdir, "report.txt")}},
 		{name: "blue slash command", command: "blue /install humanizer", want: nil},
+		{
+			name: "ignores malformed jsx-like absolute tokens",
+			command: `cat > /Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js << 'STORE_EOF'
+return (
+  <StoreContext.Provider value={{ state, actions }}>
+    {children}
+  </StoreContext.Provider>
+)
+STORE_EOF`,
+			want: []string{"/Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js"},
+		},
 	}
 
 	for _, tt := range tests {

@@ -1775,6 +1775,68 @@ func TestTransactionalWriteToolsRejectOversizedChunk(t *testing.T) {
 	}
 }
 
+func TestTransactionalWriteToolsRejectTooManyLineChunk(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewWriteSessionManager(0)
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, manager)
+	chunkTool := NewFileWriteChunkTool(manager)
+
+	beginResult, err := beginTool.Execute(context.Background(), map[string]interface{}{
+		"path": filepath.Join(tmpDir, "too-many-lines.txt"),
+	})
+	if err != nil {
+		t.Fatalf("write_begin failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(beginResult.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	sessionID, _ := beginPayload["session_id"].(string)
+
+	_, err = chunkTool.Execute(context.Background(), map[string]interface{}{
+		"session_id": sessionID,
+		"content":    strings.Repeat("line\n", maxFileWriteChunkLines+1),
+	})
+	if err == nil {
+		t.Fatal("expected oversized line chunk to fail")
+	}
+	if !strings.Contains(err.Error(), "200 lines") {
+		t.Fatalf("expected line-limit guidance, got %v", err)
+	}
+}
+
+func TestTransactionalWriteToolsRejectSuspiciousTruncatedMarker(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewWriteSessionManager(0)
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, manager)
+	chunkTool := NewFileWriteChunkTool(manager)
+
+	beginResult, err := beginTool.Execute(context.Background(), map[string]interface{}{
+		"path": filepath.Join(tmpDir, "suspicious.txt"),
+	})
+	if err != nil {
+		t.Fatalf("write_begin failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(beginResult.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	sessionID, _ := beginPayload["session_id"].(string)
+
+	_, err = chunkTool.Execute(context.Background(), map[string]interface{}{
+		"session_id": sessionID,
+		"content":    "alpha\n[truncated]",
+	})
+	if err == nil {
+		t.Fatal("expected suspicious truncated marker to fail")
+	}
+	if !strings.Contains(err.Error(), "[truncated]") {
+		t.Fatalf("expected truncated-marker guidance, got %v", err)
+	}
+}
+
 func TestTransactionalWriteToolsAbort(t *testing.T) {
 	tmpDir := t.TempDir()
 	manager := NewWriteSessionManager(0)
@@ -2200,6 +2262,61 @@ func TestFileWriteToolChunkTooLargeSuggestsAppend(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "split into smaller chunks") {
 		t.Fatalf("expected chunking guidance, got %v", err)
+	}
+}
+
+func TestFileWriteToolRejectsTooManyLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := strings.Repeat("line\n", maxFileWriteChunkLines+1)
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    filepath.Join(tmpDir, "too-many-lines.txt"),
+		"content": content,
+	})
+	if err == nil {
+		t.Fatal("expected error for oversized line count")
+	}
+	if !strings.Contains(err.Error(), "200 lines") {
+		t.Fatalf("expected line-limit guidance, got %v", err)
+	}
+}
+
+func TestFileWriteToolAllowsExactlyMaxChunkLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	content := strings.Repeat("line\n", maxFileWriteChunkLines)
+	target := filepath.Join(tmpDir, "max-lines.txt")
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    target,
+		"content": content,
+	}); err != nil {
+		t.Fatalf("expected exact line-limit write to succeed: %v", err)
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	if got != content {
+		t.Fatalf("content = %q, want %q", got, content)
+	}
+}
+
+func TestFileWriteToolRejectsSuspiciousTruncatedMarker(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    filepath.Join(tmpDir, "suspicious.txt"),
+		"content": "alpha\n[truncated]",
+	})
+	if err == nil {
+		t.Fatal("expected suspicious truncated marker to fail")
+	}
+	if !strings.Contains(err.Error(), "[truncated]") {
+		t.Fatalf("expected truncated-marker guidance, got %v", err)
 	}
 }
 

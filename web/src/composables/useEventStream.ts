@@ -4,6 +4,7 @@ import { useNotificationStore } from '@/stores/notification'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useSettingsStore } from '@/stores/settings'
 import { i18n } from '@/i18n'
+import router from '@/router'
 import { getStoredAccessToken } from '@/utils/authStorage'
 import { consumeSSEJsonStream } from '@/utils/sseStream'
 
@@ -155,7 +156,10 @@ export function useEventStream() {
             toastOpts.action = {
               label: t('push.viewConversation'),
               handler: () => {
-                chatStore.selectConversation(data.conversation_id)
+                void router.push({
+                  name: 'Chat',
+                  query: { conversationId: data.conversation_id },
+                })
               },
             }
           }

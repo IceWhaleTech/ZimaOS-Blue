@@ -1844,11 +1844,26 @@ async function handleSelectConversation(id: string) {
   await chatStore.selectConversation(id)
   chatStore.resetWarmup()
   chatInputRef.value?.resetWarmup?.()
+  const normalizedConversationId = normalizeConversationRouteParam(id)
+  const currentRouteConversationId = normalizeConversationRouteParam(route.query.conversationId)
+  if (normalizedConversationId && normalizedConversationId !== currentRouteConversationId) {
+    const nextQuery = {
+      ...route.query,
+      conversationId: normalizedConversationId,
+    }
+    if (isMobile.value) {
+      mobileAnimationEnabled.value = true
+      pageStack.value.push(id)
+      // Keep query param for deep-link restore on reload.
+      await router.push({ query: nextQuery })
+    } else {
+      await router.replace({ query: nextQuery })
+    }
+    return
+  }
   if (isMobile.value) {
     mobileAnimationEnabled.value = true
     pageStack.value.push(id)
-    // Keep query param for deep-link restore on reload.
-    await router.push({ query: { conversationId: id } })
   }
 }
 

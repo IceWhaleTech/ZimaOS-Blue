@@ -37,11 +37,20 @@ type VoiceProcessTraceTerms = {
   transcriptionFailed: string
 }
 
+type ProcessTraceEventTerms = {
+  providerResolved: string
+  processing: string
+}
+
 function makeTerms(terms: ProcessTraceTerms): ProcessTraceTerms {
   return terms
 }
 
 function makeVoiceTerms(terms: VoiceProcessTraceTerms): VoiceProcessTraceTerms {
+  return terms
+}
+
+function makeEventTerms(terms: ProcessTraceEventTerms): ProcessTraceEventTerms {
   return terms
 }
 
@@ -1027,9 +1036,121 @@ const voiceProcessTraceTerms: Record<LocaleKey, VoiceProcessTraceTerms> = {
   }),
 }
 
+const processTraceEventTerms: Record<LocaleKey, ProcessTraceEventTerms> = {
+  'ca-ES': makeEventTerms({
+    providerResolved: "S'utilitza una ruta disponible",
+    processing: 'Processant',
+  }),
+  'cs-CZ': makeEventTerms({
+    providerResolved: 'Používá se dostupná trasa',
+    processing: 'Zpracovává se',
+  }),
+  'da-DK': makeEventTerms({
+    providerResolved: 'Bruger en tilgængelig rute',
+    processing: 'Behandler',
+  }),
+  'de-DE': makeEventTerms({
+    providerResolved: 'Verfügbare Route wird verwendet',
+    processing: 'Wird verarbeitet',
+  }),
+  'el-GR': makeEventTerms({
+    providerResolved: 'Χρήση διαθέσιμης διαδρομής',
+    processing: 'Σε επεξεργασία',
+  }),
+  'en-GB': makeEventTerms({
+    providerResolved: 'Using available route',
+    processing: 'Processing',
+  }),
+  'en-US': makeEventTerms({
+    providerResolved: 'Using available route',
+    processing: 'Processing',
+  }),
+  'es-ES': makeEventTerms({
+    providerResolved: 'Usando una ruta disponible',
+    processing: 'Procesando',
+  }),
+  'fr-FR': makeEventTerms({
+    providerResolved: "Utilisation d'une route disponible",
+    processing: 'Traitement',
+  }),
+  'ga-IE': makeEventTerms({
+    providerResolved: 'Ag úsáid bealaigh atá ar fáil',
+    processing: 'Á phróiseáil',
+  }),
+  'hr-HR': makeEventTerms({
+    providerResolved: 'Korištenje dostupne rute',
+    processing: 'Obrada',
+  }),
+  'hu-HU': makeEventTerms({
+    providerResolved: 'Elérhető útvonal használata',
+    processing: 'Feldolgozás',
+  }),
+  'it-IT': makeEventTerms({
+    providerResolved: 'Uso di un percorso disponibile',
+    processing: 'Elaborazione',
+  }),
+  'ja-JP': makeEventTerms({
+    providerResolved: '利用可能なルートを使用中',
+    processing: '処理中',
+  }),
+  'ko-KR': makeEventTerms({
+    providerResolved: '사용 가능한 경로 사용 중',
+    processing: '처리 중',
+  }),
+  'ml-IN': makeEventTerms({
+    providerResolved: 'ലഭ്യമായ റൂട്ട് ഉപയോഗിക്കുന്നു',
+    processing: 'പ്രോസസ്സിംഗ്',
+  }),
+  'nb-NO': makeEventTerms({
+    providerResolved: 'Bruker tilgjengelig rute',
+    processing: 'Behandler',
+  }),
+  'nl-NL': makeEventTerms({
+    providerResolved: 'Beschikbare route in gebruik',
+    processing: 'Bezig met verwerken',
+  }),
+  'pl-PL': makeEventTerms({
+    providerResolved: 'Korzystanie z dostępnej trasy',
+    processing: 'Przetwarzanie',
+  }),
+  'pt-BR': makeEventTerms({
+    providerResolved: 'Usando rota disponível',
+    processing: 'Processando',
+  }),
+  'pt-PT': makeEventTerms({
+    providerResolved: 'A usar rota disponível',
+    processing: 'A processar',
+  }),
+  'ro-RO': makeEventTerms({
+    providerResolved: 'Se folosește o rută disponibilă',
+    processing: 'În procesare',
+  }),
+  'ru-RU': makeEventTerms({
+    providerResolved: 'Используется доступный маршрут',
+    processing: 'Обработка',
+  }),
+  'sk-SK': makeEventTerms({
+    providerResolved: 'Používa sa dostupná trasa',
+    processing: 'Spracováva sa',
+  }),
+  'sv-SE': makeEventTerms({
+    providerResolved: 'Använder tillgänglig rutt',
+    processing: 'Bearbetar',
+  }),
+  'zh-CN': makeEventTerms({
+    providerResolved: '已选定可用路由',
+    processing: '处理中',
+  }),
+  'zh-TW': makeEventTerms({
+    providerResolved: '已選定可用路由',
+    processing: '處理中',
+  }),
+}
+
 function buildProcessTracePatch(
   terms: ProcessTraceTerms,
-  voiceTerms: VoiceProcessTraceTerms
+  voiceTerms: VoiceProcessTraceTerms,
+  eventTerms: ProcessTraceEventTerms
 ): object {
   return {
     chat: {
@@ -1061,6 +1182,8 @@ function buildProcessTracePatch(
           requestSent: terms.requestSent,
           waitingForResponse: terms.waitingForResponse,
           recoveringResponse: terms.recoveringResponse,
+          providerResolved: eventTerms.providerResolved,
+          processing: eventTerms.processing,
         },
         details: {
           requestDispatched: terms.requestDispatched,
@@ -1081,7 +1204,14 @@ function buildProcessTracePatch(
 const processTraceLocaleBackfills = Object.fromEntries(
   Object.entries(processTraceTerms).map(([localeKey, terms]) => {
     const typedLocaleKey = localeKey as LocaleKey
-    return [typedLocaleKey, buildProcessTracePatch(terms, voiceProcessTraceTerms[typedLocaleKey])]
+    return [
+      typedLocaleKey,
+      buildProcessTracePatch(
+        terms,
+        voiceProcessTraceTerms[typedLocaleKey],
+        processTraceEventTerms[typedLocaleKey]
+      ),
+    ]
   })
 ) as Partial<Record<LocaleKey, object>>
 

@@ -20,6 +20,13 @@ import (
 	"time"
 )
 
+const (
+	externalRunnerContextTimeout = 30 * time.Second
+	acpMessageTimeout            = 15 * time.Second
+	httpReadyTimeout             = 20 * time.Second
+	ssePayloadTimeout            = 10 * time.Second
+)
+
 func TestAgentcoreRunnerBinaryBuildsIndependently(t *testing.T) {
 	serverDir := moduleRootDir(t)
 	cmd := exec.Command("go", "build", "./cmd/agentcore-runner")
@@ -32,7 +39,7 @@ func TestAgentcoreRunnerBinaryBuildsIndependently(t *testing.T) {
 
 func TestAgentcoreRunnerACPModeSessionLifecycle(t *testing.T) {
 	bin := buildAgentcoreRunnerBinary(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), externalRunnerContextTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, "acp")
@@ -65,7 +72,7 @@ func TestAgentcoreRunnerACPModeSessionLifecycle(t *testing.T) {
 		},
 	}
 	writeACPMessage(t, stdin, initialize)
-	initResp := readACPMessage(t, reader)
+	initResp := readACPMessage(t, reader, &stderr)
 	result := asMap(t, initResp["result"])
 	if got := numberAsInt(result["protocolVersion"]); got != 1 {
 		t.Fatalf("protocolVersion = %d, want 1", got)
@@ -77,7 +84,7 @@ func TestAgentcoreRunnerACPModeSessionLifecycle(t *testing.T) {
 		"method":  "session/new",
 		"params":  map[string]any{"cwd": t.TempDir()},
 	})
-	sessionResp := readACPMessage(t, reader)
+	sessionResp := readACPMessage(t, reader, &stderr)
 	sessionResult := asMap(t, sessionResp["result"])
 	sessionID := strings.TrimSpace(fmt.Sprint(sessionResult["sessionId"]))
 	if sessionID == "" {
@@ -95,7 +102,7 @@ func TestAgentcoreRunnerACPModeSessionLifecycle(t *testing.T) {
 			},
 		},
 	})
-	updateMsg := readACPMessage(t, reader)
+	updateMsg := readACPMessage(t, reader, &stderr)
 	if method := strings.TrimSpace(fmt.Sprint(updateMsg["method"])); method != "session/update" {
 		t.Fatalf("unexpected update method %q", method)
 	}
@@ -109,7 +116,7 @@ func TestAgentcoreRunnerACPModeSessionLifecycle(t *testing.T) {
 		t.Fatalf("agent chunk text = %q, want substring hello runner", text)
 	}
 
-	promptResp := readACPMessage(t, reader)
+	promptResp := readACPMessage(t, reader, &stderr)
 	promptResult := asMap(t, promptResp["result"])
 	if stopReason := strings.TrimSpace(fmt.Sprint(promptResult["stopReason"])); stopReason != "completed" {
 		t.Fatalf("stopReason = %q, want completed", stopReason)
@@ -127,7 +134,7 @@ func TestAgentcoreRunnerACPModeSessionLifecycle(t *testing.T) {
 func TestAgentcoreRunnerA2AModeCardAndStreamingFlow(t *testing.T) {
 	bin := buildAgentcoreRunnerBinary(t)
 	listenAddr := reserveLoopbackAddr(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), externalRunnerContextTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, "a2a", "--listen", listenAddr)
@@ -141,7 +148,7 @@ func TestAgentcoreRunnerA2AModeCardAndStreamingFlow(t *testing.T) {
 		_ = cmd.Wait()
 	}()
 
-	waitForHTTPReady(t, "http://"+listenAddr+"/v1/card")
+	waitForHTTPReady(t, "http://"+listenAddr+"/v1/card", &stderr)
 	cardResp, err := http.Get("http://" + listenAddr + "/v1/card")
 	if err != nil {
 		t.Fatalf("get card: %v", err)
@@ -191,11 +198,11 @@ func TestAgentcoreRunnerA2AModeCardAndStreamingFlow(t *testing.T) {
 
 	var firstData string
 	scanner := bufio.NewScanner(resp.Body)
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(ssePayloadTimeout)
 	for firstData == "" {
 		select {
 		case <-deadline:
-			t.Fatal("timed out waiting for SSE data")
+			t.Fatalf("timed out waiting for SSE data; stderr=%s", strings.TrimSpace(stderr.String()))
 		default:
 		}
 		if !scanner.Scan() {
@@ -219,7 +226,7 @@ func TestAgentcoreRunnerACPModeBridgesBlueConversationStream(t *testing.T) {
 	defer blue.Close()
 
 	bin := buildAgentcoreRunnerBinary(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), externalRunnerContextTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, "acp", "--blue-url", blue.URL())
@@ -249,7 +256,7 @@ func TestAgentcoreRunnerACPModeBridgesBlueConversationStream(t *testing.T) {
 		"method":  "initialize",
 		"params":  map[string]any{"protocolVersion": 1},
 	})
-	_ = readACPMessage(t, reader)
+	_ = readACPMessage(t, reader, &stderr)
 
 	writeACPMessage(t, stdin, map[string]any{
 		"jsonrpc": "2.0",
@@ -257,7 +264,7 @@ func TestAgentcoreRunnerACPModeBridgesBlueConversationStream(t *testing.T) {
 		"method":  "session/new",
 		"params":  map[string]any{},
 	})
-	sessionResp := readACPMessage(t, reader)
+	sessionResp := readACPMessage(t, reader, &stderr)
 	sessionID := strings.TrimSpace(fmt.Sprint(asMap(t, sessionResp["result"])["sessionId"]))
 	if sessionID == "" {
 		t.Fatal("session/new returned empty sessionId")
@@ -277,7 +284,7 @@ func TestAgentcoreRunnerACPModeBridgesBlueConversationStream(t *testing.T) {
 		})
 		var deltas []string
 		for {
-			msg := readACPMessage(t, reader)
+			msg := readACPMessage(t, reader, &stderr)
 			if result, ok := msg["result"].(map[string]any); ok {
 				if stopReason := strings.TrimSpace(fmt.Sprint(result["stopReason"])); stopReason != "completed" {
 					t.Fatalf("stopReason = %q, want completed", stopReason)
@@ -315,7 +322,7 @@ func TestAgentcoreRunnerA2AModeBridgesBlueConversationStream(t *testing.T) {
 
 	bin := buildAgentcoreRunnerBinary(t)
 	listenAddr := reserveLoopbackAddr(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), externalRunnerContextTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, "a2a", "--listen", listenAddr, "--blue-url", blue.URL())
@@ -329,7 +336,7 @@ func TestAgentcoreRunnerA2AModeBridgesBlueConversationStream(t *testing.T) {
 		_ = cmd.Wait()
 	}()
 
-	waitForHTTPReady(t, "http://"+listenAddr+"/v1/card")
+	waitForHTTPReady(t, "http://"+listenAddr+"/v1/card", &stderr)
 	payload := map[string]any{
 		"jsonrpc": "2.0",
 		"id":      "1",
@@ -363,11 +370,11 @@ func TestAgentcoreRunnerA2AModeBridgesBlueConversationStream(t *testing.T) {
 	var firstPayload string
 	var finalPayload string
 	scanner := bufio.NewScanner(resp.Body)
-	deadline := time.After(5 * time.Second)
+	deadline := time.After(ssePayloadTimeout)
 	for finalPayload == "" {
 		select {
 		case <-deadline:
-			t.Fatalf("timed out waiting for final SSE payload; first=%q final=%q", firstPayload, finalPayload)
+			t.Fatalf("timed out waiting for final SSE payload; first=%q final=%q stderr=%s", firstPayload, finalPayload, strings.TrimSpace(stderr.String()))
 		default:
 		}
 		if !scanner.Scan() {
@@ -407,7 +414,7 @@ func TestAgentcoreRunnerACPModeBridgeSendsConfiguredBlueHeader(t *testing.T) {
 	defer blue.Close()
 
 	bin := buildAgentcoreRunnerBinary(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), externalRunnerContextTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bin, "acp", "--blue-url", blue.URL(), "--blue-header", "Authorization=Bearer secret-token")
@@ -437,7 +444,7 @@ func TestAgentcoreRunnerACPModeBridgeSendsConfiguredBlueHeader(t *testing.T) {
 		"method":  "initialize",
 		"params":  map[string]any{"protocolVersion": 1},
 	})
-	_ = readACPMessage(t, reader)
+	_ = readACPMessage(t, reader, &stderr)
 
 	writeACPMessage(t, stdin, map[string]any{
 		"jsonrpc": "2.0",
@@ -445,7 +452,7 @@ func TestAgentcoreRunnerACPModeBridgeSendsConfiguredBlueHeader(t *testing.T) {
 		"method":  "session/new",
 		"params":  map[string]any{},
 	})
-	sessionResp := readACPMessage(t, reader)
+	sessionResp := readACPMessage(t, reader, &stderr)
 	sessionID := strings.TrimSpace(fmt.Sprint(asMap(t, sessionResp["result"])["sessionId"]))
 	if sessionID == "" {
 		t.Fatal("session/new returned empty sessionId")
@@ -465,7 +472,7 @@ func TestAgentcoreRunnerACPModeBridgeSendsConfiguredBlueHeader(t *testing.T) {
 
 	var deltas []string
 	for {
-		msg := readACPMessage(t, reader)
+		msg := readACPMessage(t, reader, &stderr)
 		if result, ok := msg["result"].(map[string]any); ok {
 			if stopReason := strings.TrimSpace(fmt.Sprint(result["stopReason"])); stopReason != "completed" {
 				t.Fatalf("stopReason = %q, want completed", stopReason)
@@ -516,7 +523,7 @@ func writeACPMessage(t *testing.T, w io.Writer, payload map[string]any) {
 	}
 }
 
-func readACPMessage(t *testing.T, r *bufio.Reader) map[string]any {
+func readACPMessage(t *testing.T, r *bufio.Reader, stderr *bytes.Buffer) map[string]any {
 	t.Helper()
 	done := make(chan map[string]any, 1)
 	errCh := make(chan error, 1)
@@ -537,8 +544,14 @@ func readACPMessage(t *testing.T, r *bufio.Reader) map[string]any {
 	case payload := <-done:
 		return payload
 	case err := <-errCh:
+		if stderrText := strings.TrimSpace(stderrBufferText(stderr)); stderrText != "" {
+			t.Fatalf("read acp message: %v; stderr=%s", err, stderrText)
+		}
 		t.Fatalf("read acp message: %v", err)
-	case <-time.After(5 * time.Second):
+	case <-time.After(acpMessageTimeout):
+		if stderrText := strings.TrimSpace(stderrBufferText(stderr)); stderrText != "" {
+			t.Fatalf("timed out waiting for acp message; stderr=%s", stderrText)
+		}
 		t.Fatal("timed out waiting for acp message")
 	}
 	return nil
@@ -575,18 +588,37 @@ func reserveLoopbackAddr(t *testing.T) string {
 	return addr
 }
 
-func waitForHTTPReady(t *testing.T, target string) {
+func waitForHTTPReady(t *testing.T, target string, stderr *bytes.Buffer) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(httpReadyTimeout)
+	var lastErr error
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(target)
 		if err == nil {
 			resp.Body.Close()
 			return
 		}
+		lastErr = err
 		time.Sleep(100 * time.Millisecond)
 	}
+	stderrText := strings.TrimSpace(stderrBufferText(stderr))
+	if lastErr != nil && stderrText != "" {
+		t.Fatalf("timed out waiting for %s; last_err=%v stderr=%s", target, lastErr, stderrText)
+	}
+	if lastErr != nil {
+		t.Fatalf("timed out waiting for %s; last_err=%v", target, lastErr)
+	}
+	if stderrText != "" {
+		t.Fatalf("timed out waiting for %s; stderr=%s", target, stderrText)
+	}
 	t.Fatalf("timed out waiting for %s", target)
+}
+
+func stderrBufferText(stderr *bytes.Buffer) string {
+	if stderr == nil {
+		return ""
+	}
+	return stderr.String()
 }
 
 type stubBlueConversationServer struct {

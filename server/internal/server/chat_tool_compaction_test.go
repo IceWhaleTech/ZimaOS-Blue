@@ -208,6 +208,69 @@ func TestCompactToolResultContentForLLM_NonJSONCapped(t *testing.T) {
 	}
 }
 
+func TestCompactAssistantToolContextForLLM_FileWriteSummarizesContent(t *testing.T) {
+	msg := llm.Message{
+		Role: llm.RoleAssistant,
+		ToolCalls: []llm.ToolCall{{
+			ID:   "call_write_1",
+			Name: "file_write",
+			Arguments: `{"path":"reports/final.md","content":"alpha\nbeta\n[truncated]","append":true}`,
+		}},
+	}
+
+	compacted := compactAssistantToolContextForLLM(msg)
+	if len(compacted.ToolCalls) != 1 {
+		t.Fatalf("tool call count = %d, want 1", len(compacted.ToolCalls))
+	}
+
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted.ToolCalls[0].Arguments), &args); err != nil {
+		t.Fatalf("unmarshal compacted file_write args: %v", err)
+	}
+	if _, ok := args["content"]; ok {
+		t.Fatalf("expected compacted file_write args to omit raw content: %#v", args)
+	}
+	if got := args["path"]; got != "reports/final.md" {
+		t.Fatalf("path = %#v, want reports/final.md", got)
+	}
+	if omitted, _ := args["content_omitted"].(bool); !omitted {
+		t.Fatalf("content_omitted = %#v, want true", args["content_omitted"])
+	}
+	if suspicious, _ := args["content_truncated_marker"].(bool); !suspicious {
+		t.Fatalf("content_truncated_marker = %#v, want true", args["content_truncated_marker"])
+	}
+}
+
+func TestCompactContinuationRecoveryMessage_FileWriteSummarizesContent(t *testing.T) {
+	msg := llm.Message{
+		Role: llm.RoleAssistant,
+		ToolCalls: []llm.ToolCall{{
+			ID:   "call_write_1",
+			Name: "file_write",
+			Arguments: fmt.Sprintf(`{"path":"reports/final.md","content":%q}`, strings.Repeat("payload\n", 600)+"[truncated]"),
+		}},
+	}
+
+	compacted := compactContinuationRecoveryMessage(msg)
+	if len(compacted.ToolCalls) != 1 {
+		t.Fatalf("tool call count = %d, want 1", len(compacted.ToolCalls))
+	}
+	if strings.Contains(compacted.ToolCalls[0].Arguments, `"content"`) {
+		t.Fatalf("expected continuation recovery to omit raw file content, got %s", compacted.ToolCalls[0].Arguments)
+	}
+	if strings.Contains(compacted.ToolCalls[0].Arguments, "\n[truncated]") {
+		t.Fatalf("expected continuation recovery to avoid raw truncation marker in args, got %s", compacted.ToolCalls[0].Arguments)
+	}
+
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted.ToolCalls[0].Arguments), &args); err != nil {
+		t.Fatalf("unmarshal recovery compacted file_write args: %v", err)
+	}
+	if suspicious, _ := args["content_truncated_marker"].(bool); !suspicious {
+		t.Fatalf("content_truncated_marker = %#v, want true", args["content_truncated_marker"])
+	}
+}
+
 func TestCompactToolResultContentForLLM_FileReadKeepsLargerContentBudget(t *testing.T) {
 	lines := make([]string, 0, 240)
 	for i := 1; i <= 240; i++ {

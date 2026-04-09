@@ -16,6 +16,8 @@ func setupTestLogger(t *testing.T) (*SQLiteLogger, func()) {
 	if err != nil {
 		t.Fatalf("failed to open database: %v", err)
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 
 	config := &LoggerConfig{
 		BatchSize:     10,
