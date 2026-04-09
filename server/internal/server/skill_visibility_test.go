@@ -257,7 +257,7 @@ func TestSkillVisibility_GetSkillAcceptsHyphenAliasForUnderscoreInstall(t *testi
 		t.Fatalf("scan skills: %v", err)
 	}
 	handler.SetLocalScanner(scanner)
-	if _, err := handler.ensureInstalledSkillRegistered("workspace_note"); err != nil {
+	if _, err := handler.ensureInstalledSkillRegistered("word_docx"); err != nil {
 		t.Fatalf("ensureInstalledSkillRegistered: %v", err)
 	}
 

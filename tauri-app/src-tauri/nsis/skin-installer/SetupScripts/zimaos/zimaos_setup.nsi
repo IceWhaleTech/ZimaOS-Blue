@@ -7,7 +7,7 @@
 !define PRODUCT_VERSION                 "0.10.39.0"
 !define PRODUCT_PUBLISHER               "ZimaOS Team"
 !define PRODUCT_LEGAL                   "ZimaOS Team Copyright 2024"
-!define INSTALL_OUTPUT_NAME             "ZimaOS-Blue_0.10.39_x64-setup.exe"
+!define INSTALL_OUTPUT_NAME             "ZimaOS-Blue-0.10.39-windows-amd64-setup.exe"
 
 !define INSTALL_7Z_PATH                 "..\app.7z"
 !define INSTALL_7Z_NAME                 "app.7z"

@@ -102,7 +102,7 @@ func selectedToolDefsForBudgetTest(t *testing.T) []ToolDefinition {
 		"browser",
 		"calendar",
 		"convert",
-		"deep_research",
+		"research",
 		"edit",
 		"email",
 		"find",

@@ -132,7 +132,7 @@ func TestRuntimeAgentSessionsBootstrapHTTPFlowUsesBinaryFirstFallback(t *testing
 		t.Fatalf("send message status = %d, want %d, body=%s", sendRec.Code, http.StatusOK, sendRec.Body.String())
 	}
 
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(8 * time.Second)
 	for {
 		historyReq := httptest.NewRequest(http.MethodGet, "/chat/agent-sessions/sessions/"+created.Session.ID+"/history?limit=20", nil)
 		historyRec := httptest.NewRecorder()

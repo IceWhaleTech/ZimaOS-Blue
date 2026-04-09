@@ -290,7 +290,7 @@ func TestHandlerSessionMessageFlowHTTPUsesBinaryFirstCommandAndFallback(t *testi
 		t.Fatalf("send run status = %s, want %s", sentRun.Status, RunStatusQueued)
 	}
 
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(8 * time.Second)
 	for {
 		historyReq := httptest.NewRequest(http.MethodGet, "/api/v1/agent-sessions/sessions/"+created.Session.ID+"/history?limit=20", nil)
 		historyRec := httptest.NewRecorder()

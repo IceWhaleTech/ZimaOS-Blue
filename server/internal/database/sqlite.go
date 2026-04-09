@@ -137,7 +137,7 @@ func openAndConfigure(dsn, dbPath string, readOnly bool, opts *SQLiteOpenOpts) (
 				return fmt.Errorf("exec %q: %w", p, err)
 			}
 		}
-		return nil
+		return integrityCheckOpenDatabase(db)
 	})
 }
 
@@ -169,7 +169,7 @@ func OpenSQLiteSimple(path string) (*sql.DB, error) {
 				return fmt.Errorf("exec %q: %w", p, err)
 			}
 		}
-		return nil
+		return integrityCheckOpenDatabase(db)
 	})
 	if err != nil {
 		return nil, err

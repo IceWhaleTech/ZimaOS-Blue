@@ -12,7 +12,7 @@ import {
 
 test("detectArtifactArch normalizes Tauri arch aliases", () => {
   assert.equal(detectArtifactArch("ZimaOS Blue_0.10.39_aarch64.dmg"), "arm64");
-  assert.equal(detectArtifactArch("ZimaOS-Blue_0.10.39_x64-setup.exe"), "x64");
+  assert.equal(detectArtifactArch("ZimaOS-Blue_0.10.39_x64-setup.exe"), "amd64");
 });
 
 test("normalizeBundleNames renames macOS dmg outputs to canonical darwin names", async () => {
@@ -35,7 +35,7 @@ test("normalizeBundleNames renames macOS dmg outputs to canonical darwin names",
     "arm64"
   );
   assert.equal(
-    await fs.readFile(path.join(dmgDir, "ZimaOS-Blue-0.10.39-darwin-x64.dmg"), "utf8"),
+    await fs.readFile(path.join(dmgDir, "ZimaOS-Blue-0.10.39-darwin-amd64.dmg"), "utf8"),
     "amd64"
   );
 });
@@ -59,7 +59,7 @@ test("normalizeBundleNames renames Windows nsis outputs to canonical windows nam
       productName: "ZimaOS Blue",
       version: "0.10.39",
       platform: "windows",
-      arch: "x64",
+      arch: "amd64",
       kind: "nsis",
     })), "utf8"),
     "installer"

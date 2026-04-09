@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 func TestNewQuotaMonitor(t *testing.T) {
@@ -411,9 +413,9 @@ func TestQuotaMonitor_RecordUsageWithTokens(t *testing.T) {
 func TestQuotaMonitor_LastSync(t *testing.T) {
 	qm := NewQuotaMonitor(nil)
 
-	before := time.Now().Add(-200 * time.Millisecond)
+	before := timeutil.NowTime().Add(-1 * time.Second)
 	qm.RecordRequest("provider")
-	after := time.Now().Add(200 * time.Millisecond)
+	after := timeutil.NowTime().Add(1 * time.Second)
 
 	quota := qm.GetQuota("provider")
 	if quota.LastSync.Before(before) || quota.LastSync.After(after) {

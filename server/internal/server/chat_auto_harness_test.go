@@ -108,24 +108,24 @@ func TestAutoHarnessTurnHook_SubmitsConversationQuickEvalForToolBackedCompletedT
 	if got, _ := spec.Metadata["auto_harness"].(bool); !got {
 		t.Fatalf("spec auto_harness = %#v, want true", spec.Metadata["auto_harness"])
 	}
-	if got := spec.Metadata["quick_eval_preset"]; got != "smoke" {
-		t.Fatalf("quick_eval_preset = %#v, want smoke", got)
+	if got := spec.Metadata["quick_eval_preset"]; got != "research" {
+		t.Fatalf("quick_eval_preset = %#v, want research", got)
 	}
 	if got := spec.Metadata["source_ref"]; got != conv.ID {
 		t.Fatalf("source_ref = %#v, want %q", got, conv.ID)
 	}
-	if spec.Subject != "agent_task" {
-		t.Fatalf("subject = %q, want agent_task", spec.Subject)
+	if spec.Subject != "research" {
+		t.Fatalf("subject = %q, want research", spec.Subject)
 	}
 	if len(spec.Items) != 1 {
 		t.Fatalf("item count = %d, want 1", len(spec.Items))
 	}
 	item := spec.Items[0]
-	if item.RunKind != "agent_task" {
-		t.Fatalf("item run kind = %q, want agent_task", item.RunKind)
+	if item.RunKind != "research" {
+		t.Fatalf("item run kind = %q, want research", item.RunKind)
 	}
-	if item.Profile != "smoke" {
-		t.Fatalf("item profile = %q, want smoke", item.Profile)
+	if item.Profile != "research" {
+		t.Fatalf("item profile = %q, want research", item.Profile)
 	}
 	if got := item.Input["goal"]; got != "Finish and verify the fix" {
 		t.Fatalf("item goal = %#v, want exact user goal", got)
@@ -454,7 +454,7 @@ func TestAutoHarnessTurnHook_PublishesTaskCreatedEventForChatRefresh(t *testing.
 	if got, _ := payload["auto_harness"].(bool); !got {
 		t.Fatalf("event auto_harness = %#v, want true", payload["auto_harness"])
 	}
-	if got := payload["quick_eval_preset"]; got != "smoke" {
-		t.Fatalf("event quick_eval_preset = %#v, want smoke", got)
+	if got := payload["quick_eval_preset"]; got != "research" {
+		t.Fatalf("event quick_eval_preset = %#v, want research", got)
 	}
 }

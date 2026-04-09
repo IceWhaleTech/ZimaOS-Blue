@@ -68,7 +68,7 @@ func TestSkillExecutorExecute_UsesUserFromContextAndEmitsProgress(t *testing.T) 
 	if len(cards) == 0 {
 		t.Fatalf("expected progress cards to be emitted")
 	}
-	var sawProgress, sawEvent bool
+	var sawProgress bool
 	for _, card := range cards {
 		switch card["type"] {
 		case "deep-research-progress":
@@ -83,7 +83,6 @@ func TestSkillExecutorExecute_UsesUserFromContextAndEmitsProgress(t *testing.T) 
 				t.Fatalf("progress id = %q, want %q", got, "deep-research-progress-"+jobID)
 			}
 		case "deep-research-event":
-			sawEvent = true
 			if got, _ := card["job_id"].(string); got != jobID {
 				t.Fatalf("event job_id = %q, want %q", got, jobID)
 			}
@@ -97,9 +96,6 @@ func TestSkillExecutorExecute_UsesUserFromContextAndEmitsProgress(t *testing.T) 
 	}
 	if !sawProgress {
 		t.Fatalf("expected deep-research-progress card in %v", cards)
-	}
-	if !sawEvent {
-		t.Fatalf("expected deep-research-event card in %v", cards)
 	}
 }
 

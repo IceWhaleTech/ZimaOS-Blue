@@ -29,14 +29,10 @@ type deepResearchRuntimeRouteTarget interface {
 	RegisterGroup(group *echo.Group)
 }
 
-type autoHarnessTurnHookTarget interface {
-	RegisterTurnHook(hook serverpkg.TurnHook)
-}
+type autoHarnessTurnHookTarget interface{ RegisterTurnHook(serverpkg.TurnHook) }
 
 type harnessJudgeLLMCaller interface {
-	Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error)
+	Chat(context.Context, llm.ChatRequest) (*llm.ChatResponse, error)
 }
 
-type harnessJudgeEvaluatorTarget interface {
-	SetJudgeEvaluator(evaluator harness.JudgeEvaluator)
-}
+type harnessJudgeEvaluatorTarget interface{ SetJudgeEvaluator(harness.JudgeEvaluator) }

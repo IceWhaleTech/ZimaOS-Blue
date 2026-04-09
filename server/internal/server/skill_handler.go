@@ -627,12 +627,13 @@ func validatedSkillID(id string) (string, error) {
 }
 
 func normalizedSkillID(id string) (string, error) {
+	if validated, err := skillmarket.ValidateSkillID(id); err == nil {
+		return validated, nil
+	}
 	normalized := skillmarket.NormalizeSkillID(id)
 	if normalized == "" {
 		return "", fmt.Errorf("skill id is required")
 	}
-	// Local skill installs historically used underscores as canonical separators.
-	normalized = strings.ReplaceAll(normalized, "-", "_")
 	return skillmarket.ValidateSkillID(normalized)
 }
 

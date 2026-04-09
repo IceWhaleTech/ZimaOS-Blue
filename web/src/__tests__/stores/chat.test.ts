@@ -1355,6 +1355,71 @@ describe('Chat Store', () => {
       expect(store.streamError).toBeNull()
     })
 
+    it('replaces auto request metadata with the resolved model after stream completion and refresh', async () => {
+      const routedModel = 'provider-pool-picked-2026-04-09'
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.modelPreference = 'auto'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Resolved model display',
+          created_at: '2026-04-09T00:00:00.000Z',
+          updated_at: '2026-04-09T00:00:00.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list).mockResolvedValue({
+        data: [
+          {
+            id: 'msg-user-1',
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: 'Which model answered this?',
+            created_at: '2026-04-09T00:00:00.000Z',
+          },
+          {
+            id: 'msg-assistant-1',
+            conversation_id: 'conv-1',
+            role: 'assistant',
+            content: 'A concrete routed model answered this.',
+            provider: 'openrouter',
+            model: routedModel,
+            created_at: '2026-04-09T00:00:01.000Z',
+          },
+        ],
+      } as never)
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, request, options: any) => {
+        expect(_conversationId).toBe('conv-1')
+        expect(request).toEqual(
+          expect.objectContaining({
+            message: 'Which model answered this?',
+            provider: '',
+            model: '',
+          })
+        )
+
+        options.onMessage?.({ delta: 'A concrete routed model answered this.', done: false })
+        options.onComplete?.({
+          done: true,
+          provider: 'openrouter',
+          model: routedModel,
+        })
+      })
+
+      await store.sendMessage('Which model answered this?')
+      await settleAsyncWork()
+
+      expect(store.messages).toHaveLength(2)
+      expect(store.messages[1]?.role).toBe('assistant')
+      expect(store.messages[1]?.model).toBe(routedModel)
+      expect(store.messages[1]?.model).not.toBe('auto')
+      expect(store.messages[1]?.provider).toBe('openrouter')
+      expect(store.messages[1]?.id).toBe('msg-assistant-1')
+      expect(store.messages.some((message) => message.id.startsWith('streaming-'))).toBe(false)
+    })
+
     it('clears transient stream errors after recovering persisted assistant content', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'

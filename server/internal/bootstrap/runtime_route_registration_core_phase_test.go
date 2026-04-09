@@ -300,7 +300,6 @@ func TestRuntimeRouteRegistrationCorePhaseGo_DelegatesInfrastructureExperienceTo
 	for _, token := range []string{
 		"func newRouteRuntimeInfrastructureGatewayOptions(",
 		"routeRuntimeContractGatewayOptions{",
-		"pluginRegistry:",
 		"closers:",
 	} {
 		if !strings.Contains(infraGatewayOptionSource, token) {
@@ -388,7 +387,6 @@ func TestRuntimeRouteRegistrationCorePhaseGo_DelegatesInfrastructureExperienceTo
 		"billingPool:",
 		"metricsCollector:",
 		"connectionManager:",
-		"pluginRegistry:",
 	} {
 		if !strings.Contains(experiencePlatformOptionSource, token) {
 			t.Fatalf("expected runtime_route_registration_core_experience_platform_options.go to contain token %q", token)
@@ -426,7 +424,6 @@ func TestRuntimeRouteRegistrationCorePhaseGo_DelegatesInfrastructureExperienceTo
 		"billingPool:",
 		"metricsCollector:",
 		"connectionManager:",
-		"pluginRegistry:",
 		"skillRegistry:",
 		"eventBroker:",
 		"skillEmbedFS:",

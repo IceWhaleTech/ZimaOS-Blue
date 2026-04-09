@@ -169,8 +169,8 @@ func TestBindRouteRuntimeResearch_ReturnsFirstClassLaneState(t *testing.T) {
 	if target.service == nil || target.hook != nil || target.hookCalls != 0 {
 		t.Fatalf("expected research contract to wire service without direct turn hook, got %#v", target)
 	}
-	if registry.Get("deep_research") == nil {
-		t.Fatalf("expected research contract to register deep_research tool, got %#v", registry.List())
+	if registry.Get("research") == nil {
+		t.Fatalf("expected research contract to register research tool, got %#v", registry.List())
 	}
 }
 

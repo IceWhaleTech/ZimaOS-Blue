@@ -185,8 +185,8 @@ func TestBindExperienceRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 	if chatHandler.GetToolSelector() == nil || chatHandler.GetToolSelector().MaxTools != 5 {
 		t.Fatalf("expected experience contract to configure chat tool selection, got %#v", chatHandler.GetToolSelector())
 	}
-	if registry.Get("deep_research") == nil {
-		t.Fatalf("expected experience contract to register deep_research tool, got %#v", registry.List())
+	if registry.Get("research") == nil {
+		t.Fatalf("expected experience contract to register research tool, got %#v", registry.List())
 	}
 	if len(closers) != 1 {
 		t.Fatalf("expected experience contract to capture skill handler closer, got %d", len(closers))

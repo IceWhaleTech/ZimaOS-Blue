@@ -16,6 +16,7 @@ type ConversationCache struct {
 	maxSize        int
 	maxBytes       uint64
 	totalBytes     uint64
+	nextSequence   uint64
 	initOnce       sync.Once
 	closeOnce      sync.Once
 	stopCh         chan struct{}
@@ -28,6 +29,7 @@ type cacheEntry struct {
 	messages  []memory.Message
 	timestamp time.Time
 	sizeBytes uint64
+	sequence  uint64
 }
 
 // NewConversationCache creates a new conversation cache.
@@ -107,7 +109,9 @@ func (c *ConversationCache) Set(conversationID string, messages []memory.Message
 		messages:  messageCopy,
 		timestamp: now,
 		sizeBytes: sizeBytes,
+		sequence:  c.nextSequence,
 	}
+	c.nextSequence++
 	c.totalBytes += sizeBytes
 	c.enforceBudgetsLocked()
 }
@@ -155,15 +159,18 @@ func (c *ConversationCache) Stats() CacheStats {
 func (c *ConversationCache) evictOldestLocked() {
 	var oldestID string
 	var oldestTime time.Time
+	var oldestSequence uint64
 
 	for id, entry := range c.entries {
 		if entry == nil {
 			oldestID = id
 			break
 		}
-		if oldestID == "" || entry.timestamp.Before(oldestTime) {
+		if oldestID == "" || entry.timestamp.Before(oldestTime) ||
+			(entry.timestamp.Equal(oldestTime) && entry.sequence < oldestSequence) {
 			oldestID = id
 			oldestTime = entry.timestamp
+			oldestSequence = entry.sequence
 		}
 	}
 

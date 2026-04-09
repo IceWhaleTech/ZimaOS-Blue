@@ -52,8 +52,8 @@ func TestNewRuntimeCapabilityContract_CreatesSharedRuntimeServices(t *testing.T)
 	if target.hook == nil || target.hookCalls != 1 {
 		t.Fatalf("expected contract to wire harness-backed turn hook, got %#v", target)
 	}
-	if registry.Get("deep_research") == nil {
-		t.Fatalf("expected deep_research tool to be registered, got %#v", registry.List())
+	if registry.Get("research") == nil {
+		t.Fatalf("expected research tool to be registered, got %#v", registry.List())
 	}
 }
 

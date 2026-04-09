@@ -211,6 +211,17 @@ type emittedSearchCardWebQueryToolMock struct {
 	last  map[string]interface{}
 }
 
+func newAutoContinueMockToolRegistry() *tools.Registry {
+	registry := tools.NewRegistry()
+	for _, name := range []string{"noop_tool", "browser", "exec", "write", "web_query"} {
+		registry.Register(&staticToolMock{
+			def:    tools.ToolDefinition{Name: name},
+			result: map[string]interface{}{"ok": true},
+		})
+	}
+	return registry
+}
+
 // toolRoundOverloadedAfterSearchProxyHandler simulates:
 // 1) first round emits a web_search tool call
 // 2) second round fails pre-content with an overloaded-style 500
@@ -1297,7 +1308,7 @@ func (h *toolRoundPreContentFailingProxyHandler) ServeHTTP(w http.ResponseWriter
 	if h.callCount == 1 {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_precontent_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_precontent_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"inspect\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_precontent_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_precontent_1","type":"function","function":{"name":"exec","arguments":"{\"cmd\":\"echo precontent\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
 		if f, ok := w.(http.Flusher); ok {
 			f.Flush()
 		}
@@ -1478,7 +1489,7 @@ func (h *toolRoundPinnedProviderFailoverProxyHandler) ServeHTTP(w http.ResponseW
 	case 1:
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_failover_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_failover_1","type":"function","function":{"name":"noop_tool","arguments":"{\"task\":\"failover\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_failover_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_failover_1","type":"function","function":{"name":"exec","arguments":"{\"cmd\":\"echo failover\"}"}}]},"finish_reason":null}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_round_failover_1","choices":[{"delta":{},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
@@ -3613,7 +3624,7 @@ func TestStreamMessageAutoContinue_2048Prompt_EnhancedAndNonEnhanced(t *testing.
 				t.Fatalf("failed to create conversation: %v", err)
 			}
 
-			handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+			handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 			settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
 			settingsHandler.settings.AgentMode = &tt.agentMode
 			handler.SetSettingsHandler(settingsHandler)
@@ -3684,7 +3695,7 @@ func TestStreamMessageAutoContinue_ActionPledge_ExecutesToolRoundThenSummary(t *
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	fakeProxy := &actionPledgeThenToolCallProxyHandler{}
@@ -3736,7 +3747,7 @@ func TestStreamMessageAutoContinue_SummaryIntro_ContinuesWithoutPrematureStop(t 
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	fakeProxy := &actionPledgeThenToolCallProxyHandler{
@@ -3856,7 +3867,7 @@ func TestStreamMessageAutoContinue_AgentMode_MissingTodoAfterToolRound(t *testin
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
 	agentModeOn := true
 	settingsHandler.settings.AgentMode = &agentModeOn
@@ -3966,7 +3977,7 @@ func TestStreamMessageAutoContinue_ToolRoundWithoutChecklistUpdate_ReconcilesPer
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
 	agentModeOn := true
 	settingsHandler.settings.AgentMode = &agentModeOn
@@ -4044,7 +4055,7 @@ func TestStreamMessageAutoContinue_ToollessChecklistEcho_CompletesCanonicalTodo(
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
 	agentModeOn := true
 	settingsHandler.settings.AgentMode = &agentModeOn
@@ -4119,7 +4130,7 @@ func TestStreamMessageAutoContinue_ToollessArtifactDelivery_CompletesPendingWrit
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
 	agentModeOn := true
 	settingsHandler.settings.AgentMode = &agentModeOn
@@ -4261,7 +4272,7 @@ func TestStreamMessageAutoContinue_ActionPledge_DuplicateDebounceStopsLoop(t *te
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	duplicateActionPledge := "我先帮你快速查一下 BlueAgent 的最新相关新闻与动态。请稍等，我整理成要点给你。"
@@ -4315,7 +4326,7 @@ func TestStreamMessageAutoContinue_ActionPledge_DuplicateAllowsFinalResult(t *te
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	duplicateActionPledge := "我先帮你快速查一下 BlueAgent 的最新相关新闻与动态。请稍等，我整理成要点给你。"
@@ -4368,7 +4379,7 @@ func TestStreamMessage_ToolCallRound_SuppressesPostToolCallDelta(t *testing.T) {
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	fakeProxy := &toolCallThenTextProxyHandler{}
@@ -4628,7 +4639,7 @@ func TestStreamMessage_ToolRoundPreContent502_SkipsChatLayerRetryAmplification(t
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	fakeProxy := &toolRoundPreContentFailingProxyHandler{}
@@ -5101,7 +5112,7 @@ func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProvider(t *te
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 	handler.SetProviderPool(newEnabledProviderPoolForStreamTests(t, "prov_primary", "prov_backup"))
 
@@ -5169,7 +5180,7 @@ func TestStreamMessage_EmitsProviderResolvedForExplicitModelSwitch(t *testing.T)
 		t.Fatalf("failed to create conversation: %v", err)
 	}
 
-	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 	handler.SetProxyBridge(proxybridge.NewBridge(&resolvedRouteModelSwitchProxyHandler{}))
 

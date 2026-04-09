@@ -79,6 +79,24 @@ func TestShouldAutoContinueForTodo(t *testing.T) {
 	})
 }
 
+func TestShouldAllowToolDependentAutoContinueWithoutTools(t *testing.T) {
+	if shouldAllowToolDependentAutoContinue("pseudo_tool_call", true, nil) {
+		t.Fatal("expected pseudo_tool_call to be disabled for clarify-none without tools")
+	}
+	if shouldAllowToolDependentAutoContinue("action_pledge", true, nil) {
+		t.Fatal("expected action_pledge to be disabled for clarify-none without tools")
+	}
+	if !shouldAllowToolDependentAutoContinue("summary_intro", true, nil) {
+		t.Fatal("expected summary_intro to remain allowed for clarify-none without tools")
+	}
+	if !shouldAllowToolDependentAutoContinue("pseudo_tool_call", false, nil) {
+		t.Fatal("expected pseudo_tool_call to remain allowed for non-clarify tool-less rounds")
+	}
+	if !shouldAllowToolDependentAutoContinue("pseudo_tool_call", true, []llm.Tool{{Name: "exec"}}) {
+		t.Fatal("expected pseudo_tool_call to remain allowed when tools are exposed")
+	}
+}
+
 func TestShouldAutoContinueForActionPledge(t *testing.T) {
 	t.Run("continues for chinese action pledge", func(t *testing.T) {
 		current := "我先给你结论：我这边需要联网检索一下最新动态。我现在就去查，稍等我几秒。"

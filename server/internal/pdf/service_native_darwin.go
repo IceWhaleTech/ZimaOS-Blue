@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -426,6 +427,10 @@ func extractDarwinPDFKit(ctx context.Context, path string) (*darwinPDFKitOutput,
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	// PDFKit autorelease pools are thread-local, so creation and release must
+	// stay on the same OS thread for the duration of native extraction.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	pool := newDarwinPDFAutoreleasePool()
 	if pool != 0 {
@@ -488,6 +493,10 @@ func renderDarwinPDFKitPagePNG(ctx context.Context, path string, pageNumber int,
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
 	}
+	// Rendering also creates an autorelease pool and AppKit objects that must
+	// be torn down on the same thread where they were created.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 
 	pool := newDarwinPDFAutoreleasePool()
 	if pool != 0 {

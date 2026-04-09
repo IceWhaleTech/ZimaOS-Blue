@@ -1,10 +1,6 @@
 package bootstrap
 
-import (
-	"github.com/labstack/echo/v4"
-
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
-)
+import "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 
 func registerTaskHarnessSurface(
 	bundle *HarnessRuntimeBundle,
@@ -25,16 +21,5 @@ func registerTaskHarnessSurface(
 	return runtimeTaskHarnessSurfaceRegistration{
 		detailProvider:   detailProvider,
 		routesRegistered: true,
-	}
-}
-
-func runtimeTaskSurfaceProjectionGroups(
-	options runtimeTaskSurfaceOptions,
-	prefix string,
-	middleware echo.MiddlewareFunc,
-) []*echo.Group {
-	return []*echo.Group{
-		runtimeTaskSurfaceGroup(options.protected, prefix, middleware),
-		runtimeTaskSurfaceGroup(options.apiProtected, prefix, middleware),
 	}
 }

@@ -237,6 +237,8 @@ func promptCacheToolSurfaceCacheKey(surface *promptCacheToolSurface) string {
 		strings.TrimSpace(surface.ProviderID),
 		uint64Key(surface.RegistryVersion),
 		strings.TrimSpace(surface.PromptPolicyHash),
+		strings.TrimSpace(surface.WebSearchEnabled),
+		strings.TrimSpace(surface.ResearchEnabled),
 	}, "\x00")
 }
 

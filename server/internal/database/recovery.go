@@ -150,7 +150,35 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 				return nil, WrapSQLiteOpenError(dbPath, err)
 			}
 		}
-		if shouldQuickCheckSQLitePath(dbPath) {
+		if triedCheckpoint || triedFTSRepair || triedRepair {
+			integrityCheckStartedAt := time.Now()
+			sqliteLogf("startup integrity_check started db_path=%s timeout=%s", dbPath, 30*time.Second)
+			if err := integrityCheckOpenDatabase(db); err != nil {
+				sqliteLogf("startup integrity_check failed db_path=%s duration=%s error=%v", dbPath, time.Since(integrityCheckStartedAt), err)
+				_ = db.Close()
+				if IsSQLiteCorruptionError(err) {
+					baseErr := WrapSQLiteOpenError(dbPath, err)
+					switch {
+					case checkpointErr != nil && ftsRepairErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to rebuild known FTS indexes: %v; failed to repair database: %v)", baseErr, checkpointErr, ftsRepairErr, repairErr)
+					case checkpointErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v; failed to repair database: %v)", baseErr, checkpointErr, repairErr)
+					case ftsRepairErr != nil && repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to rebuild known FTS indexes: %v; failed to repair database: %v)", baseErr, ftsRepairErr, repairErr)
+					case ftsRepairErr != nil:
+						return nil, fmt.Errorf("%w (failed to rebuild known FTS indexes: %v)", baseErr, ftsRepairErr)
+					case checkpointErr != nil:
+						return nil, fmt.Errorf("%w (failed to checkpoint WAL: %v)", baseErr, checkpointErr)
+					case repairErr != nil:
+						return nil, fmt.Errorf("%w (failed to repair database: %v)", baseErr, repairErr)
+					default:
+						return nil, baseErr
+					}
+				}
+				return nil, WrapSQLiteOpenError(dbPath, err)
+			}
+			sqliteLogf("startup integrity_check completed db_path=%s duration=%s", dbPath, time.Since(integrityCheckStartedAt))
+		} else if shouldQuickCheckSQLitePath(dbPath) {
 			quickCheckStartedAt := time.Now()
 			sqliteLogf("startup quick_check started db_path=%s timeout=%s", dbPath, sqliteQuickCheckTimeout)
 			if err := quickCheckOpenDatabase(db); err != nil {
@@ -264,6 +292,37 @@ func quickCheckOpenDatabase(db *sql.DB) error {
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("quick check error: %w", err)
+	}
+	if len(results) == 1 && results[0] == "ok" {
+		return nil
+	}
+	return fmt.Errorf("database corruption detected: %v", results)
+}
+
+func integrityCheckOpenDatabase(db *sql.DB) error {
+	if db == nil {
+		return fmt.Errorf("database is nil")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "PRAGMA integrity_check")
+	if err != nil {
+		return fmt.Errorf("integrity check failed: %w", err)
+	}
+	defer rows.Close()
+
+	var results []string
+	for rows.Next() {
+		var result string
+		if err := rows.Scan(&result); err != nil {
+			return fmt.Errorf("failed to scan integrity check result: %w", err)
+		}
+		results = append(results, result)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("integrity check error: %w", err)
 	}
 	if len(results) == 1 && results[0] == "ok" {
 		return nil
@@ -774,37 +833,7 @@ func CheckDatabaseIntegrity(dbPath string) error {
 	}
 	defer db.Close()
 
-	// Use a timeout context to prevent hanging on corrupted databases
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	// Run integrity check
-	rows, err := db.QueryContext(ctx, "PRAGMA integrity_check")
-	if err != nil {
-		return fmt.Errorf("integrity check failed: %w", err)
-	}
-	defer rows.Close()
-
-	var results []string
-	for rows.Next() {
-		var result string
-		if err := rows.Scan(&result); err != nil {
-			return fmt.Errorf("failed to scan integrity check result: %w", err)
-		}
-		results = append(results, result)
-	}
-
-	if err := rows.Err(); err != nil {
-		return fmt.Errorf("integrity check error: %w", err)
-	}
-
-	// Check results - "ok" means database is healthy
-	if len(results) == 1 && results[0] == "ok" {
-		return nil
-	}
-
-	// Database is corrupted
-	return fmt.Errorf("database corruption detected: %v", results)
+	return integrityCheckOpenDatabase(db)
 }
 
 // QuickCheckDatabase performs a quick integrity check on the database.

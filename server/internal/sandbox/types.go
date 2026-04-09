@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -232,6 +233,11 @@ func NewManager(config *Config) (*Manager, error) {
 	strong, err := newStrongPlatformExecutor(config)
 	if err != nil {
 		return nil, err
+	}
+	if config.WorkDir != "" {
+		if err := os.MkdirAll(config.WorkDir, 0o755); err != nil {
+			return nil, fmt.Errorf("failed to create sandbox workdir %q: %w", config.WorkDir, err)
+		}
 	}
 
 	return &Manager{

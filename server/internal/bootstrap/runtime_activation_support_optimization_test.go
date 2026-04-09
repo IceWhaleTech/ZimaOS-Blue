@@ -440,7 +440,7 @@ Prefer high-signal browsing steps.
 	if got, want := revision.SourcePath, "assets/skills/browser/SKILL.md"; got != want {
 		t.Fatalf("revision source_path = %q, want %q", got, want)
 	}
-	if got, want := revision.EvalRunID, parentEvalRun.ID; got != want {
+	if got, want := revision.EvalRunID, followupEvalRunID; got != want {
 		t.Fatalf("revision eval_run_id = %q, want %q", got, want)
 	}
 	if got, want := revision.OptimizationRunID, current.LastOptimizationRunID; got != want {

@@ -14,7 +14,7 @@ export function normalizeArch(arch) {
     return "";
   }
   if (normalized === "x64" || normalized === "x86_64" || normalized === "amd64") {
-    return "x64";
+    return "amd64";
   }
   if (normalized === "aarch64" || normalized === "arm64") {
     return "arm64";

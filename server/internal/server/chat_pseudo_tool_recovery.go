@@ -19,14 +19,14 @@ type pseudoXMLNode struct {
 }
 
 var pseudoXMLCompatAliasGroups = map[string][]string{
-	"bash":          {"bash", "exec"},
-	"deep_research": {"deep_research", "deep-research", "research_run", "research_status"},
-	"file_delete":   {"file_delete", "delete", "remove", "rm", "unlink"},
-	"grep":          {"grep", "rg"},
-	"image":         {"image", "image_generation", "generate_image", "generateimage"},
-	"read":          {"read", "read_file", "file_read"},
-	"web":           {"web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl"},
-	"write":         {"write", "write_file", "file_write"},
+	"bash":        {"bash", "exec"},
+	"file_delete": {"file_delete", "delete", "remove", "rm", "unlink"},
+	"grep":        {"grep", "rg"},
+	"image":       {"image", "image_generation", "generate_image", "generateimage"},
+	"read":        {"read", "read_file", "file_read"},
+	"research":    {"research", "deep_research", "deep-research", "research_run", "research_status"},
+	"web_query":   {"web", "web_query", "web_search", "web_fetch", "web_read", "web_extract", "web_crawl"},
+	"write":       {"write", "write_file", "file_write"},
 }
 
 var defaultPseudoXMLToolNames = []string{
@@ -37,6 +37,7 @@ var defaultPseudoXMLToolNames = []string{
 	"calendar",
 	"contacts",
 	"convert",
+	"research",
 	"deep_research",
 	"edit",
 	"email",
@@ -1455,7 +1456,7 @@ func wrapScalarRecoveredPseudoToolArg(toolName string, value interface{}, allowe
 	}
 
 	switch normalizeFileToolCompatName(toolName) {
-	case "deep_research":
+	case "research":
 		return map[string]interface{}{"query": value}
 	default:
 		return map[string]interface{}{"input": value}

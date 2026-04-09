@@ -70,3 +70,18 @@ func TestSanitizeAssistantToolCallsForAllowedSet_RewritesDisallowedToToolSearchW
 		t.Fatalf("args.query = %#v, want %#v", args["query"], "select:research")
 	}
 }
+
+func TestSanitizeAssistantToolCallsForAllowedSet_DropsAllCallsWhenAllowedSetEmpty(t *testing.T) {
+	calls := []llm.ToolCall{
+		{ID: "call-1", Name: "exec", Arguments: `{"cmd":"pwd"}`},
+		{ID: "call-2", Name: "web_query", Arguments: `{"query":"hello"}`},
+	}
+
+	got, dropped := sanitizeAssistantToolCallsForAllowedSet(calls, nil)
+	if len(got) != 0 {
+		t.Fatalf("len(got) = %d, want 0", len(got))
+	}
+	if len(dropped) != 2 || dropped[0] != "exec" || dropped[1] != "web_query" {
+		t.Fatalf("dropped = %#v, want %#v", dropped, []string{"exec", "web_query"})
+	}
+}

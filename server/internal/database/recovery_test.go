@@ -191,7 +191,9 @@ func TestRepairKnownFTSIndexesRebuildsSkillStoreFTS(t *testing.T) {
 		}
 	}
 
-	assertSQLiteCount(t, db, `SELECT COUNT(*) FROM skills_fts`, 0)
+	// External-content FTS tables can expose source rows before the index is rebuilt;
+	// assert on searchability instead of raw row count.
+	assertSQLiteCount(t, db, `SELECT COUNT(*) FROM skills_fts WHERE skills_fts MATCH 'alpha'`, 0)
 
 	repaired, err := database.RepairKnownFTSIndexes(path)
 	if err != nil {
@@ -356,7 +358,9 @@ func TestRepairKnownFTSIndexesRebuildsSkillMarketFTS(t *testing.T) {
 		}
 	}
 
-	assertSQLiteCount(t, db, `SELECT COUNT(*) FROM skillmarket_fts`, 0)
+	// External-content FTS tables can expose source rows before the index is rebuilt;
+	// assert on searchability instead of raw row count.
+	assertSQLiteCount(t, db, `SELECT COUNT(*) FROM skillmarket_fts WHERE skillmarket_fts MATCH 'weather'`, 0)
 
 	repaired, err := database.RepairKnownFTSIndexes(path)
 	if err != nil {

@@ -144,25 +144,18 @@ func assertSelectorDryRunSelected(t *testing.T, body map[string]any, skill strin
 		t.Fatalf("expected skill_decision payload, got=%T", body["skill_decision"])
 	}
 	wantSelected := skill
-	wantCanonical := skill
+	wantCanonical := expectedSelectorDryRunCanonicalSkillID(skill)
 	wantResearchMode := ""
 	switch skill {
 	case "analyze":
 		wantSelected = "research"
-		wantCanonical = string(agentcore.CanonicalResearch)
 		wantResearchMode = "analyze"
 	case "deep_research":
 		wantSelected = "research"
-		wantCanonical = string(agentcore.CanonicalResearch)
 		wantResearchMode = "deep_research"
 	case "ui_reviewer":
 		wantSelected = "research"
-		wantCanonical = string(agentcore.CanonicalResearch)
 		wantResearchMode = "ui_review"
-	default:
-		if canonical, ok := agentcore.ResolveCanonicalSkill(skill); ok {
-			wantCanonical = string(canonical)
-		}
 	}
 	if skillDecision["selected_skill"] != wantSelected {
 		t.Fatalf("expected skill_decision.selected_skill=%s, got=%v", wantSelected, skillDecision["selected_skill"])
@@ -181,6 +174,18 @@ func assertSelectorDryRunSelected(t *testing.T, body map[string]any, skill strin
 	}
 	if hint, _ := body["skill_prompt_hint"].(string); strings.TrimSpace(hint) == "" {
 		t.Fatalf("expected skill_prompt_hint, got=%v", body["skill_prompt_hint"])
+	}
+}
+
+func expectedSelectorDryRunCanonicalSkillID(skill string) string {
+	switch skill {
+	case "analyze", "deep_research", "ui_reviewer":
+		return string(agentcore.CanonicalResearch)
+	default:
+		if canonical, ok := agentcore.ResolveCanonicalSkill(skill); ok {
+			return string(canonical)
+		}
+		return skill
 	}
 }
 
@@ -752,10 +757,7 @@ func TestSelectorDryRun_MultilingualCuratedRoutes(t *testing.T) {
 	for _, tc := range cases {
 		for _, example := range routingcue.LocalizedExamples(tc.skill) {
 			body := runSelectorDryRun(t, h, example.Query)
-			wantCanonical := tc.skill
-			if canonical, ok := agentcore.ResolveCanonicalSkill(tc.skill); ok {
-				wantCanonical = string(canonical)
-			}
+			wantCanonical := expectedSelectorDryRunCanonicalSkillID(tc.skill)
 			if body["canonical_skill_id"] != wantCanonical {
 				t.Fatalf("%s locale=%s expected canonical_skill_id=%s got=%v", tc.skill, example.Locale, wantCanonical, body["canonical_skill_id"])
 			}

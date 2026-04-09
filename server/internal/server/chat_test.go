@@ -1059,6 +1059,29 @@ func TestDefaultModelForRuntime(t *testing.T) {
 	})
 }
 
+func TestResolveResponseModelPrefersLocallyRoutedConcreteModel(t *testing.T) {
+	h := &ChatHandler{}
+
+	t.Run("uses explicit request model when fixed", func(t *testing.T) {
+		if got := h.resolveResponseModel("gpt-5.4", "router-picked-model"); got != "gpt-5.4" {
+			t.Fatalf("resolveResponseModel(explicit request) = %q, want %q", got, "gpt-5.4")
+		}
+	})
+
+	t.Run("uses locally routed model for auto requests even when model is not in known lists", func(t *testing.T) {
+		const routedModel = "provider-pool-picked-2026-04-09"
+		if got := h.resolveResponseModel("auto", routedModel); got != routedModel {
+			t.Fatalf("resolveResponseModel(auto, routed concrete) = %q, want %q", got, routedModel)
+		}
+	})
+
+	t.Run("still falls back to auto when no concrete route is known", func(t *testing.T) {
+		if got := h.resolveResponseModel("auto", ""); got != "auto" {
+			t.Fatalf("resolveResponseModel(auto, empty) = %q, want %q", got, "auto")
+		}
+	})
+}
+
 func TestGenerateTitleWithLLM_MarksBackgroundTask(t *testing.T) {
 	var gotBackground string
 	h := &ChatHandler{
@@ -1076,6 +1099,98 @@ func TestGenerateTitleWithLLM_MarksBackgroundTask(t *testing.T) {
 	}
 	if gotBackground != "true" {
 		t.Fatalf("expected %s header=true, got %q", proxy.BackgroundTaskHeader, gotBackground)
+	}
+}
+
+func TestGenerateConversationTitle_SmallModelFailureUsesLocalFallbackWithoutLLM(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "New Conversation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	summaryEnabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	settings.settings.SmallModelSummaryEnabled = &summaryEnabled
+	handler.SetSettingsHandler(settings)
+
+	sm := &smallModelRuntimeMock{err: context.DeadlineExceeded}
+	handler.SetSmallModelRuntime(sm)
+
+	var llmCalls int
+	handler.SetProxyBridge(proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		llmCalls++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"title_1","model":"","choices":[{"message":{"role":"assistant","content":"远端标题"},"finish_reason":"stop"}]}`)
+	})))
+
+	userMessage := strings.Repeat("这是一个需要避免额外远端标题请求的长问题。", 4)
+	handler.generateConversationTitle(conv.ID, "", userMessage, "ok", "zh")
+
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if llmCalls != 0 {
+		t.Fatalf("remote llm calls = %d, want 0 after small-model title failure", llmCalls)
+	}
+
+	updatedConv, err := store.GetConversation(context.Background(), conv.ID)
+	if err != nil {
+		t.Fatalf("failed to load conversation: %v", err)
+	}
+	want := truncateAutoTitleFallback(userMessage, 30)
+	if updatedConv.Title != want {
+		t.Fatalf("conversation title = %q, want %q", updatedConv.Title, want)
+	}
+	if !updatedConv.AutoTitleFinalized {
+		t.Fatal("expected auto title to be finalized by local fallback")
+	}
+}
+
+func TestGenerateConversationTitle_WithoutSmallModelStillUsesLLMFallback(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "New Conversation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+
+	var llmCalls int
+	handler.SetProxyBridge(proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		llmCalls++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"title_1","model":"","choices":[{"message":{"role":"assistant","content":"远端标题"},"finish_reason":"stop"}]}`)
+	})))
+
+	userMessage := strings.Repeat("这是一个仍然需要远端标题生成的长问题。", 4)
+	handler.generateConversationTitle(conv.ID, "", userMessage, "ok", "zh")
+
+	if llmCalls != 1 {
+		t.Fatalf("remote llm calls = %d, want 1 when small-model title path is unavailable", llmCalls)
+	}
+
+	updatedConv, err := store.GetConversation(context.Background(), conv.ID)
+	if err != nil {
+		t.Fatalf("failed to load conversation: %v", err)
+	}
+	if updatedConv.Title != "远端标题" {
+		t.Fatalf("conversation title = %q, want %q", updatedConv.Title, "远端标题")
 	}
 }
 
@@ -1620,7 +1735,7 @@ func TestChatHandlerSendMessage_PreservesHistoricalFileReadToolResultInPreparedC
 	capture := &requestCaptureProvider{}
 	registry.Register(capture)
 
-	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	handler := NewChatHandler(store, registry, newAutoContinueMockToolRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
 	e := echo.New()

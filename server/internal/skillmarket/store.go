@@ -65,10 +65,10 @@ func newStoreWithDB(writeDB, readDB *sql.DB) (*Store, error) {
 	}
 	s := &Store{db: writeDB, readDB: readDB, searchCache: make(map[string]searchCacheEntry), searchCacheTTL: 5 * time.Second}
 	if err := s.initSchema(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("init skillmarket store schema: %w", err)
 	}
 	if err := s.normalizeLegacyCategories(context.Background()); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("normalize skillmarket legacy categories: %w", err)
 	}
 	return s, nil
 }
@@ -1080,7 +1080,7 @@ func (s *Store) initSchema() error {
 	for table, defs := range columnDefs {
 		for column, definition := range defs {
 			if err := ensureColumn(s.db, table, column, definition); err != nil {
-				return err
+				return fmt.Errorf("ensure skillmarket column %s.%s: %w", table, column, err)
 			}
 		}
 	}
@@ -1092,7 +1092,7 @@ func (s *Store) initSchema() error {
 	}
 
 	if _, err := s.db.Exec(`UPDATE skills SET slug = id WHERE COALESCE(slug, '') = ''`); err != nil {
-		return err
+		return fmt.Errorf("backfill skillmarket slug: %w", err)
 	}
 
 	indexSchema := `
@@ -1120,7 +1120,7 @@ func (s *Store) initSchema() error {
 	}
 
 	if err := dropFTSTriggers(s.db); err != nil {
-		return err
+		return fmt.Errorf("drop skillmarket fts triggers: %w", err)
 	}
 	s.ftsEnabled = true
 	ftsStatements := []string{
@@ -1156,6 +1156,10 @@ func (s *Store) initSchema() error {
 			return nil
 		}
 	}
+	if _, err := s.db.Exec(`INSERT INTO skillmarket_fts(skillmarket_fts) VALUES('rebuild')`); err != nil {
+		s.ftsEnabled = false
+		return nil
+	}
 	return nil
 }
 
@@ -1164,7 +1168,7 @@ func (s *Store) normalizeLegacyCategories(ctx context.Context) error {
 	if _, err := s.readTable(ctx, "skills").Select(&rows,
 		z.Fields("id", "category", "tags", "skill_content"),
 	); err != nil {
-		return err
+		return fmt.Errorf("load skillmarket rows for legacy category normalization: %w", err)
 	}
 	type update struct {
 		id       string
@@ -1188,7 +1192,7 @@ func (s *Store) normalizeLegacyCategories(ctx context.Context) error {
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin skillmarket category normalization tx: %w", err)
 	}
 	defer tx.Rollback()
 	for _, item := range updates {
@@ -1200,10 +1204,13 @@ func (s *Store) normalizeLegacyCategories(ctx context.Context) error {
 			z.Fields("category", "updated_at"),
 			z.Where(z.Eq("id", item.id)),
 		); err != nil {
-			return err
+			return fmt.Errorf("update normalized skillmarket category for %s: %w", item.id, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit skillmarket category normalization: %w", err)
+	}
+	return nil
 }
 
 func encodeStrings(values []string) string {
@@ -3316,8 +3323,32 @@ func (s *Store) GetFilters(ctx context.Context) (*SkillFilters, error) {
 		return result.Categories[i].Value < result.Categories[j].Value
 	})
 	sourceBucketExpr := marketplaceSourceBucketExpr("")
-	if err := buildBuckets(sourceBucketExpr, sourceBucketExpr, nil, []string{"COUNT(*) DESC", "value ASC"}, &result.Sources); err != nil {
-		return nil, err
+	{
+		conds := []interface{}{z.Eq("published", 1)}
+		if excluded := excludedMarketplaceSourceBucketExpr(""); excluded != nil {
+			conds = append(conds, excluded)
+		}
+		var rows []z.V
+		if _, err := s.readTable(ctx, "skills").Select(&rows,
+			z.Fields(
+				sourceBucketExpr+" as value",
+				"COUNT(*) as count",
+				"MIN(CASE WHEN COALESCE(source_group, '') = '' THEN 0 ELSE 1 END) as fallback_rank",
+			),
+			z.Where(conds...),
+			z.GroupBy(sourceBucketExpr),
+			z.OrderBy("COUNT(*) DESC", "fallback_rank ASC", "value ASC"),
+		); err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			value := skillmarketStringFromMapValue(row, "value")
+			count := skillmarketIntFromMapValue(row, "count")
+			if strings.TrimSpace(value) == "" {
+				continue
+			}
+			result.Sources = append(result.Sources, FilterOption{Value: value, Label: value, Count: count})
+		}
 	}
 	if err := buildBuckets("security_badge", "security_badge", nil, []string{"security_badge"}, &result.RiskBadges); err != nil {
 		return nil, err

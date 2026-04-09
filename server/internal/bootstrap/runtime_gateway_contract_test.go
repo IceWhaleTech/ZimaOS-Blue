@@ -32,9 +32,9 @@ func TestRuntimeGatewayContractGo_DelegatesMethodsAndPluginSlices(t *testing.T) 
 	}
 	methodSource := string(methodContent)
 
-	pluginContent, err := os.ReadFile(filepath.Join("runtime_gateway_contract_plugin.go"))
+	pluginContent, err := os.ReadFile(filepath.Join("plugin_tools_test_helper_test.go"))
 	if err != nil {
-		t.Fatalf("read runtime_gateway_contract_plugin.go: %v", err)
+		t.Fatalf("read plugin_tools_test_helper_test.go: %v", err)
 	}
 	pluginSource := string(pluginContent)
 
@@ -48,7 +48,7 @@ func TestRuntimeGatewayContractGo_DelegatesMethodsAndPluginSlices(t *testing.T) 
 		t.Fatalf("expected runtime_gateway_contract_methods.go to stay below 150 lines after extraction, got %d", lines)
 	}
 	if lines := strings.Count(pluginSource, "\n") + 1; lines > 80 {
-		t.Fatalf("expected runtime_gateway_contract_plugin.go to stay below 80 lines after extraction, got %d", lines)
+		t.Fatalf("expected plugin_tools_test_helper_test.go to stay below 80 lines after extraction, got %d", lines)
 	}
 
 	requiredContract := []string{
@@ -73,7 +73,7 @@ func TestRuntimeGatewayContractGo_DelegatesMethodsAndPluginSlices(t *testing.T) 
 		t.Fatal("expected runtime_gateway_contract_methods.go to keep gateway payload helpers")
 	}
 	if !strings.Contains(pluginSource, "func registerPluginTools(") {
-		t.Fatal("expected runtime_gateway_contract_plugin.go to keep plugin tool registration")
+		t.Fatal("expected plugin_tools_test_helper_test.go to keep plugin tool registration")
 	}
 
 	forbiddenContract := []string{

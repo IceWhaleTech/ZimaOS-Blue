@@ -261,7 +261,7 @@ func (s *Service) Start(ctx context.Context) {
 		if !needsBootstrap {
 			return
 		}
-		if _, err := s.Discover(ctx); err != nil && s.logger != nil {
+		if err := s.startBootstrapDiscover(ctx); err != nil && s.logger != nil {
 			s.logger.Warn("skillmarket initial bootstrap discover failed", zap.Error(err))
 		}
 	}()
@@ -445,10 +445,7 @@ func (s *Service) StartDiscoverAsync() (DiscoverStatus, bool) {
 	s.emitDiscoverEvent("started", 0, 0, 0)
 
 	go func() {
-		ctx, cancel := s.newDiscoverContext(context.Background())
-		defer cancel()
-		result, err := s.discoverOnce(ctx)
-		s.finishDiscover(result, err)
+		_, _ = s.runDiscoverCycle(context.Background(), s.discoverOnce)
 	}()
 	return status, true
 }
@@ -822,17 +819,7 @@ func (s *Service) Discover(ctx context.Context) (*DiscoverResult, error) {
 		return status.Result, fmt.Errorf("discover already running")
 	}
 	s.emitDiscoverEvent("started", 0, 0, 0)
-	defer func() {
-		if r := recover(); r != nil {
-			s.finishDiscover(nil, fmt.Errorf("discover panic: %v", r))
-			panic(r)
-		}
-	}()
-	discoverCtx, cancel := s.newDiscoverContext(ctx)
-	defer cancel()
-	result, err := s.discoverOnce(discoverCtx)
-	s.finishDiscover(result, err)
-	return result, err
+	return s.runDiscoverCycle(ctx, s.discoverOnce)
 }
 
 func (s *Service) beginDiscover() bool {
@@ -847,6 +834,33 @@ func (s *Service) beginDiscover() bool {
 		Result:    &DiscoverResult{},
 	}
 	return true
+}
+
+func (s *Service) runDiscoverCycle(
+	ctx context.Context,
+	discover func(context.Context) (*DiscoverResult, error),
+) (result *DiscoverResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("discover panic: %v", r)
+			s.finishDiscover(nil, err)
+			panic(r)
+		}
+	}()
+	discoverCtx, cancel := s.newDiscoverContext(ctx)
+	defer cancel()
+	result, err = discover(discoverCtx)
+	s.finishDiscover(result, err)
+	return result, err
+}
+
+func (s *Service) startBootstrapDiscover(ctx context.Context) error {
+	if !s.beginDiscover() {
+		return nil
+	}
+	s.emitDiscoverEvent("started", 0, 0, 0)
+	_, err := s.runDiscoverCycle(ctx, s.discoverPendingBootstrapSources)
+	return err
 }
 
 func (s *Service) setDiscoverTotals(totalSources int) {
@@ -986,10 +1000,34 @@ func cloneDiscoverResult(result *DiscoverResult) *DiscoverResult {
 }
 
 func (s *Service) discoverOnce(ctx context.Context) (*DiscoverResult, error) {
+	return s.discoverSources(ctx, nil)
+}
+
+func (s *Service) discoverPendingBootstrapSources(ctx context.Context) (*DiscoverResult, error) {
+	return s.discoverSources(ctx, pendingBootstrapSource)
+}
+
+func pendingBootstrapSource(source Source) bool {
+	return source.Enabled && source.Type == "lightmake_api" && source.LastSuccessAt.IsZero()
+}
+
+func (s *Service) discoverSources(
+	ctx context.Context,
+	include func(Source) bool,
+) (*DiscoverResult, error) {
 	_ = s.syncCurations(ctx)
 	sources, err := s.store.ListSources(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if include != nil {
+		filtered := make([]Source, 0, len(sources))
+		for _, source := range sources {
+			if include(source) {
+				filtered = append(filtered, source)
+			}
+		}
+		sources = filtered
 	}
 	s.setDiscoverTotals(len(sources))
 	jobs := make([]discoverJob, 0, len(sources))

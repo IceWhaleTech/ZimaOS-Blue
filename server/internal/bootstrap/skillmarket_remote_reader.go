@@ -33,19 +33,7 @@ func (r *skillMarketWebReader) ReadURL(ctx context.Context, req skillmarket.Remo
 	if r == nil || r.readTool == nil {
 		return nil, fmt.Errorf("web_read runtime not available")
 	}
-	args := map[string]interface{}{
-		"url":    req.URL,
-		"format": "text",
-	}
-	if req.Format != "" {
-		args["format"] = req.Format
-	}
-	if req.MaxChars > 0 {
-		args["max_chars"] = req.MaxChars
-	}
-	if len(req.Headers) > 0 {
-		args["headers"] = req.Headers
-	}
+	args := buildSkillMarketReadArgs(req)
 	raw, err := r.readTool.Execute(ctx, args)
 	if err != nil {
 		return nil, err
@@ -59,6 +47,29 @@ func (r *skillMarketWebReader) ReadURL(ctx context.Context, req skillmarket.Remo
 		return nil, err
 	}
 	return &result, nil
+}
+
+func buildSkillMarketReadArgs(req skillmarket.RemoteReadRequest) map[string]interface{} {
+	args := map[string]interface{}{
+		"url":    req.URL,
+		"format": "text",
+	}
+	if req.Format != "" {
+		args["format"] = req.Format
+	}
+	if req.MaxChars > 0 {
+		args["max_chars"] = req.MaxChars
+	}
+	if len(req.Headers) > 0 {
+		args["headers"] = req.Headers
+	}
+	if req.WantRawHTML {
+		// Catalog discovery expects HTML-capable reads and should never pay for
+		// browser/proxy fallback when a direct HTTP fetch is sufficient.
+		args["lane"] = "http"
+		args["disable_internal_fallbacks"] = true
+	}
+	return args
 }
 
 func (r *skillMarketWebReader) CrawlSite(ctx context.Context, req skillmarket.RemoteCrawlRequest) (*skillmarket.RemoteCrawlResult, error) {

@@ -286,7 +286,7 @@ jobs:
           - arch: arm64
             runner: macos-14
             goarch: arm64
-          - arch: x64
+          - arch: amd64
             runner: macos-15
             goarch: amd64
     steps:
@@ -501,7 +501,7 @@ jobs:
               '',
               '**macOS Desktop App (DMG):**',
               `- [macOS Apple Silicon (arm64)](${dl}/ZimaOS-Blue-${tag}-macos-arm64.dmg)`,
-              `- [macOS Intel (x64)](${dl}/ZimaOS-Blue-${tag}-macos-x64.dmg)`,
+              `- [macOS Intel (amd64)](${dl}/ZimaOS-Blue-${tag}-macos-amd64.dmg)`,
               '',
               '**macOS CLI:**',
               `- [macOS Apple Silicon (arm64)](${dl}/blue-${tag}-darwin-arm64.tar.gz)`,

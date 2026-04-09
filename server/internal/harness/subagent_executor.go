@@ -60,6 +60,7 @@ func (e *HarnessSubagentExecutor) startIsolatedExecution(ctx context.Context, re
 	if e == nil || e.manager == nil {
 		return nil, nil, newGuardPipelineError(RuntimeStageExecute, "runtime_unavailable", "subagent executor is not configured", nil)
 	}
+	controlCtx := subagentControlContext(ctx)
 	req.Goal = strings.TrimSpace(req.Goal)
 	req.AgentID = strings.TrimSpace(req.AgentID)
 	req.Model = strings.TrimSpace(req.Model)
@@ -72,7 +73,7 @@ func (e *HarnessSubagentExecutor) startIsolatedExecution(ctx context.Context, re
 	if parentID == "" {
 		return nil, nil, newGuardPipelineError(RuntimeStagePolicy, "parent_required", "subagents require a harness-backed parent run", nil)
 	}
-	parent, err := e.manager.GetStored(ctx, parentID)
+	parent, err := e.manager.GetStored(controlCtx, parentID)
 	if err != nil {
 		if errorsIsNoRows(err) {
 			return nil, nil, newGuardPipelineError(RuntimeStagePolicy, "parent_not_found", "parent harness run was not found", map[string]interface{}{
@@ -118,11 +119,11 @@ func (e *HarnessSubagentExecutor) startIsolatedExecution(ctx context.Context, re
 
 	e.applyChildBudgetDefaults(parent, parentCfg.Subagents, &spec)
 
-	child, err := e.manager.SpawnChild(ctx, parent.ID, spec)
+	child, err := e.manager.SpawnChild(controlCtx, parent.ID, spec)
 	if err != nil {
 		return nil, nil, err
 	}
-	e.appendSubagentEvent(ctx, child, "subagent_start", "isolated subagent started", map[string]interface{}{
+	e.appendSubagentEvent(controlCtx, child, "subagent_start", "isolated subagent started", map[string]interface{}{
 		"context_isolated": true,
 		"wait":             req.Wait,
 	})
@@ -133,7 +134,7 @@ func (e *HarnessSubagentExecutor) startIsolatedExecution(ctx context.Context, re
 
 	execution := &isolatedSubagentExecution{
 		parentRun: parent,
-		localCtx:  context.Background(),
+		localCtx:  controlCtx,
 		resultCh:  make(chan isolatedSubagentOutcome, 1),
 	}
 	go func() {
@@ -152,50 +153,75 @@ func (e *HarnessSubagentExecutor) startIsolatedExecution(ctx context.Context, re
 }
 
 func (e *HarnessSubagentExecutor) waitForTerminal(ctx context.Context, runID string) (*Run, error) {
+	waitCtx := ctx
+	if waitCtx == nil {
+		waitCtx = context.Background()
+	}
+	controlCtx := subagentControlContext(waitCtx)
 	interval := e.pollInterval
 	if interval <= 0 {
 		interval = defaultSubagentPollInterval
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	missingReads := 0
 
 	for {
-		run, err := e.manager.Get(ctx, runID)
+		run, err := e.manager.Get(controlCtx, runID)
 		if err != nil {
-			if errorsIsNoRows(err) {
-				return nil, newGuardPipelineError(RuntimeStageExecute, "subagent_not_found", "subagent run was not found", map[string]interface{}{
-					"run_id": runID,
-				})
+			if !errorsIsNoRows(err) {
+				return nil, err
 			}
-			return nil, err
-		}
-		if isTerminalRunStatus(run.Status) {
-			return run, nil
+			missingReads++
+			run = nil
+		} else {
+			missingReads = 0
+			if isTerminalRunStatus(run.Status) {
+				return run, nil
+			}
 		}
 
 		select {
-		case <-ctx.Done():
-			cancelErr := e.manager.Cancel(context.Background(), runID, "parent context cancelled while waiting on subagent")
+		case <-waitCtx.Done():
+			cancelErr := e.manager.Cancel(controlCtx, runID, "parent context cancelled while waiting on subagent")
 			if cancelErr != nil && !errorsIsNoRows(cancelErr) {
 				return nil, cancelErr
 			}
 			code := "subagent_aborted"
-			switch ctx.Err() {
+			switch waitCtx.Err() {
 			case context.Canceled:
 				code = "subagent_cancelled"
 			case context.DeadlineExceeded:
 				code = "subagent_timeout"
 			}
-			e.appendSubagentEvent(context.Background(), run, code, ctx.Err().Error(), map[string]interface{}{
+			if run == nil {
+				stored, storedErr := e.manager.GetStored(controlCtx, runID)
+				if storedErr == nil {
+					run = stored
+				}
+			}
+			e.appendSubagentEvent(controlCtx, run, code, waitCtx.Err().Error(), map[string]interface{}{
 				"context_isolated": true,
 			})
-			return nil, newGuardPipelineErrorWithCause(RuntimeStageExecute, code, ctx.Err().Error(), ctx.Err(), map[string]interface{}{
+			return nil, newGuardPipelineErrorWithCause(RuntimeStageExecute, code, waitCtx.Err().Error(), waitCtx.Err(), map[string]interface{}{
 				"run_id":     runID,
 				"wait_state": "pending_subagent_completion",
 			})
 		case <-ticker.C:
+			if missingReads >= 3 {
+				return nil, newGuardPipelineError(RuntimeStageExecute, "subagent_not_found", "subagent run was not found", map[string]interface{}{
+					"run_id": runID,
+				})
+			}
 		}
 	}
+}
+
+func subagentControlContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.WithoutCancel(ctx)
 }
 
 func (e *HarnessSubagentExecutor) applyChildBudgetDefaults(parent *Run, policy config.AgentSubagentPolicyConfig, spec *RunSpec) {

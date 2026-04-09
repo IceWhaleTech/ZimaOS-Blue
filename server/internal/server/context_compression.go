@@ -38,23 +38,78 @@ var (
 	reAccomplishedLike            *regexp.Regexp
 	reFormattingOnlyInstruction   *regexp.Regexp
 	contextCompressionRegexesOnce sync.Once
+	contextCompressionRegexesMu   sync.Mutex
 )
 
+type contextCompressionRegexSet struct {
+	latestIntentResume        *regexp.Regexp
+	latestIntentOverride      *regexp.Regexp
+	latestIntentQuestion      *regexp.Regexp
+	latestIntentInvestigate   *regexp.Regexp
+	carryOverItem             *regexp.Regexp
+	identifierHeavy           *regexp.Regexp
+	processOnly               *regexp.Regexp
+	goalLike                  *regexp.Regexp
+	instructionLike           *regexp.Regexp
+	discoveryLike             *regexp.Regexp
+	accomplishedLike          *regexp.Regexp
+	formattingOnlyInstruction *regexp.Regexp
+}
+
+func initContextCompressionRegexesLocked() {
+	reLatestIntentResume = regexp.MustCompile(`(?i)(?:\bcontinue(?: that| it| previous| from where we left off)?\b|\bresume\b|\bpick up where we left off\b|\bcarry on\b|继续上次|继续刚才|按刚才接着做|接着上次|继续那个任务|继续那个|继续这个任务|接着做)`)
+	reLatestIntentOverride = regexp.MustCompile(`(?i)(?:\bdon'?t continue\b|\bdo not continue\b|\bstop\b|\binstead\b|\banswer this first\b|\bnow first\b|\bhold off\b|\bpause that\b|不要继续|先别|改成|现在先|先回答|先解释|先不要)`)
+	reLatestIntentQuestion = regexp.MustCompile(`(?i)(?:\?|？|\bwhat\b|\bwhy\b|\bhow\b|\bwhich\b|\bcan you explain\b|\bexplain\b|\brisk\b|\breason\b|\b原因\b|\b解释\b|\b风险\b|\b为什么\b|\b怎么\b|\b是否\b|\b先回答\b|\b先解释\b)`)
+	reLatestIntentInvestigate = regexp.MustCompile(`(?i)(?:\bcheck\b|\binspect\b|\blook up\b|\bsearch\b|\bopen\b|\bread\b|\bfetch\b|\bverify\b|\banalyze\b|\btrace\b|\bextract\b|\bparse\b|查一下|查查|看一下|看看|打开|读取|检索|搜索|分析|排查|确认|提取|解析)`)
+	reCarryOverItem = regexp.MustCompile(`(?i)(?:\bpending\b|\btodo\b|\bnext(?: step)?\b|\bremaining\b|\bfollow[- ]?up\b|\bleft to\b|\bneed(?:s)? to\b|\bstill need(?:s)?\b|待处理|待办|后续|下一步|剩余|还需要|继续)`)
+	reIdentifierHeavy = regexp.MustCompile(`(?:/|\\|#L\d+|\b\d{4}-\d{2}-\d{2}\b|\b[A-Fa-f0-9]{7,}\b|\b[A-Za-z0-9._-]*[0-9][A-Za-z0-9._-]*\b|\b[A-Za-z0-9._-]*[._/-][A-Za-z0-9._-]*\b)`)
+	reProcessOnly = regexp.MustCompile(`(?i)^(?:i(?:'m| am)?|we(?:'re| are)?|let me|going to|will|first|next|then|checking|inspecting|looking into|starting with|我先|我会|正在|先看看|先检查|接下来|然后|先去)(?:\b|[ ,.:;])`)
+	reGoalLike = regexp.MustCompile(`(?i)(?:\bgoal\b|\btask\b|\bobjective\b|\bimplement\b|\bfix\b|\banswer\b|\bresearch\b|\bwrite\b|\bupdate\b|目标|任务|实现|修复|回答|调研|编写|更新)`)
+	reInstructionLike = regexp.MustCompile(`(?i)(?:\bmust\b|\bshould\b|\bneed to\b|\bremember\b|\bkeep\b|\bprefer\b|\bavoid\b|\buse\b|\bdon'?t\b|\bdo not\b|必须|应该|需要|记住|保留|优先|避免|不要|先)`)
+	reDiscoveryLike = regexp.MustCompile(`(?i)(?:\bfound\b|\bconfirmed\b|\broot cause\b|\berror\b|\bfailed\b|\bbecause\b|\bdiscovered\b|\bverified\b|\bobserved\b|\bdiagnosed\b|发现|确认|根因|报错|失败|因为|验证|排查|原因)`)
+	reAccomplishedLike = regexp.MustCompile(`(?i)(?:\bfixed\b|\bupdated\b|\bwrote\b|\bcreated\b|\badded\b|\bimplemented\b|\bsaved\b|\bcompleted\b|\bresolved\b|\bpatched\b|修复|更新|编写|创建|新增|实现|保存|完成|解决|修改)`)
+	reFormattingOnlyInstruction = regexp.MustCompile(`(?i)(?:\bsummary\b|\bsummar(?:y|ize)\b|\bconcise\b|\breplay\b|\bprocess notes?\b|\bexploratory\b|\bif they matter\b|不要重放|不要复述|简洁|总结|摘要|过程说明|探索性)`)
+}
+
+func contextCompressionRegexes() contextCompressionRegexSet {
+	contextCompressionRegexesMu.Lock()
+	defer contextCompressionRegexesMu.Unlock()
+	if !contextCompressionRegexesReady() {
+		initContextCompressionRegexesLocked()
+	}
+	return contextCompressionRegexSet{
+		latestIntentResume:        reLatestIntentResume,
+		latestIntentOverride:      reLatestIntentOverride,
+		latestIntentQuestion:      reLatestIntentQuestion,
+		latestIntentInvestigate:   reLatestIntentInvestigate,
+		carryOverItem:             reCarryOverItem,
+		identifierHeavy:           reIdentifierHeavy,
+		processOnly:               reProcessOnly,
+		goalLike:                  reGoalLike,
+		instructionLike:           reInstructionLike,
+		discoveryLike:             reDiscoveryLike,
+		accomplishedLike:          reAccomplishedLike,
+		formattingOnlyInstruction: reFormattingOnlyInstruction,
+	}
+}
+
 func ensureContextCompressionRegexes() {
-	contextCompressionRegexesOnce.Do(func() {
-		reLatestIntentResume = regexp.MustCompile(`(?i)(?:\bcontinue(?: that| it| previous| from where we left off)?\b|\bresume\b|\bpick up where we left off\b|\bcarry on\b|继续上次|继续刚才|按刚才接着做|接着上次|继续那个任务|继续那个|继续这个任务|接着做)`)
-		reLatestIntentOverride = regexp.MustCompile(`(?i)(?:\bdon'?t continue\b|\bdo not continue\b|\bstop\b|\binstead\b|\banswer this first\b|\bnow first\b|\bhold off\b|\bpause that\b|不要继续|先别|改成|现在先|先回答|先解释|先不要)`)
-		reLatestIntentQuestion = regexp.MustCompile(`(?i)(?:\?|？|\bwhat\b|\bwhy\b|\bhow\b|\bwhich\b|\bcan you explain\b|\bexplain\b|\brisk\b|\breason\b|\b原因\b|\b解释\b|\b风险\b|\b为什么\b|\b怎么\b|\b是否\b|\b先回答\b|\b先解释\b)`)
-		reLatestIntentInvestigate = regexp.MustCompile(`(?i)(?:\bcheck\b|\binspect\b|\blook up\b|\bsearch\b|\bopen\b|\bread\b|\bfetch\b|\bverify\b|\banalyze\b|\btrace\b|\bextract\b|\bparse\b|查一下|查查|看一下|看看|打开|读取|检索|搜索|分析|排查|确认|提取|解析)`)
-		reCarryOverItem = regexp.MustCompile(`(?i)(?:\bpending\b|\btodo\b|\bnext(?: step)?\b|\bremaining\b|\bfollow[- ]?up\b|\bleft to\b|\bneed(?:s)? to\b|\bstill need(?:s)?\b|待处理|待办|后续|下一步|剩余|还需要|继续)`)
-		reIdentifierHeavy = regexp.MustCompile(`(?:/|\\|#L\d+|\b\d{4}-\d{2}-\d{2}\b|\b[A-Fa-f0-9]{7,}\b|\b[A-Za-z0-9._-]*[0-9][A-Za-z0-9._-]*\b|\b[A-Za-z0-9._-]*[._/-][A-Za-z0-9._-]*\b)`)
-		reProcessOnly = regexp.MustCompile(`(?i)^(?:i(?:'m| am)?|we(?:'re| are)?|let me|going to|will|first|next|then|checking|inspecting|looking into|starting with|我先|我会|正在|先看看|先检查|接下来|然后|先去)(?:\b|[ ,.:;])`)
-		reGoalLike = regexp.MustCompile(`(?i)(?:\bgoal\b|\btask\b|\bobjective\b|\bimplement\b|\bfix\b|\banswer\b|\bresearch\b|\bwrite\b|\bupdate\b|目标|任务|实现|修复|回答|调研|编写|更新)`)
-		reInstructionLike = regexp.MustCompile(`(?i)(?:\bmust\b|\bshould\b|\bneed to\b|\bremember\b|\bkeep\b|\bprefer\b|\bavoid\b|\buse\b|\bdon'?t\b|\bdo not\b|必须|应该|需要|记住|保留|优先|避免|不要|先)`)
-		reDiscoveryLike = regexp.MustCompile(`(?i)(?:\bfound\b|\bconfirmed\b|\broot cause\b|\berror\b|\bfailed\b|\bbecause\b|\bdiscovered\b|\bverified\b|\bobserved\b|\bdiagnosed\b|发现|确认|根因|报错|失败|因为|验证|排查|原因)`)
-		reAccomplishedLike = regexp.MustCompile(`(?i)(?:\bfixed\b|\bupdated\b|\bwrote\b|\bcreated\b|\badded\b|\bimplemented\b|\bsaved\b|\bcompleted\b|\bresolved\b|\bpatched\b|修复|更新|编写|创建|新增|实现|保存|完成|解决|修改)`)
-		reFormattingOnlyInstruction = regexp.MustCompile(`(?i)(?:\bsummary\b|\bsummar(?:y|ize)\b|\bconcise\b|\breplay\b|\bprocess notes?\b|\bexploratory\b|\bif they matter\b|不要重放|不要复述|简洁|总结|摘要|过程说明|探索性)`)
-	})
+	_ = contextCompressionRegexes()
+}
+
+func contextCompressionRegexesReady() bool {
+	return reLatestIntentResume != nil &&
+		reLatestIntentOverride != nil &&
+		reLatestIntentQuestion != nil &&
+		reLatestIntentInvestigate != nil &&
+		reCarryOverItem != nil &&
+		reIdentifierHeavy != nil &&
+		reProcessOnly != nil &&
+		reGoalLike != nil &&
+		reInstructionLike != nil &&
+		reDiscoveryLike != nil &&
+		reAccomplishedLike != nil &&
+		reFormattingOnlyInstruction != nil
 }
 
 type latestIntentCarryoverDecision struct {
@@ -108,18 +163,18 @@ var multilingualProcessOnlyPrefixMatcher = newUnicodeAhoMatcher(multilingualProc
 var multilingualFormattingOnlyMatcher = newUnicodeAhoMatcher(multilingualFormattingOnlyMarkers)
 
 func looksLikeFormattingOnlyInstruction(text string) bool {
-	ensureContextCompressionRegexes()
+	rx := contextCompressionRegexes()
 	lower := strings.ToLower(strings.TrimSpace(text))
-	return reFormattingOnlyInstruction.MatchString(lower) || multilingualFormattingOnlyMatcher.ContainsAnyFold(lower)
+	return rx.formattingOnlyInstruction.MatchString(lower) || multilingualFormattingOnlyMatcher.ContainsAnyFold(lower)
 }
 
 func looksLikeProcessOnlyItem(text string) bool {
-	ensureContextCompressionRegexes()
+	rx := contextCompressionRegexes()
 	lower := strings.ToLower(strings.TrimSpace(text))
 	if multilingualProcessOnlyPrefixMatcher.HasAnyPrefixFold(lower) {
 		return true
 	}
-	return reProcessOnly.MatchString(lower)
+	return rx.processOnly.MatchString(lower)
 }
 
 func latestUserMessageFromMemory(messages []memory.Message) string {
@@ -228,7 +283,7 @@ func summaryMessageHasBackgroundWrapper(messages []llm.Message) bool {
 }
 
 func markCarryOverItems(summaryText string) string {
-	ensureContextCompressionRegexes()
+	rx := contextCompressionRegexes()
 	lines := strings.Split(strings.TrimSpace(summaryText), "\n")
 	if len(lines) == 0 {
 		return ""
@@ -248,7 +303,7 @@ func markCarryOverItems(summaryText string) string {
 			continue
 		}
 		item := strings.TrimSpace(strings.TrimPrefix(line, "- "))
-		if !reCarryOverItem.MatchString(item) {
+		if !rx.carryOverItem.MatchString(item) {
 			continue
 		}
 		lines[i] = "- [carry-over] " + item
@@ -257,7 +312,7 @@ func markCarryOverItems(summaryText string) string {
 }
 
 func sanitizeCompressedSummaryOutput(summaryText string) string {
-	ensureContextCompressionRegexes()
+	rx := contextCompressionRegexes()
 	lines := strings.Split(strings.TrimSpace(summaryText), "\n")
 	if len(lines) == 0 {
 		return ""
@@ -282,15 +337,15 @@ func sanitizeCompressedSummaryOutput(summaryText string) string {
 		item := strings.TrimSpace(strings.TrimPrefix(line, "- "))
 		lower := strings.ToLower(item)
 		if looksLikeProcessOnlyItem(lower) &&
-			!reIdentifierHeavy.MatchString(item) &&
-			!reCarryOverItem.MatchString(lower) &&
-			!reDiscoveryLike.MatchString(lower) &&
-			!reAccomplishedLike.MatchString(lower) {
+			!rx.identifierHeavy.MatchString(item) &&
+			!rx.carryOverItem.MatchString(lower) &&
+			!rx.discoveryLike.MatchString(lower) &&
+			!rx.accomplishedLike.MatchString(lower) {
 			continue
 		}
 		item = rewriteHistoricalSummaryItem(currentSection, item)
 		lower = strings.ToLower(item)
-		if currentSection == "Accomplished" && reCarryOverItem.MatchString(lower) && !strings.Contains(item, "[carry-over]") {
+		if currentSection == "Accomplished" && rx.carryOverItem.MatchString(lower) && !strings.Contains(item, "[carry-over]") {
 			item = "[carry-over] " + item
 		}
 		out = append(out, "- "+item)
@@ -501,17 +556,17 @@ func (h *ChatHandler) buildSmallModelConversationCompression(ctx context.Context
 }
 
 func latestIntentVsCarryover(messages []llm.Message, latestUser string, toolCalls []llm.ToolCall) latestIntentCarryoverDecision {
-	ensureContextCompressionRegexes()
+	rx := contextCompressionRegexes()
 	latestUser = strings.TrimSpace(latestUser)
 	if latestUser == "" {
 		latestUser = latestUserMessageFromLLM(messages)
 	}
 	decision := latestIntentCarryoverDecision{
 		LatestUser:           latestUser,
-		ExplicitResume:       reLatestIntentResume.MatchString(latestUser),
-		ExplicitOverride:     reLatestIntentOverride.MatchString(latestUser),
-		QuestionLike:         reLatestIntentQuestion.MatchString(latestUser),
-		AllowsInvestigation:  reLatestIntentInvestigate.MatchString(latestUser),
+		ExplicitResume:       rx.latestIntentResume.MatchString(latestUser),
+		ExplicitOverride:     rx.latestIntentOverride.MatchString(latestUser),
+		QuestionLike:         rx.latestIntentQuestion.MatchString(latestUser),
+		AllowsInvestigation:  rx.latestIntentInvestigate.MatchString(latestUser),
 		SideEffectingTools:   toolCallsContainSideEffects(toolCalls),
 		HasHistoricalContext: hasHistoricalCarryoverContext(messages),
 	}
@@ -732,7 +787,7 @@ func compactRepeatedCompressionText(text string) string {
 }
 
 func classifyCompressionUnit(role llm.Role, text string, idx, total int, queryTokens map[string]struct{}) (string, int, bool) {
-	ensureContextCompressionRegexes()
+	rx := contextCompressionRegexes()
 	lower := strings.ToLower(text)
 	if lower == "" {
 		return "", 0, false
@@ -748,31 +803,31 @@ func classifyCompressionUnit(role llm.Role, text string, idx, total int, queryTo
 	if role == llm.RoleSystem {
 		score += 3
 	}
-	if reIdentifierHeavy.MatchString(text) {
+	if rx.identifierHeavy.MatchString(text) {
 		score += 5
 	}
 	if overlap := keywordOverlapCount(queryTokens, lower); overlap > 0 {
 		score += overlap * 4
 	}
-	if reInstructionLike.MatchString(lower) {
+	if rx.instructionLike.MatchString(lower) {
 		score += 4
 	}
-	if reGoalLike.MatchString(lower) {
+	if rx.goalLike.MatchString(lower) {
 		score += 3
 	}
-	if reDiscoveryLike.MatchString(lower) {
+	if rx.discoveryLike.MatchString(lower) {
 		score += 3
 	}
-	if reAccomplishedLike.MatchString(lower) || reCarryOverItem.MatchString(lower) {
+	if rx.accomplishedLike.MatchString(lower) || rx.carryOverItem.MatchString(lower) {
 		score += 4
 	}
-	if looksLikeProcessOnlyItem(lower) && !reIdentifierHeavy.MatchString(text) &&
-		!reDiscoveryLike.MatchString(lower) && !reAccomplishedLike.MatchString(lower) &&
-		!reCarryOverItem.MatchString(lower) {
+	if looksLikeProcessOnlyItem(lower) && !rx.identifierHeavy.MatchString(text) &&
+		!rx.discoveryLike.MatchString(lower) && !rx.accomplishedLike.MatchString(lower) &&
+		!rx.carryOverItem.MatchString(lower) {
 		return "", 0, false
 	}
 	if looksLikeFormattingOnlyInstruction(lower) &&
-		!reIdentifierHeavy.MatchString(text) &&
+		!rx.identifierHeavy.MatchString(text) &&
 		keywordOverlapCount(queryTokens, lower) == 0 {
 		score -= 6
 	}
@@ -781,13 +836,13 @@ func classifyCompressionUnit(role llm.Role, text string, idx, total int, queryTo
 	}
 
 	switch {
-	case role == llm.RoleUser && (idx <= 1 || reGoalLike.MatchString(lower)) && !reInstructionLike.MatchString(lower):
+	case role == llm.RoleUser && (idx <= 1 || rx.goalLike.MatchString(lower)) && !rx.instructionLike.MatchString(lower):
 		return "Goal", score, true
-	case reAccomplishedLike.MatchString(lower) || reCarryOverItem.MatchString(lower):
+	case rx.accomplishedLike.MatchString(lower) || rx.carryOverItem.MatchString(lower):
 		return "Accomplished", score, true
-	case role != llm.RoleUser && reDiscoveryLike.MatchString(lower):
+	case role != llm.RoleUser && rx.discoveryLike.MatchString(lower):
 		return "Discoveries", score, true
-	case role == llm.RoleUser || reInstructionLike.MatchString(lower):
+	case role == llm.RoleUser || rx.instructionLike.MatchString(lower):
 		return "Instructions", score, true
 	default:
 		return "Discoveries", score, true
@@ -847,7 +902,7 @@ func fallbackGoalFromMessages(messages []llm.Message) string {
 }
 
 func fallbackInstructionsFromMessages(messages []llm.Message) string {
-	ensureContextCompressionRegexes()
+	rx := contextCompressionRegexes()
 	for _, msg := range messages {
 		if msg.Role != llm.RoleUser && msg.Role != llm.RoleSystem {
 			continue
@@ -858,7 +913,7 @@ func fallbackInstructionsFromMessages(messages []llm.Message) string {
 		}
 		for _, unit := range dedupeCompressionUnits(splitCompressionUnits(text)) {
 			lower := strings.ToLower(unit)
-			if !reInstructionLike.MatchString(lower) || looksLikeFormattingOnlyInstruction(lower) {
+			if !rx.instructionLike.MatchString(lower) || looksLikeFormattingOnlyInstruction(lower) {
 				continue
 			}
 			return truncateRunes(unit, 220)

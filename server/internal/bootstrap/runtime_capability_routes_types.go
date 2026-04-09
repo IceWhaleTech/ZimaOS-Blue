@@ -1,21 +1,18 @@
 package bootstrap
 
 import (
-	"github.com/labstack/echo/v4"
-	"go.uber.org/zap"
-
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
+	"github.com/labstack/echo/v4"
+	"go.uber.org/zap"
 )
 
 type runtimeTaskSurfaceOptions struct {
-	protected          *echo.Group
-	apiProtected       *echo.Group
-	chatPermission     echo.MiddlewareFunc
-	securityPermission echo.MiddlewareFunc
-	chatHandler        *serverpkg.ChatHandler
-	browserHandler     *browser.Handler
+	protected, apiProtected            *echo.Group
+	chatPermission, securityPermission echo.MiddlewareFunc
+	chatHandler                        *serverpkg.ChatHandler
+	browserHandler                     *browser.Handler
 	runtimeTaskSurfaceKnowledgeDeps
 	workspaceDir  string
 	execApprovals *tools.ApprovalManager
@@ -27,6 +24,7 @@ type runtimeTaskHarnessSurfaceRegistration struct {
 	detailProvider   *harnessDetailProvider
 	routesRegistered bool
 }
+
 type runtimeTaskSurfaceRegistration struct {
 	research                                                                                                                                                 runtimeTaskResearchSurfaceRegistration
 	knowledge                                                                                                                                                runtimeTaskKnowledgeSurfaceRegistration

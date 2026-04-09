@@ -2115,6 +2115,123 @@ func TestServiceStartDiscoverAsyncCompletesTimedOutSourcesWithoutFatalStatus(t *
 	t.Fatal("timed out waiting for discover timeout completion")
 }
 
+func TestServiceStartBootstrapDiscoverScopesToPendingLightmakeSources(t *testing.T) {
+	lightmakeStarted := make(chan struct{}, 1)
+	releaseLightmake := make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() {
+		releaseOnce.Do(func() {
+			close(releaseLightmake)
+		})
+	})
+	lightmakeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/skills" {
+			http.NotFound(w, r)
+			return
+		}
+		select {
+		case lightmakeStarted <- struct{}{}:
+		default:
+		}
+		<-releaseLightmake
+		_, _ = w.Write([]byte(`{"code":0,"message":"success","data":{"total":0,"skills":[]}}`))
+	}))
+	defer lightmakeServer.Close()
+
+	var extraSourceHits int
+	var extraSourceHitsMu sync.Mutex
+	extraSource := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		extraSourceHitsMu.Lock()
+		extraSourceHits++
+		extraSourceHitsMu.Unlock()
+		_, _ = w.Write([]byte(`<html><body>extra source should stay idle during bootstrap</body></html>`))
+	}))
+	defer extraSource.Close()
+
+	svc, cleanup := newTestService(t)
+	defer cleanup()
+
+	if _, err := svc.store.db.Exec(`UPDATE skill_sources SET enabled = 0`); err != nil {
+		t.Fatalf("disable sources: %v", err)
+	}
+	if err := svc.store.UpsertSource(context.Background(), Source{
+		ID:          "tencent-skillhub",
+		Type:        "lightmake_api",
+		BaseURL:     lightmakeServer.URL,
+		DisplayName: "Tencent SkillHub",
+		SourceGroup: "skillhub",
+		Enabled:     true,
+		Priority:    5,
+	}); err != nil {
+		t.Fatalf("UpsertSource(tencent-skillhub) error = %v", err)
+	}
+	if err := svc.store.UpsertSource(context.Background(), Source{
+		ID:          "catalog-extra",
+		Type:        "html_catalog",
+		BaseURL:     extraSource.URL,
+		DisplayName: "Extra Catalog",
+		SourceGroup: "catalog",
+		Enabled:     true,
+		Priority:    40,
+	}); err != nil {
+		t.Fatalf("UpsertSource(catalog-extra) error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc.Start(ctx)
+
+	select {
+	case <-lightmakeStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for bootstrap lightmake request")
+	}
+
+	runningStatus := svc.GetDiscoverStatus()
+	if !runningStatus.Running {
+		t.Fatal("expected bootstrap discover to report running")
+	}
+	if runningStatus.TotalSources != 1 {
+		t.Fatalf("running status total_sources = %d, want 1 pending bootstrap source", runningStatus.TotalSources)
+	}
+	if len(runningStatus.SourceResults) != 1 || runningStatus.SourceResults[0].SourceID != "tencent-skillhub" {
+		t.Fatalf("running status source_results = %+v, want only tencent-skillhub", runningStatus.SourceResults)
+	}
+
+	releaseOnce.Do(func() {
+		close(releaseLightmake)
+	})
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		doneStatus := svc.GetDiscoverStatus()
+		if doneStatus.Running {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		if doneStatus.LastError != "" {
+			t.Fatalf("bootstrap discover completed with error: %s", doneStatus.LastError)
+		}
+		if doneStatus.Result == nil {
+			t.Fatal("expected bootstrap discover result after completion")
+		}
+		if doneStatus.Result.SourcesProcessed != 1 || doneStatus.ProcessedSources != 1 {
+			t.Fatalf("unexpected bootstrap completion counters: result=%+v processed_sources=%d", doneStatus.Result, doneStatus.ProcessedSources)
+		}
+		if len(doneStatus.SourceResults) != 1 || doneStatus.SourceResults[0].SourceID != "tencent-skillhub" || doneStatus.SourceResults[0].Status != "success" {
+			t.Fatalf("done status source_results = %+v, want successful tencent-skillhub only", doneStatus.SourceResults)
+		}
+		extraSourceHitsMu.Lock()
+		hits := extraSourceHits
+		extraSourceHitsMu.Unlock()
+		if hits != 0 {
+			t.Fatalf("extra source hits = %d, want 0 during bootstrap discover", hits)
+		}
+		return
+	}
+	t.Fatal("timed out waiting for bootstrap discover completion")
+}
+
 func TestServiceDiscoverBroadcastsProgressEvents(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/skills" {

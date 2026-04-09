@@ -1,16 +1,14 @@
 package bootstrap
 
 import (
-	"time"
-
-	"go.uber.org/zap"
-
 	networkapi "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/api"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/optimization"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/permission"
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
+	"go.uber.org/zap"
+	"time"
 )
 
 func (binding *runtimeContractBinding) BindBootstrapSupportRuntime(
@@ -26,7 +24,6 @@ func bindRouteRuntimeBootstrapSupport(
 	options routeRuntimeContractBootstrapSupportOptions,
 ) routeRuntimeContractBootstrapSupportResult {
 	result := routeRuntimeContractBootstrapSupportResult{}
-
 	settingsInitStart := time.Now()
 	settingsHandler := serverpkg.NewSettingsHandler(options.configKV)
 	settingsHandler.SetChatHandler(options.chatHandler)
@@ -45,16 +42,13 @@ func bindRouteRuntimeBootstrapSupport(
 	}
 	result.settingsHandler = settingsHandler
 	result.smallModelManager = smallModelManager
-
 	if options.sseBroker != nil && options.apiProtected != nil {
 		sse.NewHandler(options.sseBroker).RegisterRoutes(options.apiProtected.Group("/v1"))
 		approvalHandler := networkapi.NewApprovalHandler(options.sseBroker)
 		approvalHandler.RegisterRoutes(options.apiProtected.Group("/v1"))
 		result.approvalHandler = approvalHandler
 	}
-
 	registerRouteRuntimeVoiceWakeSurface(settingsHandler, options)
 	registerRouteRuntimeTunnelSurface(options)
-
 	return result
 }

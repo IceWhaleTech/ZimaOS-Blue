@@ -6,15 +6,9 @@ import (
 )
 
 func newRuntimeExecSandboxExecutor(manager *sandbox.Manager) tools.SandboxExecutor {
-	if manager == nil || !manager.SupportsTier(sandbox.TierLight) {
-		return nil
-	}
-	return &sandboxExecAdapter{mgr: manager, tier: sandbox.TierLight}
+	return newRuntimeExecSandboxExecutorForTier(manager, sandbox.TierLight)
 }
 
 func newRuntimeExecStrongSandboxExecutor(manager *sandbox.Manager) tools.SandboxExecutor {
-	if manager == nil || !manager.SupportsTier(sandbox.TierStrong) {
-		return nil
-	}
-	return &sandboxExecAdapter{mgr: manager, tier: sandbox.TierStrong}
+	return newRuntimeExecSandboxExecutorForTier(manager, sandbox.TierStrong)
 }

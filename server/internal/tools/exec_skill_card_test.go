@@ -78,14 +78,14 @@ func TestEmitSkillResultCardFromData_Analyze(t *testing.T) {
 		t.Fatalf("emitted %d cards, want 1", len(emitted))
 	}
 	card := emitted[0]
-	if got := card["type"]; got != "result" {
-		t.Fatalf("card type = %v, want result", got)
+	if got := card["type"]; got != "analyze" {
+		t.Fatalf("card type = %v, want analyze", got)
 	}
-	if got := card["title"]; got != "analyze" {
-		t.Fatalf("card title = %v, want analyze", got)
+	if got := card["title"]; got != "Market analysis" {
+		t.Fatalf("card title = %v, want Market analysis", got)
 	}
-	if got := card["message"]; got != "Market analysis" {
-		t.Fatalf("card message = %v, want Market analysis", got)
+	if got := card["report_url"]; got != "/reports/r1.html" {
+		t.Fatalf("card report_url = %v, want /reports/r1.html", got)
 	}
 }
 

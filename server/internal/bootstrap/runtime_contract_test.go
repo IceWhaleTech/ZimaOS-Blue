@@ -100,8 +100,8 @@ func TestRuntimeContractBinding_BindsChatAndRegistersTaskSurface(t *testing.T) {
 	if target.hook != nil || target.hookCalls != 0 {
 		t.Fatalf("expected route contract to skip direct turn hook wiring, got %#v", target)
 	}
-	if registry.Get("deep_research") == nil {
-		t.Fatalf("expected deep_research tool to be registered, got %#v", registry.List())
+	if registry.Get("research") == nil {
+		t.Fatalf("expected research tool to be registered, got %#v", registry.List())
 	}
 	if !researchRuntime.serviceBound || researchRuntime.turnHookBound || !researchRuntime.eventPublisherBound || !researchRuntime.driverRegistered || !researchRuntime.toolRegistered {
 		t.Fatalf("expected contract to report research runtime state without direct turn hook binding, got %#v", researchRuntime)

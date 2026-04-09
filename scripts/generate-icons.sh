@@ -5,6 +5,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ICONS_DIR="$SCRIPT_DIR/../tauri-app/src-tauri/icons"
+NSIS_ICONS_DIR="$SCRIPT_DIR/../tauri-app/src-tauri/nsis/icons"
 SOURCE="$ICONS_DIR/icon-source.svg"
 ICONSET_DIR="/tmp/zimaos-blue.iconset"
 
@@ -46,6 +47,11 @@ rsvg-convert -w 1024 -h 1024 "$SOURCE" -o "$ICONSET_DIR/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET_DIR" -o "$ICONS_DIR/icon.icns"
 rm -rf "$ICONSET_DIR"
 echo "Generated icon.icns"
+
+# Keep the macOS bundle icns aligned with the canonical Blue source icon.
+mkdir -p "$NSIS_ICONS_DIR"
+cp "$ICONS_DIR/icon.icns" "$NSIS_ICONS_DIR/icon.icns"
+echo "Synced icon.icns to $NSIS_ICONS_DIR/icon.icns"
 
 # Generate Windows .ico (multi-size)
 # iconutil doesn't do .ico, use sips + png2ico or just provide the PNGs

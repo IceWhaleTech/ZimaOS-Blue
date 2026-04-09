@@ -118,7 +118,7 @@ func TestBuildTaskCoordinationPromptContext_IncludesExecutionProfileHints(t *tes
 	}
 }
 
-func TestBuildTaskCoordinationPromptContext_IncludesRequireForkHintsForDeepResearch(t *testing.T) {
+func TestBuildTaskCoordinationPromptContext_IncludesRequireForkHintsForResearchFamilyAlias(t *testing.T) {
 	task := &Task{
 		WorkspaceRoot: t.TempDir(),
 		Metadata: map[string]interface{}{
@@ -131,7 +131,7 @@ func TestBuildTaskCoordinationPromptContext_IncludesRequireForkHintsForDeepResea
 
 	out := buildTaskCoordinationPromptContext(task)
 	required := []string{
-		"Discover-first route: deep_research",
+		"Discover-first route: research",
 		"execution profile: require_fork",
 		"Delegate this execution to an isolated worker",
 		"separate fresh-context worker",

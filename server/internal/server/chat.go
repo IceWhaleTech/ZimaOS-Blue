@@ -2920,6 +2920,18 @@ func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent str
 	return false, ""
 }
 
+func shouldAllowToolDependentAutoContinue(reason string, clarifyNone bool, allowedTools []llm.Tool) bool {
+	if !clarifyNone || len(allowedTools) > 0 {
+		return true
+	}
+	switch reason {
+	case "pseudo_tool_call", "action_pledge":
+		return false
+	default:
+		return true
+	}
+}
+
 func shouldAutoContinueForSummaryIntro(currentContent string) bool {
 	if isAwaitingUserInput(currentContent) {
 		return false
@@ -3544,7 +3556,7 @@ type imToollessAutoContinueState struct {
 	ConsecutiveToollessDups         int
 }
 
-func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, resp *llm.ChatResponse, round int, agentMode bool, state *imToollessAutoContinueState) bool {
+func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, resp *llm.ChatResponse, round int, agentMode, clarifyNoneToolSurface bool, state *imToollessAutoContinueState) bool {
 	if req == nil || resp == nil || state == nil {
 		return false
 	}
@@ -3613,6 +3625,10 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 	preferReminderTool := round == 0 && shouldPreferReminderToolForRetry(req.Messages, req.Tools)
 	shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, state.TodoContent, agentMode, round > 0, state.PlanCompletedByTool, preferReminderTool, state.MissingTodoAutoContinueCount == 0)
 	if !shouldContinue {
+		return false
+	}
+	if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, req.Tools) {
+		resp.Message.Content = buildClarifyNoneToolFallbackReply(latestUserMessageFromLLM(req.Messages))
 		return false
 	}
 	if !h.shouldAutoContinueForReasonWithinBudget(reason, agentMode, state.PseudoToolCallAutoContinueCount, state.ActionPledgeAutoContinueCount, state.MissingTodoAutoContinueCount, state.PendingTodoAutoContinueCount) {
@@ -4065,42 +4081,15 @@ func sanitizeModelHint(actualModel, requestedModel string) string {
 	return requestedModel
 }
 
-// modelExistsInKnownLists checks model IDs against local model inventories.
-// This avoids trusting arbitrary upstream model names in response payloads.
-func (h *ChatHandler) modelExistsInKnownLists(model string) bool {
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return false
-	}
-	if h.providerPool != nil && h.providerPool.Router != nil && h.providerPool.Router.HasModel(model) {
-		return true
-	}
-	if h.providers == nil {
-		return false
-	}
-	for _, name := range h.providers.List() {
-		p := h.providers.Get(name)
-		if p == nil {
-			continue
-		}
-		for _, known := range p.Models() {
-			if strings.TrimSpace(known) == model {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // resolveStableModel returns a trusted concrete model for routing/pinning.
-// Priority: explicit request model > known routed model.
+// Priority: explicit request model > locally routed model.
 func (h *ChatHandler) resolveStableModel(requestModel, routedModel string) string {
 	requested := strings.TrimSpace(requestModel)
 	if requested != "" && !strings.EqualFold(requested, "auto") {
 		return requested
 	}
 	routed := strings.TrimSpace(routedModel)
-	if routed != "" && h.modelExistsInKnownLists(routed) {
+	if routed != "" && !strings.EqualFold(routed, "auto") {
 		return routed
 	}
 	return ""
@@ -4968,6 +4957,14 @@ func buildSummaryIntroFallback(messages []llm.Message, maxLen int, opts toolFall
 		)
 	}
 	return fallback, true
+}
+
+func buildClarifyNoneToolFallbackReply(latestUser string) string {
+	messages := []llm.Message{{Role: llm.RoleUser, Content: strings.TrimSpace(latestUser)}}
+	if shouldUseChineseToolFallbackMessage(messages, nil) {
+		return "这一步我先不执行任何工具，因为我还不能确定你希望我先做哪一件事。请先明确告诉我你的优先方向，我再继续。"
+	}
+	return "I won't execute any tools yet because I can't tell which direction you want first. Please tell me which path you want me to take, and I'll continue from there."
 }
 
 // estimateTokens estimates the number of tokens in a text.
@@ -6036,6 +6033,11 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 	return selectedTools
 }
 
+func (h *ChatHandler) isClarifyNoneToolSurfaceForRequest(ctx context.Context, userMessage string, policyReq tools.ToolPolicyRequest, webSearchEnabled, deepResearchEnabled *bool) bool {
+	selection := h.selectChatToolSurfacesForRequest(ctx, userMessage, policyReq, webSearchEnabled, deepResearchEnabled)
+	return selection.NativeMode == chatNativeToolSurfaceModeClarifyNone
+}
+
 func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, userMessage string, policyReq tools.ToolPolicyRequest, webSearchEnabled, deepResearchEnabled *bool) chatToolSurfaceSelection {
 	routedDefs, _ := h.selectToolsDetailed(userMessage, policyReq)
 	routedDefs = applyWebSearchPreference(routedDefs, webSearchEnabled)
@@ -6082,12 +6084,6 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 		}
 		selection.NativeDefs = []tools.ToolDefinition{execDef}
-		// Deep research is a first-class workflow; expose `research` even under the
-		// exec-only native surface so the model doesn't emit out-of-surface
-		// deep_research tool calls that get dropped.
-		if discoveryDecision.CanonicalTarget == agentcore.CanonicalResearch || discoveryDecision.CanonicalTarget == agentcore.CanonicalDeepResearch {
-			selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, filterToolDefsToNames(selection.RoutedDefs, "research"))
-		}
 		selection.NativeMode = chatNativeToolSurfaceModeSkillExec
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	default:
@@ -6625,6 +6621,8 @@ type promptCacheToolSurface struct {
 	ProviderID       string
 	RegistryVersion  uint64
 	PromptPolicyHash string
+	WebSearchEnabled string
+	ResearchEnabled  string
 	Tools            []tools.ToolDefinition
 	ExpiresAt        time.Time
 }
@@ -6826,7 +6824,14 @@ func (h *ChatHandler) toolDefinitionsForPolicy(policyReq tools.ToolPolicyRequest
 }
 
 func collapseDefaultChatShellCompatDefs(defs []tools.ToolDefinition) []tools.ToolDefinition {
-	if !hasToolDefName(defs, "bash") {
+	hasConcreteBash := false
+	for _, def := range defs {
+		if strings.EqualFold(strings.TrimSpace(def.Name), "bash") {
+			hasConcreteBash = true
+			break
+		}
+	}
+	if !hasConcreteBash {
 		return defs
 	}
 	filtered := make([]tools.ToolDefinition, 0, len(defs))
@@ -7563,6 +7568,17 @@ func sanitizeAssistantToolCallsForAllowedSet(toolCalls []llm.ToolCall, allowedTo
 	if len(toolCalls) == 0 {
 		return toolCalls, nil
 	}
+	if len(allowedTools) == 0 {
+		dropped := make([]string, 0, len(toolCalls))
+		for _, tc := range toolCalls {
+			name := strings.TrimSpace(tc.Name)
+			if name == "" {
+				name = "<blank>"
+			}
+			dropped = append(dropped, name)
+		}
+		return nil, dropped
+	}
 	out := make([]llm.ToolCall, 0, len(toolCalls))
 	dropped := make([]string, 0)
 	usedIDs := make(map[string]struct{}, len(toolCalls))
@@ -7994,9 +8010,6 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	}
 
 	selection.NativeDefs = []tools.ToolDefinition{execDef}
-	if discoveryDecision.CanonicalTarget == agentcore.CanonicalResearch || discoveryDecision.CanonicalTarget == agentcore.CanonicalDeepResearch {
-		selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, filterToolDefsToNames(selection.RoutedDefs, "research"))
-	}
 	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
 	return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 }
@@ -12424,6 +12437,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		req := pendingState.ResumeReq
 		req.Messages = append(req.Messages, pendingState.AssistantMsg)
 		req.Messages = append(req.Messages, accumulatedResults...)
+		clarifyNoneToolSurface := h.isClarifyNoneToolSurfaceForRequest(ctx, pendingState.RoutingMessage, tools.ToolPolicyRequest{
+			Model:               req.Model,
+			SessionID:           convID,
+			RouteKind:           tools.ToolRouteKindChat,
+			DeepResearchEnabled: nil,
+		}, nil, nil)
 
 		var resp *llm.ChatResponse
 		var err error
@@ -12472,7 +12491,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			}
 			if len(resp.Message.ToolCalls) == 0 {
 				prevTodoContent := strings.TrimSpace(autoContinueState.TodoContent)
-				if h.maybeAutoContinueIMToollessResponse(&req, resp, imRound, pendingState.AgentMode, &autoContinueState) {
+				if h.maybeAutoContinueIMToollessResponse(&req, resp, imRound, pendingState.AgentMode, clarifyNoneToolSurface, &autoContinueState) {
 					if nextTodo := strings.TrimSpace(autoContinueState.TodoContent); nextTodo != "" && (nextTodo != prevTodoContent || strings.TrimSpace(todoMessageState.Content) == "") {
 						h.upsertIMTodoChecklist(ctx, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, autoContinueState.TodoContent)
 					}
@@ -12794,6 +12813,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Add first-turn tool definitions using the full static chat allowlist.
+	clarifyNoneToolSurface := h.isClarifyNoneToolSurfaceForRequest(ctx, routingMessage, tools.ToolPolicyRequest{
+		Model:               req.Model,
+		SessionID:           convID,
+		RouteKind:           tools.ToolRouteKindChat,
+		DeepResearchEnabled: channelDeepResearchEnabled,
+	}, nil, channelDeepResearchEnabled)
 	selectedTools := h.selectChatToolsForRequest(ctx, routingMessage, req.Model, convID, "", convState, nil, channelDeepResearchEnabled)
 	req.Tools = defsToLLMTools(selectedTools)
 
@@ -13006,7 +13031,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 
 		if len(resp.Message.ToolCalls) == 0 {
 			prevTodoContent := strings.TrimSpace(autoContinueState.TodoContent)
-			if h.maybeAutoContinueIMToollessResponse(&req, resp, imRound, channelAgentModeEnabled, &autoContinueState) {
+			if h.maybeAutoContinueIMToollessResponse(&req, resp, imRound, channelAgentModeEnabled, clarifyNoneToolSurface, &autoContinueState) {
 				if nextTodo := strings.TrimSpace(autoContinueState.TodoContent); nextTodo != "" && (nextTodo != prevTodoContent || strings.TrimSpace(todoMessageState.Content) == "") {
 					h.upsertIMTodoChecklist(ctx, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, autoContinueState.TodoContent)
 				}
@@ -14603,6 +14628,33 @@ func compactToolCallArgumentsForLLM(args string) string {
 	return string(compactedBytes)
 }
 
+func canonicalLLMToolIndexByName(tools []llm.Tool) map[string]int {
+	indexByName := make(map[string]int, len(tools))
+	for i, tool := range tools {
+		rawName := strings.ToLower(strings.TrimSpace(tool.Name))
+		if rawName == "" {
+			continue
+		}
+		if _, exists := indexByName[rawName]; !exists {
+			indexByName[rawName] = i
+		}
+		compatName := normalizeFileToolCompatName(rawName)
+		if compatName == "" {
+			continue
+		}
+		existingIdx, exists := indexByName[compatName]
+		if !exists {
+			indexByName[compatName] = i
+			continue
+		}
+		existingRawName := strings.ToLower(strings.TrimSpace(tools[existingIdx].Name))
+		if rawName == compatName && existingRawName != compatName {
+			indexByName[compatName] = i
+		}
+	}
+	return indexByName
+}
+
 func buildReducedContinuationRecoveryTools(tools []llm.Tool, messages []llm.Message) []llm.Tool {
 	if len(tools) == 0 {
 		return nil
@@ -14631,21 +14683,7 @@ func buildReducedContinuationRecoveryTools(tools []llm.Tool, messages []llm.Mess
 
 	if len(needed) == 0 {
 		priority := []string{"bash", "web_query", "read", "browser", "mcp"}
-		indexByName := make(map[string]int, len(tools))
-		for i, t := range tools {
-			rawName := strings.ToLower(strings.TrimSpace(t.Name))
-			if rawName == "" {
-				continue
-			}
-			if _, exists := indexByName[rawName]; !exists {
-				indexByName[rawName] = i
-			}
-			if compatName := normalizeFileToolCompatName(rawName); compatName != "" {
-				if _, exists := indexByName[compatName]; !exists {
-					indexByName[compatName] = i
-				}
-			}
-		}
+		indexByName := canonicalLLMToolIndexByName(tools)
 		for _, name := range priority {
 			if len(pick) >= continuationRecoveryToolsMax {
 				break
@@ -14732,21 +14770,7 @@ func choosePseudoToolCallPrimaryToolIndex(tools []llm.Tool, preferReminder bool)
 		"browser",
 		"ui_reviewer",
 	}
-	indexByName := make(map[string]int, len(tools))
-	for i, t := range tools {
-		rawName := strings.ToLower(strings.TrimSpace(t.Name))
-		if rawName == "" {
-			continue
-		}
-		if _, exists := indexByName[rawName]; !exists {
-			indexByName[rawName] = i
-		}
-		if compatName := normalizeFileToolCompatName(rawName); compatName != "" {
-			if _, exists := indexByName[compatName]; !exists {
-				indexByName[compatName] = i
-			}
-		}
-	}
+	indexByName := canonicalLLMToolIndexByName(tools)
 	if preferReminder {
 		if idx, ok := indexByName["reminder"]; ok {
 			return idx
@@ -15166,12 +15190,17 @@ func (h *ChatHandler) executeToolCallsWithAudit(ctx context.Context, toolCalls [
 }
 
 func contentForChatToolHistory(ctx context.Context, toolName, toolCallID, content, auditPayload string) string {
+	content = strings.TrimSpace(content)
 	auditPayload = strings.TrimSpace(auditPayload)
 	if auditPayload == "" {
 		return content
 	}
 
 	switch normalizeFileToolCompatName(toolName) {
+	case "web_query":
+		if content != "" && content != auditPayload {
+			return content
+		}
 	case "pdf":
 		return compactToolResultContentForLLM("pdf", auditPayload)
 	case "read", "file_read":
@@ -16066,30 +16095,15 @@ func buildEmptyResearchResultRecoveryTools(tools []llm.Tool, userMessage string)
 		"grep",
 		"convert",
 	)
-	indexByName := make(map[string]llm.Tool, len(tools))
-	for _, tool := range tools {
-		rawName := strings.ToLower(strings.TrimSpace(tool.Name))
-		if rawName == "" {
-			continue
-		}
-		if _, ok := indexByName[rawName]; !ok {
-			indexByName[rawName] = tool
-		}
-		if compatName := normalizeFileToolCompatName(rawName); compatName != "" {
-			if _, ok := indexByName[compatName]; ok {
-				continue
-			}
-			indexByName[compatName] = tool
-		}
-	}
+	indexByName := canonicalLLMToolIndexByName(tools)
 
 	reduced := make([]llm.Tool, 0, len(priority))
 	for _, name := range priority {
-		tool, ok := indexByName[name]
+		idx, ok := indexByName[name]
 		if !ok {
 			continue
 		}
-		reduced = append(reduced, tool)
+		reduced = append(reduced, tools[idx])
 	}
 	if len(reduced) == 0 {
 		return tools
@@ -16102,7 +16116,7 @@ func buildPendingResearchStatusTools(tools []llm.Tool, userMessage string) []llm
 		return tools
 	}
 	target := extractRequestedArtifactWriteTarget(userMessage)
-	priority := []string{"deep_research"}
+	priority := []string{"research"}
 	if target != "" {
 		priority = append(priority, artifactWriteCompletionToolNames(target)...)
 		priority = append(priority,
@@ -16117,30 +16131,20 @@ func buildPendingResearchStatusTools(tools []llm.Tool, userMessage string) []llm
 	}
 	if target == "" {
 		priority = []string{
-			"deep_research",
+			"research",
 			"web_fetch",
 			"web_read",
 		}
 	}
-	indexByName := make(map[string]llm.Tool, len(tools))
-	for _, tool := range tools {
-		name := normalizeFileToolCompatName(tool.Name)
-		if name == "" {
-			continue
-		}
-		if _, ok := indexByName[name]; ok {
-			continue
-		}
-		indexByName[name] = tool
-	}
+	indexByName := canonicalLLMToolIndexByName(tools)
 
 	reduced := make([]llm.Tool, 0, len(priority))
 	for _, name := range priority {
-		tool, ok := indexByName[name]
+		idx, ok := indexByName[name]
 		if !ok {
 			continue
 		}
-		reduced = append(reduced, tool)
+		reduced = append(reduced, tools[idx])
 	}
 	if len(reduced) == 0 || !containsLLMToolName(reduced, "deep_research") {
 		return tools
@@ -19986,6 +19990,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
+	clarifyNoneToolSurface := h.isClarifyNoneToolSurfaceForRequest(c.Request().Context(), routingMessage, tools.ToolPolicyRequest{
+		Model:               model,
+		SessionID:           convID,
+		RouteKind:           tools.ToolRouteKindChat,
+		DeepResearchEnabled: req.DeepResearchEnabled,
+	}, req.WebSearchEnabled, req.DeepResearchEnabled)
 	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(c.Request().Context(), routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if structuredEvaluatorNoTools {
 		budgetTools = nil
@@ -20598,6 +20608,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				if autoContinueCount < maxAutoContinueRetries {
 					preferReminderTool := round == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
 					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, todoContent, agentModeAutoContinue, round > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
+						if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {
+							resp.Message.Content = buildClarifyNoneToolFallbackReply(routingMessage)
+							break
+						}
 						if h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 							sig := toollessAutoContinueSignature(reason, resp.Message.Content)
 							if sig == prevToollessAutoContinueSig {
@@ -21658,7 +21672,6 @@ func (h *ChatHandler) stabilizePromptCacheToolSurface(convID, explicitProviderID
 	if h == nil || len(defs) == 0 || strings.TrimSpace(convID) == "" {
 		return defs
 	}
-	_, _ = webSearchEnabled, deepResearchEnabled
 	targetProviderID, targetProvider, ok := h.promptCacheTargetProvider(convID, explicitProviderID, state)
 	if !ok || !supportsAnthropicPromptCaching(targetProvider) {
 		h.clearPromptCacheToolSurface(convID)
@@ -21673,13 +21686,17 @@ func (h *ChatHandler) stabilizePromptCacheToolSurface(convID, explicitProviderID
 		ProviderID:       strings.TrimSpace(targetProviderID),
 		RegistryVersion:  registryVersion,
 		PromptPolicyHash: h.resolvePromptPolicy().Hash,
+		WebSearchEnabled: promptCacheToolSurfaceToggleValue(webSearchEnabled),
+		ResearchEnabled:  promptCacheToolSurfaceToggleValue(deepResearchEnabled),
 	}
 
 	canonical := sortToolDefsByName(defs)
 	if cached := h.getPromptCacheToolSurface(convID); cached != nil &&
 		cached.ProviderID == key.ProviderID &&
 		cached.RegistryVersion == key.RegistryVersion &&
-		cached.PromptPolicyHash == key.PromptPolicyHash {
+		cached.PromptPolicyHash == key.PromptPolicyHash &&
+		cached.WebSearchEnabled == key.WebSearchEnabled &&
+		cached.ResearchEnabled == key.ResearchEnabled {
 		merged := sortToolDefsByName(mergeToolDefsByName(cached.Tools, canonical))
 		key.Tools = merged
 		key.ExpiresAt = timeutil.NowTime().Add(promptCacheToolSurfaceTTL)
@@ -21691,6 +21708,16 @@ func (h *ChatHandler) stabilizePromptCacheToolSurface(convID, explicitProviderID
 	key.ExpiresAt = timeutil.NowTime().Add(promptCacheToolSurfaceTTL)
 	h.setPromptCacheToolSurface(convID, &key)
 	return canonical
+}
+
+func promptCacheToolSurfaceToggleValue(value *bool) string {
+	if value == nil {
+		return "inherit"
+	}
+	if *value {
+		return "on"
+	}
+	return "off"
 }
 
 func sortToolDefsByName(defs []tools.ToolDefinition) []tools.ToolDefinition {
@@ -22335,6 +22362,12 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			defaultPinnedProviderID = strings.TrimSpace(aff.ProviderID)
 		}
 	}
+	clarifyNoneToolSurface := h.isClarifyNoneToolSurfaceForRequest(c.Request().Context(), routingMessage, tools.ToolPolicyRequest{
+		Model:               model,
+		SessionID:           convID,
+		RouteKind:           tools.ToolRouteKindChat,
+		DeepResearchEnabled: req.DeepResearchEnabled,
+	}, req.WebSearchEnabled, req.DeepResearchEnabled)
 	budgetTools := defsToLLMTools(h.selectChatToolsForRequest(c.Request().Context(), routingMessage, model, convID, explicitProviderID, convState, req.WebSearchEnabled, req.DeepResearchEnabled))
 	if structuredEvaluatorNoTools {
 		budgetTools = nil
@@ -22941,6 +22974,9 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		if gapMs < 0 {
 			gapMs = 0
 		}
+		if gapMs == 0 {
+			gapMs = 1
+		}
 		sourceToolNames := append([]string(nil), pendingPostToolGapTrace.sourceToolNames...)
 		nextToolNames = append([]string(nil), nextToolNames...)
 		payload := map[string]interface{}{
@@ -23398,6 +23434,10 @@ STREAM_LOOP:
 				// indicates a pending next action, defer done and nudge another round.
 				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinueRetries {
 					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, false, missingTodoAutoContinueCount == 0); shouldContinue {
+						if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {
+							streamCompleted = true
+							return nil
+						}
 						if h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 							logger.Info().
 								Int("tool_round", toolRound).
@@ -24963,6 +25003,19 @@ STREAM_LOOP:
 		if streamCompleted && !streamDoneSent && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries {
 			preferReminderTool := toolRound == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
 			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
+				if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {
+					fallback := buildClarifyNoneToolFallbackReply(routingMessage)
+					if strings.TrimSpace(fallback) != "" && strings.TrimSpace(fullContent) != strings.TrimSpace(fallback) {
+						fullContent = fallback
+						totalDeltaChars += len(fallback)
+						emitSSE(map[string]interface{}{
+							"delta":     fallback,
+							"done":      false,
+							"stream_id": streamID,
+						})
+					}
+					break
+				}
 				if !h.shouldAutoContinueForReasonWithinBudget(reason, agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
 					if reason == "summary_intro" {
 						if fallback, ok := buildSummaryIntroFallback(chatReq.Messages, 4096, toolFallbackTextOptions{toolCardsVisible: typelessCardsPersisted}); ok {
@@ -26274,6 +26327,13 @@ func (h *ChatHandler) generateConversationTitleWithOptions(
 		logger.Info().
 			Str("route", "title").
 			Msg("[chat] small model title summary returned empty, fallback to llm")
+		// Title generation is low-priority post-processing. When the local
+		// small-model title path already ran and failed, prefer a deterministic
+		// local fallback over making an extra remote title request.
+		if fallback := truncateAutoTitleFallback(userMessage, 30); fallback != "" {
+			h.updateTitleAndNotify(convID, userID, fallback)
+		}
+		return
 	} else {
 		smallModelEnabled := false
 		smallModelSummaryEnabled := false

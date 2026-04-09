@@ -146,7 +146,7 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected MaxConcurrency 5, got %d", config.MaxConcurrency)
 	}
 
-	if config.RequestTimeout != 30*time.Second {
-		t.Errorf("expected RequestTimeout 30s, got %v", config.RequestTimeout)
+	if config.RequestTimeout != 5*time.Minute {
+		t.Errorf("expected RequestTimeout 5m, got %v", config.RequestTimeout)
 	}
 }

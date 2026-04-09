@@ -61,23 +61,8 @@ func initServicesRuntimeRegistries(
 	s.LLMRegistry = llm.NewProviderRegistry()
 	registerLLMProviders(s.LLMRegistry, appCfg)
 	trace.Mark("llm_registry_ready")
-
 	s.ToolRegistry = tools.NewRegistry()
-	tools.RegisterBuiltinToolsWithRuntimeConfig(
-		s.ToolRegistry,
-		buildWebSearchConfig(appCfg),
-		buildWebFetchConfig(appCfg),
-		resolveBuiltinToolAllowedPaths(appCfg, cfg.DataDir),
-		0,
-		tools.BuiltinRuntimeConfig{
-			DataDir:      cfg.DataDir,
-			WorkspaceDir: ResolveWorkspaceDir(cfg.DataDir, appCfg),
-			Ripgrep:      appCfg.ToolCalling.Ripgrep,
-			SkillDynamicExposureEnabled: func() bool {
-				return true
-			},
-		},
-	)
+	registerBuiltinRuntimeTools(s.ToolRegistry, cfg, appCfg)
 	tools.AttachPDFServiceToWebTools(s.ToolRegistry, s.PDFService)
 	tools.RegisterFactoryToolDefinitions(s.ToolRegistry)
 	tools.RegisterAgentTools(s.ToolRegistry, appCfg)

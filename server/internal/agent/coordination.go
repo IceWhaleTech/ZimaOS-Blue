@@ -145,6 +145,10 @@ func coordinationExecutionProfile(task *Task) (agentcore.CanonicalSkillID, agent
 		if candidate == "" {
 			continue
 		}
+		switch strings.ToLower(candidate) {
+		case "research", "deep_research", "analyze", "ui_reviewer", "ui_review":
+			return agentcore.CanonicalResearch, agentcore.ExecutionProfileForSkill(agentcore.CanonicalResearch), true
+		}
 		if canonical, ok := agentcore.ResolveCanonicalSkill(candidate); ok {
 			return canonical, agentcore.ExecutionProfileForSkill(canonical), true
 		}
