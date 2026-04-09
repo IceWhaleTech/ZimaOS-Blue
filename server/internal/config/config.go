@@ -200,13 +200,22 @@ type AuditConfig struct {
 
 // SandboxConfig holds sandbox execution configuration.
 type SandboxConfig struct {
-	Enabled        bool          `yaml:"enabled"`
-	DefaultTimeout time.Duration `yaml:"default_timeout"`
-	MaxTimeout     time.Duration `yaml:"max_timeout"`
-	MemoryLimit    string        `yaml:"memory_limit"`
-	CPULimit       float64       `yaml:"cpu_limit"`
-	ProcessLimit   int           `yaml:"process_limit"`
-	NetworkEnabled bool          `yaml:"network_enabled"`
+	Enabled                     bool          `yaml:"enabled"`
+	DefaultTimeout              time.Duration `yaml:"default_timeout"`
+	MaxTimeout                  time.Duration `yaml:"max_timeout"`
+	MemoryLimit                 string        `yaml:"memory_limit"`
+	CPULimit                    float64       `yaml:"cpu_limit"`
+	ProcessLimit                int           `yaml:"process_limit"`
+	NetworkEnabled              bool          `yaml:"network_enabled"`
+	DarwinExecutorMode          string        `yaml:"darwin_executor_mode"`
+	HypervisorVMImagePath       string        `yaml:"hypervisor_vm_image_path"`
+	HypervisorMemoryMB          int           `yaml:"hypervisor_memory_mb"`
+	HypervisorCPUCount          int           `yaml:"hypervisor_cpu_count"`
+	LinuxLXCExecutable          string        `yaml:"linux_lxc_executable"`
+	LinuxLXCInstance            string        `yaml:"linux_lxc_instance"`
+	WindowsCodexExecutable      string        `yaml:"windows_codex_executable"`
+	WindowsCodexAutoDownload    bool          `yaml:"windows_codex_auto_download"`
+	WindowsCodexDownloadTimeout time.Duration `yaml:"windows_codex_download_timeout"`
 }
 
 // ResourcesConfig holds resource limit configuration.
@@ -672,13 +681,29 @@ func defaults() Config {
 		},
 
 		Security: SecurityConfig{
-			JWT:        JWTConfig{Secret: defaultJWTSecretPlaceholder, Expiration: 24 * time.Hour, RefreshExpiration: 720 * time.Hour, Issuer: "zimaos-blue"},
-			OIDC:       OIDCConfig{Enabled: true, Issuer: "http://localhost", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
-			Users:      UsersConfig{DefaultRole: "user"},
-			Password:   PasswordConfig{MinLength: 8, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
-			MFA:        MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},
-			Audit:      AuditConfig{Enabled: true, RetentionDays: 90, ExcludedPaths: []string{"/health", "/metrics"}, CleanupInterval: 24 * time.Hour},
-			Sandbox:    SandboxConfig{Enabled: true, DefaultTimeout: 5 * time.Minute, MaxTimeout: 5 * time.Minute, MemoryLimit: "256MB", CPULimit: 1.0, ProcessLimit: 10},
+			JWT:      JWTConfig{Secret: defaultJWTSecretPlaceholder, Expiration: 24 * time.Hour, RefreshExpiration: 720 * time.Hour, Issuer: "zimaos-blue"},
+			OIDC:     OIDCConfig{Enabled: true, Issuer: "http://localhost", SigningKeyPath: "./keys/oidc.key", SigningKeyRotationDays: 90, AccessTokenTTL: time.Hour, RefreshTokenTTL: 720 * time.Hour, AuthorizationCodeTTL: 10 * time.Minute},
+			Users:    UsersConfig{DefaultRole: "user"},
+			Password: PasswordConfig{MinLength: 8, RequireUppercase: true, RequireLowercase: true, RequireNumber: true, RequireSpecial: true, HistoryCount: 5, LockoutThreshold: 5, LockoutDuration: 15 * time.Minute},
+			MFA:      MFAConfig{Enabled: true, Issuer: "ZimaOS-Blue", RecoveryCodesCount: 8},
+			Audit:    AuditConfig{Enabled: true, RetentionDays: 90, ExcludedPaths: []string{"/health", "/metrics"}, CleanupInterval: 24 * time.Hour},
+			Sandbox: SandboxConfig{
+				Enabled:                     true,
+				DefaultTimeout:              5 * time.Minute,
+				MaxTimeout:                  5 * time.Minute,
+				MemoryLimit:                 "256MB",
+				CPULimit:                    1.0,
+				ProcessLimit:                10,
+				DarwinExecutorMode:          "auto",
+				HypervisorVMImagePath:       "/var/lib/echo/sandbox/vm.img",
+				HypervisorMemoryMB:          512,
+				HypervisorCPUCount:          1,
+				LinuxLXCExecutable:          "lxc",
+				LinuxLXCInstance:            "blue-sandbox",
+				WindowsCodexExecutable:      "codex",
+				WindowsCodexAutoDownload:    true,
+				WindowsCodexDownloadTimeout: 20 * time.Minute,
+			},
 			Encryption: EncryptionConfig{KeyPath: "./keys/encryption.key", Algorithm: "aes-256-gcm"},
 		},
 

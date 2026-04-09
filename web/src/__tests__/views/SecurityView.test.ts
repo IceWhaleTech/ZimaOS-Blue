@@ -269,6 +269,7 @@ describe('SecurityView approved browser sites', () => {
         memory_limit: 268435456,
         cpu_limit: 1,
         process_limit: 10,
+        network_toggle_supported: true,
         network_enabled: false,
       },
     } as never)
@@ -282,6 +283,7 @@ describe('SecurityView approved browser sites', () => {
           memory_limit: 268435456,
           cpu_limit: 1,
           process_limit: 10,
+          network_toggle_supported: true,
           network_enabled: Boolean(request.network_enabled),
         },
       } as never
@@ -427,6 +429,40 @@ describe('SecurityView approved browser sites', () => {
     expect(wrapper.get('[data-testid="sandbox-network-switch"]').attributes('aria-checked')).toBe(
       'true'
     )
+
+    wrapper.unmount()
+  })
+
+  it('hides sandbox network controls when the platform does not support network toggling', async () => {
+    vi.mocked(sandboxApi.getInfo).mockResolvedValueOnce({
+      data: {
+        supported: true,
+        default_timeout: '5m0s',
+        max_timeout: '5m0s',
+        memory_limit: 268435456,
+        cpu_limit: 1,
+        process_limit: 10,
+        network_toggle_supported: false,
+        network_enabled: false,
+      },
+    } as never)
+
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    const controlsTab = wrapper.findAll('button[role="tab"]').find((node) => {
+      return node.text().includes('Security Controls')
+    })
+    expect(controlsTab).toBeTruthy()
+
+    await controlsTab!.trigger('click')
+    await flushPromises()
+
+    const sandboxSection = wrapper.get('[data-testid="sandbox-status-section"]')
+    expect(sandboxSection.text()).not.toContain('Network Access')
+    expect(wrapper.find('[data-testid="sandbox-network-switch"]').exists()).toBe(false)
+    expect(sandboxApi.updateConfig).not.toHaveBeenCalled()
 
     wrapper.unmount()
   })

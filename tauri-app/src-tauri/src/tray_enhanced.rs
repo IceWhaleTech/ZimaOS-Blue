@@ -22,7 +22,7 @@ pub fn build_tray_menu(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>
     let menu = Menu::with_items(app, &[&show, &hide, &separator1, &restart, &separator2, &quit])?;
 
     // Load tray icon
-    let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
+    let icon = Image::from_bytes(include_bytes!("../nsis/icons/tray.png"))
         .expect("Failed to load tray icon");
 
     // Build and configure tray icon

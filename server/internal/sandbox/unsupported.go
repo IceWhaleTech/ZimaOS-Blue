@@ -42,4 +42,8 @@ func (e *unsupportedExecutor) SupportReason() string {
 	return e.reason
 }
 
+func (e *unsupportedExecutor) SupportsNetworkEnabled() bool {
+	return false
+}
+
 var _ Executor = (*unsupportedExecutor)(nil)

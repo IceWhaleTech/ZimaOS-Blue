@@ -11,13 +11,13 @@
     "active": true,
     "targets": ["nsis", "dmg", "app", "appimage", "deb"],
     "icon": [
-      "icons/32x32.png",
-      "icons/48x48.png",
-      "icons/64x64.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "nsis/icons/32x32.png",
+      "nsis/icons/48x48.png",
+      "nsis/icons/64x64.png",
+      "nsis/icons/128x128.png",
+      "nsis/icons/128x128@2x.png",
+      "nsis/icons/icon.icns",
+      "nsis/icons/icon.ico"
     ],
     "resources": {
       "../../web/dist": "dist"
@@ -32,7 +32,7 @@
       "timestampUrl": "http://timestamp.digicert.com",
       "wix": null,
       "nsis": {
-        "installerIcon": "icons/icon.ico",
+        "installerIcon": "nsis/icons/icon.ico",
         "headerImage": "nsis/assets/header.bmp",
         "sidebarImage": "nsis/assets/sidebar.bmp",
         "installMode": "currentUser",

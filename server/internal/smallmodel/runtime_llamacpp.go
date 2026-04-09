@@ -27,6 +27,7 @@ import (
 const (
 	llamaCppDefaultTemperature = 0.2
 	llamaServerStartupTimeout  = 45 * time.Second
+	defaultServerIdleAfter     = 10 * time.Minute
 	defaultPrefixCacheTTL      = 2 * time.Minute
 )
 
@@ -45,6 +46,7 @@ type LlamaCppRuntimeOptions struct {
 	MaxParallel   int
 	BatchWindow   time.Duration
 	BatchMaxSize  int
+	IdleAfter     time.Duration
 	AutoDownload  bool
 	CLIPath       string
 	Mode          string
@@ -79,6 +81,9 @@ type LlamaCppRuntime struct {
 	serverMu  sync.Mutex
 	serverURL string
 	serverCmd *exec.Cmd
+	idleTimer *time.Timer
+	idleAfter time.Duration
+	inUse     int
 
 	httpClient *http.Client
 	cgoOnce    sync.Once
@@ -207,6 +212,10 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 	if batchMaxSize <= 0 {
 		batchMaxSize = maxParallel
 	}
+	idleAfter := opt.IdleAfter
+	if idleAfter == 0 {
+		idleAfter = defaultServerIdleAfter
+	}
 
 	rt := &LlamaCppRuntime{
 		manager:             manager,
@@ -221,6 +230,7 @@ func NewLlamaCppRuntime(manager *Manager, opts ...LlamaCppRuntimeOptions) *Llama
 		serverStartup:       startup,
 		batchWindow:         batchWindow,
 		batchMaxSize:        batchMaxSize,
+		idleAfter:           idleAfter,
 		prefixEntries:       make(map[string]*llamaPrefixEntry),
 		prefixByCache:       make(map[string]string),
 		nextPrefixSlot:      1,
@@ -594,12 +604,66 @@ func (r *LlamaCppRuntime) runWithParallelSlot(ctx context.Context, fn func(conte
 }
 
 func (r *LlamaCppRuntime) dispatchServerTask(ctx context.Context, fn func(context.Context) (string, error)) (string, error) {
-	if r == nil || r.batcher == nil {
+	if r == nil {
+		return "", ErrNotReady
+	}
+	release := r.acquireServerUsage()
+	defer release()
+
+	if r.batcher == nil {
 		return r.runWithParallelSlot(ctx, fn)
 	}
 	return r.batcher.Do(ctx, func(execCtx context.Context) (string, error) {
 		return r.runWithParallelSlot(execCtx, fn)
 	})
+}
+
+func (r *LlamaCppRuntime) acquireServerUsage() func() {
+	r.serverMu.Lock()
+	if r.idleTimer != nil {
+		r.idleTimer.Stop()
+		r.idleTimer = nil
+	}
+	r.inUse++
+	r.serverMu.Unlock()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			r.releaseServerUsage()
+		})
+	}
+}
+
+func (r *LlamaCppRuntime) releaseServerUsage() {
+	r.serverMu.Lock()
+	defer r.serverMu.Unlock()
+
+	if r.inUse > 0 {
+		r.inUse--
+	}
+	if r.inUse != 0 || r.serverCmd == nil || r.idleAfter < 0 {
+		return
+	}
+	if r.idleAfter == 0 {
+		r.stopServerLocked()
+		return
+	}
+	if r.idleTimer != nil {
+		r.idleTimer.Stop()
+	}
+	r.idleTimer = time.AfterFunc(r.idleAfter, r.reclaimIdleServer)
+}
+
+func (r *LlamaCppRuntime) reclaimIdleServer() {
+	r.serverMu.Lock()
+	defer r.serverMu.Unlock()
+
+	if r.inUse != 0 || r.serverCmd == nil {
+		r.idleTimer = nil
+		return
+	}
+	r.stopServerLocked()
 }
 
 type completionCallOptions struct {
@@ -1100,6 +1164,10 @@ func (r *LlamaCppRuntime) ensureServer(ctx context.Context) (string, error) {
 }
 
 func (r *LlamaCppRuntime) stopServerLocked() {
+	if r.idleTimer != nil {
+		r.idleTimer.Stop()
+		r.idleTimer = nil
+	}
 	if r.serverCmd != nil && r.serverCmd.Process != nil {
 		_ = r.serverCmd.Process.Kill()
 	}

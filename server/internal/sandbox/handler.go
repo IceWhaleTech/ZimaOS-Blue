@@ -129,6 +129,9 @@ func (h *Handler) UpdateConfig(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid request body")
 	}
+	if h.manager == nil || !h.manager.SupportsNetworkEnabled() {
+		return echo.NewHTTPError(http.StatusBadRequest, "network_enabled is not supported on this platform")
+	}
 	if req.NetworkEnabled == nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "network_enabled is required")
 	}
@@ -144,13 +147,16 @@ func (h *Handler) UpdateConfig(c echo.Context) error {
 func (h *Handler) Info(c echo.Context) error {
 	config := h.manager.GetConfig()
 	info := map[string]interface{}{
-		"supported":       h.manager.IsSupported(),
-		"default_timeout": config.DefaultTimeout.String(),
-		"max_timeout":     config.MaxTimeout.String(),
-		"memory_limit":    config.MemoryLimit,
-		"cpu_limit":       config.CPULimit,
-		"process_limit":   config.ProcessLimit,
-		"network_enabled": config.NetworkEnabled,
+		"supported":                h.manager.IsSupported(),
+		"network_toggle_supported": h.manager.SupportsNetworkEnabled(),
+		"default_timeout":          config.DefaultTimeout.String(),
+		"max_timeout":              config.MaxTimeout.String(),
+		"memory_limit":             config.MemoryLimit,
+		"cpu_limit":                config.CPULimit,
+		"process_limit":            config.ProcessLimit,
+	}
+	if h.manager.SupportsNetworkEnabled() {
+		info["network_enabled"] = config.NetworkEnabled
 	}
 	if reason := h.manager.SupportReason(); reason != "" {
 		info["support_reason"] = reason

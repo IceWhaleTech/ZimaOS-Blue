@@ -20,6 +20,7 @@ import (
 	"github.com/creack/pty"
 
 	cardconv "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -48,6 +49,14 @@ type SandboxExecutor interface {
 	RunInSandbox(ctx context.Context, command, workdir string, env map[string]string, timeout time.Duration) (stdout, stderr string, exitCode int, err error)
 }
 
+// SandboxTier describes the isolation level selected for a sandboxed exec.
+type SandboxTier string
+
+const (
+	SandboxTierLight  SandboxTier = "light"
+	SandboxTierStrong SandboxTier = "strong"
+)
+
 // DefaultExecConfig returns sensible defaults.
 func DefaultExecConfig() ExecConfig {
 	return ExecConfig{
@@ -63,24 +72,25 @@ func DefaultExecConfig() ExecConfig {
 
 // ExecTool implements the Tool interface for shell command execution.
 type ExecTool struct {
-	config       ExecConfig
-	policy       ExecPolicy
-	sessions     *SessionRegistry
-	approvals    *ApprovalManager // may be nil
-	broker       *sse.Broker      // may be nil; used for lifecycle events
-	safeBins     map[string]struct{}
-	dirStore     *DirAllowlistStore  // may be nil; persistent directory allowlist
-	sandbox      SandboxExecutor     // may be nil; when set, sandbox host mode is available
-	toolNames    map[string]struct{} // known tool names; exec rejects commands that match
-	registry     *Registry           // may be nil; when set, exec auto-forwards tool-name commands
-	retries      *RetryTracker       // prevents same-command retry loops
-	audit        *ExecAuditStore     // may be nil; persistent audit log
-	skillExec    SkillExecFunc       // may be nil; short-circuits `blue <skill>` commands
-	pinnedSkills map[string]struct{} // pinned skill names for short-circuit (e.g. web_search, browser)
-	skillSelect  SkillSelectFunc     // may be nil; selector fallback for unknown skills
-	autoConfirm  func() bool         // optional dynamic auto-confirm getter
-	approvalMu   sync.RWMutex
-	approvedCmds map[string]struct{} // exact command digests approved with "allow always"
+	config        ExecConfig
+	policy        ExecPolicy
+	sessions      *SessionRegistry
+	approvals     *ApprovalManager // may be nil
+	broker        *sse.Broker      // may be nil; used for lifecycle events
+	safeBins      map[string]struct{}
+	dirStore      *DirAllowlistStore  // may be nil; persistent directory allowlist
+	sandboxLight  SandboxExecutor     // may be nil; lightweight sandbox backend
+	sandboxStrong SandboxExecutor     // may be nil; stronger sandbox backend
+	toolNames     map[string]struct{} // known tool names; exec rejects commands that match
+	registry      *Registry           // may be nil; when set, exec auto-forwards tool-name commands
+	retries       *RetryTracker       // prevents same-command retry loops
+	audit         *ExecAuditStore     // may be nil; persistent audit log
+	skillExec     SkillExecFunc       // may be nil; short-circuits `blue <skill>` commands
+	pinnedSkills  map[string]struct{} // pinned skill names for short-circuit (e.g. web_search, browser)
+	skillSelect   SkillSelectFunc     // may be nil; selector fallback for unknown skills
+	autoConfirm   func() bool         // optional dynamic auto-confirm getter
+	approvalMu    sync.RWMutex
+	approvedCmds  map[string]struct{} // exact command digests approved with "allow always"
 }
 
 // NewExecTool creates a new exec tool.
@@ -99,22 +109,31 @@ func NewExecTool(config ExecConfig, sessions *SessionRegistry, approvals *Approv
 		policy = *config.Policy
 	}
 	return &ExecTool{
-		config:       config,
-		policy:       policy,
-		sessions:     sessions,
-		approvals:    approvals,
-		broker:       broker,
-		safeBins:     BuildSafeBinsSet(config.SafeBins),
-		dirStore:     dirStore,
-		sandbox:      firstOrNilIface(sbx),
-		retries:      NewRetryTracker(policy.MaxRetries, policy.RetryWindow),
-		approvedCmds: make(map[string]struct{}),
+		config:        config,
+		policy:        policy,
+		sessions:      sessions,
+		approvals:     approvals,
+		broker:        broker,
+		safeBins:      BuildSafeBinsSet(config.SafeBins),
+		dirStore:      dirStore,
+		sandboxLight:  firstOrNilIface(sbx),
+		sandboxStrong: secondOrNilIface(sbx),
+		retries:       NewRetryTracker(policy.MaxRetries, policy.RetryWindow),
+		approvedCmds:  make(map[string]struct{}),
 	}
 }
 
 func firstOrNilIface[T any](s []T) T {
 	if len(s) > 0 {
 		return s[0]
+	}
+	var zero T
+	return zero
+}
+
+func secondOrNilIface[T any](s []T) T {
+	if len(s) > 1 {
+		return s[1]
 	}
 	var zero T
 	return zero
@@ -269,7 +288,7 @@ func (t *ExecTool) requestCommandSafetyApproval(ctx context.Context, command, wo
 
 // HasSandbox returns true if sandbox execution is available.
 func (t *ExecTool) HasSandbox() bool {
-	return t.sandbox != nil
+	return t.sandboxLight != nil || t.sandboxStrong != nil
 }
 
 // Policy returns the current exec policy (read-only).
@@ -280,7 +299,7 @@ func (t *ExecTool) Policy() ExecPolicy {
 // Definition returns the tool definition for the LLM.
 func (t *ExecTool) Definition() ToolDefinition {
 	desc := "Execute shell commands on the host. Returns stdout, stderr, exit code, and session ID. Also manages exec sessions via action=list|poll|log|kill with session_id."
-	if t.sandbox != nil {
+	if t.HasSandbox() {
 		desc += " Sandbox mode is available for isolated execution — set host to 'sandbox' for filesystem-level isolation."
 	}
 
@@ -324,7 +343,7 @@ func (t *ExecTool) Definition() ToolDefinition {
 	}
 
 	// Only expose host parameter when sandbox is available.
-	if t.sandbox != nil {
+	if t.HasSandbox() {
 		props["host"] = map[string]interface{}{
 			"type":        "string",
 			"enum":        []string{"local", "sandbox"},
@@ -349,17 +368,18 @@ func (t *ExecTool) Definition() ToolDefinition {
 
 // execResult is the JSON response returned to the LLM.
 type execResult struct {
-	SessionID  string            `json:"session_id"`
-	Status     string            `json:"status"`
-	ExitCode   *int              `json:"exit_code,omitempty"`
-	Stdout     string            `json:"stdout,omitempty"`
-	Stderr     string            `json:"stderr,omitempty"`
-	Data       map[string]string `json:"data,omitempty"`
-	DurationMs int64             `json:"duration_ms"`
-	Truncated  bool              `json:"truncated,omitempty"`
-	Warnings   []string          `json:"warnings,omitempty"`
-	Host       string            `json:"host,omitempty"`       // "local", "sandbox", or "builtin"
-	RiskLevel  string            `json:"risk_level,omitempty"` // risk assessment level
+	SessionID   string            `json:"session_id"`
+	Status      string            `json:"status"`
+	ExitCode    *int              `json:"exit_code,omitempty"`
+	Stdout      string            `json:"stdout,omitempty"`
+	Stderr      string            `json:"stderr,omitempty"`
+	Data        map[string]string `json:"data,omitempty"`
+	DurationMs  int64             `json:"duration_ms"`
+	Truncated   bool              `json:"truncated,omitempty"`
+	Warnings    []string          `json:"warnings,omitempty"`
+	Host        string            `json:"host,omitempty"`       // "local", "sandbox", or "builtin"
+	RiskLevel   string            `json:"risk_level,omitempty"` // risk assessment level
+	SandboxTier string            `json:"sandbox_tier,omitempty"`
 }
 
 // Execute runs the shell command.
@@ -630,7 +650,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Auto-upgrade to sandbox for medium+ risk commands when sandbox is available
 	// and the caller didn't explicitly choose a host.
-	if !hostExplicit && t.sandbox != nil && risk.Total >= 30 {
+	if !hostExplicit && t.HasSandbox() && risk.Total >= 30 {
 		warnings = append(warnings, fmt.Sprintf("auto-sandboxed: risk level %s (score %d)", risk.Level, risk.Total))
 		hostArg = "sandbox"
 	}
@@ -645,7 +665,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	// Sandbox mode: delegate to sandbox.Manager for filesystem-level isolation.
 	if hostArg == "sandbox" {
-		return t.runSandbox(ctx, execCommand, workdir, envArg, timeout, warnings)
+		return t.runSandbox(ctx, execCommand, workdir, envArg, timeout, risk, warnings)
 	}
 
 	// Create session.
@@ -1904,10 +1924,12 @@ func isValidSkillName(name string) bool {
 // runSandbox delegates execution to the SandboxExecutor for filesystem-level
 // isolation. The sandbox enforces AllowedPaths/DeniedPaths so commands cannot
 // access directories outside the sandbox even via cd or absolute paths.
-func (t *ExecTool) runSandbox(ctx context.Context, command, workdir string, envMap map[string]string, timeout time.Duration, warnings []string) (interface{}, error) {
-	if t.sandbox == nil {
+func (t *ExecTool) runSandbox(ctx context.Context, command, workdir string, envMap map[string]string, timeout time.Duration, risk RiskScore, warnings []string) (interface{}, error) {
+	executor, tier, tierWarnings, err := t.selectSandboxExecutor(risk)
+	if err != nil {
 		return nil, errors.New("exec denied: sandbox mode requested but no sandbox manager configured")
 	}
+	warnings = append(warnings, tierWarnings...)
 
 	// Ensure the running executable's directory is in PATH so `blue <subcommand>`
 	// works inside the sandbox (the sandbox builds its own minimal PATH).
@@ -1928,14 +1950,21 @@ func (t *ExecTool) runSandbox(ctx context.Context, command, workdir string, envM
 	userID := GetUserID(ctx)
 	sessionID := NewSessionID()
 	t.publishEvent(userID, "exec:started", map[string]interface{}{
-		"session_id": sessionID,
-		"command":    truncateStr(command, 200),
-		"workdir":    workdir,
-		"host":       "sandbox",
+		"session_id":   sessionID,
+		"command":      truncateStr(command, 200),
+		"workdir":      workdir,
+		"host":         "sandbox",
+		"sandbox_tier": string(tier),
 	})
 
 	startedAt := time.Now()
-	stdout, stderr, exitCode, err := t.sandbox.RunInSandbox(ctx, command, workdir, envMap, timeout)
+	stdout, stderr, exitCode, err := executor.RunInSandbox(ctx, command, workdir, envMap, timeout)
+	if err != nil && tier == SandboxTierStrong && t.sandboxLight != nil && errors.Is(err, sandbox.ErrSandboxNotSupported) {
+		warnings = append(warnings, "strong sandbox unavailable at runtime; using light sandbox")
+		executor = t.sandboxLight
+		tier = SandboxTierLight
+		stdout, stderr, exitCode, err = executor.RunInSandbox(ctx, command, workdir, envMap, timeout)
+	}
 	durationMs := time.Since(startedAt).Milliseconds()
 
 	if err != nil {
@@ -1948,25 +1977,57 @@ func (t *ExecTool) runSandbox(ctx context.Context, command, workdir string, envM
 	}
 
 	t.publishEvent(userID, "exec:completed", map[string]interface{}{
-		"session_id":  sessionID,
-		"status":      status,
-		"exit_code":   exitCode,
-		"duration_ms": durationMs,
-		"host":        "sandbox",
+		"session_id":   sessionID,
+		"status":       status,
+		"exit_code":    exitCode,
+		"duration_ms":  durationMs,
+		"host":         "sandbox",
+		"sandbox_tier": string(tier),
 	})
 
 	result := execResult{
-		SessionID:  sessionID,
-		Status:     status,
-		ExitCode:   &exitCode,
-		Stdout:     SanitizeBinaryOutput(stdout),
-		Stderr:     SanitizeBinaryOutput(stderr),
-		DurationMs: durationMs,
-		Warnings:   warnings,
-		Host:       "sandbox",
+		SessionID:   sessionID,
+		Status:      status,
+		ExitCode:    &exitCode,
+		Stdout:      SanitizeBinaryOutput(stdout),
+		Stderr:      SanitizeBinaryOutput(stderr),
+		DurationMs:  durationMs,
+		Warnings:    warnings,
+		Host:        "sandbox",
+		SandboxTier: string(tier),
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
+}
+
+func (t *ExecTool) selectSandboxExecutor(risk RiskScore) (SandboxExecutor, SandboxTier, []string, error) {
+	desired := desiredSandboxTier(risk)
+	switch desired {
+	case SandboxTierStrong:
+		if t.sandboxStrong != nil {
+			return t.sandboxStrong, SandboxTierStrong, nil, nil
+		}
+		if t.sandboxLight != nil {
+			return t.sandboxLight, SandboxTierLight, []string{"strong sandbox unavailable; using light sandbox"}, nil
+		}
+	default:
+		if t.sandboxLight != nil {
+			return t.sandboxLight, SandboxTierLight, nil, nil
+		}
+		if t.sandboxStrong != nil {
+			return t.sandboxStrong, SandboxTierStrong, []string{"light sandbox unavailable; using strong sandbox"}, nil
+		}
+	}
+	return nil, "", nil, errors.New("no sandbox executor configured")
+}
+
+func desiredSandboxTier(risk RiskScore) SandboxTier {
+	switch risk.Level {
+	case RiskLevelMedium, RiskLevelHigh, RiskLevelCritical:
+		return SandboxTierStrong
+	default:
+		return SandboxTierLight
+	}
 }
 
 // publishEvent sends an SSE lifecycle event if a broker is configured.

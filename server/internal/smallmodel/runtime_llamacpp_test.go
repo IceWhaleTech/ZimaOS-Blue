@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os/exec"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -328,4 +329,59 @@ func TestLlamaCppRuntimeBatchWindowGroupsRequests(t *testing.T) {
 	if stats.LargestBatch < 2 {
 		t.Fatalf("BatchingStats().LargestBatch = %d, want >= 2", stats.LargestBatch)
 	}
+}
+
+func TestLlamaCppRuntimeKeepsEmbeddedServerWarmUntilIdle(t *testing.T) {
+	m := NewManager(t.TempDir())
+	rt := NewLlamaCppRuntime(m, LlamaCppRuntimeOptions{IdleAfter: 60 * time.Millisecond})
+
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start placeholder server process: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = cmd.Wait()
+	})
+
+	rt.serverMu.Lock()
+	rt.serverCmd = cmd
+	rt.serverURL = "http://127.0.0.1:18080"
+	rt.serverMu.Unlock()
+
+	runTask := func(label string) {
+		t.Helper()
+		if _, err := rt.dispatchServerTask(context.Background(), func(context.Context) (string, error) {
+			return label, nil
+		}); err != nil {
+			t.Fatalf("dispatchServerTask(%s) error = %v", label, err)
+		}
+	}
+
+	runTask("first")
+	time.Sleep(25 * time.Millisecond)
+	if rt.serverCmd == nil {
+		t.Fatal("expected embedded server to stay warm before idle timeout")
+	}
+
+	runTask("second")
+	time.Sleep(25 * time.Millisecond)
+	if rt.serverCmd == nil {
+		t.Fatal("expected second activity to reset idle timer")
+	}
+
+	deadline := time.Now().Add(400 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		rt.serverMu.Lock()
+		stopped := rt.serverCmd == nil && rt.serverURL == ""
+		rt.serverMu.Unlock()
+		if stopped {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	t.Fatal("expected embedded server to stop after idle timeout")
 }

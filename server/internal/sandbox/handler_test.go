@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,34 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/labstack/echo/v4"
 )
+
+type handlerCapabilityStubExecutor struct {
+	networkSupported bool
+}
+
+func (e *handlerCapabilityStubExecutor) Execute(context.Context, *ExecutionRequest) (*ExecutionResult, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (e *handlerCapabilityStubExecutor) GetStatus(string) (*ExecutionResult, error) {
+	return nil, ErrExecutionNotFound
+}
+
+func (e *handlerCapabilityStubExecutor) Kill(string) error {
+	return ErrExecutionNotFound
+}
+
+func (e *handlerCapabilityStubExecutor) Cleanup() error {
+	return nil
+}
+
+func (e *handlerCapabilityStubExecutor) IsSupported() bool {
+	return true
+}
+
+func (e *handlerCapabilityStubExecutor) SupportsNetworkEnabled() bool {
+	return e.networkSupported
+}
 
 func setupTestHandler(t *testing.T) (*Handler, *Manager, func()) {
 	config := DefaultConfig()
@@ -357,12 +386,16 @@ func TestHandler_Info(t *testing.T) {
 	if _, ok := info["memory_limit"]; !ok {
 		t.Error("Info() response should contain 'memory_limit' field")
 	}
+
+	if _, ok := info["network_toggle_supported"]; !ok {
+		t.Error("Info() response should contain 'network_toggle_supported' field")
+	}
 }
 
 func TestHandler_Info_UnsupportedIncludesReason(t *testing.T) {
 	handler := NewHandler(&Manager{
-		config:   DefaultConfig(),
-		executor: newUnsupportedExecutor("test sandbox reason"),
+		config: DefaultConfig(),
+		light:  newUnsupportedExecutor("test sandbox reason"),
 	})
 
 	e := echo.New()
@@ -386,11 +419,45 @@ func TestHandler_Info_UnsupportedIncludesReason(t *testing.T) {
 	if info["support_reason"] != "test sandbox reason" {
 		t.Fatalf("Info() support_reason = %v, want %q", info["support_reason"], "test sandbox reason")
 	}
+	if info["network_toggle_supported"] != false {
+		t.Fatalf("Info() network_toggle_supported = %v, want false", info["network_toggle_supported"])
+	}
+}
+
+func TestHandler_Info_HidesNetworkEnabledWhenUnsupported(t *testing.T) {
+	handler := NewHandler(&Manager{
+		config: DefaultConfig(),
+		light:  &handlerCapabilityStubExecutor{networkSupported: false},
+	})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sandbox/info", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.Info(c); err != nil {
+		t.Fatalf("Info() error = %v", err)
+	}
+
+	var info map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&info); err != nil {
+		t.Fatalf("Info() failed to decode response: %v", err)
+	}
+
+	if _, ok := info["network_enabled"]; ok {
+		t.Fatalf("Info() should omit network_enabled when unsupported, got %v", info["network_enabled"])
+	}
+	if info["network_toggle_supported"] != false {
+		t.Fatalf("Info() network_toggle_supported = %v, want false", info["network_toggle_supported"])
+	}
 }
 
 func TestHandler_UpdateConfig_NetworkEnabled(t *testing.T) {
-	handler, manager, cleanup := setupTestHandler(t)
-	defer cleanup()
+	manager := &Manager{
+		config: DefaultConfig(),
+		light:  &handlerCapabilityStubExecutor{networkSupported: true},
+	}
+	handler := NewHandler(manager)
 
 	store := appconfig.NewConfigStore(kvstore.NewMemoryStore())
 	cfg := &appconfig.Config{}
@@ -440,11 +507,42 @@ func TestHandler_UpdateConfig_NetworkEnabled(t *testing.T) {
 	if info["network_enabled"] != true {
 		t.Fatalf("response network_enabled = %v, want true", info["network_enabled"])
 	}
+	if info["network_toggle_supported"] != true {
+		t.Fatalf("response network_toggle_supported = %v, want true", info["network_toggle_supported"])
+	}
+}
+
+func TestHandler_UpdateConfig_NetworkEnabledUnsupported(t *testing.T) {
+	handler := NewHandler(&Manager{
+		config: DefaultConfig(),
+		light:  &handlerCapabilityStubExecutor{networkSupported: false},
+	})
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/sandbox/config", bytes.NewReader([]byte(`{"network_enabled":true}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	err := handler.UpdateConfig(c)
+	if err == nil {
+		t.Fatal("UpdateConfig() expected error")
+	}
+
+	httpErr, ok := err.(*echo.HTTPError)
+	if !ok {
+		t.Fatalf("UpdateConfig() error type = %T, want *echo.HTTPError", err)
+	}
+	if httpErr.Code != http.StatusBadRequest {
+		t.Fatalf("UpdateConfig() status = %d, want %d", httpErr.Code, http.StatusBadRequest)
+	}
 }
 
 func TestHandler_UpdateConfig_RequiresNetworkEnabled(t *testing.T) {
-	handler, _, cleanup := setupTestHandler(t)
-	defer cleanup()
+	handler := NewHandler(&Manager{
+		config: DefaultConfig(),
+		light:  &handlerCapabilityStubExecutor{networkSupported: true},
+	})
 
 	e := echo.New()
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/sandbox/config", bytes.NewReader([]byte(`{}`)))

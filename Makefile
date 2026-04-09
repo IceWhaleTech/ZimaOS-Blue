@@ -5,7 +5,7 @@
 .PHONY: build-linux build-darwin build-windows build-all
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar tauri-verify-macos-package
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
-.PHONY: provider-catalog provider-catalog-check
+.PHONY: provider-catalog provider-catalog-check stage-windows-codex-assets
 
 # Version info
 VERSION ?= 0.10.39
@@ -23,6 +23,7 @@ TAURI_LIB_DIR := $(TAURI_DIR)/src-tauri/lib
 SKILLS_SRC := $(PROJECT_ROOT)/assets/skills
 SKILLS_EMBED := $(SERVER_DIR)/internal/skill/embedded/skills
 EMBEDDED_DISABLE_MERMAID ?= 1
+WINDOWS_CODEX_ASSET_DIR ?= $(DIST_DIR)/windows-codex
 
 # Go build flags
 LDFLAGS := -s -w
@@ -152,6 +153,14 @@ release: build-frontend copy-frontend copy-skills
 	@echo "Building and publishing release..."
 	@goreleaser release --clean
 
+# Stage Windows Codex sandbox assets the release workflow republishes for
+# on-demand strong sandbox downloads on Windows.
+stage-windows-codex-assets:
+	@echo "Staging Windows Codex sandbox assets..."
+	@mkdir -p $(WINDOWS_CODEX_ASSET_DIR)
+	@python3 $(PROJECT_ROOT)/scripts/windows_codex_release_assets.py --output-dir $(WINDOWS_CODEX_ASSET_DIR)
+	@ls -lh $(WINDOWS_CODEX_ASSET_DIR)
+
 # Tauri Desktop App targets
 TAURI_DIR := $(PROJECT_ROOT)/tauri-app
 TAURI_BIN_DIR := $(TAURI_DIR)/src-tauri/bin
@@ -273,6 +282,7 @@ help:
 	@echo "  release-check      Check GoReleaser configuration"
 	@echo "  release-snapshot   Build snapshot release (for testing)"
 	@echo "  release            Build and publish release (requires GITHUB_TOKEN)"
+	@echo "  stage-windows-codex-assets Stage Windows Codex sandbox runtime assets for release/testing"
 	@echo "  help               Show this help message"
 	@echo ""
 	@echo "Environment variables:"

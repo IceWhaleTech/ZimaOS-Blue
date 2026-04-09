@@ -4,36 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/index.mdx'
-      - 'docs/start/**'
-      - 'docs/product/**'
-      - 'docs/guides/**'
-      - 'docs/help/**'
-      - 'docs/zh-CN/**'
-      - 'docs/assets/**'
-      - 'docusaurus.config.ts'
-      - 'sidebars.js'
-      - 'plugins/**'
-      - 'src/**'
-      - 'package.json'
-      - 'package-lock.json'
+      - 'docs/**'
       - '.github/workflows/docs.yml'
   pull_request:
     branches: [main]
     paths:
-      - 'docs/index.mdx'
-      - 'docs/start/**'
-      - 'docs/product/**'
-      - 'docs/guides/**'
-      - 'docs/help/**'
-      - 'docs/zh-CN/**'
-      - 'docs/assets/**'
-      - 'docusaurus.config.ts'
-      - 'sidebars.js'
-      - 'plugins/**'
-      - 'src/**'
-      - 'package.json'
-      - 'package-lock.json'
+      - 'docs/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -66,14 +42,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          site_dir="docs"
           config_path=""
           for candidate in \
-            docusaurus.config.ts \
-            docusaurus.config.mts \
-            docusaurus.config.cts \
-            docusaurus.config.js \
-            docusaurus.config.mjs \
-            docusaurus.config.cjs
+            "$site_dir/docusaurus.config.ts" \
+            "$site_dir/docusaurus.config.mts" \
+            "$site_dir/docusaurus.config.cts" \
+            "$site_dir/docusaurus.config.js" \
+            "$site_dir/docusaurus.config.mjs" \
+            "$site_dir/docusaurus.config.cjs"
           do
             if [ -f "$candidate" ]; then
               config_path="$candidate"
@@ -84,15 +61,16 @@ jobs:
           if [ -z "$config_path" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             {
-              echo "skip_reason=No Docusaurus config file found at repo root. Add docusaurus.config.* before enabling the docs workflow."
+              echo "skip_reason=No Docusaurus config file found under docs/. Add docs/docusaurus.config.* before enabling the docs workflow."
             } >> "$GITHUB_OUTPUT"
             {
               echo "## Docs"
               echo
-              echo "Skipped: No Docusaurus config file found at repo root."
+              echo "Skipped: No Docusaurus config file found under docs/."
             } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "site_dir=$site_dir" >> "$GITHUB_OUTPUT"
             echo "config_path=$config_path" >> "$GITHUB_OUTPUT"
           fi
 
@@ -104,19 +82,20 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: docs/package-lock.json
 
       - name: Install & build docs
         if: steps.resolve.outputs.skip != 'true'
+        working-directory: ${{ steps.resolve.outputs.site_dir }}
         run: |
           npm ci
-          npm run build -- --config "${{ steps.resolve.outputs.config_path }}"
+          npm run build
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request' && steps.resolve.outputs.skip != 'true'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build
+          path: docs/build
 
   deploy:
     name: Deploy docs

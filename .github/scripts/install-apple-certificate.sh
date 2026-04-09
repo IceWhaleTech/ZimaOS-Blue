@@ -40,3 +40,29 @@ security set-keychain-settings -lut 21600 "$keychain_path"
 security import "$cert_file" -k "$keychain_path" -f pkcs12 -t agg -P "$CERTIFICATE_PASSWORD" \
   -T /usr/bin/codesign -T /usr/bin/security
 security set-key-partition-list -S apple-tool:,apple: -s -k actions "$keychain_path"
+
+identity_list="$(security find-identity -v -p codesigning "$keychain_path" 2>/dev/null || true)"
+signing_identity="$(printf '%s\n' "$identity_list" | awk -F\" '/Developer ID Application:/ {print $2; exit}')"
+
+if [[ -z "$signing_identity" ]]; then
+  signing_identity="$(printf '%s\n' "$identity_list" | awk -F\" 'NF >= 2 { print $2; exit }')"
+fi
+
+if [[ -z "$signing_identity" ]]; then
+  echo "::error::No codesigning identity was imported into the temporary keychain."
+  security find-identity -v -p codesigning "$keychain_path" || true
+  exit 1
+fi
+
+if [[ -n "${APPLE_SIGNING_IDENTITY:-}" && "${APPLE_SIGNING_IDENTITY}" != "$signing_identity" ]]; then
+  echo "::warning::APPLE_SIGNING_IDENTITY does not match the imported certificate identity. Using '${signing_identity}'."
+fi
+
+if [[ -n "${GITHUB_ENV:-}" ]]; then
+  {
+    echo "APPLE_SIGNING_IDENTITY=$signing_identity"
+    echo "APPLE_KEYCHAIN_PATH=$keychain_path"
+  } >> "$GITHUB_ENV"
+fi
+
+echo "Using Apple signing identity: $signing_identity"

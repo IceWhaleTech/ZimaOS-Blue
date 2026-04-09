@@ -14,6 +14,7 @@ type FailoverAPIHandler struct {
 	config        *FailoverConfig
 	onConfigSave  func(*FailoverConfig) error
 	onRaceChange  func(ProviderRaceConfig)
+	raceStats     func() ProviderRaceStatsSnapshot
 }
 
 // NewFailoverAPIHandler creates a new failover API handler
@@ -44,6 +45,11 @@ func (h *FailoverAPIHandler) SetOnProviderRaceChange(fn func(ProviderRaceConfig)
 	h.onRaceChange = fn
 }
 
+// SetProviderRaceStatsProvider sets a callback for provider-race overview stats.
+func (h *FailoverAPIHandler) SetProviderRaceStatsProvider(fn func() ProviderRaceStatsSnapshot) {
+	h.raceStats = fn
+}
+
 // GetMetrics returns failover metrics
 // GET /api/v1/proxy/failover/metrics
 func (h *FailoverAPIHandler) GetMetrics(c echo.Context) error {
@@ -66,6 +72,7 @@ func (h *FailoverAPIHandler) GetOverview(c echo.Context) error {
 	return c.JSON(http.StatusOK, FailoverOverviewResponse{
 		Metrics:         h.failoverMetricsPayload(),
 		Config:          h.failoverConfigPayload(),
+		ProviderRace:    h.providerRacePayload(),
 		CircuitBreakers: h.failoverCircuitBreakerPayload(),
 	})
 }
@@ -243,7 +250,15 @@ type FailoverCircuitBreakerStatusResponse struct {
 type FailoverOverviewResponse struct {
 	Metrics         FailoverMetricsResponse                         `json:"metrics"`
 	Config          FailoverConfig                                  `json:"config"`
+	ProviderRace    ProviderRaceStatsSnapshot                       `json:"provider_race"`
 	CircuitBreakers map[string]FailoverCircuitBreakerStatusResponse `json:"circuit_breakers"`
+}
+
+func (h *FailoverAPIHandler) providerRacePayload() ProviderRaceStatsSnapshot {
+	if h == nil || h.raceStats == nil {
+		return ProviderRaceStatsSnapshot{}
+	}
+	return h.raceStats()
 }
 
 func (h *FailoverAPIHandler) failoverMetricsPayload() FailoverMetricsResponse {
@@ -345,6 +360,7 @@ func (h *FailoverAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(FailoverOverviewResponse{
 			Metrics:         h.failoverMetricsPayload(),
 			Config:          h.failoverConfigPayload(),
+			ProviderRace:    h.providerRacePayload(),
 			CircuitBreakers: h.failoverCircuitBreakerPayload(),
 		})
 

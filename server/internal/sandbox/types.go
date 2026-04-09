@@ -4,9 +4,20 @@ package sandbox
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+)
+
+// Tier identifies the sandbox isolation level requested by the caller.
+type Tier string
+
+const (
+	// TierLight is the lightweight sandbox tier.
+	TierLight Tier = "light"
+	// TierStrong is the stronger isolation sandbox tier.
+	TierStrong Tier = "strong"
 )
 
 var (
@@ -36,6 +47,17 @@ type Config struct {
 	ProcessLimit int
 	// NetworkEnabled allows network access.
 	NetworkEnabled bool
+	// LinuxLXCExecutable is the LXC CLI used for Linux strong isolation.
+	LinuxLXCExecutable string
+	// LinuxLXCInstance is the LXC instance name used for Linux strong isolation.
+	LinuxLXCInstance string
+	// WindowsCodexExecutable is the Codex CLI used for Windows strong isolation.
+	WindowsCodexExecutable string
+	// WindowsCodexAutoDownload controls whether Blue downloads a managed Codex
+	// binary when no local executable is ready.
+	WindowsCodexAutoDownload bool
+	// WindowsCodexDownloadTimeout bounds background Windows Codex downloads.
+	WindowsCodexDownloadTimeout time.Duration
 	// WorkDir is the working directory for executions.
 	WorkDir string
 	// AllowedPaths are paths that can be accessed.
@@ -59,19 +81,24 @@ type Config struct {
 // DefaultConfig returns the default sandbox configuration.
 func DefaultConfig() *Config {
 	return &Config{
-		DefaultTimeout:        5 * time.Minute,
-		MaxTimeout:            5 * time.Minute,
-		MemoryLimit:           256 * 1024 * 1024, // 256 MB
-		CPULimit:              1.0,
-		ProcessLimit:          10,
-		NetworkEnabled:        false,
-		WorkDir:               "/tmp/sandbox",
-		AllowedPaths:          []string{"/tmp/sandbox"},
-		DeniedPaths:           []string{"/etc", "/var", "/home", "/root"},
-		DarwinExecutorMode:    "auto",
-		HypervisorVMImagePath: "/var/lib/echo/sandbox/vm.img",
-		HypervisorMemoryMB:    512,
-		HypervisorCPUCount:    1,
+		DefaultTimeout:              5 * time.Minute,
+		MaxTimeout:                  5 * time.Minute,
+		MemoryLimit:                 256 * 1024 * 1024, // 256 MB
+		CPULimit:                    1.0,
+		ProcessLimit:                10,
+		NetworkEnabled:              false,
+		LinuxLXCExecutable:          "lxc",
+		LinuxLXCInstance:            "blue-sandbox",
+		WindowsCodexExecutable:      "codex",
+		WindowsCodexAutoDownload:    true,
+		WindowsCodexDownloadTimeout: 20 * time.Minute,
+		WorkDir:                     "/tmp/sandbox",
+		AllowedPaths:                []string{"/tmp/sandbox"},
+		DeniedPaths:                 []string{"/etc", "/var", "/home", "/root"},
+		DarwinExecutorMode:          "auto",
+		HypervisorVMImagePath:       "/var/lib/echo/sandbox/vm.img",
+		HypervisorMemoryMB:          512,
+		HypervisorCPUCount:          1,
 	}
 }
 
@@ -79,6 +106,8 @@ func DefaultConfig() *Config {
 type ExecutionRequest struct {
 	// ID is the unique execution identifier.
 	ID string
+	// Tier selects the sandbox isolation tier. Empty defaults to light.
+	Tier Tier
 	// Command is the command to execute.
 	Command string
 	// Args are the command arguments.
@@ -177,12 +206,17 @@ type Executor interface {
 
 // Manager manages sandbox executions.
 type Manager struct {
-	config   *Config
-	executor Executor
+	config *Config
+	light  Executor
+	strong Executor
 }
 
 type supportReasonProvider interface {
 	SupportReason() string
+}
+
+type networkEnabledSupportProvider interface {
+	SupportsNetworkEnabled() bool
 }
 
 // NewManager creates a new sandbox manager.
@@ -191,14 +225,19 @@ func NewManager(config *Config) (*Manager, error) {
 		config = DefaultConfig()
 	}
 
-	executor, err := newPlatformExecutor(config)
+	light, err := newPlatformExecutor(config)
+	if err != nil {
+		return nil, err
+	}
+	strong, err := newStrongPlatformExecutor(config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Manager{
-		config:   config,
-		executor: executor,
+		config: config,
+		light:  light,
+		strong: strong,
 	}, nil
 }
 
@@ -220,42 +259,153 @@ func (m *Manager) Execute(ctx context.Context, req *ExecutionRequest) (*Executio
 	if req.WorkDir == "" {
 		req.WorkDir = m.config.WorkDir
 	}
+	if req.Tier == "" {
+		req.Tier = TierLight
+	}
 
-	return m.executor.Execute(ctx, req)
+	executor := m.executorForTier(req.Tier)
+	if executor == nil || !executor.IsSupported() {
+		return nil, fmt.Errorf("%w: %s sandbox tier unavailable", ErrSandboxNotSupported, req.Tier)
+	}
+	return executor.Execute(ctx, req)
 }
 
 // GetStatus returns the status of an execution.
 func (m *Manager) GetStatus(id string) (*ExecutionResult, error) {
-	return m.executor.GetStatus(id)
+	if m == nil {
+		return nil, ErrExecutionNotFound
+	}
+	for _, executor := range []Executor{m.light, m.strong} {
+		if executor == nil {
+			continue
+		}
+		result, err := executor.GetStatus(id)
+		if err == nil {
+			return result, nil
+		}
+		if !errors.Is(err, ErrExecutionNotFound) {
+			return nil, err
+		}
+	}
+	return nil, ErrExecutionNotFound
 }
 
 // Kill kills a running execution.
 func (m *Manager) Kill(id string) error {
-	return m.executor.Kill(id)
+	if m == nil {
+		return ErrExecutionNotFound
+	}
+	var found bool
+	for _, executor := range []Executor{m.light, m.strong} {
+		if executor == nil {
+			continue
+		}
+		err := executor.Kill(id)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, ErrExecutionNotFound) {
+			return err
+		}
+		found = found || !errors.Is(err, ErrExecutionNotFound)
+	}
+	if found {
+		return nil
+	}
+	return ErrExecutionNotFound
 }
 
 // Cleanup cleans up resources.
 func (m *Manager) Cleanup() error {
-	return m.executor.Cleanup()
+	if m == nil {
+		return nil
+	}
+	cleaned := map[Executor]struct{}{}
+	for _, executor := range []Executor{m.light, m.strong} {
+		if executor == nil {
+			continue
+		}
+		if _, ok := cleaned[executor]; ok {
+			continue
+		}
+		if err := executor.Cleanup(); err != nil {
+			return err
+		}
+		cleaned[executor] = struct{}{}
+	}
+	return nil
 }
 
 // IsSupported returns true if sandboxing is supported on this platform.
 func (m *Manager) IsSupported() bool {
-	return m.executor.IsSupported()
+	return m.supportsExecutor(m.light) || m.supportsExecutor(m.strong)
 }
 
 // SupportReason returns a human-readable reason when sandboxing is unavailable.
 func (m *Manager) SupportReason() string {
-	if m == nil || m.executor == nil || m.executor.IsSupported() {
+	if m == nil || m.IsSupported() {
 		return ""
 	}
-	if provider, ok := m.executor.(supportReasonProvider); ok {
-		return provider.SupportReason()
+	for _, executor := range []Executor{m.light, m.strong} {
+		if reason := supportReason(executor); reason != "" {
+			return reason
+		}
 	}
 	return ErrSandboxNotSupported.Error()
+}
+
+// SupportsNetworkEnabled reports whether this sandbox backend can enforce the
+// NetworkEnabled runtime toggle.
+func (m *Manager) SupportsNetworkEnabled() bool {
+	if m == nil {
+		return false
+	}
+	var checked bool
+	for _, executor := range []Executor{m.light, m.strong} {
+		if executor == nil || !executor.IsSupported() {
+			continue
+		}
+		checked = true
+		provider, ok := executor.(networkEnabledSupportProvider)
+		if !ok || !provider.SupportsNetworkEnabled() {
+			return false
+		}
+	}
+	return checked
+}
+
+// SupportsTier reports whether the requested sandbox tier is currently available.
+func (m *Manager) SupportsTier(tier Tier) bool {
+	return m.supportsExecutor(m.executorForTier(tier))
 }
 
 // GetConfig returns the sandbox configuration.
 func (m *Manager) GetConfig() *Config {
 	return m.config
+}
+
+func (m *Manager) executorForTier(tier Tier) Executor {
+	if m == nil {
+		return nil
+	}
+	switch tier {
+	case TierStrong:
+		return m.strong
+	default:
+		return m.light
+	}
+}
+
+func (m *Manager) supportsExecutor(executor Executor) bool {
+	return executor != nil && executor.IsSupported()
+}
+
+func supportReason(executor Executor) string {
+	if executor == nil || executor.IsSupported() {
+		return ""
+	}
+	if provider, ok := executor.(supportReasonProvider); ok {
+		return provider.SupportReason()
+	}
+	return ""
 }

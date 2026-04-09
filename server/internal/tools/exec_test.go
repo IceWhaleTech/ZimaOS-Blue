@@ -14,6 +14,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sandbox"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
@@ -3423,10 +3424,16 @@ func TestExecCommandLengthLimit(t *testing.T) {
 // mockSandboxExecutor is a fake sandbox for testing auto-upgrade.
 type mockSandboxExecutor struct {
 	lastCommand string
+	calls       int
+	err         error
 }
 
 func (m *mockSandboxExecutor) RunInSandbox(_ context.Context, command, _ string, _ map[string]string, _ time.Duration) (string, string, int, error) {
 	m.lastCommand = command
+	m.calls++
+	if m.err != nil {
+		return "", "", -1, m.err
+	}
 	return "sandbox-out", "", 0, nil
 }
 
@@ -3472,6 +3479,174 @@ func TestExecSandboxAutoUpgrade(t *testing.T) {
 	}
 	if sbx.lastCommand != "crontab -l" {
 		t.Errorf("expected sandbox to receive the command, got %q", sbx.lastCommand)
+	}
+}
+
+func TestExecSandboxTierSelectionPrefersStrongForMediumRisk(t *testing.T) {
+	tmpDir := t.TempDir()
+	light := &mockSandboxExecutor{}
+	strong := &mockSandboxExecutor{}
+	config := DefaultExecConfig()
+	config.Security = ExecSecurityFull
+	config.AllowedDirs = []string{tmpDir}
+	config.DataDir = tmpDir
+
+	sessions := NewSessionRegistry()
+	tool := NewExecTool(config, sessions, nil, nil, nil, light, strong)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "crontab -l",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if light.calls != 0 {
+		t.Fatalf("expected light sandbox to remain unused, got %d calls", light.calls)
+	}
+	if strong.calls != 1 {
+		t.Fatalf("expected strong sandbox to handle medium-risk command, got %d calls", strong.calls)
+	}
+
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if res["sandbox_tier"] != "strong" {
+		t.Fatalf("expected sandbox_tier=strong, got %v", res["sandbox_tier"])
+	}
+}
+
+func TestExecSandboxTierSelectionFallsBackToLightWhenStrongUnavailable(t *testing.T) {
+	tmpDir := t.TempDir()
+	light := &mockSandboxExecutor{}
+	config := DefaultExecConfig()
+	config.Security = ExecSecurityFull
+	config.AllowedDirs = []string{tmpDir}
+	config.DataDir = tmpDir
+
+	sessions := NewSessionRegistry()
+	tool := NewExecTool(config, sessions, nil, nil, nil, light)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "crontab -l",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if light.calls != 1 {
+		t.Fatalf("expected light sandbox to handle fallback execution, got %d calls", light.calls)
+	}
+
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if res["sandbox_tier"] != "light" {
+		t.Fatalf("expected sandbox_tier=light, got %v", res["sandbox_tier"])
+	}
+
+	warnings, ok := res["warnings"].([]interface{})
+	if !ok {
+		t.Fatalf("expected warnings array, got %T", res["warnings"])
+	}
+
+	foundFallback := false
+	for _, warning := range warnings {
+		if strings.Contains(fmt.Sprint(warning), "strong sandbox unavailable") {
+			foundFallback = true
+			break
+		}
+	}
+	if !foundFallback {
+		t.Fatalf("expected fallback warning in %v", warnings)
+	}
+}
+
+func TestExecSandboxTierSelectionUsesLightForExplicitLowRiskSandbox(t *testing.T) {
+	tmpDir := t.TempDir()
+	light := &mockSandboxExecutor{}
+	strong := &mockSandboxExecutor{}
+	config := DefaultExecConfig()
+	config.Security = ExecSecurityFull
+	config.AllowedDirs = []string{tmpDir}
+	config.DataDir = tmpDir
+
+	sessions := NewSessionRegistry()
+	tool := NewExecTool(config, sessions, nil, nil, nil, light, strong)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "echo hello",
+		"host":    "sandbox",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if light.calls != 1 {
+		t.Fatalf("expected light sandbox to handle explicit low-risk sandbox, got %d calls", light.calls)
+	}
+	if strong.calls != 0 {
+		t.Fatalf("expected strong sandbox to remain unused, got %d calls", strong.calls)
+	}
+
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if res["sandbox_tier"] != "light" {
+		t.Fatalf("expected sandbox_tier=light, got %v", res["sandbox_tier"])
+	}
+}
+
+func TestExecSandboxTierSelectionFallsBackToLightWhenStrongUnavailableAtRuntime(t *testing.T) {
+	tmpDir := t.TempDir()
+	light := &mockSandboxExecutor{}
+	strong := &mockSandboxExecutor{err: sandbox.ErrSandboxNotSupported}
+	config := DefaultExecConfig()
+	config.Security = ExecSecurityFull
+	config.AllowedDirs = []string{tmpDir}
+	config.DataDir = tmpDir
+
+	sessions := NewSessionRegistry()
+	tool := NewExecTool(config, sessions, nil, nil, nil, light, strong)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "crontab -l",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if strong.calls != 1 {
+		t.Fatalf("expected strong sandbox to be attempted once, got %d calls", strong.calls)
+	}
+	if light.calls != 1 {
+		t.Fatalf("expected light sandbox fallback to run once, got %d calls", light.calls)
+	}
+
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if res["sandbox_tier"] != "light" {
+		t.Fatalf("expected sandbox_tier=light after runtime fallback, got %v", res["sandbox_tier"])
+	}
+
+	warnings, ok := res["warnings"].([]interface{})
+	if !ok {
+		t.Fatalf("expected warnings array, got %T", res["warnings"])
+	}
+	foundFallback := false
+	for _, warning := range warnings {
+		if strings.Contains(fmt.Sprint(warning), "runtime") && strings.Contains(fmt.Sprint(warning), "light sandbox") {
+			foundFallback = true
+			break
+		}
+	}
+	if !foundFallback {
+		t.Fatalf("expected runtime fallback warning in %v", warnings)
 	}
 }
 

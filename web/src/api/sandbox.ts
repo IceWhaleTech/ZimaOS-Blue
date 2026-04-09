@@ -4,12 +4,13 @@ import api from './client'
 export interface SandboxInfo {
   supported: boolean
   support_reason?: string
+  network_toggle_supported: boolean
   default_timeout: string
   max_timeout: string
   memory_limit: number
   cpu_limit: number
   process_limit: number
-  network_enabled: boolean
+  network_enabled?: boolean
 }
 
 export interface ResourceUsage {

@@ -2255,7 +2255,7 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&panel, &quit])?;
 
             // Build tray icon with template image (macOS auto-adapts for light/dark mode)
-            let icon = Image::from_bytes(include_bytes!("../icons/tray.png"))
+            let icon = Image::from_bytes(include_bytes!("../nsis/icons/tray.png"))
                 .expect("Failed to load tray icon");
             let tray = TrayIconBuilder::new()
                 .icon(icon)

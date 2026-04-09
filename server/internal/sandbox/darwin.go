@@ -63,6 +63,18 @@ func newPlatformExecutor(config *Config) (Executor, error) {
 	}
 }
 
+func newStrongPlatformExecutor(config *Config) (Executor, error) {
+	executor, err := NewHypervisorExecutor(config, nil)
+	if err != nil {
+		return newUnsupportedExecutor(err.Error()), nil
+	}
+	if !executor.IsSupported() {
+		_ = executor.Cleanup()
+		return newUnsupportedExecutor("macOS hypervisor sandbox backend is not available on this system"), nil
+	}
+	return executor, nil
+}
+
 // Execute executes a command with macOS-specific isolation.
 func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*ExecutionResult, error) {
 	if !sandboxExecAvailable() {
@@ -191,6 +203,10 @@ func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*E
 // IsSupported returns true if macOS sandboxing is supported.
 func (e *DarwinExecutor) IsSupported() bool {
 	return sandboxExecAvailable()
+}
+
+func (e *DarwinExecutor) SupportsNetworkEnabled() bool {
+	return true
 }
 
 func resolveDarwinExecutorMode(config *Config) DarwinExecutorMode {

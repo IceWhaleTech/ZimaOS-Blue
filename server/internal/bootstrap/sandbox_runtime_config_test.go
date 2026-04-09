@@ -69,6 +69,62 @@ func TestNewSandboxManagerFromConfig_AppliesRuntimeConfig(t *testing.T) {
 	}
 }
 
+func TestNewSandboxManagerFromConfig_AppliesPlatformBackendConfig(t *testing.T) {
+	cfg := &config.Config{
+		Security: config.SecurityConfig{
+			Sandbox: config.SandboxConfig{
+				Enabled:                     true,
+				DarwinExecutorMode:          "hypervisor",
+				HypervisorVMImagePath:       "/var/lib/blue/custom-vm.img",
+				HypervisorMemoryMB:          1536,
+				HypervisorCPUCount:          3,
+				LinuxLXCExecutable:          "/usr/local/bin/lxc",
+				LinuxLXCInstance:            "blue-strong",
+				WindowsCodexExecutable:      "C:/Tools/codex.exe",
+				WindowsCodexAutoDownload:    true,
+				WindowsCodexDownloadTimeout: 11 * time.Minute,
+			},
+		},
+	}
+
+	manager, err := NewSandboxManagerFromConfig(cfg)
+	if err != nil {
+		t.Fatalf("NewSandboxManagerFromConfig() error = %v", err)
+	}
+	if manager == nil {
+		t.Fatal("NewSandboxManagerFromConfig() manager should not be nil")
+	}
+
+	runtimeCfg := manager.GetConfig()
+	if runtimeCfg.DarwinExecutorMode != "hypervisor" {
+		t.Fatalf("DarwinExecutorMode = %q, want %q", runtimeCfg.DarwinExecutorMode, "hypervisor")
+	}
+	if runtimeCfg.HypervisorVMImagePath != "/var/lib/blue/custom-vm.img" {
+		t.Fatalf("HypervisorVMImagePath = %q, want %q", runtimeCfg.HypervisorVMImagePath, "/var/lib/blue/custom-vm.img")
+	}
+	if runtimeCfg.HypervisorMemoryMB != 1536 {
+		t.Fatalf("HypervisorMemoryMB = %d, want %d", runtimeCfg.HypervisorMemoryMB, 1536)
+	}
+	if runtimeCfg.HypervisorCPUCount != 3 {
+		t.Fatalf("HypervisorCPUCount = %d, want %d", runtimeCfg.HypervisorCPUCount, 3)
+	}
+	if runtimeCfg.LinuxLXCExecutable != "/usr/local/bin/lxc" {
+		t.Fatalf("LinuxLXCExecutable = %q, want %q", runtimeCfg.LinuxLXCExecutable, "/usr/local/bin/lxc")
+	}
+	if runtimeCfg.LinuxLXCInstance != "blue-strong" {
+		t.Fatalf("LinuxLXCInstance = %q, want %q", runtimeCfg.LinuxLXCInstance, "blue-strong")
+	}
+	if runtimeCfg.WindowsCodexExecutable != "C:/Tools/codex.exe" {
+		t.Fatalf("WindowsCodexExecutable = %q, want %q", runtimeCfg.WindowsCodexExecutable, "C:/Tools/codex.exe")
+	}
+	if !runtimeCfg.WindowsCodexAutoDownload {
+		t.Fatal("WindowsCodexAutoDownload = false, want true")
+	}
+	if runtimeCfg.WindowsCodexDownloadTimeout != 11*time.Minute {
+		t.Fatalf("WindowsCodexDownloadTimeout = %v, want %v", runtimeCfg.WindowsCodexDownloadTimeout, 11*time.Minute)
+	}
+}
+
 func TestParseSandboxMemoryLimitBytes(t *testing.T) {
 	got, err := parseSandboxMemoryLimitBytes("1.5GiB")
 	if err != nil {

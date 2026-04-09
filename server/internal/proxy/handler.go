@@ -806,6 +806,7 @@ type ProxyHandler struct {
 	providerMemory     *ProviderMemory    // Provider capability memory
 	providerRaceConfig ProviderRaceConfig // Concurrent provider race config
 	providerRaceStats  map[string]*providerRaceStat
+	providerRacePerf   *ProviderRaceStats
 	providerRaceMu     sync.Mutex
 	routingEnabled     atomic.Bool       // Toggle for model routing
 	promptCacheEnabled atomic.Bool       // Toggle for Anthropic prompt caching
@@ -852,6 +853,7 @@ func NewProxyHandler(router *Router, connPool *ConnectionPool, failover *Failove
 		promptCacheBreaks:             NewPromptCacheBreakDetector(0),
 		providerRaceConfig:            normalizeProviderRaceConfig(DefaultProviderRaceConfig()),
 		providerRaceStats:             make(map[string]*providerRaceStat),
+		providerRacePerf:              newProviderRaceStats(),
 		responsesPrevID:               make(map[string]string),
 		responsesInstr:                make(map[string]string),
 		responsesTools:                make(map[string]string),
@@ -1217,6 +1219,14 @@ func (ph *ProxyHandler) GetRoutingStats() RoutingStatsSnapshot {
 // GetRoutingStatsRef returns the RoutingStats reference for external wiring.
 func (ph *ProxyHandler) GetRoutingStatsRef() *RoutingStats {
 	return ph.routingStats
+}
+
+// GetProviderRaceStats returns a snapshot of provider-race effectiveness.
+func (ph *ProxyHandler) GetProviderRaceStats() ProviderRaceStatsSnapshot {
+	if ph == nil || ph.providerRacePerf == nil {
+		return ProviderRaceStatsSnapshot{}
+	}
+	return ph.providerRacePerf.Snapshot()
 }
 
 // SetPipelineStats sets the unified pipeline stats collector.
@@ -1694,6 +1704,15 @@ func (ph *ProxyHandler) executeWithProviderRace(
 	if len(raced) > cfg.MaxParallel {
 		raced = raced[:cfg.MaxParallel]
 	}
+	if ph.providerRacePerf != nil {
+		ph.providerRacePerf.RecordRequest()
+	}
+
+	primaryProviderID := primary.Provider.ID
+	primaryLatencyEstimate := time.Duration(0)
+	if ph.providerPool != nil && ph.providerPool.Router != nil {
+		primaryLatencyEstimate = ph.providerPool.Router.GetLatency(primaryProviderID)
+	}
 
 	type raceResult struct {
 		providerID string
@@ -1711,14 +1730,14 @@ func (ph *ProxyHandler) executeWithProviderRace(
 		wg.Add(1)
 		go func(c *providerpool.RouteCandidate) {
 			defer wg.Done()
-			start := timeutil.NowTime()
+			start := time.Now()
 			res := ph.routeResultForCandidate(c)
 			outcome, execErr := ph.executeOnRouteResult(r.Clone(raceCtx), res, pr, hasTools)
 			ch <- raceResult{
 				providerID: c.Provider.ID,
 				outcome:    outcome,
 				err:        execErr,
-				latency:    timeutil.SinceTime(start),
+				latency:    time.Since(start),
 			}
 		}(candidate)
 	}
@@ -1728,6 +1747,8 @@ func (ph *ProxyHandler) executeWithProviderRace(
 	}()
 
 	var winner *providerExecOutcome
+	var winnerProviderID string
+	var winnerLatency time.Duration
 	var firstErr error
 	tried := make([]string, 0, len(raced))
 	for item := range ch {
@@ -1738,6 +1759,8 @@ func (ph *ProxyHandler) executeWithProviderRace(
 			ph.recordProviderRaceAttempt(item.providerID, false)
 			if winner == nil {
 				winner = item.outcome
+				winnerProviderID = item.providerID
+				winnerLatency = item.latency
 				cancel()
 			} else {
 				item.outcome.resp.Body.Close()
@@ -1752,6 +1775,15 @@ func (ph *ProxyHandler) executeWithProviderRace(
 		}
 	}
 	if winner != nil {
+		estimatedSaved := time.Duration(0)
+		if winnerProviderID != "" &&
+			winnerProviderID != primaryProviderID &&
+			primaryLatencyEstimate > winnerLatency {
+			estimatedSaved = primaryLatencyEstimate - winnerLatency
+		}
+		if ph.providerRacePerf != nil {
+			ph.providerRacePerf.RecordSuccess(primaryProviderID, winnerProviderID, winnerLatency, estimatedSaved)
+		}
 		return winner, nil
 	}
 

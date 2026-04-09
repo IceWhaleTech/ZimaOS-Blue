@@ -397,6 +397,10 @@ func (e *HypervisorExecutor) IsSupported() bool {
 	return err == nil
 }
 
+func (e *HypervisorExecutor) SupportsNetworkEnabled() bool {
+	return true
+}
+
 // GetBackend returns the current VM backend being used.
 func (e *HypervisorExecutor) GetBackend() VMBackend {
 	return e.vmBackend

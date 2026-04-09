@@ -49,6 +49,12 @@ func newPlatformExecutor(config *Config) (Executor, error) {
 	return executor, nil
 }
 
+func newStrongPlatformExecutor(config *Config) (Executor, error) {
+	return NewCodexSandboxExecutor(config, CodexSandboxExecutorOptions{
+		Subcommand: "windows",
+	})
+}
+
 // Execute executes a command with Windows-specific isolation.
 func (e *WindowsExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*ExecutionResult, error) {
 	if ctx == nil {
@@ -190,6 +196,10 @@ func (e *WindowsExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*
 // IsSupported returns true (Windows executor is always supported on Windows).
 func (e *WindowsExecutor) IsSupported() bool {
 	return true
+}
+
+func (e *WindowsExecutor) SupportsNetworkEnabled() bool {
+	return false
 }
 
 // Kill kills a running execution and its child-process tree.

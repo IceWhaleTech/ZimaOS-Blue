@@ -368,6 +368,9 @@ security:
     cpu_limit: 1.0
     process_limit: 10
     network_enabled: false
+    windows_codex_executable: "codex"         # optional explicit path/command override
+    windows_codex_auto_download: true         # prefer Blue-hosted release asset, then official Codex release fallbacks
+    windows_codex_download_timeout: "20m"
 
 # Harness control plane (runtime-first, benchmark-ready)
 harness:

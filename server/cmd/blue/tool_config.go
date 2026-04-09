@@ -48,9 +48,7 @@ func registerServerToolRegistry(registry *tools.Registry, cfg *config.Config, da
 	}
 	tools.RegisterBuiltinToolsWithRuntimeConfig(registry, webSearchConfig, webFetchConfig, workspaceAllowedPaths, 0, runtimeCfg)
 
-	execConfig := tools.DefaultExecConfig()
-	execConfig.DataDir = strings.TrimSpace(dataDir)
-	execConfig.AllowedDirs = append([]string(nil), workspaceAllowedPaths...)
+	execConfig := bootstrap.NewRuntimeExecConfig(dataDir, workspaceAllowedPaths)
 	tools.RegisterExecTools(registry, execConfig, nil, nil, nil)
 
 	tools.RegisterFactoryToolDefinitions(registry)

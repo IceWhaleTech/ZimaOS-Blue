@@ -65,6 +65,17 @@ func TestFailoverAPIHandler_GetOverview_AggregatesSparseFailoverState(t *testing
 	breaker.LoadState(resilience.StateOpen, 2, 0, now, now)
 
 	h := NewFailoverAPIHandler(smart, &cfg)
+	h.SetProviderRaceStatsProvider(func() ProviderRaceStatsSnapshot {
+		return ProviderRaceStatsSnapshot{
+			RequestsTotal:             8,
+			SuccessfulRaces:           6,
+			Hits:                      3,
+			HitRate:                   0.375,
+			AvgWinnerLatencyMs:        42.5,
+			EstimatedLatencySavedMs:   18.75,
+			EstimatedSavingsSamples:   2,
+		}
+	})
 
 	req := httptest.NewRequest(http.MethodGet, "/overview", nil)
 	rec := httptest.NewRecorder()
@@ -91,6 +102,15 @@ func TestFailoverAPIHandler_GetOverview_AggregatesSparseFailoverState(t *testing
 				Enabled bool `json:"enabled"`
 			} `json:"streaming_anomaly"`
 		} `json:"config"`
+		ProviderRace struct {
+			RequestsTotal           int64   `json:"requests_total"`
+			SuccessfulRaces         int64   `json:"successful_races"`
+			Hits                    int64   `json:"hits"`
+			HitRate                 float64 `json:"hit_rate"`
+			AvgWinnerLatencyMs      float64 `json:"avg_winner_latency_ms"`
+			EstimatedLatencySavedMs float64 `json:"estimated_latency_saved_ms"`
+			EstimatedSavingsSamples int64   `json:"estimated_savings_samples"`
+		} `json:"provider_race"`
 		CircuitBreakers map[string]struct {
 			State    string `json:"state"`
 			Failures int    `json:"failures"`
@@ -111,6 +131,15 @@ func TestFailoverAPIHandler_GetOverview_AggregatesSparseFailoverState(t *testing
 	}
 	if !body.Config.Enabled || !body.Config.CircuitBreaker || !body.Config.StreamingAnomaly.Enabled {
 		t.Fatalf("unexpected config payload: %+v", body.Config)
+	}
+	if body.ProviderRace.RequestsTotal != 8 ||
+		body.ProviderRace.SuccessfulRaces != 6 ||
+		body.ProviderRace.Hits != 3 ||
+		body.ProviderRace.HitRate != 0.375 ||
+		body.ProviderRace.AvgWinnerLatencyMs != 42.5 ||
+		body.ProviderRace.EstimatedLatencySavedMs != 18.75 ||
+		body.ProviderRace.EstimatedSavingsSamples != 2 {
+		t.Fatalf("unexpected provider race payload: %+v", body.ProviderRace)
 	}
 	if body.CircuitBreakers["provider-a"].State != "open" || body.CircuitBreakers["provider-a"].Failures != 2 {
 		t.Fatalf("unexpected breaker payload: %+v", body.CircuitBreakers)

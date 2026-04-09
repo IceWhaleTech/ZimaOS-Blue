@@ -39,6 +39,7 @@ func newRuntimeProxySurfaceBundle(options runtimeProxySurfaceOptions) *runtimePr
 
 	smartFailover := proxy.NewSmartFailoverHandler(&options.routingConfig.Failover, proxyRouter)
 	failoverAPIHandler := proxy.NewFailoverAPIHandler(smartFailover, &options.routingConfig.Failover)
+	failoverAPIHandler.SetProviderRaceStatsProvider(handler.GetProviderRaceStats)
 	if options.protected != nil {
 		failoverAPIHandler.RegisterRoutes(options.protected.Group("/proxy/failover", filterRouteMiddlewares(options.failoverGuard)...))
 	}

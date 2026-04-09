@@ -2,20 +2,27 @@
 // @ts-nocheck
 import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { proxyApi, type FailoverConfig } from '@/api/proxy'
+import { proxyApi, type FailoverConfig, type ProviderRaceOverview } from '@/api/proxy'
 
 const emit = defineEmits<{ 'status-change': [msg: string] }>()
 const { t, te } = useI18n()
 
 const loading = ref(true)
 const failoverConfig = ref<FailoverConfig | null>(null)
+const providerRaceStats = ref<ProviderRaceOverview | null>(null)
 const togglingProviderRace = ref(false)
 const providerRaceEnabled = computed(() => failoverConfig.value?.provider_race?.enabled === true)
 const providerRace = computed(() => failoverConfig.value?.provider_race || {})
+const hasProviderRaceStats = computed(() => (providerRaceStats.value?.requests_total || 0) > 0)
 
 function formatRatio(v?: number): string {
   if (typeof v !== 'number') return '-'
   return `${Math.round(v * 100)}%`
+}
+
+function formatMilliseconds(v?: number): string {
+  if (typeof v !== 'number' || v <= 0) return '-'
+  return `${Math.round(v)} ms`
 }
 
 function formatSeconds(v?: number): string {
@@ -31,8 +38,16 @@ function tr(key: string, fallback = ''): string {
 async function fetchAll() {
   loading.value = true
   try {
+    const overviewRes = await proxyApi.getFailoverOverview().catch(() => null)
+    if (overviewRes) {
+      failoverConfig.value = overviewRes.data.config
+      providerRaceStats.value = overviewRes.data.provider_race || null
+      return
+    }
+
     const failoverRes = await proxyApi.getFailoverConfig().catch(() => null)
     if (failoverRes) failoverConfig.value = failoverRes.data
+    providerRaceStats.value = null
   } finally {
     loading.value = false
   }
@@ -115,7 +130,10 @@ onMounted(fetchAll)
           </div>
         </div>
 
-        <div v-if="false" class="mt-4 border-t border-gray-100 dark:border-white/10 pt-3">
+        <div
+          v-if="failoverConfig.provider_race"
+          class="mt-4 border-t border-gray-100 dark:border-white/10 pt-3"
+        >
           <div class="flex items-center justify-between">
             <div>
               <h4 class="text-xs font-semibold text-gray-900 dark:text-white">
@@ -127,6 +145,7 @@ onMounted(fetchAll)
             </div>
             <button
               type="button"
+              data-testid="provider-race-toggle"
               :disabled="togglingProviderRace"
               :class="[
                 'relative inline-flex h-6 w-11 items-center rounded-full transition-colors',
@@ -189,6 +208,49 @@ onMounted(fetchAll)
               })
             }}
           </p>
+
+          <div data-testid="provider-race-stats" class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                {{ t('cache.hitRate') }}
+              </p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
+                {{ hasProviderRaceStats ? formatRatio(providerRaceStats?.hit_rate) : '-' }}
+              </p>
+            </div>
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                {{ t('tokenEconomy.estimated') }}
+              </p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
+                {{
+                  providerRaceStats?.estimated_savings_samples
+                    ? formatMilliseconds(providerRaceStats?.estimated_latency_saved_ms)
+                    : '-'
+                }}
+              </p>
+            </div>
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                {{ t('metrics.avgLatency') }}
+              </p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
+                {{
+                  providerRaceStats?.successful_races
+                    ? formatMilliseconds(providerRaceStats?.avg_winner_latency_ms)
+                    : '-'
+                }}
+              </p>
+            </div>
+            <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
+              <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                {{ t('common.requests') }}
+              </p>
+              <p class="text-sm font-semibold text-gray-900 dark:text-white mt-0.5">
+                {{ providerRaceStats?.requests_total ?? 0 }}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
     </template>

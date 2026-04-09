@@ -9,11 +9,12 @@ ZimaOS Blue docs are prepared for **GitHub Pages deployment through GitHub Actio
 
 ## What this repository already provides
 
-- Docusaurus site config in `docusaurus.config.ts`
-- Docs content rooted in `docs/`
-- Curated English canonical pages plus expanded Simplified Chinese mirrors
+- Docusaurus site runtime files inside `docs/`
+- Site config in `docs/docusaurus.config.ts`
+- Sidebar and root-link compatibility plugin in `docs/sidebars.js` and `docs/plugins/remark-root-links.cjs`
+- Docs content, runtime, and shared images kept together in `docs/`
 - Static image assets directly reused from `docs/assets`
-- Local build validation via `npm run build`
+- Local build validation from inside `docs/`
 - CI build plus Pages deployment on docs-related changes to `main`
 
 ## Recommended deployment model
@@ -36,12 +37,25 @@ This repo intentionally builds a static site inside GitHub Actions and publishes
 
 That keeps the deployment path explicit, reviewable, and independent from any external hosted docs platform.
 
+## Repository layout that Pages expects
+
+This repo intentionally keeps the whole docs site under one directory:
+
+- Docusaurus runtime files live in `docs/`
+- Published pages are sourced from the same `docs/` directory
+- Shared images stay in `docs/assets`
+- `docs/plans` and `docs/results` are not part of the published docs include list
+- There is no separate `docs-site/` app to maintain
+
+That layout matters because the GitHub Actions workflow now resolves the Docusaurus config from `docs/`, installs dependencies there, and uploads `docs/build` to Pages.
+
 ## Pre-deploy checklist
 
 Before enabling or re-running deployment, confirm:
 
-- `npm ci` succeeds
-- `npm run build` succeeds
+- `cd docs && npm ci` succeeds
+- `cd docs && npm run build` succeeds
+- `cd docs && DOCUSAURUS_URL=https://IceWhaleTech.github.io DOCUSAURUS_BASE_URL=/ZimaOS-Blue/ npm run build` succeeds
 - Repository `Settings -> Pages` is set to `GitHub Actions`
 - The navbar links point to the correct GitHub, Releases, and DeepWiki URLs
 - The default branch contains the latest docs content
@@ -49,9 +63,22 @@ Before enabling or re-running deployment, confirm:
 ## Local validation
 
 ```bash
+cd docs
 npm ci
 npm run build
+DOCUSAURUS_URL=https://IceWhaleTech.github.io DOCUSAURUS_BASE_URL=/ZimaOS-Blue/ npm run build
 ```
+
+## If Pages shows a README-like page or 404
+
+That usually means GitHub Pages did not publish the Docusaurus build artifact at all, not that `docs/` content is wrong.
+
+Check these first:
+
+- `docs/docusaurus.config.ts`, `docs/sidebars.js`, and `docs/plugins/remark-root-links.cjs` exist on the default branch
+- `Settings -> Pages -> Build and deployment` is set to `GitHub Actions`
+- The `Docs` workflow actually runs `build` and `deploy` instead of skipping after config resolution
+- The public Pages URL `https://icewhaletech.github.io/ZimaOS-Blue/` is opened after the latest deploy finishes
 
 ## Suggested rollout order
 
@@ -65,7 +92,7 @@ npm run build
 
 For routine content updates like new product guides or navigation changes:
 
-1. Run `npm run build`
+1. Run `cd docs && npm run build`
 2. Verify English and Simplified Chinese navigation stay aligned where mirrors exist
 3. Open or update the pull request and let CI build the site
 4. Merge to `main` and let GitHub Pages deploy automatically

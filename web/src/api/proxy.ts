@@ -184,6 +184,21 @@ export interface FailoverConfig {
   }
 }
 
+export interface ProviderRaceOverview {
+  requests_total: number
+  successful_races: number
+  hits: number
+  hit_rate: number
+  avg_winner_latency_ms: number
+  estimated_latency_saved_ms: number
+  estimated_savings_samples: number
+}
+
+export interface FailoverOverview {
+  config: FailoverConfig
+  provider_race: ProviderRaceOverview
+}
+
 // API functions
 export const proxyApi = {
   // Sessions
@@ -272,6 +287,7 @@ export const proxyApi = {
 
   // Failover
   getFailoverConfig: () => apiClient.get<FailoverConfig>('/proxy/failover/config'),
+  getFailoverOverview: () => apiClient.get<FailoverOverview>('/proxy/failover/overview'),
   updateFailoverConfig: (config: Partial<FailoverConfig>) =>
     apiClient.put<FailoverConfig>('/proxy/failover/config', config),
 

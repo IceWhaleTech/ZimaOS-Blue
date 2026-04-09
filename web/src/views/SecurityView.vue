@@ -431,7 +431,8 @@ async function updateSandboxNetworkEnabled(enabled: boolean) {
 }
 
 function toggleSandboxNetwork() {
-  if (!sandboxRuntimeInfo.value || savingSandboxNetwork.value) return
+  if (!sandboxRuntimeInfo.value || !sandboxSupportsNetworkEnabled.value || savingSandboxNetwork.value)
+    return
   void updateSandboxNetworkEnabled(!sandboxRuntimeInfo.value.network_enabled)
 }
 
@@ -1119,10 +1120,15 @@ const sandboxRuntimeTone = computed<SandboxDisplayTone>(() => {
   return sandboxRuntimeInfo.value.supported ? 'success' : 'danger'
 })
 
+const sandboxSupportsNetworkEnabled = computed(() => {
+  return sandboxRuntimeInfo.value?.network_toggle_supported === true
+})
+
 const sandboxNetworkSwitchDisabled = computed(() => {
   if (loadingSandboxRuntimeInfo.value || savingSandboxNetwork.value) return true
   if (sandboxRuntimeInfoError.value) return true
   if (!sandboxRuntimeInfo.value) return true
+  if (!sandboxSupportsNetworkEnabled.value) return true
   return !sandboxRuntimeInfo.value.supported
 })
 
@@ -1131,6 +1137,9 @@ const sandboxNetworkStatusLabel = computed(() => {
     return t(savingSandboxNetwork.value ? 'common.saving' : 'common.loading')
   }
   if (!sandboxRuntimeInfo.value) {
+    return '-'
+  }
+  if (!sandboxSupportsNetworkEnabled.value) {
     return '-'
   }
   return sandboxRuntimeInfo.value.network_enabled
@@ -1143,6 +1152,9 @@ const sandboxNetworkTone = computed<SandboxDisplayTone>(() => {
     return 'danger'
   }
   if (loadingSandboxRuntimeInfo.value || !sandboxRuntimeInfo.value) {
+    return 'neutral'
+  }
+  if (!sandboxSupportsNetworkEnabled.value) {
     return 'neutral'
   }
   if (!sandboxRuntimeInfo.value.supported) {
@@ -2096,7 +2108,10 @@ onUnmounted(() => {
                   </span>
                 </div>
 
-                <div class="sandbox-mini-card sandbox-mini-card-network">
+                <div
+                  v-if="sandboxSupportsNetworkEnabled"
+                  class="sandbox-mini-card sandbox-mini-card-network"
+                >
                   <div class="sandbox-mini-card-label">
                     {{ t('sandbox.config.network') }}
                   </div>

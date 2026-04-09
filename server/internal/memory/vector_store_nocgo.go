@@ -1,4 +1,4 @@
-//go:build !cgo
+//go:build !cgo || windows
 
 package memory
 
@@ -51,7 +51,7 @@ type VectorStoreStats struct {
 	NewestChunk  string `json:"newest_chunk,omitempty"`
 }
 
-var errVectorStoreNoCGO = fmt.Errorf("vector store requires cgo/sqlite-vec (build with CGO_ENABLED=1)")
+var errVectorStoreNoCGO = fmt.Errorf("vector store requires sqlite-vec support, which is unavailable in this build")
 
 // NewVectorStore creates a no-cgo stub and returns an availability error.
 func NewVectorStore(cfg VectorStoreConfig) (*VectorStore, error) {

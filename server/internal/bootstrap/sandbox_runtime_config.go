@@ -44,6 +44,31 @@ func NewSandboxManagerFromConfig(cfg *config.Config) (*sandbox.Manager, error) {
 		runtimeCfg.ProcessLimit = sandboxCfg.ProcessLimit
 	}
 	runtimeCfg.NetworkEnabled = sandboxCfg.NetworkEnabled
+	if raw := strings.TrimSpace(sandboxCfg.DarwinExecutorMode); raw != "" {
+		runtimeCfg.DarwinExecutorMode = raw
+	}
+	if raw := strings.TrimSpace(sandboxCfg.HypervisorVMImagePath); raw != "" {
+		runtimeCfg.HypervisorVMImagePath = raw
+	}
+	if sandboxCfg.HypervisorMemoryMB > 0 {
+		runtimeCfg.HypervisorMemoryMB = sandboxCfg.HypervisorMemoryMB
+	}
+	if sandboxCfg.HypervisorCPUCount > 0 {
+		runtimeCfg.HypervisorCPUCount = sandboxCfg.HypervisorCPUCount
+	}
+	if raw := strings.TrimSpace(sandboxCfg.LinuxLXCExecutable); raw != "" {
+		runtimeCfg.LinuxLXCExecutable = raw
+	}
+	if raw := strings.TrimSpace(sandboxCfg.LinuxLXCInstance); raw != "" {
+		runtimeCfg.LinuxLXCInstance = raw
+	}
+	if raw := strings.TrimSpace(sandboxCfg.WindowsCodexExecutable); raw != "" {
+		runtimeCfg.WindowsCodexExecutable = raw
+	}
+	runtimeCfg.WindowsCodexAutoDownload = sandboxCfg.WindowsCodexAutoDownload
+	if sandboxCfg.WindowsCodexDownloadTimeout > 0 {
+		runtimeCfg.WindowsCodexDownloadTimeout = sandboxCfg.WindowsCodexDownloadTimeout
+	}
 
 	return sandbox.NewManager(runtimeCfg)
 }

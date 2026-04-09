@@ -41,6 +41,10 @@ func newPlatformExecutor(config *Config) (Executor, error) {
 	return executor, nil
 }
 
+func newStrongPlatformExecutor(*Config) (Executor, error) {
+	return newUnsupportedExecutor("strong sandbox backend is not implemented on Linux"), nil
+}
+
 // setupCgroup sets up the cgroup for sandboxed processes.
 func (e *LinuxExecutor) setupCgroup() error {
 	// Check if cgroup v2 is available
@@ -176,6 +180,10 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 
 // IsSupported returns true if Linux sandboxing is supported.
 func (e *LinuxExecutor) IsSupported() bool {
+	return true
+}
+
+func (e *LinuxExecutor) SupportsNetworkEnabled() bool {
 	return true
 }
 

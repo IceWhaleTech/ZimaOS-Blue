@@ -10,13 +10,10 @@ import (
 
 func newRuntimeExecSupportBundle(options runtimeExecSupportOptions) runtimeExecSupportBundle {
 	bundle := runtimeExecSupportBundle{
-		ExecConfig: tools.DefaultExecConfig(),
+		ExecConfig: NewRuntimeExecConfig(options.dataDir, options.workspaceAllowedPath),
 		Approvals:  newHarnessRuntimeExecApprovals(options.harnessRuntime, options.broker),
 		DirStore:   newRuntimeExecDirStore(options.writeDB, options.readDB),
 	}
-
-	bundle.ExecConfig.DataDir = strings.TrimSpace(options.dataDir)
-	bundle.ExecConfig.AllowedDirs = append([]string(nil), options.workspaceAllowedPath...)
 
 	tools.RegisterExecTools(
 		options.toolRegistry,
@@ -25,6 +22,7 @@ func newRuntimeExecSupportBundle(options runtimeExecSupportOptions) runtimeExecS
 		options.broker,
 		bundle.DirStore,
 		newRuntimeExecSandboxExecutor(options.sandboxManager),
+		newRuntimeExecStrongSandboxExecutor(options.sandboxManager),
 	)
 	tools.RegisterApprovalAwareFileToolsWithRuntimeConfig(
 		options.toolRegistry,
