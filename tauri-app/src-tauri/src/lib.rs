@@ -128,6 +128,7 @@ const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
   if (!body) {
     return;
   }
+  const useGlass = Boolean(window.__BLUE_MACOS_GLASS__);
 
   const sidebarRows = Array.from(
     { length: 5 },
@@ -140,10 +141,10 @@ const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
       `<span class="startup-shell__line startup-shell__skeleton" style="--line-width:${96 - index * 14}%"></span>`
   ).join('');
 
-  document.documentElement.style.background = 'transparent';
-  body.style.cssText = 'margin:0;min-height:100vh;background:transparent;';
+  document.documentElement.style.background = useGlass ? 'transparent' : '#0b1220';
+  body.style.cssText = `margin:0;min-height:100vh;background:${useGlass ? 'transparent' : '#0b1220'};`;
   body.innerHTML = `
-    <div class="startup-shell" aria-hidden="true">
+    <div class="startup-shell ${useGlass ? 'startup-shell--glass' : 'startup-shell--solid'}" aria-hidden="true">
       <div class="startup-shell__backdrop"></div>
       <div class="startup-shell__layout">
         <aside class="startup-shell__sidebar">
@@ -239,6 +240,16 @@ const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
           inset 0 1px 0 rgba(255, 255, 255, 0.08),
           0 24px 60px rgba(2, 6, 23, 0.28);
       }
+      .startup-shell--solid .startup-shell__sidebar,
+      .startup-shell--solid .startup-shell__surface {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: rgba(15, 23, 42, 0.82);
+        border-color: rgba(148, 163, 184, 0.08);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.06),
+          0 18px 42px rgba(2, 6, 23, 0.26);
+      }
       .startup-shell__sidebar {
         border-radius: 28px;
         padding: 22px 18px;
@@ -276,6 +287,9 @@ const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
         border-radius: 22px;
         background: rgba(15, 23, 42, 0.26);
       }
+      .startup-shell--solid .startup-shell__sidebar-card {
+        background: rgba(15, 23, 42, 0.58);
+      }
       .startup-shell__sidebar-title {
         display: block;
         width: 52%;
@@ -310,6 +324,12 @@ const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
         border: 1px solid rgba(148, 163, 184, 0.14);
         backdrop-filter: blur(18px);
         -webkit-backdrop-filter: blur(18px);
+      }
+      .startup-shell--solid .startup-shell__chip,
+      .startup-shell--solid .startup-shell__status-wrap {
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+        background: rgba(15, 23, 42, 0.74);
       }
       .startup-shell__chip {
         width: 90px;
@@ -390,6 +410,9 @@ const ABOUT_BLANK_SPLASH_SCRIPT: &str = r##"
         display: flex;
         flex-direction: column;
         gap: 10px;
+      }
+      .startup-shell--solid .startup-shell__message-body {
+        background: rgba(15, 23, 42, 0.72);
       }
       .startup-shell__message-body--user {
         max-width: min(100%, 300px);

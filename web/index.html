@@ -12,7 +12,15 @@
     <style>
       html, body {
         margin: 0;
+        background: #0b1220;
+      }
+      html[data-blue-macos-glass='true'],
+      html[data-blue-macos-glass='true'] body {
         background: transparent;
+      }
+      html.light body,
+      html.light {
+        background: #f3f6fb;
       }
       /* Inline splash screen — visible before JS loads, removed by Vue on mount */
       #app-splash {
@@ -33,11 +41,25 @@
         -webkit-backdrop-filter: blur(24px) saturate(1.12);
       }
       #app-splash.fade-out { opacity: 0; pointer-events: none; }
+      html[data-blue-desktop='true']:not([data-blue-macos-glass='true']) #app-splash {
+        background:
+          radial-gradient(circle at 16% 18%, rgba(59, 130, 246, 0.16), transparent 30%),
+          radial-gradient(circle at 82% 12%, rgba(45, 212, 191, 0.12), transparent 24%),
+          linear-gradient(180deg, rgba(11, 18, 32, 0.98), rgba(15, 23, 42, 1));
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
       :root.light #app-splash {
         background:
           radial-gradient(circle at 14% 18%, rgba(96, 165, 250, 0.24), transparent 34%),
           radial-gradient(circle at 84% 12%, rgba(45, 212, 191, 0.16), transparent 28%),
           rgba(255, 255, 255, 0.52);
+      }
+      html.light[data-blue-desktop='true']:not([data-blue-macos-glass='true']) #app-splash {
+        background:
+          radial-gradient(circle at 14% 18%, rgba(96, 165, 250, 0.18), transparent 32%),
+          radial-gradient(circle at 84% 12%, rgba(45, 212, 191, 0.12), transparent 24%),
+          linear-gradient(180deg, rgba(244, 247, 251, 0.98), rgba(232, 240, 250, 1));
       }
       #app-splash .splash-panel {
         display: flex;
@@ -51,9 +73,19 @@
         backdrop-filter: blur(22px) saturate(1.1);
         -webkit-backdrop-filter: blur(22px) saturate(1.1);
       }
+      html[data-blue-desktop='true']:not([data-blue-macos-glass='true']) #app-splash .splash-panel {
+        background: rgba(15, 23, 42, 0.82);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 40px rgba(2, 6, 23, 0.28);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
       :root.light #app-splash .splash-panel {
         background: rgba(255, 255, 255, 0.44);
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 24px 60px rgba(148, 163, 184, 0.22);
+      }
+      html.light[data-blue-desktop='true']:not([data-blue-macos-glass='true']) #app-splash .splash-panel {
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78), 0 18px 40px rgba(148, 163, 184, 0.18);
       }
       /* Spinner */
       #app-splash .spinner {
