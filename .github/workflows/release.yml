@@ -86,9 +86,6 @@ jobs:
             goarch: arm64
             runner: ubuntu-latest
             cross: true
-          - goos: windows
-            goarch: amd64
-            runner: windows-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -138,17 +135,14 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
 
-      # Build espeak-ng static library (Linux/Windows need it for TTS)
+      # Build espeak-ng static library (Linux needs it for TTS)
       - name: Build espeak-ng
         if: matrix.goos != 'darwin'
         shell: bash
         run: |
           cd third_party/espeak-ng
           mkdir -p build && cd build
-          if [[ "${{ matrix.goos }}" == "windows" ]]; then
-            cmake .. -DBUILD_SHARED_LIBS=OFF -DUSE_LIBPCAUDIO=OFF -G "MinGW Makefiles"
-            cmake --build . --config Release
-          elif [[ "${{ matrix.cross }}" == "true" ]]; then
+          if [[ "${{ matrix.cross }}" == "true" ]]; then
             cmake .. -DBUILD_SHARED_LIBS=OFF \
               -DUSE_LIBPCAUDIO=OFF \
               -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
@@ -201,26 +195,18 @@ jobs:
           LDFLAGS="${LDFLAGS} -X main.buildTime=${BUILD_TIME}"
           LDFLAGS="${LDFLAGS} -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=${ZIMAOS_TRIAL_LICENSE}"
 
-          EXT=""
-          if [[ "${GOOS}" == "windows" ]]; then EXT=".exe"; fi
-
           mkdir -p bin
-          go build -tags 'fts5 espeak kokoro' -ldflags "${LDFLAGS}" -o "bin/${BINARY_NAME}${EXT}" ./cmd/blue
+          go build -tags 'fts5 espeak kokoro' -ldflags "${LDFLAGS}" -o "bin/${BINARY_NAME}" ./cmd/blue
 
-      # Pack dist into binary (Linux/Windows only — macOS launcher handles this)
+      # Pack dist into binary (Linux only — macOS launcher handles this)
       - name: Pack dist into binary
         if: matrix.goos != 'darwin'
         working-directory: server
         shell: bash
         run: |
-          EXT=""
-          if [[ "${{ matrix.goos }}" == "windows" ]]; then EXT=".exe"; fi
-          BINARY="bin/${BINARY_NAME}${EXT}"
+          BINARY="bin/${BINARY_NAME}"
 
           RUNNER_TMP="${{ runner.temp }}"
-          if command -v cygpath &>/dev/null; then
-            RUNNER_TMP="$(cygpath -u "$RUNNER_TMP")"
-          fi
           DIST_TAR="${RUNNER_TMP}/zimaos-dist.tar.gz"
           tar czf "${DIST_TAR}" -C internal/web/dist .
 
@@ -234,10 +220,7 @@ jobs:
           export PACK_BINARY="${BINARY}"
           export PACK_OFFSET="${OFFSET}"
 
-          PYTHON=python3
-          if [[ "${{ matrix.goos }}" == "windows" ]]; then PYTHON=python; fi
-
-          $PYTHON -c "
+          python3 -c "
           import struct, os
           with open(os.environ['PACK_DIST_TAR'], 'rb') as f:
               dist = f.read()
@@ -281,16 +264,8 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME}"
           ARCHIVE="${BINARY_NAME}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
-          EXT=""
-          if [[ "${{ matrix.goos }}" == "windows" ]]; then EXT=".exe"; fi
-
-          if [[ "${{ matrix.goos }}" == "windows" ]]; then
-            7z a "${ARCHIVE}.zip" "${BINARY_NAME}${EXT}"
-            sha256sum "${ARCHIVE}.zip" > "${ARCHIVE}.zip.sha256"
-          else
-            tar czf "${ARCHIVE}.tar.gz" "${BINARY_NAME}${EXT}"
-            shasum -a 256 "${ARCHIVE}.tar.gz" > "${ARCHIVE}.tar.gz.sha256"
-          fi
+          tar czf "${ARCHIVE}.tar.gz" "${BINARY_NAME}"
+          shasum -a 256 "${ARCHIVE}.tar.gz" > "${ARCHIVE}.tar.gz.sha256"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -298,7 +273,6 @@ jobs:
           name: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             server/bin/*.tar.gz
-            server/bin/*.zip
             server/bin/*.sha256
           retention-days: 1
 
@@ -525,9 +499,6 @@ jobs:
               '**Linux:**',
               `- [Linux x86_64 (amd64)](${dl}/blue-${tag}-linux-amd64.tar.gz)`,
               `- [Linux aarch64 (arm64)](${dl}/blue-${tag}-linux-arm64.tar.gz)`,
-              '',
-              '**Windows:**',
-              `- [Windows x86_64 (amd64)](${dl}/blue-${tag}-windows-amd64.zip)`,
               '',
               '**Checksums:** Each CLI archive has a corresponding `.sha256` file.',
             ].join('\n');
