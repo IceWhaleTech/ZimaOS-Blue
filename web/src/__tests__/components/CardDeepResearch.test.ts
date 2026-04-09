@@ -531,6 +531,41 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).not.toContain('recent')
   })
 
+  it('localizes verification item summaries for zh-CN runtime cards instead of leaking english status text', async () => {
+    const wrapper = mount(CardDeepResearch, {
+      props: {
+        uiStateKey: 'deep-research:test-zh-runtime-verification-summary',
+        card: {
+          type: 'deep-research',
+          query: 'topic zh verification summary',
+          mode: 'standard',
+          answer: 'Answer',
+          status: 'completed',
+          verification_summary: {
+            resolved_count: 1,
+            conflicted_count: 0,
+            insufficient_count: 0,
+            items: [
+              {
+                focus: 'Claim validation',
+                status: 'resolved',
+                summary: 'Verification pass completed',
+              },
+            ],
+          },
+        },
+      },
+      global: {
+        plugins: [createRuntimeLocaleI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('验证已完成')
+    expect(wrapper.text()).not.toContain('Verification pass completed')
+  })
+
   it('renders verify-stage progress with buttons', () => {
     const wrapper = mount(CardDeepResearchProgress, {
       props: {
@@ -560,5 +595,37 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).toContain('Need primary or official sources')
     expect(wrapper.text()).toContain('View task')
     expect(wrapper.text()).toContain('Cancel')
+  })
+
+  it('keeps progress-card header actions wrap-safe for long localized labels', () => {
+    const wrapper = mount(CardDeepResearchProgress, {
+      props: {
+        card: {
+          type: 'deep-research-progress',
+          job_id: 'job-zh-wrap',
+          conversation_id: 'conv-zh-wrap',
+          query: '一个非常长的深度研究任务标题，用来覆盖窄宽度下头部操作区的布局',
+          mode: 'standard',
+          stage: 'verify',
+          status: 'running',
+          progress: 68,
+          latest_action: 'verification_completed',
+          latest_gap: 'Need official source',
+        },
+      },
+      global: {
+        plugins: [createRuntimeLocaleI18n('zh-CN'), createPinia()],
+      },
+    })
+
+    const actionGroup = wrapper.get('[data-testid="deep-research-progress-header-actions"]')
+    const buttonRow = wrapper.get('[data-testid="deep-research-progress-button-row"]')
+
+    expect(actionGroup.classes()).toContain('w-full')
+    expect(actionGroup.classes()).toContain('sm:w-auto')
+    expect(buttonRow.classes()).toContain('flex-wrap')
+    expect(wrapper.text()).toContain('验证已完成')
+    expect(wrapper.text()).toContain('需要一手或官方来源')
+    expect(wrapper.text()).not.toContain('Need official source')
   })
 })

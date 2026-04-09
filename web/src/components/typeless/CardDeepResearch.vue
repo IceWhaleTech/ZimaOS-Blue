@@ -22,6 +22,7 @@ import {
   localizeDeepResearchSourceType,
   localizeDeepResearchStopReason,
   localizeDeepResearchStructuredValue,
+  localizeDeepResearchSummary,
   localizeDeepResearchTimeWindow,
   localizeDeepResearchStatus,
   localizeResearchSurfaceTitle,
@@ -195,6 +196,10 @@ function verificationTitle(item: DeepResearchVerificationItem): string {
     localizeDeepResearchGap(item.gap, tr) ||
     t('chat.deepResearchVerificationSummary', 'Verification')
   )
+}
+
+function verificationSummaryText(summary?: string): string {
+  return localizeDeepResearchSummary(summary, tr) || summary || ''
 }
 
 function workflowPhaseStatusLabel(status?: string): string {
@@ -729,7 +734,7 @@ function conflictRiskLabel(risk?: string): string {
                   v-if="item.summary"
                   class="mt-2 text-xs text-slate-500 dark:text-slate-400 break-words"
                 >
-                  {{ item.summary }}
+                  {{ verificationSummaryText(item.summary) }}
                 </div>
                 <div
                   v-if="item.gap && item.gap !== item.focus"

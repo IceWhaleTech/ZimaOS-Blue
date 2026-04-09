@@ -31,6 +31,12 @@ func validateWriteContentChunk(content, limitLabel, guidance string) error {
 			guidance,
 		)
 	}
+	if hasSuspiciousTerminalTruncationMarker(content) {
+		return fmt.Errorf(
+			"content appears truncated: terminal [truncated] marker is not allowed in %s payloads; resend the full content without truncation markers",
+			limitLabel,
+		)
+	}
 
 	return nil
 }
@@ -47,4 +53,9 @@ func countWriteContentLines(content string) int {
 		lines++
 	}
 	return lines
+}
+
+func hasSuspiciousTerminalTruncationMarker(content string) bool {
+	trimmed := strings.TrimSpace(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(content))
+	return trimmed == "[truncated]" || strings.HasSuffix(trimmed, "\n[truncated]")
 }

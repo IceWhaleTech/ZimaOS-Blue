@@ -24,7 +24,7 @@ import { getLocaleDirection } from '@/i18n'
 import type { FileAttachment } from '@/components/ChatInput.vue'
 import type ChatInputComponent from '@/components/ChatInput.vue'
 import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
-import type { AgentcoreRunnerLastRun } from '@/api/settings'
+import { settingsApi, type AgentcoreRunnerLastRun, type AgentcoreRunnerTagList } from '@/api/settings'
 import type { UserTaskProjection } from '@/api/tasks'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
@@ -206,6 +206,11 @@ function normalizeRunnerExecutionText(value: unknown): string {
   return value.trim()
 }
 
+function normalizeAgentcoreRunnerRefValue(value: unknown): string {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  return 'main'
+}
+
 function buildRunnerExecutionCard(run: AgentcoreRunnerLastRun): TypelessCardRunnerExecution {
   return {
     type: 'runner-execution',
@@ -240,6 +245,152 @@ const runnerExecutionCard = computed<TypelessCardRunnerExecution | null>(() => {
   if (!run) return null
   return buildRunnerExecutionCard(run)
 })
+
+const agentcoreRunnerTags = ref<AgentcoreRunnerTagList | null>(null)
+const agentcoreRunnerTagsLoading = ref(false)
+const agentcoreRunnerSyncing = ref(false)
+let agentcoreRunnerSyncPromise: Promise<void> | null = null
+let agentcoreRunnerSyncTargetRef = ''
+
+const showAgentcoreRunnerControl = computed(() => settingsStore.experimentalAgentcoreRunnerEnabled)
+const agentcoreRunnerSelectValue = computed(() =>
+  normalizeAgentcoreRunnerRefValue(chatStore.agentcoreRunnerRef)
+)
+const agentcoreRunnerRefOptions = computed(() => {
+  const options: string[] = []
+  const seen = new Set<string>()
+  const push = (value: unknown) => {
+    const normalized = normalizeAgentcoreRunnerRefValue(value)
+    if (seen.has(normalized)) return
+    seen.add(normalized)
+    options.push(normalized)
+  }
+  push(agentcoreRunnerTags.value?.default_ref)
+  push(chatStore.agentcoreRunnerRef)
+  push(settingsStore.experimentalAgentcoreRunnerRef)
+  for (const tag of agentcoreRunnerTags.value?.tags ?? []) {
+    push(tag)
+  }
+  return options
+})
+const agentcoreRunnerSelectionBusy = computed(
+  () =>
+    chatStore.streaming ||
+    chatStore.sending ||
+    chatStore.toolExecuting ||
+    agentcoreRunnerTagsLoading.value ||
+    agentcoreRunnerSyncing.value
+)
+
+async function fetchAgentcoreRunnerTags(repoURL = settingsStore.experimentalAgentcoreRunnerRepoURL) {
+  const resolvedRepoURL = repoURL?.trim() || settingsStore.experimentalAgentcoreRunnerRepoURL
+  try {
+    agentcoreRunnerTagsLoading.value = true
+    const response = await settingsApi.getAgentcoreRunnerTags(resolvedRepoURL)
+    agentcoreRunnerTags.value = response.data
+  } catch {
+    agentcoreRunnerTags.value = {
+      repo_url: resolvedRepoURL || 'https://github.com/IceWhaleTech/ZimaOS-Blue',
+      default_ref: 'main',
+      tags: [],
+    }
+  } finally {
+    agentcoreRunnerTagsLoading.value = false
+  }
+}
+
+async function syncActiveAgentcoreRunnerRef(targetRefRaw: unknown) {
+  if (!settingsStore.experimentalAgentcoreRunnerEnabled) return
+
+  const targetRef = normalizeAgentcoreRunnerRefValue(targetRefRaw)
+  if (agentcoreRunnerSyncPromise && agentcoreRunnerSyncTargetRef === targetRef) {
+    return agentcoreRunnerSyncPromise
+  }
+
+  const activeSettingRef = normalizeAgentcoreRunnerRefValue(
+    settingsStore.experimentalAgentcoreRunnerRef
+  )
+  const status = settingsStore.agentcoreRunnerStatus
+  const hasStatus = status != null
+  const resolvedStatusRef = hasStatus
+    ? normalizeAgentcoreRunnerRefValue(status?.resolved_ref)
+    : ''
+  const needsRefUpdate = targetRef !== activeSettingRef
+  const needsPrepare =
+    needsRefUpdate || (hasStatus && (!status?.binary_ready || resolvedStatusRef !== targetRef))
+
+  if (!needsRefUpdate && !needsPrepare) {
+    return
+  }
+
+  agentcoreRunnerSyncTargetRef = targetRef
+  const task = (async () => {
+    try {
+      agentcoreRunnerSyncing.value = true
+      if (needsRefUpdate) {
+        await settingsStore.updateBackendSettings({
+          experimental_agentcore_runner_ref: targetRef,
+        })
+      }
+      if (needsPrepare) {
+        await settingsStore.prepareAgentcoreRunner()
+        await settingsStore.fetchAgentcoreRunnerStatus().catch(() => {})
+      }
+    } finally {
+      agentcoreRunnerSyncing.value = false
+      agentcoreRunnerSyncPromise = null
+      if (agentcoreRunnerSyncTargetRef === targetRef) {
+        agentcoreRunnerSyncTargetRef = ''
+      }
+    }
+  })()
+  agentcoreRunnerSyncPromise = task
+  return task
+}
+
+async function persistAgentcoreRunnerRefSelection(targetRefRaw: unknown) {
+  const targetRef = normalizeAgentcoreRunnerRefValue(targetRefRaw)
+  await chatStore.setAgentcoreRunnerRef(targetRef)
+  await syncActiveAgentcoreRunnerRef(targetRef)
+}
+
+function handleAgentcoreRunnerRefChange(event: Event) {
+  const target = event.target
+  if (!(target instanceof HTMLSelectElement)) return
+  void persistAgentcoreRunnerRefSelection(target.value).catch(() => {})
+}
+
+watch(
+  () => settingsStore.experimentalAgentcoreRunnerEnabled,
+  (enabled) => {
+    if (!enabled) {
+      agentcoreRunnerTags.value = null
+      return
+    }
+    void fetchAgentcoreRunnerTags().catch(() => {})
+    void syncActiveAgentcoreRunnerRef(chatStore.agentcoreRunnerRef).catch(() => {})
+  },
+  { immediate: true }
+)
+
+watch(
+  () => settingsStore.experimentalAgentcoreRunnerRepoURL,
+  (repoURL) => {
+    if (!settingsStore.experimentalAgentcoreRunnerEnabled) return
+    void fetchAgentcoreRunnerTags(repoURL).catch(() => {})
+  }
+)
+
+watch(
+  () => chatStore.agentcoreRunnerRef,
+  (value, previousValue) => {
+    if (!settingsStore.experimentalAgentcoreRunnerEnabled) return
+    if (normalizeAgentcoreRunnerRefValue(value) === normalizeAgentcoreRunnerRefValue(previousValue)) {
+      return
+    }
+    void syncActiveAgentcoreRunnerRef(value).catch(() => {})
+  }
+)
 
 const showRoutingMenu = ref(false)
 const routingMenuAnchorEl = ref<HTMLElement | null>(null)
@@ -3542,6 +3693,42 @@ onUnmounted(() => {
                         </div>
                       </button>
                     </div>
+                    <div
+                      v-if="showAgentcoreRunnerControl"
+                      class="mt-4 rounded-2xl border border-gray-200 bg-gray-50/90 p-4 dark:border-gray-700 dark:bg-slate-900/60"
+                    >
+                      <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                          <div class="text-sm font-semibold text-gray-900 dark:text-white">
+                            {{ t('settings.agentcoreRunner.refLabel', 'Runner version') }}
+                          </div>
+                          <div class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                            {{
+                              t(
+                                'settings.agentcoreRunner.mobileHint',
+                                'Use the saved runner version for this chat when execution starts.'
+                              )
+                            }}
+                          </div>
+                        </div>
+                        <span class="quick-action-pill">{{ agentcoreRunnerSelectValue }}</span>
+                      </div>
+                      <select
+                        data-testid="mobile-topbar-agentcore-runner-select"
+                        class="chat-mobile-runner-select mt-3"
+                        :value="agentcoreRunnerSelectValue"
+                        :disabled="agentcoreRunnerSelectionBusy"
+                        @change="handleAgentcoreRunnerRefChange"
+                      >
+                        <option
+                          v-for="option in agentcoreRunnerRefOptions"
+                          :key="`mobile-runner-ref-${option}`"
+                          :value="option"
+                        >
+                          {{ option }}
+                        </option>
+                      </select>
+                    </div>
                   </div>
                   <div class="h-[env(safe-area-inset-bottom)]" />
                 </div>
@@ -3753,6 +3940,29 @@ onUnmounted(() => {
                       : t('chat.showToolDetails')
                   }}</span>
                 </button>
+                <label
+                  v-if="showAgentcoreRunnerControl"
+                  class="chat-thread-runner-select inline-flex items-center gap-2"
+                >
+                  <span class="chat-thread-runner-select__label">{{
+                    t('settings.agentcoreRunner.refLabel', 'Runner')
+                  }}</span>
+                  <select
+                    data-testid="chat-runner-ref-select"
+                    class="chat-thread-runner-select__control"
+                    :value="agentcoreRunnerSelectValue"
+                    :disabled="agentcoreRunnerSelectionBusy"
+                    @change="handleAgentcoreRunnerRefChange"
+                  >
+                    <option
+                      v-for="option in agentcoreRunnerRefOptions"
+                      :key="`desktop-runner-ref-${option}`"
+                      :value="option"
+                    >
+                      {{ option }}
+                    </option>
+                  </select>
+                </label>
                 <button
                   v-if="showRoutingControl"
                   ref="desktopRoutingMenuAnchorEl"
@@ -5216,6 +5426,47 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
   flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 0.62rem;
+}
+
+.chat-thread-runner-select {
+  min-height: var(--chat-header-control-size);
+  padding: 0 0.35rem 0 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.88);
+  color: rgb(71, 85, 105);
+}
+
+.chat-thread-runner-select__label {
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.chat-thread-runner-select__control,
+.chat-mobile-runner-select {
+  min-width: 0;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.96);
+  color: rgb(15, 23, 42);
+  padding: 0.55rem 2rem 0.55rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.chat-thread-runner-select__control {
+  border: none;
+  background: transparent;
+  padding: 0.5rem 1.6rem 0.5rem 0.1rem;
+  min-width: 8rem;
+}
+
+.chat-thread-runner-select__control:disabled,
+.chat-mobile-runner-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .chat-thread-detail-btn {

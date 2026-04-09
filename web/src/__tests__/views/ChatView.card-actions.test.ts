@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { reactive, ref } from 'vue'
 import ChatView from '@/views/ChatView.vue'
+import { settingsApi } from '@/api/settings'
 import { i18n, setLocale } from '@/i18n'
 
 const mocks = vi.hoisted(() => ({
@@ -30,6 +31,7 @@ const mocks = vi.hoisted(() => ({
     loading: false,
     loadingMore: false,
     messages: [] as Array<Record<string, unknown>>,
+    agentcoreRunnerRef: 'main',
     modelPreference: 'auto',
     recentTodoCompletion: null as null | { messageId: string; todoCardId?: string },
     searching: false,
@@ -58,6 +60,7 @@ const mocks = vi.hoisted(() => ({
     recoverPendingConfirmations: vi.fn(),
     loadMoreMessages: vi.fn(),
     searchConversations: vi.fn(),
+    setAgentcoreRunnerRef: vi.fn(),
     setModelPreference: vi.fn(),
     createConversation: vi.fn(),
     deleteConversation: vi.fn(),
@@ -83,11 +86,14 @@ const mocks = vi.hoisted(() => ({
     agentAutoConfirm: false,
     agentMode: false,
     experimentalAgentcoreRunnerEnabled: false,
+    experimentalAgentcoreRunnerRef: 'main',
     agentcoreRunnerStatus: null as null | Record<string, unknown>,
     agentcoreRunnerLastRun: null as null | Record<string, unknown>,
     showToolDetails: true,
     fetchTools: vi.fn(),
     fetchAgentcoreRunnerStatus: vi.fn(),
+    prepareAgentcoreRunner: vi.fn(),
+    updateBackendSettings: vi.fn(),
     updateFromPoolProviders: vi.fn(),
     setAgentAutoConfirm: vi.fn(),
     setAgentMode: vi.fn(),
@@ -255,6 +261,12 @@ vi.mock('@/composables/useKeyboardShortcuts', () => ({
 
 vi.mock('@/composables/useMediaGenerate', () => ({
   useMediaGenerate: () => mocks.mediaGenerate,
+}))
+
+vi.mock('@/api/settings', () => ({
+  settingsApi: {
+    getAgentcoreRunnerTags: vi.fn(),
+  },
 }))
 
 vi.mock('@/components/ConversationList.vue', () =>
@@ -686,6 +698,7 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.loading = false
     mocks.chatStore.loadingMore = false
     mocks.chatStore.messages = []
+    mocks.chatStore.agentcoreRunnerRef = 'main'
     mocks.chatStore.modelPreference = 'auto'
     mocks.chatStore.recentTodoCompletion = null
     mocks.chatStore.searching = false
@@ -714,6 +727,9 @@ describe('ChatView page-level card actions', () => {
     mocks.chatStore.recoverPendingConfirmations.mockReset()
     mocks.chatStore.loadMoreMessages.mockReset()
     mocks.chatStore.searchConversations.mockReset()
+    mocks.chatStore.setAgentcoreRunnerRef.mockReset().mockImplementation(async (value: string) => {
+      mocks.chatStore.agentcoreRunnerRef = value
+    })
     mocks.chatStore.setModelPreference.mockReset()
     mocks.chatStore.createConversation.mockReset()
     mocks.chatStore.deleteConversation.mockReset()
@@ -736,11 +752,25 @@ describe('ChatView page-level card actions', () => {
     mocks.settingsStore.agentAutoConfirm = false
     mocks.settingsStore.agentMode = false
     mocks.settingsStore.experimentalAgentcoreRunnerEnabled = false
+    mocks.settingsStore.experimentalAgentcoreRunnerRef = 'main'
     mocks.settingsStore.agentcoreRunnerStatus = null
     mocks.settingsStore.agentcoreRunnerLastRun = null
     mocks.settingsStore.showToolDetails = true
     mocks.settingsStore.fetchTools.mockReset().mockResolvedValue(undefined)
     mocks.settingsStore.fetchAgentcoreRunnerStatus.mockReset().mockResolvedValue(undefined)
+    mocks.settingsStore.prepareAgentcoreRunner.mockReset().mockResolvedValue(undefined)
+    mocks.settingsStore.updateBackendSettings.mockReset().mockImplementation(async (updates) => {
+      if (
+        updates &&
+        typeof updates === 'object' &&
+        'experimental_agentcore_runner_ref' in (updates as Record<string, unknown>)
+      ) {
+        mocks.settingsStore.experimentalAgentcoreRunnerRef = String(
+          (updates as Record<string, unknown>).experimental_agentcore_runner_ref || ''
+        )
+      }
+      return undefined
+    })
     mocks.settingsStore.updateFromPoolProviders.mockReset()
     mocks.settingsStore.setAgentAutoConfirm.mockReset()
     mocks.settingsStore.setAgentMode.mockReset()
@@ -810,6 +840,14 @@ describe('ChatView page-level card actions', () => {
     mocks.notificationStore.error.mockReset()
     mocks.notificationStore.info.mockReset()
     mocks.notificationStore.remove.mockReset()
+
+    vi.mocked(settingsApi.getAgentcoreRunnerTags).mockResolvedValue({
+      data: {
+        repo_url: 'https://github.com/IceWhaleTech/ZimaOS-Blue',
+        default_ref: 'main',
+        tags: ['release/v2'],
+      },
+    } as never)
   })
 
   it('localizes the awaiting confirmation indicator', async () => {
@@ -995,6 +1033,116 @@ describe('ChatView page-level card actions', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  it('shows the desktop runner ref selector only when the feature is enabled', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'main',
+      binary_ready: true,
+    }
+
+    const enabledWrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref', content: 'Use a different runner version.' },
+    ])
+
+    expect(enabledWrapper.find('[data-testid="chat-runner-ref-select"]').exists()).toBe(true)
+
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = false
+
+    const disabledWrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref-hidden', content: 'Hide the runner selector.' },
+    ])
+
+    expect(disabledWrapper.find('[data-testid="chat-runner-ref-select"]').exists()).toBe(false)
+  })
+
+  it('disables the runner ref selector while chat execution is active', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'main',
+      binary_ready: true,
+    }
+    mocks.chatStore.streaming = true
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref-busy', content: 'Busy runner selection.' },
+    ])
+
+    expect(wrapper.get('[data-testid="chat-runner-ref-select"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('persists and prepares the selected runner ref from the desktop selector', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'main',
+      binary_ready: true,
+    }
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref-change', content: 'Change the runner version.' },
+    ])
+
+    await wrapper.get('[data-testid="chat-runner-ref-select"]').setValue('release/v2')
+    await flushPromises()
+
+    expect(mocks.chatStore.setAgentcoreRunnerRef).toHaveBeenCalledWith('release/v2')
+    expect(mocks.settingsStore.updateBackendSettings).toHaveBeenCalledWith({
+      experimental_agentcore_runner_ref: 'release/v2',
+    })
+    expect(mocks.settingsStore.prepareAgentcoreRunner).toHaveBeenCalledTimes(1)
+  })
+
+  it('auto-syncs the active runner ref when switching conversations', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.experimentalAgentcoreRunnerRef = 'release/v1'
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'release/v1',
+      binary_ready: true,
+    }
+    mocks.chatStore.agentcoreRunnerRef = 'release/v1'
+
+    await mountChatViewWithMessages([{ id: 'msg-runner-switch', content: 'Switch sessions.' }])
+
+    mocks.chatStore.currentConversationId = 'conv-2'
+    mocks.chatStore.agentcoreRunnerRef = 'release/v2'
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'release/v1',
+      binary_ready: true,
+    }
+    await flushPromises()
+
+    expect(mocks.settingsStore.updateBackendSettings).toHaveBeenCalledWith({
+      experimental_agentcore_runner_ref: 'release/v2',
+    })
+    expect(mocks.settingsStore.prepareAgentcoreRunner).toHaveBeenCalled()
+  })
+
+  it('shows the runner selector inside the mobile topbar sheet', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', {
+      value: 'iphone',
+      configurable: true,
+    })
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'main',
+      binary_ready: true,
+    }
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-mobile-runner', content: 'Mobile runner settings.' },
+    ])
+
+    expect(wrapper.find('[data-testid="chat-runner-ref-select"]').exists()).toBe(false)
+
+    await wrapper.get('[data-testid="chat-topbar-more-actions"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="mobile-topbar-sheet"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="mobile-topbar-agentcore-runner-select"]').exists()).toBe(
+      true
+    )
   })
 
   it('hides the active todo panel after a completion-style final summary', async () => {

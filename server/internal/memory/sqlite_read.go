@@ -118,6 +118,7 @@ type messageAttachmentFileRow struct {
 type conversationCommandStateRow struct {
 	SelectedProviderID  string `json:"selected_provider_id" zorm:"selected_provider_id"`
 	SelectedModelID     string `json:"selected_model_id" zorm:"selected_model_id"`
+	AgentcoreRunnerRef  string `json:"agentcore_runner_ref" zorm:"agentcore_runner_ref"`
 	Offline             bool   `json:"offline" zorm:"offline"`
 	WebSearchEnabled    bool   `json:"web_search_enabled" zorm:"web_search_enabled"`
 	DeepResearchEnabled bool   `json:"deep_research_enabled" zorm:"deep_research_enabled"`
@@ -162,6 +163,7 @@ func conversationCommandStateValues(conversationID string, state ConversationCom
 		"conversation_id":       conversationID,
 		"selected_provider_id":  state.SelectedProviderID,
 		"selected_model_id":     state.SelectedModelID,
+		"agentcore_runner_ref":  state.AgentcoreRunnerRef,
 		"offline":               state.Offline,
 		"web_search_enabled":    state.WebSearchEnabled,
 		"deep_research_enabled": state.DeepResearchEnabled,
@@ -277,6 +279,7 @@ func rowToConversationCommandState(conversationID string, row conversationComman
 	state := defaultConversationCommandState(conversationID)
 	state.SelectedProviderID = strings.TrimSpace(row.SelectedProviderID)
 	state.SelectedModelID = strings.TrimSpace(row.SelectedModelID)
+	state.AgentcoreRunnerRef = strings.TrimSpace(row.AgentcoreRunnerRef)
 	state.Offline = row.Offline
 	state.WebSearchEnabled = row.WebSearchEnabled
 	state.DeepResearchEnabled = row.DeepResearchEnabled

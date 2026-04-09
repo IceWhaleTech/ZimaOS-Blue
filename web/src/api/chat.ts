@@ -78,12 +78,14 @@ export interface ConversationCommandState {
   conversation_id?: string
   selected_provider_id?: string
   selected_model_id?: string
+  agentcore_runner_ref?: string
   offline: boolean
 }
 
 export interface ConversationCommandStatePatch {
   selected_provider_id?: string
   selected_model_id?: string
+  agentcore_runner_ref?: string
   offline?: boolean
 }
 

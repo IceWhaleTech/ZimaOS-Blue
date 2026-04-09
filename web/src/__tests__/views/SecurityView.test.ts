@@ -175,6 +175,13 @@ function createTestI18n() {
           },
           scan: {
             checking: 'Checking...',
+            items: {
+              auth_mfa_available: {
+                details: {
+                  passed: 'MFA required for everyone',
+                },
+              },
+            },
           },
         },
         sandbox: {
@@ -595,6 +602,38 @@ describe('SecurityView approved browser sites', () => {
 
     expect(wrapper.find('.security-status-banner').exists()).toBe(false)
     expect(wrapper.find('.security-scan-panel').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('renders localized scan item details even when the translation has no params', async () => {
+    localStorageMock.setItem(
+      'security_last_scan_results',
+      JSON.stringify([
+        {
+          id: 'auth_mfa_available',
+          category: 'auth',
+          name: 'MFA Availability',
+          description: 'Check if MFA is required',
+          status: 'passed',
+          details: 'MFA is required for all users',
+        },
+      ])
+    )
+
+    const wrapper = mountSecurityView()
+
+    await flushPromises()
+
+    const scanItem = wrapper.findAll('.security-scan-item').find((node) => {
+      return node.text().includes('MFA Availability')
+    })
+    expect(scanItem).toBeTruthy()
+
+    await scanItem!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('MFA required for everyone')
 
     wrapper.unmount()
   })

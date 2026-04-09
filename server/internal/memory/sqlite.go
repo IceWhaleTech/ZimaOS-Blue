@@ -76,6 +76,7 @@ type ConversationCommandState struct {
 	ConversationID      string    `json:"conversation_id"`
 	SelectedProviderID  string    `json:"selected_provider_id,omitempty"`
 	SelectedModelID     string    `json:"selected_model_id,omitempty"`
+	AgentcoreRunnerRef  string    `json:"agentcore_runner_ref,omitempty"`
 	Offline             bool      `json:"offline"`
 	WebSearchEnabled    bool      `json:"web_search_enabled"`
 	DeepResearchEnabled bool      `json:"deep_research_enabled"`
@@ -208,6 +209,7 @@ func (s *Store) migrate() error {
 		conversation_id TEXT PRIMARY KEY,
 		selected_provider_id TEXT NOT NULL DEFAULT '',
 		selected_model_id TEXT NOT NULL DEFAULT '',
+		agentcore_runner_ref TEXT NOT NULL DEFAULT '',
 		offline BOOLEAN NOT NULL DEFAULT 0,
 		web_search_enabled BOOLEAN NOT NULL DEFAULT 1,
 		deep_research_enabled BOOLEAN NOT NULL DEFAULT 0,
@@ -248,6 +250,7 @@ func (s *Store) migrate() error {
 		"ALTER TABLE conversations ADD COLUMN user_id TEXT DEFAULT ''",
 		"ALTER TABLE conversations ADD COLUMN pinned BOOLEAN DEFAULT 0",
 		"ALTER TABLE conversations ADD COLUMN auto_title_finalized BOOLEAN NOT NULL DEFAULT 0",
+		"ALTER TABLE conversation_command_state ADD COLUMN agentcore_runner_ref TEXT NOT NULL DEFAULT ''",
 	}
 
 	for _, migration := range migrations {
@@ -889,7 +892,7 @@ func (s *Store) getPersistedConversationCommandState(ctx context.Context, conver
 
 	var rows []conversationCommandStateRow
 	_, err := s.conversationCommandStateRead(ctx).Select(&rows,
-		z.Fields("selected_provider_id", "selected_model_id", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"),
+		z.Fields("selected_provider_id", "selected_model_id", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"),
 		z.Where(z.Eq("conversation_id", conversationID)),
 		z.Limit(1),
 	)
@@ -907,7 +910,7 @@ func (s *Store) getPersistedConversationCommandState(ctx context.Context, conver
 func (s *Store) getPersistedUserCommandState(ctx context.Context, userID string) (ConversationCommandState, bool, error) {
 	state := defaultConversationCommandState("")
 
-	var rows []conversationCommandStateRow
+	var rows []z.V
 	_, err := s.userCommandStateRead(ctx).Select(&rows,
 		z.Fields("selected_provider_id", "selected_model_id", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"),
 		z.Where(z.Eq("user_id", userID)),
@@ -920,7 +923,13 @@ func (s *Store) getPersistedUserCommandState(ctx context.Context, userID string)
 		return state, false, nil
 	}
 
-	state = rowToConversationCommandState("", rows[0])
+	state.SelectedProviderID = lookupZormString(rows[0], "selected_provider_id")
+	state.SelectedModelID = lookupZormString(rows[0], "selected_model_id")
+	state.Offline = lookupZormBool(rows[0], "offline")
+	state.WebSearchEnabled = lookupZormBool(rows[0], "web_search_enabled")
+	state.DeepResearchEnabled = lookupZormBool(rows[0], "deep_research_enabled")
+	state.UpdatedAt = parseStoreTime(lookupZormString(rows[0], "updated_at"))
+	state = normalizeConversationCommandStateToolDefaults(state)
 	return state, true, nil
 }
 
@@ -960,7 +969,8 @@ func (s *Store) getLatestLegacyConversationCommandStateForUser(ctx context.Conte
 }
 
 // GetConversationCommandState returns persisted deterministic command state for a conversation.
-// For authenticated conversations (with user_id), state is user-scoped and shared across sessions.
+// For authenticated conversations (with user_id), provider/model/offline stay user-scoped while
+// conversation-specific overrides such as agentcore runner ref remain conversation-scoped.
 // Missing rows fall back to defaults: provider/model auto, offline=false, web=true, deep=true.
 func (s *Store) GetConversationCommandState(ctx context.Context, conversationID string) (ConversationCommandState, error) {
 	conversationID = strings.TrimSpace(conversationID)
@@ -977,24 +987,34 @@ func (s *Store) GetConversationCommandState(ctx context.Context, conversationID 
 		return state, err
 	}
 	if userID != "" {
+		merged := state
 		userState, ok, err := s.getPersistedUserCommandState(ctx, userID)
 		if err != nil {
 			return state, err
 		}
 		if ok {
 			userState.ConversationID = conversationID
-			return userState, nil
+			merged = userState
+		} else {
+			// Compatibility fallback for legacy per-conversation rows before user-scoped state was introduced.
+			legacy, ok, err := s.getLatestLegacyConversationCommandStateForUser(ctx, userID)
+			if err != nil {
+				return state, err
+			}
+			if ok {
+				legacy.ConversationID = conversationID
+				merged = legacy
+			}
 		}
-		// Compatibility fallback for legacy per-conversation rows before user-scoped state was introduced.
-		legacy, ok, err := s.getLatestLegacyConversationCommandStateForUser(ctx, userID)
+
+		convState, ok, err := s.getPersistedConversationCommandState(ctx, conversationID)
 		if err != nil {
 			return state, err
 		}
 		if ok {
-			legacy.ConversationID = conversationID
-			return legacy, nil
+			merged.AgentcoreRunnerRef = strings.TrimSpace(convState.AgentcoreRunnerRef)
 		}
-		return state, nil
+		return merged, nil
 	}
 
 	convState, _, err := s.getPersistedConversationCommandState(ctx, conversationID)
@@ -1005,7 +1025,8 @@ func (s *Store) GetConversationCommandState(ctx context.Context, conversationID 
 }
 
 // UpsertConversationCommandState stores deterministic command state for a conversation.
-// For authenticated conversations (with user_id), state is persisted once per user.
+// For authenticated conversations (with user_id), provider/model/offline are persisted once per
+// user while conversation-specific overrides are kept on the conversation row.
 func (s *Store) UpsertConversationCommandState(ctx context.Context, state ConversationCommandState) error {
 	conversationID := strings.TrimSpace(state.ConversationID)
 	if conversationID == "" {
@@ -1020,6 +1041,7 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 	state.ConversationID = conversationID
 	state.SelectedProviderID = strings.TrimSpace(state.SelectedProviderID)
 	state.SelectedModelID = strings.TrimSpace(state.SelectedModelID)
+	state.AgentcoreRunnerRef = strings.TrimSpace(state.AgentcoreRunnerRef)
 	state = normalizeConversationCommandStateToolDefaults(state)
 	state.UpdatedAt = timeutil.NowTime()
 
@@ -1037,6 +1059,20 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 		if err != nil {
 			return fmt.Errorf("failed to upsert user command state: %w", err)
 		}
+
+		conversationScopedState := defaultConversationCommandState(conversationID)
+		conversationScopedState.AgentcoreRunnerRef = state.AgentcoreRunnerRef
+		conversationScopedState.UpdatedAt = state.UpdatedAt
+		_, err = s.conversationCommandState(ctx).Insert(
+			conversationCommandStateValues(conversationID, conversationScopedState),
+			z.OnConflictDoUpdateSet(
+				[]string{"conversation_id"},
+				[]string{"selected_provider_id", "selected_model_id", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
+			),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to upsert conversation-scoped command state: %w", err)
+		}
 		return nil
 	}
 
@@ -1044,7 +1080,7 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 		conversationCommandStateValues(state.ConversationID, state),
 		z.OnConflictDoUpdateSet(
 			[]string{"conversation_id"},
-			[]string{"selected_provider_id", "selected_model_id", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
+			[]string{"selected_provider_id", "selected_model_id", "agentcore_runner_ref", "offline", "web_search_enabled", "deep_research_enabled", "updated_at"},
 		),
 	)
 	if err != nil {
@@ -1054,7 +1090,8 @@ func (s *Store) UpsertConversationCommandState(ctx context.Context, state Conver
 }
 
 // ClearConversationCommandState removes persisted deterministic command state for a conversation.
-// For authenticated conversations (with user_id), this clears the shared user-scoped state.
+// For authenticated conversations (with user_id), this clears both the shared user-scoped state
+// and the conversation-specific override row.
 func (s *Store) ClearConversationCommandState(ctx context.Context, conversationID string) error {
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" {
@@ -1075,6 +1112,9 @@ func (s *Store) ClearConversationCommandState(ctx context.Context, conversationI
 	if userID != "" {
 		if _, err := s.userCommandState(ctx).Delete(z.Where(z.Eq("user_id", userID))); err != nil {
 			return fmt.Errorf("failed to clear user command state: %w", err)
+		}
+		if _, err := s.conversationCommandState(ctx).Delete(z.Where(z.Eq("conversation_id", conversationID))); err != nil {
+			return fmt.Errorf("failed to clear conversation-scoped command state: %w", err)
 		}
 		return nil
 	}

@@ -739,6 +739,7 @@ function createStreamUIState(
 }
 
 export const useChatStore = defineStore('chat', () => {
+  const settingsStore = useSettingsStore()
   const providerPoolStore = useProviderPoolStore()
 
   const loadModelPreference = (): string => {
@@ -777,6 +778,22 @@ export const useChatStore = defineStore('chat', () => {
 
   function hasLoadedChatProviderInventory(): boolean {
     return (providerPoolStore.providers || []).some((provider) => provider.type !== 'media')
+  }
+
+  function normalizeAgentcoreRunnerRefValue(value: unknown): string {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+    const fallback = settingsStore.experimentalAgentcoreRunnerRef?.trim()
+    return fallback || 'main'
+  }
+
+  function hasConversationScopedAgentcoreRunnerRef(value: unknown): boolean {
+    return (
+      settingsStore.experimentalAgentcoreRunnerEnabled &&
+      normalizeAgentcoreRunnerRefValue(value) !==
+        normalizeAgentcoreRunnerRefValue(settingsStore.experimentalAgentcoreRunnerRef)
+    )
   }
 
   function normalizeEnabledChatProviderId(providerIdRaw: string): string {
@@ -1125,6 +1142,9 @@ export const useChatStore = defineStore('chat', () => {
   const providerPinOnlyActive = ref(false)
   const pendingModelAutoFallback = ref<PendingModelAutoFallback | null>(null)
   const offlineMode = ref<boolean>(loadOfflineMode())
+  const agentcoreRunnerRef = ref<string>(
+    normalizeAgentcoreRunnerRefValue(settingsStore.experimentalAgentcoreRunnerRef)
+  )
   const activeStreamId = ref<string | null>(null)
   const activeStreamState = ref<ActiveConversationStreamState | null>(null)
   const commandStateHydrated = ref(false)
@@ -2039,6 +2059,7 @@ export const useChatStore = defineStore('chat', () => {
     providerPinOnlyActive.value =
       !!resolved.selected_provider_id && !resolved.selected_model_id
     offlineMode.value = !!state.offline
+    agentcoreRunnerRef.value = normalizeAgentcoreRunnerRefValue(state.agentcore_runner_ref)
   }
 
   function normalizeConversationId(conversationId?: string | null): string {
@@ -2072,13 +2093,20 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function getLocalCommandStateSeed(): ConversationCommandState {
+  function getLocalCommandStateSeed(options?: { useCurrentAgentcoreRunnerRef?: boolean }) {
     const resolved = getCurrentRequestModelSelection()
-    return {
+    const seed: ConversationCommandState = {
       selected_provider_id: resolved.selected_provider_id,
       selected_model_id: resolved.selected_model_id,
       offline: loadOfflineMode(),
     }
+    const runnerRefSource = options?.useCurrentAgentcoreRunnerRef
+      ? agentcoreRunnerRef.value
+      : settingsStore.experimentalAgentcoreRunnerRef
+    if (hasConversationScopedAgentcoreRunnerRef(runnerRefSource)) {
+      seed.agentcore_runner_ref = normalizeAgentcoreRunnerRefValue(runnerRefSource)
+    }
+    return seed
   }
 
   async function fetchCommandState(conversationId: string, options?: { force?: boolean }) {
@@ -2090,6 +2118,7 @@ export const useChatStore = defineStore('chat', () => {
         selected_provider_id: resolved.selected_provider_id,
         selected_model_id: resolved.selected_model_id,
         offline: offlineMode.value,
+        agentcore_runner_ref: normalizeAgentcoreRunnerRefValue(agentcoreRunnerRef.value),
       }
       return cached
     }
@@ -2140,8 +2169,21 @@ export const useChatStore = defineStore('chat', () => {
       !commandStateHydrated.value ||
       !!selectedProviderId ||
       !!selectedModelId ||
-      !!state.offline
+      !!state.offline ||
+      hasConversationScopedAgentcoreRunnerRef(state.agentcore_runner_ref)
     )
+  }
+
+  async function applyAgentcoreRunnerRef(value: string, conversationId?: string | null) {
+    const normalized = normalizeAgentcoreRunnerRefValue(value)
+    agentcoreRunnerRef.value = normalized
+
+    const targetConversationId = normalizeConversationId(conversationId)
+    if (!targetConversationId) return
+
+    await patchCommandState(targetConversationId, {
+      agentcore_runner_ref: normalized,
+    })
   }
 
   async function seedConversationCommandState(
@@ -3095,7 +3137,7 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
       messages.value = []
       hasMoreMessages.value = false
       currentPage.value = 0
-      const seed = getLocalCommandStateSeed()
+      const seed = getLocalCommandStateSeed({ useCurrentAgentcoreRunnerRef: true })
       if (shouldSeedConversationCommandState(seed)) {
         try {
           await seedConversationCommandState(response.data.id, seed)
@@ -4937,6 +4979,10 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
     await applyProviderPinOnly(providerId, currentConversationId.value).catch(() => {})
   }
 
+  async function setAgentcoreRunnerRef(value: string) {
+    await applyAgentcoreRunnerRef(value, currentConversationId.value).catch(() => {})
+  }
+
   // Reset warmup tracking (call when conversation changes)
   function resetWarmup() {
     const convId = warmupConvId
@@ -4989,6 +5035,7 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
     modelPreference,
     pendingModelAutoFallback,
     offlineMode,
+    agentcoreRunnerRef,
     isRecovering,
     isStreamInterrupted,
 
@@ -5014,6 +5061,7 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
     retryInterruptedStreamRecovery,
     cancelPreTTFT,
     setProviderPinOnly,
+    setAgentcoreRunnerRef,
     continueMessage,
     regenerateMessage,
     editMessageAndResubmit,

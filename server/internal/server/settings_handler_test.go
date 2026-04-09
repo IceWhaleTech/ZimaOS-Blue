@@ -231,6 +231,14 @@ func TestGetTimezone_UsesStoredValue(t *testing.T) {
 	}
 }
 
+func TestGetTimezone_EmptyWhenUnset(t *testing.T) {
+	h := NewSettingsHandler(kvstore.NewMemoryStore())
+
+	if got := h.GetTimezone(); got != "" {
+		t.Fatalf("GetTimezone() = %q, want empty string", got)
+	}
+}
+
 func TestGetIMHistoryLimit_DefaultThree(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	if got := h.GetIMHistoryLimit(); got != 3 {

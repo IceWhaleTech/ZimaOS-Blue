@@ -82,7 +82,7 @@ func TestConversationCommandStatePatchSurfacesInBootstrap(t *testing.T) {
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	e := echo.New()
 
-	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true}`))
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"agentcore_runner_ref":"release/v1"}`))
 	patchReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	patchRec := httptest.NewRecorder()
 	patchCtx := e.NewContext(patchReq, patchRec)
@@ -101,6 +101,9 @@ func TestConversationCommandStatePatchSurfacesInBootstrap(t *testing.T) {
 	}
 	if !state.Offline {
 		t.Fatalf("expected offline command state to survive bootstrap: %+v", state)
+	}
+	if state.AgentcoreRunnerRef != "release/v1" {
+		t.Fatalf("expected runner ref to survive bootstrap: %+v", state)
 	}
 }
 
@@ -152,6 +155,70 @@ func TestConversationCommandStatePatchSharedAcrossConversationsForSameUserInBoot
 	userBState := getBootstrapCommandState(t, handler, e, convB.ID, "user-b")
 	if userBState.SelectedProviderID != "" || userBState.SelectedModelID != "" || userBState.Offline {
 		t.Fatalf("unexpected isolated user-b state: %v", userBState)
+	}
+}
+
+func TestConversationCommandStatePatchKeepsAgentcoreRunnerRefConversationScoped(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv1, err := store.CreateConversation(context.Background(), "User A #1", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(user-a #1): %v", err)
+	}
+	conv2, err := store.CreateConversation(context.Background(), "User A #2", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(user-a #2): %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	e := echo.New()
+
+	patchConv1 := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv1.ID+"/command-state", bytes.NewBufferString(`{"selected_provider_id":"openai","selected_model_id":"gpt-5","offline":true,"agentcore_runner_ref":"release/v1"}`))
+	patchConv1 = requestWithUser(patchConv1, "user-a")
+	patchConv1.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	patchConv1Rec := httptest.NewRecorder()
+	patchConv1Ctx := e.NewContext(patchConv1, patchConv1Rec)
+	patchConv1Ctx.SetParamNames("id")
+	patchConv1Ctx.SetParamValues(conv1.ID)
+	if err := handler.PatchConversationCommandState(patchConv1Ctx); err != nil {
+		t.Fatalf("PatchConversationCommandState(conv1): %v", err)
+	}
+	if patchConv1Rec.Code != http.StatusOK {
+		t.Fatalf("conv1 patch status = %d, want 200", patchConv1Rec.Code)
+	}
+
+	patchConv2 := httptest.NewRequest(http.MethodPatch, "/api/v1/conversations/"+conv2.ID+"/command-state", bytes.NewBufferString(`{"agentcore_runner_ref":"release/v2"}`))
+	patchConv2 = requestWithUser(patchConv2, "user-a")
+	patchConv2.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	patchConv2Rec := httptest.NewRecorder()
+	patchConv2Ctx := e.NewContext(patchConv2, patchConv2Rec)
+	patchConv2Ctx.SetParamNames("id")
+	patchConv2Ctx.SetParamValues(conv2.ID)
+	if err := handler.PatchConversationCommandState(patchConv2Ctx); err != nil {
+		t.Fatalf("PatchConversationCommandState(conv2): %v", err)
+	}
+	if patchConv2Rec.Code != http.StatusOK {
+		t.Fatalf("conv2 patch status = %d, want 200", patchConv2Rec.Code)
+	}
+
+	state1 := getBootstrapCommandState(t, handler, e, conv1.ID, "user-a")
+	if state1.SelectedProviderID != "openai" || state1.SelectedModelID != "gpt-5" || !state1.Offline {
+		t.Fatalf("unexpected shared state for conv1: %+v", state1)
+	}
+	if state1.AgentcoreRunnerRef != "release/v1" {
+		t.Fatalf("conv1 runner ref = %q, want release/v1", state1.AgentcoreRunnerRef)
+	}
+
+	state2 := getBootstrapCommandState(t, handler, e, conv2.ID, "user-a")
+	if state2.SelectedProviderID != "openai" || state2.SelectedModelID != "gpt-5" || !state2.Offline {
+		t.Fatalf("unexpected shared state for conv2: %+v", state2)
+	}
+	if state2.AgentcoreRunnerRef != "release/v2" {
+		t.Fatalf("conv2 runner ref = %q, want release/v2", state2.AgentcoreRunnerRef)
 	}
 }
 

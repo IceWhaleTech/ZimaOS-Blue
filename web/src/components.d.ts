@@ -115,6 +115,7 @@ declare module 'vue' {
     HeapChartCard: typeof import('./components/dashboard/cards/HeapChartCard.vue')['default']
     IDEDiscovery: typeof import('./components/IDEDiscovery.vue')['default']
     ImagePreview: typeof import('./components/chat/ImagePreview.vue')['default']
+    KnowledgeGraphMap: typeof import('./components/automation/KnowledgeGraphMap.vue')['default']
     KnowledgeManagerCard: typeof import('./components/KnowledgeManagerCard.vue')['default']
     LatencyChart: typeof import('./components/metrics/LatencyChart.vue')['default']
     LatencyChartCard: typeof import('./components/dashboard/cards/LatencyChartCard.vue')['default']

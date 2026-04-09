@@ -14693,6 +14693,10 @@ func compactContinuationRecoveryMessage(msg llm.Message) llm.Message {
 		if toolCalls[i].Arguments == "" {
 			continue
 		}
+		if compactedArgs, ok := compactSensitiveToolCallArgumentsForLLM(toolCalls[i].Name, toolCalls[i].Arguments); ok {
+			toolCalls[i].Arguments = truncateUTF8Bytes(compactedArgs, continuationRecoveryToolPayloadMaxLen)
+			continue
+		}
 		toolCalls[i].Arguments = truncateUTF8Bytes(toolCalls[i].Arguments, continuationRecoveryToolPayloadMaxLen)
 	}
 	compacted.ToolCalls = toolCalls
@@ -14707,13 +14711,16 @@ func compactAssistantToolContextForLLM(msg llm.Message) llm.Message {
 	toolCalls := make([]llm.ToolCall, len(compacted.ToolCalls))
 	copy(toolCalls, compacted.ToolCalls)
 	for i := range toolCalls {
-		toolCalls[i].Arguments = compactToolCallArgumentsForLLM(toolCalls[i].Arguments)
+		toolCalls[i].Arguments = compactToolCallArgumentsForLLM(toolCalls[i].Name, toolCalls[i].Arguments)
 	}
 	compacted.ToolCalls = toolCalls
 	return compacted
 }
 
-func compactToolCallArgumentsForLLM(args string) string {
+func compactToolCallArgumentsForLLM(toolName, args string) string {
+	if compactedArgs, ok := compactSensitiveToolCallArgumentsForLLM(toolName, args); ok {
+		return compactedArgs
+	}
 	trimmed := strings.TrimSpace(args)
 	if trimmed == "" {
 		return trimmed
@@ -14727,6 +14734,56 @@ func compactToolCallArgumentsForLLM(args string) string {
 		return trimmed
 	}
 	return string(compactedBytes)
+}
+
+func compactSensitiveToolCallArgumentsForLLM(toolName, args string) (string, bool) {
+	if normalizeFileToolCompatName(toolName) != "write" {
+		return "", false
+	}
+
+	trimmed := strings.TrimSpace(args)
+	if trimmed == "" {
+		return "", false
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil || len(payload) == 0 {
+		return "", false
+	}
+
+	rawContent, hasContent := payload["content"]
+	if !hasContent {
+		return "", false
+	}
+
+	out := make(map[string]interface{}, len(payload)+2)
+	keys := make([]string, 0, len(payload))
+	for key := range payload {
+		if key == "content" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		out[key] = compactJSONValueForLLM(payload[key], 1)
+	}
+	out["content_omitted"] = true
+
+	if hasSuspiciousTerminalTruncationMarkerForLLM(anyToStringForLLM(rawContent)) {
+		out["content_truncated_marker"] = true
+	}
+
+	compactedBytes, err := json.Marshal(out)
+	if err != nil || len(compactedBytes) == 0 {
+		return "", false
+	}
+	return string(compactedBytes), true
+}
+
+func hasSuspiciousTerminalTruncationMarkerForLLM(content string) bool {
+	trimmed := strings.TrimSpace(strings.NewReplacer("\r\n", "\n", "\r", "\n").Replace(content))
+	return trimmed == "[truncated]" || strings.HasSuffix(trimmed, "\n[truncated]")
 }
 
 func canonicalLLMToolIndexByName(tools []llm.Tool) map[string]int {

@@ -24,6 +24,10 @@ import (
 )
 
 func TestBlueBinarySkillMarketDiscoverSSEEndToEnd(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("disabled in CI: binary marketplace discover E2E depends on browser-backed startup discovery and Chromium availability")
+	}
+
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/skills":

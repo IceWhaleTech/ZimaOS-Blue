@@ -20,7 +20,6 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/optimization"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skilladvisor"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/smallmodel"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/voicewake"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
@@ -1077,15 +1076,11 @@ func (h *SettingsHandler) GetLocale() string {
 	return workspace.DetectLocale()
 }
 
-// GetTimezone returns the current timezone setting, falling back to best-effort
-// system timezone detection.
+// GetTimezone returns the stored timezone setting.
 func (h *SettingsHandler) GetTimezone() string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	if timezone := strings.TrimSpace(h.settings.Timezone); timezone != "" {
-		return timezone
-	}
-	return timeutil.DetectTimezone()
+	return strings.TrimSpace(h.settings.Timezone)
 }
 
 // GetVoiceWakeEnabled returns whether VoiceWake should be enabled.

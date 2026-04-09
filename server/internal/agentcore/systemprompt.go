@@ -226,15 +226,22 @@ func (b *SystemPromptBuilder) getLocale() string {
 	return b.locale
 }
 
-// getTimezone returns the current timezone, preferring the dynamic getter and
-// falling back to best-effort process detection.
-func (b *SystemPromptBuilder) getTimezone() string {
+// getConfiguredTimezone returns the configured timezone, preferring the dynamic
+// getter and without falling back to host/process detection.
+func (b *SystemPromptBuilder) getConfiguredTimezone() string {
 	if b.timezoneFunc != nil {
 		if v := strings.TrimSpace(b.timezoneFunc()); v != "" {
 			return v
 		}
 	}
-	if v := strings.TrimSpace(b.timezone); v != "" {
+	return strings.TrimSpace(b.timezone)
+}
+
+// getTimezone returns the effective timezone, preferring configured values and
+// falling back to best-effort process detection for non-prompt callers that
+// still want a best-effort label.
+func (b *SystemPromptBuilder) getTimezone() string {
+	if v := b.getConfiguredTimezone(); v != "" {
 		return v
 	}
 	return timeutil.DetectTimezone()
@@ -376,7 +383,7 @@ type systemPromptConfigCacheEntry struct {
 
 func (b *SystemPromptBuilder) buildStaticSystem() string {
 	b.ensureCaches()
-	key := buildStaticSystemCacheKey(b.getLocale(), b.getTimezone())
+	key := buildStaticSystemCacheKey(b.getLocale(), b.getConfiguredTimezone())
 	if b.staticCache != nil {
 		if v, ok := b.staticCache.Get(key); ok {
 			if cached, ok := v.(string); ok {
@@ -546,20 +553,19 @@ func (b *SystemPromptBuilder) writeExecGuidanceTo(sb *strings.Builder, hasSandbo
 
 // writeRuntimeInfoTo writes the dynamic runtime tag directly into sb.
 func (b *SystemPromptBuilder) writeRuntimeInfoTo(sb *strings.Builder) {
-	now, timezone := resolveRuntimeClock(timeutil.NowTime(), b.getTimezone())
+	timezone := b.getConfiguredTimezone()
+	if timezone == "" {
+		timezone = "UTC"
+	}
+	now, timezone := resolveRuntimeClock(timeutil.NowTime(), timezone)
 
-	sb.WriteString("<current_date>")
-	sb.WriteString(now.Format("2006-01-02"))
-	sb.WriteString("</current_date>")
-	sb.WriteString("<current_time>")
-	sb.WriteString(now.Format("15:04:05"))
-	sb.WriteString("</current_time>")
-	sb.WriteString("<timezone>")
+	sb.WriteString(`<env.now datetime="`)
+	sb.WriteString(now.Format(time.RFC3339))
+	sb.WriteString(`" timezone="`)
 	sb.WriteString(timezone)
-	sb.WriteString("</timezone>")
-	sb.WriteString("<utc_offset>")
-	sb.WriteString(timeutil.FormatUTCOffset(now))
-	sb.WriteString("</utc_offset>")
+	sb.WriteString(`" timestamp_seconds="`)
+	sb.WriteString(strconv.FormatInt(now.Unix(), 10))
+	sb.WriteString(`"/>`)
 }
 
 func resolveRuntimeClock(now time.Time, timezone string) (time.Time, string) {
@@ -607,8 +613,6 @@ func (b *SystemPromptBuilder) writePlatformInfoTo(sb *strings.Builder) {
 	if locale := b.getLocale(); locale != "" {
 		sb.WriteString(locale)
 	}
-	sb.WriteByte(';')
-	sb.WriteString(b.getTimezone())
 	sb.WriteString("</env>")
 }
 

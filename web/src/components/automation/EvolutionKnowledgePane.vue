@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
+import KnowledgeGraphMap from '@/components/automation/KnowledgeGraphMap.vue'
 import {
   knowledgeApi,
   type KnowledgeAnswerReport,
@@ -151,7 +152,8 @@ async function loadKnowledgeSpace() {
     pages.value = pagesResponse.value.data || []
 
     latestLint.value = lintResponse.status === 'fulfilled' ? lintResponse.value.data : null
-    schemaContent.value = schemaResponse.status === 'fulfilled' ? schemaResponse.value.data.content : ''
+    schemaContent.value =
+      schemaResponse.status === 'fulfilled' ? schemaResponse.value.data.content : ''
     recentActivity.value = logResponse.status === 'fulfilled' ? logResponse.value.data : []
 
     const initialPage = Array.isArray(route.query.page) ? route.query.page[0] : route.query.page
@@ -206,7 +208,15 @@ const queryJobs = useKnowledgeJobs({
   },
 })
 
-const allPageTypes = ['all', 'source_summary', 'entity', 'concept', 'comparison', 'synthesis', 'decision']
+const allPageTypes = [
+  'all',
+  'source_summary',
+  'entity',
+  'concept',
+  'comparison',
+  'synthesis',
+  'decision',
+]
 
 const filteredPages = computed(() => {
   const query = pageSearch.value.trim().toLowerCase()
@@ -255,10 +265,12 @@ const conflictIssueCount = computed(
     0
 )
 const gapIssueCount = computed(
-  () => latestLint.value?.issues?.filter((issue) => issue.category === 'research_suggestions').length || 0
+  () =>
+    latestLint.value?.issues?.filter((issue) => issue.category === 'research_suggestions').length ||
+    0
 )
-const latestIngestEntry = computed(() =>
-  recentActivity.value.find((entry) => entry.operation === 'ingest') || null
+const latestIngestEntry = computed(
+  () => recentActivity.value.find((entry) => entry.operation === 'ingest') || null
 )
 const selectedRefsForQuery = computed(() => {
   if (queryScope.value !== 'selected_sources') return undefined
@@ -491,58 +503,68 @@ onMounted(async () => {
         {{ tr('common.loading', 'Loading...') }}
       </div>
 
-      <div v-else class="mt-4 grid gap-4 xl:grid-cols-2">
-        <div
-          v-for="(groupPages, groupName) in groupedPages"
-          :key="groupName"
-          class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
-        >
-          <div class="flex items-center justify-between gap-3">
-            <h3 class="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-600">
-              {{ pageTypeLabel(groupName) }}
-            </h3>
-            <span class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-500">
-              {{ groupPages.length }}
-            </span>
-          </div>
+      <div v-else class="mt-4 space-y-4">
+        <KnowledgeGraphMap
+          :pages="filteredPages"
+          :selected-slug="selectedSlug"
+          :page-type-label="pageTypeLabel"
+          :status-label="statusLabel"
+          @select="loadPage"
+        />
 
-          <div class="mt-3 space-y-2">
-            <button
-              v-for="page in groupPages"
-              :key="page.slug"
-              type="button"
-              class="w-full rounded-2xl border px-3 py-3 text-left transition"
-              :class="
-                page.slug === selectedSlug
-                  ? 'border-amber-300 bg-amber-50 text-amber-950 shadow-sm'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
-              "
-              @click="loadPage(page.slug)"
-            >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="truncate text-sm font-semibold">{{ page.title }}</div>
-                  <div class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-                    {{ page.summary }}
+        <div class="grid gap-4 xl:grid-cols-2">
+          <div
+            v-for="(groupPages, groupName) in groupedPages"
+            :key="groupName"
+            class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <h3 class="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+                {{ pageTypeLabel(groupName) }}
+              </h3>
+              <span class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-500">
+                {{ groupPages.length }}
+              </span>
+            </div>
+
+            <div class="mt-3 space-y-2">
+              <button
+                v-for="page in groupPages"
+                :key="page.slug"
+                type="button"
+                class="w-full rounded-2xl border px-3 py-3 text-left transition"
+                :class="
+                  page.slug === selectedSlug
+                    ? 'border-amber-300 bg-amber-50 text-amber-950 shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                "
+                @click="loadPage(page.slug)"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="truncate text-sm font-semibold">{{ page.title }}</div>
+                    <div class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+                      {{ page.summary }}
+                    </div>
                   </div>
+                  <span
+                    class="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em]"
+                    :class="
+                      page.status === 'conflicted'
+                        ? 'bg-rose-100 text-rose-700'
+                        : page.status === 'superseded'
+                          ? 'bg-slate-200 text-slate-700'
+                          : 'bg-emerald-100 text-emerald-700'
+                    "
+                  >
+                    {{ statusLabel(page.status) }}
+                  </span>
                 </div>
-                <span
-                  class="rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.14em]"
-                  :class="
-                    page.status === 'conflicted'
-                      ? 'bg-rose-100 text-rose-700'
-                      : page.status === 'superseded'
-                        ? 'bg-slate-200 text-slate-700'
-                        : 'bg-emerald-100 text-emerald-700'
-                  "
-                >
-                  {{ statusLabel(page.status) }}
-                </span>
-              </div>
-            </button>
+              </button>
 
-            <div v-if="groupPages.length === 0" class="text-sm text-slate-500">
-              {{ tr('knowledge.emptyGroup', 'No pages in this group yet.') }}
+              <div v-if="groupPages.length === 0" class="text-sm text-slate-500">
+                {{ tr('knowledge.emptyGroup', 'No pages in this group yet.') }}
+              </div>
             </div>
           </div>
         </div>
@@ -572,7 +594,9 @@ onMounted(async () => {
             class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
           >
             <option value="all">{{ tr('knowledge.scopeAll', 'all') }}</option>
-            <option value="current_page">{{ tr('knowledge.scopeCurrentPage', 'current page') }}</option>
+            <option value="current_page">
+              {{ tr('knowledge.scopeCurrentPage', 'current page') }}
+            </option>
             <option value="selected_sources">
               {{ tr('knowledge.scopeSelectedSources', 'selected sources') }}
             </option>
@@ -674,7 +698,10 @@ onMounted(async () => {
       </section>
 
       <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
-        <div v-if="pageLoading" class="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+        <div
+          v-if="pageLoading"
+          class="rounded-2xl bg-slate-50 px-4 py-10 text-center text-sm text-slate-500"
+        >
           {{ tr('common.loading', 'Loading...') }}
         </div>
 
@@ -685,7 +712,9 @@ onMounted(async () => {
                 <h2 class="text-lg font-semibold text-slate-950 sm:text-xl">
                   {{ selectedPage.title }}
                 </h2>
-                <span class="rounded-full bg-slate-950 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white">
+                <span
+                  class="rounded-full bg-slate-950 px-3 py-1 text-xs uppercase tracking-[0.18em] text-white"
+                >
                   {{ selectedPage.page_type }}
                 </span>
               </div>
@@ -774,7 +803,9 @@ onMounted(async () => {
                   <div class="mt-1 text-xs text-slate-500">{{ answer.summary }}</div>
                 </div>
                 <div v-if="selectedAnswers.length === 0" class="text-sm text-slate-500">
-                  {{ tr('knowledge.noArchivedAnswers', 'No saved answers linked to this page yet.') }}
+                  {{
+                    tr('knowledge.noArchivedAnswers', 'No saved answers linked to this page yet.')
+                  }}
                 </div>
               </div>
             </div>
@@ -783,7 +814,9 @@ onMounted(async () => {
               <div class="text-[11px] uppercase tracking-[0.2em] text-slate-500">
                 {{ tr('knowledge.lintHealth', 'Lint health') }}
               </div>
-              <div class="mt-3 flex h-32 flex-wrap content-start items-start gap-2 overflow-y-auto pr-1">
+              <div
+                class="mt-3 flex h-32 flex-wrap content-start items-start gap-2 overflow-y-auto pr-1"
+              >
                 <span
                   v-for="issue in latestLint?.issues || []"
                   :key="`${issue.kind}-${issue.message}`"
@@ -792,7 +825,7 @@ onMounted(async () => {
                 >
                   {{ lintIssueKindLabel(issue.kind) }}
                 </span>
-                <span v-if="!(latestLint?.issues?.length)" class="text-sm text-slate-500">
+                <span v-if="!latestLint?.issues?.length" class="text-sm text-slate-500">
                   {{ tr('knowledge.lintHealthy', 'Latest lint found no open issues.') }}
                 </span>
               </div>
@@ -803,9 +836,10 @@ onMounted(async () => {
             <div class="text-[11px] uppercase tracking-[0.2em] text-slate-400">
               {{ tr('knowledge.pageBody', 'Compiled markdown') }}
             </div>
-            <pre class="mt-3 overflow-x-auto whitespace-pre-wrap text-[13px] leading-5 text-slate-100 sm:text-sm">{{
-              selectedPage.content
-            }}</pre>
+            <pre
+              class="mt-3 overflow-x-auto whitespace-pre-wrap text-[13px] leading-5 text-slate-100 sm:text-sm"
+              >{{ selectedPage.content }}</pre
+            >
           </div>
         </div>
 
@@ -886,8 +920,9 @@ onMounted(async () => {
                 <div>
                   <strong>{{ tr('knowledge.changedPages', 'Changed pages') }}:</strong>
                   {{
-                    latestIngestEntry.new_pages?.concat(latestIngestEntry.updated_pages || []).join(', ') ||
-                    tr('knowledge.none', 'none')
+                    latestIngestEntry.new_pages
+                      ?.concat(latestIngestEntry.updated_pages || [])
+                      .join(', ') || tr('knowledge.none', 'none')
                   }}
                 </div>
                 <div>
@@ -956,7 +991,12 @@ onMounted(async () => {
                 {{ tr('knowledge.activityTitle', 'Recent activity') }}
               </h2>
               <p class="mt-1 text-[13px] text-slate-600 sm:text-sm">
-                {{ tr('knowledge.activityHint', 'Read the latest ingest, query, lint, and schema events.') }}
+                {{
+                  tr(
+                    'knowledge.activityHint',
+                    'Read the latest ingest, query, lint, and schema events.'
+                  )
+                }}
               </p>
             </div>
             <span
@@ -981,7 +1021,9 @@ onMounted(async () => {
                 <div class="text-sm font-semibold text-slate-900">
                   {{ entry.title }}
                 </div>
-                <span class="rounded-full bg-white px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                <span
+                  class="rounded-full bg-white px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-slate-500"
+                >
                   {{ entry.operation }}
                 </span>
               </div>

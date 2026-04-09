@@ -193,7 +193,9 @@ function getItemDetails(item: ScanItem): string | undefined {
   if (!item.details) return undefined
   const localizedDetail = getSecurityScanItemDetailI18n(item)
   if (localizedDetail?.key && te(localizedDetail.key)) {
-    return t(localizedDetail.key, localizedDetail.params)
+    return localizedDetail.params
+      ? t(localizedDetail.key, localizedDetail.params)
+      : t(localizedDetail.key)
   }
   const itemKey = `security.scan.items.${item.id}.details.${item.status}`
   if (te(itemKey)) return t(itemKey)
@@ -431,7 +433,11 @@ async function updateSandboxNetworkEnabled(enabled: boolean) {
 }
 
 function toggleSandboxNetwork() {
-  if (!sandboxRuntimeInfo.value || !sandboxSupportsNetworkEnabled.value || savingSandboxNetwork.value)
+  if (
+    !sandboxRuntimeInfo.value ||
+    !sandboxSupportsNetworkEnabled.value ||
+    savingSandboxNetwork.value
+  )
     return
   void updateSandboxNetworkEnabled(!sandboxRuntimeInfo.value.network_enabled)
 }

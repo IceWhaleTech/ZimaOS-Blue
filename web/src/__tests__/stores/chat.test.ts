@@ -63,6 +63,8 @@ vi.mock('@/stores/settings', () => ({
     selectedModel: 'gpt-4o-mini',
     temperature: 0.7,
     maxTokens: 8192,
+    experimentalAgentcoreRunnerEnabled: true,
+    experimentalAgentcoreRunnerRef: 'main',
   }),
 }))
 
@@ -108,6 +110,7 @@ function makeCommandState(
     selected_provider_id: '',
     selected_model_id: '',
     offline: false,
+    agentcore_runner_ref: 'main',
     ...overrides,
   }
 }
@@ -558,6 +561,34 @@ describe('Chat Store', () => {
       await store.selectConversation('1')
     })
 
+    it('hydrates conversation-scoped agentcore runner refs from bootstrap', async () => {
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/1/bootstrap') {
+          return makeBootstrapResponse('1', {
+            command_state: makeCommandState('1', {
+              agentcore_runner_ref: 'release/v1',
+            }),
+          })
+        }
+        if (path === '/conversations/2/bootstrap') {
+          return makeBootstrapResponse('2', {
+            command_state: makeCommandState('2', {
+              agentcore_runner_ref: 'release/v2',
+            }),
+          })
+        }
+        return defaultApiGet(path)
+      })
+
+      const store = useChatStore()
+
+      await store.selectConversation('1')
+      expect(store.agentcoreRunnerRef).toBe('release/v1')
+
+      await store.selectConversation('2')
+      expect(store.agentcoreRunnerRef).toBe('release/v2')
+    })
+
     it('does not reuse another conversation command state when bootstrap omits it', async () => {
       mocks.apiGet.mockImplementation(async (path: string) => {
         if (path === '/conversations/1/bootstrap') {
@@ -567,6 +598,7 @@ describe('Chat Store', () => {
               selected_provider_id: '',
               selected_model_id: '',
               offline: false,
+              agentcore_runner_ref: 'release/v1',
             },
           })
         }
@@ -581,9 +613,11 @@ describe('Chat Store', () => {
       const store = useChatStore()
 
       await store.selectConversation('1')
+      expect(store.agentcoreRunnerRef).toBe('release/v1')
       await store.selectConversation('2')
 
       expect(store.currentConversationId).toBe('2')
+      expect(store.agentcoreRunnerRef).toBe('main')
     })
 
     it('refreshes slash-command command state from bootstrap instead of the standalone command-state API', async () => {
@@ -1079,6 +1113,43 @@ describe('Chat Store', () => {
       expect(conversationApi.patchCommandState).toHaveBeenCalledWith('1', {
         selected_provider_id: 'openrouter',
         selected_model_id: '',
+      })
+    })
+
+    it('persists a conversation-scoped agentcore runner ref', async () => {
+      const store = useChatStore()
+      store.currentConversationId = '1'
+
+      await store.setAgentcoreRunnerRef('release/v2')
+
+      expect(store.agentcoreRunnerRef).toBe('release/v2')
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('1', {
+        agentcore_runner_ref: 'release/v2',
+      })
+    })
+
+    it('seeds a new conversation with the selected agentcore runner ref', async () => {
+      vi.mocked(conversationApi.create).mockResolvedValue({
+        data: {
+          id: 'new-id',
+          title: 'New Chat',
+          created_at: '2024-01-01',
+          updated_at: '2024-01-01',
+        },
+      } as never)
+
+      const store = useChatStore()
+      await store.setAgentcoreRunnerRef('release/v3')
+
+      await store.createConversation('New Chat')
+
+      expect(store.currentConversationId).toBe('new-id')
+      expect(store.agentcoreRunnerRef).toBe('release/v3')
+      expect(conversationApi.patchCommandState).toHaveBeenCalledWith('new-id', {
+        selected_provider_id: '',
+        selected_model_id: '',
+        offline: false,
+        agentcore_runner_ref: 'release/v3',
       })
     })
 

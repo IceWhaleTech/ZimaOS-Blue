@@ -15,12 +15,14 @@ type conversationCommandStateResponse struct {
 	ConversationID     string `json:"conversation_id,omitempty"`
 	SelectedProviderID string `json:"selected_provider_id,omitempty"`
 	SelectedModelID    string `json:"selected_model_id,omitempty"`
+	AgentcoreRunnerRef string `json:"agentcore_runner_ref,omitempty"`
 	Offline            bool   `json:"offline"`
 }
 
 type conversationCommandStatePatchRequest struct {
 	SelectedProviderID *string `json:"selected_provider_id,omitempty"`
 	SelectedModelID    *string `json:"selected_model_id,omitempty"`
+	AgentcoreRunnerRef *string `json:"agentcore_runner_ref,omitempty"`
 	Offline            *bool   `json:"offline,omitempty"`
 }
 
@@ -29,6 +31,7 @@ func commandStateToResponse(state memory.ConversationCommandState) conversationC
 		ConversationID:     state.ConversationID,
 		SelectedProviderID: state.SelectedProviderID,
 		SelectedModelID:    state.SelectedModelID,
+		AgentcoreRunnerRef: state.AgentcoreRunnerRef,
 		Offline:            state.Offline,
 	}
 }
@@ -238,6 +241,7 @@ func (h *ChatHandler) commandExecutor() *chatcmd.Executor {
 				return err
 			}
 			next := coreCommandStateToMemory(state)
+			next.AgentcoreRunnerRef = current.AgentcoreRunnerRef
 			if err := h.saveConversationCommandState(ctx, next); err != nil {
 				return err
 			}
@@ -305,6 +309,9 @@ func (h *ChatHandler) PatchConversationCommandState(c echo.Context) error {
 	}
 	if req.SelectedModelID != nil {
 		state.SelectedModelID = strings.TrimSpace(*req.SelectedModelID)
+	}
+	if req.AgentcoreRunnerRef != nil {
+		state.AgentcoreRunnerRef = strings.TrimSpace(*req.AgentcoreRunnerRef)
 	}
 	if req.Offline != nil {
 		state.Offline = *req.Offline
