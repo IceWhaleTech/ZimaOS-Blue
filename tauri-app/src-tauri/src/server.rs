@@ -11,6 +11,15 @@ use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+#[cfg(windows)]
+use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+
 /// Server status information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerStatus {
@@ -80,10 +89,76 @@ fn kill_existing_echo_servers() {
 
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
-            .args(["/F", "/IM", "blue-server.exe"])
-            .output();
+        let terminated = terminate_processes_by_name("blue-server.exe");
+        if terminated > 0 {
+            info!(
+                "Terminated {} existing blue-server.exe process(es)",
+                terminated
+            );
+        }
         std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[cfg(windows)]
+fn terminate_processes_by_name(target_name: &str) -> usize {
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snapshot == INVALID_HANDLE_VALUE {
+            warn!("Failed to create process snapshot while cleaning blue-server.exe");
+            return 0;
+        }
+
+        let mut entry = std::mem::zeroed::<PROCESSENTRY32W>();
+        entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+
+        let mut terminated = 0usize;
+        if Process32FirstW(snapshot, &mut entry) != 0 {
+            loop {
+                if process_entry_matches_name(&entry, target_name) {
+                    let process_handle = OpenProcess(PROCESS_TERMINATE, 0, entry.th32ProcessID);
+                    if process_handle != 0 {
+                        if TerminateProcess(process_handle, 1) != 0 {
+                            terminated += 1;
+                        }
+                        let _ = CloseHandle(process_handle);
+                    }
+                }
+
+                if Process32NextW(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+        }
+
+        let _ = CloseHandle(snapshot);
+        terminated
+    }
+}
+
+#[cfg(windows)]
+fn process_entry_matches_name(entry: &PROCESSENTRY32W, expected: &str) -> bool {
+    let len = entry
+        .szExeFile
+        .iter()
+        .position(|&ch| ch == 0)
+        .unwrap_or(entry.szExeFile.len());
+    String::from_utf16_lossy(&entry.szExeFile[..len]).eq_ignore_ascii_case(expected)
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn process_entry_matches_name_is_case_insensitive() {
+        let mut entry = unsafe { std::mem::zeroed::<PROCESSENTRY32W>() };
+        let name: Vec<u16> = "Blue-Server.EXE".encode_utf16().collect();
+        for (idx, ch) in name.iter().enumerate() {
+            entry.szExeFile[idx] = *ch;
+        }
+        assert!(process_entry_matches_name(&entry, "blue-server.exe"));
+        assert!(!process_entry_matches_name(&entry, "zimaos-blue.exe"));
     }
 }
 

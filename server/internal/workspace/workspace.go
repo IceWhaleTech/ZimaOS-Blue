@@ -134,7 +134,7 @@ func DetectLocale() string {
 
 // doDetectLocale detects the system locale.
 // Checks LANG/LC_ALL/LANGUAGE env vars first, then falls back to
-// OS-specific detection (macOS defaults, Windows registry).
+// OS-specific detection (macOS defaults, Windows APIs).
 // Returns BCP-47 tag like "zh-CN", "ja-JP", "en-US", falling back to "en".
 func doDetectLocale() string {
 	// 1. Standard env vars (Linux, explicit overrides)
@@ -186,31 +186,6 @@ func darwinLocale() string {
 				continue
 			}
 			return normalizeAppleLanguage(line)
-		}
-	}
-
-	return ""
-}
-
-// windowsLocale reads the Windows display language via PowerShell.
-// Falls back to Get-WinSystemLocale if Get-WinUserLanguageList is unavailable.
-func windowsLocale() string {
-	// Try user language list first (most accurate for UI language)
-	if out, err := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-		"(Get-WinUserLanguageList)[0].LanguageTag").Output(); err == nil {
-		v := strings.TrimSpace(string(out))
-		if len(v) >= 2 {
-			return v
-		}
-	}
-
-	// Fallback: system locale
-	if out, err := exec.Command("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-		"(Get-WinSystemLocale).Name").Output(); err == nil {
-		v := strings.TrimSpace(string(out))
-		v = strings.ReplaceAll(v, "_", "-")
-		if len(v) >= 2 {
-			return v
 		}
 	}
 

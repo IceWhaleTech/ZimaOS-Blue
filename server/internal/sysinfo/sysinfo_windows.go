@@ -13,13 +13,19 @@ import (
 )
 
 var (
-	kernel32                  = windows.NewLazySystemDLL("kernel32.dll")
-	ntdll                     = windows.NewLazySystemDLL("ntdll.dll")
-	procGetTickCount64        = kernel32.NewProc("GetTickCount64")
-	procRtlGetVersion         = ntdll.NewProc("RtlGetVersion")
-	procGlobalMemoryStatusEx  = kernel32.NewProc("GlobalMemoryStatusEx")
-	procGetSystemInfo         = kernel32.NewProc("GetSystemInfo")
+	kernel32                 = windows.NewLazySystemDLL("kernel32.dll")
+	ntdll                    = windows.NewLazySystemDLL("ntdll.dll")
+	procGetTickCount64       = kernel32.NewProc("GetTickCount64")
+	procRtlGetVersion        = ntdll.NewProc("RtlGetVersion")
+	procGlobalMemoryStatusEx = kernel32.NewProc("GlobalMemoryStatusEx")
+	procGetSystemInfo        = kernel32.NewProc("GetSystemInfo")
 )
+
+func hiddenCommand(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd
+}
 
 // RTL_OSVERSIONINFOW structure
 type rtlOSVersionInfoW struct {
@@ -107,7 +113,7 @@ func collectCPUInfo() CPUInfo {
 	info := CPUInfo{}
 
 	// Get CPU info from WMI via PowerShell
-	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+	cmd := hiddenCommand("powershell", "-NoProfile", "-Command",
 		"Get-CimInstance -ClassName Win32_Processor | Select-Object Name,Manufacturer,NumberOfCores,NumberOfLogicalProcessors,MaxClockSpeed,L2CacheSize,L3CacheSize | ConvertTo-Json")
 	output, err := cmd.Output()
 	if err != nil {
@@ -137,7 +143,7 @@ func collectCPUInfo() CPUInfo {
 }
 
 func getCPUUsage() float64 {
-	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+	cmd := hiddenCommand("powershell", "-NoProfile", "-Command",
 		"(Get-CimInstance -ClassName Win32_Processor).LoadPercentage")
 	output, err := cmd.Output()
 	if err != nil {
@@ -239,7 +245,7 @@ func collectGPUInfo() []GPUInfo {
 	}
 
 	// Fallback to WMI
-	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+	cmd := hiddenCommand("powershell", "-NoProfile", "-Command",
 		"Get-CimInstance -ClassName Win32_VideoController | Select-Object Name,AdapterCompatibility,DriverVersion,AdapterRAM | ConvertTo-Json")
 	output, err := cmd.Output()
 	if err != nil {
@@ -282,7 +288,7 @@ func collectGPUInfo() []GPUInfo {
 func collectNvidiaGPU() []GPUInfo {
 	var gpus []GPUInfo
 
-	cmd := exec.Command("nvidia-smi", "--query-gpu=name,driver_version,memory.total,memory.used", "--format=csv,noheader,nounits")
+	cmd := hiddenCommand("nvidia-smi", "--query-gpu=name,driver_version,memory.total,memory.used", "--format=csv,noheader,nounits")
 	output, err := cmd.Output()
 	if err != nil {
 		return gpus

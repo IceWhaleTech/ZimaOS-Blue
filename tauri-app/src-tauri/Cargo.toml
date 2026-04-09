@@ -25,7 +25,7 @@ required-features = ["startup-probe"]
 tauri-build = { version = "2", features = [] }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Diagnostics_ToolHelp", "Win32_System_Threading", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png", "devtools", "webview-data-url", "macos-private-api"] }

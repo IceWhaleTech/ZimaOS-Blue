@@ -5,11 +5,12 @@ package tools
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"unicode"
+	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
 
 // GetShellConfig returns the platform-appropriate shell and arguments for
@@ -67,10 +68,84 @@ func KillProcessTree(pid int) {
 	if pid <= 0 {
 		return
 	}
-	// taskkill /F /T /PID <pid>
-	cmd := exec.Command("taskkill", "/F", "/T", "/PID", fmt.Sprintf("%d", pid))
-	cmd.SysProcAttr = &syscall.SysProcAttr{}
-	_ = cmd.Run()
+
+	rootPID := uint32(pid)
+	childrenByParent, err := snapshotWindowsProcessChildren()
+	if err != nil {
+		_ = terminateWindowsProcess(rootPID)
+		return
+	}
+
+	for _, procID := range buildWindowsProcessTerminationOrder(rootPID, childrenByParent) {
+		_ = terminateWindowsProcess(procID)
+	}
+}
+
+func snapshotWindowsProcessChildren() (map[uint32][]uint32, error) {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer windows.CloseHandle(snapshot)
+
+	var entry windows.ProcessEntry32
+	entry.Size = uint32(unsafe.Sizeof(entry))
+	if err := windows.Process32First(snapshot, &entry); err != nil {
+		return nil, err
+	}
+
+	childrenByParent := make(map[uint32][]uint32)
+	for {
+		childrenByParent[entry.ParentProcessID] = append(childrenByParent[entry.ParentProcessID], entry.ProcessID)
+
+		if err := windows.Process32Next(snapshot, &entry); err != nil {
+			if err == windows.ERROR_NO_MORE_FILES {
+				break
+			}
+			return childrenByParent, err
+		}
+	}
+
+	return childrenByParent, nil
+}
+
+func buildWindowsProcessTerminationOrder(rootPID uint32, childrenByParent map[uint32][]uint32) []uint32 {
+	order := make([]uint32, 0, 8)
+	visited := make(map[uint32]struct{}, 8)
+
+	var visit func(uint32)
+	visit = func(pid uint32) {
+		if pid == 0 {
+			return
+		}
+		if _, seen := visited[pid]; seen {
+			return
+		}
+		visited[pid] = struct{}{}
+
+		for _, childPID := range childrenByParent[pid] {
+			visit(childPID)
+		}
+
+		order = append(order, pid)
+	}
+
+	visit(rootPID)
+	return order
+}
+
+func terminateWindowsProcess(pid uint32) error {
+	if pid == 0 {
+		return nil
+	}
+
+	handle, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, pid)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(handle)
+
+	return windows.TerminateProcess(handle, 1)
 }
 
 // ResolveWorkdir validates a working directory path and returns the resolved
