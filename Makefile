@@ -153,8 +153,7 @@ release: build-frontend copy-frontend copy-skills
 	@echo "Building and publishing release..."
 	@goreleaser release --clean
 
-# Stage Windows Codex sandbox assets the release workflow republishes for
-# on-demand strong sandbox downloads on Windows.
+# Stage Windows Codex sandbox assets for local testing/manual staging.
 stage-windows-codex-assets:
 	@echo "Staging Windows Codex sandbox assets..."
 	@mkdir -p $(WINDOWS_CODEX_ASSET_DIR)
@@ -282,7 +281,7 @@ help:
 	@echo "  release-check      Check GoReleaser configuration"
 	@echo "  release-snapshot   Build snapshot release (for testing)"
 	@echo "  release            Build and publish release (requires GITHUB_TOKEN)"
-	@echo "  stage-windows-codex-assets Stage Windows Codex sandbox runtime assets for release/testing"
+	@echo "  stage-windows-codex-assets Stage Windows Codex sandbox runtime assets for local testing"
 	@echo "  help               Show this help message"
 	@echo ""
 	@echo "Environment variables:"

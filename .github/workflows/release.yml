@@ -458,34 +458,9 @@ jobs:
           path: tauri-app/src-tauri/target/release/bundle/dmg/*.dmg
           retention-days: 1
 
-  build-windows-codex-assets:
-    name: Stage Windows Codex Assets
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      - name: Stage Windows Codex assets
-        run: |
-          mkdir -p release-assets/codex
-          python3 scripts/windows_codex_release_assets.py \
-            --output-dir release-assets/codex \
-            --timeout-seconds 600
-          ls -lh release-assets/codex
-
-      - name: Upload Windows Codex assets artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: blue-codex-windows-assets
-          path: release-assets/codex/*
-          retention-days: 1
-
   release:
     name: Upload Release Assets
-    needs: [build, build-tauri-macos, build-windows-codex-assets]
+    needs: [build, build-tauri-macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
@@ -553,10 +528,6 @@ jobs:
               '',
               '**Windows:**',
               `- [Windows x86_64 (amd64)](${dl}/blue-${tag}-windows-amd64.zip)`,
-              '',
-              '**Windows Sandbox Runtime:**',
-              `- [Codex x86_64 (amd64)](${dl}/codex-x86_64-pc-windows-msvc.exe)`,
-              `- [Codex aarch64 (arm64)](${dl}/codex-aarch64-pc-windows-msvc.exe)`,
               '',
               '**Checksums:** Each CLI archive has a corresponding `.sha256` file.',
             ].join('\n');
