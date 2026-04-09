@@ -20,6 +20,12 @@ class ReleaseWorkflowCodexAssetsTest(unittest.TestCase):
         self.assertNotIn("codex-x86_64-pc-windows-msvc.exe", content)
         self.assertNotIn("codex-aarch64-pc-windows-msvc.exe", content)
 
+    def test_release_workflow_cleans_default_tauri_dmg_before_upload(self):
+        content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+        self.assertIn('DMG_NAME="ZimaOS-Blue-${VERSION}-macos-${{ matrix.arch }}.dmg"', content)
+        self.assertIn('find "$DMG_DIR" -name "*.dmg" -type f ! -name "$DMG_NAME" -delete', content)
+
 
 if __name__ == "__main__":
     unittest.main()

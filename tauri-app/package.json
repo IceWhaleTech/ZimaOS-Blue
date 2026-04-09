@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
-    "build": "tauri build",
+    "build": "node scripts/build.mjs",
     "build:debug": "tauri build --debug"
   },
   "devDependencies": {

@@ -228,6 +228,7 @@ jobs:
               f.write(dist)
               f.write(struct.pack('<Q', int(os.environ['PACK_OFFSET'])))
           "
+          rm -f "${DIST_TAR}"
 
       # Notarize macOS binary
       - name: Notarize macOS binary
@@ -258,22 +259,20 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/build.keychain" 2>/dev/null || true
 
-      - name: Create archive & checksum
+      - name: Create archive
         working-directory: server/bin
         shell: bash
         run: |
           VERSION="${GITHUB_REF_NAME}"
           ARCHIVE="${BINARY_NAME}-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
           tar czf "${ARCHIVE}.tar.gz" "${BINARY_NAME}"
-          shasum -a 256 "${ARCHIVE}.tar.gz" > "${ARCHIVE}.tar.gz.sha256"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
-            server/bin/*.tar.gz
-            server/bin/*.sha256
+            server/bin/blue-*.tar.gz
           retention-days: 1
 
   build-tauri-macos:
@@ -287,7 +286,7 @@ jobs:
           - arch: arm64
             runner: macos-14
             goarch: arm64
-          - arch: amd64
+          - arch: x64
             runner: macos-15
             goarch: amd64
     steps:
@@ -397,6 +396,10 @@ jobs:
             "$DMG_DIR/$DMG_NAME" \
             "$APP_DIR/$APP_NAME.app"
 
+          # Remove the default Tauri-generated DMG so only the final hand-named DMG is published.
+          find "$DMG_DIR" -name "*.dmg" -type f ! -name "$DMG_NAME" -delete
+          ls -lh "$DMG_DIR"
+
       - name: Sign & Notarize DMG
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -404,8 +407,16 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          VERSION="${GITHUB_REF_NAME}"
           DMG_DIR="tauri-app/src-tauri/target/release/bundle/dmg"
-          DMG_FILE=$(find "$DMG_DIR" -name "*.dmg" -type f | head -1)
+          DMG_NAME="ZimaOS-Blue-${VERSION}-macos-${{ matrix.arch }}.dmg"
+          DMG_FILE="$DMG_DIR/$DMG_NAME"
+
+          if [ ! -f "$DMG_FILE" ]; then
+            echo "::error::Expected final DMG not found: $DMG_FILE"
+            ls -lh "$DMG_DIR" 2>/dev/null || true
+            exit 1
+          fi
 
           codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$DMG_FILE"
 
@@ -429,7 +440,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: blue-tauri-macos-${{ matrix.arch }}
-          path: tauri-app/src-tauri/target/release/bundle/dmg/*.dmg
+          path: tauri-app/src-tauri/target/release/bundle/dmg/ZimaOS-Blue-*-macos-${{ matrix.arch }}.dmg
           retention-days: 1
 
   release:
@@ -490,7 +501,7 @@ jobs:
               '',
               '**macOS Desktop App (DMG):**',
               `- [macOS Apple Silicon (arm64)](${dl}/ZimaOS-Blue-${tag}-macos-arm64.dmg)`,
-              `- [macOS Intel (amd64)](${dl}/ZimaOS-Blue-${tag}-macos-amd64.dmg)`,
+              `- [macOS Intel (x64)](${dl}/ZimaOS-Blue-${tag}-macos-x64.dmg)`,
               '',
               '**macOS CLI:**',
               `- [macOS Apple Silicon (arm64)](${dl}/blue-${tag}-darwin-arm64.tar.gz)`,
@@ -499,8 +510,6 @@ jobs:
               '**Linux:**',
               `- [Linux x86_64 (amd64)](${dl}/blue-${tag}-linux-amd64.tar.gz)`,
               `- [Linux aarch64 (arm64)](${dl}/blue-${tag}-linux-arm64.tar.gz)`,
-              '',
-              '**Checksums:** Each CLI archive has a corresponding `.sha256` file.',
             ].join('\n');
 
             await github.rest.repos.updateRelease({

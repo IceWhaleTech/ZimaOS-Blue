@@ -134,7 +134,7 @@ build-launcher:
 	@cp $(BUILD_DIR)/dist.tar.gz $(LAUNCHER_DIR)/dist.tar.gz
 	@echo "Building launcher..."
 	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) $(LAUNCHER_LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./$(LAUNCHER_DIR)
-	@rm -f $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/bluecli.gz $(LAUNCHER_DIR)/dist.tar $(LAUNCHER_DIR)/dist.tar.gz
+	@rm -f $(BUILD_DIR)/dist.tar $(BUILD_DIR)/dist.tar.gz $(LAUNCHER_DIR)/bluecli $(LAUNCHER_DIR)/bluecli.gz $(LAUNCHER_DIR)/dist.tar $(LAUNCHER_DIR)/dist.tar.gz
 ifeq ($(UNAME_S),Darwin)
 	@$(MAKE) codesign CODESIGN_TARGET=$(BINARY_NAME)
 endif

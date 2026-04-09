@@ -349,7 +349,7 @@ fi
 
 # Windows needs explicit --target since .cargo/config.toml no longer hardcodes it
 if [ "$GOOS" = "windows" ]; then
-    npx tauri build --target x86_64-pc-windows-gnu
+    npm run build -- --target x86_64-pc-windows-gnu
 else
     npm run build
 fi
