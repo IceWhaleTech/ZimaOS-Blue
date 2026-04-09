@@ -6014,6 +6014,68 @@ type chatToolSurfaceSelection struct {
 	DiscoveryDecision *agentcore.CapabilityDiscoveryDecision
 }
 
+type chatToolSurfaceLogSnapshot struct {
+	Routed        int
+	Selected      int
+	NativeMode    string
+	NeedClarify   bool
+	SelectedSkill string
+	DecisionReason string
+	ConflictFlags []string
+	RoutedNames   []string
+	SelectedNames []string
+}
+
+func toolDefinitionNames(defs []tools.ToolDefinition) []string {
+	if len(defs) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(defs))
+	for _, def := range defs {
+		name := strings.TrimSpace(def.Name)
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return names
+}
+
+func buildChatToolSurfaceLogSnapshot(selection chatToolSurfaceSelection) chatToolSurfaceLogSnapshot {
+	return buildChatToolSurfaceLogSnapshotWithSelected(selection, selection.NativeDefs)
+}
+
+func buildChatToolSurfaceLogSnapshotWithSelected(selection chatToolSurfaceSelection, selectedDefs []tools.ToolDefinition) chatToolSurfaceLogSnapshot {
+	needClarify := false
+	selectedSkill := ""
+	decisionReason := ""
+	var conflictFlags []string
+	if selection.DiscoveryDecision != nil {
+		needClarify = selection.DiscoveryDecision.NeedClarify
+	}
+	if selection.SkillDecision != nil {
+		selectedSkill = strings.TrimSpace(selection.SkillDecision.SelectedSkill)
+		decisionReason = strings.TrimSpace(selection.SkillDecision.Reason)
+		if len(selection.SkillDecision.ConflictFlags) > 0 {
+			conflictFlags = append([]string(nil), selection.SkillDecision.ConflictFlags...)
+		}
+	}
+	return chatToolSurfaceLogSnapshot{
+		Routed:         len(selection.RoutedDefs),
+		Selected:       len(selectedDefs),
+		NativeMode:     string(selection.NativeMode),
+		NeedClarify:    needClarify,
+		SelectedSkill:  selectedSkill,
+		DecisionReason: decisionReason,
+		ConflictFlags:  conflictFlags,
+		RoutedNames:    toolDefinitionNames(selection.RoutedDefs),
+		SelectedNames:  toolDefinitionNames(selectedDefs),
+	}
+}
+
 func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage, model, sessionID, explicitProviderID string, state memory.ConversationCommandState, webSearchEnabled, deepResearchEnabled *bool) []tools.ToolDefinition {
 	selection := h.selectChatToolSurfacesForRequest(ctx, userMessage, tools.ToolPolicyRequest{
 		Model:               model,
@@ -6027,9 +6089,38 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 	}
 	if selection.NativeMode != chatNativeToolSurfaceModeLegacy || selection.PromptCacheUnsafe {
 		h.clearPromptCacheToolSurface(sessionID)
-		return sortToolDefsByName(selectedTools)
+		selectedTools = sortToolDefsByName(selectedTools)
+		snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
+			logger.Info().
+				Int("routed", snapshot.Routed).
+				Int("selected", snapshot.Selected).
+				Str("native_mode", snapshot.NativeMode).
+				Bool("need_clarify", snapshot.NeedClarify).
+				Str("selected_skill", snapshot.SelectedSkill).
+				Str("decision_reason", snapshot.DecisionReason).
+				Strs("conflict_flags", snapshot.ConflictFlags).
+				Strs("routed_tools", snapshot.RoutedNames).
+				Strs("selected_tools", snapshot.SelectedNames).
+				Str("model", model).
+				Str("query", userMessage).
+			Msg("[chat] selectChatToolSurface")
+		return selectedTools
 	}
 	selectedTools = h.stabilizePromptCacheToolSurface(sessionID, explicitProviderID, state, webSearchEnabled, deepResearchEnabled, selectedTools)
+	snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
+	logger.Info().
+		Int("routed", snapshot.Routed).
+		Int("selected", snapshot.Selected).
+		Str("native_mode", snapshot.NativeMode).
+		Bool("need_clarify", snapshot.NeedClarify).
+		Str("selected_skill", snapshot.SelectedSkill).
+		Str("decision_reason", snapshot.DecisionReason).
+		Strs("conflict_flags", snapshot.ConflictFlags).
+		Strs("routed_tools", snapshot.RoutedNames).
+		Strs("selected_tools", snapshot.SelectedNames).
+		Str("model", model).
+		Str("query", userMessage).
+		Msg("[chat] selectChatToolSurface")
 	return selectedTools
 }
 
@@ -6767,8 +6858,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		names[i] = d.Name
 	}
 	logger.Info().
-		Int("total", len(allDefs)).
-		Int("selected", len(allDefs)).
+		Int("allowlisted", len(allDefs)).
 		Int("routed", len(routed)).
 		Strs("tools", names).
 		Str("model", policyReq.Model).
@@ -7939,9 +8029,18 @@ func forcedSkillSelectionHint(userMessage, skill string) string {
 	return forcedSkillSelectionDecision(userMessage, skill).PromptHint(1)
 }
 
+func shouldUseSkillDecisionForDiscoverFirst(decision agentcore.Decision) bool {
+	if strings.TrimSpace(decision.SelectedSkill) != "" {
+		return true
+	}
+	return len(decision.ConflictFlags) > 0
+}
+
 func (h *ChatHandler) resolveSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
 	if decision, ok := h.resolveSkillDecision(ctx, userMessage); ok {
-		return decision, true
+		if shouldUseSkillDecisionForDiscoverFirst(decision) {
+			return decision, true
+		}
 	}
 	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
 		return forcedSkillSelectionDecision(userMessage, "research"), true
@@ -7951,7 +8050,9 @@ func (h *ChatHandler) resolveSkillDecisionForRequest(ctx context.Context, userMe
 
 func (h *ChatHandler) previewSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
 	if decision, ok := h.resolveSkillDecisionWithOverride(ctx, userMessage, true); ok {
-		return decision, true
+		if shouldUseSkillDecisionForDiscoverFirst(decision) {
+			return decision, true
+		}
 	}
 	if shouldForceResearchToolExposure(userMessage, deepResearchEnabled) {
 		return forcedSkillSelectionDecision(userMessage, "research"), true

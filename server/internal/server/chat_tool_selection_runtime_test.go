@@ -78,6 +78,53 @@ func selectedToolNames(defs []tools.ToolDefinition) []string {
 	return names
 }
 
+func TestBuildChatToolSurfaceLogSnapshot_UsesNativeDefsForSelected(t *testing.T) {
+	snapshot := buildChatToolSurfaceLogSnapshot(chatToolSurfaceSelection{
+		RoutedDefs: []tools.ToolDefinition{
+			{Name: "ask"},
+			{Name: "browser"},
+			{Name: "web_query"},
+		},
+		NativeDefs: nil,
+		NativeMode: chatNativeToolSurfaceModeClarifyNone,
+		DiscoveryDecision: &agentcore.CapabilityDiscoveryDecision{
+			NeedClarify: true,
+		},
+		SkillDecision: &agentcore.Decision{
+			Reason:        "ir_no_match",
+			ConflictFlags: []string{"question_prefix"},
+		},
+	})
+
+	if snapshot.Routed != 3 {
+		t.Fatalf("Routed = %d, want 3", snapshot.Routed)
+	}
+	if snapshot.Selected != 0 {
+		t.Fatalf("Selected = %d, want 0", snapshot.Selected)
+	}
+	if snapshot.NativeMode != string(chatNativeToolSurfaceModeClarifyNone) {
+		t.Fatalf("NativeMode = %q, want %q", snapshot.NativeMode, chatNativeToolSurfaceModeClarifyNone)
+	}
+	if !snapshot.NeedClarify {
+		t.Fatal("NeedClarify = false, want true")
+	}
+	if snapshot.SelectedSkill != "" {
+		t.Fatalf("SelectedSkill = %q, want empty", snapshot.SelectedSkill)
+	}
+	if snapshot.DecisionReason != "ir_no_match" {
+		t.Fatalf("DecisionReason = %q, want ir_no_match", snapshot.DecisionReason)
+	}
+	if got := snapshot.ConflictFlags; len(got) != 1 || got[0] != "question_prefix" {
+		t.Fatalf("ConflictFlags = %v, want [question_prefix]", got)
+	}
+	if got := snapshot.RoutedNames; len(got) != 3 || got[0] != "ask" || got[2] != "web_query" {
+		t.Fatalf("RoutedNames = %v, want [ask browser web_query]", got)
+	}
+	if len(snapshot.SelectedNames) != 0 {
+		t.Fatalf("SelectedNames = %v, want empty", snapshot.SelectedNames)
+	}
+}
+
 func attachTestProviderPool(t *testing.T, handler *ChatHandler, provider *providerpool.Provider) {
 	t.Helper()
 
@@ -736,6 +783,25 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstStockArtifactStaysActiona
 	}
 	if selection.DiscoveryDecision != nil && selection.DiscoveryDecision.NeedClarify {
 		t.Fatalf("DiscoveryDecision = %#v, want no clarify gate for actionable stock artifact request", selection.DiscoveryDecision)
+	}
+}
+
+func TestSelectChatToolSurfacesForRequest_GeneralKnowledgeSynthesisDoesNotFallIntoClarifyNone(t *testing.T) {
+	handler := newDiscoverFirstSelectionHandler(t, true)
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "请围绕亚里士多德的公开著作、可信史料和核心思想，整理一套可对话的知识容器。提炼他的概念体系、价值判断、论证方式和常用追问框架，在回答我问题时尽量保持他的思考风格，同时明确区分原典观点、合理推断和现代延伸。", tools.ToolPolicyRequest{
+		Model:     "auto",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode == chatNativeToolSurfaceModeClarifyNone {
+		t.Fatalf("NativeMode = %q, want actionable surface for general knowledge synthesis", selection.NativeMode)
+	}
+	if len(selection.NativeDefs) == 0 {
+		t.Fatalf("NativeDefs = %v, want non-empty actionable tool surface", selectedToolNames(selection.NativeDefs))
+	}
+	if selection.DiscoveryDecision != nil && selection.DiscoveryDecision.NeedClarify {
+		t.Fatalf("DiscoveryDecision = %#v, want no clarify gate for general knowledge synthesis", selection.DiscoveryDecision)
 	}
 }
 
