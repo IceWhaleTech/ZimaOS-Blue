@@ -2920,8 +2920,23 @@ func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent str
 	return false, ""
 }
 
+func hasClarifyNoneActionableTools(allowedTools []llm.Tool) bool {
+	for _, tool := range allowedTools {
+		name := strings.ToLower(strings.TrimSpace(tool.Name))
+		if name == "" || name == "tool_search" {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func shouldRecoverPseudoToolCallsForSurface(clarifyNone bool, allowedTools []llm.Tool) bool {
+	return !clarifyNone || hasClarifyNoneActionableTools(allowedTools)
+}
+
 func shouldAllowToolDependentAutoContinue(reason string, clarifyNone bool, allowedTools []llm.Tool) bool {
-	if !clarifyNone || len(allowedTools) > 0 {
+	if !clarifyNone || hasClarifyNoneActionableTools(allowedTools) {
 		return true
 	}
 	switch reason {
@@ -6015,15 +6030,15 @@ type chatToolSurfaceSelection struct {
 }
 
 type chatToolSurfaceLogSnapshot struct {
-	Routed        int
-	Selected      int
-	NativeMode    string
-	NeedClarify   bool
-	SelectedSkill string
+	Routed         int
+	Selected       int
+	NativeMode     string
+	NeedClarify    bool
+	SelectedSkill  string
 	DecisionReason string
-	ConflictFlags []string
-	RoutedNames   []string
-	SelectedNames []string
+	ConflictFlags  []string
+	RoutedNames    []string
+	SelectedNames  []string
 }
 
 func toolDefinitionNames(defs []tools.ToolDefinition) []string {
@@ -6091,18 +6106,18 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 		h.clearPromptCacheToolSurface(sessionID)
 		selectedTools = sortToolDefsByName(selectedTools)
 		snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
-			logger.Info().
-				Int("routed", snapshot.Routed).
-				Int("selected", snapshot.Selected).
-				Str("native_mode", snapshot.NativeMode).
-				Bool("need_clarify", snapshot.NeedClarify).
-				Str("selected_skill", snapshot.SelectedSkill).
-				Str("decision_reason", snapshot.DecisionReason).
-				Strs("conflict_flags", snapshot.ConflictFlags).
-				Strs("routed_tools", snapshot.RoutedNames).
-				Strs("selected_tools", snapshot.SelectedNames).
-				Str("model", model).
-				Str("query", userMessage).
+		logger.Info().
+			Int("routed", snapshot.Routed).
+			Int("selected", snapshot.Selected).
+			Str("native_mode", snapshot.NativeMode).
+			Bool("need_clarify", snapshot.NeedClarify).
+			Str("selected_skill", snapshot.SelectedSkill).
+			Str("decision_reason", snapshot.DecisionReason).
+			Strs("conflict_flags", snapshot.ConflictFlags).
+			Strs("routed_tools", snapshot.RoutedNames).
+			Strs("selected_tools", snapshot.SelectedNames).
+			Str("model", model).
+			Str("query", userMessage).
 			Msg("[chat] selectChatToolSurface")
 		return selectedTools
 	}
@@ -6164,7 +6179,7 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	case agentcore.NativeSurfaceModeSkillExec:
 		// Validate capability toggles for cutover-eligible canonical skills
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
@@ -6834,7 +6849,9 @@ func (h *ChatHandler) resolvePromptPolicy() PromptPolicy {
 // by compressing schemas and hiding obviously irrelevant low-signal members.
 func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.ToolPolicyRequest) ([]tools.ToolDefinition, *tools.ToolSelectionDebug) {
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
-	if policyReq.RouteKind == tools.ToolRouteKindChat && !policyReq.SkipDefaultChatDirectAllowlist && shouldExpandChatToolAllowlistForOfficeArtifact(userMessage) {
+	if policyReq.RouteKind == tools.ToolRouteKindChat &&
+		!policyReq.SkipDefaultChatDirectAllowlist &&
+		(shouldExpandChatToolAllowlistForOfficeArtifact(userMessage) || shouldExpandChatToolAllowlistForEmailIntent(userMessage)) {
 		expandedReq := policyReq
 		expandedReq.SkipDefaultChatDirectAllowlist = true
 		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
@@ -6851,6 +6868,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	routed = preferDirectArtifactWritingTools(userMessage, allDefs, routed)
 	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
 	routed = preferForcedDeepResearchTools(userMessage, allDefs, routed, policyReq.DeepResearchEnabled)
+	routed = applyEmailToolPreference(routed, userMessage)
 	routed = keepAlwaysExposedChatTools(allDefs, routed)
 
 	names := make([]string, len(routed))
@@ -6876,6 +6894,10 @@ func shouldExpandChatToolAllowlistForOfficeArtifact(userMessage string) bool {
 		return true
 	}
 	return hasGenericOfficeArtifactIntent(userMessage)
+}
+
+func shouldExpandChatToolAllowlistForEmailIntent(userMessage string) bool {
+	return isEmailIntentMessage(userMessage)
 }
 
 func keepAlwaysExposedChatTools(allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
@@ -8089,7 +8111,7 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
-		return selection
+		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	case agentcore.NativeSurfaceModeLegacy:
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
@@ -12544,6 +12566,17 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			RouteKind:           tools.ToolRouteKindChat,
 			DeepResearchEnabled: nil,
 		}, nil, nil)
+		selectedTools := h.selectChatToolsForRequest(
+			ctx,
+			pendingState.RoutingMessage,
+			req.Model,
+			convID,
+			"",
+			memory.ConversationCommandState{ConversationID: convID},
+			nil,
+			nil,
+		)
+		req.Tools = defsToLLMTools(selectedTools)
 
 		var resp *llm.ChatResponse
 		var err error
@@ -12576,7 +12609,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				}
 				resp.Message.ToolCalls = sanitizedCalls
 			}
-			if len(resp.Message.ToolCalls) == 0 {
+			if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, req.Tools) {
 				if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, req.Tools); recovered {
 					resp.Message.ToolCalls = recoveredCalls
 					resp.Message.Content = ""
@@ -13103,7 +13136,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				return "", buildIMChatFailureError(lang, err)
 			}
 		}
-		if len(resp.Message.ToolCalls) == 0 {
+		if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, req.Tools) {
 			if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, req.Tools); recovered {
 				resp.Message.ToolCalls = recoveredCalls
 				resp.Message.Content = ""
@@ -20563,7 +20596,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				}
 				resp.Message.ToolCalls = sanitizedCalls
 			}
-			if len(resp.Message.ToolCalls) == 0 {
+			if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, chatReq.Tools) {
 				if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, chatReq.Tools); recovered {
 					resp.Message.ToolCalls = recoveredCalls
 					resp.Message.Content = ""
@@ -24159,7 +24192,7 @@ STREAM_LOOP:
 			}
 			streamToolCalls = sanitizedCalls
 		}
-		if len(streamToolCalls) == 0 {
+		if len(streamToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, chatReq.Tools) {
 			if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(fullContent, chatReq.Tools); recovered {
 				streamToolCalls = recoveredCalls
 				fullContent = ""

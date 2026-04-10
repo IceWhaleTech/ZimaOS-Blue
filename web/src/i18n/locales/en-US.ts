@@ -683,6 +683,10 @@ export default mergeHarnessLocale('en-US', {
       collapse: 'Collapse todo list',
       jumpToMessage: 'Jump to checklist message',
     },
+    quickNav: {
+      title: 'Quick navigation',
+      jumpToMessage: 'Jump to {preview}',
+    },
     send: 'Send',
     sendDuringStream: 'Send (adds to conversation)',
     searchConversations: 'Search conversations...',

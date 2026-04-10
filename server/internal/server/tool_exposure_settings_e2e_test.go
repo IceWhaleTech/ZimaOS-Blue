@@ -63,14 +63,14 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 	server := httptest.NewServer(e)
 	defer server.Close()
 
-	t.Run("full static allowlist on first turn", func(t *testing.T) {
+	t.Run("default first turn omits email without email intent", func(t *testing.T) {
 		conv, err := store.CreateConversation(context.Background(), "tool exposure e2e")
 		if err != nil {
 			t.Fatalf("create conversation: %v", err)
 		}
 
 		body := map[string]any{
-			"message":  "Archive unread emails from Alice",
+			"message":  "Look up the latest updates and create a checklist.",
 			"provider": "capture",
 			"model":    "capture-model",
 		}
@@ -91,7 +91,6 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		for _, required := range []string{
 			"calendar",
 			"deep_research",
-			"email",
 			"plan_append",
 			"plan_create",
 			"plan_update",
@@ -103,8 +102,47 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 				t.Fatalf("expected %q in first-turn tool set, got=%v", required, capture.LastRequest().Tools)
 			}
 		}
+		if _, ok := names["email"]; ok {
+			t.Fatalf("expected email to stay hidden without explicit email intent, got=%v", capture.LastRequest().Tools)
+		}
 		if _, ok := names["process"]; ok {
 			t.Fatalf("expected non-allowlisted tool to stay hidden, got=%v", capture.LastRequest().Tools)
+		}
+	})
+
+	t.Run("email intent exposes email without re-widening unrelated tools", func(t *testing.T) {
+		conv, err := store.CreateConversation(context.Background(), "tool exposure email intent e2e")
+		if err != nil {
+			t.Fatalf("create conversation: %v", err)
+		}
+
+		body := map[string]any{
+			"message":  "Archive unread emails from Alice.",
+			"provider": "capture",
+			"model":    "capture-model",
+		}
+		reqBody, _ := json.Marshal(body)
+		resp, err := http.Post(server.URL+"/api/v1/conversations/"+conv.ID+"/messages", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatalf("post send message: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+
+		names := make(map[string]struct{}, len(capture.LastRequest().Tools))
+		for _, tool := range capture.LastRequest().Tools {
+			names[tool.Name] = struct{}{}
+		}
+		if _, ok := names["email"]; !ok {
+			t.Fatalf("expected email tool for explicit email intent, got=%v", capture.LastRequest().Tools)
+		}
+		if _, ok := names["calendar"]; ok {
+			t.Fatalf("expected unrelated calendar tool to stay hidden for email intent, got=%v", capture.LastRequest().Tools)
+		}
+		if _, ok := names["deep_research"]; ok {
+			t.Fatalf("expected unrelated deep research tool to stay hidden for email intent, got=%v", capture.LastRequest().Tools)
 		}
 	})
 

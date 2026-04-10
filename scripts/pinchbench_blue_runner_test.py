@@ -135,7 +135,7 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
         )
         self.assertEqual(
             runner.resolve_message_transport_timeout(120.0),
-            210.0,
+            240.0,
         )
         self.assertEqual(
             runner.resolve_message_transport_timeout(900.0),
@@ -194,6 +194,144 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
         self.assertEqual(
             resolved,
             (Path(tmp_dir) / "legacy-cli-workspace").resolve(strict=False),
+        )
+
+    def test_resolve_blue_audit_db_paths_includes_jsonl_audit_dir_beside_blue_db(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            db_path = root / "blue.db"
+            db_path.touch()
+            audit_dir = root / "session_audit_logs"
+            audit_dir.mkdir()
+
+            resolved = runner.resolve_blue_audit_db_paths("", db_path)
+
+        self.assertIn(audit_dir.resolve(strict=False), resolved)
+
+    def test_load_tool_audit_rows_reads_jsonl_audit_logs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            audit_dir = Path(tmp_dir) / "session_audit_logs"
+            audit_dir.mkdir()
+            conversation_id = "conv-123"
+            log_path = audit_dir / f"{conversation_id}-part1.jsonl"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "created_at": "2026-04-10T02:59:29.330038+08:00",
+                                "event_type": "assistant_tool_call",
+                                "role": "assistant",
+                                "tool_call_id": "call_1",
+                                "tool_name": "exec",
+                                "payload": json.dumps({"command": "cat report.txt"}),
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "created_at": "2026-04-10T02:59:29.430038+08:00",
+                                "event_type": "tool_result",
+                                "role": "tool",
+                                "tool_call_id": "call_1",
+                                "tool_name": "exec",
+                                "payload": json.dumps({"stdout": "hello"}),
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rows = runner.load_tool_audit_rows([audit_dir], conversation_id)
+
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "created_at": "2026-04-10T02:59:29.330038+08:00",
+                    "event_type": "assistant_tool_call",
+                    "role": "assistant",
+                    "tool_call_id": "call_1",
+                    "tool_name": "exec",
+                    "payload": json.dumps({"command": "cat report.txt"}),
+                },
+                {
+                    "created_at": "2026-04-10T02:59:29.430038+08:00",
+                    "event_type": "tool_result",
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "tool_name": "exec",
+                    "payload": json.dumps({"stdout": "hello"}),
+                },
+            ],
+        )
+
+    def test_augment_transcript_with_audit_injects_jsonl_tool_calls(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            audit_dir = Path(tmp_dir) / "session_audit_logs"
+            audit_dir.mkdir()
+            conversation_id = "conv-456"
+            log_path = audit_dir / f"{conversation_id}-part1.jsonl"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "created_at": "2026-04-10T02:59:29.330038+08:00",
+                                "event_type": "assistant_tool_call",
+                                "role": "assistant",
+                                "tool_call_id": "call_1",
+                                "tool_name": "exec",
+                                "payload": json.dumps({"command": "cat report.txt"}),
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "created_at": "2026-04-10T02:59:29.430038+08:00",
+                                "event_type": "tool_result",
+                                "role": "tool",
+                                "tool_call_id": "call_1",
+                                "tool_name": "exec",
+                                "payload": json.dumps({"stdout": "hello"}),
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            transcript = [
+                {"type": "message", "message": {"role": "user", "content": ["Do the task"]}},
+                {"type": "message", "message": {"role": "assistant", "content": []}},
+            ]
+
+            augmented = runner.augment_transcript_with_audit(
+                transcript,
+                db_paths=[audit_dir],
+                conversation_id=conversation_id,
+            )
+
+        self.assertEqual(len(augmented), 4)
+        self.assertEqual(
+            augmented[1]["message"]["content"][0],
+            {
+                "type": "toolCall",
+                "id": "call_1",
+                "name": "exec",
+                "arguments": {"command": "cat report.txt"},
+                "params": {"command": "cat report.txt"},
+            },
+        )
+        self.assertEqual(
+            augmented[2]["message"],
+            {
+                "role": "toolResult",
+                "toolCallId": "call_1",
+                "toolName": "exec",
+                "content": [json.dumps({"stdout": "hello"})],
+            },
         )
 
 

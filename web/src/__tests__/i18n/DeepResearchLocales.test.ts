@@ -49,6 +49,13 @@ function resolveRuntimeMessages(locale: string, messages: LocaleMessages): Local
   return mergeHarnessLocale(locale as LocaleKey, messages)
 }
 
+function fillTemplate(template: string, replacements: Record<string, string>): string {
+  return Object.entries(replacements).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, value),
+    template
+  )
+}
+
 describe('Deep research locale coverage', () => {
   it('keeps completed-state localization working for all 27 locales', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
@@ -107,6 +114,40 @@ describe('Deep research locale coverage', () => {
         warning
       )
       expect(localizeDeepResearchStatus('info', translate), `${file} info status`).toBe(info)
+    }
+  })
+
+  it('keeps exact deep research event summaries localized for all 27 locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    const cases: Array<[source: string, key: string]> = [
+      ['Research brief prepared', 'chat.deepResearchActionResearchBriefPrepared'],
+      ['Draft synthesis ready', 'chat.deepResearchActionDraftSynthesisReady'],
+      ['Detected a research gap', 'chat.deepResearchActionDetectedResearchGap'],
+    ]
+
+    for (const [modulePath, mod] of entries) {
+      const file = fileNameFromModulePath(modulePath)
+      const runtimeMessages = resolveRuntimeMessages(
+        file.replace(/\.ts$/, '') as LocaleKey,
+        mod.default
+      )
+      const translate = translateFor(runtimeMessages)
+
+      for (const [source, key] of cases) {
+        const localized = getPathValue(runtimeMessages, key)
+
+        expect(typeof localized, `${file} missing ${key}`).toBe('string')
+        expect(
+          localizeDeepResearchAction(source, translate),
+          `${file} failed to localize action ${source}`
+        ).toBe(localized)
+        expect(
+          localizeDeepResearchSummary(source, translate),
+          `${file} failed to localize summary ${source}`
+        ).toBe(localized)
+      }
     }
   })
 
@@ -429,6 +470,29 @@ describe('Deep research locale coverage', () => {
         runtimeMessages,
         'chat.deepResearchGapNeedPrimaryOrOfficialSources'
       )
+      const officialAxis = getPathValue(runtimeMessages, 'chat.deepResearchAxisOfficial')
+      const summaryGapCoverage = getPathValue(runtimeMessages, 'chat.deepResearchSummaryGapCoverage')
+      const summaryOfficialGap = getPathValue(runtimeMessages, 'chat.deepResearchSummaryOfficialGap')
+      const summaryResolvedCoverage = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchSummaryResolvedCoverage'
+      )
+      const summaryDomainCoverage = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchSummaryDomainCoverage'
+      )
+      const summaryFreshnessCoverage = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchSummaryFreshnessCoverage'
+      )
+      const summaryClaimSupportCoverage = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchSummaryClaimSupportCoverage'
+      )
+      const primarySourceVerificationPrompt = getPathValue(
+        runtimeMessages,
+        'chat.deepResearchOpenQuestionPrimarySourceVerification'
+      )
       const coverageReached = getPathValue(runtimeMessages, 'chat.deepResearchStopReasonCoverage')
 
       expect(typeof retainedSearches, `${file} missing runtime chat.deepResearchRetainedSearches`).toBe(
@@ -448,6 +512,37 @@ describe('Deep research locale coverage', () => {
         typeof primaryOrOfficialSources,
         `${file} missing runtime chat.deepResearchGapNeedPrimaryOrOfficialSources`
       ).toBe('string')
+      expect(typeof officialAxis, `${file} missing runtime chat.deepResearchAxisOfficial`).toBe(
+        'string'
+      )
+      expect(
+        typeof summaryGapCoverage,
+        `${file} missing runtime chat.deepResearchSummaryGapCoverage`
+      ).toBe('string')
+      expect(
+        typeof summaryOfficialGap,
+        `${file} missing runtime chat.deepResearchSummaryOfficialGap`
+      ).toBe('string')
+      expect(
+        typeof summaryResolvedCoverage,
+        `${file} missing runtime chat.deepResearchSummaryResolvedCoverage`
+      ).toBe('string')
+      expect(
+        typeof summaryDomainCoverage,
+        `${file} missing runtime chat.deepResearchSummaryDomainCoverage`
+      ).toBe('string')
+      expect(
+        typeof summaryFreshnessCoverage,
+        `${file} missing runtime chat.deepResearchSummaryFreshnessCoverage`
+      ).toBe('string')
+      expect(
+        typeof summaryClaimSupportCoverage,
+        `${file} missing runtime chat.deepResearchSummaryClaimSupportCoverage`
+      ).toBe('string')
+      expect(
+        typeof primarySourceVerificationPrompt,
+        `${file} missing runtime chat.deepResearchOpenQuestionPrimarySourceVerification`
+      ).toBe('string')
       expect(typeof coverageReached, `${file} missing runtime chat.deepResearchStopReasonCoverage`).toBe(
         'string'
       )
@@ -461,6 +556,62 @@ describe('Deep research locale coverage', () => {
       expect(localizeDeepResearchSummary('Collected 3 source(s)', translate), `${file} source summary`).toBe(
         `${liveSources}: 3`
       )
+      expect(
+        localizeDeepResearchStructuredValue('Official sources', translate),
+        `${file} official axis label`
+      ).toBe(officialAxis)
+      expect(
+        localizeDeepResearchSummary(
+          'Official sources only covers 0 evidence item(s) across 0 domain(s); follow-up research is needed.',
+          translate
+        ),
+        `${file} gap coverage summary`
+      ).toBe(
+        fillTemplate(summaryGapCoverage as string, {
+          focus: officialAxis as string,
+          evidenceCount: '0',
+          domainCount: '0',
+        })
+      )
+      expect(
+        localizeDeepResearchSummary(
+          'Official sources still lacks stable primary or official sources.',
+          translate
+        ),
+        `${file} official gap summary`
+      ).toBe(fillTemplate(summaryOfficialGap as string, { focus: officialAxis as string }))
+      expect(
+        localizeDeepResearchSummary(
+          'Official sources is covered by 8 evidence item(s) across 8 domain(s).',
+          translate
+        ),
+        `${file} resolved coverage summary`
+      ).toBe(
+        fillTemplate(summaryResolvedCoverage as string, {
+          focus: officialAxis as string,
+          evidenceCount: '8',
+          domainCount: '8',
+        })
+      )
+      expect(
+        localizeDeepResearchSummary('Coverage spans 8 unique domain(s).', translate),
+        `${file} domain coverage summary`
+      ).toBe(fillTemplate(summaryDomainCoverage as string, { domainCount: '8' }))
+      expect(
+        localizeDeepResearchSummary('Fresh evidence reaches 2026.', translate),
+        `${file} freshness summary`
+      ).toBe(fillTemplate(summaryFreshnessCoverage as string, { year: '2026' }))
+      expect(
+        localizeDeepResearchSummary(
+          'Core conclusions are supported across 7 claim group(s).',
+          translate
+        ),
+        `${file} claim support summary`
+      ).toBe(fillTemplate(summaryClaimSupportCoverage as string, { supportCount: '7' }))
+      expect(
+        localizeDeepResearchSummary('Check primary sources for final verification.', translate),
+        `${file} primary-source verification prompt`
+      ).toBe(primarySourceVerificationPrompt)
       expect(localizeDeepResearchGap('Need official source', translate), `${file} primary source gap`).toBe(
         primaryOrOfficialSources
       )

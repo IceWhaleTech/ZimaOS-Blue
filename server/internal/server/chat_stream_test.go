@@ -127,6 +127,8 @@ type autoContinueScriptedProxyHandler struct {
 	firstRoundContent        string
 	secondRoundContent       string
 	roundContents            []string
+	rawRequestBodies         []string
+	requestToolNames         [][]string
 	sawExecutionNudge        bool
 	sawAgentLoopNudge        bool
 	sawPseudoToolNudge       bool
@@ -1105,16 +1107,34 @@ func (h *repeatedArtifactReadRecoveryProxyHandler) ServeHTTP(w http.ResponseWrit
 
 func (h *autoContinueScriptedProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.callCount++
+	rawBody, _ := io.ReadAll(r.Body)
+	_ = r.Body.Close()
+	h.rawRequestBodies = append(h.rawRequestBodies, string(rawBody))
 
 	var body struct {
-		Model    string `json:"model"`
+		Model string `json:"model"`
+		Tools []struct {
+			Name     string `json:"name"`
+			Function struct {
+				Name string `json:"name"`
+			} `json:"function"`
+		} `json:"tools"`
 		Messages []struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
+	_ = json.NewDecoder(bytes.NewReader(rawBody)).Decode(&body)
 	h.requestModels = append(h.requestModels, body.Model)
+	toolNames := make([]string, 0, len(body.Tools))
+	for _, tool := range body.Tools {
+		name := strings.TrimSpace(tool.Name)
+		if name == "" {
+			name = strings.TrimSpace(tool.Function.Name)
+		}
+		toolNames = append(toolNames, name)
+	}
+	h.requestToolNames = append(h.requestToolNames, toolNames)
 
 	if h.callCount > 1 {
 		for i := len(body.Messages) - 1; i >= 0; i-- {

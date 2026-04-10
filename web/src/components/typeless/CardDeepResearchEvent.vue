@@ -17,7 +17,7 @@ import {
   localizeDeepResearchTimeWindow,
 } from '@/utils/deepResearchText'
 
-const { t, te } = useI18n()
+const { t, te, tm } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardDeepResearchEvent
@@ -37,7 +37,9 @@ const hasRetryGuidance = computed(() => {
 })
 
 function resolveLabel(key: string, fallback: string): string {
-  return te(key) ? String(t(key)) : fallback
+  if (!te(key)) return fallback
+  const value = tm(key)
+  return typeof value === 'string' ? value : String(t(key))
 }
 
 const summaryLabel = computed(() => {

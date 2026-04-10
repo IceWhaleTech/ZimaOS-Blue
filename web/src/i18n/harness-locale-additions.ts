@@ -1,4 +1,9 @@
+import {
+  agentcoreRunnerChatBase,
+  agentcoreRunnerChatOverrides,
+} from './agentcore-runner-chat-locales'
 import automationOperationsRenameBackfills from './automation-operations-rename-backfills'
+import chatQuickNavBackfills from './chat-quick-nav-backfills'
 import {
   agentcoreRunnerPartDescriptionBase,
   agentcoreRunnerPartDescriptionOverrides,
@@ -8,10 +13,12 @@ import {
   agentcoreRunnerPartSettingsOverrides,
 } from './agentcore-runner-part-settings'
 import automationKnowledgeEvolutionBackfills from './automation-knowledge-evolution-backfills'
+import completionFollowupBackfills from './completion-followup-backfills'
 import evolutionChineseOperatorBackfills from './evolution-chinese-operator-backfills'
 import evolutionUILocaleBackfills from './evolution-ui-locale-backfills'
 import extensionsBrowseBackfills from './extensions-browse-backfills'
 import harnessGroupBackfills from './harness-group-backfills'
+import knowledgeGraphLocaleBackfills from './knowledge-graph-locale-backfills'
 import localeFollowupBackfills from './locale-followup-backfills'
 import { buildLocalePostMergeBackfill } from './locale-post-merge-backfills'
 import localeStructuralBackfills from './locale-structural-backfills'
@@ -8969,11 +8976,17 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
       mergeLocaleNodes(
         mergeLocaleNodes(
           mergeLocaleNodes(
-            knowledgeLocaleBase,
-            (extensionsBrowseBackfills[localeKey] ?? {}) as LocaleNode
+            (completionFollowupBackfills[localeKey] ?? {}) as LocaleNode,
+            mergeLocaleNodes(
+              knowledgeLocaleBase,
+              (extensionsBrowseBackfills[localeKey] ?? {}) as LocaleNode
+            )
           ),
           mergeLocaleNodes(
-            (automationKnowledgeEvolutionBackfills[localeKey] ?? {}) as LocaleNode,
+            mergeLocaleNodes(
+              (automationKnowledgeEvolutionBackfills[localeKey] ?? {}) as LocaleNode,
+              (knowledgeGraphLocaleBackfills[localeKey] ?? {}) as LocaleNode
+            ),
             (smallModelKnowledgeFixBackfills[localeKey] ?? {}) as LocaleNode
           )
         ),
@@ -8988,8 +9001,14 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
   const securityCronMaskingPatch = (securityCronMaskingBackfills[localeKey] ?? {}) as LocaleNode
   const securityScanItemPatch = (securityScanItemBackfills[localeKey] ?? {}) as LocaleNode
   const mergedMessages = mergeLocaleNodes(
-    mergeLocaleNodes(mergeLocaleNodes(structuralPatch, securityCronMaskingPatch), securityScanItemPatch),
-    messages as unknown as LocaleNode
+    mergeLocaleNodes(
+      mergeLocaleNodes(structuralPatch, securityCronMaskingPatch),
+      securityScanItemPatch
+    ),
+    mergeLocaleNodes(
+      (chatQuickNavBackfills[localeKey] ?? {}) as LocaleNode,
+      messages as unknown as LocaleNode
+    )
   )
   const skillStorePatch = buildSkillStoreDerivedBackfill(
     localeKey,
@@ -9003,12 +9022,18 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
   const mergedWithPostMerge = mergeLocaleNodes(mergedWithSkillStore, postMergePatch)
   const settingsPatch = mergeLocaleNodes(
     mergeLocaleNodes(
-      mergeLocaleNodes(agentcoreRunnerSettingsBase, agentcoreRunnerPartSettingsBase as LocaleNode),
+      mergeLocaleNodes(
+        mergeLocaleNodes(agentcoreRunnerSettingsBase, agentcoreRunnerChatBase as LocaleNode),
+        agentcoreRunnerPartSettingsBase as LocaleNode
+      ),
       agentcoreRunnerPartDescriptionBase as LocaleNode
     ),
     mergeLocaleNodes(
       mergeLocaleNodes(
-        (agentcoreRunnerSettingsOverrides[localeKey] ?? {}) as LocaleNode,
+        mergeLocaleNodes(
+          (agentcoreRunnerSettingsOverrides[localeKey] ?? {}) as LocaleNode,
+          (agentcoreRunnerChatOverrides[localeKey] ?? {}) as LocaleNode
+        ),
         (agentcoreRunnerPartSettingsOverrides[localeKey] ?? {}) as LocaleNode
       ),
       (agentcoreRunnerPartDescriptionOverrides[localeKey] ?? {}) as LocaleNode

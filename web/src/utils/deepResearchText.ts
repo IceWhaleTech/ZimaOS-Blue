@@ -28,6 +28,18 @@ const DEEP_RESEARCH_ACTION_KEYS: Record<string, [key: string, fallback: string]>
   followup_planned: ['chat.deepResearchActionFollowupPlanned', 'Follow-up planned'],
   loop_stopped: ['chat.deepResearchActionLoopStopped', 'Research loop stopped'],
   synthesizing: ['chat.deepResearchActionSynthesizing', 'Synthesizing report'],
+  research_brief_prepared: [
+    'chat.deepResearchActionResearchBriefPrepared',
+    'Research brief prepared',
+  ],
+  draft_synthesis_ready: [
+    'chat.deepResearchActionDraftSynthesisReady',
+    'Draft synthesis ready',
+  ],
+  detected_a_research_gap: [
+    'chat.deepResearchActionDetectedResearchGap',
+    'Detected a research gap',
+  ],
   completed: ['chat.deepResearchActionCompleted', 'Completed'],
 }
 
@@ -120,6 +132,12 @@ const DEEP_RESEARCH_TOKEN_KEYS: Record<string, [key: string, fallback: string]> 
   recent: ['chat.deepResearchTimeWindowRecent', 'Recent'],
 }
 
+const DEEP_RESEARCH_TOKEN_ALIASES: Record<string, string> = {
+  official_sources: 'official',
+  latest_developments: 'latest',
+  comparative_information: 'comparison',
+}
+
 const DEEP_RESEARCH_STRUCTURED_VALUE_KEYS: Record<string, [key: string, fallback: string]> = {
   law: ['chat.deepResearchSourceTypeLaw', 'Law'],
   filing: ['chat.deepResearchSourceTypeFiling', 'Filing'],
@@ -149,6 +167,20 @@ const DEEP_RESEARCH_REPORT_STYLE_KEYS: Record<string, [key: string, fallback: st
 
 const DEEP_RESEARCH_PLANNED_TASKS_RE = /^planned\s+(\d+)\s+research\s+task(?:\(s\)|s)?$/i
 const DEEP_RESEARCH_COLLECTED_SOURCES_RE = /^collected\s+(\d+)\s+source(?:\(s\)|s)?$/i
+const DEEP_RESEARCH_SUMMARY_GAP_COVERAGE_RE =
+  /^(.+?)\s+only covers\s+(\d+)\s+evidence item\(s\)\s+across\s+(\d+)\s+domain\(s\);\s+follow-up research is needed\.?$/i
+const DEEP_RESEARCH_SUMMARY_OFFICIAL_GAP_RE =
+  /^(.+?)\s+still lacks stable primary or official sources\.?$/i
+const DEEP_RESEARCH_SUMMARY_RESOLVED_COVERAGE_RE =
+  /^(.+?)\s+is covered by\s+(\d+)\s+evidence item\(s\)\s+across\s+(\d+)\s+domain\(s\)\.?$/i
+const DEEP_RESEARCH_SUMMARY_DOMAIN_COVERAGE_RE =
+  /^Coverage spans\s+(\d+)\s+unique domain\(s\)\.?$/i
+const DEEP_RESEARCH_SUMMARY_FRESHNESS_COVERAGE_RE =
+  /^Fresh evidence reaches\s+(\d+)\.?$/i
+const DEEP_RESEARCH_SUMMARY_CLAIM_SUPPORT_COVERAGE_RE =
+  /^Core conclusions are supported across\s+(\d+)\s+claim group\(s\)\.?$/i
+const DEEP_RESEARCH_PRIMARY_SOURCE_VERIFICATION_RE =
+  /^Check primary sources for final verification\.?$/i
 
 function humanizeDeepResearchToken(value: string | null | undefined): string {
   const trimmed = unwrapDeepResearchToken(String(value || ''))
@@ -200,6 +232,26 @@ function optionalTranslate(key: string, translate: Translate): string {
 
 function formatDeepResearchCount(label: string, count: string): string {
   return `${label}: ${count}`
+}
+
+function formatDeepResearchTemplate(
+  template: string,
+  replacements: Record<string, string | number>
+): string {
+  return Object.entries(replacements).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    template
+  )
+}
+
+function resolveDeepResearchFocusLabel(value: string, translate: Translate): string {
+  const trimmed = value.trim()
+  if (!trimmed) return ''
+  return (
+    localizeDeepResearchStructuredValue(trimmed, translate) ||
+    localizeDeepResearchSegment(trimmed, translate) ||
+    trimmed
+  )
 }
 
 export function localizeResearchSurfaceTitle(translate: Translate): string {
@@ -329,7 +381,10 @@ export function localizeDeepResearchStructuredValue(
 ): string {
   const trimmed = String(value || '').trim()
   if (!trimmed) return ''
-  const token = normalizeDeepResearchToken(trimmed)
+  const token = resolveTokenAlias(
+    normalizeDeepResearchToken(trimmed),
+    DEEP_RESEARCH_TOKEN_ALIASES
+  )
   return (
     translateKnownToken(token, DEEP_RESEARCH_TOKEN_KEYS, translate) ||
     translateKnownToken(token, DEEP_RESEARCH_STRUCTURED_VALUE_KEYS, translate) ||
@@ -398,6 +453,95 @@ export function localizeDeepResearchSummary(
   const stopReason = localizeDeepResearchStopReason(trimmed, translate)
   if (stopReason !== trimmed) {
     return stopReason
+  }
+
+  const gapCoverageMatch = trimmed.match(DEEP_RESEARCH_SUMMARY_GAP_COVERAGE_RE)
+  if (gapCoverageMatch) {
+    return formatDeepResearchTemplate(
+      translate(
+        'chat.deepResearchSummaryGapCoverage',
+        '{focus} only covers {evidenceCount} evidence item(s) across {domainCount} domain(s); follow-up research is needed.'
+      ),
+      {
+        focus: resolveDeepResearchFocusLabel(gapCoverageMatch[1] ?? '', translate),
+        evidenceCount: gapCoverageMatch[2] ?? '0',
+        domainCount: gapCoverageMatch[3] ?? '0',
+      }
+    )
+  }
+
+  const officialGapMatch = trimmed.match(DEEP_RESEARCH_SUMMARY_OFFICIAL_GAP_RE)
+  if (officialGapMatch) {
+    return formatDeepResearchTemplate(
+      translate(
+        'chat.deepResearchSummaryOfficialGap',
+        '{focus} still lacks stable primary or official sources.'
+      ),
+      {
+        focus: resolveDeepResearchFocusLabel(officialGapMatch[1] ?? '', translate),
+      }
+    )
+  }
+
+  const resolvedCoverageMatch = trimmed.match(DEEP_RESEARCH_SUMMARY_RESOLVED_COVERAGE_RE)
+  if (resolvedCoverageMatch) {
+    return formatDeepResearchTemplate(
+      translate(
+        'chat.deepResearchSummaryResolvedCoverage',
+        '{focus} is covered by {evidenceCount} evidence item(s) across {domainCount} domain(s).'
+      ),
+      {
+        focus: resolveDeepResearchFocusLabel(resolvedCoverageMatch[1] ?? '', translate),
+        evidenceCount: resolvedCoverageMatch[2] ?? '0',
+        domainCount: resolvedCoverageMatch[3] ?? '0',
+      }
+    )
+  }
+
+  const domainCoverageMatch = trimmed.match(DEEP_RESEARCH_SUMMARY_DOMAIN_COVERAGE_RE)
+  if (domainCoverageMatch) {
+    return formatDeepResearchTemplate(
+      translate(
+        'chat.deepResearchSummaryDomainCoverage',
+        'Coverage spans {domainCount} unique domain(s).'
+      ),
+      {
+        domainCount: domainCoverageMatch[1] ?? '0',
+      }
+    )
+  }
+
+  const freshnessCoverageMatch = trimmed.match(DEEP_RESEARCH_SUMMARY_FRESHNESS_COVERAGE_RE)
+  if (freshnessCoverageMatch) {
+    return formatDeepResearchTemplate(
+      translate(
+        'chat.deepResearchSummaryFreshnessCoverage',
+        'Fresh evidence reaches {year}.'
+      ),
+      {
+        year: freshnessCoverageMatch[1] ?? '0',
+      }
+    )
+  }
+
+  const claimSupportCoverageMatch = trimmed.match(DEEP_RESEARCH_SUMMARY_CLAIM_SUPPORT_COVERAGE_RE)
+  if (claimSupportCoverageMatch) {
+    return formatDeepResearchTemplate(
+      translate(
+        'chat.deepResearchSummaryClaimSupportCoverage',
+        'Core conclusions are supported across {supportCount} claim group(s).'
+      ),
+      {
+        supportCount: claimSupportCoverageMatch[1] ?? '0',
+      }
+    )
+  }
+
+  if (DEEP_RESEARCH_PRIMARY_SOURCE_VERIFICATION_RE.test(trimmed)) {
+    return translate(
+      'chat.deepResearchOpenQuestionPrimarySourceVerification',
+      'Check primary sources for final verification.'
+    )
   }
 
   const plannedTasksMatch = trimmed.match(DEEP_RESEARCH_PLANNED_TASKS_RE)

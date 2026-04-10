@@ -24,6 +24,12 @@ type scriptedWebSearchFanoutTool struct {
 	providers []string
 }
 
+type contextAwareWebSearchFanoutTool struct {
+	def       ToolDefinition
+	providers []string
+	exec      func(ctx context.Context, args map[string]interface{}) (interface{}, error)
+}
+
 type scriptedWebQueryBrowserBackend struct {
 	mu           sync.Mutex
 	startErr     error
@@ -55,6 +61,24 @@ func (t *scriptedWebTool) Execute(_ context.Context, args map[string]interface{}
 }
 
 func (t *scriptedWebSearchFanoutTool) providerChain(raw interface{}) []string {
+	if chain := parseProviderChainArg(raw); len(chain) > 0 {
+		return chain
+	}
+	return append([]string(nil), t.providers...)
+}
+
+func (t *contextAwareWebSearchFanoutTool) Definition() ToolDefinition {
+	return t.def
+}
+
+func (t *contextAwareWebSearchFanoutTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	if t.exec == nil {
+		return "{}", nil
+	}
+	return t.exec(ctx, args)
+}
+
+func (t *contextAwareWebSearchFanoutTool) providerChain(raw interface{}) []string {
 	if chain := parseProviderChainArg(raw); len(chain) > 0 {
 		return chain
 	}
@@ -1889,6 +1913,93 @@ func TestWebQueryToolReadsCandidatesInParallel(t *testing.T) {
 	}
 	if envelope.TargetURL != "https://example.com/one" {
 		t.Fatalf("target_url = %q, want first stronger candidate", envelope.TargetURL)
+	}
+}
+
+func TestWebQueryToolHidesCanceledSearchAttemptsAfterProviderFanoutSuccess(t *testing.T) {
+	searchTool := &contextAwareWebSearchFanoutTool{
+		def:       ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		providers: []string{"alpha", "beta"},
+		exec: func(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+			provider := strings.TrimSpace(asString(args["provider"]))
+			switch provider {
+			case "alpha":
+				resp := WebSearchResponse{
+					Query: "fanout cancel hide",
+					Results: []WebSearchResult{
+						{Title: "Winner", URL: "https://example.com/winner", Description: "Winning provider result"},
+					},
+					TotalCount: 1,
+					Provider:   "alpha",
+				}
+				b, _ := json.Marshal(resp)
+				return string(b), nil
+			case "beta":
+				<-ctx.Done()
+				return nil, ctx.Err()
+			default:
+				t.Fatalf("unexpected provider %q", provider)
+				return nil, nil
+			}
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := args["url"].(string)
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Winner",
+				Content:  "Winning provider content with enough readable detail to complete the search-read flow without falling back anywhere else. It includes a full paragraph of explanatory text, concrete implementation notes, a short summary of the result quality, several extra sentences about relevance and freshness, and enough additional body copy to comfortably exceed the readable-content threshold used by the selection heuristics.",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "fanout cancel hide",
+		"depth": "standard",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	var envelope webQueryEnvelope
+	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
+		t.Fatalf("decode envelope: %v", err)
+	}
+	if envelope.Status != webQueryStatusOK {
+		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
+	}
+	for _, attempt := range envelope.Diagnostics.Attempts {
+		if attempt.Stage == "search" && strings.EqualFold(strings.TrimSpace(attempt.Mode), "beta") {
+			t.Fatalf("attempts = %+v, want canceled beta fanout attempt hidden", envelope.Diagnostics.Attempts)
+		}
+	}
+}
+
+func TestHideCanceledSearchAttemptsAfterSearchSuccess(t *testing.T) {
+	attempts := []webQueryAttempt{
+		{Stage: "search", Mode: "alpha", Status: "ok"},
+		{Stage: "search", Mode: "beta", Status: "canceled", Error: context.Canceled.Error()},
+		{Stage: "read", Mode: "http", Status: "ok"},
+	}
+
+	filtered := hideCanceledSearchAttemptsAfterSearchSuccess(attempts)
+
+	if len(filtered) != 2 {
+		t.Fatalf("filtered attempts len = %d, want 2; attempts=%+v", len(filtered), filtered)
+	}
+	for _, attempt := range filtered {
+		if attempt.Stage == "search" && attempt.Status == "canceled" {
+			t.Fatalf("filtered attempts = %+v, want canceled search attempts hidden", filtered)
+		}
 	}
 }
 

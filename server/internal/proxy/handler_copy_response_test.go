@@ -591,9 +591,7 @@ func TestCopyResponse_RecordsProviderUsageWithoutSession(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	ph.copyResponse(rec, resp, pr, req)
 
-	time.Sleep(20 * time.Millisecond)
-
-	stats := tracker.GetCurrentStats()
+	stats := waitForUsageStats(t, tracker, "openai:gpt-4o-mini")
 	s, ok := stats["openai:gpt-4o-mini"]
 	if !ok {
 		t.Fatalf("expected usage stats for openai:gpt-4o-mini, got keys=%v", mapsKeys(stats))
@@ -650,9 +648,7 @@ func TestCopyResponse_RecordsProviderUsageWithoutSession_StreamingAnthropic(t *t
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	ph.copyResponse(rec, resp, pr, req)
 
-	time.Sleep(20 * time.Millisecond)
-
-	stats := tracker.GetCurrentStats()
+	stats := waitForUsageStats(t, tracker, "anthropic:claude-3")
 	s, ok := stats["anthropic:claude-3"]
 	if !ok {
 		t.Fatalf("expected usage stats for anthropic:claude-3, got keys=%v", mapsKeys(stats))
@@ -671,6 +667,22 @@ func mapsKeys[T any](m map[string]T) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+func waitForUsageStats(t *testing.T, tracker *providerpool.UsageTracker, key string) map[string]*providerpool.UsageSummary {
+	t.Helper()
+
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for {
+		stats := tracker.GetCurrentStats()
+		if _, ok := stats[key]; ok {
+			return stats
+		}
+		if time.Now().After(deadline) {
+			return stats
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func TestCopyResponse_RecordsPromptCacheStats_NonStreamingAnthropic(t *testing.T) {

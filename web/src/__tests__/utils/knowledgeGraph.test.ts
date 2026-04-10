@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
 import type { KnowledgePageSummary } from '@/api/knowledge'
-import { buildKnowledgeGraphLayout } from '@/utils/knowledgeGraph'
+import {
+  buildKnowledgeGraphLayout,
+  getKnowledgeGraphOrbitGuide,
+  isKnowledgeGraphPointInsideEnvelope,
+  pickKnowledgeGraphDefaultFocusSlug,
+} from '@/utils/knowledgeGraph'
 
 const pages: KnowledgePageSummary[] = [
   {
@@ -84,7 +89,7 @@ describe('buildKnowledgeGraphLayout', () => {
   it('uses taller orbital rings so first-hop nodes stay closer than second-hop nodes', () => {
     const graph = buildKnowledgeGraphLayout(pages, 'center')
 
-    expect(graph.height).toBeGreaterThan(420)
+    expect(graph.height).toBeGreaterThan(560)
 
     const center = graph.nodes.find((node) => node.slug === 'center')
     const nearA = graph.nodes.find((node) => node.slug === 'near-a')
@@ -104,5 +109,82 @@ describe('buildKnowledgeGraphLayout', () => {
     expect(centerDistance).toBeLessThan(2)
     expect(nearADistance).toBeLessThan(farDistance)
     expect(nearBDistance).toBeLessThan(farDistance)
+    expect(nearADistance).toBeLessThan(nearBDistance)
+  })
+
+  it('returns wider orbit guides for deeper layers', () => {
+    const near = getKnowledgeGraphOrbitGuide(1)
+    const mid = getKnowledgeGraphOrbitGuide(2)
+    const far = getKnowledgeGraphOrbitGuide(3)
+    const detached = getKnowledgeGraphOrbitGuide(0, true)
+
+    expect(near.radiusX).toBeLessThan(mid.radiusX)
+    expect(mid.radiusY).toBeLessThan(far.radiusY)
+    expect(far.radiusX).toBeLessThan(detached.radiusX)
+  })
+
+  it('keeps orbit and detached nodes inside an ellipse-shaped envelope', () => {
+    const expansivePages: KnowledgePageSummary[] = [
+      ...pages,
+      ...Array.from({ length: 12 }, (_, index) => ({
+        title: `Detached ${index + 1}`,
+        slug: `detached-${index + 1}`,
+        page_type: 'concept',
+        summary: 'Detached node.',
+        source_refs: [`DETACHED-${index + 1}.md`],
+        keywords: ['detached'],
+        backlinks: [],
+        generated_at: '2026-04-05T12:00:00Z',
+        updated_at: '2026-04-05T12:00:00Z',
+        source_hash: `hash-detached-${index + 1}`,
+        status: 'active',
+        confidence: 'medium',
+        conflicts_with: [],
+        superseded_by: [],
+        derived_from_query: '',
+      })),
+    ]
+
+    const graph = buildKnowledgeGraphLayout(expansivePages, 'center')
+
+    for (const node of graph.nodes) {
+      expect(isKnowledgeGraphPointInsideEnvelope(node.x, node.y, node.radius)).toBe(true)
+    }
+  })
+
+  it('prefers the most connected node as the default focus and shrinks detached nodes', () => {
+    const expansivePages: KnowledgePageSummary[] = [
+      ...pages,
+      {
+        title: 'Detached',
+        slug: 'detached',
+        page_type: 'concept',
+        summary: 'Detached node.',
+        source_refs: ['DETACHED.md'],
+        keywords: ['detached'],
+        backlinks: [],
+        generated_at: '2026-04-05T12:00:00Z',
+        updated_at: '2026-04-05T12:00:00Z',
+        source_hash: 'hash-detached',
+        status: 'active',
+        confidence: 'medium',
+        conflicts_with: [],
+        superseded_by: [],
+        derived_from_query: '',
+      },
+    ]
+
+    expect(pickKnowledgeGraphDefaultFocusSlug(expansivePages)).toBe('center')
+
+    const graph = buildKnowledgeGraphLayout(expansivePages, 'center')
+    const center = graph.nodes.find((node) => node.slug === 'center')
+    const detached = graph.nodes.find((node) => node.slug === 'detached')
+
+    expect(center).toBeTruthy()
+    expect(detached).toBeTruthy()
+    expect(detached!.radius).toBeLessThan(center!.radius)
+    expect(
+      distanceFromCenter(detached!.x, detached!.y, graph.width, graph.height)
+    ).toBeGreaterThan(distanceFromCenter(center!.x, center!.y, graph.width, graph.height))
   })
 })

@@ -111,15 +111,20 @@ export interface FileAttachment {
   duration?: number // audio duration in seconds
 }
 
-const props = defineProps<{
-  disabled?: boolean
-  streaming?: boolean
-  canCancel?: boolean
-  showInlineCancel?: boolean
-  maxFileSize?: number // in bytes, default 10MB
-  allowedTypes?: string[] // MIME types
-  conversationId?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    disabled?: boolean
+    streaming?: boolean
+    canCancel?: boolean
+    showInlineCancel?: boolean
+    maxFileSize?: number // in bytes, default 10MB
+    allowedTypes?: string[] // MIME types
+    conversationId?: string
+  }>(),
+  {
+    showInlineCancel: true,
+  }
+)
 
 const emit = defineEmits<{
   send: [message: string, attachments: FileAttachment[]]
@@ -262,6 +267,9 @@ const canShowCancelButton = computed(() => {
   if (props.showInlineCancel === false) return false
   return props.canCancel ?? props.streaming ?? false
 })
+const showCompactInlineCancelButton = computed(
+  () => isCompact.value && isMobile.value && canShowCancelButton.value
+)
 const allowedMimeTypes = computed(
   () =>
     props.allowedTypes || [
@@ -2065,6 +2073,28 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
             </button>
           </div>
 
+          <button
+            v-if="showCompactInlineCancelButton"
+            class="desktop-cancel-btn flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer"
+            :title="t('common.cancel')"
+            @click="handleCancel"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M6 18L18 6M6 6l12 12"
+              />
+            </svg>
+          </button>
+
           <!-- PC Narrow: Send button (between textarea and + button) -->
           <button
             v-if="isCompact && !isMobile"
@@ -2092,7 +2122,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
           <!-- Right: + button for extensions (or Cancel during streaming) -->
           <button
-            v-if="canShowCancelButton"
+            v-if="canShowCancelButton && !showCompactInlineCancelButton"
             class="flex-shrink-0 w-10 h-10 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 hover:text-red-300 border border-red-500/30 flex items-center justify-center transition-all duration-200 cursor-pointer"
             :title="t('common.cancel')"
             @click="handleCancel"
@@ -2112,7 +2142,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               />
             </svg>
           </button>
-          <div v-else ref="mobileMenuRef" class="relative">
+          <div v-else-if="!showCompactInlineCancelButton" ref="mobileMenuRef" class="relative">
             <button
               :disabled="disabled"
               class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"

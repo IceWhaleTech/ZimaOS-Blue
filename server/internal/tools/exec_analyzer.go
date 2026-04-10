@@ -168,6 +168,7 @@ func AnalyzeRiskWithSuppressedReasons(command string, suppressedReasons []string
 
 func analyzeRisk(command string, suppressedReasons map[string]struct{}) RiskScore {
 	ensureRiskRules()
+	command = sanitizeCommandForPatternMatching(command)
 
 	var score RiskScore
 	catScores := map[RiskCategory]*int{

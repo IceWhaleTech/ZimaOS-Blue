@@ -243,6 +243,51 @@ func TestResearchDriverStart_UIReviewModeRunsInsideHarnessEnvelope(t *testing.T)
 	}
 }
 
+func TestResearchDriverValidate_AnalyzeModeRejectsTypedNilExecutor(t *testing.T) {
+	driver := NewResearchDriver(nil, newDriverTestController(t))
+
+	var analyzeTool *tools.AnalyzeTool
+	driver.SetAnalyzeExecutor(analyzeTool)
+
+	err := driver.Validate(harness.RunSpec{
+		Kind: harness.RunKindResearch,
+		Goal: "Summarize the quarterly report",
+		Metadata: map[string]interface{}{
+			"mode": "analyze",
+		},
+	})
+	if err == nil {
+		t.Fatal("Validate returned nil error for typed-nil analyze executor")
+	}
+	if err.Error() != "analyze runtime is not available" {
+		t.Fatalf("Validate error = %q, want %q", err.Error(), "analyze runtime is not available")
+	}
+}
+
+func TestResearchDriverStart_AnalyzeModeRejectsTypedNilExecutor(t *testing.T) {
+	controller := newDriverTestController(t)
+	driver := NewResearchDriver(nil, controller)
+
+	var analyzeTool *tools.AnalyzeTool
+	driver.SetAnalyzeExecutor(analyzeTool)
+
+	err := driver.Start(context.Background(), &harness.Run{
+		ID:        "research-typed-nil-start",
+		RootRunID: "research-typed-nil-start",
+		Kind:      harness.RunKindResearch,
+		Goal:      "Summarize the quarterly report",
+		Metadata: map[string]interface{}{
+			"mode": "analyze",
+		},
+	}, harness.RunEnv{Manager: controller})
+	if err == nil {
+		t.Fatal("Start returned nil error for typed-nil analyze executor")
+	}
+	if err.Error() != "analyze runtime is not available" {
+		t.Fatalf("Start error = %q, want %q", err.Error(), "analyze runtime is not available")
+	}
+}
+
 func TestJobToRun_PersistsFamilyModeAndResearchDepth(t *testing.T) {
 	job := &deepresearch.Job{
 		ID:             "job-1",

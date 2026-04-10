@@ -658,6 +658,22 @@ func (t *WebTool) runSearchDiscovery(ctx context.Context, args map[string]interf
 		select {
 		case outcome := <-results:
 			remaining--
+			if outcome.Err != nil {
+				// Hide provider attempts that were only canceled because another
+				// provider already succeeded and the fanout settle window closed.
+				if len(outcomes) > 0 && errors.Is(outcome.Err, context.Canceled) {
+					continue
+				}
+				attempts = append(attempts, webQueryAttempt{
+					Stage:  "search",
+					Mode:   firstNonEmpty(outcome.Provider, "search"),
+					URL:    query,
+					Status: webQueryAttemptStatus(outcome.Err),
+					Error:  errorString(outcome.Err),
+				})
+				searchErrs = append(searchErrs, outcome.Err)
+				continue
+			}
 			attempts = append(attempts, webQueryAttempt{
 				Stage:  "search",
 				Mode:   firstNonEmpty(outcome.Provider, "search"),
@@ -665,10 +681,6 @@ func (t *WebTool) runSearchDiscovery(ctx context.Context, args map[string]interf
 				Status: webQueryAttemptStatus(outcome.Err),
 				Error:  errorString(outcome.Err),
 			})
-			if outcome.Err != nil {
-				searchErrs = append(searchErrs, outcome.Err)
-				continue
-			}
 			outcomes = append(outcomes, outcome)
 			if len(outcome.Results) > 0 && settleTimer == nil && remaining > 0 {
 				settleTimer = time.NewTimer(webQuerySearchSettleWindow)
@@ -684,6 +696,7 @@ func (t *WebTool) runSearchDiscovery(ctx context.Context, args map[string]interf
 	if len(outcomes) == 0 {
 		return WebSearchResponse{}, attempts, firstNonNilErr(searchErrs...)
 	}
+	attempts = hideCanceledSearchAttemptsAfterSearchSuccess(attempts)
 	return mergeWebQuerySearchOutcomes(query, maxResults, outcomes), attempts, nil
 }
 
@@ -3091,6 +3104,21 @@ func webQueryAttemptStatus(err error) string {
 	default:
 		return "error"
 	}
+}
+
+func hideCanceledSearchAttemptsAfterSearchSuccess(attempts []webQueryAttempt) []webQueryAttempt {
+	if len(attempts) == 0 {
+		return attempts
+	}
+
+	filtered := attempts[:0]
+	for _, attempt := range attempts {
+		if attempt.Stage == "search" && attempt.Status == "canceled" {
+			continue
+		}
+		filtered = append(filtered, attempt)
+	}
+	return filtered
 }
 
 func minWebQueryInt(a, b int) int {

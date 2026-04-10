@@ -17,6 +17,7 @@ import {
   clearSplitSegmentsIncrementalState,
 } from '@/utils/typeless'
 import { stripFirstLineHeading } from '@/utils/chat-message-text'
+import { localizeCompletionFollowupHeading } from '@/utils/completionFollowupText'
 import { stripDuplicateTodoChecklistForMessage } from '@/utils/todoChecklist'
 import type { TypelessCard, TypelessCardChoice, ParsedContent } from '@/types/typeless'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
@@ -123,6 +124,10 @@ const streamStatusStartedAt = computed(() => streamState.value?.statusStartedAt 
 const showExternalStatusRail = computed(
   () => streamState.value?.showExternalStatusRail ?? !!props.showExternalStatusRail
 )
+
+function tr(key: string, fallback: string): string {
+  return te(key) ? String(t(key)) : fallback
+}
 
 const trackStreamingState = computed(() => isAssistant.value && !!props.isStreaming)
 const hasMediaTask = computed(() => {
@@ -828,7 +833,9 @@ function syncAssistantStatusElapsed() {
     assistantStatusElapsedSeconds.value = ''
     return
   }
-  assistantStatusElapsedSeconds.value = ((Date.now() - streamStatusStartedAt.value) / 1000).toFixed(1)
+  assistantStatusElapsedSeconds.value = ((Date.now() - streamStatusStartedAt.value) / 1000).toFixed(
+    1
+  )
 }
 
 function stopAssistantStatusTimer() {
@@ -1116,6 +1123,15 @@ const displayContentWithoutProcessBlocks = computed(() => {
   })
 })
 
+const localizedDisplayContentWithoutProcessBlocks = computed(() => {
+  if (!isAssistant.value) return displayContentWithoutProcessBlocks.value
+
+  return localizeCompletionFollowupHeading(
+    displayContentWithoutProcessBlocks.value,
+    tr('chat.completionFollowupHeading', "If you'd like, I can also help with:")
+  )
+})
+
 type AssistantTextState = { html: string; isEmpty: boolean }
 interface AssistantTextStateCacheEntry {
   text: string
@@ -1151,7 +1167,7 @@ const assistantTextState = computed<AssistantTextState>(() => {
     return { html: '', isEmpty: false }
   }
 
-  let text = displayContentWithoutProcessBlocks.value
+  let text = localizedDisplayContentWithoutProcessBlocks.value
   // When tool details are hidden, strip process blocks and typeless card blocks
   if (!settingsStore.showToolDetails) {
     text = stripProcessContent(text)
@@ -1221,7 +1237,7 @@ const shouldHideMessage = computed(() => {
 // Parse typeless cards from assistant messages
 // Use incremental parsing for streaming messages, regular parsing for completed messages
 const parsedContent = computed(() => {
-  const content = displayContentWithoutProcessBlocks.value
+  const content = localizedDisplayContentWithoutProcessBlocks.value
   const renderMessageId = props.message.render_key || props.message.id
   const explicitTodoCardId = props.message.todo_card_id?.trim()
   if (isUser.value) {
@@ -1966,11 +1982,9 @@ function buildSegmentedAssistantBlocks(segments: RenderedContentSegment[]): Assi
 const assistantRenderBlocks = computed<AssistantRenderBlock[]>(() => {
   if (!isAssistant.value || isContentEmpty.value || hasMediaTask.value) return []
 
-  return (
-    effectiveHasCards.value && renderedContentSegments.value
-      ? buildSegmentedAssistantBlocks(renderedContentSegments.value)
-      : buildTextOnlyAssistantBlocks(assistantTextState.value.html)
-  )
+  return effectiveHasCards.value && renderedContentSegments.value
+    ? buildSegmentedAssistantBlocks(renderedContentSegments.value)
+    : buildTextOnlyAssistantBlocks(assistantTextState.value.html)
 })
 
 const showProcessOnlyAssistantBubble = computed(
@@ -3406,10 +3420,7 @@ async function handleMobileDelete() {
                     </svg>
                   </span>
                 </div>
-                <div
-                  v-if="streamToolExecuting && toolDisplayNames.length > 0"
-                  class="tool-names"
-                >
+                <div v-if="streamToolExecuting && toolDisplayNames.length > 0" class="tool-names">
                   <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{
                     name
                   }}</span>

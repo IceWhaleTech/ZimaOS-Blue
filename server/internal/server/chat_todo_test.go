@@ -92,6 +92,9 @@ func TestShouldAllowToolDependentAutoContinueWithoutTools(t *testing.T) {
 	if !shouldAllowToolDependentAutoContinue("pseudo_tool_call", false, nil) {
 		t.Fatal("expected pseudo_tool_call to remain allowed for non-clarify tool-less rounds")
 	}
+	if shouldAllowToolDependentAutoContinue("pseudo_tool_call", true, []llm.Tool{{Name: "tool_search"}}) {
+		t.Fatal("expected pseudo_tool_call to remain disabled for clarify-none tool_search-only fallback")
+	}
 	if !shouldAllowToolDependentAutoContinue("pseudo_tool_call", true, []llm.Tool{{Name: "exec"}}) {
 		t.Fatal("expected pseudo_tool_call to remain allowed when tools are exposed")
 	}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  localizeDeepResearchAction,
   localizeDeepResearchGap,
   localizeDeepResearchReportStyle,
   localizeDeepResearchSegment,
@@ -21,11 +22,21 @@ const zhMessages: Record<string, string> = {
   'chat.deepResearchActionVerificationCompleted': '验证已完成',
   'chat.deepResearchActionFollowupPlanned': '已计划后续跟进',
   'chat.deepResearchActionLoopStopped': '研究循环已停止',
+  'chat.deepResearchActionResearchBriefPrepared': '研究摘要已准备',
+  'chat.deepResearchActionDraftSynthesisReady': '研究草稿已生成',
+  'chat.deepResearchActionDetectedResearchGap': '发现研究缺口',
   'chat.deepResearchGapNeedEvidenceCoverage': '需要补充证据',
   'chat.deepResearchGapNeedBroaderSourceDiversity': '需要更广泛的来源多样性',
   'chat.deepResearchGapNeedPrimaryOrOfficialSources': '需要一手或官方来源',
   'chat.deepResearchPlannedTasks': '规划任务',
   'chat.deepResearchLiveSources': '实时来源',
+  'chat.deepResearchSummaryGapCoverage': '{focus}仅覆盖 {evidenceCount} 条证据 / {domainCount} 个来源域名，需要继续深挖。',
+  'chat.deepResearchSummaryOfficialGap': '{focus}尚未拿到稳定的一手/官方来源支撑。',
+  'chat.deepResearchSummaryResolvedCoverage': '{focus}已覆盖 {evidenceCount} 条证据 / {domainCount} 个来源域名。',
+  'chat.deepResearchSummaryDomainCoverage': '当前已覆盖 {domainCount} 个来源域名。',
+  'chat.deepResearchSummaryFreshnessCoverage': '已覆盖到 {year} 年的较新来源。',
+  'chat.deepResearchSummaryClaimSupportCoverage': '主要结论已被 {supportCount} 组支持信号覆盖。',
+  'chat.deepResearchOpenQuestionPrimarySourceVerification': '建议回查一手来源并进行最终核验。',
   'chat.deepResearchSourceTypeLaw': '法规',
   'chat.deepResearchMetaOfficial': '官方',
   'chat.deepResearchStopReasonCoverage': '已达到覆盖目标',
@@ -33,6 +44,7 @@ const zhMessages: Record<string, string> = {
   'chat.deepResearchWorkflowScope': '范围',
   'chat.deepResearchAxisLatest': '最新动态',
   'chat.deepResearchAxisOfficial': '官方来源',
+  'chat.deepResearchAxisComparison': '对比信息',
   'chat.deepResearchFocusClaimValidation': '结论核验',
   'chat.deepResearchTimeWindowEarlier': '早期',
   'chat.deepResearchTimeWindowRecent': '近期',
@@ -54,6 +66,12 @@ describe('deepResearchText', () => {
   it('localizes common badge status tokens', () => {
     expect(localizeDeepResearchStatus('warning', translate)).toBe('警告')
     expect(localizeDeepResearchStatus('info', translate)).toBe('信息')
+  })
+
+  it('localizes exact english event summary phrases through action mappings', () => {
+    expect(localizeDeepResearchAction('Research brief prepared', translate)).toBe('研究摘要已准备')
+    expect(localizeDeepResearchAction('Draft synthesis ready', translate)).toBe('研究草稿已生成')
+    expect(localizeDeepResearchAction('Detected a research gap', translate)).toBe('发现研究缺口')
   })
 
   it('localizes bracket-wrapped segment tokens', () => {
@@ -93,6 +111,9 @@ describe('deepResearchText', () => {
   })
 
   it('localizes deep research payload summaries and stop reasons', () => {
+    expect(localizeDeepResearchSummary('Research brief prepared', translate)).toBe('研究摘要已准备')
+    expect(localizeDeepResearchSummary('Draft synthesis ready', translate)).toBe('研究草稿已生成')
+    expect(localizeDeepResearchSummary('Detected a research gap', translate)).toBe('发现研究缺口')
     expect(localizeDeepResearchSummary('Planned 5 research task(s)', translate)).toBe(
       '规划任务: 5'
     )
@@ -107,6 +128,40 @@ describe('deepResearchText', () => {
       '研究循环已停止'
     )
     expect(localizeDeepResearchStopReason('coverage_sufficient', translate)).toBe('已达到覆盖目标')
+  })
+
+  it('localizes numeric deep research summaries and known english verification prompts', () => {
+    expect(localizeDeepResearchStructuredValue('Official sources', translate)).toBe('官方来源')
+    expect(
+      localizeDeepResearchSummary(
+        'Overview only covers 0 evidence item(s) across 0 domain(s); follow-up research is needed.',
+        translate
+      )
+    ).toBe('概览仅覆盖 0 条证据 / 0 个来源域名，需要继续深挖。')
+    expect(
+      localizeDeepResearchSummary(
+        'Official sources still lacks stable primary or official sources.',
+        translate
+      )
+    ).toBe('官方来源尚未拿到稳定的一手/官方来源支撑。')
+    expect(
+      localizeDeepResearchSummary(
+        'Comparison is covered by 8 evidence item(s) across 8 domain(s).',
+        translate
+      )
+    ).toBe('对比信息已覆盖 8 条证据 / 8 个来源域名。')
+    expect(localizeDeepResearchSummary('Coverage spans 8 unique domain(s).', translate)).toBe(
+      '当前已覆盖 8 个来源域名。'
+    )
+    expect(localizeDeepResearchSummary('Fresh evidence reaches 2026.', translate)).toBe(
+      '已覆盖到 2026 年的较新来源。'
+    )
+    expect(
+      localizeDeepResearchSummary('Core conclusions are supported across 7 claim group(s).', translate)
+    ).toBe('主要结论已被 7 组支持信号覆盖。')
+    expect(
+      localizeDeepResearchSummary('Check primary sources for final verification.', translate)
+    ).toBe('建议回查一手来源并进行最终核验。')
   })
 
   it('localizes deep research report styles', () => {

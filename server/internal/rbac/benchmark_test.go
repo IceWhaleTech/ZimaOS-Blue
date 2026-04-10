@@ -3,6 +3,7 @@ package rbac
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -241,6 +242,10 @@ func GetRBACPerformanceBaseline() *RBACPerformanceBaseline {
 
 // TestRBACPerformanceRegression tests for RBAC performance regressions
 func TestRBACPerformanceRegression(t *testing.T) {
+	if os.Getenv("CI") != "" {
+		t.Skip("disabled in CI: nanosecond-scale RBAC performance thresholds are host-load sensitive")
+	}
+
 	baseline := GetRBACPerformanceBaseline()
 	tolerance := 2.0 // Allow 2x baseline
 

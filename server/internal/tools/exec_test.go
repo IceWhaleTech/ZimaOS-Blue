@@ -2729,6 +2729,15 @@ func TestValidateCommandSafety(t *testing.T) {
 			t.Errorf("expected allow for %q, got %v", cmd, err)
 		}
 	}
+
+	heredocDataWrite := `cat > alpha_summary.md << 'ENDOFFILE'
+Project Alpha summary
+
+We implemented graceful shutdown procedures and added monitoring alerts.
+ENDOFFILE`
+	if err := ValidateCommandSafety(heredocDataWrite); err != nil {
+		t.Fatalf("expected safe heredoc file write to be allowed, got %v", err)
+	}
 }
 
 func TestMatchCommandSafetyRequiresApprovalForPipeToInterpreter(t *testing.T) {
@@ -3064,6 +3073,24 @@ func TestAnalyzeRisk(t *testing.T) {
 		}
 		if risk.Level != tt.level {
 			t.Errorf("AnalyzeRisk(%q).Level = %s, want %s (score=%d)", tt.command, risk.Level, tt.level, risk.Total)
+		}
+	}
+}
+
+func TestAnalyzeRiskIgnoresShutdownInSafeCatHeredoc(t *testing.T) {
+	command := `cat > alpha_summary.md << 'ENDOFFILE'
+Project Alpha summary
+
+We implemented graceful shutdown procedures and added monitoring alerts.
+ENDOFFILE`
+
+	risk := AnalyzeRisk(command)
+	if risk.System >= 70 {
+		t.Fatalf("expected heredoc data write not to trigger shutdown system risk, got %+v", risk)
+	}
+	for _, reason := range risk.Reasons {
+		if strings.Contains(strings.ToLower(reason), "shutdown") {
+			t.Fatalf("expected shutdown reason to be absent, got %+v", risk.Reasons)
 		}
 	}
 }

@@ -3,6 +3,7 @@ import type { DeepResearchJobSummary } from '@/api/deepResearch'
 export interface ChatCancelableWorkState {
   streaming: boolean
   sending: boolean
+  toolExecuting?: boolean
   isRecovering: boolean
   mediaGenerating: boolean
   streamUIPhase?: string | null
@@ -26,11 +27,18 @@ export function getCurrentConversationDeepResearchJobs(
 }
 
 export function hasCancelableChatWork(state: ChatCancelableWorkState): boolean {
-  if (state.streaming || state.sending || state.isRecovering || state.mediaGenerating) {
+  if (
+    state.streaming ||
+    state.sending ||
+    state.toolExecuting ||
+    state.isRecovering ||
+    state.mediaGenerating
+  ) {
     return true
   }
 
   if (
+    state.streamUIPhase === 'executing' ||
     state.streamUIPhase === 'recovering' ||
     state.streamUIPhase === 'awaiting_confirmation' ||
     state.streamUIPhase === 'interrupted'

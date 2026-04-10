@@ -80,11 +80,28 @@ func assertClarifyNoneSelectionForPrompt(t *testing.T, handler *ChatHandler, con
 	if selection.NativeMode != chatNativeToolSurfaceModeClarifyNone {
 		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeClarifyNone)
 	}
-	if len(selection.NativeDefs) != 0 {
-		t.Fatalf("NativeDefs = %v, want none", selectedToolNames(selection.NativeDefs))
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "tool_search" {
+		t.Fatalf("NativeDefs = %v, want [tool_search]", got)
 	}
 	if selection.DiscoveryDecision == nil || !selection.DiscoveryDecision.NeedClarify {
 		t.Fatalf("DiscoveryDecision = %#v, want clarify decision", selection.DiscoveryDecision)
+	}
+}
+
+func assertLLMRequestToolNames(t *testing.T, got []llm.Tool, want ...string) {
+	t.Helper()
+
+	names := make([]string, 0, len(got))
+	for _, tool := range got {
+		names = append(names, tool.Name)
+	}
+	if len(names) != len(want) {
+		t.Fatalf("request tools = %v, want %v", names, want)
+	}
+	for i := range want {
+		if names[i] != want[i] {
+			t.Fatalf("request tools = %v, want %v", names, want)
+		}
 	}
 }
 
@@ -150,6 +167,11 @@ func TestChatHandlerSendMessage_ClarifyNonePseudoToolLeakFallsBackToClarificatio
 	if scripted.CallCount() != 1 {
 		t.Fatalf("expected only one LLM round for clarify-none pseudo leak, got %d", scripted.CallCount())
 	}
+	firstReq, ok := scripted.RequestAt(0)
+	if !ok {
+		t.Fatalf("missing first request capture")
+	}
+	assertLLMRequestToolNames(t, firstReq.Tools, "tool_search")
 
 	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
 	if err != nil {
@@ -201,6 +223,9 @@ func TestStreamMessage_ClarifyNonePseudoToolLeakFallsBackToClarification(t *test
 	}
 	if fakeProxy.callCount != 1 {
 		t.Fatalf("expected only one proxy call for clarify-none pseudo leak, got %d", fakeProxy.callCount)
+	}
+	if len(fakeProxy.requestToolNames) != 1 || len(fakeProxy.requestToolNames[0]) != 1 || fakeProxy.requestToolNames[0][0] != "tool_search" {
+		t.Fatalf("expected stream request tools [[tool_search]], got %v raw=%v", fakeProxy.requestToolNames, fakeProxy.rawRequestBodies)
 	}
 	if fakeProxy.sawExecutionNudge || fakeProxy.sawPseudoToolNudge || fakeProxy.sawAgentLoopNudge {
 		t.Fatalf("expected no continuation nudge for clarify-none pseudo leak, last=%q", fakeProxy.lastRequestMessage)
@@ -279,9 +304,7 @@ func TestProcessChannelMessage_ClarifyNonePseudoToolLeakFallsBackToClarification
 	if !ok {
 		t.Fatalf("missing first IM request capture")
 	}
-	if len(firstReq.Tools) != 0 {
-		t.Fatalf("expected clarify-none IM request to expose no tools, got %v", firstReq.Tools)
-	}
+	assertLLMRequestToolNames(t, firstReq.Tools, "tool_search")
 
 	messages, err := store.GetMessages(context.Background(), convID, 20, 0)
 	if err != nil {
@@ -416,9 +439,7 @@ func TestProcessChannelMessage_CheckpointResume_ClarifyNonePseudoToolLeakFallsBa
 	if !ok {
 		t.Fatalf("missing resumed IM request capture")
 	}
-	if len(firstReq.Tools) != 0 {
-		t.Fatalf("expected resumed clarify-none IM request to expose no tools, got %v", firstReq.Tools)
-	}
+	assertLLMRequestToolNames(t, firstReq.Tools, "tool_search")
 	sawToolResult := false
 	for _, msg := range firstReq.Messages {
 		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "mock docs result") {

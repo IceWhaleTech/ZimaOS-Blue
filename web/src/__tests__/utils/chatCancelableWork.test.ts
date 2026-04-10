@@ -38,6 +38,7 @@ describe('chatCancelableWork', () => {
       hasCancelableChatWork({
         streaming: false,
         sending: false,
+        toolExecuting: false,
         isRecovering: false,
         mediaGenerating: false,
         streamUIPhase: 'idle',
@@ -52,6 +53,7 @@ describe('chatCancelableWork', () => {
       hasCancelableChatWork({
         streaming: false,
         sending: false,
+        toolExecuting: false,
         isRecovering: false,
         mediaGenerating: false,
         streamUIPhase: 'idle',
@@ -59,5 +61,20 @@ describe('chatCancelableWork', () => {
         currentConversationResearchJobCount: 0,
       })
     ).toBe(false)
+  })
+
+  it('treats executing tool work as cancelable even without streaming text yet', () => {
+    expect(
+      hasCancelableChatWork({
+        streaming: false,
+        sending: false,
+        toolExecuting: true,
+        isRecovering: false,
+        mediaGenerating: false,
+        streamUIPhase: 'executing',
+        currentConversationTaskCount: 0,
+        currentConversationResearchJobCount: 0,
+      })
+    ).toBe(true)
   })
 })

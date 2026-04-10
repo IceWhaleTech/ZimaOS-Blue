@@ -605,6 +605,8 @@ var (
 	dangerousCommandPatternsOnce sync.Once
 )
 
+var safeCatHeredocPattern = regexp.MustCompile(`<<-?\s*(?:'([^']+)'|"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))`)
+
 func ensureDangerousCommandPatterns() {
 	dangerousCommandPatternsOnce.Do(func() {
 		patterns := make([]dangerousPattern, 0, len(dangerousCommandPatternSpecs))
@@ -621,10 +623,80 @@ func ensureDangerousCommandPatterns() {
 	})
 }
 
+func sanitizeCommandForPatternMatching(command string) string {
+	if command == "" || !strings.Contains(command, "<<") || !strings.Contains(command, "\n") {
+		return command
+	}
+	lines := strings.Split(command, "\n")
+	sanitized := make([]string, 0, len(lines))
+	skippingBody := false
+	terminator := ""
+	for _, line := range lines {
+		if skippingBody {
+			if strings.TrimSpace(line) == terminator {
+				sanitized = append(sanitized, line)
+				skippingBody = false
+				terminator = ""
+			}
+			continue
+		}
+		sanitized = append(sanitized, line)
+		if nextTerminator, ok := safeCatHeredocTerminator(line); ok {
+			skippingBody = true
+			terminator = nextTerminator
+		}
+	}
+	return strings.Join(sanitized, "\n")
+}
+
+func safeCatHeredocTerminator(line string) (string, bool) {
+	matches := safeCatHeredocPattern.FindStringSubmatch(line)
+	if len(matches) == 0 {
+		return "", false
+	}
+	if strings.Contains(line, "|") || !strings.Contains(line, ">") {
+		return "", false
+	}
+	prefix := line[:strings.Index(line, "<<")]
+	prefix = strings.TrimSpace(lastShellCommandSegment(prefix))
+	if prefix == "" {
+		return "", false
+	}
+	fields := strings.Fields(prefix)
+	if len(fields) == 0 || fields[0] != "cat" {
+		return "", false
+	}
+	for _, match := range matches[1:] {
+		if strings.TrimSpace(match) != "" {
+			return strings.TrimSpace(match), true
+		}
+	}
+	return "", false
+}
+
+func lastShellCommandSegment(line string) string {
+	segment := line
+	for {
+		best := -1
+		bestWidth := 0
+		for _, op := range []string{"&&", "||", ";"} {
+			if idx := strings.LastIndex(segment, op); idx > best {
+				best = idx
+				bestWidth = len(op)
+			}
+		}
+		if best < 0 {
+			return segment
+		}
+		segment = segment[best+bestWidth:]
+	}
+}
+
 // MatchCommandSafety checks the raw command string against the dangerous
 // command patterns and returns how the caller should handle the first match.
 func MatchCommandSafety(command string) *CommandSafetyMatch {
 	ensureDangerousCommandPatterns()
+	command = sanitizeCommandForPatternMatching(command)
 	for _, dp := range dangerousCommandPatterns {
 		if !dp.re.MatchString(command) {
 			continue

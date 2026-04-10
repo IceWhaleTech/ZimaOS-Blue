@@ -22,7 +22,7 @@ import {
   localizeResearchSurfaceTitle,
 } from '@/utils/deepResearchText'
 
-const { t, te } = useI18n()
+const { t, te, tm } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardDeepResearchTimeline
@@ -30,10 +30,10 @@ const props = defineProps<{
 }>()
 
 function resolveLabel(key: string, fallback: string, named?: Record<string, unknown>) {
-  if (te(key)) {
-    return String(named ? t(key, named) : t(key))
-  }
-  return fallback
+  if (!te(key)) return fallback
+  if (named) return String(t(key, named))
+  const value = tm(key)
+  return typeof value === 'string' ? value : String(t(key))
 }
 
 const steps = computed<DeepResearchTimelineStep[]>(() => props.card.steps || [])

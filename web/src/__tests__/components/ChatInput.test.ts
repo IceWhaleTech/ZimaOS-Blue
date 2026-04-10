@@ -228,6 +228,37 @@ describe('ChatInput cancel affordance', () => {
     expect(cancelButton).toBeUndefined()
   })
 
+  it('shows a single inline stop button on mobile when the current conversation is cancelable', async () => {
+    Object.defineProperty(window, 'innerWidth', { value: 390, writable: true, configurable: true })
+    Object.defineProperty(window.navigator, 'userAgent', { value: 'iphone', configurable: true })
+    Object.defineProperty(window.navigator, 'maxTouchPoints', {
+      value: 5,
+      configurable: true,
+    })
+
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(ChatInput, {
+      props: {
+        streaming: false,
+        canCancel: true,
+      },
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await settleComposer(wrapper)
+
+    expect(wrapper.find('.chat-input-wrapper--mobile').exists()).toBe(true)
+    expect(wrapper.findAll('button.desktop-cancel-btn')).toHaveLength(1)
+  })
+
   it('restores draft message for the current conversation on mount', async () => {
     localStorage.setItem('zima.chat.input_draft.v2:conv-1', 'cached draft message')
 

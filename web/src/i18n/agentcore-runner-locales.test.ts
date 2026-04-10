@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { agentcoreRunnerChatOverrides } from './agentcore-runner-chat-locales'
 import { agentcoreRunnerPartDescriptionOverrides } from './agentcore-runner-part-descriptions'
 import { agentcoreRunnerPartSettingsOverrides } from './agentcore-runner-part-settings'
 import { mergeHarnessLocale } from './harness-locale-additions'
@@ -55,8 +56,27 @@ describe('agentcore runner locale coverage', () => {
   it('declares part override tables for every non-base locale', () => {
     const expectedOverrides = localeKeys.filter((localeKey) => localeKey !== 'en-US').sort()
 
+    expect(Object.keys(agentcoreRunnerChatOverrides).sort()).toEqual(expectedOverrides)
     expect(Object.keys(agentcoreRunnerPartSettingsOverrides).sort()).toEqual(expectedOverrides)
     expect(Object.keys(agentcoreRunnerPartDescriptionOverrides).sort()).toEqual(expectedOverrides)
+  })
+
+  it('declares localized chat selector copy for every non-base locale', () => {
+    for (const localeKey of localeKeys) {
+      if (localeKey === 'en-US') continue
+
+      const override = agentcoreRunnerChatOverrides[localeKey]
+      expect(
+        typeof override?.refLabel,
+        `${localeKey} should override settings.agentcoreRunner.refLabel`
+      ).toBe('string')
+      expect(
+        typeof override?.mobileHint,
+        `${localeKey} should override settings.agentcoreRunner.mobileHint`
+      ).toBe('string')
+      expect(String(override?.refLabel).trim().length).toBeGreaterThan(0)
+      expect(String(override?.mobileHint).trim().length).toBeGreaterThan(0)
+    }
   })
 
   it('exposes non-empty runtime strings for all 27 locales', () => {

@@ -17,6 +17,7 @@ import {
   type KnowledgePageSummary,
 } from '@/api/knowledge'
 import { useKnowledgeJobs } from '@/composables/useKnowledgeJobs'
+import { pickKnowledgeGraphDefaultFocusSlug } from '@/utils/knowledgeGraph'
 
 type KnowledgePaneSummary = {
   visiblePages: number
@@ -158,7 +159,10 @@ async function loadKnowledgeSpace() {
 
     const initialPage = Array.isArray(route.query.page) ? route.query.page[0] : route.query.page
     const nextSlug =
-      (typeof initialPage === 'string' && initialPage) || selectedSlug.value || pages.value[0]?.slug
+      (typeof initialPage === 'string' && initialPage) ||
+      selectedSlug.value ||
+      pickKnowledgeGraphDefaultFocusSlug(pages.value) ||
+      pages.value[0]?.slug
     if (nextSlug) {
       await loadPage(nextSlug, false)
     }

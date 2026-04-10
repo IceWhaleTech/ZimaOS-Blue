@@ -37,7 +37,7 @@ LOG = logging.getLogger("pinchbench-blue")
 
 MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 180.0
 MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 600.0
-MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 90.0
+MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 120.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -472,8 +472,11 @@ def resolve_blue_audit_db_paths(
     if blue_db_path is not None:
         candidates.append(blue_db_path)
         candidates.append(blue_db_path.with_name("session_audit.db"))
+        candidates.append(blue_db_path.parent / "session_audit_logs")
     candidates.append(Path.home() / ".zimaos-blue" / "data" / "session_audit.db")
+    candidates.append(Path.home() / ".zimaos-blue" / "data" / "session_audit_logs")
     candidates.append(Path("/tmp/pinchbench-home/.zimaos-blue/data/session_audit.db"))
+    candidates.append(Path("/tmp/pinchbench-home/.zimaos-blue/data/session_audit_logs"))
 
     resolved_paths: List[Path] = []
     seen: set[str] = set()
@@ -582,17 +585,20 @@ def load_tool_audit_rows(db_paths: Sequence[Path], conversation_id: str) -> List
     merged: List[Dict[str, Any]] = []
     seen: set[tuple[str, str, str, str, str, str]] = set()
     for db_path in db_paths:
-        uri = f"file:{db_path}?mode=ro"
-        try:
-            with sqlite3.connect(uri, uri=True, timeout=5.0) as conn:
-                conn.row_factory = sqlite3.Row
-                conn.execute("PRAGMA busy_timeout=5000")
-                rows = conn.execute(query, (conversation_id,)).fetchall()
-        except sqlite3.Error as exc:
-            LOG.debug("Failed to read Blue audit rows from %s: %s", db_path, exc)
-            continue
-        for row in rows:
-            data = dict(row)
+        rows: List[Dict[str, Any]] = []
+        if db_path.is_dir():
+            rows = load_tool_audit_rows_from_jsonl_dir(db_path, conversation_id)
+        else:
+            uri = f"file:{db_path}?mode=ro"
+            try:
+                with sqlite3.connect(uri, uri=True, timeout=5.0) as conn:
+                    conn.row_factory = sqlite3.Row
+                    conn.execute("PRAGMA busy_timeout=5000")
+                    rows = [dict(row) for row in conn.execute(query, (conversation_id,)).fetchall()]
+            except sqlite3.Error as exc:
+                LOG.debug("Failed to read Blue audit rows from %s: %s", db_path, exc)
+                continue
+        for data in rows:
             fingerprint = (
                 str(data.get("created_at", "") or ""),
                 str(data.get("event_type", "") or ""),
@@ -605,8 +611,56 @@ def load_tool_audit_rows(db_paths: Sequence[Path], conversation_id: str) -> List
                 continue
             seen.add(fingerprint)
             merged.append(data)
-    merged.sort(key=lambda row: (str(row.get("created_at", "") or ""), str(row.get("tool_call_id", "") or "")))
+    merged.sort(
+        key=lambda row: (
+            str(row.get("created_at", "") or ""),
+            0 if str(row.get("event_type", "") or "").strip().lower() == "assistant_tool_call" else 1,
+            str(row.get("tool_call_id", "") or ""),
+        )
+    )
     return merged
+
+
+def load_tool_audit_rows_from_jsonl_dir(
+    audit_dir: Path,
+    conversation_id: str,
+) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    try:
+        log_paths = sorted(audit_dir.glob(f"{conversation_id}-*.jsonl"))
+    except OSError as exc:
+        LOG.debug("Failed to list Blue JSONL audit logs from %s: %s", audit_dir, exc)
+        return rows
+
+    for log_path in log_paths:
+        try:
+            raw_lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError as exc:
+            LOG.debug("Failed to read Blue JSONL audit log %s: %s", log_path, exc)
+            continue
+        for raw_line in raw_lines:
+            line = raw_line.strip()
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                LOG.debug("Failed to decode Blue JSONL audit line from %s", log_path)
+                continue
+            event_type = str(payload.get("event_type", "") or "").strip().lower()
+            if event_type not in {"assistant_tool_call", "tool_result"}:
+                continue
+            rows.append(
+                {
+                    "created_at": str(payload.get("created_at", "") or ""),
+                    "event_type": event_type,
+                    "role": str(payload.get("role", "") or ""),
+                    "tool_call_id": str(payload.get("tool_call_id", "") or ""),
+                    "tool_name": str(payload.get("tool_name", "") or ""),
+                    "payload": str(payload.get("payload", "") or ""),
+                }
+            )
+    return rows
 
 
 def load_blue_messages_from_db(db_paths: Sequence[Path], conversation_id: str) -> List[Dict[str, Any]]:

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -50,12 +51,12 @@ func (d *ResearchDriver) Validate(spec harness.RunSpec) error {
 	}
 	switch resolveResearchFamilyMode(spec.Goal, spec.Metadata) {
 	case "analyze":
-		if d.analyze == nil {
-			return fmt.Errorf("analyze runtime is not available")
+		if isNilResearchModeExecutor(d.analyze) {
+			return researchModeUnavailableError("analyze")
 		}
 	case "ui_review":
-		if d.uiReview == nil {
-			return fmt.Errorf("ui review runtime is not available")
+		if isNilResearchModeExecutor(d.uiReview) {
+			return researchModeUnavailableError("ui_review")
 		}
 	default:
 		if d.service == nil {
@@ -173,6 +174,10 @@ func (d *ResearchDriver) SetAnalyzeExecutor(executor researchModeExecutor) {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if isNilResearchModeExecutor(executor) {
+		d.analyze = nil
+		return
+	}
 	d.analyze = executor
 }
 
@@ -182,6 +187,10 @@ func (d *ResearchDriver) SetUIReviewExecutor(executor researchModeExecutor) {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if isNilResearchModeExecutor(executor) {
+		d.uiReview = nil
+		return
+	}
 	d.uiReview = executor
 }
 
@@ -222,8 +231,11 @@ func (d *ResearchDriver) startLocalMode(
 	mode string,
 	executor researchModeExecutor,
 ) error {
-	if d == nil || executor == nil || run == nil {
+	if d == nil || run == nil {
 		return fmt.Errorf("research runtime is not available")
+	}
+	if isNilResearchModeExecutor(executor) {
+		return researchModeUnavailableError(mode)
 	}
 	controller := researchDriverManager(d.manager, env.Manager)
 	if controller == nil {
@@ -315,6 +327,30 @@ func (d *ResearchDriver) executeLocalMode(
 		}
 	}
 	d.publishResearchJobEvent(completed, "deep_research.job_completed")
+}
+
+func researchModeUnavailableError(mode string) error {
+	switch strings.TrimSpace(mode) {
+	case "analyze":
+		return fmt.Errorf("analyze runtime is not available")
+	case "ui_review":
+		return fmt.Errorf("ui review runtime is not available")
+	default:
+		return fmt.Errorf("research runtime is not available")
+	}
+}
+
+func isNilResearchModeExecutor(executor researchModeExecutor) bool {
+	if executor == nil {
+		return true
+	}
+	value := reflect.ValueOf(executor)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func (d *ResearchDriver) loadLocalSnapshot(controller *harness.Controller, run *harness.Run) *harness.Run {

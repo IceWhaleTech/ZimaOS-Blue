@@ -5,7 +5,31 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
+
+func setConnectionCreatedAt(tracker *ConnectionTracker, id string, created time.Time) {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	tracker.connections[id] = created
+}
+
+func waitForCondition(t *testing.T, timeout time.Duration, condition func() bool, message string) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if !condition() {
+		t.Fatal(message)
+	}
+}
 
 func TestNewDetector(t *testing.T) {
 	thresholds := DefaultThresholds()
@@ -134,7 +158,9 @@ func TestDetector_GetAlerts(t *testing.T) {
 	defer cancel()
 
 	d.Start(ctx)
-	time.Sleep(100 * time.Millisecond)
+	waitForCondition(t, 500*time.Millisecond, func() bool {
+		return len(d.GetAlerts()) > 0
+	}, "Expected alerts to be recorded")
 	d.Stop()
 
 	alerts := d.GetAlerts()
@@ -157,7 +183,9 @@ func TestDetector_ClearAlerts(t *testing.T) {
 	defer cancel()
 
 	d.Start(ctx)
-	time.Sleep(100 * time.Millisecond)
+	waitForCondition(t, 500*time.Millisecond, func() bool {
+		return len(d.GetAlerts()) > 0
+	}, "Expected alerts before clearing")
 	d.Stop()
 
 	d.ClearAlerts()
@@ -182,7 +210,10 @@ func TestDetector_GetLeakCounts(t *testing.T) {
 	defer cancel()
 
 	d.Start(ctx)
-	time.Sleep(100 * time.Millisecond)
+	waitForCondition(t, 500*time.Millisecond, func() bool {
+		goroutines, _, _ := d.GetLeakCounts()
+		return goroutines > 0
+	}, "Expected goroutine leak count > 0")
 	d.Stop()
 
 	goroutines, fds, connections := d.GetLeakCounts()
@@ -228,10 +259,10 @@ func TestConnectionTracker_AddRemove(t *testing.T) {
 
 func TestConnectionTracker_GetStale(t *testing.T) {
 	tracker := NewConnectionTracker(50 * time.Millisecond)
+	now := timeutil.NowTime()
 
-	tracker.Add("conn1")
-	time.Sleep(100 * time.Millisecond)
-	tracker.Add("conn2")
+	setConnectionCreatedAt(tracker, "conn1", now.Add(-2*tracker.maxAge))
+	setConnectionCreatedAt(tracker, "conn2", now)
 
 	stale := tracker.GetStale()
 	if len(stale) != 1 {
@@ -245,11 +276,11 @@ func TestConnectionTracker_GetStale(t *testing.T) {
 
 func TestConnectionTracker_Cleanup(t *testing.T) {
 	tracker := NewConnectionTracker(50 * time.Millisecond)
+	now := timeutil.NowTime()
 
-	tracker.Add("conn1")
-	tracker.Add("conn2")
-	time.Sleep(100 * time.Millisecond)
-	tracker.Add("conn3")
+	setConnectionCreatedAt(tracker, "conn1", now.Add(-3*tracker.maxAge))
+	setConnectionCreatedAt(tracker, "conn2", now.Add(-2*tracker.maxAge))
+	setConnectionCreatedAt(tracker, "conn3", now)
 
 	cleaned := tracker.Cleanup()
 	if cleaned != 2 {

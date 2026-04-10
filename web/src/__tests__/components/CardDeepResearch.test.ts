@@ -566,6 +566,63 @@ describe('Deep research cards', () => {
     expect(wrapper.text()).not.toContain('Verification pass completed')
   })
 
+  it('localizes deep research coverage summaries and open-question prompts for zh-CN runtime cards', async () => {
+    const wrapper = mount(CardDeepResearch, {
+      props: {
+        uiStateKey: 'deep-research:test-zh-runtime-coverage-summary',
+        card: {
+          type: 'deep-research',
+          query: 'topic zh coverage summary',
+          mode: 'standard',
+          answer: 'Answer',
+          status: 'completed',
+          verification_summary: {
+            resolved_count: 2,
+            conflicted_count: 0,
+            insufficient_count: 1,
+            items: [
+              {
+                focus: 'Official sources',
+                status: 'insufficient',
+                summary:
+                  'Official sources only covers 0 evidence item(s) across 0 domain(s); follow-up research is needed.',
+              },
+              {
+                focus: 'Comparison',
+                status: 'resolved',
+                summary: 'Comparison is covered by 8 evidence item(s) across 8 domain(s).',
+              },
+              {
+                focus: 'Claim validation',
+                status: 'resolved',
+                summary: 'Core conclusions are supported across 7 claim group(s).',
+              },
+            ],
+          },
+          open_questions: [
+            'Check primary sources for final verification.',
+            'Need evidence coverage',
+          ],
+        },
+      },
+      global: {
+        plugins: [createRuntimeLocaleI18n('zh-CN')],
+      },
+    })
+
+    await wrapper.get('[data-testid="deep-research-summary-toggle"]').trigger('click')
+
+    expect(wrapper.text()).toContain('官方来源')
+    expect(wrapper.text()).toContain('官方来源仅覆盖 0 条证据 / 0 个来源域名，需要继续深挖。')
+    expect(wrapper.text()).toContain('对比信息已覆盖 8 条证据 / 8 个来源域名。')
+    expect(wrapper.text()).toContain('主要结论已被 7 组支持信号覆盖。')
+    expect(wrapper.text()).toContain('建议回查一手来源并进行最终核验。')
+    expect(wrapper.text()).toContain('需要补充证据')
+    expect(wrapper.text()).not.toContain('Official sources')
+    expect(wrapper.text()).not.toContain('Comparison is covered by 8 evidence item(s) across 8 domain(s).')
+    expect(wrapper.text()).not.toContain('Check primary sources for final verification.')
+  })
+
   it('renders verify-stage progress with buttons', () => {
     const wrapper = mount(CardDeepResearchProgress, {
       props: {

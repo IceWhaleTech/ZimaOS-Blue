@@ -65,10 +65,13 @@ func (h *ChatHandler) toolSearchRuntimeInfo(sessionID string) tools.ToolSearchRu
 }
 
 func (h *ChatHandler) applyToolSearchSurfaceSelection(policyReq tools.ToolPolicyRequest, webSearchEnabled, deepResearchEnabled *bool, selection chatToolSurfaceSelection) chatToolSurfaceSelection {
-	if h == nil || selection.NativeMode == chatNativeToolSurfaceModeClarifyNone {
+	if h == nil {
 		return selection
 	}
 	selection.NativeDefs = h.ensureToolSearchVisible(policyReq, selection.NativeDefs)
+	if selection.NativeMode == chatNativeToolSurfaceModeClarifyNone {
+		return selection
+	}
 
 	sessionID := strings.TrimSpace(policyReq.SessionID)
 	if sessionID == "" || h.deferredToolExposure == nil {

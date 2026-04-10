@@ -99,6 +99,9 @@ const mocks = vi.hoisted(() => ({
     setAgentMode: vi.fn(),
     setShowToolDetails: vi.fn(),
   },
+  systemStore: {
+    health: null as null | Record<string, unknown>,
+  },
   providerPoolStore: {
     activeProviders: [] as unknown[],
     cloudProviders: [] as unknown[],
@@ -178,6 +181,7 @@ const mocks = vi.hoisted(() => ({
 
 mocks.chatStore = reactive(mocks.chatStore)
 mocks.settingsStore = reactive(mocks.settingsStore)
+mocks.systemStore = reactive(mocks.systemStore)
 mocks.providerPoolStore = reactive(mocks.providerPoolStore)
 mocks.deepResearchJobsStore = reactive(mocks.deepResearchJobsStore)
 mocks.taskProjectionsStore = reactive(mocks.taskProjectionsStore)
@@ -201,6 +205,10 @@ vi.mock('@/stores/chat', () => ({
 
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
+}))
+
+vi.mock('@/stores/system', () => ({
+  useSystemStore: () => mocks.systemStore,
 }))
 
 vi.mock('@/stores/providerPool', () => ({
@@ -776,6 +784,8 @@ describe('ChatView page-level card actions', () => {
     mocks.settingsStore.setAgentMode.mockReset()
     mocks.settingsStore.setShowToolDetails.mockReset()
 
+    mocks.systemStore.health = null
+
     mocks.providerPoolStore.activeProviders = []
     mocks.providerPoolStore.cloudProviders = []
     mocks.providerPoolStore.enabledProviders = []
@@ -928,6 +938,39 @@ describe('ChatView page-level card actions', () => {
     expect(wrapper.find('.routing-menu-floating').exists()).toBe(true)
   })
 
+  it('renders edge quick navigation for long desktop conversations and jumps to a selected prompt', async () => {
+    const scrollIntoViewMock = vi.fn()
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      value: scrollIntoViewMock,
+      configurable: true,
+    })
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-user-1', role: 'user', content: '第一条用户问题，先确认目标。' },
+      { id: 'msg-assistant-1', content: '第一条回答。' },
+      { id: 'msg-user-2', role: 'user', content: '第二条用户问题，补充一下边界条件。' },
+      { id: 'msg-assistant-2', content: '第二条回答。' },
+      { id: 'msg-user-3', role: 'user', content: '第三条用户问题，说明交互形式。' },
+      { id: 'msg-assistant-3', content: '第三条回答。' },
+      { id: 'msg-user-4', role: 'user', content: '第四条用户问题，希望放在滚动条左侧。' },
+      { id: 'msg-assistant-4', content: '第四条回答。' },
+    ])
+
+    expect(wrapper.find('[data-testid="chat-edge-quick-nav"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid^="chat-edge-quick-nav-item-"]')).toHaveLength(4)
+    expect(wrapper.get('[data-testid="chat-edge-quick-nav-item-msg-user-1"]').classes()).toContain(
+      'is-active'
+    )
+
+    await wrapper.get('[data-testid="chat-edge-quick-nav-item-msg-user-4"]').trigger('click')
+    await flushPromises()
+
+    expect(scrollIntoViewMock).toHaveBeenCalled()
+    expect(wrapper.get('[data-testid="chat-edge-quick-nav-item-msg-user-4"]').classes()).toContain(
+      'is-active'
+    )
+  })
+
   it('renders the latest todo checklist status above the composer', async () => {
     const scrollIntoViewMock = vi.fn()
     Object.defineProperty(Element.prototype, 'scrollIntoView', {
@@ -1057,6 +1100,54 @@ describe('ChatView page-level card actions', () => {
     expect(disabledWrapper.find('[data-testid="chat-runner-ref-select"]').exists()).toBe(false)
   })
 
+  it('shows the desktop runner ref hover title on the outer pill like the other header buttons', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'release/v2',
+      binary_ready: true,
+    }
+    mocks.chatStore.agentcoreRunnerRef = 'release/v2'
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref-title', content: 'Show the runner hover title.' },
+    ])
+
+    const select = wrapper.get('[data-testid="chat-runner-ref-select"]')
+    const label = select.element.closest('label')
+
+    expect(label?.getAttribute('title')).toBe('Runner version · release/v2')
+    expect(select.attributes('title')).toBe('Runner version · release/v2')
+  })
+
+  it('maps the built-in version and default branch to friendly runner labels', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: '0.10.39',
+      binary_ready: true,
+    }
+    mocks.chatStore.agentcoreRunnerRef = '0.10.39'
+    mocks.settingsStore.experimentalAgentcoreRunnerRef = '0.10.39'
+    mocks.systemStore.health = {
+      version: '0.10.39',
+    }
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref-friendly-labels', content: 'Show friendly runner names.' },
+    ])
+
+    const select = wrapper.get('[data-testid="chat-runner-ref-select"]')
+    const optionLabels = select.findAll('option').map((option) => option.text())
+    const label = select.element.closest('label')
+
+    expect(optionLabels).toContain('Default')
+    expect(optionLabels).toContain('Preview')
+    expect(optionLabels).toContain('release/v2')
+    expect(optionLabels).not.toContain('main')
+    expect(optionLabels).not.toContain('0.10.39')
+    expect(label?.getAttribute('title')).toBe('Runner version · Default')
+    expect(select.attributes('title')).toBe('Runner version · Default')
+  })
+
   it('disables the runner ref selector while chat execution is active', async () => {
     mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
     mocks.settingsStore.agentcoreRunnerStatus = {
@@ -1069,7 +1160,39 @@ describe('ChatView page-level card actions', () => {
       { id: 'msg-runner-ref-busy', content: 'Busy runner selection.' },
     ])
 
-    expect(wrapper.get('[data-testid="chat-runner-ref-select"]').attributes('disabled')).toBeDefined()
+    expect(
+      wrapper.get('[data-testid="chat-runner-ref-select"]').attributes('disabled')
+    ).toBeDefined()
+  })
+
+  it('keeps the runner ref selector enabled while background runner sync is in progress', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.experimentalAgentcoreRunnerRef = 'main'
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'main',
+      binary_ready: true,
+    }
+    mocks.chatStore.agentcoreRunnerRef = 'release/v2'
+
+    let resolvePrepare: (() => void) | null = null
+    mocks.settingsStore.prepareAgentcoreRunner.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePrepare = resolve
+        })
+    )
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref-syncing', content: 'Sync runner in background.' },
+    ])
+    await flushPromises()
+
+    expect(
+      wrapper.get('[data-testid="chat-runner-ref-select"]').attributes('disabled')
+    ).toBeUndefined()
+
+    resolvePrepare?.()
+    await flushPromises()
   })
 
   it('persists and prepares the selected runner ref from the desktop selector', async () => {
@@ -1300,6 +1423,20 @@ describe('ChatView page-level card actions', () => {
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
+  })
+
+  it('keeps the stop control visible while tool execution is active without streaming text', async () => {
+    mocks.chatStore.streaming = false
+    mocks.chatStore.sending = false
+    mocks.chatStore.toolExecuting = true
+    mocks.chatStore.streamUIState = { phase: 'executing', label: 'Working' }
+
+    const wrapper = await mountChatViewWithMessages([])
+
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
+    expect(wrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('false')
+    expect(wrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('false')
+    expect(wrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
   })
 
   it('shows the restored external stream rail when the last streaming assistant message only contains cards', async () => {

@@ -16,6 +16,7 @@ import type { ComponentPublicInstance } from 'vue'
 import type { Message as ChatMessageRecord } from '@/api/chat'
 import { useChatStore, type ActiveMessageStreamState, type StreamUIState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
+import { useSystemStore } from '@/stores/system'
 import { useProviderPoolStore } from '@/stores/providerPool'
 import { useDeepResearchJobsStore } from '@/stores/deepResearchJobs'
 import { useTaskProjectionsStore } from '@/stores/taskProjections'
@@ -24,7 +25,11 @@ import { getLocaleDirection } from '@/i18n'
 import type { FileAttachment } from '@/components/ChatInput.vue'
 import type ChatInputComponent from '@/components/ChatInput.vue'
 import type VirtualScrollComponent from '@/components/VirtualScroll.vue'
-import { settingsApi, type AgentcoreRunnerLastRun, type AgentcoreRunnerTagList } from '@/api/settings'
+import {
+  settingsApi,
+  type AgentcoreRunnerLastRun,
+  type AgentcoreRunnerTagList,
+} from '@/api/settings'
 import type { UserTaskProjection } from '@/api/tasks'
 import { useMediaGenerate } from '@/composables/useMediaGenerate'
 import { componentPool } from '@/utils/componentPool'
@@ -80,6 +85,7 @@ const hasGlobalMobileSidebarToggle = inject<ComputedRef<boolean>>(
 )
 const chatStore = useChatStore()
 const settingsStore = useSettingsStore()
+const systemStore = useSystemStore()
 const providerPoolStore = useProviderPoolStore()
 const deepResearchJobs = useDeepResearchJobsStore()
 const taskProjections = useTaskProjectionsStore()
@@ -211,6 +217,18 @@ function normalizeAgentcoreRunnerRefValue(value: unknown): string {
   return 'main'
 }
 
+type AgentcoreRunnerDisplayTone = 'built-in' | 'agentcore'
+
+type AgentcoreRunnerDisplayOption = {
+  value: string
+  label: string
+  tone: AgentcoreRunnerDisplayTone
+}
+
+function isVersionLikeAgentcoreRunnerValue(value: string): boolean {
+  return /^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value)
+}
+
 function buildRunnerExecutionCard(run: AgentcoreRunnerLastRun): TypelessCardRunnerExecution {
   return {
     type: 'runner-execution',
@@ -256,6 +274,67 @@ const showAgentcoreRunnerControl = computed(() => settingsStore.experimentalAgen
 const agentcoreRunnerSelectValue = computed(() =>
   normalizeAgentcoreRunnerRefValue(chatStore.agentcoreRunnerRef)
 )
+const agentcoreRunnerRepoDefaultRef = computed(() =>
+  normalizeAgentcoreRunnerRefValue(agentcoreRunnerTags.value?.default_ref)
+)
+const agentcoreRunnerBuiltInVersion = computed(() =>
+  normalizeRunnerExecutionText(systemStore.health?.version)
+)
+const agentcoreRunnerKnownTagSet = computed(() => {
+  const knownTags = new Set<string>()
+  for (const tag of agentcoreRunnerTags.value?.tags ?? []) {
+    knownTags.add(normalizeAgentcoreRunnerRefValue(tag))
+  }
+  return knownTags
+})
+
+function isBuiltInAgentcoreRunnerValue(value: unknown): boolean {
+  const normalized = normalizeAgentcoreRunnerRefValue(value)
+  if (normalized === agentcoreRunnerBuiltInVersion.value) return true
+  if (normalized === agentcoreRunnerRepoDefaultRef.value) return false
+  return (
+    isVersionLikeAgentcoreRunnerValue(normalized) &&
+    !agentcoreRunnerKnownTagSet.value.has(normalized)
+  )
+}
+
+function getAgentcoreRunnerDisplayTone(value: unknown): AgentcoreRunnerDisplayTone {
+  return isBuiltInAgentcoreRunnerValue(value) ? 'built-in' : 'agentcore'
+}
+
+function getAgentcoreRunnerDisplayLabel(value: unknown): string {
+  const normalized = normalizeAgentcoreRunnerRefValue(value)
+  if (isBuiltInAgentcoreRunnerValue(normalized)) return t('common.default', 'Default')
+  if (normalized === agentcoreRunnerRepoDefaultRef.value) return t('common.preview', 'Preview')
+  return normalized
+}
+
+const agentcoreRunnerDisplayOptions = computed<AgentcoreRunnerDisplayOption[]>(() =>
+  agentcoreRunnerRefOptions.value.map((value) => ({
+    value,
+    label: getAgentcoreRunnerDisplayLabel(value),
+    tone: getAgentcoreRunnerDisplayTone(value),
+  }))
+)
+const agentcoreRunnerSelectedOption = computed<AgentcoreRunnerDisplayOption>(() => {
+  const selectedValue = agentcoreRunnerSelectValue.value
+  return (
+    agentcoreRunnerDisplayOptions.value.find((option) => option.value === selectedValue) ?? {
+      value: selectedValue,
+      label: getAgentcoreRunnerDisplayLabel(selectedValue),
+      tone: getAgentcoreRunnerDisplayTone(selectedValue),
+    }
+  )
+})
+const agentcoreRunnerSelectedLabel = computed(() => agentcoreRunnerSelectedOption.value.label)
+const agentcoreRunnerSelectedToneClass = computed(() => ({
+  'is-built-in': agentcoreRunnerSelectedOption.value.tone === 'built-in',
+  'is-agentcore': agentcoreRunnerSelectedOption.value.tone === 'agentcore',
+}))
+const agentcoreRunnerButtonTitle = computed(
+  () =>
+    `${t('settings.agentcoreRunner.refLabel', 'Runner version')} · ${agentcoreRunnerSelectedLabel.value}`
+)
 const agentcoreRunnerRefOptions = computed(() => {
   const options: string[] = []
   const seen = new Set<string>()
@@ -274,15 +353,12 @@ const agentcoreRunnerRefOptions = computed(() => {
   return options
 })
 const agentcoreRunnerSelectionBusy = computed(
-  () =>
-    chatStore.streaming ||
-    chatStore.sending ||
-    chatStore.toolExecuting ||
-    agentcoreRunnerTagsLoading.value ||
-    agentcoreRunnerSyncing.value
+  () => chatStore.streaming || chatStore.sending || chatStore.toolExecuting
 )
 
-async function fetchAgentcoreRunnerTags(repoURL = settingsStore.experimentalAgentcoreRunnerRepoURL) {
+async function fetchAgentcoreRunnerTags(
+  repoURL = settingsStore.experimentalAgentcoreRunnerRepoURL
+) {
   const resolvedRepoURL = repoURL?.trim() || settingsStore.experimentalAgentcoreRunnerRepoURL
   try {
     agentcoreRunnerTagsLoading.value = true
@@ -299,22 +375,13 @@ async function fetchAgentcoreRunnerTags(repoURL = settingsStore.experimentalAgen
   }
 }
 
-async function syncActiveAgentcoreRunnerRef(targetRefRaw: unknown) {
-  if (!settingsStore.experimentalAgentcoreRunnerEnabled) return
-
-  const targetRef = normalizeAgentcoreRunnerRefValue(targetRefRaw)
-  if (agentcoreRunnerSyncPromise && agentcoreRunnerSyncTargetRef === targetRef) {
-    return agentcoreRunnerSyncPromise
-  }
-
+async function syncAgentcoreRunnerRefOnce(targetRef: string) {
   const activeSettingRef = normalizeAgentcoreRunnerRefValue(
     settingsStore.experimentalAgentcoreRunnerRef
   )
   const status = settingsStore.agentcoreRunnerStatus
   const hasStatus = status != null
-  const resolvedStatusRef = hasStatus
-    ? normalizeAgentcoreRunnerRefValue(status?.resolved_ref)
-    : ''
+  const resolvedStatusRef = hasStatus ? normalizeAgentcoreRunnerRefValue(status?.resolved_ref) : ''
   const needsRefUpdate = targetRef !== activeSettingRef
   const needsPrepare =
     needsRefUpdate || (hasStatus && (!status?.binary_ready || resolvedStatusRef !== targetRef))
@@ -323,25 +390,36 @@ async function syncActiveAgentcoreRunnerRef(targetRefRaw: unknown) {
     return
   }
 
-  agentcoreRunnerSyncTargetRef = targetRef
+  if (needsRefUpdate) {
+    await settingsStore.updateBackendSettings({
+      experimental_agentcore_runner_ref: targetRef,
+    })
+  }
+  if (needsPrepare) {
+    await settingsStore.prepareAgentcoreRunner()
+    await settingsStore.fetchAgentcoreRunnerStatus().catch(() => {})
+  }
+}
+
+async function syncActiveAgentcoreRunnerRef(targetRefRaw: unknown) {
+  if (!settingsStore.experimentalAgentcoreRunnerEnabled) return
+
+  agentcoreRunnerSyncTargetRef = normalizeAgentcoreRunnerRefValue(targetRefRaw)
+  if (agentcoreRunnerSyncPromise) {
+    return agentcoreRunnerSyncPromise
+  }
+
   const task = (async () => {
     try {
       agentcoreRunnerSyncing.value = true
-      if (needsRefUpdate) {
-        await settingsStore.updateBackendSettings({
-          experimental_agentcore_runner_ref: targetRef,
-        })
-      }
-      if (needsPrepare) {
-        await settingsStore.prepareAgentcoreRunner()
-        await settingsStore.fetchAgentcoreRunnerStatus().catch(() => {})
+      while (settingsStore.experimentalAgentcoreRunnerEnabled && agentcoreRunnerSyncTargetRef) {
+        const nextTargetRef = agentcoreRunnerSyncTargetRef
+        agentcoreRunnerSyncTargetRef = ''
+        await syncAgentcoreRunnerRefOnce(nextTargetRef)
       }
     } finally {
       agentcoreRunnerSyncing.value = false
       agentcoreRunnerSyncPromise = null
-      if (agentcoreRunnerSyncTargetRef === targetRef) {
-        agentcoreRunnerSyncTargetRef = ''
-      }
     }
   })()
   agentcoreRunnerSyncPromise = task
@@ -351,7 +429,6 @@ async function syncActiveAgentcoreRunnerRef(targetRefRaw: unknown) {
 async function persistAgentcoreRunnerRefSelection(targetRefRaw: unknown) {
   const targetRef = normalizeAgentcoreRunnerRefValue(targetRefRaw)
   await chatStore.setAgentcoreRunnerRef(targetRef)
-  await syncActiveAgentcoreRunnerRef(targetRef)
 }
 
 function handleAgentcoreRunnerRefChange(event: Event) {
@@ -385,7 +462,9 @@ watch(
   () => chatStore.agentcoreRunnerRef,
   (value, previousValue) => {
     if (!settingsStore.experimentalAgentcoreRunnerEnabled) return
-    if (normalizeAgentcoreRunnerRefValue(value) === normalizeAgentcoreRunnerRefValue(previousValue)) {
+    if (
+      normalizeAgentcoreRunnerRefValue(value) === normalizeAgentcoreRunnerRefValue(previousValue)
+    ) {
       return
     }
     void syncActiveAgentcoreRunnerRef(value).catch(() => {})
@@ -467,13 +546,17 @@ const hasActiveDeepResearchJobs = computed(
   () => Array.isArray(deepResearchJobs.activeJobs) && deepResearchJobs.activeJobs.length > 0
 )
 const currentConversationDeepResearchJobs = computed(() =>
-  getCurrentConversationDeepResearchJobs(deepResearchJobs.activeJobs, chatStore.currentConversationId)
+  getCurrentConversationDeepResearchJobs(
+    deepResearchJobs.activeJobs,
+    chatStore.currentConversationId
+  )
 )
 
 const hasCancelableWork = computed(() =>
   hasCancelableChatWork({
     streaming: chatStore.streaming,
     sending: chatStore.sending,
+    toolExecuting: chatStore.toolExecuting,
     isRecovering: chatStore.isRecovering,
     mediaGenerating: mediaGen.generating.value,
     streamUIPhase: chatStore.streamUIState.phase,
@@ -554,7 +637,8 @@ const chatInputDisabled = computed(
 
 const showStreamStatusRail = computed(
   () =>
-    streamStatusRailState.value.phase !== 'idle' && streamStatusRailState.value.phase !== 'completed'
+    streamStatusRailState.value.phase !== 'idle' &&
+    streamStatusRailState.value.phase !== 'completed'
 )
 const streamStatusRailPhaseLabel = computed(() => {
   switch (streamStatusRailState.value.phase) {
@@ -953,6 +1037,65 @@ function chatTextWithNamedFallback(
   return te(key) ? String(t(key, named)) : fallback
 }
 
+type EdgeQuickNavItem = {
+  fullText: string
+  messageId: string
+  messageIndex: number
+  preview: string
+}
+
+const EDGE_QUICK_NAV_MIN_ITEMS = 4
+const EDGE_QUICK_NAV_PREVIEW_LIMIT = 34
+const activeEdgeQuickNavMessageId = ref('')
+const visibleMessageRangeStart = ref(0)
+
+function normalizeEdgeQuickNavText(content: string): string {
+  return content
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]+\)/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/^\s{0,3}(?:[-*+]|\d+\.)\s+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function truncateEdgeQuickNavText(text: string): string {
+  if (text.length <= EDGE_QUICK_NAV_PREVIEW_LIMIT) return text
+  return `${text.slice(0, EDGE_QUICK_NAV_PREVIEW_LIMIT).trimEnd()}…`
+}
+
+const edgeQuickNavItems = computed<EdgeQuickNavItem[]>(() => {
+  const items: EdgeQuickNavItem[] = []
+
+  for (let index = 0; index < chatStore.messages.length; index += 1) {
+    const message = chatStore.messages[index] as ChatMessageRecord
+    if (message.role !== 'user') continue
+
+    const fullText = normalizeEdgeQuickNavText(String(message.content || ''))
+    if (!fullText) continue
+
+    items.push({
+      fullText,
+      messageId: message.id,
+      messageIndex: index,
+      preview: truncateEdgeQuickNavText(fullText),
+    })
+  }
+
+  return items
+})
+
+const edgeQuickNavSignature = computed(() =>
+  edgeQuickNavItems.value.map((item) => item.messageId).join('|')
+)
+
+const showEdgeQuickNav = computed(
+  () => !isMobile.value && edgeQuickNavItems.value.length >= EDGE_QUICK_NAV_MIN_ITEMS
+)
+
 const {
   pendingTaskActionDialog,
   taskActionDialogError,
@@ -1164,7 +1307,10 @@ function matchesTodoCompletionSignal(
   const normalizedTodoCardId = normalizeTodoSignalText(completionSignal.todoCardId)
   if (!normalizedMessageId && !normalizedTodoCardId) return false
 
-  if (normalizedTodoCardId && normalizeTodoSignalText(message.todo_card_id) === normalizedTodoCardId) {
+  if (
+    normalizedTodoCardId &&
+    normalizeTodoSignalText(message.todo_card_id) === normalizedTodoCardId
+  ) {
     return true
   }
 
@@ -1175,7 +1321,9 @@ function matchesTodoCompletionSignal(
   )
 }
 
-function isSuccessfulTodoArtifactWriteResult(result: TodoAwareToolResult | null | undefined): boolean {
+function isSuccessfulTodoArtifactWriteResult(
+  result: TodoAwareToolResult | null | undefined
+): boolean {
   if (!result) return false
   const name = normalizeTodoSignalText(result.name).toLowerCase()
   const icon = normalizeTodoSignalText(result.icon)
@@ -1758,6 +1906,9 @@ const isUserNearBottom = ref(true)
 const NEAR_BOTTOM_THRESHOLD = 80 // px from bottom to consider "at bottom"
 let normalScrollRafId: number | null = null
 let normalLoadMoreInFlight = false
+const scheduleEdgeQuickNavSync = rafThrottle(() => {
+  syncEdgeQuickNavActiveMessage()
+})
 
 function checkIfNearBottom() {
   return measureChatPerf('chat_view.check_if_near_bottom', () => {
@@ -1798,6 +1949,7 @@ function handleScroll() {
 
     // Update near-bottom tracking
     isUserNearBottom.value = checkIfNearBottom()
+    scheduleEdgeQuickNavSync()
 
     // Skip for virtual scroll - it handles its own scrolling
     if (useVirtualScroll.value) return
@@ -1838,6 +1990,9 @@ let virtualLoadMoreLastAt = 0
 let virtualLoadMoreRetryTimer: ReturnType<typeof setTimeout> | null = null
 
 function handleVisibleRangeChange(start: number, _end: number) {
+  visibleMessageRangeStart.value = start
+  scheduleEdgeQuickNavSync()
+
   // Keep near-bottom state in sync for virtual scroll mode; this prevents
   // auto-scroll from forcing users back to bottom while they read older messages.
   isUserNearBottom.value = checkIfNearBottom()
@@ -2428,6 +2583,69 @@ function findMessageElement(messageId: string): HTMLElement | null {
   return document.getElementById(getChatMessageElementId(normalizedMessageId))
 }
 
+function resolveEdgeQuickNavItemByMessageIndex(messageIndex: number): EdgeQuickNavItem | null {
+  if (edgeQuickNavItems.value.length === 0) return null
+
+  let candidate: EdgeQuickNavItem | null = edgeQuickNavItems.value[0] ?? null
+  for (const item of edgeQuickNavItems.value) {
+    if (item.messageIndex > messageIndex) break
+    candidate = item
+  }
+  return candidate
+}
+
+function resolveEdgeQuickNavActiveMessageId(): string {
+  const firstItem = edgeQuickNavItems.value[0]
+  if (!firstItem) return ''
+
+  if (useVirtualScroll.value) {
+    return (
+      resolveEdgeQuickNavItemByMessageIndex(visibleMessageRangeStart.value + 1)?.messageId ??
+      firstItem.messageId
+    )
+  }
+
+  const container = messagesContainer.value
+  if (!container || container.clientHeight <= 0) {
+    return firstItem.messageId
+  }
+
+  const renderedMessages = Array.from(container.querySelectorAll<HTMLElement>('[data-message-id]'))
+  if (renderedMessages.length === 0) return firstItem.messageId
+
+  const containerRect = container.getBoundingClientRect()
+  const anchorY = containerRect.top + Math.min(Math.max(containerRect.height * 0.22, 72), 128)
+  let activeMessageId = renderedMessages[0]?.dataset.messageId || firstItem.messageId
+
+  for (const element of renderedMessages) {
+    const messageId = element.dataset.messageId
+    if (!messageId) continue
+    if (element.getBoundingClientRect().top <= anchorY) {
+      activeMessageId = messageId
+      continue
+    }
+    break
+  }
+
+  return (
+    resolveEdgeQuickNavItemByMessageIndex(getMessageIndex(activeMessageId))?.messageId ??
+    firstItem.messageId
+  )
+}
+
+function syncEdgeQuickNavActiveMessage() {
+  if (!showEdgeQuickNav.value) {
+    activeEdgeQuickNavMessageId.value = ''
+    return
+  }
+  activeEdgeQuickNavMessageId.value = resolveEdgeQuickNavActiveMessageId()
+}
+
+function handleEdgeQuickNavJump(messageId: string) {
+  activeEdgeQuickNavMessageId.value = messageId
+  void focusMessageById(messageId)
+}
+
 function messageShellClasses(message: MessageMemoSource) {
   return {
     'chat-message-shell': true,
@@ -2511,6 +2729,25 @@ watch(
   () => {
     focusedTodoMessageId.value = null
   }
+)
+
+watch(
+  [
+    () => showEdgeQuickNav.value,
+    () => chatStore.currentConversationId,
+    () => edgeQuickNavSignature.value,
+  ],
+  ([enabled]) => {
+    if (!enabled) {
+      activeEdgeQuickNavMessageId.value = ''
+      return
+    }
+    visibleMessageRangeStart.value = 0
+    nextTick(() => {
+      scheduleEdgeQuickNavSync()
+    })
+  },
+  { immediate: true }
 )
 
 async function ensureLlmProviderConfigured(messageToRestore?: string) {
@@ -2694,6 +2931,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', checkMobileOnResize)
   checkMobileOnResize.cancel()
   scheduleRoutingMenuReposition.cancel()
+  scheduleEdgeQuickNavSync.cancel()
   document.removeEventListener('click', handleClickOutside)
 })
 </script>
@@ -3122,11 +3360,10 @@ onUnmounted(() => {
                           {{ providerScopedAutoResetLabel }}
                         </button>
                       </div>
-                      <div
-                        v-if="showProviderScopedAutoOptions"
-                        class="mt-3 space-y-1"
-                      >
-                        <div class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400">
+                      <div v-if="showProviderScopedAutoOptions" class="mt-3 space-y-1">
+                        <div
+                          class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400"
+                        >
                           {{ providerScopedAutoNoticeTitle }}
                         </div>
                         <button
@@ -3432,11 +3669,10 @@ onUnmounted(() => {
                             {{ providerScopedAutoResetLabel }}
                           </button>
                         </div>
-                        <div
-                          v-if="showProviderScopedAutoOptions"
-                          class="space-y-1 pt-3"
-                        >
-                          <div class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400">
+                        <div v-if="showProviderScopedAutoOptions" class="space-y-1 pt-3">
+                          <div
+                            class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400"
+                          >
                             {{ providerScopedAutoNoticeTitle }}
                           </div>
                           <button
@@ -3695,37 +3931,59 @@ onUnmounted(() => {
                     </div>
                     <div
                       v-if="showAgentcoreRunnerControl"
-                      class="mt-4 rounded-2xl border border-gray-200 bg-gray-50/90 p-4 dark:border-gray-700 dark:bg-slate-900/60"
+                      class="quick-action-tile chat-mobile-runner-card mt-4"
+                      :class="agentcoreRunnerSelectedToneClass"
                     >
-                      <div class="flex items-start justify-between gap-3">
-                        <div class="min-w-0">
+                      <div class="chat-mobile-runner-card__header">
+                        <div class="chat-mobile-runner-card__icon" aria-hidden="true">
+                          <svg
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M7 7h10M7 12h7M7 17h4"
+                            />
+                          </svg>
+                        </div>
+                        <div class="min-w-0 flex-1">
                           <div class="text-sm font-semibold text-gray-900 dark:text-white">
-                            {{ t('settings.agentcoreRunner.refLabel', 'Runner version') }}
+                            {{ t('common.version', 'Version') }}
                           </div>
-                          <div class="mt-1 text-xs text-gray-500 dark:text-slate-400">
+                          <div class="chat-mobile-runner-card__description">
                             {{
                               t(
                                 'settings.agentcoreRunner.mobileHint',
-                                'Use the saved runner version for this chat when execution starts.'
+                                'Saved for this chat and switched automatically when you change sessions.'
                               )
                             }}
                           </div>
                         </div>
-                        <span class="quick-action-pill">{{ agentcoreRunnerSelectValue }}</span>
+                        <span
+                          class="quick-action-pill chat-mobile-runner-card__pill"
+                          :class="agentcoreRunnerSelectedToneClass"
+                        >
+                          {{ agentcoreRunnerSelectedLabel }}
+                        </span>
                       </div>
                       <select
                         data-testid="mobile-topbar-agentcore-runner-select"
                         class="chat-mobile-runner-select mt-3"
+                        :class="agentcoreRunnerSelectedToneClass"
                         :value="agentcoreRunnerSelectValue"
                         :disabled="agentcoreRunnerSelectionBusy"
+                        :aria-label="t('settings.agentcoreRunner.refLabel', 'Runner version')"
                         @change="handleAgentcoreRunnerRefChange"
                       >
                         <option
-                          v-for="option in agentcoreRunnerRefOptions"
-                          :key="`mobile-runner-ref-${option}`"
-                          :value="option"
+                          v-for="option in agentcoreRunnerDisplayOptions"
+                          :key="`mobile-runner-ref-${option.value}`"
+                          :value="option.value"
                         >
-                          {{ option }}
+                          {{ option.label }}
                         </option>
                       </select>
                     </div>
@@ -3768,12 +4026,7 @@ onUnmounted(() => {
                             d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
                           />
                         </svg>
-                        <svg
-                          v-else
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
+                        <svg v-else fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -3942,24 +4195,39 @@ onUnmounted(() => {
                 </button>
                 <label
                   v-if="showAgentcoreRunnerControl"
-                  class="chat-thread-runner-select inline-flex items-center gap-2"
+                  class="chat-thread-detail-btn chat-thread-runner-select inline-flex items-center transition-colors cursor-pointer"
+                  :class="agentcoreRunnerSelectedToneClass"
+                  :title="agentcoreRunnerButtonTitle"
                 >
-                  <span class="chat-thread-runner-select__label">{{
-                    t('settings.agentcoreRunner.refLabel', 'Runner')
-                  }}</span>
+                  <svg
+                    class="chat-thread-runner-select__icon"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="1.9"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M7 7h10M7 12h7M7 17h4"
+                    />
+                  </svg>
                   <select
                     data-testid="chat-runner-ref-select"
                     class="chat-thread-runner-select__control"
                     :value="agentcoreRunnerSelectValue"
                     :disabled="agentcoreRunnerSelectionBusy"
+                    :aria-label="t('settings.agentcoreRunner.refLabel', 'Runner version')"
+                    :title="agentcoreRunnerButtonTitle"
                     @change="handleAgentcoreRunnerRefChange"
                   >
                     <option
-                      v-for="option in agentcoreRunnerRefOptions"
-                      :key="`desktop-runner-ref-${option}`"
-                      :value="option"
+                      v-for="option in agentcoreRunnerDisplayOptions"
+                      :key="`desktop-runner-ref-${option.value}`"
+                      :value="option.value"
                     >
-                      {{ option }}
+                      {{ option.label }}
                     </option>
                   </select>
                 </label>
@@ -4054,6 +4322,45 @@ onUnmounted(() => {
                 </div>
               </div>
             </Transition>
+
+            <div
+              v-if="showEdgeQuickNav"
+              class="chat-edge-quick-nav-layer"
+              data-testid="chat-edge-quick-nav"
+            >
+              <aside
+                class="chat-edge-quick-nav"
+                :aria-label="chatTextWithFallback('chat.quickNav.title', 'Quick navigation')"
+              >
+                <div class="chat-edge-quick-nav__list">
+                  <button
+                    v-for="item in edgeQuickNavItems"
+                    :key="`edge-quick-nav-${item.messageId}`"
+                    type="button"
+                    class="chat-edge-quick-nav__item"
+                    :class="{ 'is-active': item.messageId === activeEdgeQuickNavMessageId }"
+                    :data-testid="`chat-edge-quick-nav-item-${item.messageId}`"
+                    :aria-current="
+                      item.messageId === activeEdgeQuickNavMessageId ? 'location' : undefined
+                    "
+                    :aria-label="
+                      chatTextWithNamedFallback(
+                        'chat.quickNav.jumpToMessage',
+                        'Jump to {preview}',
+                        {
+                          preview: item.preview,
+                        }
+                      )
+                    "
+                    :title="item.fullText"
+                    @click="handleEdgeQuickNavJump(item.messageId)"
+                  >
+                    <span class="chat-edge-quick-nav__text">{{ item.preview }}</span>
+                    <span class="chat-edge-quick-nav__marker" aria-hidden="true" />
+                  </button>
+                </div>
+              </aside>
+            </div>
 
             <!-- Messages area -->
             <div
@@ -5297,6 +5604,10 @@ header,
   letter-spacing: -0.02em;
 }
 
+.chat-thread-shell {
+  position: relative;
+}
+
 .chat-thread-shell-desktop {
   overflow: hidden;
   background: transparent;
@@ -5429,19 +5740,22 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 }
 
 .chat-thread-runner-select {
+  position: relative;
+  box-sizing: border-box;
   min-height: var(--chat-header-control-size);
-  padding: 0 0.35rem 0 0.75rem;
-  border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  background: rgba(255, 255, 255, 0.88);
-  color: rgb(71, 85, 105);
+  min-width: 8.4rem;
+  gap: 0.42rem;
+  padding: 0 0.8rem;
+  white-space: nowrap;
 }
 
-.chat-thread-runner-select__label {
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
+.chat-thread-runner-select__icon {
+  width: 0.92rem;
+  height: 0.92rem;
+  flex-shrink: 0;
+  color: currentColor;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .chat-thread-runner-select__control,
@@ -5458,15 +5772,150 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
 
 .chat-thread-runner-select__control {
   border: none;
+  border-radius: 0;
   background: transparent;
-  padding: 0.5rem 1.6rem 0.5rem 0.1rem;
-  min-width: 8rem;
+  background-image: none;
+  box-shadow: none;
+  flex: 1 1 auto;
+  width: 100%;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  outline: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.chat-thread-runner-select:focus-within {
+  border-color: rgba(56, 189, 248, 0.48);
+  background: rgba(224, 242, 254, 0.92);
+  color: rgb(3, 105, 161);
+  box-shadow:
+    inset 0 0 0 1px rgba(186, 230, 253, 0.78),
+    0 10px 22px -20px rgba(14, 165, 233, 0.42);
+}
+
+.chat-thread-runner-select.is-built-in {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(239, 246, 255, 0.96);
+  color: rgb(37, 99, 235);
+}
+
+.chat-thread-runner-select.is-built-in:hover {
+  border-color: rgba(59, 130, 246, 0.34);
+  background: rgba(219, 234, 254, 0.98);
+  color: rgb(29, 78, 216);
+}
+
+.chat-thread-runner-select.is-built-in:focus-within {
+  border-color: rgba(59, 130, 246, 0.42);
+  background: rgba(219, 234, 254, 0.98);
+  color: rgb(29, 78, 216);
+  box-shadow:
+    inset 0 0 0 1px rgba(191, 219, 254, 0.92),
+    0 10px 22px -20px rgba(37, 99, 235, 0.34);
+}
+
+.chat-thread-runner-select.is-agentcore {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(255, 251, 235, 0.98);
+  color: rgb(180, 83, 9);
+}
+
+.chat-thread-runner-select.is-agentcore:hover {
+  border-color: rgba(245, 158, 11, 0.34);
+  background: rgba(254, 243, 199, 0.98);
+  color: rgb(146, 64, 14);
+}
+
+.chat-thread-runner-select.is-agentcore:focus-within {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(254, 243, 199, 0.98);
+  color: rgb(146, 64, 14);
+  box-shadow:
+    inset 0 0 0 1px rgba(253, 230, 138, 0.76),
+    0 10px 22px -20px rgba(217, 119, 6, 0.34);
 }
 
 .chat-thread-runner-select__control:disabled,
 .chat-mobile-runner-select:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.chat-mobile-runner-card {
+  padding: 0.9rem;
+}
+
+.chat-mobile-runner-card.is-built-in {
+  border-color: rgba(147, 197, 253, 0.7);
+  background: rgba(239, 246, 255, 0.92);
+}
+
+.chat-mobile-runner-card.is-agentcore {
+  border-color: rgba(252, 211, 77, 0.72);
+  background: rgba(255, 251, 235, 0.96);
+}
+
+.chat-mobile-runner-card__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.chat-mobile-runner-card__icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(59, 130, 246);
+  background: rgba(219, 234, 254, 0.86);
+  flex-shrink: 0;
+}
+
+.chat-mobile-runner-card.is-agentcore .chat-mobile-runner-card__icon {
+  color: rgb(217, 119, 6);
+  background: rgba(254, 243, 199, 0.92);
+}
+
+.chat-mobile-runner-card__icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.chat-mobile-runner-card__description {
+  margin-top: 0.22rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgb(100, 116, 139);
+}
+
+.chat-mobile-runner-card__pill.is-built-in {
+  color: rgb(29, 78, 216);
+  background: rgba(219, 234, 254, 0.94);
+}
+
+.chat-mobile-runner-card__pill.is-agentcore {
+  color: rgb(146, 64, 14);
+  background: rgba(254, 243, 199, 0.94);
+}
+
+.chat-mobile-runner-select.is-built-in {
+  border-color: rgba(96, 165, 250, 0.3);
+  background: rgba(255, 255, 255, 0.98);
+  color: rgb(29, 78, 216);
+}
+
+.chat-mobile-runner-select.is-agentcore {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(255, 255, 255, 0.98);
+  color: rgb(146, 64, 14);
 }
 
 .chat-thread-detail-btn {
@@ -5652,6 +6101,144 @@ html[data-blue-macos-glass='true'] .chat-desktop-shell .chat-main-shell {
   scroll-padding-top: 1rem;
   scroll-padding-bottom: 10.75rem;
   padding-inline: clamp(0.45rem, 1.3vw, 1.2rem);
+}
+
+.chat-edge-quick-nav-layer {
+  position: absolute;
+  inset-block: var(--chat-header-row-block-size) 10.75rem;
+  inset-inline-end: 0;
+  width: 2.5rem;
+  overflow: visible;
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.chat-edge-quick-nav {
+  position: absolute;
+  inset-inline-end: 0;
+  top: 50%;
+  width: min(15rem, calc(100vw - 5rem));
+  max-height: min(24rem, 100%);
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 1.75rem;
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: none;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  pointer-events: auto;
+  transform: translate3d(calc(100% - 2.15rem), -50%, 0) scale(0.94);
+  transform-origin: right center;
+  transition:
+    transform 0.22s ease,
+    border-color 0.22s ease,
+    background-color 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.chat-edge-quick-nav-layer:hover .chat-edge-quick-nav,
+.chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav {
+  border-color: rgba(226, 232, 240, 0.94);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 24px 56px -36px rgba(15, 23, 42, 0.3);
+  transform: translate3d(0, -50%, 0) scale(1.03);
+}
+
+.chat-edge-quick-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  max-height: inherit;
+  overflow-y: auto;
+  padding: 0.82rem 0.62rem;
+}
+
+.chat-edge-quick-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 0.72rem;
+  width: 100%;
+  padding: 0.52rem 0.46rem 0.52rem 0.82rem;
+  border: none;
+  border-radius: 1rem;
+  background: transparent;
+  color: rgba(100, 116, 139, 0.94);
+  cursor: pointer;
+  text-align: start;
+  transition:
+    background-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.chat-edge-quick-nav__item:hover {
+  background: rgba(248, 250, 252, 0.94);
+  color: rgba(51, 65, 85, 0.98);
+}
+
+.chat-edge-quick-nav__item:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1.5px rgba(96, 165, 250, 0.44);
+}
+
+.chat-edge-quick-nav__item.is-active {
+  background: transparent;
+  color: rgb(15, 23, 42);
+}
+
+.chat-edge-quick-nav__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.95rem;
+  font-weight: 400;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.12;
+  transform: translateX(0.4rem);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.chat-edge-quick-nav__marker {
+  width: 0.9rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: rgba(203, 213, 225, 0.96);
+  flex-shrink: 0;
+  opacity: 0.38;
+  transition:
+    width 0.18s ease,
+    background-color 0.18s ease,
+    opacity 0.18s ease;
+}
+
+.chat-edge-quick-nav__item:hover .chat-edge-quick-nav__marker {
+  background: rgba(148, 163, 184, 0.96);
+}
+
+.chat-edge-quick-nav__item.is-active .chat-edge-quick-nav__marker {
+  width: 1.22rem;
+  background: rgb(37, 99, 235);
+  opacity: 0.92;
+}
+
+.chat-edge-quick-nav-layer:hover .chat-edge-quick-nav__text,
+.chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav__text {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.chat-edge-quick-nav-layer:hover .chat-edge-quick-nav__item.is-active,
+.chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav__item.is-active {
+  background: rgba(241, 245, 249, 0.96);
+}
+
+.chat-edge-quick-nav-layer:hover .chat-edge-quick-nav__marker,
+.chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav__marker {
+  opacity: 1;
 }
 
 .chat-stream-status-rail {
@@ -6028,6 +6615,61 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
   background: transparent;
 }
 
+:root.dark .chat-edge-quick-nav,
+[data-theme='dark'] .chat-edge-quick-nav {
+  border-color: transparent;
+  background: rgba(15, 23, 42, 0.04);
+  box-shadow: none;
+}
+
+:root.dark .chat-edge-quick-nav-layer:hover .chat-edge-quick-nav,
+[data-theme='dark'] .chat-edge-quick-nav-layer:hover .chat-edge-quick-nav,
+:root.dark .chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav,
+[data-theme='dark'] .chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav {
+  border-color: rgba(51, 65, 85, 0.88);
+  background: rgba(15, 23, 42, 0.84);
+  box-shadow: 0 28px 58px -38px rgba(2, 6, 23, 0.72);
+}
+
+:root.dark .chat-edge-quick-nav__item,
+[data-theme='dark'] .chat-edge-quick-nav__item {
+  color: rgba(148, 163, 184, 0.96);
+}
+
+:root.dark .chat-edge-quick-nav__item:hover,
+[data-theme='dark'] .chat-edge-quick-nav__item:hover {
+  background: rgba(30, 41, 59, 0.92);
+  color: rgb(226, 232, 240);
+}
+
+:root.dark .chat-edge-quick-nav__item.is-active,
+[data-theme='dark'] .chat-edge-quick-nav__item.is-active {
+  background: transparent;
+  color: rgb(248, 250, 252);
+}
+
+:root.dark .chat-edge-quick-nav-layer:hover .chat-edge-quick-nav__item.is-active,
+[data-theme='dark'] .chat-edge-quick-nav-layer:hover .chat-edge-quick-nav__item.is-active,
+:root.dark .chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav__item.is-active,
+[data-theme='dark'] .chat-edge-quick-nav-layer:focus-within .chat-edge-quick-nav__item.is-active {
+  background: rgba(30, 41, 59, 0.98);
+}
+
+:root.dark .chat-edge-quick-nav__marker,
+[data-theme='dark'] .chat-edge-quick-nav__marker {
+  background: rgba(100, 116, 139, 0.96);
+}
+
+:root.dark .chat-edge-quick-nav__item:hover .chat-edge-quick-nav__marker,
+[data-theme='dark'] .chat-edge-quick-nav__item:hover .chat-edge-quick-nav__marker {
+  background: rgba(148, 163, 184, 0.98);
+}
+
+:root.dark .chat-edge-quick-nav__item.is-active .chat-edge-quick-nav__marker,
+[data-theme='dark'] .chat-edge-quick-nav__item.is-active .chat-edge-quick-nav__marker {
+  background: rgb(96, 165, 250);
+}
+
 :root.dark .chat-sidebar-shell,
 [data-theme='dark'] .chat-sidebar-shell {
   background: transparent;
@@ -6291,6 +6933,124 @@ html.dark[data-blue-macos-glass='true'] .chat-desktop-shell .chat-workspace {
 [data-theme='dark'] .quick-action-pill {
   color: rgb(203, 213, 225);
   background: rgba(51, 65, 85, 0.88);
+}
+
+:root.dark .chat-mobile-runner-card.is-built-in,
+[data-theme='dark'] .chat-mobile-runner-card.is-built-in {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(15, 23, 42, 0.94);
+}
+
+:root.dark .chat-mobile-runner-card.is-agentcore,
+[data-theme='dark'] .chat-mobile-runner-card.is-agentcore {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(69, 26, 3, 0.34);
+}
+
+:root.dark .chat-thread-runner-select__icon,
+[data-theme='dark'] .chat-thread-runner-select__icon {
+  color: rgba(226, 232, 240, 0.92);
+}
+
+:root.dark .chat-thread-runner-select:focus-within,
+[data-theme='dark'] .chat-thread-runner-select:focus-within {
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(8, 47, 73, 0.92);
+  color: rgb(125, 211, 252);
+  box-shadow:
+    inset 0 0 0 1px rgba(14, 165, 233, 0.28),
+    0 12px 24px -22px rgba(14, 165, 233, 0.42);
+}
+
+:root.dark .chat-thread-runner-select.is-built-in,
+[data-theme='dark'] .chat-thread-runner-select.is-built-in {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(15, 23, 42, 0.96);
+  color: rgb(147, 197, 253);
+}
+
+:root.dark .chat-thread-runner-select.is-built-in:hover,
+[data-theme='dark'] .chat-thread-runner-select.is-built-in:hover {
+  border-color: rgba(96, 165, 250, 0.5);
+  background: rgba(30, 41, 59, 0.96);
+  color: rgb(191, 219, 254);
+}
+
+:root.dark .chat-thread-runner-select.is-built-in:focus-within,
+[data-theme='dark'] .chat-thread-runner-select.is-built-in:focus-within {
+  border-color: rgba(96, 165, 250, 0.54);
+  background: rgba(8, 47, 73, 0.88);
+  color: rgb(191, 219, 254);
+  box-shadow:
+    inset 0 0 0 1px rgba(96, 165, 250, 0.24),
+    0 12px 24px -22px rgba(37, 99, 235, 0.42);
+}
+
+:root.dark .chat-thread-runner-select.is-agentcore,
+[data-theme='dark'] .chat-thread-runner-select.is-agentcore {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(69, 26, 3, 0.34);
+  color: rgb(253, 186, 116);
+}
+
+:root.dark .chat-thread-runner-select.is-agentcore:hover,
+[data-theme='dark'] .chat-thread-runner-select.is-agentcore:hover {
+  border-color: rgba(251, 191, 36, 0.46);
+  background: rgba(120, 53, 15, 0.34);
+  color: rgb(254, 215, 170);
+}
+
+:root.dark .chat-thread-runner-select.is-agentcore:focus-within,
+[data-theme='dark'] .chat-thread-runner-select.is-agentcore:focus-within {
+  border-color: rgba(251, 191, 36, 0.54);
+  background: rgba(120, 53, 15, 0.38);
+  color: rgb(254, 215, 170);
+  box-shadow:
+    inset 0 0 0 1px rgba(245, 158, 11, 0.22),
+    0 12px 24px -22px rgba(217, 119, 6, 0.42);
+}
+
+:root.dark .chat-mobile-runner-card__icon,
+[data-theme='dark'] .chat-mobile-runner-card__icon {
+  color: rgb(191, 219, 254);
+  background: rgba(30, 64, 175, 0.28);
+}
+
+:root.dark .chat-mobile-runner-card.is-agentcore .chat-mobile-runner-card__icon,
+[data-theme='dark'] .chat-mobile-runner-card.is-agentcore .chat-mobile-runner-card__icon {
+  color: rgb(253, 186, 116);
+  background: rgba(120, 53, 15, 0.44);
+}
+
+:root.dark .chat-mobile-runner-card__description,
+[data-theme='dark'] .chat-mobile-runner-card__description {
+  color: rgb(148, 163, 184);
+}
+
+:root.dark .chat-mobile-runner-card__pill.is-built-in,
+[data-theme='dark'] .chat-mobile-runner-card__pill.is-built-in {
+  color: rgb(191, 219, 254);
+  background: rgba(30, 64, 175, 0.32);
+}
+
+:root.dark .chat-mobile-runner-card__pill.is-agentcore,
+[data-theme='dark'] .chat-mobile-runner-card__pill.is-agentcore {
+  color: rgb(253, 186, 116);
+  background: rgba(120, 53, 15, 0.42);
+}
+
+:root.dark .chat-mobile-runner-select.is-built-in,
+[data-theme='dark'] .chat-mobile-runner-select.is-built-in {
+  border-color: rgba(59, 130, 246, 0.38);
+  background: rgba(15, 23, 42, 0.96);
+  color: rgb(191, 219, 254);
+}
+
+:root.dark .chat-mobile-runner-select.is-agentcore,
+[data-theme='dark'] .chat-mobile-runner-select.is-agentcore {
+  border-color: rgba(245, 158, 11, 0.38);
+  background: rgba(30, 41, 59, 0.96);
+  color: rgb(253, 186, 116);
 }
 
 .mobile-feature-sheet-panel {

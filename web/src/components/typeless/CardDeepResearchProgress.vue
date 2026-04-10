@@ -11,7 +11,7 @@ import {
   localizeResearchRunningElsewhereLabel,
 } from '@/utils/deepResearchText'
 
-const { t, te } = useI18n()
+const { t, te, tm } = useI18n()
 const deepResearchJobs = useDeepResearchJobsStore()
 
 const props = defineProps<{
@@ -32,7 +32,9 @@ const effectiveCard = computed<TypelessCardDeepResearchProgress>(() => ({
 }))
 
 function tr(key: string, fallback: string): string {
-  return te(key) ? String(t(key)) : fallback
+  if (!te(key)) return fallback
+  const value = tm(key)
+  return typeof value === 'string' ? value : String(t(key))
 }
 
 const progress = computed(() => {

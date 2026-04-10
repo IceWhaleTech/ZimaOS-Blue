@@ -1,4 +1,5 @@
 import { deepResearchRuntimeBackfills } from './deep-research-runtime-backfills'
+import { deepResearchSummaryBackfills } from './deep-research-summary-backfills'
 import { deepResearchStructuredBackfills } from './deep-research-structured-backfills'
 import { deepResearchTokenBackfills } from './deep-research-token-backfills'
 import type { LocaleKey } from './locale-catalog'
@@ -1098,6 +1099,7 @@ export function buildLocalePostMergeBackfill(
 ): LocaleNode {
   const cliPatch: LocaleNode = {}
   const deepResearchRuntimeCopy = deepResearchRuntimeBackfills[localeKey]
+  const deepResearchSummaryCopy = deepResearchSummaryBackfills[localeKey]
   const deepResearchStructuredCopy = deepResearchStructuredBackfills[localeKey]
   const deepResearchTokenCopy = deepResearchTokenBackfills[localeKey]
   const commonPatch: LocaleNode = {}
@@ -1223,6 +1225,25 @@ export function buildLocalePostMergeBackfill(
     chatPatch.deepResearchRetainedSearches = deepResearchRuntimeCopy.retainedSearches
     chatPatch.deepResearchReportStyleKnowledgeBase =
       deepResearchRuntimeCopy.reportStyleKnowledgeBase
+    chatPatch.deepResearchActionResearchBriefPrepared =
+      deepResearchRuntimeCopy.researchBriefPrepared
+    chatPatch.deepResearchActionDraftSynthesisReady =
+      deepResearchRuntimeCopy.draftSynthesisReady
+    chatPatch.deepResearchActionDetectedResearchGap =
+      deepResearchRuntimeCopy.detectedResearchGap
+  }
+  if (deepResearchSummaryCopy) {
+    chatPatch.deepResearchSummaryGapCoverage = deepResearchSummaryCopy.summaryGapCoverage
+    chatPatch.deepResearchSummaryOfficialGap = deepResearchSummaryCopy.summaryOfficialGap
+    chatPatch.deepResearchSummaryResolvedCoverage =
+      deepResearchSummaryCopy.summaryResolvedCoverage
+    chatPatch.deepResearchSummaryDomainCoverage = deepResearchSummaryCopy.summaryDomainCoverage
+    chatPatch.deepResearchSummaryFreshnessCoverage =
+      deepResearchSummaryCopy.summaryFreshnessCoverage
+    chatPatch.deepResearchSummaryClaimSupportCoverage =
+      deepResearchSummaryCopy.summaryClaimSupportCoverage
+    chatPatch.deepResearchOpenQuestionPrimarySourceVerification =
+      deepResearchSummaryCopy.openQuestionPrimarySourceVerification
   }
   if (deepResearchTokenCopy) {
     chatPatch.deepResearchAxisIdentityValidation = deepResearchTokenCopy.axisIdentityValidation

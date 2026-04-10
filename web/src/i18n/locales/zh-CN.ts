@@ -678,6 +678,10 @@ export default mergeHarnessLocale('zh-CN', {
       collapse: '收起 todo 列表',
       jumpToMessage: '跳转到 checklist 消息',
     },
+    quickNav: {
+      title: '快速导航',
+      jumpToMessage: '跳转到 {preview}',
+    },
     send: '发送',
     sendDuringStream: '发送（追加到对话）',
     searchConversations: '搜索对话...',

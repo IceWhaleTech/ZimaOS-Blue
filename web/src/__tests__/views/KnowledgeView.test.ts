@@ -222,32 +222,22 @@ describe('KnowledgeView', () => {
     expect(wrapper.findAll('[data-graph-node="true"]').length).toBe(2)
     expect(wrapper.findAll('[data-testid="knowledge-graph-edge"]').length).toBe(2)
     expect(
-      wrapper.get('[data-testid="knowledge-graph-node-readme"]').attributes('data-label-visible')
-    ).toBe('false')
-    expect(
       wrapper
         .get('[data-testid="knowledge-graph-node-architecture"]')
         .attributes('data-label-visible')
-    ).toBe('false')
-    expect(wrapper.find('[data-testid="knowledge-graph-focus-card"]').exists()).toBe(false)
+    ).toBe('true')
+    expect(
+      wrapper.get('[data-testid="knowledge-graph-node-readme"]').attributes('data-label-visible')
+    ).toBe('true')
+    expect(wrapper.get('[data-testid="knowledge-graph-focus-card"]').text()).toContain(
+      'Blue Architecture'
+    )
+    expect(vi.mocked(knowledgeApi.getPage)).toHaveBeenNthCalledWith(1, 'architecture')
     expect(wrapper.get('[data-testid="knowledge-ingest-button"]').text()).toContain('Ingest')
     expect(wrapper.get('[data-testid="knowledge-lint-button"]').text()).toContain('Lint')
     expect(wrapper.find('[data-testid="knowledge-summary-value-pages"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="knowledge-panel-log"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="knowledge-schema-editor"]').exists()).toBe(false)
-
-    await wrapper.get('[data-testid="knowledge-graph-node-architecture"]').trigger('click')
-    await flushPromises()
-
-    expect(vi.mocked(knowledgeApi.getPage)).toHaveBeenLastCalledWith('architecture')
-    expect(wrapper.get('[data-testid="knowledge-graph-focus-card"]').text()).toContain(
-      'Blue Architecture'
-    )
-    expect(
-      wrapper
-        .get('[data-testid="knowledge-graph-node-architecture"]')
-        .attributes('data-label-visible')
-    ).toBe('true')
     expect(wrapper.text()).toContain('Architecture detail.')
 
     await wrapper.get('[data-testid="knowledge-ingest-button"]').trigger('click')

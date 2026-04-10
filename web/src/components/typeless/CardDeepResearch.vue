@@ -28,7 +28,7 @@ import {
   localizeResearchSurfaceTitle,
 } from '@/utils/deepResearchText'
 
-const { t, te } = useI18n()
+const { t, te, tm } = useI18n()
 
 const props = defineProps<{
   card: TypelessCardDeepResearch
@@ -101,7 +101,9 @@ const disclosureLabel = computed(() =>
 )
 
 function tr(key: string, fallback: string): string {
-  return te(key) ? t(key) : fallback
+  if (!te(key)) return fallback
+  const value = tm(key)
+  return typeof value === 'string' ? value : String(t(key))
 }
 
 function validCitation(item: unknown): item is DeepResearchCitationItem {
@@ -200,6 +202,10 @@ function verificationTitle(item: DeepResearchVerificationItem): string {
 
 function verificationSummaryText(summary?: string): string {
   return localizeDeepResearchSummary(summary, tr) || summary || ''
+}
+
+function openQuestionText(question?: string): string {
+  return localizeDeepResearchSummary(question, tr) || question || ''
 }
 
 function workflowPhaseStatusLabel(status?: string): string {
@@ -788,7 +794,7 @@ function conflictRiskLabel(risk?: string): string {
               v-if="openQuestions.length"
               class="deep-research-list mt-3 list-disc space-y-1 text-sm text-slate-600 dark:text-slate-300"
             >
-              <li v-for="question in openQuestions" :key="question">{{ question }}</li>
+              <li v-for="question in openQuestions" :key="question">{{ openQuestionText(question) }}</li>
             </ul>
             <div v-else class="mt-3 text-sm text-slate-500 dark:text-slate-400">
               {{ stopReasonLabel(props.card.stop_reason) }}
