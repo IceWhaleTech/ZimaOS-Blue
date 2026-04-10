@@ -1060,8 +1060,35 @@ func runServerDefaultIteration() serverRunOutcome {
 
 	cronIPC := sockipc.NewCronIPCAdapter(cron.NewSkillAdapter(cronHandler.GetService))
 
-	// SSE event broker - created early so push service can use it as EventPublisher
-	sseBroker := ssePkg.NewBroker()
+		// SSE event broker - created early so push service can use it as EventPublisher
+		sseBroker := ssePkg.NewBroker()
+		const browserMonitorFrameEventType = "browser_session_monitor_updated"
+		const browserMonitorActivityEventType = "browser_session_activity"
+		attachBrowserMonitorFrameHook := func(service *browser.RodService) {
+			if service == nil {
+				return
+			}
+			service.SetMonitorFrameListener(func(targetID string, capturedAt string) {
+			if strings.TrimSpace(targetID) == "" {
+				return
+			}
+			sseBroker.Broadcast(browserMonitorFrameEventType, map[string]string{
+				"session_id":   strings.TrimSpace(targetID),
+				"captured_at":  strings.TrimSpace(capturedAt),
+					"monitor_kind": "image",
+				})
+			})
+			service.SetMonitorActivityListener(func(targetID string, observedAt string) {
+				if strings.TrimSpace(targetID) == "" {
+					return
+				}
+				sseBroker.Broadcast(browserMonitorActivityEventType, map[string]string{
+					"session_id":   strings.TrimSpace(targetID),
+					"observed_at":  strings.TrimSpace(observedAt),
+					"monitor_kind": "image",
+				})
+			})
+		}
 
 	// Wire Web Push notification support (shared with bluelib)
 	wpSender := bootstrap.InitWebPushSenderWithReadDB(db, dbReader, configKV, zapLogger)
@@ -1115,7 +1142,12 @@ func runServerDefaultIteration() serverRunOutcome {
 			headlessRuntime := reclaim.NewManaged[*browser.RodService](
 				cfg.Performance.ResourceReclaim.BrowserIdleAfter,
 				func() (*browser.RodService, error) {
-					return browser.NewService(headlessCfg)
+					svc, err := browser.NewService(headlessCfg)
+					if err != nil {
+						return nil, err
+					}
+					attachBrowserMonitorFrameHook(svc)
+					return svc, nil
 				},
 				func(_ context.Context, svc *browser.RodService) error {
 					if svc == nil {
@@ -1130,7 +1162,12 @@ func runServerDefaultIteration() serverRunOutcome {
 			visibleRuntime := reclaim.NewManaged[*browser.RodService](
 				cfg.Performance.ResourceReclaim.BrowserIdleAfter,
 				func() (*browser.RodService, error) {
-					return browser.NewService(visibleCfg)
+					svc, err := browser.NewService(visibleCfg)
+					if err != nil {
+						return nil, err
+					}
+					attachBrowserMonitorFrameHook(svc)
+					return svc, nil
 				},
 				func(_ context.Context, svc *browser.RodService) error {
 					if svc == nil {
@@ -1251,6 +1288,7 @@ func runServerDefaultIteration() serverRunOutcome {
 				logger.Warn().Err(err).Msg("Failed to initialize browser service lazily")
 				return nil
 			}
+			attachBrowserMonitorFrameHook(browserService)
 			return browserService
 		})
 		browserHandler.SetIdleReclaim(cfg.Performance.ResourceReclaim.BrowserIdleAfter)

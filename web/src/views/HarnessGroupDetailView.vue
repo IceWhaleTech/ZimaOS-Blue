@@ -116,6 +116,37 @@ function humanizeEnum(value: string | null | undefined): string {
   return normalized.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
 }
 
+function humanizeStatus(value: string | null | undefined): string {
+  const normalized = String(value || '').trim()
+  if (!normalized) return tr('common.notAvailable', 'Not available')
+
+  switch (normalized) {
+    case 'waiting_input':
+      return tr('harness.group.waitingInput', 'Waiting input')
+    case 'pending':
+    case 'queued':
+      return tr('harness.group.queuedCount', 'Queued')
+    case 'planning':
+      return tr('common.taskRuntimePlan', 'Planning')
+    case 'executing':
+      return tr('common.taskRuntimeExecute', 'Executing')
+    case 'verifying':
+      return tr('common.taskRuntimeVerify', 'Verifying')
+    case 'completed':
+      return tr('common.taskRuntimeDone', 'Completed')
+    case 'failed':
+      return tr('common.taskStageFailed', 'Failed')
+    case 'cancelled':
+      return tr('common.taskStageCancelled', 'Cancelled')
+    case 'aborted':
+      return tr('common.taskRuntimeAborted', 'Aborted')
+    case 'partial':
+      return tr('harness.group.partialVerdict', 'Partial')
+    default:
+      return humanizeEnum(normalized)
+  }
+}
+
 function formatDate(value?: string | null): string {
   if (!value) return tr('common.notAvailable', 'Not available')
   const parsed = Date.parse(value)
@@ -130,7 +161,9 @@ function percentLabel(value?: number | null): string {
 
 function scoreLabel(value?: number | null): string {
   if (value == null || !Number.isFinite(value)) return tr('common.notAvailable', 'Not available')
-  return Number(value).toFixed(2)
+  const numeric = Number(value)
+  const scaled = numeric >= 0 && numeric <= 1 ? numeric * 100 : numeric
+  return `${Math.round(scaled)}%`
 }
 
 function statusTone(status?: string | null): string {
@@ -567,7 +600,7 @@ onUnmounted(() => {
         <div class="hero-heading">
           <span class="kind-chip">{{ humanizeEnum(group?.kind) }}</span>
           <span class="status-chip" :class="statusTone(group?.status)">
-            {{ humanizeEnum(group?.status) }}
+            {{ humanizeStatus(group?.status) }}
           </span>
         </div>
 
@@ -788,7 +821,7 @@ onUnmounted(() => {
             <div class="failed-card-header">
               <strong>#{{ item.itemIndex ?? '?' }}</strong>
               <span class="status-chip" :class="statusTone(item.status)">
-                {{ humanizeEnum(item.status) }}
+                {{ humanizeStatus(item.status) }}
               </span>
             </div>
             <p class="failed-title">{{ item.title || group.subject || item.id }}</p>
@@ -834,7 +867,7 @@ onUnmounted(() => {
             <div class="failed-card-header">
               <strong>#{{ item.index ?? '?' }}</strong>
               <span class="status-chip" :class="statusTone(item.runStatus || item.status)">
-                {{ humanizeEnum(item.runStatus || item.status) }}
+                {{ humanizeStatus(item.runStatus || item.status) }}
               </span>
             </div>
             <p class="failed-title">{{ item.title }}</p>

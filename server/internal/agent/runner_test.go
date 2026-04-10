@@ -651,7 +651,7 @@ func TestRunner_LLMTools(t *testing.T) {
 	registry.Register(&dummyTool{name: "memory", desc: "search memory"})
 
 	runner := &Runner{registry: registry}
-	llmTools := runner.llmTools()
+	llmTools := runner.llmTools(nil)
 
 	if len(llmTools) != 2 {
 		t.Fatalf("got %d tools, want 2", len(llmTools))
@@ -663,6 +663,29 @@ func TestRunner_LLMTools(t *testing.T) {
 	}
 	if !names["exec"] || !names["memory"] {
 		t.Errorf("expected exec and memory tools, got %v", names)
+	}
+}
+
+func TestRunner_LLMTools_OmitsAskForSilentHarnessMode(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(&dummyTool{name: "ask", desc: "ask the user a clarifying question"})
+	registry.Register(&dummyTool{name: "exec", desc: "run commands"})
+
+	runner := &Runner{registry: registry}
+	task := &Task{
+		Metadata: map[string]interface{}{
+			"harness_silent_mode": true,
+			"non_interactive":     true,
+			"skip_hil":            true,
+		},
+	}
+
+	llmTools := runner.llmTools(task)
+	if len(llmTools) != 1 {
+		t.Fatalf("got %d tools, want 1", len(llmTools))
+	}
+	if llmTools[0].Name != "exec" {
+		t.Fatalf("unexpected tools: %+v", llmTools)
 	}
 }
 
@@ -851,7 +874,7 @@ func TestTaskCancelledMessageMapping(t *testing.T) {
 
 func TestRunner_LLMTools_NilRegistry(t *testing.T) {
 	runner := &Runner{}
-	if got := runner.llmTools(); got != nil {
+	if got := runner.llmTools(nil); got != nil {
 		t.Errorf("expected nil, got %v", got)
 	}
 }
@@ -2426,6 +2449,7 @@ func TestRunner_AskUser_TimeoutDefaultAction(t *testing.T) {
 		AskTimeout:       20 * time.Millisecond,
 		AskTimeoutAction: "default",
 	})
+	r.minAskTimeout = time.Millisecond
 	questions := []AgentQuestion{{
 		ID:       "q1",
 		Question: "Pick one",
@@ -2444,6 +2468,97 @@ func TestRunner_AskUser_TimeoutDefaultAction(t *testing.T) {
 	}
 }
 
+func TestRunner_AskUser_AutoAnswersHarnessClarificationWithoutBlocking(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	task := &Task{
+		ID:           "ask_silent_clarify",
+		UserID:       "u1",
+		Goal:         "test",
+		Status:       TaskStatusWaitingInput,
+		RuntimeState: RuntimeStateClarify,
+		Metadata: map[string]interface{}{
+			"harness_silent_mode": true,
+			"non_interactive":     true,
+			"skip_hil":            true,
+		},
+	}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{})
+	answers, err := r.AskUser(ctx, task.ID, buildClarificationQuestions(), 0)
+	if err != nil {
+		t.Fatalf("AskUser error: %v", err)
+	}
+	if len(answers) != 1 || len(answers[0].Values) != 1 || answers[0].Values[0] != "balanced" {
+		t.Fatalf("unexpected answers: %+v", answers)
+	}
+	stored, err := s.Get(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if stored.Status == TaskStatusWaitingInput {
+		t.Fatalf("status = %q, want non-blocking status", stored.Status)
+	}
+	if stored.Status != TaskStatusPlanning {
+		t.Fatalf("status = %q, want %q", stored.Status, TaskStatusPlanning)
+	}
+	if pending := r.askQueues[task.ID]; pending != nil {
+		t.Fatal("expected no pending ask queue for silent harness mode")
+	}
+}
+
+func TestRunner_AskUser_AutoContinuesHarnessHighRiskConfirmations(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+
+	task := &Task{
+		ID:           "ask_silent_tool_gate",
+		UserID:       "u1",
+		Goal:         "test",
+		Status:       TaskStatusWaitingInput,
+		RuntimeState: RuntimeStateConfirmGate,
+		Metadata: map[string]interface{}{
+			"harness_silent_mode": true,
+			"non_interactive":     true,
+			"skip_hil":            true,
+		},
+	}
+	if err := s.Create(ctx, task); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{})
+	questions := buildHighRiskConfirmationQuestions("exec", CapabilityInfo{
+		Name:       "exec",
+		Kind:       CapabilityKindTool,
+		RiskLevel:  "high",
+		Idempotent: false,
+	}, "deploy release")
+	answers, err := r.AskUser(ctx, task.ID, questions, 0)
+	if err != nil {
+		t.Fatalf("AskUser error: %v", err)
+	}
+	if len(answers) != 1 || len(answers[0].Values) != 1 || answers[0].Values[0] != "continue" {
+		t.Fatalf("unexpected answers: %+v", answers)
+	}
+}
+
+func TestRunner_ResolveAskTimeout_ClampedToMinimum(t *testing.T) {
+	s := testStore(t)
+	r := NewRunner(s, &mockLLM{}, nil, tools.NewExecutor(nil), nil, RunnerConfig{
+		AskTimeout:       2 * time.Minute,
+		AskTimeoutAction: "default",
+	})
+	r.SetAskTimeoutFunc(func() time.Duration { return time.Millisecond })
+	if got := r.resolveAskTimeout(1); got != defaultMinAskTimeoutPerQuestion {
+		t.Fatalf("resolveAskTimeout() = %v, want %v", got, defaultMinAskTimeoutPerQuestion)
+	}
+}
+
 func TestRunner_AskUser_DynamicTimeoutOverride(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
@@ -2456,6 +2571,7 @@ func TestRunner_AskUser_DynamicTimeoutOverride(t *testing.T) {
 		AskTimeout:       2 * time.Minute,
 		AskTimeoutAction: "default",
 	})
+	r.minAskTimeout = time.Millisecond
 	r.SetAskTimeoutFunc(func() time.Duration { return 25 * time.Millisecond })
 	start := time.Now()
 	_, err := r.AskUser(ctx, "ask_override", []AgentQuestion{{
@@ -2597,6 +2713,7 @@ func TestRunner_HandleAskUser_ObjectOptions(t *testing.T) {
 		AskTimeout:       20 * time.Millisecond,
 		AskTimeoutAction: "default",
 	})
+	r.minAskTimeout = time.Millisecond
 
 	result := r.handleAskUser(ctx, task, `{"q":"Choose strategy","a":[{"label":"Balanced (Recommended)","description":"safe","value":"balanced"},{"label":"Fast","value":"fast"}]}`)
 	if strings.Contains(result, `"error"`) {
@@ -2618,6 +2735,7 @@ func TestRunner_HandleAskUser_TextQuestion(t *testing.T) {
 		AskTimeout:       20 * time.Millisecond,
 		AskTimeoutAction: "default",
 	})
+	r.minAskTimeout = time.Millisecond
 
 	result := r.handleAskUser(ctx, task, `{"questions":[{"question":"请假时长？","type":"text"}]}`)
 	if strings.Contains(result, `"error"`) {

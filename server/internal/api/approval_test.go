@@ -188,6 +188,31 @@ func TestApprovalAuthorizeToolCallDenyPolicy(t *testing.T) {
 	}
 }
 
+func TestApprovalAuthorizeToolCall_AutoAllowsSilentHarnessContext(t *testing.T) {
+	h := NewApprovalHandler(nil)
+	h.config.DefaultPolicy = "ask"
+
+	ctx := tools.WithAutoConfirm(context.Background(), true)
+	decision, err := h.AuthorizeToolCall(ctx, tools.ToolApprovalRequest{
+		ToolName:    "browser",
+		RouteKind:   tools.ToolRouteKindAgent,
+		BindingHash: "binding-1",
+		RiskLevel:   "high",
+	})
+	if err != nil {
+		t.Fatalf("AuthorizeToolCall() error = %v", err)
+	}
+	if !decision.Allowed {
+		t.Fatal("expected silent harness context to auto-allow tool approval")
+	}
+	if decision.Approval.Required {
+		t.Fatal("expected silent harness context to skip pending approval")
+	}
+	if len(h.pending) != 0 {
+		t.Fatalf("expected no pending approvals, got %d", len(h.pending))
+	}
+}
+
 func TestApprovalAuthorizeToolCallObserverLifecycle(t *testing.T) {
 	e := echo.New()
 	broker := sse.NewBroker()

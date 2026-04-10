@@ -133,6 +133,89 @@ func TestCleanupExpiredMonitorFramesUsesRetention(t *testing.T) {
 	assert.False(t, detachedExists)
 }
 
+func TestMonitorFrameListenerFiresOnlyOnNewFrames(t *testing.T) {
+	cfg := DefaultConfig()
+	service, err := NewService(cfg)
+	require.NoError(t, err)
+
+	var calls []struct {
+		targetID   string
+		capturedAt string
+	}
+	service.SetMonitorFrameListener(func(targetID string, capturedAt string) {
+		calls = append(calls, struct {
+			targetID   string
+			capturedAt string
+		}{targetID: targetID, capturedAt: capturedAt})
+	})
+
+	tab := &tabInfo{
+		targetID: "tab-1",
+		url:      "https://example.com",
+		title:    "Example",
+		active:   true,
+	}
+
+	service.rememberSessionScreenshot(tab, "frame-1", "viewport")
+	require.Len(t, calls, 1)
+	assert.Equal(t, "tab-1", calls[0].targetID)
+	assert.NotEmpty(t, calls[0].capturedAt)
+
+	// Same frame data should not trigger another event.
+	service.rememberSessionScreenshot(tab, "frame-1", "viewport")
+	require.Len(t, calls, 1)
+
+	// New frame data should trigger another event.
+	service.rememberSessionScreenshot(tab, "frame-2", "viewport")
+	require.Len(t, calls, 2)
+	assert.Equal(t, "tab-1", calls[1].targetID)
+	assert.NotEmpty(t, calls[1].capturedAt)
+
+	history := service.SessionScreenshotHistory("tab-1")
+	require.NotEmpty(t, history)
+	assert.Equal(t, "frame-2", history[0].Data)
+}
+
+func TestMonitorActivityListenerFiresOnNetworkIdle(t *testing.T) {
+	cfg := DefaultConfig()
+	service, err := NewService(cfg)
+	require.NoError(t, err)
+
+	var seen []struct {
+		targetID    string
+		observedAt  string
+	}
+	service.SetMonitorActivityListener(func(targetID string, observedAt string) {
+		seen = append(seen, struct {
+			targetID   string
+			observedAt string
+		}{targetID: targetID, observedAt: observedAt})
+	})
+
+	state := &networkCaptureState{
+		pending:  make(map[proto.NetworkRequestID]*observedNetworkBuilder),
+		targetID: "tab-1",
+		onIdle: func(targetID string, observedAt string) {
+			service.monitorActivityHook(targetID, observedAt)
+		},
+	}
+
+	reqID := proto.NetworkRequestID("req-1")
+	state.recordRequest(&proto.NetworkRequestWillBeSent{
+		RequestID: reqID,
+		Type:      proto.NetworkResourceTypeDocument,
+		Request: &proto.NetworkRequest{
+			URL:    "https://example.com",
+			Method: "GET",
+		},
+	})
+	state.recordFinished(nil, &proto.NetworkLoadingFinished{RequestID: reqID})
+
+	require.Len(t, seen, 1)
+	assert.Equal(t, "tab-1", seen[0].targetID)
+	assert.NotEmpty(t, seen[0].observedAt)
+}
+
 func TestSecurityChecker_CheckURL(t *testing.T) {
 	tests := []struct {
 		name           string

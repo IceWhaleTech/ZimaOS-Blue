@@ -246,4 +246,14 @@ describe('KnowledgeGraphMap', () => {
       'data-distance-tier': 'stacked',
     })
   })
+
+  it('renders node and edge counts with numbers', () => {
+    const wrapper = mountGraph()
+
+    const nodeCountText = wrapper.get('[data-testid="knowledge-graph-node-count"]').text()
+    const edgeCountText = wrapper.get('[data-testid="knowledge-graph-edge-count"]').text()
+
+    expect(nodeCountText).toMatch(/5\s*(nodes|个节点|個節點)/)
+    expect(edgeCountText).toMatch(/4\s*(links|条连线|條連線)/)
+  })
 })

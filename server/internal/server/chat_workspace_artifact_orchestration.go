@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/cards"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/google/uuid"
 )
 
@@ -526,9 +528,12 @@ func collectWorkspaceArtifactEvidence(toolCalls []llm.ToolCall, toolResults []ll
 
 	for i, tr := range toolResults {
 		toolName := ""
+		var tc llm.ToolCall
 		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
-			toolName = toolCalls[i].Name
+			tc = toolCalls[i]
+			toolName = tc.Name
 		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			tc = matched
 			toolName = matched.Name
 		}
 		toolName = normalizeFileToolCompatName(toolName)
@@ -544,6 +549,10 @@ func collectWorkspaceArtifactEvidence(toolCalls []llm.ToolCall, toolResults []ll
 		switch toolName {
 		case "read", "pdf", "convert":
 			for _, block := range extractWorkspaceContentEvidenceBlocks(toolName, payload) {
+				appendBlock(block)
+			}
+		case "bash":
+			if block, ok := extractWorkspaceExecReadEvidenceBlock(tc, payload); ok {
 				appendBlock(block)
 			}
 		case "grep":
@@ -592,6 +601,211 @@ func collectWorkspaceArtifactEvidence(toolCalls []llm.ToolCall, toolResults []ll
 		}
 	}
 	return out
+}
+
+func extractWorkspaceExecReadEvidenceBlock(tc llm.ToolCall, payload map[string]interface{}) (workspaceArtifactEvidenceBlock, bool) {
+	path, stdout, ok := extractWorkspaceExecReadEvidence(tc, payload)
+	if !ok {
+		return workspaceArtifactEvidenceBlock{}, false
+	}
+	return buildWorkspaceContentEvidenceBlock("read", path, "", "TEXT", stdout, 3), true
+}
+
+func workspaceArtifactExecReadShowsContent(tc llm.ToolCall, content string) bool {
+	payload := parseWorkspaceArtifactResultPayload(content)
+	_, _, ok := extractWorkspaceExecReadEvidence(tc, payload)
+	return ok
+}
+
+func extractWorkspaceExecReadEvidence(tc llm.ToolCall, payload map[string]interface{}) (string, string, bool) {
+	if len(payload) == 0 || classifyToolFallbackOutcome(payload) == "failed" {
+		return "", "", false
+	}
+	if rawExit, ok := payload["exit_code"]; ok && anyToIntForLLM(rawExit) != 0 {
+		return "", "", false
+	}
+	stdout := strings.TrimSpace(payloadStringField(payload, "stdout"))
+	if stdout == "" {
+		return "", "", false
+	}
+	path, ok := extractWorkspaceExecReadPathFromToolCall(tc, payload)
+	if !ok {
+		return "", "", false
+	}
+	return path, stdout, true
+}
+
+func extractWorkspaceExecReadPathFromToolCall(tc llm.ToolCall, payload map[string]interface{}) (string, bool) {
+	command := strings.TrimSpace(extractWorkspaceExecCommand(tc))
+	if command == "" {
+		command = strings.TrimSpace(payloadStringField(payload, "command"))
+	}
+	if command == "" {
+		return "", false
+	}
+	return extractWorkspaceExecReadPathFromCommand(command)
+}
+
+func extractWorkspaceExecReadPathFromArgs(rawArgs string) (string, bool) {
+	command := strings.TrimSpace(extractWorkspaceExecCommandFromRawArgs(rawArgs))
+	if command == "" {
+		return "", false
+	}
+	return extractWorkspaceExecReadPathFromCommand(command)
+}
+
+func extractWorkspaceExecCommand(tc llm.ToolCall) string {
+	return extractWorkspaceExecCommandFromRawArgs(tc.Arguments)
+}
+
+func extractWorkspaceExecCommandFromRawArgs(rawArgs string) string {
+	normalizedArgs := normalizeToolCallArgumentsForExecution(rawArgs)
+	if strings.TrimSpace(normalizedArgs) == "" {
+		return ""
+	}
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(normalizedArgs), &payload) != nil || len(payload) == 0 {
+		return ""
+	}
+	command := strings.TrimSpace(payloadStringField(payload, "command"))
+	if command == "" {
+		command = strings.TrimSpace(payloadStringField(payload, "cmd"))
+	}
+	return command
+}
+
+func extractWorkspaceExecReadPathFromCommand(command string) (string, bool) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return "", false
+	}
+	analysis := tools.AnalyzeCommand(command, "")
+	if analysis == nil || !analysis.OK || len(analysis.Segments) != 1 {
+		return "", false
+	}
+	segment := analysis.Segments[0]
+	if len(segment.Argv) == 0 {
+		return "", false
+	}
+	execName := strings.ToLower(strings.TrimSpace(segment.ExecutableName))
+	if execName == "" {
+		execName = strings.ToLower(strings.TrimSpace(filepath.Base(segment.Argv[0])))
+	}
+
+	var path string
+	var ok bool
+	switch execName {
+	case "cat":
+		path, ok = extractWorkspaceExecCatReadPath(segment.Argv)
+	case "head", "tail":
+		path, ok = extractWorkspaceExecHeadTailReadPath(segment.Argv)
+	case "sed":
+		path, ok = extractWorkspaceExecSedReadPath(segment.Argv)
+	default:
+		return "", false
+	}
+	if !ok {
+		return "", false
+	}
+	path = normalizeWorkspaceArtifactComparablePath(path)
+	if !isLikelyWorkspaceExecReadPath(path) {
+		return "", false
+	}
+	return path, true
+}
+
+func extractWorkspaceExecCatReadPath(argv []string) (string, bool) {
+	if len(argv) < 2 {
+		return "", false
+	}
+	candidates := make([]string, 0, 1)
+	for _, raw := range argv[1:] {
+		arg := strings.TrimSpace(raw)
+		if arg == "" || arg == "--" {
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			return "", false
+		}
+		candidates = append(candidates, arg)
+	}
+	if len(candidates) != 1 {
+		return "", false
+	}
+	return candidates[0], true
+}
+
+func extractWorkspaceExecHeadTailReadPath(argv []string) (string, bool) {
+	if len(argv) < 2 {
+		return "", false
+	}
+	args := argv[1:]
+	candidates := make([]string, 0, 1)
+	for i := 0; i < len(args); i++ {
+		arg := strings.TrimSpace(args[i])
+		if arg == "" {
+			continue
+		}
+		switch {
+		case arg == "--":
+			rest := make([]string, 0, len(args[i+1:]))
+			for _, tailArg := range args[i+1:] {
+				tailArg = strings.TrimSpace(tailArg)
+				if tailArg != "" {
+					rest = append(rest, tailArg)
+				}
+			}
+			if len(rest) != 1 {
+				return "", false
+			}
+			return rest[0], true
+		case arg == "-n" || arg == "-c" || arg == "--lines" || arg == "--bytes":
+			i++
+			continue
+		case strings.HasPrefix(arg, "-n") || strings.HasPrefix(arg, "-c") || strings.HasPrefix(arg, "--lines=") || strings.HasPrefix(arg, "--bytes="):
+			continue
+		case strings.HasPrefix(arg, "-"):
+			continue
+		default:
+			candidates = append(candidates, arg)
+		}
+	}
+	if len(candidates) != 1 {
+		return "", false
+	}
+	return candidates[0], true
+}
+
+func extractWorkspaceExecSedReadPath(argv []string) (string, bool) {
+	if len(argv) < 3 {
+		return "", false
+	}
+	path := strings.TrimSpace(argv[len(argv)-1])
+	if path == "" || path == "--" || strings.HasPrefix(path, "-") {
+		return "", false
+	}
+	for _, raw := range argv[1 : len(argv)-1] {
+		if strings.TrimSpace(raw) == "--" {
+			return "", false
+		}
+	}
+	return path, true
+}
+
+func isLikelyWorkspaceExecReadPath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" || path == "." || path == ".." || path == "-" {
+		return false
+	}
+	if strings.ContainsAny(path, "*?[]") {
+		return false
+	}
+	for _, prefix := range []string{"/dev/", "/proc/", "/sys/"} {
+		if strings.HasPrefix(path, prefix) {
+			return false
+		}
+	}
+	return true
 }
 
 func parseWorkspaceArtifactResultPayload(content string) map[string]interface{} {

@@ -15,6 +15,8 @@ import (
 
 const defaultQuestionTimeout = 5 * time.Minute
 
+const minQuestionTimeoutPerQuestion = 20 * time.Second
+
 // QuestionItem describes a single question (one tab in the UI).
 type QuestionItem struct {
 	ID          string           `json:"id"`
@@ -59,12 +61,13 @@ type pendingQuestion struct {
 
 // QuestionManager handles the ask-user-question flow via SSE.
 type QuestionManager struct {
-	broker   *sse.Broker
-	mu       sync.Mutex
-	pending  map[string]*pendingQuestion
-	timeout  time.Duration
-	silent   func() bool // returns true when unattended mode is active
-	observer RuntimeEventObserver
+	broker                *sse.Broker
+	mu                    sync.Mutex
+	pending               map[string]*pendingQuestion
+	timeout               time.Duration
+	minTimeoutPerQuestion time.Duration
+	silent                func() bool // returns true when unattended mode is active
+	observer              RuntimeEventObserver
 	// Optional dynamic overrides (wired from settings at runtime).
 	timeoutFunc       func() time.Duration
 	timeoutActionFunc func() string // "default" | "error"
@@ -79,10 +82,11 @@ func NewQuestionManager(broker *sse.Broker, silentFunc func() bool, timeout time
 		silentFunc = func() bool { return false }
 	}
 	return &QuestionManager{
-		broker:  broker,
-		pending: make(map[string]*pendingQuestion),
-		timeout: timeout,
-		silent:  silentFunc,
+		broker:                broker,
+		pending:               make(map[string]*pendingQuestion),
+		timeout:               timeout,
+		minTimeoutPerQuestion: minQuestionTimeoutPerQuestion,
+		silent:                silentFunc,
 	}
 }
 
@@ -124,20 +128,35 @@ func (m *QuestionManager) SetObserver(observer RuntimeEventObserver) {
 	m.observer = observer
 }
 
-func (m *QuestionManager) resolveTimeout() time.Duration {
+func (m *QuestionManager) resolveTimeout(questionCount int) time.Duration {
 	m.mu.Lock()
 	fn := m.timeoutFunc
 	base := m.timeout
+	minPerQ := m.minTimeoutPerQuestion
 	m.mu.Unlock()
+	var d time.Duration
 	if fn != nil {
-		if d := fn(); d > 0 {
-			return d
+		if v := fn(); v > 0 {
+			d = v
 		}
 	}
-	if base <= 0 {
-		return defaultQuestionTimeout
+	if d <= 0 {
+		d = base
 	}
-	return base
+	if d <= 0 {
+		d = defaultQuestionTimeout
+	}
+	if minPerQ <= 0 {
+		minPerQ = minQuestionTimeoutPerQuestion
+	}
+	if questionCount < 1 {
+		questionCount = 1
+	}
+	minTotal := time.Duration(questionCount) * minPerQ
+	if d < minTotal {
+		d = minTotal
+	}
+	return d
 }
 
 func (m *QuestionManager) resolveTimeoutAction() string {
@@ -219,7 +238,7 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 	if userID == "" {
 		userID = "default"
 	}
-	timeout := m.resolveTimeout()
+	timeout := m.resolveTimeout(len(questions))
 	timeoutAction := m.resolveTimeoutAction()
 	// If no active SSE consumer exists for this user, do not block on timeout.
 	// Treat it as unattended mode and return deterministic defaults immediately.

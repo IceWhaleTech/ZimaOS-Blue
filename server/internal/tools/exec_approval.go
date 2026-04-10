@@ -109,6 +109,9 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 	if req.ID == "" {
 		req.ID = uuid.New().String()
 	}
+	if GetAutoConfirm(ctx) {
+		return ApprovalAllowOnce, nil
+	}
 	userID := req.UserID
 	if userID == "" {
 		userID = "default"
@@ -153,6 +156,9 @@ func (m *ApprovalManager) RequestApproval(ctx context.Context, req ApprovalReque
 			"directory":   strings.TrimSpace(req.Directory),
 			"policy_mode": "ask",
 		})
+	}
+	if GetAutoConfirm(ctx) {
+		return ApprovalAllowOnce, nil
 	}
 	if m.broker == nil || m.broker.ClientCount(userID) == 0 {
 		return ApprovalDeny, newToolRuntimeError(

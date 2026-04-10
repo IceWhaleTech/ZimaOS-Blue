@@ -40,6 +40,15 @@ func (m *mockSkillFallbackExecutor) Execute(ctx context.Context, skillID string,
 	return map[string]string{"ok": "1"}, nil
 }
 
+func (m *mockSkillFallbackExecutor) Help(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+	m.lastSkillID = "help:" + skillID
+	m.lastInput = input
+	return map[string]string{
+		"description": "Rewrite a local text file into a more natural voice.",
+		"usage":       "blue humanizer input=<path> [output=<path>]",
+	}, nil
+}
+
 func TestRegisterSkillFallback_AnalyzeUsesLongerTimeout(t *testing.T) {
 	exec := &mockSkillFallbackExecutor{result: map[string]string{"status": "ok"}}
 	conn, cleanup := setupSkillFallbackServer(t, exec)
@@ -168,5 +177,29 @@ func TestRegisterSkillFallback_InheritsBlueUserIDContext(t *testing.T) {
 	}
 	if exec.lastUserID != "user-xyz" {
 		t.Fatalf("user_id=%q, want %q", exec.lastUserID, "user-xyz")
+	}
+}
+
+func TestRegisterSkillFallback_HelpFlagUsesSkillHelpProvider(t *testing.T) {
+	exec := &mockSkillFallbackExecutor{
+		err: context.DeadlineExceeded,
+	}
+	conn, cleanup := setupSkillFallbackServer(t, exec)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{
+		Cmd: "humanizer",
+		Params: map[string]string{
+			"help": "true",
+		},
+	})
+	if resp.Status != "ok" {
+		t.Fatalf("status=%q error=%q", resp.Status, resp.Error)
+	}
+	if exec.lastSkillID != "help:humanizer" {
+		t.Fatalf("skillID=%q, want %q", exec.lastSkillID, "help:humanizer")
+	}
+	if got := resp.Data["usage"]; got != "blue humanizer input=<path> [output=<path>]" {
+		t.Fatalf("usage=%q", got)
 	}
 }

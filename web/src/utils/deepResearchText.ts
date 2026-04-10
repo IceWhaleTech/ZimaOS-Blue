@@ -239,7 +239,7 @@ function formatDeepResearchTemplate(
   replacements: Record<string, string | number>
 ): string {
   return Object.entries(replacements).reduce(
-    (text, [key, value]) => text.replaceAll(`{${key}}`, String(value)),
+    (text, [key, value]) => text.split(`{${key}}`).join(String(value)),
     template
   )
 }

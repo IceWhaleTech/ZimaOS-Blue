@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { KnowledgePageSummary } from '@/api/knowledge'
@@ -37,9 +37,20 @@ const offsetY = ref(0)
 const revealedSlug = ref('')
 const isPanning = ref(false)
 const panOrigin = ref({ x: 0, y: 0, offsetX: 0, offsetY: 0 })
+const stageEl = ref<HTMLElement | null>(null)
+const graphCanvas = ref<HTMLCanvasElement | null>(null)
 
-function tr(key: string, fallback: string) {
-  return te(key) ? t(key) : fallback
+function formatFallback(template: string, values?: Record<string, string | number>): string {
+  if (!values) return template
+  return Object.entries(values).reduce(
+    (current, [name, value]) => current.split(`{${name}}`).join(String(value)),
+    template
+  )
+}
+
+function tr(key: string, fallback: string, values?: Record<string, string | number>) {
+  if (te(key)) return values ? t(key, values) : t(key)
+  return formatFallback(fallback, values)
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -97,6 +108,7 @@ const activeFocusSlug = computed(() => {
 })
 const hasRevealedFocus = computed(() => Boolean(activeFocusSlug.value))
 const graph = computed(() => buildKnowledgeGraphLayout(props.pages || [], activeFocusSlug.value))
+const perfMode = computed(() => graph.value.nodes.length >= 900 || graph.value.edges.length >= 2200)
 
 const legend = computed(() => {
   const counts = new Map<KnowledgeGraphRelation, number>([
@@ -210,6 +222,12 @@ const selectedNeighborhood = computed(() => {
     slugs.add(neighbor.slug)
   }
   return slugs
+})
+
+const domNodes = computed(() => {
+  if (!perfMode.value) return graph.value.nodes
+  if (!activeFocusSlug.value) return []
+  return graph.value.nodes.filter((node) => selectedNeighborhood.value.has(node.slug))
 })
 
 const revealedNode = computed(
@@ -566,6 +584,174 @@ function handleNodeSelect(slug: string) {
   emit('select', slug)
 }
 
+let canvasDrawHandle = 0
+
+function queueCanvasDraw() {
+  if (!perfMode.value) return
+  if (canvasDrawHandle) cancelAnimationFrame(canvasDrawHandle)
+  canvasDrawHandle = requestAnimationFrame(drawGraphCanvas)
+}
+
+function drawGraphCanvas() {
+  const canvas = graphCanvas.value
+  if (!canvas || !perfMode.value) return
+  const context = canvas.getContext('2d')
+  if (!context) return
+
+  const dpr = typeof window !== 'undefined' ? Math.max(1, Math.floor(window.devicePixelRatio || 1)) : 1
+  const targetWidth = Math.round(graph.value.width * dpr)
+  const targetHeight = Math.round(graph.value.height * dpr)
+  if (canvas.width !== targetWidth) canvas.width = targetWidth
+  if (canvas.height !== targetHeight) canvas.height = targetHeight
+
+  context.setTransform(1, 0, 0, 1, 0, 0)
+  context.clearRect(0, 0, canvas.width, canvas.height)
+  context.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+  const skipMutedEdges = graph.value.edges.length > 6000
+  let lastStrokeKey = ''
+
+  for (const edge of graph.value.edges) {
+    const tier = edgeDistanceTier(edge)
+    if (tier === 'stacked') continue
+    if (skipMutedEdges && (tier === 'muted' || tier === 'ambient')) continue
+
+    const source = graphNodeMap.value.get(edge.source)
+    const target = graphNodeMap.value.get(edge.target)
+    if (!source || !target) continue
+
+    const alpha =
+      tier === 'near'
+        ? 0.9
+        : tier === 'mid'
+          ? 0.24
+          : tier === 'far'
+            ? 0.14
+            : tier === 'muted'
+              ? 0.08
+              : 0.06
+    const width =
+      tier === 'near' ? 2.1 : tier === 'mid' ? 1.4 : tier === 'far' ? 1.1 : 0.9
+    const color =
+      edge.relation === 'conflict'
+        ? `rgba(244, 63, 94, ${alpha})`
+        : edge.relation === 'superseded'
+          ? `rgba(100, 116, 139, ${alpha})`
+          : `rgba(14, 165, 233, ${alpha})`
+
+    const strokeKey = `${edge.relation}:${tier}:${width}:${alpha}`
+    if (strokeKey !== lastStrokeKey) {
+      context.strokeStyle = color
+      context.lineWidth = width
+      context.lineCap = 'round'
+      lastStrokeKey = strokeKey
+    }
+
+    context.beginPath()
+    context.moveTo(source.x, source.y)
+    context.lineTo(target.x, target.y)
+    context.stroke()
+  }
+
+  const domSlugs = new Set(domNodes.value.map((node) => node.slug))
+  for (const node of graph.value.nodes) {
+    if (domSlugs.has(node.slug)) continue
+
+    const tier = nodeDistanceTier(node)
+    const alpha =
+      tier === 'mid'
+        ? 0.28
+        : tier === 'far'
+          ? 0.2
+          : tier === 'muted'
+            ? 0.16
+            : tier === 'stacked'
+              ? 0.08
+              : 0.2
+    const radius =
+      tier === 'mid'
+        ? Math.max(2.2, node.radius * 0.1)
+        : tier === 'far'
+          ? Math.max(1.8, node.radius * 0.08)
+          : tier === 'muted'
+            ? 2.1
+            : tier === 'stacked'
+              ? 1.6
+              : 2
+    const fill =
+      node.status === 'conflicted'
+        ? `rgba(244, 63, 94, ${alpha})`
+        : node.status === 'superseded'
+          ? `rgba(100, 116, 139, ${alpha})`
+          : `rgba(14, 165, 233, ${alpha})`
+
+    context.fillStyle = fill
+    context.beginPath()
+    context.arc(node.x, node.y, radius, 0, Math.PI * 2)
+    context.fill()
+  }
+}
+
+function graphPointFromEvent(event: MouseEvent): { x: number; y: number } | null {
+  const stage = stageEl.value
+  if (!stage) return null
+  const rect = stage.getBoundingClientRect()
+  if (!rect.width || !rect.height) return null
+
+  const rawX = event.clientX - rect.left
+  const rawY = event.clientY - rect.top
+  const centerX = rect.width / 2
+  const centerY = rect.height / 2
+  const baseX = ((rawX - offsetX.value) - centerX) / zoom.value + centerX
+  const baseY = ((rawY - offsetY.value) - centerY) / zoom.value + centerY
+
+  return {
+    x: (baseX / rect.width) * graph.value.width,
+    y: (baseY / rect.height) * graph.value.height,
+  }
+}
+
+function handleStageClick(event: MouseEvent) {
+  if (!perfMode.value) return
+  const target = event.target
+  if (target instanceof Element) {
+    if (target.closest('[data-graph-node="true"]')) return
+    if (target.closest('[data-graph-controls="true"]')) return
+  }
+
+  const point = graphPointFromEvent(event)
+  if (!point) return
+
+  let nearest: KnowledgeGraphNode | null = null
+  let nearestDistance = Infinity
+  const hitPadding = 8
+
+  for (const node of graph.value.nodes) {
+    const dx = node.x - point.x
+    const dy = node.y - point.y
+    const distance = dx * dx + dy * dy
+    const radius = Math.max(10, node.radius) + hitPadding
+    if (distance > radius * radius) continue
+    if (distance < nearestDistance) {
+      nearest = node
+      nearestDistance = distance
+    }
+  }
+
+  if (nearest) {
+    handleNodeSelect(nearest.slug)
+  }
+}
+
+watch([perfMode, graph, revealLayer, selectedNeighborhood], queueCanvasDraw, {
+  immediate: true,
+  flush: 'post',
+})
+
+onBeforeUnmount(() => {
+  if (canvasDrawHandle) cancelAnimationFrame(canvasDrawHandle)
+})
+
 watch(
   () => props.selectedSlug,
   (next, previous) => {
@@ -591,20 +777,24 @@ watch(
   <div class="space-y-3">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex flex-wrap gap-2">
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+        <span
+          data-testid="knowledge-graph-node-count"
+          class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+        >
           {{
-            tr('knowledge.graphNodeCount', '{count} nodes').replace(
-              '{count}',
-              String(graph.nodes.length)
-            )
+            tr('knowledge.graphNodeCount', '{count} nodes', {
+              count: graph.nodes.length,
+            })
           }}
         </span>
-        <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+        <span
+          data-testid="knowledge-graph-edge-count"
+          class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700"
+        >
           {{
-            tr('knowledge.graphEdgeCount', '{count} links').replace(
-              '{count}',
-              String(graph.edges.length)
-            )
+            tr('knowledge.graphEdgeCount', '{count} links', {
+              count: graph.edges.length,
+            })
           }}
         </span>
       </div>
@@ -656,6 +846,7 @@ watch(
       <div v-else class="relative min-h-[40rem]">
         <div
           data-testid="knowledge-graph-stage"
+          ref="stageEl"
           :data-layer-depth="String(revealLayer)"
           class="absolute inset-0 min-h-[40rem] cursor-grab touch-none"
           :class="{ 'cursor-grabbing': isPanning }"
@@ -664,6 +855,7 @@ watch(
           @pointerup="endPan"
           @pointerleave="endPan"
           @wheel.prevent="handleWheel"
+          @click="handleStageClick"
         >
           <div
             data-testid="knowledge-graph-viewport"
@@ -691,46 +883,57 @@ watch(
                 :stroke-dasharray="orbitDasharray(orbit.distance, orbit.disconnected)"
                 :stroke-width="orbit.distance === 1 && !orbit.disconnected ? 1.3 : 1"
               />
-              <path
-                v-for="edge in graph.edges"
-                :key="edge.id"
-                data-testid="knowledge-graph-edge"
-                :data-highlight-state="edgeHighlightState(edge)"
-                :data-distance-tier="edgeDistanceTier(edge)"
-                :d="edgePath(edge)"
-                class="transition-[opacity,stroke-width] duration-500 ease-out"
-                :class="edgeClass(edge)"
-                :opacity="
-                  edgeDistanceTier(edge) === 'ambient'
-                    ? defaultEdgeOpacity
-                    : edgeDistanceTier(edge) === 'near'
-                      ? 0.95
+              <template v-if="!perfMode">
+                <path
+                  v-for="edge in graph.edges"
+                  :key="edge.id"
+                  data-testid="knowledge-graph-edge"
+                  :data-highlight-state="edgeHighlightState(edge)"
+                  :data-distance-tier="edgeDistanceTier(edge)"
+                  :d="edgePath(edge)"
+                  class="transition-[opacity,stroke-width] duration-500 ease-out"
+                  :class="edgeClass(edge)"
+                  :opacity="
+                    edgeDistanceTier(edge) === 'ambient'
+                      ? defaultEdgeOpacity
+                      : edgeDistanceTier(edge) === 'near'
+                        ? 0.95
+                        : edgeDistanceTier(edge) === 'stacked'
+                          ? 0.05
+                        : edgeDistanceTier(edge) === 'mid'
+                          ? 0.28
+                          : edgeDistanceTier(edge) === 'far'
+                            ? 0.12
+                            : 0.06
+                  "
+                  :stroke-width="
+                    edgeDistanceTier(edge) === 'near'
+                      ? 2.2
                       : edgeDistanceTier(edge) === 'stacked'
-                        ? 0.05
+                        ? 0.9
                       : edgeDistanceTier(edge) === 'mid'
-                        ? 0.28
+                        ? 1.5
                         : edgeDistanceTier(edge) === 'far'
-                          ? 0.12
-                          : 0.06
-                "
-                :stroke-width="
-                  edgeDistanceTier(edge) === 'near'
-                    ? 2.2
-                    : edgeDistanceTier(edge) === 'stacked'
-                      ? 0.9
-                    : edgeDistanceTier(edge) === 'mid'
-                      ? 1.5
-                      : edgeDistanceTier(edge) === 'far'
-                        ? 1.1
-                        : 1
-                "
-                stroke-linecap="round"
-              />
+                          ? 1.1
+                          : 1
+                  "
+                  stroke-linecap="round"
+                />
+              </template>
             </svg>
+
+            <canvas
+              v-if="perfMode"
+              ref="graphCanvas"
+              aria-hidden="true"
+              class="pointer-events-none absolute inset-0 h-full w-full"
+              :width="graph.width"
+              :height="graph.height"
+            />
 
             <div class="absolute inset-0">
               <button
-                v-for="node in graph.nodes"
+                v-for="node in domNodes"
                 :key="node.slug"
                 :data-testid="`knowledge-graph-node-${node.slug}`"
                 data-graph-node="true"

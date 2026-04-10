@@ -87,26 +87,5 @@ func registerRouteRuntimeMediaIPC(
 	if deps.RegisterIPCExtensions != nil {
 		deps.RegisterIPCExtensions(ipcSrv)
 	}
-	sockipc.RegisterSkillFallback(ipcSrv, sockipc.SkillExecutorFunc(func(ctx context.Context, skillID string, input map[string]any) (map[string]string, error) {
-		resolved, err := resolveRuntimeSkillForExecution(services.SkillRegistry, runtimeSkillExecutionWorkspace(workspaceDir, input), skillID)
-		if err == nil && resolved.Skill != nil {
-			result, execErr := resolved.Skill.Execute(ctx, input)
-			if execErr != nil {
-				return nil, execErr
-			}
-			return sockipc.SkillResultToMap(result.Data, result.Success, result.Error), nil
-		}
-		if err != nil && !strings.Contains(err.Error(), "unknown skill:") {
-			return nil, err
-		}
-
-		if data, handled, err := tryExecuteToolFallback(ctx, services.ToolRegistry, skillID, input); handled {
-			return data, err
-		}
-
-		if err != nil {
-			return nil, err
-		}
-		return nil, fmt.Errorf("unknown skill: %s", skillID)
-	}), logger)
+	sockipc.RegisterSkillFallback(ipcSrv, newRuntimeIPCSkillExecutor(services, workspaceDir), logger)
 }

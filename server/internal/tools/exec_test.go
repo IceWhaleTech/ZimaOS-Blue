@@ -503,6 +503,25 @@ func TestApprovalSessionIDPropagationAndLookup(t *testing.T) {
 	mgr.ResolveApproval(bySession.ID, ApprovalAllowOnce)
 }
 
+func TestApprovalManager_RequestApprovalAutoAllowsSilentHarnessContext(t *testing.T) {
+	mgr := NewApprovalManager(nil)
+	ctx := WithAutoConfirm(context.Background(), true)
+
+	decision, err := mgr.RequestApproval(ctx, ApprovalRequest{
+		Command: "echo hi",
+		UserID:  "test-user",
+	})
+	if err != nil {
+		t.Fatalf("RequestApproval() error = %v", err)
+	}
+	if decision != ApprovalAllowOnce {
+		t.Fatalf("decision = %q, want %q", decision, ApprovalAllowOnce)
+	}
+	if pending := mgr.GetPending("test-user"); pending != nil {
+		t.Fatalf("expected no pending approval, got %+v", pending)
+	}
+}
+
 // --- Exec tool ---
 
 func TestExecSimpleCommand(t *testing.T) {
@@ -1099,6 +1118,139 @@ func TestExecBlueSkillCLICommandBypassesSkillShortCircuit(t *testing.T) {
 	}
 	if got := strings.TrimSpace(res.Stdout); got != "cli:skill install humanizer" {
 		t.Fatalf("stdout = %q, want %q", got, "cli:skill install humanizer")
+	}
+}
+
+func TestExecBlueSlashCommandBypassesSkillShortCircuit(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	script := "#!/bin/sh\nprintf 'cli:%s %s\\n' \"$1\" \"$2\"\n"
+	if err := os.WriteFile(bluePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	skillCalls := 0
+	selectorCalls := 0
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
+		skillCalls++
+		return nil, fmt.Errorf("unexpected skill execution: %s", skillID)
+	})
+	tool.SetSkillSelector(func(_ context.Context, _ string) SkillSelectionDecision {
+		selectorCalls++
+		return SkillSelectionDecision{SelectedSkill: "web_query"}
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "blue /install humanizer",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if skillCalls != 0 {
+		t.Fatalf("skill executor calls = %d, want 0", skillCalls)
+	}
+	if selectorCalls != 0 {
+		t.Fatalf("skill selector calls = %d, want 0", selectorCalls)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := strings.TrimSpace(res.Stdout); got != "cli:/install humanizer" {
+		t.Fatalf("stdout = %q, want %q", got, "cli:/install humanizer")
+	}
+}
+
+func TestExecBlueSkillHelpBypassesSkillShortCircuit(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	script := "#!/bin/sh\nprintf 'cli:%s %s\\n' \"$1\" \"$2\"\n"
+	if err := os.WriteFile(bluePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	skillCalls := 0
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
+		skillCalls++
+		return nil, fmt.Errorf("unexpected skill execution: %s", skillID)
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "blue humanizer --help",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if skillCalls != 0 {
+		t.Fatalf("skill executor calls = %d, want 0", skillCalls)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := strings.TrimSpace(res.Stdout); got != "cli:humanizer --help" {
+		t.Fatalf("stdout = %q, want %q", got, "cli:humanizer --help")
+	}
+}
+
+func TestExecBlueCLICommandInjectsRuntimeServerEnv(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	dataDir := t.TempDir()
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+		DataDir:        dataDir,
+		ServiceHost:    "127.0.0.1",
+		ServicePort:    18080,
+	}, sessions, nil, nil, nil)
+
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	script := "#!/bin/sh\nprintf '%s|%s|%s|%s\\n' \"$BLUE_SERVER_HOST\" \"$BLUE_SERVER_PORT\" \"$BLUE_IPC_SOCKET\" \"$BLUE_AUDIT_IPC_SOCKET\"\n"
+	if err := os.WriteFile(bluePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "blue skill install humanizer",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	want := "127.0.0.1|18080|" + filepath.Join(dataDir, "blue.sock") + "|" + filepath.Join(dataDir, "session_audit.sock")
+	if got := strings.TrimSpace(res.Stdout); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }
 

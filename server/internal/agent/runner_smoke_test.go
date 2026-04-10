@@ -42,6 +42,7 @@ func TestRunnerSmoke_ClarifyTimeoutDefault_Completes(t *testing.T) {
 		AskTimeoutAction: "default",
 		MaxConcurrent:    2,
 	})
+	runner.minAskTimeout = time.Millisecond
 	t.Cleanup(func() { runner.Shutdown() })
 
 	task, err := runner.Submit(context.Background(), "u1", "TBD: build feature", "", "")
@@ -76,6 +77,7 @@ func TestRunnerSmoke_ClarifyTimeoutError_Fails(t *testing.T) {
 		AskTimeoutAction: "error",
 		MaxConcurrent:    2,
 	})
+	runner.minAskTimeout = time.Millisecond
 	t.Cleanup(func() { runner.Shutdown() })
 
 	task, err := runner.Submit(context.Background(), "u1", "TBD: choose strategy", "", "")

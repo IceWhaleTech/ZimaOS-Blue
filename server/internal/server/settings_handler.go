@@ -77,7 +77,7 @@ type Settings struct {
 	AgentMode                           *bool                     `json:"agent_mode,omitempty"`                                // Autonomous agent mode (nil = default false)
 	AgentAutoReflect                    *bool                     `json:"agent_auto_reflect,omitempty"`                        // Run post-task reflection in agent mode (nil = default true)
 	AgentAutoConfirm                    *bool                     `json:"agent_auto_confirm,omitempty"`                        // Skip confirmation in agent mode (nil = default false)
-	AgentAskTimeoutSeconds              *int                      `json:"agent_ask_timeout_seconds,omitempty"`                 // Ask timeout in seconds (default 120, range 15-1800)
+	AgentAskTimeoutSeconds              *int                      `json:"agent_ask_timeout_seconds,omitempty"`                 // Ask timeout in seconds (default 120, range 20-1800)
 	AgentAskTimeoutAction               string                    `json:"agent_ask_timeout_action,omitempty"`                  // default|error
 	AgentLoopPolicyMaxToolRounds        *int                      `json:"agent_loop_policy_max_tool_rounds,omitempty"`         // default maxToolRoundsAgent
 	AgentLoopPolicyMaxAutoContinue      *int                      `json:"agent_loop_policy_max_auto_continue,omitempty"`       // default maxAutoContinueAgent
@@ -663,7 +663,7 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 	}
 	if newSettings.AgentAskTimeoutSeconds != nil {
 		v := *newSettings.AgentAskTimeoutSeconds
-		if v < 15 || v > 1800 {
+		if v < 20 || v > 1800 {
 			newSettings.AgentAskTimeoutSeconds = nil
 		}
 	}
@@ -1325,8 +1325,8 @@ func (h *SettingsHandler) GetAgentAskTimeoutSeconds() int {
 		return 120
 	}
 	v := *h.settings.AgentAskTimeoutSeconds
-	if v < 15 {
-		return 15
+	if v < 20 {
+		return 20
 	}
 	if v > 1800 {
 		return 1800

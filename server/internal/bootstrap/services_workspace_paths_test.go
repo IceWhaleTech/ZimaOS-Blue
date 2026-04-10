@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -58,6 +59,31 @@ func TestResolveBuiltinToolAllowedPathsAddsTmpWhenWorkspaceIsTemporary(t *testin
 	paths := resolveBuiltinToolAllowedPaths(cfg, filepath.Join(t.TempDir(), "data"))
 	if !containsCleanPath(paths, "/tmp") {
 		t.Fatalf("expected /tmp in allowed paths for temp workspace, got=%v", paths)
+	}
+}
+
+func TestResolveBuiltinToolAllowedPathsIncludesRuntimeSkillRoots(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.AgentCore.WorkspaceDir = filepath.Join(t.TempDir(), "bench-workspace")
+
+	paths := resolveBuiltinToolAllowedPaths(cfg, filepath.Join(t.TempDir(), "data"))
+
+	if !containsCleanPath(paths, filepath.Join(cfg.AgentCore.WorkspaceDir, ".agents")) {
+		t.Fatalf("expected workspace .agents root in allowed paths, got=%v", paths)
+	}
+	if !containsCleanPath(paths, filepath.Join(cfg.AgentCore.WorkspaceDir, ".claude")) {
+		t.Fatalf("expected workspace .claude root in allowed paths, got=%v", paths)
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("user home dir: %v", err)
+	}
+	if !containsCleanPath(paths, filepath.Join(home, ".agents")) {
+		t.Fatalf("expected home .agents root in allowed paths, got=%v", paths)
+	}
+	if !containsCleanPath(paths, filepath.Join(home, ".claude")) {
+		t.Fatalf("expected home .claude root in allowed paths, got=%v", paths)
 	}
 }
 

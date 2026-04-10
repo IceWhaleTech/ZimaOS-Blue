@@ -29,6 +29,8 @@ type RodService struct {
 	tabsMu            sync.RWMutex
 	screenshotHistory map[string][]SessionScreenshot
 	historyMu         sync.RWMutex
+	monitorFrameHook  func(targetID string, capturedAt string)
+	monitorActivityHook func(targetID string, observedAt string)
 	started           bool
 	mu                sync.RWMutex
 }
@@ -60,6 +62,9 @@ type networkCaptureState struct {
 	lastActivity time.Time
 	events       []ObservedNetworkEvent
 	pending      map[proto.NetworkRequestID]*observedNetworkBuilder
+	targetID     string
+	onIdle       func(targetID string, observedAt string)
+	lastIdleEmit time.Time
 }
 
 type observedNetworkBuilder struct {
@@ -545,6 +550,9 @@ func (s *RodService) ensureTabNetworkCapture(tab *tabInfo, reset bool) {
 	defer tab.networkMu.Unlock()
 
 	if tab.network != nil && tab.network.page == tab.page {
+		if strings.TrimSpace(tab.targetID) != "" {
+			tab.network.targetID = strings.TrimSpace(tab.targetID)
+		}
 		if reset {
 			tab.network.reset()
 		}
@@ -565,6 +573,15 @@ func (s *RodService) ensureTabNetworkCapture(tab *tabInfo, reset bool) {
 		page:         tab.page,
 		lastActivity: time.Now(),
 		pending:      make(map[proto.NetworkRequestID]*observedNetworkBuilder),
+		targetID:     strings.TrimSpace(tab.targetID),
+		onIdle: func(targetID string, observedAt string) {
+			s.mu.RLock()
+			hook := s.monitorActivityHook
+			s.mu.RUnlock()
+			if hook != nil {
+				hook(targetID, observedAt)
+			}
+		},
 	}
 	tab.network = state
 
@@ -655,6 +672,17 @@ func (s *networkCaptureState) recordFinished(page *rod.Page, e *proto.NetworkLoa
 	builder := s.pending[e.RequestID]
 	delete(s.pending, e.RequestID)
 	s.lastActivity = time.Now()
+	shouldEmitIdle := builder != nil && len(s.pending) == 0
+	targetID := strings.TrimSpace(s.targetID)
+	now := timeutil.NowTime()
+	if shouldEmitIdle && targetID != "" {
+		if s.lastIdleEmit.IsZero() || now.Sub(s.lastIdleEmit) >= 250*time.Millisecond {
+			s.lastIdleEmit = now
+		} else {
+			shouldEmitIdle = false
+		}
+	}
+	idleHook := s.onIdle
 	s.mu.Unlock()
 	if builder == nil {
 		return
@@ -683,6 +711,10 @@ func (s *networkCaptureState) recordFinished(page *rod.Page, e *proto.NetworkLoa
 	}
 	s.lastActivity = time.Now()
 	s.mu.Unlock()
+
+	if shouldEmitIdle && idleHook != nil && targetID != "" {
+		idleHook(targetID, now.Format(time.RFC3339))
+	}
 }
 
 func (s *networkCaptureState) recordFailed(e *proto.NetworkLoadingFailed) {
@@ -690,9 +722,24 @@ func (s *networkCaptureState) recordFailed(e *proto.NetworkLoadingFailed) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	delete(s.pending, e.RequestID)
 	s.lastActivity = time.Now()
+	shouldEmitIdle := len(s.pending) == 0
+	targetID := strings.TrimSpace(s.targetID)
+	now := timeutil.NowTime()
+	if shouldEmitIdle && targetID != "" {
+		if s.lastIdleEmit.IsZero() || now.Sub(s.lastIdleEmit) >= 250*time.Millisecond {
+			s.lastIdleEmit = now
+		} else {
+			shouldEmitIdle = false
+		}
+	}
+	idleHook := s.onIdle
+	s.mu.Unlock()
+
+	if shouldEmitIdle && idleHook != nil && targetID != "" {
+		idleHook(targetID, now.Format(time.RFC3339))
+	}
 }
 
 func (s *networkCaptureState) snapshot(maxEntries int, clear bool) []ObservedNetworkEvent {
@@ -986,10 +1033,15 @@ func (s *RodService) rememberSessionScreenshot(tab *tabInfo, data string, scope 
 		Scope:      strings.TrimSpace(scope),
 	}
 
-	s.historyMu.Lock()
-	defer s.historyMu.Unlock()
+	s.mu.RLock()
+	hook := s.monitorFrameHook
+	s.mu.RUnlock()
+	targetID := tab.targetID
+	capturedAt := entry.CapturedAt
 
-	frames := s.screenshotHistory[tab.targetID]
+	s.historyMu.Lock()
+
+	frames := s.screenshotHistory[targetID]
 	if count := len(frames); count > 0 && frames[count-1].Data == entry.Data {
 		frames[count-1].CapturedAt = entry.CapturedAt
 		if entry.URL != "" {
@@ -1001,7 +1053,8 @@ func (s *RodService) rememberSessionScreenshot(tab *tabInfo, data string, scope 
 		if entry.Scope != "" {
 			frames[count-1].Scope = entry.Scope
 		}
-		s.screenshotHistory[tab.targetID] = frames
+		s.screenshotHistory[targetID] = frames
+		s.historyMu.Unlock()
 		return
 	}
 
@@ -1009,7 +1062,11 @@ func (s *RodService) rememberSessionScreenshot(tab *tabInfo, data string, scope 
 	if len(frames) > maxSessionScreenshotHistory {
 		frames = append([]SessionScreenshot(nil), frames[len(frames)-maxSessionScreenshotHistory:]...)
 	}
-	s.screenshotHistory[tab.targetID] = frames
+	s.screenshotHistory[targetID] = frames
+	s.historyMu.Unlock()
+	if hook != nil {
+		hook(targetID, capturedAt)
+	}
 }
 
 func (s *RodService) ensureDetachedMonitorTab(url string, title string) *tabInfo {
@@ -1148,6 +1205,29 @@ func (s *RodService) SetSessionScreenshotRetention(retention time.Duration) {
 		s.config.SessionScreenshotRetention = retention
 	}
 	s.pruneExpiredSessionScreenshots()
+}
+
+// SetMonitorFrameListener sets an optional hook called when a new screenshot frame
+// is captured or refreshed for a session. The hook must be fast and non-blocking.
+func (s *RodService) SetMonitorFrameListener(listener func(targetID string, capturedAt string)) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.monitorFrameHook = listener
+	s.mu.Unlock()
+}
+
+// SetMonitorActivityListener sets an optional hook called when a session reports
+// network activity reaching an idle point. This can be used to trigger fast UI refreshes
+// without pushing screenshot binaries over SSE.
+func (s *RodService) SetMonitorActivityListener(listener func(targetID string, observedAt string)) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.monitorActivityHook = listener
+	s.mu.Unlock()
 }
 
 func (s *RodService) clearSessionScreenshotHistory(targetID string) {

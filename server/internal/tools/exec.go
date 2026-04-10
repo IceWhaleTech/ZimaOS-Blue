@@ -34,6 +34,8 @@ type ExecConfig struct {
 	MaxOutput      int           // max output chars per stream
 	SafeBins       []string      // auto-allowed binaries
 	DataDir        string        // for allowlist JSON persistence
+	ServiceHost    string        // host exposed to blue CLI subprocesses
+	ServicePort    int           // port exposed to blue CLI subprocesses
 	AllowPTY       bool          // whether PTY mode is available
 	AllowedDirs    []string      // directories the exec tool may operate in; empty = unrestricted
 	Shell          string        // override shell binary (empty = auto-detect via GetShellConfig)
@@ -191,8 +193,28 @@ func shouldBypassBlueSkillShortCircuit(command string) bool {
 	if head == "" {
 		return false
 	}
+	if blueCLIRequestsHelp(command) {
+		return true
+	}
+	if strings.HasPrefix(head, "/") {
+		return true
+	}
 	_, ok := execReservedBlueCLICommands[head]
 	return ok
+}
+
+func blueCLIRequestsHelp(command string) bool {
+	tokens := tokenizeShell(strings.TrimSpace(command))
+	if len(tokens) < 3 || !strings.EqualFold(strings.TrimSpace(tokens[0]), "blue") {
+		return false
+	}
+	for _, token := range tokens[2:] {
+		switch strings.TrimSpace(token) {
+		case "-h", "--help":
+			return true
+		}
+	}
+	return false
 }
 
 func secondOrNilIface[T any](s []T) T {
@@ -253,6 +275,13 @@ func (t *ExecTool) SetSkillSelector(fn SkillSelectFunc) {
 // SetAutoConfirmFunc sets a dynamic auto-confirm getter for destructive skill gating.
 func (t *ExecTool) SetAutoConfirmFunc(fn func() bool) {
 	t.autoConfirm = fn
+}
+
+func (t *ExecTool) autoConfirmEnabled(ctx context.Context) bool {
+	if GetAutoConfirm(ctx) {
+		return true
+	}
+	return t.autoConfirm != nil && t.autoConfirm()
 }
 
 // SetPinnedSkills sets the pinned skill names for short-circuiting skill commands
@@ -698,7 +727,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	// keeps skill actions (e.g. reminder delivery) bound to the source chat.
 	if isBlueCommand {
 		if envArg == nil {
-			envArg = make(map[string]string, 2)
+			envArg = make(map[string]string, 6)
 		}
 		if _, exists := envArg["BLUE_USER_ID"]; !exists {
 			if userID := strings.TrimSpace(GetUserID(ctx)); userID != "" {
@@ -708,6 +737,24 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		if _, exists := envArg["BLUE_SESSION_ID"]; !exists {
 			if sessionID := strings.TrimSpace(GetSessionID(ctx)); sessionID != "" {
 				envArg["BLUE_SESSION_ID"] = sessionID
+			}
+		}
+		if _, exists := envArg["BLUE_SERVER_HOST"]; !exists {
+			host := strings.TrimSpace(t.config.ServiceHost)
+			if host == "" {
+				host = "127.0.0.1"
+			}
+			envArg["BLUE_SERVER_HOST"] = host
+		}
+		if _, exists := envArg["BLUE_SERVER_PORT"]; !exists && t.config.ServicePort > 0 {
+			envArg["BLUE_SERVER_PORT"] = strconv.Itoa(t.config.ServicePort)
+		}
+		if dataDir := strings.TrimSpace(t.config.DataDir); dataDir != "" {
+			if _, exists := envArg["BLUE_IPC_SOCKET"]; !exists {
+				envArg["BLUE_IPC_SOCKET"] = filepath.Join(dataDir, "blue.sock")
+			}
+			if _, exists := envArg["BLUE_AUDIT_IPC_SOCKET"]; !exists {
+				envArg["BLUE_AUDIT_IPC_SOCKET"] = filepath.Join(dataDir, "session_audit.sock")
 			}
 		}
 	}
@@ -1173,7 +1220,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 					// and the selected skill is in the safe auto-run list.
 					forceClarify := decision.NeedClarify
 					if isDestructiveSkill(decision.SelectedSkill) {
-						autoOK := t.autoConfirm != nil && t.autoConfirm()
+						autoOK := t.autoConfirmEnabled(ctx)
 						if !autoOK || !isSafeSkillAutoRun(decision.SelectedSkill) {
 							forceClarify = true
 						}
@@ -1428,7 +1475,7 @@ func (t *ExecTool) askForSkillClarification(ctx context.Context, command, origin
 	}
 	// In auto-confirm mode, treat clarification as a deterministic router:
 	// directly execute the highest-priority candidate instead of blocking on ask.
-	if t.autoConfirm != nil && t.autoConfirm() {
+	if t.autoConfirmEnabled(ctx) {
 		choices := make([]string, 0, len(options)+1)
 		if chosen := strings.TrimSpace(d.SelectedSkill); chosen != "" {
 			choices = append(choices, chosen)

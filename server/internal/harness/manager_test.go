@@ -238,6 +238,49 @@ func TestController_SubmitAndList(t *testing.T) {
 	}
 }
 
+func TestController_SubmitDefaultsHarnessRunsToSilentMode(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:   RunKindAgentTask,
+		Goal:   "run silently",
+		UserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if run.ApprovalMode != ApprovalModeAllow {
+		t.Fatalf("ApprovalMode = %q, want %q", run.ApprovalMode, ApprovalModeAllow)
+	}
+	for _, key := range []string{"harness_silent_mode", "non_interactive", "skip_hil"} {
+		value, ok := run.Metadata[key].(bool)
+		if !ok || !value {
+			t.Fatalf("metadata[%q] = %#v, want true", key, run.Metadata[key])
+		}
+	}
+}
+
+func TestController_SubmitPreservesExplicitApprovalMode(t *testing.T) {
+	controller := newTestController(t)
+	driver := &stubDriver{kind: RunKindAgentTask}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:         RunKindAgentTask,
+		Goal:         "respect explicit approval",
+		UserID:       "user-1",
+		ApprovalMode: ApprovalModeAsk,
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if run.ApprovalMode != ApprovalModeAsk {
+		t.Fatalf("ApprovalMode = %q, want %q", run.ApprovalMode, ApprovalModeAsk)
+	}
+}
+
 func TestController_SubmitFallsBackWhenReaderMissesFreshRun(t *testing.T) {
 	tmpDir := t.TempDir()
 	staleReader, err := sql.Open("sqlite3", filepath.Join(tmpDir, "stale-reader.db"))

@@ -57,6 +57,7 @@ function statusTone(status?: string | null): string {
     case 'pass':
       return 'tone-success'
     case 'pending':
+    case 'queued':
     case 'planning':
     case 'executing':
     case 'verifying':
@@ -80,7 +81,22 @@ function statusLabel(status?: string | null): string {
     case 'waiting_input':
       return tr('harness.group.waitingInput', 'Waiting input')
     case 'pending':
+    case 'queued':
       return tr('harness.group.queuedCount', 'Queued')
+    case 'planning':
+      return tr('common.taskRuntimePlan', 'Planning')
+    case 'executing':
+      return tr('common.taskRuntimeExecute', 'Executing')
+    case 'verifying':
+      return tr('common.taskRuntimeVerify', 'Verifying')
+    case 'completed':
+      return tr('common.taskRuntimeDone', 'Completed')
+    case 'failed':
+      return tr('common.taskStageFailed', 'Failed')
+    case 'cancelled':
+      return tr('common.taskStageCancelled', 'Cancelled')
+    case 'aborted':
+      return tr('common.taskRuntimeAborted', 'Aborted')
     default:
       return humanizeEnum(normalized)
   }

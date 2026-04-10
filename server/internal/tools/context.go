@@ -24,6 +24,7 @@ const (
 	routeKindKey   toolContextKey = "tool_route_kind"
 	runIDKey       toolContextKey = "tool_run_id"
 	runStepKey     toolContextKey = "tool_run_step"
+	autoConfirmKey toolContextKey = "tool_auto_confirm"
 	checkpointKey  toolContextKey = "tool_browser_checkpoint"
 	browserModeKey toolContextKey = "tool_browser_launch_mode"
 	browserHintKey toolContextKey = "tool_browser_route_hint"
@@ -325,6 +326,22 @@ func GetRunStep(ctx context.Context) int {
 		return v
 	}
 	return 0
+}
+
+// WithAutoConfirm returns a context that auto-confirms approval-style flows.
+func WithAutoConfirm(ctx context.Context, enabled bool) context.Context {
+	if !enabled {
+		return ctx
+	}
+	return context.WithValue(ctx, autoConfirmKey, true)
+}
+
+// GetAutoConfirm reports whether the current context should skip confirmations.
+func GetAutoConfirm(ctx context.Context) bool {
+	if v, ok := ctx.Value(autoConfirmKey).(bool); ok {
+		return v
+	}
+	return false
 }
 
 // WithFSScope returns a context carrying additional filesystem roots and aliases

@@ -293,6 +293,201 @@ describe('BrowserMonitorWidget', () => {
     wrapper.unmount()
   })
 
+  it('refreshes the screenshot preview when session monitor SSE events arrive', async () => {
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://live.example.com',
+            page_title: 'Live Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
+
+    const initialMonitorPayload = {
+      kind: 'image',
+      image: {
+        screenshot: 'initial-base64',
+        history: [
+          {
+            data: 'initial-base64',
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'Initial Snapshot',
+            url: 'https://snapshots.example.com/initial',
+            scope: 'viewport',
+          },
+        ],
+      },
+      error: '',
+    }
+
+    getSessionMonitorMock
+      // The widget may refresh the monitor twice during initial mount (open watcher + session watcher).
+      .mockResolvedValueOnce(initialMonitorPayload)
+      .mockResolvedValueOnce(initialMonitorPayload)
+      .mockResolvedValueOnce({
+        kind: 'image',
+        image: {
+          screenshot: 'sse-base64',
+          history: [
+            {
+              data: 'sse-base64',
+              captured_at: '2026-03-23T00:00:01.000Z',
+              title: 'SSE Snapshot',
+              url: 'https://snapshots.example.com/sse',
+              scope: 'viewport',
+            },
+            {
+              data: 'initial-base64',
+              captured_at: '2026-03-23T00:00:00.000Z',
+              title: 'Initial Snapshot',
+              url: 'https://snapshots.example.com/initial',
+              scope: 'viewport',
+            },
+          ],
+        },
+        error: '',
+      })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('.browser-monitor__image').attributes('src')).toContain('initial-base64')
+    const initialMonitorFetches = getSessionMonitorMock.mock.calls.length
+
+    const sessionMonitorHandler = onSSEEventMock.mock.calls.find(
+      ([eventType]) => eventType === 'browser_session_monitor_updated'
+    )?.[1] as ((payload: unknown) => void) | undefined
+
+    expect(sessionMonitorHandler).toBeTypeOf('function')
+
+    sessionMonitorHandler?.({
+      session_id: 'tab-1',
+      captured_at: '2026-03-23T00:00:01.000Z',
+      monitor_kind: 'image',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    await flushPromises()
+
+    expect(getSessionMonitorMock.mock.calls.length).toBeGreaterThan(initialMonitorFetches)
+    expect(wrapper.get('.browser-monitor__image').attributes('src')).toContain('sse-base64')
+
+    wrapper.unmount()
+  })
+
+  it('refreshes the screenshot preview when browser session activity SSE events arrive', async () => {
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://live.example.com',
+            page_title: 'Live Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
+
+    const initialMonitorPayload = {
+      kind: 'image',
+      image: {
+        screenshot: 'initial-base64',
+        history: [
+          {
+            data: 'initial-base64',
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'Initial Snapshot',
+            url: 'https://snapshots.example.com/initial',
+            scope: 'viewport',
+          },
+        ],
+      },
+      error: '',
+    }
+
+    getSessionMonitorMock
+      .mockResolvedValueOnce(initialMonitorPayload)
+      .mockResolvedValueOnce(initialMonitorPayload)
+      .mockResolvedValueOnce({
+        kind: 'image',
+        image: {
+          screenshot: 'activity-base64',
+          history: [
+            {
+              data: 'activity-base64',
+              captured_at: '2026-03-23T00:00:02.000Z',
+              title: 'Activity Snapshot',
+              url: 'https://snapshots.example.com/activity',
+              scope: 'viewport',
+            },
+            {
+              data: 'initial-base64',
+              captured_at: '2026-03-23T00:00:00.000Z',
+              title: 'Initial Snapshot',
+              url: 'https://snapshots.example.com/initial',
+              scope: 'viewport',
+            },
+          ],
+        },
+        error: '',
+      })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('.browser-monitor__image').attributes('src')).toContain('initial-base64')
+    const initialMonitorFetches = getSessionMonitorMock.mock.calls.length
+
+    const sessionActivityHandler = onSSEEventMock.mock.calls.find(
+      ([eventType]) => eventType === 'browser_session_activity'
+    )?.[1] as ((payload: unknown) => void) | undefined
+
+    expect(sessionActivityHandler).toBeTypeOf('function')
+
+    sessionActivityHandler?.({
+      session_id: 'tab-1',
+      observed_at: '2026-03-23T00:00:02.000Z',
+      monitor_kind: 'image',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    await flushPromises()
+
+    expect(getSessionMonitorMock.mock.calls.length).toBeGreaterThan(initialMonitorFetches)
+    expect(wrapper.get('.browser-monitor__image').attributes('src')).toContain('activity-base64')
+
+    wrapper.unmount()
+  })
+
   it('reads current-conversation tasks from browser overview', async () => {
     const wrapper = mount(BrowserMonitorWidget, {
       global: {
@@ -555,6 +750,123 @@ describe('BrowserMonitorWidget', () => {
     expect(wrapper.find('.browser-monitor__compact-strip').exists()).toBe(false)
     expect(wrapper.get('.browser-monitor__compact-image').attributes('src')).toContain(
       'compact-live-base64'
+    )
+  })
+
+  it('auto-advances the compact preview to the newest screenshot frame', async () => {
+    const monitor = useBrowserMonitor()
+    monitor.setCollapsed(true)
+
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://live.example.com',
+            page_title: 'Live Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
+
+    getSessionMonitorMock
+      .mockResolvedValueOnce({
+        kind: 'image',
+        image: {
+          screenshot: 'first-base64',
+          history: [
+            {
+              data: 'first-base64',
+              captured_at: '2026-03-23T00:00:00.000Z',
+              title: 'First Snapshot',
+              url: 'https://snapshots.example.com/first',
+              scope: 'viewport',
+            },
+          ],
+        },
+        error: '',
+      })
+      .mockResolvedValueOnce({
+        kind: 'image',
+        image: {
+          screenshot: 'second-base64',
+          history: [
+            {
+              data: 'second-base64',
+              captured_at: '2026-03-23T00:00:02.000Z',
+              title: 'Second Snapshot',
+              url: 'https://snapshots.example.com/second',
+              scope: 'viewport',
+            },
+            {
+              data: 'first-base64',
+              captured_at: '2026-03-23T00:00:00.000Z',
+              title: 'First Snapshot',
+              url: 'https://snapshots.example.com/first',
+              scope: 'viewport',
+            },
+          ],
+        },
+        error: '',
+      })
+      .mockResolvedValueOnce({
+        kind: 'image',
+        image: {
+          screenshot: 'third-base64',
+          history: [
+            {
+              data: 'third-base64',
+              captured_at: '2026-03-23T00:00:04.000Z',
+              title: 'Third Snapshot',
+              url: 'https://snapshots.example.com/third',
+              scope: 'viewport',
+            },
+            {
+              data: 'second-base64',
+              captured_at: '2026-03-23T00:00:02.000Z',
+              title: 'Second Snapshot',
+              url: 'https://snapshots.example.com/second',
+              scope: 'viewport',
+            },
+            {
+              data: 'first-base64',
+              captured_at: '2026-03-23T00:00:00.000Z',
+              title: 'First Snapshot',
+              url: 'https://snapshots.example.com/first',
+              scope: 'viewport',
+            },
+          ],
+        },
+        error: '',
+      })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('.browser-monitor__compact-image').attributes('src')).toContain(
+      'second-base64'
+    )
+
+    const [refreshButton] = wrapper.findAll('.browser-monitor__icon-button')
+    await refreshButton.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.browser-monitor__compact-image').attributes('src')).toContain(
+      'third-base64'
     )
   })
 

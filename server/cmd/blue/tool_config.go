@@ -49,6 +49,10 @@ func registerServerToolRegistry(registry *tools.Registry, cfg *config.Config, da
 	tools.RegisterBuiltinToolsWithRuntimeConfig(registry, webSearchConfig, webFetchConfig, workspaceAllowedPaths, 0, runtimeCfg)
 
 	execConfig := bootstrap.NewRuntimeExecConfig(dataDir, workspaceAllowedPaths)
+	execConfig.ServiceHost = "127.0.0.1"
+	if cfg != nil && cfg.Server.Port > 0 {
+		execConfig.ServicePort = cfg.Server.Port
+	}
 	tools.RegisterExecTools(registry, execConfig, nil, nil, nil)
 
 	tools.RegisterFactoryToolDefinitions(registry)

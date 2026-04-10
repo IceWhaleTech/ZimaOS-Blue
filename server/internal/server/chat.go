@@ -784,6 +784,39 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 	return ""
 }
 
+var (
+	embeddedSkillSlashCommandBacktickRegex = regexp.MustCompile("(?i)\\x60(/(?:install(?:-url|_url)?|uninstall|update|enable|disable|info|list|search)(?:\\s+[^\\x60\\r\\n]+)?)\\x60")
+	embeddedSkillSlashCommandPlainRegex    = regexp.MustCompile(`(?i)(?:^|[\s("'[])(/(?:install(?:-url|_url)?|uninstall|update|enable|disable|info|list|search)(?:\s+[^\s"'()\[\]{}.,;!?]+)?)`)
+)
+
+func buildSlashCommandExecutionHint(userMessage string) string {
+	command := extractEmbeddedSkillSlashCommand(userMessage)
+	if command == "" {
+		return ""
+	}
+	return fmt.Sprintf("The user explicitly named the Blue skill slash command `%s`. If it is relevant to the task, execute that exact slash command first via the shell tool (either `%s` or `blue %s`) before substituting a registry search, manual browsing, or other approximations. Only skip it if the command itself fails or clearly reports that the requested skill action is unavailable.", command, command, command)
+}
+
+func extractEmbeddedSkillSlashCommand(userMessage string) string {
+	trimmed := strings.TrimSpace(userMessage)
+	if trimmed == "" {
+		return ""
+	}
+	if match := embeddedSkillSlashCommandBacktickRegex.FindStringSubmatch(trimmed); len(match) == 2 {
+		return normalizeEmbeddedSlashCommand(match[1])
+	}
+	if match := embeddedSkillSlashCommandPlainRegex.FindStringSubmatch(trimmed); len(match) == 2 {
+		return normalizeEmbeddedSlashCommand(match[1])
+	}
+	return ""
+}
+
+func normalizeEmbeddedSlashCommand(command string) string {
+	command = strings.Join(strings.Fields(strings.TrimSpace(command)), " ")
+	command = strings.TrimRight(command, ".,;:!?)]}\"'")
+	return command
+}
+
 func shouldEnforceDeepSearchMinRounds(message string) bool {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	if lower == "" {
@@ -13031,6 +13064,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	extraPrompt := mergeExtraPrompt(
 		skillPrompt,
 		buildDeepSearchExecutionHint(routingMessage),
+		buildSlashCommandExecutionHint(routingMessage),
 		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
 	if extraPrompt != "" || len(systemPromptMessages) == 0 {
@@ -14023,6 +14057,13 @@ func toolLoopCallSignature(tc llm.ToolCall) string {
 }
 
 func specializedToolLoopSignature(name, rawArgs string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "exec", "bash":
+		if path, ok := extractWorkspaceExecReadPathFromArgs(rawArgs); ok {
+			return "read:path=" + path, true
+		}
+	}
+
 	var payload map[string]interface{}
 	if json.Unmarshal([]byte(rawArgs), &payload) != nil || len(payload) == 0 {
 		return "", false
@@ -15612,6 +15653,7 @@ const (
 	maxLLMToolOutputsTotalBytes = 12 * 1024
 	minLLMToolOutputBytes       = 320
 	maxLLMToolStdoutBytes       = 1800
+	maxLLMExecReadStdoutBytes   = 6 * 1024
 	maxLLMToolStderrBytes       = 1200
 	maxLLMSearchRoundsKeepFull  = 3
 	maxLLMSearchSummaryBytes    = 1400
@@ -16125,14 +16167,21 @@ func hasWorkspaceArtifactContentEvidence(toolCalls []llm.ToolCall, toolResults [
 
 	for i, tr := range toolResults {
 		toolName := ""
+		var tc llm.ToolCall
 		if i < len(toolCalls) && toolCalls[i].ID == tr.ToolCallID {
-			toolName = toolCalls[i].Name
+			tc = toolCalls[i]
+			toolName = tc.Name
 		} else if matched, ok := callByID[strings.TrimSpace(tr.ToolCallID)]; ok {
+			tc = matched
 			toolName = matched.Name
 		}
 		switch normalizeFileToolCompatName(toolName) {
 		case "read", "convert", "pdf":
 			if workspaceArtifactToolResultShowsProgress(tr.Content) {
+				return true
+			}
+		case "bash":
+			if workspaceArtifactExecReadShowsContent(tc, tr.Content) {
 				return true
 			}
 		}
@@ -17006,11 +17055,66 @@ func extractSuccessfulWriteTarget(toolName, content string) string {
 		}
 		path, _ := payload["path"].(string)
 		return strings.TrimSpace(path)
+	case "exec", "bash":
+		return extractSuccessfulExecWriteTarget(content)
 	case "image", "image_generation", "generate_image", "generateimage":
 		return extractSuccessfulImageArtifactTarget(content)
 	default:
 		return ""
 	}
+}
+
+var (
+	execCatRedirectBeforeHeredocWriteTargetRegex = regexp.MustCompile(`(?is)^\s*cat\s*>\s*(?:'([^'\r\n]+)'|"([^"\r\n]+)"|([^\s<>|&;()]+))\s*<<-?\s*(?:'[^'\r\n]+'|"[^"\r\n]+"|[A-Za-z_][A-Za-z0-9_]*)`)
+	execCatHeredocBeforeRedirectWriteTargetRegex = regexp.MustCompile(`(?is)^\s*cat\s*<<-?\s*(?:'[^'\r\n]+'|"[^"\r\n]+"|[A-Za-z_][A-Za-z0-9_]*)\s*>\s*(?:'([^'\r\n]+)'|"([^"\r\n]+)"|([^\s<>|&;()]+))`)
+)
+
+func extractSuccessfulExecWriteTarget(content string) string {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ""
+	}
+	var payload map[string]interface{}
+	if json.Unmarshal([]byte(content), &payload) != nil || len(payload) == 0 {
+		return ""
+	}
+	if classifyToolFallbackOutcome(payload) == "failed" {
+		return ""
+	}
+	if rawExit, ok := payload["exit_code"]; ok && anyToIntForLLM(rawExit) != 0 {
+		return ""
+	}
+	command := strings.TrimSpace(payloadStringField(payload, "command"))
+	if command == "" {
+		return ""
+	}
+	path := extractExecCatHeredocWriteTargetPath(command)
+	if path == "" {
+		return ""
+	}
+	path = normalizeWorkspaceArtifactComparablePath(path)
+	if !isLikelyWorkspaceExecReadPath(path) {
+		return ""
+	}
+	return path
+}
+
+func extractExecCatHeredocWriteTargetPath(command string) string {
+	for _, pattern := range []*regexp.Regexp{
+		execCatRedirectBeforeHeredocWriteTargetRegex,
+		execCatHeredocBeforeRedirectWriteTargetRegex,
+	} {
+		match := pattern.FindStringSubmatch(command)
+		if len(match) == 0 {
+			continue
+		}
+		for _, candidate := range match[1:] {
+			if strings.TrimSpace(candidate) != "" {
+				return strings.TrimSpace(candidate)
+			}
+		}
+	}
+	return ""
 }
 
 func extractSuccessfulImageArtifactTarget(content string) string {
@@ -17436,7 +17540,7 @@ func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interfa
 		out["command"] = truncateUTF8Bytes(command, 320)
 	}
 	if stdout := anyToStringForLLM(payload["stdout"]); stdout != "" {
-		out["stdout"] = truncateUTF8Bytes(stdout, maxLLMToolStdoutBytes)
+		out["stdout"] = truncateUTF8Bytes(stdout, execStdoutByteLimitForLLM(payload))
 	}
 	if stderr := anyToStringForLLM(payload["stderr"]); stderr != "" {
 		out["stderr"] = truncateUTF8Bytes(stderr, maxLLMToolStderrBytes)
@@ -17457,6 +17561,17 @@ func compactExecPayloadForLLM(payload map[string]interface{}) map[string]interfa
 	}
 
 	return out
+}
+
+func execStdoutByteLimitForLLM(payload map[string]interface{}) int {
+	command := strings.TrimSpace(anyToStringForLLM(payload["command"]))
+	if command == "" {
+		return maxLLMToolStdoutBytes
+	}
+	if _, ok := extractWorkspaceExecReadPathFromCommand(command); ok {
+		return min(maxLLMExecReadStdoutBytes, maxLLMToolOutputBytes)
+	}
+	return maxLLMToolStdoutBytes
 }
 
 func compactExecDataForLLM(data map[string]interface{}) map[string]interface{} {
@@ -20308,6 +20423,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 		h.buildConvertSourcePrompt(c.Request().Context(), convID, h.getUserID(c)),
 		skillPrompt,
 		buildDeepSearchExecutionHint(routingMessage),
+		buildSlashCommandExecutionHint(routingMessage),
 		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
 	systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, extraPrompt)
@@ -22593,6 +22709,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.buildConvertSourcePrompt(c.Request().Context(), convID, h.getUserID(c)),
 		warmupSkillPrompt,
 		buildDeepSearchExecutionHint(req.Message),
+		buildSlashCommandExecutionHint(req.Message),
 		buildArtifactWorkflowExecutionHint(req.Message),
 	)
 	systemPromptMessages, _ := h.buildSystemPromptMessages(warmupPromptCtx, extraPrompt)
@@ -22680,6 +22797,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		h.buildConvertSourcePrompt(c.Request().Context(), convID, h.getUserID(c)),
 		skillPrompt,
 		buildDeepSearchExecutionHint(routingMessage),
+		buildSlashCommandExecutionHint(routingMessage),
 		buildArtifactWorkflowExecutionHint(routingMessage),
 	)
 	systemPromptMessages, contextSelection := h.buildSystemPromptMessages(promptCtx, extraPrompt)
@@ -26094,7 +26212,7 @@ STREAM_LOOP:
 				}
 				skillPrompt, selectedSkill := h.resolveSkillSelectionForRequest(ctx, injectedMsg, req.DeepResearchEnabled)
 				promptCtx := h.buildContextPackRequestContext(ctx, convID, userID, string(streamLang), "web", injectedMsg, selectedSkill)
-				systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, mergeExtraPrompt(skillPrompt, buildDeepSearchExecutionHint(injectedMsg), buildArtifactWorkflowExecutionHint(injectedMsg)))
+				systemPromptMessages, selection := h.buildSystemPromptMessages(promptCtx, mergeExtraPrompt(skillPrompt, buildDeepSearchExecutionHint(injectedMsg), buildSlashCommandExecutionHint(injectedMsg), buildArtifactWorkflowExecutionHint(injectedMsg)))
 				if selection != nil {
 					turnHookCtx.ContextPackSelection = selection.Clone()
 				} else {

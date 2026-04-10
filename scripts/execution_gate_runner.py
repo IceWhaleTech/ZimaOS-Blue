@@ -612,7 +612,7 @@ def maybe_enable_skip_hil_mode(client: HarnessClient, args: argparse.Namespace) 
         return {}
     payload = {
         "agent_auto_confirm": True,
-        "agent_ask_timeout_seconds": 15,
+        "agent_ask_timeout_seconds": 20,
         "agent_ask_timeout_action": "default",
     }
     LOG.info("enabling unattended execution-gate runtime settings for --skip-hil")

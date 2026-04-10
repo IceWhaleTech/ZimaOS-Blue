@@ -4683,12 +4683,12 @@ onUnmounted(() => {
                   </template>
                 </VirtualScroll>
 
-                <!-- Regular rendering for small lists -->
-                <div v-else class="pb-4">
-                  <div
-                    v-for="message in chatStore.messages"
-                    :key="getMessageRenderKey(message)"
-                    :id="getChatMessageElementId(message.id)"
+	                <!-- Regular rendering for small lists -->
+	                <div v-else>
+	                  <div
+	                    v-for="message in chatStore.messages"
+	                    :key="getMessageRenderKey(message)"
+	                    :id="getChatMessageElementId(message.id)"
                     :data-message-id="message.id"
                     :class="messageShellClasses(message)"
                   >
@@ -4717,12 +4717,12 @@ onUnmounted(() => {
                   />
                 </div>
 
-                <Transition name="fade">
-                  <div v-if="showStreamStatusRail" class="flex justify-center py-2">
-                    <div class="chat-stream-status-rail">
-                      <div class="chat-stream-status-rail__copy">
-                        <span class="chat-stream-status-rail__badge">
-                          {{ streamStatusRailPhaseLabel }}
+	                <Transition name="fade">
+	                  <div v-if="showStreamStatusRail" class="flex justify-center py-1">
+	                    <div class="chat-stream-status-rail">
+	                      <div class="chat-stream-status-rail__copy">
+	                        <span class="chat-stream-status-rail__badge">
+	                          {{ streamStatusRailPhaseLabel }}
                         </span>
                         <span class="chat-stream-status-rail__label">
                           {{ streamStatusRailState.label || t('chat.waitingThinking') }}

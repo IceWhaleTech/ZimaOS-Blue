@@ -55,6 +55,12 @@ func (d *AgentDriver) Start(ctx context.Context, run *harness.Run, _ harness.Run
 	if metadata == nil {
 		metadata = map[string]interface{}{}
 	}
+	metadata["harness_silent_mode"] = true
+	metadata["non_interactive"] = true
+	metadata["skip_hil"] = true
+	if approvalMode := strings.TrimSpace(string(run.ApprovalMode)); approvalMode != "" {
+		metadata["approval_mode"] = approvalMode
+	}
 	if model := strings.TrimSpace(run.Model); model != "" {
 		if _, ok := metadata["model"]; !ok {
 			metadata["model"] = model

@@ -425,6 +425,11 @@ func (h *ApprovalHandler) AuthorizeToolCall(ctx context.Context, req tools.ToolA
 		Allowed:  true,
 		Approval: approval,
 	}
+	if mode == "ask" && tools.GetAutoConfirm(ctx) {
+		decision.Approval.Mode = "allow"
+		decision.Approval.PolicySource = "approval.auto_confirm_context"
+		return decision, nil
+	}
 	switch mode {
 	case "deny":
 		decision.Allowed = false
@@ -432,6 +437,9 @@ func (h *ApprovalHandler) AuthorizeToolCall(ctx context.Context, req tools.ToolA
 		decision.Approval.Reason = fmt.Sprintf("tool %q blocked by approval policy", strings.TrimSpace(req.ToolName))
 		return decision, nil
 	case "ask":
+		if tools.GetAutoConfirm(ctx) {
+			return decision, nil
+		}
 		pending := &PendingRequest{
 			ID:           uuid.NewString(),
 			RunID:        tools.GetRunID(ctx),

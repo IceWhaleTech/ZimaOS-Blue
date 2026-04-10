@@ -859,6 +859,82 @@ func TestCollectWorkspaceArtifactEvidence_PreservesTailContent(t *testing.T) {
 	}
 }
 
+func TestCollectWorkspaceArtifactEvidence_IncludesExecFileReadStdout(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "exec", Arguments: `{"command":"cat ai_blog.txt"}`},
+	}
+	toolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"status":"completed","exit_code":0,"stdout":"# Humanized Draft\n\nThis version keeps the same advice but sounds more natural."}`,
+		},
+	}
+
+	evidence := collectWorkspaceArtifactEvidence(toolCalls, toolResults)
+	if len(evidence) == 0 {
+		t.Fatal("expected exec file-read evidence to be collected")
+	}
+
+	joined := strings.Join(evidence, "\n\n")
+	for _, needle := range []string{
+		"READ | TEXT | ai_blog.txt",
+		"# Humanized Draft",
+		"sounds more natural",
+	} {
+		if !strings.Contains(joined, needle) {
+			t.Fatalf("expected exec evidence to contain %q, got=%q", needle, joined)
+		}
+	}
+}
+
+func TestCollectWorkspaceArtifactEvidence_IgnoresExecNonReadCommands(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-ls", Name: "exec", Arguments: `{"command":"ls ai_blog.txt"}`},
+		{ID: "call-wc", Name: "exec", Arguments: `{"command":"wc -c ai_blog.txt"}`},
+	}
+	toolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-ls",
+			Content:    `{"status":"completed","exit_code":0,"stdout":"ai_blog.txt\n"}`,
+		},
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-wc",
+			Content:    `{"status":"completed","exit_code":0,"stdout":"4559 ai_blog.txt\n"}`,
+		},
+	}
+
+	evidence := collectWorkspaceArtifactEvidence(toolCalls, toolResults)
+	if len(evidence) != 0 {
+		t.Fatalf("expected non-read exec commands to be ignored, got=%q", strings.Join(evidence, "\n\n"))
+	}
+}
+
+func TestShouldUseImmediateWorkspaceArtifactOrchestration_UsesExecFileReadEvidenceForHumanizerTask(t *testing.T) {
+	currentToolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "exec", Arguments: `{"command":"cat ai_blog.txt"}`},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    fmt.Sprintf(`{"status":"completed","exit_code":0,"stdout":%q}`, humanizerSourceEvidence()[0]),
+		},
+	}
+
+	if !shouldUseImmediateWorkspaceArtifactOrchestration(
+		humanizerTaskPrompt(),
+		currentToolCalls,
+		currentToolResults,
+		currentToolCalls,
+		currentToolResults,
+	) {
+		t.Fatal("expected exec-based file-read evidence to trigger immediate orchestration for humanizer task")
+	}
+}
+
 func TestCollectWorkspaceArtifactEvidence_IncludesRawPDFEvidence(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call-1", Name: "file_read"},

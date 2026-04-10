@@ -392,6 +392,219 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
             },
         )
 
+    def test_load_tool_audit_rows_dedupes_sqlite_and_jsonl_variants_of_same_event(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            audit_db = root / "session_audit.db"
+            audit_dir = root / "session_audit_logs"
+            audit_dir.mkdir()
+            conversation_id = "conv-dedupe"
+
+            conn = sqlite3.connect(audit_db)
+            try:
+                conn.execute(
+                    """
+                    CREATE TABLE session_tool_audit_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        conversation_id TEXT,
+                        created_at TEXT,
+                        event_type TEXT,
+                        role TEXT,
+                        tool_call_id TEXT,
+                        tool_name TEXT,
+                        payload TEXT
+                    )
+                    """
+                )
+                conn.executemany(
+                    """
+                    INSERT INTO session_tool_audit_logs
+                    (conversation_id, created_at, event_type, role, tool_call_id, tool_name, payload)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            conversation_id,
+                            "2026-04-10T10:18:43.20036Z",
+                            "assistant_tool_call",
+                            "assistant",
+                            "call_1",
+                            "exec",
+                            json.dumps({"command": "blue /install humanizer"}),
+                        ),
+                        (
+                            conversation_id,
+                            "2026-04-10T10:18:43.40036Z",
+                            "tool_result",
+                            "tool",
+                            "call_1",
+                            "exec",
+                            json.dumps(
+                                {
+                                    "command": "blue /install humanizer",
+                                    "exit_code": 1,
+                                    "stdout": "Error: install failed: skill already installed\n",
+                                }
+                            ),
+                        ),
+                    ],
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+            (audit_dir / f"{conversation_id}-part1.jsonl").write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "conversation_id": conversation_id,
+                                "created_at": "2026-04-10T18:18:43.20036+08:00",
+                                "event_type": "assistant_tool_call",
+                                "role": "assistant",
+                                "tool_call_id": "call_1",
+                                "tool_name": "exec",
+                                "payload": json.dumps({"command": "blue /install humanizer"}),
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "conversation_id": conversation_id,
+                                "created_at": "2026-04-10T18:18:43.40036+08:00",
+                                "event_type": "tool_result",
+                                "role": "tool",
+                                "tool_call_id": "call_1",
+                                "tool_name": "exec",
+                                "payload": json.dumps(
+                                    {
+                                        "stdout": "Error: install failed: skill already installed\n",
+                                        "exit_code": 1,
+                                        "command": "blue /install humanizer",
+                                    }
+                                ),
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            rows = runner.load_tool_audit_rows([audit_db, audit_dir], conversation_id)
+
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "created_at": "2026-04-10T10:18:43.20036Z",
+                    "event_type": "assistant_tool_call",
+                    "role": "assistant",
+                    "tool_call_id": "call_1",
+                    "tool_name": "exec",
+                    "payload": json.dumps({"command": "blue /install humanizer"}),
+                },
+                {
+                    "created_at": "2026-04-10T10:18:43.40036Z",
+                    "event_type": "tool_result",
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "tool_name": "exec",
+                    "payload": json.dumps(
+                        {
+                            "command": "blue /install humanizer",
+                            "exit_code": 1,
+                            "stdout": "Error: install failed: skill already installed\n",
+                        }
+                    ),
+                },
+            ],
+        )
+
+    def test_convert_blue_messages_to_transcript_maps_web_query_to_web_search_alias(self):
+        transcript = runner.convert_blue_messages_to_transcript(
+            [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call-1",
+                            "name": "web_query",
+                            "arguments": json.dumps({"input": "latest observability market leaders"}),
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call-1",
+                    "tool_name": "web_query",
+                    "content": json.dumps({"status": "ok"}),
+                },
+            ]
+        )
+
+        self.assertEqual(
+            transcript[0]["message"]["content"][0],
+            {
+                "type": "toolCall",
+                "id": "call-1",
+                "name": "web_search",
+                "arguments": {"input": "latest observability market leaders"},
+                "params": {"input": "latest observability market leaders"},
+                "canonical_name": "web_query",
+            },
+        )
+        self.assertEqual(
+            transcript[1]["message"],
+            {
+                "role": "toolResult",
+                "toolCallId": "call-1",
+                "toolName": "web_search",
+                "canonicalToolName": "web_query",
+                "content": [json.dumps({"status": "ok"})],
+            },
+        )
+
+    def test_build_audit_transcript_entries_maps_web_query_to_web_search_alias(self):
+        entries = runner.build_audit_transcript_entries(
+            [
+                {
+                    "event_type": "assistant_tool_call",
+                    "tool_call_id": "call-1",
+                    "tool_name": "web_query",
+                    "payload": json.dumps({"input": "latest observability market leaders"}),
+                },
+                {
+                    "event_type": "tool_result",
+                    "tool_call_id": "call-1",
+                    "tool_name": "web_query",
+                    "payload": json.dumps({"status": "ok"}),
+                },
+            ]
+        )
+
+        self.assertEqual(
+            entries[0]["message"]["content"][0],
+            {
+                "type": "toolCall",
+                "id": "call-1",
+                "name": "web_search",
+                "arguments": {"input": "latest observability market leaders"},
+                "params": {"input": "latest observability market leaders"},
+                "canonical_name": "web_query",
+            },
+        )
+        self.assertEqual(
+            entries[1]["message"],
+            {
+                "role": "toolResult",
+                "toolCallId": "call-1",
+                "toolName": "web_search",
+                "canonicalToolName": "web_query",
+                "content": [json.dumps({"status": "ok"})],
+            },
+        )
+
     def test_blue_judge_runner_retries_empty_object_response(self):
         client = StubJudgeBlueClient(
             [
@@ -440,6 +653,86 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
         self.assertGreaterEqual(client.read_counts.get("conv-1", 0), 2)
         self.assertEqual(result["status"], "success")
         self.assertEqual(runner.extract_latest_assistant_text(result["transcript"]), payload)
+
+    def test_persist_results_payload_to_db_writes_run_task_and_breakdown_rows(self):
+        payload = {
+            "runner": "blue",
+            "generated_at": "2026-04-10T07:55:57Z",
+            "blue_base_url": "http://127.0.0.1:18080/api/v1",
+            "workspace_dir": "/tmp/pinchbench-workspace",
+            "judge_mode": "judge-on",
+            "provider": "pinchbench-fixed",
+            "model": "claude-sonnet-4.6",
+            "judge_provider": "pinchbench-fixed",
+            "judge_model": "claude-sonnet-4.6",
+            "suite": "task_14_humanizer",
+            "skip_judge": False,
+            "summary": {
+                "task_count": 1,
+                "success_count": 1,
+                "failure_count": 0,
+                "average_score": 0.885,
+                "graded_count": 1,
+            },
+            "results": [
+                {
+                    "task_id": "task_14_humanizer",
+                    "task_name": "Humanize AI-Generated Blog",
+                    "category": "writing",
+                    "grading_type": "hybrid",
+                    "execution": {
+                        "status": "success",
+                        "conversation_id": "conv-123",
+                        "stdout": "",
+                    },
+                    "grade": {
+                        "score": 0.885,
+                        "breakdown": {
+                            "Skill Usage or Manual Rewrite": 0.75,
+                            "Task Completion": 1.0,
+                        },
+                        "notes": "Strong fallback rewrite after install attempt.",
+                    },
+                    "grade_error": None,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            db_path = Path(tmp_dir) / "pinchbench_results.db"
+            run_id = runner.persist_results_payload_to_db(db_path, payload)
+
+            self.assertTrue(run_id)
+            conn = sqlite3.connect(db_path)
+            try:
+                run_row = conn.execute(
+                    "SELECT suite, judge_mode, model, skip_judge FROM runs WHERE run_id = ?",
+                    (run_id,),
+                ).fetchone()
+                self.assertEqual(run_row, ("task_14_humanizer", "judge-on", "claude-sonnet-4.6", 0))
+
+                task_row = conn.execute(
+                    "SELECT task_name, execution_status, execution_conversation_id, grade_score FROM task_results WHERE run_id = ? AND task_id = ?",
+                    (run_id, "task_14_humanizer"),
+                ).fetchone()
+                self.assertEqual(
+                    task_row,
+                    ("Humanize AI-Generated Blog", "success", "conv-123", 0.885),
+                )
+
+                breakdown_rows = conn.execute(
+                    "SELECT criterion_name, score FROM criterion_scores WHERE run_id = ? AND task_id = ? ORDER BY criterion_name",
+                    (run_id, "task_14_humanizer"),
+                ).fetchall()
+                self.assertEqual(
+                    breakdown_rows,
+                    [
+                        ("Skill Usage or Manual Rewrite", 0.75),
+                        ("Task Completion", 1.0),
+                    ],
+                )
+            finally:
+                conn.close()
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import type { UserTaskActionID, UserTaskProjection, UserTaskResearchSource } from '@/api/tasks'
 import {
   localizeTaskProjectionSubtitle,
+  localizeTaskProjectionPreviewText,
   localizeTaskProjectionTitle,
 } from '@/utils/taskProjectionText'
 import {
@@ -151,7 +152,12 @@ const localizedSubtitle = computed(() =>
   localizeTaskProjectionSubtitle(props.task.subtitle, props.task.kind, translate)
 )
 
-const previewText = computed(() => props.task.error_preview || props.task.result_preview || '')
+const previewText = computed(() => {
+  if (props.task.error_preview) {
+    return localizeTaskProjectionPreviewText(props.task.error_preview, translate)
+  }
+  return props.task.result_preview || ''
+})
 const usesCollapsedHeaderOnly = computed(() => isTerminal.value && props.collapseByDefault)
 const researchSources = computed<UserTaskResearchSource[]>(() =>
   props.task.kind === 'research' ? props.task.research_sources || [] : []

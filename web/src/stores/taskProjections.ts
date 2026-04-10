@@ -14,6 +14,7 @@ import type {
 import { useChatStore } from '@/stores/chat'
 import { useNotificationStore } from '@/stores/notification'
 import { canOpenTaskConversation } from '@/utils/taskProjectionActions'
+import { localizeTaskProjectionPreviewText } from '@/utils/taskProjectionText'
 
 type TasksApiModule = typeof import('@/api/tasks')
 type UserTaskActionInput = NonNullable<UserTaskActionDescriptor['input']>
@@ -572,6 +573,8 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
     notifiedTerminalTaskIds.add(task.id)
 
     const t = i18n.global.t.bind(i18n.global)
+    const translate = (key: string, fallback: string) =>
+      i18n.global.te(key) ? String(t(key)) : fallback
     const notificationStore = useNotificationStore()
     const action = canOpenTaskConversation(task)
       ? {
@@ -591,7 +594,10 @@ export const useTaskProjectionsStore = defineStore('taskProjections', () => {
       return
     }
     if (task.status === 'failed') {
-      notificationStore.error(title, task.error_preview || t('chat.taskFailed', 'Task failed'), {
+      const message =
+        localizeTaskProjectionPreviewText(task.error_preview, translate) ||
+        t('chat.taskFailed', 'Task failed')
+      notificationStore.error(title, message, {
         action,
       })
       return

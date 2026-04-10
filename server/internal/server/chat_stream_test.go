@@ -110,6 +110,16 @@ type repeatedArtifactReadRecoveryProxyHandler struct {
 	lastRequestMessage       string
 }
 
+// repeatedExecArtifactReadRecoveryProxyHandler simulates:
+// 1) three consecutive rounds that repeat the same exec-based file read
+// 2) the stream path should inject artifact-write recovery instead of aborting
+// 3) the recovery round writes the requested artifact and then returns a summary
+type repeatedExecArtifactReadRecoveryProxyHandler struct {
+	callCount                int
+	sawArtifactRecoveryNudge bool
+	lastRequestMessage       string
+}
+
 // autoContinuePlanThenCompleteProxyHandler simulates:
 // 1) first stream round outputs a plan checklist only
 // 2) auto-continue round receives injected execution nudge and returns final summary
@@ -1100,6 +1110,70 @@ func (h *repeatedArtifactReadRecoveryProxyHandler) ServeHTTP(w http.ResponseWrit
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "data: %s\n\n", `{"id":"artifact_summary_round_5","choices":[{"delta":{"content":"Saved the rewritten post to humanized_blog.txt."},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	}
+}
+
+func (h *repeatedExecArtifactReadRecoveryProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	var body struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	for i := len(body.Messages) - 1; i >= 0; i-- {
+		if body.Messages[i].Role == string(llm.RoleUser) {
+			h.lastRequestMessage = body.Messages[i].Content
+			break
+		}
+	}
+	h.sawArtifactRecoveryNudge = h.sawArtifactRecoveryNudge ||
+		(strings.Contains(h.lastRequestMessage, "humanized_blog.txt") &&
+			strings.Contains(h.lastRequestMessage, "Do not continue looping through more search, browsing, or repeated file discovery/reads"))
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_repeated_exec_artifact_read_recovery"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	emitReadRound := func(id string) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", fmt.Sprintf(`{"id":%q,"choices":[{"delta":{"tool_calls":[{"index":0,"id":%q,"type":"function","function":{"name":"exec","arguments":"{\"command\":\"cat ai_blog.txt\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`, id, "call_"+id))
+		flush()
+	}
+
+	switch h.callCount {
+	case 1:
+		emitReadRound("artifact_exec_read_round_1")
+		return
+	case 2:
+		emitReadRound("artifact_exec_read_round_2")
+		return
+	case 3:
+		emitReadRound("artifact_exec_read_round_3")
+		return
+	case 4:
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"artifact_exec_write_round_4","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_artifact_exec_write_4","type":"function","function":{"name":"file_write","arguments":"{\"path\":\"humanized_blog.txt\",\"content\":\"Here's a more natural rewrite that keeps the original advice.\"}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+		return
+	default:
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"artifact_exec_summary_round_5","choices":[{"delta":{"content":"Saved the rewritten post to humanized_blog.txt."},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 		return
 	}
@@ -3364,6 +3438,76 @@ func TestStreamMessage_RepeatedWorkspaceReadLoopRecoversWithArtifactWrite(t *tes
 	}
 	if !fakeProxy.sawArtifactRecoveryNudge {
 		t.Fatalf("expected repeated-read recovery request before write, last user message=%q", fakeProxy.lastRequestMessage)
+	}
+	if !strings.Contains(body, "humanized_blog.txt") {
+		t.Fatalf("expected stream body to confirm saved artifact, body=%s", body)
+	}
+
+	path, content, calls := writeTool.Captured()
+	if calls != 1 {
+		t.Fatalf("expected one recovered write, got %d", calls)
+	}
+	if path != "humanized_blog.txt" {
+		t.Fatalf("captured path = %q, want humanized_blog.txt", path)
+	}
+	if !strings.Contains(content, "more natural rewrite") {
+		t.Fatalf("expected captured content from recovery write, got %q", content)
+	}
+}
+
+func TestStreamMessage_RepeatedExecWorkspaceReadLoopRecoversWithArtifactWrite(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test Repeated Exec Workspace Read Recovery")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{
+			Name:        "exec",
+			Description: "mock exec",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"command": map[string]interface{}{"type": "string"},
+				},
+				"additionalProperties": true,
+			},
+		},
+		result: map[string]interface{}{
+			"status":    "completed",
+			"exit_code": 0,
+			"stdout":    "In today's fast-paced world, productivity has become more important than ever before.",
+		},
+	})
+	writeTool := &fileWriteCaptureTool{}
+	toolRegistry.Register(writeTool)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	fakeProxy := &repeatedExecArtifactReadRecoveryProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, fmt.Sprintf(`{"message":%q,"model":"gpt-5.3-codex-spark"}`, humanizerTaskPrompt()))
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected graceful completion without STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount < 4 {
+		t.Fatalf("expected repeated exec-read recovery to reach at least the write round, got %d calls", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawArtifactRecoveryNudge {
+		t.Fatalf("expected repeated exec-read recovery request before write, last user message=%q", fakeProxy.lastRequestMessage)
 	}
 	if !strings.Contains(body, "humanized_blog.txt") {
 		t.Fatalf("expected stream body to confirm saved artifact, body=%s", body)

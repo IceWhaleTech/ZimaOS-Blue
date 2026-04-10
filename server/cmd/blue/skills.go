@@ -36,6 +36,7 @@ var (
 	skillsTrendingLim       int
 	skillsUpdateAll         bool
 	skillsAckRisk           bool
+	skillsExit              = os.Exit
 )
 
 // skillsCmd represents the skills command
@@ -311,6 +312,9 @@ func doSkillsRequest(method, endpoint string, payload interface{}) (*http.Respon
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	if authHeader, err := localHarnessAuthorizationHeader(); err == nil && authHeader != "" {
+		req.Header.Set("Authorization", authHeader)
+	}
 	return skillsHTTPClient().Do(req)
 }
 
@@ -320,6 +324,9 @@ func decodeInto(resp *http.Response, out interface{}) error {
 		var errBody map[string]interface{}
 		if err := json.NewDecoder(resp.Body).Decode(&errBody); err == nil {
 			if msg, ok := errBody["error"].(string); ok {
+				return fmt.Errorf("%s", msg)
+			}
+			if msg, ok := errBody["message"].(string); ok {
 				return fmt.Errorf("%s", msg)
 			}
 		}
@@ -875,11 +882,11 @@ func printSkillsError(msg string, err error) {
 		} else {
 			fmt.Printf("\033[31mError:\033[0m %s\n", msg)
 		}
-		if verbose && err != nil {
+		if err != nil && (verbose || !term.IsTerminal(int(os.Stdout.Fd()))) {
 			fmt.Printf("Details: %v\n", err)
 		}
 	}
-	os.Exit(1)
+	skillsExit(1)
 }
 
 func promptRiskAcknowledgement(target string) bool {

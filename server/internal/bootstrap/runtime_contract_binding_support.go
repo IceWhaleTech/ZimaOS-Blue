@@ -29,6 +29,7 @@ func (binding *runtimeContractBinding) NewExecSupportBundle(options routeRuntime
 		readDB:               options.readDB,
 		dataDir:              options.dataDir,
 		workspaceDir:         options.workspaceDir,
+		serverConfig:         options.serverConfig,
 		ripgrep:              options.ripgrep,
 		workspaceAllowedPath: options.workspaceAllowedPath,
 		memoryStore:          options.memoryStore,

@@ -646,7 +646,7 @@ onMounted(async () => {
       </div>
     </section>
 
-    <div class="grid items-start gap-4 xl:grid-cols-[minmax(0,0.86fr)_minmax(0,1.14fr)]">
+    <div class="grid items-start gap-4">
       <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>

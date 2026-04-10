@@ -1044,8 +1044,8 @@ func TestGetAgentAskTimeoutSeconds_Clamped(t *testing.T) {
 		t.Fatalf("seed settings: %v", err)
 	}
 	h := NewSettingsHandler(store)
-	if got := h.GetAgentAskTimeoutSeconds(); got != 15 {
-		t.Fatalf("GetAgentAskTimeoutSeconds() = %d, want 15", got)
+	if got := h.GetAgentAskTimeoutSeconds(); got != 20 {
+		t.Fatalf("GetAgentAskTimeoutSeconds() = %d, want 20", got)
 	}
 }
 

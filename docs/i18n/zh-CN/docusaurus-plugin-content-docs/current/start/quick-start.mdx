@@ -12,43 +12,43 @@ summary: "一条 10 到 15 分钟内可完成的路径：从安装过渡到首�
 ## 前 15 分钟应该完成什么
 
 - 本地已经能打开 Blue
-- 你知道当前实例是在 preview mode 还是 normal mode
-- 至少接入了一个可用 provider
+- 你知道当前实例是在预览模式还是正常模式
+- 至少接入了一个可用提供方
 - 第一条聊天响应成功返回
-- 你知道后续该去看 provider、身份、渠道、自动化还是评测文档
+- 你知道后续该去看提供方、身份、渠道、自动化还是评测文档
 
 ## 1. 先确认自己是怎么启动 Blue 的
 
 选择与你当前安装方式一致的一条：
 
-- Desktop app：直接打开应用，再继续看 Web UI
+- 桌面应用：直接打开应用，再继续看 Web 界面
 - 源码、偏生产方式：运行 `sh build.sh`
 - 源码、偏开发方式：运行 `./build.sh start`
 
-如果你已经不确定自己到底走的是哪条路径，先回看 [安装方式](/start/installation) 和 [首次运行](/start/first-run)，不要一开始就把问题归到 provider 或账号配置上。
+如果你已经不确定自己到底走的是哪条路径，先回看 [安装方式](/start/installation) 和 [首次运行](/start/first-run)，不要一开始就把问题归到提供方或账号配置上。
 
 ## 2. 完成最小运维配置
 
 打开 Web 界面后，按这条最短路径走：
 
-1. 如果实例还在 preview mode，可以先体验一下，再在需要时使用 upgrade flow 创建首个管理员账号。
-2. 打开 `Settings -> LLM`。
-3. 添加一个你真正准备使用的 provider。
-4. 选择默认 provider；如果需要更严格的路由，再检查 allowed models。
-5. 回到聊天页做一次 smoke test。
+1. 如果实例还在预览模式，可以先体验一下，再在需要时通过升级流程创建首个管理员账号。
+2. 打开 `设置 -> 模型`。
+3. 添加一个你真正准备使用的提供方。
+4. 选择默认提供方；如果需要更严格的路由，再检查允许模型。
+5. 回到聊天页做一次冒烟测试。
 
 点击 `Add provider` 前，建议先准备这些最小信息：
 
 | 字段 | 为什么需要它 |
 | --- | --- |
-| Provider 名称 | 方便后续排查和识别 |
-| Base URL 或 endpoint | 告诉 Blue 请求发往哪里 |
-| API Key 或 bearer token | 完成 provider 认证 |
+| 提供方名称 | 方便后续排查和识别 |
+| 基础 URL 或端点 | 告诉 Blue 请求发往哪里 |
+| API Key 或 bearer token | 完成提供方认证 |
 | 兼容格式 | 让 Blue 说对协议，例如 `openai`、`responses`、`anthropic`、`google` |
-| Cloud 或 Local 标记 | 方便判断部署形态 |
-| Allowed models | 需要收紧路由时直接可用 |
+| 云端或本地标记 | 方便判断部署形态 |
+| 允许模型 | 需要收紧路由时直接可用 |
 
-## 3. 先跑一次 smoke test
+## 3. 先跑一次冒烟测试
 
 先发一条简单 prompt，例如：
 
@@ -57,8 +57,8 @@ summary: "一条 10 到 15 分钟内可完成的路径：从安装过渡到首�
 一个健康的首轮结果通常意味着：
 
 - 页面能正常打开
-- preview access 或正常登录都工作正常
-- provider 能成功返回结果
+- 预览访问或正常登录都工作正常
+- 提供方能成功返回结果
 - 第一条响应已经回来
 - 你已经知道下一步应该看哪一篇，而不是盲猜
 
@@ -72,11 +72,11 @@ summary: "一条 10 到 15 分钟内可完成的路径：从安装过渡到首�
 
 | 你的下一个问题是 | 最适合先看的页面 |
 | --- | --- |
-| Provider 和模型路由怎么配 | [设置与 Provider Pool](/guides/settings-provider-pool) |
+| 提供方和模型路由怎么配 | [设置与提供方池](/guides/settings-provider-pool) |
 | 首个管理员、登录、API Key、认证提供方怎么做 | [身份与访问](/guides/identity-access) |
-| 渠道和远程交互入口怎么接 | [Channels](/guides/channels) |
-| 自动化、浏览器任务、工作流怎么理解 | [Automation](/guides/automation) |
-| 评测、baseline、Evolution 怎么串起来 | [Harness 与 Evolution](/guides/harness-evolution) |
+| 渠道和远程交互入口怎么接 | [渠道集成](/guides/channels) |
+| 自动化、浏览器任务、工作流怎么理解 | [自动化](/guides/automation) |
+| 评测、基线、进化怎么串起来 | [评测与进化](/guides/harness-evolution) |
 | 技能、工具目录和扩展商店怎么理解 | [扩展中心](/guides/extensions) |
 | 包结构和运行时流转怎么看 | [产品架构](/product/architecture) |
 | 完整的文档地图在哪里 | [文档导航](/start/docs-directory) |
@@ -87,7 +87,7 @@ summary: "一条 10 到 15 分钟内可完成的路径：从安装过渡到首�
 ## 6. 如果卡住，优先看这些
 
 - 通用设置或站点问题： [常见问题](/help/faq)
-- 启动、provider、路由排查： [故障排查](/help/troubleshooting)
+- 启动、提供方、路由排查： [故障排查](/help/troubleshooting)
 - 完整导航： [文档导航](/start/docs-directory)
 - 更大范围的仓库知识入口： [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue)
 
@@ -96,7 +96,7 @@ summary: "一条 10 到 15 分钟内可完成的路径：从安装过渡到首�
 如果你打算持续使用 Blue，建议常驻打开：
 
 - [文档导航](/start/docs-directory)
-- [设置与 Provider Pool](/guides/settings-provider-pool)
+- [设置与提供方池](/guides/settings-provider-pool)
 - [身份与访问](/guides/identity-access)
 - [故障排查](/help/troubleshooting)
 

@@ -43,6 +43,13 @@ function formatHarnessStatusToken(value: unknown, translate: Translate): string 
   }
 }
 
+function formatHarnessScore(value: unknown): string {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return ''
+  const scaled = numeric >= 0 && numeric <= 1 ? numeric * 100 : numeric
+  return `${Math.round(scaled)}%`
+}
+
 function detailHref(task: Pick<UserTaskProjection, 'detail_href'>): string {
   return String(task.detail_href || '').trim()
 }
@@ -72,7 +79,9 @@ export function projectHarnessSummary(
     )
   }
   if (typeof task.score === 'number' && Number.isFinite(task.score)) {
-    parts.push(`${translate('harness.groups.score', 'Score')}: ${task.score.toFixed(2)}`)
+    parts.push(
+      `${translate('harness.groups.score', 'Score')}: ${formatHarnessScore(task.score)}`
+    )
   }
   if (typeof task.evidence_count === 'number' && Number.isFinite(task.evidence_count)) {
     parts.push(`${translate('chat.taskHarnessEvidenceCount', 'Evidence')}: ${task.evidence_count}`)

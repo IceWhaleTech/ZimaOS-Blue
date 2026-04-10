@@ -79,6 +79,29 @@ func TestShouldAutoContinueForTodo(t *testing.T) {
 	})
 }
 
+func TestBuildSlashCommandExecutionHint_ForEmbeddedSkillInstallCommand(t *testing.T) {
+	hint := buildSlashCommandExecutionHint(`First, install the "humanizer" skill from the skill registry using /install humanizer, then rewrite ai_blog.txt and save it to humanized_blog.txt.`)
+	if !strings.Contains(hint, "`/install humanizer`") {
+		t.Fatalf("expected slash-command hint to mention the explicit command, got=%q", hint)
+	}
+	if !strings.Contains(hint, "before substituting a registry search") {
+		t.Fatalf("expected slash-command hint to discourage silent search substitution, got=%q", hint)
+	}
+}
+
+func TestBuildSlashCommandExecutionHint_ForBacktickedSkillInstallCommand(t *testing.T) {
+	hint := buildSlashCommandExecutionHint("Use `/install humanizer` first, then continue if the skill is unavailable.")
+	if !strings.Contains(hint, "`/install humanizer`") {
+		t.Fatalf("expected backticked slash-command hint to preserve the command, got=%q", hint)
+	}
+}
+
+func TestBuildSlashCommandExecutionHint_IgnoresPlainWorkspacePaths(t *testing.T) {
+	if got := buildSlashCommandExecutionHint(`Read /tmp/pinchbench-workspace/ai_blog.txt and summarize it.`); got != "" {
+		t.Fatalf("expected no slash-command hint for workspace path, got=%q", got)
+	}
+}
+
 func TestShouldAllowToolDependentAutoContinueWithoutTools(t *testing.T) {
 	if shouldAllowToolDependentAutoContinue("pseudo_tool_call", true, nil) {
 		t.Fatal("expected pseudo_tool_call to be disabled for clarify-none without tools")

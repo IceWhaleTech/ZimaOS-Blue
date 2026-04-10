@@ -39,6 +39,9 @@ const DEFAULT_PANEL_TOP_OFFSET = 88
 const OVERVIEW_POLL_MS = 4000
 const SCREENSHOT_POLL_MS = 2200
 const TASK_OVERVIEW_EVENT_REFRESH_DELAY_MS = 150
+const SESSION_MONITOR_EVENT_REFRESH_DELAY_MS = 75
+const SESSION_MONITOR_EVENT_TYPE = 'browser_session_monitor_updated'
+const SESSION_ACTIVITY_EVENT_TYPE = 'browser_session_activity'
 const TASK_OVERVIEW_EVENT_TYPES = [
   'task_created',
   'task_planning',
@@ -120,6 +123,7 @@ let screenshotTimer: ReturnType<typeof setInterval> | null = null
 let panelResizeObserver: ResizeObserver | null = null
 let launcherClickResetTimer: ReturnType<typeof setTimeout> | null = null
 let taskOverviewEventRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let sessionMonitorEventRefreshTimer: ReturnType<typeof setTimeout> | null = null
 const compactPreviewWarmupInFlight = new Set<string>()
 
 function tr(key: string, fallback: string): string {
@@ -853,6 +857,38 @@ function scheduleOverviewRefreshFromEvent() {
   }, TASK_OVERVIEW_EVENT_REFRESH_DELAY_MS)
 }
 
+function scheduleScreenshotRefreshFromEvent(payload: unknown) {
+  if (!isOpen.value) return
+  if (isTextMonitor.value) return
+  if (screenshotLoading.value) return
+  const data = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const sessionID = String(data.session_id || '').trim()
+  if (!sessionID || sessionID !== selectedSession.value?.id) return
+  const capturedAt = String(data.captured_at || '').trim()
+  if (capturedAt && lastScreenshotAt.value && capturedAt <= lastScreenshotAt.value) return
+  if (sessionMonitorEventRefreshTimer) return
+  sessionMonitorEventRefreshTimer = setTimeout(() => {
+    sessionMonitorEventRefreshTimer = null
+    void refreshScreenshot()
+  }, SESSION_MONITOR_EVENT_REFRESH_DELAY_MS)
+}
+
+function scheduleScreenshotRefreshFromActivity(payload: unknown) {
+  if (!isOpen.value) return
+  if (isTextMonitor.value) return
+  if (screenshotLoading.value) return
+  const data = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const sessionID = String(data.session_id || '').trim()
+  if (!sessionID || sessionID !== selectedSession.value?.id) return
+  const observedAt = String(data.observed_at || '').trim()
+  if (observedAt && lastScreenshotAt.value && observedAt <= lastScreenshotAt.value) return
+  if (sessionMonitorEventRefreshTimer) return
+  sessionMonitorEventRefreshTimer = setTimeout(() => {
+    sessionMonitorEventRefreshTimer = null
+    void refreshScreenshot()
+  }, SESSION_MONITOR_EVENT_REFRESH_DELAY_MS)
+}
+
 async function refreshScreenshot() {
   const session = selectedSession.value
   if (!isOpen.value || !session?.id) return
@@ -1314,7 +1350,7 @@ watch(
 
 watch(
   previewFrames,
-  (frames) => {
+  (frames, previousFrames) => {
     if (frames.length === 0) {
       activeScreenshotKey.value = ''
       return
@@ -1324,11 +1360,32 @@ watch(
       activeScreenshotKey.value = ''
       return
     }
-    const activeKey = activeScreenshotKey.value.trim()
-    if (activeKey && frames.some((frame) => screenshotFrameKey(frame) === activeKey)) {
+    const latestKey = screenshotFrameKey(latestFrame)
+
+    if (isCollapsed.value) {
+      activeScreenshotKey.value = latestKey
       return
     }
-    activeScreenshotKey.value = screenshotFrameKey(latestFrame)
+
+    const activeKey = activeScreenshotKey.value.trim()
+    if (!activeKey) {
+      activeScreenshotKey.value = latestKey
+      return
+    }
+
+    const previousLatestFrame = previousFrames?.[0]
+    if (previousLatestFrame) {
+      const previousLatestKey = screenshotFrameKey(previousLatestFrame)
+      if (previousLatestKey && activeKey === previousLatestKey) {
+        activeScreenshotKey.value = latestKey
+        return
+      }
+    }
+
+    if (frames.some((frame) => screenshotFrameKey(frame) === activeKey)) {
+      return
+    }
+    activeScreenshotKey.value = latestKey
   },
   { immediate: true }
 )
@@ -1391,6 +1448,8 @@ onMounted(() => {
   for (const eventType of TASK_OVERVIEW_EVENT_TYPES) {
     onSSEEvent(eventType, scheduleOverviewRefreshFromEvent)
   }
+  onSSEEvent(SESSION_MONITOR_EVENT_TYPE, scheduleScreenshotRefreshFromEvent)
+  onSSEEvent(SESSION_ACTIVITY_EVENT_TYPE, scheduleScreenshotRefreshFromActivity)
   void refreshOverview()
   overviewTimer = setInterval(() => {
     void refreshOverview()
@@ -1419,10 +1478,13 @@ onUnmounted(() => {
   for (const eventType of TASK_OVERVIEW_EVENT_TYPES) {
     offSSEEvent(eventType, scheduleOverviewRefreshFromEvent)
   }
+  offSSEEvent(SESSION_MONITOR_EVENT_TYPE, scheduleScreenshotRefreshFromEvent)
+  offSSEEvent(SESSION_ACTIVITY_EVENT_TYPE, scheduleScreenshotRefreshFromActivity)
   if (overviewTimer) clearInterval(overviewTimer)
   if (screenshotTimer) clearInterval(screenshotTimer)
   if (launcherClickResetTimer) clearTimeout(launcherClickResetTimer)
   if (taskOverviewEventRefreshTimer) clearTimeout(taskOverviewEventRefreshTimer)
+  if (sessionMonitorEventRefreshTimer) clearTimeout(sessionMonitorEventRefreshTimer)
   panelResizeObserver?.disconnect()
   window.removeEventListener('resize', clampLauncherPosition)
   window.removeEventListener('resize', clampPanelPosition)

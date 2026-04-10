@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
 func resolveBuiltinToolAllowedPaths(appCfg *config.Config, dataDir string) []string {
@@ -36,6 +37,12 @@ func resolveBuiltinToolAllowedPaths(appCfg *config.Config, dataDir string) []str
 	}
 
 	addPath(workspaceRoot)
+	for _, skillRoot := range skillmanifest.ResolveRoots(workspaceRoot) {
+		addPath(skillRoot)
+		if filepath.Base(filepath.Clean(skillRoot)) == "skills" {
+			addPath(filepath.Dir(skillRoot))
+		}
+	}
 	if shouldAllowTmpForWorkspace(paths) {
 		addPath("/tmp")
 		addPath("/private/tmp")

@@ -176,11 +176,11 @@ function orbitNodeRadius(distance: number, degree: number, maxDegree: number, di
 }
 
 function orbitSpacing(distance: number, disconnected = false) {
-  if (disconnected) return 28
-  if (distance <= 1) return 14
-  if (distance === 2) return 18
-  if (distance === 3) return 22
-  return 26
+  if (disconnected) return 34
+  if (distance <= 1) return 18
+  if (distance === 2) return 22
+  if (distance === 3) return 26
+  return 30
 }
 
 function orbitAnchorPull(distance: number, disconnected = false) {
@@ -193,36 +193,95 @@ function orbitAnchorPull(distance: number, disconnected = false) {
 
 function relaxOrbitNodes(states: OrbitLayoutState[]): KnowledgeGraphNode[] {
   const center = states.find((node) => node.selected)
+  const useSparseRepulsion = states.length > 900
+  const ticks = useSparseRepulsion ? 52 : 90
+  const cellSize = useSparseRepulsion ? 64 : 0
 
-  for (let tick = 0; tick < 90; tick += 1) {
-    for (let leftIndex = 0; leftIndex < states.length; leftIndex += 1) {
-      const left = states[leftIndex]
-      if (!left || left.selected) continue
-      for (let rightIndex = leftIndex + 1; rightIndex < states.length; rightIndex += 1) {
-        const right = states[rightIndex]
-        if (!right || right.selected) continue
-        const dx = right.x - left.x
-        const dy = right.y - left.y
-        const distance = Math.max(Math.hypot(dx, dy), 1)
-        const desired =
-          left.radius +
-          right.radius +
-          Math.max(
-            orbitSpacing(left.distance, left.disconnected),
-            orbitSpacing(right.distance, right.disconnected)
-          )
+  for (let tick = 0; tick < ticks; tick += 1) {
+    if (useSparseRepulsion) {
+      const buckets = new Map<string, number[]>()
+      for (let index = 0; index < states.length; index += 1) {
+        const node = states[index]
+        if (!node || node.selected) continue
+        const cellX = Math.floor(node.x / cellSize)
+        const cellY = Math.floor(node.y / cellSize)
+        const key = `${cellX}:${cellY}`
+        const bucket = buckets.get(key)
+        if (bucket) bucket.push(index)
+        else buckets.set(key, [index])
+      }
 
-        const push =
-          distance < desired
-            ? (desired - distance) * 0.16
-            : ((desired * desired) / (distance * distance)) * 0.38
-        const pushX = (dx / distance) * push
-        const pushY = (dy / distance) * push
+      for (let leftIndex = 0; leftIndex < states.length; leftIndex += 1) {
+        const left = states[leftIndex]
+        if (!left || left.selected) continue
+        const cellX = Math.floor(left.x / cellSize)
+        const cellY = Math.floor(left.y / cellSize)
 
-        left.vx -= pushX
-        left.vy -= pushY
-        right.vx += pushX
-        right.vy += pushY
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+            const neighbor = buckets.get(`${cellX + offsetX}:${cellY + offsetY}`)
+            if (!neighbor) continue
+            for (const rightIndex of neighbor) {
+              if (rightIndex <= leftIndex) continue
+              const right = states[rightIndex]
+              if (!right || right.selected) continue
+
+              const dx = right.x - left.x
+              const dy = right.y - left.y
+              const distance = Math.max(Math.hypot(dx, dy), 1)
+              const desired =
+                left.radius +
+                right.radius +
+                Math.max(
+                  orbitSpacing(left.distance, left.disconnected),
+                  orbitSpacing(right.distance, right.disconnected)
+                )
+
+              const push =
+                distance < desired
+                  ? (desired - distance) * 0.18
+                  : ((desired * desired) / (distance * distance)) * 0.26
+              const pushX = (dx / distance) * push
+              const pushY = (dy / distance) * push
+
+              left.vx -= pushX
+              left.vy -= pushY
+              right.vx += pushX
+              right.vy += pushY
+            }
+          }
+        }
+      }
+    } else {
+      for (let leftIndex = 0; leftIndex < states.length; leftIndex += 1) {
+        const left = states[leftIndex]
+        if (!left || left.selected) continue
+        for (let rightIndex = leftIndex + 1; rightIndex < states.length; rightIndex += 1) {
+          const right = states[rightIndex]
+          if (!right || right.selected) continue
+          const dx = right.x - left.x
+          const dy = right.y - left.y
+          const distance = Math.max(Math.hypot(dx, dy), 1)
+          const desired =
+            left.radius +
+            right.radius +
+            Math.max(
+              orbitSpacing(left.distance, left.disconnected),
+              orbitSpacing(right.distance, right.disconnected)
+            )
+
+          const push =
+            distance < desired
+              ? (desired - distance) * 0.16
+              : ((desired * desired) / (distance * distance)) * 0.38
+          const pushX = (dx / distance) * push
+          const pushY = (dy / distance) * push
+
+          left.vx -= pushX
+          left.vy -= pushY
+          right.vx += pushX
+          right.vy += pushY
+        }
       }
     }
 
@@ -353,6 +412,7 @@ function layoutOrbitNodes(
   edges: readonly KnowledgeGraphEdge[],
   selectedSlug: string
 ): KnowledgeGraphNode[] {
+  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
   const degreeMap = buildDegreeMap(pages, edges)
   const maxDegree = Math.max(...degreeMap.values(), 1)
   const centerX = GRAPH_WIDTH / 2
@@ -397,64 +457,101 @@ function layoutOrbitNodes(
   }
 
   const sortedDistances = [...groups.keys()].sort((left, right) => left - right)
-  const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
+  const clampInt = (value: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, Math.round(value)))
   for (const distance of sortedDistances) {
-    const group = (groups.get(distance) || []).sort((left, right) => {
-      const byDegree = (degreeMap.get(right.slug) || 0) - (degreeMap.get(left.slug) || 0)
-      if (byDegree !== 0) return byDegree
-      return left.title.localeCompare(right.title)
+    const group = groups.get(distance) || []
+    const byType = new Map<string, KnowledgePageSummary[]>()
+    for (const page of group) {
+      const key = page.page_type || 'unknown'
+      const bucket = byType.get(key)
+      if (bucket) bucket.push(page)
+      else byType.set(key, [page])
+    }
+
+    const typeKeys = [...byType.keys()].sort((left, right) => {
+      const leftAnchor = typeAnchors.get(left)
+      const rightAnchor = typeAnchors.get(right)
+      const leftAngle = leftAnchor ? Math.atan2(leftAnchor.y - centerY, leftAnchor.x - centerX) : 0
+      const rightAngle = rightAnchor
+        ? Math.atan2(rightAnchor.y - centerY, rightAnchor.x - centerX)
+        : 0
+      const byAngle = leftAngle - rightAngle
+      if (Math.abs(byAngle) > 0.0001) return byAngle
+      return left.localeCompare(right)
     })
+
     const { radiusX, radiusY } = getKnowledgeGraphOrbitGuide(distance)
     const orbitStart = (hashString(`${selectedSlug}:${distance}`) % 360) * (Math.PI / 180)
-    for (let index = 0; index < group.length; index += 1) {
-      const page = group[index]
-      if (!page) continue
-      const seed = hashString(`${page.slug}:${distance}:orbit`)
-      const degree = degreeMap.get(page.slug) || 0
-      const weight = degreeWeight(degree, maxDegree)
-      const radius = orbitNodeRadius(distance, degree, maxDegree)
-      const anchor = typeAnchors.get(page.page_type)
-      const anchorAngle = anchor ? Math.atan2(anchor.y - centerY, anchor.x - centerX) : 0
-      const angle =
-        distance <= 1
-          ? orbitStart +
-            anchorAngle * 0.72 +
-            index * GOLDEN_ANGLE +
-            (((seed >>> 3) % 19) - 9) * 0.018
-          : orbitStart +
-            index * GOLDEN_ANGLE * 0.92 +
-            anchorAngle * 0.18 +
-            (((seed >>> 3) % 17) - 8) * 0.012
-      const radialScale =
-        distance <= 1
-          ? 0.28 + index / Math.max(group.length * 2.2, 1) + (1 - weight) * 0.14 + ((seed % 9) / 100)
-          : distance === 2
-            ? 0.76 + (1 - weight) * 0.2 + ((seed % 17) / 100)
-            : distance === 3
-              ? 0.94 + (1 - weight) * 0.17 + ((seed % 19) / 100)
-              : 1 + (1 - weight) * 0.16 + ((seed % 23) / 100)
-      const position = containInViewportEllipse(
-        centerX + Math.cos(angle) * radiusX * radialScale,
-        centerY + Math.sin(angle) * radiusY * radialScale,
-        radius
-      )
-      nodes.push({
-        slug: page.slug,
-        title: page.title,
-        pageType: page.page_type,
-        status: page.status,
-        degree,
-        radius,
-        x: position.x,
-        y: position.y,
-        selected: false,
-        targetX: position.x,
-        targetY: position.y,
-        vx: 0,
-        vy: 0,
-        distance,
-        disconnected: false,
+
+    const clusterArc =
+      distance <= 1 ? 0.9 : distance === 2 ? 0.68 : distance === 3 ? 0.58 : 0.5
+    const maxColumns = distance <= 1 ? 10 : distance === 2 ? 12 : 14
+    const shellBase =
+      distance <= 1 ? 0.32 : distance === 2 ? 0.78 : distance === 3 ? 0.97 : 1.04
+    const shellStep =
+      distance <= 1 ? 0.055 : distance === 2 ? 0.045 : distance === 3 ? 0.036 : 0.03
+
+    for (const typeKey of typeKeys) {
+      const cluster = (byType.get(typeKey) || []).sort((left, right) => {
+        const byDegree = (degreeMap.get(right.slug) || 0) - (degreeMap.get(left.slug) || 0)
+        if (byDegree !== 0) return byDegree
+        return left.title.localeCompare(right.title)
       })
+      const anchor = typeAnchors.get(typeKey)
+      const anchorAngle = anchor ? Math.atan2(anchor.y - centerY, anchor.x - centerX) : 0
+      const anchorWeight = distance <= 1 ? 0.92 : distance === 2 ? 0.74 : 0.62
+      const clusterCenter = orbitStart + anchorAngle * anchorWeight
+
+      const shellCount = clampInt(Math.sqrt(cluster.length) / 2.3, 2, 6)
+      const columns = Math.max(1, Math.min(maxColumns, Math.ceil(cluster.length / shellCount)))
+      const angleStep = columns <= 1 ? 0 : clusterArc / (columns - 1)
+
+      for (let index = 0; index < cluster.length; index += 1) {
+        const page = cluster[index]
+        if (!page) continue
+        const seed = hashString(`${page.slug}:${distance}:${typeKey}:cluster`)
+        const degree = degreeMap.get(page.slug) || 0
+        const weight = degreeWeight(degree, maxDegree)
+        const radius = orbitNodeRadius(distance, degree, maxDegree)
+
+        const columnIndex = Math.floor(index / shellCount) % columns
+        const shellIndex = index % shellCount
+        const columnOffset = columns <= 1 ? 0 : (columnIndex - (columns - 1) / 2) * angleStep
+        const angleJitter =
+          (((seed >>> 3) % 19) - 9) * (distance <= 1 ? 0.02 : distance === 2 ? 0.015 : 0.012)
+        const angle = clusterCenter + columnOffset + angleJitter
+
+        const shellNoise = ((seed % 17) / 100) * 0.8
+        const radialScale =
+          shellBase +
+          shellIndex * shellStep +
+          (1 - weight) * (distance <= 1 ? 0.18 : distance === 2 ? 0.2 : 0.16) +
+          shellNoise
+
+        const position = containInViewportEllipse(
+          centerX + Math.cos(angle) * radiusX * radialScale,
+          centerY + Math.sin(angle) * radiusY * radialScale,
+          radius
+        )
+        nodes.push({
+          slug: page.slug,
+          title: page.title,
+          pageType: page.page_type,
+          status: page.status,
+          degree,
+          radius,
+          x: position.x,
+          y: position.y,
+          selected: false,
+          targetX: position.x,
+          targetY: position.y,
+          vx: 0,
+          vy: 0,
+          distance,
+          disconnected: false,
+        })
+      }
     }
   }
 

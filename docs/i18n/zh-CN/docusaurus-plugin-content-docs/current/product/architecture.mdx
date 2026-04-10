@@ -11,65 +11,65 @@ summary: "从当前包分层和关键运行路径理解 Blue 的运行时结构�
 
 | 层 | 主要包 |
 | --- | --- |
-| Gateway | bootstrap, server, gateway |
-| Proxy | proxy, connection, streaming, resilience |
-| Provider | providerpool, providers, llm |
-| Pruner | pruner 以及相关 detector、segmenter、scoring 流水线 |
-| Agent | context, tools, personality, humanizer |
-| Memory | memory, embedding, kvstore |
-| Channel | channel, autoreply, i18n |
-| Security | security, auth, permission, rbac, mfa, password, oidc, sandbox, audit |
-| Voice | voice, tts, stt, speech |
-| Observe | metrics, profiling, leak detection 类服务 |
-| Plugin | plugin, skill, skillstore |
-| Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
-| Evaluation | harness, self-reflect, tracked run 与 score surface |
-| Scheduler | scheduler, worker, workerpool, pool |
-| Core | lifecycle, config, logger, database, cache, ratelimit, retry, sync |
-| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
-| Multi-tenant | tenant, user, session, preview |
+| 网关层 | bootstrap, server, gateway |
+| 代理层 | proxy, connection, streaming, resilience |
+| 提供方层 | providerpool, providers, llm |
+| 裁剪层 | pruner 以及相关 detector、segmenter、scoring 流水线 |
+| 智能体层 | context, tools, personality, humanizer |
+| 记忆层 | memory, embedding, kvstore |
+| 渠道层 | channel, autoreply, i18n |
+| 安全层 | security, auth, permission, rbac, mfa, password, oidc, sandbox, audit |
+| 语音层 | voice, tts, stt, speech |
+| 观测层 | metrics, profiling, leak detection 类服务 |
+| 扩展层 | plugin, skill, skillstore |
+| 集成层 | browser, cron, workflow, formfiller, tunnel, crawler |
+| 评测层 | harness, self-reflect, tracked run 与 score surface |
+| 调度层 | scheduler, worker, workerpool, pool |
+| 核心层 | lifecycle, config, logger, database, cache, ratelimit, retry, sync |
+| 系统层 | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| 多租户层 | tenant, user, session, preview |
 
 ## 热路径：一次聊天请求
 
 ```text
-Client -> Auth Gate -> Prompt Guard -> Context Pruner
-  -> Provider Pool -> Cache Checks -> Upstream Model
-  -> Response -> Cache Store -> Metrics -> Client
+客户端 -> 认证门禁 -> 提示防护 -> 上下文裁剪
+  -> 提供方池 -> 缓存检查 -> 上游模型
+  -> 响应 -> 缓存写入 -> 指标记录 -> 客户端
 ```
 
 ## 热路径：一次渠道消息
 
 ```text
-Chat Platform -> Channel Manager -> AutoReply
-  -> Chat Handler -> LLM -> Humanizer -> Channel -> User
+聊天平台 -> 渠道管理器 -> 自动回复
+  -> 聊天处理器 -> LLM -> Humanizer -> 渠道 -> 用户
 ```
 
 ## 热路径：语音链路
 
 ```text
-Audio Stream -> STT -> LLM Processing -> TTS -> Audio Stream
+音频流 -> STT -> LLM 处理 -> TTS -> 音频流
 ```
 
 ## 热路径：一次可追踪评测
 
 ```text
-Operator -> Harness UI/API -> Dataset / Eval Spec / Run Group
-  -> Agent or Workflow Execution -> Scorecard / Artifact / Report
-  -> Comparison / Baseline Review -> Evolution Decision
+操作员 -> 评测 UI/API -> 数据集 / 评测规格 / 运行组
+  -> 智能体或工作流执行 -> 评分卡 / 制品 / 报告
+  -> 对比 / 基线审阅 -> 进化决策
 ```
 
 ## 热路径：扩展安装与审核
 
 ```text
-Operator -> Extensions UI -> Skill Source / Store Search
-  -> Security Metadata / Contract Review -> Install
-  -> Skill or Tool becomes available to runtime surfaces
+操作员 -> 扩展界面 -> 技能来源 / 商店搜索
+  -> 安全元数据 / 契约审查 -> 安装
+  -> 技能或工具对运行时可用
 ```
 
 ## 真正值得记住的几点
 
 - Gateway 和 Provider 路由是整个系统最关键的控制点
 - 消息、语音、自动化和 Web 控制面都建立在同一套运行时核心之上
-- Harness 与 Evolution 不是附属工具，而是架构里的正式层
+- 评测与进化不是附属工具，而是架构里的正式层
 - 扩展安全元数据已经进入操作员体验，而不是安装后的补救项
 - 安全、审计和沙箱是设计前提，不是后加组件

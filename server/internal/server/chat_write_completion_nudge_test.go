@@ -231,6 +231,49 @@ func TestCollectSuccessfulWriteTargets_IgnoresAppendWrites(t *testing.T) {
 	}
 }
 
+func TestCollectSuccessfulWriteTargets_IncludesExecCatHeredocWrite(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "exec", Arguments: `{"command":"cat > humanized_blog.txt <<EOF\nhello\nEOF"}`},
+	}
+	toolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"command":"cat > humanized_blog.txt <<EOF\nhello\nEOF","status":"completed","exit_code":0}`,
+		},
+	}
+
+	targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+	if len(targets) != 1 || targets[0] != "humanized_blog.txt" {
+		t.Fatalf("expected exec heredoc write target, got=%v", targets)
+	}
+}
+
+func TestCollectSuccessfulWriteTargets_IncludesExecCatHeredocWriteWithRedirectAfterDelimiter(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "exec", Arguments: `{"command":"cat <<'BLOGEOF' > humanized_blog.txt\nhello\nBLOGEOF"}`},
+	}
+	toolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"command":"cat <<'BLOGEOF' > humanized_blog.txt\nhello\nBLOGEOF","status":"completed","exit_code":0}`,
+		},
+	}
+
+	targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+	if len(targets) != 1 || targets[0] != "humanized_blog.txt" {
+		t.Fatalf("expected exec heredoc write target with redirect after delimiter, got=%v", targets)
+	}
+}
+
+func TestExtractSuccessfulWriteTarget_ExecReadCommandIgnored(t *testing.T) {
+	got := extractSuccessfulWriteTarget("exec", `{"command":"cat ai_blog.txt","status":"completed","exit_code":0}`)
+	if got != "" {
+		t.Fatalf("expected exec read command not to count as successful write target, got=%q", got)
+	}
+}
+
 func TestBuildPostResearchFailureRecoveryNudge_ForFailedResearchReport(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call-1", Name: "web_search"},
@@ -550,6 +593,44 @@ func TestExtractSuccessfulWriteTarget_Office(t *testing.T) {
 	got := extractSuccessfulWriteTarget("office", `{"success":true,"path":"reports/ui_review.docx"}`)
 	if got != "reports/ui_review.docx" {
 		t.Fatalf("extractSuccessfulWriteTarget() = %q, want reports/ui_review.docx", got)
+	}
+}
+
+func TestBuildSuccessfulArtifactCompletion_IncludesExecCatHeredocWrite(t *testing.T) {
+	completion := buildSuccessfulArtifactCompletion(
+		`Humanize the text in ai_blog.txt and save it to "humanized_blog.txt".`,
+		[]llm.ToolCall{{
+			ID:        "call-1",
+			Name:      "exec",
+			Arguments: `{"command":"cat > humanized_blog.txt <<EOF\nhello\nEOF"}`,
+		}},
+		[]llm.Message{{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"command":"cat > humanized_blog.txt <<EOF\nhello\nEOF","status":"completed","exit_code":0}`,
+		}},
+	)
+	if completion != `Saved the requested file to "humanized_blog.txt".` {
+		t.Fatalf("buildSuccessfulArtifactCompletion() = %q", completion)
+	}
+}
+
+func TestBuildSuccessfulArtifactCompletion_IncludesExecCatHeredocWriteWithRedirectAfterDelimiter(t *testing.T) {
+	completion := buildSuccessfulArtifactCompletion(
+		`Humanize the text in ai_blog.txt and save it to "humanized_blog.txt".`,
+		[]llm.ToolCall{{
+			ID:        "call-1",
+			Name:      "exec",
+			Arguments: `{"command":"cat <<'BLOGEOF' > humanized_blog.txt\nhello\nBLOGEOF"}`,
+		}},
+		[]llm.Message{{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"command":"cat <<'BLOGEOF' > humanized_blog.txt\nhello\nBLOGEOF","status":"completed","exit_code":0}`,
+		}},
+	)
+	if completion != `Saved the requested file to "humanized_blog.txt".` {
+		t.Fatalf("buildSuccessfulArtifactCompletion() = %q", completion)
 	}
 }
 

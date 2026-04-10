@@ -1,53 +1,53 @@
 ---
-title: "Providers 与 Models"
-summary: "用真实运维视角理解 Blue 当前的 Provider Pool、验证流程、模型控制与路由行为。"
+title: "提供方与模型"
+summary: "用真实运维视角理解 Blue 当前的提供方池、验证流程、模型控制与路由行为。"
 ---
 
-# Providers 与 Models
+# 提供方与模型
 
-Blue 通过 provider pool 把模型接入、路由和故障转移集中到一个运维入口，而不是把这些配置分散到产品各处。
+Blue 通过提供方池把模型接入、路由和故障转移集中到一个运维入口，而不是把这些配置分散到产品各处。
 
 ![Provider 清单与路由概览](/providers.png)
 
-## Provider Pool 里现在能控制什么
+## 提供方池里现在能控制什么
 
-当前 provider-pool UI 和 API 不只是“填一个 key 就算接好了”。在实际产品里，运营者可以控制：
+当前提供方池的界面和 API 不只是“填一个 key 就算接好了”。在实际产品里，运营者可以控制：
 
-- 默认 provider
-- `trial`、`builtin`、`platform`、`custom`、`media` 等多种 provider 类型
+- 默认提供方
+- `trial`、`builtin`、`platform`、`custom`、`media` 等多种提供方类型
 - 路由优先级
-- `cloud` / `local` 位置元数据
+- `云端` / `本地` 位置元数据
 - API 兼容格式
-- Provider 验证
+- 提供方验证
 - 模型刷新
-- Allowed models 限制
+- 允许模型限制
 - 价格与能力元数据
-- 更上层路由里的 health check、failover 与 provider racing
+- 更上层路由里的健康检查、故障转移与并行竞速
 
-## 自定义 Provider 真正包含哪些字段
+## 自定义提供方真正包含哪些字段
 
-当前 Web 界面的自定义 provider 流程支持这些核心字段：
+当前 Web 界面的自定义提供方流程支持这些核心字段：
 
-- Provider 名称
-- Base URL
+- 提供方名称
+- 基础 URL
 - API Key
 - 路由优先级
 - API 格式，例如 `auto`、`openai`、`responses`、`anthropic`、`google`
-- `cloud` 或 `local` 位置
+- `云端` 或 `本地` 位置
 
 这让同一个 Blue 运行时既可以对接托管 API，也可以接内部网关或本地兼容层，而不需要改业务其他部分。
 
-## 新增一个 Provider 时，推荐按这个顺序做
+## 新增一个提供方时，推荐按这个顺序做
 
-如果你正在接入一个新 provider，最不容易绕路的顺序是：
+如果你正在接入一个新提供方，最不容易绕路的顺序是：
 
-1. 先把 endpoint、凭证、位置和 API 格式填对并保存。
+1. 先把端点、凭证、位置和 API 格式填对并保存。
 2. 在把它设成默认路由前先做验证。
 3. 如果验证结果给出更合适的 API 格式建议，先处理这个分歧。
 4. 刷新模型目录。
-5. 确认模型目录正确后，再去限制 allowed models。
-6. 如果它确实应该承载常规流量，再把它设成 default provider。
-7. 最后做一次真实聊天 smoke test。
+5. 确认模型目录正确后，再去限制允许模型。
+6. 如果它确实应该承载常规流量，再把它设成默认提供方。
+7. 最后做一次真实聊天冒烟测试。
 
 这样能把“保存成功”和“真的可用”拆开处理。
 
@@ -55,38 +55,38 @@ Blue 通过 provider pool 把模型接入、路由和故障转移集中到一个
 
 当前验证结果不是简单的通断测试，它还能返回：
 
-- 实际被测试的 base URL
-- 本次探测使用的 model
-- 检测到的 API format
-- 推荐的 API format
-- 推荐的 base URL
-- 这个 endpoint 是否更像 `responses`-only 接口
-- 各个 probe 的可达性与状态码信息
+- 实际被测试的基础 URL
+- 本次探测使用的模型
+- 检测到的 API 格式
+- 推荐的 API 格式
+- 推荐的基础 URL
+- 这个端点是否更像 `responses`-only 接口
+- 各个探测步骤的可达性与状态码信息
 
 所以它可以提前发现：
 
-- endpoint 写错
+- 端点写错
 - API 格式不匹配
 - 主机可达，但行为并不符合你以为的 provider 类型
 
 ## 模型目录与模型控制
 
-Provider 连上之后，下一步通常就是模型管理。当前产品支持：
+提供方连上之后，下一步通常就是模型管理。当前产品支持：
 
-- 刷新 provider 的远端模型目录
+- 刷新提供方的远端模型目录
 - 查看模型 capabilities
 - 查看 input、output、cache 或 per-request 等价格字段
 - 查看 context window 与 max output 元数据
-- 通过 allowed models 只保留允许路由的模型
+- 通过允许模型只保留允许路由的模型
 
-很多接入问题就卡在这里。Provider 可能验证通过，但正常聊天仍然失败，因为预期模型不存在、被禁用，或被 allowed models 误过滤了。
+很多接入问题就卡在这里。提供方可能验证通过，但正常聊天仍然失败，因为预期模型不存在、被禁用，或被允许模型误过滤了。
 
-## `cloud` 和 `local` 不只是标签
+## `云端` 和 `本地` 不只是标签
 
-`cloud` 与 `local` 最好如实填写，因为后续排查时会更好用。
+`云端` 与 `本地` 最好如实填写，因为后续排查时会更好用。
 
-- `cloud` 用于托管 API 和远端网关
-- `local` 用于本机或局域网内的运行时、兼容层
+- `云端` 用于托管 API 和远端网关
+- `本地` 用于本机或局域网内的运行时、兼容层
 
 这在你比较下面这些问题时尤其有帮助：
 
@@ -95,27 +95,27 @@ Provider 连上之后，下一步通常就是模型管理。当前产品支持�
 - 隐私边界
 - 部署拓扑
 
-## 路由、故障转移与 provider racing
+## 路由、故障转移与并行竞速
 
-Blue 的路由层不是一次性硬编码选择 provider。当前文档与配置表面已经支持：
+Blue 的路由层不是一次性硬编码选择提供方。当前文档与配置表面已经支持：
 
-- 默认 provider
-- 有序 provider 优先级
+- 默认提供方
+- 有序提供方优先级
 - 健康检查
 - Failover 与恢复控制
-- 可选 provider racing
+- 可选并行竞速
 
-这意味着 provider pool 不只是首次接入页面，它还是后续做高可用、迁移和成本平衡的控制面。
+这意味着提供方池不只是首次接入页面，它还是后续做高可用、迁移和成本平衡的控制面。
 
-## 一个健康的 Provider 配置应该是什么样
+## 一个健康的提供方配置应该是什么样
 
 通常满足下面这些条件，就说明状态比较健康：
 
-- Provider 可以正常保存
+- 提供方可以正常保存
 - 验证通过
 - 推荐 API 格式和 base URL 与你的预期一致，或者你已经有意识地调整过
 - 模型列表刷新正确
-- Allowed models 是有意配置，而不是误伤
+- 允许模型是有意配置，而不是误伤
 - 能成功跑一条真实聊天请求
 
 如果其中任何一项不成立，就先停在这一层，不要继续叠加更多 provider 或更复杂的路由策略。
@@ -124,19 +124,19 @@ Blue 的路由层不是一次性硬编码选择 provider。当前文档与配置
 
 | 问题 | 重点查看 |
 | --- | --- |
-| “我是不是填错 endpoint 了？” | Provider 验证结果 |
-| “为什么能保存，但聊天还是失败？” | API format、模型刷新、allowed models |
-| “哪一个 provider 应该承载正常流量？” | Default provider 和路由优先级 |
-| “怎么区分本地算力和云端算力？” | `location` 元数据与 provider 排序 |
-| “怎么避免不想用的模型参与路由？” | Allowed-model 控制 |
+| “我是不是填错端点了？” | 提供方验证结果 |
+| “为什么能保存，但聊天还是失败？” | API 格式、模型刷新、允许模型 |
+| “哪一个提供方应该承载正常流量？” | 默认提供方和路由优先级 |
+| “怎么区分本地算力和云端算力？” | `location` 元数据与提供方排序 |
+| “怎么避免不想用的模型参与路由？” | 允许模型控制 |
 
-## 什么时候应该去看 Provider Pool 那篇
+## 什么时候应该去看“提供方池”那篇
 
-这篇讲的是 provider 与路由模型本身。如果你想看设置页里的实际操作流程，继续读 [设置与 Provider Pool](/guides/settings-provider-pool)。
+这篇讲的是提供方与路由模型本身。如果你想看设置页里的实际操作流程，继续读 [设置与提供方池](/guides/settings-provider-pool)。
 
 ## 相关页面
 
-- [设置与 Provider Pool](/guides/settings-provider-pool)
+- [设置与提供方池](/guides/settings-provider-pool)
 - [首次运行](/start/first-run)
 - [产品概览](/product/overview)
 - [产品能力](/product/features)

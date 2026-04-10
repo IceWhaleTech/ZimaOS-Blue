@@ -11,6 +11,7 @@ func newRouteRuntimeCoreExecSupportOptions(state *routeRegistrationState) routeR
 		readDB:               state.runtimeReadDB,
 		dataDir:              state.cfg.DataDir,
 		workspaceDir:         state.workspaceDir,
+		serverConfig:         state.cfg,
 		ripgrep:              state.deps.Config.ToolCalling.Ripgrep,
 		workspaceAllowedPath: state.workspaceAllowedPaths,
 		memoryStore:          state.services.MemoryStore,

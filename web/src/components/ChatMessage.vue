@@ -4721,6 +4721,10 @@ async function handleMobileDelete() {
   margin-top: 0.625rem;
 }
 
+.assistant-status-bar.mt-0 {
+  margin-top: 0;
+}
+
 .assistant-process-toggle-row {
   display: flex;
   justify-content: flex-start;

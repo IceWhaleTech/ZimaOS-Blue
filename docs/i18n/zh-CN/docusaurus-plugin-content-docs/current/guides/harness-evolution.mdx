@@ -1,13 +1,13 @@
 ---
-title: "Harness 与 Evolution"
-summary: "Harness 负责可追踪执行与评测，Evolution 负责基于证据比较、采用或回滚更好的技能与指令版本。"
+title: "评测与进化"
+summary: "评测负责可追踪执行与评估，进化负责基于证据比较、采用或回滚更好的技能与指令版本。"
 ---
 
-# Harness 与 Evolution
+# 评测与进化
 
-Blue 的自动化体系现在已经包含完整的可追踪执行与评测控制面。Harness 是底层持久化控制面，Evolution 是建立在这些证据之上的审阅与采纳界面。
+Blue 的自动化体系现在已经包含完整的可追踪执行与评测控制面。评测是底层持久化控制面，进化是建立在这些证据之上的审阅与采纳界面。
 
-## Harness 现在管理什么
+## 评测现在管理什么
 
 - `eval`、`experiment`、`batch` 类型的 run group
 - `agent_task`、`research`、`subagent`、`workflow` 等 run kind
@@ -33,18 +33,18 @@ Blue 的自动化体系现在已经包含完整的可追踪执行与评测控制
 - `judge`
 - `hybrid`
 
-## 什么时候该用 Harness
+## 什么时候该用评测
 
-当你需要的不只是一次性运行时，就应该进入 Harness：
+当你需要的不只是一次性运行时，就应该进入评测：
 
 - 想重复复用输入集
 - 需要通过阈值或 baseline
 - 需要 artifacts 和 trace 做复盘
 - 需要比较候选版本而不是凭感觉切换
 
-## Bundle dataset
+## Bundle 数据集
 
-Harness 现在支持声明式 dataset bundle 格式：
+评测现在支持声明式 dataset bundle 格式：
 
 ```text
 <bundle>/
@@ -58,7 +58,7 @@ Harness 现在支持声明式 dataset bundle 格式：
 
 如果你想在界面里手动预览并导入，可以走：
 
-- `Automation -> Harness -> Datasets & versions -> Import bundle`
+- `自动化（Automation） -> 评测（Harness） -> 数据集与版本（Datasets & versions） -> 导入 bundle（Import bundle）`
 
 如果你想从终端主动触发，可以用：
 
@@ -82,7 +82,7 @@ blue harness dataset pull \
 
 ## Evolution 增加了什么
 
-Evolution 基于 Harness 证据帮助你管理技能和指令版本。当前实现已经覆盖：
+进化基于评测证据帮助你管理技能和指令版本。当前实现已经覆盖：
 
 - skill revision 历史
 - skill evolution case
@@ -108,19 +108,19 @@ OpenSpace 式演进现在不再只靠手动 optimize 或 gate 失败。只要满
 - runtime-origin case 仍然沿用同一条 candidate revision、follow-up eval、gate、lineage 和显式人工 promote 路径
 - 目前仍然不会自动 promote
 
-## Evolution 界面如何分层
+## 进化界面如何分层
 
-当前 Evolution 控制台按三条 review lane 拆开，这样执行证据、live 切换和指令审批不会混在一起：
+当前进化控制台按三条审阅 lane 拆开，这样执行证据、live 切换和指令审批不会混在一起：
 
-- `Skills`：审阅 canonical skill lineage、case evidence、comparison deltas、candidate diff patch、decision history、promote 和 rollback safety
-- `Runner`：查看最近一次 optimization run、optimized parts、source / follow-up eval 标识、runtime transcript、candidate diff，以及回跳 linked skill revision 的入口
-- `Instructions`：审阅 self-reflect 产出的指令提案，包括 `AGENTS.md` 和其他 instruction 文件，支持 patch preview 与显式 approve / reject
+- `技能`（`Skills`）：审阅 canonical skill lineage、case evidence、comparison deltas、candidate diff patch、decision history、promote 和 rollback safety
+- `运行记录`（`Runner`）：查看最近一次 optimization run、optimized parts、source / follow-up eval 标识、runtime transcript、candidate diff，以及回跳 linked skill revision 的入口
+- `指令`（`Instructions`）：审阅 self-reflect 产出的指令提案，包括 `AGENTS.md` 和其他 instruction 文件，支持 patch preview 与显式 approve / reject
 
-这层拆分是刻意设计的。Runner 只负责解释“为什么会出现更好的候选”，并不会单独把 live skill 切过去。
+这层拆分是刻意设计的。`运行记录`（`Runner`）只负责解释“为什么会出现更好的候选”，并不会单独把 live skill 切过去。
 
 ## UI 里怎么体现“更好的版本”
 
-当前控制台已经把运营者最关心的问题直接放进了 `Skills` lane：
+当前控制台已经把运营者最关心的问题直接放进了 `技能`（`Skills`）lane：
 
 - 被 follow-up gate 判成 `accepted` 的 revision，就是当前可被视为“更好版本”的候选
 - 如果 linked eval report 已经存在，scorecard 和 comparison 卡片会直接显示质量、验证、运行时间、token 与 evidence 信号
@@ -138,7 +138,7 @@ OpenSpace 式演进现在不再只靠手动 optimize 或 gate 失败。只要满
 Evolution 的目标是“证据足够丰富，但 live 切换路径保持保守”：
 
 - follow-up selector / execution / budget gate 会先决定 skill candidate 是 `accepted` 还是 `rejected`
-- promote 和 rollback 都发生在 `Skills` lane，而不是 `Runner` lane
+- promote 和 rollback 都发生在 `技能`（`Skills`）lane，而不是 `运行记录`（`Runner`）lane
 - `AGENTS.md` 始终保持显式人工审批，即使 intake 信号来自 grounded self-reflect 或 runner evidence
 - promote 前会校验当前 canonical 文件哈希是否仍等于 revision 的 base hash；如果 candidate 已 stale，会拒绝覆盖，而不是静默写入
 - rollback 通过 backup-derived revision 恢复，同时仍保留完整 decision trail，而不是直接篡改历史
@@ -150,9 +150,9 @@ Evolution 的目标是“证据足够丰富，但 live 切换路径保持保守�
 2. 定义 eval spec 与评分方式
 3. 运行候选版本
 4. 与 baseline 对比，或者让 runtime 触发 follow-up optimization run
-5. 在 `Runner` 或 `Skills` 里审阅报告、artifact、follow-up gate 结果与 linked evidence
-6. 打开 linked skill revision，在 `Skills` 里检查 diff、metrics 与 decision history
-7. 如果经验应写进 `AGENTS.md` 或其他 instruction 文件，就转到 `Instructions` 做 approve / reject
+5. 在 `运行记录`（`Runner`）或 `技能`（`Skills`）里审阅报告、artifact、follow-up gate 结果与 linked evidence
+6. 打开 linked skill revision，在 `技能`（`Skills`）里检查 diff、metrics 与 decision history
+7. 如果经验应写进 `AGENTS.md` 或其他 instruction 文件，就转到 `指令`（`Instructions`）做 approve / reject
 8. 最后决定 promote 还是 rollback
 
 ## 相关页面

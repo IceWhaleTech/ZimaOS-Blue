@@ -600,19 +600,21 @@ function formatDate(value?: string | null): string {
 }
 
 function percentLabel(value: number): string {
-  return `${Math.round(value * 100)}%`
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return tr('common.notAvailable', 'Not available')
+  const scaled = numeric >= 0 && numeric <= 1 ? numeric * 100 : numeric
+  return `${Math.round(scaled)}%`
 }
 
 function formatCount(value: number): string {
   return new Intl.NumberFormat().format(value)
 }
 
-function fixedScore(value: number): string {
-  return Number(value || 0).toFixed(2)
-}
-
 function signedPercentLabel(value: number): string {
-  const percent = Math.round(Number(value || 0) * 100)
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return tr('common.notAvailable', 'Not available')
+  const scaled = numeric >= -1 && numeric <= 1 ? numeric * 100 : numeric
+  const percent = Math.round(scaled)
   return `${percent > 0 ? '+' : ''}${percent}%`
 }
 
@@ -2590,7 +2592,7 @@ onUnmounted(() => {
                       placeholder="v1"
                     />
                   </label>
-                  <label class="checkbox-field form-span-2">
+                  <label class="checkbox-field">
                     <input
                       v-model="bundleImportForm.makeActive"
                       type="checkbox"
@@ -3342,7 +3344,7 @@ onUnmounted(() => {
                       </div>
                       <div class="run-metric-pill">
                         <span>{{ tr('harness.groups.score', 'Score') }}</span>
-                        <strong>{{ fixedScore(overallScore(run.summary)) }}</strong>
+                        <strong>{{ percentLabel(overallScore(run.summary)) }}</strong>
                       </div>
                       <div class="run-metric-pill">
                         <span>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</span>
@@ -3495,7 +3497,7 @@ onUnmounted(() => {
                     <article class="highlight-card">
                       <span>{{ tr('harness.groups.score', 'Score') }}</span>
                       <strong>{{
-                        fixedScore(selectedEvalRunReport.group_report?.overall_score || 0)
+                        percentLabel(selectedEvalRunReport.group_report?.overall_score || 0)
                       }}</strong>
                     </article>
                     <article class="highlight-card">
@@ -3877,7 +3879,10 @@ onUnmounted(() => {
                           <span>{{ tr('harness.baseline.name', 'Baseline name') }}</span>
                           <input v-model="inlineBaselineForm.name" name="inline-baseline-name" />
                         </label>
-                        <label class="checkbox-field form-span-2">
+                      </div>
+
+                      <div class="action-row">
+                        <label class="checkbox-field action-checkbox">
                           <input
                             v-model="inlineBaselineForm.isDefault"
                             type="checkbox"
@@ -3887,9 +3892,6 @@ onUnmounted(() => {
                             tr('harness.baseline.makeDefault', 'Make this the default baseline')
                           }}</span>
                         </label>
-                      </div>
-
-                      <div class="action-row">
                         <button
                           type="button"
                           class="primary-button"
@@ -4012,11 +4014,8 @@ onUnmounted(() => {
                             <span>{{ tr('harness.compare.scoreDelta', 'Score delta') }}</span>
                             <strong>
                               {{
-                                fixedScore(
-                                  summaryNumber(
-                                    selectedComparisonReport.summary,
-                                    'overall_score_delta'
-                                  )
+                                signedPercentLabel(
+                                  summaryNumber(selectedComparisonReport.summary, 'overall_score_delta')
                                 )
                               }}
                             </strong>
@@ -4234,13 +4233,13 @@ onUnmounted(() => {
                                 {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
                                 {{
                                   hasFiniteNumber(entry.base_evidence_score)
-                                    ? fixedScore(Number(entry.base_evidence_score))
+                                    ? percentLabel(Number(entry.base_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                                 ->
                                 {{
                                   hasFiniteNumber(entry.target_evidence_score)
-                                    ? fixedScore(Number(entry.target_evidence_score))
+                                    ? percentLabel(Number(entry.target_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                               </p>
@@ -4302,13 +4301,13 @@ onUnmounted(() => {
                                 {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
                                 {{
                                   hasFiniteNumber(entry.base_evidence_score)
-                                    ? fixedScore(Number(entry.base_evidence_score))
+                                    ? percentLabel(Number(entry.base_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                                 ->
                                 {{
                                   hasFiniteNumber(entry.target_evidence_score)
-                                    ? fixedScore(Number(entry.target_evidence_score))
+                                    ? percentLabel(Number(entry.target_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                               </p>
@@ -4457,7 +4456,7 @@ onUnmounted(() => {
                   </div>
                   <div class="metric">
                     <span>{{ tr('harness.groups.score', 'Score') }}</span>
-                    <strong>{{ fixedScore(overallScore(group.summary)) }}</strong>
+                    <strong>{{ percentLabel(overallScore(group.summary)) }}</strong>
                   </div>
                 </div>
 
@@ -4954,6 +4953,7 @@ onUnmounted(() => {
 }
 
 .checkbox-field {
+  display: flex;
   flex-direction: row !important;
   align-items: center;
   gap: 0.38rem !important;
@@ -4962,6 +4962,15 @@ onUnmounted(() => {
 .checkbox-field input {
   width: auto;
   margin: 0;
+}
+
+.action-checkbox {
+  margin-right: auto;
+}
+
+.action-checkbox span {
+  color: #64748b;
+  font-size: 0.68rem;
 }
 
 .form-grid input,

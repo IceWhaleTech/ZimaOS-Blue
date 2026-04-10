@@ -363,7 +363,7 @@ class ExecutionGateRunnerTest(unittest.TestCase):
             [
                 {
                     "agent_auto_confirm": True,
-                    "agent_ask_timeout_seconds": 15,
+                    "agent_ask_timeout_seconds": 20,
                     "agent_ask_timeout_action": "default",
                 }
             ],

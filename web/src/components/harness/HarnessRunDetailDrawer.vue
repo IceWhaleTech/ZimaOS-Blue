@@ -98,6 +98,7 @@ function statusTone(status?: string | null): string {
     case 'completed':
       return 'tone-success'
     case 'pending':
+    case 'queued':
     case 'planning':
     case 'executing':
     case 'verifying':
@@ -111,6 +112,67 @@ function statusTone(status?: string | null): string {
       return 'tone-danger'
     default:
       return 'tone-muted'
+  }
+}
+
+function statusLabel(status?: string | null): string {
+  const normalized = String(status || '').trim()
+  if (!normalized) return tr('common.notAvailable', 'Not available')
+  switch (normalized) {
+    case 'waiting_input':
+      return tr('harness.group.waitingInput', 'Waiting input')
+    case 'pending':
+    case 'queued':
+      return tr('harness.group.queuedCount', 'Queued')
+    case 'planning':
+      return tr('common.taskRuntimePlan', 'Planning')
+    case 'executing':
+      return tr('common.taskRuntimeExecute', 'Executing')
+    case 'verifying':
+      return tr('common.taskRuntimeVerify', 'Verifying')
+    case 'completed':
+      return tr('common.taskRuntimeDone', 'Completed')
+    case 'failed':
+      return tr('common.taskStageFailed', 'Failed')
+    case 'cancelled':
+      return tr('common.taskStageCancelled', 'Cancelled')
+    case 'aborted':
+      return tr('common.taskRuntimeAborted', 'Aborted')
+    default:
+      return humanizeEnum(normalized)
+  }
+}
+
+function runtimeStateLabel(runtimeState?: string | null): string {
+  const normalized = String(runtimeState || '').trim()
+  if (!normalized) return tr('common.notAvailable', 'Not available')
+  switch (normalized) {
+    case 'pending':
+      return tr('common.taskRuntimePending', 'Pending')
+    case 'intake':
+      return tr('common.taskRuntimeIntake', 'Intake')
+    case 'clarify':
+      return tr('common.taskRuntimeClarify', 'Clarifying')
+    case 'plan':
+      return tr('common.taskRuntimePlan', 'Planning')
+    case 'confirm_gate':
+      return tr('common.taskRuntimeConfirmGate', 'Waiting for confirmation')
+    case 'execute':
+      return tr('common.taskRuntimeExecute', 'Executing')
+    case 'verify':
+      return tr('common.taskRuntimeVerify', 'Verifying')
+    case 'reflect':
+      return tr('common.taskRuntimeReflect', 'Reflecting')
+    case 'report':
+      return tr('common.taskRuntimeReport', 'Preparing report')
+    case 'recover':
+      return tr('common.taskRuntimeRecover', 'Recovering')
+    case 'done':
+      return tr('common.taskRuntimeDone', 'Completed')
+    case 'aborted':
+      return tr('common.taskRuntimeAborted', 'Aborted')
+    default:
+      return humanizeEnum(normalized)
   }
 }
 
@@ -247,10 +309,10 @@ const overviewEntries = computed(() => {
     { label: tr('harness.groups.owner', 'Agent'), value: compactValue(run.agent_id) },
     { label: tr('harness.group.model', 'Model'), value: compactValue(run.model) },
     { label: tr('harness.groups.kind', 'Kind'), value: humanizeEnum(run.kind) },
-    { label: tr('harness.groups.status', 'Status'), value: humanizeEnum(run.status) },
+    { label: tr('harness.groups.status', 'Status'), value: statusLabel(run.status) },
     {
       label: tr('harness.group.runtimeState', 'Runtime state'),
-      value: humanizeEnum(run.runtime_state),
+      value: runtimeStateLabel(run.runtime_state),
     },
     { label: tr('harness.group.depth', 'Depth'), value: compactValue(run.depth ?? 0) },
     { label: tr('harness.group.progress', 'Progress'), value: compactValue(run.progress ?? 0) },
@@ -313,7 +375,7 @@ function closeDrawer() {
                 <strong>{{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}</strong>
                 <span v-if="roleLabel" class="summary-pill role-pill">{{ roleLabel }}</span>
                 <span class="summary-pill" :class="statusTone(overviewRun.status)">
-                  {{ humanizeEnum(overviewRun.status) }}
+                  {{ statusLabel(overviewRun.status) }}
                 </span>
               </div>
               <p class="summary-goal">
@@ -329,7 +391,7 @@ function closeDrawer() {
                 <span>{{ tr('common.updatedAt', 'Updated') }}: {{ formatDate(overviewRun.updated_at) }}</span>
                 <span v-if="overviewRun.runtime_state">
                   {{ tr('harness.group.runtimeState', 'Runtime state') }}:
-                  {{ humanizeEnum(overviewRun.runtime_state) }}
+                  {{ runtimeStateLabel(overviewRun.runtime_state) }}
                 </span>
                 <span v-if="overviewRun.progress != null">
                   {{ tr('harness.group.progress', 'Progress') }}: {{ overviewRun.progress }}
@@ -419,7 +481,7 @@ function closeDrawer() {
                     </div>
                     <p v-if="stage.message" class="event-message">{{ stage.message }}</p>
                     <div class="event-pills">
-                      <span v-if="stage.status">{{ humanizeEnum(stage.status) }}</span>
+                      <span v-if="stage.status">{{ statusLabel(stage.status) }}</span>
                     </div>
                     <details v-if="stage.details" class="payload-block">
                       <summary>{{ tr('harness.group.traceDetails', 'Trace details') }}</summary>
@@ -600,12 +662,12 @@ function closeDrawer() {
               <h4>{{ tr('harness.group.runSummary', 'Run summary') }}</h4>
             </div>
             <div class="summary-title-row">
-              <strong>{{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}</strong>
-              <span v-if="roleLabel" class="summary-pill role-pill">{{ roleLabel }}</span>
-              <span class="summary-pill" :class="statusTone(overviewRun.status)">
-                {{ humanizeEnum(overviewRun.status) }}
-              </span>
-            </div>
+                <strong>{{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}</strong>
+                <span v-if="roleLabel" class="summary-pill role-pill">{{ roleLabel }}</span>
+                <span class="summary-pill" :class="statusTone(overviewRun.status)">
+                  {{ statusLabel(overviewRun.status) }}
+                </span>
+              </div>
             <p class="summary-goal">
               {{
                 overviewRun.goal ||
@@ -617,14 +679,14 @@ function closeDrawer() {
             <div class="summary-pills">
               <span v-if="overviewRun.model">{{ tr('harness.group.model', 'Model') }}: {{ overviewRun.model }}</span>
               <span>{{ tr('common.updatedAt', 'Updated') }}: {{ formatDate(overviewRun.updated_at) }}</span>
-              <span v-if="overviewRun.runtime_state">
-                {{ tr('harness.group.runtimeState', 'Runtime state') }}:
-                {{ humanizeEnum(overviewRun.runtime_state) }}
-              </span>
-              <span v-if="overviewRun.progress != null">
-                {{ tr('harness.group.progress', 'Progress') }}: {{ overviewRun.progress }}
-              </span>
-            </div>
+                <span v-if="overviewRun.runtime_state">
+                  {{ tr('harness.group.runtimeState', 'Runtime state') }}:
+                  {{ runtimeStateLabel(overviewRun.runtime_state) }}
+                </span>
+                <span v-if="overviewRun.progress != null">
+                  {{ tr('harness.group.progress', 'Progress') }}: {{ overviewRun.progress }}
+                </span>
+              </div>
           </section>
 
           <section class="detail-section">
@@ -709,7 +771,7 @@ function closeDrawer() {
                   </div>
                   <p v-if="stage.message" class="event-message">{{ stage.message }}</p>
                   <div class="event-pills">
-                    <span v-if="stage.status">{{ humanizeEnum(stage.status) }}</span>
+                    <span v-if="stage.status">{{ statusLabel(stage.status) }}</span>
                   </div>
                   <details v-if="stage.details" class="payload-block">
                     <summary>{{ tr('harness.group.traceDetails', 'Trace details') }}</summary>

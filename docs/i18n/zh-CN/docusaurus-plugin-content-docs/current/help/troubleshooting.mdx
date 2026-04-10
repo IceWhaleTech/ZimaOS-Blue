@@ -10,9 +10,9 @@ summary: "遇到安装、语言、Provider、登录或自动化问题时的最�
 ## 先做这 5 分钟首轮排查
 
 1. 先回到 [安装方式](/start/installation) 或 [首次运行](/start/first-run)，确认自己当前到底是怎么启动 Blue 的。
-2. 判断当前实例还在 preview mode，还是已经进入 normal mode。
-3. 打开 `Settings -> LLM`，确认至少有一个 provider 已经配置、可访问，并且默认选择符合预期。
-4. 发一条简单 smoke test，例如 `Summarize what ZimaOS Blue is in one paragraph.`
+2. 判断当前实例还在预览模式（`preview` mode），还是已经进入正常模式（`normal` mode）。
+3. 打开 `设置 -> 模型`，确认至少有一个提供方已经配置、可访问，并且默认选择符合预期。
+4. 发一条简单冒烟测试，例如 `Summarize what ZimaOS Blue is in one paragraph.`
 5. 再用下面的症状矩阵选下一篇文档，而不是在站里到处跳。
 
 ## 症状矩阵
@@ -20,11 +20,11 @@ summary: "遇到安装、语言、Provider、登录或自动化问题时的最�
 | 症状 | 先检查什么 | 下一篇优先看什么 |
 | --- | --- | --- |
 | 本地 UI 打不开，或者不确定该怎么启动 | 当前使用的是哪条启动路径，以及你预期访问的地址和端口 | [安装方式](/start/installation) 与 [首次运行](/start/first-run) |
-| preview mode、首个管理员、登录或认证行为不对 | 问题属于 preview 引导、登录后个人资料，还是外部认证提供方配置 | [身份与访问](/guides/identity-access) 与 [首次运行](/start/first-run) |
-| provider 已经加了，但第一条响应还是失败 | 默认 provider、provider 排序、验证状态、allowed models 限制 | [设置与 Provider Pool](/guides/settings-provider-pool) 与 [Providers 与 Models](/guides/providers-models) |
-| 渠道或远程交互入口表现不符合预期 | 问题属于配对、渠道凭证，还是路由预期错误 | [Channels](/guides/channels) |
-| 自动化、Webhook、浏览器任务或定时任务不稳定 | 先确认你在排查的是 cron、workflow 还是 browser/runtime 问题 | [Automation](/guides/automation) |
-| Harness、评分、baseline 或 Evolution 结果看不懂 | 先判断自己需要的是 dataset、baseline、报告，还是 follow-up review | [Harness 与 Evolution](/guides/harness-evolution) |
+| 预览模式、首个管理员、登录或认证行为不对 | 问题属于预览引导、登录后个人资料，还是外部认证提供方配置 | [身份与访问](/guides/identity-access) 与 [首次运行](/start/first-run) |
+| 提供方已经加了，但第一条响应还是失败 | 默认提供方、提供方排序、验证状态、允许模型限制 | [设置与提供方池](/guides/settings-provider-pool) 与 [提供方与模型](/guides/providers-models) |
+| 渠道或远程交互入口表现不符合预期 | 问题属于配对、渠道凭证，还是路由预期错误 | [渠道集成](/guides/channels) |
+| 自动化、Webhook、浏览器任务或定时任务不稳定 | 先确认你在排查的是 cron、workflow 还是 browser/runtime 问题 | [自动化](/guides/automation) |
+| 评测、评分、baseline 或进化结果看不懂 | 先判断自己需要的是 dataset、baseline、报告，还是 follow-up review | [评测与进化](/guides/harness-evolution) |
 | 文档站语言不对，或者感觉有混排 | 浏览器语言偏好、语言下拉框，以及当前打开的 locale 路径 | [常见问题](/help/faq) |
 | 文档构建或发布不正常 | 本地 `cd docs && npm run build` 是否通过，以及 Pages 是否真的发布了构建产物 | [部署](/help/deployment) |
 
@@ -42,21 +42,21 @@ summary: "遇到安装、语言、Provider、登录或自动化问题时的最�
 - 打开 [文档导航](/start/docs-directory)
 - 如果你想要更短的产品导览，直接看 [快速开始](/start/quick-start)
 
-### Provider 或模型路由不符合预期
+### 提供方或模型路由不符合预期
 
-- 先看 [设置与 Provider Pool](/guides/settings-provider-pool)
-- 再看 [Providers 与 Models](/guides/providers-models)
+- 先看 [设置与提供方池](/guides/settings-provider-pool)
+- 再看 [提供方与模型](/guides/providers-models)
 
 ### 登录、预览模式、认证提供方或用户管理问题
 
 - 阅读 [身份与访问](/guides/identity-access)
-- 先判断问题属于 preview mode、外部登录、个人资料还是管理员用户管理
+- 先判断问题属于预览模式、外部登录、个人资料还是管理员用户管理
 - 如果这是全新实例上的问题，先回看 [首次运行](/start/first-run)
 
 ### 自动化、Harness 或技能优化结果不稳定
 
 - 阅读 [自动化](/guides/automation)
-- 阅读 [Harness 与 Evolution](/guides/harness-evolution)
+- 阅读 [评测与进化](/guides/harness-evolution)
 
 ### 安全、审计、计费或租户问题
 

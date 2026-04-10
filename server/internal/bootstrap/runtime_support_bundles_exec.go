@@ -14,6 +14,8 @@ func newRuntimeExecSupportBundle(options runtimeExecSupportOptions) runtimeExecS
 		Approvals:  newHarnessRuntimeExecApprovals(options.harnessRuntime, options.broker),
 		DirStore:   newRuntimeExecDirStore(options.writeDB, options.readDB),
 	}
+	bundle.ExecConfig.ServiceHost = "127.0.0.1"
+	bundle.ExecConfig.ServicePort = routeRuntimeServerPort(options.serverConfig)
 
 	tools.RegisterExecTools(
 		options.toolRegistry,

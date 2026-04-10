@@ -29,6 +29,7 @@ type runtimeExecSupportOptions struct {
 	readDB               *sql.DB
 	dataDir              string
 	workspaceDir         string
+	serverConfig         *ServerConfig
 	ripgrep              config.ToolCallingRipgrepConfig
 	workspaceAllowedPath []string
 	memoryStore          *memory.Store

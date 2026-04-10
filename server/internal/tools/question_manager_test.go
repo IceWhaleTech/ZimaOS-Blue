@@ -15,6 +15,7 @@ func TestQuestionManager_TimeoutActionDefault(t *testing.T) {
 	ch := broker.Subscribe("u1")
 	defer broker.Unsubscribe("u1", ch)
 	mgr := NewQuestionManager(broker, func() bool { return false }, 20*time.Millisecond)
+	mgr.minTimeoutPerQuestion = time.Millisecond
 	mgr.SetTimeoutActionFunc(func() string { return "default" })
 
 	questions := []QuestionItem{{
@@ -37,9 +38,59 @@ func TestQuestionManager_TimeoutActionDefault(t *testing.T) {
 
 func TestQuestionManager_DefaultTimeoutIsLonger(t *testing.T) {
 	mgr := NewQuestionManager(nil, nil, 0)
-	if got := mgr.resolveTimeout(); got != 5*time.Minute {
+	if got := mgr.resolveTimeout(1); got != 5*time.Minute {
 		t.Fatalf("resolveTimeout() = %v, want %v", got, 5*time.Minute)
 	}
+}
+
+func TestQuestionManager_TimeoutClampedToMinimum(t *testing.T) {
+	mgr := NewQuestionManager(nil, nil, 2*time.Minute)
+	mgr.SetTimeoutFunc(func() time.Duration { return time.Millisecond })
+	if got := mgr.resolveTimeout(1); got != minQuestionTimeoutPerQuestion {
+		t.Fatalf("resolveTimeout() = %v, want %v", got, minQuestionTimeoutPerQuestion)
+	}
+}
+
+func TestQuestionManager_AskQuestions_ExpiresAtClampedToMinimum(t *testing.T) {
+	broker := sse.NewBroker()
+	ch := broker.Subscribe("u1")
+	defer broker.Unsubscribe("u1", ch)
+	mgr := NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	mgr.SetTimeoutFunc(func() time.Duration { return time.Millisecond })
+
+	questions := []QuestionItem{{
+		ID:       "q1",
+		Question: "Pick one",
+		Options:  []QuestionOption{{Label: "A", Value: "a"}},
+	}}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _, _ = mgr.AskQuestions(context.Background(), "u1", "s1", questions)
+	}()
+
+	var req *QuestionRequest
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		req = mgr.GetPending("u1")
+		if req != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if req == nil {
+		t.Fatal("expected pending question request")
+	}
+	remainingMs := req.ExpiresAt - timeutil.NowMilli()
+	if remainingMs < (minQuestionTimeoutPerQuestion.Milliseconds() - 500) {
+		t.Fatalf("ExpiresAt too soon: remaining=%dms, want at least ~%dms", remainingMs, minQuestionTimeoutPerQuestion.Milliseconds())
+	}
+
+	if !mgr.ResolveAnswer(req.ID, []QuestionAnswerResult{{QuestionID: "q1", Selected: []string{"a"}}}) {
+		t.Fatal("expected resolve answer to succeed")
+	}
+	<-done
 }
 
 func TestQuestionManager_ObserverReceivesLifecycleEvents(t *testing.T) {
@@ -108,6 +159,7 @@ func TestQuestionManager_TimeoutActionError(t *testing.T) {
 	ch := broker.Subscribe("u1")
 	defer broker.Unsubscribe("u1", ch)
 	mgr := NewQuestionManager(broker, func() bool { return false }, 20*time.Millisecond)
+	mgr.minTimeoutPerQuestion = time.Millisecond
 	mgr.SetTimeoutActionFunc(func() string { return "error" })
 
 	questions := []QuestionItem{{
@@ -143,6 +195,7 @@ func TestQuestionManager_DynamicTimeoutOverride(t *testing.T) {
 	ch := broker.Subscribe("u1")
 	defer broker.Unsubscribe("u1", ch)
 	mgr := NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	mgr.minTimeoutPerQuestion = time.Millisecond
 	mgr.SetTimeoutFunc(func() time.Duration { return 25 * time.Millisecond })
 
 	questions := []QuestionItem{{

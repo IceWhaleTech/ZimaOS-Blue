@@ -34,6 +34,9 @@ const MaxToolRoundsPerStep = 50
 // defaultAskTimeout is used when Ask timeout is not configured.
 const defaultAskTimeout = 10 * time.Minute
 
+// defaultMinAskTimeoutPerQuestion is the minimum allowed timeout per question for ask operations.
+const defaultMinAskTimeoutPerQuestion = 20 * time.Second
+
 const defaultConcurrentSlotPollInterval = 100 * time.Millisecond
 
 const (
@@ -95,6 +98,7 @@ type Runner struct {
 
 	askTimeoutFunc       func() time.Duration
 	askTimeoutActionFunc func() string // "error" | "default"
+	minAskTimeout        time.Duration
 	maxToolRoundsFunc    func() int
 	autoReflectFunc      func() bool
 
@@ -139,16 +143,17 @@ func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, exec
 		toolGateway = tools.NewToolGateway(registry, executor)
 	}
 	runner := &Runner{
-		store:       store,
-		llm:         llmCaller,
-		registry:    registry,
-		executor:    executor,
-		toolGateway: toolGateway,
-		broker:      broker,
-		config:      config,
-		running:     make(map[string]context.CancelFunc),
-		msgQueues:   make(map[string][]string),
-		askQueues:   make(map[string]chan []QuestionAnswer),
+		store:         store,
+		llm:           llmCaller,
+		registry:      registry,
+		executor:      executor,
+		toolGateway:   toolGateway,
+		broker:        broker,
+		config:        config,
+		running:       make(map[string]context.CancelFunc),
+		msgQueues:     make(map[string][]string),
+		askQueues:     make(map[string]chan []QuestionAnswer),
+		minAskTimeout: defaultMinAskTimeoutPerQuestion,
 	}
 	runner.groundedSecret = newGroundedSecret()
 	runner.groundedRuntime = NewGroundedRuntime(GroundedRuntimeConfig{
@@ -306,21 +311,35 @@ func (r *Runner) SetAutoReflectFunc(fn func() bool) {
 	r.autoReflectFunc = fn
 }
 
-func (r *Runner) resolveAskTimeout() time.Duration {
+func (r *Runner) resolveAskTimeout(questionCount int) time.Duration {
 	r.mu.Lock()
 	fn := r.askTimeoutFunc
 	base := r.config.AskTimeout
+	minPerQ := r.minAskTimeout
 	r.mu.Unlock()
-
+	var d time.Duration
 	if fn != nil {
-		if d := fn(); d > 0 {
-			return d
+		if v := fn(); v > 0 {
+			d = v
 		}
 	}
-	if base <= 0 {
-		return defaultAskTimeout
+	if d <= 0 {
+		d = base
 	}
-	return base
+	if d <= 0 {
+		d = defaultAskTimeout
+	}
+	if minPerQ <= 0 {
+		minPerQ = defaultMinAskTimeoutPerQuestion
+	}
+	if questionCount < 1 {
+		questionCount = 1
+	}
+	minTotal := time.Duration(questionCount) * minPerQ
+	if d < minTotal {
+		d = minTotal
+	}
+	return d
 }
 
 func (r *Runner) resolveAskTimeoutAction() string {
@@ -577,6 +596,20 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 	if resumeStatus == "" || resumeStatus == TaskStatusWaitingInput {
 		resumeStatus = resumeStatusForRuntimeState(task.RuntimeState)
 	}
+	if shouldUseSilentHarnessMode(task) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		answers := silentQuestionAnswers(questions)
+		_ = r.store.SetStatus(context.Background(), taskID, resumeStatus, "")
+		r.publishEvent(task.UserID, TaskEvent{
+			TaskID:    taskID,
+			EventType: "task_question_answered",
+			StepIndex: stepIndex,
+			Message:   taskQuestionAnsweredMessage(len(answers)),
+		})
+		return answers, nil
+	}
 
 	ch := make(chan []QuestionAnswer, 1)
 	r.askMu.Lock()
@@ -606,7 +639,7 @@ func (r *Runner) AskUser(ctx context.Context, taskID string, questions []AgentQu
 	})
 
 	// Block until response/timeout/cancellation.
-	askTimeout := r.resolveAskTimeout()
+	askTimeout := r.resolveAskTimeout(len(questions))
 	timer := time.NewTimer(askTimeout)
 	defer timer.Stop()
 
@@ -1102,6 +1135,54 @@ func defaultQuestionAnswers(questions []AgentQuestion) []QuestionAnswer {
 		}
 	}
 	return results
+}
+
+func silentQuestionAnswers(questions []AgentQuestion) []QuestionAnswer {
+	results := defaultQuestionAnswers(questions)
+	for i, q := range questions {
+		if !strings.EqualFold(strings.TrimSpace(q.ID), "tool_gate") {
+			continue
+		}
+		if value, ok := agentQuestionOptionValue(q, "continue"); ok {
+			results[i].Values = []string{value}
+		}
+	}
+	return results
+}
+
+func agentQuestionOptionValue(question AgentQuestion, target string) (string, bool) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", false
+	}
+	for _, opt := range question.Options {
+		value := strings.TrimSpace(opt.Value)
+		if value == "" {
+			value = strings.TrimSpace(opt.Label)
+		}
+		if strings.EqualFold(value, target) {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func shouldUseSilentHarnessMode(task *Task) bool {
+	if task == nil {
+		return false
+	}
+	sources := taskMetadataSources(task)
+	if enabled, ok := metadataBoolFromMaps(sources, "harness_silent_mode"); ok {
+		return enabled
+	}
+	return shouldAutoResolvePlanConfirmation(task)
+}
+
+func withSilentHarnessExecutionContext(ctx context.Context, task *Task) context.Context {
+	if shouldUseSilentHarnessMode(task) {
+		return tools.WithAutoConfirm(ctx, true)
+	}
+	return ctx
 }
 
 // execute runs the full agent loop for a task.
@@ -1799,6 +1880,7 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 	ctx = tools.WithSubagentExecutor(ctx, r.subagents)
 	ctx = tools.WithWritePathGuard(ctx, r.writeGuard)
 	ctx = tools.WithExecPathGuard(ctx, r.execGuard)
+	ctx = withSilentHarnessExecutionContext(ctx, task)
 	if workspaceRoot := strings.TrimSpace(task.WorkspaceRoot); workspaceRoot != "" {
 		aliases := map[string]string{
 			"workspace": workspaceRoot,
@@ -1841,7 +1923,7 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 		}
 		contextMsg.WriteString(fmt.Sprintf("\nNow execute step %d: %s", step.Index+1, step.Description))
 
-		cachedTools := r.llmTools()
+		cachedTools := r.llmTools(task)
 		return r.executeLoopWithTools(
 			ctx,
 			task,
@@ -2020,6 +2102,7 @@ func agentToolCallCommand(call llm.ToolCall) string {
 
 func (r *Runner) executeLoopWithTools(ctx context.Context, task *Task, stepIndex int, actionDescription, systemPrompt, userPrompt string, cachedTools []llm.Tool) (string, error) {
 	ctx = applyTaskProviderRouting(ctx, task)
+	ctx = withSilentHarnessExecutionContext(ctx, task)
 	messages := []llm.Message{
 		{Role: llm.RoleSystem, Content: systemPrompt},
 		{Role: llm.RoleUser, Content: userPrompt},
@@ -2448,7 +2531,8 @@ func buildVerificationUserPrompt(task *Task, verificationCtx VerificationContext
 
 func (r *Runner) runVerification(ctx context.Context, task *Task, verificationCtx VerificationContext) (*VerificationResult, string, error) {
 	ctx = proxy.WithDisableModelRouting(ctx)
-	cachedTools := r.llmTools()
+	ctx = withSilentHarnessExecutionContext(ctx, task)
+	cachedTools := r.llmTools(task)
 	rawOutput, loopErr := r.executeLoopWithTools(
 		ctx,
 		task,
@@ -2586,9 +2670,10 @@ func buildRecoveryUserPrompt(task *Task, verificationCtx VerificationContext, ve
 
 func (r *Runner) runRecovery(ctx context.Context, task *Task, verificationCtx VerificationContext, verificationResult *VerificationResult) (string, error) {
 	ctx = proxy.WithDisableModelRouting(ctx)
+	ctx = withSilentHarnessExecutionContext(ctx, task)
 	knowledgeTrace := resolveRecoveryLoopKnowledge(ctx, r.knowledgeResolver, task, verificationCtx, verificationResult)
 	r.publishLoopKnowledgeTrace(task, knowledgeTrace)
-	cachedTools := r.llmTools()
+	cachedTools := r.llmTools(task)
 	return r.executeLoopWithTools(
 		ctx,
 		task,
@@ -3421,18 +3506,22 @@ func truncate(s string, maxLen int) string {
 
 // llmTools converts the registry's tool definitions to llm.Tool format.
 // The ask tool is already registered in the registry as a first-class tool.
-func (r *Runner) llmTools() []llm.Tool {
+func (r *Runner) llmTools(task *Task) []llm.Tool {
 	if r.registry == nil {
 		return nil
 	}
 	defs := r.registry.DefinitionsForRoute(tools.ToolRouteKindAgent)
-	out := make([]llm.Tool, len(defs))
-	for i, d := range defs {
-		out[i] = llm.Tool{
+	out := make([]llm.Tool, 0, len(defs))
+	silentHarness := shouldUseSilentHarnessMode(task)
+	for _, d := range defs {
+		if silentHarness && strings.EqualFold(strings.TrimSpace(d.Name), "ask") {
+			continue
+		}
+		out = append(out, llm.Tool{
 			Name:        d.Name,
 			Description: d.Description,
 			Parameters:  d.Parameters,
-		}
+		})
 	}
 	return out
 }

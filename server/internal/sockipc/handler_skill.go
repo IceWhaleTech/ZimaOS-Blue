@@ -22,6 +22,11 @@ type SkillExecutor interface {
 	Execute(ctx context.Context, skillID string, input map[string]any) (map[string]string, error)
 }
 
+// SkillHelpProvider optionally renders generic help/usage for a skill.
+type SkillHelpProvider interface {
+	Help(ctx context.Context, skillID string, input map[string]any) (map[string]string, error)
+}
+
 // RegisterSkillFallback sets a fallback handler that forwards unmatched IPC
 // commands to the skill executor. This enables `blue <skill_name> key=value`
 // to invoke any registered skill via IPC without explicit handler registration.
@@ -66,6 +71,14 @@ func RegisterSkillFallback(srv *Server, executor SkillExecutor, log *zap.Logger)
 				zap.String("action", action))
 		}
 
+		if helpProvider, ok := executor.(SkillHelpProvider); ok && skillRequestWantsHelp(execInput) {
+			data, err := helpProvider.Help(ctx, execSkillID, execInput)
+			if err != nil {
+				return ErrResponse(fmt.Sprintf("skill %s: %v", req.Cmd, err))
+			}
+			return OkResponse(data)
+		}
+
 		timeout := defaultSkillFallbackTimeout
 		if strings.EqualFold(strings.TrimSpace(execSkillID), "analyze") {
 			timeout = analyzeSkillFallbackTimeout
@@ -79,6 +92,23 @@ func RegisterSkillFallback(srv *Server, executor SkillExecutor, log *zap.Logger)
 		}
 		return OkResponse(data)
 	})
+}
+
+func skillRequestWantsHelp(input map[string]any) bool {
+	if len(input) == 0 {
+		return false
+	}
+	for _, key := range []string{"help", "h"} {
+		value, ok := input[key]
+		if !ok {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(fmt.Sprintf("%v", value))) {
+		case "1", "true", "yes", "y", "on":
+			return true
+		}
+	}
+	return false
 }
 
 // SkillExecutorFunc adapts a skill.Executor into the SkillExecutor interface.

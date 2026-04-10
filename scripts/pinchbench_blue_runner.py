@@ -27,7 +27,9 @@ import shutil
 import sqlite3
 import sys
 import time
+import uuid
 from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from urllib import error, request
@@ -41,6 +43,14 @@ MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 120.0
 EMPTY_JUDGE_RESPONSE_MAX_RETRIES = 1
 JUDGE_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = 5.0
 JUDGE_MESSAGE_POLL_INTERVAL_SECONDS = 0.25
+PINCHBENCH_TOOL_NAME_ALIASES = {
+    "web_query": "web_search",
+}
+
+
+def pinchbench_display_tool_name(name: Any) -> str:
+    original = str(name or "")
+    return PINCHBENCH_TOOL_NAME_ALIASES.get(original, original)
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,6 +94,11 @@ def parse_args() -> argparse.Namespace:
         "--output",
         default="docs/reports/pinchbench_blue_results.json",
         help="Where to write the JSON results",
+    )
+    parser.add_argument(
+        "--output-db",
+        default="",
+        help="Optional SQLite path for structured run/task result persistence",
     )
     parser.add_argument(
         "--blue-db-path",
@@ -603,12 +618,12 @@ def load_tool_audit_rows(db_paths: Sequence[Path], conversation_id: str) -> List
                 continue
         for data in rows:
             fingerprint = (
-                str(data.get("created_at", "") or ""),
-                str(data.get("event_type", "") or ""),
-                str(data.get("role", "") or ""),
+                normalize_audit_created_at(data.get("created_at")),
+                str(data.get("event_type", "") or "").strip().lower(),
+                str(data.get("role", "") or "").strip().lower(),
                 str(data.get("tool_call_id", "") or ""),
                 str(data.get("tool_name", "") or ""),
-                str(data.get("payload", "") or ""),
+                normalize_audit_payload(data.get("payload")),
             )
             if fingerprint in seen:
                 continue
@@ -622,6 +637,44 @@ def load_tool_audit_rows(db_paths: Sequence[Path], conversation_id: str) -> List
         )
     )
     return merged
+
+
+def normalize_audit_created_at(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    candidate = text.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        parsed = None
+        for fmt in (
+            "%Y-%m-%dT%H:%M:%S.%f%z",
+            "%Y-%m-%dT%H:%M:%S%z",
+            "%Y-%m-%dT%H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M:%S",
+        ):
+            try:
+                parsed = datetime.strptime(candidate, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            return text
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
+def normalize_audit_payload(raw: Any) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    return json.dumps(parsed, sort_keys=True, ensure_ascii=False)
 
 
 def load_tool_audit_rows_from_jsonl_dir(
@@ -731,6 +784,7 @@ def build_audit_transcript_entries(audit_rows: Sequence[Dict[str, Any]]) -> List
     for row in audit_rows:
         event_type = str(row.get("event_type", "") or "").strip().lower()
         tool_name = str(row.get("tool_name", "") or "").strip()
+        display_tool_name = pinchbench_display_tool_name(tool_name)
         tool_call_id = str(row.get("tool_call_id", "") or "").strip()
         payload_text = str(row.get("payload", "") or "")
         if event_type == "assistant_tool_call" and tool_name:
@@ -744,9 +798,10 @@ def build_audit_transcript_entries(audit_rows: Sequence[Dict[str, Any]]) -> List
                             {
                                 "type": "toolCall",
                                 "id": tool_call_id or f"audit-{len(entries)+1}",
-                                "name": tool_name,
+                                "name": display_tool_name,
                                 "arguments": parsed_args,
                                 "params": parsed_args,
+                                **({"canonical_name": tool_name} if display_tool_name != tool_name else {}),
                             }
                         ],
                     },
@@ -760,7 +815,8 @@ def build_audit_transcript_entries(audit_rows: Sequence[Dict[str, Any]]) -> List
                     "message": {
                         "role": "toolResult",
                         "toolCallId": tool_call_id,
-                        "toolName": tool_name,
+                        "toolName": display_tool_name,
+                        **({"canonicalToolName": tool_name} if display_tool_name != tool_name else {}),
                         "content": [payload_text],
                     },
                 }
@@ -817,13 +873,16 @@ def convert_blue_messages_to_transcript(messages: Sequence[Dict[str, Any]]) -> L
             content_items: List[Dict[str, Any]] = []
             for tool_call in msg.get("tool_calls") or []:
                 parsed_args = parse_tool_arguments(tool_call.get("arguments", ""))
+                original_name = str(tool_call.get("name") or "")
+                display_name = pinchbench_display_tool_name(original_name)
                 content_items.append(
                     {
                         "type": "toolCall",
                         "id": tool_call.get("id"),
-                        "name": tool_call.get("name"),
+                        "name": display_name,
                         "arguments": parsed_args,
                         "params": parsed_args,
+                        **({"canonical_name": original_name} if display_name != original_name else {}),
                     }
                 )
             if msg.get("content"):
@@ -833,9 +892,13 @@ def convert_blue_messages_to_transcript(messages: Sequence[Dict[str, Any]]) -> L
             if usage:
                 body["usage"] = usage
         elif role == "tool":
+            original_tool_name = str(msg.get("tool_name") or "")
+            display_tool_name = pinchbench_display_tool_name(original_tool_name)
             body["role"] = "toolResult"
             body["toolCallId"] = msg.get("tool_call_id", "")
-            body["toolName"] = msg.get("tool_name", "")
+            body["toolName"] = display_tool_name
+            if display_tool_name != original_tool_name:
+                body["canonicalToolName"] = original_tool_name
             body["content"] = [msg.get("content", "")]
         else:
             body["role"] = role or "unknown"
@@ -1340,6 +1403,172 @@ def summarize_results(results: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def persist_results_payload_to_db(db_path: Path, payload: Dict[str, Any]) -> str:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    run_id = uuid.uuid4().hex
+    summary_json = json.dumps(payload.get("summary") or {}, ensure_ascii=False, sort_keys=True)
+    payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS runs (
+                run_id TEXT PRIMARY KEY,
+                generated_at TEXT NOT NULL,
+                runner TEXT NOT NULL,
+                blue_base_url TEXT NOT NULL,
+                workspace_dir TEXT NOT NULL,
+                judge_mode TEXT NOT NULL,
+                provider TEXT,
+                model TEXT,
+                judge_provider TEXT,
+                judge_model TEXT,
+                suite TEXT NOT NULL,
+                skip_judge INTEGER NOT NULL,
+                summary_json TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS task_results (
+                run_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                task_name TEXT NOT NULL,
+                category TEXT,
+                grading_type TEXT,
+                execution_status TEXT,
+                execution_conversation_id TEXT,
+                execution_json TEXT NOT NULL,
+                grade_score REAL,
+                grade_error TEXT,
+                grade_json TEXT,
+                result_json TEXT NOT NULL,
+                PRIMARY KEY (run_id, task_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS criterion_scores (
+                run_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                criterion_name TEXT NOT NULL,
+                score REAL NOT NULL,
+                PRIMARY KEY (run_id, task_id, criterion_name)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_task_results_task_id ON task_results(task_id)"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_criterion_scores_task_id ON criterion_scores(task_id)"
+        )
+
+        conn.execute(
+            """
+            INSERT INTO runs (
+                run_id,
+                generated_at,
+                runner,
+                blue_base_url,
+                workspace_dir,
+                judge_mode,
+                provider,
+                model,
+                judge_provider,
+                judge_model,
+                suite,
+                skip_judge,
+                summary_json,
+                payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                str(payload.get("generated_at") or ""),
+                str(payload.get("runner") or ""),
+                str(payload.get("blue_base_url") or ""),
+                str(payload.get("workspace_dir") or ""),
+                str(payload.get("judge_mode") or ""),
+                str(payload.get("provider") or ""),
+                str(payload.get("model") or ""),
+                str(payload.get("judge_provider") or ""),
+                str(payload.get("judge_model") or ""),
+                str(payload.get("suite") or ""),
+                1 if payload.get("skip_judge") else 0,
+                summary_json,
+                payload_json,
+            ),
+        )
+
+        for result in payload.get("results") or []:
+            execution = result.get("execution") or {}
+            grade = result.get("grade") or {}
+            result_json = json.dumps(result, ensure_ascii=False, sort_keys=True)
+            execution_json = json.dumps(execution, ensure_ascii=False, sort_keys=True)
+            grade_json = json.dumps(grade, ensure_ascii=False, sort_keys=True) if grade else None
+            grade_score = grade.get("score") if isinstance(grade.get("score"), (int, float)) else None
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO task_results (
+                    run_id,
+                    task_id,
+                    task_name,
+                    category,
+                    grading_type,
+                    execution_status,
+                    execution_conversation_id,
+                    execution_json,
+                    grade_score,
+                    grade_error,
+                    grade_json,
+                    result_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    str(result.get("task_id") or ""),
+                    str(result.get("task_name") or ""),
+                    str(result.get("category") or ""),
+                    str(result.get("grading_type") or ""),
+                    str(execution.get("status") or ""),
+                    str(execution.get("conversation_id") or ""),
+                    execution_json,
+                    grade_score,
+                    result.get("grade_error"),
+                    grade_json,
+                    result_json,
+                ),
+            )
+
+            if isinstance(grade.get("breakdown"), dict):
+                for criterion_name, score in grade["breakdown"].items():
+                    if not isinstance(score, (int, float)):
+                        continue
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO criterion_scores (
+                            run_id,
+                            task_id,
+                            criterion_name,
+                            score
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (
+                            run_id,
+                            str(result.get("task_id") or ""),
+                            str(criterion_name),
+                            float(score),
+                        ),
+                    )
+
+        conn.commit()
+    return run_id
+
+
 def main() -> int:
     args = parse_args()
     logging.basicConfig(
@@ -1454,6 +1683,10 @@ def main() -> int:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.output_db:
+        output_db_path = Path(args.output_db).resolve()
+        run_id = persist_results_payload_to_db(output_db_path, payload)
+        LOG.info("Wrote results DB to %s (run_id=%s)", output_db_path, run_id)
 
     LOG.info("Wrote results to %s", output_path)
     LOG.info("Summary: %s", json.dumps(payload["summary"], ensure_ascii=False))
