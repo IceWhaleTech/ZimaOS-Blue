@@ -26,7 +26,7 @@ const localeSourceModules = import.meta.glob('@/i18n/locales/*.ts', {
 
 function fileNameFromModulePath(modulePath: string): string {
   return modulePath.split('/').pop() ?? modulePath
-}
+})
 
 function getPathValue(messages: LocaleMessages, path: string): unknown {
   return path.split('.').reduce<unknown>((current, segment) => {
@@ -35,7 +35,7 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
     }
     return undefined
   }, messages)
-}
+})
 
 describe('chat provider failover locale coverage', () => {
   it('declares providerFailover in all 27 locale source files', () => {
