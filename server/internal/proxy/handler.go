@@ -2213,13 +2213,14 @@ func (ph *ProxyHandler) buildUpstreamRequestWithFormat(r *http.Request, route *p
 		}
 	}
 	if strings.HasSuffix(finalPath, "/responses") {
-		// Ensure continuation trimming also applies to requests converted in the
-		// URI-fixup branch (e.g. direct /responses requests carrying messages).
+		// Keep Responses continuation payloads intact while still applying
+		// overflow guards to requests converted in the URI-fixup branch.
 		body = ph.responsesContinuationCompactor().TrimInput(body)
 		body = ph.ensureCachedInstructionsForResponsesBody(r, body)
 		body = ph.ensureCachedToolsForResponsesBody(r, route, body)
 		body = ph.injectCachedResponsesAssistantContextForRoute(r, route, body)
 		body = ph.sanitizeResponsesInputForContinuationDisabledRoute(r, route, body)
+		body = normalizeResponsesInputTextPartTypesForRole(body)
 		storePolicy := ""
 		body, storePolicy = applyResponsesStorePolicy(body, finalPath, originalBody)
 		body = clampResponsesMaxOutputTokens(body, resolveResponsesMaxOutputTokensLimit(route))
@@ -5398,8 +5399,8 @@ func (ph *ProxyHandler) injectCachedResponsesPreviousIDForRoute(r *http.Request,
 		}
 		body = out
 	}
-	// When continuation is active, only send incremental input after the last
-	// assistant message. This avoids re-sending full history to /responses.
+	// When continuation is active, preserve the caller-provided input history.
+	// TrimInput now only enforces overflow guards for oversized tool payloads.
 	return ph.responsesContinuationCompactor().TrimInput(body)
 }
 
@@ -6014,7 +6015,7 @@ func extractResponsesInputMessageText(item gjson.Result) string {
 	var parts []string
 	for _, part := range content.Array() {
 		t := strings.ToLower(strings.TrimSpace(part.Get("type").String()))
-		if t != "input_text" && t != "text" {
+		if t != "input_text" && t != "output_text" && t != "text" {
 			continue
 		}
 		text := strings.TrimSpace(part.Get("text").String())

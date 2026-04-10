@@ -123,64 +123,10 @@ func (c *responsesContinuationCompactor) TrimInput(body []byte) []byte {
 		return body
 	}
 
-	lastAssistant := -1
-	hasToolInput := false
-	for i := len(items) - 1; i >= 0; i-- {
-		itemType := strings.TrimSpace(items[i].Get("type").String())
-		if itemType == "function_call_output" || itemType == "function_call" {
-			hasToolInput = true
-		}
-		if strings.EqualFold(strings.TrimSpace(items[i].Get("role").String()), "assistant") {
-			lastAssistant = i
-			break
-		}
-	}
-
-	// REGRESSION-GUARD: Tool continuation payloads are often "tool-only"
-	// (function_call_output + optional latest user follow-up, no assistant role).
-	// Some chat->responses conversion paths accidentally carry stale user history
-	// in this shape. Do NOT fall back to applyOverflowGuards() here: that keeps
-	// old user turns and re-sends oversized history on continuation rounds,
-	// which can trigger relays to drop previous_response_id on the first tool
-	// follow-up turn. Keep only tool payload + latest user follow-up.
-	if lastAssistant < 0 && hasToolInput {
-		return c.compactToolOnlyContinuationInput(body, items)
-	}
-
-	start := len(items) - 1
-	if lastAssistant >= 0 {
-		if lastAssistant+1 >= len(items) {
-			out, err := sjson.DeleteBytes(body, "input")
-			if err != nil {
-				return body
-			}
-			return out
-		}
-		if shouldCarryAssistantContextForContinuation(items[lastAssistant+1:]) {
-			start = lastAssistant
-		} else {
-			start = lastAssistant + 1
-		}
-	}
-
-	trimmedRaw := make([]string, 0, len(items)-start)
-	for i := start; i < len(items); i++ {
-		raw := strings.TrimSpace(items[i].Raw)
-		if raw == "" || raw == "null" {
-			continue
-		}
-		if lastAssistant >= 0 && i == lastAssistant && start == lastAssistant {
-			raw = c.compactAssistantItem(raw, items[i], items[lastAssistant+1:])
-		} else {
-			raw = compactOverflowForContinuationItem(raw, items[i])
-		}
-		if raw == "" || raw == "null" {
-			continue
-		}
-		trimmedRaw = append(trimmedRaw, raw)
-	}
-
-	return setResponsesInputRaw(body, trimmedRaw)
+	// Responses continuation no longer drops historical input items. We still
+	// keep overflow guards for oversized tool payloads so continuation requests
+	// stay bounded without rewriting the user's message history.
+	return c.applyOverflowGuards(body, items)
 }
 
 func (c *responsesContinuationCompactor) compactToolOnlyContinuationInput(body []byte, items []gjson.Result) []byte {
@@ -294,7 +240,7 @@ func (c *responsesContinuationCompactor) InjectAssistantContext(body []byte, ass
 	if err != nil {
 		return c.applyOverflowGuards(body, items)
 	}
-	assistantItem := `{"role":"assistant","content":[{"type":"input_text","text":` + string(escaped) + `}]}`
+	assistantItem := `{"role":"assistant","content":[{"type":"output_text","text":` + string(escaped) + `}]}`
 
 	trimmedRaw := make([]string, 0, len(items)+1)
 	trimmedRaw = append(trimmedRaw, assistantItem)
@@ -348,7 +294,7 @@ func (c *responsesContinuationCompactor) compactAssistantItem(raw string, item g
 	if err != nil {
 		return raw
 	}
-	return `{"role":"assistant","content":[{"type":"input_text","text":` + string(escaped) + `}]}`
+	return `{"role":"assistant","content":[{"type":"output_text","text":` + string(escaped) + `}]}`
 }
 
 func (c *responsesContinuationCompactor) compressAssistantContextForContinuation(assistantText string, userItems []gjson.Result) string {

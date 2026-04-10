@@ -140,20 +140,35 @@ func TestConvertOpenAIChatCompletionsToResponses_ContinuationUsesIncrementalMess
 	if gjson.GetBytes(converted, "instructions").Exists() {
 		t.Fatalf("instructions should be omitted for continuation payload: %s", string(converted))
 	}
-	if got := gjson.GetBytes(converted, "input.#").Int(); got != 2 {
-		t.Fatalf("input length = %d, want 2", got)
+	if got := gjson.GetBytes(converted, "input.#").Int(); got != 4 {
+		t.Fatalf("input length = %d, want 4", got)
 	}
-	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "assistant" {
-		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "system" {
+		t.Fatalf("input.0.role = %q, want %q", got, "system")
 	}
-	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "very long previous assistant answer" {
-		t.Fatalf("input.0.content.0.text = %q, want %q", got, "very long previous assistant answer")
+	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "system prompt should not be resent" {
+		t.Fatalf("input.0.content.0.text = %q, want system prompt", got)
 	}
 	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "user" {
 		t.Fatalf("input.1.role = %q, want %q", got, "user")
 	}
-	if got := gjson.GetBytes(converted, "input.1.content.0.text").String(); got != "new followup" {
-		t.Fatalf("input.1.content.0.text = %q, want %q", got, "new followup")
+	if got := gjson.GetBytes(converted, "input.1.content.0.text").String(); got != "old user" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "old user")
+	}
+	if got := gjson.GetBytes(converted, "input.2.role").String(); got != "assistant" {
+		t.Fatalf("input.2.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(converted, "input.2.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.2.content.0.type = %q, want %q", got, "output_text")
+	}
+	if got := gjson.GetBytes(converted, "input.2.content.0.text").String(); got != "very long previous assistant answer" {
+		t.Fatalf("input.2.content.0.text = %q, want %q", got, "very long previous assistant answer")
+	}
+	if got := gjson.GetBytes(converted, "input.3.role").String(); got != "user" {
+		t.Fatalf("input.3.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(converted, "input.3.content.0.text").String(); got != "new followup" {
+		t.Fatalf("input.3.content.0.text = %q, want %q", got, "new followup")
 	}
 }
 
@@ -173,20 +188,29 @@ func TestConvertOpenAIChatCompletionsToResponses_ContinuationSkipsAssistantToolC
 		t.Fatalf("convert failed: %v", err)
 	}
 
-	if got := gjson.GetBytes(converted, "input.#").Int(); got != 2 {
-		t.Fatalf("input length = %d, want 2; body=%s", got, string(converted))
+	if got := gjson.GetBytes(converted, "input.#").Int(); got != 4 {
+		t.Fatalf("input length = %d, want 4; body=%s", got, string(converted))
 	}
-	if got := gjson.GetBytes(converted, "input.0.type").String(); got != "function_call_output" {
-		t.Fatalf("input.0.type = %q, want %q", got, "function_call_output")
+	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
 	}
-	if got := gjson.GetBytes(converted, "input.0.call_id").String(); got != "call_1" {
-		t.Fatalf("input.0.call_id = %q, want %q", got, "call_1")
+	if got := gjson.GetBytes(converted, "input.0.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.0.content.0.type = %q, want %q", got, "output_text")
 	}
-	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "user" {
-		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(converted, "input.1.type").String(); got != "function_call" {
+		t.Fatalf("input.1.type = %q, want %q", got, "function_call")
 	}
-	if got := gjson.GetBytes(converted, "input.1.content.0.text").String(); got != "继续" {
-		t.Fatalf("input.1.content.0.text = %q, want %q", got, "继续")
+	if got := gjson.GetBytes(converted, "input.2.type").String(); got != "function_call_output" {
+		t.Fatalf("input.2.type = %q, want %q", got, "function_call_output")
+	}
+	if got := gjson.GetBytes(converted, "input.2.call_id").String(); got != "call_1" {
+		t.Fatalf("input.2.call_id = %q, want %q", got, "call_1")
+	}
+	if got := gjson.GetBytes(converted, "input.3.role").String(); got != "user" {
+		t.Fatalf("input.3.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(converted, "input.3.content.0.text").String(); got != "继续" {
+		t.Fatalf("input.3.content.0.text = %q, want %q", got, "继续")
 	}
 }
 
@@ -206,20 +230,26 @@ func TestConvertOpenAIChatCompletionsToResponses_ContinuationKeepsAssistantForSh
 		t.Fatalf("convert failed: %v", err)
 	}
 
-	if got := gjson.GetBytes(converted, "input.#").Int(); got != 2 {
-		t.Fatalf("input length = %d, want 2; body=%s", got, string(converted))
+	if got := gjson.GetBytes(converted, "input.#").Int(); got != 3 {
+		t.Fatalf("input length = %d, want 3; body=%s", got, string(converted))
 	}
-	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "assistant" {
-		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	if got := gjson.GetBytes(converted, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
 	}
-	if got := gjson.GetBytes(converted, "input.0.content.0.text").String(); got != "A) 方案一\nB) 方案二\nC) 方案三" {
-		t.Fatalf("input.0.content.0.text = %q, want assistant choices", got)
+	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "assistant" {
+		t.Fatalf("input.1.role = %q, want %q", got, "assistant")
 	}
-	if got := gjson.GetBytes(converted, "input.1.role").String(); got != "user" {
-		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(converted, "input.1.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.1.content.0.type = %q, want %q", got, "output_text")
 	}
-	if got := gjson.GetBytes(converted, "input.1.content.0.text").String(); got != "B" {
-		t.Fatalf("input.1.content.0.text = %q, want %q", got, "B")
+	if got := gjson.GetBytes(converted, "input.1.content.0.text").String(); got != "A) 方案一\nB) 方案二\nC) 方案三" {
+		t.Fatalf("input.1.content.0.text = %q, want assistant choices", got)
+	}
+	if got := gjson.GetBytes(converted, "input.2.role").String(); got != "user" {
+		t.Fatalf("input.2.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(converted, "input.2.content.0.text").String(); got != "B" {
+		t.Fatalf("input.2.content.0.text = %q, want %q", got, "B")
 	}
 }
 
@@ -1016,20 +1046,29 @@ func TestBuildUpstreamRequestWithFormat_ContinuationInjectedPrevIDTrimsResponses
 	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_prev_trim_1" {
 		t.Fatalf("previous_response_id = %q, want %q", got, "resp_prev_trim_1")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
-		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 3 {
+		t.Fatalf("input length = %d, want 3; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
-		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "OK" {
-		t.Fatalf("input.0.content.0.text = %q, want %q", got, "OK")
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "Reply with ONLY: OK" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "Reply with ONLY: OK")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
-		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "assistant" {
+		t.Fatalf("input.1.role = %q, want %q", got, "assistant")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "Reply with ONLY: NEXT" {
-		t.Fatalf("input.1.content.0.text = %q, want %q", got, "Reply with ONLY: NEXT")
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.1.content.0.type = %q, want %q; body=%s", got, "output_text", string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "OK" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "OK")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.2.role").String(); got != "user" {
+		t.Fatalf("input.2.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.2.content.0.text").String(); got != "Reply with ONLY: NEXT" {
+		t.Fatalf("input.2.content.0.text = %q, want %q", got, "Reply with ONLY: NEXT")
 	}
 }
 
@@ -1070,20 +1109,29 @@ func TestBuildUpstreamRequestWithFormat_ContinuationExistingPrevIDTrimsResponses
 	if got := gjson.GetBytes(convertedBody, "previous_response_id").String(); got != "resp_existing_1" {
 		t.Fatalf("previous_response_id = %q, want %q", got, "resp_existing_1")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
-		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 3 {
+		t.Fatalf("input length = %d, want 3; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
-		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "B" {
-		t.Fatalf("input.0.content.0.text = %q, want %q", got, "B")
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "A" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "A")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
-		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "assistant" {
+		t.Fatalf("input.1.role = %q, want %q", got, "assistant")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "C" {
-		t.Fatalf("input.1.content.0.text = %q, want %q", got, "C")
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.1.content.0.type = %q, want %q; body=%s", got, "output_text", string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "B" {
+		t.Fatalf("input.1.content.0.text = %q, want %q", got, "B")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.2.role").String(); got != "user" {
+		t.Fatalf("input.2.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.2.content.0.text").String(); got != "C" {
+		t.Fatalf("input.2.content.0.text = %q, want %q", got, "C")
 	}
 }
 
@@ -1121,17 +1169,23 @@ func TestBuildUpstreamRequestWithFormat_ContinuationExistingPrevIDKeepsAssistant
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
-		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 3 {
+		t.Fatalf("input length = %d, want 3; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
-		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
-		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "assistant" {
+		t.Fatalf("input.1.role = %q, want %q", got, "assistant")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "A" {
-		t.Fatalf("input.1.content.0.text = %q, want %q", got, "A")
+	if got := gjson.GetBytes(convertedBody, "input.1.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.1.content.0.type = %q, want %q; body=%s", got, "output_text", string(convertedBody))
+	}
+	if got := gjson.GetBytes(convertedBody, "input.2.role").String(); got != "user" {
+		t.Fatalf("input.2.role = %q, want %q", got, "user")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.2.content.0.text").String(); got != "A" {
+		t.Fatalf("input.2.content.0.text = %q, want %q", got, "A")
 	}
 }
 
@@ -1178,6 +1232,9 @@ func TestBuildUpstreamRequestWithFormat_ContinuationInjectsCachedAssistantWhenIn
 	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
 		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
 	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.0.content.0.type = %q, want %q; body=%s", got, "output_text", string(convertedBody))
+	}
 	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "A) 选项一 B) 选项二" {
 		t.Fatalf("input.0.content.0.text = %q, want cached assistant text", got)
 	}
@@ -1222,11 +1279,17 @@ func TestBuildUpstreamRequestWithFormat_ContinuationSkipsAssistantForSubstantive
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
-		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
-		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.0.content.0.type = %q, want %q", got, "output_text")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
 	}
 }
 
@@ -1263,11 +1326,17 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathChatPayloadContinuationSkip
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
-		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
-		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.0.content.0.type = %q, want %q", got, "output_text")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
 	}
 	if got := gjson.GetBytes(convertedBody, "messages").Exists(); got {
 		t.Fatalf("messages should be converted out for /responses path, body=%s", string(convertedBody))
@@ -1352,11 +1421,17 @@ func TestBuildUpstreamRequestWithFormat_ContinuationSkipsAssistantForShortStanda
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
-		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
-		t.Fatalf("input.0.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.type").String(); got != "output_text" {
+		t.Fatalf("input.0.content.0.type = %q, want %q", got, "output_text")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
+		t.Fatalf("input.1.role = %q, want %q", got, "user")
 	}
 }
 
@@ -1502,11 +1577,8 @@ func TestBuildUpstreamRequestWithFormat_ContinuationCompactsAssistantForChoiceFo
 		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
 	gotAssistant := gjson.GetBytes(convertedBody, "input.0.content.0.text").String()
-	if len([]rune(gotAssistant)) >= len([]rune(assistantText)) {
-		t.Fatalf("assistant context not compacted: got len=%d, original len=%d", len([]rune(gotAssistant)), len([]rune(assistantText)))
-	}
-	if !strings.Contains(gotAssistant, "A)") || !strings.Contains(gotAssistant, "B)") {
-		t.Fatalf("compacted assistant context should preserve options, got: %q", gotAssistant)
+	if gotAssistant != assistantText {
+		t.Fatalf("assistant context should be preserved without trimming, got len=%d want len=%d", len([]rune(gotAssistant)), len([]rune(assistantText)))
 	}
 }
 
@@ -1559,8 +1631,8 @@ func TestBuildUpstreamRequestWithFormat_ContinuationUsesCustomResponsesCompresso
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "QWEN-0.8B-SUMMARY" {
-		t.Fatalf("input.0.content.0.text = %q, want %q", got, "QWEN-0.8B-SUMMARY")
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "A) option one\nB) option two\nC) option three\n"+strings.Repeat("details ", 400) {
+		t.Fatalf("input.0.content.0.text should be preserved without trimming, got len=%d", len([]rune(got)))
 	}
 }
 
@@ -1607,11 +1679,8 @@ func TestBuildUpstreamRequestWithFormat_ResponsesPathChatPayloadContinuationComp
 		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
 	gotAssistant := gjson.GetBytes(convertedBody, "input.0.content.0.text").String()
-	if len([]rune(gotAssistant)) >= len([]rune(assistantText)) {
-		t.Fatalf("assistant context not compacted: got len=%d, original len=%d", len([]rune(gotAssistant)), len([]rune(assistantText)))
-	}
-	if !strings.Contains(gotAssistant, "A)") || !strings.Contains(gotAssistant, "B)") {
-		t.Fatalf("compacted assistant context should preserve options, got: %q", gotAssistant)
+	if gotAssistant != assistantText {
+		t.Fatalf("assistant context should be preserved without trimming, got len=%d want len=%d", len([]rune(gotAssistant)), len([]rune(assistantText)))
 	}
 }
 
@@ -1768,9 +1837,8 @@ func TestBuildUpstreamRequestWithFormat_ContinuationToolOnlyShapeDropsStaleUserH
 	}
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-	// REGRESSION-GUARD: tool-only continuation payloads must not keep stale
-	// historical user turns; only function_call_output + latest follow-up user
-	// turn should remain after TrimInput compaction.
+	// REGRESSION-GUARD: Responses continuation should now preserve the original
+	// tool-only payload instead of dropping older user history.
 	body := []byte(`{
 		"model":"gpt-5.3-codex-spark",
 		"stream":true,
@@ -1793,20 +1861,23 @@ func TestBuildUpstreamRequestWithFormat_ContinuationToolOnlyShapeDropsStaleUserH
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
-		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 5 {
+		t.Fatalf("input length = %d, want 5; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.type").String(); got != "function_call_output" {
-		t.Fatalf("input.0.type = %q, want %q", got, "function_call_output")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "user" {
+		t.Fatalf("input.0.role = %q, want %q", got, "user")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.role").String(); got != "user" {
-		t.Fatalf("input.1.role = %q, want %q", got, "user")
+	if got := gjson.GetBytes(convertedBody, "input.0.content.0.text").String(); got != "old context 1" {
+		t.Fatalf("input.0.content.0.text = %q, want %q", got, "old context 1")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.1.content.0.text").String(); got != "latest follow-up" {
-		t.Fatalf("input.1.content.0.text = %q, want %q", got, "latest follow-up")
+	if got := gjson.GetBytes(convertedBody, "input.2.type").String(); got != "function_call" {
+		t.Fatalf("input.2.type = %q, want %q", got, "function_call")
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.name"); got.Exists() {
-		t.Fatalf("function_call item should be dropped when output exists, body=%s", string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.3.type").String(); got != "function_call_output" {
+		t.Fatalf("input.3.type = %q, want %q", got, "function_call_output")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.4.content.0.text").String(); got != "latest follow-up" {
+		t.Fatalf("input.4.content.0.text = %q, want %q", got, "latest follow-up")
 	}
 }
 
@@ -1843,11 +1914,14 @@ func TestBuildUpstreamRequestWithFormat_ContinuationToolPayloadDoesNotCarryAssis
 	if err != nil {
 		t.Fatalf("read converted body failed: %v", err)
 	}
-	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 1 {
-		t.Fatalf("input length = %d, want 1; body=%s", got, string(convertedBody))
+	if got := gjson.GetBytes(convertedBody, "input.#").Int(); got != 2 {
+		t.Fatalf("input length = %d, want 2; body=%s", got, string(convertedBody))
 	}
-	if got := gjson.GetBytes(convertedBody, "input.0.type").String(); got != "function_call_output" {
-		t.Fatalf("input.0.type = %q, want %q", got, "function_call_output")
+	if got := gjson.GetBytes(convertedBody, "input.0.role").String(); got != "assistant" {
+		t.Fatalf("input.0.role = %q, want %q", got, "assistant")
+	}
+	if got := gjson.GetBytes(convertedBody, "input.1.type").String(); got != "function_call_output" {
+		t.Fatalf("input.1.type = %q, want %q", got, "function_call_output")
 	}
 }
 

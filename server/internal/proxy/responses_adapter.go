@@ -251,13 +251,8 @@ func convertOpenAIChatCompletionsToResponsesWithAudioTranscriber(body []byte, au
 		}
 	}
 
-	trimmedMessages := in.Messages
-	if in.PreviousResponseID != "" {
-		trimmedMessages = trimMessagesForContinuation(in.Messages)
-	}
-
-	out.Input = make([]interface{}, 0, len(trimmedMessages)+2)
-	for msgIdx, m := range trimmedMessages {
+	out.Input = make([]interface{}, 0, len(in.Messages)+2)
+	for msgIdx, m := range in.Messages {
 		role := strings.ToLower(strings.TrimSpace(m.Role))
 		switch role {
 		case "tool":
@@ -451,39 +446,6 @@ func injectIncludeForStateless(body []byte) ([]byte, string) {
 func ensureResponsesStoreEnabled(body []byte) []byte {
 	out, _ := sjson.SetBytes(body, "store", true)
 	return out
-}
-
-// trimMessagesForContinuation keeps only incremental messages when previous_response_id is set.
-func trimMessagesForContinuation(messages []openAIChatMessageForResponses) []openAIChatMessageForResponses {
-	if len(messages) == 0 {
-		return messages
-	}
-
-	lastAssistant := -1
-	for i := len(messages) - 1; i >= 0; i-- {
-		if strings.EqualFold(strings.TrimSpace(messages[i].Role), "assistant") {
-			lastAssistant = i
-			break
-		}
-	}
-
-	if lastAssistant >= 0 {
-		// Tool rounds already carry explicit function_call / function_call_output
-		// items. Re-sending the assistant tool_call message causes redundant echo.
-		if len(messages[lastAssistant].ToolCalls) > 0 {
-			if lastAssistant+1 >= len(messages) {
-				return nil
-			}
-			return messages[lastAssistant+1:]
-		}
-		if lastAssistant+1 >= len(messages) {
-			return nil
-		}
-		return messages[lastAssistant:]
-	}
-
-	// No assistant message in payload: keep only the latest turn as incremental input.
-	return messages[len(messages)-1:]
 }
 
 // convertResponsesToOpenAIChatCompletions converts an OpenAI Responses API
@@ -844,23 +806,26 @@ func sanitizeResponsesInput(items []interface{}) []interface{} {
 
 func sanitizeResponsesInputMessage(msg responsesInputMessage) responsesInputMessage {
 	msg.Role = normalizeInputRole(strings.ToLower(strings.TrimSpace(msg.Role)))
-	msg.Content = sanitizeResponsesContentParts(msg.Content)
+	msg.Content = sanitizeResponsesContentParts(msg.Role, msg.Content)
 	return msg
 }
 
-func sanitizeResponsesContentParts(parts []responsesInputContentPart) []responsesInputContentPart {
+func sanitizeResponsesContentParts(role string, parts []responsesInputContentPart) []responsesInputContentPart {
 	if len(parts) == 0 {
 		return nil
 	}
 	out := make([]responsesInputContentPart, 0, len(parts))
 	for _, p := range parts {
-		partType := strings.TrimSpace(p.Type)
+		partType := strings.ToLower(strings.TrimSpace(p.Type))
 		switch partType {
-		case "input_text":
+		case "", "text", "input_text", "output_text":
 			if strings.TrimSpace(p.Text) == "" {
 				continue
 			}
-			out = append(out, responsesInputContentPart{Type: "input_text", Text: p.Text})
+			out = append(out, responsesInputContentPart{
+				Type: normalizedResponsesTextPartTypeForRole(role, partType),
+				Text: p.Text,
+			})
 		case "input_image":
 			if strings.TrimSpace(p.ImageURL) == "" {
 				continue
@@ -877,4 +842,79 @@ func sanitizeResponsesContentParts(parts []responsesInputContentPart) []response
 		return nil
 	}
 	return out
+}
+
+func normalizedResponsesTextPartTypeForRole(role, partType string) string {
+	role = normalizeInputRole(strings.ToLower(strings.TrimSpace(role)))
+	partType = strings.ToLower(strings.TrimSpace(partType))
+	switch partType {
+	case "", "text", "input_text", "output_text":
+		if role == "assistant" {
+			return "output_text"
+		}
+		return "input_text"
+	default:
+		return partType
+	}
+}
+
+func normalizeResponsesInputTextPartTypesForRole(body []byte) []byte {
+	items, ok := responsesInputItems(body)
+	if !ok || len(items) == 0 {
+		return body
+	}
+
+	rawItems := make([]string, 0, len(items))
+	changed := false
+	for _, item := range items {
+		raw := strings.TrimSpace(item.Raw)
+		if raw == "" || raw == "null" {
+			continue
+		}
+		normalized, itemChanged := normalizeResponsesInputItemTextPartTypesForRole(raw, item)
+		if itemChanged {
+			changed = true
+		}
+		rawItems = append(rawItems, normalized)
+	}
+	if !changed {
+		return body
+	}
+	return setResponsesInputRaw(body, rawItems)
+}
+
+func normalizeResponsesInputItemTextPartTypesForRole(raw string, item gjson.Result) (string, bool) {
+	role := strings.ToLower(strings.TrimSpace(item.Get("role").String()))
+	if role == "" {
+		return raw, false
+	}
+
+	content := item.Get("content")
+	if !content.Exists() || !content.IsArray() {
+		return raw, false
+	}
+
+	updated := []byte(raw)
+	changed := false
+	for idx, part := range content.Array() {
+		partType := strings.ToLower(strings.TrimSpace(part.Get("type").String()))
+		text := strings.TrimSpace(part.Get("text").String())
+		if text == "" {
+			continue
+		}
+		wantType := normalizedResponsesTextPartTypeForRole(role, partType)
+		if wantType == partType {
+			continue
+		}
+		next, err := sjson.SetBytes(updated, fmt.Sprintf("content.%d.type", idx), wantType)
+		if err != nil {
+			return raw, false
+		}
+		updated = next
+		changed = true
+	}
+	if !changed {
+		return raw, false
+	}
+	return strings.TrimSpace(string(updated)), true
 }
