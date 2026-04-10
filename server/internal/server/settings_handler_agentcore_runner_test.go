@@ -11,16 +11,19 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/optimization"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"github.com/labstack/echo/v4"
 )
 
 type stubAgentcoreRunnerManager struct {
-	status          AgentcoreRunnerStatus
-	lastRun         optimization.OptimizationRunRecord
-	prepareCalls    int
-	lastPrepareRepo string
-	lastPrepareRef  string
+	status           AgentcoreRunnerStatus
+	lastRun          optimization.OptimizationRunRecord
+	prepareCalls     int
+	lastPrepareRepo  string
+	lastPrepareRef   string
 	lastPrepareParts []string
 }
 
@@ -120,6 +123,45 @@ func TestSettingsHandlerGetDefaultsAgentcoreRunnerRefWhenUnset(t *testing.T) {
 	}
 	if got := strings.TrimSpace(body.ExperimentalAgentcoreRunnerRef); got != "main" {
 		t.Fatalf("default response ref = %q", got)
+	}
+}
+
+func TestSettingsHandlerResolveExperimentalAgentcoreRunnerRefUsesConversationOverride(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Runner Ref", "user-1")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if err := store.UpsertConversationCommandState(context.Background(), memory.ConversationCommandState{
+		ConversationID:     conv.ID,
+		AgentcoreRunnerRef: "release/v2",
+	}); err != nil {
+		t.Fatalf("UpsertConversationCommandState: %v", err)
+	}
+
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.settings.ExperimentalAgentcoreRunnerRef = "main"
+	handler.SetChatHandler(NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry()))
+
+	if got := handler.ResolveExperimentalAgentcoreRunnerRef(context.Background(), conv.ID); got != "release/v2" {
+		t.Fatalf("ResolveExperimentalAgentcoreRunnerRef = %q, want release/v2", got)
+	}
+}
+
+func TestSettingsHandlerResolveExperimentalAgentcoreRunnerRefFallsBackToStoredSetting(t *testing.T) {
+	handler := NewSettingsHandler(kvstore.NewMemoryStore())
+	handler.settings.ExperimentalAgentcoreRunnerRef = "main"
+
+	if got := handler.ResolveExperimentalAgentcoreRunnerRef(context.Background(), ""); got != "main" {
+		t.Fatalf("ResolveExperimentalAgentcoreRunnerRef(empty) = %q, want main", got)
+	}
+	if got := handler.ResolveExperimentalAgentcoreRunnerRef(context.Background(), "missing-conversation"); got != "main" {
+		t.Fatalf("ResolveExperimentalAgentcoreRunnerRef(missing) = %q, want main", got)
 	}
 }
 

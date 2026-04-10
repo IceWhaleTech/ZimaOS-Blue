@@ -300,6 +300,54 @@ func TestServiceCreateLintJobUsesDefaultLintProviderWhenConfigured(t *testing.T)
 	}
 }
 
+func TestServiceCreateRepairConflictsJobUsesDefaultLintProviderWhenConfigured(t *testing.T) {
+	repoRoot := t.TempDir()
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "README.md"),
+		"# Shared Topic\n\nBlue is the canonical answer.\n\nThis source carries more detail and supporting context.\n",
+	)
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "ARCHITECTURE.md"),
+		"# Shared Topic\n\nBlue is mentioned here too.\n",
+	)
+
+	svc := NewService(ServiceOptions{
+		WorkspaceDir:          workspaceDir,
+		RepoRoot:              repoRoot,
+		DefaultLintProviderID: func() string { return "smallmodel" },
+		Now: func() time.Time {
+			return time.Date(2026, 4, 7, 11, 15, 0, 0, time.UTC)
+		},
+	})
+
+	if _, err := svc.Compile(context.Background(), CompileRequest{}); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if _, err := svc.Lint(context.Background(), LintRequest{}); err != nil {
+		t.Fatalf("Lint() error = %v", err)
+	}
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Kind: JobKindRepairConflicts})
+	if err != nil {
+		t.Fatalf("CreateJob() error = %v", err)
+	}
+	waitForTerminalKnowledgeJob(t, svc, job.ID, 2*time.Second)
+
+	stored, err := svc.GetJob(job.ID)
+	if err != nil {
+		t.Fatalf("GetJob() error = %v", err)
+	}
+	if stored.ProviderID != "smallmodel" {
+		t.Fatalf("job ProviderID = %q, want smallmodel", stored.ProviderID)
+	}
+}
+
 func authoredKnowledgePage(req KnowledgeAuthorRequest, content string) KnowledgePage {
 	return KnowledgePage{
 		KnowledgePageSummary: KnowledgePageSummary{

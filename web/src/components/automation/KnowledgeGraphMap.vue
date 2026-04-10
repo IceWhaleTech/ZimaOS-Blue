@@ -679,6 +679,7 @@ watch(
                 v-for="orbit in orbitLayers"
                 :key="orbit.key"
                 data-testid="knowledge-graph-orbit"
+                :data-orbit-visibility="orbitVisibility(orbit.distance, orbit.disconnected)"
                 :cx="graph.width / 2"
                 :cy="graph.height / 2"
                 :rx="orbit.radiusX"

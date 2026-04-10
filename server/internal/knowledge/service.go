@@ -353,32 +353,34 @@ func (s *Service) Lint(ctx context.Context, req LintRequest) (*KnowledgeLintRepo
 				SuggestedAction: "index membership was rebuilt automatically",
 			})
 		}
-		normalizedTitle := normalizeTopicKey(page.Summary.Title)
-		if existingSlug, exists := seenTitles[normalizedTitle]; normalizedTitle != "" && exists && existingSlug != page.Summary.Slug {
-			issues = append(issues, LintIssue{
-				Kind:            IssueKindDuplicateTopic,
-				PageSlug:        page.Summary.Slug,
-				Message:         fmt.Sprintf("topic duplicates %s", existingSlug),
-				Severity:        "high",
-				Category:        "review_required",
-				RelatedPages:    []string{existingSlug, page.Summary.Slug},
-				SuggestedAction: "merge or distinguish overlapping pages",
-			})
-			conflictPairs[page.Summary.Slug] = append(conflictPairs[page.Summary.Slug], existingSlug)
-			conflictPairs[existingSlug] = append(conflictPairs[existingSlug], page.Summary.Slug)
-			if strings.TrimSpace(page.Summary.Summary) != "" {
+		if page.Summary.Status != KnowledgeStatusSuperseded {
+			normalizedTitle := normalizeTopicKey(page.Summary.Title)
+			if existingSlug, exists := seenTitles[normalizedTitle]; normalizedTitle != "" && exists && existingSlug != page.Summary.Slug {
 				issues = append(issues, LintIssue{
-					Kind:            IssueKindConflictingClaim,
+					Kind:            IssueKindDuplicateTopic,
 					PageSlug:        page.Summary.Slug,
-					Message:         fmt.Sprintf("page may conflict with %s", existingSlug),
+					Message:         fmt.Sprintf("topic duplicates %s", existingSlug),
 					Severity:        "high",
 					Category:        "review_required",
 					RelatedPages:    []string{existingSlug, page.Summary.Slug},
-					SuggestedAction: "review conflicting claims and mark the canonical answer",
+					SuggestedAction: "merge or distinguish overlapping pages",
 				})
+				conflictPairs[page.Summary.Slug] = append(conflictPairs[page.Summary.Slug], existingSlug)
+				conflictPairs[existingSlug] = append(conflictPairs[existingSlug], page.Summary.Slug)
+				if strings.TrimSpace(page.Summary.Summary) != "" {
+					issues = append(issues, LintIssue{
+						Kind:            IssueKindConflictingClaim,
+						PageSlug:        page.Summary.Slug,
+						Message:         fmt.Sprintf("page may conflict with %s", existingSlug),
+						Severity:        "high",
+						Category:        "review_required",
+						RelatedPages:    []string{existingSlug, page.Summary.Slug},
+						SuggestedAction: "review conflicting claims and mark the canonical answer",
+					})
+				}
+			} else if normalizedTitle != "" {
+				seenTitles[normalizedTitle] = page.Summary.Slug
 			}
-		} else if normalizedTitle != "" {
-			seenTitles[normalizedTitle] = page.Summary.Slug
 		}
 		if len(page.Summary.SourceRefs) == 0 && page.Summary.PageType != PageTypeSynthesis {
 			issues = append(issues, LintIssue{
@@ -424,16 +426,28 @@ func (s *Service) Lint(ctx context.Context, req LintRequest) (*KnowledgeLintRepo
 	for idx := range pages {
 		page := &pages[idx]
 		pairs := uniqueStrings(conflictPairs[page.Summary.Slug])
-		if len(pairs) == 0 {
-			continue
+		nextStatus := page.Summary.Status
+		if nextStatus == "" {
+			nextStatus = KnowledgeStatusActive
 		}
-		page.Summary.Status = KnowledgeStatusConflicted
-		page.Summary.ConflictsWith = pairs
-		page.Summary.UpdatedAt = s.now()
-		if err := s.writeSinglePage(*page); err != nil {
-			return nil, err
+		nextConflicts := append([]string(nil), pairs...)
+		if len(pairs) > 0 {
+			nextStatus = KnowledgeStatusConflicted
+		} else {
+			nextConflicts = nil
+			if page.Summary.Status == KnowledgeStatusConflicted || page.Summary.Status == "" {
+				nextStatus = KnowledgeStatusActive
+			}
 		}
-		fixedPaths = append(fixedPaths, s.pagePath(page.Summary.Slug))
+		if page.Summary.Status != nextStatus || !sameStringSet(page.Summary.ConflictsWith, nextConflicts) {
+			page.Summary.Status = nextStatus
+			page.Summary.ConflictsWith = nextConflicts
+			page.Summary.UpdatedAt = s.now()
+			if err := s.writeSinglePage(*page); err != nil {
+				return nil, err
+			}
+			fixedPaths = append(fixedPaths, s.pagePath(page.Summary.Slug))
+		}
 	}
 
 	indexPath, err := s.writePagesIndex(pages)
@@ -754,7 +768,7 @@ func (s *Service) CreateJob(ctx context.Context, req CreateJobRequest) (*Knowled
 		return nil, fmt.Errorf("query is required for answer jobs")
 	}
 	providerID := strings.TrimSpace(req.ProviderID)
-	if kind == JobKindLint {
+	if kind == JobKindLint || kind == JobKindRepairConflicts {
 		providerID = s.resolveLintProviderID(providerID)
 	}
 	req.ProviderID = providerID
@@ -943,6 +957,15 @@ func (s *Service) runJob(ctx context.Context, jobID string, req CreateJobRequest
 		lintReport, err = s.Lint(ctx, LintRequest{TargetPaths: append([]string(nil), req.TargetPaths...), ProviderID: req.ProviderID})
 		if lintReport != nil {
 			report = &KnowledgeJobReport{Kind: JobKindLint, Lint: lintReport}
+		}
+	case JobKindRepairConflicts:
+		var repairReport *KnowledgeConflictRepairReport
+		repairReport, err = s.RepairConflicts(ctx, RepairConflictsRequest{
+			TargetSlugs: append([]string(nil), req.TargetSlugs...),
+			ProviderID:  req.ProviderID,
+		})
+		if repairReport != nil {
+			report = &KnowledgeJobReport{Kind: JobKindRepairConflicts, Repair: repairReport, Lint: cloneLintReport(repairReport.Lint)}
 		}
 	case JobKindAnswer:
 		var answerReport *KnowledgeAnswerReport
@@ -2384,6 +2407,14 @@ func cloneJobReport(report *KnowledgeJobReport) *KnowledgeJobReport {
 		lint.FixedPaths = append([]string(nil), report.Lint.FixedPaths...)
 		cloned.Lint = &lint
 	}
+	if report.Repair != nil {
+		repair := *report.Repair
+		repair.CanonicalPages = append([]KnowledgePageSummary(nil), report.Repair.CanonicalPages...)
+		repair.SupersededPages = append([]KnowledgePageSummary(nil), report.Repair.SupersededPages...)
+		repair.FixedPaths = append([]string(nil), report.Repair.FixedPaths...)
+		repair.Lint = cloneLintReport(report.Repair.Lint)
+		cloned.Repair = &repair
+	}
 	if report.Answer != nil {
 		answer := *report.Answer
 		answer.Citations = append([]KnowledgeCitation(nil), report.Answer.Citations...)
@@ -2446,6 +2477,16 @@ func normalizeQueryScope(scope string) string {
 	default:
 		return "all"
 	}
+}
+
+func cloneLintReport(report *KnowledgeLintReport) *KnowledgeLintReport {
+	if report == nil {
+		return nil
+	}
+	cloned := *report
+	cloned.Issues = append([]LintIssue(nil), report.Issues...)
+	cloned.FixedPaths = append([]string(nil), report.FixedPaths...)
+	return &cloned
 }
 
 func answerConfidence(pages []pageDocument) KnowledgeConfidence {

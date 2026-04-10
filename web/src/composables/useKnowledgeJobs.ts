@@ -35,7 +35,9 @@ function normalizeNumber(value: unknown): number {
 function normalizeKind(value: unknown): KnowledgeJob['kind'] {
   const kind = normalizeString(value).toLowerCase()
   if (!kind || kind === 'compile') return 'ingest'
-  if (kind === 'lint' || kind === 'answer' || kind === 'ingest') return kind
+  if (kind === 'lint' || kind === 'answer' || kind === 'ingest' || kind === 'repair_conflicts') {
+    return kind
+  }
   return 'ingest'
 }
 

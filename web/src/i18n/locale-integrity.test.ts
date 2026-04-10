@@ -317,6 +317,7 @@ describe('locale integrity', () => {
       'settings.agentcoreRunner.refPlaceholder',
       'settings.agentcoreRunner.refHint',
       'settings.agentcoreRunner.refLabel',
+      'settings.agentcoreRunner.defaultBranchLabel',
       'settings.agentcoreRunner.mobileHint',
       'settings.agentcoreRunner.prepareHint',
       'settings.agentcoreRunner.prepare',

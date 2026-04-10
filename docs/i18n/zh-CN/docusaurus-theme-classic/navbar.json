@@ -1,0 +1,30 @@
+{
+  "title": {
+    "message": "ZimaOS Blue",
+    "description": "The title in the navbar"
+  },
+  "logo.alt": {
+    "message": "ZimaOS Blue",
+    "description": "The alt text of navbar logo"
+  },
+  "item.label.English": {
+    "message": "English",
+    "description": "Navbar item with label English"
+  },
+  "item.label.中文": {
+    "message": "中文",
+    "description": "Navbar item with label 中文"
+  },
+  "item.label.GitHub": {
+    "message": "GitHub",
+    "description": "Navbar item with label GitHub"
+  },
+  "item.label.Releases": {
+    "message": "Releases",
+    "description": "Navbar item with label Releases"
+  },
+  "item.label.DeepWiki": {
+    "message": "DeepWiki",
+    "description": "Navbar item with label DeepWiki"
+  }
+}

@@ -34,6 +34,17 @@ const { t, te } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
+const KNOWLEDGE_PAGE_GROUPS = [
+  'source_summary',
+  'entity',
+  'concept',
+  'comparison',
+  'synthesis',
+  'decision',
+] as const
+
+type KnowledgeGroupName = (typeof KNOWLEDGE_PAGE_GROUPS)[number]
+
 const loading = ref(false)
 const pageLoading = ref(false)
 const statusMessage = ref('')
@@ -61,6 +72,12 @@ const queryScope = ref<'all' | 'current_page' | 'selected_sources'>('current_pag
 const saveAnswer = ref(true)
 const answerError = ref('')
 const answerReport = ref<KnowledgeAnswerReport | null>(null)
+const groupExpanded = ref<Record<KnowledgeGroupName, boolean>>(
+  Object.fromEntries(KNOWLEDGE_PAGE_GROUPS.map((group) => [group, false])) as Record<
+    KnowledgeGroupName,
+    boolean
+  >
+)
 
 function tr(key: string, fallback: string) {
   return te(key) ? t(key) : fallback
@@ -179,6 +196,12 @@ async function refreshAfterMaintenance() {
 
 const maintenanceJobs = useKnowledgeJobs({
   onTerminal: async (job: KnowledgeJob, report: KnowledgeJobReport | null) => {
+    if (report?.repair) {
+      latestLint.value = report.repair.lint || report.lint || latestLint.value
+      statusMessage.value = tr('knowledge.repairConflictsComplete', 'Knowledge conflicts repaired.')
+      await refreshAfterMaintenance()
+      return
+    }
     if (report?.ingest) {
       latestIngest.value = report.ingest
       statusMessage.value = tr('knowledge.ingestComplete', 'Knowledge ingest completed.')
@@ -212,15 +235,7 @@ const queryJobs = useKnowledgeJobs({
   },
 })
 
-const allPageTypes = [
-  'all',
-  'source_summary',
-  'entity',
-  'concept',
-  'comparison',
-  'synthesis',
-  'decision',
-]
+const allPageTypes = ['all', ...KNOWLEDGE_PAGE_GROUPS]
 
 const filteredPages = computed(() => {
   const query = pageSearch.value.trim().toLowerCase()
@@ -243,18 +258,13 @@ const filteredPages = computed(() => {
   })
 })
 
-const groupedPages = computed(() => {
-  const groups = {
-    source_summary: [] as KnowledgePageSummary[],
-    entity: [] as KnowledgePageSummary[],
-    concept: [] as KnowledgePageSummary[],
-    comparison: [] as KnowledgePageSummary[],
-    synthesis: [] as KnowledgePageSummary[],
-    decision: [] as KnowledgePageSummary[],
-  }
+const groupedPages = computed<Record<KnowledgeGroupName, KnowledgePageSummary[]>>(() => {
+  const groups = Object.fromEntries(
+    KNOWLEDGE_PAGE_GROUPS.map((group) => [group, [] as KnowledgePageSummary[]])
+  ) as Record<KnowledgeGroupName, KnowledgePageSummary[]>
   for (const page of filteredPages.value) {
-    if (page.page_type in groups) {
-      groups[page.page_type as keyof typeof groups].push(page)
+    if (KNOWLEDGE_PAGE_GROUPS.includes(page.page_type as KnowledgeGroupName)) {
+      groups[page.page_type as KnowledgeGroupName].push(page)
     }
   }
   return groups
@@ -287,14 +297,23 @@ const knowledgeSummary = computed<KnowledgePaneSummary>(() => ({
   gaps: gapIssueCount.value,
 }))
 
-async function startMaintenance(kind: 'ingest' | 'lint') {
+async function startMaintenance(kind: 'ingest' | 'lint' | 'repair_conflicts') {
   errorMessage.value = ''
+  statusMessage.value = ''
   try {
     await maintenanceJobs.runJob({ kind })
-    statusMessage.value =
-      kind === 'ingest'
-        ? tr('knowledge.ingestStarted', 'Knowledge ingest started.')
-        : tr('knowledge.lintStarted', 'Knowledge lint started.')
+    if (kind === 'ingest') {
+      statusMessage.value = tr('knowledge.ingestStarted', 'Knowledge ingest started.')
+      return
+    }
+    if (kind === 'repair_conflicts') {
+      statusMessage.value = tr(
+        'knowledge.repairConflictsStarted',
+        'Knowledge conflict repair started.'
+      )
+      return
+    }
+    statusMessage.value = tr('knowledge.lintStarted', 'Knowledge lint started.')
   } catch (error) {
     errorMessage.value = String(error instanceof Error ? error.message : error)
   }
@@ -359,6 +378,18 @@ function issueChipClass(issue: KnowledgeLintIssue) {
   if (issue.category === 'research_suggestions') return 'bg-sky-50 text-sky-700'
   if (issue.category === 'auto_fixed') return 'bg-emerald-50 text-emerald-700'
   return 'bg-rose-50 text-rose-700'
+}
+
+function isGroupExpanded(groupName: string) {
+  return Boolean(groupExpanded.value[groupName as KnowledgeGroupName])
+}
+
+function toggleGroup(groupName: string) {
+  const key = groupName as KnowledgeGroupName
+  groupExpanded.value = {
+    ...groupExpanded.value,
+    [key]: !groupExpanded.value[key],
+  }
 }
 
 watch(
@@ -437,6 +468,15 @@ onMounted(async () => {
             @click="startMaintenance('lint')"
           >
             {{ tr('knowledge.lint', 'Lint') }}
+          </button>
+          <button
+            data-testid="knowledge-repair-conflicts-button"
+            type="button"
+            class="inline-flex min-h-11 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-60"
+            :disabled="maintenanceJobs.isRunning.value || conflictIssueCount === 0"
+            @click="startMaintenance('repair_conflicts')"
+          >
+            {{ tr('knowledge.repairConflicts', 'Repair conflicts') }}
           </button>
           <button
             data-testid="knowledge-maintenance-toggle"
@@ -520,18 +560,49 @@ onMounted(async () => {
           <div
             v-for="(groupPages, groupName) in groupedPages"
             :key="groupName"
-            class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
+            class="rounded-[1.35rem] border border-slate-200 bg-slate-50/70 p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.55)]"
           >
-            <div class="flex items-center justify-between gap-3">
+            <button
+              :data-testid="`knowledge-group-toggle-${groupName}`"
+              type="button"
+              class="flex min-h-11 w-full items-center justify-between gap-3 rounded-[1.1rem] px-3 py-2.5 text-left transition hover:bg-white/70 focus:outline-none focus:ring-2 focus:ring-amber-200"
+              :aria-controls="`knowledge-group-panel-${groupName}`"
+              :aria-expanded="isGroupExpanded(groupName) ? 'true' : 'false'"
+              :aria-label="`${isGroupExpanded(groupName) ? tr('common.collapse', 'Collapse') : tr('common.expand', 'Expand')} ${pageTypeLabel(groupName)}`"
+              @click="toggleGroup(groupName)"
+            >
               <h3 class="text-[13px] font-semibold uppercase tracking-[0.14em] text-slate-600">
                 {{ pageTypeLabel(groupName) }}
               </h3>
-              <span class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-500">
-                {{ groupPages.length }}
-              </span>
-            </div>
 
-            <div class="mt-3 space-y-2">
+              <span class="flex items-center gap-2">
+                <span class="rounded-full bg-white px-2.5 py-1 text-xs text-slate-500">
+                  {{ groupPages.length }}
+                </span>
+                <svg
+                  class="h-4 w-4 text-slate-400 transition-transform duration-200"
+                  :class="{ 'rotate-180': isGroupExpanded(groupName) }"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M4 6.5 8 10l4-3.5"
+                    stroke="currentColor"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="1.5"
+                  />
+                </svg>
+              </span>
+            </button>
+
+            <div
+              v-if="isGroupExpanded(groupName)"
+              :id="`knowledge-group-panel-${groupName}`"
+              :data-testid="`knowledge-group-panel-${groupName}`"
+              class="mt-3 space-y-2 px-0.5 pb-0.5"
+            >
               <button
                 v-for="page in groupPages"
                 :key="page.slug"

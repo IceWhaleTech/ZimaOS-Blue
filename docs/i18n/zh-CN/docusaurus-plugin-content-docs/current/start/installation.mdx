@@ -1,0 +1,54 @@
+---
+title: "安装方式"
+summary: "通过桌面应用、安装脚本或源码构建安装 ZimaOS Blue。"
+---
+
+# 安装方式
+
+当前仓库已经明确给出三种入口。
+
+## 方式一：桌面应用
+
+- macOS: [最新发布](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+- Windows: [最新发布](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
+
+## 方式二：安装脚本
+
+macOS / Linux:
+
+```bash
+curl -fsSL https://ota.zimaos.com/blue | sh
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://ota.zimaos.com/blue/windows | iex
+```
+
+## 方式三：源码构建
+
+```bash
+git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
+cd ZimaOS-Blue
+git submodule update --init --recursive
+```
+
+macOS / Linux:
+
+```bash
+sh build.sh
+```
+
+Windows PowerShell:
+
+```powershell
+.\build.bat
+```
+
+## 接下来建议阅读
+
+- [首次运行](/start/first-run)
+- [快速开始](/start/quick-start)
+- [文档导航](/start/docs-directory)
+- [故障排查](/help/troubleshooting)

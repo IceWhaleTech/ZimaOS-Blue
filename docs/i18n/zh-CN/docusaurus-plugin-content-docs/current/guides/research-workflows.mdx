@@ -1,0 +1,115 @@
+---
+title: "Research 工作流"
+summary: "说明 Blue 如何用统一的 research 入口在 deep research、analyze 和 UI review 之间路由，同时保留三种不同的最终呈现。"
+---
+
+# Research 工作流
+
+Blue 现在在 Composer、运行时和公共接口上统一暴露一个 research family 入口。
+
+## 一个入口，三种 mode
+
+在 Composer 里，原来的 `Research`、`Analysis Report`、`UI Review` 三个入口已经收敛为一个 `Research` 入口。
+
+这个统一入口会路由到三个内部 mode：
+
+- `deep_research`：强调引用、证据、多来源和较长链路的研究
+- `analyze`：基于已知 URL、搜索词或粘贴文本做有边界的综合分析
+- `ui_review`：针对 URL 或图片做 UI、UX 与无障碍评估
+
+当前公开的统一入口是 `research`，而不是三个独立的对外发现名。
+
+## `mode` 的含义
+
+显式调用时，应该使用：
+
+```json
+{
+  "action": "run",
+  "mode": "auto|deep_research|analyze|ui_review"
+}
+```
+
+当你希望让 Blue 根据请求内容自动选择子模式时，使用 `mode=auto`。
+
+## Auto 路由如何判断
+
+Blue 会根据请求内容和意图信号自动选择 mode：
+
+- 强调引用、证据、时间线、对比、深入调研的请求会路由到 `deep_research`
+- 已经给出 URL、搜索范围或文本，希望生成总结或报告的请求会路由到 `analyze`
+- 希望评审界面、截图、视觉设计或无障碍问题的请求会路由到 `ui_review`
+
+因此聊天里的 `Research` 开关表达的是“研究家族偏好”，而不是“强制进入 deep research”。
+
+## 各 mode 的输入契约
+
+虽然运行时统一成一个 research family，但每个 mode 仍保留自己的输入结构。
+
+### `deep_research`
+
+适合开放式、证据密集型的问题。
+
+常见字段：
+
+- `query`
+- `research_depth`
+- `report_style`
+- 与引用、证据和时间线相关的设置
+
+### `analyze`
+
+适合来源边界已经很清晰的综合分析。
+
+常见字段：
+
+- `topic`
+- `urls`
+- `search_queries`
+- `text`
+- `output_mode`
+- `report_style`
+
+它适合把一组有限来源整理成摘要、briefing、dashboard 风格报告，或者为后续的 Markdown、文档写入步骤准备内容。
+
+### `ui_review`
+
+适合评估界面，而不是研究主题本身。
+
+常见字段：
+
+- `action`
+- `url`
+- `image`
+- `device`
+- `channel`
+- `threshold`
+- `format`
+- `profile`
+
+这个 mode 重点关注视觉质量、交互体验和无障碍问题。
+
+## 最终结果仍然保持三种呈现
+
+Blue 在内部使用统一 research-family 运行时，但最终面向用户的结果仍然按 mode 区分：
+
+- `deep_research` 保留深度研究结果呈现
+- `analyze` 使用专门的 analyze 结果卡片
+- `ui_review` 保留 UI review 的结果呈现
+
+这次调整是架构统一，不是把所有结果压平成一种通用卡片。
+
+## 公共接口使用建议
+
+如果你要写文档或接入当前公共接口，建议遵循下面的规则：
+
+- 使用 `research` 作为统一的 skill、CLI 或 API 入口
+- 已知目标子模式时，显式传 `mode`
+- 聊天式请求优先使用 `mode=auto`
+- 不要再把 `deep_research`、`analyze`、`ui_reviewer` 当作主要的公共发现名
+
+## 相关页面
+
+- [产品能力](/product/features)
+- [设置与 Provider Pool](/guides/settings-provider-pool)
+- [Providers 与 Models](/guides/providers-models)

@@ -396,9 +396,18 @@ func normalizeOptimizationFollowupEvalStatus(status harness.RunGroupStatus) stri
 }
 
 type harnessOptimizationTriggerer struct {
-	manager    *optimization.Manager
+	manager    harnessOptimizationRunnerManager
 	settings   *serverpkg.SettingsHandler
 	controller *harness.Controller
+}
+
+type harnessOptimizationRunnerManager interface {
+	GetStatus(ctx context.Context) optimization.Status
+	Prepare(ctx context.Context, req optimization.PrepareRequest) (optimization.Status, error)
+	SetLastOptimizationRunID(id string) error
+	RecordOptimizationEvent(id string, payload interface{}) error
+	GetOptimizationRun(ctx context.Context, id string) (optimization.OptimizationRunRecord, error)
+	ExecutePreparedRunnerACP(ctx context.Context, prompt string) (optimization.RunnerExecutionResult, error)
 }
 
 func (t *harnessOptimizationTriggerer) RecordSkillRevisionPromotion(ctx context.Context, promotedRevision *harness.SkillRevision, backupRevision *harness.SkillRevision, writtenSourcePath string) error {
@@ -434,15 +443,20 @@ func (t *harnessOptimizationTriggerer) TriggerOptimization(ctx context.Context, 
 	if !t.settings.GetExperimentalAgentcoreRunnerEnabled() {
 		return nil
 	}
-	status := t.manager.GetStatus(ctx)
-	if !status.BinaryReady {
-		return nil
-	}
 	runID := uuid.NewString()
 	optimizedParts, _ := optimization.NormalizeRequestedEvolvableParts([]string{defaultOptimizationSurface(event.OptimizationSurface)})
 	primaryPart := ""
 	if len(optimizedParts) > 0 {
 		primaryPart = optimizedParts[0]
+	}
+	repoURL := t.settings.GetExperimentalAgentcoreRunnerRepoURL()
+	runnerRef := t.settings.ResolveExperimentalAgentcoreRunnerRef(ctx, optimizationConversationID(event.Metadata))
+	status, err := t.prepareOptimizationRunnerIfNeeded(ctx, repoURL, runnerRef, optimizedParts)
+	if err != nil {
+		return err
+	}
+	if !status.BinaryReady {
+		return fmt.Errorf("runner binary is not ready for ref %q", runnerRef)
 	}
 	manifestPath := strings.TrimSpace(status.ManifestPath)
 	if manifestPath == "" {
@@ -460,8 +474,8 @@ func (t *harnessOptimizationTriggerer) TriggerOptimization(ctx context.Context, 
 		"primary_part":               primaryPart,
 		"source_optimization_run_id": runID,
 		"source_eval_run_id":         strings.TrimSpace(event.EvalRunID),
-		"repo_url":                   t.settings.GetExperimentalAgentcoreRunnerRepoURL(),
-		"ref":                        t.settings.GetExperimentalAgentcoreRunnerRef(),
+		"repo_url":                   firstNonEmptyOptimizationValue(strings.TrimSpace(status.RepoURL), repoURL),
+		"ref":                        firstNonEmptyOptimizationValue(strings.TrimSpace(status.ResolvedRef), runnerRef),
 		"runner_artifact_path":       status.BinaryPath,
 		"runner_artifact_sha256":     status.BinarySHA256,
 		"manifest_path":              manifestPath,
@@ -530,6 +544,47 @@ func (t *harnessOptimizationTriggerer) TriggerOptimization(ctx context.Context, 
 		return execErr
 	}
 	return followupErr
+}
+
+func (t *harnessOptimizationTriggerer) prepareOptimizationRunnerIfNeeded(
+	ctx context.Context,
+	repoURL string,
+	ref string,
+	requestedParts []string,
+) (optimization.Status, error) {
+	if t == nil || t.manager == nil {
+		return optimization.Status{}, fmt.Errorf("optimization manager is nil")
+	}
+
+	repoURL = strings.TrimSpace(repoURL)
+	ref = strings.TrimSpace(ref)
+	status := t.manager.GetStatus(ctx)
+	currentRepoURL := strings.TrimSpace(status.RepoURL)
+	currentRef := strings.TrimSpace(status.ResolvedRef)
+
+	if status.BinaryReady && currentRepoURL == repoURL && currentRef == ref {
+		return status, nil
+	}
+
+	prepared, err := t.manager.Prepare(ctx, optimization.PrepareRequest{
+		RepoURL:        repoURL,
+		Ref:            ref,
+		RequestedParts: requestedParts,
+	})
+	if err != nil {
+		return prepared, err
+	}
+	if strings.TrimSpace(prepared.RepoURL) == "" {
+		prepared.RepoURL = repoURL
+	}
+	if strings.TrimSpace(prepared.ResolvedRef) == "" {
+		prepared.ResolvedRef = ref
+	}
+	return prepared, nil
+}
+
+func optimizationConversationID(meta map[string]interface{}) string {
+	return workflowTriggerString(meta, "conversation_id", "conversationId", "session_id", "sessionId", "session")
 }
 
 func defaultOptimizationSurface(surface harness.OptimizationSurface) string {

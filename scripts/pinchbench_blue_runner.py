@@ -38,6 +38,7 @@ LOG = logging.getLogger("pinchbench-blue")
 MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 180.0
 MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 600.0
 MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 120.0
+EMPTY_JUDGE_RESPONSE_MAX_RETRIES = 1
 
 
 def parse_args() -> argparse.Namespace:
@@ -871,6 +872,33 @@ def extract_usage_from_transcript(transcript: Sequence[Dict[str, Any]]) -> Dict[
     return totals
 
 
+def extract_latest_assistant_text(transcript: Sequence[Dict[str, Any]]) -> str:
+    for entry in reversed(transcript):
+        if entry.get("type") != "message":
+            continue
+        message = entry.get("message", {})
+        if message.get("role") != "assistant":
+            continue
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+        if not isinstance(content, list):
+            return ""
+        parts: List[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+                continue
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(str(block.get("text", "")))
+        return "\n".join(part for part in parts if part)
+    return ""
+
+
+def has_empty_judge_response(transcript: Sequence[Dict[str, Any]]) -> bool:
+    return extract_latest_assistant_text(transcript).strip() in {"", "{}"}
+
+
 class BlueJudgeRunner:
     def __init__(
         self,
@@ -887,61 +915,91 @@ class BlueJudgeRunner:
 
     def run_prompt(self, *, prompt: str, workspace: Path, timeout_seconds: float) -> Dict[str, Any]:
         workspace.mkdir(parents=True, exist_ok=True)
-        conv = self.client.create_conversation("PinchBench judge", timeout=min(timeout_seconds, 30.0))
-        conv_id = conv["id"]
-        try:
-            stderr_chunks: List[str] = []
-            transcript: List[Dict[str, Any]] = []
+        max_attempts = EMPTY_JUDGE_RESPONSE_MAX_RETRIES + 1
+        last_result: Optional[Dict[str, Any]] = None
+        for attempt in range(1, max_attempts + 1):
+            conv = self.client.create_conversation("PinchBench judge", timeout=min(timeout_seconds, 30.0))
+            conv_id = conv["id"]
             try:
-                transport_timeout = resolve_message_transport_timeout(timeout_seconds)
-                self.client.send_message(
-                    conv_id,
-                    prompt,
-                    self.provider,
-                    self.model,
-                    timeout=transport_timeout,
-                    web_search_enabled=False,
-                    deep_research_enabled=False,
-                )
-                messages = self.client.get_messages(conv_id, timeout=min(timeout_seconds, 30.0))
-                transcript = convert_blue_messages_to_transcript(messages)
-                transcript = augment_transcript_with_audit(
-                    transcript,
-                    db_paths=self.blue_audit_db_paths,
-                    conversation_id=conv_id,
-                )
-            except BlueAPIError as exc:
-                transcript = recover_blue_transcript_from_db(
-                    db_paths=self.blue_audit_db_paths,
-                    conversation_id=conv_id,
-                )
-                if not transcript:
-                    raise
-                LOG.warning(
-                    "Recovered judge transcript for conversation %s after transport error: %s",
-                    conv_id,
-                    exc,
-                )
-                stderr_chunks.append(f"Recovered judge transcript after transport error: {exc}")
-            return {
-                "agent_id": f"blue-judge-{self.provider or 'auto'}",
-                "task_id": "judge",
-                "status": "success" if transcript else "error",
-                "transcript": transcript,
-                "usage": extract_usage_from_transcript(transcript),
-                "workspace": str(workspace),
-                "exit_code": 0 if transcript else 1,
-                "timed_out": False,
-                "execution_time": 0.0,
-                "stdout": "",
-                "stderr": "\n".join(stderr_chunks),
-                "conversation_id": conv_id,
-            }
-        finally:
-            try:
-                self.client.delete_conversation(conv_id, timeout=10.0)
-            except BlueAPIError:
-                pass
+                stderr_chunks: List[str] = []
+                transcript: List[Dict[str, Any]] = []
+                try:
+                    transport_timeout = resolve_message_transport_timeout(timeout_seconds)
+                    self.client.send_message(
+                        conv_id,
+                        prompt,
+                        self.provider,
+                        self.model,
+                        timeout=transport_timeout,
+                        web_search_enabled=False,
+                        deep_research_enabled=False,
+                    )
+                    messages = self.client.get_messages(conv_id, timeout=min(timeout_seconds, 30.0))
+                    transcript = convert_blue_messages_to_transcript(messages)
+                    transcript = augment_transcript_with_audit(
+                        transcript,
+                        db_paths=self.blue_audit_db_paths,
+                        conversation_id=conv_id,
+                    )
+                except BlueAPIError as exc:
+                    transcript = recover_blue_transcript_from_db(
+                        db_paths=self.blue_audit_db_paths,
+                        conversation_id=conv_id,
+                    )
+                    if not transcript:
+                        raise
+                    LOG.warning(
+                        "Recovered judge transcript for conversation %s after transport error: %s",
+                        conv_id,
+                        exc,
+                    )
+                    stderr_chunks.append(f"Recovered judge transcript after transport error: {exc}")
+                last_result = {
+                    "agent_id": f"blue-judge-{self.provider or 'auto'}",
+                    "task_id": "judge",
+                    "status": "success" if transcript else "error",
+                    "transcript": transcript,
+                    "usage": extract_usage_from_transcript(transcript),
+                    "workspace": str(workspace),
+                    "exit_code": 0 if transcript else 1,
+                    "timed_out": False,
+                    "execution_time": 0.0,
+                    "stdout": "",
+                    "stderr": "\n".join(stderr_chunks),
+                    "conversation_id": conv_id,
+                }
+                if (
+                    last_result["status"] == "success"
+                    and has_empty_judge_response(transcript)
+                    and attempt < max_attempts
+                ):
+                    LOG.warning(
+                        "Judge returned an empty response on attempt %d/%d; retrying",
+                        attempt,
+                        max_attempts,
+                    )
+                    continue
+                return last_result
+            finally:
+                try:
+                    self.client.delete_conversation(conv_id, timeout=10.0)
+                except BlueAPIError:
+                    pass
+
+        return last_result or {
+            "agent_id": f"blue-judge-{self.provider or 'auto'}",
+            "task_id": "judge",
+            "status": "error",
+            "transcript": [],
+            "usage": extract_usage_from_transcript([]),
+            "workspace": str(workspace),
+            "exit_code": 1,
+            "timed_out": False,
+            "execution_time": 0.0,
+            "stdout": "",
+            "stderr": "judge returned no transcript",
+            "conversation_id": "",
+        }
 
 
 def dataclass_to_dict(value: Any) -> Any:

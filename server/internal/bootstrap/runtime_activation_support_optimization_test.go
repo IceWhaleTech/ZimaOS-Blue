@@ -23,8 +23,11 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/optimization"
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 func TestBindHarnessRuntimeOptimizationWiresControllerTriggerer(t *testing.T) {
@@ -235,6 +238,93 @@ func TestHarnessOptimizationTriggererPersistsRunnerErrorWhenPreparedBinaryChecks
 	}
 }
 
+func TestHarnessOptimizationTriggererUsesConversationScopedRunnerRefForExecution(t *testing.T) {
+	ctx := context.Background()
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(ctx, "Runner Conversation", "user-1")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if err := store.UpsertConversationCommandState(ctx, memory.ConversationCommandState{
+		ConversationID:     conv.ID,
+		AgentcoreRunnerRef: "release/v2",
+	}); err != nil {
+		t.Fatalf("UpsertConversationCommandState: %v", err)
+	}
+
+	settings := serverpkg.NewSettingsHandler(kvstore.NewMemoryStore())
+	settings.SetChatHandler(serverpkg.NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry()))
+	patchAgentcoreRunnerSettingsForOptimizationTest(t, settings, `{
+		"experimental_agentcore_runner_enabled": true,
+		"experimental_agentcore_runner_repo_url": "https://github.com/IceWhaleTech/ZimaOS-Blue",
+		"experimental_agentcore_runner_ref": "main"
+	}`)
+
+	manager := &stubHarnessOptimizationRunnerManager{
+		status: optimization.Status{
+			BinaryReady:    true,
+			BinaryPath:     "/tmp/agentcore-runner",
+			BinarySHA256:   strings.Repeat("d", 64),
+			RepoURL:        "https://github.com/IceWhaleTech/ZimaOS-Blue",
+			ResolvedRef:    "main",
+			ResolvedCommit: strings.Repeat("e", 40),
+		},
+		executeResult: optimization.RunnerExecutionResult{
+			Protocol:     "acp",
+			SessionID:    "session-test",
+			StopReason:   "completed",
+			ResponseText: "runner used release/v2",
+		},
+	}
+
+	triggerer := &harnessOptimizationTriggerer{
+		manager:  manager,
+		settings: settings,
+	}
+	event := harness.OptimizationTrigger{
+		Reason:              harness.OptimizationReasonExecutionGateFailed,
+		CandidateID:         "candidate-scoped-runner",
+		EvalRunID:           "eval-scoped-runner",
+		BaseEvalRunID:       "baseline-scoped-runner",
+		OptimizationSurface: harness.OptimizationSurfaceRunnerCode,
+		Metadata: map[string]interface{}{
+			"conversation_id": conv.ID,
+		},
+	}
+
+	if err := triggerer.TriggerOptimization(ctx, event); err != nil {
+		t.Fatalf("TriggerOptimization: %v", err)
+	}
+
+	if len(manager.prepareRequests) != 1 {
+		t.Fatalf("prepare requests = %d, want 1", len(manager.prepareRequests))
+	}
+	if got := strings.TrimSpace(manager.prepareRequests[0].Ref); got != "release/v2" {
+		t.Fatalf("prepared ref = %q, want release/v2", got)
+	}
+	if len(manager.executedRefs) != 1 {
+		t.Fatalf("executed refs = %d, want 1", len(manager.executedRefs))
+	}
+	if got := strings.TrimSpace(manager.executedRefs[0]); got != "release/v2" {
+		t.Fatalf("executed ref = %q, want release/v2", got)
+	}
+	if strings.TrimSpace(manager.lastRunID) == "" {
+		t.Fatal("expected last optimization run id to be recorded")
+	}
+	record := manager.recordForTest(manager.lastRunID)
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["ref"])); got != "release/v2" {
+		t.Fatalf("record ref = %q, want release/v2; record=%#v", got, record)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["runner_response_text"])); got != "runner used release/v2" {
+		t.Fatalf("runner_response_text = %q, want release/v2 evidence", got)
+	}
+}
+
 func TestBuildOptimizationRunnerPromptIncludesSkillCandidateDetails(t *testing.T) {
 	content := strings.TrimSpace(`
 ---
@@ -281,6 +371,117 @@ Use browser skill candidate.
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
 		}
 	}
+}
+
+type stubHarnessOptimizationRunnerManager struct {
+	status          optimization.Status
+	prepareRequests []optimization.PrepareRequest
+	executePrompts  []string
+	executedRefs    []string
+	lastRunID       string
+	records         map[string]optimization.OptimizationRunRecord
+	executeResult   optimization.RunnerExecutionResult
+	prepareErr      error
+	executeErr      error
+	recordErr       error
+}
+
+func (m *stubHarnessOptimizationRunnerManager) GetStatus(_ context.Context) optimization.Status {
+	if m == nil {
+		return optimization.Status{}
+	}
+	return m.status
+}
+
+func (m *stubHarnessOptimizationRunnerManager) Prepare(_ context.Context, req optimization.PrepareRequest) (optimization.Status, error) {
+	if m == nil {
+		return optimization.Status{}, fmt.Errorf("stub manager is nil")
+	}
+	m.prepareRequests = append(m.prepareRequests, req)
+	if m.prepareErr != nil {
+		return m.status, m.prepareErr
+	}
+	m.status.RepoURL = strings.TrimSpace(req.RepoURL)
+	m.status.ResolvedRef = strings.TrimSpace(req.Ref)
+	if m.status.ResolvedRef == "" {
+		m.status.ResolvedRef = "HEAD"
+	}
+	m.status.BinaryReady = true
+	return m.status, nil
+}
+
+func (m *stubHarnessOptimizationRunnerManager) SetLastOptimizationRunID(id string) error {
+	if m == nil {
+		return fmt.Errorf("stub manager is nil")
+	}
+	m.lastRunID = strings.TrimSpace(id)
+	m.status.LastOptimizationRunID = m.lastRunID
+	return nil
+}
+
+func (m *stubHarnessOptimizationRunnerManager) RecordOptimizationEvent(id string, payload interface{}) error {
+	if m == nil {
+		return fmt.Errorf("stub manager is nil")
+	}
+	if m.recordErr != nil {
+		return m.recordErr
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return fmt.Errorf("id is required")
+	}
+	if m.records == nil {
+		m.records = make(map[string]optimization.OptimizationRunRecord)
+	}
+	record, err := cloneOptimizationRecordForTest(payload)
+	if err != nil {
+		return err
+	}
+	m.records[id] = record
+	return nil
+}
+
+func (m *stubHarnessOptimizationRunnerManager) GetOptimizationRun(_ context.Context, id string) (optimization.OptimizationRunRecord, error) {
+	if m == nil {
+		return nil, fmt.Errorf("stub manager is nil")
+	}
+	return m.recordForTest(strings.TrimSpace(id)), nil
+}
+
+func (m *stubHarnessOptimizationRunnerManager) ExecutePreparedRunnerACP(_ context.Context, prompt string) (optimization.RunnerExecutionResult, error) {
+	if m == nil {
+		return optimization.RunnerExecutionResult{}, fmt.Errorf("stub manager is nil")
+	}
+	m.executePrompts = append(m.executePrompts, strings.TrimSpace(prompt))
+	m.executedRefs = append(m.executedRefs, strings.TrimSpace(m.status.ResolvedRef))
+	return m.executeResult, m.executeErr
+}
+
+func (m *stubHarnessOptimizationRunnerManager) recordForTest(id string) optimization.OptimizationRunRecord {
+	if m == nil || len(m.records) == 0 {
+		return nil
+	}
+	record, ok := m.records[strings.TrimSpace(id)]
+	if !ok {
+		return nil
+	}
+	cloned, err := cloneOptimizationRecordForTest(record)
+	if err != nil {
+		return nil
+	}
+	return cloned
+}
+
+func cloneOptimizationRecordForTest(payload interface{}) (optimization.OptimizationRunRecord, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	var record optimization.OptimizationRunRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, err
+	}
+	return record, nil
 }
 
 func TestHarnessOptimizationTriggererSubmitsFollowupEvalRunForSkillCandidateResponse(t *testing.T) {

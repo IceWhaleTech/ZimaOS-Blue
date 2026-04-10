@@ -569,6 +569,141 @@ func TestServiceLintCategorizesKnowledgeIssuesAndMarksConflicts(t *testing.T) {
 	}
 }
 
+func TestServiceRepairConflictsSupersedesDuplicatePagesAndStabilizesLint(t *testing.T) {
+	repoRoot := t.TempDir()
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "README.md"),
+		"# Shared Topic\n\nBlue is the canonical answer.\n\nThis source carries more detail and supporting context.\n",
+	)
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "ARCHITECTURE.md"),
+		"# Shared Topic\n\nBlue is mentioned here too.\n",
+	)
+
+	svc := NewService(ServiceOptions{
+		WorkspaceDir: workspaceDir,
+		RepoRoot:     repoRoot,
+		Now: func() time.Time {
+			return time.Date(2026, 4, 5, 15, 0, 0, 0, time.UTC)
+		},
+	})
+
+	if _, err := svc.Compile(context.Background(), CompileRequest{}); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+
+	lintBefore, err := svc.Lint(context.Background(), LintRequest{})
+	if err != nil {
+		t.Fatalf("Lint() before repair error = %v", err)
+	}
+	assertLintIssueKind(t, lintBefore.Issues, IssueKindConflictingClaim)
+
+	repairReport, err := svc.RepairConflicts(context.Background(), RepairConflictsRequest{})
+	if err != nil {
+		t.Fatalf("RepairConflicts() error = %v", err)
+	}
+	if !containsString(pageSlugs(repairReport.CanonicalPages), "readme") {
+		t.Fatalf("canonical_pages = %+v, want readme", repairReport.CanonicalPages)
+	}
+	if !containsString(pageSlugs(repairReport.SupersededPages), "architecture") {
+		t.Fatalf("superseded_pages = %+v, want architecture", repairReport.SupersededPages)
+	}
+
+	canonicalPage, err := svc.GetPage(context.Background(), "readme")
+	if err != nil {
+		t.Fatalf("GetPage(readme) error = %v", err)
+	}
+	if canonicalPage.Status != KnowledgeStatusActive {
+		t.Fatalf("canonical status = %q, want %q", canonicalPage.Status, KnowledgeStatusActive)
+	}
+	if len(canonicalPage.ConflictsWith) != 0 {
+		t.Fatalf("canonical conflicts_with = %+v, want empty", canonicalPage.ConflictsWith)
+	}
+	if !containsString(canonicalPage.SourceRefs, "ARCHITECTURE.md") {
+		t.Fatalf("canonical source_refs = %+v, want merged ARCHITECTURE.md", canonicalPage.SourceRefs)
+	}
+
+	supersededPage, err := svc.GetPage(context.Background(), "architecture")
+	if err != nil {
+		t.Fatalf("GetPage(architecture) error = %v", err)
+	}
+	if supersededPage.Status != KnowledgeStatusSuperseded {
+		t.Fatalf("superseded status = %q, want %q", supersededPage.Status, KnowledgeStatusSuperseded)
+	}
+	if !containsString(supersededPage.SupersededBy, "readme") {
+		t.Fatalf("superseded_by = %+v, want readme", supersededPage.SupersededBy)
+	}
+	if len(supersededPage.ConflictsWith) != 0 {
+		t.Fatalf("superseded conflicts_with = %+v, want empty", supersededPage.ConflictsWith)
+	}
+
+	lintAfter, err := svc.Lint(context.Background(), LintRequest{})
+	if err != nil {
+		t.Fatalf("Lint() after repair error = %v", err)
+	}
+	for _, issue := range lintAfter.Issues {
+		if issue.Kind == IssueKindDuplicateTopic || issue.Kind == IssueKindConflictingClaim {
+			t.Fatalf("expected conflict issues cleared after repair, got %+v", lintAfter.Issues)
+		}
+	}
+}
+
+func TestServiceCreateJobRunsConflictRepair(t *testing.T) {
+	repoRoot := t.TempDir()
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "README.md"),
+		"# Shared Topic\n\nBlue is the canonical answer.\n\nThis source carries more detail and supporting context.\n",
+	)
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "ARCHITECTURE.md"),
+		"# Shared Topic\n\nBlue is mentioned here too.\n",
+	)
+
+	svc := NewService(ServiceOptions{
+		WorkspaceDir: workspaceDir,
+		RepoRoot:     repoRoot,
+		Now: func() time.Time {
+			return time.Date(2026, 4, 5, 16, 0, 0, 0, time.UTC)
+		},
+	})
+
+	if _, err := svc.Compile(context.Background(), CompileRequest{}); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if _, err := svc.Lint(context.Background(), LintRequest{}); err != nil {
+		t.Fatalf("Lint() error = %v", err)
+	}
+
+	job, err := svc.CreateJob(context.Background(), CreateJobRequest{Kind: JobKindRepairConflicts})
+	if err != nil {
+		t.Fatalf("CreateJob(repair_conflicts) error = %v", err)
+	}
+	waitForTerminalKnowledgeJob(t, svc, job.ID, 2*time.Second)
+
+	report, err := svc.GetReport(job.ID)
+	if err != nil {
+		t.Fatalf("GetReport() error = %v", err)
+	}
+	if report.Kind != JobKindRepairConflicts || report.Repair == nil {
+		t.Fatalf("report = %+v, want repair_conflicts report", report)
+	}
+	if len(report.Repair.CanonicalPages) == 0 || len(report.Repair.SupersededPages) == 0 {
+		t.Fatalf("repair report = %+v, want canonical and superseded pages", report.Repair)
+	}
+}
+
 func TestServiceListPagesRecoversMalformedCompiledPageDocument(t *testing.T) {
 	repoRoot := t.TempDir()
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")

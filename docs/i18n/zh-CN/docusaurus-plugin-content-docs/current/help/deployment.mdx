@@ -1,0 +1,98 @@
+---
+title: "部署"
+summary: "如何通过 GitHub Pages 发布文档站，以及当前仓库已经自动化了哪些步骤。"
+---
+
+# 部署
+
+ZimaOS Blue 的文档站当前按 **GitHub Pages + GitHub Actions** 的方式准备。
+
+## 仓库里已经具备的内容
+
+- Docusaurus 运行时文件全部放在 `docs/`
+- `docs/docusaurus.config.ts` 站点配置
+- `docs/sidebars.js` 与 `docs/plugins/remark-root-links.cjs`
+- 英文主文档与扩展后的简体中文镜像页
+- `docs/assets` 下的静态图片资源会被站点直接复用
+- 在 `docs/` 内完成本地构建校验
+- 文档相关改动在 `main` 上自动部署到 GitHub Pages
+
+## 推荐部署方式
+
+当前仓库的标准流程是：
+
+1. 打开仓库的 `Settings -> Pages`
+2. 把 `Build and deployment` 设置为 `GitHub Actions`
+3. 保持发布分支为 `main`
+4. 让 `.github/workflows/docs.yml` 负责构建和部署
+5. 后续按需绑定自定义域名
+
+## 为什么这里使用 Pages 官方工作流
+
+这里明确使用 GitHub Pages 官方推荐的三步动作来发布 `build`：
+
+- `actions/configure-pages`
+- `actions/upload-pages-artifact`
+- `actions/deploy-pages`
+
+这样部署链路完全保留在仓库里，便于审查、复现和后续维护。
+
+## GitHub Pages 依赖的目录组织
+
+这个仓库现在明确把整套文档站都收敛到 `docs/`：
+
+- Docusaurus 运行时配置文件放在 `docs/`
+- 真正发布的页面内容也来自同一个 `docs/`
+- 公共图片资源继续复用 `docs/assets`
+- `docs/plans` 和 `docs/results` 不在发布 include 列表里
+- 不再维护单独的 `docs-site/`
+
+这一点很关键，因为 `.github/workflows/docs.yml` 现在会在 `docs/` 下寻找 Docusaurus 配置、安装依赖，并把 `docs/build` 发布到 Pages。
+
+## 发布前检查
+
+在启用或重跑部署前，建议确认：
+
+- `cd docs && npm ci` 成功
+- `cd docs && npm run build` 成功
+- `cd docs && DOCUSAURUS_URL=https://IceWhaleTech.github.io DOCUSAURUS_BASE_URL=/ZimaOS-Blue/ npm run build` 成功
+- 仓库 `Settings -> Pages` 已设置为 `GitHub Actions`
+- Navbar 里的 GitHub、Releases、DeepWiki 链接正确
+- 默认分支包含最新文档内容
+
+## 本地校验
+
+```bash
+cd docs
+npm ci
+npm run build
+DOCUSAURUS_URL=https://IceWhaleTech.github.io DOCUSAURUS_BASE_URL=/ZimaOS-Blue/ npm run build
+```
+
+## 如果 Pages 打开后像 README 页面，或者直接 404
+
+这通常不是 `docs/` 内容写错，而是 GitHub Pages 根本没有发布 Docusaurus 构建产物。
+
+优先检查这几项：
+
+- 默认分支的 `docs/` 下存在 `docusaurus.config.ts`、`sidebars.js`、`plugins/remark-root-links.cjs`
+- `Settings -> Pages -> Build and deployment` 已切到 `GitHub Actions`
+- `Docs` 工作流在解析配置后，后续 `build` 和 `deploy` 没有被跳过
+- 最新部署完成后，再访问公开地址 `https://icewhaletech.github.io/ZimaOS-Blue/`
+
+## 建议 rollout 顺序
+
+- 先在仓库里启用 GitHub Pages
+- 合并文档改动到 `main`
+- 验证英文首页和 `/zh-CN/` 中文入口
+- 后续按需绑定生产域名
+- 域名稳定后，把 `README.md` 里的文档入口换成公开文档 URL
+
+## 日常文档更新建议
+
+当你新增页面、导航或功能说明时：
+
+1. 先跑 `cd docs && npm run build`
+2. 确认英文与简体中文导航在有镜像时保持一致
+3. 打开或更新 PR，让 CI 构建站点
+4. 合并到 `main` 后由 GitHub Pages 自动发布

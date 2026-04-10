@@ -66,10 +66,11 @@ type ServiceOptions struct {
 type JobKind string
 
 const (
-	JobKindIngest  JobKind = "ingest"
-	JobKindCompile JobKind = "compile"
-	JobKindLint    JobKind = "lint"
-	JobKindAnswer  JobKind = "answer"
+	JobKindIngest          JobKind = "ingest"
+	JobKindCompile         JobKind = "compile"
+	JobKindLint            JobKind = "lint"
+	JobKindAnswer          JobKind = "answer"
+	JobKindRepairConflicts JobKind = "repair_conflicts"
 )
 
 type JobStatus string
@@ -130,6 +131,7 @@ type CreateJobRequest struct {
 	Query         string   `json:"query,omitempty"`
 	Kind          JobKind  `json:"kind"`
 	TargetPaths   []string `json:"target_paths,omitempty"`
+	TargetSlugs   []string `json:"target_slugs,omitempty"`
 	PageSlug      string   `json:"page_slug,omitempty"`
 	ArchiveAnswer bool     `json:"archive_answer,omitempty"`
 	QueryScope    string   `json:"query_scope,omitempty"`
@@ -143,6 +145,11 @@ type CompileRequest struct {
 
 type LintRequest struct {
 	TargetPaths []string `json:"target_paths,omitempty"`
+	ProviderID  string   `json:"provider_id,omitempty"`
+}
+
+type RepairConflictsRequest struct {
+	TargetSlugs []string `json:"target_slugs,omitempty"`
 	ProviderID  string   `json:"provider_id,omitempty"`
 }
 
@@ -228,6 +235,14 @@ type KnowledgeLintReport struct {
 	FixedPaths  []string    `json:"fixed_paths,omitempty"`
 }
 
+type KnowledgeConflictRepairReport struct {
+	GeneratedAt     time.Time              `json:"generated_at"`
+	CanonicalPages  []KnowledgePageSummary `json:"canonical_pages,omitempty"`
+	SupersededPages []KnowledgePageSummary `json:"superseded_pages,omitempty"`
+	FixedPaths      []string               `json:"fixed_paths,omitempty"`
+	Lint            *KnowledgeLintReport   `json:"lint,omitempty"`
+}
+
 type KnowledgeCitation struct {
 	PageSlug   string   `json:"page_slug"`
 	Title      string   `json:"title"`
@@ -248,11 +263,12 @@ type KnowledgeAnswerReport struct {
 }
 
 type KnowledgeJobReport struct {
-	Kind    JobKind                 `json:"kind"`
-	Ingest  *KnowledgeIngestReport  `json:"ingest,omitempty"`
-	Compile *KnowledgeCompileReport `json:"compile,omitempty"`
-	Lint    *KnowledgeLintReport    `json:"lint,omitempty"`
-	Answer  *KnowledgeAnswerReport  `json:"answer,omitempty"`
+	Kind    JobKind                        `json:"kind"`
+	Ingest  *KnowledgeIngestReport         `json:"ingest,omitempty"`
+	Compile *KnowledgeCompileReport        `json:"compile,omitempty"`
+	Lint    *KnowledgeLintReport           `json:"lint,omitempty"`
+	Repair  *KnowledgeConflictRepairReport `json:"repair,omitempty"`
+	Answer  *KnowledgeAnswerReport         `json:"answer,omitempty"`
 }
 
 type KnowledgeJob struct {

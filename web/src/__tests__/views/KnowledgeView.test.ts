@@ -235,6 +235,9 @@ describe('KnowledgeView', () => {
     expect(vi.mocked(knowledgeApi.getPage)).toHaveBeenNthCalledWith(1, 'architecture')
     expect(wrapper.get('[data-testid="knowledge-ingest-button"]').text()).toContain('Ingest')
     expect(wrapper.get('[data-testid="knowledge-lint-button"]').text()).toContain('Lint')
+    expect(wrapper.get('[data-testid="knowledge-repair-conflicts-button"]').text()).toContain(
+      'Repair conflicts'
+    )
     expect(wrapper.find('[data-testid="knowledge-summary-value-pages"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="knowledge-panel-log"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="knowledge-schema-editor"]').exists()).toBe(false)
@@ -245,6 +248,9 @@ describe('KnowledgeView', () => {
 
     await wrapper.get('[data-testid="knowledge-lint-button"]').trigger('click')
     expect(runJobMock).toHaveBeenNthCalledWith(2, { kind: 'lint' })
+
+    await wrapper.get('[data-testid="knowledge-repair-conflicts-button"]').trigger('click')
+    expect(runJobMock).toHaveBeenNthCalledWith(3, { kind: 'repair_conflicts' })
 
     await wrapper.get('[data-testid="knowledge-maintenance-toggle"]').trigger('click')
     await flushPromises()
@@ -266,7 +272,7 @@ describe('KnowledgeView', () => {
     await wrapper.get('[data-testid="knowledge-query-scope"]').setValue('selected_sources')
     await wrapper.get('[data-testid="knowledge-query-button"]').trigger('click')
 
-    expect(runJobMock).toHaveBeenNthCalledWith(3, {
+    expect(runJobMock).toHaveBeenNthCalledWith(4, {
       kind: 'answer',
       query: 'How does Blue knowledge compilation work?',
       page_slug: 'architecture',
@@ -288,7 +294,40 @@ describe('KnowledgeView', () => {
     expect(zhCN.knowledge?.openSchema).toBe('打开结构定义')
     expect(zhCN.knowledge?.saveSchema).toBe('保存结构定义')
     expect(zhCN.knowledge?.active).toBe('当前')
+    expect(zhCN.knowledge?.repairConflicts).toBe('修复冲突')
     expect(zhTW.knowledge?.schemaTitle).toBe('結構定義')
     expect(zhTW.knowledge?.active).toBe('當前')
+    expect(zhTW.knowledge?.repairConflicts).toBe('修復衝突')
+  })
+
+  it('lets knowledge page groups collapse and expand independently', async () => {
+    const wrapper = mount(KnowledgeView, {
+      global: {
+        plugins: [i18n],
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="JSON.stringify(to)"><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const toggle = wrapper.get('[data-testid="knowledge-group-toggle-source_summary"]')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="knowledge-group-panel-source_summary"]').exists()).toBe(false)
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('[data-testid="knowledge-group-panel-source_summary"]').text()).toContain(
+      'Blue Knowledge'
+    )
+    expect(toggle.text()).toContain('2')
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('[data-testid="knowledge-group-panel-source_summary"]').exists()).toBe(false)
   })
 })

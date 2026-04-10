@@ -2,7 +2,7 @@ import api from './client'
 
 const KNOWLEDGE_BASE = '/knowledge'
 
-export type KnowledgeJobKind = 'ingest' | 'compile' | 'lint' | 'answer'
+export type KnowledgeJobKind = 'ingest' | 'compile' | 'lint' | 'answer' | 'repair_conflicts'
 export type KnowledgeConfidence = 'low' | 'medium' | 'high'
 export type KnowledgeStatus = 'active' | 'superseded' | 'conflicted'
 
@@ -55,6 +55,14 @@ export interface KnowledgeLintReport {
   fixed_paths?: string[]
 }
 
+export interface KnowledgeConflictRepairReport {
+  generated_at: string
+  canonical_pages?: KnowledgePageSummary[]
+  superseded_pages?: KnowledgePageSummary[]
+  fixed_paths?: string[]
+  lint?: KnowledgeLintReport | null
+}
+
 export interface KnowledgeCitation {
   page_slug: string
   title: string
@@ -96,6 +104,7 @@ export interface KnowledgeJobReport {
   ingest?: KnowledgeIngestReport | null
   compile?: KnowledgeCompileReport | null
   lint?: KnowledgeLintReport | null
+  repair?: KnowledgeConflictRepairReport | null
   answer?: KnowledgeAnswerReport | null
 }
 
@@ -123,6 +132,7 @@ export interface KnowledgeCreateJobRequest {
   provider_id?: string
   query?: string
   target_paths?: string[]
+  target_slugs?: string[]
   page_slug?: string
   archive_answer?: boolean
   query_scope?: 'all' | 'current_page' | 'selected_sources'

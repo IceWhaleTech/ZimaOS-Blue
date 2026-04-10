@@ -59,6 +59,49 @@ class StubBlueClient:
     def get_messages(self, conversation_id: str, timeout: float = 30.0):
         return list(self.messages.get(conversation_id, []))
 
+    def delete_conversation(self, conversation_id: str, timeout: float = 10.0):
+        self.messages.pop(conversation_id, None)
+
+
+class StubJudgeBlueClient(StubBlueClient):
+    def __init__(self, judge_responses):
+        super().__init__()
+        self.judge_responses = list(judge_responses)
+        self.deleted = []
+
+    def send_message(
+        self,
+        conversation_id: str,
+        message: str,
+        provider: str,
+        model: str,
+        timeout: float,
+        *,
+        web_search_enabled=None,
+        deep_research_enabled=None,
+    ):
+        payload = self.judge_responses[len(self.sent)]
+        self.sent.append(
+            (
+                conversation_id,
+                message,
+                provider,
+                model,
+                timeout,
+                web_search_enabled,
+                deep_research_enabled,
+            )
+        )
+        self.messages[conversation_id] = [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": payload},
+        ]
+        return {"id": f"msg-{len(self.sent)}", "content": payload}
+
+    def delete_conversation(self, conversation_id: str, timeout: float = 10.0):
+        self.deleted.append((conversation_id, timeout))
+        super().delete_conversation(conversation_id, timeout)
+
 
 class PinchBenchBlueRunnerTest(unittest.TestCase):
     def make_task(self):
@@ -332,6 +375,37 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
                 "toolName": "exec",
                 "content": [json.dumps({"stdout": "hello"})],
             },
+        )
+
+    def test_blue_judge_runner_retries_empty_object_response(self):
+        client = StubJudgeBlueClient(
+            [
+                "{}",
+                json.dumps({"scores": {"completion": 1.0}, "total": 0.9, "notes": "solid"}),
+            ]
+        )
+        judge = runner.BlueJudgeRunner(client, "pinchbench-fixed", "claude-sonnet-4.6")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = judge.run_prompt(
+                prompt="Judge this task output.",
+                workspace=Path(tmp_dir) / "judge-workspace",
+                timeout_seconds=30.0,
+            )
+
+        self.assertEqual(len(client.created), 2)
+        self.assertEqual(len(client.deleted), 2)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(
+            result["transcript"][-1]["message"]["content"],
+            [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {"scores": {"completion": 1.0}, "total": 0.9, "notes": "solid"}
+                    ),
+                }
+            ],
         )
 
 

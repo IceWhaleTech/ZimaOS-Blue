@@ -1,0 +1,58 @@
+---
+title: "Providers 与 Models"
+summary: "理解 Blue 当前的 Provider Pool、模型路由、验证与故障转移机制。"
+---
+
+# Providers 与 Models
+
+Blue 通过 Provider Pool 统一管理模型接入，而不是把供应商配置分散在各处。
+
+## Provider Pool 基础
+
+当前界面和服务端配置都支持：
+
+- 默认提供方
+- 多提供方排序路由
+- 健康检查
+- 故障转移与恢复控制
+- 可选的 provider racing
+- `cloud` / `local` 位置元数据
+- 提供方验证与模型刷新
+
+## 界面里会看到哪些 Provider
+
+- 内置 Provider
+- 平台型 Provider
+- 自定义 Provider
+- 试用型 Provider
+- 媒体相关 Provider
+
+## 自定义 Provider 能配置什么
+
+- 名称
+- Base URL
+- API Key
+- 路由优先级
+- API 格式
+- 位置元数据
+
+创建后还可以继续做验证、刷新模型、查看价格信息、限制可用模型。
+
+## 模型路由
+
+Blue 当前支持模型家族与回退策略，这意味着它可以：
+
+- 把请求模型名匹配到合适的 Provider 家族
+- 把流量路由到正确上游
+- 在配置允许时切到更稳妥或更便宜的回退模型
+
+## 为什么这很重要
+
+- 产品行为不再绑定单一供应商
+- 可以在延迟、成本、能力、可用性之间做权衡
+- 迁移模型或供应商时，不需要重做整套产品
+
+## 相关页面
+
+- [设置与 Provider Pool](/guides/settings-provider-pool)
+- [产品能力](/product/features)

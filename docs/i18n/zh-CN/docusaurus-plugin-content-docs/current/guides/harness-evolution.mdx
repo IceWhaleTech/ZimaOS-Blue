@@ -1,0 +1,162 @@
+---
+title: "Harness 与 Evolution"
+summary: "Harness 负责可追踪执行与评测，Evolution 负责基于证据比较、采用或回滚更好的技能与指令版本。"
+---
+
+# Harness 与 Evolution
+
+Blue 的自动化体系现在已经包含完整的可追踪执行与评测控制面。Harness 是底层持久化控制面，Evolution 是建立在这些证据之上的审阅与采纳界面。
+
+## Harness 现在管理什么
+
+- `eval`、`experiment`、`batch` 类型的 run group
+- `agent_task`、`research`、`subagent`、`workflow` 等 run kind
+- group items、重试、并发与 attempt 跟踪
+- datasets 与 dataset versions
+- eval specs 与 eval runs
+- scorecards、artifacts、reports、runtime traces
+- 审批与待答问题
+
+## 当前界面能做什么
+
+- 创建 dataset 和 dataset version
+- 在 `Datasets & versions` 区域导入当前仓库 bundle 或第三方 GitHub bundle
+- 在真正导入前先预览 bundle 的 case 数量和附带 eval specs
+- 创建带评分配置的 eval spec
+- 启动 eval run 并与 baseline 对比
+- 查看 group 状态、通过率、分数和失败提示
+- 打开 run report、artifacts 与 runtime evidence
+
+当前主要评分模式包括：
+
+- `rule`
+- `judge`
+- `hybrid`
+
+## 什么时候该用 Harness
+
+当你需要的不只是一次性运行时，就应该进入 Harness：
+
+- 想重复复用输入集
+- 需要通过阈值或 baseline
+- 需要 artifacts 和 trace 做复盘
+- 需要比较候选版本而不是凭感觉切换
+
+## Bundle dataset
+
+Harness 现在支持声明式 dataset bundle 格式：
+
+```text
+<bundle>/
+  dataset.yaml
+  versions/
+    <version>/
+      manifest.json
+      eval-specs/
+        *.yaml
+```
+
+如果你想在界面里手动预览并导入，可以走：
+
+- `Automation -> Harness -> Datasets & versions -> Import bundle`
+
+如果你想从终端主动触发，可以用：
+
+```bash
+blue harness dataset import --path harness/datasets/<bundle>
+
+blue harness dataset pull --source <github-tree-url>
+
+blue harness dataset pull \
+  --source <github-repo-url> \
+  --bundle-path <path>
+```
+
+这一阶段的 bundle 流程刻意保持手动和安全：
+
+- 一方 bundle 可以直接放在当前仓库的 `harness/datasets/<bundle>`
+- 第三方 bundle 只要遵守同样布局，也可以放在独立 GitHub 仓库
+- UI 会先预览选中的 bundle version，再执行导入
+- 导入后会冻结成普通的 dataset version 与 eval spec
+- 这一阶段不做后台同步，也不加载远端 scorer、plugin 或其他代码
+
+## Evolution 增加了什么
+
+Evolution 基于 Harness 证据帮助你管理技能和指令版本。当前实现已经覆盖：
+
+- skill revision 历史
+- skill evolution case
+- revision report 与指标变化
+- promote、rollback、optimize 操作
+- 来自 self-reflection 的指令提案
+- patch preview 与 approve / reject
+
+也就是说，Blue 不只是告诉你“有新版本”，而是告诉你“为什么它看起来更好，以及证据是什么”。
+
+## 现在什么会在 runtime 自动触发
+
+OpenSpace 式演进现在不再只靠手动 optimize 或 gate 失败。只要满足下面几个条件，Blue 就会直接产出 runtime-origin skill evolution case：
+
+- 这次运行命中了 `assets/skills/*/SKILL.md` 下的 built-in canonical skill
+- 运行进入终态
+- 这次运行本身不是 optimization child run
+
+当前 runtime 规则仍然保持保守：
+
+- failed / aborted 会进入 `fix` 型 runtime evolution intake
+- success 只有在 grounded lesson 重复达到 capture 阈值时，才会进入 `capture` 型 intake
+- runtime-origin case 仍然沿用同一条 candidate revision、follow-up eval、gate、lineage 和显式人工 promote 路径
+- 目前仍然不会自动 promote
+
+## Evolution 界面如何分层
+
+当前 Evolution 控制台按三条 review lane 拆开，这样执行证据、live 切换和指令审批不会混在一起：
+
+- `Skills`：审阅 canonical skill lineage、case evidence、comparison deltas、candidate diff patch、decision history、promote 和 rollback safety
+- `Runner`：查看最近一次 optimization run、optimized parts、source / follow-up eval 标识、runtime transcript、candidate diff，以及回跳 linked skill revision 的入口
+- `Instructions`：审阅 self-reflect 产出的指令提案，包括 `AGENTS.md` 和其他 instruction 文件，支持 patch preview 与显式 approve / reject
+
+这层拆分是刻意设计的。Runner 只负责解释“为什么会出现更好的候选”，并不会单独把 live skill 切过去。
+
+## UI 里怎么体现“更好的版本”
+
+当前控制台已经把运营者最关心的问题直接放进了 `Skills` lane：
+
+- 被 follow-up gate 判成 `accepted` 的 revision，就是当前可被视为“更好版本”的候选
+- 如果 linked eval report 已经存在，scorecard 和 comparison 卡片会直接显示质量、验证、运行时间、token 与 evidence 信号
+- 对于 runtime-origin case，就算你还没点开更深的 eval report，也能先看到 source run、runtime duration、token usage，以及 runtime quality / verification hints
+- diff patch 与 lineage 面板会明确展示：canonical skill 会改什么、当前 live 是哪一版、backup 回滚链路又指向哪里
+
+真正的切换仍然保持显式人工确认：
+
+- `Promote` 只会在确认后把 accepted revision 写回 canonical skill 文件
+- `Rollback` 只有在 lineage guard 仍然匹配时才允许恢复 backup revision
+- 如果 canonical 文件哈希已经变化，promote 会被判定为 stale 并拒绝覆盖，而不是静默覆盖更新版本
+
+## 决策边界与安全闸
+
+Evolution 的目标是“证据足够丰富，但 live 切换路径保持保守”：
+
+- follow-up selector / execution / budget gate 会先决定 skill candidate 是 `accepted` 还是 `rejected`
+- promote 和 rollback 都发生在 `Skills` lane，而不是 `Runner` lane
+- `AGENTS.md` 始终保持显式人工审批，即使 intake 信号来自 grounded self-reflect 或 runner evidence
+- promote 前会校验当前 canonical 文件哈希是否仍等于 revision 的 base hash；如果 candidate 已 stale，会拒绝覆盖，而不是静默写入
+- rollback 通过 backup-derived revision 恢复，同时仍保留完整 decision trail，而不是直接篡改历史
+- decision history 会记录 promote / rollback 结果，便于运营者回看是谁、在什么时间、基于哪份 linked evidence 做了切换
+
+## 推荐工作流
+
+1. 准备或导入 dataset
+2. 定义 eval spec 与评分方式
+3. 运行候选版本
+4. 与 baseline 对比，或者让 runtime 触发 follow-up optimization run
+5. 在 `Runner` 或 `Skills` 里审阅报告、artifact、follow-up gate 结果与 linked evidence
+6. 打开 linked skill revision，在 `Skills` 里检查 diff、metrics 与 decision history
+7. 如果经验应写进 `AGENTS.md` 或其他 instruction 文件，就转到 `Instructions` 做 approve / reject
+8. 最后决定 promote 还是 rollback
+
+## 相关页面
+
+- [自动化](/guides/automation)
+- [扩展中心](/guides/extensions)
+- [管理与运维](/guides/admin-operations)

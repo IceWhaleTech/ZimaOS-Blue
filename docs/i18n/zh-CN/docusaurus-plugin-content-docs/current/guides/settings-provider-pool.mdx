@@ -1,0 +1,197 @@
+---
+title: "设置与 Provider Pool"
+summary: "Blue 现在的设置页已经覆盖运行时行为、Provider 路由、外部代理、记忆与恢复。"
+---
+
+# 设置与 Provider Pool
+
+Blue 的设置页已经不是简单偏好面板，而是当前最核心的运维入口之一。
+
+## 当前设置页包含什么
+
+Web 应用现在把设置分成五个标签：
+
+- `General`：语言、主题、设备行为、网络入口、更新
+- `LLM`：Provider Pool、模型路由、外部代理
+- `Proxy`：请求路由辅助能力与轻量代理行为
+- `Speech`：语音输入、输出与语音链路偏好
+- `User Data`：记忆、导出、备份、恢复
+
+## Provider Pool 能做什么
+
+当前 Provider Pool 已经是模型接入的统一控制面。你可以：
+
+- 按内置、平台、自定义、试用、媒体等分类查看提供方
+- 选择默认提供方
+- 通过拖拽排序调整路由优先级
+- 在正式放量前先验证提供方
+- 刷新模型列表
+- 查看价格或能力元数据
+
+## 自定义 Provider
+
+当前自定义 Provider 流程支持：
+
+- 名称
+- Base URL
+- API Key
+- 路由优先级
+- API 兼容格式，如 `auto`、`openai`、`responses`、`anthropic`、`google`
+- `cloud` 或 `local` 位置元数据
+
+这让 Blue 可以同时接云端 API、本地网关和兼容层，而不用改上层产品逻辑。
+
+## 最小自定义 Provider 准备清单
+
+在点击 `Add provider` 前，建议先准备好这些最小信息：
+
+- Provider 显示名称
+- 可访问的 Base URL 或 endpoint
+- API Key 或 bearer token
+- Blue 应该使用的兼容格式，例如 `openai`、`responses`、`anthropic`、`google`
+- 这个 endpoint 应该标记成 `cloud` 还是 `local`
+- 如果你准备限制模型，再提前列出允许的精确模型名
+
+一个简单的运维准备单可以长这样：
+
+```text
+名称: OpenAI Prod
+Base URL: https://api.openai.com
+API key: <secret>
+格式: responses
+位置: cloud
+Allowed models: gpt-4.1, gpt-4o-mini
+```
+
+如果你更偏向 config-first 部署，仓库自带的示例配置已经给出了最小路由形态：
+
+```yaml
+proxy:
+  routing:
+    default_provider: "openai"
+    providers:
+      - name: "openai"
+        endpoint: "https://api.openai.com"
+        api_key: "${OPENAI_API_KEY}"
+        priority: 1
+        enabled: true
+        health_check: "/v1/models"
+```
+
+设置页里的 Provider Pool 会比这段最小配置更丰富，还会包含兼容格式、位置元数据、验证结果和 allowed-model 控制等状态。
+
+## 模型与路由控制
+
+Provider 接入后，你还可以继续管理：
+
+- Allowed models
+- Provider 验证结果
+- 模型目录刷新
+- IDE 或运行时发现辅助能力
+
+模型家族、回退和故障转移策略请继续看 [Providers and Models](/guides/providers-models)。
+
+## 外部代理
+
+设置页还支持外部代理配置。当前实现已经覆盖：
+
+- ACP 与 A2A 两类 profile
+- 内置或模板 profile
+- ACP 的命令、工作目录、环境变量覆盖
+- 远程 profile 的 endpoint 与 headers
+- 凭证提供方和认证方式绑定
+- Verify 与 health check
+
+如果你希望 Blue 协调外部 coding agent、research agent 或其他运行时，这就是当前入口。
+
+Blue 现在也已经把这条能力真正做成了外部代理控制面，而不只是配置页。实际意味着：
+
+- Web 设置页可以管理 external agent profiles
+- 服务端可以创建、发消息、取消、关闭并流式订阅 external agent sessions
+- 终端里也可以通过 `blue agent-sessions` 操作同一套能力
+
+### ACP 默认命令
+
+Blue 现在把内置 ACP 模板默认成 binary-first：
+
+- Claude：`claude-agent-acp`
+- Codex：`codex-acp`
+- Gemini：`gemini --acp`
+
+这意味着：
+
+- 如果适配器 binary 已经在 `PATH` 上，Blue 会直接执行它
+- 对 Codex 来说，这很适合 release 二进制或其他直接安装方式
+- 对 Gemini 来说，CLI 本身就已经通过 `gemini --acp` 暴露 ACP 模式
+- 对 Claude 和 Codex 来说，如果本地 binary 不存在，Blue 仍保留原来的 npm fallback
+
+当前 fallback 行为：
+
+- `claude-agent-acp` 会回退到 `npx -y @zed-industries/claude-agent-acp`
+- `codex-acp` 会回退到 `npx @zed-industries/codex-acp`
+
+实际运维上，这表示你可以优先使用直接下载的 binary 或全局安装命令，同时继续兼容历史的 npm 安装方式。
+
+## 把 Agentcore Runner 作为面向 Blue 的 ACP / A2A bridge
+
+如果你希望把对外协议边界放在 `agentcore-runner` 上，当前仓库已经可以直接这么做。
+
+先在 `server` 模块里构建 runner：
+
+```bash
+cd server
+go build ./cmd/agentcore-runner
+```
+
+以 ACP 模式启动，并把上游指向 Blue：
+
+```bash
+./agentcore-runner acp --blue-url http://127.0.0.1:18080
+```
+
+以 A2A 模式启动，对外暴露一个由 Blue 驱动的 HTTP 端点：
+
+```bash
+./agentcore-runner a2a --listen 127.0.0.1:7788 --blue-url http://127.0.0.1:18080
+```
+
+如果你的 Blue 部署还需要额外 header，例如 bearer token，可以追加一个或多个 `--blue-header`：
+
+```bash
+./agentcore-runner acp \
+  --blue-url http://127.0.0.1:18080 \
+  --blue-header "Authorization=Bearer <token>"
+```
+
+当前 bridge 的行为是：
+
+- 第一条 prompt 会创建 Blue conversation，后续继续复用
+- Blue 上游的流式 delta 会转发成 ACP `session/update` 或 A2A `message/stream`
+- cancel 会继续转发给 Blue 的 conversation cancel 接口
+- 如果不传 `--blue-url`，runner 仍保持默认本地 stub 行为，方便测试和 harness 流程
+
+当你希望 Blue 继续作为真正的会话运行时，但对接方需要的是 ACP 进程入口或 A2A HTTP 端点时，这种落法最合适。
+
+## 语音、记忆与恢复
+
+设置页同时收纳了很多 day-two 能力：
+
+- 语音偏好
+- 记忆召回模式
+- 用户数据导出
+- 备份、恢复、删除
+
+## 推荐操作顺序
+
+1. 完成安装并进入 Web 界面
+2. 配置并验证要使用的 Provider
+3. 视需要限制可用模型
+4. 添加 Blue 需要协同的外部代理
+5. 再设置语音、记忆和备份策略
+
+## 相关页面
+
+- [Providers and Models](/guides/providers-models)
+- [Automation](/guides/automation)
+- [Harness 与 Evolution](/guides/harness-evolution)
+- [管理与运维](/guides/admin-operations)

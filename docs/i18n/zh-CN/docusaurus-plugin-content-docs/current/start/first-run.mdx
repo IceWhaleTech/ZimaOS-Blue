@@ -1,0 +1,100 @@
+---
+title: "首次运行"
+summary: "第一次启动 Blue 时该怎么进入、理解 preview mode、接入一个 provider，并完成首条成功响应。"
+---
+
+# 首次运行
+
+如果你已经完成安装，这一页就是最快的首跑路径。
+
+## 1. 选择启动方式
+
+### 桌面应用
+
+如果你安装的是桌面应用，直接打开应用，然后继续下面的 Web 界面步骤。
+
+### 源码方式，生产风格启动
+
+在仓库根目录运行：
+
+```bash
+sh build.sh
+```
+
+这会走默认的 `prd` 流程，打包 Web 资源、构建服务端，并在 `http://localhost` 启动 Blue。
+
+### 源码方式，开发风格启动
+
+在仓库根目录运行：
+
+```bash
+./build.sh start
+```
+
+这会把后端启动在 `http://localhost`，同时把 Vite 前端启动在 `http://localhost:3000`。
+
+## 2. 了解默认本地地址
+
+仓库里的示例配置默认是：
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 80
+```
+
+Blue 会把这个启动地址归一成适合本地访问的 `http://localhost`。
+
+如果本机 `80` 端口已经被占用，可以新建一个 `config.yaml` 改成别的端口：
+
+```yaml
+server:
+  host: "0.0.0.0"
+  port: 8080
+```
+
+Blue 会依次查找 `./config.yaml`、`./config/config.yaml`、`/etc/zimaos-blue/config.yaml` 和 `~/.zimaos-blue/config.yaml`。如果你不想走默认查找路径，也可以用 `blue --config /path/to/config.yaml`。
+
+## 3. 理解全新实例会发生什么
+
+如果当前数据目录里还没有任何用户，Blue 会自动进入 `preview` mode。这个首次运行模式会提供：
+
+- 临时 preview 访问
+- 空聊天页里的 starter questions
+- 创建首个管理员账号的 upgrade 流程
+
+一旦首个用户被创建，同一份数据目录就会切到 `normal` mode，这个实例也不再提供 preview。
+
+## 4. 完成最小运维配置
+
+1. 打开 Web 界面。
+2. 如果当前是 preview mode，可以先体验一下，然后通过 upgrade 流程创建首个管理员账号。
+3. 打开 `Settings -> LLM`。
+4. 添加或验证一个你真的要使用的 provider。
+5. 选择默认 provider，必要时再限制 allowed models。
+
+## 5. 跑一次首条 smoke test
+
+可以先发一条很短的消息，例如：
+
+`用一段话总结一下 ZimaOS Blue 是什么。`
+
+一次健康的首跑结果通常应该包含：
+
+- UI 能正常打开
+- 登录或 preview 访问正常
+- 至少有一个 provider 验证成功
+- 第一条聊天响应成功返回
+
+## 6. 如果被卡住了
+
+- Provider 或模型问题：看 [设置与 Provider Pool](/guides/settings-provider-pool)
+- 登录、preview、首个管理员或认证提供方问题：看 [身份与访问](/guides/identity-access)
+- 通用启动、路由或访问问题：看 [故障排查](/help/troubleshooting)
+
+## 下一步看什么
+
+- [快速开始](/start/quick-start)
+- [设置与 Provider Pool](/guides/settings-provider-pool)
+- [Providers 与 Models](/guides/providers-models)
+- [身份与访问](/guides/identity-access)

@@ -76,6 +76,30 @@ func (h *SettingsHandler) GetExperimentalAgentcoreRunnerRef() string {
 	return normalizeAgentcoreRunnerRef(h.settings.ExperimentalAgentcoreRunnerRef)
 }
 
+func (h *SettingsHandler) ResolveExperimentalAgentcoreRunnerRef(ctx context.Context, conversationID string) string {
+	fallback := h.GetExperimentalAgentcoreRunnerRef()
+	conversationID = strings.TrimSpace(conversationID)
+	if conversationID == "" {
+		return fallback
+	}
+
+	h.mu.RLock()
+	chatHandler := h.chatHandler
+	h.mu.RUnlock()
+	if chatHandler == nil {
+		return fallback
+	}
+
+	state, err := chatHandler.getConversationCommandState(ctx, conversationID)
+	if err != nil {
+		return fallback
+	}
+	if ref := strings.TrimSpace(state.AgentcoreRunnerRef); ref != "" {
+		return normalizeAgentcoreRunnerRef(ref)
+	}
+	return fallback
+}
+
 func (h *SettingsHandler) GetAgentcoreRunnerStatus(c echo.Context) error {
 	status, err := h.agentcoreRunnerStatus(c.Request().Context())
 	if err != nil {

@@ -71,10 +71,15 @@ describe('agentcore runner locale coverage', () => {
         `${localeKey} should override settings.agentcoreRunner.refLabel`
       ).toBe('string')
       expect(
+        typeof override?.defaultBranchLabel,
+        `${localeKey} should override settings.agentcoreRunner.defaultBranchLabel`
+      ).toBe('string')
+      expect(
         typeof override?.mobileHint,
         `${localeKey} should override settings.agentcoreRunner.mobileHint`
       ).toBe('string')
       expect(String(override?.refLabel).trim().length).toBeGreaterThan(0)
+      expect(String(override?.defaultBranchLabel).trim().length).toBeGreaterThan(0)
       expect(String(override?.mobileHint).trim().length).toBeGreaterThan(0)
     }
   })

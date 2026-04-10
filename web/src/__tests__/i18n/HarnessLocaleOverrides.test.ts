@@ -62,6 +62,9 @@ const requiredPaths = [
   'knowledge.askTitle',
   'knowledge.askHint',
   'knowledge.archiveAnswer',
+  'knowledge.repairConflicts',
+  'knowledge.repairConflictsStarted',
+  'knowledge.repairConflictsComplete',
   'evolution.title',
   'evolution.subtitle',
   'evolution.tabs.knowledge',
@@ -183,6 +186,12 @@ const localizedOperatorPaths = [
   'harness.dataset.githubBundle',
   'harness.dataset.bundleSource',
   'harness.dataset.versionOverride',
+] as const
+
+const localizedKnowledgeRepairPaths = [
+  'knowledge.repairConflicts',
+  'knowledge.repairConflictsStarted',
+  'knowledge.repairConflictsComplete',
 ] as const
 
 const localizedWebTermLocales = [
@@ -336,6 +345,26 @@ describe('Harness locale coverage', () => {
 
       for (const path of localizedOperatorPaths) {
         expect(getPathValue(runtimeMessages, path)).not.toBe(getPathValue(enUSRuntimeMessages, path))
+      }
+    }
+  )
+
+  it.each(localizedBundleLocaleKeys)(
+    'localizes knowledge conflict repair copy for %s',
+    (locale) => {
+      const file = `${locale}.ts`
+      const mergedMessages = localeMessagesByFile.get(file)
+      expect(mergedMessages, `${file} should be loadable via import.meta.glob`).toBeTruthy()
+      const runtimeMessages = resolveRuntimeMessages(locale, mergedMessages as LocaleMessages)
+      const enUSRuntimeMessages = resolveRuntimeMessages(
+        'en-US',
+        localeMessagesByFile.get('en-US.ts') as LocaleMessages
+      )
+
+      for (const path of localizedKnowledgeRepairPaths) {
+        expect(getPathValue(runtimeMessages, path), `${file} should localize ${path}`).not.toBe(
+          getPathValue(enUSRuntimeMessages, path)
+        )
       }
     }
   )

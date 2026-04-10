@@ -34,9 +34,21 @@ const config: Config = {
     },
   },
 
+  clientModules: [require.resolve('./src/clientModules/localeRedirect.ts')],
+
   i18n: {
     defaultLocale: 'en',
-    locales: ['en'],
+    locales: ['en', 'zh-CN'],
+    localeConfigs: {
+      en: {
+        label: 'English',
+        htmlLang: 'en-US',
+      },
+      'zh-CN': {
+        label: '简体中文',
+        htmlLang: 'zh-CN',
+      },
+    },
   },
 
   presets: [
@@ -52,10 +64,10 @@ const config: Config = {
             'product/**/*.{md,mdx}',
             'guides/**/*.{md,mdx}',
             'help/**/*.{md,mdx}',
-            'zh-CN/**/*.{md,mdx}',
           ],
           sidebarPath: require.resolve('./sidebars.js'),
           editUrl: 'https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/docs/',
+          editLocalizedFiles: true,
           showLastUpdateAuthor: false,
           showLastUpdateTime: true,
           remarkPlugins: [rootLinkCompatPlugin],
@@ -78,15 +90,7 @@ const config: Config = {
       },
       items: [
         {
-          type: 'doc',
-          docId: 'index',
-          label: 'English',
-          position: 'left',
-        },
-        {
-          type: 'doc',
-          docId: 'zh-CN/index',
-          label: '中文',
+          type: 'localeDropdown',
           position: 'left',
         },
         {
@@ -113,12 +117,12 @@ const config: Config = {
           title: 'Docs',
           items: [
             {
-              label: 'English',
-              to: '/',
+              label: 'Get Started',
+              to: 'pathname:///start/getting-started',
             },
             {
-              label: '简体中文',
-              to: '/zh-CN/',
+              label: 'Docs Directory',
+              to: 'pathname:///start/docs-directory',
             },
           ],
         },

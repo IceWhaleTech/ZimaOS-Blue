@@ -18,6 +18,7 @@ import evolutionChineseOperatorBackfills from './evolution-chinese-operator-back
 import evolutionUILocaleBackfills from './evolution-ui-locale-backfills'
 import extensionsBrowseBackfills from './extensions-browse-backfills'
 import harnessGroupBackfills from './harness-group-backfills'
+import knowledgeConflictRepairBackfills from './knowledge-conflict-repair-backfills'
 import knowledgeGraphLocaleBackfills from './knowledge-graph-locale-backfills'
 import localeFollowupBackfills from './locale-followup-backfills'
 import { buildLocalePostMergeBackfill } from './locale-post-merge-backfills'
@@ -8984,7 +8985,10 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
           ),
           mergeLocaleNodes(
             mergeLocaleNodes(
-              (automationKnowledgeEvolutionBackfills[localeKey] ?? {}) as LocaleNode,
+              mergeLocaleNodes(
+                (automationKnowledgeEvolutionBackfills[localeKey] ?? {}) as LocaleNode,
+                (knowledgeConflictRepairBackfills[localeKey] ?? {}) as LocaleNode
+              ),
               (knowledgeGraphLocaleBackfills[localeKey] ?? {}) as LocaleNode
             ),
             (smallModelKnowledgeFixBackfills[localeKey] ?? {}) as LocaleNode
