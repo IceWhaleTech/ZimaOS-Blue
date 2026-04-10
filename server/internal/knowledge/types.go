@@ -187,6 +187,7 @@ type LintRequest struct {
 type RepairConflictsRequest struct {
 	TargetSlugs []string `json:"target_slugs,omitempty"`
 	ProviderID  string   `json:"provider_id,omitempty"`
+	onProgress  func(progress int, stage string, detail string)
 }
 
 type AnswerRequest struct {
@@ -317,6 +318,7 @@ type KnowledgeJob struct {
 	Status      JobStatus           `json:"status"`
 	Progress    int                 `json:"progress"`
 	Stage       string              `json:"stage,omitempty"`
+	Detail      string              `json:"detail,omitempty"`
 	Error       string              `json:"error,omitempty"`
 	CreatedAt   time.Time           `json:"created_at"`
 	UpdatedAt   time.Time           `json:"updated_at"`
@@ -333,6 +335,7 @@ type KnowledgeJobSummary struct {
 	Status     JobStatus `json:"status"`
 	Progress   int       `json:"progress"`
 	Stage      string    `json:"stage,omitempty"`
+	Detail     string    `json:"detail,omitempty"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 

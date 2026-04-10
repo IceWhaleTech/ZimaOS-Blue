@@ -12,6 +12,13 @@ const routeState = {
 const routerReplace = vi.fn()
 
 const runJobMock = vi.fn()
+const maintenanceCurrentJob = ref<any>(null)
+const maintenanceLatestReport = ref(null)
+const maintenanceIsRunning = ref(false)
+const queryCurrentJob = ref<any>(null)
+const queryLatestReport = ref(null)
+const queryIsRunning = ref(false)
+let useKnowledgeJobsCallCount = 0
 
 vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<typeof import('vue-router')>()
@@ -35,14 +42,18 @@ vi.mock('@/components/KnowledgeManagerCard.vue', () => ({
 }))
 
 vi.mock('@/composables/useKnowledgeJobs', () => ({
-  useKnowledgeJobs: () => ({
-    currentJob: ref(null),
-    latestReport: ref(null),
-    isRunning: ref(false),
-    runJob: runJobMock,
-    hydrateJob: vi.fn(),
-    hydrateReport: vi.fn(),
-  }),
+  useKnowledgeJobs: () => {
+    useKnowledgeJobsCallCount += 1
+    const isMaintenance = useKnowledgeJobsCallCount % 2 === 1
+    return {
+      currentJob: isMaintenance ? maintenanceCurrentJob : queryCurrentJob,
+      latestReport: isMaintenance ? maintenanceLatestReport : queryLatestReport,
+      isRunning: isMaintenance ? maintenanceIsRunning : queryIsRunning,
+      runJob: runJobMock,
+      hydrateJob: vi.fn(),
+      hydrateReport: vi.fn(),
+    }
+  },
 }))
 
 vi.mock('@/api/knowledge', () => ({
@@ -67,6 +78,13 @@ describe('KnowledgeView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     routeState.query = {}
+    useKnowledgeJobsCallCount = 0
+    maintenanceCurrentJob.value = null
+    maintenanceLatestReport.value = null
+    maintenanceIsRunning.value = false
+    queryCurrentJob.value = null
+    queryLatestReport.value = null
+    queryIsRunning.value = false
 
     vi.mocked(knowledgeApi.listPages).mockResolvedValue({
       data: [
@@ -329,5 +347,38 @@ describe('KnowledgeView', () => {
     await toggle.trigger('click')
     expect(toggle.attributes('aria-expanded')).toBe('false')
     expect(wrapper.find('[data-testid="knowledge-group-panel-source_summary"]').exists()).toBe(false)
+  })
+
+  it('shows live conflict repair progress details while the repair job is running', async () => {
+    maintenanceCurrentJob.value = {
+      id: 'job-repair',
+      job_id: 'job-repair',
+      kind: 'repair_conflicts',
+      status: 'running',
+      progress: 42,
+      stage: 'resolve_group',
+      detail: 'architecture, readme',
+      updated_at: '2026-04-05T12:01:00Z',
+      created_at: '2026-04-05T12:00:00Z',
+    }
+    maintenanceIsRunning.value = true
+
+    const wrapper = mount(KnowledgeView, {
+      global: {
+        plugins: [i18n],
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="JSON.stringify(to)"><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const progressCard = wrapper.get('[data-testid="knowledge-repair-progress"]')
+    expect(progressCard.text()).toContain('42%')
+    expect(progressCard.text()).toContain('architecture, readme')
   })
 })

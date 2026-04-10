@@ -118,6 +118,49 @@ class LaggyJudgeBlueClient(StubJudgeBlueClient):
         return messages
 
 
+class LaggyExecutionTransportErrorBlueClient(StubBlueClient):
+    def __init__(self, hidden_reads: int = 2):
+        super().__init__()
+        self.hidden_reads = hidden_reads
+        self.read_counts = {}
+
+    def send_message(
+        self,
+        conversation_id: str,
+        message: str,
+        provider: str,
+        model: str,
+        timeout: float,
+        *,
+        web_search_enabled=None,
+        deep_research_enabled=None,
+    ):
+        self.sent.append(
+            (
+                conversation_id,
+                message,
+                provider,
+                model,
+                timeout,
+                web_search_enabled,
+                deep_research_enabled,
+            )
+        )
+        self.messages[conversation_id] = [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": f"stored:{message}"},
+        ]
+        raise runner.BlueAPIError("timeout: timed out")
+
+    def get_messages(self, conversation_id: str, timeout: float = 30.0):
+        count = self.read_counts.get(conversation_id, 0) + 1
+        self.read_counts[conversation_id] = count
+        messages = list(self.messages.get(conversation_id, []))
+        if count <= self.hidden_reads and len(messages) > 1:
+            return messages[:1]
+        return messages
+
+
 class PinchBenchBlueRunnerTest(unittest.TestCase):
     def make_task(self):
         return SimpleNamespace(
@@ -184,6 +227,37 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
         )
         self.assertTrue(
             all(item[4] >= runner.MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS for item in client.sent)
+        )
+
+    def test_execute_task_recovers_late_assistant_visibility_after_transport_timeout(self):
+        client = LaggyExecutionTransportErrorBlueClient(hidden_reads=2)
+        task = SimpleNamespace(
+            name="AI Image Generation",
+            task_id="task_13_image_gen",
+            timeout_seconds=30,
+            workspace_files=[],
+            prompt='Generate an image and save it as "robot_cafe.png".',
+            frontmatter={},
+        )
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = runner.execute_task(
+                client=client,
+                task=task,
+                pinchbench_dir=Path(tmp_dir),
+                workspace_dir=Path(tmp_dir) / "workspace",
+                provider="pinchbench-fixed",
+                model="claude-sonnet-4.6",
+                timeout_multiplier=1.0,
+                blue_audit_db_paths=[],
+            )
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn("Recovered completed transcript for session session_1 after transport error.", result["stderr"])
+        self.assertGreaterEqual(client.read_counts.get("conv-1", 0), 3)
+        self.assertEqual(
+            runner.extract_latest_assistant_text(result["transcript"]),
+            'stored:Generate an image and save it as "robot_cafe.png".',
         )
 
     def test_resolve_message_transport_timeout_adds_grace_beyond_remaining_budget(self):

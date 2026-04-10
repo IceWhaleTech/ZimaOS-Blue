@@ -106,6 +106,26 @@ function statusLabel(status: string): string {
   return tr(`knowledge.status.${status}`, status)
 }
 
+function repairJobStageLabel(stage?: string): string {
+  const value = String(stage || '').trim().toLowerCase()
+  switch (value) {
+    case 'queued':
+      return tr('knowledge.repairConflictsQueued', 'Queued for repair')
+    case 'running':
+      return tr('knowledge.repairConflictsRunning', 'Preparing repair')
+    case 'scan_conflicts':
+      return tr('knowledge.repairConflictsScan', 'Scanning conflict groups')
+    case 'resolve_group':
+      return tr('knowledge.repairConflictsResolving', 'Repairing current conflict group')
+    case 'write_pages':
+      return tr('knowledge.repairConflictsPersist', 'Writing repaired pages')
+    case 'rerun_lint':
+      return tr('knowledge.repairConflictsLint', 'Refreshing lint report')
+    default:
+      return value ? value.split('_').join(' ') : tr('knowledge.repairConflictsRunning', 'Preparing repair')
+  }
+}
+
 function confidenceLabel(confidence?: string): string {
   if (!confidence) return tr('knowledge.unknown', 'unknown')
   return tr(`knowledge.confidence.${confidence}`, confidence)
@@ -286,6 +306,20 @@ const gapIssueCount = computed(
 const latestIngestEntry = computed(
   () => recentActivity.value.find((entry) => entry.operation === 'ingest') || null
 )
+const activeRepairJob = computed(() => {
+  const job = maintenanceJobs.currentJob.value
+  if (!job || job.kind !== 'repair_conflicts') return null
+  const status = String(job.status || '').toLowerCase()
+  if (status === 'completed' || status === 'failed' || status === 'cancelled') return null
+  return job
+})
+const repairProgressPercent = computed(() => {
+  const next = Number(activeRepairJob.value?.progress ?? 0)
+  if (!Number.isFinite(next)) return 0
+  return Math.max(0, Math.min(100, Math.round(next)))
+})
+const repairProgressStage = computed(() => repairJobStageLabel(activeRepairJob.value?.stage))
+const repairProgressDetail = computed(() => String(activeRepairJob.value?.detail || '').trim())
 const selectedRefsForQuery = computed(() => {
   if (queryScope.value !== 'selected_sources') return undefined
   return selectedPage.value?.source_refs?.length ? [...selectedPage.value.source_refs] : undefined
@@ -422,6 +456,37 @@ onMounted(async () => {
       class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
     >
       {{ statusMessage }}
+    </div>
+
+    <div
+      v-if="activeRepairJob"
+      data-testid="knowledge-repair-progress"
+      class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-rose-900"
+    >
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div class="text-[11px] uppercase tracking-[0.2em] text-rose-600">
+            {{ tr('knowledge.repairConflictsProgress', 'Conflict repair in progress') }}
+          </div>
+          <div class="mt-2 text-sm font-semibold">
+            {{ repairProgressStage }}
+          </div>
+          <p v-if="repairProgressDetail" class="mt-1 text-sm text-rose-800">
+            {{ tr('knowledge.repairConflictsCurrent', 'Currently processing') }}:
+            {{ repairProgressDetail }}
+          </p>
+        </div>
+        <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
+          {{ repairProgressPercent }}%
+        </span>
+      </div>
+
+      <div class="mt-3 h-2 overflow-hidden rounded-full bg-rose-100">
+        <div
+          class="h-full rounded-full bg-rose-500 transition-[width] duration-300"
+          :style="{ width: `${repairProgressPercent}%` }"
+        />
+      </div>
     </div>
 
     <div

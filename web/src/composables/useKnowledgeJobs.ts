@@ -10,6 +10,7 @@ import {
 const KNOWLEDGE_JOB_EVENT_TYPES = [
   'knowledge.job_created',
   'knowledge.job_started',
+  'knowledge.job_progress',
   'knowledge.job_completed',
   'knowledge.job_failed',
   'knowledge.job_cancelled',
@@ -18,6 +19,7 @@ const KNOWLEDGE_JOB_EVENT_TYPES = [
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
 const EVENT_TO_STATUS: Record<string, string> = {
   'knowledge.job_started': 'running',
+  'knowledge.job_progress': 'running',
   'knowledge.job_completed': 'completed',
   'knowledge.job_failed': 'failed',
   'knowledge.job_cancelled': 'cancelled',
@@ -53,6 +55,7 @@ function normalizeJobSnapshot(snapshot: any): KnowledgeJob | null {
     status: normalizeString(snapshot.status) || 'pending',
     progress: normalizeNumber(snapshot.progress),
     stage: normalizeString(snapshot.stage),
+    detail: normalizeString(snapshot.detail) || undefined,
     updated_at: normalizeString(snapshot.updated_at) || new Date().toISOString(),
     created_at: normalizeString(snapshot.created_at) || new Date().toISOString(),
     completed_at: normalizeString(snapshot.completed_at) || undefined,

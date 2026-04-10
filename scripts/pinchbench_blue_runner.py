@@ -43,6 +43,7 @@ MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 120.0
 EMPTY_JUDGE_RESPONSE_MAX_RETRIES = 1
 JUDGE_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = 5.0
 JUDGE_MESSAGE_POLL_INTERVAL_SECONDS = 0.25
+EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = 120.0
 PINCHBENCH_TOOL_NAME_ALIASES = {
     "web_query": "web_search",
 }
@@ -1162,6 +1163,28 @@ def execute_task(
                 count += 1
         return count
 
+    def wait_for_recovered_assistant_transcript(
+        conversation_id: str,
+        *,
+        baseline_assistant_texts: int,
+        timeout_seconds: float,
+    ) -> List[Dict[str, Any]]:
+        deadline = time.time() + max(0.0, timeout_seconds)
+        latest_transcript: List[Dict[str, Any]] = []
+
+        while True:
+            remaining = max(0.0, deadline - time.time())
+            request_timeout = min(max(remaining, 0.1), 30.0)
+            latest_transcript = fetch_augmented_conversation_transcript(
+                conversation_id,
+                request_timeout,
+            )
+            if count_assistant_text_messages(latest_transcript) > baseline_assistant_texts:
+                return latest_transcript
+            if remaining <= 0:
+                return latest_transcript
+            time.sleep(min(JUDGE_MESSAGE_POLL_INTERVAL_SECONDS, remaining))
+
     def start_conversation(session_spec: Dict[str, Any], index: int, timeout: float) -> str:
         session_id = str(session_spec.get("id") or f"session_{index}").strip()
         title = task.name if index == 1 else f"{task.name} [{session_id}]"
@@ -1214,7 +1237,11 @@ def execute_task(
             except BlueAPIError as exc:
                 recovered_transcript: List[Dict[str, Any]] = []
                 try:
-                    recovered_transcript = fetch_augmented_conversation_transcript(conv_id, remaining)
+                    recovered_transcript = wait_for_recovered_assistant_transcript(
+                        conv_id,
+                        baseline_assistant_texts=assistant_text_counts.get(conv_id, 0),
+                        timeout_seconds=EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS,
+                    )
                 except BlueAPIError as fetch_exc:
                     stderr_chunks.append(
                         f"Failed to fetch conversation messages for {conv_id} after send failure: {fetch_exc}"

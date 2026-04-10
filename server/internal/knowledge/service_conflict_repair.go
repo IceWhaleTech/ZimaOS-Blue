@@ -7,6 +7,13 @@ import (
 )
 
 func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsRequest) (*KnowledgeConflictRepairReport, error) {
+	notifyProgress := func(progress int, stage string, detail string) {
+		if req.onProgress == nil {
+			return
+		}
+		req.onProgress(clampKnowledgeJobProgress(progress), strings.TrimSpace(stage), strings.TrimSpace(detail))
+	}
+
 	ctx = applyKnowledgeProviderRouting(ctx, s.resolveLintProviderID(req.ProviderID))
 	if err := s.ensureKnowledgeDirs(); err != nil {
 		return nil, err
@@ -17,7 +24,9 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 	}
 
 	groups := s.conflictRepairGroups(pages, req.TargetSlugs)
+	notifyProgress(15, "scan_conflicts", "")
 	if len(groups) == 0 {
+		notifyProgress(92, "rerun_lint", "")
 		lintReport, err := s.Lint(ctx, LintRequest{ProviderID: req.ProviderID})
 		if err != nil {
 			return nil, err
@@ -39,10 +48,11 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 	supersededSlugs := make([]string, 0)
 	fixedPaths := make([]string, 0, len(pages)+1)
 
-	for _, group := range groups {
+	for idx, group := range groups {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		notifyProgress(20+(idx*45)/len(groups), "resolve_group", strings.Join(uniqueStrings(group), ", "))
 		canonicalSlug := pickCanonicalConflictPage(group, bySlug)
 		canonical := bySlug[canonicalSlug]
 		if canonical == nil {
@@ -76,6 +86,7 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 		canonical.Summary.UpdatedAt = now
 	}
 
+	notifyProgress(78, "write_pages", "")
 	backlinks := computeBacklinks(pages)
 	for idx := range pages {
 		pages[idx].Summary.Backlinks = append([]string(nil), backlinks[pages[idx].Summary.Slug]...)
@@ -91,6 +102,7 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 	}
 	fixedPaths = append(fixedPaths, indexPath)
 
+	notifyProgress(92, "rerun_lint", "")
 	lintReport, err := s.Lint(ctx, LintRequest{ProviderID: req.ProviderID})
 	if err != nil {
 		return nil, err

@@ -654,6 +654,82 @@ func TestServiceRepairConflictsSupersedesDuplicatePagesAndStabilizesLint(t *test
 	}
 }
 
+func TestServiceRepairConflictsReportsProgressForCurrentGroup(t *testing.T) {
+	repoRoot := t.TempDir()
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "README.md"),
+		"# Shared Topic\n\nBlue is the canonical answer.\n\nThis source carries more detail and supporting context.\n",
+	)
+	writeKnowledgeTestFile(
+		t,
+		filepath.Join(repoRoot, "ARCHITECTURE.md"),
+		"# Shared Topic\n\nBlue is mentioned here too.\n",
+	)
+
+	svc := NewService(ServiceOptions{
+		WorkspaceDir: workspaceDir,
+		RepoRoot:     repoRoot,
+		Now: func() time.Time {
+			return time.Date(2026, 4, 5, 15, 30, 0, 0, time.UTC)
+		},
+	})
+
+	if _, err := svc.Compile(context.Background(), CompileRequest{}); err != nil {
+		t.Fatalf("Compile() error = %v", err)
+	}
+	if _, err := svc.Lint(context.Background(), LintRequest{}); err != nil {
+		t.Fatalf("Lint() error = %v", err)
+	}
+
+	type progressSnapshot struct {
+		progress int
+		stage    string
+		detail   string
+	}
+	snapshots := make([]progressSnapshot, 0)
+
+	_, err := svc.RepairConflicts(context.Background(), RepairConflictsRequest{
+		onProgress: func(progress int, stage string, detail string) {
+			snapshots = append(snapshots, progressSnapshot{
+				progress: progress,
+				stage:    stage,
+				detail:   detail,
+			})
+		},
+	})
+	if err != nil {
+		t.Fatalf("RepairConflicts() error = %v", err)
+	}
+	if len(snapshots) == 0 {
+		t.Fatal("expected repair progress snapshots")
+	}
+
+	foundCurrentGroup := false
+	for _, snapshot := range snapshots {
+		if snapshot.stage != "resolve_group" {
+			continue
+		}
+		foundCurrentGroup = true
+		if snapshot.progress <= 0 {
+			t.Fatalf("resolve_group progress = %d, want positive", snapshot.progress)
+		}
+		if !containsString(strings.Split(snapshot.detail, ", "), "readme") {
+			t.Fatalf("resolve_group detail = %q, want readme", snapshot.detail)
+		}
+		if !containsString(strings.Split(snapshot.detail, ", "), "architecture") {
+			t.Fatalf("resolve_group detail = %q, want architecture", snapshot.detail)
+		}
+	}
+	if !foundCurrentGroup {
+		t.Fatalf("expected resolve_group snapshot, got %+v", snapshots)
+	}
+}
+
 func TestServiceCreateJobRunsConflictRepair(t *testing.T) {
 	repoRoot := t.TempDir()
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")

@@ -820,6 +820,7 @@ func (s *Service) ListJobsForUser(userID, tenantID string, activeOnly bool) ([]K
 			Status:     job.Status,
 			Progress:   job.Progress,
 			Stage:      job.Stage,
+			Detail:     job.Detail,
 			UpdatedAt:  job.UpdatedAt,
 		})
 	}
@@ -963,6 +964,9 @@ func (s *Service) runJob(ctx context.Context, jobID string, req CreateJobRequest
 		repairReport, err = s.RepairConflicts(ctx, RepairConflictsRequest{
 			TargetSlugs: append([]string(nil), req.TargetSlugs...),
 			ProviderID:  req.ProviderID,
+			onProgress: func(progress int, stage string, detail string) {
+				s.updateJobProgress(jobID, progress, stage, detail)
+			},
 		})
 		if repairReport != nil {
 			report = &KnowledgeJobReport{Kind: JobKindRepairConflicts, Repair: repairReport, Lint: cloneLintReport(repairReport.Lint)}
@@ -1024,6 +1028,7 @@ func (s *Service) finishJob(jobID string, status JobStatus, report *KnowledgeJob
 	job.Status = status
 	job.Progress = 100
 	job.Stage = string(status)
+	job.Detail = ""
 	job.UpdatedAt = now
 	job.CompletedAt = &now
 	job.Report = cloneJobReport(report)
@@ -1045,6 +1050,25 @@ func (s *Service) updateJob(jobID string, mutate func(job *KnowledgeJob)) {
 	}
 	mutate(job)
 	job.UpdatedAt = s.now()
+}
+
+func clampKnowledgeJobProgress(progress int) int {
+	if progress < 0 {
+		return 0
+	}
+	if progress > 99 {
+		return 99
+	}
+	return progress
+}
+
+func (s *Service) updateJobProgress(jobID string, progress int, stage string, detail string) {
+	s.updateJob(jobID, func(job *KnowledgeJob) {
+		job.Progress = clampKnowledgeJobProgress(progress)
+		job.Stage = strings.TrimSpace(stage)
+		job.Detail = strings.TrimSpace(detail)
+	})
+	s.publishJobEventByID(jobID, "job_progress")
 }
 
 func (s *Service) publishJobEventByID(jobID string, eventType string) {

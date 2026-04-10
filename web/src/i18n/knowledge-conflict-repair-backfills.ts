@@ -6,7 +6,21 @@ type KnowledgeConflictRepairStrings = readonly [
   repairConflictsComplete: string,
 ]
 
-function buildKnowledgeConflictRepairBackfill(copy: KnowledgeConflictRepairStrings) {
+type KnowledgeConflictRepairExtras = Partial<{
+  repairConflictsProgress: string
+  repairConflictsCurrent: string
+  repairConflictsQueued: string
+  repairConflictsRunning: string
+  repairConflictsScan: string
+  repairConflictsResolving: string
+  repairConflictsPersist: string
+  repairConflictsLint: string
+}>
+
+function buildKnowledgeConflictRepairBackfill(
+  copy: KnowledgeConflictRepairStrings,
+  extras: KnowledgeConflictRepairExtras = {}
+) {
   const [repairConflicts, repairConflictsStarted, repairConflictsComplete] = copy
 
   return {
@@ -14,31 +28,64 @@ function buildKnowledgeConflictRepairBackfill(copy: KnowledgeConflictRepairStrin
       repairConflicts,
       repairConflictsStarted,
       repairConflictsComplete,
+      ...extras,
     },
   }
 }
 
 const knowledgeConflictRepairBackfills: Partial<Record<LocaleKey, object>> = {
-  'en-US': buildKnowledgeConflictRepairBackfill([
-    'Repair conflicts',
-    'Knowledge conflict repair started.',
-    'Knowledge conflicts repaired.',
-  ]),
-  'en-GB': buildKnowledgeConflictRepairBackfill([
-    'Repair conflicts',
-    'Knowledge conflict repair started.',
-    'Knowledge conflicts repaired.',
-  ]),
-  'zh-CN': buildKnowledgeConflictRepairBackfill([
-    '修复冲突',
-    '知识冲突修复已开始。',
-    '知识冲突已修复。',
-  ]),
-  'zh-TW': buildKnowledgeConflictRepairBackfill([
-    '修復衝突',
-    '知識衝突修復已開始。',
-    '知識衝突已修復。',
-  ]),
+  'en-US': buildKnowledgeConflictRepairBackfill(
+    ['Repair conflicts', 'Knowledge conflict repair started.', 'Knowledge conflicts repaired.'],
+    {
+      repairConflictsProgress: 'Conflict repair in progress',
+      repairConflictsCurrent: 'Currently processing',
+      repairConflictsQueued: 'Queued for repair',
+      repairConflictsRunning: 'Preparing repair',
+      repairConflictsScan: 'Scanning conflict groups',
+      repairConflictsResolving: 'Repairing current conflict group',
+      repairConflictsPersist: 'Writing repaired pages',
+      repairConflictsLint: 'Refreshing lint report',
+    }
+  ),
+  'en-GB': buildKnowledgeConflictRepairBackfill(
+    ['Repair conflicts', 'Knowledge conflict repair started.', 'Knowledge conflicts repaired.'],
+    {
+      repairConflictsProgress: 'Conflict repair in progress',
+      repairConflictsCurrent: 'Currently processing',
+      repairConflictsQueued: 'Queued for repair',
+      repairConflictsRunning: 'Preparing repair',
+      repairConflictsScan: 'Scanning conflict groups',
+      repairConflictsResolving: 'Repairing current conflict group',
+      repairConflictsPersist: 'Writing repaired pages',
+      repairConflictsLint: 'Refreshing lint report',
+    }
+  ),
+  'zh-CN': buildKnowledgeConflictRepairBackfill(
+    ['修复冲突', '知识冲突修复已开始。', '知识冲突已修复。'],
+    {
+      repairConflictsProgress: '冲突修复进行中',
+      repairConflictsCurrent: '当前处理',
+      repairConflictsQueued: '已加入修复队列',
+      repairConflictsRunning: '正在准备修复',
+      repairConflictsScan: '正在扫描冲突分组',
+      repairConflictsResolving: '正在修复当前冲突组',
+      repairConflictsPersist: '正在写回修复后的页面',
+      repairConflictsLint: '正在刷新 lint 报告',
+    }
+  ),
+  'zh-TW': buildKnowledgeConflictRepairBackfill(
+    ['修復衝突', '知識衝突修復已開始。', '知識衝突已修復。'],
+    {
+      repairConflictsProgress: '衝突修復進行中',
+      repairConflictsCurrent: '目前處理',
+      repairConflictsQueued: '已加入修復佇列',
+      repairConflictsRunning: '正在準備修復',
+      repairConflictsScan: '正在掃描衝突分組',
+      repairConflictsResolving: '正在修復目前衝突組',
+      repairConflictsPersist: '正在寫回修復後的頁面',
+      repairConflictsLint: '正在刷新 lint 報告',
+    }
+  ),
   'ja-JP': buildKnowledgeConflictRepairBackfill([
     '競合を修復',
     'ナレッジ競合の修復を開始しました。',

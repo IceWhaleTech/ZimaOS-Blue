@@ -117,6 +117,7 @@ export interface KnowledgeJobSummary {
   status: string
   progress: number
   stage?: string
+  detail?: string
   updated_at: string
 }
 
