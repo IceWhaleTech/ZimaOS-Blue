@@ -908,6 +908,9 @@ func calendarLocalized(lang, en, zh string) string {
 }
 
 func parseCalendarTimeInput(raw string, now time.Time, anchor *time.Time) (time.Time, error) {
+	if parsed, ok := parseStructuredCalendarTime(raw, now, anchor); ok {
+		return parsed, nil
+	}
 	if shouldPreferNaturalCalendarTime(raw, anchor) {
 		if parsed, ok := parseNaturalCalendarTime(raw, now, anchor); ok {
 			return parsed, nil
@@ -920,6 +923,31 @@ func parseCalendarTimeInput(raw string, now time.Time, anchor *time.Time) (time.
 		return parsed, nil
 	}
 	return time.Time{}, fmt.Errorf("invalid time format: %s", raw)
+}
+
+func parseStructuredCalendarTime(raw string, now time.Time, anchor *time.Time) (time.Time, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Time{}, false
+	}
+	loc := now.Location()
+	if anchor != nil && !anchor.IsZero() {
+		loc = anchor.Location()
+	}
+	for _, layout := range []string{
+		"2006-01-02",
+		"2006-01-02T15:04",
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04:05.999999999",
+		"2006-01-02 15:04",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04:05.999999999",
+	} {
+		if parsed, err := time.ParseInLocation(layout, trimmed, loc); err == nil {
+			return parsed, true
+		}
+	}
+	return time.Time{}, false
 }
 
 func shouldPreferNaturalCalendarTime(raw string, anchor *time.Time) bool {

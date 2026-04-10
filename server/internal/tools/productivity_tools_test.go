@@ -365,6 +365,66 @@ func TestCalendarTool_Execute_TodayReturnsEmptyAgendaForNewUser(t *testing.T) {
 	}
 }
 
+func TestCalendarTool_Execute_TodayAcceptsDateOnly(t *testing.T) {
+	now := time.Date(2026, time.April, 11, 9, 0, 0, 0, time.UTC)
+	db := openProductivityTestDB(t)
+
+	calendarSvc, err := NewLocalCalendarService(db)
+	if err != nil {
+		t.Fatalf("new calendar service: %v", err)
+	}
+	calendarSvc.SetNowFunc(func() time.Time { return now })
+
+	tool := NewCalendarTool(calendarSvc)
+	tool.SetNowFunc(func() time.Time { return now })
+	ctx := WithLang(WithUserID(context.Background(), "user-date-only"), "en-US")
+
+	resultAny, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "today",
+		"date":   "2026-04-13",
+	})
+	if err != nil {
+		t.Fatalf("today with date-only input: %v", err)
+	}
+	result := resultAny.(map[string]interface{})
+	if got := result["count"].(int); got != 0 {
+		t.Fatalf("count = %d, want 0", got)
+	}
+}
+
+func TestCalendarTool_Execute_CreateAcceptsISOLocalDateTimeWithoutTimezone(t *testing.T) {
+	now := time.Date(2026, time.April, 11, 9, 0, 0, 0, time.UTC)
+	db := openProductivityTestDB(t)
+
+	calendarSvc, err := NewLocalCalendarService(db)
+	if err != nil {
+		t.Fatalf("new calendar service: %v", err)
+	}
+	calendarSvc.SetNowFunc(func() time.Time { return now })
+
+	tool := NewCalendarTool(calendarSvc)
+	tool.SetNowFunc(func() time.Time { return now })
+	ctx := WithLang(WithUserID(context.Background(), "user-local-iso"), "en-US")
+
+	resultAny, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "create",
+		"title":  "Midnight sync",
+		"time":   "2026-04-13T00:00:00",
+		"end":    "2026-04-13T01:00:00",
+	})
+	if err != nil {
+		t.Fatalf("create with local iso datetime: %v", err)
+	}
+	result := resultAny.(map[string]interface{})
+	event := result["event"].(map[string]interface{})
+	if got := event["start_at"].(string); got != "2026-04-13T00:00:00Z" {
+		t.Fatalf("start_at = %q, want %q", got, "2026-04-13T00:00:00Z")
+	}
+	if got := event["end_at"].(string); got != "2026-04-13T01:00:00Z" {
+		t.Fatalf("end_at = %q, want %q", got, "2026-04-13T01:00:00Z")
+	}
+}
+
 func TestCalendarTool_Execute_CreateDoesNotBackfillDefaultFixtures(t *testing.T) {
 	now := time.Date(2026, time.March, 20, 9, 0, 0, 0, time.UTC)
 	db := openProductivityTestDB(t)
