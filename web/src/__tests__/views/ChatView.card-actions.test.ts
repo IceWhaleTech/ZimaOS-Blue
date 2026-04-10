@@ -1140,7 +1140,7 @@ describe('ChatView page-level card actions', () => {
     const label = select.element.closest('label')
 
     expect(optionLabels).toContain('Default')
-    expect(optionLabels).toContain('Preview')
+    expect(optionLabels).toContain('Baseline')
     expect(optionLabels).toContain('release/v2')
     expect(optionLabels).not.toContain('main')
     expect(optionLabels).not.toContain('0.10.39')

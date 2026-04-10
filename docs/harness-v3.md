@@ -467,6 +467,9 @@ blue harness dataset pull \
 blue harness dataset pull \
   --source https://github.com/example/harness-datasets \
   --bundle-path harness/datasets/demo-bundle
+
+blue harness dataset pull \
+  --source https://github.com/IceWhaleTech/ZimaOS-Blue
 ```
 
 The web UI now exposes the same manual flow from `Automation -> Harness -> Datasets & versions -> Import bundle`.

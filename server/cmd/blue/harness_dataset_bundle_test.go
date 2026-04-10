@@ -251,6 +251,54 @@ func TestLoadHarnessDatasetBundleFromGitHubRepoURLWithBundlePath(t *testing.T) {
 	}
 }
 
+func TestLoadHarnessDatasetBundleFromOfficialRepoURLDefaultsPinchBenchBundlePath(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	datasetYAML, manifestJSON, evalSpecYAML := harnessDatasetBundleFixtureContents()
+	oldClient := harnessDatasetBundleHTTPClient
+	harnessDatasetBundleHTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			var body string
+			switch {
+			case strings.Contains(req.URL.String(), "/main/harness/datasets/pinchbench/dataset.yaml"):
+				body = datasetYAML
+			case strings.Contains(req.URL.String(), "/main/harness/datasets/pinchbench/versions/v1/manifest.json"):
+				body = manifestJSON
+			case strings.Contains(req.URL.String(), "/main/harness/datasets/pinchbench/versions/v1/eval-specs/default.yaml"):
+				body = evalSpecYAML
+			default:
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	t.Cleanup(func() {
+		harnessDatasetBundleHTTPClient = oldClient
+	})
+
+	req, err := loadHarnessDatasetBundleFromGitHubSource("https://github.com/IceWhaleTech/ZimaOS-Blue", "", "")
+	if err != nil {
+		t.Fatalf("loadHarnessDatasetBundleFromGitHubSource: %v", err)
+	}
+	if req.SourceType != "dataset_bundle_github" {
+		t.Fatalf("source_type = %q, want dataset_bundle_github", req.SourceType)
+	}
+	if req.SourceRef != "https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench" {
+		t.Fatalf("source_ref = %q, want canonical pinchbench tree url", req.SourceRef)
+	}
+	if req.Dataset.Name != "demo-bundle" || req.Version.Version != "v1" {
+		t.Fatalf("request = %#v, want demo-bundle/v1", req)
+	}
+}
+
 func TestLoadHarnessDatasetBundleFromDirUsesRequestedVersionOverride(t *testing.T) {
 	bundleDir := writeHarnessDatasetBundleMultiVersionFixture(t, t.TempDir())
 

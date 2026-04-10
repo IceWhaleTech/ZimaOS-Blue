@@ -83,6 +83,56 @@ func TestLoadImportDatasetBundleRequestFromGitHubSourceUsesFallback(t *testing.T
 	}
 }
 
+func TestLoadImportDatasetBundleRequestFromOfficialRepoURLDefaultsPinchBenchBundlePath(t *testing.T) {
+	datasetYAML, manifestJSON, evalSpecYAML := testDatasetBundleFixtureContents()
+	oldClient := datasetBundleLoaderHTTPClient
+	datasetBundleLoaderHTTPClient = &http.Client{
+		Transport: datasetBundleRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+			var body string
+			switch {
+			case strings.Contains(req.URL.String(), "/main/harness/datasets/pinchbench/dataset.yaml"):
+				body = datasetYAML
+			case strings.Contains(req.URL.String(), "/main/harness/datasets/pinchbench/versions/v1/manifest.json"):
+				body = manifestJSON
+			case strings.Contains(req.URL.String(), "/main/harness/datasets/pinchbench/versions/v1/eval-specs/default.yaml"):
+				body = evalSpecYAML
+			default:
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Body:       io.NopCloser(strings.NewReader("not found")),
+					Header:     make(http.Header),
+				}, nil
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	t.Cleanup(func() {
+		datasetBundleLoaderHTTPClient = oldClient
+	})
+
+	req, err := loadImportDatasetBundleRequestFromGitHubSource(
+		"https://github.com/IceWhaleTech/ZimaOS-Blue",
+		"",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("loadImportDatasetBundleRequestFromGitHubSource: %v", err)
+	}
+	if req.SourceType != "dataset_bundle_github" {
+		t.Fatalf("source_type = %q, want dataset_bundle_github", req.SourceType)
+	}
+	if req.SourceRef != "https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench" {
+		t.Fatalf("source_ref = %q, want canonical pinchbench tree url", req.SourceRef)
+	}
+	if req.Version.Version != "v1" || len(req.EvalSpecs) != 1 || req.EvalSpecs[0].Name != "Default Demo Eval" {
+		t.Fatalf("request = %#v, want v1 with imported eval spec", req)
+	}
+}
+
 func TestHandler_ImportDatasetBundleFromLocalSource(t *testing.T) {
 	controller := newTestController(t)
 	handler := NewHandler(controller)

@@ -451,28 +451,62 @@ function nodeCircleStyle(node: KnowledgeGraphNode) {
 }
 
 function orbitOpacity(distance: number, disconnected = false) {
-  if (!activeFocusSlug.value) return 0
-  if (disconnected) return revealLayer.value >= 4 ? 0.08 : 0.015
-  if (distance === 1) return 0.16
-  if (distance === 2) return revealLayer.value >= 2 ? 0.1 : 0.03
-  if (distance === 3) return revealLayer.value >= 3 ? 0.07 : 0.02
-  return revealLayer.value >= 4 ? 0.05 : 0.015
+  const visibility = orbitVisibility(distance, disconnected)
+  if (visibility === 'hidden') return 0
+  if (visibility === 'soft') {
+    if (disconnected) return 0.025
+    if (distance <= 1) return 0.035
+    if (distance === 2) return 0.045
+    if (distance === 3) return 0.04
+    return 0.03
+  }
+  if (disconnected) return 0.06
+  if (distance <= 1) return 0.08
+  if (distance === 2) return 0.07
+  if (distance === 3) return 0.055
+  return 0.045
 }
 
 function orbitFillOpacity(distance: number, disconnected = false) {
-  if (!activeFocusSlug.value) return 0
-  if (disconnected) return revealLayer.value >= 4 ? 0.01 : 0.002
-  if (distance === 1) return 0.02
-  if (distance === 2) return revealLayer.value >= 2 ? 0.014 : 0.004
-  if (distance === 3) return revealLayer.value >= 3 ? 0.01 : 0.003
-  return revealLayer.value >= 4 ? 0.008 : 0.002
+  const visibility = orbitVisibility(distance, disconnected)
+  if (visibility === 'hidden') return 0
+  if (visibility === 'soft') {
+    if (disconnected) return 0.001
+    if (distance <= 1) return 0.002
+    if (distance === 2) return 0.003
+    if (distance === 3) return 0.002
+    return 0.0015
+  }
+  if (disconnected) return 0.004
+  if (distance <= 1) return 0.006
+  if (distance === 2) return 0.005
+  if (distance === 3) return 0.004
+  return 0.003
 }
 
 function orbitDasharray(distance: number, disconnected = false) {
   if (disconnected) return '5 11'
-  if (distance === 1) return '0'
-  if (distance === 2) return '6 10'
-  return '3 12'
+  if (distance === 1) return '2 18'
+  if (distance === 2) return '4 14'
+  return '3 16'
+}
+
+function orbitVisibility(
+  distance: number,
+  disconnected = false
+): 'hidden' | 'soft' | 'visible' {
+  if (!activeFocusSlug.value) return 'hidden'
+  if (revealLayer.value <= 1) return 'hidden'
+  if (revealLayer.value === 2) {
+    if (disconnected) return 'hidden'
+    return distance <= 2 ? 'soft' : 'hidden'
+  }
+  if (revealLayer.value === 3) {
+    if (disconnected) return 'hidden'
+    return distance <= 2 ? 'visible' : distance === 3 ? 'soft' : 'hidden'
+  }
+  if (disconnected) return 'soft'
+  return distance <= 3 ? 'visible' : 'soft'
 }
 
 function nextZoomStep(direction: 'in' | 'out') {

@@ -40,8 +40,9 @@ var (
 
 // skillsCmd represents the skills command
 var skillsCmd = &cobra.Command{
-	Use:   "skills",
-	Short: "Skill management",
+	Use:     "skills",
+	Aliases: []string{"skill"},
+	Short:   "Skill management",
 	Long: `Manage ZimaOS-Blue skills.
 
 Subcommands:

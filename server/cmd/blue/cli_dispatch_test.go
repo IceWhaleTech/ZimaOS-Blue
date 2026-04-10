@@ -132,6 +132,31 @@ func TestCLIDispatch_BrowserNavigateRoutesThroughIPC(t *testing.T) {
 	}
 }
 
+func TestCLIDispatch_SkillAliasFallsThroughToCobra(t *testing.T) {
+	oldRoundTrip := ipcRoundTripFunc
+	oldIPCExit := ipcExit
+	oldCLIExit := cliDispatchExit
+	oldJSONOutput := jsonOutput
+	defer func() {
+		ipcRoundTripFunc = oldRoundTrip
+		ipcExit = oldIPCExit
+		cliDispatchExit = oldCLIExit
+		jsonOutput = oldJSONOutput
+	}()
+
+	ipcRoundTripFunc = func(req *sockipc.Request) (*sockipc.Response, error) {
+		t.Fatalf("unexpected IPC request: %+v", req)
+		return nil, nil
+	}
+	ipcExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
+	cliDispatchExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
+
+	handled, exitCode, stdout := runCLIDispatchForTest([]string{"skill", "install", "humanizer"})
+	if handled {
+		t.Fatalf("expected cliDispatch to fall through to cobra, handled=true exitCode=%d stdout=%q", exitCode, stdout)
+	}
+}
+
 func runCLIDispatchForTest(args []string) (handled bool, exitCode int, stdout string) {
 	oldStdout := os.Stdout
 	r, w, err := os.Pipe()

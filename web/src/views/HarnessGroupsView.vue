@@ -233,10 +233,13 @@ const quickEvalForm = ref<QuickEvalFormState>({
   manifestText: defaultManifestExample,
 })
 
+const defaultFirstPartyPinchBenchBundleGitHubSource =
+  'https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench'
+
 const bundleImportForm = ref<DatasetBundleImportFormState>({
   sourceType: 'local',
   path: '',
-  source: '',
+  source: defaultFirstPartyPinchBenchBundleGitHubSource,
   bundlePath: '',
   version: '',
   makeActive: true,
@@ -2549,14 +2552,14 @@ onUnmounted(() => {
                         ref="bundleGitHubSourceInput"
                         v-model="bundleImportForm.source"
                         name="dataset-bundle-source"
-                        placeholder="https://github.com/owner/repo/tree/main/harness/datasets/demo-bundle"
+                        :placeholder="defaultFirstPartyPinchBenchBundleGitHubSource"
                         required
                       />
                       <small class="field-hint">
                         {{
                           tr(
                             'harness.dataset.bundleSourceHint',
-                            'Use either a GitHub tree URL that points at the bundle directory or a repo URL plus a bundle path below.'
+                            'The first-party PinchBench bundle is prefilled here. Replace it with another GitHub tree URL, or use a repo URL plus a bundle path below.'
                           )
                         }}
                       </small>

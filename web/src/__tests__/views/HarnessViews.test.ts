@@ -1095,6 +1095,97 @@ describe('Harness views', () => {
     expect(notificationSuccessMock).toHaveBeenCalledWith('Harness', 'Dataset bundle imported')
   })
 
+  it('prefills the GitHub bundle import card with the first-party pinchbench source', async () => {
+    const wrapper = await mountHarnessGroupsView()
+
+    await wrapper.get('[data-testid="harness-import-bundle-entry"]').trigger('click')
+    await flushPromises()
+
+    const githubButton = wrapper
+      .findAll('.segment-button')
+      .find((button) => button.text().trim() === 'GitHub bundle')
+
+    expect(githubButton).toBeTruthy()
+
+    await githubButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('input[name="dataset-bundle-source"]').element.value).toBe(
+      'https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench'
+    )
+    expect(wrapper.get('input[name="dataset-bundle-bundle-path"]').element.value).toBe('')
+  })
+
+  it('can preview and import the prefilled first-party pinchbench GitHub bundle without a bundle path override', async () => {
+    const wrapper = await mountHarnessGroupsView()
+
+    await wrapper.get('[data-testid="harness-import-bundle-entry"]').trigger('click')
+    await flushPromises()
+
+    const githubButton = wrapper
+      .findAll('.segment-button')
+      .find((button) => button.text().trim() === 'GitHub bundle')
+
+    expect(githubButton).toBeTruthy()
+
+    await githubButton!.trigger('click')
+    await flushPromises()
+
+    previewDatasetBundleFromSourceMock.mockResolvedValueOnce({
+      data: {
+        source_type: 'dataset_bundle_github',
+        source_ref: 'https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench',
+        dataset: {
+          name: 'pinchbench',
+          description: 'PinchBench harness bundle',
+          subject: 'pinchbench',
+          default_run_kind: 'agent_task',
+          default_profile: 'pinchbench',
+        },
+        version: {
+          version: 'v1',
+          item_count: 23,
+          manifest_sha256: 'pinchbench-preview-sha',
+          source_type: 'dataset_bundle_github',
+          source_ref:
+            'https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench',
+        },
+        eval_specs: [
+          {
+            name: 'PinchBench Eval',
+            subject: 'pinchbench',
+            run_kind: 'agent_task',
+            profile: 'pinchbench',
+            scoring: {
+              mode: 'hybrid',
+              pass_threshold: 0.7,
+            },
+          },
+        ],
+        make_active: true,
+      },
+    })
+
+    await wrapper.get('[data-testid="harness-bundle-preview-button"]').trigger('click')
+    await flushPromises()
+
+    expect(previewDatasetBundleFromSourceMock).toHaveBeenCalledWith({
+      source_type: 'github',
+      source: 'https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench',
+      make_active: true,
+    })
+
+    await wrapper.get('[data-testid="harness-bundle-import-form"]').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(importDatasetBundleFromSourceMock).toHaveBeenCalledWith({
+      source_type: 'github',
+      source: 'https://github.com/IceWhaleTech/ZimaOS-Blue/tree/main/harness/datasets/pinchbench',
+      make_active: true,
+    })
+    expect(notificationSuccessMock).toHaveBeenCalledWith('Harness', 'Dataset bundle imported')
+  })
+
   it('shows preview errors inline and clears them after bundle inputs change', async () => {
     previewDatasetBundleFromSourceMock.mockRejectedValueOnce(new Error('manifest is invalid'))
 

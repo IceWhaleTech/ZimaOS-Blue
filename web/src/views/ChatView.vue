@@ -302,10 +302,16 @@ function getAgentcoreRunnerDisplayTone(value: unknown): AgentcoreRunnerDisplayTo
   return isBuiltInAgentcoreRunnerValue(value) ? 'built-in' : 'agentcore'
 }
 
+function getAgentcoreRunnerDefaultBranchLabel(): string {
+  if (locale.value === 'zh-CN') return '基线'
+  if (locale.value === 'zh-TW') return '基線'
+  return 'Baseline'
+}
+
 function getAgentcoreRunnerDisplayLabel(value: unknown): string {
   const normalized = normalizeAgentcoreRunnerRefValue(value)
   if (isBuiltInAgentcoreRunnerValue(normalized)) return t('common.default', 'Default')
-  if (normalized === agentcoreRunnerRepoDefaultRef.value) return t('common.preview', 'Preview')
+  if (normalized === agentcoreRunnerRepoDefaultRef.value) return getAgentcoreRunnerDefaultBranchLabel()
   return normalized
 }
 

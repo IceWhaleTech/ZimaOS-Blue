@@ -77,6 +77,31 @@ var execAmbiguousShellToolNames = map[string]struct{}{
 	"rg":   {},
 }
 
+var execReservedBlueCLICommands = map[string]struct{}{
+	"agent-sessions":     {},
+	"audit":              {},
+	"completion":         {},
+	"complete-bootstrap": {},
+	"config":             {},
+	"context":            {},
+	"cron":               {},
+	"doctor":             {},
+	"exec":               {},
+	"gateway":            {},
+	"harness":            {},
+	"health":             {},
+	"help":               {},
+	"logs":               {},
+	"media":              {},
+	"models":             {},
+	"session":            {},
+	"sessions":           {},
+	"skill":              {},
+	"skills":             {},
+	"status":             {},
+	"version":            {},
+}
+
 // ExecTool implements the Tool interface for shell command execution.
 type ExecTool struct {
 	config        ExecConfig
@@ -143,6 +168,30 @@ func shouldBypassToolAutoForwardForShellCommand(firstWord, restArgs string) bool
 		return false
 	}
 	_, ok := execAmbiguousShellToolNames[strings.ToLower(strings.TrimSpace(firstWord))]
+	return ok
+}
+
+func blueCLICommandHead(command string) string {
+	trimmed := strings.TrimSpace(command)
+	if !strings.HasPrefix(trimmed, "blue ") {
+		return ""
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(trimmed, "blue "))
+	if rest == "" {
+		return ""
+	}
+	if idx := strings.IndexAny(rest, " \t"); idx >= 0 {
+		return strings.ToLower(strings.TrimSpace(rest[:idx]))
+	}
+	return strings.ToLower(strings.TrimSpace(rest))
+}
+
+func shouldBypassBlueSkillShortCircuit(command string) bool {
+	head := blueCLICommandHead(command)
+	if head == "" {
+		return false
+	}
+	_, ok := execReservedBlueCLICommands[head]
 	return ok
 }
 
@@ -384,6 +433,7 @@ func (t *ExecTool) Definition() ToolDefinition {
 // execResult is the JSON response returned to the LLM.
 type execResult struct {
 	SessionID   string            `json:"session_id"`
+	Command     string            `json:"command,omitempty"`
 	Status      string            `json:"status"`
 	ExitCode    *int              `json:"exit_code,omitempty"`
 	Stdout      string            `json:"stdout,omitempty"`
@@ -453,7 +503,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	// shell-level PATH or directory validation. In strict-shell mode we only
 	// allow this for single blue CLI invocations without shell operators, so
 	// the public bash surface keeps its shell-hardening boundary.
-	if t.skillExec != nil && isBlueCommand && (!strictShell || canStrictShellBlueSkillShortCircuit(command)) {
+	if t.skillExec != nil && isBlueCommand && !shouldBypassBlueSkillShortCircuit(command) && (!strictShell || canStrictShellBlueSkillShortCircuit(command)) {
 		slog.Info("[exec] trying blue skill short-circuit", "command", truncateStr(command, 200))
 		if result, ok := t.trySkillShortCircuit(ctx, command, nil, workdirArg); ok {
 			return result, nil
@@ -746,6 +796,7 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	result := execResult{
 		SessionID:  sessionID,
+		Command:    command,
 		Status:     string(status),
 		ExitCode:   exitCode,
 		Stdout:     SanitizeBinaryOutput(stdout),
@@ -1129,7 +1180,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 					}
 
 					if forceClarify {
-						if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, input, warnings); askOK {
+						if askResp, askOK := t.askForSkillClarification(ctx, command, skillName, decision, input, warnings); askOK {
 							return askResp, true
 						}
 					} else {
@@ -1137,11 +1188,11 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 						selectedInput := adaptClarifiedSkillInput(skillName, decision.SelectedSkill, input)
 						selectedData, selErr := t.skillExec(ctx, decision.SelectedSkill, selectedInput)
 						if selErr == nil {
-							return t.buildSkillResult(ctx, decision.SelectedSkill, selectedData, warnings), true
+							return t.buildSkillResult(ctx, command, decision.SelectedSkill, selectedData, warnings), true
 						}
 						slog.Warn("[exec] selector fallback execution failed", "skill", decision.SelectedSkill, "err", selErr)
 					}
-				} else if askResp, askOK := t.askForSkillClarification(ctx, skillName, decision, input, warnings); askOK {
+				} else if askResp, askOK := t.askForSkillClarification(ctx, command, skillName, decision, input, warnings); askOK {
 					return askResp, true
 				}
 			}
@@ -1159,6 +1210,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		exitCode := 1
 		result := execResult{
 			SessionID: NewSessionID(),
+			Command:   command,
 			Status:    "failed",
 			ExitCode:  &exitCode,
 			Stderr:    err.Error(),
@@ -1169,7 +1221,7 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		return string(b), true
 	}
 
-	return t.buildSkillResult(ctx, execSkillName, data, warnings), true
+	return t.buildSkillResult(ctx, command, execSkillName, data, warnings), true
 }
 
 func (t *ExecTool) tryCompatAskCarrier(ctx context.Context, command string) (interface{}, bool, error) {
@@ -1185,7 +1237,7 @@ func (t *ExecTool) tryCompatAskCarrier(ctx context.Context, command string) (int
 		if err != nil {
 			return nil, true, err
 		}
-		return t.buildSkillResult(ctx, "ask", data, nil), true, nil
+		return t.buildSkillResult(ctx, command, "ask", data, nil), true, nil
 	}
 
 	if t.registry != nil {
@@ -1244,7 +1296,7 @@ func (t *ExecTool) tryToolCompatFallback(ctx context.Context, skillName string, 
 	return &ForwardedResult{ActualTool: actualTool, Result: result}, true
 }
 
-func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data map[string]string, warnings []string) interface{} {
+func (t *ExecTool) buildSkillResult(ctx context.Context, command, skillName string, data map[string]string, warnings []string) interface{} {
 	var stdout strings.Builder
 	for k, v := range data {
 		if k == "success" || k == "_card" {
@@ -1261,6 +1313,7 @@ func (t *ExecTool) buildSkillResult(ctx context.Context, skillName string, data 
 	exitCode := 0
 	result := execResult{
 		SessionID: NewSessionID(),
+		Command:   command,
 		Status:    "completed",
 		ExitCode:  &exitCode,
 		Stdout:    stdout.String(),
@@ -1356,7 +1409,7 @@ func shouldConvertSkillCardHint(hint string) bool {
 	}
 }
 
-func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill string, d SkillSelectionDecision, input map[string]any, warnings []string) (interface{}, bool) {
+func (t *ExecTool) askForSkillClarification(ctx context.Context, command, originalSkill string, d SkillSelectionDecision, input map[string]any, warnings []string) (interface{}, bool) {
 	if t.skillExec == nil {
 		return nil, false
 	}
@@ -1401,7 +1454,7 @@ func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill s
 			selectedData, selErr := t.skillExec(ctx, chosen, selectedInput)
 			if selErr == nil {
 				autoWarnings := append(warnings, "skill clarification auto-resolved: "+chosen)
-				return t.buildSkillResult(ctx, chosen, selectedData, autoWarnings), true
+				return t.buildSkillResult(ctx, command, chosen, selectedData, autoWarnings), true
 			}
 			slog.Warn("[exec] auto-resolved skill clarification execution failed",
 				"skill", chosen,
@@ -1426,7 +1479,7 @@ func (t *ExecTool) askForSkillClarification(ctx context.Context, originalSkill s
 	if strings.EqualFold(strings.TrimSpace(askData["silent"]), "true") {
 		clarifyWarning = "skill clarification auto-answered"
 	}
-	return t.buildSkillResult(ctx, "ask", askData, append(warnings, clarifyWarning)), true
+	return t.buildSkillResult(ctx, command, "ask", askData, append(warnings, clarifyWarning)), true
 }
 
 func isDestructiveSkill(skillName string) bool {
@@ -2005,6 +2058,7 @@ func (t *ExecTool) runSandbox(ctx context.Context, command, workdir string, envM
 
 	result := execResult{
 		SessionID:   sessionID,
+		Command:     command,
 		Status:      status,
 		ExitCode:    &exitCode,
 		Stdout:      SanitizeBinaryOutput(stdout),
@@ -2271,6 +2325,9 @@ func rewriteBlueCLIExecutable(command string) string {
 func canStrictShellBlueSkillShortCircuit(command string) bool {
 	trimmed := strings.TrimSpace(command)
 	if !strings.HasPrefix(trimmed, "blue ") {
+		return false
+	}
+	if shouldBypassBlueSkillShortCircuit(trimmed) {
 		return false
 	}
 	if strings.ContainsAny(trimmed, "\r\n") {

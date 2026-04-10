@@ -123,3 +123,13 @@ func TestRootCommand_RegistersCustomCompletionCommand(t *testing.T) {
 		t.Fatalf("expected custom completion command to be registered, got %#v", cmd)
 	}
 }
+
+func TestRootCommand_RegistersSkillsAlias(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"skill"})
+	if err != nil {
+		t.Fatalf("rootCmd.Find(skill): %v", err)
+	}
+	if cmd == nil || cmd.Name() != "skills" {
+		t.Fatalf("expected skill alias to resolve to skills command, got %#v", cmd)
+	}
+}

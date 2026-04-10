@@ -1059,6 +1059,49 @@ func TestExecBlueCommandDoesNotOverrideExplicitContextEnv(t *testing.T) {
 	}
 }
 
+func TestExecBlueSkillCLICommandBypassesSkillShortCircuit(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	script := "#!/bin/sh\nprintf 'cli:%s %s %s\\n' \"$1\" \"$2\" \"$3\"\n"
+	if err := os.WriteFile(bluePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	skillCalls := 0
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
+		skillCalls++
+		return nil, fmt.Errorf("unexpected skill execution: %s", skillID)
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "blue skill install humanizer",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if skillCalls != 0 {
+		t.Fatalf("skill executor calls = %d, want 0", skillCalls)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := strings.TrimSpace(res.Stdout); got != "cli:skill install humanizer" {
+		t.Fatalf("stdout = %q, want %q", got, "cli:skill install humanizer")
+	}
+}
+
 func TestExecSkillShortCircuit_DottedAliasMapsAction(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
@@ -1651,6 +1694,11 @@ func TestCanStrictShellBlueSkillShortCircuit(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "blue skill cli alias is not treated as skill short-circuit",
+			command: `blue skill install humanizer`,
+			want:    false,
+		},
+		{
 			name:    "redirects are rejected",
 			command: `blue web_query input="latest docs" > /tmp/out`,
 			want:    false,
@@ -2234,7 +2282,7 @@ func TestAskForSkillClarification_DefaultCandidatesPreferWebQuery(t *testing.T) 
 		return map[string]string{"success": "true"}, nil
 	})
 
-	if _, ok := tool.askForSkillClarification(context.Background(), "mystery", SkillSelectionDecision{}, map[string]any{}, nil); !ok {
+	if _, ok := tool.askForSkillClarification(context.Background(), "blue mystery", "mystery", SkillSelectionDecision{}, map[string]any{}, nil); !ok {
 		t.Fatal("askForSkillClarification returned ok=false")
 	}
 
@@ -3835,6 +3883,32 @@ func TestExecResultHostField(t *testing.T) {
 	}
 	if _, ok := res["risk_level"]; !ok {
 		t.Error("expected risk_level field in result")
+	}
+}
+
+func TestExecResultIncludesCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := DefaultExecConfig()
+	config.Security = ExecSecurityFull
+	config.AllowedDirs = []string{tmpDir}
+	config.DataDir = tmpDir
+
+	sessions := NewSessionRegistry()
+	tool := NewExecTool(config, sessions, nil, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "echo test",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("failed to parse result: %v", err)
+	}
+	if got := res["command"]; got != "echo test" {
+		t.Fatalf("expected command to round-trip, got %v", got)
 	}
 }
 

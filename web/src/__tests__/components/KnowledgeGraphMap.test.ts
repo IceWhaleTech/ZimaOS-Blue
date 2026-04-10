@@ -178,6 +178,9 @@ describe('KnowledgeGraphMap', () => {
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('1 / 4')
     expect(wrapper.findAll('[data-testid="knowledge-graph-orbit"]').length).toBeGreaterThan(0)
     expect(
+      wrapper.get('[data-testid="knowledge-graph-orbit"]').attributes('data-orbit-visibility')
+    ).toBe('hidden')
+    expect(
       wrapper.get('[data-testid="knowledge-graph-node-readme"]').attributes()
     ).toMatchObject({
       'data-highlight-state': 'selected',
@@ -205,6 +208,9 @@ describe('KnowledgeGraphMap', () => {
     expect(wrapper.get('[data-testid="knowledge-graph-viewport"]').attributes('style')).toContain(
       'scale(1.18)'
     )
+    expect(
+      wrapper.get('[data-testid="knowledge-graph-orbit"]').attributes('data-orbit-visibility')
+    ).toBe('soft')
     expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
       'data-distance-tier': 'stacked',
     })
@@ -216,6 +222,9 @@ describe('KnowledgeGraphMap', () => {
 
     await wrapper.get('[data-testid="knowledge-graph-zoom-in"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('3 / 4')
+    expect(
+      wrapper.get('[data-testid="knowledge-graph-orbit"]').attributes('data-orbit-visibility')
+    ).toBe('visible')
     expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
       'data-distance-tier': 'far',
     })

@@ -297,6 +297,9 @@ func resolveDatasetBundleGitHubSource(source, bundlePath string) (datasetBundleG
 	if matches := skillbundle.GitHubRepoURLPattern.FindStringSubmatch(source); len(matches) == 3 {
 		bundlePath = strings.Trim(strings.TrimSpace(bundlePath), "/")
 		if bundlePath == "" {
+			bundlePath = DefaultDatasetBundleGitHubPathForRepo(matches[1], matches[2])
+		}
+		if bundlePath == "" {
 			return datasetBundleGitHubSource{}, fmt.Errorf("bundle_path is required for GitHub repo URLs")
 		}
 		return datasetBundleGitHubSource{

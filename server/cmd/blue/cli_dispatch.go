@@ -68,7 +68,7 @@ func cliDispatch(args []string) bool {
 		return false // config uses viper, let cobra handle it
 	case "models":
 		return false // models subcommands need cobra arg validation
-	case "skills":
+	case "skills", "skill":
 		return false // skills subcommands need cobra arg validation
 	case "context":
 		if shouldIPCDispatchContext(rest) {

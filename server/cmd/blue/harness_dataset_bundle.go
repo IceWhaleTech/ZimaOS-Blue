@@ -86,7 +86,7 @@ func init() {
 	harnessDatasetImportCmd.Flags().StringVar(&harnessDatasetBundleLocalPath, "path", "", "local bundle directory path")
 	harnessDatasetImportCmd.Flags().StringVar(&harnessDatasetBundleVersion, "version", "", "bundle version to import (defaults to dataset.yaml default_version)")
 	harnessDatasetPullCmd.Flags().StringVar(&harnessDatasetBundleSource, "source", "", "GitHub repo or tree URL for the bundle source")
-	harnessDatasetPullCmd.Flags().StringVar(&harnessDatasetBundlePath, "bundle-path", "", "bundle path inside the GitHub repo when --source is a repo URL")
+	harnessDatasetPullCmd.Flags().StringVar(&harnessDatasetBundlePath, "bundle-path", "", "bundle path inside the GitHub repo when --source is a repo URL (defaults to harness/datasets/pinchbench for IceWhaleTech/ZimaOS-Blue)")
 	harnessDatasetPullCmd.Flags().StringVar(&harnessDatasetBundleVersion, "version", "", "bundle version to import (defaults to dataset.yaml default_version)")
 	harnessDatasetCmd.AddCommand(harnessDatasetImportCmd)
 	harnessDatasetCmd.AddCommand(harnessDatasetPullCmd)
@@ -382,6 +382,9 @@ func resolveHarnessDatasetGitHubSource(source, bundlePath string) (harnessDatase
 	}
 	if matches := skillbundle.GitHubRepoURLPattern.FindStringSubmatch(source); len(matches) == 3 {
 		bundlePath = strings.Trim(strings.TrimSpace(bundlePath), "/")
+		if bundlePath == "" {
+			bundlePath = harnesspkg.DefaultDatasetBundleGitHubPathForRepo(matches[1], matches[2])
+		}
 		if bundlePath == "" {
 			return harnessDatasetGitHubSource{}, fmt.Errorf("--bundle-path is required for GitHub repo URLs")
 		}
