@@ -579,11 +579,11 @@ export default mergeHarnessLocale('ro-RO', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Lasă agentul să planifice, să folosească instrumente, să aplice modificări și să continue să itereze până când sarcina este încheiată curat. Inspirată de perseverența încăpățânată a lui Ralph.',
-    ralphLoopHoverPlan: 'Planifică',
-    ralphLoopHoverAct: 'Acțiune',
-    ralphLoopHoverCheck: 'Verificare',
+    smartResumeHoverDescription:
+      'Lasă agentul să planifice, să folosească instrumente, să aplice modificări și să continue să itereze până când sarcina este încheiată curat.',
+    smartResumeHoverPlan: 'Planifică',
+    smartResumeHoverAct: 'Acțiune',
+    smartResumeHoverCheck: 'Verificare',
     uiReviewShortcutTitle: 'Revizuirea interfeței utilizatorului',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -848,6 +848,15 @@ export default mergeHarnessLocale('ro-RO', {
         'Modelul fix {model} nu este disponibil momentan. Vrei să readuci acest chat la rutare automată și să reîncerci ultima solicitare?',
       secondaryAction: 'Păstrează modelul curent',
       primaryAction: 'Comută și reîncearcă',
+    },
+    providerFailover: {
+      eyebrow: 'Comutare de înaltă disponibilitate',
+      title: 'Comutați la altă rută disponibilă și încercați din nou?',
+      description: 'Ruta curentă prin {provider} are nevoie de confirmarea dvs. înainte ca Blue să comute la altă rută disponibilă și să încerce din nou.',
+      dismissAction: 'Nu acum',
+      manualAction: 'Alege ruta manual',
+      primaryAction: 'Comută și reîncearcă',
+      currentRoute: 'Ruta curentă',
     },
     manageProviders: 'Gestionați furnizorii',
     noProviderConfigured: 'Niciun furnizor configurat. Faceți clic pentru a adăuga unul.',

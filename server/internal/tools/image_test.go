@@ -79,6 +79,7 @@ func (m *imageProviderVisionMock) Analyze(_ context.Context, prompt string, imag
 
 type imageOCRMock struct {
 	image      []byte
+	calls      int
 	resp       ImageOCRResult
 	allowEmpty bool
 	err        error
@@ -110,6 +111,7 @@ func (m *pptGenerateMock) Generate(_ context.Context, req PPTRequest) (*PPTResul
 }
 
 func (m *imageOCRMock) Extract(_ context.Context, imagePNG []byte) (ImageOCRResult, error) {
+	m.calls++
 	m.image = append([]byte(nil), imagePNG...)
 	if m.resp.Text == "" && m.err == nil && !m.allowEmpty {
 		m.resp = ImageOCRResult{Text: "ocr text", Engine: "tesseract/wasm", Model: "eng"}
@@ -785,7 +787,7 @@ func TestNewImageToolUsesLongerDefaultDownloadTimeout(t *testing.T) {
 	}
 }
 
-func TestRegisterImageToolKeepsLegacyAliasesCallableButHidden(t *testing.T) {
+func TestRegisterImageToolExposesSplitGenerateAndOCRTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterImageTool(registry, nil, func(_ context.Context, _ ImageGenerateRequest) (*ImageTaskResult, error) {
 		return &ImageTaskResult{
@@ -803,19 +805,97 @@ func TestRegisterImageToolKeepsLegacyAliasesCallableButHidden(t *testing.T) {
 	if registry.Get("image_generation") == nil {
 		t.Fatal("expected image_generation alias to be registered")
 	}
-	if registry.Get("generate_image") == nil || registry.Get("generateImage") == nil {
-		t.Fatal("expected legacy image aliases to remain callable")
+	if registry.Get("generate_image") == nil {
+		t.Fatal("expected generate_image split tool to be registered")
 	}
-	if !registry.IsDisabled("image_generation") || !registry.IsDisabled("generate_image") || !registry.IsDisabled("generateImage") {
-		t.Fatal("expected legacy image aliases to stay hidden from model exposure")
+	if registry.Get("generateImage") == nil {
+		t.Fatal("expected generateImage alias to remain callable")
+	}
+	if registry.Get("ocr") == nil {
+		t.Fatal("expected ocr split tool to be registered")
+	}
+	if !registry.IsDisabled("image_generation") || !registry.IsDisabled("generateImage") {
+		t.Fatal("expected legacy aliases to stay hidden from model exposure")
+	}
+	if registry.IsDisabled("generate_image") || registry.IsDisabled("ocr") {
+		t.Fatal("expected split tools to stay visible to model exposure")
 	}
 
 	visible := registry.List()
 	if !containsString(visible, "image") {
 		t.Fatalf("expected visible image tools to include native tool, got=%v", visible)
 	}
-	if containsString(visible, "image_generation") || containsString(visible, "generate_image") || containsString(visible, "generateImage") {
-		t.Fatalf("expected legacy aliases to stay hidden, got=%v", visible)
+	if !containsString(visible, "generate_image") || !containsString(visible, "ocr") {
+		t.Fatalf("expected split tools to be visible, got=%v", visible)
+	}
+	if containsString(visible, "image_generation") || containsString(visible, "generateImage") {
+		t.Fatalf("expected hidden legacy aliases to stay hidden, got=%v", visible)
+	}
+}
+
+func TestGenerateImageToolForcesGenerateAction(t *testing.T) {
+	var captured ImageGenerateRequest
+	native := NewImageTool(nil, func(_ context.Context, req ImageGenerateRequest) (*ImageTaskResult, error) {
+		captured = req
+		return &ImageTaskResult{
+			ID:     "img-2",
+			Status: "succeeded",
+			Outputs: []ImageAsset{{
+				URL: req.OutputPath,
+			}},
+		}, nil
+	}, nil)
+
+	result, err := newGenerateImageTool(native).Execute(context.Background(), map[string]interface{}{
+		"action": "review",
+		"prompt": "friendly robot in a cozy cafe reading a book",
+		"path":   "/tmp/robot_cafe.png",
+	})
+	if err != nil {
+		t.Fatalf("generate_image execute failed: %v", err)
+	}
+
+	payload, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload = %#v, want map", result)
+	}
+	if captured.Prompt != "friendly robot in a cozy cafe reading a book" {
+		t.Fatalf("prompt = %q", captured.Prompt)
+	}
+	if captured.OutputPath != "/tmp/robot_cafe.png" {
+		t.Fatalf("output path = %q", captured.OutputPath)
+	}
+	if payload["status"] != "succeeded" {
+		t.Fatalf("status = %v, want succeeded", payload["status"])
+	}
+}
+
+func TestOCRToolForcesOCROnlyReview(t *testing.T) {
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Quarterly revenue 119,900", Engine: "tesseract/wasm", Model: "eng"}}
+	native := NewImageTool(nil, nil, nil)
+	native.SetOCRService(ocr)
+
+	result, err := newOCRTool(native).Execute(context.Background(), map[string]interface{}{
+		"action": "generate",
+		"image":  inlinePNGBase64(t),
+		"prompt": "Extract every visible word from this screenshot.",
+	})
+	if err != nil {
+		t.Fatalf("ocr execute failed: %v", err)
+	}
+
+	payload, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload = %#v, want map", result)
+	}
+	if payload["mode"] != "ocr" {
+		t.Fatalf("mode = %v, want ocr", payload["mode"])
+	}
+	if got := payload["text"]; got != "Quarterly revenue 119,900" {
+		t.Fatalf("text = %v", got)
+	}
+	if ocr.calls != 1 {
+		t.Fatalf("ocr calls = %d, want 1", ocr.calls)
 	}
 }
 

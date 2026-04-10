@@ -23,6 +23,36 @@ The standout surface is Blue's web retrieval and browser runtime.
 | Built-In Local Small Model Runtime | Ships a built-in `Qwen3.5-0.8B + llama.cpp` runtime for local short Q&A, image recognition, tool routing, summarization, context compression, and document preprocessing. |
 | Long-Running Reliability | Treats OTA updates, backup and restore, config hot reload, and post-failure recovery as built-in operating concerns. |
 
+## Capability groups
+
+The matrix above gets easier to reason about if you read it as four larger groups:
+
+- **Builder-facing acceleration**: research, browser runtime, multimodal tools, knowledge space, and extensions reduce the amount of custom glue work needed to ship a serious agent product.
+- **Operator-facing control**: provider pool, security, governance, audit, billing, and long-running reliability keep the runtime manageable after the demo phase.
+- **Evaluation-first improvement loops**: Harness and Evolution make regression checks, comparisons, review, and promotion part of normal runtime operation instead of a separate platform.
+- **Open ecosystem reach**: channels, providers, coding IDEs, and external agents are all treated as pluggable edges around one shared runtime core.
+
+## What is already visible in the web product
+
+If you open the current web app, the capability map resolves into concrete operator surfaces such as:
+
+- Settings, provider pool, and model routing
+- Identity, auth providers, preview bootstrap, and personal profile management
+- Channels, remote access, voice, and form-filling entry points
+- Extensions, tool browsing, and skill-store install flows
+- Security, audit, billing, tenants, and system operations pages
+- Harness, tracked runs, datasets, scorecards, and Evolution review lanes
+
+## Choose the next page by question
+
+| Question | Best next page |
+| --- | --- |
+| How do I configure providers and model routing? | [Settings and Provider Pool](/guides/settings-provider-pool) |
+| How do messaging and remote-access surfaces fit in? | [Channels](/guides/channels) |
+| How do I evaluate and improve agent behavior? | [Harness and Evolution](/guides/harness-evolution) |
+| How do skills, tools, and the store fit together? | [Extensions](/guides/extensions) |
+| How do auth, security, and operator governance work? | [Admin and Operations](/guides/admin-operations) |
+
 ## Keep Reading
 
 - [Research Workflows](/guides/research-workflows)

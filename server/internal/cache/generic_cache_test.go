@@ -8,7 +8,10 @@ import (
 func TestGenericCache_ExpiresEntries(t *testing.T) {
 	cache := NewGenericCache[string](Config{
 		MaxSize:    4,
-		DefaultTTL: 40 * time.Millisecond,
+		// GenericCache expiration uses timeutil.NowNano(), which updates on a
+		// coarse 100ms cadence. Keep the TTL comfortably above that boundary and
+		// poll until the cached clock advances past expiry.
+		DefaultTTL: 250 * time.Millisecond,
 	})
 
 	cache.Put("a", "value")
@@ -17,11 +20,16 @@ func TestGenericCache_ExpiresEntries(t *testing.T) {
 		t.Fatalf("Get(a) = (%v, %v), want (value, true)", got, ok)
 	}
 
-	time.Sleep(80 * time.Millisecond)
-
-	if got, ok := cache.Get("a"); ok || got != nil {
-		t.Fatalf("Get(a) after ttl = (%v, %v), want (nil, false)", got, ok)
+	deadline := time.Now().Add(1200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if got, ok := cache.Get("a"); !ok && got == nil {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
 	}
+
+	got, ok := cache.Get("a")
+	t.Fatalf("Get(a) after ttl = (%v, %v), want (nil, false)", got, ok)
 }
 
 func TestGenericCache_EvictsLeastRecentlyUsedWhenFull(t *testing.T) {

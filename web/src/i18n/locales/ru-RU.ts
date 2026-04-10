@@ -581,11 +581,11 @@ export default mergeHarnessLocale('ru-RU', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
+    smartResumeHoverDescription:
       'Позвольте агенту планировать, использовать инструменты, вносить изменения и продолжать итерации, пока задача не будет аккуратно доведена до результата. Вдохновлено упорной настойчивостью Ральфа.',
-    ralphLoopHoverPlan: 'План',
-    ralphLoopHoverAct: 'Действие',
-    ralphLoopHoverCheck: 'Проверка',
+    smartResumeHoverPlan: 'План',
+    smartResumeHoverAct: 'Действие',
+    smartResumeHoverCheck: 'Проверка',
     uiReviewShortcutTitle: 'Обзор пользовательского интерфейса',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -849,6 +849,15 @@ export default mergeHarnessLocale('ru-RU', {
         'Фиксированная модель {model} сейчас недоступна. Хотите вернуть этот чат на автоматическую маршрутизацию и повторить последний запрос?',
       secondaryAction: 'Оставить текущую модель',
       primaryAction: 'Переключить и повторить',
+    },
+    providerFailover: {
+      eyebrow: 'Переключение высокой доступности',
+      title: 'Переключиться на другой доступный маршрут и повторить попытку?',
+      description: 'Текущий маршрут через {provider} требует вашего подтверждения, прежде чем Blue переключится на другой доступный маршрут и повторит попытку.',
+      dismissAction: 'Не сейчас',
+      manualAction: 'Выбрать маршрут вручную',
+      primaryAction: 'Переключить и повторить',
+      currentRoute: 'Текущий маршрут',
     },
     manageProviders: 'Управление провайдерами',
     noProviderConfigured: 'Поставщик не настроен. Нажмите, чтобы добавить его.',

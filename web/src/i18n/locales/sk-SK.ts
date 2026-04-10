@@ -577,11 +577,11 @@ export default mergeHarnessLocale('sk-SK', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Nechajte agenta plánovať, používať nástroje, aplikovať zmeny a ďalej iterovať, kým úloha nebude čisto dokončená. Inšpirované Ralphovou vytrvalou húževnatosťou.',
-    ralphLoopHoverPlan: 'Plán',
-    ralphLoopHoverAct: 'Vykonať',
-    ralphLoopHoverCheck: 'Skontrolovať',
+    smartResumeHoverDescription:
+      'Nechajte agenta plánovať, používať nástroje, aplikovať zmeny a ďalej iterovať, kým úloha nebude čisto dokončená.',
+    smartResumeHoverPlan: 'Plán',
+    smartResumeHoverAct: 'Vykonať',
+    smartResumeHoverCheck: 'Skontrolovať',
     uiReviewShortcutTitle: 'UI recenzia',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -844,6 +844,15 @@ export default mergeHarnessLocale('sk-SK', {
         'Pevný model {model} momentálne nie je k dispozícii. Chcete tento chat prepnúť späť na automatické smerovanie a znova odoslať poslednú požiadavku?',
       secondaryAction: 'Ponechať aktuálny model',
       primaryAction: 'Prepnúť a skúsiť znova',
+    },
+    providerFailover: {
+      eyebrow: 'Prepnutie vysokej dostupnosti',
+      title: 'Prepnúť na inú dostupnú trasu a skúsiť znova?',
+      description: 'Aktuálna trasa cez {provider} potrebuje vaše potvrdenie, než Blue prepne na inú dostupnú trasu a skúsi to znova.',
+      dismissAction: 'Teraz nie',
+      manualAction: 'Vybrať trasu ručne',
+      primaryAction: 'Prepnúť a skúsiť znova',
+      currentRoute: 'Aktuálna trasa',
     },
     manageProviders: 'Spravovať poskytovateľov',
     noProviderConfigured: 'Nie je nakonfigurovaný žiadny poskytovateľ. Kliknutím jednu pridáte.',

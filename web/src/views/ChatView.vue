@@ -1264,6 +1264,12 @@ const modelAutoFallbackDialogState = computed(() => {
   if (pending.conversationId !== (chatStore.currentConversationId || '')) return null
   return pending
 })
+const providerFailoverDialogState = computed(() => {
+  const pending = chatStore.pendingProviderFailoverRetry
+  if (!pending) return null
+  if (pending.conversationId !== (chatStore.currentConversationId || '')) return null
+  return pending
+})
 const modelAutoFallbackTargetLabel = computed(() => {
   const pending = modelAutoFallbackDialogState.value
   if (!pending) return ''
@@ -1271,6 +1277,10 @@ const modelAutoFallbackTargetLabel = computed(() => {
     return `${pending.requestedProviderId}/${pending.requestedModelId}`
   }
   return pending.requestedModelId
+})
+const providerFailoverTargetLabel = computed(() => {
+  const pending = providerFailoverDialogState.value
+  return pending?.failedProviderId?.trim() || chatTextWithFallback('chat.providerFailover.currentRoute', 'Current route')
 })
 const activeTodoPanelCollapsed = ref(loadActiveTodoPanelCollapsed())
 const focusedTodoMessageId = ref<string | null>(null)
@@ -1671,13 +1681,13 @@ const mobileFeatureSheetMeta = computed(() => {
       state: smartResumeStateLabel.value,
       title: t('chat.taskLoop'),
       description: chatTextWithFallback(
-        'chat.ralphLoopHoverDescription',
-        "Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly. Inspired by Ralph's relentless persistence."
+        'chat.smartResumeHoverDescription',
+        'Let the agent plan, use tools, apply changes, and keep iterating with Smart Resume until the task lands cleanly.'
       ),
       tags: [
-        chatTextWithFallback('chat.ralphLoopHoverPlan', 'Plan'),
-        chatTextWithFallback('chat.ralphLoopHoverAct', 'Act'),
-        chatTextWithFallback('chat.ralphLoopHoverCheck', 'Check'),
+        chatTextWithFallback('chat.smartResumeHoverPlan', 'Plan'),
+        chatTextWithFallback('chat.smartResumeHoverAct', 'Act'),
+        chatTextWithFallback('chat.smartResumeHoverCheck', 'Check'),
         `${t('agent.autoConfirm')}: ${smartResumeAutoConfirmStateLabel.value}`,
       ],
       primaryActionLabel: settingsStore.agentMode
@@ -2543,6 +2553,19 @@ function dismissModelAutoFallbackDialog() {
 
 function confirmModelAutoFallbackDialog() {
   void chatStore.confirmModelAutoFallbackRetry()
+}
+
+function dismissProviderFailoverDialog() {
+  chatStore.dismissProviderFailoverRetry()
+}
+
+function confirmProviderFailoverDialog() {
+  void chatStore.confirmProviderFailoverRetry()
+}
+
+function handleProviderFailoverManualSelection() {
+  dismissProviderFailoverDialog()
+  nextTick(() => toggleRoutingMenu())
 }
 
 function closeProviderConfigDialog() {
@@ -5268,6 +5291,135 @@ onUnmounted(() => {
     <!-- Exec directory approval dialog -->
     <ExecApprovalDialog v-if="chatStore.pendingExecApproval" />
 
+    <!-- Provider failover confirmation dialog -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="providerFailoverDialogState"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="provider-failover-dialog-title"
+          aria-describedby="provider-failover-dialog-description provider-failover-dialog-detail"
+          tabindex="-1"
+          class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          @click.self="dismissProviderFailoverDialog"
+          @keydown.esc="dismissProviderFailoverDialog"
+        >
+          <div
+            class="w-full max-w-lg max-h-[90vh] mx-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-y-auto"
+          >
+            <div class="p-6 text-center">
+              <p
+                class="mb-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-500 dark:text-sky-300"
+              >
+                {{
+                  chatTextWithFallback(
+                    'chat.providerFailover.eyebrow',
+                    'High-availability switch'
+                  )
+                }}
+              </p>
+              <div
+                class="w-14 h-14 mx-auto mb-4 rounded-full flex items-center justify-center bg-sky-100 dark:bg-sky-900/30"
+              >
+                <svg
+                  class="w-7 h-7 text-sky-600 dark:text-sky-300"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 4v6h6M20 20v-6h-6M5.64 18.36A9 9 0 109 4.69M18.36 5.64A9 9 0 0115 19.31"
+                  />
+                </svg>
+              </div>
+              <h3
+                id="provider-failover-dialog-title"
+                class="text-lg font-semibold text-gray-900 dark:text-white mb-2"
+              >
+                {{
+                  chatTextWithFallback(
+                    'chat.providerFailover.title',
+                    'Switch to another available route and retry?'
+                  )
+                }}
+              </h3>
+              <p
+                id="provider-failover-dialog-description"
+                class="text-sm leading-6 text-gray-500 dark:text-gray-400 mb-3"
+              >
+                {{
+                  chatTextWithNamedFallback(
+                    'chat.providerFailover.description',
+                    'The current route on "{provider}" needs your confirmation before Blue switches to another available route and retries.',
+                    { provider: providerFailoverTargetLabel }
+                  )
+                }}
+              </p>
+              <div class="mb-3 flex justify-center">
+                <div
+                  class="inline-flex max-w-full items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200"
+                >
+                  <span class="font-semibold uppercase tracking-[0.16em]">
+                    {{
+                      chatTextWithFallback(
+                        'chat.providerFailover.currentRoute',
+                        'Current route'
+                      )
+                    }}
+                  </span>
+                  <span class="max-w-[14rem] break-all font-medium sm:max-w-[20rem]">
+                    {{ providerFailoverTargetLabel }}
+                  </span>
+                </div>
+              </div>
+              <p
+                id="provider-failover-dialog-detail"
+                class="mb-6 rounded-xl border border-slate-200/80 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300 text-left whitespace-pre-line break-words"
+              >
+                {{ providerFailoverDialogState.detail }}
+              </p>
+              <div class="grid gap-3 sm:grid-cols-3">
+                <button
+                  class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+                  @click="dismissProviderFailoverDialog"
+                >
+                  {{
+                    chatTextWithFallback('chat.providerFailover.dismissAction', 'Not now')
+                  }}
+                </button>
+                <button
+                  class="px-4 py-2.5 text-sm font-medium rounded-lg border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-900/30 transition-colors cursor-pointer"
+                  @click="handleProviderFailoverManualSelection"
+                >
+                  {{
+                    chatTextWithFallback(
+                      'chat.providerFailover.manualAction',
+                      'Choose route manually'
+                    )
+                  }}
+                </button>
+                <button
+                  class="px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors cursor-pointer"
+                  @click="confirmProviderFailoverDialog"
+                >
+                  {{
+                    chatTextWithFallback(
+                      'chat.providerFailover.primaryAction',
+                      'Switch and retry'
+                    )
+                  }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Fixed-model unavailable dialog -->
     <Teleport to="body">
       <Transition name="fade">
@@ -5276,11 +5428,14 @@ onUnmounted(() => {
           role="dialog"
           aria-modal="true"
           aria-labelledby="model-auto-fallback-dialog-title"
+          aria-describedby="model-auto-fallback-dialog-description"
+          tabindex="-1"
           class="fixed inset-0 z-[10000] flex items-center justify-center bg-black/40 backdrop-blur-sm"
           @click.self="dismissModelAutoFallbackDialog"
+          @keydown.esc="dismissModelAutoFallbackDialog"
         >
           <div
-            class="w-full max-w-md mx-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden"
+            class="w-full max-w-md max-h-[90vh] mx-4 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-y-auto"
           >
             <div class="p-6 text-center">
               <p
@@ -5316,7 +5471,10 @@ onUnmounted(() => {
                   )
                 }}
               </h3>
-              <p class="text-sm leading-6 text-gray-500 dark:text-gray-400 mb-3">
+              <p
+                id="model-auto-fallback-dialog-description"
+                class="text-sm leading-6 text-gray-500 dark:text-gray-400 mb-3"
+              >
                 {{
                   chatTextWithNamedFallback(
                     'chat.modelFallback.description',

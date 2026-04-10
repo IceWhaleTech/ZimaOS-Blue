@@ -7,6 +7,8 @@ summary: "第一次启动 Blue 时该怎么进入、理解 preview mode、接入
 
 如果你已经完成安装，这一页就是最快的首跑路径。
 
+![首跑与 Provider 配置演示](/demo%20Provider.gif)
+
 ## 1. 选择启动方式
 
 ### 桌面应用
@@ -65,6 +67,26 @@ Blue 会依次查找 `./config.yaml`、`./config/config.yaml`、`/etc/zimaos-blu
 
 一旦首个用户被创建，同一份数据目录就会切到 `normal` mode，这个实例也不再提供 preview。
 
+## preview mode 和 normal mode 的区别
+
+| 模式 | 代表什么 | 你通常接下来做什么 |
+| --- | --- | --- |
+| `preview` | 当前还没有创建任何用户，所以 Blue 暴露了首跑引导路径 | 先简单体验，再创建首个管理员账号 |
+| `normal` | 当前实例已经至少有一个用户 | 正常登录，然后继续做 provider 或运行时配置 |
+
+## preview 入口实际会做什么
+
+当前 UI 里的 preview 顶部入口，打开的是一个 `Create Admin Account` 流程，而不是笼统的向导。
+
+这条升级路径会要求你填写：
+
+- 用户名
+- 密码
+- 在常规隐藏密码流里再确认一次密码
+- 满足后端策略检查的密码
+
+升级成功后，Blue 会刷新进新的已认证状态，而这份数据目录也不再把 preview mode 当成入口。
+
 ## 4. 完成最小运维配置
 
 1. 打开 Web 界面。
@@ -72,6 +94,14 @@ Blue 会依次查找 `./config.yaml`、`./config/config.yaml`、`/etc/zimaos-blu
 3. 打开 `Settings -> LLM`。
 4. 添加或验证一个你真的要使用的 provider。
 5. 选择默认 provider，必要时再限制 allowed models。
+
+在添加 provider 之前，建议先准备：
+
+- 一个 provider 名称
+- 可访问的 endpoint 或 base URL
+- 凭证
+- 正确的兼容格式
+- 这个 provider 应该标成 `cloud` 还是 `local`
 
 ## 5. 跑一次首条 smoke test
 
@@ -86,11 +116,22 @@ Blue 会依次查找 `./config.yaml`、`./config/config.yaml`、`/etc/zimaos-blu
 - 至少有一个 provider 验证成功
 - 第一条聊天响应成功返回
 
+如果上面任意一项没有成立，就先把这一层修好，再继续往 channels、automation 或 eval 之类的后续能力扩展。
+
 ## 6. 如果被卡住了
 
 - Provider 或模型问题：看 [设置与 Provider Pool](/guides/settings-provider-pool)
 - 登录、preview、首个管理员或认证提供方问题：看 [身份与访问](/guides/identity-access)
 - 通用启动、路由或访问问题：看 [故障排查](/help/troubleshooting)
+
+## 常见的首跑绕路点
+
+- UI 打开了，但还没有可用 provider
+- preview mode 能进，但首个管理员流程还没完成
+- preview 升级表单失败，其实是密码不满足后端策略
+- provider 保存了，但 verify 或模型刷新还没做完
+- endpoint 能连通，但兼容格式选错了
+- 第一条 prompt 失败，其实是默认 provider 或 allowed models 不是你以为的那个
 
 ## 下一步看什么
 

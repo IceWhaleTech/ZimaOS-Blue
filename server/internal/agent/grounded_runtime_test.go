@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/knowledge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -15,6 +16,18 @@ type groundedScriptLLM struct {
 	responderResponses []string
 	plannerIndex       int
 	responderIndex     int
+}
+
+type groundedKnowledgeCaptureLLM struct {
+	groundedScriptLLM
+	plannerRequests []llm.ChatRequest
+}
+
+func (m *groundedKnowledgeCaptureLLM) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if isGroundedPlannerPrompt(req) {
+		m.plannerRequests = append(m.plannerRequests, req)
+	}
+	return m.groundedScriptLLM.Chat(ctx, req)
 }
 
 func (m *groundedScriptLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
@@ -208,6 +221,81 @@ func TestGroundedRuntimeWriteLSReadPasses(t *testing.T) {
 	}
 	if len(events) == 0 {
 		t.Fatal("expected runtime events to be persisted")
+	}
+}
+
+func TestGroundedRuntimeExecuteStep_ResolvesKnowledgeOnceAndReusesAcrossPlannerRounds(t *testing.T) {
+	llmStub := &groundedKnowledgeCaptureLLM{
+		groundedScriptLLM: groundedScriptLLM{
+			plannerResponses: []string{
+				`{"status":"continue","reason":"Create the file.","next_tool":{"tool":"write","args":{"path":"demo.txt","content":"hello"}},"assertions":[]}`,
+				`{"status":"continue","reason":"List the directory.","next_tool":{"tool":"ls","args":{"path":".","max_depth":1}},"assertions":[]}`,
+				`{"status":"continue","reason":"Read the file.","next_tool":{"tool":"read","args":{"path":"demo.txt"}},"assertions":[]}`,
+				`{"status":"complete","reason":"Enough evidence collected.","assertions":[{"type":"file_exists","path":"demo.txt"},{"type":"tool_called","tool":"ls"}]}`,
+			},
+			responderResponses: []string{
+				`{"summary":"The file now exists and contains the expected content.","claims":[{"type":"fs_exists","tool_call_ids":["__SECOND_TOOL_CALL_ID__"],"path":"demo.txt","value":"true"},{"type":"fs_size","tool_call_ids":["__THIRD_TOOL_CALL_ID__"],"path":"demo.txt","value":"5"},{"type":"file_content_excerpt","tool_call_ids":["__THIRD_TOOL_CALL_ID__"],"path":"demo.txt","excerpt":"hello"}]}`,
+			},
+		},
+	}
+	resolver := &mockLoopKnowledgeResolver{
+		result: &knowledge.LoopContextResult{
+			Context:   "<loop_knowledge>\n- [knowledge slug=demo-step-evidence page_type=synthesis status=active confidence=high] Reuse one step-scoped evidence pack across planner rounds unless recovery needs fresh missing evidence.\n</loop_knowledge>",
+			UsedCount: 1,
+			UsedSlugs: []string{"demo-step-evidence"},
+		},
+	}
+
+	store := testStore(t)
+	registry := tools.NewRegistry()
+	workspaceRoot := t.TempDir()
+	registry.Register(tools.NewFileReadTool([]string{workspaceRoot}, 0))
+	registry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
+	registry.Register(tools.NewLsTool([]string{workspaceRoot}))
+	executor := tools.NewExecutor(registry)
+	rt := NewGroundedRuntime(GroundedRuntimeConfig{
+		PlannerLLM:        llmStub,
+		ResponderLLM:      llmStub,
+		Registry:          registry,
+		Executor:          executor,
+		Store:             store,
+		Secret:            []byte("grounded-runtime-test-secret-123456"),
+		MaxPlannerRounds:  6,
+		KnowledgeResolver: resolver,
+	})
+	task := &Task{
+		ID:          "grounded-knowledge-step-task",
+		UserID:      "u1",
+		Goal:        "reuse step knowledge across grounded planner rounds",
+		GroundState: NewGroundTruthState(),
+	}
+	step := PlanStep{Index: 0, Description: "create demo.txt and verify it", Status: StepStatusRunning}
+
+	result, err := rt.ExecuteStep(context.Background(), task, step, []PlanStep{step}, 6)
+	if err != nil {
+		t.Fatalf("ExecuteStep returned unexpected error: %v", err)
+	}
+	if result.GroundingStatus != GroundingStatusGrounded {
+		t.Fatalf("grounding_status=%q, want %q", result.GroundingStatus, GroundingStatusGrounded)
+	}
+	if resolver.called != 1 {
+		t.Fatalf("resolver calls = %d, want 1", resolver.called)
+	}
+	if resolver.lastReq.Stage != knowledge.LoopContextStageExecution {
+		t.Fatalf("resolver stage = %q, want execution", resolver.lastReq.Stage)
+	}
+	if len(llmStub.plannerRequests) < 4 {
+		t.Fatalf("planner requests = %d, want multiple rounds", len(llmStub.plannerRequests))
+	}
+	for i, req := range llmStub.plannerRequests {
+		if len(req.Messages) < 2 {
+			t.Fatalf("planner request %d missing user message: %#v", i, req.Messages)
+		}
+		for _, want := range []string{"Relevant knowledge:", "<loop_knowledge>", "demo-step-evidence"} {
+			if !strings.Contains(req.Messages[1].Content, want) {
+				t.Fatalf("planner request %d missing %q in user prompt: %s", i, want, req.Messages[1].Content)
+			}
+		}
 	}
 }
 

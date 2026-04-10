@@ -55,6 +55,7 @@ func registerHarnessRuntimeAgentFeatureWithReadDB(
 	startHarnessRuntimeAgentRecovery(agentStore, logger)
 
 	agentRunner := agent.NewRunner(agentStore, llmCaller, registry, executor, broker, agent.RunnerConfig{})
+	bindRuntimeKnowledgeResolverToAgentRunner(agentRunner, workspaceDir)
 	bindHarnessRuntimeToAgentRunner(bundle, agentGroup, agentRunner, agentStore, workspaceDir)
 	if logger != nil {
 		logger.Info("Agent task routes registered")

@@ -146,6 +146,30 @@ func TestBuildGroundedPlannerUserPrompt_IncludesCoordinationContext(t *testing.T
 	}
 }
 
+func TestBuildGroundedPlannerUserPrompt_IncludesKnowledgeContext(t *testing.T) {
+	out := buildGroundedPlannerUserPrompt(PlannerInput{
+		Goal:             "inject the right compiled knowledge into the agent loop",
+		PlanSummary:      "1. inspect the prompt assembly\n2. add the narrow knowledge lane",
+		Step:             PlanStep{Description: "add stage-aware planning knowledge"},
+		PlannerRound:     1,
+		MaxRounds:        4,
+		KnowledgeContext: "<loop_knowledge>\n- [knowledge slug=agent-loop-strategy page_type=decision status=active confidence=high] Use a task brief for planning and a smaller evidence pack for execution.\n</loop_knowledge>",
+		RoutingContract:  "- Primary route: planner\n- Canonical CLI action: blue plan",
+		CoordinationCtx:  "Coordination context:\n- Shared scratchpad root: @scratchpad/ (workspace-relative: .blue/scratchpad/shared).",
+	})
+	for _, want := range []string{
+		"Relevant knowledge:",
+		"<loop_knowledge>",
+		"agent-loop-strategy",
+		"Execution routing contract:",
+		"Coordination context:",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected grounded planner prompt to include %q, got: %s", want, out)
+		}
+	}
+}
+
 func TestBuildGroundedPlannerSystemPrompt_PrefersCanonicalCLIAction(t *testing.T) {
 	out := buildGroundedPlannerSystemPrompt([]llm.Tool{{Name: "exec", Description: "run shell commands"}})
 	if !strings.Contains(out, "canonical CLI action first") {

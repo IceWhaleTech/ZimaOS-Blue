@@ -578,11 +578,11 @@ export default mergeHarnessLocale('ml-IN', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
+    smartResumeHoverDescription:
       'ഏജന്റിന് പദ്ധതിയിടാനും, ഉപകരണങ്ങൾ ഉപയോഗിക്കാനും, മാറ്റങ്ങൾ പ്രയോഗിക്കാനും, ജോലി വൃത്തിയായി പൂർത്തിയാകുന്നതുവരെ ആവർത്തിച്ച് തുടരാനും അനുവദിക്കുക. റാൽഫിന്റെ ഉറച്ച പിടിവാശിയിലുള്ള സ്ഥിരതയിൽ നിന്ന് പ്രചോദനം നേടിയതാണ്.',
-    ralphLoopHoverPlan: 'പദ്ധതി',
-    ralphLoopHoverAct: 'നടപടി',
-    ralphLoopHoverCheck: 'പരിശോധനം',
+    smartResumeHoverPlan: 'പദ്ധതി',
+    smartResumeHoverAct: 'നടപടി',
+    smartResumeHoverCheck: 'പരിശോധനം',
     uiReviewShortcutTitle: 'UI അവലോകനം',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -850,6 +850,15 @@ export default mergeHarnessLocale('ml-IN', {
         'സ്ഥിര മോഡൽ {model} ഇപ്പോള്‍ ലഭ്യമല്ല. ഈ ചാറ്റിനെ വീണ്ടും ഓട്ടോ റൂട്ടിംഗിലേക്ക് മാറ്റി നിങ്ങളുടെ അവസാന അഭ്യര്‍ഥന വീണ്ടും ശ്രമിക്കണോ?',
       secondaryAction: 'നിലവിലെ മോഡൽ നിലനിർത്തുക',
       primaryAction: 'മാറ്റി വീണ്ടും ശ്രമിക്കുക',
+    },
+    providerFailover: {
+      eyebrow: 'ഹൈ അവൈലബിലിറ്റി സ്വിച്ച്',
+      title: 'മറ്റൊരു ലഭ്യമായ റൂട്ടിലേക്ക് മാറി വീണ്ടും ശ്രമിക്കണോ?',
+      description: '{provider} ലെയുള്ള നിലവിലെ റൂട്ടിൽ നിന്ന് Blue മറ്റൊരു ലഭ്യമായ റൂട്ടിലേക്ക് മാറി വീണ്ടും ശ്രമിക്കുന്നതിന് മുമ്പ് നിങ്ങളുടെ സ്ഥിരീകരണം ആവശ്യമാണ്.',
+      dismissAction: 'ഇപ്പോൾ വേണ്ട',
+      manualAction: 'റൂട്ട് കൈമാറി തിരഞ്ഞെടുക്കുക',
+      primaryAction: 'മാറി വീണ്ടും ശ്രമിക്കുക',
+      currentRoute: 'നിലവിലെ റൂട്ട്',
     },
     manageProviders: 'ദാതാക്കളെ നിയന്ത്രിക്കുക',
     noProviderConfigured:

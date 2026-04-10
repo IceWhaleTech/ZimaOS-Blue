@@ -581,11 +581,11 @@ export default mergeHarnessLocale('pt-BR', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Deixe o agente planejar, usar ferramentas, aplicar mudanças e continuar iterando até que a tarefa seja concluída de forma limpa. Inspirado na persistência obstinada do Ralph.',
-    ralphLoopHoverPlan: 'Planejar',
-    ralphLoopHoverAct: 'Agir',
-    ralphLoopHoverCheck: 'Verificar',
+    smartResumeHoverDescription:
+      'Deixe o agente planejar, usar ferramentas, aplicar mudanças e continuar iterando até que a tarefa seja concluída de forma limpa.',
+    smartResumeHoverPlan: 'Planejar',
+    smartResumeHoverAct: 'Agir',
+    smartResumeHoverCheck: 'Verificar',
     uiReviewShortcutTitle: 'Revisão da IU',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -849,6 +849,15 @@ export default mergeHarnessLocale('pt-BR', {
         'O modelo fixo {model} está indisponível no momento. Quer voltar este chat para o roteamento automático e tentar novamente sua última solicitação?',
       secondaryAction: 'Manter modelo atual',
       primaryAction: 'Trocar e tentar novamente',
+    },
+    providerFailover: {
+      eyebrow: 'Troca de alta disponibilidade',
+      title: 'Mudar para outra rota disponível e tentar novamente?',
+      description: 'A rota atual em {provider} precisa da sua confirmação antes que o Blue mude para outra rota disponível e tente novamente.',
+      dismissAction: 'Agora não',
+      manualAction: 'Escolher rota manualmente',
+      primaryAction: 'Mudar e tentar novamente',
+      currentRoute: 'Rota atual',
     },
     manageProviders: 'Gerenciar provedores',
     noProviderConfigured: 'Nenhum provedor configurado. Clique para adicionar um.',

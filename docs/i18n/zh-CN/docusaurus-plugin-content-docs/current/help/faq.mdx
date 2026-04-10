@@ -1,21 +1,43 @@
 ---
 title: "常见问题"
-summary: "当前 ZimaOS Blue 文档站的常见问题。"
+summary: "当前 ZimaOS Blue 文档站里最常见的文档、语言、安装和导航问题。"
 ---
 
 # 常见问题
+
+这页适合“我先想要一个短答案，再决定看哪一页”的场景。
 
 ## 这是正式公开文档站吗
 
 文档源码当前保存在仓库里，可以本地预览、在 CI 里校验，并通过 GitHub Pages 自动发布。部署方式见 [部署](/help/deployment)。
 
-## Wiki 在哪里
+## 更完整的 Wiki 或仓库知识入口在哪里
 
 使用 [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue)。文档站负责精选路径，DeepWiki 负责更广的仓库知识入口。做仓库研究时，先看 DeepWiki，再去 GitHub 校验文件、Issue、PR、工作流运行状态和当前仓库状态。
+
+## 文档源码现在放在哪里，怎么本地跑
+
+当前生效的 docs 应用在 `docs/` 目录下，使用 Docusaurus。需要本地预览时，运行 `cd docs && npm run start`；需要产出构建结果时，运行 `cd docs && npm run build`。
+
+现在已经没有单独维护的活跃 `docs-site/` 应用了。
+
+## 语言是怎么自动选择的
+
+当前根路径会根据浏览器语言偏好自动进入对应站点。偏好简体中文的浏览器会跳到 `/zh-CN/`，其他浏览器默认留在英文站点。
+
+## 还能手动切换语言吗
+
+可以。导航栏里有语言下拉框，可以随时在 English 和 简体中文之间手动切换。
 
 ## 哪个语言版本是主文
 
 英文是 canonical 文档，简体中文同步主要用户向设置、指南与支持页面。
+
+## 为什么我还会看到语言不对或者中英文像混在一起
+
+当前正式站点里，中英文已经是两个独立 locale，不再共用一个混排侧边栏。如果语言不符合预期，优先使用导航栏语言切换，或者直接打开对应 locale URL。
+
+如果你是在仓库里本地预览或维护文档，请优先使用 `docs/i18n/zh-CN/docusaurus-plugin-content-docs/current/` 下的中文 locale 内容，而不是旧的 `docs/zh-CN/` 内容副本。
 
 ## Blue 现在只是聊天产品吗
 
@@ -28,6 +50,10 @@ summary: "当前 ZimaOS Blue 文档站的常见问题。"
 ## 真正的首次启动步骤应该看哪里
 
 看 [首次运行](/start/first-run)。
+
+## 如果我想要一个首跑后的快速导览，应该看哪里
+
+看 [快速开始](/start/quick-start)，它更像一条 10 到 15 分钟能走完的操作路径。
 
 ## Provider、模型和运行时配置应该看哪里
 

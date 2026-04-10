@@ -570,11 +570,11 @@ export default mergeHarnessLocale('zh-TW', {
     analyzeReportHoverTagRecommendations: '建議',
     analyzeReportPrompt:
       '請產生一份結構化分析報告。\n- 主題：\n- 來源連結、檔案或輸入文字：\n- 希望重點涵蓋的問題、對比項或結論：',
-    ralphLoopHoverDescription:
-      '讓 Agent 自主規劃、調用工具、落地修改，並在任務完成前持續迭代。源自堅持執著的拉爾夫。',
-    ralphLoopHoverPlan: '規劃',
-    ralphLoopHoverAct: '執行',
-    ralphLoopHoverCheck: '複核',
+    smartResumeHoverDescription:
+      '讓 Agent 自主規劃、調用工具、落地修改，並以智能續跑方式持續迭代，直到任務穩定完成。',
+    smartResumeHoverPlan: '規劃',
+    smartResumeHoverAct: '執行',
+    smartResumeHoverCheck: '複核',
     uiReviewShortcutTitle: 'UI 評估',
     uiReviewHoverState: '快捷模板',
     uiReviewHoverDescription:
@@ -829,6 +829,15 @@ export default mergeHarnessLocale('zh-TW', {
         '固定模型「{model}」目前已無法使用。是否將這個對話切回自動路由，並重試上一個請求？',
       secondaryAction: '保留目前模型',
       primaryAction: '切換並重試',
+    },
+    providerFailover: {
+      eyebrow: '高可用切換',
+      title: '切換到其他可用路由並重試？',
+      description: '目前路由「{provider}」需要你的確認，Blue 才會切換到其他可用路由並重試。',
+      dismissAction: '暫不處理',
+      manualAction: '手動選擇路由',
+      primaryAction: '切換並重試',
+      currentRoute: '目前路由',
     },
     manageProviders: '管理提供商',
     noProviderConfigured: '未配置提供商，點選新增。',

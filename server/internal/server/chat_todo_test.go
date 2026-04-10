@@ -2390,6 +2390,8 @@ func TestApplyResearchToolPreference_UsesUnifiedWebQueryForArtifactReport(t *tes
 
 func TestApplyImageToolPreference_PrefersNativeImageTool(t *testing.T) {
 	defs := []tools.ToolDefinition{
+		{Name: "generate_image"},
+		{Name: "ocr"},
 		{Name: "image"},
 		{Name: "image_generation"},
 		{Name: "read"},
@@ -2401,8 +2403,8 @@ func TestApplyImageToolPreference_PrefersNativeImageTool(t *testing.T) {
 	}
 
 	filtered := applyImageToolPreference(defs, `Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`)
-	if got := toolNames(filtered); strings.Join(got, ",") != "image,read,write,edit,ls,find" {
-		t.Fatalf("expected image generation prompt to keep image tool plus local file workflow, got=%v", got)
+	if got := toolNames(filtered); strings.Join(got, ",") != "generate_image,read,write,edit,ls,find" {
+		t.Fatalf("expected image generation prompt to keep generate_image plus local file workflow, got=%v", got)
 	}
 }
 

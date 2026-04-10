@@ -1,100 +1,155 @@
 ---
 title: "管理与运维"
-summary: "当前面向运营者的安全、审计、计费、租户、认证与治理入口。"
+summary: "按 Blue 当前真实的管理页面来处理运行时健康、安全、计费、租户与身份运维。"
 ---
 
 # 管理与运维
 
-Blue 现在已经有了完整得多的 day-two 运维面。
+Blue 现在的运维能力已经分散到多张真实页面里，而不是藏在一个单独的后台面板。最实用的使用方式，是先知道“什么问题该去哪个页面”。
 
-## 首页仪表盘与系统可见性
+## 先看哪一页？
 
-`Home` 现在不只是落地页，也承担轻量运维面作用，当前可以看到：
+| 如果你要回答... | 打开 |
+| --- | --- |
+| “当前运行时健康吗？” | `Home` |
+| “我应该检查哪些安全控制或暴露面？” | `Security` |
+| “到底发生了什么、是谁做的？” | `Audit` |
+| “哪个 provider 或 model 正在拉高成本？” | `Billing` |
+| “怎么创建或管理工作区？” | `Tenants` |
+| “怎么管理某个工作区的成员或限额？” | `Tenant Detail` |
+| “用户怎么登录？” | `Auth Providers` 与 [身份与访问](/guides/identity-access) |
+| “用户和权限怎么管理？” | `Users` 以及 profile / auth 相关流程 |
+
+## Home：先看运行时健康
+
+`Home` 现在承担了轻量运维仪表盘的角色，当前实现可以展示：
 
 - 系统状态
-- Uptime、CPU、内存、goroutine 卡片
+- Uptime
+- CPU、内存、goroutine 卡片
 - 可刷新的运行时指标历史
-- 可选的 OS、硬件、运行时、磁盘、GPU、网络详细信息
+- 可选的 OS、硬件、运行时、磁盘、GPU、网络详情
 
-如果你想先回答“当前运行时健康吗”，这里通常是最快入口。
+如果你想先判断 Blue 本身是不是健康，这里通常是第一站，而不是一上来就钻到更深层设置里。
 
-## 安全
+## Security：真正做安全加固的地方
 
-当前安全能力包括：
+当前 `Security` 视图分成四个 tab：
 
-- 活跃会话查看与撤销
-- 安全设置与策略
+- `Overview`
+- `Controls`
+- `Monitoring`
+- `Logs`
+
+这些 tab 合起来覆盖：
+
+- 活跃会话与撤销
 - 威胁统计与最近威胁事件
-- Blocked IP 管理
-- Security scan、fix preview 与 fix 执行
+- 安全扫描、fix preview 与 fix 执行
 - Prompt firewall
-- CORS
-- TLS 与 ACME 状态
+- CORS、TLS、ACME 状态
 - Sandbox 运行时信息与网络开关
 - Tool approval policy
-- 持久化目录审批与浏览器站点审批
+- 已批准目录与已批准浏览器站点
+- Directory whitelist 行为
 
-## 审计
+当你要做上线前加固、收紧 sandbox 或 approval 策略、检查部署是否比预期更开放时，就应该来这页。
 
-审计页当前支持：
+## Audit：回答“发生了什么”
+
+如果你要看的是事件历史，而不是当前状态，应该去 `Audit`。当前它支持：
 
 - 过滤审计记录
-- 查看状态与动作统计
+- 查看状态与动作拆分
+- 按时间窗口过滤
 - 导出 JSON 或 CSV
-- 按时间窗口回溯
 
-## 计费与使用情况
+所以它适合做事故回看、改动追踪和复盘取证。
 
-当前 billing 更像模型用量可观测性，而不是订阅结算页。它可以提供：
+## Billing：不仅是总量，而是使用分析
 
-- token、请求数、成功率、预计成本汇总
-- 按天、Provider、模型拆分
-- 带延迟和成功状态的明细
+当前 `Billing` 更像模型使用可观测性页面，支持：
+
+- 日期范围过滤
+- Provider 和 model 过滤
+- `group_by` 视图，例如按天、provider、model
+- 成功率汇总
+- Token 与成本趋势图
+- 明细视图
 - CSV 导出
-- 异常峰值 drilldown
+- 使用峰值异常的 drilldown
 
-## 租户与工作区治理
+也就是说，下面这些问题都应该来 `Billing` 找答案：
 
-多租户面当前支持：
+- 哪个 provider 正在变贵？
+- 哪个 model 请求量最高？
+- 某一天是不是出现了使用峰值？
+- 成本上涨是某个 provider、某个 model，还是整体流量变化导致的？
 
-- 创建、编辑、切换、删除工作区
-- 成员、邀请、设置、限额管理
-- 角色感知的操作
-- 工作区级语言与时区默认值
+## Tenants：工作区生命周期入口
 
-## 身份与访问管理
+`Tenants` 是工作区治理的起点。当前页面支持：
 
-Blue 现在还有独立的身份层，覆盖：
+- 创建工作区
+- 编辑工作区
+- 选择工作区
+- 直接进入 `Manage`
+- 在权限允许时删除工作区
+- 查看状态、slug、描述和创建时间
 
-- 个人资料编辑与 API Key 管理
-- MFA 与 WebAuthn
-- 外部账号绑定
-- 用户管理里的锁定、解锁、重置密码与权限操作
-- OIDC 与常见托管身份提供方的认证配置
+当你要给新团队开空间、隔离环境，或清理旧工作区时，就从这里开始。
+
+## Tenant Detail：真正做工作区管理的地方
+
+进入某个具体 tenant 后，当前 `Tenant Detail` 被拆成四个 tab：
+
+- `Members`
+- `Invitations`
+- `Settings`
+- `Limits`，仅 owner 可见
+
+这些 tab 可以处理：
+
+- 成员角色调整
+- 邀请与撤销
+- 默认工作区语言
+- 工作区时区
+- owner 可见的 max users、storage、API requests、workflows、channels 等限额
+
+可以把 `Tenants` 理解成“找到工作区”，把 `Tenant Detail` 理解成“真正管理工作区”。
+
+## Auth Providers 与 Users：身份上线层
+
+Blue 的身份相关页面已经足够独立，应该把它当成单独的运维层来看。当前产品包括：
+
+- OIDC 风格和常见托管身份提供方的认证配置
+- 基于 callback 的登录流程
 - Preview bootstrap 与首个管理员创建流程
+- 用户管理中的锁定、解锁、重置密码与权限操作
+- Profile 级别的 linked accounts、API keys、MFA、WebAuthn
 
-当问题是“谁能进入系统、用什么身份、权限怎么发”时，继续看 [身份与访问](/guides/identity-access)。
+如果真正的问题是“谁能进系统、怎么进、权限怎么发”，就继续读 [身份与访问](/guides/identity-access)。
 
-## 认证提供方与预览模式
+## 一个实用的 day-two 运维顺序
 
-当前应用还包含：
+1. 先看 `Home`，确认运行时健康。
+2. 在大规模开放前检查 `Security`。
+3. 用 `Audit` 确认关键动作都能追踪。
+4. 真实流量开始后持续看 `Billing`。
+5. 涉及多个团队或空间时，再配置 `Tenants` 与 `Tenant Detail`。
+6. 在更广泛 onboarding 前，完成 `Auth Providers`、`Users` 和身份策略。
 
-- 认证提供方管理与 callback 流程
-- 预览模式感知路由
-- preview token 与连接错误回退路径
+## 常见页面走错方向的情况
 
-## 推荐运维顺序
-
-1. 在 [设置与 Provider Pool](/guides/settings-provider-pool) 完成基础配置
-2. 先看首页仪表盘确认运行时健康
-3. 确认安全、prompt firewall、sandbox 与 approval 控制
-4. 打开审计与导出路径
-5. 上线后跟踪 billing 趋势
-6. 再配置租户、成员、认证提供方与用户管理策略
+- 在 `Billing` 里找事故历史，而这其实该去 `Audit`
+- 把 `Tenants` 当成完整工作区管理页，而没有继续进入 `Tenant Detail`
+- 登录问题先去看一般安全配置，却没先检查 auth-provider 配置
+- 运行时本身还不健康，就直接钻进更深设置页
 
 ## 相关页面
 
 - [身份与访问](/guides/identity-access)
 - [设置与 Provider Pool](/guides/settings-provider-pool)
+- [故障排查](/help/troubleshooting)
 - [Harness 与 Evolution](/guides/harness-evolution)
 - [语音与表单填充](/guides/voice-form-filling)

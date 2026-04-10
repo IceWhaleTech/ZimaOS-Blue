@@ -1,54 +1,97 @@
 ---
 title: "Quick Start"
-summary: "A short path from install to product exploration."
+summary: "A practical 10 to 15 minute path from install to a working first response and the next operator pages."
 ---
 
 # Quick Start
 
-This page is intentionally short. It assumes Blue is already installed and that you have completed the practical startup checks in [First Run](/start/first-run).
+This page is the shortest practical path from installation to a first usable Blue setup. It assumes Blue is already installed and that you have completed the startup checks in [First Run](/start/first-run).
 
-## 1. Pick an install path
+![Quick product walkthrough](/demo%20quickv4.gif)
 
-Choose one option from [Installation](/start/installation).
+## What you should finish in the first 15 minutes
 
-## 2. Complete the first live setup
+- Blue opens locally and you know which launch path you used
+- You understand whether the instance is in preview mode or normal mode
+- One provider is connected and configured correctly enough for a real reply
+- One chat response succeeds
+- You know which page to open next for providers, identity, channels, automation, or evaluation
 
-Use [First Run](/start/first-run) to:
+## 1. Reconfirm how you are launching Blue
 
-- Launch Blue locally
-- Understand preview mode versus normal mode
-- Connect one working provider
-- Verify that the first chat response succeeds
+Choose the path that matches what you already installed:
 
-## 3. Start with the built-in product surfaces
+- Desktop app: open the app, then continue in the web UI
+- Source, production-style: run `sh build.sh`
+- Source, development-style: run `./build.sh start`
 
-The repository already shows the main areas Blue is organized around:
+If you are not sure which path you used, go back to [Installation](/start/installation) and [First Run](/start/first-run) before you keep debugging downstream issues.
 
-- Chat and voice interaction surfaces
-- Channel integrations
-- Automation surfaces such as cron and webhooks
-- Security, tenancy, backup, and audit operations
-- Settings for providers, models, and runtime behavior
+## 2. Finish the minimum operator setup
+
+Open the web UI and complete this short path:
+
+1. If the instance is still in preview mode, explore briefly and then use the upgrade flow when you are ready to create the first admin account.
+2. Open `Settings -> LLM`.
+3. Add one provider you actually plan to use.
+4. Pick the default provider and review allowed models if you want tighter routing.
+5. Return to chat for a smoke test.
+
+Before you click `Add provider`, it helps to have these values ready:
+
+| Field | Why it matters |
+| --- | --- |
+| Provider name | Makes later routing and debugging easier to read |
+| Base URL or endpoint | Tells Blue where to send requests |
+| API key or bearer token | Authenticates the provider |
+| Compatibility format | Lets Blue speak the correct protocol, such as `openai`, `responses`, `anthropic`, or `google` |
+| Cloud or local location | Helps you reason about deployment shape |
+| Allowed models | Lets you keep routing bounded if needed |
+
+## 3. Run a first smoke test
+
+Send one simple prompt such as:
+
+`Summarize what ZimaOS Blue is in one paragraph.`
+
+A healthy first pass looks like this:
+
+- The UI loads without confusion about the local address
+- Preview access or normal sign-in works
+- The provider is accepted and can answer
+- The first response returns successfully
+- You know which page owns the next setup question instead of guessing
 
 ## 4. Learn the three core ideas
 
-- **Runtime**: Blue is a Go-based agent runtime meant to stay lightweight and deployable
+- **Runtime**: Blue is a Go-based agent runtime designed to stay lightweight and deployable
 - **Routing**: providers and models are selected through configurable routing and failover
-- **Surfaces**: users interact through app UI, channels, voice, and automation entry points
+- **Surfaces**: users interact through app UI, channels, voice, automation, and support pages
 
-## 5. Open the key docs
+## 5. Take the short product tour
+
+| If your next question is... | Best next page |
+| --- | --- |
+| How do I configure providers and model routing? | [Settings and Provider Pool](/guides/settings-provider-pool) |
+| How do login, first admin creation, API keys, or auth providers work? | [Identity and Access](/guides/identity-access) |
+| How do messaging and remote interaction surfaces fit in? | [Channels](/guides/channels) |
+| How do automation, browser tasks, or workflows fit in? | [Automation](/guides/automation) |
+| How do evaluation, baselines, and evolution loops work? | [Harness and Evolution](/guides/harness-evolution) |
+| How do skills, tool catalogs, and store flows fit in? | [Extensions](/guides/extensions) |
+| How do package layers and runtime flows fit together? | [Architecture](/product/architecture) |
+| Where is the full curated map of pages? | [Docs Directory](/start/docs-directory) |
 
 - [Features](/product/features)
-- [Settings and Provider Pool](/guides/settings-provider-pool)
-- [Identity and Access](/guides/identity-access)
-- [Architecture](/product/architecture)
-- [Channels](/guides/channels)
-- [Providers and Models](/guides/providers-models)
-- [Automation](/guides/automation)
-- [Harness and Evolution](/guides/harness-evolution)
-- [Extensions](/guides/extensions)
+- [Overview](/product/overview)
 
-## 6. Keep the hub open
+## 6. If you get blocked, go here first
+
+- General setup confusion: [FAQ](/help/faq)
+- Startup, provider, or routing detours: [Troubleshooting](/help/troubleshooting)
+- Full curated page map: [Docs Directory](/start/docs-directory)
+- Repository-wide context: [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue)
+
+## Keep the hub open
 
 For a curated navigation page, bookmark [Docs Directory](/start/docs-directory).
 

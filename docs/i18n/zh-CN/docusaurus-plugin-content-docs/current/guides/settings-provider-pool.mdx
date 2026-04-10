@@ -7,6 +7,8 @@ summary: "Blue 现在的设置页已经覆盖运行时行为、Provider 路由�
 
 Blue 的设置页已经不是简单偏好面板，而是当前最核心的运维入口之一。
 
+![Provider 与运行时设置界面](/demo%20Provider.gif)
+
 ## 当前设置页包含什么
 
 Web 应用现在把设置分成五个标签：
@@ -16,6 +18,20 @@ Web 应用现在把设置分成五个标签：
 - `Proxy`：请求路由辅助能力与轻量代理行为
 - `Speech`：语音输入、输出与语音链路偏好
 - `User Data`：记忆、导出、备份、恢复
+
+## 最短 Provider 配置路径
+
+如果你的目标只是“先让第一条真实响应跑通”，最短的 UI 路径通常是：
+
+1. 打开 `Settings`
+2. 切到 `LLM`
+3. 添加一个你真的准备使用的 provider
+4. 填好 endpoint、凭证、兼容格式，以及 `cloud` / `local` 位置
+5. 先跑 provider verify
+6. 需要时刷新模型目录
+7. 选择默认 provider
+8. 如有需要再限制 allowed models
+9. 回到聊天页做一次 smoke test
 
 ## Provider Pool 能做什么
 
@@ -27,6 +43,17 @@ Web 应用现在把设置分成五个标签：
 - 在正式放量前先验证提供方
 - 刷新模型列表
 - 查看价格或能力元数据
+
+## 一个健康的首次 Provider 配置结果应该是什么样
+
+通常当下面这些都成立时，可以认为状态是健康的：
+
+- Provider 记录保存成功
+- Verify 对准了你预期的 endpoint，并且成功通过
+- 模型列表能刷新出来，或者本来就已经可见
+- 默认 provider 与你的预期一致
+- allowed-model 限制是你主动设置的，而不是误配出来的
+- 一条简单聊天消息可以成功返回
 
 ## 自定义 Provider
 
@@ -40,6 +67,15 @@ Web 应用现在把设置分成五个标签：
 - `cloud` 或 `local` 位置元数据
 
 这让 Blue 可以同时接云端 API、本地网关和兼容层，而不用改上层产品逻辑。
+
+## `cloud` 和 `local` 应该怎么选
+
+Blue 允许你在设置页里把 provider 标成 `cloud` 或 `local`。
+
+- 请求发往托管 API 或远程网关时，选 `cloud`
+- 模型运行时或兼容 endpoint 在你自己的机器或局域网里时，选 `local`
+
+这不只是显示层的小标签。后面在判断延迟、故障域和部署形态时，它会让整套运维界面更容易读。
 
 ## 最小自定义 Provider 准备清单
 
@@ -80,6 +116,18 @@ proxy:
 
 设置页里的 Provider Pool 会比这段最小配置更丰富，还会包含兼容格式、位置元数据、验证结果和 allowed-model 控制等状态。
 
+## 推荐的 UI 内操作顺序
+
+当你从零开始配置 provider 时，最不容易混乱的顺序通常是：
+
+1. 先把 endpoint 和凭证填对并保存
+2. 在设成默认前先验证 provider
+3. 刷新模型目录
+4. 再看 allowed models
+5. 最后设成默认 provider
+
+这样可以把“保存成功”和“真的可用”两件事分开。
+
 ## 模型与路由控制
 
 Provider 接入后，你还可以继续管理：
@@ -90,6 +138,14 @@ Provider 接入后，你还可以继续管理：
 - IDE 或运行时发现辅助能力
 
 模型家族、回退和故障转移策略请继续看 [Providers and Models](/guides/providers-models)。
+
+## 常见的首次配置失误
+
+- 保存了 provider，但从没跑过 verify
+- 给上游 API 选错了兼容格式
+- 改了 endpoint 之后忘记刷新模型列表
+- allowed models 限制得过紧，然后误以为 endpoint 坏了
+- 在确认可用之前就把 provider 设成默认
 
 ## 外部代理
 
@@ -188,6 +244,13 @@ go build ./cmd/agentcore-runner
 3. 视需要限制可用模型
 4. 添加 Blue 需要协同的外部代理
 5. 再设置语音、记忆和备份策略
+
+## 如果这页还解决不了问题
+
+- 模型家族、回退与路由策略：看 [Providers and Models](/guides/providers-models)
+- 首次启动与 preview 流程：看 [首次运行](/start/first-run)
+- 登录、认证提供方、API Key、首个管理员：看 [身份与访问](/guides/identity-access)
+- 通用排查入口：看 [故障排查](/help/troubleshooting)
 
 ## 相关页面
 

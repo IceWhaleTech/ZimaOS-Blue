@@ -1391,6 +1391,127 @@ describe('Chat Store', () => {
       })
     })
 
+    it('queues a provider failover confirmation when high-availability switching needs approval', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        options.onProcessEvent?.({
+          delta: '',
+          done: false,
+          process_event: 'provider_failover',
+          process_status: 'pending',
+          process_message: 'Waiting for switch confirmation',
+          process_detail:
+            'The tool follow-up on prov_primary hit retryable upstream failures (latest status 529) and still failed after 2 backoff retries. Because Smart Resume and Auto-Confirm are not both enabled, confirm before switching to another available route or choose one manually.',
+          process_provider: 'prov_primary',
+          process_requires_confirmation: true,
+          process_retry_attempts: 2,
+        })
+        options.onError?.(new Error('provider_failover_confirmation_required'))
+      })
+
+      await store.sendMessage('hello')
+
+      expect(store.pendingProviderFailoverRetry).toEqual(
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          retryKind: 'send',
+          failedProviderId: 'prov_primary',
+          retryAttempts: 2,
+        })
+      )
+      expect(store.pendingProviderFailoverRetry?.detail).toContain('latest status 529')
+      expect(store.streamError).toBeNull()
+      expect(store.messages.some((message) => message.id.startsWith('temp-'))).toBe(false)
+    })
+
+    it('retries the original request after confirming provider failover', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Original',
+          created_at: '2026-03-22T00:00:00.000Z',
+          updated_at: '2026-03-22T00:00:00.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list)
+        .mockResolvedValueOnce({
+          data: [
+            {
+              id: 'msg-user-1',
+              conversation_id: 'conv-1',
+              role: 'user',
+              content: 'hello',
+              created_at: '2026-03-22T00:00:00.000Z',
+            },
+          ],
+        } as never)
+        .mockResolvedValueOnce({
+          data: [
+            {
+              id: 'msg-user-1',
+              conversation_id: 'conv-1',
+              role: 'user',
+              content: 'hello',
+              created_at: '2026-03-22T00:00:00.000Z',
+            },
+            {
+              id: 'msg-assistant-1',
+              conversation_id: 'conv-1',
+              role: 'assistant',
+              content: 'Recovered after provider failover',
+              created_at: '2026-03-22T00:00:01.000Z',
+            },
+          ],
+        } as never)
+
+      let retryRequest: Record<string, unknown> | null = null
+      mocks.sseConnect
+        .mockImplementationOnce(async (_conversationId, _request, options: any) => {
+          options.onProcessEvent?.({
+            delta: '',
+            done: false,
+            process_event: 'provider_failover',
+            process_status: 'pending',
+            process_message: 'Waiting for switch confirmation',
+            process_detail:
+              'The tool follow-up on prov_primary hit retryable upstream failures (latest status 502) and still failed after 1 backoff retry. Because Smart Resume and Auto-Confirm are not both enabled, confirm before switching to another available route or choose one manually.',
+            process_provider: 'prov_primary',
+            process_requires_confirmation: true,
+            process_retry_attempts: 1,
+          })
+          options.onError?.(new Error('provider_failover_confirmation_required'))
+        })
+        .mockImplementationOnce(async (_conversationId, request, options: any) => {
+          retryRequest = request as Record<string, unknown>
+          options.onComplete?.({ done: true, provider: 'openai', model: 'gpt-4o-mini' })
+        })
+
+      await store.sendMessage('hello')
+      await store.confirmProviderFailoverRetry()
+      await settleAsyncWork()
+
+      expect(store.pendingProviderFailoverRetry).toBeNull()
+      expect(retryRequest).toMatchObject({
+        message: 'hello',
+        provider: '',
+        model: '',
+        regenerate: true,
+      })
+    })
+
     it('clears a stale stream error when a new request starts and completes', async () => {
       const store = useChatStore()
       store.currentConversationId = 'conv-1'

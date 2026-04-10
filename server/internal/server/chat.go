@@ -750,9 +750,9 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 	if isImageGenerationIntentMessage(userMessage) {
 		pathHint := ""
 		if isImageArtifactPath(target) {
-			pathHint = fmt.Sprintf(" When the user specified a filename, pass that exact workspace path as the image tool's `path` so the generated asset is saved to %q.", target)
+			pathHint = fmt.Sprintf(" When the user specified a filename, pass that exact workspace path as the generate_image tool's `path` so the generated asset is saved to %q.", target)
 		}
-		return "This is an image generation request. Use the image tool name when available, keep the local file workflow available together when a filename is requested, craft a descriptive prompt that preserves the requested subject, atmosphere, and scene details, and confirm the saved result in plain language." + pathHint
+		return "This is an image generation request. Prefer the dedicated `generate_image` tool when available; only fall back to the unified `image` tool if the split surface is unavailable. Keep the local file workflow available together when a filename is requested, craft a descriptive prompt that preserves the requested subject, atmosphere, and scene details, and confirm the saved result in plain language." + pathHint
 	}
 	if shouldPreferWorkspaceFileWorkflow(userMessage) {
 		hint := fmt.Sprintf("This is a local workspace synthesis task. Keep the local file workflow available together: file_read/file_write/file_delete for CRUD, plus ls/find/grep/rg/edit/convert/pdf as needed. Discover and read the relevant files, then write the completed deliverable to %q. Prefer local file tools over browser, email, calendar, or research detours.", target)
@@ -7391,6 +7391,8 @@ func preferredImageWorkflowToolDefs(defs []tools.ToolDefinition, userMessage str
 	}
 	primary := ""
 	switch {
+	case hasToolDefName(defs, "generate_image"):
+		primary = "generate_image"
 	case hasToolDefName(defs, "image"):
 		primary = "image"
 	case hasToolDefName(defs, "image_generation"):
@@ -8059,6 +8061,9 @@ func shouldUseSkillDecisionForDiscoverFirst(decision agentcore.Decision) bool {
 }
 
 func (h *ChatHandler) resolveSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
+	if shouldBypassDiscoverFirstForNativeImageGeneration(userMessage) {
+		return agentcore.Decision{}, false
+	}
 	if decision, ok := h.resolveSkillDecision(ctx, userMessage); ok {
 		if shouldUseSkillDecisionForDiscoverFirst(decision) {
 			return decision, true
@@ -8071,6 +8076,9 @@ func (h *ChatHandler) resolveSkillDecisionForRequest(ctx context.Context, userMe
 }
 
 func (h *ChatHandler) previewSkillDecisionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (agentcore.Decision, bool) {
+	if shouldBypassDiscoverFirstForNativeImageGeneration(userMessage) {
+		return agentcore.Decision{}, false
+	}
 	if decision, ok := h.resolveSkillDecisionWithOverride(ctx, userMessage, true); ok {
 		if shouldUseSkillDecisionForDiscoverFirst(decision) {
 			return decision, true
@@ -8147,6 +8155,10 @@ func (h *ChatHandler) resolveSkillSelectionForRequest(ctx context.Context, userM
 
 func shouldForceRequestAgentMode(userMessage string, deepResearchEnabled *bool) bool {
 	return shouldForceResearchToolExposure(userMessage, deepResearchEnabled)
+}
+
+func shouldBypassDiscoverFirstForNativeImageGeneration(userMessage string) bool {
+	return isImageGenerationIntentMessage(userMessage)
 }
 
 func (h *ChatHandler) buildSkillSelectionPrompt(ctx context.Context, userMessage string) string {
@@ -8338,6 +8350,156 @@ func isRetryableIMPreContentProxyError(err error) bool {
 		return false
 	}
 	return pe.StatusCode >= http.StatusInternalServerError
+}
+
+const providerFailoverConfirmationRequiredError = "provider_failover_confirmation_required"
+
+func providerFailoverStatusCode(err error) int {
+	if pe, ok := err.(*proxybridge.ProxyError); ok {
+		return pe.StatusCode
+	}
+	return 0
+}
+
+func providerFailoverStageLabel(lang, stage string) string {
+	zh := strings.HasPrefix(strings.ToLower(strings.TrimSpace(lang)), "zh")
+	switch stage {
+	case "continuation_follow_up":
+		if zh {
+			return "智能续跑后续"
+		}
+		return "continuation follow-up"
+	default:
+		if zh {
+			return "工具后续"
+		}
+		return "tool follow-up"
+	}
+}
+
+func providerFailoverStatusLabel(lang string, statusCode int) string {
+	zh := strings.HasPrefix(strings.ToLower(strings.TrimSpace(lang)), "zh")
+	if statusCode > 0 {
+		if zh {
+			return fmt.Sprintf("最近状态 %d", statusCode)
+		}
+		return fmt.Sprintf("latest status %d", statusCode)
+	}
+	if zh {
+		return "重复的可重试上游错误"
+	}
+	return "repeated retryable upstream failures"
+}
+
+func providerFailoverRouteLabel(lang, provider, model string) string {
+	provider = strings.TrimSpace(provider)
+	model = strings.TrimSpace(model)
+	switch {
+	case provider != "" && model != "":
+		return provider + "/" + model
+	case provider != "":
+		return provider
+	case model != "":
+		return model
+	default:
+		if strings.HasPrefix(strings.ToLower(strings.TrimSpace(lang)), "zh") {
+			return "其他可用路由"
+		}
+		return "another available route"
+	}
+}
+
+func providerFailoverDecisionDetail(lang i18n.Language, stage, failedProvider string, retryAttempts, statusCode int, autoSwitch bool) string {
+	langStr := string(lang)
+	zh := strings.HasPrefix(strings.ToLower(strings.TrimSpace(langStr)), "zh")
+	stageLabel := providerFailoverStageLabel(langStr, stage)
+	statusLabel := providerFailoverStatusLabel(langStr, statusCode)
+	failedProvider = strings.TrimSpace(failedProvider)
+	if failedProvider == "" {
+		if zh {
+			failedProvider = "当前路由"
+		} else {
+			failedProvider = "the current route"
+		}
+	}
+	if zh {
+		retryPart := "未再进行额外退避重试"
+		if retryAttempts == 1 {
+			retryPart = "经过 1 次退避重试"
+		} else if retryAttempts > 1 {
+			retryPart = fmt.Sprintf("经过 %d 次退避重试", retryAttempts)
+		}
+		if autoSwitch {
+			return fmt.Sprintf("%s在 %s 上连续出现可重试上游错误（%s），%s后仍然失败。系统正在按高可用策略自动切换到其他可用路由并立即重试。", stageLabel, failedProvider, statusLabel, retryPart)
+		}
+		return fmt.Sprintf("%s在 %s 上连续出现可重试上游错误（%s），%s后仍然失败。由于没有同时开启“智能续跑”和“自动确认”，需要你确认是否切换到其他可用路由；你也可以手动选择路由。", stageLabel, failedProvider, statusLabel, retryPart)
+	}
+	retryPart := "and failed before another backoff retry could help"
+	if retryAttempts == 1 {
+		retryPart = "and still failed after 1 backoff retry"
+	} else if retryAttempts > 1 {
+		retryPart = fmt.Sprintf("and still failed after %d backoff retries", retryAttempts)
+	}
+	if autoSwitch {
+		return fmt.Sprintf("The %s on %s hit retryable upstream failures (%s) %s. Blue is switching automatically to another available route and retrying now.", stageLabel, failedProvider, statusLabel, retryPart)
+	}
+	return fmt.Sprintf("The %s on %s hit retryable upstream failures (%s) %s. Because Smart Resume and Auto-Confirm are not both enabled, confirm before switching to another available route, or choose one manually.", stageLabel, failedProvider, statusLabel, retryPart)
+}
+
+func providerFailoverSuccessDetail(lang i18n.Language, stage, failedProvider, targetProvider, targetModel string, retryAttempts, statusCode int) string {
+	langStr := string(lang)
+	zh := strings.HasPrefix(strings.ToLower(strings.TrimSpace(langStr)), "zh")
+	stageLabel := providerFailoverStageLabel(langStr, stage)
+	statusLabel := providerFailoverStatusLabel(langStr, statusCode)
+	targetRoute := providerFailoverRouteLabel(langStr, targetProvider, targetModel)
+	failedProvider = strings.TrimSpace(failedProvider)
+	if failedProvider == "" {
+		if zh {
+			failedProvider = "当前路由"
+		} else {
+			failedProvider = "the current route"
+		}
+	}
+	if zh {
+		retryPart := "未再进行额外退避重试"
+		if retryAttempts == 1 {
+			retryPart = "经过 1 次退避重试"
+		} else if retryAttempts > 1 {
+			retryPart = fmt.Sprintf("经过 %d 次退避重试", retryAttempts)
+		}
+		return fmt.Sprintf("%s在 %s 上连续出现可重试上游错误（%s），%s后仍然失败。系统已自动切换到 %s 并继续本轮回复。", stageLabel, failedProvider, statusLabel, retryPart, targetRoute)
+	}
+	retryPart := "and failed before another backoff retry could help"
+	if retryAttempts == 1 {
+		retryPart = "and still failed after 1 backoff retry"
+	} else if retryAttempts > 1 {
+		retryPart = fmt.Sprintf("and still failed after %d backoff retries", retryAttempts)
+	}
+	return fmt.Sprintf("The %s on %s hit retryable upstream failures (%s) %s. Blue switched automatically to %s and continued this reply.", stageLabel, failedProvider, statusLabel, retryPart, targetRoute)
+}
+
+func providerFailoverAlertCard(lang i18n.Language, stage, failedProvider, targetProvider, targetModel string, retryAttempts, statusCode int) map[string]interface{} {
+	zh := strings.HasPrefix(strings.ToLower(strings.TrimSpace(string(lang))), "zh")
+	title := "High-availability route switched automatically"
+	if zh {
+		title = "已自动切换高可用路由"
+	}
+	return map[string]interface{}{
+		"type":        "alert",
+		"source":      "provider_failover",
+		"variant":     "info",
+		"icon":        "↺",
+		"title":       title,
+		"message":     providerFailoverSuccessDetail(lang, stage, failedProvider, targetProvider, targetModel, retryAttempts, statusCode),
+		"dismissible": true,
+	}
+}
+
+func providerFailoverReportedRetryAttempts(retryAttempts int) int {
+	if retryAttempts < 1 {
+		return 1
+	}
+	return retryAttempts
 }
 
 func shouldRollbackIMDefaultModelToAuto(model string, err error) bool {
@@ -22534,6 +22696,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		logger.Warn().Msg("[chat] StreamMessage: systemPromptBuilder is nil, no system prompt injected")
 	}
 	globalAgentModeEnabled := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
+	globalAgentAutoConfirm := h.settingsHandler != nil && h.settingsHandler.GetAgentAutoConfirm()
 	requestAgentModeEnabled := globalAgentModeEnabled || shouldForceRequestAgentMode(routingMessage, req.DeepResearchEnabled)
 	if requestAgentModeEnabled && !globalAgentModeEnabled {
 		compactedMessages = append([]llm.Message{{
@@ -22814,6 +22977,8 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	// Inject card emitter so tools (e.g. ui_reviewer) can push streaming
 	// progress cards to the client during execution.
 	var emitStreamingCard func(card map[string]interface{})
+	var emitPersistentStreamingCard func(card map[string]interface{})
+	var currentResolvedRoute func() (string, string)
 	toolCtx = tools.WithCardEmitter(toolCtx, func(card map[string]interface{}) {
 		if emitStreamingCard != nil {
 			emitStreamingCard(card)
@@ -23013,10 +23178,55 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 			typelessCardsPersisted = true
 		}
 		emitSSE(map[string]interface{}{
-			"delta":     block,
-			"done":      false,
-			"stream_id": streamID,
+			"delta":         block,
+			"done":          false,
+			"stream_id":     streamID,
+			"typeless_card": card,
 		})
+	}
+	emitPersistentStreamingCard = func(card map[string]interface{}) {
+		flushed := flushPendingVisibleDelta()
+		if flushed > 0 {
+			logger.Debug().
+				Int("flushed_pending_delta_chars", flushed).
+				Msg("[chat] stream: flushed pending assistant delta before persistent typeless card")
+		}
+		cardJSON, err := json.Marshal(card)
+		if err != nil {
+			return
+		}
+		block := "\n\n```typeless\n" + string(cardJSON) + "\n```"
+		fullContent += block
+		typelessCardsPersisted = true
+		emitSSE(map[string]interface{}{
+			"delta":         block,
+			"done":          false,
+			"stream_id":     streamID,
+			"typeless_card": card,
+		})
+	}
+	currentResolvedRoute = func() (string, string) {
+		providerLabel := strings.TrimSpace(lastResolvedTraceProvider)
+		if providerLabel == "" {
+			providerLabel = strings.TrimSpace(actualProvider)
+		}
+		if providerLabel == "" {
+			providerLabel = strings.TrimSpace(actualProviderID)
+		}
+		if providerLabel == "" && resolvedRoute.Provider != "" {
+			providerLabel = strings.TrimSpace(resolvedRoute.Provider)
+		}
+		if providerLabel == "" && resolvedRoute.ProviderID != "" {
+			providerLabel = strings.TrimSpace(resolvedRoute.ProviderID)
+		}
+		modelLabel := strings.TrimSpace(lastResolvedTraceModel)
+		if modelLabel == "" {
+			modelLabel = strings.TrimSpace(actualModel)
+		}
+		if modelLabel == "" {
+			modelLabel = strings.TrimSpace(h.resolveResponseModel(chatReq.Model, resolvedRoute.Model))
+		}
+		return providerLabel, modelLabel
 	}
 
 	// Tool execution loop for streaming — collect tool calls, execute, re-stream
@@ -23306,6 +23516,7 @@ STREAM_LOOP:
 		streamErrorHandled = false
 		deepSearchForcePending = false
 		deepSearchForceReason = ""
+		providerFailoverAutoSwitchedThisRound := false
 		suppressPseudoDirectiveDelta := false
 		suppressedPseudoDirectiveChunks := 0
 		suppressUserDeltaAfterToolCall := false
@@ -23623,7 +23834,7 @@ STREAM_LOOP:
 
 				// Auto-continue: if LLM stopped without tool calls but the content
 				// indicates a pending next action, defer done and nudge another round.
-				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinueRetries {
+				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinueRetries && !providerFailoverAutoSwitchedThisRound {
 					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, false, missingTodoAutoContinueCount == 0); shouldContinue {
 						if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {
 							streamCompleted = true
@@ -23849,7 +24060,9 @@ STREAM_LOOP:
 				decisionLog.Msg("[chat] pre-content error: retry decision")
 			}
 			continuationDisabledForRetry := false
+			preContentRetryAttempts := 0
 			for retryAttempt := 0; retryAttempt < preContentRetryLimit && err != nil && !skipRetry && fullContent == "" && !streamErrorHandled && ctx.Err() == nil; retryAttempt++ {
+				preContentRetryAttempts = retryAttempt + 1
 				if !continuationDisabledForRetry && shouldDisableResponsesContinuationForPreContentRetry(err) &&
 					!proxy.DisableResponsesContinuationFromContext(ctx) {
 					if strings.TrimSpace(chatReq.PreviousResponseID) == "" {
@@ -24018,18 +24231,53 @@ STREAM_LOOP:
 				isRetryableIMPreContentProxyError(err) {
 				pinnedProviderID := strings.TrimSpace(proxy.GetPinnedProvider(ctx))
 				if pinnedProviderID != "" {
+					allowAutomaticProviderFailover := globalAgentModeEnabled && globalAgentAutoConfirm
+					reportedRetryAttempts := providerFailoverReportedRetryAttempts(preContentRetryAttempts)
+					failoverStatusCode := providerFailoverStatusCode(err)
+					failoverDecisionDetail := providerFailoverDecisionDetail(
+						streamLang,
+						"tool_follow_up",
+						pinnedProviderID,
+						preContentRetryAttempts,
+						failoverStatusCode,
+						allowAutomaticProviderFailover,
+					)
 					logger.Warn().
 						Err(err).
 						Int("tool_round", toolRound).
 						Str("pinned_provider_id", pinnedProviderID).
 						Msg("[chat] tool round pre-content failed — retrying once without pinned provider")
+					if !allowAutomaticProviderFailover {
+						emitProcessEvent(
+							"provider_failover",
+							"pending",
+							"Waiting for switch confirmation",
+							failoverDecisionDetail,
+							map[string]interface{}{
+								"process_provider":              pinnedProviderID,
+								"process_requires_confirmation": true,
+								"process_retry_attempts":        reportedRetryAttempts,
+								"process_last_status_code":      failoverStatusCode,
+							},
+						)
+						emitSSE(map[string]interface{}{
+							"error":     providerFailoverConfirmationRequiredError,
+							"done":      true,
+							"delta":     "",
+							"stream_id": streamID,
+						})
+						h.flushConversationOnResponse(convID)
+						return nil
+					}
 					emitProcessEvent(
 						"provider_failover",
 						"active",
 						"Switching provider",
-						"Retrying the tool follow-up without the previously pinned provider.",
+						failoverDecisionDetail,
 						map[string]interface{}{
-							"process_provider": pinnedProviderID,
+							"process_provider":         pinnedProviderID,
+							"process_retry_attempts":   reportedRetryAttempts,
+							"process_last_status_code": failoverStatusCode,
 						},
 					)
 					unpinnedCtx := proxy.WithPinnedProvider(ctx, "")
@@ -24047,15 +24295,35 @@ STREAM_LOOP:
 					if err == nil {
 						ctx = unpinnedCtx
 						chatReq = unpinnedReq
+						providerFailoverAutoSwitchedThisRound = true
+						switchedProvider, switchedModel := currentResolvedRoute()
 						emitProcessEvent(
 							"provider_failover",
 							"success",
 							"Provider switch succeeded",
-							"",
+							providerFailoverSuccessDetail(
+								streamLang,
+								"tool_follow_up",
+								pinnedProviderID,
+								switchedProvider,
+								switchedModel,
+								preContentRetryAttempts,
+								failoverStatusCode,
+							),
 							map[string]interface{}{
 								"process_provider": pinnedProviderID,
+								"process_model":    switchedModel,
 							},
 						)
+						emitPersistentStreamingCard(providerFailoverAlertCard(
+							streamLang,
+							"tool_follow_up",
+							pinnedProviderID,
+							switchedProvider,
+							switchedModel,
+							preContentRetryAttempts,
+							failoverStatusCode,
+						))
 						logger.Info().
 							Int("tool_round", toolRound).
 							Str("previous_pinned_provider_id", pinnedProviderID).
@@ -24092,18 +24360,53 @@ STREAM_LOOP:
 				strings.TrimSpace(chatReq.PreviousResponseID) == "" {
 				pinnedProviderID := strings.TrimSpace(proxy.GetPinnedProvider(ctx))
 				if pinnedProviderID != "" {
+					allowAutomaticProviderFailover := globalAgentModeEnabled && globalAgentAutoConfirm
+					reportedRetryAttempts := providerFailoverReportedRetryAttempts(preContentRetryAttempts)
+					failoverStatusCode := providerFailoverStatusCode(err)
+					failoverDecisionDetail := providerFailoverDecisionDetail(
+						streamLang,
+						"continuation_follow_up",
+						pinnedProviderID,
+						preContentRetryAttempts,
+						failoverStatusCode,
+						allowAutomaticProviderFailover,
+					)
 					logger.Warn().
 						Err(err).
 						Int("tool_round", toolRound).
 						Str("pinned_provider_id", pinnedProviderID).
 						Msg("[chat] auto-continue pre-content failed — retrying once without pinned provider")
+					if !allowAutomaticProviderFailover {
+						emitProcessEvent(
+							"provider_failover",
+							"pending",
+							"Waiting for switch confirmation",
+							failoverDecisionDetail,
+							map[string]interface{}{
+								"process_provider":              pinnedProviderID,
+								"process_requires_confirmation": true,
+								"process_retry_attempts":        reportedRetryAttempts,
+								"process_last_status_code":      failoverStatusCode,
+							},
+						)
+						emitSSE(map[string]interface{}{
+							"error":     providerFailoverConfirmationRequiredError,
+							"done":      true,
+							"delta":     "",
+							"stream_id": streamID,
+						})
+						h.flushConversationOnResponse(convID)
+						return nil
+					}
 					emitProcessEvent(
 						"provider_failover",
 						"active",
 						"Switching provider",
-						"Retrying the continuation follow-up without the previously pinned provider.",
+						failoverDecisionDetail,
 						map[string]interface{}{
-							"process_provider": pinnedProviderID,
+							"process_provider":         pinnedProviderID,
+							"process_retry_attempts":   reportedRetryAttempts,
+							"process_last_status_code": failoverStatusCode,
 						},
 					)
 					unpinnedCtx := proxy.WithPinnedProvider(ctx, "")
@@ -24117,15 +24420,35 @@ STREAM_LOOP:
 					err = h.chatStreamCallback(unpinnedCtx, unpinnedReq, streamCb)
 					if err == nil {
 						ctx = unpinnedCtx
+						providerFailoverAutoSwitchedThisRound = true
+						switchedProvider, switchedModel := currentResolvedRoute()
 						emitProcessEvent(
 							"provider_failover",
 							"success",
 							"Provider switch succeeded",
-							"",
+							providerFailoverSuccessDetail(
+								streamLang,
+								"continuation_follow_up",
+								pinnedProviderID,
+								switchedProvider,
+								switchedModel,
+								preContentRetryAttempts,
+								failoverStatusCode,
+							),
 							map[string]interface{}{
 								"process_provider": pinnedProviderID,
+								"process_model":    switchedModel,
 							},
 						)
+						emitPersistentStreamingCard(providerFailoverAlertCard(
+							streamLang,
+							"continuation_follow_up",
+							pinnedProviderID,
+							switchedProvider,
+							switchedModel,
+							preContentRetryAttempts,
+							failoverStatusCode,
+						))
 						logger.Info().
 							Int("tool_round", toolRound).
 							Str("previous_pinned_provider_id", pinnedProviderID).
@@ -25191,7 +25514,7 @@ STREAM_LOOP:
 
 		// Auto-continue: when LLM stopped without tool calls but the content
 		// still implies pending action, inject a continuation prompt and loop back.
-		if streamCompleted && !streamDoneSent && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries {
+		if streamCompleted && !streamDoneSent && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries && !providerFailoverAutoSwitchedThisRound {
 			preferReminderTool := toolRound == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
 			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
 				if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {

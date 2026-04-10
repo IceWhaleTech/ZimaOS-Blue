@@ -578,11 +578,11 @@ export default mergeHarnessLocale('da-DK', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Lad agenten planlægge, bruge værktøjer, anvende ændringer og fortsætte med at iterere, indtil opgaven er løst ordentligt. Inspireret af Ralphs stædige vedholdenhed.',
-    ralphLoopHoverPlan: 'Planlæg',
-    ralphLoopHoverAct: 'Udfør',
-    ralphLoopHoverCheck: 'Tjek',
+    smartResumeHoverDescription:
+      'Lad agenten planlægge, bruge værktøjer, anvende ændringer og fortsætte med at iterere, indtil opgaven er løst ordentligt.',
+    smartResumeHoverPlan: 'Planlæg',
+    smartResumeHoverAct: 'Udfør',
+    smartResumeHoverCheck: 'Tjek',
     uiReviewShortcutTitle: 'UI anmeldelse',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -842,6 +842,15 @@ export default mergeHarnessLocale('da-DK', {
         'Den faste model {model} er ikke tilgængelig lige nu. Vil du skifte denne chat tilbage til automatisk routing og prøve din seneste anmodning igen?',
       secondaryAction: 'Behold nuværende model',
       primaryAction: 'Skift og prøv igen',
+    },
+    providerFailover: {
+      eyebrow: 'Højtilgængelighedsskift',
+      title: 'Skift til en anden tilgængelig rute og prøv igen?',
+      description: 'Den nuværende rute via {provider} kræver din bekræftelse, før Blue skifter til en anden tilgængelig rute og prøver igen.',
+      dismissAction: 'Ikke nu',
+      manualAction: 'Vælg rute manuelt',
+      primaryAction: 'Skift og prøv igen',
+      currentRoute: 'Nuværende rute',
     },
     manageProviders: 'Administrer udbydere',
     noProviderConfigured: 'Ingen udbyder er konfigureret. Klik for at tilføje en.',

@@ -1,109 +1,155 @@
 ---
 title: "Admin and Operations"
-summary: "The operator-facing surfaces for security, audit, billing, tenants, auth providers, and day-two governance."
+summary: "Use Blue's current admin pages for runtime health, security, billing, tenants, auth providers, and day-two operations."
 ---
 
 # Admin and Operations
 
-Blue now exposes a broad day-two operations story. The current web app includes dedicated surfaces for dashboard visibility, security, audit, billing, tenancy, and auth administration.
+Blue's operator story is now spread across several real pages, not one hidden admin panel. The easiest way to use it well is to know which page answers which question.
 
-## Home dashboard and system visibility
+## Which page should you open?
 
-The home surface is not just a landing page. It acts as a lightweight operator dashboard with:
+| If you need to answer... | Open |
+| --- | --- |
+| "Is the runtime healthy right now?" | `Home` |
+| "What security controls or exposure should I review?" | `Security` |
+| "What happened, and who changed what?" | `Audit` |
+| "Which provider or model is driving cost or anomalies?" | `Billing` |
+| "How do I create or manage workspaces?" | `Tenants` |
+| "How do I manage one workspace's members or limits?" | `Tenant Detail` |
+| "How do people sign in?" | `Auth Providers` and [Identity and Access](/guides/identity-access) |
+| "How do I manage users?" | `Users` plus profile and auth flows |
+
+## Home: first stop for runtime health
+
+The `Home` page acts as a lightweight operator dashboard. The current implementation can surface:
 
 - System status
-- Uptime, CPU, memory, and goroutine cards
-- Refreshable runtime metrics history
-- Optional detailed OS, hardware, runtime, disk, GPU, and network information
+- Uptime
+- CPU, memory, and goroutine cards
+- Refreshable runtime-metric history
+- Optional OS, hardware, runtime, disk, GPU, and network details
 
-This is the fastest place to answer "is the runtime healthy right now?" before diving into deeper logs or traces.
+Open this page first when you want to know whether the runtime is broadly healthy before you start debugging providers, auth, or workflow behavior.
 
-## Security
+## Security: where hardening work actually happens
 
-The security area goes beyond password settings. Current APIs and views cover:
+The current `Security` view is organized into four tabs:
 
-- Active-session listing and session revocation
-- Security settings and policy controls
+- `Overview`
+- `Controls`
+- `Monitoring`
+- `Logs`
+
+Together these tabs cover:
+
+- Active sessions and revocation
 - Threat stats and recent threat events
-- Blocked IP management
 - Security scans with fix preview and fix execution
-- Prompt firewall rules
-- CORS configuration
-- TLS and ACME status
+- Prompt firewall configuration
+- CORS, TLS, and ACME status
 - Sandbox runtime information and network toggle
 - Tool approval policy
-- Persistent approved directories and browser-site approvals
+- Approved directories and approved browser sites
+- Directory whitelist behavior
 
-This is the right surface when you are hardening a deployment, reviewing exposure, or preparing for production rollout.
+Use this page when you are preparing for production, tightening sandbox or approval policy, or reviewing whether a deployment is more open than intended.
 
-## Audit
+## Audit: use it for "what happened?"
 
-The audit area helps operators answer what happened and who did it. The current view supports:
+The audit page is the right answer when you need event history rather than current state. It currently supports:
 
 - Filtered audit entries
 - Status and action breakdowns
+- Time-window filtering
 - Export to JSON or CSV
-- Time-window filtering for incident review
 
-## Billing and usage
+That makes it the right page for incident review, change tracking, and postmortem evidence collection.
 
-Billing is currently framed as observability for model usage rather than a subscription checkout page. The product can expose:
+## Billing: usage analysis, not just totals
 
-- Summary totals for tokens, requests, success rate, and estimated cost
-- Breakdowns by day, provider, or model
-- Line-item views with latency and success data
+The current `Billing` page is a usage-observability surface. It supports:
+
+- Date-range filters
+- Provider and model filters
+- `group_by` views such as day, provider, or model
+- Success-rate summaries
+- Token and cost trend charts
+- Line-item views
 - CSV export
-- Anomaly-style drilldowns for unusual usage spikes
+- Anomaly drilldown for usage spikes
 
-This makes the billing area useful for cost control, debugging, and provider comparison.
+In other words, `Billing` is where you answer questions like:
 
-## Tenants and workspace governance
+- Which provider is getting expensive?
+- Which model is seeing the highest request volume?
+- Did usage spike on a specific day?
+- Is a cost jump tied to one provider, one model, or a broader traffic change?
 
-Blue also includes a multi-tenant surface with:
+## Tenants: workspace lifecycle entry point
 
-- Workspace creation, editing, selection, and deletion
-- Tenant detail pages for members, invitations, settings, and limits
-- Role-aware management actions
-- Workspace-level language and timezone defaults
+The `Tenants` page is where workspace governance starts. The current page includes:
 
-If you are operating Blue for more than one team, tenant setup becomes part of the core product rather than an optional extra.
+- Create workspace
+- Edit workspace
+- Select workspace
+- Open a direct `Manage` action
+- Delete a workspace when permitted
+- Status, slug, description, and created-date visibility
 
-## Identity and access administration
+Use this page when you are onboarding a new team, segmenting environments, or cleaning up old workspaces.
 
-Blue also has a distinct identity layer for:
+## Tenant Detail: where ongoing workspace administration lives
 
-- Profile editing and personal API key management
-- MFA and WebAuthn
-- Linked external accounts
-- User administration with lock, unlock, reset-password, and permission actions
-- Auth-provider administration for OIDC and common hosted identity providers
+Once you open a specific tenant, the current `Tenant Detail` surface is split into four tabs:
+
+- `Members`
+- `Invitations`
+- `Settings`
+- `Limits` for owners
+
+Those tabs let operators handle:
+
+- Member role changes
+- Invite and revoke flows
+- Default workspace language
+- Workspace timezone
+- Owner-visible limits such as max users, storage, API requests, workflows, and channels
+
+Use `Tenants` to find the workspace. Use `Tenant Detail` to actually administer it.
+
+## Auth Providers and Users: identity rollout layer
+
+Blue's identity surfaces are now large enough that they should be treated as an operator area, not a side setting. The current product includes:
+
+- Auth-provider management for OIDC-style and common hosted identity providers
+- Callback-based sign-in flows
 - Preview bootstrap and first-admin upgrade flow
+- User administration for lock, unlock, reset-password, and permission operations
+- Profile-level linked accounts, API keys, MFA, and WebAuthn
 
-Read [Identity and Access](/guides/identity-access) when the question is about who can enter the system and how credentials are managed.
+When the real question is "who can get in, and how?", continue with [Identity and Access](/guides/identity-access).
 
-## Auth providers and preview mode
+## A practical day-two operator order
 
-The current app also includes:
+1. Open `Home` to confirm runtime health.
+2. Check `Security` before broad rollout.
+3. Use `Audit` to confirm you can trace important actions.
+4. Watch `Billing` once real traffic starts.
+5. Set up `Tenants` and `Tenant Detail` when more than one team or workspace is involved.
+6. Finish `Auth Providers`, `Users`, and identity policy before wider onboarding.
 
-- Auth-provider management and callback flows
-- Preview-aware routing for setups that allow access before full user bootstrap
-- Preview-token handling and connection-error fallback paths
+## Common routing mistakes
 
-These features matter most during onboarding, first-run experience, and controlled shared deployments.
-
-## Recommended operator checklist
-
-1. Review provider and runtime setup in [Settings and Provider Pool](/guides/settings-provider-pool)
-2. Check the dashboard and system visibility surface for runtime health
-3. Harden security posture and review prompt-firewall, sandbox, and approval controls
-4. Confirm audit visibility and export paths
-5. Track billing trends after real traffic begins
-6. Set up tenants, members, auth providers, and user-management rules before broad rollout
+- Looking in `Billing` for incident history that really belongs in `Audit`
+- Treating `Tenants` as the full workspace-admin surface instead of the entry into `Tenant Detail`
+- Trying to debug sign-in issues from general security controls before checking auth-provider setup
+- Skipping `Home` and going straight into deeper settings when the runtime itself may not be healthy
 
 ## Related pages
 
 - [Identity and Access](/guides/identity-access)
 - [Settings and Provider Pool](/guides/settings-provider-pool)
+- [Troubleshooting](/help/troubleshooting)
 - [Harness and Evolution](/guides/harness-evolution)
 - [Voice and Form Filling](/guides/voice-form-filling)
-- [Troubleshooting](/help/troubleshooting)

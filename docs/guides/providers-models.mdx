@@ -1,73 +1,143 @@
 ---
 title: "Providers and Models"
-summary: "How Blue's provider pool, model routing, and verification flows work in the current product."
+summary: "How Blue's current provider pool, model controls, verification flow, and routing behavior work in real operator terms."
 ---
 
 # Providers and Models
 
-ZimaOS Blue is designed around an open provider ecosystem.
+Blue uses a provider pool so model access, routing, and failover stay in one operator surface instead of being scattered across the product.
 
-## Provider pool basics
+![Provider inventory and routing overview](/providers.png)
 
-Blue centralizes model access through a provider pool instead of scattering vendor-specific setup across the product. The current UI and server config expose:
+## What you can control from the provider pool
+
+The current provider-pool UI and API support more than "add a key and hope it works." In practice, operators can work with:
 
 - A default provider
-- Multiple providers in a sorted routing order
-- Health checks per provider
-- Failover settings with retry and recovery controls
-- Optional provider racing for parallel attempts
-- Cloud or local location metadata
-- Provider-specific model refresh and verification actions
+- Multiple provider types such as `trial`, `builtin`, `platform`, `custom`, and `media`
+- Routing priority
+- `cloud` or `local` location metadata
+- API compatibility format selection
+- Provider verification
+- Model refresh
+- Allowed-model restrictions
+- Pricing and capability metadata
+- Health-check, failover, and provider-racing behaviors in the broader routing layer
 
-## Provider types you will see in the UI
+## What a custom provider actually contains
 
-- Built-in providers for common hosted APIs
-- Platform and trial providers exposed by the runtime
-- Custom providers you add manually with a base URL and key
-- Media-oriented providers for speech or multimodal flows
+The custom-provider flow in the current web app exposes these core fields:
 
-The provider pool page groups these categories into tabs so operators can keep routing changes in one place.
-
-## What a custom provider can carry
-
-The custom-provider flow in the web app supports:
-
-- Provider name and base URL
+- Provider name
+- Base URL
 - API key
 - Routing priority
-- API compatibility format such as `auto`, `openai`, `responses`, `anthropic`, or `google`
-- Cloud or local location metadata
+- API format such as `auto`, `openai`, `responses`, `anthropic`, or `google`
+- Location set to `cloud` or `local`
 
-After creation, operators can verify the provider, refresh models, review pricing, and control allowed models.
+That makes the same Blue runtime flexible enough to talk to hosted APIs, internal gateways, and local compatibility endpoints without rewriting the rest of your app.
 
-## Model routing
+## A safe operator order for adding a provider
 
-Blue supports model families and fallback patterns. In practice this means Blue can:
+When you are onboarding a new provider, the least confusing sequence is:
 
-- Match a requested model name to a provider family
-- Send the request to the right upstream provider
-- Fall back to a safer or cheaper sibling model when configured
-- Keep provider choice separate from the rest of the app's product logic
+1. Save the provider with the correct endpoint, credentials, location, and API format.
+2. Run verification before making it your default route.
+3. Review the detected or recommended API format if verification suggests a better fit.
+4. Refresh the model catalog.
+5. Restrict allowed models only after you know the catalog is correct.
+6. Set the provider as default if it is meant to carry normal traffic.
+7. Run a real chat smoke test.
 
-## Verification and control loops
+This separates "the record exists" from "the route really works."
 
-The current provider surface is not only about static config. Operators can also:
+## What verification is for
 
-- Verify a provider before trusting it in production traffic
-- Refresh remote model inventories
-- Restrict which models are eligible for routing
-- Inspect provider pricing and metadata
-- Use IDE or runtime discovery helpers where supported
+Verification is not just a yes-or-no ping. The current verification result can surface:
 
-## Why this matters
+- The base URL Blue actually tested
+- A model used for the probe
+- Detected API format
+- Recommended API format
+- Recommended base URL
+- Whether the endpoint behaves like a `responses`-only surface
+- Per-probe reachability and status details
 
-- You can separate product behavior from a single vendor contract
-- Teams can trade off latency, price, capability, and resilience
-- One runtime can support experimentation, failover, and migration paths over time
+That means verification can catch problems such as:
+
+- Wrong endpoint shape
+- Wrong compatibility format
+- A reachable host that still does not behave like the provider type you expected
+
+## Model inventory and control
+
+Once a provider exists, model management becomes the next operator step. The current product supports:
+
+- Refreshing the provider's remote model catalog
+- Viewing model capabilities
+- Seeing pricing fields such as input, output, cache, or per-request cost where available
+- Reviewing context window and max-output metadata
+- Restricting allowed models so routing only uses approved entries
+
+This is where many rollout mistakes happen. A provider may verify correctly but still fail normal usage if the expected model is absent, disabled, or accidentally filtered out.
+
+## How to think about `cloud` and `local`
+
+The `cloud` versus `local` setting is worth filling correctly because it improves the operator view later.
+
+- Use `cloud` for hosted APIs and remote gateways
+- Use `local` for runtimes or compatibility layers on the same machine or local network
+
+This is especially useful when you are comparing:
+
+- Latency expectations
+- Failure domains
+- Privacy posture
+- Deployment topology
+
+## Routing, failover, and provider racing
+
+Blue's routing layer is designed so provider choice is not a one-time hardcoded decision. The current docs and config surface support:
+
+- A default provider
+- Ordered provider preference
+- Health checks
+- Failover and recovery controls
+- Optional provider racing for parallel attempts
+
+Operationally, that means you can use the provider pool for more than first setup. It also becomes the control plane for resilience, migration, and cost balancing over time.
+
+## What a healthy provider setup looks like
+
+You are usually in a good state when all of the following are true:
+
+- The provider saves successfully
+- Verification succeeds
+- The recommended API format and base URL match what you intended, or you deliberately change them
+- The model list refreshes correctly
+- Allowed-model restrictions are deliberate
+- The provider can serve a real chat request
+
+If one of those is missing, stop there before adding more providers or tuning routing policy.
+
+## Common operator questions
+
+| Question | Where to focus |
+| --- | --- |
+| "Did I point Blue at the right endpoint?" | Provider verification result |
+| "Why does the provider save but still fail chat?" | API format, model refresh, and allowed models |
+| "Which provider should carry normal traffic?" | Default provider plus routing priority |
+| "How do I separate local and hosted capacity?" | `location` metadata and provider ordering |
+| "How do I keep unsafe or unwanted models out of rotation?" | Allowed-model controls |
+
+## When to read the provider-pool page instead
+
+This page explains the provider and routing model. For the actual settings workflow inside the app, continue with [Settings and Provider Pool](/guides/settings-provider-pool).
 
 ## Related pages
 
 - [Settings and Provider Pool](/guides/settings-provider-pool)
+- [First Run](/start/first-run)
 - [Overview](/product/overview)
 - [Features](/product/features)
 - [Architecture](/product/architecture)

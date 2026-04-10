@@ -7,6 +7,8 @@ summary: "How Blue's settings surface now brings together runtime behavior, prov
 
 The settings area is now the main operator surface for configuring Blue's runtime, not just a small preferences page.
 
+![Provider and runtime setup surface](/demo%20Provider.gif)
+
 ## Settings tabs at a glance
 
 The current app groups settings into five tabs:
@@ -16,6 +18,20 @@ The current app groups settings into five tabs:
 - `Proxy`: request-routing helpers and lightweight runtime behavior
 - `Speech`: speech input, output, and voice pipeline preferences
 - `User Data`: memory, export, backup, and restore flows
+
+## Shortest provider-setup path
+
+If your goal is simply "make the first real response work," this is the shortest UI path:
+
+1. Open `Settings`.
+2. Switch to the `LLM` tab.
+3. Add one provider you actually plan to use.
+4. Fill in the endpoint, credentials, compatibility format, and `cloud` or `local` location.
+5. Run provider verification before trusting it.
+6. Refresh the model catalog if needed.
+7. Pick the default provider.
+8. Restrict allowed models if you want tighter routing.
+9. Return to chat and run a smoke test.
 
 ## Provider pool basics
 
@@ -27,6 +43,17 @@ The provider pool is the current control plane for model access. In the UI you c
 - Verify providers before trusting them in production traffic
 - Refresh provider model inventories
 - Inspect pricing or capability metadata where available
+
+## What a healthy first provider setup looks like
+
+You are usually in a good state when all of the following are true:
+
+- The provider record saves successfully
+- Verification succeeds against the endpoint you intended
+- The model list refreshes or is already present
+- The default provider matches your expected route
+- Allowed-model restrictions, if any, are deliberate rather than accidental
+- A simple chat prompt returns successfully
 
 ## Adding a custom provider
 
@@ -40,6 +67,15 @@ The custom-provider flow supports more than a base URL and key. You can set:
 - Location metadata to mark a provider as `cloud` or `local`
 
 These fields make it easier to run the same Blue runtime against hosted APIs, local gateways, or compatibility layers without rewriting the rest of your product.
+
+## Cloud versus local location
+
+Blue lets you label providers as `cloud` or `local` in the settings UI.
+
+- Use `cloud` when requests go to a hosted API or remote gateway
+- Use `local` when the model runtime or compatibility endpoint lives on your own machine or local network
+
+This does not just improve readability. It also makes the operator surface easier to reason about later when you are comparing latency, failure domains, or deployment shape.
 
 ## Minimum custom-provider checklist
 
@@ -80,6 +116,18 @@ proxy:
 
 The settings UI can carry richer state than this minimal snippet, including compatibility format, location metadata, verification results, and allowed-model controls.
 
+## Recommended order inside the UI
+
+When you are configuring a provider from scratch, the least confusing order is:
+
+1. Save the provider with the right endpoint and credentials
+2. Verify the provider before making it default
+3. Refresh the model inventory
+4. Review allowed models
+5. Set it as the default provider
+
+This keeps "it saved" separate from "it actually works."
+
 ## Model controls
 
 After a provider is connected, Blue can expose:
@@ -90,6 +138,14 @@ After a provider is connected, Blue can expose:
 - Per-provider model refresh so you do not need to restart the whole app to pick up upstream catalog changes
 
 For the routing behavior itself, continue with [Providers and Models](/guides/providers-models).
+
+## Common first-pass mistakes
+
+- Saving a provider but never running verification
+- Using the wrong compatibility format for the upstream API
+- Forgetting to refresh models after changing the endpoint
+- Accidentally over-restricting allowed models and then assuming the endpoint is broken
+- Making a provider default before you know it works
 
 ## External agents
 
@@ -190,6 +246,13 @@ If you are setting up a new Blue deployment, this sequence is usually the shorte
 3. Restrict or review allowed models if needed
 4. Add any external agents Blue should coordinate with
 5. Set speech, memory, and backup preferences before sharing the system with more users
+
+## If this page does not solve the problem
+
+- Routing families, fallback, and model-selection behavior: [Providers and Models](/guides/providers-models)
+- First-boot path and preview flow: [First Run](/start/first-run)
+- Login, auth providers, API keys, and first-admin questions: [Identity and Access](/guides/identity-access)
+- General setup detours: [Troubleshooting](/help/troubleshooting)
 
 ## Related pages
 

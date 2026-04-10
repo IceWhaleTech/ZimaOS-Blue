@@ -1,13 +1,32 @@
 ---
 title: "Troubleshooting"
-summary: "Common issues and the fastest pages to consult first."
+summary: "Common issue patterns, first checks, and the fastest pages to consult first."
 ---
 
 # Troubleshooting
 
-## If you are unsure where to go
+Use this page when something feels wrong but you do not yet know which guide owns the answer.
 
-Open [Docs Directory](/start/docs-directory) and then branch into the most relevant guide.
+## Start with this 5-minute triage
+
+1. Reconfirm how you launched Blue by revisiting [Installation](/start/installation) or [First Run](/start/first-run).
+2. Decide whether the instance is still in preview mode or already in normal mode.
+3. Open `Settings -> LLM` and verify that at least one provider is configured, reachable, and selected the way you expect.
+4. Send one simple smoke-test prompt such as `Summarize what ZimaOS Blue is in one paragraph.`
+5. Use the symptom matrix below to pick the next guide instead of jumping randomly between pages.
+
+## Symptom matrix
+
+| Symptom | Check first | Read next |
+| --- | --- | --- |
+| The local UI does not open or startup path is unclear | Which launch path you used and which port/address you expect | [Installation](/start/installation) and [First Run](/start/first-run) |
+| Preview mode, first admin creation, login, or auth behavior seems wrong | Whether the issue belongs to preview bootstrap, signed-in profile flow, or external auth provider setup | [Identity and Access](/guides/identity-access) and [First Run](/start/first-run) |
+| A provider exists but the first response still fails | Default provider, provider ordering, verification state, and allowed-model restrictions | [Settings and Provider Pool](/guides/settings-provider-pool) and [Providers and Models](/guides/providers-models) |
+| Channels or remote interaction surfaces do not behave as expected | Whether the issue belongs to pairing, channel credentials, or routing assumptions | [Channels](/guides/channels) |
+| Automation, webhook, browser, or scheduled flows seem unstable | Whether you are debugging a cron-style run, workflow, or browser/runtime task | [Automation](/guides/automation) |
+| Harness, scoring, or evolution results are confusing | Whether you need a dataset, baseline, report, or follow-up review path | [Harness and Evolution](/guides/harness-evolution) |
+| The docs site language seems wrong or mixed | Browser language preference, locale dropdown, and whether you are opening the right locale path | [FAQ](/help/faq) |
+| Docs build or publish behavior looks wrong | Whether `cd docs && npm run build` succeeds locally and whether Pages published the build artifact | [Deployment](/help/deployment) |
 
 ## Common problem buckets
 
@@ -16,11 +35,13 @@ Open [Docs Directory](/start/docs-directory) and then branch into the most relev
 - Re-check [Installation](/start/installation)
 - Make sure you chose the correct path for desktop app, install script, or source build
 - On Windows source builds, verify the prerequisites called out in the install page
+- Reconfirm the address you expect, such as `http://localhost` or your own configured port
 
 ### Product surface confusion
 
 - Read [Overview](/product/overview) to separate runtime, routing, and surfaces
 - Read [Features](/product/features) to map the UI and capabilities back to product intent
+- Use [Quick Start](/start/quick-start) if you want the shortest guided product tour instead of a full capability review
 
 ### Channel setup questions
 
@@ -31,12 +52,13 @@ Open [Docs Directory](/start/docs-directory) and then branch into the most relev
 
 - Read [Settings and Provider Pool](/guides/settings-provider-pool)
 - Read [Providers and Models](/guides/providers-models)
-- Check default provider, provider ordering, and fallback assumptions in your config
+- Check default provider, provider ordering, verification state, and allowed-model assumptions in your config
 
 ### Login, preview bootstrap, auth provider, or user-management questions
 
 - Read [Identity and Access](/guides/identity-access)
 - Check whether the issue belongs to preview mode, external auth, profile settings, or admin user management
+- If the problem happens on a brand-new instance, re-check [First Run](/start/first-run) before diving deeper
 
 ### Automation questions
 
@@ -51,6 +73,13 @@ Open [Docs Directory](/start/docs-directory) and then branch into the most relev
 ### Security, audit, billing, or tenant questions
 
 - Read [Admin and Operations](/guides/admin-operations)
+
+### Docs site or locale questions
+
+- The active docs app lives in `docs/`
+- For local verification, run `cd docs && npm run build`
+- The root path auto-selects language from browser preferences, and the navbar dropdown lets you switch manually
+- If you are editing Chinese docs, use `docs/i18n/zh-CN/docusaurus-plugin-content-docs/current/` as the active localized content path
 
 ## Need repo-wide context
 

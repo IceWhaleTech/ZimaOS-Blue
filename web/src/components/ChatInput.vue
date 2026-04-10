@@ -463,15 +463,15 @@ const researchFamilyInfoTags = computed(() => [
   t('chat.deepResearchStageVerify', 'Verify'),
 ])
 
-const ralphLoopAutoConfirmStateLabel = computed(() =>
+const smartResumeAutoConfirmStateLabel = computed(() =>
   settingsStore.agentAutoConfirm ? t('common.enabled', 'Enabled') : t('common.disabled', 'Disabled')
 )
 
-const ralphLoopInfoTags = computed(() => [
-  t('chat.ralphLoopHoverPlan', 'Plan'),
-  t('chat.ralphLoopHoverAct', 'Act'),
-  t('chat.ralphLoopHoverCheck', 'Check'),
-  `${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel.value}`,
+const smartResumeInfoTags = computed(() => [
+  t('chat.smartResumeHoverPlan', 'Plan'),
+  t('chat.smartResumeHoverAct', 'Act'),
+  t('chat.smartResumeHoverCheck', 'Check'),
+  `${t('agent.autoConfirm')}: ${smartResumeAutoConfirmStateLabel.value}`,
 ])
 
 const compactModeInfoCardMeta = computed(() => {
@@ -493,10 +493,10 @@ const compactModeInfoCardMeta = computed(() => {
         ? t('common.enabled', 'Enabled')
         : t('common.disabled', 'Disabled'),
       description: t(
-        'chat.ralphLoopHoverDescription',
+        'chat.smartResumeHoverDescription',
         'Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly.'
       ),
-      tags: ralphLoopInfoTags.value,
+      tags: smartResumeInfoTags.value,
     }
   }
 
@@ -821,13 +821,13 @@ function closeCompactModeInfo() {
 function toggleAgentMode() {
   compactModeInfoCard.value = null
   settingsStore.setAgentMode(!settingsStore.agentMode).catch((err) => {
-    console.error('Failed to update Ralph Loop mode:', err)
+    console.error('Failed to update Smart Resume mode:', err)
   })
 }
 
 function toggleAgentAutoConfirm() {
   settingsStore.setAgentAutoConfirm(!settingsStore.agentAutoConfirm).catch((err) => {
-    console.error('Failed to update Ralph Loop auto-confirm:', err)
+    console.error('Failed to update Smart Resume auto-confirm:', err)
   })
 }
 
@@ -1764,7 +1764,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               class="mode-chip mode-chip-loop"
               :class="{ 'is-active-agent': settingsStore.agentMode }"
               :aria-pressed="settingsStore.agentMode"
-              :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`"
+              :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${smartResumeAutoConfirmStateLabel}`"
               @click="toggleAgentMode"
               @contextmenu="handleAgentModeContextMenu"
             >
@@ -2427,7 +2427,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     :class="{ 'is-active-agent': settingsStore.agentMode }"
                     :aria-label="t('chat.taskLoop')"
                     :aria-pressed="settingsStore.agentMode"
-                    :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${ralphLoopAutoConfirmStateLabel}`"
+                    :title="`${t('chat.taskLoop')} · ${t('agent.autoConfirm')}: ${smartResumeAutoConfirmStateLabel}`"
                     @click="toggleAgentMode"
                     @contextmenu="handleAgentModeContextMenu"
                   >
@@ -2487,14 +2487,14 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     <p class="mode-info-card__description">
                       {{
                         t(
-                          'chat.ralphLoopHoverDescription',
+                          'chat.smartResumeHoverDescription',
                           'Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly.'
                         )
                       }}
                     </p>
                     <div class="mode-info-card__chips">
                       <span
-                        v-for="tag in ralphLoopInfoTags"
+                        v-for="tag in smartResumeInfoTags"
                         :key="tag"
                         class="mode-info-card__chip"
                       >

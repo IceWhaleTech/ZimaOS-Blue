@@ -41,6 +41,7 @@ type PlannerInput struct {
 	ToolCatalog        []llm.Tool
 	PriorToolCallIDs   []string
 	PreviousViolations []string
+	KnowledgeContext   string
 	RoutingContract    string
 	CoordinationCtx    string
 }
@@ -128,6 +129,10 @@ func buildGroundedPlannerUserPrompt(input PlannerInput) string {
 	sb.WriteString(fmt.Sprintf("%d/%d", input.PlannerRound, input.MaxRounds))
 	sb.WriteString("\n\nGrounded state summary:\n")
 	sb.WriteString(BuildGroundStateSummary(input.GroundState))
+	if strings.TrimSpace(input.KnowledgeContext) != "" {
+		sb.WriteString("\n\nRelevant knowledge:\n")
+		sb.WriteString(strings.TrimSpace(input.KnowledgeContext))
+	}
 	if len(input.PriorToolCallIDs) > 0 {
 		sb.WriteString("\n\nPrior tool_call_ids:\n")
 		for _, id := range input.PriorToolCallIDs {

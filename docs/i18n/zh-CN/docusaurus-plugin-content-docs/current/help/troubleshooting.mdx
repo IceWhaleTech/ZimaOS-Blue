@@ -1,13 +1,32 @@
 ---
 title: "故障排查"
-summary: "遇到安装、渠道、模型或自动化问题时的最短排查路径。"
+summary: "遇到安装、语言、Provider、登录或自动化问题时的最短排查路径。"
 ---
 
 # 故障排查
 
-## 不知道先看哪里
+这页适合“我知道哪里不对，但还不知道应该先打开哪一篇 guide”的场景。
 
-先打开 [文档导航](/start/docs-directory)。
+## 先做这 5 分钟首轮排查
+
+1. 先回到 [安装方式](/start/installation) 或 [首次运行](/start/first-run)，确认自己当前到底是怎么启动 Blue 的。
+2. 判断当前实例还在 preview mode，还是已经进入 normal mode。
+3. 打开 `Settings -> LLM`，确认至少有一个 provider 已经配置、可访问，并且默认选择符合预期。
+4. 发一条简单 smoke test，例如 `Summarize what ZimaOS Blue is in one paragraph.`
+5. 再用下面的症状矩阵选下一篇文档，而不是在站里到处跳。
+
+## 症状矩阵
+
+| 症状 | 先检查什么 | 下一篇优先看什么 |
+| --- | --- | --- |
+| 本地 UI 打不开，或者不确定该怎么启动 | 当前使用的是哪条启动路径，以及你预期访问的地址和端口 | [安装方式](/start/installation) 与 [首次运行](/start/first-run) |
+| preview mode、首个管理员、登录或认证行为不对 | 问题属于 preview 引导、登录后个人资料，还是外部认证提供方配置 | [身份与访问](/guides/identity-access) 与 [首次运行](/start/first-run) |
+| provider 已经加了，但第一条响应还是失败 | 默认 provider、provider 排序、验证状态、allowed models 限制 | [设置与 Provider Pool](/guides/settings-provider-pool) 与 [Providers 与 Models](/guides/providers-models) |
+| 渠道或远程交互入口表现不符合预期 | 问题属于配对、渠道凭证，还是路由预期错误 | [Channels](/guides/channels) |
+| 自动化、Webhook、浏览器任务或定时任务不稳定 | 先确认你在排查的是 cron、workflow 还是 browser/runtime 问题 | [Automation](/guides/automation) |
+| Harness、评分、baseline 或 Evolution 结果看不懂 | 先判断自己需要的是 dataset、baseline、报告，还是 follow-up review | [Harness 与 Evolution](/guides/harness-evolution) |
+| 文档站语言不对，或者感觉有混排 | 浏览器语言偏好、语言下拉框，以及当前打开的 locale 路径 | [常见问题](/help/faq) |
+| 文档构建或发布不正常 | 本地 `cd docs && npm run build` 是否通过，以及 Pages 是否真的发布了构建产物 | [部署](/help/deployment) |
 
 ## 常见问题类型
 
@@ -15,11 +34,13 @@ summary: "遇到安装、渠道、模型或自动化问题时的最短排查路�
 
 - 回到 [安装方式](/start/installation)
 - Windows 源码构建时重点确认依赖是否齐全
+- 再确认你预期访问的是 `http://localhost` 还是自己配置过的端口
 
 ### 能力边界不清楚
 
 - 阅读 [产品能力](/product/features)
 - 打开 [文档导航](/start/docs-directory)
+- 如果你想要更短的产品导览，直接看 [快速开始](/start/quick-start)
 
 ### Provider 或模型路由不符合预期
 
@@ -30,6 +51,7 @@ summary: "遇到安装、渠道、模型或自动化问题时的最短排查路�
 
 - 阅读 [身份与访问](/guides/identity-access)
 - 先判断问题属于 preview mode、外部登录、个人资料还是管理员用户管理
+- 如果这是全新实例上的问题，先回看 [首次运行](/start/first-run)
 
 ### 自动化、Harness 或技能优化结果不稳定
 
@@ -39,6 +61,13 @@ summary: "遇到安装、渠道、模型或自动化问题时的最短排查路�
 ### 安全、审计、计费或租户问题
 
 - 阅读 [管理与运维](/guides/admin-operations)
+
+### 文档站或语言切换问题
+
+- 当前真实 docs 应用位于 `docs/`
+- 本地验证构建时运行 `cd docs && npm run build`
+- 根路径会根据浏览器语言自动适配，导航栏语言下拉框也支持手动切换
+- 若你在维护中文文档，请使用 `docs/i18n/zh-CN/docusaurus-plugin-content-docs/current/` 作为当前生效的 locale 路径
 
 ### 需要更深仓库上下文
 

@@ -582,11 +582,11 @@ export default mergeHarnessLocale('el-GR', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Αφήστε τον agent να σχεδιάσει, να χρησιμοποιήσει εργαλεία, να εφαρμόσει αλλαγές και να συνεχίσει να επαναλαμβάνει μέχρι να ολοκληρωθεί καθαρά η εργασία. Εμπνευσμένο από την ακούραστη επιμονή του Ralph.',
-    ralphLoopHoverPlan: 'Σχεδιασμός',
-    ralphLoopHoverAct: 'Εκτέλεση',
-    ralphLoopHoverCheck: 'Έλεγχος',
+    smartResumeHoverDescription:
+      'Αφήστε τον agent να σχεδιάσει, να χρησιμοποιήσει εργαλεία, να εφαρμόσει αλλαγές και να συνεχίσει να επαναλαμβάνει μέχρι να ολοκληρωθεί καθαρά η εργασία.',
+    smartResumeHoverPlan: 'Σχεδιασμός',
+    smartResumeHoverAct: 'Εκτέλεση',
+    smartResumeHoverCheck: 'Έλεγχος',
     uiReviewShortcutTitle: 'Αναθεώρηση διεπαφής χρήστη',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -852,6 +852,15 @@ export default mergeHarnessLocale('el-GR', {
         'Το σταθερό μοντέλο {model} δεν είναι διαθέσιμο αυτή τη στιγμή. Θέλετε να επαναφέρετε αυτή τη συνομιλία σε αυτόματη δρομολόγηση και να δοκιμάσετε ξανά το τελευταίο αίτημα;',
       secondaryAction: 'Διατήρηση τρέχοντος μοντέλου',
       primaryAction: 'Αλλαγή και νέα προσπάθεια',
+    },
+    providerFailover: {
+      eyebrow: 'Εναλλαγή υψηλής διαθεσιμότητας',
+      title: 'Να γίνει αλλαγή σε άλλη διαθέσιμη διαδρομή και νέα προσπάθεια;',
+      description: 'Η τρέχουσα διαδρομή μέσω του {provider} χρειάζεται την επιβεβαίωσή σας πριν το Blue αλλάξει σε άλλη διαθέσιμη διαδρομή και δοκιμάσει ξανά.',
+      dismissAction: 'Όχι τώρα',
+      manualAction: 'Χειροκίνητη επιλογή διαδρομής',
+      primaryAction: 'Αλλαγή και νέα προσπάθεια',
+      currentRoute: 'Τρέχουσα διαδρομή',
     },
     manageProviders: 'Διαχείριση παρόχων',
     noProviderConfigured: 'Δεν έχει διαμορφωθεί πάροχος. Κάντε κλικ για να προσθέσετε ένα.',

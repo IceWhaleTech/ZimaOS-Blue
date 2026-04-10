@@ -7,12 +7,24 @@ summary: "A concise product overview of the current Blue runtime, operator surfa
 
 ZimaOS Blue is an open-source, auditable runtime for building and operating local-first AI agents across personal and team environments.
 
+![Design principles](/design_principle.png)
+
 ## Core product position
 
 - **Local-first**: run on your own hardware and network boundaries
 - **Lightweight**: written in Go and designed for low runtime overhead
 - **Cross-device**: intended for desktop, server, NAS, edge, and Raspberry Pi style deployments
 - **Composable**: combine chat, voice, automation, memory, evaluation, and tools without locking into one provider
+
+## What teams actually use it for
+
+Blue is not just a model wrapper. In the current product shape, teams typically use it to:
+
+- Stand up a private chat and voice assistant on hardware they already control
+- Connect that same runtime to channels, browser tasks, and automation triggers
+- Route between cloud APIs, local small models, and external agents without rewriting the app surface
+- Evaluate prompts, skills, and workflows with Harness before promoting or rolling them out more broadly
+- Keep security, auth, sandbox, audit, billing, and tenant concerns inside the same operator surface
 
 ## What Blue includes
 
@@ -25,6 +37,17 @@ ZimaOS Blue is an open-source, auditable runtime for building and operating loca
 - Harness and Evolution surfaces for tracked execution, scoring, and skill iteration
 - Skills, skill-store discovery, and tool catalog surfaces for extensibility
 
+## Ecosystem reach
+
+![Channel, provider, and IDE ecosystem](/providers.png)
+
+The runtime is designed to stay open at the edges:
+
+- Messaging and social channels can plug into one shared runtime core
+- Providers stay mix-and-match instead of forcing one model vendor
+- Coding assistants and external agents can be treated as first-class participants instead of side tools
+- Local models and cloud models can coexist in one operator workflow
+
 ## Why teams reach for it
 
 The current product shape emphasizes five operator promises:
@@ -34,5 +57,25 @@ The current product shape emphasizes five operator promises:
 - Evaluatable and auditable execution instead of black-box orchestration
 - Multi-language reach
 - Open model ecosystem without vendor lock-in
+
+## How to read the docs from here
+
+| If you want to... | Read next |
+| --- | --- |
+| Understand the high-level capability map | [Features](/product/features) |
+| See how packages and runtime layers fit together | [Architecture](/product/architecture) |
+| Get a working provider, model, and runtime baseline | [Settings and Provider Pool](/guides/settings-provider-pool) |
+| Understand login, preview mode, and operator identity setup | [Identity and Access](/guides/identity-access) |
+| Explore execution, scoring, and evolution loops | [Harness and Evolution](/guides/harness-evolution) |
+| Find the shortest page-level map | [Docs Directory](/start/docs-directory) |
+
+## What stays consistent across the product
+
+Even when you move between chat, voice, channels, automation, and evaluation, a few things stay consistent:
+
+- The same provider-routing and model-selection layer
+- The same security, permission, and audit posture
+- The same runtime core for tools, memory, and agent behavior
+- The same operator-facing web surface for setup, visibility, and governance
 
 Read [Features](/product/features) next for the capability map, [Settings and Provider Pool](/guides/settings-provider-pool) for runtime setup, or [Architecture](/product/architecture) if you want the package and flow view.

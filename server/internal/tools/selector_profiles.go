@@ -98,6 +98,11 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 	case "image", "image_generation", "generate_image", "generateimage":
 		base.Actions = selector.CompactTerms("generate", "create", "draw", "edit", "render", "review", "analyze", "compare", "生成", "创建", "绘制", "编辑", "渲染", "看图", "分析图片", "对比图片")
 		base.Objects = selector.CompactTerms("image", "images", "picture", "photo", "art", "scene", "illustration", "logo", "screenshot", "png", "jpg", "jpeg", "webp", "图片", "图像", "照片", "插画", "场景", "logo", "截图")
+	case "ocr":
+		base.Actions = selector.CompactTerms("ocr", "extract", "read", "transcribe", "recognize", "扫描识别", "提取文字", "读图", "识别文字")
+		base.Objects = selector.CompactTerms("image", "screenshot", "scan", "receipt", "document", "photo", "text", "words", "numbers", "图片", "截图", "扫描件", "票据", "文档", "文字", "数字")
+		base.PreferredDomains = []string{selector.DomainLocalWorkspace}
+		base.ConflictDomains = []string{selector.DomainLiveWeb}
 	case "analyze":
 		base.Actions = selector.CompactTerms("analyze", "summarize", "compare", "synthesize", "inspect", "research", "分析", "总结", "比较", "提炼", "评估", "研究", "梳理")
 		base.Objects = selector.CompactTerms("file", "report", "text", "data", "content", "document", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "source", "sources", "文件", "报告", "文本", "数据", "内容", "文档", "网址", "链接", "页面", "网站", "主题", "文章", "来源")

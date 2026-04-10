@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/knowledge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/proxy"
 )
@@ -386,6 +387,59 @@ func TestRunVerificationAndRecovery_DisableModelRoutingInContext(t *testing.T) {
 	}
 }
 
+func TestRunner_RunRecovery_InjectsLoopKnowledgeContext(t *testing.T) {
+	llmStub := &captureResponseLLM{response: "Recovered with a narrower retry."}
+	resolver := &mockLoopKnowledgeResolver{
+		result: &knowledge.LoopContextResult{
+			Context:   "<loop_knowledge>\n- [knowledge slug=recovery-guidance page_type=decision status=active confidence=high] When verification fails on missing evidence, use the first fallback item and keep the retry narrow.\n</loop_knowledge>",
+			UsedCount: 1,
+			UsedSlugs: []string{"recovery-guidance"},
+		},
+	}
+	runner := &Runner{llm: llmStub}
+	runner.SetKnowledgeResolver(resolver)
+
+	task := &Task{
+		ID:   "recovery-knowledge",
+		Goal: "stabilize the parser retry path",
+		Plan: []PlanStep{
+			{Description: "apply parser fix", Status: StepStatusCompleted, Output: "patched parser"},
+		},
+	}
+	verificationCtx := VerificationContext{
+		TaskKind:        TaskKindCode,
+		Goal:            task.Goal,
+		SuccessCriteria: []string{"tests pass"},
+		FallbackPlan:    []string{"inspect the failing test first", "retry with narrower parser scope"},
+	}
+	verificationResult := &VerificationResult{
+		Status:            "fail",
+		Summary:           "The retry is blocked by missing evidence from the focused test.",
+		SuggestedRecovery: "inspect the failing test first",
+		CriteriaResults: []CriterionResult{{
+			Criterion: "tests pass",
+			Status:    "fail",
+			Evidence:  "Missing evidence from the focused parser test output.",
+		}},
+	}
+
+	if _, err := runner.runRecovery(context.Background(), task, verificationCtx, verificationResult); err != nil {
+		t.Fatalf("runRecovery failed: %v", err)
+	}
+	if resolver.called != 1 {
+		t.Fatalf("resolver calls = %d, want 1", resolver.called)
+	}
+	if resolver.lastReq.Stage != knowledge.LoopContextStageRecovery {
+		t.Fatalf("resolver stage = %q, want recovery", resolver.lastReq.Stage)
+	}
+	userPrompt := llmStub.requests[0].Messages[1].Content
+	for _, want := range []string{"Relevant knowledge:", "<loop_knowledge>", "recovery-guidance"} {
+		if !strings.Contains(userPrompt, want) {
+			t.Fatalf("expected recovery user prompt to contain %q, got %q", want, userPrompt)
+		}
+	}
+}
+
 func TestGroundedVerifierRespond_UsesDeterministicAnalyzeEvidenceWithoutLLM(t *testing.T) {
 	state := NewGroundTruthState()
 	toolCallID := "task/deterministic-analyze/tc/1"
@@ -458,7 +512,7 @@ func TestBuildRecoveryUserPrompt_UsesFallbackPlanOrder(t *testing.T) {
 		ExecutedChecks: []string{"run focused parser tests"},
 	}
 
-	prompt := buildRecoveryUserPrompt(task, verificationCtx, verificationResult)
+	prompt := buildRecoveryUserPrompt(task, verificationCtx, verificationResult, "")
 	first := "1. inspect the failing test first"
 	second := "2. retry with narrower parser scope"
 	firstIndex := strings.Index(prompt, first)

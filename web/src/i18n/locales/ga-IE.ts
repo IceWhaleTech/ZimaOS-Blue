@@ -579,11 +579,11 @@ export default mergeHarnessLocale('ga-IE', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Lig don ghníomhaire pleanáil, uirlisí a úsáid, athruithe a chur i bhfeidhm, agus leanúint ar aghaidh ag atriall go dtí go mbeidh an tasc curtha i gcrích go glan. Spreagtha ag dianseasmhacht Ralph.',
-    ralphLoopHoverPlan: 'Pleanáil',
-    ralphLoopHoverAct: 'Gníomh',
-    ralphLoopHoverCheck: 'Seiceáil',
+    smartResumeHoverDescription:
+      'Lig don ghníomhaire pleanáil, uirlisí a úsáid, athruithe a chur i bhfeidhm, agus leanúint ar aghaidh ag atriall go dtí go mbeidh an tasc curtha i gcrích go glan.',
+    smartResumeHoverPlan: 'Pleanáil',
+    smartResumeHoverAct: 'Gníomh',
+    smartResumeHoverCheck: 'Seiceáil',
     uiReviewShortcutTitle: 'Athbhreithniú Chomhéadain',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -850,6 +850,15 @@ export default mergeHarnessLocale('ga-IE', {
         'Níl an tsamhail sheasta {model} ar fáil faoi láthair. Ar mhaith leat an comhrá seo a chur ar ais ar ródú uathoibríoch agus an t-iarratas deireanach a thriail arís?',
       secondaryAction: 'Coinnigh an tsamhail reatha',
       primaryAction: 'Athraigh agus bain triail eile as',
+    },
+    providerFailover: {
+      eyebrow: 'Athrú ard-infhaighteachta',
+      title: 'An bhfuil fonn ort aistriú go bealach eile atá ar fáil agus triail eile a bhaint as?',
+      description: 'Teastaíonn do dheimhniú ón mbealach reatha ar {provider} sula n-athróidh Blue go bealach eile atá ar fáil agus sula ndéanfaidh sé iarracht eile.',
+      dismissAction: 'Ní anois',
+      manualAction: 'Roghnaigh bealach de láimh',
+      primaryAction: 'Athraigh agus bain triail eile as',
+      currentRoute: 'Bealach reatha',
     },
     manageProviders: 'Bainistigh Soláthraithe',
     noProviderConfigured: 'Níl aon soláthraí cumraithe. Cliceáil chun ceann a chur leis.',

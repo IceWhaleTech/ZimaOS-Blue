@@ -581,11 +581,11 @@ export default mergeHarnessLocale('ca-ES', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      "Deixa que l'agent planifiqui, faci servir eines, apliqui canvis i continuï iterant fins que la tasca quedi resolta netament. Inspirat en la persistència tenaç d'en Ralph.",
-    ralphLoopHoverPlan: 'Planifica',
-    ralphLoopHoverAct: 'Actua',
-    ralphLoopHoverCheck: 'Comprova',
+    smartResumeHoverDescription:
+      "Deixa que l'agent planifiqui, faci servir eines, apliqui canvis i continuï iterant fins que la tasca quedi resolta netament.",
+    smartResumeHoverPlan: 'Planifica',
+    smartResumeHoverAct: 'Actua',
+    smartResumeHoverCheck: 'Comprova',
     uiReviewShortcutTitle: 'Revisió de la IU',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -852,6 +852,15 @@ export default mergeHarnessLocale('ca-ES', {
         "El model fix {model} no està disponible ara mateix. Vols tornar aquesta conversa a l'encaminament automàtic i repetir l'última sol·licitud?",
       secondaryAction: 'Mantén el model actual',
       primaryAction: 'Canvia i torna-ho a provar',
+    },
+    providerFailover: {
+      eyebrow: 'Canvi d\'alta disponibilitat',
+      title: 'Canviar a una altra ruta disponible i tornar-ho a provar?',
+      description: 'La ruta actual amb {provider} necessita la teva confirmació abans que Blue canviï a una altra ruta disponible i torni a provar-ho.',
+      dismissAction: 'Ara no',
+      manualAction: 'Triar ruta manualment',
+      primaryAction: 'Canvia i reintenta',
+      currentRoute: 'Ruta actual',
     },
     manageProviders: 'Gestionar els proveïdors',
     noProviderConfigured: "No s'ha configurat cap proveïdor. Feu clic per afegir-ne un.",

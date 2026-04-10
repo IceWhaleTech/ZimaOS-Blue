@@ -1,22 +1,41 @@
 ---
 title: "Installation"
-summary: "Install ZimaOS Blue with the desktop app, install script, or from source."
+summary: "Choose the right install path for ZimaOS Blue, complete the install, and know what success looks like before first run."
 ---
 
 # Installation
 
-The current repository presents three clear install paths.
+Blue currently supports three practical install paths. The right one depends less on your OS and more on how quickly you want to start, how much control you need, and whether you plan to modify the runtime itself.
+
+## Which path should you choose?
+
+| Path | Best when | Trade-off |
+| --- | --- | --- |
+| Desktop app | You want the fastest out-of-box path on macOS or Windows | Easiest start, least build control |
+| Install script | You want a quick operator-style install on macOS or Linux without cloning the repo | Fast setup, but less contributor-oriented |
+| Build from source | You plan to develop, debug, or customize Blue | Most control, most prerequisites |
+
+If you are unsure, start with the desktop app. If you already know you will change code, jump directly to a source build.
 
 ## Option 1: Desktop app
 
-Use the native application when you want the quickest out-of-the-box experience.
+Use the native app when your goal is "launch Blue quickly and get to the UI with the fewest steps."
 
 - macOS: [Latest release](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - Windows: [Latest release](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
+This is the best path for:
+
+- First evaluation
+- Demo environments
+- Local operator onboarding
+- Teams that want the quickest preview-to-first-chat experience
+
 ## Option 2: Install script
 
-Use the install script on macOS or Linux:
+Use the install script when you want a lightweight install without cloning the repository.
+
+macOS or Linux:
 
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
@@ -28,7 +47,15 @@ Windows PowerShell:
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
+This path is a good fit when you:
+
+- Want a quick machine setup
+- Are operating Blue more like a service than a development project
+- Do not need to modify the source right away
+
 ## Option 3: Build from source
+
+Use a source build when you want the full repository, local edits, and contributor-style control.
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
@@ -48,7 +75,14 @@ Windows PowerShell:
 .\build.bat
 ```
 
-## Windows build notes
+This path is the right choice when you need to:
+
+- Change runtime behavior
+- Debug the web or server implementation
+- Work on custom integrations, skills, or agent features
+- Validate a patch before shipping it
+
+## Windows source-build prerequisites
 
 The repository README currently calls out these prerequisites for source builds on Windows:
 
@@ -56,9 +90,39 @@ The repository README currently calls out these prerequisites for source builds 
 - Windows SDK for system libraries
 - `gcc` and `cmake` available in `PATH`
 
-## What to read next
+If these are missing, a source build can fail before you ever reach Blue's own runtime startup.
 
-- [First Run](/start/first-run)
-- [Quick Start](/start/quick-start)
-- [Docs Directory](/start/docs-directory)
-- [Troubleshooting](/help/troubleshooting)
+## What success looks like after installation
+
+An install is not really complete just because the command finished. You are usually in a healthy state when:
+
+- Blue launches without immediately exiting
+- You can open the local UI
+- You can reach the preview or login entry flow
+- You are ready to continue into first-run setup
+
+For source builds, success also means you can rerun the same build path predictably instead of treating the first successful build as a one-time accident.
+
+## After install, what should you do next?
+
+Use this routing guide instead of guessing:
+
+| If you want to... | Read next |
+| --- | --- |
+| Launch Blue and understand preview mode or the first admin flow | [First Run](/start/first-run) |
+| Get to the first provider and first working response quickly | [Quick Start](/start/quick-start) |
+| Understand how the docs are organized before diving deeper | [Docs Directory](/start/docs-directory) |
+| Diagnose startup, build, or routing problems | [Troubleshooting](/help/troubleshooting) |
+
+## Common install-path mistakes
+
+- Choosing source build when you only wanted the fastest local evaluation
+- Treating a finished download as equivalent to a successful first launch
+- Forgetting Windows native-tool prerequisites before starting a source build
+- Installing successfully, then stopping before preview, login, or provider setup
+
+## Recommended next sequence
+
+1. Finish the install path you actually need.
+2. Open [First Run](/start/first-run) to confirm how Blue should behave on a new instance.
+3. Continue to [Quick Start](/start/quick-start) when your goal becomes "make the first real response work."

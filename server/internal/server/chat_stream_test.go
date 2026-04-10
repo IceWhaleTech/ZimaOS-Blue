@@ -5120,7 +5120,72 @@ func TestStreamMessage_PendingTodoNoProviderAfterTool_FallsBackWithoutExtraConti
 	}
 }
 
-func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProvider(t *testing.T) {
+func TestStreamMessage_ToolRoundPreContent502_RequiresConfirmationByDefault(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-round pre-content 502 confirmation required")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	handler.SetProviderPool(newEnabledProviderPoolForStreamTests(t, "prov_primary", "prov_backup"))
+
+	fakeProxy := &toolRoundPinnedProviderFailoverProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	e := echo.New()
+	reqBody := `{"message":"请执行工具后总结","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"error":"provider_failover_confirmation_required"`) {
+		t.Fatalf("expected provider_failover_confirmation_required error, body=%s", body)
+	}
+	events := extractJSONSSEEvents(t, body)
+	failoverPending := requireProcessEvent(t, events, "provider_failover", "pending")
+	if gotProvider, _ := failoverPending["process_provider"].(string); gotProvider != "prov_primary" {
+		t.Fatalf("expected pending failover to mention prov_primary, got event=%v", failoverPending)
+	}
+	if gotRequires, _ := failoverPending["process_requires_confirmation"].(bool); !gotRequires {
+		t.Fatalf("expected pending failover confirmation flag, got event=%v", failoverPending)
+	}
+	if gotAttempts, _ := failoverPending["process_retry_attempts"].(float64); gotAttempts < 1 {
+		t.Fatalf("expected retry attempts in failover event, got event=%v", failoverPending)
+	}
+	for _, event := range events {
+		if eventName, _ := event["process_event"].(string); eventName == "provider_failover" {
+			if status, _ := event["process_status"].(string); status == "success" {
+				t.Fatalf("expected no provider_failover success event when confirmation is required, body=%s", body)
+			}
+		}
+	}
+	if fakeProxy.callCount != 2 {
+		t.Fatalf("expected exactly 2 proxy calls before confirmation is required, got %d", fakeProxy.callCount)
+	}
+	if len(fakeProxy.requestPinnedProvider) < 2 {
+		t.Fatalf("expected pinned provider trace for 2 calls, got %v", fakeProxy.requestPinnedProvider)
+	}
+	if got := fakeProxy.requestPinnedProvider[1]; got != "prov_primary" {
+		t.Fatalf("expected second call to keep pinned provider, got %q", got)
+	}
+}
+
+func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProviderWhenAutoConfirmed(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
 		t.Fatalf("failed to create store: %v", err)
@@ -5133,7 +5198,12 @@ func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProvider(t *te
 	}
 
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
-	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentMode := true
+	autoConfirm := true
+	settingsHandler.settings.AgentMode = &agentMode
+	settingsHandler.settings.AgentAutoConfirm = &autoConfirm
+	handler.SetSettingsHandler(settingsHandler)
 	handler.SetProviderPool(newEnabledProviderPoolForStreamTests(t, "prov_primary", "prov_backup"))
 
 	fakeProxy := &toolRoundPinnedProviderFailoverProxyHandler{}
@@ -5162,12 +5232,35 @@ func TestStreamMessage_ToolRoundPreContent502_RetriesWithoutPinnedProvider(t *te
 	if !strings.Contains(body, "备用 provider 恢复成功。") {
 		t.Fatalf("expected unpinned retry follow-up content, body=%s", body)
 	}
+	if !strings.Contains(body, `"type":"alert"`) || !strings.Contains(body, `"source":"provider_failover"`) {
+		t.Fatalf("expected provider failover alert card in stream body, body=%s", body)
+	}
 	events := extractJSONSSEEvents(t, body)
 	failoverActive := requireProcessEvent(t, events, "provider_failover", "active")
 	if gotProvider, _ := failoverActive["process_provider"].(string); gotProvider != "prov_primary" {
 		t.Fatalf("expected failover to mention prov_primary, got event=%v", failoverActive)
 	}
 	requireProcessEvent(t, events, "provider_failover", "success")
+	var failoverCard map[string]interface{}
+	for _, event := range events {
+		card, _ := event["typeless_card"].(map[string]interface{})
+		if card == nil {
+			continue
+		}
+		if source, _ := card["source"].(string); source == "provider_failover" {
+			failoverCard = card
+			break
+		}
+	}
+	if failoverCard == nil {
+		t.Fatalf("expected raw typeless_card provider failover payload, events=%v", events)
+	}
+	if gotType, _ := failoverCard["type"].(string); gotType != "alert" {
+		t.Fatalf("expected provider failover typeless_card.type=alert, got card=%v", failoverCard)
+	}
+	if gotSource, _ := failoverCard["source"].(string); gotSource != "provider_failover" {
+		t.Fatalf("expected provider failover typeless_card.source, got card=%v", failoverCard)
+	}
 	if fakeProxy.callCount != 3 {
 		t.Fatalf("expected exactly 3 proxy calls (tool round + pinned failure + unpinned retry), got %d", fakeProxy.callCount)
 	}

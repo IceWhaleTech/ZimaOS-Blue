@@ -690,6 +690,27 @@ func TestBuildSkillsSection_UsesWebFetchBrowserRouting(t *testing.T) {
 	}
 }
 
+func TestBuildSkillsSection_PrefersGenerateImageAndOCRForImageTasks(t *testing.T) {
+	b := NewSystemPromptBuilder(&Config{})
+	section := b.buildSkillsSection()
+
+	if !strings.Contains(section, "image generation→generate_image") {
+		t.Fatalf("expected skills section to route image generation to generate_image, got: %s", section)
+	}
+	if !strings.Contains(section, "image OCR/text recognition→ocr") {
+		t.Fatalf("expected skills section to route image recognition to ocr, got: %s", section)
+	}
+	if !strings.Contains(section, "video generation→mediagen") {
+		t.Fatalf("expected skills section to keep mediagen for video generation, got: %s", section)
+	}
+	if !strings.Contains(section, "Prefer `generate_image` for direct image creation") {
+		t.Fatalf("expected skills section to steer direct image creation to generate_image, got: %s", section)
+	}
+	if strings.Contains(section, "image/video generation→mediagen") {
+		t.Fatalf("expected skills section to stop routing image generation directly to mediagen, got: %s", section)
+	}
+}
+
 func TestBuildSkillsSection_WithoutWorkspaceDirStillIncludesPinnedSkills(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)

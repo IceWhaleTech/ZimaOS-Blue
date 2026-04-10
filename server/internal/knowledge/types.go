@@ -123,6 +123,42 @@ const (
 	PageTypeDecision      = "decision"
 )
 
+type LoopContextStage string
+
+const (
+	LoopContextStagePlanning     LoopContextStage = "planning"
+	LoopContextStageExecution    LoopContextStage = "execution"
+	LoopContextStageRecovery     LoopContextStage = "recovery"
+	LoopContextStageVerification LoopContextStage = "verification"
+)
+
+type LoopContextRequest struct {
+	Stage             LoopContextStage `json:"stage"`
+	Goal              string           `json:"goal,omitempty"`
+	CurrentStep       string           `json:"current_step,omitempty"`
+	PlanSummary       string           `json:"plan_summary,omitempty"`
+	TokenBudget       int              `json:"token_budget,omitempty"`
+	PriorFailureHints []string         `json:"prior_failure_hints,omitempty"`
+}
+
+type LoopContextSnippet struct {
+	Slug       string              `json:"slug"`
+	PageType   string              `json:"page_type"`
+	Status     KnowledgeStatus     `json:"status"`
+	Confidence KnowledgeConfidence `json:"confidence"`
+	Summary    string              `json:"summary"`
+	SourceRefs []string            `json:"source_refs,omitempty"`
+	RiskLabel  string              `json:"risk_label,omitempty"`
+}
+
+type LoopContextResult struct {
+	Context    string               `json:"context,omitempty"`
+	Snippets   []LoopContextSnippet `json:"snippets,omitempty"`
+	SkipReason string               `json:"skip_reason,omitempty"`
+	UsedCount  int                  `json:"used_count,omitempty"`
+	UsedSlugs  []string             `json:"used_slugs,omitempty"`
+}
+
 type CreateJobRequest struct {
 	RequestedID   string   `json:"requested_id,omitempty"`
 	UserID        string   `json:"user_id,omitempty"`

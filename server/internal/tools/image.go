@@ -2246,10 +2246,12 @@ func RegisterImageTool(registry *Registry, reviewer ImageReviewService, generate
 	}
 	native := NewImageTool(reviewer, generate, lookup)
 	registry.Register(native)
+	registry.Register(newGenerateImageTool(native))
+	registry.Register(newOCRTool(native))
 	if webTool := GetWebQueryTool(registry); webTool != nil {
 		webTool.SetImageTool(native)
 	}
-	for _, alias := range []string{"image_generation", "generate_image", "generateImage"} {
+	for _, alias := range []string{"image_generation", "generateImage"} {
 		registry.Register(newImageCompatTool(alias, "Hidden legacy image generation alias.", native))
 		registry.Disable(alias)
 	}

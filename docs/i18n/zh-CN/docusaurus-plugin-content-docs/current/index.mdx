@@ -11,20 +11,47 @@ summary: "面向自托管个人 AI 代理的开源、本地优先、可审计运
 
 [开始使用](/start/getting-started) · [安装方式](/start/installation) · [首次运行](/start/first-run) · [文档导航](/start/docs-directory) · [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue)
 
-## 这套文档提供什么
+## ZimaOS Blue 是什么
 
-- 英文主文档的主要中文镜像页
-- 安装、快速上手、能力概览、配置指南与运维入口
-- 一个稳定的外部 Wiki 入口 `DeepWiki`
+ZimaOS Blue 是一套面向自托管场景的本地优先 AI 代理运行时与工具箱，目标不是把你锁进某个托管模型，而是在自己的硬件、网络与运维边界里，把聊天、语音、自动化、检索、评测与治理组合起来。
 
-## 建议阅读顺序
+它当前特别适合这些场景：
 
-1. [开始使用](/start/getting-started)
-2. [安装方式](/start/installation)
-3. [首次运行](/start/first-run)
-4. [快速开始](/start/quick-start)
-5. [产品能力](/product/features)
-6. [设置与 Provider Pool](/guides/settings-provider-pool)
-7. [身份与访问](/guides/identity-access)
-8. [Harness 与 Evolution](/guides/harness-evolution)
-9. [管理与运维](/guides/admin-operations)
+- 想自己掌控数据、模型与部署方式的开发者
+- 希望把聊天、语音、渠道接入和自动化放进同一套运行时的团队
+- 需要评测、审计、安全治理，而不是只做 demo 的操作者
+
+## 从哪里开始
+
+- 想先建立整体理解：看 [开始使用](/start/getting-started)
+- 想尽快装起来：看 [安装方式](/start/installation)
+- 想确认第一次本地启动：看 [首次运行](/start/first-run)
+- 想用最短路径走通：看 [快速开始](/start/quick-start)
+- 想找页面地图：打开 [文档导航](/start/docs-directory)
+- 想看更深仓库上下文：先看 [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue)
+
+## 能力快照
+
+![Feature overview](/features.png)
+
+- Go 运行时，强调轻量、本地优先与长期运行
+- 提供方池、模型路由、外部 agent 和多渠道接入
+- 聊天、语音、网页检索、自动化与表单填充等交互面
+- Harness、评测、进化与可追踪运行
+- 沙箱、安全、审计、计费、租户、身份与权限治理
+
+## 架构一眼看懂
+
+![Architecture overview](/architecture.png)
+
+系统并不是分散的独立功能页，而是围绕同一套运行时核心展开：Provider 路由、工具与上下文、记忆、渠道、安全、语音、自动化、评测和 Web 控制面都接在一起。想看分层与热路径，请继续看 [产品架构](/product/architecture)。
+
+## 继续阅读
+
+- [产品总览](/product/overview)
+- [产品能力](/product/features)
+- [产品架构](/product/architecture)
+- [设置与 Provider Pool](/guides/settings-provider-pool)
+- [身份与访问](/guides/identity-access)
+- [Harness 与 Evolution](/guides/harness-evolution)
+- [管理与运维](/guides/admin-operations)

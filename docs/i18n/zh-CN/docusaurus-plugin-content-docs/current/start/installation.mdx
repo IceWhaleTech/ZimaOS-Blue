@@ -1,20 +1,41 @@
 ---
 title: "安装方式"
-summary: "通过桌面应用、安装脚本或源码构建安装 ZimaOS Blue。"
+summary: "选择适合自己的 ZimaOS Blue 安装路径，完成安装后确认系统已经准备好进入首次运行。"
 ---
 
 # 安装方式
 
-当前仓库已经明确给出三种入口。
+Blue 当前有三条实用安装路径。真正决定你该选哪条的，往往不是操作系统本身，而是你想多快开始、需要多少控制力，以及你是否准备修改源码。
+
+## 先选哪条路径？
+
+| 路径 | 适合什么情况 | 代价 |
+| --- | --- | --- |
+| 桌面应用 | 你想在 macOS 或 Windows 上最快打开就用 | 上手最快，但构建控制最少 |
+| 安装脚本 | 你想在 macOS 或 Linux 上快速部署，不想先 clone 仓库 | 安装快，但不偏开发者工作流 |
+| 源码构建 | 你准备开发、调试或定制 Blue | 控制力最强，但前置条件最多 |
+
+如果你暂时拿不准，优先用桌面应用。如果你已经知道自己要改代码，就直接走源码构建。
 
 ## 方式一：桌面应用
+
+当你的目标是“先尽快把 Blue 跑起来并进入 UI”，桌面应用是最顺的入口。
 
 - macOS: [最新发布](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 - Windows: [最新发布](https://github.com/IceWhaleTech/ZimaOS-Blue/releases/latest)
 
+它特别适合：
+
+- 第一次评估 Blue
+- Demo 或演示环境
+- 本地运维同学快速上手
+- 想最短路径进入 preview 到首条对话流程的场景
+
 ## 方式二：安装脚本
 
-macOS / Linux:
+如果你想快速装好 Blue，但暂时不需要完整源码仓库，可以用安装脚本。
+
+macOS 或 Linux:
 
 ```bash
 curl -fsSL https://ota.zimaos.com/blue | sh
@@ -26,7 +47,15 @@ Windows PowerShell:
 irm https://ota.zimaos.com/blue/windows | iex
 ```
 
+这条路径适合：
+
+- 想快速初始化一台机器
+- 把 Blue 当成运行时或服务来部署
+- 暂时不打算立刻改源码
+
 ## 方式三：源码构建
+
+如果你需要完整仓库、本地修改和开发者级控制力，就应该走源码构建。
 
 ```bash
 git clone https://github.com/IceWhaleTech/ZimaOS-Blue.git
@@ -46,9 +75,54 @@ Windows PowerShell:
 .\build.bat
 ```
 
-## 接下来建议阅读
+这条路径更适合：
 
-- [首次运行](/start/first-run)
-- [快速开始](/start/quick-start)
-- [文档导航](/start/docs-directory)
-- [故障排查](/help/troubleshooting)
+- 修改运行时行为
+- 调试前端或服务端实现
+- 开发自定义集成、技能或 agent 能力
+- 在提交前验证自己的 patch
+
+## Windows 源码构建前置条件
+
+仓库 `README` 当前明确列出了 Windows 源码构建需要的依赖：
+
+- `MinGW-w64` 与 `CMake`，用于原生 C 依赖
+- `Windows SDK`，用于系统库
+- `gcc` 与 `cmake` 已在 `PATH` 中可用
+
+如果这些依赖没准备好，往往会在真正进入 Blue 运行时之前就构建失败。
+
+## 安装成功不只看命令结束
+
+安装真正算完成，通常至少要满足下面几项：
+
+- Blue 能启动，而不是立刻退出
+- 你能打开本地 UI
+- 你能进入 preview 或 login 入口
+- 你已经可以继续进入首次运行流程
+
+对源码构建来说，还应该额外满足一条：相同构建路径可以稳定复现，而不是“第一次碰巧成功，第二次又不行”。
+
+## 装完后下一步看什么？
+
+不要靠猜，直接按目标继续：
+
+| 如果你想... | 接下来读 |
+| --- | --- |
+| 启动 Blue 并搞清楚 preview mode、首个管理员创建流程 | [首次运行](/start/first-run) |
+| 尽快接上第一个 provider 并拿到第一条有效回复 | [快速开始](/start/quick-start) |
+| 先搞清楚文档结构再继续深入 | [文档导航](/start/docs-directory) |
+| 排查启动、构建或路由问题 | [故障排查](/help/troubleshooting) |
+
+## 常见安装路径误区
+
+- 其实只想先试用，却一开始就选了源码构建
+- 看到下载或脚本执行完，就当成安装已经成功
+- Windows 上还没准备原生工具链就开始源码构建
+- 安装成功后停在那一步，没有继续走 preview、登录或 provider 初始化
+
+## 推荐继续顺序
+
+1. 先完成真正适合你的安装路径。
+2. 打开 [首次运行](/start/first-run)，确认新实例应该出现什么行为。
+3. 当目标变成“跑通第一条真实响应”时，继续看 [快速开始](/start/quick-start)。

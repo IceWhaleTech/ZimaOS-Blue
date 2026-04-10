@@ -578,11 +578,11 @@ export default mergeHarnessLocale('nl-NL', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Laat de agent plannen, tools gebruiken, wijzigingen toepassen en blijven itereren totdat de taak netjes is afgerond. Geinspireerd door Ralphs vasthoudende volharding.',
-    ralphLoopHoverPlan: 'Plannen',
-    ralphLoopHoverAct: 'Uitvoeren',
-    ralphLoopHoverCheck: 'Controleren',
+    smartResumeHoverDescription:
+      'Laat de agent plannen, tools gebruiken, wijzigingen toepassen en blijven itereren totdat de taak netjes is afgerond.',
+    smartResumeHoverPlan: 'Plannen',
+    smartResumeHoverAct: 'Uitvoeren',
+    smartResumeHoverCheck: 'Controleren',
     uiReviewShortcutTitle: 'UI-beoordeling',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -847,6 +847,15 @@ export default mergeHarnessLocale('nl-NL', {
         'Het vaste model {model} is momenteel niet beschikbaar. Wil je deze chat terugzetten naar automatische routering en je laatste verzoek opnieuw proberen?',
       secondaryAction: 'Huidig model behouden',
       primaryAction: 'Schakelen en opnieuw proberen',
+    },
+    providerFailover: {
+      eyebrow: 'High-availability-schakeling',
+      title: 'Overschakelen naar een andere beschikbare route en opnieuw proberen?',
+      description: 'De huidige route via {provider} heeft je bevestiging nodig voordat Blue overschakelt naar een andere beschikbare route en het opnieuw probeert.',
+      dismissAction: 'Nu niet',
+      manualAction: 'Route handmatig kiezen',
+      primaryAction: 'Schakel over en probeer opnieuw',
+      currentRoute: 'Huidige route',
     },
     manageProviders: 'Beheer aanbieders',
     noProviderConfigured: 'Geen provider geconfigureerd. Klik om er een toe te voegen.',

@@ -12,6 +12,7 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/knowledge"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selfreflect"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -958,6 +959,173 @@ func TestRunner_GeneratePlan_UsesOpenClawStylePlannerPrompt(t *testing.T) {
 	}
 }
 
+func TestRunner_GeneratePlanForTask_InjectsLoopKnowledgeIntoUserPromptOnly(t *testing.T) {
+	goal := "Implement stage-aware knowledge injection for the agent loop."
+	mem := &mockMemory{
+		results: []MemoryResult{
+			{
+				Content: "The repo prefers narrow prompt additions over broad system-prompt changes.",
+				Score:   0.91,
+			},
+		},
+	}
+	llmCapture := &capturingPlannerLLM{planJSON: plannerTestJSON(goal)}
+	observer := &captureTaskEventObserver{}
+	resolver := &mockLoopKnowledgeResolver{
+		result: &knowledge.LoopContextResult{
+			Context:   "<loop_knowledge>\n- [knowledge slug=agent-loop-decision page_type=decision status=active confidence=high] Keep AGENTS.md and MEMORY.md in <project_context>; inject compiled knowledge only in the user prompt.\n</loop_knowledge>",
+			UsedCount: 1,
+			UsedSlugs: []string{"agent-loop-decision"},
+			Snippets: []knowledge.LoopContextSnippet{
+				{Slug: "agent-loop-decision", PageType: knowledge.PageTypeDecision, Status: knowledge.KnowledgeStatusActive, Confidence: knowledge.KnowledgeConfidenceHigh},
+			},
+		},
+	}
+	runner := &Runner{
+		llm:           llmCapture,
+		memory:        mem,
+		eventObserver: observer,
+	}
+	runner.SetKnowledgeResolver(resolver)
+
+	plan, err := runner.generatePlanForTask(context.Background(), &Task{
+		ID:     "task-loop-knowledge-plan",
+		UserID: "user-1",
+		Goal:   goal,
+	}, goal, "User wants the agent loop to carry the right knowledge.")
+	if err != nil {
+		t.Fatalf("generatePlanForTask returned unexpected error: %v", err)
+	}
+	if plan == nil || len(plan.Steps) == 0 {
+		t.Fatalf("plan = %#v, want non-empty plan", plan)
+	}
+	if resolver.called != 1 {
+		t.Fatalf("resolver calls = %d, want 1", resolver.called)
+	}
+	if resolver.lastReq.Stage != knowledge.LoopContextStagePlanning {
+		t.Fatalf("resolver stage = %q, want planning", resolver.lastReq.Stage)
+	}
+
+	req := llmCapture.LastRequest()
+	systemPrompt := req.Messages[0].Content
+	if strings.Contains(systemPrompt, "<loop_knowledge>") {
+		t.Fatalf("expected loop knowledge to stay out of planning system prompt, got %q", systemPrompt)
+	}
+
+	userPrompt := req.Messages[1].Content
+	for _, want := range []string{
+		"Recalled memory (reference only;",
+		"<planner_memory>",
+		"Relevant knowledge:",
+		"<loop_knowledge>",
+		"agent-loop-decision",
+	} {
+		if !strings.Contains(userPrompt, want) {
+			t.Fatalf("expected planning user prompt to contain %q, got %q", want, userPrompt)
+		}
+	}
+	if !taskEventSeen(observer.events, "task_loop_knowledge_used") {
+		t.Fatalf("expected loop knowledge used event, got %+v", observer.events)
+	}
+	if got := taskEventMessage(observer.events, "task_loop_knowledge_used"); !strings.Contains(got, "agent-loop-decision") {
+		t.Fatalf("knowledge used event = %q, want slug list", got)
+	}
+}
+
+func TestRunner_GeneratePlanForTask_EmitsLoopKnowledgeSkippedEvent(t *testing.T) {
+	goal := "Search the latest provider pricing changes on the public web."
+	llmCapture := &capturingPlannerLLM{planJSON: plannerTestJSON(goal)}
+	observer := &captureTaskEventObserver{}
+	resolver := &mockLoopKnowledgeResolver{
+		result: &knowledge.LoopContextResult{
+			SkipReason: "latest/live-web-first task",
+		},
+	}
+	runner := &Runner{
+		llm:           llmCapture,
+		eventObserver: observer,
+	}
+	runner.SetKnowledgeResolver(resolver)
+
+	plan, err := runner.generatePlanForTask(context.Background(), &Task{
+		ID:     "task-loop-knowledge-skip",
+		UserID: "user-1",
+		Goal:   goal,
+	}, goal, "")
+	if err != nil {
+		t.Fatalf("generatePlanForTask returned unexpected error: %v", err)
+	}
+	if plan == nil || len(plan.Steps) == 0 {
+		t.Fatalf("plan = %#v, want non-empty plan", plan)
+	}
+	if !taskEventSeen(observer.events, "task_loop_knowledge_skipped") {
+		t.Fatalf("expected loop knowledge skipped event, got %+v", observer.events)
+	}
+	if taskEventSeen(observer.events, "task_loop_knowledge_used") {
+		t.Fatalf("expected no loop knowledge used event, got %+v", observer.events)
+	}
+	if got := taskEventMessage(observer.events, "task_loop_knowledge_skipped"); got != "latest/live-web-first task" {
+		t.Fatalf("loop knowledge skipped event = %q", got)
+	}
+
+	userPrompt := llmCapture.LastRequest().Messages[1].Content
+	if strings.Contains(userPrompt, "<loop_knowledge>") {
+		t.Fatalf("expected skipped knowledge to stay out of planning user prompt, got %q", userPrompt)
+	}
+}
+
+func TestRunner_ExecuteStep_FallbackInjectsLoopKnowledgeIntoUserPrompt(t *testing.T) {
+	llmStub := &captureResponseLLM{response: "done"}
+	registry := tools.NewRegistry()
+	registry.Register(&dummyTool{name: "ask", desc: "ask the user a clarifying question"})
+	registry.Register(&dummyTool{name: "exec", desc: "run shell commands"})
+	resolver := &mockLoopKnowledgeResolver{
+		result: &knowledge.LoopContextResult{
+			Context:   "<loop_knowledge>\n- [knowledge slug=step-evidence-pack page_type=synthesis status=active confidence=high] Prefer the step-local evidence pack instead of repeating whole knowledge pages.\n</loop_knowledge>",
+			UsedCount: 1,
+			UsedSlugs: []string{"step-evidence-pack"},
+		},
+	}
+	runner := &Runner{
+		llm:      llmStub,
+		registry: registry,
+	}
+	runner.SetKnowledgeResolver(resolver)
+
+	task := &Task{
+		ID:     "task-step-knowledge-fallback",
+		UserID: "u1",
+		Goal:   "implement the loop knowledge fallback path",
+		Plan: []PlanStep{
+			{Index: 0, Description: "prepend the knowledge block in fallback execution", Status: StepStatusRunning},
+		},
+	}
+	step := &task.Plan[0]
+
+	if _, err := runner.executeStep(context.Background(), task, step); err != nil {
+		t.Fatalf("executeStep returned unexpected error: %v", err)
+	}
+	if resolver.called != 1 {
+		t.Fatalf("resolver calls = %d, want 1", resolver.called)
+	}
+	if resolver.lastReq.Stage != knowledge.LoopContextStageExecution {
+		t.Fatalf("resolver stage = %q, want execution", resolver.lastReq.Stage)
+	}
+	req := llmStub.requests[0]
+	if strings.Contains(req.Messages[0].Content, "<loop_knowledge>") {
+		t.Fatalf("expected loop knowledge to stay out of fallback system prompt, got %q", req.Messages[0].Content)
+	}
+	for _, want := range []string{
+		"Relevant knowledge:",
+		"<loop_knowledge>",
+		"step-evidence-pack",
+	} {
+		if !strings.Contains(req.Messages[1].Content, want) {
+			t.Fatalf("expected fallback execution user prompt to contain %q, got %q", want, req.Messages[1].Content)
+		}
+	}
+}
+
 // --- helpers ---
 
 type dummyTool struct {
@@ -1411,6 +1579,19 @@ type mockMemory struct {
 	query   string
 }
 
+type mockLoopKnowledgeResolver struct {
+	result  *knowledge.LoopContextResult
+	err     error
+	called  int
+	lastReq knowledge.LoopContextRequest
+}
+
+func (m *mockLoopKnowledgeResolver) ResolveLoopContext(_ context.Context, req knowledge.LoopContextRequest) (*knowledge.LoopContextResult, error) {
+	m.called++
+	m.lastReq = req
+	return m.result, m.err
+}
+
 func (m *mockMemory) Recall(_ context.Context, query string, _ int) ([]MemoryResult, error) {
 	m.called = true
 	m.query = query
@@ -1432,6 +1613,15 @@ func taskEventSeen(events []TaskEvent, eventType string) bool {
 		}
 	}
 	return false
+}
+
+func taskEventMessage(events []TaskEvent, eventType string) string {
+	for _, event := range events {
+		if strings.TrimSpace(event.EventType) == strings.TrimSpace(eventType) {
+			return event.Message
+		}
+	}
+	return ""
 }
 
 func plannerTestJSON(goal string) string {

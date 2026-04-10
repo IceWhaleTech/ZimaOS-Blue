@@ -387,31 +387,35 @@ func containsDangerousConfirmationCue(text string) bool {
 }
 
 type GroundedRuntimeConfig struct {
-	PlannerLLM       LLMCaller
-	ResponderLLM     LLMCaller
-	Registry         *tools.Registry
-	Executor         *tools.Executor
-	Store            *Store
-	StateStore       *GroundTruthStateStore
-	Planner          *GroundedPlanner
-	GroundedExecutor *GroundedExecutor
-	Verifier         *GroundedVerifier
-	AskHandler       func(ctx context.Context, task *Task, argsJSON string) string
-	ConfirmToolCall  func(ctx context.Context, task *Task, step PlanStep, nextTool PlannerToolCall) error
-	Secret           []byte
-	MaxPlannerRounds int
+	PlannerLLM        LLMCaller
+	ResponderLLM      LLMCaller
+	Registry          *tools.Registry
+	Executor          *tools.Executor
+	Store             *Store
+	StateStore        *GroundTruthStateStore
+	Planner           *GroundedPlanner
+	GroundedExecutor  *GroundedExecutor
+	Verifier          *GroundedVerifier
+	AskHandler        func(ctx context.Context, task *Task, argsJSON string) string
+	ConfirmToolCall   func(ctx context.Context, task *Task, step PlanStep, nextTool PlannerToolCall) error
+	KnowledgeResolver LoopKnowledgeResolver
+	KnowledgeTrace    func(task *Task, trace loopKnowledgeTrace)
+	Secret            []byte
+	MaxPlannerRounds  int
 }
 
 type GroundedRuntime struct {
-	planner          *GroundedPlanner
-	responderLLM     LLMCaller
-	registry         *tools.Registry
-	executor         *GroundedExecutor
-	store            *Store
-	stateStore       *GroundTruthStateStore
-	verifier         *GroundedVerifier
-	confirmToolCall  func(ctx context.Context, task *Task, step PlanStep, nextTool PlannerToolCall) error
-	maxPlannerRounds int
+	planner           *GroundedPlanner
+	responderLLM      LLMCaller
+	registry          *tools.Registry
+	executor          *GroundedExecutor
+	store             *Store
+	stateStore        *GroundTruthStateStore
+	verifier          *GroundedVerifier
+	confirmToolCall   func(ctx context.Context, task *Task, step PlanStep, nextTool PlannerToolCall) error
+	knowledgeResolver LoopKnowledgeResolver
+	knowledgeTrace    func(task *Task, trace loopKnowledgeTrace)
+	maxPlannerRounds  int
 }
 
 type GroundedStepResult struct {
@@ -443,15 +447,17 @@ func NewGroundedRuntime(cfg GroundedRuntimeConfig) *GroundedRuntime {
 		maxPlannerRounds = 6
 	}
 	return &GroundedRuntime{
-		planner:          planner,
-		responderLLM:     cfg.ResponderLLM,
-		registry:         cfg.Registry,
-		executor:         executor,
-		store:            cfg.Store,
-		stateStore:       stateStore,
-		verifier:         verifier,
-		confirmToolCall:  cfg.ConfirmToolCall,
-		maxPlannerRounds: maxPlannerRounds,
+		planner:           planner,
+		responderLLM:      cfg.ResponderLLM,
+		registry:          cfg.Registry,
+		executor:          executor,
+		store:             cfg.Store,
+		stateStore:        stateStore,
+		verifier:          verifier,
+		confirmToolCall:   cfg.ConfirmToolCall,
+		knowledgeResolver: cfg.KnowledgeResolver,
+		knowledgeTrace:    cfg.KnowledgeTrace,
+		maxPlannerRounds:  maxPlannerRounds,
 	}
 }
 
@@ -467,6 +473,10 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 	}
 	toolCatalog := groundedToolCatalog(r.registry)
 	planSummary := buildGroundedPlanSummary(plan)
+	stepKnowledge := resolveExecutionLoopKnowledge(ctx, r.knowledgeResolver, task, step, plan)
+	if r.knowledgeTrace != nil && (stepKnowledge.UsedCount > 0 || stepKnowledge.SkipReason != "") {
+		r.knowledgeTrace(task, stepKnowledge)
+	}
 	var toolCallIDs []string
 	var previousViolations []string
 	var allAssertions []PlannerAssertion
@@ -495,6 +505,7 @@ func (r *GroundedRuntime) ExecuteStep(ctx context.Context, task *Task, step Plan
 				ToolCatalog:        toolCatalog,
 				PriorToolCallIDs:   toolCallIDs,
 				PreviousViolations: previousViolations,
+				KnowledgeContext:   stepKnowledge.Context,
 				RoutingContract:    buildTaskRoutingContractContext(plannerTaskMetadata(task)),
 				CoordinationCtx:    buildTaskCoordinationPromptContext(task),
 			})

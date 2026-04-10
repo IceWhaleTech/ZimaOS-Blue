@@ -577,11 +577,11 @@ export default mergeHarnessLocale('nb-NO', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'La agenten planlegge, bruke verktøy, gjennomføre endringer og fortsette å iterere til oppgaven er løst på en ryddig måte. Inspirert av Ralphs sta utholdenhet.',
-    ralphLoopHoverPlan: 'Planlegg',
-    ralphLoopHoverAct: 'Utfør',
-    ralphLoopHoverCheck: 'Sjekk',
+    smartResumeHoverDescription:
+      'La agenten planlegge, bruke verktøy, gjennomføre endringer og fortsette å iterere til oppgaven er løst på en ryddig måte.',
+    smartResumeHoverPlan: 'Planlegg',
+    smartResumeHoverAct: 'Utfør',
+    smartResumeHoverCheck: 'Sjekk',
     uiReviewShortcutTitle: 'UI-anmeldelse',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -843,6 +843,15 @@ export default mergeHarnessLocale('nb-NO', {
         'Den faste modellen {model} er ikke tilgjengelig akkurat nå. Vil du sette denne chatten tilbake til automatisk ruting og prøve den siste forespørselen på nytt?',
       secondaryAction: 'Behold gjeldende modell',
       primaryAction: 'Bytt og prøv igjen',
+    },
+    providerFailover: {
+      eyebrow: 'Høytilgjengelighetsbytte',
+      title: 'Bytte til en annen tilgjengelig rute og prøve igjen?',
+      description: 'Den nåværende ruten via {provider} trenger bekreftelsen din før Blue bytter til en annen tilgjengelig rute og prøver igjen.',
+      dismissAction: 'Ikke nå',
+      manualAction: 'Velg rute manuelt',
+      primaryAction: 'Bytt og prøv igjen',
+      currentRoute: 'Gjeldende rute',
     },
     manageProviders: 'Administrer leverandører',
     noProviderConfigured: 'Ingen leverandør er konfigurert. Klikk for å legge til en.',

@@ -7,6 +7,27 @@ summary: "How Blue handles preview bootstrap, sign-in providers, user management
 
 Blue now exposes a full identity and access layer across preview onboarding, external sign-in providers, user administration, and personal security controls.
 
+## Two common operator paths
+
+Most teams land on one of these two starting paths:
+
+| Goal | Start here | Then continue with |
+| --- | --- | --- |
+| Turn a brand-new preview instance into a normal admin-managed instance | Preview bootstrap and first admin creation | [First Run](/start/first-run) and [Settings and Provider Pool](/guides/settings-provider-pool) |
+| Add external sign-in to an already working deployment | Auth-provider administration | [Admin and Operations](/guides/admin-operations) and [Troubleshooting](/help/troubleshooting) |
+
+## Where each access control lives in the UI
+
+| If you need to... | Main UI surface |
+| --- | --- |
+| Upgrade a brand-new instance out of preview mode | The preview header action, then `Create Admin Account` |
+| Edit your own email or password | `Profile` |
+| Link or unlink your own external accounts | `Profile` |
+| Create or revoke your own API keys | `Profile` |
+| Manage MFA or WebAuthn for your own account | `Profile` |
+| Configure external sign-in providers for the deployment | `Auth Providers` |
+| Create, lock, unlock, or edit users | `Users` |
+
 ## Preview mode and first-run bootstrap
 
 Preview mode is designed for first-run or controlled demo setups where the product should be explorable before full account bootstrap. The current implementation includes:
@@ -18,6 +39,32 @@ Preview mode is designed for first-run or controlled demo setups where the produ
 - Upgrade flow that creates the first admin account and exits preview mode
 
 This makes preview mode part of the real onboarding story, not just a hidden developer toggle.
+
+## Shortest preview-to-admin path
+
+If you are looking at a brand-new instance, the least confusing sequence is:
+
+1. Confirm that the instance is still in `preview` mode.
+2. Explore briefly so you understand what the empty system looks like.
+3. Use the upgrade flow to create the first admin account.
+4. Sign back in as that admin if the UI asks you to.
+5. Configure one working provider in `Settings -> LLM`.
+6. Return to chat and run a smoke test.
+
+After the first user is created, that same data directory becomes a normal instance and preview access is no longer the entry path for that deployment.
+
+## What the preview upgrade form actually asks for
+
+The current upgrade form is not just a single password box. It asks for:
+
+- A username
+- A password
+- Password confirmation in the normal hidden-password path
+- A password that satisfies the backend password policy
+
+The password rules are loaded from the backend when the form opens, so the final requirements should follow the running deployment rather than a hard-coded docs assumption.
+
+After a successful upgrade, Blue refreshes into the new authenticated state instead of keeping you in preview mode.
 
 ## User profile and personal controls
 
@@ -31,6 +78,29 @@ The profile area is where an individual user manages their own access surface. C
 
 The API key flow is especially useful for external clients or automation that should not reuse browser sessions.
 
+## When to use API keys instead of a browser session
+
+Use API keys when:
+
+- An external client should talk to Blue without reusing your browser login
+- Automation needs a stable credential
+- You want scoped credentials that are easier to rotate or revoke later
+
+Prefer a normal browser session when the task is interactive account management or UI-based operation rather than client integration.
+
+## What the current Profile page groups together
+
+The shipped `Profile` page currently combines several different account surfaces:
+
+- `Account Information` for username, role, email, and password updates
+- A direct entry into `User Management` when you need broader admin actions
+- `Linked Accounts` for OAuth or OIDC account attachment
+- `API Keys` for scoped programmatic access
+- `MFA`
+- `WebAuthn`
+
+This matters because many access questions are not admin-provider questions at all. They are often profile questions.
+
 ## Linked external accounts
 
 Blue can let a signed-in user attach external identities to their profile. The current flow supports:
@@ -41,6 +111,16 @@ Blue can let a signed-in user attach external identities to their profile. The c
 - Unlinking accounts later
 
 This is useful when teams want one account surface inside Blue but flexible external identity sources.
+
+## What an auth rollout should feel like
+
+A good first pass for external sign-in usually means:
+
+- The provider appears on the login page
+- The redirect or callback URL matches exactly
+- The first user can sign in without manual URL fixes
+- Auto-create-user and default-role behavior do what you intended
+- Domain restrictions, if configured, block or allow the right accounts
 
 ## User administration
 
@@ -69,11 +149,58 @@ The auth-provider admin page is the operator surface for configuring external si
 
 This makes it possible to run Blue with local auth only, external auth only, or a mixed setup depending on your deployment constraints.
 
+## What the Auth Providers form actually contains
+
+The current admin form groups together:
+
+- Provider ID
+- Display name
+- Provider type
+- Client ID
+- Client secret
+- Issuer URL for OIDC-style discovery
+- Redirect URL
+- Scopes
+- Auto-create-user toggle
+- Default role
+- Allowed email domains
+- Display order
+
+For generic OIDC-style setups, the implementation also supports auth, token, and userinfo endpoint fields when you are not relying only on issuer discovery.
+
+## Provider type defaults worth knowing
+
+The current UI supports these provider types:
+
+- `generic`
+- `google`
+- `github`
+- `microsoft`
+- `keycloak`
+- `authentik`
+- `auth0`
+
+The form also changes some defaults for you:
+
+- Most OIDC-style providers start with `openid profile email`
+- GitHub starts with `read:user` and `user:email`
+- The redirect URL is generated from the current origin and updates when the provider ID is filled in
+
+## Recommended auth-provider rollout order
+
+1. Decide whether the deployment should remain local-auth only, external-auth only, or mixed.
+2. Create one provider configuration at a time.
+3. Copy the exact redirect URL Blue shows in the admin page.
+4. Register that redirect URL on the identity-provider side.
+5. Set scopes, default role, auto-create-user, and allowed-domain rules deliberately.
+6. Enable the provider and test a real login from the login page.
+7. Only then roll out additional providers or tighter restrictions.
+
 ## Minimum auth-provider worksheet
 
 Before you open the auth-provider admin page, collect these values:
 
-- The provider type, such as `generic oidc`, `google`, `github`, `microsoft`, `keycloak`, `authentik`, or `auth0`
+- The provider type, such as `generic`, `google`, `github`, `microsoft`, `keycloak`, `authentik`, or `auth0`
 - Client ID and client secret
 - The issuer URL, or the auth/token/userinfo endpoints if you are using generic OIDC
 - The exact redirect URL Blue shows in the admin page, registered on the identity-provider side
@@ -85,17 +212,25 @@ Before you open the auth-provider admin page, collect these values:
 A minimal operator worksheet can look like this:
 
 ```text
-Provider type: Generic OIDC
+Provider type: generic
 Issuer: https://auth.example.com/realms/main
 Client ID: <client-id>
 Client Secret: <client-secret>
 Scopes: openid profile email
 Auto-create user: true
-Default role: member
+Default role: user
 Allowed domains: example.com
 ```
 
 Do not guess the callback URL. Register the exact redirect value that Blue shows in the auth-provider admin page.
+
+## Common mistakes to avoid
+
+- Guessing the callback or redirect URL instead of copying the value Blue shows
+- Enabling auto-create-user without thinking through the default role
+- Mixing local-auth and external-auth behavior without documenting the intended path for users
+- Testing configuration screens only, but not a real end-to-end login from the login page
+- Forgetting that API keys, linked accounts, MFA, and WebAuthn belong to different parts of the overall access model
 
 ## Where this fits with other admin surfaces
 

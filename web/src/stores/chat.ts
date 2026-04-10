@@ -518,6 +518,14 @@ function isModelUnavailableErrorText(message: string): boolean {
   )
 }
 
+const providerFailoverConfirmationRequiredError = 'provider_failover_confirmation_required'
+
+function isProviderFailoverConfirmationErrorText(message: string): boolean {
+  const normalized = String(message || '').trim().toLowerCase()
+  if (!normalized) return false
+  return normalized.includes(providerFailoverConfirmationRequiredError)
+}
+
 function resolveProcessTraceDetail(_event: string, detail?: string): string {
   const normalized = detail?.trim() || ''
   if (!normalized) return ''
@@ -590,6 +598,12 @@ function resolveProcessTraceStatusLabel(item: ProcessTraceItem): string {
     case 'continuation_recovery_failed':
       return resolveProcessTraceText('events.recoveryFailed', 'Recovery failed')
     case 'provider_failover':
+      if (item.status === 'pending' && item.metadata?.requires_confirmation) {
+        return resolveProcessTraceText(
+          'events.waitingForSwitchConfirmation',
+          'Waiting for switch confirmation'
+        )
+      }
       if (item.status === 'success') {
         return resolveProcessTraceText(
           'events.providerSwitchSucceeded',
@@ -717,6 +731,18 @@ export interface PendingModelAutoFallback {
   retryKind: ModelAutoFallbackRetryKind
   requestedModelId: string
   requestedProviderId?: string
+  errorMessage: string
+}
+
+interface PendingProviderFailoverDraft {
+  conversationId: string
+  failedProviderId?: string
+  detail: string
+  retryAttempts?: number
+}
+
+export interface PendingProviderFailoverRetry extends PendingProviderFailoverDraft {
+  retryKind: ModelAutoFallbackRetryKind
   errorMessage: string
 }
 
@@ -1141,6 +1167,8 @@ export const useChatStore = defineStore('chat', () => {
   const modelPreference = ref<string>(loadModelPreference())
   const providerPinOnlyActive = ref(false)
   const pendingModelAutoFallback = ref<PendingModelAutoFallback | null>(null)
+  const pendingProviderFailoverDraft = ref<PendingProviderFailoverDraft | null>(null)
+  const pendingProviderFailoverRetry = ref<PendingProviderFailoverRetry | null>(null)
   const offlineMode = ref<boolean>(loadOfflineMode())
   const agentcoreRunnerRef = ref<string>(
     normalizeAgentcoreRunnerRefValue(settingsStore.experimentalAgentcoreRunnerRef)
@@ -1251,6 +1279,16 @@ export const useChatStore = defineStore('chat', () => {
         : undefined
     const provider = chunk.process_provider?.trim()
     const model = chunk.process_model?.trim()
+    const requiresConfirmation = chunk.process_requires_confirmation === true
+    const retryAttempts =
+      typeof chunk.process_retry_attempts === 'number' && Number.isFinite(chunk.process_retry_attempts)
+        ? chunk.process_retry_attempts
+        : undefined
+    const lastStatusCode =
+      typeof chunk.process_last_status_code === 'number' &&
+      Number.isFinite(chunk.process_last_status_code)
+        ? chunk.process_last_status_code
+        : undefined
     const category = event.startsWith('pre_content_retry')
       ? 'retry'
       : event.startsWith('continuation_recovery')
@@ -1278,6 +1316,9 @@ export const useChatStore = defineStore('chat', () => {
       delay_ms: delayMs,
       provider,
       model,
+      requires_confirmation: requiresConfirmation,
+      retry_attempts: retryAttempts,
+      last_status_code: lastStatusCode,
     }
 
     return createProcessTraceItem({
@@ -1825,6 +1866,7 @@ export const useChatStore = defineStore('chat', () => {
     request: SendMessageRequest,
     options: SSEClientOptions
   ) {
+    clearPendingProviderFailoverDraft(conversationId)
     beginActiveStream(conversationId)
     addRequestProcessTrace(conversationId, request)
 
@@ -1853,6 +1895,7 @@ export const useChatStore = defineStore('chat', () => {
         options.onStreamProgress?.(progress)
       },
       onProcessEvent: (chunk) => {
+        recordPendingProviderFailoverDraft(conversationId, chunk)
         const item = createServerProcessTraceItem(chunk)
         if (item) {
           const nextSummary = resolveProcessTraceStatusLabel(item)
@@ -2198,6 +2241,61 @@ export const useChatStore = defineStore('chat', () => {
     pendingModelAutoFallback.value = null
   }
 
+  function clearPendingProviderFailoverDraft(conversationId?: string) {
+    if (
+      conversationId &&
+      pendingProviderFailoverDraft.value &&
+      pendingProviderFailoverDraft.value.conversationId !== conversationId
+    ) {
+      return
+    }
+    pendingProviderFailoverDraft.value = null
+  }
+
+  function clearPendingProviderFailoverRetry() {
+    pendingProviderFailoverRetry.value = null
+  }
+
+  function recordPendingProviderFailoverDraft(conversationId: string, chunk: StreamChunk) {
+    if (chunk.process_event !== 'provider_failover') return
+    if (chunk.process_requires_confirmation) {
+      pendingProviderFailoverDraft.value = {
+        conversationId,
+        failedProviderId: chunk.process_provider?.trim() || '',
+        detail: chunk.process_detail?.trim() || chunk.process_message?.trim() || '',
+        retryAttempts:
+          typeof chunk.process_retry_attempts === 'number' &&
+          Number.isFinite(chunk.process_retry_attempts)
+            ? chunk.process_retry_attempts
+            : undefined,
+      }
+      return
+    }
+    if (chunk.process_status === 'success' || chunk.process_status === 'error') {
+      clearPendingProviderFailoverDraft(conversationId)
+    }
+  }
+
+  function queueProviderFailoverRetry(params: {
+    conversationId: string
+    errorMessage: string
+    retryKind: ModelAutoFallbackRetryKind
+  }): boolean {
+    if (!isProviderFailoverConfirmationErrorText(params.errorMessage)) return false
+    const draft = pendingProviderFailoverDraft.value
+    if (!draft || draft.conversationId !== params.conversationId) return false
+
+    pendingProviderFailoverRetry.value = {
+      ...draft,
+      retryKind: params.retryKind,
+      errorMessage: params.errorMessage,
+    }
+    clearPendingProviderFailoverDraft(params.conversationId)
+    error.value = null
+    streamError.value = null
+    return true
+  }
+
   function queueModelAutoFallbackRetry(params: {
     conversationId: string
     request: SendMessageRequest
@@ -2234,6 +2332,7 @@ export const useChatStore = defineStore('chat', () => {
     selectedProviderId.value = resolved.selected_provider_id
     providerPinOnlyActive.value = false
     clearPendingModelAutoFallback()
+    clearPendingProviderFailoverRetry()
 
     if (!conversationId) return
 
@@ -2263,6 +2362,7 @@ export const useChatStore = defineStore('chat', () => {
     selectedProviderId.value = providerId
     providerPinOnlyActive.value = true
     clearPendingModelAutoFallback()
+    clearPendingProviderFailoverRetry()
 
     if (!conversationId) return
 
@@ -2298,6 +2398,32 @@ export const useChatStore = defineStore('chat', () => {
 
   function dismissModelAutoFallbackRetry() {
     clearPendingModelAutoFallback()
+  }
+
+  async function confirmProviderFailoverRetry() {
+    const pending = pendingProviderFailoverRetry.value
+    if (!pending) return
+
+    clearPendingProviderFailoverRetry()
+    clearError()
+    clearStreamError()
+
+    if (currentConversationId.value !== pending.conversationId) {
+      await selectConversation(pending.conversationId)
+    } else {
+      await fetchMessages(pending.conversationId)
+    }
+
+    if (pending.retryKind === 'continue') {
+      await continueMessage()
+      return
+    }
+
+    await regenerateMessage()
+  }
+
+  function dismissProviderFailoverRetry() {
+    clearPendingProviderFailoverRetry()
   }
 
   function isSlashCommandText(value: string): boolean {
@@ -3716,6 +3842,19 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
           }
 
           if (
+            queueProviderFailoverRetry({
+              conversationId,
+              errorMessage: err.message,
+              retryKind: 'send',
+            })
+          ) {
+            messages.value = messages.value.filter(
+              (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
+            )
+            return
+          }
+
+          if (
             queueModelAutoFallbackRetry({
               conversationId,
               request,
@@ -3834,6 +3973,16 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
       flushPendingStreamDelta(conversationId)
       const caughtMessage = e instanceof Error ? e.message : 'Failed to send message'
       if (
+        queueProviderFailoverRetry({
+          conversationId,
+          errorMessage: caughtMessage,
+          retryKind: 'send',
+        })
+      ) {
+        messages.value = messages.value.filter(
+          (m) => !m.id.startsWith('temp-') && !m.id.startsWith('streaming-')
+        )
+      } else if (
         queueModelAutoFallbackRetry({
           conversationId,
           request,
@@ -4107,6 +4256,17 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
           streamProgress.value = null
           toolExecuting.value = false
           if (
+            queueProviderFailoverRetry({
+              conversationId: convId,
+              errorMessage: err.message,
+              retryKind: 'continue',
+            })
+          ) {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            streaming.value = false
+            return
+          }
+          if (
             queueModelAutoFallbackRetry({
               conversationId: convId,
               request: request!,
@@ -4168,6 +4328,15 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
       const fallbackMessage =
         e instanceof Error ? e.message : resolveI18nText('chat.streamError', 'Stream error')
       if (
+        request &&
+        queueProviderFailoverRetry({
+          conversationId: convId,
+          errorMessage: fallbackMessage,
+          retryKind: 'continue',
+        })
+      ) {
+        messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      } else if (
         request &&
         queueModelAutoFallbackRetry({
           conversationId: convId,
@@ -4293,6 +4462,18 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
           flushPendingStreamDelta(conversationId)
           streamProgress.value = null
           if (
+            queueProviderFailoverRetry({
+              conversationId,
+              errorMessage: err.message,
+              retryKind: 'continue',
+            })
+          ) {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            streaming.value = false
+            toolExecuting.value = false
+            return
+          }
+          if (
             queueModelAutoFallbackRetry({
               conversationId,
               request: request!,
@@ -4366,6 +4547,15 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
       flushPendingStreamDelta(conversationId)
       const caughtMessage = e instanceof Error ? e.message : 'Failed to continue message'
       if (
+        request &&
+        queueProviderFailoverRetry({
+          conversationId,
+          errorMessage: caughtMessage,
+          retryKind: 'continue',
+        })
+      ) {
+        messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      } else if (
         request &&
         queueModelAutoFallbackRetry({
           conversationId,
@@ -4509,6 +4699,17 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
           toolExecuting.value = false
           if (
             !wasToolExecuting &&
+            queueProviderFailoverRetry({
+              conversationId,
+              errorMessage: err.message,
+              retryKind: 'regenerate',
+            })
+          ) {
+            messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+            return
+          }
+          if (
+            !wasToolExecuting &&
             queueModelAutoFallbackRetry({
               conversationId,
               request: request!,
@@ -4600,6 +4801,15 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
       flushPendingStreamDelta(conversationId)
       const caughtMessage = e instanceof Error ? e.message : 'Failed to regenerate message'
       if (
+        request &&
+        queueProviderFailoverRetry({
+          conversationId,
+          errorMessage: caughtMessage,
+          retryKind: 'regenerate',
+        })
+      ) {
+        messages.value = messages.value.filter((m) => !m.id.startsWith('streaming-'))
+      } else if (
         request &&
         queueModelAutoFallbackRetry({
           conversationId,
@@ -5034,6 +5244,7 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
     providerPinOnlyActive,
     modelPreference,
     pendingModelAutoFallback,
+    pendingProviderFailoverRetry,
     offlineMode,
     agentcoreRunnerRef,
     isRecovering,
@@ -5097,5 +5308,7 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
     setModelPreference,
     confirmModelAutoFallbackRetry,
     dismissModelAutoFallbackRetry,
+    confirmProviderFailoverRetry,
+    dismissProviderFailoverRetry,
   }
 })

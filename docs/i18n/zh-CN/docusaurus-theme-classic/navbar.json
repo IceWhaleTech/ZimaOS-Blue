@@ -20,11 +20,11 @@
     "description": "Navbar item with label GitHub"
   },
   "item.label.Releases": {
-    "message": "Releases",
+    "message": "发布版本",
     "description": "Navbar item with label Releases"
   },
   "item.label.DeepWiki": {
-    "message": "DeepWiki",
+    "message": "DeepWiki 知识库",
     "description": "Navbar item with label DeepWiki"
   }
 }

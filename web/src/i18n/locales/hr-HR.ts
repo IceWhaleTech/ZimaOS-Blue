@@ -579,11 +579,11 @@ export default mergeHarnessLocale('hr-HR', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Pusti agentu da planira, koristi alate, primjenjuje izmjene i nastavi iterirati dok zadatak ne bude uredno dovršen. Nadahnuto Ralphovom upornom ustrajnošću.',
-    ralphLoopHoverPlan: 'Planirajte',
-    ralphLoopHoverAct: 'Izvedi',
-    ralphLoopHoverCheck: 'Provjeri',
+    smartResumeHoverDescription:
+      'Pusti agentu da planira, koristi alate, primjenjuje izmjene i nastavi iterirati dok zadatak ne bude uredno dovršen.',
+    smartResumeHoverPlan: 'Planirajte',
+    smartResumeHoverAct: 'Izvedi',
+    smartResumeHoverCheck: 'Provjeri',
     uiReviewShortcutTitle: 'Pregled korisničkog sučelja',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -844,6 +844,15 @@ export default mergeHarnessLocale('hr-HR', {
         'Fiksni model {model} trenutačno nije dostupan. Želite li ovaj chat vratiti na automatsko usmjeravanje i ponovno poslati zadnji zahtjev?',
       secondaryAction: 'Zadrži trenutačni model',
       primaryAction: 'Prebaci i pokušaj ponovno',
+    },
+    providerFailover: {
+      eyebrow: 'Prebacivanje visoke dostupnosti',
+      title: 'Prebaciti na drugu dostupnu rutu i pokušati ponovno?',
+      description: 'Trenutna ruta preko {provider} treba vašu potvrdu prije nego što Blue prebaci na drugu dostupnu rutu i pokuša ponovno.',
+      dismissAction: 'Ne sada',
+      manualAction: 'Ručno odaberi rutu',
+      primaryAction: 'Prebaci i pokušaj ponovno',
+      currentRoute: 'Trenutna ruta',
     },
     manageProviders: 'Upravljanje pružateljima usluga',
     noProviderConfigured: 'Nema konfiguriranog pružatelja usluga. Kliknite da biste ga dodali.',

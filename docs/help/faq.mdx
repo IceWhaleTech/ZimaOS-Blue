@@ -1,21 +1,43 @@
 ---
 title: "FAQ"
-summary: "Frequently asked questions for the first ZimaOS Blue docs release."
+summary: "Short answers to common docs, setup, language, and navigation questions for the current ZimaOS Blue release."
 ---
 
 # FAQ
+
+Use this page when you want a short answer and a direct pointer to the next page.
 
 ## Is this the deployed public docs site
 
 This repository keeps the docs source in-repo so it can be previewed locally, validated in CI, and published through GitHub Pages. See [Deployment](/help/deployment) for the rollout model.
 
-## Where is the wiki
+## Where is the broader wiki or repo knowledge entry
 
 Use [DeepWiki](https://deepwiki.com/IceWhaleTech/ZimaOS-Blue). The docs site is the curated path; DeepWiki is the broader external repository knowledge entry. For repository research, check DeepWiki first, then use GitHub for primary-source verification of files, issues, PRs, workflow runs, and current repository state.
+
+## Where is the docs source and how do I run it locally
+
+The active docs app lives in `docs/` and uses Docusaurus. For local preview, run `cd docs && npm run start`. For a production build, run `cd docs && npm run build`.
+
+There is no separate active `docs-site/` app anymore.
+
+## How does language selection work now
+
+The root docs URL now follows your browser language preferences. Browsers that prefer Simplified Chinese are redirected to `/zh-CN/`; other browsers stay on the English site.
+
+## Can I still switch languages manually
+
+Yes. Use the language dropdown in the navbar to switch between English and Simplified Chinese at any time.
 
 ## Which language is canonical
 
 English is the canonical docs source. Simplified Chinese mirrors the main user-facing setup, guide, and support pages.
+
+## Why might the wrong language or mixed content still appear
+
+On the shipped site, English and Chinese are now separate locales rather than one mixed sidebar. If the wrong language appears, use the navbar locale switcher or open the locale URL directly.
+
+If you are previewing docs from the repository, make sure you are using the active Chinese locale tree under `docs/i18n/zh-CN/docusaurus-plugin-content-docs/current/`, not the older `docs/zh-CN/` content copy.
 
 ## Does Blue only target chat
 
@@ -32,6 +54,10 @@ Read [First Run](/start/first-run).
 ## Where should I look for architecture and package boundaries
 
 Read [Architecture](/product/architecture).
+
+## Where should I look for a fast product tour after first boot
+
+Read [Quick Start](/start/quick-start) if you want a 10 to 15 minute operator path from install to first usable response.
 
 ## Where should I look for supported channels
 

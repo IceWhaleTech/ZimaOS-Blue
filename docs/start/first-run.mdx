@@ -7,6 +7,8 @@ summary: "Launch Blue for the first time, understand preview mode, connect one p
 
 Use this page after installation when you want the shortest path to a working local instance.
 
+![Provider-focused first-run walkthrough](/demo%20Provider.gif)
+
 ## 1. Choose how you want to launch Blue
 
 ### Desktop app
@@ -65,6 +67,26 @@ If no user exists yet, Blue starts in `preview` mode. That first-run mode gives 
 
 As soon as the first user is created, the same data directory moves to `normal` mode and preview is no longer available for that instance.
 
+## Preview mode versus normal mode
+
+| Mode | What it means | What you usually do next |
+| --- | --- | --- |
+| `preview` | No user has been created yet, so Blue exposes a guided first-run path | Explore briefly, then create the first admin account |
+| `normal` | The instance already has at least one user | Sign in normally and continue with provider or runtime setup |
+
+## What the preview action actually does
+
+In the current UI, the preview header action opens a `Create Admin Account` flow rather than a generic wizard.
+
+That upgrade path asks for:
+
+- A username
+- A password
+- Password confirmation in the normal hidden-password flow
+- A password that passes the backend policy checks
+
+After a successful upgrade, Blue reloads into the new authenticated state and preview mode is no longer the entry path for that data directory.
+
 ## 4. Finish the minimum operator setup
 
 1. Open the web UI.
@@ -72,6 +94,14 @@ As soon as the first user is created, the same data directory moves to `normal` 
 3. Open `Settings -> LLM`.
 4. Add or verify one provider you actually plan to use.
 5. Pick the default provider and review allowed models if needed.
+
+Before adding a provider, prepare:
+
+- A provider name
+- A reachable endpoint or base URL
+- Credentials
+- The right compatibility format
+- Whether the provider should be treated as `cloud` or `local`
 
 ## 5. Run a first smoke test
 
@@ -86,11 +116,22 @@ A good first-run pass looks like this:
 - At least one provider verifies
 - The first chat response returns successfully
 
+If any one of these is missing, stop there and fix that layer first before expanding into channels, automation, or evaluation work.
+
 ## 6. If something blocks you
 
 - Provider or model issues: read [Settings and Provider Pool](/guides/settings-provider-pool)
 - Login, preview, first admin, or auth-provider issues: read [Identity and Access](/guides/identity-access)
 - General startup or routing problems: read [Troubleshooting](/help/troubleshooting)
+
+## Common first-run detours
+
+- The UI opens, but no provider is ready yet
+- Preview mode works, but the first admin path is still unfinished
+- The preview upgrade form fails because the chosen password does not satisfy the backend policy
+- The provider saves, but verification or model refresh is incomplete
+- The endpoint is reachable, but the compatibility format is wrong
+- The first prompt fails because the default provider or allowed models are not what you expected
 
 ## What to read next
 

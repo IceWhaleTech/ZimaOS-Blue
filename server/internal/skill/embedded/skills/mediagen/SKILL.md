@@ -1,7 +1,7 @@
 ---
 name: mediagen
 version: "1.0.0"
-description: "Generate images or videos through the built-in media pipeline. Use explicit `blue media generate` / `blue media status` commands when the user wants media creation, task polling, or model/category control."
+description: "Run advanced media-pipeline generation and task polling. Prefer `generate_image` for direct image creation in chat, prefer `ocr` for reading text from images, and use explicit `blue media generate` / `blue media status` commands when the user wants video generation, task polling, or model/category control."
 invocation: "blue media generate \"Draw a cat on a rainbow\" --category t2i"
 examples:
   - "blue media generate \"Draw a cat on a rainbow\" --category t2i"
@@ -16,7 +16,7 @@ card_support: none
 
 # Media Generation
 
-Generate images and videos through the built-in media pipeline.
+Run advanced image/video generation workflows through the built-in media pipeline.
 
 ## Setup
 
@@ -28,9 +28,10 @@ No external dependencies are required for the CLI surface itself. Availability s
 
 | User Intent | Action |
 |-------------|--------|
-| Explicitly generate an image or video from a prompt | `blue media generate "..." --category ...` |
+| Explicitly generate a video, or run an advanced/polled media task | `blue media generate "..." --category ...` |
 | Check whether a submitted media task has finished | `blue media status <task_id>` |
-| User wants image creation in normal chat and no special control is needed | The chat runtime may auto-route some image-generation intents directly to the media pipeline |
+| User wants direct image creation in normal chat | Prefer `generate_image`, not `mediagen` |
+| User wants OCR or text extraction from an image | Prefer `ocr`, not `mediagen` |
 | User wants screenshot critique, accessibility review, or visual QA | Use `ui_reviewer`, not `mediagen` |
 | User wants generic web/image search rather than generation | Use web or browser skills, not `mediagen` |
 
@@ -89,6 +90,6 @@ Useful flags:
 ## Notes
 
 - Use `blue media generate`, not the older dotted form `blue media.generate`.
-- The chat runtime can auto-intercept some image-generation intents before normal tool selection, but explicit CLI commands are the clearest path when the user wants deterministic control or task polling.
-- Image review and accessibility checking are separate capabilities; `mediagen` is for creation, not critique.
+- In chat, prefer `generate_image` for ordinary image creation and filename-aware saves; keep `mediagen` for video generation, advanced category control, or task polling.
+- Image review/accessibility checking and OCR are separate capabilities; `mediagen` is for media generation, not critique or text extraction.
 - The underlying media service is asynchronous, so task IDs and follow-up status checks are part of the normal workflow.

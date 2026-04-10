@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
     messages: [] as Array<Record<string, unknown>>,
     modelPreference: 'auto',
     pendingModelAutoFallback: null as null | Record<string, unknown>,
+    pendingProviderFailoverRetry: null as null | Record<string, unknown>,
     providerPinOnlyActive: false,
     searching: false,
     securityBlocked: null as null | Record<string, unknown>,
@@ -76,6 +77,8 @@ const mocks = vi.hoisted(() => ({
     retryInterruptedStreamRecovery: vi.fn(),
     confirmModelAutoFallbackRetry: vi.fn(),
     dismissModelAutoFallbackRetry: vi.fn(),
+    confirmProviderFailoverRetry: vi.fn(),
+    dismissProviderFailoverRetry: vi.fn(),
     cancelPreTTFT: vi.fn(),
     deleteSelectedMessages: vi.fn(),
     enterMultiSelectMode: vi.fn(),
@@ -90,6 +93,9 @@ const mocks = vi.hoisted(() => ({
     setAgentAutoConfirm: vi.fn(),
     setAgentMode: vi.fn(),
     setShowToolDetails: vi.fn(),
+  },
+  systemStore: {
+    health: null as null | Record<string, unknown>,
   },
   providerPoolStore: {
     activeProviders: [] as unknown[],
@@ -169,6 +175,7 @@ const mocks = vi.hoisted(() => ({
 
 mocks.chatStore = reactive(mocks.chatStore)
 mocks.settingsStore = reactive(mocks.settingsStore)
+mocks.systemStore = reactive(mocks.systemStore)
 mocks.providerPoolStore = reactive(mocks.providerPoolStore)
 mocks.deepResearchJobsStore = reactive(mocks.deepResearchJobsStore)
 mocks.taskProjectionsStore = reactive(mocks.taskProjectionsStore)
@@ -180,6 +187,10 @@ vi.mock('@/stores/chat', () => ({
 
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => mocks.settingsStore,
+}))
+
+vi.mock('@/stores/system', () => ({
+  useSystemStore: () => mocks.systemStore,
 }))
 
 vi.mock('@/stores/providerPool', () => ({
@@ -310,6 +321,7 @@ describe('ChatView provider gating', () => {
     mocks.chatStore.pendingApproval = null
     mocks.chatStore.pendingExecApproval = null
     mocks.chatStore.pendingModelAutoFallback = null
+    mocks.chatStore.pendingProviderFailoverRetry = null
     mocks.providerPoolStore.providers = []
     mocks.providerPoolStore.enabledProviders = []
     mocks.providerPoolStore.activeProviders = []
@@ -947,6 +959,138 @@ describe('ChatView provider gating', () => {
 
     expect(mocks.chatStore.dismissModelAutoFallbackRetry).toHaveBeenCalledTimes(1)
     expect(mocks.chatStore.confirmModelAutoFallbackRetry).not.toHaveBeenCalled()
+  })
+
+  it('shows the provider failover dialog and confirms retry', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingProviderFailoverRetry = {
+      conversationId: 'conv-1',
+      retryKind: 'continue',
+      failedProviderId: 'prov_primary',
+      detail:
+        'Tool follow-up hit repeated upstream 502 errors after backoff retries were exhausted. Blue is ready to switch to another available route and retry.',
+      retryAttempts: 2,
+      errorMessage: 'provider_failover_confirmation_required',
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('High-availability switch')
+    expect(wrapper.text()).toContain('Switch to another available route and retry?')
+    expect(wrapper.text()).toContain('Current route')
+    expect(wrapper.text()).toContain('prov_primary')
+    expect(wrapper.text()).toContain('repeated upstream 502 errors')
+
+    const actionButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text().includes('Switch and retry'))
+    expect(actionButtons).toHaveLength(1)
+
+    await actionButtons[0]!.trigger('click')
+
+    expect(mocks.chatStore.confirmProviderFailoverRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens manual routing selection from the provider failover dialog', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingProviderFailoverRetry = {
+      conversationId: 'conv-1',
+      retryKind: 'regenerate',
+      failedProviderId: 'prov_primary',
+      detail: 'Repeated 529 and 5xx errors exhausted retry budget.',
+      retryAttempts: 3,
+      errorMessage: 'provider_failover_confirmation_required',
+    }
+    const provider = {
+      id: 'prov_backup',
+      type: 'custom',
+      enabled: true,
+      status: 'active',
+      location: 'cloud',
+    } as Record<string, unknown>
+    mocks.providerPoolStore.providers = [provider]
+    mocks.providerPoolStore.enabledProviders = [provider]
+    mocks.providerPoolStore.activeProviders = [provider]
+    mocks.providerPoolStore.cloudProviders = [provider]
+    mocks.providerPoolStore.localProviders = []
+    mocks.providerPoolStore.hasCloudProviders = true
+    mocks.providerPoolStore.hasLocalProviders = false
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    const manualButtons = wrapper
+      .findAll('button')
+      .filter((button) => button.text().includes('Choose route manually'))
+    expect(manualButtons).toHaveLength(1)
+
+    await manualButtons[0]!.trigger('click')
+    await settleView()
+
+    expect(mocks.chatStore.dismissProviderFailoverRetry).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAll('.routing-strategy-chip').length).toBeGreaterThan(0)
+  })
+
+  it('dismisses the provider failover dialog on Escape', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingProviderFailoverRetry = {
+      conversationId: 'conv-1',
+      retryKind: 'send',
+      failedProviderId: 'prov_primary',
+      detail: 'Repeated upstream 429 errors blocked the current route.',
+      retryAttempts: 1,
+      errorMessage: 'provider_failover_confirmation_required',
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    const dialog = wrapper.get('[aria-labelledby="provider-failover-dialog-title"]')
+    await dialog.trigger('keydown', { key: 'Escape' })
+
+    expect(mocks.chatStore.dismissProviderFailoverRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('dismisses the fixed-model fallback dialog on Escape', async () => {
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingModelAutoFallback = {
+      conversationId: 'conv-1',
+      retryKind: 'send',
+      requestedProviderId: 'anthropic',
+      requestedModelId: 'claude-opus-4-5-20251101',
+      errorMessage: "No available AI provider for model 'claude-opus-4-5-20251101'",
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    const dialog = wrapper.get('[aria-labelledby="model-auto-fallback-dialog-title"]')
+    await dialog.trigger('keydown', { key: 'Escape' })
+
+    expect(mocks.chatStore.dismissModelAutoFallbackRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it('localizes the provider failover dialog in zh-CN', async () => {
+    await setLocale('zh-CN')
+    mocks.chatStore.currentConversationId = 'conv-1'
+    mocks.chatStore.pendingProviderFailoverRetry = {
+      conversationId: 'conv-1',
+      retryKind: 'send',
+      failedProviderId: 'prov_primary',
+      detail: '工具后续在 prov_primary 上连续出现 502 错误，等待你确认是否切换。',
+      retryAttempts: 2,
+      errorMessage: 'provider_failover_confirmation_required',
+    }
+
+    const wrapper = await mountChatView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('高可用切换')
+    expect(wrapper.text()).toContain('切换到其他可用路由并重试？')
+    expect(wrapper.text()).toContain('手动选择路由')
+    expect(wrapper.text()).toContain('当前路由')
+    expect(wrapper.text()).toContain('prov_primary')
   })
 
   it('localizes the fixed-model fallback dialog in zh-CN', async () => {

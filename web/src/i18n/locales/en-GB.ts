@@ -575,11 +575,11 @@ export default mergeHarnessLocale('en-GB', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      "Let the agent plan, use tools, apply changes, and keep iterating until the task lands cleanly. Inspired by Ralph's relentless persistence.",
-    ralphLoopHoverPlan: 'Plan',
-    ralphLoopHoverAct: 'Act',
-    ralphLoopHoverCheck: 'Check',
+    smartResumeHoverDescription:
+      'Let the agent plan, use tools, apply changes, and keep iterating with Smart Resume until the task lands cleanly.',
+    smartResumeHoverPlan: 'Plan',
+    smartResumeHoverAct: 'Act',
+    smartResumeHoverCheck: 'Check',
     uiReviewShortcutTitle: 'UI Review',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -840,6 +840,15 @@ export default mergeHarnessLocale('en-GB', {
         'The fixed model {model} is unavailable right now. Switch this chat back to automatic routing and retry your last request?',
       secondaryAction: 'Keep current model',
       primaryAction: 'Switch and retry',
+    },
+    providerFailover: {
+      eyebrow: 'High-availability switch',
+      title: 'Switch to another available route and retry?',
+      description: 'The current route on {provider} needs your confirmation before Blue switches to another available route and retries.',
+      dismissAction: 'Not now',
+      manualAction: 'Choose route manually',
+      primaryAction: 'Switch and retry',
+      currentRoute: 'Current route',
     },
     manageProviders: 'Manage Providers',
     noProviderConfigured: 'No provider configured. Click to add one.',

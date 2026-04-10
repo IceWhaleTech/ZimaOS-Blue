@@ -575,11 +575,11 @@ export default mergeHarnessLocale('ko-KR', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
+    smartResumeHoverDescription:
       '에이전트가 계획하고, 도구를 사용하고, 변경을 적용하며, 작업이 깔끔하게 마무리될 때까지 계속 반복하도록 합니다. 끈질기게 밀고 나가는 랄프에게서 영감을 받았습니다.',
-    ralphLoopHoverPlan: '계획',
-    ralphLoopHoverAct: '실행',
-    ralphLoopHoverCheck: '점검',
+    smartResumeHoverPlan: '계획',
+    smartResumeHoverAct: '실행',
+    smartResumeHoverCheck: '점검',
     uiReviewShortcutTitle: 'UI 검토',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -838,6 +838,15 @@ export default mergeHarnessLocale('ko-KR', {
         '고정 모델 {model}은(는) 현재 사용할 수 없습니다. 이 대화를 자동 라우팅으로 되돌리고 마지막 요청을 다시 시도할까요?',
       secondaryAction: '현재 모델 유지',
       primaryAction: '전환 후 다시 시도',
+    },
+    providerFailover: {
+      eyebrow: '고가용성 전환',
+      title: '다른 사용 가능한 경로로 전환하고 다시 시도할까요?',
+      description: '현재 {provider} 경로는 Blue가 다른 사용 가능한 경로로 전환해 다시 시도하기 전에 확인이 필요합니다.',
+      dismissAction: '나중에',
+      manualAction: '경로 직접 선택',
+      primaryAction: '전환 후 다시 시도',
+      currentRoute: '현재 경로',
     },
     manageProviders: '공급자 관리',
     noProviderConfigured: '공급자가 구성되지 않았습니다. 클릭하여 추가하세요.',

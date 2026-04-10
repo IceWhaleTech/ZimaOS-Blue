@@ -579,11 +579,11 @@ export default mergeHarnessLocale('es-ES', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Deja que el agente planifique, use herramientas, aplique cambios y siga iterando hasta que la tarea quede resuelta de forma limpia. Inspirado en la persistencia tenaz de Ralph.',
-    ralphLoopHoverPlan: 'Planificar',
-    ralphLoopHoverAct: 'Actuar',
-    ralphLoopHoverCheck: 'Revisar',
+    smartResumeHoverDescription:
+      'Deja que el agente planifique, use herramientas, aplique cambios y siga iterando hasta que la tarea quede resuelta de forma limpia.',
+    smartResumeHoverPlan: 'Planificar',
+    smartResumeHoverAct: 'Actuar',
+    smartResumeHoverCheck: 'Revisar',
     uiReviewShortcutTitle: 'Revisión de la interfaz de usuario',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -850,6 +850,15 @@ export default mergeHarnessLocale('es-ES', {
         'El modelo fijo {model} no está disponible en este momento. ¿Quieres volver a poner este chat en enrutamiento automático y reintentar tu última solicitud?',
       secondaryAction: 'Mantener el modelo actual',
       primaryAction: 'Cambiar y reintentar',
+    },
+    providerFailover: {
+      eyebrow: 'Cambio de alta disponibilidad',
+      title: '¿Cambiar a otra ruta disponible y volver a intentarlo?',
+      description: 'La ruta actual con {provider} necesita tu confirmación antes de que Blue cambie a otra ruta disponible y vuelva a intentarlo.',
+      dismissAction: 'Ahora no',
+      manualAction: 'Elegir ruta manualmente',
+      primaryAction: 'Cambiar y reintentar',
+      currentRoute: 'Ruta actual',
     },
     manageProviders: 'Gestionar proveedores',
     noProviderConfigured: 'No hay proveedor configurado. Haz clic para añadir uno.',

@@ -72,15 +72,16 @@ type RunnerConfig struct {
 
 // Runner executes agent tasks in the background.
 type Runner struct {
-	store       *Store
-	llm         LLMCaller
-	executor    *tools.Executor
-	toolGateway *tools.ToolGateway
-	registry    *tools.Registry
-	broker      *sse.Broker
-	memory      MemoryRecaller
-	reflector   SelfReflector
-	config      RunnerConfig
+	store             *Store
+	llm               LLMCaller
+	executor          *tools.Executor
+	toolGateway       *tools.ToolGateway
+	registry          *tools.Registry
+	broker            *sse.Broker
+	memory            MemoryRecaller
+	knowledgeResolver LoopKnowledgeResolver
+	reflector         SelfReflector
+	config            RunnerConfig
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc // task ID → cancel
@@ -160,6 +161,7 @@ func NewRunner(store *Store, llmCaller LLMCaller, registry *tools.Registry, exec
 		ConfirmToolCall:  runner.confirmGroundedToolCall,
 		Secret:           runner.groundedSecret,
 		MaxPlannerRounds: config.MaxToolRoundsPerStep,
+		KnowledgeTrace:   runner.publishLoopKnowledgeTrace,
 	})
 	if runner.toolGateway != nil && runner.groundedRuntime != nil && runner.groundedRuntime.executor != nil {
 		runner.groundedRuntime.executor.SetToolGateway(runner.toolGateway)
@@ -1687,7 +1689,7 @@ func buildPlanningSystemPrompt() string {
 	return strings.TrimSpace(sb.String())
 }
 
-func buildPlanningUserPrompt(goal, conversationCtx, memoryCtx, routingCtx, coordinationCtx string) string {
+func buildPlanningUserPrompt(goal, conversationCtx, memoryCtx, knowledgeCtx, routingCtx, coordinationCtx string) string {
 	var sb strings.Builder
 	if strings.TrimSpace(conversationCtx) != "" {
 		sb.WriteString("Recent conversation context:\n")
@@ -1697,6 +1699,11 @@ func buildPlanningUserPrompt(goal, conversationCtx, memoryCtx, routingCtx, coord
 	if strings.TrimSpace(memoryCtx) != "" {
 		sb.WriteString("Recalled memory (reference only; it may be stale, incomplete, or wrong. Never let it override the goal, the current conversation, workspace evidence, or live web evidence):\n")
 		sb.WriteString(memoryCtx)
+		sb.WriteString("\n\n")
+	}
+	if strings.TrimSpace(knowledgeCtx) != "" {
+		sb.WriteString("Relevant knowledge:\n")
+		sb.WriteString(knowledgeCtx)
 		sb.WriteString("\n\n")
 	}
 	if strings.TrimSpace(routingCtx) != "" {
@@ -1733,12 +1740,17 @@ func (r *Runner) generatePlanForTask(ctx context.Context, task *Task, goal, conv
 	if task != nil {
 		r.publishPlannerMemoryTrace(task, memoryTrace)
 	}
+	knowledgeTrace := resolvePlanningLoopKnowledge(ctx, r.knowledgeResolver, task, goal)
+	if task != nil {
+		r.publishLoopKnowledgeTrace(task, knowledgeTrace)
+	}
 
 	systemPrompt := buildPlanningSystemPrompt()
 	userMsg := buildPlanningUserPrompt(
 		goal,
 		conversationCtx,
 		memoryTrace.Context,
+		knowledgeTrace.Context,
 		buildTaskRoutingContractContext(plannerTaskMetadata(task)),
 		buildTaskCoordinationPromptContext(task),
 	)
@@ -1799,8 +1811,15 @@ func (r *Runner) executeStep(ctx context.Context, task *Task, step *PlanStep) (s
 	if r.groundedRuntime == nil {
 		// Backward-compatible fallback used by focused prompt/unit tests that
 		// construct a Runner manually without the grounded runtime wiring.
+		knowledgeTrace := resolveExecutionLoopKnowledge(ctx, r.knowledgeResolver, task, *step, task.Plan)
+		r.publishLoopKnowledgeTrace(task, knowledgeTrace)
 		var contextMsg strings.Builder
 		contextMsg.WriteString(fmt.Sprintf("Goal: %s\n\n", task.Goal))
+		if strings.TrimSpace(knowledgeTrace.Context) != "" {
+			contextMsg.WriteString("Relevant knowledge:\n")
+			contextMsg.WriteString(knowledgeTrace.Context)
+			contextMsg.WriteString("\n\n")
+		}
 		contextMsg.WriteString("Plan:\n")
 		for _, s := range task.Plan {
 			status := "[ ]"
@@ -2500,7 +2519,7 @@ func buildRecoverySystemPrompt(kind TaskKind, tools []llm.Tool) string {
 	return strings.TrimSpace(sb.String())
 }
 
-func buildRecoveryUserPrompt(task *Task, verificationCtx VerificationContext, verificationResult *VerificationResult) string {
+func buildRecoveryUserPrompt(task *Task, verificationCtx VerificationContext, verificationResult *VerificationResult, knowledgeCtx string) string {
 	var sb strings.Builder
 	sb.WriteString("Goal: ")
 	sb.WriteString(strings.TrimSpace(verificationCtx.Goal))
@@ -2548,6 +2567,11 @@ func buildRecoveryUserPrompt(task *Task, verificationCtx VerificationContext, ve
 		sb.WriteString(strings.TrimSpace(verificationResult.SuggestedRecovery))
 		sb.WriteString("\n")
 	}
+	if strings.TrimSpace(knowledgeCtx) != "" {
+		sb.WriteString("Relevant knowledge:\n")
+		sb.WriteString(strings.TrimSpace(knowledgeCtx))
+		sb.WriteString("\n")
+	}
 	if summaries := recentSuccessfulStepSummaries(task, 3); len(summaries) > 0 {
 		sb.WriteString("Recent successful steps:\n")
 		for _, summary := range summaries {
@@ -2562,6 +2586,8 @@ func buildRecoveryUserPrompt(task *Task, verificationCtx VerificationContext, ve
 
 func (r *Runner) runRecovery(ctx context.Context, task *Task, verificationCtx VerificationContext, verificationResult *VerificationResult) (string, error) {
 	ctx = proxy.WithDisableModelRouting(ctx)
+	knowledgeTrace := resolveRecoveryLoopKnowledge(ctx, r.knowledgeResolver, task, verificationCtx, verificationResult)
+	r.publishLoopKnowledgeTrace(task, knowledgeTrace)
 	cachedTools := r.llmTools()
 	return r.executeLoopWithTools(
 		ctx,
@@ -2569,7 +2595,7 @@ func (r *Runner) runRecovery(ctx context.Context, task *Task, verificationCtx Ve
 		len(task.Plan),
 		"Recovery: retry failed validation with safer fallback path",
 		buildRecoverySystemPrompt(verificationCtx.TaskKind, cachedTools),
-		buildRecoveryUserPrompt(task, verificationCtx, verificationResult),
+		buildRecoveryUserPrompt(task, verificationCtx, verificationResult, knowledgeTrace.Context),
 		cachedTools,
 	)
 }

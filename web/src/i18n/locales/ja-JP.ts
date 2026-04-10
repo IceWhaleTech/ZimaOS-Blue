@@ -578,11 +578,11 @@ export default mergeHarnessLocale('ja-JP', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
+    smartResumeHoverDescription:
       'エージェントに計画、ツール利用、変更の適用を任せ、タスクがきれいに完了するまで反復を続けます。ひたむきにやり抜くラルフに着想を得ています。',
-    ralphLoopHoverPlan: '計画',
-    ralphLoopHoverAct: '実行',
-    ralphLoopHoverCheck: '確認',
+    smartResumeHoverPlan: '計画',
+    smartResumeHoverAct: '実行',
+    smartResumeHoverCheck: '確認',
     uiReviewShortcutTitle: 'UIレビュー',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -846,6 +846,15 @@ export default mergeHarnessLocale('ja-JP', {
         '固定モデル {model} は現在利用できません。このチャットを自動ルーティングに戻して、直前のリクエストを再試行しますか？',
       secondaryAction: '現在のモデルを維持',
       primaryAction: '切り替えて再試行',
+    },
+    providerFailover: {
+      eyebrow: '高可用性切り替え',
+      title: '別の利用可能なルートへ切り替えて再試行しますか？',
+      description: '{provider} 上の現在のルートは、Blue が別の利用可能なルートへ切り替えて再試行する前に確認が必要です。',
+      dismissAction: '今はしない',
+      manualAction: '手動でルートを選ぶ',
+      primaryAction: '切り替えて再試行',
+      currentRoute: '現在のルート',
     },
     manageProviders: 'プロバイダーを管理',
     noProviderConfigured: 'プロバイダーが設定されていません。クリックして追加してください。',

@@ -578,11 +578,11 @@ export default mergeHarnessLocale('cs-CZ', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Nechte agenta plánovat, používat nástroje, provádět změny a dál iterovat, dokud úkol nebude čistě dokončen. Inspirováno Ralphovou vytrvalou houževnatostí.',
-    ralphLoopHoverPlan: 'Plán',
-    ralphLoopHoverAct: 'Akce',
-    ralphLoopHoverCheck: 'Kontrola',
+    smartResumeHoverDescription:
+      'Nechte agenta plánovat, používat nástroje, provádět změny a dál iterovat, dokud úkol nebude čistě dokončen.',
+    smartResumeHoverPlan: 'Plán',
+    smartResumeHoverAct: 'Akce',
+    smartResumeHoverCheck: 'Kontrola',
     uiReviewShortcutTitle: 'Recenze uživatelského rozhraní',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -845,6 +845,15 @@ export default mergeHarnessLocale('cs-CZ', {
         'Fixní model {model} je momentálně nedostupný. Chcete tento chat přepnout zpět na automatické směrování a zopakovat poslední požadavek?',
       secondaryAction: 'Zachovat aktuální model',
       primaryAction: 'Přepnout a zkusit znovu',
+    },
+    providerFailover: {
+      eyebrow: 'Přepnutí vysoké dostupnosti',
+      title: 'Přepnout na jinou dostupnou trasu a zkusit to znovu?',
+      description: 'Aktuální trasa přes {provider} vyžaduje vaše potvrzení, než Blue přepne na jinou dostupnou trasu a požadavek zopakuje.',
+      dismissAction: 'Teď ne',
+      manualAction: 'Vybrat trasu ručně',
+      primaryAction: 'Přepnout a opakovat',
+      currentRoute: 'Aktuální trasa',
     },
     manageProviders: 'Spravovat poskytovatele',
     noProviderConfigured: 'Není nakonfigurován žádný poskytovatel. Kliknutím jeden přidáte.',

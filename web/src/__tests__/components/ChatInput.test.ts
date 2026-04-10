@@ -628,7 +628,7 @@ describe('ChatInput cancel affordance', () => {
     })
   })
 
-  it('toggles Ralph Loop auto-confirm on context menu', async () => {
+  it('toggles Smart Resume auto-confirm on context menu', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const settingsStore = useSettingsStore()

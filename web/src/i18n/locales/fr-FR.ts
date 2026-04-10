@@ -584,11 +584,11 @@ export default mergeHarnessLocale('fr-FR', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      "Laissez l'agent planifier, utiliser des outils, appliquer des changements et continuer à itérer jusqu'à ce que la tâche soit proprement bouclée. Inspiré par la persévérance obstinée de Ralph.",
-    ralphLoopHoverPlan: 'Planifier',
-    ralphLoopHoverAct: 'Agir',
-    ralphLoopHoverCheck: 'Vérifier',
+    smartResumeHoverDescription:
+      "Laissez l'agent planifier, utiliser des outils, appliquer des changements et continuer à itérer jusqu'à ce que la tâche soit proprement bouclée.",
+    smartResumeHoverPlan: 'Planifier',
+    smartResumeHoverAct: 'Agir',
+    smartResumeHoverCheck: 'Vérifier',
     uiReviewShortcutTitle: "Examen de l'interface utilisateur",
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -855,6 +855,15 @@ export default mergeHarnessLocale('fr-FR', {
         "Le modèle fixe {model} n'est pas disponible pour le moment. Voulez-vous remettre cette conversation en routage automatique et relancer votre dernière demande ?",
       secondaryAction: 'Garder le modèle actuel',
       primaryAction: 'Changer et réessayer',
+    },
+    providerFailover: {
+      eyebrow: 'Basculement haute disponibilité',
+      title: 'Basculer vers une autre route disponible et réessayer ?',
+      description: 'La route actuelle via {provider} nécessite votre confirmation avant que Blue ne bascule vers une autre route disponible et ne réessaie.',
+      dismissAction: 'Pas maintenant',
+      manualAction: 'Choisir une route manuellement',
+      primaryAction: 'Basculer et réessayer',
+      currentRoute: 'Route actuelle',
     },
     manageProviders: 'Gérer les fournisseurs',
     noProviderConfigured: 'Aucun fournisseur configuré. Cliquez pour en ajouter un.',

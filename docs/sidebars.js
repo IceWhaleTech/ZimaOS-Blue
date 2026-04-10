@@ -57,7 +57,7 @@ const chineseSidebar = [
   {
     type: 'category',
     label: '产品',
-    items: ['product/features'],
+    items: ['product/overview', 'product/features', 'product/architecture'],
   },
   {
     type: 'category',

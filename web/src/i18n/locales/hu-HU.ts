@@ -578,11 +578,11 @@ export default mergeHarnessLocale('hu-HU', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Hagyd, hogy az ügynök tervezzen, eszközöket használjon, módosításokat alkalmazzon, és addig iteráljon, amíg a feladat tisztán célba nem ér. Ralph rendíthetetlen kitartása ihlette.',
-    ralphLoopHoverPlan: 'Terv',
-    ralphLoopHoverAct: 'Végrehajtás',
-    ralphLoopHoverCheck: 'Ellenőrzés',
+    smartResumeHoverDescription:
+      'Hagyd, hogy az ügynök tervezzen, eszközöket használjon, módosításokat alkalmazzon, és addig iteráljon, amíg a feladat tisztán célba nem ér.',
+    smartResumeHoverPlan: 'Terv',
+    smartResumeHoverAct: 'Végrehajtás',
+    smartResumeHoverCheck: 'Ellenőrzés',
     uiReviewShortcutTitle: 'UI felülvizsgálata',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -849,6 +849,15 @@ export default mergeHarnessLocale('hu-HU', {
         'A(z) {model} fix modell jelenleg nem érhető el. Visszaállítod ezt a beszélgetést automatikus útválasztásra, és újraküldöd az utolsó kérésedet?',
       secondaryAction: 'Jelenlegi modell megtartása',
       primaryAction: 'Váltás és újrapróbálás',
+    },
+    providerFailover: {
+      eyebrow: 'Magas rendelkezésre állású átváltás',
+      title: 'Átvált egy másik elérhető útvonalra és újrapróbálja?',
+      description: 'A jelenlegi, {provider} szolgáltatón futó útvonal megerősítést kér, mielőtt a Blue másik elérhető útvonalra váltana és újrapróbálná.',
+      dismissAction: 'Most ne',
+      manualAction: 'Útvonal kézi kiválasztása',
+      primaryAction: 'Váltás és újrapróbálás',
+      currentRoute: 'Jelenlegi útvonal',
     },
     manageProviders: 'Szolgáltatók kezelése',
     noProviderConfigured: 'Nincs beállítva szolgáltató. Kattintson egy hozzáadásához.',

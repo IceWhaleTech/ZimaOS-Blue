@@ -1,0 +1,75 @@
+---
+title: "产品架构"
+summary: "从当前包分层和关键运行路径理解 Blue 的运行时结构。"
+---
+
+# 产品架构
+
+![Architecture overview](/architecture.png)
+
+## 包分层
+
+| 层 | 主要包 |
+| --- | --- |
+| Gateway | bootstrap, server, gateway |
+| Proxy | proxy, connection, streaming, resilience |
+| Provider | providerpool, providers, llm |
+| Pruner | pruner 以及相关 detector、segmenter、scoring 流水线 |
+| Agent | context, tools, personality, humanizer |
+| Memory | memory, embedding, kvstore |
+| Channel | channel, autoreply, i18n |
+| Security | security, auth, permission, rbac, mfa, password, oidc, sandbox, audit |
+| Voice | voice, tts, stt, speech |
+| Observe | metrics, profiling, leak detection 类服务 |
+| Plugin | plugin, skill, skillstore |
+| Integrate | browser, cron, workflow, formfiller, tunnel, crawler |
+| Evaluation | harness, self-reflect, tracked run 与 score surface |
+| Scheduler | scheduler, worker, workerpool, pool |
+| Core | lifecycle, config, logger, database, cache, ratelimit, retry, sync |
+| System | sysinfo, cgroup, iotask, watcher, resources, backup, update |
+| Multi-tenant | tenant, user, session, preview |
+
+## 热路径：一次聊天请求
+
+```text
+Client -> Auth Gate -> Prompt Guard -> Context Pruner
+  -> Provider Pool -> Cache Checks -> Upstream Model
+  -> Response -> Cache Store -> Metrics -> Client
+```
+
+## 热路径：一次渠道消息
+
+```text
+Chat Platform -> Channel Manager -> AutoReply
+  -> Chat Handler -> LLM -> Humanizer -> Channel -> User
+```
+
+## 热路径：语音链路
+
+```text
+Audio Stream -> STT -> LLM Processing -> TTS -> Audio Stream
+```
+
+## 热路径：一次可追踪评测
+
+```text
+Operator -> Harness UI/API -> Dataset / Eval Spec / Run Group
+  -> Agent or Workflow Execution -> Scorecard / Artifact / Report
+  -> Comparison / Baseline Review -> Evolution Decision
+```
+
+## 热路径：扩展安装与审核
+
+```text
+Operator -> Extensions UI -> Skill Source / Store Search
+  -> Security Metadata / Contract Review -> Install
+  -> Skill or Tool becomes available to runtime surfaces
+```
+
+## 真正值得记住的几点
+
+- Gateway 和 Provider 路由是整个系统最关键的控制点
+- 消息、语音、自动化和 Web 控制面都建立在同一套运行时核心之上
+- Harness 与 Evolution 不是附属工具，而是架构里的正式层
+- 扩展安全元数据已经进入操作员体验，而不是安装后的补救项
+- 安全、审计和沙箱是设计前提，不是后加组件

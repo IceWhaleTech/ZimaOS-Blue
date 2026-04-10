@@ -7,6 +7,27 @@ summary: "理解 Blue 当前的预览模式引导、登录提供方、用户管�
 
 Blue 现在已经具备完整的身份与访问层，不再只是一个单一登录框。
 
+## 两条最常见的运维起点
+
+大多数团队会从下面两条路径之一开始：
+
+| 目标 | 先从哪里开始 | 然后继续看 |
+| --- | --- | --- |
+| 把全新的 preview 实例变成正常的管理员实例 | preview 引导与首个管理员创建 | [首次运行](/start/first-run) 与 [设置与 Provider Pool](/guides/settings-provider-pool) |
+| 给已经可用的部署补外部登录 | 认证提供方管理 | [管理与运维](/guides/admin-operations) 与 [故障排查](/help/troubleshooting) |
+
+## 这些访问控制分别在 UI 的哪里
+
+| 如果你要做的是 | 主要入口页面 |
+| --- | --- |
+| 把一个全新实例从 preview 升级出来 | 顶部 preview 入口，然后点 `Create Admin Account` |
+| 修改自己的邮箱或密码 | `Profile` |
+| 绑定或解绑自己的外部账号 | `Profile` |
+| 创建或吊销自己的 API Key | `Profile` |
+| 管理自己账号的 MFA 或 WebAuthn | `Profile` |
+| 给整个部署配置外部登录提供方 | `Auth Providers` |
+| 创建、锁定、解锁或编辑用户 | `Users` |
+
 ## 预览模式与首次引导
 
 预览模式用于首次启动或受控演示场景，当前实现已经包括：
@@ -18,6 +39,32 @@ Blue 现在已经具备完整的身份与访问层，不再只是一个单一登
 - 创建首个管理员并退出 preview mode 的升级流程
 
 这意味着 preview mode 是正式 onboarding 流程的一部分，而不是隐藏开关。
+
+## 最短的 preview 到管理员路径
+
+如果你面对的是一个全新实例，最不容易绕路的顺序通常是：
+
+1. 先确认实例当前仍在 `preview` mode
+2. 简单看一下空系统长什么样
+3. 通过 upgrade flow 创建首个管理员账号
+4. 如果界面要求重新登录，就用这个管理员重新进入
+5. 去 `Settings -> LLM` 配好一个可用 provider
+6. 回到聊天页跑一次 smoke test
+
+一旦首个用户创建完成，这份数据目录就会进入 normal instance，不再以 preview 作为这个部署的入口。
+
+## preview 升级表单实际会要求你填什么
+
+当前升级表单并不是只有一个密码框，它会要求：
+
+- 用户名
+- 密码
+- 在常规隐藏密码路径下再确认一次密码
+- 满足后端密码策略的密码
+
+密码规则会在表单打开时从后端加载，所以最终要求应该以后端当前运行配置为准，而不是文档里的硬编码假设。
+
+升级成功后，Blue 会刷新进新的已认证状态，而不是继续停留在 preview mode。
 
 ## 个人资料与个人安全控制
 
@@ -31,6 +78,29 @@ Blue 现在已经具备完整的身份与访问层，不再只是一个单一登
 
 对于外部客户端或自动化来说，API Key 很重要，因为它不需要复用浏览器会话。
 
+## 什么时候应该用 API Key，而不是浏览器会话
+
+适合用 API Key 的场景包括：
+
+- 外部客户端需要连 Blue，但不适合复用你的浏览器登录
+- 自动化任务需要稳定凭证
+- 你希望后续更容易轮换、吊销或缩小权限范围
+
+如果只是交互式管理账号、改设置或做日常运维，普通浏览器会话通常更自然。
+
+## 当前 `Profile` 页实际把哪些内容放在一起
+
+当前发布的 `Profile` 页把几类账号能力放在了同一个页面里：
+
+- `Account Information`：用户名、角色、邮箱、密码更新
+- 进入 `User Management` 的直接入口
+- `Linked Accounts`：OAuth / OIDC 外部账号绑定
+- `API Keys`：带 scope 的程序化访问凭证
+- `MFA`
+- `WebAuthn`
+
+这点很重要，因为很多“访问控制”问题其实并不是管理员配置问题，而是个人资料页问题。
+
 ## 外部账号绑定
 
 当前账号绑定流程支持：
@@ -41,6 +111,16 @@ Blue 现在已经具备完整的身份与访问层，不再只是一个单一登
 - 后续解绑
 
 这样 Blue 可以保持统一账号面，同时允许多种外部身份来源。
+
+## 一个好的认证接入结果应该长什么样
+
+一次健康的首轮外部认证接入，通常意味着：
+
+- 登录页能看到这个 provider
+- redirect / callback URL 完全匹配
+- 第一位用户能真正完成一次登录，而不是只保存了配置
+- auto-create-user 与 default role 行为符合你的预期
+- 如果配置了域名限制，能正确拦住不该进来的账号
 
 ## 用户管理
 
@@ -70,11 +150,58 @@ Blue 现在已经具备完整的身份与访问层，不再只是一个单一登
 
 这让 Blue 可以按部署需要选择本地登录、外部登录，或两者混合。
 
+## `Auth Providers` 表单里实际有哪些字段
+
+当前管理员表单会收这些字段：
+
+- Provider ID
+- Display name
+- Provider type
+- Client ID
+- Client secret
+- 用于 OIDC 发现的 Issuer URL
+- Redirect URL
+- Scopes
+- Auto-create-user 开关
+- Default role
+- Allowed email domains
+- Display order
+
+对于 generic OIDC 风格的配置，实现里还支持 auth、token、userinfo 端点字段，用于不完全依赖 issuer discovery 的场景。
+
+## 值得提前知道的 provider type 默认行为
+
+当前 UI 支持这些 provider type：
+
+- `generic`
+- `google`
+- `github`
+- `microsoft`
+- `keycloak`
+- `authentik`
+- `auth0`
+
+表单还会顺手替你填一部分默认值：
+
+- 大多数 OIDC 风格 provider 默认 scopes 是 `openid profile email`
+- GitHub 默认 scopes 是 `read:user` 和 `user:email`
+- Redirect URL 会根据当前 origin 自动生成，并在你填写 provider id 后更新
+
+## 推荐的认证提供方上线顺序
+
+1. 先决定这个部署到底是本地登录、外部登录，还是混合登录
+2. 一次只创建一个 provider 配置
+3. 直接复制 Blue 管理页里显示的 redirect URL
+4. 在身份提供方侧注册这个精确地址
+5. 再去设置 scopes、default role、auto-create-user、allowed domains
+6. 启用之后从登录页做一次真实登录测试
+7. 跑通一条后，再继续加更多 provider 或更严格的限制
+
 ## 最小认证提供方准备单
 
 在打开认证提供方管理页之前，建议先准备这些值：
 
-- 提供方类型，例如 `generic oidc`、`google`、`github`、`microsoft`、`keycloak`、`authentik`、`auth0`
+- 提供方类型，例如 `generic`、`google`、`github`、`microsoft`、`keycloak`、`authentik`、`auth0`
 - Client ID 与 client secret
 - Issuer URL，或者在 generic OIDC 场景下准备 auth/token/userinfo 端点
 - Blue 管理页里显示的精确 redirect URL，并提前在身份提供方侧完成注册
@@ -86,17 +213,25 @@ Blue 现在已经具备完整的身份与访问层，不再只是一个单一登
 一个最小运维准备单可以长这样：
 
 ```text
-Provider type: Generic OIDC
+Provider type: generic
 Issuer: https://auth.example.com/realms/main
 Client ID: <client-id>
 Client Secret: <client-secret>
 Scopes: openid profile email
 Auto-create user: true
-Default role: member
+Default role: user
 Allowed domains: example.com
 ```
 
 不要自己猜 callback URL，直接使用 Blue 在认证提供方管理页里展示的 redirect 值。
+
+## 常见失误
+
+- 不复制 Blue 展示的 callback / redirect URL，而是自己猜
+- 开了 auto-create-user，却没有想清楚默认角色
+- 同时混用本地登录和外部登录，但没有给用户明确入口
+- 只测了配置页能保存，没有从登录页做一次完整登录
+- 把 API Key、账号绑定、MFA、WebAuthn 混成同一个问题来排查
 
 ## 什么时候看这页
 

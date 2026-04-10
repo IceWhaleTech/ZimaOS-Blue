@@ -144,6 +144,9 @@ export interface StreamChunk {
   process_delay_ms?: number
   process_provider?: string
   process_model?: string
+  process_requires_confirmation?: boolean
+  process_retry_attempts?: number
+  process_last_status_code?: number
   // Context pruning info (sent on first content chunk)
   pruned?: boolean
   messages_pruned?: number

@@ -578,11 +578,11 @@ export default mergeHarnessLocale('sv-SE', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Låt agenten planera, använda verktyg, tillämpa ändringar och fortsätta iterera tills uppgiften landar rent. Inspirerad av Ralphs envisa uthållighet.',
-    ralphLoopHoverPlan: 'Planera',
-    ralphLoopHoverAct: 'Agera',
-    ralphLoopHoverCheck: 'Kontrollera',
+    smartResumeHoverDescription:
+      'Låt agenten planera, använda verktyg, tillämpa ändringar och fortsätta iterera tills uppgiften landar rent.',
+    smartResumeHoverPlan: 'Planera',
+    smartResumeHoverAct: 'Agera',
+    smartResumeHoverCheck: 'Kontrollera',
     uiReviewShortcutTitle: 'UI recension',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -844,6 +844,15 @@ export default mergeHarnessLocale('sv-SE', {
         'Den fasta modellen {model} är inte tillgänglig just nu. Vill du växla tillbaka den här chatten till automatisk routning och försöka med din senaste begäran igen?',
       secondaryAction: 'Behåll nuvarande modell',
       primaryAction: 'Byt och försök igen',
+    },
+    providerFailover: {
+      eyebrow: 'Hög tillgänglighetsväxling',
+      title: 'Byta till en annan tillgänglig väg och försöka igen?',
+      description: 'Den nuvarande vägen via {provider} behöver din bekräftelse innan Blue byter till en annan tillgänglig väg och försöker igen.',
+      dismissAction: 'Inte nu',
+      manualAction: 'Välj väg manuellt',
+      primaryAction: 'Byt och försök igen',
+      currentRoute: 'Nuvarande väg',
     },
     manageProviders: 'Hantera leverantörer',
     noProviderConfigured: 'Ingen leverantör konfigurerad. Klicka för att lägga till en.',

@@ -843,6 +843,58 @@ func TestSelectChatToolSurfacesForRequest_GeneralKnowledgeSynthesisDoesNotFallIn
 	}
 }
 
+func TestSelectChatToolSurfacesForRequest_ImageGenerationPrefersNativeGenerateImageSurface(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "edit", Description: "Edit workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "find", Description: "Find workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "generate_image", Description: "Generate an image from a prompt and optionally save it to a workspace path."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "image", Description: "Legacy image review and generation surface"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ls", Description: "List workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "ocr", Description: "Extract text from images"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSettingsSelectorSkill(t, workspaceDir, "mediagen", "Generate images or videos through the built-in media pipeline.", `blue media generate "Draw a cat on a rainbow" --category t2i`, "image", "video", "generate", "draw")
+
+	handler.SetSkillSelector(agentcore.NewSkillSelector(workspaceDir, agentcore.NewHeuristicSkillReranker()))
+	handler.ConfigureToolSearchRuntime(workspaceDir, &config.Config{
+		ToolCalling: *config.DefaultToolCallingConfig(),
+		Agents:      *config.DefaultAgentsConfig(),
+	})
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), `Generate an image of a friendly robot sitting in a cozy coffee shop, reading a book. Save it as "robot_cafe.png" in the current directory.`, tools.ToolPolicyRequest{
+		Model:     "claude-sonnet-4-6",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
+	}
+	names := toolNameSet(selection.NativeDefs)
+	for _, required := range []string{"generate_image", "read", "write", "edit", "ls", "find", "tool_search", "bash"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("NativeDefs = %v, want %q in native image-generation surface", selectedToolNames(selection.NativeDefs), required)
+		}
+	}
+	if _, ok := names["ocr"]; ok {
+		t.Fatalf("NativeDefs = %v, want OCR excluded from direct image-generation surface", selectedToolNames(selection.NativeDefs))
+	}
+	if selection.DiscoveryDecision != nil && selection.DiscoveryDecision.NeedClarify {
+		t.Fatalf("DiscoveryDecision = %#v, want no clarify gate for native image generation", selection.DiscoveryDecision)
+	}
+	if selection.SkillDecision != nil {
+		t.Fatalf("SkillDecision = %#v, want native image generation to bypass discover-first skill routing", selection.SkillDecision)
+	}
+}
+
 func TestSelectChatToolSurfacesForRequest_LegacyExecCollapsePersistsWhenDynamicExposureDisabled(t *testing.T) {
 	handler := newDiscoverFirstSelectionHandler(t, false)
 

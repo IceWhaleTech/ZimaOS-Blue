@@ -577,11 +577,11 @@ export default mergeHarnessLocale('pl-PL', {
     analyzeReportHoverTagRecommendations: 'Recommendations',
     analyzeReportPrompt:
       'Create a structured analysis report.\n- Topic:\n- URLs, files, or input text:\n- Key questions, comparisons, or decisions to cover:',
-    ralphLoopHoverDescription:
-      'Pozwól agentowi planować, używać narzędzi, wprowadzać zmiany i dalej iterować, aż zadanie zostanie czysto domknięte. Zainspirowane upartą wytrwałością Ralpha.',
-    ralphLoopHoverPlan: 'Planuj',
-    ralphLoopHoverAct: 'Działaj',
-    ralphLoopHoverCheck: 'Sprawdź',
+    smartResumeHoverDescription:
+      'Pozwól agentowi planować, używać narzędzi, wprowadzać zmiany i dalej iterować, aż zadanie zostanie czysto domknięte.',
+    smartResumeHoverPlan: 'Planuj',
+    smartResumeHoverAct: 'Działaj',
+    smartResumeHoverCheck: 'Sprawdź',
     uiReviewShortcutTitle: 'Recenzja interfejsu użytkownika',
     uiReviewHoverState: 'Prompt template',
     uiReviewHoverDescription:
@@ -843,6 +843,15 @@ export default mergeHarnessLocale('pl-PL', {
         'Stały model {model} jest obecnie niedostępny. Czy chcesz przełączyć ten czat z powrotem na automatyczne routowanie i ponowić ostatnie żądanie?',
       secondaryAction: 'Zachowaj bieżący model',
       primaryAction: 'Przełącz i spróbuj ponownie',
+    },
+    providerFailover: {
+      eyebrow: 'Przełączenie wysokiej dostępności',
+      title: 'Przełączyć na inną dostępną trasę i spróbować ponownie?',
+      description: 'Bieżąca trasa przez {provider} wymaga potwierdzenia, zanim Blue przełączy się na inną dostępną trasę i spróbuje ponownie.',
+      dismissAction: 'Nie teraz',
+      manualAction: 'Wybierz trasę ręcznie',
+      primaryAction: 'Przełącz i ponów',
+      currentRoute: 'Bieżąca trasa',
     },
     manageProviders: 'Zarządzaj dostawcami',
     noProviderConfigured: 'Nie skonfigurowano żadnego dostawcy. Kliknij, aby dodać.',
