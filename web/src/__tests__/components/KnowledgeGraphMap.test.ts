@@ -108,7 +108,7 @@ function mountGraph(selectedSlug = 'architecture') {
 }
 
 describe('KnowledgeGraphMap', () => {
-  it('starts focused on the hottest node and keeps outer nodes smaller while zooming outward', async () => {
+  it('reveals deeper graph layers progressively and keeps detached clusters out of the initial scene', async () => {
     const wrapper = mountGraph()
 
     expect(wrapper.get('[data-testid="knowledge-graph-focus-card"]').text()).toContain(
@@ -132,21 +132,8 @@ describe('KnowledgeGraphMap', () => {
       'data-label-visible': 'true',
       'data-distance-tier': 'near',
     })
-    expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
-      'data-label-visible': 'false',
-      'data-distance-tier': 'stacked',
-    })
-
-    const selectedCircle = wrapper
-      .get('[data-testid="knowledge-graph-node-architecture"] span')
-      .attributes('style')
-    const detachedCircle = wrapper
-      .get('[data-testid="knowledge-graph-node-detached"] span')
-      .attributes('style')
-    const selectedWidth = Number(/width:\s*(\d+)px/.exec(selectedCircle)?.[1] || 0)
-    const detachedWidth = Number(/width:\s*(\d+)px/.exec(detachedCircle)?.[1] || 0)
-    expect(selectedWidth).toBeGreaterThan(40)
-    expect(detachedWidth).toBeLessThan(selectedWidth / 4)
+    expect(wrapper.find('[data-testid="knowledge-graph-node-archive"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-graph-node-detached"]').exists()).toBe(false)
 
     await wrapper.get('[data-testid="knowledge-graph-zoom-in"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-viewport"]').attributes('style')).toContain(
@@ -186,22 +173,16 @@ describe('KnowledgeGraphMap', () => {
       'data-highlight-state': 'selected',
       'data-label-visible': 'true',
     })
-    expect(wrapper.get('[data-testid="knowledge-graph-node-architecture"]').attributes()).toMatchObject({
+    expect(
+      wrapper.get('[data-testid="knowledge-graph-node-architecture"]').attributes()
+    ).toMatchObject({
       'data-highlight-state': 'neighbor',
       'data-label-visible': 'true',
       'data-distance-tier': 'near',
     })
-    expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
-      'data-label-visible': 'false',
-      'data-distance-tier': 'stacked',
-    })
-    expect(wrapper.get('[data-testid="knowledge-graph-node-detached"]').attributes()).toMatchObject(
-      {
-        'data-highlight-state': 'muted',
-        'data-label-visible': 'false',
-        'data-distance-tier': 'stacked',
-      }
-    )
+    expect(wrapper.find('[data-testid="knowledge-graph-node-archive"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-graph-node-detached"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="knowledge-graph-edge"]').length).toBe(2)
 
     await wrapper.get('[data-testid="knowledge-graph-zoom-in"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('2 / 4')
@@ -211,14 +192,8 @@ describe('KnowledgeGraphMap', () => {
     expect(
       wrapper.get('[data-testid="knowledge-graph-orbit"]').attributes('data-orbit-visibility')
     ).toBe('soft')
-    expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
-      'data-distance-tier': 'stacked',
-    })
-    expect(wrapper.get('[data-testid="knowledge-graph-node-detached"]').attributes()).toMatchObject(
-      {
-        'data-distance-tier': 'stacked',
-      }
-    )
+    expect(wrapper.find('[data-testid="knowledge-graph-node-archive"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-graph-node-detached"]').exists()).toBe(false)
 
     await wrapper.get('[data-testid="knowledge-graph-zoom-in"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('3 / 4')
@@ -228,6 +203,8 @@ describe('KnowledgeGraphMap', () => {
     expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
       'data-distance-tier': 'far',
     })
+    expect(wrapper.find('[data-testid="knowledge-graph-node-detached"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="knowledge-graph-edge"]').length).toBe(4)
 
     await wrapper.get('[data-testid="knowledge-graph-zoom-in"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('4 / 4')
@@ -236,15 +213,22 @@ describe('KnowledgeGraphMap', () => {
         'data-distance-tier': 'muted',
       }
     )
+    const selectedCircle = wrapper.get('[data-testid="knowledge-graph-node-readme"] span').attributes('style')
+    const detachedCircle = wrapper
+      .get('[data-testid="knowledge-graph-node-detached"] span')
+      .attributes('style')
+    const selectedWidth = Number(/width:\s*(\d+)px/.exec(selectedCircle)?.[1] || 0)
+    const detachedWidth = Number(/width:\s*(\d+)px/.exec(detachedCircle)?.[1] || 0)
+    expect(selectedWidth).toBeGreaterThan(40)
+    expect(detachedWidth).toBeLessThan(selectedWidth / 4)
 
     await wrapper.get('[data-testid="knowledge-graph-reset"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-viewport"]').attributes('style')).toContain(
       'scale(1)'
     )
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('1 / 4')
-    expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
-      'data-distance-tier': 'stacked',
-    })
+    expect(wrapper.find('[data-testid="knowledge-graph-node-archive"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="knowledge-graph-node-detached"]').exists()).toBe(false)
   })
 
   it('renders node and edge counts with numbers', () => {

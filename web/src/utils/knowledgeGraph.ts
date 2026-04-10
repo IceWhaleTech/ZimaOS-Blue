@@ -67,8 +67,37 @@ function getViewportEnvelope(nodeRadius = 0) {
   }
 }
 
+function getFocusEnvelope(nodeRadius = 0) {
+  const viewport = getViewportEnvelope(nodeRadius)
+  const farOrbit = getKnowledgeGraphOrbitGuide(3)
+  return {
+    centerX: viewport.centerX,
+    centerY: viewport.centerY,
+    radiusX: Math.max(
+      180,
+      Math.min(viewport.radiusX - 42, farOrbit.radiusX + 18 - nodeRadius)
+    ),
+    radiusY: Math.max(
+      140,
+      Math.min(viewport.radiusY - 34, farOrbit.radiusY + 14 - nodeRadius)
+    ),
+  }
+}
+
 export function isKnowledgeGraphPointInsideEnvelope(x: number, y: number, nodeRadius = 0): boolean {
   const { centerX, centerY, radiusX, radiusY } = getViewportEnvelope(nodeRadius)
+  const normalized =
+    ((x - centerX) * (x - centerX)) / (radiusX * radiusX) +
+    ((y - centerY) * (y - centerY)) / (radiusY * radiusY)
+  return normalized <= 1.001
+}
+
+export function isKnowledgeGraphPointInsideFocusEnvelope(
+  x: number,
+  y: number,
+  nodeRadius = 0
+): boolean {
+  const { centerX, centerY, radiusX, radiusY } = getFocusEnvelope(nodeRadius)
   const normalized =
     ((x - centerX) * (x - centerX)) / (radiusX * radiusX) +
     ((y - centerY) * (y - centerY)) / (radiusY * radiusY)
@@ -91,6 +120,40 @@ function containInViewportEllipse(x: number, y: number, nodeRadius: number) {
   return {
     x: centerX + dx * scale,
     y: centerY + dy * scale,
+  }
+}
+
+function ellipseRadiusAtAngle(radiusX: number, radiusY: number, angle: number) {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  return 1 / Math.sqrt((cos * cos) / (radiusX * radiusX) + (sin * sin) / (radiusY * radiusY))
+}
+
+function containInPeripheralBand(x: number, y: number, nodeRadius: number) {
+  const viewport = getViewportEnvelope(nodeRadius)
+  const point = containInViewportEllipse(x, y, nodeRadius)
+  const focus = getFocusEnvelope(nodeRadius)
+  const dx = point.x - viewport.centerX
+  const dy = point.y - viewport.centerY
+  const normalized =
+    (dx * dx) / (focus.radiusX * focus.radiusX) + (dy * dy) / (focus.radiusY * focus.radiusY)
+
+  if (normalized >= 1.001) {
+    return point
+  }
+
+  const angle = Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001 ? -Math.PI / 2 : Math.atan2(dy, dx)
+  const innerRadius = ellipseRadiusAtAngle(focus.radiusX, focus.radiusY, angle)
+  const outerRadius = ellipseRadiusAtAngle(viewport.radiusX, viewport.radiusY, angle)
+  const targetRadius = clamp(
+    innerRadius + (outerRadius - innerRadius) * 0.72,
+    innerRadius + 10,
+    outerRadius - 4
+  )
+
+  return {
+    x: viewport.centerX + Math.cos(angle) * targetRadius,
+    y: viewport.centerY + Math.sin(angle) * targetRadius,
   }
 }
 
@@ -292,7 +355,8 @@ function relaxOrbitNodes(states: OrbitLayoutState[]): KnowledgeGraphNode[] {
       node.vy += (node.targetY - node.y) * anchorPull
 
       if (center) {
-        const spreadBias = node.disconnected ? -0.0008 : node.distance <= 1 ? 0.0025 : 0
+        const spreadBias =
+          node.disconnected || node.distance >= 4 ? -0.0032 : node.distance <= 1 ? 0.0025 : 0
         node.vx += (center.x - node.x) * spreadBias
         node.vy += (center.y - node.y) * spreadBias
       }
@@ -310,7 +374,10 @@ function relaxOrbitNodes(states: OrbitLayoutState[]): KnowledgeGraphNode[] {
       node.vx *= 0.72
       node.vy *= 0.72
 
-      const next = containInViewportEllipse(node.x + node.vx, node.y + node.vy, node.radius)
+      const next =
+        node.disconnected || node.distance >= 4
+          ? containInPeripheralBand(node.x + node.vx, node.y + node.vy, node.radius)
+          : containInViewportEllipse(node.x + node.vx, node.y + node.vy, node.radius)
       node.x = next.x
       node.y = next.y
     }
@@ -529,11 +596,18 @@ function layoutOrbitNodes(
           (1 - weight) * (distance <= 1 ? 0.18 : distance === 2 ? 0.2 : 0.16) +
           shellNoise
 
-        const position = containInViewportEllipse(
-          centerX + Math.cos(angle) * radiusX * radialScale,
-          centerY + Math.sin(angle) * radiusY * radialScale,
-          radius
-        )
+        const position =
+          distance >= 4
+            ? containInPeripheralBand(
+                centerX + Math.cos(angle) * radiusX * radialScale,
+                centerY + Math.sin(angle) * radiusY * radialScale,
+                radius
+              )
+            : containInViewportEllipse(
+                centerX + Math.cos(angle) * radiusX * radialScale,
+                centerY + Math.sin(angle) * radiusY * radialScale,
+                radius
+              )
         nodes.push({
           slug: page.slug,
           title: page.title,
@@ -572,7 +646,7 @@ function layoutOrbitNodes(
         (((seed >>> 5) % 23) - 11) * 0.024
       const shellIndex = index % shellCount
       const shell = 0.74 + shellIndex * 0.09 + ((seed % 17) / 100)
-      const position = containInViewportEllipse(
+      const position = containInPeripheralBand(
         centerX + Math.cos(angle) * radiusX * shell,
         centerY + Math.sin(angle) * radiusY * shell,
         radius

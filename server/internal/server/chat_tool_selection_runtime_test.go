@@ -824,6 +824,34 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstStockArtifactStaysActiona
 	}
 }
 
+func TestSelectChatToolSurfacesForRequest_LocalWorkspaceArtifactKeepsNativeFileWorkflow(t *testing.T) {
+	handler := newDiscoverFirstSelectionHandler(t, true)
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "Review all files in the research/ folder and write a comprehensive daily summary to daily_briefing.md.", tools.ToolPolicyRequest{
+		Model:     "claude-sonnet-4-6",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode != chatNativeToolSurfaceModeLegacy {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
+	}
+	if len(selection.NativeDefs) == 0 {
+		t.Fatalf("NativeDefs = %v, want actionable tool surface", selectedToolNames(selection.NativeDefs))
+	}
+	names := toolNameSet(selection.NativeDefs)
+	for _, required := range []string{"read", "write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("NativeDefs = %v, want %q available for local workspace artifact workflow", selectedToolNames(selection.NativeDefs), required)
+		}
+	}
+	if _, ok := names["exec"]; ok {
+		t.Fatalf("NativeDefs = %v, want local workspace artifact workflow to avoid exec-only cutover", selectedToolNames(selection.NativeDefs))
+	}
+	if selection.DiscoveryDecision != nil && selection.DiscoveryDecision.NeedClarify {
+		t.Fatalf("DiscoveryDecision = %#v, want no clarify gate for local workspace artifact request", selection.DiscoveryDecision)
+	}
+}
+
 func TestSelectChatToolSurfacesForRequest_GeneralKnowledgeSynthesisDoesNotFallIntoClarifyNone(t *testing.T) {
 	handler := newDiscoverFirstSelectionHandler(t, true)
 

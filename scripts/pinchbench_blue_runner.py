@@ -1240,7 +1240,10 @@ def execute_task(
                     recovered_transcript = wait_for_recovered_assistant_transcript(
                         conv_id,
                         baseline_assistant_texts=assistant_text_counts.get(conv_id, 0),
-                        timeout_seconds=EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS,
+                        timeout_seconds=max(
+                            EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS,
+                            transport_timeout,
+                        ),
                     )
                 except BlueAPIError as fetch_exc:
                     stderr_chunks.append(
@@ -1280,6 +1283,7 @@ def execute_task(
 
     transcript: List[Dict[str, Any]] = []
     session_runs: List[Dict[str, Any]] = []
+    transcripts_by_conversation_id: Dict[str, List[Dict[str, Any]]] = {}
     for run in conversation_runs:
         conversation_id = str(run.get("conversation_id") or "").strip()
         if not conversation_id:
@@ -1299,6 +1303,7 @@ def execute_task(
             db_paths=blue_audit_db_paths,
             conversation_id=conversation_id,
         )
+        transcripts_by_conversation_id[conversation_id] = conv_transcript
         transcript.extend(conv_transcript)
         session_runs.append(
             {
@@ -1312,14 +1317,10 @@ def execute_task(
         and failed_prompt_index == len(session_specs)
         and transcript
     ):
-        assistant_messages = [
-            item
-            for item in transcript
-            if item.get("type") == "message"
-            and isinstance(item.get("message"), dict)
-            and item["message"].get("role") == "assistant"
-        ]
-        if len(assistant_messages) >= failed_prompt_index:
+        final_conversation_transcript = transcripts_by_conversation_id.get(conv_id, [])
+        baseline_assistant_texts = assistant_text_counts.get(conv_id, 0)
+        recovered_assistant_texts = count_assistant_text_messages(final_conversation_transcript)
+        if recovered_assistant_texts > baseline_assistant_texts:
             LOG.warning(
                 "Recovered completed transcript for %s after final-prompt transport error",
                 task.task_id,

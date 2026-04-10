@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -14,6 +15,13 @@ import (
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+func requireSQLiteCLI(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("sqlite3"); err != nil {
+		t.Skipf("sqlite3 CLI unavailable: %v", err)
+	}
+}
 
 func TestNewManager(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -1428,6 +1436,8 @@ func TestCheckAndAutoRecoverRestoresAdditionalDatabase(t *testing.T) {
 }
 
 func TestCheckAndAutoRecoverPrefersRepairBeforeBackupRestore(t *testing.T) {
+	requireSQLiteCLI(t)
+
 	tmpDir := t.TempDir()
 	backupDir := filepath.Join(tmpDir, "backups")
 	dataDir := filepath.Join(tmpDir, "data")

@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
@@ -76,6 +77,9 @@ func newImageTaskLookupAdapter(manager *mediagen.Manager) tools.ImageTaskLookupF
 		if lookupUserID != "" {
 			task, err = manager.GetTask(taskID, lookupUserID)
 		} else {
+			task, err = manager.GetTask(taskID)
+		}
+		if err != nil && lookupUserID != "" && errors.Is(err, mediagen.ErrTaskNotFound) {
 			task, err = manager.GetTask(taskID)
 		}
 		if err != nil {

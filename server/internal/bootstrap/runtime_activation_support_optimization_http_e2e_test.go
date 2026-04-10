@@ -822,6 +822,7 @@ func writeJSON(payload map[string]interface{}) {
 		bin += ".exe"
 	}
 	cmd := exec.Command("go", "build", "-o", bin, mainPath)
+	cmd.Env = optimizationTestGoBuildEnv(t, dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build scripted runner failed: %v\n%s", err, output)
@@ -838,6 +839,7 @@ func newBootstrapOptimizationManagerWithRunnerBinary(t *testing.T, root string, 
 		BinaryReady:    true,
 		BinaryPath:     bin,
 		BinarySHA256:   bootstrapHTTPE2ESHA256File(t, bin),
+		RepoURL:        optimizationTestRunnerRepoURL,
 		ResolvedRef:    "main",
 		ResolvedCommit: strings.Repeat("c", 40),
 	}

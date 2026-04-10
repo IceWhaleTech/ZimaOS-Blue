@@ -870,6 +870,34 @@ func TestGenerateImageToolForcesGenerateAction(t *testing.T) {
 	}
 }
 
+func TestGenerateImageToolSupportsExplicitStatusAction(t *testing.T) {
+	native := NewImageTool(nil, nil, func(_ context.Context, taskID string) (*ImageTaskResult, error) {
+		if taskID != "task-status-1" {
+			t.Fatalf("task id = %q, want task-status-1", taskID)
+		}
+		return &ImageTaskResult{ID: taskID, Status: "processing"}, nil
+	})
+
+	result, err := newGenerateImageTool(native).Execute(context.Background(), map[string]interface{}{
+		"action": "status",
+		"task":   map[string]interface{}{"id": "task-status-1"},
+	})
+	if err != nil {
+		t.Fatalf("generate_image status failed: %v", err)
+	}
+
+	payload, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("payload = %#v, want map", result)
+	}
+	if payload["task_id"] != "task-status-1" {
+		t.Fatalf("task_id = %v, want task-status-1", payload["task_id"])
+	}
+	if payload["status"] != "processing" {
+		t.Fatalf("status = %v, want processing", payload["status"])
+	}
+}
+
 func TestOCRToolForcesOCROnlyReview(t *testing.T) {
 	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Quarterly revenue 119,900", Engine: "tesseract/wasm", Model: "eng"}}
 	native := NewImageTool(nil, nil, nil)

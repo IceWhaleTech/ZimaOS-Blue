@@ -1712,3 +1712,38 @@ func absInt(v int) int {
 func buildWorkspaceArtifactOrchestrationConfirmation(target string) string {
 	return fmt.Sprintf("Saved the requested file to %q using the local evidence already gathered.", target)
 }
+
+func shouldReplaceSavedWorkspaceArtifactFallbackReply(ctx context.Context, userMessage, currentContent string) bool {
+	if !shouldPreferWorkspaceArtifactWorkflow(userMessage) {
+		return false
+	}
+	if !hasSavedWorkspaceArtifactOnDisk(ctx, userMessage) {
+		return false
+	}
+	return isToolFallbackRetrySummary(currentContent)
+}
+
+func isToolFallbackRetrySummary(content string) bool {
+	lower := strings.ToLower(strings.TrimSpace(content))
+	if lower == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"here is a concise fallback summary based on completed tool results",
+		"here is a concise summary based on the completed tool results so far",
+		"based on the completed tool results, here are the key takeaways",
+		"completed tools:",
+		"ask me to retry summarizing for a fuller report",
+		"if you'd like, i can expand this into a fuller report",
+		"我先根据已完成的工具结果，给你一个简要汇总",
+		"我先根据已完成的工具结果，整理出一版简要摘要",
+		"根据已完成的工具结果，整理如下",
+		"如需，我可以继续补一版更完整的总结",
+		"如果你愿意，我可以继续把这份结果扩展成更完整的总结",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}

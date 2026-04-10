@@ -629,6 +629,23 @@ func shouldPreferPublicArtifactResearchWorkflow(message string) bool {
 	return hasPublicArtifactResearchCue(trimmed)
 }
 
+func shouldPreferWorkspaceArtifactWorkflow(message string) bool {
+	trimmed := strings.TrimSpace(message)
+	if trimmed == "" {
+		return false
+	}
+	if !shouldPreferWorkspaceFileWorkflow(trimmed) {
+		return false
+	}
+	if extractRequestedArtifactWriteTarget(trimmed) == "" && !hasGenericOfficeArtifactIntent(trimmed) {
+		return false
+	}
+	if isReminderIntentMessage(trimmed) || isCalendarIntentMessage(trimmed) || isEmailIntentMessage(trimmed) || isImageGenerationIntentMessage(trimmed) {
+		return false
+	}
+	return true
+}
+
 func detectGenericOfficeArtifactFormat(message string) string {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	if lower == "" {
@@ -6192,7 +6209,9 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	// mixed tool surface (web retrieval + file write). Skipping discover-first
 	// cutover here avoids clarify-only or exec-only surfaces that can block the
 	// end-to-end artifact workflow.
-	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+	if shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
+		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
+		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 
@@ -7048,6 +7067,13 @@ func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []too
 	if len(allDefs) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
 		return current
 	}
+	if shouldPreferWorkspaceArtifactWorkflow(userMessage) {
+		filtered := filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
+		if len(filtered) == 0 {
+			return current
+		}
+		return filtered
+	}
 	// Research/report prompts often also mention a target output file. Keep the
 	// already-routed research tools instead of collapsing to a pure local-file set.
 	if shouldPreferDeepSearchReport(userMessage) || shouldUseHeavyResearchWorkflow(userMessage) || shouldPreferPublicArtifactResearchWorkflow(userMessage) {
@@ -7056,6 +7082,17 @@ func preferWorkspaceFileWorkflowTools(userMessage string, allDefs, current []too
 	filtered := filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
 	if len(filtered) == 0 {
 		return current
+	}
+	return filtered
+}
+
+func filterWorkspaceArtifactWorkflowToolDefs(userMessage string, defs []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(defs) == 0 || !shouldPreferWorkspaceArtifactWorkflow(userMessage) {
+		return defs
+	}
+	filtered := filterToolDefsToNames(defs, artifactFileWorkflowToolNamesForMessage(userMessage)...)
+	if len(filtered) == 0 {
+		return defs
 	}
 	return filtered
 }
@@ -8134,7 +8171,9 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 		NativeMode: chatNativeToolSurfaceModeLegacy,
 	}
 
-	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+	if shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
+		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
+		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 
@@ -21730,6 +21769,9 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				Msg("[chat] finalized missing research artifact with deterministic orchestration")
 			resp.Message.Content = artifactFallback.Content
 		}
+	}
+	if resp != nil && len(resp.Message.ToolCalls) == 0 && shouldReplaceSavedWorkspaceArtifactFallbackReply(toolCtx, routingMessage, resp.Message.Content) {
+		resp.Message.Content = buildWorkspaceArtifactOrchestrationConfirmation(extractRequestedArtifactPath(routingMessage))
 	}
 
 	// Never trust upstream resp.Model directly. Use request model + routed model

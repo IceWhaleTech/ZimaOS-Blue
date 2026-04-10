@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	basetask "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/task"
@@ -182,5 +183,61 @@ func TestRelativizeImageOutputPathDoesNotUseGenericTempRootAsWorkspaceRoot(t *te
 	outputPath := filepath.Join(tempRoot, "pinchbench-workspace", "robot_cafe.png")
 	if got, ok := relativizeImageOutputPath(outputPath, []string{tempRoot}); ok {
 		t.Fatalf("expected generic temp root match to stay absolute, got ok=true rel=%q", got)
+	}
+}
+
+func TestWaitForImageTaskFallsBackToUnscopedLookup(t *testing.T) {
+	storage := mediagen.NewMediaStorage(filepath.Join(t.TempDir(), "media"), "/api/media/generated")
+	if err := storage.EnsureDirs(); err != nil {
+		t.Fatalf("EnsureDirs: %v", err)
+	}
+
+	manager := mediagen.NewManager(storage, nil, "")
+	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
+
+	task, err := manager.Generate(context.Background(), &mediagen.MediaRequest{
+		Type:   mediagen.MediaTypeImage,
+		Prompt: "draw a cozy robot reading",
+	})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	waitCtx, cancel := context.WithTimeout(tools.WithUserID(context.Background(), "preview-user"), 2*time.Second)
+	defer cancel()
+
+	waited, err := waitForImageTask(waitCtx, manager, task.ID, "preview-user")
+	if err != nil {
+		t.Fatalf("waitForImageTask returned error: %v", err)
+	}
+	if waited == nil || waited.ID != task.ID {
+		t.Fatalf("waited task = %#v, want id %q", waited, task.ID)
+	}
+}
+
+func TestImageTaskLookupAdapterFallsBackToUnscopedLookup(t *testing.T) {
+	storage := mediagen.NewMediaStorage(filepath.Join(t.TempDir(), "media"), "/api/media/generated")
+	if err := storage.EnsureDirs(); err != nil {
+		t.Fatalf("EnsureDirs: %v", err)
+	}
+
+	manager := mediagen.NewManager(storage, nil, "")
+	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
+
+	task, err := manager.Generate(context.Background(), &mediagen.MediaRequest{
+		Type:   mediagen.MediaTypeImage,
+		Prompt: "draw a cozy robot reading",
+	})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+
+	lookup := newImageTaskLookupAdapter(manager)
+	result, err := lookup(tools.WithUserID(context.Background(), "preview-user"), task.ID)
+	if err != nil {
+		t.Fatalf("lookup returned error: %v", err)
+	}
+	if result == nil || result.ID != task.ID {
+		t.Fatalf("lookup result = %#v, want id %q", result, task.ID)
 	}
 }

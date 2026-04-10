@@ -224,10 +224,32 @@ const selectedNeighborhood = computed(() => {
   return slugs
 })
 
+function isNodeRevealedInScene(node: KnowledgeGraphNode): boolean {
+  if (!activeFocusSlug.value) return true
+  if (selectedNeighborhood.value.has(node.slug)) return true
+
+  const distance = focusDistances.value.get(node.slug)
+  if (distance === 1) return revealLayer.value >= 2
+  return isDistanceRevealed(distance)
+}
+
+const visibleNodes = computed(() => graph.value.nodes.filter((node) => isNodeRevealedInScene(node)))
+const visibleNodeSlugs = computed(() => new Set(visibleNodes.value.map((node) => node.slug)))
+const renderedEdges = computed(() =>
+  graph.value.edges.filter(
+    (edge) => visibleNodeSlugs.value.has(edge.source) && visibleNodeSlugs.value.has(edge.target)
+  )
+)
+
 const domNodes = computed(() => {
-  if (!perfMode.value) return graph.value.nodes
-  if (!activeFocusSlug.value) return []
-  return graph.value.nodes.filter((node) => selectedNeighborhood.value.has(node.slug))
+  if (!perfMode.value) return visibleNodes.value
+  if (!activeFocusSlug.value) return visibleNodes.value
+  return visibleNodes.value.filter((node) => selectedNeighborhood.value.has(node.slug))
+})
+const canvasNodes = computed(() => {
+  if (!perfMode.value) return []
+  const domSlugs = new Set(domNodes.value.map((node) => node.slug))
+  return visibleNodes.value.filter((node) => !domSlugs.has(node.slug))
 })
 
 const revealedNode = computed(
@@ -608,10 +630,10 @@ function drawGraphCanvas() {
   context.clearRect(0, 0, canvas.width, canvas.height)
   context.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-  const skipMutedEdges = graph.value.edges.length > 6000
+  const skipMutedEdges = renderedEdges.value.length > 6000
   let lastStrokeKey = ''
 
-  for (const edge of graph.value.edges) {
+  for (const edge of renderedEdges.value) {
     const tier = edgeDistanceTier(edge)
     if (tier === 'stacked') continue
     if (skipMutedEdges && (tier === 'muted' || tier === 'ambient')) continue
@@ -653,10 +675,7 @@ function drawGraphCanvas() {
     context.stroke()
   }
 
-  const domSlugs = new Set(domNodes.value.map((node) => node.slug))
-  for (const node of graph.value.nodes) {
-    if (domSlugs.has(node.slug)) continue
-
+  for (const node of canvasNodes.value) {
     const tier = nodeDistanceTier(node)
     const alpha =
       tier === 'mid'
@@ -726,7 +745,7 @@ function handleStageClick(event: MouseEvent) {
   let nearestDistance = Infinity
   const hitPadding = 8
 
-  for (const node of graph.value.nodes) {
+  for (const node of visibleNodes.value) {
     const dx = node.x - point.x
     const dy = node.y - point.y
     const distance = dx * dx + dy * dy
@@ -743,7 +762,7 @@ function handleStageClick(event: MouseEvent) {
   }
 }
 
-watch([perfMode, graph, revealLayer, selectedNeighborhood], queueCanvasDraw, {
+watch([perfMode, renderedEdges, canvasNodes, revealLayer, selectedNeighborhood], queueCanvasDraw, {
   immediate: true,
   flush: 'post',
 })
@@ -885,7 +904,7 @@ watch(
               />
               <template v-if="!perfMode">
                 <path
-                  v-for="edge in graph.edges"
+                  v-for="edge in renderedEdges"
                   :key="edge.id"
                   data-testid="knowledge-graph-edge"
                   :data-highlight-state="edgeHighlightState(edge)"

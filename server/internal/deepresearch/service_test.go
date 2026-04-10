@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,6 +43,12 @@ func (m *mockSummarySynth) Summarize(ctx context.Context, input SummaryInput) (s
 		return "", nil
 	}
 	return m.summarize(ctx, input)
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func waitForTerminalJob(t *testing.T, svc *Service, jobID string, timeout time.Duration) *Job {
@@ -1112,6 +1120,25 @@ func TestServiceRunJob_V2StrictEntityFiltersNoise(t *testing.T) {
 		},
 	})
 	svc.SetV2Enabled(true)
+	svc.httpClient = &http.Client{
+		Timeout: time.Second,
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body: io.NopCloser(strings.NewReader(`
+					<html>
+						<head>
+							<meta name="author" content="Blue Ventures">
+							<meta property="article:published_time" content="2025-01-01T00:00:00Z">
+						</head>
+						<body>付强 蓝驰 合伙人 观点</body>
+					</html>
+				`)),
+				Header:  make(http.Header),
+				Request: req,
+			}, nil
+		}),
+	}
 	strict := true
 
 	job, err := svc.CreateJob(context.Background(), CreateJobRequest{

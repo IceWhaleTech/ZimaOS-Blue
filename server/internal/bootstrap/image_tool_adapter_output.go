@@ -71,7 +71,9 @@ func waitForImageTask(ctx context.Context, manager *mediagen.Manager, taskID, lo
 			return task, err
 		}
 	}
-	return manager.WaitForTask(ctx, taskID)
+	fallbackCtx, cancel := unscopedImageTaskWaitContext(ctx)
+	defer cancel()
+	return manager.WaitForTask(fallbackCtx, taskID)
 }
 
 func saveGeneratedImageOutput(ctx context.Context, manager *mediagen.Manager, task *mediagen.MediaTask, outputPath, lookupUserID string) (string, error) {
@@ -129,4 +131,22 @@ func joinImageMessages(parts ...string) string {
 		out = append(out, part)
 	}
 	return strings.Join(out, ". ")
+}
+
+func unscopedImageTaskWaitContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		return context.WithCancel(context.Background())
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		return context.WithDeadline(context.Background(), deadline)
+	}
+	fallbackCtx, cancel := context.WithCancel(context.Background())
+	go func() {
+		select {
+		case <-ctx.Done():
+			cancel()
+		case <-fallbackCtx.Done():
+		}
+	}()
+	return fallbackCtx, cancel
 }

@@ -30,6 +30,8 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
+const optimizationTestRunnerRepoURL = "https://github.com/IceWhaleTech/ZimaOS-Blue"
+
 func TestBindHarnessRuntimeOptimizationWiresControllerTriggerer(t *testing.T) {
 	manager, err := optimization.NewManager(t.TempDir())
 	if err != nil {
@@ -77,6 +79,7 @@ func TestHarnessOptimizationTriggererExecutesPreparedRunnerAndPersistsTranscript
 		BinaryReady:    true,
 		BinaryPath:     bin,
 		BinarySHA256:   sum,
+		RepoURL:        optimizationTestRunnerRepoURL,
 		ResolvedRef:    "main",
 		ResolvedCommit: strings.Repeat("a", 40),
 	}
@@ -171,6 +174,7 @@ func TestHarnessOptimizationTriggererPersistsRunnerErrorWhenPreparedBinaryChecks
 		BinaryReady:    true,
 		BinaryPath:     bin,
 		BinarySHA256:   strings.Repeat("f", 64),
+		RepoURL:        optimizationTestRunnerRepoURL,
 		ResolvedRef:    "main",
 		ResolvedCommit: strings.Repeat("b", 40),
 	}
@@ -897,12 +901,14 @@ func buildOptimizationTestRunnerBinary(t *testing.T) string {
 		t.Fatal("runtime.Caller failed")
 	}
 	serverDir := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
-	bin := filepath.Join(t.TempDir(), "agentcore-runner")
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "agentcore-runner")
 	if runtime.GOOS == "windows" {
 		bin += ".exe"
 	}
 	cmd := exec.Command("go", "build", "-o", bin, "./cmd/agentcore-runner")
 	cmd.Dir = serverDir
+	cmd.Env = optimizationTestGoBuildEnv(t, dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build runner failed: %v\n%s", err, output)
@@ -984,11 +990,57 @@ func writeJSON(payload map[string]interface{}) {
 		bin += ".exe"
 	}
 	cmd := exec.Command("go", "build", "-o", bin, mainPath)
+	cmd.Env = optimizationTestGoBuildEnv(t, dir)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go build scripted runner failed: %v\n%s", err, output)
 	}
 	return bin
+}
+
+func optimizationTestGoBuildEnv(t *testing.T, cacheRoot string) []string {
+	t.Helper()
+	goCache := filepath.Join(cacheRoot, "gocache")
+	goModCache := filepath.Join(cacheRoot, "gomodcache")
+	if err := os.MkdirAll(goCache, 0o755); err != nil {
+		t.Fatalf("MkdirAll gocache: %v", err)
+	}
+	if err := os.MkdirAll(goModCache, 0o755); err != nil {
+		t.Fatalf("MkdirAll gomodcache: %v", err)
+	}
+
+	goFlags := strings.TrimSpace(os.Getenv("GOFLAGS"))
+	if !strings.Contains(goFlags, "-modcacherw") {
+		goFlags = strings.TrimSpace(goFlags + " -modcacherw")
+	}
+
+	envMap := map[string]string{
+		"GOCACHE":    goCache,
+		"GOMODCACHE": goModCache,
+		"GOFLAGS":    goFlags,
+	}
+	env := os.Environ()
+	pairs := make([]string, 0, len(env)+len(envMap))
+	seen := make(map[string]struct{}, len(envMap))
+	for _, item := range env {
+		key := item
+		if idx := strings.IndexByte(item, '='); idx >= 0 {
+			key = item[:idx]
+		}
+		if value, ok := envMap[key]; ok {
+			pairs = append(pairs, key+"="+value)
+			seen[key] = struct{}{}
+			continue
+		}
+		pairs = append(pairs, item)
+	}
+	for key, value := range envMap {
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		pairs = append(pairs, key+"="+value)
+	}
+	return pairs
 }
 
 type bootstrapSelectorEvalDriver struct {
@@ -1043,6 +1095,7 @@ func newOptimizationManagerWithRunnerBinaryForTest(t *testing.T, root string, bi
 		BinaryReady:    true,
 		BinaryPath:     bin,
 		BinarySHA256:   sha256FileForOptimizationTest(t, bin),
+		RepoURL:        optimizationTestRunnerRepoURL,
 		ResolvedRef:    "main",
 		ResolvedCommit: strings.Repeat("c", 40),
 	}

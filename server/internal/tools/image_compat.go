@@ -1,6 +1,9 @@
 package tools
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // ImageCompatTool exposes legacy image-generation aliases backed by the
 // native image tool.
@@ -57,6 +60,10 @@ func (t *GenerateImageTool) Execute(ctx context.Context, args map[string]interfa
 		return nil, ErrToolNotFound
 	}
 	forwarded := cloneImageCompatArgs(args)
+	switch strings.ToLower(strings.TrimSpace(firstCompatString(forwarded, "action", "op", "operation", "command"))) {
+	case "status", "get", "task", "progress":
+		return t.native.Execute(ctx, forwarded)
+	}
 	forwarded["action"] = "generate"
 	return t.native.Execute(ctx, forwarded)
 }

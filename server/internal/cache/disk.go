@@ -89,7 +89,7 @@ func (c *DiskCache) Get(ctx context.Context, key string) (interface{}, error) {
 	}
 
 	// Check expiration
-	if entry.ExpiresAt != 0 && timeutil.NowNano() > entry.ExpiresAt {
+	if entry.ExpiresAt != 0 && time.Now().UnixNano() >= entry.ExpiresAt {
 		c.Delete(ctx, key)
 		c.misses.Add(1)
 		return nil, ErrKeyExpired
@@ -116,9 +116,9 @@ func (c *DiskCache) Set(ctx context.Context, key string, value interface{}, ttl 
 	// Calculate expiration
 	var expiresAt int64
 	if ttl > 0 {
-		expiresAt = timeutil.NowNano() + int64(ttl)
+		expiresAt = time.Now().UnixNano() + int64(ttl)
 	} else if c.config.DefaultTTL > 0 {
-		expiresAt = timeutil.NowNano() + int64(c.config.DefaultTTL)
+		expiresAt = time.Now().UnixNano() + int64(c.config.DefaultTTL)
 	}
 
 	// Generate file path
@@ -183,7 +183,7 @@ func (c *DiskCache) Exists(ctx context.Context, key string) bool {
 		return false
 	}
 
-	if entry.ExpiresAt != 0 && timeutil.NowNano() > entry.ExpiresAt {
+	if entry.ExpiresAt != 0 && time.Now().UnixNano() >= entry.ExpiresAt {
 		return false
 	}
 
@@ -415,11 +415,11 @@ func (c *DiskCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	now := timeutil.NowNano()
+	now := time.Now().UnixNano()
 	var toRemove []string
 
 	for key, entry := range c.index {
-		if entry.ExpiresAt != 0 && now > entry.ExpiresAt {
+		if entry.ExpiresAt != 0 && now >= entry.ExpiresAt {
 			toRemove = append(toRemove, key)
 		}
 	}

@@ -161,6 +161,46 @@ class LaggyExecutionTransportErrorBlueClient(StubBlueClient):
         return messages
 
 
+class ToolCallOnlyExecutionTransportErrorBlueClient(StubBlueClient):
+    def send_message(
+        self,
+        conversation_id: str,
+        message: str,
+        provider: str,
+        model: str,
+        timeout: float,
+        *,
+        web_search_enabled=None,
+        deep_research_enabled=None,
+    ):
+        self.sent.append(
+            (
+                conversation_id,
+                message,
+                provider,
+                model,
+                timeout,
+                web_search_enabled,
+                deep_research_enabled,
+            )
+        )
+        self.messages[conversation_id] = [
+            {"role": "user", "content": message},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [
+                    {
+                        "id": "call-1",
+                        "name": "generate_image",
+                        "arguments": json.dumps({"prompt": "robot in cafe", "generate": {"path": "robot_cafe.png"}}),
+                    }
+                ],
+            },
+        ]
+        raise runner.BlueAPIError("timeout: timed out")
+
+
 class PinchBenchBlueRunnerTest(unittest.TestCase):
     def make_task(self):
         return SimpleNamespace(
@@ -259,6 +299,100 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
             runner.extract_latest_assistant_text(result["transcript"]),
             'stored:Generate an image and save it as "robot_cafe.png".',
         )
+
+    def test_execute_task_does_not_treat_tool_call_only_transcript_as_completed_after_timeout(self):
+        client = ToolCallOnlyExecutionTransportErrorBlueClient()
+        task = SimpleNamespace(
+            name="AI Image Generation",
+            task_id="task_13_image_gen",
+            timeout_seconds=30,
+            workspace_files=[],
+            prompt='Generate an image and save it as "robot_cafe.png".',
+            frontmatter={},
+        )
+        original_min_timeout = runner.MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS
+        original_max_timeout = runner.MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS
+        original_grace = runner.MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS
+        original_timeout = runner.EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS
+        original_poll = runner.JUDGE_MESSAGE_POLL_INTERVAL_SECONDS
+        runner.MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 0.05
+        runner.MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 0.05
+        runner.MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 0.0
+        runner.EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = 0.05
+        runner.JUDGE_MESSAGE_POLL_INTERVAL_SECONDS = 0.01
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                result = runner.execute_task(
+                    client=client,
+                    task=task,
+                    pinchbench_dir=Path(tmp_dir),
+                    workspace_dir=Path(tmp_dir) / "workspace",
+                    provider="pinchbench-fixed",
+                    model="claude-sonnet-4.6",
+                    timeout_multiplier=1.0,
+                    blue_audit_db_paths=[],
+                )
+        finally:
+            runner.MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = original_min_timeout
+            runner.MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = original_max_timeout
+            runner.MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = original_grace
+            runner.EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = original_timeout
+            runner.JUDGE_MESSAGE_POLL_INTERVAL_SECONDS = original_poll
+
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["exit_code"], 1)
+        self.assertNotIn(
+            "Recovered completed transcript after final-prompt transport error.",
+            result["stderr"],
+        )
+        self.assertEqual(runner.extract_latest_assistant_text(result["transcript"]), "")
+
+    def test_execute_task_uses_transport_timeout_sized_recovery_window_after_send_timeout(self):
+        client = LaggyExecutionTransportErrorBlueClient(hidden_reads=8)
+        task = SimpleNamespace(
+            name="AI Image Generation",
+            task_id="task_13_image_gen",
+            timeout_seconds=30,
+            workspace_files=[],
+            prompt='Generate an image and save it as "robot_cafe.png".',
+            frontmatter={},
+        )
+        original_min_timeout = runner.MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS
+        original_max_timeout = runner.MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS
+        original_grace = runner.MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS
+        original_visibility_timeout = runner.EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS
+        original_poll = runner.JUDGE_MESSAGE_POLL_INTERVAL_SECONDS
+        runner.MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 0.2
+        runner.MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 0.2
+        runner.MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 0.0
+        runner.EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = 0.05
+        runner.JUDGE_MESSAGE_POLL_INTERVAL_SECONDS = 0.01
+        try:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                result = runner.execute_task(
+                    client=client,
+                    task=task,
+                    pinchbench_dir=Path(tmp_dir),
+                    workspace_dir=Path(tmp_dir) / "workspace",
+                    provider="pinchbench-fixed",
+                    model="claude-sonnet-4.6",
+                    timeout_multiplier=1.0,
+                    blue_audit_db_paths=[],
+                )
+        finally:
+            runner.MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = original_min_timeout
+            runner.MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = original_max_timeout
+            runner.MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = original_grace
+            runner.EXECUTION_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = original_visibility_timeout
+            runner.JUDGE_MESSAGE_POLL_INTERVAL_SECONDS = original_poll
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["exit_code"], 0)
+        self.assertIn(
+            "Recovered completed transcript for session session_1 after transport error.",
+            result["stderr"],
+        )
+        self.assertGreaterEqual(client.read_counts.get("conv-1", 0), 9)
 
     def test_resolve_message_transport_timeout_adds_grace_beyond_remaining_budget(self):
         self.assertEqual(

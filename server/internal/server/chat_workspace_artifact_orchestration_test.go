@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -179,6 +180,22 @@ func TestTryLLMWorkspaceArtifactOrchestration_WritesRecoveredArtifactFromLocalEv
 		if !strings.Contains(req.Messages[1].Content, "If a fact is distributed across multiple snippets, reconcile those snippets carefully before answering.") {
 			t.Fatalf("expected numbered-question prompt to include generic multi-snippet reconciliation guidance, got=%v", req.Messages[1].Content)
 		}
+	}
+}
+
+func TestShouldReplaceSavedWorkspaceArtifactFallbackReply_WhenArtifactAlreadyExists(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	targetPath := fmt.Sprintf("%s/%s", workspaceRoot, "daily_briefing.md")
+	if err := os.WriteFile(targetPath, []byte("# Daily Executive Briefing\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	ctx := tools.WithFSScope(context.Background(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot})
+	userMessage := "You are an executive assistant preparing the daily briefing. Review all files in the research/ folder and write a comprehensive daily summary to daily_briefing.md."
+	currentContent := "Here is a concise fallback summary based on completed tool results:\n\nls returned 5 result(s)\n\nAsk me to retry summarizing for a fuller report."
+
+	if !shouldReplaceSavedWorkspaceArtifactFallbackReply(ctx, userMessage, currentContent) {
+		t.Fatal("expected saved workspace artifact fallback reply to be replaced with final confirmation")
 	}
 }
 

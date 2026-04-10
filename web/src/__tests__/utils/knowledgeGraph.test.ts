@@ -4,6 +4,7 @@ import type { KnowledgePageSummary } from '@/api/knowledge'
 import {
   buildKnowledgeGraphLayout,
   getKnowledgeGraphOrbitGuide,
+  isKnowledgeGraphPointInsideFocusEnvelope,
   isKnowledgeGraphPointInsideEnvelope,
   pickKnowledgeGraphDefaultFocusSlug,
 } from '@/utils/knowledgeGraph'
@@ -123,7 +124,7 @@ describe('buildKnowledgeGraphLayout', () => {
     expect(far.radiusX).toBeLessThan(detached.radiusX)
   })
 
-  it('keeps orbit and detached nodes inside an ellipse-shaped envelope', () => {
+  it('keeps orbit nodes inside the viewport envelope while parking detached clusters outside the focus area', () => {
     const expansivePages: KnowledgePageSummary[] = [
       ...pages,
       ...Array.from({ length: 12 }, (_, index) => ({
@@ -149,6 +150,10 @@ describe('buildKnowledgeGraphLayout', () => {
 
     for (const node of graph.nodes) {
       expect(isKnowledgeGraphPointInsideEnvelope(node.x, node.y, node.radius)).toBe(true)
+    }
+
+    for (const node of graph.nodes.filter((entry) => entry.slug.startsWith('detached-'))) {
+      expect(isKnowledgeGraphPointInsideFocusEnvelope(node.x, node.y, node.radius)).toBe(false)
     }
   })
 
