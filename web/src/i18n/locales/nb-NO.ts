@@ -64,6 +64,7 @@ export default mergeHarnessLocale('nb-NO', {
     select: 'Velg',
     test: 'Test',
     provider: 'Leverandør',
+    version: 'Versjon',
     name: 'Navn',
     title: 'Tittel',
     description: 'Beskrivelse',

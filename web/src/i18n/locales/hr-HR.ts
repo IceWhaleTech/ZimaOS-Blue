@@ -64,6 +64,7 @@ export default mergeHarnessLocale('hr-HR', {
     select: 'Odaberite',
     test: 'Testiraj',
     provider: 'Davatelj',
+    version: 'Verzija',
     name: 'Ime',
     title: 'Naslov',
     description: 'Opis',

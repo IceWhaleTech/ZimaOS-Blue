@@ -66,6 +66,7 @@ export default mergeHarnessLocale('en-US', {
     select: 'Select',
     test: 'Test',
     provider: 'Provider',
+    version: 'Version',
     name: 'Name',
     title: 'Title',
     description: 'Description',

@@ -64,6 +64,7 @@ export default mergeHarnessLocale('hu-HU', {
     select: 'Válassza ki',
     test: 'Teszt',
     provider: 'Szolgáltató',
+    version: 'Verzió',
     name: 'Név',
     title: 'Cím',
     description: 'Leírás',

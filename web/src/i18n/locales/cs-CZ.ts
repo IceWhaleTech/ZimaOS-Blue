@@ -65,6 +65,7 @@ export default mergeHarnessLocale('cs-CZ', {
     select: 'Vyberte',
     test: 'Otestovat',
     provider: 'Poskytovatel',
+    version: 'Verze',
     name: 'Jméno',
     title: 'Název',
     description: 'Popis',

@@ -65,6 +65,7 @@ export default mergeHarnessLocale('ru-RU', {
     select: 'Выбрать',
     test: 'Тест',
     provider: 'Поставщик',
+    version: 'Версия',
     name: 'Имя',
     title: 'Название',
     description: 'Описание',

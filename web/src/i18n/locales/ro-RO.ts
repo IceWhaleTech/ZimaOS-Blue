@@ -64,6 +64,7 @@ export default mergeHarnessLocale('ro-RO', {
     select: 'Selectați',
     test: 'Testează',
     provider: 'Furnizor',
+    version: 'Versiune',
     name: 'Nume',
     title: 'Titlu',
     description: 'Descriere',

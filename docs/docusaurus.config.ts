@@ -18,7 +18,7 @@ const config: Config = {
   title: 'ZimaOS Blue',
   tagline:
     'Open-source, auditable, local-first agent runtime and toolkit for self-hosted personal AI agents.',
-  favicon: 'bannerX.png',
+  favicon: 'logo.png',
 
   url,
   baseUrl,
@@ -81,12 +81,12 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: 'bannerX.png',
+    image: 'logo.png',
     navbar: {
       title: 'ZimaOS Blue',
       logo: {
         alt: 'ZimaOS Blue',
-        src: 'bannerX.png',
+        src: 'logo.svg',
       },
       items: [
         {

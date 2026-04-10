@@ -103,3 +103,84 @@ func TestImageGenerateAdapterSavesAbsoluteWorkspaceOutputIntoWorkspaceRoot(t *te
 		t.Fatalf("expected image in workspace root: %v", err)
 	}
 }
+
+func TestImageGenerateAdapterPrefersSpecificWorkspaceRootOverGenericTempScope(t *testing.T) {
+	tempRoot := filepath.Clean(os.TempDir())
+	if tempRoot == "" || !filepath.IsAbs(tempRoot) {
+		t.Skip("temp root unavailable")
+	}
+
+	workspaceDir := filepath.Join(tempRoot, "pinchbench-image-tool-adapter-test", t.Name())
+	if err := os.RemoveAll(workspaceDir); err != nil {
+		t.Fatalf("remove workspace: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.RemoveAll(filepath.Join(tempRoot, "pinchbench-image-tool-adapter-test"))
+		_ = os.Remove(filepath.Join(tempRoot, "robot_cafe.png"))
+	})
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+
+	storage := mediagen.NewMediaStorage(filepath.Join(t.TempDir(), "media"), "/api/media/generated")
+	if err := storage.EnsureDirs(); err != nil {
+		t.Fatalf("EnsureDirs: %v", err)
+	}
+
+	manager := mediagen.NewManager(storage, nil, "")
+	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
+
+	ctx := tools.WithFSScope(context.Background(), []string{tempRoot}, map[string]string{"tmp": tempRoot})
+	adapter := newImageGenerateAdapter(manager, []string{workspaceDir, tempRoot})
+	result, err := adapter(ctx, tools.ImageGenerateRequest{
+		Prompt:     "draw a cozy robot reading",
+		OutputPath: "robot_cafe.png",
+		Wait:       true,
+	})
+	if err != nil {
+		t.Fatalf("adapter returned error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+	if _, err := os.Stat(filepath.Join(workspaceDir, "robot_cafe.png")); err != nil {
+		t.Fatalf("expected image in workspace root: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tempRoot, "robot_cafe.png")); err == nil {
+		t.Fatal("expected generic temp root not to receive robot_cafe.png")
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat generic temp root file: %v", err)
+	}
+}
+
+func TestRelativizeImageOutputPathRecognizesSymlinkedWorkspaceAlias(t *testing.T) {
+	realWorkspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(realWorkspaceDir, 0o755); err != nil {
+		t.Fatalf("mkdir workspace: %v", err)
+	}
+
+	aliasDir := filepath.Join(t.TempDir(), "workspace-alias")
+	if err := os.Symlink(realWorkspaceDir, aliasDir); err != nil {
+		t.Skipf("symlink unsupported in test environment: %v", err)
+	}
+
+	got, ok := relativizeImageOutputPath(filepath.Join(aliasDir, "robot_cafe.png"), []string{realWorkspaceDir})
+	if !ok {
+		t.Fatal("expected symlinked workspace output path to relativize")
+	}
+	if got != "robot_cafe.png" {
+		t.Fatalf("relative path = %q, want robot_cafe.png", got)
+	}
+}
+
+func TestRelativizeImageOutputPathDoesNotUseGenericTempRootAsWorkspaceRoot(t *testing.T) {
+	tempRoot := filepath.Clean(os.TempDir())
+	if tempRoot == "" || !filepath.IsAbs(tempRoot) {
+		t.Skip("temp root unavailable")
+	}
+
+	outputPath := filepath.Join(tempRoot, "pinchbench-workspace", "robot_cafe.png")
+	if got, ok := relativizeImageOutputPath(outputPath, []string{tempRoot}); ok {
+		t.Fatalf("expected generic temp root match to stay absolute, got ok=true rel=%q", got)
+	}
+}

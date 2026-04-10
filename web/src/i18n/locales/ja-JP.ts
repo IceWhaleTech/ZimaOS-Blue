@@ -65,6 +65,7 @@ export default mergeHarnessLocale('ja-JP', {
     select: '選択',
     test: 'テスト',
     provider: 'プロバイダー',
+    version: 'バージョン',
     name: '名前',
     title: 'タイトル',
     description: '説明',

@@ -65,6 +65,7 @@ export default mergeHarnessLocale('da-DK', {
     select: 'Vælg',
     test: 'Test',
     provider: 'Udbyder',
+    version: 'Version',
     name: 'Navn',
     title: 'Titel',
     description: 'Beskrivelse',

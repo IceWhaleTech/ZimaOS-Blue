@@ -65,6 +65,7 @@ export default mergeHarnessLocale('ga-IE', {
     select: 'Roghnaigh',
     test: 'Tástáil',
     provider: 'Soláthraí',
+    version: 'Leagan',
     name: 'Ainm',
     title: 'Teideal',
     description: 'Cur síos',

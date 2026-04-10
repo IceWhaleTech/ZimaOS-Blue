@@ -65,6 +65,7 @@ export default mergeHarnessLocale('ko-KR', {
     select: '선택',
     test: '테스트',
     provider: '공급자',
+    version: '버전',
     name: '이름',
     title: '제목',
     description: '설명',

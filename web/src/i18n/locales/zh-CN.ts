@@ -66,6 +66,7 @@ export default mergeHarnessLocale('zh-CN', {
     select: '选择',
     test: '测试',
     provider: '提供商',
+    version: '版本',
     name: '名称',
     title: '标题',
     description: '描述',

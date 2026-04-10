@@ -103,6 +103,21 @@ class StubJudgeBlueClient(StubBlueClient):
         super().delete_conversation(conversation_id, timeout)
 
 
+class LaggyJudgeBlueClient(StubJudgeBlueClient):
+    def __init__(self, judge_responses, hidden_reads: int = 1):
+        super().__init__(judge_responses)
+        self.hidden_reads = hidden_reads
+        self.read_counts = {}
+
+    def get_messages(self, conversation_id: str, timeout: float = 30.0):
+        count = self.read_counts.get(conversation_id, 0) + 1
+        self.read_counts[conversation_id] = count
+        messages = list(self.messages.get(conversation_id, []))
+        if count <= self.hidden_reads and len(messages) > 1:
+            return messages[:1]
+        return messages
+
+
 class PinchBenchBlueRunnerTest(unittest.TestCase):
     def make_task(self):
         return SimpleNamespace(
@@ -407,6 +422,24 @@ class PinchBenchBlueRunnerTest(unittest.TestCase):
                 }
             ],
         )
+
+    def test_blue_judge_runner_waits_for_delayed_assistant_visibility(self):
+        payload = json.dumps({"scores": {"completion": 1.0}, "total": 0.8, "notes": "stable"})
+        client = LaggyJudgeBlueClient([payload], hidden_reads=1)
+        judge = runner.BlueJudgeRunner(client, "pinchbench-fixed", "claude-sonnet-4.6")
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            result = judge.run_prompt(
+                prompt="Judge this task output.",
+                workspace=Path(tmp_dir) / "judge-workspace",
+                timeout_seconds=30.0,
+            )
+
+        self.assertEqual(len(client.created), 1)
+        self.assertEqual(len(client.deleted), 1)
+        self.assertGreaterEqual(client.read_counts.get("conv-1", 0), 2)
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(runner.extract_latest_assistant_text(result["transcript"]), payload)
 
 
 if __name__ == "__main__":

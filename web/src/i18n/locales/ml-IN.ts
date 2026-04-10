@@ -65,6 +65,7 @@ export default mergeHarnessLocale('ml-IN', {
     select: 'തിരഞ്ഞെടുക്കുക',
     test: 'പരീക്ഷിക്കുക',
     provider: 'ദാതാവ്',
+    version: 'പതിപ്പ്',
     name: 'പേര്',
     title: 'തലക്കെട്ട്',
     description: 'വിവരണം',

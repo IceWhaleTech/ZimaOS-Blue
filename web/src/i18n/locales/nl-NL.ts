@@ -64,6 +64,7 @@ export default mergeHarnessLocale('nl-NL', {
     select: 'Selecteer',
     test: 'Testen',
     provider: 'Aanbieder',
+    version: 'Versie',
     name: 'Naam',
     title: 'Titel',
     description: 'Beschrijving',

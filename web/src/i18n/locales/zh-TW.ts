@@ -65,6 +65,7 @@ export default mergeHarnessLocale('zh-TW', {
     select: '選擇',
     test: '測試',
     provider: '提供商',
+    version: '版本',
     name: '名稱',
     title: '標題',
     description: '描述',

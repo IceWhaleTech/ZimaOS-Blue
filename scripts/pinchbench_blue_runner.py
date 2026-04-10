@@ -39,6 +39,8 @@ MIN_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 180.0
 MAX_MESSAGE_TRANSPORT_TIMEOUT_SECONDS = 600.0
 MESSAGE_TRANSPORT_TIMEOUT_GRACE_SECONDS = 120.0
 EMPTY_JUDGE_RESPONSE_MAX_RETRIES = 1
+JUDGE_MESSAGE_VISIBILITY_TIMEOUT_SECONDS = 5.0
+JUDGE_MESSAGE_POLL_INTERVAL_SECONDS = 0.25
 
 
 def parse_args() -> argparse.Namespace:
@@ -899,6 +901,33 @@ def has_empty_judge_response(transcript: Sequence[Dict[str, Any]]) -> bool:
     return extract_latest_assistant_text(transcript).strip() in {"", "{}"}
 
 
+def wait_for_visible_assistant_transcript(
+    client: "BlueClient",
+    conversation_id: str,
+    *,
+    timeout_seconds: float,
+    blue_audit_db_paths: Sequence[Path],
+) -> List[Dict[str, Any]]:
+    deadline = time.time() + max(0.0, timeout_seconds)
+    latest_transcript: List[Dict[str, Any]] = []
+
+    while True:
+        remaining = max(0.0, deadline - time.time())
+        request_timeout = min(max(remaining, 0.1), 30.0)
+        messages = client.get_messages(conversation_id, timeout=request_timeout)
+        latest_transcript = convert_blue_messages_to_transcript(messages)
+        latest_transcript = augment_transcript_with_audit(
+            latest_transcript,
+            db_paths=blue_audit_db_paths,
+            conversation_id=conversation_id,
+        )
+        if extract_latest_assistant_text(latest_transcript).strip():
+            return latest_transcript
+        if remaining <= 0:
+            return latest_transcript
+        time.sleep(min(JUDGE_MESSAGE_POLL_INTERVAL_SECONDS, remaining))
+
+
 class BlueJudgeRunner:
     def __init__(
         self,
@@ -934,12 +963,14 @@ class BlueJudgeRunner:
                         web_search_enabled=False,
                         deep_research_enabled=False,
                     )
-                    messages = self.client.get_messages(conv_id, timeout=min(timeout_seconds, 30.0))
-                    transcript = convert_blue_messages_to_transcript(messages)
-                    transcript = augment_transcript_with_audit(
-                        transcript,
-                        db_paths=self.blue_audit_db_paths,
-                        conversation_id=conv_id,
+                    transcript = wait_for_visible_assistant_transcript(
+                        self.client,
+                        conv_id,
+                        timeout_seconds=min(
+                            max(timeout_seconds, 0.1),
+                            JUDGE_MESSAGE_VISIBILITY_TIMEOUT_SECONDS,
+                        ),
+                        blue_audit_db_paths=self.blue_audit_db_paths,
                     )
                 except BlueAPIError as exc:
                     transcript = recover_blue_transcript_from_db(

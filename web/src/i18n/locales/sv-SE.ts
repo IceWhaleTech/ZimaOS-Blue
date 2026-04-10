@@ -64,6 +64,7 @@ export default mergeHarnessLocale('sv-SE', {
     select: 'Välj',
     test: 'Testa',
     provider: 'Leverantör',
+    version: 'Version',
     name: 'Namn',
     title: 'Titel',
     description: 'Beskrivning',

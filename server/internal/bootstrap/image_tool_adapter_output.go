@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
@@ -12,42 +11,34 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-func normalizeImageWorkspaceRoots(roots []string) []string {
-	out := make([]string, 0, len(roots))
-	seen := make(map[string]struct{}, len(roots))
-	for _, raw := range roots {
-		trimmed := strings.TrimSpace(raw)
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		out = append(out, trimmed)
-	}
-	return out
-}
-
 func withImageOutputWorkspaceScope(ctx context.Context, outputPath string, fallbackRoots []string) (context.Context, string) {
 	trimmed := strings.TrimSpace(outputPath)
 	if trimmed == "" {
 		return ctx, trimmed
 	}
-	if rel, ok := relativizeImageOutputPath(trimmed, scopeRootsForImageOutput(ctx, fallbackRoots)); ok {
-		return withImageWorkspaceOverride(ctx, fallbackRoots), rel
+	preferredFallbackRoots := normalizeImageWorkspaceRoots(fallbackRoots)
+	preferredWorkspaceRoot := firstSpecificImageWorkspaceRoot(preferredFallbackRoots)
+	if rel, ok := relativizeImageOutputPath(trimmed, scopeRootsForImageOutput(ctx, preferredFallbackRoots)); ok {
+		overrideRoots := preferredFallbackRoots
+		if preferredWorkspaceRoot != "" {
+			overrideRoots = orderedImageWorkspaceRoots(preferredWorkspaceRoot, preferredFallbackRoots)
+		}
+		return withImageWorkspaceOverride(ctx, overrideRoots), rel
 	}
-	if filepath.IsAbs(trimmed) {
+	if isAbsoluteImageOutputPath(trimmed) {
 		return ctx, trimmed
 	}
 	roots, aliases := tools.GetFSScope(ctx)
+	if preferredWorkspaceRoot != "" && !currentImageScopeTargetsWorkspaceRoot(ctx, preferredWorkspaceRoot) {
+		return withImageWorkspaceOverride(ctx, orderedImageWorkspaceRoots(preferredWorkspaceRoot, preferredFallbackRoots)), trimmed
+	}
 	if len(roots) > 0 || len(aliases) > 0 {
 		return ctx, trimmed
 	}
-	if len(fallbackRoots) == 0 {
+	if len(preferredFallbackRoots) == 0 {
 		return ctx, trimmed
 	}
-	return withImageWorkspaceOverride(ctx, fallbackRoots), trimmed
+	return withImageWorkspaceOverride(ctx, preferredFallbackRoots), trimmed
 }
 
 func withImageWorkspaceOverride(ctx context.Context, fallbackRoots []string) context.Context {
@@ -56,53 +47,6 @@ func withImageWorkspaceOverride(ctx context.Context, fallbackRoots []string) con
 	}
 	scopeAliases := map[string]string{"workspace": fallbackRoots[0]}
 	return tools.WithFSRootOverride(ctx, fallbackRoots, scopeAliases)
-}
-
-func scopeRootsForImageOutput(ctx context.Context, fallbackRoots []string) []string {
-	roots, _ := tools.GetFSScope(ctx)
-	if len(roots) == 0 {
-		return fallbackRoots
-	}
-	combined := make([]string, 0, len(roots)+len(fallbackRoots))
-	seen := make(map[string]struct{}, len(roots)+len(fallbackRoots))
-	for _, root := range append(append([]string{}, roots...), fallbackRoots...) {
-		trimmed := strings.TrimSpace(root)
-		if trimmed == "" {
-			continue
-		}
-		if _, ok := seen[trimmed]; ok {
-			continue
-		}
-		seen[trimmed] = struct{}{}
-		combined = append(combined, trimmed)
-	}
-	return combined
-}
-
-func relativizeImageOutputPath(outputPath string, roots []string) (string, bool) {
-	cleanedOutput := filepath.Clean(strings.TrimSpace(outputPath))
-	if cleanedOutput == "" || !filepath.IsAbs(cleanedOutput) {
-		return "", false
-	}
-	for _, root := range roots {
-		cleanedRoot := filepath.Clean(strings.TrimSpace(root))
-		if cleanedRoot == "" || !filepath.IsAbs(cleanedRoot) {
-			continue
-		}
-		rel, err := filepath.Rel(cleanedRoot, cleanedOutput)
-		if err != nil {
-			continue
-		}
-		rel = filepath.Clean(rel)
-		if rel == "." {
-			return "", false
-		}
-		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			continue
-		}
-		return rel, true
-	}
-	return "", false
 }
 
 func imageTaskLookupUserID(ctx context.Context) string {

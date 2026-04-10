@@ -64,6 +64,7 @@ export default mergeHarnessLocale('sk-SK', {
     select: 'Vyberte',
     test: 'Otestovať',
     provider: 'Poskytovateľ',
+    version: 'Verzia',
     name: 'Meno',
     title: 'Názov',
     description: 'Popis',

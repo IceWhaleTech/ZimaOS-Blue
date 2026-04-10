@@ -65,6 +65,7 @@ export default mergeHarnessLocale('el-GR', {
     select: 'Επιλέξτε',
     test: 'Δοκιμή',
     provider: 'Πάροχος',
+    version: 'Έκδοση',
     name: 'Όνομα',
     title: 'Τίτλος',
     description: 'Περιγραφή',
