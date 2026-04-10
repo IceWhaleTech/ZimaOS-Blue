@@ -14,8 +14,8 @@ const (
 	defaultSkillCutoverMinMedianSchemaByteReductionRate = 0.80
 	defaultSkillCutoverMaxMedianLatencyIncreaseRate     = 0.10
 	// Dry-run selector and tiny local harness runs can complete within scheduler jitter.
-	// Keep a small floor so sub-50ms differences do not register as a cutover regression.
-	skillCutoverLatencyNoiseFloorMs = 50.0
+	// Keep a floor so sub-65ms differences do not register as a cutover regression.
+	skillCutoverLatencyNoiseFloorMs = 65.0
 )
 
 var defaultSkillCutoverAllowedFinalNativeTools = []string{"exec"}

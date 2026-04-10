@@ -1,5 +1,6 @@
 // Portuguese - Brazil (Português do Brasil)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('pt-BR', {
   common: {
@@ -419,6 +420,8 @@ export default mergeHarnessLocale('pt-BR', {
       noFailedItems: 'Não há itens com falha no relatório mais recente.',
       attempts: 'Tentativas',
       noFailureReason: 'Nenhum motivo de falha foi registrado.',
+      ...harnessProviderRemediationGroup('pt-BR'),
+
       linkedRuns: 'Execuções vinculadas',
       noLinkedRuns: 'Nenhuma execução vinculada foi persistida para este grupo ainda.',
       artifacts: 'Artefatos',
@@ -1015,10 +1018,10 @@ export default mergeHarnessLocale('pt-BR', {
       },
       calendar: {
         name: 'Calendario',
-        description: 'Gerenciamento de calendario com suporte a CalDAV',
+        description: 'Criar e gerenciar eventos de calendario',
       },
       contacts: {
-        description: 'Gerenciamento de contatos com suporte a CardDAV',
+        description: 'Acesse e gerencie contatos nativos',
       },
       news: {
         description: 'Agregacao de noticias e manchetes',

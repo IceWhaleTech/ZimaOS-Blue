@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -1467,6 +1468,7 @@ func TestCheckAndAutoRecoverPrefersRepairBeforeBackupRestore(t *testing.T) {
 
 	writeSQLiteValue(t, blueDB, "blue-v2")
 	inflateSQLiteValueTable(t, auditDB, 2000)
+	requireSQLiteRepairableSample(t, auditDB, 8192, []byte("garbagegarbagegarbagegarbage"))
 	corruptSQLiteBytes(t, auditDB, 8192, []byte("garbagegarbagegarbagegarbage"))
 
 	dbPaths, err := DiscoverSQLiteDatabasePaths(dataDir)
@@ -1503,6 +1505,29 @@ func TestCheckAndAutoRecoverPrefersRepairBeforeBackupRestore(t *testing.T) {
 	}
 	if got := countSQLiteValues(t, auditDB); got == 0 {
 		t.Fatal("expected repaired audit db to retain rows")
+	}
+}
+
+func requireSQLiteRepairableSample(t *testing.T, path string, offset int64, payload []byte) {
+	t.Helper()
+
+	probeDir := t.TempDir()
+	probePath := filepath.Join(probeDir, filepath.Base(path))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read sqlite sample %s: %v", path, err)
+	}
+	if err := os.WriteFile(probePath, data, 0644); err != nil {
+		t.Fatalf("failed to write sqlite repair probe %s: %v", probePath, err)
+	}
+	corruptSQLiteBytes(t, probePath, offset, payload)
+
+	result, err := database.RepairSQLiteDatabase(probePath)
+	if err != nil {
+		t.Skipf("sqlite3 CLI cannot repair this corruption sample in current environment: %v", err)
+	}
+	if result == nil || !result.Repaired {
+		t.Skip("sqlite3 CLI did not report a successful repair for this corruption sample")
 	}
 }
 

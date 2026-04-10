@@ -1919,7 +1919,10 @@ func TestRouterTransientCooldown_WrappedOverloaded500(t *testing.T) {
 		t.Fatal("provider should enter transient cooldown after 3 wrapped overloaded 500 failures")
 	}
 
-	time.Sleep(120 * time.Millisecond)
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for router.IsInCooldown(providerID) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
 	if router.IsInCooldown(providerID) {
 		t.Fatal("wrapped overloaded transient cooldown should expire quickly")
 	}

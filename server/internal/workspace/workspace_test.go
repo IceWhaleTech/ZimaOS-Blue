@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -16,11 +17,15 @@ func resetTemplateCacheForTest(t *testing.T) {
 	original := templateCache
 	templateCache = map[string]*templateSet{}
 	templateCacheMu.Unlock()
+	detectedLocale = ""
+	detectLocaleOnce = sync.Once{}
 
 	t.Cleanup(func() {
 		templateCacheMu.Lock()
 		templateCache = original
 		templateCacheMu.Unlock()
+		detectedLocale = ""
+		detectLocaleOnce = sync.Once{}
 	})
 }
 
@@ -366,6 +371,8 @@ func TestDailyLog(t *testing.T) {
 }
 
 func TestLocaleTemplates(t *testing.T) {
+	resetTemplateCacheForTest(t)
+
 	// Chinese locale
 	dir := t.TempDir()
 	t.Setenv("LANG", "zh")
@@ -446,6 +453,8 @@ func TestAgentsTemplate_LoadsPlatformSpecificTemplate(t *testing.T) {
 }
 
 func TestEnsureWorkspace_WritesDetectedAgentsTemplate(t *testing.T) {
+	resetTemplateCacheForTest(t)
+
 	t.Setenv("LANG", "en_US.UTF-8")
 	t.Setenv("LC_ALL", "")
 	t.Setenv("LANGUAGE", "")

@@ -15,6 +15,7 @@ type routeRuntimeContractProductivityOptions struct {
 	skillRegistry runtimeSkillRegistrySource
 	emailSkill    runtimeEmailSkillTarget
 	calendarSkill runtimeCalendarSkillTarget
+	contactsSkill runtimeContactsSkillTarget
 	logger        *zap.Logger
 }
 
@@ -23,4 +24,6 @@ type routeRuntimeContractProductivityResult struct {
 	emailTool       *tools.EmailTool
 	calendarService *tools.LocalCalendarService
 	calendarTool    *tools.CalendarTool
+	contactsStore   tools.ContactsStore
+	contactsTool    *tools.ContactsTool
 }

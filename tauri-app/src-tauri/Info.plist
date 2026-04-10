@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>ZimaOS Blue needs Calendar access to read and manage your events when you use the Calendar tool.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>ZimaOS Blue needs Calendar access to read and manage your events when you use the Calendar tool.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>ZimaOS Blue needs Contacts access to read and manage your native contacts when you use the Contacts tool.</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>ZimaOS Blue needs microphone access for voice input and speech recognition.</string>
     <key>NSSpeechRecognitionUsageDescription</key>

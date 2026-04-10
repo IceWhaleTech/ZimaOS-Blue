@@ -1,5 +1,6 @@
 // Simplified Chinese (简体中文)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('zh-CN', {
   common: {
@@ -412,6 +413,8 @@ export default mergeHarnessLocale('zh-CN', {
       noFailedItems: '最新报告中没有失败样本。',
       attempts: '尝试次数',
       noFailureReason: '未记录失败原因。',
+      ...harnessProviderRemediationGroup('zh-CN'),
+
       linkedRuns: '关联运行',
       noLinkedRuns: '这个分组暂时还没有持久化任何关联运行。',
       artifacts: '产物',
@@ -990,10 +993,10 @@ export default mergeHarnessLocale('zh-CN', {
       },
       calendar: {
         name: '日历',
-        description: 'CalDAV 日历管理',
+        description: '创建和管理日历事件',
       },
       contacts: {
-        description: 'CardDAV 联系人管理',
+        description: '访问和管理原生联系人',
       },
       news: {
         description: '新闻聚合与头条',

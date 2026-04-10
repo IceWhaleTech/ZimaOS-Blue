@@ -1,5 +1,6 @@
 // Czech (Čeština)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('cs-CZ', {
   common: {
@@ -418,6 +419,8 @@ export default mergeHarnessLocale('cs-CZ', {
       noFailedItems: 'V posledním reportu nejsou žádné neúspěšné položky.',
       attempts: 'Pokusy',
       noFailureReason: 'Nebyl zaznamenán žádný důvod selhání.',
+      ...harnessProviderRemediationGroup('cs-CZ'),
+
       linkedRuns: 'Propojené běhy',
       noLinkedRuns: 'Pro tuto skupinu zatím nebyly uloženy žádné propojené běhy.',
       artifacts: 'Artefakty',
@@ -1010,10 +1013,10 @@ export default mergeHarnessLocale('cs-CZ', {
       },
       calendar: {
         name: 'Kalendar',
-        description: 'Sprava kalendare s podporou CalDAV',
+        description: 'Vytvareni a sprava udalosti kalendare',
       },
       contacts: {
-        description: 'Sprava kontaktu s podporou CardDAV',
+        description: 'Přistupujte k nativním kontaktům a spravujte je',
       },
       news: {
         description: 'Souhrn zprav a titulku',

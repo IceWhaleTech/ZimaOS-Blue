@@ -1,5 +1,6 @@
 // Italian (Italiano)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('it-IT', {
   common: {
@@ -420,6 +421,8 @@ export default mergeHarnessLocale('it-IT', {
       noFailedItems: 'Nessun elemento fallito nell’ultimo report.',
       attempts: 'Tentativi',
       noFailureReason: 'Nessun motivo di errore registrato.',
+      ...harnessProviderRemediationGroup('it-IT'),
+
       linkedRuns: 'Esecuzioni collegate',
       noLinkedRuns: 'Nessuna esecuzione collegata ancora salvata per questo gruppo.',
       artifacts: 'Artefatti',
@@ -1016,10 +1019,10 @@ export default mergeHarnessLocale('it-IT', {
       },
       calendar: {
         name: 'Calendario',
-        description: 'Gestione calendario con supporto CalDAV',
+        description: 'Creare e gestire eventi del calendario',
       },
       contacts: {
-        description: 'Gestione contatti con supporto CardDAV',
+        description: 'Accedi e gestisci i contatti nativi',
       },
       news: {
         description: 'Aggregazione di notizie e titoli',

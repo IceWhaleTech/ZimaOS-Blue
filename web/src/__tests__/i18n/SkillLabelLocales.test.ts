@@ -49,7 +49,9 @@ const visibleBuiltinSkillLocaleCoverage = {
   'skills.catalog.ask.name': 'Ask',
   'skills.catalog.ask.description': 'Ask the user follow-up questions needed to continue the task',
   'skills.catalog.calendar.name': 'Calendar',
-  'skills.catalog.calendar.description': 'Calendar management with CalDAV support',
+  'skills.catalog.calendar.description': 'Create and manage calendar events',
+  'skills.catalog.contacts.name': 'Contacts',
+  'skills.catalog.contacts.description': 'Access and manage native contacts',
   'skills.catalog.config.name': 'Configuration',
   'skills.catalog.config.description': 'Manage runtime settings, providers, users, and admin controls.',
   'skills.catalog.deep_research.name': 'Deep Research',
@@ -116,4 +118,5 @@ describe('skill locale labels', () => {
       }
     }
   })
+
 })

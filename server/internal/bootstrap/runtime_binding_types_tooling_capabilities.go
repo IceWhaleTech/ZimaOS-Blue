@@ -28,6 +28,10 @@ type runtimeCalendarSkillTarget interface {
 	SetExecutor(e builtin.CalendarExecutor)
 }
 
+type runtimeContactsSkillTarget interface {
+	SetExecutor(e builtin.ContactsExecutor)
+}
+
 type runtimeWebSearchSkillTarget interface {
 	SetSearcher(s builtin.WebSearcher)
 }

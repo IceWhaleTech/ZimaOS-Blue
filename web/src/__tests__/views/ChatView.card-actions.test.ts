@@ -1148,6 +1148,28 @@ describe('ChatView page-level card actions', () => {
     expect(select.attributes('title')).toBe('Runner version · Default')
   })
 
+  it('styles the baseline runner selection with the built-in blue tone', async () => {
+    mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
+    mocks.settingsStore.agentcoreRunnerStatus = {
+      resolved_ref: 'main',
+      binary_ready: true,
+    }
+    mocks.chatStore.agentcoreRunnerRef = 'main'
+    mocks.settingsStore.experimentalAgentcoreRunnerRef = 'main'
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-runner-ref-baseline-tone', content: 'Use the baseline runner.' },
+    ])
+
+    const select = wrapper.get('[data-testid="chat-runner-ref-select"]')
+    const label = select.element.closest('label')
+
+    expect(select.element.value).toBe('main')
+    expect(label?.classList.contains('is-built-in')).toBe(true)
+    expect(label?.classList.contains('is-agentcore')).toBe(false)
+    expect(label?.getAttribute('title')).toBe('Runner version · Baseline')
+  })
+
   it('disables the runner ref selector while chat execution is active', async () => {
     mocks.settingsStore.experimentalAgentcoreRunnerEnabled = true
     mocks.settingsStore.agentcoreRunnerStatus = {

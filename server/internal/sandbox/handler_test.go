@@ -49,9 +49,9 @@ func setupTestHandler(t *testing.T) (*Handler, *Manager, func()) {
 	config.DefaultTimeout = 5 * time.Second
 	config.MaxTimeout = 30 * time.Second
 
-	manager, err := NewManager(config)
-	if err != nil {
-		t.Fatalf("NewManager() error = %v", err)
+	manager := &Manager{
+		config: config,
+		light:  NewBaseExecutor(config),
 	}
 
 	handler := NewHandler(manager)

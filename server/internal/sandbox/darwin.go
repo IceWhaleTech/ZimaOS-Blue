@@ -108,20 +108,8 @@ func (e *DarwinExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*E
 	}
 
 	// Set environment — start with sandbox defaults, then merge request env.
-	// Request env overrides defaults (e.g. PATH from exec tool includes blue's dir).
-	defaults := map[string]string{
-		"PATH":   "/usr/local/bin:/usr/bin:/bin",
-		"HOME":   "/tmp",
-		"TMPDIR": "/tmp",
-	}
-	for k, v := range req.Env {
-		if k == "PATH" {
-			// Prepend request PATH to default PATH so blue binary is found.
-			defaults["PATH"] = v + ":" + defaults["PATH"]
-		} else {
-			defaults[k] = v
-		}
-	}
+	// Request PATH is prepended so caller-added paths remain discoverable.
+	defaults := defaultSandboxEnvMap(req.Env)
 	env := make([]string, 0, len(defaults))
 	for k, v := range defaults {
 		env = append(env, k+"="+v)

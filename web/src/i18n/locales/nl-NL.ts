@@ -1,5 +1,6 @@
 // Dutch (Nederlands)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('nl-NL', {
   common: {
@@ -417,6 +418,8 @@ export default mergeHarnessLocale('nl-NL', {
       noFailedItems: 'Geen mislukte items in het nieuwste rapport.',
       attempts: 'Pogingen',
       noFailureReason: 'Er is geen foutreden vastgelegd.',
+      ...harnessProviderRemediationGroup('nl-NL'),
+
       linkedRuns: 'Gekoppelde runs',
       noLinkedRuns: 'Er zijn nog geen gekoppelde runs opgeslagen voor deze groep.',
       artifacts: 'Artefacten',
@@ -1017,10 +1020,10 @@ export default mergeHarnessLocale('nl-NL', {
       },
       calendar: {
         name: 'Kalender',
-        description: 'Kalenderbeheer met CalDAV-ondersteuning',
+        description: 'Kalendergebeurtenissen maken en beheren',
       },
       contacts: {
-        description: 'Contactbeheer met CardDAV-ondersteuning',
+        description: 'Krijg toegang tot native contacten en beheer ze',
       },
       news: {
         description: 'Nieuwsaggregatie en koppen',

@@ -1,5 +1,6 @@
 // Romanian (Română)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('ro-RO', {
   common: {
@@ -418,6 +419,8 @@ export default mergeHarnessLocale('ro-RO', {
       noFailedItems: 'Nu există elemente eșuate în cel mai nou raport.',
       attempts: 'Încercări',
       noFailureReason: 'Nu a fost înregistrat niciun motiv de eșec.',
+      ...harnessProviderRemediationGroup('ro-RO'),
+
       linkedRuns: 'Rulări asociate',
       noLinkedRuns: 'Nu au fost încă salvate rulări asociate pentru acest grup.',
       artifacts: 'Artefacte',
@@ -1014,10 +1017,10 @@ export default mergeHarnessLocale('ro-RO', {
       },
       calendar: {
         name: 'Agenda',
-        description: 'Gestionare calendar cu suport CalDAV',
+        description: 'Crearea si gestionarea evenimentelor din calendar',
       },
       contacts: {
-        description: 'Gestionare contacte cu suport CardDAV',
+        description: 'Accesează și gestionează contactele native',
       },
       news: {
         description: 'Agregare de stiri si titluri',

@@ -1,5 +1,6 @@
 // Catalan (Català)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('ca-ES', {
   common: {
@@ -420,6 +421,8 @@ export default mergeHarnessLocale('ca-ES', {
       noFailedItems: "No hi ha elements fallits a l'últim informe.",
       attempts: 'Intents',
       noFailureReason: 'No s’ha registrat cap motiu de fallada.',
+      ...harnessProviderRemediationGroup('ca-ES'),
+
       linkedRuns: 'Execucions enllaçades',
       noLinkedRuns: 'Encara no s’han desat execucions enllaçades per a aquest grup.',
       artifacts: 'Artefactes',
@@ -1018,10 +1021,10 @@ export default mergeHarnessLocale('ca-ES', {
       },
       calendar: {
         name: 'Calendari',
-        description: 'Gestio del calendari amb suport CalDAV',
+        description: 'Crear i gestionar esdeveniments del calendari',
       },
       contacts: {
-        description: 'Gestio de contactes amb suport CardDAV',
+        description: "Accedeix als contactes nadius i gestiona'ls",
       },
       news: {
         description: 'Agrupacio de noticies i titulars',

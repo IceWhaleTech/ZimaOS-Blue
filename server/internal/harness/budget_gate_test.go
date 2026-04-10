@@ -12,6 +12,9 @@ func TestSkillCutoverIncreaseRate_IgnoresNearZeroLatencyJitter(t *testing.T) {
 	if got := skillCutoverIncreaseRate(20, 45); got != 0 {
 		t.Fatalf("skillCutoverIncreaseRate(20, 45) = %#v, want 0 within noise floor", got)
 	}
+	if got := skillCutoverIncreaseRate(46, 66.8); got > defaultSkillCutoverMaxMedianLatencyIncreaseRate {
+		t.Fatalf("skillCutoverIncreaseRate(46, 66.8) = %#v, want <= %#v within low-latency noise floor", got, defaultSkillCutoverMaxMedianLatencyIncreaseRate)
+	}
 	if got := skillCutoverIncreaseRate(0, 80); got <= defaultSkillCutoverMaxMedianLatencyIncreaseRate {
 		t.Fatalf("skillCutoverIncreaseRate(0, 80) = %#v, want failure-sized increase above noise floor", got)
 	}

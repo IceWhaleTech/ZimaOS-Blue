@@ -677,7 +677,7 @@ func (r *Router) IsInCooldown(providerID string) bool {
 	if !exists {
 		return false
 	}
-	return timeutil.NowNano() < entry.CooldownUntil.UnixNano()
+	return time.Now().Before(entry.CooldownUntil)
 }
 
 // GetCooldownEntry returns the cooldown entry for a provider
@@ -718,8 +718,9 @@ func (r *Router) RecordFailure(providerID string, err error) {
 		r.cooldowns[providerID] = entry
 	}
 
+	now := time.Now().UTC()
 	entry.FailureCount++
-	entry.LastFailure = timeutil.NowTime()
+	entry.LastFailure = now
 	if err != nil {
 		entry.LastError = err.Error()
 	}
@@ -728,7 +729,7 @@ func (r *Router) RecordFailure(providerID string, err error) {
 	// immediately so subsequent requests skip this provider without waiting for cooldown threshold.
 	// Set a very long cooldown (1 hour) for auth errors as they typically require user intervention.
 	if isAuthError(err) {
-		entry.CooldownUntil = timeutil.NowTime().Add(1 * time.Hour)
+		entry.CooldownUntil = now.Add(1 * time.Hour)
 		entry.LastError = "auth_error: " + err.Error()
 		return
 	}
@@ -770,7 +771,7 @@ func (r *Router) RecordFailure(providerID string, err error) {
 		if cooldownDuration > maxCD {
 			cooldownDuration = maxCD
 		}
-		entry.CooldownUntil = timeutil.NowTime().Add(cooldownDuration)
+		entry.CooldownUntil = now.Add(cooldownDuration)
 	}
 }
 
@@ -917,7 +918,7 @@ func (r *Router) ListCooldowns() []*CooldownEntry {
 	defer r.cooldownMu.RUnlock()
 
 	var result []*CooldownEntry
-	now := timeutil.NowTime()
+	now := time.Now()
 	for _, entry := range r.cooldowns {
 		if now.Before(entry.CooldownUntil) {
 			entryCopy := *entry

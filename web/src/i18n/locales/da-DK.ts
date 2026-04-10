@@ -1,5 +1,6 @@
 // Danish (Dansk)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('da-DK', {
   common: {
@@ -417,6 +418,8 @@ export default mergeHarnessLocale('da-DK', {
       noFailedItems: 'Ingen mislykkede elementer i den seneste rapport.',
       attempts: 'Forsøg',
       noFailureReason: 'Ingen fejlårsag registreret.',
+      ...harnessProviderRemediationGroup('da-DK'),
+
       linkedRuns: 'Tilknyttede kørsler',
       noLinkedRuns: 'Ingen tilknyttede kørsler er endnu gemt for denne gruppe.',
       artifacts: 'Artefakter',
@@ -1007,10 +1010,10 @@ export default mergeHarnessLocale('da-DK', {
       },
       calendar: {
         name: 'Kalender',
-        description: 'Kalenderstyring med CalDAV-understottelse',
+        description: 'Opret og administrer kalenderbegivenheder',
       },
       contacts: {
-        description: 'Kontaktstyring med CardDAV-understottelse',
+        description: 'Få adgang til og administrer native kontakter',
       },
       news: {
         description: 'Nyhedsopsamling og overskrifter',

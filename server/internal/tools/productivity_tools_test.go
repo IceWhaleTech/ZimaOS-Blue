@@ -335,6 +335,78 @@ func TestCalendarTool_Execute_CreateSupportsNaturalLanguageTime(t *testing.T) {
 	}
 }
 
+func TestCalendarTool_Execute_TodayReturnsEmptyAgendaForNewUser(t *testing.T) {
+	now := time.Date(2026, time.March, 20, 9, 0, 0, 0, time.UTC)
+	db := openProductivityTestDB(t)
+
+	calendarSvc, err := NewLocalCalendarService(db)
+	if err != nil {
+		t.Fatalf("new calendar service: %v", err)
+	}
+	calendarSvc.SetNowFunc(func() time.Time { return now })
+
+	tool := NewCalendarTool(calendarSvc)
+	tool.SetNowFunc(func() time.Time { return now })
+	ctx := WithLang(WithUserID(context.Background(), "user-empty"), "en-US")
+
+	resultAny, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "today",
+		"date":   "2026-03-20T00:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("today on empty calendar: %v", err)
+	}
+	result := resultAny.(map[string]interface{})
+	if got := result["count"].(int); got != 0 {
+		t.Fatalf("count = %d, want 0", got)
+	}
+	if got := len(result["events"].([]map[string]interface{})); got != 0 {
+		t.Fatalf("events len = %d, want 0", got)
+	}
+}
+
+func TestCalendarTool_Execute_CreateDoesNotBackfillDefaultFixtures(t *testing.T) {
+	now := time.Date(2026, time.March, 20, 9, 0, 0, 0, time.UTC)
+	db := openProductivityTestDB(t)
+
+	calendarSvc, err := NewLocalCalendarService(db)
+	if err != nil {
+		t.Fatalf("new calendar service: %v", err)
+	}
+	calendarSvc.SetNowFunc(func() time.Time { return now })
+
+	tool := NewCalendarTool(calendarSvc)
+	tool.SetNowFunc(func() time.Time { return now })
+	ctx := WithLang(WithUserID(context.Background(), "user-new"), "en-US")
+
+	if _, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "create",
+		"title":  "Only event",
+		"time":   "tomorrow 3pm",
+		"end":    "4pm",
+	}); err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	resultAny, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "list",
+	})
+	if err != nil {
+		t.Fatalf("list events after create: %v", err)
+	}
+	result := resultAny.(map[string]interface{})
+	if got := result["count"].(int); got != 1 {
+		t.Fatalf("count = %d, want 1", got)
+	}
+	events := result["events"].([]map[string]interface{})
+	if len(events) != 1 {
+		t.Fatalf("events len = %d, want 1", len(events))
+	}
+	if got := events[0]["title"].(string); got != "Only event" {
+		t.Fatalf("event title = %q, want %q", got, "Only event")
+	}
+}
+
 func TestLocalEmailService_UsesReaderDBForReads(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "email-reader.db")
 
@@ -436,5 +508,46 @@ func TestLocalCalendarService_UsesReaderDBForReads(t *testing.T) {
 	}
 	if got == nil || got.Title != "Reader event" {
 		t.Fatalf("unexpected event via reader: %+v", got)
+	}
+}
+
+type stubCalendarStore struct{}
+
+func (stubCalendarStore) List(context.Context, string, CalendarQueryOptions) ([]CalendarEvent, error) {
+	return nil, nil
+}
+
+func (stubCalendarStore) Get(context.Context, string, string) (*CalendarEvent, error) {
+	return nil, nil
+}
+
+func (stubCalendarStore) Create(context.Context, string, CalendarEvent) (*CalendarEvent, error) {
+	return nil, nil
+}
+
+func (stubCalendarStore) Today(context.Context, string, time.Time) ([]CalendarEvent, error) {
+	return nil, nil
+}
+
+func TestPreferredCalendarStore_UsesLocalWhenNativeUnavailable(t *testing.T) {
+	local := stubCalendarStore{}
+	restore := setCalendarNativeStoreFactoryForTest(func(CalendarStore) CalendarStore { return nil })
+	defer restore()
+
+	got := PreferredCalendarStore(local)
+	if got != local {
+		t.Fatalf("PreferredCalendarStore() = %#v, want local %#v", got, local)
+	}
+}
+
+func TestPreferredCalendarStore_PrefersNativeWhenAvailable(t *testing.T) {
+	local := stubCalendarStore{}
+	native := &stubCalendarStore{}
+	restore := setCalendarNativeStoreFactoryForTest(func(CalendarStore) CalendarStore { return native })
+	defer restore()
+
+	got := PreferredCalendarStore(local)
+	if got != native {
+		t.Fatalf("PreferredCalendarStore() = %#v, want native %#v", got, native)
 	}
 }

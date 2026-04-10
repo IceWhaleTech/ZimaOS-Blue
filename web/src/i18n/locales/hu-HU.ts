@@ -1,5 +1,6 @@
 // Hungarian (Magyar)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('hu-HU', {
   common: {
@@ -417,6 +418,8 @@ export default mergeHarnessLocale('hu-HU', {
       noFailedItems: 'A legfrissebb jelentésben nincsenek sikertelen tételek.',
       attempts: 'Próbálkozások',
       noFailureReason: 'Nincs rögzített hibai ok.',
+      ...harnessProviderRemediationGroup('hu-HU'),
+
       linkedRuns: 'Kapcsolt futások',
       noLinkedRuns: 'Ehhez a csoporthoz még nem mentettek kapcsolt futásokat.',
       artifacts: 'Artefaktumok',
@@ -1016,10 +1019,10 @@ export default mergeHarnessLocale('hu-HU', {
       },
       calendar: {
         name: 'Naptar',
-        description: 'Naptarkezeles CalDAV tamogatassal',
+        description: 'Naptaresemenyek letrehozasa es kezelese',
       },
       contacts: {
-        description: 'Kapcsolatkezeles CardDAV tamogatassal',
+        description: 'Natív névjegyek elérése és kezelése',
       },
       news: {
         description: 'Hirgyujtes es cimsorok',

@@ -37,6 +37,15 @@ func runtimeSkillAsCalendarTarget(source runtimeSkillRegistrySource, id string) 
 	return target
 }
 
+func runtimeSkillAsContactsTarget(source runtimeSkillRegistrySource, id string) runtimeContactsSkillTarget {
+	skill := runtimeSkillFromSource(source, id)
+	if skill == nil {
+		return nil
+	}
+	target, _ := skill.(runtimeContactsSkillTarget)
+	return target
+}
+
 func runtimeSkillAsWebSearchTarget(source runtimeSkillRegistrySource, id string) runtimeWebSearchSkillTarget {
 	skill := runtimeSkillFromSource(source, id)
 	if skill == nil {

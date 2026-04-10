@@ -4,10 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 type scoreAttempt struct {
@@ -562,7 +561,9 @@ func makeScorecard(group *RunGroup, item *RunGroupItem, run *Run, mode ScoringMo
 		BreakdownJSON:  marshalInterface(breakdown),
 		EvidenceJSON:   marshalInterface(evidence),
 		JudgeTraceJSON: marshalInterface(judgeTrace),
-		CreatedAt:      timeutil.NowTime(),
+		// Scorecards are persisted and later ordered by created_at, so use a
+		// real UTC wall clock instead of the cached local harness clock.
+		CreatedAt: time.Now().UTC(),
 	}
 }
 

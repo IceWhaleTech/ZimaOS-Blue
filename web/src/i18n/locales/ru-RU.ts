@@ -1,5 +1,6 @@
 // Russian (Русский)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('ru-RU', {
   common: {
@@ -420,6 +421,8 @@ export default mergeHarnessLocale('ru-RU', {
       noFailedItems: 'В последнем отчёте нет неуспешных элементов.',
       attempts: 'Попытки',
       noFailureReason: 'Причина сбоя не зафиксирована.',
+      ...harnessProviderRemediationGroup('ru-RU'),
+
       linkedRuns: 'Связанные запуски',
       noLinkedRuns: 'Для этой группы ещё не сохранены связанные запуски.',
       artifacts: 'Артефакты',
@@ -1015,10 +1018,10 @@ export default mergeHarnessLocale('ru-RU', {
       },
       calendar: {
         name: 'Календарь',
-        description: 'Управление календарем с поддержкой CalDAV',
+        description: 'Создание и управление событиями календаря',
       },
       contacts: {
-        description: 'Управление контактами с поддержкой CardDAV',
+        description: 'Доступ к системным контактам и управление ими',
       },
       news: {
         description: 'Агрегация новостей и заголовков',

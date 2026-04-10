@@ -6,8 +6,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // LRUCache implements Cache with least-recently-used eviction.
@@ -62,12 +60,13 @@ func (c *LRUCache) Get(ctx context.Context, key string) (interface{}, error) {
 		return nil, ErrKeyNotFound
 	}
 	e := el.Value.(*lruEntry)
-	if e.expiresAt != 0 && timeutil.NowNano() > e.expiresAt {
+	now := time.Now().UnixNano()
+	if e.expiresAt != 0 && now >= e.expiresAt {
 		c.removeLocked(el)
 		c.misses.Add(1)
 		return nil, ErrKeyExpired
 	}
-	e.accessedAt = timeutil.NowNano()
+	e.accessedAt = now
 	c.order.MoveToFront(el)
 	c.hits.Add(1)
 	return e.value, nil
@@ -77,16 +76,17 @@ func (c *LRUCache) Set(ctx context.Context, key string, value interface{}, ttl t
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	now := time.Now().UnixNano()
 	var expiresAt int64
 	if ttl > 0 {
-		expiresAt = timeutil.NowNano() + int64(ttl)
+		expiresAt = now + int64(ttl)
 	}
 
 	if el, ok := c.items[key]; ok {
 		e := el.Value.(*lruEntry)
 		e.value = value
 		e.expiresAt = expiresAt
-		e.accessedAt = timeutil.NowNano()
+		e.accessedAt = now
 		c.order.MoveToFront(el)
 		c.sets.Add(1)
 		return nil
@@ -97,7 +97,7 @@ func (c *LRUCache) Set(ctx context.Context, key string, value interface{}, ttl t
 		c.evictLocked()
 	}
 
-	e := &lruEntry{key: key, value: value, expiresAt: expiresAt, accessedAt: timeutil.NowNano()}
+	e := &lruEntry{key: key, value: value, expiresAt: expiresAt, accessedAt: now}
 	el := c.order.PushFront(e)
 	c.items[key] = el
 	c.sets.Add(1)
@@ -122,7 +122,7 @@ func (c *LRUCache) Exists(ctx context.Context, key string) bool {
 		return false
 	}
 	e := el.Value.(*lruEntry)
-	return e.expiresAt == 0 || timeutil.NowNano() <= e.expiresAt
+	return e.expiresAt == 0 || time.Now().UnixNano() < e.expiresAt
 }
 
 func (c *LRUCache) Clear(ctx context.Context) error {
@@ -183,10 +183,11 @@ func (c *LRUCache) GetOrSet(ctx context.Context, key string, fn func() (interfac
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	now := time.Now().UnixNano()
 	if el, ok := c.items[key]; ok {
 		e := el.Value.(*lruEntry)
-		if e.expiresAt == 0 || timeutil.NowNano() <= e.expiresAt {
-			e.accessedAt = timeutil.NowNano()
+		if e.expiresAt == 0 || now < e.expiresAt {
+			e.accessedAt = now
 			c.order.MoveToFront(el)
 			c.hits.Add(1)
 			return e.value, nil
@@ -202,12 +203,12 @@ func (c *LRUCache) GetOrSet(ctx context.Context, key string, fn func() (interfac
 
 	var expiresAt int64
 	if ttl > 0 {
-		expiresAt = timeutil.NowNano() + int64(ttl)
+		expiresAt = now + int64(ttl)
 	}
 	for c.order.Len() >= c.config.MaxSize {
 		c.evictLocked()
 	}
-	e := &lruEntry{key: key, value: value, expiresAt: expiresAt, accessedAt: timeutil.NowNano()}
+	e := &lruEntry{key: key, value: value, expiresAt: expiresAt, accessedAt: now}
 	el := c.order.PushFront(e)
 	c.items[key] = el
 	c.sets.Add(1)
@@ -218,9 +219,10 @@ func (c *LRUCache) SetNX(ctx context.Context, key string, value interface{}, ttl
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	now := time.Now().UnixNano()
 	if el, ok := c.items[key]; ok {
 		e := el.Value.(*lruEntry)
-		if e.expiresAt == 0 || timeutil.NowNano() <= e.expiresAt {
+		if e.expiresAt == 0 || now < e.expiresAt {
 			return false, nil
 		}
 		c.removeLocked(el)
@@ -228,12 +230,12 @@ func (c *LRUCache) SetNX(ctx context.Context, key string, value interface{}, ttl
 
 	var expiresAt int64
 	if ttl > 0 {
-		expiresAt = timeutil.NowNano() + int64(ttl)
+		expiresAt = now + int64(ttl)
 	}
 	for c.order.Len() >= c.config.MaxSize {
 		c.evictLocked()
 	}
-	e := &lruEntry{key: key, value: value, expiresAt: expiresAt, accessedAt: timeutil.NowNano()}
+	e := &lruEntry{key: key, value: value, expiresAt: expiresAt, accessedAt: now}
 	el := c.order.PushFront(e)
 	c.items[key] = el
 	c.sets.Add(1)
@@ -248,10 +250,11 @@ func (c *LRUCache) Touch(ctx context.Context, key string) bool {
 		return false
 	}
 	e := el.Value.(*lruEntry)
-	if e.expiresAt != 0 && timeutil.NowNano() > e.expiresAt {
+	now := time.Now().UnixNano()
+	if e.expiresAt != 0 && now >= e.expiresAt {
 		return false
 	}
-	e.accessedAt = timeutil.NowNano()
+	e.accessedAt = now
 	c.order.MoveToFront(el)
 	return true
 }
@@ -291,11 +294,11 @@ func (c *LRUCache) cleanupLoop() {
 func (c *LRUCache) cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := timeutil.NowNano()
+	now := time.Now().UnixNano()
 	var toRemove []*list.Element
 	for el := c.order.Front(); el != nil; el = el.Next() {
 		e := el.Value.(*lruEntry)
-		if e.expiresAt != 0 && now > e.expiresAt {
+		if e.expiresAt != 0 && now >= e.expiresAt {
 			toRemove = append(toRemove, el)
 		}
 	}

@@ -15,9 +15,11 @@ const runJobMock = vi.fn()
 const maintenanceCurrentJob = ref<any>(null)
 const maintenanceLatestReport = ref(null)
 const maintenanceIsRunning = ref(false)
+const maintenanceHydrateLatestActiveJob = vi.fn()
 const queryCurrentJob = ref<any>(null)
 const queryLatestReport = ref(null)
 const queryIsRunning = ref(false)
+const queryHydrateLatestActiveJob = vi.fn()
 let useKnowledgeJobsCallCount = 0
 
 vi.mock('vue-router', async (importOriginal) => {
@@ -50,6 +52,9 @@ vi.mock('@/composables/useKnowledgeJobs', () => ({
       latestReport: isMaintenance ? maintenanceLatestReport : queryLatestReport,
       isRunning: isMaintenance ? maintenanceIsRunning : queryIsRunning,
       runJob: runJobMock,
+      hydrateLatestActiveJob: isMaintenance
+        ? maintenanceHydrateLatestActiveJob
+        : queryHydrateLatestActiveJob,
       hydrateJob: vi.fn(),
       hydrateReport: vi.fn(),
     }
@@ -82,9 +87,13 @@ describe('KnowledgeView', () => {
     maintenanceCurrentJob.value = null
     maintenanceLatestReport.value = null
     maintenanceIsRunning.value = false
+    maintenanceHydrateLatestActiveJob.mockReset()
+    maintenanceHydrateLatestActiveJob.mockResolvedValue(null)
     queryCurrentJob.value = null
     queryLatestReport.value = null
     queryIsRunning.value = false
+    queryHydrateLatestActiveJob.mockReset()
+    queryHydrateLatestActiveJob.mockResolvedValue(null)
 
     vi.mocked(knowledgeApi.listPages).mockResolvedValue({
       data: [
@@ -380,5 +389,25 @@ describe('KnowledgeView', () => {
     const progressCard = wrapper.get('[data-testid="knowledge-repair-progress"]')
     expect(progressCard.text()).toContain('42%')
     expect(progressCard.text()).toContain('architecture, readme')
+  })
+
+  it('rehydrates active maintenance jobs when the user re-enters the page', async () => {
+    mount(KnowledgeView, {
+      global: {
+        plugins: [i18n],
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="JSON.stringify(to)"><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(maintenanceHydrateLatestActiveJob).toHaveBeenCalledWith({
+      kinds: ['repair_conflicts', 'lint', 'ingest'],
+    })
   })
 })

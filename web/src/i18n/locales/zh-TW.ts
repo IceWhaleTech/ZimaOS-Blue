@@ -1,5 +1,6 @@
 // Traditional Chinese (繁體中文)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('zh-TW', {
   common: {
@@ -411,6 +412,8 @@ export default mergeHarnessLocale('zh-TW', {
       noFailedItems: '最新報告中沒有失敗樣本。',
       attempts: '嘗試次數',
       noFailureReason: '未記錄失敗原因。',
+      ...harnessProviderRemediationGroup('zh-TW'),
+
       linkedRuns: '關聯執行',
       noLinkedRuns: '這個群組尚未持久化任何關聯執行。',
       artifacts: '產物',
@@ -987,10 +990,10 @@ export default mergeHarnessLocale('zh-TW', {
       },
       calendar: {
         name: '行事曆',
-        description: 'CalDAV 日曆管理',
+        description: '建立與管理行事曆事件',
       },
       contacts: {
-        description: 'CardDAV 聯絡人管理',
+        description: '存取並管理原生聯絡人',
       },
       news: {
         description: '新聞彙整與頭條',

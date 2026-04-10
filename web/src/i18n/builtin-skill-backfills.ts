@@ -637,6 +637,12 @@ export function buildBuiltinSkillBackfill(
   )
   setCatalogEntry(
     catalog,
+    'contacts',
+    firstString(messages, ['skills.builtin.contacts.name', 'tools.names.contacts']),
+    firstString(messages, ['skills.builtin.contacts.description'])
+  )
+  setCatalogEntry(
+    catalog,
     'config',
     firstString(messages, [
       'skills.catalog.config.name',

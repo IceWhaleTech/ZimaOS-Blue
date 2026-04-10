@@ -1,5 +1,6 @@
 // Slovak (Slovenčina)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('sk-SK', {
   common: {
@@ -417,6 +418,8 @@ export default mergeHarnessLocale('sk-SK', {
       noFailedItems: 'V najnovšej správe nie sú žiadne neúspešné položky.',
       attempts: 'Pokusy',
       noFailureReason: 'Nebola zaznamenaná žiadna príčina zlyhania.',
+      ...harnessProviderRemediationGroup('sk-SK'),
+
       linkedRuns: 'Prepojené behy',
       noLinkedRuns: 'Pre túto skupinu zatiaľ neboli uložené žiadne prepojené behy.',
       artifacts: 'Artefakty',
@@ -1009,10 +1012,10 @@ export default mergeHarnessLocale('sk-SK', {
       },
       calendar: {
         name: 'Kalendar',
-        description: 'Sprava kalendara s podporou CalDAV',
+        description: 'Vytvaranie a sprava udalosti v kalendari',
       },
       contacts: {
-        description: 'Sprava kontaktov s podporou CardDAV',
+        description: 'Pristupujte k natívnym kontaktom a spravujte ich',
       },
       news: {
         description: 'Agregacia sprav a titulkov',

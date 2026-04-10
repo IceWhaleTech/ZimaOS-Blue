@@ -1,5 +1,6 @@
 // English (UK)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('en-GB', {
   common: {
@@ -415,6 +416,8 @@ export default mergeHarnessLocale('en-GB', {
       noFailedItems: 'No failed items in the latest report.',
       attempts: 'Attempts',
       noFailureReason: 'No failure reason recorded.',
+      ...harnessProviderRemediationGroup('en-GB'),
+
       linkedRuns: 'Linked runs',
       noLinkedRuns: 'No linked runs were persisted for this group yet.',
       artifacts: 'Artefacts',
@@ -1004,10 +1007,10 @@ export default mergeHarnessLocale('en-GB', {
       },
       calendar: {
         name: 'Calendar',
-        description: 'Calendar management with CalDAV support',
+        description: 'Create and manage calendar events',
       },
       contacts: {
-        description: 'Contact management with CardDAV support',
+        description: 'Access and manage native contacts',
       },
       news: {
         description: 'News aggregation and headlines',

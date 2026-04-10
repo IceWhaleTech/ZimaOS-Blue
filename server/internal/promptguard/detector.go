@@ -148,6 +148,9 @@ func NewDetector(config *DetectorConfig) *Detector {
 func (d *Detector) initPatterns() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.patternsReady {
+		return
+	}
 	d.initPatternsLocked()
 }
 
@@ -228,18 +231,14 @@ func (d *Detector) initPatternsLocked() {
 
 func (d *Detector) ensurePatterns() {
 	d.mu.RLock()
-	if d.patternsReady {
-		d.mu.RUnlock()
-		return
-	}
+	ready := d.patternsReady
 	d.mu.RUnlock()
 
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.patternsReady {
+	if ready {
 		return
 	}
-	d.initPatternsLocked()
+
+	d.initPatterns()
 }
 
 // compilePatterns compiles a list of pattern rules.
@@ -450,8 +449,6 @@ func (d *Detector) calculateThreatLevel(detections []Detection) (ThreatLevel, in
 
 // sanitize removes or neutralizes detected threats from input.
 func (d *Detector) sanitize(input string) string {
-	d.ensurePatterns()
-
 	sanitized := input
 
 	// Remove or escape dangerous patterns

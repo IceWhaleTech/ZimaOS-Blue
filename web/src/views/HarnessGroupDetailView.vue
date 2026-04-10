@@ -19,6 +19,7 @@ import HarnessRunDetailDrawer from '@/components/harness/HarnessRunDetailDrawer.
 import HarnessRunTree from '@/components/harness/HarnessRunTree.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { getErrorMessage } from '@/utils/error'
+import { formatHarnessScore } from '@/utils/harnessScore'
 import {
   buildHarnessRunTree,
   deriveHarnessRunPreview,
@@ -160,10 +161,8 @@ function percentLabel(value?: number | null): string {
 }
 
 function scoreLabel(value?: number | null): string {
-  if (value == null || !Number.isFinite(value)) return tr('common.notAvailable', 'Not available')
-  const numeric = Number(value)
-  const scaled = numeric >= 0 && numeric <= 1 ? numeric * 100 : numeric
-  return `${Math.round(scaled)}%`
+  const label = formatHarnessScore(value)
+  return label || tr('common.notAvailable', 'Not available')
 }
 
 function statusTone(status?: string | null): string {

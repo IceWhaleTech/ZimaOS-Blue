@@ -211,7 +211,9 @@ func TestProviderRaceStatsSnapshotTracksHitsAndEstimatedSavings(t *testing.T) {
 	if harness.handler.providerPool == nil || harness.handler.providerPool.Router == nil {
 		t.Fatal("expected provider pool router")
 	}
-	harness.handler.providerPool.Router.UpdateLatency("p-slow", 180*time.Millisecond)
+	// Leave enough headroom above the winner's observed latency so suite load
+	// jitter does not collapse estimated latency savings to zero.
+	harness.handler.providerPool.Router.UpdateLatency("p-slow", 400*time.Millisecond)
 
 	provider, latency, statusCode, body := harness.Execute(t)
 	if statusCode != http.StatusOK {

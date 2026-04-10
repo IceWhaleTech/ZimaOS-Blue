@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 	"time"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // State represents the circuit breaker state
@@ -61,13 +60,13 @@ type CircuitBreakerConfig struct {
 type CircuitBreaker struct {
 	config CircuitBreakerConfig
 
-	mu                sync.Mutex
-	state             State
-	failures          int
-	successes         int
-	halfOpenRequests  int
-	lastFailureTime   time.Time
-	lastStateChange   time.Time
+	mu               sync.Mutex
+	state            State
+	failures         int
+	successes        int
+	halfOpenRequests int
+	lastFailureTime  time.Time
+	lastStateChange  time.Time
 }
 
 // NewCircuitBreaker creates a new circuit breaker
@@ -85,7 +84,7 @@ func NewCircuitBreaker(cfg CircuitBreakerConfig) *CircuitBreaker {
 	return &CircuitBreaker{
 		config:          cfg,
 		state:           StateClosed,
-		lastStateChange: timeutil.NowTime(),
+		lastStateChange: time.Now().UTC(),
 	}
 }
 
@@ -113,11 +112,11 @@ func (cb *CircuitBreaker) Stats() map[string]interface{} {
 	defer cb.mu.Unlock()
 
 	return map[string]interface{}{
-		"name":             cb.config.Name,
-		"state":            cb.currentState().String(),
-		"failures":         cb.failures,
-		"successes":        cb.successes,
-		"last_failure":     cb.lastFailureTime,
+		"name":              cb.config.Name,
+		"state":             cb.currentState().String(),
+		"failures":          cb.failures,
+		"successes":         cb.successes,
+		"last_failure":      cb.lastFailureTime,
 		"last_state_change": cb.lastStateChange,
 	}
 }
@@ -198,7 +197,7 @@ func (cb *CircuitBreaker) afterRequest(err error) {
 			cb.failures = 0
 		} else {
 			cb.failures++
-			cb.lastFailureTime = timeutil.NowTime()
+			cb.lastFailureTime = time.Now().UTC()
 			if cb.failures >= cb.config.MaxFailures {
 				cb.setState(StateOpen)
 			}
@@ -211,7 +210,7 @@ func (cb *CircuitBreaker) afterRequest(err error) {
 			cb.setState(StateClosed)
 		} else {
 			cb.failures++
-			cb.lastFailureTime = timeutil.NowTime()
+			cb.lastFailureTime = time.Now().UTC()
 			cb.halfOpenRequests = 0
 			cb.setState(StateOpen)
 		}
@@ -223,7 +222,7 @@ func (cb *CircuitBreaker) currentState() State {
 	case StateClosed:
 		return StateClosed
 	case StateOpen:
-		if timeutil.SinceTime(cb.lastStateChange) >= cb.config.Timeout {
+		if !time.Now().Before(cb.lastStateChange.Add(cb.config.Timeout)) {
 			cb.setState(StateHalfOpen)
 			return StateHalfOpen
 		}
@@ -241,7 +240,7 @@ func (cb *CircuitBreaker) setState(state State) {
 
 	from := cb.state
 	cb.state = state
-	cb.lastStateChange = timeutil.NowTime()
+	cb.lastStateChange = time.Now().UTC()
 
 	if cb.config.OnStateChange != nil {
 		go cb.config.OnStateChange(cb.config.Name, from, state)

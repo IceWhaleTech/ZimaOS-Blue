@@ -710,8 +710,21 @@ func TestServiceRepairConflictsReportsProgressForCurrentGroup(t *testing.T) {
 	}
 
 	foundCurrentGroup := false
+	foundWritePages := false
+	lastProgress := -1
 	for _, snapshot := range snapshots {
+		if snapshot.progress < lastProgress {
+			t.Fatalf("progress not monotonic: got %d after %d in %+v", snapshot.progress, lastProgress, snapshots)
+		}
+		lastProgress = snapshot.progress
+
 		if snapshot.stage != "resolve_group" {
+			if snapshot.stage == "write_pages" {
+				foundWritePages = true
+				if strings.TrimSpace(snapshot.detail) == "" {
+					t.Fatalf("write_pages detail = %q, want current page slug", snapshot.detail)
+				}
+			}
 			continue
 		}
 		foundCurrentGroup = true
@@ -727,6 +740,9 @@ func TestServiceRepairConflictsReportsProgressForCurrentGroup(t *testing.T) {
 	}
 	if !foundCurrentGroup {
 		t.Fatalf("expected resolve_group snapshot, got %+v", snapshots)
+	}
+	if !foundWritePages {
+		t.Fatalf("expected write_pages snapshots, got %+v", snapshots)
 	}
 }
 

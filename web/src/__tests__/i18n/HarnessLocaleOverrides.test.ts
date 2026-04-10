@@ -194,6 +194,12 @@ const localizedKnowledgeRepairPaths = [
   'knowledge.repairConflictsComplete',
 ] as const
 
+const localizedProviderRemediationPaths = [
+  'harness.group.remediationInfraProviderAuth',
+  'harness.group.remediationInfraProviderQuota',
+  'harness.group.remediationInfraProviderBlocked',
+] as const
+
 const localizedWebTermLocales = [
   'ca-ES',
   'cs-CZ',
@@ -362,6 +368,26 @@ describe('Harness locale coverage', () => {
       )
 
       for (const path of localizedKnowledgeRepairPaths) {
+        expect(getPathValue(runtimeMessages, path), `${file} should localize ${path}`).not.toBe(
+          getPathValue(enUSRuntimeMessages, path)
+        )
+      }
+    }
+  )
+
+  it.each(localizedBundleLocaleKeys)(
+    'localizes provider remediation copy for %s',
+    (locale) => {
+      const file = `${locale}.ts`
+      const mergedMessages = localeMessagesByFile.get(file)
+      expect(mergedMessages, `${file} should be loadable via import.meta.glob`).toBeTruthy()
+      const runtimeMessages = resolveRuntimeMessages(locale, mergedMessages as LocaleMessages)
+      const enUSRuntimeMessages = resolveRuntimeMessages(
+        'en-US',
+        localeMessagesByFile.get('en-US.ts') as LocaleMessages
+      )
+
+      for (const path of localizedProviderRemediationPaths) {
         expect(getPathValue(runtimeMessages, path), `${file} should localize ${path}`).not.toBe(
           getPathValue(enUSRuntimeMessages, path)
         )

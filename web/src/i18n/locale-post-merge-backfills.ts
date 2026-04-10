@@ -29,6 +29,12 @@ type ResultCardWebQueryLabelBackfill = {
   mode: string
 }
 
+const protectedHarnessTermReplacementPaths = new Set([
+  'harness.group.remediationInfraProviderAuth',
+  'harness.group.remediationInfraProviderQuota',
+  'harness.group.remediationInfraProviderBlocked',
+])
+
 const execCardNoCommandLabels: Partial<Record<LocaleKey, string>> = {
   'ca-ES': 'Sense ordre',
   'cs-CZ': 'Bez příkazu',
@@ -1074,9 +1080,17 @@ function replaceHarnessTermsInText(text: string, glossary: HarnessTermGlossary):
 
 function buildStringReplacementPatch(
   value: unknown,
-  replace: (text: string) => string
+  replace: (text: string) => string,
+  options?: {
+    excludedPaths?: ReadonlySet<string>
+    pathPrefix?: string
+  },
+  currentPath = options?.pathPrefix ?? ''
 ): LocaleNode | LocaleLeaf | null {
   if (typeof value === 'string') {
+    if (options?.excludedPaths?.has(currentPath)) {
+      return null
+    }
     const replaced = replace(value)
     return replaced === value ? null : replaced
   }
@@ -1084,7 +1098,8 @@ function buildStringReplacementPatch(
 
   const patch: LocaleNode = {}
   for (const [key, child] of Object.entries(value)) {
-    const childPatch = buildStringReplacementPatch(child, replace)
+    const childPath = currentPath ? `${currentPath}.${key}` : key
+    const childPatch = buildStringReplacementPatch(child, replace, options, childPath)
     if (childPatch !== null) {
       patch[key] = childPatch
     }
@@ -1200,8 +1215,13 @@ export function buildLocalePostMergeBackfill(
 
   const patch: LocaleNode = {}
   if (harnessTermGlossary) {
-    const harnessPatch = buildStringReplacementPatch(getValue(messages, 'harness'), (text) =>
-      replaceHarnessTermsInText(text, harnessTermGlossary)
+    const harnessPatch = buildStringReplacementPatch(
+      getValue(messages, 'harness'),
+      (text) => replaceHarnessTermsInText(text, harnessTermGlossary),
+      {
+        excludedPaths: protectedHarnessTermReplacementPaths,
+        pathPrefix: 'harness',
+      }
     )
     if (isPlainObject(harnessPatch) && hasKeys(harnessPatch)) {
       patch.harness = harnessPatch

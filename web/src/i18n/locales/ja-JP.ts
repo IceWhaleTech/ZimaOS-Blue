@@ -1,5 +1,6 @@
 // Japanese (日本語)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('ja-JP', {
   common: {
@@ -418,6 +419,8 @@ export default mergeHarnessLocale('ja-JP', {
       noFailedItems: '最新レポートに失敗した項目はありません。',
       attempts: '試行回数',
       noFailureReason: '失敗理由は記録されていません。',
+      ...harnessProviderRemediationGroup('ja-JP'),
+
       linkedRuns: '関連する実行',
       noLinkedRuns: 'このグループにはまだ関連する実行が保存されていません。',
       artifacts: '成果物',
@@ -1013,10 +1016,10 @@ export default mergeHarnessLocale('ja-JP', {
       },
       calendar: {
         name: 'カレンダー',
-        description: 'CalDAV 対応のカレンダー管理',
+        description: 'カレンダーイベントの作成と管理',
       },
       contacts: {
-        description: 'CardDAV 対応の連絡先管理',
+        description: 'ネイティブの連絡先にアクセスして管理',
       },
       news: {
         description: 'ニュースの収集とヘッドライン',

@@ -299,6 +299,8 @@ function isBuiltInAgentcoreRunnerValue(value: unknown): boolean {
 }
 
 function getAgentcoreRunnerDisplayTone(value: unknown): AgentcoreRunnerDisplayTone {
+  const normalized = normalizeAgentcoreRunnerRefValue(value)
+  if (normalized === agentcoreRunnerRepoDefaultRef.value) return 'built-in'
   return isBuiltInAgentcoreRunnerValue(value) ? 'built-in' : 'agentcore'
 }
 

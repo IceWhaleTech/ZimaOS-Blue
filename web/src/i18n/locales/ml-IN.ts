@@ -1,5 +1,6 @@
 // Malayalam (മലയാളം)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('ml-IN', {
   common: {
@@ -418,6 +419,8 @@ export default mergeHarnessLocale('ml-IN', {
       noFailedItems: 'പുതിയ റിപ്പോർട്ടിൽ പരാജയപ്പെട്ട ഇനങ്ങളൊന്നുമില്ല.',
       attempts: 'ശ്രമങ്ങൾ',
       noFailureReason: 'പരാജയ കാരണം രേഖപ്പെടുത്തിയിട്ടില്ല.',
+      ...harnessProviderRemediationGroup('ml-IN'),
+
       linkedRuns: 'ബന്ധപ്പെടുത്തിയ റൺകൾ',
       noLinkedRuns: 'ഈ ഗ്രൂപ്പിനായി ബന്ധപ്പെടുത്തിയ റൺകൾ ഇനിയും സംരക്ഷിച്ചിട്ടില്ല.',
       artifacts: 'ആർട്ടിഫാക്റ്റുകൾ',
@@ -1018,10 +1021,10 @@ export default mergeHarnessLocale('ml-IN', {
       },
       calendar: {
         name: 'കലണ്ടര്‍',
-        description: 'CalDAV പിന്തുണയുള്ള കലണ്ടര്‍ നിയന്ത്രണം',
+        description: 'കലണ്ടര്‍ ഇവന്റുകള്‍ സൃഷ്ടിക്കുകയും നിയന്ത്രിക്കുകയും ചെയ്യുക',
       },
       contacts: {
-        description: 'CardDAV പിന്തുണയുള്ള ബന്ധങ്ങള്‍ നിയന്ത്രണം',
+        description: 'നെറ്റീവ് കോൺടാക്ടുകൾ ആക്‌സസ് ചെയ്ത് നിയന്ത്രിക്കുക',
       },
       news: {
         description: 'വാര്‍ത്തകളും തലക്കെട്ടുകളും സമാഹരിക്കുന്നു',

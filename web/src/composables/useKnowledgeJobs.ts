@@ -75,6 +75,14 @@ export function useKnowledgeJobs(options?: {
   const latestReport = ref<KnowledgeJobReport | null>(null)
   const trackedJobIDs = new Set<string>()
 
+  async function tryHydrateJob(jobID: string) {
+    try {
+      return await hydrateJob(jobID)
+    } catch {
+      return null
+    }
+  }
+
   async function hydrateJob(jobID: string) {
     const response = await knowledgeApi.getJob(jobID)
     const normalized = normalizeJobSnapshot(response.data)
@@ -103,6 +111,29 @@ export function useKnowledgeJobs(options?: {
     const report = hydratedJob.report ?? (await hydrateReport(normalized.id))
     if (options?.onTerminal) {
       await options.onTerminal(hydratedJob, report)
+    }
+  }
+
+  async function hydrateLatestActiveJob(options?: { kinds?: KnowledgeJob['kind'][] }) {
+    try {
+      const response = await knowledgeApi.listJobs('active')
+      const allowedKinds = new Set(
+        (options?.kinds || []).map((kind) => normalizeKind(kind)).filter(Boolean)
+      )
+      const matches = (response.data || [])
+        .map((snapshot) => normalizeJobSnapshot(snapshot))
+        .filter((job): job is KnowledgeJob => !!job)
+        .filter((job) => allowedKinds.size === 0 || allowedKinds.has(job.kind))
+        .sort((left, right) => {
+          return Date.parse(right.updated_at || '') - Date.parse(left.updated_at || '')
+        })
+      const next = matches[0] || null
+      if (!next) return null
+      trackedJobIDs.add(next.id)
+      currentJob.value = next
+      return (await tryHydrateJob(next.id)) ?? next
+    } catch {
+      return null
     }
   }
 
@@ -139,6 +170,7 @@ export function useKnowledgeJobs(options?: {
     latestReport,
     isRunning: computed(() => !!currentJob.value && !isTerminalStatus(currentJob.value.status)),
     runJob,
+    hydrateLatestActiveJob,
     hydrateJob,
     hydrateReport,
   }

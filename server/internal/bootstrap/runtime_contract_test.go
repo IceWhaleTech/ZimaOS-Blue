@@ -483,6 +483,7 @@ func TestRuntimeContractBinding_BindsProductivityToolsThroughBoundary(t *testing
 	registry := tools.NewRegistry()
 	emailSkill := &stubRuntimeEmailSkillTarget{}
 	calendarSkill := &stubRuntimeCalendarSkillTarget{}
+	contactsSkill := &stubRuntimeContactsSkillTarget{}
 
 	result := contract.BindProductivityTools(routeRuntimeContractProductivityOptions{
 		writeDB:       db,
@@ -490,12 +491,13 @@ func TestRuntimeContractBinding_BindsProductivityToolsThroughBoundary(t *testing
 		registry:      registry,
 		emailSkill:    emailSkill,
 		calendarSkill: calendarSkill,
+		contactsSkill: contactsSkill,
 		logger:        zap.NewNop(),
 	})
-	if result.emailService == nil || result.emailTool == nil || result.calendarService == nil || result.calendarTool == nil {
-		t.Fatalf("expected productivity binding to register local email/calendar tools, got %#v", result)
+	if result.emailService == nil || result.emailTool == nil || result.calendarService == nil || result.calendarTool == nil || result.contactsStore == nil || result.contactsTool == nil {
+		t.Fatalf("expected productivity binding to register email/calendar tools and a contacts backend, got %#v", result)
 	}
-	if registry.Get("email") != result.emailTool || registry.Get("calendar") != result.calendarTool {
+	if registry.Get("email") != result.emailTool || registry.Get("calendar") != result.calendarTool || registry.Get("contacts") != result.contactsTool {
 		t.Fatalf("expected productivity tools to be registered in tool registry, tools=%v", registry.List())
 	}
 	if emailSkill.executor != result.emailTool || emailSkill.calls != 1 {
@@ -503,6 +505,9 @@ func TestRuntimeContractBinding_BindsProductivityToolsThroughBoundary(t *testing
 	}
 	if calendarSkill.executor != result.calendarTool || calendarSkill.calls != 1 {
 		t.Fatalf("expected calendar skill wiring through contract, got %#v", calendarSkill)
+	}
+	if contactsSkill.executor != result.contactsTool || contactsSkill.calls != 1 {
+		t.Fatalf("expected contacts skill wiring through contract, got %#v", contactsSkill)
 	}
 }
 
@@ -602,6 +607,10 @@ func TestRuntimeContractBinding_ResolvesSkillTargetsFromRegistry(t *testing.T) {
 		stubRuntimeSkill:               newStubRuntimeContractSkill("calendar"),
 		stubRuntimeCalendarSkillTarget: &stubRuntimeCalendarSkillTarget{},
 	}
+	contactsSkill := &stubRuntimeContractContactsSkill{
+		stubRuntimeSkill:               newStubRuntimeContractSkill("contacts"),
+		stubRuntimeContactsSkillTarget: &stubRuntimeContactsSkillTarget{},
+	}
 	schedulerSkill := &stubRuntimeContractSchedulerSkill{
 		stubRuntimeSkill:                newStubRuntimeContractSkill("scheduler"),
 		stubRuntimeSchedulerSkillTarget: &stubRuntimeSchedulerSkillTarget{},
@@ -624,6 +633,7 @@ func TestRuntimeContractBinding_ResolvesSkillTargetsFromRegistry(t *testing.T) {
 		"reminder":      reminderSkill,
 		"email":         emailSkill,
 		"calendar":      calendarSkill,
+		"contacts":      contactsSkill,
 		"scheduler":     schedulerSkill,
 		"analyze":       analyzeSkill,
 		"web_search":    webSearchSkill,
@@ -644,11 +654,11 @@ func TestRuntimeContractBinding_ResolvesSkillTargetsFromRegistry(t *testing.T) {
 		skillRegistry: skillRegistry,
 		logger:        zap.NewNop(),
 	})
-	if productivity.emailTool == nil || productivity.calendarTool == nil {
+	if productivity.emailTool == nil || productivity.calendarTool == nil || productivity.contactsTool == nil {
 		t.Fatalf("expected productivity tools to resolve through skill registry, got %#v", productivity)
 	}
-	if emailSkill.stubRuntimeEmailSkillTarget.calls != 1 || calendarSkill.stubRuntimeCalendarSkillTarget.calls != 1 {
-		t.Fatalf("expected productivity contract to resolve email/calendar skills via registry, got email=%#v calendar=%#v", emailSkill, calendarSkill)
+	if emailSkill.stubRuntimeEmailSkillTarget.calls != 1 || calendarSkill.stubRuntimeCalendarSkillTarget.calls != 1 || contactsSkill.stubRuntimeContactsSkillTarget.calls != 1 {
+		t.Fatalf("expected productivity contract to resolve email/calendar/contacts skills via registry, got email=%#v calendar=%#v contacts=%#v", emailSkill, calendarSkill, contactsSkill)
 	}
 
 	toolingRegistry := tools.NewRegistry()
@@ -1987,6 +1997,11 @@ type stubRuntimeContractCalendarSkill struct {
 	*stubRuntimeCalendarSkillTarget
 }
 
+type stubRuntimeContractContactsSkill struct {
+	*stubRuntimeSkill
+	*stubRuntimeContactsSkillTarget
+}
+
 func newStubRuntimeContractSkill(id string) *stubRuntimeSkill {
 	return &stubRuntimeSkill{
 		manifest: &skillpkg.Manifest{ID: id, Name: id},
@@ -2021,6 +2036,16 @@ type stubRuntimeCalendarSkillTarget struct {
 }
 
 func (s *stubRuntimeCalendarSkillTarget) SetExecutor(e builtin.CalendarExecutor) {
+	s.executor = e
+	s.calls++
+}
+
+type stubRuntimeContactsSkillTarget struct {
+	executor builtin.ContactsExecutor
+	calls    int
+}
+
+func (s *stubRuntimeContactsSkillTarget) SetExecutor(e builtin.ContactsExecutor) {
 	s.executor = e
 	s.calls++
 }

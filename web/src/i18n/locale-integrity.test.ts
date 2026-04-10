@@ -93,6 +93,22 @@ function localeMessages(locale: string): LocaleMessages {
   return localeModules[modulePath]!.default
 }
 
+const providerRecoveryProtectedPaths = [
+  'chat.noProvider.recoverableEyebrow',
+  'chat.noProvider.recoverableTitle',
+  'chat.noProvider.recoverableDescription',
+  'chat.noProvider.retry',
+  'chat.noProvider.reviewSingle',
+  'chat.providerNeedsAttention',
+  'settings.externalAgents.builtinProfile',
+] as const
+
+const harnessProviderRemediationProtectedPaths = [
+  'harness.group.remediationInfraProviderAuth',
+  'harness.group.remediationInfraProviderQuota',
+  'harness.group.remediationInfraProviderBlocked',
+] as const
+
 describe('locale integrity', () => {
   it('keeps the full 27-locale set', () => {
     expect(Object.keys(localeModules)).toHaveLength(27)
@@ -116,21 +132,12 @@ describe('locale integrity', () => {
 
   it('keeps provider recovery copy in raw locale files without runtime-only backfills', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
-    const protectedPaths = [
-      'chat.noProvider.recoverableEyebrow',
-      'chat.noProvider.recoverableTitle',
-      'chat.noProvider.recoverableDescription',
-      'chat.noProvider.retry',
-      'chat.noProvider.reviewSingle',
-      'chat.providerNeedsAttention',
-      'settings.externalAgents.builtinProfile',
-    ]
 
     for (const [modulePath, mod] of entries) {
       const locale = localeFromModulePath(modulePath)
       const runtimeMessages = resolveRuntimeMessages(locale as LocaleKey, mod.default)
 
-      for (const path of protectedPaths) {
+      for (const path of providerRecoveryProtectedPaths) {
         const rawValue = getPathValue(mod.default, path)
         const runtimeValue = getPathValue(runtimeMessages, path)
 
@@ -155,22 +162,61 @@ describe('locale integrity', () => {
       throw new Error('Missing en-US locale module')
     }
 
-    const protectedPaths = [
-      'chat.noProvider.recoverableEyebrow',
-      'chat.noProvider.recoverableTitle',
-      'chat.noProvider.recoverableDescription',
-      'chat.noProvider.retry',
-      'chat.noProvider.reviewSingle',
-      'chat.providerNeedsAttention',
-      'settings.externalAgents.builtinProfile',
-    ]
     const englishReference = enUSEntry[1].default
 
     for (const [modulePath, mod] of entries) {
       const locale = localeFromModulePath(modulePath)
       if (locale === 'en-US' || locale === 'en-GB') continue
 
-      for (const path of protectedPaths) {
+      for (const path of providerRecoveryProtectedPaths) {
+        const value = getPathValue(mod.default, path)
+        const englishValue = getPathValue(englishReference, path)
+
+        expect(typeof value, `${locale} missing raw locale key ${path}`).toBe('string')
+        expect(value, `${locale} should localize ${path}`).not.toBe(englishValue)
+      }
+    }
+  })
+
+  it('keeps harness provider remediation copy in raw locale files without runtime-only backfills', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+
+    for (const [modulePath, mod] of entries) {
+      const locale = localeFromModulePath(modulePath)
+      const runtimeMessages = resolveRuntimeMessages(locale as LocaleKey, mod.default)
+
+      for (const path of harnessProviderRemediationProtectedPaths) {
+        const rawValue = getPathValue(mod.default, path)
+        const runtimeValue = getPathValue(runtimeMessages, path)
+
+        expect(typeof rawValue, `${locale} missing raw locale key ${path}`).toBe('string')
+        expect(
+          String(rawValue).trim().length,
+          `${locale} empty raw locale key ${path}`
+        ).toBeGreaterThan(0)
+        expect(rawValue, `${locale} should keep raw locale key ${path} aligned with runtime copy`).toBe(
+          runtimeValue
+        )
+      }
+    }
+  })
+
+  it('keeps harness provider remediation copy translated outside English locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    const enUSEntry = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))
+
+    expect(enUSEntry).toBeTruthy()
+    if (!enUSEntry) {
+      throw new Error('Missing en-US locale module')
+    }
+
+    const englishReference = enUSEntry[1].default
+
+    for (const [modulePath, mod] of entries) {
+      const locale = localeFromModulePath(modulePath)
+      if (locale === 'en-US' || locale === 'en-GB') continue
+
+      for (const path of harnessProviderRemediationProtectedPaths) {
         const value = getPathValue(mod.default, path)
         const englishValue = getPathValue(englishReference, path)
 

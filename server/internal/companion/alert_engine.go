@@ -234,7 +234,7 @@ func (e *DefaultAlertEngine) isDuplicate(key string) bool {
 		return false
 	}
 
-	return timeutil.SinceTime(lastTime) < e.config.DeduplicationWindow
+	return time.Since(lastTime) < e.config.DeduplicationWindow
 }
 
 // updateDedupCache updates the deduplication cache.
@@ -242,12 +242,13 @@ func (e *DefaultAlertEngine) updateDedupCache(key string) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	e.dedupCache[key] = timeutil.NowTime()
+	now := time.Now()
+	e.dedupCache[key] = now
 
 	// Clean old entries
-	cutoff := timeutil.NowTime().Add(-e.config.DeduplicationWindow * 2)
+	cutoff := now.Add(-e.config.DeduplicationWindow * 2)
 	for k, t := range e.dedupCache {
-		if t.Before(cutoff) {
+		if !t.After(cutoff) {
 			delete(e.dedupCache, k)
 		}
 	}
@@ -342,9 +343,9 @@ func (e *DefaultAlertEngine) CleanupDedupCache() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	cutoff := timeutil.NowTime().Add(-e.config.DeduplicationWindow)
+	cutoff := time.Now().Add(-e.config.DeduplicationWindow)
 	for k, t := range e.dedupCache {
-		if t.Before(cutoff) {
+		if !t.After(cutoff) {
 			delete(e.dedupCache, k)
 		}
 	}

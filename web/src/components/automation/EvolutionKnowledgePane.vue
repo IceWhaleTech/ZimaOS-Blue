@@ -446,6 +446,9 @@ watch(
 
 onMounted(async () => {
   await loadKnowledgeSpace()
+  await maintenanceJobs.hydrateLatestActiveJob({
+    kinds: ['repair_conflicts', 'lint', 'ingest'],
+  })
 })
 </script>
 

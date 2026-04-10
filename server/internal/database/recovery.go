@@ -381,7 +381,13 @@ func RepairSQLiteDatabase(dbPath string) (result *SQLiteRepairResult, err error)
 	if err := copySQLiteArtifacts(dbPath, snapshotPath); err != nil {
 		return nil, fmt.Errorf("failed to snapshot database before repair: %w", err)
 	}
+	sourceSchemaCount, sourceSchemaErr := sqliteUserSchemaObjectCount(snapshotPath)
 	recoverErr := runSQLiteRecover(snapshotPath, recoveredPath)
+	if recoverErr == nil {
+		if err := retryPlainSQLiteRecoverIfRecoveredOutputUnusable(snapshotPath, recoveredPath, sourceSchemaCount, sourceSchemaErr); err != nil {
+			return nil, err
+		}
+	}
 	if info, err := os.Stat(recoveredPath); err != nil {
 		if recoverErr != nil {
 			return nil, fmt.Errorf("failed to recover sqlite database %s: %w", dbPath, recoverErr)
@@ -398,6 +404,12 @@ func RepairSQLiteDatabase(dbPath string) (result *SQLiteRepairResult, err error)
 			return nil, fmt.Errorf("recovered sqlite database failed integrity check after partial import: %w (recover warnings: %v)", err, recoverErr)
 		}
 		return nil, fmt.Errorf("recovered sqlite database failed integrity check: %w", err)
+	}
+	if err := ensureRecoveredSQLitePreservedUserSchema(recoveredPath, sourceSchemaCount, sourceSchemaErr); err != nil {
+		if recoverErr != nil {
+			return nil, fmt.Errorf("%w (recover warnings: %v)", err, recoverErr)
+		}
+		return nil, err
 	}
 	if err := rotateSQLiteArtifacts(dbPath, backupPath); err != nil {
 		return nil, fmt.Errorf("failed to rotate corrupted database out of the way: %w", err)
@@ -550,12 +562,29 @@ func removeSQLiteArtifacts(base string) {
 }
 
 func runSQLiteRecover(srcPath, dstPath string) error {
+	err := runSQLiteRecoverAttempt(srcPath, dstPath, ".recover --ignore-freelist")
+	if err == nil {
+		return nil
+	}
+	if !shouldRetrySQLiteRecoverWithoutIgnoreFreelist(err) {
+		return err
+	}
+
+	sqliteLogf("retrying sqlite recover without --ignore-freelist src_path=%s error=%v", srcPath, err)
+	fallbackErr := runSQLiteRecoverAttempt(srcPath, dstPath, ".recover")
+	if fallbackErr == nil {
+		return nil
+	}
+	return fmt.Errorf("%v; fallback plain recover failed: %w", err, fallbackErr)
+}
+
+func runSQLiteRecoverAttempt(srcPath, dstPath string, recoverCommand string) error {
 	_ = os.Remove(dstPath)
 
 	ctx, cancel := context.WithTimeout(context.Background(), sqliteRecoverTimeout)
 	defer cancel()
 
-	recoverCmd := exec.CommandContext(ctx, "sqlite3", "-batch", srcPath, ".recover --ignore-freelist")
+	recoverCmd := exec.CommandContext(ctx, "sqlite3", "-batch", srcPath, recoverCommand)
 	importCmd := exec.CommandContext(
 		ctx,
 		"sqlite3",
@@ -614,6 +643,92 @@ func runSQLiteRecover(srcPath, dstPath string) error {
 	}
 
 	return nil
+}
+
+func shouldRetrySQLiteRecoverWithoutIgnoreFreelist(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "sqlite_dbpage") ||
+		strings.Contains(msg, "ignore-freelist")
+}
+
+func retryPlainSQLiteRecoverIfRecoveredOutputUnusable(srcPath, dstPath string, sourceSchemaCount int, sourceSchemaErr error) error {
+	reason, err := recoveredSQLitePlainRecoverFallbackReason(dstPath, sourceSchemaCount, sourceSchemaErr)
+	if err != nil {
+		return err
+	}
+	if reason == "" {
+		return nil
+	}
+
+	sqliteLogf("retrying sqlite recover without --ignore-freelist src_path=%s reason=%s", srcPath, reason)
+	if err := runSQLiteRecoverAttempt(srcPath, dstPath, ".recover"); err != nil {
+		return fmt.Errorf("%s: plain .recover retry failed: %w", reason, err)
+	}
+	if postReason, err := recoveredSQLitePlainRecoverFallbackReason(dstPath, sourceSchemaCount, sourceSchemaErr); err != nil {
+		return err
+	} else if postReason != "" {
+		return fmt.Errorf("%s after plain .recover retry", postReason)
+	}
+	return nil
+}
+
+func recoveredSQLitePlainRecoverFallbackReason(dstPath string, sourceSchemaCount int, sourceSchemaErr error) (string, error) {
+	info, err := os.Stat(dstPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "sqlite recovery did not produce a database file", nil
+		}
+		return "", fmt.Errorf("stat recovered sqlite database %s: %w", dstPath, err)
+	}
+	if info.Size() == 0 {
+		return "sqlite recovery produced an empty database file", nil
+	}
+	if err := CheckDatabaseIntegrity(dstPath); err != nil {
+		return fmt.Sprintf("recovered sqlite database failed integrity check: %v", err), nil
+	}
+	if err := ensureRecoveredSQLitePreservedUserSchema(dstPath, sourceSchemaCount, sourceSchemaErr); err != nil {
+		return err.Error(), nil
+	}
+	return "", nil
+}
+
+func ensureRecoveredSQLitePreservedUserSchema(recoveredPath string, sourceSchemaCount int, sourceSchemaErr error) error {
+	if sourceSchemaErr != nil || sourceSchemaCount <= 0 {
+		return nil
+	}
+	recoveredSchemaCount, err := sqliteUserSchemaObjectCount(recoveredPath)
+	if err != nil {
+		return fmt.Errorf("failed to inspect recovered sqlite schema: %w", err)
+	}
+	if recoveredSchemaCount == 0 {
+		return fmt.Errorf("recovered sqlite database lost all %d user schema objects", sourceSchemaCount)
+	}
+	return nil
+}
+
+func sqliteUserSchemaObjectCount(dbPath string) (int, error) {
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+
+	var count int
+	err = db.QueryRow(`
+		SELECT COUNT(*)
+		FROM sqlite_master
+		WHERE type IN ('table', 'view', 'trigger', 'index')
+		  AND name NOT LIKE 'sqlite_%'
+	`).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }
 
 // CheckpointWAL runs PRAGMA wal_checkpoint(mode) on an already opened DB.

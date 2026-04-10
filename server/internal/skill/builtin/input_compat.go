@@ -36,6 +36,21 @@ func normalizeStringAlias(input map[string]any, canonical string, aliases ...str
 	}
 }
 
+func normalizeValueAlias(input map[string]any, canonical string, aliases ...string) {
+	if input == nil {
+		return
+	}
+	if _, ok := input[canonical]; ok {
+		return
+	}
+	for _, key := range aliases {
+		if value, ok := input[key]; ok {
+			input[canonical] = value
+			return
+		}
+	}
+}
+
 func normalizeUniqueStringAlias(input map[string]any, canonical string, aliases ...string) {
 	if input == nil {
 		return

@@ -312,11 +312,11 @@ const layerIndicator = computed(() => {
 
   const description =
     revealLayer.value === 1
-      ? tr('knowledge.graphLayerNear', 'Focus with direct neighbors')
+      ? tr('knowledge.graphLayerNear', 'Focus with key neighbors')
       : revealLayer.value === 2
-        ? tr('knowledge.graphLayerMid', 'Second-hop context')
+        ? tr('knowledge.graphLayerMid', 'Full direct neighborhood')
         : revealLayer.value === 3
-          ? tr('knowledge.graphLayerFar', 'Extended orbit')
+          ? tr('knowledge.graphLayerFar', 'Second-hop context')
           : tr('knowledge.graphLayerFull', 'Outer background and detached knowledge')
 
   return {
@@ -329,8 +329,53 @@ const viewportStyle = computed(() => ({
   transformOrigin: 'center center',
 }))
 const defaultEdgeOpacity = computed(() =>
-  props.pages.length >= 180 ? 0.025 : props.pages.length >= 80 ? 0.05 : 0.1
+  props.pages.length >= 180 ? 0.018 : props.pages.length >= 80 ? 0.035 : 0.075
 )
+
+function edgeVisualWeight(edge: KnowledgeGraphEdge) {
+  const source = graphNodeMap.value.get(edge.source)
+  const target = graphNodeMap.value.get(edge.target)
+  if (!source || !target) return 1
+
+  const largeNodeThreshold = 22
+  const sourceLarge = source.radius >= largeNodeThreshold || source.slug === activeFocusSlug.value
+  const targetLarge = target.radius >= largeNodeThreshold || target.slug === activeFocusSlug.value
+
+  if (sourceLarge && targetLarge) return 0.58
+  if (sourceLarge || targetLarge) return 0.8
+  return 1
+}
+
+function edgeOpacity(edge: KnowledgeGraphEdge) {
+  const tier = edgeDistanceTier(edge)
+  const base =
+    tier === 'ambient'
+      ? defaultEdgeOpacity.value
+      : tier === 'near'
+        ? 0.68
+        : tier === 'stacked'
+          ? 0.03
+          : tier === 'mid'
+            ? 0.18
+            : tier === 'far'
+              ? 0.07
+              : 0.042
+
+  return Math.max(0.02, Number((base * edgeVisualWeight(edge)).toFixed(3)))
+}
+
+function edgeStrokeWidth(edge: KnowledgeGraphEdge) {
+  const tier = edgeDistanceTier(edge)
+  return tier === 'near'
+    ? 1.55
+    : tier === 'stacked'
+      ? 0.72
+      : tier === 'mid'
+        ? 1.08
+        : tier === 'far'
+          ? 0.84
+          : 0.72
+}
 
 function nodeStyle(node: KnowledgeGraphNode) {
   const tier = nodeDistanceTier(node)
@@ -354,9 +399,9 @@ function nodeStyle(node: KnowledgeGraphNode) {
 
 function isDistanceRevealed(distance: number | null | undefined): boolean {
   if (distance == null) return revealLayer.value >= 4
-  if (distance <= 1) return true
-  if (distance === 2) return revealLayer.value >= 2
-  if (distance === 3) return revealLayer.value >= 3
+  if (distance <= 0) return true
+  if (distance === 1) return revealLayer.value >= 2
+  if (distance === 2) return revealLayer.value >= 3
   return revealLayer.value >= 4
 }
 
@@ -377,8 +422,8 @@ function nodeDistanceTier(
   if (distance === 0) return 'selected'
   if (distance === 1 && selectedNeighborhood.value.has(node.slug)) return 'near'
   if (distance === 1) return revealLayer.value >= 2 ? 'mid' : 'stacked'
-  if (distance === 2) return revealLayer.value >= 2 ? 'mid' : 'stacked'
-  if (distance === 3) return revealLayer.value >= 3 ? 'far' : 'stacked'
+  if (distance === 2) return revealLayer.value >= 3 ? 'mid' : 'stacked'
+  if (distance === 3) return revealLayer.value >= 4 ? 'far' : 'stacked'
   if (distance == null || distance >= 4) return revealLayer.value >= 4 ? 'muted' : 'stacked'
   return 'far'
 }
@@ -539,11 +584,12 @@ function orbitVisibility(
   if (revealLayer.value <= 1) return 'hidden'
   if (revealLayer.value === 2) {
     if (disconnected) return 'hidden'
-    return distance <= 2 ? 'soft' : 'hidden'
+    return distance <= 1 ? 'soft' : 'hidden'
   }
   if (revealLayer.value === 3) {
     if (disconnected) return 'hidden'
-    return distance <= 2 ? 'visible' : distance === 3 ? 'soft' : 'hidden'
+    if (distance <= 1) return 'visible'
+    return distance === 2 ? 'soft' : 'hidden'
   }
   if (disconnected) return 'soft'
   return distance <= 3 ? 'visible' : 'soft'
@@ -642,18 +688,8 @@ function drawGraphCanvas() {
     const target = graphNodeMap.value.get(edge.target)
     if (!source || !target) continue
 
-    const alpha =
-      tier === 'near'
-        ? 0.9
-        : tier === 'mid'
-          ? 0.24
-          : tier === 'far'
-            ? 0.14
-            : tier === 'muted'
-              ? 0.08
-              : 0.06
-    const width =
-      tier === 'near' ? 2.1 : tier === 'mid' ? 1.4 : tier === 'far' ? 1.1 : 0.9
+    const alpha = edgeOpacity(edge)
+    const width = edgeStrokeWidth(edge)
     const color =
       edge.relation === 'conflict'
         ? `rgba(244, 63, 94, ${alpha})`
@@ -912,30 +948,8 @@ watch(
                   :d="edgePath(edge)"
                   class="transition-[opacity,stroke-width] duration-500 ease-out"
                   :class="edgeClass(edge)"
-                  :opacity="
-                    edgeDistanceTier(edge) === 'ambient'
-                      ? defaultEdgeOpacity
-                      : edgeDistanceTier(edge) === 'near'
-                        ? 0.95
-                        : edgeDistanceTier(edge) === 'stacked'
-                          ? 0.05
-                        : edgeDistanceTier(edge) === 'mid'
-                          ? 0.28
-                          : edgeDistanceTier(edge) === 'far'
-                            ? 0.12
-                            : 0.06
-                  "
-                  :stroke-width="
-                    edgeDistanceTier(edge) === 'near'
-                      ? 2.2
-                      : edgeDistanceTier(edge) === 'stacked'
-                        ? 0.9
-                      : edgeDistanceTier(edge) === 'mid'
-                        ? 1.5
-                        : edgeDistanceTier(edge) === 'far'
-                          ? 1.1
-                          : 1
-                  "
+                  :opacity="edgeOpacity(edge)"
+                  :stroke-width="edgeStrokeWidth(edge)"
                   stroke-linecap="round"
                 />
               </template>

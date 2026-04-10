@@ -1,5 +1,6 @@
 // Korean (한국어)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('ko-KR', {
   common: {
@@ -415,6 +416,8 @@ export default mergeHarnessLocale('ko-KR', {
       noFailedItems: '최신 리포트에 실패한 항목이 없습니다.',
       attempts: '시도 횟수',
       noFailureReason: '실패 사유가 기록되지 않았습니다.',
+      ...harnessProviderRemediationGroup('ko-KR'),
+
       linkedRuns: '연결된 실행',
       noLinkedRuns: '이 그룹에 대해 저장된 연결 실행이 아직 없습니다.',
       artifacts: '산출물',
@@ -1002,10 +1005,10 @@ export default mergeHarnessLocale('ko-KR', {
       },
       calendar: {
         name: '캘린더',
-        description: 'CalDAV 지원 일정 관리',
+        description: '일정 이벤트 생성 및 관리',
       },
       contacts: {
-        description: 'CardDAV 지원 연락처 관리',
+        description: '네이티브 연락처에 접근하고 관리',
       },
       news: {
         description: '뉴스 모음과 헤드라인',

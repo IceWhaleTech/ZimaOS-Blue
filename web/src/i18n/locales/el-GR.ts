@@ -1,5 +1,6 @@
 // Greek (Ελληνικά)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('el-GR', {
   common: {
@@ -421,6 +422,8 @@ export default mergeHarnessLocale('el-GR', {
       noFailedItems: 'Δεν υπάρχουν αποτυχημένα στοιχεία στην τελευταία αναφορά.',
       attempts: 'Προσπάθειες',
       noFailureReason: 'Δεν καταγράφηκε λόγος αποτυχίας.',
+      ...harnessProviderRemediationGroup('el-GR'),
+
       linkedRuns: 'Συνδεδεμένες εκτελέσεις',
       noLinkedRuns: 'Δεν έχουν αποθηκευτεί ακόμη συνδεδεμένες εκτελέσεις για αυτή την ομάδα.',
       artifacts: 'Τεχνουργήματα',
@@ -1019,10 +1022,10 @@ export default mergeHarnessLocale('el-GR', {
       },
       calendar: {
         name: 'Ημερολόγιο',
-        description: 'Διαχείριση ημερολογίου με υποστήριξη CalDAV',
+        description: 'Δημιουργία και διαχείριση συμβάντων ημερολογίου',
       },
       contacts: {
-        description: 'Διαχείριση επαφών με υποστήριξη CardDAV',
+        description: 'Πρόσβαση και διαχείριση εγγενών επαφών',
       },
       news: {
         description: 'Συγκέντρωση ειδήσεων και τίτλων',

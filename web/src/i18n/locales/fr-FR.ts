@@ -1,5 +1,6 @@
 // French (Français)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('fr-FR', {
   common: {
@@ -421,6 +422,8 @@ export default mergeHarnessLocale('fr-FR', {
       noFailedItems: 'Aucun élément en échec dans le dernier rapport.',
       attempts: 'Tentatives',
       noFailureReason: "Aucune raison d'échec enregistrée.",
+      ...harnessProviderRemediationGroup('fr-FR'),
+
       linkedRuns: 'Exécutions liées',
       noLinkedRuns: "Aucune exécution liée n'a encore été enregistrée pour ce groupe.",
       artifacts: 'Artefacts',
@@ -1022,10 +1025,10 @@ export default mergeHarnessLocale('fr-FR', {
       },
       calendar: {
         name: 'Calendrier',
-        description: 'Gestion de calendrier avec prise en charge CalDAV',
+        description: 'Creer et gerer les evenements du calendrier',
       },
       contacts: {
-        description: 'Gestion de contacts avec prise en charge CardDAV',
+        description: 'Accéder aux contacts natifs et les gérer',
       },
       news: {
         description: 'Aggregation des actualites et titres',

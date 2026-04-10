@@ -238,17 +238,27 @@ func TestChannel_OnMessageReceive_DeduplicatesSameMessageID(t *testing.T) {
 		}
 	}
 
-	mu.Lock()
-	got := append([]string(nil), calls...)
-	mu.Unlock()
-	reactionCalls := 0
-	for _, call := range got {
-		if call == "POST /open-apis/im/v1/messages/msg_dedupe_1/reactions" {
-			reactionCalls++
+	deadline = time.After(2 * time.Second)
+	for {
+		mu.Lock()
+		got := append([]string(nil), calls...)
+		mu.Unlock()
+
+		reactionCalls := 0
+		for _, call := range got {
+			if call == "POST /open-apis/im/v1/messages/msg_dedupe_1/reactions" {
+				reactionCalls++
+			}
 		}
-	}
-	if reactionCalls != 1 {
-		t.Fatalf("expected one typing reaction request, got %d (%v)", reactionCalls, got)
+		if reactionCalls == 1 {
+			break
+		}
+
+		select {
+		case <-deadline:
+			t.Fatalf("expected one typing reaction request, got %d (%v)", reactionCalls, got)
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
 }
 

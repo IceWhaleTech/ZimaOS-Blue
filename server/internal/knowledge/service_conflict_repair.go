@@ -47,12 +47,14 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 	canonicalSlugs := make([]string, 0)
 	supersededSlugs := make([]string, 0)
 	fixedPaths := make([]string, 0, len(pages)+1)
+	groupCount := len(groups)
+	writeSteps := len(pages) + 1
 
 	for idx, group := range groups {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		notifyProgress(20+(idx*45)/len(groups), "resolve_group", strings.Join(uniqueStrings(group), ", "))
+		notifyProgress(conflictRepairProgress(20, 68, idx, groupCount), "resolve_group", strings.Join(uniqueStrings(group), ", "))
 		canonicalSlug := pickCanonicalConflictPage(group, bySlug)
 		canonical := bySlug[canonicalSlug]
 		if canonical == nil {
@@ -86,9 +88,9 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 		canonical.Summary.UpdatedAt = now
 	}
 
-	notifyProgress(78, "write_pages", "")
 	backlinks := computeBacklinks(pages)
 	for idx := range pages {
+		notifyProgress(conflictRepairProgress(68, 90, idx, writeSteps), "write_pages", pages[idx].Summary.Slug)
 		pages[idx].Summary.Backlinks = append([]string(nil), backlinks[pages[idx].Summary.Slug]...)
 		if err := s.writeSinglePage(pages[idx]); err != nil {
 			return nil, err
@@ -96,6 +98,7 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 		fixedPaths = append(fixedPaths, s.pagePath(pages[idx].Summary.Slug))
 	}
 
+	notifyProgress(conflictRepairProgress(68, 90, len(pages), writeSteps), "write_pages", "knowledge index")
 	indexPath, err := s.writePagesIndex(pages)
 	if err != nil {
 		return nil, err
@@ -134,6 +137,27 @@ func (s *Service) RepairConflicts(ctx context.Context, req RepairConflictsReques
 		return nil, err
 	}
 	return report, nil
+}
+
+func conflictRepairProgress(start int, end int, step int, total int) int {
+	start = clampKnowledgeJobProgress(start)
+	end = clampKnowledgeJobProgress(end)
+	if end < start {
+		end = start
+	}
+	if total <= 0 {
+		return end
+	}
+	if step < 0 {
+		step = 0
+	}
+	if step > total {
+		step = total
+	}
+	if step == 0 {
+		return start
+	}
+	return start + (step*(end-start))/total
 }
 
 func (s *Service) conflictRepairGroups(pages []pageDocument, targetSlugs []string) [][]string {

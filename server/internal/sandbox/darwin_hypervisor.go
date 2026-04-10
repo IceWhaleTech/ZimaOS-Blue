@@ -325,13 +325,10 @@ func (e *HypervisorExecutor) executeWithEnhancedIsolation(ctx context.Context, r
 	}
 
 	// Set restricted environment
-	env := []string{
-		"PATH=/usr/local/bin:/usr/bin:/bin",
-		"HOME=/tmp",
-		"TMPDIR=/tmp",
-		"LANG=en_US.UTF-8",
-	}
-	for k, v := range req.Env {
+	defaults := defaultSandboxEnvMap(req.Env)
+	defaults["LANG"] = "en_US.UTF-8"
+	env := make([]string, 0, len(defaults))
+	for k, v := range defaults {
 		env = append(env, k+"="+v)
 	}
 	cmd.Env = env

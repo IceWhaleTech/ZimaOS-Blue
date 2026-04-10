@@ -287,6 +287,9 @@ func (c *Controller) reconcileGroupReportState(ctx context.Context, group *RunGr
 		verification := c.verifyGroupRun(ctx, group, item, run)
 		scorecard := c.scoreGroupRun(ctx, group, item, run, &verification)
 		scorecard = c.annotateResearchProposalSummary(ctx, group, run, scorecard)
+		if hasCard {
+			scorecard = ensureScorecardSupersedes(scorecard, card)
+		}
 		if err := c.store.AttachScorecard(ctx, scorecard); err != nil {
 			return reconciled, err
 		}
@@ -318,6 +321,26 @@ func runLooksVerifiedSuccessful(run *Run) bool {
 		strings.Contains(corpus, "verification passed") ||
 		strings.Contains(corpus, "grounded runtime checks passed") ||
 		strings.Contains(corpus, "task completed with grounded")
+}
+
+func ensureScorecardSupersedes(next Scorecard, prior Scorecard) Scorecard {
+	nextCreatedAt := next.CreatedAt.UTC()
+	if nextCreatedAt.IsZero() {
+		nextCreatedAt = time.Now().UTC()
+	}
+	if prior.CreatedAt.IsZero() {
+		next.CreatedAt = nextCreatedAt
+		return next
+	}
+	if !nextCreatedAt.After(prior.CreatedAt.UTC()) {
+		// SQLite orders DATETIME text lexicographically here, so when we need to
+		// supersede an existing row we keep the prior timestamp's location/shape
+		// and move slightly forward to guarantee the new row sorts last.
+		next.CreatedAt = prior.CreatedAt.Add(time.Millisecond)
+		return next
+	}
+	next.CreatedAt = nextCreatedAt
+	return next
 }
 
 func buildGroupReportFromContext(reportCtx *groupReportContext) (*RunGroupReport, error) {
@@ -670,15 +693,35 @@ func (c *Controller) projectGroupSummary(ctx context.Context, group *RunGroup) (
 
 	nextStatus := deriveGroupStatus(group.Status, metrics.statusCounts)
 	summary = preserveGroupSummaryAnnotations(nextStatus, group.Summary, summary)
+	emptyTerminalGroup := isTerminalGroupStatus(nextStatus) && len(items) == 0
 	nextStartedAt := group.StartedAt
 	if nextStartedAt == nil && (metrics.activeRunning > 0 || metrics.activeScoring > 0 || metrics.totalAttempts > 0 || (isTerminalGroupStatus(nextStatus) && len(items) > 0)) {
 		now := timeutil.NowTime()
 		nextStartedAt = &now
 	}
+	if nextStartedAt == nil && emptyTerminalGroup {
+		switch {
+		case group.FinishedAt != nil:
+			ts := *group.FinishedAt
+			nextStartedAt = &ts
+		case !group.CreatedAt.IsZero():
+			ts := group.CreatedAt
+			nextStartedAt = &ts
+		}
+	}
 	nextFinishedAt := group.FinishedAt
 	if isTerminalGroupStatus(nextStatus) && nextFinishedAt == nil {
-		now := timeutil.NowTime()
-		nextFinishedAt = &now
+		switch {
+		case emptyTerminalGroup && nextStartedAt != nil:
+			ts := *nextStartedAt
+			nextFinishedAt = &ts
+		case emptyTerminalGroup && !group.CreatedAt.IsZero():
+			ts := group.CreatedAt
+			nextFinishedAt = &ts
+		default:
+			now := timeutil.NowTime()
+			nextFinishedAt = &now
+		}
 	}
 	if !isTerminalGroupStatus(nextStatus) {
 		nextFinishedAt = nil

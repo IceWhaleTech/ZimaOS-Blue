@@ -75,12 +75,9 @@ func (e *LinuxExecutor) Execute(ctx context.Context, req *ExecutionRequest) (*Ex
 	}
 
 	// Set environment
-	env := []string{
-		"PATH=/usr/local/bin:/usr/bin:/bin",
-		"HOME=/tmp",
-		"TMPDIR=/tmp",
-	}
-	for k, v := range req.Env {
+	defaults := defaultSandboxEnvMap(req.Env)
+	env := make([]string, 0, len(defaults))
+	for k, v := range defaults {
 		env = append(env, k+"="+v)
 	}
 	cmd.Env = env

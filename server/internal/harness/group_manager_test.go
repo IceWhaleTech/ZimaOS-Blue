@@ -169,7 +169,7 @@ func TestController_RefreshGroupSummaryNoOpPreservesUpdatedAt(t *testing.T) {
 		t.Fatalf("GetGroup(before) failed: %v", err)
 	}
 
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(120 * time.Millisecond)
 
 	refreshed, err := controller.refreshGroupSummary(context.Background(), group.ID)
 	if err != nil {
@@ -221,6 +221,56 @@ func TestController_GetGroupPreservesCompletedEmptyGroup(t *testing.T) {
 	}
 	if !got.FinishedAt.Equal(finishedAt) {
 		t.Fatalf("FinishedAt changed across refresh: before=%s after=%s", finishedAt, *got.FinishedAt)
+	}
+}
+
+func TestController_GetGroupRepairsCompletedEmptyGroupMissingFinishedAt(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "empty group missing finished_at",
+		OwnerUserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+	if group.StartedAt == nil {
+		t.Fatal("expected empty group to have StartedAt set")
+	}
+	expectedFinishedAt := *group.StartedAt
+
+	stored, err := controller.store.GetGroup(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup(before repair) failed: %v", err)
+	}
+	stored.FinishedAt = nil
+	if err := controller.store.UpdateGroup(ctx, stored); err != nil {
+		t.Fatalf("UpdateGroup failed: %v", err)
+	}
+	stored, err = controller.store.GetGroup(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup(after clear) failed: %v", err)
+	}
+	if stored.FinishedAt != nil {
+		t.Fatalf("expected stored FinishedAt to be nil after clear, got %s", *stored.FinishedAt)
+	}
+
+	time.Sleep(120 * time.Millisecond)
+
+	got, err := controller.GetGroup(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("GetGroup failed: %v", err)
+	}
+	if got.Status != RunGroupStatusCompleted {
+		t.Fatalf("status = %q, want %q", got.Status, RunGroupStatusCompleted)
+	}
+	if got.FinishedAt == nil {
+		t.Fatal("expected completed empty group to recover FinishedAt")
+	}
+	if !got.FinishedAt.Equal(expectedFinishedAt) {
+		t.Fatalf("FinishedAt = %s, want %s", *got.FinishedAt, expectedFinishedAt)
 	}
 }
 
@@ -347,6 +397,121 @@ func TestController_GetGroupReportReconcilesCompletedRunAgainstStaleScorecard(t 
 	}
 	if report == nil || len(report.Scorecards) == 0 {
 		t.Fatalf("GetGroupReport scorecards = %#v, want non-empty", report)
+	}
+}
+
+func TestController_GetGroupReportReconcilesCompletedRunAgainstNewerTimestampedStaleScorecard(t *testing.T) {
+	controller := newTestController(t)
+	ctx := context.Background()
+
+	group, err := controller.SubmitGroup(ctx, RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "reconcile newer stale scorecard",
+		OwnerUserID: "user-1",
+		Items: []RunGroupItemSpec{
+			{
+				RunKind:  RunKindAgentTask,
+				Input:    map[string]interface{}{"goal": "summarize"},
+				Expected: map[string]interface{}{"status": "completed"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	items, err := controller.ListGroupItems(ctx, group.ID)
+	if err != nil {
+		t.Fatalf("ListGroupItems failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("ListGroupItems len = %d, want 1", len(items))
+	}
+	item := items[0]
+
+	now := time.Now()
+	run := &Run{
+		ID:           uuid.NewString(),
+		RootRunID:    "",
+		GroupID:      group.ID,
+		GroupItemID:  item.ID,
+		AttemptIndex: 1,
+		Kind:         RunKindAgentTask,
+		Status:       RunStatusFailed,
+		UserID:       "user-1",
+		Goal:         "summarize",
+		Error:        "proxy returned 502",
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	run.RootRunID = run.ID
+	if err := controller.store.CreateRun(ctx, run); err != nil {
+		t.Fatalf("CreateRun failed: %v", err)
+	}
+
+	item.LatestRunID = run.ID
+	item.AttemptCount = 1
+	item.Status = RunGroupItemStatusError
+	if err := controller.store.UpdateGroupItem(ctx, &item); err != nil {
+		t.Fatalf("UpdateGroupItem failed: %v", err)
+	}
+
+	staleCard := Scorecard{
+		ID:          uuid.NewString(),
+		GroupID:     group.ID,
+		GroupItemID: item.ID,
+		RunID:       run.ID,
+		Mode:        ScoringModeRule,
+		Verdict:     ScoreVerdictError,
+		Score:       0.49,
+		BreakdownJSON: marshalInterface(map[string]interface{}{
+			"failure_label":       "infra_provider_auth",
+			"retryable":           false,
+			"verification_passed": false,
+		}),
+		// Keep the stale card ahead of the local wall clock so reconciliation
+		// must explicitly supersede it instead of relying on current time.
+		CreatedAt: now.Add(time.Minute),
+	}
+	if err := controller.store.AttachScorecard(ctx, staleCard); err != nil {
+		t.Fatalf("AttachScorecard failed: %v", err)
+	}
+
+	completedAt := now.Add(20 * time.Millisecond)
+	run.Status = RunStatusCompleted
+	run.Error = ""
+	run.Result = "verification passed"
+	run.UpdatedAt = completedAt
+	run.FinishedAt = &completedAt
+	if err := controller.store.UpdateRun(ctx, run); err != nil {
+		t.Fatalf("UpdateRun failed: %v", err)
+	}
+	if err := controller.store.AppendEvent(ctx, RunEvent{
+		RunID:       run.ID,
+		Type:        "run_completed",
+		Message:     "verification passed",
+		CreatedAt:   completedAt,
+		PayloadJSON: "{}",
+	}); err != nil {
+		t.Fatalf("AppendEvent failed: %v", err)
+	}
+
+	if _, err := controller.GetGroupReport(ctx, group.ID); err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+
+	latest, err := controller.store.LatestScorecardForItem(ctx, item.ID)
+	if err != nil {
+		t.Fatalf("LatestScorecardForItem failed: %v", err)
+	}
+	if latest == nil {
+		t.Fatal("LatestScorecardForItem returned nil")
+	}
+	if latest.Verdict != ScoreVerdictPass {
+		t.Fatalf("latest verdict = %q, want %q", latest.Verdict, ScoreVerdictPass)
+	}
+	if !latest.CreatedAt.After(staleCard.CreatedAt) {
+		t.Fatalf("latest CreatedAt = %s, want after stale CreatedAt = %s", latest.CreatedAt, staleCard.CreatedAt)
 	}
 }
 

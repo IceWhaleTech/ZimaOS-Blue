@@ -1,5 +1,6 @@
 // Croatian (Hrvatski)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('hr-HR', {
   common: {
@@ -419,6 +420,8 @@ export default mergeHarnessLocale('hr-HR', {
       noFailedItems: 'U posljednjem izvještaju nema neuspjelih stavki.',
       attempts: 'Pokušaji',
       noFailureReason: 'Nije zabilježen razlog neuspjeha.',
+      ...harnessProviderRemediationGroup('hr-HR'),
+
       linkedRuns: 'Povezana izvođenja',
       noLinkedRuns: 'Za ovu grupu još nisu spremljena povezana izvođenja.',
       artifacts: 'Artefakti',
@@ -1010,10 +1013,10 @@ export default mergeHarnessLocale('hr-HR', {
       },
       calendar: {
         name: 'Kalendar',
-        description: 'Upravljanje kalendarom uz CalDAV podrsku',
+        description: 'Stvaranje i upravljanje kalendarskim dogadajima',
       },
       contacts: {
-        description: 'Upravljanje kontaktima uz CardDAV podrsku',
+        description: 'Pristupajte izvornim kontaktima i upravljajte njima',
       },
       news: {
         description: 'Agregacija vijesti i naslova',

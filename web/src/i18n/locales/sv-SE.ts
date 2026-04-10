@@ -1,5 +1,6 @@
 // Swedish (Svenska)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('sv-SE', {
   common: {
@@ -417,6 +418,8 @@ export default mergeHarnessLocale('sv-SE', {
       noFailedItems: 'Inga misslyckade poster i den senaste rapporten.',
       attempts: 'Försök',
       noFailureReason: 'Ingen felorsak registrerades.',
+      ...harnessProviderRemediationGroup('sv-SE'),
+
       linkedRuns: 'Länkade körningar',
       noLinkedRuns: 'Inga länkade körningar har ännu sparats för denna grupp.',
       artifacts: 'Artefakter',
@@ -1012,10 +1015,10 @@ export default mergeHarnessLocale('sv-SE', {
       },
       calendar: {
         name: 'Kalender',
-        description: 'Kalenderhantering med CalDAV-stod',
+        description: 'Skapa och hantera kalenderhandelser',
       },
       contacts: {
-        description: 'Kontakthantering med CardDAV-stod',
+        description: 'Få åtkomst till och hantera inbyggda kontakter',
       },
       news: {
         description: 'Nyhetsaggregering och rubriker',

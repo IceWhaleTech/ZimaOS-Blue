@@ -80,6 +80,7 @@ vi.mock('@/composables/useKnowledgeJobs', () => ({
     latestReport: ref(null),
     isRunning: ref(false),
     runJob: runJobMock,
+    hydrateLatestActiveJob: vi.fn(),
     hydrateJob: vi.fn(),
     hydrateReport: vi.fn(),
   }),

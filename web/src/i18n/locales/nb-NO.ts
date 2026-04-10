@@ -1,5 +1,6 @@
 // Norwegian Bokmål (Norsk bokmål)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('nb-NO', {
   common: {
@@ -416,6 +417,8 @@ export default mergeHarnessLocale('nb-NO', {
       noFailedItems: 'Ingen mislykkede elementer i den nyeste rapporten.',
       attempts: 'Forsøk',
       noFailureReason: 'Ingen feilårsak ble registrert.',
+      ...harnessProviderRemediationGroup('nb-NO'),
+
       linkedRuns: 'Koblede kjøringer',
       noLinkedRuns: 'Ingen koblede kjøringer er lagret for denne gruppen ennå.',
       artifacts: 'Artefakter',
@@ -1008,10 +1011,10 @@ export default mergeHarnessLocale('nb-NO', {
       },
       calendar: {
         name: 'Kalender',
-        description: 'Kalenderstyring med CalDAV-stotte',
+        description: 'Opprett og administrer kalenderhendelser',
       },
       contacts: {
-        description: 'Kontaktstyring med CardDAV-stotte',
+        description: 'Få tilgang til og administrer native kontakter',
       },
       news: {
         description: 'Nyhetssamling og overskrifter',

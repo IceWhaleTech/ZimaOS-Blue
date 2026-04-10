@@ -19,6 +19,9 @@ func (binding *runtimeContractBinding) BindProductivityTools(options routeRuntim
 	if options.calendarSkill == nil {
 		options.calendarSkill = runtimeSkillAsCalendarTarget(options.skillRegistry, "calendar")
 	}
+	if options.contactsSkill == nil {
+		options.contactsSkill = runtimeSkillAsContactsTarget(options.skillRegistry, "contacts")
+	}
 
 	result := routeRuntimeContractProductivityResult{}
 	emailService, err := tools.NewLocalEmailServiceWithReadDB(options.writeDB, options.readDB)
@@ -42,12 +45,19 @@ func (binding *runtimeContractBinding) BindProductivityTools(options routeRuntim
 		return result
 	}
 	result.calendarService = calendarService
-	result.calendarTool = tools.RegisterCalendarTool(options.registry, calendarService)
+	result.calendarTool = tools.RegisterCalendarTool(options.registry, tools.PreferredCalendarStore(calendarService))
 	if result.calendarTool != nil && result.emailService != nil {
 		result.calendarTool.SetEmailService(result.emailService)
 	}
 	if options.calendarSkill != nil && result.calendarTool != nil {
 		options.calendarSkill.SetExecutor(result.calendarTool)
+	}
+
+	contactsStore := tools.PreferredContactsStore(tools.NewUnavailableContactsStore(""))
+	result.contactsStore = contactsStore
+	result.contactsTool = tools.RegisterContactsTool(options.registry, contactsStore)
+	if options.contactsSkill != nil && result.contactsTool != nil {
+		options.contactsSkill.SetExecutor(result.contactsTool)
 	}
 	return result
 }

@@ -77,6 +77,21 @@ export function harnessFailureLabelHint(label: string, tr: HarnessFailureHintTra
         'harness.group.remediationMissingEvidenceCollection',
         'Call evidence-gathering tools during research-style runs so the answer is backed by observable retrieval steps.'
       )
+    case 'infra_provider_auth':
+      return tr(
+        'harness.group.remediationInfraProviderAuth',
+        'Reconnect provider credentials, confirm API keys or auth headers are valid, then retry the run.'
+      )
+    case 'infra_provider_quota':
+      return tr(
+        'harness.group.remediationInfraProviderQuota',
+        'Restore provider quota or credits, or route the case to another funded provider before retrying.'
+      )
+    case 'infra_provider_blocked':
+      return tr(
+        'harness.group.remediationInfraProviderBlocked',
+        'Inspect provider availability, overload, or rate-limit signals in linked runs, then retry when the provider path is healthy.'
+      )
     case 'timeout':
       return tr(
         'harness.group.remediationTimeout',

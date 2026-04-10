@@ -1283,12 +1283,15 @@ describe('Harness views', () => {
     const wrapper = await mountHarnessGroupsView()
 
     expect(wrapper.text()).toContain('Nightly Eval Run')
+    expect(wrapper.text()).toMatch(/Score\s*0\.61/)
+    expect(wrapper.text()).not.toMatch(/Score\s*61%/)
 
     await wrapper.get('.eval-run-card').trigger('click')
     await flushPromises()
 
     expect(getEvalRunReportMock).toHaveBeenCalledWith('eval-run-1')
     expect(wrapper.text()).toContain('Linked report')
+    expect(wrapper.text()).toMatch(/Score\s*0\.61/)
     expect(wrapper.text()).toContain('Context Packs')
     expect(wrapper.text()).toContain('Items with packs')
     expect(wrapper.text()).toContain('Selected skills')
@@ -1668,6 +1671,8 @@ describe('Harness views', () => {
     await flushPromises()
 
     expect(compareEvalRunMock).toHaveBeenCalledWith('eval-run-1', {})
+    expect(wrapper.text()).toMatch(/Score delta\s*-0\.11/)
+    expect(wrapper.text()).not.toMatch(/Score delta\s*-11%/)
     expect(wrapper.text()).toContain('Context pack delta')
     expect(wrapper.text()).toContain('Skill delta')
     expect(wrapper.text()).toContain('Source delta')
@@ -1685,6 +1690,8 @@ describe('Harness views', () => {
     expect(wrapper.find('.harness-detail-page').exists()).toBe(true)
     expect(wrapper.text()).toContain('Regression batch')
     expect(wrapper.text()).toContain('Validate agent task flows')
+    expect(wrapper.text()).toMatch(/Score\s*0\.61/)
+    expect(wrapper.text()).not.toMatch(/Score\s*61%/)
     expect(wrapper.text()).toContain('Score distribution')
     expect(wrapper.text()).toContain('Failed items')
     expect(wrapper.text()).toContain('Items')

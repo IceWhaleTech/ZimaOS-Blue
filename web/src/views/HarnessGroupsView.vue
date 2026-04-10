@@ -31,6 +31,7 @@ import AutomationTabs from '@/components/automation/AutomationTabs.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { getErrorMessage } from '@/utils/error'
 import { harnessFailureLabelHint } from '@/utils/harnessFailureHints'
+import { formatHarnessScore, formatSignedHarnessScore } from '@/utils/harnessScore'
 
 type GroupFilterMode = 'all' | 'active' | 'terminal'
 type QuickEvalSourceMode = 'manifest' | 'dataset' | 'conversation'
@@ -606,6 +607,11 @@ function percentLabel(value: number): string {
   return `${Math.round(scaled)}%`
 }
 
+function scoreLabel(value: number): string {
+  const label = formatHarnessScore(value)
+  return label || tr('common.notAvailable', 'Not available')
+}
+
 function formatCount(value: number): string {
   return new Intl.NumberFormat().format(value)
 }
@@ -616,6 +622,11 @@ function signedPercentLabel(value: number): string {
   const scaled = numeric >= -1 && numeric <= 1 ? numeric * 100 : numeric
   const percent = Math.round(scaled)
   return `${percent > 0 ? '+' : ''}${percent}%`
+}
+
+function signedScoreLabel(value: number): string {
+  const label = formatSignedHarnessScore(value)
+  return label || tr('common.notAvailable', 'Not available')
 }
 
 function signedIntegerLabel(value: number): string {
@@ -3344,7 +3355,7 @@ onUnmounted(() => {
                       </div>
                       <div class="run-metric-pill">
                         <span>{{ tr('harness.groups.score', 'Score') }}</span>
-                        <strong>{{ percentLabel(overallScore(run.summary)) }}</strong>
+                        <strong>{{ scoreLabel(overallScore(run.summary)) }}</strong>
                       </div>
                       <div class="run-metric-pill">
                         <span>{{ tr('harness.evalRun.triggerKind', 'Trigger kind') }}</span>
@@ -3497,7 +3508,7 @@ onUnmounted(() => {
                     <article class="highlight-card">
                       <span>{{ tr('harness.groups.score', 'Score') }}</span>
                       <strong>{{
-                        percentLabel(selectedEvalRunReport.group_report?.overall_score || 0)
+                        scoreLabel(selectedEvalRunReport.group_report?.overall_score || 0)
                       }}</strong>
                     </article>
                     <article class="highlight-card">
@@ -4014,7 +4025,7 @@ onUnmounted(() => {
                             <span>{{ tr('harness.compare.scoreDelta', 'Score delta') }}</span>
                             <strong>
                               {{
-                                signedPercentLabel(
+                                signedScoreLabel(
                                   summaryNumber(selectedComparisonReport.summary, 'overall_score_delta')
                                 )
                               }}
@@ -4233,13 +4244,13 @@ onUnmounted(() => {
                                 {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
                                 {{
                                   hasFiniteNumber(entry.base_evidence_score)
-                                    ? percentLabel(Number(entry.base_evidence_score))
+                                    ? scoreLabel(Number(entry.base_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                                 ->
                                 {{
                                   hasFiniteNumber(entry.target_evidence_score)
-                                    ? percentLabel(Number(entry.target_evidence_score))
+                                    ? scoreLabel(Number(entry.target_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                               </p>
@@ -4301,13 +4312,13 @@ onUnmounted(() => {
                                 {{ tr('harness.group.evidenceScore', 'Evidence score') }}:
                                 {{
                                   hasFiniteNumber(entry.base_evidence_score)
-                                    ? percentLabel(Number(entry.base_evidence_score))
+                                    ? scoreLabel(Number(entry.base_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                                 ->
                                 {{
                                   hasFiniteNumber(entry.target_evidence_score)
-                                    ? percentLabel(Number(entry.target_evidence_score))
+                                    ? scoreLabel(Number(entry.target_evidence_score))
                                     : tr('common.notAvailable', 'Not available')
                                 }}
                               </p>
@@ -4456,7 +4467,7 @@ onUnmounted(() => {
                   </div>
                   <div class="metric">
                     <span>{{ tr('harness.groups.score', 'Score') }}</span>
-                    <strong>{{ percentLabel(overallScore(group.summary)) }}</strong>
+                    <strong>{{ scoreLabel(overallScore(group.summary)) }}</strong>
                   </div>
                 </div>
 

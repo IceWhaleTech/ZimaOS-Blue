@@ -1,5 +1,6 @@
 // Irish (Gaeilge)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('ga-IE', {
   common: {
@@ -419,6 +420,8 @@ export default mergeHarnessLocale('ga-IE', {
       noFailedItems: 'Níl aon mhíreanna teipthe sa tuairisc is déanaí.',
       attempts: 'Iarrachtaí',
       noFailureReason: 'Níor taifeadadh aon chúis teipe.',
+      ...harnessProviderRemediationGroup('ga-IE'),
+
       linkedRuns: 'Ritheanna nasctha',
       noLinkedRuns: 'Níor sábháladh aon ritheanna nasctha don ghrúpa seo fós.',
       artifacts: 'Déantáin',
@@ -1017,10 +1020,10 @@ export default mergeHarnessLocale('ga-IE', {
       },
       calendar: {
         name: 'Feilire',
-        description: 'Bainistíocht féilire le tacaíocht CalDAV',
+        description: 'Cruthaigh agus bainistigh imeachtai feilire',
       },
       contacts: {
-        description: 'Bainistíocht teagmhálaithe le tacaíocht CardDAV',
+        description: 'Faigh rochtain ar theagmhálaithe dúchasacha agus bainistigh iad',
       },
       news: {
         description: 'Bailiú nuachta agus ceannlínte',

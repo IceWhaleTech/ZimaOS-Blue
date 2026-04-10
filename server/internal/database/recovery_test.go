@@ -3,6 +3,7 @@ package database_test
 import (
 	"database/sql"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -107,6 +108,88 @@ func TestOpenSQLiteSimpleRepairsRecoverableCorruption(t *testing.T) {
 		t.Fatalf("glob repair backup: %v", err)
 	} else if len(matches) != 0 {
 		t.Fatalf("expected successful repair to remove temporary .bak files, got %v", matches)
+	}
+}
+
+func TestOpenSQLiteSimpleRepairsRecoverableCorruptionFallsBackWithoutIgnoreFreelist(t *testing.T) {
+	realSQLite, err := exec.LookPath("sqlite3")
+	if err != nil {
+		t.Skipf("sqlite3 CLI unavailable: %v", err)
+	}
+
+	wrapperDir := t.TempDir()
+	wrapperPath := filepath.Join(wrapperDir, "sqlite3")
+	wrapper := `#!/bin/sh
+if [ "$#" -ge 3 ] && [ "$1" = "-batch" ] && [ "$3" = ".recover --ignore-freelist" ]; then
+  echo "sql error: no such table: sqlite_dbpage (1)" >&2
+  exit 1
+fi
+exec "$REAL_SQLITE3" "$@"
+`
+	if err := os.WriteFile(wrapperPath, []byte(wrapper), 0o755); err != nil {
+		t.Fatalf("write sqlite3 wrapper: %v", err)
+	}
+	t.Setenv("REAL_SQLITE3", realSQLite)
+	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "recoverable-fallback.db")
+	writeSQLiteEntry(t, path, "hello")
+	corruptSQLiteBytes(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
+
+	db, err := database.OpenSQLiteSimple(path)
+	if err != nil {
+		t.Fatalf("expected recoverable db to open after plain .recover fallback, got %v", err)
+	}
+	defer db.Close()
+
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM entries").Scan(&count); err != nil {
+		t.Fatalf("failed to count repaired rows after fallback: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected fallback repair to retain at least one row")
+	}
+}
+
+func TestOpenSQLiteSimpleRepairsRecoverableCorruptionFallsBackWhenIgnoreFreelistDropsSchema(t *testing.T) {
+	realSQLite, err := exec.LookPath("sqlite3")
+	if err != nil {
+		t.Skipf("sqlite3 CLI unavailable: %v", err)
+	}
+
+	wrapperDir := t.TempDir()
+	wrapperPath := filepath.Join(wrapperDir, "sqlite3")
+	wrapper := `#!/bin/sh
+if [ "$#" -ge 3 ] && [ "$1" = "-batch" ] && [ "$3" = ".recover --ignore-freelist" ]; then
+  printf 'BEGIN;\nCOMMIT;\n'
+  exit 0
+fi
+exec "$REAL_SQLITE3" "$@"
+`
+	if err := os.WriteFile(wrapperPath, []byte(wrapper), 0o755); err != nil {
+		t.Fatalf("write sqlite3 wrapper: %v", err)
+	}
+	t.Setenv("REAL_SQLITE3", realSQLite)
+	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "recoverable-empty-schema-fallback.db")
+	writeSQLiteEntry(t, path, "hello")
+	corruptSQLiteBytes(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
+
+	db, err := database.OpenSQLiteSimple(path)
+	if err != nil {
+		t.Fatalf("expected recoverable db to open after schema-loss fallback, got %v", err)
+	}
+	defer db.Close()
+
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM entries").Scan(&count); err != nil {
+		t.Fatalf("failed to count repaired rows after schema-loss fallback: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected schema-loss fallback repair to retain at least one row")
 	}
 }
 

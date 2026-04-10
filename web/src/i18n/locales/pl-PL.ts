@@ -1,5 +1,6 @@
 // Polish (Polski)
 import { mergeHarnessLocale } from '../locale-base-messages'
+import { harnessProviderRemediationGroup } from '../harness-provider-remediation-backfills'
 
 export default mergeHarnessLocale('pl-PL', {
   common: {
@@ -417,6 +418,8 @@ export default mergeHarnessLocale('pl-PL', {
       noFailedItems: 'Brak nieudanych elementów w najnowszym raporcie.',
       attempts: 'Próby',
       noFailureReason: 'Nie zapisano przyczyny niepowodzenia.',
+      ...harnessProviderRemediationGroup('pl-PL'),
+
       linkedRuns: 'Powiązane uruchomienia',
       noLinkedRuns: 'Dla tej grupy nie zapisano jeszcze powiązanych uruchomień.',
       artifacts: 'Artefakty',
@@ -1008,10 +1011,10 @@ export default mergeHarnessLocale('pl-PL', {
       },
       calendar: {
         name: 'Kalendarz',
-        description: 'Zarzadzanie kalendarzem z obsluga CalDAV',
+        description: 'Tworzenie i zarzadzanie wydarzeniami w kalendarzu',
       },
       contacts: {
-        description: 'Zarzadzanie kontaktami z obsluga CardDAV',
+        description: 'Uzyskuj dostęp do natywnych kontaktów i zarządzaj nimi',
       },
       news: {
         description: 'Agregacja wiadomosci i naglowkow',

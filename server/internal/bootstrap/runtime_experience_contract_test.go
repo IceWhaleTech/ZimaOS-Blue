@@ -173,7 +173,7 @@ func TestBindExperienceRuntime_ReturnsAggregatedLaneState(t *testing.T) {
 	if !result.chat.autoHarnessHookBound {
 		t.Fatalf("expected experience contract to bind chat auto-harness hook, got %#v", result.chat)
 	}
-	if result.productivity.emailTool == nil || result.productivity.calendarTool == nil {
+	if result.productivity.emailTool == nil || result.productivity.calendarTool == nil || result.productivity.contactsTool == nil {
 		t.Fatalf("expected experience contract to aggregate productivity tools, got %#v", result.productivity)
 	}
 	if !result.skill.storeBound || !result.skill.marketplaceConfigured || !result.skill.routesRegistered || !result.skill.closerRegistered {

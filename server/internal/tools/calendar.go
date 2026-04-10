@@ -21,7 +21,7 @@ var (
 	calendarChineseClockRE = regexp.MustCompile(`([零一二三四五六七八九十两0-9]{1,3})点(?:([零一二三四五六七八九十两0-9]{1,2})分?)?`)
 )
 
-// CalendarEvent is a benchmark-first local calendar event.
+// CalendarEvent is a local calendar event.
 type CalendarEvent struct {
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
@@ -52,7 +52,7 @@ type CalendarStore interface {
 	Today(ctx context.Context, ownerID string, day time.Time) ([]CalendarEvent, error)
 }
 
-// LocalCalendarService stores events in SQLite and seeds an agenda dataset per user.
+// LocalCalendarService stores events in SQLite.
 type LocalCalendarService struct {
 	db     *sql.DB
 	readDB *sql.DB
@@ -162,31 +162,6 @@ func (s *LocalCalendarService) SeedFixtures(ctx context.Context, ownerID string,
 	return tx.Commit()
 }
 
-func (s *LocalCalendarService) ensureSeeded(ctx context.Context, ownerID string) error {
-	ownerID = normalizeProductivityOwnerID(ownerID)
-	var count int64
-	if _, err := s.readTable(ctx).Select(&count,
-		z.Fields("count(1)"),
-		z.Where(z.Eq("owner_id", ownerID)),
-	); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, event := range defaultCalendarFixtures(s.now()) {
-		if err := insertCalendarEvent(ctx, tx, ownerID, event); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
 func insertCalendarEvent(ctx context.Context, tx *sql.Tx, ownerID string, event CalendarEvent) error {
 	if strings.TrimSpace(event.ID) == "" {
 		event.ID = uuid.NewString()
@@ -229,9 +204,6 @@ func (s *LocalCalendarService) List(ctx context.Context, ownerID string, opts Ca
 		return nil, errors.New("calendar service not configured")
 	}
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	if err := s.ensureSeeded(ctx, ownerID); err != nil {
-		return nil, err
-	}
 	var rows []calendarEventRow
 	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Eq("owner_id", ownerID)),
@@ -271,9 +243,6 @@ func (s *LocalCalendarService) Get(ctx context.Context, ownerID, id string) (*Ca
 		return nil, errors.New("calendar service not configured")
 	}
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	if err := s.ensureSeeded(ctx, ownerID); err != nil {
-		return nil, err
-	}
 	var rows []calendarEventRow
 	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Eq("owner_id", ownerID), z.Eq("id", strings.TrimSpace(id))),
@@ -295,9 +264,6 @@ func (s *LocalCalendarService) Create(ctx context.Context, ownerID string, event
 		return nil, errors.New("calendar service not configured")
 	}
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	if err := s.ensureSeeded(ctx, ownerID); err != nil {
-		return nil, err
-	}
 	if strings.TrimSpace(event.ID) == "" {
 		event.ID = uuid.NewString()
 	}
@@ -401,65 +367,6 @@ func calendarMatchesQuery(event CalendarEvent, opts CalendarQueryOptions) bool {
 	return true
 }
 
-func defaultCalendarFixtures(now time.Time) []CalendarEvent {
-	loc := now.Location()
-	year, month, day := now.Date()
-	todayMorning := time.Date(year, month, day, 9, 30, 0, 0, loc)
-	todayAfternoon := time.Date(year, month, day, 15, 0, 0, 0, loc)
-	tomorrowEvening := time.Date(year, month, day+1, 19, 0, 0, 0, loc)
-	nextWeek := time.Date(year, month, day+5, 11, 0, 0, 0, loc)
-	return []CalendarEvent{
-		{
-			Title:        "Team standup",
-			Location:     "Focus room A",
-			Notes:        "Share blockers, priorities, and release status.",
-			CalendarName: "Work",
-			Status:       "confirmed",
-			StartAt:      todayMorning,
-			EndAt:        todayMorning.Add(30 * time.Minute),
-			AllDay:       false,
-			CreatedAt:    todayMorning.Add(-24 * time.Hour),
-			UpdatedAt:    todayMorning.Add(-24 * time.Hour),
-		},
-		{
-			Title:        "Quarterly planning review",
-			Location:     "Horizon room",
-			Notes:        "Updated from the latest calendar email. Bring the roadmap deck.",
-			CalendarName: "Work",
-			Status:       "confirmed",
-			StartAt:      todayAfternoon,
-			EndAt:        todayAfternoon.Add(1 * time.Hour),
-			AllDay:       false,
-			CreatedAt:    todayAfternoon.Add(-48 * time.Hour),
-			UpdatedAt:    todayAfternoon.Add(-2 * time.Hour),
-		},
-		{
-			Title:        "Dinner with family",
-			Location:     "Lantern House",
-			Notes:        "Book a table for four if needed.",
-			CalendarName: "Personal",
-			Status:       "confirmed",
-			StartAt:      tomorrowEvening,
-			EndAt:        tomorrowEvening.Add(90 * time.Minute),
-			AllDay:       false,
-			CreatedAt:    now.Add(-72 * time.Hour),
-			UpdatedAt:    now.Add(-72 * time.Hour),
-		},
-		{
-			Title:        "Dentist appointment",
-			Location:     "Smile Clinic",
-			Notes:        "Bring insurance card.",
-			CalendarName: "Personal",
-			Status:       "confirmed",
-			StartAt:      nextWeek,
-			EndAt:        nextWeek.Add(45 * time.Minute),
-			AllDay:       false,
-			CreatedAt:    now.Add(-7 * 24 * time.Hour),
-			UpdatedAt:    now.Add(-7 * 24 * time.Hour),
-		},
-	}
-}
-
 // CalendarTool provides local event creation, lookup, and daily summaries.
 type CalendarTool struct {
 	service     CalendarStore
@@ -509,7 +416,7 @@ func (t *CalendarTool) SetNowFunc(fn func() time.Time) {
 func (t *CalendarTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "calendar",
-		Description: "Create, inspect, search, and summarize benchmark-first calendar events. Also produces a daily summary that combines agenda, reminders, scheduled jobs, and priority emails.",
+		Description: "Create, inspect, search, and summarize calendar events. Also produces a daily summary that combines agenda, reminders, scheduled jobs, and priority emails.",
 		Icon:        "calendar",
 		Parameters: map[string]interface{}{
 			"type": "object",

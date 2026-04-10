@@ -1,4 +1,5 @@
 import type { UserTaskProjection } from '@/api/tasks'
+import { formatHarnessScore } from '@/utils/harnessScore'
 
 type Translate = (key: string, fallback: string) => string
 
@@ -41,13 +42,6 @@ function formatHarnessStatusToken(value: unknown, translate: Translate): string 
     default:
       return String(value ?? '').trim()
   }
-}
-
-function formatHarnessScore(value: unknown): string {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return ''
-  const scaled = numeric >= 0 && numeric <= 1 ? numeric * 100 : numeric
-  return `${Math.round(scaled)}%`
 }
 
 function detailHref(task: Pick<UserTaskProjection, 'detail_href'>): string {

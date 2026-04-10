@@ -192,27 +192,34 @@ describe('KnowledgeGraphMap', () => {
     expect(
       wrapper.get('[data-testid="knowledge-graph-orbit"]').attributes('data-orbit-visibility')
     ).toBe('soft')
+    expect(wrapper.find('[data-testid="knowledge-graph-node-policy"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="knowledge-graph-node-archive"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="knowledge-graph-node-detached"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid="knowledge-graph-edge"]').length).toBe(2)
 
     await wrapper.get('[data-testid="knowledge-graph-zoom-in"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('3 / 4')
     expect(
       wrapper.get('[data-testid="knowledge-graph-orbit"]').attributes('data-orbit-visibility')
     ).toBe('visible')
-    expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
-      'data-distance-tier': 'far',
+    expect(wrapper.get('[data-testid="knowledge-graph-node-policy"]').attributes()).toMatchObject({
+      'data-distance-tier': 'mid',
     })
+    expect(wrapper.find('[data-testid="knowledge-graph-node-archive"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="knowledge-graph-node-detached"]').exists()).toBe(false)
-    expect(wrapper.findAll('[data-testid="knowledge-graph-edge"]').length).toBe(4)
+    expect(wrapper.findAll('[data-testid="knowledge-graph-edge"]').length).toBe(3)
 
     await wrapper.get('[data-testid="knowledge-graph-zoom-in"]').trigger('click')
     expect(wrapper.get('[data-testid="knowledge-graph-layer-indicator"]').text()).toContain('4 / 4')
+    expect(wrapper.get('[data-testid="knowledge-graph-node-archive"]').attributes()).toMatchObject({
+      'data-distance-tier': 'far',
+    })
     expect(wrapper.get('[data-testid="knowledge-graph-node-detached"]').attributes()).toMatchObject(
       {
         'data-distance-tier': 'muted',
       }
     )
+    expect(wrapper.findAll('[data-testid="knowledge-graph-edge"]').length).toBe(4)
     const selectedCircle = wrapper.get('[data-testid="knowledge-graph-node-readme"] span').attributes('style')
     const detachedCircle = wrapper
       .get('[data-testid="knowledge-graph-node-detached"] span')
