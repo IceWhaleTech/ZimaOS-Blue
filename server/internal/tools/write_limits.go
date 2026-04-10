@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	maxFileWriteChunkBytes = 32 << 10 // 32 KiB per write call; stricter than the requested 50 KB ceiling.
+	maxFileWriteChunkBytes = 64 << 10 // 64 KiB per write call.
 	maxFileWriteChunkLines = 200
 )
 

@@ -83,6 +83,25 @@ func applyServerRuntimeOverrides(cfg *config.ServerConfig) {
 	}
 }
 
+func applySessionRuntimeOverrides(cfg *config.SessionConfig) {
+	if cfg == nil {
+		return
+	}
+
+	if auditDBPath := configuredSessionAuditDBPath(); auditDBPath != "" {
+		cfg.Audit.Path = auditDBPath
+	}
+}
+
+func applyRuntimeOverrides(cfg *config.Config) {
+	if cfg == nil {
+		return
+	}
+
+	applyServerRuntimeOverrides(&cfg.Server)
+	applySessionRuntimeOverrides(&cfg.Session)
+}
+
 func normalizeServiceHost(raw string) string {
 	host := strings.TrimSpace(raw)
 	switch host {

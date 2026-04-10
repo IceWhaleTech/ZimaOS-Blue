@@ -541,7 +541,7 @@ func runServerDefaultIteration() serverRunOutcome {
 		logger.Warn().Err(err).Msg("Failed to load config from DB, using YAML defaults")
 	}
 	bootstrap.ApplyRuntimeDataDirDefaults(cfg, dataDir)
-	applyServerRuntimeOverrides(&cfg.Server)
+	applyRuntimeOverrides(cfg)
 	hotReloader, err = config.NewHotReloader(cfgFile, cfg, &config.HotReloadConfig{
 		Enabled:             true,
 		WatchInterval:       5 * time.Second,

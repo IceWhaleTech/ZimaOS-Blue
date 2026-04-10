@@ -1913,6 +1913,105 @@ func TestExecToolAutoForward_AllowsOptionalArgToolWithoutArgs(t *testing.T) {
 	}
 }
 
+func TestExecToolAutoForward_BypassesShellStyleLsWithArgs(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "root.txt"), []byte("root"), 0o644); err != nil {
+		t.Fatalf("write root.txt: %v", err)
+	}
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	registry := NewRegistry()
+	lsTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "ls",
+			Description: "list files",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+	}
+	registry.Register(lsTool)
+	tool.SetRegistry(registry)
+	tool.SetToolNames([]string{"ls"})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": fmt.Sprintf("ls -la %q", tmpDir),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if lsTool.args != nil {
+		t.Fatalf("ls tool should not have executed, got args=%v", lsTool.args)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if !strings.Contains(res.Stdout, "root.txt") {
+		t.Fatalf("stdout = %q, want root.txt from real shell ls", res.Stdout)
+	}
+}
+
+func TestExecToolAutoForward_BypassesShellStyleFindWithArgs(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tmpDir := t.TempDir()
+	nestedPath := filepath.Join(tmpDir, "nested.txt")
+	if err := os.WriteFile(nestedPath, []byte("needle"), 0o644); err != nil {
+		t.Fatalf("write nested.txt: %v", err)
+	}
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	registry := NewRegistry()
+	findTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "find",
+			Description: "find files",
+			Parameters: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+	}
+	registry.Register(findTool)
+	tool.SetRegistry(registry)
+	tool.SetToolNames([]string{"find"})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": fmt.Sprintf("find %q -type f | sort", tmpDir),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if findTool.args != nil {
+		t.Fatalf("find tool should not have executed, got args=%v", findTool.args)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if !strings.Contains(res.Stdout, nestedPath) {
+		t.Fatalf("stdout = %q, want %q from real shell find", res.Stdout, nestedPath)
+	}
+}
+
 func TestExecToolAutoForward_RejectsRequiredArgToolWithoutArgs(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()

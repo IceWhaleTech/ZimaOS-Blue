@@ -17,11 +17,11 @@ func resetGatewayDaemonCLIState(t *testing.T) {
 
 	oldCfgFile, oldDevMode, oldProfile := cfgFile, devMode, profile
 	oldNoColor, oldVerbose := noColor, verbose
-	oldGatewayPort, oldGatewayBind := gatewayPort, gatewayBind
+	oldGatewayPort, oldGatewayBind, oldSessionAuditDB := gatewayPort, gatewayBind, sessionAuditDB
 	t.Cleanup(func() {
 		cfgFile, devMode, profile = oldCfgFile, oldDevMode, oldProfile
 		noColor, verbose = oldNoColor, oldVerbose
-		gatewayPort, gatewayBind = oldGatewayPort, oldGatewayBind
+		gatewayPort, gatewayBind, sessionAuditDB = oldGatewayPort, oldGatewayBind, oldSessionAuditDB
 	})
 
 	cfgFile = ""
@@ -31,6 +31,7 @@ func resetGatewayDaemonCLIState(t *testing.T) {
 	verbose = false
 	gatewayPort = 0
 	gatewayBind = ""
+	sessionAuditDB = ""
 }
 
 func TestGatewayProcessArgsIncludeGlobalFlags(t *testing.T) {
@@ -65,6 +66,22 @@ func TestGatewayProcessArgsIncludeBindAndPortOverrides(t *testing.T) {
 	}
 
 	wantSupervisor := []string{"--port", "18080", "--bind", "127.0.0.1", "gateway", "supervise"}
+	if got := gatewaySupervisorArgs(); !reflect.DeepEqual(got, wantSupervisor) {
+		t.Fatalf("gatewaySupervisorArgs() = %#v, want %#v", got, wantSupervisor)
+	}
+}
+
+func TestGatewayProcessArgsIncludeSessionAuditDBOverride(t *testing.T) {
+	resetGatewayDaemonCLIState(t)
+
+	sessionAuditDB = "audit/pinchbench.db"
+
+	wantWorker := []string{"--session-audit-db", "audit/pinchbench.db", "gateway", "run"}
+	if got := gatewayWorkerArgs(); !reflect.DeepEqual(got, wantWorker) {
+		t.Fatalf("gatewayWorkerArgs() = %#v, want %#v", got, wantWorker)
+	}
+
+	wantSupervisor := []string{"--session-audit-db", "audit/pinchbench.db", "gateway", "supervise"}
 	if got := gatewaySupervisorArgs(); !reflect.DeepEqual(got, wantSupervisor) {
 		t.Fatalf("gatewaySupervisorArgs() = %#v, want %#v", got, wantSupervisor)
 	}

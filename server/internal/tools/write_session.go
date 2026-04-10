@@ -377,7 +377,7 @@ func NewFileWriteBeginTool(allowedPaths []string, sessions *WriteSessionManager)
 func (t *FileWriteBeginTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "write_begin",
-		Description: "Starts a transactional multi-part file write. Use this when the output would exceed 200 lines or 32 KiB in a single call, then send repeated write_chunk calls and a final write_commit.",
+		Description: "Starts a transactional multi-part file write. Use this when the output would exceed 200 lines or 64 KiB in a single call, then send repeated write_chunk calls and a final write_commit.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -456,7 +456,7 @@ func optionalWriteSessionIDArg(args map[string]interface{}) (string, error) {
 func (t *FileWriteChunkTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "write_chunk",
-		Description: "Appends one chunk to an active transactional file write session started by write_begin. Keep each chunk at or below 200 lines and 32 KiB.",
+		Description: "Appends one chunk to an active transactional file write session started by write_begin. Keep each chunk at or below 200 lines and 64 KiB.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -467,7 +467,7 @@ func (t *FileWriteChunkTool) Definition() ToolDefinition {
 				},
 				"content": map[string]interface{}{
 					"type":        "string",
-					"description": "One chunk of text content to append. Keep each chunk at or below 200 lines and 32 KiB.",
+					"description": "One chunk of text content to append. Keep each chunk at or below 200 lines and 64 KiB.",
 				},
 			},
 			"required": []string{"session_id", "content"},

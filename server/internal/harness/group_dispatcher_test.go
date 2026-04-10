@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"encoding/base64"
 	"context"
 	"fmt"
 	"os"
@@ -967,6 +968,101 @@ func TestGroupDispatcher_VerificationSummaryTracksArtifactBackedPass(t *testing.
 	}
 	if got := report.Group.Summary["evidence_backed_pass_rate"]; got != float64(1) {
 		t.Fatalf("evidence_backed_pass_rate = %#v, want 1", got)
+	}
+}
+
+func TestGroupDispatcher_PreparesHarnessWorkspaceFilesBeforeRunStart(t *testing.T) {
+	controller := newTestController(t)
+	var observedWorkspaceRoot string
+	controller.RegisterDriver(&autoCompleteGroupDriver{
+		kind:   RunKindAgentTask,
+		status: RunStatusCompleted,
+		result: "seeded workspace ready",
+		delay:  10 * time.Millisecond,
+		onStart: func(run *Run, _ RunEnv) error {
+			observedWorkspaceRoot = run.WorkspaceRoot
+			if strings.TrimSpace(observedWorkspaceRoot) == "" {
+				return fmt.Errorf("workspace_root was empty")
+			}
+			textPath := filepath.Join(observedWorkspaceRoot, "research", "brief.txt")
+			textBlob, err := os.ReadFile(textPath)
+			if err != nil {
+				return fmt.Errorf("read seeded text file: %w", err)
+			}
+			if got := string(textBlob); got != "market brief" {
+				return fmt.Errorf("seeded text content = %q, want market brief", got)
+			}
+			binaryPath := filepath.Join(observedWorkspaceRoot, "assets", "sample.bin")
+			binaryBlob, err := os.ReadFile(binaryPath)
+			if err != nil {
+				return fmt.Errorf("read seeded binary file: %w", err)
+			}
+			if got := string(binaryBlob); got != "BIN" {
+				return fmt.Errorf("seeded binary content = %q, want BIN", got)
+			}
+			return nil
+		},
+	})
+	dispatcher := NewGroupDispatcher(controller)
+	dispatcher.SetRunPollInterval(10 * time.Millisecond)
+
+	group, err := controller.SubmitGroup(context.Background(), RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "seed workspace",
+		OwnerUserID: "user-1",
+		ScoringConfig: GroupScoringConfig{
+			Mode:          ScoringModeRule,
+			PassThreshold: 0.5,
+		},
+		Items: []RunGroupItemSpec{
+			{
+				RunKind: RunKindAgentTask,
+				Profile: "agent_task",
+				Input: map[string]interface{}{
+					"goal": "use the seeded workspace",
+				},
+				Expected: map[string]interface{}{
+					"contains": "seeded workspace ready",
+				},
+				Metadata: map[string]interface{}{
+					"harness_workspace_files": []interface{}{
+						map[string]interface{}{
+							"path":    "research/brief.txt",
+							"content": "market brief",
+						},
+						map[string]interface{}{
+							"path":           "assets/sample.bin",
+							"content_base64": base64.StdEncoding.EncodeToString([]byte("BIN")),
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	if err := dispatcher.DispatchOnce(context.Background()); err != nil {
+		t.Fatalf("DispatchOnce failed: %v", err)
+	}
+
+	waitForCondition(t, "seeded workspace terminal state", func() bool {
+		report, err := controller.GetGroupReport(context.Background(), group.ID)
+		if err != nil || report == nil || report.Group == nil {
+			return false
+		}
+		return report.Group.Status == RunGroupStatusCompleted && len(report.Scorecards) >= 1
+	})
+
+	if observedWorkspaceRoot == "" {
+		t.Fatal("expected seeded workspace root to be observed by driver")
+	}
+	if observedWorkspaceRoot == controller.resolver.defaultWorkspaceRoot() {
+		t.Fatalf("workspace_root = %q, want per-item seeded workspace instead of shared default root", observedWorkspaceRoot)
+	}
+	if !strings.Contains(observedWorkspaceRoot, group.ID) {
+		t.Fatalf("workspace_root = %q, want path scoped by group id %q", observedWorkspaceRoot, group.ID)
 	}
 }
 

@@ -1,0 +1,17 @@
+api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: pinchbench
+description: Official PinchBench task bundle adapted for Blue Harness import, execution, and quality evaluation.
+subject: pinchbench
+default_run_kind: agent_task
+default_profile: pinchbench
+default_version: v1
+metadata:
+  source_benchmark: pinchbench
+  task_count: 23
+  workspace_fixture_mode: embedded_manifest
+  scoring_mode: hybrid
+versions:
+  v1:
+    eval_specs:
+      - default.yaml

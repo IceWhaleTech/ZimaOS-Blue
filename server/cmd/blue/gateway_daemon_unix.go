@@ -614,6 +614,9 @@ func gatewayGlobalArgs() []string {
 	if bind := configuredGatewayBind(); bind != "" {
 		args = append(args, "--bind", bind)
 	}
+	if auditDBPath := configuredSessionAuditDBPath(); auditDBPath != "" {
+		args = append(args, "--session-audit-db", auditDBPath)
+	}
 	return args
 }
 

@@ -104,3 +104,37 @@ func TestApplyServerRuntimeOverridesPrefersGatewayFlags(t *testing.T) {
 		t.Fatalf("cfg.Port=%d, want %d", cfg.Port, 19101)
 	}
 }
+
+func TestApplyRuntimeOverridesSetsSessionAuditDBPathFromGatewayFlag(t *testing.T) {
+	oldGatewayPort, oldGatewayBind, oldSessionAuditDB := gatewayPort, gatewayBind, sessionAuditDB
+	defer func() {
+		gatewayPort, gatewayBind, sessionAuditDB = oldGatewayPort, oldGatewayBind, oldSessionAuditDB
+	}()
+
+	cfg := config.Config{
+		Server: config.ServerConfig{
+			Host: "config.example",
+			Port: 80,
+		},
+		Session: config.SessionConfig{
+			Audit: config.SessionAuditConfig{
+				Path: "session_audit_logs",
+			},
+		},
+	}
+	gatewayBind = "127.0.0.1"
+	gatewayPort = 19101
+	sessionAuditDB = "audit/pinchbench.db"
+
+	applyRuntimeOverrides(&cfg)
+
+	if cfg.Server.Host != "127.0.0.1" {
+		t.Fatalf("cfg.Server.Host=%q, want %q", cfg.Server.Host, "127.0.0.1")
+	}
+	if cfg.Server.Port != 19101 {
+		t.Fatalf("cfg.Server.Port=%d, want %d", cfg.Server.Port, 19101)
+	}
+	if cfg.Session.Audit.Path != "audit/pinchbench.db" {
+		t.Fatalf("cfg.Session.Audit.Path=%q, want %q", cfg.Session.Audit.Path, "audit/pinchbench.db")
+	}
+}

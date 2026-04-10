@@ -70,6 +70,13 @@ func DefaultExecConfig() ExecConfig {
 	}
 }
 
+var execAmbiguousShellToolNames = map[string]struct{}{
+	"find": {},
+	"grep": {},
+	"ls":   {},
+	"rg":   {},
+}
+
 // ExecTool implements the Tool interface for shell command execution.
 type ExecTool struct {
 	config        ExecConfig
@@ -129,6 +136,14 @@ func firstOrNilIface[T any](s []T) T {
 	}
 	var zero T
 	return zero
+}
+
+func shouldBypassToolAutoForwardForShellCommand(firstWord, restArgs string) bool {
+	if strings.TrimSpace(restArgs) == "" {
+		return false
+	}
+	_, ok := execAmbiguousShellToolNames[strings.ToLower(strings.TrimSpace(firstWord))]
+	return ok
 }
 
 func secondOrNilIface[T any](s []T) T {
@@ -448,7 +463,9 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 
 	if !strictShell && len(t.toolNames) > 0 {
 		if isToolName {
-			if t.registry != nil {
+			if shouldBypassToolAutoForwardForShellCommand(firstWord, restArgs) {
+				slog.Info("[exec] bypassing tool auto-forward for shell-style command", "tool", firstWord, "args", truncateStr(restArgs, 200))
+			} else if t.registry != nil {
 				if tool := t.registry.Get(firstWord); tool != nil {
 					slog.Info("[exec] auto-forwarding to tool", "tool", firstWord, "args", restArgs)
 					// Build args map from the rest of the command.
@@ -473,12 +490,13 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) (in
 					return &ForwardedResult{ActualTool: firstWord, Result: result}, nil
 				}
 				slog.Warn("[exec] tool in registry returned nil", "tool", firstWord)
+			} else {
+				slog.Warn("[exec] tool name matched but no registry or tool not found", "tool", firstWord, "hasRegistry", t.registry != nil)
+				return nil, fmt.Errorf(
+					"%s is a tool, not a shell command. Call the %s tool directly instead of using exec",
+					firstWord, firstWord,
+				)
 			}
-			slog.Warn("[exec] tool name matched but no registry or tool not found", "tool", firstWord, "hasRegistry", t.registry != nil)
-			return nil, fmt.Errorf(
-				"%s is a tool, not a shell command. Call the %s tool directly instead of using exec",
-				firstWord, firstWord,
-			)
 		}
 	}
 

@@ -504,6 +504,97 @@ func TestLoadHarnessDatasetBundleFromCommittedPinchBenchSamplesFixture(t *testin
 	}
 }
 
+func TestLoadHarnessDatasetBundleFromCommittedPinchBenchFixture(t *testing.T) {
+	workdir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
+	}
+	bundleDir := filepath.Join(workdir, "..", "..", "..", "harness", "datasets", "pinchbench")
+
+	req, err := loadHarnessDatasetBundleFromDir(bundleDir, "")
+	if err != nil {
+		t.Fatalf("loadHarnessDatasetBundleFromDir fixture: %v", err)
+	}
+	if req.SourceType != "dataset_bundle_local" {
+		t.Fatalf("source_type = %q, want dataset_bundle_local", req.SourceType)
+	}
+	if req.Dataset.Name != "pinchbench" || req.Version.Version != "v1" {
+		t.Fatalf("request = %#v, want pinchbench/v1", req)
+	}
+	if req.Dataset.Subject != "pinchbench" {
+		t.Fatalf("dataset.subject = %q, want pinchbench", req.Dataset.Subject)
+	}
+	if req.Dataset.DefaultRunKind != harnesspkg.RunKindAgentTask {
+		t.Fatalf("dataset.default_run_kind = %q, want %q", req.Dataset.DefaultRunKind, harnesspkg.RunKindAgentTask)
+	}
+	if req.Dataset.DefaultProfile != "pinchbench" {
+		t.Fatalf("dataset.default_profile = %q, want pinchbench", req.Dataset.DefaultProfile)
+	}
+	if got := fmt.Sprint(req.Dataset.Metadata["source_benchmark"]); got != "pinchbench" {
+		t.Fatalf("dataset.metadata.source_benchmark = %q, want pinchbench", got)
+	}
+	if got := fmt.Sprint(req.Dataset.Metadata["task_count"]); got != "23" {
+		t.Fatalf("dataset.metadata.task_count = %q, want 23", got)
+	}
+
+	if len(req.EvalSpecs) != 1 || req.EvalSpecs[0].Name != "PinchBench v1" {
+		t.Fatalf("eval_specs = %#v, want one PinchBench v1", req.EvalSpecs)
+	}
+	if req.EvalSpecs[0].RunKind != harnesspkg.RunKindAgentTask {
+		t.Fatalf("eval_specs[0].run_kind = %q, want %q", req.EvalSpecs[0].RunKind, harnesspkg.RunKindAgentTask)
+	}
+	if req.EvalSpecs[0].Profile != "pinchbench" {
+		t.Fatalf("eval_specs[0].profile = %q, want pinchbench", req.EvalSpecs[0].Profile)
+	}
+	if req.EvalSpecs[0].ScoringConfig.Mode != harnesspkg.ScoringModeHybrid {
+		t.Fatalf("eval_specs[0].scoring.mode = %q, want hybrid", req.EvalSpecs[0].ScoringConfig.Mode)
+	}
+	if req.EvalSpecs[0].ScoringConfig.JudgeModel != "claude-sonnet-4-6" {
+		t.Fatalf("eval_specs[0].scoring.judge_model = %q, want claude-sonnet-4-6", req.EvalSpecs[0].ScoringConfig.JudgeModel)
+	}
+	if req.EvalSpecs[0].SchedulerConfig.MaxAttempts != 2 {
+		t.Fatalf("eval_specs[0].scheduler.max_attempts = %d, want 2", req.EvalSpecs[0].SchedulerConfig.MaxAttempts)
+	}
+
+	manifest, err := (&harnesspkg.DatasetVersion{Manifest: req.Version.Manifest}).DecodeManifest()
+	if err != nil {
+		t.Fatalf("DecodeManifest: %v", err)
+	}
+	if len(manifest.Items) != 23 {
+		t.Fatalf("manifest items len = %d, want 23", len(manifest.Items))
+	}
+
+	var dailySummary *harnesspkg.DatasetManifestItem
+	var eli5PDF *harnesspkg.DatasetManifestItem
+	for i := range manifest.Items {
+		item := &manifest.Items[i]
+		switch item.ID {
+		case "task_15_daily_summary":
+			dailySummary = item
+		case "task_20_eli5_pdf_summary":
+			eli5PDF = item
+		}
+	}
+	if dailySummary == nil {
+		t.Fatal("expected task_15_daily_summary item in manifest")
+	}
+	if eli5PDF == nil {
+		t.Fatal("expected task_20_eli5_pdf_summary item in manifest")
+	}
+	if got := fmt.Sprint(dailySummary.Metadata["pinchbench_grading_type"]); got != "llm_judge" {
+		t.Fatalf("task_15 metadata grading_type = %q, want llm_judge", got)
+	}
+	if files, ok := dailySummary.Metadata["harness_workspace_files"].([]interface{}); !ok || len(files) != 5 {
+		t.Fatalf("task_15 harness_workspace_files = %#v, want 5 entries", dailySummary.Metadata["harness_workspace_files"])
+	}
+	if artifacts, ok := eli5PDF.Expected["expected_artifacts"].([]interface{}); !ok || len(artifacts) == 0 || fmt.Sprint(artifacts[0]) != "eli5_summary.txt" {
+		t.Fatalf("task_20 expected_artifacts = %#v, want eli5_summary.txt", eli5PDF.Expected["expected_artifacts"])
+	}
+	if files, ok := eli5PDF.Metadata["harness_workspace_files"].([]interface{}); !ok || len(files) != 1 {
+		t.Fatalf("task_20 harness_workspace_files = %#v, want 1 entry", eli5PDF.Metadata["harness_workspace_files"])
+	}
+}
+
 func TestResolveHarnessDatasetGitHubSourceRequiresBundlePathForRepoURL(t *testing.T) {
 	_, err := resolveHarnessDatasetGitHubSource("https://github.com/example/harness-datasets", "")
 	if err == nil {

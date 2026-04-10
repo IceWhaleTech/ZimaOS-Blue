@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -145,11 +148,15 @@ func buildJudgeUserPrompt(req JudgeEvaluationRequest) string {
 		"profile":       req.itemProfile(),
 		"input":         req.itemInput(),
 		"expected":      req.itemExpected(),
+		"item_metadata": req.itemMetadata(),
 		"run": map[string]interface{}{
 			"status": req.runStatus(),
 			"result": req.runResult(),
 			"error":  req.runError(),
 		},
+	}
+	if workspaceSummary := buildJudgeWorkspaceSummary(req.runWorkspaceRoot()); len(workspaceSummary) > 0 {
+		payload["workspace_summary"] = workspaceSummary
 	}
 	if len(req.Calibration) > 0 {
 		payload["calibration"] = req.Calibration
@@ -189,6 +196,13 @@ func (r JudgeEvaluationRequest) itemExpected() map[string]interface{} {
 	return r.Item.Expected
 }
 
+func (r JudgeEvaluationRequest) itemMetadata() map[string]interface{} {
+	if r.Item == nil {
+		return nil
+	}
+	return cloneMap(r.Item.Metadata)
+}
+
 func (r JudgeEvaluationRequest) runStatus() string {
 	if r.Run == nil {
 		return ""
@@ -208,4 +222,73 @@ func (r JudgeEvaluationRequest) runError() string {
 		return ""
 	}
 	return strings.TrimSpace(r.Run.Error)
+}
+
+func (r JudgeEvaluationRequest) runWorkspaceRoot() string {
+	if r.Run == nil {
+		return ""
+	}
+	return strings.TrimSpace(r.Run.WorkspaceRoot)
+}
+
+func buildJudgeWorkspaceSummary(workspaceRoot string) map[string]interface{} {
+	workspaceRoot = strings.TrimSpace(workspaceRoot)
+	if workspaceRoot == "" {
+		return nil
+	}
+	entries := make([]map[string]interface{}, 0, 8)
+	_ = filepath.Walk(workspaceRoot, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if len(entries) >= 8 {
+			return filepath.SkipAll
+		}
+		rel, relErr := filepath.Rel(workspaceRoot, path)
+		if relErr != nil {
+			return nil
+		}
+		entry := map[string]interface{}{
+			"path": rel,
+			"size": info.Size(),
+		}
+		if blob, readErr := os.ReadFile(path); readErr == nil {
+			if text, ok := judgeWorkspaceSnippet(blob); ok {
+				entry["snippet"] = text
+			} else {
+				entry["binary"] = true
+			}
+		}
+		entries = append(entries, entry)
+		return nil
+	})
+	if len(entries) == 0 {
+		return nil
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return fmt.Sprint(entries[i]["path"]) < fmt.Sprint(entries[j]["path"])
+	})
+	return map[string]interface{}{
+		"root":  workspaceRoot,
+		"files": entries,
+	}
+}
+
+func judgeWorkspaceSnippet(blob []byte) (string, bool) {
+	if len(blob) == 0 {
+		return "", true
+	}
+	for _, b := range blob {
+		if b == 0 {
+			return "", false
+		}
+	}
+	text := strings.TrimSpace(string(blob))
+	if text == "" {
+		return "", true
+	}
+	if len(text) > 400 {
+		text = text[:400]
+	}
+	return text, true
 }

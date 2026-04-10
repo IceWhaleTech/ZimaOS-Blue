@@ -2304,6 +2304,50 @@ func TestFileWriteToolAllowsExactlyMaxChunkLines(t *testing.T) {
 	}
 }
 
+func TestFileWriteToolAllows64KiBChunk(t *testing.T) {
+	tmpDir := t.TempDir()
+	const targetChunkBytes = 64 << 10
+	content := strings.Repeat("x", targetChunkBytes)
+	target := filepath.Join(tmpDir, "max-bytes.txt")
+
+	tool := NewFileWriteTool([]string{tmpDir}, 0)
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    target,
+		"content": content,
+	}); err != nil {
+		t.Fatalf("expected 64 KiB write to succeed: %v", err)
+	}
+
+	got, err := readTestFile(target)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	if got != content {
+		t.Fatalf("content length = %d, want %d", len(got), len(content))
+	}
+}
+
+func TestWriteBeginAdvertises64KiBChunkLimit(t *testing.T) {
+	tmpDir := t.TempDir()
+	const wantChunkBytes = 64 << 10
+	beginTool := NewFileWriteBeginTool([]string{tmpDir}, NewWriteSessionManager(0))
+
+	result, err := beginTool.Execute(context.Background(), map[string]interface{}{
+		"path": filepath.Join(tmpDir, "chunk-limit.txt"),
+	})
+	if err != nil {
+		t.Fatalf("write_begin failed: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	if got, _ := payload["max_chunk_bytes"].(float64); int(got) != wantChunkBytes {
+		t.Fatalf("max_chunk_bytes = %v, want %d", payload["max_chunk_bytes"], wantChunkBytes)
+	}
+}
+
 func TestFileWriteToolRejectsSuspiciousTruncatedMarker(t *testing.T) {
 	tmpDir := t.TempDir()
 
@@ -2329,6 +2373,21 @@ func TestFileToolDefinitionsUseNewNames(t *testing.T) {
 	}
 	if got := NewFileDeleteTool(nil).Definition().Name; got != "file_delete" {
 		t.Fatalf("delete tool name = %q, want file_delete", got)
+	}
+}
+
+func TestWriteToolDefinitionsMention64KiBLimit(t *testing.T) {
+	tmpDir := t.TempDir()
+	sessions := NewWriteSessionManager(0)
+
+	if got := NewFileWriteTool(nil, 0).Definition().Description; !strings.Contains(got, "64 KiB") {
+		t.Fatalf("file_write description = %q, want 64 KiB guidance", got)
+	}
+	if got := NewFileWriteBeginTool([]string{tmpDir}, sessions).Definition().Description; !strings.Contains(got, "64 KiB") {
+		t.Fatalf("write_begin description = %q, want 64 KiB guidance", got)
+	}
+	if got := NewFileWriteChunkTool(sessions).Definition().Description; !strings.Contains(got, "64 KiB") {
+		t.Fatalf("write_chunk description = %q, want 64 KiB guidance", got)
 	}
 }
 

@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	gatewayPort int
-	gatewayBind string
+	gatewayPort    int
+	gatewayBind    string
+	sessionAuditDB string
 )
 
 // gatewayCmd represents the gateway command
@@ -140,6 +141,7 @@ func init() {
 	// Gateway flags
 	gatewayCmd.PersistentFlags().IntVar(&gatewayPort, "port", 0, "port to listen on (default from config)")
 	gatewayCmd.PersistentFlags().StringVar(&gatewayBind, "bind", "", "address to bind to (default from config)")
+	gatewayCmd.PersistentFlags().StringVar(&sessionAuditDB, "session-audit-db", "", "write session audit to the given SQLite path instead of the default JSONL store")
 
 	// Add subcommands
 	gatewayCmd.AddCommand(gatewayRunCmd)
@@ -162,4 +164,8 @@ func configuredGatewayPort() int {
 		return gatewayPort
 	}
 	return 0
+}
+
+func configuredSessionAuditDBPath() string {
+	return strings.TrimSpace(sessionAuditDB)
 }

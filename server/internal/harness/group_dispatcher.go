@@ -3,6 +3,7 @@ package harness
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -358,6 +359,9 @@ func (d *GroupDispatcher) buildGroupItemRunSpec(ctx context.Context, group *RunG
 	if err != nil {
 		return RunSpec{}, err
 	}
+	if err := d.prepareWorkspaceForItem(&spec, group, item); err != nil {
+		return RunSpec{}, err
+	}
 	retryContext, retryFeedback := d.retryFeedbackForItem(ctx, item)
 	if retryContext == "" && len(retryFeedback) == 0 {
 		return spec, nil
@@ -375,6 +379,124 @@ func (d *GroupDispatcher) buildGroupItemRunSpec(ctx context.Context, group *RunG
 		spec.Metadata["resume_checkpoint"] = checkpoint
 	}
 	return spec, nil
+}
+
+type harnessWorkspaceFileSpec struct {
+	Path          string `json:"path,omitempty"`
+	Dest          string `json:"dest,omitempty"`
+	Content       string `json:"content,omitempty"`
+	ContentBase64 string `json:"content_base64,omitempty"`
+}
+
+func (d *GroupDispatcher) prepareWorkspaceForItem(spec *RunSpec, group *RunGroup, item *RunGroupItem) error {
+	if d == nil || d.manager == nil || d.manager.resolver == nil || spec == nil || item == nil {
+		return nil
+	}
+	workspaceFiles := decodeHarnessWorkspaceFileSpecs(
+		firstNonNil(item.Input["harness_workspace_files"], item.Metadata["harness_workspace_files"]),
+	)
+	if len(workspaceFiles) == 0 {
+		return nil
+	}
+	autoRoot := strings.TrimSpace(spec.WorkspaceRoot) == ""
+	workspaceRoot := strings.TrimSpace(spec.WorkspaceRoot)
+	if autoRoot {
+		workspaceRoot = seededWorkspaceRoot(d.manager.resolver.defaultWorkspaceRoot(), group, item, spec.AttemptIndex)
+		if err := os.RemoveAll(workspaceRoot); err != nil {
+			return fmt.Errorf("reset seeded workspace root: %w", err)
+		}
+	}
+	if err := os.MkdirAll(workspaceRoot, 0o755); err != nil {
+		return fmt.Errorf("create seeded workspace root: %w", err)
+	}
+	for _, file := range workspaceFiles {
+		if err := writeHarnessWorkspaceFile(workspaceRoot, file); err != nil {
+			return err
+		}
+	}
+	spec.WorkspaceRoot = workspaceRoot
+	if spec.Metadata == nil {
+		spec.Metadata = map[string]interface{}{}
+	}
+	spec.Metadata["workspace_root"] = workspaceRoot
+	spec.Metadata["harness_workspace_seeded"] = true
+	return nil
+}
+
+func decodeHarnessWorkspaceFileSpecs(raw interface{}) []harnessWorkspaceFileSpec {
+	if raw == nil {
+		return nil
+	}
+	blob, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var out []harnessWorkspaceFileSpec
+	if err := json.Unmarshal(blob, &out); err != nil {
+		return nil
+	}
+	filtered := make([]harnessWorkspaceFileSpec, 0, len(out))
+	for _, file := range out {
+		if strings.TrimSpace(firstNonEmpty(file.Path, file.Dest)) == "" {
+			continue
+		}
+		filtered = append(filtered, file)
+	}
+	return filtered
+}
+
+func seededWorkspaceRoot(base string, group *RunGroup, item *RunGroupItem, attemptIndex int) string {
+	groupID := "group"
+	itemID := "item"
+	if group != nil && strings.TrimSpace(group.ID) != "" {
+		groupID = sanitizeWorkspaceToken(group.ID)
+	}
+	if item != nil && strings.TrimSpace(item.ID) != "" {
+		itemID = sanitizeWorkspaceToken(item.ID)
+	}
+	if attemptIndex <= 0 {
+		attemptIndex = 1
+	}
+	return filepath.Join(strings.TrimSpace(base), "dataset-bundles", groupID, itemID, fmt.Sprintf("attempt-%02d", attemptIndex))
+}
+
+func sanitizeWorkspaceToken(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	replacer := strings.NewReplacer("/", "_", "\\", "_", ":", "_", " ", "_")
+	return replacer.Replace(value)
+}
+
+func writeHarnessWorkspaceFile(workspaceRoot string, file harnessWorkspaceFileSpec) error {
+	relPath := firstNonEmpty(strings.TrimSpace(file.Path), strings.TrimSpace(file.Dest))
+	if relPath == "" {
+		return nil
+	}
+	clean := filepath.Clean(relPath)
+	if clean == "." || strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
+		return fmt.Errorf("invalid harness workspace file path %q", relPath)
+	}
+	target := filepath.Join(workspaceRoot, clean)
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("create seeded workspace dir: %w", err)
+	}
+	var blob []byte
+	switch {
+	case strings.TrimSpace(file.ContentBase64) != "":
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(file.ContentBase64))
+		if err != nil {
+			return fmt.Errorf("decode seeded workspace base64 for %s: %w", relPath, err)
+		}
+		blob = decoded
+	default:
+		blob = []byte(file.Content)
+	}
+	if err := os.WriteFile(target, blob, 0o644); err != nil {
+		return fmt.Errorf("write seeded workspace file %s: %w", relPath, err)
+	}
+	return nil
 }
 
 func (d *GroupDispatcher) retryFeedbackForItem(ctx context.Context, item *RunGroupItem) (string, map[string]interface{}) {
