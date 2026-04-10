@@ -26,7 +26,7 @@ const localeSourceModules = import.meta.glob('@/i18n/locales/*.ts', {
 
 function fileNameFromModulePath(modulePath: string): string {
   return modulePath.split('/').pop() ?? modulePath
-})
+}
 
 function getPathValue(messages: LocaleMessages, path: string): unknown {
   return path.split('.').reduce<unknown>((current, segment) => {
@@ -35,7 +35,7 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
     }
     return undefined
   }, messages)
-})
+}
 
 describe('chat provider failover locale coverage', () => {
   it('declares providerFailover in all 27 locale source files', () => {
@@ -81,7 +81,9 @@ describe('chat provider failover locale coverage', () => {
 
   it('compiles provider failover copy and localizes non-English locales', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
-    const enUSPath = entries.find(([modulePath]) => fileNameFromModulePath(modulePath) === 'en-US.ts')?.[0]
+    const enUSPath = entries.find(
+      ([modulePath]) => fileNameFromModulePath(modulePath) === 'en-US.ts'
+    )?.[0]
     if (!enUSPath) {
       throw new Error('Missing en-US locale module')
     }
@@ -91,7 +93,10 @@ describe('chat provider failover locale coverage', () => {
       throw new Error('Missing en-US locale messages')
     }
 
-    const referenceDescription = getPathValue(referenceMessages, 'chat.providerFailover.description')
+    const referenceDescription = getPathValue(
+      referenceMessages,
+      'chat.providerFailover.description'
+    )
     expect(typeof referenceDescription).toBe('string')
 
     const exemptLocales = new Set(['en-US', 'en-GB'])
@@ -124,4 +129,4 @@ describe('chat provider failover locale coverage', () => {
       ).not.toBe(referenceDescription)
     }
   })
-}
+})
