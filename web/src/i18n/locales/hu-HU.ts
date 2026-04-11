@@ -1611,6 +1611,10 @@ export default mergeHarnessLocale('hu-HU', {
     },
     checkpoint: 'Ellenőrzőpont',
     checkpointDescription: 'Ellenőrzőpont visszaállítás előtt ({reason})',
+    reason: {
+      pre_restore: 'Visszaállítás előtt',
+      approval_needed: 'Jóváhagyási szünet előtt',
+    },
     nameOptional: 'Biztonsági név (nem kötelező)',
     loading: 'Biztonsági mentések betöltése...',
     restoringWarning: 'Visszaállítás folyamatban... Kérjük, ne zárja be ezt az oldalt.',
@@ -4284,6 +4288,14 @@ export default mergeHarnessLocale('hu-HU', {
     kokoroReady: 'Modell kész',
     initProgress: 'Kokoro inicializálása',
     initComplete: 'Kokoro kész',
+    initStage: {
+      loading_dictionary: 'Szótár betöltése',
+      loading_runtime: 'Futtatókörnyezet betöltése',
+      loading_voice: 'Hang betöltése',
+      loading_model: 'Modell betöltése',
+      ready: 'Kész',
+      error: 'Hiba',
+    },
     kokoroLanguages: 'Támogatott nyelvek',
     kokoroCancelDownload: 'Letöltés megszakítása',
     kokoroSupportsYourLang: 'Támogatja az Ön nyelvét ({lang})',
@@ -4510,8 +4522,16 @@ export default mergeHarnessLocale('hu-HU', {
     labels: {
       backend: 'Háttérrendszer',
     },
+    values: {
+      strategy: {
+        strict: 'Szigorú',
+      },
+    },
     messages: {
       no_result_data: 'Nincs eredményadat',
+    },
+    warnings: {
+      listing_truncated: 'A lista csonkolva lett; szűkítsd az útvonalat, vagy növeld a max_entries értékét.',
     },
     copy: 'Másolás',
     copied: 'Másolva!',

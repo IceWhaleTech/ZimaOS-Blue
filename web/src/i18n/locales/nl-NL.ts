@@ -1614,6 +1614,10 @@ export default mergeHarnessLocale('nl-NL', {
     },
     checkpoint: 'Controlepunt',
     checkpointDescription: 'Controlepunt vóór herstellen ({reason})',
+    reason: {
+      pre_restore: 'Voor herstellen',
+      approval_needed: 'Voor goedkeuringspauze',
+    },
     nameOptional: 'Back-upnaam (optioneel)',
     loading: 'Back-ups laden...',
     restoringWarning: 'Herstel wordt uitgevoerd... Sluit deze pagina niet.',
@@ -4277,6 +4281,14 @@ export default mergeHarnessLocale('nl-NL', {
     kokoroReady: 'Model gereed',
     initProgress: 'Kokoro initialiseren',
     initComplete: 'Kokoro gereed',
+    initStage: {
+      loading_dictionary: 'Woordenboek laden',
+      loading_runtime: 'Runtime laden',
+      loading_voice: 'Stem laden',
+      loading_model: 'Model laden',
+      ready: 'Gereed',
+      error: 'Fout',
+    },
     kokoroLanguages: 'Ondersteunde talen',
     kokoroCancelDownload: 'Download annuleren',
     kokoroSupportsYourLang: 'Ondersteunt uw taal ({lang})',
@@ -4505,8 +4517,16 @@ export default mergeHarnessLocale('nl-NL', {
     labels: {
       backend: 'Achterkant',
     },
+    values: {
+      strategy: {
+        strict: 'Strikt',
+      },
+    },
     messages: {
       no_result_data: 'Geen resultaatgegevens',
+    },
+    warnings: {
+      listing_truncated: 'De lijst is afgekapt; beperk het pad of verhoog max_entries.',
     },
     copy: 'Kopiëren',
     copied: 'Gekopieerd!',

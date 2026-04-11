@@ -1568,6 +1568,10 @@ export default mergeHarnessLocale('zh-TW', {
     },
     checkpoint: '檢查點',
     checkpointDescription: '恢復前檢查點（{reason}）',
+    reason: {
+      pre_restore: '還原前',
+      approval_needed: '等待核准前',
+    },
     nameOptional: '備份名稱（選填）',
     loading: '載入備份中...',
     restoringWarning: '正在恢復備份，請勿關閉本頁面。',
@@ -4168,6 +4172,14 @@ export default mergeHarnessLocale('zh-TW', {
     kokoroReady: '模型就緒',
     initProgress: 'Kokoro 初始化中',
     initComplete: 'Kokoro 就緒',
+    initStage: {
+      loading_dictionary: '正在載入詞典',
+      loading_runtime: '正在載入執行環境',
+      loading_voice: '正在載入語音',
+      loading_model: '正在載入模型',
+      ready: '已就緒',
+      error: '錯誤',
+    },
     kokoroLanguages: '支援的語言',
     kokoroCancelDownload: '取消下載',
     kokoroSupportsYourLang: '支援您的語言（{lang}）',
@@ -4389,8 +4401,16 @@ export default mergeHarnessLocale('zh-TW', {
     labels: {
       backend: '後端',
     },
+    values: {
+      strategy: {
+        strict: '嚴格',
+      },
+    },
     messages: {
       no_result_data: '沒有結果資料',
+    },
+    warnings: {
+      listing_truncated: '列表已截斷；請縮小路徑範圍或增大 max_entries。',
     },
     copy: '複製',
     copied: '已複製！',

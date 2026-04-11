@@ -3,7 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { BackupInfo, BackupProgress } from '@/api'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 
 type BackupType = 'full' | 'config' | 'data'
 type BackupStatus = 'completed' | 'in_progress' | 'failed'
@@ -96,11 +96,14 @@ function formatBackupName(backup: BackupDisplay): string {
 }
 
 function formatCheckpointReason(reason: string): string {
-  const reasonKey = `backup.reason.${reason}`
-  if (te(reasonKey)) {
-    return t(reasonKey)
+  switch (reason) {
+    case 'pre_restore':
+      return t('backup.reason.pre_restore', 'Before restore')
+    case 'approval_needed':
+      return t('backup.reason.approval_needed', 'Before approval pause')
+    default:
+      return reason.replace(/_/g, ' ')
   }
-  return reason.replace(/_/g, ' ')
 }
 
 function formatDate(date: Date): string {

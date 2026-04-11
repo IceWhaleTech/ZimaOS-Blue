@@ -1620,6 +1620,10 @@ export default mergeHarnessLocale('el-GR', {
     },
     checkpoint: 'Σημείο ελέγχου',
     checkpointDescription: 'Σημείο ελέγχου πριν από την επαναφορά ({reason})',
+    reason: {
+      pre_restore: 'Πριν από την επαναφορά',
+      approval_needed: 'Πριν από την παύση για έγκριση',
+    },
     nameOptional: 'Όνομα αντιγράφου ασφαλείας (προαιρετικό)',
     loading: 'Φόρτωση αντιγράφων ασφαλείας...',
     restoringWarning: 'Επαναφορά σε εξέλιξη... Μην κλείσετε αυτήν τη σελίδα.',
@@ -4303,6 +4307,14 @@ export default mergeHarnessLocale('el-GR', {
     kokoroReady: 'Μοντέλο έτοιμο',
     initProgress: 'Αρχικοποίηση Kokoro',
     initComplete: 'Kokoro έτοιμο',
+    initStage: {
+      loading_dictionary: 'Φόρτωση λεξικού',
+      loading_runtime: 'Φόρτωση περιβάλλοντος εκτέλεσης',
+      loading_voice: 'Φόρτωση φωνής',
+      loading_model: 'Φόρτωση μοντέλου',
+      ready: 'Έτοιμο',
+      error: 'Σφάλμα',
+    },
     kokoroLanguages: 'Υποστηριζόμενες γλώσσες',
     kokoroCancelDownload: 'Ακύρωση λήψης',
     kokoroSupportsYourLang: 'Υποστηρίζει τη γλώσσα σας ({lang})',
@@ -4537,8 +4549,16 @@ export default mergeHarnessLocale('el-GR', {
     labels: {
       backend: 'Backend',
     },
+    values: {
+      strategy: {
+        strict: 'Αυστηρό',
+      },
+    },
     messages: {
       no_result_data: 'Δεν υπάρχουν δεδομένα αποτελέσματος',
+    },
+    warnings: {
+      listing_truncated: 'Η λίστα περικόπηκε. Περιορίστε τη διαδρομή ή αυξήστε το max_entries.',
     },
     copy: 'Αντιγραφή',
     copied: 'Αντιγράφηκε!',

@@ -1618,6 +1618,10 @@ export default mergeHarnessLocale('ca-ES', {
     },
     checkpoint: 'Punt de control',
     checkpointDescription: 'Punt de control abans de la restauració ({reason})',
+    reason: {
+      pre_restore: 'Abans de restaurar',
+      approval_needed: 'Abans de la pausa d\'aprovació',
+    },
     nameOptional: 'Nom de la còpia de seguretat (opcional)',
     loading: "S'estan carregant les còpies de seguretat...",
     restoringWarning: 'Restauració en curs... No tanqueu aquesta pàgina.',
@@ -4289,6 +4293,14 @@ export default mergeHarnessLocale('ca-ES', {
     kokoroReady: 'Model preparat',
     initProgress: 'Inicialitzant Kokoro',
     initComplete: 'Kokoro preparat',
+    initStage: {
+      loading_dictionary: 'Carregant diccionari',
+      loading_runtime: 'Carregant runtime',
+      loading_voice: 'Carregant veu',
+      loading_model: 'Carregant model',
+      ready: 'A punt',
+      error: 'Error',
+    },
     kokoroLanguages: 'Idiomes compatibles',
     kokoroCancelDownload: 'Cancel·lar descàrrega',
     kokoroSupportsYourLang: 'Compatible amb el teu idioma ({lang})',
@@ -4519,8 +4531,16 @@ export default mergeHarnessLocale('ca-ES', {
     labels: {
       backend: 'Backend',
     },
+    values: {
+      strategy: {
+        strict: 'Estricte',
+      },
+    },
     messages: {
       no_result_data: 'No hi ha dades de resultat',
+    },
+    warnings: {
+      listing_truncated: 'La llista ha estat truncada; reduiu el cami o augmenteu max_entries.',
     },
     copy: 'Copia',
     copied: 'Copiat!',

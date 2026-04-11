@@ -1600,6 +1600,10 @@ export default mergeHarnessLocale('sk-SK', {
     },
     checkpoint: 'Kontrolný bod',
     checkpointDescription: 'Kontrolný bod pred obnovením ({reason})',
+    reason: {
+      pre_restore: 'Pred obnovením',
+      approval_needed: 'Pred schvaľovacou prestávkou',
+    },
     nameOptional: 'Názov zálohy (voliteľné)',
     loading: 'Načítavajú sa zálohy...',
     restoringWarning: 'Prebieha obnovovanie... Prosím, nezatvárajte túto stránku.',
@@ -4261,6 +4265,14 @@ export default mergeHarnessLocale('sk-SK', {
     kokoroReady: 'Model pripravený',
     initProgress: 'Inicializácia Kokoro',
     initComplete: 'Kokoro pripravené',
+    initStage: {
+      loading_dictionary: 'Načítava sa slovník',
+      loading_runtime: 'Načítava sa runtime',
+      loading_voice: 'Načítava sa hlas',
+      loading_model: 'Načítava sa model',
+      ready: 'Pripravené',
+      error: 'Chyba',
+    },
     kokoroLanguages: 'Podporované jazyky',
     kokoroCancelDownload: 'Zrušiť sťahovanie',
     kokoroSupportsYourLang: 'Podporuje váš jazyk ({lang})',
@@ -4483,8 +4495,16 @@ export default mergeHarnessLocale('sk-SK', {
     labels: {
       backend: 'Backend',
     },
+    values: {
+      strategy: {
+        strict: 'Prísny',
+      },
+    },
     messages: {
       no_result_data: 'Žiadne údaje o výsledku',
+    },
+    warnings: {
+      listing_truncated: 'Zoznam bol skrátený; zúžte cestu alebo zvýšte max_entries.',
     },
     copy: 'Kopírovať',
     copied: 'Skopírované!',

@@ -1607,6 +1607,10 @@ export default mergeHarnessLocale('pt-BR', {
     },
     checkpoint: 'Ponto de verificação',
     checkpointDescription: 'Ponto de verificação antes da restauração ({reason})',
+    reason: {
+      pre_restore: 'Antes da restauração',
+      approval_needed: 'Antes da pausa para aprovação',
+    },
     nameOptional: 'Nome do backup (opcional)',
     loading: 'Carregando backups...',
     restoringWarning: 'Restauração em andamento... Não feche esta página.',
@@ -4271,6 +4275,14 @@ export default mergeHarnessLocale('pt-BR', {
     kokoroReady: 'Modelo pronto',
     initProgress: 'Inicializando Kokoro',
     initComplete: 'Kokoro pronto',
+    initStage: {
+      loading_dictionary: 'Carregando dicionário',
+      loading_runtime: 'Carregando tempo de execução',
+      loading_voice: 'Carregando voz',
+      loading_model: 'Carregando modelo',
+      ready: 'Pronto',
+      error: 'Erro',
+    },
     kokoroLanguages: 'Idiomas suportados',
     kokoroCancelDownload: 'Cancelar download',
     kokoroSupportsYourLang: 'Suporta seu idioma ({lang})',
@@ -4497,8 +4509,16 @@ export default mergeHarnessLocale('pt-BR', {
     labels: {
       backend: 'Back-end',
     },
+    values: {
+      strategy: {
+        strict: 'Estrito',
+      },
+    },
     messages: {
       no_result_data: 'Sem dados de resultado',
+    },
+    warnings: {
+      listing_truncated: 'A lista foi truncada; restrinja o caminho ou aumente max_entries.',
     },
     copy: 'Copiar',
     copied: 'Copiado!',

@@ -1604,6 +1604,10 @@ export default mergeHarnessLocale('sv-SE', {
     },
     checkpoint: 'Kontrollpunkt',
     checkpointDescription: 'Kontrollpunkt före återställning ({reason})',
+    reason: {
+      pre_restore: 'Före återställning',
+      approval_needed: 'Före godkännandepaus',
+    },
     nameOptional: 'Säkerhetskopieringsnamn (valfritt)',
     loading: 'Laddar säkerhetskopior...',
     restoringWarning: 'Återställning pågår... Stäng inte den här sidan.',
@@ -4255,6 +4259,14 @@ export default mergeHarnessLocale('sv-SE', {
     kokoroReady: 'Modell redo',
     initProgress: 'Kokoro initierar',
     initComplete: 'Kokoro redo',
+    initStage: {
+      loading_dictionary: 'Läser in ordlista',
+      loading_runtime: 'Läser in runtime',
+      loading_voice: 'Läser in röst',
+      loading_model: 'Läser in modell',
+      ready: 'Klar',
+      error: 'Fel',
+    },
     kokoroLanguages: 'Språk som stöds',
     kokoroCancelDownload: 'Avbryt nedladdning',
     kokoroSupportsYourLang: 'Stöder ditt språk ({lang})',
@@ -4483,8 +4495,16 @@ export default mergeHarnessLocale('sv-SE', {
     labels: {
       backend: 'Backend',
     },
+    values: {
+      strategy: {
+        strict: 'Strikt',
+      },
+    },
     messages: {
       no_result_data: 'Inga resultatdata',
+    },
+    warnings: {
+      listing_truncated: 'Listan trunkerades; begränsa sökvägen eller öka max_entries.',
     },
     copy: 'Kopiera',
     copied: 'Kopierat!',

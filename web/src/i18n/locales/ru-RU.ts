@@ -1609,6 +1609,10 @@ export default mergeHarnessLocale('ru-RU', {
     },
     checkpoint: 'Контрольная точка',
     checkpointDescription: 'Контрольная точка перед восстановлением ({reason})',
+    reason: {
+      pre_restore: 'Перед восстановлением',
+      approval_needed: 'Перед паузой на подтверждение',
+    },
     nameOptional: 'Резервное имя (необязательно)',
     loading: 'Загрузка резервных копий...',
     restoringWarning: 'Выполняется восстановление... Пожалуйста, не закрывайте эту страницу.',
@@ -4269,6 +4273,14 @@ export default mergeHarnessLocale('ru-RU', {
     kokoroReady: 'Модель готова',
     initProgress: 'Инициализация Kokoro',
     initComplete: 'Kokoro готов',
+    initStage: {
+      loading_dictionary: 'Загрузка словаря',
+      loading_runtime: 'Загрузка среды выполнения',
+      loading_voice: 'Загрузка голоса',
+      loading_model: 'Загрузка модели',
+      ready: 'Готово',
+      error: 'Ошибка',
+    },
     kokoroLanguages: 'Поддерживаемые языки',
     kokoroCancelDownload: 'Отменить загрузку',
     kokoroSupportsYourLang: 'Поддерживает ваш язык ({lang})',
@@ -4494,8 +4506,16 @@ export default mergeHarnessLocale('ru-RU', {
     labels: {
       backend: 'Бэкенд',
     },
+    values: {
+      strategy: {
+        strict: 'Строгий',
+      },
+    },
     messages: {
       no_result_data: 'Нет данных результата',
+    },
+    warnings: {
+      listing_truncated: 'Список был обрезан; сузьте путь или увеличьте max_entries.',
     },
     copy: 'Копировать',
     copied: 'Скопировано!',

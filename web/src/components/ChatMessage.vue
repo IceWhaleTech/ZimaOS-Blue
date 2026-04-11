@@ -1123,12 +1123,68 @@ const displayContentWithoutProcessBlocks = computed(() => {
   })
 })
 
+const completionFollowupLocalization = computed(() => ({
+  completionFollowupHeading: tr(
+    'chat.completionFollowupHeading',
+    "If you'd like, I can also help with:"
+  ),
+  completionFollowupNoFurtherActionNeeded: tr(
+    'chat.completionFollowupNoFurtherActionNeeded',
+    'No further action needed.'
+  ),
+  completionFollowupExpandFullerReport: tr(
+    'chat.completionFollowupExpandFullerReport',
+    "If you'd like, I can expand this into a fuller report."
+  ),
+  completionFollowupVerifyKeyEvidence: tr(
+    'chat.completionFollowupVerifyKeyEvidence',
+    "If you'd like, I can help verify the key evidence in the tool cards above."
+  ),
+  completionFollowupReorderTakeaways: tr(
+    'chat.completionFollowupReorderTakeaways',
+    "If you'd like, tell me your top priority (for example performance/cost/risk), and I can reorder the takeaways for you."
+  ),
+  completionFollowupOptimizationIdeas: tr(
+    'chat.completionFollowupOptimizationIdeas',
+    'If you want, I can provide 1-3 actionable optimization ideas based on these results.'
+  ),
+  completionFollowupInspectFailedSteps: tr(
+    'chat.completionFollowupInspectFailedSteps',
+    "If you'd like, I can inspect the failed steps and retry with a safer fallback path."
+  ),
+  completionFollowupRerunValidation: tr(
+    'chat.completionFollowupRerunValidation',
+    'If you want, I can re-run validation after the recovery attempt to confirm the result.'
+  ),
+  completionFollowupKeepFixing: tr(
+    'chat.completionFollowupKeepFixing',
+    "If you'd like, I can keep fixing the remaining issues or finalize the report."
+  ),
+  completionFollowupVerifyDeliverables: tr(
+    'chat.completionFollowupVerifyDeliverables',
+    "If you'd like, I can help verify the deliverables in your environment."
+  ),
+  completionFollowupRunRelevantTests: tr(
+    'chat.completionFollowupRunRelevantTests',
+    'If you want, I can help run the relevant tests to confirm there are no regressions.'
+  ),
+  completionFollowupOptimizeNextArea: tr(
+    'chat.completionFollowupOptimizeNextArea',
+    "If you'd like, I can optimize the next area you care about."
+  ),
+  completionFollowupIfYoudLikePrefix: tr(
+    'chat.completionFollowupIfYoudLikePrefix',
+    "If you'd like, "
+  ),
+  completionFollowupIfYouWantPrefix: tr('chat.completionFollowupIfYouWantPrefix', 'If you want, '),
+}))
+
 const localizedDisplayContentWithoutProcessBlocks = computed(() => {
   if (!isAssistant.value) return displayContentWithoutProcessBlocks.value
 
   return localizeCompletionFollowupHeading(
     displayContentWithoutProcessBlocks.value,
-    tr('chat.completionFollowupHeading', "If you'd like, I can also help with:")
+    completionFollowupLocalization.value
   )
 })
 
@@ -2512,15 +2568,16 @@ async function showInitProgressToast(): Promise<void> {
     const stage = res.data.tts?.components?.kokoro?.init_stage
     if (!stage || stage === 'ready') return
 
-    const stageKey = `speech.initStage.${stage}`
+    const stageMessage = getSpeechInitStageMessage(stage)
+    const stageMessageKey = getSpeechInitStageMessageKey(stage)
     const toastId = notification.info(
       t('speech.initProgress'),
-      te(stageKey) ? t(stageKey) : stage,
+      stageMessage,
       {
         duration: 0,
         dismissible: true,
         titleKey: 'speech.initProgress',
-        messageKey: te(stageKey) ? stageKey : undefined,
+        messageKey: stageMessageKey,
       }
     )
 
@@ -2546,6 +2603,44 @@ async function showInitProgressToast(): Promise<void> {
     }, 500)
   } catch {
     // Ignore — status endpoint may not be available
+  }
+}
+
+function getSpeechInitStageMessage(stage: string): string {
+  switch (stage) {
+    case 'loading_dictionary':
+      return t('speech.initStage.loading_dictionary', 'Loading dictionary')
+    case 'loading_runtime':
+      return t('speech.initStage.loading_runtime', 'Loading runtime')
+    case 'loading_voice':
+      return t('speech.initStage.loading_voice', 'Loading voice')
+    case 'loading_model':
+      return t('speech.initStage.loading_model', 'Loading model')
+    case 'ready':
+      return t('speech.initStage.ready', 'Ready')
+    case 'error':
+      return t('speech.initStage.error', 'Initialization failed')
+    default:
+      return stage
+  }
+}
+
+function getSpeechInitStageMessageKey(stage: string): string | undefined {
+  switch (stage) {
+    case 'loading_dictionary':
+      return 'speech.initStage.loading_dictionary'
+    case 'loading_runtime':
+      return 'speech.initStage.loading_runtime'
+    case 'loading_voice':
+      return 'speech.initStage.loading_voice'
+    case 'loading_model':
+      return 'speech.initStage.loading_model'
+    case 'ready':
+      return 'speech.initStage.ready'
+    case 'error':
+      return 'speech.initStage.error'
+    default:
+      return undefined
   }
 }
 

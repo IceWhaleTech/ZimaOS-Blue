@@ -1599,6 +1599,10 @@ export default mergeHarnessLocale('cs-CZ', {
     },
     checkpoint: 'Kontrolní bod',
     checkpointDescription: 'Kontrolní bod před obnovením ({reason})',
+    reason: {
+      pre_restore: 'Před obnovením',
+      approval_needed: 'Před pauzou pro schválení',
+    },
     nameOptional: 'Název zálohy (volitelné)',
     loading: 'Načítání záloh...',
     restoringWarning: 'Probíhá obnova... Nezavírejte prosím tuto stránku.',
@@ -4246,6 +4250,14 @@ export default mergeHarnessLocale('cs-CZ', {
     kokoroReady: 'Model připraven',
     initProgress: 'Inicializace Kokoro',
     initComplete: 'Kokoro připraveno',
+    initStage: {
+      loading_dictionary: 'Načítání slovníku',
+      loading_runtime: 'Načítání běhového prostředí',
+      loading_voice: 'Načítání hlasu',
+      loading_model: 'Načítání modelu',
+      ready: 'Připraveno',
+      error: 'Chyba',
+    },
     kokoroLanguages: 'Podporované jazyky',
     kokoroCancelDownload: 'Zrušit stahování',
     kokoroSupportsYourLang: 'Podporuje váš jazyk ({lang})',
@@ -4469,8 +4481,16 @@ export default mergeHarnessLocale('cs-CZ', {
     labels: {
       backend: 'Backend',
     },
+    values: {
+      strategy: {
+        strict: 'Striktní',
+      },
+    },
     messages: {
       no_result_data: 'Žádná výsledná data',
+    },
+    warnings: {
+      listing_truncated: 'Výpis byl zkrácen; zužte cestu nebo zvyšte max_entries.',
     },
     copy: 'Kopírovat',
     copied: 'Zkopírováno!',

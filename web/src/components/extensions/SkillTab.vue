@@ -139,8 +139,6 @@ function getSkillName(skill: Skill): string {
     if (te(key)) return t(key)
   }
 
-  const namedKey = `skills.names.${skill.name}`
-  if (te(namedKey)) return t(namedKey)
   return skill.name
 }
 

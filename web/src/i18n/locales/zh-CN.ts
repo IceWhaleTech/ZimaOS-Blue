@@ -1573,6 +1573,10 @@ export default mergeHarnessLocale('zh-CN', {
     },
     checkpoint: '检查点',
     checkpointDescription: '恢复前检查点（{reason}）',
+    reason: {
+      pre_restore: '恢复前',
+      approval_needed: '等待审批前',
+    },
     nameOptional: '备份名称（可选）',
     loading: '加载备份中...',
     restoringWarning: '正在恢复备份，请勿关闭本页面。',
@@ -4143,6 +4147,14 @@ export default mergeHarnessLocale('zh-CN', {
     kokoroReady: '模型就绪',
     initProgress: 'Kokoro 初始化中',
     initComplete: 'Kokoro 已就绪',
+    initStage: {
+      loading_dictionary: '正在加载词典',
+      loading_runtime: '正在加载运行时',
+      loading_voice: '正在加载音色',
+      loading_model: '正在加载模型',
+      ready: '已就绪',
+      error: '初始化失败',
+    },
     kokoroLanguages: '支持的语言',
     kokoroCancelDownload: '取消下载',
     kokoroSupportsYourLang: '支持当前语言（{lang}）',
@@ -4364,8 +4376,16 @@ export default mergeHarnessLocale('zh-CN', {
     labels: {
       backend: '后端',
     },
+    values: {
+      strategy: {
+        strict: '严格',
+      },
+    },
     messages: {
       no_result_data: '没有结果数据',
+    },
+    warnings: {
+      listing_truncated: '列表已截断；请缩小路径范围或增大 max_entries。',
     },
     copy: '复制',
     copied: '已复制！',

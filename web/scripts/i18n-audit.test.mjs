@@ -22,9 +22,25 @@ test('json audit report excludes known settings translation keys from unknown st
   const unknown = new Set(report.unknownStaticKeys)
 
   assert.equal(unknown.has('settings.agentcoreRunner.refLoading'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.selectedCandidate'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.paretoFrontier'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.selectionBasis'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.frontierCandidates'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.evaluatedCandidates'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.objectiveVector'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.followupOutcome'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.proposalSet'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.topImprovements'), false)
+  assert.equal(unknown.has('settings.agentcoreRunner.topTradeoffs'), false)
+  assert.equal(unknown.has('tools.names.advisor'), false)
   assert.equal(unknown.has('settings.knowledgeManagement'), false)
   assert.equal(unknown.has('settings.knowledgeSurface'), false)
   assert.equal(unknown.has('settings.assistiveRouting'), false)
+})
+
+test('json audit report has no unresolved dynamic key patterns', () => {
+  const report = runAuditJson()
+  assert.deepEqual(report.unresolvedDynamicPatterns, [])
 })
 
 test('strict unknown-static-key mode fails only when unknown keys remain', () => {

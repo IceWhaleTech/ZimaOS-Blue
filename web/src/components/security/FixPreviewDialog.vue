@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { securityApi, type FixPreviewResponse, type SecurityScanItem } from '@/api/security'
 
-const { t, te } = useI18n()
+const { t } = useI18n()
 
 const props = defineProps<{
   visible: boolean
@@ -20,51 +20,16 @@ const applying = ref(false)
 const preview = ref<FixPreviewResponse | null>(null)
 const error = ref('')
 
-const FIX_PREVIEW_CHANGE_KEYS: Record<string, string[]> = {
-  fix_permission: ['setPermissions', 'owner', 'group', 'others'],
-}
-
-function parseFixAction(fixAction: string): { actionType: string; actionPath?: string } {
-  const idx = fixAction.indexOf(':')
-  if (idx <= 0) return { actionType: fixAction }
-  return {
-    actionType: fixAction.slice(0, idx),
-    actionPath: fixAction.slice(idx + 1),
-  }
-}
-
-function getFixPreviewI18nParams(previewData: FixPreviewResponse): Record<string, string> {
-  const { actionPath } = parseFixAction(previewData.fix_action)
-  return actionPath ? { path: actionPath } : {}
-}
-
 function getPreviewDescription(previewData: FixPreviewResponse): string {
-  const { actionType } = parseFixAction(previewData.fix_action)
-  const key = `security.scan.fixPreviews.actions.${actionType}.description`
-  return te(key) ? t(key, getFixPreviewI18nParams(previewData)) : previewData.description
+  return previewData.description
 }
 
 function getPreviewChanges(previewData: FixPreviewResponse): string[] {
-  const { actionType } = parseFixAction(previewData.fix_action)
-  const changeKeys = FIX_PREVIEW_CHANGE_KEYS[actionType]
-  if (!changeKeys) return previewData.changes
-
-  const params = getFixPreviewI18nParams(previewData)
-  const translated = changeKeys
-    .map((changeKey) => {
-      const key = `security.scan.fixPreviews.actions.${actionType}.changes.${changeKey}`
-      return te(key) ? t(key, params) : ''
-    })
-    .filter((message): message is string => message.length > 0)
-
-  return translated.length === changeKeys.length ? translated : previewData.changes
+  return previewData.changes
 }
 
 function getPreviewWarning(previewData: FixPreviewResponse): string | undefined {
-  if (!previewData.warning) return undefined
-  const { actionType } = parseFixAction(previewData.fix_action)
-  const key = `security.scan.fixPreviews.actions.${actionType}.warning`
-  return te(key) ? t(key, getFixPreviewI18nParams(previewData)) : previewData.warning
+  return previewData.warning
 }
 
 const translatedPreviewDescription = computed(() => {

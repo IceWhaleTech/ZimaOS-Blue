@@ -316,7 +316,7 @@ const (
 
 	agentModeVerificationGuidance = "<verification>After all steps, verify: run build/tests. Fix and re-verify if needed.</verification>"
 
-	agentModeCompletionGuidance = "<completion>Your LAST response MUST be plain text (not a tool call). Include: 1) What was accomplished. 2) How to use/test the result. 3) A closing optional-help section headed like 'If you'd like, I can also help with:', with first-person help offers such as 'If you'd like, I can help you ...'. Never end with a tool call.</completion>"
+	agentModeCompletionGuidance = "<completion>Your LAST response MUST be plain text (not a tool call). Include: 1) What was accomplished. 2) How to use/test the result. 3) A closing optional-help section in the same language as the user, headed like the localized equivalent of 'If you'd like, I can also help with:', with first-person help offers matching the user's language, such as the localized equivalent of 'If you'd like, I can help you ...'. Never end with a tool call.</completion>"
 
 	agentModeClosingTag = "</agent_mode>"
 )

@@ -1608,6 +1608,10 @@ export default mergeHarnessLocale('ro-RO', {
     },
     checkpoint: 'Punct de control',
     checkpointDescription: 'Punct de control înainte de restaurare ({reason})',
+    reason: {
+      pre_restore: 'Înainte de restaurare',
+      approval_needed: 'Înainte de pauza pentru aprobare',
+    },
     nameOptional: 'Nume de rezervă (opțional)',
     loading: 'Se încarcă copii de rezervă...',
     restoringWarning: 'Restaurare în curs... Vă rugăm să nu închideți această pagină.',
@@ -4279,6 +4283,14 @@ export default mergeHarnessLocale('ro-RO', {
     kokoroReady: 'Model pregătit',
     initProgress: 'Inițializare Kokoro',
     initComplete: 'Kokoro pregătit',
+    initStage: {
+      loading_dictionary: 'Se încarcă dicționarul',
+      loading_runtime: 'Se încarcă mediul de execuție',
+      loading_voice: 'Se încarcă vocea',
+      loading_model: 'Se încarcă modelul',
+      ready: 'Gata',
+      error: 'Eroare',
+    },
     kokoroLanguages: 'Limbi acceptate',
     kokoroCancelDownload: 'Anulează descărcarea',
     kokoroSupportsYourLang: 'Acceptă limba dvs. ({lang})',
@@ -4511,8 +4523,16 @@ export default mergeHarnessLocale('ro-RO', {
     labels: {
       backend: 'Backend',
     },
+    values: {
+      strategy: {
+        strict: 'Strictă',
+      },
+    },
     messages: {
       no_result_data: 'Fără date de rezultat',
+    },
+    warnings: {
+      listing_truncated: 'Lista a fost trunchiată; restrânge calea sau mărește max_entries.',
     },
     copy: 'Copiază',
     copied: 'Copiat!',

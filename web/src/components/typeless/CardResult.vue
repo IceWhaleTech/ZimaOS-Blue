@@ -885,10 +885,14 @@ function translateResultCardWarning(raw: string): string {
   const trimmed = raw.trim()
   if (!trimmed) return ''
 
-  const directKey = `resultCard.warnings.${normalizeResultCardKey(trimmed)}`
-  if (te(directKey)) return t(directKey)
+  if (RESULT_CARD_WARNING_PATTERNS[0]?.regex.test(trimmed)) {
+    return t(
+      'resultCard.warnings.listing_truncated',
+      'Listing was truncated; narrow the path or increase max_entries.'
+    )
+  }
 
-  return translateResultCardPattern('resultCard.warnings', trimmed, RESULT_CARD_WARNING_PATTERNS)
+  return raw
 }
 
 function isLikelyLocalFilesystemPath(raw: string): boolean {
@@ -1035,7 +1039,7 @@ function tLabel(label: string): string {
   return te(key) ? t(key) : label
 }
 
-function tDetailValue(label: string, value: unknown): string {
+function tDetailValue(_label: string, value: unknown): string {
   if (typeof value === 'boolean') {
     return value ? t('common.yes', 'Yes') : t('common.no', 'No')
   }
@@ -1047,15 +1051,12 @@ function tDetailValue(label: string, value: unknown): string {
   if (lowered === 'true') return t('common.yes', 'Yes')
   if (lowered === 'false') return t('common.no', 'No')
 
-  const normalizedLabel = normalizeResultCardKey(label)
-  const normalizedValue = normalizeResultCardKey(rawValue)
-  if (!normalizedValue) return rawValue
-
-  const scopedKey = `resultCard.values.${normalizedLabel}.${normalizedValue}`
-  if (te(scopedKey)) return t(scopedKey, rawValue)
-
-  const genericKey = `resultCard.values.${normalizedValue}`
-  if (te(genericKey)) return t(genericKey, rawValue)
+  if (normalizeResultCardKey(_label) === 'strategy') {
+    switch (normalizeResultCardKey(rawValue)) {
+      case 'strict':
+        return t('resultCard.values.strategy.strict', rawValue)
+    }
+  }
 
   return rawValue
 }

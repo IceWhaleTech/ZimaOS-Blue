@@ -1598,6 +1598,10 @@ export default mergeHarnessLocale('hr-HR', {
     },
     checkpoint: 'Kontrolna točka',
     checkpointDescription: 'Kontrolna točka prije vraćanja ({reason})',
+    reason: {
+      pre_restore: 'Prije vraćanja',
+      approval_needed: 'Prije pauze za odobrenje',
+    },
     nameOptional: 'Rezervni naziv (neobavezno)',
     loading: 'Učitavanje sigurnosnih kopija...',
     restoringWarning: 'Vraćanje u tijeku... Molimo ne zatvarajte ovu stranicu.',
@@ -4257,6 +4261,14 @@ export default mergeHarnessLocale('hr-HR', {
     kokoroReady: 'Model spreman',
     initProgress: 'Inicijalizacija Kokora',
     initComplete: 'Kokoro spreman',
+    initStage: {
+      loading_dictionary: 'Učitavanje rječnika',
+      loading_runtime: 'Učitavanje izvođenja',
+      loading_voice: 'Učitavanje glasa',
+      loading_model: 'Učitavanje modela',
+      ready: 'Spremno',
+      error: 'Greška',
+    },
     kokoroLanguages: 'Podržani jezici',
     kokoroCancelDownload: 'Otkaži preuzimanje',
     kokoroSupportsYourLang: 'Podržava vaš jezik ({lang})',
@@ -4481,8 +4493,16 @@ export default mergeHarnessLocale('hr-HR', {
     labels: {
       backend: 'Pozadina',
     },
+    values: {
+      strategy: {
+        strict: 'Strogo',
+      },
+    },
     messages: {
       no_result_data: 'Nema podataka o rezultatu',
+    },
+    warnings: {
+      listing_truncated: 'Popis je skraćen; suzite putanju ili povećajte max_entries.',
     },
     copy: 'Kopiraj',
     copied: 'Kopirano!',

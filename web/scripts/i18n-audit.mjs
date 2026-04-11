@@ -15,6 +15,16 @@ const HARNESS_LOCALE_ADDITIONS_MODULE_PATH = path.join(
   'i18n',
   'harness-locale-additions.ts',
 )
+const BUILTIN_SKILL_BACKFILL_MODULE_PATH = path.join(
+  SRC_DIR,
+  'i18n',
+  'builtin-skill-backfills.ts',
+)
+const BUILTIN_TOOL_BACKFILL_MODULE_PATH = path.join(
+  SRC_DIR,
+  'i18n',
+  'builtin-tool-backfills.ts',
+)
 const LOCALE_POST_MERGE_BACKFILL_MODULE_PATH = path.join(
   SRC_DIR,
   'i18n',
@@ -22,6 +32,8 @@ const LOCALE_POST_MERGE_BACKFILL_MODULE_PATH = path.join(
 )
 const TS_MODULE_CACHE = new Map()
 const TS_MODULE_LOADING = new Set()
+let builtinSkillBackfillBuilder = null
+let builtinToolBackfills = null
 let localePostMergeBackfillBuilder = null
 let harnessLocaleMerger = null
 
@@ -404,6 +416,38 @@ function getLocalePostMergeBackfillBuilder() {
   return localePostMergeBackfillBuilder
 }
 
+function getBuiltinSkillBackfillBuilder() {
+  if (builtinSkillBackfillBuilder) {
+    return builtinSkillBackfillBuilder
+  }
+
+  const builtinSkillModule = executeTsModule(BUILTIN_SKILL_BACKFILL_MODULE_PATH)
+  const builder = builtinSkillModule?.default ?? builtinSkillModule?.buildBuiltinSkillBackfill
+
+  if (typeof builder !== 'function') {
+    throw new Error('Failed to load buildBuiltinSkillBackfill for i18n audit')
+  }
+
+  builtinSkillBackfillBuilder = builder
+  return builtinSkillBackfillBuilder
+}
+
+function getBuiltinToolBackfills() {
+  if (builtinToolBackfills) {
+    return builtinToolBackfills
+  }
+
+  const builtinToolModule = executeTsModule(BUILTIN_TOOL_BACKFILL_MODULE_PATH)
+  const catalog = builtinToolModule?.default ?? builtinToolModule?.builtinToolBackfills
+
+  if (!isPlainObject(catalog)) {
+    throw new Error('Failed to load builtinToolBackfills for i18n audit')
+  }
+
+  builtinToolBackfills = catalog
+  return builtinToolBackfills
+}
+
 function getHarnessLocaleMerger() {
   if (harnessLocaleMerger) {
     return harnessLocaleMerger
@@ -459,14 +503,23 @@ function buildAuditedLocaleObject(localeCode, enUSObject, localeCache) {
       ? enUSObject
       : deepMergeMessages(enUSObject, loadLocaleObjectByCode(localeCode, localeCache))
 
+  const builtinToolPatch = getBuiltinToolBackfills()[localeCode] ?? {}
+  const localeWithBuiltinTools = deepMergeMessages(localeBaseObject, builtinToolPatch)
+  const buildBuiltinSkillBackfill = getBuiltinSkillBackfillBuilder()
+  const builtinSkillPatch = buildBuiltinSkillBackfill(localeCode, localeWithBuiltinTools)
+  const localeWithRuntimeBase = deepMergeMessages(localeWithBuiltinTools, builtinSkillPatch)
+
   const buildLocalePostMergeBackfill = getLocalePostMergeBackfillBuilder()
-  const runtimeBackfillPatch = buildLocalePostMergeBackfill(localeCode, localeBaseObject)
+  const runtimeBackfillPatch = buildLocalePostMergeBackfill(localeCode, localeWithRuntimeBase)
 
   if (!isPlainObject(runtimeBackfillPatch) || Object.keys(runtimeBackfillPatch).length === 0) {
-    return getHarnessLocaleMerger()(localeCode, localeBaseObject)
+    return getHarnessLocaleMerger()(localeCode, localeWithRuntimeBase)
   }
 
-  return getHarnessLocaleMerger()(localeCode, deepMergeMessages(localeBaseObject, runtimeBackfillPatch))
+  return getHarnessLocaleMerger()(
+    localeCode,
+    deepMergeMessages(localeWithRuntimeBase, runtimeBackfillPatch),
+  )
 }
 
 function flattenStringLeaves(value, prefix = '', out = new Map()) {

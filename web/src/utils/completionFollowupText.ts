@@ -128,6 +128,10 @@ function replaceCompletionFollowupPrefix(
   return value
 }
 
+function hasLikelyLocalizedTail(value: string): boolean {
+  return /[^\x00-\x7F]/.test(value)
+}
+
 function localizeCompletionFollowupBody(
   value: string,
   messages: CompletionFollowupChatMessages | null
@@ -136,9 +140,7 @@ function localizeCompletionFollowupBody(
   if (exactLocalized !== value) return exactLocalized
   if (!messages) return value
 
-  const ifYoudLikePatterns = [
-    "If you'd like, ",
-    "If you'd like,",
+  const mixedIfYoudLikePatterns = [
     "如果你'd like，",
     "如果你'd like, ",
     "如果你'd like,",
@@ -146,20 +148,29 @@ function localizeCompletionFollowupBody(
     '如果你’d like, ',
     '如果你’d like,',
   ] as const
-  const ifYouWantPatterns = ['If you want, ', 'If you want,'] as const
+  const englishIfYoudLikePatterns = ["If you'd like, ", "If you'd like,"] as const
+  const englishIfYouWantPatterns = ['If you want, ', 'If you want,'] as const
 
-  const localizedIfYoudLike = replaceCompletionFollowupPrefix(
+  const localizedMixedIfYoudLike = replaceCompletionFollowupPrefix(
     value,
-    ifYoudLikePatterns,
+    mixedIfYoudLikePatterns,
     messages.completionFollowupIfYoudLikePrefix
   )
-  if (localizedIfYoudLike !== value) return localizedIfYoudLike
+  if (localizedMixedIfYoudLike !== value) return localizedMixedIfYoudLike
 
-  return replaceCompletionFollowupPrefix(
-    value,
-    ifYouWantPatterns,
-    messages.completionFollowupIfYouWantPrefix
-  )
+  for (const pattern of englishIfYoudLikePatterns) {
+    if (!value.startsWith(pattern)) continue
+    if (!hasLikelyLocalizedTail(value.slice(pattern.length))) return value
+    return messages.completionFollowupIfYoudLikePrefix + value.slice(pattern.length)
+  }
+
+  for (const pattern of englishIfYouWantPatterns) {
+    if (!value.startsWith(pattern)) continue
+    if (!hasLikelyLocalizedTail(value.slice(pattern.length))) return value
+    return messages.completionFollowupIfYouWantPrefix + value.slice(pattern.length)
+  }
+
+  return value
 }
 
 export function localizeCompletionFollowupHeading(

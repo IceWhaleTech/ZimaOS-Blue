@@ -1612,6 +1612,10 @@ export default mergeHarnessLocale('ga-IE', {
     },
     checkpoint: 'Pointe seiceála',
     checkpointDescription: 'Pointe seiceála roimh athchóiriú ({reason})',
+    reason: {
+      pre_restore: 'Roimh athchóiriú',
+      approval_needed: 'Roimh shos ceadaithe',
+    },
     nameOptional: 'Ainm Cúltaca (roghnach)',
     loading: 'Cúltaca á lódáil...',
     restoringWarning: 'Athchóirigh ar siúl... Ná dún an leathanach seo.',
@@ -4280,6 +4284,14 @@ export default mergeHarnessLocale('ga-IE', {
     kokoroReady: 'Múnla réidh',
     initProgress: 'Túsú Kokoro',
     initComplete: 'Kokoro réidh',
+    initStage: {
+      loading_dictionary: 'Ag lódáil an fhoclóra',
+      loading_runtime: 'Ag lódáil na timpeallachta reatha',
+      loading_voice: 'Ag lódáil an ghutha',
+      loading_model: 'Ag lódáil an mhúnla',
+      ready: 'Réidh',
+      error: 'Earráid',
+    },
     kokoroLanguages: 'Teangacha tacaithe',
     kokoroCancelDownload: 'Cealaigh íoslódáil',
     kokoroSupportsYourLang: 'Tacaíonn le do theanga ({lang})',
@@ -4509,8 +4521,16 @@ export default mergeHarnessLocale('ga-IE', {
     labels: {
       backend: 'Inneall',
     },
+    values: {
+      strategy: {
+        strict: 'Dian',
+      },
+    },
     messages: {
       no_result_data: 'Níl sonraí toraidh ann',
+    },
+    warnings: {
+      listing_truncated: 'Gearradh an liosta; cúng an cosán nó méadaigh max_entries.',
     },
     copy: 'Cóipeáil',
     copied: 'Cóipeáilte!',

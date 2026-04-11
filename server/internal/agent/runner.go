@@ -3110,6 +3110,7 @@ func buildSummarySystemPrompt() string {
 	sb.WriteString("Learned:\n")
 	sb.WriteString("- <optional short reusable lesson>\n")
 	sb.WriteString("Include the Learned block only when grounded lessons are provided. Use 1-3 bullets total.\n\n")
+	sb.WriteString("Use the user's language throughout the Summary, Learned, and optional-help section. The English strings below are structure examples only; localize them when the user is not using English.\n")
 	sb.WriteString("If you'd like, I can also help with:\n")
 	sb.WriteString("1. If you'd like, I can help you <specific follow-up action>.\n")
 	sb.WriteString("2. If you want, I can also help you <specific follow-up action>.\n")

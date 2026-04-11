@@ -1616,6 +1616,10 @@ export default mergeHarnessLocale('ml-IN', {
     },
     checkpoint: 'ചെക്ക്പോയിന്റ്',
     checkpointDescription: 'പുനഃസ്ഥാപനത്തിന് മുൻപുള്ള ചെക്ക്പോയിന്റ് ({reason})',
+    reason: {
+      pre_restore: 'പുനഃസ്ഥാപിക്കുന്നതിന് മുമ്പ്',
+      approval_needed: 'അംഗീകാര ഇടവേളയ്ക്ക് മുമ്പ്',
+    },
     nameOptional: 'ബാക്കപ്പ് പേര് (ഓപ്ഷണൽ)',
     loading: 'ബാക്കപ്പുകൾ ലോഡുചെയ്യുന്നു...',
     restoringWarning: 'പുനഃസ്ഥാപിക്കൽ പുരോഗതിയിലാണ്... ദയവായി ഈ പേജ് അടയ്ക്കരുത്.',
@@ -4294,6 +4298,14 @@ export default mergeHarnessLocale('ml-IN', {
     kokoroReady: 'മോഡൽ തയ്യാർ',
     initProgress: 'Kokoro ആരംഭിക്കുന്നു',
     initComplete: 'Kokoro തയ്യാർ',
+    initStage: {
+      loading_dictionary: 'നിഘണ്ടു ലോഡ് ചെയ്യുന്നു',
+      loading_runtime: 'റൺടൈം ലോഡ് ചെയ്യുന്നു',
+      loading_voice: 'ശബ്ദം ലോഡ് ചെയ്യുന്നു',
+      loading_model: 'മോഡൽ ലോഡ് ചെയ്യുന്നു',
+      ready: 'തയ്യാർ',
+      error: 'പിശക്',
+    },
     kokoroLanguages: 'പിന്തുണയ്ക്കുന്ന ഭാഷകൾ',
     kokoroCancelDownload: 'ഡൗൺലോഡ് റദ്ദാക്കുക',
     kokoroSupportsYourLang: 'നിങ്ങളുടെ ഭാഷയെ പിന്തുണയ്ക്കുന്നു ({lang})',
@@ -4524,8 +4536,16 @@ export default mergeHarnessLocale('ml-IN', {
     labels: {
       backend: 'ബാക്ക്എൻഡ്',
     },
+    values: {
+      strategy: {
+        strict: 'കർശനമായ',
+      },
+    },
     messages: {
       no_result_data: 'ഫല ഡാറ്റയില്ല',
+    },
+    warnings: {
+      listing_truncated: 'പട്ടിക ചുരുക്കിയിരിക്കുന്നു; പാത ചുരുക്കുക അല്ലെങ്കിൽ max_entries കൂട്ടുക.',
     },
     copy: 'പകർത്തുക',
     copied: 'പകർത്തി!',

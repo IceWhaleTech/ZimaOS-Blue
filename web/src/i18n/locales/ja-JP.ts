@@ -1598,6 +1598,10 @@ export default mergeHarnessLocale('ja-JP', {
     },
     checkpoint: 'チェックポイント',
     checkpointDescription: '復元前チェックポイント（{reason}）',
+    reason: {
+      pre_restore: '復元前',
+      approval_needed: '承認待機前',
+    },
     nameOptional: 'バックアップ名（任意）',
     loading: 'バックアップを読み込み中...',
     restoringWarning: '復元中です... このページを閉じないでください。',
@@ -4232,6 +4236,14 @@ export default mergeHarnessLocale('ja-JP', {
     kokoroReady: 'モデル準備完了',
     initProgress: 'Kokoro 初期化中',
     initComplete: 'Kokoro 準備完了',
+    initStage: {
+      loading_dictionary: '辞書を読み込み中',
+      loading_runtime: 'ランタイムを読み込み中',
+      loading_voice: '音声を読み込み中',
+      loading_model: 'モデルを読み込み中',
+      ready: '準備完了',
+      error: 'エラー',
+    },
     kokoroLanguages: '対応言語',
     kokoroCancelDownload: 'ダウンロードをキャンセル',
     kokoroSupportsYourLang: 'お使いの言語に対応しています（{lang}）',
@@ -4454,8 +4466,16 @@ export default mergeHarnessLocale('ja-JP', {
     labels: {
       backend: 'バックエンド',
     },
+    values: {
+      strategy: {
+        strict: '厳格',
+      },
+    },
     messages: {
       no_result_data: '結果データがありません',
+    },
+    warnings: {
+      listing_truncated: '一覧は切り詰められました。パスを絞り込むか、max_entries を増やしてください。',
     },
     copy: 'コピー',
     copied: 'コピーしました！',

@@ -28,7 +28,7 @@ import {
   type TunnelProvider,
 } from '@/api/remote-access'
 
-const { t, te, locale: i18nLocale } = useI18n()
+const { t, locale: i18nLocale } = useI18n()
 const settingsStore = useSettingsStore()
 
 interface ChannelFieldDef {
@@ -92,12 +92,8 @@ const groupAccessResult = ref<{ success: boolean; message: string } | null>(null
 const channelLoadError = ref<string | null>(null)
 const pageRuntimeError = ref<string | null>(null)
 
-// Resolve a channel error message: prefer i18n key, fallback to raw string
+// Channel/runtime errors already include display-ready server text.
 function resolveChannelError(channel: ChannelDef): string {
-  if (channel.lastErrorKey) {
-    const i18nKey = `channels.errors.${channel.lastErrorKey}`
-    if (te(i18nKey)) return t(i18nKey)
-  }
   return channel.lastError || ''
 }
 
@@ -1596,13 +1592,7 @@ async function testConnection(channelId: string) {
 
     const response = await channelsApi.testConnection({ type: channelId, config })
     const data = response.data
-    // Use message_key for i18n translation if available, fallback to message
-    let message = data.message
-    if (data.message_key) {
-      const i18nKey = `channels.validation.${data.message_key}`
-      // Check if translation exists, otherwise use original message
-      message = te(i18nKey) ? t(i18nKey) : data.message
-    }
+    const message = data.message
     testResult.value = { channelId, success: data.success, message }
 
     // Update status based on test result

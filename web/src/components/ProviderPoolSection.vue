@@ -700,10 +700,7 @@ function formatKeyLabel(label: string): string {
 
 // Get localized provider description
 function getProviderDescription(provider: Provider): string {
-  // Try to get i18n description first
-  const i18nKey = `providerPool.providers.${provider.id}`
-  if (te(i18nKey)) return t(i18nKey)
-  // Fall back to provider's description. Keep official provider cards free of URL noise.
+  // Provider metadata is the source of truth for provider-specific descriptions.
   if (provider.description) return provider.description
   if (provider.metadata_mode === 'catalog') return ''
   return provider.base_url || ''

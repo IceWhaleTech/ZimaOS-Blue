@@ -1602,6 +1602,10 @@ export default mergeHarnessLocale('pl-PL', {
     },
     checkpoint: 'Punkt kontrolny',
     checkpointDescription: 'Punkt kontrolny przed przywróceniem ({reason})',
+    reason: {
+      pre_restore: 'Przed przywróceniem',
+      approval_needed: 'Przed przerwą na zatwierdzenie',
+    },
     nameOptional: 'Nazwa kopii zapasowej (opcjonalnie)',
     loading: 'Ładowanie kopii zapasowych...',
     restoringWarning: 'Trwa przywracanie... Proszę nie zamykać tej strony.',
@@ -4268,6 +4272,14 @@ export default mergeHarnessLocale('pl-PL', {
     kokoroReady: 'Model gotowy',
     initProgress: 'Inicjalizacja Kokoro',
     initComplete: 'Kokoro gotowe',
+    initStage: {
+      loading_dictionary: 'Ładowanie słownika',
+      loading_runtime: 'Ładowanie środowiska uruchomieniowego',
+      loading_voice: 'Ładowanie głosu',
+      loading_model: 'Ładowanie modelu',
+      ready: 'Gotowe',
+      error: 'Błąd',
+    },
     kokoroLanguages: 'Obsługiwane języki',
     kokoroCancelDownload: 'Anuluj pobieranie',
     kokoroSupportsYourLang: 'Obsługuje Twój język ({lang})',
@@ -4492,8 +4504,16 @@ export default mergeHarnessLocale('pl-PL', {
     labels: {
       backend: 'Zaplecze',
     },
+    values: {
+      strategy: {
+        strict: 'Rygorystyczny',
+      },
+    },
     messages: {
       no_result_data: 'Brak danych wyniku',
+    },
+    warnings: {
+      listing_truncated: 'Lista została obcięta; zawęź ścieżkę lub zwiększ max_entries.',
     },
     copy: 'Kopiuj',
     copied: 'Skopiowano!',

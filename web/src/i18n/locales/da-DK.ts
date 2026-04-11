@@ -1598,6 +1598,10 @@ export default mergeHarnessLocale('da-DK', {
     },
     checkpoint: 'Kontrolpunkt',
     checkpointDescription: 'Kontrolpunkt før gendannelse ({reason})',
+    reason: {
+      pre_restore: 'Før gendannelse',
+      approval_needed: 'Før godkendelsespause',
+    },
     nameOptional: 'Sikkerhedskopieringsnavn (valgfrit)',
     loading: 'Indlæser sikkerhedskopier...',
     restoringWarning: 'Gendannelse i gang... Luk ikke denne side.',
@@ -4250,6 +4254,14 @@ export default mergeHarnessLocale('da-DK', {
     kokoroReady: 'Model klar',
     initProgress: 'Kokoro initialiserer',
     initComplete: 'Kokoro klar',
+    initStage: {
+      loading_dictionary: 'Indlæser ordbog',
+      loading_runtime: 'Indlæser runtime',
+      loading_voice: 'Indlæser stemme',
+      loading_model: 'Indlæser model',
+      ready: 'Klar',
+      error: 'Fejl',
+    },
     kokoroLanguages: 'Understøttede sprog',
     kokoroCancelDownload: 'Annuller download',
     kokoroSupportsYourLang: 'Understøtter dit sprog ({lang})',
@@ -4475,8 +4487,16 @@ export default mergeHarnessLocale('da-DK', {
     labels: {
       backend: 'Backend',
     },
+    values: {
+      strategy: {
+        strict: 'Streng',
+      },
+    },
     messages: {
       no_result_data: 'Ingen resultatdata',
+    },
+    warnings: {
+      listing_truncated: 'Listen blev afkortet; indsnævr stien eller øg max_entries.',
     },
     copy: 'Kopiér',
     copied: 'Kopieret!',

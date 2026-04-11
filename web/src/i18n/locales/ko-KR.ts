@@ -1582,6 +1582,10 @@ export default mergeHarnessLocale('ko-KR', {
     },
     checkpoint: '체크포인트',
     checkpointDescription: '복원 전 체크포인트 ({reason})',
+    reason: {
+      pre_restore: '복원 전',
+      approval_needed: '승인 대기 전',
+    },
     nameOptional: '백업 이름 (선택사항)',
     loading: '백업 로드 중...',
     restoringWarning: '복원 진행 중... 이 페이지를 닫지 마세요.',
@@ -4205,6 +4209,14 @@ export default mergeHarnessLocale('ko-KR', {
     kokoroReady: '모델 준비 완료',
     initProgress: 'Kokoro 초기화 중',
     initComplete: 'Kokoro 준비 완료',
+    initStage: {
+      loading_dictionary: '사전 로딩 중',
+      loading_runtime: '런타임 로딩 중',
+      loading_voice: '음성 로딩 중',
+      loading_model: '모델 로딩 중',
+      ready: '준비됨',
+      error: '오류',
+    },
     kokoroLanguages: '지원 언어',
     kokoroCancelDownload: '다운로드 취소',
     kokoroSupportsYourLang: '사용 중인 언어를 지원합니다 ({lang})',
@@ -4427,8 +4439,16 @@ export default mergeHarnessLocale('ko-KR', {
     labels: {
       backend: '백엔드',
     },
+    values: {
+      strategy: {
+        strict: '엄격',
+      },
+    },
     messages: {
       no_result_data: '결과 데이터가 없습니다',
+    },
+    warnings: {
+      listing_truncated: '목록이 잘렸습니다. 경로 범위를 좁히거나 max_entries를 늘리세요.',
     },
     copy: '복사',
     copied: '복사됨!',
