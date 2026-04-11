@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,6 +41,15 @@ func TestDefaultSkillMarketConfigUsesDailyRefreshCadence(t *testing.T) {
 				cfg.DiscoveryPageURLs[i],
 				expected,
 			)
+		}
+	}
+}
+
+func TestDefaultSkillMarketConfigDoesNotIncludeMiniMaxDiscoveryPage(t *testing.T) {
+	cfg := DefaultSkillMarketConfig()
+	for _, url := range cfg.DiscoveryPageURLs {
+		if strings.Contains(url, "github.com/MiniMax-AI/skills/tree/main/skills") {
+			t.Fatalf("DiscoveryPageURLs should not include MiniMax skills GitHub source, got %v", cfg.DiscoveryPageURLs)
 		}
 	}
 }

@@ -9,7 +9,6 @@ import (
 
 var defaultSkillMarketDiscoveryPageURLs = []string{
 	"https://github.com/topics/claude-code",
-	"https://github.com/MiniMax-AI/skills/tree/main/skills",
 	"https://github.com/topics/ai-agent",
 }
 

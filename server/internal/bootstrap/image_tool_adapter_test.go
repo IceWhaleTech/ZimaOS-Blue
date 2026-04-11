@@ -12,6 +12,19 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
+func newTestImageToolManager(t *testing.T, storage *mediagen.MediaStorage) *mediagen.Manager {
+	t.Helper()
+
+	manager := mediagen.NewManager(storage, nil, "")
+	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
+	t.Cleanup(func() {
+		if err := manager.Close(); err != nil {
+			t.Fatalf("Close: %v", err)
+		}
+	})
+	return manager
+}
+
 func TestImageGenerateAdapterSavesRelativeOutputIntoWorkspaceRoot(t *testing.T) {
 	workspaceDir := filepath.Join(t.TempDir(), "workspace")
 	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
@@ -23,9 +36,7 @@ func TestImageGenerateAdapterSavesRelativeOutputIntoWorkspaceRoot(t *testing.T) 
 		t.Fatalf("EnsureDirs: %v", err)
 	}
 
-	manager := mediagen.NewManager(storage, nil, "")
-	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
-
+	manager := newTestImageToolManager(t, storage)
 	adapter := newImageGenerateAdapter(manager, []string{workspaceDir})
 	result, err := adapter(context.Background(), tools.ImageGenerateRequest{
 		Prompt:     "draw a cozy robot reading",
@@ -82,9 +93,7 @@ func TestImageGenerateAdapterSavesAbsoluteWorkspaceOutputIntoWorkspaceRoot(t *te
 		t.Fatalf("EnsureDirs: %v", err)
 	}
 
-	manager := mediagen.NewManager(storage, nil, "")
-	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
-
+	manager := newTestImageToolManager(t, storage)
 	adapter := newImageGenerateAdapter(manager, []string{workspaceDir})
 	result, err := adapter(context.Background(), tools.ImageGenerateRequest{
 		Prompt:     "draw a cozy robot reading",
@@ -128,9 +137,7 @@ func TestImageGenerateAdapterPrefersSpecificWorkspaceRootOverGenericTempScope(t 
 		t.Fatalf("EnsureDirs: %v", err)
 	}
 
-	manager := mediagen.NewManager(storage, nil, "")
-	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
-
+	manager := newTestImageToolManager(t, storage)
 	ctx := tools.WithFSScope(context.Background(), []string{tempRoot}, map[string]string{"tmp": tempRoot})
 	adapter := newImageGenerateAdapter(manager, []string{workspaceDir, tempRoot})
 	result, err := adapter(ctx, tools.ImageGenerateRequest{
@@ -192,9 +199,7 @@ func TestWaitForImageTaskFallsBackToUnscopedLookup(t *testing.T) {
 		t.Fatalf("EnsureDirs: %v", err)
 	}
 
-	manager := mediagen.NewManager(storage, nil, "")
-	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
-
+	manager := newTestImageToolManager(t, storage)
 	task, err := manager.Generate(context.Background(), &mediagen.MediaRequest{
 		Type:   mediagen.MediaTypeImage,
 		Prompt: "draw a cozy robot reading",
@@ -221,8 +226,7 @@ func TestImageTaskLookupAdapterFallsBackToUnscopedLookup(t *testing.T) {
 		t.Fatalf("EnsureDirs: %v", err)
 	}
 
-	manager := mediagen.NewManager(storage, nil, "")
-	manager.RegisterProvider(mediagen.NewFakeMediaProvider())
+	manager := newTestImageToolManager(t, storage)
 
 	task, err := manager.Generate(context.Background(), &mediagen.MediaRequest{
 		Type:   mediagen.MediaTypeImage,

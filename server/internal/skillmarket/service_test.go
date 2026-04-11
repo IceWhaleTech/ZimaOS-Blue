@@ -2433,6 +2433,40 @@ func TestEnsureDefaultSourcesDoesNotRegisterSkillsMP(t *testing.T) {
 	}
 }
 
+func TestEnsureDefaultSourcesDoesNotRegisterMiniMaxGitHubSeed(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	activeDir := filepath.Join(t.TempDir(), "active")
+	cfg := DefaultConfig(t.TempDir(), activeDir)
+	cfg.CacheRoot = filepath.Join(t.TempDir(), "cache")
+	cfg.CuratedConfigPath = filepath.Join(t.TempDir(), "missing-curations.yaml")
+	cfg.CuratedConfigURLs = nil
+
+	svc, err := NewService(db, Options{
+		Config:       cfg,
+		Registry:     skill.NewRegistry(),
+		LocalScanner: skillstore.NewLocalSkillScanner(activeDir),
+		Scanner:      NewScanner(nil),
+	})
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	sources, err := svc.store.ListSources(context.Background())
+	if err != nil {
+		t.Fatalf("ListSources() error = %v", err)
+	}
+	for _, source := range sources {
+		if strings.Contains(source.BaseURL, "github.com/MiniMax-AI/skills/tree/main/skills") {
+			t.Fatalf("expected MiniMax skills GitHub seed to be absent from default sources, got %+v", source)
+		}
+	}
+}
+
 func TestEnsureDefaultSourcesRegistersAllSourcesInPriorityOrder(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "skillmarket.db"))
 	if err != nil {

@@ -59,7 +59,7 @@
     "@vue/tsconfig": "^0.8.1",
     "@vueuse/core": "^14.1.0",
     "autoprefixer": "^10.4.23",
-    "axios": "^1.13.3",
+    "axios": "^1.15.0",
     "eslint": "^8.0.0",
     "eslint-config-prettier": "^8.0.0",
     "eslint-plugin-vue": "^8.0.0",

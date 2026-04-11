@@ -70,6 +70,8 @@ type Manager struct {
 	cancel    context.CancelFunc
 	closeOnce sync.Once
 	closed    atomic.Bool
+	bgMu      sync.Mutex
+	bgWG      sync.WaitGroup
 }
 
 // NewManager creates a new media generation manager.
@@ -98,6 +100,26 @@ func (m *Manager) isClosed() bool {
 	return m == nil || m.closed.Load()
 }
 
+func (m *Manager) startBackground(fn func()) bool {
+	if m == nil || fn == nil {
+		return false
+	}
+
+	m.bgMu.Lock()
+	if m.closed.Load() {
+		m.bgMu.Unlock()
+		return false
+	}
+	m.bgWG.Add(1)
+	m.bgMu.Unlock()
+
+	go func() {
+		defer m.bgWG.Done()
+		fn()
+	}()
+	return true
+}
+
 // Close stops background media task execution so shutdown can proceed cleanly.
 // In-flight non-terminal tasks remain recoverable via the persistent task store.
 func (m *Manager) Close() error {
@@ -105,10 +127,15 @@ func (m *Manager) Close() error {
 		return nil
 	}
 	m.closeOnce.Do(func() {
+		var cancel context.CancelFunc
+		m.bgMu.Lock()
 		m.closed.Store(true)
-		if m.cancel != nil {
-			m.cancel()
+		cancel = m.cancel
+		m.bgMu.Unlock()
+		if cancel != nil {
+			cancel()
 		}
+		m.bgWG.Wait()
 	})
 	return nil
 }
@@ -570,22 +597,18 @@ func (m *Manager) Generate(ctx context.Context, req *MediaRequest) (*MediaTask, 
 	// If async (pending/processing), start background polling
 	if task.Status == TaskStatusPending || task.Status == TaskStatusProcessing {
 		m.tasks.Store(task.ID, task)
-		if !m.isClosed() {
-			go m.pollTask(task.ID, provider)
-		}
+		m.startBackground(func() {
+			m.pollTask(task.ID, provider)
+		})
 	} else if task.Status == TaskStatusSucceeded {
 		// Sync provider returned immediately — cache media in background.
-		// Store as "processing" first so the ChannelTaskWatcher doesn't see
-		// Succeeded with the original remote URL before cacheResults downloads
-		// the file and re-stores with local URLs.
+		// Store as "processing" first so task consumers do not observe a
+		// terminal success until cacheResults finishes localizing assets.
 		task.Status = TaskStatusProcessing
 		m.tasks.Store(task.ID, task)
-		if !m.isClosed() {
-			go func() {
-				task.Status = TaskStatusSucceeded
-				m.cacheResults(task)
-			}()
-		}
+		m.startBackground(func() {
+			m.cacheResults(task)
+		})
 	} else {
 		m.tasks.Store(task.ID, task)
 	}
@@ -801,53 +824,52 @@ func (m *Manager) cacheResults(task *MediaTask) {
 	if task == nil || m.isTaskCancelled(task.ID) || m.isClosed() {
 		return
 	}
-	if task.Response == nil || m.storage == nil {
-		return
-	}
 	ctx := m.managerContext()
 
-	for i := range task.Response.Data {
-		result := &task.Response.Data[i]
+	if task.Response != nil && m.storage != nil {
+		for i := range task.Response.Data {
+			result := &task.Response.Data[i]
 
-		// Download from remote URL
-		if result.OriginalURL != "" && result.URL == "" {
-			localURL, err := m.storage.Download(ctx, result.OriginalURL, task.Type)
-			if err != nil {
-				if m.isClosed() || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					return
+			// Download from remote URL
+			if result.OriginalURL != "" && result.URL == "" {
+				localURL, err := m.storage.Download(ctx, result.OriginalURL, task.Type)
+				if err != nil {
+					if m.isClosed() || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+						return
+					}
+					log.Printf("[mediagen] cache download failed for task %s: %v", task.ID, err)
+					continue
 				}
-				log.Printf("[mediagen] cache download failed for task %s: %v", task.ID, err)
-				continue
+				result.URL = localURL
 			}
-			result.URL = localURL
-		}
 
-		// If no OriginalURL and no URL, log for debugging
-		if result.OriginalURL == "" && result.URL == "" && result.B64JSON == "" {
-			log.Printf("[mediagen] result %d for task %s has no URL, OriginalURL, or B64JSON (content_type=%s)", i, task.ID, result.ContentType)
-		}
-
-		// Store base64 data
-		if result.B64JSON != "" && result.URL == "" {
-			ct := result.ContentType
-			if ct == "" {
-				ct = "image/png"
+			// If no OriginalURL and no URL, log for debugging
+			if result.OriginalURL == "" && result.URL == "" && result.B64JSON == "" {
+				log.Printf("[mediagen] result %d for task %s has no URL, OriginalURL, or B64JSON (content_type=%s)", i, task.ID, result.ContentType)
 			}
-			localURL, err := m.storage.StoreBase64(result.B64JSON, ct, task.Type)
-			if err != nil {
-				log.Printf("[mediagen] cache store failed for task %s: %v", task.ID, err)
-				continue
-			}
-			result.URL = localURL
-			result.B64JSON = "" // Free memory
-		}
 
-		// Generate thumbnail for images
-		if result.URL != "" && task.Type == MediaTypeImage {
-			localPath := m.storage.localPathFromURL(result.URL)
-			if isImageFile(localPath) {
-				if thumbURL := m.storage.generateThumbnail(localPath); thumbURL != "" {
-					result.ThumbnailURL = thumbURL
+			// Store base64 data
+			if result.B64JSON != "" && result.URL == "" {
+				ct := result.ContentType
+				if ct == "" {
+					ct = "image/png"
+				}
+				localURL, err := m.storage.StoreBase64(result.B64JSON, ct, task.Type)
+				if err != nil {
+					log.Printf("[mediagen] cache store failed for task %s: %v", task.ID, err)
+					continue
+				}
+				result.URL = localURL
+				result.B64JSON = "" // Free memory
+			}
+
+			// Generate thumbnail for images
+			if result.URL != "" && task.Type == MediaTypeImage {
+				localPath := m.storage.localPathFromURL(result.URL)
+				if isImageFile(localPath) {
+					if thumbURL := m.storage.generateThumbnail(localPath); thumbURL != "" {
+						result.ThumbnailURL = thumbURL
+					}
 				}
 			}
 		}
@@ -858,6 +880,8 @@ func (m *Manager) cacheResults(task *MediaTask) {
 	if m.isTaskCancelled(task.ID) || m.isClosed() {
 		return
 	}
+	task.Status = TaskStatusSucceeded
+	task.Progress = 1.0
 	m.tasks.Store(task.ID, task)
 
 	// Record cost
@@ -1110,9 +1134,9 @@ func (m *Manager) CreateTask(ctx context.Context, req *MediaRequest, messageID, 
 	m.tasks.Store(taskID, task)
 
 	// Start async generation
-	if !m.isClosed() {
-		go m.executeTask(task, provider)
-	}
+	m.startBackground(func() {
+		m.executeTask(task, provider)
+	})
 
 	return task, nil
 }
@@ -1251,11 +1275,15 @@ func (m *Manager) RecoverTasks() {
 			}
 			// Has upstream ID — resume polling
 			log.Printf("[mediagen] resuming poll for task %s (upstream: %s)", task.ID, task.UpstreamID)
-			go m.pollTask(task.ID, provider)
+			m.startBackground(func() {
+				m.pollTask(task.ID, provider)
+			})
 		} else {
 			// No upstream ID — re-execute from scratch
 			log.Printf("[mediagen] re-executing task %s", task.ID)
-			go m.executeTask(task, provider)
+			m.startBackground(func() {
+				m.executeTask(task, provider)
+			})
 		}
 	}
 }

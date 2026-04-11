@@ -2,7 +2,11 @@ package mediagen
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -112,6 +116,38 @@ func (p *sequentialPollProvider) PolledIDs() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return append([]string(nil), p.polledIDs...)
+}
+
+type stubbornGenerateProvider struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (p *stubbornGenerateProvider) Name() string { return "fake" }
+
+func (p *stubbornGenerateProvider) SupportedModels() []MediaModelInfo {
+	return []MediaModelInfo{{ID: "fake-model", Name: "Fake", Type: MediaTypeImage, Provider: "fake"}}
+}
+
+func (p *stubbornGenerateProvider) SupportsType(MediaType) bool { return true }
+
+func (p *stubbornGenerateProvider) Generate(context.Context, *MediaRequest) (*MediaTask, error) {
+	if p.started != nil {
+		close(p.started)
+	}
+	if p.release != nil {
+		<-p.release
+	}
+	return &MediaTask{
+		BaseTask: basetask.BaseTask{Status: TaskStatusSucceeded},
+		Response: &MediaResponse{
+			Data: []MediaResult{{ContentType: "image/png"}},
+		},
+	}, nil
+}
+
+func (p *stubbornGenerateProvider) Poll(context.Context, string) (*MediaTask, error) {
+	return nil, errors.New("unexpected poll")
 }
 
 func TestManager_WaitForTask_ReturnsCancelled(t *testing.T) {
@@ -334,6 +370,138 @@ func TestManager_CloseStopsPollTaskWithoutMarkingFailure(t *testing.T) {
 	}
 	if got.Error != "" {
 		t.Fatalf("error=%q, want empty", got.Error)
+	}
+}
+
+func TestManager_GenerateKeepsSyncTaskProcessingUntilCacheCompletes(t *testing.T) {
+	requestStarted := make(chan struct{})
+	releaseResponse := make(chan struct{})
+	pngBytes, err := base64.StdEncoding.DecodeString(fakeMediaImagePNGBase64)
+	if err != nil {
+		t.Fatalf("DecodeString: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+		<-releaseResponse
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(pngBytes)
+	}))
+	defer server.Close()
+
+	storage := NewMediaStorage(filepath.Join(t.TempDir(), "media"), "/api/media/generated")
+	if err := storage.EnsureDirs(); err != nil {
+		t.Fatalf("EnsureDirs: %v", err)
+	}
+
+	provider := &blockingTestProvider{
+		generateResult: &MediaTask{
+			BaseTask: basetask.BaseTask{Status: TaskStatusSucceeded},
+			Response: &MediaResponse{
+				Data: []MediaResult{{
+					OriginalURL: server.URL + "/image.png",
+					ContentType: "image/png",
+				}},
+			},
+		},
+	}
+
+	m := NewManager(storage, nil, "")
+	m.RegisterProvider(provider)
+	t.Cleanup(func() {
+		_ = m.Close()
+	})
+
+	task, err := m.Generate(context.Background(), &MediaRequest{
+		Type:   MediaTypeImage,
+		Model:  "fake-model",
+		Prompt: "test",
+	})
+	if err != nil {
+		t.Fatalf("Generate returned error: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected task")
+	}
+
+	select {
+	case <-requestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("background cache download did not start")
+	}
+
+	got, err := m.GetTask(task.ID)
+	if err != nil {
+		t.Fatalf("GetTask returned error: %v", err)
+	}
+	if got.Status != TaskStatusProcessing {
+		t.Fatalf("status=%q, want %q until cache completes", got.Status, TaskStatusProcessing)
+	}
+
+	close(releaseResponse)
+
+	waitCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	got, err = m.WaitForTask(waitCtx, task.ID)
+	if err != nil {
+		t.Fatalf("WaitForTask returned error: %v", err)
+	}
+	if got.Status != TaskStatusSucceeded {
+		t.Fatalf("status=%q, want %q", got.Status, TaskStatusSucceeded)
+	}
+	if got.Response == nil || len(got.Response.Data) != 1 {
+		t.Fatalf("response=%#v, want single result", got.Response)
+	}
+	if got.Response.Data[0].URL == "" {
+		t.Fatal("expected cached local URL after sync cache completes")
+	}
+}
+
+func TestManager_CloseWaitsForBackgroundTasks(t *testing.T) {
+	provider := &stubbornGenerateProvider{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	m := NewManager(nil, nil, "")
+	m.RegisterProvider(provider)
+
+	task, err := m.CreateTask(context.Background(), &MediaRequest{
+		Type:   MediaTypeImage,
+		Model:  "fake-model",
+		Prompt: "test",
+	}, "", "", "")
+	if err != nil {
+		t.Fatalf("CreateTask returned error: %v", err)
+	}
+	if task == nil {
+		t.Fatal("expected task")
+	}
+
+	select {
+	case <-provider.started:
+	case <-time.After(time.Second):
+		t.Fatal("background executeTask did not start")
+	}
+
+	closeReturned := make(chan struct{})
+	go func() {
+		_ = m.Close()
+		close(closeReturned)
+	}()
+
+	select {
+	case <-closeReturned:
+		t.Fatal("Close returned before background task exited")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(provider.release)
+
+	select {
+	case <-closeReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after background task exited")
 	}
 }
 

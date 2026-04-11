@@ -592,6 +592,18 @@ func TestBuildStructured_StaticIncludesConfiguredDefaultLanguage(t *testing.T) {
 	}
 }
 
+func TestBuildStructured_StaticCompletionGuidanceMatchesUserLanguage(t *testing.T) {
+	b := NewSystemPromptBuilder(&Config{})
+	static := b.BuildStructured(context.Background(), "").Static
+
+	if !strings.Contains(static, "optional-help section in the same language as the user") {
+		t.Fatalf("expected static prompt to require localized optional-help guidance, got: %s", static)
+	}
+	if !strings.Contains(static, "matching the user's language") {
+		t.Fatalf("expected static prompt to require matching-language follow-up offers, got: %s", static)
+	}
+}
+
 func TestBuild_IncludesPriorityAndGroundingGuidance(t *testing.T) {
 	b := NewSystemPromptBuilder(&Config{})
 	out := b.Build(context.Background(), "")

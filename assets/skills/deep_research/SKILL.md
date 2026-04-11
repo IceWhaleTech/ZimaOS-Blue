@@ -1,11 +1,12 @@
 ---
 name: deep_research
 version: "1.0.0"
-description: "Legacy entry for the unified Research family. Research covers three modes: deep_research for citation-first investigation, analyze for bounded synthesis/report generation, and ui_review for UI/UX or accessibility review."
+description: "Legacy entry for the unified Research family. Research covers four modes: deep_research for citation-first investigation, analyze for bounded synthesis/report generation, advisor for decision support, and ui_review for UI/UX or accessibility review."
 invocation: "blue deep_research query=\"ZimaOS-Blue deep research architecture\" --json"
 examples:
   - "blue deep_research query=\"ZimaOS-Blue deep research architecture\" --json"
   - "blue deep_research mode=analyze topic=\"Product feedback analysis\" urls='[\"https://example.com/reviews\"]' --json"
+  - "blue deep_research mode=advisor question=\"Go vs Python for backend services\" category=language decision_mode=compare --json"
   - "blue deep_research mode=ui_review url=https://example.com/pricing review_action=check_accessibility --json"
   - "blue deep_research action=status job_id=job_123"
 capability_tags:
@@ -20,10 +21,11 @@ card_support: both
 
 This document describes the unified Research family.
 
-The file and manifest name stay `deep_research` for compatibility, but the runtime concept is now one research surface with three execution modes:
+The file and manifest name stay `deep_research` for compatibility, but the runtime concept is now one research surface with four execution modes:
 
 - `mode=deep_research`: citation-first, multi-source investigation
 - `mode=analyze`: bounded synthesis over provided text, URLs, and/or search queries
+- `mode=advisor`: decision memo for selection, replacement, migration, and best-practice questions
 - `mode=ui_review`: UI/UX or accessibility review for a live URL or screenshot
 
 ## How To Send
@@ -42,6 +44,7 @@ When the runtime exposes the canonical `research` entry directly, treat it as th
 |------|------------------|--------------------|
 | Multi-source research with evidence, citations, comparisons, or timeline work | `deep_research` | Investigation with planning, retrieval, evidence merging, and confidence-backed answers |
 | One synthesized report from known materials | `analyze` | Bounded synthesis over provided text, URLs, and search queries |
+| Decision support for technology choices or migration tradeoffs | `advisor` | Recommendation memo with tradeoffs, risks, alternatives, and optional evidence |
 | UI/UX, screenshot, or accessibility evaluation | `ui_review` | Visual and accessibility review for URLs or images |
 | Local workspace files or README inspection | Not this family | Prefer `exec` / file tools instead |
 
@@ -49,7 +52,7 @@ When the runtime exposes the canonical `research` entry directly, treat it as th
 
 - `action` (optional): `run` or `status`
 - `query` (required for normal research runs unless another mode-specific input supplies the goal)
-- `mode` (optional): `auto`, `deep_research`, `analyze`, or `ui_review`
+- `mode` (optional): `auto`, `deep_research`, `analyze`, `advisor`, or `ui_review`
 - `lang` (optional): output language such as `zh-CN` or `en-US`
 - `report_style` (optional): output style hint such as `summary`, `timeline`, or other mode-supported variants
 
@@ -109,6 +112,37 @@ Use `analyze` when:
 - the source set is already mostly known
 - citations are not the primary requirement
 
+## Mode: `advisor`
+
+Use this for selection, replacement, migration, and best-practice decisions.
+
+Examples:
+
+```bash
+blue deep_research mode=advisor question="Go vs Python for backend services" category=language decision_mode=compare --json
+blue deep_research mode=advisor question="Should we replace LibreOffice with OnlyOffice?" category=library decision_mode=replace --json
+```
+
+Key parameters:
+
+- `question` (required)
+- `category` (optional): `architecture`, `language`, `framework`, `library`, `process`, `migration`, `ops`
+- `decision_mode` (optional): `recommend`, `compare`, `review`, `replace`, `best_practice`
+- `candidates` (optional)
+- `context` / `constraints` (optional)
+- `grounding` (optional): `auto`, `none`, `web`
+- `depth` (optional): `quick`, `standard`, `deep`
+- `output` (optional): `decision_memo`, `scorecard`, `decision_pack`
+- `scorecard_pack` (optional): `auto`, `solution_selection_v1`, `migration_v1`, `architecture_v1`, `process_v1`
+- `scorecard_weights` (optional): criterion-weight overrides
+
+Deep advisor examples:
+
+```bash
+blue deep_research mode=advisor question="Go vs Python vs Node" category=language decision_mode=compare output=scorecard --json
+blue deep_research mode=advisor question="Should we replace Python with Go?" category=migration decision_mode=replace depth=deep output=decision_pack --json
+```
+
 ## Mode: `ui_review`
 
 Use this for visual quality or accessibility review of a webpage or screenshot.
@@ -157,6 +191,7 @@ Depending on mode, returns structured data such as:
 - Think of this as one research family, not three unrelated tools.
 - Prefer `mode=deep_research` for citation-first work.
 - Prefer `mode=analyze` for one bounded synthesized report.
+- Prefer `mode=advisor` for selection, replacement, and best-practice decisions.
 - Prefer `mode=ui_review` for URL/screenshot quality review.
 - If the task is only quick link discovery, prefer `web_query`.
 - If the task is about local files already in the workspace, prefer `exec` / file tools.

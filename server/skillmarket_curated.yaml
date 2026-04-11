@@ -43,15 +43,3 @@ additional_seeds:
     source_group: github-awesome-skills
     origin_name: Antigravity Awesome Skills
     value: https://github.com/sickn33/antigravity-awesome-skills/tree/main/skills
-  - type: seed_page
-    id: github-awesome-minimax
-    display_name: GitHub Awesome Skills
-    source_group: github-awesome-skills
-    origin_name: MiniMax Skills
-    value: https://github.com/MiniMax-AI/skills/tree/main/skills
-  - type: seed_page
-    id: github-awesome-openclaw
-    display_name: GitHub Awesome Skills
-    source_group: github-awesome-skills
-    origin_name: OpenClaw Skills
-    value: https://github.com/openclaw/skills/tree/main/skills

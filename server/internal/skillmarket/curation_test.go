@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -181,5 +183,20 @@ additional_seeds:
 	}
 	if found.SourceGroup != "github-awesome-skills" {
 		t.Fatalf("source group = %q", found.SourceGroup)
+	}
+}
+
+func TestCanonicalCuratedConfigDoesNotIncludeOpenClawSeed(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	configPath := filepath.Join(filepath.Dir(filename), "..", "..", "skillmarket_curated.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read curated config: %v", err)
+	}
+	if strings.Contains(string(data), "https://github.com/openclaw/skills/tree/main/skills") {
+		t.Fatalf("canonical curated config should not include OpenClaw GitHub source: %s", configPath)
 	}
 }

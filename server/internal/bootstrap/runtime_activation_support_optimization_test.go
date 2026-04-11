@@ -370,7 +370,8 @@ Use browser skill candidate.
 		"SKILL.md Content:",
 		"Use browser skill candidate.",
 		"Return JSON only with this schema:",
-		`"status":"candidate_ready|no_change"`,
+		`"status":"proposal_set_ready|candidate_ready|no_change"`,
+		"When status is proposal_set_ready, include up to 4 skill_definition mutations in proposal_set and keep each full replacement in skill_candidate.content.",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q:\n%s", want, prompt)
