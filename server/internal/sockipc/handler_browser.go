@@ -25,6 +25,10 @@ type BrowserBackend interface {
 	ListRecipes(ctx context.Context) (string, error) // JSON array
 }
 
+type browserPageScrollCompat interface {
+	PageScroll(ctx context.Context, targetID string, x, y int) error
+}
+
 // RegisterBrowserHandlers wires up browser IPC commands.
 // Auth is handled by Unix socket file permissions (0600).
 func RegisterBrowserHandlers(srv *Server, browser BrowserBackend, log *zap.Logger) {
@@ -50,7 +54,16 @@ func RegisterBrowserHandlers(srv *Server, browser BrowserBackend, log *zap.Logge
 				maxDepth = d
 			}
 		}
-		result, err := browser.AccessibilityTree(ctx, req.Params["target_id"], maxDepth)
+		targetID := req.Params["target_id"]
+		if targetID == "" && req.Params["url"] != "" {
+			_ = browser.Start(ctx)
+			nav, err := browser.Navigate(ctx, req.Params["url"], "")
+			if err != nil {
+				return ErrResponse("navigate failed: " + err.Error())
+			}
+			targetID = nav["target_id"]
+		}
+		result, err := browser.AccessibilityTree(ctx, targetID, maxDepth)
 		if err != nil {
 			return ErrResponse("snapshot failed: " + err.Error())
 		}
@@ -59,7 +72,16 @@ func RegisterBrowserHandlers(srv *Server, browser BrowserBackend, log *zap.Logge
 
 	// browser.snapshot_interactive — get interactive elements
 	srv.Handle("browser.snapshot_interactive", func(ctx context.Context, req *Request) *Response {
-		result, err := browser.InteractiveElements(ctx, req.Params["target_id"])
+		targetID := req.Params["target_id"]
+		if targetID == "" && req.Params["url"] != "" {
+			_ = browser.Start(ctx)
+			nav, err := browser.Navigate(ctx, req.Params["url"], "")
+			if err != nil {
+				return ErrResponse("navigate failed: " + err.Error())
+			}
+			targetID = nav["target_id"]
+		}
+		result, err := browser.InteractiveElements(ctx, targetID)
 		if err != nil {
 			return ErrResponse("snapshot_interactive failed: " + err.Error())
 		}
@@ -84,6 +106,22 @@ func RegisterBrowserHandlers(srv *Server, browser BrowserBackend, log *zap.Logge
 			return ErrResponse("act failed: " + err.Error())
 		}
 		return OkResponse(map[string]string{"message": fmt.Sprintf("Performed %s on @%d", actType, ref)})
+	})
+
+	// browser.scroll_page — compatibility page scroll without a ref
+	srv.Handle("browser.scroll_page", func(ctx context.Context, req *Request) *Response {
+		direction, x, y, ok := tools.BrowserLegacyPageScrollDelta("scroll_page", req.Params["act_type"])
+		if !ok {
+			return ErrResponse("invalid scroll_page direction")
+		}
+		scroller, ok := browser.(browserPageScrollCompat)
+		if !ok {
+			return ErrResponse("scroll_page not supported by browser backend")
+		}
+		if err := scroller.PageScroll(ctx, req.Params["target_id"], x, y); err != nil {
+			return ErrResponse("scroll_page failed: " + err.Error())
+		}
+		return OkResponse(map[string]string{"message": "Scrolled page " + direction})
 	})
 
 	// browser.screenshot — capture page as base64 PNG

@@ -593,6 +593,7 @@ export default mergeHarnessLocale('zh-CN', {
     mobileFeatureDisableSmartResume: '关闭智能续跑',
     taskCancelled: '任务已取消',
     waitingThinking: '思考中...',
+    providerAccelerationActive: '正在为当前提供方优化后续响应',
     awaitingConfirmation: '等待你的确认以继续',
     streamConnecting: '连接中',
     streamStreaming: '生成中',

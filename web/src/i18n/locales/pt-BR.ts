@@ -603,6 +603,7 @@ export default mergeHarnessLocale('pt-BR', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Tarefa cancelada',
     waitingThinking: 'Pensando...',
+    providerAccelerationActive: 'Otimizando a próxima resposta para o provedor atual',
     awaitingConfirmation: 'Aguardando sua confirmação para continuar',
     streamConnecting: 'Conectando',
     streamStreaming: 'Gerando',
@@ -864,7 +865,8 @@ export default mergeHarnessLocale('pt-BR', {
     providerFailover: {
       eyebrow: 'Troca de alta disponibilidade',
       title: 'Mudar para outra rota disponível e tentar novamente?',
-      description: 'A rota atual em {provider} precisa da sua confirmação antes que o Blue mude para outra rota disponível e tente novamente.',
+      description:
+        'A rota atual em {provider} precisa da sua confirmação antes que o Blue mude para outra rota disponível e tente novamente.',
       dismissAction: 'Agora não',
       manualAction: 'Escolher rota manualmente',
       primaryAction: 'Mudar e tentar novamente',
@@ -898,7 +900,8 @@ export default mergeHarnessLocale('pt-BR', {
     execDirectoryApprovalTimeout:
       'A execução do comando foi bloqueada porque a aprovação do diretório expirou. Aprove o diretório e tente novamente.',
     providerActive: 'O provedor está ativo e pronto.',
-    providerNeedsAttention: 'O provedor precisa de atenção. Clique para verificar as configurações.',
+    providerNeedsAttention:
+      'O provedor precisa de atenção. Clique para verificar as configurações.',
     providerPending: 'Verificando o status do provedor...',
     trialQuota: {
       remaining: '{tokens} tokens restantes',

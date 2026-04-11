@@ -372,6 +372,65 @@ func TestNormalizeIPCCommand_MapsBrowserClickShorthandToAct(t *testing.T) {
 	}
 }
 
+func TestNormalizeIPCCommand_MapsBrowserScrollDownActionToScrollPage(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"action=scroll_down", "target_id=tab-1"})
+
+	if cmd != "browser.scroll_page" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.scroll_page")
+	}
+	if got := params["act_type"]; got != "down" {
+		t.Fatalf("act_type = %q, want %q", got, "down")
+	}
+	if got := params["target_id"]; got != "tab-1" {
+		t.Fatalf("target_id = %q, want %q", got, "tab-1")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserInspectActionToSnapshot(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"action=inspect", "target_id=tab-1"})
+
+	if cmd != "browser.snapshot" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.snapshot")
+	}
+	if got := params["target_id"]; got != "tab-1" {
+		t.Fatalf("target_id = %q, want %q", got, "tab-1")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserReadActionToSnapshotAuto(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"action=read", "url=https://example.com/docs"})
+
+	if cmd != "browser.snapshot_auto" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.snapshot_auto")
+	}
+	if got := params["url"]; got != "https://example.com/docs" {
+		t.Fatalf("url = %q, want %q", got, "https://example.com/docs")
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
+func TestNormalizeIPCCommand_MapsBrowserStatusActionToTabs(t *testing.T) {
+	cmd, params, positional := normalizeIPCCommand("browser", []string{"action=status"})
+
+	if cmd != "browser.tabs" {
+		t.Fatalf("cmd = %q, want %q", cmd, "browser.tabs")
+	}
+	if len(params) != 0 {
+		t.Fatalf("unexpected params: %#v", params)
+	}
+	if len(positional) != 0 {
+		t.Fatalf("unexpected positional args: %#v", positional)
+	}
+}
+
 func TestNormalizeIPCCommand_MapsBrowserTypeShorthandToActWithValue(t *testing.T) {
 	cmd, params, positional := normalizeIPCCommand("browser", []string{"type", "@8", "hello world"})
 

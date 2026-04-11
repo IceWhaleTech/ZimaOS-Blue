@@ -205,7 +205,7 @@ func researchRunMode(run *harness.Run) string {
 func researchRunFamilyMode(run *harness.Run) string {
 	mode := researchRunMetadataString(run, "mode")
 	switch mode {
-	case "analyze", "ui_review", "deep_research":
+	case "advisor", "analyze", "ui_review", "deep_research":
 		return mode
 	case "fast", "standard", "deep":
 		return "deep_research"

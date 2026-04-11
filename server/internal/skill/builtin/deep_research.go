@@ -80,9 +80,9 @@ func (d *DeepResearch) Validate(input map[string]any) error {
 			return fmt.Errorf("mode must be a string")
 		}
 		switch mode {
-		case "", "fast", "standard", "deep":
+		case "", "fast", "standard", "deep", "advisor":
 		default:
-			return fmt.Errorf("mode must be one of: fast, standard, deep")
+			return fmt.Errorf("mode must be one of: fast, standard, deep, advisor")
 		}
 	}
 	if routeModeV, ok := input["route_mode"]; ok {

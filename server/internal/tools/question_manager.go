@@ -43,14 +43,15 @@ type QuestionAnswerResult struct {
 
 // QuestionRequest is the SSE payload sent to the frontend.
 type QuestionRequest struct {
-	ID        string                 `json:"id"`
-	RunID     string                 `json:"run_id,omitempty"`
-	StepIndex int                    `json:"step_index,omitempty"`
-	Questions []QuestionItem         `json:"questions"`
-	UserID    string                 `json:"user_id"`
-	SessionID string                 `json:"session_id,omitempty"`
-	ExpiresAt int64                  `json:"expires_at"` // Unix ms
-	Context   map[string]interface{} `json:"context,omitempty"`
+	ID                    string                 `json:"id"`
+	RunID                 string                 `json:"run_id,omitempty"`
+	StepIndex             int                    `json:"step_index,omitempty"`
+	Questions             []QuestionItem         `json:"questions"`
+	UserID                string                 `json:"user_id"`
+	SessionID             string                 `json:"session_id,omitempty"`
+	ExpiresAt             int64                  `json:"expires_at"` // Unix ms, 0 means no auto-expiry
+	RequireExplicitAnswer bool                   `json:"require_explicit_answer,omitempty"`
+	Context               map[string]interface{} `json:"context,omitempty"`
 }
 
 type pendingQuestion struct {
@@ -240,9 +241,13 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 	}
 	timeout := m.resolveTimeout(len(questions))
 	timeoutAction := m.resolveTimeoutAction()
+	activeSSEClients := 0
+	if m.broker != nil {
+		activeSSEClients = m.broker.ClientCount(userID)
+	}
 	// If no active SSE consumer exists for this user, do not block on timeout.
 	// Treat it as unattended mode and return deterministic defaults immediately.
-	if m.broker == nil || m.broker.ClientCount(userID) == 0 {
+	if activeSSEClients == 0 {
 		if timeoutAction == "error" {
 			return nil, false, questionRuntimeError(
 				"question_delivery_unavailable",
@@ -260,18 +265,24 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 		}
 		return m.defaultAnswers(questions), true, nil
 	}
+	requireExplicitAnswer := ch == "web" && timeoutAction == "default"
+	expiresAt := timeutil.NowMilli() + timeout.Milliseconds()
+	if requireExplicitAnswer {
+		expiresAt = 0
+	}
 
 	reqID := uuid.New().String()
 	answerCh := make(chan []QuestionAnswerResult, 1)
 	req := QuestionRequest{
-		ID:        reqID,
-		RunID:     GetRunID(ctx),
-		StepIndex: GetRunStep(ctx),
-		Questions: questions,
-		UserID:    userID,
-		SessionID: sessionID,
-		ExpiresAt: timeutil.NowMilli() + timeout.Milliseconds(),
-		Context:   questionContext,
+		ID:                    reqID,
+		RunID:                 GetRunID(ctx),
+		StepIndex:             GetRunStep(ctx),
+		Questions:             questions,
+		UserID:                userID,
+		SessionID:             sessionID,
+		ExpiresAt:             expiresAt,
+		RequireExplicitAnswer: requireExplicitAnswer,
+		Context:               questionContext,
 	}
 
 	m.mu.Lock()
@@ -292,8 +303,13 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 	}
 
 	// Wait for response or timeout
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	var timer *time.Timer
+	var timerCh <-chan time.Time
+	if !requireExplicitAnswer {
+		timer = time.NewTimer(timeout)
+		timerCh = timer.C
+		defer timer.Stop()
+	}
 
 	select {
 	case answers := <-answerCh:
@@ -301,7 +317,7 @@ func (m *QuestionManager) AskQuestionsWithContext(ctx context.Context, userID, s
 			observer.OnQuestionResolved(questionRuntimeEvent(req, answers, false, false, nil))
 		}
 		return answers, false, nil
-	case <-timer.C:
+	case <-timerCh:
 		defaultAnswers := m.defaultAnswers(questions)
 		var resolveErr error
 		if timeoutAction == "error" {
@@ -484,7 +500,7 @@ func (m *QuestionManager) CleanupExpired() []string {
 	}
 	removed := make([]string, 0)
 	for id, p := range m.pending {
-		if p == nil || p.request.ExpiresAt <= nowMs {
+		if p == nil || (p.request.ExpiresAt > 0 && p.request.ExpiresAt <= nowMs) {
 			removed = append(removed, id)
 			delete(m.pending, id)
 		}
@@ -503,7 +519,7 @@ func (m *QuestionManager) GetPending(userID string) *QuestionRequest {
 	defer m.mu.Unlock()
 	var latest *pendingQuestion
 	for id, p := range m.pending {
-		if p == nil || p.request.ExpiresAt <= nowMs {
+		if p == nil || (p.request.ExpiresAt > 0 && p.request.ExpiresAt <= nowMs) {
 			delete(m.pending, id)
 			continue
 		}
@@ -533,7 +549,7 @@ func (m *QuestionManager) GetPendingBySession(sessionID string) *QuestionRequest
 	defer m.mu.Unlock()
 	var latest *pendingQuestion
 	for id, p := range m.pending {
-		if p == nil || p.request.ExpiresAt <= nowMs {
+		if p == nil || (p.request.ExpiresAt > 0 && p.request.ExpiresAt <= nowMs) {
 			delete(m.pending, id)
 			continue
 		}
@@ -562,7 +578,7 @@ func (m *QuestionManager) GetPendingByRun(runID string) *QuestionRequest {
 	defer m.mu.Unlock()
 	var latest *pendingQuestion
 	for id, p := range m.pending {
-		if p == nil || p.request.ExpiresAt <= nowMs {
+		if p == nil || (p.request.ExpiresAt > 0 && p.request.ExpiresAt <= nowMs) {
 			delete(m.pending, id)
 			continue
 		}

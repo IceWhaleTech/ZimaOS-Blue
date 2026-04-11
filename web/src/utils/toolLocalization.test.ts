@@ -70,11 +70,15 @@ function getMergedLocaleMessages(locale: string): LocaleMessages {
 }
 
 const nameCoverage = [
+  'advisor',
   'cron',
+  'docx',
   'web',
   'sessions',
   'file_read',
   'file_write',
+  'pdf',
+  'pptx',
   'read',
   'write',
   'web_search',
@@ -86,9 +90,30 @@ const nameCoverage = [
   'deep_research',
   'research_run',
   'research_status',
+  'xlsx',
 ] as const
 
 const descriptionCoverage = [
+  {
+    name: 'advisor',
+    description:
+      'Decision advisor for selection, replacement, migration, and best-practice questions.',
+  },
+  {
+    name: 'docx',
+    description:
+      'Read, create, edit, template, or validate native .docx workspace files with native-first OOXML handling and explicit degradation telemetry.',
+  },
+  {
+    name: 'pdf',
+    description:
+      'Read PDF metadata, extract text from local/remote PDFs, inspect interactive form fields, or create/reformat native PDF workspace files with explicit page/layout telemetry.',
+  },
+  {
+    name: 'pptx',
+    description:
+      'Read, create, or edit native .pptx workspace files with native-first OOXML packaging and explicit degradation telemetry.',
+  },
   {
     name: 'web',
     description: 'Unified web tool for searching, reading, extracting, or crawling web content',
@@ -188,6 +213,11 @@ const descriptionCoverage = [
     name: 'workflows',
     description: 'Create and execute n8n-style workflow automations with triggers and actions',
   },
+  {
+    name: 'xlsx',
+    description:
+      'Read, create, edit, fix, or validate native .xlsx workspace files with native-first OOXML handling and explicit degradation telemetry.',
+  },
 ] as const
 
 const reportedBuiltinToolCoverage = [
@@ -212,6 +242,7 @@ const reportedBuiltinToolCoverage = [
 ] as const
 
 const runtimeVisibleToolCoverage = [
+  'advisor',
   'agents_list',
   'analyze',
   'bash',
@@ -219,6 +250,7 @@ const runtimeVisibleToolCoverage = [
   'canvas',
   'cron',
   'deep_research',
+  'docx',
   'edit',
   'exec',
   'find',
@@ -237,6 +269,7 @@ const runtimeVisibleToolCoverage = [
   'office',
   'pdf',
   'ppt',
+  'pptx',
   'research',
   'read',
   'session_status',
@@ -250,6 +283,7 @@ const runtimeVisibleToolCoverage = [
   'tts',
   'web_query',
   'write',
+  'xlsx',
 ] as const
 
 const preferredToolNameMap: Record<string, string> = {
@@ -524,8 +558,8 @@ describe('tool page localization coverage', () => {
     }
   })
 
-  it('keeps runtime-visible 37-tool resources available across all locales', () => {
-    expect(runtimeVisibleToolCoverage).toHaveLength(38)
+  it('keeps runtime-visible advisor and tool resources available across all locales', () => {
+    expect(runtimeVisibleToolCoverage).toHaveLength(42)
     const missingResources: string[] = []
 
     for (const locale of localeCodes) {

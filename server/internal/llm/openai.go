@@ -461,6 +461,7 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 	var messageID string
 	var actualModel = model // Track actual model from response
 	var promptTokens, completionTokens int
+	var cacheReadTokens, cacheCreationTokens int
 	var lineBuffer strings.Builder
 	buf := make([]byte, 1)
 
@@ -505,9 +506,11 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
-						PromptTokens:     promptTokens,
-						CompletionTokens: completionTokens,
-						TotalTokens:      promptTokens + completionTokens,
+						PromptTokens:             promptTokens,
+						CompletionTokens:         completionTokens,
+						TotalTokens:              promptTokens + completionTokens,
+						CacheReadInputTokens:     cacheReadTokens,
+						CacheCreationInputTokens: cacheCreationTokens,
 					},
 				})
 			}
@@ -523,9 +526,11 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
 				Usage *struct {
-					PromptTokens     int `json:"prompt_tokens"`
-					CompletionTokens int `json:"completion_tokens"`
-					TotalTokens      int `json:"total_tokens"`
+					PromptTokens             int `json:"prompt_tokens"`
+					CompletionTokens         int `json:"completion_tokens"`
+					TotalTokens              int `json:"total_tokens"`
+					CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 				} `json:"usage,omitempty"`
 			}
 
@@ -545,6 +550,8 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 			if chunk.Usage != nil {
 				promptTokens = chunk.Usage.PromptTokens
 				completionTokens = chunk.Usage.CompletionTokens
+				cacheReadTokens = chunk.Usage.CacheReadInputTokens
+				cacheCreationTokens = chunk.Usage.CacheCreationInputTokens
 			}
 
 			if len(chunk.Choices) == 0 {
@@ -585,9 +592,11 @@ func (p *OpenAIProvider) parseOpenAISSEStreamCallback(ctx context.Context, reade
 					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
-						PromptTokens:     promptTokens,
-						CompletionTokens: completionTokens,
-						TotalTokens:      promptTokens + completionTokens,
+						PromptTokens:             promptTokens,
+						CompletionTokens:         completionTokens,
+						TotalTokens:              promptTokens + completionTokens,
+						CacheReadInputTokens:     cacheReadTokens,
+						CacheCreationInputTokens: cacheCreationTokens,
 					},
 				})
 			}
@@ -603,6 +612,7 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 	var messageID string
 	var actualModel = model // Track actual model from response
 	var promptTokens, completionTokens int
+	var cacheReadTokens, cacheCreationTokens int
 	var lineBuffer strings.Builder
 
 	for {
@@ -645,9 +655,11 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
-						PromptTokens:     promptTokens,
-						CompletionTokens: completionTokens,
-						TotalTokens:      promptTokens + completionTokens,
+						PromptTokens:             promptTokens,
+						CompletionTokens:         completionTokens,
+						TotalTokens:              promptTokens + completionTokens,
+						CacheReadInputTokens:     cacheReadTokens,
+						CacheCreationInputTokens: cacheCreationTokens,
 					},
 				}:
 				}
@@ -665,9 +677,11 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 					FinishReason string `json:"finish_reason"`
 				} `json:"choices"`
 				Usage *struct {
-					PromptTokens     int `json:"prompt_tokens"`
-					CompletionTokens int `json:"completion_tokens"`
-					TotalTokens      int `json:"total_tokens"`
+					PromptTokens             int `json:"prompt_tokens"`
+					CompletionTokens         int `json:"completion_tokens"`
+					TotalTokens              int `json:"total_tokens"`
+					CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
+					CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
 				} `json:"usage,omitempty"`
 			}
 
@@ -687,6 +701,8 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 			if chunk.Usage != nil {
 				promptTokens = chunk.Usage.PromptTokens
 				completionTokens = chunk.Usage.CompletionTokens
+				cacheReadTokens = chunk.Usage.CacheReadInputTokens
+				cacheCreationTokens = chunk.Usage.CacheCreationInputTokens
 			}
 
 			if len(chunk.Choices) == 0 {
@@ -735,9 +751,11 @@ func (p *OpenAIProvider) parseOpenAISSEStream(ctx context.Context, reader io.Rea
 					Model: actualModel,
 					Done:  true,
 					Usage: &Usage{
-						PromptTokens:     promptTokens,
-						CompletionTokens: completionTokens,
-						TotalTokens:      promptTokens + completionTokens,
+						PromptTokens:             promptTokens,
+						CompletionTokens:         completionTokens,
+						TotalTokens:              promptTokens + completionTokens,
+						CacheReadInputTokens:     cacheReadTokens,
+						CacheCreationInputTokens: cacheCreationTokens,
 					},
 				}:
 				}

@@ -601,6 +601,7 @@ export default mergeHarnessLocale('hr-HR', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Zadatak otkazan',
     waitingThinking: 'Razmišljam...',
+    providerAccelerationActive: 'Optimiziranje sljedećeg odgovora za trenutačnog pružatelja usluge',
     awaitingConfirmation: 'Čeka se vaša potvrda za nastavak',
     streamConnecting: 'Povezivanje',
     streamStreaming: 'Generiranje',
@@ -859,7 +860,8 @@ export default mergeHarnessLocale('hr-HR', {
     providerFailover: {
       eyebrow: 'Prebacivanje visoke dostupnosti',
       title: 'Prebaciti na drugu dostupnu rutu i pokušati ponovno?',
-      description: 'Trenutna ruta preko {provider} treba vašu potvrdu prije nego što Blue prebaci na drugu dostupnu rutu i pokuša ponovno.',
+      description:
+        'Trenutna ruta preko {provider} treba vašu potvrdu prije nego što Blue prebaci na drugu dostupnu rutu i pokuša ponovno.',
       dismissAction: 'Ne sada',
       manualAction: 'Ručno odaberi rutu',
       primaryAction: 'Prebaci i pokušaj ponovno',

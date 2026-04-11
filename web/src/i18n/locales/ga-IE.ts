@@ -601,6 +601,7 @@ export default mergeHarnessLocale('ga-IE', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Cuireadh an tasc ar ceal',
     waitingThinking: 'Ag smaoineamh...',
+    providerAccelerationActive: 'Ag barrfheabhsú an chéad fhreagra eile don soláthraí reatha',
     awaitingConfirmation: 'Ag fanacht le do dheimhniú chun leanúint ar aghaidh',
     streamConnecting: 'Ag nascadh',
     streamStreaming: 'Ag sruthú',
@@ -865,7 +866,8 @@ export default mergeHarnessLocale('ga-IE', {
     providerFailover: {
       eyebrow: 'Athrú ard-infhaighteachta',
       title: 'An bhfuil fonn ort aistriú go bealach eile atá ar fáil agus triail eile a bhaint as?',
-      description: 'Teastaíonn do dheimhniú ón mbealach reatha ar {provider} sula n-athróidh Blue go bealach eile atá ar fáil agus sula ndéanfaidh sé iarracht eile.',
+      description:
+        'Teastaíonn do dheimhniú ón mbealach reatha ar {provider} sula n-athróidh Blue go bealach eile atá ar fáil agus sula ndéanfaidh sé iarracht eile.',
       dismissAction: 'Ní anois',
       manualAction: 'Roghnaigh bealach de láimh',
       primaryAction: 'Athraigh agus bain triail eile as',

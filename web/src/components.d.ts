@@ -29,6 +29,7 @@ declare module 'vue' {
     CacheStatsCard: typeof import('./components/dashboard/cards/CacheStatsCard.vue')['default']
     CardAccordion: typeof import('./components/typeless/CardAccordion.vue')['default']
     CardAction: typeof import('./components/typeless/CardAction.vue')['default']
+    CardAdvisor: typeof import('./components/typeless/CardAdvisor.vue')['default']
     CardAlert: typeof import('./components/typeless/CardAlert.vue')['default']
     CardAnalyze: typeof import('./components/typeless/CardAnalyze.vue')['default']
     CardAnalyzeProgress: typeof import('./components/typeless/CardAnalyzeProgress.vue')['default']

@@ -603,6 +603,7 @@ export default mergeHarnessLocale('pt-PT', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Tarefa cancelada',
     waitingThinking: 'A pensar...',
+    providerAccelerationActive: 'A otimizar a próxima resposta para o fornecedor atual',
     awaitingConfirmation: 'A aguardar a sua confirmação para continuar',
     streamConnecting: 'A conectar',
     streamStreaming: 'A gerar',
@@ -863,7 +864,8 @@ export default mergeHarnessLocale('pt-PT', {
     providerFailover: {
       eyebrow: 'Mudança de alta disponibilidade',
       title: 'Mudar para outra rota disponível e tentar novamente?',
-      description: 'A rota atual em {provider} precisa da sua confirmação antes de o Blue mudar para outra rota disponível e tentar novamente.',
+      description:
+        'A rota atual em {provider} precisa da sua confirmação antes de o Blue mudar para outra rota disponível e tentar novamente.',
       dismissAction: 'Agora não',
       manualAction: 'Escolher rota manualmente',
       primaryAction: 'Mudar e tentar novamente',

@@ -597,6 +597,7 @@ export default mergeHarnessLocale('en-GB', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Task cancelled',
     waitingThinking: 'Thinking...',
+    providerAccelerationActive: 'Optimising the next response for the current provider',
     awaitingConfirmation: 'Waiting for your confirmation to continue',
     streamConnecting: 'Connecting',
     streamStreaming: 'Streaming',
@@ -855,7 +856,8 @@ export default mergeHarnessLocale('en-GB', {
     providerFailover: {
       eyebrow: 'High-availability switch',
       title: 'Switch to another available route and retry?',
-      description: 'The current route on {provider} needs your confirmation before Blue switches to another available route and retries.',
+      description:
+        'The current route on {provider} needs your confirmation before Blue switches to another available route and retries.',
       dismissAction: 'Not now',
       manualAction: 'Choose route manually',
       primaryAction: 'Switch and retry',

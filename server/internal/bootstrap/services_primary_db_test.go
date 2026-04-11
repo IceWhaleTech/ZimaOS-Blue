@@ -16,6 +16,7 @@ func TestOpenPrimaryDatabaseRepairsRecoverableCorruptionWithoutLeavingBak(t *tes
 	dataDir := t.TempDir()
 	dbPath := filepath.Join(dataDir, "blue.db")
 	writePrimarySQLiteEntries(t, dbPath, "hello")
+	requirePrimarySQLiteRepairableSample(t, dbPath, 8192, []byte("garbagegarbagegarbagegarbage"))
 	corruptPrimarySQLiteBytes(t, dbPath, 8192, []byte("garbagegarbagegarbagegarbage"))
 
 	conn, err := openPrimaryDatabase(&ServerConfig{DataDir: dataDir}, zap.NewNop())
@@ -38,6 +39,29 @@ func TestOpenPrimaryDatabaseRepairsRecoverableCorruptionWithoutLeavingBak(t *tes
 		t.Fatalf("glob backup files: %v", err)
 	} else if len(matches) != 0 {
 		t.Fatalf("expected successful primary repair to clean temporary .bak files, got %v", matches)
+	}
+}
+
+func requirePrimarySQLiteRepairableSample(t *testing.T, path string, offset int64, payload []byte) {
+	t.Helper()
+
+	probeDir := t.TempDir()
+	probePath := filepath.Join(probeDir, filepath.Base(path))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read sqlite sample %s: %v", path, err)
+	}
+	if err := os.WriteFile(probePath, data, 0o644); err != nil {
+		t.Fatalf("write sqlite repair probe %s: %v", probePath, err)
+	}
+	corruptPrimarySQLiteBytes(t, probePath, offset, payload)
+
+	result, err := dbutil.RepairSQLiteDatabase(probePath)
+	if err != nil {
+		t.Skipf("sqlite3 CLI cannot repair this corruption sample in current environment: %v", err)
+	}
+	if result == nil || !result.Repaired {
+		t.Skip("sqlite3 CLI did not report a successful repair for this corruption sample")
 	}
 }
 

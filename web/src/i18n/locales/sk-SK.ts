@@ -599,6 +599,7 @@ export default mergeHarnessLocale('sk-SK', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Úloha zrušená',
     waitingThinking: 'Premýšľam...',
+    providerAccelerationActive: 'Optimalizujem ďalšiu odpoveď pre aktuálneho poskytovateľa',
     awaitingConfirmation: 'Čaká sa na vaše potvrdenie pre pokračovanie',
     streamConnecting: 'Pripájanie',
     streamStreaming: 'Generovanie',
@@ -859,7 +860,8 @@ export default mergeHarnessLocale('sk-SK', {
     providerFailover: {
       eyebrow: 'Prepnutie vysokej dostupnosti',
       title: 'Prepnúť na inú dostupnú trasu a skúsiť znova?',
-      description: 'Aktuálna trasa cez {provider} potrebuje vaše potvrdenie, než Blue prepne na inú dostupnú trasu a skúsi to znova.',
+      description:
+        'Aktuálna trasa cez {provider} potrebuje vaše potvrdenie, než Blue prepne na inú dostupnú trasu a skúsi to znova.',
       dismissAction: 'Teraz nie',
       manualAction: 'Vybrať trasu ručne',
       primaryAction: 'Prepnúť a skúsiť znova',

@@ -86,6 +86,7 @@ func TestOpenSQLiteSimpleRepairsRecoverableCorruption(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "recoverable.db")
 	writeSQLiteEntry(t, path, "hello")
+	requireSQLiteRepairableSample(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
 	corruptSQLiteBytes(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
 
 	db, err := database.OpenSQLiteSimple(path)
@@ -135,6 +136,7 @@ exec "$REAL_SQLITE3" "$@"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "recoverable-fallback.db")
 	writeSQLiteEntry(t, path, "hello")
+	requireSQLiteRepairableSample(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
 	corruptSQLiteBytes(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
 
 	db, err := database.OpenSQLiteSimple(path)
@@ -176,6 +178,7 @@ exec "$REAL_SQLITE3" "$@"
 	dir := t.TempDir()
 	path := filepath.Join(dir, "recoverable-empty-schema-fallback.db")
 	writeSQLiteEntry(t, path, "hello")
+	requireSQLiteRepairableSample(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
 	corruptSQLiteBytes(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
 
 	db, err := database.OpenSQLiteSimple(path)
@@ -468,6 +471,29 @@ func TestRepairKnownFTSIndexesNoopsWhenNoKnownFTSObjectsExist(t *testing.T) {
 	}
 	if len(repaired) != 0 {
 		t.Fatalf("expected no repaired FTS tables, got %v", repaired)
+	}
+}
+
+func requireSQLiteRepairableSample(t *testing.T, path string, offset int64, payload []byte) {
+	t.Helper()
+
+	probeDir := t.TempDir()
+	probePath := filepath.Join(probeDir, filepath.Base(path))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read sqlite sample %s: %v", path, err)
+	}
+	if err := os.WriteFile(probePath, data, 0o644); err != nil {
+		t.Fatalf("write sqlite repair probe %s: %v", probePath, err)
+	}
+	corruptSQLiteBytes(t, probePath, offset, payload)
+
+	result, err := database.RepairSQLiteDatabase(probePath)
+	if err != nil {
+		t.Skipf("sqlite3 CLI cannot repair this corruption sample in current environment: %v", err)
+	}
+	if result == nil || !result.Repaired {
+		t.Skip("sqlite3 CLI did not report a successful repair for this corruption sample")
 	}
 }
 

@@ -877,6 +877,42 @@ func TestToolGatewayNormalizesCompatAliasToUnifiedTool(t *testing.T) {
 	}
 }
 
+func TestToolGatewayAcceptsSingleStringJSONArrayForRequiredQueryArg(t *testing.T) {
+	registry := NewRegistry()
+	searchTool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "tool_search",
+			Description: "search",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{"type": "string"},
+				},
+				"required":             []string{"query"},
+				"additionalProperties": true,
+			},
+		},
+	}
+	registry.Register(searchTool)
+
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-search-array",
+		ToolName:   "tool_search",
+		Arguments:  `["skill"]`,
+		RouteKind:  ToolRouteKindChat,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := searchTool.args["query"]; got != "skill" {
+		t.Fatalf("query = %v, want skill", got)
+	}
+	if got := result.NormalizedCall.Arguments["query"]; got != "skill" {
+		t.Fatalf("normalized query = %v, want skill", got)
+	}
+}
+
 func TestToolGatewaySanitizesScalarPayloads(t *testing.T) {
 	registry := NewRegistry()
 	registry.Register(&gatewayResultTool{

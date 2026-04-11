@@ -243,6 +243,52 @@ func TestResearchDriverStart_UIReviewModeRunsInsideHarnessEnvelope(t *testing.T)
 	}
 }
 
+func TestResearchDriverStart_AdvisorModeRunsInsideHarnessEnvelope(t *testing.T) {
+	controller := newDriverTestController(t)
+	advisorTool := &stubResearchModeTool{
+		result: `{"recommendation":"Prefer Go for hot paths","confidence":0.81,"second_opinion":{"used":false}}`,
+	}
+	driver := NewResearchDriver(nil, controller)
+	driver.SetAdvisorExecutor(advisorTool)
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), harness.RunSpec{
+		Kind:   harness.RunKindResearch,
+		Goal:   "Should we replace Python with Go?",
+		UserID: "user-advisor",
+		Metadata: map[string]interface{}{
+			"mode":             "advisor",
+			"question":         "Should we replace Python with Go?",
+			"category":         "language",
+			"decision_mode":    "replace",
+			"grounding":        "none",
+			"output":           "decision_memo",
+			"current_solution": "python",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	current := waitForResearchRun(t, controller, run.ID)
+	if current.Status != harness.RunStatusCompleted {
+		t.Fatalf("status = %s, want completed", current.Status)
+	}
+	if got := metadataString(current.Metadata, "mode"); got != "advisor" {
+		t.Fatalf("metadata mode = %q, want advisor", got)
+	}
+	if len(advisorTool.args) != 1 {
+		t.Fatalf("tool args calls = %d, want 1", len(advisorTool.args))
+	}
+	if got := metadataString(advisorTool.args[0], "question"); got != "Should we replace Python with Go?" {
+		t.Fatalf("tool question = %q, want forwarded question", got)
+	}
+	result := decodeResearchRunResult(t, current.Result)
+	if got := metadataString(result, "recommendation"); got != "Prefer Go for hot paths" {
+		t.Fatalf("recommendation = %q, want forwarded advisor result", got)
+	}
+}
+
 func TestResearchDriverValidate_AnalyzeModeRejectsTypedNilExecutor(t *testing.T) {
 	driver := NewResearchDriver(nil, newDriverTestController(t))
 
@@ -261,6 +307,27 @@ func TestResearchDriverValidate_AnalyzeModeRejectsTypedNilExecutor(t *testing.T)
 	}
 	if err.Error() != "analyze runtime is not available" {
 		t.Fatalf("Validate error = %q, want %q", err.Error(), "analyze runtime is not available")
+	}
+}
+
+func TestResearchDriverValidate_AdvisorModeRejectsTypedNilExecutor(t *testing.T) {
+	driver := NewResearchDriver(nil, newDriverTestController(t))
+
+	var advisorTool *tools.AdvisorTool
+	driver.SetAdvisorExecutor(advisorTool)
+
+	err := driver.Validate(harness.RunSpec{
+		Kind: harness.RunKindResearch,
+		Goal: "Should we replace Python with Go?",
+		Metadata: map[string]interface{}{
+			"mode": "advisor",
+		},
+	})
+	if err == nil {
+		t.Fatal("Validate returned nil error for typed-nil advisor executor")
+	}
+	if err.Error() != "advisor runtime is not available" {
+		t.Fatalf("Validate error = %q, want %q", err.Error(), "advisor runtime is not available")
 	}
 }
 

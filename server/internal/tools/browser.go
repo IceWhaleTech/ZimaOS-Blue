@@ -30,6 +30,10 @@ type BrowserBackend interface {
 	ListRecipes(ctx context.Context) []BrowserRecipeInfo
 }
 
+type browserPageScrollCompat interface {
+	PageScroll(ctx context.Context, targetID string, x, y int) error
+}
+
 // BrowserNavResult represents a navigation result.
 type BrowserNavResult struct {
 	URL      string `json:"url"`
@@ -329,6 +333,8 @@ func (t *BrowserTool) Execute(ctx context.Context, args map[string]interface{}) 
 		return t.doAutoSnapshot(ctx, backend, targetID, vision)
 	case "act":
 		return t.doAct(ctx, backend, args, targetID)
+	case "scroll_page":
+		return t.doPageScroll(ctx, backend, targetID, actType)
 	case "screenshot":
 		return t.doScreenshot(ctx, backend, args)
 	case "tabs":
@@ -613,6 +619,28 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 	return jsonResult(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("Performed %s on @%d", actType, ref),
+	}), nil
+}
+
+func (t *BrowserTool) doPageScroll(ctx context.Context, b BrowserBackend, targetID string, actType string) (interface{}, error) {
+	direction, x, y, ok := BrowserLegacyPageScrollDelta("scroll_page", actType)
+	if !ok {
+		return nil, fmt.Errorf("invalid page scroll action: %s", actType)
+	}
+	scroller, ok := b.(browserPageScrollCompat)
+	if !ok {
+		return nil, fmt.Errorf("browser backend does not support page scroll compatibility")
+	}
+	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "use_connected_session"); handled || err != nil {
+		return gated, err
+	}
+	if err := scroller.PageScroll(ctx, targetID, x, y); err != nil {
+		return jsonErr(fmt.Sprintf("page scroll %s failed: %s", direction, err)), nil
+	}
+	return jsonResult(map[string]interface{}{
+		"success":   true,
+		"target_id": targetID,
+		"message":   fmt.Sprintf("Scrolled page %s", direction),
 	}), nil
 }
 

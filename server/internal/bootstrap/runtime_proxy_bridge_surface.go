@@ -19,6 +19,7 @@ type runtimeProxyBridgeSurface struct {
 	image        runtimeProxyBridgeImageTarget
 	uiSkill      runtimeProxyBridgeSkillTarget
 	analyze      runtimeProxyBridgeAnalyzeTarget
+	advisor      runtimeProxyBridgeAdvisorTarget
 }
 
 func newRuntimeProxyBridgeSurface(services *Services, deps *RoutesDeps) runtimeProxyBridgeSurface {
@@ -50,6 +51,9 @@ func newRuntimeProxyBridgeSurface(services *Services, deps *RoutesDeps) runtimeP
 			if tool := services.ToolRegistry.Get("image"); tool != nil {
 				surface.image, _ = tool.(*tools.ImageTool)
 			}
+			if tool := services.ToolRegistry.Get("advisor"); tool != nil {
+				surface.advisor, _ = tool.(*tools.AdvisorTool)
+			}
 		}
 		if services.SkillRegistry != nil {
 			if sk := services.SkillRegistry.Get("ui_reviewer"); sk != nil {
@@ -65,7 +69,7 @@ func (surface runtimeProxyBridgeSurface) bind(
 	runtimeProvider *runtimeLLMProviderRef,
 	auxiliary *auxiliaryLLMCaller,
 ) {
-	bindRuntimeProxyBridge(
+	bridge := bindRuntimeProxyBridge(
 		proxyHandler,
 		surface.providerPool,
 		surface.metrics,
@@ -80,4 +84,7 @@ func (surface runtimeProxyBridgeSurface) bind(
 		surface.uiSkill,
 		surface.analyze,
 	)
+	if bridge != nil && surface.advisor != nil {
+		surface.advisor.SetBridge(tools.NewProxyBridgeAdvisorAdapter(bridge, surface.providerPool))
+	}
 }

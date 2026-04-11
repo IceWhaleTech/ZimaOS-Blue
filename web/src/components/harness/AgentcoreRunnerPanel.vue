@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { settingsApi, type AgentcoreRunnerTagList } from '@/api/settings'
+import {
+  settingsApi,
+  type AgentcoreRunnerReflectiveCandidate,
+  type AgentcoreRunnerTagList,
+} from '@/api/settings'
 import { useSettingsStore } from '@/stores/settings'
 
 const props = withDefaults(
@@ -77,6 +81,38 @@ const AGENTCORE_RUNNER_EVOLVABLE_PART_ACTIVE_TOOLTIP_FALLBACK =
   'This part was optimized in the current candidate'
 const AGENTCORE_RUNNER_EVOLVABLE_PART_INACTIVE_TOOLTIP_FALLBACK =
   'This part can participate in self-evolution, but the current version did not change it'
+const AGENTCORE_RUNNER_PARETO_OBJECTIVES = [
+  {
+    key: 'execution_pass_rate_delta',
+    label: 'Execution pass rate',
+    shortLabel: 'Exec',
+    goal: 'maximize' as const,
+  },
+  {
+    key: 'verification_pass_rate_delta',
+    label: 'Verification pass rate',
+    shortLabel: 'Verify',
+    goal: 'maximize' as const,
+  },
+  {
+    key: 'evidence_backed_pass_rate_delta',
+    label: 'Evidence-backed pass rate',
+    shortLabel: 'Evidence',
+    goal: 'maximize' as const,
+  },
+  {
+    key: 'median_latency_increase_rate',
+    label: 'Latency increase',
+    shortLabel: 'Latency',
+    goal: 'minimize' as const,
+  },
+  {
+    key: 'repeat_failure_recurrence',
+    label: 'Repeat failure recurrence',
+    shortLabel: 'Failure',
+    goal: 'minimize' as const,
+  },
+] as const
 
 const agentcoreRunnerSaving = ref(false)
 const agentcoreRunnerPreparing = ref(false)
@@ -193,6 +229,277 @@ const agentcoreRunnerHiddenTranscriptCount = computed(() =>
     agentcoreRunnerLastRunTranscriptEntries.value.length - agentcoreRunnerTranscriptPreviewCount
   )
 )
+const agentcoreRunnerParetoFrontier = computed(() => {
+  const frontier = agentcoreRunnerLastRun.value?.pareto_frontier
+  if (!Array.isArray(frontier)) return [] as string[]
+  return frontier.map((item) => normalizeEvidenceText(item)).filter(Boolean)
+})
+const agentcoreRunnerSelectedCandidateID = computed(() =>
+  normalizeEvidenceText(agentcoreRunnerLastRun.value?.selected_candidate?.candidate_id)
+)
+const agentcoreRunnerSelectedCandidateMeta = computed(() => {
+  const candidate = agentcoreRunnerLastRun.value?.selected_candidate
+  if (candidate == null) return [] as string[]
+  const hardPass =
+    typeof candidate.hard_pass === 'boolean'
+      ? candidate.hard_pass
+        ? 'Hard pass'
+        : 'Did not hard pass'
+      : ''
+  const gate = normalizeEvidenceText(candidate.followup_gate)
+  const state = normalizeEvidenceText(candidate.followup_state).replace(/_/g, ' ')
+  const diffSize = normalizeEvidenceNumber(candidate.diff_size)
+  return [
+    hardPass,
+    gate ? `Gate: ${gate}` : '',
+    state ? `State: ${state}` : '',
+    diffSize != null ? `Diff size: ${diffSize}` : '',
+  ].filter(Boolean)
+})
+const agentcoreRunnerSelectedCandidateObjectives = computed(() => {
+  const candidate = agentcoreRunnerLastRun.value?.selected_candidate
+  if (candidate == null || candidate.objectives == null) {
+    return [] as Array<{ key: string; label: string; goalLabel: string; value: string }>
+  }
+  return AGENTCORE_RUNNER_PARETO_OBJECTIVES.flatMap((metric) => {
+    const rawValue = normalizeEvidenceNumber(candidate.objectives?.[metric.key])
+    if (rawValue == null) return []
+    return [
+      {
+        key: metric.key,
+        label: metric.label,
+        goalLabel: metric.goal === 'maximize' ? 'Higher is better' : 'Lower is better',
+        value: formatParetoObjectiveValue(metric.key, rawValue),
+      },
+    ]
+  })
+})
+const agentcoreRunnerParetoCandidateSummaries = computed(() => {
+  const run = agentcoreRunnerLastRun.value
+  if (run == null) return [] as Array<{ id: string; selected: boolean; summary: string }>
+  const candidates = new Map<string, NonNullable<typeof run.selected_candidate>>()
+  for (const candidate of run.evaluated_candidates ?? []) {
+    const candidateID = normalizeEvidenceText(candidate?.candidate_id)
+    if (!candidateID) continue
+    candidates.set(candidateID, candidate)
+  }
+  const selectedCandidate = run.selected_candidate
+  if (selectedCandidate?.candidate_id) {
+    candidates.set(normalizeEvidenceText(selectedCandidate.candidate_id), selectedCandidate)
+  }
+  return agentcoreRunnerParetoFrontier.value.flatMap((candidateID) => {
+    const candidate = candidates.get(candidateID)
+    const summary = formatParetoCandidateSummary(candidate?.objectives)
+    if (!summary) return []
+    return [
+      {
+        id: candidateID,
+        selected: candidateID === agentcoreRunnerSelectedCandidateID.value,
+        summary,
+      },
+    ]
+  })
+})
+const agentcoreRunnerEvaluatedCandidateCards = computed(() => {
+  const run = agentcoreRunnerLastRun.value
+  if (run == null) {
+    return [] as Array<{
+      id: string
+      selected: boolean
+      frontier: boolean
+      meta: string[]
+      objectiveSummary: string
+      followupSummary: string
+    }>
+  }
+  const frontierSet = new Set(agentcoreRunnerParetoFrontier.value)
+  const seen = new Set<string>()
+  const cards: Array<{
+    id: string
+    selected: boolean
+    frontier: boolean
+    meta: string[]
+    objectiveSummary: string
+    followupSummary: string
+    rank: number
+    index: number
+  }> = []
+
+  const pushCandidate = (candidate: AgentcoreRunnerReflectiveCandidate | undefined, index: number) => {
+    if (candidate == null) return
+    const candidateID = normalizeEvidenceText(candidate.candidate_id)
+    if (!candidateID || seen.has(candidateID)) return
+    seen.add(candidateID)
+
+    const selected = candidateID === agentcoreRunnerSelectedCandidateID.value
+    const frontier = frontierSet.has(candidateID)
+    const hardPass =
+      typeof candidate.hard_pass === 'boolean'
+        ? candidate.hard_pass
+          ? 'Hard pass'
+          : 'Did not hard pass'
+        : ''
+    const gate = normalizeEvidenceText(candidate.followup_gate)
+    const state = normalizeEvidenceText(candidate.followup_state).replace(/_/g, ' ')
+    const diffSize = normalizeEvidenceNumber(candidate.diff_size)
+    const objectiveSummary = formatParetoCandidateSummary(candidate.objectives)
+    cards.push({
+      id: candidateID,
+      selected,
+      frontier,
+      meta: [
+        hardPass,
+        gate ? `Gate: ${gate}` : '',
+        state ? `State: ${state}` : '',
+        diffSize != null ? `Diff size: ${diffSize}` : '',
+      ].filter(Boolean),
+      objectiveSummary,
+      followupSummary: normalizeEvidenceText(candidate.followup_summary),
+      rank: selected ? 0 : frontier ? 1 : candidate.hard_pass ? 2 : 3,
+      index,
+    })
+  }
+
+  ;(run.evaluated_candidates ?? []).forEach((candidate, index) => {
+    pushCandidate(candidate, index)
+  })
+  pushCandidate(run.selected_candidate, (run.evaluated_candidates ?? []).length)
+
+  return cards
+    .sort((left, right) => left.rank - right.rank || left.index - right.index || left.id.localeCompare(right.id))
+    .map(({ rank, index, ...card }) => card)
+})
+const agentcoreRunnerOfflineValueSummary = computed(() =>
+  normalizeEvidenceText(agentcoreRunnerLastRun.value?.offline_value_report?.value_summary)
+)
+const agentcoreRunnerRuntimeValueSummary = computed(() =>
+  normalizeEvidenceText(agentcoreRunnerLastRun.value?.runtime_value_report?.value_summary)
+)
+const agentcoreRunnerOfflineValueMeta = computed(() => {
+  const report = agentcoreRunnerLastRun.value?.offline_value_report
+  const recommendation = normalizeEvidenceText(
+    report?.offline_recommendation ?? agentcoreRunnerLastRun.value?.offline_recommendation
+  ).replace(/_/g, ' ')
+  const confidence = normalizeEvidenceText(report?.confidence).replace(/_/g, ' ')
+  return [
+    recommendation ? `Recommendation: ${recommendation}` : '',
+    confidence ? `Confidence: ${confidence}` : '',
+  ].filter(Boolean)
+})
+const agentcoreRunnerRuntimeValueMeta = computed(() => {
+  const report = agentcoreRunnerLastRun.value?.runtime_value_report
+  if (report == null) return [] as string[]
+  const status = normalizeEvidenceText(
+    report.status ?? agentcoreRunnerLastRun.value?.runtime_status
+  ).replace(/_/g, ' ')
+  const confidence = normalizeEvidenceText(report.confidence).replace(/_/g, ' ')
+  const beforeSamples = normalizeEvidenceNumber(report.before_sample_count)
+  const afterSamples = normalizeEvidenceNumber(report.after_sample_count)
+  return [
+    status ? `Status: ${status}` : '',
+    confidence ? `Confidence: ${confidence}` : '',
+    beforeSamples != null ? `${beforeSamples} before` : '',
+    afterSamples != null ? `${afterSamples} after` : '',
+  ].filter(Boolean)
+})
+const agentcoreRunnerRuntimeMetrics = computed(() => {
+  const report = agentcoreRunnerLastRun.value?.runtime_value_report
+  if (report == null) return [] as Array<{ label: string; value: string; tone: 'positive' | 'negative' | 'neutral' }>
+  const metrics: Array<{ label: string; value: string; tone: 'positive' | 'negative' | 'neutral' }> = []
+  const failureRecurrenceDelta = normalizeEvidenceNumber(report.failure_recurrence_delta)
+  if (failureRecurrenceDelta != null) {
+    metrics.push({
+      label: 'Failure recurrence',
+      value: formatSignedNumber(failureRecurrenceDelta),
+      tone: failureRecurrenceDelta < 0 ? 'positive' : failureRecurrenceDelta > 0 ? 'negative' : 'neutral',
+    })
+  }
+  const durationDelta = normalizeEvidenceNumber(report.median_duration_delta_rate)
+  if (durationDelta != null) {
+    metrics.push({
+      label: 'Duration',
+      value: formatSignedPercent(durationDelta),
+      tone: durationDelta < 0 ? 'positive' : durationDelta > 0 ? 'negative' : 'neutral',
+    })
+  }
+  const tokenDelta = normalizeEvidenceNumber(report.median_total_tokens_delta_rate)
+  if (tokenDelta != null) {
+    metrics.push({
+      label: 'Token usage',
+      value: formatSignedPercent(tokenDelta),
+      tone: tokenDelta < 0 ? 'positive' : tokenDelta > 0 ? 'negative' : 'neutral',
+    })
+  }
+  const captureQualityDelta = normalizeEvidenceNumber(report.capture_quality_delta)
+  if (captureQualityDelta != null) {
+    metrics.push({
+      label: 'Capture quality',
+      value: formatSignedNumber(captureQualityDelta),
+      tone: captureQualityDelta > 0 ? 'positive' : captureQualityDelta < 0 ? 'negative' : 'neutral',
+    })
+  }
+  const validationQualityDelta = normalizeEvidenceNumber(report.validation_quality_delta)
+  if (validationQualityDelta != null) {
+    metrics.push({
+      label: 'Validation quality',
+      value: formatSignedNumber(validationQualityDelta),
+      tone: validationQualityDelta > 0 ? 'positive' : validationQualityDelta < 0 ? 'negative' : 'neutral',
+    })
+  }
+  return metrics
+})
+const agentcoreRunnerProposalCandidateIDs = computed(() => {
+  const proposals = agentcoreRunnerLastRun.value?.proposal_set
+  if (!Array.isArray(proposals)) return [] as string[]
+  return proposals
+    .map((proposal) => normalizeEvidenceText(proposal?.candidate_id))
+    .filter(Boolean)
+})
+const agentcoreRunnerOfflineImprovements = computed(() => {
+  const improvements = agentcoreRunnerLastRun.value?.offline_value_report?.top_improvements
+  if (!Array.isArray(improvements)) return [] as string[]
+  return improvements.map((item) => normalizeEvidenceText(item)).filter(Boolean)
+})
+const agentcoreRunnerOfflineTradeoffs = computed(() => {
+  const tradeoffs = agentcoreRunnerLastRun.value?.offline_value_report?.top_tradeoffs
+  if (!Array.isArray(tradeoffs)) return [] as string[]
+  return tradeoffs.map((item) => normalizeEvidenceText(item)).filter(Boolean)
+})
+const agentcoreRunnerRuntimeImprovements = computed(() => {
+  const improvements = agentcoreRunnerLastRun.value?.runtime_value_report?.top_improvements
+  if (!Array.isArray(improvements)) return [] as string[]
+  return improvements.map((item) => normalizeEvidenceText(item)).filter(Boolean)
+})
+const agentcoreRunnerRuntimeTradeoffs = computed(() => {
+  const tradeoffs = agentcoreRunnerLastRun.value?.runtime_value_report?.top_tradeoffs
+  if (!Array.isArray(tradeoffs)) return [] as string[]
+  return tradeoffs.map((item) => normalizeEvidenceText(item)).filter(Boolean)
+})
+const agentcoreRunnerSampleEfficiencySummary = computed(() => {
+  const report = agentcoreRunnerLastRun.value?.sample_efficiency_report
+  if (report == null || typeof report !== 'object') return ''
+  const proposalCount =
+    typeof report.proposal_count === 'number' ? report.proposal_count : null
+  const evaluatedCount =
+    typeof report.evaluated_candidate_count === 'number' ? report.evaluated_candidate_count : null
+  const hardPassCount =
+    typeof report.hard_pass_candidate_count === 'number' ? report.hard_pass_candidate_count : null
+  const frontierSize =
+    typeof report.pareto_frontier_size === 'number'
+      ? report.pareto_frontier_size
+      : typeof report.frontier_size === 'number'
+        ? report.frontier_size
+        : null
+  const maxEvaluations =
+    typeof report.max_evaluations === 'number' ? report.max_evaluations : null
+  const parts: string[] = []
+  if (proposalCount != null) parts.push(`Generated ${proposalCount} proposals`)
+  if (evaluatedCount != null) parts.push(`Evaluated ${evaluatedCount} candidates`)
+  if (hardPassCount != null) parts.push(`${hardPassCount} hard-pass`)
+  if (frontierSize != null) parts.push(`frontier ${frontierSize}`)
+  if (maxEvaluations != null) parts.push(`budget ${maxEvaluations}`)
+  return parts.join(' · ')
+})
 const agentcoreRunnerSupportedParts = computed(() => {
   const configured = new Set(
     (agentcoreRunnerStatus.value?.supported_parts ?? [])
@@ -275,6 +582,55 @@ function formatDurationMs(value?: number) {
 function normalizeEvidenceText(value: unknown) {
   if (typeof value !== 'string') return ''
   return value.trim()
+}
+
+function normalizeEvidenceNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function formatSignedNumber(value: number, digits = 2) {
+  if (!Number.isFinite(value)) return ''
+  const normalized = value.toFixed(digits)
+  return value > 0 ? `+${normalized}` : normalized
+}
+
+function formatSignedPercent(value: number) {
+  if (!Number.isFinite(value)) return ''
+  const percentage = Math.round(value * 100)
+  return percentage > 0 ? `+${percentage}%` : `${percentage}%`
+}
+
+function formatUnsignedNumber(value: number, digits = 2) {
+  if (!Number.isFinite(value)) return ''
+  return new Intl.NumberFormat(undefined, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(value)
+}
+
+function formatParetoObjectiveValue(key: string, value: number) {
+  if (key === 'median_latency_increase_rate') {
+    return formatSignedPercent(value)
+  }
+  if (key.endsWith('_delta')) {
+    return formatSignedNumber(value)
+  }
+  return formatUnsignedNumber(value)
+}
+
+function formatParetoCandidateSummary(objectives: Record<string, unknown> | undefined) {
+  if (objectives == null) return ''
+  const parts = AGENTCORE_RUNNER_PARETO_OBJECTIVES.flatMap((metric) => {
+    const rawValue = normalizeEvidenceNumber(objectives[metric.key])
+    if (rawValue == null) return []
+    return [`${metric.shortLabel} ${formatParetoObjectiveValue(metric.key, rawValue)}`]
+  })
+  return parts.join(' · ')
 }
 
 function normalizeAgentcoreRunnerStatusError(value: unknown) {
@@ -884,6 +1240,310 @@ async function prepareAgentcoreRunner() {
                 class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-[11px] leading-5 whitespace-pre-wrap text-gray-700 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-200"
               >
                 {{ agentcoreRunnerLastRun.runner_response_text }}
+              </div>
+              <div
+                v-if="agentcoreRunnerSelectedCandidateID || agentcoreRunnerParetoFrontier.length > 0"
+                data-testid="agentcore-runner-last-run-selection"
+                class="space-y-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-[11px] leading-5 text-gray-700 dark:border-gray-700 dark:bg-slate-900/80 dark:text-gray-200"
+              >
+                <div v-if="agentcoreRunnerSelectedCandidateID">
+                  {{
+                    `${t('settings.agentcoreRunner.selectedCandidate', 'Selected candidate')}: ${agentcoreRunnerSelectedCandidateID}`
+                  }}
+                </div>
+                <div v-if="agentcoreRunnerParetoFrontier.length > 0">
+                  <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {{ t('settings.agentcoreRunner.paretoFrontier', 'Pareto frontier') }}
+                  </div>
+                  <div class="mt-1 flex flex-wrap gap-1.5">
+                    <span
+                      v-for="candidateID in agentcoreRunnerParetoFrontier"
+                      :key="candidateID"
+                      class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:bg-slate-800 dark:text-gray-200"
+                    >
+                      {{ candidateID }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="agentcoreRunnerSelectedCandidateObjectives.length > 0"
+                data-testid="agentcore-runner-selected-candidate-objectives"
+                class="space-y-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-[11px] leading-5 text-gray-700 dark:border-gray-700 dark:bg-slate-900/80 dark:text-gray-200"
+              >
+                <div class="flex flex-wrap gap-1.5">
+                  <span
+                    v-for="item in agentcoreRunnerSelectedCandidateMeta"
+                    :key="item"
+                    class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:bg-slate-800 dark:text-gray-200"
+                  >
+                    {{ item }}
+                  </span>
+                </div>
+                <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {{ t('settings.agentcoreRunner.selectionBasis', 'Selection basis') }}
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <div
+                    v-for="metric in agentcoreRunnerSelectedCandidateObjectives"
+                    :key="metric.key"
+                    class="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 dark:border-gray-700 dark:bg-slate-950/40"
+                  >
+                    <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      {{ metric.label }}
+                    </div>
+                    <div class="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                      {{ metric.value }}
+                    </div>
+                    <div class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                      {{ metric.goalLabel }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="agentcoreRunnerParetoCandidateSummaries.length > 0"
+                data-testid="agentcore-runner-pareto-candidate-summaries"
+                class="space-y-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-[11px] leading-5 text-gray-700 dark:border-gray-700 dark:bg-slate-900/80 dark:text-gray-200"
+              >
+                <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {{ t('settings.agentcoreRunner.frontierCandidates', 'Frontier candidates') }}
+                </div>
+                <div class="space-y-2">
+                  <div
+                    v-for="candidate in agentcoreRunnerParetoCandidateSummaries"
+                    :key="candidate.id"
+                    class="rounded-lg border px-3 py-2"
+                    :class="
+                      candidate.selected
+                        ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/20'
+                        : 'border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-slate-950/40'
+                    "
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="font-medium text-gray-900 dark:text-gray-100">
+                        {{ candidate.id }}
+                      </div>
+                      <span
+                        v-if="candidate.selected"
+                        class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200"
+                      >
+                        {{ t('settings.agentcoreRunner.selectedCandidate', 'Selected candidate') }}
+                      </span>
+                    </div>
+                    <div class="mt-1 text-[11px] leading-5 text-gray-700 dark:text-gray-200">
+                      {{ candidate.summary }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="agentcoreRunnerEvaluatedCandidateCards.length > 0"
+                data-testid="agentcore-runner-evaluated-candidates"
+                class="space-y-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-[11px] leading-5 text-gray-700 dark:border-gray-700 dark:bg-slate-900/80 dark:text-gray-200"
+              >
+                <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  {{ t('settings.agentcoreRunner.evaluatedCandidates', 'Evaluated candidates') }}
+                </div>
+                <div class="space-y-2">
+                  <div
+                    v-for="candidate in agentcoreRunnerEvaluatedCandidateCards"
+                    :key="candidate.id"
+                    :data-candidate-id="candidate.id"
+                    data-testid="agentcore-runner-evaluated-candidate"
+                    class="rounded-lg border px-3 py-2"
+                    :class="
+                      candidate.selected
+                        ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-950/20'
+                        : candidate.frontier
+                          ? 'border-sky-200 bg-sky-50/70 dark:border-sky-900/60 dark:bg-sky-950/20'
+                          : 'border-gray-200 bg-gray-50/80 dark:border-gray-700 dark:bg-slate-950/40'
+                    "
+                  >
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                      <div class="font-medium text-gray-900 dark:text-gray-100">
+                        {{ candidate.id }}
+                      </div>
+                      <div class="flex flex-wrap gap-1.5">
+                        <span
+                          v-if="candidate.selected"
+                          class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200"
+                        >
+                          {{ t('settings.agentcoreRunner.selectedCandidate', 'Selected candidate') }}
+                        </span>
+                        <span
+                          v-if="candidate.frontier"
+                          class="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-200"
+                        >
+                          {{ t('settings.agentcoreRunner.paretoFrontier', 'Pareto frontier') }}
+                        </span>
+                      </div>
+                    </div>
+                    <div v-if="candidate.meta.length > 0" class="mt-2 flex flex-wrap gap-1.5">
+                      <span
+                        v-for="item in candidate.meta"
+                        :key="item"
+                        class="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-medium text-gray-700 ring-1 ring-inset ring-gray-200 dark:bg-slate-900/60 dark:text-gray-200 dark:ring-slate-700"
+                      >
+                        {{ item }}
+                      </span>
+                    </div>
+                    <div
+                      v-if="candidate.objectiveSummary"
+                      class="mt-2 rounded-lg bg-white/70 px-3 py-2 text-[11px] leading-5 text-gray-700 ring-1 ring-inset ring-gray-200 dark:bg-slate-900/50 dark:text-gray-200 dark:ring-slate-700"
+                    >
+                      <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {{ t('settings.agentcoreRunner.objectiveVector', 'Objective vector') }}
+                      </div>
+                      <div class="mt-1">
+                        {{ candidate.objectiveSummary }}
+                      </div>
+                    </div>
+                    <div
+                      v-if="candidate.followupSummary"
+                      class="mt-2 rounded-lg bg-white/70 px-3 py-2 text-[11px] leading-5 text-gray-700 ring-1 ring-inset ring-gray-200 dark:bg-slate-900/50 dark:text-gray-200 dark:ring-slate-700"
+                    >
+                      <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {{ t('settings.agentcoreRunner.followupOutcome', 'Follow-up outcome') }}
+                      </div>
+                      <div class="mt-1">
+                        {{ candidate.followupSummary }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="agentcoreRunnerProposalCandidateIDs.length > 0 || agentcoreRunnerSampleEfficiencySummary"
+                data-testid="agentcore-runner-last-run-search-details"
+                class="space-y-2 rounded-lg border border-gray-200 bg-white/80 px-3 py-2 text-[11px] leading-5 text-gray-700 dark:border-gray-700 dark:bg-slate-900/80 dark:text-gray-200"
+              >
+                <div v-if="agentcoreRunnerProposalCandidateIDs.length > 0">
+                  <div class="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    {{ t('settings.agentcoreRunner.proposalSet', 'Proposal set') }}
+                  </div>
+                  <div class="mt-1 flex flex-wrap gap-1.5">
+                    <span
+                      v-for="candidateID in agentcoreRunnerProposalCandidateIDs"
+                      :key="candidateID"
+                      class="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-700 dark:bg-slate-800 dark:text-gray-200"
+                    >
+                      {{ candidateID }}
+                    </span>
+                  </div>
+                </div>
+                <div v-if="agentcoreRunnerSampleEfficiencySummary" data-testid="agentcore-runner-sample-efficiency-summary">
+                  {{ agentcoreRunnerSampleEfficiencySummary }}
+                </div>
+              </div>
+              <div
+                v-if="agentcoreRunnerOfflineValueSummary"
+                data-testid="agentcore-runner-offline-value-summary"
+                class="rounded-lg border border-emerald-200 bg-emerald-50/80 px-3 py-2 text-[11px] leading-5 whitespace-pre-wrap text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200"
+              >
+                {{ agentcoreRunnerOfflineValueSummary }}
+              </div>
+              <div
+                v-if="agentcoreRunnerOfflineValueMeta.length > 0"
+                data-testid="agentcore-runner-offline-value-meta"
+                class="flex flex-wrap gap-1.5"
+              >
+                <span
+                  v-for="item in agentcoreRunnerOfflineValueMeta"
+                  :key="item"
+                  class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-200"
+                >
+                  {{ item }}
+                </span>
+              </div>
+              <div
+                v-if="agentcoreRunnerOfflineImprovements.length > 0 || agentcoreRunnerOfflineTradeoffs.length > 0"
+                data-testid="agentcore-runner-offline-value-details"
+                class="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50/60 px-3 py-2 text-[11px] leading-5 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100"
+              >
+                <div v-if="agentcoreRunnerOfflineImprovements.length > 0">
+                  <div class="text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                    {{ t('settings.agentcoreRunner.topImprovements', 'Top improvements') }}
+                  </div>
+                  <ul class="mt-1 space-y-1">
+                    <li v-for="item in agentcoreRunnerOfflineImprovements" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div v-if="agentcoreRunnerOfflineTradeoffs.length > 0">
+                  <div class="text-[10px] font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                    {{ t('settings.agentcoreRunner.topTradeoffs', 'Top tradeoffs') }}
+                  </div>
+                  <ul class="mt-1 space-y-1">
+                    <li v-for="item in agentcoreRunnerOfflineTradeoffs" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+              </div>
+              <div
+                v-if="agentcoreRunnerRuntimeValueSummary"
+                data-testid="agentcore-runner-runtime-value-summary"
+                class="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-[11px] leading-5 whitespace-pre-wrap text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200"
+              >
+                {{ agentcoreRunnerRuntimeValueSummary }}
+              </div>
+              <div
+                v-if="agentcoreRunnerRuntimeValueMeta.length > 0"
+                data-testid="agentcore-runner-runtime-value-meta"
+                class="flex flex-wrap gap-1.5"
+              >
+                <span
+                  v-for="item in agentcoreRunnerRuntimeValueMeta"
+                  :key="item"
+                  class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+                >
+                  {{ item }}
+                </span>
+              </div>
+              <div
+                v-if="agentcoreRunnerRuntimeMetrics.length > 0"
+                data-testid="agentcore-runner-runtime-value-metrics"
+                class="grid gap-2 sm:grid-cols-2"
+              >
+                <div
+                  v-for="metric in agentcoreRunnerRuntimeMetrics"
+                  :key="metric.label"
+                  class="rounded-lg border px-3 py-2 text-[11px] leading-5"
+                  :class="
+                    metric.tone === 'positive'
+                      ? 'border-emerald-200 bg-emerald-50/70 text-emerald-900 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100'
+                      : metric.tone === 'negative'
+                        ? 'border-amber-200 bg-amber-50/70 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100'
+                        : 'border-gray-200 bg-white/80 text-gray-700 dark:border-gray-700 dark:bg-slate-900/80 dark:text-gray-200'
+                  "
+                >
+                  <div class="text-[10px] font-medium uppercase tracking-wide opacity-75">
+                    {{ metric.label }}
+                  </div>
+                  <div class="mt-1 text-sm font-semibold">
+                    {{ metric.value }}
+                  </div>
+                </div>
+              </div>
+              <div
+                v-if="agentcoreRunnerRuntimeImprovements.length > 0 || agentcoreRunnerRuntimeTradeoffs.length > 0"
+                data-testid="agentcore-runner-runtime-value-details"
+                class="space-y-2 rounded-lg border border-amber-200 bg-amber-50/60 px-3 py-2 text-[11px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100"
+              >
+                <div v-if="agentcoreRunnerRuntimeImprovements.length > 0">
+                  <div class="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    {{ t('settings.agentcoreRunner.topImprovements', 'Top improvements') }}
+                  </div>
+                  <ul class="mt-1 space-y-1">
+                    <li v-for="item in agentcoreRunnerRuntimeImprovements" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div v-if="agentcoreRunnerRuntimeTradeoffs.length > 0">
+                  <div class="text-[10px] font-medium uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    {{ t('settings.agentcoreRunner.topTradeoffs', 'Top tradeoffs') }}
+                  </div>
+                  <ul class="mt-1 space-y-1">
+                    <li v-for="item in agentcoreRunnerRuntimeTradeoffs" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
               </div>
               <div
                 v-if="agentcoreRunnerLastRunTranscriptEntries.length > 0"

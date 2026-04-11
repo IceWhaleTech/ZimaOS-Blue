@@ -30,6 +30,7 @@ type ResearchDriver struct {
 	service  *deepresearch.Service
 	manager  *harness.Controller
 	analyze  researchModeExecutor
+	advisor  researchModeExecutor
 	uiReview researchModeExecutor
 	next     deepresearch.EventPublisher
 	mu       sync.Mutex
@@ -54,6 +55,10 @@ func (d *ResearchDriver) Validate(spec harness.RunSpec) error {
 		if isNilResearchModeExecutor(d.analyze) {
 			return researchModeUnavailableError("analyze")
 		}
+	case "advisor":
+		if isNilResearchModeExecutor(d.advisor) {
+			return researchModeUnavailableError("advisor")
+		}
 	case "ui_review":
 		if isNilResearchModeExecutor(d.uiReview) {
 			return researchModeUnavailableError("ui_review")
@@ -70,6 +75,8 @@ func (d *ResearchDriver) Start(ctx context.Context, run *harness.Run, env harnes
 	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
 	case "analyze":
 		return d.startLocalMode(ctx, run, env, "analyze", d.analyze)
+	case "advisor":
+		return d.startLocalMode(ctx, run, env, "advisor", d.advisor)
 	case "ui_review":
 		return d.startLocalMode(ctx, run, env, "ui_review", d.uiReview)
 	default:
@@ -114,7 +121,7 @@ func (d *ResearchDriver) Cancel(_ context.Context, run *harness.Run) error {
 		return fmt.Errorf("research runtime is not available")
 	}
 	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
-	case "analyze", "ui_review":
+	case "analyze", "advisor", "ui_review":
 		d.cancelLocalRun(run.ID)
 		cancelled := cloneRunSnapshot(run)
 		cancelled.Status = harness.RunStatusCancelled
@@ -139,7 +146,7 @@ func (d *ResearchDriver) Sync(ctx context.Context, run *harness.Run) (*harness.R
 		return run, nil
 	}
 	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
-	case "analyze", "ui_review":
+	case "analyze", "advisor", "ui_review":
 		controller := researchDriverManager(d.manager, nil)
 		if controller == nil {
 			return run, nil
@@ -179,6 +186,19 @@ func (d *ResearchDriver) SetAnalyzeExecutor(executor researchModeExecutor) {
 		return
 	}
 	d.analyze = executor
+}
+
+func (d *ResearchDriver) SetAdvisorExecutor(executor researchModeExecutor) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if isNilResearchModeExecutor(executor) {
+		d.advisor = nil
+		return
+	}
+	d.advisor = executor
 }
 
 func (d *ResearchDriver) SetUIReviewExecutor(executor researchModeExecutor) {
@@ -333,8 +353,10 @@ func researchModeUnavailableError(mode string) error {
 	switch strings.TrimSpace(mode) {
 	case "analyze":
 		return fmt.Errorf("analyze runtime is not available")
+	case "advisor":
+		return fmt.Errorf("advisor runtime is not available")
 	case "ui_review":
-		return fmt.Errorf("ui review runtime is not available")
+		return fmt.Errorf("ui_review runtime is not available")
 	default:
 		return fmt.Errorf("research runtime is not available")
 	}
@@ -644,7 +666,7 @@ func jobStatusToRunStatus(status deepresearch.JobStatus) harness.RunStatus {
 func resolveResearchFamilyMode(goal string, metadata map[string]interface{}) string {
 	mode := strings.ToLower(strings.TrimSpace(metadataString(metadata, "mode")))
 	switch mode {
-	case "analyze", "ui_review", "deep_research":
+	case "advisor", "analyze", "ui_review", "deep_research":
 		return mode
 	case "fast", "standard", "deep":
 		if metadata != nil && strings.TrimSpace(metadataString(metadata, "research_depth")) == "" {
@@ -652,6 +674,9 @@ func resolveResearchFamilyMode(goal string, metadata map[string]interface{}) str
 		}
 		return "deep_research"
 	case "auto", "":
+		if looksLikeAdvisorMode(goal, metadata) {
+			return "advisor"
+		}
 		if looksLikeUIReviewMode(goal, metadata) {
 			return "ui_review"
 		}
@@ -688,6 +713,28 @@ func looksLikeAnalyzeMode(goal string, metadata map[string]interface{}) bool {
 	}
 	q := strings.ToLower(strings.TrimSpace(goal))
 	return strings.Contains(q, "analyze") || strings.Contains(q, "analysis") || strings.Contains(q, "report") || strings.Contains(q, "summarize")
+}
+
+func looksLikeAdvisorMode(goal string, metadata map[string]interface{}) bool {
+	if strings.TrimSpace(metadataString(metadata, "question")) != "" ||
+		strings.TrimSpace(metadataString(metadata, "decision_mode")) != "" ||
+		strings.TrimSpace(metadataString(metadata, "category")) != "" {
+		return true
+	}
+	if len(metadataStringSlice(metadata["candidates"])) > 0 {
+		return true
+	}
+	q := strings.ToLower(strings.TrimSpace(goal))
+	return strings.Contains(q, "replace") ||
+		strings.Contains(q, "migration") ||
+		strings.Contains(q, "tradeoff") ||
+		strings.Contains(q, "best practice") ||
+		strings.Contains(q, "选型") ||
+		strings.Contains(q, "替代") ||
+		strings.Contains(q, "替换") ||
+		strings.Contains(q, "迁移") ||
+		strings.Contains(q, "最佳实践") ||
+		strings.Contains(q, "权衡")
 }
 
 func looksLikeUIReviewMode(goal string, metadata map[string]interface{}) bool {
@@ -735,6 +782,10 @@ func researchToolArgs(run *harness.Run, mode string) map[string]interface{} {
 	case "analyze":
 		if strings.TrimSpace(metadataString(args, "topic")) == "" && run != nil {
 			args["topic"] = strings.TrimSpace(run.Goal)
+		}
+	case "advisor":
+		if strings.TrimSpace(metadataString(args, "question")) == "" && run != nil {
+			args["question"] = strings.TrimSpace(run.Goal)
 		}
 	case "ui_review":
 		if strings.TrimSpace(metadataString(args, "url")) == "" && run != nil && looksLikeURL(run.Goal) {

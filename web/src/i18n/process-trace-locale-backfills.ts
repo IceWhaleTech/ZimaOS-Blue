@@ -42,6 +42,14 @@ type ProcessTraceEventTerms = {
   processing: string
 }
 
+type ProcessTraceDetailTerms = {
+  providerResolved: string
+  providerResolvedModelSwitch: string
+  providerResolvedFailoverSwitch: string
+  providerFailoverToolFollowUp: string
+  providerFailoverContinuationFollowUp: string
+}
+
 function makeTerms(terms: ProcessTraceTerms): ProcessTraceTerms {
   return terms
 }
@@ -51,6 +59,10 @@ function makeVoiceTerms(terms: VoiceProcessTraceTerms): VoiceProcessTraceTerms {
 }
 
 function makeEventTerms(terms: ProcessTraceEventTerms): ProcessTraceEventTerms {
+  return terms
+}
+
+function makeDetailTerms(terms: ProcessTraceDetailTerms): ProcessTraceDetailTerms {
   return terms
 }
 
@@ -1147,10 +1159,290 @@ const processTraceEventTerms: Record<LocaleKey, ProcessTraceEventTerms> = {
   }),
 }
 
+const processTraceDetailTerms: Record<LocaleKey, ProcessTraceDetailTerms> = {
+  'ca-ES': makeDetailTerms({
+    providerResolved: "Aquesta resposta utilitzarà el proveïdor i el model upstream seleccionats.",
+    providerResolvedModelSwitch: "Aquesta resposta ha canviat a un model upstream disponible.",
+    providerResolvedFailoverSwitch:
+      "Aquesta resposta ha canviat a un altre proveïdor o model upstream disponible.",
+    providerFailoverToolFollowUp:
+      "S'està tornant a provar el seguiment de l'eina sense el proveïdor fixat anteriorment.",
+    providerFailoverContinuationFollowUp:
+      "S'està tornant a provar el seguiment de continuació sense el proveïdor fixat anteriorment.",
+  }),
+  'cs-CZ': makeDetailTerms({
+    providerResolved: 'Tato odpověď použije vybraného upstream poskytovatele a model.',
+    providerResolvedModelSwitch: 'Tato odpověď se přepnula na dostupný upstream model.',
+    providerResolvedFailoverSwitch:
+      'Tato odpověď se přepnula na jiného dostupného upstream poskytovatele nebo model.',
+    providerFailoverToolFollowUp:
+      'Opakuje se navazující požadavek nástroje bez dříve připnutého poskytovatele.',
+    providerFailoverContinuationFollowUp:
+      'Opakuje se navazující pokračování bez dříve připnutého poskytovatele.',
+  }),
+  'da-DK': makeDetailTerms({
+    providerResolved: 'Dette svar vil bruge den valgte upstream-udbyder og model.',
+    providerResolvedModelSwitch: 'Dette svar skiftede til en tilgængelig upstream-model.',
+    providerResolvedFailoverSwitch:
+      'Dette svar skiftede til en anden tilgængelig upstream-udbyder eller model.',
+    providerFailoverToolFollowUp:
+      'Prøver værktøjsopfølgningen igen uden den tidligere fastgjorte udbyder.',
+    providerFailoverContinuationFollowUp:
+      'Prøver fortsættelsesopfølgningen igen uden den tidligere fastgjorte udbyder.',
+  }),
+  'de-DE': makeDetailTerms({
+    providerResolved:
+      'Diese Antwort verwendet den ausgewählten Upstream-Anbieter und das ausgewählte Modell.',
+    providerResolvedModelSwitch:
+      'Diese Antwort wurde auf ein verfügbares Upstream-Modell umgestellt.',
+    providerResolvedFailoverSwitch:
+      'Diese Antwort wurde auf einen anderen verfügbaren Upstream-Anbieter oder ein anderes Modell umgestellt.',
+    providerFailoverToolFollowUp:
+      'Die Tool-Nachverfolgung wird ohne den zuvor fixierten Anbieter erneut versucht.',
+    providerFailoverContinuationFollowUp:
+      'Die Fortsetzungs-Nachverfolgung wird ohne den zuvor fixierten Anbieter erneut versucht.',
+  }),
+  'el-GR': makeDetailTerms({
+    providerResolved:
+      'Αυτή η απάντηση θα χρησιμοποιήσει τον επιλεγμένο upstream πάροχο και μοντέλο.',
+    providerResolvedModelSwitch:
+      'Αυτή η απάντηση μεταφέρθηκε σε ένα διαθέσιμο upstream μοντέλο.',
+    providerResolvedFailoverSwitch:
+      'Αυτή η απάντηση μεταφέρθηκε σε άλλον διαθέσιμο upstream πάροχο ή μοντέλο.',
+    providerFailoverToolFollowUp:
+      'Γίνεται νέα προσπάθεια για τη συνέχεια του εργαλείου χωρίς τον προηγουμένως καρφιτσωμένο πάροχο.',
+    providerFailoverContinuationFollowUp:
+      'Γίνεται νέα προσπάθεια για τη συνέχεια της απάντησης χωρίς τον προηγουμένως καρφιτσωμένο πάροχο.',
+  }),
+  'en-GB': makeDetailTerms({
+    providerResolved: 'This response will use the selected upstream provider and model.',
+    providerResolvedModelSwitch: 'This response switched to an available upstream model.',
+    providerResolvedFailoverSwitch:
+      'This response switched to another available upstream provider or model.',
+    providerFailoverToolFollowUp:
+      'Retrying the tool follow-up without the previously pinned provider.',
+    providerFailoverContinuationFollowUp:
+      'Retrying the continuation follow-up without the previously pinned provider.',
+  }),
+  'en-US': makeDetailTerms({
+    providerResolved: 'This response will use the selected upstream provider and model.',
+    providerResolvedModelSwitch: 'This response switched to an available upstream model.',
+    providerResolvedFailoverSwitch:
+      'This response switched to another available upstream provider or model.',
+    providerFailoverToolFollowUp:
+      'Retrying the tool follow-up without the previously pinned provider.',
+    providerFailoverContinuationFollowUp:
+      'Retrying the continuation follow-up without the previously pinned provider.',
+  }),
+  'es-ES': makeDetailTerms({
+    providerResolved: 'Esta respuesta usará el proveedor y el modelo upstream seleccionados.',
+    providerResolvedModelSwitch: 'Esta respuesta cambió a un modelo upstream disponible.',
+    providerResolvedFailoverSwitch:
+      'Esta respuesta cambió a otro proveedor o modelo upstream disponible.',
+    providerFailoverToolFollowUp:
+      'Reintentando el seguimiento de la herramienta sin el proveedor fijado anteriormente.',
+    providerFailoverContinuationFollowUp:
+      'Reintentando el seguimiento de continuación sin el proveedor fijado anteriormente.',
+  }),
+  'fr-FR': makeDetailTerms({
+    providerResolved: 'Cette réponse utilisera le fournisseur et le modèle upstream sélectionnés.',
+    providerResolvedModelSwitch: 'Cette réponse est passée à un modèle upstream disponible.',
+    providerResolvedFailoverSwitch:
+      'Cette réponse est passée à un autre fournisseur ou modèle upstream disponible.',
+    providerFailoverToolFollowUp:
+      "Nouvelle tentative du suivi d'outil sans le fournisseur précédemment épinglé.",
+    providerFailoverContinuationFollowUp:
+      'Nouvelle tentative du suivi de continuation sans le fournisseur précédemment épinglé.',
+  }),
+  'ga-IE': makeDetailTerms({
+    providerResolved:
+      'Úsáidfidh an freagra seo an soláthraí agus an tsamhail upstream roghnaithe.',
+    providerResolvedModelSwitch:
+      "D'athraigh an freagra seo go samhail upstream atá ar fáil.",
+    providerResolvedFailoverSwitch:
+      "D'athraigh an freagra seo go soláthraí nó samhail upstream eile atá ar fáil.",
+    providerFailoverToolFollowUp:
+      'Ag atriail obair leantach na huirlise gan an soláthraí a bhí pionnaithe roimhe seo.',
+    providerFailoverContinuationFollowUp:
+      'Ag atriail obair leantach an leanúnais gan an soláthraí a bhí pionnaithe roimhe seo.',
+  }),
+  'hr-HR': makeDetailTerms({
+    providerResolved: 'Ovaj odgovor upotrijebit će odabranog upstream pružatelja i model.',
+    providerResolvedModelSwitch: 'Ovaj odgovor prebačen je na dostupan upstream model.',
+    providerResolvedFailoverSwitch:
+      'Ovaj odgovor prebačen je na drugog dostupnog upstream pružatelja ili model.',
+    providerFailoverToolFollowUp:
+      'Ponovno se pokušava naknadni zahtjev alata bez prethodno prikvačenog pružatelja.',
+    providerFailoverContinuationFollowUp:
+      'Ponovno se pokušava naknadni zahtjev nastavka bez prethodno prikvačenog pružatelja.',
+  }),
+  'hu-HU': makeDetailTerms({
+    providerResolved:
+      'Ez a válasz a kiválasztott upstream szolgáltatót és modellt fogja használni.',
+    providerResolvedModelSwitch: 'Ez a válasz egy elérhető upstream modellre váltott.',
+    providerResolvedFailoverSwitch:
+      'Ez a válasz egy másik elérhető upstream szolgáltatóra vagy modellre váltott.',
+    providerFailoverToolFollowUp:
+      'Az eszköz utókövetése újrapróbálkozik a korábban rögzített szolgáltató nélkül.',
+    providerFailoverContinuationFollowUp:
+      'A folytatási utókövetés újrapróbálkozik a korábban rögzített szolgáltató nélkül.',
+  }),
+  'it-IT': makeDetailTerms({
+    providerResolved: 'Questa risposta userà il provider upstream e il modello selezionati.',
+    providerResolvedModelSwitch: 'Questa risposta è passata a un modello upstream disponibile.',
+    providerResolvedFailoverSwitch:
+      'Questa risposta è passata a un altro provider o modello upstream disponibile.',
+    providerFailoverToolFollowUp:
+      'Nuovo tentativo del follow-up dello strumento senza il provider precedentemente fissato.',
+    providerFailoverContinuationFollowUp:
+      'Nuovo tentativo del follow-up di continuazione senza il provider precedentemente fissato.',
+  }),
+  'ja-JP': makeDetailTerms({
+    providerResolved: 'この応答では、選択された上流プロバイダーとモデルを使用します。',
+    providerResolvedModelSwitch: 'この応答は、利用可能な上流モデルに切り替わりました。',
+    providerResolvedFailoverSwitch:
+      'この応答は、別の利用可能な上流プロバイダーまたはモデルに切り替わりました。',
+    providerFailoverToolFollowUp:
+      '以前に固定されたプロバイダーを使わずに、ツールの後続処理を再試行しています。',
+    providerFailoverContinuationFollowUp:
+      '以前に固定されたプロバイダーを使わずに、応答継続の後続処理を再試行しています。',
+  }),
+  'ko-KR': makeDetailTerms({
+    providerResolved: '이 응답은 선택한 업스트림 공급자와 모델을 사용합니다.',
+    providerResolvedModelSwitch: '이 응답은 사용 가능한 업스트림 모델로 전환되었습니다.',
+    providerResolvedFailoverSwitch:
+      '이 응답은 다른 사용 가능한 업스트림 공급자 또는 모델로 전환되었습니다.',
+    providerFailoverToolFollowUp:
+      '이전에 고정된 공급자 없이 도구 후속 요청을 다시 시도하는 중입니다.',
+    providerFailoverContinuationFollowUp:
+      '이전에 고정된 공급자 없이 이어쓰기 후속 요청을 다시 시도하는 중입니다.',
+  }),
+  'ml-IN': makeDetailTerms({
+    providerResolved: 'ഈ പ്രതികരണം തെരഞ്ഞെടുത്ത അപ്‌സ്ട്രീം പ്രൊവൈഡറും മോഡലും ഉപയോഗിക്കും.',
+    providerResolvedModelSwitch: 'ഈ പ്രതികരണം ലഭ്യമായ ഒരു അപ്‌സ്ട്രീം മോഡലിലേക്ക് മാറി.',
+    providerResolvedFailoverSwitch:
+      'ഈ പ്രതികരണം ലഭ്യമായ മറ്റൊരു അപ്‌സ്ട്രീം പ്രൊവൈഡറിലേക്കോ മോഡലിലേക്കോ മാറി.',
+    providerFailoverToolFollowUp:
+      'മുമ്പ് പിന്‍ ചെയ്ത പ്രൊവൈഡര്‍ ഇല്ലാതെ ടൂൾ ഫോളോ-അപ്പ് വീണ്ടും ശ്രമിക്കുന്നു.',
+    providerFailoverContinuationFollowUp:
+      'മുമ്പ് പിന്‍ ചെയ്ത പ്രൊവൈഡര്‍ ഇല്ലാതെ തുടർ ഫോളോ-അപ്പ് വീണ്ടും ശ്രമിക്കുന്നു.',
+  }),
+  'nb-NO': makeDetailTerms({
+    providerResolved: 'Dette svaret vil bruke den valgte oppstrømsleverandøren og modellen.',
+    providerResolvedModelSwitch: 'Dette svaret byttet til en tilgjengelig oppstrømsmodell.',
+    providerResolvedFailoverSwitch:
+      'Dette svaret byttet til en annen tilgjengelig oppstrømsleverandør eller modell.',
+    providerFailoverToolFollowUp:
+      'Prøver verktøyoppfølgingen på nytt uten den tidligere festede leverandøren.',
+    providerFailoverContinuationFollowUp:
+      'Prøver fortsettelsesoppfølgingen på nytt uten den tidligere festede leverandøren.',
+  }),
+  'nl-NL': makeDetailTerms({
+    providerResolved:
+      'Dit antwoord gebruikt de geselecteerde upstreamprovider en het geselecteerde model.',
+    providerResolvedModelSwitch:
+      'Dit antwoord is overgeschakeld naar een beschikbaar upstreammodel.',
+    providerResolvedFailoverSwitch:
+      'Dit antwoord is overgeschakeld naar een andere beschikbare upstreamprovider of een ander model.',
+    providerFailoverToolFollowUp:
+      'De toolopvolging wordt opnieuw geprobeerd zonder de eerder vastgezette provider.',
+    providerFailoverContinuationFollowUp:
+      'De vervolgopvolging wordt opnieuw geprobeerd zonder de eerder vastgezette provider.',
+  }),
+  'pl-PL': makeDetailTerms({
+    providerResolved: 'Ta odpowiedź użyje wybranego dostawcy upstream i modelu.',
+    providerResolvedModelSwitch: 'Ta odpowiedź przełączyła się na dostępny model upstream.',
+    providerResolvedFailoverSwitch:
+      'Ta odpowiedź przełączyła się na innego dostępnego dostawcę upstream lub model.',
+    providerFailoverToolFollowUp:
+      'Ponawianie dalszego wywołania narzędzia bez wcześniej przypiętego dostawcy.',
+    providerFailoverContinuationFollowUp:
+      'Ponawianie dalszej kontynuacji bez wcześniej przypiętego dostawcy.',
+  }),
+  'pt-BR': makeDetailTerms({
+    providerResolved: 'Esta resposta usará o provedor upstream e o modelo selecionados.',
+    providerResolvedModelSwitch: 'Esta resposta mudou para um modelo upstream disponível.',
+    providerResolvedFailoverSwitch:
+      'Esta resposta mudou para outro provedor ou modelo upstream disponível.',
+    providerFailoverToolFollowUp:
+      'Tentando novamente o acompanhamento da ferramenta sem o provedor fixado anteriormente.',
+    providerFailoverContinuationFollowUp:
+      'Tentando novamente o acompanhamento de continuação sem o provedor fixado anteriormente.',
+  }),
+  'pt-PT': makeDetailTerms({
+    providerResolved: 'Esta resposta vai usar o fornecedor upstream e o modelo selecionados.',
+    providerResolvedModelSwitch: 'Esta resposta mudou para um modelo upstream disponível.',
+    providerResolvedFailoverSwitch:
+      'Esta resposta mudou para outro fornecedor ou modelo upstream disponível.',
+    providerFailoverToolFollowUp:
+      'A repetir o seguimento da ferramenta sem o fornecedor anteriormente afixado.',
+    providerFailoverContinuationFollowUp:
+      'A repetir o seguimento da continuação sem o fornecedor anteriormente afixado.',
+  }),
+  'ro-RO': makeDetailTerms({
+    providerResolved: 'Acest răspuns va folosi furnizorul upstream și modelul selectate.',
+    providerResolvedModelSwitch: 'Acest răspuns a trecut la un model upstream disponibil.',
+    providerResolvedFailoverSwitch:
+      'Acest răspuns a trecut la un alt furnizor upstream disponibil sau la un alt model.',
+    providerFailoverToolFollowUp:
+      'Se reîncearcă urmărirea instrumentului fără furnizorul fixat anterior.',
+    providerFailoverContinuationFollowUp:
+      'Se reîncearcă urmărirea continuării fără furnizorul fixat anterior.',
+  }),
+  'ru-RU': makeDetailTerms({
+    providerResolved:
+      'Этот ответ будет использовать выбранного вышестоящего провайдера и модель.',
+    providerResolvedModelSwitch:
+      'Этот ответ переключился на доступную вышестоящую модель.',
+    providerResolvedFailoverSwitch:
+      'Этот ответ переключился на другого доступного вышестоящего провайдера или модель.',
+    providerFailoverToolFollowUp:
+      'Повторная попытка последующего вызова инструмента без ранее закреплённого провайдера.',
+    providerFailoverContinuationFollowUp:
+      'Повторная попытка продолжения без ранее закреплённого провайдера.',
+  }),
+  'sk-SK': makeDetailTerms({
+    providerResolved: 'Táto odpoveď použije vybraného upstream poskytovateľa a model.',
+    providerResolvedModelSwitch: 'Táto odpoveď sa prepla na dostupný upstream model.',
+    providerResolvedFailoverSwitch:
+      'Táto odpoveď sa prepla na iného dostupného upstream poskytovateľa alebo model.',
+    providerFailoverToolFollowUp:
+      'Opakuje sa následné volanie nástroja bez predtým pripnutého poskytovateľa.',
+    providerFailoverContinuationFollowUp:
+      'Opakuje sa následné pokračovanie bez predtým pripnutého poskytovateľa.',
+  }),
+  'sv-SE': makeDetailTerms({
+    providerResolved:
+      'Det här svaret kommer att använda den valda upstream-leverantören och modellen.',
+    providerResolvedModelSwitch: 'Det här svaret bytte till en tillgänglig upstream-modell.',
+    providerResolvedFailoverSwitch:
+      'Det här svaret bytte till en annan tillgänglig upstream-leverantör eller modell.',
+    providerFailoverToolFollowUp:
+      'Försöker verktygsuppföljningen igen utan den tidigare fästa leverantören.',
+    providerFailoverContinuationFollowUp:
+      'Försöker fortsättningsuppföljningen igen utan den tidigare fästa leverantören.',
+  }),
+  'zh-CN': makeDetailTerms({
+    providerResolved: '本次响应将使用所选的上游提供商和模型。',
+    providerResolvedModelSwitch: '本次响应已切换到一个可用的上游模型。',
+    providerResolvedFailoverSwitch: '本次响应已切换到另一个可用的上游提供商或模型。',
+    providerFailoverToolFollowUp: '正在不使用上一个固定提供商重试这轮工具后续请求。',
+    providerFailoverContinuationFollowUp: '正在不使用上一个固定提供商重试这轮续写后续请求。',
+  }),
+  'zh-TW': makeDetailTerms({
+    providerResolved: '本次回應將使用所選的上游提供商和模型。',
+    providerResolvedModelSwitch: '本次回應已切換到一個可用的上游模型。',
+    providerResolvedFailoverSwitch: '本次回應已切換到另一個可用的上游提供商或模型。',
+    providerFailoverToolFollowUp: '正在不使用上一個固定提供商重試這輪工具後續請求。',
+    providerFailoverContinuationFollowUp: '正在不使用上一個固定提供商重試這輪續寫後續請求。',
+  }),
+}
+
 function buildProcessTracePatch(
   terms: ProcessTraceTerms,
   voiceTerms: VoiceProcessTraceTerms,
-  eventTerms: ProcessTraceEventTerms
+  eventTerms: ProcessTraceEventTerms,
+  detailTerms: ProcessTraceDetailTerms
 ): object {
   return {
     chat: {
@@ -1188,6 +1480,12 @@ function buildProcessTracePatch(
         details: {
           requestDispatched: terms.requestDispatched,
           waitingForResponse: terms.waitingForFirstVisibleOutput,
+          providerResolved: detailTerms.providerResolved,
+          providerResolvedModelSwitch: detailTerms.providerResolvedModelSwitch,
+          providerResolvedFailoverSwitch: detailTerms.providerResolvedFailoverSwitch,
+          providerFailoverToolFollowUp: detailTerms.providerFailoverToolFollowUp,
+          providerFailoverContinuationFollowUp:
+            detailTerms.providerFailoverContinuationFollowUp,
           recoveryStage1: terms.recoveryStage1,
           recoveryStage2: terms.recoveryStage2,
           voiceInterruptDispatched: voiceTerms.voiceInterruptDispatched,
@@ -1209,7 +1507,8 @@ const processTraceLocaleBackfills = Object.fromEntries(
       buildProcessTracePatch(
         terms,
         voiceProcessTraceTerms[typedLocaleKey],
-        processTraceEventTerms[typedLocaleKey]
+        processTraceEventTerms[typedLocaleKey],
+        processTraceDetailTerms[typedLocaleKey]
       ),
     ]
   })

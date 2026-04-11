@@ -233,9 +233,7 @@ function mergeMissingProcessCardsIntoFinalContent(
     return nextContent
   }
 
-  const mergedPrefix = missingBlocks.map((block) => block.raw).join(
-    '\n\n'
-  )
+  const mergedPrefix = missingBlocks.map((block) => block.raw).join('\n\n')
   if (!mergedPrefix) {
     return nextContent
   }
@@ -521,7 +519,9 @@ function isModelUnavailableErrorText(message: string): boolean {
 const providerFailoverConfirmationRequiredError = 'provider_failover_confirmation_required'
 
 function isProviderFailoverConfirmationErrorText(message: string): boolean {
-  const normalized = String(message || '').trim().toLowerCase()
+  const normalized = String(message || '')
+    .trim()
+    .toLowerCase()
   if (!normalized) return false
   return normalized.includes(providerFailoverConfirmationRequiredError)
 }
@@ -677,6 +677,7 @@ interface ActiveConversationStreamState {
   sending: boolean
   streaming: boolean
   receivedFirstChunk: boolean
+  providerAccelerationActive: boolean
   streamProgress: string | null
   toolExecuting: boolean
   toolExecutingStartTime: number
@@ -1061,6 +1062,7 @@ export const useChatStore = defineStore('chat', () => {
   const streamError = ref<string | null>(null) // Error from stream (displayed in chat area)
   const streamUIState = ref<StreamUIState>(createStreamUIState('idle'))
   const streamProgress = ref<string | null>(null) // Upstream metadata progress before first visible delta
+  const providerAccelerationActive = ref(false)
   const statusStartedAt = ref(0)
   const statusSummary = ref<string | null>(null)
   const processTrace = ref<ProcessTraceItem[]>([])
@@ -1143,6 +1145,7 @@ export const useChatStore = defineStore('chat', () => {
       site_origin?: string
       screenshot?: { mime_type?: string; data?: string; url?: string }
     }
+    require_explicit_answer?: boolean
     expires_at: number
   } | null>(null)
   const awaitingConfirmation = ref(false)
@@ -1281,7 +1284,8 @@ export const useChatStore = defineStore('chat', () => {
     const model = chunk.process_model?.trim()
     const requiresConfirmation = chunk.process_requires_confirmation === true
     const retryAttempts =
-      typeof chunk.process_retry_attempts === 'number' && Number.isFinite(chunk.process_retry_attempts)
+      typeof chunk.process_retry_attempts === 'number' &&
+      Number.isFinite(chunk.process_retry_attempts)
         ? chunk.process_retry_attempts
         : undefined
     const lastStatusCode =
@@ -1584,6 +1588,8 @@ export const useChatStore = defineStore('chat', () => {
     activeStreamId.value = state?.streamId ?? null
     streamUIState.value = state?.uiState ?? createStreamUIState('idle')
     streamProgress.value = state?.receivedFirstChunk ? null : (state?.streamProgress ?? null)
+    providerAccelerationActive.value =
+      !!state?.providerAccelerationActive && !state?.receivedFirstChunk
     statusStartedAt.value = state?.statusStartedAt ?? 0
     statusSummary.value = state?.statusSummary ?? null
     processTrace.value = cloneProcessTrace(state?.processTrace)
@@ -1633,6 +1639,7 @@ export const useChatStore = defineStore('chat', () => {
       sending: true,
       streaming: true,
       receivedFirstChunk: false,
+      providerAccelerationActive: false,
       streamProgress: null,
       toolExecuting: false,
       toolExecutingStartTime: 0,
@@ -1693,6 +1700,7 @@ export const useChatStore = defineStore('chat', () => {
     updateActiveStreamState(conversationId, {
       previewContent: current.previewContent + delta,
       receivedFirstChunk: true,
+      providerAccelerationActive: false,
       streamProgress: null,
       toolExecuting: false,
       statusSummary: nextSummary,
@@ -1708,6 +1716,7 @@ export const useChatStore = defineStore('chat', () => {
   function resetActiveStreamRound(conversationId: string) {
     updateActiveStreamState(conversationId, {
       receivedFirstChunk: false,
+      providerAccelerationActive: false,
       streamProgress: null,
       toolExecuting: false,
       toolExecutingStartTime: 0,
@@ -1743,6 +1752,7 @@ export const useChatStore = defineStore('chat', () => {
     streaming.value = false
     streamUIState.value = createStreamUIState('idle')
     streamProgress.value = null
+    providerAccelerationActive.value = false
     statusStartedAt.value = 0
     statusSummary.value = null
     processTrace.value = []
@@ -1835,6 +1845,7 @@ export const useChatStore = defineStore('chat', () => {
       sending: false,
       streaming: true,
       receivedFirstChunk: hasPreview,
+      providerAccelerationActive: false,
       streamProgress: null,
       toolExecuting: !hasPreview,
       toolExecutingStartTime: !hasPreview ? Date.now() : 0,
@@ -1895,6 +1906,16 @@ export const useChatStore = defineStore('chat', () => {
         options.onStreamProgress?.(progress)
       },
       onProcessEvent: (chunk) => {
+        if (chunk.process_event === 'provider_acceleration_active') {
+          const current = getActiveStreamState(conversationId)
+          if (current && !current.receivedFirstChunk) {
+            updateActiveStreamState(conversationId, {
+              providerAccelerationActive: chunk.provider_acceleration_active === true,
+            })
+          }
+          options.onProcessEvent?.(chunk)
+          return
+        }
         recordPendingProviderFailoverDraft(conversationId, chunk)
         const item = createServerProcessTraceItem(chunk)
         if (item) {
@@ -2099,8 +2120,7 @@ export const useChatStore = defineStore('chat', () => {
     const resolved = resolveCommandStateSelection(state)
     selectedProviderId.value = resolved.selected_provider_id
     modelPreference.value = resolved.model_preference
-    providerPinOnlyActive.value =
-      !!resolved.selected_provider_id && !resolved.selected_model_id
+    providerPinOnlyActive.value = !!resolved.selected_provider_id && !resolved.selected_model_id
     offlineMode.value = !!state.offline
     agentcoreRunnerRef.value = normalizeAgentcoreRunnerRefValue(state.agentcore_runner_ref)
   }
@@ -2644,37 +2664,37 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk): boolean {
-  if (currentConversationId.value !== conversationId) return false
-  const persistedMessageId = finalChunk?.message_id?.trim()
-  if (!persistedMessageId) return false
+  function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk): boolean {
+    if (currentConversationId.value !== conversationId) return false
+    const persistedMessageId = finalChunk?.message_id?.trim()
+    if (!persistedMessageId) return false
 
-  const lastIndex = messages.value.length - 1
-  if (lastIndex < 0) return false
-  const lastMsg = messages.value[lastIndex]
-  if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.id.startsWith('streaming-')) {
-    return false
-  }
+    const lastIndex = messages.value.length - 1
+    if (lastIndex < 0) return false
+    const lastMsg = messages.value[lastIndex]
+    if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.id.startsWith('streaming-')) {
+      return false
+    }
 
-  const nextContent = mergeMissingProcessCardsIntoFinalContent(
-    lastMsg.content,
-    finalChunk?.content ?? streamingContent.value,
-    finalChunk?.finalization_mode
-  )
-  const nextMessage: Message = {
-    ...lastMsg,
-    id: persistedMessageId,
-    render_key: lastMsg.render_key || lastMsg.id,
-    content: nextContent,
-    provider: finalChunk?.provider || lastMsg.provider,
-    model: finalChunk?.model || lastMsg.model,
-    stats: finalChunk?.stats || lastMsg.stats,
+    const nextContent = mergeMissingProcessCardsIntoFinalContent(
+      lastMsg.content,
+      finalChunk?.content ?? streamingContent.value,
+      finalChunk?.finalization_mode
+    )
+    const nextMessage: Message = {
+      ...lastMsg,
+      id: persistedMessageId,
+      render_key: lastMsg.render_key || lastMsg.id,
+      content: nextContent,
+      provider: finalChunk?.provider || lastMsg.provider,
+      model: finalChunk?.model || lastMsg.model,
+      stats: finalChunk?.stats || lastMsg.stats,
+    }
+    const nextMessages = [...messages.value]
+    nextMessages[lastIndex] = nextMessage
+    messages.value = nextMessages
+    return true
   }
-  const nextMessages = [...messages.value]
-  nextMessages[lastIndex] = nextMessage
-  messages.value = nextMessages
-  return true
-}
 
   watch(pendingQuestion, (q) => {
     if (q) {
@@ -3220,6 +3240,7 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
         sending: sending.value,
         streaming: streaming.value,
         receivedFirstChunk: _receivedFirstChunk.value,
+        providerAccelerationActive: providerAccelerationActive.value,
         streamProgress: streamProgress.value,
         toolExecuting: toolExecuting.value,
         toolExecutingStartTime: toolExecutingStartTime.value,
@@ -3874,6 +3895,8 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
           } else {
             streamError.value = err.message
           }
+          providerAccelerationActive.value = false
+          updateActiveStreamState(sendConvId, { providerAccelerationActive: false })
           streamUIState.value = createStreamUIState('interrupted', {
             label: resolveStreamUIStateLabel('interrupted'),
             detail: errorKey || err.message,
@@ -3928,6 +3951,8 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
           flushPendingStreamDelta(sendConvId)
           streaming.value = false
           streamProgress.value = null
+          providerAccelerationActive.value = false
+          updateActiveStreamState(sendConvId, { providerAccelerationActive: false })
           streamError.value = null
           toolExecuting.value = false
           streamUIState.value = createStreamUIState('completed', {
@@ -5217,6 +5242,7 @@ function applyFinalStreamChunk(conversationId: string, finalChunk?: StreamChunk)
     streamError,
     streamUIState,
     streamProgress,
+    providerAccelerationActive,
     statusStartedAt,
     statusSummary,
     processTrace,

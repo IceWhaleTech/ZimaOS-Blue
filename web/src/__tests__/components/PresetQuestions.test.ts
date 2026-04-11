@@ -17,10 +17,7 @@ vi.mock('@/api/preview', async () => {
   }
 })
 
-function buildQuestion(
-  index: number,
-  overrides: Partial<PresetQuestion> = {}
-): PresetQuestion {
+function buildQuestion(index: number, overrides: Partial<PresetQuestion> = {}): PresetQuestion {
   return {
     id: `q-${index}`,
     title: `Title ${index}`,
@@ -85,6 +82,31 @@ describe('PresetQuestions', () => {
     await setLocale('zh-CN')
   })
 
+  it('renders nothing when the preset questions API returns no runtime content', async () => {
+    vi.mocked(previewApi.getPresetQuestions).mockResolvedValueOnce({
+      data: {
+        questions: [],
+        total: 0,
+        next_offset: 0,
+        has_more: false,
+      },
+    } as Awaited<ReturnType<typeof previewApi.getPresetQuestions>>)
+
+    const wrapper = mount(PresetQuestions, {
+      props: { contextText: '' },
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+
+    expect(vi.mocked(previewApi.getPresetQuestions)).toHaveBeenCalledWith(4, 'zh', 0)
+    expect(wrapper.find('[data-testid="preset-questions-scroll"]').exists()).toBe(false)
+    expect(wrapper.findAll('[data-testid^="preset-question-card-"]')).toHaveLength(0)
+    expect(wrapper.findAll('[data-testid^="preset-interest-chip-"]')).toHaveLength(0)
+  })
+
   it('renders 4 real cards first while preserving 12 total slots with placeholders', async () => {
     const wrapper = mount(PresetQuestions, {
       props: { contextText: '' },
@@ -118,7 +140,7 @@ describe('PresetQuestions', () => {
     expect(wrapper.emitted('select')?.[0]?.[0]).toBe('Prompt 1')
   })
 
-  it('strips bundled sample attachments from rendered questions and emitted payloads', async () => {
+  it('preserves preset question attachments on rendered question cards', async () => {
     const sampleAttachment: PresetQuestionAttachment = {
       type: 'image',
       name: 'chart.png',
@@ -144,13 +166,10 @@ describe('PresetQuestions', () => {
 
     await flushPromises()
 
-    const renderedQuestion = wrapper.getComponent(PresetQuestionCard).props('question') as PresetQuestion
-    expect(renderedQuestion.attachments).toBeUndefined()
-
-    await wrapper.get('[data-testid="preset-question-card-q-1"]').trigger('click')
-
-    expect(wrapper.emitted('select')).toBeTruthy()
-    expect(wrapper.emitted('select')?.[0]).toEqual(['Prompt 1', undefined])
+    const renderedQuestion = wrapper
+      .getComponent(PresetQuestionCard)
+      .props('question') as PresetQuestion
+    expect(renderedQuestion.attachments).toEqual([sampleAttachment])
   })
 
   it('loads the remaining questions when the list scrolls near the bottom', async () => {

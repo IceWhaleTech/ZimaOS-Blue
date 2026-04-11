@@ -600,6 +600,7 @@ export default mergeHarnessLocale('hu-HU', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Feladat megszakítva',
     waitingThinking: 'Gondolkodom...',
+    providerAccelerationActive: 'A következő válasz optimalizálása az aktuális szolgáltatóhoz',
     awaitingConfirmation: 'Megerősítésére várunk a folytatáshoz',
     streamConnecting: 'Kapcsolódás',
     streamStreaming: 'Generálás',
@@ -630,8 +631,10 @@ export default mergeHarnessLocale('hu-HU', {
     taskFailedDuringPlanning: 'A feladat tervezés közben sikertelen lett',
     taskFailedDuringConfirmation: 'A feladat megerősítés közben sikertelen lett',
     taskFailedWhileRevisingPlan: 'A feladat a terv felülvizsgálata közben sikertelen lett',
-    taskFailedWhileUpdatingRuntimeState: 'A feladat a futtatási állapot frissítése közben sikertelen lett',
-    verificationFailedRecoveryFailed: 'Az ellenőrzés sikertelen volt, és a helyreállítás sem járt sikerrel',
+    taskFailedWhileUpdatingRuntimeState:
+      'A feladat a futtatási állapot frissítése közben sikertelen lett',
+    verificationFailedRecoveryFailed:
+      'Az ellenőrzés sikertelen volt, és a helyreállítás sem járt sikerrel',
     taskFailureGroundedVerificationFailed: 'A megalapozottság ellenőrzése sikertelen volt',
     taskWaitingForApproval: 'Várakozás a jóváhagyásodra',
     taskWaitingForAnswer: 'Várakozás a válaszodra',
@@ -864,7 +867,8 @@ export default mergeHarnessLocale('hu-HU', {
     providerFailover: {
       eyebrow: 'Magas rendelkezésre állású átváltás',
       title: 'Átvált egy másik elérhető útvonalra és újrapróbálja?',
-      description: 'A jelenlegi, {provider} szolgáltatón futó útvonal megerősítést kér, mielőtt a Blue másik elérhető útvonalra váltana és újrapróbálná.',
+      description:
+        'A jelenlegi, {provider} szolgáltatón futó útvonal megerősítést kér, mielőtt a Blue másik elérhető útvonalra váltana és újrapróbálná.',
       dismissAction: 'Most ne',
       manualAction: 'Útvonal kézi kiválasztása',
       primaryAction: 'Váltás és újrapróbálás',
@@ -898,7 +902,8 @@ export default mergeHarnessLocale('hu-HU', {
     execDirectoryApprovalTimeout:
       'A parancs végrehajtása blokkolva lett, mert a könyvtár jóváhagyása időtúllépés miatt lejárt. Hagyja jóvá a könyvtárat, majd próbálja újra.',
     providerActive: 'A szolgáltató aktív és készen áll.',
-    providerNeedsAttention: 'A szolgáltató figyelmet igényel. Kattintson a beállítások ellenőrzéséhez.',
+    providerNeedsAttention:
+      'A szolgáltató figyelmet igényel. Kattintson a beállítások ellenőrzéséhez.',
     providerPending: 'A szolgáltató állapota ellenőrzés alatt áll...',
     trialQuota: {
       remaining: '{tokens} token maradt',

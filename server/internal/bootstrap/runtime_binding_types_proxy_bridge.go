@@ -41,3 +41,7 @@ type runtimeProxyBridgeSkillTarget interface {
 type runtimeProxyBridgeAnalyzeTarget interface {
 	SetLLMBridge(bridge tools.LLMBridge)
 }
+
+type runtimeProxyBridgeAdvisorTarget interface {
+	SetBridge(bridge tools.AdvisorBridge)
+}

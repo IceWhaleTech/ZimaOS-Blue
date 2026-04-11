@@ -66,6 +66,7 @@ const DEEP_RESEARCH_MODE_KEYS: Record<string, [key: string, fallback: string]> =
 }
 
 const DEEP_RESEARCH_AUX_STATUS_KEYS: Record<string, [key: string, fallback: string]> = {
+  ok: ['system.statusOk', 'OK'],
   pending: ['chat.deepResearchWorkflowPending', 'Pending'],
   current: ['chat.deepResearchWorkflowCurrent', 'Current'],
   resolved: ['chat.deepResearchVerificationResolved', 'Resolved'],

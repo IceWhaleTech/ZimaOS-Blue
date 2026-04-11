@@ -606,6 +606,7 @@ export default mergeHarnessLocale('fr-FR', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Tâche annulée',
     waitingThinking: 'Réflexion...',
+    providerAccelerationActive: 'Optimisation de la prochaine réponse pour le fournisseur actuel',
     awaitingConfirmation: 'En attente de votre confirmation pour continuer',
     streamConnecting: 'Connexion',
     streamStreaming: 'Génération',
@@ -636,7 +637,8 @@ export default mergeHarnessLocale('fr-FR', {
     taskFailedDuringPlanning: 'La tâche a échoué pendant la planification',
     taskFailedDuringConfirmation: 'La tâche a échoué pendant la confirmation',
     taskFailedWhileRevisingPlan: 'La tâche a échoué lors de la révision du plan',
-    taskFailedWhileUpdatingRuntimeState: 'La tâche a échoué lors de la mise à jour de l’état d’exécution',
+    taskFailedWhileUpdatingRuntimeState:
+      'La tâche a échoué lors de la mise à jour de l’état d’exécution',
     verificationFailedRecoveryFailed: 'La vérification a échoué et la récupération n’a pas réussi',
     taskFailureGroundedVerificationFailed: 'La vérification de l’ancrage a échoué',
     taskWaitingForApproval: 'En attente de votre approbation',
@@ -870,7 +872,8 @@ export default mergeHarnessLocale('fr-FR', {
     providerFailover: {
       eyebrow: 'Basculement haute disponibilité',
       title: 'Basculer vers une autre route disponible et réessayer ?',
-      description: 'La route actuelle via {provider} nécessite votre confirmation avant que Blue ne bascule vers une autre route disponible et ne réessaie.',
+      description:
+        'La route actuelle via {provider} nécessite votre confirmation avant que Blue ne bascule vers une autre route disponible et ne réessaie.',
       dismissAction: 'Pas maintenant',
       manualAction: 'Choisir une route manuellement',
       primaryAction: 'Basculer et réessayer',
@@ -904,7 +907,8 @@ export default mergeHarnessLocale('fr-FR', {
     execDirectoryApprovalTimeout:
       "L'exécution de la commande a été bloquée car l'approbation du répertoire a expiré. Veuillez approuver le répertoire puis réessayer.",
     providerActive: 'Le fournisseur est actif et prêt.',
-    providerNeedsAttention: 'Le fournisseur nécessite une attention. Cliquez pour vérifier les paramètres.',
+    providerNeedsAttention:
+      'Le fournisseur nécessite une attention. Cliquez pour vérifier les paramètres.',
     providerPending: 'Vérification du statut du fournisseur...',
     trialQuota: {
       remaining: '{tokens} tokens restants',

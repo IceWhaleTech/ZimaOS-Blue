@@ -9,7 +9,7 @@ import (
 func toolResearchModeAndDepth(mode deepresearch.Mode) (string, string) {
 	raw := strings.ToLower(strings.TrimSpace(string(mode)))
 	switch raw {
-	case "analyze", "ui_review":
+	case "advisor", "analyze", "ui_review":
 		return raw, ""
 	case "", "deep_research":
 		return "deep_research", ""

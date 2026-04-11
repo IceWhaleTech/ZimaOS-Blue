@@ -25,6 +25,9 @@ type browserCompatBackend struct {
 	lastActRef                int
 	lastActAction             string
 	lastActValue              string
+	lastPageScrollTargetID    string
+	lastPageScrollX           int
+	lastPageScrollY           int
 	lastA11yTargetID          string
 	lastInteractiveTargetID   string
 	lastCountTargetID         string
@@ -103,6 +106,12 @@ func (b *browserCompatBackend) ActByInteractiveRef(_ context.Context, targetID s
 	b.lastActValue = value
 	return nil
 }
+func (b *browserCompatBackend) PageScroll(_ context.Context, targetID string, x, y int) error {
+	b.lastPageScrollTargetID = targetID
+	b.lastPageScrollX = x
+	b.lastPageScrollY = y
+	return nil
+}
 func (b *browserCompatBackend) Screenshot(_ context.Context, url string) (string, error) {
 	b.lastScreenshotURL = url
 	if b.screenshotData != "" {
@@ -139,6 +148,71 @@ func TestBrowserDefinition_UsesCompactParamsEnvelope(t *testing.T) {
 		if _, ok := props[legacy]; ok {
 			t.Fatalf("did not expect legacy %q in browser schema", legacy)
 		}
+	}
+}
+
+func TestBrowserExecute_LegacyScrollDownUsesPageScrollCompat(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "scroll_down",
+		"target_id": "tab-9",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	payload := map[string]interface{}{}
+	if s, ok := result.(string); ok {
+		if err := json.Unmarshal([]byte(s), &payload); err != nil {
+			t.Fatalf("unmarshal result: %v", err)
+		}
+	} else {
+		t.Fatalf("result = %T, want string JSON payload", result)
+	}
+
+	if backend.lastPageScrollTargetID != "tab-9" {
+		t.Fatalf("lastPageScrollTargetID = %q, want %q", backend.lastPageScrollTargetID, "tab-9")
+	}
+	if backend.lastPageScrollY <= 0 {
+		t.Fatalf("lastPageScrollY = %d, want > 0 for scroll_down", backend.lastPageScrollY)
+	}
+	if payload["message"] != "Scrolled page down" {
+		t.Fatalf("message = %v, want %q", payload["message"], "Scrolled page down")
+	}
+}
+
+func TestBrowserToolExecute_InspectAliasUsesSnapshot(t *testing.T) {
+	backend := &browserCompatBackend{
+		a11yResult: BrowserA11yTreeResult{
+			Tree:     "[document] Example",
+			URL:      "https://example.com",
+			Title:    "Example",
+			TargetID: "tab-7",
+		},
+	}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "inspect",
+		"target_id": "tab-7",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.lastA11yTargetID != "tab-7" {
+		t.Fatalf("lastA11yTargetID = %q, want tab-7", backend.lastA11yTargetID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["tree"] == nil || out["tree"] == "" {
+		t.Fatal("expected inspect alias to return snapshot tree")
 	}
 }
 

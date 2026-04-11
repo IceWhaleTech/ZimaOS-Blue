@@ -20,31 +20,42 @@ type ResearchBudget struct {
 }
 
 type ResearchCreateJobRequest struct {
-	Query          string
-	Mode           string
-	ResearchDepth  string
-	RouteMode      string
-	Lang           string
-	Budget         *ResearchBudget
-	StrictEntity   *bool
-	TimeWindows    []string
-	ReportStyle    string
-	Topic          string
-	URLs           []string
-	Text           string
-	SearchQueries  []string
-	OutputMode     string
-	Action         string
-	URL            string
-	Image          string
-	Device         string
-	Channel        string
-	WaitMS         int
-	Threshold      float64
-	Format         string
-	Profile        string
-	UserID         string
-	ConversationID string
+	Query            string
+	Mode             string
+	ResearchDepth    string
+	RouteMode        string
+	Lang             string
+	Budget           *ResearchBudget
+	StrictEntity     *bool
+	TimeWindows      []string
+	ReportStyle      string
+	Topic            string
+	URLs             []string
+	Text             string
+	SearchQueries    []string
+	OutputMode       string
+	Question         string
+	Category         string
+	DecisionMode     string
+	Candidates       []string
+	Context          map[string]interface{}
+	Constraints      map[string]interface{}
+	Grounding        string
+	Depth            string
+	Output           string
+	ScorecardPack    string
+	ScorecardWeights map[string]float64
+	Action           string
+	URL              string
+	Image            string
+	Device           string
+	Channel          string
+	WaitMS           int
+	Threshold        float64
+	Format           string
+	Profile          string
+	UserID           string
+	ConversationID   string
 }
 
 type ResearchJob struct {
@@ -116,7 +127,7 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 				},
 				"query":                map[string]interface{}{"type": "string", "description": "Research query or objective. Required for action=run."},
 				"input":                map[string]interface{}{"type": "string", "description": "Alias for query. Accepted for compatibility when older callers send input=..."},
-				"mode":                 map[string]interface{}{"type": "string", "description": "Research family mode: auto|deep_research|analyze|ui_review"},
+				"mode":                 map[string]interface{}{"type": "string", "description": "Research family mode: auto|deep_research|analyze|advisor|ui_review"},
 				"research_depth":       map[string]interface{}{"type": "string", "description": "Deep-research depth: fast|standard|deep. Only applies when mode resolves to deep_research."},
 				"route_mode":           map[string]interface{}{"type": "string", "description": "Routing mode: web"},
 				"lang":                 map[string]interface{}{"type": "string", "description": "Preferred output language"},
@@ -130,6 +141,17 @@ func (t *DeepResearchTool) Definition() ToolDefinition {
 				"text":                 map[string]interface{}{"type": "string", "description": "Analyze-mode direct text input."},
 				"search_queries":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Analyze-mode supplemental search queries."},
 				"output_mode":          map[string]interface{}{"type": "string", "description": "Analyze-mode output: inline|report"},
+				"question":             map[string]interface{}{"type": "string", "description": "Advisor-mode decision question."},
+				"category":             map[string]interface{}{"type": "string", "description": "Advisor-mode category: architecture|language|framework|library|process|migration|ops"},
+				"decision_mode":        map[string]interface{}{"type": "string", "description": "Advisor-mode decision style: recommend|compare|review|replace|best_practice"},
+				"candidates":           map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Advisor-mode candidate list."},
+				"context":              map[string]interface{}{"type": "object", "description": "Advisor-mode context such as stack, team_size, data_scale, deployment, current_solution."},
+				"constraints":          map[string]interface{}{"type": "object", "description": "Advisor-mode hard constraints."},
+				"grounding":            map[string]interface{}{"type": "string", "description": "Advisor grounding policy: auto|none|web"},
+				"depth":                map[string]interface{}{"type": "string", "description": "Advisor depth: quick|standard|deep"},
+				"output":               map[string]interface{}{"type": "string", "description": "Advisor output: decision_memo|scorecard|decision_pack"},
+				"scorecard_pack":       map[string]interface{}{"type": "string", "description": "Advisor scorecard pack: auto|solution_selection_v1|migration_v1|architecture_v1|process_v1"},
+				"scorecard_weights":    map[string]interface{}{"type": "object", "description": "Advisor scorecard weight overrides keyed by criterion id."},
 				"review_action":        map[string]interface{}{"type": "string", "description": "UI-review action alias for callers that keep top-level action reserved for run/status. Accepted values: review_url, review_image, check_accessibility."},
 				"url":                  map[string]interface{}{"type": "string", "description": "UI-review target URL."},
 				"image":                map[string]interface{}{"type": "string", "description": "UI-review base64 image."},
@@ -298,6 +320,14 @@ func autoSelectResearchMode(query string, requestedMode string) string {
 	for _, s := range deepSignals {
 		if strings.Contains(q, s) {
 			return "deep_research"
+		}
+	}
+
+	advisorSignals := []string{"replace", "replacement", "migration", "migrate", "best practice", "tradeoff", "should we use",
+		"选型", "替代", "替换", "迁移", "最佳实践", "权衡", " vs ", " versus "}
+	for _, s := range advisorSignals {
+		if strings.Contains(q, s) {
+			return "advisor"
 		}
 	}
 
@@ -646,6 +676,21 @@ func buildResearchCreateJobRequest(ctx context.Context, args map[string]interfac
 			firstResearchListValue(req.URLs),
 			firstResearchListValue(req.SearchQueries),
 		)
+	case "advisor":
+		normalized := cloneResearchArgs(args)
+		normalizeAdvisorArgs(normalized)
+		req.Question = strings.TrimSpace(firstCompatString(normalized, "question"))
+		req.Category = strings.TrimSpace(firstCompatString(normalized, "category"))
+		req.DecisionMode = strings.TrimSpace(firstCompatString(normalized, "decision_mode"))
+		req.Candidates = advisorCollectStrings(normalized["candidates"])
+		req.Context = advisorContextMap(normalized)
+		req.Constraints = advisorConstraintsMap(normalized)
+		req.Grounding = strings.TrimSpace(firstCompatString(normalized, "grounding"))
+		req.Depth = strings.TrimSpace(firstCompatString(normalized, "depth"))
+		req.Output = strings.TrimSpace(firstCompatString(normalized, "output"))
+		req.ScorecardPack = strings.TrimSpace(firstCompatString(normalized, "scorecard_pack"))
+		req.ScorecardWeights = advisorParseWeightMap(normalized["scorecard_weights"])
+		req.Query = firstNonEmptyResearchValue(goal, req.Question)
 	case "ui_review":
 		req.URL = strings.TrimSpace(firstUIReviewCompatURL(args))
 		if req.URL == "" {
@@ -682,6 +727,8 @@ func buildResearchCreateJobRequest(ctx context.Context, args map[string]interfac
 			return ResearchCreateJobRequest{}, errors.New("url or image is required for ui_review")
 		case "analyze":
 			return ResearchCreateJobRequest{}, errors.New("topic, urls, text, or search_queries are required for analyze")
+		case "advisor":
+			return ResearchCreateJobRequest{}, errors.New("question is required for advisor")
 		default:
 			return ResearchCreateJobRequest{}, errors.New("query is required")
 		}
@@ -691,6 +738,19 @@ func buildResearchCreateJobRequest(ctx context.Context, args map[string]interfac
 }
 
 func inferResearchModeFromArgs(args map[string]interface{}) string {
+	if strings.TrimSpace(firstCompatString(args, "question")) != "" ||
+		strings.TrimSpace(firstCompatString(args, "category")) != "" ||
+		strings.TrimSpace(firstCompatString(args, "decision_mode", "decisionMode")) != "" ||
+		len(advisorCollectStrings(args["candidates"])) > 0 {
+		return "advisor"
+	}
+	if contextMap, ok := coerceCompatMap(args["context"]); ok {
+		for _, key := range []string{"current_solution", "team_size", "data_scale", "deployment", "must_have", "must_avoid"} {
+			if strings.TrimSpace(fmt.Sprint(contextMap[key])) != "" {
+				return "advisor"
+			}
+		}
+	}
 	if strings.TrimSpace(parseResearchUIAction(args)) != "" ||
 		strings.TrimSpace(firstUIReviewCompatImage(args)) != "" {
 		return "ui_review"

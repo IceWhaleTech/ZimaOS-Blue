@@ -21,18 +21,18 @@ import (
 
 // RodService implements the Service interface using Rod.
 type RodService struct {
-	config            *Config
-	pool              *Pool
-	security          *SecurityChecker
-	recipes           *RecipeRegistry
-	tabs              map[string]*tabInfo
-	tabsMu            sync.RWMutex
-	screenshotHistory map[string][]SessionScreenshot
-	historyMu         sync.RWMutex
-	monitorFrameHook  func(targetID string, capturedAt string)
+	config              *Config
+	pool                *Pool
+	security            *SecurityChecker
+	recipes             *RecipeRegistry
+	tabs                map[string]*tabInfo
+	tabsMu              sync.RWMutex
+	screenshotHistory   map[string][]SessionScreenshot
+	historyMu           sync.RWMutex
+	monitorFrameHook    func(targetID string, capturedAt string)
 	monitorActivityHook func(targetID string, observedAt string)
-	started           bool
-	mu                sync.RWMutex
+	started             bool
+	mu                  sync.RWMutex
 }
 
 const (
@@ -97,6 +97,59 @@ func NewService(config *Config) (*RodService, error) {
 		tabs:              make(map[string]*tabInfo),
 		screenshotHistory: make(map[string][]SessionScreenshot),
 	}, nil
+}
+
+func (s *RodService) currentBrowserSecurityConfig() BrowserSecurityConfig {
+	if s == nil {
+		return BrowserSecurityConfig{
+			AllowedDomains: []string{},
+			BlockedDomains: []string{},
+		}
+	}
+	s.mu.RLock()
+	cfg := s.config.Clone()
+	s.mu.RUnlock()
+	return BrowserSecurityConfig{
+		AllowedDomains: append([]string(nil), cfg.AllowedDomains...),
+		BlockedDomains: append([]string(nil), cfg.BlockedDomains...),
+	}
+}
+
+func (s *RodService) replaceBrowserSecurityConfig(config BrowserSecurityConfig) BrowserSecurityConfig {
+	if s == nil {
+		return BrowserSecurityConfig{
+			AllowedDomains: []string{},
+			BlockedDomains: []string{},
+		}
+	}
+	normalized := BrowserSecurityConfig{
+		AllowedDomains: normalizeBrowserDomainList(config.AllowedDomains),
+		BlockedDomains: normalizeBrowserDomainList(config.BlockedDomains),
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.config == nil {
+		s.config = DefaultConfig()
+	}
+	s.config.AllowedDomains = append([]string(nil), normalized.AllowedDomains...)
+	s.config.BlockedDomains = append([]string(nil), normalized.BlockedDomains...)
+	s.security = NewSecurityChecker(s.config)
+	return BrowserSecurityConfig{
+		AllowedDomains: append([]string(nil), s.config.AllowedDomains...),
+		BlockedDomains: append([]string(nil), s.config.BlockedDomains...),
+	}
+}
+
+func (s *RodService) validateBrowserURL(rawURL string) error {
+	if s == nil {
+		return ErrBrowserNotAvailable
+	}
+	s.mu.RLock()
+	cfg := s.config.Clone()
+	s.mu.RUnlock()
+	_, err := NewSecurityChecker(cfg).NormalizeAndCheckURL(rawURL)
+	return err
 }
 
 // UsesRelayDriver reports whether this service attaches to an external or built-in relay/CDP endpoint.
@@ -2543,6 +2596,18 @@ func (s *RodService) ActByRef(ctx context.Context, targetID string, ref int, ref
 	}
 
 	return &ActResponse{Success: true}, nil
+}
+
+// PageScroll performs a relative page scroll using the existing scroll action
+// path so compatibility shims can reuse browser-native scrolling semantics.
+func (s *RodService) PageScroll(ctx context.Context, targetID string, x, y int) error {
+	_, err := s.Act(ctx, &ActRequest{
+		Kind:     "scroll",
+		TargetID: targetID,
+		X:        x,
+		Y:        y,
+	})
+	return err
 }
 
 // CountInteractiveElements returns the count of interactive elements on the page.

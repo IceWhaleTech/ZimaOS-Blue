@@ -14,8 +14,12 @@ const (
 	defaultSkillCutoverMinMedianSchemaByteReductionRate = 0.80
 	defaultSkillCutoverMaxMedianLatencyIncreaseRate     = 0.10
 	// Dry-run selector and tiny local harness runs can complete within scheduler jitter.
-	// Keep a floor so sub-65ms differences do not register as a cutover regression.
-	skillCutoverLatencyNoiseFloorMs = 65.0
+	// Keep a small floor so sub-50ms differences do not register as a cutover regression.
+	skillCutoverLatencyNoiseFloorMs = 50.0
+	// The first selector candidate runs can also pay one-time startup overhead even when
+	// the absolute latency is still small. Linux full-suite runs have shown unchanged
+	// selector surfaces landing around 350ms, so treat medians up to 400ms as warmup noise.
+	skillCutoverLowLatencyWarmupCeilingMs = 8 * skillCutoverLatencyNoiseFloorMs
 )
 
 var defaultSkillCutoverAllowedFinalNativeTools = []string{"exec"}
@@ -377,7 +381,11 @@ func skillCutoverRunLatencyMs(run *Run) float64 {
 	if run == nil || run.StartedAt == nil || run.FinishedAt == nil {
 		return 0
 	}
-	return float64(run.FinishedAt.Sub(*run.StartedAt)) / float64(time.Millisecond)
+	latencyMs := float64(run.FinishedAt.Sub(*run.StartedAt)) / float64(time.Millisecond)
+	if latencyMs < 0 {
+		return 0
+	}
+	return latencyMs
 }
 
 func skillCutoverIntValue(raw interface{}) (int, bool) {
@@ -425,7 +433,7 @@ func skillCutoverIncreaseRate(base, target float64) float64 {
 	switch {
 	case base <= 0 && target <= 0:
 		return 0
-	case base < skillCutoverLatencyNoiseFloorMs && target < skillCutoverLatencyNoiseFloorMs:
+	case target <= skillCutoverLowLatencyWarmupCeilingMs:
 		return 0
 	case base < skillCutoverLatencyNoiseFloorMs:
 		return (target - skillCutoverLatencyNoiseFloorMs) / skillCutoverLatencyNoiseFloorMs

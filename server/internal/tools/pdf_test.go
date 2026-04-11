@@ -15,12 +15,18 @@ import (
 )
 
 type stubPDFService struct {
-	info           pdfextract.DocumentInfo
-	extract        pdfextract.ExtractResult
-	lastInfoPath   string
-	lastExtractReq pdfextract.ExtractRequest
-	infoPaths      []string
-	extractReqs    []pdfextract.ExtractRequest
+	info            pdfextract.DocumentInfo
+	extract         pdfextract.ExtractResult
+	inspect         pdfextract.FormInspectResult
+	fill            pdfextract.FillFormResult
+	lastInfoPath    string
+	lastExtractReq  pdfextract.ExtractRequest
+	lastInspectPath string
+	lastFillReq     pdfextract.FillFormRequest
+	infoPaths       []string
+	extractReqs     []pdfextract.ExtractRequest
+	inspectPaths    []string
+	fillReqs        []pdfextract.FillFormRequest
 }
 
 func (s *stubPDFService) Info(ctx context.Context, path string) (pdfextract.DocumentInfo, error) {
@@ -43,6 +49,26 @@ func (s *stubPDFService) Extract(ctx context.Context, req pdfextract.ExtractRequ
 	return s.extract, nil
 }
 
+func (s *stubPDFService) InspectForm(ctx context.Context, path string) (pdfextract.FormInspectResult, error) {
+	_ = ctx
+	s.lastInspectPath = path
+	s.inspectPaths = append(s.inspectPaths, path)
+	if s.inspect.Document.Path == "" {
+		s.inspect.Document.Path = path
+	}
+	return s.inspect, nil
+}
+
+func (s *stubPDFService) FillForm(ctx context.Context, req pdfextract.FillFormRequest) (pdfextract.FillFormResult, error) {
+	_ = ctx
+	s.lastFillReq = req
+	s.fillReqs = append(s.fillReqs, req)
+	if s.fill.Document.Path == "" {
+		s.fill.Document.Path = req.Path
+	}
+	return s.fill, nil
+}
+
 func writeTestPDF(t *testing.T, name string, size int) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -55,6 +81,21 @@ func writeTestPDF(t *testing.T, name string, size int) string {
 		t.Fatalf("write test pdf: %v", err)
 	}
 	return path
+}
+
+func testIntValue(v interface{}) int {
+	switch typed := v.(type) {
+	case int:
+		return typed
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
 }
 
 func TestPDFToolInfoExecute(t *testing.T) {
@@ -74,6 +115,769 @@ func TestPDFToolInfoExecute(t *testing.T) {
 	}
 	if svc.lastInfoPath != path {
 		t.Fatalf("info path = %q, want %q", svc.lastInfoPath, path)
+	}
+}
+
+func TestPDFToolFillInspectExecute(t *testing.T) {
+	path := writeTestPDF(t, "form.pdf", 256)
+	svc := &stubPDFService{
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "form.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber:    1,
+					Name:          "full_name",
+					AlternateName: "Full Name",
+					Type:          "text",
+					Value:         "Alice",
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "fill", "path": path})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if got := payload["mode"]; got != "inspect" {
+		t.Fatalf("mode = %v, want inspect", got)
+	}
+	if got := payload["form_type"]; got != "acro_form" {
+		t.Fatalf("form_type = %v, want acro_form", got)
+	}
+	if got := testIntValue(payload["field_count"]); got != 1 {
+		t.Fatalf("field_count = %d, want 1", got)
+	}
+	if got := payload["degraded"]; got != false {
+		t.Fatalf("degraded = %v, want false", got)
+	}
+	if _, ok := payload["fallback_reason"]; ok {
+		t.Fatalf("fallback_reason = %#v, want absent", payload["fallback_reason"])
+	}
+	validation, ok := payload["validation"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("validation type = %T, want object", payload["validation"])
+	}
+	if got := validation["fillable"]; got != true {
+		t.Fatalf("fillable = %v, want true", got)
+	}
+	supportedTypes, ok := validation["supported_fill_types"].([]string)
+	if !ok {
+		t.Fatalf("supported_fill_types type = %T, want []string", validation["supported_fill_types"])
+	}
+	if !reflect.DeepEqual(supportedTypes, []string{"text", "combo", "list", "checkbox", "radio"}) {
+		t.Fatalf("supported_fill_types = %#v, want native supported fill types", supportedTypes)
+	}
+	unsupportedTypes, ok := validation["unsupported_field_types"].([]string)
+	if !ok {
+		t.Fatalf("unsupported_field_types type = %T, want []string", validation["unsupported_field_types"])
+	}
+	if len(unsupportedTypes) != 0 {
+		t.Fatalf("unsupported_field_types = %#v, want none", unsupportedTypes)
+	}
+	fields, ok := payload["fields"].([]pdfextract.FormField)
+	if !ok {
+		t.Fatalf("fields type = %T, want []pdf.FormField", payload["fields"])
+	}
+	if len(fields) != 1 || fields[0].Name != "full_name" {
+		t.Fatalf("fields = %#v, want full_name field", fields)
+	}
+	if svc.lastInspectPath != path {
+		t.Fatalf("inspect path = %q, want %q", svc.lastInspectPath, path)
+	}
+}
+
+func TestPDFToolFillInspectExecuteReportsUnsupportedFieldTypes(t *testing.T) {
+	path := writeTestPDF(t, "signature.pdf", 256)
+	svc := &stubPDFService{
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "signature.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "approval",
+					Type:       "signature",
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "fill", "path": path})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if got := payload["degraded"]; got != true {
+		t.Fatalf("degraded = %v, want true", got)
+	}
+	if got := payload["fallback_reason"]; got != "native_fill_unsupported_field_types" {
+		t.Fatalf("fallback_reason = %v, want native_fill_unsupported_field_types", got)
+	}
+	validation, ok := payload["validation"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("validation type = %T, want object", payload["validation"])
+	}
+	if got := validation["fillable"]; got != false {
+		t.Fatalf("fillable = %v, want false", got)
+	}
+	unsupportedTypes, ok := validation["unsupported_field_types"].([]string)
+	if !ok {
+		t.Fatalf("unsupported_field_types type = %T, want []string", validation["unsupported_field_types"])
+	}
+	if !reflect.DeepEqual(unsupportedTypes, []string{"signature"}) {
+		t.Fatalf("unsupported_field_types = %#v, want [signature]", unsupportedTypes)
+	}
+}
+
+func TestPDFToolFillInspectExecuteReportsUnsupportedFormType(t *testing.T) {
+	path := writeTestPDF(t, "xfa.pdf", 256)
+	svc := &stubPDFService{
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "xfa.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "xfa_full",
+			FieldCount: 0,
+		},
+	}
+	tool := NewPDFTool(svc)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{"action": "fill", "path": path})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if got := payload["degraded"]; got != true {
+		t.Fatalf("degraded = %v, want true", got)
+	}
+	if got := payload["fallback_reason"]; got != "native_fill_unsupported_form_type" {
+		t.Fatalf("fallback_reason = %v, want native_fill_unsupported_form_type", got)
+	}
+	validation, ok := payload["validation"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("validation type = %T, want object", payload["validation"])
+	}
+	if got := validation["fillable"]; got != false {
+		t.Fatalf("fillable = %v, want false", got)
+	}
+}
+
+func TestPDFToolFillWriteRejectsUnsupportedFormTypeBeforeNativeWrite(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "xfa.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "xfa.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "xfa_full",
+			FieldCount: 0,
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "xfa.pdf",
+		"output_path": "exports/xfa-filled.pdf",
+		"fields":      map[string]interface{}{"full_name": "Bob"},
+	})
+	if err == nil {
+		t.Fatal("expected unsupported form type write to fail")
+	}
+	if !strings.Contains(err.Error(), "xfa_full") {
+		t.Fatalf("error = %v, want form type in error", err)
+	}
+	if len(svc.fillReqs) != 0 {
+		t.Fatalf("fill requests = %#v, want none", svc.fillReqs)
+	}
+}
+
+func TestPDFToolFillWriteRejectsUnsupportedRequestedFieldTypeBeforeNativeWrite(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "signature.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "signature.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "approval",
+					Type:       "signature",
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "signature.pdf",
+		"output_path": "exports/signature-filled.pdf",
+		"fields":      map[string]interface{}{"approval": "signed"},
+	})
+	if err == nil {
+		t.Fatal("expected unsupported requested field type write to fail")
+	}
+	if !strings.Contains(err.Error(), "approval") || !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("error = %v, want field name and type", err)
+	}
+	if len(svc.fillReqs) != 0 {
+		t.Fatalf("fill requests = %#v, want none", svc.fillReqs)
+	}
+}
+
+func TestPDFToolFillWriteRejectsDocumentWithoutInteractiveFormBeforeNativeWrite(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "plain.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "plain.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "none",
+			FieldCount: 0,
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "plain.pdf",
+		"output_path": "exports/plain-filled.pdf",
+		"fields":      map[string]interface{}{"full_name": "Bob"},
+	})
+	if err == nil {
+		t.Fatal("expected plain pdf write to fail")
+	}
+	if !strings.Contains(err.Error(), "does not contain an interactive form") {
+		t.Fatalf("error = %v, want no-form guidance", err)
+	}
+	if len(svc.fillReqs) != 0 {
+		t.Fatalf("fill requests = %#v, want none", svc.fillReqs)
+	}
+}
+
+func TestPDFToolFillWriteExecute(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "form.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "form.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"full_name"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "full_name",
+					Type:       "text",
+					Value:      "Bob",
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "form.pdf",
+		"output_path": "exports/filled.pdf",
+		"fields":      map[string]interface{}{"full_name": "Bob"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "pdfium/webassembly" {
+		t.Fatalf("engine = %v, want pdfium/webassembly", got)
+	}
+	if got := payload["path"]; got != "exports/filled.pdf" {
+		t.Fatalf("path = %v, want exports/filled.pdf", got)
+	}
+	validation, ok := payload["validation"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected validation payload, got %#v", payload["validation"])
+	}
+	if got := validation["verified"]; got != true {
+		t.Fatalf("verified = %v, want true", got)
+	}
+	if svc.lastFillReq.Path != sourcePath {
+		t.Fatalf("fill path = %q, want %q", svc.lastFillReq.Path, sourcePath)
+	}
+	if !reflect.DeepEqual(svc.lastFillReq.Fields, map[string]string{"full_name": "Bob"}) {
+		t.Fatalf("fill fields = %#v, want full_name=Bob", svc.lastFillReq.Fields)
+	}
+	outputPath := filepath.Join(workspaceDir, "exports", "filled.pdf")
+	if svc.lastInspectPath != outputPath {
+		t.Fatalf("inspect path = %q, want %q", svc.lastInspectPath, outputPath)
+	}
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != "%PDF-1.4\nfilled" {
+		t.Fatalf("output bytes = %q, want filled pdf bytes", string(data))
+	}
+}
+
+func TestPDFToolFillRejectsWriteWithoutOutputPath(t *testing.T) {
+	path := writeTestPDF(t, "form.pdf", 256)
+	tool := NewPDFTool(&stubPDFService{})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "fill",
+		"path":   path,
+		"fields": map[string]interface{}{"full_name": "Bob"},
+	})
+	if err == nil {
+		t.Fatal("expected fill write without output_path to fail")
+	}
+	if !strings.Contains(err.Error(), "output_path is required") {
+		t.Fatalf("error = %v, want output_path guidance", err)
+	}
+}
+
+func TestPDFToolFillRejectsVerificationMismatch(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "form.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "form.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"full_name"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "full_name",
+					Type:       "text",
+					Value:      "Alice",
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "form.pdf",
+		"output_path": "exports/filled.pdf",
+		"fields":      map[string]interface{}{"full_name": "Bob"},
+	})
+	if err == nil {
+		t.Fatal("expected verification mismatch to fail")
+	}
+	if !strings.Contains(err.Error(), "verification") {
+		t.Fatalf("error = %v, want verification failure", err)
+	}
+}
+
+func TestPDFToolFillWriteExecuteForComboOptionLabel(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "combo.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "combo.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"favorite_color"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "combo-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "favorite_color",
+					Type:       "combo",
+					Value:      "Green",
+					Options: []pdfextract.FormFieldOption{
+						{Index: 0, Label: "Red"},
+						{Index: 1, Label: "Green", Selected: true},
+						{Index: 2, Label: "Blue"},
+					},
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "combo.pdf",
+		"output_path": "exports/combo-filled.pdf",
+		"fields":      map[string]interface{}{"favorite_color": "Green"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !reflect.DeepEqual(svc.lastFillReq.Fields, map[string]string{"favorite_color": "Green"}) {
+		t.Fatalf("fill fields = %#v, want favorite_color=Green", svc.lastFillReq.Fields)
+	}
+}
+
+func TestPDFToolFillWriteExecuteForComboOptionIndex(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "combo.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "combo.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"favorite_color"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "combo-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "favorite_color",
+					Type:       "combo",
+					Value:      "Green",
+					Options: []pdfextract.FormFieldOption{
+						{Index: 0, Label: "Red"},
+						{Index: 1, Label: "Green", Selected: true},
+						{Index: 2, Label: "Blue"},
+					},
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "combo.pdf",
+		"output_path": "exports/combo-filled.pdf",
+		"fields":      map[string]interface{}{"favorite_color": "1"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestPDFToolFillWriteExecuteForCheckboxTrue(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "checkbox.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "checkbox.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"subscribe"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "checkbox-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber:  1,
+					Name:        "subscribe",
+					Type:        "checkbox",
+					Checked:     true,
+					ExportValue: "Yes",
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "checkbox.pdf",
+		"output_path": "exports/checkbox-filled.pdf",
+		"fields":      map[string]interface{}{"subscribe": "true"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestPDFToolFillWriteExecuteForCheckboxFalseAlias(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "checkbox.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "checkbox.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"subscribe"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "checkbox-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber:  1,
+					Name:        "subscribe",
+					Type:        "checkbox",
+					Checked:     false,
+					ExportValue: "Yes",
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "checkbox.pdf",
+		"output_path": "exports/checkbox-filled.pdf",
+		"fields":      map[string]interface{}{"subscribe": "off"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestPDFToolFillWriteExecuteForListOptionLabel(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "list.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "list.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"priority"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "list-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "priority",
+					Type:       "list",
+					Value:      "High",
+					Options: []pdfextract.FormFieldOption{
+						{Index: 0, Label: "Low"},
+						{Index: 1, Label: "Medium"},
+						{Index: 2, Label: "High", Selected: true},
+					},
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "list.pdf",
+		"output_path": "exports/list-filled.pdf",
+		"fields":      map[string]interface{}{"priority": "High"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestPDFToolFillWriteExecuteForListOptionIndex(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "list.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "list.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"priority"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "list-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 1,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber: 1,
+					Name:       "priority",
+					Type:       "list",
+					Value:      "High",
+					Options: []pdfextract.FormFieldOption{
+						{Index: 0, Label: "Low"},
+						{Index: 1, Label: "Medium"},
+						{Index: 2, Label: "High", Selected: true},
+					},
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "list.pdf",
+		"output_path": "exports/list-filled.pdf",
+		"fields":      map[string]interface{}{"priority": "2"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestPDFToolFillWriteExecuteForRadioExportValue(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "radio.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "radio.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"contact_method"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "radio-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 2,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber:  1,
+					Name:        "contact_method",
+					Type:        "radio",
+					ExportValue: "Email",
+					Checked:     false,
+				},
+				{
+					PageNumber:  1,
+					Name:        "contact_method",
+					Type:        "radio",
+					ExportValue: "Phone",
+					Checked:     true,
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "radio.pdf",
+		"output_path": "exports/radio-filled.pdf",
+		"fields":      map[string]interface{}{"contact_method": "Phone"},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+}
+
+func TestPDFToolFillRejectsRadioVerificationMismatch(t *testing.T) {
+	workspaceDir := t.TempDir()
+	sourcePath := filepath.Join(workspaceDir, "radio.pdf")
+	if err := os.WriteFile(sourcePath, []byte("%PDF-1.4\nstub"), 0o644); err != nil {
+		t.Fatalf("write source pdf: %v", err)
+	}
+
+	svc := &stubPDFService{
+		fill: pdfextract.FillFormResult{
+			Document:      pdfextract.DocumentInfo{FileName: "radio.pdf", Engine: "pdfium/webassembly"},
+			UpdatedFields: []string{"contact_method"},
+			Bytes:         []byte("%PDF-1.4\nfilled"),
+		},
+		inspect: pdfextract.FormInspectResult{
+			Document:   pdfextract.DocumentInfo{FileName: "radio-filled.pdf", Engine: "pdfium/webassembly"},
+			FormType:   "acro_form",
+			FieldCount: 2,
+			Fields: []pdfextract.FormField{
+				{
+					PageNumber:  1,
+					Name:        "contact_method",
+					Type:        "radio",
+					ExportValue: "Email",
+					Checked:     true,
+				},
+				{
+					PageNumber:  1,
+					Name:        "contact_method",
+					Type:        "radio",
+					ExportValue: "Phone",
+					Checked:     false,
+				},
+			},
+		},
+	}
+	tool := NewPDFTool(svc)
+	tool.scope = newFSToolScope([]string{workspaceDir})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "fill",
+		"path":        "radio.pdf",
+		"output_path": "exports/radio-filled.pdf",
+		"fields":      map[string]interface{}{"contact_method": "Phone"},
+	})
+	if err == nil {
+		t.Fatal("expected radio verification mismatch to fail")
+	}
+	if !strings.Contains(err.Error(), "verification") {
+		t.Fatalf("error = %v, want verification failure", err)
 	}
 }
 

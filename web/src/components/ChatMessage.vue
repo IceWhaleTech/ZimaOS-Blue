@@ -1310,6 +1310,7 @@ const RESULT_CARD_TYPES = new Set([
   'media-generate',
   'ui-review',
   'deep-research',
+  'advisor',
   'analyze',
   'detection',
   'ui-review-progress',
@@ -1995,6 +1996,21 @@ const showProcessOnlyAssistantBubble = computed(
     (showProcessDetailsToggle.value ||
       showPersistedProcessPanel.value ||
       showAssistantStatusBar.value)
+)
+
+const showCollapsedProcessDetails = computed(
+  () =>
+    showProcessDetailsToggle.value &&
+    !showPersistedProcessPanel.value &&
+    !showStreamingProcessPanel.value
+)
+
+const showToggleOnlyAssistantBubble = computed(
+  () =>
+    showProcessOnlyAssistantBubble.value &&
+    assistantRenderBlocks.value.length === 0 &&
+    showCollapsedProcessDetails.value &&
+    !showAssistantStatusBar.value
 )
 
 function getCardUiStateKey(card: TypelessCard, fallbackKey: string): string {
@@ -3316,7 +3332,13 @@ async function handleMobileDelete() {
           <div v-else class="assistant-message-stack" @click="handleCopyClick">
             <div
               v-if="assistantRenderBlocks.length > 0 || showProcessOnlyAssistantBubble"
-              class="assistant-message assistant-message-shell chat-copy-bubble chat-assistant-bubble max-w-none px-4 py-3"
+              :class="[
+                'assistant-message assistant-message-shell chat-copy-bubble chat-assistant-bubble max-w-none px-4 py-3',
+                {
+                  'assistant-message-shell--details-collapsed': showCollapsedProcessDetails,
+                  'assistant-message-shell--toggle-only': showToggleOnlyAssistantBubble,
+                },
+              ]"
             >
               <div
                 v-for="block in assistantRenderBlocks"
@@ -3885,6 +3907,16 @@ async function handleMobileDelete() {
   display: flex;
   flex-direction: column;
   gap: 0.82rem;
+}
+
+.assistant-message-shell--details-collapsed .assistant-process-toggle-row {
+  margin-top: 0;
+}
+
+.assistant-message-shell--toggle-only {
+  gap: 0;
+  padding-top: 0.56rem;
+  padding-bottom: 0.56rem;
 }
 
 .assistant-message-block {

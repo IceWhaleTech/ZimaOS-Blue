@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildBuiltinSkillBackfill } from '@/i18n/builtin-skill-backfills'
+import builtinToolBackfills from '@/i18n/builtin-tool-backfills'
 import type { LocaleKey } from '@/i18n/locale-catalog'
 
 type LocaleMessages = Record<string, unknown>
@@ -48,6 +49,9 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
 const visibleBuiltinSkillLocaleCoverage = {
   'skills.catalog.ask.name': 'Ask',
   'skills.catalog.ask.description': 'Ask the user follow-up questions needed to continue the task',
+  'skills.catalog.advisor.name': 'Advisor',
+  'skills.catalog.advisor.description':
+    'Decision advisor for selection, replacement, migration, and best-practice questions.',
   'skills.catalog.calendar.name': 'Calendar',
   'skills.catalog.calendar.description': 'Create and manage calendar events',
   'skills.catalog.contacts.name': 'Contacts',
@@ -91,8 +95,11 @@ describe('skill locale labels', () => {
     for (const [modulePath, mod] of entries) {
       const locale = getLocaleCode(modulePath)
       const file = fileNameFromModulePath(modulePath)
-      const builtinSkillOverrides = buildBuiltinSkillBackfill(locale as LocaleKey, mod.default)
-      const messages = deepMergeMessages(mod.default, builtinSkillOverrides)
+      const builtinToolOverrides =
+        (builtinToolBackfills as Record<string, LocaleMessages>)[locale] || {}
+      const baseMessages = deepMergeMessages(mod.default, builtinToolOverrides)
+      const builtinSkillOverrides = buildBuiltinSkillBackfill(locale as LocaleKey, baseMessages)
+      const messages = deepMergeMessages(baseMessages, builtinSkillOverrides)
 
       for (const [path, englishValue] of Object.entries(visibleBuiltinSkillLocaleCoverage)) {
         const localizedValue = getPathValue(messages, path)

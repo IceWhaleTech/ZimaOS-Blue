@@ -31,7 +31,6 @@ export interface PresetQuestionAttachment {
   type: 'image' | 'file'
   name: string
   mime_type: string
-  // For demo purposes, we use a placeholder URL or generate simple content
   placeholder?: string
 }
 

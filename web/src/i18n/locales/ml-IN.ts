@@ -600,6 +600,7 @@ export default mergeHarnessLocale('ml-IN', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'പ്രവർത്തനം റദ്ദാക്കി',
     waitingThinking: 'ചിന്തിക്കുന്നു...',
+    providerAccelerationActive: 'നിലവിലെ പ്രൊവൈഡറിനായി അടുത്ത പ്രതികരണം ഓപ്റ്റിമൈസ് ചെയ്യുന്നു',
     awaitingConfirmation: 'തുടരാൻ നിങ്ങളുടെ സ്ഥിരീകരണം കാത്തിരിക്കുന്നു',
     streamConnecting: 'ബന്ധിപ്പിക്കുന്നു',
     streamStreaming: 'സൃഷ്ടിക്കുന്നു',
@@ -865,7 +866,8 @@ export default mergeHarnessLocale('ml-IN', {
     providerFailover: {
       eyebrow: 'ഹൈ അവൈലബിലിറ്റി സ്വിച്ച്',
       title: 'മറ്റൊരു ലഭ്യമായ റൂട്ടിലേക്ക് മാറി വീണ്ടും ശ്രമിക്കണോ?',
-      description: '{provider} ലെയുള്ള നിലവിലെ റൂട്ടിൽ നിന്ന് Blue മറ്റൊരു ലഭ്യമായ റൂട്ടിലേക്ക് മാറി വീണ്ടും ശ്രമിക്കുന്നതിന് മുമ്പ് നിങ്ങളുടെ സ്ഥിരീകരണം ആവശ്യമാണ്.',
+      description:
+        '{provider} ലെയുള്ള നിലവിലെ റൂട്ടിൽ നിന്ന് Blue മറ്റൊരു ലഭ്യമായ റൂട്ടിലേക്ക് മാറി വീണ്ടും ശ്രമിക്കുന്നതിന് മുമ്പ് നിങ്ങളുടെ സ്ഥിരീകരണം ആവശ്യമാണ്.',
       dismissAction: 'ഇപ്പോൾ വേണ്ട',
       manualAction: 'റൂട്ട് കൈമാറി തിരഞ്ഞെടുക്കുക',
       primaryAction: 'മാറി വീണ്ടും ശ്രമിക്കുക',
@@ -901,7 +903,8 @@ export default mergeHarnessLocale('ml-IN', {
     execDirectoryApprovalTimeout:
       'ഡയറക്ടറി അനുമതി സമയപരിധി കഴിഞ്ഞതിനാൽ കമാൻഡ് പ്രവർത്തനം തടയപ്പെട്ടു. ഡയറക്ടറി അനുമതിപ്പിച്ച് വീണ്ടും ശ്രമിക്കുക.',
     providerActive: 'ദാതാവ് സജീവവും തയ്യാറുമാണ്.',
-    providerNeedsAttention: 'പ്രൊവൈഡറിന് ശ്രദ്ധ ആവശ്യമാണ്. ക്രമീകരണങ്ങൾ പരിശോധിക്കാൻ ക്ലിക്ക് ചെയ്യുക.',
+    providerNeedsAttention:
+      'പ്രൊവൈഡറിന് ശ്രദ്ധ ആവശ്യമാണ്. ക്രമീകരണങ്ങൾ പരിശോധിക്കാൻ ക്ലിക്ക് ചെയ്യുക.',
     providerPending: 'ദാതാവിൻ്റെ നില പരിശോധിക്കുന്നു...',
     trialQuota: {
       remaining: '{tokens} ടോക്കണുകൾ ശേഷിച്ചിരിക്കുന്നു',

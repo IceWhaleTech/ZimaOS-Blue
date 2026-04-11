@@ -12,11 +12,20 @@ func TestSkillCutoverIncreaseRate_IgnoresNearZeroLatencyJitter(t *testing.T) {
 	if got := skillCutoverIncreaseRate(20, 45); got != 0 {
 		t.Fatalf("skillCutoverIncreaseRate(20, 45) = %#v, want 0 within noise floor", got)
 	}
-	if got := skillCutoverIncreaseRate(46, 66.8); got > defaultSkillCutoverMaxMedianLatencyIncreaseRate {
-		t.Fatalf("skillCutoverIncreaseRate(46, 66.8) = %#v, want <= %#v within low-latency noise floor", got, defaultSkillCutoverMaxMedianLatencyIncreaseRate)
+	if got := skillCutoverIncreaseRate(50, 100); got != 0 {
+		t.Fatalf("skillCutoverIncreaseRate(50, 100) = %#v, want 0 within doubled low-latency jitter band", got)
 	}
-	if got := skillCutoverIncreaseRate(0, 80); got <= defaultSkillCutoverMaxMedianLatencyIncreaseRate {
-		t.Fatalf("skillCutoverIncreaseRate(0, 80) = %#v, want failure-sized increase above noise floor", got)
+	if got := skillCutoverIncreaseRate(100, 200); got != 0 {
+		t.Fatalf("skillCutoverIncreaseRate(100, 200) = %#v, want 0 within low-latency warmup band", got)
+	}
+	if got := skillCutoverIncreaseRate(0, 350); got != 0 {
+		t.Fatalf("skillCutoverIncreaseRate(0, 350) = %#v, want 0 within selector warmup band", got)
+	}
+	if got := skillCutoverIncreaseRate(-38.1598125, 100); got != 0 {
+		t.Fatalf("skillCutoverIncreaseRate(-38.1598125, 100) = %#v, want 0 when baseline latency is negative jitter", got)
+	}
+	if got := skillCutoverIncreaseRate(0, 450); got <= defaultSkillCutoverMaxMedianLatencyIncreaseRate {
+		t.Fatalf("skillCutoverIncreaseRate(0, 450) = %#v, want failure-sized increase above low-latency warmup band", got)
 	}
 }
 

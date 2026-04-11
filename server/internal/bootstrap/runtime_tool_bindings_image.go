@@ -25,9 +25,6 @@ func bindRuntimeImageTools(
 		tools.RegisterImageTool(registry, uiReviewer, generate, lookup)
 	}
 	pptSvc := newPPTService(mediaManager, mediaStorage, uiReviewer, newProviderRegistryLLMCaller(llmRegistry))
-	if registry != nil {
-		tools.RegisterPPTTool(registry, pptSvc)
-	}
 	if image == nil && registry != nil {
 		if registered, ok := registry.Get("image").(*tools.ImageTool); ok {
 			image = registered

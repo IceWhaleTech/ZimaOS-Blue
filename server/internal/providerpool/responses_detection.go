@@ -11,6 +11,9 @@ func UsesResponsesIntegration(provider *Provider) bool {
 	if provider == nil {
 		return false
 	}
+	if provider.APIFormat == APIFormatResponses || provider.DetectedFormat == APIFormatResponses {
+		return true
+	}
 	if provider.OAuth != nil && strings.EqualFold(strings.TrimSpace(provider.OAuth.ProviderType), "codex") {
 		return true
 	}
@@ -19,7 +22,10 @@ func UsesResponsesIntegration(provider *Provider) bool {
 	}
 	return isCodexResponsesIntegrationBaseURL(provider.BaseURL) ||
 		isCodexResponsesIntegrationBaseURL(provider.EffectiveBaseURL()) ||
-		isCodexResponsesIntegrationBaseURL(provider.DetectedEndpoint)
+		isCodexResponsesIntegrationBaseURL(provider.DetectedEndpoint) ||
+		isResponsesEndpointBaseURL(provider.BaseURL) ||
+		isResponsesEndpointBaseURL(provider.EffectiveBaseURL()) ||
+		isResponsesEndpointBaseURL(provider.DetectedEndpoint)
 }
 
 func isCodexResponsesIntegrationBaseURL(raw string) bool {

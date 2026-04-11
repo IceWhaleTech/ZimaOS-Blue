@@ -1606,6 +1606,9 @@ func (e *Executor) parseLooseArgs(name, raw string) (map[string]interface{}, boo
 	if unquoted, ok := parseJSONString(raw); ok {
 		raw = strings.TrimSpace(unquoted)
 	}
+	if single, ok := parseSingleStringJSONArray(raw); ok {
+		raw = single
+	}
 	if raw == "" {
 		return nil, false
 	}
@@ -1623,6 +1626,18 @@ func parseJSONString(raw string) (string, bool) {
 		return "", false
 	}
 	return s, true
+}
+
+func parseSingleStringJSONArray(raw string) (string, bool) {
+	var values []string
+	if json.Unmarshal([]byte(raw), &values) != nil || len(values) != 1 {
+		return "", false
+	}
+	value := strings.TrimSpace(values[0])
+	if value == "" {
+		return "", false
+	}
+	return value, true
 }
 
 func (e *Executor) inferSingleStringArgKey(name string) string {

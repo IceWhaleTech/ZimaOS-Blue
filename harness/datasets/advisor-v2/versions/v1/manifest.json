@@ -1,0 +1,146 @@
+{
+  "dataset": {
+    "name": "advisor-v2",
+    "subject": "advisor_v2"
+  },
+  "defaults": {
+    "run_kind": "research",
+    "profile": "advisor-v2",
+    "scheduler": {
+      "max_concurrency": 2,
+      "max_attempts": 1,
+      "retry_backoff": 5000000000
+    },
+    "scoring": {
+      "mode": "hybrid",
+      "rule_profile": "advisor-v2",
+      "judge_model": "claude-sonnet-4-6",
+      "pass_threshold": 0.7
+    }
+  },
+  "items": [
+    {
+      "id": "advisor_language_scorecard",
+      "run_kind": "research",
+      "profile": "advisor-v2",
+      "input": {
+        "goal": "Go vs Python vs Node for backend services",
+        "mode": "advisor",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed"
+      },
+      "metadata": {
+        "mode": "advisor",
+        "question": "Go vs Python vs Node for backend services",
+        "category": "language",
+        "decision_mode": "compare",
+        "candidates": ["Go", "Python", "Node"],
+        "output": "scorecard",
+        "grounding": "auto",
+        "locale": "en-US",
+        "critical": true
+      }
+    },
+    {
+      "id": "advisor_orm_scorecard",
+      "run_kind": "research",
+      "profile": "advisor-v2",
+      "input": {
+        "goal": "zorm vs gorm vs xorm",
+        "mode": "advisor",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed"
+      },
+      "metadata": {
+        "mode": "advisor",
+        "question": "zorm vs gorm vs xorm",
+        "category": "library",
+        "decision_mode": "compare",
+        "candidates": ["zorm", "gorm", "xorm"],
+        "output": "scorecard",
+        "grounding": "auto",
+        "locale": "en-US"
+      }
+    },
+    {
+      "id": "advisor_migration_decision_pack_deep",
+      "run_kind": "research",
+      "profile": "advisor-v2",
+      "input": {
+        "goal": "Should we replace Python with Go?",
+        "mode": "advisor",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed"
+      },
+      "metadata": {
+        "mode": "advisor",
+        "question": "Should we replace Python with Go?",
+        "category": "migration",
+        "decision_mode": "replace",
+        "candidates": ["Go", "Python"],
+        "context": {
+          "current_solution": "python",
+          "team_size": "6",
+          "data_scale": "medium",
+          "deployment": "k8s"
+        },
+        "depth": "deep",
+        "output": "decision_pack",
+        "grounding": "auto",
+        "locale": "en-US",
+        "critical": true
+      }
+    },
+    {
+      "id": "advisor_process_best_practice",
+      "run_kind": "research",
+      "profile": "advisor-v2",
+      "input": {
+        "goal": "Should we adopt TDD and DDD?",
+        "mode": "advisor",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed"
+      },
+      "metadata": {
+        "mode": "advisor",
+        "question": "Should we adopt TDD and DDD?",
+        "category": "process",
+        "decision_mode": "best_practice",
+        "output": "decision_pack",
+        "grounding": "none",
+        "locale": "en-US"
+      }
+    },
+    {
+      "id": "advisor_office_replacement",
+      "run_kind": "research",
+      "profile": "advisor-v2",
+      "input": {
+        "goal": "OnlyOffice vs LibreOffice vs OpenOffice",
+        "mode": "advisor",
+        "lang": "en-US"
+      },
+      "expected": {
+        "status": "completed"
+      },
+      "metadata": {
+        "mode": "advisor",
+        "question": "OnlyOffice vs LibreOffice vs OpenOffice",
+        "category": "library",
+        "decision_mode": "compare",
+        "candidates": ["OnlyOffice", "LibreOffice", "OpenOffice"],
+        "output": "scorecard",
+        "grounding": "auto",
+        "locale": "en-US"
+      }
+    }
+  ]
+}

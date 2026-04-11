@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness"
-	harnessdrivers "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/harness/drivers"
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -39,12 +38,9 @@ func registerChatResearchRuntime(controller *harness.Controller, registry *tools
 	configureResearchRuntimeDriver(binding.research.driver, registry)
 	registerResearchRuntime(controller, binding.research)
 	tools.RegisterResearchTools(registry, binding.toolAdapter)
-}
-
-func configureResearchRuntimeDriver(driver *harnessdrivers.ResearchDriver, registry *tools.Registry) {
-	if driver == nil || registry == nil {
-		return
+	if registry != nil && binding.toolAdapter != nil && binding.toolAdapter.manager != nil {
+		if advisorTool := tools.GetAdvisorTool(registry); advisorTool != nil {
+			advisorTool.SetResearchService(binding.toolAdapter)
+		}
 	}
-	driver.SetAnalyzeExecutor(tools.GetAnalyzeTool(registry))
-	driver.SetUIReviewExecutor(tools.GetUIReviewerTool(registry))
 }

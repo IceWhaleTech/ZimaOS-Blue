@@ -603,6 +603,7 @@ export default mergeHarnessLocale('it-IT', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Attività annullata',
     waitingThinking: 'Sto pensando...',
+    providerAccelerationActive: 'Ottimizzazione della prossima risposta per il provider corrente',
     awaitingConfirmation: 'In attesa della tua conferma per continuare',
     streamConnecting: 'Connessione',
     streamStreaming: 'Generazione',
@@ -633,8 +634,10 @@ export default mergeHarnessLocale('it-IT', {
     taskFailedDuringPlanning: "L'attività non è riuscita durante la pianificazione",
     taskFailedDuringConfirmation: "L'attività non è riuscita durante la conferma",
     taskFailedWhileRevisingPlan: "L'attività non è riuscita durante la revisione del piano",
-    taskFailedWhileUpdatingRuntimeState: "L'attività non è riuscita durante l'aggiornamento dello stato runtime",
-    verificationFailedRecoveryFailed: 'La verifica non è riuscita e il recupero non è andato a buon fine',
+    taskFailedWhileUpdatingRuntimeState:
+      "L'attività non è riuscita durante l'aggiornamento dello stato runtime",
+    verificationFailedRecoveryFailed:
+      'La verifica non è riuscita e il recupero non è andato a buon fine',
     taskFailureGroundedVerificationFailed: 'La verifica del fondamento non è riuscita',
     taskWaitingForApproval: 'In attesa della tua approvazione',
     taskWaitingForAnswer: 'In attesa della tua risposta',
@@ -864,7 +867,8 @@ export default mergeHarnessLocale('it-IT', {
     providerFailover: {
       eyebrow: 'Commutazione ad alta disponibilità',
       title: 'Passare a un altro percorso disponibile e riprovare?',
-      description: 'Il percorso attuale su {provider} richiede la tua conferma prima che Blue passi a un altro percorso disponibile e riprovi.',
+      description:
+        'Il percorso attuale su {provider} richiede la tua conferma prima che Blue passi a un altro percorso disponibile e riprovi.',
       dismissAction: 'Non ora',
       manualAction: 'Scegli il percorso manualmente',
       primaryAction: 'Cambia e riprova',
@@ -899,7 +903,8 @@ export default mergeHarnessLocale('it-IT', {
     execDirectoryApprovalTimeout:
       "L'esecuzione del comando è stata bloccata perché l'approvazione della directory è scaduta. Approva la directory e riprova.",
     providerActive: 'Il provider è attivo e pronto.',
-    providerNeedsAttention: 'Il provider richiede attenzione. Fai clic per controllare le impostazioni.',
+    providerNeedsAttention:
+      'Il provider richiede attenzione. Fai clic per controllare le impostazioni.',
     providerPending: 'Stato del provider in verifica...',
     trialQuota: {
       remaining: '{tokens} token rimanenti',

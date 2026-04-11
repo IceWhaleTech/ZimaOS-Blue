@@ -45,12 +45,23 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
 }
 
 const visibleBuiltinToolLocaleCoverage = {
+  'tools.names.advisor': 'Advisor',
   'tools.names.find': 'Find',
   'tools.names.ls': 'List',
   'tools.names.tool_search': 'Tool Search',
+  'tools.descriptions.advisor':
+    'Decision advisor for selection, replacement, migration, and best-practice questions.',
+  'tools.descriptions.docx':
+    'Read, create, edit, template, or validate native .docx workspace files with native-first OOXML handling and explicit degradation telemetry.',
   'tools.descriptions.find': 'Find files and directories by glob pattern',
   'tools.descriptions.ls': 'List files and directories',
+  'tools.descriptions.pdf':
+    'Read PDF metadata, extract text from local/remote PDFs, inspect interactive form fields, or create/reformat native PDF workspace files with explicit page/layout telemetry.',
+  'tools.descriptions.pptx':
+    'Read, create, or edit native .pptx workspace files with native-first OOXML packaging and explicit degradation telemetry.',
   'tools.descriptions.tool_search': 'Search tools, skills, and agents by capability',
+  'tools.descriptions.xlsx':
+    'Read, create, edit, fix, or validate native .xlsx workspace files with native-first OOXML handling and explicit degradation telemetry.',
 } as const
 
 describe('tool locale labels', () => {

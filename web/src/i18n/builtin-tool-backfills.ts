@@ -1,4 +1,5 @@
 import type { LocaleKey } from './locale-catalog'
+import nativeDocumentToolBackfills from './native-document-tool-backfills'
 
 type LocaleLeaf = string | number | boolean | null
 type LocaleNode = { [key: string]: LocaleLeaf | LocaleNode }
@@ -1442,11 +1443,155 @@ const convertLocaleTerms: Record<
   },
 }
 
+const advisorLocaleTerms: Record<
+  LocaleKey,
+  {
+    name: string
+    description: string
+  }
+> = {
+  'ca-ES': {
+    name: 'Assessor',
+    description:
+      'Assessor de decisions per a preguntes de selecció, substitució, migració i bones pràctiques.',
+  },
+  'cs-CZ': {
+    name: 'Poradce',
+    description:
+      'Poradce pro rozhodování u otázek výběru, náhrady, migrace a osvědčených postupů.',
+  },
+  'da-DK': {
+    name: 'Rådgiver',
+    description:
+      'Beslutningsrådgiver til spørgsmål om valg, udskiftning, migrering og bedste praksis.',
+  },
+  'de-DE': {
+    name: 'Berater',
+    description:
+      'Entscheidungsberater für Fragen zu Auswahl, Ersatz, Migration und Best Practices.',
+  },
+  'el-GR': {
+    name: 'Σύμβουλος',
+    description:
+      'Σύμβουλος αποφάσεων για ερωτήσεις επιλογής, αντικατάστασης, μετεγκατάστασης και βέλτιστων πρακτικών.',
+  },
+  'en-GB': {
+    name: 'Advisor',
+    description:
+      'Decision advisor for selection, replacement, migration, and best-practice questions.',
+  },
+  'en-US': {
+    name: 'Advisor',
+    description:
+      'Decision advisor for selection, replacement, migration, and best-practice questions.',
+  },
+  'es-ES': {
+    name: 'Asesor',
+    description:
+      'Asesor de decisiones para preguntas de selección, reemplazo, migración y buenas prácticas.',
+  },
+  'fr-FR': {
+    name: 'Conseiller',
+    description:
+      'Conseiller décisionnel pour les questions de sélection, de remplacement, de migration et de bonnes pratiques.',
+  },
+  'ga-IE': {
+    name: 'Comhairleoir',
+    description:
+      'Comhairleoir cinntí do cheisteanna roghnúcháin, athsholáthair, imirce agus dea-chleachtais.',
+  },
+  'hr-HR': {
+    name: 'Savjetnik',
+    description:
+      'Savjetnik za odluke za pitanja odabira, zamjene, migracije i dobre prakse.',
+  },
+  'hu-HU': {
+    name: 'Tanácsadó',
+    description:
+      'Döntési tanácsadó kiválasztási, lecserélési, migrációs és bevált gyakorlatokkal kapcsolatos kérdésekhez.',
+  },
+  'it-IT': {
+    name: 'Consulente',
+    description:
+      'Consulente decisionale per domande su selezione, sostituzione, migrazione e buone pratiche.',
+  },
+  'ja-JP': {
+    name: 'アドバイザー',
+    description:
+      '選定、置き換え、移行、ベストプラクティスに関する判断を支援するアドバイザー。',
+  },
+  'ko-KR': {
+    name: '어드바이저',
+    description:
+      '선정, 대체, 마이그레이션, 모범 사례 관련 질문을 위한 의사결정 어드바이저.',
+  },
+  'ml-IN': {
+    name: 'ഉപദേശകൻ',
+    description:
+      'തിരഞ്ഞെടുപ്പ്, പകരംവയ്‌പ്പ്, മൈഗ്രേഷൻ, മികച്ച പ്രാക്ടീസ് ചോദ്യങ്ങൾക്കായുള്ള തീരുമാന ഉപദേശകൻ.',
+  },
+  'nb-NO': {
+    name: 'Rådgiver',
+    description:
+      'Beslutningsrådgiver for spørsmål om valg, utskifting, migrering og beste praksis.',
+  },
+  'nl-NL': {
+    name: 'Adviseur',
+    description:
+      'Beslissingsadviseur voor vragen over selectie, vervanging, migratie en best practices.',
+  },
+  'pl-PL': {
+    name: 'Doradca',
+    description:
+      'Doradca decyzyjny do pytań o wybór, zastąpienie, migrację i dobre praktyki.',
+  },
+  'pt-BR': {
+    name: 'Consultor',
+    description:
+      'Consultor de decisão para perguntas sobre seleção, substituição, migração e boas práticas.',
+  },
+  'pt-PT': {
+    name: 'Consultor',
+    description:
+      'Consultor de decisão para questões de seleção, substituição, migração e boas práticas.',
+  },
+  'ro-RO': {
+    name: 'Consilier',
+    description:
+      'Consilier pentru decizii privind întrebări de selecție, înlocuire, migrare și bune practici.',
+  },
+  'ru-RU': {
+    name: 'Советник',
+    description:
+      'Помощник по принятию решений для вопросов выбора, замены, миграции и лучших практик.',
+  },
+  'sk-SK': {
+    name: 'Poradca',
+    description:
+      'Rozhodovací poradca pre otázky výberu, náhrady, migrácie a osvedčených postupov.',
+  },
+  'sv-SE': {
+    name: 'Rådgivare',
+    description:
+      'Beslutsrådgivare för frågor om val, ersättning, migrering och bästa praxis.',
+  },
+  'zh-CN': {
+    name: '顾问',
+    description: '用于选型、替换、迁移和最佳实践问题的决策顾问。',
+  },
+  'zh-TW': {
+    name: '顧問',
+    description: '用於選型、替換、遷移與最佳實務問題的決策顧問。',
+  },
+}
+
 const builtinToolBackfills = Object.fromEntries(
   Object.entries(visibleBuiltinToolLocaleTerms).map(([locale, terms]) => {
     const fileDeleteTerms = fileDeleteLocaleTerms[locale as LocaleKey]
     const configTerms = configLocaleTerms[locale as LocaleKey]
     const convertTerms = convertLocaleTerms[locale as LocaleKey]
+    const advisorTerms = advisorLocaleTerms[locale as LocaleKey]
+    const nativeDocumentTerms = nativeDocumentToolBackfills[locale as LocaleKey]
 
     return [
       locale,
@@ -1457,10 +1602,12 @@ const builtinToolBackfills = Object.fromEntries(
             ls: terms.lsName,
             tool_search: terms.toolSearchName,
             agents_list: terms.agentsListName,
+            advisor: advisorTerms.name,
             bash: terms.bashName,
             canvas: terms.canvasName,
             config: configTerms.name,
             convert: convertTerms.name,
+            docx: 'DOCX',
             edit: terms.editName,
             file_delete: fileDeleteTerms.name,
             gateway: terms.gatewayName,
@@ -1469,18 +1616,22 @@ const builtinToolBackfills = Object.fromEntries(
             nodes: terms.nodesName,
             office: terms.officeName,
             pdf: terms.pdfName,
+            pptx: 'PPTX',
             subagents: terms.subagentsName,
             tts: terms.ttsName,
+            xlsx: 'XLSX',
           },
           descriptions: {
             find: terms.findDescription,
             ls: terms.lsDescription,
             tool_search: terms.toolSearchDescription,
             agents_list: terms.agentsListDescription,
+            advisor: advisorTerms.description,
             bash: terms.bashDescription,
             canvas: terms.canvasDescription,
             config: configTerms.description,
             convert: convertTerms.description,
+            docx: nativeDocumentTerms.docxDescription,
             edit: terms.editDescription,
             file_delete: fileDeleteTerms.description,
             gateway: terms.gatewayDescription,
@@ -1488,11 +1639,13 @@ const builtinToolBackfills = Object.fromEntries(
             image: terms.imageDescription,
             nodes: terms.nodesDescription,
             office: terms.officeDescription,
-            pdf: terms.pdfDescription,
+            pdf: nativeDocumentTerms.pdfDescription,
+            pptx: nativeDocumentTerms.pptxDescription,
             subagents: terms.subagentsDescription,
             tts: terms.ttsDescription,
             mcp: terms.mcpDescription,
             memory: terms.memoryDescription,
+            xlsx: nativeDocumentTerms.xlsxDescription,
           },
         },
       },

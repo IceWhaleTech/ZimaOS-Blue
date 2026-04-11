@@ -515,8 +515,16 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 	if b.toolRegistry.Get("write") != nil || b.toolRegistry.Get("file_write") != nil {
 		sb.WriteString("<write_guide>For large file writes, prefer write_begin + repeated write_chunk + write_commit. If you must use write directly, never send one huge write payload: write the first chunk, then continue with smaller chunks using append=true.</write_guide>")
 	}
-	if b.toolRegistry.Get("office") != nil {
-		sb.WriteString("<office_guide>For polished .xlsx or .docx artifacts, prefer office over raw file_write so styles, layout, and typography are generated natively.</office_guide>")
+	nativeDocumentTools := make([]string, 0, 3)
+	for _, name := range []string{"docx", "xlsx", "pptx"} {
+		if b.toolRegistry.Get(name) != nil {
+			nativeDocumentTools = append(nativeDocumentTools, name)
+		}
+	}
+	if len(nativeDocumentTools) > 0 {
+		sb.WriteString("<document_guide>For polished workspace artifacts, prefer native document tools such as ")
+		sb.WriteString(strings.Join(nativeDocumentTools, "/"))
+		sb.WriteString(" over raw file_write so structure, layout, and formatting are preserved.</document_guide>")
 	}
 	if b.toolRegistry.Get("subagents") != nil {
 		sb.WriteString("<subagent_guide>Use subagents only for bounded independent work such as research, isolated implementation slices, or independent verification. After research, synthesize the findings yourself before delegating follow-up work. Never send overlapping writers to the same file set.</subagent_guide>")
@@ -849,7 +857,7 @@ func (b *SystemPromptBuilder) buildSkillsSection() string {
 
 	var sb strings.Builder
 	sb.WriteString("<skills>Invoke through the Blue CLI. Built-in skills usually use `blue <cmd> ...` (for example `blue web_query input=\"latest news\"` and `blue deep_research query=\"latest memory architecture research\"`). Command groups may use subcommands such as `blue media generate ...` and `blue media status ...`. External CLIs documented as skills should be run via `blue exec command='...'`, not by inventing new native subcommands. Disabled placeholders such as `timer`, `datetime`, `unit_converter`, and deprecated `search` are not live runtime skills. For reminders, prefer `blue reminder add message=\"...\" time=...` or repeating `blue reminder add message=\"...\" every=2m until=\"2026-03-17 22:00\"` (or call tool `reminder` directly); do not use `blue reminder --help` as an execution step. Use `scheduler` for cron-style automation jobs, not ordinary user reminders. ")
-	sb.WriteString("Routing: ask→ask, normal web discovery/read→web_query, login/JS/forms/screenshots/live interaction→browser, UI review→ui_reviewer, PPT/slide visuals→ppt, image generation→generate_image, image OCR/text recognition→ocr, video generation→mediagen (`blue media generate` / `blue media status`). Prefer `generate_image` for direct image creation and filename-aware saves, and use `ocr` when the job is reading text from an image rather than creating one. Bounded synthesis/report generation→analyze, citation-first or multi-source research→deep_research, reminder/alert→reminder, scheduler→scheduler, admin→config.{domain}.{op}. When exposed, `web_search`, `web_fetch`, and `web_read` are compatibility actions behind unified `web_query`, not separate skills. If web_query reports login_wall, challenge, browser_required, or next_action=retry_browser, switch to browser. Final web fallback→browser. ")
+	sb.WriteString("Routing: ask→ask, normal web discovery/read→web_query, login/JS/forms/screenshots/live interaction→browser, UI review→ui_reviewer, PPT/slide visuals→generate_image (use `action=ppt` when slide-asset mode is needed), image generation→generate_image, image OCR/text recognition→ocr, video generation→mediagen (`blue media generate` / `blue media status`). Prefer `generate_image` for direct image creation and filename-aware saves, and use `ocr` when the job is reading text from an image rather than creating one. Bounded synthesis/report generation→analyze, citation-first or multi-source research→deep_research, reminder/alert→reminder, scheduler→scheduler, admin→config.{domain}.{op}. When exposed, `web_search`, `web_fetch`, and `web_read` are compatibility actions behind unified `web_query`, not separate skills. If web_query reports login_wall, challenge, browser_required, or next_action=retry_browser, switch to browser. Final web fallback→browser. ")
 	sb.WriteString("Use progressive skill selection: prefer routed/pinned commands first, then inspect likely SKILL.md files on demand. ")
 	sb.WriteString("More skills may exist in workspace `.agents/skills/` or `.claude/skills/`, plus user defaults `~/.agents/skills/` and `~/.claude/skills/`. Core built-in skills are preloaded below.")
 

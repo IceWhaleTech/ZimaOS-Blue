@@ -20,6 +20,10 @@ type runtimeAnalyzeSkillTarget interface {
 	SetExecutor(e builtin.AnalyzeExecutor)
 }
 
+type runtimeAdvisorSkillTarget interface {
+	SetExecutor(e builtin.AdvisorExecutor)
+}
+
 type runtimeEmailSkillTarget interface {
 	SetExecutor(e builtin.EmailExecutor)
 }

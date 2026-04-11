@@ -38,6 +38,7 @@ export type TypelessCardType =
   | 'deep-research-timeline'
   | 'deep-research-progress'
   | 'deep-research-event'
+  | 'advisor'
   | 'ui-review'
   | 'ui-review-progress'
   | 'media-generate'
@@ -893,6 +894,68 @@ export interface TypelessCardAnalyze extends TypelessCardBase {
   analysis?: Record<string, unknown>
 }
 
+export interface AdvisorCandidateItem {
+  name?: string
+  rank?: number
+  total_score?: number
+  verdict?: string
+  strengths?: string[]
+  concerns?: string[]
+  best_fit_for?: string[]
+}
+
+export interface AdvisorWeightItem {
+  criterion?: string
+  label?: string
+  weight?: number
+  source?: 'default' | 'user' | string
+}
+
+export interface AdvisorEvidenceItem {
+  id?: string
+  label?: string
+  url?: string
+  source?: string
+  kind?: string
+  note?: string
+  domain?: string
+  candidate?: string
+  criterion?: string
+  quality?: 'official' | 'repo' | 'release' | 'vendor' | 'ecosystem' | string
+  stance?: 'support' | 'conflict' | 'context' | string
+}
+
+export interface AdvisorSecondOpinion {
+  used?: boolean
+  summary?: string
+  recommendation?: string
+  confidence?: number
+  note?: string
+}
+
+export interface TypelessCardAdvisor extends TypelessCardBase {
+  type: 'advisor'
+  title?: string
+  status?: string
+  mode?: string
+  recommendation?: string
+  why?: string[]
+  winner?: string
+  pack_id?: string
+  candidates?: AdvisorCandidateItem[]
+  weights?: AdvisorWeightItem[]
+  tradeoffs?: string[]
+  risks?: string[]
+  best_practices?: string[]
+  alternatives?: string[]
+  confidence?: number
+  evidence_count?: number
+  evidence?: AdvisorEvidenceItem[]
+  progress?: number
+  job_id?: string
+  second_opinion?: AdvisorSecondOpinion | string | boolean | null
+}
+
 // Analyze Progress card — streaming step-by-step progress during analysis
 export interface AnalyzeProgressStep {
   step: string
@@ -1100,6 +1163,7 @@ export type TypelessCard =
   | TypelessCardDeepResearchTimeline
   | TypelessCardDeepResearchProgress
   | TypelessCardDeepResearchEvent
+  | TypelessCardAdvisor
   | TypelessCardUIReview
   | TypelessCardUIReviewProgress
   | TypelessCardMediaGenerate

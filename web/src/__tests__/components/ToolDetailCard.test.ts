@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
+
 import ToolDetailCard from '@/components/ToolDetailCard.vue'
 import { i18n } from '@/i18n'
 import type { ToolResultItem } from '@/stores/chat'
@@ -18,6 +20,36 @@ function makeItem(overrides: Partial<ToolResultItem> = {}): ToolResultItem {
     timestamp: Date.now(),
     ...overrides,
   }
+}
+
+function createTestI18n() {
+  return createI18n({
+    legacy: false,
+    locale: 'zh-CN',
+    fallbackLocale: 'en-US',
+    messages: {
+      'en-US': {
+        tools: {
+          params: {
+            query: 'Query',
+          },
+        },
+        chat: {
+          taskStageCompleted: 'Completed',
+        },
+      },
+      'zh-CN': {
+        tools: {
+          params: {
+            query: '查询',
+          },
+        },
+        chat: {
+          taskStageCompleted: '已完成',
+        },
+      },
+    },
+  })
 }
 
 describe('ToolDetailCard', () => {
@@ -55,5 +87,21 @@ describe('ToolDetailCard', () => {
 
     expect(wrapper.find('.tool-detail-card__command-label').text()).toBe('$')
     expect(wrapper.find('.tool-detail-card__command-text').text()).toBe('npm test')
+  })
+
+  it('localizes known status tokens instead of rendering raw english text', () => {
+    const wrapper = mount(ToolDetailCard, {
+      props: {
+        item: makeItem({
+          status: 'completed',
+        }),
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已完成')
+    expect(wrapper.text()).not.toContain('completed')
   })
 })

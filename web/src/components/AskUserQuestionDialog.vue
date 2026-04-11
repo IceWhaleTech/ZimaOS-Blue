@@ -238,6 +238,8 @@ const currentQuestionAnswered = computed(() => {
   return isAnswerComplete(answers.value[currentQuestion.value.id], currentQuestion.value)
 })
 
+const autoDismissEnabled = computed(() => !question.value?.require_explicit_answer)
+
 const canSubmit = computed(() => {
   if (!question.value) return false
   // For single question, check current
@@ -264,7 +266,11 @@ watch(question, (q) => {
     clearInterval(countdownTimer)
     countdownTimer = null
   }
+  remainingSeconds.value = 0
   if (q) {
+    if (!autoDismissEnabled.value) {
+      return
+    }
     const updateRemaining = () => {
       const ms = q.expires_at - Date.now()
       remainingSeconds.value = Math.max(0, Math.ceil(ms / 1000))
@@ -353,7 +359,7 @@ async function dismiss() {
               </p>
             </div>
             <span
-              v-if="remainingSeconds > 0"
+              v-if="autoDismissEnabled && remainingSeconds > 0"
               class="text-xs text-gray-400 dark:text-gray-500 tabular-nums"
             >
               {{ t('askQuestion.timeout', { seconds: remainingSeconds }) }}

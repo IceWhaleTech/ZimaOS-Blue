@@ -604,6 +604,7 @@ export default mergeHarnessLocale('el-GR', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Η εργασία ακυρώθηκε',
     waitingThinking: 'Σκέψη...',
+    providerAccelerationActive: 'Βελτιστοποιείται η επόμενη απάντηση για τον τρέχοντα πάροχο',
     awaitingConfirmation: 'Αναμονή της επιβεβαίωσής σας για συνέχεια',
     streamConnecting: 'Σύνδεση',
     streamStreaming: 'Δημιουργία',
@@ -634,7 +635,8 @@ export default mergeHarnessLocale('el-GR', {
     taskFailedDuringPlanning: 'Η εργασία απέτυχε κατά τον σχεδιασμό',
     taskFailedDuringConfirmation: 'Η εργασία απέτυχε κατά την επιβεβαίωση',
     taskFailedWhileRevisingPlan: 'Η εργασία απέτυχε κατά την αναθεώρηση του σχεδίου',
-    taskFailedWhileUpdatingRuntimeState: 'Η εργασία απέτυχε κατά την ενημέρωση της κατάστασης runtime',
+    taskFailedWhileUpdatingRuntimeState:
+      'Η εργασία απέτυχε κατά την ενημέρωση της κατάστασης runtime',
     verificationFailedRecoveryFailed: 'Η επαλήθευση απέτυχε και η ανάκτηση δεν πέτυχε',
     taskFailureGroundedVerificationFailed: 'Η επαλήθευση θεμελίωσης απέτυχε',
     taskWaitingForApproval: 'Αναμονή για την έγκρισή σας',
@@ -867,7 +869,8 @@ export default mergeHarnessLocale('el-GR', {
     providerFailover: {
       eyebrow: 'Εναλλαγή υψηλής διαθεσιμότητας',
       title: 'Να γίνει αλλαγή σε άλλη διαθέσιμη διαδρομή και νέα προσπάθεια;',
-      description: 'Η τρέχουσα διαδρομή μέσω του {provider} χρειάζεται την επιβεβαίωσή σας πριν το Blue αλλάξει σε άλλη διαθέσιμη διαδρομή και δοκιμάσει ξανά.',
+      description:
+        'Η τρέχουσα διαδρομή μέσω του {provider} χρειάζεται την επιβεβαίωσή σας πριν το Blue αλλάξει σε άλλη διαθέσιμη διαδρομή και δοκιμάσει ξανά.',
       dismissAction: 'Όχι τώρα',
       manualAction: 'Χειροκίνητη επιλογή διαδρομής',
       primaryAction: 'Αλλαγή και νέα προσπάθεια',
@@ -901,7 +904,8 @@ export default mergeHarnessLocale('el-GR', {
     execDirectoryApprovalTimeout:
       'Η εκτέλεση εντολής αποκλείστηκε επειδή έληξε η έγκριση του καταλόγου. Εγκρίνετε τον κατάλογο και δοκιμάστε ξανά.',
     providerActive: 'Ο πάροχος είναι ενεργός και έτοιμος.',
-    providerNeedsAttention: 'Ο πάροχος χρειάζεται προσοχή. Κάντε κλικ για να ελέγξετε τις ρυθμίσεις.',
+    providerNeedsAttention:
+      'Ο πάροχος χρειάζεται προσοχή. Κάντε κλικ για να ελέγξετε τις ρυθμίσεις.',
     providerPending: 'Η κατάσταση του παρόχου ελέγχεται...',
     trialQuota: {
       remaining: '{tokens} tokens απομένουν',

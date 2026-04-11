@@ -184,3 +184,14 @@ func TestDeepResearchSkill_ValidateRejectsInvalidRouteMode(t *testing.T) {
 		t.Fatalf("expected invalid route_mode validation error")
 	}
 }
+
+func TestDeepResearchSkill_ValidateAcceptsAdvisorMode(t *testing.T) {
+	s := NewDeepResearch()
+	input := map[string]any{
+		"query": "Should we replace Python with Go?",
+		"mode":  "advisor",
+	}
+	if err := s.Validate(input); err != nil {
+		t.Fatalf("expected advisor mode to pass validation: %v", err)
+	}
+}

@@ -107,6 +107,10 @@ func buildToolSelectorProfile(def ToolDefinition) selector.SelectorProfile {
 		base.Actions = selector.CompactTerms("analyze", "summarize", "compare", "synthesize", "inspect", "research", "分析", "总结", "比较", "提炼", "评估", "研究", "梳理")
 		base.Objects = selector.CompactTerms("file", "report", "text", "data", "content", "document", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "source", "sources", "文件", "报告", "文本", "数据", "内容", "文档", "网址", "链接", "页面", "网站", "主题", "文章", "来源")
 		base.PreferredDomains = []string{selector.DomainLiveWeb, selector.DomainLocalWorkspace}
+	case "advisor":
+		base.Actions = selector.CompactTerms("advise", "recommend", "compare", "replace", "migrate", "tradeoff", "best practice", "选型", "推荐", "对比", "替换", "迁移", "权衡", "最佳实践")
+		base.Objects = selector.CompactTerms("language", "framework", "library", "architecture", "process", "migration", "replacement", "tool", "stack", "语言", "框架", "库", "架构", "流程", "迁移", "替代", "工具", "技术栈")
+		base.PreferredDomains = []string{selector.DomainLiveWeb, selector.DomainLocalWorkspace}
 	case "email":
 		base.Actions = selector.CompactTerms("email", "emails", "reply", "archive", "triage", "send", "邮件", "回复", "归档", "整理", "发送")
 		base.Objects = selector.CompactTerms("email", "emails", "mail", "mails", "inbox", "message", "messages", "sender", "unread", "收件箱", "邮箱", "邮件", "消息", "发件人", "未读")

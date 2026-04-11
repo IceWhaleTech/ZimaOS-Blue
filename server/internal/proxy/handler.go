@@ -4518,9 +4518,11 @@ func responsesUsageFromStreamEvent(response map[string]interface{}) *StreamChunk
 		total = prompt + completion
 	}
 	return &StreamChunkUsage{
-		PromptTokens:     int(prompt),
-		CompletionTokens: int(completion),
-		TotalTokens:      int(total),
+		PromptTokens:             int(prompt),
+		CompletionTokens:         int(completion),
+		TotalTokens:              int(total),
+		CacheReadInputTokens:     int(getIntField(usage, "cache_read_input_tokens")),
+		CacheCreationInputTokens: int(getIntField(usage, "cache_creation_input_tokens")),
 	}
 }
 

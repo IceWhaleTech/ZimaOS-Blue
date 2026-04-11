@@ -600,6 +600,7 @@ export default mergeHarnessLocale('sv-SE', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Uppgift avbruten',
     waitingThinking: 'Tänker...',
+    providerAccelerationActive: 'Optimerar nästa svar för den aktuella leverantören',
     awaitingConfirmation: 'Väntar på din bekräftelse för att fortsätta',
     streamConnecting: 'Ansluter',
     streamStreaming: 'Genererar',
@@ -631,7 +632,8 @@ export default mergeHarnessLocale('sv-SE', {
     taskFailedDuringConfirmation: 'Uppgiften misslyckades under bekräftelsen',
     taskFailedWhileRevisingPlan: 'Uppgiften misslyckades vid revidering av planen',
     taskFailedWhileUpdatingRuntimeState: 'Uppgiften misslyckades vid uppdatering av körtidsstatus',
-    verificationFailedRecoveryFailed: 'Verifieringen misslyckades och återställningen lyckades inte',
+    verificationFailedRecoveryFailed:
+      'Verifieringen misslyckades och återställningen lyckades inte',
     taskFailureGroundedVerificationFailed: 'Verifiering av förankring misslyckades',
     taskWaitingForApproval: 'Väntar på ditt godkännande',
     taskWaitingForAnswer: 'Väntar på ditt svar',
@@ -859,7 +861,8 @@ export default mergeHarnessLocale('sv-SE', {
     providerFailover: {
       eyebrow: 'Hög tillgänglighetsväxling',
       title: 'Byta till en annan tillgänglig väg och försöka igen?',
-      description: 'Den nuvarande vägen via {provider} behöver din bekräftelse innan Blue byter till en annan tillgänglig väg och försöker igen.',
+      description:
+        'Den nuvarande vägen via {provider} behöver din bekräftelse innan Blue byter till en annan tillgänglig väg och försöker igen.',
       dismissAction: 'Inte nu',
       manualAction: 'Välj väg manuellt',
       primaryAction: 'Byt och försök igen',
@@ -894,7 +897,8 @@ export default mergeHarnessLocale('sv-SE', {
     execDirectoryApprovalTimeout:
       'Kommando körning blockerades eftersom kataloggodkännandet tog för lång tid. Godkänn katalogen och försök igen.',
     providerActive: 'Leverantören är aktiv och redo.',
-    providerNeedsAttention: 'Leverantören behöver uppmärksamhet. Klicka för att kontrollera inställningarna.',
+    providerNeedsAttention:
+      'Leverantören behöver uppmärksamhet. Klicka för att kontrollera inställningarna.',
     providerPending: 'Leverantörsstatus kontrolleras...',
     trialQuota: {
       remaining: '{tokens} tokens kvar',

@@ -39,6 +39,7 @@ func TestToCard(t *testing.T) {
 		{"ui_reviewer_invalid", "ui_reviewer", `not json`, "", true},
 		{"analyze", "analyze", `{"topic":"Market analysis","answer":"summary","output_mode":"inline"}`, "analyze", false},
 		{"analyze_error", "analyze", `{"error":"fail"}`, "analyze", false},
+		{"advisor", "advisor", `{"recommendation":"Prefer Go for hot paths","why":["better concurrency"],"tradeoffs":["migration cost"],"risks":["training"],"confidence":0.81,"evidence":[{"label":"Go docs","url":"https://go.dev"}]}`, "advisor", false},
 		{"image", "image", `{"task_id":"img-1","status":"succeeded","image_urls":["/api/v1/media/files/a.png"]}`, "media-generate", false},
 		{"image_generate", "image_generate", `{"status":"processing","task_id":"img-2","message":"still working"}`, "media-generate", false},
 		{"ppt", "ppt", `{"task_id":"slide-1","image_urls":["/api/media/generated/images/a.png"],"thumbnail_urls":["/api/media/generated/thumbnails/a.png"],"review_summary":"score 92/100"}`, "media-generate", false},
@@ -93,6 +94,57 @@ func TestImageCard_MapsTaskEnvelopeToMediaGenerate(t *testing.T) {
 	}
 	if got := images[0]["caption"]; got != "sunset city" {
 		t.Fatalf("image caption=%v, want sunset city", got)
+	}
+}
+
+func TestAdvisorCard_RendersRecommendationTradeoffsAndConfidence(t *testing.T) {
+	card := ToCard("advisor", `{"recommendation":"Prefer Go for hot paths","why":["better concurrency","single binary deploy"],"tradeoffs":["migration cost"],"risks":["training"],"confidence":0.81,"evidence":[{"label":"Go docs","url":"https://go.dev"},{"label":"Python docs","url":"https://python.org"}]}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "advisor" {
+		t.Fatalf("type=%v, want advisor", got)
+	}
+	if got := card["recommendation"]; got != "Prefer Go for hot paths" {
+		t.Fatalf("recommendation=%v, want forwarded recommendation", got)
+	}
+	if got := card["confidence"]; got != 0.81 {
+		t.Fatalf("confidence=%v, want 0.81", got)
+	}
+	if got := card["evidence_count"]; got != 2 {
+		t.Fatalf("evidence_count=%v, want 2", got)
+	}
+}
+
+func TestAdvisorCard_RendersScorecardWinnerAndCandidates(t *testing.T) {
+	card := ToCard("advisor", `{"pack_id":"solution_selection_v1","winner":"Go","summary":"Go is the best fit overall.","weights":[{"criterion":"fitness","label":"Fitness","weight":0.25,"source":"default"}],"candidates":[{"name":"Go","rank":1,"total_score":84,"verdict":"recommended","strengths":["Concurrency"],"concerns":["Migration effort"],"best_fit_for":["High-concurrency APIs"],"criterion_scores":[{"criterion":"fitness","score":5,"reason":"Best fit","evidence_ids":["ev-1"]}]},{"name":"Python","rank":2,"total_score":69,"verdict":"conditional","strengths":["Fast iteration"],"concerns":["Runtime efficiency"],"best_fit_for":["Data-heavy workflows"],"criterion_scores":[{"criterion":"fitness","score":3,"reason":"Good fit","evidence_ids":["ev-2"]}]}],"sensitivity":{"close_call":false,"margin":15,"top_driver_criteria":["fitness"],"flip_risk":"low"},"missing_context":[],"confidence":0.84,"evidence":[{"id":"ev-1","label":"Go docs","url":"https://go.dev"}],"second_opinion":{"used":false}}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["winner"]; got != "Go" {
+		t.Fatalf("winner=%v, want Go", got)
+	}
+	if got := card["pack_id"]; got != "solution_selection_v1" {
+		t.Fatalf("pack_id=%v, want solution_selection_v1", got)
+	}
+	if got := card["recommendation"]; got != "Go" {
+		t.Fatalf("recommendation=%v, want Go fallback", got)
+	}
+}
+
+func TestAdvisorCard_RendersAsyncPendingEnvelope(t *testing.T) {
+	card := ToCard("advisor", `{"accepted":true,"terminal":false,"job_id":"advisor-job-1","status":"running","progress":42,"mode":"advisor"}`)
+	if card == nil {
+		t.Fatal("expected non-nil advisor pending card")
+	}
+	if got := card["status"]; got != "running" {
+		t.Fatalf("status=%v, want running", got)
+	}
+	if got := card["job_id"]; got != "advisor-job-1" {
+		t.Fatalf("job_id=%v, want advisor-job-1", got)
+	}
+	if got := card["progress"]; got != float64(42) {
+		t.Fatalf("progress=%v, want 42", got)
 	}
 }
 

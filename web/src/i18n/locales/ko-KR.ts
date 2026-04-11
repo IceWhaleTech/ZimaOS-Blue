@@ -597,6 +597,7 @@ export default mergeHarnessLocale('ko-KR', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: '작업이 취소되었습니다',
     waitingThinking: '생각 중...',
+    providerAccelerationActive: '현재 제공자에 맞게 다음 응답을 최적화하는 중입니다',
     awaitingConfirmation: '계속하려면 확인을 기다리는 중입니다',
     streamConnecting: '연결 중',
     streamStreaming: '생성 중',
@@ -853,7 +854,8 @@ export default mergeHarnessLocale('ko-KR', {
     providerFailover: {
       eyebrow: '고가용성 전환',
       title: '다른 사용 가능한 경로로 전환하고 다시 시도할까요?',
-      description: '현재 {provider} 경로는 Blue가 다른 사용 가능한 경로로 전환해 다시 시도하기 전에 확인이 필요합니다.',
+      description:
+        '현재 {provider} 경로는 Blue가 다른 사용 가능한 경로로 전환해 다시 시도하기 전에 확인이 필요합니다.',
       dismissAction: '나중에',
       manualAction: '경로 직접 선택',
       primaryAction: '전환 후 다시 시도',

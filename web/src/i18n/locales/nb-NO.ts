@@ -599,6 +599,7 @@ export default mergeHarnessLocale('nb-NO', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Oppgave avbrutt',
     waitingThinking: 'Tenker...',
+    providerAccelerationActive: 'Optimaliserer neste svar for gjeldende leverandør',
     awaitingConfirmation: 'Venter på bekreftelsen din for å fortsette',
     streamConnecting: 'Kobler til',
     streamStreaming: 'Genererer',
@@ -629,7 +630,8 @@ export default mergeHarnessLocale('nb-NO', {
     taskFailedDuringPlanning: 'Oppgaven mislyktes under planlegging',
     taskFailedDuringConfirmation: 'Oppgaven mislyktes under bekreftelse',
     taskFailedWhileRevisingPlan: 'Oppgaven mislyktes ved revisjon av planen',
-    taskFailedWhileUpdatingRuntimeState: 'Oppgaven mislyktes under oppdatering av kjøretidstilstanden',
+    taskFailedWhileUpdatingRuntimeState:
+      'Oppgaven mislyktes under oppdatering av kjøretidstilstanden',
     verificationFailedRecoveryFailed: 'Verifisering mislyktes, og gjenoppretting lyktes ikke',
     taskFailureGroundedVerificationFailed: 'Verifisering av forankring mislyktes',
     taskWaitingForApproval: 'Venter på godkjenningen din',
@@ -858,7 +860,8 @@ export default mergeHarnessLocale('nb-NO', {
     providerFailover: {
       eyebrow: 'Høytilgjengelighetsbytte',
       title: 'Bytte til en annen tilgjengelig rute og prøve igjen?',
-      description: 'Den nåværende ruten via {provider} trenger bekreftelsen din før Blue bytter til en annen tilgjengelig rute og prøver igjen.',
+      description:
+        'Den nåværende ruten via {provider} trenger bekreftelsen din før Blue bytter til en annen tilgjengelig rute og prøver igjen.',
       dismissAction: 'Ikke nå',
       manualAction: 'Velg rute manuelt',
       primaryAction: 'Bytt og prøv igjen',
@@ -891,7 +894,8 @@ export default mergeHarnessLocale('nb-NO', {
     execDirectoryApprovalTimeout:
       'Kjøring av kommando ble blokkert fordi mappegodkjenningen gikk ut på tid. Godkjenn mappen og prøv igjen.',
     providerActive: 'Leverandøren er aktiv og klar.',
-    providerNeedsAttention: 'Leverandøren trenger oppmerksomhet. Klikk for å kontrollere innstillingene.',
+    providerNeedsAttention:
+      'Leverandøren trenger oppmerksomhet. Klikk for å kontrollere innstillingene.',
     providerPending: 'Leverandørstatus blir sjekket...',
     trialQuota: {
       remaining: '{tokens} tokens gjenstår',

@@ -1,0 +1,16 @@
+name: Advisor V2 Default Eval
+subject: advisor_v2
+run_kind: research
+profile: advisor-v2
+scheduler:
+  maxconcurrency: 2
+  maxattempts: 1
+  retrybackoff: 5s
+scoring:
+  mode: hybrid
+  ruleprofile: advisor-v2
+  judgemodel: claude-sonnet-4-6
+  passthreshold: 0.7
+metadata:
+  lane: advisor_v2
+  scope: advisor_v2

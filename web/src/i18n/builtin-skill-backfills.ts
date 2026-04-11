@@ -631,6 +631,12 @@ export function buildBuiltinSkillBackfill(
   )
   setCatalogEntry(
     catalog,
+    'advisor',
+    firstString(messages, ['tools.names.advisor']),
+    firstString(messages, ['tools.descriptions.advisor'])
+  )
+  setCatalogEntry(
+    catalog,
     'calendar',
     firstString(messages, ['skills.builtin.calendar.name', 'tools.names.calendar']),
     firstString(messages, ['skills.builtin.calendar.description'])

@@ -41,6 +41,7 @@ type providerWarmupState struct {
 	cancel    context.CancelFunc
 	startedAt time.Time
 	model     string
+	route     providerAccelerationRoute
 }
 
 func (h *ChatHandler) CancelWarmup(c echo.Context) error {
@@ -107,6 +108,7 @@ func (h *ChatHandler) cancelProviderWarmup(convID, reason string) bool {
 		return false
 	}
 	state.cancel()
+	h.noteProviderAccelerationWarmupCanceled(convID, reason)
 	logger.Debug().Str("conv_id", convID).Str("reason", reason).Str("model", state.model).Msg("[warmup] cancelled active provider warmup")
 	return true
 }
@@ -138,11 +140,22 @@ func (h *ChatHandler) startProviderWarmup(convID, model, token string, warmup *w
 	if !h.isWarmupTokenCurrent(convID, token) {
 		return
 	}
+	warmupState := h.conversationCommandStateOrDefault(context.Background(), convID)
+	decision := h.providerAccelerationWarmupDecision(convID, model, warmupState)
+	if !decision.Eligible {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), providerWarmupTimeout)
-	state := &providerWarmupState{cancel: cancel, startedAt: timeutil.NowTime(), model: model}
+	state := &providerWarmupState{
+		cancel:    cancel,
+		startedAt: timeutil.NowTime(),
+		model:     model,
+		route:     decision.Route,
+	}
 	if prev := h.replaceProviderWarmup(convID, state); prev != nil {
 		prev.cancel()
 	}
+	h.noteProviderAccelerationWarmupStarted(convID, decision.Route)
 	go h.runProviderWarmup(ctx, convID, model, token, warmup, state)
 }
 
@@ -179,11 +192,15 @@ func (h *ChatHandler) runProviderWarmup(ctx context.Context, convID, model, toke
 	})
 	switch {
 	case err == nil,
-		errors.Is(err, errProviderWarmupStopped),
-		errors.Is(err, context.Canceled),
-		errors.Is(err, context.DeadlineExceeded):
+		errors.Is(err, errProviderWarmupStopped):
 		logger.Debug().Str("conv_id", convID).Str("model", model).Msg("[warmup] provider-side warmup finished")
+	case errors.Is(err, context.Canceled):
+		logger.Debug().Str("conv_id", convID).Str("model", model).Msg("[warmup] provider-side warmup cancelled")
+	case errors.Is(err, context.DeadlineExceeded):
+		h.noteProviderAccelerationWarmupFailure(convID, state.route, "deadline_exceeded")
+		logger.Debug().Str("conv_id", convID).Str("model", model).Msg("[warmup] provider-side warmup timed out")
 	default:
+		h.noteProviderAccelerationWarmupFailure(convID, state.route, err.Error())
 		logger.Debug().Err(err).Str("conv_id", convID).Str("model", model).Msg("[warmup] provider-side warmup failed")
 	}
 }
@@ -198,6 +215,10 @@ func (h *ChatHandler) buildProviderWarmupRequest(ctx context.Context, convID, mo
 	messages = append(messages, warmup.systemPromptMessages...)
 
 	state := h.conversationCommandStateOrDefault(ctx, convID)
+	decision := h.providerAccelerationWarmupDecision(convID, model, state)
+	if !decision.Eligible {
+		return req, ctx, false
+	}
 	targetProviderID, targetProvider, ok := h.providerWarmupTarget(convID, state)
 	if !ok {
 		return req, ctx, false
@@ -229,6 +250,7 @@ func (h *ChatHandler) buildProviderWarmupRequest(ctx context.Context, convID, mo
 
 	messages = append(messages, llm.Message{Role: llm.RoleUser, Content: providerWarmupPrompt})
 	llmCtx := proxy.WithPinnedProvider(ctx, targetProviderID)
+	llmCtx = proxy.WithDisableResponsesContinuation(llmCtx)
 	var resolvedRoute proxy.ResolvedRoute
 	llmCtx = proxy.WithResolvedRoute(llmCtx, &resolvedRoute)
 
@@ -254,7 +276,7 @@ func supportsProviderSidePromptWarmup(provider *providerpool.Provider) bool {
 	if provider == nil {
 		return false
 	}
-	return provider.APIFormat == providerpool.APIFormatAnthropic || providerpool.UsesResponsesIntegration(provider)
+	return providerpool.UsesResponsesIntegration(provider)
 }
 
 func (h *ChatHandler) applyPromptCacheKeyForRequest(convID, explicitProviderID string, state memory.ConversationCommandState, req *llm.ChatRequest) {

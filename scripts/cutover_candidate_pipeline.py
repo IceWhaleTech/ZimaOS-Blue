@@ -178,6 +178,126 @@ def build_pipeline_drift_summary(steps: Sequence[Dict[str, Any]]) -> Dict[str, A
     }
 
 
+def step_by_name(steps: Sequence[Dict[str, Any]], name: str) -> Dict[str, Any]:
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        if str(step.get("name") or "").strip() == name:
+            return step
+    return {}
+
+
+def safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_offline_value_report(report: Dict[str, Any]) -> Dict[str, Any]:
+    steps = report.get("steps") if isinstance(report.get("steps"), list) else []
+    selector_step = step_by_name(steps, "selector")
+    execution_step = step_by_name(steps, "execution")
+    budget_step = step_by_name(steps, "budget")
+    readiness = report.get("readiness") if isinstance(report.get("readiness"), dict) else {}
+
+    selector_report = selector_step.get("report") if isinstance(selector_step.get("report"), dict) else {}
+    execution_report = execution_step.get("report") if isinstance(execution_step.get("report"), dict) else {}
+    budget_report = budget_step.get("report") if isinstance(budget_step.get("report"), dict) else {}
+    selector_metrics = extract_gate_metrics(selector_report, "selector_gate")
+    execution_metrics = extract_gate_metrics(execution_report, "execution_gate")
+    budget_metrics = extract_gate_metrics(budget_report, "budget_gate")
+
+    top_improvements: List[str] = []
+    top_tradeoffs: List[str] = []
+    gates_passed = all(bool(step.get("passed")) for step in (selector_step, execution_step, budget_step) if step)
+
+    selector_pass_rate = safe_float(selector_metrics.get("pass_rate"))
+    selector_critical_pass_rate = safe_float(selector_metrics.get("critical_pass_rate"))
+    if selector_pass_rate is not None and selector_critical_pass_rate is not None and selector_pass_rate >= 0.98 and selector_critical_pass_rate >= 1.0:
+        top_improvements.append("Selector lane stayed green.")
+    elif selector_step and not selector_step.get("passed"):
+        top_tradeoffs.append("Selector gate did not pass.")
+
+    execution_delta = safe_float(execution_metrics.get("pass_rate_delta"))
+    verification_delta = safe_float(execution_metrics.get("verification_pass_rate_delta"))
+    evidence_delta = safe_float(execution_metrics.get("evidence_backed_pass_rate_delta"))
+    if execution_delta is not None:
+        if execution_delta > 0:
+            top_improvements.append(f"Execution pass rate improved by {execution_delta:.2f}")
+        elif execution_delta < 0:
+            top_tradeoffs.append(f"Execution pass rate regressed by {abs(execution_delta):.2f}")
+    if verification_delta is not None:
+        if verification_delta > 0:
+            top_improvements.append(f"Verification pass rate improved by {verification_delta:.2f}")
+        elif verification_delta < 0:
+            top_tradeoffs.append(f"Verification pass rate regressed by {abs(verification_delta):.2f}")
+    if evidence_delta is not None:
+        if evidence_delta > 0:
+            top_improvements.append(f"Evidence-backed pass rate improved by {evidence_delta:.2f}")
+        elif evidence_delta < 0:
+            top_tradeoffs.append(f"Evidence-backed pass rate regressed by {abs(evidence_delta):.2f}")
+    if execution_step and not execution_step.get("passed"):
+        top_tradeoffs.append("Execution gate did not pass.")
+
+    schema_reduction = safe_float(budget_metrics.get("median_schema_byte_reduction_rate"))
+    latency_increase = safe_float(budget_metrics.get("median_latency_increase_rate"))
+    if schema_reduction is not None and schema_reduction > 0:
+        top_improvements.append(f"Median schema bytes reduced by {schema_reduction:.0%}")
+    if latency_increase is not None and latency_increase > 0.05:
+        top_tradeoffs.append(f"Median latency increased by {latency_increase:.0%}")
+    if budget_step and not budget_step.get("passed"):
+        top_tradeoffs.append("Budget gate did not pass.")
+
+    blocking_reasons = readiness.get("blocking_reasons") if isinstance(readiness.get("blocking_reasons"), list) else []
+    for item in blocking_reasons:
+        value = str(item or "").strip()
+        if value:
+            top_tradeoffs.append(value)
+
+    evaluated_gates_ready = bool(readiness.get("evaluated_gates_ready"))
+    cutover_ready = bool(report.get("ready"))
+
+    if not gates_passed:
+        recommendation = "reject"
+        value_summary = "One or more offline gates failed, so this candidate should not be promoted."
+        confidence = "high"
+    elif blocking_reasons or not evaluated_gates_ready or not cutover_ready:
+        recommendation = "reject"
+        value_summary = "Execution quality regressed and cutover readiness is blocked." if top_tradeoffs else "Offline gates passed, but cutover readiness is still blocked."
+        confidence = "medium"
+    else:
+        recommendation = "hold"
+        value_summary = "Offline gates are green and the candidate looks valuable, but runtime confirmation is still pending."
+        confidence = "high"
+
+    return {
+        "offline_recommendation": recommendation,
+        "value_summary": value_summary,
+        "top_improvements": top_improvements,
+        "top_tradeoffs": top_tradeoffs,
+        "confidence": confidence,
+        "selector_pass_rate": selector_pass_rate,
+        "selector_critical_pass_rate": selector_critical_pass_rate,
+        "execution_pass_rate_delta": execution_delta,
+        "verification_pass_rate_delta": verification_delta,
+        "evidence_backed_pass_rate_delta": evidence_delta,
+        "median_schema_byte_reduction_rate": schema_reduction,
+        "median_latency_increase_rate": latency_increase,
+        "cutover_ready": cutover_ready,
+    }
+
+
+def default_runtime_value_report() -> Dict[str, Any]:
+    return {
+        "status": "not_started",
+        "value_summary": "Runtime validation begins after promotion.",
+        "confidence": "low",
+    }
+
+
 def build_selector_command(args: argparse.Namespace, output_paths: Dict[str, Path]) -> List[str]:
     command = [
         sys.executable,
@@ -396,7 +516,7 @@ def run_cutover_candidate_pipeline(
     readiness_data = readiness_wrapper.get("cutover_readiness") if isinstance(readiness_wrapper.get("cutover_readiness"), dict) else {}
     overall_ready = bool(readiness_wrapper.get("ready"))
 
-    return {
+    report = {
         "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "candidate_id": candidate_id,
         "candidate_label": candidate_label,
@@ -410,6 +530,14 @@ def run_cutover_candidate_pipeline(
         "readiness": readiness_data,
         "drift_summary": build_pipeline_drift_summary(steps),
     }
+    offline_value_report = build_offline_value_report(report)
+    runtime_value_report = default_runtime_value_report()
+    report["offline_value_report"] = offline_value_report
+    report["offline_recommendation"] = offline_value_report.get("offline_recommendation", "")
+    report["runtime_value_report"] = runtime_value_report
+    report["runtime_status"] = runtime_value_report.get("status", "")
+    report["value_summary"] = offline_value_report.get("value_summary", "")
+    return report
 
 
 def build_markdown_report(report: Dict[str, Any]) -> str:
@@ -453,6 +581,29 @@ def build_markdown_report(report: Dict[str, Any]) -> str:
         if blocking:
             lines.extend(["", "## Blocking Reasons", ""])
             lines.extend(f"- {item}" for item in blocking)
+
+    offline_value = report.get("offline_value_report") if isinstance(report.get("offline_value_report"), dict) else {}
+    runtime_value = report.get("runtime_value_report") if isinstance(report.get("runtime_value_report"), dict) else {}
+    if offline_value or runtime_value:
+        lines.extend(
+            [
+                "",
+                "## Offline Value",
+                "",
+                f"- Recommendation: {str(offline_value.get('offline_recommendation') or '-').upper()}",
+                f"- Confidence: {offline_value.get('confidence', '-')}",
+                f"- Summary: {offline_value.get('value_summary', '-')}",
+                f"- Runtime Status: {str(report.get('runtime_status') or runtime_value.get('status') or '-').upper()}",
+            ]
+        )
+        improvements = offline_value.get("top_improvements") if isinstance(offline_value.get("top_improvements"), list) else []
+        tradeoffs = offline_value.get("top_tradeoffs") if isinstance(offline_value.get("top_tradeoffs"), list) else []
+        if improvements:
+            lines.extend(["", "### Top Improvements", ""])
+            lines.extend(f"- {item}" for item in improvements)
+        if tradeoffs:
+            lines.extend(["", "### Top Tradeoffs", ""])
+            lines.extend(f"- {item}" for item in tradeoffs)
 
     drift_summary = report.get("drift_summary") or {}
     selector_drift = drift_summary.get("selector") if isinstance(drift_summary.get("selector"), dict) else {}

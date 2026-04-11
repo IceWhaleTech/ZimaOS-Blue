@@ -48,11 +48,13 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "ask"},
 		{Name: "bash"},
 		{Name: "calendar"},
+		{Name: "docx"},
 		{Name: "file_read"},
 		{Name: "file_write"},
 		{Name: "image"},
 		{Name: "memory"},
 		{Name: "pdf"},
+		{Name: "pptx"},
 		{Name: "plan_append"},
 		{Name: "plan_create"},
 		{Name: "plan_update"},
@@ -63,17 +65,18 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "web_query"},
 		{Name: "apply_patch"},
 		{Name: "write_begin"},
+		{Name: "xlsx"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 15 {
-		t.Fatalf("expected 15 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 18 {
+		t.Fatalf("expected 18 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
 		"ask":     true,
 		"bash":    true,
 		"browser": true, "calendar": true, "file_read": true, "file_write": true,
-		"image": true, "pdf": true, "plan_append": true, "plan_create": true,
-		"plan_update": true, "deep_research": true, "sessions": true, "tool_search": true, "web_query": true,
+		"docx": true, "image": true, "pdf": true, "pptx": true, "plan_append": true, "plan_create": true,
+		"plan_update": true, "deep_research": true, "sessions": true, "tool_search": true, "web_query": true, "xlsx": true,
 	}
 	for _, def := range filtered {
 		if !allowed[def.Name] {

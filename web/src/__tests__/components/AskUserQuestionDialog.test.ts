@@ -86,6 +86,26 @@ function createCheckpointQuestion() {
   }
 }
 
+function createExplicitAnswerQuestion() {
+  return {
+    id: 'ask-explicit-answer',
+    expires_at: Date.now() + 1_000,
+    require_explicit_answer: true,
+    questions: [
+      {
+        id: 'q1',
+        question: 'Need input?',
+        header: 'Question',
+        multi_select: false,
+        options: [
+          { label: 'A', value: 'a' },
+          { label: 'B', value: 'b' },
+        ],
+      },
+    ],
+  }
+}
+
 function mountCheckpointDialog() {
   return mount(AskUserQuestionDialog, {
     global: {
@@ -166,6 +186,22 @@ describe('AskUserQuestionDialog browser checkpoint', () => {
       },
     ])
     expect(mockChatStore.dismissQuestion).not.toHaveBeenCalled()
+
+    mockChatStore.pendingQuestion = null
+    await nextTick()
+    wrapper.unmount()
+  })
+
+  it('does not auto-dismiss questions that require an explicit answer', async () => {
+    const wrapper = mountCheckpointDialog()
+    mockChatStore.pendingQuestion = createExplicitAnswerQuestion()
+    await nextTick()
+
+    await vi.advanceTimersByTimeAsync(1_500)
+    await nextTick()
+
+    expect(mockChatStore.dismissQuestion).not.toHaveBeenCalled()
+    expect(mockChatStore.submitQuestionAnswers).not.toHaveBeenCalled()
 
     mockChatStore.pendingQuestion = null
     await nextTick()

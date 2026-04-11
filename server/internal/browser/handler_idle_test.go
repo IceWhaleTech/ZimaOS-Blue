@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,9 +12,12 @@ import (
 )
 
 type stubBrowserService struct {
-	closeCount int
-	startCount int
-	running    bool
+	closeCount     int
+	startCount     int
+	running        bool
+	openTabErr     error
+	allowedDomains []string
+	blockedDomains []string
 }
 
 func (s *stubBrowserService) Status(context.Context) (*StatusResponse, error) {
@@ -30,6 +34,9 @@ func (s *stubBrowserService) Tabs(context.Context) ([]*Tab, error) {
 	return nil, nil
 }
 func (s *stubBrowserService) OpenTab(context.Context, string) (*Tab, error) {
+	if s.openTabErr != nil {
+		return nil, s.openTabErr
+	}
 	return &Tab{}, nil
 }
 func (s *stubBrowserService) FocusTab(context.Context, string) error { return nil }
@@ -65,6 +72,34 @@ func (s *stubBrowserService) Recipes() *RecipeRegistry { return NewRecipeRegistr
 func (s *stubBrowserService) Close() error {
 	s.closeCount++
 	return nil
+}
+
+func (s *stubBrowserService) currentBrowserSecurityConfig() BrowserSecurityConfig {
+	return BrowserSecurityConfig{
+		AllowedDomains: append([]string(nil), s.allowedDomains...),
+		BlockedDomains: append([]string(nil), s.blockedDomains...),
+	}
+}
+
+func (s *stubBrowserService) replaceBrowserSecurityConfig(config BrowserSecurityConfig) BrowserSecurityConfig {
+	s.allowedDomains = append([]string(nil), config.AllowedDomains...)
+	s.blockedDomains = append([]string(nil), config.BlockedDomains...)
+	return s.currentBrowserSecurityConfig()
+}
+
+func (s *stubBrowserService) validateBrowserURL(rawURL string) error {
+	checker := NewSecurityChecker(&Config{
+		AllowedDomains: append([]string(nil), s.allowedDomains...),
+		BlockedDomains: append([]string(nil), s.blockedDomains...),
+	})
+	if _, err := checker.NormalizeAndCheckURL(rawURL); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *stubBrowserService) String() string {
+	return fmt.Sprintf("stubBrowserService(running=%v)", s.running)
 }
 
 func TestLazyHandlerStatusDoesNotInitializeService(t *testing.T) {

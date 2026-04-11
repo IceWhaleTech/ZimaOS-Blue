@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { TypelessCardProgress } from '@/types/typeless'
+import { localizeStatusToken } from '@/utils/statusTokens'
 
 const props = defineProps<{
   card: TypelessCardProgress
 }>()
+const { t } = useI18n()
 
 const statusColors = {
   running: 'bg-gray-700 dark:bg-gray-500',
@@ -21,6 +24,7 @@ const statusIcons = {
 }
 
 const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.progress))}%`)
+const statusLabel = computed(() => localizeStatusToken(props.card.status, t) || props.card.status || '')
 </script>
 
 <template>
@@ -40,7 +44,7 @@ const progressWidth = computed(() => `${Math.min(100, Math.max(0, props.card.pro
         }"
       >
         <span>{{ statusIcons[card.status] }}</span>
-        <span class="capitalize">{{ card.status }}</span>
+        <span>{{ statusLabel }}</span>
       </span>
     </div>
 

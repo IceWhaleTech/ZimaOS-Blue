@@ -99,6 +99,7 @@ func TestToolStoreHandlerListToolsHidesCompatFamiliesFromUI(t *testing.T) {
 		"bash",
 		"image",
 		"custom_tool",
+		"advisor",
 		"mediagen",
 	} {
 		if _, ok := got[visible]; !ok {

@@ -280,6 +280,70 @@ describe('Chat Store', () => {
     })
   })
 
+  describe('provider acceleration waiting state', () => {
+    it('tracks provider acceleration only before the first visible chunk', async () => {
+      const store = useChatStore()
+      store.currentConversationId = 'conv-1'
+      store.conversations = [
+        {
+          id: 'conv-1',
+          title: 'Acceleration test',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:00:00.000Z',
+        },
+      ]
+
+      vi.mocked(messageApi.list).mockResolvedValue({
+        data: [
+          {
+            id: 'msg-user-1',
+            conversation_id: 'conv-1',
+            role: 'user',
+            content: 'Need a slow provider reply',
+            created_at: '2026-03-11T00:00:00.000Z',
+          },
+        ],
+      } as never)
+
+      let streamOptions: any
+      let resolveStream: (() => void) | null = null
+
+      mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
+        streamOptions = options
+        await new Promise<void>((resolve) => {
+          resolveStream = resolve
+        })
+      })
+
+      const sendPromise = store.sendMessage('Need a slow provider reply')
+      await settleAsyncWork()
+
+      streamOptions.onProcessEvent?.({
+        delta: '',
+        done: false,
+        process_event: 'provider_acceleration_active',
+        provider_acceleration_active: true,
+      })
+      await settleAsyncWork()
+
+      expect((store as any).providerAccelerationActive).toBe(true)
+      expect(store.isPreTTFT).toBe(true)
+
+      streamOptions.onMessage?.({ delta: 'Hello', done: false })
+      await settleAsyncWork()
+
+      expect((store as any).providerAccelerationActive).toBe(false)
+
+      streamOptions.onComplete?.({
+        delta: '',
+        done: true,
+        content: 'Hello',
+      })
+      resolveStream?.()
+      await sendPromise
+    })
+  })
+
   describe('createConversation', () => {
     it('should create a new conversation', async () => {
       const mockConversation = {

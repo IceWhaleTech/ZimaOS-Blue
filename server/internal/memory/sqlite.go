@@ -494,6 +494,19 @@ func (s *Store) FinalizeAutoConversationTitle(ctx context.Context, id, title str
 	return affected > 0, nil
 }
 
+// PreviewAutoConversationTitle updates a pending auto title without finalizing it.
+// It only succeeds while automatic title generation is still pending.
+func (s *Store) PreviewAutoConversationTitle(ctx context.Context, id, title string, userID ...string) (bool, error) {
+	affected, err := s.updateConversationTitle(ctx, id, title, false, true, userID...)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 // PinConversation pins a conversation.
 func (s *Store) PinConversation(ctx context.Context, id string, userID ...string) error {
 	s.mu.Lock()

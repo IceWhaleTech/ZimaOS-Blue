@@ -2,6 +2,8 @@ package tools
 
 import "strings"
 
+const browserLegacyPageScrollStep = 640
+
 // NormalizeBrowserActionAlias maps browser CLI and skill aliases to the
 // canonical action family used by browser tooling.
 func NormalizeBrowserActionAlias(action string) (string, bool) {
@@ -14,7 +16,7 @@ func NormalizeBrowserActionAlias(action string) (string, bool) {
 		return "snapshot_interactive", true
 	case "snapshot_auto", "read", "page":
 		return "snapshot_auto", true
-	case "act", "click", "type", "focus", "hover", "scroll", "select":
+	case "act", "click", "type", "focus", "hover", "scroll", "select", "scroll_down", "scroll_up":
 		return strings.ToLower(strings.TrimSpace(action)), true
 	case "screenshot", "shot", "capture", "screen":
 		return "screenshot", true
@@ -56,6 +58,9 @@ func LooksLikeBrowserURL(raw string) bool {
 func CanonicalizeBrowserAction(action string, actType string) (string, string) {
 	canonicalAction := strings.ToLower(strings.TrimSpace(action))
 	canonicalActType := strings.ToLower(strings.TrimSpace(actType))
+	if mappedAction, ok := NormalizeBrowserActionAlias(canonicalAction); ok {
+		canonicalAction = mappedAction
+	}
 
 	switch canonicalAction {
 	case "click", "type", "focus", "hover", "scroll", "select":
@@ -63,9 +68,48 @@ func CanonicalizeBrowserAction(action string, actType string) (string, string) {
 			canonicalActType = canonicalAction
 		}
 		canonicalAction = "act"
+	case "scroll_down":
+		if canonicalActType == "" {
+			canonicalActType = "down"
+		}
+		canonicalAction = "scroll_page"
+	case "scroll_up":
+		if canonicalActType == "" {
+			canonicalActType = "up"
+		}
+		canonicalAction = "scroll_page"
 	case "read":
 		canonicalAction = "snapshot_auto"
 	}
 
+	if canonicalAction == "act" {
+		switch canonicalActType {
+		case "scroll_down":
+			canonicalAction = "scroll_page"
+			canonicalActType = "down"
+		case "scroll_up":
+			canonicalAction = "scroll_page"
+			canonicalActType = "up"
+		}
+	}
+
 	return canonicalAction, canonicalActType
+}
+
+// BrowserLegacyPageScrollDelta maps compatibility page-scroll directions to a
+// relative browser scroll delta.
+func BrowserLegacyPageScrollDelta(action string, actType string) (string, int, int, bool) {
+	canonicalAction, canonicalActType := CanonicalizeBrowserAction(action, actType)
+	if canonicalAction != "scroll_page" {
+		return "", 0, 0, false
+	}
+
+	switch canonicalActType {
+	case "down":
+		return "down", 0, browserLegacyPageScrollStep, true
+	case "up":
+		return "up", 0, -browserLegacyPageScrollStep, true
+	default:
+		return "", 0, 0, false
+	}
 }

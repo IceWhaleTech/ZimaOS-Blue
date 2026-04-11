@@ -83,7 +83,7 @@ func (f *FileReadTool) SetSkillExposureManager(manager *skillmanifest.SkillExpos
 func (f *FileReadTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "file_read",
-		Description: "Reads content from a local file. Returns UTF-8 text for normal files, can extract text/metadata from local PDF files when PDF support is available, and can read local office-style documents such as docx/xlsx/pptx when document extraction support is available.",
+		Description: "Reads content from a local file as UTF-8 text with optional line slicing and byte limits.",
 		Icon:        "file-read",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -188,9 +188,6 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	f.observeSkillExposure(absPath)
 
-	if strings.EqualFold(filepath.Ext(absPath), ".pdf") && f.pdfService != nil {
-		return f.executePDFRead(ctx, absPath, relPath, args)
-	}
 	if f.shouldUseDocumentReader(absPath) {
 		return f.executeDocumentRead(ctx, absPath, relPath, info, startLine, endLine, maxBytes)
 	}
@@ -267,7 +264,7 @@ func (f *FileReadTool) observeSkillExposure(absPath string) {
 }
 
 func (f *FileReadTool) shouldUseDocumentReader(path string) bool {
-	return convertpkg.SupportsDocumentReadFormat(strings.TrimPrefix(filepath.Ext(path), "."))
+	return false
 }
 
 func (f *FileReadTool) executePDFRead(ctx context.Context, absPath, relPath string, args map[string]interface{}) (interface{}, error) {
@@ -754,7 +751,9 @@ func RegisterBuiltinTools(registry *Registry) {
 	registry.Register(NewRgTool(nil, 0))
 	registry.Register(NewFindTool(nil))
 	registry.Register(NewLsTool(nil))
-	registry.Register(NewOfficeTool(nil, nil, nil))
+	registry.Register(NewDOCXTool(nil, nil, nil))
+	registry.Register(NewXLSXTool(nil, nil, nil))
+	registry.Register(NewPPTXTool(nil, nil, nil))
 	registerCanonicalFileSurface(registry)
 	registry.Register(NewToolSearchTool(registry))
 	registerWebTools(registry, WebSearchConfig{}, WebFetchConfig{})
@@ -792,7 +791,9 @@ func RegisterBuiltinToolsWithRuntimeConfig(registry *Registry, webSearchConfig W
 	registry.Register(NewRgToolWithRipgrep(allowedPaths, maxFileSize, ripgrep))
 	registry.Register(NewFindToolWithRipgrep(allowedPaths, ripgrep))
 	registry.Register(NewLsTool(allowedPaths))
-	registry.Register(NewOfficeTool(allowedPaths, nil, nil))
+	registry.Register(NewDOCXTool(allowedPaths, nil, nil))
+	registry.Register(NewXLSXTool(allowedPaths, nil, nil))
+	registry.Register(NewPPTXTool(allowedPaths, nil, nil))
 	registerCanonicalFileSurface(registry)
 	toolSearch := NewToolSearchTool(registry)
 	toolSearch.SetSkillExposureManager(skillExposure)
@@ -873,7 +874,9 @@ func RegisterApprovalAwareFileToolsWithRuntimeConfig(registry *Registry, allowed
 	ls.Scope = ls.Scope.withApprovalFlow(approvals, dirStore)
 	registry.Register(ls)
 
-	registry.Register(NewOfficeTool(allowedPaths, approvals, dirStore))
+	registry.Register(NewDOCXTool(allowedPaths, approvals, dirStore))
+	registry.Register(NewXLSXTool(allowedPaths, approvals, dirStore))
+	registry.Register(NewPPTXTool(allowedPaths, approvals, dirStore))
 	registerCanonicalFileSurface(registry)
 }
 
@@ -1154,6 +1157,30 @@ func GetAnalyzeTool(registry *Registry) *AnalyzeTool {
 		return nil
 	}
 	if t, ok := tool.(*AnalyzeTool); ok {
+		return t
+	}
+	return nil
+}
+
+// RegisterAdvisorTool registers the advisor tool with the registry.
+func RegisterAdvisorTool(registry *Registry) *AdvisorTool {
+	t := NewAdvisorTool()
+	if registry != nil {
+		registry.Register(t)
+	}
+	return t
+}
+
+// GetAdvisorTool retrieves the AdvisorTool from the registry for dependency injection.
+func GetAdvisorTool(registry *Registry) *AdvisorTool {
+	if registry == nil {
+		return nil
+	}
+	tool := registry.Get("advisor")
+	if tool == nil {
+		return nil
+	}
+	if t, ok := tool.(*AdvisorTool); ok {
 		return t
 	}
 	return nil

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/agentcore"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -264,6 +265,16 @@ type delayedScriptedStreamProvider struct {
 	requests  []llm.ChatRequest
 }
 
+type blockingTitlePreviewStreamProvider struct {
+	started   chan struct{}
+	release   chan struct{}
+	startOnce sync.Once
+}
+
+type titlePreviewEventBroker struct {
+	titleUpdated chan map[string]any
+}
+
 // actionPledgeThenToolCallProxyHandler simulates:
 // 1) first round returns an action-pledge placeholder (toolless)
 // 2) auto-continue round emits a structured tool_call
@@ -334,6 +345,91 @@ func hasMissingNextStepsNudge(s string) bool {
 		strings.Contains(s, "If you'd like, I can help with") ||
 		strings.Contains(s, "If you'd like, I can also help with") ||
 		strings.Contains(s, "WITHOUT calling tools")
+}
+
+func (p *blockingTitlePreviewStreamProvider) Name() string {
+	return "blocking-title-preview-stream"
+}
+
+func (p *blockingTitlePreviewStreamProvider) Models() []string {
+	return []string{"blocking-title-preview-model"}
+}
+
+func (p *blockingTitlePreviewStreamProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-p.release:
+		return &llm.ChatResponse{
+			ID:    "blocking-title-preview",
+			Model: "blocking-title-preview-model",
+			Message: llm.Message{
+				Role:    llm.RoleAssistant,
+				Content: "我先整理一下，马上给你完整结果。",
+			},
+			Usage: llm.Usage{PromptTokens: 8, CompletionTokens: 12, TotalTokens: 20},
+		}, nil
+	}
+}
+
+func (p *blockingTitlePreviewStreamProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 4)
+	go func() {
+		defer close(ch)
+		_ = p.ChatStreamCallback(ctx, req, func(chunk llm.StreamChunk) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case ch <- chunk:
+				return nil
+			}
+		})
+	}()
+	return ch, nil
+}
+
+func (p *blockingTitlePreviewStreamProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	if err := callback(llm.StreamChunk{
+		ID:    "blocking-title-preview",
+		Model: "blocking-title-preview-model",
+		Delta: "我先整理一下",
+		Done:  false,
+	}); err != nil {
+		return err
+	}
+	p.startOnce.Do(func() {
+		close(p.started)
+	})
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-p.release:
+	}
+	return callback(llm.StreamChunk{
+		ID:    "blocking-title-preview",
+		Model: "blocking-title-preview-model",
+		Delta: "，马上给你完整结果。",
+		Done:  true,
+		Usage: &llm.Usage{
+			PromptTokens:     8,
+			CompletionTokens: 12,
+			TotalTokens:      20,
+		},
+	})
+}
+
+func (b *titlePreviewEventBroker) Publish(_ string, eventType string, data any) {
+	if eventType != "conversation_title_updated" {
+		return
+	}
+	payload, ok := data.(map[string]any)
+	if !ok {
+		return
+	}
+	select {
+	case b.titleUpdated <- payload:
+	default:
+	}
 }
 
 func (p *delayedScriptedStreamProvider) Name() string {
@@ -2282,6 +2378,98 @@ func TestStreamMessageBasic(t *testing.T) {
 
 	if !gotDone {
 		t.Error("did not receive done signal")
+	}
+}
+
+func TestStreamMessage_PreviewsConversationTitleBeforeStreamCompletes(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "New Conversation", "user-1")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	provider := &blockingTitlePreviewStreamProvider{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	registry.Register(provider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	broker := &titlePreviewEventBroker{titleUpdated: make(chan map[string]any, 1)}
+	handler.SetSSEBroker(broker)
+
+	e := echo.New()
+	reqBody := `{"message":"OpenClaw 更新","provider":"blocking-title-preview-stream","model":"blocking-title-preview-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{UserID: "user-1"}))
+
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- handler.StreamMessage(c)
+	}()
+
+	select {
+	case <-provider.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for stream to start")
+	}
+
+	previewDeadline := time.Now().Add(250 * time.Millisecond)
+	previewSeen := false
+	for time.Now().Before(previewDeadline) {
+		current, convErr := store.GetConversation(context.Background(), conv.ID, "user-1")
+		if convErr == nil && current != nil && current.Title == "OpenClaw 更新" && !current.AutoTitleFinalized {
+			previewSeen = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	var previewEvent map[string]any
+	select {
+	case previewEvent = <-broker.titleUpdated:
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	close(provider.release)
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	if !previewSeen {
+		t.Fatal("expected conversation title preview before stream completion")
+	}
+	if got, _ := previewEvent["title"].(string); got != "OpenClaw 更新" {
+		t.Fatalf("preview event title = %q, want %q", got, "OpenClaw 更新")
+	}
+
+	finalDeadline := time.Now().Add(2 * time.Second)
+	for {
+		current, convErr := store.GetConversation(context.Background(), conv.ID, "user-1")
+		if convErr == nil && current != nil && current.Title == "OpenClaw 更新" && current.AutoTitleFinalized {
+			break
+		}
+		if time.Now().After(finalDeadline) {
+			current, convErr := store.GetConversation(context.Background(), conv.ID, "user-1")
+			if convErr != nil {
+				t.Fatalf("timed out waiting for finalized title: %v", convErr)
+			}
+			t.Fatalf("timed out waiting for finalized title; title=%q finalized=%v", current.Title, current.AutoTitleFinalized)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
 

@@ -603,6 +603,7 @@ export default mergeHarnessLocale('ca-ES', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Tasca cancel·lada',
     waitingThinking: 'Pensant...',
+    providerAccelerationActive: 'Optimitzant la següent resposta per al proveïdor actual',
     awaitingConfirmation: "S'està esperant la teva confirmació per continuar",
     streamConnecting: 'Connectant',
     streamStreaming: 'Generant',
@@ -865,9 +866,10 @@ export default mergeHarnessLocale('ca-ES', {
       primaryAction: 'Canvia i torna-ho a provar',
     },
     providerFailover: {
-      eyebrow: 'Canvi d\'alta disponibilitat',
+      eyebrow: "Canvi d'alta disponibilitat",
       title: 'Canviar a una altra ruta disponible i tornar-ho a provar?',
-      description: 'La ruta actual amb {provider} necessita la teva confirmació abans que Blue canviï a una altra ruta disponible i torni a provar-ho.',
+      description:
+        'La ruta actual amb {provider} necessita la teva confirmació abans que Blue canviï a una altra ruta disponible i torni a provar-ho.',
       dismissAction: 'Ara no',
       manualAction: 'Triar ruta manualment',
       primaryAction: 'Canvia i reintenta',

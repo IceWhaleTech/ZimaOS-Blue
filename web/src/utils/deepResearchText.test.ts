@@ -48,6 +48,7 @@ const zhMessages: Record<string, string> = {
   'chat.deepResearchFocusClaimValidation': '结论核验',
   'chat.deepResearchTimeWindowEarlier': '早期',
   'chat.deepResearchTimeWindowRecent': '近期',
+  'system.statusOk': '正常',
   'system.warning': '警告',
   'system.info': '信息',
   'harness.group.overview': '概览',
@@ -64,6 +65,7 @@ describe('deepResearchText', () => {
   })
 
   it('localizes common badge status tokens', () => {
+    expect(localizeDeepResearchStatus('ok', translate)).toBe('正常')
     expect(localizeDeepResearchStatus('warning', translate)).toBe('警告')
     expect(localizeDeepResearchStatus('info', translate)).toBe('信息')
   })

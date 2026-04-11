@@ -75,6 +75,7 @@ func (m *mockBrowser) ScreenshotTab(_ context.Context, targetID string) (string,
 func (m *mockBrowser) Act(_ context.Context, targetID string, ref int, actType, value string) error {
 	return nil
 }
+func (m *mockBrowser) PageScroll(_ context.Context, targetID string, x, y int) error { return nil }
 func (m *mockBrowser) Tabs(_ context.Context) (string, error) {
 	return `[{"target_id":"tab-1","title":"Test","url":"https://example.com"}]`, nil
 }
@@ -196,6 +197,35 @@ func TestSkillIntegration_BrowserSnapshot(t *testing.T) {
 	}
 }
 
+func TestSkillIntegration_BrowserSnapshotWithURLNavigatesFirst(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "browser.snapshot", Params: map[string]string{"url": "https://example.com/docs"}})
+	if resp.Status != "ok" {
+		t.Fatalf("browser.snapshot with url: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if got := resp.Data["target_id"]; got != "tab-1" {
+		t.Fatalf("target_id = %q, want %q", got, "tab-1")
+	}
+	if !strings.Contains(resp.Data["tree"], "Hello") {
+		t.Errorf("tree = %q", resp.Data["tree"])
+	}
+}
+
+func TestSkillIntegration_BrowserSnapshotInteractiveWithURLNavigatesFirst(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "browser.snapshot_interactive", Params: map[string]string{"url": "https://example.com/docs"}})
+	if resp.Status != "ok" {
+		t.Fatalf("browser.snapshot_interactive with url: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if got := resp.Data["target_id"]; got != "tab-1" {
+		t.Fatalf("target_id = %q, want %q", got, "tab-1")
+	}
+}
+
 func TestSkillIntegration_BrowserAct(t *testing.T) {
 	conn, cleanup := setupAllSkills(t)
 	defer cleanup()
@@ -218,6 +248,19 @@ func TestSkillIntegration_BrowserActAcceptsAtRef(t *testing.T) {
 		t.Fatalf("browser.act @ref: status=%q error=%q", resp.Status, resp.Error)
 	}
 	if !strings.Contains(resp.Data["message"], "click") {
+		t.Errorf("message = %q", resp.Data["message"])
+	}
+}
+
+func TestSkillIntegration_BrowserScrollPage(t *testing.T) {
+	conn, cleanup := setupAllSkills(t)
+	defer cleanup()
+
+	resp := sendRecv(t, conn, &Request{Cmd: "browser.scroll_page", Params: map[string]string{"target_id": "tab-1", "act_type": "down"}})
+	if resp.Status != "ok" {
+		t.Fatalf("browser.scroll_page: status=%q error=%q", resp.Status, resp.Error)
+	}
+	if !strings.Contains(resp.Data["message"], "down") {
 		t.Errorf("message = %q", resp.Data["message"])
 	}
 }

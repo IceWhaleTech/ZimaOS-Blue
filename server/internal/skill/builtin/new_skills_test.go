@@ -136,6 +136,9 @@ type mockBrowserService struct {
 	lastActRef              int
 	lastActAction           string
 	lastActValue            string
+	lastPageScrollTargetID  string
+	lastPageScrollX         int
+	lastPageScrollY         int
 }
 
 func newMockBrowserService() *mockBrowserService {
@@ -255,6 +258,13 @@ func (m *mockBrowserService) SetViewport(_ context.Context, _ string, _, _ int) 
 }
 
 func (m *mockBrowserService) ScrollTo(_ context.Context, _ string, _, _ int) error {
+	return nil
+}
+
+func (m *mockBrowserService) PageScroll(_ context.Context, targetID string, x, y int) error {
+	m.lastPageScrollTargetID = targetID
+	m.lastPageScrollX = x
+	m.lastPageScrollY = y
 	return nil
 }
 
@@ -472,6 +482,12 @@ func TestBrowserSkill(t *testing.T) {
 		if err := br.Validate(map[string]any{"action": "scroll", "ref": 1}); err != nil {
 			t.Errorf("unexpected error for legacy action alias: %v", err)
 		}
+		if err := br.Validate(map[string]any{"action": "inspect", "target_id": "tab-inspect"}); err != nil {
+			t.Errorf("unexpected error for inspect alias: %v", err)
+		}
+		if err := br.Validate(map[string]any{"action": "scroll_down", "target_id": "tab-compat"}); err != nil {
+			t.Errorf("unexpected error for legacy page scroll alias: %v", err)
+		}
 		input := map[string]any{"href": "https://example.com/page"}
 		if err := br.Validate(input); err != nil {
 			t.Errorf("unexpected error for href alias: %v", err)
@@ -637,6 +653,77 @@ func TestBrowserSkill(t *testing.T) {
 		}
 		if result.Success {
 			t.Error("expected failure when no snapshot loaded")
+		}
+	})
+
+	t.Run("scroll_down_compat", func(t *testing.T) {
+		mock.lastPageScrollTargetID = ""
+		mock.lastPageScrollX = 0
+		mock.lastPageScrollY = 0
+
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action":    "scroll_down",
+			"target_id": "tab-compat",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("scroll_down compat failed: err=%v success=%v", err, result.Success)
+		}
+		if mock.lastPageScrollTargetID != "tab-compat" {
+			t.Fatalf("lastPageScrollTargetID = %q, want %q", mock.lastPageScrollTargetID, "tab-compat")
+		}
+		if mock.lastPageScrollY <= 0 {
+			t.Fatalf("lastPageScrollY = %d, want > 0 for scroll_down", mock.lastPageScrollY)
+		}
+		if got := result.Data.(map[string]any)["message"]; got == "" {
+			t.Fatal("expected non-empty scroll_down message")
+		}
+	})
+
+	t.Run("inspect_action_alias", func(t *testing.T) {
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action":    "inspect",
+			"target_id": "tab-inspect",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("inspect action alias failed: err=%v success=%v", err, result.Success)
+		}
+		data := result.Data.(map[string]any)
+		if data["tree"] == nil || data["tree"] == "" {
+			t.Fatal("expected inspect alias to return snapshot tree")
+		}
+	})
+
+	t.Run("inspect_action_alias_with_url_navigates_first", func(t *testing.T) {
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action": "inspect",
+			"url":    "https://example.com/inspect-first",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("inspect action alias with url failed: err=%v success=%v", err, result.Success)
+		}
+		if len(mock.tabs) == 0 || mock.tabs[len(mock.tabs)-1].URL != "https://example.com/inspect-first" {
+			t.Fatalf("expected inspect alias with url to navigate first, tabs=%#v", mock.tabs)
+		}
+		data := result.Data.(map[string]any)
+		if data["tree"] == nil || data["tree"] == "" {
+			t.Fatal("expected inspect alias with url to return snapshot tree")
+		}
+	})
+
+	t.Run("read_action_alias_with_url_navigates_first", func(t *testing.T) {
+		result, err := br.Execute(context.Background(), map[string]any{
+			"action": "read",
+			"url":    "https://example.com/read-first",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("read action alias with url failed: err=%v success=%v", err, result.Success)
+		}
+		if len(mock.tabs) == 0 || mock.tabs[len(mock.tabs)-1].URL != "https://example.com/read-first" {
+			t.Fatalf("expected read alias with url to navigate first, tabs=%#v", mock.tabs)
+		}
+		data := result.Data.(map[string]any)
+		if data["tree"] == nil || data["tree"] == "" {
+			t.Fatal("expected read alias with url to return snapshot tree")
 		}
 	})
 

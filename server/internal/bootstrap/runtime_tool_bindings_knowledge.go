@@ -45,6 +45,10 @@ func bindRuntimeAnalyzeTool(
 	deepResearchService *deepresearch.Service,
 ) *tools.AnalyzeTool {
 	analyzeTool := tools.RegisterAnalyzeTool(registry, mediaDir)
+	advisorTool := tools.RegisterAdvisorTool(registry)
+	if registry != nil && advisorTool != nil {
+		advisorTool.SetExecutor(tools.NewExecutor(registry))
+	}
 	bindRuntimeKnowledgeSkills(
 		registry,
 		analyzeTool,

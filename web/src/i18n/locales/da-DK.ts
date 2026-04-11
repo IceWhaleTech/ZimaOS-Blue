@@ -600,6 +600,7 @@ export default mergeHarnessLocale('da-DK', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Opgave annulleret',
     waitingThinking: 'Tænker...',
+    providerAccelerationActive: 'Optimerer det næste svar for den aktuelle udbyder',
     awaitingConfirmation: 'Venter på din bekræftelse for at fortsætte',
     streamConnecting: 'Forbinder',
     streamStreaming: 'Genererer',
@@ -857,7 +858,8 @@ export default mergeHarnessLocale('da-DK', {
     providerFailover: {
       eyebrow: 'Højtilgængelighedsskift',
       title: 'Skift til en anden tilgængelig rute og prøv igen?',
-      description: 'Den nuværende rute via {provider} kræver din bekræftelse, før Blue skifter til en anden tilgængelig rute og prøver igen.',
+      description:
+        'Den nuværende rute via {provider} kræver din bekræftelse, før Blue skifter til en anden tilgængelig rute og prøver igen.',
       dismissAction: 'Ikke nu',
       manualAction: 'Vælg rute manuelt',
       primaryAction: 'Skift og prøv igen',
@@ -890,7 +892,8 @@ export default mergeHarnessLocale('da-DK', {
     execDirectoryApprovalTimeout:
       'Kommandoets udførelse blev blokeret, fordi godkendelsen af mappen udløb. Godkend mappen, og prøv igen.',
     providerActive: 'Udbyderen er aktiv og klar.',
-    providerNeedsAttention: 'Udbyderen kræver opmærksomhed. Klik for at kontrollere indstillingerne.',
+    providerNeedsAttention:
+      'Udbyderen kræver opmærksomhed. Klik for at kontrollere indstillingerne.',
     providerPending: 'Udbyderstatus bliver tjekket...',
     trialQuota: {
       remaining: '{tokens} tokens tilbage',

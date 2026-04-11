@@ -2,6 +2,7 @@ package browser
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -44,6 +45,24 @@ type browserTabScreenshoter interface {
 
 type browserSessionScreenshotHistoryProvider interface {
 	SessionScreenshotHistory(targetID string) []SessionScreenshot
+}
+
+type browserPageInfoProvider interface {
+	PageInfo(ctx context.Context, targetID string) (string, string, error)
+}
+
+type browserElementExistsProvider interface {
+	ElementExists(ctx context.Context, targetID, selector string) (bool, error)
+}
+
+type browserExtractProvider interface {
+	ExtractFirstFromTab(ctx context.Context, targetID, selector, attribute string) (string, error)
+}
+
+type browserSecurityRuntime interface {
+	currentBrowserSecurityConfig() BrowserSecurityConfig
+	replaceBrowserSecurityConfig(config BrowserSecurityConfig) BrowserSecurityConfig
+	validateBrowserURL(rawURL string) error
 }
 
 // NewHandler creates a new browser handler.
@@ -207,7 +226,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.GET("/recipes", h.ListRecipes)
 	g.POST("/recipe", h.ExecuteRecipe)
 
-	// Session management (stub endpoints for frontend compatibility)
+	// Session management routes used by the browser monitor UI.
 	g.GET("/overview", h.Overview)
 	g.POST("/sessions", h.CreateSession)
 	g.DELETE("/sessions/:id", h.CloseSession)
@@ -216,7 +235,7 @@ func (h *Handler) RegisterRoutes(g *echo.Group) {
 	g.POST("/sessions/:id/navigate", h.SessionNavigate)
 	g.POST("/sessions/:id/execute", h.SessionExecute)
 
-	// Security configuration (stub endpoints for frontend compatibility)
+	// Security configuration routes for browser session policies.
 	g.GET("/security", h.GetSecurityConfig)
 	g.PUT("/security", h.UpdateSecurityConfig)
 	g.POST("/security/allowed", h.AddAllowedDomain)
@@ -351,6 +370,14 @@ func (h *Handler) listOverviewTasks(c echo.Context) ([]map[string]any, error) {
 	return tasks, nil
 }
 
+func (h *Handler) browserSecurityRuntime() browserSecurityRuntime {
+	service := h.getService()
+	if runtime, ok := service.(browserSecurityRuntime); ok {
+		return runtime
+	}
+	return nil
+}
+
 func browserUserID(c echo.Context) string {
 	if claims := auth.GetUserFromContext(c); claims != nil {
 		return strings.TrimSpace(claims.UserID)
@@ -395,20 +422,13 @@ func (h *Handler) CreateSession(c echo.Context) error {
 
 	service, release, err := h.acquireStartedService(c.Request().Context())
 	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+		return mapError(err)
 	}
 	if release != nil {
 		defer release()
 	}
 	if service == nil {
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"id":            "session-" + timeutil.NowTime().Format("20060102150405"),
-			"status":        "idle",
-			"current_url":   "",
-			"page_title":    "",
-			"created_at":    timeutil.NowTime().Format(time.RFC3339),
-			"last_activity": timeutil.NowTime().Format(time.RFC3339),
-		})
+		return mapError(ErrBrowserNotAvailable)
 	}
 
 	// Create a context with timeout to prevent hanging
@@ -418,23 +438,21 @@ func (h *Handler) CreateSession(c echo.Context) error {
 	// Try to create a new tab
 	tab, err := service.OpenTab(ctx, "about:blank")
 	if err != nil {
-		// Return a stub session if browser not available or timeout
-		return c.JSON(http.StatusOK, map[string]interface{}{
-			"id":            "session-" + timeutil.NowTime().Format("20060102150405"),
-			"status":        "idle",
-			"current_url":   "",
-			"page_title":    "",
-			"created_at":    timeutil.NowTime().Format(time.RFC3339),
-			"last_activity": timeutil.NowTime().Format(time.RFC3339),
-		})
+		return mapError(err)
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"id":            tab.TargetID,
-		"status":        "active",
-		"current_url":   tab.URL,
-		"page_title":    tab.Title,
-		"created_at":    timeutil.NowTime().Format(time.RFC3339),
-		"last_activity": timeutil.NowTime().Format(time.RFC3339),
+	if tab == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "browser session unavailable")
+	}
+	now := timeutil.NowTime()
+	return c.JSON(http.StatusOK, SessionInfo{
+		ID:           tab.TargetID,
+		Status:       "active",
+		CurrentURL:   tab.URL,
+		PageTitle:    tab.Title,
+		CreatedAt:    now.Format(time.RFC3339),
+		LastActivity: now.Format(time.RFC3339),
+		Engine:       SessionEngineChromiumManaged,
+		MonitorKind:  SessionMonitorKindImage,
 	})
 }
 
@@ -649,15 +667,271 @@ func (h *Handler) SessionNavigate(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-// SessionExecute executes a step in a session (stub).
+type browserSessionExecuteRequest struct {
+	Type   string                 `json:"type"`
+	Params map[string]interface{} `json:"params"`
+}
+
+func normalizeBrowserSessionStepType(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "click", "type", "select", "scroll", "hover", "wait", "extract", "navigate", "screenshot":
+		return strings.ToLower(strings.TrimSpace(raw))
+	case "press", "press_key":
+		return "press_key"
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
+
+func browserStepString(params map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+		if text, ok := value.(string); ok {
+			text = strings.TrimSpace(text)
+			if text != "" {
+				return text
+			}
+		}
+	}
+	return ""
+}
+
+func browserStepBool(params map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+		if flag, ok := value.(bool); ok {
+			return flag
+		}
+	}
+	return false
+}
+
+func browserStepInt(params map[string]interface{}, keys ...string) int {
+	for _, key := range keys {
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case float64:
+			return int(typed)
+		case float32:
+			return int(typed)
+		case int:
+			return typed
+		case int64:
+			return int(typed)
+		case json.Number:
+			if parsed, err := typed.Int64(); err == nil {
+				return int(parsed)
+			}
+		}
+	}
+	return 0
+}
+
+func browserStepStringSlice(params map[string]interface{}, keys ...string) []string {
+	for _, key := range keys {
+		value, ok := params[key]
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case []string:
+			return append([]string(nil), typed...)
+		case []interface{}:
+			result := make([]string, 0, len(typed))
+			for _, item := range typed {
+				if text, ok := item.(string); ok {
+					text = strings.TrimSpace(text)
+					if text != "" {
+						result = append(result, text)
+					}
+				}
+			}
+			if len(result) > 0 {
+				return result
+			}
+		}
+	}
+	return nil
+}
+
+func browserSessionPageInfo(ctx context.Context, service Service, targetID string) (string, string) {
+	provider, ok := service.(browserPageInfoProvider)
+	if !ok {
+		return "", ""
+	}
+	url, title, err := provider.PageInfo(ctx, targetID)
+	if err != nil {
+		return "", ""
+	}
+	return url, title
+}
+
+func browserSessionExecuteResult(ctx context.Context, service Service, targetID string) map[string]interface{} {
+	url, title := browserSessionPageInfo(ctx, service, targetID)
+	return map[string]interface{}{
+		"page_title": title,
+		"page_url":   url,
+	}
+}
+
+func browserActRequestFromSessionStep(stepType, targetID string, params map[string]interface{}) (*ActRequest, error) {
+	req := &ActRequest{
+		TargetID: targetID,
+		Selector: browserStepString(params, "selector"),
+		Ref:      browserStepString(params, "ref"),
+		Value:    browserStepString(params, "value"),
+		Text:     browserStepString(params, "text"),
+		Key:      browserStepString(params, "key", "value", "text"),
+		X:        browserStepInt(params, "x"),
+		Y:        browserStepInt(params, "y"),
+		Double:   browserStepBool(params, "double"),
+		Submit:   browserStepBool(params, "submit"),
+		Options:  browserStepStringSlice(params, "options", "values"),
+		ToRef:    browserStepString(params, "to_ref", "toRef"),
+		Duration: browserStepInt(params, "duration", "wait_for", "waitFor"),
+		Timeout:  browserStepInt(params, "timeout"),
+	}
+
+	switch stepType {
+	case "click":
+		req.Kind = "click"
+	case "type":
+		req.Kind = "type"
+	case "select":
+		req.Kind = "select"
+		if len(req.Options) == 0 && req.Value != "" {
+			req.Options = []string{req.Value}
+		}
+	case "scroll":
+		req.Kind = "scroll"
+	case "hover":
+		req.Kind = "hover"
+	case "press_key":
+		req.Kind = "press"
+	case "wait":
+		req.Kind = "wait"
+	default:
+		return nil, errors.New("unsupported browser session step")
+	}
+
+	return req, nil
+}
+
+// SessionExecute executes a step in a session.
 func (h *Handler) SessionExecute(c echo.Context) error {
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"screenshot":     "",
-		"extracted_data": nil,
-		"element_found":  true,
-		"page_title":     "",
-		"page_url":       "",
-	})
+	var req browserSessionExecuteRequest
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+	stepType := normalizeBrowserSessionStepType(req.Type)
+	if stepType == "" {
+		return echo.NewHTTPError(http.StatusBadRequest, "step type is required")
+	}
+
+	if h.sessionRoutes != nil {
+		return echo.NewHTTPError(http.StatusNotImplemented, "browser session step execution unavailable")
+	}
+
+	service, release, err := h.acquireStartedService(c.Request().Context())
+	if err != nil {
+		return mapError(err)
+	}
+	if release != nil {
+		defer release()
+	}
+	if service == nil {
+		return mapError(ErrBrowserNotAvailable)
+	}
+
+	targetID := c.Param("id")
+	ctx := c.Request().Context()
+	result := browserSessionExecuteResult(ctx, service, targetID)
+
+	switch stepType {
+	case "navigate":
+		rawURL := browserStepString(req.Params, "url", "value")
+		if rawURL == "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "url is required")
+		}
+		if _, err := service.Navigate(ctx, &NavigateRequest{
+			URL:      rawURL,
+			TargetID: targetID,
+		}); err != nil {
+			return mapError(err)
+		}
+		return c.JSON(http.StatusOK, browserSessionExecuteResult(ctx, service, targetID))
+	case "extract":
+		selector := browserStepString(req.Params, "selector")
+		if selector == "" {
+			return echo.NewHTTPError(http.StatusBadRequest, "selector is required")
+		}
+		existsProvider, ok := service.(browserElementExistsProvider)
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotImplemented, "browser extract execution unavailable")
+		}
+		found, err := existsProvider.ElementExists(ctx, targetID, selector)
+		if err != nil {
+			return mapError(err)
+		}
+		result["element_found"] = found
+		if found {
+			extractor, ok := service.(browserExtractProvider)
+			if !ok {
+				return echo.NewHTTPError(http.StatusNotImplemented, "browser extract execution unavailable")
+			}
+			value, err := extractor.ExtractFirstFromTab(ctx, targetID, selector, browserStepString(req.Params, "attribute"))
+			if err != nil {
+				return mapError(err)
+			}
+			result["extracted_data"] = value
+		} else {
+			result["extracted_data"] = nil
+		}
+		return c.JSON(http.StatusOK, result)
+	case "screenshot":
+		if screenshoter, ok := service.(browserViewportScreenshoter); ok {
+			screenshot, err := screenshoter.ScreenshotViewport(ctx, targetID)
+			if err != nil {
+				return mapError(err)
+			}
+			result["screenshot"] = screenshot
+			return c.JSON(http.StatusOK, result)
+		}
+		if screenshoter, ok := service.(browserTabScreenshoter); ok {
+			screenshot, err := screenshoter.ScreenshotTab(ctx, targetID)
+			if err != nil {
+				return mapError(err)
+			}
+			result["screenshot"] = screenshot
+			return c.JSON(http.StatusOK, result)
+		}
+		return echo.NewHTTPError(http.StatusNotImplemented, "browser screenshot execution unavailable")
+	default:
+		actReq, err := browserActRequestFromSessionStep(stepType, targetID, req.Params)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+		resp, err := service.Act(ctx, actReq)
+		if err != nil {
+			return mapError(err)
+		}
+		if resp != nil && resp.Data != nil {
+			result["extracted_data"] = resp.Data
+		}
+		for key, value := range browserSessionExecuteResult(ctx, service, targetID) {
+			result[key] = value
+		}
+		return c.JSON(http.StatusOK, result)
+	}
 }
 
 // Status returns the browser status.
@@ -1112,29 +1386,58 @@ type BrowserSecurityConfig struct {
 	BlockedDomains []string `json:"blocked_domains"`
 }
 
-// In-memory security config (stub - should be persisted in production)
-var securityConfig = BrowserSecurityConfig{
-	AllowedDomains: []string{},
-	BlockedDomains: []string{},
+func browserSecurityUnavailableError() *echo.HTTPError {
+	return echo.NewHTTPError(http.StatusServiceUnavailable, "browser security unavailable")
 }
 
-// GetSecurityConfig returns the browser security configuration (stub).
+func normalizeBrowserDomainList(domains []string) []string {
+	if len(domains) == 0 {
+		return []string{}
+	}
+	seen := make(map[string]struct{}, len(domains))
+	result := make([]string, 0, len(domains))
+	for _, domain := range domains {
+		normalized := strings.ToLower(strings.TrimSpace(domain))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
+	}
+	return result
+}
+
+// GetSecurityConfig returns the configured browser security settings.
 func (h *Handler) GetSecurityConfig(c echo.Context) error {
-	return c.JSON(http.StatusOK, securityConfig)
+	runtime := h.browserSecurityRuntime()
+	if runtime == nil {
+		return browserSecurityUnavailableError()
+	}
+	return c.JSON(http.StatusOK, runtime.currentBrowserSecurityConfig())
 }
 
-// UpdateSecurityConfig updates the browser security configuration (stub).
+// UpdateSecurityConfig updates the configured browser security settings.
 func (h *Handler) UpdateSecurityConfig(c echo.Context) error {
+	runtime := h.browserSecurityRuntime()
+	if runtime == nil {
+		return browserSecurityUnavailableError()
+	}
 	var config BrowserSecurityConfig
 	if err := c.Bind(&config); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
-	securityConfig = config
-	return c.JSON(http.StatusOK, securityConfig)
+	return c.JSON(http.StatusOK, runtime.replaceBrowserSecurityConfig(config))
 }
 
-// AddAllowedDomain adds a domain to the allowed list (stub).
+// AddAllowedDomain adds a domain to the allowed list.
 func (h *Handler) AddAllowedDomain(c echo.Context) error {
+	runtime := h.browserSecurityRuntime()
+	if runtime == nil {
+		return browserSecurityUnavailableError()
+	}
 	var req struct {
 		Domain string `json:"domain"`
 	}
@@ -1144,34 +1447,38 @@ func (h *Handler) AddAllowedDomain(c echo.Context) error {
 	if req.Domain == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
 	}
-	// Check if already exists
-	for _, d := range securityConfig.AllowedDomains {
-		if d == req.Domain {
-			return c.JSON(http.StatusOK, securityConfig)
-		}
-	}
-	securityConfig.AllowedDomains = append(securityConfig.AllowedDomains, req.Domain)
-	return c.JSON(http.StatusOK, securityConfig)
+	config := runtime.currentBrowserSecurityConfig()
+	config.AllowedDomains = append(config.AllowedDomains, req.Domain)
+	return c.JSON(http.StatusOK, runtime.replaceBrowserSecurityConfig(config))
 }
 
-// RemoveAllowedDomain removes a domain from the allowed list (stub).
+// RemoveAllowedDomain removes a domain from the allowed list.
 func (h *Handler) RemoveAllowedDomain(c echo.Context) error {
+	runtime := h.browserSecurityRuntime()
+	if runtime == nil {
+		return browserSecurityUnavailableError()
+	}
 	domain := c.Param("domain")
 	if domain == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
 	}
-	newList := make([]string, 0, len(securityConfig.AllowedDomains))
-	for _, d := range securityConfig.AllowedDomains {
-		if d != domain {
+	config := runtime.currentBrowserSecurityConfig()
+	newList := make([]string, 0, len(config.AllowedDomains))
+	for _, d := range config.AllowedDomains {
+		if !strings.EqualFold(d, domain) {
 			newList = append(newList, d)
 		}
 	}
-	securityConfig.AllowedDomains = newList
-	return c.JSON(http.StatusOK, securityConfig)
+	config.AllowedDomains = newList
+	return c.JSON(http.StatusOK, runtime.replaceBrowserSecurityConfig(config))
 }
 
-// AddBlockedDomain adds a domain to the blocked list (stub).
+// AddBlockedDomain adds a domain to the blocked list.
 func (h *Handler) AddBlockedDomain(c echo.Context) error {
+	runtime := h.browserSecurityRuntime()
+	if runtime == nil {
+		return browserSecurityUnavailableError()
+	}
 	var req struct {
 		Domain string `json:"domain"`
 	}
@@ -1181,34 +1488,38 @@ func (h *Handler) AddBlockedDomain(c echo.Context) error {
 	if req.Domain == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
 	}
-	// Check if already exists
-	for _, d := range securityConfig.BlockedDomains {
-		if d == req.Domain {
-			return c.JSON(http.StatusOK, securityConfig)
-		}
-	}
-	securityConfig.BlockedDomains = append(securityConfig.BlockedDomains, req.Domain)
-	return c.JSON(http.StatusOK, securityConfig)
+	config := runtime.currentBrowserSecurityConfig()
+	config.BlockedDomains = append(config.BlockedDomains, req.Domain)
+	return c.JSON(http.StatusOK, runtime.replaceBrowserSecurityConfig(config))
 }
 
-// RemoveBlockedDomain removes a domain from the blocked list (stub).
+// RemoveBlockedDomain removes a domain from the blocked list.
 func (h *Handler) RemoveBlockedDomain(c echo.Context) error {
+	runtime := h.browserSecurityRuntime()
+	if runtime == nil {
+		return browserSecurityUnavailableError()
+	}
 	domain := c.Param("domain")
 	if domain == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "domain is required")
 	}
-	newList := make([]string, 0, len(securityConfig.BlockedDomains))
-	for _, d := range securityConfig.BlockedDomains {
-		if d != domain {
+	config := runtime.currentBrowserSecurityConfig()
+	newList := make([]string, 0, len(config.BlockedDomains))
+	for _, d := range config.BlockedDomains {
+		if !strings.EqualFold(d, domain) {
 			newList = append(newList, d)
 		}
 	}
-	securityConfig.BlockedDomains = newList
-	return c.JSON(http.StatusOK, securityConfig)
+	config.BlockedDomains = newList
+	return c.JSON(http.StatusOK, runtime.replaceBrowserSecurityConfig(config))
 }
 
-// TestURL tests if a URL is allowed (stub).
+// TestURL tests whether a URL is allowed by the configured browser security rules.
 func (h *Handler) TestURL(c echo.Context) error {
+	runtime := h.browserSecurityRuntime()
+	if runtime == nil {
+		return browserSecurityUnavailableError()
+	}
 	var req struct {
 		URL string `json:"url"`
 	}
@@ -1218,7 +1529,17 @@ func (h *Handler) TestURL(c echo.Context) error {
 	if req.URL == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, "url is required")
 	}
-	// Simple stub - always allow
+	if err := runtime.validateBrowserURL(req.URL); err != nil {
+		switch err {
+		case ErrURLNotAllowed, ErrURLBlocked:
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"allowed": false,
+				"reason":  err.Error(),
+			})
+		default:
+			return mapError(err)
+		}
+	}
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"allowed": true,
 		"reason":  "",

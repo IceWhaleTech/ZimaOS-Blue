@@ -20,6 +20,7 @@ func TestRegisterAll(t *testing.T) {
 		NewCalendar(),
 		NewContacts(),
 		NewBrowser(),
+		NewAdvisor(),
 		NewAnalyze(),
 		NewDeepResearch(),
 		NewWebQuery(),
@@ -41,6 +42,9 @@ func TestRegisterAll_RegistersCanonicalWebQueryOnly(t *testing.T) {
 
 	if registry.Get("web_query") == nil {
 		t.Fatal("expected web_query builtin skill to be registered")
+	}
+	if registry.Get("advisor") == nil {
+		t.Fatal("expected advisor builtin skill to be registered")
 	}
 	if registry.Get("web_search") != nil {
 		t.Fatal("expected legacy web_search builtin skill to stay unregistered by default")

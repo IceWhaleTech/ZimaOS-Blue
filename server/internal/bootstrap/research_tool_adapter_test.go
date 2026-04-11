@@ -197,3 +197,55 @@ func TestDeepResearchToolAdapterCreateJobUsesCanonicalHarnessSpecForAnalyze(t *t
 		t.Fatalf("job = %#v, want synthesized analyze job", job)
 	}
 }
+
+func TestDeepResearchToolAdapterGetJobForUserUsesHarnessRuntimeProjection(t *testing.T) {
+	db, bundle, _, _ := newTestAgentRuntimeFixture(t)
+	defer db.Close()
+
+	bundle.Controller.RegisterDriver(&bootstrapResearchSnapshotDriver{
+		status:   harness.RunStatusExecuting,
+		progress: 37,
+		metadata: map[string]interface{}{
+			"mode":          "advisor",
+			"stage":         "evidence",
+			"latest_action": "Collect official docs",
+			"iteration":     1,
+		},
+	})
+
+	run, err := bundle.Controller.Submit(context.Background(), harness.RunSpec{
+		Kind:           harness.RunKindResearch,
+		Goal:           "Should we replace Python with Go?",
+		UserID:         "user-adapter-advisor",
+		ConversationID: "conv-adapter-advisor",
+		ProviderID:     "openai-prod",
+		Metadata: map[string]interface{}{
+			"mode":          "advisor",
+			"question":      "Should we replace Python with Go?",
+			"depth":         "deep",
+			"output":        "decision_pack",
+			"decision_mode": "replace",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	adapter := newHarnessRuntimeResearchToolAdapter(bundle, deepresearch.NewService(nil, stubDeepResearchSearcher{}), "/tmp/workspace")
+	job, err := adapter.GetJobForUser(run.ID, "user-adapter-advisor")
+	if err != nil {
+		t.Fatalf("GetJobForUser failed: %v", err)
+	}
+	if job == nil || job.ID != run.ID {
+		t.Fatalf("job = %#v, want projected harness run", job)
+	}
+	if job.Mode != "advisor" {
+		t.Fatalf("job.Mode = %q, want advisor", job.Mode)
+	}
+	if job.Progress != 37 {
+		t.Fatalf("job.Progress = %d, want 37", job.Progress)
+	}
+	if got := job.Report["answer"]; got != nil {
+		t.Fatalf("job.Report[answer] = %#v, want nil for in-progress projected run", got)
+	}
+}

@@ -8,16 +8,11 @@ import (
 	"fmt"
 	"image/png"
 	"io"
-	"os"
-	"path/filepath"
-	"strings"
 
 	ocrruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/ocr"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 	"github.com/klippa-app/go-pdfium"
 	"github.com/klippa-app/go-pdfium/references"
 	"github.com/klippa-app/go-pdfium/requests"
-	"github.com/klippa-app/go-pdfium/responses"
 	"github.com/klippa-app/go-pdfium/webassembly"
 )
 
@@ -145,15 +140,6 @@ func (s *Service) extractPageVision(ctx context.Context, instance pdfium.Pdfium,
 	return vision.Extract(ctx, buf.Bytes())
 }
 
-func pdfiumRuntimeURLCandidates() []string {
-	return skillbundle.GitHubRawURLCandidates(
-		pdfiumRuntimeRepoOwner,
-		pdfiumRuntimeRepoName,
-		pdfiumRuntimeRepoRef,
-		pdfiumRuntimeSourcePath,
-	)
-}
-
 func (s *Service) getInstance(ctx context.Context) (pdfium.Pdfium, error) {
 	if err := s.ensureReady(ctx); err != nil {
 		return nil, err
@@ -194,80 +180,4 @@ func (s *Service) ensureReady(ctx context.Context) error {
 		}
 	})
 	return s.initErr
-}
-
-func (s *Service) ensureRuntimeWASMBytes(ctx context.Context) ([]byte, error) {
-	wasmPath := filepath.Join(s.runtimeDir, pdfiumRuntimeFileName)
-	if _, err := os.Stat(wasmPath); err != nil {
-		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("stat PDF runtime: %w", err)
-		}
-		if !s.autoDownload {
-			return nil, fmt.Errorf("missing PDF runtime %s", pdfiumRuntimeFileName)
-		}
-		if err := os.MkdirAll(s.runtimeDir, 0o750); err != nil {
-			return nil, fmt.Errorf("create PDF runtime dir: %w", err)
-		}
-		if err := s.downloadWithFallback(ctx, pdfiumRuntimeURLCandidates(), wasmPath, "PDF runtime"); err != nil {
-			return nil, err
-		}
-	}
-	wasmBytes, err := os.ReadFile(wasmPath)
-	if err != nil {
-		return nil, fmt.Errorf("read PDF runtime: %w", err)
-	}
-	return wasmBytes, nil
-}
-
-func buildDocumentInfo(instance pdfium.Pdfium, path string, stat os.FileInfo, document references.FPDF_DOCUMENT) (DocumentInfo, error) {
-	pageCount, err := instance.FPDF_GetPageCount(&requests.FPDF_GetPageCount{Document: document})
-	if err != nil {
-		return DocumentInfo{}, fmt.Errorf("get page count: %w", err)
-	}
-	info := DocumentInfo{
-		Path:       path,
-		FileName:   filepath.Base(path),
-		SizeBytes:  stat.Size(),
-		ModifiedAt: stat.ModTime().UTC(),
-		PageCount:  pageCount.PageCount,
-		Engine:     engineName,
-	}
-	if metadata, err := instance.GetMetaData(&requests.GetMetaData{Document: document}); err == nil && metadata != nil {
-		info.Metadata = metadataToMap(metadata.Tags)
-	}
-	return info, nil
-}
-
-func openDocument(instance pdfium.Pdfium, path string) (*responses.OpenDocument, error) {
-	doc, err := instance.OpenDocument(&requests.OpenDocument{FilePath: &path})
-	if err != nil {
-		return nil, fmt.Errorf("open pdf: %w", err)
-	}
-	return doc, nil
-}
-
-func closeDocument(instance pdfium.Pdfium, document references.FPDF_DOCUMENT) {
-	if document == "" {
-		return
-	}
-	_, _ = instance.FPDF_CloseDocument(&requests.FPDF_CloseDocument{Document: document})
-}
-
-func metadataToMap(tags []responses.GetMetaDataTag) map[string]string {
-	if len(tags) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(tags))
-	for _, tag := range tags {
-		key := strings.TrimSpace(tag.Tag)
-		value := strings.TrimSpace(tag.Value)
-		if key == "" || value == "" {
-			continue
-		}
-		out[key] = value
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
 }

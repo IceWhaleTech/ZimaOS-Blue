@@ -131,7 +131,9 @@ func TestController_ImportCommittedPinchBenchBundleRunsEvalAndProducesScorecards
 	defer cancel()
 	go dispatcher.Start(dispatchCtx)
 
-	deadline := time.Now().Add(15 * time.Second)
+	// This bundle run is stable in isolation but can take materially longer under
+	// full Linux CI package load, especially while the dispatcher drains all 23 items.
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		report, err := controller.GetGroupReport(context.Background(), evalRun.GroupID)
 		if err == nil && report != nil && report.Group != nil {

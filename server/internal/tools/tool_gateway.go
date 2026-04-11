@@ -178,7 +178,7 @@ func (g *ToolGateway) Execute(ctx context.Context, req ToolGatewayRequest) (*Too
 		})
 	}
 
-	args, argsJSON, err := normalizeToolArguments(req.Arguments)
+	args, argsJSON, err := normalizeToolArguments(g.executor, resolvedName, req.Arguments)
 	if err != nil {
 		result.populateError(req.ToolCallID, resolvedName, nil, err)
 		g.recordMetric("tool_call_rejected_total", req, map[string]string{
@@ -445,25 +445,27 @@ func (g *ToolGateway) lookupPublicRouteFallback(name string, routeKind ToolRoute
 	return ToolDefinition{}, "", false
 }
 
-func normalizeToolArguments(raw string) (map[string]interface{}, string, error) {
+func normalizeToolArguments(executor *Executor, name, raw string) (map[string]interface{}, string, error) {
 	normalizedJSON, ok := CanonicalizeToolArgumentsJSON(raw)
-	if !ok {
-		trimmed := strings.TrimSpace(raw)
-		return nil, "", &ToolGatewayError{
-			Code:    "invalid_tool_arguments_json",
-			Message: "tool arguments must be a JSON object",
-			Details: map[string]interface{}{"raw_arguments": truncateToolString(trimmed, 512)},
+	if ok {
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(normalizedJSON), &args); err == nil {
+			return args, normalizedJSON, nil
 		}
 	}
-	var args map[string]interface{}
-	if err := json.Unmarshal([]byte(normalizedJSON), &args); err != nil {
-		return nil, "", &ToolGatewayError{
-			Code:    "invalid_tool_arguments_json",
-			Message: "tool arguments must be a JSON object",
-			Details: map[string]interface{}{"raw_arguments": truncateToolString(strings.TrimSpace(raw), 512)},
+	if executor != nil {
+		for _, candidate := range buildArgsCandidates(strings.TrimSpace(raw)) {
+			if args, ok := executor.parseLooseArgs(name, candidate); ok {
+				return args, serializeToolPayload(args), nil
+			}
 		}
 	}
-	return args, normalizedJSON, nil
+	trimmed := strings.TrimSpace(raw)
+	return nil, "", &ToolGatewayError{
+		Code:    "invalid_tool_arguments_json",
+		Message: "tool arguments must be a JSON object",
+		Details: map[string]interface{}{"raw_arguments": truncateToolString(trimmed, 512)},
+	}
 }
 
 // CanonicalizeToolArgumentsJSON normalizes tool-call arguments into a JSON object

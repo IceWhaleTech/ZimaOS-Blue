@@ -19,6 +19,15 @@ func runtimeSkillAsAnalyzeTarget(source runtimeSkillRegistrySource, id string) r
 	return target
 }
 
+func runtimeSkillAsAdvisorTarget(source runtimeSkillRegistrySource, id string) runtimeAdvisorSkillTarget {
+	skill := runtimeSkillFromSource(source, id)
+	if skill == nil {
+		return nil
+	}
+	target, _ := skill.(runtimeAdvisorSkillTarget)
+	return target
+}
+
 func runtimeSkillAsEmailTarget(source runtimeSkillRegistrySource, id string) runtimeEmailSkillTarget {
 	skill := runtimeSkillFromSource(source, id)
 	if skill == nil {

@@ -601,6 +601,7 @@ export default mergeHarnessLocale('es-ES', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Tarea cancelada',
     waitingThinking: 'Pensando...',
+    providerAccelerationActive: 'Optimizando la siguiente respuesta para el proveedor actual',
     awaitingConfirmation: 'Esperando tu confirmación para continuar',
     streamConnecting: 'Conectando',
     streamStreaming: 'Generando',
@@ -631,7 +632,8 @@ export default mergeHarnessLocale('es-ES', {
     taskFailedDuringPlanning: 'La tarea falló durante la planificación',
     taskFailedDuringConfirmation: 'La tarea falló durante la confirmación',
     taskFailedWhileRevisingPlan: 'La tarea falló al revisar el plan',
-    taskFailedWhileUpdatingRuntimeState: 'La tarea falló al actualizar el estado del entorno de ejecución',
+    taskFailedWhileUpdatingRuntimeState:
+      'La tarea falló al actualizar el estado del entorno de ejecución',
     verificationFailedRecoveryFailed: 'La verificación falló y la recuperación no tuvo éxito',
     taskFailureGroundedVerificationFailed: 'La verificación de fundamentación falló',
     taskWaitingForApproval: 'Esperando su aprobación',
@@ -865,7 +867,8 @@ export default mergeHarnessLocale('es-ES', {
     providerFailover: {
       eyebrow: 'Cambio de alta disponibilidad',
       title: '¿Cambiar a otra ruta disponible y volver a intentarlo?',
-      description: 'La ruta actual con {provider} necesita tu confirmación antes de que Blue cambie a otra ruta disponible y vuelva a intentarlo.',
+      description:
+        'La ruta actual con {provider} necesita tu confirmación antes de que Blue cambie a otra ruta disponible y vuelva a intentarlo.',
       dismissAction: 'Ahora no',
       manualAction: 'Elegir ruta manualmente',
       primaryAction: 'Cambiar y reintentar',
@@ -901,7 +904,8 @@ export default mergeHarnessLocale('es-ES', {
     execDirectoryApprovalTimeout:
       'La ejecución del comando se bloqueó porque la aprobación del directorio caducó. Aprueba el directorio y vuelve a intentarlo.',
     providerActive: 'El proveedor está activo y listo.',
-    providerNeedsAttention: 'El proveedor necesita atención. Haga clic para revisar la configuración.',
+    providerNeedsAttention:
+      'El proveedor necesita atención. Haga clic para revisar la configuración.',
     providerPending: 'Verificando el estado del proveedor...',
     trialQuota: {
       remaining: '{tokens} tokens restantes',

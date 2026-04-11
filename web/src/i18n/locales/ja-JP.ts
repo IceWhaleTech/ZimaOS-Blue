@@ -600,6 +600,7 @@ export default mergeHarnessLocale('ja-JP', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'タスクをキャンセルしました',
     waitingThinking: '考え中...',
+    providerAccelerationActive: '現在のプロバイダー向けに次の応答を最適化しています',
     awaitingConfirmation: '続行するには確認をお待ちしています',
     streamConnecting: '接続中',
     streamStreaming: '生成中',
@@ -861,7 +862,8 @@ export default mergeHarnessLocale('ja-JP', {
     providerFailover: {
       eyebrow: '高可用性切り替え',
       title: '別の利用可能なルートへ切り替えて再試行しますか？',
-      description: '{provider} 上の現在のルートは、Blue が別の利用可能なルートへ切り替えて再試行する前に確認が必要です。',
+      description:
+        '{provider} 上の現在のルートは、Blue が別の利用可能なルートへ切り替えて再試行する前に確認が必要です。',
       dismissAction: '今はしない',
       manualAction: '手動でルートを選ぶ',
       primaryAction: '切り替えて再試行',

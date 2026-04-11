@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// EmailMessage represents a local inbox message used by the benchmark-first
-// email tool and daily summary aggregation.
+// EmailMessage represents an inbox message managed by the local email tool and
+// daily summary aggregation.
 type EmailMessage struct {
 	ID          string    `json:"id"`
 	ThreadID    string    `json:"thread_id,omitempty"`
@@ -65,8 +65,7 @@ type EmailService interface {
 	Summarize(ctx context.Context, ownerID string, opts EmailQueryOptions) (*EmailSummary, error)
 }
 
-// LocalEmailService persists a benchmark-first inbox in SQLite and auto-seeds
-// realistic fixture messages for each user on first access.
+// LocalEmailService persists inbox messages in SQLite.
 type LocalEmailService struct {
 	db     *sql.DB
 	readDB *sql.DB
@@ -182,31 +181,6 @@ func (s *LocalEmailService) SeedFixtures(ctx context.Context, ownerID string, fi
 	return tx.Commit()
 }
 
-func (s *LocalEmailService) ensureSeeded(ctx context.Context, ownerID string) error {
-	ownerID = normalizeProductivityOwnerID(ownerID)
-	var count int64
-	if _, err := s.readTable(ctx).Select(&count,
-		z.Fields("count(1)"),
-		z.Where(z.Eq("owner_id", ownerID)),
-	); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, msg := range defaultEmailFixtures(s.now()) {
-		if err := insertEmailMessage(ctx, tx, ownerID, msg); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
 func insertEmailMessage(ctx context.Context, tx *sql.Tx, ownerID string, msg EmailMessage) error {
 	if strings.TrimSpace(msg.ID) == "" {
 		msg.ID = uuid.NewString()
@@ -257,9 +231,6 @@ func (s *LocalEmailService) List(ctx context.Context, ownerID string, opts Email
 		return nil, errors.New("email service not configured")
 	}
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	if err := s.ensureSeeded(ctx, ownerID); err != nil {
-		return nil, err
-	}
 	var rows []emailMessageRow
 	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Eq("owner_id", ownerID)),
@@ -302,9 +273,6 @@ func (s *LocalEmailService) Get(ctx context.Context, ownerID, id string) (*Email
 		return nil, errors.New("email service not configured")
 	}
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	if err := s.ensureSeeded(ctx, ownerID); err != nil {
-		return nil, err
-	}
 	var rows []emailMessageRow
 	_, err := s.readTable(ctx).Select(&rows,
 		z.Where(z.Eq("owner_id", ownerID), z.Eq("id", strings.TrimSpace(id))),
@@ -326,9 +294,6 @@ func (s *LocalEmailService) Archive(ctx context.Context, ownerID, id string, arc
 		return nil, errors.New("email service not configured")
 	}
 	ownerID = normalizeProductivityOwnerID(ownerID)
-	if err := s.ensureSeeded(ctx, ownerID); err != nil {
-		return nil, err
-	}
 	updatedAt := s.now().UTC().Format(time.RFC3339)
 	affected, err := s.table(ctx).Update(
 		z.V{
@@ -606,85 +571,7 @@ func formatEmailHighlight(msg EmailMessage) string {
 	return fmt.Sprintf("%s — %s", subject, sender)
 }
 
-func defaultEmailFixtures(now time.Time) []EmailMessage {
-	base := now.UTC().Truncate(time.Minute)
-	return []EmailMessage{
-		{
-			Subject:     "ACTION REQUIRED: Contract approval before 5 PM",
-			SenderName:  "Legal Ops",
-			SenderEmail: "legal@example.com",
-			Recipients:  []string{"you@example.com"},
-			Snippet:     "Please approve the vendor addendum before today's deadline.",
-			Body:        "We need your approval on the vendor addendum before 5 PM today. Reply with approval or archive once handled.",
-			Labels:      []string{"work", "action"},
-			Priority:    "high",
-			Unread:      true,
-			Archived:    false,
-			ReceivedAt:  base.Add(-90 * time.Minute),
-			UpdatedAt:   base.Add(-90 * time.Minute),
-		},
-		{
-			Subject:     "Quarterly planning moved to 3:00 PM",
-			SenderName:  "Alice Chen",
-			SenderEmail: "alice.chen@example.com",
-			Recipients:  []string{"you@example.com"},
-			Snippet:     "The planning meeting is now at 3 PM in the Horizon room.",
-			Body:        "Please note the quarterly planning meeting moved from 2 PM to 3 PM. Agenda and deck are attached in the calendar event.",
-			Labels:      []string{"work", "calendar"},
-			Priority:    "normal",
-			Unread:      true,
-			Archived:    false,
-			ReceivedAt:  base.Add(-2 * time.Hour),
-			UpdatedAt:   base.Add(-2 * time.Hour),
-		},
-		{
-			Subject:     "Security alert: password reset requested",
-			SenderName:  "IT Security",
-			SenderEmail: "security@example.com",
-			Recipients:  []string{"you@example.com"},
-			Snippet:     "A password reset was requested for your admin account.",
-			Body:        "If you did not request this password reset, review account activity and rotate credentials today.",
-			Labels:      []string{"security", "action"},
-			Priority:    "high",
-			Unread:      true,
-			Archived:    false,
-			ReceivedAt:  base.Add(-45 * time.Minute),
-			UpdatedAt:   base.Add(-45 * time.Minute),
-		},
-		{
-			Subject:     "Your package is out for delivery",
-			SenderName:  "Parcel Service",
-			SenderEmail: "tracking@example.com",
-			Recipients:  []string{"you@example.com"},
-			Snippet:     "Estimated delivery today before 8 PM.",
-			Body:        "Your package is out for delivery and should arrive before 8 PM today.",
-			Labels:      []string{"personal"},
-			Priority:    "normal",
-			Unread:      false,
-			Archived:    false,
-			ReceivedAt:  base.Add(-5 * time.Hour),
-			UpdatedAt:   base.Add(-5 * time.Hour),
-		},
-		{
-			Subject:     "Product newsletter: March highlights",
-			SenderName:  "Product News",
-			SenderEmail: "newsletter@example.com",
-			Recipients:  []string{"you@example.com"},
-			Snippet:     "Feature launches, community updates, and events.",
-			Body:        "Here are this month's product highlights and launch notes.",
-			Labels:      []string{"newsletter"},
-			Priority:    "low",
-			Unread:      false,
-			Archived:    false,
-			ReceivedAt:  base.Add(-36 * time.Hour),
-			UpdatedAt:   base.Add(-36 * time.Hour),
-		},
-	}
-}
-
-// EmailTool provides inbox triage actions without requiring a live Gmail/IMAP
-// integration. It is intentionally benchmark-first but uses an extensible
-// service interface so a real backend can replace the local store later.
+// EmailTool provides inbox triage actions over an extensible email service.
 type EmailTool struct {
 	service EmailService
 }
@@ -698,7 +585,7 @@ func NewEmailTool(service EmailService) *EmailTool {
 func (t *EmailTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "email",
-		Description: "Manage a local benchmark-first inbox. List, get, search, filter, archive, label, or summarize emails for inbox triage, sender lookups, urgent mail review, and daily summary workflows.",
+		Description: "Manage inbox records from the configured email backend. List, get, search, filter, archive, label, or summarize emails for inbox triage, sender lookups, urgent mail review, and daily summary workflows.",
 		Icon:        "email",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -868,6 +755,7 @@ func (t *EmailTool) Execute(ctx context.Context, args map[string]interface{}) (i
 			"status":              "success",
 			"message":             emailSummaryMessage(lang, summary),
 			"summary":             emailSummaryText(lang, summary),
+			"total":               summary.Total,
 			"count":               summary.Total,
 			"unread":              summary.Unread,
 			"high_priority_count": summary.HighPriority,

@@ -209,11 +209,11 @@ func containsSubstring(haystack, needle string) bool {
 	return strings.Contains(haystack, needle)
 }
 
-func TestRegisterBuiltinTools_RegistersOfficeTool(t *testing.T) {
+func TestRegisterBuiltinTools_DoesNotRegisterLegacyOfficeTool(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
-	if registry.Get("office") == nil {
-		t.Fatal("expected office tool to be registered")
+	if registry.Get("office") != nil {
+		t.Fatal("did not expect legacy office tool to be registered")
 	}
 }
 

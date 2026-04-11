@@ -239,6 +239,81 @@ func TestQuestionManager_NoActiveClient_DefaultReturnsImmediately(t *testing.T) 
 	}
 }
 
+func TestQuestionManager_WebClientWithActiveSSEWaitsForExplicitAnswer(t *testing.T) {
+	broker := sse.NewBroker()
+	ch := broker.Subscribe("u1")
+	defer broker.Unsubscribe("u1", ch)
+
+	mgr := NewQuestionManager(broker, func() bool { return false }, 20*time.Millisecond)
+	mgr.minTimeoutPerQuestion = time.Millisecond
+	mgr.SetTimeoutActionFunc(func() string { return "default" })
+
+	questions := []QuestionItem{{
+		ID:       "q1",
+		Question: "Pick one",
+		Options:  []QuestionOption{{Label: "A", Value: "a"}, {Label: "B", Value: "b"}},
+	}}
+
+	type askResult struct {
+		answers []QuestionAnswerResult
+		silent  bool
+		err     error
+	}
+	resultCh := make(chan askResult, 1)
+	ctx, cancel := context.WithCancel(WithChannel(context.Background(), "web"))
+	defer cancel()
+
+	go func() {
+		answers, silent, err := mgr.AskQuestions(ctx, "u1", "s1", questions)
+		resultCh <- askResult{answers: answers, silent: silent, err: err}
+	}()
+
+	var pending *QuestionRequest
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		pending = mgr.GetPending("u1")
+		if pending != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pending == nil {
+		t.Fatal("expected pending question request")
+	}
+
+	time.Sleep(60 * time.Millisecond)
+
+	select {
+	case res := <-resultCh:
+		t.Fatalf("expected question to remain pending for explicit answer, got silent=%v answers=%+v err=%v", res.silent, res.answers, res.err)
+	default:
+	}
+
+	pending = mgr.GetPending("u1")
+	if pending == nil {
+		t.Fatal("expected pending question request to remain after timeout when web SSE is active")
+	}
+
+	if !mgr.ResolveAnswer(pending.ID, []QuestionAnswerResult{{QuestionID: "q1", Selected: []string{"b"}}}) {
+		t.Fatal("expected resolve answer to succeed")
+	}
+
+	select {
+	case res := <-resultCh:
+		if res.err != nil {
+			t.Fatalf("AskQuestions error: %v", res.err)
+		}
+		if res.silent {
+			t.Fatal("silent should be false when user explicitly answers")
+		}
+		if len(res.answers) != 1 || len(res.answers[0].Selected) != 1 || res.answers[0].Selected[0] != "b" {
+			t.Fatalf("unexpected answers: %+v", res.answers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for AskQuestions result")
+	}
+}
+
 func TestQuestionManager_NoActiveClient_ErrorReturnsImmediately(t *testing.T) {
 	mgr := NewQuestionManager(sse.NewBroker(), func() bool { return false }, 2*time.Minute)
 	mgr.SetTimeoutActionFunc(func() string { return "error" })

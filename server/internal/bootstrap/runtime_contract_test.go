@@ -557,10 +557,13 @@ func TestRuntimeContractBinding_BindsToolingThroughBoundary(t *testing.T) {
 	if tools.GetBrowserTool(registry) != nil {
 		t.Fatalf("expected browser tool to NOT be registered as native tool after migration, got %#v", tools.GetBrowserTool(registry))
 	}
-	for _, name := range []string{"reminder", "message", "image", "ppt", "tts"} {
+	for _, name := range []string{"reminder", "message", "image", "tts"} {
 		if registry.Get(name) == nil {
 			t.Fatalf("expected tooling contract to register %q, tools=%v", name, registry.List())
 		}
+	}
+	if registry.Get("ppt") != nil {
+		t.Fatalf("expected legacy ppt tool to remain unregistered, tools=%v", registry.List())
 	}
 	if browserSkill.browserService == nil || browserSkill.mediaDir != mediaDir || browserSkill.serviceCalls != 1 || browserSkill.mediaCalls != 1 {
 		t.Fatalf("expected browser skill wiring through contract, got %#v", browserSkill)

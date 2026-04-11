@@ -349,6 +349,49 @@ describe('ChatMessage bubble rendering', () => {
     expect(wrapper.text()).toContain('result')
   })
 
+  it('keeps advisor result cards visible when tool details are hidden', async () => {
+    settingsStore.showToolDetails = false
+
+    const advisorCard = {
+      type: 'advisor',
+      id: 'advisor-card-hidden-tools',
+      recommendation: 'Prefer Go for the API edge.',
+      confidence: 0.8,
+    } as any
+
+    vi.mocked(hasTypelessCards).mockReturnValue(true)
+    vi.mocked(parseTypelessContent).mockReturnValue({
+      text: '[[TYPELESS_CARD:advisor-card-hidden-tools]]',
+      cards: [advisorCard],
+    } as any)
+    vi.mocked(splitIntoSegments).mockReturnValue([{ type: 'card', content: advisorCard }] as any)
+
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage('assistant', '[[TYPELESS_CARD:advisor-card-hidden-tools]]'),
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: {
+            props: ['card'],
+            template: '<div class="typeless-card-stub">{{ card.type }}</div>',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('.typeless-card-stub').exists()).toBe(true)
+    expect(wrapper.text()).toContain('advisor')
+  })
+
   it('keeps a completed assistant bubble visible when only local process details remain', async () => {
     const wrapper = mount(ChatMessage, {
       props: {
@@ -430,6 +473,9 @@ describe('ChatMessage bubble rendering', () => {
 
     expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(true)
     expect(wrapper.find('.assistant-process-toggle').exists()).toBe(true)
+    expect(wrapper.get('.assistant-message-shell').classes()).toContain(
+      'assistant-message-shell--toggle-only'
+    )
     expect(wrapper.findAll('.tool-detail-card-stub')).toHaveLength(0)
   })
 

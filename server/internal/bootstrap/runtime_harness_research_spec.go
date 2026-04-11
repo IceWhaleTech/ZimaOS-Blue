@@ -7,34 +7,45 @@ import (
 )
 
 type researchHarnessRunInput struct {
-	Query          string
-	UserID         string
-	ConversationID string
-	WorkspaceRoot  string
-	ProviderID     string
-	Mode           string
-	ResearchDepth  string
-	RouteMode      string
-	Lang           string
-	ReportStyle    string
-	TimeWindows    []string
-	StrictEntity   bool
-	MaxSources     int
-	MaxSeconds     int
-	Topic          string
-	URLs           []string
-	Text           string
-	SearchQueries  []string
-	OutputMode     string
-	Action         string
-	URL            string
-	Image          string
-	Device         string
-	Channel        string
-	WaitMS         int
-	Threshold      float64
-	Format         string
-	Profile        string
+	Query            string
+	UserID           string
+	ConversationID   string
+	WorkspaceRoot    string
+	ProviderID       string
+	Mode             string
+	ResearchDepth    string
+	RouteMode        string
+	Lang             string
+	ReportStyle      string
+	TimeWindows      []string
+	StrictEntity     bool
+	MaxSources       int
+	MaxSeconds       int
+	Topic            string
+	URLs             []string
+	Text             string
+	SearchQueries    []string
+	OutputMode       string
+	Question         string
+	Category         string
+	DecisionMode     string
+	Candidates       []string
+	Context          map[string]interface{}
+	Constraints      map[string]interface{}
+	Grounding        string
+	Depth            string
+	Output           string
+	ScorecardPack    string
+	ScorecardWeights map[string]float64
+	Action           string
+	URL              string
+	Image            string
+	Device           string
+	Channel          string
+	WaitMS           int
+	Threshold        float64
+	Format           string
+	Profile          string
 }
 
 func newResearchHarnessRunSpec(input researchHarnessRunInput) harness.RunSpec {
@@ -63,6 +74,39 @@ func newResearchHarnessRunSpec(input researchHarnessRunInput) harness.RunSpec {
 	}
 	if outputMode := strings.TrimSpace(input.OutputMode); outputMode != "" {
 		metadata["output_mode"] = outputMode
+	}
+	if question := strings.TrimSpace(input.Question); question != "" {
+		metadata["question"] = question
+	}
+	if category := strings.TrimSpace(input.Category); category != "" {
+		metadata["category"] = category
+	}
+	if decisionMode := strings.TrimSpace(input.DecisionMode); decisionMode != "" {
+		metadata["decision_mode"] = decisionMode
+	}
+	if len(input.Candidates) > 0 {
+		metadata["candidates"] = append([]string(nil), input.Candidates...)
+	}
+	if len(input.Context) > 0 {
+		metadata["context"] = cloneStringAnyMap(input.Context)
+	}
+	if len(input.Constraints) > 0 {
+		metadata["constraints"] = cloneStringAnyMap(input.Constraints)
+	}
+	if grounding := strings.TrimSpace(input.Grounding); grounding != "" {
+		metadata["grounding"] = grounding
+	}
+	if depth := strings.TrimSpace(input.Depth); depth != "" {
+		metadata["depth"] = depth
+	}
+	if output := strings.TrimSpace(input.Output); output != "" {
+		metadata["output"] = output
+	}
+	if scorecardPack := strings.TrimSpace(input.ScorecardPack); scorecardPack != "" {
+		metadata["scorecard_pack"] = scorecardPack
+	}
+	if len(input.ScorecardWeights) > 0 {
+		metadata["scorecard_weights"] = cloneStringFloatMap(input.ScorecardWeights)
 	}
 	if action := strings.TrimSpace(input.Action); action != "" {
 		metadata["action"] = action
@@ -102,4 +146,26 @@ func newResearchHarnessRunSpec(input researchHarnessRunInput) harness.RunSpec {
 		WorkspaceRoot:  strings.TrimSpace(input.WorkspaceRoot),
 		Metadata:       metadata,
 	}
+}
+
+func cloneStringAnyMap(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneStringFloatMap(in map[string]float64) map[string]float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]float64, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }

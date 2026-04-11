@@ -332,8 +332,48 @@ func TestBuildArtifactWorkflowExecutionHint_ForGenericDocxOutput(t *testing.T) {
 	if !strings.Contains(hint, ".docx workspace file") {
 		t.Fatalf("expected hint to reference generic .docx output, got=%q", hint)
 	}
-	if !strings.Contains(hint, "native office tool") {
-		t.Fatalf("expected hint to preserve office guidance, got=%q", hint)
+	if !strings.Contains(hint, "native docx tool") {
+		t.Fatalf("expected hint to prefer native docx guidance, got=%q", hint)
+	}
+}
+
+func TestShouldPreferPublicArtifactResearchWorkflow_ForGenericPPTXOutput(t *testing.T) {
+	prompt := "先做多轮资料研究，再整理成演示结论，最后生成 .pptx 并做一次文件校验。"
+	if !shouldPreferPublicArtifactResearchWorkflow(prompt) {
+		t.Fatalf("expected generic .pptx research prompt to prefer public research workflow")
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForGenericPPTXOutput(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("先做多轮资料研究，再整理成演示结论，最后生成 .pptx 并做一次文件校验。")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for generic .pptx research task")
+	}
+	if !strings.Contains(hint, ".pptx workspace file") {
+		t.Fatalf("expected hint to reference generic .pptx output, got=%q", hint)
+	}
+	if !strings.Contains(hint, "native pptx tool") {
+		t.Fatalf("expected hint to prefer native pptx guidance, got=%q", hint)
+	}
+}
+
+func TestShouldPreferPublicArtifactResearchWorkflow_ForGenericPDFOutput(t *testing.T) {
+	prompt := "先做多轮资料研究，再整理成排版报告，最后生成 .pdf 并做一次文件校验。"
+	if !shouldPreferPublicArtifactResearchWorkflow(prompt) {
+		t.Fatalf("expected generic .pdf research prompt to prefer public research workflow")
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_ForGenericPDFOutput(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("先做多轮资料研究，再整理成排版报告，最后生成 .pdf 并做一次文件校验。")
+	if hint == "" {
+		t.Fatal("expected non-empty artifact workflow hint for generic .pdf research task")
+	}
+	if !strings.Contains(hint, ".pdf workspace file") {
+		t.Fatalf("expected hint to reference generic .pdf output, got=%q", hint)
+	}
+	if !strings.Contains(hint, "native pdf tool") {
+		t.Fatalf("expected hint to prefer native pdf guidance, got=%q", hint)
 	}
 }
 

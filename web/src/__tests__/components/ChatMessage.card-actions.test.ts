@@ -713,4 +713,25 @@ describe('ChatMessage card actions', () => {
     expect(wrapper.text()).not.toContain('```process')
     expect(wrapper.text()).not.toContain('<!-- process-start -->')
   })
+
+  it('does not keep an empty process card in prose after work details are hidden', async () => {
+    mocks.settingsStore.showToolDetails = false
+
+    const content = [
+      '目录已经创建。',
+      '',
+      '<!-- process-start -->',
+      '```process',
+      '[{"tool":"exec","icon":"✓","status":"25ms","output":""}]',
+      '```',
+      '<!-- process-end -->',
+    ].join('\n')
+
+    const wrapper = await mountMessage(content)
+
+    expect(wrapper.find('.assistant-process-toggle').exists()).toBe(true)
+    expect(wrapper.find('.process-card').exists()).toBe(false)
+    expect(wrapper.text()).toContain('目录已经创建')
+    expect(wrapper.text()).not.toContain('25ms')
+  })
 })

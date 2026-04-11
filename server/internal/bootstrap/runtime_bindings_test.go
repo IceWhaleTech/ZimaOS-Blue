@@ -1972,6 +1972,58 @@ func TestBindRuntimeAnalyzeTool_RegistersAndWiresKnowledgeTargets(t *testing.T) 
 	}
 }
 
+func TestRegisterChatResearchRuntime_WiresAdvisorDeepAsyncService(t *testing.T) {
+	db, bundle, _, _ := newTestAgentRuntimeFixture(t)
+	defer db.Close()
+
+	registry := tools.NewRegistry()
+	bindRuntimeAnalyzeTool(
+		registry,
+		t.TempDir(),
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		tools.WebSearchConfig{},
+		nil,
+		nil,
+	)
+
+	service := deepresearch.NewService(nil, nil)
+	binding := newChatResearchRuntimeBinding(bundle, service, &serverpkg.ChatHandler{}, sse.NewBroker(), t.TempDir())
+	binding.register(harnessRuntimeController(bundle), registry)
+
+	advisorTool := tools.GetAdvisorTool(registry)
+	if advisorTool == nil {
+		t.Fatal("expected advisor tool to be registered")
+	}
+
+	result, err := advisorTool.Execute(context.Background(), map[string]interface{}{
+		"question": "Should we replace Python with Go?",
+		"depth":    "deep",
+		"output":   "decision_pack",
+		"wait":     false,
+	})
+	if err != nil {
+		t.Fatalf("advisor deep async execute failed: %v", err)
+	}
+
+	payload, ok := result.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want pending payload map", result)
+	}
+	if payload["accepted"] != true {
+		t.Fatalf("accepted = %#v, want true", payload["accepted"])
+	}
+	if payload["mode"] != "advisor" {
+		t.Fatalf("mode = %#v, want advisor", payload["mode"])
+	}
+	if strings.TrimSpace(fmt.Sprint(payload["job_id"])) == "" {
+		t.Fatalf("job_id = %#v, want non-empty", payload["job_id"])
+	}
+}
+
 func TestBindRuntimeSchedulerServices_RegistersToolsWiresTargetsAndKeepsResolversLazy(t *testing.T) {
 	registry := tools.NewRegistry()
 	scheduler := &stubRuntimeSchedulerSkillTarget{}
@@ -2406,8 +2458,11 @@ func TestBindRuntimeImageTools_RegistersAndWiresImageDependencies(t *testing.T) 
 		nil,
 	)
 
-	if registry.Get("image") == nil || registry.Get("ppt") == nil {
-		t.Fatalf("expected image/ppt tools to be registered, tools=%v", registry.List())
+	if registry.Get("image") == nil {
+		t.Fatalf("expected image tool to be registered, tools=%v", registry.List())
+	}
+	if registry.Get("ppt") != nil {
+		t.Fatalf("expected legacy ppt tool to stay unregistered, tools=%v", registry.List())
 	}
 	if image.ocr == nil || image.ocrCalls != 1 {
 		t.Fatalf("expected image OCR wiring, got %#v", image)

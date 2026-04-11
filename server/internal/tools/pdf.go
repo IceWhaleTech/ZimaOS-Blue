@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,6 +29,8 @@ const (
 type PDFService interface {
 	Info(ctx context.Context, path string) (pdfextract.DocumentInfo, error)
 	Extract(ctx context.Context, req pdfextract.ExtractRequest) (pdfextract.ExtractResult, error)
+	InspectForm(ctx context.Context, path string) (pdfextract.FormInspectResult, error)
+	FillForm(ctx context.Context, req pdfextract.FillFormRequest) (pdfextract.FillFormResult, error)
 }
 
 type resolvedPDFInput struct {
@@ -63,21 +67,23 @@ func (t *PDFTool) SetHTTPClient(client *http.Client) {
 func (t *PDFTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "pdf",
-		Description: "Read PDF metadata or extract text from local/remote PDFs with page selection, output limits, and fallback control.",
+		Description: "Read PDF metadata, extract text from local/remote PDFs, inspect interactive form fields, or create/reformat native PDF workspace files with explicit page/layout telemetry.",
 		Icon:        "pdf",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"info", "read"},
+					"enum":        []string{"info", "read", "create", "fill", "reformat"},
 					"description": "Operation to perform. Defaults to read.",
 				},
-				"path":      map[string]interface{}{"type": "string", "description": "Path or URL to a single PDF."},
-				"paths":     map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Deduped and capped at 10."},
-				"pages":     map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
-				"max_pages": map[string]interface{}{"type": "integer", "description": "Maximum pages to extract."},
-				"max_chars": map[string]interface{}{"type": "integer", "description": "Maximum characters to return."},
+				"path":        map[string]interface{}{"type": "string", "description": "Path or URL to a single PDF."},
+				"input_path":  map[string]interface{}{"type": "string", "description": "Optional explicit source PDF path for action=reformat."},
+				"output_path": map[string]interface{}{"type": "string", "description": "Destination workspace path for action=fill or action=reformat."},
+				"paths":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Deduped and capped at 10."},
+				"pages":       map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
+				"max_pages":   map[string]interface{}{"type": "integer", "description": "Maximum pages to extract."},
+				"max_chars":   map[string]interface{}{"type": "integer", "description": "Maximum characters to return."},
 				"max_bytes_mb": map[string]interface{}{
 					"type":        "integer",
 					"description": "Maximum size per PDF in MB.",
@@ -98,6 +104,17 @@ func (t *PDFTool) Definition() ToolDefinition {
 					"enum":        []string{"auto", "ocr_only", "vision_only", "text_only"},
 					"description": "Fallback strategy for scanned or hard pages.",
 				},
+				"title":       map[string]interface{}{"type": "string", "description": "Optional title for action=create."},
+				"subtitle":    map[string]interface{}{"type": "string", "description": "Optional subtitle for action=create."},
+				"summary":     map[string]interface{}{"description": "Optional summary text or object for action=create."},
+				"content":     map[string]interface{}{"type": "string", "description": "Optional Markdown-like body for action=create."},
+				"sections":    map[string]interface{}{"type": "array", "description": "Optional structured sections for action=create."},
+				"paragraphs":  map[string]interface{}{"type": "array", "description": "Optional top-level paragraphs for action=create."},
+				"notes":       map[string]interface{}{"type": "array", "description": "Optional notes for action=create."},
+				"theme":       map[string]interface{}{"type": "string", "description": "Optional theme hint reused from the native document writers."},
+				"style_hint":  map[string]interface{}{"type": "string", "description": "Optional tone/style hint reused from the native document writers."},
+				"create_dirs": map[string]interface{}{"type": "boolean", "description": "Create parent directories when needed. Default true for action=create."},
+				"fields":      map[string]interface{}{"description": "Optional field values for action=fill. When omitted, fill inspects and returns available native form fields first."},
 			},
 		},
 	}
@@ -105,16 +122,66 @@ func (t *PDFTool) Definition() ToolDefinition {
 
 // Execute performs the requested PDF action.
 func (t *PDFTool) Execute(ctx context.Context, args map[string]interface{}) (interface{}, error) {
+	args = normalizePDFArgs(args)
+	switch pdfAction(args) {
+	case "create":
+		return t.executeCreate(ctx, args)
+	case "fill":
+		return t.executeFill(ctx, args)
+	case "reformat":
+		return t.executeReformat(ctx, args)
+	case "info":
+		if t == nil || t.service == nil {
+			return nil, errors.New("pdf service not available")
+		}
+		refs, err := collectPDFInputs(args)
+		if err != nil {
+			return nil, err
+		}
+		if len(refs) == 0 {
+			return nil, errors.New("path/pdf is required")
+		}
+		inputs, cleanup, err := t.resolvePDFInputs(ctx, refs, pdfMaxBytes(args))
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return t.executeInfo(ctx, inputs)
+	case "read":
+		if t == nil || t.service == nil {
+			return nil, errors.New("pdf service not available")
+		}
+		refs, err := collectPDFInputs(args)
+		if err != nil {
+			return nil, err
+		}
+		if len(refs) == 0 {
+			return nil, errors.New("path/pdf is required")
+		}
+		inputs, cleanup, err := t.resolvePDFInputs(ctx, refs, pdfMaxBytes(args))
+		if err != nil {
+			return nil, err
+		}
+		defer cleanup()
+		return t.executeRead(ctx, args, inputs)
+	default:
+		return nil, fmt.Errorf("unsupported pdf action")
+	}
+}
+
+func (t *PDFTool) executeFill(ctx context.Context, args map[string]interface{}) (interface{}, error) {
 	if t == nil || t.service == nil {
 		return nil, errors.New("pdf service not available")
 	}
-	args = normalizePDFArgs(args)
 	refs, err := collectPDFInputs(args)
 	if err != nil {
 		return nil, err
 	}
 	if len(refs) == 0 {
-		return nil, errors.New("path/pdf is required")
+		return nil, errors.New("path/pdf is required for pdf fill")
+	}
+	if len(refs) != 1 {
+		return nil, errors.New("pdf fill currently supports exactly one source PDF")
 	}
 	inputs, cleanup, err := t.resolvePDFInputs(ctx, refs, pdfMaxBytes(args))
 	if err != nil {
@@ -122,14 +189,291 @@ func (t *PDFTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	}
 	defer cleanup()
 
-	switch pdfAction(args) {
-	case "info":
-		return t.executeInfo(ctx, inputs)
-	case "read":
-		return t.executeRead(ctx, args, inputs)
-	default:
-		return nil, fmt.Errorf("unsupported pdf action")
+	fields, err := parsePDFFillFields(args)
+	if err != nil {
+		return nil, err
 	}
+	if len(fields) == 0 {
+		result, err := t.service.InspectForm(ctx, inputs[0].Path)
+		if err != nil {
+			return nil, err
+		}
+		result.Document = rewritePDFDocumentInfo(result.Document, inputs[0])
+		engine := strings.TrimSpace(result.Document.Engine)
+		if engine == "" {
+			engine = "pdfium/webassembly"
+		}
+		validation, degraded, fallbackReason, inspectWarnings := buildPDFFillInspectStatus(result)
+		payload := map[string]interface{}{
+			"action":        "fill",
+			"mode":          "inspect",
+			"path":          inputs[0].Original,
+			"absolute_path": inputs[0].Path,
+			"format":        "pdf",
+			"engine":        engine,
+			"engine_chain":  []string{engine},
+			"degraded":      degraded,
+			"success":       true,
+			"validation":    validation,
+			"document":      result.Document,
+			"form_type":     result.FormType,
+			"field_count":   result.FieldCount,
+			"fields":        result.Fields,
+			"warnings":      compactDocumentWarnings(append(append([]string(nil), result.Warnings...), inspectWarnings...)),
+		}
+		if fallbackReason != "" {
+			payload["fallback_reason"] = fallbackReason
+		}
+		return payload, nil
+	}
+
+	outputPath := strings.TrimSpace(firstCompatString(args, "output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to"))
+	if outputPath == "" {
+		return nil, errors.New("output_path is required for pdf fill writes")
+	}
+	if strings.ToLower(strings.TrimSpace(filepath.Ext(outputPath))) != ".pdf" {
+		return nil, fmt.Errorf("output_path must end in .pdf for pdf fill")
+	}
+	preflight, err := t.service.InspectForm(ctx, inputs[0].Path)
+	if err != nil {
+		return nil, err
+	}
+	if err := validatePDFFillWriteRequest(fields, preflight); err != nil {
+		return nil, err
+	}
+
+	filled, err := t.service.FillForm(ctx, pdfextract.FillFormRequest{
+		Path:   inputs[0].Path,
+		Fields: fields,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(filled.Bytes) == 0 {
+		return nil, errors.New("pdf fill returned empty output")
+	}
+	createDirs, err := parseCreateDirsArg(args)
+	if err != nil {
+		return nil, err
+	}
+	absPath, relPath, err := executeCreateLikeDocumentWrite(ctx, "pdf", t.scope, outputPath, createDirs, filled.Bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	inspected, err := t.service.InspectForm(ctx, absPath)
+	if err != nil {
+		return nil, fmt.Errorf("pdf fill verification failed: %w", err)
+	}
+	verifiedFields, err := verifyPDFFillOutput(fields, inspected)
+	if err != nil {
+		return nil, err
+	}
+
+	engine := strings.TrimSpace(filled.Document.Engine)
+	if engine == "" {
+		engine = strings.TrimSpace(inspected.Document.Engine)
+	}
+	if engine == "" {
+		engine = "pdfium/webassembly"
+	}
+	validation := map[string]interface{}{
+		"ok":              true,
+		"readable":        true,
+		"verified":        true,
+		"form_type":       inspected.FormType,
+		"field_count":     inspected.FieldCount,
+		"updated_fields":  append([]string(nil), filled.UpdatedFields...),
+		"verified_fields": verifiedFields,
+	}
+	payload := nativeDocumentPayload{
+		Action:       "fill",
+		Path:         relPath,
+		AbsolutePath: absPath,
+		OriginalPath: inputs[0].Original,
+		Format:       "pdf",
+		Engine:       engine,
+		EngineChain:  []string{engine},
+		Degraded:     false,
+		Warnings:     compactDocumentWarnings(append(append([]string(nil), filled.Warnings...), inspected.Warnings...)),
+		Validation:   validation,
+		Size:         int64(len(filled.Bytes)),
+		Success:      true,
+	}
+	return marshalNativeDocumentPayload(payload)
+}
+
+func (t *PDFTool) executeCreate(ctx context.Context, args map[string]interface{}) (string, error) {
+	path := strings.TrimSpace(firstCompatPathString(args))
+	if path == "" {
+		var err error
+		path, err = fsAsString(args, "path")
+		if err != nil || path == "" {
+			return "", fmt.Errorf("path must be a non-empty string")
+		}
+	}
+	if strings.ToLower(strings.TrimSpace(filepath.Ext(path))) != ".pdf" {
+		return "", fmt.Errorf("path must end in .pdf for pdf create")
+	}
+
+	styleHint := firstCompatString(args, "style_hint", "styleHint", "style", "visual_style", "visualStyle")
+	theme := resolveOfficeTheme(firstCompatString(args, "theme"), styleHint)
+	spec, err := parseOfficeDocSpec(
+		args,
+		strings.TrimSpace(firstCompatString(args, "title")),
+		strings.TrimSpace(firstCompatString(args, "subtitle")),
+		theme,
+		styleHint,
+	)
+	if err != nil {
+		return "", errors.New(strings.Replace(err.Error(), "docx", "pdf", 1))
+	}
+
+	data, info, err := pdfextract.CreateDocument(nativePDFCreateRequest(spec))
+	if err != nil {
+		return "", err
+	}
+	createDirs, err := parseCreateDirsArg(args)
+	if err != nil {
+		return "", err
+	}
+	absPath, relPath, err := executeCreateLikeDocumentWrite(ctx, "pdf", t.scope, path, createDirs, data)
+	if err != nil {
+		return "", err
+	}
+
+	validation := map[string]interface{}{
+		"ok":         true,
+		"readable":   true,
+		"page_count": info.PageCount,
+		"line_count": info.LineCount,
+		"char_count": info.CharCount,
+	}
+	payload := nativeDocumentPayload{
+		Action:       "create",
+		Path:         relPath,
+		AbsolutePath: absPath,
+		OriginalPath: path,
+		Format:       "pdf",
+		Engine:       "native_pdf_ir",
+		EngineChain:  []string{"native_pdf_ir"},
+		Degraded:     false,
+		Warnings:     compactDocumentWarnings(info.Warnings),
+		Validation:   validation,
+		Size:         int64(len(data)),
+		Success:      true,
+	}
+	return marshalNativeDocumentPayload(payload)
+}
+
+func (t *PDFTool) executeReformat(ctx context.Context, args map[string]interface{}) (string, error) {
+	if t == nil || t.service == nil {
+		return "", errors.New("pdf service not available")
+	}
+	refs, err := collectPDFInputs(args)
+	if err != nil {
+		return "", err
+	}
+	if len(refs) == 0 {
+		return "", errors.New("path/pdf/input_path is required for pdf reformat")
+	}
+	if len(refs) != 1 {
+		return "", errors.New("pdf reformat currently supports exactly one source PDF")
+	}
+	inputs, cleanup, err := t.resolvePDFInputs(ctx, refs, pdfMaxBytes(args))
+	if err != nil {
+		return "", err
+	}
+	defer cleanup()
+
+	outputPath := strings.TrimSpace(firstCompatString(args, "output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to"))
+	if outputPath == "" {
+		return "", errors.New("output_path is required for pdf reformat")
+	}
+	if strings.ToLower(strings.TrimSpace(filepath.Ext(outputPath))) != ".pdf" {
+		return "", fmt.Errorf("output_path must end in .pdf for pdf reformat")
+	}
+
+	pages, err := parsePDFPages(args)
+	if err != nil {
+		return "", err
+	}
+	disableOCR, disableVision := parsePDFFallbackFlags(args)
+	includeHeadersFooters, _ := compatBoolArg(args, "include_headers_footers", "includeHeadersFooters")
+	extractReq := pdfextract.ExtractRequest{
+		Path:                  inputs[0].Path,
+		Pages:                 pages,
+		MaxPages:              compatInt(args, "max_pages", "maxPages", "page_limit", "limit_pages"),
+		MaxChars:              compatInt(args, "max_chars", "maxChars", "char_limit", "limit", "max_length"),
+		IncludeMarkdown:       true,
+		IncludeOutline:        true,
+		IncludeHeadersFooters: includeHeadersFooters,
+		DisableOCR:            disableOCR,
+		DisableVision:         disableVision,
+	}
+	extracted, err := t.service.Extract(ctx, extractReq)
+	if err != nil {
+		return "", err
+	}
+
+	spec, err := buildPDFReformatSpec(args, inputs[0], extracted)
+	if err != nil {
+		return "", err
+	}
+	data, info, err := pdfextract.CreateDocument(nativePDFCreateRequest(spec))
+	if err != nil {
+		return "", err
+	}
+	createDirs, err := parseCreateDirsArg(args)
+	if err != nil {
+		return "", err
+	}
+	absPath, relPath, err := executeCreateLikeDocumentWrite(ctx, "pdf", t.scope, outputPath, createDirs, data)
+	if err != nil {
+		return "", err
+	}
+
+	warnings := make([]string, 0, len(extracted.Warnings)+len(info.Warnings)+1)
+	warnings = append(warnings, extracted.Warnings...)
+	if extracted.Truncated {
+		warnings = append(warnings, "source pdf extraction truncated before reformat rendering")
+	}
+	warnings = append(warnings, info.Warnings...)
+
+	engineChain := []string{"native_pdf_ir"}
+	sourceEngine := strings.TrimSpace(extracted.Document.Engine)
+	if sourceEngine != "" && sourceEngine != "native_pdf_ir" {
+		engineChain = append([]string{sourceEngine}, engineChain...)
+	}
+	validation := map[string]interface{}{
+		"ok":                true,
+		"readable":          true,
+		"page_count":        info.PageCount,
+		"line_count":        info.LineCount,
+		"char_count":        info.CharCount,
+		"source_path":       inputs[0].Original,
+		"source_engine":     sourceEngine,
+		"source_char_count": extracted.CharCount,
+		"source_page_count": extracted.Document.PageCount,
+		"selected_pages":    append([]int(nil), extracted.SelectedPages...),
+		"source_truncated":  extracted.Truncated,
+		"source_markdown":   strings.TrimSpace(extracted.Markdown) != "",
+	}
+	payload := nativeDocumentPayload{
+		Action:       "reformat",
+		Path:         relPath,
+		AbsolutePath: absPath,
+		OriginalPath: inputs[0].Original,
+		Format:       "pdf",
+		Engine:       "native_pdf_ir",
+		EngineChain:  engineChain,
+		Degraded:     false,
+		Warnings:     compactDocumentWarnings(warnings),
+		Validation:   validation,
+		Size:         int64(len(data)),
+		Success:      true,
+	}
+	return marshalNativeDocumentPayload(payload)
 }
 
 func (t *PDFTool) executeInfo(ctx context.Context, inputs []resolvedPDFInput) (interface{}, error) {
@@ -464,6 +808,13 @@ func collectPDFInputs(args map[string]interface{}) ([]string, error) {
 			}
 		}
 	}
+	for _, key := range []string{"input_path", "inputPath", "source_path", "sourcePath"} {
+		if value, ok := compatArgValue(args, key); ok {
+			if err := appendValues(value); err != nil {
+				return nil, err
+			}
+		}
+	}
 	if value, ok := compatArgValue(args, "pdfs"); ok {
 		if err := appendValues(value); err != nil {
 			return nil, err
@@ -570,6 +921,106 @@ func looksLikePDFBytes(data []byte) bool {
 	return bytes.HasPrefix(bytes.TrimSpace(data), []byte("%PDF-"))
 }
 
+func nativePDFCreateRequest(spec officeDocSpec) pdfextract.CreateRequest {
+	req := pdfextract.CreateRequest{
+		Title:      spec.Title,
+		Subtitle:   spec.Subtitle,
+		Summary:    spec.Summary,
+		Paragraphs: append([]string(nil), spec.Paragraphs...),
+		Notes:      append([]string(nil), spec.Notes...),
+	}
+	for _, section := range spec.Sections {
+		next := pdfextract.CreateSection{
+			Heading:    section.Heading,
+			Paragraphs: append([]string(nil), section.Paragraphs...),
+			Bullets:    append([]string(nil), section.Bullets...),
+		}
+		if section.Table != nil {
+			next.Table = &pdfextract.CreateTable{
+				Headers: append([]string(nil), section.Table.Headers...),
+				Rows:    make([][]string, 0, len(section.Table.Rows)),
+			}
+			for _, row := range section.Table.Rows {
+				next.Table.Rows = append(next.Table.Rows, append([]string(nil), row...))
+			}
+		}
+		req.Sections = append(req.Sections, next)
+	}
+	return req
+}
+
+func buildPDFReformatSpec(args map[string]interface{}, input resolvedPDFInput, extracted pdfextract.ExtractResult) (officeDocSpec, error) {
+	styleHint := firstCompatString(args, "style_hint", "styleHint", "style", "visual_style", "visualStyle")
+	theme := resolveOfficeTheme(firstCompatString(args, "theme"), styleHint)
+	title := strings.TrimSpace(firstCompatString(args, "title"))
+	subtitle := strings.TrimSpace(firstCompatString(args, "subtitle"))
+
+	content := strings.TrimSpace(extracted.Markdown)
+	if content == "" {
+		content = strings.TrimSpace(extracted.Text)
+	} else if title != "" {
+		content = pdfReformatDemoteMarkdownHeadings(content)
+	}
+	if content == "" {
+		return officeDocSpec{}, errors.New("pdf reformat requires extracted source text")
+	}
+
+	specArgs := map[string]interface{}{
+		"content": content,
+	}
+	if summary, ok := compatArgValue(args, "summary"); ok {
+		specArgs["summary"] = summary
+	}
+	if notes, ok := compatArgValue(args, "notes"); ok {
+		specArgs["notes"] = notes
+	}
+	spec, err := parseOfficeDocSpec(specArgs, title, subtitle, theme, styleHint)
+	if err != nil {
+		return officeDocSpec{}, err
+	}
+	if strings.TrimSpace(spec.Title) == "" {
+		spec.Title = pdfReformatDefaultTitle(input, extracted)
+	}
+	if strings.TrimSpace(spec.Subtitle) == "" {
+		spec.Subtitle = "Reformatted PDF"
+	}
+	return spec, nil
+}
+
+func pdfReformatDefaultTitle(input resolvedPDFInput, extracted pdfextract.ExtractResult) string {
+	if title := strings.TrimSpace(extracted.Document.Metadata["Title"]); title != "" {
+		return title
+	}
+	if name := strings.TrimSpace(extracted.Document.FileName); name != "" {
+		return strings.TrimSuffix(name, filepath.Ext(name))
+	}
+	name := strings.TrimSpace(pdfDisplayName(input.Original))
+	if name == "" {
+		name = strings.TrimSpace(filepath.Base(input.Path))
+	}
+	return strings.TrimSuffix(name, filepath.Ext(name))
+}
+
+func pdfReformatDemoteMarkdownHeadings(content string) string {
+	lines := strings.Split(content, "\n")
+	for idx, line := range lines {
+		trimmed := strings.TrimLeft(line, " \t")
+		if !strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		hashes := 0
+		for hashes < len(trimmed) && trimmed[hashes] == '#' {
+			hashes++
+		}
+		if hashes == 0 || hashes >= 6 || len(trimmed) <= hashes || trimmed[hashes] != ' ' {
+			continue
+		}
+		prefixLen := len(line) - len(trimmed)
+		lines[idx] = line[:prefixLen] + "#" + trimmed
+	}
+	return strings.Join(lines, "\n")
+}
+
 func pdfDisplayName(ref string) string {
 	parsed, err := url.Parse(ref)
 	if err == nil && parsed.Scheme != "" {
@@ -617,6 +1068,281 @@ func pdfAction(args map[string]interface{}) string {
 	default:
 		return action
 	}
+}
+
+func hasPDFFieldValues(args map[string]interface{}) bool {
+	for _, key := range []string{"fields", "field_values", "fieldValues", "values"} {
+		value, ok := compatArgValue(args, key)
+		if !ok {
+			continue
+		}
+		switch typed := value.(type) {
+		case nil:
+			continue
+		case string:
+			if strings.TrimSpace(typed) != "" {
+				return true
+			}
+		case []interface{}:
+			if len(typed) > 0 {
+				return true
+			}
+		case []string:
+			if len(typed) > 0 {
+				return true
+			}
+		case map[string]interface{}:
+			if len(typed) > 0 {
+				return true
+			}
+		default:
+			return true
+		}
+	}
+	return false
+}
+
+func parsePDFFillFields(args map[string]interface{}) (map[string]string, error) {
+	fields := parseReplacementMap(args, "fields", "field_values", "fieldValues", "values")
+	if len(fields) > 0 {
+		return fields, nil
+	}
+	if hasPDFFieldValues(args) {
+		return nil, errors.New("fields must be an object mapping pdf field names to replacement text")
+	}
+	return nil, nil
+}
+
+func buildPDFFillInspectStatus(inspected pdfextract.FormInspectResult) (map[string]interface{}, bool, string, []string) {
+	supportedTypes := supportedPDFFillTypes()
+	supportedSet := make(map[string]struct{}, len(supportedTypes))
+	for _, fieldType := range supportedTypes {
+		supportedSet[fieldType] = struct{}{}
+	}
+
+	unsupportedTypes := make([]string, 0, len(inspected.Fields))
+	seenUnsupported := make(map[string]struct{}, len(inspected.Fields))
+	for _, field := range inspected.Fields {
+		fieldType := strings.TrimSpace(field.Type)
+		if fieldType == "" {
+			continue
+		}
+		if _, ok := supportedSet[fieldType]; ok {
+			continue
+		}
+		if _, ok := seenUnsupported[fieldType]; ok {
+			continue
+		}
+		seenUnsupported[fieldType] = struct{}{}
+		unsupportedTypes = append(unsupportedTypes, fieldType)
+	}
+	sort.Strings(unsupportedTypes)
+
+	fillable := strings.TrimSpace(inspected.FormType) == "acro_form" && inspected.FieldCount > 0 && len(unsupportedTypes) == 0
+	degraded := false
+	fallbackReason := ""
+	warnings := make([]string, 0, 1)
+	switch {
+	case strings.TrimSpace(inspected.FormType) != "" && strings.TrimSpace(inspected.FormType) != "acro_form" && strings.TrimSpace(inspected.FormType) != "none":
+		degraded = true
+		fallbackReason = "native_fill_unsupported_form_type"
+		warnings = append(warnings, fmt.Sprintf("native pdf fill does not currently support form type %q", inspected.FormType))
+	case len(unsupportedTypes) > 0:
+		degraded = true
+		fallbackReason = "native_fill_unsupported_field_types"
+		warnings = append(warnings, fmt.Sprintf("native pdf fill does not currently support field types: %s", strings.Join(unsupportedTypes, ", ")))
+	}
+
+	validation := map[string]interface{}{
+		"ok":                      true,
+		"inspectable":             true,
+		"fillable":                fillable,
+		"form_type":               inspected.FormType,
+		"field_count":             inspected.FieldCount,
+		"supported_fill_types":    supportedTypes,
+		"unsupported_field_types": unsupportedTypes,
+	}
+	return validation, degraded, fallbackReason, warnings
+}
+
+func supportedPDFFillTypes() []string {
+	return []string{"text", "combo", "list", "checkbox", "radio"}
+}
+
+func isSupportedPDFFillType(fieldType string) bool {
+	switch strings.TrimSpace(fieldType) {
+	case "text", "combo", "list", "checkbox", "radio":
+		return true
+	default:
+		return false
+	}
+}
+
+func validatePDFFillWriteRequest(expected map[string]string, inspected pdfextract.FormInspectResult) error {
+	formType := strings.TrimSpace(inspected.FormType)
+	switch formType {
+	case "none":
+		return errors.New("pdf fill cannot natively write this document because it does not contain an interactive form")
+	case "", "acro_form":
+		// Continue; field-level validation below handles unsupported requested field types.
+	default:
+		return fmt.Errorf("pdf fill cannot natively write form type %q yet", formType)
+	}
+
+	groups := groupPDFFillFieldsByName(inspected.Fields)
+	for _, name := range sortedPDFFillFieldNames(expected) {
+		fields, ok := groups[name]
+		if !ok || len(fields) == 0 {
+			continue
+		}
+		fieldType := strings.TrimSpace(fields[0].Type)
+		if isSupportedPDFFillType(fieldType) {
+			continue
+		}
+		return fmt.Errorf("pdf fill cannot natively write field %q with type %q yet", name, fieldType)
+	}
+	return nil
+}
+
+func verifyPDFFillOutput(expected map[string]string, inspected pdfextract.FormInspectResult) ([]string, error) {
+	verified := make([]string, 0, len(expected))
+	groups := groupPDFFillFieldsByName(inspected.Fields)
+	for _, name := range sortedPDFFillFieldNames(expected) {
+		fields, ok := groups[name]
+		if !ok || len(fields) == 0 {
+			return nil, fmt.Errorf("pdf fill verification failed: field %q not found in output", name)
+		}
+		if !pdfFieldGroupMatchesExpectedValue(fields, expected[name]) {
+			return nil, fmt.Errorf("pdf fill verification failed for field %q: got %q want %q", name, describePDFFillFieldGroupValue(fields), expected[name])
+		}
+		verified = append(verified, name)
+	}
+	return verified, nil
+}
+
+func groupPDFFillFieldsByName(fields []pdfextract.FormField) map[string][]pdfextract.FormField {
+	groups := make(map[string][]pdfextract.FormField, len(fields))
+	for _, field := range fields {
+		if name := strings.TrimSpace(field.Name); name != "" {
+			groups[name] = append(groups[name], field)
+		}
+		if alt := strings.TrimSpace(field.AlternateName); alt != "" {
+			if alt != strings.TrimSpace(field.Name) {
+				groups[alt] = append(groups[alt], field)
+			}
+		}
+	}
+	return groups
+}
+
+func pdfFieldGroupMatchesExpectedValue(fields []pdfextract.FormField, expected string) bool {
+	if len(fields) == 0 {
+		return false
+	}
+	if fields[0].Type == "radio" {
+		return pdfRadioGroupMatchesExpectedValue(fields, expected)
+	}
+	return pdfFieldMatchesExpectedValue(fields[0], expected)
+}
+
+func pdfRadioGroupMatchesExpectedValue(fields []pdfextract.FormField, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if expected == "" {
+		return false
+	}
+
+	matched := false
+	for _, field := range fields {
+		exportValue := strings.TrimSpace(field.ExportValue)
+		isTarget := exportValue != "" && strings.EqualFold(exportValue, expected)
+		if isTarget {
+			matched = true
+			if !field.Checked {
+				return false
+			}
+			continue
+		}
+		if field.Checked {
+			return false
+		}
+	}
+	return matched
+}
+
+func describePDFFillFieldGroupValue(fields []pdfextract.FormField) string {
+	if len(fields) == 0 {
+		return ""
+	}
+	if fields[0].Type != "radio" {
+		return strings.TrimSpace(fields[0].Value)
+	}
+
+	checked := make([]string, 0, 1)
+	for _, field := range fields {
+		if !field.Checked {
+			continue
+		}
+		value := strings.TrimSpace(field.ExportValue)
+		if value == "" {
+			value = strings.TrimSpace(field.Value)
+		}
+		checked = append(checked, value)
+	}
+	return strings.Join(checked, ",")
+}
+
+func pdfFieldMatchesExpectedValue(field pdfextract.FormField, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	if field.Value == expected {
+		return true
+	}
+	switch field.Type {
+	case "combo", "list":
+		for _, option := range field.Options {
+			if !option.Selected {
+				continue
+			}
+			if strings.TrimSpace(option.Label) == expected {
+				return true
+			}
+			if idx, err := strconv.Atoi(expected); err == nil && option.Index == idx {
+				return true
+			}
+		}
+		return false
+	case "checkbox":
+		desired, ok := parseExpectedCheckboxState(field, expected)
+		return ok && field.Checked == desired
+	default:
+		return false
+	}
+}
+
+func parseExpectedCheckboxState(field pdfextract.FormField, expected string) (bool, bool) {
+	expected = strings.TrimSpace(expected)
+	switch strings.ToLower(expected) {
+	case "1", "true", "yes", "on", "checked":
+		return true, true
+	case "0", "false", "no", "off", "unchecked":
+		return false, true
+	}
+	if exportValue := strings.TrimSpace(field.ExportValue); exportValue != "" && strings.EqualFold(exportValue, expected) {
+		return true, true
+	}
+	return false, false
+}
+
+func sortedPDFFillFieldNames(fields map[string]string) []string {
+	names := make([]string, 0, len(fields))
+	for name := range fields {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		names = append(names, trimmed)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func parsePDFFallbackFlags(args map[string]interface{}) (disableOCR bool, disableVision bool) {

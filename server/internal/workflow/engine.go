@@ -39,6 +39,7 @@ type executionState struct {
 	resumeCh  chan ExecutionResumeInput
 	completed map[string]bool
 	mu        sync.Mutex
+	execMu    sync.RWMutex
 }
 
 // triggerState tracks registered triggers.
@@ -191,7 +192,11 @@ func (e *Engine) runningExecutionCount(workflowID string) int {
 
 	runningCount := 0
 	for _, state := range e.executions {
-		if state.execution.WorkflowID == workflowID && executionConsumesConcurrencySlot(state.execution.Status) {
+		state.execMu.RLock()
+		matchesWorkflow := state.execution.WorkflowID == workflowID
+		status := state.execution.Status
+		state.execMu.RUnlock()
+		if matchesWorkflow && executionConsumesConcurrencySlot(status) {
 			runningCount++
 		}
 	}
@@ -235,17 +240,41 @@ func executionConsumesConcurrencySlot(status ExecutionStatus) bool {
 	}
 }
 
+func (s *executionState) snapshotExecution() *Execution {
+	if s == nil {
+		return nil
+	}
+	s.execMu.RLock()
+	defer s.execMu.RUnlock()
+	return cloneExecution(s.execution)
+}
+
+func (s *executionState) updateExecution(mutate func(*Execution)) *Execution {
+	if s == nil {
+		return nil
+	}
+	s.execMu.Lock()
+	defer s.execMu.Unlock()
+	if mutate != nil {
+		mutate(s.execution)
+	}
+	return cloneExecution(s.execution)
+}
+
 // runExecution runs the workflow execution.
 func (e *Engine) runExecution(state *executionState) {
-	state.execution.Status = ExecutionStatusRunning
-	state.execution.StatusReason = ""
-	e.notifyExecutionUpdate(state.execution)
+	e.notifyExecutionUpdate(state.updateExecution(func(execution *Execution) {
+		execution.Status = ExecutionStatusRunning
+		execution.StatusReason = ""
+	}))
 
 	// Find trigger nodes (entry points)
 	triggerNodes := e.findTriggerNodes(state.workflow)
 	if len(triggerNodes) == 0 {
-		state.execution.Status = ExecutionStatusFailed
-		state.execution.Error = "no trigger nodes found"
+		state.updateExecution(func(execution *Execution) {
+			execution.Status = ExecutionStatusFailed
+			execution.Error = "no trigger nodes found"
+		})
 		e.completeExecution(state)
 		return
 	}
@@ -259,12 +288,14 @@ func (e *Engine) runExecution(state *executionState) {
 	for {
 		select {
 		case <-state.ctx.Done():
-			if state.ctx.Err() == context.DeadlineExceeded {
-				state.execution.Status = ExecutionStatusFailed
-				state.execution.Error = "execution timed out"
-			} else {
-				state.execution.Status = ExecutionStatusCancelled
-			}
+			state.updateExecution(func(execution *Execution) {
+				if state.ctx.Err() == context.DeadlineExceeded {
+					execution.Status = ExecutionStatusFailed
+					execution.Error = "execution timed out"
+					return
+				}
+				execution.Status = ExecutionStatusCancelled
+			})
 			e.completeExecution(state)
 			return
 
@@ -298,7 +329,9 @@ func (e *Engine) runExecution(state *executionState) {
 			}
 
 			result := e.executeNode(state, node)
-			state.execution.NodeResults[nodeID] = result
+			state.updateExecution(func(execution *Execution) {
+				execution.NodeResults[nodeID] = result
+			})
 
 			state.mu.Lock()
 			state.completed[nodeID] = true
@@ -307,18 +340,20 @@ func (e *Engine) runExecution(state *executionState) {
 			if result.Status != NodeStatusFailed {
 				if checkpoint := e.buildExecutionCheckpoint(node, result); checkpoint != nil {
 					if err := e.pauseForCheckpoint(state, checkpoint, result); err != nil {
-						if state.ctx.Err() == context.DeadlineExceeded {
-							state.execution.Status = ExecutionStatusFailed
-							state.execution.StatusReason = "checkpoint_timeout"
-							state.execution.Error = "execution timed out while waiting for checkpoint resume"
-						} else if state.ctx.Err() != nil {
-							state.execution.Status = ExecutionStatusCancelled
-							state.execution.StatusReason = "checkpoint_cancelled"
-						} else {
-							state.execution.Status = ExecutionStatusFailed
-							state.execution.StatusReason = "checkpoint_resume_failed"
-							state.execution.Error = err.Error()
-						}
+						state.updateExecution(func(execution *Execution) {
+							if state.ctx.Err() == context.DeadlineExceeded {
+								execution.Status = ExecutionStatusFailed
+								execution.StatusReason = "checkpoint_timeout"
+								execution.Error = "execution timed out while waiting for checkpoint resume"
+							} else if state.ctx.Err() != nil {
+								execution.Status = ExecutionStatusCancelled
+								execution.StatusReason = "checkpoint_cancelled"
+							} else {
+								execution.Status = ExecutionStatusFailed
+								execution.StatusReason = "checkpoint_resume_failed"
+								execution.Error = err.Error()
+							}
+						})
 						e.completeExecution(state)
 						return
 					}
@@ -328,16 +363,20 @@ func (e *Engine) runExecution(state *executionState) {
 			// Handle node result
 			if result.Status == NodeStatusFailed {
 				if state.ctx.Err() == context.Canceled {
-					state.execution.Status = ExecutionStatusCancelled
-					state.execution.StatusReason = "cancelled"
-					state.execution.Error = ""
+					state.updateExecution(func(execution *Execution) {
+						execution.Status = ExecutionStatusCancelled
+						execution.StatusReason = "cancelled"
+						execution.Error = ""
+					})
 					e.completeExecution(state)
 					return
 				}
 				if state.ctx.Err() == context.DeadlineExceeded {
-					state.execution.Status = ExecutionStatusFailed
-					state.execution.StatusReason = "timeout"
-					state.execution.Error = "execution timed out"
+					state.updateExecution(func(execution *Execution) {
+						execution.Status = ExecutionStatusFailed
+						execution.StatusReason = "timeout"
+						execution.Error = "execution timed out"
+					})
 					e.completeExecution(state)
 					return
 				}
@@ -347,9 +386,11 @@ func (e *Engine) runExecution(state *executionState) {
 				}
 
 				if !continueOnError {
-					state.execution.Status = ExecutionStatusFailed
-					state.execution.StatusReason = "node_failed"
-					state.execution.Error = fmt.Sprintf("node %s failed: %s", node.Name, result.Error)
+					state.updateExecution(func(execution *Execution) {
+						execution.Status = ExecutionStatusFailed
+						execution.StatusReason = "node_failed"
+						execution.Error = fmt.Sprintf("node %s failed: %s", node.Name, result.Error)
+					})
 					e.completeExecution(state)
 					return
 				}
@@ -360,8 +401,10 @@ func (e *Engine) runExecution(state *executionState) {
 
 			// Check if all nodes completed
 			if e.isExecutionComplete(state) {
-				state.execution.Status = ExecutionStatusCompleted
-				state.execution.StatusReason = ""
+				state.updateExecution(func(execution *Execution) {
+					execution.Status = ExecutionStatusCompleted
+					execution.StatusReason = ""
+				})
 				e.completeExecution(state)
 				return
 			}
@@ -829,9 +872,11 @@ func (e *Engine) isExecutionComplete(state *executionState) bool {
 // completeExecution marks an execution as complete.
 func (e *Engine) completeExecution(state *executionState) {
 	now := timeutil.NowTime()
-	state.execution.CompletedAt = &now
-	state.execution.Duration = now.Sub(state.execution.StartedAt).Milliseconds()
-	e.notifyExecutionUpdate(state.execution)
+	snapshot := state.updateExecution(func(execution *Execution) {
+		execution.CompletedAt = &now
+		execution.Duration = now.Sub(execution.StartedAt).Milliseconds()
+	})
+	e.notifyExecutionUpdate(snapshot)
 
 	close(state.nodeQueue)
 }
@@ -997,7 +1042,7 @@ func (e *Engine) GetExecution(id string) (*Execution, error) {
 		return nil, ErrExecutionNotFound
 	}
 
-	return state.execution, nil
+	return state.snapshotExecution(), nil
 }
 
 // CancelExecution cancels a running execution.
@@ -1010,14 +1055,18 @@ func (e *Engine) CancelExecution(id string) error {
 		return ErrExecutionNotFound
 	}
 
+	state.execMu.Lock()
 	if state.execution.Status != ExecutionStatusRunning && state.execution.Status != ExecutionStatusPaused {
+		state.execMu.Unlock()
 		return nil
 	}
-
-	state.cancel()
 	state.execution.Status = ExecutionStatusCancelled
 	state.execution.StatusReason = "cancelled"
-	e.notifyExecutionUpdate(state.execution)
+	snapshot := cloneExecution(state.execution)
+	state.execMu.Unlock()
+
+	state.cancel()
+	e.notifyExecutionUpdate(snapshot)
 
 	return nil
 }
@@ -1030,21 +1079,27 @@ func (e *Engine) ResumeExecution(id string, resume ExecutionResumeInput) (*Execu
 	if !ok {
 		return nil, ErrExecutionNotFound
 	}
+	state.execMu.Lock()
 	if state.execution.Status != ExecutionStatusPaused {
+		state.execMu.Unlock()
 		return nil, fmt.Errorf("execution is not paused")
 	}
 	if state.execution.Checkpoint == nil {
+		state.execMu.Unlock()
 		return nil, fmt.Errorf("execution has no checkpoint to resume")
 	}
 	select {
 	case state.resumeCh <- cloneExecutionResumeInput(resume):
 	default:
+		state.execMu.Unlock()
 		return nil, fmt.Errorf("execution resume is already pending")
 	}
 	state.execution.Status = ExecutionStatusRunning
 	state.execution.StatusReason = string(ExecutionCheckpointResumeWithDecision)
-	e.notifyExecutionUpdate(state.execution)
-	return cloneExecution(state.execution), nil
+	snapshot := cloneExecution(state.execution)
+	state.execMu.Unlock()
+	e.notifyExecutionUpdate(snapshot)
+	return snapshot, nil
 }
 
 // ListExecutions returns all executions.
@@ -1054,7 +1109,7 @@ func (e *Engine) ListExecutions() []*Execution {
 
 	executions := make([]*Execution, 0, len(e.executions))
 	for _, state := range e.executions {
-		executions = append(executions, state.execution)
+		executions = append(executions, state.snapshotExecution())
 	}
 
 	return executions
@@ -1136,10 +1191,12 @@ func (e *Engine) pauseForCheckpoint(state *executionState, checkpoint *Execution
 	if state == nil || checkpoint == nil {
 		return nil
 	}
-	state.execution.Status = ExecutionStatusPaused
-	state.execution.StatusReason = firstNonEmptyString(checkpoint.Reason, string(checkpoint.Kind))
-	state.execution.Checkpoint = checkpoint
-	e.notifyExecutionUpdate(state.execution)
+	snapshot := state.updateExecution(func(execution *Execution) {
+		execution.Status = ExecutionStatusPaused
+		execution.StatusReason = firstNonEmptyString(checkpoint.Reason, string(checkpoint.Kind))
+		execution.Checkpoint = checkpoint
+	})
+	e.notifyExecutionUpdate(snapshot)
 
 	var resume ExecutionResumeInput
 	select {
@@ -1149,28 +1206,31 @@ func (e *Engine) pauseForCheckpoint(state *executionState, checkpoint *Execution
 	}
 
 	now := timeutil.NowTime()
-	checkpoint.ResumedAt = &now
-	checkpoint.Resume = &ExecutionResumeInput{
-		Decision: strings.TrimSpace(resume.Decision),
-		Payload:  cloneMap(resume.Payload),
-	}
-	state.execution.Status = ExecutionStatusRunning
-	state.execution.StatusReason = string(ExecutionCheckpointResumeWithDecision)
-	if state.execution.Variables == nil {
-		state.execution.Variables = make(map[string]interface{})
-	}
-	state.execution.Variables["checkpoint"] = executionCheckpointToMap(checkpoint)
-	state.execution.Variables["checkpoint_decision"] = strings.TrimSpace(resume.Decision)
-	if checkpoint.Resume != nil && len(checkpoint.Resume.Payload) > 0 {
-		state.execution.Variables["checkpoint_payload"] = cloneMap(checkpoint.Resume.Payload)
-	}
-	if result != nil {
-		if result.Output == nil {
-			result.Output = make(map[string]interface{})
+	snapshot = state.updateExecution(func(execution *Execution) {
+		checkpoint.ResumedAt = &now
+		checkpoint.Resume = &ExecutionResumeInput{
+			Decision: strings.TrimSpace(resume.Decision),
+			Payload:  cloneMap(resume.Payload),
 		}
-		result.Output["checkpoint"] = executionCheckpointToMap(checkpoint)
-	}
-	e.notifyExecutionUpdate(state.execution)
+		execution.Status = ExecutionStatusRunning
+		execution.StatusReason = string(ExecutionCheckpointResumeWithDecision)
+		if execution.Variables == nil {
+			execution.Variables = make(map[string]interface{})
+		}
+		checkpointMap := executionCheckpointToMap(checkpoint)
+		execution.Variables["checkpoint"] = cloneMap(checkpointMap)
+		execution.Variables["checkpoint_decision"] = strings.TrimSpace(resume.Decision)
+		if checkpoint.Resume != nil && len(checkpoint.Resume.Payload) > 0 {
+			execution.Variables["checkpoint_payload"] = cloneMap(checkpoint.Resume.Payload)
+		}
+		if result != nil {
+			if result.Output == nil {
+				result.Output = make(map[string]interface{})
+			}
+			result.Output["checkpoint"] = checkpointMap
+		}
+	})
+	e.notifyExecutionUpdate(snapshot)
 	return nil
 }
 

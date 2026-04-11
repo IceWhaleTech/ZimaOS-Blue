@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ToolResultItem } from '@/stores/chat'
 import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
+import { localizeStatusToken } from '@/utils/statusTokens'
 
 const { t } = useI18n()
 
@@ -81,7 +82,7 @@ const isShortOutput = computed(() => {
 })
 const hasStatus = computed(() => !!props.item.status?.trim())
 const hasWarningCode = computed(() => !!props.item.warningCode?.trim())
-const statusText = computed(() => props.item.status || '')
+const statusText = computed(() => localizeStatusToken(props.item.status, t) || props.item.status || '')
 const warningCodeText = computed(() => props.item.warningCode || '')
 const warningLabel = computed(() => formatToolWarningCodeLabel(warningCodeText.value, t, 'label'))
 const statusToneClass = computed(() => {

@@ -48,10 +48,13 @@ func setupTestHandler(t *testing.T) (*Handler, *Manager, func()) {
 	config := DefaultConfig()
 	config.DefaultTimeout = 5 * time.Second
 	config.MaxTimeout = 30 * time.Second
+	config.WorkDir = t.TempDir()
 
+	// Handler tests exercise HTTP behavior, not platform sandbox probing.
 	manager := &Manager{
 		config: config,
 		light:  NewBaseExecutor(config),
+		strong: NewBaseExecutor(config),
 	}
 
 	handler := NewHandler(manager)

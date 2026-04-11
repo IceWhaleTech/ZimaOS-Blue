@@ -457,6 +457,33 @@ func TestExecutorExecuteJSONArgs_JSONStringFallbackToRequiredField(t *testing.T)
 	}
 }
 
+func TestExecutorExecuteJSONArgs_SingleStringJSONArrayFallbackToRequiredField(t *testing.T) {
+	registry := NewRegistry()
+	tool := &captureArgsTool{
+		def: ToolDefinition{
+			Name:        "tool_search",
+			Description: "Search tools",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"query": map[string]interface{}{"type": "string"},
+				},
+				"required": []string{"query"},
+			},
+		},
+	}
+	registry.Register(tool)
+
+	executor := NewExecutor(registry)
+	_, err := executor.ExecuteJSON(context.Background(), "tool_search", `["skill"]`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := tool.args["query"]; got != "skill" {
+		t.Fatalf("query = %v, want %q", got, "skill")
+	}
+}
+
 func TestExecutorExecuteJSONArgs_LooseJSONObjectFallback(t *testing.T) {
 	registry := NewRegistry()
 	tool := &captureArgsTool{
@@ -1227,45 +1254,17 @@ func TestFileReadToolAddsTabularSummaryForCSV(t *testing.T) {
 	}
 }
 
-func TestFileReadToolDelegatesPDFToPDFService(t *testing.T) {
-	path := writeTestPDF(t, "report.pdf", 256)
+func TestFileReadToolReadsPDFAsPlainTextEvenWhenPDFServiceIsAvailable(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "report.pdf")
+	if err := writeTestFile(path, "plain text pdf placeholder"); err != nil {
+		t.Fatalf("failed to create pdf placeholder: %v", err)
+	}
+
 	svc := &stubPDFService{extract: pdfextract.ExtractResult{Text: "hello pdf", Document: pdfextract.DocumentInfo{FileName: "report.pdf"}}}
-	tool := NewFileReadTool([]string{filepath.Dir(path)}, 0)
+	tool := NewFileReadTool([]string{tmpDir}, 0)
 	tool.SetPDFService(svc)
 
-	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"path":      path,
-		"page":      2,
-		"max_chars": 5,
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	payload, ok := result.(pdfextract.ExtractResult)
-	if !ok {
-		t.Fatalf("result type = %T, want pdfextract.ExtractResult", result)
-	}
-	if payload.Text != "hello pdf" {
-		t.Fatalf("text = %q, want hello pdf", payload.Text)
-	}
-	if svc.lastExtractReq.Path != path {
-		t.Fatalf("extract path = %q, want %q", svc.lastExtractReq.Path, path)
-	}
-	if len(svc.lastExtractReq.Pages) != 1 || svc.lastExtractReq.Pages[0] != 2 {
-		t.Fatalf("pages = %#v, want [2]", svc.lastExtractReq.Pages)
-	}
-	if svc.lastExtractReq.MaxChars != 5 {
-		t.Fatalf("max_chars = %d, want 5", svc.lastExtractReq.MaxChars)
-	}
-}
-
-func TestFileReadToolReadsXLSXDocuments(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "budget.xlsx")
-	writeTestSpreadsheetXLSX(t, path)
-
-	tool := NewFileReadTool([]string{tmpDir}, 0)
 	result, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1275,29 +1274,18 @@ func TestFileReadToolReadsXLSXDocuments(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
 		t.Fatalf("failed to parse result: %v", err)
 	}
-	if payload["document_format"] != "xlsx" {
-		t.Fatalf("document_format = %v, want xlsx", payload["document_format"])
+	if payload["content"] != "plain text pdf placeholder" {
+		t.Fatalf("content = %q, want plain text placeholder", payload["content"])
 	}
-	if payload["extracted_via"] != "local_spreadsheet" {
-		t.Fatalf("extracted_via = %v, want local_spreadsheet", payload["extracted_via"])
-	}
-	if !strings.Contains(payload["content"].(string), "Sheet: Budget") {
-		t.Fatalf("content = %q, want spreadsheet sheet header", payload["content"])
-	}
-	summary, ok := payload["tabular_summary"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("expected tabular_summary, got %#v", payload["tabular_summary"])
-	}
-	sheets, ok := summary["sheet_summaries"].([]interface{})
-	if !ok || len(sheets) != 1 {
-		t.Fatalf("sheet_summaries = %#v, want one summary", summary["sheet_summaries"])
+	if svc.lastExtractReq.Path != "" {
+		t.Fatalf("expected file_read to skip pdf delegation, got extract path %q", svc.lastExtractReq.Path)
 	}
 }
 
-func TestFileReadToolReadsOfficeDocumentsViaDocumentReader(t *testing.T) {
+func TestFileReadToolDoesNotUseDocumentReaderForDocx(t *testing.T) {
 	tmpDir := t.TempDir()
 	path := filepath.Join(tmpDir, "notes.docx")
-	if err := writeTestFile(path, "stub"); err != nil {
+	if err := writeTestFile(path, "Title\nBody"); err != nil {
 		t.Fatalf("failed to create docx placeholder: %v", err)
 	}
 
@@ -1305,7 +1293,7 @@ func TestFileReadToolReadsOfficeDocumentsViaDocumentReader(t *testing.T) {
 	reader := &stubDocumentReadService{
 		result: &convertpkg.DocumentReadResult{
 			Format:       "docx",
-			Text:         "Title\nBody",
+			Text:         "Should not be used",
 			ExtractedVia: "stub:txt",
 		},
 	}
@@ -1326,67 +1314,46 @@ func TestFileReadToolReadsOfficeDocumentsViaDocumentReader(t *testing.T) {
 	if payload["content"] != "Body" {
 		t.Fatalf("content = %q, want Body", payload["content"])
 	}
-	if payload["document_format"] != "docx" {
-		t.Fatalf("document_format = %v, want docx", payload["document_format"])
+	if _, ok := payload["document_format"]; ok {
+		t.Fatalf("did not expect document-specific envelope, got %#v", payload)
 	}
-	if payload["extracted_via"] != "stub:txt" {
-		t.Fatalf("extracted_via = %v, want stub:txt", payload["extracted_via"])
-	}
-	if reader.lastPath != path {
-		t.Fatalf("reader path = %q, want %q", reader.lastPath, path)
+	if reader.lastPath != "" {
+		t.Fatalf("expected document reader to be skipped, got path %q", reader.lastPath)
 	}
 }
 
-func TestFileReadToolReadsExpandedOfficeFormatsViaDocumentReader(t *testing.T) {
+func TestFileReadToolTreatsOfficeExtensionsAsRegularFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "notes.odt")
-	if err := writeTestFile(path, "stub"); err != nil {
-		t.Fatalf("failed to create odt placeholder: %v", err)
-	}
+	for _, name := range []string{"budget.xlsx", "slides.pptx", "notes.odt"} {
+		path := filepath.Join(tmpDir, name)
+		if err := writeTestFile(path, "regular text placeholder"); err != nil {
+			t.Fatalf("failed to create %s placeholder: %v", name, err)
+		}
+		tool := NewFileReadTool([]string{tmpDir}, 0)
+		reader := &stubDocumentReadService{
+			result: &convertpkg.DocumentReadResult{
+				Format:       "docx",
+				Text:         "Should not be used",
+				ExtractedVia: "stub:txt",
+			},
+		}
+		tool.SetDocumentReadService(reader)
 
-	tool := NewFileReadTool([]string{tmpDir}, 0)
-	reader := &stubDocumentReadService{
-		result: &convertpkg.DocumentReadResult{
-			Format:       "odt",
-			Text:         "Meeting notes",
-			ExtractedVia: "stub:txt",
-		},
-	}
-	tool.SetDocumentReadService(reader)
+		result, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
+		if err != nil {
+			t.Fatalf("unexpected error for %s: %v", name, err)
+		}
 
-	result, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	var payload map[string]interface{}
-	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
-		t.Fatalf("failed to parse result: %v", err)
-	}
-	if payload["document_format"] != "odt" {
-		t.Fatalf("document_format = %v, want odt", payload["document_format"])
-	}
-	if reader.lastPath != path {
-		t.Fatalf("reader path = %q, want %q", reader.lastPath, path)
-	}
-}
-
-func TestFileReadToolReturnsDocumentRuntimeErrorWhenReaderUnavailable(t *testing.T) {
-	tmpDir := t.TempDir()
-	path := filepath.Join(tmpDir, "slides.pptx")
-	if err := writeTestFile(path, "stub"); err != nil {
-		t.Fatalf("failed to create pptx placeholder: %v", err)
-	}
-
-	tool := NewFileReadTool([]string{tmpDir}, 0)
-	tool.SetDocumentReadService(nil)
-
-	_, err := tool.Execute(context.Background(), map[string]interface{}{"path": path})
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !strings.Contains(err.Error(), "document extraction is unavailable") {
-		t.Fatalf("error = %v, want unavailable message", err)
+		var payload map[string]interface{}
+		if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+			t.Fatalf("failed to parse %s result: %v", name, err)
+		}
+		if payload["content"] != "regular text placeholder" {
+			t.Fatalf("%s content = %q, want regular text placeholder", name, payload["content"])
+		}
+		if reader.lastPath != "" {
+			t.Fatalf("expected document reader to be skipped for %s, got path %q", name, reader.lastPath)
+		}
 	}
 }
 
@@ -3000,7 +2967,7 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltinTools(registry)
 
-	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "tool_search", "web_query", "mcp"}
+	expectedTools := []string{"read", "write", "edit", "grep", "find", "ls", "tool_search", "web_query", "mcp", "docx", "xlsx", "pptx"}
 	for _, name := range expectedTools {
 		if registry.Get(name) == nil {
 			t.Errorf("expected tool '%s' to be registered", name)
@@ -3010,12 +2977,12 @@ func TestRegisterBuiltinTools(t *testing.T) {
 	for _, def := range registry.Definitions() {
 		visible[def.Name] = struct{}{}
 	}
-	for _, name := range []string{"read", "write", "tool_search"} {
+	for _, name := range []string{"read", "write", "tool_search", "docx", "xlsx", "pptx"} {
 		if _, ok := visible[name]; !ok {
 			t.Errorf("expected visible tool definition %q", name)
 		}
 	}
-	for _, name := range []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "rg"} {
+	for _, name := range []string{"file_read", "file_write", "file_delete", "write_begin", "write_chunk", "write_commit", "write_abort", "rg", "office", "ppt"} {
 		if _, ok := visible[name]; ok {
 			t.Errorf("did not expect legacy/internal tool %q in visible definitions", name)
 		}
@@ -3038,6 +3005,9 @@ func TestRegisterBuiltinTools(t *testing.T) {
 		if !registry.IsDisabled(name) {
 			t.Errorf("expected legacy/internal tool %q to be hidden", name)
 		}
+	}
+	if registry.Get("office") != nil {
+		t.Errorf("did not expect legacy office tool to remain registered")
 	}
 }
 

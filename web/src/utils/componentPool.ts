@@ -107,6 +107,7 @@ class ComponentPool {
       'deep-research-timeline': () => import('@/components/typeless/CardDeepResearchTimeline.vue'),
       'deep-research-progress': () => import('@/components/typeless/CardDeepResearchProgress.vue'),
       'deep-research-event': () => import('@/components/typeless/CardDeepResearchEvent.vue'),
+      advisor: () => import('@/components/typeless/CardAdvisor.vue'),
       'ui-review': () => import('@/components/typeless/CardUIReview.vue'),
       'ui-review-progress': () => import('@/components/typeless/CardUIReviewProgress.vue'),
       'media-generate': () => import('@/components/typeless/CardMediaGenerate.vue'),

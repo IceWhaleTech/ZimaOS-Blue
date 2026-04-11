@@ -343,6 +343,18 @@ func TestSettingsHandlerAgentcoreRunnerLastRunEndpointAddsEvolvablePartsCompatib
 		lastRun: optimization.OptimizationRunRecord{
 			"id":                   "opt-legacy",
 			"optimization_surface": "runner_code",
+			"offline_value_report": map[string]interface{}{
+				"offline_recommendation": "hold",
+				"value_summary":          "Accepted execution candidate but cutover readiness is still pending.",
+			},
+			"runtime_value_report": map[string]interface{}{
+				"status":        "provisional",
+				"value_summary": "Promoted candidate has not collected enough runtime evidence yet.",
+			},
+			"proposal_set": []interface{}{
+				map[string]interface{}{"candidate_id": "candidate-a"},
+			},
+			"pareto_frontier": []interface{}{"candidate-a"},
 		},
 	})
 
@@ -370,5 +382,16 @@ func TestSettingsHandlerAgentcoreRunnerLastRunEndpointAddsEvolvablePartsCompatib
 	supported, ok := body["supported_parts"].([]interface{})
 	if !ok || len(supported) == 0 {
 		t.Fatalf("supported_parts = %#v", body["supported_parts"])
+	}
+	offline, ok := body["offline_value_report"].(map[string]interface{})
+	if !ok || strings.TrimSpace(offline["offline_recommendation"].(string)) != "hold" {
+		t.Fatalf("offline_value_report = %#v", body["offline_value_report"])
+	}
+	runtime, ok := body["runtime_value_report"].(map[string]interface{})
+	if !ok || strings.TrimSpace(runtime["status"].(string)) != "provisional" {
+		t.Fatalf("runtime_value_report = %#v", body["runtime_value_report"])
+	}
+	if frontier, ok := body["pareto_frontier"].([]interface{}); !ok || len(frontier) != 1 {
+		t.Fatalf("pareto_frontier = %#v", body["pareto_frontier"])
 	}
 }

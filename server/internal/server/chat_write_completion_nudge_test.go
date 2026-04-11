@@ -563,36 +563,135 @@ func TestBuildWorkspaceArtifactWriteRecoveryTools_DropsFileDelete(t *testing.T) 
 	}
 }
 
-func TestBuildWorkspaceArtifactWriteRecoveryTools_PrefersOfficeForOfficeArtifacts(t *testing.T) {
+func TestBuildWorkspaceArtifactWriteRecoveryTools_PrefersDocxForDocxArtifacts(t *testing.T) {
 	reduced := buildWorkspaceArtifactWriteRecoveryTools([]llm.Tool{
-		{Name: "office"},
+		{Name: "docx"},
 		{Name: "file_write"},
 		{Name: "file_delete"},
 		{Name: "edit"},
 	}, "Write the styled report to ui_review.docx.")
 
-	if !containsLLMToolName(reduced, "office") {
-		t.Fatalf("expected recovery tools to preserve office, got=%v", reduced)
+	if !containsLLMToolName(reduced, "docx") {
+		t.Fatalf("expected recovery tools to preserve docx, got=%v", reduced)
 	}
-	if got := reduced[0].Name; got != "office" {
-		t.Fatalf("expected office to lead office artifact recovery, got=%q", got)
+	if got := reduced[0].Name; got != "docx" {
+		t.Fatalf("expected docx to lead docx artifact recovery, got=%q", got)
 	}
 	if containsLLMToolName(reduced, "file_delete") {
 		t.Fatalf("expected recovery tools to drop file_delete, got=%v", reduced)
 	}
 }
 
-func TestBuildArtifactWorkflowExecutionHint_PrefersOfficeForOfficeArtifacts(t *testing.T) {
+func TestBuildArtifactWorkflowExecutionHint_PrefersDocxForDocxArtifacts(t *testing.T) {
 	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the polished report to ui_review.docx.")
-	if !containsSubstring(hint, "prefer the native office tool") {
-		t.Fatalf("expected office hint, got=%q", hint)
+	if !containsSubstring(hint, "prefer the native docx tool") {
+		t.Fatalf("expected docx hint, got=%q", hint)
 	}
 }
 
-func TestExtractSuccessfulWriteTarget_Office(t *testing.T) {
-	got := extractSuccessfulWriteTarget("office", `{"success":true,"path":"reports/ui_review.docx"}`)
+func TestBuildWorkspaceArtifactWriteRecoveryTools_PrefersXLSXForXLSXArtifacts(t *testing.T) {
+	reduced := buildWorkspaceArtifactWriteRecoveryTools([]llm.Tool{
+		{Name: "xlsx"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+	}, "Write the styled scorecard to ui_review.xlsx.")
+
+	if !containsLLMToolName(reduced, "xlsx") {
+		t.Fatalf("expected recovery tools to preserve xlsx, got=%v", reduced)
+	}
+	if got := reduced[0].Name; got != "xlsx" {
+		t.Fatalf("expected xlsx to lead xlsx artifact recovery, got=%q", got)
+	}
+	if containsLLMToolName(reduced, "file_delete") {
+		t.Fatalf("expected recovery tools to drop file_delete, got=%v", reduced)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_PrefersXLSXForXLSXArtifacts(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the scorecard to ui_review.xlsx.")
+	if !containsSubstring(hint, "prefer the native xlsx tool") {
+		t.Fatalf("expected xlsx hint, got=%q", hint)
+	}
+}
+
+func TestBuildWorkspaceArtifactWriteRecoveryTools_PrefersPPTXForPPTXArtifacts(t *testing.T) {
+	reduced := buildWorkspaceArtifactWriteRecoveryTools([]llm.Tool{
+		{Name: "pptx"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+	}, "Write the launch deck to launch_plan.pptx.")
+
+	if !containsLLMToolName(reduced, "pptx") {
+		t.Fatalf("expected recovery tools to preserve pptx, got=%v", reduced)
+	}
+	if got := reduced[0].Name; got != "pptx" {
+		t.Fatalf("expected pptx to lead pptx artifact recovery, got=%q", got)
+	}
+	if containsLLMToolName(reduced, "file_delete") {
+		t.Fatalf("expected recovery tools to drop file_delete, got=%v", reduced)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_PrefersPPTXForPPTXArtifacts(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the launch deck to launch_plan.pptx.")
+	if !containsSubstring(hint, "prefer the native pptx tool") {
+		t.Fatalf("expected pptx hint, got=%q", hint)
+	}
+}
+
+func TestBuildWorkspaceArtifactWriteRecoveryTools_PrefersPDFForPDFArtifacts(t *testing.T) {
+	reduced := buildWorkspaceArtifactWriteRecoveryTools([]llm.Tool{
+		{Name: "pdf"},
+		{Name: "file_write"},
+		{Name: "file_delete"},
+		{Name: "edit"},
+	}, "Read findings.md and save the reformatted report to launch_plan.pdf.")
+
+	if !containsLLMToolName(reduced, "pdf") {
+		t.Fatalf("expected recovery tools to preserve pdf, got=%v", reduced)
+	}
+	if got := reduced[0].Name; got != "pdf" {
+		t.Fatalf("expected pdf to lead pdf artifact recovery, got=%q", got)
+	}
+	if containsLLMToolName(reduced, "file_delete") {
+		t.Fatalf("expected recovery tools to drop file_delete, got=%v", reduced)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_PrefersPDFForPDFArtifacts(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the reformatted report to launch_plan.pdf.")
+	if !containsSubstring(hint, "prefer the native pdf tool") {
+		t.Fatalf("expected pdf hint, got=%q", hint)
+	}
+}
+
+func TestExtractSuccessfulWriteTarget_Docx(t *testing.T) {
+	got := extractSuccessfulWriteTarget("docx", `{"success":true,"path":"reports/ui_review.docx"}`)
 	if got != "reports/ui_review.docx" {
 		t.Fatalf("extractSuccessfulWriteTarget() = %q, want reports/ui_review.docx", got)
+	}
+}
+
+func TestExtractSuccessfulWriteTarget_XLSX(t *testing.T) {
+	got := extractSuccessfulWriteTarget("xlsx", `{"success":true,"path":"reports/ui_review.xlsx"}`)
+	if got != "reports/ui_review.xlsx" {
+		t.Fatalf("extractSuccessfulWriteTarget() = %q, want reports/ui_review.xlsx", got)
+	}
+}
+
+func TestExtractSuccessfulWriteTarget_PPTX(t *testing.T) {
+	got := extractSuccessfulWriteTarget("pptx", `{"success":true,"path":"reports/launch_plan.pptx"}`)
+	if got != "reports/launch_plan.pptx" {
+		t.Fatalf("extractSuccessfulWriteTarget() = %q, want reports/launch_plan.pptx", got)
+	}
+}
+
+func TestExtractSuccessfulWriteTarget_PDF(t *testing.T) {
+	got := extractSuccessfulWriteTarget("pdf", `{"success":true,"path":"reports/launch_plan.pdf"}`)
+	if got != "reports/launch_plan.pdf" {
+		t.Fatalf("extractSuccessfulWriteTarget() = %q, want reports/launch_plan.pdf", got)
 	}
 }
 

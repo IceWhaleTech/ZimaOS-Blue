@@ -191,6 +191,65 @@ func TestEmailTool_Execute_SearchArchiveLabelAndSummarize(t *testing.T) {
 	}
 }
 
+func TestEmailTool_Execute_ListReturnsEmptyInboxForNewUser(t *testing.T) {
+	now := time.Date(2026, time.April, 11, 10, 0, 0, 0, time.UTC)
+	db := openProductivityTestDB(t)
+
+	svc, err := NewLocalEmailService(db)
+	if err != nil {
+		t.Fatalf("new email service: %v", err)
+	}
+	svc.SetNowFunc(func() time.Time { return now })
+
+	tool := NewEmailTool(svc)
+	ctx := WithLang(WithUserID(context.Background(), "user-empty"), "en-US")
+
+	resultAny, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "list",
+	})
+	if err != nil {
+		t.Fatalf("list email: %v", err)
+	}
+	result := resultAny.(map[string]interface{})
+	if got := result["count"].(int); got != 0 {
+		t.Fatalf("count = %d, want 0", got)
+	}
+	if got := len(result["emails"].([]map[string]interface{})); got != 0 {
+		t.Fatalf("emails len = %d, want 0", got)
+	}
+}
+
+func TestEmailTool_Execute_SummarizeReturnsEmptyStateForNewUser(t *testing.T) {
+	now := time.Date(2026, time.April, 11, 10, 0, 0, 0, time.UTC)
+	db := openProductivityTestDB(t)
+
+	svc, err := NewLocalEmailService(db)
+	if err != nil {
+		t.Fatalf("new email service: %v", err)
+	}
+	svc.SetNowFunc(func() time.Time { return now })
+
+	tool := NewEmailTool(svc)
+	ctx := WithLang(WithUserID(context.Background(), "user-empty-summary"), "en-US")
+
+	resultAny, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "summarize",
+	})
+	if err != nil {
+		t.Fatalf("summarize email: %v", err)
+	}
+	result := resultAny.(map[string]interface{})
+	if got := result["total"].(int); got != 0 {
+		t.Fatalf("total = %d, want 0", got)
+	}
+	if got := result["high_priority_count"].(int); got != 0 {
+		t.Fatalf("high_priority_count = %d, want 0", got)
+	}
+	if got := result["actionable_count"].(int); got != 0 {
+		t.Fatalf("actionable_count = %d, want 0", got)
+	}
+}
+
 func TestCalendarTool_Execute_DailySummaryAggregatesEventsRemindersJobsAndEmails(t *testing.T) {
 	now := time.Date(2026, time.March, 20, 9, 0, 0, 0, time.UTC)
 	db := openProductivityTestDB(t)

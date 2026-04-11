@@ -234,9 +234,13 @@ func TestKeyManager_LoadExistingKey(t *testing.T) {
 }
 
 func TestKeyManager_InvalidKeyPath(t *testing.T) {
-	// Try to create key in non-existent directory without write permission
-	// This test may behave differently on different systems
-	keyPath := "/nonexistent/path/that/should/not/exist/test.key"
+	// Create a parent path that is a file, so mkdir/write must fail consistently.
+	tmpDir := t.TempDir()
+	blockedParent := filepath.Join(tmpDir, "not-a-directory")
+	if err := os.WriteFile(blockedParent, []byte("blocked"), 0o600); err != nil {
+		t.Fatalf("WriteFile(blocked parent) error = %v", err)
+	}
+	keyPath := filepath.Join(blockedParent, "test.key")
 
 	_, err := NewKeyManager(keyPath, 90)
 	if err == nil {

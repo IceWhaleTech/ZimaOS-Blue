@@ -178,6 +178,73 @@ export interface AgentcoreRunnerLastRunTranscriptEntry {
   text?: string
 }
 
+export interface AgentcoreRunnerReflectiveProposal {
+  candidate_id?: string
+  generation?: number
+  rationale?: string
+  skill_candidate?: Record<string, unknown>
+}
+
+export interface AgentcoreRunnerReflectiveObjectives {
+  execution_pass_rate_delta?: number
+  verification_pass_rate_delta?: number
+  evidence_backed_pass_rate_delta?: number
+  median_latency_increase_rate?: number
+  repeat_failure_recurrence?: number
+  [key: string]: unknown
+}
+
+export interface AgentcoreRunnerReflectiveCandidate {
+  candidate_id?: string
+  generation?: number
+  hard_pass?: boolean
+  followup_gate?: string
+  followup_state?: string
+  followup_eval_run_id?: string
+  followup_summary?: string
+  diff_size?: number
+  objectives?: AgentcoreRunnerReflectiveObjectives
+  skill_candidate?: Record<string, unknown>
+  [key: string]: unknown
+}
+
+export interface AgentcoreRunnerOfflineValueReport {
+  offline_recommendation?: string
+  value_summary?: string
+  top_improvements?: string[]
+  top_tradeoffs?: string[]
+  confidence?: string
+  cutover_ready?: boolean
+  [key: string]: unknown
+}
+
+export interface AgentcoreRunnerRuntimeValueReport {
+  status?: string
+  before_sample_count?: number
+  after_sample_count?: number
+  failure_recurrence_delta?: number
+  median_duration_delta_rate?: number
+  median_total_tokens_delta_rate?: number
+  capture_quality_delta?: number
+  validation_quality_delta?: number
+  value_summary?: string
+  top_improvements?: string[]
+  top_tradeoffs?: string[]
+  confidence?: string
+  [key: string]: unknown
+}
+
+export interface AgentcoreRunnerSampleEfficiencyReport {
+  proposal_count?: number
+  evaluated_candidate_count?: number
+  hard_pass_candidate_count?: number
+  pareto_frontier_size?: number
+  frontier_size?: number
+  max_evaluations?: number
+  selected_candidate_id?: string
+  [key: string]: unknown
+}
+
 export interface AgentcoreRunnerLastRun {
   id?: string
   created_at?: string
@@ -207,6 +274,15 @@ export interface AgentcoreRunnerLastRun {
   runner_duration_ms?: number
   metadata?: Record<string, unknown>
   runner_transcript?: AgentcoreRunnerLastRunTranscriptEntry[]
+  proposal_set?: AgentcoreRunnerReflectiveProposal[]
+  evaluated_candidates?: AgentcoreRunnerReflectiveCandidate[]
+  pareto_frontier?: string[]
+  selected_candidate?: AgentcoreRunnerReflectiveCandidate
+  offline_value_report?: AgentcoreRunnerOfflineValueReport
+  runtime_value_report?: AgentcoreRunnerRuntimeValueReport
+  sample_efficiency_report?: AgentcoreRunnerSampleEfficiencyReport
+  offline_recommendation?: string
+  runtime_status?: string
   [key: string]: unknown
 }
 

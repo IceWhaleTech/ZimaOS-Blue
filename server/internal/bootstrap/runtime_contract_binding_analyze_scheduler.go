@@ -41,7 +41,7 @@ func (binding *runtimeContractBinding) BindAnalyzeTool(options routeRuntimeContr
 	if options.deepResearchSkill == nil {
 		options.deepResearchSkill = runtimeSkillAsDeepResearchTarget(options.skillRegistry, "deep_research")
 	}
-	return bindRuntimeAnalyzeTool(
+	analyzeTool := bindRuntimeAnalyzeTool(
 		options.registry,
 		options.mediaDir,
 		options.browserBackend,
@@ -53,4 +53,10 @@ func (binding *runtimeContractBinding) BindAnalyzeTool(options routeRuntimeContr
 		options.deepResearchSkill,
 		binding.runtime.ResearchService(),
 	)
+	if options.registry != nil {
+		if advisorSkill := runtimeSkillAsAdvisorTarget(options.skillRegistry, "advisor"); advisorSkill != nil {
+			advisorSkill.SetExecutor(tools.GetAdvisorTool(options.registry))
+		}
+	}
+	return analyzeTool
 }

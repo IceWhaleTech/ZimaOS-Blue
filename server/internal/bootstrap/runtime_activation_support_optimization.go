@@ -103,6 +103,9 @@ func (a *harnessOptimizationManagerAdapter) reconcileFollowupOptimizationRecord(
 	if a == nil || a.manager == nil || a.controller == nil || len(record) == 0 {
 		return record, nil
 	}
+	if reflectiveOptimizationRecord(record) {
+		return a.reconcileReflectiveOptimizationRecord(ctx, record)
+	}
 	followupEvalRunID := optimizationMetadataString(record, "followup_eval_run_id")
 	if followupEvalRunID == "" {
 		return record, nil
@@ -430,6 +433,11 @@ func (t *harnessOptimizationTriggerer) RecordSkillRevisionPromotion(ctx context.
 	updated["skill_revision_id"] = strings.TrimSpace(promotedRevision.ID)
 	updated["promotion_state"] = "promoted"
 	updated["written_source_path"] = strings.TrimSpace(writtenSourcePath)
+	if promotedRevision.PromotedAt != nil {
+		updated["promoted_at"] = promotedRevision.PromotedAt.UTC()
+	} else {
+		updated["promoted_at"] = time.Now().UTC()
+	}
 	if backupRevision != nil {
 		updated["backup_revision_id"] = strings.TrimSpace(backupRevision.ID)
 	}
@@ -531,10 +539,51 @@ func (t *harnessOptimizationTriggerer) TriggerOptimization(ctx context.Context, 
 				record["followup_group_id"] = strings.TrimSpace(followup.EvalRun.GroupID)
 				record["followup_eval_spec_id"] = strings.TrimSpace(followup.EvalRun.EvalSpecID)
 			}
+			if len(followup.SearchConfig) > 0 {
+				record["search_config"] = followup.SearchConfig
+			}
+			if len(followup.ReflectionSummary) > 0 {
+				record["reflection_summary"] = followup.ReflectionSummary
+			}
+			if len(followup.ProposalSet) > 0 {
+				record["proposal_set"] = followup.ProposalSet
+			}
+			if len(followup.EvaluatedCandidates) > 0 {
+				record["evaluated_candidates"] = followup.EvaluatedCandidates
+			}
+			if len(followup.OfflineValueReport) > 0 {
+				record["offline_value_report"] = followup.OfflineValueReport
+			}
+			if len(followup.RuntimeValueReport) > 0 {
+				record["runtime_value_report"] = followup.RuntimeValueReport
+			}
+			if len(followup.SampleEfficiencyReport) > 0 {
+				record["sample_efficiency_report"] = followup.SampleEfficiencyReport
+			}
+			if recommendation := strings.TrimSpace(followup.OfflineRecommendation); recommendation != "" {
+				record["offline_recommendation"] = recommendation
+			}
+			if runtimeStatus := strings.TrimSpace(followup.RuntimeStatus); runtimeStatus != "" {
+				record["runtime_status"] = runtimeStatus
+			}
 		}
 		if err != nil {
 			followupErr = err
 			record["followup_error"] = strings.TrimSpace(err.Error())
+		}
+	}
+	if defaultOptimizationSurface(event.OptimizationSurface) == string(harness.OptimizationSurfaceSkillDefinition) {
+		if _, ok := record["offline_recommendation"]; !ok {
+			record["offline_recommendation"] = "hold"
+		}
+		if _, ok := record["offline_value_report"]; !ok {
+			record["offline_value_report"] = defaultReflectiveValueReport(optimizationMetadataString(record, "offline_recommendation"))
+		}
+		if _, ok := record["runtime_status"]; !ok {
+			record["runtime_status"] = "not_started"
+		}
+		if _, ok := record["runtime_value_report"]; !ok {
+			record["runtime_value_report"] = runtimeValueReportToMap(defaultRuntimeValueReport("not_started"))
 		}
 	}
 	if err := t.manager.RecordOptimizationEvent(runID, record); err != nil {
@@ -646,7 +695,8 @@ func buildOptimizationSkillPromptParts(metadata map[string]interface{}) []string
 	}
 	parts = append(parts,
 		"Return JSON only with this schema:",
-		`{"status":"candidate_ready|no_change","message":"...","skill_candidate":{"skill_id":"...","candidate_id":"...","source_path":"...","content":"..."}}`,
+		`{"status":"proposal_set_ready|candidate_ready|no_change","message":"...","reflection_summary":{"summary":"...","lessons":["..."],"confidence":"low|medium|high"},"proposal_set":[{"candidate_id":"...","generation":1,"rationale":"...","skill_candidate":{"skill_id":"...","candidate_id":"...","source_path":"...","content":"..."}}],"skill_candidate":{"skill_id":"...","candidate_id":"...","source_path":"...","content":"..."}}`,
+		"When status is proposal_set_ready, include up to 4 skill_definition mutations in proposal_set and keep each full replacement in skill_candidate.content.",
 		"When status is candidate_ready, include the full replacement SKILL.md text in skill_candidate.content.",
 	)
 	return filterEmptyOptimizationPromptParts(parts)
@@ -717,19 +767,30 @@ func filterEmptyOptimizationPromptParts(parts []string) []string {
 }
 
 type optimizationFollowupOutcome struct {
-	State          string
-	Message        string
-	SkippedReason  string
-	SkillCandidate map[string]interface{}
-	EvolutionCase  *harness.SkillEvolutionCase
-	SkillRevision  *harness.SkillRevision
-	EvalRun        *harness.EvalRun
+	State                  string
+	Message                string
+	SkippedReason          string
+	OfflineRecommendation  string
+	RuntimeStatus          string
+	SkillCandidate         map[string]interface{}
+	EvolutionCase          *harness.SkillEvolutionCase
+	SkillRevision          *harness.SkillRevision
+	EvalRun                *harness.EvalRun
+	SearchConfig           map[string]interface{}
+	ReflectionSummary      map[string]interface{}
+	ProposalSet            []map[string]interface{}
+	EvaluatedCandidates    []map[string]interface{}
+	OfflineValueReport     map[string]interface{}
+	RuntimeValueReport     map[string]interface{}
+	SampleEfficiencyReport map[string]interface{}
 }
 
 type optimizationSkillCandidateResponse struct {
-	Status         string                            `json:"status,omitempty"`
-	Message        string                            `json:"message,omitempty"`
-	SkillCandidate *optimizationSkillCandidateResult `json:"skill_candidate,omitempty"`
+	Status            string                               `json:"status,omitempty"`
+	Message           string                               `json:"message,omitempty"`
+	ReflectionSummary map[string]interface{}               `json:"reflection_summary,omitempty"`
+	ProposalSet       []optimizationMutationProposalResult `json:"proposal_set,omitempty"`
+	SkillCandidate    *optimizationSkillCandidateResult    `json:"skill_candidate,omitempty"`
 }
 
 type optimizationSkillCandidateResult struct {
@@ -737,6 +798,13 @@ type optimizationSkillCandidateResult struct {
 	CandidateID string `json:"candidate_id,omitempty"`
 	SourcePath  string `json:"source_path,omitempty"`
 	Content     string `json:"content,omitempty"`
+}
+
+type optimizationMutationProposalResult struct {
+	CandidateID    string                            `json:"candidate_id,omitempty"`
+	Generation     int                               `json:"generation,omitempty"`
+	Rationale      string                            `json:"rationale,omitempty"`
+	SkillCandidate *optimizationSkillCandidateResult `json:"skill_candidate,omitempty"`
 }
 
 func (t *harnessOptimizationTriggerer) maybeSubmitOptimizationFollowupEval(ctx context.Context, optimizationRunID string, event harness.OptimizationTrigger, responseText string) (*optimizationFollowupOutcome, error) {
@@ -761,11 +829,16 @@ func (t *harnessOptimizationTriggerer) maybeSubmitOptimizationFollowupEval(ctx c
 	outcome.State = strings.TrimSpace(response.Status)
 	outcome.Message = strings.TrimSpace(response.Message)
 	if outcome.State == "" {
-		if response.SkillCandidate != nil {
+		if len(response.ProposalSet) > 0 {
+			outcome.State = "proposal_set_ready"
+		} else if response.SkillCandidate != nil {
 			outcome.State = "candidate_ready"
 		} else {
 			outcome.State = "no_change"
 		}
+	}
+	if outcome.State == "proposal_set_ready" || len(response.ProposalSet) > 0 {
+		return t.submitReflectiveOptimizationProposalSet(ctx, optimizationRunID, event, outcome, response)
 	}
 	if outcome.State != "candidate_ready" || response.SkillCandidate == nil {
 		if outcome.State == "" {

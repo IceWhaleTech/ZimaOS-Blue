@@ -104,6 +104,59 @@ func NewLightpandaService(config *Config) *LightpandaService {
 	}
 }
 
+func (s *LightpandaService) currentBrowserSecurityConfig() BrowserSecurityConfig {
+	if s == nil {
+		return BrowserSecurityConfig{
+			AllowedDomains: []string{},
+			BlockedDomains: []string{},
+		}
+	}
+	s.mu.RLock()
+	cfg := s.config.Clone()
+	s.mu.RUnlock()
+	return BrowserSecurityConfig{
+		AllowedDomains: append([]string(nil), cfg.AllowedDomains...),
+		BlockedDomains: append([]string(nil), cfg.BlockedDomains...),
+	}
+}
+
+func (s *LightpandaService) replaceBrowserSecurityConfig(config BrowserSecurityConfig) BrowserSecurityConfig {
+	if s == nil {
+		return BrowserSecurityConfig{
+			AllowedDomains: []string{},
+			BlockedDomains: []string{},
+		}
+	}
+	normalized := BrowserSecurityConfig{
+		AllowedDomains: normalizeBrowserDomainList(config.AllowedDomains),
+		BlockedDomains: normalizeBrowserDomainList(config.BlockedDomains),
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.config == nil {
+		s.config = DefaultConfig()
+	}
+	s.config.AllowedDomains = append([]string(nil), normalized.AllowedDomains...)
+	s.config.BlockedDomains = append([]string(nil), normalized.BlockedDomains...)
+	s.security = NewSecurityChecker(s.config)
+	return BrowserSecurityConfig{
+		AllowedDomains: append([]string(nil), s.config.AllowedDomains...),
+		BlockedDomains: append([]string(nil), s.config.BlockedDomains...),
+	}
+}
+
+func (s *LightpandaService) validateBrowserURL(rawURL string) error {
+	if s == nil {
+		return ErrBrowserNotAvailable
+	}
+	s.mu.RLock()
+	cfg := s.config.Clone()
+	s.mu.RUnlock()
+	_, err := NewSecurityChecker(cfg).NormalizeAndCheckURL(rawURL)
+	return err
+}
+
 // Start starts the Lightpanda service. The shim runtime is HTTP/DOM based, so
 // startup is intentionally lightweight.
 func (s *LightpandaService) Start(ctx context.Context) error {

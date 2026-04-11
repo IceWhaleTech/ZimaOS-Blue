@@ -36,6 +36,15 @@ func firstCardNonEmpty(values ...string) string {
 	return ""
 }
 
+func firstNonEmptyCardValue(values ...interface{}) interface{} {
+	for _, value := range values {
+		if strings.TrimSpace(formatValue(value)) != "" {
+			return value
+		}
+	}
+	return nil
+}
+
 // CardFunc converts tool result content into a card map. Return nil to skip.
 type CardFunc func(content string) map[string]interface{}
 
@@ -448,6 +457,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return reminderCard(content)
 	case "analyze":
 		return analyzeCard(content)
+	case "advisor":
+		return advisorCard(content)
 	case "ask":
 		return askUserQuestionCard(content)
 	case "convert":
@@ -1112,6 +1123,12 @@ func researchCard(content string) map[string]interface{} {
 				return card
 			}
 		}
+	case "advisor":
+		if encoded, err := json.Marshal(merged); err == nil {
+			if card := advisorCard(string(encoded)); card != nil {
+				return card
+			}
+		}
 	}
 
 	return GenericCard("research", content)
@@ -1138,6 +1155,8 @@ func flattenResearchCardPayload(data map[string]interface{}) map[string]interfac
 func detectResearchCardMode(data map[string]interface{}) string {
 	mode := normalizeResearchModeValue(formatValue(data["mode"]))
 	switch mode {
+	case "advisor":
+		return "advisor"
 	case "analyze":
 		return "analyze"
 	case "ui_review":
@@ -1161,6 +1180,19 @@ func detectResearchCardMode(data map[string]interface{}) string {
 	} {
 		if _, ok := data[key]; ok {
 			return "deep_research"
+		}
+	}
+	for _, key := range []string{
+		"recommendation",
+		"tradeoffs",
+		"best_practices",
+		"alternatives",
+		"best_fit_for",
+		"not_fit_for",
+		"second_opinion",
+	} {
+		if _, ok := data[key]; ok {
+			return "advisor"
 		}
 	}
 	for _, key := range []string{
@@ -1615,6 +1647,125 @@ func analyzeCardID(data map[string]interface{}) string {
 	return ""
 }
 
+func advisorCard(content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return nil
+	}
+	if hasNonEmptyError(data) {
+		return buildErrorCard("advisor", "advisor", data)
+	}
+	if strings.TrimSpace(formatValue(data["job_id"])) != "" && strings.TrimSpace(formatValue(data["recommendation"])) == "" &&
+		strings.TrimSpace(formatValue(data["winner"])) == "" && data["memo"] == nil {
+		card := map[string]interface{}{
+			"type":     "advisor",
+			"title":    "advisor",
+			"status":   firstCardNonEmpty(strings.TrimSpace(formatValue(data["status"])), "running"),
+			"job_id":   data["job_id"],
+			"progress": data["progress"],
+			"mode":     firstCardNonEmpty(strings.TrimSpace(formatValue(data["mode"])), "advisor"),
+		}
+		if query := strings.TrimSpace(formatValue(data["query"])); query != "" {
+			card["recommendation"] = query
+		}
+		return card
+	}
+
+	source := data
+	if memo, ok := data["memo"].(map[string]interface{}); ok {
+		source = memo
+	}
+	scorecard, _ := data["scorecard"].(map[string]interface{})
+	recommendation := strings.TrimSpace(formatValue(source["recommendation"]))
+	if recommendation == "" && scorecard != nil {
+		recommendation = strings.TrimSpace(formatValue(scorecard["winner"]))
+	}
+	if recommendation == "" {
+		recommendation = strings.TrimSpace(formatValue(data["winner"]))
+	}
+	if recommendation == "" {
+		return GenericCard("advisor", content)
+	}
+
+	card := map[string]interface{}{
+		"type":           "advisor",
+		"title":          "advisor",
+		"status":         "success",
+		"recommendation": recommendation,
+		"confidence":     firstNonEmptyCardValue(data["confidence"], source["confidence"]),
+		"why":            limitCardStringItems(source["why"], 4),
+		"tradeoffs":      limitCardStringItems(source["tradeoffs"], 4),
+		"risks":          limitCardStringItems(source["risks"], 4),
+		"best_practices": limitCardStringItems(source["best_practices"], 4),
+		"alternatives":   limitCardStringItems(source["alternatives"], 4),
+		"second_opinion": firstNonEmptyCardValue(data["second_opinion"], source["second_opinion"]),
+	}
+	if scorecard != nil {
+		if winner := strings.TrimSpace(formatValue(scorecard["winner"])); winner != "" {
+			card["winner"] = winner
+		}
+		if packID := strings.TrimSpace(formatValue(scorecard["pack_id"])); packID != "" {
+			card["pack_id"] = packID
+		}
+		if candidates, ok := scorecard["candidates"].([]interface{}); ok && len(candidates) > 0 {
+			if len(candidates) > 3 {
+				candidates = candidates[:3]
+			}
+			card["candidates"] = candidates
+		}
+		if weights, ok := scorecard["weights"].([]interface{}); ok && len(weights) > 0 {
+			if len(weights) > 3 {
+				weights = weights[:3]
+			}
+			card["weights"] = weights
+		}
+	}
+	if _, ok := card["winner"]; !ok {
+		if winner := strings.TrimSpace(formatValue(data["winner"])); winner != "" {
+			card["winner"] = winner
+		}
+	}
+	if _, ok := card["pack_id"]; !ok {
+		if packID := strings.TrimSpace(formatValue(data["pack_id"])); packID != "" {
+			card["pack_id"] = packID
+		}
+	}
+	if _, ok := card["candidates"]; !ok {
+		if candidates, ok := data["candidates"].([]interface{}); ok && len(candidates) > 0 {
+			if len(candidates) > 3 {
+				candidates = candidates[:3]
+			}
+			card["candidates"] = candidates
+		}
+	}
+	if _, ok := card["weights"]; !ok {
+		if weights, ok := data["weights"].([]interface{}); ok && len(weights) > 0 {
+			if len(weights) > 3 {
+				weights = weights[:3]
+			}
+			card["weights"] = weights
+		}
+	}
+	evidenceRaw := data["evidence"]
+	if evidenceRaw == nil {
+		evidenceRaw = source["evidence"]
+	}
+	if evidence, ok := evidenceRaw.([]interface{}); ok {
+		card["evidence_count"] = len(evidence)
+		if len(evidence) > 0 {
+			card["evidence"] = evidence
+		}
+	} else {
+		card["evidence_count"] = 0
+	}
+	if job, ok := data["job"].(map[string]interface{}); ok {
+		if jobID := strings.TrimSpace(formatValue(job["job_id"])); jobID != "" {
+			card["job_id"] = jobID
+		}
+	}
+	return card
+}
+
 func askUserQuestionCard(content string) map[string]interface{} {
 	var data struct {
 		QA []struct {
@@ -1694,6 +1845,14 @@ func stringSliceValue(v interface{}) []string {
 	default:
 		return nil
 	}
+}
+
+func limitCardStringItems(v interface{}, limit int) []string {
+	items := stringSliceValue(v)
+	if limit <= 0 || len(items) <= limit {
+		return items
+	}
+	return append([]string(nil), items[:limit]...)
 }
 
 // GenericCard creates a result card for any unrecognized tool.

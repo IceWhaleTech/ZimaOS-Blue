@@ -601,6 +601,7 @@ export default mergeHarnessLocale('ro-RO', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Sarcină anulată',
     waitingThinking: 'Se gândește...',
+    providerAccelerationActive: 'Se optimizează următorul răspuns pentru furnizorul curent',
     awaitingConfirmation: 'Se așteaptă confirmarea dvs. pentru a continua',
     streamConnecting: 'Conectare',
     streamStreaming: 'Generare',
@@ -863,7 +864,8 @@ export default mergeHarnessLocale('ro-RO', {
     providerFailover: {
       eyebrow: 'Comutare de înaltă disponibilitate',
       title: 'Comutați la altă rută disponibilă și încercați din nou?',
-      description: 'Ruta curentă prin {provider} are nevoie de confirmarea dvs. înainte ca Blue să comute la altă rută disponibilă și să încerce din nou.',
+      description:
+        'Ruta curentă prin {provider} are nevoie de confirmarea dvs. înainte ca Blue să comute la altă rută disponibilă și să încerce din nou.',
       dismissAction: 'Nu acum',
       manualAction: 'Alege ruta manual',
       primaryAction: 'Comută și reîncearcă',

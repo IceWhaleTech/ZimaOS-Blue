@@ -30,33 +30,44 @@ func submitCanonicalResearchHarnessJob(
 
 func researchHarnessRunInputFromToolRequest(req tools.ResearchCreateJobRequest, workspaceRoot string) researchHarnessRunInput {
 	return researchHarnessRunInput{
-		Query:          canonicalResearchGoal(req),
-		UserID:         req.UserID,
-		ConversationID: req.ConversationID,
-		WorkspaceRoot:  strings.TrimSpace(workspaceRoot),
-		Mode:           strings.TrimSpace(req.Mode),
-		ResearchDepth:  strings.TrimSpace(req.ResearchDepth),
-		RouteMode:      strings.TrimSpace(req.RouteMode),
-		Lang:           strings.TrimSpace(req.Lang),
-		ReportStyle:    strings.TrimSpace(req.ReportStyle),
-		TimeWindows:    append([]string(nil), req.TimeWindows...),
-		StrictEntity:   req.StrictEntity != nil && *req.StrictEntity,
-		MaxSources:     toolResearchBudgetMaxSources(req.Budget),
-		MaxSeconds:     toolResearchBudgetMaxSeconds(req.Budget),
-		Topic:          strings.TrimSpace(req.Topic),
-		URLs:           append([]string(nil), req.URLs...),
-		Text:           strings.TrimSpace(req.Text),
-		SearchQueries:  append([]string(nil), req.SearchQueries...),
-		OutputMode:     strings.TrimSpace(req.OutputMode),
-		Action:         strings.TrimSpace(req.Action),
-		URL:            strings.TrimSpace(req.URL),
-		Image:          strings.TrimSpace(req.Image),
-		Device:         strings.TrimSpace(req.Device),
-		Channel:        strings.TrimSpace(req.Channel),
-		WaitMS:         req.WaitMS,
-		Threshold:      req.Threshold,
-		Format:         strings.TrimSpace(req.Format),
-		Profile:        strings.TrimSpace(req.Profile),
+		Query:            canonicalResearchGoal(req),
+		UserID:           req.UserID,
+		ConversationID:   req.ConversationID,
+		WorkspaceRoot:    strings.TrimSpace(workspaceRoot),
+		Mode:             strings.TrimSpace(req.Mode),
+		ResearchDepth:    strings.TrimSpace(req.ResearchDepth),
+		RouteMode:        strings.TrimSpace(req.RouteMode),
+		Lang:             strings.TrimSpace(req.Lang),
+		ReportStyle:      strings.TrimSpace(req.ReportStyle),
+		TimeWindows:      append([]string(nil), req.TimeWindows...),
+		StrictEntity:     req.StrictEntity != nil && *req.StrictEntity,
+		MaxSources:       toolResearchBudgetMaxSources(req.Budget),
+		MaxSeconds:       toolResearchBudgetMaxSeconds(req.Budget),
+		Topic:            strings.TrimSpace(req.Topic),
+		URLs:             append([]string(nil), req.URLs...),
+		Text:             strings.TrimSpace(req.Text),
+		SearchQueries:    append([]string(nil), req.SearchQueries...),
+		OutputMode:       strings.TrimSpace(req.OutputMode),
+		Question:         strings.TrimSpace(req.Question),
+		Category:         strings.TrimSpace(req.Category),
+		DecisionMode:     strings.TrimSpace(req.DecisionMode),
+		Candidates:       append([]string(nil), req.Candidates...),
+		Context:          cloneResearchToolMap(req.Context),
+		Constraints:      cloneResearchToolMap(req.Constraints),
+		Grounding:        strings.TrimSpace(req.Grounding),
+		Depth:            strings.TrimSpace(req.Depth),
+		Output:           strings.TrimSpace(req.Output),
+		ScorecardPack:    strings.TrimSpace(req.ScorecardPack),
+		ScorecardWeights: cloneResearchToolWeightMap(req.ScorecardWeights),
+		Action:           strings.TrimSpace(req.Action),
+		URL:              strings.TrimSpace(req.URL),
+		Image:            strings.TrimSpace(req.Image),
+		Device:           strings.TrimSpace(req.Device),
+		Channel:          strings.TrimSpace(req.Channel),
+		WaitMS:           req.WaitMS,
+		Threshold:        req.Threshold,
+		Format:           strings.TrimSpace(req.Format),
+		Profile:          strings.TrimSpace(req.Profile),
 	}
 }
 
@@ -101,4 +112,26 @@ func toolResearchBudgetMaxSeconds(budget *tools.ResearchBudget) int {
 		return 0
 	}
 	return budget.MaxSeconds
+}
+
+func cloneResearchToolMap(in map[string]interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
+}
+
+func cloneResearchToolWeightMap(in map[string]float64) map[string]float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]float64, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }

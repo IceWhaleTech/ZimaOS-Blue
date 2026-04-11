@@ -158,6 +158,7 @@ func toolHiddenFromUI(name string) bool {
 var skillsShownAsTools = []ToolResponse{
 	{ID: "browser", Name: "browser", Version: "1.0.0", Description: "Open a URL, read page content, interact with elements, take screenshots", Icon: "browser", Enabled: true, Builtin: true},
 	{ID: "ui_reviewer", Name: "ui_reviewer", Version: "1.0.0", Description: "Review and score UI/UX quality of a URL or screenshot", Icon: "eye", Enabled: true, Builtin: true},
+	{ID: "advisor", Name: "advisor", Version: "1.0.0", Description: "Decision advisor for selection, replacements, migration, and best practices", Icon: "advisor", Enabled: true, Builtin: true},
 	{ID: "mediagen", Name: "mediagen", Version: "1.0.0", Description: "Generate images and videos using AI models", Icon: "mediagen", Enabled: true, Builtin: true},
 	{ID: "reminder", Name: "reminder", Version: "2.0.0", Description: "Manage reminders and scheduled alerts", Icon: "notifications", Enabled: true, Builtin: true},
 }

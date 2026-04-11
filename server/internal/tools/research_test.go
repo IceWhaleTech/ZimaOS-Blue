@@ -304,6 +304,54 @@ func TestResearchToolForwardsUIReviewModeSpecificArgs(t *testing.T) {
 	}
 }
 
+func TestResearchToolForwardsAdvisorV2Args(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Mode != "advisor" {
+				t.Fatalf("mode = %q, want advisor", req.Mode)
+			}
+			if req.Query != "Go vs Python vs Node" {
+				t.Fatalf("query = %q, want forwarded advisor question", req.Query)
+			}
+			if req.Output != "decision_pack" {
+				t.Fatalf("output = %q, want decision_pack", req.Output)
+			}
+			if req.ScorecardPack != "solution_selection_v1" {
+				t.Fatalf("scorecard pack = %q, want solution_selection_v1", req.ScorecardPack)
+			}
+			if got := req.ScorecardWeights["fitness"]; got != 0.4 {
+				t.Fatalf("scorecard weight fitness = %v, want 0.4", got)
+			}
+			return &ResearchJob{ID: "job-advisor-v2", Status: "pending", Query: req.Query, Mode: req.Mode, EffectiveRouteMode: "web"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"mode": "advisor",
+		"wait": false,
+		"input": map[string]interface{}{
+			"question":          "Go vs Python vs Node",
+			"category":          "language",
+			"decision_mode":     "compare",
+			"candidates":        []interface{}{"Go", "Python", "Node"},
+			"depth":             "deep",
+			"output":            "decision_pack",
+			"scorecard_pack":    "solution_selection_v1",
+			"scorecard_weights": map[string]interface{}{"fitness": 0.4},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+	if got := payload["mode"]; got != "advisor" {
+		t.Fatalf("mode = %v, want advisor", got)
+	}
+}
+
 func TestResearchToolInfersUIReviewImageActionFromScreenshotAlias(t *testing.T) {
 	service := &mockResearchService{
 		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {

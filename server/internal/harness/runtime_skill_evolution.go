@@ -109,6 +109,7 @@ func (c *Controller) buildRuntimeSkillEvolutionTrigger(ctx context.Context, run 
 		metadata["failure_signature"] = failureSignature
 		metadata["runtime_failure_signature"] = failureSignature
 		metadata["runtime_reason_summary"] = fmt.Sprintf("Runtime execution failed after selecting canonical skill %s.", skillID)
+		metadata["reflective_evidence_packet"] = runtimeSkillEvolutionReflectiveEvidencePacket("runtime_failure", skillID, metadata)
 		return &OptimizationTrigger{
 				Reason:              OptimizationReasonRuntimeSkillFailure,
 				CandidateID:         candidateID,
@@ -135,6 +136,7 @@ func (c *Controller) buildRuntimeSkillEvolutionTrigger(ctx context.Context, run 
 		metadata["runtime_capture_occurrences"] = occurrences
 		metadata["runtime_capture_threshold"] = runtimeSkillEvolutionCaptureRepeatThreshold
 		metadata["runtime_reason_summary"] = fmt.Sprintf("Runtime execution repeated grounded lessons for canonical skill %s.", skillID)
+		metadata["reflective_evidence_packet"] = runtimeSkillEvolutionReflectiveEvidencePacket("runtime_capture", skillID, metadata)
 		return &OptimizationTrigger{
 				Reason:              OptimizationReasonRuntimeSkillCapture,
 				CandidateID:         candidateID,
@@ -151,6 +153,80 @@ func (c *Controller) buildRuntimeSkillEvolutionTrigger(ctx context.Context, run 
 	default:
 		return nil, nil, false
 	}
+}
+
+func runtimeSkillEvolutionReflectiveEvidencePacket(kind string, skillID string, metadata map[string]interface{}) map[string]interface{} {
+	packet := map[string]interface{}{
+		"kind":                     strings.TrimSpace(kind),
+		"selected_canonical_skill": strings.TrimSpace(skillID),
+		"reason_summary":           strings.TrimSpace(metadataString(metadata, "runtime_reason_summary")),
+		"failure_signature":        strings.TrimSpace(metadataString(metadata, "failure_signature")),
+		"capture_signature":        strings.TrimSpace(metadataString(metadata, "capture_signature")),
+		"grounded_lessons":         stringSliceAsInterfaces(stringSliceMetadataValue(metadata["runtime_capture_lessons"])),
+		"self_reflect_lessons":     stringSliceAsInterfaces(stringSliceMetadataValue(metadata["runtime_capture_lessons"])),
+		"diagnostic_signals": map[string]interface{}{
+			"runtime_metrics":         cloneMetadataMap(nestedMetadataMap(metadata, "runtime_metrics")),
+			"runtime_usage":           cloneMetadataMap(nestedMetadataMap(metadata, "runtime_usage")),
+			"runtime_quality":         cloneMetadataMap(nestedMetadataMap(metadata, "runtime_quality")),
+			"runtime_validation":      cloneMetadataMap(nestedMetadataMap(metadata, "validation")),
+			"runtime_event_summaries": cloneInterfaceSlice(metadata["runtime_event_summaries"]),
+		},
+	}
+	if occurrences := metadata["runtime_capture_occurrences"]; occurrences != nil {
+		packet["capture_occurrences"] = occurrences
+	}
+	if threshold := metadata["runtime_capture_threshold"]; threshold != nil {
+		packet["capture_threshold"] = threshold
+	}
+	return packet
+}
+
+func stringSliceMetadataValue(raw interface{}) []string {
+	items, ok := raw.([]string)
+	if ok {
+		return append([]string(nil), items...)
+	}
+	typed, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(typed))
+	for _, item := range typed {
+		value := strings.TrimSpace(fmt.Sprint(item))
+		if value == "" || value == "<nil>" {
+			continue
+		}
+		out = append(out, value)
+	}
+	return out
+}
+
+func cloneInterfaceSlice(raw interface{}) []interface{} {
+	items, ok := raw.([]interface{})
+	if !ok || len(items) == 0 {
+		return nil
+	}
+	out := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		switch typed := item.(type) {
+		case map[string]interface{}:
+			out = append(out, cloneMetadataMap(typed))
+		default:
+			out = append(out, typed)
+		}
+	}
+	return out
+}
+
+func stringSliceAsInterfaces(items []string) []interface{} {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]interface{}, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
+	}
+	return out
 }
 
 func (c *Controller) runtimeSkillEvolutionCaptureOccurrences(ctx context.Context, run *Run, skillID string, signature string) int {

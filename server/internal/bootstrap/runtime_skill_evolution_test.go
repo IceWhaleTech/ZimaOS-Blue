@@ -162,6 +162,21 @@ func TestHarnessControllerEmitsRuntimeSkillFailureOptimizationTrigger(t *testing
 	if got := stringsTrim(skillCandidate, "source_path"); got != "assets/skills/browser/SKILL.md" {
 		t.Fatalf("skill_candidate.source_path = %q, want assets/skills/browser/SKILL.md", got)
 	}
+	reflectivePacket, ok := event.Metadata["reflective_evidence_packet"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("reflective_evidence_packet = %#v, want map", event.Metadata["reflective_evidence_packet"])
+	}
+	if got := stringsTrim(reflectivePacket, "kind"); got != "runtime_failure" {
+		t.Fatalf("reflective_evidence_packet.kind = %q, want runtime_failure", got)
+	}
+	if got := stringsTrim(reflectivePacket, "failure_signature"); got == "" {
+		t.Fatal("expected reflective_evidence_packet.failure_signature to be populated")
+	}
+	if diagnostics, ok := reflectivePacket["diagnostic_signals"].(map[string]interface{}); !ok {
+		t.Fatalf("reflective_evidence_packet.diagnostic_signals = %#v, want map", reflectivePacket["diagnostic_signals"])
+	} else if _, ok := diagnostics["runtime_quality"].(map[string]interface{}); !ok {
+		t.Fatalf("reflective_evidence_packet.diagnostic_signals.runtime_quality = %#v, want map", diagnostics["runtime_quality"])
+	}
 	gotContent, ok := skillCandidate["content"].(string)
 	if !ok {
 		t.Fatalf("skill_candidate.content = %#v, want string", skillCandidate["content"])
@@ -228,6 +243,17 @@ func TestHarnessControllerEmitsRuntimeSkillCaptureOnlyAfterRepeatedLessons(t *te
 	}
 	if got, ok := event.Metadata["runtime_capture_occurrences"].(int); !ok || got != 2 {
 		t.Fatalf("runtime_capture_occurrences = %#v, want 2", event.Metadata["runtime_capture_occurrences"])
+	}
+	reflectivePacket, ok := event.Metadata["reflective_evidence_packet"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("reflective_evidence_packet = %#v, want map", event.Metadata["reflective_evidence_packet"])
+	}
+	if got := stringsTrim(reflectivePacket, "kind"); got != "runtime_capture" {
+		t.Fatalf("reflective_evidence_packet.kind = %q, want runtime_capture", got)
+	}
+	lessons, ok := reflectivePacket["grounded_lessons"].([]interface{})
+	if !ok || len(lessons) == 0 {
+		t.Fatalf("reflective_evidence_packet.grounded_lessons = %#v, want non-empty list", reflectivePacket["grounded_lessons"])
 	}
 }
 

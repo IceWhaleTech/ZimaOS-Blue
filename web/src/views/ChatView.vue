@@ -571,6 +571,15 @@ const hasCancelableWork = computed(() =>
 
 const streamStatusRailState = computed<StreamUIState>(() => {
   const base = chatStore.streamUIState
+  if (showProviderAccelerationWaitingTip.value) {
+    return {
+      ...base,
+      phase: 'connecting',
+      label: chatTextWithFallback('chat.waitingThinking', 'Thinking'),
+      detail: null,
+      updatedAt: Date.now(),
+    }
+  }
   if (base.phase !== 'idle' && base.phase !== 'completed') {
     return base
   }
@@ -1282,7 +1291,10 @@ const modelAutoFallbackTargetLabel = computed(() => {
 })
 const providerFailoverTargetLabel = computed(() => {
   const pending = providerFailoverDialogState.value
-  return pending?.failedProviderId?.trim() || chatTextWithFallback('chat.providerFailover.currentRoute', 'Current route')
+  return (
+    pending?.failedProviderId?.trim() ||
+    chatTextWithFallback('chat.providerFailover.currentRoute', 'Current route')
+  )
 })
 const activeTodoPanelCollapsed = ref(loadActiveTodoPanelCollapsed())
 const focusedTodoMessageId = ref<string | null>(null)
@@ -1492,6 +1504,10 @@ const showAwaitingConfirmation = computed(
     !!chatStore.pendingQuestion ||
     !!chatStore.pendingApproval ||
     !!chatStore.pendingExecApproval
+)
+
+const showProviderAccelerationWaitingTip = computed(
+  () => chatStore.isPreTTFT && chatStore.providerAccelerationActive
 )
 
 // Routing mode display info
@@ -4685,12 +4701,12 @@ onUnmounted(() => {
                   </template>
                 </VirtualScroll>
 
-	                <!-- Regular rendering for small lists -->
-	                <div v-else>
-	                  <div
-	                    v-for="message in chatStore.messages"
-	                    :key="getMessageRenderKey(message)"
-	                    :id="getChatMessageElementId(message.id)"
+                <!-- Regular rendering for small lists -->
+                <div v-else>
+                  <div
+                    v-for="message in chatStore.messages"
+                    :key="getMessageRenderKey(message)"
+                    :id="getChatMessageElementId(message.id)"
                     :data-message-id="message.id"
                     :class="messageShellClasses(message)"
                   >
@@ -4719,12 +4735,12 @@ onUnmounted(() => {
                   />
                 </div>
 
-	                <Transition name="fade">
-	                  <div v-if="showStreamStatusRail" class="flex justify-center py-1">
-	                    <div class="chat-stream-status-rail">
-	                      <div class="chat-stream-status-rail__copy">
-	                        <span class="chat-stream-status-rail__badge">
-	                          {{ streamStatusRailPhaseLabel }}
+                <Transition name="fade">
+                  <div v-if="showStreamStatusRail" class="flex justify-center py-1">
+                    <div class="chat-stream-status-rail">
+                      <div class="chat-stream-status-rail__copy">
+                        <span class="chat-stream-status-rail__badge">
+                          {{ streamStatusRailPhaseLabel }}
                         </span>
                         <span class="chat-stream-status-rail__label">
                           {{ streamStatusRailState.label || t('chat.waitingThinking') }}
@@ -4904,6 +4920,29 @@ onUnmounted(() => {
                     </svg>
                     <span>{{
                       t('chat.awaitingConfirmation', 'Waiting for your confirmation to continue')
+                    }}</span>
+                  </div>
+                </div>
+
+                <div v-if="showProviderAccelerationWaitingTip" class="flex justify-center py-2">
+                  <div
+                    class="flex items-center gap-2 px-3 py-1.5 text-xs text-sky-600 dark:text-sky-300 bg-sky-500/10 rounded-full"
+                  >
+                    <svg
+                      class="w-3.5 h-3.5 flex-shrink-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                      />
+                    </svg>
+                    <span>{{
+                      t('chat.providerAccelerationActive', '正在为当前提供方优化后续响应')
                     }}</span>
                   </div>
                 </div>
@@ -5315,10 +5354,7 @@ onUnmounted(() => {
                 class="mb-3 text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-500 dark:text-sky-300"
               >
                 {{
-                  chatTextWithFallback(
-                    'chat.providerFailover.eyebrow',
-                    'High-availability switch'
-                  )
+                  chatTextWithFallback('chat.providerFailover.eyebrow', 'High-availability switch')
                 }}
               </p>
               <div
@@ -5367,10 +5403,7 @@ onUnmounted(() => {
                 >
                   <span class="font-semibold uppercase tracking-[0.16em]">
                     {{
-                      chatTextWithFallback(
-                        'chat.providerFailover.currentRoute',
-                        'Current route'
-                      )
+                      chatTextWithFallback('chat.providerFailover.currentRoute', 'Current route')
                     }}
                   </span>
                   <span class="max-w-[14rem] break-all font-medium sm:max-w-[20rem]">
@@ -5389,9 +5422,7 @@ onUnmounted(() => {
                   class="px-4 py-2.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                   @click="dismissProviderFailoverDialog"
                 >
-                  {{
-                    chatTextWithFallback('chat.providerFailover.dismissAction', 'Not now')
-                  }}
+                  {{ chatTextWithFallback('chat.providerFailover.dismissAction', 'Not now') }}
                 </button>
                 <button
                   class="px-4 py-2.5 text-sm font-medium rounded-lg border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-900/30 transition-colors cursor-pointer"
@@ -5409,10 +5440,7 @@ onUnmounted(() => {
                   @click="confirmProviderFailoverDialog"
                 >
                   {{
-                    chatTextWithFallback(
-                      'chat.providerFailover.primaryAction',
-                      'Switch and retry'
-                    )
+                    chatTextWithFallback('chat.providerFailover.primaryAction', 'Switch and retry')
                   }}
                 </button>
               </div>

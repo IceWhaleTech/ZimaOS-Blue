@@ -599,6 +599,7 @@ export default mergeHarnessLocale('pl-PL', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Zadanie anulowane',
     waitingThinking: 'Myślę...',
+    providerAccelerationActive: 'Optymalizowanie kolejnej odpowiedzi dla bieżącego dostawcy',
     awaitingConfirmation: 'Oczekiwanie na potwierdzenie, aby kontynuować',
     streamConnecting: 'Łączenie',
     streamStreaming: 'Generowanie',
@@ -629,7 +630,8 @@ export default mergeHarnessLocale('pl-PL', {
     taskFailedDuringPlanning: 'Zadanie nie powiodło się podczas planowania',
     taskFailedDuringConfirmation: 'Zadanie nie powiodło się podczas potwierdzania',
     taskFailedWhileRevisingPlan: 'Zadanie nie powiodło się podczas korygowania planu',
-    taskFailedWhileUpdatingRuntimeState: 'Zadanie nie powiodło się podczas aktualizowania stanu środowiska uruchomieniowego',
+    taskFailedWhileUpdatingRuntimeState:
+      'Zadanie nie powiodło się podczas aktualizowania stanu środowiska uruchomieniowego',
     verificationFailedRecoveryFailed: 'Weryfikacja nie powiodła się, a odzyskiwanie się nie udało',
     taskFailureGroundedVerificationFailed: 'Weryfikacja ugruntowania nie powiodła się',
     taskWaitingForApproval: 'Oczekiwanie na twoją zgodę',
@@ -858,7 +860,8 @@ export default mergeHarnessLocale('pl-PL', {
     providerFailover: {
       eyebrow: 'Przełączenie wysokiej dostępności',
       title: 'Przełączyć na inną dostępną trasę i spróbować ponownie?',
-      description: 'Bieżąca trasa przez {provider} wymaga potwierdzenia, zanim Blue przełączy się na inną dostępną trasę i spróbuje ponownie.',
+      description:
+        'Bieżąca trasa przez {provider} wymaga potwierdzenia, zanim Blue przełączy się na inną dostępną trasę i spróbuje ponownie.',
       dismissAction: 'Nie teraz',
       manualAction: 'Wybierz trasę ręcznie',
       primaryAction: 'Przełącz i ponów',

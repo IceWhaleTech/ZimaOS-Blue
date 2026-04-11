@@ -94,7 +94,7 @@ describe('Deep research locale coverage', () => {
     }
   })
 
-  it('keeps info and warning status badges localized for all 27 locales', () => {
+  it('keeps ok, info, and warning status badges localized for all 27 locales', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
     expect(entries).toHaveLength(27)
 
@@ -105,11 +105,14 @@ describe('Deep research locale coverage', () => {
         mod.default
       )
       const translate = translateFor(runtimeMessages)
+      const ok = getPathValue(runtimeMessages, 'system.statusOk')
       const warning = getPathValue(runtimeMessages, 'system.warning')
       const info = getPathValue(runtimeMessages, 'system.info')
 
+      expect(typeof ok, `${file} missing system.statusOk`).toBe('string')
       expect(typeof warning, `${file} missing system.warning`).toBe('string')
       expect(typeof info, `${file} missing system.info`).toBe('string')
+      expect(localizeDeepResearchStatus('ok', translate), `${file} ok status`).toBe(ok)
       expect(localizeDeepResearchStatus('warning', translate), `${file} warning status`).toBe(
         warning
       )

@@ -132,7 +132,7 @@ type PresetQuestionsResponse struct {
 	HasMore    bool             `json:"has_more"`
 }
 
-// GetPresetQuestions returns a random selection of preset questions.
+// GetPresetQuestions returns a paged selection of preset questions.
 // GET /api/v1/preset-questions?count=4&offset=0&lang=en
 func (h *Handler) GetPresetQuestions(c echo.Context) error {
 	countStr := c.QueryParam("count")
@@ -173,6 +173,9 @@ func (h *Handler) GetPresetQuestions(c echo.Context) error {
 
 	questions, total := h.questionsService.GetPresetQuestionPage(offset, count, lang)
 	nextOffset := offset + len(questions)
+	if nextOffset > total {
+		nextOffset = total
+	}
 	return c.JSON(http.StatusOK, PresetQuestionsResponse{
 		Questions:  questions,
 		Total:      total,

@@ -3,6 +3,7 @@ package sockipc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strconv"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
@@ -11,6 +12,10 @@ import (
 // ToolBrowserIPCAdapter adapts tools.BrowserBackend to the sockipc.BrowserBackend interface.
 type ToolBrowserIPCAdapter struct {
 	backend tools.BrowserBackend
+}
+
+type toolBrowserPageScrollCompat interface {
+	PageScroll(ctx context.Context, targetID string, x, y int) error
 }
 
 // NewToolBrowserIPCAdapter creates a new adapter from a tools.BrowserBackend.
@@ -73,6 +78,14 @@ func (a *ToolBrowserIPCAdapter) Act(ctx context.Context, targetID string, ref in
 	// IPC doesn't carry refMap — assume ref IS the backend DOM node ID (direct mapping).
 	refMap := map[int]int{ref: ref}
 	return a.backend.ActByRef(ctx, targetID, ref, refMap, actType, value)
+}
+
+func (a *ToolBrowserIPCAdapter) PageScroll(ctx context.Context, targetID string, x, y int) error {
+	scroller, ok := a.backend.(toolBrowserPageScrollCompat)
+	if !ok {
+		return fmt.Errorf("page scroll not supported by browser backend")
+	}
+	return scroller.PageScroll(ctx, targetID, x, y)
 }
 
 func (a *ToolBrowserIPCAdapter) Tabs(ctx context.Context) (string, error) {

@@ -30,8 +30,14 @@ func StructuredWorkspaceArtifactWorkflowToolNames(query string) []string {
 	if mentionsStructuredWorkspaceArtifactExt(lower, ".pdf") {
 		names = append(names, "pdf")
 	}
-	if mentionsStructuredWorkspaceArtifactExt(lower, ".xlsx", ".docx") {
-		names = append(names, "office")
+	if mentionsStructuredWorkspaceArtifactExt(lower, ".docx") {
+		names = append(names, "docx")
+	}
+	if mentionsStructuredWorkspaceArtifactExt(lower, ".xlsx") {
+		names = append(names, "xlsx")
+	}
+	if mentionsStructuredWorkspaceArtifactExt(lower, ".pptx") {
+		names = append(names, "pptx")
 	}
 	if mentionsStructuredWorkspaceArtifactExt(lower, ".png", ".jpg", ".jpeg", ".webp", ".gif") {
 		names = append(names, "image")

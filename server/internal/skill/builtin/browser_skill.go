@@ -30,6 +30,10 @@ type BrowserServiceInterface interface {
 	ListRecipes(ctx context.Context) []BrowserRecipeInfo
 }
 
+type browserPageScrollCompat interface {
+	PageScroll(ctx context.Context, targetID string, x, y int) error
+}
+
 // BrowserNavResult represents a navigation result.
 type BrowserNavResult struct {
 	URL      string `json:"url"`
@@ -247,7 +251,7 @@ func (b *Browser) Validate(input map[string]any) error {
 	}
 	actionStr, actType = tools.CanonicalizeBrowserAction(actionStr, actType)
 	switch actionStr {
-	case "navigate", "snapshot", "snapshot_interactive", "snapshot_auto", "act", "screenshot", "tabs", "close", "recipe", "recipes":
+	case "navigate", "snapshot", "snapshot_interactive", "snapshot_auto", "act", "scroll_page", "screenshot", "tabs", "close", "recipe", "recipes":
 		// valid
 	default:
 		return fmt.Errorf("invalid action: %s", actionStr)
@@ -292,7 +296,7 @@ func normalizeBrowserActionKeyAlias(input map[string]any) {
 		"snapshot", "inspect", "tree",
 		"snapshot_interactive", "interactive", "elements",
 		"snapshot_auto", "read", "page",
-		"act", "click", "type", "focus", "hover", "scroll", "select",
+		"act", "click", "type", "focus", "hover", "scroll", "select", "scroll_down", "scroll_up",
 		"screenshot", "shot", "capture", "screen",
 		"tabs", "list", "ls", "tab", "status",
 		"close", "remove", "rm", "delete",
@@ -330,6 +334,10 @@ func normalizeBrowserActionKeyAlias(input map[string]any) {
 			if firstTrimmedStringValue(input, "recipe", "recipe_name", "recipeName") == "" {
 				input["recipe"] = value
 			}
+		case "scroll_page":
+			if firstTrimmedStringValue(input, "target_id", "targetId") == "" {
+				input["target_id"] = value
+			}
 		case "act", "click", "type", "focus", "hover", "scroll", "select":
 			if firstTrimmedStringValue(input, "ref") == "" {
 				input["ref"] = value
@@ -364,11 +372,11 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		input["act_type"] = actType
 	}
 	targetID, _ := input["target_id"].(string)
+	url, _ := input["url"].(string)
 	vision, _ := input["vision"].(bool)
 
 	switch action {
 	case "navigate":
-		url, _ := input["url"].(string)
 		if url == "" {
 			return skill.NewErrorResult(fmt.Errorf("url is required for navigate")), nil
 		}
@@ -383,6 +391,14 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return b.autoSnapshot(ctx, svc, nav.TargetID, vision)
 
 	case "snapshot":
+		if targetID == "" && url != "" {
+			_ = svc.Start(ctx)
+			nav, err := svc.Navigate(ctx, url, "")
+			if err != nil {
+				return skill.NewErrorResult(fmt.Errorf("navigation failed: %w", err)), nil
+			}
+			targetID = nav.TargetID
+		}
 		a11y, err := svc.AccessibilityTree(ctx, targetID, 10)
 		if err != nil {
 			return skill.NewErrorResult(err), nil
@@ -401,9 +417,25 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return skill.NewResult(payload), nil
 
 	case "snapshot_interactive":
+		if targetID == "" && url != "" {
+			_ = svc.Start(ctx)
+			nav, err := svc.Navigate(ctx, url, "")
+			if err != nil {
+				return skill.NewErrorResult(fmt.Errorf("navigation failed: %w", err)), nil
+			}
+			targetID = nav.TargetID
+		}
 		return b.doSnapshotInteractive(ctx, svc, targetID)
 
 	case "snapshot_auto":
+		if targetID == "" && url != "" {
+			_ = svc.Start(ctx)
+			nav, err := svc.Navigate(ctx, url, "")
+			if err != nil {
+				return skill.NewErrorResult(fmt.Errorf("navigation failed: %w", err)), nil
+			}
+			targetID = nav.TargetID
+		}
 		return b.autoSnapshot(ctx, svc, targetID, vision)
 
 	case "act":
@@ -445,6 +477,24 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return skill.NewResult(map[string]any{
 			"success": true,
 			"message": fmt.Sprintf("Performed %s on @%d", actType, ref),
+		}), nil
+
+	case "scroll_page":
+		direction, x, y, ok := tools.BrowserLegacyPageScrollDelta(action, actType)
+		if !ok {
+			return skill.NewErrorResult(fmt.Errorf("invalid page scroll action: %s", actType)), nil
+		}
+		scroller, ok := svc.(browserPageScrollCompat)
+		if !ok {
+			return skill.NewErrorResult(fmt.Errorf("browser service does not support page scroll compatibility")), nil
+		}
+		if err := scroller.PageScroll(ctx, targetID, x, y); err != nil {
+			return skill.NewErrorResult(fmt.Errorf("page scroll %s failed: %w", direction, err)), nil
+		}
+		return skill.NewResult(map[string]any{
+			"success":   true,
+			"target_id": targetID,
+			"message":   fmt.Sprintf("Scrolled page %s", direction),
 		}), nil
 
 	case "screenshot":

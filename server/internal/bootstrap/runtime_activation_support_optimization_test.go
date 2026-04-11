@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -688,6 +689,607 @@ Prefer high-signal browsing steps.
 	}
 }
 
+func TestHarnessOptimizationTriggererPersistsReflectiveProposalSetForSkillCandidates(t *testing.T) {
+	controller := newOptimizationHarnessControllerForFollowupTest(t)
+	parentEvalRun := createOptimizationEvalRunForFollowupTest(t, controller, map[string]interface{}{
+		"candidate_id": "candidate-parent",
+		"skill_candidate": map[string]interface{}{
+			"skill_id":    "browser",
+			"source_path": "assets/skills/browser/SKILL.md",
+		},
+		"optimization_surface": string(harness.OptimizationSurfaceSkillDefinition),
+	})
+
+	contentA := strings.TrimSpace(`
+---
+name: browser
+description: Reflective browser skill A
+---
+
+# Browser
+
+Prefer high-signal browsing steps and preserve verification.
+`) + "\n"
+	contentB := strings.TrimSpace(`
+---
+name: browser
+description: Reflective browser skill B
+---
+
+# Browser
+
+Prefer compact browsing plans and reduce unnecessary retries.
+`) + "\n"
+	response := strings.TrimSpace(fmt.Sprintf(`{
+  "status": "proposal_set_ready",
+  "message": "Generated reflective skill proposals",
+  "reflection_summary": {
+    "summary": "Execution failures point to noisy browsing plans and weak verification discipline.",
+    "lessons": ["Prefer higher-signal browse plans", "Keep verification explicit"],
+    "confidence": "medium"
+  },
+  "proposal_set": [
+    {
+      "candidate_id": "candidate-browser-a",
+      "generation": 1,
+      "rationale": "Tightens browse planning while preserving verification cues.",
+      "skill_candidate": {
+        "skill_id": "browser",
+        "candidate_id": "candidate-browser-a",
+        "content": %q
+      }
+    },
+    {
+      "candidate_id": "candidate-browser-b",
+      "generation": 1,
+      "rationale": "Cuts retry noise and shortens the plan.",
+      "skill_candidate": {
+        "skill_id": "browser",
+        "candidate_id": "candidate-browser-b",
+        "content": %q
+      }
+    }
+  ]
+}`, contentA, contentB))
+	bin := buildScriptedOptimizationRunnerBinary(t, response)
+	root := filepath.Join(t.TempDir(), "agentcore-runner")
+	manager := newOptimizationManagerWithRunnerBinaryForTest(t, root, bin)
+
+	settings := serverpkg.NewSettingsHandler(kvstore.NewMemoryStore())
+	settings.SetAgentcoreRunnerManager(manager)
+	patchAgentcoreRunnerSettingsForOptimizationTest(t, settings, `{
+		"experimental_agentcore_runner_enabled": true,
+		"experimental_agentcore_runner_repo_url": "https://github.com/IceWhaleTech/ZimaOS-Blue",
+		"experimental_agentcore_runner_ref": "main"
+	}`)
+
+	triggerer := &harnessOptimizationTriggerer{
+		manager:    manager,
+		settings:   settings,
+		controller: controller,
+	}
+	event := harness.OptimizationTrigger{
+		Reason:              harness.OptimizationReasonExecutionGateFailed,
+		CandidateID:         "candidate-parent",
+		EvalRunID:           parentEvalRun.ID,
+		BaseEvalRunID:       "baseline-eval-run",
+		OptimizationSurface: harness.OptimizationSurfaceSkillDefinition,
+		Metadata: map[string]interface{}{
+			"candidate_id": "candidate-parent",
+			"skill_candidate": map[string]interface{}{
+				"skill_id":    "browser",
+				"source_path": "assets/skills/browser/SKILL.md",
+			},
+		},
+	}
+
+	if err := triggerer.TriggerOptimization(context.Background(), event); err != nil {
+		t.Fatalf("TriggerOptimization: %v", err)
+	}
+
+	current := manager.GetStatus(context.Background())
+	recordPath := filepath.Join(root, "optimization-runs", current.LastOptimizationRunID+".json")
+	data, err := os.ReadFile(recordPath)
+	if err != nil {
+		t.Fatalf("read optimization record: %v", err)
+	}
+	var record map[string]interface{}
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatalf("decode optimization record: %v", err)
+	}
+
+	searchConfig, ok := record["search_config"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("search_config = %#v, want map; record=%s", record["search_config"], string(data))
+	}
+	if got := int(searchConfig["initial_mutation_count"].(float64)); got != 4 {
+		t.Fatalf("search_config.initial_mutation_count = %d, want 4", got)
+	}
+	if got := int(searchConfig["max_generations"].(float64)); got != 3 {
+		t.Fatalf("search_config.max_generations = %d, want 3", got)
+	}
+	if got := int(searchConfig["frontier_size"].(float64)); got != 2 {
+		t.Fatalf("search_config.frontier_size = %d, want 2", got)
+	}
+	if got := int(searchConfig["max_evaluations"].(float64)); got != 8 {
+		t.Fatalf("search_config.max_evaluations = %d, want 8", got)
+	}
+
+	proposals, ok := record["proposal_set"].([]interface{})
+	if !ok || len(proposals) != 2 {
+		t.Fatalf("proposal_set = %#v, want 2 proposals; record=%s", record["proposal_set"], string(data))
+	}
+	evaluated, ok := record["evaluated_candidates"].([]interface{})
+	if !ok || len(evaluated) != 2 {
+		t.Fatalf("evaluated_candidates = %#v, want 2 entries; record=%s", record["evaluated_candidates"], string(data))
+	}
+	reflectionSummary, ok := record["reflection_summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("reflection_summary = %#v, want map", record["reflection_summary"])
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(reflectionSummary["summary"])); got == "" {
+		t.Fatalf("reflection_summary.summary = %q, want non-empty", got)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["followup_state"])); got != "submitted" {
+		t.Fatalf("followup_state = %q, want submitted; record=%s", got, string(data))
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["offline_recommendation"])); got != "hold" {
+		t.Fatalf("offline_recommendation = %q, want hold before reconciliation; record=%s", got, string(data))
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["runtime_status"])); got != "not_started" {
+		t.Fatalf("runtime_status = %q, want not_started before promotion; record=%s", got, string(data))
+	}
+}
+
+func TestSelectReflectiveCandidatePrefersParetoWinnerWithLowerLatencyAndSmallerDiff(t *testing.T) {
+	candidates := []reflectiveEvaluatedCandidate{
+		{
+			CandidateID: "candidate-fast",
+			HardPass:    true,
+			Objectives: reflectiveObjectiveVector{
+				ExecutionPassRateDelta:      0.04,
+				VerificationPassRateDelta:   0.02,
+				EvidenceBackedPassRateDelta: 0.01,
+				MedianLatencyIncreaseRate:   0.03,
+				RepeatFailureRecurrence:     0.10,
+			},
+			DiffSize: 42,
+		},
+		{
+			CandidateID: "candidate-slower",
+			HardPass:    true,
+			Objectives: reflectiveObjectiveVector{
+				ExecutionPassRateDelta:      0.04,
+				VerificationPassRateDelta:   0.02,
+				EvidenceBackedPassRateDelta: 0.01,
+				MedianLatencyIncreaseRate:   0.08,
+				RepeatFailureRecurrence:     0.10,
+			},
+			DiffSize: 84,
+		},
+		{
+			CandidateID: "candidate-rejected",
+			HardPass:    false,
+			Objectives: reflectiveObjectiveVector{
+				ExecutionPassRateDelta:      0.06,
+				VerificationPassRateDelta:   -0.01,
+				EvidenceBackedPassRateDelta: -0.02,
+				MedianLatencyIncreaseRate:   0.12,
+				RepeatFailureRecurrence:     0.20,
+			},
+			DiffSize: 12,
+		},
+	}
+
+	frontier, selected := computeReflectiveParetoSelection(candidates, 2)
+	if len(frontier) != 1 || frontier[0] != "candidate-fast" {
+		t.Fatalf("frontier = %#v, want [candidate-fast]", frontier)
+	}
+	if got := strings.TrimSpace(selected); got != "candidate-fast" {
+		t.Fatalf("selected = %q, want candidate-fast", got)
+	}
+}
+
+func TestClassifyRuntimeValueReportStates(t *testing.T) {
+	report := buildRuntimeValueReportFromWindows(runtimeValueWindowMetrics{
+		BeforeSampleCount:         50,
+		AfterSampleCount:          10,
+		BeforeFailureRecurrence:   0.40,
+		AfterFailureRecurrence:    0.10,
+		BeforeMedianDurationMs:    1800,
+		AfterMedianDurationMs:     1600,
+		BeforeMedianTotalTokens:   900,
+		AfterMedianTotalTokens:    820,
+		BeforeCaptureQualityScore: 0.20,
+		AfterCaptureQualityScore:  0.45,
+	})
+	if got := strings.TrimSpace(report.Status); got != "provisional" {
+		t.Fatalf("provisional status = %q, want provisional", got)
+	}
+
+	report = buildRuntimeValueReportFromWindows(runtimeValueWindowMetrics{
+		BeforeSampleCount:         50,
+		AfterSampleCount:          50,
+		BeforeFailureRecurrence:   0.42,
+		AfterFailureRecurrence:    0.12,
+		BeforeMedianDurationMs:    2100,
+		AfterMedianDurationMs:     1800,
+		BeforeMedianTotalTokens:   980,
+		AfterMedianTotalTokens:    910,
+		BeforeCaptureQualityScore: 0.18,
+		AfterCaptureQualityScore:  0.39,
+	})
+	if got := strings.TrimSpace(report.Status); got != "confirmed" {
+		t.Fatalf("confirmed status = %q, want confirmed", got)
+	}
+
+	report = buildRuntimeValueReportFromWindows(runtimeValueWindowMetrics{
+		BeforeSampleCount:         50,
+		AfterSampleCount:          50,
+		BeforeFailureRecurrence:   0.18,
+		AfterFailureRecurrence:    0.30,
+		BeforeMedianDurationMs:    1700,
+		AfterMedianDurationMs:     2400,
+		BeforeMedianTotalTokens:   880,
+		AfterMedianTotalTokens:    1100,
+		BeforeCaptureQualityScore: 0.33,
+		AfterCaptureQualityScore:  0.20,
+	})
+	if got := strings.TrimSpace(report.Status); got != "regressing" {
+		t.Fatalf("regressing status = %q, want regressing", got)
+	}
+}
+
+func TestBuildReflectiveRuntimeObservationUsesDurationSignalFromEvents(t *testing.T) {
+	observation := buildReflectiveRuntimeObservation(
+		harness.Run{
+			ID:        "runtime-duration",
+			Status:    harness.RunStatusCompleted,
+			CreatedAt: time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC),
+		},
+		[]harness.RunEvent{
+			{
+				Type:        "task_step_completed",
+				Message:     "step completed",
+				PayloadJSON: `{"duration_ms":3200}`,
+			},
+		},
+		"",
+	)
+	if got := int(observation.DurationMs); got != 3200 {
+		t.Fatalf("observation.DurationMs = %d, want 3200", got)
+	}
+}
+
+func TestHarnessOptimizationManagerAdapterBuildsConfirmedRuntimeValueReportForPromotedReflectiveCandidate(t *testing.T) {
+	controller, harnessDB := newOptimizationHarnessControllerWithDBForFollowupTest(t)
+	driver := bootstrapSelectorEvalDriver{
+		responsesByCandidate: map[string]map[string]map[string]interface{}{
+			"": {
+				"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseForBootstrapTest("web_query", false, "selected"),
+				"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseForBootstrapTest("exec", true, "clarify"),
+			},
+			"candidate-browser-confirmed": {
+				"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseForBootstrapTest("web_query", false, "selected"),
+				"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseForBootstrapTest("exec", true, "clarify"),
+			},
+		},
+	}
+	controller.RegisterDriver(driver)
+	evalSpec := createSelectorEvalSpecForOptimizationAssessmentTest(t, controller)
+	baselineEvalRun := runSelectorEvalForOptimizationAssessmentTest(t, controller, evalSpec, "selector-baseline-confirmed", map[string]interface{}{})
+	followupEvalRun := runSelectorEvalForOptimizationAssessmentTest(t, controller, evalSpec, "selector-followup-confirmed", map[string]interface{}{
+		"candidate_id":               "candidate-browser-confirmed",
+		"optimization_run":           true,
+		"optimization_run_id":        "opt-runtime-confirmed",
+		"optimization_parent_run_id": "parent-eval-run",
+	})
+	evolutionCase, err := controller.CreateSkillEvolutionCase(context.Background(), harness.SkillEvolutionCase{
+		SkillID:           "browser",
+		OwnerUserID:       "user-1",
+		Mode:              harness.SkillEvolutionModeFix,
+		Reason:            harness.SkillEvolutionReasonRuntimeFailure,
+		SourceKind:        "runtime_run",
+		SourceID:          "runtime-parent-run",
+		CandidateID:       "candidate-browser-confirmed",
+		BaseContentSHA256: "base-browser-confirmed",
+		FailureSignature:  "failed:missing-title",
+		Summary:           "Runtime browser failure produced a reflective candidate.",
+		EvidenceJSON:      `{"followup":"selector"}`,
+		Status:            harness.SkillEvolutionCaseStatusPromoted,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase failed: %v", err)
+	}
+	revision, err := controller.CreateSkillRevision(context.Background(), harness.SkillRevision{
+		SkillID:           "browser",
+		Status:            harness.SkillRevisionStatusPromoted,
+		SourcePath:        "assets/skills/browser/SKILL.md",
+		CandidateID:       "candidate-browser-confirmed",
+		BaseContentSHA256: "base-browser-confirmed",
+		OriginCaseID:      evolutionCase.ID,
+		EvalRunID:         followupEvalRun.ID,
+		OptimizationRunID: "opt-runtime-confirmed",
+		Content:           "# Browser\nConfirmed candidate.\n",
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision failed: %v", err)
+	}
+
+	runtimeDriver := &runtimeTerminalHarnessDriver{
+		kind: harness.RunKindAgentTask,
+	}
+	controller.RegisterDriver(runtimeDriver)
+	candidateCreatedAt := time.Date(2026, 4, 10, 9, 30, 0, 0, time.UTC)
+	promotedAt := time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC)
+	beforeBase := candidateCreatedAt.Add(-20 * time.Minute)
+	afterBase := promotedAt.Add(1 * time.Minute)
+	beforeRuns := make([]*harness.Run, 0, 20)
+	for i := 0; i < 20; i++ {
+		runtimeDriver.terminalStatus = harness.RunStatusFailed
+		runtimeDriver.terminalError = "missing title"
+		runtimeDriver.terminalResult = ""
+		runtimeDriver.events = []harness.RunEvent{
+			{
+				Type:        "tool_result",
+				ToolName:    "browser.navigate",
+				Message:     "browser navigation failed to extract title",
+				PayloadJSON: `{"usage":{"total_tokens":1000},"verification":{"verification_passed":false},"outcome_score":0.20,"evidence_score":0.20,"execution_score":0.25,"validation":{"recovered":false,"failure_count":2}}`,
+			},
+		}
+		run, err := controller.Submit(context.Background(), harness.RunSpec{
+			Kind:   harness.RunKindAgentTask,
+			Goal:   "before promotion browser failure",
+			UserID: "user-1",
+			Metadata: map[string]interface{}{
+				"selected_canonical_skill": "browser",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Submit before run %d failed: %v", i, err)
+		}
+		retimeOptimizationHarnessRunForFollowupTest(t, harnessDB, run.ID, beforeBase.Add(time.Duration(i)*time.Minute), 2*time.Second)
+		beforeRuns = append(beforeRuns, run)
+	}
+
+	afterRuns := make([]*harness.Run, 0, 20)
+	for i := 0; i < 20; i++ {
+		runtimeDriver.terminalStatus = harness.RunStatusCompleted
+		runtimeDriver.terminalError = ""
+		runtimeDriver.terminalResult = "browser task completed"
+		runtimeDriver.events = []harness.RunEvent{
+			{
+				Type:        "tool_result",
+				ToolName:    "browser.navigate",
+				Message:     "browser navigation verified title before summarizing",
+				PayloadJSON: `{"usage":{"total_tokens":700},"verification":{"verification_passed":true},"outcome_score":0.72,"evidence_score":0.74,"execution_score":0.78,"validation":{"recovered":true,"failure_count":0}}`,
+			},
+		}
+		run, err := controller.Submit(context.Background(), harness.RunSpec{
+			Kind:   harness.RunKindAgentTask,
+			Goal:   "after promotion browser success",
+			UserID: "user-1",
+			Metadata: map[string]interface{}{
+				"selected_canonical_skill": "browser",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Submit after run %d failed: %v", i, err)
+		}
+		retimeOptimizationHarnessRunForFollowupTest(t, harnessDB, run.ID, afterBase.Add(time.Duration(i)*time.Minute), 1500*time.Millisecond)
+		afterRuns = append(afterRuns, run)
+	}
+	if len(beforeRuns) != 20 || len(afterRuns) != 20 {
+		t.Fatalf("expected 20 before and 20 after runs, got %d before and %d after", len(beforeRuns), len(afterRuns))
+	}
+
+	recordID := "opt-runtime-confirmed"
+	manager := newOptimizationManagerWithLastRunRecordForTest(t, filepath.Join(t.TempDir(), "agentcore-runner"), recordID, map[string]interface{}{
+		"id":                recordID,
+		"reason":            string(harness.OptimizationReasonRuntimeSkillFailure),
+		"created_at":        candidateCreatedAt,
+		"promoted_at":       promotedAt,
+		"promotion_state":   "promoted",
+		"base_eval_run_id":  baselineEvalRun.ID,
+		"skill_revision_id": revision.ID,
+		"metadata": map[string]interface{}{
+			"owner_user_id":            "user-1",
+			"failure_signature":        "failed:missing-title",
+			"selected_canonical_skill": "browser",
+			"skill_candidate": map[string]interface{}{
+				"skill_id":     "browser",
+				"candidate_id": "candidate-browser-confirmed",
+				"source_path":  "assets/skills/browser/SKILL.md",
+				"content":      "# Browser\nConfirmed candidate.\n",
+			},
+		},
+		"proposal_set": []interface{}{
+			map[string]interface{}{
+				"candidate_id": "candidate-browser-confirmed",
+				"generation":   1,
+				"skill_candidate": map[string]interface{}{
+					"skill_id":     "browser",
+					"candidate_id": "candidate-browser-confirmed",
+					"source_path":  "assets/skills/browser/SKILL.md",
+					"content":      "# Browser\nConfirmed candidate.\n",
+				},
+			},
+		},
+		"evaluated_candidates": []interface{}{
+			map[string]interface{}{
+				"candidate_id":         "candidate-browser-confirmed",
+				"generation":           1,
+				"followup_gate":        "selector",
+				"followup_state":       "submitted",
+				"followup_eval_run_id": followupEvalRun.ID,
+				"skill_candidate": map[string]interface{}{
+					"skill_id":     "browser",
+					"candidate_id": "candidate-browser-confirmed",
+					"source_path":  "assets/skills/browser/SKILL.md",
+					"content":      "# Browser\nConfirmed candidate.\n",
+				},
+			},
+		},
+	})
+
+	adapter := newHarnessOptimizationManagerAdapter(manager, controller)
+	record, err := adapter.GetLastOptimizationRun(context.Background())
+	if err != nil {
+		t.Fatalf("GetLastOptimizationRun: %v", err)
+	}
+	runtimeReport, ok := record["runtime_value_report"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("runtime_value_report = %#v, want map", record["runtime_value_report"])
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(runtimeReport["status"])); got != "confirmed" {
+		t.Fatalf("runtime_value_report.status = %q, want confirmed; record=%#v", got, record)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["runtime_status"])); got != "confirmed" {
+		t.Fatalf("runtime_status = %q, want confirmed", got)
+	}
+	if got, ok := runtimeReport["failure_recurrence_delta"].(float64); !ok || got >= 0 {
+		t.Fatalf("runtime_value_report.failure_recurrence_delta = %#v, want negative", runtimeReport["failure_recurrence_delta"])
+	}
+}
+
+func TestHarnessOptimizationManagerAdapterBuildsProvisionalRuntimeValueReportForPromotedReflectiveCandidateWhenSamplesInsufficient(t *testing.T) {
+	fixture := newReflectivePromotedRuntimeFixtureForFollowupTest(t, "opt-runtime-provisional", "candidate-browser-provisional")
+	candidateCreatedAt := time.Date(2026, 4, 10, 11, 0, 0, 0, time.UTC)
+	promotedAt := time.Date(2026, 4, 10, 11, 30, 0, 0, time.UTC)
+
+	beforeRuns := submitRetimedReflectiveRuntimeRunsForFollowupTest(t, fixture, reflectiveRuntimeRunSeed{
+		Count:         20,
+		BaseTime:      candidateCreatedAt.Add(-20 * time.Minute),
+		Interval:      time.Minute,
+		Duration:      2 * time.Second,
+		Status:        harness.RunStatusFailed,
+		TerminalError: "missing title",
+		Goal:          "before promotion browser failure",
+		EventMessage:  "browser navigation failed to extract title",
+		PayloadJSON:   `{"usage":{"total_tokens":980},"verification":{"verification_passed":false},"outcome_score":0.22,"evidence_score":0.20,"execution_score":0.25,"validation":{"recovered":false,"failure_count":2}}`,
+	})
+	afterRuns := submitRetimedReflectiveRuntimeRunsForFollowupTest(t, fixture, reflectiveRuntimeRunSeed{
+		Count:          10,
+		BaseTime:       promotedAt.Add(1 * time.Minute),
+		Interval:       time.Minute,
+		Duration:       1500 * time.Millisecond,
+		Status:         harness.RunStatusCompleted,
+		TerminalResult: "browser task completed",
+		Goal:           "after promotion browser success",
+		EventMessage:   "browser navigation verified title before summarizing",
+		PayloadJSON:    `{"usage":{"total_tokens":700},"verification":{"verification_passed":true},"outcome_score":0.72,"evidence_score":0.74,"execution_score":0.78,"validation":{"recovered":true,"failure_count":0}}`,
+	})
+	if len(beforeRuns) != 20 || len(afterRuns) != 10 {
+		t.Fatalf("expected 20 before and 10 after runs, got %d before and %d after", len(beforeRuns), len(afterRuns))
+	}
+
+	manager := newOptimizationManagerWithLastRunRecordForTest(
+		t,
+		filepath.Join(t.TempDir(), "agentcore-runner"),
+		fixture.OptimizationRunID,
+		buildPromotedReflectiveOptimizationRecordForFollowupTest(fixture, candidateCreatedAt, promotedAt),
+	)
+
+	adapter := newHarnessOptimizationManagerAdapter(manager, fixture.Controller)
+	record, err := adapter.GetLastOptimizationRun(context.Background())
+	if err != nil {
+		t.Fatalf("GetLastOptimizationRun: %v", err)
+	}
+	runtimeReport, ok := record["runtime_value_report"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("runtime_value_report = %#v, want map", record["runtime_value_report"])
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(runtimeReport["status"])); got != "provisional" {
+		t.Fatalf("runtime_value_report.status = %q, want provisional; record=%#v", got, record)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["runtime_status"])); got != "provisional" {
+		t.Fatalf("runtime_status = %q, want provisional", got)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(runtimeReport["confidence"])); got != "low" {
+		t.Fatalf("runtime_value_report.confidence = %q, want low", got)
+	}
+	if got := asIntForOptimizationTest(runtimeReport["before_sample_count"]); got != 20 {
+		t.Fatalf("runtime_value_report.before_sample_count = %d, want 20", got)
+	}
+	if got := asIntForOptimizationTest(runtimeReport["after_sample_count"]); got != 10 {
+		t.Fatalf("runtime_value_report.after_sample_count = %d, want 10", got)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(runtimeReport["value_summary"])); !strings.Contains(got, "provisional") {
+		t.Fatalf("runtime_value_report.value_summary = %q, want provisional summary", got)
+	}
+}
+
+func TestHarnessOptimizationManagerAdapterBuildsRegressingRuntimeValueReportForPromotedReflectiveCandidate(t *testing.T) {
+	fixture := newReflectivePromotedRuntimeFixtureForFollowupTest(t, "opt-runtime-regressing", "candidate-browser-regressing")
+	candidateCreatedAt := time.Date(2026, 4, 10, 13, 0, 0, 0, time.UTC)
+	promotedAt := time.Date(2026, 4, 10, 13, 30, 0, 0, time.UTC)
+
+	beforeRuns := submitRetimedReflectiveRuntimeRunsForFollowupTest(t, fixture, reflectiveRuntimeRunSeed{
+		Count:          20,
+		BaseTime:       candidateCreatedAt.Add(-20 * time.Minute),
+		Interval:       time.Minute,
+		Duration:       2 * time.Second,
+		Status:         harness.RunStatusCompleted,
+		TerminalResult: "browser task completed",
+		Goal:           "before promotion stable browser success",
+		EventMessage:   "browser navigation verified title quickly",
+		PayloadJSON:    `{"duration_ms":2000,"usage":{"total_tokens":650},"verification":{"verification_passed":true},"outcome_score":0.83,"evidence_score":0.81,"execution_score":0.84,"validation":{"recovered":true,"failure_count":0}}`,
+	})
+	afterRuns := submitRetimedReflectiveRuntimeRunsForFollowupTest(t, fixture, reflectiveRuntimeRunSeed{
+		Count:          20,
+		BaseTime:       promotedAt.Add(1 * time.Minute),
+		Interval:       time.Minute,
+		Duration:       8 * time.Second,
+		Status:         harness.RunStatusCompleted,
+		TerminalResult: "browser task completed slowly",
+		Goal:           "after promotion slower browser success",
+		EventMessage:   "browser navigation verified title with heavy extra processing",
+		PayloadJSON:    `{"duration_ms":8000,"usage":{"total_tokens":1250},"verification":{"verification_passed":true},"outcome_score":0.34,"evidence_score":0.28,"execution_score":0.32,"validation":{"recovered":false,"failure_count":2}}`,
+	})
+	if len(beforeRuns) != 20 || len(afterRuns) != 20 {
+		t.Fatalf("expected 20 before and 20 after runs, got %d before and %d after", len(beforeRuns), len(afterRuns))
+	}
+
+	manager := newOptimizationManagerWithLastRunRecordForTest(
+		t,
+		filepath.Join(t.TempDir(), "agentcore-runner"),
+		fixture.OptimizationRunID,
+		buildPromotedReflectiveOptimizationRecordForFollowupTest(fixture, candidateCreatedAt, promotedAt),
+	)
+
+	adapter := newHarnessOptimizationManagerAdapter(manager, fixture.Controller)
+	record, err := adapter.GetLastOptimizationRun(context.Background())
+	if err != nil {
+		t.Fatalf("GetLastOptimizationRun: %v", err)
+	}
+	runtimeReport, ok := record["runtime_value_report"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("runtime_value_report = %#v, want map", record["runtime_value_report"])
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(runtimeReport["status"])); got != "regressing" {
+		t.Fatalf("runtime_value_report.status = %q, want regressing; record=%#v", got, record)
+	}
+	if got := strings.TrimSpace(asStringForOptimizationTest(record["runtime_status"])); got != "regressing" {
+		t.Fatalf("runtime_status = %q, want regressing", got)
+	}
+	if got, ok := runtimeReport["median_duration_delta_rate"].(float64); !ok || got <= 0.15 {
+		t.Fatalf("runtime_value_report.median_duration_delta_rate = %#v, want > 0.15", runtimeReport["median_duration_delta_rate"])
+	}
+	if got, ok := runtimeReport["median_total_tokens_delta_rate"].(float64); !ok || got <= 0.15 {
+		t.Fatalf("runtime_value_report.median_total_tokens_delta_rate = %#v, want > 0.15", runtimeReport["median_total_tokens_delta_rate"])
+	}
+	if got, ok := runtimeReport["validation_quality_delta"].(float64); !ok || got >= -0.05 {
+		t.Fatalf("runtime_value_report.validation_quality_delta = %#v, want < -0.05", runtimeReport["validation_quality_delta"])
+	}
+	tradeoffs := asStringSliceForOptimizationTest(runtimeReport["top_tradeoffs"])
+	if len(tradeoffs) == 0 {
+		t.Fatalf("runtime_value_report.top_tradeoffs = %#v, want non-empty tradeoffs", runtimeReport["top_tradeoffs"])
+	}
+}
+
 func TestHarnessOptimizationManagerAdapterReconcilesAcceptedFollowupSelectorRun(t *testing.T) {
 	controller := newOptimizationHarnessControllerForFollowupTest(t)
 	driver := bootstrapSelectorEvalDriver{
@@ -1047,6 +1649,31 @@ type bootstrapSelectorEvalDriver struct {
 	responsesByCandidate map[string]map[string]map[string]interface{}
 }
 
+type reflectivePromotedRuntimeFixture struct {
+	Controller        *harness.Controller
+	HarnessDB         *sql.DB
+	RuntimeDriver     *runtimeTerminalHarnessDriver
+	BaselineEvalRun   *harness.EvalRun
+	FollowupEvalRun   *harness.EvalRun
+	Revision          *harness.SkillRevision
+	OptimizationRunID string
+	CandidateID       string
+	CandidateContent  string
+}
+
+type reflectiveRuntimeRunSeed struct {
+	Count          int
+	BaseTime       time.Time
+	Interval       time.Duration
+	Duration       time.Duration
+	Status         harness.RunStatus
+	TerminalError  string
+	TerminalResult string
+	Goal           string
+	EventMessage   string
+	PayloadJSON    string
+}
+
 func (d bootstrapSelectorEvalDriver) Kind() harness.RunKind { return harness.RunKindAgentTask }
 
 func (d bootstrapSelectorEvalDriver) Validate(spec harness.RunSpec) error {
@@ -1139,6 +1766,11 @@ func newOptimizationManagerWithLastRunRecordForTest(t *testing.T, root string, r
 }
 
 func newOptimizationHarnessControllerForFollowupTest(t *testing.T) *harness.Controller {
+	controller, _ := newOptimizationHarnessControllerWithDBForFollowupTest(t)
+	return controller
+}
+
+func newOptimizationHarnessControllerWithDBForFollowupTest(t *testing.T) (*harness.Controller, *sql.DB) {
 	t.Helper()
 	tmp := t.TempDir()
 	db, err := sql.Open("sqlite3", filepath.Join(tmp, "runtime-harness-followup.db"))
@@ -1159,7 +1791,206 @@ func newOptimizationHarnessControllerForFollowupTest(t *testing.T) *harness.Cont
 	if bundle == nil || bundle.Controller == nil {
 		t.Fatalf("expected harness controller, got %#v", bundle)
 	}
-	return bundle.Controller
+	return bundle.Controller, db
+}
+
+func retimeOptimizationHarnessRunForFollowupTest(t *testing.T, db *sql.DB, runID string, createdAt time.Time, duration time.Duration) {
+	t.Helper()
+	if db == nil {
+		t.Fatal("retimeOptimizationHarnessRunForFollowupTest requires a harness db")
+	}
+	startedAt := createdAt.UTC()
+	finishedAt := startedAt.Add(duration)
+	result, err := db.Exec(
+		`UPDATE harness_runs SET created_at = ?, updated_at = ?, started_at = ?, finished_at = ? WHERE id = ?`,
+		startedAt,
+		finishedAt,
+		startedAt,
+		finishedAt,
+		strings.TrimSpace(runID),
+	)
+	if err != nil {
+		t.Fatalf("retime run %q failed: %v", runID, err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		t.Fatalf("RowsAffected(%q) failed: %v", runID, err)
+	}
+	if rowsAffected != 1 {
+		t.Fatalf("retime run %q affected %d rows, want 1", runID, rowsAffected)
+	}
+}
+
+func newReflectivePromotedRuntimeFixtureForFollowupTest(t *testing.T, optimizationRunID, candidateID string) reflectivePromotedRuntimeFixture {
+	t.Helper()
+	controller, harnessDB := newOptimizationHarnessControllerWithDBForFollowupTest(t)
+	driver := bootstrapSelectorEvalDriver{
+		responsesByCandidate: map[string]map[string]map[string]interface{}{
+			"": {
+				"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseForBootstrapTest("web_query", false, "selected"),
+				"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseForBootstrapTest("exec", true, "clarify"),
+			},
+			candidateID: {
+				"Search the latest OpenAI Responses API documentation.":            selectorEvalResponseForBootstrapTest("web_query", false, "selected"),
+				"看下 workspace 里的 README，还是搜一下最新 OpenAI Responses API 文档，你觉得该先做哪个？": selectorEvalResponseForBootstrapTest("exec", true, "clarify"),
+			},
+		},
+	}
+	controller.RegisterDriver(driver)
+
+	evalSpec := createSelectorEvalSpecForOptimizationAssessmentTest(t, controller)
+	baselineEvalRun := runSelectorEvalForOptimizationAssessmentTest(t, controller, evalSpec, optimizationRunID+"-baseline", map[string]interface{}{})
+	followupEvalRun := runSelectorEvalForOptimizationAssessmentTest(t, controller, evalSpec, optimizationRunID+"-followup", map[string]interface{}{
+		"candidate_id":               candidateID,
+		"optimization_run":           true,
+		"optimization_run_id":        optimizationRunID,
+		"optimization_parent_run_id": "parent-eval-run",
+	})
+
+	candidateContent := "# Browser\nReflective promoted candidate.\n"
+	evolutionCase, err := controller.CreateSkillEvolutionCase(context.Background(), harness.SkillEvolutionCase{
+		SkillID:           "browser",
+		OwnerUserID:       "user-1",
+		Mode:              harness.SkillEvolutionModeFix,
+		Reason:            harness.SkillEvolutionReasonRuntimeFailure,
+		SourceKind:        "runtime_run",
+		SourceID:          "runtime-parent-run",
+		CandidateID:       candidateID,
+		BaseContentSHA256: optimizationRunID + "-base",
+		FailureSignature:  "failed:missing-title",
+		Summary:           "Runtime browser failure produced a reflective candidate.",
+		EvidenceJSON:      `{"followup":"selector"}`,
+		Status:            harness.SkillEvolutionCaseStatusPromoted,
+		CreatedAt:         time.Now().UTC(),
+		UpdatedAt:         time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillEvolutionCase failed: %v", err)
+	}
+	revision, err := controller.CreateSkillRevision(context.Background(), harness.SkillRevision{
+		SkillID:           "browser",
+		Status:            harness.SkillRevisionStatusPromoted,
+		SourcePath:        "assets/skills/browser/SKILL.md",
+		CandidateID:       candidateID,
+		BaseContentSHA256: optimizationRunID + "-base",
+		OriginCaseID:      evolutionCase.ID,
+		EvalRunID:         followupEvalRun.ID,
+		OptimizationRunID: optimizationRunID,
+		Content:           candidateContent,
+	})
+	if err != nil {
+		t.Fatalf("CreateSkillRevision failed: %v", err)
+	}
+
+	runtimeDriver := &runtimeTerminalHarnessDriver{kind: harness.RunKindAgentTask}
+	controller.RegisterDriver(runtimeDriver)
+
+	return reflectivePromotedRuntimeFixture{
+		Controller:        controller,
+		HarnessDB:         harnessDB,
+		RuntimeDriver:     runtimeDriver,
+		BaselineEvalRun:   baselineEvalRun,
+		FollowupEvalRun:   followupEvalRun,
+		Revision:          revision,
+		OptimizationRunID: optimizationRunID,
+		CandidateID:       candidateID,
+		CandidateContent:  candidateContent,
+	}
+}
+
+func submitRetimedReflectiveRuntimeRunsForFollowupTest(t *testing.T, fixture reflectivePromotedRuntimeFixture, seed reflectiveRuntimeRunSeed) []*harness.Run {
+	t.Helper()
+	if fixture.Controller == nil || fixture.RuntimeDriver == nil {
+		t.Fatal("submitRetimedReflectiveRuntimeRunsForFollowupTest requires a runtime fixture")
+	}
+	runs := make([]*harness.Run, 0, seed.Count)
+	for i := 0; i < seed.Count; i++ {
+		fixture.RuntimeDriver.terminalStatus = seed.Status
+		fixture.RuntimeDriver.terminalError = seed.TerminalError
+		fixture.RuntimeDriver.terminalResult = seed.TerminalResult
+		fixture.RuntimeDriver.events = []harness.RunEvent{
+			{
+				Type:        "tool_result",
+				ToolName:    "browser.navigate",
+				Message:     strings.TrimSpace(seed.EventMessage),
+				PayloadJSON: strings.TrimSpace(seed.PayloadJSON),
+			},
+		}
+		run, err := fixture.Controller.Submit(context.Background(), harness.RunSpec{
+			Kind:   harness.RunKindAgentTask,
+			Goal:   strings.TrimSpace(seed.Goal),
+			UserID: "user-1",
+			Metadata: map[string]interface{}{
+				"selected_canonical_skill": "browser",
+			},
+		})
+		if err != nil {
+			t.Fatalf("Submit runtime run %d failed: %v", i, err)
+		}
+		retimeOptimizationHarnessRunForFollowupTest(
+			t,
+			fixture.HarnessDB,
+			run.ID,
+			seed.BaseTime.Add(time.Duration(i)*seed.Interval),
+			seed.Duration,
+		)
+		runs = append(runs, run)
+	}
+	return runs
+}
+
+func buildPromotedReflectiveOptimizationRecordForFollowupTest(
+	fixture reflectivePromotedRuntimeFixture,
+	createdAt time.Time,
+	promotedAt time.Time,
+) map[string]interface{} {
+	return map[string]interface{}{
+		"id":                fixture.OptimizationRunID,
+		"reason":            string(harness.OptimizationReasonRuntimeSkillFailure),
+		"created_at":        createdAt,
+		"promoted_at":       promotedAt,
+		"promotion_state":   "promoted",
+		"base_eval_run_id":  fixture.BaselineEvalRun.ID,
+		"skill_revision_id": fixture.Revision.ID,
+		"metadata": map[string]interface{}{
+			"owner_user_id":            "user-1",
+			"failure_signature":        "failed:missing-title",
+			"selected_canonical_skill": "browser",
+			"skill_candidate": map[string]interface{}{
+				"skill_id":     "browser",
+				"candidate_id": fixture.CandidateID,
+				"source_path":  "assets/skills/browser/SKILL.md",
+				"content":      fixture.CandidateContent,
+			},
+		},
+		"proposal_set": []interface{}{
+			map[string]interface{}{
+				"candidate_id": fixture.CandidateID,
+				"generation":   1,
+				"skill_candidate": map[string]interface{}{
+					"skill_id":     "browser",
+					"candidate_id": fixture.CandidateID,
+					"source_path":  "assets/skills/browser/SKILL.md",
+					"content":      fixture.CandidateContent,
+				},
+			},
+		},
+		"evaluated_candidates": []interface{}{
+			map[string]interface{}{
+				"candidate_id":         fixture.CandidateID,
+				"generation":           1,
+				"followup_gate":        "selector",
+				"followup_state":       "submitted",
+				"followup_eval_run_id": fixture.FollowupEvalRun.ID,
+				"skill_candidate": map[string]interface{}{
+					"skill_id":     "browser",
+					"candidate_id": fixture.CandidateID,
+					"source_path":  "assets/skills/browser/SKILL.md",
+					"content":      fixture.CandidateContent,
+				},
+			},
+		},
+	}
 }
 
 func createOptimizationEvalRunForFollowupTest(t *testing.T, controller *harness.Controller, metadata map[string]interface{}) *harness.EvalRun {
@@ -1488,4 +2319,48 @@ func asStringForOptimizationTest(value interface{}) string {
 		return ""
 	}
 	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func asIntForOptimizationTest(value interface{}) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case float32:
+		return int(typed)
+	case float64:
+		return int(typed)
+	case string:
+		parsed, _ := strconv.Atoi(strings.TrimSpace(typed))
+		return parsed
+	default:
+		parsed, _ := strconv.Atoi(strings.TrimSpace(fmt.Sprint(value)))
+		return parsed
+	}
+}
+
+func asStringSliceForOptimizationTest(value interface{}) []string {
+	switch typed := value.(type) {
+	case []string:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if trimmed := strings.TrimSpace(item); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if trimmed := strings.TrimSpace(fmt.Sprint(item)); trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }

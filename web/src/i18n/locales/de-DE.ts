@@ -602,6 +602,7 @@ export default mergeHarnessLocale('de-DE', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Aufgabe abgebrochen',
     waitingThinking: 'Denke nach...',
+    providerAccelerationActive: 'Optimiere die nächste Antwort für den aktuellen Anbieter',
     awaitingConfirmation: 'Warte auf Ihre Bestätigung, um fortzufahren',
     streamConnecting: 'Verbinden',
     streamStreaming: 'Generierung',
@@ -632,8 +633,10 @@ export default mergeHarnessLocale('de-DE', {
     taskFailedDuringPlanning: 'Die Aufgabe ist während der Planung fehlgeschlagen',
     taskFailedDuringConfirmation: 'Die Aufgabe ist während der Bestätigung fehlgeschlagen',
     taskFailedWhileRevisingPlan: 'Die Aufgabe ist beim Überarbeiten des Plans fehlgeschlagen',
-    taskFailedWhileUpdatingRuntimeState: 'Die Aufgabe ist beim Aktualisieren des Laufzeitzustands fehlgeschlagen',
-    verificationFailedRecoveryFailed: 'Verifizierung fehlgeschlagen und die Wiederherstellung war nicht erfolgreich',
+    taskFailedWhileUpdatingRuntimeState:
+      'Die Aufgabe ist beim Aktualisieren des Laufzeitzustands fehlgeschlagen',
+    verificationFailedRecoveryFailed:
+      'Verifizierung fehlgeschlagen und die Wiederherstellung war nicht erfolgreich',
     taskFailureGroundedVerificationFailed: 'Verifizierung der Fundierung fehlgeschlagen',
     taskWaitingForApproval: 'Warte auf deine Genehmigung',
     taskWaitingForAnswer: 'Warte auf deine Antwort',
@@ -868,7 +871,8 @@ export default mergeHarnessLocale('de-DE', {
     providerFailover: {
       eyebrow: 'Hochverfügbarkeitswechsel',
       title: 'Zu einer anderen verfügbaren Route wechseln und erneut versuchen?',
-      description: 'Die aktuelle Route über {provider} benötigt Ihre Bestätigung, bevor Blue zu einer anderen verfügbaren Route wechselt und den Versuch wiederholt.',
+      description:
+        'Die aktuelle Route über {provider} benötigt Ihre Bestätigung, bevor Blue zu einer anderen verfügbaren Route wechselt und den Versuch wiederholt.',
       dismissAction: 'Jetzt nicht',
       manualAction: 'Route manuell wählen',
       primaryAction: 'Wechseln und erneut versuchen',
@@ -906,7 +910,8 @@ export default mergeHarnessLocale('de-DE', {
     execDirectoryApprovalTimeout:
       'Die Befehlsausführung wurde blockiert, weil die Verzeichnisfreigabe abgelaufen ist. Bitte das Verzeichnis freigeben und erneut versuchen.',
     providerActive: 'Anbieter ist aktiv und bereit.',
-    providerNeedsAttention: 'Anbieter benötigt Aufmerksamkeit. Klicken Sie, um die Einstellungen zu prüfen.',
+    providerNeedsAttention:
+      'Anbieter benötigt Aufmerksamkeit. Klicken Sie, um die Einstellungen zu prüfen.',
     providerPending: 'Anbieterstatus wird überprüft...',
     trialQuota: {
       remaining: '{tokens} Token verbleibend',

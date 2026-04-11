@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/labstack/echo/v4"
@@ -19,6 +20,16 @@ type sessionAwareStubBrowserService struct {
 	history          []SessionScreenshot
 	lastNavigateReq  *NavigateRequest
 	lastScreenshotID string
+	lastActReq       *ActRequest
+	actResp          *ActResponse
+	actErr           error
+	pageInfoURL      string
+	pageInfoTitle    string
+	pageInfoErr      error
+	elementExists    bool
+	elementExistsErr error
+	extractedValue   string
+	extractedErr     error
 }
 
 func (s *sessionAwareStubBrowserService) Tabs(context.Context) ([]*Tab, error) {
@@ -56,6 +67,39 @@ func (s *sessionAwareStubBrowserService) SessionScreenshotHistory(
 	out := make([]SessionScreenshot, len(s.history))
 	copy(out, s.history)
 	return out
+}
+
+func (s *sessionAwareStubBrowserService) Act(_ context.Context, req *ActRequest) (*ActResponse, error) {
+	copyReq := *req
+	s.lastActReq = &copyReq
+	if s.actErr != nil {
+		return nil, s.actErr
+	}
+	if s.actResp != nil {
+		return s.actResp, nil
+	}
+	return &ActResponse{Success: true}, nil
+}
+
+func (s *sessionAwareStubBrowserService) PageInfo(_ context.Context, _ string) (string, string, error) {
+	if s.pageInfoErr != nil {
+		return "", "", s.pageInfoErr
+	}
+	return s.pageInfoURL, s.pageInfoTitle, nil
+}
+
+func (s *sessionAwareStubBrowserService) ElementExists(_ context.Context, _ string, _ string) (bool, error) {
+	if s.elementExistsErr != nil {
+		return false, s.elementExistsErr
+	}
+	return s.elementExists, nil
+}
+
+func (s *sessionAwareStubBrowserService) ExtractFirstFromTab(_ context.Context, _ string, _ string, _ string) (string, error) {
+	if s.extractedErr != nil {
+		return "", s.extractedErr
+	}
+	return s.extractedValue, nil
 }
 
 type stubSessionRouteProvider struct {
@@ -467,6 +511,210 @@ func TestBrowserSessionRoutesUseProviderWhenConfigured(t *testing.T) {
 	}
 	if provider.lastNavigateID != "lp-1" || provider.lastNavigateURL != "https://example.com/path" {
 		t.Fatalf("provider navigate = (%q, %q), want (lp-1, https://example.com/path)", provider.lastNavigateID, provider.lastNavigateURL)
+	}
+}
+
+func TestBrowserCreateSessionReturnsUnavailableWhenServiceMissing(t *testing.T) {
+	h := NewHandler(nil)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	rec := performBrowserJSONRequest(e, http.MethodPost, "/browser/sessions", "")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s, want %d", rec.Code, rec.Body.String(), http.StatusServiceUnavailable)
+	}
+	if strings.Contains(rec.Body.String(), `"current_url"`) {
+		t.Fatalf("body=%s, want unavailable error instead of synthetic session payload", rec.Body.String())
+	}
+}
+
+func TestBrowserCreateSessionReturnsUnderlyingOpenTabError(t *testing.T) {
+	h := NewHandler(&stubBrowserService{
+		running:    true,
+		openTabErr: ErrBrowserNotAvailable,
+	})
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	rec := performBrowserJSONRequest(e, http.MethodPost, "/browser/sessions", "")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s, want %d", rec.Code, rec.Body.String(), http.StatusServiceUnavailable)
+	}
+	if strings.Contains(rec.Body.String(), `"current_url"`) {
+		t.Fatalf("body=%s, want propagated error instead of synthetic session payload", rec.Body.String())
+	}
+}
+
+func TestBrowserSecurityRoutesUseServiceRuntimeConfig(t *testing.T) {
+	service := &stubBrowserService{
+		running:        true,
+		allowedDomains: []string{"allowed.example.com"},
+		blockedDomains: []string{"blocked.example.com"},
+	}
+	h := NewHandler(service)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	getRec := performBrowserJSONRequest(e, http.MethodGet, "/browser/security", "")
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("GET /browser/security status=%d body=%s", getRec.Code, getRec.Body.String())
+	}
+
+	var current BrowserSecurityConfig
+	if err := json.Unmarshal(getRec.Body.Bytes(), &current); err != nil {
+		t.Fatalf("decode security config failed: %v", err)
+	}
+	if len(current.AllowedDomains) != 1 || current.AllowedDomains[0] != "allowed.example.com" {
+		t.Fatalf("allowed domains=%v, want [allowed.example.com]", current.AllowedDomains)
+	}
+	if len(current.BlockedDomains) != 1 || current.BlockedDomains[0] != "blocked.example.com" {
+		t.Fatalf("blocked domains=%v, want [blocked.example.com]", current.BlockedDomains)
+	}
+
+	testBlockedRec := performBrowserJSONRequest(
+		e,
+		http.MethodPost,
+		"/browser/security/test",
+		`{"url":"https://blocked.example.com/path"}`,
+	)
+	if testBlockedRec.Code != http.StatusOK {
+		t.Fatalf("POST /browser/security/test status=%d body=%s", testBlockedRec.Code, testBlockedRec.Body.String())
+	}
+	var blockedPayload map[string]any
+	if err := json.Unmarshal(testBlockedRec.Body.Bytes(), &blockedPayload); err != nil {
+		t.Fatalf("decode blocked test payload failed: %v", err)
+	}
+	if allowed, _ := blockedPayload["allowed"].(bool); allowed {
+		t.Fatalf("blocked payload=%v, want allowed=false", blockedPayload)
+	}
+
+	updateRec := performBrowserJSONRequest(
+		e,
+		http.MethodPut,
+		"/browser/security",
+		`{"allowed_domains":["docs.example.com"],"blocked_domains":["evil.example.com"]}`,
+	)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("PUT /browser/security status=%d body=%s", updateRec.Code, updateRec.Body.String())
+	}
+
+	testAllowedRec := performBrowserJSONRequest(
+		e,
+		http.MethodPost,
+		"/browser/security/test",
+		`{"url":"https://docs.example.com/reference"}`,
+	)
+	if testAllowedRec.Code != http.StatusOK {
+		t.Fatalf("POST /browser/security/test allowed status=%d body=%s", testAllowedRec.Code, testAllowedRec.Body.String())
+	}
+	var allowedPayload map[string]any
+	if err := json.Unmarshal(testAllowedRec.Body.Bytes(), &allowedPayload); err != nil {
+		t.Fatalf("decode allowed test payload failed: %v", err)
+	}
+	if allowed, _ := allowedPayload["allowed"].(bool); !allowed {
+		t.Fatalf("allowed payload=%v, want allowed=true", allowedPayload)
+	}
+	if len(service.allowedDomains) != 1 || service.allowedDomains[0] != "docs.example.com" {
+		t.Fatalf("service.allowedDomains=%v, want [docs.example.com]", service.allowedDomains)
+	}
+	if len(service.blockedDomains) != 1 || service.blockedDomains[0] != "evil.example.com" {
+		t.Fatalf("service.blockedDomains=%v, want [evil.example.com]", service.blockedDomains)
+	}
+}
+
+func TestBrowserSessionExecuteReturnsUnavailableWhenServiceMissing(t *testing.T) {
+	h := NewHandler(nil)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	rec := performBrowserJSONRequest(
+		e,
+		http.MethodPost,
+		"/browser/sessions/tab-1/execute",
+		`{"type":"click","params":{"selector":"#save"}}`,
+	)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s, want %d", rec.Code, rec.Body.String(), http.StatusServiceUnavailable)
+	}
+	if strings.Contains(rec.Body.String(), `"element_found":true`) {
+		t.Fatalf("body=%s, want unavailable error instead of fake execute result", rec.Body.String())
+	}
+}
+
+func TestBrowserSessionExecuteUsesRuntimeStepExecution(t *testing.T) {
+	service := &sessionAwareStubBrowserService{
+		stubBrowserService: &stubBrowserService{running: true},
+		pageInfoURL:        "https://example.com/dashboard",
+		pageInfoTitle:      "Dashboard",
+	}
+	h := NewHandler(service)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	rec := performBrowserJSONRequest(
+		e,
+		http.MethodPost,
+		"/browser/sessions/tab-7/execute",
+		`{"type":"click","params":{"selector":"#save","double":true}}`,
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if service.lastActReq == nil {
+		t.Fatal("expected Act request to be recorded")
+	}
+	if service.lastActReq.TargetID != "tab-7" {
+		t.Fatalf("TargetID=%q, want tab-7", service.lastActReq.TargetID)
+	}
+	if service.lastActReq.Kind != "click" {
+		t.Fatalf("Kind=%q, want click", service.lastActReq.Kind)
+	}
+	if service.lastActReq.Selector != "#save" {
+		t.Fatalf("Selector=%q, want #save", service.lastActReq.Selector)
+	}
+	if !service.lastActReq.Double {
+		t.Fatal("Double=false, want true")
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode execute response failed: %v", err)
+	}
+	if payload["page_title"] != "Dashboard" {
+		t.Fatalf("page_title=%v, want Dashboard", payload["page_title"])
+	}
+	if payload["page_url"] != "https://example.com/dashboard" {
+		t.Fatalf("page_url=%v, want https://example.com/dashboard", payload["page_url"])
+	}
+}
+
+func TestBrowserSessionExecuteExtractReportsRealElementLookup(t *testing.T) {
+	service := &sessionAwareStubBrowserService{
+		stubBrowserService: &stubBrowserService{running: true},
+		elementExists:      false,
+		pageInfoURL:        "https://example.com/dashboard",
+		pageInfoTitle:      "Dashboard",
+	}
+	h := NewHandler(service)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/browser"))
+
+	rec := performBrowserJSONRequest(
+		e,
+		http.MethodPost,
+		"/browser/sessions/tab-7/execute",
+		`{"type":"extract","params":{"selector":"#missing"}}`,
+	)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode extract response failed: %v", err)
+	}
+	if found, _ := payload["element_found"].(bool); found {
+		t.Fatalf("payload=%v, want element_found=false", payload)
 	}
 }
 

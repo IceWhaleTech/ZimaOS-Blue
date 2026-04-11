@@ -452,11 +452,11 @@ func TestSelectTools_PublicStockArtifactKeepsWebQueryAndWrite(t *testing.T) {
 	}
 }
 
-func TestSelectChatToolSurfacesForRequest_GenericDocxResearchKeepsOfficeWorkflow(t *testing.T) {
+func TestSelectChatToolSurfacesForRequest_GenericDocxResearchKeepsNativeDocxWorkflow(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewToolSearchTool(registry))
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "office", Description: "Create polished .docx and .xlsx artifacts"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "docx", Description: "Read, create, edit, validate, or template native .docx workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Research current public web information"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
@@ -472,7 +472,7 @@ func TestSelectChatToolSurfacesForRequest_GenericDocxResearchKeepsOfficeWorkflow
 		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
 	names := toolNameSet(selection.NativeDefs)
-	for _, required := range []string{"office", "read", "web_query", "write", "tool_search"} {
+	for _, required := range []string{"docx", "read", "web_query", "write", "tool_search"} {
 		if _, ok := names[required]; !ok {
 			t.Fatalf("expected %q in generic .docx research workflow, got=%v", required, selectedToolNames(selection.NativeDefs))
 		}

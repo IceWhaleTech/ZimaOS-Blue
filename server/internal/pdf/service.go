@@ -167,6 +167,60 @@ type ExtractResult struct {
 	Warnings        []string       `json:"warnings,omitempty"`
 }
 
+// FormFieldRect describes the widget rectangle for an interactive form field.
+type FormFieldRect struct {
+	Left   float64 `json:"left"`
+	Top    float64 `json:"top"`
+	Right  float64 `json:"right"`
+	Bottom float64 `json:"bottom"`
+}
+
+// FormFieldOption describes a selectable option for choice controls.
+type FormFieldOption struct {
+	Index    int    `json:"index"`
+	Label    string `json:"label,omitempty"`
+	Selected bool   `json:"selected,omitempty"`
+}
+
+// FormField describes a single interactive PDF form field.
+type FormField struct {
+	PageNumber    int               `json:"page_number"`
+	Name          string            `json:"name,omitempty"`
+	AlternateName string            `json:"alternate_name,omitempty"`
+	Type          string            `json:"type"`
+	Value         string            `json:"value,omitempty"`
+	ExportValue   string            `json:"export_value,omitempty"`
+	ReadOnly      bool              `json:"read_only,omitempty"`
+	Required      bool              `json:"required,omitempty"`
+	NoExport      bool              `json:"no_export,omitempty"`
+	Checked       bool              `json:"checked,omitempty"`
+	Rect          *FormFieldRect    `json:"rect,omitempty"`
+	Options       []FormFieldOption `json:"options,omitempty"`
+}
+
+// FormInspectResult contains interactive form metadata for a PDF document.
+type FormInspectResult struct {
+	Document   DocumentInfo `json:"document"`
+	FormType   string       `json:"form_type"`
+	FieldCount int          `json:"field_count"`
+	Fields     []FormField  `json:"fields,omitempty"`
+	Warnings   []string     `json:"warnings,omitempty"`
+}
+
+// FillFormRequest controls native PDF form filling for the first safe write slice.
+type FillFormRequest struct {
+	Path   string            `json:"path"`
+	Fields map[string]string `json:"fields"`
+}
+
+// FillFormResult contains the saved PDF bytes and lightweight write metadata.
+type FillFormResult struct {
+	Document      DocumentInfo `json:"document"`
+	Bytes         []byte       `json:"-"`
+	UpdatedFields []string     `json:"updated_fields,omitempty"`
+	Warnings      []string     `json:"warnings,omitempty"`
+}
+
 // Service extracts metadata and structured text from PDFs.
 type Service struct {
 	mu           sync.RWMutex

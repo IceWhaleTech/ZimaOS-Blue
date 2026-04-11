@@ -605,7 +605,7 @@ func shouldPreferPublicArtifactResearchWorkflow(message string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if extractRequestedArtifactPath(trimmed) == "" && !hasGenericOfficeArtifactIntent(trimmed) {
+	if extractRequestedArtifactPath(trimmed) == "" && !hasGenericNativeDocumentArtifactIntent(trimmed) {
 		return false
 	}
 	if isReminderIntentMessage(trimmed) || isCalendarIntentMessage(trimmed) || isEmailIntentMessage(trimmed) || isImageGenerationIntentMessage(trimmed) {
@@ -637,7 +637,7 @@ func shouldPreferWorkspaceArtifactWorkflow(message string) bool {
 	if !shouldPreferWorkspaceFileWorkflow(trimmed) {
 		return false
 	}
-	if extractRequestedArtifactWriteTarget(trimmed) == "" && !hasGenericOfficeArtifactIntent(trimmed) {
+	if extractRequestedArtifactWriteTarget(trimmed) == "" && !hasGenericNativeDocumentArtifactIntent(trimmed) {
 		return false
 	}
 	if isReminderIntentMessage(trimmed) || isCalendarIntentMessage(trimmed) || isEmailIntentMessage(trimmed) || isImageGenerationIntentMessage(trimmed) {
@@ -646,7 +646,7 @@ func shouldPreferWorkspaceArtifactWorkflow(message string) bool {
 	return true
 }
 
-func detectGenericOfficeArtifactFormat(message string) string {
+func detectGenericNativeDocumentArtifactFormat(message string) string {
 	lower := strings.ToLower(strings.TrimSpace(message))
 	if lower == "" {
 		return ""
@@ -670,13 +670,71 @@ func detectGenericOfficeArtifactFormat(message string) string {
 		strings.Contains(message, "Excel工作簿"),
 		strings.Contains(message, "Excel 工作簿"):
 		return ".xlsx"
+	case strings.Contains(lower, ".pdf"),
+		strings.Contains(lower, "pdf report"),
+		strings.Contains(lower, "pdf document"),
+		strings.Contains(lower, "pdf file"),
+		strings.Contains(message, "PDF报告"),
+		strings.Contains(message, "PDF 报告"),
+		strings.Contains(message, "PDF文档"),
+		strings.Contains(message, "PDF 文档"),
+		strings.Contains(message, "PDF文件"),
+		strings.Contains(message, "PDF 文件"):
+		return ".pdf"
+	case strings.Contains(lower, ".pptx"),
+		strings.Contains(lower, " pptx"),
+		strings.Contains(lower, "powerpoint deck"),
+		strings.Contains(lower, "powerpoint presentation"),
+		strings.Contains(lower, "slide deck"),
+		strings.Contains(lower, "presentation deck"),
+		strings.Contains(message, "演示文稿"),
+		strings.Contains(message, "幻灯片"),
+		strings.Contains(message, "PPT"),
+		strings.Contains(message, "PPTX"):
+		return ".pptx"
 	default:
 		return ""
 	}
 }
 
-func hasGenericOfficeArtifactIntent(message string) bool {
-	if detectGenericOfficeArtifactFormat(message) == "" {
+func nativeDocumentArtifactToolForFormat(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case ".docx", "docx":
+		return "docx"
+	case ".xlsx", "xlsx":
+		return "xlsx"
+	case ".pdf", "pdf":
+		return "pdf"
+	case ".pptx", "pptx":
+		return "pptx"
+	default:
+		return ""
+	}
+}
+
+func nativeDocumentArtifactToolForPath(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	return nativeDocumentArtifactToolForFormat(filepath.Ext(strings.TrimSpace(path)))
+}
+
+func nativeDocumentArtifactWorkflowToolNamesForMessage(message string) []string {
+	target := extractRequestedArtifactPath(message)
+	if target != "" {
+		if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+			return []string{tool}
+		}
+		return nil
+	}
+	if tool := nativeDocumentArtifactToolForFormat(detectGenericNativeDocumentArtifactFormat(message)); tool != "" {
+		return []string{tool}
+	}
+	return nil
+}
+
+func hasGenericNativeDocumentArtifactIntent(message string) bool {
+	if detectGenericNativeDocumentArtifactFormat(message) == "" {
 		return false
 	}
 	lower := strings.ToLower(strings.TrimSpace(message))
@@ -712,6 +770,67 @@ func hasGenericOfficeArtifactIntent(message string) bool {
 	return false
 }
 
+func nativeDocumentArtifactTargetDescription(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case ".docx", ".xlsx", ".pdf", ".pptx":
+		return "a " + strings.ToLower(strings.TrimSpace(format)) + " workspace file"
+	default:
+		return "a native document workspace file"
+	}
+}
+
+func nativeDocumentArtifactBenefit(tool string) string {
+	switch strings.ToLower(strings.TrimSpace(tool)) {
+	case "docx":
+		return "document structure, layout, and formatting"
+	case "xlsx":
+		return "workbook structure, formulas, and formatting"
+	case "pdf":
+		return "page layout, pagination, and formatting"
+	case "pptx":
+		return "slide structure, layout, and formatting"
+	default:
+		return "structure, layout, and formatting"
+	}
+}
+
+func shouldMentionPDFReadPathHint(userMessage, target, genericFormat string) bool {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return false
+	}
+	pdfPathMentions := strings.Count(lower, ".pdf")
+	hasGenericPDFWord := strings.Contains(lower, " pdf") || strings.Contains(userMessage, "PDF")
+	if pdfPathMentions == 0 && !hasGenericPDFWord {
+		return false
+	}
+	targetExt := strings.ToLower(strings.TrimSpace(filepath.Ext(strings.TrimSpace(target))))
+	if targetExt == ".pdf" {
+		return pdfPathMentions > 1
+	}
+	if target == "" && strings.ToLower(strings.TrimSpace(genericFormat)) == ".pdf" {
+		return pdfPathMentions > 1
+	}
+	return pdfPathMentions > 0 || hasGenericPDFWord
+}
+
+func nativeDocumentArtifactHint(target, genericFormat string) string {
+	tool := nativeDocumentArtifactToolForPath(target)
+	format := strings.ToLower(strings.TrimSpace(filepath.Ext(strings.TrimSpace(target))))
+	scope := ""
+	if tool != "" {
+		scope = "requested output path ends in " + format
+	} else {
+		tool = nativeDocumentArtifactToolForFormat(genericFormat)
+		format = strings.ToLower(strings.TrimSpace(genericFormat))
+		if tool == "" || format == "" {
+			return ""
+		}
+		scope = "deliverable is " + format
+	}
+	return fmt.Sprintf(" When the %s, prefer the native %s tool instead of raw file_write so %s are preserved.", scope, tool, nativeDocumentArtifactBenefit(tool))
+}
+
 func shouldPreferDirectArtifactWriting(message string) bool {
 	trimmed := strings.TrimSpace(message)
 	if trimmed == "" {
@@ -741,23 +860,14 @@ func buildDeepSearchExecutionHint(userMessage string) string {
 
 func buildArtifactWorkflowExecutionHint(userMessage string) string {
 	target := extractRequestedArtifactPath(userMessage)
-	lower := strings.ToLower(strings.TrimSpace(userMessage))
-	genericOfficeFormat := detectGenericOfficeArtifactFormat(userMessage)
-	hasGenericOfficeOutput := target == "" && hasGenericOfficeArtifactIntent(userMessage)
-	if target == "" && !hasGenericOfficeOutput && !isImageGenerationIntentMessage(userMessage) {
+	genericDocumentFormat := detectGenericNativeDocumentArtifactFormat(userMessage)
+	hasGenericDocumentOutput := target == "" && hasGenericNativeDocumentArtifactIntent(userMessage)
+	if target == "" && !hasGenericDocumentOutput && !isImageGenerationIntentMessage(userMessage) {
 		return ""
 	}
-	officeHint := ""
-	if isOfficeArtifactPath(target) || hasGenericOfficeOutput {
-		officeHint = " When the requested output path ends in .xlsx or .docx, prefer the native office tool instead of raw file_write so workbook styling, report layout, and typography are preserved."
-	}
-	genericOfficeTarget := "an office workspace file"
-	switch genericOfficeFormat {
-	case ".docx":
-		genericOfficeTarget = "a .docx workspace file"
-	case ".xlsx":
-		genericOfficeTarget = "a .xlsx workspace file"
-	}
+	nativeDocumentHint := nativeDocumentArtifactHint(target, genericDocumentFormat)
+	genericDocumentTarget := nativeDocumentArtifactTargetDescription(genericDocumentFormat)
+	genericDocumentTool := nativeDocumentArtifactToolForFormat(genericDocumentFormat)
 	if shouldPreferExplicitMemoryFileWorkflow(userMessage) {
 		if isExplicitMemoryFileRecallRequest(userMessage) {
 			return fmt.Sprintf("The user explicitly named %q as the local source of truth. Use file_read to read that exact path before answering, answer only from verified file contents, and do not substitute another memory path or rely on the memory tool or prior conversation memory when this file can be read.", target)
@@ -776,27 +886,27 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 		if shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
 			hint += " When the request covers a folder, inbox, or local collection, read the discovered relevant source set to completion in as few rounds as practical, cover each relevant item exactly once in the final artifact, and keep clearly unrelated noise out of the deliverable."
 		}
-		if strings.Contains(lower, ".pdf") {
-			hint += " When a PDF is referenced, use the pdf/read path instead of web tools."
+		if shouldMentionPDFReadPathHint(userMessage, target, genericDocumentFormat) {
+			hint += " When you need to read an existing PDF source, use the pdf/read path instead of web tools."
 		}
-		hint += officeHint
+		hint += nativeDocumentHint
 		hint += " Follow any explicit structure, paragraph, section, table, or line-by-line constraints from the user. After the file is saved, give a brief confirmation."
 		return hint
 	}
 	if shouldPreferDirectArtifactWriting(userMessage) {
-		return fmt.Sprintf("This is a direct writing task with an explicit output file. Keep the local file workflow tools available together (file_read/file_write/file_delete plus ls/find/grep/rg/edit/convert/pdf when useful), but do not detour through browser, email, calendar, or research tools unless the user explicitly asked for outside information. Write the complete deliverable directly to %q, follow any requested format, tone, length, paragraph, and section constraints, and then give a brief confirmation.%s", target, officeHint)
+		return fmt.Sprintf("This is a direct writing task with an explicit output file. Keep the local file workflow tools available together (file_read/file_write/file_delete plus ls/find/grep/rg/edit/convert/pdf when useful), but do not detour through browser, email, calendar, or research tools unless the user explicitly asked for outside information. Write the complete deliverable directly to %q, follow any requested format, tone, length, paragraph, and section constraints, and then give a brief confirmation.%s", target, nativeDocumentHint)
 	}
 	if shouldUseHeavyResearchWorkflow(userMessage) {
-		if target == "" && hasGenericOfficeOutput {
-			return fmt.Sprintf("This is a research task whose final deliverable should be %s. Once you have enough evidence, use the native office tool to create the final synthesized report instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", genericOfficeTarget, officeHint)
+		if target == "" && hasGenericDocumentOutput {
+			return fmt.Sprintf("This is a research task whose final deliverable should be %s. Once you have enough evidence, use the native %s tool to create the final synthesized report instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", genericDocumentTarget, genericDocumentTool, nativeDocumentHint)
 		}
-		return fmt.Sprintf("This is a research task with an explicit saved deliverable. Once you have enough evidence, write the full synthesized report to %q instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", target, officeHint)
+		return fmt.Sprintf("This is a research task with an explicit saved deliverable. Once you have enough evidence, write the full synthesized report to %q instead of stopping at raw notes or search results. Preserve any requested sections, tables, citations, or formatting, then give a brief confirmation.%s", target, nativeDocumentHint)
 	}
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) {
-		if target == "" && hasGenericOfficeOutput {
-			return fmt.Sprintf("This is a public-information research task whose final deliverable should be %s. Prefer a fast artifact workflow: use web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then use the native office tool to create the final document. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", genericOfficeTarget, officeHint)
+		if target == "" && hasGenericDocumentOutput {
+			return fmt.Sprintf("This is a public-information research task whose final deliverable should be %s. Prefer a fast artifact workflow: use web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then use the native %s tool to create the final document. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", genericDocumentTarget, genericDocumentTool, nativeDocumentHint)
 		}
-		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", target, officeHint)
+		return fmt.Sprintf("This is a public-information research task with an explicit output file. Prefer a fast artifact workflow: use web_query as the unified web tool (or web_search/web_fetch/web_read compatibility actions when exposed) to verify the key facts, include explicit dates for time-sensitive information, then write the complete result to %q. Do not stop at search snippets or raw links, and only fall back to browser when interaction is truly required.%s", target, nativeDocumentHint)
 	}
 	return ""
 }
@@ -6627,13 +6737,15 @@ type ChatHandler struct {
 	// Performance optimization: Conversation message cache
 	conversationCache *ConversationCache
 	// Warmup cache + provider-side hidden warmup lifecycle.
-	warmupCache       map[string]*warmupResult
-	warmupMu          sync.Mutex
-	warmupCacheBytes  uint64
-	warmupTokens      map[string]string
-	warmupTokenMu     sync.Mutex
-	providerWarmups   map[string]*providerWarmupState
-	providerWarmupsMu sync.Mutex
+	warmupCache            map[string]*warmupResult
+	warmupMu               sync.Mutex
+	warmupCacheBytes       uint64
+	warmupTokens           map[string]string
+	warmupTokenMu          sync.Mutex
+	providerWarmups        map[string]*providerWarmupState
+	providerWarmupsMu      sync.Mutex
+	providerAcceleration   map[string]*providerAccelerationState
+	providerAccelerationMu sync.Mutex
 
 	// Smart context: per-conversation summary cache (30min TTL, 200 conversations)
 	summaryCache *cache.GenericCache[string]
@@ -6691,6 +6803,7 @@ type ChatHandler struct {
 	promptCacheToolSurfaceMap    map[string]*promptCacheToolSurfaceRef
 	promptCacheToolSurfaceShared map[string]*promptCacheToolSurfaceSharedEntry
 	promptCacheToolSurfaceMu     sync.Mutex
+	providerAccelerationMetrics  *providerAccelerationMetrics
 
 	// Auto-rollback gate baseline for short-qa route (windowed failure-rate check).
 	smallModelGateMu           sync.Mutex
@@ -6903,7 +7016,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
 	if policyReq.RouteKind == tools.ToolRouteKindChat &&
 		!policyReq.SkipDefaultChatDirectAllowlist &&
-		(shouldExpandChatToolAllowlistForOfficeArtifact(userMessage) || shouldExpandChatToolAllowlistForEmailIntent(userMessage)) {
+		(shouldExpandChatToolAllowlistForNativeDocumentArtifact(userMessage) || shouldExpandChatToolAllowlistForEmailIntent(userMessage)) {
 		expandedReq := policyReq
 		expandedReq.SkipDefaultChatDirectAllowlist = true
 		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
@@ -6940,12 +7053,12 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	return routed, nil
 }
 
-func shouldExpandChatToolAllowlistForOfficeArtifact(userMessage string) bool {
+func shouldExpandChatToolAllowlistForNativeDocumentArtifact(userMessage string) bool {
 	target := extractRequestedArtifactPath(userMessage)
-	if isOfficeArtifactPath(target) {
+	if isNativeDocumentArtifactPath(target) {
 		return true
 	}
-	return hasGenericOfficeArtifactIntent(userMessage)
+	return hasGenericNativeDocumentArtifactIntent(userMessage)
 }
 
 func shouldExpandChatToolAllowlistForEmailIntent(userMessage string) bool {
@@ -7027,8 +7140,7 @@ func preferResearchReportWorkflowTools(userMessage string, allDefs, current []to
 	}
 	researchTools := filterToolDefsToNames(allDefs, researchToolNames...)
 	if target := extractRequestedArtifactPath(userMessage); target != "" {
-		_ = target
-		researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs, artifactFileWorkflowToolNames()...))
+		researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForPath(target)...))
 	}
 	if len(researchTools) == 0 {
 		return current
@@ -7047,7 +7159,6 @@ func preferPublicArtifactResearchWorkflowTools(userMessage string, allDefs, curr
 		"web_extract",
 		"web_crawl",
 		"browser",
-		"office",
 		"read",
 		"write",
 		"edit",
@@ -7057,6 +7168,7 @@ func preferPublicArtifactResearchWorkflowTools(userMessage string, allDefs, curr
 		"convert",
 		"pdf",
 	)
+	filtered = mergeToolDefsByName(filtered, filterToolDefsToNames(allDefs, nativeDocumentArtifactWorkflowToolNamesForMessage(userMessage)...))
 	if len(filtered) == 0 {
 		return current
 	}
@@ -7275,7 +7387,7 @@ func preferForcedDeepResearchTools(userMessage string, allDefs, current []tools.
 		"web_crawl",
 		"bash",
 	)
-	researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs, artifactFileWorkflowToolNames()...))
+	researchTools = mergeToolDefsByName(researchTools, filterToolDefsToNames(allDefs, artifactFileWorkflowToolNamesForMessage(userMessage)...))
 	if len(researchTools) == 0 {
 		return current
 	}
@@ -7319,19 +7431,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			keepNames = append([]string{"deep_research"}, keepNames...)
 		}
 		if target := extractRequestedArtifactPath(userMessage); target != "" {
-			_ = target
-			keepNames = append(keepNames,
-				"office",
-				"read",
-				"write",
-				"edit",
-				"ls",
-				"find",
-				"grep",
-				"convert",
-				"pdf",
-				"image",
-			)
+			keepNames = append(keepNames, artifactFileWorkflowToolNamesForPath(target)...)
 		}
 	case shouldPreferPublicArtifactResearchWorkflow(userMessage):
 		keepNames = []string{
@@ -7341,7 +7441,6 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"web_extract",
 			"web_crawl",
 			"browser",
-			"office",
 			"write",
 			"read",
 			"edit",
@@ -7351,6 +7450,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"convert",
 			"pdf",
 		}
+		keepNames = append(keepNames, nativeDocumentArtifactWorkflowToolNamesForMessage(userMessage)...)
 	case shouldPreferDeepSearchReport(userMessage):
 		keepNames = []string{
 			"browser",
@@ -7362,19 +7462,7 @@ func applyResearchToolPreference(defs []tools.ToolDefinition, userMessage string
 			"bash",
 		}
 		if target := extractRequestedArtifactPath(userMessage); target != "" {
-			_ = target
-			keepNames = append(keepNames,
-				"office",
-				"read",
-				"write",
-				"edit",
-				"ls",
-				"find",
-				"grep",
-				"convert",
-				"pdf",
-				"image",
-			)
+			keepNames = append(keepNames, artifactFileWorkflowToolNamesForPath(target)...)
 		}
 	default:
 		return defs
@@ -7839,9 +7927,8 @@ func sanitizeAssistantToolCallsForAllowedSet(toolCalls []llm.ToolCall, allowedTo
 	return out, dropped
 }
 
-func artifactFileWorkflowToolNames() []string {
+func artifactBaseWorkflowToolNames() []string {
 	return []string{
-		"office",
 		"read",
 		"write",
 		"edit",
@@ -7852,6 +7939,14 @@ func artifactFileWorkflowToolNames() []string {
 		"pdf",
 		"image",
 	}
+}
+
+func artifactFileWorkflowToolNamesForPath(target string) []string {
+	names := append([]string{}, artifactBaseWorkflowToolNames()...)
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+		names = append([]string{tool}, names...)
+	}
+	return names
 }
 
 func workspaceEditWorkflowToolNames() []string {
@@ -7876,9 +7971,9 @@ func memoryFileWorkflowToolNames() []string {
 }
 
 func structuredWorkspaceArtifactWriteCompletionToolNames(target string) []string {
-	names := make([]string, 0, 5)
-	if isOfficeArtifactPath(target) {
-		names = append(names, "office")
+	names := make([]string, 0, 6)
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+		names = append(names, tool)
 	}
 	// For structured extraction tasks, prefer direct file creation over
 	// in-place edit variants so the model does not detour into editing
@@ -7888,16 +7983,16 @@ func structuredWorkspaceArtifactWriteCompletionToolNames(target string) []string
 }
 
 func artifactWriteCompletionToolNames(target string) []string {
-	names := make([]string, 0, 6)
-	if isOfficeArtifactPath(target) {
-		names = append(names, "office")
+	names := make([]string, 0, 7)
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+		names = append(names, tool)
 	}
 	names = append(names, "write", "edit", "write_begin", "write_chunk", "write_commit")
 	return names
 }
 
 func hasArtifactWriteTool(tools []llm.Tool, target string) bool {
-	if isOfficeArtifactPath(target) && containsLLMToolName(tools, "office") {
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" && containsLLMToolName(tools, tool) {
 		return true
 	}
 	return containsLLMToolName(tools, "write")
@@ -7910,10 +8005,16 @@ func artifactFileWorkflowToolNamesForMessage(userMessage string) []string {
 	if isStructuredWorkspaceArtifactTask(userMessage) {
 		return tools.StructuredWorkspaceArtifactWorkflowToolNames(userMessage)
 	}
+	if target := extractRequestedArtifactPath(userMessage); target != "" {
+		return artifactFileWorkflowToolNamesForPath(target)
+	}
+	if docTools := nativeDocumentArtifactWorkflowToolNamesForMessage(userMessage); len(docTools) > 0 {
+		return append(docTools, artifactBaseWorkflowToolNames()...)
+	}
 	if shouldPreferWorkspaceEditWorkflow(userMessage) {
 		return workspaceEditWorkflowToolNames()
 	}
-	return artifactFileWorkflowToolNames()
+	return artifactBaseWorkflowToolNames()
 }
 
 func isStructuredWorkspaceArtifactTask(userMessage string) bool {
@@ -10738,9 +10839,11 @@ func NewChatHandler(store *memory.Store, providers *llm.ProviderRegistry, toolRe
 		warmupCache:                    make(map[string]*warmupResult),
 		warmupTokens:                   make(map[string]string),
 		providerWarmups:                make(map[string]*providerWarmupState),
+		providerAcceleration:           make(map[string]*providerAccelerationState),
 		providerAffinityMap:            make(map[string]*providerAffinity),
 		promptCacheToolSurfaceMap:      make(map[string]*promptCacheToolSurfaceRef),
 		promptCacheToolSurfaceShared:   make(map[string]*promptCacheToolSurfaceSharedEntry),
+		providerAccelerationMetrics:    &providerAccelerationMetrics{},
 		summaryCache:                   cache.NewGenericCache[string](cache.Config{MaxSize: 200, DefaultTTL: 30 * time.Minute}),
 		memoryRecallStats:              &MemoryRecallStats{},
 		smallModelStats:                NewSmallModelStats(),
@@ -10859,6 +10962,10 @@ func (h *ChatHandler) resetTransientCaches() {
 	h.providerWarmups = make(map[string]*providerWarmupState)
 	h.providerWarmupsMu.Unlock()
 
+	h.providerAccelerationMu.Lock()
+	h.providerAcceleration = make(map[string]*providerAccelerationState)
+	h.providerAccelerationMu.Unlock()
+
 	h.providerAffinityMu.Lock()
 	h.providerAffinityMap = make(map[string]*providerAffinity)
 	h.providerAffinityMu.Unlock()
@@ -10868,6 +10975,8 @@ func (h *ChatHandler) resetTransientCaches() {
 	h.promptCacheToolSurfaceMap = make(map[string]*promptCacheToolSurfaceRef)
 	h.promptCacheToolSurfaceShared = make(map[string]*promptCacheToolSurfaceSharedEntry)
 	h.promptCacheToolSurfaceMu.Unlock()
+
+	h.providerAccelerationMetrics = &providerAccelerationMetrics{}
 }
 
 // queueEvent queues an event for async processing. Falls back to sync if queue is full.
@@ -16978,13 +17087,8 @@ func isImageArtifactPath(path string) bool {
 	}
 }
 
-func isOfficeArtifactPath(path string) bool {
-	switch strings.ToLower(strings.TrimSpace(filepath.Ext(path))) {
-	case ".docx", ".xlsx":
-		return true
-	default:
-		return false
-	}
+func isNativeDocumentArtifactPath(path string) bool {
+	return nativeDocumentArtifactToolForPath(path) != ""
 }
 
 func extractArtifactPathCandidates(userMessage string) []artifactPathCandidate {
@@ -17080,7 +17184,7 @@ func scoreArtifactWriteTargetCandidate(userMessage string, candidate artifactPat
 
 func extractSuccessfulWriteTarget(toolName, content string) string {
 	switch strings.ToLower(strings.TrimSpace(toolName)) {
-	case "write", "file_write", "write_commit", "office":
+	case "write", "file_write", "write_commit", "docx", "xlsx", "pdf", "pptx":
 		var payload map[string]interface{}
 		if json.Unmarshal([]byte(strings.TrimSpace(content)), &payload) != nil || len(payload) == 0 {
 			return ""
@@ -23163,6 +23267,7 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	lastResolvedTraceProvider := ""
 	lastResolvedTraceModel := ""
 	userID := h.getUserID(c)
+	h.previewConversationTitleFromUserMessage(convID, userID, req.Message)
 	isRoutingHintSelection := func(model string) bool {
 		switch strings.ToLower(strings.TrimSpace(model)) {
 		case "", "auto", "local", "cloud":
@@ -23397,7 +23502,14 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	var awaitingInputSent bool  // true once awaiting_user_input SSE event has been emitted for this stream
 	var contextTrimSent bool    // true when pruning/compaction metadata SSE has been sent
 	var finalLatencyMs, finalTTFTMs, finalTPS float64
+	var totalCacheReadInputTokens, totalCacheCreationInputTokens int
 	var lastStreamProgress string
+	accelerationTurn, providerAccelerationActive := h.claimProviderAccelerationTurn(convID, chatReq.Model, convState)
+	if providerAccelerationActive {
+		emitProcessEvent("provider_acceleration_active", "active", "", "", map[string]interface{}{
+			"provider_acceleration_active": true,
+		})
+	}
 
 	// Incremental persistence: insert/update a placeholder message while
 	// streaming so a page refresh still shows partial content.
@@ -23936,6 +24048,8 @@ STREAM_LOOP:
 			if chunk.Usage != nil {
 				totalInputTokens = chunk.Usage.PromptTokens
 				totalOutputTokens = chunk.Usage.CompletionTokens
+				totalCacheReadInputTokens = chunk.Usage.CacheReadInputTokens
+				totalCacheCreationInputTokens = chunk.Usage.CacheCreationInputTokens
 			}
 
 			if chunk.Done {
@@ -26843,6 +26957,17 @@ STREAM_LOOP:
 			}
 			h.setProviderAffinity(convID, actualProviderID, baseURL)
 		}
+		h.recordProviderAccelerationTurnResult(
+			convID,
+			accelerationTurn,
+			actualProviderID,
+			actualModel,
+			finalTTFTMs,
+			finalStats.InputTokens,
+			totalCacheReadInputTokens,
+			totalCacheCreationInputTokens,
+			providerAccelerationActive,
+		)
 
 		// Notify other tabs/devices that streaming is done
 		if h.sseBroker != nil {
@@ -27206,6 +27331,40 @@ func (h *ChatHandler) generateConversationSummaryWithSmallModel(ctx context.Cont
 	return summary
 }
 
+func previewConversationTitle(userMessage string) string {
+	title := sanitizeTitle(strings.TrimSpace(userMessage))
+	if title == "" {
+		return ""
+	}
+	if len([]rune(title)) <= 30 {
+		return title
+	}
+	return truncateAutoTitleFallback(userMessage, 30)
+}
+
+func (h *ChatHandler) previewConversationTitleFromUserMessage(convID, userID, userMessage string) {
+	if h == nil || h.store == nil {
+		return
+	}
+
+	title := previewConversationTitle(userMessage)
+	if title == "" {
+		return
+	}
+
+	conv, err := h.store.GetConversation(context.Background(), convID)
+	if err == nil && conv != nil {
+		if conv.AutoTitleFinalized {
+			return
+		}
+		if !shouldAutoGenerateConversationTitle(conv.Title, userMessage, conversationTitleOptions{}) {
+			return
+		}
+	}
+
+	h.updatePendingTitleAndNotify(convID, userID, title)
+}
+
 // updateTitleAndNotify updates the conversation title in DB and pushes an SSE event.
 func (h *ChatHandler) updateTitleAndNotify(convID, userID, title string) {
 	title = sanitizeTitle(strings.TrimSpace(title))
@@ -27213,6 +27372,23 @@ func (h *ChatHandler) updateTitleAndNotify(convID, userID, title string) {
 		return
 	}
 	updated, err := h.store.FinalizeAutoConversationTitle(context.Background(), convID, title)
+	if err != nil || !updated {
+		return
+	}
+	if h.sseBroker != nil && userID != "" {
+		h.sseBroker.Publish(userID, "conversation_title_updated", map[string]any{
+			"id":    convID,
+			"title": title,
+		})
+	}
+}
+
+func (h *ChatHandler) updatePendingTitleAndNotify(convID, userID, title string) {
+	title = sanitizeTitle(strings.TrimSpace(title))
+	if title == "" || h.store == nil {
+		return
+	}
+	updated, err := h.store.PreviewAutoConversationTitle(context.Background(), convID, title)
 	if err != nil || !updated {
 		return
 	}
@@ -27617,11 +27793,6 @@ func (h *ChatHandler) Warmup(c echo.Context) error {
 	h.clearWarmupToken(convID)
 	h.cancelProviderWarmup(convID, "warmup_refresh")
 
-	model := h.warmupModelForConversation(convID)
-	if isResponsesNativeModel(model) {
-		logger.Info().Str("conv_id", convID).Str("model", model).Msg("[warmup] skipped: responses path does not support warmup")
-		return c.NoContent(http.StatusNoContent)
-	}
 	token := h.armWarmupToken(convID)
 
 	// Run pre-computation in background — return 204 immediately
@@ -27640,10 +27811,6 @@ func (h *ChatHandler) doWarmupWithToken(convID, token string) {
 	ctx := context.Background()
 
 	model := h.warmupModelForConversation(convID)
-	if isResponsesNativeModel(model) {
-		logger.Info().Str("conv_id", convID).Str("model", model).Msg("[warmup] skipped in worker: responses path does not support warmup")
-		return
-	}
 	if token != "" && !h.isWarmupTokenCurrent(convID, token) {
 		logger.Debug().Str("conv_id", convID).Msg("[warmup] skipped in worker: stale token before precompute")
 		return

@@ -1161,10 +1161,10 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 		restArgs := strings.TrimSpace(parts[1])
 		if supportsPositionalAction(skillName) {
 			if action, remaining := consumeLeadingBareToken(restArgs); action != "" {
-				if _, hasAction := input["action"]; !hasAction {
+				if _, hasAction := input["action"]; !hasAction && supportsLeadingSkillAction(skillName, action) {
 					input["action"] = action
+					restArgs = remaining
 				}
-				restArgs = remaining
 			}
 		}
 		if strings.Contains(restArgs, "=") {
@@ -1919,10 +1919,20 @@ func consumeLeadingBareToken(s string) (token string, remaining string) {
 
 func supportsPositionalAction(skillName string) bool {
 	switch strings.ToLower(strings.TrimSpace(skillName)) {
-	case "reminder", "scheduler", "workflows":
+	case "browser", "reminder", "scheduler", "workflows":
 		return true
 	default:
 		return false
+	}
+}
+
+func supportsLeadingSkillAction(skillName string, action string) bool {
+	switch strings.ToLower(strings.TrimSpace(skillName)) {
+	case "browser":
+		_, ok := NormalizeBrowserActionAlias(action)
+		return ok
+	default:
+		return true
 	}
 }
 

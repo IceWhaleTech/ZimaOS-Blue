@@ -9,6 +9,7 @@ import { i18n, setLocale } from '@/i18n'
 const mocks = vi.hoisted(() => ({
   chatStore: {
     awaitingConfirmation: false,
+    providerAccelerationActive: false,
     preTTFTCancelActive: false,
     pendingApproval: null,
     pendingExecApproval: null,
@@ -685,6 +686,7 @@ describe('ChatView page-level card actions', () => {
     i18n.global.locale.value = 'en-US'
 
     mocks.chatStore.awaitingConfirmation = false
+    mocks.chatStore.providerAccelerationActive = false
     mocks.chatStore.preTTFTCancelActive = false
     mocks.chatStore.pendingApproval = null
     mocks.chatStore.pendingExecApproval = null
@@ -1445,6 +1447,37 @@ describe('ChatView page-level card actions', () => {
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-disabled')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-streaming')).toBe('true')
     expect(restoredWrapper.find('.chat-input-stub').attributes('data-can-cancel')).toBe('true')
+  })
+
+  it('shows the provider acceleration tip only while pre-TTFT acceleration is active', async () => {
+    mocks.chatStore.isPreTTFT = true
+    mocks.chatStore.providerAccelerationActive = true
+    mocks.chatStore.sending = true
+    mocks.chatStore.messages = [makeAssistantMessage('', 'msg-accel')]
+
+    const wrapper = await mountChatViewWithMessages([{ id: 'msg-accel', content: '' }])
+
+    expect(wrapper.text()).toContain('Optimizing the next response for the current provider')
+
+    mocks.chatStore.providerAccelerationActive = false
+    wrapper.vm.$forceUpdate()
+    await wrapper.vm.$nextTick()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Optimizing the next response for the current provider')
+  })
+
+  it('suppresses writing-progress copy while provider acceleration is still pre-TTFT', async () => {
+    mocks.chatStore.isPreTTFT = true
+    mocks.chatStore.providerAccelerationActive = true
+    mocks.chatStore.sending = true
+    mocks.chatStore.streamUIState = { phase: 'connecting', label: 'Writing response...' }
+    mocks.chatStore.messages = [makeAssistantMessage('', 'msg-accel-progress')]
+
+    const wrapper = await mountChatViewWithMessages([{ id: 'msg-accel-progress', content: '' }])
+
+    expect(wrapper.text()).toContain('Thinking...')
+    expect(wrapper.text()).not.toContain('Writing response...')
   })
 
   it('keeps the stop control visible while tool execution is active without streaming text', async () => {

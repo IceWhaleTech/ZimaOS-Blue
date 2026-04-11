@@ -515,6 +515,28 @@ func TestWriteToolsInfoTo_IncludesToolUsageRules(t *testing.T) {
 	}
 }
 
+func TestWriteToolsInfoTo_IncludesNativeDocumentGuide(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewMockTool("docx", "Native DOCX tool"))
+	registry.Register(tools.NewMockTool("xlsx", "Native XLSX tool"))
+	registry.Register(tools.NewMockTool("pptx", "Native PPTX tool"))
+
+	b := NewSystemPromptBuilder(&Config{})
+	b.SetToolRegistry(registry)
+
+	var sb strings.Builder
+	if !b.writeToolsInfoTo(&sb, false) {
+		t.Fatal("expected tool guidance to be written")
+	}
+	out := sb.String()
+	if !strings.Contains(out, "docx/xlsx/pptx") {
+		t.Fatalf("expected native document tool guidance, got: %s", out)
+	}
+	if strings.Contains(out, "office over raw file_write") {
+		t.Fatalf("did not expect legacy office guidance, got: %s", out)
+	}
+}
+
 func TestBuildStructured_LoadsWorkspaceContextWhenWorkspaceSet(t *testing.T) {
 	workspaceDir := t.TempDir()
 	mgr := workspace.NewManager(workspaceDir)
@@ -696,6 +718,9 @@ func TestBuildSkillsSection_PrefersGenerateImageAndOCRForImageTasks(t *testing.T
 
 	if !strings.Contains(section, "image generation→generate_image") {
 		t.Fatalf("expected skills section to route image generation to generate_image, got: %s", section)
+	}
+	if !strings.Contains(section, "PPT/slide visuals→generate_image (use `action=ppt` when slide-asset mode is needed)") {
+		t.Fatalf("expected skills section to route slide visuals through generate_image action=ppt, got: %s", section)
 	}
 	if !strings.Contains(section, "image OCR/text recognition→ocr") {
 		t.Fatalf("expected skills section to route image recognition to ocr, got: %s", section)

@@ -1,0 +1,14 @@
+api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: advisor-v2
+description: Advisor V2 scorecard and async decision-support evaluation bundle
+subject: advisor_v2
+default_run_kind: research
+default_profile: advisor-v2
+default_version: v1
+metadata:
+  lane: advisor_v2
+versions:
+  v1:
+    eval_specs:
+      - default.yaml

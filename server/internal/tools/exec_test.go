@@ -1453,6 +1453,78 @@ func TestExecSkillShortCircuit_PositionalActionForReminderNaturalTime(t *testing
 	}
 }
 
+func TestExecSkillShortCircuit_PositionalActionForBrowserNavigate(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue browser navigate url=https://example.com/openclaw`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "browser" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "browser")
+	}
+	if gotInput["action"] != "navigate" {
+		t.Fatalf("action = %v, want %q", gotInput["action"], "navigate")
+	}
+	if gotInput["url"] != "https://example.com/openclaw" {
+		t.Fatalf("url = %v, want %q", gotInput["url"], "https://example.com/openclaw")
+	}
+}
+
+func TestExecSkillShortCircuit_BrowserBareURLStillMapsToNavigate(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	var gotSkill string
+	var gotInput map[string]any
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, input map[string]any) (map[string]string, error) {
+		gotSkill = skillID
+		gotInput = input
+		return map[string]string{"success": "true", "status": "ok"}, nil
+	})
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue browser https://example.com/deepwiki`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotSkill != "browser" {
+		t.Fatalf("skill = %q, want %q", gotSkill, "browser")
+	}
+	if gotInput["action"] != "navigate" {
+		t.Fatalf("action = %v, want %q", gotInput["action"], "navigate")
+	}
+	if gotInput["url"] != "https://example.com/deepwiki" {
+		t.Fatalf("url = %v, want %q", gotInput["url"], "https://example.com/deepwiki")
+	}
+}
+
 func TestExecSkillShortCircuit_ReminderInfersAddActionFromFields(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()

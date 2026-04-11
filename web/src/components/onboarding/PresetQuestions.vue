@@ -86,6 +86,7 @@ const filteredQuestions = computed(() => {
 })
 
 const visibleQuestions = computed(() => filteredQuestions.value.slice(0, PRESET_FEED_PAGE_SIZE))
+const shouldRenderPresetQuestions = computed(() => loading.value || questions.value.length > 0)
 const placeholderCount = computed(() => {
   if (loading.value) {
     return PRESET_FEED_PAGE_SIZE
@@ -105,31 +106,11 @@ function getLangCode(): string {
   return isChineseLocale.value ? 'zh' : 'en'
 }
 
-function isBundledSampleAttachment(attachment: PresetQuestionAttachment): boolean {
-  return String(attachment.placeholder || '').startsWith('sample-')
-}
-
-function stripBundledSampleAttachments(question: PresetQuestion): PresetQuestion {
-  if (!question.attachments?.length) {
-    return question
-  }
-
-  const attachments = question.attachments.filter((attachment) => !isBundledSampleAttachment(attachment))
-  if (attachments.length === question.attachments.length) {
-    return question
-  }
-  if (attachments.length === 0) {
-    return { ...question, attachments: undefined }
-  }
-  return { ...question, attachments }
-}
-
 function applyQuestionPage(
   response: { questions: PresetQuestion[]; total: number; next_offset: number; has_more: boolean },
   append = false
 ) {
-  const normalizedQuestions = response.questions.map(stripBundledSampleAttachments)
-  const mergedQuestions = append ? [...questions.value, ...normalizedQuestions] : normalizedQuestions
+  const mergedQuestions = append ? [...questions.value, ...response.questions] : response.questions
   const seen = new Set<string>()
   questions.value = mergedQuestions.filter((question) => {
     if (seen.has(question.id)) {
@@ -153,16 +134,7 @@ async function convertAttachments(
   if (!presetAttachments || presetAttachments.length === 0) {
     return []
   }
-
-  const attachments: FileAttachment[] = []
-
-  for (const att of presetAttachments) {
-    if (isBundledSampleAttachment(att)) {
-      continue
-    }
-  }
-
-  return attachments
+  return []
 }
 
 async function fetchQuestions() {
@@ -292,7 +264,7 @@ watch(
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-[42rem] px-4">
+  <div v-if="shouldRenderPresetQuestions" class="mx-auto w-full max-w-[42rem] px-4">
     <div class="flex items-center justify-between gap-3">
       <div class="min-w-0 flex flex-1 items-center gap-3">
         <h3 class="flex-shrink-0 text-[13px] font-medium text-gray-500 dark:text-gray-400">

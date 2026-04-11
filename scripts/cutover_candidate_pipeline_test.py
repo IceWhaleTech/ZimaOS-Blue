@@ -110,6 +110,8 @@ class CutoverCandidatePipelineTest(unittest.TestCase):
 
             self.assertTrue(report["ready"])
             self.assertEqual(report["selector_eval_run_id"], "selector-eval-1")
+            self.assertEqual(report["offline_value_report"]["offline_recommendation"], "hold")
+            self.assertEqual(report["runtime_status"], "not_started")
             budget_command = next(command for command in commands if Path(command[1]).name == "budget_gate_runner.py")
             self.assertIn("--eval-run-id", budget_command)
             self.assertEqual(budget_command[budget_command.index("--eval-run-id") + 1], "selector-eval-1")
@@ -336,6 +338,14 @@ class CutoverCandidatePipelineTest(unittest.TestCase):
                     "budget": {"consecutive_pass_count": 1},
                     "blocking_reasons": ["budget lane has only 1/2 consecutive passes"],
                 },
+                "offline_value_report": {
+                    "offline_recommendation": "reject",
+                    "value_summary": "Execution quality regressed and cutover readiness is blocked.",
+                    "top_improvements": ["Selector lane stayed green."],
+                    "top_tradeoffs": ["Budget lane has only 1/2 consecutive passes."],
+                    "confidence": "medium",
+                },
+                "runtime_status": "not_started",
                 "drift_summary": {
                     "selector": {
                         "locale_alert_count": 1,
@@ -403,6 +413,10 @@ class CutoverCandidatePipelineTest(unittest.TestCase):
         self.assertIn("Attempt Ready: yes", markdown)
         self.assertIn("Selector Streak: 2/2", markdown)
         self.assertIn("Budget Streak: 1/2", markdown)
+        self.assertIn("## Offline Value", markdown)
+        self.assertIn("Recommendation: REJECT", markdown)
+        self.assertIn("Execution quality regressed and cutover readiness is blocked.", markdown)
+        self.assertIn("Runtime Status: NOT_STARTED", markdown)
         self.assertIn("## Drift Snapshot", markdown)
         self.assertIn("Selector locale drift alerts: 1", markdown)
         self.assertIn("Execution primary-route drift alerts: 1", markdown)
@@ -419,6 +433,63 @@ class CutoverCandidatePipelineTest(unittest.TestCase):
         self.assertIn("## Final Blocking Reasons", markdown)
         self.assertIn("candidate candidate-1 has only 1/2 consecutive green attempts", markdown)
         self.assertIn("budget lane has only 1/2 consecutive passes", markdown)
+
+    def test_pipeline_builds_offline_value_report_from_gate_metrics(self):
+        report = {
+            "status": "ready",
+            "ready": True,
+            "attempt_status": "ready",
+            "attempt_ready": True,
+            "steps": [
+                {
+                    "name": "selector",
+                    "passed": True,
+                    "report": {
+                        "selector_gate": {
+                            "metrics": {
+                                "pass_rate": 1.0,
+                                "critical_pass_rate": 1.0,
+                            }
+                        }
+                    },
+                },
+                {
+                    "name": "execution",
+                    "passed": True,
+                    "report": {
+                        "execution_gate": {
+                            "metrics": {
+                                "pass_rate_delta": 0.08,
+                                "verification_pass_rate_delta": 0.04,
+                                "evidence_backed_pass_rate_delta": 0.03,
+                            }
+                        }
+                    },
+                },
+                {
+                    "name": "budget",
+                    "passed": True,
+                    "report": {
+                        "budget_gate": {
+                            "metrics": {
+                                "median_schema_byte_reduction_rate": 0.84,
+                                "median_latency_increase_rate": 0.02,
+                            }
+                        }
+                    },
+                },
+            ],
+            "readiness": {
+                "evaluated_gates_ready": True,
+                "blocking_reasons": [],
+            },
+        }
+
+        offline = pipeline.build_offline_value_report(report)
+
+        self.assertEqual(offline["offline_recommendation"], "hold")
+        self.assertIn("Execution pass rate improved by 0.08", offline["top_improvements"])
+        self.assertEqual(offline["confidence"], "high")
 
     def test_summarize_history_gate_extracts_focus_snapshot(self):
         summary = pipeline.summarize_history_gate(

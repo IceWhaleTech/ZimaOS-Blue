@@ -334,6 +334,11 @@ func normalizeResearchFamilyDecision(decision Decision) Decision {
 		if strings.TrimSpace(decision.ResearchMode) == "" {
 			decision.ResearchMode = "deep_research"
 		}
+	case "advisor":
+		decision.SelectedSkill = "research"
+		if strings.TrimSpace(decision.ResearchMode) == "" {
+			decision.ResearchMode = "advisor"
+		}
 	case "analyze":
 		decision.SelectedSkill = "research"
 		if strings.TrimSpace(decision.ResearchMode) == "" {
@@ -601,6 +606,9 @@ func stage0RuleRoute(query string) Decision {
 		if shouldRouteURLBypassToDeepResearch(lower) {
 			return selectResearch("deep_research", "rule_url_deep_research")
 		}
+		if shouldRouteURLBypassToAdvisor(lower) {
+			return selectResearch("advisor", "rule_url_advisor")
+		}
 		if shouldRouteURLBypassToAnalyze(lower) {
 			return selectResearch("analyze", "rule_url_analyze")
 		}
@@ -659,6 +667,13 @@ func shouldRouteURLBypassToAnalyze(lower string) bool {
 	}, routingcue.URLBypassTermsForSkill("analyze")...)))
 }
 
+func shouldRouteURLBypassToAdvisor(lower string) bool {
+	return hasSelectorTerm(lower, []string{
+		"recommend", "should we use", "replace", "replacement", "migration", "tradeoff", "best practice",
+		"选型", "推荐", "替代", "替换", "迁移", "权衡", "最佳实践",
+	})
+}
+
 func shouldRouteURLBypassToUIReviewer(lower string) bool {
 	return hasSelectorTerm(lower, uniqueStringTerms(append([]string{
 		"ui", "ux", "interface", "layout", "design", "mockup", "wireframe", "component", "visual",
@@ -711,6 +726,7 @@ func hasActionAlignment(query, skill string) bool {
 		"ask":           {"ask", "询问", "clarify", "question"},
 		"ui_reviewer":   {"ui", "界面", "review", "评审", "screenshot", "design"},
 		"deep_research": {"research", "investigate", "citations", "evidence", "sources", "source", "timeline", "benchmark", "tradeoff", "调研", "深入", "查阅", "引用", "证据", "来源", "时间线", "基准", "权衡"},
+		"advisor":       {"advisor", "recommend", "replace", "replacement", "migration", "tradeoff", "best practice", "选型", "推荐", "替代", "替换", "迁移", "权衡", "最佳实践"},
 		"analyze":       {"analyze", "analysis", "summarize", "summary", "report", "url", "urls", "link", "links", "text", "article", "articles", "网页", "链接", "文本", "文章", "分析", "总结", "报告", "文档"},
 		"himalaya":      {"email", "mail", "inbox", "imap", "smtp", "reply", "forward", "attachment", "terminal", "邮件", "邮箱", "收件箱", "回复", "转发", "附件"},
 		"reminder":      {"remind", "reminder", "notify", "提醒", "通知", "tomorrow", "明天", "明早", "later", "稍后", "时间"},

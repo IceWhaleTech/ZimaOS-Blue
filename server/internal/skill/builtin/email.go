@@ -29,7 +29,7 @@ func NewEmail() *Email {
 			ID:          "email",
 			Name:        "Email",
 			Version:     "1.0.0",
-			Description: "Inbox triage skill. Lists, searches, archives, labels, and summarizes emails with a benchmark-first local backend.",
+			Description: "Inbox triage skill. Lists, searches, archives, labels, and summarizes emails from the configured email backend.",
 			Category:    "system",
 			Icon:        "email",
 			Tags:        []string{"email", "mail", "inbox", "triage"},

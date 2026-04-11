@@ -600,6 +600,7 @@ export default mergeHarnessLocale('nl-NL', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Taak geannuleerd',
     waitingThinking: 'Aan het nadenken...',
+    providerAccelerationActive: 'Volgende reactie optimaliseren voor de huidige provider',
     awaitingConfirmation: 'Wachten op je bevestiging om door te gaan',
     streamConnecting: 'Verbinden',
     streamStreaming: 'Genereren',
@@ -862,7 +863,8 @@ export default mergeHarnessLocale('nl-NL', {
     providerFailover: {
       eyebrow: 'High-availability-schakeling',
       title: 'Overschakelen naar een andere beschikbare route en opnieuw proberen?',
-      description: 'De huidige route via {provider} heeft je bevestiging nodig voordat Blue overschakelt naar een andere beschikbare route en het opnieuw probeert.',
+      description:
+        'De huidige route via {provider} heeft je bevestiging nodig voordat Blue overschakelt naar een andere beschikbare route en het opnieuw probeert.',
       dismissAction: 'Nu niet',
       manualAction: 'Route handmatig kiezen',
       primaryAction: 'Schakel over en probeer opnieuw',
@@ -899,7 +901,8 @@ export default mergeHarnessLocale('nl-NL', {
     execDirectoryApprovalTimeout:
       'De opdrachtuitvoering is geblokkeerd omdat de mapgoedkeuring is verlopen. Keur de map goed en probeer het opnieuw.',
     providerActive: 'Provider is actief en klaar.',
-    providerNeedsAttention: 'Provider heeft aandacht nodig. Klik om de instellingen te controleren.',
+    providerNeedsAttention:
+      'Provider heeft aandacht nodig. Klik om de instellingen te controleren.',
     providerPending: 'Providerstatus wordt gecontroleerd...',
     trialQuota: {
       remaining: '{tokens} tokens resterend',

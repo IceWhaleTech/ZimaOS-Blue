@@ -2,6 +2,7 @@ import {
   agentcoreRunnerChatBase,
   agentcoreRunnerChatOverrides,
 } from './agentcore-runner-chat-locales'
+import advisorCardBackfills from './advisor-card-backfills'
 import automationOperationsRenameBackfills from './automation-operations-rename-backfills'
 import chatQuickNavBackfills from './chat-quick-nav-backfills'
 import {
@@ -9010,7 +9011,10 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
       securityScanItemPatch
     ),
     mergeLocaleNodes(
-      (chatQuickNavBackfills[localeKey] ?? {}) as LocaleNode,
+      mergeLocaleNodes(
+        (chatQuickNavBackfills[localeKey] ?? {}) as LocaleNode,
+        (advisorCardBackfills[localeKey] ?? {}) as LocaleNode
+      ),
       messages as unknown as LocaleNode
     )
   )

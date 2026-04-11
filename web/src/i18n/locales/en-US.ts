@@ -598,6 +598,7 @@ export default mergeHarnessLocale('en-US', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Task cancelled',
     waitingThinking: 'Thinking...',
+    providerAccelerationActive: 'Optimizing the next response for the current provider',
     awaitingConfirmation: 'Waiting for your confirmation to continue',
     streamConnecting: 'Connecting',
     streamStreaming: 'Streaming',

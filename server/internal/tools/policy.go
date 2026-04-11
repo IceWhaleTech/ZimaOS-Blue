@@ -38,6 +38,7 @@ var defaultChatDirectToolAllowlist = map[string]struct{}{
 	"browser":     {},
 	"calendar":    {},
 	"convert":     {},
+	"docx":        {},
 	"edit":        {},
 	"find":        {},
 	"grep":        {},
@@ -47,12 +48,14 @@ var defaultChatDirectToolAllowlist = map[string]struct{}{
 	"plan_append": {},
 	"plan_create": {},
 	"plan_update": {},
+	"pptx":        {},
 	"read":        {},
 	"research":    {},
 	"sessions":    {},
 	"tool_search": {},
 	"web_query":   {},
 	"write":       {},
+	"xlsx":        {},
 }
 
 // NewToolPolicyResolver creates a resolver from app config.

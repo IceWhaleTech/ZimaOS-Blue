@@ -603,6 +603,7 @@ export default mergeHarnessLocale('ru-RU', {
     mobileFeatureDisableSmartResume: 'Disable Smart Resume',
     taskCancelled: 'Задача отменена',
     waitingThinking: 'Думаю...',
+    providerAccelerationActive: 'Оптимизируем следующий ответ для текущего провайдера',
     awaitingConfirmation: 'Ожидаем ваше подтверждение, чтобы продолжить',
     streamConnecting: 'Подключение',
     streamStreaming: 'Генерация',
@@ -633,7 +634,8 @@ export default mergeHarnessLocale('ru-RU', {
     taskFailedDuringPlanning: 'Задача завершилась ошибкой на этапе планирования',
     taskFailedDuringConfirmation: 'Задача завершилась ошибкой на этапе подтверждения',
     taskFailedWhileRevisingPlan: 'Задача завершилась ошибкой при пересмотре плана',
-    taskFailedWhileUpdatingRuntimeState: 'Задача завершилась ошибкой при обновлении состояния среды выполнения',
+    taskFailedWhileUpdatingRuntimeState:
+      'Задача завершилась ошибкой при обновлении состояния среды выполнения',
     verificationFailedRecoveryFailed: 'Проверка завершилась ошибкой, и восстановление не удалось',
     taskFailureGroundedVerificationFailed: 'Проверка обоснованности завершилась ошибкой',
     taskWaitingForApproval: 'Ожидание вашего одобрения',
@@ -864,7 +866,8 @@ export default mergeHarnessLocale('ru-RU', {
     providerFailover: {
       eyebrow: 'Переключение высокой доступности',
       title: 'Переключиться на другой доступный маршрут и повторить попытку?',
-      description: 'Текущий маршрут через {provider} требует вашего подтверждения, прежде чем Blue переключится на другой доступный маршрут и повторит попытку.',
+      description:
+        'Текущий маршрут через {provider} требует вашего подтверждения, прежде чем Blue переключится на другой доступный маршрут и повторит попытку.',
       dismissAction: 'Не сейчас',
       manualAction: 'Выбрать маршрут вручную',
       primaryAction: 'Переключить и повторить',

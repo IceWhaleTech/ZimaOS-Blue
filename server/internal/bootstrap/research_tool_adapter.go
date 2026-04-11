@@ -8,24 +8,22 @@ import (
 )
 
 type deepResearchToolAdapter struct {
-	service              *deepresearch.Service
-	manager              researchHarnessRunSubmitter
+	service *deepresearch.Service
+	jobStore researchHarnessJobStore
+	manager researchHarnessRunSubmitter
 	defaultWorkspaceRoot string
 }
 
 func newDeepResearchToolAdapter(service *deepresearch.Service, manager researchHarnessRunSubmitter, defaultWorkspaceRoot string) *deepResearchToolAdapter {
-	return &deepResearchToolAdapter{
-		service:              service,
-		manager:              normalizeResearchHarnessSubmitter(manager),
-		defaultWorkspaceRoot: strings.TrimSpace(defaultWorkspaceRoot),
-	}
+	return &deepResearchToolAdapter{service: service, jobStore: service, manager: normalizeResearchHarnessSubmitter(manager), defaultWorkspaceRoot: strings.TrimSpace(defaultWorkspaceRoot)}
 }
 
 func (a *deepResearchToolAdapter) GetJobForUser(id, userID string) (*tools.ResearchJob, error) {
-	if a == nil || a.service == nil {
+	store := a.researchJobStore()
+	if store == nil {
 		return nil, deepresearch.ErrJobNotFound
 	}
-	job, err := a.service.GetJobForUser(id, userID, "")
+	job, err := store.GetJobForUser(id, userID, "")
 	if err != nil {
 		return nil, err
 	}

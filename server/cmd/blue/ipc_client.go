@@ -295,7 +295,7 @@ func promoteBrowserActionKeyParam(params map[string]string) string {
 		"snapshot", "inspect", "tree",
 		"snapshot_interactive", "interactive", "elements",
 		"snapshot_auto", "read", "page",
-		"act", "click", "type", "focus", "hover", "scroll", "select",
+		"act", "click", "type", "focus", "hover", "scroll", "select", "scroll_down", "scroll_up",
 		"screenshot", "shot", "capture", "screen",
 		"tabs", "list", "ls", "tab", "status",
 		"close", "remove", "rm", "delete",
@@ -333,6 +333,10 @@ func promoteBrowserActionKeyParam(params map[string]string) string {
 			if strings.TrimSpace(params["recipe"]) == "" && value != "" {
 				params["recipe"] = value
 			}
+		case "scroll_page":
+			if strings.TrimSpace(params["target_id"]) == "" && value != "" {
+				params["target_id"] = value
+			}
 		case "act", "click", "type", "focus", "hover", "scroll", "select":
 			if strings.TrimSpace(params["ref"]) == "" && value != "" {
 				params["ref"] = value
@@ -350,6 +354,10 @@ func normalizeBrowserPositionalArgs(action string, params map[string]string, pos
 	case "navigate":
 		if strings.TrimSpace(params["url"]) == "" {
 			positional = promotePositionalIPCParam(params, positional, "url")
+		}
+	case "scroll_page":
+		if strings.TrimSpace(params["target_id"]) == "" {
+			positional = promotePositionalIPCParam(params, positional, "target_id")
 		}
 	case "snapshot", "snapshot_interactive", "snapshot_auto", "close":
 		if strings.TrimSpace(params["target_id"]) == "" {

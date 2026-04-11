@@ -23,9 +23,9 @@ func bindRuntimeProxyBridge(
 	image runtimeProxyBridgeImageTarget,
 	uiSkill runtimeProxyBridgeSkillTarget,
 	analyze runtimeProxyBridgeAnalyzeTarget,
-) {
+) *proxybridge.Bridge {
 	if handler == nil {
-		return
+		return nil
 	}
 
 	bridge := proxybridge.NewBridge(handler)
@@ -69,4 +69,5 @@ func bindRuntimeProxyBridge(
 	if analyze != nil {
 		analyze.SetLLMBridge(tools.NewProxyBridgeLLMAdapter(bridge))
 	}
+	return bridge
 }
