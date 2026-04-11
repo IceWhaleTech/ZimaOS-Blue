@@ -20,6 +20,8 @@ BASE_LDFLAGS=-s -w -buildid= -X main.version=$(VERSION) -X main.gitCommit=$(GIT_
 ENABLE_UPX?=0
 UPX?=upx
 UPX_LEVEL?=-1
+ZIG_CC_WINDOWS_AMD64=zig cc -target x86_64-windows-gnu
+ZIG_CXX_WINDOWS_AMD64=zig c++ -target x86_64-windows-gnu
 
 # On macOS, embed Info.plist into __TEXT,__info_plist for NSBundle.mainBundle to read.
 UNAME_S := $(shell uname -s)
@@ -215,7 +217,7 @@ build-all:
 	GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-linux-arm64 ./cmd/blue
 	GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-amd64 ./cmd/blue
 	GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-darwin-arm64 ./cmd/blue
-	GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/blue
+	CC="$(ZIG_CC_WINDOWS_AMD64)" CXX="$(ZIG_CXX_WINDOWS_AMD64)" GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) $(TAGS) $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME)-windows-amd64.exe ./cmd/blue
 
 # Docker build
 docker-build:

@@ -14,10 +14,10 @@ setlocal enabledelayedexpansion
 set "PROJECT_ROOT=%~dp0"
 set "COMMAND=%~1"
 
-:: Enable CGO for Windows native TTS/ASR (SAPI)
+:: Enable CGO for Windows native TTS/ASR (SAPI) and use Zig's GNU toolchain.
 set "CGO_ENABLED=1"
-set "CC=gcc"
-set "CXX=g++"
+set "CC=zig cc -target x86_64-windows-gnu"
+set "CXX=zig c++ -target x86_64-windows-gnu"
 set "CGO_LDFLAGS=-static-libgcc -static-libstdc++"
 set "CGO_CFLAGS=-O2"
 set "CGO_CXXFLAGS=-O2"
@@ -45,6 +45,14 @@ if errorlevel 1 (
     exit /b 1
 )
 echo [OK] All prerequisites found
+exit /b 0
+
+:check_zig
+where zig >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Zig is not installed or not on PATH. Install Zig to build the Windows Go binaries.
+    exit /b 1
+)
 exit /b 0
 
 :install_deps
@@ -185,6 +193,8 @@ echo.
 :: Check prerequisites
 call :check_prereqs
 if errorlevel 1 exit /b 1
+call :check_zig
+if errorlevel 1 exit /b 1
 
 :: Install dependencies
 call :install_deps
@@ -206,6 +216,8 @@ goto :eof
 :server
 call :check_prereqs
 if errorlevel 1 exit /b 1
+call :check_zig
+if errorlevel 1 exit /b 1
 
 echo [INFO] Starting Go server...
 cd /d "%PROJECT_ROOT%server"
@@ -225,6 +237,8 @@ goto :eof
 
 :build
 call :check_prereqs
+if errorlevel 1 exit /b 1
+call :check_zig
 if errorlevel 1 exit /b 1
 
 echo [INFO] Building for production...
@@ -295,6 +309,8 @@ goto :eof
 
 :prd
 call :check_prereqs
+if errorlevel 1 exit /b 1
+call :check_zig
 if errorlevel 1 exit /b 1
 
 echo [INFO] Production run: build web, copy to server/internal/web, start server...

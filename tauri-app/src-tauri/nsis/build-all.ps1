@@ -55,6 +55,7 @@ Write-Host "=== Checking tools ==="
 Write-Host "Node: $(node --version)"
 Write-Host "npm: $(npm --version)"
 Write-Host "Go: $(go version)"
+Write-Host "Zig: $(zig version)"
 Write-Host "Cargo: $(cargo --version)"
 Write-Host ""
 
@@ -139,22 +140,22 @@ Set-Location "g:\GitHub\ZimaOS-Blue\server"
 $tauriDir = "g:\GitHub\ZimaOS-Blue\tauri-app\src-tauri"
 if (!(Test-Path "$tauriDir\lib")) { New-Item -ItemType Directory "$tauriDir\lib" -Force | Out-Null }
 
-# Setup CGO with MinGW-w64 and static linking
-Write-Host "[STEP 2.1] Setting up CGO with MinGW-w64 (static linking)..."
+# Setup CGO with Zig's Windows GNU target and static runtime flags where possible.
+Write-Host "[STEP 2.1] Setting up CGO with Zig (Windows GNU target)..."
 
-# Use MinGW-w64 with static linking to avoid libstdc++ runtime dependency
-# This statically links libstdc++, libgcc, and winpthread into the binary
+# Zig provides a bundled Windows-targeting Clang/LLD toolchain and still accepts
+# the static GNU runtime flags used by this build.
 $env:CGO_ENABLED = "1"
-$env:CC = "gcc"
-$env:CXX = "g++"
+$env:CC = "zig cc -target x86_64-windows-gnu"
+$env:CXX = "zig c++ -target x86_64-windows-gnu"
 # Use explicit static linking for C++ runtime libraries
 # Note: We link libstdc++ statically but keep system libraries dynamic
 $env:CGO_LDFLAGS = "-static-libgcc -static-libstdc++"
 $env:CGO_CFLAGS = "-O2"
 $env:CGO_CXXFLAGS = "-O2"
 
-Write-Host "[OK] CGO configured with static linking"
-Write-Host "[INFO] This will statically link libstdc++ to avoid runtime dependencies"
+Write-Host "[OK] CGO configured with Zig"
+Write-Host "[INFO] This keeps the Windows Go archive on Zig's toolchain while preserving static GNU runtime flags"
 Write-Host "[INFO] CGO will automatically compile C++ files in speech/windows directory"
 
 $goLdflags = "-s -w"
@@ -162,7 +163,7 @@ if ($env:ZIMAOS_TRIAL_LICENSE) {
     $goLdflags += " -X github.com/IceWhaleTech/ZimaOS-Blue/server/internal/providerpool.trialLicense=$($env:ZIMAOS_TRIAL_LICENSE)"
 }
 # Build without espeak, kokoro, and whisper tags (Windows native only)
-Write-Host "[STEP 2.2] Running Go build with MSVC..."
+Write-Host "[STEP 2.2] Running Go build with Zig..."
 Write-Host "[DEBUG] CC=$env:CC"
 Write-Host "[DEBUG] CXX=$env:CXX"
 Write-Host "[DEBUG] CGO_CFLAGS=$env:CGO_CFLAGS"
@@ -171,7 +172,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Go build failed with exit code $LASTEXITCODE" -ForegroundColor Red
     throw "Go build failed"
 }
-Write-Host "[OK] libblue.a built (Windows native TTS/ASR only, MSVC)"
+Write-Host "[OK] libblue.a built (Windows native TTS/ASR only, Zig)"
 
 # Step 3: Build Tauri application
 Write-Host "[STEP 3] Building Tauri application..."
