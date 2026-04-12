@@ -4123,6 +4123,34 @@ func TestStripDuplicateTodoChecklistFromTypelessCards(t *testing.T) {
 	}
 }
 
+func TestStripDuplicateTodoChecklistFromTypelessCards_ToleratesBlankLinesInChecklistValue(t *testing.T) {
+	content := "done\n\n```typeless\n" +
+		"{\"type\":\"result\",\"title\":\"plan_create\",\"details\":[{\"label\":\"checklist\",\"value\":\"\\n- [ ] task one\\n\\n- [ ] task two\"},{\"label\":\"pending_count\",\"value\":\"2\"}]}" +
+		"\n```"
+	trimmed := stripDuplicateTodoChecklistFromTypelessCards(content, "- [x] task one\n- [ ] task two")
+	if strings.Contains(trimmed, `"label":"checklist"`) {
+		t.Fatalf("expected duplicate checklist detail with blank lines to be removed, got %q", trimmed)
+	}
+	if !strings.Contains(trimmed, `"label":"pending_count"`) {
+		t.Fatalf("expected non-checklist details to remain, got %q", trimmed)
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_PreservesTypelessJSONEscapes(t *testing.T) {
+	content := "已完成\n\n```typeless\n" +
+		"{\"type\":\"result\",\"title\":\"plan_create\",\"details\":[{\"label\":\"checklist\",\"value\":\"\\n- [ ] task one\\n\\n- [ ] task two\"},{\"label\":\"pending_count\",\"value\":\"2\"}]}" +
+		"\n```"
+	sanitized := sanitizeResponseContentWithProvider(content, "openai", "openai", "gpt-5.4")
+	match := reTypelessBlock.FindStringSubmatch(sanitized)
+	if len(match) < 2 {
+		t.Fatalf("expected typeless block to remain after sanitize, got %q", sanitized)
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(match[1]), &payload); err != nil {
+		t.Fatalf("expected typeless payload to remain valid JSON, got err=%v content=%q", err, sanitized)
+	}
+}
+
 func TestTodoAwarePersistedContentPrefersSummaryOverTrackedChecklist(t *testing.T) {
 	got := todoAwarePersistedContent("总结：任务已完成。", "- [ ] task one\n- [ ] task two", true)
 	if got != "总结：任务已完成。" {

@@ -4712,13 +4712,50 @@ func completeAllTodoItems(content string) (string, bool) {
 	return updated, updated != content
 }
 
-func extractFirstTodoChecklist(content string) (string, bool) {
+func findFirstTodoChecklistSpan(content string) (int, int, []string, bool) {
 	ensureChatMiscRegexes()
-	loc := reTodoChecklistBlock.FindStringSubmatchIndex(content)
-	if len(loc) < 6 || loc[4] < 0 || loc[5] < 0 {
+	start := -1
+	end := -1
+	items := make([]string, 0, 4)
+	lineStart := 0
+	for lineStart <= len(content) {
+		lineEnd := strings.IndexByte(content[lineStart:], '\n')
+		nextStart := len(content)
+		if lineEnd >= 0 {
+			lineEnd += lineStart
+			nextStart = lineEnd + 1
+		} else {
+			lineEnd = len(content)
+		}
+
+		line := strings.TrimSuffix(content[lineStart:lineEnd], "\r")
+		if reTodoAnyItem.MatchString(line) {
+			if start < 0 {
+				start = lineStart
+			}
+			end = lineEnd
+			items = append(items, strings.TrimSpace(line))
+		} else if start >= 0 && strings.TrimSpace(line) != "" {
+			break
+		}
+
+		if nextStart >= len(content) {
+			break
+		}
+		lineStart = nextStart
+	}
+	if start < 0 || end < start || len(items) == 0 {
+		return 0, 0, nil, false
+	}
+	return start, end, items, true
+}
+
+func extractFirstTodoChecklist(content string) (string, bool) {
+	_, _, items, ok := findFirstTodoChecklistSpan(content)
+	if !ok {
 		return "", false
 	}
-	checklist := strings.TrimSpace(content[loc[4]:loc[5]])
+	checklist := strings.TrimSpace(strings.Join(items, "\n"))
 	if checklist == "" {
 		return "", false
 	}
@@ -4749,13 +4786,10 @@ func todoChecklistSignature(content string) string {
 }
 
 func stripFirstTodoChecklist(content string) string {
-	ensureChatMiscRegexes()
-	loc := reTodoChecklistBlock.FindStringSubmatchIndex(content)
-	if len(loc) < 6 || loc[4] < 0 || loc[5] < 0 {
+	start, end, _, ok := findFirstTodoChecklistSpan(content)
+	if !ok {
 		return strings.TrimSpace(content)
 	}
-	start := loc[4]
-	end := loc[5]
 	prefix := strings.TrimRight(content[:start], " \t\n")
 	suffix := strings.TrimLeft(content[end:], " \t\n")
 	if prefix != "" && suffix != "" {
