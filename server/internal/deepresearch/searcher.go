@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -33,9 +34,18 @@ func NewToolWebSearcherWithConfig(cfg tools.WebSearchConfig) *ToolWebSearcher {
 }
 
 func NewToolWebSearcher() *ToolWebSearcher {
+	providers := []string{"bing", "duckduckgo"}
+	defaultProvider := "bing"
+
+	// Promote tavily to the front of the provider chain when TAVILY_API_KEY is set.
+	if os.Getenv("TAVILY_API_KEY") != "" {
+		providers = append([]string{"tavily"}, providers...)
+		defaultProvider = "tavily"
+	}
+
 	return NewToolWebSearcherWithConfig(tools.WebSearchConfig{
-		Provider:   "bing",
-		Providers:  []string{"bing", "duckduckgo"},
+		Provider:   defaultProvider,
+		Providers:  providers,
 		MaxResults: 8,
 		Timeout:    15 * time.Second,
 		Region:     "wt-wt",

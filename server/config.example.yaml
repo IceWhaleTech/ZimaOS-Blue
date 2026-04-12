@@ -230,6 +230,9 @@ tool_calling:
       perplexity:
         enabled: false
         api_key: ""
+      tavily:
+        enabled: false
+        api_key: ""  # TAVILY_API_KEY — Tavily Search API key
   web_fetch:
     allow_private_hosts: false
     timeout: "5m"
