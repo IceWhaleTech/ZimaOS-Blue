@@ -175,6 +175,47 @@ func (d *stagedSnapshotDriver) Sync(ctx context.Context, run *Run) (*Run, error)
 	return d.controller.ListOne(ctx, run.ID)
 }
 
+type fixedSnapshotDriver struct {
+	kind       RunKind
+	startState RunStatus
+	syncResult *Run
+}
+
+func (d *fixedSnapshotDriver) Kind() RunKind { return d.kind }
+func (d *fixedSnapshotDriver) Validate(spec RunSpec) error {
+	if spec.Goal == "" {
+		return fmt.Errorf("goal is required")
+	}
+	return nil
+}
+func (d *fixedSnapshotDriver) Start(ctx context.Context, run *Run, env RunEnv) error {
+	if run == nil {
+		return nil
+	}
+	snapshot := *run
+	snapshot.Status = d.startState
+	if snapshot.Status == "" {
+		snapshot.Status = RunStatusExecuting
+	}
+	snapshot.Progress = 1
+	started := time.Now().UTC()
+	snapshot.StartedAt = &started
+	return env.Manager.SyncSnapshot(ctx, &snapshot)
+}
+func (d *fixedSnapshotDriver) Cancel(_ context.Context, _ *Run) error { return nil }
+func (d *fixedSnapshotDriver) Sync(_ context.Context, run *Run) (*Run, error) {
+	if d.syncResult == nil {
+		if run == nil {
+			return nil, nil
+		}
+		snapshot := *run
+		return &snapshot, nil
+	}
+	snapshot := *d.syncResult
+	snapshot.Metadata = cloneMetadataMap(d.syncResult.Metadata)
+	return &snapshot, nil
+}
+
 func newTestController(t *testing.T) *Controller {
 	t.Helper()
 	tmpDir := t.TempDir()
@@ -259,6 +300,62 @@ func TestController_SubmitDefaultsHarnessRunsToSilentMode(t *testing.T) {
 		if !ok || !value {
 			t.Fatalf("metadata[%q] = %#v, want true", key, run.Metadata[key])
 		}
+	}
+}
+
+func TestControllerSyncRun_DoesNotRegressNewerTerminalState(t *testing.T) {
+	controller := newTestController(t)
+	driver := &fixedSnapshotDriver{kind: RunKindResearch, startState: RunStatusExecuting}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:   RunKindResearch,
+		Goal:   "Should we replace Python with Go?",
+		UserID: "user-1",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	stored, err := controller.GetStored(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetStored failed: %v", err)
+	}
+	if stored.Status != RunStatusExecuting {
+		t.Fatalf("initial stored status = %q, want %q", stored.Status, RunStatusExecuting)
+	}
+
+	completed := *stored
+	completed.Status = RunStatusCompleted
+	completed.Progress = 100
+	completed.Result = `{"recommendation":"Prefer Go for hot paths"}`
+	finished := time.Now().UTC()
+	completed.FinishedAt = &finished
+	if err := controller.SyncSnapshot(context.Background(), &completed); err != nil {
+		t.Fatalf("SyncSnapshot(completed) failed: %v", err)
+	}
+
+	stale := *stored
+	stale.StartedAt = nil
+	driver.syncResult = &stale
+
+	updated, err := controller.syncRun(context.Background(), stored)
+	if err != nil {
+		t.Fatalf("syncRun failed: %v", err)
+	}
+	if updated.Status != RunStatusCompleted {
+		t.Fatalf("syncRun returned status = %q, want %q", updated.Status, RunStatusCompleted)
+	}
+
+	current, err := controller.GetStored(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("GetStored(after syncRun) failed: %v", err)
+	}
+	if current.Status != RunStatusCompleted {
+		t.Fatalf("stored status after syncRun = %q, want %q", current.Status, RunStatusCompleted)
+	}
+	if current.Result != completed.Result {
+		t.Fatalf("stored result after syncRun = %q, want %q", current.Result, completed.Result)
 	}
 }
 

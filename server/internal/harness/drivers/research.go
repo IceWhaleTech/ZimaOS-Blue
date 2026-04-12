@@ -303,6 +303,35 @@ func (d *ResearchDriver) executeLocalMode(
 	result, err := executor.Execute(ctx, researchToolArgs(run, mode))
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
+			current := d.loadLocalSnapshot(controller, run)
+			switch current.Status {
+			case harness.RunStatusCancelled, harness.RunStatusCompleted, harness.RunStatusFailed, harness.RunStatusAborted:
+				return
+			}
+			if current.Metadata == nil {
+				current.Metadata = map[string]interface{}{}
+			}
+			current.Metadata["mode"] = mode
+			current.Status = harness.RunStatusFailed
+			current.Error = strings.TrimSpace(err.Error())
+			current.Progress = 100
+			current.UpdatedAt = timeutil.NowTime()
+			if current.StartedAt == nil {
+				started := current.UpdatedAt
+				current.StartedAt = &started
+			}
+			finished := current.UpdatedAt
+			current.FinishedAt = &finished
+			current = syncLocalTerminalSnapshot(
+				current,
+				func(snapshot *harness.Run) error {
+					return controller.SyncSnapshot(context.Background(), snapshot)
+				},
+				func() (*harness.Run, error) {
+					return controller.GetStored(context.Background(), run.ID)
+				},
+			)
+			d.publishResearchJobEvent(current, "deep_research.job_failed")
 			return
 		}
 		failed := d.loadLocalSnapshot(controller, run)
@@ -320,7 +349,15 @@ func (d *ResearchDriver) executeLocalMode(
 		}
 		finished := failed.UpdatedAt
 		failed.FinishedAt = &finished
-		_ = controller.SyncSnapshot(context.Background(), failed)
+		failed = syncLocalTerminalSnapshot(
+			failed,
+			func(snapshot *harness.Run) error {
+				return controller.SyncSnapshot(context.Background(), snapshot)
+			},
+			func() (*harness.Run, error) {
+				return controller.GetStored(context.Background(), run.ID)
+			},
+		)
 		d.publishResearchJobEvent(failed, "deep_research.job_failed")
 		return
 	}
@@ -341,12 +378,59 @@ func (d *ResearchDriver) executeLocalMode(
 	}
 	finished := completed.UpdatedAt
 	completed.FinishedAt = &finished
-	if err := controller.SyncSnapshot(context.Background(), completed); err == nil {
-		if stored, getErr := controller.GetStored(context.Background(), run.ID); getErr == nil && stored != nil {
-			completed = stored
-		}
-	}
+	completed = syncLocalTerminalSnapshot(
+		completed,
+		func(snapshot *harness.Run) error {
+			return controller.SyncSnapshot(context.Background(), snapshot)
+		},
+		func() (*harness.Run, error) {
+			return controller.GetStored(context.Background(), run.ID)
+		},
+	)
 	d.publishResearchJobEvent(completed, "deep_research.job_completed")
+}
+
+func syncLocalTerminalSnapshot(
+	snapshot *harness.Run,
+	syncFn func(*harness.Run) error,
+	loadFn func() (*harness.Run, error),
+) *harness.Run {
+	const (
+		syncAttempts = 3
+		initialDelay = 10 * time.Millisecond
+	)
+	if snapshot == nil {
+		return nil
+	}
+	if syncFn == nil {
+		return snapshot
+	}
+	var lastErr error
+	delay := initialDelay
+	for attempt := 0; attempt < syncAttempts; attempt++ {
+		if err := syncFn(snapshot); err == nil {
+			if loadFn != nil {
+				if stored, loadErr := loadFn(); loadErr == nil && stored != nil {
+					return stored
+				}
+			}
+			return snapshot
+		} else {
+			lastErr = err
+		}
+		if attempt == syncAttempts-1 {
+			break
+		}
+		time.Sleep(delay)
+		delay *= 2
+	}
+	if snapshot.Metadata == nil {
+		snapshot.Metadata = map[string]interface{}{}
+	}
+	if lastErr != nil {
+		snapshot.Metadata["terminal_sync_error"] = strings.TrimSpace(lastErr.Error())
+	}
+	return snapshot
 }
 
 func researchModeUnavailableError(mode string) error {

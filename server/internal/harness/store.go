@@ -843,6 +843,37 @@ func (s *SQLiteStore) UpdateRun(ctx context.Context, run *Run) error {
 	return err
 }
 
+func (s *SQLiteStore) UpdateRunIfMaterialStateMatches(ctx context.Context, expected *Run, next *Run) (bool, error) {
+	if expected == nil {
+		return false, fmt.Errorf("expected run is required")
+	}
+	if next == nil {
+		return false, fmt.Errorf("next run is required")
+	}
+	next.UpdatedAt = timeutil.NowTime()
+	result, err := s.execContext(ctx, `UPDATE harness_runs SET
+		root_run_id=?, parent_run_id=?, group_id=?, group_item_id=?, attempt_index=?, kind=?, status=?, runtime_state=?, user_id=?, conversation_id=?, session_id=?, agent_id=?,
+		goal=?, provider_id=?, model=?, result=?, error=?, depth=?, current_step=?, progress=?, workspace_root=?, artifact_root=?, sandbox_mode=?,
+		approval_mode=?, max_duration_ns=?, max_steps=?, max_tool_rounds=?, max_subagents=?, max_depth=?, metadata_json=?,
+		updated_at=?, started_at=?, finished_at=?
+		WHERE id=? AND status=? AND runtime_state=? AND current_step=? AND progress=? AND result=? AND error=? AND metadata_json=?`,
+		next.RootRunID, next.ParentRunID, next.GroupID, next.GroupItemID, next.AttemptIndex, string(next.Kind), string(next.Status), string(next.RuntimeState), next.UserID,
+		next.ConversationID, next.SessionID, next.AgentID, next.Goal, next.ProviderID, next.Model, next.Result, next.Error, next.Depth,
+		next.CurrentStep, next.Progress, next.WorkspaceRoot, next.ArtifactRoot, next.SandboxMode, string(next.ApprovalMode),
+		next.MaxDuration.Nanoseconds(), next.MaxSteps, next.MaxToolRounds, next.MaxSubagents, next.MaxDepth, marshalMetadata(next.Metadata),
+		next.UpdatedAt, nullableTime(next.StartedAt), nullableTime(next.FinishedAt),
+		next.ID, string(expected.Status), string(expected.RuntimeState), expected.CurrentStep, expected.Progress, expected.Result, expected.Error, marshalMetadata(expected.Metadata),
+	)
+	if err != nil {
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rowsAffected > 0, nil
+}
+
 func (s *SQLiteStore) GetRun(ctx context.Context, id string) (*Run, error) {
 	rows, err := s.selectRunRows(ctx, s.reader(), id)
 	if err != nil {

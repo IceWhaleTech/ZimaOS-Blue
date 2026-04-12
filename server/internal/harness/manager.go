@@ -597,8 +597,14 @@ func (c *Controller) syncRun(ctx context.Context, run *Run) (*Run, error) {
 		return run, nil
 	}
 	if normalizeRunLifecycleTimes(run, updated) {
-		if updateErr := c.store.UpdateRun(ctx, updated); updateErr != nil {
+		applied, updateErr := c.store.UpdateRunIfMaterialStateMatches(ctx, run, updated)
+		if updateErr != nil {
 			return updated, nil
+		}
+		if !applied {
+			if latest, latestErr := c.store.GetRun(ctx, updated.ID); latestErr == nil && latest != nil {
+				return latest, nil
+			}
 		}
 	}
 	return updated, nil

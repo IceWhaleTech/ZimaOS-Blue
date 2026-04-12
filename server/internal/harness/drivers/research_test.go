@@ -3,6 +3,7 @@ package drivers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -68,7 +69,50 @@ func waitForResearchRun(t *testing.T, controller *harness.Controller, runID stri
 			return current
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("timeout waiting for run %q, status=%s", runID, current.Status)
+			metadataJSON, _ := json.Marshal(current.Metadata)
+			events, eventsErr := controller.ListEvents(context.Background(), runID, 20)
+			t.Fatalf(
+				"timeout waiting for run %q, status=%s progress=%d error=%q result=%q metadata=%s events=%v events_err=%v",
+				runID,
+				current.Status,
+				current.Progress,
+				current.Error,
+				current.Result,
+				string(metadataJSON),
+				events,
+				eventsErr,
+			)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func waitForResearchRunWithTimeout(t *testing.T, controller *harness.Controller, runID string, timeout time.Duration) *harness.Run {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		current, err := controller.GetStored(context.Background(), runID)
+		if err != nil {
+			t.Fatalf("GetStored(%q) failed: %v", runID, err)
+		}
+		switch current.Status {
+		case harness.RunStatusCompleted, harness.RunStatusFailed, harness.RunStatusCancelled:
+			return current
+		}
+		if time.Now().After(deadline) {
+			metadataJSON, _ := json.Marshal(current.Metadata)
+			events, eventsErr := controller.ListEvents(context.Background(), runID, 20)
+			t.Fatalf(
+				"timeout waiting for run %q, status=%s progress=%d error=%q result=%q metadata=%s events=%v events_err=%v",
+				runID,
+				current.Status,
+				current.Progress,
+				current.Error,
+				current.Result,
+				string(metadataJSON),
+				events,
+				eventsErr,
+			)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
@@ -81,6 +125,61 @@ func decodeResearchRunResult(t *testing.T, raw string) map[string]interface{} {
 		t.Fatalf("decode research run result: %v raw=%s", err, raw)
 	}
 	return out
+}
+
+func TestSyncLocalTerminalSnapshot_RetriesTransientSyncErrors(t *testing.T) {
+	stored := &harness.Run{
+		ID:     "research-sync",
+		Status: harness.RunStatusCompleted,
+	}
+	snapshot := &harness.Run{
+		ID:       "research-sync",
+		Metadata: map[string]interface{}{},
+	}
+	calls := 0
+
+	got := syncLocalTerminalSnapshot(
+		snapshot,
+		func(run *harness.Run) error {
+			calls++
+			if calls < 3 {
+				return errors.New("temporary sync failure")
+			}
+			return nil
+		},
+		func() (*harness.Run, error) {
+			return stored, nil
+		},
+	)
+
+	if calls != 3 {
+		t.Fatalf("sync calls = %d, want 3", calls)
+	}
+	if got != stored {
+		t.Fatalf("returned snapshot = %#v, want stored snapshot", got)
+	}
+}
+
+func TestSyncLocalTerminalSnapshot_RecordsLastSyncErrorAfterExhaustingRetries(t *testing.T) {
+	snapshot := &harness.Run{
+		ID:       "research-sync-fail",
+		Metadata: map[string]interface{}{},
+	}
+
+	got := syncLocalTerminalSnapshot(
+		snapshot,
+		func(run *harness.Run) error {
+			return errors.New("permanent sync failure")
+		},
+		nil,
+	)
+
+	if got != snapshot {
+		t.Fatalf("returned snapshot = %#v, want original snapshot", got)
+	}
+	if gotStatus := metadataString(got.Metadata, "terminal_sync_error"); gotStatus != "permanent sync failure" {
+		t.Fatalf("terminal_sync_error = %q, want %q", gotStatus, "permanent sync failure")
+	}
 }
 
 func TestResearchDriverStart_PassesRetryMetadataToService(t *testing.T) {
@@ -286,6 +385,39 @@ func TestResearchDriverStart_AdvisorModeRunsInsideHarnessEnvelope(t *testing.T) 
 	result := decodeResearchRunResult(t, current.Result)
 	if got := metadataString(result, "recommendation"); got != "Prefer Go for hot paths" {
 		t.Fatalf("recommendation = %q, want forwarded advisor result", got)
+	}
+}
+
+func TestResearchDriverStart_AdvisorModeContextCanceledDoesNotStickExecuting(t *testing.T) {
+	controller := newDriverTestController(t)
+	advisorTool := &stubResearchModeTool{
+		err: context.Canceled,
+	}
+	driver := NewResearchDriver(nil, controller)
+	driver.SetAdvisorExecutor(advisorTool)
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), harness.RunSpec{
+		Kind:   harness.RunKindResearch,
+		Goal:   "Should we replace Python with Go?",
+		UserID: "user-advisor-cancel",
+		Metadata: map[string]interface{}{
+			"mode":          "advisor",
+			"question":      "Should we replace Python with Go?",
+			"category":      "language",
+			"decision_mode": "replace",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	current := waitForResearchRunWithTimeout(t, controller, run.ID, 500*time.Millisecond)
+	if current.Status != harness.RunStatusFailed {
+		t.Fatalf("status = %s, want failed", current.Status)
+	}
+	if current.Error != context.Canceled.Error() {
+		t.Fatalf("error = %q, want %q", current.Error, context.Canceled.Error())
 	}
 }
 
