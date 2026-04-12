@@ -106,6 +106,63 @@ func TestNormalizeToolSchemaForLLM_AddsEmptyRequiredForNestedObjects(t *testing.
 	}
 }
 
+func TestNormalizeToolSchemaForLLM_AddsItemsForDocumentToolArrays(t *testing.T) {
+	toolSchemas := []struct {
+		name   string
+		schema map[string]interface{}
+		keys   []string
+	}{
+		{
+			name:   "docx",
+			schema: NewDOCXTool(nil, nil, nil).Definition().Parameters,
+			keys:   []string{"sections", "notes", "paragraphs"},
+		},
+		{
+			name:   "xlsx",
+			schema: NewXLSXTool(nil, nil, nil).Definition().Parameters,
+			keys:   []string{"notes", "sheets", "columns", "rows"},
+		},
+		{
+			name:   "pptx",
+			schema: NewPPTXTool(nil, nil, nil).Definition().Parameters,
+			keys:   []string{"sections", "paragraphs", "notes"},
+		},
+		{
+			name:   "pdf",
+			schema: NewPDFTool(nil).Definition().Parameters,
+			keys:   []string{"sections", "paragraphs", "notes"},
+		},
+		{
+			name:   "office",
+			schema: NewOfficeTool(nil, nil, nil).Definition().Parameters,
+			keys:   []string{"rows", "columns", "sheets", "sections"},
+		},
+	}
+
+	for _, tc := range toolSchemas {
+		t.Run(tc.name, func(t *testing.T) {
+			normalized := NormalizeToolSchemaForLLM("", "", "", tc.schema)
+			props, ok := normalized["properties"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("properties type = %T, want map[string]interface{}", normalized["properties"])
+			}
+			for _, key := range tc.keys {
+				field, ok := props[key].(map[string]interface{})
+				if !ok {
+					t.Fatalf("%s field type = %T, want map[string]interface{}", key, props[key])
+				}
+				items, ok := field["items"].(map[string]interface{})
+				if !ok {
+					t.Fatalf("%s.items missing from normalized schema: %#v", key, field)
+				}
+				if items == nil {
+					t.Fatalf("%s.items = nil, want schema object", key)
+				}
+			}
+		})
+	}
+}
+
 func TestValidateToolArguments_HonorsEnumStringSlices(t *testing.T) {
 	schema := map[string]interface{}{
 		"type": "object",

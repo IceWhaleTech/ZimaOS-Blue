@@ -3643,9 +3643,8 @@ export default mergeHarnessLocale('de-DE', {
     customCompatibleProvider: 'Benutzerdefinierter kompatibler Anbieter',
     customCompatibleProviderHint:
       'Verwenden Sie Ihren eigenen kompatiblen Endpunkt und behalten Sie die Unterstützung für dynamische Verifizierung/Sondierung bei.',
-    addProviderHint:
-      'Wählen Sie einen offiziellen Anbieter oder fügen Sie einen benutzerdefinierten kompatiblen Endpunkt hinzu.',
-    officialProvider: 'Offizieller Anbieter',
+    addProviderHint: 'Wählen Sie einen führenden Anbieter oder fügen Sie einen benutzerdefinierten kompatiblen Endpoint hinzu.',
+    officialProvider: 'Führende Anbieter',
     noProviders: 'Keine Anbieter konfiguriert',
     noModels: 'Keine Modelle verfügbar',
     noKeys: 'Keine API-Schlüssel konfiguriert',

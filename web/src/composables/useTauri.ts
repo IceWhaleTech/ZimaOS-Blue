@@ -1,5 +1,6 @@
 import { ref, readonly, computed } from 'vue'
 import { systemApi } from '@/api/system'
+import { getCurrentAppLocation } from '@/utils/appLocation'
 import { isCurrentHostLoopback, isLocalAbsolutePath } from '@/utils/localPath'
 import { isProtectedResourceUrl, openProtectedResource } from '@/utils/protectedResource'
 
@@ -194,8 +195,7 @@ export function useTauri() {
   async function restartServerRuntime(path?: string): Promise<boolean> {
     if (!isTauriApp.value) return false
 
-    const targetPath =
-      path?.trim() || `${window.location.pathname}${window.location.search}${window.location.hash}` || '/'
+    const targetPath = path?.trim() || getCurrentAppLocation().fullPath || '/'
 
     try {
       const internals = window.__TAURI_INTERNALS__

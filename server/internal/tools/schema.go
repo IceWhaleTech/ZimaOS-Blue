@@ -228,6 +228,15 @@ func normalizeSchemaValue(raw interface{}, topLevel bool) interface{} {
 			out["type"] = "array"
 		}
 	}
+	if typeName, ok := out["type"].(string); ok && typeName == "array" {
+		if _, exists := out["items"]; !exists {
+			// OpenAI-compatible tool validators reject array schemas that omit
+			// `items`, even when the runtime schema intentionally accepts mixed
+			// item shapes. An empty schema keeps runtime validation permissive
+			// while producing a provider-safe array definition.
+			out["items"] = map[string]interface{}{}
+		}
+	}
 	if typeName, ok := out["type"].(string); ok && typeName == "object" {
 		if _, exists := out["properties"]; !exists {
 			out["properties"] = map[string]interface{}{}

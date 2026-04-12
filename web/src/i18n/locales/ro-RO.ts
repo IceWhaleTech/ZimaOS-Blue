@@ -3626,9 +3626,8 @@ export default mergeHarnessLocale('ro-RO', {
     customCompatibleProvider: 'Furnizor compatibil personalizat',
     customCompatibleProviderHint:
       'Folosiți propriul endpoint compatibil și păstrați suportul pentru verificare/sondare dinamică.',
-    addProviderHint:
-      'Selectați un furnizor oficial sau adăugați un endpoint compatibil personalizat.',
-    officialProvider: 'Furnizor oficial',
+    addProviderHint: 'Selectați un furnizor principal sau adăugați un endpoint compatibil personalizat.',
+    officialProvider: 'Furnizori principali',
     noProviders: 'Niciun furnizor configurat',
     noModels: 'Niciun model disponibil',
     noKeys: 'Nu sunt configurate chei API',

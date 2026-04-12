@@ -3605,8 +3605,8 @@ export default mergeHarnessLocale('ja-JP', {
     customCompatibleProvider: 'カスタム互換プロバイダー',
     customCompatibleProviderHint:
       '独自の互換エンドポイントを利用しつつ、動的な検証/プローブ機能を保持できます。',
-    addProviderHint: '公式プロバイダーを選択するか、カスタム互換エンドポイントを追加してください。',
-    officialProvider: '公式プロバイダー',
+    addProviderHint: '主流プロバイダーを選択するか、カスタム互換エンドポイントを追加してください。',
+    officialProvider: '主流プロバイダー',
     noProviders: 'プロバイダーが設定されていません',
     noModels: '利用可能なモデルがありません',
     noKeys: 'API キーが設定されていません',

@@ -3604,8 +3604,8 @@ export default mergeHarnessLocale('en-US', {
     customCompatibleProvider: 'Custom Compatible Provider',
     customCompatibleProviderHint:
       'Bring your own compatible endpoint and keep dynamic verify/probe support.',
-    addProviderHint: 'Select an official provider or add a custom compatible endpoint.',
-    officialProvider: 'Official Provider',
+    addProviderHint: 'Select a mainstream provider or add a custom compatible endpoint.',
+    officialProvider: 'Mainstream Providers',
     noProviders: 'No providers configured',
     noModels: 'No models available',
     noKeys: 'No API keys configured',

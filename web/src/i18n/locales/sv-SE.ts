@@ -3609,9 +3609,8 @@ export default mergeHarnessLocale('sv-SE', {
     customCompatibleProvider: 'Anpassad kompatibel leverantör',
     customCompatibleProviderHint:
       'Använd din egen kompatibla slutpunkt och behåll stöd för dynamisk verifiering/sondning.',
-    addProviderHint:
-      'Välj en officiell leverantör eller lägg till en anpassad kompatibel endpoint.',
-    officialProvider: 'Officiell leverantör',
+    addProviderHint: 'Välj en ledande leverantör eller lägg till en anpassad kompatibel endpoint.',
+    officialProvider: 'Ledande leverantörer',
     noProviders: 'Inga leverantörer konfigurerade',
     noModels: 'Inga modeller tillgängliga',
     noKeys: 'Inga API-nycklar konfigurerade',

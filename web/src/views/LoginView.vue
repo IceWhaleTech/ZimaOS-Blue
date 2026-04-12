@@ -4,6 +4,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { extauthApi, getProviderDisplayName } from '@/api/extauth'
+import { publicAsset } from '@/utils/publicAsset'
 import axios from 'axios'
 import type { ProviderInfo, ProviderType } from '@/api/extauth'
 
@@ -136,7 +137,7 @@ function getProviderIconSvg(type: ProviderType): string {
       <!-- Logo and Title -->
       <div class="text-center mb-8">
         <img
-          src="/logo.svg"
+          :src="publicAsset('logo.svg')"
           alt="ZimaOS Blue"
           class="w-16 h-16 object-contain mx-auto mb-4 drop-shadow-lg dark:brightness-150"
         />

@@ -3607,9 +3607,8 @@ export default mergeHarnessLocale('hr-HR', {
     customCompatibleProvider: 'Prilagođeni kompatibilni pružatelj',
     customCompatibleProviderHint:
       'Koristite vlastiti kompatibilni endpoint i zadržite podršku za dinamičku provjeru/sondiranje.',
-    addProviderHint:
-      'Odaberite službenog pružatelja ili dodajte prilagođeni kompatibilan endpoint.',
-    officialProvider: 'Službeni pružatelj',
+    addProviderHint: 'Odaberite vodećeg pružatelja ili dodajte prilagođeni kompatibilni endpoint.',
+    officialProvider: 'Vodeći pružatelji',
     noProviders: 'Nema konfiguriranih pružatelja',
     noModels: 'Nema dostupnih modela',
     noKeys: 'Nisu konfigurirani API ključevi',

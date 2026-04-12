@@ -3632,9 +3632,8 @@ export default mergeHarnessLocale('hu-HU', {
     customCompatibleProvider: 'Egyéni kompatibilis szolgáltató',
     customCompatibleProviderHint:
       'Használja saját kompatibilis végpontját, és tartsa meg a dinamikus ellenőrzés/felderítés támogatását.',
-    addProviderHint:
-      'Válasszon hivatalos szolgáltatót vagy adjon hozzá egyéni kompatibilis végpontot.',
-    officialProvider: 'Hivatalos szolgáltató',
+    addProviderHint: 'Válasszon fő szolgáltatót, vagy adjon hozzá egyéni kompatibilis végpontot.',
+    officialProvider: 'Fő szolgáltatók',
     noProviders: 'Nincsenek konfigurált szolgáltatók',
     noModels: 'Nincsenek elérhető modellek',
     noKeys: 'Nincsenek API-kulcsok beállítva',

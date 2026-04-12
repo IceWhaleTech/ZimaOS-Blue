@@ -3637,9 +3637,8 @@ export default mergeHarnessLocale('es-ES', {
     customCompatibleProvider: 'Proveedor compatible personalizado',
     customCompatibleProviderHint:
       'Use su propio endpoint compatible y mantenga el soporte para verificación/sondeo dinámicos.',
-    addProviderHint:
-      'Selecciona un proveedor oficial o añade un endpoint compatible personalizado.',
-    officialProvider: 'Proveedor oficial',
+    addProviderHint: 'Selecciona un proveedor principal o añade un endpoint compatible personalizado.',
+    officialProvider: 'Proveedores principales',
     noProviders: 'Ningún proveedor configurado',
     noModels: 'Ningún modelo disponible',
     noKeys: 'Ninguna clave API configurada',

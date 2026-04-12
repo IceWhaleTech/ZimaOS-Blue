@@ -3603,9 +3603,8 @@ export default mergeHarnessLocale('nb-NO', {
     customCompatibleProvider: 'Egendefinert kompatibel leverandør',
     customCompatibleProviderHint:
       'Bruk ditt eget kompatible endepunkt og behold støtte for dynamisk verifisering/probing.',
-    addProviderHint:
-      'Velg en offisiell leverandør eller legg til en egendefinert kompatibel endpoint.',
-    officialProvider: 'Offisiell leverandør',
+    addProviderHint: 'Velg en ledende leverandør eller legg til et egendefinert kompatibelt endepunkt.',
+    officialProvider: 'Ledende leverandører',
     noProviders: 'Ingen leverandører konfigurert',
     noModels: 'Ingen modeller tilgjengelig',
     noKeys: 'Ingen API-nøkler er konfigurert',

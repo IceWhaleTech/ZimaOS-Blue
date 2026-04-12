@@ -84,6 +84,7 @@ export function getLastModel(category: string): string {
 export function useMediaGenerate() {
   const { t } = useI18n()
   const intent = ref<MediaIntent | null>(null)
+  const originalPrompt = ref('')
   const models = ref<MediaModelInfo[]>([])
   const alternativeModels = ref<MediaModelInfo[]>([]) // models for alternative_category (e.g. kf2v)
   const selectedModel = ref('')
@@ -123,6 +124,8 @@ export function useMediaGenerate() {
     // Client-side classification first (instant)
     const localIntent = classifyMediaIntent(message, hasImages, imageCount, locale)
     if (!localIntent) return false
+
+    originalPrompt.value = message
 
     // Low confidence (0.4-0.7): show disambiguation prompt
     if (localIntent.confidence < 0.7) {
@@ -402,6 +405,7 @@ export function useMediaGenerate() {
   function reset() {
     cancel()
     intent.value = null
+    originalPrompt.value = ''
     models.value = []
     alternativeModels.value = []
     selectedModel.value = ''
@@ -418,6 +422,7 @@ export function useMediaGenerate() {
 
   return {
     intent,
+    originalPrompt,
     models,
     alternativeModels,
     selectedModel,

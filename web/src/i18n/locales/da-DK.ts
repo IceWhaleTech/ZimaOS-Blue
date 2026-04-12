@@ -3605,8 +3605,8 @@ export default mergeHarnessLocale('da-DK', {
     customCompatibleProvider: 'Tilpasset kompatibel udbyder',
     customCompatibleProviderHint:
       'Brug dit eget kompatible endpoint, og bevar understøttelsen af dynamisk verifikation/probing.',
-    addProviderHint: 'Vælg en officiel udbyder eller tilføj en tilpasset kompatibel endpoint.',
-    officialProvider: 'Officiel udbyder',
+    addProviderHint: 'Vælg en førende udbyder eller tilføj et brugerdefineret kompatibelt endpoint.',
+    officialProvider: 'Førende udbydere',
     noProviders: 'Ingen udbydere konfigureret',
     noModels: 'Ingen modeller tilgængelige',
     noKeys: 'Ingen API-nøgler konfigureret',

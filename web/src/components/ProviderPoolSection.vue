@@ -9,6 +9,10 @@ import ProviderIcon from '@/components/ProviderIcon.vue'
 import type { Provider, Model, ProviderVerificationResult, APIFormat } from '@/api/providerPool'
 import { providerPoolApi } from '@/api/providerPool'
 import { getLocaleDirection } from '@/i18n'
+import {
+  getLocalizedExtraProviderApiFormatLabel,
+  getLocalizedProviderCatalogDescription,
+} from '@/i18n/provider-catalog-localization'
 import { formatTokens } from '@/utils/format'
 import { getLocalizedMediaModelName } from '@/utils/mediaModelLocalization'
 import { filterProvidersVisibleInUI, isProviderVisibleInUI } from '@/utils/providerVisibility'
@@ -477,6 +481,32 @@ let providerSelectionSeq = 0
 let lastAutoRefreshSignature = ''
 let autoRefreshInFlightSignature = ''
 
+// Provider usage state
+interface ProviderUsageSummary {
+  total_input_tokens: number
+  total_output_tokens: number
+  total_requests: number
+  successful_requests: number
+  failed_requests: number
+  total_estimated_cost: number
+  avg_latency_ms: number
+}
+const providerUsage = ref<ProviderUsageSummary | null>(null)
+const loadingUsage = ref(false)
+
+async function fetchProviderUsage(providerId: string) {
+  loadingUsage.value = true
+  providerUsage.value = null
+  try {
+    const res = await providerPoolApi.getProviderUsage(providerId)
+    providerUsage.value = res.data.summary || null
+  } catch {
+    providerUsage.value = null
+  } finally {
+    loadingUsage.value = false
+  }
+}
+
 // Refresh models when provider changes
 watch(
   [
@@ -700,10 +730,28 @@ function formatKeyLabel(label: string): string {
 
 // Get localized provider description
 function getProviderDescription(provider: Provider): string {
-  // Provider metadata is the source of truth for provider-specific descriptions.
+  const localizedDescription = getLocalizedProviderCatalogDescription(
+    locale.value,
+    provider.id,
+    provider.description || ''
+  )
+  if (localizedDescription) return localizedDescription
   if (provider.description) return provider.description
   if (provider.metadata_mode === 'catalog') return ''
   return provider.base_url || ''
+}
+
+function getProviderApiFormatLabel(format?: APIFormat): string {
+  if (!format) return ''
+  const translated = tr(`providerPool.apiFormatOptions.${format}`)
+  if (translated) return translated
+  return getLocalizedExtraProviderApiFormatLabel(locale.value, format)
+}
+
+function getProviderChooserMetadata(provider: Pick<Provider, 'api_format' | 'location'>): string {
+  return [getProviderApiFormatLabel(provider.api_format), getProviderLocationLabel(provider)]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 // Reset to 'all' if current tab is no longer available (e.g., trial removed)
@@ -1164,32 +1212,6 @@ function sanitizeDeviceUserCode(raw: string): string {
     .replace(/[‐‑‒–—―]/g, '-')
     .replace(/\s+/g, '')
     .toUpperCase()
-}
-
-// Provider usage state
-interface ProviderUsageSummary {
-  total_input_tokens: number
-  total_output_tokens: number
-  total_requests: number
-  successful_requests: number
-  failed_requests: number
-  total_estimated_cost: number
-  avg_latency_ms: number
-}
-const providerUsage = ref<ProviderUsageSummary | null>(null)
-const loadingUsage = ref(false)
-
-async function fetchProviderUsage(providerId: string) {
-  loadingUsage.value = true
-  providerUsage.value = null
-  try {
-    const res = await providerPoolApi.getProviderUsage(providerId)
-    providerUsage.value = res.data.summary || null
-  } catch {
-    providerUsage.value = null
-  } finally {
-    loadingUsage.value = false
-  }
 }
 
 function tierBadgeClass(tier: string): string {
@@ -3554,7 +3576,7 @@ onMounted(() => {
                     {{
                       tr(
                         'providerPool.addProviderHint',
-                        'Select an official provider or add a custom compatible endpoint.'
+                        'Select a mainstream provider or add a custom compatible endpoint.'
                       )
                     }}
                   </p>
@@ -3571,7 +3593,7 @@ onMounted(() => {
                 <div class="space-y-3">
                   <div>
                     <h3 class="mb-2 text-sm font-medium text-gray-900 dark:text-white">
-                      {{ tr('providerPool.officialProvider', 'Official Provider') }}
+                      {{ tr('providerPool.officialProvider', 'Mainstream Providers') }}
                     </h3>
                     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                       <button
@@ -3607,7 +3629,7 @@ onMounted(() => {
                               }}
                             </div>
                             <div class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-                              {{ provider.api_format || 'openai' }} · {{ provider.location }}
+                              {{ getProviderChooserMetadata(provider) }}
                             </div>
                           </div>
                         </div>

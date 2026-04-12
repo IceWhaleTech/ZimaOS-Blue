@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { publicAsset } from '@/utils/publicAsset'
 
 const props = defineProps<{
   providerId: string
@@ -55,8 +56,8 @@ function resolveIcon(id: string): string {
 const iconSrc = computed(() => {
   if (props.customIcon) return props.customIcon
   const id = aliases[props.providerId] || props.providerId
-  if (id === '__trial__') return '/logo.svg'
-  return `/icons/providers/${resolveIcon(id)}.svg`
+  if (id === '__trial__') return publicAsset('logo.svg')
+  return publicAsset(`icons/providers/${resolveIcon(id)}.svg`)
 })
 
 const sizeClass = computed(() => {
@@ -86,7 +87,7 @@ const sizeClass = computed(() => {
         const img = e.target as HTMLImageElement
         if (!img.dataset.fallback) {
           img.dataset.fallback = '1'
-          img.src = '/icons/providers/default.svg'
+          img.src = publicAsset('icons/providers/default.svg')
         }
       }
     "

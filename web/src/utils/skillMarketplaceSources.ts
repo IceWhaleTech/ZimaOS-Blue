@@ -1,4 +1,5 @@
 export type MarketplaceSourceField = 'label' | 'description'
+import { publicAsset } from '@/utils/publicAsset'
 
 export type MarketplaceSourceTranslate = (
   path: string,
@@ -55,9 +56,9 @@ const sourceLocaleCatalog = {
   vercel: {
     label: 'Vercel',
     description: 'Official Vercel skills collection from vercel-labs/skills.',
-    iconUrl: '/icons/providers/vercel.svg',
-    logoUrl: '/icons/providers/vercel-wordmark.svg',
-    logoDarkUrl: '/icons/providers/vercel-wordmark-dark.svg',
+    iconUrl: publicAsset('icons/providers/vercel.svg'),
+    logoUrl: publicAsset('icons/providers/vercel-wordmark.svg'),
+    logoDarkUrl: publicAsset('icons/providers/vercel-wordmark-dark.svg'),
   },
   githubSkillMd: {
     label: 'GitHub SKILL.md',
@@ -83,8 +84,8 @@ const sourceLocaleCatalog = {
   minimax: {
     label: 'MiniMax',
     description: 'MiniMax GitHub skill collection.',
-    iconUrl: '/icons/providers/minimax.svg',
-    logoUrl: '/icons/providers/minimax.svg',
+    iconUrl: publicAsset('icons/providers/minimax.svg'),
+    logoUrl: publicAsset('icons/providers/minimax.svg'),
   },
   agentskills: {
     label: 'AgentSkills',

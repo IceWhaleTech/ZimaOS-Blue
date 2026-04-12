@@ -3602,9 +3602,8 @@ export default mergeHarnessLocale('cs-CZ', {
     customCompatibleProvider: 'Vlastní kompatibilní poskytovatel',
     customCompatibleProviderHint:
       'Použijte vlastní kompatibilní endpoint a zachovejte podporu dynamického ověřování/sondování.',
-    addProviderHint:
-      'Vyberte oficiálního poskytovatele nebo přidejte vlastní kompatibilní endpoint.',
-    officialProvider: 'Oficiální poskytovatel',
+    addProviderHint: 'Vyberte hlavního poskytovatele nebo přidejte vlastní kompatibilní endpoint.',
+    officialProvider: 'Hlavní poskytovatelé',
     noProviders: 'Žádní nakonfigurovaní poskytovatelé',
     noModels: 'Žádné dostupné modely',
     noKeys: 'Žádné nakonfigurované API klíče',

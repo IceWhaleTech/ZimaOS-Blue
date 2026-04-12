@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useToolStore } from '@/stores/tool'
 import type { Tool } from '@/api/tool'
 import { getLocalizedToolDescription, getLocalizedToolName } from '@/utils/toolLocalization'
+import { publicAsset } from '@/utils/publicAsset'
 import { formatVersionLabel } from '@/utils/version-label'
 
 const { t, te, locale } = useI18n()
@@ -177,7 +178,7 @@ function getToolIconUrl(tool: Tool): string | null {
   if (tool.icon) {
     const normalizedIcon = iconAliases[tool.icon] || tool.icon
     if (availableIcons.has(normalizedIcon)) {
-      return `/icons/tools/${normalizedIcon}.svg`
+      return publicAsset(`icons/tools/${normalizedIcon}.svg`)
     }
   }
 
@@ -210,7 +211,7 @@ function getToolIconUrl(tool: Tool): string | null {
     ppt: 'mediagen',
   }
   const iconName = iconMap[tool.id || tool.name]
-  if (iconName) return `/icons/tools/${iconName}.svg`
+  if (iconName) return publicAsset(`icons/tools/${iconName}.svg`)
   return null
 }
 

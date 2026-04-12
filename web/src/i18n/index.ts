@@ -1,5 +1,6 @@
 import { createI18n } from 'vue-i18n'
 import { hasStoredSessionHint } from '@/utils/authStorage'
+import { getCurrentAppLocation } from '@/utils/appLocation'
 import { shouldDeferLocaleEnhancementsOnDesktopStartup } from '@/utils/desktopStartup'
 import buildBuiltinSkillBackfill from './builtin-skill-backfills'
 import builtinToolBackfills from './builtin-tool-backfills'
@@ -409,7 +410,7 @@ function shouldDeferInitialLocaleEnhancements(): boolean {
   return shouldDeferLocaleEnhancementsOnDesktopStartup(
     !!window.__BLUE_DESKTOP__,
     hasStoredSessionHint(),
-    window.location.pathname || '/'
+    getCurrentAppLocation().path
   )
 }
 

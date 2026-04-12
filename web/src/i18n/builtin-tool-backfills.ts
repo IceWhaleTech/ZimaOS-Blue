@@ -1585,12 +1585,44 @@ const advisorLocaleTerms: Record<
   },
 }
 
+const ocrLocaleTerms: Record<LocaleKey, string> = {
+  'ca-ES': "Extreu text d'imatges, captures de pantalla o fitxers escanejats mitjançant OCR.",
+  'cs-CZ': 'Extrahuje text z obrázků, snímků obrazovky nebo skenovaných souborů pomocí OCR.',
+  'da-DK': 'Udtrækker tekst fra billeder, skærmbilleder eller scannede filer ved hjælp af OCR.',
+  'de-DE': 'Extrahiert Text aus Bildern, Screenshots oder gescannten Dateien mit OCR.',
+  'el-GR': 'Εξάγει κείμενο από εικόνες, στιγμιότυπα οθόνης ή σαρωμένα αρχεία με χρήση OCR.',
+  'en-GB': 'Extract text from images, screenshots, or scanned files using OCR.',
+  'en-US': 'Extract text from images, screenshots, or scanned files using OCR.',
+  'es-ES': 'Extrae texto de imágenes, capturas de pantalla o archivos escaneados mediante OCR.',
+  'fr-FR': "Extrait le texte des images, captures d'écran ou fichiers numérisés à l'aide de l'OCR.",
+  'ga-IE': 'Baineann sé téacs as íomhánna, seatanna scáileáin nó comhaid scanta trí OCR a úsáid.',
+  'hr-HR': 'Izdvaja tekst iz slika, snimki zaslona ili skeniranih datoteka pomoću OCR-a.',
+  'hu-HU': 'OCR segítségével szöveget nyer ki képekből, képernyőképekből vagy szkennelt fájlokból.',
+  'it-IT': "Estrae testo da immagini, schermate o file scansionati usando l'OCR.",
+  'ja-JP': 'OCR を使って画像、スクリーンショット、またはスキャンしたファイルからテキストを抽出します。',
+  'ko-KR': 'OCR을 사용해 이미지, 스크린샷 또는 스캔된 파일에서 텍스트를 추출합니다.',
+  'ml-IN':
+    'OCR ഉപയോഗിച്ച് ചിത്രങ്ങൾ, സ്ക്രീൻഷോട്ടുകൾ, അല്ലെങ്കിൽ സ്കാൻ ചെയ്ത ഫയലുകളിൽ നിന്ന് ടെക്സ്റ്റ് പുറത്തെടുക്കുന്നു.',
+  'nb-NO': 'Henter ut tekst fra bilder, skjermbilder eller skannede filer ved hjelp av OCR.',
+  'nl-NL': 'Haalt tekst uit afbeeldingen, schermafbeeldingen of gescande bestanden met OCR.',
+  'pl-PL': 'Wyodrębnia tekst z obrazów, zrzutów ekranu lub zeskanowanych plików za pomocą OCR.',
+  'pt-BR': 'Extrai texto de imagens, capturas de tela ou arquivos digitalizados usando OCR.',
+  'pt-PT': 'Extrai texto de imagens, capturas de ecrã ou ficheiros digitalizados usando OCR.',
+  'ro-RO': 'Extrage text din imagini, capturi de ecran sau fișiere scanate folosind OCR.',
+  'ru-RU': 'Извлекает текст из изображений, снимков экрана или отсканированных файлов с помощью OCR.',
+  'sk-SK': 'Extrahuje text z obrázkov, snímok obrazovky alebo naskenovaných súborov pomocou OCR.',
+  'sv-SE': 'Extraherar text från bilder, skärmdumpar eller skannade filer med OCR.',
+  'zh-CN': '使用 OCR 从图像、屏幕截图或扫描文件中提取文本。',
+  'zh-TW': '使用 OCR 從圖像、螢幕截圖或掃描檔案中擷取文字。',
+}
+
 const builtinToolBackfills = Object.fromEntries(
   Object.entries(visibleBuiltinToolLocaleTerms).map(([locale, terms]) => {
     const fileDeleteTerms = fileDeleteLocaleTerms[locale as LocaleKey]
     const configTerms = configLocaleTerms[locale as LocaleKey]
     const convertTerms = convertLocaleTerms[locale as LocaleKey]
     const advisorTerms = advisorLocaleTerms[locale as LocaleKey]
+    const ocrDescription = ocrLocaleTerms[locale as LocaleKey]
     const nativeDocumentTerms = nativeDocumentToolBackfills[locale as LocaleKey]
 
     return [
@@ -1615,6 +1647,7 @@ const builtinToolBackfills = Object.fromEntries(
             image: terms.imageName,
             nodes: terms.nodesName,
             office: terms.officeName,
+            ocr: 'OCR',
             pdf: terms.pdfName,
             pptx: 'PPTX',
             subagents: terms.subagentsName,
@@ -1639,6 +1672,7 @@ const builtinToolBackfills = Object.fromEntries(
             image: terms.imageDescription,
             nodes: terms.nodesDescription,
             office: terms.officeDescription,
+            ocr: ocrDescription,
             pdf: nativeDocumentTerms.pdfDescription,
             pptx: nativeDocumentTerms.pptxDescription,
             subagents: terms.subagentsDescription,

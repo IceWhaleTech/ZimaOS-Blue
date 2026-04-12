@@ -1,3 +1,5 @@
+import { getCurrentAppLocation } from '@/utils/appLocation'
+
 const startupTraceStart = typeof performance !== 'undefined' ? performance.now() : 0
 
 const reportedMarks = new Set<string>()
@@ -17,7 +19,9 @@ function parseBoolFlag(raw: string | null): boolean {
 
 export function isStartupTraceEnabled(): boolean {
   if (typeof window === 'undefined') return false
-  const urlFlag = parseBoolFlag(new URLSearchParams(window.location.search).get('startup_trace'))
+  const urlFlag = parseBoolFlag(
+    new URLSearchParams(getCurrentAppLocation().search).get('startup_trace')
+  )
   const desktopFlag = !!(window as any).__BLUE_STARTUP_TRACE__
   return urlFlag || desktopFlag
 }
@@ -30,10 +34,11 @@ export function reportStartupMark(
   if (reportedMarks.has(label)) return
   reportedMarks.add(label)
 
+  const appLocation = getCurrentAppLocation()
   const params = new URLSearchParams({
     startup_mark: label,
     startup_ms: (performance.now() - startupTraceStart).toFixed(1),
-    path: window.location.pathname,
+    path: appLocation.path,
   })
 
   for (const [key, value] of Object.entries(extra)) {

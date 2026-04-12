@@ -3653,9 +3653,8 @@ export default mergeHarnessLocale('fr-FR', {
     customCompatibleProvider: 'Fournisseur compatible personnalisé',
     customCompatibleProviderHint:
       'Utilisez votre propre point de terminaison compatible tout en conservant la prise en charge de la vérification/du sondage dynamiques.',
-    addProviderHint:
-      'Sélectionnez un fournisseur officiel ou ajoutez un point de terminaison compatible personnalisé.',
-    officialProvider: 'Fournisseur officiel',
+    addProviderHint: 'Sélectionnez un fournisseur principal ou ajoutez un endpoint compatible personnalisé.',
+    officialProvider: 'Fournisseurs principaux',
     noProviders: 'Aucun fournisseur configuré',
     noModels: 'Aucun modèle disponible',
     noKeys: 'Aucune clé API configurée',

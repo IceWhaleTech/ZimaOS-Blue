@@ -3626,9 +3626,8 @@ export default mergeHarnessLocale('ga-IE', {
     customCompatibleProvider: 'Soláthraí comhoiriúnach saincheaptha',
     customCompatibleProviderHint:
       'Úsáid do chuid deiridh chomhoiriúnach féin agus coinnigh tacaíocht le haghaidh fíorú/díolaim dinimiciúil.',
-    addProviderHint:
-      'Roghnaigh soláthraí oifigiúil nó cuir críochphointe comhoiriúnach saincheaptha leis.',
-    officialProvider: 'Soláthraí oifigiúil',
+    addProviderHint: 'Roghnaigh príomhsholáthraí nó cuir endpoint comhoiriúnach saincheaptha leis.',
+    officialProvider: 'Príomhsholáthraithe',
     noProviders: 'Níl aon soláthraithe cumraithe',
     noModels: 'Níl aon múnlaí ar fáil',
     noKeys: 'Níl aon eochracha API cumraithe',

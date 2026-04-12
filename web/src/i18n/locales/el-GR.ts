@@ -3642,9 +3642,8 @@ export default mergeHarnessLocale('el-GR', {
     customCompatibleProvider: 'Προσαρμοσμένος συμβατός πάροχος',
     customCompatibleProviderHint:
       'Χρησιμοποιήστε το δικό σας συμβατό endpoint και διατηρήστε την υποστήριξη δυναμικού ελέγχου/ανίχνευσης.',
-    addProviderHint:
-      'Επιλέξτε έναν επίσημο πάροχο ή προσθέστε έναν προσαρμοσμένο συμβατό τελικό σταθμό.',
-    officialProvider: 'Επίσημος πάροχος',
+    addProviderHint: 'Επιλέξτε έναν κύριο πάροχο ή προσθέστε ένα προσαρμοσμένο συμβατό endpoint.',
+    officialProvider: 'Κύριοι πάροχοι',
     noProviders: 'Δεν έχει ρυθμιστεί προμηθευτής',
     noModels: 'Δεν υπάρχουν διαθέσιμα μοντέλα',
     noKeys: 'Δεν έχουν ρυθμιστεί κλειδιά API',

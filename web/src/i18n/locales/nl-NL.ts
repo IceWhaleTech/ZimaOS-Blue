@@ -3629,9 +3629,8 @@ export default mergeHarnessLocale('nl-NL', {
     customCompatibleProvider: 'Aangepaste compatibele provider',
     customCompatibleProviderHint:
       'Gebruik je eigen compatibele endpoint en behoud ondersteuning voor dynamische verificatie/probing.',
-    addProviderHint:
-      'Selecteer een officiële provider of voeg een aangepast compatibel endpoint toe.',
-    officialProvider: 'Officiële provider',
+    addProviderHint: 'Kies een toonaangevende provider of voeg een aangepast compatibel endpoint toe.',
+    officialProvider: 'Toonaangevende providers',
     noProviders: 'Geen providers geconfigureerd',
     noModels: 'Geen modellen beschikbaar',
     noKeys: 'Geen API-sleutels geconfigureerd',

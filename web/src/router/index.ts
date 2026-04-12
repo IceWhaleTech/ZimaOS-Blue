@@ -1,8 +1,9 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { PagePermissions } from '@/constants/pagePermissions'
 import { useAuthStore } from '@/stores/auth'
 import { usePreviewStore } from '@/stores/preview'
+import { getCurrentAppLocation } from '@/utils/appLocation'
 import { reportStartupMark } from '@/utils/startupTrace'
 import {
   getOptimisticStartupPreviewCheckTimeout,
@@ -347,7 +348,7 @@ function loadConnectionErrorViewForRoute() {
 
 function warmInitialStartupRoutes() {
   if (typeof window === 'undefined') return
-  const path = window.location.pathname
+  const { path } = getCurrentAppLocation()
   if (path === '/' || path === '/chat') {
     void preloadChatView().catch(() => {})
     if (!hasStoredSessionHint()) {
@@ -541,7 +542,10 @@ export const routes: RouteRecordRaw[] = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history:
+    import.meta.env.VITE_MODULE_UI === '1'
+      ? createWebHashHistory(import.meta.env.BASE_URL)
+      : createWebHistory(import.meta.env.BASE_URL),
   routes,
 })
 

@@ -95,4 +95,28 @@ describe('useMediaGenerate', () => {
     expect(mediaGen.selectedModel.value).toBe('model-1')
     expect(mediaApiMocks.directGenerate).not.toHaveBeenCalled()
   })
+
+  it('preserves the original user message separately from the classified prompt', async () => {
+    mediaApiMocks.classifyIntent.mockResolvedValue({
+      intent: {
+        category: 't2i',
+        confidence: 0.85,
+        prompt: '生成一张灰泰迪的照片',
+        has_image: false,
+        image_count: 0,
+      },
+      models: [],
+    })
+
+    const { useMediaGenerate } = await import('./useMediaGenerate')
+    const mediaGen = useMediaGenerate()
+    const originalMessage = '先别生成图片，继续帮我分析这只灰泰迪的构图和风格。生成一张灰泰迪的照片'
+
+    const detected = await mediaGen.classify(originalMessage, false, 0, 'zh-CN')
+
+    expect(detected).toBe(true)
+    expect(mediaGen.originalPrompt.value).toBe(originalMessage)
+    mediaGen.reset()
+    expect(mediaGen.originalPrompt.value).toBe('')
+  })
 })

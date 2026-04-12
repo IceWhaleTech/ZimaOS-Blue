@@ -6,6 +6,7 @@ import SkillContractNotice from './SkillContractNotice.vue'
 import { useSkillStore } from '@/stores/skill'
 import { parseFrontmatter } from '@/utils/frontmatter'
 import { renderMarkdown as renderMarkdownHtml } from '@/utils/markdown'
+import { publicAsset } from '@/utils/publicAsset'
 import { formatVersionLabel } from '@/utils/version-label'
 
 const { t, te, locale } = useI18n()
@@ -156,7 +157,7 @@ function getSkillDescription(skill: Skill): string {
 
 function getSkillIconUrl(icon?: string): string | null {
   if (!icon) return null
-  return `/icons/skills/${icon}.svg`
+  return publicAsset(`icons/skills/${icon}.svg`)
 }
 
 function getCategoryIcon(category?: string): string {

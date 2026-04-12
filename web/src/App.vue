@@ -7,7 +7,9 @@ import { usePreviewStore } from '@/stores/preview'
 import { reportStartupMark } from '@/utils/startupTrace'
 import { prefetchCriticalRoutes } from '@/utils/prefetch'
 import { hasStoredSessionHint } from '@/utils/authStorage'
+import { getCurrentAppLocation } from '@/utils/appLocation'
 import { shouldDeferAskUserQuestionDialogOnDesktopStartup } from '@/utils/desktopStartup'
+import { publicAsset } from '@/utils/publicAsset'
 import { scheduleStartupBackgroundTask } from '@/utils/startupBackgroundTask'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 
@@ -63,7 +65,7 @@ function isDesktopPortFallbackStartup(): boolean {
 function canEagerRenderProtectedShell(): boolean {
   if (typeof window === 'undefined') return false
 
-  const path = window.location.pathname
+  const { path } = getCurrentAppLocation()
   const isChatStartupPath = path === '/' || path === '/chat'
   if (!isChatStartupPath) return false
 
@@ -220,7 +222,7 @@ onUnmounted(() => {
 
 <template>
   <div v-if="!initialRouteReady" class="app-startup-shell">
-    <img src="/logo.svg" alt="ZimaOS Blue" class="app-startup-shell__logo" />
+    <img :src="publicAsset('logo.svg')" alt="ZimaOS Blue" class="app-startup-shell__logo" />
   </div>
   <RouterView v-else-if="hideLayout" />
   <DefaultLayout v-else />

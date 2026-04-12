@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import type { ComponentPublicInstance } from 'vue'
 import type { Message as ChatMessageRecord } from '@/api/chat'
+import { publicAsset } from '@/utils/publicAsset'
 import { useChatStore, type ActiveMessageStreamState, type StreamUIState } from '@/stores/chat'
 import { useSettingsStore } from '@/stores/settings'
 import { useSystemStore } from '@/stores/system'
@@ -2086,7 +2087,7 @@ async function handleMediaGenerate() {
 
 async function handleMediaDismiss() {
   // User chose "No, just chat" — send the original message to chat instead.
-  const prompt = mediaGen.intent.value?.prompt
+  const prompt = mediaGen.originalPrompt.value || mediaGen.intent.value?.prompt
   mediaGen.reset()
   if (prompt && (await ensureLlmProviderConfigured(prompt))) {
     chatStore.sendMessage(prompt)
@@ -4475,7 +4476,7 @@ onUnmounted(() => {
               >
                 <div class="text-center text-gray-500 dark:text-slate-400 max-w-md mb-5">
                   <img
-                    src="/logo.svg"
+                    :src="publicAsset('logo.svg')"
                     alt="Logo"
                     class="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 opacity-80 dark:opacity-60"
                   />

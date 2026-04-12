@@ -1,11 +1,11 @@
 # Makefile for ZimaOS-Blue
 # Supports building single binary with embedded frontend
 
-.PHONY: all build build-frontend build-frontend-embedded build-backend dev clean help
-.PHONY: build-linux build-darwin build-windows build-all
+.PHONY: all build build-frontend build-frontend-embedded build-web-module build-backend dev clean help
+.PHONY: build-linux build-linux-bare build-darwin build-windows build-all
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar tauri-verify-macos-package
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
-.PHONY: provider-catalog provider-catalog-check stage-windows-codex-assets
+.PHONY: provider-catalog provider-catalog-check stage-windows-codex-assets build-zimaos-raw
 
 # Version info
 VERSION ?= 0.10.39
@@ -20,10 +20,16 @@ EMBED_DIR := $(SERVER_DIR)/internal/web/dist
 DIST_DIR := $(PROJECT_ROOT)/dist
 TAURI_DIR := $(PROJECT_ROOT)/tauri-app
 TAURI_LIB_DIR := $(TAURI_DIR)/src-tauri/lib
+WEB_MODULE_OUT_DIR ?= dist-module
+WEB_MODULE_DIST_DIR := $(WEB_DIR)/$(WEB_MODULE_OUT_DIR)
 SKILLS_SRC := $(PROJECT_ROOT)/assets/skills
 SKILLS_EMBED := $(SERVER_DIR)/internal/skill/embedded/skills
 EMBEDDED_DISABLE_MERMAID ?= 1
 WINDOWS_CODEX_ASSET_DIR ?= $(DIST_DIR)/windows-codex
+ZIMAOS_RAW_MODULE ?= zimaos-blue
+ZIMAOS_RAW_COMMAND ?= blue
+ZIMAOS_RAW_BINARY ?= $(DIST_DIR)/zimaos-blue-linux-amd64
+ZIMAOS_RAW_OUTPUT ?= $(DIST_DIR)/$(ZIMAOS_RAW_MODULE).raw
 
 # Go build flags
 LDFLAGS := -s -w
@@ -47,6 +53,11 @@ build-frontend:
 build-frontend-embedded:
 	@echo "Building embedded frontend (all locales, Mermaid fallback: $(EMBEDDED_DISABLE_MERMAID))..."
 	@cd $(WEB_DIR) && npm install && VITE_EMBED_DISABLE_MERMAID="$(EMBEDDED_DISABLE_MERMAID)" npm run build
+
+# Build the CasaOS/ZimaOS module frontend bundle used inside the raw image
+build-web-module:
+	@echo "Building module frontend for $(ZIMAOS_RAW_MODULE)..."
+	@cd $(WEB_DIR) && npm install && VITE_MODULE_UI=1 VITE_MODULE_NAME="$(ZIMAOS_RAW_MODULE)" VITE_OUT_DIR="$(WEB_MODULE_OUT_DIR)" npm run build
 
 # Copy frontend to embed directory (exclude source maps)
 copy-frontend:
@@ -93,6 +104,19 @@ build-linux: build-frontend copy-frontend copy-skills
 	@mkdir -p $(DIST_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
 
+build-linux-bare: copy-skills
+	@echo "Building bare Linux binary for ZimaOS raw (amd64)..."
+	@mkdir -p $(DIST_DIR)
+	@cd $(SERVER_DIR) && \
+		if [ "$(shell uname -s)" = "Linux" ]; then \
+			CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags 'fts5' -ldflags "$(LDFLAGS)" -o $(ZIMAOS_RAW_BINARY) ./cmd/blue; \
+		elif command -v zig >/dev/null 2>&1; then \
+			CC="zig cc -target x86_64-linux-gnu" CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags 'fts5' -ldflags "$(LDFLAGS)" -o $(ZIMAOS_RAW_BINARY) ./cmd/blue; \
+		else \
+			echo "zig is required to cross-compile linux/amd64 with CGO from $(shell uname -s)" >&2; \
+			exit 1; \
+		fi
+
 build-linux-arm64: build-frontend copy-frontend copy-skills
 	@echo "Building for Linux (arm64)..."
 	@mkdir -p $(DIST_DIR)
@@ -125,11 +149,23 @@ build-all: build-frontend copy-frontend copy-skills
 	@echo "All builds complete!"
 	@ls -lh $(DIST_DIR)/
 
+build-zimaos-raw: build-web-module build-linux-bare
+	@echo "Building ZimaOS squashfs raw module..."
+	@bash $(PROJECT_ROOT)/scripts/build_zimaos_raw.sh \
+		--binary $(ZIMAOS_RAW_BINARY) \
+		--output $(ZIMAOS_RAW_OUTPUT) \
+		--dist-dir $(WEB_MODULE_DIST_DIR) \
+		--module-name $(ZIMAOS_RAW_MODULE) \
+		--command-name $(ZIMAOS_RAW_COMMAND) \
+		--version $(VERSION)
+	@ls -lh $(ZIMAOS_RAW_OUTPUT)
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(DIST_DIR)
 	@rm -rf $(EMBED_DIR)
+	@rm -rf $(WEB_MODULE_DIST_DIR)
 	@rm -rf $(SKILLS_EMBED)
 	@rm -rf $(WEB_DIR)/dist
 	@rm -rf $(WEB_DIR)/node_modules/.cache
@@ -258,6 +294,8 @@ help:
 	@echo "  build-darwin-arm64 Build for macOS (arm64)"
 	@echo "  build-windows      Build for Windows (amd64)"
 	@echo "  build-all          Build for all platforms"
+	@echo "  build-zimaos-raw   Build a ZimaOS/CasaOS squashfs raw module from a bare Linux amd64 binary + module UI"
+	@echo "  build-web-module   Build the CasaOS/ZimaOS module frontend dist"
 	@echo "  clean              Remove build artifacts"
 	@echo "  provider-catalog   Regenerate docs and embedded provider catalog JSON"
 	@echo "  provider-catalog-check Verify provider catalog files match generated output"
@@ -295,6 +333,7 @@ help:
 	@echo "  make tauri-package                   # Build signed/notarized macOS package when creds are present"
 	@echo "  make tauri-verify-macos-package      # Verify built macOS package signatures and notarization"
 	@echo "  make build-blue-lib-macos            # Build Go library for macOS CGO integration"
+	@echo "  make build-zimaos-raw                # Build dist/zimaos-blue.raw"
 
 # =============================================================================
 # macOS CGO Library Build Targets

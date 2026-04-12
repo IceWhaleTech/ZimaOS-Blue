@@ -17,6 +17,7 @@ import { getLocaleDirection } from '@/i18n'
 import { isLocalAbsolutePath } from '@/utils/localPath'
 import { prefetchRoute } from '@/utils/prefetch'
 import { getWorkspaceVisibleTokenCount } from '@/utils/workspaceTokenEstimate'
+import { publicAsset } from '@/utils/publicAsset'
 import { resetPreviewModeStatus } from '@/router'
 import { extractLocalPathCandidatesFromCard } from '@/utils/workspaceGeneratedFiles'
 const PreviewUpgradeForm = defineAsyncComponent(
@@ -1292,7 +1293,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             <div class="sidebar-brand-main">
               <div class="sidebar-brand-mark">
                 <img
-                  src="/logo.svg"
+                  :src="publicAsset('logo.svg')"
                   alt="ZimaOS Blue"
                   class="h-6 w-6 object-contain dark:brightness-150"
                 />

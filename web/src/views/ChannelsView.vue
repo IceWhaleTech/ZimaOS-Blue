@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { channelsApi } from '@/api/channels'
 import { getChannelIconOrDefault, getChannelIconStyleVars } from '@/utils/channelIcons'
+import { publicAsset } from '@/utils/publicAsset'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
 import ChannelCardShell from '@/components/channels/ChannelCardShell.vue'
 import ChannelDetailPanel from '@/components/channels/ChannelDetailPanel.vue'
@@ -2017,7 +2018,7 @@ onErrorCaptured((error, _instance, info) => {
                   :status-text="remoteAccessStatusText"
                   :status-title="remoteAccessStatusTitle"
                   :expanded="isRemoteAccessSelected"
-                  icon-src="/icons/tunnel/remote-access.svg"
+                  :icon-src="publicAsset('icons/tunnel/remote-access.svg')"
                   :icon-alt="remoteAccessIconAlt"
                   :meta-label="remoteAccessRecommendedLabel"
                   @header-click="toggleRemoteAccessExpanded"

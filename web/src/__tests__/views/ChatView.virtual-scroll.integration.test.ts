@@ -75,6 +75,7 @@ const mocks = vi.hoisted(() => ({
   },
   mediaGenerate: {
     showPanel: { value: false },
+    originalPrompt: { value: '' },
     intent: { value: null },
     models: { value: [] as unknown[] },
     selectedModel: { value: '' },
@@ -560,6 +561,7 @@ describe('ChatView virtual scroll integration', () => {
     mocks.deepResearchJobsStore.cancelJob.mockReset().mockResolvedValue(undefined)
     mocks.deepResearchJobsStore.consumePendingFocusJobId.mockReset()
 
+    mocks.mediaGenerate.originalPrompt.value = ''
     mocks.mediaGenerate.classify.mockReset()
     mocks.mediaGenerate.generate.mockReset()
     mocks.mediaGenerate.reset.mockReset()

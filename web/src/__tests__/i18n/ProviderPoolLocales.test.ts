@@ -5,12 +5,14 @@ type LocaleMessages = Record<string, unknown>
 
 const requiredKeys = [
   'advancedOptions',
+  'addProviderHint',
   'collapse',
   'expand',
   'location',
   'locationCloud',
   'locationLocal',
   'locationHint',
+  'officialProvider',
 ] as const
 
 const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<
@@ -70,6 +72,24 @@ describe('provider pool locale coverage', () => {
       )
       expect(getPathValue(messages, 'providerPool.locationLocal'), `${fileName} should localize Local`).not.toBe(
         'Local'
+      )
+    }
+  })
+
+  it('renames the chooser heading away from the old official-provider wording', () => {
+    const messagesByFile = new Map(
+      Object.entries(localeModules).map(([modulePath, mod]) => [
+        fileNameFromModulePath(modulePath),
+        mod.default,
+      ])
+    )
+
+    for (const [fileName, messages] of messagesByFile) {
+      const heading = getPathValue(messages, 'providerPool.officialProvider')
+      expect(typeof heading, `${fileName} should expose providerPool.officialProvider`).toBe('string')
+      expect(String(heading).trim().length, `${fileName} should not leave providerPool.officialProvider empty`).toBeGreaterThan(0)
+      expect(heading, `${fileName} should no longer use the old English chooser heading`).not.toBe(
+        'Official Provider'
       )
     }
   })

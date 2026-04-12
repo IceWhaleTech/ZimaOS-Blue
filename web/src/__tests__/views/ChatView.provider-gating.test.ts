@@ -155,6 +155,7 @@ const mocks = vi.hoisted(() => ({
   },
   mediaGenerate: {
     showPanel: { value: false },
+    originalPrompt: { value: '' },
     intent: { value: null as null | Record<string, unknown> },
     models: { value: [] as unknown[] },
     selectedModel: { value: '' },

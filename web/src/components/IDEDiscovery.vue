@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { providerPoolApi } from '@/api/providerPool'
 import type { ImportConfig, IDEScanResult } from '@/api/providerPool'
+import { publicAsset } from '@/utils/publicAsset'
 
 const { t } = useI18n()
 
@@ -46,16 +47,16 @@ const importableConfigs = ref<ImportConfig[]>([])
 
 // IDE logo URLs
 const ideLogos: Record<string, string> = {
-  vscode: '/icons/ide/vscode.svg',
-  'claude-code': '/icons/ide/claude.svg',
-  cursor: '/icons/ide/cursor.svg',
-  windsurf: '/icons/ide/windsurf.svg',
-  codex: '/icons/ide/codex.svg',
-  antigravity: '/icons/ide/antigravity.svg',
-  qoder: '/icons/ide/qoder.svg',
-  trae: '/icons/ide/trae.svg',
-  kiro: '/icons/ide/kiro.svg',
-  copilot: '/icons/ide/copilot.svg',
+  vscode: publicAsset('icons/ide/vscode.svg'),
+  'claude-code': publicAsset('icons/ide/claude.svg'),
+  cursor: publicAsset('icons/ide/cursor.svg'),
+  windsurf: publicAsset('icons/ide/windsurf.svg'),
+  codex: publicAsset('icons/ide/codex.svg'),
+  antigravity: publicAsset('icons/ide/antigravity.svg'),
+  qoder: publicAsset('icons/ide/qoder.svg'),
+  trae: publicAsset('icons/ide/trae.svg'),
+  kiro: publicAsset('icons/ide/kiro.svg'),
+  copilot: publicAsset('icons/ide/copilot.svg'),
 }
 
 // IDE fallback icons

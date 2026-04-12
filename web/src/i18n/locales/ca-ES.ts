@@ -3637,9 +3637,8 @@ export default mergeHarnessLocale('ca-ES', {
     customCompatibleProvider: 'Proveïdor compatible personalitzat',
     customCompatibleProviderHint:
       'Utilitzeu el vostre endpoint compatible propi i mantingueu el suport de verificació/detecció dinàmica.',
-    addProviderHint:
-      'Seleccioneu un proveïdor oficial o afegiu un endpoint compatible personalitzat.',
-    officialProvider: 'Proveïdor oficial',
+    addProviderHint: 'Selecciona un proveidor principal o afegeix un endpoint compatible personalitzat.',
+    officialProvider: 'Proveidors principals',
     noProviders: 'Cap proveïdor configurat',
     noModels: 'Cap model disponible',
     noKeys: 'Cap clau API configurada',

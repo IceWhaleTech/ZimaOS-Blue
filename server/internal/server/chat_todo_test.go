@@ -3103,6 +3103,314 @@ func TestSanitizeResponseContent_StripsLeakedCommandWorkdirPrefixButKeepsAnswer(
 	}
 }
 
+func TestSanitizeResponseContentWithProvider_NormalizesEscapedChecklistMarkdownForGPT54(t *testing.T) {
+	raw := "- [ ] 检查现有三份报告文件是否存在且内容完整- [ ] 合并为一份 Markdown 总报告- [ ] 转换为 PDF- [ ] 验证 PDF 文件生成成功- [ ] 返回文件路径和使用说明我这轮无法直接执行工具调用。你可以先在工作区跑这一步检查文件是否齐全：\\n\\n" +
+		"```bashcd /Users/orca/.zimaos-blue/data/workspace \\u0026\\u0026 ls -l orca_bazi_analysis.md orca_career_fortune_love_analysis.md orca_2026_monthly_analysis.md```\\n\\n" +
+		"预期应看到这 3 个文件都存在。下一步我会继续做：合并 Markdown → 导出 PDF → 验证文件。\\n\\n" +
+		"如果你愿意，我下一条可以直接给你一套可执行命令，一次性在本机生成 PDF。"
+
+	got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+	if strings.Contains(got, `\n`) {
+		t.Fatalf("expected visible escaped newlines to be normalized, got=%q", got)
+	}
+	if strings.Contains(got, `\u0026`) {
+		t.Fatalf("expected visible escaped unicode ampersand to be normalized, got=%q", got)
+	}
+	if strings.Contains(got, "完整- [ ]") {
+		t.Fatalf("expected collapsed checklist items to be split across lines, got=%q", got)
+	}
+	checklist, ok := extractFirstTodoChecklist(got)
+	if !ok {
+		t.Fatalf("expected normalized content to expose a checklist block, got=%q", got)
+	}
+	if strings.Count(checklist, "\n") != 4 {
+		t.Fatalf("expected 5 checklist items after normalization, got checklist=%q", checklist)
+	}
+	if !strings.Contains(got, "```bash\ncd /Users/orca/.zimaos-blue/data/workspace && ls -l") {
+		t.Fatalf("expected code fence and shell command to be restored, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_DoesNotDecodeLiteralEscapeGuidance(t *testing.T) {
+	raw := `如果你要给用户展示字面量换行符，请原样输出 \\n，而不是把它变成真正的换行。`
+	got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+	if got != raw {
+		t.Fatalf("expected literal escape guidance to remain unchanged, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_NormalizesInlineTodoChecklistAfterIntroLines(t *testing.T) {
+	raw := "检查工作区与现有文件\n检查可用技能/工具以生成PPT- [x]研究并整理最新LLM推理优化内容- [ ]生成PPT源内容文件- [ ]生成PPT文件并验证输出当前任务：检查工作区与可用命令，确定可执行的PPT生成路径。"
+
+	got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+	if strings.Contains(got, "生成PPT- [x]") {
+		t.Fatalf("expected first inline checklist marker split onto a new line, got=%q", got)
+	}
+	if strings.Contains(got, "内容文件- [ ]") {
+		t.Fatalf("expected subsequent inline checklist markers split onto new lines, got=%q", got)
+	}
+	if strings.Contains(got, "验证输出当前任务：") {
+		t.Fatalf("expected trailing current-task label split from the last checklist item, got=%q", got)
+	}
+	checklist, ok := extractFirstTodoChecklist(got)
+	if !ok {
+		t.Fatalf("expected normalized content to expose a checklist block, got=%q", got)
+	}
+	if strings.Count(checklist, "\n") != 2 {
+		t.Fatalf("expected 3 checklist items after normalization, got checklist=%q", checklist)
+	}
+	if !strings.Contains(got, "\n当前任务：检查工作区与可用命令，确定可执行的PPT生成路径。") {
+		t.Fatalf("expected current task label preserved on its own line, got=%q", got)
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_SplitsTrailingCurrentTaskLabelsAcross27Locales(t *testing.T) {
+	testCases := map[string]string{
+		"ca-ES": "Tasca actual",
+		"cs-CZ": "Aktuální úkol",
+		"da-DK": "Aktuel opgave",
+		"de-DE": "Aktuelle Aufgabe",
+		"el-GR": "Τρέχουσα εργασία",
+		"en-GB": "Current task",
+		"en-US": "Current task",
+		"es-ES": "Tarea actual",
+		"fr-FR": "Tâche en cours",
+		"ga-IE": "Tasc reatha",
+		"hr-HR": "Trenutačni zadatak",
+		"hu-HU": "Aktuális feladat",
+		"it-IT": "Attività corrente",
+		"ja-JP": "現在のタスク",
+		"ko-KR": "현재 작업",
+		"ml-IN": "നിലവിലെ ടാസ്‌ക്",
+		"nb-NO": "Nåværende oppgave",
+		"nl-NL": "Huidige taak",
+		"pl-PL": "Bieżące zadanie",
+		"pt-BR": "Tarefa atual",
+		"pt-PT": "Tarefa atual",
+		"ro-RO": "Sarcina curentă",
+		"ru-RU": "Текущая задача",
+		"sk-SK": "Aktuálna úloha",
+		"sv-SE": "Aktuell uppgift",
+		"zh-CN": "当前任务",
+		"zh-TW": "目前任務",
+	}
+	if len(testCases) != 27 {
+		t.Fatalf("expected 27 locale labels, got %d", len(testCases))
+	}
+
+	for locale, label := range testCases {
+		t.Run(locale, func(t *testing.T) {
+			raw := "检查工作区与现有文件\n检查可用技能/工具以生成PPT- [x]研究并整理最新LLM推理优化内容- [ ]生成PPT源内容文件- [ ]生成PPT文件并验证输出" +
+				label + ": 检查工作区与可用命令，确定可执行的PPT生成路径。"
+
+			got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+			if strings.Contains(got, "验证输出"+label+":") {
+				t.Fatalf("expected locale label %q split from last checklist item, got=%q", label, got)
+			}
+			if !strings.Contains(got, "\n"+label+": 检查工作区与可用命令，确定可执行的PPT生成路径。") {
+				t.Fatalf("expected locale label %q preserved on its own line, got=%q", label, got)
+			}
+			checklist, ok := extractFirstTodoChecklist(got)
+			if !ok {
+				t.Fatalf("expected checklist preserved for locale %q, got=%q", label, got)
+			}
+			if strings.Count(checklist, "\n") != 2 {
+				t.Fatalf("expected 3 checklist items after normalization for locale %q, got checklist=%q", label, checklist)
+			}
+		})
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_SplitsTrailingNextLabelsAcross27Locales(t *testing.T) {
+	testCases := map[string]string{
+		"ca-ES": "Següent",
+		"cs-CZ": "Další",
+		"da-DK": "Næste",
+		"de-DE": "Weiter",
+		"el-GR": "Επόμενο",
+		"en-GB": "Next",
+		"en-US": "Next",
+		"es-ES": "Siguiente",
+		"fr-FR": "Suivant",
+		"ga-IE": "Ar aghaidh",
+		"hr-HR": "Sljedeće",
+		"hu-HU": "Következő",
+		"it-IT": "Avanti",
+		"ja-JP": "次へ",
+		"ko-KR": "다음",
+		"ml-IN": "അടുത്തത്",
+		"nb-NO": "Neste",
+		"nl-NL": "Volgende",
+		"pl-PL": "Dalej",
+		"pt-BR": "Próximo",
+		"pt-PT": "Próximo",
+		"ro-RO": "Următorul",
+		"ru-RU": "Далее",
+		"sk-SK": "Ďalej",
+		"sv-SE": "Nästa",
+		"zh-CN": "下一步",
+		"zh-TW": "下一步",
+	}
+	if len(testCases) != 27 {
+		t.Fatalf("expected 27 locale labels, got %d", len(testCases))
+	}
+
+	for locale, label := range testCases {
+		t.Run(locale, func(t *testing.T) {
+			raw := "检查工作区与现有文件\n检查可用技能/工具以生成PPT- [x]研究并整理最新LLM推理优化内容- [ ]生成PPT源内容文件- [ ]生成PPT文件并验证输出" +
+				label + ": 先检查工作区与可用命令，再确定可执行的PPT生成路径。"
+
+			got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+			if strings.Contains(got, "验证输出"+label+":") {
+				t.Fatalf("expected locale label %q split from last checklist item, got=%q", label, got)
+			}
+			if !strings.Contains(got, "\n"+label+": 先检查工作区与可用命令，再确定可执行的PPT生成路径。") {
+				t.Fatalf("expected locale label %q preserved on its own line, got=%q", label, got)
+			}
+		})
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_SplitsTrailingNotesLabelsAcross27Locales(t *testing.T) {
+	testCases := map[string]string{
+		"ca-ES": "Apunts",
+		"cs-CZ": "Poznamky",
+		"da-DK": "Noter",
+		"de-DE": "Notizen",
+		"el-GR": "Σημειώσεις",
+		"en-GB": "Notes",
+		"en-US": "Notes",
+		"es-ES": "Notas",
+		"fr-FR": "Bloc-notes",
+		"ga-IE": "Notai",
+		"hr-HR": "Biljeske",
+		"hu-HU": "Jegyzetek",
+		"it-IT": "Note",
+		"ja-JP": "メモ",
+		"ko-KR": "노트",
+		"ml-IN": "കുറിപ്പുകള്‍",
+		"nb-NO": "Notater",
+		"nl-NL": "Notities",
+		"pl-PL": "Notatki",
+		"pt-BR": "Notas",
+		"pt-PT": "Notas",
+		"ro-RO": "Note",
+		"ru-RU": "Заметки",
+		"sk-SK": "Poznamky",
+		"sv-SE": "Anteckningar",
+		"zh-CN": "笔记",
+		"zh-TW": "筆記",
+	}
+	if len(testCases) != 27 {
+		t.Fatalf("expected 27 locale labels, got %d", len(testCases))
+	}
+
+	for locale, label := range testCases {
+		t.Run(locale, func(t *testing.T) {
+			raw := "检查工作区与现有文件\n检查可用技能/工具以生成PPT- [x]研究并整理最新LLM推理优化内容- [ ]生成PPT源内容文件- [ ]生成PPT文件并验证输出" +
+				label + ": 这里记录与本轮执行相关的补充说明。"
+
+			got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+			if strings.Contains(got, "验证输出"+label+":") {
+				t.Fatalf("expected locale label %q split from last checklist item, got=%q", label, got)
+			}
+			if !strings.Contains(got, "\n"+label+": 这里记录与本轮执行相关的补充说明。") {
+				t.Fatalf("expected locale label %q preserved on its own line, got=%q", label, got)
+			}
+		})
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_SplitsTrailingExplanationAliases(t *testing.T) {
+	testCases := []string{"说明", "說明"}
+	for _, label := range testCases {
+		t.Run(label, func(t *testing.T) {
+			raw := "检查工作区与现有文件\n检查可用技能/工具以生成PPT- [x]研究并整理最新LLM推理优化内容- [ ]生成PPT源内容文件- [ ]生成PPT文件并验证输出" +
+				label + "：这里记录与本轮执行相关的补充说明。"
+
+			got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+			if strings.Contains(got, "验证输出"+label+"：") {
+				t.Fatalf("expected explanation alias %q split from last checklist item, got=%q", label, got)
+			}
+			if !strings.Contains(got, "\n"+label+"：这里记录与本轮执行相关的补充说明。") {
+				t.Fatalf("expected explanation alias %q preserved on its own line, got=%q", label, got)
+			}
+		})
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_SplitsTrailingSummaryLabelsAcross27Locales(t *testing.T) {
+	testCases := map[string]string{
+		"ca-ES": "Resum",
+		"cs-CZ": "Shrnutí",
+		"da-DK": "Opsummering",
+		"de-DE": "Zusammenfassung",
+		"el-GR": "Σύνοψη",
+		"en-GB": "Summary",
+		"en-US": "Summary",
+		"es-ES": "Resumen",
+		"fr-FR": "Résumé",
+		"ga-IE": "Achoimre",
+		"hr-HR": "Sažetak",
+		"hu-HU": "Összefoglaló",
+		"it-IT": "Riepilogo",
+		"ja-JP": "要約",
+		"ko-KR": "요약",
+		"ml-IN": "സാരാംശം",
+		"nb-NO": "Sammendrag",
+		"nl-NL": "Samenvatting",
+		"pl-PL": "Podsumowanie",
+		"pt-BR": "Resumo",
+		"pt-PT": "Resumo",
+		"ro-RO": "Rezumat",
+		"ru-RU": "Сводка",
+		"sk-SK": "Súhrn",
+		"sv-SE": "Sammanfattning",
+		"zh-CN": "正文摘要",
+		"zh-TW": "正文摘要",
+	}
+	if len(testCases) != 27 {
+		t.Fatalf("expected 27 locale labels, got %d", len(testCases))
+	}
+
+	for locale, label := range testCases {
+		t.Run(locale, func(t *testing.T) {
+			raw := "检查工作区与现有文件\n检查可用技能/工具以生成PPT- [x]研究并整理最新LLM推理优化内容- [ ]生成PPT源内容文件- [ ]生成PPT文件并验证输出" +
+				label + ": 这里给出当前执行结果的简要总结。"
+
+			got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+			if strings.Contains(got, "验证输出"+label+":") {
+				t.Fatalf("expected locale label %q split from last checklist item, got=%q", label, got)
+			}
+			if !strings.Contains(got, "\n"+label+": 这里给出当前执行结果的简要总结。") {
+				t.Fatalf("expected locale label %q preserved on its own line, got=%q", label, got)
+			}
+		})
+	}
+}
+
+func TestSanitizeResponseContentWithProvider_SplitsTrailingSummaryAliases(t *testing.T) {
+	testCases := []string{"总结", "總結", "摘要", "最終總結", "最终总结", "Final summary"}
+	for _, label := range testCases {
+		t.Run(label, func(t *testing.T) {
+			separator := ":"
+			if strings.ContainsRune(label, '总') || strings.ContainsRune(label, '總') || strings.ContainsRune(label, '摘') {
+				separator = "："
+			}
+			raw := "检查工作区与现有文件\n检查可用技能/工具以生成PPT- [x]研究并整理最新LLM推理优化内容- [ ]生成PPT源内容文件- [ ]生成PPT文件并验证输出" +
+				label + separator + " 这里给出当前执行结果的简要总结。"
+
+			got := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+			if strings.Contains(got, "验证输出"+label+separator) {
+				t.Fatalf("expected summary alias %q split from last checklist item, got=%q", label, got)
+			}
+			if !strings.Contains(got, "\n"+label+separator+" 这里给出当前执行结果的简要总结。") {
+				t.Fatalf("expected summary alias %q preserved on its own line, got=%q", label, got)
+			}
+		})
+	}
+}
+
 func TestResolveResponseSanitizeProfile_Deterministic(t *testing.T) {
 	if got := resolveResponseSanitizeProfile("openai", "openai", "gpt-4o"); got != responseSanitizeProfileBalanced {
 		t.Fatalf("expected openai profile balanced, got=%s", got)

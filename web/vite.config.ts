@@ -9,6 +9,10 @@ import { compression } from 'vite-plugin-compression2'
 import { visualizer } from 'rollup-plugin-visualizer'
 
 const generatedDtsEnabled = !process.env.VITEST
+const moduleUiBuild = process.env.VITE_MODULE_UI === '1'
+const moduleUiName = process.env.VITE_MODULE_NAME || 'zimaos-blue'
+const publicBase = process.env.VITE_PUBLIC_BASE || (moduleUiBuild ? `/modules/${moduleUiName}/` : '/')
+const outDir = process.env.VITE_OUT_DIR || 'dist'
 
 const routeRuntimeBundles = [
   {
@@ -62,6 +66,7 @@ export default defineConfig({
   define: {
     __EMBED_DISABLE_MERMAID__: JSON.stringify(process.env.VITE_EMBED_DISABLE_MERMAID === '1'),
   },
+  base: publicBase,
   plugins: [
     vue(),
     // Auto import Vue APIs and composables
@@ -120,7 +125,7 @@ export default defineConfig({
     }),
     // Bundle analyzer (generates stats.html)
     visualizer({
-      filename: 'dist/stats.html',
+      filename: `${outDir}/stats.html`,
       open: false,
       gzipSize: true,
       brotliSize: true,
@@ -145,7 +150,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: 'dist',
+    outDir,
     sourcemap: false,
     // Put all assets in root directory instead of assets/
     assetsDir: '',

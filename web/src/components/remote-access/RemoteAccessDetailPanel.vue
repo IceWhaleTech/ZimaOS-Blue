@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { TunnelProvider, TunnelStatus as TunnelStatusType } from '@/api/remote-access'
 import { getTunnelProviderIcon } from '@/utils/channelIcons'
+import { publicAsset } from '@/utils/publicAsset'
 import TunnelStatus from '@/components/remote-access/TunnelStatus.vue'
 
 type RemoteAccessState = 'loading' | 'ready' | 'connecting' | 'connected' | 'error'
@@ -84,7 +85,7 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
       <div class="remote-access-detail__identity">
         <div class="remote-access-detail__icon-shell">
           <img
-            src="/icons/tunnel/remote-access.svg"
+            :src="publicAsset('icons/tunnel/remote-access.svg')"
             :alt="t('remoteAccess.title')"
             class="remote-access-detail__icon"
           />

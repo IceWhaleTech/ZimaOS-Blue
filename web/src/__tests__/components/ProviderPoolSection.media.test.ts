@@ -82,12 +82,14 @@ function createTestI18n() {
         },
         providerPool: {
           description: 'LLM 配置',
+          addProviderHint: '选择主流提供商或添加自定义兼容端点。',
           advancedOptions: '高级选项',
           expand: '展开',
           collapse: '收起',
           location: '位置',
           locationCloud: '云端',
           locationLocal: '本地',
+          officialProvider: '主流提供商',
           apiFormatLabel: '格式类型',
           apiFormatHint: '默认使用自动检测，也可以手动固定为某一种 API 格式。修改后会立即生效。',
           apiFormatAutoDetected: '当前自动检测结果：{format}',
@@ -491,7 +493,7 @@ describe('ProviderPoolSection media verification gating', () => {
       name: 'OpenAI',
       type: 'builtin',
       metadata_mode: 'catalog',
-      description: 'Official OpenAI API',
+      description: 'OpenAI API - GPT-4, GPT-4o, o1, and more',
       base_url: 'https://api.openai.com/v1',
     }
     mocks.providerPoolStore.providers = [provider]
@@ -505,7 +507,7 @@ describe('ProviderPoolSection media verification gating', () => {
     setupState.openAddProviderModal()
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Official OpenAI API')
+    expect(wrapper.text()).toContain('OpenAI API - GPT-4, GPT-4o, o1 等')
     expect(wrapper.text()).not.toContain('https://api.openai.com/v1')
   })
 
@@ -683,6 +685,55 @@ describe('ProviderPoolSection media verification gating', () => {
 
     expect(wrapper.text()).toContain('Google Cloud Code Assist (Antigravity)')
     expect(wrapper.text()).toContain('Anthropic')
+  })
+
+  it('renders localized chooser descriptions and metadata tags for official providers', async () => {
+    const openai = {
+      ...createRankedProvider('openai', 100),
+      name: 'OpenAI',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      description: 'OpenAI API - GPT-4, GPT-4o, o1, and more',
+      api_format: 'openai',
+      location: 'cloud',
+    }
+    const ollama = {
+      ...createRankedProvider('ollama', 90),
+      name: 'Ollama',
+      type: 'builtin',
+      metadata_mode: 'catalog',
+      description: 'Run open-source models locally via Ollama',
+      api_format: 'ollama',
+      location: 'local',
+    }
+    const copilot = {
+      ...createRankedProvider('github-copilot', 80),
+      name: 'GitHub Copilot',
+      type: 'platform',
+      metadata_mode: 'catalog',
+      description: 'OAuth-based GitHub Copilot provider',
+      api_format: 'copilot',
+      location: 'cloud',
+    }
+    mocks.providerPoolStore.providers = [openai, ollama, copilot]
+
+    const wrapper = mountSection()
+    await flushPromises()
+
+    const setupState = (wrapper.vm.$ as any).setupState
+    setupState.openAddProviderModal()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('主流提供商')
+    expect(wrapper.text()).toContain('选择主流提供商或添加自定义兼容端点。')
+    expect(wrapper.text()).toContain('OpenAI API - GPT-4, GPT-4o, o1 等')
+    expect(wrapper.text()).toContain('通过 Ollama 在本地运行开源模型')
+    expect(wrapper.text()).toContain('基于 OAuth 的 GitHub Copilot 提供商')
+    expect(wrapper.text()).toContain('OpenAI 兼容 · 云端')
+    expect(wrapper.text()).toContain('Ollama · 本地')
+    expect(wrapper.text()).toContain('GitHub Copilot · 云端')
+    expect(wrapper.text()).not.toContain('cloudcode · cloud')
+    expect(wrapper.text()).not.toContain('copilot · cloud')
   })
 
   it('shows ollama first in the add provider dialog', async () => {

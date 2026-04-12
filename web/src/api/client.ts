@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { getErrorMessage } from '@/utils/error'
+import { getCurrentAppLocation } from '@/utils/appLocation'
 import {
   clearStoredAccessToken,
   clearStoredRefreshToken,
@@ -93,7 +94,7 @@ function clearAuthAndRedirect() {
   clearStoredRefreshToken()
   if (isDesktop) {
     window.dispatchEvent(new CustomEvent('auth:unauthorized'))
-  } else if (!window.location.pathname.startsWith('/login')) {
+  } else if (!getCurrentAppLocation().path.startsWith('/login')) {
     window.location.href = '/login'
   }
 }

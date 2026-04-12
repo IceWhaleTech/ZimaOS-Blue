@@ -76,6 +76,7 @@ const mocks = vi.hoisted(() => ({
   },
   mediaGenerate: {
     showPanel: { value: false },
+    originalPrompt: { value: '' },
     intent: { value: null },
     models: { value: [] as unknown[] },
     selectedModel: { value: '' },
@@ -557,6 +558,7 @@ describe('ChatView streaming card chain integration', () => {
     mocks.providerPoolStore.setRoutingMode.mockReset().mockResolvedValue(undefined)
 
     mocks.mediaGenerate.showPanel.value = false
+    mocks.mediaGenerate.originalPrompt.value = ''
     mocks.mediaGenerate.intent.value = null
     mocks.mediaGenerate.models.value = []
     mocks.mediaGenerate.selectedModel.value = ''

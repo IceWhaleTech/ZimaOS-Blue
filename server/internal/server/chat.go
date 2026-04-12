@@ -276,6 +276,10 @@ var (
 	reTodoUnchecked                     *regexp.Regexp
 	reTodoAnyItem                       *regexp.Regexp
 	reTodoChecklistBlock                *regexp.Regexp
+	reInlineCollapsedTodoMarker         *regexp.Regexp
+	reTodoMarkerMissingSpace            *regexp.Regexp
+	reCollapsedCodeFenceClosing         *regexp.Regexp
+	reChecklistTrailingSectionLabel     *regexp.Regexp
 	reTypelessBlock                     *regexp.Regexp
 	reAskOptionLine                     *regexp.Regexp
 	reShortAffirmativeEN                *regexp.Regexp
@@ -285,6 +289,178 @@ var (
 	ansiPattern                         *regexp.Regexp
 	chatMiscRegexesOnce                 sync.Once
 )
+
+var currentTaskLabelsByLocale = map[string][]string{
+	"ca-ES": {"Tasca actual"},
+	"cs-CZ": {"Aktuální úkol"},
+	"da-DK": {"Aktuel opgave"},
+	"de-DE": {"Aktuelle Aufgabe"},
+	"el-GR": {"Τρέχουσα εργασία"},
+	"en-GB": {"Current task"},
+	"en-US": {"Current task"},
+	"es-ES": {"Tarea actual"},
+	"fr-FR": {"Tâche en cours"},
+	"ga-IE": {"Tasc reatha"},
+	"hr-HR": {"Trenutačni zadatak"},
+	"hu-HU": {"Aktuális feladat"},
+	"it-IT": {"Attività corrente"},
+	"ja-JP": {"現在のタスク"},
+	"ko-KR": {"현재 작업"},
+	"ml-IN": {"നിലവിലെ ടാസ്‌ക്"},
+	"nb-NO": {"Nåværende oppgave"},
+	"nl-NL": {"Huidige taak"},
+	"pl-PL": {"Bieżące zadanie"},
+	"pt-BR": {"Tarefa atual"},
+	"pt-PT": {"Tarefa atual"},
+	"ro-RO": {"Sarcina curentă"},
+	"ru-RU": {"Текущая задача"},
+	"sk-SK": {"Aktuálna úloha"},
+	"sv-SE": {"Aktuell uppgift"},
+	"zh-CN": {"当前任务"},
+	"zh-TW": {"目前任務"},
+}
+
+var nextStepLabelsByLocale = map[string][]string{
+	"ca-ES": {"Següent"},
+	"cs-CZ": {"Další"},
+	"da-DK": {"Næste"},
+	"de-DE": {"Weiter"},
+	"el-GR": {"Επόμενο"},
+	"en-GB": {"Next", "Next step", "Next steps"},
+	"en-US": {"Next", "Next step", "Next steps"},
+	"es-ES": {"Siguiente"},
+	"fr-FR": {"Suivant"},
+	"ga-IE": {"Ar aghaidh"},
+	"hr-HR": {"Sljedeće", "Dalje"},
+	"hu-HU": {"Következő", "Tovább"},
+	"it-IT": {"Avanti"},
+	"ja-JP": {"次へ"},
+	"ko-KR": {"다음"},
+	"ml-IN": {"അടുത്തത്"},
+	"nb-NO": {"Neste"},
+	"nl-NL": {"Volgende"},
+	"pl-PL": {"Dalej"},
+	"pt-BR": {"Próximo"},
+	"pt-PT": {"Próximo", "Seguinte"},
+	"ro-RO": {"Următorul"},
+	"ru-RU": {"Далее"},
+	"sk-SK": {"Ďalej"},
+	"sv-SE": {"Nästa"},
+	"zh-CN": {"下一步", "下一步建议", "后续建议", "后续步骤"},
+	"zh-TW": {"下一步", "下一步建議", "後續建議", "後續步驟"},
+}
+
+var notesLabelsByLocale = map[string][]string{
+	"ca-ES": {"Apunts"},
+	"cs-CZ": {"Poznamky"},
+	"da-DK": {"Noter"},
+	"de-DE": {"Notizen"},
+	"el-GR": {"Σημειώσεις"},
+	"en-GB": {"Notes", "Note"},
+	"en-US": {"Notes", "Note"},
+	"es-ES": {"Notas"},
+	"fr-FR": {"Bloc-notes"},
+	"ga-IE": {"Notai"},
+	"hr-HR": {"Biljeske"},
+	"hu-HU": {"Jegyzetek"},
+	"it-IT": {"Note"},
+	"ja-JP": {"メモ"},
+	"ko-KR": {"노트"},
+	"ml-IN": {"കുറിപ്പുകള്‍"},
+	"nb-NO": {"Notater"},
+	"nl-NL": {"Notities"},
+	"pl-PL": {"Notatki"},
+	"pt-BR": {"Notas"},
+	"pt-PT": {"Notas"},
+	"ro-RO": {"Note"},
+	"ru-RU": {"Заметки"},
+	"sk-SK": {"Poznamky"},
+	"sv-SE": {"Anteckningar"},
+	"zh-CN": {"笔记", "说明", "使用说明"},
+	"zh-TW": {"筆記", "說明", "使用說明"},
+}
+
+var summaryLabelsByLocale = map[string][]string{
+	"ca-ES": {"Resum"},
+	"cs-CZ": {"Shrnutí"},
+	"da-DK": {"Opsummering"},
+	"de-DE": {"Zusammenfassung"},
+	"el-GR": {"Σύνοψη"},
+	"en-GB": {"Summary", "Final summary"},
+	"en-US": {"Summary", "Final summary"},
+	"es-ES": {"Resumen"},
+	"fr-FR": {"Résumé"},
+	"ga-IE": {"Achoimre"},
+	"hr-HR": {"Sažetak"},
+	"hu-HU": {"Összefoglaló"},
+	"it-IT": {"Riepilogo"},
+	"ja-JP": {"要約"},
+	"ko-KR": {"요약"},
+	"ml-IN": {"സാരാംശം"},
+	"nb-NO": {"Sammendrag"},
+	"nl-NL": {"Samenvatting"},
+	"pl-PL": {"Podsumowanie"},
+	"pt-BR": {"Resumo"},
+	"pt-PT": {"Resumo"},
+	"ro-RO": {"Rezumat"},
+	"ru-RU": {"Сводка"},
+	"sk-SK": {"Súhrn"},
+	"sv-SE": {"Sammanfattning"},
+	"zh-CN": {"正文摘要", "摘要", "总结", "最终总结"},
+	"zh-TW": {"正文摘要", "摘要", "總結", "最終總結"},
+}
+
+func localizedChecklistSectionLabelVariants(labelSets ...map[string][]string) []string {
+	total := 0
+	for _, labelSet := range labelSets {
+		total += len(labelSet)
+	}
+	seen := make(map[string]struct{}, total)
+	labels := make([]string, 0, total)
+	for _, labelSet := range labelSets {
+		for _, variants := range labelSet {
+			for _, label := range variants {
+				trimmed := strings.TrimSpace(label)
+				if trimmed == "" {
+					continue
+				}
+				if _, ok := seen[trimmed]; ok {
+					continue
+				}
+				seen[trimmed] = struct{}{}
+				labels = append(labels, trimmed)
+			}
+		}
+	}
+	sort.Slice(labels, func(i, j int) bool {
+		ir := utf8.RuneCountInString(labels[i])
+		jr := utf8.RuneCountInString(labels[j])
+		if ir == jr {
+			return labels[i] < labels[j]
+		}
+		return ir > jr
+	})
+	return labels
+}
+
+func buildChecklistTrailingSectionLabelRegex() *regexp.Regexp {
+	labels := localizedChecklistSectionLabelVariants(
+		currentTaskLabelsByLocale,
+		nextStepLabelsByLocale,
+		notesLabelsByLocale,
+		summaryLabelsByLocale,
+	)
+	if len(labels) == 0 {
+		return regexp.MustCompile(`(?m)^([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]*?)(当前任务|Current task|下一步|Next|Notes|说明|Summary|总结|摘要)([:：]\s*)`)
+	}
+	quoted := make([]string, 0, len(labels))
+	for _, label := range labels {
+		quoted = append(quoted, regexp.QuoteMeta(label))
+	}
+	return regexp.MustCompile(
+		`(?m)^([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]*?)(` + strings.Join(quoted, "|") + `)([:：]\s*)`,
+	)
+}
 
 func ensureChatMiscRegexes() {
 	chatMiscRegexesOnce.Do(func() {
@@ -310,6 +486,10 @@ func ensureChatMiscRegexes() {
 		reTodoUnchecked = regexp.MustCompile(`(?m)^([ \t]*[-*]\s+)\[ \]\s+([^\n]+)$`)
 		reTodoAnyItem = regexp.MustCompile(`(?m)^[ \t]*[-*]\s+\[([ xX])\]\s+(?:~~)?([^\n~]+?)(?:~~)?\s*$`)
 		reTodoChecklistBlock = regexp.MustCompile(`(?m)(^|\n)([ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+(?:\n[ \t]*[-*]\s+\[(?: |x|X)\]\s+[^\n]+)*)`)
+		reInlineCollapsedTodoMarker = regexp.MustCompile(`([^\n])([ \t]*[-*]\s+\[(?: |x|X)\]\s*)`)
+		reTodoMarkerMissingSpace = regexp.MustCompile(`(?m)(^|\n)([ \t]*[-*]\s+\[(?: |x|X)\])([^\s\n])`)
+		reCollapsedCodeFenceClosing = regexp.MustCompile("([^\n])```([ \t]*(?:\n|$))")
+		reChecklistTrailingSectionLabel = buildChecklistTrailingSectionLabelRegex()
 		reTypelessBlock = regexp.MustCompile("(?s)```typeless\\s*\\n(.*?)\\n```")
 		reAskOptionLine = regexp.MustCompile(`(?m)^[A-E][\.\)]\s+\S+`)
 		reShortAffirmativeEN = regexp.MustCompile(`(?i)^(ok|okay|yes|y|sure|go ahead|continue|sounds good|do it|please continue|let'?s go)$`)
@@ -4096,6 +4276,217 @@ func stripMarkedJSONObjectFragments(s string) string {
 	return out.String()
 }
 
+func countInlineTodoMarkers(lower string) int {
+	count := 0
+	for _, marker := range []string{"- [ ]", "- [x]", "* [ ]", "* [x]"} {
+		count += strings.Count(lower, marker)
+	}
+	return count
+}
+
+func firstInlineTodoMarkerIndex(lower string) int {
+	minIndex := -1
+	for _, marker := range []string{"- [ ]", "- [x]", "* [ ]", "* [x]"} {
+		if idx := strings.Index(lower, marker); idx >= 0 && (minIndex < 0 || idx < minIndex) {
+			minIndex = idx
+		}
+	}
+	return minIndex
+}
+
+func isASCIIHexDigit(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
+}
+
+func countVisibleJSONEscapeSequences(s string) int {
+	count := 0
+	for i := 0; i+1 < len(s); i++ {
+		if s[i] != '\\' {
+			continue
+		}
+		switch s[i+1] {
+		case '\\', '"', '/', 'b', 'f', 'n', 'r', 't':
+			count++
+			i++
+		case 'u':
+			if i+5 < len(s) &&
+				isASCIIHexDigit(s[i+2]) &&
+				isASCIIHexDigit(s[i+3]) &&
+				isASCIIHexDigit(s[i+4]) &&
+				isASCIIHexDigit(s[i+5]) {
+				count++
+				i += 5
+			}
+		}
+	}
+	return count
+}
+
+func decodeVisibleJSONEscapes(s string) (string, bool) {
+	if s == "" || !strings.Contains(s, `\`) {
+		return s, false
+	}
+	var out strings.Builder
+	out.Grow(len(s))
+	changed := false
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' || i+1 >= len(s) {
+			out.WriteByte(s[i])
+			continue
+		}
+
+		switch s[i+1] {
+		case '\\':
+			out.WriteByte('\\')
+			i++
+			changed = true
+		case '"':
+			out.WriteByte('"')
+			i++
+			changed = true
+		case '/':
+			out.WriteByte('/')
+			i++
+			changed = true
+		case 'b':
+			out.WriteByte('\b')
+			i++
+			changed = true
+		case 'f':
+			out.WriteByte('\f')
+			i++
+			changed = true
+		case 'n':
+			out.WriteByte('\n')
+			i++
+			changed = true
+		case 'r':
+			out.WriteByte('\r')
+			i++
+			changed = true
+		case 't':
+			out.WriteByte('\t')
+			i++
+			changed = true
+		case 'u':
+			if i+5 < len(s) &&
+				isASCIIHexDigit(s[i+2]) &&
+				isASCIIHexDigit(s[i+3]) &&
+				isASCIIHexDigit(s[i+4]) &&
+				isASCIIHexDigit(s[i+5]) {
+				if code, err := strconv.ParseUint(s[i+2:i+6], 16, 16); err == nil {
+					out.WriteRune(rune(code))
+					i += 5
+					changed = true
+					continue
+				}
+			}
+			out.WriteByte(s[i])
+		default:
+			out.WriteByte(s[i])
+		}
+	}
+	return out.String(), changed
+}
+
+func looksLikeEscapedMarkdownArtifact(s string) bool {
+	lower := strings.ToLower(s)
+	visibleEscapes := countVisibleJSONEscapeSequences(s)
+	if visibleEscapes < 2 {
+		return false
+	}
+	checklistMarkers := countInlineTodoMarkers(lower)
+	hasFence := strings.Contains(s, "```")
+	hasHTMLUnicodeEscape := strings.Contains(lower, `\u0026`) ||
+		strings.Contains(lower, `\u003c`) ||
+		strings.Contains(lower, `\u003e`)
+	if checklistMarkers >= 2 {
+		firstMarker := firstInlineTodoMarkerIndex(lower)
+		if firstMarker >= 0 && firstMarker <= 32 && (hasFence || visibleEscapes >= 3 || hasHTMLUnicodeEscape) {
+			return true
+		}
+	}
+	return hasFence && visibleEscapes >= 3 && hasHTMLUnicodeEscape
+}
+
+func normalizeCollapsedTodoChecklistMarkdown(s string) string {
+	ensureChatMiscRegexes()
+	lower := strings.ToLower(s)
+	if countInlineTodoMarkers(lower) < 2 {
+		return s
+	}
+	firstMarker := firstInlineTodoMarkerIndex(lower)
+	if firstMarker < 0 {
+		return s
+	}
+	return reInlineCollapsedTodoMarker.ReplaceAllString(s, "$1\n$2")
+}
+
+func normalizeTodoCheckboxSpacing(s string) string {
+	ensureChatMiscRegexes()
+	return reTodoMarkerMissingSpace.ReplaceAllString(s, "$1$2 $3")
+}
+
+func normalizeChecklistTrailingSectionLabel(s string) string {
+	ensureChatMiscRegexes()
+	return reChecklistTrailingSectionLabel.ReplaceAllString(s, "$1\n$2$3")
+}
+
+func normalizeCollapsedFencedCodeBlocks(s string) string {
+	ensureChatMiscRegexes()
+	if !strings.Contains(s, "```") {
+		return s
+	}
+	updated := s
+	for _, lang := range []string{
+		"typescript", "javascript", "markdown", "python", "shell",
+		"json", "yaml", "html", "bash", "text", "tsx", "jsx",
+		"xml", "sql", "zsh", "yml", "css", "txt", "md", "ts",
+		"js", "sh", "go",
+	} {
+		token := "```" + lang
+		for start := 0; start < len(updated); {
+			idx := strings.Index(updated[start:], token)
+			if idx < 0 {
+				break
+			}
+			idx += start
+			after := idx + len(token)
+			if after < len(updated) && updated[after] != '\n' && updated[after] != '\r' && updated[after] != '`' {
+				updated = updated[:after] + "\n" + updated[after:]
+				start = after + 1
+				continue
+			}
+			start = after
+		}
+	}
+	return reCollapsedCodeFenceClosing.ReplaceAllString(updated, "$1\n```$2")
+}
+
+func normalizeEscapedMarkdownArtifacts(s string) string {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return ""
+	}
+	normalized := trimmed
+	if looksLikeEscapedMarkdownArtifact(normalized) {
+		if decoded, changed := decodeVisibleJSONEscapes(normalized); changed {
+			if countVisibleJSONEscapeSequences(decoded) < countVisibleJSONEscapeSequences(normalized) &&
+				(strings.Count(decoded, "\n") > strings.Count(normalized, "\n") ||
+					strings.Contains(decoded, "&&") ||
+					strings.Contains(decoded, "<") ||
+					strings.Contains(decoded, ">")) {
+				normalized = decoded
+			}
+		}
+	}
+	normalized = normalizeCollapsedTodoChecklistMarkdown(normalized)
+	normalized = normalizeTodoCheckboxSpacing(normalized)
+	normalized = normalizeChecklistTrailingSectionLabel(normalized)
+	normalized = normalizeCollapsedFencedCodeBlocks(normalized)
+	return strings.TrimSpace(normalized)
+}
+
 func resolveResponseSanitizeProfile(provider, providerID, model string) responseSanitizeProfile {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
@@ -4240,8 +4631,10 @@ func sanitizeResponseContentWithProvider(s, provider, providerID, model string) 
 	s = reThinkBlock.ReplaceAllString(s, "")
 	s = reAwaitingUserInputTag.ReplaceAllString(s, "")
 	s = reAskGateBlock.ReplaceAllString(s, "")
+	s = normalizeEscapedMarkdownArtifacts(s)
 	profile := resolveResponseSanitizeProfile(provider, providerID, model)
 	s = stripPseudoDirectiveArtifactsWithProfile(s, profile)
+	s = normalizeEscapedMarkdownArtifacts(s)
 	return strings.TrimSpace(s)
 }
 

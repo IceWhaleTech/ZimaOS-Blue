@@ -2,6 +2,7 @@ import { ref, reactive, computed } from 'vue'
 import { templateApi, configApi, type FillTemplate, type FormFillerConfig } from '@/api/formfiller'
 import { parseClipboardData, parseClipboardFields } from '@/utils/clipboardParser'
 import { getStoredAccessToken } from '@/utils/authStorage'
+import { getCurrentAppLocation } from '@/utils/appLocation'
 
 type FillableField = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
 
@@ -76,7 +77,7 @@ const disabledRoutes = ['/chat']
 
 // Check if current route is disabled
 function isRouteDisabled(): boolean {
-  const path = window.location.pathname
+  const { path } = getCurrentAppLocation()
   return disabledRoutes.some((route) => path.startsWith(route))
 }
 

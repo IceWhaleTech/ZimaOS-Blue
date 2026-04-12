@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import type { CompanionSession, ThreatLevel, Platform } from '@/api/companion'
+import { publicAsset } from '@/utils/publicAsset'
 
 const { t } = useI18n()
 
@@ -53,7 +54,7 @@ function getPlatformIcon(platform: Platform | string): string {
     'web-user': 'browser',
     api: 'webhook',
   }
-  return `/icons/channels/${iconMap[platform] || 'default'}.svg`
+  return publicAsset(`icons/channels/${iconMap[platform] || 'default'}.svg`)
 }
 
 function formatDate(dateStr: string): string {

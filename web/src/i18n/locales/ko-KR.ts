@@ -3572,8 +3572,8 @@ export default mergeHarnessLocale('ko-KR', {
     customCompatibleProvider: '사용자 정의 호환 제공자',
     customCompatibleProviderHint:
       '호환되는 자체 엔드포인트를 사용하고 동적 검증/프로브 기능을 유지하세요.',
-    addProviderHint: '공식 제공자를 선택하거나 사용자 지정 호환 엔드포인트를 추가하세요.',
-    officialProvider: '공식 제공자',
+    addProviderHint: '주요 제공자를 선택하거나 사용자 지정 호환 엔드포인트를 추가하세요.',
+    officialProvider: '주요 제공자',
     noProviders: '구성된 제공자가 없습니다',
     noModels: '사용 가능한 모델이 없습니다',
     noKeys: 'API 키가 구성되지 않았습니다',

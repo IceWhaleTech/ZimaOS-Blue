@@ -1,47 +1,48 @@
 // Icon mapping for channels and plugins
 // Maps channel/plugin type/id to their respective icon paths
+import { publicAsset } from '@/utils/publicAsset'
 
 export const channelIcons: Record<string, string> = {
   // Messaging channels
-  telegram: '/icons/channels/telegram.svg',
-  discord: '/icons/channels/discord.svg',
-  slack: '/icons/channels/slack.svg',
-  whatsapp: '/icons/channels/whatsapp.svg',
-  wechat: '/icons/channels/wechat.svg',
-  signal: '/icons/channels/signal.svg',
-  matrix: '/icons/channels/matrix.svg',
-  imessage: '/icons/channels/imessage.svg',
-  feishu: '/icons/channels/feishu.svg',
-  dingtalk: '/icons/channels/dingtalk.svg',
-  qq: '/icons/channels/qq.svg',
-  teams: '/icons/channels/teams.svg',
-  'microsoft-teams': '/icons/channels/teams.svg',
-  msteams: '/icons/channels/teams.svg',
-  nextcloud: '/icons/channels/nextcloud.svg',
-  'nextcloud-talk': '/icons/channels/nextcloud.svg',
-  nextcloudtalk: '/icons/channels/nextcloud.svg',
+  telegram: publicAsset('icons/channels/telegram.svg'),
+  discord: publicAsset('icons/channels/discord.svg'),
+  slack: publicAsset('icons/channels/slack.svg'),
+  whatsapp: publicAsset('icons/channels/whatsapp.svg'),
+  wechat: publicAsset('icons/channels/wechat.svg'),
+  signal: publicAsset('icons/channels/signal.svg'),
+  matrix: publicAsset('icons/channels/matrix.svg'),
+  imessage: publicAsset('icons/channels/imessage.svg'),
+  feishu: publicAsset('icons/channels/feishu.svg'),
+  dingtalk: publicAsset('icons/channels/dingtalk.svg'),
+  qq: publicAsset('icons/channels/qq.svg'),
+  teams: publicAsset('icons/channels/teams.svg'),
+  'microsoft-teams': publicAsset('icons/channels/teams.svg'),
+  msteams: publicAsset('icons/channels/teams.svg'),
+  nextcloud: publicAsset('icons/channels/nextcloud.svg'),
+  'nextcloud-talk': publicAsset('icons/channels/nextcloud.svg'),
+  nextcloudtalk: publicAsset('icons/channels/nextcloud.svg'),
   // Social & messaging
-  twitter: '/icons/channels/twitter.svg',
-  x: '/icons/channels/twitter.svg',
-  instagram: '/icons/channels/instagram.svg',
-  messenger: '/icons/channels/messenger.svg',
-  'facebook-messenger': '/icons/channels/messenger.svg',
-  viber: '/icons/channels/viber.svg',
+  twitter: publicAsset('icons/channels/twitter.svg'),
+  x: publicAsset('icons/channels/twitter.svg'),
+  instagram: publicAsset('icons/channels/instagram.svg'),
+  messenger: publicAsset('icons/channels/messenger.svg'),
+  'facebook-messenger': publicAsset('icons/channels/messenger.svg'),
+  viber: publicAsset('icons/channels/viber.svg'),
   // Tools & Utilities
-  browser: '/icons/channels/browser.svg',
-  webhook: '/icons/channels/webhook.svg',
-  webhooks: '/icons/channels/webhook.svg',
+  browser: publicAsset('icons/channels/browser.svg'),
+  webhook: publicAsset('icons/channels/webhook.svg'),
+  webhooks: publicAsset('icons/channels/webhook.svg'),
 
   // Moltbot extensions
-  bluebubbles: '/icons/extensions/bluebubbles.svg',
-  googlechat: '/icons/channels/googlechat.svg',
-  'google-chat': '/icons/channels/googlechat.svg',
-  line: '/icons/extensions/line.svg',
-  mattermost: '/icons/channels/mattermost.svg',
-  nostr: '/icons/extensions/nostr.svg',
-  twitch: '/icons/extensions/twitch.svg',
-  zalo: '/icons/extensions/zalo.svg',
-  zalouser: '/icons/extensions/zalouser.svg',
+  bluebubbles: publicAsset('icons/extensions/bluebubbles.svg'),
+  googlechat: publicAsset('icons/channels/googlechat.svg'),
+  'google-chat': publicAsset('icons/channels/googlechat.svg'),
+  line: publicAsset('icons/extensions/line.svg'),
+  mattermost: publicAsset('icons/channels/mattermost.svg'),
+  nostr: publicAsset('icons/extensions/nostr.svg'),
+  twitch: publicAsset('icons/extensions/twitch.svg'),
+  zalo: publicAsset('icons/extensions/zalo.svg'),
+  zalouser: publicAsset('icons/extensions/zalouser.svg'),
 }
 
 interface ChannelIconTuning {
@@ -62,12 +63,12 @@ const channelIconTuning: Record<string, ChannelIconTuning> = {
 
 /** Tunnel provider icons (remote access: ngrok, Cloudflare, localtunnel, etc.) */
 export const tunnelProviderIcons: Record<string, string> = {
-  auto: '/icons/tunnel/auto.svg',
-  ngrok: '/icons/tunnel/ngrok.svg',
-  cloudflare: '/icons/tunnel/cloudflare.svg',
-  bore: '/icons/tunnel/bore.svg',
-  serveo: '/icons/tunnel/serveo.svg',
-  localtunnel: '/icons/tunnel/localtunnel.svg',
+  auto: publicAsset('icons/tunnel/auto.svg'),
+  ngrok: publicAsset('icons/tunnel/ngrok.svg'),
+  cloudflare: publicAsset('icons/tunnel/cloudflare.svg'),
+  bore: publicAsset('icons/tunnel/bore.svg'),
+  serveo: publicAsset('icons/tunnel/serveo.svg'),
+  localtunnel: publicAsset('icons/tunnel/localtunnel.svg'),
 }
 
 export function getTunnelProviderIcon(providerId: string): string | undefined {
@@ -80,7 +81,7 @@ export function getChannelIcon(channelType: string): string | undefined {
 
 export function getChannelIconOrDefault(
   channelType: string,
-  defaultIcon = '/icons/channels/default.svg'
+  defaultIcon = publicAsset('icons/channels/default.svg')
 ): string {
   return channelIcons[channelType.toLowerCase()] || defaultIcon
 }
@@ -136,7 +137,7 @@ export function getPluginIcon(plugin: {
  */
 export function getPluginIconOrDefault(
   plugin: { id?: string; name?: string; channels?: string[] },
-  defaultIcon = '/icons/channels/default.svg'
+  defaultIcon = publicAsset('icons/channels/default.svg')
 ): string {
   return getPluginIcon(plugin) || defaultIcon
 }

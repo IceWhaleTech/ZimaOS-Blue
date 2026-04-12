@@ -154,6 +154,7 @@ const mocks = vi.hoisted(() => ({
   },
   mediaGenerate: {
     showPanel: { value: false },
+    originalPrompt: { value: '' },
     intent: { value: null },
     models: { value: [] as unknown[] },
     selectedModel: { value: '' },
@@ -373,7 +374,20 @@ vi.mock('@/components/ExecApprovalDialog.vue', () =>
 vi.mock('@/components/MediaParamPanel.vue', () =>
   helpers.asAsyncSFCModule({
     name: 'MediaParamPanel',
-    template: '<div class="media-param-panel-stub" />',
+    emits: ['dismiss', 'generate', 'confirm'],
+    template: `
+      <div class="media-param-panel-stub">
+        <button type="button" data-testid="media-panel-dismiss" @click="$emit('dismiss')">
+          Dismiss
+        </button>
+        <button type="button" data-testid="media-panel-generate" @click="$emit('generate')">
+          Generate
+        </button>
+        <button type="button" data-testid="media-panel-confirm" @click="$emit('confirm')">
+          Confirm
+        </button>
+      </div>
+    `,
   })
 )
 
@@ -828,6 +842,7 @@ describe('ChatView page-level card actions', () => {
     mocks.providerPoolStore.setRoutingMode.mockReset().mockResolvedValue(undefined)
 
     mocks.mediaGenerate.showPanel.value = false
+    mocks.mediaGenerate.originalPrompt.value = ''
     mocks.mediaGenerate.intent.value = null
     mocks.mediaGenerate.models.value = []
     mocks.mediaGenerate.selectedModel.value = ''
@@ -884,6 +899,33 @@ describe('ChatView page-level card actions', () => {
     expect(wrapper.text()).toContain(
       'The upstream relay failed to build this request. This usually means the request shape or tool arguments were invalid.'
     )
+  })
+
+  it('uses the original prompt when dismissing the media panel back to chat', async () => {
+    const originalPrompt = '先别生成图片，继续帮我分析这只灰泰迪的构图和风格。'
+    const classifiedPrompt = '生成一张灰泰迪图片'
+
+    mocks.mediaGenerate.showPanel.value = true
+    mocks.mediaGenerate.originalPrompt.value = originalPrompt
+    mocks.mediaGenerate.intent.value = {
+      category: 't2i',
+      confidence: 0.85,
+      prompt: classifiedPrompt,
+      has_image: false,
+      image_count: 0,
+    }
+
+    const wrapper = await mountChatViewWithMessages([
+      { id: 'msg-media-dismiss', content: 'Media panel visible' },
+    ])
+
+    await wrapper.get('[data-testid="media-panel-dismiss"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.mediaGenerate.reset).toHaveBeenCalledTimes(1)
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledTimes(1)
+    expect(mocks.chatStore.sendMessage).toHaveBeenCalledWith(originalPrompt)
+    expect(mocks.chatStore.sendMessage).not.toHaveBeenCalledWith(classifiedPrompt)
   })
 
   it('shows the work-details toggle near the input area and keeps it clickable', async () => {
