@@ -32,12 +32,20 @@ jobs:
         run: |
           npm ci
           npm run build
+          VITE_MODULE_UI=1 VITE_MODULE_NAME=zimaos-blue VITE_OUT_DIR=dist-module npm run build
 
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: web-dist
           path: web/dist/
+          retention-days: 1
+
+      - name: Upload module dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-module
+          path: web/dist-module/
           retention-days: 1
 
   build-web-embedded:
@@ -111,6 +119,13 @@ jobs:
           name: web-dist-embedded
           path: server/internal/web/dist/
 
+      - name: Download module web dist
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist-module
+          path: web/dist-module/
+
       - name: Trim dist
         shell: bash
         working-directory: server
@@ -134,6 +149,12 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: Install squashfs tools (linux/amd64)
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq squashfs-tools
 
       # Build espeak-ng static library (Linux needs it for TTS)
       - name: Build espeak-ng
@@ -197,6 +218,19 @@ jobs:
 
           mkdir -p bin
           go build -tags 'fts5 espeak kokoro' -ldflags "${LDFLAGS}" -o "bin/${BINARY_NAME}" ./cmd/blue
+
+      - name: Build ZimaOS raw artifact
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        working-directory: server
+        shell: bash
+        run: |
+          bash ../scripts/build_zimaos_raw.sh \
+            --binary "$PWD/bin/${BINARY_NAME}" \
+            --output "$PWD/bin/zimaos-blue.raw" \
+            --dist-dir "$GITHUB_WORKSPACE/web/dist-module" \
+            --module-name zimaos-blue \
+            --command-name blue \
+            --version "${GITHUB_REF_NAME}"
 
       # Pack dist into binary (Linux only — macOS launcher handles this)
       - name: Pack dist into binary
@@ -273,6 +307,7 @@ jobs:
           name: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: |
             server/bin/blue-*.tar.gz
+            server/bin/zimaos-blue.raw
           retention-days: 1
 
   build-tauri-macos:
@@ -510,6 +545,9 @@ jobs:
               '**Linux:**',
               `- [Linux x86_64 (amd64)](${dl}/blue-${tag}-linux-amd64.tar.gz)`,
               `- [Linux aarch64 (arm64)](${dl}/blue-${tag}-linux-arm64.tar.gz)`,
+              '',
+              '**ZimaOS / system extension:**',
+              `- [ZimaOS raw module](${dl}/zimaos-blue.raw)`,
             ].join('\n');
 
             await github.rest.repos.updateRelease({

@@ -4620,11 +4620,37 @@ func stripPseudoDirectiveArtifacts(s string) string {
 	return stripPseudoDirectiveArtifactsWithProfile(s, responseSanitizeProfileBalanced)
 }
 
+func protectTypelessBlocks(content string) (string, func(string) string) {
+	ensureChatMiscRegexes()
+	if !strings.Contains(content, "```typeless") {
+		return content, func(s string) string { return s }
+	}
+
+	blocks := make([]string, 0, 4)
+	protected := reTypelessBlock.ReplaceAllStringFunc(content, func(block string) string {
+		token := fmt.Sprintf("\x00TYPELESS_BLOCK_%d\x00", len(blocks))
+		blocks = append(blocks, block)
+		return token
+	})
+	if len(blocks) == 0 {
+		return content, func(s string) string { return s }
+	}
+
+	return protected, func(s string) string {
+		for i, block := range blocks {
+			token := fmt.Sprintf("\x00TYPELESS_BLOCK_%d\x00", i)
+			s = strings.ReplaceAll(s, token, block)
+		}
+		return s
+	}
+}
+
 // sanitizeResponseContent strips internal control markers from LLM output
 // before sending to web/IM clients. This prevents prompt-engineering artifacts
 // from leaking into the user-visible response.
 func sanitizeResponseContentWithProvider(s, provider, providerID, model string) string {
 	ensureChatMiscRegexes()
+	s, restoreTypeless := protectTypelessBlocks(s)
 	s = strings.ReplaceAll(s, "[SILENT_REPLY]", "")
 	s = strings.ReplaceAll(s, "<system_placeholder />", "")
 	s = reSystemReminder.ReplaceAllString(s, "")
@@ -4635,6 +4661,7 @@ func sanitizeResponseContentWithProvider(s, provider, providerID, model string) 
 	profile := resolveResponseSanitizeProfile(provider, providerID, model)
 	s = stripPseudoDirectiveArtifactsWithProfile(s, profile)
 	s = normalizeEscapedMarkdownArtifacts(s)
+	s = restoreTypeless(s)
 	return strings.TrimSpace(s)
 }
 

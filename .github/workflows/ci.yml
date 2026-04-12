@@ -34,7 +34,6 @@ jobs:
           npm run test:run -- src/i18n/locale-integrity.test.ts src/i18n/agentcore-runner-locales.test.ts
           npm run build
 
-
   server:
     name: Server Build & Test
     runs-on: ubuntu-latest
@@ -48,9 +47,6 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: server/go.sum
 
-      - name: Create stub web dist
-        run: mkdir -p server/internal/web/dist && touch server/internal/web/dist/.gitkeep
-
       - name: Build
         working-directory: server
         run: go build -tags 'fts5' ./cmd/blue
@@ -58,3 +54,58 @@ jobs:
       - name: Test
         working-directory: server
         run: go test -tags 'fts5' ./... -count=1 -timeout 5m
+
+  zimaos-raw:
+    name: ZimaOS Raw Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: server/go.sum
+
+      - name: Install squashfs tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq squashfs-tools
+
+      - name: Test raw builder script
+        run: |
+          python3 -m unittest scripts/build_zimaos_raw_test.py
+          bash -n scripts/build_zimaos_raw.sh
+
+      - name: Build module frontend
+        working-directory: web
+        run: |
+          npm ci
+          VITE_MODULE_UI=1 VITE_MODULE_NAME=zimaos-blue VITE_OUT_DIR=dist-module npm run build
+
+      - name: Build bare Linux binary
+        run: make build-linux-bare
+
+      - name: Build ZimaOS raw artifact
+        run: |
+          bash scripts/build_zimaos_raw.sh \
+            --binary dist/zimaos-blue-linux-amd64 \
+            --output dist/zimaos-blue.raw \
+            --dist-dir web/dist-module \
+            --module-name zimaos-blue \
+            --command-name blue \
+            --version "${GITHUB_SHA::7}"
+
+      - name: Upload ZimaOS raw artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zimaos-blue-raw
+          path: dist/zimaos-blue.raw
+          retention-days: 7
