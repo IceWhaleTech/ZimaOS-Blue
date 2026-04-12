@@ -38,18 +38,26 @@ func NewToolWebSearcher() *ToolWebSearcher {
 	defaultProvider := "bing"
 
 	// Promote tavily to the front of the provider chain when TAVILY_API_KEY is set.
-	if os.Getenv("TAVILY_API_KEY") != "" {
+	apiKey := os.Getenv("TAVILY_API_KEY")
+	if apiKey != "" {
 		providers = append([]string{"tavily"}, providers...)
 		defaultProvider = "tavily"
 	}
 
-	return NewToolWebSearcherWithConfig(tools.WebSearchConfig{
+	cfg := tools.WebSearchConfig{
 		Provider:   defaultProvider,
 		Providers:  providers,
 		MaxResults: 8,
 		Timeout:    15 * time.Second,
 		Region:     "wt-wt",
-	})
+	}
+	if apiKey != "" {
+		enabled := true
+		cfg.ProviderSettings = map[string]tools.WebSearchProviderSetting{
+			"tavily": {Enabled: &enabled, APIKey: apiKey},
+		}
+	}
+	return NewToolWebSearcherWithConfig(cfg)
 }
 
 func (s *ToolWebSearcher) Search(ctx context.Context, query string, maxResults int, lang string) ([]SearchHit, error) {

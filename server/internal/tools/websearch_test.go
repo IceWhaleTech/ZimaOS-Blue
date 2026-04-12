@@ -1233,8 +1233,7 @@ func TestWebSearchTool_Tavily(t *testing.T) {
 		Timeout:    5 * time.Second,
 		ProviderSettings: map[string]WebSearchProviderSetting{
 			"tavily": {
-				Enabled: true,
-				APIKey:  "test-tavily-key",
+				APIKey: "test-tavily-key",
 			},
 		},
 	})

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -109,6 +110,12 @@ type WebSearchTool struct {
 	inFlight   map[string]*inflightWebSearchCall
 	retryMax   int
 	retrySleep func(context.Context, time.Duration) error
+}
+
+// SetHTTPClientForTest overrides the HTTP client used by this tool.
+// Intended for use in tests outside this package.
+func (w *WebSearchTool) SetHTTPClientForTest(c *http.Client) {
+	w.httpClient = c
 }
 
 type webSearchCacheEntry struct {
@@ -1454,7 +1461,7 @@ func (w *WebSearchTool) searchTavily(ctx context.Context, query string, maxResul
 		return nil, fmt.Errorf("failed to marshal request body: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.tavily.com/search", strings.NewReader(string(bodyBytes)))
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.tavily.com/search", bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
