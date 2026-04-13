@@ -494,7 +494,7 @@ jobs:
         run: ls -lhR ./artifacts
 
       - name: Upload assets to release
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -518,7 +518,7 @@ jobs:
             }
 
       - name: Update release body with download links
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
