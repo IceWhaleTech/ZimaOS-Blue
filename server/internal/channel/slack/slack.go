@@ -333,7 +333,16 @@ func (c *Channel) handleAppMentionEvent(data json.RawMessage) {
 	}
 }
 
-var slackUserMentionPattern = regexp.MustCompile(`<@([A-Z0-9]+)(?:\|[^>]+)?>`)
+var (
+	slackUserMentionPattern     *regexp.Regexp
+	slackUserMentionPatternOnce sync.Once
+)
+
+func ensureSlackUserMentionPattern() {
+	slackUserMentionPatternOnce.Do(func() {
+		slackUserMentionPattern = regexp.MustCompile(`<@([A-Z0-9]+)(?:\|[^>]+)?>`)
+	})
+}
 
 func slackReplyTarget(msg channel.Message) string {
 	if strings.TrimSpace(msg.ReplyToID) != "" {
@@ -433,6 +442,7 @@ func slackApplyMentions(metadata map[string]interface{}, text string) {
 }
 
 func slackExtractMentions(text string) ([]map[string]interface{}, []string) {
+	ensureSlackUserMentionPattern()
 	matches := slackUserMentionPattern.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return nil, nil

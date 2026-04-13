@@ -45,6 +45,7 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 	}
 	resolver := NewToolPolicyResolver(cfg)
 	defs := []ToolDefinition{
+		{Name: "a11y"},
 		{Name: "ask"},
 		{Name: "bash"},
 		{Name: "calendar"},
@@ -68,10 +69,11 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "xlsx"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 18 {
-		t.Fatalf("expected 18 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 19 {
+		t.Fatalf("expected 19 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
+		"a11y":    true,
 		"ask":     true,
 		"bash":    true,
 		"browser": true, "calendar": true, "file_read": true, "file_write": true,

@@ -133,22 +133,23 @@ func TestNewResearchHarnessRunSpecCopiesNormalizedFields(t *testing.T) {
 
 func TestNewResearchHarnessRunSpecIncludesModeSpecificMetadata(t *testing.T) {
 	spec := newResearchHarnessRunSpec(researchHarnessRunInput{
-		Query:         " Competitive pricing snapshot ",
-		Mode:          "analyze",
-		Topic:         " Pricing snapshot ",
-		URLs:          []string{"https://example.com/pricing", "https://example.com/blog"},
-		Text:          " Internal notes ",
-		SearchQueries: []string{"example pricing comparison", "competitor plan changes"},
-		OutputMode:    "report",
-		Action:        "check_accessibility",
-		URL:           " https://example.com/app ",
-		Image:         " base64-image ",
-		Device:        " mobile ",
-		Channel:       " telegram ",
-		WaitMS:        1500,
-		Threshold:     82.5,
-		Format:        " human ",
-		Profile:       " ppt ",
+		Query:            " Competitive pricing snapshot ",
+		Mode:             "analyze",
+		RetrievalProfile: " recent_multi_site_v1 ",
+		Topic:            " Pricing snapshot ",
+		URLs:             []string{"https://example.com/pricing", "https://example.com/blog"},
+		Text:             " Internal notes ",
+		SearchQueries:    []string{"example pricing comparison", "competitor plan changes"},
+		OutputMode:       "report",
+		Action:           "check_accessibility",
+		URL:              " https://example.com/app ",
+		Image:            " base64-image ",
+		Device:           " mobile ",
+		Channel:          " telegram ",
+		WaitMS:           1500,
+		Threshold:        82.5,
+		Format:           " human ",
+		Profile:          " ppt ",
 	})
 
 	if spec.Metadata["topic"] != "Pricing snapshot" {
@@ -162,6 +163,9 @@ func TestNewResearchHarnessRunSpecIncludesModeSpecificMetadata(t *testing.T) {
 	}
 	if spec.Metadata["text"] != "Internal notes" || spec.Metadata["output_mode"] != "report" {
 		t.Fatalf("unexpected analyze metadata: %#v", spec.Metadata)
+	}
+	if spec.Metadata["retrieval_profile"] != "recent_multi_site_v1" {
+		t.Fatalf("retrieval_profile metadata = %#v, want recent_multi_site_v1", spec.Metadata["retrieval_profile"])
 	}
 	if spec.Metadata["action"] != "check_accessibility" || spec.Metadata["url"] != "https://example.com/app" || spec.Metadata["image"] != "base64-image" {
 		t.Fatalf("unexpected ui-review metadata: %#v", spec.Metadata)
@@ -2796,6 +2800,9 @@ func TestNewHarnessRuntimeResearchToolAdapter_UsesBundleController(t *testing.T)
 	if adapter == nil || adapter.service != service || adapter.manager != nil {
 		t.Fatalf("expected fallback research adapter without manager, got %#v", adapter)
 	}
+	if adapter.jobStore != service {
+		t.Fatalf("expected fallback adapter to preserve deep research service store, got %#v", adapter.jobStore)
+	}
 
 	db, bundle, _, _ := newTestAgentRuntimeFixture(t)
 	defer db.Close()
@@ -2803,6 +2810,27 @@ func TestNewHarnessRuntimeResearchToolAdapter_UsesBundleController(t *testing.T)
 	adapter = newHarnessRuntimeResearchToolAdapter(bundle, service, "/tmp/workspace")
 	if adapter == nil || adapter.manager != harnessRuntimeController(bundle) {
 		t.Fatalf("expected harness-backed research adapter, got %#v", adapter)
+	}
+}
+
+func TestNewHarnessRuntimeResearchToolAdapter_PreservesServiceFallbackLookupWithoutBundle(t *testing.T) {
+	service := deepresearch.NewService(nil, stubDeepResearchSearcher{})
+	job, err := service.CreateJob(context.Background(), deepresearch.CreateJobRequest{
+		UserID:         "user-fallback",
+		ConversationID: "conv-fallback",
+		Query:          "recent discussion fallback",
+		Mode:           deepresearch.ModeDeep,
+	})
+	if err != nil {
+		t.Fatalf("CreateJob failed: %v", err)
+	}
+	adapter := newHarnessRuntimeResearchToolAdapter(nil, service, "/tmp/workspace")
+	got, err := adapter.GetJobForUser(job.ID, "user-fallback")
+	if err != nil {
+		t.Fatalf("GetJobForUser failed: %v", err)
+	}
+	if got == nil || got.ID != job.ID {
+		t.Fatalf("job = %#v, want deep research service fallback job", got)
 	}
 }
 

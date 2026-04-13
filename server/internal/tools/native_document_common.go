@@ -28,6 +28,8 @@ type nativeDocumentPayload struct {
 	Warnings       []string               `json:"warnings,omitempty"`
 	Validation     map[string]interface{} `json:"validation,omitempty"`
 	Text           string                 `json:"text,omitempty"`
+	Summary        string                 `json:"summary,omitempty"`
+	Result         interface{}            `json:"result,omitempty"`
 	Size           int64                  `json:"size,omitempty"`
 	ExtractedVia   string                 `json:"extracted_via,omitempty"`
 	TabularSummary interface{}            `json:"tabular_summary,omitempty"`
@@ -196,7 +198,8 @@ func readZipArchive(path string) ([]zipArchiveEntry, error) {
 
 func writeZipArchive(path string, entries []zipArchiveEntry) error {
 	var buf bytes.Buffer
-	writer := zip.NewWriter(&buf)
+	buf.Grow(estimateZipArchiveBuffer(entries))
+	writer := newFastZipWriter(&buf)
 	for _, entry := range entries {
 		header := &zip.FileHeader{
 			Name:   entry.Name,
@@ -219,6 +222,21 @@ func writeZipArchive(path string, entries []zipArchiveEntry) error {
 		return fmt.Errorf("close archive: %w", err)
 	}
 	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
+
+func estimateZipArchiveBuffer(entries []zipArchiveEntry) int {
+	total := len(entries) * 256
+	contentBytes := 0
+	for _, entry := range entries {
+		contentBytes += len(entry.Data)
+	}
+	if contentBytes <= 0 {
+		return total
+	}
+	if contentBytes <= 8<<20 {
+		return total + contentBytes
+	}
+	return total + (contentBytes / 2)
 }
 
 func replaceArchiveEntries(path string, match func(string) bool, replacer func(string, []byte) ([]byte, bool, error)) (bool, error) {

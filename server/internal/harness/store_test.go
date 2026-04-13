@@ -9,8 +9,6 @@ import (
 	"testing"
 	"time"
 
-	sqlite3 "github.com/mattn/go-sqlite3"
-
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
@@ -410,7 +408,7 @@ func TestWithSQLiteBusyRetryRetriesBusyErrors(t *testing.T) {
 	err := withSQLiteBusyRetry(context.Background(), func() error {
 		calls++
 		if calls < 3 {
-			return sqlite3.Error{Code: sqlite3.ErrBusy}
+			return newSQLiteBusyErrorForTest()
 		}
 		return nil
 	})
@@ -428,7 +426,7 @@ func TestWithSQLiteBusyRetryStopsOnContextCancellation(t *testing.T) {
 	err := withSQLiteBusyRetry(ctx, func() error {
 		calls++
 		cancel()
-		return sqlite3.Error{Code: sqlite3.ErrBusy}
+		return newSQLiteBusyErrorForTest()
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error = %v, want context canceled", err)

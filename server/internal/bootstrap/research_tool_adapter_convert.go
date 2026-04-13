@@ -36,26 +36,8 @@ func toToolResearchJob(job *deepresearch.Job) *tools.ResearchJob {
 	}
 	out.Answer = job.Report.Answer
 	out.Confidence = job.Report.Confidence
-	out.Report = map[string]interface{}{
-		"answer":               job.Report.Answer,
-		"confidence":           job.Report.Confidence,
-		"citations":            append([]deepresearch.Citation(nil), job.Report.Citations...),
-		"open_questions":       append([]string(nil), job.Report.OpenQuestions...),
-		"support_count":        job.Report.SupportCount,
-		"conflict_count":       job.Report.ConflictCount,
-		"has_conflict":         job.Report.HasConflict,
-		"iterations":           job.Report.Iterations,
-		"stop_reason":          job.Report.StopReason,
-		"citation_coverage":    job.Report.CitationCoverage,
-		"stage_errors":         append([]string(nil), job.Report.StageErrors...),
-		"timeline_sections":    append([]deepresearch.TimelineSection(nil), job.Report.TimelineSections...),
-		"research_trace":       append([]deepresearch.ResearchTraceEntry(nil), job.Report.ResearchTrace...),
-		"verification_summary": job.Report.VerificationSummary,
-		"calibration":          cloneCalibrationForTool(job.Report.Calibration),
-	}
-	if job.Report.Calibration != nil {
-		out.Report["takeaway_candidates"] = append([]deepresearch.TakeawayCandidate(nil), job.Report.Calibration.TakeawayCandidates...)
-	}
+	out.RetrievalProfile = job.Report.RetrievalProfile
+	out.Report = toolResearchReport(job.Report)
 	return out
 }
 

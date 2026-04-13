@@ -181,6 +181,107 @@ func TestResearchToolExplicitModeBypassesAutoSelection(t *testing.T) {
 	}
 }
 
+func TestResearchToolAutoSelectsRecentMultiSiteProfileForEnglishDiscussionQuery(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Query != "What are people saying in the last 30 days about ZimaOS Blue?" {
+				t.Fatalf("query = %q, want recent-discussion query", req.Query)
+			}
+			if req.Mode != "deep" {
+				t.Fatalf("mode = %q, want deep", req.Mode)
+			}
+			if req.ResearchDepth != "deep" {
+				t.Fatalf("research_depth = %q, want deep", req.ResearchDepth)
+			}
+			if req.RetrievalProfile != "recent_multi_site_v1" {
+				t.Fatalf("retrieval_profile = %q, want recent_multi_site_v1", req.RetrievalProfile)
+			}
+			return &ResearchJob{
+				ID:                 "job-recent-en",
+				Status:             "pending",
+				Query:              req.Query,
+				Mode:               "deep_research",
+				ResearchDepth:      req.ResearchDepth,
+				EffectiveRouteMode: "web",
+			}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query": "What are people saying in the last 30 days about ZimaOS Blue?",
+		"mode":  "auto",
+		"wait":  false,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+}
+
+func TestResearchToolAutoSelectsRecentMultiSiteProfileForChineseDiscussionQuery(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.Query != "最近30天大家怎么说 ZimaOS Blue？" {
+				t.Fatalf("query = %q, want recent-discussion query", req.Query)
+			}
+			if req.RetrievalProfile != "recent_multi_site_v1" {
+				t.Fatalf("retrieval_profile = %q, want recent_multi_site_v1", req.RetrievalProfile)
+			}
+			return &ResearchJob{
+				ID:                 "job-recent-zh",
+				Status:             "pending",
+				Query:              req.Query,
+				Mode:               "deep_research",
+				ResearchDepth:      req.ResearchDepth,
+				EffectiveRouteMode: "web",
+			}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query": "最近30天大家怎么说 ZimaOS Blue？",
+		"mode":  "auto",
+		"wait":  false,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["accepted"]; got != true {
+		t.Fatalf("accepted = %v, want true", got)
+	}
+}
+
+func TestResearchToolDoesNotSetRecentProfileForDirectURLRead(t *testing.T) {
+	service := &mockResearchService{
+		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {
+			if req.RetrievalProfile != "" {
+				t.Fatalf("retrieval_profile = %q, want empty", req.RetrievalProfile)
+			}
+			if req.Mode != "analyze" {
+				t.Fatalf("mode = %q, want analyze", req.Mode)
+			}
+			return &ResearchJob{ID: "job-url", Status: "pending", Query: req.Query, Mode: req.Mode, EffectiveRouteMode: "web"}, nil
+		},
+	}
+	tool := NewDeepResearchTool(service)
+	res, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query": "Analyze https://example.com/blog and summarize what changed in the last 30 days.",
+		"mode":  "auto",
+		"wait":  false,
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	payload := res.(map[string]interface{})
+	if got := payload["mode"]; got != "analyze" {
+		t.Fatalf("mode = %v, want analyze", got)
+	}
+}
+
 func TestResearchToolForwardsAnalyzeModeSpecificArgs(t *testing.T) {
 	service := &mockResearchService{
 		create: func(ctx context.Context, req ResearchCreateJobRequest) (*ResearchJob, error) {

@@ -30,14 +30,14 @@ var (
 
 // LicenseClaims contains the verified claims from a trial license.
 type LicenseClaims struct {
-	KID       string `json:"kid"`       // key ID
-	Key       string `json:"key"`       // trial API key (plaintext in signed payload)
-	URL       string `json:"url"`       // trial base URL
-	Limit     int64  `json:"lim"`       // token limit
-	IssuedAt  int64  `json:"iat"`       // issued-at unix timestamp
-	ExpiresAt int64  `json:"exp"`       // expiry unix timestamp (0=no expiry)
-	Format    string `json:"fmt"`       // API format (e.g. "anthropic")
-	Model     string `json:"model"`     // default model ID
+	KID       string `json:"kid"`   // key ID
+	Key       string `json:"key"`   // trial API key (plaintext in signed payload)
+	URL       string `json:"url"`   // trial base URL
+	Limit     int64  `json:"lim"`   // token limit
+	IssuedAt  int64  `json:"iat"`   // issued-at unix timestamp
+	ExpiresAt int64  `json:"exp"`   // expiry unix timestamp (0=no expiry)
+	Format    string `json:"fmt"`   // API format (e.g. "anthropic")
+	Model     string `json:"model"` // default model ID
 }
 
 // Embedded public keys for Ed25519 verification (DER-encoded, base64).
@@ -108,6 +108,12 @@ func VerifyLicense(licenseStr string) (*LicenseClaims, []byte, error) {
 	if !ed25519.Verify(pubKey, []byte(payloadB64), sigBytes) {
 		return nil, nil, ErrLicenseSignature
 	}
+
+	normalizedURL, ok := normalizeTrialBaseURL(claims.URL)
+	if !ok {
+		return nil, nil, ErrLicenseInvalid
+	}
+	claims.URL = normalizedURL
 
 	// Check expiry — still return claims so callers can distinguish expired vs invalid
 	if claims.ExpiresAt > 0 && timeutil.Now() > claims.ExpiresAt {

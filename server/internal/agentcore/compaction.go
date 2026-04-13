@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -92,11 +93,39 @@ var (
 		"edited file":        "Relevant Files",
 	}
 
-	reMarkdownFileLink  = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)\)`)
-	rePatchFileLine     = regexp.MustCompile(`(?m)^\*{3} (?:Add File|Update File|Delete File|Move to): (.+)$`)
-	rePathLineRefSuffix = regexp.MustCompile(`(?i)(?::\d+(?::\d+)?)$|#L\d+(?:C\d+)?$`)
-	reToolNameToken     = regexp.MustCompile(`[a-z0-9]+`)
+	reMarkdownFileLinkOnce  sync.Once
+	reMarkdownFileLink      *regexp.Regexp
+	rePatchFileLineOnce     sync.Once
+	rePatchFileLine         *regexp.Regexp
+	rePathLineRefSuffixOnce sync.Once
+	rePathLineRefSuffix     *regexp.Regexp
+	reToolNameTokenOnce     sync.Once
+	reToolNameToken         *regexp.Regexp
 )
+
+func ensureMarkdownFileLinkRegexp() {
+	reMarkdownFileLinkOnce.Do(func() {
+		reMarkdownFileLink = regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)\)`)
+	})
+}
+
+func ensurePatchFileLineRegexp() {
+	rePatchFileLineOnce.Do(func() {
+		rePatchFileLine = regexp.MustCompile(`(?m)^\*{3} (?:Add File|Update File|Delete File|Move to): (.+)$`)
+	})
+}
+
+func ensurePathLineRefSuffixRegexp() {
+	rePathLineRefSuffixOnce.Do(func() {
+		rePathLineRefSuffix = regexp.MustCompile(`(?i)(?::\d+(?::\d+)?)$|#L\d+(?:C\d+)?$`)
+	})
+}
+
+func ensureToolNameTokenRegexp() {
+	reToolNameTokenOnce.Do(func() {
+		reToolNameToken = regexp.MustCompile(`[a-z0-9]+`)
+	})
+}
 
 type structuredSummarySections map[string][]string
 
@@ -416,6 +445,7 @@ func classifyToolFileAccess(name string) string {
 	if strings.TrimSpace(name) == "" {
 		return ""
 	}
+	ensureToolNameTokenRegexp()
 	tokens := reToolNameToken.FindAllString(strings.ToLower(name), -1)
 	for _, token := range tokens {
 		switch token {
@@ -492,6 +522,7 @@ func isLikelyPathKey(key string) bool {
 }
 
 func extractPatchPaths(text string) []string {
+	ensurePatchFileLineRegexp()
 	matches := rePatchFileLine.FindAllStringSubmatch(text, -1)
 	if len(matches) == 0 {
 		return nil
@@ -510,6 +541,7 @@ func extractLikelyPathsFromText(text string) []string {
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
+	ensureMarkdownFileLinkRegexp()
 	candidates := make([]string, 0, 8)
 	for _, match := range reMarkdownFileLink.FindAllStringSubmatch(text, -1) {
 		if len(match) >= 2 {
@@ -542,6 +574,7 @@ func normalizePathCandidate(candidate string) string {
 	if path == "" || strings.Contains(path, "://") {
 		return ""
 	}
+	ensurePathLineRefSuffixRegexp()
 	path = rePathLineRefSuffix.ReplaceAllString(path, "")
 	path = strings.Trim(path, "`*.,!?;:")
 	if path == "" {

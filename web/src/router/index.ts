@@ -26,6 +26,7 @@ import {
 // In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
 // Go server), so all API calls use relative URLs — no special URL construction needed.
 const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+const isVitestRuntime = Boolean(import.meta.env.VITEST)
 type PreviewModeCheckResult = {
   preview: boolean
   connectionError: boolean
@@ -274,7 +275,9 @@ export function getCachedPreviewMode(): { checked: boolean; preview: boolean } {
 
 // Eagerly start the preview mode check when this module loads, unless desktop startup
 // already has a stored session hint and the result is no longer on the critical path.
-if (shouldPrefetchPreviewModeOnRouterInit(isDesktop, hasStoredSessionHint())) {
+// Skip this side effect in Vitest so importing the router in unit tests does not
+// attempt a real same-origin fetch against the happy-dom default origin.
+if (!isVitestRuntime && shouldPrefetchPreviewModeOnRouterInit(isDesktop, hasStoredSessionHint())) {
   reportStartupMark('router_mode_check_prefetch_start')
   checkPreviewMode().catch(() => {})
 } else {

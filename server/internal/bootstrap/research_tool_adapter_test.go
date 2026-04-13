@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/deepresearch"
@@ -13,6 +14,25 @@ type stubResearchHarnessSubmitter struct {
 	run   *harness.Run
 	err   error
 	specs []harness.RunSpec
+}
+
+type stubBootstrapTool struct {
+	result interface{}
+	err    error
+	args   []map[string]interface{}
+}
+
+func (s *stubBootstrapTool) Definition() tools.ToolDefinition {
+	return tools.ToolDefinition{Name: "stub"}
+}
+
+func (s *stubBootstrapTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
+	cloned := make(map[string]interface{}, len(args))
+	for key, value := range args {
+		cloned[key] = value
+	}
+	s.args = append(s.args, cloned)
+	return s.result, s.err
 }
 
 func (s *stubResearchHarnessSubmitter) Submit(_ context.Context, spec harness.RunSpec) (*harness.Run, error) {
@@ -195,6 +215,125 @@ func TestDeepResearchToolAdapterCreateJobUsesCanonicalHarnessSpecForAnalyze(t *t
 	}
 	if job == nil || job.Mode != "analyze" || job.Query != "Competitive pricing snapshot" {
 		t.Fatalf("job = %#v, want synthesized analyze job", job)
+	}
+}
+
+func TestDeepResearchToolAdapterCreateJobProjectsPendingRecentRetrievalProfile(t *testing.T) {
+	submitter := &stubResearchHarnessSubmitter{
+		run: &harness.Run{
+			ID:             "run-recent",
+			UserID:         "user-5",
+			ConversationID: "conv-5",
+			Goal:           "What are people saying in the last 30 days about ZimaOS Blue?",
+			Status:         harness.RunStatusPlanning,
+			Metadata: map[string]interface{}{
+				"mode":              "deep_research",
+				"research_depth":    "deep",
+				"retrieval_profile": "recent_multi_site_v1",
+			},
+		},
+	}
+	adapter := newDeepResearchToolAdapter(deepresearch.NewService(nil, stubDeepResearchSearcher{}), submitter, "/tmp/workspace")
+
+	job, err := adapter.CreateJob(context.Background(), tools.ResearchCreateJobRequest{
+		UserID:           "user-5",
+		ConversationID:   "conv-5",
+		Query:            "What are people saying in the last 30 days about ZimaOS Blue?",
+		Mode:             "deep",
+		ResearchDepth:    "deep",
+		RouteMode:        "web",
+		RetrievalProfile: "recent_multi_site_v1",
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job")
+	}
+	if job.RetrievalProfile != "recent_multi_site_v1" {
+		t.Fatalf("job.RetrievalProfile = %q, want recent_multi_site_v1", job.RetrievalProfile)
+	}
+}
+
+func TestDeepResearchToolAdapterCreateJobUsesLocalRecentExecutorWithoutHarness(t *testing.T) {
+	report := map[string]interface{}{
+		"answer":            "Recent discussion is positive overall.",
+		"confidence":        0.73,
+		"retrieval_profile": "recent_multi_site_v1",
+		"lookback_days":     30,
+		"items_by_source": map[string]interface{}{
+			"reddit": []interface{}{map[string]interface{}{"title": "Thread", "url": "https://reddit.com/r/test"}},
+		},
+	}
+	payload, _ := json.Marshal(report)
+	recentTool := &stubBootstrapTool{result: string(payload)}
+	adapter := newDeepResearchToolAdapter(deepresearch.NewService(nil, stubDeepResearchSearcher{}), nil, "/tmp/workspace")
+	adapter.SetRecentExecutor(recentTool)
+
+	job, err := adapter.CreateJob(context.Background(), tools.ResearchCreateJobRequest{
+		UserID:           "user-6",
+		ConversationID:   "conv-6",
+		Query:            "What are people saying in the last 30 days about ZimaOS Blue?",
+		Mode:             "deep",
+		ResearchDepth:    "deep",
+		RouteMode:        "web",
+		RetrievalProfile: "recent_multi_site_v1",
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job")
+	}
+	if job.Status != "completed" {
+		t.Fatalf("job.Status = %q, want completed", job.Status)
+	}
+	if job.RetrievalProfile != "recent_multi_site_v1" {
+		t.Fatalf("job.RetrievalProfile = %q, want recent_multi_site_v1", job.RetrievalProfile)
+	}
+	if len(recentTool.args) != 1 || recentTool.args[0]["retrieval_profile"] != "recent_multi_site_v1" {
+		t.Fatalf("recent tool args = %#v, want retrieval_profile", recentTool.args)
+	}
+
+	fetched, err := adapter.GetJobForUser(job.ID, "user-6")
+	if err != nil {
+		t.Fatalf("GetJobForUser: %v", err)
+	}
+	if fetched.ID != job.ID || fetched.RetrievalProfile != "recent_multi_site_v1" {
+		t.Fatalf("fetched job = %#v, want stored local recent job", fetched)
+	}
+}
+
+func TestDeepResearchToolAdapterLocalRecentJobsRespectUserOwnership(t *testing.T) {
+	report := map[string]interface{}{
+		"answer":            "Recent discussion is positive overall.",
+		"confidence":        0.73,
+		"retrieval_profile": "recent_multi_site_v1",
+		"lookback_days":     30,
+	}
+	payload, _ := json.Marshal(report)
+	recentTool := &stubBootstrapTool{result: string(payload)}
+	adapter := newDeepResearchToolAdapter(deepresearch.NewService(nil, stubDeepResearchSearcher{}), nil, "/tmp/workspace")
+	adapter.SetRecentExecutor(recentTool)
+
+	job, err := adapter.CreateJob(context.Background(), tools.ResearchCreateJobRequest{
+		UserID:           "user-owner",
+		ConversationID:   "conv-owner",
+		Query:            "What are people saying in the last 30 days about ZimaOS Blue?",
+		Mode:             "deep",
+		ResearchDepth:    "deep",
+		RouteMode:        "web",
+		RetrievalProfile: "recent_multi_site_v1",
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job")
+	}
+
+	if _, err := adapter.GetJobForUser(job.ID, "user-other"); err == nil {
+		t.Fatal("expected GetJobForUser to reject access from a different user")
 	}
 }
 

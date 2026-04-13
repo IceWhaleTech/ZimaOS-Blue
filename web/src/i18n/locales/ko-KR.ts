@@ -475,6 +475,8 @@ export default mergeHarnessLocale('ko-KR', {
     stillListening: '계속하세요, 듣고 있어요...',
     continueGenerating: '계속',
     responseInterrupted: '응답이 중단되었습니다',
+    responseStopped: '응답이 중지되었습니다',
+    responseStoppedBadge: '중지됨',
     deepResearchTitle: '심층 연구',
     deepResearchEvidence: '근거',
     deepResearchSupport: '지원',

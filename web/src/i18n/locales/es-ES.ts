@@ -478,6 +478,8 @@ export default mergeHarnessLocale('es-ES', {
     stillListening: 'Continúa, te escucho...',
     continueGenerating: 'Continuar',
     responseInterrupted: 'Respuesta interrumpida',
+    responseStopped: 'Respuesta detenida',
+    responseStoppedBadge: 'Detenida',
     deepResearchTitle: 'Investigación profunda',
     deepResearchEvidence: 'Evidencia',
     deepResearchSupport: 'Soporte',

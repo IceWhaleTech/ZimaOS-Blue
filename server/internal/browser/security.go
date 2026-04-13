@@ -6,14 +6,23 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 )
 
 var (
 	// ErrEvaluateDisabled is returned when JavaScript evaluation is disabled.
 	ErrEvaluateDisabled = errors.New("JavaScript evaluation is disabled by configuration (browser.evaluate_enabled=false)")
-	urlInTextPattern    = regexp.MustCompile(`(?i)https?://[^\s"'<>，。；：！？、]+`)
+
+	urlInTextPatternOnce sync.Once
+	urlInTextPattern     *regexp.Regexp
 )
+
+func ensureURLInTextPattern() {
+	urlInTextPatternOnce.Do(func() {
+		urlInTextPattern = regexp.MustCompile(`(?i)https?://[^\s"'<>，。；：！？、]+`)
+	})
+}
 
 // SecurityChecker validates URLs against security rules.
 type SecurityChecker struct {
@@ -145,6 +154,7 @@ func extractURLCandidate(raw string) string {
 	if raw == "" {
 		return ""
 	}
+	ensureURLInTextPattern()
 	if m := strings.TrimSpace(urlInTextPattern.FindString(raw)); m != "" {
 		return trimURLToken(m)
 	}

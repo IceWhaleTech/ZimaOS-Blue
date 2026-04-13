@@ -863,13 +863,18 @@ const interruptedIndicatorHtml = computed(
     `<div class="response-interrupted-indicator"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg><span>${t('chat.responseInterrupted')}</span></div>`
 )
 
+const stoppedIndicatorHtml = computed(
+  () => `<div class="response-stopped-indicator"><span>${t('chat.responseStoppedBadge', 'Stopped')}</span></div>`
+)
+
 const INTERRUPTED_MARKER = '[Response interrupted]'
+const STOPPED_MARKER = '[Response stopped]'
 const RE_NON_WHITESPACE = /\S/
 const RE_EDGE_WHITESPACE = /^\s|\s$/
 const INTERRUPTED_STRIP_CACHE_KEY = '__zima_chat_interrupted_strip_cache_v1__'
 const INTERRUPTED_STRIP_CACHE_MAX = 300
 
-type InterruptedStripResult = { content: string; interrupted: boolean }
+type InterruptedStripResult = { content: string; interrupted: boolean; stopped: boolean }
 
 function getInterruptedStripCache(): Map<string, InterruptedStripResult> {
   const g = globalThis as Record<string, unknown>
@@ -890,15 +895,18 @@ function trimIfNeeded(text: string): string {
   return RE_EDGE_WHITESPACE.test(text) ? text.trim() : text
 }
 
-// Strip [Response interrupted] marker from content, returns { content, interrupted }
+// Strip terminal interruption/stopped markers from content for indicator rendering.
 function stripInterruptedMarker(content: string): InterruptedStripResult {
   const cache = getInterruptedStripCache()
   const cached = cache.get(content)
   if (cached) return cached
 
-  const markerIndex = content.lastIndexOf(INTERRUPTED_MARKER)
+  const stoppedIndex = content.lastIndexOf(STOPPED_MARKER)
+  const interruptedIndex = content.lastIndexOf(INTERRUPTED_MARKER)
+  const marker = stoppedIndex >= interruptedIndex ? STOPPED_MARKER : INTERRUPTED_MARKER
+  const markerIndex = marker === STOPPED_MARKER ? stoppedIndex : interruptedIndex
   if (markerIndex === -1) {
-    const result = { content, interrupted: false }
+    const result = { content, interrupted: false, stopped: false }
     if (cache.size >= INTERRUPTED_STRIP_CACHE_MAX && !cache.has(content)) {
       evictOldestMapEntry(cache)
     }
@@ -906,9 +914,9 @@ function stripInterruptedMarker(content: string): InterruptedStripResult {
     return result
   }
 
-  const markerEnd = markerIndex + INTERRUPTED_MARKER.length
+  const markerEnd = markerIndex + marker.length
   if (markerEnd < content.length && hasNonWhitespace(content.slice(markerEnd))) {
-    const result = { content, interrupted: false }
+    const result = { content, interrupted: false, stopped: false }
     if (cache.size >= INTERRUPTED_STRIP_CACHE_MAX && !cache.has(content)) {
       evictOldestMapEntry(cache)
     }
@@ -922,7 +930,8 @@ function stripInterruptedMarker(content: string): InterruptedStripResult {
 
   const result = {
     content: content.slice(0, cutStart),
-    interrupted: true,
+    interrupted: marker === INTERRUPTED_MARKER,
+    stopped: marker === STOPPED_MARKER,
   }
   if (cache.size >= INTERRUPTED_STRIP_CACHE_MAX && !cache.has(content)) {
     evictOldestMapEntry(cache)
@@ -1267,9 +1276,11 @@ const assistantTextState = computed<AssistantTextState>(() => {
     return saveCache({ html: '', isEmpty: true })
   }
 
-  const { content: cleaned, interrupted } = stripInterruptedMarker(text)
+  const { content: cleaned, interrupted, stopped } = stripInterruptedMarker(text)
   let html = renderMarkdownForMessage(cleaned, `chat-message:${props.message.id}`)
-  if (interrupted) {
+  if (stopped) {
+    html += stoppedIndicatorHtml.value
+  } else if (interrupted) {
     html += interruptedHtml
   }
   return saveCache({ html, isEmpty: false })
@@ -1909,9 +1920,11 @@ const segmentRenderState = computed(() => {
     }
 
     const effective = showToolDetails ? text : stripProcessContent(text)
-    const { content, interrupted } = stripInterruptedMarker(effective)
+    const { content, interrupted, stopped } = stripInterruptedMarker(effective)
     let html = renderMarkdownForMessage(content, `chat-segment:${segment.key}`)
-    if (interrupted) {
+    if (stopped) {
+      html += stoppedIndicatorHtml.value
+    } else if (interrupted) {
       html += interruptedHtml
     }
 
@@ -4827,6 +4840,27 @@ async function handleMobileDelete() {
 [data-theme='light'] .assistant-message :deep(.response-interrupted-indicator) {
   color: #64748b;
   border-color: rgba(100, 116, 139, 0.25);
+}
+
+.assistant-message :deep(.response-stopped-indicator) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  border: 1px solid rgba(203, 213, 225, 0.28);
+  border-radius: 999px;
+  background: rgba(51, 65, 85, 0.36);
+}
+
+:root.light .assistant-message :deep(.response-stopped-indicator),
+[data-theme='light'] .assistant-message :deep(.response-stopped-indicator) {
+  color: #475569;
+  border-color: rgba(100, 116, 139, 0.22);
+  background: rgba(148, 163, 184, 0.12);
 }
 
 /* Error block indicator (tool_use_error etc.) */

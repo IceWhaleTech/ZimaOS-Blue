@@ -2,6 +2,7 @@ import type { LocaleKey } from './locale-catalog'
 
 type LocaleLeaf = string | number | boolean | null
 type LocaleNode = { [key: string]: LocaleLeaf | LocaleNode }
+type NamedLocaleTerms = { name: string; description: string }
 
 type BuiltinSkillLocaleTerms = {
   configDescription: string
@@ -578,6 +579,144 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
   },
 }
 
+const officeDocsSkillLocaleTerms: Record<LocaleKey, NamedLocaleTerms> = {
+  'ca-ES': {
+    name: "Documents d'ofimàtica",
+    description:
+      "Fes-la servir quan la tasca impliqui crear, llegir, editar, validar o reformatar fitxers .docx, .xlsx, .pptx o .pdf de l'espai de treball, especialment si tambe cal interactuar amb l'aplicacio o les finestres de l'host mitjancant a11y.",
+  },
+  'cs-CZ': {
+    name: 'Kancelarske dokumenty',
+    description:
+      'Pouzijte ji, kdyz ukol zahrnuje vytvareni, cteni, upravy, validaci nebo preformatovani souboru .docx, .xlsx, .pptx nebo .pdf v pracovnim prostoru, zvlast kdyz je potreba interakce s hostitelskou aplikaci nebo okny pres a11y.',
+  },
+  'da-DK': {
+    name: 'Office-dokumenter',
+    description:
+      'Brug den, nar opgaven omfatter oprettelse, laesning, redigering, validering eller omformatering af .docx-, .xlsx-, .pptx- eller .pdf-filer i arbejdsomradet, isaer hvis der ogsa er brug for interaktion med vaertsapp eller vinduer via a11y.',
+  },
+  'de-DE': {
+    name: 'Office-Dokumente',
+    description:
+      'Nutze dies, wenn die Aufgabe das Erstellen, Lesen, Bearbeiten, Validieren oder Neuformatieren von .docx-, .xlsx-, .pptx- oder .pdf-Arbeitsbereichsdateien umfasst, besonders wenn zusaetzlich Host-App- oder Fensterinteraktionen ueber a11y noetig sind.',
+  },
+  'el-GR': {
+    name: 'Εγγραφα Office',
+    description:
+      'Χρησιμοποιηστε το οταν η εργασια περιλαμβανει δημιουργια, αναγνωση, επεξεργασια, επικυρωση η αναδιαμορφωση αρχειων .docx, .xlsx, .pptx η .pdf του χωρου εργασιας, ειδικα οταν απαιτειται και αλληλεπιδραση με την εφαρμογη η τα παραθυρα του host μεσω a11y.',
+  },
+  'en-GB': {
+    name: 'Office Docs',
+    description:
+      'Use when the task involves creating, reading, editing, validating, or reformatting .docx, .xlsx, .pptx, or .pdf workspace files, especially when host app or window interaction should also go through a11y.',
+  },
+  'en-US': {
+    name: 'Office Docs',
+    description:
+      'Use when the task involves creating, reading, editing, validating, or reformatting .docx, .xlsx, .pptx, or .pdf workspace files, especially when host app or window interaction should also go through a11y.',
+  },
+  'es-ES': {
+    name: 'Documentos de oficina',
+    description:
+      'Usalo cuando la tarea implique crear, leer, editar, validar o reformatear archivos .docx, .xlsx, .pptx o .pdf del espacio de trabajo, especialmente si tambien hace falta interactuar con la aplicacion o las ventanas del host mediante a11y.',
+  },
+  'fr-FR': {
+    name: 'Documents bureautiques',
+    description:
+      "Utilisez-le lorsque la tache consiste a creer, lire, modifier, valider ou reformater des fichiers .docx, .xlsx, .pptx ou .pdf de l'espace de travail, surtout si l'interaction avec l'application ou les fenetres de l'hote doit aussi passer par a11y.",
+  },
+  'ga-IE': {
+    name: 'Doiciméid oifige',
+    description:
+      'Bain feidhm as nuair a bhaineann an tasc le comhaid .docx, .xlsx, .pptx no .pdf sa spás oibre a chruthu, a leamh, a chur in eagar, a bhailiu no a athfhormáidiu, go háirithe nuair ba cheart idirghniomhú leis an aip no leis na fuinneoga ar an host a dhéanamh tri a11y freisin.',
+  },
+  'hr-HR': {
+    name: 'Uredski dokumenti',
+    description:
+      'Koristi ovo kada zadatak ukljucuje stvaranje, citanje, uredjivanje, provjeru ili ponovno formatiranje .docx, .xlsx, .pptx ili .pdf datoteka radnog prostora, posebno kada interakcija s host aplikacijom ili prozorima takodjer treba ici kroz a11y.',
+  },
+  'hu-HU': {
+    name: 'Office-dokumentumok',
+    description:
+      'Akkor hasznald, ha a feladat .docx, .xlsx, .pptx vagy .pdf munkateruletfajlok letrehozasat, olvasasat, szerkeszteset, ellenorzeset vagy ujraformazasat erinti, kulonosen akkor, ha a host alkalmazassal vagy ablakokkal valo interakcionak is a11y-n keresztul kell tortennie.',
+  },
+  'it-IT': {
+    name: 'Documenti Office',
+    description:
+      "Usalo quando l'attivita richiede di creare, leggere, modificare, validare o riformattare file .docx, .xlsx, .pptx o .pdf del workspace, soprattutto se anche l'interazione con l'app host o con le finestre deve passare tramite a11y.",
+  },
+  'ja-JP': {
+    name: 'Office ドキュメント',
+    description:
+      '.docx、.xlsx、.pptx、.pdf のワークスペースファイルを作成、読み取り、編集、検証、再整形する作業で使います。特に、ホストアプリやウィンドウとの操作も a11y 経由で行う必要がある場合に向いています。',
+  },
+  'ko-KR': {
+    name: 'Office 문서',
+    description:
+      '.docx, .xlsx, .pptx, .pdf 작업공간 파일을 생성, 읽기, 편집, 검증, 재포맷하는 작업에 사용하며, 특히 호스트 앱이나 창 상호작용도 a11y를 통해 처리해야 할 때 적합합니다.',
+  },
+  'ml-IN': {
+    name: 'ഓഫീസ് ഡോക്യുമെന്റുകൾ',
+    description:
+      '.docx, .xlsx, .pptx, .pdf വർക്ക്‌സ്‌പേസ് ഫയലുകൾ സൃഷ്ടിക്കുക, വായിക്കുക, തിരുത്തുക, സാധൂകരിക്കുക, വീണ്ടും ഫോർമാറ്റ് ചെയ്യുക തുടങ്ങിയ ജോലികൾക്കായി ഇത് ഉപയോഗിക്കുക. പ്രത്യേകിച്ച് host ആപ്പ് അല്ലെങ്കിൽ ജാലകവുമായി ഉള്ള ഇടപെടലും a11y വഴിയാകണം എങ്കിൽ ഇത് ഉപകാരപ്പെടും.',
+  },
+  'nb-NO': {
+    name: 'Office-dokumenter',
+    description:
+      'Bruk dette nar oppgaven innebærer a opprette, lese, redigere, validere eller omformatere .docx-, .xlsx-, .pptx- eller .pdf-filer i arbeidsomradet, spesielt nar samhandling med vertsapp eller vinduer ogsa bor ga gjennom a11y.',
+  },
+  'nl-NL': {
+    name: 'Office-documenten',
+    description:
+      'Gebruik dit wanneer de taak het maken, lezen, bewerken, valideren of herformatteren van .docx-, .xlsx-, .pptx- of .pdf-werkruimtebestanden omvat, vooral als interactie met de host-app of vensters ook via a11y moet verlopen.',
+  },
+  'pl-PL': {
+    name: 'Dokumenty biurowe',
+    description:
+      'Uzyj tego, gdy zadanie obejmuje tworzenie, odczyt, edycje, walidacje lub ponowne formatowanie plikow .docx, .xlsx, .pptx lub .pdf w obszarze roboczym, zwlaszcza gdy interakcja z aplikacja hosta lub oknami rowniez powinna przechodzic przez a11y.',
+  },
+  'pt-BR': {
+    name: 'Documentos de escritorio',
+    description:
+      'Use quando a tarefa envolver criar, ler, editar, validar ou reformatar arquivos .docx, .xlsx, .pptx ou .pdf do workspace, especialmente quando a interacao com o app host ou com as janelas tambem precisar passar pelo a11y.',
+  },
+  'pt-PT': {
+    name: 'Documentos de escritorio',
+    description:
+      'Use quando a tarefa envolver criar, ler, editar, validar ou reformatar ficheiros .docx, .xlsx, .pptx ou .pdf do workspace, especialmente quando a interacao com a app host ou com as janelas tambem tiver de passar pelo a11y.',
+  },
+  'ro-RO': {
+    name: 'Documente Office',
+    description:
+      'Foloseste asta cand sarcina implica sa creezi, sa citesti, sa editezi, sa validezi sau sa reformatezi fisiere .docx, .xlsx, .pptx ori .pdf din workspace, mai ales cand interactiunea cu aplicatia host sau cu ferestrele trebuie sa treaca si prin a11y.',
+  },
+  'ru-RU': {
+    name: 'Office-документы',
+    description:
+      'Используйте это, когда задача включает создание, чтение, редактирование, проверку или переформатирование файлов .docx, .xlsx, .pptx или .pdf в рабочем пространстве, особенно если взаимодействие с хост-приложением или окнами тоже должно идти через a11y.',
+  },
+  'sk-SK': {
+    name: 'Kancelarske dokumenty',
+    description:
+      'Pouzite to vtedy, ked uloha zahrna vytvaranie, citanie, upravu, validaciu alebo preformatovanie suborov .docx, .xlsx, .pptx alebo .pdf v pracovnom priestore, najma ked ma interakcia s host aplikaciou alebo oknami tiez prebiehat cez a11y.',
+  },
+  'sv-SE': {
+    name: 'Office-dokument',
+    description:
+      'Anvand detta nar uppgiften innebar att skapa, lasa, redigera, validera eller formatera om .docx-, .xlsx-, .pptx- eller .pdf-filer i arbetsytan, sarskilt nar interaktion med vardappen eller fonster ocksa bor ga via a11y.',
+  },
+  'zh-CN': {
+    name: '办公文档',
+    description:
+      '在任务涉及创建、读取、编辑、校验或重新格式化 .docx、.xlsx、.pptx 或 .pdf 工作区文件时使用，尤其适用于还需要通过 a11y 与宿主应用或窗口交互的情况。',
+  },
+  'zh-TW': {
+    name: '辦公文件',
+    description:
+      '當任務涉及建立、讀取、編輯、驗證或重新格式化 .docx、.xlsx、.pptx 或 .pdf 工作區檔案時使用，特別適合還需要透過 a11y 與宿主應用程式或視窗互動的情況。',
+  },
+}
+
 function isPlainObject(value: unknown): value is LocaleNode {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -619,6 +758,7 @@ export function buildBuiltinSkillBackfill(
   messages: Record<string, unknown>
 ): LocaleNode {
   const terms = manualSkillLocaleTerms[localeKey] ?? manualSkillLocaleTerms['en-US']
+  const officeDocsTerms = officeDocsSkillLocaleTerms[localeKey]
   if (!terms) return {}
 
   const catalog: LocaleNode = {}
@@ -671,6 +811,7 @@ export function buildBuiltinSkillBackfill(
   )
   setCatalogEntry(catalog, 'himalaya', terms.himalayaName, terms.himalayaDescription)
   setCatalogEntry(catalog, 'humanizer', terms.humanizerName, terms.humanizerDescription)
+  setCatalogEntry(catalog, 'office_docs', officeDocsTerms.name, officeDocsTerms.description)
   setCatalogEntry(catalog, 'plan_append', terms.planAppendName, terms.planAppendDescription)
   setCatalogEntry(catalog, 'plan_create', terms.planCreateName, terms.planCreateDescription)
   setCatalogEntry(catalog, 'plan_update', terms.planUpdateName, terms.planUpdateDescription)

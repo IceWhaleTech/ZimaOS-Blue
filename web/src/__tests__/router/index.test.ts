@@ -1,9 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { routes } from '@/router'
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+})
 
 describe('router knowledge compatibility redirect', () => {
-  it('redirects the legacy knowledge route into the evolution knowledge lane and preserves query', () => {
+  it('redirects the legacy knowledge route into the evolution knowledge lane and preserves query', async () => {
+    const { routes } = await import('@/router')
     const knowledgeRoute = routes.find((route) => route.path === '/operations/knowledge')
 
     expect(knowledgeRoute).toBeTruthy()
@@ -28,5 +32,15 @@ describe('router knowledge compatibility redirect', () => {
         source: 'legacy-link',
       },
     })
+  })
+
+  it('does not prefetch preview mode during vitest router imports', async () => {
+    vi.resetModules()
+    const fetchSpy = vi.fn(async () => new Response(JSON.stringify({ mode: 'normal' })))
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await import('@/router')
+
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

@@ -470,6 +470,8 @@ export default mergeHarnessLocale('zh-TW', {
     stillListening: '你繼續說，我在聽...',
     continueGenerating: '繼續',
     responseInterrupted: '回覆已中斷',
+    responseStopped: '回覆已停止',
+    responseStoppedBadge: '【已停止】',
     deepResearchTitle: '深度研究',
     deepResearchEvidence: '證據',
     deepResearchSupport: '支持',

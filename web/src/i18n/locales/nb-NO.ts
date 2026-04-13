@@ -476,6 +476,8 @@ export default mergeHarnessLocale('nb-NO', {
     stillListening: 'Fortsett, jeg lytter...',
     continueGenerating: 'Fortsett',
     responseInterrupted: 'Svar avbrutt',
+    responseStopped: 'Svar stoppet',
+    responseStoppedBadge: 'Stoppet',
     deepResearchTitle: 'Dyptgående forskning',
     deepResearchEvidence: 'Bevis',
     deepResearchSupport: 'Støtte',

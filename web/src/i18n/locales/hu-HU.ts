@@ -477,6 +477,8 @@ export default mergeHarnessLocale('hu-HU', {
     stillListening: 'Folytasd, figyelek...',
     continueGenerating: 'Folytatás',
     responseInterrupted: 'Válasz megszakítva',
+    responseStopped: 'Válasz leállítva',
+    responseStoppedBadge: 'Leállítva',
     deepResearchTitle: 'Mélyreható kutatás',
     deepResearchEvidence: 'Bizonyítékok',
     deepResearchSupport: 'Támogatás',

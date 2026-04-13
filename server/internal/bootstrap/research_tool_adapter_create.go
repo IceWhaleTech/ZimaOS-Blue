@@ -11,13 +11,16 @@ func (a *deepResearchToolAdapter) CreateJob(ctx context.Context, req tools.Resea
 	if a == nil || a.service == nil {
 		return nil, deepresearch.ErrJobNotFound
 	}
+	if a.canRunLocalRecent(req) {
+		return a.createLocalRecentJob(ctx, req)
+	}
 	if a.manager != nil {
 		store := a.researchJobStore()
-		job, _, err := submitCanonicalResearchHarnessJob(ctx, a.manager, store, req, a.defaultWorkspaceRoot) // submitCanonicalResearchHarnessJob(ctx, a.manager, a.service, ...)
+		job, run, err := submitCanonicalResearchHarnessJob(ctx, a.manager, store, req, a.defaultWorkspaceRoot) // submitCanonicalResearchHarnessJob(ctx, a.manager, a.service, ...)
 		if err != nil {
 			return nil, err
 		}
-		return toToolResearchJob(job), nil
+		return toolResearchJobWithRunMetadata(toToolResearchJob(job), run), nil
 	}
 	job, err := a.service.CreateJob(ctx, toDeepResearchCreateJobRequest(req))
 	if err != nil {
@@ -27,13 +30,11 @@ func (a *deepResearchToolAdapter) CreateJob(ctx context.Context, req tools.Resea
 }
 
 func toDeepResearchCreateJobRequest(req tools.ResearchCreateJobRequest) deepresearch.CreateJobRequest {
-	mode := req.ResearchDepth
-	if mode == "" { mode = req.Mode }
 	return deepresearch.CreateJobRequest{
 		UserID:         req.UserID,
 		ConversationID: req.ConversationID,
 		Query:          req.Query,
-		Mode:           deepresearch.Mode(mode),
+		Mode:           deepresearch.Mode(toolResearchRequestMode(req)),
 		RouteMode:      deepresearch.RouteMode(req.RouteMode),
 		Lang:           req.Lang,
 		Budget:         toDeepResearchBudget(req.Budget),

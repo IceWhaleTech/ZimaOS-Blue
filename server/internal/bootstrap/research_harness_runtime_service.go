@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -83,7 +84,7 @@ func (s *harnessResearchRuntimeService) GetJobForUser(id, userID, tenantID strin
 	if !researchRunVisibleToUser(run, userID) {
 		return nil, deepresearch.ErrJobForbidden
 	}
-	if researchRunFamilyMode(run) == "deep_research" && s.fallback != nil {
+	if researchRunFamilyMode(run) == "deep_research" && researchRunRetrievalProfile(run) == "" && s.fallback != nil {
 		if job, fallbackErr := s.fallback.GetJobForUser(id, userID, tenantID); fallbackErr == nil && job != nil {
 			return job, nil
 		}
@@ -187,7 +188,7 @@ func researchRunToJob(run *harness.Run) *deepresearch.Job {
 		job.CompletedAt = &finished
 	}
 	if answer := strings.TrimSpace(run.Result); answer != "" {
-		job.Report = &deepresearch.Report{Answer: answer}
+		job.Report = researchRunResultReport(answer)
 	}
 	return job
 }
@@ -212,6 +213,10 @@ func researchRunFamilyMode(run *harness.Run) string {
 	default:
 		return mode
 	}
+}
+
+func researchRunRetrievalProfile(run *harness.Run) string {
+	return researchRunMetadataString(run, "retrieval_profile")
 }
 
 func researchRunToJobStatus(status harness.RunStatus) deepresearch.JobStatus {
@@ -257,4 +262,19 @@ func researchJobResultText(job *deepresearch.Job) string {
 		return ""
 	}
 	return strings.TrimSpace(job.Report.Answer)
+}
+
+func researchRunResultReport(raw string) *deepresearch.Report {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var report deepresearch.Report
+	if json.Unmarshal([]byte(raw), &report) == nil && (report.Answer != "" || report.RetrievalProfile != "" || len(report.ItemsBySource) > 0 || len(report.ErrorsBySource) > 0 || len(report.Clusters) > 0) {
+		if report.ItemsBySource == nil {
+			report.ItemsBySource = map[string]interface{}{}
+		}
+		return &report
+	}
+	return &deepresearch.Report{Answer: raw}
 }

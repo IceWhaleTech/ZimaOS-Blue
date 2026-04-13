@@ -478,6 +478,8 @@ export default mergeHarnessLocale('ro-RO', {
     stillListening: 'Continuă, te ascult...',
     continueGenerating: 'Continuă',
     responseInterrupted: 'Răspuns întrerupt',
+    responseStopped: 'Răspuns oprit',
+    responseStoppedBadge: 'Oprit',
     deepResearchTitle: 'Cercetare aprofundată',
     deepResearchEvidence: 'Dovezi',
     deepResearchSupport: 'Suport',

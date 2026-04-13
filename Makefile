@@ -2,6 +2,7 @@
 # Supports building single binary with embedded frontend
 
 .PHONY: all build build-frontend build-frontend-embedded build-web-module build-backend dev clean help
+.PHONY: workspace-templates-bundle embedded-asset-bundles
 .PHONY: build-linux build-linux-bare build-darwin build-windows build-all
 .PHONY: tauri-dev tauri-build tauri-build-debug tauri-clean tauri-sidecar tauri-verify-macos-package
 .PHONY: build-blue-lib-macos build-blue-lib-arm64 build-blue-lib-x64 build-blue-lib-universal
@@ -32,6 +33,7 @@ ZIMAOS_RAW_BINARY ?= $(DIST_DIR)/zimaos-blue-linux-amd64
 ZIMAOS_RAW_OUTPUT ?= $(DIST_DIR)/$(ZIMAOS_RAW_MODULE).raw
 
 # Go build flags
+GO_BUILD_FLAGS ?= -trimpath -buildvcs=false
 LDFLAGS := -s -w
 LDFLAGS += -X main.version=$(VERSION)
 LDFLAGS += -X main.buildTime=$(BUILD_TIME)
@@ -75,6 +77,14 @@ copy-skills:
 	@mkdir -p $(SKILLS_EMBED)
 	@cp -r $(SKILLS_SRC)/* $(SKILLS_EMBED)/
 
+# Regenerate the compressed workspace templates bundle used by go:embed.
+workspace-templates-bundle:
+	@echo "Generating workspace templates bundle..."
+	@cd $(SERVER_DIR) && go run ./tools/generate_embed_bundle -source internal/workspace/templates -output internal/workspace/templates_bundle.tar.gz -prefix templates
+
+# Regenerate compressed embedded asset bundles that live fully inside server/.
+embedded-asset-bundles: workspace-templates-bundle
+
 # Regenerate the canonical provider catalog JSON and sync the embedded fallback copy.
 provider-catalog:
 	@echo "Generating provider catalog..."
@@ -89,7 +99,8 @@ provider-catalog-check:
 build-backend:
 	@echo "Building backend..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue ./cmd/blue
+	@$(MAKE) embedded-asset-bundles
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue ./cmd/blue
 	@echo "Binary size: $$(du -h $(DIST_DIR)/zimaos-blue | cut -f1)"
 
 # Development mode (run frontend and backend separately)
@@ -102,16 +113,18 @@ dev:
 build-linux: build-frontend copy-frontend copy-skills
 	@echo "Building for Linux (amd64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
+	@$(MAKE) embedded-asset-bundles
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
 
 build-linux-bare: copy-skills
 	@echo "Building bare Linux binary for ZimaOS raw (amd64)..."
 	@mkdir -p $(DIST_DIR)
+	@$(MAKE) embedded-asset-bundles
 	@cd $(SERVER_DIR) && \
 		if [ "$(shell uname -s)" = "Linux" ]; then \
-			CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags 'fts5' -ldflags "$(LDFLAGS)" -o $(ZIMAOS_RAW_BINARY) ./cmd/blue; \
+			CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -tags 'fts5' -ldflags "$(LDFLAGS)" -o $(ZIMAOS_RAW_BINARY) ./cmd/blue; \
 		elif command -v zig >/dev/null 2>&1; then \
-			CC="zig cc -target x86_64-linux-gnu" CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -tags 'fts5' -ldflags "$(LDFLAGS)" -o $(ZIMAOS_RAW_BINARY) ./cmd/blue; \
+			CC="zig cc -target x86_64-linux-gnu" CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -tags 'fts5' -ldflags "$(LDFLAGS)" -o $(ZIMAOS_RAW_BINARY) ./cmd/blue; \
 		else \
 			echo "zig is required to cross-compile linux/amd64 with CGO from $(shell uname -s)" >&2; \
 			exit 1; \
@@ -120,32 +133,37 @@ build-linux-bare: copy-skills
 build-linux-arm64: build-frontend copy-frontend copy-skills
 	@echo "Building for Linux (arm64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
+	@$(MAKE) embedded-asset-bundles
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
 
 build-darwin: build-frontend copy-frontend copy-skills
 	@echo "Building for macOS (amd64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
+	@$(MAKE) embedded-asset-bundles
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
 
 build-darwin-arm64: build-frontend copy-frontend copy-skills
 	@echo "Building for macOS (arm64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
+	@$(MAKE) embedded-asset-bundles
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
 
 build-windows: build-frontend copy-frontend copy-skills
 	@echo "Building for Windows (amd64)..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
+	@$(MAKE) embedded-asset-bundles
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
 
 # Build for all platforms
 build-all: build-frontend copy-frontend copy-skills
 	@echo "Building for all platforms..."
 	@mkdir -p $(DIST_DIR)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
+	@$(MAKE) embedded-asset-bundles
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-amd64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-linux-arm64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-amd64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-darwin-arm64 ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(DIST_DIR)/zimaos-blue-windows-amd64.exe ./cmd/blue
 	@echo "All builds complete!"
 	@ls -lh $(DIST_DIR)/
 
@@ -204,16 +222,17 @@ TAURI_BIN_DIR := $(TAURI_DIR)/src-tauri/bin
 tauri-sidecar: build-frontend copy-frontend copy-skills
 	@echo "Building Go sidecar for Tauri..."
 	@mkdir -p $(TAURI_BIN_DIR)
+	@$(MAKE) embedded-asset-bundles
 ifeq ($(shell uname -s),Darwin)
 ifeq ($(shell uname -m),arm64)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-aarch64-apple-darwin ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-aarch64-apple-darwin ./cmd/blue
 else
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-apple-darwin ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-apple-darwin ./cmd/blue
 endif
 else ifeq ($(shell uname -s),Linux)
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-unknown-linux-gnu ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-unknown-linux-gnu ./cmd/blue
 else
-	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-pc-windows-msvc.exe ./cmd/blue
+	@cd $(SERVER_DIR) && CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -ldflags "$(LDFLAGS)" -o $(TAURI_BIN_DIR)/blue-server-x86_64-pc-windows-msvc.exe ./cmd/blue
 endif
 	@echo "Sidecar built successfully"
 
@@ -347,7 +366,7 @@ build-blue-lib-arm64:
 	@echo "Building Go static library for macOS ARM64..."
 	@mkdir -p $(TAURI_LIB_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
-		go build -buildmode=c-archive \
+		go build $(GO_BUILD_FLAGS) -buildmode=c-archive \
 		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue_arm64.a \
@@ -360,7 +379,7 @@ build-blue-lib-x64:
 	@echo "Building Go static library for macOS x64..."
 	@mkdir -p $(TAURI_LIB_DIR)
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
-		go build -buildmode=c-archive \
+		go build $(GO_BUILD_FLAGS) -buildmode=c-archive \
 		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue_x64.a \
@@ -388,7 +407,7 @@ build-blue-lib-macos:
 ifeq ($(shell uname -m),arm64)
 	@echo "Detected Apple Silicon, building ARM64 library..."
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 \
-		go build -buildmode=c-archive \
+		go build $(GO_BUILD_FLAGS) -buildmode=c-archive \
 		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue.a \
@@ -396,7 +415,7 @@ ifeq ($(shell uname -m),arm64)
 else
 	@echo "Detected Intel, building x64 library..."
 	@cd $(SERVER_DIR) && CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 \
-		go build -buildmode=c-archive \
+		go build $(GO_BUILD_FLAGS) -buildmode=c-archive \
 		-tags 'fts5' \
 		-ldflags "$(LDFLAGS)" \
 		-o $(TAURI_LIB_DIR)/libblue.a \

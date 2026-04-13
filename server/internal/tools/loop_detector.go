@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const (
@@ -40,9 +41,17 @@ type ToolLoopDetector struct {
 }
 
 var (
-	toolLoopWhitespaceRE = regexp.MustCompile(`\s+`)
-	toolLoopDigitsRE     = regexp.MustCompile(`\d+`)
+	toolLoopRegexesOnce  sync.Once
+	toolLoopWhitespaceRE *regexp.Regexp
+	toolLoopDigitsRE     *regexp.Regexp
 )
+
+func ensureToolLoopRegexes() {
+	toolLoopRegexesOnce.Do(func() {
+		toolLoopWhitespaceRE = regexp.MustCompile(`\s+`)
+		toolLoopDigitsRE = regexp.MustCompile(`\d+`)
+	})
+}
 
 // Observe records one completed tool round and reports whether the loop should abort.
 func (d *ToolLoopDetector) Observe(toolSignature, assistantDecision string, toolSummaries []string, progressMarkers ...string) ToolLoopDetection {
@@ -245,6 +254,8 @@ func normalizeToolLoopSummaries(values []string) []string {
 }
 
 func normalizeToolLoopText(content string) string {
+	ensureToolLoopRegexes()
+
 	normalized := strings.ToLower(strings.TrimSpace(content))
 	normalized = toolLoopDigitsRE.ReplaceAllString(normalized, "#")
 	normalized = toolLoopWhitespaceRE.ReplaceAllString(normalized, " ")

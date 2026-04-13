@@ -146,6 +146,22 @@ func (b *LightpandaBinaryBrowserBackend) ScreenshotTab(context.Context, string) 
 	return "", unsupportedLightpandaAction("screenshots")
 }
 
+func (b *LightpandaBinaryBrowserBackend) FocusTab(ctx context.Context, targetID string) error {
+	svc, err := b.ensureService(ctx)
+	if err != nil {
+		return err
+	}
+	return svc.FocusTab(ctx, targetID)
+}
+
+func (b *LightpandaBinaryBrowserBackend) PressKeys(ctx context.Context, targetID string, keys []string, holdMS int) error {
+	svc, err := b.ensureService(ctx)
+	if err != nil {
+		return err
+	}
+	return svc.PressKeys(ctx, targetID, keys, holdMS)
+}
+
 func (b *LightpandaBinaryBrowserBackend) CloseTab(ctx context.Context, targetID string) error {
 	svc := b.peekService()
 	if svc == nil {

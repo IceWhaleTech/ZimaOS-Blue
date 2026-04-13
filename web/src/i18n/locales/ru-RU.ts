@@ -480,6 +480,8 @@ export default mergeHarnessLocale('ru-RU', {
     stillListening: 'Продолжайте, я слушаю...',
     continueGenerating: 'Продолжить',
     responseInterrupted: 'Ответ прерван',
+    responseStopped: 'Ответ остановлен',
+    responseStoppedBadge: 'Остановлен',
     deepResearchTitle: 'Глубокое исследование',
     deepResearchEvidence: 'Доказательства',
     deepResearchSupport: 'Поддержка',

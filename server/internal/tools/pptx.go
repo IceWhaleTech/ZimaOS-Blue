@@ -33,7 +33,7 @@ func (t *PPTXTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"read", "create", "edit", "validate"},
+					"enum":        []string{"read", "create", "edit", "validate", "duplicate_slide", "delete_slide", "reorder_slides", "replace_text", "validate_template"},
 					"description": "Operation to perform. Defaults to read.",
 				},
 				"path": map[string]interface{}{
@@ -44,7 +44,7 @@ func (t *PPTXTool) Definition() ToolDefinition {
 				"subtitle":   map[string]interface{}{"type": "string"},
 				"summary":    map[string]interface{}{},
 				"content":    map[string]interface{}{"type": "string"},
-				"sections":   map[string]interface{}{"type": "array"},
+				"sections":   map[string]interface{}{"type": "array", "description": "Structured slides. Each section can include heading, paragraphs/body, bullets, table, and native chart data."},
 				"paragraphs": map[string]interface{}{"type": "array"},
 				"notes":      map[string]interface{}{"type": "array"},
 				"replacements": map[string]interface{}{
@@ -55,6 +55,8 @@ func (t *PPTXTool) Definition() ToolDefinition {
 					"type":        "object",
 					"description": "Alias of replacements.",
 				},
+				"slide": map[string]interface{}{},
+				"order": map[string]interface{}{"type": "array"},
 				"create_dirs": map[string]interface{}{
 					"type":        "boolean",
 					"description": "Create parent directories when needed. Default true.",
@@ -78,6 +80,10 @@ func (t *PPTXTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	case "edit":
 		return t.executeEdit(ctx, args)
 	case "validate":
+		return t.executeValidate(ctx, args)
+	case "duplicate_slide", "delete_slide", "reorder_slides", "replace_text":
+		return t.executeTemplateMutation(ctx, args, action)
+	case "validate_template":
 		return t.executeValidate(ctx, args)
 	default:
 		return nil, fmt.Errorf("unsupported pptx action %q", action)

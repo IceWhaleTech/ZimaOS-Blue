@@ -107,22 +107,28 @@ type Citation struct {
 }
 
 type Report struct {
-	Answer               string                `json:"answer"`
-	Confidence           float64               `json:"confidence"`
-	Citations            []Citation            `json:"citations"`
-	OpenQuestions        []string              `json:"open_questions,omitempty"`
-	SupportCount         int                   `json:"support_count,omitempty"`
-	ConflictCount        int                   `json:"conflict_count,omitempty"`
-	HasConflict          bool                  `json:"has_conflict,omitempty"`
-	Iterations           int                   `json:"iterations,omitempty"`
-	StopReason           string                `json:"stop_reason,omitempty"`
-	CitationCoverage     float64               `json:"citation_coverage,omitempty"`
-	EntityDisambiguation *EntityDisambiguation `json:"entity_disambiguation,omitempty"`
-	StageErrors          []string              `json:"stage_errors,omitempty"`
-	TimelineSections     []TimelineSection     `json:"timeline_sections,omitempty"`
-	ResearchTrace        []ResearchTraceEntry  `json:"research_trace,omitempty"`
-	VerificationSummary  *VerificationSummary  `json:"verification_summary,omitempty"`
-	Calibration          *Calibration          `json:"calibration,omitempty"`
+	Answer               string                   `json:"answer"`
+	Confidence           float64                  `json:"confidence"`
+	Citations            []Citation               `json:"citations"`
+	OpenQuestions        []string                 `json:"open_questions,omitempty"`
+	SupportCount         int                      `json:"support_count,omitempty"`
+	ConflictCount        int                      `json:"conflict_count,omitempty"`
+	HasConflict          bool                     `json:"has_conflict,omitempty"`
+	Iterations           int                      `json:"iterations,omitempty"`
+	StopReason           string                   `json:"stop_reason,omitempty"`
+	CitationCoverage     float64                  `json:"citation_coverage,omitempty"`
+	EntityDisambiguation *EntityDisambiguation    `json:"entity_disambiguation,omitempty"`
+	StageErrors          []string                 `json:"stage_errors,omitempty"`
+	TimelineSections     []TimelineSection        `json:"timeline_sections,omitempty"`
+	ResearchTrace        []ResearchTraceEntry     `json:"research_trace,omitempty"`
+	VerificationSummary  *VerificationSummary     `json:"verification_summary,omitempty"`
+	Calibration          *Calibration             `json:"calibration,omitempty"`
+	ItemsBySource        map[string]interface{}   `json:"items_by_source,omitempty"`
+	ErrorsBySource       map[string]string        `json:"errors_by_source,omitempty"`
+	Clusters             []map[string]interface{} `json:"clusters,omitempty"`
+	LookbackDays         int                      `json:"lookback_days,omitempty"`
+	BrowserAssisted      bool                     `json:"browser_assisted,omitempty"`
+	RetrievalProfile     string                   `json:"retrieval_profile,omitempty"`
 }
 
 type Calibration struct {

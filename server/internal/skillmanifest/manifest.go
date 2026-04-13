@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
@@ -18,8 +19,24 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillbundle"
 )
 
-var skillScriptPathRegexp = regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `\(\[])((?:\./)?scripts/[a-z0-9._/\-]+)`)
-var nonSlugChars = regexp.MustCompile(`[^a-z0-9._-]+`)
+var (
+	skillScriptPathRegexpOnce sync.Once
+	skillScriptPathRegexp     *regexp.Regexp
+	nonSlugCharsOnce          sync.Once
+	nonSlugChars              *regexp.Regexp
+)
+
+func ensureSkillScriptPathRegexp() {
+	skillScriptPathRegexpOnce.Do(func() {
+		skillScriptPathRegexp = regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `\(\[])((?:\./)?scripts/[a-z0-9._/\-]+)`)
+	})
+}
+
+func ensureNonSlugChars() {
+	nonSlugCharsOnce.Do(func() {
+		nonSlugChars = regexp.MustCompile(`[^a-z0-9._-]+`)
+	})
+}
 
 const (
 	ManifestMetadataContractStatus = "contract_status"
@@ -191,7 +208,7 @@ func ReadDir(skillDir string, opts Options) (Document, []byte, error) {
 
 func ReadEmbedded(skillID string, opts Options) (Document, []byte, error) {
 	embedPath := path.Join("skills", strings.TrimSpace(skillID), "SKILL.md")
-	data, err := skillembed.SkillsFS.ReadFile(embedPath)
+	data, err := fs.ReadFile(skillembed.SkillsFS, embedPath)
 	if err != nil {
 		return Document{}, nil, err
 	}
@@ -880,6 +897,7 @@ func normalizeSkillID(raw string) string {
 	value = strings.ReplaceAll(value, " ", "_")
 	value = strings.ReplaceAll(value, "-", "_")
 	value = strings.ReplaceAll(value, "/", "_")
+	ensureNonSlugChars()
 	value = nonSlugChars.ReplaceAllString(value, "_")
 	value = strings.Trim(value, "_.")
 	if value == "" {
@@ -955,6 +973,7 @@ func extractScriptPaths(content string) []string {
 	if strings.TrimSpace(content) == "" {
 		return nil
 	}
+	ensureSkillScriptPathRegexp()
 	matches := skillScriptPathRegexp.FindAllStringSubmatch(content, -1)
 	out := make([]string, 0, len(matches))
 	for _, match := range matches {

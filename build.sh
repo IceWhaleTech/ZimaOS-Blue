@@ -12,6 +12,7 @@ COMMAND="${1:-prd}"
 # Enable CGO by default for production-capable builds.
 # Allow explicit override from environment when needed.
 export CGO_ENABLED="${CGO_ENABLED:-1}"
+GO_BUILD_FLAGS="-trimpath -buildvcs=false"
 
 HOST_UNAME_S="$(uname -s)"
 if [ "$HOST_UNAME_S" = "Darwin" ]; then
@@ -151,7 +152,7 @@ start_server() {
         make build-bluecli
         binary_path="./bin/bluecli"
     else
-        go build -tags "$GO_SERVER_TAGS" -o blue ./cmd/blue
+        go build $GO_BUILD_FLAGS -tags "$GO_SERVER_TAGS" -o blue ./cmd/blue
     fi
     success "Server built successfully"
 
@@ -209,7 +210,7 @@ start_all() {
         make build-bluecli
         binary_path="./bin/bluecli"
     else
-        go build -tags "$GO_SERVER_TAGS" -o blue ./cmd/blue
+        go build $GO_BUILD_FLAGS -tags "$GO_SERVER_TAGS" -o blue ./cmd/blue
     fi
     run_binary "$binary_path"
 }
@@ -359,7 +360,7 @@ build_all() {
     if [ "$HOST_UNAME_S" = "Darwin" ]; then
         EXTRA_LDFLAGS="-extldflags '-sectcreate __TEXT __info_plist Info.plist'"
     fi
-    go build -tags "$GO_SERVER_TAGS" -ldflags="-s -w $EXTRA_LDFLAGS" -o blue ./cmd/blue
+    go build $GO_BUILD_FLAGS -tags "$GO_SERVER_TAGS" -ldflags="-s -w $EXTRA_LDFLAGS" -o blue ./cmd/blue
 
     # macOS: create .app bundle + codesign (TCC needs proper bundle for speech recognition)
     if [ "$(uname -s)" = "Darwin" ]; then

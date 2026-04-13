@@ -479,6 +479,8 @@ export default mergeHarnessLocale('ga-IE', {
     stillListening: 'Lean ar aghaidh, tá mé ag éisteacht...',
     continueGenerating: 'Lean ort',
     responseInterrupted: 'Cuireadh isteach ar an bhfreagra',
+    responseStopped: 'Stopadh an freagra.',
+    responseStoppedBadge: 'Stoptha',
     deepResearchTitle: 'Taighde domhain',
     deepResearchEvidence: 'Fianaise',
     deepResearchSupport: 'Tacaíocht',

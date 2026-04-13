@@ -174,6 +174,11 @@ type webQueryCandidate struct {
 	FromCrawl bool
 }
 
+type webQueryScoreProfile struct {
+	QueryTokens   []string
+	QueryTokenSet map[string]struct{}
+}
+
 type webQuerySearchProviderResolver interface {
 	providerChain(raw interface{}) []string
 }
@@ -309,6 +314,9 @@ func (t *WebTool) Execute(ctx context.Context, args map[string]interface{}) (int
 	if input == "" {
 		return nil, errors.New("input is required")
 	}
+	if strings.TrimSpace(firstCompatString(args, "retrieval_profile", "retrievalProfile")) == webRecentRetrievalProfile {
+		return t.executeRecentMultiSiteQuery(ctx, args, input)
+	}
 	depth, err := parseWebQueryDepth(args)
 	if err != nil {
 		return nil, err
@@ -404,11 +412,12 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 	envelope.Query = query
 	envelope.Mode = "search"
 	envelope.Diagnostics.Route = "search_http"
+	scoreProfile := newWebQueryScoreProfile(query)
 
 	if financeCandidate, ok := detectWebQueryFinanceFastPath(query); ok {
 		fastCandidates := buildWebQueryCandidates([]WebSearchResult{financeCandidate}, allowedHosts)
 		if len(fastCandidates) > 0 {
-			fastAttempts := t.resolveWebQueryCandidates(ctx, args, query, format, maxChars, fastCandidates, 1)
+			fastAttempts := t.resolveWebQueryCandidates(ctx, args, scoreProfile, format, maxChars, fastCandidates, 1)
 			envelope.Diagnostics.Attempts = append(envelope.Diagnostics.Attempts, fastAttempts...)
 			envelope.Diagnostics.Degraded = len(fastAttempts) > 1
 			if fastCandidates[0].Resolved.HasSuccess && fastCandidates[0].Resolved.Strong {
@@ -488,7 +497,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 	}
 
 	for idx := range candidates {
-		candidates[idx].Score = scoreWebQueryCandidate(query, candidates[idx])
+		candidates[idx].Score = scoreWebQueryCandidateWithProfile(scoreProfile, candidates[idx])
 	}
 	if looksLikeWebQueryTranscriptIntentQuery(query) {
 		if videoEnvelope, ok := t.tryExecuteVideoSearchQuery(ctx, args, query, format, maxChars, candidates); ok {
@@ -508,7 +517,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 	}
 
 	readLimit := minWebQueryInt(parseWebQueryCandidateReadLimit(depth), len(candidates))
-	readAttempts := t.resolveWebQueryCandidates(ctx, args, query, format, maxChars, candidates, readLimit)
+	readAttempts := t.resolveWebQueryCandidates(ctx, args, scoreProfile, format, maxChars, candidates, readLimit)
 	envelope.Diagnostics.Attempts = append(envelope.Diagnostics.Attempts, readAttempts...)
 	if reason, shouldFallback := shouldFallbackToBrowserSearch(candidates, readLimit, fallbackCfg.QualityThreshold); shouldFallback && canAttemptBrowserSearchFallback(t.browser, fallbackCfg, browserRetries) {
 		browserRetries++
@@ -517,10 +526,9 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 		envelope.Diagnostics.Degraded = true
 		if browserErr == nil {
 			envelope.Diagnostics.Route = "search_browser"
-			searchResp = mergeWebQuerySearchResponses(browserResp, searchResp, maxResults)
-			candidates = rebuildWebQueryCandidates(searchResp.Results, allowedHosts, candidates, query)
+			candidates = mergeWebQueryFallbackCandidates(browserResp, searchResp, allowedHosts, candidates, scoreProfile, maxResults)
 			envelope.Diagnostics.CandidateCount = len(candidates)
-			readAttempts = t.resolveWebQueryCandidates(ctx, args, query, format, maxChars, candidates, readLimit)
+			readAttempts = t.resolveWebQueryCandidates(ctx, args, scoreProfile, format, maxChars, candidates, readLimit)
 			envelope.Diagnostics.Attempts = append(envelope.Diagnostics.Attempts, readAttempts...)
 		} else {
 			addWebQueryWarning(&envelope.Warnings, "search_browser_failed", fmt.Sprintf("%s: %s", reason, browserErr.Error()))
@@ -531,7 +539,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 
 	crawlUsed := false
 	if depth == webQueryDepthDeep && len(allowedHosts) > 0 && t.crawl != nil {
-		crawlCandidate, crawlAttempts := t.expandWebQueryWithCrawl(ctx, args, query, format, maxChars, maxResults, allowedHosts, candidates)
+		crawlCandidate, crawlAttempts := t.expandWebQueryWithCrawl(ctx, args, scoreProfile, format, maxChars, maxResults, allowedHosts, candidates)
 		envelope.Diagnostics.Attempts = append(envelope.Diagnostics.Attempts, crawlAttempts...)
 		if crawlCandidate != nil {
 			crawlUsed = true
@@ -550,20 +558,13 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 		selectedFromCrawl = candidates[bestIndex].FromCrawl
 	}
 
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].Score == candidates[j].Score {
-			return candidates[i].Rank < candidates[j].Rank
-		}
-		return candidates[i].Score > candidates[j].Score
-	})
+	sortWebQueryCandidatesByScore(candidates)
 
-	selectedRank := 0
-	for idx := range candidates {
-		if strings.TrimSpace(candidates[idx].Search.URL) == selectedURL {
-			selectedRank = idx + 1
-			bestIndex = idx
-			break
-		}
+	sources, selectedRank := buildWebQuerySourcesFromSortedCandidatesWithSelectedRank(candidates, selectedURL)
+	if selectedRank > 0 {
+		bestIndex = selectedRank - 1
+	} else {
+		bestIndex = -1
 	}
 
 	if bestIndex < 0 {
@@ -587,7 +588,7 @@ func (t *WebTool) executeSearchQuery(ctx context.Context, args map[string]interf
 		envelope.Status = webQueryStatusPartial
 		envelope.NextAction = webQueryNextActionRefineQuery
 	}
-	envelope.Sources = buildWebQuerySources(candidates, selected.Search.URL)
+	envelope.Sources = sources
 	envelope.Diagnostics.SelectedSource = selectedRank
 	envelope.Diagnostics.Degraded = envelope.Diagnostics.Degraded || crawlUsed || len(envelope.Diagnostics.Attempts) > 1
 	if envelope.Status == "" {
@@ -913,33 +914,98 @@ func mergeWebQuerySearchResponses(primary, secondary WebSearchResponse, maxResul
 	}
 }
 
+func mergeWebQueryFallbackCandidates(primary, secondary WebSearchResponse, allowedHosts []string, previous []webQueryCandidate, scoreProfile webQueryScoreProfile, maxResults int) []webQueryCandidate {
+	return buildWebQueryFallbackCandidates(primary.Results, secondary.Results, allowedHosts, previous, scoreProfile, maxResults)
+}
+
+func buildWebQueryFallbackCandidates(primary, secondary []WebSearchResult, allowedHosts []string, previous []webQueryCandidate, scoreProfile webQueryScoreProfile, maxResults int) []webQueryCandidate {
+	totalResults := len(primary) + len(secondary)
+	if totalResults == 0 {
+		return nil
+	}
+
+	capacity := totalResults
+	if maxResults > 0 && capacity > maxResults {
+		capacity = maxResults
+	}
+	merged := make([]webQueryCandidate, 0, capacity)
+	seen := make(map[string]struct{}, capacity)
+	previousByURL := webQueryCandidateStateByURL(previous)
+
+	appendResult := func(result WebSearchResult, rank int) bool {
+		targetURL, canonical, ok := webQueryCandidateURLKey(result.URL)
+		if !ok {
+			return false
+		}
+		if _, exists := seen[canonical]; exists {
+			return false
+		}
+		seen[canonical] = struct{}{}
+		result.URL = targetURL
+		candidate := webQueryCandidate{
+			Rank:   rank,
+			Search: result,
+		}
+		if prior, ok := previousByURL[canonical]; ok {
+			candidate.Resolved = prior.Resolved
+		}
+		merged = append(merged, candidate)
+		return maxResults > 0 && len(merged) >= maxResults
+	}
+
+	rank := 0
+	for _, result := range primary {
+		rank++
+		if appendResult(result, rank) {
+			break
+		}
+	}
+	if !(maxResults > 0 && len(merged) >= maxResults) {
+		for _, result := range secondary {
+			rank++
+			if appendResult(result, rank) {
+				break
+			}
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	if len(allowedHosts) > 0 {
+		filtered := merged[:0]
+		for _, candidate := range merged {
+			if !crawlHostAllowed(candidate.Search.URL, allowedHosts) {
+				continue
+			}
+			filtered = append(filtered, candidate)
+		}
+		merged = filtered
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	for idx := range merged {
+		merged[idx].Score = scoreWebQueryCandidateWithProfile(scoreProfile, merged[idx])
+	}
+	return merged
+}
+
 func rebuildWebQueryCandidates(results []WebSearchResult, allowedHosts []string, previous []webQueryCandidate, query string) []webQueryCandidate {
 	candidates := buildWebQueryCandidates(results, allowedHosts)
 	if len(candidates) == 0 {
 		return candidates
 	}
-	previousByURL := make(map[string]webQueryCandidate, len(previous))
-	for _, candidate := range previous {
-		targetURL := strings.TrimSpace(candidate.Search.URL)
-		if targetURL == "" {
-			continue
-		}
-		canonical, err := canonicalizeCrawlURL(targetURL)
-		if err != nil {
-			canonical = targetURL
-		}
-		previousByURL[canonical] = candidate
-	}
+	scoreProfile := newWebQueryScoreProfile(query)
+	previousByURL := webQueryCandidateStateByURL(previous)
 	for idx := range candidates {
-		targetURL := strings.TrimSpace(candidates[idx].Search.URL)
-		canonical, err := canonicalizeCrawlURL(targetURL)
-		if err != nil {
-			canonical = targetURL
+		_, canonical, ok := webQueryCandidateURLKey(candidates[idx].Search.URL)
+		if !ok {
+			continue
 		}
 		if previous, ok := previousByURL[canonical]; ok {
 			candidates[idx].Resolved = previous.Resolved
 		}
-		candidates[idx].Score = scoreWebQueryCandidate(query, candidates[idx])
+		candidates[idx].Score = scoreWebQueryCandidateWithProfile(scoreProfile, candidates[idx])
 	}
 	return candidates
 }
@@ -993,7 +1059,7 @@ func selectBestWebQueryCandidate(candidates []webQueryCandidate) (int, float64) 
 	return bestIndex, bestScore
 }
 
-func (t *WebTool) resolveWebQueryCandidates(ctx context.Context, args map[string]interface{}, query, format string, maxChars int, candidates []webQueryCandidate, readLimit int) []webQueryAttempt {
+func (t *WebTool) resolveWebQueryCandidates(ctx context.Context, args map[string]interface{}, scoreProfile webQueryScoreProfile, format string, maxChars int, candidates []webQueryCandidate, readLimit int) []webQueryAttempt {
 	if readLimit <= 0 {
 		return nil
 	}
@@ -1025,7 +1091,7 @@ func (t *WebTool) resolveWebQueryCandidates(ctx context.Context, args map[string
 	attemptByIndex := make([][]webQueryAttempt, readLimit)
 	for outcome := range results {
 		candidates[outcome.Index].Resolved = outcome.Read
-		candidates[outcome.Index].Score = scoreWebQueryCandidate(query, candidates[outcome.Index])
+		candidates[outcome.Index].Score = scoreWebQueryCandidateWithProfile(scoreProfile, candidates[outcome.Index])
 		attemptByIndex[outcome.Index] = append(attemptByIndex[outcome.Index], outcome.Read.Attempts...)
 	}
 
@@ -1036,7 +1102,7 @@ func (t *WebTool) resolveWebQueryCandidates(ctx context.Context, args map[string
 	return attempts
 }
 
-func (t *WebTool) expandWebQueryWithCrawl(ctx context.Context, args map[string]interface{}, query, format string, maxChars, maxResults int, allowedHosts []string, candidates []webQueryCandidate) (*webQueryCandidate, []webQueryAttempt) {
+func (t *WebTool) expandWebQueryWithCrawl(ctx context.Context, args map[string]interface{}, scoreProfile webQueryScoreProfile, format string, maxChars, maxResults int, allowedHosts []string, candidates []webQueryCandidate) (*webQueryCandidate, []webQueryAttempt) {
 	attempts := []webQueryAttempt{}
 	if t.crawl == nil {
 		return nil, attempts
@@ -1134,7 +1200,7 @@ func (t *WebTool) expandWebQueryWithCrawl(ctx context.Context, args map[string]i
 			},
 			FromCrawl: true,
 		}
-		candidate.Score = scoreWebQueryCandidate(query, candidate) + 4
+		candidate.Score = scoreWebQueryCandidateWithProfile(scoreProfile, candidate) + 4
 		if candidate.Score > best.Score {
 			copyCandidate := candidate
 			best = &copyCandidate
@@ -1904,16 +1970,12 @@ func buildWebQueryCandidates(results []WebSearchResult, allowedHosts []string) [
 	seen := make(map[string]struct{}, len(results))
 	out := make([]webQueryCandidate, 0, len(results))
 	for idx, result := range results {
-		targetURL := normalizeWebQueryCandidateURL(strings.TrimSpace(result.URL))
-		if targetURL == "" {
+		targetURL, canonical, ok := webQueryCandidateURLKey(result.URL)
+		if !ok {
 			continue
 		}
 		if len(allowedHosts) > 0 && !crawlHostAllowed(targetURL, allowedHosts) {
 			continue
-		}
-		canonical, err := canonicalizeCrawlURL(targetURL)
-		if err != nil {
-			canonical = targetURL
 		}
 		if _, ok := seen[canonical]; ok {
 			continue
@@ -1926,6 +1988,36 @@ func buildWebQueryCandidates(results []WebSearchResult, allowedHosts []string) [
 		})
 	}
 	return out
+}
+
+func webQueryCandidateURLKey(raw string) (string, string, bool) {
+	targetURL := normalizeWebQueryCandidateURL(strings.TrimSpace(raw))
+	if targetURL == "" {
+		return "", "", false
+	}
+	canonical, err := canonicalizeCrawlURL(targetURL)
+	if err != nil {
+		canonical = targetURL
+	}
+	return targetURL, canonical, true
+}
+
+func webQueryCandidateStateByURL(previous []webQueryCandidate) map[string]webQueryCandidate {
+	if len(previous) == 0 {
+		return nil
+	}
+	previousByURL := make(map[string]webQueryCandidate, len(previous))
+	for _, candidate := range previous {
+		_, canonical, ok := webQueryCandidateURLKey(candidate.Search.URL)
+		if !ok {
+			continue
+		}
+		previousByURL[canonical] = candidate
+	}
+	if len(previousByURL) == 0 {
+		return nil
+	}
+	return previousByURL
 }
 
 func normalizeWebQueryCandidateURL(raw string) string {
@@ -2039,33 +2131,55 @@ func buildWebQuerySources(candidates []webQueryCandidate, selectedURL string) []
 	if len(candidates) == 0 {
 		return []webQuerySource{}
 	}
-	sort.SliceStable(candidates, func(i, j int) bool {
-		if candidates[i].Score == candidates[j].Score {
-			return candidates[i].Rank < candidates[j].Rank
-		}
-		return candidates[i].Score > candidates[j].Score
-	})
+	ordered := append([]webQueryCandidate(nil), candidates...)
+	sortWebQueryCandidatesByScore(ordered)
+	return buildWebQuerySourcesFromSortedCandidates(ordered, selectedURL)
+}
+
+func buildWebQuerySourcesFromSortedCandidates(candidates []webQueryCandidate, selectedURL string) []webQuerySource {
+	sources, _ := buildWebQuerySourcesFromSortedCandidatesWithSelectedRank(candidates, selectedURL)
+	return sources
+}
+
+func buildWebQuerySourcesFromSortedCandidatesWithSelectedRank(candidates []webQueryCandidate, selectedURL string) ([]webQuerySource, int) {
+	if len(candidates) == 0 {
+		return []webQuerySource{}, 0
+	}
 	sources := make([]webQuerySource, 0, len(candidates))
 	selectedURL = strings.TrimSpace(selectedURL)
+	selectedRank := 0
 	for idx, candidate := range candidates {
+		candidateURL := strings.TrimSpace(candidate.Search.URL)
 		source := webQuerySource{
 			Rank:         idx + 1,
 			Kind:         "search",
-			URL:          strings.TrimSpace(candidate.Search.URL),
+			URL:          candidateURL,
 			FinalURL:     strings.TrimSpace(candidate.Resolved.Response.FinalURL),
 			Title:        firstNonEmpty(strings.TrimSpace(candidate.Resolved.Response.Title), strings.TrimSpace(candidate.Search.Title)),
 			Snippet:      firstNonEmpty(strings.TrimSpace(candidate.Search.Description), truncateRunes(strings.TrimSpace(candidate.Resolved.Response.Content), 280)),
 			Source:       firstNonEmpty(strings.TrimSpace(candidate.Resolved.Response.Source), strings.TrimSpace(candidate.Search.Source)),
 			ContentChars: len([]rune(strings.TrimSpace(candidate.Resolved.Response.Content))),
 			WarningCodes: append([]string(nil), candidate.Resolved.Response.WarningCodes...),
-			Selected:     strings.TrimSpace(candidate.Search.URL) == selectedURL,
+			Selected:     candidateURL == selectedURL,
+		}
+		if source.Selected {
+			selectedRank = idx + 1
 		}
 		if source.FinalURL == "" {
 			source.FinalURL = source.URL
 		}
 		sources = append(sources, source)
 	}
-	return sources
+	return sources, selectedRank
+}
+
+func sortWebQueryCandidatesByScore(candidates []webQueryCandidate) {
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].Score == candidates[j].Score {
+			return candidates[i].Rank < candidates[j].Rank
+		}
+		return candidates[i].Score > candidates[j].Score
+	})
 }
 
 func searchCardStatusFromEnvelope(status string) string {
@@ -2890,13 +3004,17 @@ func scoreWebQueryReadResponse(resp webReadResponse) float64 {
 }
 
 func scoreWebQueryCandidate(query string, candidate webQueryCandidate) float64 {
+	return scoreWebQueryCandidateWithProfile(newWebQueryScoreProfile(query), candidate)
+}
+
+func scoreWebQueryCandidateWithProfile(profile webQueryScoreProfile, candidate webQueryCandidate) float64 {
 	title := firstNonEmpty(candidate.Resolved.Response.Title, candidate.Search.Title)
 	snippet := firstNonEmpty(candidate.Search.Description, candidate.Resolved.Response.Content)
 	content := strings.TrimSpace(candidate.Resolved.Response.Content)
 	score := float64(36 - minWebQueryInt(candidate.Rank*5, 24))
-	score += 28 * webQueryTextOverlap(query, title)
-	score += 12 * webQueryTextOverlap(query, snippet)
-	score += 16 * webQueryTextOverlap(query, truncateRunes(content, 600))
+	score += 28 * webQueryTextOverlapWithProfile(profile, title)
+	score += 12 * webQueryTextOverlapWithProfile(profile, snippet)
+	score += 16 * webQueryTextOverlapWithProfile(profile, truncateRunes(content, 600))
 	score += math.Min(20, float64(len([]rune(content)))/180)
 	score -= float64(len(candidate.Resolved.Response.WarningCodes) * 6)
 	if webQueryLooksLikeRedirectInterstitial(content) {
@@ -2969,27 +3087,52 @@ func webQueryLooksLikeRedirectInterstitial(content string) bool {
 }
 
 func webQueryTextOverlap(query, text string) float64 {
-	queryTokens := webQueryTokens(query)
-	textTokens := webQueryTokens(text)
-	if len(queryTokens) == 0 || len(textTokens) == 0 {
+	return webQueryTextOverlapWithProfile(newWebQueryScoreProfile(query), text)
+}
+
+func newWebQueryScoreProfile(query string) webQueryScoreProfile {
+	queryTokens := uniqueWebQueryTokens(webQueryTokens(query))
+	if len(queryTokens) == 0 {
+		return webQueryScoreProfile{}
+	}
+	queryTokenSet := make(map[string]struct{}, len(queryTokens))
+	for _, token := range queryTokens {
+		queryTokenSet[token] = struct{}{}
+	}
+	return webQueryScoreProfile{
+		QueryTokens:   queryTokens,
+		QueryTokenSet: queryTokenSet,
+	}
+}
+
+func webQueryTextOverlapWithProfile(profile webQueryScoreProfile, text string) float64 {
+	if len(profile.QueryTokens) == 0 {
 		return 0
 	}
-	textSet := make(map[string]struct{}, len(textTokens))
-	for _, token := range textTokens {
-		textSet[token] = struct{}{}
+	textTokens := webQueryTokens(text)
+	if len(textTokens) == 0 {
+		return 0
 	}
 	matches := 0
-	seen := map[string]struct{}{}
-	for _, token := range queryTokens {
-		if _, ok := seen[token]; ok {
-			continue
-		}
-		seen[token] = struct{}{}
-		if _, ok := textSet[token]; ok {
-			matches++
+	matched := make(map[string]struct{}, len(profile.QueryTokens))
+	queryTokenSet := profile.QueryTokenSet
+	if len(queryTokenSet) == 0 {
+		queryTokenSet = make(map[string]struct{}, len(profile.QueryTokens))
+		for _, token := range profile.QueryTokens {
+			queryTokenSet[token] = struct{}{}
 		}
 	}
-	return float64(matches) / float64(len(seen))
+	for _, token := range textTokens {
+		if _, ok := queryTokenSet[token]; !ok {
+			continue
+		}
+		if _, seen := matched[token]; seen {
+			continue
+		}
+		matched[token] = struct{}{}
+		matches++
+	}
+	return float64(matches) / float64(len(profile.QueryTokens))
 }
 
 func webQueryTokens(text string) []string {
@@ -3009,6 +3152,26 @@ func webQueryTokens(text string) []string {
 			return true
 		}
 	})
+}
+
+func uniqueWebQueryTokens(tokens []string) []string {
+	if len(tokens) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(tokens))
+	seen := make(map[string]struct{}, len(tokens))
+	for _, token := range tokens {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if _, ok := seen[token]; ok {
+			continue
+		}
+		seen[token] = struct{}{}
+		out = append(out, token)
+	}
+	return out
 }
 
 func warningsFromLists(codes, messages []string) []webQueryWarning {

@@ -33,6 +33,7 @@ type ToolPolicyResolver struct {
 // intentionally small. Richer capabilities remain available through exec-routed
 // skills or compat paths without inflating the default tool list.
 var defaultChatDirectToolAllowlist = map[string]struct{}{
+	"a11y":        {},
 	"ask":         {},
 	"bash":        {},
 	"browser":     {},

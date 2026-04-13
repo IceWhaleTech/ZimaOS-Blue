@@ -342,6 +342,71 @@ func TestResearchDriverStart_UIReviewModeRunsInsideHarnessEnvelope(t *testing.T)
 	}
 }
 
+func TestResearchDriverStart_RecentRetrievalProfileRunsInsideHarnessEnvelope(t *testing.T) {
+	controller := newDriverTestController(t)
+	recentTool := &stubResearchModeTool{
+		cards: []map[string]interface{}{
+			{"type": "research-progress", "step": "discover", "name": "Discover recent discussion", "status": "running"},
+			{"type": "research-progress", "step": "discover", "name": "Discover recent discussion", "status": "success"},
+		},
+		result: map[string]interface{}{
+			"answer":            "Recent discussion clusters around performance and storage reliability.",
+			"confidence":        0.71,
+			"retrieval_profile": "recent_multi_site_v1",
+			"lookback_days":     30,
+			"items_by_source": map[string]interface{}{
+				"reddit": []interface{}{
+					map[string]interface{}{"source": "reddit", "title": "Reddit thread", "url": "https://reddit.com/r/zimaos/comments/test"},
+				},
+			},
+		},
+	}
+	driver := NewResearchDriver(nil, controller)
+	driver.SetRecentExecutor(recentTool)
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), harness.RunSpec{
+		Kind:   harness.RunKindResearch,
+		Goal:   "What are people saying in the last 30 days about ZimaOS Blue?",
+		UserID: "user-recent",
+		Metadata: map[string]interface{}{
+			"mode":              "deep_research",
+			"research_depth":    "deep",
+			"retrieval_profile": "recent_multi_site_v1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	current := waitForResearchRun(t, controller, run.ID)
+	if current.Status != harness.RunStatusCompleted {
+		t.Fatalf("status = %s, want completed", current.Status)
+	}
+	if got := metadataString(current.Metadata, "mode"); got != "deep_research" {
+		t.Fatalf("metadata mode = %q, want deep_research", got)
+	}
+	if len(recentTool.args) != 1 {
+		t.Fatalf("tool args calls = %d, want 1", len(recentTool.args))
+	}
+	if got := metadataString(recentTool.args[0], "input"); got != "What are people saying in the last 30 days about ZimaOS Blue?" {
+		t.Fatalf("tool input = %q, want run goal", got)
+	}
+	if got := metadataString(recentTool.args[0], "retrieval_profile"); got != "recent_multi_site_v1" {
+		t.Fatalf("tool retrieval_profile = %q, want recent_multi_site_v1", got)
+	}
+	if got := metadataString(recentTool.args[0], "mode"); got != "deep_research" {
+		t.Fatalf("tool mode = %q, want deep_research", got)
+	}
+	result := decodeResearchRunResult(t, current.Result)
+	if got := metadataString(result, "retrieval_profile"); got != "recent_multi_site_v1" {
+		t.Fatalf("result retrieval_profile = %q, want recent_multi_site_v1", got)
+	}
+	if got := metadataString(result, "answer"); got == "" {
+		t.Fatal("expected structured recent result answer")
+	}
+}
+
 func TestResearchDriverStart_AdvisorModeRunsInsideHarnessEnvelope(t *testing.T) {
 	controller := newDriverTestController(t)
 	advisorTool := &stubResearchModeTool{

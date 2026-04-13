@@ -478,6 +478,8 @@ export default mergeHarnessLocale('cs-CZ', {
     stillListening: 'Pokračuj, poslouchám...',
     continueGenerating: 'Pokračovat',
     responseInterrupted: 'Odpověď přerušena',
+    responseStopped: 'Odpověď zastavena',
+    responseStoppedBadge: 'Zastaveno',
     deepResearchTitle: 'Hloubkový výzkum',
     deepResearchEvidence: 'Důkazy',
     deepResearchSupport: 'Podpora',

@@ -609,6 +609,58 @@ func (b *HybridCapabilityBrowserBackend) ScreenshotTab(ctx context.Context, targ
 	return backend.ScreenshotTab(ctx, targetID)
 }
 
+func (b *HybridCapabilityBrowserBackend) FocusTab(ctx context.Context, targetID string) error {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
+		return unsupportedLightpandaAction("tab focus")
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return browser.ErrTabNotFound
+		}
+		focuser, ok := b.lightpandaBinary.(browserTabFocusCompat)
+		if !ok {
+			return unsupportedLightpandaAction("tab focus")
+		}
+		return focuser.FocusTab(ctx, targetID)
+	default:
+		backend := b.chromiumForTarget(ctx, targetID)
+		if backend == nil {
+			return browser.ErrTabNotFound
+		}
+		focuser, ok := backend.(browserTabFocusCompat)
+		if !ok {
+			return fmt.Errorf("browser tab focus not supported")
+		}
+		return focuser.FocusTab(ctx, targetID)
+	}
+}
+
+func (b *HybridCapabilityBrowserBackend) PressKeys(ctx context.Context, targetID string, keys []string, holdMS int) error {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim:
+		return unsupportedLightpandaAction("key input")
+	case browser.SessionEngineDetailLightpandaBinary:
+		if b.lightpandaBinary == nil {
+			return browser.ErrTabNotFound
+		}
+		keyer, ok := b.lightpandaBinary.(browserKeyCompat)
+		if !ok {
+			return unsupportedLightpandaAction("key input")
+		}
+		return keyer.PressKeys(ctx, targetID, keys, holdMS)
+	default:
+		backend := b.chromiumForTarget(ctx, targetID)
+		if backend == nil {
+			return browser.ErrTabNotFound
+		}
+		keyer, ok := backend.(browserKeyCompat)
+		if !ok {
+			return fmt.Errorf("browser key input not supported")
+		}
+		return keyer.PressKeys(ctx, targetID, keys, holdMS)
+	}
+}
+
 func (b *HybridCapabilityBrowserBackend) CloseTab(ctx context.Context, targetID string) error {
 	switch b.targetDetail(ctx, targetID) {
 	case browser.SessionEngineDetailLightpandaShim:

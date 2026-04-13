@@ -337,7 +337,7 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 				return record(normalizeFactoryToolName(name), immediate, nil)
 			}
 			if execTool := e.registry.Get("exec"); execTool != nil {
-				result, err := execTool.Execute(ctx, map[string]interface{}{"command": cmd})
+				result, err := executeToolWithRecovery(ctx, "exec", execTool, map[string]interface{}{"command": cmd})
 				return record("exec", result, err)
 			}
 			return record(resolvedName, nil, ErrToolNotFound)
@@ -352,14 +352,33 @@ func (e *Executor) Execute(ctx context.Context, name string, args map[string]int
 		// tool registry, try forwarding to `blue <name> key=value` via exec.
 		if execTool := e.registry.Get("exec"); execTool != nil {
 			cmd := buildSkillCommand(fallbackName, fallbackArgs)
-			result, err := execTool.Execute(ctx, map[string]interface{}{"command": cmd})
+			result, err := executeToolWithRecovery(ctx, "exec", execTool, map[string]interface{}{"command": cmd})
 			return record("exec", result, err)
 		}
 		return record(resolvedName, nil, ErrToolNotFound)
 	}
 
-	result, err := tool.Execute(ctx, args)
+	result, err := executeToolWithRecovery(ctx, resolvedName, tool, args)
 	return record(resolvedName, result, err)
+}
+
+func executeToolWithRecovery(ctx context.Context, name string, tool Tool, args map[string]interface{}) (result interface{}, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			panicErr := fmt.Errorf("panic: %v", recovered)
+			err = newToolRuntimeError(
+				"tool_execution_panic",
+				fmt.Sprintf("tool %q panicked during execution", strings.TrimSpace(name)),
+				panicErr,
+				map[string]interface{}{
+					"tool":  strings.TrimSpace(name),
+					"panic": fmt.Sprintf("%v", recovered),
+				},
+			)
+			result = nil
+		}
+	}()
+	return tool.Execute(ctx, args)
 }
 
 func normalizeCompatToolName(name string) string {

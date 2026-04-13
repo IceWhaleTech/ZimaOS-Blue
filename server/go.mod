@@ -11,7 +11,9 @@ require (
 	github.com/bwmarrin/discordgo v0.29.0
 	github.com/cloudflare/cloudflared v0.0.0-20250203150802-c19f9194281e
 	github.com/creack/pty v1.1.24
+	github.com/danlock/gogosseract v0.0.11-0ad3421
 	github.com/difyz9/edge-tts-go v0.0.3
+	github.com/dlclark/regexp2 v1.4.0
 	github.com/ebitengine/purego v0.10.0-alpha.4
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-jose/go-jose/v3 v3.0.4
@@ -26,6 +28,7 @@ require (
 	github.com/ikawaha/kagome-dict/ipa v1.2.6
 	github.com/ikawaha/kagome/v2 v2.10.3
 	github.com/jupiterrider/ffi v0.6.0
+	github.com/klippa-app/go-pdfium v1.12.3
 	github.com/labstack/echo/v4 v4.12.0
 	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/mozillazg/go-pinyin v0.21.0
@@ -41,6 +44,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
+	github.com/tetratelabs/wazero v1.7.3
 	github.com/tidwall/gjson v1.18.0
 	github.com/tidwall/sjson v1.2.5
 	github.com/urfave/cli/v2 v2.27.7
@@ -49,9 +53,12 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.ngrok.com/ngrok/v2 v2.1.1
 	golang.org/x/crypto v0.47.0
+	golang.org/x/image v0.36.0
+	golang.org/x/mod v0.32.0
 	golang.org/x/net v0.49.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.40.0
+	golang.org/x/term v0.39.0
 	golang.org/x/text v0.34.0
 	golang.org/x/time v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -67,10 +74,8 @@ require (
 	github.com/coredns/coredns v1.11.3 // indirect
 	github.com/coreos/go-oidc/v3 v3.10.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.7 // indirect
-	github.com/danlock/gogosseract v0.0.11-0ad3421 // indirect
 	github.com/danlock/pkg v0.0.17-a9828f2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/dlclark/regexp2 v1.4.0 // indirect
 	github.com/facebookgo/grace v0.0.0-20180706040059-75cf19382434 // indirect
 	github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
@@ -81,7 +86,7 @@ require (
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-playground/validator/v10 v10.23.0 // indirect
-	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
+	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/go-webauthn/x v0.1.26 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
@@ -102,7 +107,6 @@ require (
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
-	github.com/klippa-app/go-pdfium v1.12.3 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20251013123823-9fd1530e3ec3 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
@@ -129,7 +133,6 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	github.com/tetratelabs/wazero v1.7.3 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
@@ -157,10 +160,7 @@ require (
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.ngrok.com/muxado/v2 v2.0.1 // indirect
 	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
-	golang.org/x/image v0.36.0 // indirect
-	golang.org/x/mod v0.32.0 // indirect
 	golang.org/x/oauth2 v0.34.0 // indirect
-	golang.org/x/term v0.39.0 // indirect
 	golang.org/x/tools v0.41.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect

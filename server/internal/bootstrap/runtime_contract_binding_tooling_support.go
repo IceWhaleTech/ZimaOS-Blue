@@ -73,6 +73,16 @@ func bindRuntimeToolingReminderRuntime(options routeRuntimeContractToolingOption
 	)
 }
 
+func bindRuntimeToolingHostA11yRuntime(options routeRuntimeContractToolingOptions) {
+	if options.registry == nil {
+		return
+	}
+	tool := tools.RegisterHostA11yTool(options.registry, options.mediaDir)
+	if tool != nil && options.browserBackend != nil {
+		tool.SetBrowser(options.browserBackend)
+	}
+}
+
 func runtimeToolingReminderCalendarTarget(registry *tools.Registry) runtimeReminderCalendarTarget {
 	if registry == nil {
 		return nil

@@ -477,6 +477,8 @@ export default mergeHarnessLocale('sk-SK', {
     stillListening: 'Pokračuj, počúvam...',
     continueGenerating: 'Pokračovať',
     responseInterrupted: 'Odpoveď prerušená',
+    responseStopped: 'Odpoveď zastavená',
+    responseStoppedBadge: 'Zastavená',
     deepResearchTitle: 'Hĺbkový výskum',
     deepResearchEvidence: 'Dôkazy',
     deepResearchSupport: 'Podpora',

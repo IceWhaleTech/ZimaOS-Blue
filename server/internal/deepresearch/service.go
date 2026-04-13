@@ -2086,6 +2086,19 @@ func cloneReport(r *Report) *Report {
 	cp.ResearchTrace = cloneResearchTrace(r.ResearchTrace)
 	cp.VerificationSummary = cloneVerificationSummary(r.VerificationSummary)
 	cp.Calibration = cloneCalibration(r.Calibration)
+	cp.ItemsBySource = cloneInterfaceMap(r.ItemsBySource)
+	if r.ErrorsBySource != nil {
+		cp.ErrorsBySource = make(map[string]string, len(r.ErrorsBySource))
+		for key, value := range r.ErrorsBySource {
+			cp.ErrorsBySource[key] = value
+		}
+	}
+	if r.Clusters != nil {
+		cp.Clusters = make([]map[string]interface{}, len(r.Clusters))
+		for i := range r.Clusters {
+			cp.Clusters[i] = cloneInterfaceMap(r.Clusters[i])
+		}
+	}
 	return &cp
 }
 

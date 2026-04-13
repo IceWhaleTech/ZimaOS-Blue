@@ -3,22 +3,45 @@ package channel
 import (
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
-// Common AI response tags to strip
-var multiNewlineRe = regexp.MustCompile(`\n{3,}`)
-var aiTagPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`(?s)<thinking>.*?</thinking>`),
-	regexp.MustCompile(`(?s)<system>.*?</system>`),
-	regexp.MustCompile(`(?s)<internal>.*?</internal>`),
-	regexp.MustCompile(`(?s)<reasoning>.*?</reasoning>`),
-	regexp.MustCompile(`(?s)<scratchpad>.*?</scratchpad>`),
-	regexp.MustCompile(`(?s)<reflection>.*?</reflection>`),
+var (
+	messageRegexMu sync.Mutex
+
+	// Common AI response tags to strip.
+	multiNewlineRe *regexp.Regexp
+	aiTagPatterns  []*regexp.Regexp
+)
+
+func ensureChannelMessageRegexes() {
+	if multiNewlineRe != nil && len(aiTagPatterns) > 0 {
+		return
+	}
+
+	messageRegexMu.Lock()
+	defer messageRegexMu.Unlock()
+
+	if multiNewlineRe != nil && len(aiTagPatterns) > 0 {
+		return
+	}
+
+	multiNewlineRe = regexp.MustCompile(`\n{3,}`)
+	aiTagPatterns = []*regexp.Regexp{
+		regexp.MustCompile(`(?s)<thinking>.*?</thinking>`),
+		regexp.MustCompile(`(?s)<system>.*?</system>`),
+		regexp.MustCompile(`(?s)<internal>.*?</internal>`),
+		regexp.MustCompile(`(?s)<reasoning>.*?</reasoning>`),
+		regexp.MustCompile(`(?s)<scratchpad>.*?</scratchpad>`),
+		regexp.MustCompile(`(?s)<reflection>.*?</reflection>`),
+	}
 }
 
 // StripAITags removes AI-specific tags like <thinking>, <system>, etc. from content.
 func StripAITags(content string) string {
+	ensureChannelMessageRegexes()
+
 	result := content
 	for _, pattern := range aiTagPatterns {
 		result = pattern.ReplaceAllString(result, "")

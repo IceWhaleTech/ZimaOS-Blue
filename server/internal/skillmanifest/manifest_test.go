@@ -562,6 +562,7 @@ func TestAllEnabledSkillAssets_StrictContractAndEmbeddedSync(t *testing.T) {
 
 func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	supplemental := []string{
+		"office_docs",
 		"summarize",
 		"himalaya",
 		"tasks",
@@ -604,6 +605,22 @@ func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 				t.Fatalf("invocation mismatch: asset=%q embedded=%q", assetDoc.Invocation, embeddedDoc.Invocation)
 			}
 		})
+	}
+}
+
+func TestReadEmbedded_OfficeDocsMentionsNativeDocumentToolsAndA11y(t *testing.T) {
+	doc, raw, err := ReadEmbedded("office_docs", Options{RequireContract: true})
+	if err != nil {
+		t.Fatalf("ReadEmbedded strict contract error: %v", err)
+	}
+	if doc.Manifest == nil {
+		t.Fatal("expected embedded manifest")
+	}
+	content := string(raw)
+	for _, needle := range []string{"docx", "xlsx", "pptx", "pdf", "a11y"} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("embedded office_docs skill missing %q: %s", needle, content)
+		}
 	}
 }
 

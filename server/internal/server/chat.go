@@ -68,6 +68,7 @@ const (
 	// titleGenerationLLMTimeout gives background title generation a bit more
 	// headroom without letting it linger like full chat requests.
 	titleGenerationLLMTimeout = 60 * time.Second
+	responseStoppedMarker     = "[Response stopped]"
 )
 
 // getMessageSlice gets a message slice from the pool.
@@ -240,6 +241,21 @@ func truncateRunes(s string, max int) string {
 		return s
 	}
 	return string(r[:max]) + "..."
+}
+
+func appendTerminalResponseMarker(content, marker string) string {
+	marker = strings.TrimSpace(marker)
+	trimmed := strings.TrimRightFunc(content, unicode.IsSpace)
+	if marker == "" {
+		return trimmed
+	}
+	if trimmed == "" {
+		return marker
+	}
+	if strings.HasSuffix(trimmed, marker) {
+		return trimmed
+	}
+	return trimmed + "\n\n" + marker
 }
 
 func prependSystemMessages(messages []llm.Message, systemMessages []llm.Message) []llm.Message {
@@ -23594,8 +23610,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 		return attemptCtx
 	}
 	ctx = buildStreamCtxForBudgetAttempt(currentBudgetAttempt)
-	// tools (e.g. browser navigate/screenshot) don't get "context canceled".
-	toolCtx := context.WithoutCancel(ctx)
+	// Tool execution should respect explicit stream cancellation. The stream
+	// context already ignores raw HTTP disconnects via context.WithoutCancel
+	// above, so we can safely pass it through directly here.
+	toolCtx := ctx
 
 	// Set SSE headers before starting stream
 	c.Response().Header().Set("Content-Type", "text/event-stream")
@@ -24732,7 +24750,7 @@ STREAM_LOOP:
 					}
 					applyBudgetAttemptToChatReq(budgetPlan.Current())
 					ctx = buildStreamCtxForBudgetAttempt(currentBudgetAttempt)
-					toolCtx = context.WithoutCancel(ctx)
+					toolCtx = ctx
 					logger.Warn().
 						Err(err).
 						Str("conv_id", convID).
@@ -25478,9 +25496,18 @@ STREAM_LOOP:
 			})
 			emitSSE(toolStatus)
 
-			// Execute tools (detached context — survives SSE disconnect)
+			// Execute tools with the stream-scoped context. It already survives raw
+			// HTTP disconnects, but still stops on explicit stream cancellation.
 			roundToolCtx := withToolProviderContext(toolCtx, actualProvider, actualProviderID, actualModel)
 			toolResults, toolAuditResults := h.executeToolCallsWithAudit(roundToolCtx, streamToolCalls)
+			if toolErr := roundToolCtx.Err(); toolErr != nil {
+				err = toolErr
+				logger.Info().
+					Err(toolErr).
+					Int("tool_round", toolRound).
+					Msg("[chat] stream: tool execution cancelled before tool results were emitted")
+				break
+			}
 			if streamWorkspaceArtifactTarget != "" {
 				streamWorkspaceArtifactHistoryCalls = append(streamWorkspaceArtifactHistoryCalls, streamToolCalls...)
 				streamWorkspaceArtifactHistoryResults = append(streamWorkspaceArtifactHistoryResults, toolAuditResults...)
@@ -26773,7 +26800,7 @@ STREAM_LOOP:
 				if disableResponsesContinuation {
 					ctx = proxy.WithDisableResponsesContinuation(ctx)
 				}
-				toolCtx = context.WithoutCancel(ctx)
+				toolCtx = ctx
 				toolCtx = tools.WithCardEmitter(toolCtx, func(card map[string]interface{}) {
 					if emitStreamingCard != nil {
 						emitStreamingCard(card)
@@ -26902,16 +26929,16 @@ STREAM_LOOP:
 				latencyMs := float64(timeutil.SinceTime(startTime).Milliseconds())
 				h.metricsRecorder.RecordAPICallForUser(userID, model, false, latencyMs, int64(totalInputTokens), int64(totalOutputTokens), 0, 0, "cancelled")
 			}
-			if fullContent != "" {
-				if streamingMsgID != "" {
-					h.updateMessageBestEffort(streamingMsgID, convID, "assistant", fullContent+"\n\n[Response interrupted]", "", "", nil)
-					h.flushPersistedMessageOnResponse(streamingMsgID)
-				} else {
-					h.persistResponsePathMessage(memory.Message{
-						Role:    "assistant",
-						Content: fullContent + "\n\n[Response interrupted]",
-					})
-				}
+			cancelledContent := appendTerminalResponseMarker(fullContent, responseStoppedMarker)
+			if streamingMsgID != "" {
+				h.updateMessageBestEffort(streamingMsgID, convID, "assistant", cancelledContent, "", "", nil)
+				h.flushPersistedMessageOnResponse(streamingMsgID)
+			} else {
+				h.persistResponsePathMessage(memory.Message{
+					ConversationID: convID,
+					Role:           "assistant",
+					Content:        cancelledContent,
+				})
 			}
 			data := map[string]interface{}{
 				"cancelled": true,

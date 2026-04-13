@@ -171,6 +171,45 @@ describe('ChatMessage bubble rendering', () => {
     expect(wrapper.get('.prose-content').text()).toBe('Blue reply')
   })
 
+  it('renders a stopped indicator instead of exposing the raw stopped marker text', async () => {
+    const wrapper = await mountMessage('assistant', '[Response stopped]')
+
+    expect(wrapper.find('.response-stopped-indicator').exists()).toBe(true)
+    expect(wrapper.find('.response-stopped-indicator').text().trim()).not.toBe('')
+    expect(wrapper.html()).not.toContain('[Response stopped]')
+  })
+
+  it('renders the stopped indicator after a streaming placeholder transitions into a stopped reply', async () => {
+    const wrapper = mount(ChatMessage, {
+      props: {
+        message: makeMessage('assistant', ''),
+        isStreaming: true,
+        disableAutoTTS: true,
+      },
+      global: {
+        plugins: [i18n],
+        stubs: {
+          MediaPlaceholder: true,
+          Teleport: true,
+          ToolDetailCard: true,
+          Transition: true,
+          TypelessCardComponent: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.setProps({
+      message: makeMessage('assistant', '[Response stopped]'),
+      isStreaming: false,
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.response-stopped-indicator').exists()).toBe(true)
+    expect(wrapper.html()).not.toContain('[Response stopped]')
+  })
+
   it('keeps the streaming caret visible during executing phases with assistant text', async () => {
     chatStore.streamUIState = { phase: 'executing' }
     chatStore.toolExecuting = true

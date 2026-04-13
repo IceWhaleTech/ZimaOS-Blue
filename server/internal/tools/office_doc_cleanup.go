@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -20,7 +21,8 @@ func cleanupOfficeDocSpec(spec officeDocSpec) officeDocSpec {
 		section.Paragraphs = officeCleanupDocStringList(section.Paragraphs)
 		section.Bullets = officeCleanupDocStringList(section.Bullets)
 		section.Table = officeCleanupDocTable(section.Table)
-		if section.Heading == "" && len(section.Paragraphs) == 0 && len(section.Bullets) == 0 && section.Table == nil {
+		section.Chart = officeCleanupDocChart(section.Chart)
+		if section.Heading == "" && len(section.Paragraphs) == 0 && len(section.Bullets) == 0 && section.Table == nil && section.Chart == nil {
 			continue
 		}
 		sections = append(sections, section)
@@ -56,6 +58,142 @@ func officeCleanupDocTable(table *officeTableSpec) *officeTableSpec {
 	}
 	if len(cleaned.Headers) == 0 && len(cleaned.Rows) == 0 {
 		return nil
+	}
+	return cleaned
+}
+
+func officeCleanupDocChart(chart *officeChartSpec) *officeChartSpec {
+	if chart == nil {
+		return nil
+	}
+	cleaned := &officeChartSpec{
+		Type:                                  officeNormalizeChartType(chart.Type),
+		Title:                                 officeCleanDocText(chart.Title),
+		CategoryAxisTitle:                     officeCleanDocText(chart.CategoryAxisTitle),
+		SecondaryCategoryAxisTitle:            officeCleanDocText(chart.SecondaryCategoryAxisTitle),
+		CategoryAxisType:                      officeNormalizeChartCategoryAxisType(chart.CategoryAxisType),
+		CategoryAxisLabelPosition:             officeNormalizeChartAxisLabelPosition(chart.CategoryAxisLabelPosition),
+		SecondaryCategoryAxisLabelPosition:    officeNormalizeChartAxisLabelPosition(chart.SecondaryCategoryAxisLabelPosition),
+		CategoryAxisReverseOrder:              officeNormalizeChartAxisReverseOrder(chart.CategoryAxisReverseOrder),
+		SecondaryCategoryAxisReverseOrder:     officeNormalizeChartAxisReverseOrder(chart.SecondaryCategoryAxisReverseOrder),
+		CategoryAxisCrosses:                   officeNormalizeChartAxisCrosses(chart.CategoryAxisCrosses),
+		SecondaryCategoryAxisCrosses:          officeNormalizeChartAxisCrosses(chart.SecondaryCategoryAxisCrosses),
+		CategoryAxisMajorTickMark:             officeNormalizeChartTickMark(chart.CategoryAxisMajorTickMark),
+		CategoryAxisMinorTickMark:             officeNormalizeChartTickMark(chart.CategoryAxisMinorTickMark),
+		SecondaryCategoryAxisMajorTickMark:    officeNormalizeChartTickMark(chart.SecondaryCategoryAxisMajorTickMark),
+		SecondaryCategoryAxisMinorTickMark:    officeNormalizeChartTickMark(chart.SecondaryCategoryAxisMinorTickMark),
+		CategoryAxisLabelAlignment:            officeNormalizeChartAxisLabelAlignment(chart.CategoryAxisLabelAlignment),
+		SecondaryCategoryAxisLabelAlignment:   officeNormalizeChartAxisLabelAlignment(chart.SecondaryCategoryAxisLabelAlignment),
+		CategoryAxisLabelOffset:               officeNormalizeChartAxisLabelOffset(chart.CategoryAxisLabelOffset),
+		SecondaryCategoryAxisLabelOffset:      officeNormalizeChartAxisLabelOffset(chart.SecondaryCategoryAxisLabelOffset),
+		CategoryAxisMultiLevelLabels:          officeNormalizeChartLabels(chart.CategoryAxisMultiLevelLabels),
+		SecondaryCategoryAxisMultiLevelLabels: officeNormalizeChartLabels(chart.SecondaryCategoryAxisMultiLevelLabels),
+		CategoryAxisVisible:                   officeNormalizeChartLabels(chart.CategoryAxisVisible),
+		SecondaryCategoryAxisVisible:          officeNormalizeChartLabels(chart.SecondaryCategoryAxisVisible),
+		CategoryAxisAuto:                      officeNormalizeChartLabels(chart.CategoryAxisAuto),
+		SecondaryCategoryAxisAuto:             officeNormalizeChartLabels(chart.SecondaryCategoryAxisAuto),
+		CategoryAxisFormat:                    officeNormalizeChartAxisFormat(chart.CategoryAxisFormat),
+		SecondaryCategoryAxisFormat:           officeNormalizeChartAxisFormat(chart.SecondaryCategoryAxisFormat),
+		ValueAxisTitle:                        officeCleanDocText(chart.ValueAxisTitle),
+		SecondaryValueAxisTitle:               officeCleanDocText(chart.SecondaryValueAxisTitle),
+		ValueAxisFormat:                       officeNormalizeChartAxisFormat(chart.ValueAxisFormat),
+		SecondaryValueAxisFormat:              officeNormalizeChartAxisFormat(chart.SecondaryValueAxisFormat),
+		ValueAxisMin:                          officeNormalizeChartAxisBound(chart.ValueAxisMin),
+		ValueAxisMax:                          officeNormalizeChartAxisBound(chart.ValueAxisMax),
+		SecondaryValueAxisMin:                 officeNormalizeChartAxisBound(chart.SecondaryValueAxisMin),
+		SecondaryValueAxisMax:                 officeNormalizeChartAxisBound(chart.SecondaryValueAxisMax),
+		ValueAxisMajorUnit:                    officeNormalizeChartAxisUnit(chart.ValueAxisMajorUnit),
+		ValueAxisMinorUnit:                    officeNormalizeChartAxisUnit(chart.ValueAxisMinorUnit),
+		SecondaryValueAxisMajorUnit:           officeNormalizeChartAxisUnit(chart.SecondaryValueAxisMajorUnit),
+		SecondaryValueAxisMinorUnit:           officeNormalizeChartAxisUnit(chart.SecondaryValueAxisMinorUnit),
+		ValueAxisMajorGridlines:               officeNormalizeChartLabels(chart.ValueAxisMajorGridlines),
+		ValueAxisMinorGridlines:               officeNormalizeChartLabels(chart.ValueAxisMinorGridlines),
+		SecondaryValueAxisMajorGridlines:      officeNormalizeChartLabels(chart.SecondaryValueAxisMajorGridlines),
+		SecondaryValueAxisMinorGridlines:      officeNormalizeChartLabels(chart.SecondaryValueAxisMinorGridlines),
+		ValueAxisCrosses:                      officeNormalizeChartAxisCrosses(chart.ValueAxisCrosses),
+		SecondaryValueAxisCrosses:             officeNormalizeChartAxisCrosses(chart.SecondaryValueAxisCrosses),
+		ValueAxisCrossBetween:                 officeNormalizeChartAxisCrossBetween(chart.ValueAxisCrossBetween),
+		SecondaryValueAxisCrossBetween:        officeNormalizeChartAxisCrossBetween(chart.SecondaryValueAxisCrossBetween),
+		ValueAxisReverseOrder:                 officeNormalizeChartAxisReverseOrder(chart.ValueAxisReverseOrder),
+		SecondaryValueAxisReverseOrder:        officeNormalizeChartAxisReverseOrder(chart.SecondaryValueAxisReverseOrder),
+		ValueAxisLabelPosition:                officeNormalizeChartAxisLabelPosition(chart.ValueAxisLabelPosition),
+		SecondaryValueAxisLabelPosition:       officeNormalizeChartAxisLabelPosition(chart.SecondaryValueAxisLabelPosition),
+		ValueAxisMajorTickMark:                officeNormalizeChartTickMark(chart.ValueAxisMajorTickMark),
+		ValueAxisMinorTickMark:                officeNormalizeChartTickMark(chart.ValueAxisMinorTickMark),
+		SecondaryValueAxisMajorTickMark:       officeNormalizeChartTickMark(chart.SecondaryValueAxisMajorTickMark),
+		SecondaryValueAxisMinorTickMark:       officeNormalizeChartTickMark(chart.SecondaryValueAxisMinorTickMark),
+		ShowLegend:                            officeNormalizeChartLabels(chart.ShowLegend),
+		LegendPosition:                        officeNormalizeChartLegendPosition(chart.LegendPosition),
+		VaryColors:                            officeNormalizeChartLabels(chart.VaryColors),
+		StartAngle:                            officeNormalizeChartStartAngle(chart.StartAngle),
+		HoleSize:                              officeNormalizeChartHoleSize(chart.HoleSize),
+		Smooth:                                officeNormalizeChartLabels(chart.Smooth),
+		GapWidth:                              officeNormalizeChartGapWidth(chart.GapWidth),
+		Overlap:                               officeNormalizeChartOverlap(chart.Overlap),
+		Labels:                                officeNormalizeChartLabels(chart.Labels),
+		LabelPosition:                         officeNormalizeChartLabelPosition(chart.LabelPosition),
+		LabelFormat:                           officeNormalizeChartLabelFormat(chart.LabelFormat),
+		ShowValue:                             officeNormalizeChartLabels(chart.ShowValue),
+		ShowCategory:                          officeNormalizeChartLabels(chart.ShowCategory),
+		ShowSeriesName:                        officeNormalizeChartLabels(chart.ShowSeriesName),
+		ShowPercent:                           officeNormalizeChartLabels(chart.ShowPercent),
+		ShowLegendKey:                         officeNormalizeChartLabels(chart.ShowLegendKey),
+		ShowBubbleSize:                        officeNormalizeChartLabels(chart.ShowBubbleSize),
+		Categories:                            make([]string, 0, len(chart.Categories)),
+		Series:                                make([]officeChartSeries, 0, len(chart.Series)),
+	}
+	for _, category := range chart.Categories {
+		value := officeCleanDocText(category)
+		if value != "" {
+			cleaned.Categories = append(cleaned.Categories, value)
+		}
+	}
+	for idx, series := range chart.Series {
+		name := officeCleanDocText(series.Name)
+		if name == "" {
+			name = firstNonEmptyOfficeString(cleaned.Title, "Series "+strconv.Itoa(idx+1))
+		}
+		values := append([]float64(nil), series.Values...)
+		if len(values) == 0 {
+			continue
+		}
+		seriesType := officeNormalizeChartSeriesType(cleaned.Type, series.Type, idx)
+		cleaned.Series = append(cleaned.Series, officeChartSeries{
+			Name:            name,
+			Type:            seriesType,
+			Axis:            officeNormalizeChartSeriesAxis(cleaned.Type, seriesType, series.Axis),
+			Labels:          officeNormalizeChartLabels(series.Labels),
+			LabelPosition:   officeNormalizeChartLabelPosition(series.LabelPosition),
+			LabelFormat:     officeNormalizeChartLabelFormat(series.LabelFormat),
+			ShowValue:       officeNormalizeChartLabels(series.ShowValue),
+			ShowCategory:    officeNormalizeChartLabels(series.ShowCategory),
+			ShowSeriesName:  officeNormalizeChartLabels(series.ShowSeriesName),
+			ShowPercent:     officeNormalizeChartLabels(series.ShowPercent),
+			ShowLegendKey:   officeNormalizeChartLabels(series.ShowLegendKey),
+			ShowBubbleSize:  officeNormalizeChartLabels(series.ShowBubbleSize),
+			PointColors:     officeNormalizeChartPointColors(series.PointColors),
+			PointExplosions: officeNormalizeChartPointExplosions(series.PointExplosions),
+			Smooth:          officeNormalizeChartLabels(series.Smooth),
+			Color:           officeNormalizeChartSeriesColor(series.Color),
+			LineWidth:       officeNormalizeChartSeriesLineWidth(series.LineWidth),
+			Dash:            officeNormalizeChartSeriesDash(series.Dash),
+			Marker:          officeNormalizeChartSeriesMarker(series.Marker),
+			Values:          values,
+		})
+	}
+	if cleaned.Type == "" || len(cleaned.Series) == 0 {
+		return nil
+	}
+	if len(cleaned.Categories) == 0 {
+		maxLen := 0
+		for _, series := range cleaned.Series {
+			if len(series.Values) > maxLen {
+				maxLen = len(series.Values)
+			}
+		}
+		for idx := 0; idx < maxLen; idx++ {
+			cleaned.Categories = append(cleaned.Categories, "Category "+strconv.Itoa(idx+1))
+		}
 	}
 	return cleaned
 }

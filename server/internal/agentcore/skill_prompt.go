@@ -7,11 +7,21 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 )
 
-var skillScriptPathRegexp = regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `\(\[])((?:\./)?scripts/[a-z0-9._/\-]+)`)
+var (
+	skillScriptPathRegexpOnce sync.Once
+	skillScriptPathRegexp     *regexp.Regexp
+)
+
+func ensureSkillScriptPathRegexp() {
+	skillScriptPathRegexpOnce.Do(func() {
+		skillScriptPathRegexp = regexp.MustCompile(`(?i)(?:^|[\s` + "`" + `\(\[])((?:\./)?scripts/[a-z0-9._/\-]+)`)
+	})
+}
 
 // SkillRoute maps a user intent to the action/command in a skill.
 type SkillRoute struct {
@@ -384,6 +394,7 @@ func extractScriptPaths(content string) []string {
 	if strings.TrimSpace(content) == "" {
 		return nil
 	}
+	ensureSkillScriptPathRegexp()
 	matches := skillScriptPathRegexp.FindAllStringSubmatch(content, -1)
 	out := make([]string, 0, len(matches))
 	for _, m := range matches {

@@ -153,6 +153,7 @@ $env:CXX = "zig c++ -target x86_64-windows-gnu"
 $env:CGO_LDFLAGS = "-static-libgcc -static-libstdc++"
 $env:CGO_CFLAGS = "-O2"
 $env:CGO_CXXFLAGS = "-O2"
+$goBuildFlags = @("-trimpath", "-buildvcs=false")
 
 Write-Host "[OK] CGO configured with Zig"
 Write-Host "[INFO] This keeps the Windows Go archive on Zig's toolchain while preserving static GNU runtime flags"
@@ -167,7 +168,7 @@ Write-Host "[STEP 2.2] Running Go build with Zig..."
 Write-Host "[DEBUG] CC=$env:CC"
 Write-Host "[DEBUG] CXX=$env:CXX"
 Write-Host "[DEBUG] CGO_CFLAGS=$env:CGO_CFLAGS"
-go build -v -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/
+go build $goBuildFlags -v -buildmode=c-archive -ldflags="$goLdflags" -o "$tauriDir\lib\libblue.a" ./cmd/bluelib/
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Go build failed with exit code $LASTEXITCODE" -ForegroundColor Red
     throw "Go build failed"

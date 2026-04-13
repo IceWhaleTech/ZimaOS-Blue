@@ -199,6 +199,36 @@ func (b *SitePolicyBrowserBackend) ScreenshotTab(ctx context.Context, targetID s
 	return backend.ScreenshotTab(ctx, targetID)
 }
 
+func (b *SitePolicyBrowserBackend) FocusTab(ctx context.Context, targetID string) error {
+	backend := b.backendForTarget(ctx, targetID)
+	if backend == nil {
+		backend = b.defaultBackend
+	}
+	if backend == nil {
+		return fmt.Errorf("browser service not available")
+	}
+	focuser, ok := backend.(browserTabFocusCompat)
+	if !ok {
+		return fmt.Errorf("browser tab focus not supported")
+	}
+	return focuser.FocusTab(ctx, targetID)
+}
+
+func (b *SitePolicyBrowserBackend) PressKeys(ctx context.Context, targetID string, keys []string, holdMS int) error {
+	backend := b.backendForTarget(ctx, targetID)
+	if backend == nil {
+		backend = b.defaultBackend
+	}
+	if backend == nil {
+		return fmt.Errorf("browser service not available")
+	}
+	keyer, ok := backend.(browserKeyCompat)
+	if !ok {
+		return fmt.Errorf("browser key input not supported")
+	}
+	return keyer.PressKeys(ctx, targetID, keys, holdMS)
+}
+
 func (b *SitePolicyBrowserBackend) CloseTab(ctx context.Context, targetID string) error {
 	backend := b.backendForTarget(ctx, targetID)
 	if backend == nil {

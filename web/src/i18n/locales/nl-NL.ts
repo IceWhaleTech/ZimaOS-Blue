@@ -477,6 +477,8 @@ export default mergeHarnessLocale('nl-NL', {
     stillListening: 'Ga door, ik luister...',
     continueGenerating: 'Ga door',
     responseInterrupted: 'Antwoord onderbroken',
+    responseStopped: 'Antwoord gestopt',
+    responseStoppedBadge: 'Gestopt',
     deepResearchTitle: 'Diepgaand onderzoek',
     deepResearchEvidence: 'Bewijs',
     deepResearchSupport: 'Ondersteuning',

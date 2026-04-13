@@ -13,10 +13,14 @@ const maxTabularGroupValues = 12
 type TabularSummary struct {
 	Source        string                                   `json:"source,omitempty"`
 	RowCount      int                                      `json:"row_count"`
+	FormulaCount  int                                      `json:"formula_count,omitempty"`
 	Headers       []string                                 `json:"headers,omitempty"`
+	DateColumns   []string                                 `json:"date_columns,omitempty"`
+	ColumnKinds   map[string]string                        `json:"column_kinds,omitempty"`
 	NumericTotals map[string]float64                       `json:"numeric_totals,omitempty"`
 	GroupedTotals map[string]map[string]map[string]float64 `json:"grouped_totals,omitempty"`
 	TopByMetric   map[string]map[string]TabularTopValue    `json:"top_by_metric,omitempty"`
+	ChangedCells  int                                      `json:"changed_cells,omitempty"`
 	Highlights    []string                                 `json:"highlights,omitempty"`
 }
 

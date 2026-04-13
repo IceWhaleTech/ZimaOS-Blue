@@ -61,6 +61,54 @@ func TestLoadSpreadsheetWorkbookHandlesInlineStringsAndHeaderDeduplication(t *te
 	}
 }
 
+func TestLoadSpreadsheetWorkbookReadsFormulaAndDateMetadata(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "formula_metadata.xlsx")
+	writeFormulaMetadataSpreadsheetXLSX(t, sourcePath)
+
+	workbook, err := loadSpreadsheetWorkbook(sourcePath)
+	if err != nil {
+		t.Fatalf("loadSpreadsheetWorkbook failed: %v", err)
+	}
+	if workbook.Summary == nil || len(workbook.Summary.SheetSummaries) != 1 {
+		t.Fatalf("workbook summary = %#v, want one sheet summary", workbook.Summary)
+	}
+
+	sheet := workbook.Sheets[0]
+	if got := sheet.FormulaCount; got != 3 {
+		t.Fatalf("FormulaCount = %d, want 3", got)
+	}
+	if !reflect.DeepEqual(sheet.DateColumns, []string{"Date"}) {
+		t.Fatalf("DateColumns = %#v, want [Date]", sheet.DateColumns)
+	}
+	if got := sheet.ColumnKinds["Date"]; got != "date" {
+		t.Fatalf("ColumnKinds[Date] = %q, want date", got)
+	}
+	if got := sheet.ColumnKinds["Projected"]; got != "integer" {
+		t.Fatalf("ColumnKinds[Projected] = %q, want integer", got)
+	}
+	if got := sheet.Summary.FormulaCount; got != 3 {
+		t.Fatalf("summary FormulaCount = %d, want 3", got)
+	}
+	if !reflect.DeepEqual(sheet.Summary.DateColumns, []string{"Date"}) {
+		t.Fatalf("summary DateColumns = %#v, want [Date]", sheet.Summary.DateColumns)
+	}
+	if got := sheet.Summary.ColumnKinds["Date"]; got != "date" {
+		t.Fatalf("summary ColumnKinds[Date] = %q, want date", got)
+	}
+	if got, _ := sheet.Rows[1][0].(string); got != "2024-01-01" {
+		t.Fatalf("Rows[1][0] = %#v, want 2024-01-01", sheet.Rows[1][0])
+	}
+	if got, _ := sheet.Rows[2][0].(string); got != "2024-01-02" {
+		t.Fatalf("Rows[2][0] = %#v, want 2024-01-02", sheet.Rows[2][0])
+	}
+	if got, _ := sheet.Records[0]["Projected"].(int64); got != 2400 {
+		t.Fatalf("Projected = %#v, want 2400", sheet.Records[0]["Projected"])
+	}
+	if got := sheet.Records[0]["NoCache"]; got != "" {
+		t.Fatalf("NoCache = %#v, want empty string when formula has no cached value", got)
+	}
+}
+
 func TestConvertDocumentUsesLocalSpreadsheetConverterForJSON(t *testing.T) {
 	svc := setupConvertTestService(t)
 	sourcePath := filepath.Join(t.TempDir(), "company_expenses.xlsx")
@@ -201,6 +249,97 @@ func writeTestSpreadsheetXLSX(t *testing.T, path string) {
       <c r="B2" t="inlineStr"><is><t>Platform</t></is></c>
       <c r="C2"><v>1200</v></c>
       <c r="D2" t="inlineStr"><is><t>Alice</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>`)
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close xlsx zip: %v", err)
+	}
+}
+
+func writeFormulaMetadataSpreadsheetXLSX(t *testing.T, path string) {
+	t.Helper()
+
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create xlsx: %v", err)
+	}
+	defer file.Close()
+
+	zw := zip.NewWriter(file)
+	writeZipEntry := func(name, content string) {
+		t.Helper()
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create zip entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("write zip entry %s: %v", name, err)
+		}
+	}
+
+	writeZipEntry("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Metrics" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`)
+	writeZipEntry("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+</Relationships>`)
+	writeZipEntry("xl/sharedStrings.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="4" uniqueCount="4">
+  <si><t>Date</t></si>
+  <si><t>Revenue</t></si>
+  <si><t>Projected</t></si>
+  <si><t>NoCache</t></si>
+</sst>`)
+	writeZipEntry("xl/styles.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <numFmts count="1">
+    <numFmt numFmtId="164" formatCode="yyyy-mm-dd"/>
+  </numFmts>
+  <fonts count="1">
+    <font><sz val="11"/><name val="Aptos"/></font>
+  </fonts>
+  <fills count="2">
+    <fill><patternFill patternType="none"/></fill>
+    <fill><patternFill patternType="gray125"/></fill>
+  </fills>
+  <borders count="1">
+    <border><left/><right/><top/><bottom/><diagonal/></border>
+  </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
+  <cellXfs count="2">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
+  </cellXfs>
+</styleSheet>`)
+	writeZipEntry("xl/worksheets/sheet1.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="A1" t="s"><v>0</v></c>
+      <c r="B1" t="s"><v>1</v></c>
+      <c r="C1" t="s"><v>2</v></c>
+      <c r="D1" t="s"><v>3</v></c>
+    </row>
+    <row r="2">
+      <c r="A2" s="1"><v>45292</v></c>
+      <c r="B2"><v>1200</v></c>
+      <c r="C2"><f t="shared" si="0" ref="C2:C3">B2*2</f><v>2400</v></c>
+      <c r="D2"><f>B2+1</f></c>
+    </row>
+    <row r="3">
+      <c r="A3" s="1"><v>45293</v></c>
+      <c r="B3"><v>1500</v></c>
+      <c r="C3"><f t="shared" si="0"/><v>3000</v></c>
     </row>
   </sheetData>
 </worksheet>`)

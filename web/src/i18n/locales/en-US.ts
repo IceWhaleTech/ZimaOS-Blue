@@ -476,6 +476,8 @@ export default mergeHarnessLocale('en-US', {
     stillListening: "Go ahead, I'm listening...",
     continueGenerating: 'Continue',
     responseInterrupted: 'Response interrupted',
+    responseStopped: 'Response stopped',
+    responseStoppedBadge: 'Stopped',
     deepResearchTitle: 'Deep Research',
     deepResearchEvidence: 'Evidence',
     deepResearchSupport: 'Support',
@@ -4600,6 +4602,7 @@ export default mergeHarnessLocale('en-US', {
       analyze: 'Analysis Report',
       mediagen: 'Media Generation',
       ask: 'Ask',
+      a11y: 'Accessibility',
       research: 'Deep Research',
       research_run: 'Deep Research',
       research_status: 'Deep Research Status',
@@ -4624,6 +4627,8 @@ export default mergeHarnessLocale('en-US', {
       exec: 'Run shell commands and capture their output',
       analyze: 'Collect data from the web and generate a structured analysis report',
       ask: 'Ask the user follow-up questions needed to continue the task',
+      a11y:
+        'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots',
       mediagen: 'Generate images, videos, and slide decks with AI models',
       research:
         'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',

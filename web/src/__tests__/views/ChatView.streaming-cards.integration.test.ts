@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ChatView from '@/views/ChatView.vue'
-import { i18n } from '@/i18n'
+import { i18n, setLocale } from '@/i18n'
 import { useChatStore } from '@/stores/chat'
 import { conversationApi, messageApi } from '@/api/chat'
 
@@ -504,7 +504,13 @@ async function mountIntegratedChatView() {
 }
 
 describe('ChatView streaming card chain integration', () => {
+  beforeAll(async () => {
+    await setLocale('zh-CN')
+    await setLocale('en-US')
+  })
+
   beforeEach(() => {
+    i18n.global.locale.value = 'en-US'
     const activeProvider = {
       id: 'openai',
       type: 'builtin',
@@ -787,6 +793,44 @@ describe('ChatView streaming card chain integration', () => {
     expect(wrapper.find('[data-testid="chat-activity-dock"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('Processing')
     expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
+  })
+
+  it('clicking inline stop during tool execution cancels the stream and renders the stopped badge', async () => {
+    await setLocale('zh-CN')
+    vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+    vi.mocked(messageApi.cancelStream).mockResolvedValue({
+      data: { success: true, stream_id: 'stream-live-stop' },
+    } as never)
+    mocks.apiGet.mockImplementation(async (path: string) => {
+      if (path === '/conversations/conv-1/bootstrap') {
+        return makeBootstrapResponse('conv-1', {
+          active_stream: {
+            conversation_id: 'conv-1',
+            active: true,
+            stream_id: 'stream-live-stop',
+          },
+        })
+      }
+      return defaultApiGet(path)
+    })
+
+    const { wrapper, store } = await mountIntegratedChatView()
+
+    expect(store.streaming).toBe(true)
+    expect(store.toolExecuting).toBe(true)
+    expect(wrapper.get('[data-testid="chat-input-inline-cancel"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="chat-input-inline-cancel"]').trigger('click')
+    await settleView()
+
+    expect(messageApi.cancelStream).toHaveBeenCalledWith('conv-1', 'stream-live-stop')
+    expect(store.streaming).toBe(false)
+    expect(store.toolExecuting).toBe(false)
+    expect(store.messages.some((message) => message.content.includes('[Response stopped]'))).toBe(true)
+    expect(wrapper.find('.response-stopped-indicator').exists()).toBe(true)
+    expect(wrapper.text()).toContain('已停止')
+    expect(wrapper.html()).not.toContain('[Response stopped]')
+    expect(wrapper.find('[data-testid="chat-input-inline-cancel"]').exists()).toBe(false)
   })
 
   it('does not render the previous assistant reply as active preview when only the latest user turn is persisted', async () => {

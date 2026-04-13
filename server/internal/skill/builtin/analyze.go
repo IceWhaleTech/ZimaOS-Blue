@@ -12,6 +12,14 @@ import (
 )
 
 var analyzeSkillTopicURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+var analyzeSkillTopicURLPatternOnce sync.Once
+
+func analyzeSkillTopicURLRegexp() *regexp.Regexp {
+	analyzeSkillTopicURLPatternOnce.Do(func() {
+		analyzeSkillTopicURLPattern = regexp.MustCompile(`https?://[^\s<>"']+`)
+	})
+	return analyzeSkillTopicURLPattern
+}
 
 // AnalyzeExecutor is the interface for the analyze backend.
 // Decouples skill/builtin from tools package to avoid import cycles.
@@ -138,7 +146,7 @@ func promoteAnalyzeSkillTopicURLs(input map[string]any) {
 }
 
 func extractAnalyzeSkillTopicURLs(topic string) []string {
-	matches := analyzeSkillTopicURLPattern.FindAllString(topic, -1)
+	matches := analyzeSkillTopicURLRegexp().FindAllString(topic, -1)
 	if len(matches) == 0 {
 		return nil
 	}
@@ -159,7 +167,7 @@ func extractAnalyzeSkillTopicURLs(topic string) []string {
 }
 
 func stripAnalyzeSkillTopicURLs(topic string) string {
-	cleaned := analyzeSkillTopicURLPattern.ReplaceAllString(topic, " ")
+	cleaned := analyzeSkillTopicURLRegexp().ReplaceAllString(topic, " ")
 	return strings.TrimSpace(strings.Join(strings.Fields(cleaned), " "))
 }
 

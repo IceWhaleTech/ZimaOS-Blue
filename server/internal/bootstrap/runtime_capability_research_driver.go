@@ -12,4 +12,5 @@ func configureResearchRuntimeDriver(driver *harnessdrivers.ResearchDriver, regis
 	driver.SetAnalyzeExecutor(tools.GetAnalyzeTool(registry))
 	driver.SetAdvisorExecutor(tools.GetAdvisorTool(registry))
 	driver.SetUIReviewExecutor(tools.GetUIReviewerTool(registry))
+	driver.SetRecentExecutor(tools.GetWebQueryTool(registry))
 }

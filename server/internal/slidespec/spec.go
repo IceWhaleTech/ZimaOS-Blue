@@ -3,6 +3,7 @@ package slidespec
 import (
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 	"unicode/utf8"
 )
@@ -48,9 +49,23 @@ type Brief struct {
 }
 
 var (
-	bulletPrefixRE     = regexp.MustCompile(`^\s*(?:[-*•]+|\d+[.)]|[一二三四五六七八九十]+[、.])\s*`)
-	metricValueTokenRE = regexp.MustCompile(`(?i)[+\-]?\d+(?:[.,]\d+)?\s*(?:%|x|倍|ms|s|sec|secs|min|mins|h|hr|hrs|天|日|周|月|年|k|m|b|pt|pts|万|亿|家|人|个|次)?`)
+	bulletPrefixREOnce     sync.Once
+	bulletPrefixRE         *regexp.Regexp
+	metricValueTokenREOnce sync.Once
+	metricValueTokenRE     *regexp.Regexp
 )
+
+func ensureBulletPrefixRE() {
+	bulletPrefixREOnce.Do(func() {
+		bulletPrefixRE = regexp.MustCompile(`^\s*(?:[-*•]+|\d+[.)]|[一二三四五六七八九十]+[、.])\s*`)
+	})
+}
+
+func ensureMetricValueTokenRE() {
+	metricValueTokenREOnce.Do(func() {
+		metricValueTokenRE = regexp.MustCompile(`(?i)[+\-]?\d+(?:[.,]\d+)?\s*(?:%|x|倍|ms|s|sec|secs|min|mins|h|hr|hrs|天|日|周|月|年|k|m|b|pt|pts|万|亿|家|人|个|次)?`)
+	})
+}
 
 func Build(input Input) Brief {
 	prompt := cleanSpace(firstNonEmpty(input.Description, input.Prompt))
@@ -291,6 +306,7 @@ func looksLikeMetricBullet(value string) bool {
 	}) && strings.ContainsAny(cleaned, "0123456789") {
 		return true
 	}
+	ensureMetricValueTokenRE()
 	if metricValueTokenRE.MatchString(cleaned) && containsAnyFold(cleaned, []string{
 		"growth",
 		"conversion",
@@ -683,6 +699,7 @@ func stripLabelValue(line string, labels []string) (string, bool) {
 }
 
 func cleanBulletLine(line string) string {
+	ensureBulletPrefixRE()
 	line = bulletPrefixRE.ReplaceAllString(cleanLine(line), "")
 	return trimToRunes(cleanLine(line), 72)
 }

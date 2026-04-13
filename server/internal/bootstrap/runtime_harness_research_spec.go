@@ -14,6 +14,7 @@ type researchHarnessRunInput struct {
 	ProviderID       string
 	Mode             string
 	ResearchDepth    string
+	RetrievalProfile string
 	RouteMode        string
 	Lang             string
 	ReportStyle      string
@@ -50,15 +51,16 @@ type researchHarnessRunInput struct {
 
 func newResearchHarnessRunSpec(input researchHarnessRunInput) harness.RunSpec {
 	metadata := map[string]interface{}{
-		"mode":           strings.TrimSpace(input.Mode),
-		"research_depth": strings.TrimSpace(input.ResearchDepth),
-		"route_mode":     strings.TrimSpace(input.RouteMode),
-		"lang":           strings.TrimSpace(input.Lang),
-		"report_style":   strings.TrimSpace(input.ReportStyle),
-		"time_windows":   append([]string(nil), input.TimeWindows...),
-		"strict_entity":  input.StrictEntity,
-		"max_sources":    input.MaxSources,
-		"max_seconds":    input.MaxSeconds,
+		"mode":              strings.TrimSpace(input.Mode),
+		"research_depth":    strings.TrimSpace(input.ResearchDepth),
+		"retrieval_profile": strings.TrimSpace(input.RetrievalProfile),
+		"route_mode":        strings.TrimSpace(input.RouteMode),
+		"lang":              strings.TrimSpace(input.Lang),
+		"report_style":      strings.TrimSpace(input.ReportStyle),
+		"time_windows":      append([]string(nil), input.TimeWindows...),
+		"strict_entity":     input.StrictEntity,
+		"max_sources":       input.MaxSources,
+		"max_seconds":       input.MaxSeconds,
 	}
 	if topic := strings.TrimSpace(input.Topic); topic != "" {
 		metadata["topic"] = topic

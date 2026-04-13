@@ -32,6 +32,7 @@ type ResearchDriver struct {
 	analyze  researchModeExecutor
 	advisor  researchModeExecutor
 	uiReview researchModeExecutor
+	recent   researchModeExecutor
 	next     deepresearch.EventPublisher
 	mu       sync.Mutex
 	local    map[string]*localResearchRunState
@@ -49,6 +50,12 @@ func (d *ResearchDriver) Validate(spec harness.RunSpec) error {
 	}
 	if strings.TrimSpace(spec.Goal) == "" {
 		return fmt.Errorf("goal is required")
+	}
+	if researchRetrievalProfile(spec.Metadata) == "recent_multi_site_v1" {
+		if isNilResearchModeExecutor(d.recent) {
+			return researchModeUnavailableError("deep_research")
+		}
+		return nil
 	}
 	switch resolveResearchFamilyMode(spec.Goal, spec.Metadata) {
 	case "analyze":
@@ -72,6 +79,9 @@ func (d *ResearchDriver) Validate(spec harness.RunSpec) error {
 }
 
 func (d *ResearchDriver) Start(ctx context.Context, run *harness.Run, env harness.RunEnv) error {
+	if researchRetrievalProfile(run.Metadata) == "recent_multi_site_v1" {
+		return d.startLocalMode(ctx, run, env, "deep_research", d.recent)
+	}
 	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
 	case "analyze":
 		return d.startLocalMode(ctx, run, env, "analyze", d.analyze)
@@ -120,6 +130,17 @@ func (d *ResearchDriver) Cancel(_ context.Context, run *harness.Run) error {
 	if d == nil || run == nil {
 		return fmt.Errorf("research runtime is not available")
 	}
+	if researchRetrievalProfile(run.Metadata) == "recent_multi_site_v1" {
+		d.cancelLocalRun(run.ID)
+		cancelled := cloneRunSnapshot(run)
+		cancelled.Status = harness.RunStatusCancelled
+		cancelled.Progress = 100
+		cancelled.UpdatedAt = timeutil.NowTime()
+		finished := cancelled.UpdatedAt
+		cancelled.FinishedAt = &finished
+		d.publishResearchJobEvent(cancelled, "deep_research.job_cancelled")
+		return nil
+	}
 	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
 	case "analyze", "advisor", "ui_review":
 		d.cancelLocalRun(run.ID)
@@ -144,6 +165,17 @@ func (d *ResearchDriver) Cancel(_ context.Context, run *harness.Run) error {
 func (d *ResearchDriver) Sync(ctx context.Context, run *harness.Run) (*harness.Run, error) {
 	if d == nil || run == nil {
 		return run, nil
+	}
+	if researchRetrievalProfile(run.Metadata) == "recent_multi_site_v1" {
+		controller := researchDriverManager(d.manager, nil)
+		if controller == nil {
+			return run, nil
+		}
+		stored, err := controller.GetStored(ctx, run.ID)
+		if err != nil {
+			return run, nil
+		}
+		return stored, nil
 	}
 	switch resolveResearchFamilyMode(run.Goal, run.Metadata) {
 	case "analyze", "advisor", "ui_review":
@@ -212,6 +244,19 @@ func (d *ResearchDriver) SetUIReviewExecutor(executor researchModeExecutor) {
 		return
 	}
 	d.uiReview = executor
+}
+
+func (d *ResearchDriver) SetRecentExecutor(executor researchModeExecutor) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if isNilResearchModeExecutor(executor) {
+		d.recent = nil
+		return
+	}
+	d.recent = executor
 }
 
 func (d *ResearchDriver) Publish(userID string, eventType string, data any) {
@@ -773,6 +818,10 @@ func resolveResearchFamilyMode(goal string, metadata map[string]interface{}) str
 	}
 }
 
+func researchRetrievalProfile(metadata map[string]interface{}) string {
+	return strings.TrimSpace(metadataString(metadata, "retrieval_profile"))
+}
+
 func resolveResearchDepth(metadata map[string]interface{}) string {
 	depth := strings.ToLower(strings.TrimSpace(metadataString(metadata, "research_depth")))
 	switch depth {
@@ -862,6 +911,9 @@ func researchToolArgs(run *harness.Run, mode string) map[string]interface{} {
 		args = map[string]interface{}{}
 	}
 	args["mode"] = mode
+	if researchRetrievalProfile(args) == "recent_multi_site_v1" && run != nil {
+		args["input"] = strings.TrimSpace(run.Goal)
+	}
 	switch mode {
 	case "analyze":
 		if strings.TrimSpace(metadataString(args, "topic")) == "" && run != nil {

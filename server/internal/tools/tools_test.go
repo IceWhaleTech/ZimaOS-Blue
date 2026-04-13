@@ -24,6 +24,10 @@ type captureArgsTool struct {
 	args map[string]interface{}
 }
 
+type panicTool struct {
+	def ToolDefinition
+}
+
 func (t *captureArgsTool) Definition() ToolDefinition {
 	return t.def
 }
@@ -31,6 +35,14 @@ func (t *captureArgsTool) Definition() ToolDefinition {
 func (t *captureArgsTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
 	t.args = args
 	return "ok", nil
+}
+
+func (t *panicTool) Definition() ToolDefinition {
+	return t.def
+}
+
+func (t *panicTool) Execute(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	panic("boom")
 }
 
 type stubDocumentReadService struct {
@@ -1174,6 +1186,41 @@ func TestExecutorContextCancellation(t *testing.T) {
 	_, err := executor.Execute(ctx, "slow_tool", map[string]interface{}{})
 	if err == nil {
 		t.Fatal("expected error due to cancelled context")
+	}
+}
+
+func TestExecutorRecoversToolPanic(t *testing.T) {
+	registry := NewRegistry()
+	registry.Register(&panicTool{
+		def: ToolDefinition{
+			Name:        "panic_tool",
+			Description: "panics during execution",
+			Parameters: map[string]interface{}{
+				"type":                 "object",
+				"properties":           map[string]interface{}{},
+				"additionalProperties": true,
+			},
+		},
+	})
+
+	executor := NewExecutor(registry)
+
+	_, err := executor.Execute(context.Background(), "panic_tool", map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected panic to be normalized into an error")
+	}
+
+	var runtimeErr ToolRuntimeError
+	if !errors.As(err, &runtimeErr) {
+		t.Fatalf("expected ToolRuntimeError, got %T (%v)", err, err)
+	}
+	if runtimeErr.ToolRuntimeCode() != "tool_execution_panic" {
+		t.Fatalf("code = %q, want tool_execution_panic", runtimeErr.ToolRuntimeCode())
+	}
+
+	details := runtimeErr.ToolRuntimeDetails()
+	if got := fmt.Sprintf("%v", details["tool"]); got != "panic_tool" {
+		t.Fatalf("details.tool = %v, want panic_tool", details["tool"])
 	}
 }
 

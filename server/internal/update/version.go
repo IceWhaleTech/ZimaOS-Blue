@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // Version represents a semantic version
@@ -16,7 +17,16 @@ type Version struct {
 	PreNum     int    // alpha1 -> 1, or bare revision like 0.4.2-1 -> 1
 }
 
-var tagsRE = regexp.MustCompile(`^([a-zA-Z]+)?(\d+)?$`)
+var (
+	tagsREOnce sync.Once
+	tagsRE     *regexp.Regexp
+)
+
+func ensureVersionTagPattern() {
+	tagsREOnce.Do(func() {
+		tagsRE = regexp.MustCompile(`^([a-zA-Z]+)?(\d+)?$`)
+	})
+}
 
 // ParseVersion parses a version string.
 // Supports: 1.2.3, v1.2.3, 0.4.2-alpha1, 0.4.2-beta.1, 0.4.2-rc1, 0.4.2-1
@@ -47,6 +57,7 @@ func ParseVersion(s string) (*Version, error) {
 	v.Patch = patch
 
 	if len(tagParts) > 1 {
+		ensureVersionTagPattern()
 		seqs := tagsRE.FindStringSubmatch(tagParts[1])
 		switch len(seqs) {
 		case 2:

@@ -488,7 +488,11 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 		zapLogger.Info("Legacy provider settings imported into config store", fields...)
 	}
-	if result, migrateErr := harness.MigrateLegacyStore(context.Background(), services.DB, dataDir); migrateErr != nil {
+	migrationTargetDB := services.DB
+	if services.RuntimeDBConn != nil && services.RuntimeDBConn.Writer != nil {
+		migrationTargetDB = services.RuntimeDBConn.Writer
+	}
+	if result, migrateErr := harness.MigrateLegacyStore(context.Background(), migrationTargetDB, dataDir); migrateErr != nil {
 		zapLogger.Warn("Failed to migrate legacy harness store", zap.Error(migrateErr))
 	} else if result != nil {
 		fields := []zap.Field{
@@ -498,7 +502,8 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		if result.ArchivedPath != "" {
 			fields = append(fields, zap.String("archived_path", result.ArchivedPath))
 		}
-		zapLogger.Info("Legacy harness store imported into blue.db", fields...)
+		if services.RuntimeDBConn != nil {
+			zapLogger.Info("Legacy harness store imported into runtime.db", fields...)
 	}
 	runtimeActivity := server.NewRuntimeActivityTracker()
 	readDB := services.DB

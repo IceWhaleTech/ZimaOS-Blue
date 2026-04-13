@@ -28,6 +28,7 @@ TRIAL_LICENSE="${ZIMAOS_TRIAL_LICENSE:-}"
 
 # Go ldflags — must match server/Makefile
 GO_LDFLAGS="-s -w -X main.version=${VERSION} -X main.gitCommit=${GIT_COMMIT} -X main.buildTime=${BUILD_TIME}"
+GO_BUILD_FLAGS="-trimpath -buildvcs=false"
 
 echo "=========================================="
 echo "ZimaOS Blue - Tauri Build Script"
@@ -231,7 +232,7 @@ if [ "$GOOS" = "darwin" ]; then
     fi
 
     # macOS uses native Speech framework — no espeak/kokoro/whisper needed
-    CGO_ENABLED=1 go build -buildmode=c-archive \
+    CGO_ENABLED=1 go build $GO_BUILD_FLAGS -buildmode=c-archive \
         -tags 'fts5' \
         -ldflags="$GO_LDFLAGS" \
         -o "$LIB_DIR/libblue.a" \
@@ -269,7 +270,7 @@ elif [ "$GOOS" = "windows" ]; then
     fi
 
     # Windows needs espeak + kokoro for TTS
-    CGO_ENABLED=1 go build -buildmode=c-archive \
+    CGO_ENABLED=1 go build $GO_BUILD_FLAGS -buildmode=c-archive \
         -tags 'fts5 espeak kokoro' \
         -ldflags="$GO_LDFLAGS" \
         -o "$LIB_DIR/libblue.a" \
@@ -313,7 +314,7 @@ else
     fi
 
     # Build with the same TTS feature set as the Linux CLI release path.
-    CGO_ENABLED=1 go build -tags 'fts5 espeak kokoro' -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
+    CGO_ENABLED=1 go build $GO_BUILD_FLAGS -tags 'fts5 espeak kokoro' -ldflags="$GO_LDFLAGS" -o "$TAURI_DIR/binaries/$SIDECAR_NAME" ./cmd/blue/
 
     # Also copy to bin directory for resources bundling
     mkdir -p "$TAURI_DIR/bin"

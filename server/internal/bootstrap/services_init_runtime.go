@@ -17,26 +17,21 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/worker"
 )
 
-func initServicesMemoryAndMedia(
-	s *Services,
-	cfg *ServerConfig,
-	appCfg *config.Config, trace *StartupTrace,
-) error {
+func initServicesMemoryAndMedia(s *Services, cfg *ServerConfig, appCfg *config.Config, trace *StartupTrace) error {
 	chatDBPath := filepath.Join(cfg.DataDir, "blue.db")
-	chatStoreOpts := memory.DefaultChatStoreOptions(chatDBPath)
-	chatStoreOpts.Durability = appCfg.Session.ChatDBDurability
-	chatStoreOpts.CheckpointInterval = 0
-	chatStoreOpts.AttachmentExternalStore = appCfg.Session.ChatAttachmentExternalStore
-	if chatStoreOpts.AttachmentExternalStore {
-		chatStoreOpts.AttachmentDir = memory.DefaultChatAttachmentDir(cfg.DataDir)
+	opts := memory.DefaultChatStoreOptions(chatDBPath)
+	opts.Durability = appCfg.Session.ChatDBDurability
+	opts.CheckpointInterval = 0
+	opts.AttachmentExternalStore = appCfg.Session.ChatAttachmentExternalStore
+	if opts.AttachmentExternalStore {
+		opts.AttachmentDir = memory.DefaultChatAttachmentDir(cfg.DataDir)
 	}
-	store, err := memory.NewStoreWithOptions(chatDBPath, chatStoreOpts)
+	store, err := memory.NewStoreWithOptions(chatDBPath, opts)
 	if err != nil {
 		return fmt.Errorf("failed to initialize memory store: %w", err)
 	}
 	s.MemoryStore = store
 	trace.Mark("memory_store_ready")
-
 	s.A2UIManager = a2ui.NewManager(s.Logger)
 	trace.Mark("a2ui_ready")
 	s.OCRService = ocrruntime.NewTesseractService(s.Logger, ocrruntime.Config{
@@ -52,12 +47,7 @@ func initServicesMemoryAndMedia(
 	return nil
 }
 
-func initServicesRuntimeRegistries(
-	s *Services,
-	cfg *ServerConfig,
-	appCfg *config.Config,
-	trace *StartupTrace,
-) {
+func initServicesRuntimeRegistries(s *Services, cfg *ServerConfig, appCfg *config.Config, trace *StartupTrace) {
 	s.LLMRegistry = llm.NewProviderRegistry()
 	registerLLMProviders(s.LLMRegistry, appCfg)
 	trace.Mark("llm_registry_ready")
@@ -70,7 +60,6 @@ func initServicesRuntimeRegistries(
 	tools.RegisterCanvasTools(s.ToolRegistry, s.A2UIManager)
 	tools.RegisterPDFTool(s.ToolRegistry, s.PDFService)
 	trace.Mark("tool_registry_ready")
-
 	s.SkillRegistry = skill.NewRegistry()
 	builtin.RegisterAll(s.SkillRegistry)
 	trace.Mark("skill_registry_ready")
@@ -79,4 +68,15 @@ func initServicesRuntimeRegistries(
 func initServicesWorkerPool(s *Services, trace *StartupTrace) {
 	s.WorkerPool = worker.NewPool(context.Background(), 10)
 	trace.Mark("worker_pool_ready")
+}
+
+// initServicesRuntimeDatabase opens runtime.db for harness/agent tables
+func initServicesRuntimeDatabase(s *Services, cfg *ServerConfig, trace *StartupTrace) error {
+	conn, err := openRuntimeDatabase(cfg, s.Logger)
+	if err != nil {
+		return fmt.Errorf("failed to open runtime database: %w", err)
+	}
+	s.RuntimeDBConn = conn
+	trace.Mark("runtime_db_opened")
+	return nil
 }

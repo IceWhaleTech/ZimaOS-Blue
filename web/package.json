@@ -20,6 +20,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:chat-stop": "playwright test tests-e2e/chat-stop.spec.ts",
     "lint": "eslint src --ext .vue,.js,.ts,.jsx,.tsx",
     "lint:fix": "eslint src --ext .vue,.js,.ts,.jsx,.tsx --fix",
     "format": "prettier --write src/",
@@ -49,6 +51,7 @@
   },
   "devDependencies": {
     "@iconify/json": "^2.2.433",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^24.10.1",
     "@typescript-eslint/eslint-plugin": "^8.0.0",

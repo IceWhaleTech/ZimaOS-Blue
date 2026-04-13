@@ -162,6 +162,14 @@ type imageInputCaptureTool struct {
 	inputs []tools.ToolImageInput
 }
 
+type blockingCancelAwareTool struct {
+	def         tools.ToolDefinition
+	started     chan struct{}
+	release     chan struct{}
+	startOnce   sync.Once
+	releaseOnce sync.Once
+}
+
 type webSearchToolMock struct {
 	name   string
 	result interface{}
@@ -213,6 +221,32 @@ func (m *imageInputCaptureTool) CapturedInputs() []tools.ToolImageInput {
 	out := make([]tools.ToolImageInput, len(m.inputs))
 	copy(out, m.inputs)
 	return out
+}
+
+func (t *blockingCancelAwareTool) Definition() tools.ToolDefinition {
+	return t.def
+}
+
+func (t *blockingCancelAwareTool) Execute(ctx context.Context, _ map[string]interface{}) (interface{}, error) {
+	t.startOnce.Do(func() {
+		if t.started != nil {
+			close(t.started)
+		}
+	})
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-t.release:
+		return map[string]interface{}{"released": true}, nil
+	}
+}
+
+func (t *blockingCancelAwareTool) Release() {
+	t.releaseOnce.Do(func() {
+		if t.release != nil {
+			close(t.release)
+		}
+	})
 }
 
 func inlinePNGBase64ForChatTest() string {
@@ -9495,6 +9529,285 @@ func TestChatHandlerStreamMessageOfflineMode(t *testing.T) {
 	}
 	if !strings.Contains(body, `"done":true`) {
 		t.Fatalf("expected done chunk in stream, got: %s", body)
+	}
+}
+
+func TestChatHandlerStreamMessageCancelStopsInFlightToolExecution(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Tool cancel stop")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-stop",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stop-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "我先执行这个工具。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_slow_stop_1",
+						Name:      "slow_tool",
+						Arguments: `{"action":"wait"}`,
+					}},
+				},
+			},
+			{
+				ID:    "stop-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "工具已经执行完成。",
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	slowTool := &blockingCancelAwareTool{
+		def: tools.ToolDefinition{
+			Name:        "slow_tool",
+			Description: "blocks until cancelled",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"action": map[string]interface{}{"type": "string"},
+				},
+				"additionalProperties": true,
+			},
+		},
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	defer slowTool.Release()
+	toolRegistry.Register(slowTool)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	e := echo.New()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/conversations/"+conv.ID+"/messages/stream",
+		bytes.NewBufferString(`{"message":"请执行慢工具","provider":"scripted-stop","model":"gpt-5.3-codex-spark"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	streamDone := make(chan error, 1)
+	go func() {
+		streamDone <- handler.StreamMessage(c)
+	}()
+
+	select {
+	case <-slowTool.started:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("tool did not start before cancellation")
+	}
+
+	streamID, cancelled := handler.CancelConversationStream(conv.ID)
+	if !cancelled {
+		t.Fatal("expected active stream to be cancelled")
+	}
+	if strings.TrimSpace(streamID) == "" {
+		t.Fatal("expected cancelled stream id to be returned")
+	}
+
+	select {
+	case err := <-streamDone:
+		if err != nil {
+			t.Fatalf("StreamMessage() error = %v", err)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("stream did not stop promptly after cancellation during tool execution")
+	}
+
+	if !strings.Contains(rec.Body.String(), `"cancelled":true`) {
+		t.Fatalf("expected cancelled SSE payload, got: %s", rec.Body.String())
+	}
+
+	msgs, err := store.GetMessages(context.Background(), conv.ID, 1000, 0)
+	if err != nil {
+		t.Fatalf("failed to list messages: %v", err)
+	}
+
+	var assistant *memory.Message
+	for i := range msgs {
+		if msgs[i].Role == "assistant" {
+			assistant = &msgs[i]
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected cancelled assistant message to be persisted")
+	}
+	if !strings.Contains(assistant.Content, "[Response stopped]") {
+		t.Fatalf("expected stopped marker in assistant content, got %q", assistant.Content)
+	}
+	if strings.Contains(assistant.Content, "[Response interrupted]") {
+		t.Fatalf("expected stopped marker instead of interrupted marker, got %q", assistant.Content)
+	}
+	if strings.Contains(assistant.Content, "tool_execution_cancelled") {
+		t.Fatalf("expected cancellation to avoid leaking tool cancellation payloads, got %q", assistant.Content)
+	}
+}
+
+func TestChatHandlerCancelStreamEndpointStopsInFlightToolExecution(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Tool cancel endpoint stop")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-stop-endpoint",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stop-endpoint-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "我先执行这个工具。",
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_slow_stop_endpoint_1",
+						Name:      "slow_tool",
+						Arguments: `{"action":"wait"}`,
+					}},
+				},
+			},
+			{
+				ID:    "stop-endpoint-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "工具已经执行完成。",
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	slowTool := &blockingCancelAwareTool{
+		def: tools.ToolDefinition{
+			Name:        "slow_tool",
+			Description: "blocks until cancelled",
+			Parameters: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"action": map[string]interface{}{"type": "string"},
+				},
+				"additionalProperties": true,
+			},
+		},
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	defer slowTool.Release()
+	toolRegistry.Register(slowTool)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	e := echo.New()
+	e.POST("/api/v1/conversations/:id/messages/stream", handler.StreamMessage)
+	e.POST("/api/v1/conversations/:id/messages/cancel", handler.CancelStream)
+
+	streamReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/conversations/"+conv.ID+"/messages/stream",
+		bytes.NewBufferString(`{"message":"请执行慢工具","provider":"scripted-stop-endpoint","model":"gpt-5.3-codex-spark"}`),
+	)
+	streamReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	streamRec := httptest.NewRecorder()
+
+	streamDone := make(chan struct{})
+	go func() {
+		e.ServeHTTP(streamRec, streamReq)
+		close(streamDone)
+	}()
+
+	select {
+	case <-slowTool.started:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("tool did not start before cancellation")
+	}
+
+	var streamID string
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		streamID = strings.TrimSpace(handler.activeStreamIDForConversation(conv.ID))
+		if streamID != "" {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if streamID == "" {
+		t.Fatal("expected active stream id before calling cancel endpoint")
+	}
+
+	cancelReq := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/conversations/"+conv.ID+"/messages/cancel",
+		bytes.NewBufferString(fmt.Sprintf(`{"stream_id":%q}`, streamID)),
+	)
+	cancelReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	cancelRec := httptest.NewRecorder()
+	e.ServeHTTP(cancelRec, cancelReq)
+
+	if cancelRec.Code != http.StatusOK {
+		t.Fatalf("expected cancel endpoint to succeed, got %d body=%s", cancelRec.Code, cancelRec.Body.String())
+	}
+	if !strings.Contains(cancelRec.Body.String(), `"success":true`) {
+		t.Fatalf("expected cancel endpoint success payload, got: %s", cancelRec.Body.String())
+	}
+	if !strings.Contains(cancelRec.Body.String(), streamID) {
+		t.Fatalf("expected cancel endpoint to echo stream id %q, got: %s", streamID, cancelRec.Body.String())
+	}
+
+	select {
+	case <-streamDone:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("stream did not stop promptly after HTTP cancellation during tool execution")
+	}
+
+	if !strings.Contains(streamRec.Body.String(), `"cancelled":true`) {
+		t.Fatalf("expected cancelled SSE payload, got: %s", streamRec.Body.String())
+	}
+
+	msgs, err := store.GetMessages(context.Background(), conv.ID, 1000, 0)
+	if err != nil {
+		t.Fatalf("failed to list messages: %v", err)
+	}
+
+	var assistant *memory.Message
+	for i := range msgs {
+		if msgs[i].Role == "assistant" {
+			assistant = &msgs[i]
+		}
+	}
+	if assistant == nil {
+		t.Fatal("expected cancelled assistant message to be persisted")
+	}
+	if !strings.Contains(assistant.Content, "[Response stopped]") {
+		t.Fatalf("expected stopped marker in assistant content, got %q", assistant.Content)
+	}
+	if strings.Contains(assistant.Content, "tool_execution_cancelled") {
+		t.Fatalf("expected cancellation to avoid leaking tool cancellation payloads, got %q", assistant.Content)
 	}
 }
 

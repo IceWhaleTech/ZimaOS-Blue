@@ -2100,6 +2100,38 @@ describe('Chat Store', () => {
       expect(store.messages[2]?.content).toBe('')
     })
 
+    it('marks the active assistant placeholder as stopped when cancelling during tool execution', async () => {
+      const store = useChatStore()
+      vi.mocked(messageApi.list).mockResolvedValue({ data: [] } as never)
+      mocks.apiGet.mockImplementation(async (path: string) => {
+        if (path === '/conversations/conv-1/bootstrap') {
+          return makeBootstrapResponse('conv-1', {
+            active_stream: {
+              conversation_id: 'conv-1',
+              active: true,
+              stream_id: 'stream-live-stop',
+            },
+          })
+        }
+        return defaultApiGet(path)
+      })
+
+      vi.mocked(messageApi.cancelStream).mockResolvedValue({
+        data: { success: true, stream_id: 'stream-live-stop', message: 'cancelled' },
+      } as never)
+
+      await store.selectConversation('conv-1')
+      store.cancelStreaming()
+      await flushMicrotasks()
+
+      expect(messageApi.cancelStream).toHaveBeenCalledWith('conv-1', 'stream-live-stop')
+      expect(mocks.sseDisconnect).toHaveBeenCalled()
+      expect(store.streaming).toBe(false)
+      expect(store.toolExecuting).toBe(false)
+      expect(store.messages).toHaveLength(1)
+      expect(store.messages[0]?.content).toBe('[Response stopped]')
+    })
+
     it('shows recovering state after a network interrupt and completes after syncing persisted content', async () => {
       vi.useFakeTimers()
 

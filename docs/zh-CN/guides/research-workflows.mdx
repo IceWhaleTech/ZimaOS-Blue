@@ -1,20 +1,21 @@
 ---
 title: "Research 工作流"
-summary: "说明 Blue 如何用统一的 research 入口在 deep research、analyze 和 UI review 之间路由，同时保留三种不同的最终呈现。"
+summary: "说明 Blue 如何用统一的 research 入口在 deep research、analyze、advisor 和 UI review 之间路由，同时保留不同的最终呈现。"
 ---
 
 # Research 工作流
 
 Blue 现在在 Composer、运行时和公共接口上统一暴露一个 research family 入口。
 
-## 一个入口，三种 mode
+## 一个入口，四种 mode
 
-在 Composer 里，原来的 `Research`、`Analysis Report`、`UI Review` 三个入口已经收敛为一个 `Research` 入口。
+在 Composer 里，原来的 `Research`、`Analysis Report`、`Advisor`、`UI Review` 四个入口已经收敛为一个 `Research` 入口。
 
-这个统一入口会路由到三个内部 mode：
+这个统一入口会路由到四个内部 mode：
 
 - `deep_research`：强调引用、证据、多来源和较长链路的研究
 - `analyze`：基于已知 URL、搜索词或粘贴文本做有边界的综合分析
+- `advisor`：用于选择、迁移、替换和最佳实践问题的决策支持
 - `ui_review`：针对 URL 或图片做 UI、UX 与无障碍评估
 
 当前公开的统一入口是 `research`，而不是三个独立的对外发现名。
@@ -26,7 +27,7 @@ Blue 现在在 Composer、运行时和公共接口上统一暴露一个 research
 ```json
 {
   "action": "run",
-  "mode": "auto|deep_research|analyze|ui_review"
+  "mode": "auto|deep_research|analyze|advisor|ui_review"
 }
 ```
 
@@ -38,7 +39,10 @@ Blue 会根据请求内容和意图信号自动选择 mode：
 
 - 强调引用、证据、时间线、对比、深入调研的请求会路由到 `deep_research`
 - 已经给出 URL、搜索范围或文本，希望生成总结或报告的请求会路由到 `analyze`
+- 希望得到推荐、替换判断、迁移取舍或最佳实践 memo 的请求会路由到 `advisor`
 - 希望评审界面、截图、视觉设计或无障碍问题的请求会路由到 `ui_review`
+
+Blue 现在也会识别“最近社区讨论”类请求，例如 `What are people saying in the last 30 days about ...` 或 `最近30天大家怎么说 ...`。这类请求仍然通过公开的 `research` 入口进入，但运行时会附加一个内部 recent multi-site retrieval profile，在 public web、Reddit、Hacker News、GitHub、Polymarket、X、TikTok、Instagram、Bluesky 上抓取带时间戳的近 30 天信号；如果请求里已经带有已知 YouTube URL，也会作为补充增强。
 
 因此聊天里的 `Research` 开关表达的是“研究家族偏好”，而不是“强制进入 deep research”。
 
@@ -72,6 +76,22 @@ Blue 会根据请求内容和意图信号自动选择 mode：
 
 它适合把一组有限来源整理成摘要、briefing、dashboard 风格报告，或者为后续的 Markdown、文档写入步骤准备内容。
 
+### `advisor`
+
+适合需要做判断、给建议、比较替代方案，而不是单纯搜集资料或生成总结的任务。
+
+常见字段：
+
+- `question`
+- `category`
+- `decision_mode`
+- `candidates`
+- `context`
+- `constraints`
+- `grounding`
+- `depth`
+- `output`
+
 ### `ui_review`
 
 适合评估界面，而不是研究主题本身。
@@ -89,12 +109,13 @@ Blue 会根据请求内容和意图信号自动选择 mode：
 
 这个 mode 重点关注视觉质量、交互体验和无障碍问题。
 
-## 最终结果仍然保持三种呈现
+## 最终结果仍然保持四种呈现
 
 Blue 在内部使用统一 research-family 运行时，但最终面向用户的结果仍然按 mode 区分：
 
 - `deep_research` 保留深度研究结果呈现
 - `analyze` 使用专门的 analyze 结果卡片
+- `advisor` 使用决策支持结果呈现
 - `ui_review` 保留 UI review 的结果呈现
 
 这次调整是架构统一，不是把所有结果压平成一种通用卡片。
@@ -106,7 +127,7 @@ Blue 在内部使用统一 research-family 运行时，但最终面向用户的�
 - 使用 `research` 作为统一的 skill、CLI 或 API 入口
 - 已知目标子模式时，显式传 `mode`
 - 聊天式请求优先使用 `mode=auto`
-- 不要再把 `deep_research`、`analyze`、`ui_reviewer` 当作主要的公共发现名
+- 不要再把 `deep_research`、`analyze`、`advisor`、`ui_reviewer` 当作主要的公共发现名
 
 ## 相关页面
 

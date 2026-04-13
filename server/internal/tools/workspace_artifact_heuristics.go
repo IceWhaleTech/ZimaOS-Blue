@@ -3,11 +3,21 @@ package tools
 import (
 	"regexp"
 	"strings"
+	"sync"
 
 	sel "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/selector"
 )
 
-var structuredWorkspaceArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))\\b")
+var (
+	structuredWorkspaceArtifactRegexOnce sync.Once
+	structuredWorkspaceArtifactPathRegex *regexp.Regexp
+)
+
+func ensureStructuredWorkspaceArtifactRegex() {
+	structuredWorkspaceArtifactRegexOnce.Do(func() {
+		structuredWorkspaceArtifactPathRegex = regexp.MustCompile("`([^`]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))`|\\b([A-Za-z0-9._/\\-]+\\.(?:md|txt|json|csv|tsv|html|pdf|docx?|xlsx?|pptx?|png|jpe?g|webp|gif))\\b")
+	})
+}
 
 // LooksLikeStructuredWorkspaceArtifactTask reports whether the user is asking
 // the model to read one or more concrete local source files and produce a
@@ -60,6 +70,8 @@ func looksLikeStructuredWorkspaceArtifactTask(query string, signals sel.QueryInt
 }
 
 func countStructuredWorkspaceArtifactPaths(text string) int {
+	ensureStructuredWorkspaceArtifactRegex()
+
 	matches := structuredWorkspaceArtifactPathRegex.FindAllStringSubmatch(text, -1)
 	count := 0
 	for _, match := range matches {

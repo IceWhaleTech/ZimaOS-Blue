@@ -100,6 +100,7 @@ func (r *Registry) loadProviders() error {
 				p.AlternateBaseURLs = bp.AlternateBaseURLs
 			}
 		}
+		normalizeTrialProviderSecurity(p)
 		r.providers[p.ID] = p
 	}
 
@@ -125,6 +126,7 @@ func (r *Registry) register(provider *Provider, persist bool) error {
 	defer r.mu.Unlock()
 
 	normalizeProviderAPIKeys(provider)
+	normalizeTrialProviderSecurity(provider)
 
 	if _, exists := r.providers[provider.ID]; exists {
 		return ErrProviderExists
@@ -265,6 +267,8 @@ func (r *Registry) Update(provider *Provider) error {
 		return ErrProviderNotFound
 	}
 
+	normalizeProviderAPIKeys(provider)
+	normalizeTrialProviderSecurity(provider)
 	provider.UpdatedAt = timeutil.NowTime()
 
 	if err := r.storage.SaveProvider(provider); err != nil {

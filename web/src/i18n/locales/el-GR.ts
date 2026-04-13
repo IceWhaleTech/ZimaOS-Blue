@@ -481,6 +481,8 @@ export default mergeHarnessLocale('el-GR', {
     stillListening: 'Συνέχισε, ακούω...',
     continueGenerating: 'Συνέχεια',
     responseInterrupted: 'Η απάντηση διακόπηκε',
+    responseStopped: 'Η απάντηση σταμάτησε',
+    responseStoppedBadge: 'Σταμάτησε',
     deepResearchTitle: 'Έρευνα σε βάθος',
     deepResearchEvidence: 'Στοιχεία',
     deepResearchSupport: 'Υποστήριξη',

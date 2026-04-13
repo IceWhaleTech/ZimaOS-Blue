@@ -1,15 +1,27 @@
 package workspace
 
 import (
-	"embed"
 	"io/fs"
 	"runtime"
 	"strings"
 	"sync"
+
+	_ "embed"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedbundle"
 )
 
-//go:embed templates/*/*.md
-var templatesFS embed.FS
+//go:generate go run ../../tools/generate_embed_bundle -source templates -output templates_bundle.tar.gz -prefix templates
+
+//go:embed templates_bundle.tar.gz
+var templatesBundle []byte
+
+var templatesFS fs.FS = embedbundle.MustLoadTarGzFS(
+	templatesBundle,
+	"workspace",
+	"templates",
+	"templates/en/SOUL.md",
+)
 
 // templateSet holds all default templates for a single locale.
 type templateSet struct {

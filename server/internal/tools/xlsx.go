@@ -33,7 +33,7 @@ func (t *XLSXTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"read", "create", "edit", "fix", "validate"},
+					"enum":        []string{"read", "create", "edit", "fix", "validate", "append_rows", "update_cells", "rename_sheet", "insert_rows", "delete_rows", "set_filter", "set_freeze", "profile_sheet", "group_by", "top_n", "sheet_compare"},
 					"description": "Operation to perform. Defaults to read.",
 				},
 				"path": map[string]interface{}{
@@ -49,6 +49,18 @@ func (t *XLSXTool) Definition() ToolDefinition {
 				"sheet":    map[string]interface{}{},
 				"columns":  map[string]interface{}{"type": "array"},
 				"rows":     map[string]interface{}{"type": "array"},
+				"cells":    map[string]interface{}{},
+				"row":      map[string]interface{}{},
+				"count":    map[string]interface{}{},
+				"range":    map[string]interface{}{"type": "string"},
+				"freeze":   map[string]interface{}{"type": "string"},
+				"new_name": map[string]interface{}{"type": "string"},
+				"group_by": map[string]interface{}{"type": "string"},
+				"metric":   map[string]interface{}{"type": "string"},
+				"n":        map[string]interface{}{},
+				"compare_path": map[string]interface{}{
+					"type": "string",
+				},
 				"replacements": map[string]interface{}{
 					"type":        "object",
 					"description": "Literal text replacements applied inside workbook XML.",
@@ -81,6 +93,10 @@ func (t *XLSXTool) Execute(ctx context.Context, args map[string]interface{}) (in
 		return t.executeEdit(ctx, args, action)
 	case "validate":
 		return t.executeValidate(ctx, args)
+	case "append_rows", "update_cells", "rename_sheet", "insert_rows", "delete_rows", "set_filter", "set_freeze":
+		return t.executeSemanticMutation(ctx, args, action)
+	case "profile_sheet", "group_by", "top_n", "sheet_compare":
+		return t.executeAnalysisAction(ctx, args, action)
 	default:
 		return nil, fmt.Errorf("unsupported xlsx action %q", action)
 	}
@@ -146,63 +162,70 @@ func (t *XLSXTool) executeEdit(ctx context.Context, args map[string]interface{},
 	if _, ok := compatArgValue(args, "sheets", "sheet", "columns", "rows", "summary", "notes", "title", "subtitle"); ok {
 		return t.executeCreateLike(ctx, args, action)
 	}
-	path := strings.TrimSpace(firstCompatPathString(args))
-	if path == "" {
-		var err error
-		path, err = fsAsString(args, "path")
-		if err != nil || path == "" {
-			return "", fmt.Errorf("path must be a non-empty string")
-		}
-	}
 	replacements := parseReplacementMap(args, "replacements", "variables")
-	if len(replacements) == 0 {
-		return "", fmt.Errorf("xlsx %s requires replacements/variables or workbook content inputs", action)
-	}
-	absPath, relPath, _, err := t.scope.resolvePathWithContext(ctx, "xlsx", path, false)
-	if err != nil {
-		return "", err
-	}
-	if err := enforceWritePathGuard(ctx, absPath); err != nil {
-		return "", err
-	}
-	changed, err := replaceArchiveEntries(absPath, isXLSXXMLEntry, func(_ string, data []byte) ([]byte, bool, error) {
-		text := string(data)
-		updated := text
-		for from, to := range replacements {
-			updated = strings.ReplaceAll(updated, from, to)
+	if len(replacements) > 0 {
+		path := strings.TrimSpace(firstCompatPathString(args))
+		if path == "" {
+			var err error
+			path, err = fsAsString(args, "path")
+			if err != nil || path == "" {
+				return "", fmt.Errorf("path must be a non-empty string")
+			}
 		}
-		if updated == text {
-			return data, false, nil
+		absPath, relPath, _, err := t.scope.resolvePathWithContext(ctx, "xlsx", path, false)
+		if err != nil {
+			return "", err
 		}
-		return []byte(updated), true, nil
-	})
+		if err := enforceWritePathGuard(ctx, absPath); err != nil {
+			return "", err
+		}
+		changed, err := replaceArchiveEntries(absPath, isXLSXXMLEntry, func(_ string, data []byte) ([]byte, bool, error) {
+			text := string(data)
+			updated := text
+			for from, to := range replacements {
+				updated = strings.ReplaceAll(updated, from, to)
+			}
+			if updated == text {
+				return data, false, nil
+			}
+			return []byte(updated), true, nil
+		})
+		if err != nil {
+			return "", err
+		}
+		validation, err := t.validatePath(ctx, absPath)
+		if err != nil {
+			return "", err
+		}
+		warnings := []string(nil)
+		if !changed {
+			warnings = append(warnings, "no matching replacement tokens were found in workbook XML")
+		}
+		info, _ := os.Stat(absPath)
+		payload := nativeDocumentPayload{
+			Action:       action,
+			Path:         relPath,
+			AbsolutePath: absPath,
+			OriginalPath: path,
+			Format:       "xlsx",
+			Engine:       "native_xlsx_ooxml",
+			EngineChain:  []string{"native_xlsx_ooxml"},
+			Degraded:     false,
+			Warnings:     warnings,
+			Validation:   validation,
+			Size:         info.Size(),
+			Success:      true,
+		}
+		return marshalNativeDocumentPayload(payload)
+	}
+	inferredAction, err := inferSemanticXLSXAction(args)
 	if err != nil {
 		return "", err
 	}
-	validation, err := t.validatePath(ctx, absPath)
-	if err != nil {
-		return "", err
+	if inferredAction == "" {
+		return "", fmt.Errorf("xlsx %s requires replacements/variables or a semantic edit payload", action)
 	}
-	warnings := []string(nil)
-	if !changed {
-		warnings = append(warnings, "no matching replacement tokens were found in workbook XML")
-	}
-	info, _ := os.Stat(absPath)
-	payload := nativeDocumentPayload{
-		Action:       action,
-		Path:         relPath,
-		AbsolutePath: absPath,
-		OriginalPath: path,
-		Format:       "xlsx",
-		Engine:       "native_xlsx_ooxml",
-		EngineChain:  []string{"native_xlsx_ooxml"},
-		Degraded:     false,
-		Warnings:     warnings,
-		Validation:   validation,
-		Size:         info.Size(),
-		Success:      true,
-	}
-	return marshalNativeDocumentPayload(payload)
+	return t.executeSemanticMutation(ctx, args, inferredAction)
 }
 
 func (t *XLSXTool) executeValidate(ctx context.Context, args map[string]interface{}) (string, error) {
@@ -271,4 +294,298 @@ func isXLSXXMLEntry(name string) bool {
 		lower == "xl/sharedstrings.xml" ||
 		lower == "docprops/core.xml" ||
 		strings.HasPrefix(lower, "xl/worksheets/")
+}
+
+func inferSemanticXLSXAction(args map[string]interface{}) (string, error) {
+	switch {
+	case hasCompatArg(args, "cells"):
+		return "update_cells", nil
+	case hasCompatArg(args, "new_name"):
+		return "rename_sheet", nil
+	case hasCompatArg(args, "freeze"):
+		return "set_freeze", nil
+	case hasCompatArg(args, "range"):
+		return "set_filter", nil
+	case hasCompatArg(args, "row") && hasCompatArg(args, "count"):
+		return "delete_rows", nil
+	case hasCompatArg(args, "row") && hasCompatArg(args, "rows"):
+		return "insert_rows", nil
+	case hasCompatArg(args, "rows"):
+		return "append_rows", nil
+	default:
+		return "", nil
+	}
+}
+
+func hasCompatArg(args map[string]interface{}, key string) bool {
+	_, ok := compatArgValue(args, key)
+	return ok
+}
+
+func (t *XLSXTool) executeSemanticMutation(ctx context.Context, args map[string]interface{}, action string) (string, error) {
+	path := strings.TrimSpace(firstCompatPathString(args))
+	if path == "" {
+		var err error
+		path, err = fsAsString(args, "path")
+		if err != nil || path == "" {
+			return "", fmt.Errorf("path must be a non-empty string")
+		}
+	}
+	absPath, relPath, _, err := t.scope.resolvePathWithContext(ctx, "xlsx", path, false)
+	if err != nil {
+		return "", err
+	}
+	if err := enforceWritePathGuard(ctx, absPath); err != nil {
+		return "", err
+	}
+
+	workbook, err := loadMutableXLSXWorkbook(absPath)
+	if err != nil {
+		return "", err
+	}
+
+	sheetName := strings.TrimSpace(firstCompatString(args, "sheet"))
+	var summary string
+
+	switch action {
+	case "rename_sheet":
+		newName := strings.TrimSpace(firstCompatString(args, "new_name", "name"))
+		if newName == "" {
+			return "", fmt.Errorf("new_name is required")
+		}
+		target := sheetName
+		if target == "" {
+			target = strings.TrimSpace(firstCompatString(args, "from"))
+		}
+		if target == "" {
+			sheet, err := workbook.resolveSheet("")
+			if err != nil {
+				return "", err
+			}
+			target = sheet.name
+		}
+		if err := workbook.renameSheet(target, newName); err != nil {
+			return "", err
+		}
+		summary = fmt.Sprintf("Renamed sheet %s to %s", target, newName)
+	default:
+		sheet, err := workbook.resolveSheet(sheetName)
+		if err != nil {
+			return "", err
+		}
+		switch action {
+		case "append_rows":
+			rawRows, ok := compatArgValue(args, "rows")
+			if !ok {
+				return "", fmt.Errorf("rows are required")
+			}
+			if err := xlsxApplyAppendRows(sheet, rawRows); err != nil {
+				return "", err
+			}
+			summary = fmt.Sprintf("Appended rows to %s", sheet.name)
+		case "update_cells":
+			rawCells, ok := compatArgValue(args, "cells")
+			if !ok {
+				return "", fmt.Errorf("cells are required")
+			}
+			if err := xlsxApplyUpdateCells(sheet, rawCells); err != nil {
+				return "", err
+			}
+			summary = fmt.Sprintf("Updated cells on %s", sheet.name)
+		case "insert_rows":
+			rawRows, ok := compatArgValue(args, "rows")
+			if !ok {
+				return "", fmt.Errorf("rows are required")
+			}
+			row := compatInt(args, "row", "row_index")
+			if row <= 0 {
+				row = 1
+			}
+			count := compatInt(args, "count")
+			if count <= 0 {
+				count = 1
+			}
+			if err := xlsxApplyInsertRows(sheet, row, count, rawRows); err != nil {
+				return "", err
+			}
+			summary = fmt.Sprintf("Inserted rows into %s", sheet.name)
+		case "delete_rows":
+			row := compatInt(args, "row", "row_index")
+			if row <= 0 {
+				return "", fmt.Errorf("row must be >= 1")
+			}
+			count := compatInt(args, "count")
+			if count <= 0 {
+				count = 1
+			}
+			if err := xlsxApplyDeleteRows(sheet, row, count); err != nil {
+				return "", err
+			}
+			summary = fmt.Sprintf("Deleted rows from %s", sheet.name)
+		case "set_filter":
+			filterRange := strings.TrimSpace(firstCompatString(args, "range", "ref"))
+			if filterRange == "" {
+				columns := xlsxColumnSpecsForSheet(sheet.build)
+				if len(columns) == 0 || len(sheet.build.Rows) == 0 {
+					return "", fmt.Errorf("sheet has no used range")
+				}
+				filterRange = officeXLSXRangeRef(0, 1, len(columns)-1, len(sheet.build.Rows))
+			}
+			sheet.build.AutoFilter = filterRange
+			sheet.dirty = true
+			summary = fmt.Sprintf("Updated filter on %s", sheet.name)
+		case "set_freeze":
+			freeze := strings.TrimSpace(firstCompatString(args, "freeze"))
+			if freeze == "" {
+				return "", fmt.Errorf("freeze is required")
+			}
+			sheet.build.Freeze = freeze
+			sheet.dirty = true
+			summary = fmt.Sprintf("Updated freeze pane on %s", sheet.name)
+		default:
+			return "", fmt.Errorf("unsupported semantic xlsx action %q", action)
+		}
+	}
+
+	if err := workbook.save(absPath); err != nil {
+		return "", err
+	}
+	validation, err := t.validatePath(ctx, absPath)
+	if err != nil {
+		return "", err
+	}
+	info, _ := os.Stat(absPath)
+	payload := nativeDocumentPayload{
+		Action:       action,
+		Path:         relPath,
+		AbsolutePath: absPath,
+		OriginalPath: path,
+		Format:       "xlsx",
+		Engine:       "native_xlsx_ooxml",
+		EngineChain:  []string{"native_xlsx_ooxml"},
+		Degraded:     false,
+		Validation:   validation,
+		Size:         info.Size(),
+		Summary:      summary,
+		Success:      true,
+	}
+	return marshalNativeDocumentPayload(payload)
+}
+
+func (t *XLSXTool) executeAnalysisAction(ctx context.Context, args map[string]interface{}, action string) (string, error) {
+	path := strings.TrimSpace(firstCompatPathString(args))
+	if path == "" {
+		var err error
+		path, err = fsAsString(args, "path")
+		if err != nil || path == "" {
+			return "", fmt.Errorf("path must be a non-empty string")
+		}
+	}
+	absPath, relPath, _, err := t.scope.resolvePathWithContext(ctx, "xlsx", path, false)
+	if err != nil {
+		return "", err
+	}
+	workbook, err := loadMutableXLSXWorkbook(absPath)
+	if err != nil {
+		return "", err
+	}
+	sheet, err := workbook.resolveSheet(strings.TrimSpace(firstCompatString(args, "sheet")))
+	if err != nil && action != "sheet_compare" {
+		return "", err
+	}
+
+	var (
+		result  map[string]interface{}
+		summary string
+	)
+
+	switch action {
+	case "profile_sheet":
+		headers := xlsxHeadersForSheet(sheet.build)
+		result = map[string]interface{}{
+			"sheet":         sheet.name,
+			"row_count":     len(xlsxSheetRecords(sheet.build)),
+			"headers":       headers,
+			"formula_count": xlsxSheetFormulaCount(sheet.build),
+			"column_kinds":  xlsxSheetColumnKinds(sheet.build),
+		}
+		summary = fmt.Sprintf("Profiled %s with %d data rows", sheet.name, len(xlsxSheetRecords(sheet.build)))
+	case "group_by":
+		groupBy := strings.TrimSpace(firstCompatString(args, "group_by"))
+		metric := strings.TrimSpace(firstCompatString(args, "metric"))
+		if groupBy == "" || metric == "" {
+			return "", fmt.Errorf("group_by and metric are required")
+		}
+		groups := xlsxGroupTotals(sheet.build, groupBy, metric)
+		result = map[string]interface{}{
+			"sheet":    sheet.name,
+			"group_by": groupBy,
+			"metric":   metric,
+			"groups":   groups,
+		}
+		summary = fmt.Sprintf("Grouped %s by %s", metric, groupBy)
+	case "top_n":
+		metric := strings.TrimSpace(firstCompatString(args, "metric"))
+		if metric == "" {
+			return "", fmt.Errorf("metric is required")
+		}
+		limit := compatInt(args, "n", "limit")
+		if limit <= 0 {
+			limit = 5
+		}
+		rows := xlsxTopRows(sheet.build, metric, limit)
+		result = map[string]interface{}{
+			"sheet":  sheet.name,
+			"metric": metric,
+			"rows":   rows,
+		}
+		summary = fmt.Sprintf("Computed top %d rows by %s", limit, metric)
+	case "sheet_compare":
+		comparePath := strings.TrimSpace(firstCompatString(args, "compare_path", "other_path"))
+		if comparePath == "" {
+			return "", fmt.Errorf("compare_path is required")
+		}
+		compareAbs, _, _, err := t.scope.resolvePathWithContext(ctx, "xlsx", comparePath, false)
+		if err != nil {
+			return "", err
+		}
+		compareWorkbook, err := loadMutableXLSXWorkbook(compareAbs)
+		if err != nil {
+			return "", err
+		}
+		leftSheet, err := workbook.resolveSheet(strings.TrimSpace(firstCompatString(args, "sheet")))
+		if err != nil {
+			return "", err
+		}
+		rightSheet, err := compareWorkbook.resolveSheet(strings.TrimSpace(firstCompatString(args, "sheet")))
+		if err != nil {
+			return "", err
+		}
+		changed := xlsxChangedCellCount(leftSheet.build, rightSheet.build)
+		result = map[string]interface{}{
+			"sheet":         leftSheet.name,
+			"compare_path":  comparePath,
+			"changed_cells": changed,
+		}
+		summary = fmt.Sprintf("Compared %s against %s", leftSheet.name, comparePath)
+	default:
+		return "", fmt.Errorf("unsupported xlsx analysis action %q", action)
+	}
+
+	info, _ := os.Stat(absPath)
+	payload := nativeDocumentPayload{
+		Action:       action,
+		Path:         relPath,
+		AbsolutePath: absPath,
+		OriginalPath: path,
+		Format:       "xlsx",
+		Engine:       "native_xlsx_ooxml",
+		EngineChain:  []string{"native_xlsx_ooxml"},
+		Degraded:     false,
+		Size:         info.Size(),
+		Result:       result,
+		Summary:      summary,
+		Success:      true,
+	}
+	return marshalNativeDocumentPayload(payload)
 }

@@ -480,6 +480,8 @@ export default mergeHarnessLocale('ca-ES', {
     stillListening: "Continua, t'escolto...",
     continueGenerating: 'Continua',
     responseInterrupted: 'Resposta interrompuda',
+    responseStopped: 'Resposta aturada',
+    responseStoppedBadge: 'Aturada',
     deepResearchTitle: 'Recerca profunda',
     deepResearchEvidence: 'Evidència',
     deepResearchSupport: 'Suport',

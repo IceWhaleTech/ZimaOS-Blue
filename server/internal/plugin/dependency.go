@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // DependencyResolver handles plugin dependency resolution
@@ -21,9 +22,9 @@ func NewDependencyResolver(plugins map[string]*PluginInfo) *DependencyResolver {
 
 // DependencyError represents a dependency resolution error
 type DependencyError struct {
-	PluginID    string
+	PluginID     string
 	DependencyID string
-	Reason      string
+	Reason       string
 }
 
 func (e *DependencyError) Error() string {
@@ -74,9 +75,9 @@ func (r *DependencyResolver) Resolve() *ResolutionResult {
 					continue
 				}
 				result.Errors = append(result.Errors, &DependencyError{
-					PluginID:    id,
+					PluginID:     id,
 					DependencyID: dep.ID,
-					Reason:      "dependency not found",
+					Reason:       "dependency not found",
 				})
 				continue
 			}
@@ -91,9 +92,9 @@ func (r *DependencyResolver) Resolve() *ResolutionResult {
 						continue
 					}
 					result.Errors = append(result.Errors, &DependencyError{
-						PluginID:    id,
+						PluginID:     id,
 						DependencyID: dep.ID,
-						Reason:      fmt.Sprintf("version %s does not satisfy constraint %s", depInfo.Manifest.Version, dep.Version),
+						Reason:       fmt.Sprintf("version %s does not satisfy constraint %s", depInfo.Manifest.Version, dep.Version),
 					})
 					continue
 				}
@@ -143,9 +144,9 @@ func (r *DependencyResolver) Resolve() *ResolutionResult {
 			}
 		}
 		result.Errors = append(result.Errors, &DependencyError{
-			PluginID:    strings.Join(cyclePlugins, ", "),
+			PluginID:     strings.Join(cyclePlugins, ", "),
 			DependencyID: "",
-			Reason:      "circular dependency detected",
+			Reason:       "circular dependency detected",
 		})
 	}
 
@@ -280,9 +281,20 @@ func (v *semver) compare(other *semver) int {
 	return strings.Compare(v.prerelease, other.prerelease)
 }
 
-var semverRegex = regexp.MustCompile(`^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([a-zA-Z0-9.-]+))?(?:\+[a-zA-Z0-9.-]+)?$`)
+var (
+	semverRegexOnce sync.Once
+	semverRegex     *regexp.Regexp
+)
+
+func ensureSemverRegex() {
+	semverRegexOnce.Do(func() {
+		semverRegex = regexp.MustCompile(`^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([a-zA-Z0-9.-]+))?(?:\+[a-zA-Z0-9.-]+)?$`)
+	})
+}
 
 func parseVersion(version string) (*semver, error) {
+	ensureSemverRegex()
+
 	matches := semverRegex.FindStringSubmatch(version)
 	if matches == nil {
 		return nil, fmt.Errorf("invalid version: %s", version)
@@ -352,9 +364,9 @@ func (r *DependencyResolver) CheckDependenciesSatisfied(pluginID string) (bool, 
 		if !exists {
 			if !dep.Optional {
 				errors = append(errors, &DependencyError{
-					PluginID:    pluginID,
+					PluginID:     pluginID,
 					DependencyID: dep.ID,
-					Reason:      "dependency not found",
+					Reason:       "dependency not found",
 				})
 			}
 			continue
@@ -364,9 +376,9 @@ func (r *DependencyResolver) CheckDependenciesSatisfied(pluginID string) (bool, 
 		if depInfo.Status == StatusError {
 			if !dep.Optional {
 				errors = append(errors, &DependencyError{
-					PluginID:    pluginID,
+					PluginID:     pluginID,
 					DependencyID: dep.ID,
-					Reason:      "dependency is in error state",
+					Reason:       "dependency is in error state",
 				})
 			}
 			continue
@@ -377,9 +389,9 @@ func (r *DependencyResolver) CheckDependenciesSatisfied(pluginID string) (bool, 
 			if !r.checkVersionConstraint(depInfo.Manifest.Version, dep.Version) {
 				if !dep.Optional {
 					errors = append(errors, &DependencyError{
-						PluginID:    pluginID,
+						PluginID:     pluginID,
 						DependencyID: dep.ID,
-						Reason:      fmt.Sprintf("version %s does not satisfy constraint %s", depInfo.Manifest.Version, dep.Version),
+						Reason:       fmt.Sprintf("version %s does not satisfy constraint %s", depInfo.Manifest.Version, dep.Version),
 					})
 				}
 			}

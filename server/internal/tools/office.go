@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -60,11 +61,120 @@ type officeDocSection struct {
 	Paragraphs []string
 	Bullets    []string
 	Table      *officeTableSpec
+	Chart      *officeChartSpec
 }
 
 type officeTableSpec struct {
 	Headers []string
 	Rows    [][]string
+}
+
+type officeChartSpec struct {
+	Type                                  string
+	Title                                 string
+	CategoryAxisTitle                     string
+	SecondaryCategoryAxisTitle            string
+	CategoryAxisType                      string
+	CategoryAxisLabelPosition             string
+	SecondaryCategoryAxisLabelPosition    string
+	CategoryAxisReverseOrder              string
+	SecondaryCategoryAxisReverseOrder     string
+	CategoryAxisCrosses                   string
+	SecondaryCategoryAxisCrosses          string
+	CategoryAxisMajorTickMark             string
+	CategoryAxisMinorTickMark             string
+	SecondaryCategoryAxisMajorTickMark    string
+	SecondaryCategoryAxisMinorTickMark    string
+	CategoryAxisLabelAlignment            string
+	SecondaryCategoryAxisLabelAlignment   string
+	CategoryAxisLabelOffset               *int
+	SecondaryCategoryAxisLabelOffset      *int
+	CategoryAxisMultiLevelLabels          string
+	SecondaryCategoryAxisMultiLevelLabels string
+	CategoryAxisVisible                   string
+	SecondaryCategoryAxisVisible          string
+	CategoryAxisAuto                      string
+	SecondaryCategoryAxisAuto             string
+	CategoryAxisFormat                    string
+	SecondaryCategoryAxisFormat           string
+	CategoryAxisMin                       *float64
+	CategoryAxisMax                       *float64
+	CategoryAxisBaseTimeUnit              string
+	CategoryAxisMajorUnit                 *float64
+	CategoryAxisMinorUnit                 *float64
+	CategoryAxisMajorTimeUnit             string
+	CategoryAxisMinorTimeUnit             string
+	ValueAxisTitle                        string
+	SecondaryValueAxisTitle               string
+	ValueAxisFormat                       string
+	SecondaryValueAxisFormat              string
+	ValueAxisMin                          *float64
+	ValueAxisMax                          *float64
+	SecondaryValueAxisMin                 *float64
+	SecondaryValueAxisMax                 *float64
+	ValueAxisMajorUnit                    *float64
+	ValueAxisMinorUnit                    *float64
+	SecondaryValueAxisMajorUnit           *float64
+	SecondaryValueAxisMinorUnit           *float64
+	ValueAxisMajorGridlines               string
+	ValueAxisMinorGridlines               string
+	SecondaryValueAxisMajorGridlines      string
+	SecondaryValueAxisMinorGridlines      string
+	ValueAxisCrosses                      string
+	SecondaryValueAxisCrosses             string
+	ValueAxisCrossBetween                 string
+	SecondaryValueAxisCrossBetween        string
+	ValueAxisReverseOrder                 string
+	SecondaryValueAxisReverseOrder        string
+	ValueAxisLabelPosition                string
+	SecondaryValueAxisLabelPosition       string
+	ValueAxisMajorTickMark                string
+	ValueAxisMinorTickMark                string
+	SecondaryValueAxisMajorTickMark       string
+	SecondaryValueAxisMinorTickMark       string
+	ShowLegend                            string
+	LegendPosition                        string
+	VaryColors                            string
+	StartAngle                            int
+	HoleSize                              int
+	Smooth                                string
+	GapWidth                              *int
+	Overlap                               *int
+	Labels                                string
+	LabelPosition                         string
+	LabelFormat                           string
+	ShowValue                             string
+	ShowCategory                          string
+	ShowSeriesName                        string
+	ShowPercent                           string
+	ShowLegendKey                         string
+	ShowBubbleSize                        string
+	Categories                            []string
+	Series                                []officeChartSeries
+}
+
+type officeChartSeries struct {
+	Name            string
+	WorkbookIndex   int
+	Type            string
+	Axis            string
+	Labels          string
+	LabelPosition   string
+	LabelFormat     string
+	ShowValue       string
+	ShowCategory    string
+	ShowSeriesName  string
+	ShowPercent     string
+	ShowLegendKey   string
+	ShowBubbleSize  string
+	PointColors     []string
+	PointExplosions []int
+	Smooth          string
+	Color           string
+	LineWidth       float64
+	Dash            string
+	Marker          string
+	Values          []float64
 }
 
 type officeBuildInfo struct {
@@ -148,7 +258,7 @@ func (t *OfficeTool) Definition() ToolDefinition {
 				},
 				"sections": map[string]interface{}{
 					"type":        "array",
-					"description": "For docx output, optional structured sections. Each section can include heading, paragraphs/body/text, bullets/items, and table.",
+					"description": "For docx output, optional structured sections. Each section can include heading, paragraphs/body/text, bullets/items, and table. The shared parser also accepts pptx-specific chart blocks when used through the pptx tool.",
 				},
 				"notes": map[string]interface{}{
 					"type":        "array",
@@ -666,6 +776,13 @@ func parseOfficeDocSections(raw interface{}) ([]officeDocSection, error) {
 			}
 			section.Table = table
 		}
+		if rawChart, ok := m["chart"]; ok {
+			chart, err := parseOfficeChart(rawChart)
+			if err != nil {
+				return nil, fmt.Errorf("section %d: %w", idx+1, err)
+			}
+			section.Chart = chart
+		}
 		sections = append(sections, section)
 	}
 	return sections, nil
@@ -700,6 +817,866 @@ func parseOfficeTable(raw interface{}) (*officeTableSpec, error) {
 		}
 	}
 	return &officeTableSpec{Headers: headers, Rows: rows}, nil
+}
+
+func parseOfficeChart(raw interface{}) (*officeChartSpec, error) {
+	m, ok := raw.(map[string]interface{})
+	if !ok {
+		return nil, errors.New("chart must be an object")
+	}
+
+	chartType := officeNormalizeChartType(anyToStringForLLM(firstMapValue(m, "type", "chart_type", "kind")))
+	if chartType == "" {
+		return nil, errors.New("chart type must be one of: bar, column, stacked_bar, stacked_column, percent_stacked_bar, percent_stacked_column, line, pie, donut, combo")
+	}
+
+	categories := officeStringSliceAny(firstMapValue(m, "categories", "labels"))
+	seriesRaw, ok := m["series"].([]interface{})
+	if !ok || len(seriesRaw) == 0 {
+		return nil, errors.New("chart series must be a non-empty array")
+	}
+	series := make([]officeChartSeries, 0, len(seriesRaw))
+	maxLen := 0
+	comboBars := 0
+	comboLines := 0
+	for idx, item := range seriesRaw {
+		seriesItem, ok := item.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("chart series %d must be an object", idx+1)
+		}
+		valuesRaw, ok := seriesItem["values"].([]interface{})
+		if !ok || len(valuesRaw) == 0 {
+			return nil, fmt.Errorf("chart series %d values must be a non-empty array", idx+1)
+		}
+		values := make([]float64, 0, len(valuesRaw))
+		for valueIndex, rawValue := range valuesRaw {
+			value, ok := officeChartNumber(rawValue)
+			if !ok {
+				return nil, fmt.Errorf("chart series %d value %d must be numeric", idx+1, valueIndex+1)
+			}
+			values = append(values, value)
+		}
+		if len(values) > maxLen {
+			maxLen = len(values)
+		}
+		seriesType := officeNormalizeChartSeriesType(chartType, anyToStringForLLM(firstMapValue(seriesItem, "type", "chart_type", "render_as", "renderAs")), idx)
+		seriesAxis := officeNormalizeChartSeriesAxis(chartType, seriesType, anyToStringForLLM(firstMapValue(seriesItem, "axis", "y_axis", "yAxis", "value_axis", "valueAxis")))
+		if chartType == "combo" {
+			switch seriesType {
+			case "bar":
+				comboBars++
+			case "line":
+				comboLines++
+			default:
+				return nil, fmt.Errorf("chart series %d type must be bar or line for combo charts", idx+1)
+			}
+		}
+		series = append(series, officeChartSeries{
+			Name:            firstNonEmptyOfficeString(strings.TrimSpace(anyToStringForLLM(firstMapValue(seriesItem, "name", "label"))), fmt.Sprintf("Series %d", idx+1)),
+			Type:            seriesType,
+			Axis:            seriesAxis,
+			Labels:          officeNormalizeChartLabels(firstMapValue(seriesItem, "labels", "data_labels", "show_labels", "showLabels")),
+			LabelPosition:   officeNormalizeChartLabelPosition(anyToStringForLLM(firstMapValue(seriesItem, "label_position", "labelPosition", "labels_position", "data_label_position", "dataLabelPosition"))),
+			LabelFormat:     officeNormalizeChartLabelFormat(anyToStringForLLM(firstMapValue(seriesItem, "label_format", "labelFormat", "labels_format", "data_label_format", "dataLabelFormat"))),
+			ShowValue:       officeNormalizeChartLabels(firstMapValue(seriesItem, "show_value", "showValue", "label_value", "labelValue")),
+			ShowCategory:    officeNormalizeChartLabels(firstMapValue(seriesItem, "show_category", "showCategory", "label_category", "labelCategory")),
+			ShowSeriesName:  officeNormalizeChartLabels(firstMapValue(seriesItem, "show_series_name", "showSeriesName", "label_series_name", "labelSeriesName")),
+			ShowPercent:     officeNormalizeChartLabels(firstMapValue(seriesItem, "show_percent", "showPercent", "label_percent", "labelPercent")),
+			ShowLegendKey:   officeNormalizeChartLabels(firstMapValue(seriesItem, "show_legend_key", "showLegendKey", "label_legend_key", "labelLegendKey")),
+			ShowBubbleSize:  officeNormalizeChartLabels(firstMapValue(seriesItem, "show_bubble_size", "showBubbleSize", "label_bubble_size", "labelBubbleSize")),
+			PointColors:     officeNormalizeChartPointColors(firstMapValue(seriesItem, "point_colors", "pointColors", "slice_colors", "sliceColors")),
+			PointExplosions: officeNormalizeChartPointExplosions(firstMapValue(seriesItem, "point_explosions", "pointExplosions", "slice_explosions", "sliceExplosions")),
+			Smooth:          officeNormalizeChartLabels(firstMapValue(seriesItem, "smooth", "smoothed", "smooth_lines", "smoothLines")),
+			Color:           officeNormalizeChartSeriesColor(anyToStringForLLM(firstMapValue(seriesItem, "color", "colour", "hex"))),
+			LineWidth:       officeNormalizeChartSeriesLineWidth(firstMapValue(seriesItem, "line_width", "lineWidth", "stroke_width", "strokeWidth")),
+			Dash:            officeNormalizeChartSeriesDash(anyToStringForLLM(firstMapValue(seriesItem, "dash", "dash_style", "dashStyle"))),
+			Marker:          officeNormalizeChartSeriesMarker(anyToStringForLLM(firstMapValue(seriesItem, "marker", "marker_style", "markerStyle"))),
+			Values:          values,
+		})
+	}
+	if chartType == "combo" && (comboBars == 0 || comboLines == 0) {
+		return nil, errors.New("combo chart requires at least one bar series and one line series")
+	}
+
+	if len(categories) == 0 {
+		categories = make([]string, maxLen)
+		for idx := range categories {
+			categories[idx] = fmt.Sprintf("Category %d", idx+1)
+		}
+	}
+	for len(categories) < maxLen {
+		categories = append(categories, fmt.Sprintf("Category %d", len(categories)+1))
+	}
+	if len(categories) == 0 {
+		return nil, errors.New("chart categories are required")
+	}
+	categoryAxisType := officeNormalizeChartCategoryAxisType(anyToStringForLLM(firstMapValue(m, "category_axis_type", "categoryAxisType", "x_axis_type", "xAxisType")))
+	if categoryAxisType == "date" || categoryAxisType == "datetime" {
+		withTime := categoryAxisType == "datetime"
+		switch chartType {
+		case "pie", "donut":
+			return nil, fmt.Errorf("%s category axis is not yet supported for %s charts", categoryAxisType, chartType)
+		}
+		for idx, category := range categories {
+			if _, ok := officeExcelDateSerial(category, withTime); !ok {
+				return nil, fmt.Errorf("chart category %d must be an ISO-like %s when x_axis_type is %s", idx+1, map[bool]string{true: "date-time", false: "date"}[withTime], categoryAxisType)
+			}
+		}
+	}
+	categoryAxisMinRaw := firstMapValue(m, "category_axis_min", "categoryAxisMin", "x_axis_min", "xAxisMin")
+	categoryAxisMaxRaw := firstMapValue(m, "category_axis_max", "categoryAxisMax", "x_axis_max", "xAxisMax")
+	var categoryAxisMin *float64
+	var categoryAxisMax *float64
+	if categoryAxisType == "date" || categoryAxisType == "datetime" {
+		withTime := categoryAxisType == "datetime"
+		var err error
+		categoryAxisMin, err = officeParseChartDateAxisBound(categoryAxisMinRaw, "x_axis_min", withTime)
+		if err != nil {
+			return nil, err
+		}
+		categoryAxisMax, err = officeParseChartDateAxisBound(categoryAxisMaxRaw, "x_axis_max", withTime)
+		if err != nil {
+			return nil, err
+		}
+		if categoryAxisMin != nil && categoryAxisMax != nil && *categoryAxisMin > *categoryAxisMax {
+			return nil, fmt.Errorf("x_axis_min must be less than or equal to x_axis_max when x_axis_type is %s", categoryAxisType)
+		}
+	}
+	for idx := range series {
+		for len(series[idx].Values) < len(categories) {
+			series[idx].Values = append(series[idx].Values, 0)
+		}
+	}
+
+	return &officeChartSpec{
+		Type:                                  chartType,
+		Title:                                 strings.TrimSpace(anyToStringForLLM(firstMapValue(m, "title", "name"))),
+		CategoryAxisTitle:                     strings.TrimSpace(anyToStringForLLM(firstMapValue(m, "category_axis_title", "categoryAxisTitle", "x_axis_title", "xAxisTitle"))),
+		SecondaryCategoryAxisTitle:            strings.TrimSpace(anyToStringForLLM(firstMapValue(m, "secondary_category_axis_title", "secondaryCategoryAxisTitle", "secondary_x_axis_title", "secondaryXAxisTitle", "x2_axis_title", "x2AxisTitle"))),
+		CategoryAxisType:                      categoryAxisType,
+		CategoryAxisLabelPosition:             officeNormalizeChartAxisLabelPosition(anyToStringForLLM(firstMapValue(m, "category_axis_label_position", "categoryAxisLabelPosition", "x_axis_label_position", "xAxisLabelPosition"))),
+		SecondaryCategoryAxisLabelPosition:    officeNormalizeChartAxisLabelPosition(anyToStringForLLM(firstMapValue(m, "secondary_category_axis_label_position", "secondaryCategoryAxisLabelPosition", "secondary_x_axis_label_position", "secondaryXAxisLabelPosition", "x2_axis_label_position", "x2AxisLabelPosition"))),
+		CategoryAxisReverseOrder:              officeNormalizeChartAxisReverseOrder(firstMapValue(m, "category_axis_reverse_order", "categoryAxisReverseOrder", "x_axis_reverse_order", "xAxisReverseOrder")),
+		SecondaryCategoryAxisReverseOrder:     officeNormalizeChartAxisReverseOrder(firstMapValue(m, "secondary_category_axis_reverse_order", "secondaryCategoryAxisReverseOrder", "secondary_x_axis_reverse_order", "secondaryXAxisReverseOrder", "x2_axis_reverse_order", "x2AxisReverseOrder")),
+		CategoryAxisCrosses:                   officeNormalizeChartAxisCrosses(anyToStringForLLM(firstMapValue(m, "category_axis_crosses", "categoryAxisCrosses", "x_axis_crosses", "xAxisCrosses"))),
+		SecondaryCategoryAxisCrosses:          officeNormalizeChartAxisCrosses(anyToStringForLLM(firstMapValue(m, "secondary_category_axis_crosses", "secondaryCategoryAxisCrosses", "secondary_x_axis_crosses", "secondaryXAxisCrosses", "x2_axis_crosses", "x2AxisCrosses"))),
+		CategoryAxisMajorTickMark:             officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "category_axis_major_tick_mark", "categoryAxisMajorTickMark", "x_axis_major_tick_mark", "xAxisMajorTickMark"))),
+		CategoryAxisMinorTickMark:             officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "category_axis_minor_tick_mark", "categoryAxisMinorTickMark", "x_axis_minor_tick_mark", "xAxisMinorTickMark"))),
+		SecondaryCategoryAxisMajorTickMark:    officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "secondary_category_axis_major_tick_mark", "secondaryCategoryAxisMajorTickMark", "secondary_x_axis_major_tick_mark", "secondaryXAxisMajorTickMark", "x2_axis_major_tick_mark", "x2AxisMajorTickMark"))),
+		SecondaryCategoryAxisMinorTickMark:    officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "secondary_category_axis_minor_tick_mark", "secondaryCategoryAxisMinorTickMark", "secondary_x_axis_minor_tick_mark", "secondaryXAxisMinorTickMark", "x2_axis_minor_tick_mark", "x2AxisMinorTickMark"))),
+		CategoryAxisLabelAlignment:            officeNormalizeChartAxisLabelAlignment(anyToStringForLLM(firstMapValue(m, "category_axis_label_alignment", "categoryAxisLabelAlignment", "x_axis_label_alignment", "xAxisLabelAlignment"))),
+		SecondaryCategoryAxisLabelAlignment:   officeNormalizeChartAxisLabelAlignment(anyToStringForLLM(firstMapValue(m, "secondary_category_axis_label_alignment", "secondaryCategoryAxisLabelAlignment", "secondary_x_axis_label_alignment", "secondaryXAxisLabelAlignment", "x2_axis_label_alignment", "x2AxisLabelAlignment"))),
+		CategoryAxisLabelOffset:               officeNormalizeChartAxisLabelOffset(firstMapValue(m, "category_axis_label_offset", "categoryAxisLabelOffset", "x_axis_label_offset", "xAxisLabelOffset")),
+		SecondaryCategoryAxisLabelOffset:      officeNormalizeChartAxisLabelOffset(firstMapValue(m, "secondary_category_axis_label_offset", "secondaryCategoryAxisLabelOffset", "secondary_x_axis_label_offset", "secondaryXAxisLabelOffset", "x2_axis_label_offset", "x2AxisLabelOffset")),
+		CategoryAxisMultiLevelLabels:          officeNormalizeChartLabels(firstMapValue(m, "category_axis_multi_level_labels", "categoryAxisMultiLevelLabels", "category_axis_multilevel_labels", "categoryAxisMultilevelLabels", "x_axis_multi_level_labels", "xAxisMultiLevelLabels", "x_axis_multilevel_labels", "xAxisMultilevelLabels")),
+		SecondaryCategoryAxisMultiLevelLabels: officeNormalizeChartLabels(firstMapValue(m, "secondary_category_axis_multi_level_labels", "secondaryCategoryAxisMultiLevelLabels", "secondary_category_axis_multilevel_labels", "secondaryCategoryAxisMultilevelLabels", "secondary_x_axis_multi_level_labels", "secondaryXAxisMultiLevelLabels", "secondary_x_axis_multilevel_labels", "secondaryXAxisMultilevelLabels", "x2_axis_multi_level_labels", "x2AxisMultiLevelLabels", "x2_axis_multilevel_labels", "x2AxisMultilevelLabels")),
+		CategoryAxisVisible:                   officeNormalizeChartLabels(firstMapValue(m, "category_axis_visible", "categoryAxisVisible", "show_category_axis", "showCategoryAxis", "x_axis_visible", "xAxisVisible")),
+		SecondaryCategoryAxisVisible:          officeNormalizeChartLabels(firstMapValue(m, "secondary_category_axis_visible", "secondaryCategoryAxisVisible", "show_secondary_category_axis", "showSecondaryCategoryAxis", "secondary_x_axis_visible", "secondaryXAxisVisible", "x2_axis_visible", "x2AxisVisible")),
+		CategoryAxisAuto:                      officeNormalizeChartLabels(firstMapValue(m, "category_axis_auto", "categoryAxisAuto", "x_axis_auto", "xAxisAuto")),
+		SecondaryCategoryAxisAuto:             officeNormalizeChartLabels(firstMapValue(m, "secondary_category_axis_auto", "secondaryCategoryAxisAuto", "secondary_x_axis_auto", "secondaryXAxisAuto", "x2_axis_auto", "x2AxisAuto")),
+		CategoryAxisFormat:                    officeNormalizeChartAxisFormat(anyToStringForLLM(firstMapValue(m, "category_axis_format", "categoryAxisFormat", "x_axis_format", "xAxisFormat"))),
+		SecondaryCategoryAxisFormat:           officeNormalizeChartAxisFormat(anyToStringForLLM(firstMapValue(m, "secondary_category_axis_format", "secondaryCategoryAxisFormat", "secondary_x_axis_format", "secondaryXAxisFormat", "x2_axis_format", "x2AxisFormat"))),
+		CategoryAxisMin:                       categoryAxisMin,
+		CategoryAxisMax:                       categoryAxisMax,
+		CategoryAxisBaseTimeUnit:              officeNormalizeChartDateAxisTimeUnit(anyToStringForLLM(firstMapValue(m, "category_axis_base_time_unit", "categoryAxisBaseTimeUnit", "x_axis_base_time_unit", "xAxisBaseTimeUnit"))),
+		CategoryAxisMajorUnit:                 officeNormalizeChartAxisUnit(firstMapValue(m, "category_axis_major_unit", "categoryAxisMajorUnit", "x_axis_major_unit", "xAxisMajorUnit")),
+		CategoryAxisMinorUnit:                 officeNormalizeChartAxisUnit(firstMapValue(m, "category_axis_minor_unit", "categoryAxisMinorUnit", "x_axis_minor_unit", "xAxisMinorUnit")),
+		CategoryAxisMajorTimeUnit:             officeNormalizeChartDateAxisTimeUnit(anyToStringForLLM(firstMapValue(m, "category_axis_major_time_unit", "categoryAxisMajorTimeUnit", "x_axis_major_time_unit", "xAxisMajorTimeUnit"))),
+		CategoryAxisMinorTimeUnit:             officeNormalizeChartDateAxisTimeUnit(anyToStringForLLM(firstMapValue(m, "category_axis_minor_time_unit", "categoryAxisMinorTimeUnit", "x_axis_minor_time_unit", "xAxisMinorTimeUnit"))),
+		ValueAxisTitle:                        strings.TrimSpace(anyToStringForLLM(firstMapValue(m, "value_axis_title", "valueAxisTitle", "y_axis_title", "yAxisTitle"))),
+		SecondaryValueAxisTitle:               strings.TrimSpace(anyToStringForLLM(firstMapValue(m, "secondary_value_axis_title", "secondaryValueAxisTitle", "secondary_y_axis_title", "secondaryYAxisTitle", "y2_axis_title", "y2AxisTitle"))),
+		ValueAxisFormat:                       officeNormalizeChartAxisFormat(anyToStringForLLM(firstMapValue(m, "value_axis_format", "valueAxisFormat", "y_axis_format", "yAxisFormat"))),
+		SecondaryValueAxisFormat:              officeNormalizeChartAxisFormat(anyToStringForLLM(firstMapValue(m, "secondary_value_axis_format", "secondaryValueAxisFormat", "secondary_y_axis_format", "secondaryYAxisFormat", "y2_axis_format", "y2AxisFormat"))),
+		ValueAxisMin:                          officeNormalizeChartAxisBound(firstMapValue(m, "value_axis_min", "valueAxisMin", "y_axis_min", "yAxisMin")),
+		ValueAxisMax:                          officeNormalizeChartAxisBound(firstMapValue(m, "value_axis_max", "valueAxisMax", "y_axis_max", "yAxisMax")),
+		SecondaryValueAxisMin:                 officeNormalizeChartAxisBound(firstMapValue(m, "secondary_value_axis_min", "secondaryValueAxisMin", "secondary_y_axis_min", "secondaryYAxisMin", "y2_axis_min", "y2AxisMin")),
+		SecondaryValueAxisMax:                 officeNormalizeChartAxisBound(firstMapValue(m, "secondary_value_axis_max", "secondaryValueAxisMax", "secondary_y_axis_max", "secondaryYAxisMax", "y2_axis_max", "y2AxisMax")),
+		ValueAxisMajorUnit:                    officeNormalizeChartAxisUnit(firstMapValue(m, "value_axis_major_unit", "valueAxisMajorUnit", "y_axis_major_unit", "yAxisMajorUnit")),
+		ValueAxisMinorUnit:                    officeNormalizeChartAxisUnit(firstMapValue(m, "value_axis_minor_unit", "valueAxisMinorUnit", "y_axis_minor_unit", "yAxisMinorUnit")),
+		SecondaryValueAxisMajorUnit:           officeNormalizeChartAxisUnit(firstMapValue(m, "secondary_value_axis_major_unit", "secondaryValueAxisMajorUnit", "secondary_y_axis_major_unit", "secondaryYAxisMajorUnit", "y2_axis_major_unit", "y2AxisMajorUnit")),
+		SecondaryValueAxisMinorUnit:           officeNormalizeChartAxisUnit(firstMapValue(m, "secondary_value_axis_minor_unit", "secondaryValueAxisMinorUnit", "secondary_y_axis_minor_unit", "secondaryYAxisMinorUnit", "y2_axis_minor_unit", "y2AxisMinorUnit")),
+		ValueAxisMajorGridlines:               officeNormalizeChartLabels(firstMapValue(m, "value_axis_major_gridlines", "valueAxisMajorGridlines", "y_axis_major_gridlines", "yAxisMajorGridlines")),
+		ValueAxisMinorGridlines:               officeNormalizeChartLabels(firstMapValue(m, "value_axis_minor_gridlines", "valueAxisMinorGridlines", "y_axis_minor_gridlines", "yAxisMinorGridlines")),
+		SecondaryValueAxisMajorGridlines:      officeNormalizeChartLabels(firstMapValue(m, "secondary_value_axis_major_gridlines", "secondaryValueAxisMajorGridlines", "secondary_y_axis_major_gridlines", "secondaryYAxisMajorGridlines", "y2_axis_major_gridlines", "y2AxisMajorGridlines")),
+		SecondaryValueAxisMinorGridlines:      officeNormalizeChartLabels(firstMapValue(m, "secondary_value_axis_minor_gridlines", "secondaryValueAxisMinorGridlines", "secondary_y_axis_minor_gridlines", "secondaryYAxisMinorGridlines", "y2_axis_minor_gridlines", "y2AxisMinorGridlines")),
+		ValueAxisCrosses:                      officeNormalizeChartAxisCrosses(anyToStringForLLM(firstMapValue(m, "value_axis_crosses", "valueAxisCrosses", "y_axis_crosses", "yAxisCrosses"))),
+		SecondaryValueAxisCrosses:             officeNormalizeChartAxisCrosses(anyToStringForLLM(firstMapValue(m, "secondary_value_axis_crosses", "secondaryValueAxisCrosses", "secondary_y_axis_crosses", "secondaryYAxisCrosses", "y2_axis_crosses", "y2AxisCrosses"))),
+		ValueAxisCrossBetween:                 officeNormalizeChartAxisCrossBetween(anyToStringForLLM(firstMapValue(m, "value_axis_cross_between", "valueAxisCrossBetween", "y_axis_cross_between", "yAxisCrossBetween"))),
+		SecondaryValueAxisCrossBetween:        officeNormalizeChartAxisCrossBetween(anyToStringForLLM(firstMapValue(m, "secondary_value_axis_cross_between", "secondaryValueAxisCrossBetween", "secondary_y_axis_cross_between", "secondaryYAxisCrossBetween", "y2_axis_cross_between", "y2AxisCrossBetween"))),
+		ValueAxisReverseOrder:                 officeNormalizeChartAxisReverseOrder(firstMapValue(m, "value_axis_reverse_order", "valueAxisReverseOrder", "y_axis_reverse_order", "yAxisReverseOrder")),
+		SecondaryValueAxisReverseOrder:        officeNormalizeChartAxisReverseOrder(firstMapValue(m, "secondary_value_axis_reverse_order", "secondaryValueAxisReverseOrder", "secondary_y_axis_reverse_order", "secondaryYAxisReverseOrder", "y2_axis_reverse_order", "y2AxisReverseOrder")),
+		ValueAxisLabelPosition:                officeNormalizeChartAxisLabelPosition(anyToStringForLLM(firstMapValue(m, "value_axis_label_position", "valueAxisLabelPosition", "y_axis_label_position", "yAxisLabelPosition"))),
+		SecondaryValueAxisLabelPosition:       officeNormalizeChartAxisLabelPosition(anyToStringForLLM(firstMapValue(m, "secondary_value_axis_label_position", "secondaryValueAxisLabelPosition", "secondary_y_axis_label_position", "secondaryYAxisLabelPosition", "y2_axis_label_position", "y2AxisLabelPosition"))),
+		ValueAxisMajorTickMark:                officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "value_axis_major_tick_mark", "valueAxisMajorTickMark", "y_axis_major_tick_mark", "yAxisMajorTickMark"))),
+		ValueAxisMinorTickMark:                officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "value_axis_minor_tick_mark", "valueAxisMinorTickMark", "y_axis_minor_tick_mark", "yAxisMinorTickMark"))),
+		SecondaryValueAxisMajorTickMark:       officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "secondary_value_axis_major_tick_mark", "secondaryValueAxisMajorTickMark", "secondary_y_axis_major_tick_mark", "secondaryYAxisMajorTickMark", "y2_axis_major_tick_mark", "y2AxisMajorTickMark"))),
+		SecondaryValueAxisMinorTickMark:       officeNormalizeChartTickMark(anyToStringForLLM(firstMapValue(m, "secondary_value_axis_minor_tick_mark", "secondaryValueAxisMinorTickMark", "secondary_y_axis_minor_tick_mark", "secondaryYAxisMinorTickMark", "y2_axis_minor_tick_mark", "y2AxisMinorTickMark"))),
+		ShowLegend:                            officeNormalizeChartLabels(firstMapValue(m, "show_legend", "showLegend")),
+		LegendPosition:                        officeNormalizeChartLegendPosition(anyToStringForLLM(firstMapValue(m, "legend_position", "legendPosition", "legend_pos", "legendPos"))),
+		VaryColors:                            officeNormalizeChartLabels(firstMapValue(m, "vary_colors", "varyColors")),
+		StartAngle:                            officeNormalizeChartStartAngle(firstMapValue(m, "start_angle", "startAngle", "first_slice_angle", "firstSliceAngle")),
+		HoleSize:                              officeNormalizeChartHoleSize(firstMapValue(m, "hole_size", "holeSize", "donut_hole_size", "donutHoleSize")),
+		Smooth:                                officeNormalizeChartLabels(firstMapValue(m, "smooth", "smoothed", "smooth_lines", "smoothLines", "line_smoothing", "lineSmoothing")),
+		GapWidth:                              officeNormalizeChartGapWidth(firstMapValue(m, "gap_width", "gapWidth")),
+		Overlap:                               officeNormalizeChartOverlap(firstMapValue(m, "overlap")),
+		Labels:                                officeNormalizeChartLabels(firstMapValue(m, "labels", "data_labels", "show_labels", "showLabels")),
+		LabelPosition:                         officeNormalizeChartLabelPosition(anyToStringForLLM(firstMapValue(m, "label_position", "labelPosition", "labels_position", "data_label_position", "dataLabelPosition"))),
+		LabelFormat:                           officeNormalizeChartLabelFormat(anyToStringForLLM(firstMapValue(m, "label_format", "labelFormat", "labels_format", "data_label_format", "dataLabelFormat"))),
+		ShowValue:                             officeNormalizeChartLabels(firstMapValue(m, "show_value", "showValue", "label_value", "labelValue")),
+		ShowCategory:                          officeNormalizeChartLabels(firstMapValue(m, "show_category", "showCategory", "label_category", "labelCategory")),
+		ShowSeriesName:                        officeNormalizeChartLabels(firstMapValue(m, "show_series_name", "showSeriesName", "label_series_name", "labelSeriesName")),
+		ShowPercent:                           officeNormalizeChartLabels(firstMapValue(m, "show_percent", "showPercent", "label_percent", "labelPercent")),
+		ShowLegendKey:                         officeNormalizeChartLabels(firstMapValue(m, "show_legend_key", "showLegendKey", "label_legend_key", "labelLegendKey")),
+		ShowBubbleSize:                        officeNormalizeChartLabels(firstMapValue(m, "show_bubble_size", "showBubbleSize", "label_bubble_size", "labelBubbleSize")),
+		Categories:                            categories,
+		Series:                                series,
+	}, nil
+}
+
+func officeNormalizeChartType(chartType string) string {
+	switch strings.ToLower(strings.TrimSpace(chartType)) {
+	case "bar", "column", "col", "bars":
+		return "bar"
+	case "stacked_bar", "bar_stacked", "horizontal_stacked_bar", "stacked-horizontal-bar":
+		return "stacked_bar"
+	case "stacked_column", "stacked_col", "column_stacked", "stacked":
+		return "stacked_column"
+	case "percent_stacked_bar", "100_stacked_bar", "100_percent_stacked_bar", "percent-bar":
+		return "percent_stacked_bar"
+	case "percent_stacked_column", "percent_stacked_col", "100_stacked_column", "100_percent_stacked_column", "percent_stacked":
+		return "percent_stacked_column"
+	case "line", "trend":
+		return "line"
+	case "pie":
+		return "pie"
+	case "donut", "doughnut":
+		return "donut"
+	case "combo", "mixed", "mixed_bar_line", "bar_line_combo":
+		return "combo"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartSeriesType(chartType, seriesType string, index int) string {
+	seriesType = strings.ToLower(strings.TrimSpace(seriesType))
+	switch chartType {
+	case "combo":
+		switch seriesType {
+		case "", "bar", "column", "col":
+			if index == 0 || seriesType != "" {
+				return "bar"
+			}
+			return "line"
+		case "line", "trend":
+			return "line"
+		default:
+			return ""
+		}
+	case "line":
+		return "line"
+	case "pie", "donut":
+		return chartType
+	case "stacked_bar", "percent_stacked_bar":
+		return "bar"
+	case "stacked_column", "percent_stacked_column", "bar":
+		return "bar"
+	default:
+		if seriesType == "line" {
+			return "line"
+		}
+		return chartType
+	}
+}
+
+func officeNormalizeChartSeriesAxis(chartType, seriesType, axis string) string {
+	if chartType != "combo" {
+		return "primary"
+	}
+	switch strings.ToLower(strings.TrimSpace(axis)) {
+	case "secondary", "secondary_y", "secondary-axis", "secondary_axis", "right", "rhs", "y2", "2":
+		return "secondary"
+	case "", "primary", "primary_y", "primary-axis", "primary_axis", "left", "lhs", "y1", "1":
+		return "primary"
+	default:
+		if seriesType == "line" && strings.Contains(strings.ToLower(strings.TrimSpace(axis)), "secondary") {
+			return "secondary"
+		}
+		return "primary"
+	}
+}
+
+func officeNormalizeChartSeriesColor(color string) string {
+	color = strings.TrimSpace(color)
+	color = strings.TrimPrefix(color, "#")
+	color = strings.TrimPrefix(strings.TrimPrefix(color, "0x"), "0X")
+	if len(color) == 3 {
+		color = strings.Repeat(string(color[0]), 2) + strings.Repeat(string(color[1]), 2) + strings.Repeat(string(color[2]), 2)
+	}
+	if len(color) != 6 {
+		return ""
+	}
+	color = strings.ToUpper(color)
+	for _, ch := range color {
+		if (ch < '0' || ch > '9') && (ch < 'A' || ch > 'F') {
+			return ""
+		}
+	}
+	return color
+}
+
+func officeNormalizeChartPointColors(raw interface{}) []string {
+	var items []interface{}
+	switch typed := raw.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		items = typed
+	case []string:
+		items = make([]interface{}, 0, len(typed))
+		for _, value := range typed {
+			items = append(items, value)
+		}
+	default:
+		return nil
+	}
+	colors := make([]string, 0, len(items))
+	lastNonEmpty := -1
+	for idx, item := range items {
+		color := officeNormalizeChartSeriesColor(anyToStringForLLM(item))
+		colors = append(colors, color)
+		if color != "" {
+			lastNonEmpty = idx
+		}
+	}
+	if lastNonEmpty < 0 {
+		return nil
+	}
+	return append([]string(nil), colors[:lastNonEmpty+1]...)
+}
+
+func officeNormalizeChartPointExplosions(raw interface{}) []int {
+	var items []interface{}
+	switch typed := raw.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		items = typed
+	case []int:
+		items = make([]interface{}, 0, len(typed))
+		for _, value := range typed {
+			items = append(items, value)
+		}
+	default:
+		return nil
+	}
+	explosions := make([]int, 0, len(items))
+	lastNonZero := -1
+	for idx, item := range items {
+		value, ok := officeChartNumber(item)
+		if !ok || value <= 0 {
+			explosions = append(explosions, 0)
+			continue
+		}
+		if value > 400 {
+			value = 400
+		}
+		explosion := int(math.Round(value))
+		explosions = append(explosions, explosion)
+		if explosion > 0 {
+			lastNonZero = idx
+		}
+	}
+	if lastNonZero < 0 {
+		return nil
+	}
+	return append([]int(nil), explosions[:lastNonZero+1]...)
+}
+
+func officeNormalizeChartSeriesLineWidth(raw interface{}) float64 {
+	width, ok := officeChartNumber(raw)
+	if !ok || width <= 0 {
+		return 0
+	}
+	if width < 0.25 {
+		return 0.25
+	}
+	if width > 12 {
+		return 12
+	}
+	return width
+}
+
+func officeNormalizeChartSeriesDash(dash string) string {
+	switch strings.ToLower(strings.TrimSpace(dash)) {
+	case "":
+		return ""
+	case "solid":
+		return "solid"
+	case "dash", "dashed":
+		return "dash"
+	case "dot", "dotted":
+		return "sysDot"
+	case "dash_dot", "dash-dot", "dashdot":
+		return "dashDot"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartSeriesMarker(marker string) string {
+	switch strings.ToLower(strings.TrimSpace(marker)) {
+	case "", "auto", "default":
+		return ""
+	case "circle":
+		return "circle"
+	case "diamond":
+		return "diamond"
+	case "square":
+		return "square"
+	case "triangle":
+		return "triangle"
+	case "x":
+		return "x"
+	case "star":
+		return "star"
+	case "dash":
+		return "dash"
+	case "dot":
+		return "dot"
+	case "none", "off":
+		return "none"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartLabels(raw interface{}) string {
+	switch value := raw.(type) {
+	case bool:
+		if value {
+			return "show"
+		}
+		return "hide"
+	case string:
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "":
+			return ""
+		case "show", "shown", "on", "true", "yes", "value", "values", "label", "labels":
+			return "show"
+		case "hide", "hidden", "off", "false", "no", "none":
+			return "hide"
+		default:
+			return ""
+		}
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartLabelPosition(position string) string {
+	switch strings.ToLower(strings.TrimSpace(position)) {
+	case "":
+		return ""
+	case "center", "centre", "middle", "ctr":
+		return "ctr"
+	case "inside_end", "inside-end", "insideend", "in_end", "in-end", "inend":
+		return "inEnd"
+	case "outside_end", "outside-end", "outsideend", "out_end", "out-end", "outend":
+		return "outEnd"
+	case "best_fit", "best-fit", "bestfit":
+		return "bestFit"
+	case "above", "top", "t":
+		return "t"
+	case "below", "bottom", "b":
+		return "b"
+	case "left", "l":
+		return "l"
+	case "right", "r":
+		return "r"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartLegendPosition(position string) string {
+	switch strings.ToLower(strings.TrimSpace(position)) {
+	case "":
+		return ""
+	case "left", "l":
+		return "l"
+	case "right", "r":
+		return "r"
+	case "top", "t":
+		return "t"
+	case "bottom", "b":
+		return "b"
+	case "top_right", "top-right", "topright", "tr":
+		return "tr"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartStartAngle(raw interface{}) int {
+	value, ok := officeChartNumber(raw)
+	if !ok {
+		return 0
+	}
+	if value < 0 {
+		value = 0
+	}
+	if value > 360 {
+		value = 360
+	}
+	return int(math.Round(value))
+}
+
+func officeNormalizeChartHoleSize(raw interface{}) int {
+	value, ok := officeChartNumber(raw)
+	if !ok || value <= 0 {
+		return 0
+	}
+	if value < 10 {
+		value = 10
+	}
+	if value > 90 {
+		value = 90
+	}
+	return int(math.Round(value))
+}
+
+func officeNormalizeChartGapWidth(raw interface{}) *int {
+	value, ok := officeChartNumber(raw)
+	if !ok {
+		return nil
+	}
+	if value < 0 {
+		value = 0
+	}
+	if value > 500 {
+		value = 500
+	}
+	width := int(math.Round(value))
+	return &width
+}
+
+func officeNormalizeChartOverlap(raw interface{}) *int {
+	value, ok := officeChartNumber(raw)
+	if !ok {
+		return nil
+	}
+	if value < -100 {
+		value = -100
+	}
+	if value > 100 {
+		value = 100
+	}
+	overlap := int(math.Round(value))
+	return &overlap
+}
+
+func officeNormalizeChartLabelFormat(format string) string {
+	format = strings.TrimSpace(format)
+	if format == "" {
+		return ""
+	}
+	return format
+}
+
+func officeNormalizeChartAxisFormat(format string) string {
+	format = strings.TrimSpace(format)
+	if format == "" {
+		return ""
+	}
+	return format
+}
+
+func officeNormalizeChartCategoryAxisType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case "category", "cat", "text", "string", "discrete":
+		return "category"
+	case "date", "calendar":
+		return "date"
+	case "time", "datetime", "date-time", "date_time", "timestamp":
+		return "datetime"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartDateAxisTimeUnit(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case "day", "days", "daily":
+		return "days"
+	case "month", "months", "monthly":
+		return "months"
+	case "year", "years", "yearly", "annual", "annually":
+		return "years"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartDateAxisBound(raw interface{}, withTime bool) *float64 {
+	if value, ok := officeChartNumber(raw); ok && !math.IsNaN(value) && !math.IsInf(value, 0) {
+		bound := value
+		return &bound
+	}
+	if serial, ok := officeExcelDateSerial(raw, withTime); ok {
+		if value, ok := officeChartNumber(serial); ok && !math.IsNaN(value) && !math.IsInf(value, 0) {
+			bound := value
+			return &bound
+		}
+	}
+	return nil
+}
+
+func officeParseChartDateAxisBound(raw interface{}, fieldName string, withTime bool) (*float64, error) {
+	switch typed := raw.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return nil, nil
+		}
+	}
+	bound := officeNormalizeChartDateAxisBound(raw, withTime)
+	if bound != nil {
+		return bound, nil
+	}
+	return nil, fmt.Errorf("%s must be an ISO-like %s or Excel serial when x_axis_type is %s", fieldName, map[bool]string{true: "date-time", false: "date"}[withTime], map[bool]string{true: "datetime", false: "date"}[withTime])
+}
+
+func officeNormalizeChartAxisBound(raw interface{}) *float64 {
+	value, ok := officeChartNumber(raw)
+	if !ok || math.IsNaN(value) || math.IsInf(value, 0) {
+		return nil
+	}
+	bound := value
+	return &bound
+}
+
+func officeNormalizeChartAxisUnit(raw interface{}) *float64 {
+	value, ok := officeChartNumber(raw)
+	if !ok || value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return nil
+	}
+	unit := value
+	return &unit
+}
+
+func officeNormalizeChartAxisLabelPosition(position string) string {
+	switch strings.ToLower(strings.TrimSpace(position)) {
+	case "":
+		return ""
+	case "nextto", "next_to", "next-to", "next", "adjacent":
+		return "nextTo"
+	case "high":
+		return "high"
+	case "low":
+		return "low"
+	case "none", "off", "hide", "hidden":
+		return "none"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartAxisLabelAlignment(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case "ctr", "center", "centre", "middle":
+		return "ctr"
+	case "l", "left":
+		return "l"
+	case "r", "right":
+		return "r"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartAxisLabelOffset(raw interface{}) *int {
+	value, ok := officeChartNumber(raw)
+	if !ok || math.IsNaN(value) || math.IsInf(value, 0) {
+		return nil
+	}
+	offset := int(math.Round(value))
+	if offset < 0 || offset > 1000 {
+		return nil
+	}
+	normalized := offset
+	return &normalized
+}
+
+func officeNormalizeChartAxisCrosses(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case "auto", "auto_zero", "auto-zero", "autozero", "zero":
+		return "autoZero"
+	case "max", "maximum", "high":
+		return "max"
+	case "min", "minimum", "low":
+		return "min"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartAxisCrossBetween(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "":
+		return ""
+	case "between":
+		return "between"
+	case "midcat", "mid_cat", "mid-cat", "midcategory", "mid_category", "mid-category":
+		return "midCat"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartAxisReverseOrder(raw interface{}) string {
+	switch value := raw.(type) {
+	case bool:
+		if value {
+			return "maxMin"
+		}
+		return ""
+	case string:
+		switch strings.ToLower(strings.TrimSpace(value)) {
+		case "":
+			return ""
+		case "reverse", "reversed", "reverse_order", "reverse-order", "descending", "desc", "maxmin", "max_min", "max-min":
+			return "maxMin"
+		case "normal", "default", "ascending", "asc", "minmax", "min_max", "min-max":
+			return "minMax"
+		default:
+			return ""
+		}
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeChartTickMark(mark string) string {
+	switch strings.ToLower(strings.TrimSpace(mark)) {
+	case "":
+		return ""
+	case "cross":
+		return "cross"
+	case "in", "inside":
+		return "in"
+	case "out", "outside":
+		return "out"
+	case "none", "off":
+		return "none"
+	default:
+		return ""
+	}
+}
+
+func officeChartNumber(raw interface{}) (float64, bool) {
+	switch value := raw.(type) {
+	case float64:
+		return value, true
+	case float32:
+		return float64(value), true
+	case *float64:
+		if value == nil {
+			return 0, false
+		}
+		return *value, true
+	case *float32:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case int:
+		return float64(value), true
+	case int64:
+		return float64(value), true
+	case int32:
+		return float64(value), true
+	case int16:
+		return float64(value), true
+	case int8:
+		return float64(value), true
+	case *int:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *int64:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *int32:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *int16:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *int8:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case uint:
+		return float64(value), true
+	case uint64:
+		return float64(value), true
+	case uint32:
+		return float64(value), true
+	case uint16:
+		return float64(value), true
+	case uint8:
+		return float64(value), true
+	case *uint:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *uint64:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *uint32:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *uint16:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case *uint8:
+		if value == nil {
+			return 0, false
+		}
+		return float64(*value), true
+	case json.Number:
+		parsed, err := value.Float64()
+		return parsed, err == nil
+	case string:
+		return officeParseNumericString(value)
+	default:
+		return 0, false
+	}
 }
 
 func officeStringSliceArg(args map[string]interface{}, keys ...string) []string {

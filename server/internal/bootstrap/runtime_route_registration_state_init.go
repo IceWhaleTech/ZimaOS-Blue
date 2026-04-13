@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 )
 
@@ -47,11 +46,22 @@ func bindRouteRegistrationStateDB(state *routeRegistrationState) {
 	if state == nil {
 		return
 	}
+
+	// Use RuntimeDBConn (runtime.db) for harness and agent tables
+	// This reduces startup time by separating large runtime tables from blue.db
+	if state.services.RuntimeDBConn != nil {
+		state.runtimeReadDB = state.services.RuntimeDBConn.Reader
+		state.runtimeWriteDB = state.services.RuntimeDBConn.Writer
+		return
+	}
+
+	// Fallback to primary database (backward compatibility)
 	if state.services.DBConn != nil {
 		state.runtimeReadDB = state.services.DBConn.Reader
 		state.runtimeWriteDB = state.services.DBConn.Writer
 		return
 	}
+
 	state.runtimeWriteDB = state.deps.DB
 }
 

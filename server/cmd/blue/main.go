@@ -76,6 +76,12 @@ var (
 	version   = "0.10.39"
 	buildTime = "unknown"
 	gitCommit = "unknown"
+
+	openPrimarySQLite                 = dbutil.OpenSQLite
+	quickCheckPrimaryDatabase        = dbutil.QuickCheckDatabase
+	forcePrimaryPreOpenQuickCheck = func() bool {
+		return strings.TrimSpace(os.Getenv("BLUE_PRIMARY_DB_PREOPEN_QUICK_CHECK")) == "1"
+	}
 )
 
 func applyPendingBackupRestore(dataDir string) (bool, error) {
@@ -149,11 +155,12 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.Datab
 		}
 
 		if perfCfg.WALMode {
-			conn, err := dbutil.OpenSQLite(dbPath, &dbutil.SQLiteOpenOpts{
-				MaxReaders:  perfCfg.PoolSize,
-				BusyTimeout: 5000,
-				CacheSize:   -cacheSize,
-				ForeignKeys: true,
+			conn, err := openPrimarySQLite(dbPath, &dbutil.SQLiteOpenOpts{
+				MaxReaders:               perfCfg.PoolSize,
+				BusyTimeout:              5000,
+				CacheSize:                -cacheSize,
+				ForeignKeys:              true,
+				SkipIntegrityCheckOnOpen: true,
 			})
 			if err != nil {
 				return nil, err
@@ -195,8 +202,9 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.Datab
 	}
 
 	var err error
-	if !dbutil.StartupQuickCheckEnabled() {
-		if quickErr := dbutil.QuickCheckDatabase(dbPath); quickErr != nil {
+	if !dbutil.StartupQuickCheckEnabled() && forcePrimaryPreOpenQuickCheck() {
+		logger.Info().Str("db_path", dbPath).Msg("Forcing primary database pre-open quick check via BLUE_PRIMARY_DB_PREOPEN_QUICK_CHECK")
+		if quickErr := quickCheckPrimaryDatabase(dbPath); quickErr != nil {
 			if dbutil.IsSQLiteCorruptionError(quickErr) {
 				err = dbutil.WrapSQLiteOpenError(dbPath, quickErr)
 				logger.Warn().Err(quickErr).Str("db_path", dbPath).Msg("Primary database quick check reported corruption before startup open")

@@ -13,6 +13,7 @@ const moduleUiBuild = process.env.VITE_MODULE_UI === '1'
 const moduleUiName = process.env.VITE_MODULE_NAME || 'zimaos-blue'
 const publicBase = process.env.VITE_PUBLIC_BASE || (moduleUiBuild ? `/modules/${moduleUiName}/` : '/')
 const outDir = process.env.VITE_OUT_DIR || 'dist'
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost'
 
 const routeRuntimeBundles = [
   {
@@ -140,11 +141,11 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost',
+        target: apiProxyTarget,
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost',
+        target: apiProxyTarget,
         changeOrigin: true,
       },
     },

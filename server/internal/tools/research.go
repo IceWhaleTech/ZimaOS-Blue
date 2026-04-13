@@ -24,6 +24,7 @@ type ResearchCreateJobRequest struct {
 	Mode             string
 	ResearchDepth    string
 	RouteMode        string
+	RetrievalProfile string
 	Lang             string
 	Budget           *ResearchBudget
 	StrictEntity     *bool
@@ -65,6 +66,7 @@ type ResearchJob struct {
 	Query              string
 	Mode               string
 	ResearchDepth      string
+	RetrievalProfile   string
 	RequestedRouteMode string
 	EffectiveRouteMode string
 	RouteReason        string
@@ -345,6 +347,60 @@ func autoSelectResearchMode(query string, requestedMode string) string {
 	return "deep_research"
 }
 
+func detectResearchRetrievalProfile(query, effectiveMode string) string {
+	if strings.TrimSpace(effectiveMode) != "deep_research" {
+		return ""
+	}
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return ""
+	}
+	if looksLikeURL(normalized) || strings.Contains(normalized, "http://") || strings.Contains(normalized, "https://") {
+		return ""
+	}
+
+	lookbackSignals := []string{
+		"last 30 days",
+		"past 30 days",
+		"recent 30 days",
+		"last month",
+		"最近30天",
+		"最近 30 天",
+		"过去30天",
+		"过去 30 天",
+	}
+	discussionSignals := []string{
+		"people are saying",
+		"what are people saying",
+		"recent discussion",
+		"recent discussions",
+		"community sentiment",
+		"community is saying",
+		"what people think",
+		"口碑",
+		"大家怎么说",
+		"社区在说什么",
+		"最近讨论",
+	}
+
+	hasLookback := false
+	for _, signal := range lookbackSignals {
+		if strings.Contains(normalized, signal) {
+			hasLookback = true
+			break
+		}
+	}
+	if !hasLookback {
+		return ""
+	}
+	for _, signal := range discussionSignals {
+		if strings.Contains(normalized, signal) {
+			return "recent_multi_site_v1"
+		}
+	}
+	return ""
+}
+
 func normalizeResearchDepth(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "fast", "standard", "deep":
@@ -519,6 +575,7 @@ func researchJobToMap(job *ResearchJob) map[string]interface{} {
 		"query":                job.Query,
 		"mode":                 job.Mode,
 		"research_depth":       job.ResearchDepth,
+		"retrieval_profile":    job.RetrievalProfile,
 		"requested_route_mode": job.RequestedRouteMode,
 		"effective_route_mode": job.EffectiveRouteMode,
 		"route_reason":         job.RouteReason,
@@ -633,16 +690,20 @@ func buildResearchCreateJobRequest(ctx context.Context, args map[string]interfac
 	effectiveMode, researchDepth := resolveResearchExecutionMode(goal, args)
 
 	req := ResearchCreateJobRequest{
-		Mode:           effectiveMode,
-		ResearchDepth:  researchDepth,
-		RouteMode:      strings.TrimSpace(firstCompatString(args, "route_mode", "routeMode")),
-		Lang:           strings.TrimSpace(firstCompatString(args, "lang", "language")),
-		Budget:         parseResearchBudget(args),
-		StrictEntity:   parseResearchBoolArg(args, "strict_entity", "strictEntity"),
-		TimeWindows:    parseResearchStringSliceArgs(args, "time_windows", "timeWindows"),
-		ReportStyle:    strings.TrimSpace(firstCompatString(args, "report_style", "reportStyle")),
-		UserID:         GetUserID(ctx),
-		ConversationID: strings.TrimSpace(GetSessionID(ctx)),
+		Mode:             effectiveMode,
+		ResearchDepth:    researchDepth,
+		RouteMode:        strings.TrimSpace(firstCompatString(args, "route_mode", "routeMode")),
+		RetrievalProfile: strings.TrimSpace(firstCompatString(args, "retrieval_profile", "retrievalProfile")),
+		Lang:             strings.TrimSpace(firstCompatString(args, "lang", "language")),
+		Budget:           parseResearchBudget(args),
+		StrictEntity:     parseResearchBoolArg(args, "strict_entity", "strictEntity"),
+		TimeWindows:      parseResearchStringSliceArgs(args, "time_windows", "timeWindows"),
+		ReportStyle:      strings.TrimSpace(firstCompatString(args, "report_style", "reportStyle")),
+		UserID:           GetUserID(ctx),
+		ConversationID:   strings.TrimSpace(GetSessionID(ctx)),
+	}
+	if req.RetrievalProfile == "" {
+		req.RetrievalProfile = detectResearchRetrievalProfile(goal, effectiveMode)
 	}
 	// Deep-research jobs use mode as the depth selector (fast|standard|deep) in the
 	// underlying harness; keep `ResearchDepth` populated for diagnostics/forward
@@ -734,7 +795,15 @@ func buildResearchCreateJobRequest(ctx context.Context, args map[string]interfac
 		}
 	}
 
+	if req.RetrievalProfile == "" {
+		req.RetrievalProfile = researchAutoRetrievalProfile(req.Query, effectiveMode)
+	}
+
 	return req, nil
+}
+
+func researchAutoRetrievalProfile(query, effectiveMode string) string {
+	return detectResearchRetrievalProfile(query, effectiveMode)
 }
 
 func inferResearchModeFromArgs(args map[string]interface{}) string {

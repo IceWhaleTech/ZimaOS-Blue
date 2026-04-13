@@ -9,7 +9,9 @@ func newHarnessRuntimeResearchToolAdapter(
 ) *deepResearchToolAdapter {
 	adapter := newDeepResearchToolAdapter(service, harnessRuntimeController(bundle), workspaceDir)
 	if adapter != nil {
-		adapter.jobStore = newHarnessResearchRuntimeService(harnessRuntimeController(bundle), service)
+		if store := newHarnessResearchRuntimeService(harnessRuntimeController(bundle), service); store != nil {
+			adapter.jobStore = store
+		}
 	}
 	return adapter
 }

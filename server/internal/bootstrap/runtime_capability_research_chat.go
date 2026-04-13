@@ -38,6 +38,9 @@ func registerChatResearchRuntime(controller *harness.Controller, registry *tools
 	configureResearchRuntimeDriver(binding.research.driver, registry)
 	registerResearchRuntime(controller, binding.research)
 	tools.RegisterResearchTools(registry, binding.toolAdapter)
+	if binding.toolAdapter != nil {
+		binding.toolAdapter.SetRecentExecutor(tools.GetWebQueryTool(registry))
+	}
 	if registry != nil && binding.toolAdapter != nil && binding.toolAdapter.manager != nil {
 		if advisorTool := tools.GetAdvisorTool(registry); advisorTool != nil {
 			advisorTool.SetResearchService(binding.toolAdapter)

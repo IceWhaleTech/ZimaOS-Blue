@@ -475,6 +475,8 @@ export default mergeHarnessLocale('en-GB', {
     stillListening: "Go ahead, I'm listening...",
     continueGenerating: 'Continue',
     responseInterrupted: 'Response interrupted',
+    responseStopped: 'Response stopped',
+    responseStoppedBadge: 'Stopped',
     deepResearchTitle: 'Deep Research',
     deepResearchEvidence: 'Evidence',
     deepResearchSupport: 'Support',

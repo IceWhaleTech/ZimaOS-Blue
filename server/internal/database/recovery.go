@@ -42,6 +42,8 @@ func sqliteLogf(format string, args ...interface{}) {
 	log.Printf("[sqlite] "+format, args...)
 }
 
+var runIntegrityCheckOpenDatabase = integrityCheckOpenDatabase
+
 // IsSQLiteCorruptionError reports whether err looks like SQLite file corruption.
 func IsSQLiteCorruptionError(err error) bool {
 	if err == nil {
@@ -153,7 +155,7 @@ func OpenSQLiteWithRecovery(dsn, dbPath string, configure func(*sql.DB) error) (
 		if triedCheckpoint || triedFTSRepair || triedRepair {
 			integrityCheckStartedAt := time.Now()
 			sqliteLogf("startup integrity_check started db_path=%s timeout=%s", dbPath, 30*time.Second)
-			if err := integrityCheckOpenDatabase(db); err != nil {
+			if err := runIntegrityCheckOpenDatabase(db); err != nil {
 				sqliteLogf("startup integrity_check failed db_path=%s duration=%s error=%v", dbPath, time.Since(integrityCheckStartedAt), err)
 				_ = db.Close()
 				if IsSQLiteCorruptionError(err) {
@@ -948,7 +950,7 @@ func CheckDatabaseIntegrity(dbPath string) error {
 	}
 	defer db.Close()
 
-	return integrityCheckOpenDatabase(db)
+	return runIntegrityCheckOpenDatabase(db)
 }
 
 // QuickCheckDatabase performs a quick integrity check on the database.

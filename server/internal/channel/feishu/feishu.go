@@ -69,9 +69,17 @@ type Channel struct {
 const inboundMessageDedupTTL = 10 * time.Minute
 
 var (
-	feishuAtUserIDTagRe = regexp.MustCompile(`(?i)<at[^>]*\buser_id="([^"]+)"[^>]*>([^<]*)</at>`)
-	feishuAtIDTagRe     = regexp.MustCompile(`(?i)<at[^>]*\bid="?([^" >]+)"?[^>]*>([^<]*)</at>`)
+	feishuAtUserIDTagRe      *regexp.Regexp
+	feishuAtIDTagRe          *regexp.Regexp
+	feishuMentionRegexesOnce sync.Once
 )
+
+func ensureFeishuMentionRegexes() {
+	feishuMentionRegexesOnce.Do(func() {
+		feishuAtUserIDTagRe = regexp.MustCompile(`(?i)<at[^>]*\buser_id="([^"]+)"[^>]*>([^<]*)</at>`)
+		feishuAtIDTagRe = regexp.MustCompile(`(?i)<at[^>]*\bid="?([^" >]+)"?[^>]*>([^<]*)</at>`)
+	})
+}
 
 // BotCommandHandler handles bot commands.
 type BotCommandHandler func(ctx context.Context, cmd string, args string, chatID string, userID string) (string, error)
@@ -910,6 +918,7 @@ func feishuMentionsMetadata(text string, rawMentions []incomingMention) ([]map[s
 		appendMention(mentionID, mention.Name, mention.Key)
 	}
 
+	ensureFeishuMentionRegexes()
 	for _, match := range feishuAtUserIDTagRe.FindAllStringSubmatch(text, -1) {
 		if len(match) < 3 {
 			continue

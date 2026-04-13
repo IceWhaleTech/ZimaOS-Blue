@@ -479,6 +479,8 @@ export default mergeHarnessLocale('hr-HR', {
     stillListening: 'Nastavi, slušam...',
     continueGenerating: 'nastavi',
     responseInterrupted: 'Odgovor prekinut',
+    responseStopped: 'Odgovor zaustavljen',
+    responseStoppedBadge: 'Zaustavljen',
     deepResearchTitle: 'Dubinsko istraživanje',
     deepResearchEvidence: 'Dokazi',
     deepResearchSupport: 'Podrška',

@@ -13,6 +13,7 @@ type bootstrapResearchSnapshotDriver struct {
 	status   harness.RunStatus
 	progress int
 	metadata map[string]interface{}
+	result   string
 }
 
 func cloneHarnessResearchTestMetadataMap(src map[string]interface{}) map[string]interface{} {
@@ -43,6 +44,7 @@ func (d *bootstrapResearchSnapshotDriver) Start(ctx context.Context, run *harnes
 	}
 	snapshot.Status = d.status
 	snapshot.Progress = d.progress
+	snapshot.Result = d.result
 	return env.Manager.SyncSnapshot(ctx, &snapshot)
 }
 
@@ -119,5 +121,83 @@ func TestHarnessResearchRuntimeService_UsesHarnessRunsForAnalyzeJobs(t *testing.
 	}
 	if cancelled.Status != harness.RunStatusCancelled {
 		t.Fatalf("cancelled status = %s, want cancelled", cancelled.Status)
+	}
+}
+
+func TestHarnessResearchRuntimeService_ProjectsStructuredRecentProfileReport(t *testing.T) {
+	db, bundle, _, _ := newTestAgentRuntimeFixture(t)
+	defer db.Close()
+
+	bundle.Controller.RegisterDriver(&bootstrapResearchSnapshotDriver{
+		status:   harness.RunStatusCompleted,
+		progress: 100,
+		metadata: map[string]interface{}{
+			"mode":              "deep_research",
+			"research_depth":    "deep",
+			"retrieval_profile": "recent_multi_site_v1",
+			"stage":             "complete",
+		},
+		result: `{"answer":"Community discussion is positive overall.","confidence":0.74,"retrieval_profile":"recent_multi_site_v1","lookback_days":30,"browser_assisted":true,"items_by_source":{"reddit":[{"source":"reddit","title":"Thread","url":"https://reddit.com/r/test"}]},"errors_by_source":{"github":"rate limited"},"clusters":[{"label":"performance","item_count":2}]}`,
+	})
+
+	run, err := bundle.Controller.Submit(context.Background(), harness.RunSpec{
+		Kind:           harness.RunKindResearch,
+		Goal:           "What are people saying in the last 30 days about ZimaOS Blue?",
+		UserID:         "user-recent-research",
+		ConversationID: "conv-recent-research",
+		Metadata: map[string]interface{}{
+			"mode":              "deep_research",
+			"research_depth":    "deep",
+			"retrieval_profile": "recent_multi_site_v1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+
+	service := newHarnessResearchRuntimeService(bundle.Controller, deepresearch.NewService(nil, nil))
+	job, err := service.GetJobForUser(run.ID, "user-recent-research", "")
+	if err != nil {
+		t.Fatalf("GetJobForUser failed: %v", err)
+	}
+	if job.Report == nil {
+		t.Fatal("expected structured report to be projected")
+	}
+	if job.Report.Answer != "Community discussion is positive overall." {
+		t.Fatalf("report answer = %q, want structured answer", job.Report.Answer)
+	}
+	if job.Report.RetrievalProfile != "recent_multi_site_v1" {
+		t.Fatalf("report retrieval_profile = %q, want recent_multi_site_v1", job.Report.RetrievalProfile)
+	}
+	if job.Report.LookbackDays != 30 {
+		t.Fatalf("report lookback_days = %d, want 30", job.Report.LookbackDays)
+	}
+	if !job.Report.BrowserAssisted {
+		t.Fatal("expected browser_assisted to be projected")
+	}
+	if len(job.Report.ItemsBySource) != 1 {
+		t.Fatalf("items_by_source = %#v, want projected items", job.Report.ItemsBySource)
+	}
+	if got := job.Report.ErrorsBySource["github"]; got != "rate limited" {
+		t.Fatalf("errors_by_source.github = %#v, want rate limited", got)
+	}
+	if len(job.Report.Clusters) != 1 {
+		t.Fatalf("clusters = %#v, want 1 cluster", job.Report.Clusters)
+	}
+}
+
+func TestResearchRunResultReport_ParsesStructuredRecentReportWithoutAnswer(t *testing.T) {
+	report := researchRunResultReport(`{"retrieval_profile":"recent_multi_site_v1","lookback_days":30,"items_by_source":{"reddit":[{"title":"Thread"}]}}`)
+	if report == nil {
+		t.Fatal("expected report")
+	}
+	if report.RetrievalProfile != "recent_multi_site_v1" {
+		t.Fatalf("retrieval_profile = %q, want recent_multi_site_v1", report.RetrievalProfile)
+	}
+	if report.LookbackDays != 30 {
+		t.Fatalf("lookback_days = %d, want 30", report.LookbackDays)
+	}
+	if len(report.ItemsBySource) != 1 {
+		t.Fatalf("items_by_source = %#v, want parsed map", report.ItemsBySource)
 	}
 }

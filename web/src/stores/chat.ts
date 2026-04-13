@@ -120,6 +120,7 @@ const STREAM_PROCESS_CARD_TYPES = new Set([
   'deep-research-event',
   'deep-research-timeline',
 ])
+const STOPPED_MARKER = '[Response stopped]'
 
 /** Structured tool result for collapsible detail cards. */
 export interface ToolResultItem {
@@ -2456,11 +2457,14 @@ export const useChatStore = defineStore('chat', () => {
     activeStreamId.value = next
   }
 
-  async function cancelActiveStreamOnServer(conversationId?: string | null) {
-    const streamId = activeStreamId.value
-    if (!conversationId || !streamId) return
+  async function cancelActiveStreamOnServer(
+    conversationId?: string | null,
+    streamId?: string | null
+  ) {
+    const targetStreamId = streamId?.trim() || activeStreamId.value
+    if (!conversationId || !targetStreamId) return
     try {
-      await messageApi.cancelStream(conversationId, streamId)
+      await messageApi.cancelStream(conversationId, targetStreamId)
     } catch {
       // Best-effort cancellation.
     }
@@ -2597,6 +2601,45 @@ export const useChatStore = defineStore('chat', () => {
       content: '',
       created_at: new Date().toISOString(),
     }
+  }
+
+  function appendTerminalMarker(content: string, marker: string): string {
+    const trimmed = content.trimEnd()
+    if (!trimmed) return marker
+    if (trimmed.endsWith(marker)) return trimmed
+    return `${trimmed}\n\n${marker}`
+  }
+
+  function markAssistantMessageStopped(conversationId: string) {
+    let assistantIndex = -1
+    for (let i = messages.value.length - 1; i >= 0; i -= 1) {
+      const message = messages.value[i]
+      if (!message || message.conversation_id !== conversationId) continue
+      if (message.role === 'assistant') {
+        assistantIndex = i
+        break
+      }
+      if (message.role === 'user') {
+        break
+      }
+    }
+
+    const nextMessages = [...messages.value]
+    if (assistantIndex >= 0) {
+      const assistant = nextMessages[assistantIndex]
+      if (!assistant) return
+      nextMessages[assistantIndex] = {
+        ...assistant,
+        content: appendTerminalMarker(assistant.content || '', STOPPED_MARKER),
+      }
+      messages.value = nextMessages
+      return
+    }
+
+    const assistant = createStreamingAssistantMessage(conversationId)
+    assistant.content = STOPPED_MARKER
+    nextMessages.push(assistant)
+    messages.value = nextMessages
   }
 
   function isTodoChecklistContent(content?: string): boolean {
@@ -4093,11 +4136,14 @@ export const useChatStore = defineStore('chat', () => {
       streamUIState.value.phase === 'awaiting_confirmation' ||
       streamUIState.value.phase === 'interrupted'
     if (!currentConversationId.value || !hasInterruptibleState) return
-    flushPendingStreamDelta(currentConversationId.value)
-    void cancelActiveStreamOnServer(currentConversationId.value)
+    const conversationId = currentConversationId.value
+    const streamId = activeStreamId.value
+    flushPendingStreamDelta(conversationId)
+    markAssistantMessageStopped(conversationId)
+    void cancelActiveStreamOnServer(conversationId, streamId)
     sseClient.disconnect()
     clearStreamRecoveryTimer()
-    clearActiveStreamState(currentConversationId.value)
+    clearActiveStreamState(conversationId)
     clearVisibleStreamState()
     if (!hasPendingConfirmations()) {
       awaitingConfirmation.value = false
@@ -4156,9 +4202,11 @@ export const useChatStore = defineStore('chat', () => {
 
     const convId = currentConversationId.value
     if (!convId) return
+    const streamId = activeStreamId.value
 
     // Abort the in-flight stream
-    void cancelActiveStreamOnServer(convId)
+    markAssistantMessageStopped(convId)
+    void cancelActiveStreamOnServer(convId, streamId)
     sseClient.disconnect()
     clearActiveStreamState(convId)
     clearVisibleStreamState()

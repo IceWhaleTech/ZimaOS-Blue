@@ -478,6 +478,8 @@ export default mergeHarnessLocale('ml-IN', {
     stillListening: 'തുടരൂ, ഞാൻ കേൾക്കുന്നുണ്ട്...',
     continueGenerating: 'തുടരുക',
     responseInterrupted: 'പ്രതികരണം തടസ്സപ്പെട്ടു',
+    responseStopped: 'പ്രതികരണം നിർത്തി.',
+    responseStoppedBadge: 'നിർത്തി',
     deepResearchTitle: 'ആഴത്തിലുള്ള ഗവേഷണം',
     deepResearchEvidence: 'തെളിവുകൾ',
     deepResearchSupport: 'പിന്തുണ',

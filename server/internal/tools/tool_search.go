@@ -365,6 +365,17 @@ type toolSearchCapability struct {
 	CallTool       string
 	CallHint       string
 	CanonicalSkill string
+
+	selectionKeys    []string
+	selectedKey      string
+	searchText       string
+	idLower          string
+	nameLower        string
+	aliasesLower     []string
+	searchHintsLower []string
+	descriptionLower string
+	invocationLower  string
+	bodyLower        string
 }
 
 type toolSearchScoredMatch struct {
@@ -422,9 +433,15 @@ func (t *ToolSearchTool) Execute(ctx context.Context, args map[string]interface{
 		}
 	}
 
-	searchToolDefs := t.visibleToolDefinitions(ctx, runtimeInfo, true)
-	loadedToolDefs := t.visibleToolDefinitions(ctx, runtimeInfo, false)
-	loadedTools := make(map[string]struct{}, len(loadedToolDefs)+len(currentState.ActivatedTools)+4)
+	searchToolDefs := []ToolDefinition(nil)
+	loadedToolDefs := []ToolDefinition(nil)
+	loadedToolCapacity := len(currentState.ActivatedTools) + 4
+	if toolSearchNeedsCapabilityToolDefinitions(parsed) {
+		searchToolDefs, loadedToolDefs = t.visibleToolDefinitionSurfaces(ctx, runtimeInfo)
+		loadedToolCapacity += len(loadedToolDefs)
+	}
+
+	loadedTools := make(map[string]struct{}, loadedToolCapacity)
 	for _, def := range loadedToolDefs {
 		loadedTools[strings.ToLower(strings.TrimSpace(def.Name))] = struct{}{}
 	}
@@ -439,13 +456,24 @@ func (t *ToolSearchTool) Execute(ctx context.Context, args map[string]interface{
 		loadedTools["subagents"] = struct{}{}
 	}
 
-	snapshot, err := t.skillExposureSnapshot()
-	if err != nil {
-		return nil, err
+	snapshot := skillmanifest.SkillExposureSnapshot{}
+	if parsed.wantsKind("skill") {
+		var err error
+		snapshot, err = t.skillExposureSnapshot()
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	capabilities := t.buildCapabilities(searchToolDefs, loadedTools, currentState, runtimeInfo, snapshot)
+	capabilities := t.buildCapabilities(searchToolDefs, loadedTools, currentState, runtimeInfo, snapshot, parsed)
 	matches, selected := scoreToolSearchCapabilities(capabilities, parsed)
+	if len(searchToolDefs) == 0 && len(selected) > 0 {
+		activationSearchToolDefs, activationLoadedToolDefs := t.visibleToolDefinitionSubset(ctx, runtimeInfo, toolSearchSelectedSupportToolNames(selected))
+		searchToolDefs = activationSearchToolDefs
+		for _, def := range activationLoadedToolDefs {
+			loadedTools[strings.ToLower(strings.TrimSpace(def.Name))] = struct{}{}
+		}
+	}
 	limit := parsed.maxResults
 	if len(selected) > limit {
 		limit = len(selected)
@@ -495,10 +523,65 @@ func (t *ToolSearchTool) currentRuntimeInfo(sessionID string) ToolSearchRuntimeI
 	return info
 }
 
-func (t *ToolSearchTool) visibleToolDefinitions(ctx context.Context, runtimeInfo ToolSearchRuntimeInfo, skipDefaultAllowlist bool) []ToolDefinition {
+func (t *ToolSearchTool) visibleToolDefinitionSurfaces(ctx context.Context, runtimeInfo ToolSearchRuntimeInfo) ([]ToolDefinition, []ToolDefinition) {
 	if t == nil || t.registry == nil {
-		return nil
+		return nil, nil
 	}
+	baseReq := t.toolPolicyRequest(ctx, runtimeInfo, false)
+	searchReq := baseReq
+	searchReq.SkipDefaultChatDirectAllowlist = true
+
+	defs := t.registry.DefinitionsForRouteAndLocale(baseReq.RouteKind, GetLang(ctx))
+	if t.policyResolver != nil {
+		defs = t.policyResolver.Filter(searchReq, defs)
+	}
+	searchDefs := filterToolSearchVisibleDefinitions(defs, runtimeInfo)
+	loadedDefs := resolveToolSearchLoadedDefinitions(searchDefs, t.policyResolver, baseReq)
+	return searchDefs, loadedDefs
+}
+
+func (t *ToolSearchTool) visibleToolDefinitionSubset(ctx context.Context, runtimeInfo ToolSearchRuntimeInfo, names []string) ([]ToolDefinition, []ToolDefinition) {
+	if t == nil || t.registry == nil || len(names) == 0 {
+		return nil, nil
+	}
+
+	baseReq := t.toolPolicyRequest(ctx, runtimeInfo, false)
+	searchReq := baseReq
+	searchReq.SkipDefaultChatDirectAllowlist = true
+
+	defs := make([]ToolDefinition, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, raw := range names {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		key := strings.ToLower(name)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		def, ok := t.registry.LookupDefinitionForRoute(name, baseReq.RouteKind)
+		if !ok {
+			continue
+		}
+		defs = append(defs, def)
+	}
+	if len(defs) == 0 {
+		return nil, nil
+	}
+
+	defs = localizeToolDefinitions(defs, GetLang(ctx))
+	if t.policyResolver != nil {
+		defs = t.policyResolver.Filter(searchReq, defs)
+	}
+	searchDefs := filterToolSearchVisibleDefinitions(defs, runtimeInfo)
+	loadedDefs := resolveToolSearchLoadedDefinitions(searchDefs, t.policyResolver, baseReq)
+	return searchDefs, loadedDefs
+}
+
+func (t *ToolSearchTool) toolPolicyRequest(ctx context.Context, runtimeInfo ToolSearchRuntimeInfo, skipDefaultAllowlist bool) ToolPolicyRequest {
 	routeKind := GetRouteKind(ctx)
 	if routeKind == ToolRouteKindUnknown {
 		routeKind = ToolRouteKindChat
@@ -519,12 +602,10 @@ func (t *ToolSearchTool) visibleToolDefinitions(ctx context.Context, runtimeInfo
 		deepResearchEnabled := false
 		req.DeepResearchEnabled = &deepResearchEnabled
 	}
+	return req
+}
 
-	defs := t.registry.DefinitionsForRouteAndLocale(routeKind, GetLang(ctx))
-	if t.policyResolver != nil {
-		defs = t.policyResolver.Filter(req, defs)
-	}
-
+func filterToolSearchVisibleDefinitions(defs []ToolDefinition, runtimeInfo ToolSearchRuntimeInfo) []ToolDefinition {
 	filtered := make([]ToolDefinition, 0, len(defs))
 	for _, def := range defs {
 		if strings.EqualFold(strings.TrimSpace(def.Name), "tool_search") {
@@ -536,6 +617,29 @@ func (t *ToolSearchTool) visibleToolDefinitions(ctx context.Context, runtimeInfo
 		filtered = append(filtered, def)
 	}
 	return filtered
+}
+
+func resolveToolSearchLoadedDefinitions(searchDefs []ToolDefinition, resolver *ToolPolicyResolver, req ToolPolicyRequest) []ToolDefinition {
+	if len(searchDefs) == 0 {
+		return nil
+	}
+	loaded := append([]ToolDefinition(nil), searchDefs...)
+	if resolver == nil {
+		return loaded
+	}
+	providerScope := resolver.providerScope(req)
+	_, hasAgent := resolver.agentScope(req)
+	if !resolver.shouldApplyDefaultChatDirectToolAllowlist(req, hasAgent, providerScope) {
+		return loaded
+	}
+	loaded = loaded[:0]
+	for _, def := range searchDefs {
+		if _, ok := defaultChatDirectToolAllowlist[normalizeToolPolicyName(def.Name)]; !ok {
+			continue
+		}
+		loaded = append(loaded, def)
+	}
+	return loaded
 }
 
 func toolSearchCapabilityAllowedByToggle(name string, runtimeInfo ToolSearchRuntimeInfo) bool {
@@ -566,39 +670,54 @@ func (t *ToolSearchTool) buildCapabilities(
 	currentState DeferredToolExposureState,
 	runtimeInfo ToolSearchRuntimeInfo,
 	snapshot skillmanifest.SkillExposureSnapshot,
+	parsed toolSearchParsedQuery,
 ) []toolSearchCapability {
-	capabilities := make([]toolSearchCapability, 0, len(searchToolDefs)+len(snapshot.VisibleSkills)+8)
-	toolNames := make(map[string]ToolDefinition, len(searchToolDefs))
+	includeTools := parsed.wantsKind("tool")
+	includeSkills := parsed.wantsKind("skill")
+	includeAgents := parsed.wantsKind("agent")
+
+	capacity := 0
+	if includeTools {
+		capacity += len(searchToolDefs)
+	}
+	if includeSkills {
+		capacity += len(snapshot.VisibleSkills)
+	}
+	if includeAgents && t != nil && t.agentsConfig != nil {
+		capacity += len(t.agentsConfig.List)
+	}
+	capabilities := make([]toolSearchCapability, 0, capacity)
 	taken := make(map[string]struct{}, len(searchToolDefs)*2)
+	selectedSkillSet := newToolSearchNameSet(currentState.SelectedSkills)
+	selectedAgentSet := newToolSearchNameSet(currentState.SelectedAgents)
 
 	for _, def := range searchToolDefs {
-		toolNames[strings.ToLower(strings.TrimSpace(def.Name))] = def
-		availability := "deferred"
-		if def.AlwaysLoad {
-			availability = "loaded"
-		}
-		if _, ok := loadedTools[strings.ToLower(strings.TrimSpace(def.Name))]; ok {
-			availability = "loaded"
-		}
-		capability := toolSearchCapability{
-			ID:           strings.TrimSpace(def.Name),
-			Name:         strings.TrimSpace(def.Name),
-			Kind:         "tool",
-			Description:  strings.TrimSpace(def.Description),
-			Aliases:      append([]string(nil), def.Aliases...),
-			SearchHints:  append([]string(nil), def.SearchHints...),
-			Availability: availability,
-			Activation:   "available",
-			CallTool:     strings.TrimSpace(def.Name),
-			CallHint:     fmt.Sprintf("Call the `%s` tool directly.", strings.TrimSpace(def.Name)),
-		}
-		capabilities = append(capabilities, capability)
-		for _, key := range toolSearchDedupeKeys(capability.Name, capability.ID, capability.CanonicalSkill) {
-			taken[key] = struct{}{}
+		if includeTools {
+			availability := "deferred"
+			if def.AlwaysLoad {
+				availability = "loaded"
+			}
+			if _, ok := loadedTools[strings.ToLower(strings.TrimSpace(def.Name))]; ok {
+				availability = "loaded"
+			}
+			capability := toolSearchCapability{
+				ID:           strings.TrimSpace(def.Name),
+				Name:         strings.TrimSpace(def.Name),
+				Kind:         "tool",
+				Description:  strings.TrimSpace(def.Description),
+				Aliases:      append([]string(nil), def.Aliases...),
+				SearchHints:  append([]string(nil), def.SearchHints...),
+				Availability: availability,
+				Activation:   "available",
+				CallTool:     strings.TrimSpace(def.Name),
+				CallHint:     fmt.Sprintf("Call the `%s` tool directly.", strings.TrimSpace(def.Name)),
+			}
+			capabilities = append(capabilities, prepareToolSearchCapability(capability))
+			toolSearchMarkDedupeKeys(taken, capability.Name, capability.ID, capability.CanonicalSkill)
 		}
 	}
 
-	if len(snapshot.VisibleSkills) > 0 {
+	if includeSkills && len(snapshot.VisibleSkills) > 0 {
 		for _, view := range snapshot.VisibleSkills {
 			doc := view.Document
 			if !view.ModelInvocable || !doc.ModelInvocable {
@@ -608,11 +727,11 @@ func (t *ToolSearchTool) buildCapabilities(
 				continue
 			}
 			canonical := ""
-			if toolSearchDedupeTaken(taken, toolSearchDedupeKeys(doc.Name, doc.ID, canonical)) {
+			if toolSearchDedupeContainsAny(taken, doc.Name, doc.ID, canonical) {
 				continue
 			}
 			availability := "deferred"
-			if currentState.NeedExec || containsToolSearchName(currentState.SelectedSkills, doc.ID) || containsToolSearchName(currentState.SelectedSkills, doc.Name) {
+			if currentState.NeedExec || toolSearchNameSetContains(selectedSkillSet, doc.ID) || toolSearchNameSetContains(selectedSkillSet, doc.Name) {
 				availability = "loaded"
 			}
 			activation := strings.TrimSpace(view.ActivationState)
@@ -623,7 +742,7 @@ func (t *ToolSearchTool) buildCapabilities(
 			if callHint == "" {
 				callHint = fmt.Sprintf("blue %s", strings.TrimSpace(firstNonBlank(doc.ID, doc.Name)))
 			}
-			capabilities = append(capabilities, toolSearchCapability{
+			capabilities = append(capabilities, prepareToolSearchCapability(toolSearchCapability{
 				ID:             strings.TrimSpace(firstNonBlank(doc.ID, doc.Name)),
 				Name:           strings.TrimSpace(firstNonBlank(doc.Name, doc.ID)),
 				Kind:           "skill",
@@ -638,23 +757,23 @@ func (t *ToolSearchTool) buildCapabilities(
 				CallTool:       "exec",
 				CallHint:       callHint,
 				CanonicalSkill: canonical,
-			})
+			}))
 		}
 	}
 
-	if t != nil && t.agentsConfig != nil {
+	if includeAgents && t != nil && t.agentsConfig != nil {
 		for _, agent := range t.agentsConfig.List {
 			effective := effectiveAgentConfig(t.agentsConfig.Defaults, agent)
 			available := effective.Enabled && effective.Subagents.Enabled
 			availability := "deferred"
-			if currentState.NeedAgentTools || containsToolSearchName(currentState.SelectedAgents, agent.ID) {
+			if currentState.NeedAgentTools || toolSearchNameSetContains(selectedAgentSet, agent.ID) {
 				availability = "loaded"
 			}
 			activation := "available"
 			if !available {
 				activation = "unavailable"
 			}
-			capabilities = append(capabilities, toolSearchCapability{
+			capabilities = append(capabilities, prepareToolSearchCapability(toolSearchCapability{
 				ID:           strings.TrimSpace(agent.ID),
 				Name:         strings.TrimSpace(agent.ID),
 				Kind:         "agent",
@@ -665,37 +784,68 @@ func (t *ToolSearchTool) buildCapabilities(
 				Activation:   activation,
 				CallTool:     "subagents",
 				CallHint:     fmt.Sprintf("Call `subagents` with `action=spawn`, `agent_id=%s`, and a concrete `goal`.", strings.TrimSpace(agent.ID)),
-			})
+			}))
 		}
 	}
 
-	_ = toolNames
 	return capabilities
 }
 
-func toolSearchDedupeKeys(name, id, canonical string) []string {
-	keys := []string{
-		"name:" + normalizeToolSearchKey(name),
+func toolSearchMarkDedupeKeys(taken map[string]struct{}, name, id, canonical string) {
+	if len(taken) == 0 {
+		if taken == nil {
+			return
+		}
 	}
-	if normalizedID := normalizeToolSearchKey(id); normalizedID != "" {
-		keys = append(keys, "id:"+normalizedID)
+	if key := toolSearchDedupeNameKey(name); key != "" {
+		taken[key] = struct{}{}
 	}
-	if normalizedCanonical := normalizeToolSearchKey(canonical); normalizedCanonical != "" {
-		keys = append(keys, "canonical:"+normalizedCanonical)
+	if key := toolSearchDedupeIDKey(id); key != "" {
+		taken[key] = struct{}{}
 	}
-	return keys
+	if key := toolSearchDedupeCanonicalKey(canonical); key != "" {
+		taken[key] = struct{}{}
+	}
 }
 
-func toolSearchDedupeTaken(taken map[string]struct{}, keys []string) bool {
-	for _, key := range keys {
-		if key == "" {
-			continue
+func toolSearchDedupeContainsAny(taken map[string]struct{}, name, id, canonical string) bool {
+	if len(taken) == 0 {
+		return false
+	}
+	if key := toolSearchDedupeNameKey(name); key != "" {
+		if _, ok := taken[key]; ok {
+			return true
 		}
+	}
+	if key := toolSearchDedupeIDKey(id); key != "" {
+		if _, ok := taken[key]; ok {
+			return true
+		}
+	}
+	if key := toolSearchDedupeCanonicalKey(canonical); key != "" {
 		if _, ok := taken[key]; ok {
 			return true
 		}
 	}
 	return false
+}
+
+func toolSearchDedupeNameKey(name string) string {
+	return "name:" + normalizeToolSearchKey(name)
+}
+
+func toolSearchDedupeIDKey(id string) string {
+	if normalizedID := normalizeToolSearchKey(id); normalizedID != "" {
+		return "id:" + normalizedID
+	}
+	return ""
+}
+
+func toolSearchDedupeCanonicalKey(canonical string) string {
+	if normalizedCanonical := normalizeToolSearchKey(canonical); normalizedCanonical != "" {
+		return "canonical:" + normalizedCanonical
+	}
+	return ""
 }
 
 func parseToolSearchArgs(args map[string]interface{}) toolSearchParsedQuery {
@@ -773,6 +923,41 @@ func parseToolSearchArgs(args map[string]interface{}) toolSearchParsedQuery {
 	return parsed
 }
 
+func (p toolSearchParsedQuery) wantsKind(kind string) bool {
+	if len(p.kindFilter) == 0 {
+		return true
+	}
+	normalized := normalizeToolSearchKind(kind)
+	if normalized == "" {
+		return false
+	}
+	_, ok := p.kindFilter[normalized]
+	return ok
+}
+
+func toolSearchNeedsCapabilityToolDefinitions(parsed toolSearchParsedQuery) bool {
+	if parsed.wantsKind("tool") {
+		return true
+	}
+	return false
+}
+
+func toolSearchSelectedSupportToolNames(selected []toolSearchCapability) []string {
+	if len(selected) == 0 {
+		return nil
+	}
+	names := make([]string, 0, 3)
+	for _, capability := range selected {
+		switch capability.Kind {
+		case "skill":
+			names = append(names, "exec")
+		case "agent":
+			names = append(names, "agents_list", "subagents")
+		}
+	}
+	return mergeToolSearchNames(nil, names)
+}
+
 func normalizeToolSearchKind(raw string) string {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "tool", "tools":
@@ -842,9 +1027,10 @@ func scoreToolSearchCapabilities(capabilities []toolSearchCapability, parsed too
 
 		selectReasons := matchedToolSearchSelections(capability, selectedByKey)
 		if len(selectReasons) > 0 {
-			if _, ok := selectedSeen[strings.ToLower(capability.Kind)+":"+strings.ToLower(capability.ID)]; !ok {
+			selectedKey := toolSearchCapabilitySelectedKey(capability)
+			if _, ok := selectedSeen[selectedKey]; !ok {
 				selected = append(selected, capability)
-				selectedSeen[strings.ToLower(capability.Kind)+":"+strings.ToLower(capability.ID)] = struct{}{}
+				selectedSeen[selectedKey] = struct{}{}
 			}
 		}
 
@@ -886,6 +1072,9 @@ func matchedToolSearchSelections(capability toolSearchCapability, selected map[s
 }
 
 func toolSearchCapabilityKeys(capability toolSearchCapability) []string {
+	if len(capability.selectionKeys) > 0 || (capability.ID == "" && capability.Name == "" && len(capability.Aliases) == 0 && capability.CanonicalSkill == "") {
+		return append([]string(nil), capability.selectionKeys...)
+	}
 	keys := []string{
 		normalizeToolSearchKey(capability.ID),
 		normalizeToolSearchKey(capability.Name),
@@ -902,16 +1091,10 @@ func toolSearchCapabilityKeys(capability toolSearchCapability) []string {
 }
 
 func scoreToolSearchCapability(capability toolSearchCapability, parsed toolSearchParsedQuery, selectReasons []string) (float64, []string, bool) {
-	searchText := strings.ToLower(strings.Join([]string{
-		capability.ID,
-		capability.Name,
-		strings.Join(capability.Aliases, " "),
-		strings.Join(capability.SearchHints, " "),
-		strings.Join(capability.Tags, " "),
-		capability.Description,
-		capability.Invocation,
-		capability.Body,
-	}, " "))
+	searchText := capability.searchText
+	if searchText == "" && (capability.ID != "" || capability.Name != "" || len(capability.Aliases) > 0 || len(capability.SearchHints) > 0 || len(capability.Tags) > 0 || capability.Description != "" || capability.Invocation != "" || capability.Body != "") {
+		searchText = buildToolSearchCapabilitySearchText(capability)
+	}
 
 	for _, required := range parsed.requiredTerms {
 		if required == "" {
@@ -937,36 +1120,36 @@ func scoreToolSearchCapability(capability toolSearchCapability, parsed toolSearc
 		termScore := 0.0
 		termReasons := make([]string, 0, 2)
 		switch {
-		case strings.EqualFold(capability.Name, term), strings.EqualFold(capability.ID, term):
+		case toolSearchCapabilityNameLower(capability) == term, toolSearchCapabilityIDLower(capability) == term:
 			termScore += 12
 			termReasons = append(termReasons, "exact_name")
-		case strings.HasPrefix(strings.ToLower(capability.Name), term), strings.HasPrefix(strings.ToLower(capability.ID), term):
+		case strings.HasPrefix(toolSearchCapabilityNameLower(capability), term), strings.HasPrefix(toolSearchCapabilityIDLower(capability), term):
 			termScore += 8
 			termReasons = append(termReasons, "prefix_name")
-		case strings.Contains(strings.ToLower(capability.Name), term), strings.Contains(strings.ToLower(capability.ID), term):
+		case strings.Contains(toolSearchCapabilityNameLower(capability), term), strings.Contains(toolSearchCapabilityIDLower(capability), term):
 			termScore += 6
 			termReasons = append(termReasons, "name")
 		}
 
-		for _, alias := range capability.Aliases {
-			if strings.Contains(strings.ToLower(alias), term) {
+		for _, alias := range toolSearchCapabilityAliasesLower(capability) {
+			if strings.Contains(alias, term) {
 				termScore += 4
 				termReasons = append(termReasons, "alias")
 				break
 			}
 		}
-		for _, hint := range capability.SearchHints {
-			if strings.Contains(strings.ToLower(hint), term) {
+		for _, hint := range toolSearchCapabilitySearchHintsLower(capability) {
+			if strings.Contains(hint, term) {
 				termScore += 3
 				termReasons = append(termReasons, "hint")
 				break
 			}
 		}
-		if strings.Contains(strings.ToLower(capability.Description), term) {
+		if strings.Contains(toolSearchCapabilityDescriptionLower(capability), term) {
 			termScore += 2
 			termReasons = append(termReasons, "description")
 		}
-		if strings.Contains(strings.ToLower(capability.Invocation), term) || strings.Contains(strings.ToLower(capability.Body), term) {
+		if strings.Contains(toolSearchCapabilityInvocationLower(capability), term) || strings.Contains(toolSearchCapabilityBodyLower(capability), term) {
 			termScore += 1
 			termReasons = append(termReasons, "body")
 		}
@@ -981,6 +1164,120 @@ func scoreToolSearchCapability(capability toolSearchCapability, parsed toolSearc
 		return 0, nil, false
 	}
 	return score, reasons, true
+}
+
+func prepareToolSearchCapability(capability toolSearchCapability) toolSearchCapability {
+	capability.idLower = strings.ToLower(capability.ID)
+	capability.nameLower = strings.ToLower(capability.Name)
+	capability.aliasesLower = lowerToolSearchValues(capability.Aliases)
+	capability.searchHintsLower = lowerToolSearchValues(capability.SearchHints)
+	capability.descriptionLower = strings.ToLower(capability.Description)
+	capability.invocationLower = strings.ToLower(capability.Invocation)
+	capability.bodyLower = strings.ToLower(capability.Body)
+	capability.selectionKeys = toolSearchCapabilityKeys(capability)
+	capability.selectedKey = strings.ToLower(capability.Kind) + ":" + capability.idLower
+	capability.searchText = buildToolSearchCapabilitySearchText(capability)
+	return capability
+}
+
+func buildToolSearchCapabilitySearchText(capability toolSearchCapability) string {
+	parts := make([]string, 0, 8)
+	appendPart := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		parts = append(parts, strings.ToLower(value))
+	}
+	appendJoined := func(values []string) {
+		if len(values) == 0 {
+			return
+		}
+		joined := strings.TrimSpace(strings.Join(lowerToolSearchValues(values), " "))
+		if joined == "" {
+			return
+		}
+		parts = append(parts, joined)
+	}
+
+	appendPart(capability.ID)
+	appendPart(capability.Name)
+	appendJoined(capability.Aliases)
+	appendJoined(capability.SearchHints)
+	appendJoined(capability.Tags)
+	appendPart(capability.Description)
+	appendPart(capability.Invocation)
+	appendPart(capability.Body)
+	return strings.Join(parts, " ")
+}
+
+func lowerToolSearchValues(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	lowered := make([]string, 0, len(values))
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			lowered = append(lowered, strings.ToLower(trimmed))
+		}
+	}
+	return lowered
+}
+
+func toolSearchCapabilitySelectedKey(capability toolSearchCapability) string {
+	if capability.selectedKey != "" || (capability.Kind == "" && capability.ID == "") {
+		return capability.selectedKey
+	}
+	return strings.ToLower(capability.Kind) + ":" + strings.ToLower(capability.ID)
+}
+
+func toolSearchCapabilityIDLower(capability toolSearchCapability) string {
+	if capability.idLower != "" || capability.ID == "" {
+		return capability.idLower
+	}
+	return strings.ToLower(capability.ID)
+}
+
+func toolSearchCapabilityNameLower(capability toolSearchCapability) string {
+	if capability.nameLower != "" || capability.Name == "" {
+		return capability.nameLower
+	}
+	return strings.ToLower(capability.Name)
+}
+
+func toolSearchCapabilityAliasesLower(capability toolSearchCapability) []string {
+	if len(capability.aliasesLower) > 0 || len(capability.Aliases) == 0 {
+		return capability.aliasesLower
+	}
+	return lowerToolSearchValues(capability.Aliases)
+}
+
+func toolSearchCapabilitySearchHintsLower(capability toolSearchCapability) []string {
+	if len(capability.searchHintsLower) > 0 || len(capability.SearchHints) == 0 {
+		return capability.searchHintsLower
+	}
+	return lowerToolSearchValues(capability.SearchHints)
+}
+
+func toolSearchCapabilityDescriptionLower(capability toolSearchCapability) string {
+	if capability.descriptionLower != "" || capability.Description == "" {
+		return capability.descriptionLower
+	}
+	return strings.ToLower(capability.Description)
+}
+
+func toolSearchCapabilityInvocationLower(capability toolSearchCapability) string {
+	if capability.invocationLower != "" || capability.Invocation == "" {
+		return capability.invocationLower
+	}
+	return strings.ToLower(capability.Invocation)
+}
+
+func toolSearchCapabilityBodyLower(capability toolSearchCapability) string {
+	if capability.bodyLower != "" || capability.Body == "" {
+		return capability.bodyLower
+	}
+	return strings.ToLower(capability.Body)
 }
 
 func (t *ToolSearchTool) applySelectedCapabilities(
@@ -1085,16 +1382,34 @@ func (t *ToolSearchTool) applySelectedCapabilities(
 }
 
 func containsToolSearchName(values []string, want string) bool {
-	want = strings.TrimSpace(want)
-	if want == "" {
+	return toolSearchNameSetContains(newToolSearchNameSet(values), want)
+}
+
+func newToolSearchNameSet(values []string) map[string]struct{} {
+	if len(values) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		key := strings.ToLower(strings.TrimSpace(value))
+		if key == "" {
+			continue
+		}
+		set[key] = struct{}{}
+	}
+	return set
+}
+
+func toolSearchNameSetContains(set map[string]struct{}, want string) bool {
+	if len(set) == 0 {
 		return false
 	}
-	for _, value := range values {
-		if strings.EqualFold(strings.TrimSpace(value), want) {
-			return true
-		}
+	key := strings.ToLower(strings.TrimSpace(want))
+	if key == "" {
+		return false
 	}
-	return false
+	_, ok := set[key]
+	return ok
 }
 
 func firstNonBlank(values ...string) string {

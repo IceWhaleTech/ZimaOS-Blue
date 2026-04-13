@@ -2,10 +2,13 @@ package tools
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -367,6 +370,413 @@ func TestWebQueryToolEmitsSearchCardForSearchReadResults(t *testing.T) {
 	}
 }
 
+func TestWebQueryToolRecentProfileReturnsStructuredReportAndDropsUndatedGenericWeb(t *testing.T) {
+	recentDate := time.Now().UTC().Add(-48 * time.Hour).Format("2006-01-02")
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{
+				Query:    asString(args["query"]),
+				Provider: "duckduckgo",
+				Results: []WebSearchResult{
+					{Title: "Recent dated post", URL: "https://example.com/recent", Description: "Fresh discussion"},
+					{Title: "Undated page", URL: "https://example.com/undated", Description: "No date available"},
+				},
+				TotalCount: 2,
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			url := asString(args["url"])
+			resp := webReadResponse{
+				URL:      url,
+				FinalURL: url,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+			}
+			switch url {
+			case "https://example.com/recent":
+				resp.Title = "Recent dated post"
+				resp.Content = "Published: " + recentDate + "\nThe community has been discussing storage reliability and performance improvements in detail over the last week."
+			default:
+				resp.Title = "Undated page"
+				resp.Content = "This page talks about the product but never includes a publish date."
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input":             "What are people saying in the last 30 days about ZimaOS Blue?",
+		"retrieval_profile": "recent_multi_site_v1",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	payload := decodeResearchRunResultFromWebQuery(t, raw)
+	if got := asString(payload["retrieval_profile"]); got != "recent_multi_site_v1" {
+		t.Fatalf("retrieval_profile = %q, want recent_multi_site_v1", got)
+	}
+	if got := int(payload["lookback_days"].(float64)); got != 30 {
+		t.Fatalf("lookback_days = %d, want 30", got)
+	}
+	itemsBySource, ok := payload["items_by_source"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("items_by_source = %#v, want map", payload["items_by_source"])
+	}
+	webItems, ok := itemsBySource["web"].([]interface{})
+	if !ok || len(webItems) != 1 {
+		t.Fatalf("web items = %#v, want 1 dated item", itemsBySource["web"])
+	}
+	item, _ := webItems[0].(map[string]interface{})
+	if got := asString(item["title"]); got != "Recent dated post" {
+		t.Fatalf("item title = %q, want Recent dated post", got)
+	}
+}
+
+func TestWebQueryToolRecentProfileMarksBrowserAssistedRedditFallback(t *testing.T) {
+	recentDate := time.Now().UTC().Add(-72 * time.Hour).Format("2006-01-02")
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			query := asString(args["query"])
+			resp := WebSearchResponse{Query: query, Provider: "duckduckgo"}
+			if strings.Contains(query, "site:reddit.com") {
+				resp.Results = []WebSearchResult{
+					{Title: "Reddit thread", URL: "https://reddit.com/r/zimaos/comments/test/thread", Description: "Community thread"},
+				}
+				resp.TotalCount = 1
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := webReadResponse{
+				URL:          asString(args["url"]),
+				FinalURL:     asString(args["url"]),
+				Format:       "text",
+				Source:       webAccessSourceHTTP,
+				Title:        "Reddit thread",
+				WarningCodes: []string{"challenge"},
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	browserBackend := &scriptedWebQueryBrowserBackend{
+		execute: func(recipe string, params map[string]string) (BrowserRecipeResult, error) {
+			if recipe != "extract" {
+				t.Fatalf("recipe = %q, want extract", recipe)
+			}
+			return BrowserRecipeResult{
+				Success: true,
+				Data: map[string]interface{}{
+					"extracted": map[string]interface{}{
+						"main_content": "Posted " + recentDate + "\nUsers say the update fixed several long-standing issues around storage reliability, app startup, disk scanning, and UI responsiveness. Multiple commenters mention that the patch feels more stable in day to day use, that file indexing completes faster, and that fewer background services stall under heavier workloads.",
+						"page_heading": "Reddit thread",
+					},
+				},
+			}, nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+	tool.browser = browserBackend
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input":             "最近30天大家怎么说 ZimaOS Blue？",
+		"retrieval_profile": "recent_multi_site_v1",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	payload := decodeResearchRunResultFromWebQuery(t, raw)
+	if got := payload["browser_assisted"]; got != true {
+		t.Fatalf("browser_assisted = %#v, want true", got)
+	}
+	itemsBySource, ok := payload["items_by_source"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("items_by_source = %#v, want map", payload["items_by_source"])
+	}
+	redditItems, ok := itemsBySource["reddit"].([]interface{})
+	if !ok || len(redditItems) != 1 {
+		t.Fatalf("reddit items = %#v, want 1 item", itemsBySource["reddit"])
+	}
+	item, _ := redditItems[0].(map[string]interface{})
+	if got := item["browser_assisted"]; got != true {
+		t.Fatalf("item browser_assisted = %#v, want true", item["browser_assisted"])
+	}
+}
+
+func TestWebQueryToolRecentProfileGitHubAdapterCombinesIssuesReleasesAndReadmeSignals(t *testing.T) {
+	recentIssue := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)
+	recentRelease := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	recentRepoUpdate := time.Now().UTC().Add(-72 * time.Hour).Format(time.RFC3339)
+	readmeContent := base64.StdEncoding.EncodeToString([]byte("# ZimaOS Blue\n\nBlue is a self-hosted operating environment focused on reliable storage and app workflows."))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/search":
+			_, _ = w.Write([]byte(`{"hits":[]}`))
+		case r.URL.Path == "/public-search":
+			_, _ = w.Write([]byte(`{"events":[]}`))
+		case r.URL.Path == "/search/issues":
+			_, _ = w.Write([]byte(`{"items":[{"title":"Storage bug report","html_url":"https://github.com/acme/blue/issues/1","body":"Users discuss storage fixes and indexing reliability.","created_at":"` + recentIssue + `","updated_at":"` + recentIssue + `","comments":12,"user":{"login":"maintainer"}}]}`))
+		case r.URL.Path == "/search/repositories":
+			_, _ = w.Write([]byte(`{"items":[{"full_name":"acme/blue","html_url":"https://github.com/acme/blue","description":"ZimaOS Blue repo","updated_at":"` + recentRepoUpdate + `","stargazers_count":42,"forks_count":7,"default_branch":"main","owner":{"login":"acme"}}]}`))
+		case r.URL.Path == "/repos/acme/blue/releases":
+			_, _ = w.Write([]byte(`[{"name":"v1.2.3","tag_name":"v1.2.3","html_url":"https://github.com/acme/blue/releases/tag/v1.2.3","body":"Release notes mention scheduler and disk scan improvements.","published_at":"` + recentRelease + `","author":{"login":"release-bot"}}]`))
+		case r.URL.Path == "/repos/acme/blue/readme":
+			_, _ = w.Write([]byte(`{"content":"` + readmeContent + `","encoding":"base64"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	target, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
+	origClient := webRecentHTTPClient
+	webRecentHTTPClient = &http.Client{
+		Transport: testRoundTripper(func(req *http.Request) (*http.Response, error) {
+			cloned := req.Clone(req.Context())
+			rewritten := *req.URL
+			rewritten.Scheme = target.Scheme
+			rewritten.Host = target.Host
+			cloned.URL = &rewritten
+			return srv.Client().Transport.RoundTrip(cloned)
+		}),
+	}
+	defer func() { webRecentHTTPClient = origClient }()
+
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := WebSearchResponse{Query: asString(args["query"]), Provider: "duckduckgo"}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			resp := webReadResponse{
+				URL:      asString(args["url"]),
+				FinalURL: asString(args["url"]),
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "unused",
+				Content:  "unused",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input":             "What are people saying in the last 30 days about ZimaOS Blue on GitHub?",
+		"retrieval_profile": "recent_multi_site_v1",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	payload := decodeResearchRunResultFromWebQuery(t, raw)
+	itemsBySource, ok := payload["items_by_source"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("items_by_source = %#v, want map", payload["items_by_source"])
+	}
+	githubItems, ok := itemsBySource["github"].([]interface{})
+	if !ok || len(githubItems) < 3 {
+		t.Fatalf("github items = %#v, want issues + releases + readme signals", itemsBySource["github"])
+	}
+	titles := make([]string, 0, len(githubItems))
+	for _, rawItem := range githubItems {
+		item, _ := rawItem.(map[string]interface{})
+		titles = append(titles, asString(item["title"]))
+	}
+	if !containsStringValue(titles, "Storage bug report") {
+		t.Fatalf("github titles = %#v, want issue item", titles)
+	}
+	if !containsStringValue(titles, "v1.2.3") {
+		t.Fatalf("github titles = %#v, want release item", titles)
+	}
+	if !containsStringValue(titles, "acme/blue README") {
+		t.Fatalf("github titles = %#v, want readme context item", titles)
+	}
+}
+
+func TestWebQueryToolRecentProfileCollectsHighCouplingSocialSourcesViaBrowserAssist(t *testing.T) {
+	recentDate := time.Now().UTC().Add(-36 * time.Hour).Format("2006-01-02")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.URL.Path == "/api/v1/search":
+			_, _ = w.Write([]byte(`{"hits":[]}`))
+		case r.URL.Path == "/search/issues":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case r.URL.Path == "/search/repositories":
+			_, _ = w.Write([]byte(`{"items":[]}`))
+		case r.URL.Path == "/public-search":
+			_, _ = w.Write([]byte(`{"events":[]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	target, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
+	origClient := webRecentHTTPClient
+	webRecentHTTPClient = &http.Client{
+		Transport: testRoundTripper(func(req *http.Request) (*http.Response, error) {
+			cloned := req.Clone(req.Context())
+			rewritten := *req.URL
+			rewritten.Scheme = target.Scheme
+			rewritten.Host = target.Host
+			cloned.URL = &rewritten
+			return srv.Client().Transport.RoundTrip(cloned)
+		}),
+	}
+	defer func() { webRecentHTTPClient = origClient }()
+
+	searchTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			query := asString(args["query"])
+			resp := WebSearchResponse{Query: query, Provider: "duckduckgo"}
+			switch {
+			case strings.Contains(query, "site:x.com"):
+				resp.Results = []WebSearchResult{{Title: "X thread", URL: "https://x.com/acme/status/1", Description: "x summary"}}
+			case strings.Contains(query, "site:tiktok.com"):
+				resp.Results = []WebSearchResult{{Title: "TikTok clip", URL: "https://www.tiktok.com/@acme/video/1", Description: "tiktok summary"}}
+			case strings.Contains(query, "site:instagram.com"):
+				resp.Results = []WebSearchResult{{Title: "Instagram post", URL: "https://www.instagram.com/p/ABC123/", Description: "instagram summary"}}
+			case strings.Contains(query, "site:bsky.app"):
+				resp.Results = []WebSearchResult{{Title: "Bluesky post", URL: "https://bsky.app/profile/acme/post/1", Description: "bluesky summary"}}
+			default:
+				resp.Results = nil
+			}
+			resp.TotalCount = len(resp.Results)
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	readTool := &scriptedWebTool{
+		def: ToolDefinition{Name: "web_read", Description: "read", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
+		exec: func(args map[string]interface{}) (interface{}, error) {
+			targetURL := asString(args["url"])
+			resp := webReadResponse{
+				URL:      targetURL,
+				FinalURL: targetURL,
+				Format:   "text",
+				Source:   webAccessSourceHTTP,
+				Title:    "Short shell",
+				Content:  "Open in app",
+			}
+			b, _ := json.Marshal(resp)
+			return string(b), nil
+		},
+	}
+	browserBackend := &scriptedWebQueryBrowserBackend{
+		execute: func(recipe string, params map[string]string) (BrowserRecipeResult, error) {
+			if recipe != "extract" {
+				t.Fatalf("recipe = %q, want extract", recipe)
+			}
+			targetURL := params["url"]
+			label := "social"
+			switch {
+			case strings.Contains(targetURL, "x.com"):
+				label = "X thread"
+			case strings.Contains(targetURL, "tiktok.com"):
+				label = "TikTok clip"
+			case strings.Contains(targetURL, "instagram.com"):
+				label = "Instagram post"
+			case strings.Contains(targetURL, "bsky.app"):
+				label = "Bluesky post"
+			}
+			body := "Posted " + recentDate + "\n" + label + " discussion with enough readable detail to pass the browser readability threshold and preserve the recent social signal. Multiple people mention storage reliability, update stability, indexing speed, app launch behavior, and day to day responsiveness improvements after the recent changes. The thread also includes concrete usage notes, upgrade observations, and short comparisons against earlier builds."
+			return BrowserRecipeResult{
+				Success: true,
+				Data: map[string]interface{}{
+					"extracted": map[string]interface{}{
+						"main_content": body,
+						"page_heading": label,
+					},
+				},
+			}, nil
+		},
+	}
+
+	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
+	tool.browser = browserBackend
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input":             "What are people saying in the last 30 days about ZimaOS Blue on X TikTok Instagram Bluesky?",
+		"retrieval_profile": "recent_multi_site_v1",
+	})
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+
+	payload := decodeResearchRunResultFromWebQuery(t, raw)
+	if got := payload["browser_assisted"]; got != true {
+		t.Fatalf("browser_assisted = %#v, want true", got)
+	}
+	itemsBySource, ok := payload["items_by_source"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("items_by_source = %#v, want map", payload["items_by_source"])
+	}
+	for _, source := range []string{"x", "tiktok", "instagram", "bluesky"} {
+		rawItems, ok := itemsBySource[source].([]interface{})
+		if !ok || len(rawItems) != 1 {
+			t.Fatalf("%s items = %#v, want 1 item", source, itemsBySource[source])
+		}
+		item, _ := rawItems[0].(map[string]interface{})
+		if got := item["browser_assisted"]; got != true {
+			t.Fatalf("%s item browser_assisted = %#v, want true", source, item["browser_assisted"])
+		}
+	}
+}
+
+func decodeResearchRunResultFromWebQuery(t *testing.T, raw interface{}) map[string]interface{} {
+	t.Helper()
+	payload, ok := raw.(string)
+	if !ok {
+		t.Fatalf("raw type = %T, want string", raw)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(payload), &out); err != nil {
+		t.Fatalf("decode recent profile payload: %v raw=%s", err, payload)
+	}
+	return out
+}
+
+func containsStringValue(values []string, want string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestWebQueryToolSearchCardKeepsSelectedPageWhenResultsShareHost(t *testing.T) {
 	searchTool := &scriptedWebTool{
 		def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
@@ -454,6 +864,353 @@ func TestWebQueryToolSearchCardKeepsSelectedPageWhenResultsShareHost(t *testing.
 	}
 	if got := emitted[0]["status"]; got != "success" {
 		t.Fatalf("status=%v, want success", got)
+	}
+}
+
+func TestMergeWebQueryFallbackCandidates_PreservesResolvedAndDedupes(t *testing.T) {
+	previous := []webQueryCandidate{
+		{
+			Rank: 1,
+			Search: WebSearchResult{
+				Title:       "Alpha",
+				URL:         "https://example.com/alpha",
+				Description: "alpha result",
+			},
+			Resolved: webQueryReadResult{
+				Response: webReadResponse{
+					URL:      "https://example.com/alpha",
+					FinalURL: "https://example.com/alpha",
+					Title:    "Alpha",
+					Content:  "Alpha page content with enough readable detail to count as a strong result during fallback candidate rebuilding.",
+				},
+				HasSuccess: true,
+				Strong:     true,
+			},
+		},
+	}
+
+	merged := mergeWebQueryFallbackCandidates(
+		WebSearchResponse{
+			Query: "alpha docs",
+			Results: []WebSearchResult{
+				{Title: "Alpha", URL: "https://example.com/alpha", Description: "alpha primary"},
+				{Title: "Charlie", URL: "https://example.com/charlie", Description: "charlie primary"},
+			},
+		},
+		WebSearchResponse{
+			Query: "alpha docs",
+			Results: []WebSearchResult{
+				{Title: "Alpha duplicate", URL: "https://example.com/alpha", Description: "alpha duplicate"},
+				{Title: "Beta", URL: "https://example.com/beta", Description: "beta secondary"},
+			},
+		},
+		nil,
+		previous,
+		newWebQueryScoreProfile("alpha docs"),
+		4,
+	)
+
+	if len(merged) != 3 {
+		t.Fatalf("merged len = %d, want 3", len(merged))
+	}
+	if merged[0].Search.URL != "https://example.com/alpha" {
+		t.Fatalf("merged[0].url = %q, want alpha", merged[0].Search.URL)
+	}
+	if !merged[0].Resolved.HasSuccess || !merged[0].Resolved.Strong {
+		t.Fatalf("merged alpha candidate lost resolved state: %+v", merged[0].Resolved)
+	}
+	if merged[1].Search.URL != "https://example.com/charlie" {
+		t.Fatalf("merged[1].url = %q, want charlie", merged[1].Search.URL)
+	}
+	if merged[2].Search.URL != "https://example.com/beta" {
+		t.Fatalf("merged[2].url = %q, want beta", merged[2].Search.URL)
+	}
+}
+
+func TestMergeWebQueryFallbackCandidates_AppliesMaxResultsBeforeAllowedHostFiltering(t *testing.T) {
+	merged := mergeWebQueryFallbackCandidates(
+		WebSearchResponse{
+			Query: "alpha docs",
+			Results: []WebSearchResult{
+				{Title: "Offsite", URL: "https://offsite.example.org/page", Description: "offsite primary"},
+				{Title: "Alpha", URL: "https://example.com/alpha", Description: "alpha primary"},
+			},
+		},
+		WebSearchResponse{
+			Query: "alpha docs",
+			Results: []WebSearchResult{
+				{Title: "Beta", URL: "https://example.com/beta", Description: "beta secondary"},
+			},
+		},
+		[]string{"example.com"},
+		nil,
+		newWebQueryScoreProfile("alpha docs"),
+		2,
+	)
+
+	if len(merged) != 1 {
+		t.Fatalf("merged len = %d, want 1", len(merged))
+	}
+	if merged[0].Search.URL != "https://example.com/alpha" {
+		t.Fatalf("merged[0].url = %q, want alpha only", merged[0].Search.URL)
+	}
+}
+
+func legacyBuildWebQueryFallbackCandidatesForTest(primary, secondary WebSearchResponse, allowedHosts []string, previous []webQueryCandidate, scoreProfile webQueryScoreProfile, maxResults int) []webQueryCandidate {
+	combined := append([]WebSearchResult(nil), primary.Results...)
+	combined = append(combined, secondary.Results...)
+	merged := buildWebQueryCandidates(combined, nil)
+	if len(merged) == 0 {
+		return nil
+	}
+	if maxResults > 0 && len(merged) > maxResults {
+		merged = merged[:maxResults]
+	}
+	if len(allowedHosts) > 0 {
+		filtered := make([]webQueryCandidate, 0, len(merged))
+		for _, candidate := range merged {
+			if !crawlHostAllowed(candidate.Search.URL, allowedHosts) {
+				continue
+			}
+			filtered = append(filtered, candidate)
+		}
+		merged = filtered
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+
+	previousByURL := make(map[string]webQueryCandidate, len(previous))
+	for _, candidate := range previous {
+		targetURL := strings.TrimSpace(candidate.Search.URL)
+		if targetURL == "" {
+			continue
+		}
+		canonical, err := canonicalizeCrawlURL(targetURL)
+		if err != nil {
+			canonical = targetURL
+		}
+		previousByURL[canonical] = candidate
+	}
+
+	for idx := range merged {
+		targetURL := strings.TrimSpace(merged[idx].Search.URL)
+		canonical, err := canonicalizeCrawlURL(targetURL)
+		if err != nil {
+			canonical = targetURL
+		}
+		if prior, ok := previousByURL[canonical]; ok {
+			merged[idx].Resolved = prior.Resolved
+		}
+		merged[idx].Score = scoreWebQueryCandidateWithProfile(scoreProfile, merged[idx])
+	}
+	return merged
+}
+
+func TestBuildWebQueryFallbackCandidates_MatchesLegacyMergePath(t *testing.T) {
+	primary := WebSearchResponse{
+		Query: "alpha docs",
+		Results: []WebSearchResult{
+			{Title: "Offsite", URL: "https://offsite.example.org/page", Description: "offsite primary"},
+			{Title: "Alpha", URL: "https://example.com/alpha", Description: "alpha primary"},
+			{Title: "Alpha duplicate", URL: "https://example.com/alpha", Description: "alpha duplicate"},
+		},
+	}
+	secondary := WebSearchResponse{
+		Query: "alpha docs",
+		Results: []WebSearchResult{
+			{Title: "Beta", URL: "https://example.com/beta", Description: "beta secondary"},
+			{Title: "Gamma", URL: "https://example.com/gamma", Description: "gamma secondary"},
+		},
+	}
+	previous := []webQueryCandidate{
+		{
+			Rank: 2,
+			Search: WebSearchResult{
+				Title: "Alpha",
+				URL:   "https://example.com/alpha",
+			},
+			Resolved: webQueryReadResult{
+				Response: webReadResponse{
+					URL:      "https://example.com/alpha",
+					FinalURL: "https://example.com/alpha",
+					Title:    "Alpha",
+					Content:  "Alpha page content with enough readable detail to preserve strong resolved state.",
+				},
+				HasSuccess: true,
+				Strong:     true,
+			},
+		},
+	}
+	allowedHosts := []string{"example.com"}
+	profile := newWebQueryScoreProfile("alpha docs")
+
+	want := legacyBuildWebQueryFallbackCandidatesForTest(primary, secondary, allowedHosts, previous, profile, 3)
+	got := buildWebQueryFallbackCandidates(primary.Results, secondary.Results, allowedHosts, previous, profile, 3)
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("fallback candidates = %+v, want %+v", got, want)
+	}
+}
+
+func TestBuildWebQuerySources_SortsWithoutMutatingCallerOrder(t *testing.T) {
+	candidates := []webQueryCandidate{
+		{
+			Rank:  2,
+			Score: 10,
+			Search: WebSearchResult{
+				Title: "Beta",
+				URL:   "https://example.com/beta",
+			},
+		},
+		{
+			Rank:  1,
+			Score: 20,
+			Search: WebSearchResult{
+				Title: "Alpha",
+				URL:   "https://example.com/alpha",
+			},
+		},
+	}
+
+	sources := buildWebQuerySources(candidates, "https://example.com/alpha")
+	if len(sources) != 2 {
+		t.Fatalf("sources len = %d, want 2", len(sources))
+	}
+	if sources[0].URL != "https://example.com/alpha" || sources[1].URL != "https://example.com/beta" {
+		t.Fatalf("sources urls = [%s %s], want [alpha beta]", sources[0].URL, sources[1].URL)
+	}
+
+	if candidates[0].Search.URL != "https://example.com/beta" || candidates[1].Search.URL != "https://example.com/alpha" {
+		t.Fatalf("caller candidate order mutated: [%s %s]", candidates[0].Search.URL, candidates[1].Search.URL)
+	}
+}
+
+func TestBuildWebQuerySourcesFromSortedCandidates_UsesExistingOrder(t *testing.T) {
+	candidates := []webQueryCandidate{
+		{
+			Rank:  1,
+			Score: 30,
+			Search: WebSearchResult{
+				Title: "Alpha",
+				URL:   "https://example.com/alpha",
+			},
+		},
+		{
+			Rank:  2,
+			Score: 10,
+			Search: WebSearchResult{
+				Title: "Beta",
+				URL:   "https://example.com/beta",
+			},
+		},
+	}
+
+	sources := buildWebQuerySourcesFromSortedCandidates(candidates, "https://example.com/beta")
+	if len(sources) != 2 {
+		t.Fatalf("sources len = %d, want 2", len(sources))
+	}
+	if sources[0].Rank != 1 || sources[0].URL != "https://example.com/alpha" {
+		t.Fatalf("first source = %+v, want alpha rank 1", sources[0])
+	}
+	if sources[1].Rank != 2 || sources[1].URL != "https://example.com/beta" || !sources[1].Selected {
+		t.Fatalf("second source = %+v, want beta rank 2 selected", sources[1])
+	}
+}
+
+func TestBuildWebQuerySourcesFromSortedCandidatesWithSelectedRank_MatchesLegacy(t *testing.T) {
+	candidates := []webQueryCandidate{
+		{
+			Rank:  1,
+			Score: 30,
+			Search: WebSearchResult{
+				Title: "Alpha",
+				URL:   "https://example.com/alpha",
+			},
+		},
+		{
+			Rank:  2,
+			Score: 10,
+			Search: WebSearchResult{
+				Title: "Beta",
+				URL:   "https://example.com/beta",
+			},
+		},
+		{
+			Rank:  3,
+			Score: 8,
+			Search: WebSearchResult{
+				Title: "Gamma",
+				URL:   "https://example.com/gamma",
+			},
+		},
+	}
+
+	wantSources := buildWebQuerySourcesFromSortedCandidates(candidates, "https://example.com/beta")
+	wantRank := 2
+
+	gotSources, gotRank := buildWebQuerySourcesFromSortedCandidatesWithSelectedRank(candidates, "https://example.com/beta")
+
+	if gotRank != wantRank {
+		t.Fatalf("selected rank = %d, want %d", gotRank, wantRank)
+	}
+	if !reflect.DeepEqual(gotSources, wantSources) {
+		t.Fatalf("sources = %+v, want %+v", gotSources, wantSources)
+	}
+}
+
+func TestScoreWebQueryCandidateWithProfile_MatchesLegacy(t *testing.T) {
+	query := "OpenAI Responses API latest reference"
+	candidate := webQueryCandidate{
+		Rank: 2,
+		Search: WebSearchResult{
+			Title:       "OpenAI Responses API reference",
+			URL:         "https://developers.openai.com/api/reference/resources/responses",
+			Description: "Official latest reference docs for the Responses API.",
+		},
+		Resolved: webQueryReadResult{
+			Response: webReadResponse{
+				Title:   "Responses",
+				Content: "The latest OpenAI Responses API reference explains request shape, response objects, tool calling, and output handling in the official documentation.",
+			},
+		},
+	}
+
+	legacy := scoreWebQueryCandidate(query, candidate)
+	profile := newWebQueryScoreProfile(query)
+	optimized := scoreWebQueryCandidateWithProfile(profile, candidate)
+
+	if legacy != optimized {
+		t.Fatalf("legacy score = %v, optimized score = %v", legacy, optimized)
+	}
+}
+
+func TestWebQueryTextOverlapWithProfile_MatchesLegacy(t *testing.T) {
+	query := "openai responses api api latest"
+	text := "Latest OpenAI Responses API reference and examples"
+
+	legacy := webQueryTextOverlap(query, text)
+	profile := newWebQueryScoreProfile(query)
+	optimized := webQueryTextOverlapWithProfile(profile, text)
+
+	if legacy != optimized {
+		t.Fatalf("legacy overlap = %v, optimized overlap = %v", legacy, optimized)
+	}
+}
+
+func TestNewWebQueryScoreProfile_BuildsDedupedTokenSet(t *testing.T) {
+	profile := newWebQueryScoreProfile("openai responses api api latest")
+
+	if len(profile.QueryTokens) != 4 {
+		t.Fatalf("query token len = %d, want 4", len(profile.QueryTokens))
+	}
+	if len(profile.QueryTokenSet) != 4 {
+		t.Fatalf("query token set len = %d, want 4", len(profile.QueryTokenSet))
+	}
+	for _, token := range []string{"openai", "responses", "api", "latest"} {
+		if _, ok := profile.QueryTokenSet[token]; !ok {
+			t.Fatalf("query token set missing %q", token)
+		}
 	}
 }
 

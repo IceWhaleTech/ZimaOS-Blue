@@ -903,15 +903,7 @@ function getActiveMessageStreamState(
 }
 
 function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
-  if (message === lastRenderMetaLookupMessage && lastRenderMetaLookupValue) {
-    return lastRenderMetaLookupValue
-  }
-
   const cacheKey = getMessageRenderMetaKey(message)
-  if (cacheKey === lastRenderMetaLookupKey && lastRenderMetaLookupValue) {
-    lastRenderMetaLookupMessage = message
-    return lastRenderMetaLookupValue
-  }
 
   const isStreaming = message.id === streamingMessageId.value
   const memoDepsUpdatedAt = message.updated_at ?? message.created_at

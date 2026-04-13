@@ -64,3 +64,8 @@ Parameters:
 - `web_query` is the canonical public web skill.
 - Legacy `web_search`, `web_fetch`, and `web_read` names are compatibility aliases and should not be used as the primary route in new prompts or harness cases.
 - If `web_query` reports login wall, challenge, or browser-required warnings, switch to `browser`.
+- Blue also uses an internal recent multi-site retrieval profile inside the web layer for Research requests such as `what are people saying in the last 30 days` / `最近30天大家怎么说`.
+- That recent profile is native to `web_query` internals, not a separate public mode or command.
+- The current native source mix includes public web, Reddit, Hacker News, GitHub, Polymarket, X, TikTok, Instagram, and Bluesky. Known YouTube URLs can be added as enrichment when they are already present in the request.
+- For X, TikTok, Instagram, and Bluesky, Blue currently relies on public-page discovery plus browser-assisted reading rather than a separate public platform command.
+- If the user only wants a few links or one readable page, keep using ordinary `web_query input=...` calls rather than trying to surface the internal recent profile directly.

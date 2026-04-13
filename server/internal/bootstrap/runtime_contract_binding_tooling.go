@@ -11,6 +11,7 @@ func (binding *runtimeContractBinding) BindTooling(options routeRuntimeContractT
 	}
 	bindRuntimeToolingBrowserRuntime(options)
 	bindRuntimeToolingReminderRuntime(options)
+	bindRuntimeToolingHostA11yRuntime(options)
 	bindRuntimeToolingImageRuntime(options, result.uiReviewerTool)
 	bindRuntimeTTSTool(options.registry, options.speechSource, options.voiceSource)
 

@@ -209,6 +209,141 @@ func TestRegistry(t *testing.T) {
 	})
 }
 
+func TestRegistryLoadProviders_NormalizesTrialProviderSecurity(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "registry-trial-load-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	claims := testClaims()
+	claims.URL = "https://api.jianli.eu.org/"
+	license, err := SignLicense(claims, testPrivateKey1)
+	if err != nil {
+		t.Fatalf("SignLicense failed: %v", err)
+	}
+
+	previousTrialLicense := trialLicense
+	trialLicense = license
+	t.Cleanup(func() {
+		trialLicense = previousTrialLicense
+	})
+
+	if err := storage.SaveProvider(&Provider{
+		ID:               TrialProviderID,
+		Name:             "ZimaOS Blue Trial",
+		Type:             ProviderTypeTrial,
+		Location:         ProviderLocationCloud,
+		Enabled:          true,
+		Status:           ProviderStatusActive,
+		BaseURL:          "http://mitm.example",
+		APIFormat:        APIFormatOpenAI,
+		APIFormatMode:    APIFormatModeAuto,
+		SkipTLSVerify:    true,
+		DetectedEndpoint: "http://mitm.example/v1/responses",
+	}); err != nil {
+		t.Fatalf("SaveProvider failed: %v", err)
+	}
+
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+
+	provider, err := registry.Get(TrialProviderID)
+	if err != nil {
+		t.Fatalf("Get trial provider failed: %v", err)
+	}
+
+	if provider.BaseURL != claims.URL {
+		t.Fatalf("base_url = %q, want %q", provider.BaseURL, claims.URL)
+	}
+	if provider.SkipTLSVerify {
+		t.Fatal("skip_tls_verify = true, want false")
+	}
+	if provider.DetectedEndpoint != "" {
+		t.Fatalf("detected_endpoint = %q, want empty", provider.DetectedEndpoint)
+	}
+}
+
+func TestRegistryUpdate_NormalizesTrialProviderSecurity(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "registry-trial-update-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	storage, err := NewFileStorage(tmpDir)
+	if err != nil {
+		t.Fatalf("NewFileStorage failed: %v", err)
+	}
+
+	claims := testClaims()
+	claims.URL = "https://api.jianli.eu.org/"
+	license, err := SignLicense(claims, testPrivateKey1)
+	if err != nil {
+		t.Fatalf("SignLicense failed: %v", err)
+	}
+
+	previousTrialLicense := trialLicense
+	trialLicense = license
+	t.Cleanup(func() {
+		trialLicense = previousTrialLicense
+	})
+
+	registry, err := NewRegistry(storage)
+	if err != nil {
+		t.Fatalf("NewRegistry failed: %v", err)
+	}
+
+	if err := registry.Register(&Provider{
+		ID:            TrialProviderID,
+		Name:          "ZimaOS Blue Trial",
+		Type:          ProviderTypeTrial,
+		Location:      ProviderLocationCloud,
+		Enabled:       true,
+		Status:        ProviderStatusActive,
+		BaseURL:       claims.URL,
+		APIFormat:     APIFormatAnthropic,
+		APIFormatMode: APIFormatModePinned,
+	}); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	provider, err := registry.Get(TrialProviderID)
+	if err != nil {
+		t.Fatalf("Get trial provider failed: %v", err)
+	}
+
+	provider.BaseURL = "http://mitm.example"
+	provider.SkipTLSVerify = true
+	provider.DetectedEndpoint = "http://mitm.example/v1/messages"
+
+	if err := registry.Update(provider); err != nil {
+		t.Fatalf("Update failed: %v", err)
+	}
+
+	updated, err := registry.Get(TrialProviderID)
+	if err != nil {
+		t.Fatalf("Get updated trial provider failed: %v", err)
+	}
+
+	if updated.BaseURL != claims.URL {
+		t.Fatalf("base_url = %q, want %q", updated.BaseURL, claims.URL)
+	}
+	if updated.SkipTLSVerify {
+		t.Fatal("skip_tls_verify = true, want false")
+	}
+	if updated.DetectedEndpoint != "" {
+		t.Fatalf("detected_endpoint = %q, want empty", updated.DetectedEndpoint)
+	}
+}
+
 func TestRegistryWithCallback(t *testing.T) {
 	tmpDir, _ := os.MkdirTemp("", "registry-callback-test-*")
 	defer os.RemoveAll(tmpDir)

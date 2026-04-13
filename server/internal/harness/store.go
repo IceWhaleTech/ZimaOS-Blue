@@ -13,7 +13,6 @@ import (
 	dbutil "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	z "github.com/IceWhaleTech/zorm"
-	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 const baseSchemaSQL = `
@@ -1696,9 +1695,8 @@ func isSQLiteBusyError(err error) bool {
 	if err == nil {
 		return false
 	}
-	var sqliteErr sqlite3.Error
-	if errors.As(err, &sqliteErr) {
-		return sqliteErr.Code == sqlite3.ErrBusy || sqliteErr.Code == sqlite3.ErrLocked
+	if isSQLiteBusyDriverError(err) {
+		return true
 	}
 	message := strings.ToLower(strings.TrimSpace(err.Error()))
 	return strings.Contains(message, "database is locked") ||

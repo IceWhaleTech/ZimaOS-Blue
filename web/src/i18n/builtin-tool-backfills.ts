@@ -3,6 +3,7 @@ import nativeDocumentToolBackfills from './native-document-tool-backfills'
 
 type LocaleLeaf = string | number | boolean | null
 type LocaleNode = { [key: string]: LocaleLeaf | LocaleNode }
+type NamedLocaleTerms = { name: string; description: string }
 
 const visibleBuiltinToolLocaleTerms = {
   'ca-ES': {
@@ -1616,12 +1617,151 @@ const ocrLocaleTerms: Record<LocaleKey, string> = {
   'zh-TW': '使用 OCR 從圖像、螢幕截圖或掃描檔案中擷取文字。',
 }
 
+export const a11yLocaleTerms: Record<LocaleKey, NamedLocaleTerms> = {
+  'ca-ES': {
+    name: 'Accessibilitat',
+    description:
+      "Controla finestres compatibles del sistema host mitjancant API natives d'accessibilitat per llistar finestres, enfocar, capturar instantanies, desplacar-se, introduir text i fer captures de pantalla.",
+  },
+  'cs-CZ': {
+    name: 'Pristupnost',
+    description:
+      'Ovlada podporovana okna hostitelskeho operacniho systemu pomoci nativnich API pro pristupnost: umi vypsat okna, zamerit je, porizovat snimky, posouvat, zadavat vstup a delat snimky obrazovky.',
+  },
+  'da-DK': {
+    name: 'Tilgaengelighed',
+    description:
+      'Styr understottede vaerts-OS-vinduer via native tilgaengeligheds-APIer til at liste vinduer, fokusere, tage snapshots, rulle, indtaste og tage skarmbilleder.',
+  },
+  'de-DE': {
+    name: 'Barrierefreiheit',
+    description:
+      'Steuert unterstuetzte Host-OS-Fenster ueber native Bedienungshilfen-APIs zum Auflisten von Fenstern, Fokussieren, Erstellen von Snapshots, Scrollen, Eingeben und fuer Screenshots.',
+  },
+  'el-GR': {
+    name: 'Προσβασιμοτητα',
+    description:
+      'Ελεγχει υποστηριζομενα παραθυρα του host λειτουργικου συστηματος μεσω εγγενων API προσβασιμοτητας για λιστα παραθυρων, εστιαση, στιγμιοτυπα, κυλιση, εισοδο και ληψη screenshot.',
+  },
+  'en-GB': {
+    name: 'Accessibility',
+    description:
+      'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots.',
+  },
+  'en-US': {
+    name: 'Accessibility',
+    description:
+      'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots.',
+  },
+  'es-ES': {
+    name: 'Accesibilidad',
+    description:
+      'Controla ventanas compatibles del sistema host mediante API nativas de accesibilidad para listar ventanas, enfocar, tomar instantaneas, desplazarse, introducir texto y hacer capturas de pantalla.',
+  },
+  'fr-FR': {
+    name: 'Accessibilite',
+    description:
+      "Controle les fenetres prises en charge de l'OS hote via des API natives d'accessibilite pour lister les fenetres, donner le focus, prendre des instantanes, faire defiler, saisir du texte et capturer l'ecran.",
+  },
+  'ga-IE': {
+    name: 'Inrochtaineacht',
+    description:
+      'Rialaionn fuinneoga tacaithe an OS host tri APIanna duthchasacha inrochtaineachta chun fuinneoga a liostu, focus a chur orthu, snapshots a ghlacadh, scrollail, ionchur a sheoladh agus seatanna scaileain a thogail.',
+  },
+  'hr-HR': {
+    name: 'Pristupacnost',
+    description:
+      'Upravlja podrzanim prozorima host operacijskog sustava putem izvornih API-ja pristupacnosti za popis prozora, fokusiranje, snimke stanja, pomicanje, unos i snimke zaslona.',
+  },
+  'hu-HU': {
+    name: 'Akadalymentesseg',
+    description:
+      'Natív akadalymentessegi API-kon keresztul vezerli a tamogatott host operacios rendszer ablakait, beleertve az ablaklista lekereset, fokuszalast, pillanatkepeket, gorgetest, bevitelt es a kepernyokepkeszitest.',
+  },
+  'it-IT': {
+    name: 'Accessibilita',
+    description:
+      "Controlla le finestre supportate del sistema host tramite API native di accessibilita per elencare le finestre, mettere a fuoco, acquisire snapshot, scorrere, inserire input e fare screenshot.",
+  },
+  'ja-JP': {
+    name: 'アクセシビリティ',
+    description:
+      'ネイティブのアクセシビリティ API を通じて、対応するホスト OS のウィンドウ一覧、フォーカス、スナップショット、スクロール、入力、スクリーンショットを操作します。',
+  },
+  'ko-KR': {
+    name: '접근성',
+    description:
+      '네이티브 접근성 API를 통해 지원되는 호스트 OS 창의 목록 조회, 포커스, 스냅샷, 스크롤, 입력, 스크린샷을 제어합니다.',
+  },
+  'ml-IN': {
+    name: 'ആക്സസിബിലിറ്റി',
+    description:
+      'നെറ്റീവ് ആക്സസിബിലിറ്റി APIകള്‍ വഴി പിന്തുണയ്ക്കുന്ന host OS ജാലകങ്ങളെ നിയന്ത്രിക്കുന്നു. ജാലക പട്ടിക, ഫോക്കസ്, snapshot, സ്ക്രോള്‍, ഇന്‍പുട്ട്, സ്ക്രീന്‍ഷോട്ട് എന്നിവയ്ക്ക് ഇത് ഉപയോഗിക്കാം.',
+  },
+  'nb-NO': {
+    name: 'Tilgjengelighet',
+    description:
+      'Styrer stottede verts-OS-vinduer gjennom innebygde tilgjengelighets-API-er for a liste vinduer, fokusere, ta snapshots, rulle, gi input og ta skjermbilder.',
+  },
+  'nl-NL': {
+    name: 'Toegankelijkheid',
+    description:
+      'Bedient ondersteunde host-OS-vensters via native toegankelijkheids-API\'s voor het tonen van vensters, focussen, maken van snapshots, scrollen, invoer en screenshots.',
+  },
+  'pl-PL': {
+    name: 'Dostepnosc',
+    description:
+      'Steruje obslugiwanymi oknami systemu hosta przez natywne API dostepnosci do listowania okien, ustawiania fokusu, wykonywania snapshotow, przewijania, wprowadzania danych i robienia zrzutow ekranu.',
+  },
+  'pt-BR': {
+    name: 'Acessibilidade',
+    description:
+      'Controla janelas suportadas do sistema host por meio de APIs nativas de acessibilidade para listar janelas, focar, gerar snapshots, rolar, inserir dados e tirar capturas de tela.',
+  },
+  'pt-PT': {
+    name: 'Acessibilidade',
+    description:
+      'Controla janelas suportadas do sistema host atraves de APIs nativas de acessibilidade para listar janelas, focar, gerar snapshots, deslocar, introduzir dados e tirar capturas de ecra.',
+  },
+  'ro-RO': {
+    name: 'Accesibilitate',
+    description:
+      'Controleaza ferestrele compatibile ale sistemului host prin API-uri native de accesibilitate pentru listarea ferestrelor, focalizare, instantanee, derulare, introducere si capturi de ecran.',
+  },
+  'ru-RU': {
+    name: 'Доступность',
+    description:
+      'Управляет поддерживаемыми окнами хостовой ОС через нативные API доступности: может перечислять окна, переводить фокус, делать снимки состояния, прокручивать, вводить данные и делать скриншоты.',
+  },
+  'sk-SK': {
+    name: 'Pristupnost',
+    description:
+      'Ovlada podporovane okna hostitelskeho operacneho systemu cez nativne API pristupnosti na vypis okien, fokus, snimky, rolovanie, vstup a snimky obrazovky.',
+  },
+  'sv-SE': {
+    name: 'Tillganglighet',
+    description:
+      'Styr stodda vard-OS-fonster via inbyggda tillganglighets-API:er for att lista fonster, fokusera, ta snapshots, scrolla, mata in och ta skarmdumpar.',
+  },
+  'zh-CN': {
+    name: '辅助功能',
+    description:
+      '通过原生辅助功能 API 控制受支持的宿主操作系统窗口，可列出窗口、聚焦、读取快照、滚动、输入和截图。',
+  },
+  'zh-TW': {
+    name: '輔助功能',
+    description:
+      '透過原生輔助功能 API 控制受支援的宿主作業系統視窗，可列出視窗、聚焦、讀取快照、捲動、輸入與截圖。',
+  },
+}
+
 const builtinToolBackfills = Object.fromEntries(
   Object.entries(visibleBuiltinToolLocaleTerms).map(([locale, terms]) => {
     const fileDeleteTerms = fileDeleteLocaleTerms[locale as LocaleKey]
     const configTerms = configLocaleTerms[locale as LocaleKey]
     const convertTerms = convertLocaleTerms[locale as LocaleKey]
     const advisorTerms = advisorLocaleTerms[locale as LocaleKey]
+    const a11yTerms = a11yLocaleTerms[locale as LocaleKey]
     const ocrDescription = ocrLocaleTerms[locale as LocaleKey]
     const nativeDocumentTerms = nativeDocumentToolBackfills[locale as LocaleKey]
 
@@ -1635,6 +1775,7 @@ const builtinToolBackfills = Object.fromEntries(
             tool_search: terms.toolSearchName,
             agents_list: terms.agentsListName,
             advisor: advisorTerms.name,
+            a11y: a11yTerms.name,
             bash: terms.bashName,
             canvas: terms.canvasName,
             config: configTerms.name,
@@ -1660,6 +1801,7 @@ const builtinToolBackfills = Object.fromEntries(
             tool_search: terms.toolSearchDescription,
             agents_list: terms.agentsListDescription,
             advisor: advisorTerms.description,
+            a11y: a11yTerms.description,
             bash: terms.bashDescription,
             canvas: terms.canvasDescription,
             config: configTerms.description,

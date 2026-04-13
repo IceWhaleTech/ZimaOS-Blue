@@ -3,6 +3,7 @@ package pdf
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 )
@@ -19,6 +20,8 @@ const (
 	createFontRegular = "F1"
 	createFontBold    = "F2"
 )
+
+var createPDFTextEscaper = strings.NewReplacer("\\", "\\\\", "(", "\\(", ")", "\\)")
 
 type CreateRequest struct {
 	Title      string
@@ -149,6 +152,7 @@ func sanitizeCreateText(text string) (string, bool) {
 		return "", false
 	}
 	var b strings.Builder
+	b.Grow(len(text))
 	replaced := false
 	for _, r := range text {
 		switch r {
@@ -214,7 +218,7 @@ func paginateCreateLines(lines []createStyledLine) ([]string, int, int) {
 				flushPage()
 				y = createPageHeight - createMarginTop
 			}
-			page.WriteString(createTextCommand(line.Font, line.FontSize, createMarginLeft, y, item))
+			writeCreateTextCommand(&page, line.Font, line.FontSize, createMarginLeft, y, item)
 			y -= lineHeight
 			lineCount++
 			if idx == len(wrapped)-1 {
@@ -256,12 +260,14 @@ func wrapCreateText(text string, limit int) []string {
 	}
 	lines := make([]string, 0, len(words))
 	current := ""
+	currentRunes := 0
 	flushCurrent := func() {
 		if strings.TrimSpace(current) == "" {
 			return
 		}
 		lines = append(lines, current)
 		current = ""
+		currentRunes = 0
 	}
 	for _, word := range words {
 		wordRunes := utf8.RuneCountInString(word)
@@ -272,15 +278,17 @@ func wrapCreateText(text string, limit int) []string {
 		}
 		if current == "" {
 			current = word
+			currentRunes = wordRunes
 			continue
 		}
-		candidate := current + " " + word
-		if utf8.RuneCountInString(candidate) <= limit {
-			current = candidate
+		if currentRunes+1+wordRunes <= limit {
+			current += " " + word
+			currentRunes += 1 + wordRunes
 			continue
 		}
 		flushCurrent()
 		current = word
+		currentRunes = wordRunes
 	}
 	flushCurrent()
 	return lines
@@ -303,14 +311,18 @@ func splitCreateLongWord(word string, limit int) []string {
 	return parts
 }
 
-func createTextCommand(font string, fontSize, x, y float64, text string) string {
-	return fmt.Sprintf("BT\n/%s %.2f Tf\n1 0 0 1 %.2f %.2f Tm\n(%s) Tj\nET\n",
-		font,
-		fontSize,
-		x,
-		y,
-		escapeCreatePDFText(text),
-	)
+func writeCreateTextCommand(buf *bytes.Buffer, font string, fontSize, x, y float64, text string) {
+	buf.WriteString("BT\n/")
+	buf.WriteString(font)
+	buf.WriteByte(' ')
+	buf.WriteString(strconv.FormatFloat(fontSize, 'f', 2, 64))
+	buf.WriteString(" Tf\n1 0 0 1 ")
+	buf.WriteString(strconv.FormatFloat(x, 'f', 2, 64))
+	buf.WriteByte(' ')
+	buf.WriteString(strconv.FormatFloat(y, 'f', 2, 64))
+	buf.WriteString(" Tm\n(")
+	buf.WriteString(escapeCreatePDFText(text))
+	buf.WriteString(") Tj\nET\n")
 }
 
 func buildCreatePDFBytes(pageStreams []string) []byte {
@@ -341,6 +353,11 @@ func buildCreatePDFBytes(pageStreams []string) []byte {
 	objects[boldFontID] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
 
 	var buf bytes.Buffer
+	streamBytes := 0
+	for _, stream := range pageStreams {
+		streamBytes += len(stream)
+	}
+	buf.Grow(1024 + streamBytes + len(pageStreams)*256)
 	buf.WriteString("%PDF-1.4\n%\xD0\xD4\xC5\xD8\n")
 	offsets := make([]int, totalObjects+1)
 	for objectID := 1; objectID <= totalObjects; objectID++ {
@@ -358,6 +375,5 @@ func buildCreatePDFBytes(pageStreams []string) []byte {
 }
 
 func escapeCreatePDFText(text string) string {
-	replacer := strings.NewReplacer("\\", "\\\\", "(", "\\(", ")", "\\)")
-	return replacer.Replace(text)
+	return createPDFTextEscaper.Replace(text)
 }

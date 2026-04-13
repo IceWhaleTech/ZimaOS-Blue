@@ -80,6 +80,13 @@ Key parameters:
 - `time_windows` (optional): array of timeline windows
 - `report_style` (optional): typically `summary` or `timeline`
 
+Auto recent-discussion routing:
+
+- Queries like `What are people saying in the last 30 days about ZimaOS?`
+- Queries like `最近30天大家怎么说 ZimaOS？`
+
+stay on the public Research entry. Blue now detects that intent and internally switches to a native recent multi-site retrieval profile across public web, Reddit, Hacker News, GitHub, Polymarket, X, TikTok, Instagram, and Bluesky. Known YouTube URLs are added as enrichment when they are already present in the request. There is no separate public `last30days` mode or command.
+
 Behavior:
 
 1. Plan sub-questions

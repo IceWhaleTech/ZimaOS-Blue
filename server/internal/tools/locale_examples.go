@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
@@ -13,6 +14,7 @@ var (
 	localeExamplesPattern       = regexp.MustCompile(`(?i)examples?\s*:\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?(?:\s*,\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)*`)
 	localeDefaultContextPattern = regexp.MustCompile(`(?i)default\s*:\s*from context or [A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?`)
 	localeDefaultPattern        = regexp.MustCompile(`(?i)default\s*:\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?`)
+	localeExamplesRegexesOnce   sync.Once
 )
 
 func localizeToolDefinitions(defs []ToolDefinition, locale string) []ToolDefinition {
@@ -109,6 +111,7 @@ func isLocaleProperty(name string) bool {
 }
 
 func localizeLocaleDescription(description, locale string) string {
+	ensureLocaleExampleRegexes()
 	out := localeEgPattern.ReplaceAllString(description, fmt.Sprintf("e.g., %s", locale))
 	out = localeExamplesPattern.ReplaceAllString(out, fmt.Sprintf("Example: %s", locale))
 	out = localeDefaultContextPattern.ReplaceAllString(out, fmt.Sprintf("Default: from context or %s", locale))
@@ -122,4 +125,21 @@ func localizeLocaleDescription(description, locale string) string {
 		return fmt.Sprintf("default: %s", locale)
 	})
 	return out
+}
+
+func ensureLocaleExampleRegexes() {
+	localeExamplesRegexesOnce.Do(func() {
+		if localeEgPattern == nil {
+			localeEgPattern = regexp.MustCompile(`(?i)e\.g\.\s*,?\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?(?:\s*,\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)*`)
+		}
+		if localeExamplesPattern == nil {
+			localeExamplesPattern = regexp.MustCompile(`(?i)examples?\s*:\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?(?:\s*,\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?)*`)
+		}
+		if localeDefaultContextPattern == nil {
+			localeDefaultContextPattern = regexp.MustCompile(`(?i)default\s*:\s*from context or [A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?`)
+		}
+		if localeDefaultPattern == nil {
+			localeDefaultPattern = regexp.MustCompile(`(?i)default\s*:\s*[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?`)
+		}
+	})
 }

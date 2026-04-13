@@ -1,20 +1,24 @@
 package tools
 
 import (
-	"archive/zip"
 	"bytes"
 	"fmt"
+	"io"
 	"strings"
+	"unsafe"
 )
 
 type officeZipEntry struct {
-	Name    string
-	Content string
+	Name     string
+	Content  string
+	SizeHint int
+	WriteTo  func(io.Writer) error
 }
 
 func officeBuildZip(entries []officeZipEntry) ([]byte, error) {
 	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
+	buf.Grow(estimateOfficeZipBuffer(entries))
+	zw := newFastZipWriter(&buf)
 	for _, entry := range entries {
 		name := strings.TrimSpace(entry.Name)
 		if name == "" {
@@ -25,7 +29,14 @@ func officeBuildZip(entries []officeZipEntry) ([]byte, error) {
 			_ = zw.Close()
 			return nil, fmt.Errorf("create office zip entry %s: %w", name, err)
 		}
-		if _, err := w.Write([]byte(entry.Content)); err != nil {
+		if entry.WriteTo != nil {
+			if err := entry.WriteTo(w); err != nil {
+				_ = zw.Close()
+				return nil, fmt.Errorf("write office zip entry %s: %w", name, err)
+			}
+			continue
+		}
+		if _, err := officeWriteStringNoCopy(w, entry.Content); err != nil {
 			_ = zw.Close()
 			return nil, fmt.Errorf("write office zip entry %s: %w", name, err)
 		}
@@ -34,6 +45,35 @@ func officeBuildZip(entries []officeZipEntry) ([]byte, error) {
 		return nil, fmt.Errorf("close office zip: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func estimateOfficeZipBuffer(entries []officeZipEntry) int {
+	total := len(entries) * 256
+	contentBytes := 0
+	for _, entry := range entries {
+		switch {
+		case entry.SizeHint > 0:
+			contentBytes += entry.SizeHint
+		default:
+			contentBytes += len(entry.Content)
+		}
+	}
+	if contentBytes <= 0 {
+		return total
+	}
+	if contentBytes <= 8<<20 {
+		return total + contentBytes
+	}
+	return total + (contentBytes / 2)
+}
+
+func officeWriteStringNoCopy(w io.Writer, content string) (int, error) {
+	if content == "" {
+		return 0, nil
+	}
+	// The zip writer consumes the bytes during Write and does not retain or mutate them,
+	// so a read-only slice view avoids an otherwise large string->[]byte allocation.
+	return w.Write(unsafe.Slice(unsafe.StringData(content), len(content)))
 }
 
 func officePackageRelsXML(mainTarget string) string {

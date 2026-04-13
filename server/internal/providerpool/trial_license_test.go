@@ -1,6 +1,7 @@
 package providerpool
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,6 +46,21 @@ func TestSignAndVerifyLicense(t *testing.T) {
 	}
 	if len(sig) != 64 {
 		t.Errorf("signature length = %d, want 64", len(sig))
+	}
+}
+
+func TestVerifyLicense_RejectsNonHTTPSURL(t *testing.T) {
+	claims := testClaims()
+	claims.URL = "http://api.jianli.eu.org/"
+
+	license, err := SignLicense(claims, testPrivateKey1)
+	if err != nil {
+		t.Fatalf("SignLicense: %v", err)
+	}
+
+	_, _, err = VerifyLicense(license)
+	if !errors.Is(err, ErrLicenseInvalid) {
+		t.Fatalf("VerifyLicense error = %v, want ErrLicenseInvalid", err)
 	}
 }
 

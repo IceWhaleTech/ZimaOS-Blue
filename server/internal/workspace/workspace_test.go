@@ -1,13 +1,20 @@
 package workspace
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/embedbundle"
 )
 
 func resetTemplateCacheForTest(t *testing.T) {
@@ -450,6 +457,103 @@ func TestAgentsTemplate_LoadsPlatformSpecificTemplate(t *testing.T) {
 			t.Fatalf("%s AGENTS should come from the platform-specific file, not the generic OS/Shell checklist", locale)
 		}
 	}
+}
+
+func TestWorkspaceTemplateLocaleCoverage(t *testing.T) {
+	resetTemplateCacheForTest(t)
+
+	wantBundleLocales := []string{
+		"ca", "cs", "da", "de", "el", "en", "en-GB", "es", "fr",
+		"ga", "hr", "hu", "it", "ja", "ko", "ml", "nb", "nl",
+		"pl", "pt", "pt-BR", "ro", "ru", "sk", "sv", "zh", "zh-TW",
+	}
+	gotBundleLocales := availableLocales()
+	sort.Strings(wantBundleLocales)
+	sort.Strings(gotBundleLocales)
+	if !reflect.DeepEqual(gotBundleLocales, wantBundleLocales) {
+		t.Fatalf("availableLocales() = %v, want %v", gotBundleLocales, wantBundleLocales)
+	}
+
+	productLocales := []string{
+		"ca-ES", "cs-CZ", "da-DK", "de-DE", "el-GR", "en-GB", "en-US", "es-ES", "fr-FR",
+		"ga-IE", "hr-HR", "hu-HU", "it-IT", "ja-JP", "ko-KR", "ml-IN", "nb-NO", "nl-NL",
+		"pl-PL", "pt-BR", "pt-PT", "ro-RO", "ru-RU", "sk-SK", "sv-SE", "zh-CN", "zh-TW",
+	}
+	for _, locale := range productLocales {
+		ts := getTemplates(locale)
+		if ts == nil {
+			t.Fatalf("getTemplates(%q) returned nil", locale)
+		}
+		for file, content := range ts.templateMap() {
+			if strings.TrimSpace(content) == "" {
+				t.Fatalf("getTemplates(%q) returned empty %s", locale, file)
+			}
+		}
+		if strings.TrimSpace(ts.bootstrap) == "" {
+			t.Fatalf("getTemplates(%q) returned empty %s", locale, FileBOOTSTRAP)
+		}
+	}
+}
+
+func TestLoadTemplateBundleFS_RoundTripsTemplateTree(t *testing.T) {
+	bundle := buildTemplateBundleForTest(t, map[string]string{
+		"templates/en/SOUL.md":          "English soul",
+		"templates/en/AGENTS_linux.md":  "linux agents",
+		"templates/fr/SOUL.md":          "French soul",
+		"templates/zh/BOOTSTRAP.md":     "Chinese bootstrap",
+		"templates/zh/AGENTS_darwin.md": "darwin agents",
+	})
+
+	fsys, err := embedbundle.LoadTarGzFS(bundle, "templates", "templates/en/SOUL.md")
+	if err != nil {
+		t.Fatalf("LoadTarGzFS: %v", err)
+	}
+
+	entries, err := fs.ReadDir(fsys, "templates")
+	if err != nil {
+		t.Fatalf("ReadDir templates: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("locale dirs = %d, want 3", len(entries))
+	}
+
+	got, err := fs.ReadFile(fsys, "templates/fr/SOUL.md")
+	if err != nil {
+		t.Fatalf("ReadFile fr/SOUL.md: %v", err)
+	}
+	if string(got) != "French soul" {
+		t.Fatalf("fr/SOUL.md = %q, want %q", string(got), "French soul")
+	}
+}
+
+func buildTemplateBundleForTest(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+
+	var compressed bytes.Buffer
+	gz := gzip.NewWriter(&compressed)
+	tw := tar.NewWriter(gz)
+
+	for name, content := range files {
+		if err := tw.WriteHeader(&tar.Header{
+			Name: name,
+			Mode: 0o644,
+			Size: int64(len(content)),
+		}); err != nil {
+			t.Fatalf("WriteHeader %s: %v", name, err)
+		}
+		if _, err := tw.Write([]byte(content)); err != nil {
+			t.Fatalf("Write %s: %v", name, err)
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatalf("close gzip writer: %v", err)
+	}
+
+	return compressed.Bytes()
 }
 
 func TestEnsureWorkspace_WritesDetectedAgentsTemplate(t *testing.T) {

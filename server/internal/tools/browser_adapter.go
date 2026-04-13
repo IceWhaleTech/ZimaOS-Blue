@@ -387,6 +387,24 @@ func (a *RodBrowserBackend) ScreenshotTab(ctx context.Context, targetID string) 
 	return lease.svc.ScreenshotTab(ctx, targetID)
 }
 
+func (a *RodBrowserBackend) FocusTab(ctx context.Context, targetID string) error {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	defer lease.close()
+	return lease.svc.FocusTab(ctx, targetID)
+}
+
+func (a *RodBrowserBackend) PressKeys(ctx context.Context, targetID string, keys []string, holdMS int) error {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	defer lease.close()
+	return lease.svc.PressKeys(ctx, targetID, keys, holdMS)
+}
+
 func (a *RodBrowserBackend) CloseTab(ctx context.Context, targetID string) error {
 	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {

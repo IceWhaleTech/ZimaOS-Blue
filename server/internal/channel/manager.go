@@ -18,13 +18,58 @@ import (
 const managerSendTimeoutFallback = 10 * time.Second
 
 var (
-	markdownHeadingLineRe      = regexp.MustCompile(`(?m)^\s{0,3}#{1,6}\s+\S`)
-	markdownTableDividerLineRe = regexp.MustCompile(`(?m)^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$`)
-	markdownFenceLineRe        = regexp.MustCompile("(?m)^```")
-	markdownBulletLineRe       = regexp.MustCompile(`(?m)^\s{0,3}[-*+]\s+\S`)
-	markdownOrderedLineRe      = regexp.MustCompile(`(?m)^\s{0,3}\d+\.\s+\S`)
-	mentionMarkupTagRe         = regexp.MustCompile(`(?i)</?[^>]+>`)
+	channelMarkdownRegexMu sync.Mutex
+	channelMentionRegexMu  sync.Mutex
+
+	markdownHeadingLineRe      *regexp.Regexp
+	markdownTableDividerLineRe *regexp.Regexp
+	markdownFenceLineRe        *regexp.Regexp
+	markdownBulletLineRe       *regexp.Regexp
+	markdownOrderedLineRe      *regexp.Regexp
+	mentionMarkupTagRe         *regexp.Regexp
 )
+
+func ensureChannelMarkdownRegexes() {
+	if markdownHeadingLineRe != nil &&
+		markdownTableDividerLineRe != nil &&
+		markdownFenceLineRe != nil &&
+		markdownBulletLineRe != nil &&
+		markdownOrderedLineRe != nil {
+		return
+	}
+
+	channelMarkdownRegexMu.Lock()
+	defer channelMarkdownRegexMu.Unlock()
+
+	if markdownHeadingLineRe != nil &&
+		markdownTableDividerLineRe != nil &&
+		markdownFenceLineRe != nil &&
+		markdownBulletLineRe != nil &&
+		markdownOrderedLineRe != nil {
+		return
+	}
+
+	markdownHeadingLineRe = regexp.MustCompile(`(?m)^\s{0,3}#{1,6}\s+\S`)
+	markdownTableDividerLineRe = regexp.MustCompile(`(?m)^\s*\|(?:\s*:?-{3,}:?\s*\|)+\s*$`)
+	markdownFenceLineRe = regexp.MustCompile("(?m)^```")
+	markdownBulletLineRe = regexp.MustCompile(`(?m)^\s{0,3}[-*+]\s+\S`)
+	markdownOrderedLineRe = regexp.MustCompile(`(?m)^\s{0,3}\d+\.\s+\S`)
+}
+
+func ensureChannelMentionRegex() {
+	if mentionMarkupTagRe != nil {
+		return
+	}
+
+	channelMentionRegexMu.Lock()
+	defer channelMentionRegexMu.Unlock()
+
+	if mentionMarkupTagRe != nil {
+		return
+	}
+
+	mentionMarkupTagRe = regexp.MustCompile(`(?i)</?[^>]+>`)
+}
 
 func resolveOutboundCapabilities(ch Channel) OutboundCapabilities {
 	if ch == nil {
@@ -488,6 +533,8 @@ func addNormalizedMentionTarget(targets map[string]struct{}, value string) {
 }
 
 func normalizeMentionTarget(value string) string {
+	ensureChannelMentionRegex()
+
 	normalized := strings.TrimSpace(strings.ToLower(value))
 	if normalized == "" {
 		return ""
@@ -961,6 +1008,8 @@ func maybePromoteMarkdownReport(capabilities OutboundCapabilities, msg *Outgoing
 }
 
 func shouldPromoteMarkdownReport(capabilities OutboundCapabilities, msg OutgoingMessage) bool {
+	ensureChannelMarkdownRegexes()
+
 	if !capabilities.SupportsMarkdownFormat || !capabilities.AutoPromoteMarkdownReport {
 		return false
 	}
@@ -1196,6 +1245,8 @@ func splitMarkdownAware(content string, maxLength int) []string {
 }
 
 func looksLikeMarkdown(content string) bool {
+	ensureChannelMarkdownRegexes()
+
 	return markdownFenceLineRe.MatchString(content) ||
 		markdownTableDividerLineRe.MatchString(content) ||
 		markdownHeadingLineRe.MatchString(content) ||

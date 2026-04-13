@@ -21,6 +21,7 @@ set "CXX=zig c++ -target x86_64-windows-gnu"
 set "CGO_LDFLAGS=-static-libgcc -static-libstdc++"
 set "CGO_CFLAGS=-O2"
 set "CGO_CXXFLAGS=-O2"
+set "GO_BUILD_FLAGS=-trimpath -buildvcs=false"
 
 if "%COMMAND%"=="" set "COMMAND=prd"
 
@@ -292,7 +293,7 @@ echo [OK] Skills copied to server\internal\skill\embedded\skills
 :: Build server with pack-dist (appends web assets to binary)
 echo [INFO] Building Go server...
 cd /d "%PROJECT_ROOT%server"
-go build -ldflags="-s -w" -o bin\blue.exe ./cmd/blue
+go build %GO_BUILD_FLAGS% -ldflags="-s -w" -o bin\blue.exe ./cmd/blue
 if errorlevel 1 (
     echo [ERROR] Failed to build server
     exit /b 1
@@ -360,7 +361,7 @@ echo [OK] Skills copied to server\internal\skill\embedded\skills
 :: Build server with pack-dist (appends web assets to binary)
 echo [INFO] Building Go server (production mode)...
 cd /d "%PROJECT_ROOT%server"
-go build -ldflags="-s -w" -o bin\blue.exe ./cmd/blue
+go build %GO_BUILD_FLAGS% -ldflags="-s -w" -o bin\blue.exe ./cmd/blue
 if errorlevel 1 (
     echo [ERROR] Failed to build server
     exit /b 1

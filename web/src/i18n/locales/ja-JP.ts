@@ -478,6 +478,8 @@ export default mergeHarnessLocale('ja-JP', {
     stillListening: 'どうぞ続けて、聞いています...',
     continueGenerating: '続ける',
     responseInterrupted: '応答が中断されました',
+    responseStopped: '応答が停止されました',
+    responseStoppedBadge: '停止',
     deepResearchTitle: 'ディープリサーチ',
     deepResearchEvidence: '根拠',
     deepResearchSupport: '支持',

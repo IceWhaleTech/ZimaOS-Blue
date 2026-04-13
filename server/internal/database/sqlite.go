@@ -49,6 +49,9 @@ type SQLiteOpenOpts struct {
 	CacheSize int
 	// ForeignKeys enables foreign key constraints (default: true).
 	ForeignKeys bool
+	// SkipIntegrityCheckOnOpen avoids duplicate full-database integrity scans
+	// when the caller already performs a startup quick_check or equivalent.
+	SkipIntegrityCheckOnOpen bool
 }
 
 var defaultOpts = SQLiteOpenOpts{
@@ -137,7 +140,10 @@ func openAndConfigure(dsn, dbPath string, readOnly bool, opts *SQLiteOpenOpts) (
 				return fmt.Errorf("exec %q: %w", p, err)
 			}
 		}
-		return integrityCheckOpenDatabase(db)
+		if opts.SkipIntegrityCheckOnOpen {
+			return nil
+		}
+		return runIntegrityCheckOpenDatabase(db)
 	})
 }
 
@@ -169,7 +175,7 @@ func OpenSQLiteSimple(path string) (*sql.DB, error) {
 				return fmt.Errorf("exec %q: %w", p, err)
 			}
 		}
-		return integrityCheckOpenDatabase(db)
+		return runIntegrityCheckOpenDatabase(db)
 	})
 	if err != nil {
 		return nil, err

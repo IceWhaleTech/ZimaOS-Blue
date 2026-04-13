@@ -1,4 +1,5 @@
 import type { LocaleKey } from './locale-catalog'
+import { a11yLocaleTerms } from './builtin-tool-backfills'
 
 const localeStructuralBackfills = {
   'ca-ES': {
@@ -941,6 +942,30 @@ for (const [localeKey, patch] of Object.entries(webTermBackfills) as Array<
       names: {
         ...currentToolNames,
         web: patch.web,
+      },
+    },
+  }
+}
+
+for (const [localeKey, patch] of Object.entries(a11yLocaleTerms) as Array<
+  [LocaleKey, { name: string; description: string }]
+>) {
+  const current = (mutableLocaleStructuralBackfills[localeKey] ?? {}) as Record<string, unknown>
+  const currentTools = (current.tools ?? {}) as Record<string, unknown>
+  const currentToolNames = (currentTools.names ?? {}) as Record<string, unknown>
+  const currentToolDescriptions = (currentTools.descriptions ?? {}) as Record<string, unknown>
+
+  mutableLocaleStructuralBackfills[localeKey] = {
+    ...current,
+    tools: {
+      ...currentTools,
+      names: {
+        ...currentToolNames,
+        a11y: patch.name,
+      },
+      descriptions: {
+        ...currentToolDescriptions,
+        a11y: patch.description,
       },
     },
   }

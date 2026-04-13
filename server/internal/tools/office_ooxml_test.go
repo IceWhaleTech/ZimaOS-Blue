@@ -132,7 +132,7 @@ func officeZipHasEntry(t *testing.T, data []byte, name string) bool {
 	return false
 }
 
-func officeZipEntryText(t *testing.T, data []byte, name string) string {
+func officeZipEntryBytes(t *testing.T, data []byte, name string) []byte {
 	t.Helper()
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
@@ -151,8 +151,13 @@ func officeZipEntryText(t *testing.T, data []byte, name string) string {
 		if err != nil {
 			t.Fatalf("read entry %s: %v", name, err)
 		}
-		return string(content)
+		return content
 	}
 	t.Fatalf("missing zip entry %s", name)
-	return ""
+	return nil
+}
+
+func officeZipEntryText(t *testing.T, data []byte, name string) string {
+	t.Helper()
+	return string(officeZipEntryBytes(t, data, name))
 }
