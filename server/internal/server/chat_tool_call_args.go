@@ -16,6 +16,9 @@ func mergeStreamingToolCallArguments(current, next string) string {
 	if trimmedCurrent == "" {
 		return next
 	}
+	if trimmedNext == "" {
+		return current + next
+	}
 
 	if isEmptyStructuredToolArgs(trimmedCurrent) && !isEmptyStructuredToolArgs(trimmedNext) {
 		return next

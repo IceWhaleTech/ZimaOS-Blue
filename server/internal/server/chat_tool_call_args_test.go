@@ -58,6 +58,16 @@ func TestMergeStreamingToolCallArguments_PreservesWhitespaceOnlyFragment(t *test
 	}
 }
 
+func TestMergeStreamingToolCallArguments_PreservesConsecutiveWhitespaceFragments(t *testing.T) {
+	current := `{"command":"echo `
+	next := " "
+	want := `{"command":"echo  `
+	got := mergeStreamingToolCallArguments(current, next)
+	if got != want {
+		t.Fatalf("mergeStreamingToolCallArguments() = %q, want %q", got, want)
+	}
+}
+
 func TestMergeStreamingToolCallArguments_ReplacesWithWhitespaceWrappedCompletePayload(t *testing.T) {
 	current := `{"path":"old.md"}`
 	next := ` {"path":"notes.md","content":"hello"} `
