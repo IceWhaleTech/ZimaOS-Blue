@@ -48,6 +48,34 @@ func TestMergeStreamingToolCallArguments_PreservesClosingQuoteBeforeObjectClosur
 	}
 }
 
+func TestMergeStreamingToolCallArguments_PreservesWhitespaceOnlyFragment(t *testing.T) {
+	current := `{"command":"echo`
+	next := " "
+	want := `{"command":"echo `
+	got := mergeStreamingToolCallArguments(current, next)
+	if got != want {
+		t.Fatalf("mergeStreamingToolCallArguments() = %q, want %q", got, want)
+	}
+}
+
+func TestMergeStreamingToolCallArguments_ReplacesWithWhitespaceWrappedCompletePayload(t *testing.T) {
+	current := `{"path":"old.md"}`
+	next := ` {"path":"notes.md","content":"hello"} `
+	got := mergeStreamingToolCallArguments(current, next)
+	if got != next {
+		t.Fatalf("mergeStreamingToolCallArguments() = %q, want %q", got, next)
+	}
+}
+
+func TestMergeStreamingToolCallArguments_IgnoresWhitespaceWrappedEmptyPlaceholder(t *testing.T) {
+	current := `{"path":"notes.md","content":"hello"}`
+	next := " {} "
+	got := mergeStreamingToolCallArguments(current, next)
+	if got != current {
+		t.Fatalf("mergeStreamingToolCallArguments() = %q, want %q", got, current)
+	}
+}
+
 func TestNormalizeToolCallArgumentsForExecution_CanonicalizesConcatenatedObjects(t *testing.T) {
 	got := normalizeToolCallArgumentsForExecution(`{}{"query":"blue"}`)
 	if got != `{"query":"blue"}` {

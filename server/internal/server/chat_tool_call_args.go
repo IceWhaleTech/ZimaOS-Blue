@@ -7,12 +7,12 @@ import (
 )
 
 func mergeStreamingToolCallArguments(current, next string) string {
-	trimmedNext := strings.TrimSpace(next)
-	if trimmedNext == "" {
+	if next == "" {
 		return current
 	}
 
 	trimmedCurrent := strings.TrimSpace(current)
+	trimmedNext := strings.TrimSpace(next)
 	if trimmedCurrent == "" {
 		return next
 	}
