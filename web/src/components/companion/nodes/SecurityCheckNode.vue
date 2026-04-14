@@ -68,12 +68,26 @@ const actionBadgeColor = computed(() => {
 
 <template>
   <div :class="['px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]', bgColor]">
-    <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
+    <Handle
+      type="target"
+      :position="Position.Top"
+      class="!bg-gray-400"
+    />
 
     <div class="flex items-start gap-3">
       <div :class="['p-2 rounded-full bg-white dark:bg-gray-700', iconColor]">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="iconPath" />
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            :d="iconPath"
+          />
         </svg>
       </div>
 
@@ -85,20 +99,29 @@ const actionBadgeColor = computed(() => {
           <span class="text-sm font-medium text-gray-900 dark:text-white">
             {{ t(`companion.threat.${threatLevel}`) }}
           </span>
-          <span v-if="data.threatScore" class="text-xs text-gray-500 dark:text-gray-400">
+          <span
+            v-if="data.threatScore"
+            class="text-xs text-gray-500 dark:text-gray-400"
+          >
             ({{ data.threatScore }})
           </span>
         </div>
 
         <!-- Action badge -->
-        <div v-if="data.action" class="mt-2">
+        <div
+          v-if="data.action"
+          class="mt-2"
+        >
           <span :class="['px-1.5 py-0.5 text-[10px] rounded', actionBadgeColor]">
             {{ t(`companion.security.actions.${data.action}`) }}
           </span>
         </div>
 
         <!-- Threat types -->
-        <div v-if="data.threatTypes?.length" class="mt-2 flex flex-wrap gap-1">
+        <div
+          v-if="data.threatTypes?.length"
+          class="mt-2 flex flex-wrap gap-1"
+        >
           <span
             v-for="type in data.threatTypes.slice(0, 3)"
             :key="type"
@@ -116,6 +139,10 @@ const actionBadgeColor = computed(() => {
       </div>
     </div>
 
-    <Handle type="source" :position="Position.Bottom" class="!bg-gray-400" />
+    <Handle
+      type="source"
+      :position="Position.Bottom"
+      class="!bg-gray-400"
+    />
   </div>
 </template>

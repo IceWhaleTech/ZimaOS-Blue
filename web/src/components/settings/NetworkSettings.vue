@@ -483,11 +483,16 @@ onUnmounted(() => {
     </div>
 
     <!-- Port Configuration -->
-    <div v-if="props.showPortSection" class="glass-card p-4">
+    <div
+      v-if="props.showPortSection"
+      class="glass-card p-4"
+    >
       <div v-if="serverConfig">
         <div class="flex items-center justify-between">
           <div>
-            <h3 class="text-sm text-gray-500 dark:text-slate-400">{{ t('service.port') }}</h3>
+            <h3 class="text-sm text-gray-500 dark:text-slate-400">
+              {{ t('service.port') }}
+            </h3>
             <div class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('service.portDescription') }}
             </div>
@@ -498,7 +503,10 @@ onUnmounted(() => {
                 <div class="font-mono text-lg text-gray-900 dark:text-white">
                   {{ serverConfig?.actual_port || serverConfig?.port || '-' }}
                 </div>
-                <div v-if="portChanged" class="text-xs text-yellow-600 dark:text-yellow-400">
+                <div
+                  v-if="portChanged"
+                  class="text-xs text-yellow-600 dark:text-yellow-400"
+                >
                   {{ t('service.configuredPort') }}: {{ serverConfig?.port }}
                 </div>
               </div>
@@ -519,7 +527,7 @@ onUnmounted(() => {
                 :class="{ 'border-red-500': !validatePort(portInput) }"
                 @keyup.enter="savePort"
                 @keyup.escape="cancelEditPort"
-              />
+              >
               <button
                 class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors"
                 :disabled="!validatePort(portInput)"
@@ -542,7 +550,10 @@ onUnmounted(() => {
         >
           {{ t('service.portAutoFallbackInfo') }}
         </div>
-        <div v-if="portEditing" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        <div
+          v-if="portEditing"
+          class="mt-3 text-xs text-gray-500 dark:text-gray-400"
+        >
           {{ t('service.portEditHint') }}
         </div>
       </div>
@@ -619,33 +630,25 @@ onUnmounted(() => {
           </div>
           <div class="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span class="text-gray-500 dark:text-gray-400"
-                >{{ t('settings.network.tls.domains') }}:</span
-              >
+              <span class="text-gray-500 dark:text-gray-400">{{ t('settings.network.tls.domains') }}:</span>
               <div class="font-mono text-gray-900 dark:text-white">
                 {{ tlsConfig.cert_info.domains.join(', ') }}
               </div>
             </div>
             <div>
-              <span class="text-gray-500 dark:text-gray-400"
-                >{{ t('settings.network.tls.issuer') }}:</span
-              >
+              <span class="text-gray-500 dark:text-gray-400">{{ t('settings.network.tls.issuer') }}:</span>
               <div class="font-mono text-gray-900 dark:text-white truncate">
                 {{ tlsConfig.cert_info.issuer }}
               </div>
             </div>
             <div>
-              <span class="text-gray-500 dark:text-gray-400"
-                >{{ t('settings.network.tls.validFrom') }}:</span
-              >
+              <span class="text-gray-500 dark:text-gray-400">{{ t('settings.network.tls.validFrom') }}:</span>
               <div class="text-gray-900 dark:text-white">
                 {{ new Date(tlsConfig.cert_info.not_before).toLocaleDateString() }}
               </div>
             </div>
             <div>
-              <span class="text-gray-500 dark:text-gray-400"
-                >{{ t('settings.network.tls.validUntil') }}:</span
-              >
+              <span class="text-gray-500 dark:text-gray-400">{{ t('settings.network.tls.validUntil') }}:</span>
               <div
                 :class="
                   certExpiry?.expired
@@ -656,7 +659,10 @@ onUnmounted(() => {
                 "
               >
                 {{ new Date(tlsConfig.cert_info.not_after).toLocaleDateString() }}
-                <span v-if="certExpiry" class="text-xs">
+                <span
+                  v-if="certExpiry"
+                  class="text-xs"
+                >
                   ({{
                     certExpiry.expired
                       ? t('settings.network.tls.expired')
@@ -689,10 +695,10 @@ onUnmounted(() => {
                 :disabled="updatingTLSSettings"
                 class="sr-only peer"
                 @change="updateHTTPSOnly(($event.target as HTMLInputElement).checked)"
-              />
+              >
               <div
                 class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-gray-400/20 dark:peer-focus:ring-gray-400/40 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
-              ></div>
+              />
             </label>
           </div>
         </div>
@@ -715,7 +721,9 @@ onUnmounted(() => {
               d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
             />
           </svg>
-          <p class="text-gray-500 dark:text-gray-400">{{ t('settings.network.tls.noCert') }}</p>
+          <p class="text-gray-500 dark:text-gray-400">
+            {{ t('settings.network.tls.noCert') }}
+          </p>
         </div>
       </div>
 
@@ -739,7 +747,10 @@ onUnmounted(() => {
           </button>
         </div>
 
-        <div v-if="loading" class="flex items-center justify-center py-8">
+        <div
+          v-if="loading"
+          class="flex items-center justify-center py-8"
+        >
           <svg
             class="animate-spin w-6 h-6 text-gray-900 dark:text-gray-300"
             fill="none"
@@ -769,7 +780,7 @@ onUnmounted(() => {
               :placeholder="t('settings.network.originPlaceholder')"
               class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-gray-600"
               @keyup.enter="addOrigin"
-            />
+            >
             <button
               class="px-4 py-2 bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 disabled:opacity-50"
               :disabled="addingOrigin || !newOrigin.trim()"
@@ -779,7 +790,10 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <div v-if="corsConfig.dynamic_origins.length > 0" class="mb-4">
+          <div
+            v-if="corsConfig.dynamic_origins.length > 0"
+            class="mb-4"
+          >
             <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               {{ t('settings.network.dynamicOrigins') }}
             </h4>
@@ -794,7 +808,12 @@ onUnmounted(() => {
                   class="p-1 text-gray-400 hover:text-red-500 transition-colors"
                   @click="removeOrigin(origin)"
                 >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    class="w-5 h-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -920,7 +939,7 @@ onUnmounted(() => {
                   type="text"
                   class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2"
                   placeholder="localhost, example.com"
-                />
+                >
                 <p class="text-xs text-gray-500 mt-1">
                   {{ t('settings.network.tls.domainsHint') }}
                 </p>
@@ -935,7 +954,7 @@ onUnmounted(() => {
                   min="1"
                   max="3650"
                   class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2"
-                />
+                >
               </div>
             </div>
             <div class="flex justify-end gap-2 mt-6">
@@ -979,9 +998,15 @@ onUnmounted(() => {
                   v-model="acmeProvider"
                   class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2"
                 >
-                  <option value="letsencrypt">Let's Encrypt</option>
-                  <option value="zerossl">ZeroSSL</option>
-                  <option value="letsencrypt-staging">Let's Encrypt (Staging)</option>
+                  <option value="letsencrypt">
+                    Let's Encrypt
+                  </option>
+                  <option value="zerossl">
+                    ZeroSSL
+                  </option>
+                  <option value="letsencrypt-staging">
+                    Let's Encrypt (Staging)
+                  </option>
                 </select>
               </div>
               <div>
@@ -993,7 +1018,7 @@ onUnmounted(() => {
                   type="email"
                   class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2"
                   placeholder="admin@example.com"
-                />
+                >
               </div>
               <div>
                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{
@@ -1004,7 +1029,7 @@ onUnmounted(() => {
                   type="text"
                   class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2"
                   placeholder="example.com, www.example.com"
-                />
+                >
                 <p class="text-xs text-gray-500 mt-1">
                   {{ t('settings.network.tls.acme.domainsHint') }}
                 </p>
@@ -1047,12 +1072,24 @@ onUnmounted(() => {
                     class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2"
                     @change="onDNSProviderChange"
                   >
-                    <option value="cloudflare">Cloudflare</option>
-                    <option value="route53">AWS Route53</option>
-                    <option value="godaddy">GoDaddy</option>
-                    <option value="namecheap">Namecheap</option>
-                    <option value="alidns">Aliyun DNS</option>
-                    <option value="tencentcloud">Tencent Cloud / DNSPod</option>
+                    <option value="cloudflare">
+                      Cloudflare
+                    </option>
+                    <option value="route53">
+                      AWS Route53
+                    </option>
+                    <option value="godaddy">
+                      GoDaddy
+                    </option>
+                    <option value="namecheap">
+                      Namecheap
+                    </option>
+                    <option value="alidns">
+                      Aliyun DNS
+                    </option>
+                    <option value="tencentcloud">
+                      Tencent Cloud / DNSPod
+                    </option>
                   </select>
                 </div>
 
@@ -1075,13 +1112,13 @@ onUnmounted(() => {
                         type="text"
                         class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 text-sm font-mono"
                         :placeholder="t('settings.network.tls.acme.envKey')"
-                      />
+                      >
                       <input
                         v-model="cred.value"
                         type="password"
                         class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-1.5 text-sm"
                         :placeholder="t('settings.network.tls.acme.envValue')"
-                      />
+                      >
                       <button
                         v-if="acmeDNSCredentials.length > 1"
                         class="px-2 text-gray-400 hover:text-red-500"

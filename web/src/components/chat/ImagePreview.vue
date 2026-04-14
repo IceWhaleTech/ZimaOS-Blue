@@ -80,7 +80,12 @@ function resetZoom() {
           class="absolute top-4 end-4 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer z-10"
           @click="close"
         >
-          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            class="w-6 h-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -99,8 +104,18 @@ function resetZoom() {
             :title="t('chat.imagePreview.zoomOut')"
             @click="zoomOut"
           >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M20 12H4"
+              />
             </svg>
           </button>
           <button
@@ -115,7 +130,12 @@ function resetZoom() {
             :title="t('chat.imagePreview.zoomIn')"
             @click="zoomIn"
           >
-            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -138,7 +158,7 @@ function resetZoom() {
           }"
           draggable="false"
           @mousedown="handleMouseDown"
-        />
+        >
       </div>
     </Transition>
   </Teleport>

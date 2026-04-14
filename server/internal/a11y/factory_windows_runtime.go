@@ -70,6 +70,9 @@ var (
 	windowsCaptureWindowFunc       = windowsCaptureWindowImage
 	windowsCaptureActiveWindowFunc = windowsCaptureActiveWindowImage
 	windowsPasteTextFunc           = windowsPasteTextInput
+	windowsUnicodeTextInputFunc    = windowsSendUnicodeText
+	windowsCaptureRegionPNGFunc    = windowsCaptureRegionPNG
+	windowsExtractTextFromPNGFunc  = windowsExtractTextFromPNG
 )
 
 func init() {
@@ -141,7 +144,7 @@ func (b *windowsBackend) snapshot(ctx context.Context, windowID string, interact
 	)
 }
 
-func (b *windowsBackend) Act(_ context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (ActionResult, error) {
+func (b *windowsBackend) Act(ctx context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (ActionResult, error) {
 	hwnd, path, err := windowsResolveActionTargetFromRef(ref, refMap, windowID, windowsParseSnapshotToken, windowsParseHWND)
 	if err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
@@ -150,6 +153,7 @@ func (b *windowsBackend) Act(_ context.Context, windowID string, ref int, refMap
 	err = windowsWithResolvedTarget(hwnd, path, func(target windowsAccessibleTarget) error {
 		meta := windowsReadActionMetadata(target)
 		plan := planWindowsAction(actType, meta)
+		bounds, hasBounds := windowsAccessibleLocation(target.Dispatch, target.ChildID)
 		result, err := windowsActionResultWithPlan(
 			b.HostOS(),
 			strconv.FormatUint(uint64(hwnd), 10),
@@ -160,8 +164,22 @@ func (b *windowsBackend) Act(_ context.Context, windowID string, ref int, refMap
 			func(plan windowsActionPlan, value string) error {
 				return windowsExecutePrimaryAction(target, plan, value)
 			},
-			func(fallback string, value string, holdMS int) error {
-				return windowsExecuteFallback(target, fallback, value, holdMS)
+			func(plan windowsActionPlan, value string) bool {
+				if plan.Primary != windowsActionPutValue || !strings.EqualFold(strings.TrimSpace(actType), "type") {
+					return true
+				}
+				return windowsVerifySemanticTextEntry(
+					ctx,
+					value,
+					func() string { return windowsAccessibleString(target.Dispatch, "accValue", target.ChildID) },
+					bounds,
+					hasBounds,
+					windowsCaptureRegionPNGFunc,
+					windowsExtractTextFromPNGFunc,
+				)
+			},
+			func(fallback string, value string, holdMS int, primarySucceeded bool) error {
+				return windowsExecuteFallback(target, fallback, value, holdMS, primarySucceeded)
 			},
 		)
 		if err != nil {
@@ -563,7 +581,7 @@ func windowsExecutePrimaryAction(target windowsAccessibleTarget, plan windowsAct
 	}
 }
 
-func windowsExecuteFallback(target windowsAccessibleTarget, fallback string, value string, holdMS int) error {
+func windowsExecuteFallback(target windowsAccessibleTarget, fallback string, value string, holdMS int, primarySucceeded bool) error {
 	bounds, hasBounds := windowsAccessibleLocation(target.Dispatch, target.ChildID)
 	derivedTarget := windowsFallbackTargetFromRect(target.HWND, bounds)
 	derivedTarget.HasBounds = hasBounds && derivedTarget.HasBounds
@@ -572,6 +590,7 @@ func windowsExecuteFallback(target windowsAccessibleTarget, fallback string, val
 		fallback,
 		value,
 		holdMS,
+		primarySucceeded,
 		windowsFallbackExecutor{
 			BringFront: windowsBringWindowToFront,
 			Click: func(x int, y int, holdMS int) error {
@@ -798,14 +817,22 @@ func windowsSendUnicodeText(text string) error {
 }
 
 func windowsSendKeys(keys []string, holdMS int) error {
-	cleaned := make([]string, 0, len(keys))
-	for _, key := range keys {
-		if trimmed := strings.TrimSpace(key); trimmed != "" {
-			cleaned = append(cleaned, trimmed)
-		}
+	cleaned, handled, err := handleLiteralTextKeySequence(
+		keys,
+		windowsIsModifierKey,
+		func(value string) bool {
+			_, ok := windowsVirtualKey(value)
+			return ok
+		},
+		func(value string) error {
+			return windowsSendTextWithClipboardFallback(value, windowsPasteTextFunc, windowsUnicodeTextInputFunc)
+		},
+	)
+	if err != nil {
+		return err
 	}
-	if len(cleaned) == 0 {
-		return NewError("unsupported_action", "keys are required", nil)
+	if handled {
+		return nil
 	}
 	if len(cleaned) == 1 {
 		if vk, ok := windowsVirtualKey(cleaned[0]); ok {
@@ -815,7 +842,7 @@ func windowsSendKeys(keys []string, holdMS int) error {
 			time.Sleep(time.Duration(holdMS) * time.Millisecond)
 			return windowsSendVirtualKey(vk, false)
 		}
-		return windowsSendUnicodeText(cleaned[0])
+		return windowsSendTextWithClipboardFallback(cleaned[0], windowsPasteTextFunc, windowsUnicodeTextInputFunc)
 	}
 
 	modifiers := make([]uint16, 0, len(cleaned))

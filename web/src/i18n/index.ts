@@ -184,7 +184,7 @@ function writeCachedLocaleMessages(locale: LocaleKey, messages: LocaleMessages):
 
 const initialLocale = getDefaultLocale()
 const initialCachedMessages = readCachedLocaleMessages(initialLocale)
-const initialMessages: any = {
+const initialMessages: Record<string, LocaleMessages> = {
   [fallbackLocale]:
     initialLocale === fallbackLocale ? (initialCachedMessages ?? minimalMessages) : minimalMessages,
 }
@@ -199,7 +199,7 @@ const rawI18n = createI18n({
   fallbackLocale,
   missingWarn: false,
   fallbackWarn: false,
-  messages: initialMessages,
+  messages: initialMessages as never,
 })
 
 export const i18n = rawI18n as unknown as I18nBridge

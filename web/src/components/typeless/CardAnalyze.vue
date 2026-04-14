@@ -102,7 +102,10 @@ const isError = computed(() => props.card.status === 'error')
       </div>
     </div>
 
-    <div v-if="hasReportLink" class="px-4 py-3">
+    <div
+      v-if="hasReportLink"
+      class="px-4 py-3"
+    >
       <a
         :href="card.report_url"
         class="inline-flex items-center gap-2 text-sm font-medium text-indigo-600 underline-offset-4 hover:underline dark:text-indigo-300"

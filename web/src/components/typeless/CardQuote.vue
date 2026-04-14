@@ -13,7 +13,10 @@ const variantClasses = {
 </script>
 
 <template>
-  <div class="quote-card rounded-lg p-4" :class="variantClasses[card.variant || 'default']">
+  <div
+    class="quote-card rounded-lg p-4"
+    :class="variantClasses[card.variant || 'default']"
+  >
     <!-- Quote icon -->
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -32,14 +35,26 @@ const variantClasses = {
     </blockquote>
 
     <!-- Author and source -->
-    <div v-if="card.author || card.source" class="mt-4 flex items-center gap-2">
+    <div
+      v-if="card.author || card.source"
+      class="mt-4 flex items-center gap-2"
+    >
       <div class="w-8 h-0.5 bg-gray-300 dark:bg-gray-600" />
       <div class="text-sm">
-        <span v-if="card.author" class="font-medium text-gray-900 dark:text-white">{{
+        <span
+          v-if="card.author"
+          class="font-medium text-gray-900 dark:text-white"
+        >{{
           card.author
         }}</span>
-        <span v-if="card.author && card.source" class="text-gray-400">, </span>
-        <span v-if="card.source" class="text-gray-500 dark:text-gray-400">{{ card.source }}</span>
+        <span
+          v-if="card.author && card.source"
+          class="text-gray-400"
+        >, </span>
+        <span
+          v-if="card.source"
+          class="text-gray-500 dark:text-gray-400"
+        >{{ card.source }}</span>
       </div>
     </div>
   </div>

@@ -17,6 +17,8 @@ const testChannelConnectionMock = vi.fn()
 const getTunnelProvidersMock = vi.fn()
 const getRemoteAccessConfigMock = vi.fn()
 const getRemoteAccessStatusMock = vi.fn()
+const createWeChatILinkSetupSessionMock = vi.fn()
+const getWeChatILinkSetupSessionMock = vi.fn()
 
 vi.mock('@/stores/settings', () => ({
   useSettingsStore: () => settingsStoreMock,
@@ -41,6 +43,11 @@ vi.mock('@/api/remote-access', () => ({
   updateRemoteAccessConfig: vi.fn(),
   startRemoteAccess: vi.fn(),
   stopRemoteAccess: vi.fn(),
+}))
+
+vi.mock('@/api/wechat-ilink-setup', () => ({
+  createWeChatILinkSetupSession: createWeChatILinkSetupSessionMock,
+  getWeChatILinkSetupSession: getWeChatILinkSetupSessionMock,
 }))
 
 vi.mock('@/components/channels/ChannelCard.vue', () => ({
@@ -111,6 +118,14 @@ function createTestI18n() {
           groupAccessAllowedChatsPlaceholder: 'feishu:oc_xxx_allowed',
           groupAccessAllowedChatsHint: 'Allowed chats hint',
           saving: 'Saving...',
+          wechatILinkPrimaryAction: 'Primary Action',
+          wechatILinkScanAction: 'Scan To Configure',
+          wechatILinkManualAction: 'Manual Config',
+          wechatILinkScanHint: 'Scan hint',
+          wechatILinkSetupCreating: 'Creating Session...',
+          wechatILinkSetupDescription: 'Setup description',
+          wechatILinkSetupStatus: 'Setup Status',
+          wechatILinkOpenOnPhone: 'Open Setup On Phone',
         },
         common: {
           loading: 'Loading',
@@ -172,6 +187,14 @@ describe('ChannelsView', () => {
     getRemoteAccessConfigMock.mockResolvedValue({ data: { config: {} } })
     getRemoteAccessStatusMock.mockResolvedValue({
       data: { tunnel: { active: false } },
+    })
+    createWeChatILinkSetupSessionMock.mockResolvedValue({
+      status: 404,
+      data: {},
+    })
+    getWeChatILinkSetupSessionMock.mockResolvedValue({
+      status: 404,
+      data: {},
     })
   })
 
@@ -347,5 +370,163 @@ describe('ChannelsView', () => {
         session_mode: 'true',
       },
     })
+  })
+
+  it('keeps WeChat Work separate from WeChat iLink manual config', async () => {
+    let savedBody: Record<string, unknown> | null = null
+    listChannelsMock.mockResolvedValue({
+      status: 200,
+      data: {
+        channels: [
+          {
+            id: 'wechat',
+            enabled: false,
+            status: 'disconnected',
+            config: {
+              corp_id: 'ww1807890abcdef',
+              agent_id: '1000001',
+              secret: 'enterprise-secret',
+            },
+          },
+          {
+            id: 'wechat_ilink',
+            enabled: false,
+            status: 'disconnected',
+            config: {
+              api_base_url: 'https://ilink.example.com',
+              bot_token: 'bot-token',
+            },
+          },
+        ],
+      },
+    })
+    getChannelSettingsMock.mockResolvedValue({
+      status: 200,
+      data: {},
+    })
+    updateChannelMock.mockImplementation((_channelId: string, payload: Record<string, unknown>) => {
+      savedBody = payload
+      return Promise.resolve({
+        status: 200,
+        data: {
+          channel: {
+            status: 'disconnected',
+          },
+        },
+      })
+    })
+
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const loadMoreButton = wrapper.find('.channels-load-more')
+    if (loadMoreButton.exists()) {
+      await loadMoreButton.trigger('click')
+      await flushPromises()
+    }
+
+    const wechatWorkCard = wrapper.find('.channel-card-stub[data-id="wechat"]')
+    expect(wechatWorkCard.exists()).toBe(true)
+
+    const wechatILinkCard = wrapper.find('.channel-card-stub[data-id="wechat_ilink"]')
+    expect(wechatILinkCard.exists()).toBe(true)
+    await wechatILinkCard.find('.channel-card-select-stub').trigger('click')
+    await flushPromises()
+
+    const wechatILinkDetail = wrapper.find('.channel-detail-stub[data-id="wechat_ilink"]')
+    expect(wechatILinkDetail.exists()).toBe(true)
+    expect(wechatILinkDetail.attributes('data-last-field')).toBe('bot_token')
+    expect(wechatILinkDetail.attributes('data-last-value')).toBe('bot-token')
+
+    await wechatILinkDetail.find('.channel-detail-save-stub').trigger('click')
+    await flushPromises()
+
+    expect(savedBody).not.toBeNull()
+    expect(savedBody).toMatchObject({
+      enabled: false,
+      config: {
+        api_base_url: 'https://ilink.example.com',
+        bot_token: 'bot-token',
+      },
+    })
+  })
+
+  it('starts WeChat iLink setup and shows the QR modal', async () => {
+    createWeChatILinkSetupSessionMock.mockResolvedValue({
+      status: 200,
+      data: {
+        session_id: 'session-1',
+        status: 'pending',
+        qrcode: 'data:image/png;base64,abc',
+        mobile_url: 'https://blue.example.com/channels/setup/wechat_ilink?session_id=session-1',
+        expires_at: '2026-04-14T10:10:00Z',
+      },
+    })
+    listChannelsMock.mockResolvedValue({
+      status: 200,
+      data: {
+        channels: [
+          {
+            id: 'wechat_ilink',
+            enabled: false,
+            status: 'disconnected',
+            config: {},
+          },
+        ],
+      },
+    })
+    getChannelSettingsMock.mockResolvedValue({
+      status: 200,
+      data: {},
+    })
+
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const loadMoreButton = wrapper.find('.channels-load-more')
+    if (loadMoreButton.exists()) {
+      await loadMoreButton.trigger('click')
+      await flushPromises()
+    }
+
+    const wechatCard = wrapper.find('.channel-card-stub[data-id="wechat"]')
+    if (wechatCard.exists()) {
+      await wechatCard.find('.channel-card-select-stub').trigger('click')
+      await flushPromises()
+    }
+
+    const wechatILinkCard = wrapper.find('.channel-card-stub[data-id="wechat_ilink"]')
+    expect(wechatILinkCard.exists()).toBe(true)
+    await wechatILinkCard.find('.channel-card-select-stub').trigger('click')
+    await flushPromises()
+
+    const startButton = wrapper.find('.channels-ilink-setup-card__primary')
+    expect(startButton.exists()).toBe(true)
+    await startButton.trigger('click')
+    await flushPromises()
+
+    expect(createWeChatILinkSetupSessionMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.channels-ilink-modal').exists()).toBe(true)
+    expect(wrapper.find('.channels-ilink-modal__qr-image').attributes('src')).toBe(
+      'data:image/png;base64,abc'
+    )
   })
 })

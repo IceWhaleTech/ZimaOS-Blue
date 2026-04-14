@@ -69,12 +69,21 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 <template>
   <Transition name="slide-up">
-    <div v-if="visible" class="transcription-editor">
+    <div
+      v-if="visible"
+      class="transcription-editor"
+    >
       <div class="editor-header">
         <span class="title">{{ t('chat.transcription.title') }}</span>
         <div class="meta">
-          <span v-if="language" class="language">{{ language.toUpperCase() }}</span>
-          <span v-if="confidencePercent" class="confidence">
+          <span
+            v-if="language"
+            class="language"
+          >{{ language.toUpperCase() }}</span>
+          <span
+            v-if="confidencePercent"
+            class="confidence"
+          >
             {{ t('chat.transcription.confidence', { percent: confidencePercent }) }}
           </span>
         </div>
@@ -92,21 +101,36 @@ const handleKeydown = (e: KeyboardEvent) => {
       </div>
 
       <div class="editor-actions">
-        <button v-if="!isEditing" class="btn-edit" @click="toggleEdit">
+        <button
+          v-if="!isEditing"
+          class="btn-edit"
+          @click="toggleEdit"
+        >
           <span class="icon">✏️</span>
           {{ t('common.edit') }}
         </button>
-        <button v-else class="btn-done" @click="toggleEdit">
+        <button
+          v-else
+          class="btn-done"
+          @click="toggleEdit"
+        >
           <span class="icon">✓</span>
           {{ t('common.done') }}
         </button>
 
         <div class="spacer" />
 
-        <button class="btn-cancel" @click="cancel">
+        <button
+          class="btn-cancel"
+          @click="cancel"
+        >
           {{ t('common.cancel') }}
         </button>
-        <button class="btn-send" :disabled="!editedText.trim()" @click="confirmAndSend">
+        <button
+          class="btn-send"
+          :disabled="!editedText.trim()"
+          @click="confirmAndSend"
+        >
           <span class="icon">📤</span>
           {{ t('chat.transcription.send') }}
         </button>

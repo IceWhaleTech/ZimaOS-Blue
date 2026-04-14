@@ -73,6 +73,7 @@ func TestWindowsNodeInteractive_DetectsInteractiveSignals(t *testing.T) {
 		{name: "writable", meta: windowsActionMetadata{ValueWritable: true}, want: true},
 		{name: "interactive role", meta: windowsActionMetadata{Role: "push button"}, want: true},
 		{name: "default action", meta: windowsActionMetadata{DefaultAction: "press"}, want: true},
+		{name: "plain text role", meta: windowsActionMetadata{Role: "text"}, want: false},
 		{name: "plain text", meta: windowsActionMetadata{Role: "static"}, want: false},
 	}
 

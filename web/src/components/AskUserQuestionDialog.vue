@@ -59,17 +59,9 @@ watch(question, (q) => {
 const currentQuestion = computed(() => question.value?.questions[activeTab.value])
 
 const checkpointContext = computed(() => {
-  const ctx = (question.value as any)?.context
+  const ctx = question.value?.context
   if (!ctx || ctx.kind !== 'browser_checkpoint') return null
-  return ctx as {
-    required?: boolean
-    risk_level?: string
-    step?: string
-    action?: string
-    url?: string
-    site_origin?: string
-    screenshot?: { mime_type?: string; data?: string; url?: string }
-  }
+  return ctx
 })
 
 const checkpointScreenshotSrc = computed(() => {
@@ -405,7 +397,10 @@ async function dismiss() {
           </div>
 
           <!-- Question body - show current question only -->
-          <div v-if="currentQuestion" class="px-4 py-3 space-y-2.5 max-h-[68vh] overflow-y-auto">
+          <div
+            v-if="currentQuestion"
+            class="px-4 py-3 space-y-2.5 max-h-[68vh] overflow-y-auto"
+          >
             <p class="text-xs font-medium text-gray-800 dark:text-gray-200">
               {{ currentQuestion.question }}
             </p>
@@ -425,10 +420,16 @@ async function dismiss() {
               <div class="text-xs text-blue-700 dark:text-blue-200">
                 {{ t('askQuestion.browserCheckpoint.riskLevel') }}: {{ checkpointRiskLabel }}
               </div>
-              <div v-if="checkpointContext.step" class="text-xs text-blue-700 dark:text-blue-200">
+              <div
+                v-if="checkpointContext.step"
+                class="text-xs text-blue-700 dark:text-blue-200"
+              >
                 {{ t('askQuestion.browserCheckpoint.step') }}: {{ checkpointContext.step }}
               </div>
-              <div v-if="checkpointContext.action" class="text-xs text-blue-700 dark:text-blue-200">
+              <div
+                v-if="checkpointContext.action"
+                class="text-xs text-blue-700 dark:text-blue-200"
+              >
                 {{ t('askQuestion.browserCheckpoint.action') }}: {{ checkpointContext.action }}
               </div>
               <div
@@ -442,7 +443,7 @@ async function dismiss() {
                 :src="checkpointScreenshotSrc"
                 :alt="t('askQuestion.browserCheckpoint.screenshotAlt')"
                 class="mt-1.5 w-full max-h-56 object-contain rounded border border-blue-200 dark:border-blue-700 bg-white/80 dark:bg-gray-900/40"
-              />
+              >
             </div>
 
             <!-- Options -->
@@ -527,7 +528,7 @@ async function dismiss() {
                   class="w-full px-2.5 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   :placeholder="t('askQuestion.otherPlaceholder')"
                   @click.stop
-                />
+                >
               </div>
 
               <label
@@ -589,7 +590,7 @@ async function dismiss() {
                     class="mt-1.5 w-full px-2.5 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     :placeholder="t('askQuestion.otherPlaceholder')"
                     @click.stop
-                  />
+                  >
                 </div>
               </label>
             </div>

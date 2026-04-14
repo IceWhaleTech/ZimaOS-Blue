@@ -122,16 +122,31 @@ const linePoints = computed(() => {
     class="chart-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div
+      v-if="card.title"
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+    >
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Bar Chart -->
-    <div v-if="card.chartType === 'bar'" class="p-4 space-y-3">
-      <div v-for="(item, index) in card.data" :key="index" class="space-y-1">
+    <div
+      v-if="card.chartType === 'bar'"
+      class="p-4 space-y-3"
+    >
+      <div
+        v-for="(item, index) in card.data"
+        :key="index"
+        class="space-y-1"
+      >
         <div class="flex justify-between text-sm">
           <span class="text-gray-600 dark:text-gray-400">{{ item.label }}</span>
-          <span v-if="card.showValues" class="text-gray-900 dark:text-white font-medium">{{
+          <span
+            v-if="card.showValues"
+            class="text-gray-900 dark:text-white font-medium"
+          >{{
             item.value
           }}</span>
         </div>
@@ -145,8 +160,14 @@ const linePoints = computed(() => {
     </div>
 
     <!-- Line Chart -->
-    <div v-else-if="card.chartType === 'line'" class="p-4">
-      <svg viewBox="0 0 280 120" class="w-full h-32">
+    <div
+      v-else-if="card.chartType === 'line'"
+      class="p-4"
+    >
+      <svg
+        viewBox="0 0 280 120"
+        class="w-full h-32"
+      >
         <!-- Grid lines -->
         <line
           x1="20"
@@ -188,7 +209,10 @@ const linePoints = computed(() => {
 
       <!-- Labels -->
       <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400 mt-2 px-2">
-        <span v-for="(item, index) in card.data" :key="index">{{ item.label }}</span>
+        <span
+          v-for="(item, index) in card.data"
+          :key="index"
+        >{{ item.label }}</span>
       </div>
     </div>
 
@@ -197,7 +221,10 @@ const linePoints = computed(() => {
       v-else-if="card.chartType === 'pie' || card.chartType === 'donut'"
       class="p-4 flex items-center justify-center"
     >
-      <svg viewBox="0 0 200 200" class="w-40 h-40">
+      <svg
+        viewBox="0 0 200 200"
+        class="w-40 h-40"
+      >
         <path
           v-for="(slice, index) in pieSlices"
           :key="index"
@@ -220,13 +247,24 @@ const linePoints = computed(() => {
     </div>
 
     <!-- Legend -->
-    <div v-if="card.showLegend !== false" class="px-4 pb-4 flex flex-wrap gap-3">
-      <div v-for="(item, index) in card.data" :key="index" class="flex items-center gap-2 text-sm">
-        <div class="w-3 h-3 rounded-full" :style="{ backgroundColor: getColor(item, index) }" />
+    <div
+      v-if="card.showLegend !== false"
+      class="px-4 pb-4 flex flex-wrap gap-3"
+    >
+      <div
+        v-for="(item, index) in card.data"
+        :key="index"
+        class="flex items-center gap-2 text-sm"
+      >
+        <div
+          class="w-3 h-3 rounded-full"
+          :style="{ backgroundColor: getColor(item, index) }"
+        />
         <span class="text-gray-600 dark:text-gray-400">{{ item.label }}</span>
-        <span v-if="card.showValues" class="text-gray-900 dark:text-white font-medium"
-          >({{ item.value }})</span
-        >
+        <span
+          v-if="card.showValues"
+          class="text-gray-900 dark:text-white font-medium"
+        >({{ item.value }})</span>
       </div>
     </div>
   </div>

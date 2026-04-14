@@ -102,7 +102,10 @@ const hiddenTranscriptCount = computed(() =>
     </header>
 
     <div class="space-y-4 px-4 py-4">
-      <div v-if="metaItems.length > 0" class="flex flex-wrap gap-2">
+      <div
+        v-if="metaItems.length > 0"
+        class="flex flex-wrap gap-2"
+      >
         <span
           v-for="item in metaItems"
           :key="item"
@@ -142,7 +145,10 @@ const hiddenTranscriptCount = computed(() =>
         </p>
       </div>
 
-      <section v-if="transcriptEntries.length > 0" class="space-y-2">
+      <section
+        v-if="transcriptEntries.length > 0"
+        class="space-y-2"
+      >
         <div class="flex items-center justify-between gap-3">
           <h4 class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
             {{ t('transcript', 'Transcript') }}

@@ -51,12 +51,20 @@ function getChangeIcon(item: MetricItem): string {
     class="metric-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div
+      v-if="card.title"
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+    >
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Metrics Grid -->
-    <div class="p-4 grid gap-4" :class="getGridCols()">
+    <div
+      class="p-4 grid gap-4"
+      :class="getGridCols()"
+    >
       <div
         v-for="(metric, index) in card.metrics"
         :key="index"
@@ -64,14 +72,20 @@ function getChangeIcon(item: MetricItem): string {
       >
         <!-- Icon and Label -->
         <div class="flex items-center gap-2 mb-2">
-          <span v-if="metric.icon" class="text-lg">{{ metric.icon }}</span>
+          <span
+            v-if="metric.icon"
+            class="text-lg"
+          >{{ metric.icon }}</span>
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ tLabel(metric.label) }}</span>
         </div>
 
         <!-- Value -->
         <div class="flex items-baseline gap-1">
           <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ metric.value }}</span>
-          <span v-if="metric.unit" class="text-sm text-gray-500 dark:text-gray-400">{{
+          <span
+            v-if="metric.unit"
+            class="text-sm text-gray-500 dark:text-gray-400"
+          >{{
             metric.unit
           }}</span>
         </div>

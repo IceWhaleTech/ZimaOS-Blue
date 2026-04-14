@@ -88,11 +88,18 @@ const memorySummaryItems = computed(() => [
 </script>
 
 <template>
-  <div v-if="compact" class="dashboard-card-stack">
+  <div
+    v-if="compact"
+    class="dashboard-card-stack"
+  >
     <div class="dashboard-card-footer">
       <div class="dashboard-card-copy">
-        <p class="dashboard-card-label">{{ t('system.memoryUsage') }}</p>
-        <p class="dashboard-card-subtitle mt-2">{{ t('system.cards.memoryChart.compactSubtitle') }}</p>
+        <p class="dashboard-card-label">
+          {{ t('system.memoryUsage') }}
+        </p>
+        <p class="dashboard-card-subtitle mt-2">
+          {{ t('system.cards.memoryChart.compactSubtitle') }}
+        </p>
       </div>
       <span class="dashboard-card-chip">{{ t('metrics.max') }}</span>
     </div>
@@ -107,8 +114,8 @@ const memorySummaryItems = computed(() => [
             memoryCurrentBytes == null
               ? t('system.cards.memoryChart.awaitingSample')
               : t('system.cards.memoryChart.currentValue', {
-                  value: formatCompactBytes(memoryCurrentBytes),
-                })
+                value: formatCompactBytes(memoryCurrentBytes),
+              })
           }}
         </p>
       </div>
@@ -119,7 +126,7 @@ const memorySummaryItems = computed(() => [
           :key="index"
           class="dashboard-mini-bar"
           :style="{ '--bar-level': `${level}%` }"
-        ></div>
+        />
       </div>
     </div>
   </div>

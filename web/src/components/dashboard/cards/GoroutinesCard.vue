@@ -36,8 +36,12 @@ const workerTrendData = computed<SparklinePoint[]>(() => {
   <div class="dashboard-card-stack">
     <div class="dashboard-card-footer">
       <div class="dashboard-card-copy">
-        <p class="dashboard-card-label">{{ t('system.goroutines') }}</p>
-        <p class="dashboard-card-subtitle mt-2">{{ t('system.cards.goroutines.subtitle') }}</p>
+        <p class="dashboard-card-label">
+          {{ t('system.goroutines') }}
+        </p>
+        <p class="dashboard-card-subtitle mt-2">
+          {{ t('system.cards.goroutines.subtitle') }}
+        </p>
       </div>
       <span class="dashboard-card-chip">{{ t('system.cards.goroutines.chip') }}</span>
     </div>
@@ -45,12 +49,21 @@ const workerTrendData = computed<SparklinePoint[]>(() => {
     <div class="dashboard-card-footer goroutines-card-main">
       <div class="dashboard-card-copy">
         <template v-if="systemStore.loading">
-          <Skeleton height="1.75rem" width="50%" rounded="md" />
+          <Skeleton
+            height="1.75rem"
+            width="50%"
+            rounded="md"
+          />
         </template>
-        <p v-else class="dashboard-card-value text-gray-900 dark:text-white">
+        <p
+          v-else
+          class="dashboard-card-value text-gray-900 dark:text-white"
+        >
           {{ systemStore.health?.goroutines ?? '-' }}
         </p>
-        <p class="dashboard-card-footnote mt-3">{{ t('system.cards.goroutines.footnote') }}</p>
+        <p class="dashboard-card-footnote mt-3">
+          {{ t('system.cards.goroutines.footnote') }}
+        </p>
       </div>
 
       <DashboardSparkline :data="workerTrendData" />

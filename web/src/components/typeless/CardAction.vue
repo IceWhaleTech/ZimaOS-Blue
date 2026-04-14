@@ -46,7 +46,10 @@ function handleClick(actionId: string, disabled = false) {
     <h4 class="font-medium text-gray-900 dark:text-white mb-1">
       {{ card.title }}
     </h4>
-    <p v-if="card.description" class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+    <p
+      v-if="card.description"
+      class="text-sm text-gray-500 dark:text-gray-400 mb-4"
+    >
       {{ card.description }}
     </p>
 
@@ -67,7 +70,10 @@ function handleClick(actionId: string, disabled = false) {
           v-if="isActionActive(action.id)"
           class="card-action-icon-gap card-action-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
         />
-        <span v-else-if="action.icon" class="card-action-icon-gap">{{ action.icon }}</span>
+        <span
+          v-else-if="action.icon"
+          class="card-action-icon-gap"
+        >{{ action.icon }}</span>
         {{ actionButtonLabel(action) }}
       </button>
     </div>

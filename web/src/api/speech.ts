@@ -102,6 +102,17 @@ export interface TranscribeOptions {
   onUploadProgress?: (progress: number, event: AxiosProgressEvent) => void
 }
 
+type SpeechApiError = Error & {
+  error_code?: string
+  response?: {
+    data?: {
+      error_code?: string
+      error?: string
+      message?: string
+    }
+  }
+}
+
 // Speech API
 export const speechApi = {
   // Unified status (includes models in asr.models / tts.models)
@@ -182,21 +193,22 @@ export const speechApi = {
         total: audio.size,
       } as AxiosProgressEvent)
       return response.data
-    } catch (e: any) {
-      if (e.name === 'AbortError') {
-        const err = new Error('Transcription timed out') as any
+    } catch (e) {
+      const error = e as SpeechApiError
+      if (error.name === 'AbortError') {
+        const err: SpeechApiError = new Error('Transcription timed out')
         err.error_code = 'timeout'
         throw err
       }
-      const errorCode = e?.response?.data?.error_code
-      const message = e?.response?.data?.error || e?.response?.data?.message
+      const errorCode = error.response?.data?.error_code
+      const message = error.response?.data?.error || error.response?.data?.message
       if (message || errorCode) {
-        const err = new Error(message || 'Transcription failed') as any
+        const err: SpeechApiError = new Error(message || 'Transcription failed')
         err.error_code = errorCode
-        err.response = e.response
+        err.response = error.response
         throw err
       }
-      throw e
+      throw error
     } finally {
       clearTimeout(timer)
     }

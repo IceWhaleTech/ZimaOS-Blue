@@ -25,7 +25,7 @@ interface OutputSection {
 }
 
 function unescapeBackticks(s: string): string {
-  return s.replace(/`​``/g, '```')
+  return s.replace(/`\u200B``/gu, '```')
 }
 
 function lineCountOf(text: string): number {
@@ -406,7 +406,10 @@ watch(
         </div>
       </div>
 
-      <div v-if="summaryItems.length > 0" class="mt-3 flex flex-wrap gap-2">
+      <div
+        v-if="summaryItems.length > 0"
+        class="mt-3 flex flex-wrap gap-2"
+      >
         <span
           v-for="item in summaryItems"
           :key="`${item.label}-${item.value}`"
@@ -431,7 +434,12 @@ watch(
           v-if="warningMessages.length > 0"
           class="mt-1 space-y-1 text-sm leading-relaxed text-amber-900 dark:text-amber-100"
         >
-          <li v-for="(warning, index) in warningMessages" :key="index">{{ warning }}</li>
+          <li
+            v-for="(warning, index) in warningMessages"
+            :key="index"
+          >
+            {{ warning }}
+          </li>
         </ul>
       </div>
 
@@ -469,10 +477,8 @@ watch(
         @click="expanded = !expanded"
       >
         <span v-if="expanded">{{ t('execCard.collapse', 'Show less') }}</span>
-        <span v-else
-          >{{ t('execCard.expand', 'Show more') }} {{ hiddenLinesCount }}
-          {{ t('execCard.lines', 'lines') }}</span
-        >
+        <span v-else>{{ t('execCard.expand', 'Show more') }} {{ hiddenLinesCount }}
+          {{ t('execCard.lines', 'lines') }}</span>
       </button>
     </div>
   </div>

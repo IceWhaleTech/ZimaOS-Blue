@@ -38,7 +38,7 @@ No external CLI is required. Use the built-in `docx`, `xlsx`, `pptx`, `pdf`, and
 | Create or update a spreadsheet | `blue xlsx action=create ...`, `edit`, `append_rows`, or `update_cells` |
 | Create or update a slide deck | `blue pptx action=create ...`, `edit`, `replace_text`, or slide mutation actions |
 | Read, inspect, create, fill, or reformat PDFs | `blue pdf action=read|info|create|fill|reformat ...` |
-| Focus a desktop app window, inspect host UI, click menus/buttons, scroll, type, or capture a host-window screenshot | `blue a11y action=windows|focus|snapshot|snapshot_interactive|act|scroll|key|screenshot ...` |
+| Focus a desktop app window, inspect host UI, click menus/buttons, scroll, type, or capture a host-window screenshot | `blue a11y action=focus|snapshot_interactive|act|scroll|key|screenshot ...` |
 | Work on both the file artifact and the live desktop app | Use `docx` / `xlsx` / `pptx` / `pdf` for the file, and use `a11y` for the host window steps |
 
 ---
@@ -80,10 +80,25 @@ blue pdf action=reformat input_path=reports/source.pdf output_path=reports/sourc
 ### A11y For Host Apps And Windows
 
 ```bash
-blue a11y action=windows
-blue a11y action=focus window_id=12345
-blue a11y action=snapshot
+blue a11y action=message app_name="Feishu、飞书、Lark" conversation="Orca" value="你好，Orca"
+blue a11y action=type app_name="Feishu、飞书、Lark" conversation="Orca" value="你好，Orca"
+blue a11y action=select app_name="Feishu、飞书、Lark" conversation="Orca"
+blue a11y action=click window_title="Settings" control="Open Network"
+blue a11y action=toggle window_title="Settings" setting="Enable notifications"
+blue a11y action=act params.value="你好，Orca" params.submit=true
+blue a11y action=act app_name="Feishu、飞书、Lark" params.value="你好，Orca" params.submit=true
+blue a11y action=act app_name="Feishu、飞书、Lark" params.conversation="Orca" params.value="你好，Orca"
+blue a11y action=act app_name="Feishu、飞书、Lark" params.intent=message params.conversation="Orca" params.value="你好，Orca" params.submit=true
+blue a11y action=act window_title="Settings" params.control="Open Network"
+blue a11y action=act window_title="Settings" params.setting="Enable notifications"
+blue a11y action=act window_title="Settings" params.intent=click params.control="Open Network"
+blue a11y action=act window_title="Settings" params.intent=toggle params.setting="Enable notifications"
+blue a11y action=focus window_title="Feishu、飞书、Lark"
+blue a11y action=snapshot_interactive
 blue a11y action=act params.ref=@5 params.act_type=click
+blue a11y action=act window_title="Feishu、飞书、Lark" params.value="你好，Orca"
+blue a11y action=act window_title="Feishu、飞书、Lark" params.value="你好，Orca" params.submit=true
+blue a11y action=act params.ref=@8 params.act_type=type params.value="你好，Orca"
 blue a11y action=key params.keys='["cmd","s"]'
 blue a11y action=screenshot
 ```
@@ -94,5 +109,29 @@ blue a11y action=screenshot
 
 - Prefer the native document tools when the source of truth is the workspace file itself.
 - Prefer `a11y` when the user explicitly wants to operate a desktop application, native window, menu, button, dialog, or scrollable host UI.
+- If the target app is already frontmost, you can omit `window_title`, `app_name`, and `window_id` entirely; host actions will use the current focused window.
+- If you already know the target host app, prefer `window_title` or `app_name` instead of listing windows first; the tool will try unique exact matching first and then unique fuzzy matching, and one string can include aliases like `Feishu、飞书、Lark`. If multiple candidates remain, a unique focused window is selected automatically.
+- Prefer `app_name` when you are matching app-brand aliases such as `Feishu / 飞书 / Lark`; reserve `window_title` for cases where you really know the visible window or chat title.
+- For chat-style `act` typing without `ref`, the tool will first prefer the most likely composer/editor input instead of generic search bars, and only fail when it still cannot pick a single safe target.
+- For fast chat-style entry, prefer providing just `value`; when `ref` is omitted the tool defaults to text input and tries to resolve the unique visible input/editor automatically.
+- When the user goal is already clear, prefer the scenario-style shortcuts instead of exposing more knobs:
+  - `action=message app_name=... conversation=... value=...` is now the shortest "find chat, type, and ensure send" path
+  - `action=type app_name=... conversation=... value=...` is now the shortest "find chat, switch to its input, and only type" path
+  - `action=select app_name=... conversation=...` is now the shortest "find a chat/list item/config item and switch/select it" path
+  - `action=click window_title=... control=...` is now the shortest "find a control/button and click it" path
+  - `action=toggle window_title=... setting=...` is now the shortest "find a setting and switch it" path
+  - `conversation=...` plus `value=...` for "find a chat, type, and send"; this now implies message flow and sends by default unless `submit=false`
+  - `control=...` for "find a control/button and click it"
+  - `setting=...` for "find a setting and switch it"
+- `action=message|click|toggle` is the preferred explicit façade now; `params.intent=message|click|toggle` is still supported for compatibility but is no longer required for the common cases above.
+- Those scenario target names are no longer exact-only:
+  - exact match wins first
+  - otherwise a unique fuzzy match on the same role is accepted
+  - if same-name matches still remain inside that role family, the tool prefers the most likely role for the scenario such as conversation row/list item over a generic button, or switch over a menu item
+  - if fuzzy matching still ties, the tool fails closed with ambiguity instead of guessing
+- Only reach for `params.target_name=...` or `params.target_role=...` when the default input resolution is ambiguous and you need to pin a specific control.
+- If the flow is "type then send", prefer a single `act` call with `params.submit=true`; the tool will internally try the most likely send button first, prefer the one nearest the chosen input when multiple send-like controls exist, then downgrade to platform submit keys if needed, and keep retrying only when the post-submit UI still clearly shows the typed text sitting in the composer.
+- Prefer `snapshot_interactive` over the full snapshot when the goal is to act quickly on visible controls.
+- Prefer `act_type=type` for text entry because the runtime can use native set-value or clipboard-backed paste; reserve `key` for shortcuts such as save, submit, or navigation.
 - Do not try to use `docx`, `xlsx`, `pptx`, or `pdf` to click through native application chrome; that is `a11y` work.
 - Do not use `a11y` as a substitute for structured file edits when the artifact can be produced directly with `docx`, `xlsx`, `pptx`, or `pdf`.

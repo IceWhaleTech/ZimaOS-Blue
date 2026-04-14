@@ -2,10 +2,12 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/labstack/echo/v4"
@@ -98,6 +100,92 @@ func (h *TunnelHandler) RegisterGroupRoutes(g *echo.Group) {
 
 	// Diagnostic endpoints
 	tunnelGroup.GET("/diagnostics", h.GetDiagnostics)
+}
+
+// EnsureTunnelURL reuses the active tunnel when possible and otherwise starts
+// the saved default provider so callers can build authenticated QR flows.
+func (h *TunnelHandler) EnsureTunnelURL(ctx context.Context) (string, error) {
+	h.mu.RLock()
+	if h.active != nil && h.active.IsRunning() {
+		if url := strings.TrimSpace(h.active.GetURL()); url != "" {
+			h.mu.RUnlock()
+			return url, nil
+		}
+	}
+	h.mu.RUnlock()
+
+	port := resolveListeningPort(h.serverPort)
+	if port == 0 {
+		return "", errors.New("server listening port is not available yet")
+	}
+
+	provider := tunnel.ProviderAuto
+	cfg := &tunnel.Config{
+		Provider: provider,
+		Port:     port,
+	}
+
+	if h.configProvider != nil {
+		savedConfig, err := h.configProvider.GetConfig(ctx)
+		if err == nil && savedConfig != nil {
+			provider = tunnel.Provider(savedConfig.DefaultProvider)
+			if provider == "" {
+				provider = tunnel.ProviderAuto
+			}
+			if provider != tunnel.ProviderNgrok && provider != tunnel.ProviderCloudflare && provider != tunnel.ProviderAuto {
+				provider = tunnel.ProviderAuto
+			}
+			cfg.Provider = provider
+			cfg.NgrokAuthtoken = savedConfig.NgrokAuthtoken
+			cfg.NgrokDomain = savedConfig.NgrokDomain
+			cfg.CloudflareToken = savedConfig.CloudflareToken
+			cfg.Subdomain = savedConfig.TunnelSubdomain
+		}
+		if cfg.Provider == tunnel.ProviderAuto && cfg.Subdomain == "" {
+			if subdomain, err := h.configProvider.EnsureTunnelSubdomain(ctx); err == nil {
+				cfg.Subdomain = subdomain
+			}
+		}
+	}
+
+	h.mu.RLock()
+	manager, ok := h.managers[cfg.Provider]
+	h.mu.RUnlock()
+	if !ok {
+		return "", fmt.Errorf("unknown tunnel provider: %s", cfg.Provider)
+	}
+
+	if manager.IsRunning() {
+		if url := strings.TrimSpace(manager.GetURL()); url != "" {
+			h.mu.Lock()
+			h.active = manager
+			h.mu.Unlock()
+			return url, nil
+		}
+	}
+
+	h.mu.Lock()
+	if h.active != nil && h.active != manager && h.active.IsRunning() {
+		_ = h.active.Stop()
+	}
+	h.mu.Unlock()
+
+	if err := manager.Start(ctx, cfg); err != nil {
+		if h.configProvider != nil {
+			h.configProvider.AddLog(context.Background(), "", "error", err.Error(), nil)
+		}
+		return "", err
+	}
+
+	h.mu.Lock()
+	h.active = manager
+	h.mu.Unlock()
+
+	url := strings.TrimSpace(manager.GetURL())
+	if url == "" {
+		return "", errors.New("tunnel started without a public URL")
+	}
+	return url, nil
 }
 
 // GetProviders returns available tunnel providers.

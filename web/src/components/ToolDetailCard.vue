@@ -100,33 +100,58 @@ const statusToneClass = computed(() => {
     @click="hasOutput && !isShortOutput ? toggle() : undefined"
   >
     <!-- Command/Input (above) -->
-    <div v-if="commandDisplay.value" class="tool-detail-card__command">
+    <div
+      v-if="commandDisplay.value"
+      class="tool-detail-card__command"
+    >
       <span class="tool-detail-card__command-label">{{ commandDisplay.label }}</span>
       <span class="tool-detail-card__command-text">{{ commandDisplay.value }}</span>
     </div>
 
-    <div v-if="hasWarningCode" class="tool-detail-card__warning-row">
+    <div
+      v-if="hasWarningCode"
+      class="tool-detail-card__warning-row"
+    >
       <span class="tool-detail-card__warning-pill">warning_code={{ warningCodeText }}</span>
-      <span v-if="warningLabel" class="tool-detail-card__warning-label">{{ warningLabel }}</span>
+      <span
+        v-if="warningLabel"
+        class="tool-detail-card__warning-label"
+      >{{ warningLabel }}</span>
     </div>
 
     <!-- Status/Error -->
-    <div v-if="hasStatus" class="tool-detail-card__status" :class="statusToneClass">
+    <div
+      v-if="hasStatus"
+      class="tool-detail-card__status"
+      :class="statusToneClass"
+    >
       {{ statusText }}
     </div>
 
     <!-- Output (below) -->
-    <div v-if="hasOutput" class="tool-detail-card__output-wrapper">
+    <div
+      v-if="hasOutput"
+      class="tool-detail-card__output-wrapper"
+    >
       <!-- Short inline output -->
-      <div v-if="isShortOutput" class="tool-detail-card__output-inline">
+      <div
+        v-if="isShortOutput"
+        class="tool-detail-card__output-inline"
+      >
         {{ item.output }}
       </div>
       <!-- Preview (collapsed) -->
-      <div v-else-if="!expanded" class="tool-detail-card__output-preview">
+      <div
+        v-else-if="!expanded"
+        class="tool-detail-card__output-preview"
+      >
         {{ previewOutput }}
       </div>
       <!-- Full output (expanded) -->
-      <div v-else class="tool-detail-card__output-full">
+      <div
+        v-else
+        class="tool-detail-card__output-full"
+      >
         <pre>{{ item.output }}</pre>
       </div>
     </div>
@@ -144,7 +169,12 @@ const statusToneClass = computed(() => {
         viewBox="0 0 24 24"
         stroke="currentColor"
       >
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M19 9l-7 7-7-7"
+        />
       </svg>
     </button>
   </div>

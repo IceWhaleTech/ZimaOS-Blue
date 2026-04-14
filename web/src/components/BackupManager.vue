@@ -184,7 +184,9 @@ function confirmDelete(backup: BackupDisplay) {
     <div
       class="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
     >
-      <h2 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('backup.title') }}</h2>
+      <h2 class="text-base font-semibold text-gray-900 dark:text-white">
+        {{ t('backup.title') }}
+      </h2>
       <button
         data-testid="backup-create-button"
         :disabled="hasActiveBackupOperation"
@@ -203,7 +205,7 @@ function confirmDelete(backup: BackupDisplay) {
       <div class="flex items-center gap-3 mb-2">
         <div
           class="animate-spin h-5 w-5 border-2 border-yellow-600 border-t-transparent rounded-full"
-        ></div>
+        />
         <span class="text-yellow-800 dark:text-yellow-200">{{ t('backup.restoringWarning') }}</span>
       </div>
       <div v-if="progress && progress.operation === 'restore'">
@@ -217,19 +219,15 @@ function confirmDelete(backup: BackupDisplay) {
           <div
             class="h-full bg-yellow-500 transition-all duration-300"
             :style="{ width: `${progress.progress}%` }"
-          ></div>
+          />
         </div>
         <div
           class="flex items-center justify-between text-xs text-yellow-600 dark:text-yellow-400 mt-1"
         >
-          <span
-            >{{ progress.files_processed }} / {{ progress.total_files }}
-            {{ t('backup.files') }}</span
-          >
-          <span
-            >{{ formatSize(progress.bytes_processed) }} /
-            {{ formatSize(progress.total_bytes) }}</span
-          >
+          <span>{{ progress.files_processed }} / {{ progress.total_files }}
+            {{ t('backup.files') }}</span>
+          <span>{{ formatSize(progress.bytes_processed) }} /
+            {{ formatSize(progress.total_bytes) }}</span>
         </div>
       </div>
     </div>
@@ -242,7 +240,7 @@ function confirmDelete(backup: BackupDisplay) {
       <div class="flex items-center gap-3 mb-2">
         <div
           class="animate-spin h-5 w-5 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full"
-        ></div>
+        />
         <span class="text-gray-900 dark:text-white dark:text-white">{{
           t('backup.creatingBackup')
         }}</span>
@@ -257,28 +255,32 @@ function confirmDelete(backup: BackupDisplay) {
         <div
           class="h-full bg-gray-700 dark:bg-gray-500 transition-all duration-300"
           :style="{ width: `${progress.progress}%` }"
-        ></div>
+        />
       </div>
       <div
         class="flex items-center justify-between text-xs text-gray-900 dark:text-white dark:text-white mt-1"
       >
-        <span
-          >{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span
-        >
-        <span
-          >{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span
-        >
+        <span>{{ progress.files_processed }} / {{ progress.total_files }} {{ t('backup.files') }}</span>
+        <span>{{ formatSize(progress.bytes_processed) }} / {{ formatSize(progress.total_bytes) }}</span>
       </div>
     </div>
 
-    <div v-if="loading" class="p-5 text-center">
+    <div
+      v-if="loading"
+      class="p-5 text-center"
+    >
       <div
         class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
-      ></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('backup.loading') }}</p>
+      />
+      <p class="mt-2 text-gray-500 dark:text-gray-400">
+        {{ t('backup.loading') }}
+      </p>
     </div>
 
-    <div v-else-if="displayBackups.length === 0" class="p-5 text-center">
+    <div
+      v-else-if="displayBackups.length === 0"
+      class="p-5 text-center"
+    >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         class="h-12 w-12 mx-auto text-gray-400"
@@ -293,12 +295,23 @@ function confirmDelete(backup: BackupDisplay) {
           d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"
         />
       </svg>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('backup.noBackups') }}</p>
-      <p class="text-sm text-gray-400 dark:text-gray-500">{{ t('backup.noBackupsHint') }}</p>
+      <p class="mt-2 text-gray-500 dark:text-gray-400">
+        {{ t('backup.noBackups') }}
+      </p>
+      <p class="text-sm text-gray-400 dark:text-gray-500">
+        {{ t('backup.noBackupsHint') }}
+      </p>
     </div>
 
-    <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
-      <div v-for="backup in sortedBackups" :key="backup.id" class="px-5 py-3.5">
+    <div
+      v-else
+      class="divide-y divide-gray-200 dark:divide-gray-700"
+    >
+      <div
+        v-for="backup in sortedBackups"
+        :key="backup.id"
+        class="px-5 py-3.5"
+      >
         <div class="flex items-start justify-between">
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
@@ -336,7 +349,10 @@ function confirmDelete(backup: BackupDisplay) {
             <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
               <span>{{ formatSize(backup.size) }}</span>
             </div>
-            <p v-if="backup.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            <p
+              v-if="backup.description"
+              class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+            >
               {{ backup.description }}
             </p>
           </div>
@@ -481,7 +497,7 @@ function confirmDelete(backup: BackupDisplay) {
                 type="text"
                 :placeholder="`Backup ${new Date().toISOString().split('T')[0]}`"
                 class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
-              />
+              >
             </div>
 
             <div

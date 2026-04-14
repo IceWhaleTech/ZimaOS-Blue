@@ -18,9 +18,23 @@ function loadApiClientModule(): Promise<ApiClientModule> {
   return apiClientModulePromise
 }
 
-// Global event listeners — components can subscribe to specific event types.
-type EventCallback = (data: any) => void
+type EventPayload = Record<string, unknown>
+type EventCallback = (data: EventPayload) => void
 const listeners = new Map<string, Set<EventCallback>>()
+
+function toEventPayload(data: unknown): EventPayload {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return {}
+  return data as EventPayload
+}
+
+function getEventString(payload: EventPayload, key: string): string | undefined {
+  const value = payload[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function getEventBool(payload: EventPayload, key: string): boolean {
+  return payload[key] === true
+}
 
 /** Register a callback for a specific SSE event type (e.g. "skill.install.progress"). */
 export function onSSEEvent(type: string, cb: EventCallback) {
@@ -59,7 +73,7 @@ export function useEventStream() {
       providerPoolStore
         .fetchProviders()
         .then(() => {
-          const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+          const llmProviders = providerPoolStore.providers.filter((provider) => provider.type !== 'media')
           settingsStore.updateFromPoolProviders(llmProviders)
         })
         .catch(() => {})
@@ -122,14 +136,16 @@ export function useEventStream() {
     }
   }
 
-  function handleEvent(type: string, data: any) {
+  function handleEvent(type: string, data: unknown) {
     try {
+      const payload = toEventPayload(data)
+
       // Dispatch to global listeners first
       const cbs = listeners.get(type)
       if (cbs) {
         for (const cb of cbs) {
           try {
-            cb(data)
+            cb(payload)
           } catch {
             /* ignore listener errors */
           }
@@ -138,27 +154,28 @@ export function useEventStream() {
 
       // Special handling for ask - no i18n needed
       if (type === 'ask') {
-        chatStore.setPendingQuestion(data)
+        chatStore.setPendingQuestion(payload)
         return
       }
 
       switch (type) {
         case 'push': {
-          const reminderTextRaw = String(data.message || t('push.defaultMessage'))
+          const conversationId = getEventString(payload, 'conversation_id')
+          const reminderTextRaw = String(getEventString(payload, 'message') || t('push.defaultMessage'))
           const reminderText = reminderTextRaw.startsWith('⏰')
             ? reminderTextRaw
             : `⏰ ${reminderTextRaw}`
           const reminderTitle = t('push.reminder')
 
           // Show toast notification with optional action to navigate to conversation
-          const toastOpts: any = { duration: 10000 }
-          if (data.conversation_id) {
+          const toastOpts: Parameters<typeof notificationStore.info>[2] = { duration: 10000 }
+          if (conversationId) {
             toastOpts.action = {
               label: t('push.viewConversation'),
               handler: () => {
                 void router.push({
                   name: 'Chat',
-                  query: { conversationId: data.conversation_id },
+                  query: { conversationId },
                 })
               },
             }
@@ -167,8 +184,8 @@ export function useEventStream() {
 
           // Refresh conversation list so the injected message shows up
           chatStore.fetchConversations()
-          if (data.conversation_id && chatStore.currentConversationId === data.conversation_id) {
-            chatStore.fetchMessages(data.conversation_id)
+          if (conversationId && chatStore.currentConversationId === conversationId) {
+            chatStore.fetchMessages(conversationId)
           }
 
           // Desktop notification if page is hidden
@@ -183,12 +200,15 @@ export function useEventStream() {
         }
 
         case 'conversation_updated': {
+          const conversationId = getEventString(payload, 'id')
+          const isStreamingUpdate = getEventBool(payload, 'streaming')
+
           // If this tab is already streaming this conversation, skip — we have real-time deltas
           if (
-            data.streaming &&
+            isStreamingUpdate &&
             chatStore.streaming &&
             !chatStore.isRecovering &&
-            chatStore.currentConversationId === data.id
+            chatStore.currentConversationId === conversationId
           ) {
             break
           }
@@ -197,13 +217,13 @@ export function useEventStream() {
           chatStore.fetchConversations()
 
           // If the updated conversation is the current one, refresh messages
-          if (data.id && chatStore.currentConversationId === data.id) {
-            if (data.streaming) {
+          if (conversationId && chatStore.currentConversationId === conversationId) {
+            if (isStreamingUpdate) {
               // Debounce streaming updates to avoid hammering the API
               if (streamingFetchTimer) clearTimeout(streamingFetchTimer)
               streamingFetchTimer = setTimeout(() => {
                 streamingFetchTimer = null
-                chatStore.fetchMessages(data.id)
+                chatStore.fetchMessages(conversationId)
               }, 500)
             } else {
               // Final update — fetch immediately
@@ -211,26 +231,31 @@ export function useEventStream() {
                 clearTimeout(streamingFetchTimer)
                 streamingFetchTimer = null
               }
-              chatStore.fetchMessages(data.id)
+              chatStore.fetchMessages(conversationId)
             }
           }
           break
         }
 
         case 'conversation_title_updated': {
+          const conversationId = getEventString(payload, 'id')
+          const title = getEventString(payload, 'title')
+
           // Update title in-place without a full fetchConversations round-trip
-          if (data.id && data.title) {
-            const conv = chatStore.conversations.find((c: { id: string }) => c.id === data.id)
+          if (conversationId && title) {
+            const conv = chatStore.conversations.find((c: { id: string }) => c.id === conversationId)
             if (conv) {
-              conv.title = data.title
+              conv.title = title
             }
           }
           break
         }
 
         case 'provider_status_changed': {
-          if (data.provider_id && data.status) {
-            providerPoolStore.updateProviderStatus(data.provider_id, data.status)
+          const providerID = getEventString(payload, 'provider_id')
+          const providerStatus = getEventString(payload, 'status')
+          if (providerID && providerStatus) {
+            providerPoolStore.updateProviderStatus(providerID, providerStatus)
             // Status-only SSE payloads can leave stale last_error/details in memory.
             // Always resync the full provider list after a status transition.
             scheduleProviderResync()
@@ -239,16 +264,16 @@ export function useEventStream() {
         }
 
         case 'tool_approval_request': {
-          chatStore.setPendingApproval(data)
+          chatStore.setPendingApproval(payload)
           break
         }
 
         case 'exec:approval-request': {
-          chatStore.setPendingExecApproval(data)
+          chatStore.setPendingExecApproval(payload)
           break
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // Silently ignore errors in event handling to prevent stream interruption
     }
   }

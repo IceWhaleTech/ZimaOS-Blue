@@ -2,20 +2,37 @@
   <div class="tenants-view">
     <div class="header">
       <h1>{{ t('tenants.title') }}</h1>
-      <button class="btn btn-primary" @click="showCreateModal = true">
+      <button
+        class="btn btn-primary"
+        @click="showCreateModal = true"
+      >
         + {{ t('tenants.newWorkspace') }}
       </button>
     </div>
 
     <!-- Tenants Grid -->
-    <div v-if="loading" class="loading">{{ t('tenants.loadingWorkspaces') }}</div>
-    <div v-else-if="tenants.length === 0" class="empty-state">
+    <div
+      v-if="loading"
+      class="loading"
+    >
+      {{ t('tenants.loadingWorkspaces') }}
+    </div>
+    <div
+      v-else-if="tenants.length === 0"
+      class="empty-state"
+    >
       <p>{{ t('tenants.noWorkspacesYet') }}</p>
-      <button class="btn btn-primary" @click="showCreateModal = true">
+      <button
+        class="btn btn-primary"
+        @click="showCreateModal = true"
+      >
         {{ t('tenants.createWorkspace') }}
       </button>
     </div>
-    <div v-else class="tenants-grid">
+    <div
+      v-else
+      class="tenants-grid"
+    >
       <div
         v-for="tenant in tenants"
         :key="tenant.id"
@@ -26,22 +43,41 @@
         <div class="tenant-header">
           <span class="tenant-icon">{{ getInitial(tenant.name) }}</span>
           <div class="tenant-info">
-            <h3 class="tenant-name">{{ tenant.name }}</h3>
+            <h3 class="tenant-name">
+              {{ tenant.name }}
+            </h3>
             <span class="tenant-slug">{{ tenant.slug }}</span>
           </div>
-          <span class="tenant-status" :style="{ color: getStatusColor(tenant.status) }">
+          <span
+            class="tenant-status"
+            :style="{ color: getStatusColor(tenant.status) }"
+          >
             {{ getStatusLabel(tenant.status) }}
           </span>
         </div>
-        <p v-if="tenant.description" class="tenant-description">{{ tenant.description }}</p>
+        <p
+          v-if="tenant.description"
+          class="tenant-description"
+        >
+          {{ tenant.description }}
+        </p>
         <div class="tenant-meta">
           <span>{{ t('tenants.created') }} {{ formatDate(tenant.created_at) }}</span>
         </div>
-        <div class="tenant-actions" @click.stop>
-          <button class="btn btn-sm btn-secondary" @click="editTenant(tenant)">
+        <div
+          class="tenant-actions"
+          @click.stop
+        >
+          <button
+            class="btn btn-sm btn-secondary"
+            @click="editTenant(tenant)"
+          >
             {{ t('tenants.edit') }}
           </button>
-          <button class="btn btn-sm btn-secondary" @click="manageTenant(tenant)">
+          <button
+            class="btn btn-sm btn-secondary"
+            @click="manageTenant(tenant)"
+          >
             {{ t('tenants.manage') }}
           </button>
           <button
@@ -56,11 +92,23 @@
     </div>
 
     <!-- Create/Edit Modal -->
-    <div v-if="showCreateModal || editingTenant" class="modal-overlay" @click="closeModal">
-      <div class="modal" @click.stop>
+    <div
+      v-if="showCreateModal || editingTenant"
+      class="modal-overlay"
+      @click="closeModal"
+    >
+      <div
+        class="modal"
+        @click.stop
+      >
         <div class="modal-header">
           <h2>{{ editingTenant ? t('tenants.editWorkspace') : t('tenants.createWorkspace') }}</h2>
-          <button class="close-btn" @click="closeModal">&times;</button>
+          <button
+            class="close-btn"
+            @click="closeModal"
+          >
+            &times;
+          </button>
         </div>
         <div class="modal-body">
           <div class="form-group">
@@ -71,7 +119,7 @@
               type="text"
               :placeholder="t('tenants.namePlaceholder')"
               @input="!editingTenant && generateSlug()"
-            />
+            >
           </div>
           <div class="form-group">
             <label for="slug">{{ t('tenants.slug') }}</label>
@@ -81,8 +129,10 @@
               type="text"
               :placeholder="t('tenants.slugPlaceholder')"
               :disabled="!!editingTenant"
-            />
-            <p class="hint">{{ t('tenants.slugHint') }}</p>
+            >
+            <p class="hint">
+              {{ t('tenants.slugHint') }}
+            </p>
           </div>
           <div class="form-group">
             <label for="description">{{ t('tenants.description') }}</label>
@@ -90,11 +140,16 @@
               id="description"
               v-model="formData.description"
               :placeholder="t('tenants.descriptionPlaceholder')"
-            ></textarea>
+            />
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeModal">{{ t('tenants.cancel') }}</button>
+          <button
+            class="btn btn-secondary"
+            @click="closeModal"
+          >
+            {{ t('tenants.cancel') }}
+          </button>
           <button
             class="btn btn-primary"
             :disabled="!canSubmit || submitting"
@@ -113,21 +168,45 @@
     </div>
 
     <!-- Delete Confirmation Modal -->
-    <div v-if="deletingTenant" class="modal-overlay" @click="deletingTenant = null">
-      <div class="modal modal-sm" @click.stop>
+    <div
+      v-if="deletingTenant"
+      class="modal-overlay"
+      @click="deletingTenant = null"
+    >
+      <div
+        class="modal modal-sm"
+        @click.stop
+      >
         <div class="modal-header">
           <h2>{{ t('tenants.deleteWorkspace') }}</h2>
-          <button class="close-btn" @click="deletingTenant = null">&times;</button>
+          <button
+            class="close-btn"
+            @click="deletingTenant = null"
+          >
+            &times;
+          </button>
         </div>
         <div class="modal-body">
-          <p v-html="t('tenants.deleteConfirm', { name: deletingTenant.name })"></p>
-          <p class="warning">{{ t('tenants.deleteWarning') }}</p>
+          <TrustedHtml
+            tag="p"
+            :html="t('tenants.deleteConfirm', { name: deletingTenant.name })"
+          />
+          <p class="warning">
+            {{ t('tenants.deleteWarning') }}
+          </p>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" @click="deletingTenant = null">
+          <button
+            class="btn btn-secondary"
+            @click="deletingTenant = null"
+          >
             {{ t('tenants.cancel') }}
           </button>
-          <button class="btn btn-danger" :disabled="deleting" @click="handleDelete">
+          <button
+            class="btn btn-danger"
+            :disabled="deleting"
+            @click="handleDelete"
+          >
             {{ deleting ? t('tenants.deleting') : t('tenants.delete') }}
           </button>
         </div>
@@ -140,6 +219,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import { useTenantStore } from '@/stores/tenant'
 import type { Tenant } from '@/api/tenant'
 import { getStatusLabel, getStatusColor } from '@/api/tenant'

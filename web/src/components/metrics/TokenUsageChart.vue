@@ -155,11 +155,18 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy min-w-0">
-          <p class="dashboard-card-label">{{ t('metrics.label') }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ t('metrics.tokenUsage') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('metrics.label') }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ t('metrics.tokenUsage') }}
+          </p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2">
-          <span v-if="tokenData" class="dashboard-card-chip">
+          <span
+            v-if="tokenData"
+            class="dashboard-card-chip"
+          >
             {{ formatNumber(tokenData.total) }} {{ t('metrics.tokens') }}
           </span>
           <router-link
@@ -172,21 +179,32 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
         </div>
       </div>
 
-      <div v-if="!tokenData" class="dashboard-card-empty">
+      <div
+        v-if="!tokenData"
+        class="dashboard-card-empty"
+      >
         {{ t('metrics.noData') }}
       </div>
 
-      <div v-else class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div
+        v-else
+        class="grid grid-cols-1 gap-4 lg:grid-cols-2"
+      >
         <div class="dashboard-card-subsurface token-usage-hero p-4">
           <div class="token-usage-hero-copy">
-            <p class="dashboard-card-value">{{ formatNumber(tokenData.total) }}</p>
+            <p class="dashboard-card-value">
+              {{ formatNumber(tokenData.total) }}
+            </p>
             <p class="dashboard-card-footnote">
               {{ formatCost(tokenData.cost) }} {{ t('metrics.estimatedCost') }}
             </p>
           </div>
 
           <div class="token-usage-hero-chart">
-            <svg viewBox="0 0 200 200" class="h-48 w-48">
+            <svg
+              viewBox="0 0 200 200"
+              class="h-48 w-48"
+            >
               <path
                 v-for="(segment, index) in pieSegments"
                 :key="index"
@@ -194,7 +212,12 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
                 :fill="segment.color"
                 class="transition-all duration-300 hover:opacity-80"
               />
-              <circle cx="100" cy="100" r="40" class="token-usage-ring-core" />
+              <circle
+                cx="100"
+                cy="100"
+                r="40"
+                class="token-usage-ring-core"
+              />
               <text
                 x="100"
                 y="95"
@@ -224,7 +247,7 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
                 <span
                   class="token-usage-legend-dot"
                   :style="{ backgroundColor: segment.color }"
-                ></span>
+                />
                 <span class="truncate text-sm text-gray-700 dark:text-gray-300">{{
                   segment.label
                 }}</span>
@@ -264,7 +287,7 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
                 <span
                   class="token-usage-legend-dot"
                   :style="{ backgroundColor: segment.color }"
-                ></span>
+                />
                 <span class="truncate text-sm text-gray-600 dark:text-gray-400">{{
                   segment.label
                 }}</span>
@@ -287,7 +310,10 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
             <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               {{ t('metrics.byModel') }}
             </h4>
-            <div v-if="modelUsage.length > 0" class="space-y-2 max-h-40 overflow-y-auto">
+            <div
+              v-if="modelUsage.length > 0"
+              class="space-y-2 max-h-40 overflow-y-auto"
+            >
               <div
                 v-for="model in modelUsage"
                 :key="model.model"
@@ -306,7 +332,10 @@ function polarToCartesian(cx: number, cy: number, r: number, angle: number) {
                 </div>
               </div>
             </div>
-            <div v-else class="text-sm text-gray-500 dark:text-gray-400">
+            <div
+              v-else
+              class="text-sm text-gray-500 dark:text-gray-400"
+            >
               {{ t('metrics.noData') }}
             </div>
           </div>

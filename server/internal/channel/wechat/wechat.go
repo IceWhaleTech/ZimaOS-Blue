@@ -1,4 +1,4 @@
-// Package wechat provides a WeChat Work (Enterprise WeChat) channel implementation.
+// Package wechat provides the enterprise WeChat Work channel implementation.
 package wechat
 
 import (
@@ -27,7 +27,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
 
-// Channel implements the channel.Channel interface for WeChat Work.
+// Channel implements the channel.Channel interface for WeChat providers such as WeChat Work and iLink.
 type Channel struct {
 	config   channel.WeChatWorkConfig
 	logger   *zap.Logger
@@ -51,18 +51,31 @@ type Channel struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	server *http.Server
+	wg     sync.WaitGroup
+
+	closeOnce sync.Once
+
+	httpClient *http.Client
+
+	ilinkMu            sync.RWMutex
+	ilinkContextTokens map[string]string
+	ilinkUINHeader     string
 
 	sendTextFunc       func(ctx context.Context, chatID, content, format string) error
 	sendAttachmentFunc func(ctx context.Context, chatID, caption string, att channel.Attachment) error
 }
 
-// New creates a new WeChat Work channel.
+// New creates a new WeChat channel.
 func New(cfg channel.WeChatWorkConfig, logger *zap.Logger) *Channel {
 	ch := &Channel{
 		config:   cfg,
-		logger:   logger.With(zap.String("channel", "wechat_work")),
+		logger:   logger.With(zap.String("channel", "wechat")),
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
+		httpClient: &http.Client{
+			Timeout: 45 * time.Second,
+		},
+		ilinkContextTokens: make(map[string]string),
 	}
 	ch.sendTextFunc = ch.sendText
 	ch.sendAttachmentFunc = ch.sendAttachment
@@ -71,7 +84,7 @@ func New(cfg channel.WeChatWorkConfig, logger *zap.Logger) *Channel {
 
 // Name returns the channel name.
 func (c *Channel) Name() string {
-	return "wechat_work"
+	return "wechat"
 }
 
 // Type returns the channel type.
@@ -86,7 +99,7 @@ func (c *Channel) OutboundCapabilities() channel.OutboundCapabilities {
 	}
 }
 
-// Start initializes and starts the WeChat Work bot.
+// Start initializes and starts the WeChat Work runtime.
 func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Lock()
 	if c.status == channel.StatusConnected || c.status == channel.StatusConnecting {
@@ -97,25 +110,7 @@ func (c *Channel) Start(ctx context.Context) error {
 	c.mu.Unlock()
 
 	c.ctx, c.cancel = context.WithCancel(ctx)
-
-	// Get initial access token
-	if err := c.refreshAccessToken(); err != nil {
-		c.setError(fmt.Sprintf("failed to get access token: %v", err))
-		return fmt.Errorf("failed to get WeChat Work access token: %w", err)
-	}
-
-	c.logger.Info("wechat work access token obtained")
-
-	now := time.Now()
-	c.mu.Lock()
-	c.status = channel.StatusConnected
-	c.connectedAt = &now
-	c.lastError = ""
-	c.lastErrorAt = nil
-	c.mu.Unlock()
-
-	c.logger.Info("wechat work channel started")
-	return nil
+	return c.startWeChatWork()
 }
 
 // refreshAccessToken refreshes the access token.
@@ -305,7 +300,7 @@ func (c *Channel) convertMessage(msg *wechatMessage) channel.Message {
 
 	channelMsg := channel.Message{
 		ID:          msg.MsgId,
-		ChannelName: "wechat_work",
+		ChannelName: "wechat",
 		ChatID:      msg.FromUserName,
 		UserID:      msg.FromUserName,
 		Type:        msgType,
@@ -462,13 +457,20 @@ func (c *Channel) Stop(ctx context.Context) error {
 		c.server.Shutdown(ctx)
 	}
 
-	close(c.messages)
-	c.logger.Info("wechat work channel stopped")
+	c.wg.Wait()
+	c.closeOnce.Do(func() {
+		close(c.messages)
+	})
+	c.logger.Info("wechat channel stopped", zap.String("type", c.Type()))
 	return nil
 }
 
 // Send sends a message through WeChat Work.
 func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
+	return c.sendWeChatWork(ctx, msg)
+}
+
+func (c *Channel) sendWeChatWork(ctx context.Context, msg channel.OutgoingMessage) error {
 	captionConsumed := false
 	sentSomething := false
 	if c.sendTextFunc == nil {
@@ -487,7 +489,7 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 		}
 		if err := c.sendAttachmentFunc(ctx, msg.ChatID, caption, att); err != nil {
 			c.logger.Warn("failed to send attachment, falling back to text",
-				zap.String("channel", "wechat_work"), zap.String("type", string(att.Type)), zap.Error(err))
+				zap.String("channel", c.Type()), zap.String("type", string(att.Type)), zap.Error(err))
 			fallback := wechatAttachmentFallbackText(msg.Content, att, includeCaption)
 			if fallback == "" {
 				continue
@@ -516,6 +518,27 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	if !sentSomething {
 		return fmt.Errorf("no sendable WeChat Work content")
 	}
+	return nil
+}
+
+func (c *Channel) startWeChatWork() error {
+	// Get initial access token
+	if err := c.refreshAccessToken(); err != nil {
+		c.setError(fmt.Sprintf("failed to get access token: %v", err))
+		return fmt.Errorf("failed to get WeChat Work access token: %w", err)
+	}
+
+	c.logger.Info("wechat work access token obtained")
+
+	now := time.Now()
+	c.mu.Lock()
+	c.status = channel.StatusConnected
+	c.connectedAt = &now
+	c.lastError = ""
+	c.lastErrorAt = nil
+	c.mu.Unlock()
+
+	c.logger.Info("wechat work channel started")
 	return nil
 }
 
@@ -736,8 +759,8 @@ func (c *Channel) Info() channel.Info {
 	defer c.mu.RUnlock()
 
 	info := channel.Info{
-		Name:             "wechat_work",
-		Type:             "wechat_work",
+		Name:             c.Name(),
+		Type:             c.Type(),
 		Status:           c.status,
 		Enabled:          c.config.Enabled,
 		ConnectedAt:      c.connectedAt,
@@ -749,6 +772,7 @@ func (c *Channel) Info() channel.Info {
 		LastMessageAt:    c.lastMessageAt,
 		LastReplyAt:      c.lastReplyAt,
 		Metadata: map[string]interface{}{
+			"provider": "wechat_work",
 			"corp_id":  c.config.CorpID,
 			"agent_id": c.config.AgentID,
 		},

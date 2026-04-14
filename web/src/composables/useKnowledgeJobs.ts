@@ -43,8 +43,12 @@ function normalizeKind(value: unknown): KnowledgeJob['kind'] {
   return 'ingest'
 }
 
-function normalizeJobSnapshot(snapshot: any): KnowledgeJob | null {
-  if (!snapshot || typeof snapshot !== 'object') return null
+function isKnowledgeJobRecord(snapshot: unknown): snapshot is Record<string, unknown> {
+  return !!snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)
+}
+
+function normalizeJobSnapshot(snapshot: unknown): KnowledgeJob | null {
+  if (!isKnowledgeJobRecord(snapshot)) return null
   const id = normalizeString(snapshot.id || snapshot.job_id)
   if (!id) return null
   return {
@@ -60,7 +64,7 @@ function normalizeJobSnapshot(snapshot: any): KnowledgeJob | null {
     created_at: normalizeString(snapshot.created_at) || new Date().toISOString(),
     completed_at: normalizeString(snapshot.completed_at) || undefined,
     error: normalizeString(snapshot.error) || undefined,
-    report: snapshot.report ?? null,
+    report: (snapshot.report as KnowledgeJobReport | null | undefined) ?? null,
   }
 }
 

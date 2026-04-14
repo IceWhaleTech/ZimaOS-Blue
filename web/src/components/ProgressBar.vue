@@ -58,11 +58,18 @@ const sizeClass = computed(() => {
 
 <template>
   <div class="w-full">
-    <div v-if="label || showPercent" class="flex justify-between text-sm mb-1">
-      <span v-if="label" class="text-gray-500 dark:text-gray-400">{{ label }}</span>
-      <span v-if="showPercent" class="text-gray-700 dark:text-gray-300"
-        >{{ formatValue(percent) }}%</span
-      >
+    <div
+      v-if="label || showPercent"
+      class="flex justify-between text-sm mb-1"
+    >
+      <span
+        v-if="label"
+        class="text-gray-500 dark:text-gray-400"
+      >{{ label }}</span>
+      <span
+        v-if="showPercent"
+        class="text-gray-700 dark:text-gray-300"
+      >{{ formatValue(percent) }}%</span>
     </div>
     <div
       class="w-full bg-gray-700 dark:bg-gray-500 rounded-full overflow-hidden"
@@ -72,7 +79,7 @@ const sizeClass = computed(() => {
         class="rounded-full transition-all duration-300"
         :class="[colorClass, sizeClass]"
         :style="{ width: `${percent}%` }"
-      ></div>
+      />
     </div>
   </div>
 </template>

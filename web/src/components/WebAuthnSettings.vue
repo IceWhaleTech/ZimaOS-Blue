@@ -158,7 +158,10 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
 
     <div class="glass-card p-4 sm:p-6">
       <!-- Not supported message -->
-      <div v-if="!isSupported" class="text-center py-4">
+      <div
+        v-if="!isSupported"
+        class="text-center py-4"
+      >
         <div class="text-yellow-600 dark:text-yellow-400 mb-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -175,7 +178,9 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
             />
           </svg>
         </div>
-        <p class="text-gray-500 dark:text-slate-400">{{ t('webauthn.notSupported') }}</p>
+        <p class="text-gray-500 dark:text-slate-400">
+          {{ t('webauthn.notSupported') }}
+        </p>
       </div>
 
       <!-- Loading state -->
@@ -193,7 +198,10 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
         </p>
 
         <!-- Credentials list -->
-        <div v-if="hasCredentials" class="space-y-3 mb-4">
+        <div
+          v-if="hasCredentials"
+          class="space-y-3 mb-4"
+        >
           <div
             v-for="credential in status.credentials"
             :key="credential.id"
@@ -252,7 +260,10 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
         </div>
 
         <!-- Empty state -->
-        <div v-else class="text-center py-6 mb-4">
+        <div
+          v-else
+          class="text-center py-6 mb-4"
+        >
           <div class="text-gray-400 dark:text-slate-500 mb-2">
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -314,7 +325,10 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
             {{ t('webauthn.addCredential') }}
           </h3>
 
-          <form class="space-y-4" @submit.prevent="registerCredential">
+          <form
+            class="space-y-4"
+            @submit.prevent="registerCredential"
+          >
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">
                 {{ t('webauthn.credentialName') }}
@@ -325,7 +339,7 @@ const hasCredentials = computed(() => status.value && status.value.credentials.l
                 required
                 class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 :placeholder="t('webauthn.credentialNamePlaceholder')"
-              />
+              >
             </div>
 
             <div class="flex gap-3 pt-4">

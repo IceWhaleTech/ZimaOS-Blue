@@ -13,6 +13,7 @@ type (
 	DiscordConfig       = channelconfig.DiscordConfig
 	SlackConfig         = channelconfig.SlackConfig
 	WeChatWorkConfig    = channelconfig.WeChatWorkConfig
+	WeChatILinkConfig   = channelconfig.WeChatILinkConfig
 	FeishuConfig        = channelconfig.FeishuConfig
 	MatrixConfig        = channelconfig.MatrixConfig
 	IMessageConfig      = channelconfig.IMessageConfig

@@ -35,7 +35,7 @@ interface SegmentIntentCandidate {
   prompt: string
   focusSpan: number
   alternativeCategory?: MediaCategory
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 }
 
 interface KeywordPattern {
@@ -900,8 +900,8 @@ function applyFocusPenalty(
   return Math.max(0, confidence)
 }
 
-function buildSlideIntentParams(stylePreset: string): Record<string, any> {
-  const params: Record<string, any> = {
+function buildSlideIntentParams(stylePreset: string): Record<string, string> {
+  const params: Record<string, string> = {
     quality_profile: 'ppt',
     source: 'ppt',
   }
@@ -910,7 +910,7 @@ function buildSlideIntentParams(stylePreset: string): Record<string, any> {
 }
 
 function isIntentBoundary(ch: string): boolean {
-  return /[\n\r\t,，。!！?？;；:：、】【\[\]{}()<>|、]/u.test(ch)
+  return /[\n\r\t,，。!！?？;；:：、】【[\]{}()<>|、]/u.test(ch)
 }
 
 function splitIntentSegments(message: string): string[] {
@@ -972,7 +972,7 @@ function classifyMediaIntentSegment(
   let confidence = 0
   let focusSpan = 0
   let alternativeCategory: MediaCategory | undefined
-  let params: Record<string, any> | undefined
+  let params: Record<string, unknown> | undefined
 
   if (imageCount >= 2 && (hasVideoNoun || hasAnimVerb)) {
     category = 'i2v'

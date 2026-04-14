@@ -1255,7 +1255,11 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
 
 <template>
   <!-- Mobile overlay -->
-  <div v-if="isOpen" class="fixed inset-0 bg-black/50 z-40 lg:hidden" @click="isOpen = false" />
+  <div
+    v-if="isOpen"
+    class="fixed inset-0 bg-black/50 z-40 lg:hidden"
+    @click="isOpen = false"
+  />
 
   <!-- Sidebar -->
   <aside
@@ -1278,7 +1282,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
       @mousedown="handleWindowDragMouseDown"
     />
     <div class="sidebar-card flex flex-1 min-h-0 flex-col">
-      <div class="sidebar-brand-shell" :class="isCollapsed ? 'px-2 pb-2.5' : 'px-3.5 pb-2.5'">
+      <div
+        class="sidebar-brand-shell"
+        :class="isCollapsed ? 'px-2 pb-2.5' : 'px-3.5 pb-2.5'"
+      >
         <div class="sidebar-brand-row flex items-center justify-between gap-2">
           <RouterLink
             to="/"
@@ -1296,9 +1303,12 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                   :src="publicAsset('logo.svg')"
                   alt="ZimaOS Blue"
                   class="h-6 w-6 object-contain dark:brightness-150"
-                />
+                >
               </div>
-              <div v-if="!isCollapsed" class="sidebar-brand-copy">
+              <div
+                v-if="!isCollapsed"
+                class="sidebar-brand-copy"
+              >
                 <span class="sidebar-brand-name">Blue</span>
               </div>
             </div>
@@ -1375,12 +1385,18 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                 :d="item.icon"
               />
             </svg>
-            <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
+            <span
+              v-if="!isCollapsed"
+              class="text-[0.95rem] font-medium whitespace-nowrap"
+            >{{
               item.name
             }}</span>
           </button>
 
-          <div v-if="showConfigurationGroup" class="sidebar-section mt-3.5">
+          <div
+            v-if="showConfigurationGroup"
+            class="sidebar-section mt-3.5"
+          >
             <button
               v-if="!isCollapsed"
               type="button"
@@ -1451,7 +1467,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                     :d="item.icon"
                   />
                 </svg>
-                <span v-if="!isCollapsed" class="text-[0.95rem] font-medium whitespace-nowrap">{{
+                <span
+                  v-if="!isCollapsed"
+                  class="text-[0.95rem] font-medium whitespace-nowrap"
+                >{{
                   item.name
                 }}</span>
               </button>
@@ -1483,7 +1502,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             class="sidebar-icon-btn hidden lg:flex p-1.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-slate-100 transition-colors"
             :title="
               (isCollapsed ? t('nav.expandSidebar') : t('nav.collapseSidebar')) +
-              (isMac ? ' (⌘B)' : ' (Alt+B)')
+                (isMac ? ' (⌘B)' : ' (Alt+B)')
             "
             @click="toggleCollapse"
           >
@@ -1534,8 +1553,13 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             @focus="prefetchProfileRoute"
           >
             <span class="sidebar-profile-avatar flex-shrink-0">{{ profileInitial }}</span>
-            <div v-if="!isCollapsed" class="min-w-0">
-              <div class="text-[0.86rem] font-medium leading-none truncate">{{ profileName }}</div>
+            <div
+              v-if="!isCollapsed"
+              class="min-w-0"
+            >
+              <div class="text-[0.86rem] font-medium leading-none truncate">
+                {{ profileName }}
+              </div>
               <div class="text-[10px] text-gray-500 dark:text-slate-400 truncate mt-0.5">
                 {{ profileRole }}
               </div>
@@ -1557,8 +1581,14 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             :aria-label="t('preview.createAccount')"
             @click="openPreviewUpgradeModal"
           >
-            <span class="sidebar-preview-create-icon" aria-hidden="true">+</span>
-            <span v-if="!isCollapsed" class="sidebar-preview-create-label">{{
+            <span
+              class="sidebar-preview-create-icon"
+              aria-hidden="true"
+            >+</span>
+            <span
+              v-if="!isCollapsed"
+              class="sidebar-preview-create-label"
+            >{{
               t('preview.createAccount')
             }}</span>
           </button>
@@ -1640,7 +1670,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                   d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386C24 5.373 18.627 0 12 0z"
                 />
               </svg>
-              <span v-if="showExpandedUtilityLabels" class="sidebar-utility-label">{{
+              <span
+                v-if="showExpandedUtilityLabels"
+                class="sidebar-utility-label"
+              >{{
                 githubButtonLabel
               }}</span>
             </button>
@@ -1688,7 +1721,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                   d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79Z"
                 />
               </svg>
-              <span v-if="showExpandedUtilityLabels" class="sidebar-utility-label">{{
+              <span
+                v-if="showExpandedUtilityLabels"
+                class="sidebar-utility-label"
+              >{{
                 themeButtonLabel
               }}</span>
             </button>
@@ -1705,7 +1741,11 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
   />
 
   <Transition name="workspace-panel">
-    <div v-if="showWorkspacePanel" class="workspace-panel-layer" @click.self="closeWorkspacePanel">
+    <div
+      v-if="showWorkspacePanel"
+      class="workspace-panel-layer"
+      @click.self="closeWorkspacePanel"
+    >
       <div
         class="workspace-panel-shell border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl overflow-hidden flex flex-col"
       >
@@ -1719,7 +1759,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             <p class="text-xs text-gray-500 dark:text-slate-400 truncate mt-0.5">
               {{ workspacePathLabel }}
             </p>
-            <p v-if="workspaceError" class="text-xs text-red-600 dark:text-red-400 mt-1">
+            <p
+              v-if="workspaceError"
+              class="text-xs text-red-600 dark:text-red-400 mt-1"
+            >
               {{ workspaceError }}
             </p>
           </div>
@@ -1784,7 +1827,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
         </div>
 
         <div class="flex-1 min-h-0 overflow-y-auto p-4">
-          <div v-if="activeWorkspaceTab === 'core'" class="space-y-3">
+          <div
+            v-if="activeWorkspaceTab === 'core'"
+            class="space-y-3"
+          >
             <div class="flex items-center justify-between">
               <div>
                 <h4 class="text-base font-semibold text-gray-900 dark:text-white">
@@ -1830,9 +1876,15 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               {{ t('workspace.noFiles') }}
             </div>
 
-            <div v-else class="relative">
+            <div
+              v-else
+              class="relative"
+            >
               <Transition name="ws-grid">
-                <div v-if="!coreEditingFile" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div
+                  v-if="!coreEditingFile"
+                  class="grid grid-cols-2 sm:grid-cols-3 gap-2"
+                >
                   <button
                     v-for="file in coreWorkspaceFiles"
                     :key="file.name"
@@ -1842,8 +1894,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                     <span class="text-2xl leading-none">{{ getCoreFileInfo(file.name).icon }}</span>
                     <span
                       class="text-xs font-medium text-gray-900 dark:text-white truncate w-full"
-                      >{{ getCoreFileLabel(file.name) }}</span
-                    >
+                    >{{ getCoreFileLabel(file.name) }}</span>
                     <span class="text-[10px] text-gray-400 dark:text-gray-500 leading-tight">{{
                       getCoreFileDesc(file.name)
                     }}</span>
@@ -1910,7 +1961,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
             </div>
           </div>
 
-          <div v-else class="space-y-3">
+          <div
+            v-else
+            class="space-y-3"
+          >
             <div class="flex items-start justify-between gap-3">
               <h4 class="text-base font-semibold text-gray-900 dark:text-white">
                 {{ tr('nav.workspaceGeneratedTitle', 'Workspace Tree') }}
@@ -1918,14 +1972,10 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               <div
                 class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 flex-wrap justify-end"
               >
-                <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700"
-                  >{{ tr('nav.workspaceTreeDirCount', 'Dirs') }}
-                  {{ workspaceTreeDirectoryCount }}</span
-                >
-                <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700"
-                  >{{ tr('nav.workspaceTreeFileCount', 'Files') }}
-                  {{ workspaceTreeFileCount }}</span
-                >
+                <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700">{{ tr('nav.workspaceTreeDirCount', 'Dirs') }}
+                  {{ workspaceTreeDirectoryCount }}</span>
+                <span class="px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700">{{ tr('nav.workspaceTreeFileCount', 'Files') }}
+                  {{ workspaceTreeFileCount }}</span>
                 <span
                   class="px-2 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                 >
@@ -1979,10 +2029,16 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               </button>
             </div>
 
-            <p v-if="workspaceTreeError" class="text-xs text-red-600 dark:text-red-400">
+            <p
+              v-if="workspaceTreeError"
+              class="text-xs text-red-600 dark:text-red-400"
+            >
               {{ workspaceTreeError }}
             </p>
-            <p v-if="generatedFilesError" class="text-xs text-red-600 dark:text-red-400">
+            <p
+              v-if="generatedFilesError"
+              class="text-xs text-red-600 dark:text-red-400"
+            >
               {{ generatedFilesError }}
             </p>
 
@@ -2077,7 +2133,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                         <span
                           v-if="
                             !isWorkspaceTreeDir(row.entry) &&
-                            typeof row.entry.size_bytes === 'number'
+                              typeof row.entry.size_bytes === 'number'
                           "
                           class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300 flex-shrink-0"
                         >

@@ -98,29 +98,50 @@ const resolvedStatusTitle = computed(() => props.statusTitle || props.statusText
 
 <template>
   <div :class="rootClasses">
-    <div :class="headerClasses" @click="emit('headerClick')">
+    <div
+      :class="headerClasses"
+      @click="emit('headerClick')"
+    >
       <div :class="identityClasses">
         <div :class="iconShellClasses">
-          <img :src="iconSrc" :alt="iconAlt" :class="iconClasses" :style="iconStyle" />
+          <img
+            :src="iconSrc"
+            :alt="iconAlt"
+            :class="iconClasses"
+            :style="iconStyle"
+          >
         </div>
         <div :class="copyClasses">
           <div :class="titleRowClasses">
-            <h3 :class="titleClasses">{{ title }}</h3>
-            <span v-if="metaLabel" :class="metaBadgeClasses">
+            <h3 :class="titleClasses">
+              {{ title }}
+            </h3>
+            <span
+              v-if="metaLabel"
+              :class="metaBadgeClasses"
+            >
               {{ metaLabel }}
             </span>
-            <slot name="title-meta"></slot>
-            <span :class="statusBadgeClasses" :title="resolvedStatusTitle">
-              <span :class="statusDotClasses"></span>
+            <slot name="title-meta" />
+            <span
+              :class="statusBadgeClasses"
+              :title="resolvedStatusTitle"
+            >
+              <span :class="statusDotClasses" />
               {{ statusText }}
             </span>
           </div>
-          <p :class="descriptionClasses">{{ description }}</p>
+          <p :class="descriptionClasses">
+            {{ description }}
+          </p>
         </div>
       </div>
 
-      <div v-if="$slots.actions" :class="asideClasses">
-        <slot name="actions"></slot>
+      <div
+        v-if="$slots.actions"
+        :class="asideClasses"
+      >
+        <slot name="actions" />
       </div>
     </div>
   </div>

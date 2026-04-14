@@ -221,8 +221,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="!initialRouteReady" class="app-startup-shell">
-    <img :src="publicAsset('logo.svg')" alt="ZimaOS Blue" class="app-startup-shell__logo" />
+  <div
+    v-if="!initialRouteReady"
+    class="app-startup-shell"
+  >
+    <img
+      :src="publicAsset('logo.svg')"
+      alt="ZimaOS Blue"
+      class="app-startup-shell__logo"
+    >
   </div>
   <RouterView v-else-if="hideLayout" />
   <DefaultLayout v-else />

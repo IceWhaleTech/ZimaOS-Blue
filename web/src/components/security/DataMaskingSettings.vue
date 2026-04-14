@@ -242,14 +242,22 @@ onMounted(() => {
 
 <template>
   <div class="space-y-6">
-    <div v-if="loading" class="text-center py-8">
+    <div
+      v-if="loading"
+      class="text-center py-8"
+    >
       <div
         class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full mx-auto"
-      ></div>
-      <p class="text-gray-400 mt-2 text-sm">{{ t('common.loading') }}</p>
+      />
+      <p class="text-gray-400 mt-2 text-sm">
+        {{ t('common.loading') }}
+      </p>
     </div>
 
-    <div v-else-if="maskingStats" class="glass-card security-outlined-card p-6 space-y-5">
+    <div
+      v-else-if="maskingStats"
+      class="glass-card security-outlined-card p-6 space-y-5"
+    >
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -308,7 +316,10 @@ onMounted(() => {
               builtinMaskingRules.length
             }}</span>
           </div>
-          <div v-if="builtinMaskingRules.length > 0" class="space-y-1.5">
+          <div
+            v-if="builtinMaskingRules.length > 0"
+            class="space-y-1.5"
+          >
             <div
               v-for="rule in builtinMaskingRules"
               :key="rule.id"
@@ -326,7 +337,6 @@ onMounted(() => {
                 <button
                   type="button"
                   :disabled="togglingMaskingRuleId === rule.id"
-                  @click="toggleMaskingRule(rule)"
                   :class="[
                     'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
                     togglingMaskingRuleId === rule.id
@@ -336,6 +346,7 @@ onMounted(() => {
                       ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300'
                       : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300',
                   ]"
+                  @click="toggleMaskingRule(rule)"
                 >
                   {{ rule.enabled ? t('common.enabled') : t('common.disabled') }}
                 </button>
@@ -348,7 +359,10 @@ onMounted(() => {
               </p>
             </div>
           </div>
-          <p v-else class="text-xs text-gray-400 dark:text-gray-500">
+          <p
+            v-else
+            class="text-xs text-gray-400 dark:text-gray-500"
+          >
             {{ tr('apiProxy.builtinMaskingEmpty', 'No built-in rules loaded.') }}
           </p>
         </div>
@@ -364,7 +378,10 @@ onMounted(() => {
               customMaskingRules.length
             }}</span>
           </div>
-          <div v-if="customMaskingRules.length > 0" class="space-y-1.5">
+          <div
+            v-if="customMaskingRules.length > 0"
+            class="space-y-1.5"
+          >
             <div
               v-for="rule in customMaskingRules"
               :key="rule.id"
@@ -390,7 +407,6 @@ onMounted(() => {
                   <button
                     type="button"
                     :disabled="togglingMaskingRuleId === rule.id"
-                    @click="toggleMaskingRule(rule)"
                     :class="[
                       'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
                       togglingMaskingRuleId === rule.id
@@ -400,6 +416,7 @@ onMounted(() => {
                         ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300'
                         : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300',
                     ]"
+                    @click="toggleMaskingRule(rule)"
                   >
                     {{ rule.enabled ? t('common.enabled') : t('common.disabled') }}
                   </button>
@@ -425,7 +442,10 @@ onMounted(() => {
               </p>
             </div>
           </div>
-          <p v-else class="text-xs text-gray-400 dark:text-gray-500">
+          <p
+            v-else
+            class="text-xs text-gray-400 dark:text-gray-500"
+          >
             {{
               tr(
                 'apiProxy.customMaskingEmpty',
@@ -473,7 +493,7 @@ onMounted(() => {
               :placeholder="
                 tr('apiProxy.customMaskingNamePlaceholder', 'Example: Internal ticket number')
               "
-            />
+            >
           </label>
 
           <label class="space-y-1">
@@ -505,7 +525,7 @@ onMounted(() => {
               data-testid="masking-custom-pattern"
               class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-mono text-gray-900 outline-none transition focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:focus:border-gray-300 dark:focus:ring-gray-300/10"
               :placeholder="tr('apiProxy.customMaskingPatternPlaceholder', 'Example: TKT-\\d{6}')"
-            />
+            >
           </label>
 
           <label class="space-y-1 md:col-span-2">
@@ -526,7 +546,7 @@ onMounted(() => {
                   }
                 )
               "
-            />
+            >
           </label>
         </div>
 
@@ -561,12 +581,12 @@ onMounted(() => {
                 r="10"
                 stroke="currentColor"
                 stroke-width="4"
-              ></circle>
+              />
               <path
                 class="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
+              />
             </svg>
             {{ tr('apiProxy.customMaskingAdd', 'Add rule') }}
           </button>

@@ -265,10 +265,16 @@ onUnmounted(() => {
           <div class="voicewake-banner__inner">
             <span :class="dotClass" />
             <div class="voicewake-banner__content">
-              <p data-testid="global-voicewake-title" class="voicewake-banner__title">
+              <p
+                data-testid="global-voicewake-title"
+                class="voicewake-banner__title"
+              >
                 {{ bannerTitle }}
               </p>
-              <p data-testid="global-voicewake-meta" class="voicewake-banner__meta">
+              <p
+                data-testid="global-voicewake-meta"
+                class="voicewake-banner__meta"
+              >
                 {{ bannerMeta }}
               </p>
             </div>

@@ -393,7 +393,10 @@ onMounted(async () => {
     </div>
 
     <!-- ASR Tab Content -->
-    <div v-show="activeTab === 'asr'" class="space-y-6">
+    <div
+      v-show="activeTab === 'asr'"
+      class="space-y-6"
+    >
       <!-- macOS Native STT Status -->
       <div
         v-if="status?.asr?.provider === 'macos-native'"
@@ -444,7 +447,10 @@ onMounted(async () => {
               >
                 {{ t('speech.macosNativePermissionDenied') }}
               </p>
-              <p v-else class="text-xs text-gray-500 dark:text-gray-400">
+              <p
+                v-else
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
                 {{ t('speech.macosNativeDesc') }}
               </p>
             </div>
@@ -452,13 +458,11 @@ onMounted(async () => {
           <span
             v-if="status?.asr?.ready"
             class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-            >{{ t('speech.ready') }}</span
-          >
+          >{{ t('speech.ready') }}</span>
           <span
             v-else-if="status?.asr?.permission_denied"
             class="text-xs px-2 py-1 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
-            >{{ t('speech.macosNativePermissionDenied') }}</span
-          >
+          >{{ t('speech.macosNativePermissionDenied') }}</span>
         </div>
         <!-- Permission guide -->
         <div
@@ -480,7 +484,10 @@ onMounted(async () => {
           </button>
         </div>
         <!-- On-device toggle -->
-        <div v-if="status?.asr?.ready" class="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+        <div
+          v-if="status?.asr?.ready"
+          class="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg"
+        >
           <div class="flex items-center justify-between">
             <div class="speech-settings-inline-end-gap flex-1">
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{
@@ -515,8 +522,8 @@ onMounted(async () => {
           <div
             v-if="
               status?.asr?.on_device_only &&
-              status?.asr?.dictation_available &&
-              offlineLanguages.length > 0
+                status?.asr?.dictation_available &&
+                offlineLanguages.length > 0
             "
             class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600"
           >
@@ -553,8 +560,7 @@ onMounted(async () => {
                 <span
                   v-if="status?.asr?.ready"
                   class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-                  >{{ t('speech.ready') }}</span
-                >
+                >{{ t('speech.ready') }}</span>
               </div>
             </div>
             <div class="flex items-center justify-between mb-2">
@@ -584,8 +590,7 @@ onMounted(async () => {
                     ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
                     : 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300'
                 "
-                >{{ langName(lang) }}</span
-              >
+              >{{ langName(lang) }}</span>
             </div>
           </div>
         </div>
@@ -651,8 +656,7 @@ onMounted(async () => {
           <span
             v-if="status?.asr?.ready"
             class="text-xs px-2 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-            >{{ t('speech.ready') }}</span
-          >
+          >{{ t('speech.ready') }}</span>
         </div>
       </div>
 
@@ -688,7 +692,7 @@ onMounted(async () => {
                 :disabled="model.permission_denied || !model.downloaded || !!switchingModelId"
                 class="sr-only"
                 @change="switchASRModel(model.id)"
-              />
+              >
               <div class="flex-1">
                 <div class="flex items-center gap-2">
                   <!-- Warning icon for permission denied -->
@@ -747,18 +751,15 @@ onMounted(async () => {
                   <span
                     v-if="model.size"
                     class="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-600/50 text-gray-600 dark:text-gray-300"
-                    >{{ model.size }}</span
-                  >
+                  >{{ model.size }}</span>
                   <span
                     v-if="model.recommended"
                     class="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                    >{{ t('remoteAccess.recommended') }}</span
-                  >
+                  >{{ t('remoteAccess.recommended') }}</span>
                   <span
                     v-if="model.streaming"
                     class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                    >Streaming</span
-                  >
+                  >Streaming</span>
                 </div>
                 <p
                   v-if="model.permission_denied"
@@ -766,7 +767,10 @@ onMounted(async () => {
                 >
                   {{ t('speech.macosNativePermissionDenied') }}
                 </p>
-                <p v-else class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                <p
+                  v-else
+                  class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"
+                >
                   {{ trModelText(model.description) }}
                 </p>
               </div>
@@ -775,7 +779,11 @@ onMounted(async () => {
                 v-if="currentASRModel === model.id"
                 class="speech-settings-inline-start-gap text-gray-900 dark:text-white flex-shrink-0"
               >
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <svg
+                  class="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -801,12 +809,12 @@ onMounted(async () => {
                     r="10"
                     stroke="currentColor"
                     stroke-width="4"
-                  ></circle>
+                  />
                   <path
                     class="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                  />
                 </svg>
               </span>
               <!-- Download button (right side) -->
@@ -819,7 +827,10 @@ onMounted(async () => {
               </button>
             </label>
             <!-- Download progress -->
-            <div v-if="isModelDownloading(model.id)" class="mt-2">
+            <div
+              v-if="isModelDownloading(model.id)"
+              class="mt-2"
+            >
               <div class="flex items-center gap-2">
                 <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
                   <div
@@ -827,12 +838,13 @@ onMounted(async () => {
                     :style="{
                       width: `${Math.floor(getModelProgress(model.id)?.percentage || 0)}%`,
                     }"
-                  ></div>
+                  />
                 </div>
-                <span class="text-xs text-gray-500"
-                  >{{ Math.floor(getModelProgress(model.id)?.percentage || 0) }}%</span
+                <span class="text-xs text-gray-500">{{ Math.floor(getModelProgress(model.id)?.percentage || 0) }}%</span>
+                <button
+                  class="text-red-500 hover:text-red-600 text-xs"
+                  @click="cancelASRDownload"
                 >
-                <button class="text-red-500 hover:text-red-600 text-xs" @click="cancelASRDownload">
                   {{ t('common.cancel') }}
                 </button>
               </div>
@@ -843,13 +855,9 @@ onMounted(async () => {
                 <span v-if="getModelProgress(model.id)?.speed">{{
                   getModelProgress(model.id)?.speed
                 }}</span>
-                <span v-if="getModelProgress(model.id)?.eta"
-                  >{{ $t('speech.eta') }}: {{ getModelProgress(model.id)?.eta }}</span
-                >
-                <span v-if="getModelProgress(model.id)?.total"
-                  >{{ Math.round((getModelProgress(model.id)?.downloaded || 0) / 1024 / 1024) }}MB /
-                  {{ Math.round((getModelProgress(model.id)?.total || 0) / 1024 / 1024) }}MB</span
-                >
+                <span v-if="getModelProgress(model.id)?.eta">{{ $t('speech.eta') }}: {{ getModelProgress(model.id)?.eta }}</span>
+                <span v-if="getModelProgress(model.id)?.total">{{ Math.round((getModelProgress(model.id)?.downloaded || 0) / 1024 / 1024) }}MB /
+                  {{ Math.round((getModelProgress(model.id)?.total || 0) / 1024 / 1024) }}MB</span>
               </div>
             </div>
           </div>
@@ -861,27 +869,36 @@ onMounted(async () => {
     </div>
 
     <!-- TTS Tab Content -->
-    <div v-show="activeTab === 'tts'" class="space-y-6">
+    <div
+      v-show="activeTab === 'tts'"
+      class="space-y-6"
+    >
       <!-- TTS Provider Selection -->
       <div class="bg-white dark:bg-gray-700/30 rounded-lg p-4 shadow-sm">
         <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('speech.ttsProvider') }}
         </h4>
         <!-- Loading skeleton while status is being fetched -->
-        <div v-if="loading || !status" class="space-y-2">
+        <div
+          v-if="loading || !status"
+          class="space-y-2"
+        >
           <div
             v-for="i in 2"
             :key="i"
             class="p-3 border border-gray-200 dark:border-gray-700 rounded-lg animate-pulse"
           >
             <div class="flex items-center gap-2">
-              <div class="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded"></div>
-              <div class="h-4 w-24 bg-gray-200 dark:bg-gray-600 rounded"></div>
+              <div class="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded" />
+              <div class="h-4 w-24 bg-gray-200 dark:bg-gray-600 rounded" />
             </div>
-            <div class="h-3 w-48 bg-gray-100 dark:bg-gray-700 rounded mt-1.5"></div>
+            <div class="h-3 w-48 bg-gray-100 dark:bg-gray-700 rounded mt-1.5" />
           </div>
         </div>
-        <div v-else class="space-y-2">
+        <div
+          v-else
+          class="space-y-2"
+        >
           <label
             v-if="isProviderAvailable('macos-native')"
             class="flex items-center p-3 border rounded-lg cursor-pointer transition-colors"
@@ -897,7 +914,7 @@ onMounted(async () => {
               value="macos-native"
               class="sr-only"
               @change="saveProvider"
-            />
+            >
             <div class="flex-1">
               <div class="flex items-center gap-2">
                 <svg
@@ -914,15 +931,21 @@ onMounted(async () => {
                 }}</span>
                 <span
                   class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                  >{{ t('speech.macosNativeQuality') }}</span
-                >
+                >{{ t('speech.macosNativeQuality') }}</span>
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('speech.macosNativeDesc') }}
               </p>
             </div>
-            <span v-if="selectedProvider === 'macos-native'" class="text-gray-900 dark:text-white">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <span
+              v-if="selectedProvider === 'macos-native'"
+              class="text-gray-900 dark:text-white"
+            >
+              <svg
+                class="w-5 h-5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
                 <path
                   fill-rule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -946,7 +969,7 @@ onMounted(async () => {
               value="windows-native"
               class="sr-only"
               @change="saveProvider"
-            />
+            >
             <div class="flex-1">
               <div class="flex items-center gap-2">
                 <svg
@@ -963,8 +986,7 @@ onMounted(async () => {
                 }}</span>
                 <span
                   class="text-xs px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400"
-                  >{{ t('speech.systemNative') }}</span
-                >
+                >{{ t('speech.systemNative') }}</span>
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('speech.windowsNativeDesc') }}
@@ -974,7 +996,11 @@ onMounted(async () => {
               v-if="selectedProvider === 'windows-native'"
               class="text-gray-900 dark:text-white"
             >
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <svg
+                class="w-5 h-5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
                 <path
                   fill-rule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -998,7 +1024,7 @@ onMounted(async () => {
               value="edge-tts"
               class="sr-only"
               @change="saveProvider"
-            />
+            >
             <div class="flex-1">
               <div class="flex items-center gap-2">
                 <svg
@@ -1015,13 +1041,19 @@ onMounted(async () => {
                 }}</span>
                 <span
                   class="text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-                  >{{ t('speech.edgeTTSQuality') }}</span
-                >
+                >{{ t('speech.edgeTTSQuality') }}</span>
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.edgeTTSDesc') }}</p>
             </div>
-            <span v-if="selectedProvider === 'edge-tts'" class="text-gray-900 dark:text-white">
-              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+            <span
+              v-if="selectedProvider === 'edge-tts'"
+              class="text-gray-900 dark:text-white"
+            >
+              <svg
+                class="w-5 h-5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
                 <path
                   fill-rule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -1046,23 +1078,29 @@ onMounted(async () => {
                 type="radio"
                 value="espeak-ng"
                 class="sr-only"
-                @change="saveProvider"
                 :disabled="!espeakDataReady"
-              />
+                @change="saveProvider"
+              >
               <div class="flex-1">
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-medium text-gray-900 dark:text-white">eSpeak-NG</span>
                   <span
                     class="text-xs px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400"
-                    >{{ t('speech.espeakNGQuality') }}</span
-                  >
+                  >{{ t('speech.espeakNGQuality') }}</span>
                 </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ t('speech.espeakNGDesc') }}
                 </p>
               </div>
-              <span v-if="selectedProvider === 'espeak-ng'" class="text-gray-900 dark:text-white">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <span
+                v-if="selectedProvider === 'espeak-ng'"
+                class="text-gray-900 dark:text-white"
+              >
+                <svg
+                  class="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -1077,7 +1115,11 @@ onMounted(async () => {
                 v-if="espeakDataReady"
                 class="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"
               >
-                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <svg
+                  class="w-3.5 h-3.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -1085,14 +1127,17 @@ onMounted(async () => {
                   />
                 </svg>
                 {{ t('speech.espeakDepLib') }}
-                <span class="text-gray-400"
-                  >({{ espeakLangCount }} {{ t('speech.espeakLangs') }},
-                  {{ (espeakDataSize / 1024 / 1024).toFixed(1) }}MB)</span
-                >
+                <span class="text-gray-400">({{ espeakLangCount }} {{ t('speech.espeakLangs') }},
+                  {{ (espeakDataSize / 1024 / 1024).toFixed(1) }}MB)</span>
               </div>
-              <div v-else class="text-xs text-red-500 dark:text-red-400">
+              <div
+                v-else
+                class="text-xs text-red-500 dark:text-red-400"
+              >
                 <span>✗ {{ t('speech.espeakDepLib') }}</span>
-                <p class="text-red-400 mt-1">{{ t('speech.espeakNeedRebuild') }}</p>
+                <p class="text-red-400 mt-1">
+                  {{ t('speech.espeakNeedRebuild') }}
+                </p>
               </div>
             </div>
           </div>
@@ -1112,9 +1157,9 @@ onMounted(async () => {
                 type="radio"
                 value="kokoro"
                 class="sr-only"
-                @change="saveProvider"
                 :disabled="!kokoroReady"
-              />
+                @change="saveProvider"
+              >
               <div class="flex-1">
                 <div class="flex items-center gap-2">
                   <span class="text-sm font-medium text-gray-900 dark:text-white">Kokoro</span>
@@ -1125,7 +1170,11 @@ onMounted(async () => {
                     class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                     @click.stop
                   >
-                    <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <svg
+                      class="w-3.5 h-3.5"
+                      viewBox="0 0 24 24"
+                      fill="currentColor"
+                    >
                       <path
                         d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"
                       />
@@ -1133,13 +1182,19 @@ onMounted(async () => {
                   </a>
                   <span
                     class="text-xs px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400"
-                    >{{ t('speech.kokoroQuality') }}</span
-                  >
+                  >{{ t('speech.kokoroQuality') }}</span>
                 </div>
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('speech.kokoroDesc') }}</p>
               </div>
-              <span v-if="selectedProvider === 'kokoro'" class="text-gray-900 dark:text-white">
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <span
+                v-if="selectedProvider === 'kokoro'"
+                class="text-gray-900 dark:text-white"
+              >
+                <svg
+                  class="w-5 h-5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -1154,7 +1209,11 @@ onMounted(async () => {
                 v-if="kokoroReady"
                 class="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"
               >
-                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <svg
+                  class="w-3.5 h-3.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -1163,7 +1222,10 @@ onMounted(async () => {
                 </svg>
                 {{ t('speech.kokoroReady') }}
               </div>
-              <div v-else-if="kokoroDownloading" class="space-y-1">
+              <div
+                v-else-if="kokoroDownloading"
+                class="space-y-1"
+              >
                 <div class="flex items-center gap-2">
                   <div class="flex-1 bg-gray-300 dark:bg-gray-600 rounded-full h-1.5">
                     <div
@@ -1174,7 +1236,7 @@ onMounted(async () => {
                           kokoroDownloadProgress <= 0 ? 'pulse 2s ease-in-out infinite' : 'none',
                         opacity: kokoroDownloadProgress <= 0 ? 0.5 : 1,
                       }"
-                    ></div>
+                    />
                   </div>
                   <span class="text-xs text-gray-500 whitespace-nowrap">{{
                     kokoroDownloadProgress > 0
@@ -1191,8 +1253,7 @@ onMounted(async () => {
                 <p class="text-xs text-gray-400">
                   <span v-if="kokoroDownloadFile">{{ kokoroDownloadFile }}</span>
                   <span v-if="kokoroDownloadTotalFiles > 1">
-                    ({{ kokoroDownloadFileIndex + 1 }}/{{ kokoroDownloadTotalFiles }})</span
-                  >
+                    ({{ kokoroDownloadFileIndex + 1 }}/{{ kokoroDownloadTotalFiles }})</span>
                   <span v-if="kokoroDownloadSpeed"> · {{ kokoroDownloadSpeed }}</span>
                   <span v-if="kokoroDownloadETA"> · {{ kokoroDownloadETA }}</span>
                   <span v-if="!kokoroDownloadFile">{{ t('speech.kokoroDownloading') }}</span>
@@ -1216,7 +1277,11 @@ onMounted(async () => {
                 v-if="kokoroCurrentLangSupported"
                 class="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 mb-1"
               >
-                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <svg
+                  class="w-3.5 h-3.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
@@ -1234,7 +1299,10 @@ onMounted(async () => {
                 {{ t('speech.kokoroOtherLangs', { count: kokoroOtherLangs.length }) }}
               </button>
               <!-- Expanded: show all other languages -->
-              <div v-else class="flex flex-wrap gap-1">
+              <div
+                v-else
+                class="flex flex-wrap gap-1"
+              >
                 <span
                   v-for="lang in kokoroOtherLangs"
                   :key="lang"
@@ -1265,10 +1333,10 @@ onMounted(async () => {
               type="checkbox"
               class="sr-only peer"
               @change="saveAutoPlayTTS"
-            />
+            >
             <div
               class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:focus:ring-gray-400 dark:peer-focus:ring-gray-900 dark:focus:ring-gray-400 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
-            ></div>
+            />
           </label>
         </div>
       </div>
@@ -1283,9 +1351,7 @@ onMounted(async () => {
           <div>
             <div class="flex items-center justify-between mb-2">
               <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('speech.rate') }}</label>
-              <span class="text-sm font-medium text-gray-900 dark:text-white"
-                >{{ speechRate.toFixed(1) }}x</span
-              >
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechRate.toFixed(1) }}x</span>
             </div>
             <input
               v-model.number="speechRate"
@@ -1295,7 +1361,7 @@ onMounted(async () => {
               step="0.1"
               class="w-full h-2 bg-gray-100 dark:bg-gray-700/30 rounded-lg appearance-none cursor-pointer accent-gray-900 dark:accent-gray-400"
               @change="saveSpeechRate"
-            />
+            >
           </div>
 
           <!-- Speech Pitch -->
@@ -1316,7 +1382,7 @@ onMounted(async () => {
               step="1"
               class="w-full h-2 bg-gray-100 dark:bg-gray-700/30 rounded-lg appearance-none cursor-pointer accent-gray-900 dark:accent-gray-400"
               @change="saveSpeechPitch"
-            />
+            >
           </div>
 
           <!-- Speech Volume -->
@@ -1325,9 +1391,7 @@ onMounted(async () => {
               <label class="text-sm text-gray-700 dark:text-gray-300">{{
                 t('speech.volume')
               }}</label>
-              <span class="text-sm font-medium text-gray-900 dark:text-white"
-                >{{ speechVolume }}%</span
-              >
+              <span class="text-sm font-medium text-gray-900 dark:text-white">{{ speechVolume }}%</span>
             </div>
             <input
               v-model.number="speechVolume"
@@ -1337,7 +1401,7 @@ onMounted(async () => {
               step="1"
               class="w-full h-2 bg-gray-100 dark:bg-gray-700/30 rounded-lg appearance-none cursor-pointer accent-gray-900 dark:accent-gray-400"
               @change="saveSpeechVolume"
-            />
+            >
           </div>
         </div>
       </div>

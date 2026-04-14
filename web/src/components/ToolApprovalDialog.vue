@@ -109,7 +109,10 @@ function deny() {
             </div>
 
             <!-- Arguments -->
-            <div v-if="argsDisplay.length > 0" class="space-y-1">
+            <div
+              v-if="argsDisplay.length > 0"
+              class="space-y-1"
+            >
               <span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">{{
                 t('approval.arguments', 'Arguments')
               }}</span>
@@ -121,13 +124,10 @@ function deny() {
                   :key="arg.key"
                   class="flex gap-2 text-xs mb-1 last:mb-0"
                 >
-                  <span class="font-mono text-blue-600 dark:text-blue-400 flex-shrink-0"
-                    >{{ arg.key }}:</span
-                  >
+                  <span class="font-mono text-blue-600 dark:text-blue-400 flex-shrink-0">{{ arg.key }}:</span>
                   <span
                     class="font-mono text-gray-700 dark:text-gray-300 break-all whitespace-pre-wrap"
-                    >{{ arg.value }}</span
-                  >
+                  >{{ arg.value }}</span>
                 </div>
               </div>
             </div>

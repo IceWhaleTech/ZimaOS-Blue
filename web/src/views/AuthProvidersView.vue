@@ -271,7 +271,9 @@ function updateScope(index: number, value: string) {
 <template>
   <div class="auth-providers-view p-6 max-w-6xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">{{ t('authProviders.title') }}</h1>
+      <h1 class="text-2xl font-bold text-white">
+        {{ t('authProviders.title') }}
+      </h1>
       <button
         class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
         @click="openCreateModal"
@@ -311,12 +313,18 @@ function updateScope(index: number, value: string) {
     </div>
 
     <!-- Loading -->
-    <div v-if="loading && providers.length === 0" class="text-gray-400 text-center py-8">
+    <div
+      v-if="loading && providers.length === 0"
+      class="text-gray-400 text-center py-8"
+    >
       {{ t('authProviders.loadingProviders') }}
     </div>
 
     <!-- Empty State -->
-    <div v-else-if="providers.length === 0" class="bg-gray-700 rounded-lg p-8 text-center">
+    <div
+      v-else-if="providers.length === 0"
+      class="bg-gray-700 rounded-lg p-8 text-center"
+    >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         class="h-12 w-12 mx-auto text-gray-500 mb-4"
@@ -331,8 +339,12 @@ function updateScope(index: number, value: string) {
           d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
         />
       </svg>
-      <h3 class="text-lg font-medium text-white mb-2">{{ t('authProviders.noProviders') }}</h3>
-      <p class="text-gray-400 mb-4">{{ t('authProviders.noProvidersDesc') }}</p>
+      <h3 class="text-lg font-medium text-white mb-2">
+        {{ t('authProviders.noProviders') }}
+      </h3>
+      <p class="text-gray-400 mb-4">
+        {{ t('authProviders.noProvidersDesc') }}
+      </p>
       <button
         class="px-4 py-2 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg text-sm transition-colors"
         @click="openCreateModal"
@@ -342,20 +354,29 @@ function updateScope(index: number, value: string) {
     </div>
 
     <!-- Providers List -->
-    <div v-else class="space-y-4">
-      <div v-for="provider in providers" :key="provider.id" class="bg-gray-700 rounded-lg p-4">
+    <div
+      v-else
+      class="space-y-4"
+    >
+      <div
+        v-for="provider in providers"
+        :key="provider.id"
+        class="bg-gray-700 rounded-lg p-4"
+      >
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4">
             <!-- Status Indicator -->
             <div
               class="w-3 h-3 rounded-full"
               :class="provider.enabled ? 'bg-green-500' : 'bg-gray-500'"
-            ></div>
+            />
 
             <!-- Provider Info -->
             <div>
               <div class="flex items-center gap-2">
-                <h3 class="text-white font-medium">{{ provider.name }}</h3>
+                <h3 class="text-white font-medium">
+                  {{ provider.name }}
+                </h3>
                 <span class="text-xs bg-gray-700 px-2 py-0.5 rounded text-gray-300">
                   {{ getProviderTypeLabel(provider.type) }}
                 </span>
@@ -363,12 +384,13 @@ function updateScope(index: number, value: string) {
               <div class="text-sm text-gray-400 mt-1">
                 <span>{{ t('authProviders.providerId') }}: {{ provider.id }}</span>
                 <span class="mx-2">|</span>
-                <span
-                  >{{ t('authProviders.clientId') }}:
-                  {{ provider.client_id.substring(0, 20) }}...</span
-                >
+                <span>{{ t('authProviders.clientId') }}:
+                  {{ provider.client_id.substring(0, 20) }}...</span>
               </div>
-              <div v-if="provider.issuer_url" class="text-sm text-gray-500 mt-1">
+              <div
+                v-if="provider.issuer_url"
+                class="text-sm text-gray-500 mt-1"
+              >
                 {{ t('authProviders.issuer') }}: {{ provider.issuer_url }}
               </div>
             </div>
@@ -416,7 +438,10 @@ function updateScope(index: number, value: string) {
             {{ isCreating ? t('authProviders.addAuthProvider') : t('authProviders.editProvider') }}
           </h3>
 
-          <form class="space-y-6" @submit.prevent="saveProvider">
+          <form
+            class="space-y-6"
+            @submit.prevent="saveProvider"
+          >
             <!-- Basic Info -->
             <div class="grid grid-cols-2 gap-4">
               <div>
@@ -431,7 +456,7 @@ function updateScope(index: number, value: string) {
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 disabled:opacity-50"
                   :placeholder="t('authProviders.placeholderId')"
                   @input="onIdChange"
-                />
+                >
               </div>
               <div>
                 <label class="block text-sm text-gray-400 mb-2">{{
@@ -443,7 +468,7 @@ function updateScope(index: number, value: string) {
                   required
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                   :placeholder="t('authProviders.placeholderName')"
-                />
+                >
               </div>
             </div>
 
@@ -457,7 +482,11 @@ function updateScope(index: number, value: string) {
                 class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                 @change="onTypeChange"
               >
-                <option v-for="type in providerTypes" :key="type" :value="type">
+                <option
+                  v-for="type in providerTypes"
+                  :key="type"
+                  :value="type"
+                >
                   {{ getProviderTypeLabel(type) }}
                 </option>
               </select>
@@ -475,12 +504,15 @@ function updateScope(index: number, value: string) {
                   required
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                   :placeholder="t('authProviders.placeholderClientId')"
-                />
+                >
               </div>
               <div>
                 <label class="block text-sm text-gray-400 mb-2">
                   {{ t('authProviders.clientSecret') }}
-                  <span v-if="!isCreating" class="text-gray-500">{{
+                  <span
+                    v-if="!isCreating"
+                    class="text-gray-500"
+                  >{{
                     t('authProviders.clientSecretKeepBlank')
                   }}</span>
                 </label>
@@ -490,7 +522,7 @@ function updateScope(index: number, value: string) {
                   :required="isCreating"
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                   :placeholder="t('authProviders.placeholderClientSecret')"
-                />
+                >
               </div>
             </div>
 
@@ -505,7 +537,7 @@ function updateScope(index: number, value: string) {
                 type="url"
                 class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                 placeholder="https://accounts.google.com"
-              />
+              >
             </div>
 
             <div>
@@ -518,8 +550,10 @@ function updateScope(index: number, value: string) {
                 required
                 class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                 :placeholder="t('authProviders.placeholderRedirect')"
-              />
-              <p class="text-xs text-gray-500 mt-1">{{ t('authProviders.redirectUrlHint') }}</p>
+              >
+              <p class="text-xs text-gray-500 mt-1">
+                {{ t('authProviders.redirectUrlHint') }}
+              </p>
             </div>
 
             <!-- Scopes -->
@@ -535,14 +569,18 @@ function updateScope(index: number, value: string) {
                 </button>
               </div>
               <div class="space-y-2">
-                <div v-for="(scope, index) in form.scopes" :key="index" class="flex gap-2">
+                <div
+                  v-for="(scope, index) in form.scopes"
+                  :key="index"
+                  class="flex gap-2"
+                >
                   <input
                     :value="scope"
                     type="text"
                     class="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                     :placeholder="t('authProviders.placeholderScopes')"
                     @input="updateScope(index, ($event.target as HTMLInputElement).value)"
-                  />
+                  >
                   <button
                     type="button"
                     class="p-2 text-red-400 hover:bg-red-900/20 rounded-lg"
@@ -575,7 +613,7 @@ function updateScope(index: number, value: string) {
                     v-model="form.auto_create_user"
                     type="checkbox"
                     class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
-                  />
+                  >
                   <span class="text-sm text-gray-300">{{ t('authProviders.autoCreateUser') }}</span>
                 </label>
               </div>
@@ -588,7 +626,7 @@ function updateScope(index: number, value: string) {
                   type="text"
                   class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                   placeholder="user"
-                />
+                >
               </div>
             </div>
 
@@ -619,7 +657,7 @@ function updateScope(index: number, value: string) {
                     class="flex-1 bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                     :placeholder="t('authProviders.placeholderDomain')"
                     @input="updateAllowedDomain(index, ($event.target as HTMLInputElement).value)"
-                  />
+                  >
                   <button
                     type="button"
                     class="p-2 text-red-400 hover:bg-red-900/20 rounded-lg"
@@ -654,7 +692,7 @@ function updateScope(index: number, value: string) {
                 type="number"
                 min="0"
                 class="w-full bg-gray-700 text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
-              />
+              >
             </div>
 
             <!-- Actions -->

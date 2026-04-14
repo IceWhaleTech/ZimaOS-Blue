@@ -427,8 +427,7 @@ onUnmounted(() => {
           <span
             v-if="displayCard.source_summary"
             class="font-normal text-gray-500 dark:text-gray-400"
-            >· {{ displayCard.source_summary }}</span
-          >
+          >· {{ displayCard.source_summary }}</span>
         </div>
         <div
           v-if="headerMetaParts.length > 0"
@@ -451,7 +450,10 @@ onUnmounted(() => {
       </button>
     </div>
 
-    <div v-if="isRunning" class="px-3 pt-3">
+    <div
+      v-if="isRunning"
+      class="px-3 pt-3"
+    >
       <div class="h-1.5 rounded bg-gray-100 dark:bg-gray-700 overflow-hidden">
         <div
           class="h-full bg-indigo-500 transition-all duration-300"
@@ -464,7 +466,10 @@ onUnmounted(() => {
     </div>
 
     <div class="px-3 py-3 space-y-3">
-      <div v-if="shouldShowSourceRefs" class="rounded-md bg-gray-50 dark:bg-gray-900/50 px-3 py-2">
+      <div
+        v-if="shouldShowSourceRefs"
+        class="rounded-md bg-gray-50 dark:bg-gray-900/50 px-3 py-2"
+      >
         <div
           class="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400"
         >
@@ -499,7 +504,13 @@ onUnmounted(() => {
         {{ displayCard.transcript_preview }}
       </div>
 
-      <audio v-if="primaryAudioSrc" class="w-full" controls preload="none" :src="primaryAudioSrc" />
+      <audio
+        v-if="primaryAudioSrc"
+        class="w-full"
+        controls
+        preload="none"
+        :src="primaryAudioSrc"
+      />
       <video
         v-if="primaryVideoSrc"
         class="w-full rounded bg-black"
@@ -508,14 +519,19 @@ onUnmounted(() => {
         :src="primaryVideoSrc"
       />
 
-      <div v-if="outputs.length > 0" class="space-y-2">
+      <div
+        v-if="outputs.length > 0"
+        class="space-y-2"
+      >
         <div
           v-for="output in outputs"
           :key="output.output_id"
           class="flex items-center justify-between gap-3 rounded-md border border-gray-100 dark:border-gray-700 px-3 py-2"
         >
           <div class="min-w-0 flex-1">
-            <div class="text-sm text-gray-800 dark:text-gray-100 truncate">{{ output.name }}</div>
+            <div class="text-sm text-gray-800 dark:text-gray-100 truncate">
+              {{ output.name }}
+            </div>
             <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
               {{ previewKindLabel(output) }}
               <span v-if="output.size_bytes">· {{ humanSize(output.size_bytes) }}</span>

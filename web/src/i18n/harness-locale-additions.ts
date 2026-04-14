@@ -31,7 +31,7 @@ import smallModelKnowledgeFixBackfills from './smallmodel-knowledge-fix-backfill
 import skillStoreHighRiskBackfills from './skill-store-high-risk-backfills'
 import { buildSkillStoreDerivedBackfill } from './skill-store-derived-backfills'
 
-const localeKeys = [
+const _localeKeys = [
   'ca-ES',
   'cs-CZ',
   'da-DK',
@@ -61,7 +61,7 @@ const localeKeys = [
   'zh-TW',
 ] as const
 
-type LocaleKey = (typeof localeKeys)[number]
+type LocaleKey = (typeof _localeKeys)[number]
 type LocaleLeaf = string | number | boolean | null
 type LocaleNode = { [key: string]: LocaleLeaf | LocaleNode }
 type HarnessLocalePatch = {

@@ -1381,7 +1381,9 @@ onUnmounted(() => {
       <section class="security-hero">
         <div class="security-hero-heading dashboard-page-hero configuration-page-hero">
           <div class="security-hero-copy dashboard-page-copy configuration-page-copy">
-            <p class="security-eyebrow dashboard-page-eyebrow">{{ t('nav.configuration') }}</p>
+            <p class="security-eyebrow dashboard-page-eyebrow">
+              {{ t('nav.configuration') }}
+            </p>
             <h1 class="security-title dashboard-page-title configuration-page-title">
               {{ t('security.title') }}
             </h1>
@@ -1396,7 +1398,10 @@ onUnmounted(() => {
 
       <section class="security-shell">
         <div class="security-tab-shell">
-          <nav class="security-tab-nav" aria-label="Security sections">
+          <nav
+            class="security-tab-nav"
+            aria-label="Security sections"
+          >
             <button
               v-for="tab in tabs"
               :key="tab.id"
@@ -1437,9 +1442,24 @@ onUnmounted(() => {
                     stroke-width="2"
                     d="M4 6h16M4 12h16M4 18h16"
                   />
-                  <circle cx="8" cy="6" r="1.5" fill="currentColor" />
-                  <circle cx="15" cy="12" r="1.5" fill="currentColor" />
-                  <circle cx="11" cy="18" r="1.5" fill="currentColor" />
+                  <circle
+                    cx="8"
+                    cy="6"
+                    r="1.5"
+                    fill="currentColor"
+                  />
+                  <circle
+                    cx="15"
+                    cy="12"
+                    r="1.5"
+                    fill="currentColor"
+                  />
+                  <circle
+                    cx="11"
+                    cy="18"
+                    r="1.5"
+                    fill="currentColor"
+                  />
                 </svg>
                 <svg
                   v-else-if="tab.icon === 'network'"
@@ -1455,11 +1475,39 @@ onUnmounted(() => {
                     stroke-width="2"
                     d="M3 12h6m6 0h6M12 3v6m0 6v6"
                   />
-                  <circle cx="12" cy="12" r="3" />
-                  <circle cx="12" cy="3" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="21" cy="12" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="12" cy="21" r="1.5" fill="currentColor" stroke="none" />
-                  <circle cx="3" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="3"
+                  />
+                  <circle
+                    cx="12"
+                    cy="3"
+                    r="1.5"
+                    fill="currentColor"
+                    stroke="none"
+                  />
+                  <circle
+                    cx="21"
+                    cy="12"
+                    r="1.5"
+                    fill="currentColor"
+                    stroke="none"
+                  />
+                  <circle
+                    cx="12"
+                    cy="21"
+                    r="1.5"
+                    fill="currentColor"
+                    stroke="none"
+                  />
+                  <circle
+                    cx="3"
+                    cy="12"
+                    r="1.5"
+                    fill="currentColor"
+                    stroke="none"
+                  />
                 </svg>
                 <svg
                   v-else-if="tab.icon === 'firewall'"
@@ -1511,8 +1559,18 @@ onUnmounted(() => {
                     stroke-width="2"
                     d="M9 12c.6.8 1.5 1.2 3 1.2s2.4-.4 3-1.2"
                   />
-                  <circle cx="9" cy="9.5" r="1" fill="currentColor" />
-                  <circle cx="15" cy="9.5" r="1" fill="currentColor" />
+                  <circle
+                    cx="9"
+                    cy="9.5"
+                    r="1"
+                    fill="currentColor"
+                  />
+                  <circle
+                    cx="15"
+                    cy="9.5"
+                    r="1"
+                    fill="currentColor"
+                  />
                 </svg>
                 <svg
                   v-else-if="tab.icon === 'activity'"
@@ -1548,23 +1606,35 @@ onUnmounted(() => {
               <span class="security-tab-button__body">
                 <span class="security-tab-button__label-row">
                   <span class="security-tab-button__label">{{ getTabLabel(tab) }}</span>
-                  <span v-if="tab.badge" class="security-tab-beta">{{ tab.badge }}</span>
+                  <span
+                    v-if="tab.badge"
+                    class="security-tab-beta"
+                  >{{ tab.badge }}</span>
                 </span>
               </span>
-              <span class="security-tab-button__state" aria-hidden="true"></span>
+              <span
+                class="security-tab-button__state"
+                aria-hidden="true"
+              />
             </button>
           </nav>
         </div>
 
         <div class="security-content">
-          <div v-show="activeTab === 'overview'" class="security-section-stack">
+          <div
+            v-show="activeTab === 'overview'"
+            class="security-section-stack"
+          >
             <section
               v-if="securityStatusBannerVisible"
               class="security-status-banner dashboard-card-surface"
               :class="`is-${securityStatus}`"
             >
               <div class="security-status-copy">
-                <div class="security-status-icon" :class="`is-${securityStatus}`">
+                <div
+                  class="security-status-icon"
+                  :class="`is-${securityStatus}`"
+                >
                   <svg
                     v-if="securityStatus === 'passed'"
                     xmlns="http://www.w3.org/2000/svg"
@@ -1627,8 +1697,12 @@ onUnmounted(() => {
                   </svg>
                 </div>
                 <div>
-                  <h2 class="security-status-title">{{ securityStatusTitle }}</h2>
-                  <p class="security-status-text">{{ securityStatusDescription }}</p>
+                  <h2 class="security-status-title">
+                    {{ securityStatusTitle }}
+                  </h2>
+                  <p class="security-status-text">
+                    {{ securityStatusDescription }}
+                  </p>
                 </div>
               </div>
 
@@ -1638,8 +1712,12 @@ onUnmounted(() => {
                   :key="metric.key"
                   class="security-status-metric"
                 >
-                  <div class="security-status-metric-value">{{ metric.value }}</div>
-                  <div class="security-status-metric-label">{{ metric.label }}</div>
+                  <div class="security-status-metric-value">
+                    {{ metric.value }}
+                  </div>
+                  <div class="security-status-metric-label">
+                    {{ metric.label }}
+                  </div>
                 </div>
               </div>
             </section>
@@ -1648,8 +1726,12 @@ onUnmounted(() => {
               <div class="security-scan-stack">
                 <div class="security-scan-head">
                   <div class="security-scan-heading">
-                    <h3 class="security-scan-title">{{ t('security.scan.title') }}</h3>
-                    <p class="security-scan-description">{{ t('security.scan.description') }}</p>
+                    <h3 class="security-scan-title">
+                      {{ t('security.scan.title') }}
+                    </h3>
+                    <p class="security-scan-description">
+                      {{ t('security.scan.description') }}
+                    </p>
                   </div>
                   <div class="security-scan-actions">
                     <button
@@ -1693,12 +1775,12 @@ onUnmounted(() => {
                           r="10"
                           stroke="currentColor"
                           stroke-width="4"
-                        ></circle>
+                        />
                         <path
                           class="opacity-75"
                           fill="currentColor"
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
+                        />
                       </svg>
                       <svg
                         v-else
@@ -1720,8 +1802,14 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <div v-if="isScanning || scanCompleted" class="security-scan-progress-shell">
-                  <div class="security-scan-progress-card" :class="`is-${securityStatus}`">
+                <div
+                  v-if="isScanning || scanCompleted"
+                  class="security-scan-progress-shell"
+                >
+                  <div
+                    class="security-scan-progress-card"
+                    :class="`is-${securityStatus}`"
+                  >
                     <div class="security-scan-progress-meta">
                       <div>
                         <p class="security-scan-progress-label">
@@ -1740,24 +1828,34 @@ onUnmounted(() => {
                         class="security-scan-progress-bar"
                         :class="`is-${securityStatus}`"
                         :style="{ width: `${scanProgress}%` }"
-                      ></div>
+                      />
                     </div>
                   </div>
 
-                  <div v-if="scanCompleted" class="security-scan-summary-grid">
+                  <div
+                    v-if="scanCompleted"
+                    class="security-scan-summary-grid"
+                  >
                     <div
                       v-for="metric in visibleScanSummaryMetrics"
                       :key="metric.key"
                       class="security-scan-summary-card"
                       :class="`is-${metric.key}`"
                     >
-                      <div class="security-scan-summary-value">{{ metric.value }}</div>
-                      <div class="security-scan-summary-label">{{ metric.label }}</div>
+                      <div class="security-scan-summary-value">
+                        {{ metric.value }}
+                      </div>
+                      <div class="security-scan-summary-label">
+                        {{ metric.label }}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div v-if="scanResults.length > 0" class="security-scan-results-shell">
+                <div
+                  v-if="scanResults.length > 0"
+                  class="security-scan-results-shell"
+                >
                   <button
                     v-if="scanCompleted"
                     class="security-scan-results-toggle"
@@ -1789,11 +1887,14 @@ onUnmounted(() => {
                     v-show="!scanCompleted || scanResultsExpanded"
                     class="security-scan-results-list"
                   >
-                    <template v-for="(item, index) in prioritizedScanResults" :key="item.id">
+                    <template
+                      v-for="(item, index) in prioritizedScanResults"
+                      :key="item.id"
+                    >
                       <div
                         v-if="
                           index === 0 ||
-                          prioritizedScanResults[index - 1]?.category !== item.category
+                            prioritizedScanResults[index - 1]?.category !== item.category
                         "
                         class="security-scan-category"
                       >
@@ -1814,7 +1915,10 @@ onUnmounted(() => {
                         @click="toggleScanItem(item)"
                       >
                         <div class="security-scan-item-main">
-                          <div class="security-scan-item-icon" :class="`is-${item.status}`">
+                          <div
+                            class="security-scan-item-icon"
+                            :class="`is-${item.status}`"
+                          >
                             <div
                               :class="[
                                 'security-scan-item-icon-symbol',
@@ -1889,7 +1993,12 @@ onUnmounted(() => {
                                 viewBox="0 0 24 24"
                                 stroke="currentColor"
                               >
-                                <circle cx="12" cy="12" r="9" stroke-width="2" />
+                                <circle
+                                  cx="12"
+                                  cy="12"
+                                  r="9"
+                                  stroke-width="2"
+                                />
                               </svg>
                             </div>
                           </div>
@@ -1903,14 +2012,20 @@ onUnmounted(() => {
                             </div>
                           </div>
 
-                          <div v-if="item.status !== 'pending'" class="security-scan-item-meta">
-                            <span class="security-scan-status-pill" :class="`is-${item.status}`">
+                          <div
+                            v-if="item.status !== 'pending'"
+                            class="security-scan-item-meta"
+                          >
+                            <span
+                              class="security-scan-status-pill"
+                              :class="`is-${item.status}`"
+                            >
                               {{ getScanStatusLabel(item.status) }}
                             </span>
                             <button
                               v-if="
                                 item.auto_fixable &&
-                                (item.status === 'warning' || item.status === 'failed')
+                                  (item.status === 'warning' || item.status === 'failed')
                               "
                               :disabled="fixingItem === item.id"
                               class="security-scan-inline-action"
@@ -1920,7 +2035,11 @@ onUnmounted(() => {
                                 v-if="fixingItem === item.id"
                                 class="security-scan-inline-action-loading"
                               >
-                                <svg class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+                                <svg
+                                  class="animate-spin h-3 w-3"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                >
                                   <circle
                                     class="opacity-25"
                                     cx="12"
@@ -1928,12 +2047,12 @@ onUnmounted(() => {
                                     r="10"
                                     stroke="currentColor"
                                     stroke-width="4"
-                                  ></circle>
+                                  />
                                   <path
                                     class="opacity-75"
                                     fill="currentColor"
                                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                  ></path>
+                                  />
                                 </svg>
                               </span>
                               <span v-else>{{ t('security.scan.fix') }}</span>
@@ -1941,8 +2060,8 @@ onUnmounted(() => {
                             <span
                               v-else-if="
                                 !item.auto_fixable &&
-                                (item.status === 'warning' || item.status === 'failed') &&
-                                item.remediation
+                                  (item.status === 'warning' || item.status === 'failed') &&
+                                  item.remediation
                               "
                               class="security-scan-inline-note"
                             >
@@ -1973,7 +2092,10 @@ onUnmounted(() => {
                           class="security-scan-item-details"
                         >
                           <div class="security-scan-detail-grid">
-                            <div v-if="getItemDetails(item)" class="security-scan-detail-card">
+                            <div
+                              v-if="getItemDetails(item)"
+                              class="security-scan-detail-card"
+                            >
                               <span class="security-scan-detail-label">
                                 {{ t('security.scan.details') }}
                               </span>
@@ -1981,7 +2103,10 @@ onUnmounted(() => {
                                 {{ getItemDetails(item) }}
                               </p>
                             </div>
-                            <div v-if="item.risk" class="security-scan-detail-card is-risk">
+                            <div
+                              v-if="item.risk"
+                              class="security-scan-detail-card is-risk"
+                            >
                               <span class="security-scan-detail-label">
                                 {{ t('security.scan.risk') }}
                               </span>
@@ -1989,7 +2114,10 @@ onUnmounted(() => {
                                 {{ getItemField(item, 'risk') }}
                               </p>
                             </div>
-                            <div v-if="item.impact" class="security-scan-detail-card is-impact">
+                            <div
+                              v-if="item.impact"
+                              class="security-scan-detail-card is-impact"
+                            >
                               <span class="security-scan-detail-label">
                                 {{ t('security.scan.impact') }}
                               </span>
@@ -2152,7 +2280,11 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <div v-for="card in sandboxRuntimeCards" :key="card.id" class="sandbox-mini-card">
+                <div
+                  v-for="card in sandboxRuntimeCards"
+                  :key="card.id"
+                  class="sandbox-mini-card"
+                >
                   <div class="sandbox-mini-card-label">
                     {{ card.label }}
                   </div>
@@ -2209,8 +2341,8 @@ onUnmounted(() => {
                       <button
                         :disabled="
                           loadingDirectoryWhitelist ||
-                          savingDirectoryWhitelist ||
-                          !directoryWhitelistDirty
+                            savingDirectoryWhitelist ||
+                            !directoryWhitelistDirty
                         "
                         class="px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-500 rounded text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-600 disabled:opacity-50"
                         @click="saveDirectoryWhitelist"
@@ -2263,7 +2395,7 @@ onUnmounted(() => {
                             'Absolute path, for example /Users/orca/Documents'
                           )
                         "
-                      />
+                      >
                       <input
                         v-model="newWhitelistAlias"
                         type="text"
@@ -2271,7 +2403,7 @@ onUnmounted(() => {
                         :placeholder="
                           tr('security.directoryWhitelistAliasPlaceholder', 'Alias (optional)')
                         "
-                      />
+                      >
                       <button
                         class="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-slate-500 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50"
                         :disabled="savingDirectoryWhitelist || !newWhitelistPath.trim()"
@@ -2301,7 +2433,10 @@ onUnmounted(() => {
                         )
                       }}
                     </div>
-                    <div v-else class="space-y-2 mt-4">
+                    <div
+                      v-else
+                      class="space-y-2 mt-4"
+                    >
                       <div
                         v-for="(entry, index) in directoryWhitelistEntries"
                         :key="entry.path"
@@ -2324,7 +2459,7 @@ onUnmounted(() => {
                               tr('security.directoryWhitelistAliasPlaceholder', 'Alias (optional)')
                             "
                             @input="markDirectoryWhitelistDirty"
-                          />
+                          >
                         </div>
                         <button
                           class="px-2.5 py-1 text-xs border border-red-300 dark:border-red-700 rounded text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
@@ -2381,7 +2516,10 @@ onUnmounted(() => {
                   >
                     {{ tr('security.noApprovedDirectories', 'No authorized directories') }}
                   </div>
-                  <div v-else class="space-y-2">
+                  <div
+                    v-else
+                    class="space-y-2"
+                  >
                     <div
                       v-for="entry in approvedDirs"
                       :key="entry.id"
@@ -2453,7 +2591,10 @@ onUnmounted(() => {
               >
                 {{ tr('security.noApprovedBrowserSites', 'No allowed browser sites') }}
               </div>
-              <div v-else class="space-y-2">
+              <div
+                v-else
+                class="space-y-2"
+              >
                 <div
                   v-for="entry in approvedBrowserSites"
                   :key="entry.id"
@@ -2547,7 +2688,6 @@ onUnmounted(() => {
                     <button
                       type="button"
                       :disabled="togglingFirewallRuleId === rule.id || togglingFirewall"
-                      @click="togglePromptFirewallRule(rule)"
                       :class="[
                         'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
                         togglingFirewallRuleId === rule.id || togglingFirewall
@@ -2557,6 +2697,7 @@ onUnmounted(() => {
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
                           : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300',
                       ]"
+                      @click="togglePromptFirewallRule(rule)"
                     >
                       {{
                         togglingFirewallRuleId === rule.id
@@ -2582,7 +2723,7 @@ onUnmounted(() => {
                     class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-3 py-2 border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
                     :disabled="addingFirewallRule"
                     @keyup.enter="addPromptFirewallRule"
-                  />
+                  >
                   <button
                     class="px-4 py-2 rounded-lg text-white font-medium bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 disabled:opacity-50"
                     :disabled="addingFirewallRule || !newFirewallKeyword.trim()"
@@ -2598,7 +2739,10 @@ onUnmounted(() => {
                 >
                   {{ t('security.firewall.empty') }}
                 </div>
-                <div v-else class="space-y-2 max-h-72 overflow-y-auto">
+                <div
+                  v-else
+                  class="space-y-2 max-h-72 overflow-y-auto"
+                >
                   <div
                     v-for="rule in customFirewallRules"
                     :key="rule.id"
@@ -2613,21 +2757,21 @@ onUnmounted(() => {
                       type="button"
                       :disabled="
                         togglingFirewallRuleId === rule.id ||
-                        deletingFirewallRuleId === rule.id ||
-                        togglingFirewall
+                          deletingFirewallRuleId === rule.id ||
+                          togglingFirewall
                       "
-                      @click="togglePromptFirewallRule(rule)"
                       :class="[
                         'shrink-0 text-[10px] px-1.5 py-0.5 rounded-full transition-colors',
                         togglingFirewallRuleId === rule.id ||
-                        deletingFirewallRuleId === rule.id ||
-                        togglingFirewall
+                          deletingFirewallRuleId === rule.id ||
+                          togglingFirewall
                           ? 'opacity-60 cursor-not-allowed'
                           : 'cursor-pointer',
                         rule.enabled
                           ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
                           : 'bg-gray-200 text-gray-600 dark:bg-gray-600 dark:text-gray-300',
                       ]"
+                      @click="togglePromptFirewallRule(rule)"
                     >
                       {{
                         togglingFirewallRuleId === rule.id
@@ -2642,8 +2786,8 @@ onUnmounted(() => {
                       class="px-2 py-1 rounded text-xs font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50"
                       :disabled="
                         !!deletingFirewallRuleId ||
-                        togglingFirewallRuleId === rule.id ||
-                        togglingFirewall
+                          togglingFirewallRuleId === rule.id ||
+                          togglingFirewall
                       "
                       @click="deletePromptFirewallRule(rule)"
                     >
@@ -2659,7 +2803,10 @@ onUnmounted(() => {
             </section>
 
             <DataMaskingSettings />
-            <NetworkSettings :show-port-section="false" :show-security-sections="true" />
+            <NetworkSettings
+              :show-port-section="false"
+              :show-security-sections="true"
+            />
           </div>
 
           <div
@@ -2708,7 +2855,10 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <div v-if="connectionStats" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div
+                v-if="connectionStats"
+                class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"
+              >
                 <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="text-lg font-bold text-gray-900 dark:text-white">
                     {{ connectionStats.total_connections ?? 0 }}
@@ -2719,30 +2869,36 @@ onUnmounted(() => {
                 </div>
                 <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="flex items-center justify-center gap-1">
-                    <span class="w-2 h-2 rounded-full bg-gray-700 dark:bg-gray-500"></span>
+                    <span class="w-2 h-2 rounded-full bg-gray-700 dark:bg-gray-500" />
                     <span class="text-lg font-bold text-gray-900 dark:text-white">{{
                       connectionStats.active_http ?? 0
                     }}</span>
                   </div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">HTTP</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">
+                    HTTP
+                  </div>
                 </div>
                 <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="flex items-center justify-center gap-1">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <span class="w-2 h-2 rounded-full bg-emerald-500" />
                     <span class="text-lg font-bold text-emerald-500 dark:text-emerald-400">{{
                       connectionStats.active_websocket ?? 0
                     }}</span>
                   </div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">WebSocket</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">
+                    WebSocket
+                  </div>
                 </div>
                 <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="flex items-center justify-center gap-1">
-                    <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+                    <span class="w-2 h-2 rounded-full bg-purple-500" />
                     <span class="text-lg font-bold text-purple-600 dark:text-purple-400">{{
                       connectionStats.active_sse ?? 0
                     }}</span>
                   </div>
-                  <div class="text-xs text-gray-500 dark:text-gray-400">SSE</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">
+                    SSE
+                  </div>
                 </div>
               </div>
 
@@ -2788,7 +2944,7 @@ onUnmounted(() => {
                             'w-2 h-2 rounded-full',
                             conn.status === 'active' ? 'bg-emerald-500' : 'bg-gray-400',
                           ]"
-                        ></span>
+                        />
                         <span
                           :class="[
                             'px-2 py-0.5 rounded text-xs font-medium uppercase',
@@ -2837,7 +2993,10 @@ onUnmounted(() => {
                 </button>
               </div>
 
-              <div v-if="companionStats" class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
+              <div
+                v-if="companionStats"
+                class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4"
+              >
                 <div class="text-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
                   <div class="text-lg font-bold text-emerald-500 dark:text-emerald-400">
                     {{ companionStats.active_sessions }}
@@ -2902,7 +3061,10 @@ onUnmounted(() => {
             <MonitoringRetentionSettings />
           </div>
 
-          <div v-show="activeTab === 'logs'" class="security-section-stack">
+          <div
+            v-show="activeTab === 'logs'"
+            class="security-section-stack"
+          >
             <section class="security-panel dashboard-card-surface">
               <div class="flex flex-wrap gap-4 items-center mb-4">
                 <div class="flex-1 min-w-[200px]">
@@ -2912,27 +3074,43 @@ onUnmounted(() => {
                     :placeholder="t('system.searchLogs')"
                     class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
                     @keyup.enter="fetchLogs"
-                  />
+                  >
                 </div>
                 <select
                   v-model="logLevel"
                   class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600"
                   @change="fetchLogs"
                 >
-                  <option value="all">{{ t('system.allLevels') }}</option>
-                  <option value="error">{{ t('system.error') }}</option>
-                  <option value="warn">{{ t('system.warning') }}</option>
-                  <option value="info">{{ t('system.info') }}</option>
-                  <option value="debug">{{ t('system.debug') }}</option>
+                  <option value="all">
+                    {{ t('system.allLevels') }}
+                  </option>
+                  <option value="error">
+                    {{ t('system.error') }}
+                  </option>
+                  <option value="warn">
+                    {{ t('system.warning') }}
+                  </option>
+                  <option value="info">
+                    {{ t('system.info') }}
+                  </option>
+                  <option value="debug">
+                    {{ t('system.debug') }}
+                  </option>
                 </select>
                 <select
                   v-model="logLimit"
                   class="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-300 dark:border-gray-600"
                   @change="fetchLogs"
                 >
-                  <option :value="50">50</option>
-                  <option :value="100">100</option>
-                  <option :value="200">200</option>
+                  <option :value="50">
+                    50
+                  </option>
+                  <option :value="100">
+                    100
+                  </option>
+                  <option :value="200">
+                    200
+                  </option>
                 </select>
                 <div class="flex flex-wrap gap-2">
                   <button
@@ -2959,7 +3137,10 @@ onUnmounted(() => {
                 </div>
               </div>
 
-              <div v-if="logsLoading" class="p-8 text-center text-gray-500 dark:text-gray-400">
+              <div
+                v-if="logsLoading"
+                class="p-8 text-center text-gray-500 dark:text-gray-400"
+              >
                 {{ t('system.loadingLogs') }}
               </div>
               <div
@@ -2983,11 +3164,11 @@ onUnmounted(() => {
                   <span
                     :class="getLogLevelClass(log.level)"
                     class="px-2 py-0.5 rounded text-xs uppercase font-medium flex-shrink-0"
-                    >{{ log.level }}</span
-                  >
-                  <span v-if="log.source" class="text-purple-600 dark:text-purple-400 flex-shrink-0"
-                    >[{{ log.source.split('/').pop()?.split(':')[0] }}]</span
-                  >
+                  >{{ log.level }}</span>
+                  <span
+                    v-if="log.source"
+                    class="text-purple-600 dark:text-purple-400 flex-shrink-0"
+                  >[{{ log.source.split('/').pop()?.split(':')[0] }}]</span>
                   <template v-if="isRequestLog(log)">
                     <span
                       class="px-1.5 py-0.5 text-xs font-medium rounded"
@@ -3011,7 +3192,10 @@ onUnmounted(() => {
                       {{ formatLatency(log.fields?.latency as number) }}
                     </span>
                   </template>
-                  <span v-else class="text-gray-700 dark:text-gray-300 break-all">{{
+                  <span
+                    v-else
+                    class="text-gray-700 dark:text-gray-300 break-all"
+                  >{{
                     log.message
                   }}</span>
                 </div>
@@ -3031,7 +3215,10 @@ onUnmounted(() => {
         <div
           class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl h-[92vh] max-h-[92vh] my-auto overflow-hidden flex flex-col min-h-0"
         >
-          <SessionDetail :session="selectedSession" @close="closeSessionDetail" />
+          <SessionDetail
+            :session="selectedSession"
+            @close="closeSessionDetail"
+          />
         </div>
       </div>
     </Teleport>

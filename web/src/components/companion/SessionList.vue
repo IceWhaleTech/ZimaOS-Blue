@@ -106,7 +106,10 @@ function formatDuration(ms: number): string {
     </div>
 
     <!-- Session List -->
-    <div v-else class="space-y-3">
+    <div
+      v-else
+      class="space-y-3"
+    >
       <div
         v-for="session in sessions"
         :key="session.id"
@@ -129,7 +132,7 @@ function formatDuration(ms: number): string {
                 :src="getPlatformIcon(session.platform)"
                 :alt="session.platform"
                 class="w-6 h-6"
-              />
+              >
             </div>
             <div>
               <div class="font-medium text-gray-900 dark:text-white">
@@ -167,7 +170,12 @@ function formatDuration(ms: number): string {
         <!-- Session Stats -->
         <div class="flex flex-wrap gap-4 text-xs text-gray-500 dark:text-slate-400">
           <span class="flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -178,7 +186,12 @@ function formatDuration(ms: number): string {
             {{ session.event_count }} {{ t('companion.events') }}
           </span>
           <span class="flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -188,8 +201,16 @@ function formatDuration(ms: number): string {
             </svg>
             {{ formatDate(session.started_at) }}
           </span>
-          <span v-if="session.duration" class="flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span
+            v-if="session.duration"
+            class="flex items-center gap-1"
+          >
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -199,8 +220,16 @@ function formatDuration(ms: number): string {
             </svg>
             {{ formatDuration(session.duration) }}
           </span>
-          <span v-if="session.metadata?.message_count" class="flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span
+            v-if="session.metadata?.message_count"
+            class="flex items-center gap-1"
+          >
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -213,7 +242,10 @@ function formatDuration(ms: number): string {
         </div>
 
         <!-- Active Indicator -->
-        <div v-if="session.status === 'active'" class="mt-2 flex items-center gap-2">
+        <div
+          v-if="session.status === 'active'"
+          class="mt-2 flex items-center gap-2"
+        >
           <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <span class="text-xs text-green-600 dark:text-green-400">{{
             t('companion.liveSession')

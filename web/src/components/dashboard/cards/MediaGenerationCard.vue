@@ -93,29 +93,50 @@ defineExpose({ refresh: fetchStats })
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">{{ t('dashboard.cards.mediaGeneration') }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ t('mediaStats.cards.subtitle') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('dashboard.cards.mediaGeneration') }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ t('mediaStats.cards.subtitle') }}
+          </p>
         </div>
       </div>
 
-      <div v-if="loading" class="dashboard-card-empty">
-        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500"></div>
+      <div
+        v-if="loading"
+        class="dashboard-card-empty"
+      >
+        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-pink-500" />
       </div>
 
       <template v-else>
-        <div v-if="!hasData" class="dashboard-card-empty">
+        <div
+          v-if="!hasData"
+          class="dashboard-card-empty"
+        >
           {{ t('mediaStats.noData') }}
         </div>
 
-        <div v-else class="space-y-4">
+        <div
+          v-else
+          class="space-y-4"
+        >
           <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <div class="dashboard-card-subsurface p-3">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.total') }}</p>
-              <p class="text-xl font-bold text-gray-900 dark:text-white mt-1">{{ totalTasks }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('common.total') }}
+              </p>
+              <p class="text-xl font-bold text-gray-900 dark:text-white mt-1">
+                {{ totalTasks }}
+              </p>
             </div>
             <div class="dashboard-card-subsurface p-3">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('mediaStats.failed') }}</p>
-              <p class="text-xl font-bold text-red-600 dark:text-red-400 mt-1">{{ failedCount }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('mediaStats.failed') }}
+              </p>
+              <p class="text-xl font-bold text-red-600 dark:text-red-400 mt-1">
+                {{ failedCount }}
+              </p>
             </div>
             <div class="dashboard-card-subsurface p-3">
               <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -126,13 +147,17 @@ defineExpose({ refresh: fetchStats })
               </p>
             </div>
             <div class="dashboard-card-subsurface p-3">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('mediaStats.images') }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('mediaStats.images') }}
+              </p>
               <p class="text-xl font-bold text-blue-600 dark:text-blue-400 mt-1">
                 {{ imageCount }}
               </p>
             </div>
             <div class="dashboard-card-subsurface p-3">
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('mediaStats.videos') }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('mediaStats.videos') }}
+              </p>
               <p class="text-xl font-bold text-violet-600 dark:text-violet-400 mt-1">
                 {{ videoCount }}
               </p>
@@ -152,22 +177,27 @@ defineExpose({ refresh: fetchStats })
                   width: `${successRate}%`,
                   background: 'linear-gradient(90deg, #16a34a 0%, #4ade80 100%)',
                 }"
-              ></span>
+              />
             </div>
             <div class="mt-2 flex items-center justify-between text-xs">
-              <span class="text-green-600 dark:text-green-400"
-                >{{ stats?.succeeded ?? 0 }} {{ t('mediaStats.success') }}</span
-              >
+              <span class="text-green-600 dark:text-green-400">{{ stats?.succeeded ?? 0 }} {{ t('mediaStats.success') }}</span>
             </div>
           </div>
 
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <div v-if="topModels.length > 0" class="dashboard-card-subsurface p-3">
+            <div
+              v-if="topModels.length > 0"
+              class="dashboard-card-subsurface p-3"
+            >
               <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 {{ t('mediaStats.costByModel') }}
               </p>
               <div class="space-y-2">
-                <div v-for="[model, cost] in topModels" :key="model" class="space-y-1">
+                <div
+                  v-for="[model, cost] in topModels"
+                  :key="model"
+                  class="space-y-1"
+                >
                   <div class="flex items-center justify-between text-sm gap-3">
                     <span class="text-gray-600 dark:text-gray-400 truncate">{{ model }}</span>
                     <span class="font-mono text-gray-900 dark:text-white whitespace-nowrap">{{
@@ -180,13 +210,16 @@ defineExpose({ refresh: fetchStats })
                         width: `${stats?.total_cost_usd ? Math.max((cost / stats.total_cost_usd) * 100, 4) : 0}%`,
                         background: 'linear-gradient(90deg, #ec4899 0%, #f472b6 100%)',
                       }"
-                    ></span>
+                    />
                   </div>
                 </div>
               </div>
             </div>
 
-            <div v-if="topProviderRows.length > 0" class="dashboard-card-subsurface p-3">
+            <div
+              v-if="topProviderRows.length > 0"
+              class="dashboard-card-subsurface p-3"
+            >
               <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 {{ t('mediaStats.byProvider') }}
               </p>
@@ -199,15 +232,16 @@ defineExpose({ refresh: fetchStats })
                   <span class="text-gray-600 dark:text-gray-400 truncate me-2">{{
                     row.provider
                   }}</span>
-                  <span class="text-gray-900 dark:text-white"
-                    >{{ row.tasks }} · {{ formatCost(row.cost) }}</span
-                  >
+                  <span class="text-gray-900 dark:text-white">{{ row.tasks }} · {{ formatCost(row.cost) }}</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div v-if="topCategories.length > 0" class="flex flex-wrap gap-2">
+          <div
+            v-if="topCategories.length > 0"
+            class="flex flex-wrap gap-2"
+          >
             <span
               v-for="[category, count] in topCategories"
               :key="category"

@@ -55,7 +55,9 @@ function formatDate(dateStr: string): string {
     <!-- Header -->
     <div class="flex items-start justify-between mb-3">
       <div class="flex-1 min-w-0">
-        <h3 class="text-gray-900 dark:text-white font-medium truncate">{{ rule.name }}</h3>
+        <h3 class="text-gray-900 dark:text-white font-medium truncate">
+          {{ rule.name }}
+        </h3>
         <div class="flex items-center gap-2 mt-1">
           <span
             :class="getTriggerTypeColor(rule.trigger_type)"
@@ -100,14 +102,20 @@ function formatDate(dateStr: string): string {
       </div>
       <div class="text-sm text-gray-600 dark:text-gray-400 truncate">
         {{ props.rule.responses[0] || t('common.noResponses', 'No responses') }}
-        <span v-if="rule.responses.length > 1" class="text-gray-400 dark:text-gray-500">
+        <span
+          v-if="rule.responses.length > 1"
+          class="text-gray-400 dark:text-gray-500"
+        >
           {{ t('autoReply.card.more', { count: props.rule.responses.length - 1 }) }}
         </span>
       </div>
     </div>
 
     <!-- Channels -->
-    <div v-if="rule.channels.length > 0" class="mb-3">
+    <div
+      v-if="rule.channels.length > 0"
+      class="mb-3"
+    >
       <div class="text-xs text-gray-400 dark:text-gray-500 mb-1">
         {{ t('autoReply.card.channels', 'Channels') }}
       </div>

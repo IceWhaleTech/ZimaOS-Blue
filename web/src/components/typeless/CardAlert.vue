@@ -75,17 +75,40 @@ function handleAction(actionId: string) {
 </script>
 
 <template>
-  <div v-if="!dismissed" class="alert-card" :class="config.container">
+  <div
+    v-if="!dismissed"
+    class="alert-card"
+    :class="config.container"
+  >
     <!-- Icon -->
-    <div class="alert-icon" :class="[config.iconBg, config.iconColor]">
+    <div
+      class="alert-icon"
+      :class="[config.iconBg, config.iconColor]"
+    >
       <!-- Info -->
-      <svg v-if="card.icon" class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-        <text x="50%" y="50%" dominant-baseline="central" text-anchor="middle" font-size="14">
+      <svg
+        v-if="card.icon"
+        class="w-5 h-5"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+      >
+        <text
+          x="50%"
+          y="50%"
+          dominant-baseline="central"
+          text-anchor="middle"
+          font-size="14"
+        >
           {{ card.icon }}
         </text>
       </svg>
       <template v-else>
-        <svg v-if="config.svg === 'info'" class="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
+        <svg
+          v-if="config.svg === 'info'"
+          class="w-5 h-5"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
           <path
             fill-rule="evenodd"
             d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z"
@@ -133,15 +156,25 @@ function handleAction(actionId: string) {
 
     <!-- Content -->
     <div class="alert-body">
-      <p v-if="displayTitle" class="alert-title" :class="config.title">
+      <p
+        v-if="displayTitle"
+        class="alert-title"
+        :class="config.title"
+      >
         {{ displayTitle }}
       </p>
-      <p class="alert-message" :class="[config.text, { 'mt-0.5': displayTitle }]">
+      <p
+        class="alert-message"
+        :class="[config.text, { 'mt-0.5': displayTitle }]"
+      >
         {{ card.message }}
       </p>
 
       <!-- Actions -->
-      <div v-if="card.actions?.length" class="mt-3 flex gap-2">
+      <div
+        v-if="card.actions?.length"
+        class="mt-3 flex gap-2"
+      >
         <button
           v-for="action in card.actions"
           :key="action.id"
@@ -166,7 +199,11 @@ function handleAction(actionId: string) {
       :class="config.iconColor"
       @click="handleDismiss"
     >
-      <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+      <svg
+        class="w-4 h-4"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+      >
         <path
           d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
         />

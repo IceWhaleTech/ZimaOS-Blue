@@ -202,7 +202,10 @@ watch(
     <div class="tunnel-status__header flex items-center justify-between mb-4">
       <div class="tunnel-status__status-row flex items-center gap-2">
         <span>{{ statusIcon }}</span>
-        <span :class="statusColor" class="tunnel-status__status-text font-medium">{{
+        <span
+          :class="statusColor"
+          class="tunnel-status__status-text font-medium"
+        >{{
           statusText
         }}</span>
         <span
@@ -214,7 +217,7 @@ watch(
             :src="getTunnelProviderIcon(status.provider)"
             :alt="status.provider"
             class="tunnel-status__provider-icon h-3.5 w-3.5 shrink-0"
-          />
+          >
           {{ status.provider }}
         </span>
       </div>
@@ -245,7 +248,12 @@ watch(
           :title="t('common.copy')"
           @click="copyUrl"
         >
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -259,7 +267,12 @@ watch(
           :title="t('common.openInNewTab')"
           @click="openUrl"
         >
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -273,7 +286,12 @@ watch(
           :title="t('remoteAccess.showQRCode')"
           @click="loadQRCode"
         >
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -285,8 +303,14 @@ watch(
       </div>
 
       <!-- QR Code Display (auto-show when URL available) -->
-      <div v-if="status.url" class="tunnel-status__qr-wrap mt-3 flex justify-center">
-        <div v-if="qrCodeLoading" class="py-4">
+      <div
+        v-if="status.url"
+        class="tunnel-status__qr-wrap mt-3 flex justify-center"
+      >
+        <div
+          v-if="qrCodeLoading"
+          class="py-4"
+        >
           <svg
             class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
             fill="none"
@@ -312,8 +336,11 @@ watch(
           :src="qrCodeData"
           alt="QR Code"
           class="tunnel-status__qr rounded-lg border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-950/70"
-        />
-        <div v-else class="tunnel-status__empty text-sm text-gray-500 dark:text-slate-300 py-4">
+        >
+        <div
+          v-else
+          class="tunnel-status__empty text-sm text-gray-500 dark:text-slate-300 py-4"
+        >
           {{ t('remoteAccess.qrCodeError') }}
         </div>
       </div>
@@ -325,25 +352,36 @@ watch(
       class="tunnel-status__session-grid grid grid-cols-2 gap-4 text-sm mb-4"
     >
       <div>
-        <div class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.startedAt') }}</div>
+        <div class="text-gray-500 dark:text-slate-400">
+          {{ t('remoteAccess.startedAt') }}
+        </div>
         <div class="text-gray-900 dark:text-gray-100">
           {{ status.started_at ? new Date(status.started_at).toLocaleString() : '-' }}
         </div>
       </div>
       <div>
-        <div class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.expiresAt') }}</div>
+        <div class="text-gray-500 dark:text-slate-400">
+          {{ t('remoteAccess.expiresAt') }}
+        </div>
         <div class="text-gray-900 dark:text-gray-100">
           {{ status.expires_at ? new Date(status.expires_at).toLocaleString() : '-' }}
         </div>
       </div>
       <div v-if="status.renewed_count !== undefined && status.renewed_count > 0">
-        <div class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.renewedCount') }}</div>
-        <div class="text-gray-900 dark:text-gray-100">{{ status.renewed_count }}</div>
+        <div class="text-gray-500 dark:text-slate-400">
+          {{ t('remoteAccess.renewedCount') }}
+        </div>
+        <div class="text-gray-900 dark:text-gray-100">
+          {{ status.renewed_count }}
+        </div>
       </div>
     </div>
 
     <!-- Disconnect Button (prominent, always visible when tunnel has URL or is active/connecting) -->
-    <div v-if="status.active || status.connecting || status.url" class="mb-4">
+    <div
+      v-if="status.active || status.connecting || status.url"
+      class="mb-4"
+    >
       <button
         type="button"
         class="tunnel-status__danger-action w-full px-4 py-3 text-sm font-medium rounded-lg border transition-colors flex items-center justify-center gap-2 bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 cursor-pointer"
@@ -377,7 +415,12 @@ watch(
         "
         @click="toggleDiagnostics"
       >
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -396,7 +439,12 @@ watch(
         "
         @click="toggleLogs"
       >
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -439,7 +487,10 @@ watch(
         </button>
       </div>
 
-      <div v-if="diagnosticsLoading && !diagnostics" class="flex items-center justify-center py-4">
+      <div
+        v-if="diagnosticsLoading && !diagnostics"
+        class="flex items-center justify-center py-4"
+      >
         <svg
           class="animate-spin h-6 w-6 text-gray-900 dark:text-white"
           fill="none"
@@ -461,7 +512,10 @@ watch(
         </svg>
       </div>
 
-      <div v-else-if="diagnostics" class="space-y-3">
+      <div
+        v-else-if="diagnostics"
+        class="space-y-3"
+      >
         <!-- Status Items -->
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div class="flex items-center gap-2">
@@ -480,7 +534,10 @@ watch(
               t('remoteAccess.firewallException')
             }}</span>
           </div>
-          <div v-if="diagnostics.ssh_available !== undefined" class="flex items-center gap-2">
+          <div
+            v-if="diagnostics.ssh_available !== undefined"
+            class="flex items-center gap-2"
+          >
             <span :class="diagnostics.ssh_available ? 'text-green-500' : 'text-amber-500'">
               {{ diagnostics.ssh_available ? '✓' : '!' }}
             </span>
@@ -498,7 +555,10 @@ watch(
         </div>
 
         <!-- Active Provider -->
-        <div v-if="diagnostics.active_provider" class="text-sm text-gray-600 dark:text-slate-300">
+        <div
+          v-if="diagnostics.active_provider"
+          class="text-sm text-gray-600 dark:text-slate-300"
+        >
           {{ t('remoteAccess.provider') }}:
           <span class="font-medium text-gray-900 dark:text-white">{{
             diagnostics.active_provider
@@ -536,7 +596,12 @@ watch(
                 {{ t('remoteAccess.troubleshootingHints') }}
               </p>
               <ul class="text-amber-700 dark:text-amber-300 list-disc list-inside space-y-1">
-                <li v-for="(hint, index) in diagnostics.hints" :key="index">{{ hint }}</li>
+                <li
+                  v-for="(hint, index) in diagnostics.hints"
+                  :key="index"
+                >
+                  {{ hint }}
+                </li>
               </ul>
             </div>
           </div>
@@ -563,7 +628,9 @@ watch(
                   formatTime(error.created_at)
                 }}</span>
               </div>
-              <p class="text-red-600 dark:text-red-300 break-all">{{ error.message }}</p>
+              <p class="text-red-600 dark:text-red-300 break-all">
+                {{ error.message }}
+              </p>
             </div>
           </div>
         </div>
@@ -581,27 +648,24 @@ watch(
             <div class="grid grid-cols-2 gap-2">
               <div>
                 <span class="text-gray-500 dark:text-slate-400">ID:</span>
-                <span class="tunnel-status__inline-gap text-gray-700 dark:text-slate-200 font-mono"
-                  >{{ diagnostics.active_session.id.slice(0, 8) }}...</span
-                >
+                <span class="tunnel-status__inline-gap text-gray-700 dark:text-slate-200 font-mono">{{ diagnostics.active_session.id.slice(0, 8) }}...</span>
               </div>
               <div>
-                <span class="text-gray-500 dark:text-slate-400"
-                  >{{ t('remoteAccess.status') }}:</span
-                >
+                <span class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.status') }}:</span>
                 <span class="tunnel-status__inline-gap text-gray-700 dark:text-slate-200">{{
                   diagnostics.active_session.status
                 }}</span>
               </div>
               <div class="col-span-2">
-                <span class="text-gray-500 dark:text-slate-400"
-                  >{{ t('remoteAccess.startedAt') }}:</span
-                >
+                <span class="text-gray-500 dark:text-slate-400">{{ t('remoteAccess.startedAt') }}:</span>
                 <span class="tunnel-status__inline-gap text-gray-700 dark:text-slate-200">{{
                   formatTime(diagnostics.active_session.started_at)
                 }}</span>
               </div>
-              <div v-if="diagnostics.active_session.error_message" class="col-span-2">
+              <div
+                v-if="diagnostics.active_session.error_message"
+                class="col-span-2"
+              >
                 <span class="text-red-500 dark:text-red-400">{{ t('remoteAccess.error') }}:</span>
                 <span class="tunnel-status__inline-gap text-red-600 dark:text-red-300">{{
                   diagnostics.active_session.error_message
@@ -676,7 +740,10 @@ watch(
         {{ t('remoteAccess.noLogs') }}
       </div>
 
-      <div v-else class="tunnel-status__logs space-y-2 max-h-60 overflow-y-auto">
+      <div
+        v-else
+        class="tunnel-status__logs space-y-2 max-h-60 overflow-y-auto"
+      >
         <div
           v-for="log in logs"
           :key="log.id"
@@ -692,7 +759,9 @@ watch(
             </span>
             <span class="text-gray-500 dark:text-slate-400">{{ formatTime(log.created_at) }}</span>
           </div>
-          <p class="break-all">{{ log.message }}</p>
+          <p class="break-all">
+            {{ log.message }}
+          </p>
         </div>
       </div>
     </div>

@@ -699,9 +699,15 @@ function getJobPreview(job: CronJob): string {
         <section class="automation-surface-panel automation-panel-card automation-library-card">
           <div class="automation-list-header">
             <div>
-              <p class="dashboard-card-label">{{ t('automation.title') }}</p>
-              <h2 class="automation-section-title">{{ t('cron.title') }}</h2>
-              <p class="automation-section-description">{{ t('automation.tabs.cronDesc') }}</p>
+              <p class="dashboard-card-label">
+                {{ t('automation.title') }}
+              </p>
+              <h2 class="automation-section-title">
+                {{ t('cron.title') }}
+              </h2>
+              <p class="automation-section-description">
+                {{ t('automation.tabs.cronDesc') }}
+              </p>
             </div>
             <div class="automation-library-card__aside">
               <div class="automation-library-card__topline">
@@ -730,7 +736,11 @@ function getJobPreview(job: CronJob): string {
                       />
                     </svg>
                   </button>
-                  <button class="automation-create-button" type="button" @click="openCreateModal">
+                  <button
+                    class="automation-create-button"
+                    type="button"
+                    @click="openCreateModal"
+                  >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
                       class="h-4 w-4"
@@ -788,14 +798,24 @@ function getJobPreview(job: CronJob): string {
               d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
             />
           </svg>
-          <h3 class="automation-empty-title">{{ t('cron.noJobs') }}</h3>
-          <p class="automation-empty-description">{{ t('automation.tabs.cronDesc') }}</p>
-          <button class="automation-create-inline" @click="openCreateModal">
+          <h3 class="automation-empty-title">
+            {{ t('cron.noJobs') }}
+          </h3>
+          <p class="automation-empty-description">
+            {{ t('automation.tabs.cronDesc') }}
+          </p>
+          <button
+            class="automation-create-inline"
+            @click="openCreateModal"
+          >
             {{ t('cron.createFirst') }}
           </button>
         </section>
 
-        <div v-else class="automation-job-grid">
+        <div
+          v-else
+          class="automation-job-grid"
+        >
           <article
             v-for="job in sortedJobs"
             :key="job.id"
@@ -812,14 +832,22 @@ function getJobPreview(job: CronJob): string {
                 >
                   {{ job.enabled ? t('cron.enabled') : t('cron.disabled') }}
                 </span>
-                <span v-if="job.fail_count > 0" class="automation-badge automation-badge--danger">
+                <span
+                  v-if="job.fail_count > 0"
+                  class="automation-badge automation-badge--danger"
+                >
                   {{ job.fail_count }} fail
                 </span>
               </div>
 
-              <h3 class="automation-job-name">{{ getJobDisplayName(job) }}</h3>
+              <h3 class="automation-job-name">
+                {{ getJobDisplayName(job) }}
+              </h3>
 
-            <p v-if="getJobDescription(job)" class="automation-job-description">
+              <p
+                v-if="getJobDescription(job)"
+                class="automation-job-description"
+              >
                 {{ getJobDescription(job) }}
               </p>
               <p
@@ -852,7 +880,9 @@ function getJobPreview(job: CronJob): string {
             </div>
 
             <div class="automation-job-footer">
-              <p class="automation-job-footnote">{{ job.run_count ?? 0 }} runs</p>
+              <p class="automation-job-footnote">
+                {{ job.run_count ?? 0 }} runs
+              </p>
 
               <div class="automation-job-actions">
                 <button
@@ -1022,7 +1052,7 @@ function getJobPreview(job: CronJob): string {
                 :placeholder="suggestedCreateJobName || t('cron.namePlaceholder')"
                 class="automation-input"
                 @input="handleJobNameInput"
-              />
+              >
             </div>
 
             <div class="automation-form-field">
@@ -1033,7 +1063,7 @@ function getJobPreview(job: CronJob): string {
                 required
                 placeholder="* * * * *"
                 class="automation-input automation-input--mono"
-              />
+              >
               <div class="automation-chip-group">
                 <button
                   v-for="preset in cronPresets"
@@ -1047,7 +1077,10 @@ function getJobPreview(job: CronJob): string {
               </div>
             </div>
 
-            <div v-if="showCreateModal" class="automation-form-field">
+            <div
+              v-if="showCreateModal"
+              class="automation-form-field"
+            >
               <label class="automation-label">{{ t('cron.handler') }}</label>
               <div class="automation-handler-grid">
                 <button
@@ -1060,14 +1093,21 @@ function getJobPreview(job: CronJob): string {
                   ]"
                   @click="setHandler(ht.value)"
                 >
-                  <div class="automation-handler-card-title">{{ ht.label }}</div>
-                  <div class="automation-handler-card-description">{{ ht.description }}</div>
+                  <div class="automation-handler-card-title">
+                    {{ ht.label }}
+                  </div>
+                  <div class="automation-handler-card-description">
+                    {{ ht.description }}
+                  </div>
                 </button>
               </div>
             </div>
 
             <!-- Command Handler Fields -->
-            <div v-if="jobForm.handler === 'command'" class="automation-handler-panel">
+            <div
+              v-if="jobForm.handler === 'command'"
+              class="automation-handler-panel"
+            >
               <div class="automation-form-field">
                 <label class="automation-label">{{ t('cron.commandInput') }} *</label>
                 <input
@@ -1076,13 +1116,18 @@ function getJobPreview(job: CronJob): string {
                   required
                   :placeholder="t('cron.commandPlaceholder')"
                   class="automation-input automation-input--mono"
-                />
-                <p class="automation-hint">{{ t('cron.commandHint') }}</p>
+                >
+                <p class="automation-hint">
+                  {{ t('cron.commandHint') }}
+                </p>
               </div>
             </div>
 
             <!-- HTTP Handler Fields -->
-            <div v-if="jobForm.handler === 'http'" class="automation-handler-panel">
+            <div
+              v-if="jobForm.handler === 'http'"
+              class="automation-handler-panel"
+            >
               <div class="automation-form-field">
                 <label class="automation-label">URL *</label>
                 <input
@@ -1091,7 +1136,7 @@ function getJobPreview(job: CronJob): string {
                   required
                   placeholder="https://example.com/api/webhook"
                   class="automation-input automation-input--mono"
-                />
+                >
               </div>
             </div>
 
@@ -1141,7 +1186,7 @@ function getJobPreview(job: CronJob): string {
                       type="text"
                       :placeholder="t('cron.descriptionPlaceholder')"
                       class="automation-input"
-                    />
+                    >
                   </div>
 
                   <template v-if="jobForm.handler === 'command'">
@@ -1152,43 +1197,50 @@ function getJobPreview(job: CronJob): string {
                         type="text"
                         :placeholder="t('cron.workdirPlaceholder')"
                         class="automation-input automation-input--mono"
-                      />
+                      >
                     </div>
                     <div class="automation-form-field">
-                      <label class="automation-label"
-                        >{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label
-                      >
+                      <label class="automation-label">{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label>
                       <input
                         v-model.number="jobForm.timeout"
                         type="number"
                         min="1"
                         max="3600"
                         class="automation-input"
-                      />
+                      >
                     </div>
                   </template>
 
                   <template v-if="jobForm.handler === 'http'">
                     <div class="automation-form-field">
                       <label class="automation-label">{{ t('cron.httpMethod') }}</label>
-                      <select v-model="jobForm.method" class="automation-input">
-                        <option value="GET">GET</option>
-                        <option value="POST">POST</option>
-                        <option value="PUT">PUT</option>
-                        <option value="DELETE">DELETE</option>
+                      <select
+                        v-model="jobForm.method"
+                        class="automation-input"
+                      >
+                        <option value="GET">
+                          GET
+                        </option>
+                        <option value="POST">
+                          POST
+                        </option>
+                        <option value="PUT">
+                          PUT
+                        </option>
+                        <option value="DELETE">
+                          DELETE
+                        </option>
                       </select>
                     </div>
                     <div class="automation-form-field">
-                      <label class="automation-label"
-                        >{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label
-                      >
+                      <label class="automation-label">{{ t('cron.timeout') }} ({{ t('cron.seconds') }})</label>
                       <input
                         v-model.number="jobForm.timeout"
                         type="number"
                         min="1"
                         max="300"
                         class="automation-input"
-                      />
+                      >
                     </div>
                   </template>
                 </div>
@@ -1201,11 +1253,11 @@ function getJobPreview(job: CronJob): string {
                 type="submit"
                 :disabled="
                   loading ||
-                  !resolveFormJobName() ||
-                  !jobForm.schedule ||
-                  (showCreateModal && !jobForm.handler) ||
-                  (jobForm.handler === 'command' && !jobForm.command) ||
-                  (jobForm.handler === 'http' && !jobForm.url)
+                    !resolveFormJobName() ||
+                    !jobForm.schedule ||
+                    (showCreateModal && !jobForm.handler) ||
+                    (jobForm.handler === 'command' && !jobForm.command) ||
+                    (jobForm.handler === 'http' && !jobForm.url)
                 "
                 class="automation-submit-button"
               >
@@ -1217,7 +1269,11 @@ function getJobPreview(job: CronJob): string {
                       : t('common.save')
                 }}
               </button>
-              <button type="button" class="automation-secondary-button" @click="closeJobModal">
+              <button
+                type="button"
+                class="automation-secondary-button"
+                @click="closeJobModal"
+              >
                 {{ t('common.cancel') }}
               </button>
             </div>
@@ -1240,11 +1296,17 @@ function getJobPreview(job: CronJob): string {
         </div>
 
         <div class="automation-modal-scroll">
-          <div v-if="executions.length === 0" class="automation-state">
+          <div
+            v-if="executions.length === 0"
+            class="automation-state"
+          >
             {{ t('cron.noExecutions') }}
           </div>
 
-          <div v-else class="automation-execution-list">
+          <div
+            v-else
+            class="automation-execution-list"
+          >
             <div
               v-for="execution in executions"
               :key="execution.id"
@@ -1272,7 +1334,10 @@ function getJobPreview(job: CronJob): string {
                 <span>{{ t('cron.duration') }}: {{ getExecutionDurationMs(execution) }}ms</span>
               </div>
 
-              <div v-if="execution.error" class="automation-error-surface">
+              <div
+                v-if="execution.error"
+                class="automation-error-surface"
+              >
                 {{ execution.error }}
               </div>
             </div>

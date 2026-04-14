@@ -8,11 +8,20 @@ import { getChannelIconStyleVars } from '@/utils/channelIcons'
 interface ChannelFieldDef {
   key: string
   labelKey: string
-  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle'
+  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle' | 'select'
   placeholder?: string
   placeholderKey?: string
   value: string
   required?: boolean
+  options?: Array<{
+    value: string
+    labelKey?: string
+    label?: string
+  }>
+  visibleWhen?: {
+    fieldKey: string
+    value: string
+  }
 }
 
 interface ChannelDef {
@@ -66,17 +75,33 @@ const translatedChannel = computed(() => ({
     : props.channel.name!,
   description: tr(props.channel.descriptionKey, ''),
   hint: props.channel.hintKey ? tr(props.channel.hintKey, '') : undefined,
-  fields: props.channel.fields.map((field) => ({
-    ...field,
-    label: tr(field.labelKey, field.key),
-    placeholder:
-      field.key === 'encrypt_key'
-        ? t('channels.encryptKeyPlaceholder')
-        : field.placeholderKey
-          ? tr(field.placeholderKey, field.placeholder || '')
-          : field.placeholder || '',
-  })),
 }))
+
+function isFieldVisible(field: ChannelFieldDef): boolean {
+  if (!field.visibleWhen) return true
+  const driver = props.channel.fields.find((candidate) => candidate.key === field.visibleWhen?.fieldKey)
+  return (driver?.value || '') === field.visibleWhen.value
+}
+
+const translatedFields = computed(() =>
+  props.channel.fields
+    .map((field, fieldIndex) => ({
+      ...field,
+      fieldIndex,
+      label: tr(field.labelKey, field.key),
+      placeholder:
+        field.key === 'encrypt_key'
+          ? t('channels.encryptKeyPlaceholder')
+          : field.placeholderKey
+            ? tr(field.placeholderKey, field.placeholder || '')
+            : field.placeholder || '',
+      options: (field.options || []).map((option) => ({
+        ...option,
+        label: option.labelKey ? tr(option.labelKey, option.label || option.value) : option.label || option.value,
+      })),
+    }))
+    .filter((field) => isFieldVisible(field))
+)
 
 const statusColor = computed(() => {
   switch (props.channel.status) {
@@ -225,17 +250,19 @@ function formatRelativeTime(dateStr: string | undefined): string {
             :alt="translatedChannel.name"
             class="channel-detail__icon"
             :style="channelIconStyle"
-          />
+          >
         </div>
         <div class="channel-detail__copy">
           <div class="channel-detail__title-row">
-            <h3 class="channel-detail__title">{{ translatedChannel.name }}</h3>
+            <h3 class="channel-detail__title">
+              {{ translatedChannel.name }}
+            </h3>
             <span
               class="channel-detail__status-badge"
               :class="statusBadgeClass"
               :title="statusTitle"
             >
-              <span class="channel-detail__status-dot"></span>
+              <span class="channel-detail__status-dot" />
               {{ statusText }}
             </span>
           </div>
@@ -256,25 +283,34 @@ function formatRelativeTime(dateStr: string | undefined): string {
         </div>
       </div>
 
-      <label class="relative inline-flex items-center cursor-pointer" @click.stop>
+      <label
+        class="relative inline-flex items-center cursor-pointer"
+        @click.stop
+      >
         <input
           :checked="channel.enabled"
           type="checkbox"
           class="sr-only peer channel-detail__toggle-input"
           :disabled="toggling"
           @change="emit('toggleEnabled', ($event.target as HTMLInputElement).checked)"
-        />
+        >
         <div
           class="channel-detail__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
-        ></div>
+        />
       </label>
     </div>
 
     <div class="channel-detail__body">
       <template v-if="channel.enabled">
-        <div class="channel-detail__status-panel dashboard-card-subsurface" :class="statusPanelClass">
+        <div
+          class="channel-detail__status-panel dashboard-card-subsurface"
+          :class="statusPanelClass"
+        >
           <div class="flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full" :class="statusColor"></span>
+            <span
+              class="w-2 h-2 rounded-full"
+              :class="statusColor"
+            />
             <span
               class="channel-detail__status-text text-sm font-medium"
               :class="{
@@ -443,7 +479,10 @@ function formatRelativeTime(dateStr: string | undefined): string {
       </template>
 
       <template v-else>
-        <p v-if="translatedChannel.hint" class="channel-detail__hint dashboard-card-subsurface">
+        <p
+          v-if="translatedChannel.hint"
+          class="channel-detail__hint dashboard-card-subsurface"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-4 w-4 flex-shrink-0 mt-0.5"
@@ -462,17 +501,20 @@ function formatRelativeTime(dateStr: string | undefined): string {
         </p>
 
         <div
-          v-if="translatedChannel.fields.length > 0"
+          v-if="translatedFields.length > 0"
           class="channel-detail__fields grid gap-4 md:grid-cols-2"
         >
           <div
-            v-for="(field, fieldIndex) in translatedChannel.fields"
+            v-for="field in translatedFields"
             :key="field.key"
             :class="field.type === 'textarea' || field.type === 'toggle' ? 'md:col-span-2' : ''"
           >
             <label class="channel-detail__field-label">
               {{ field.label }}
-              <span v-if="field.required" class="text-red-500">*</span>
+              <span
+                v-if="field.required"
+                class="text-red-500"
+              >*</span>
             </label>
             <label
               v-if="field.type === 'toggle'"
@@ -480,57 +522,77 @@ function formatRelativeTime(dateStr: string | undefined): string {
             >
               <span class="channel-detail__toggle-field-copy">
                 {{
-                  toggleFieldChecked(channel.fields[fieldIndex]?.value)
+                  toggleFieldChecked(channel.fields[field.fieldIndex]?.value)
                     ? t('common.enabled')
                     : t('common.disabled')
                 }}
               </span>
               <input
-                :checked="toggleFieldChecked(channel.fields[fieldIndex]?.value)"
+                :checked="toggleFieldChecked(channel.fields[field.fieldIndex]?.value)"
                 type="checkbox"
                 class="sr-only peer channel-detail__toggle-input"
                 @change="
                   emit(
                     'updateField',
-                    fieldIndex,
+                    field.fieldIndex,
                     ($event.target as HTMLInputElement).checked ? 'true' : 'false'
                   )
                 "
-              />
+              >
               <span
                 class="channel-detail__toggle relative inline-block bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
-              ></span>
+              />
             </label>
             <textarea
               v-else-if="field.type === 'textarea'"
-              :value="channel.fields[fieldIndex]?.value"
+              :value="channel.fields[field.fieldIndex]?.value"
               :name="field.key"
               :placeholder="field.placeholder"
               rows="4"
               class="channel-detail__input"
-              @input="handleFieldInput(fieldIndex, $event)"
+              @input="handleFieldInput(field.fieldIndex, $event)"
             />
+            <select
+              v-else-if="field.type === 'select'"
+              :value="channel.fields[field.fieldIndex]?.value"
+              :name="field.key"
+              class="channel-detail__input"
+              @change="
+                emit('updateField', field.fieldIndex, ($event.target as HTMLSelectElement).value)
+              "
+            >
+              <option
+                v-for="option in field.options"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </option>
+            </select>
             <PasswordInput
               v-else-if="field.type === 'password'"
-              :model-value="channel.fields[fieldIndex]?.value ?? ''"
+              :model-value="channel.fields[field.fieldIndex]?.value ?? ''"
               :name="field.key"
               :placeholder="field.placeholder"
               class="channel-detail__password-field"
-              @update:model-value="emit('updateField', fieldIndex, $event)"
+              @update:model-value="emit('updateField', field.fieldIndex, $event)"
             />
             <input
               v-else
-              :value="channel.fields[fieldIndex]?.value"
+              :value="channel.fields[field.fieldIndex]?.value"
               :name="field.key"
               :type="field.type"
               :placeholder="field.placeholder"
               class="channel-detail__input"
-              @input="handleFieldInput(fieldIndex, $event)"
-            />
+              @input="handleFieldInput(field.fieldIndex, $event)"
+            >
           </div>
         </div>
 
-        <p v-else class="channel-detail__empty">
+        <p
+          v-else
+          class="channel-detail__empty"
+        >
           {{ t('channels.noConfigRequired') }}
         </p>
 
@@ -548,7 +610,7 @@ function formatRelativeTime(dateStr: string | undefined): string {
 
         <div class="channel-detail__actions">
           <button
-            v-if="channel.fields.length > 0"
+            v-if="translatedFields.length > 0"
             :disabled="testingConnection"
             class="channel-detail__action channel-detail__action--secondary"
             @click="emit('testConnection')"

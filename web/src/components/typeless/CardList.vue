@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import type { TypelessCardList } from '@/types/typeless'
 import { parseInline } from '@/utils/markdown'
 
@@ -24,8 +25,13 @@ function renderContent(content: string): string {
     class="list-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div
+      v-if="card.title"
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+    >
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Default List -->
@@ -40,23 +46,38 @@ function renderContent(content: string): string {
         :key="index"
         class="flex items-start gap-2 text-gray-700 dark:text-gray-300"
       >
-        <span v-if="item.icon" class="flex-shrink-0">{{ item.icon }}</span>
+        <span
+          v-if="item.icon"
+          class="flex-shrink-0"
+        >{{ item.icon }}</span>
         <span
           v-else-if="!card.ordered"
           class="flex-shrink-0 w-1.5 h-1.5 mt-2 rounded-full bg-gray-400"
         />
         <div class="flex-1">
-          <span v-html="renderContent(item.content)" />
+          <TrustedHtml
+            tag="span"
+            :html="renderContent(item.content)"
+          />
           <!-- Sub-items -->
-          <ul v-if="item.subItems?.length" class="list-subitems mt-2 space-y-1">
+          <ul
+            v-if="item.subItems?.length"
+            class="list-subitems mt-2 space-y-1"
+          >
             <li
               v-for="(subItem, subIndex) in item.subItems"
               :key="subIndex"
               class="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-400"
             >
               <span v-if="subItem.icon">{{ subItem.icon }}</span>
-              <span v-else class="flex-shrink-0 w-1 h-1 mt-2 rounded-full bg-gray-300" />
-              <span v-html="renderContent(subItem.content)" />
+              <span
+                v-else
+                class="flex-shrink-0 w-1 h-1 mt-2 rounded-full bg-gray-300"
+              />
+              <TrustedHtml
+                tag="span"
+                :html="renderContent(subItem.content)"
+              />
             </li>
           </ul>
         </div>
@@ -64,7 +85,10 @@ function renderContent(content: string): string {
     </component>
 
     <!-- Checklist -->
-    <ul v-else-if="card.variant === 'checklist'" class="p-4 space-y-2">
+    <ul
+      v-else-if="card.variant === 'checklist'"
+      class="p-4 space-y-2"
+    >
       <li
         v-for="(item, index) in card.items"
         :key="index"
@@ -95,16 +119,20 @@ function renderContent(content: string): string {
             />
           </svg>
         </div>
-        <span
+        <TrustedHtml
+          tag="span"
           class="flex-1 text-gray-700 dark:text-gray-300 transition-colors"
           :class="{ 'line-through text-gray-400 dark:text-gray-500': item.checked }"
-          v-html="renderContent(item.content)"
+          :html="renderContent(item.content)"
         />
       </li>
     </ul>
 
     <!-- Timeline -->
-    <div v-else-if="card.variant === 'timeline'" class="p-4">
+    <div
+      v-else-if="card.variant === 'timeline'"
+      class="p-4"
+    >
       <div class="relative">
         <!-- Timeline line -->
         <div
@@ -128,8 +156,15 @@ function renderContent(content: string): string {
               "
             />
             <div class="flex-1 min-w-0">
-              <p class="text-gray-700 dark:text-gray-300" v-html="renderContent(item.content)" />
-              <p v-if="item.timestamp" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              <TrustedHtml
+                tag="p"
+                class="text-gray-700 dark:text-gray-300"
+                :html="renderContent(item.content)"
+              />
+              <p
+                v-if="item.timestamp"
+                class="mt-1 text-xs text-gray-500 dark:text-gray-400"
+              >
                 {{ item.timestamp }}
               </p>
             </div>

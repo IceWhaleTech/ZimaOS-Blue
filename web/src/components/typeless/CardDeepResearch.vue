@@ -329,22 +329,18 @@ function conflictRiskLabel(risk?: string): string {
             <div class="flex flex-wrap justify-end gap-1.5 text-xs">
               <span
                 class="rounded-full bg-blue-100 px-2.5 py-0.5 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
-                >{{ modeLabel }}</span
-              >
+              >{{ modeLabel }}</span>
               <span
                 v-if="reportStyleLabel"
                 class="rounded-full bg-purple-100 px-2.5 py-0.5 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200"
-                >{{ reportStyleLabel }}</span
-              >
+              >{{ reportStyleLabel }}</span>
               <span
                 class="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                >{{ t('chat.deepResearchCitationCoverage', 'Citation coverage') }}
-                {{ citationCoverageLabel }}</span
-              >
+              >{{ t('chat.deepResearchCitationCoverage', 'Citation coverage') }}
+                {{ citationCoverageLabel }}</span>
               <span
                 class="rounded-full bg-slate-100 px-2.5 py-0.5 text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                >{{ t('chat.deepResearchStatus', 'Status') }} {{ statusLabel }}</span
-              >
+              >{{ t('chat.deepResearchStatus', 'Status') }} {{ statusLabel }}</span>
               <span
                 class="rounded-full px-2.5 py-0.5"
                 :class="
@@ -363,14 +359,16 @@ function conflictRiskLabel(risk?: string): string {
             <span
               class="pt-1 text-slate-400 transition-transform duration-200"
               :class="{ 'rotate-180': expanded }"
-              >⌄</span
-            >
+            >⌄</span>
           </div>
         </div>
       </div>
     </button>
 
-    <div v-if="expanded" class="px-4 py-4 space-y-4">
+    <div
+      v-if="expanded"
+      class="px-4 py-4 space-y-4"
+    >
       <div class="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <div class="space-y-4">
           <section class="rounded-xl bg-slate-50 px-3.5 py-3.5 dark:bg-slate-950/50">
@@ -386,7 +384,10 @@ function conflictRiskLabel(risk?: string): string {
             >
               {{ answer || t('chat.waitingThinking', 'Thinking...') }}
             </div>
-            <div v-if="timeWindows.length" class="mt-2.5 flex flex-wrap gap-2">
+            <div
+              v-if="timeWindows.length"
+              class="mt-2.5 flex flex-wrap gap-2"
+            >
               <span
                 v-for="window in timeWindows"
                 :key="window"
@@ -395,7 +396,10 @@ function conflictRiskLabel(risk?: string): string {
                 {{ localizeDeepResearchTimeWindow(window, tr) }}
               </span>
             </div>
-            <div v-if="workflowPhases.length" class="mt-4 space-y-2">
+            <div
+              v-if="workflowPhases.length"
+              class="mt-4 space-y-2"
+            >
               <div
                 class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
               >
@@ -415,7 +419,10 @@ function conflictRiskLabel(risk?: string): string {
             </div>
           </section>
 
-          <section v-if="citations.length > 0" class="space-y-2.5">
+          <section
+            v-if="citations.length > 0"
+            class="space-y-2.5"
+          >
             <div class="text-sm font-semibold text-slate-800 dark:text-slate-100">
               {{ t('chat.deepResearchCitations', 'Citations') }}
             </div>
@@ -486,22 +493,14 @@ function conflictRiskLabel(risk?: string): string {
                 <div
                   class="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400 dark:text-slate-500"
                 >
-                  <span v-if="source.published_at"
-                    >{{ t('chat.deepResearchPublishedAt', 'Published') }}
-                    {{ formatDate(source.published_at) }}</span
-                  >
-                  <span v-if="source.fetched_at"
-                    >{{ t('chat.deepResearchFetchedAt', 'Fetched') }}
-                    {{ formatDate(source.fetched_at) }}</span
-                  >
-                  <span
-                    >{{ t('chat.deepResearchRelevance', 'Rel') }}
-                    {{ formatScore(source.relevance_score) }}</span
-                  >
-                  <span
-                    >{{ t('chat.deepResearchCredibility', 'Cred') }}
-                    {{ formatScore(source.credibility_score) }}</span
-                  >
+                  <span v-if="source.published_at">{{ t('chat.deepResearchPublishedAt', 'Published') }}
+                    {{ formatDate(source.published_at) }}</span>
+                  <span v-if="source.fetched_at">{{ t('chat.deepResearchFetchedAt', 'Fetched') }}
+                    {{ formatDate(source.fetched_at) }}</span>
+                  <span>{{ t('chat.deepResearchRelevance', 'Rel') }}
+                    {{ formatScore(source.relevance_score) }}</span>
+                  <span>{{ t('chat.deepResearchCredibility', 'Cred') }}
+                    {{ formatScore(source.credibility_score) }}</span>
                 </div>
               </a>
             </div>
@@ -572,7 +571,10 @@ function conflictRiskLabel(risk?: string): string {
                 {{ takeawayCandidates.length }}
               </span>
             </div>
-            <div v-if="takeawayCandidates.length" class="mt-3 space-y-3">
+            <div
+              v-if="takeawayCandidates.length"
+              class="mt-3 space-y-3"
+            >
               <div
                 v-for="(candidate, index) in takeawayCandidates"
                 :key="`${candidate.lesson}-${index}`"
@@ -654,10 +656,10 @@ function conflictRiskLabel(risk?: string): string {
                   <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
                     {{
                       localizeDeepResearchStructuredValue(item.label || item.id, tr) ||
-                      localizeDeepResearchSegment(item.label || item.id, tr) ||
-                      item.label ||
-                      item.id ||
-                      '--'
+                        localizeDeepResearchSegment(item.label || item.id, tr) ||
+                        item.label ||
+                        item.id ||
+                        '--'
                     }}
                   </div>
                   <span
@@ -666,27 +668,34 @@ function conflictRiskLabel(risk?: string): string {
                     {{ t('chat.deepResearchTasks', 'Tasks') }} {{ item.task_count || 0 }}
                   </span>
                 </div>
-                <div v-if="item.time_windows?.length" class="mt-2 flex flex-wrap gap-2">
+                <div
+                  v-if="item.time_windows?.length"
+                  class="mt-2 flex flex-wrap gap-2"
+                >
                   <span
                     v-for="window in item.time_windows"
                     :key="window"
                     class="rounded-full bg-white px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                    >{{ localizeDeepResearchTimeWindow(window, tr) }}</span
-                  >
+                  >{{ localizeDeepResearchTimeWindow(window, tr) }}</span>
                 </div>
-                <div v-if="objectStatusBadges(item).length" class="mt-2 flex flex-wrap gap-2">
+                <div
+                  v-if="objectStatusBadges(item).length"
+                  class="mt-2 flex flex-wrap gap-2"
+                >
                   <span
                     v-for="badge in objectStatusBadges(item)"
                     :key="badge"
                     class="rounded-full bg-white px-2 py-1 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-                    >{{ badge }}</span
-                  >
+                  >{{ badge }}</span>
                 </div>
                 <ul
                   v-if="item.questions?.length"
                   class="deep-research-list mt-2 list-disc space-y-1 text-xs text-slate-500 dark:text-slate-400"
                 >
-                  <li v-for="question in item.questions.slice(0, 3)" :key="question">
+                  <li
+                    v-for="question in item.questions.slice(0, 3)"
+                    :key="question"
+                  >
                     {{ question }}
                   </li>
                 </ul>
@@ -720,7 +729,10 @@ function conflictRiskLabel(risk?: string): string {
                 {{ verificationSummary?.insufficient_count || 0 }}
               </span>
             </div>
-            <div v-if="verificationItems.length" class="mt-2.5 space-y-2.5">
+            <div
+              v-if="verificationItems.length"
+              class="mt-2.5 space-y-2.5"
+            >
               <div
                 v-for="(item, index) in verificationItems"
                 :key="index"
@@ -733,8 +745,7 @@ function conflictRiskLabel(risk?: string): string {
                   <span
                     class="rounded-full px-2.5 py-0.5 text-xs"
                     :class="verificationStatusClass(item.status)"
-                    >{{ verificationStatusLabel(item.status) }}</span
-                  >
+                  >{{ verificationStatusLabel(item.status) }}</span>
                 </div>
                 <div
                   v-if="item.summary"
@@ -768,15 +779,18 @@ function conflictRiskLabel(risk?: string): string {
                 <div class="text-sm font-medium text-slate-800 dark:text-slate-100 break-words">
                   {{
                     localizeDeepResearchStructuredValue(section.label, tr) ||
-                    localizeDeepResearchSegment(section.label, tr) ||
-                    section.label
+                      localizeDeepResearchSegment(section.label, tr) ||
+                      section.label
                   }}
                 </div>
                 <ul
                   v-if="section.highlights?.length"
                   class="deep-research-list mt-2 list-disc space-y-1 text-xs text-slate-500 dark:text-slate-400"
                 >
-                  <li v-for="(item, itemIndex) in section.highlights" :key="itemIndex">
+                  <li
+                    v-for="(item, itemIndex) in section.highlights"
+                    :key="itemIndex"
+                  >
                     {{ item }}
                   </li>
                 </ul>
@@ -794,9 +808,17 @@ function conflictRiskLabel(risk?: string): string {
               v-if="openQuestions.length"
               class="deep-research-list mt-3 list-disc space-y-1 text-sm text-slate-600 dark:text-slate-300"
             >
-              <li v-for="question in openQuestions" :key="question">{{ openQuestionText(question) }}</li>
+              <li
+                v-for="question in openQuestions"
+                :key="question"
+              >
+                {{ openQuestionText(question) }}
+              </li>
             </ul>
-            <div v-else class="mt-3 text-sm text-slate-500 dark:text-slate-400">
+            <div
+              v-else
+              class="mt-3 text-sm text-slate-500 dark:text-slate-400"
+            >
               {{ stopReasonLabel(props.card.stop_reason) }}
             </div>
           </section>
@@ -860,22 +882,14 @@ function conflictRiskLabel(risk?: string): string {
                 <div
                   class="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-400 dark:text-slate-500"
                 >
-                  <span v-if="source.published_at"
-                    >{{ t('chat.deepResearchPublishedAt', 'Published') }}
-                    {{ formatDate(source.published_at) }}</span
-                  >
-                  <span v-if="source.fetched_at"
-                    >{{ t('chat.deepResearchFetchedAt', 'Fetched') }}
-                    {{ formatDate(source.fetched_at) }}</span
-                  >
-                  <span
-                    >{{ t('chat.deepResearchRelevance', 'Rel') }}
-                    {{ formatScore(source.relevance_score) }}</span
-                  >
-                  <span
-                    >{{ t('chat.deepResearchCredibility', 'Cred') }}
-                    {{ formatScore(source.credibility_score) }}</span
-                  >
+                  <span v-if="source.published_at">{{ t('chat.deepResearchPublishedAt', 'Published') }}
+                    {{ formatDate(source.published_at) }}</span>
+                  <span v-if="source.fetched_at">{{ t('chat.deepResearchFetchedAt', 'Fetched') }}
+                    {{ formatDate(source.fetched_at) }}</span>
+                  <span>{{ t('chat.deepResearchRelevance', 'Rel') }}
+                    {{ formatScore(source.relevance_score) }}</span>
+                  <span>{{ t('chat.deepResearchCredibility', 'Cred') }}
+                    {{ formatScore(source.credibility_score) }}</span>
                 </div>
               </a>
             </div>
@@ -891,7 +905,12 @@ function conflictRiskLabel(risk?: string): string {
             <ul
               class="deep-research-list mt-2 list-disc space-y-1 text-sm text-amber-700 dark:text-amber-200"
             >
-              <li v-for="warning in stageErrors" :key="warning">{{ warning }}</li>
+              <li
+                v-for="warning in stageErrors"
+                :key="warning"
+              >
+                {{ warning }}
+              </li>
             </ul>
           </div>
 
@@ -918,8 +937,8 @@ function conflictRiskLabel(risk?: string): string {
             >
               {{
                 localizeDeepResearchStructuredValue(entry.focus, tr) ||
-                localizeDeepResearchSegment(entry.focus, tr) ||
-                entry.focus
+                  localizeDeepResearchSegment(entry.focus, tr) ||
+                  entry.focus
               }}
             </div>
             <div

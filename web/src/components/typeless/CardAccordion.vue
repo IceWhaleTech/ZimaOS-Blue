@@ -72,18 +72,30 @@ function isOpen(index: number): boolean {
     class="accordion-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Accordion items - single item mode for thinking cards -->
-    <div v-if="card.items.length === 1 && firstItem" class="accordion-single">
+    <div
+      v-if="card.items.length === 1 && firstItem"
+      class="accordion-single"
+    >
       <!-- Header -->
       <button
         class="w-full px-3 py-2 flex items-center justify-between text-start hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
         @click="toggleItem(0)"
       >
         <div class="flex items-center gap-2">
-          <span v-if="firstItem.icon" class="text-sm">{{ firstItem.icon }}</span>
-          <span v-if="isThinkingCard" class="thinking-shimmer text-sm font-semibold">{{
+          <span
+            v-if="firstItem.icon"
+            class="text-sm"
+          >{{ firstItem.icon }}</span>
+          <span
+            v-if="isThinkingCard"
+            class="thinking-shimmer text-sm font-semibold"
+          >{{
             t('accordionCard.thinking', 'Thinking')
           }}</span>
-          <span v-else class="text-sm font-medium text-gray-700 dark:text-gray-200">{{
+          <span
+            v-else
+            class="text-sm font-medium text-gray-700 dark:text-gray-200"
+          >{{
             card.title
           }}</span>
         </div>
@@ -116,20 +128,34 @@ function isOpen(index: number): boolean {
     </div>
 
     <!-- Multi-item mode (original style) -->
-    <div v-else class="divide-y divide-gray-200 dark:divide-gray-700">
+    <div
+      v-else
+      class="divide-y divide-gray-200 dark:divide-gray-700"
+    >
       <!-- Title -->
-      <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-        <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+      <div
+        v-if="card.title"
+        class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+      >
+        <h4 class="font-medium text-gray-900 dark:text-white">
+          {{ card.title }}
+        </h4>
       </div>
 
-      <div v-for="(item, index) in card.items" :key="index">
+      <div
+        v-for="(item, index) in card.items"
+        :key="index"
+      >
         <!-- Header -->
         <button
           class="w-full px-4 py-3 flex items-center justify-between text-start hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
           @click="toggleItem(index)"
         >
           <div class="flex items-center gap-3">
-            <span v-if="item.icon" class="text-lg">{{ item.icon }}</span>
+            <span
+              v-if="item.icon"
+              class="text-lg"
+            >{{ item.icon }}</span>
             <span class="font-medium text-gray-900 dark:text-white">{{ item.title }}</span>
           </div>
           <svg

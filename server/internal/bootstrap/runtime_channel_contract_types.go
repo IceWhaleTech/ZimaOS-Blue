@@ -2,10 +2,10 @@ package bootstrap
 
 import (
 	"context"
-
 	"github.com/labstack/echo/v4"
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
@@ -26,6 +26,8 @@ type routeRuntimeContractChannelOptions struct {
 	channelConfigStore    *serverpkg.ChannelConfigStore
 	channelTaskWatcher    *mediagen.ChannelTaskWatcher
 	ngrokTunnelMgr        *ngrok.SDKTunnelManager
+	tunnelHandler         runtimeChannelTunnelSetup
+	jwtService            *auth.JWTService
 	autoreplyService      *autoreply.Service
 	mgmtTool              *tools.MgmtTool
 }
@@ -54,7 +56,6 @@ type runtimeChannelWatcherTarget interface {
 type runtimeChannelHandlerTarget interface {
 	SetHandler(handler channel.MessageHandler)
 }
-
 type runtimeChannelAutoreplyTarget interface {
 	Match(ctx context.Context, message, channel, userID, username, chatID string) (string, *autoreply.Rule, error)
 }

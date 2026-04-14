@@ -4,10 +4,23 @@ import {
 } from '../i18n/completion-followup-backfills'
 
 const ENGLISH_COMPLETION_FOLLOWUP_HEADING = "If you'd like, I can also help with:"
-const COMPLETION_FOLLOWUP_WRAPPER_PREFIX_RE = /^[\[\(\{<【「『"'`*_~]+/
-const COMPLETION_FOLLOWUP_WRAPPER_SUFFIX_RE = /[\]\)\}>】」』"'`*_~]+$/
 const COMPLETION_FOLLOWUP_EDGE_PUNCTUATION_RE = /^[,.:;!?，。！？；：]+|[,.:;!?，。！？；：]+$/g
 const COMPLETION_FOLLOWUP_LIST_PREFIX_RE = /^([ \t]*\d+[.)]\s+)(.*)$/
+const COMPLETION_FOLLOWUP_WRAPPER_CHARS = new Set([
+  '[',
+  '(',
+  '{',
+  '<',
+  '【',
+  '「',
+  '『',
+  '"',
+  "'",
+  '`',
+  '*',
+  '_',
+  '~',
+])
 
 const COMPLETION_FOLLOWUP_EXACT_LINE_KEYS = [
   [
@@ -62,10 +75,15 @@ const COMPLETION_FOLLOWUP_EXACT_LINE_KEYS = [
 function unwrapCompletionFollowupHeading(value: string): string {
   let next = value.trim()
   while (next) {
-    const unwrapped = next
-      .replace(COMPLETION_FOLLOWUP_WRAPPER_PREFIX_RE, '')
-      .replace(COMPLETION_FOLLOWUP_WRAPPER_SUFFIX_RE, '')
-      .trim()
+    let start = 0
+    let end = next.length
+    while (start < end && COMPLETION_FOLLOWUP_WRAPPER_CHARS.has(next[start]!)) {
+      start += 1
+    }
+    while (end > start && COMPLETION_FOLLOWUP_WRAPPER_CHARS.has(next[end - 1]!)) {
+      end -= 1
+    }
+    const unwrapped = next.slice(start, end).trim()
     if (!unwrapped || unwrapped === next) return next
     next = unwrapped
   }
@@ -129,7 +147,7 @@ function replaceCompletionFollowupPrefix(
 }
 
 function hasLikelyLocalizedTail(value: string): boolean {
-  return /[^\x00-\x7F]/.test(value)
+  return Array.from(value).some((char) => (char.codePointAt(0) ?? 0) > 0x7f)
 }
 
 function localizeCompletionFollowupBody(

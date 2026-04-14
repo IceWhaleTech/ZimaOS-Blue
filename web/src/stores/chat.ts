@@ -32,6 +32,52 @@ type PendingConfirmationSnapshot = Pick<
   ConversationBootstrapResponse,
   'pending_approval' | 'pending_question' | 'pending_exec_approval'
 >
+type UnknownRecord = Record<string, unknown>
+type PendingApprovalState = {
+  request_id: string
+  tool_name: string
+  tool_call_id: string
+  arguments: Record<string, unknown>
+  session_id?: string
+  binding_hash?: string
+}
+type PendingQuestionState = {
+  id: string
+  questions: Array<{
+    id: string
+    question: string
+    detail?: string
+    header: string
+    options?: Array<{ label: string; description?: string; value?: string }>
+    multi_select?: boolean
+  }>
+  context?: {
+    kind?: string
+    checkpoint_id?: string
+    required?: boolean
+    risk_level?: 'low' | 'high'
+    step?: string
+    action?: string
+    url?: string
+    site_origin?: string
+    screenshot?: { mime_type?: string; data?: string; url?: string }
+  }
+  require_explicit_answer?: boolean
+  expires_at: number
+}
+type PendingExecApprovalState = {
+  id: string
+  type: string
+  command?: string
+  directory?: string
+  workdir?: string
+  host?: string
+  security?: string
+  session_id?: string
+  conversation_id?: string
+  binding_hash?: string
+  expires_at: number
+}
 
 type ChatApiModule = typeof import('@/api/chat')
 type ApprovalApiModule = typeof import('@/api/approval')
@@ -42,6 +88,10 @@ let chatApiModulePromise: Promise<ChatApiModule> | null = null
 let approvalApiModulePromise: Promise<ApprovalApiModule> | null = null
 let apiClientModulePromise: Promise<ApiClientModule> | null = null
 let systemApiModulePromise: Promise<SystemApiModule> | null = null
+
+function isUnknownRecord(value: unknown): value is UnknownRecord {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
 
 function createLazyApiProxy<T extends object>(load: () => Promise<T>): T {
   return new Proxy(
@@ -1115,56 +1165,14 @@ export const useChatStore = defineStore('chat', () => {
   const selectedMessageIds = ref<Set<string>>(new Set())
 
   // Tool approval state
-  const pendingApproval = ref<{
-    request_id: string
-    tool_name: string
-    tool_call_id: string
-    arguments: Record<string, unknown>
-    session_id?: string
-    binding_hash?: string
-  } | null>(null)
+  const pendingApproval = ref<PendingApprovalState | null>(null)
 
   // Ask-user-question state
-  const pendingQuestion = ref<{
-    id: string
-    questions: Array<{
-      id: string
-      question: string
-      detail?: string
-      header: string
-      options?: Array<{ label: string; description?: string; value?: string }>
-      multi_select?: boolean
-    }>
-    context?: {
-      kind?: string
-      checkpoint_id?: string
-      required?: boolean
-      risk_level?: 'low' | 'high'
-      step?: string
-      action?: string
-      url?: string
-      site_origin?: string
-      screenshot?: { mime_type?: string; data?: string; url?: string }
-    }
-    require_explicit_answer?: boolean
-    expires_at: number
-  } | null>(null)
+  const pendingQuestion = ref<PendingQuestionState | null>(null)
   const awaitingConfirmation = ref(false)
 
   // Exec directory approval state
-  const pendingExecApproval = ref<{
-    id: string
-    type: string
-    command?: string
-    directory?: string
-    workdir?: string
-    host?: string
-    security?: string
-    session_id?: string
-    conversation_id?: string
-    binding_hash?: string
-    expires_at: number
-  } | null>(null)
+  const pendingExecApproval = ref<PendingExecApprovalState | null>(null)
 
   const isMultiSelectMode = ref(false)
   const selectedProviderId = ref<string>('')
@@ -2753,8 +2761,8 @@ export const useChatStore = defineStore('chat', () => {
     return !!pendingQuestion.value || !!pendingApproval.value || !!pendingExecApproval.value
   }
 
-  function normalizePendingSessionId(data: any): string {
-    if (!data || typeof data !== 'object') return ''
+  function normalizePendingSessionId(data: unknown): string {
+    if (!isUnknownRecord(data)) return ''
     const sessionId = typeof data.session_id === 'string' ? data.session_id.trim() : ''
     if (sessionId) return sessionId
     const conversationId =
@@ -2806,24 +2814,12 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function normalizePendingExecApproval(data: any): {
-    id: string
-    type: string
-    command?: string
-    directory?: string
-    workdir?: string
-    host?: string
-    security?: string
-    session_id?: string
-    conversation_id?: string
-    binding_hash?: string
-    expires_at: number
-  } | null {
-    if (!data || typeof data !== 'object') return null
+  function normalizePendingExecApproval(data: unknown): PendingExecApprovalState | null {
+    if (!isUnknownRecord(data)) return null
 
     const source = (() => {
-      if (data.approval && typeof data.approval === 'object') return data.approval
-      if (data.data && typeof data.data === 'object') return data.data
+      if (isUnknownRecord(data.approval)) return data.approval
+      if (isUnknownRecord(data.data)) return data.data
       return data
     })()
 
@@ -5069,15 +5065,15 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function setPendingApproval(data: any) {
-    if (!data) {
+  function setPendingApproval(data: unknown) {
+    if (!isUnknownRecord(data)) {
       pendingApproval.value = null
       if (!streaming.value && !pendingQuestion.value && !pendingExecApproval.value) {
         awaitingConfirmation.value = false
       }
       return
     }
-    const requestId = data?.id || data?.request_id
+    const requestId = stringifyOptional(data.id ?? data.request_id)
     if (!requestId) return
     const sessionId = normalizePendingSessionId(data)
     if (sessionId) {
@@ -5088,9 +5084,9 @@ export const useChatStore = defineStore('chat', () => {
     }
     pendingApproval.value = {
       request_id: requestId,
-      tool_name: data.tool_name || '',
-      tool_call_id: data.tool_call_id || '',
-      arguments: data.arguments || {},
+      tool_name: stringifyOptional(data.tool_name) || '',
+      tool_call_id: stringifyOptional(data.tool_call_id) || '',
+      arguments: isUnknownRecord(data.arguments) ? data.arguments : {},
       session_id: sessionId || undefined,
       binding_hash: stringifyOptional(data.binding_hash ?? data.bindingHash),
     }
@@ -5099,22 +5095,23 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // --- Ask-user-question methods ---
-  function setPendingQuestion(data: any) {
-    const sessionId = normalizePendingSessionId(data)
+  function setPendingQuestion(data: unknown) {
+    const normalized = (data as PendingQuestionState | null) ?? null
+    const sessionId = normalizePendingSessionId(normalized)
     if (sessionId) {
-      updateActiveStreamState(sessionId, { awaitingConfirmation: !!data })
+      updateActiveStreamState(sessionId, { awaitingConfirmation: !!normalized })
     }
-    if (data && !shouldSurfacePendingForCurrentConversation(sessionId)) {
+    if (normalized && !shouldSurfacePendingForCurrentConversation(sessionId)) {
       return
     }
-    if (data) {
+    if (normalized) {
       markPendingConfirmationRecoveryChecked(sessionId)
     }
-    pendingQuestion.value = data
-    if (data) {
+    pendingQuestion.value = normalized
+    if (normalized) {
       clearPendingRecoveryRetryTimer()
     }
-    awaitingConfirmation.value = !!data
+    awaitingConfirmation.value = !!normalized
   }
 
   async function submitQuestionAnswers(
@@ -5175,7 +5172,7 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   // --- Exec approval methods ---
-  function setPendingExecApproval(data: any) {
+  function setPendingExecApproval(data: unknown) {
     const normalized = data ? normalizePendingExecApproval(data) : null
     const sessionId = normalizePendingSessionId(normalized || data)
     if (sessionId) {

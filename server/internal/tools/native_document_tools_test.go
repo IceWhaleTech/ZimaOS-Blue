@@ -73,6 +73,259 @@ Polished narrative
 	}
 }
 
+func TestDOCXToolCreateWithStructuredTableColumnWidths(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewDOCXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "reports/metrics_structured_columns.docx",
+		"title":  "Quarterly Metrics Structured Columns",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region", "width": 2},
+						map[string]interface{}{"header": "Revenue", "key": "revenue", "width": 1},
+						map[string]interface{}{"header": "Status", "key": "status", "width": 1},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{"region": "North", "revenue": "120", "status": "Good"},
+						map[string]interface{}{"region": "South", "revenue": "98", "status": "Watch"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_docx_ooxml" {
+		t.Fatalf("engine = %v, want native_docx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "metrics_structured_columns.docx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	documentXML := officeZipEntryText(t, data, "word/document.xml")
+	for _, needle := range []string{
+		`<w:tbl>`,
+		`<w:gridCol w:w="4500"/>`,
+		`<w:gridCol w:w="2250"/>`,
+		`<w:tcW w:w="4500" w:type="dxa"/>`,
+		`<w:tcW w:w="2250" w:type="dxa"/>`,
+		`Region`,
+		`North`,
+		`120`,
+		`Good`,
+	} {
+		if !containsSubstring(documentXML, needle) {
+			t.Fatalf("expected word/document.xml to include %q, got %s", needle, documentXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Quarterly Metrics Structured Columns", "Performance snapshot", "Region", "North", "South", "120", "98"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected document text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestDOCXToolCreateWithStructuredTableColumnAlignmentHints(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewDOCXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "reports/metrics_table_alignment.docx",
+		"title":  "Quarterly Metrics Table Alignment",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region", "align": "left"},
+						map[string]interface{}{"header": "Revenue", "key": "revenue", "kind": "integer"},
+						map[string]interface{}{"header": "Status", "key": "status", "align": "center"},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{"region": "North", "revenue": "120", "status": "Good"},
+						map[string]interface{}{"region": "South", "revenue": "98", "status": "Watch"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_docx_ooxml" {
+		t.Fatalf("engine = %v, want native_docx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "metrics_table_alignment.docx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	documentXML := officeZipEntryText(t, data, "word/document.xml")
+	for _, needle := range []string{
+		`<w:jc w:val="left"/>`,
+		`<w:jc w:val="right"/>`,
+		`<w:jc w:val="center"/>`,
+		`Region`,
+		`North`,
+		`120`,
+		`Good`,
+	} {
+		if !containsSubstring(documentXML, needle) {
+			t.Fatalf("expected word/document.xml to include %q, got %s", needle, documentXML)
+		}
+	}
+}
+
+func TestDOCXToolCreateWithStructuredTableColumnDisplayFormats(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewDOCXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "reports/metrics_table_formats.docx",
+		"title":  "Quarterly Metrics Table Formats",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region"},
+						map[string]interface{}{"header": "Revenue", "key": "revenue", "kind": "currency"},
+						map[string]interface{}{"header": "Growth", "key": "growth", "kind": "percent"},
+						map[string]interface{}{"header": "Score", "key": "score", "kind": "decimal"},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{"region": "North", "revenue": 1250.5, "growth": 0.125, "score": 3.5},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_docx_ooxml" {
+		t.Fatalf("engine = %v, want native_docx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "metrics_table_formats.docx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	documentXML := officeZipEntryText(t, data, "word/document.xml")
+	for _, needle := range []string{
+		`$1250.50`,
+		`12.50%`,
+		`3.50`,
+	} {
+		if !containsSubstring(documentXML, needle) {
+			t.Fatalf("expected word/document.xml to include %q, got %s", needle, documentXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Quarterly Metrics Table Formats", "$1250.50", "12.50%", "3.50"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected document text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestDOCXToolCreateWithStructuredTableDateDisplayFormats(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewDOCXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "reports/metrics_table_dates.docx",
+		"title":  "Quarterly Metrics Table Dates",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region"},
+						map[string]interface{}{"header": "Closed On", "key": "closed_on", "kind": "date"},
+						map[string]interface{}{"header": "Reviewed At", "key": "reviewed_at", "kind": "datetime"},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{
+							"region":      "North",
+							"closed_on":   "2024-02-03T09:45:00Z",
+							"reviewed_at": "2024-03-01T12:30:00Z",
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_docx_ooxml" {
+		t.Fatalf("engine = %v, want native_docx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "metrics_table_dates.docx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	documentXML := officeZipEntryText(t, data, "word/document.xml")
+	for _, needle := range []string{
+		`2024-02-03`,
+		`2024-03-01 12:30`,
+	} {
+		if !containsSubstring(documentXML, needle) {
+			t.Fatalf("expected word/document.xml to include %q, got %s", needle, documentXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Quarterly Metrics Table Dates", "2024-02-03", "2024-03-01 12:30"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected document text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
 func TestXLSXToolCreateAndRead(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewXLSXTool([]string{tmpDir}, nil, nil)
@@ -251,6 +504,268 @@ func TestPPTXToolCreateWithStructuredTable(t *testing.T) {
 		t.Fatalf("ReadDocument() error = %v", err)
 	}
 	for _, needle := range []string{"Quarterly Metrics", "Performance snapshot", "Region", "North", "South"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithStructuredTableColumnObjectsAndObjectRows(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/metrics_structured_columns.pptx",
+		"title":    "Quarterly Metrics Structured Columns",
+		"subtitle": "Q2 snapshot",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region", "width": 2},
+						map[string]interface{}{"header": "Revenue", "key": "revenue", "width": 1},
+						map[string]interface{}{"header": "Status", "key": "status", "width": 1},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{"region": "North", "revenue": "120", "status": "Good"},
+						map[string]interface{}{"region": "South", "revenue": "98", "status": "Watch"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "metrics_structured_columns.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`<a:tbl>`,
+		`<a:gridCol w="5429250"/>`,
+		`<a:gridCol w="2714625"/>`,
+		`<a:t>Region</a:t>`,
+		`<a:t>Revenue</a:t>`,
+		`<a:t>Status</a:t>`,
+		`<a:t>North</a:t>`,
+		`<a:t>120</a:t>`,
+		`<a:t>Good</a:t>`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Quarterly Metrics Structured Columns", "Performance snapshot", "Region", "North", "South", "120", "98"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithStructuredTableColumnAlignmentHints(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/metrics_table_alignment.pptx",
+		"title":    "Quarterly Metrics Table Alignment",
+		"subtitle": "Q2 snapshot",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region", "align": "left"},
+						map[string]interface{}{"header": "Revenue", "key": "revenue", "kind": "integer"},
+						map[string]interface{}{"header": "Status", "key": "status", "align": "center"},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{"region": "North", "revenue": "120", "status": "Good"},
+						map[string]interface{}{"region": "South", "revenue": "98", "status": "Watch"},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "metrics_table_alignment.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`<a:pPr algn="l"/>`,
+		`<a:pPr algn="r"/>`,
+		`<a:pPr algn="ctr"/>`,
+		`<a:t>North</a:t>`,
+		`<a:t>120</a:t>`,
+		`<a:t>Good</a:t>`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithStructuredTableColumnDisplayFormats(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/metrics_table_formats.pptx",
+		"title":    "Quarterly Metrics Table Formats",
+		"subtitle": "Q2 snapshot",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region"},
+						map[string]interface{}{"header": "Revenue", "key": "revenue", "kind": "currency"},
+						map[string]interface{}{"header": "Growth", "key": "growth", "kind": "percent"},
+						map[string]interface{}{"header": "Score", "key": "score", "kind": "decimal"},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{"region": "North", "revenue": 1250.5, "growth": 0.125, "score": 3.5},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "metrics_table_formats.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`<a:t>$1250.50</a:t>`,
+		`<a:t>12.50%</a:t>`,
+		`<a:t>3.50</a:t>`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Quarterly Metrics Table Formats", "$1250.50", "12.50%", "3.50"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithStructuredTableDateDisplayFormats(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/metrics_table_dates.pptx",
+		"title":    "Quarterly Metrics Table Dates",
+		"subtitle": "Q2 snapshot",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Metrics",
+				"paragraphs": []interface{}{"Performance snapshot"},
+				"table": map[string]interface{}{
+					"columns": []interface{}{
+						map[string]interface{}{"header": "Region", "key": "region"},
+						map[string]interface{}{"header": "Closed On", "key": "closed_on", "kind": "date"},
+						map[string]interface{}{"header": "Reviewed At", "key": "reviewed_at", "kind": "datetime"},
+					},
+					"rows": []interface{}{
+						map[string]interface{}{
+							"region":      "North",
+							"closed_on":   "2024-02-03T09:45:00Z",
+							"reviewed_at": "2024-03-01T12:30:00Z",
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "metrics_table_dates.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`<a:t>2024-02-03</a:t>`,
+		`<a:t>2024-03-01 12:30</a:t>`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Quarterly Metrics Table Dates", "2024-02-03", "2024-03-01 12:30"} {
 		if !containsSubstring(doc.Text, needle) {
 			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
 		}
@@ -852,6 +1367,107 @@ func TestPPTXToolCreateWithPrimaryDateCategoryAxisEmbeddedWorkbookPackage(t *tes
 	} {
 		if !containsSubstring(sheetXML, needle) {
 			t.Fatalf("expected embedded sheet1.xml to include %q, got %s", needle, sheetXML)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithStringCategoryAxisEmbeddedWorkbookPackage(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/revenue_string_axis_embedded_workbook.pptx",
+		"title":    "Revenue String Axis Embedded Workbook",
+		"subtitle": "Regional snapshot",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Revenue",
+				"paragraphs": []interface{}{"Text category axes also package workbook-backed chart data"},
+				"chart": map[string]interface{}{
+					"type":       "bar",
+					"categories": []interface{}{"North", "South"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "values": []interface{}{120, 98}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "revenue_string_axis_embedded_workbook.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if !officeZipHasEntry(t, data, "ppt/charts/_rels/chart1.xml.rels") {
+		t.Fatal("expected ppt/charts/_rels/chart1.xml.rels")
+	}
+	if !officeZipHasEntry(t, data, "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx") {
+		t.Fatal("expected embedded chart workbook entry")
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>`,
+		`<c:cat><c:strRef><c:f>Data!$A$2:$A$3</c:f><c:strCache><c:ptCount val="2"/>`,
+		`<c:pt idx="0"><c:v>North</c:v></c:pt>`,
+		`<c:pt idx="1"><c:v>South</c:v></c:pt>`,
+		`<c:val><c:numRef><c:f>Data!$B$2:$B$3</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="2"/>`,
+		`<c:pt idx="0"><c:v>120</c:v></c:pt>`,
+		`<c:pt idx="1"><c:v>98</c:v></c:pt>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+	if containsSubstring(chartXML, `<c:strLit>`) {
+		t.Fatalf("expected chart1.xml to avoid string literal categories when workbook-backed, got %s", chartXML)
+	}
+
+	chartRelsXML := officeZipEntryText(t, data, "ppt/charts/_rels/chart1.xml.rels")
+	if !containsSubstring(chartRelsXML, `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/Microsoft_Excel_Worksheet1.xlsx"`) {
+		t.Fatalf("expected chart1.xml.rels to target embedded workbook, got %s", chartRelsXML)
+	}
+
+	workbookBytes := officeZipEntryBytes(t, data, "ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx")
+	workbookXML := officeZipEntryText(t, workbookBytes, "xl/workbook.xml")
+	if !containsSubstring(workbookXML, `<sheet name="Data" sheetId="1" r:id="rId1"/>`) {
+		t.Fatalf("expected embedded workbook.xml to include Data sheet, got %s", workbookXML)
+	}
+	sheetXML := officeZipEntryText(t, workbookBytes, "xl/worksheets/sheet1.xml")
+	for _, needle := range []string{
+		`<c r="A2"`,
+		`<c r="A3"`,
+		`<c r="B2"`,
+		`<c r="B3"`,
+		`<t xml:space="preserve">North</t>`,
+		`<t xml:space="preserve">South</t>`,
+		`<t xml:space="preserve">Revenue</t>`,
+		`<v>120</v>`,
+		`<v>98</v>`,
+	} {
+		if !containsSubstring(sheetXML, needle) {
+			t.Fatalf("expected embedded sheet1.xml to include %q, got %s", needle, sheetXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Revenue String Axis Embedded Workbook", "Text category axes also package workbook-backed chart data", "Revenue", "North", "South"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
 		}
 	}
 }
@@ -3494,6 +4110,534 @@ func TestPPTXToolCreateWithLegendKeyAndBubbleSizeLabelControls(t *testing.T) {
 		t.Fatalf("ReadDocument() error = %v", err)
 	}
 	for _, needle := range []string{"Revenue Label Detail", "Margin labels expose legend key and bubble-size flags", "Revenue", "Margin", "Q1", "Q2", "Q3"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithChartLabelSeparator(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/pie_label_separator.pptx",
+		"title":    "Pie Label Separator",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Pie labels use a custom separator"},
+				"chart": map[string]interface{}{
+					"type":            "pie",
+					"labels":          true,
+					"label_separator": " / ",
+					"categories":      []interface{}{"Won", "Lost"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Pipeline", "values": []interface{}{55, 45}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "pie_label_separator.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	if !containsSubstring(chartXML, `<c:separator>/</c:separator>`) {
+		t.Fatalf("expected chart1.xml to include label separator, got %s", chartXML)
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Pie Label Separator", "Pie labels use a custom separator", "Pipeline", "Won", "Lost"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithDonutLeaderLines(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/donut_leader_lines.pptx",
+		"title":    "Donut Leader Lines",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Donut labels request leader lines"},
+				"chart": map[string]interface{}{
+					"type":              "donut",
+					"labels":            true,
+					"show_leader_lines": true,
+					"categories":        []interface{}{"Won", "Lost"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Pipeline", "values": []interface{}{55, 45}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "donut_leader_lines.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	if !containsSubstring(chartXML, `<c:showLeaderLines val="1"/>`) {
+		t.Fatalf("expected chart1.xml to include leader lines, got %s", chartXML)
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Donut Leader Lines", "Donut labels request leader lines", "Pipeline", "Won", "Lost"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithSliceLabelVisibilityOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/donut_slice_label_visibility.pptx",
+		"title":    "Donut Slice Label Visibility",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Donut labels hide the middle slice label"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":              "Pipeline",
+							"slice_show_labels": []interface{}{true, false, true},
+							"values":            []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "donut_slice_label_visibility.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:delete val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:delete val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:delete val="0"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Donut Slice Label Visibility", "Donut labels hide the middle slice label", "Pipeline", "Won", "Lost", "Open"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithSliceLabelPositionOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/donut_slice_label_positions.pptx",
+		"title":    "Donut Slice Label Positions",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Donut labels pin each slice to a specific label position"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                  "Pipeline",
+							"slice_label_positions": []interface{}{"outside_end", "center", "best_fit"},
+							"values":                []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "donut_slice_label_positions.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:dLblPos val="outEnd"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:dLblPos val="ctr"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:dLblPos val="bestFit"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Donut Slice Label Positions", "Donut labels pin each slice to a specific label position", "Pipeline", "Won", "Lost", "Open"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithSliceLabelFormatOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/donut_slice_label_formats.pptx",
+		"title":    "Donut Slice Label Formats",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Donut labels give each slice a specific number format"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                "Pipeline",
+							"slice_label_formats": []interface{}{"0.0%", "$#,##0", "0.0"},
+							"values":              []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "donut_slice_label_formats.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:numFmt formatCode="0.0%" sourceLinked="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:numFmt formatCode="$#,##0" sourceLinked="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:numFmt formatCode="0.0" sourceLinked="0"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Donut Slice Label Formats", "Donut labels give each slice a specific number format", "Pipeline", "Won", "Lost", "Open"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithSliceLabelSeparatorOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/donut_slice_label_separators.pptx",
+		"title":    "Donut Slice Label Separators",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Donut labels give each slice a specific separator"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                   "Pipeline",
+							"slice_label_separators": []interface{}{" / ", " | ", " - "},
+							"values":                 []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "donut_slice_label_separators.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:separator>/</c:separator></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:separator>|</c:separator></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:separator>-</c:separator></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Donut Slice Label Separators", "Donut labels give each slice a specific separator", "Pipeline", "Won", "Lost", "Open"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithSliceLabelContentOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/donut_slice_label_content.pptx",
+		"title":    "Donut Slice Label Content",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Donut labels give each slice a specific value/category mix"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                  "Pipeline",
+							"slice_show_values":     []interface{}{true, false, true},
+							"slice_show_categories": []interface{}{false, true, false},
+							"values":                []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "donut_slice_label_content.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:showVal val="1"/><c:showCatName val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:showVal val="0"/><c:showCatName val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:showVal val="1"/><c:showCatName val="0"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Donut Slice Label Content", "Donut labels give each slice a specific value/category mix", "Pipeline", "Won", "Lost", "Open"} {
+		if !containsSubstring(doc.Text, needle) {
+			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestPPTXToolCreateWithSlicePercentAndSeriesNameOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/donut_slice_percent_series_name.pptx",
+		"title":    "Donut Slice Percent And Series Name",
+		"subtitle": "Quarterly view",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Donut labels give each slice a specific percent/series-name mix"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                    "Pipeline",
+							"slice_show_percents":     []interface{}{true, false, true},
+							"slice_show_series_names": []interface{}{false, true, false},
+							"values":                  []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pptx_ooxml" {
+		t.Fatalf("engine = %v, want native_pptx_ooxml", got)
+	}
+	if got := asNativeToolInt(t, payload["slide_count"]); got != 3 {
+		t.Fatalf("slide_count = %d, want 3", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "donut_slice_percent_series_name.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:showSerName val="1"/><c:showPercent val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Donut Slice Percent And Series Name", "Donut labels give each slice a specific percent/series-name mix", "Pipeline", "Won", "Lost", "Open"} {
 		if !containsSubstring(doc.Text, needle) {
 			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
 		}

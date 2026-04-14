@@ -592,13 +592,19 @@ onUnmounted(() => {
   <div class="harness-detail-page">
     <header class="detail-hero">
       <div class="hero-main">
-        <RouterLink class="back-link" :to="{ name: 'HarnessGroups' }">
+        <RouterLink
+          class="back-link"
+          :to="{ name: 'HarnessGroups' }"
+        >
           {{ tr('common.back', 'Back') }}
         </RouterLink>
 
         <div class="hero-heading">
           <span class="kind-chip">{{ humanizeEnum(group?.kind) }}</span>
-          <span class="status-chip" :class="statusTone(group?.status)">
+          <span
+            class="status-chip"
+            :class="statusTone(group?.status)"
+          >
             {{ humanizeStatus(group?.status) }}
           </span>
         </div>
@@ -607,11 +613,14 @@ onUnmounted(() => {
         <p class="hero-description">
           {{
             group?.subject ||
-            tr('harness.group.noSubject', 'This group does not include a subject line.')
+              tr('harness.group.noSubject', 'This group does not include a subject line.')
           }}
         </p>
 
-        <dl v-if="group" class="hero-meta">
+        <dl
+          v-if="group"
+          class="hero-meta"
+        >
           <div>
             <dt>{{ tr('harness.groups.owner', 'Owner') }}</dt>
             <dd>{{ group.owner_user_id || tr('common.notAvailable', 'Not available') }}</dd>
@@ -631,7 +640,10 @@ onUnmounted(() => {
         </dl>
       </div>
 
-      <div id="retry" class="hero-actions">
+      <div
+        id="retry"
+        class="hero-actions"
+      >
         <button
           type="button"
           class="ghost-button"
@@ -669,12 +681,18 @@ onUnmounted(() => {
 
     <AutomationTabs class="automation-tab-strip" />
 
-    <div v-if="error" class="state-card is-error">
+    <div
+      v-if="error"
+      class="state-card is-error"
+    >
       <h2>{{ tr('common.error', 'Error') }}</h2>
       <p>{{ error }}</p>
     </div>
 
-    <div v-else-if="loading && !report" class="state-card">
+    <div
+      v-else-if="loading && !report"
+      class="state-card"
+    >
       <h2>{{ tr('common.loading', 'Loading') }}</h2>
       <p>{{ tr('harness.group.loading', 'Loading the latest group report.') }}</p>
     </div>
@@ -742,18 +760,30 @@ onUnmounted(() => {
           </span>
         </div>
 
-        <div v-if="failureLabelEntries.length" class="detail-pills">
-          <span v-for="entry in failureLabelEntries" :key="`failure-label-${entry.key}`">
+        <div
+          v-if="failureLabelEntries.length"
+          class="detail-pills"
+        >
+          <span
+            v-for="entry in failureLabelEntries"
+            :key="`failure-label-${entry.key}`"
+          >
             {{ tr('harness.group.failureLabel', 'Failure label') }}: {{ entry.key }} ·
             {{ entry.value }}
           </span>
         </div>
-        <p v-else class="empty-text">
+        <p
+          v-else
+          class="empty-text"
+        >
           {{ tr('harness.group.noFailureLabels', 'No failure labels recorded.') }}
         </p>
       </section>
 
-      <section v-if="contextPackBreakdown" class="panel">
+      <section
+        v-if="contextPackBreakdown"
+        class="panel"
+      >
         <div class="panel-header">
           <h2>{{ tr('harness.group.contextPacks', 'Context Packs') }}</h2>
           <span class="panel-caption">
@@ -781,28 +811,46 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="contextPackSelectedSkillEntries.length" class="panel-subsection">
+        <div
+          v-if="contextPackSelectedSkillEntries.length"
+          class="panel-subsection"
+        >
           <h3>{{ tr('harness.group.contextPackSelectedSkills', 'Selected skills') }}</h3>
           <div class="detail-pills">
-            <span v-for="entry in contextPackSelectedSkillEntries" :key="`cp-skill-${entry.key}`">
+            <span
+              v-for="entry in contextPackSelectedSkillEntries"
+              :key="`cp-skill-${entry.key}`"
+            >
               {{ entry.key }} · {{ entry.value }}
             </span>
           </div>
         </div>
 
-        <div v-if="contextPackSourceTrustEntries.length" class="panel-subsection">
+        <div
+          v-if="contextPackSourceTrustEntries.length"
+          class="panel-subsection"
+        >
           <h3>{{ tr('harness.group.contextPackSources', 'Sources') }}</h3>
           <div class="detail-pills">
-            <span v-for="entry in contextPackSourceTrustEntries" :key="`cp-source-${entry.key}`">
+            <span
+              v-for="entry in contextPackSourceTrustEntries"
+              :key="`cp-source-${entry.key}`"
+            >
               {{ entry.key }} · {{ entry.value }}
             </span>
           </div>
         </div>
 
-        <div v-if="contextPackEntryEntries.length" class="panel-subsection">
+        <div
+          v-if="contextPackEntryEntries.length"
+          class="panel-subsection"
+        >
           <h3>{{ tr('harness.group.contextPackEntries', 'Entries') }}</h3>
           <div class="detail-pills">
-            <span v-for="entry in contextPackEntryEntries" :key="`cp-entry-${entry.key}`">
+            <span
+              v-for="entry in contextPackEntryEntries"
+              :key="`cp-entry-${entry.key}`"
+            >
               {{ entry.key }} · {{ entry.value }}
             </span>
           </div>
@@ -815,15 +863,27 @@ onUnmounted(() => {
           <span class="panel-caption">{{ failedItems.length }} / {{ items.length }}</span>
         </div>
 
-        <div v-if="failedItems.length" class="failed-list">
-          <article v-for="item in failedItems" :key="item.id" class="failed-card">
+        <div
+          v-if="failedItems.length"
+          class="failed-list"
+        >
+          <article
+            v-for="item in failedItems"
+            :key="item.id"
+            class="failed-card"
+          >
             <div class="failed-card-header">
               <strong>#{{ item.itemIndex ?? '?' }}</strong>
-              <span class="status-chip" :class="statusTone(item.status)">
+              <span
+                class="status-chip"
+                :class="statusTone(item.status)"
+              >
                 {{ humanizeStatus(item.status) }}
               </span>
             </div>
-            <p class="failed-title">{{ item.title || group.subject || item.id }}</p>
+            <p class="failed-title">
+              {{ item.title || group.subject || item.id }}
+            </p>
             <div class="detail-pills">
               <span v-if="item.runKind">{{ humanizeEnum(item.runKind) }}</span>
               <span v-if="item.attempts">
@@ -850,7 +910,10 @@ onUnmounted(() => {
             </div>
           </article>
         </div>
-        <p v-else class="empty-text">
+        <p
+          v-else
+          class="empty-text"
+        >
           {{ tr('harness.group.noFailedItems', 'No failed items in the latest report.') }}
         </p>
       </section>
@@ -861,15 +924,27 @@ onUnmounted(() => {
           <span class="panel-caption">{{ itemRows.length }}</span>
         </div>
 
-        <div v-if="itemRows.length" class="item-list">
-          <article v-for="item in itemRows" :key="item.id" class="item-card">
+        <div
+          v-if="itemRows.length"
+          class="item-list"
+        >
+          <article
+            v-for="item in itemRows"
+            :key="item.id"
+            class="item-card"
+          >
             <div class="failed-card-header">
               <strong>#{{ item.index ?? '?' }}</strong>
-              <span class="status-chip" :class="statusTone(item.runStatus || item.status)">
+              <span
+                class="status-chip"
+                :class="statusTone(item.runStatus || item.status)"
+              >
                 {{ humanizeStatus(item.runStatus || item.status) }}
               </span>
             </div>
-            <p class="failed-title">{{ item.title }}</p>
+            <p class="failed-title">
+              {{ item.title }}
+            </p>
             <div class="detail-pills">
               <span v-if="item.runKind">{{ humanizeEnum(item.runKind) }}</span>
               <span v-if="item.attempts">
@@ -888,7 +963,10 @@ onUnmounted(() => {
             </div>
           </article>
         </div>
-        <p v-else class="empty-text">
+        <p
+          v-else
+          class="empty-text"
+        >
           {{ tr('harness.group.noItems', 'No items were recorded in the latest report.') }}
         </p>
       </section>
@@ -936,7 +1014,10 @@ onUnmounted(() => {
             @close="closeRunDetail"
           />
         </div>
-        <p v-else class="empty-text">
+        <p
+          v-else
+          class="empty-text"
+        >
           {{
             tr('harness.group.noLinkedRuns', 'No linked runs were persisted for this group yet.')
           }}
@@ -949,13 +1030,23 @@ onUnmounted(() => {
           <span class="panel-caption">{{ artifacts.length }}</span>
         </div>
 
-        <div v-if="artifacts.length" class="artifact-list">
-          <article v-for="artifact in artifacts" :key="artifact.id" class="artifact-card">
+        <div
+          v-if="artifacts.length"
+          class="artifact-list"
+        >
+          <article
+            v-for="artifact in artifacts"
+            :key="artifact.id"
+            class="artifact-card"
+          >
             <strong>{{ artifact.label || artifact.kind || artifact.id }}</strong>
             <p>{{ artifact.path_or_url || tr('common.notAvailable', 'Not available') }}</p>
           </article>
         </div>
-        <p v-else class="empty-text">
+        <p
+          v-else
+          class="empty-text"
+        >
           {{ tr('harness.group.noArtifacts', 'No artifacts attached to the linked runs yet.') }}
         </p>
       </section>

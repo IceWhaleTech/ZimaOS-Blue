@@ -117,7 +117,12 @@ async function handleApply() {
             class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             @click="emit('close')"
           >
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -131,7 +136,10 @@ async function handleApply() {
         <!-- Content -->
         <div class="p-6 space-y-4 overflow-y-auto flex-1">
           <!-- Loading state -->
-          <div v-if="loading" class="flex items-center justify-center py-8">
+          <div
+            v-if="loading"
+            class="flex items-center justify-center py-8"
+          >
             <svg
               class="animate-spin w-8 h-8 text-gray-900 dark:text-gray-300"
               fill="none"
@@ -154,9 +162,17 @@ async function handleApply() {
           </div>
 
           <!-- Error state -->
-          <div v-else-if="error" class="text-center py-8">
+          <div
+            v-else-if="error"
+            class="text-center py-8"
+          >
             <div class="text-red-500 dark:text-red-400 mb-2">
-              <svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                class="w-12 h-12 mx-auto"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -165,15 +181,24 @@ async function handleApply() {
                 />
               </svg>
             </div>
-            <p class="text-gray-600 dark:text-gray-400">{{ error }}</p>
+            <p class="text-gray-600 dark:text-gray-400">
+              {{ error }}
+            </p>
           </div>
 
           <!-- Preview content -->
           <template v-else-if="preview">
             <!-- Issue info -->
-            <div v-if="item" class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
-              <div class="font-medium text-gray-900 dark:text-white mb-1">{{ item.name }}</div>
-              <div class="text-sm text-gray-600 dark:text-gray-400">{{ item.description }}</div>
+            <div
+              v-if="item"
+              class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4"
+            >
+              <div class="font-medium text-gray-900 dark:text-white mb-1">
+                {{ item.name }}
+              </div>
+              <div class="text-sm text-gray-600 dark:text-gray-400">
+                {{ item.description }}
+              </div>
             </div>
 
             <!-- Fix description -->
@@ -238,7 +263,13 @@ async function handleApply() {
                     d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
-                <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg
+                  v-else
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -304,7 +335,12 @@ async function handleApply() {
             :disabled="loading || applying || !!error"
             @click="handleApply"
           >
-            <svg v-if="applying" class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+            <svg
+              v-if="applying"
+              class="animate-spin w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
               <circle
                 class="opacity-25"
                 cx="12"
@@ -319,7 +355,13 @@ async function handleApply() {
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
               />
             </svg>
-            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              v-else
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"

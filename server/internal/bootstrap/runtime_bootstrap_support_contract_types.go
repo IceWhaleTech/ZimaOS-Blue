@@ -34,4 +34,5 @@ type routeRuntimeContractBootstrapSupportResult struct {
 	settingsHandler   *serverpkg.SettingsHandler
 	smallModelManager *smallmodel.Manager
 	approvalHandler   *networkapi.ApprovalHandler
+	tunnelHandler     *networkapi.TunnelHandler
 }

@@ -44,7 +44,10 @@ function handleRetry() {
 </script>
 
 <template>
-  <div v-if="hasError" class="min-h-[200px] flex items-center justify-center p-8">
+  <div
+    v-if="hasError"
+    class="min-h-[200px] flex items-center justify-center p-8"
+  >
     <div class="text-center max-w-md">
       <div
         class="mx-auto w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-4"
@@ -73,19 +76,23 @@ function handleRetry() {
         {{ resolvedMessage }}
       </p>
 
-      <details v-if="errorMessage" class="text-start mb-4">
+      <details
+        v-if="errorMessage"
+        class="text-start mb-4"
+      >
         <summary
           class="cursor-pointer text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
         >
           {{ t('common.details') }}
         </summary>
         <div class="mt-2 p-3 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs font-mono">
-          <p class="text-red-600 dark:text-red-400 break-all">{{ errorMessage }}</p>
+          <p class="text-red-600 dark:text-red-400 break-all">
+            {{ errorMessage }}
+          </p>
           <pre
             v-if="errorStack"
             class="mt-2 text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap"
-            >{{ errorStack }}</pre
-          >
+          >{{ errorStack }}</pre>
         </div>
       </details>
 
@@ -113,5 +120,5 @@ function handleRetry() {
     </div>
   </div>
 
-  <slot v-else></slot>
+  <slot v-else />
 </template>

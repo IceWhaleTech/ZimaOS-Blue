@@ -145,7 +145,11 @@ const nodeTypes = {
       class="absolute inset-0 flex items-center justify-center bg-white/80 dark:bg-gray-700/80 z-10"
     >
       <div class="flex items-center gap-3 text-gray-600 dark:text-gray-400">
-        <svg class="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <svg
+          class="animate-spin h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
           <circle
             class="opacity-25"
             cx="12"
@@ -165,7 +169,10 @@ const nodeTypes = {
     </div>
 
     <!-- Error state -->
-    <div v-else-if="error" class="absolute inset-0 flex items-center justify-center">
+    <div
+      v-else-if="error"
+      class="absolute inset-0 flex items-center justify-center"
+    >
       <div class="text-center">
         <svg
           class="mx-auto h-12 w-12 text-red-400"
@@ -180,7 +187,9 @@ const nodeTypes = {
             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
           />
         </svg>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ error }}</p>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+          {{ error }}
+        </p>
         <button
           class="mt-4 px-4 py-2 text-sm bg-gray-700 dark:bg-gray-500 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400"
           @click="loadFlow"
@@ -191,7 +200,10 @@ const nodeTypes = {
     </div>
 
     <!-- Empty state -->
-    <div v-else-if="!nodes.length" class="absolute inset-0 flex items-center justify-center">
+    <div
+      v-else-if="!nodes.length"
+      class="absolute inset-0 flex items-center justify-center"
+    >
       <div class="text-center">
         <svg
           class="mx-auto h-12 w-12 text-gray-400"
@@ -206,7 +218,9 @@ const nodeTypes = {
             d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
           />
         </svg>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ t('companion.flow.empty') }}</p>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+          {{ t('companion.flow.empty') }}
+        </p>
       </div>
     </div>
 
@@ -223,23 +237,26 @@ const nodeTypes = {
       class="bg-gray-50 dark:bg-gray-700"
       @node-click="onNodeClick"
     >
-      <Background pattern-color="#e5e7eb" :gap="20" />
+      <Background
+        pattern-color="#e5e7eb"
+        :gap="20"
+      />
       <Controls position="top-right" />
       <MiniMap
         position="bottom-right"
         :node-color="
           (node: { type?: string }) => {
             switch (node.type) {
-              case 'message':
-                return '#3b82f6'
-              case 'toolCall':
-                return '#8b5cf6'
-              case 'llmRequest':
-                return '#6366f1'
-              case 'securityCheck':
-                return '#ef4444'
-              default:
-                return '#9ca3af'
+            case 'message':
+              return '#3b82f6'
+            case 'toolCall':
+              return '#8b5cf6'
+            case 'llmRequest':
+              return '#6366f1'
+            case 'securityCheck':
+              return '#ef4444'
+            default:
+              return '#9ca3af'
             }
           }
         "

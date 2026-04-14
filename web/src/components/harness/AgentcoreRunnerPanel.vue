@@ -367,7 +367,7 @@ const agentcoreRunnerEvaluatedCandidateCards = computed(() => {
 
   return cards
     .sort((left, right) => left.rank - right.rank || left.index - right.index || left.id.localeCompare(right.id))
-    .map(({ rank, index, ...card }) => card)
+    .map(({ rank: _rank, index: _index, ...card }) => card)
 })
 const agentcoreRunnerOfflineValueSummary = computed(() =>
   normalizeEvidenceText(agentcoreRunnerLastRun.value?.offline_value_report?.value_summary)
@@ -817,8 +817,14 @@ async function prepareAgentcoreRunner() {
 </script>
 
 <template>
-  <section :class="agentcoreRunnerRootClass" data-testid="agentcore-runner-card">
-    <div v-if="!embedded" class="space-y-1.5">
+  <section
+    :class="agentcoreRunnerRootClass"
+    data-testid="agentcore-runner-card"
+  >
+    <div
+      v-if="!embedded"
+      class="space-y-1.5"
+    >
       <span class="settings-module__eyebrow agentcore-runner-panel__eyebrow inline-flex w-fit">{{
         t('settings.agentcoreRunner.eyebrow', 'Harness · Beta')
       }}</span>
@@ -921,8 +927,8 @@ async function prepareAgentcoreRunner() {
                 {{ t('settings.agentcoreRunner.repoUrl', 'GitHub Repo URL') }}
               </span>
               <input
-                data-testid="agentcore-runner-repo-input"
                 v-model="agentcoreRunnerRepoURL"
+                data-testid="agentcore-runner-repo-input"
                 type="text"
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
                 :placeholder="
@@ -932,7 +938,7 @@ async function prepareAgentcoreRunner() {
                   )
                 "
                 @blur="saveAgentcoreRunnerConfig"
-              />
+              >
             </label>
 
             <label class="block">
@@ -940,13 +946,17 @@ async function prepareAgentcoreRunner() {
                 {{ t('settings.agentcoreRunner.ref', 'Ref') }}
               </span>
               <select
-                data-testid="agentcore-runner-ref-input"
                 v-model="agentcoreRunnerRef"
+                data-testid="agentcore-runner-ref-input"
                 class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-green-500 dark:border-gray-700 dark:bg-slate-900 dark:text-gray-100"
                 :disabled="agentcoreRunnerSaving"
                 @change="saveAgentcoreRunnerConfig"
               >
-                <option v-for="option in agentcoreRunnerRefOptions" :key="option" :value="option">
+                <option
+                  v-for="option in agentcoreRunnerRefOptions"
+                  :key="option"
+                  :value="option"
+                >
                   {{ option }}
                 </option>
               </select>
@@ -955,9 +965,9 @@ async function prepareAgentcoreRunner() {
                   agentcoreRunnerTagsLoading
                     ? t('settings.agentcoreRunner.refLoading', 'Loading tags...')
                     : t(
-                        'settings.agentcoreRunner.refHint',
-                        'Defaults to main and lists tags from the selected repo.'
-                      )
+                      'settings.agentcoreRunner.refHint',
+                      'Defaults to main and lists tags from the selected repo.'
+                    )
                 }}
               </p>
             </label>
@@ -1027,10 +1037,13 @@ async function prepareAgentcoreRunner() {
             <span class="text-gray-500 dark:text-gray-400">{{
               t('settings.agentcoreRunner.resolvedCommit', 'Resolved commit')
             }}</span>
-            <div data-testid="agentcore-runner-resolved-commit" class="break-all text-gray-900 dark:text-gray-100">
+            <div
+              data-testid="agentcore-runner-resolved-commit"
+              class="break-all text-gray-900 dark:text-gray-100"
+            >
               {{
                 agentcoreRunnerStatus?.resolved_commit ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
           </div>
@@ -1038,10 +1051,13 @@ async function prepareAgentcoreRunner() {
             <span class="text-gray-500 dark:text-gray-400">{{
               t('settings.agentcoreRunner.requiredGoVersion', 'Required Go version')
             }}</span>
-            <div data-testid="agentcore-runner-required-go" class="text-gray-900 dark:text-gray-100">
+            <div
+              data-testid="agentcore-runner-required-go"
+              class="text-gray-900 dark:text-gray-100"
+            >
               {{
                 agentcoreRunnerStatus?.required_go_version ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
           </div>
@@ -1049,10 +1065,13 @@ async function prepareAgentcoreRunner() {
             <span class="text-gray-500 dark:text-gray-400">{{
               t('settings.agentcoreRunner.installedGoVersion', 'Installed Go version')
             }}</span>
-            <div data-testid="agentcore-runner-installed-go" class="text-gray-900 dark:text-gray-100">
+            <div
+              data-testid="agentcore-runner-installed-go"
+              class="text-gray-900 dark:text-gray-100"
+            >
               {{
                 agentcoreRunnerStatus?.installed_go_version ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
           </div>
@@ -1060,7 +1079,10 @@ async function prepareAgentcoreRunner() {
             <span class="text-gray-500 dark:text-gray-400">{{
               t('settings.agentcoreRunner.toolchainReady', 'Toolchain ready')
             }}</span>
-            <div data-testid="agentcore-runner-toolchain-ready" class="text-gray-900 dark:text-gray-100">
+            <div
+              data-testid="agentcore-runner-toolchain-ready"
+              class="text-gray-900 dark:text-gray-100"
+            >
               {{
                 agentcoreRunnerStatus?.toolchain_ready
                   ? t('common.yes', 'Yes')
@@ -1072,7 +1094,10 @@ async function prepareAgentcoreRunner() {
             <span class="text-gray-500 dark:text-gray-400">{{
               t('settings.agentcoreRunner.binaryReady', 'Binary ready')
             }}</span>
-            <div data-testid="agentcore-runner-binary-ready" class="text-gray-900 dark:text-gray-100">
+            <div
+              data-testid="agentcore-runner-binary-ready"
+              class="text-gray-900 dark:text-gray-100"
+            >
               {{
                 agentcoreRunnerStatus?.binary_ready
                   ? t('common.yes', 'Yes')
@@ -1084,10 +1109,13 @@ async function prepareAgentcoreRunner() {
             <span class="text-gray-500 dark:text-gray-400">{{
               t('settings.agentcoreRunner.lastPrepareState', 'Last prepare state')
             }}</span>
-            <div data-testid="agentcore-runner-last-prepare-state" class="text-gray-900 dark:text-gray-100">
+            <div
+              data-testid="agentcore-runner-last-prepare-state"
+              class="text-gray-900 dark:text-gray-100"
+            >
               {{
                 agentcoreRunnerStatus?.last_prepare_state ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
           </div>
@@ -1095,10 +1123,13 @@ async function prepareAgentcoreRunner() {
             <span class="text-gray-500 dark:text-gray-400">{{
               t('settings.agentcoreRunner.binaryPath', 'Binary path')
             }}</span>
-            <div data-testid="agentcore-runner-binary-path" class="break-all text-gray-900 dark:text-gray-100">
+            <div
+              data-testid="agentcore-runner-binary-path"
+              class="break-all text-gray-900 dark:text-gray-100"
+            >
               {{
                 agentcoreRunnerStatus?.binary_path ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
           </div>
@@ -1112,7 +1143,7 @@ async function prepareAgentcoreRunner() {
             >
               {{
                 agentcoreRunnerStatus?.binary_sha256 ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
           </div>
@@ -1164,7 +1195,7 @@ async function prepareAgentcoreRunner() {
             >
               {{
                 agentcoreRunnerStatus?.last_optimization_run_id ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
             <div
@@ -1173,7 +1204,7 @@ async function prepareAgentcoreRunner() {
             >
               {{
                 agentcoreRunnerStatus?.last_optimization_state ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
             <div
@@ -1188,7 +1219,7 @@ async function prepareAgentcoreRunner() {
             >
               {{
                 agentcoreRunnerStatus?.last_optimization_summary ||
-                t('settings.agentcoreRunner.empty', 'Not available')
+                  t('settings.agentcoreRunner.empty', 'Not available')
               }}
             </div>
             <div
@@ -1379,7 +1410,10 @@ async function prepareAgentcoreRunner() {
                         </span>
                       </div>
                     </div>
-                    <div v-if="candidate.meta.length > 0" class="mt-2 flex flex-wrap gap-1.5">
+                    <div
+                      v-if="candidate.meta.length > 0"
+                      class="mt-2 flex flex-wrap gap-1.5"
+                    >
                       <span
                         v-for="item in candidate.meta"
                         :key="item"
@@ -1432,7 +1466,10 @@ async function prepareAgentcoreRunner() {
                     </span>
                   </div>
                 </div>
-                <div v-if="agentcoreRunnerSampleEfficiencySummary" data-testid="agentcore-runner-sample-efficiency-summary">
+                <div
+                  v-if="agentcoreRunnerSampleEfficiencySummary"
+                  data-testid="agentcore-runner-sample-efficiency-summary"
+                >
                   {{ agentcoreRunnerSampleEfficiencySummary }}
                 </div>
               </div>
@@ -1466,7 +1503,12 @@ async function prepareAgentcoreRunner() {
                     {{ t('settings.agentcoreRunner.topImprovements', 'Top improvements') }}
                   </div>
                   <ul class="mt-1 space-y-1">
-                    <li v-for="item in agentcoreRunnerOfflineImprovements" :key="item">{{ item }}</li>
+                    <li
+                      v-for="item in agentcoreRunnerOfflineImprovements"
+                      :key="item"
+                    >
+                      {{ item }}
+                    </li>
                   </ul>
                 </div>
                 <div v-if="agentcoreRunnerOfflineTradeoffs.length > 0">
@@ -1474,7 +1516,12 @@ async function prepareAgentcoreRunner() {
                     {{ t('settings.agentcoreRunner.topTradeoffs', 'Top tradeoffs') }}
                   </div>
                   <ul class="mt-1 space-y-1">
-                    <li v-for="item in agentcoreRunnerOfflineTradeoffs" :key="item">{{ item }}</li>
+                    <li
+                      v-for="item in agentcoreRunnerOfflineTradeoffs"
+                      :key="item"
+                    >
+                      {{ item }}
+                    </li>
                   </ul>
                 </div>
               </div>
@@ -1533,7 +1580,12 @@ async function prepareAgentcoreRunner() {
                     {{ t('settings.agentcoreRunner.topImprovements', 'Top improvements') }}
                   </div>
                   <ul class="mt-1 space-y-1">
-                    <li v-for="item in agentcoreRunnerRuntimeImprovements" :key="item">{{ item }}</li>
+                    <li
+                      v-for="item in agentcoreRunnerRuntimeImprovements"
+                      :key="item"
+                    >
+                      {{ item }}
+                    </li>
                   </ul>
                 </div>
                 <div v-if="agentcoreRunnerRuntimeTradeoffs.length > 0">
@@ -1541,7 +1593,12 @@ async function prepareAgentcoreRunner() {
                     {{ t('settings.agentcoreRunner.topTradeoffs', 'Top tradeoffs') }}
                   </div>
                   <ul class="mt-1 space-y-1">
-                    <li v-for="item in agentcoreRunnerRuntimeTradeoffs" :key="item">{{ item }}</li>
+                    <li
+                      v-for="item in agentcoreRunnerRuntimeTradeoffs"
+                      :key="item"
+                    >
+                      {{ item }}
+                    </li>
                   </ul>
                 </div>
               </div>

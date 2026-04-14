@@ -154,7 +154,11 @@ async function handleSubmit() {
             </p>
             <ul class="space-y-1 text-sm text-green-700 dark:text-green-400">
               <li class="flex items-center space-x-2">
-                <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg
+                  class="h-4 w-4"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -164,7 +168,11 @@ async function handleSubmit() {
                 <span>{{ t('preview.benefit1') }}</span>
               </li>
               <li class="flex items-center space-x-2">
-                <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg
+                  class="h-4 w-4"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -174,7 +182,11 @@ async function handleSubmit() {
                 <span>{{ t('preview.benefit2') }}</span>
               </li>
               <li class="flex items-center space-x-2">
-                <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
+                <svg
+                  class="h-4 w-4"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
                   <path
                     fill-rule="evenodd"
                     d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -187,12 +199,20 @@ async function handleSubmit() {
           </div>
 
           <!-- Error message -->
-          <div v-if="error" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-            <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+          <div
+            v-if="error"
+            class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg"
+          >
+            <p class="text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
           </div>
 
           <!-- Form -->
-          <form class="space-y-4" @submit.prevent="handleSubmit">
+          <form
+            class="space-y-4"
+            @submit.prevent="handleSubmit"
+          >
             <!-- Username -->
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -205,7 +225,7 @@ async function handleSubmit() {
                 :placeholder="t('auth.usernamePlaceholder')"
                 required
                 minlength="3"
-              />
+              >
             </div>
 
             <!-- Password -->
@@ -221,7 +241,7 @@ async function handleSubmit() {
                   :placeholder="passwordPlaceholder"
                   required
                   :minlength="policy.min_length"
-                />
+                >
                 <button
                   type="button"
                   class="absolute end-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
@@ -265,7 +285,10 @@ async function handleSubmit() {
                   </svg>
                 </button>
               </div>
-              <div v-if="!policyLoading && password.length > 0" class="mt-2 space-y-2">
+              <div
+                v-if="!policyLoading && password.length > 0"
+                class="mt-2 space-y-2"
+              >
                 <div class="flex gap-1">
                   <div
                     v-for="i in passwordChecks.length"
@@ -313,8 +336,11 @@ async function handleSubmit() {
                 "
                 :placeholder="t('auth.confirmPasswordPlaceholder')"
                 required
-              />
-              <p v-if="passwordMismatch" class="mt-1 text-sm text-red-500">
+              >
+              <p
+                v-if="passwordMismatch"
+                class="mt-1 text-sm text-red-500"
+              >
                 {{ t('auth.passwordMismatch') }}
               </p>
             </div>
@@ -333,7 +359,10 @@ async function handleSubmit() {
                 class="flex-1 px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="!isValid || loading"
               >
-                <span v-if="loading" class="flex items-center justify-center space-x-2">
+                <span
+                  v-if="loading"
+                  class="flex items-center justify-center space-x-2"
+                >
                   <svg
                     class="animate-spin h-4 w-4"
                     xmlns="http://www.w3.org/2000/svg"
@@ -347,12 +376,12 @@ async function handleSubmit() {
                       r="10"
                       stroke="currentColor"
                       stroke-width="4"
-                    ></circle>
+                    />
                     <path
                       class="opacity-75"
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                    />
                   </svg>
                   <span>{{ t('common.creating') }}</span>
                 </span>

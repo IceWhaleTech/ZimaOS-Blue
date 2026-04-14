@@ -123,7 +123,10 @@ const statusPillClass = computed(() => {
           }}
         </p>
       </div>
-      <span class="rounded-full px-2.5 py-1 text-[11px] font-medium" :class="statusPillClass">
+      <span
+        class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+        :class="statusPillClass"
+      >
         {{ currentJob?.status || tr('knowledge.idle', 'idle') }}
       </span>
     </div>
@@ -149,9 +152,9 @@ const statusPillClass = computed(() => {
         <div class="text-[11px] uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500">
           {{ tr('knowledge.activeJob', 'Active job') }}
         </div>
-	        <div class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
-	          {{ currentJob?.kind || tr('knowledge.noActiveJob', 'No active job') }}
-	        </div>
+        <div class="mt-2 text-sm font-medium text-gray-900 dark:text-white">
+          {{ currentJob?.kind || tr('knowledge.noActiveJob', 'No active job') }}
+        </div>
         <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
           {{ currentJob?.stage || tr('knowledge.awaitingAction', 'Awaiting action') }}
         </div>

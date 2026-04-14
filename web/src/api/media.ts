@@ -98,7 +98,7 @@ export interface MediaIntent {
   has_image: boolean
   image_count: number
   alternative_category?: MediaCategory // e.g. kf2v when 2 images could be i2v or kf2v
-  params?: Record<string, any>
+  params?: Record<string, unknown>
 }
 
 export interface ClassifyResponse {
@@ -110,7 +110,7 @@ export interface DirectGenerateRequest {
   category: MediaCategory
   prompt: string
   model?: string
-  params?: Record<string, any>
+  params?: Record<string, unknown>
   reference_images?: string[]
   conversation_id?: string
   message_id?: string

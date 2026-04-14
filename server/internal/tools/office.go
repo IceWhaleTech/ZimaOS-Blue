@@ -8,7 +8,9 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type OfficeTool struct {
@@ -65,8 +67,10 @@ type officeDocSection struct {
 }
 
 type officeTableSpec struct {
-	Headers []string
-	Rows    [][]string
+	Headers          []string
+	Rows             [][]string
+	ColumnWidths     []float64
+	ColumnAlignments []string
 }
 
 type officeChartSpec struct {
@@ -143,6 +147,8 @@ type officeChartSpec struct {
 	Labels                                string
 	LabelPosition                         string
 	LabelFormat                           string
+	LabelSeparator                        string
+	ShowLeaderLines                       string
 	ShowValue                             string
 	ShowCategory                          string
 	ShowSeriesName                        string
@@ -154,27 +160,37 @@ type officeChartSpec struct {
 }
 
 type officeChartSeries struct {
-	Name            string
-	WorkbookIndex   int
-	Type            string
-	Axis            string
-	Labels          string
-	LabelPosition   string
-	LabelFormat     string
-	ShowValue       string
-	ShowCategory    string
-	ShowSeriesName  string
-	ShowPercent     string
-	ShowLegendKey   string
-	ShowBubbleSize  string
-	PointColors     []string
-	PointExplosions []int
-	Smooth          string
-	Color           string
-	LineWidth       float64
-	Dash            string
-	Marker          string
-	Values          []float64
+	Name                 string
+	WorkbookIndex        int
+	Type                 string
+	Axis                 string
+	Labels               string
+	LabelPosition        string
+	LabelFormat          string
+	LabelSeparator       string
+	ShowLeaderLines      string
+	ShowValue            string
+	ShowCategory         string
+	ShowSeriesName       string
+	ShowPercent          string
+	ShowLegendKey        string
+	ShowBubbleSize       string
+	PointShowLabels      []string
+	PointShowValues      []string
+	PointShowCategories  []string
+	PointShowSeriesNames []string
+	PointShowPercents    []string
+	PointLabelPositions  []string
+	PointLabelFormats    []string
+	PointLabelSeparators []string
+	PointColors          []string
+	PointExplosions      []int
+	Smooth               string
+	Color                string
+	LineWidth            float64
+	Dash                 string
+	Marker               string
+	Values               []float64
 }
 
 type officeBuildInfo struct {
@@ -793,22 +809,52 @@ func parseOfficeTable(raw interface{}) (*officeTableSpec, error) {
 	if !ok {
 		return nil, errors.New("table must be an object")
 	}
-	headers := officeStringSliceAny(firstMapValue(m, "headers", "columns"))
+	headers := officeStringSliceAny(firstMapValue(m, "headers"))
+	columnKeys := []string(nil)
+	columnWidths := []float64(nil)
+	columnAlignments := []string(nil)
+	columnFormats := []string(nil)
+	if rawColumns, ok := compatArgValue(m, "columns"); ok && rawColumns != nil {
+		parsedHeaders, parsedKeys, parsedWidths, parsedAlignments, parsedFormats, err := parseOfficeTableColumns(rawColumns)
+		if err != nil {
+			return nil, err
+		}
+		if len(parsedHeaders) > 0 {
+			headers = parsedHeaders
+		}
+		columnKeys = parsedKeys
+		columnWidths = parsedWidths
+		columnAlignments = parsedAlignments
+		columnFormats = parsedFormats
+	}
 	rowsRaw, ok := m["rows"].([]interface{})
 	if !ok {
 		return nil, errors.New("table rows must be an array")
 	}
 	rows := make([][]string, 0, len(rowsRaw))
 	for _, item := range rowsRaw {
-		rowValues, ok := item.([]interface{})
-		if !ok {
-			return nil, errors.New("table rows must contain arrays")
+		switch typed := item.(type) {
+		case []interface{}:
+			row := make([]string, len(typed))
+			for idx, value := range typed {
+				row[idx] = officeFormatTableDisplayValue(value, officeTableColumnFormat(columnFormats, idx))
+			}
+			rows = append(rows, row)
+		case map[string]interface{}:
+			if len(headers) == 0 {
+				return nil, errors.New("table rows with object values require headers or columns")
+			}
+			if len(columnKeys) == 0 {
+				columnKeys = append([]string(nil), headers...)
+			}
+			row := make([]string, len(columnKeys))
+			for idx, key := range columnKeys {
+				row[idx] = officeFormatTableDisplayValue(typed[key], officeTableColumnFormat(columnFormats, idx))
+			}
+			rows = append(rows, row)
+		default:
+			return nil, errors.New("table rows must contain arrays or objects")
 		}
-		row := make([]string, len(rowValues))
-		for idx, value := range rowValues {
-			row[idx] = strings.TrimSpace(anyToStringForLLM(value))
-		}
-		rows = append(rows, row)
 	}
 	if len(headers) == 0 && len(rows) > 0 {
 		headers = make([]string, len(rows[0]))
@@ -816,7 +862,193 @@ func parseOfficeTable(raw interface{}) (*officeTableSpec, error) {
 			headers[i] = fmt.Sprintf("Column %d", i+1)
 		}
 	}
-	return &officeTableSpec{Headers: headers, Rows: rows}, nil
+	return &officeTableSpec{Headers: headers, Rows: rows, ColumnWidths: columnWidths, ColumnAlignments: columnAlignments}, nil
+}
+
+func parseOfficeTableColumns(raw interface{}) ([]string, []string, []float64, []string, []string, error) {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil, nil, nil, nil, nil, errors.New("table columns must be an array")
+	}
+	headers := make([]string, 0, len(items))
+	keys := make([]string, 0, len(items))
+	widths := make([]float64, 0, len(items))
+	alignments := make([]string, 0, len(items))
+	formats := make([]string, 0, len(items))
+	for _, item := range items {
+		switch typed := item.(type) {
+		case map[string]interface{}:
+			header := strings.TrimSpace(anyToStringForLLM(firstMapValue(typed, "header", "title", "name")))
+			key := strings.TrimSpace(anyToStringForLLM(firstMapValue(typed, "key", "field")))
+			rawFormat := anyToStringForLLM(firstMapValue(typed, "format", "kind", "type"))
+			if header == "" {
+				header = key
+			}
+			if key == "" {
+				key = header
+			}
+			if header == "" {
+				return nil, nil, nil, nil, nil, errors.New("table columns must define header or key")
+			}
+			headers = append(headers, header)
+			keys = append(keys, key)
+			widths = append(widths, officePositiveFloatValue(firstMapValue(typed, "width", "ratio", "weight")))
+			alignments = append(alignments, officeNormalizeTableAlignment(
+				anyToStringForLLM(firstMapValue(typed, "align", "alignment", "text_align", "textAlignment")),
+				rawFormat,
+			))
+			formats = append(formats, officeNormalizeTableDisplayFormat(rawFormat))
+		default:
+			value := strings.TrimSpace(anyToStringForLLM(item))
+			if value == "" {
+				return nil, nil, nil, nil, nil, errors.New("table columns must not be empty")
+			}
+			headers = append(headers, value)
+			keys = append(keys, value)
+			widths = append(widths, 0)
+			alignments = append(alignments, "")
+			formats = append(formats, "")
+		}
+	}
+	return headers, keys, widths, alignments, formats, nil
+}
+
+func officePositiveFloatValue(raw interface{}) float64 {
+	switch typed := raw.(type) {
+	case float64:
+		if typed > 0 {
+			return typed
+		}
+	case float32:
+		if typed > 0 {
+			return float64(typed)
+		}
+	case int:
+		if typed > 0 {
+			return float64(typed)
+		}
+	case int64:
+		if typed > 0 {
+			return float64(typed)
+		}
+	case json.Number:
+		if value, err := typed.Float64(); err == nil && value > 0 {
+			return value
+		}
+	}
+	return 0
+}
+
+func officeNormalizeTableAlignment(rawAlign, rawKind string) string {
+	align := strings.ToLower(strings.TrimSpace(rawAlign))
+	switch align {
+	case "left", "l", "start":
+		return "left"
+	case "center", "centre", "middle", "c", "ctr":
+		return "center"
+	case "right", "r", "end":
+		return "right"
+	}
+
+	kind := strings.ToLower(strings.TrimSpace(rawKind))
+	switch kind {
+	case "integer", "int", "number", "numeric", "decimal", "currency", "percent":
+		return "right"
+	default:
+		return ""
+	}
+}
+
+func officeNormalizeTableDisplayFormat(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "integer", "int":
+		return "integer"
+	case "decimal", "number", "numeric":
+		return "decimal"
+	case "currency", "money":
+		return "currency"
+	case "percent", "percentage":
+		return "percent"
+	case "date":
+		return "date"
+	case "time", "datetime", "date-time", "date_time", "timestamp":
+		return "datetime"
+	default:
+		return ""
+	}
+}
+
+func officeTableColumnFormat(formats []string, columnIndex int) string {
+	if columnIndex < 0 || columnIndex >= len(formats) {
+		return ""
+	}
+	return formats[columnIndex]
+}
+
+func officeFormatTableDisplayValue(raw interface{}, format string) string {
+	text := strings.TrimSpace(anyToStringForLLM(raw))
+	if text == "" {
+		return ""
+	}
+
+	switch officeNormalizeTableDisplayFormat(format) {
+	case "date":
+		if ts, ok := officeParseTableTime(raw); ok {
+			return ts.UTC().Format("2006-01-02")
+		}
+		return text
+	case "datetime":
+		if ts, ok := officeParseTableTime(raw); ok {
+			return ts.UTC().Format("2006-01-02 15:04")
+		}
+		return text
+	}
+
+	value, ok := officeChartNumber(raw)
+	if !ok {
+		return text
+	}
+
+	switch officeNormalizeTableDisplayFormat(format) {
+	case "integer":
+		return strconv.FormatFloat(math.Round(value), 'f', 0, 64)
+	case "decimal":
+		return strconv.FormatFloat(value, 'f', 2, 64)
+	case "currency":
+		if value < 0 {
+			return "-$" + strconv.FormatFloat(math.Abs(value), 'f', 2, 64)
+		}
+		return "$" + strconv.FormatFloat(value, 'f', 2, 64)
+	case "percent":
+		return strconv.FormatFloat(value*100, 'f', 2, 64) + "%"
+	default:
+		return text
+	}
+}
+
+func officeParseTableTime(raw interface{}) (time.Time, bool) {
+	switch typed := raw.(type) {
+	case time.Time:
+		return typed, true
+	case string:
+		text := strings.TrimSpace(typed)
+		if text == "" {
+			return time.Time{}, false
+		}
+		layouts := []string{
+			time.RFC3339,
+			"2006-01-02 15:04:05",
+			"2006-01-02 15:04",
+			"2006-01-02",
+		}
+		for _, layout := range layouts {
+			ts, err := time.Parse(layout, text)
+			if err == nil {
+				return ts, true
+			}
+		}
+	}
+	return time.Time{}, false
 }
 
 func parseOfficeChart(raw interface{}) (*officeChartSpec, error) {
@@ -872,26 +1104,36 @@ func parseOfficeChart(raw interface{}) (*officeChartSpec, error) {
 			}
 		}
 		series = append(series, officeChartSeries{
-			Name:            firstNonEmptyOfficeString(strings.TrimSpace(anyToStringForLLM(firstMapValue(seriesItem, "name", "label"))), fmt.Sprintf("Series %d", idx+1)),
-			Type:            seriesType,
-			Axis:            seriesAxis,
-			Labels:          officeNormalizeChartLabels(firstMapValue(seriesItem, "labels", "data_labels", "show_labels", "showLabels")),
-			LabelPosition:   officeNormalizeChartLabelPosition(anyToStringForLLM(firstMapValue(seriesItem, "label_position", "labelPosition", "labels_position", "data_label_position", "dataLabelPosition"))),
-			LabelFormat:     officeNormalizeChartLabelFormat(anyToStringForLLM(firstMapValue(seriesItem, "label_format", "labelFormat", "labels_format", "data_label_format", "dataLabelFormat"))),
-			ShowValue:       officeNormalizeChartLabels(firstMapValue(seriesItem, "show_value", "showValue", "label_value", "labelValue")),
-			ShowCategory:    officeNormalizeChartLabels(firstMapValue(seriesItem, "show_category", "showCategory", "label_category", "labelCategory")),
-			ShowSeriesName:  officeNormalizeChartLabels(firstMapValue(seriesItem, "show_series_name", "showSeriesName", "label_series_name", "labelSeriesName")),
-			ShowPercent:     officeNormalizeChartLabels(firstMapValue(seriesItem, "show_percent", "showPercent", "label_percent", "labelPercent")),
-			ShowLegendKey:   officeNormalizeChartLabels(firstMapValue(seriesItem, "show_legend_key", "showLegendKey", "label_legend_key", "labelLegendKey")),
-			ShowBubbleSize:  officeNormalizeChartLabels(firstMapValue(seriesItem, "show_bubble_size", "showBubbleSize", "label_bubble_size", "labelBubbleSize")),
-			PointColors:     officeNormalizeChartPointColors(firstMapValue(seriesItem, "point_colors", "pointColors", "slice_colors", "sliceColors")),
-			PointExplosions: officeNormalizeChartPointExplosions(firstMapValue(seriesItem, "point_explosions", "pointExplosions", "slice_explosions", "sliceExplosions")),
-			Smooth:          officeNormalizeChartLabels(firstMapValue(seriesItem, "smooth", "smoothed", "smooth_lines", "smoothLines")),
-			Color:           officeNormalizeChartSeriesColor(anyToStringForLLM(firstMapValue(seriesItem, "color", "colour", "hex"))),
-			LineWidth:       officeNormalizeChartSeriesLineWidth(firstMapValue(seriesItem, "line_width", "lineWidth", "stroke_width", "strokeWidth")),
-			Dash:            officeNormalizeChartSeriesDash(anyToStringForLLM(firstMapValue(seriesItem, "dash", "dash_style", "dashStyle"))),
-			Marker:          officeNormalizeChartSeriesMarker(anyToStringForLLM(firstMapValue(seriesItem, "marker", "marker_style", "markerStyle"))),
-			Values:          values,
+			Name:                 firstNonEmptyOfficeString(strings.TrimSpace(anyToStringForLLM(firstMapValue(seriesItem, "name", "label"))), fmt.Sprintf("Series %d", idx+1)),
+			Type:                 seriesType,
+			Axis:                 seriesAxis,
+			Labels:               officeNormalizeChartLabels(firstMapValue(seriesItem, "labels", "data_labels", "show_labels", "showLabels")),
+			LabelPosition:        officeNormalizeChartLabelPosition(anyToStringForLLM(firstMapValue(seriesItem, "label_position", "labelPosition", "labels_position", "data_label_position", "dataLabelPosition"))),
+			LabelFormat:          officeNormalizeChartLabelFormat(anyToStringForLLM(firstMapValue(seriesItem, "label_format", "labelFormat", "labels_format", "data_label_format", "dataLabelFormat"))),
+			LabelSeparator:       officeNormalizeChartLabelSeparator(anyToStringForLLM(firstMapValue(seriesItem, "label_separator", "labelSeparator", "data_label_separator", "dataLabelSeparator"))),
+			ShowLeaderLines:      officeNormalizeChartLabels(firstMapValue(seriesItem, "show_leader_lines", "showLeaderLines", "label_leader_lines", "labelLeaderLines")),
+			ShowValue:            officeNormalizeChartLabels(firstMapValue(seriesItem, "show_value", "showValue", "label_value", "labelValue")),
+			ShowCategory:         officeNormalizeChartLabels(firstMapValue(seriesItem, "show_category", "showCategory", "label_category", "labelCategory")),
+			ShowSeriesName:       officeNormalizeChartLabels(firstMapValue(seriesItem, "show_series_name", "showSeriesName", "label_series_name", "labelSeriesName")),
+			ShowPercent:          officeNormalizeChartLabels(firstMapValue(seriesItem, "show_percent", "showPercent", "label_percent", "labelPercent")),
+			ShowLegendKey:        officeNormalizeChartLabels(firstMapValue(seriesItem, "show_legend_key", "showLegendKey", "label_legend_key", "labelLegendKey")),
+			ShowBubbleSize:       officeNormalizeChartLabels(firstMapValue(seriesItem, "show_bubble_size", "showBubbleSize", "label_bubble_size", "labelBubbleSize")),
+			PointShowLabels:      officeNormalizeChartPointLabelVisibility(firstMapValue(seriesItem, "point_show_labels", "pointShowLabels", "slice_show_labels", "sliceShowLabels")),
+			PointShowValues:      officeNormalizeChartPointLabelVisibility(firstMapValue(seriesItem, "point_show_values", "pointShowValues", "slice_show_values", "sliceShowValues")),
+			PointShowCategories:  officeNormalizeChartPointLabelVisibility(firstMapValue(seriesItem, "point_show_categories", "pointShowCategories", "slice_show_categories", "sliceShowCategories")),
+			PointShowSeriesNames: officeNormalizeChartPointLabelVisibility(firstMapValue(seriesItem, "point_show_series_names", "pointShowSeriesNames", "point_show_series_name", "pointShowSeriesName", "slice_show_series_names", "sliceShowSeriesNames", "slice_show_series_name", "sliceShowSeriesName")),
+			PointShowPercents:    officeNormalizeChartPointLabelVisibility(firstMapValue(seriesItem, "point_show_percents", "pointShowPercents", "point_show_percent", "pointShowPercent", "slice_show_percents", "sliceShowPercents", "slice_show_percent", "sliceShowPercent")),
+			PointLabelPositions:  officeNormalizeChartPointLabelPositions(firstMapValue(seriesItem, "point_label_positions", "pointLabelPositions", "slice_label_positions", "sliceLabelPositions")),
+			PointLabelFormats:    officeNormalizeChartPointLabelFormats(firstMapValue(seriesItem, "point_label_formats", "pointLabelFormats", "slice_label_formats", "sliceLabelFormats")),
+			PointLabelSeparators: officeNormalizeChartPointLabelSeparators(firstMapValue(seriesItem, "point_label_separators", "pointLabelSeparators", "slice_label_separators", "sliceLabelSeparators")),
+			PointColors:          officeNormalizeChartPointColors(firstMapValue(seriesItem, "point_colors", "pointColors", "slice_colors", "sliceColors")),
+			PointExplosions:      officeNormalizeChartPointExplosions(firstMapValue(seriesItem, "point_explosions", "pointExplosions", "slice_explosions", "sliceExplosions")),
+			Smooth:               officeNormalizeChartLabels(firstMapValue(seriesItem, "smooth", "smoothed", "smooth_lines", "smoothLines")),
+			Color:                officeNormalizeChartSeriesColor(anyToStringForLLM(firstMapValue(seriesItem, "color", "colour", "hex"))),
+			LineWidth:            officeNormalizeChartSeriesLineWidth(firstMapValue(seriesItem, "line_width", "lineWidth", "stroke_width", "strokeWidth")),
+			Dash:                 officeNormalizeChartSeriesDash(anyToStringForLLM(firstMapValue(seriesItem, "dash", "dash_style", "dashStyle"))),
+			Marker:               officeNormalizeChartSeriesMarker(anyToStringForLLM(firstMapValue(seriesItem, "marker", "marker_style", "markerStyle"))),
+			Values:               values,
 		})
 	}
 	if chartType == "combo" && (comboBars == 0 || comboLines == 0) {
@@ -1022,6 +1264,8 @@ func parseOfficeChart(raw interface{}) (*officeChartSpec, error) {
 		Labels:                                officeNormalizeChartLabels(firstMapValue(m, "labels", "data_labels", "show_labels", "showLabels")),
 		LabelPosition:                         officeNormalizeChartLabelPosition(anyToStringForLLM(firstMapValue(m, "label_position", "labelPosition", "labels_position", "data_label_position", "dataLabelPosition"))),
 		LabelFormat:                           officeNormalizeChartLabelFormat(anyToStringForLLM(firstMapValue(m, "label_format", "labelFormat", "labels_format", "data_label_format", "dataLabelFormat"))),
+		LabelSeparator:                        officeNormalizeChartLabelSeparator(anyToStringForLLM(firstMapValue(m, "label_separator", "labelSeparator", "data_label_separator", "dataLabelSeparator"))),
+		ShowLeaderLines:                       officeNormalizeChartLabels(firstMapValue(m, "show_leader_lines", "showLeaderLines", "label_leader_lines", "labelLeaderLines")),
 		ShowValue:                             officeNormalizeChartLabels(firstMapValue(m, "show_value", "showValue", "label_value", "labelValue")),
 		ShowCategory:                          officeNormalizeChartLabels(firstMapValue(m, "show_category", "showCategory", "label_category", "labelCategory")),
 		ShowSeriesName:                        officeNormalizeChartLabels(firstMapValue(m, "show_series_name", "showSeriesName", "label_series_name", "labelSeriesName")),
@@ -1191,6 +1435,131 @@ func officeNormalizeChartPointExplosions(raw interface{}) []int {
 		return nil
 	}
 	return append([]int(nil), explosions[:lastNonZero+1]...)
+}
+
+func officeNormalizeChartPointLabelVisibility(raw interface{}) []string {
+	var items []interface{}
+	switch typed := raw.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		items = typed
+	case []string:
+		items = make([]interface{}, 0, len(typed))
+		for _, value := range typed {
+			items = append(items, value)
+		}
+	case []bool:
+		items = make([]interface{}, 0, len(typed))
+		for _, value := range typed {
+			items = append(items, value)
+		}
+	default:
+		return nil
+	}
+	visibility := make([]string, 0, len(items))
+	lastNonEmpty := -1
+	for idx, item := range items {
+		value := officeNormalizeChartLabels(item)
+		visibility = append(visibility, value)
+		if value != "" {
+			lastNonEmpty = idx
+		}
+	}
+	if lastNonEmpty < 0 {
+		return nil
+	}
+	return append([]string(nil), visibility[:lastNonEmpty+1]...)
+}
+
+func officeNormalizeChartPointLabelPositions(raw interface{}) []string {
+	var items []interface{}
+	switch typed := raw.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		items = typed
+	case []string:
+		items = make([]interface{}, 0, len(typed))
+		for _, value := range typed {
+			items = append(items, value)
+		}
+	default:
+		return nil
+	}
+	positions := make([]string, 0, len(items))
+	lastNonEmpty := -1
+	for idx, item := range items {
+		value := officeNormalizeChartLabelPosition(anyToStringForLLM(item))
+		positions = append(positions, value)
+		if value != "" {
+			lastNonEmpty = idx
+		}
+	}
+	if lastNonEmpty < 0 {
+		return nil
+	}
+	return append([]string(nil), positions[:lastNonEmpty+1]...)
+}
+
+func officeNormalizeChartPointLabelFormats(raw interface{}) []string {
+	var items []interface{}
+	switch typed := raw.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		items = typed
+	case []string:
+		items = make([]interface{}, 0, len(typed))
+		for _, value := range typed {
+			items = append(items, value)
+		}
+	default:
+		return nil
+	}
+	formats := make([]string, 0, len(items))
+	lastNonEmpty := -1
+	for idx, item := range items {
+		value := officeNormalizeChartLabelFormat(anyToStringForLLM(item))
+		formats = append(formats, value)
+		if value != "" {
+			lastNonEmpty = idx
+		}
+	}
+	if lastNonEmpty < 0 {
+		return nil
+	}
+	return append([]string(nil), formats[:lastNonEmpty+1]...)
+}
+
+func officeNormalizeChartPointLabelSeparators(raw interface{}) []string {
+	var items []interface{}
+	switch typed := raw.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		items = typed
+	case []string:
+		items = make([]interface{}, 0, len(typed))
+		for _, value := range typed {
+			items = append(items, value)
+		}
+	default:
+		return nil
+	}
+	separators := make([]string, 0, len(items))
+	lastNonEmpty := -1
+	for idx, item := range items {
+		value := officeNormalizeChartLabelSeparator(anyToStringForLLM(item))
+		separators = append(separators, value)
+		if value != "" {
+			lastNonEmpty = idx
+		}
+	}
+	if lastNonEmpty < 0 {
+		return nil
+	}
+	return append([]string(nil), separators[:lastNonEmpty+1]...)
 }
 
 func officeNormalizeChartSeriesLineWidth(raw interface{}) float64 {
@@ -1382,6 +1751,14 @@ func officeNormalizeChartLabelFormat(format string) string {
 		return ""
 	}
 	return format
+}
+
+func officeNormalizeChartLabelSeparator(separator string) string {
+	separator = strings.TrimSpace(separator)
+	if separator == "" {
+		return ""
+	}
+	return separator
 }
 
 func officeNormalizeChartAxisFormat(format string) string {

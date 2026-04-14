@@ -292,7 +292,10 @@ function openTerminalFullscreen() {
             {{ displayTitle }}
           </div>
 
-          <div v-if="summaryItems.length" class="mt-2 flex flex-wrap items-center gap-2">
+          <div
+            v-if="summaryItems.length"
+            class="mt-2 flex flex-wrap items-center gap-2"
+          >
             <span
               v-for="item in summaryItems"
               :key="item.key"
@@ -374,7 +377,10 @@ function openTerminalFullscreen() {
     </div>
 
     <div class="p-3">
-      <div class="overflow-hidden rounded-xl border shadow-sm" :class="surfaceTone.shell">
+      <div
+        class="overflow-hidden rounded-xl border shadow-sm"
+        :class="surfaceTone.shell"
+      >
         <div
           class="flex items-center justify-between gap-3 border-b px-3 py-2 text-[11px] font-medium uppercase tracking-[0.08em]"
           :class="surfaceTone.chrome"
@@ -392,21 +398,23 @@ function openTerminalFullscreen() {
           </span>
         </div>
 
-        <div class="overflow-auto" :class="surfaceTone.body" :style="containerStyle">
-          <pre class="p-4 text-sm leading-relaxed whitespace-pre-wrap break-words"
-            ><template v-for="(line, lineIndex) in parsedLines" :key="lineIndex"
-              ><span
-                v-if="card.showPrompt && promptToken && lineIndex === 0"
-                :class="surfaceTone.prompt"
-                >{{ card.prompt }}</span
-              ><template v-for="(segment, segIndex) in line" :key="segIndex"
-                ><span
-                  :class="[...segment.classes, segment.isReverse ? 'ansi-reverse' : '']"
-                  >{{ segment.text }}</span
-                ></template
-              >{{ lineIndex < parsedLines.length - 1 ? '\n' : '' }}</template
-            ></pre
-          >
+        <div
+          class="overflow-auto"
+          :class="surfaceTone.body"
+          :style="containerStyle"
+        >
+          <pre class="p-4 text-sm leading-relaxed whitespace-pre-wrap break-words"><template
+v-for="(line, lineIndex) in parsedLines"
+                                                                                             :key="lineIndex"
+><span
+                                                                                               v-if="card.showPrompt && promptToken && lineIndex === 0"
+                                                                                               :class="surfaceTone.prompt"
+                                                                                             >{{ card.prompt }}</span><template
+v-for="(segment, segIndex) in line"
+                                                                                                                                :key="segIndex"
+><span
+                                                                                                                                  :class="[...segment.classes, segment.isReverse ? 'ansi-reverse' : '']"
+          >{{ segment.text }}</span></template>{{ lineIndex < parsedLines.length - 1 ? '\n' : '' }}</template></pre>
         </div>
       </div>
     </div>

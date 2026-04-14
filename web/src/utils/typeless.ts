@@ -557,7 +557,7 @@ function tryParseIncompleteJSON(jsonStr: string): unknown | null {
   }
 
   // Try normalizing loose JSON first (single quotes, unquoted keys, trailing commas)
-  let normalized = normalizeLooseJSON(jsonStr)
+  const normalized = normalizeLooseJSON(jsonStr)
 
   // Count opening and closing brackets/braces
   const closeBrackets = (s: string): string => {
@@ -1005,7 +1005,7 @@ function parseTypelessContentInternal(
     const fencePositions: number[] = []
     const startMatches: number[] = []
     let searchStart = 0
-    while (true) {
+    for (;;) {
       const idx = text.indexOf(markerEnd, searchStart)
       if (idx === -1) break
       fencePositions.push(idx)

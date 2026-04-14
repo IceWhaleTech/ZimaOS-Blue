@@ -270,25 +270,38 @@ onUnmounted(() => {
         </div>
 
         <div class="dashboard-hero-copy">
-          <h1 class="dashboard-welcome-title">{{ t('home.welcome') }}</h1>
-          <p class="dashboard-description">{{ t('home.description') }}</p>
+          <h1 class="dashboard-welcome-title">
+            {{ t('home.welcome') }}
+          </h1>
+          <p class="dashboard-description">
+            {{ t('home.description') }}
+          </p>
         </div>
       </section>
 
       <section class="dashboard-shell">
-        <section v-if="showStatusCard" class="dashboard-status-row">
+        <section
+          v-if="showStatusCard"
+          class="dashboard-status-row"
+        >
           <div class="dashboard-card-surface dashboard-status-shell p-4">
             <SystemStatusCard compact />
           </div>
         </section>
 
-        <section v-if="visiblePrimaryCards.length > 0" class="dashboard-primary-grid">
+        <section
+          v-if="visiblePrimaryCards.length > 0"
+          class="dashboard-primary-grid"
+        >
           <div
             v-for="card in visiblePrimaryCards"
             :key="card.id"
             class="dashboard-card-surface dashboard-small-card-shell p-4"
           >
-            <component :is="card.component" v-bind="card.props" />
+            <component
+              :is="card.component"
+              v-bind="card.props"
+            />
           </div>
         </section>
 
@@ -301,17 +314,28 @@ onUnmounted(() => {
         <section class="dashboard-details-stage">
           <div class="dashboard-card-surface dashboard-details-toggle">
             <div class="dashboard-card-copy min-w-0">
-              <p class="dashboard-card-label">{{ t('system.detailedInfo') }}</p>
-              <h2 class="dashboard-card-subtitle mt-2">{{ t('system.detailedSystemInfo') }}</h2>
+              <p class="dashboard-card-label">
+                {{ t('system.detailedInfo') }}
+              </p>
+              <h2 class="dashboard-card-subtitle mt-2">
+                {{ t('system.detailedSystemInfo') }}
+              </h2>
             </div>
-            <button class="dashboard-details-button" type="button" @click="toggleDetailedInfo">
+            <button
+              class="dashboard-details-button"
+              type="button"
+              @click="toggleDetailedInfo"
+            >
               <span class="dashboard-card-chip">
                 {{ showDetailedInfo ? t('common.close') : t('system.detailedInfo') }}
               </span>
             </button>
           </div>
 
-          <div v-if="showDetailedInfo" class="dashboard-details-grid">
+          <div
+            v-if="showDetailedInfo"
+            class="dashboard-details-grid"
+          >
             <div
               v-if="detailedInfoLoading"
               class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full dashboard-details-empty"
@@ -324,7 +348,9 @@ onUnmounted(() => {
             <template v-else-if="detailedInfo">
               <div class="dashboard-card-surface dashboard-details-panel">
                 <div class="dashboard-details-panel-head">
-                  <p class="dashboard-card-label">{{ t('system.osInfo') }}</p>
+                  <p class="dashboard-card-label">
+                    {{ t('system.osInfo') }}
+                  </p>
                 </div>
                 <div class="dashboard-details-kv-grid">
                   <div
@@ -344,7 +370,9 @@ onUnmounted(() => {
 
               <div class="dashboard-card-surface dashboard-details-panel">
                 <div class="dashboard-details-panel-head">
-                  <p class="dashboard-card-label">{{ t('system.cpuInfo') }}</p>
+                  <p class="dashboard-card-label">
+                    {{ t('system.cpuInfo') }}
+                  </p>
                 </div>
                 <div class="dashboard-details-split">
                   <div class="dashboard-details-visual">
@@ -375,7 +403,9 @@ onUnmounted(() => {
 
               <div class="dashboard-card-surface dashboard-details-panel">
                 <div class="dashboard-details-panel-head">
-                  <p class="dashboard-card-label">{{ t('system.memoryInfo') }}</p>
+                  <p class="dashboard-card-label">
+                    {{ t('system.memoryInfo') }}
+                  </p>
                 </div>
                 <div class="dashboard-details-split">
                   <div class="dashboard-details-visual">
@@ -444,7 +474,9 @@ onUnmounted(() => {
 
               <div class="dashboard-card-surface dashboard-details-panel">
                 <div class="dashboard-details-panel-head">
-                  <p class="dashboard-card-label">{{ t('system.runtimeInfo') }}</p>
+                  <p class="dashboard-card-label">
+                    {{ t('system.runtimeInfo') }}
+                  </p>
                 </div>
                 <div class="dashboard-details-kv-grid">
                   <div
@@ -467,7 +499,9 @@ onUnmounted(() => {
                 class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full"
               >
                 <div class="dashboard-details-panel-head">
-                  <p class="dashboard-card-label">{{ t('system.gpuInfo') }}</p>
+                  <p class="dashboard-card-label">
+                    {{ t('system.gpuInfo') }}
+                  </p>
                 </div>
                 <div class="dashboard-details-resource-grid">
                   <div
@@ -487,7 +521,10 @@ onUnmounted(() => {
                       <span class="dashboard-card-chip">{{ gpu.driver || '-' }}</span>
                     </div>
 
-                    <div v-if="gpu.memory_total > 0" class="mt-4">
+                    <div
+                      v-if="gpu.memory_total > 0"
+                      class="mt-4"
+                    >
                       <div class="mb-3 flex items-center justify-between gap-3 text-sm">
                         <span class="dashboard-card-title">{{ t('system.vram') }}</span>
                         <span class="dashboard-card-subtitle text-sm">
@@ -511,7 +548,9 @@ onUnmounted(() => {
                 class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full"
               >
                 <div class="dashboard-details-panel-head">
-                  <p class="dashboard-card-label">{{ t('system.diskInfo') }}</p>
+                  <p class="dashboard-card-label">
+                    {{ t('system.diskInfo') }}
+                  </p>
                 </div>
                 <div class="dashboard-details-resource-grid">
                   <div
@@ -559,7 +598,9 @@ onUnmounted(() => {
                 class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full"
               >
                 <div class="dashboard-details-panel-head">
-                  <p class="dashboard-card-label">{{ t('system.networkInfo') }}</p>
+                  <p class="dashboard-card-label">
+                    {{ t('system.networkInfo') }}
+                  </p>
                 </div>
                 <div class="dashboard-details-network-list">
                   <div
@@ -577,7 +618,10 @@ onUnmounted(() => {
                     </div>
 
                     <div class="dashboard-details-kv-grid dashboard-details-kv-grid-compact mt-4">
-                      <div v-if="iface.mac" class="dashboard-details-network-field">
+                      <div
+                        v-if="iface.mac"
+                        class="dashboard-details-network-field"
+                      >
                         <p class="dashboard-card-label dashboard-details-micro-label">
                           {{ t('system.macAddress') }}
                         </p>
@@ -586,7 +630,10 @@ onUnmounted(() => {
                         </p>
                       </div>
 
-                      <div v-if="iface.ipv4?.length" class="dashboard-details-network-field">
+                      <div
+                        v-if="iface.ipv4?.length"
+                        class="dashboard-details-network-field"
+                      >
                         <p class="dashboard-card-label dashboard-details-micro-label">
                           {{ t('system.ipv4Address') }}
                         </p>
@@ -613,7 +660,9 @@ onUnmounted(() => {
               v-else
               class="dashboard-card-surface dashboard-details-panel dashboard-details-panel-span-full dashboard-details-empty"
             >
-              <p class="dashboard-card-footnote text-sm">{{ t('system.noDetailedInfo') }}</p>
+              <p class="dashboard-card-footnote text-sm">
+                {{ t('system.noDetailedInfo') }}
+              </p>
             </div>
           </div>
         </section>

@@ -583,6 +583,7 @@ class StreamingTTSManager {
   private playbackStarted = false // whether play() has been called
   private generation = 0 // increments on reset/stop — stale async callbacks bail out
   private activeFetches = 0 // concurrent fetch limiter
+  private pendingPlayRetries = new Map<number, number>()
   private static readonly MAX_CONCURRENT_FETCHES = 2
   private currentEventSource: EventSource | null = null
   private locale: string = 'en-US'
@@ -608,6 +609,7 @@ class StreamingTTSManager {
     this.fetchIndex = 0
     this.isPlaying = false
     this.activeFetches = 0
+    this.pendingPlayRetries.clear()
   }
 
   // Prefetch only — enqueue sentences and start fetching audio, but don't play
@@ -617,6 +619,7 @@ class StreamingTTSManager {
       this.queue = []
       this.playIndex = 0
       this.fetchIndex = 0
+      this.pendingPlayRetries.clear()
     }
 
     const processedText = preprocessForSpeech(text, this.locale)
@@ -840,23 +843,22 @@ class StreamingTTSManager {
     }
 
     if (!item.fetchDone) {
-      const retryKey = `_retries_${this.playIndex}`
-      const retries = (this as any)[retryKey] || 0
+      const retries = this.pendingPlayRetries.get(this.playIndex) || 0
       if (retries > 150) {
         console.warn('TTS audio fetch timeout, skipping sentence:', item.text)
-        delete (this as any)[retryKey]
+        this.pendingPlayRetries.delete(this.playIndex)
         this.playIndex++
         this.playNext()
         return
       }
-      ;(this as any)[retryKey] = retries + 1
+      this.pendingPlayRetries.set(this.playIndex, retries + 1)
       setTimeout(() => {
         if (gen === this.generation) this.playNext()
       }, 100)
       return
     }
 
-    delete (this as any)[`_retries_${this.playIndex}`]
+    this.pendingPlayRetries.delete(this.playIndex)
 
     const segments = item.segments || []
     if (segments.length === 0) {
@@ -903,6 +905,7 @@ class StreamingTTSManager {
     this.playIndex = 0
     this.fetchIndex = 0
     this.activeFetches = 0
+    this.pendingPlayRetries.clear()
     this.currentEventSource?.close()
     ttsAudioManager.stop()
     if (shouldStopServerSpeech) {

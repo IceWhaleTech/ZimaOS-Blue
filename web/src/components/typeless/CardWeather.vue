@@ -34,9 +34,15 @@ function getForecastIcon(condition: string): string {
     <div class="p-6">
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm opacity-90">{{ card.location }}</p>
-          <p class="text-5xl font-light mt-2">{{ getTemperatureDisplay() }}</p>
-          <p class="text-lg mt-2 capitalize">{{ card.condition.replace('-', ' ') }}</p>
+          <p class="text-sm opacity-90">
+            {{ card.location }}
+          </p>
+          <p class="text-5xl font-light mt-2">
+            {{ getTemperatureDisplay() }}
+          </p>
+          <p class="text-lg mt-2 capitalize">
+            {{ card.condition.replace('-', ' ') }}
+          </p>
         </div>
         <div class="text-6xl">
           {{ weatherIcons[card.condition] || '🌡️' }}
@@ -48,7 +54,10 @@ function getForecastIcon(condition: string): string {
         v-if="card.humidity !== undefined || card.windSpeed !== undefined"
         class="mt-6 flex gap-6"
       >
-        <div v-if="card.humidity !== undefined" class="flex items-center gap-2">
+        <div
+          v-if="card.humidity !== undefined"
+          class="flex items-center gap-2"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-5 w-5 opacity-80"
@@ -65,7 +74,10 @@ function getForecastIcon(condition: string): string {
           </svg>
           <span class="text-sm">{{ card.humidity }}%</span>
         </div>
-        <div v-if="card.windSpeed !== undefined" class="flex items-center gap-2">
+        <div
+          v-if="card.windSpeed !== undefined"
+          class="flex items-center gap-2"
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="h-5 w-5 opacity-80"
@@ -86,12 +98,23 @@ function getForecastIcon(condition: string): string {
     </div>
 
     <!-- Forecast -->
-    <div v-if="card.forecast?.length" class="px-6 pb-4">
+    <div
+      v-if="card.forecast?.length"
+      class="px-6 pb-4"
+    >
       <div class="pt-4 border-t border-white/20">
         <div class="grid grid-cols-5 gap-2">
-          <div v-for="(day, index) in card.forecast.slice(0, 5)" :key="index" class="text-center">
-            <p class="text-xs opacity-80">{{ day.day }}</p>
-            <p class="text-xl my-1">{{ getForecastIcon(day.condition) }}</p>
+          <div
+            v-for="(day, index) in card.forecast.slice(0, 5)"
+            :key="index"
+            class="text-center"
+          >
+            <p class="text-xs opacity-80">
+              {{ day.day }}
+            </p>
+            <p class="text-xl my-1">
+              {{ getForecastIcon(day.condition) }}
+            </p>
             <p class="text-xs">
               <span class="font-medium">{{ day.high }}°</span>
               <span class="opacity-70"> / {{ day.low }}°</span>

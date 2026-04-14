@@ -108,20 +108,31 @@ onUnmounted(() => {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy min-w-0">
-          <p class="dashboard-card-label">{{ t('dashboard.cards.failoverStatus') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('dashboard.cards.failoverStatus') }}
+          </p>
           <p class="dashboard-card-subtitle mt-2">
             {{ t('settings.failover.successRate') }}
-            <span class="ms-1" :class="successRateColor">{{ loading ? '-' : statusText }}</span>
+            <span
+              class="ms-1"
+              :class="successRateColor"
+            >{{ loading ? '-' : statusText }}</span>
           </p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2 text-xs">
           <span class="dashboard-card-chip">{{
             config?.enabled ? t('common.enabled') : t('common.disabled')
           }}</span>
-          <span v-if="config?.circuit_breaker" class="dashboard-card-chip">{{
+          <span
+            v-if="config?.circuit_breaker"
+            class="dashboard-card-chip"
+          >{{
             t('settings.failover.circuitBreakerEnabled')
           }}</span>
-          <span v-if="config?.streaming_anomaly?.enabled" class="dashboard-card-chip">{{
+          <span
+            v-if="config?.streaming_anomaly?.enabled"
+            class="dashboard-card-chip"
+          >{{
             t('settings.failover.anomalyDetection')
           }}</span>
         </div>
@@ -181,13 +192,17 @@ onUnmounted(() => {
           <p class="mb-2 text-gray-500 dark:text-gray-400">
             {{ t('settings.failover.circuitBreakers') }}
           </p>
-          <div v-if="totalBreakers === 0" class="text-gray-400">
+          <div
+            v-if="totalBreakers === 0"
+            class="text-gray-400"
+          >
             {{ t('settings.failover.noBreakers') }}
           </div>
-          <div v-else class="flex flex-wrap gap-2">
-            <span class="dashboard-card-chip text-green-700 dark:text-green-300"
-              >{{ healthyBreakersCount }} {{ t('settings.failover.chips.healthy') }}</span
-            >
+          <div
+            v-else
+            class="flex flex-wrap gap-2"
+          >
+            <span class="dashboard-card-chip text-green-700 dark:text-green-300">{{ healthyBreakersCount }} {{ t('settings.failover.chips.healthy') }}</span>
             <span
               v-if="halfOpenBreakersCount > 0"
               class="dashboard-card-chip text-yellow-700 dark:text-yellow-300"
@@ -207,11 +222,21 @@ onUnmounted(() => {
           <p class="mb-2 text-gray-500 dark:text-gray-400">
             {{ t('settings.failover.topErrors') }}
           </p>
-          <div v-if="topErrors.length === 0" class="text-gray-400">
+          <div
+            v-if="topErrors.length === 0"
+            class="text-gray-400"
+          >
             {{ t('settings.failover.noErrors') }}
           </div>
-          <div v-else class="flex flex-wrap gap-2">
-            <span v-for="err in topErrors" :key="err.type" class="dashboard-card-chip">
+          <div
+            v-else
+            class="flex flex-wrap gap-2"
+          >
+            <span
+              v-for="err in topErrors"
+              :key="err.type"
+              class="dashboard-card-chip"
+            >
               {{ err.label }} <span class="font-semibold">{{ err.count }}</span>
             </span>
           </div>

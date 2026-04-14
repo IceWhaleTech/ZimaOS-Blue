@@ -20,8 +20,8 @@ func TestChannel_Name(t *testing.T) {
 	logger := zap.NewNop()
 	ch := New(cfg, logger)
 
-	if ch.Name() != "wechat_work" {
-		t.Errorf("expected name 'wechat_work', got %s", ch.Name())
+	if ch.Name() != "wechat" {
+		t.Errorf("expected name 'wechat', got %s", ch.Name())
 	}
 }
 
@@ -51,8 +51,8 @@ func TestChannel_Info(t *testing.T) {
 	ch := New(cfg, logger)
 
 	info := ch.Info()
-	if info.Name != "wechat_work" {
-		t.Errorf("expected name 'wechat_work', got %s", info.Name)
+	if info.Name != "wechat" {
+		t.Errorf("expected name 'wechat', got %s", info.Name)
 	}
 	if info.Type != "wechat_work" {
 		t.Errorf("expected type 'wechat_work', got %s", info.Type)
@@ -68,6 +68,9 @@ func TestChannel_Info(t *testing.T) {
 	}
 	if info.Metadata["agent_id"] != "test-agent-id" {
 		t.Errorf("expected agent_id 'test-agent-id', got %v", info.Metadata["agent_id"])
+	}
+	if info.Metadata["provider"] != "wechat_work" {
+		t.Errorf("expected provider 'wechat_work', got %v", info.Metadata["provider"])
 	}
 }
 
@@ -222,8 +225,8 @@ func TestChannel_convertMessage(t *testing.T) {
 			if result.Type != tt.expected {
 				t.Errorf("expected type %s, got %s", tt.expected, result.Type)
 			}
-			if result.ChannelName != "wechat_work" {
-				t.Errorf("expected channel name 'wechat_work', got %s", result.ChannelName)
+			if result.ChannelName != "wechat" {
+				t.Errorf("expected channel name 'wechat', got %s", result.ChannelName)
 			}
 			if result.ID != tt.msg.MsgId {
 				t.Errorf("expected ID %s, got %s", tt.msg.MsgId, result.ID)

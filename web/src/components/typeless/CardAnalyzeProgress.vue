@@ -172,7 +172,10 @@ function stepCount(step: ProgressStep): string {
         v-if="isRunning"
         class="ms-auto inline-block w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse flex-shrink-0"
       />
-      <span v-else class="ms-auto text-xs text-gray-400 tabular-nums">{{ progressPercent }}%</span>
+      <span
+        v-else
+        class="ms-auto text-xs text-gray-400 tabular-nums"
+      >{{ progressPercent }}%</span>
     </div>
 
     <!-- Progress bar -->
@@ -195,7 +198,10 @@ function stepCount(step: ProgressStep): string {
           class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
           :class="[stepColor(step.status), stepBg(step.status)]"
         >
-          <span v-if="step.status === 'running'" class="animate-spin">{{
+          <span
+            v-if="step.status === 'running'"
+            class="animate-spin"
+          >{{
             stepIcon(step.status)
           }}</span>
           <span v-else>{{ stepIcon(step.status) }}</span>

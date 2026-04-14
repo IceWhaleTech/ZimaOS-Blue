@@ -259,19 +259,32 @@ function evidenceDomain(item: AdvisorEvidenceItem): string {
     </div>
 
     <div class="space-y-4 px-4 py-4">
-      <div v-if="whyItems.length" class="space-y-2">
+      <div
+        v-if="whyItems.length"
+        class="space-y-2"
+      >
         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
           {{ t('advisorCard.rationale', 'Why') }}
         </p>
         <ul class="space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
-          <li v-for="item in whyItems" :key="item" class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800/60">
+          <li
+            v-for="item in whyItems"
+            :key="item"
+            class="rounded-xl bg-slate-50 px-3 py-2 dark:bg-slate-800/60"
+          >
             {{ item }}
           </li>
         </ul>
       </div>
 
-      <div v-if="candidates.length || weights.length" class="grid gap-4 md:grid-cols-2">
-        <div v-if="candidates.length" class="rounded-2xl border border-slate-200/80 p-3 dark:border-slate-700/70">
+      <div
+        v-if="candidates.length || weights.length"
+        class="grid gap-4 md:grid-cols-2"
+      >
+        <div
+          v-if="candidates.length"
+          class="rounded-2xl border border-slate-200/80 p-3 dark:border-slate-700/70"
+        >
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
             {{ t('advisorCard.topCandidates', 'Top candidates') }}
           </p>
@@ -286,20 +299,28 @@ function evidenceDomain(item: AdvisorEvidenceItem): string {
                   <p class="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
                     {{ candidateName(candidate) }}
                   </p>
-                  <p v-if="candidateVerdict(candidate)" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  <p
+                    v-if="candidateVerdict(candidate)"
+                    class="mt-1 text-xs text-slate-500 dark:text-slate-400"
+                  >
                     {{ candidateVerdict(candidate) }}
                   </p>
                 </div>
                 <div class="text-right text-xs text-slate-500 dark:text-slate-400">
                   <p>{{ candidateRank(candidate, index) }}</p>
-                  <p v-if="candidateScore(candidate)">{{ candidateScore(candidate) }}</p>
+                  <p v-if="candidateScore(candidate)">
+                    {{ candidateScore(candidate) }}
+                  </p>
                 </div>
               </div>
             </li>
           </ul>
         </div>
 
-        <div v-if="weights.length" class="rounded-2xl border border-slate-200/80 p-3 dark:border-slate-700/70">
+        <div
+          v-if="weights.length"
+          class="rounded-2xl border border-slate-200/80 p-3 dark:border-slate-700/70"
+        >
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
             {{ t('advisorCard.weightedCriteria', 'Weighted criteria') }}
           </p>
@@ -322,34 +343,61 @@ function evidenceDomain(item: AdvisorEvidenceItem): string {
         v-if="tradeoffs.length || risks.length || bestPractices.length || alternatives.length || secondOpinionText"
         class="grid gap-4 md:grid-cols-2"
       >
-        <div v-if="tradeoffs.length" class="rounded-2xl border border-amber-200/80 p-3 dark:border-amber-800/60">
+        <div
+          v-if="tradeoffs.length"
+          class="rounded-2xl border border-amber-200/80 p-3 dark:border-amber-800/60"
+        >
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700 dark:text-amber-200">
             {{ t('advisorCard.tradeoffs', 'Tradeoffs') }}
           </p>
           <ul class="mt-3 space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
-            <li v-for="item in tradeoffs" :key="item">{{ item }}</li>
+            <li
+              v-for="item in tradeoffs"
+              :key="item"
+            >
+              {{ item }}
+            </li>
           </ul>
         </div>
 
-        <div v-if="risks.length" class="rounded-2xl border border-rose-200/80 p-3 dark:border-rose-800/60">
+        <div
+          v-if="risks.length"
+          class="rounded-2xl border border-rose-200/80 p-3 dark:border-rose-800/60"
+        >
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700 dark:text-rose-200">
             {{ t('advisorCard.risks', 'Risks') }}
           </p>
           <ul class="mt-3 space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
-            <li v-for="item in risks" :key="item">{{ item }}</li>
+            <li
+              v-for="item in risks"
+              :key="item"
+            >
+              {{ item }}
+            </li>
           </ul>
         </div>
 
-        <div v-if="bestPractices.length" class="rounded-2xl border border-emerald-200/80 p-3 dark:border-emerald-800/60">
+        <div
+          v-if="bestPractices.length"
+          class="rounded-2xl border border-emerald-200/80 p-3 dark:border-emerald-800/60"
+        >
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-200">
             {{ t('advisorCard.bestPractices', 'Best practices') }}
           </p>
           <ul class="mt-3 space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
-            <li v-for="item in bestPractices" :key="item">{{ item }}</li>
+            <li
+              v-for="item in bestPractices"
+              :key="item"
+            >
+              {{ item }}
+            </li>
           </ul>
         </div>
 
-        <div v-if="alternatives.length || secondOpinionText" class="rounded-2xl border border-slate-200/80 p-3 dark:border-slate-700/70">
+        <div
+          v-if="alternatives.length || secondOpinionText"
+          class="rounded-2xl border border-slate-200/80 p-3 dark:border-slate-700/70"
+        >
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
             {{
               alternatives.length
@@ -357,8 +405,16 @@ function evidenceDomain(item: AdvisorEvidenceItem): string {
                 : t('advisorCard.secondOpinion', 'Second opinion')
             }}
           </p>
-          <ul v-if="alternatives.length" class="mt-3 space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
-            <li v-for="item in alternatives" :key="item">{{ item }}</li>
+          <ul
+            v-if="alternatives.length"
+            class="mt-3 space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200"
+          >
+            <li
+              v-for="item in alternatives"
+              :key="item"
+            >
+              {{ item }}
+            </li>
           </ul>
           <p
             v-if="secondOpinionText"
@@ -372,7 +428,10 @@ function evidenceDomain(item: AdvisorEvidenceItem): string {
         </div>
       </div>
 
-      <div v-if="evidenceItems.length" class="space-y-2">
+      <div
+        v-if="evidenceItems.length"
+        class="space-y-2"
+      >
         <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
           {{ t('advisorCard.evidence', 'Evidence') }}
         </p>
@@ -386,7 +445,10 @@ function evidenceDomain(item: AdvisorEvidenceItem): string {
             class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 transition-colors hover:border-sky-300 hover:text-sky-700 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-700 dark:hover:text-sky-200"
           >
             <span class="min-w-0 truncate">{{ evidenceLabel(item) }}</span>
-            <span v-if="evidenceDomain(item)" class="flex-shrink-0 text-xs text-slate-500 dark:text-slate-400">
+            <span
+              v-if="evidenceDomain(item)"
+              class="flex-shrink-0 text-xs text-slate-500 dark:text-slate-400"
+            >
               {{ evidenceDomain(item) }}
             </span>
           </a>

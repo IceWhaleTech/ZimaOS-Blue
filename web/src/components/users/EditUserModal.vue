@@ -247,19 +247,30 @@ onMounted(() => {
         <!-- Content -->
         <div class="px-6 py-4">
           <!-- Error message -->
-          <div v-if="error" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-            <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+          <div
+            v-if="error"
+            class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg"
+          >
+            <p class="text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
           </div>
 
           <!-- Admin notice -->
-          <div v-if="isAdmin" class="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+          <div
+            v-if="isAdmin"
+            class="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg"
+          >
             <p class="text-sm text-purple-600 dark:text-purple-400">
               {{ t('users.adminNotice') }}
             </p>
           </div>
 
           <!-- Form -->
-          <form class="space-y-4" @submit.prevent="handleSubmit">
+          <form
+            class="space-y-4"
+            @submit.prevent="handleSubmit"
+          >
             <!-- Username (read-only) -->
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -270,7 +281,7 @@ onMounted(() => {
                 type="text"
                 class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                 disabled
-              />
+              >
             </div>
 
             <!-- Email -->
@@ -283,7 +294,7 @@ onMounted(() => {
                 type="email"
                 class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('users.emailPlaceholder')"
-              />
+              >
             </div>
 
             <!-- Role (not for admin) -->
@@ -295,8 +306,12 @@ onMounted(() => {
                 v-model="role"
                 class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
               >
-                <option value="user">{{ t('users.roleUser') }}</option>
-                <option value="guest">{{ t('users.roleGuest') }}</option>
+                <option value="user">
+                  {{ t('users.roleUser') }}
+                </option>
+                <option value="guest">
+                  {{ t('users.roleGuest') }}
+                </option>
               </select>
             </div>
 
@@ -318,7 +333,7 @@ onMounted(() => {
                     type="checkbox"
                     :value="perm.key"
                     class="w-4 h-4 text-gray-900 dark:text-gray-300 border-gray-300 rounded focus:ring-gray-400"
-                  />
+                  >
                   <div>
                     <span class="text-sm text-gray-900 dark:text-white">{{
                       t(`users.pagePermissions.${perm.key}`, perm.name)
@@ -356,7 +371,7 @@ onMounted(() => {
                       :type="showPassword ? 'text' : 'password'"
                       class="w-full px-3 py-2 pe-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                       :minlength="policy.min_length"
-                    />
+                    >
                     <button
                       type="button"
                       class="absolute end-2 top-1/2 -translate-y-1/2 p-1 text-gray-500"
@@ -401,7 +416,10 @@ onMounted(() => {
                     </button>
                   </div>
                   <!-- Password Strength -->
-                  <div v-if="!policyLoading && newPassword.length > 0" class="mt-2 space-y-2">
+                  <div
+                    v-if="!policyLoading && newPassword.length > 0"
+                    class="mt-2 space-y-2"
+                  >
                     <div class="flex gap-1">
                       <div
                         v-for="i in passwordChecks.length"
@@ -437,8 +455,11 @@ onMounted(() => {
                       passwordMismatch ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'
                     "
                     :placeholder="t('auth.confirmPasswordPlaceholder')"
-                  />
-                  <p v-if="passwordMismatch" class="mt-1 text-sm text-red-500">
+                  >
+                  <p
+                    v-if="passwordMismatch"
+                    class="mt-1 text-sm text-red-500"
+                  >
                     {{ t('auth.passwordMismatch') }}
                   </p>
                 </div>

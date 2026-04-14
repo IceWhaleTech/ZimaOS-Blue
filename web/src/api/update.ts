@@ -41,7 +41,7 @@ export interface ApplyResponse {
   version?: string
 }
 
-const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+const isDesktop = typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__
 
 export const updateApi = {
   check: () => api.get<UpdateInfo>('/system/update/check'),
@@ -50,7 +50,7 @@ export const updateApi = {
   downloadOTA: () => api.post<{ status: string }>('/system/update/download-ota'),
   apply: () => api.post<ApplyResponse>('/system/update/apply'),
   rollback: () => api.post<{ status: string }>('/system/update/rollback'),
-  history: () => api.get<any[]>('/system/update/history'),
+  history: () => api.get<unknown[]>('/system/update/history'),
   ota: () =>
     api.get<OTAStatus>('/system/update/ota', { params: isDesktop ? { desktop: '1' } : undefined }),
   releaseNotes: (url?: string) =>

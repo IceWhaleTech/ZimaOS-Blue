@@ -1708,9 +1708,9 @@ describe('Chat Store', () => {
         ],
       } as never)
 
-      let streamOptions: any
+      let _streamOptions: unknown
       mocks.sseConnect.mockImplementationOnce(async (_conversationId, _request, options: any) => {
-        streamOptions = options
+        _streamOptions = options
         options.onError?.(new Error('STREAM_EMPTY'))
       })
 

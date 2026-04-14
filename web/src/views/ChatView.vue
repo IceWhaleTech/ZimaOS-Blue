@@ -831,9 +831,6 @@ function getMessageRenderMetaKey(message: MessageMemoSource): string {
 }
 
 const messageRenderMetaKeyCache = new WeakMap<MessageMemoSource, string>()
-let lastRenderMetaLookupKey = ''
-let lastRenderMetaLookupMessage: MessageMemoSource | null = null
-let lastRenderMetaLookupValue: MessageRenderMeta | null = null
 let lastActiveMessageStreamStateDeps:
   | readonly [
       phase: string,
@@ -931,9 +928,6 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     cached.memoDeps[11] === useVirtualScroll.value &&
     cached.memoDeps[12] === streamState
   ) {
-    lastRenderMetaLookupKey = cacheKey
-    lastRenderMetaLookupMessage = message
-    lastRenderMetaLookupValue = cached
     return cached
   }
 
@@ -980,9 +974,6 @@ function getMessageRenderMeta(message: MessageMemoSource): MessageRenderMeta {
     messageRenderMetaCache.clear()
   }
   messageRenderMetaCache.set(cacheKey, nextMeta)
-  lastRenderMetaLookupKey = cacheKey
-  lastRenderMetaLookupMessage = message
-  lastRenderMetaLookupValue = nextMeta
   return nextMeta
 }
 
@@ -1885,9 +1876,6 @@ watch(
   () => chatStore.currentConversationId,
   async (newId, oldId) => {
     messageRenderMetaCache.clear()
-    lastRenderMetaLookupKey = ''
-    lastRenderMetaLookupMessage = null
-    lastRenderMetaLookupValue = null
     lastActiveMessageStreamStateDeps = null
     lastActiveMessageStreamStateValue = null
     clearVirtualItemObservers()
@@ -2923,7 +2911,7 @@ onMounted(async () => {
       providerPoolStore
         .fetchProviders()
         .then(() => {
-          const llmProviders = providerPoolStore.providers.filter((p: any) => p.type !== 'media')
+          const llmProviders = providerPoolStore.providers.filter((p) => p.type !== 'media')
           settingsStore.updateFromPoolProviders(llmProviders)
         })
         .catch(() => {})
@@ -2943,9 +2931,6 @@ onUnmounted(() => {
   viewUnmounted = true
   clearBackgroundTasks()
   messageRenderMetaCache.clear()
-  lastRenderMetaLookupKey = ''
-  lastRenderMetaLookupMessage = null
-  lastRenderMetaLookupValue = null
   if (normalScrollRafId !== null) {
     window.cancelAnimationFrame(normalScrollRafId)
     normalScrollRafId = null
@@ -2985,7 +2970,10 @@ onUnmounted(() => {
     />
 
     <div class="chat-workspace flex min-h-0 min-w-0 w-full flex-1 flex-col">
-      <header v-if="!isMobile" class="chat-page-header">
+      <header
+        v-if="!isMobile"
+        class="chat-page-header"
+      >
         <div class="chat-page-header-inner">
           <div class="chat-page-heading">
             <button
@@ -3013,7 +3001,10 @@ onUnmounted(() => {
               {{ t('nav.chat') }}
             </h1>
           </div>
-          <div v-if="isNarrowScreen" class="chat-page-actions">
+          <div
+            v-if="isNarrowScreen"
+            class="chat-page-actions"
+          >
             <button
               class="topbar-icon-btn text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
               :title="t('nav.expandSidebar')"
@@ -3080,12 +3071,12 @@ onUnmounted(() => {
           :class="
             isMobile
               ? [
-                  'mobile-chat',
-                  {
-                    'mobile-chat-offscreen': showListPage,
-                    'mobile-chat-animated': mobileAnimationEnabled,
-                  },
-                ]
+                'mobile-chat',
+                {
+                  'mobile-chat-offscreen': showListPage,
+                  'mobile-chat-animated': mobileAnimationEnabled,
+                },
+              ]
               : ''
           "
           class="chat-main-shell flex-1 flex flex-col min-w-0 min-h-0 h-full relative"
@@ -3108,8 +3099,8 @@ onUnmounted(() => {
               <button
                 class="chat-nav-btn flex-shrink-0 text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-all duration-200 cursor-pointer"
                 :class="{ 'md:hidden': !isMobile }"
-                @click="toggleSidebar"
                 :title="showSidebar ? '关闭会话列表' : '打开会话列表'"
+                @click="toggleSidebar"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -3159,7 +3150,10 @@ onUnmounted(() => {
               </button>
 
               <!-- Mobile: collapsed topbar actions trigger -->
-              <div v-if="shouldCollapseTopbarControls" class="topbar-more-container relative">
+              <div
+                v-if="shouldCollapseTopbarControls"
+                class="topbar-more-container relative"
+              >
                 <button
                   class="topbar-icon-btn text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white transition-colors cursor-pointer"
                   :class="{
@@ -3169,7 +3163,12 @@ onUnmounted(() => {
                   :title="t('chat.moreActions')"
                   @click.stop="toggleTopbarMenu"
                 >
-                  <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -3213,7 +3212,12 @@ onUnmounted(() => {
                   @click="showRoutingMenu = false"
                 >
                   <span class="inline-flex items-center gap-2">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
@@ -3250,7 +3254,9 @@ onUnmounted(() => {
                           />
                         </svg>
                         <div class="routing-option-copy">
-                          <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
+                          <div class="routing-option-title">
+                            {{ t('chat.routingMode.auto') }}
+                          </div>
                           <div class="routing-option-desc">
                             {{ t('chat.routingMode.autoDesc') }}
                           </div>
@@ -3292,7 +3298,9 @@ onUnmounted(() => {
                           />
                         </svg>
                         <div class="routing-option-copy">
-                          <div class="routing-option-title">{{ t('chat.routingMode.cloud') }}</div>
+                          <div class="routing-option-title">
+                            {{ t('chat.routingMode.cloud') }}
+                          </div>
                           <div class="routing-option-desc">
                             {{ t('chat.routingMode.cloudDesc') }}
                           </div>
@@ -3334,7 +3342,9 @@ onUnmounted(() => {
                           />
                         </svg>
                         <div class="routing-option-copy">
-                          <div class="routing-option-title">{{ t('chat.routingMode.local') }}</div>
+                          <div class="routing-option-title">
+                            {{ t('chat.routingMode.local') }}
+                          </div>
                           <div class="routing-option-desc">
                             {{ t('chat.routingMode.localDesc') }}
                           </div>
@@ -3396,7 +3406,10 @@ onUnmounted(() => {
                           {{ providerScopedAutoResetLabel }}
                         </button>
                       </div>
-                      <div v-if="showProviderScopedAutoOptions" class="mt-3 space-y-1">
+                      <div
+                        v-if="showProviderScopedAutoOptions"
+                        class="mt-3 space-y-1"
+                      >
                         <div
                           class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400"
                         >
@@ -3414,13 +3427,16 @@ onUnmounted(() => {
                           }"
                           @click="selectProviderScopedAuto(option.id)"
                         >
-                          <span class="truncate" style="padding-inline-end: 0.75rem">
+                          <span
+                            class="truncate"
+                            style="padding-inline-end: 0.75rem"
+                          >
                             {{ option.label }}
                           </span>
                           <svg
                             v-if="
                               chatStore.providerPinOnlyActive &&
-                              chatStore.selectedProviderId === option.id
+                                chatStore.selectedProviderId === option.id
                             "
                             class="w-4 h-4 text-sky-500 flex-shrink-0"
                             fill="none"
@@ -3437,7 +3453,10 @@ onUnmounted(() => {
                         </button>
                       </div>
                     </div>
-                    <div v-else class="mt-2 max-h-40 overflow-y-auto space-y-1">
+                    <div
+                      v-else
+                      class="mt-2 max-h-40 overflow-y-auto space-y-1"
+                    >
                       <button
                         v-for="option in fixedModelOptions"
                         :key="option.value"
@@ -3449,8 +3468,7 @@ onUnmounted(() => {
                           class="truncate"
                           style="padding-inline-end: 0.75rem"
                           :title="option.value"
-                          >{{ option.label }}</span
-                        >
+                        >{{ option.label }}</span>
                         <svg
                           v-if="chatStore.modelPreference === option.value"
                           class="w-4 h-4 text-emerald-500 flex-shrink-0"
@@ -3476,7 +3494,12 @@ onUnmounted(() => {
                     @click="showRoutingMenu = false"
                   >
                     <span class="inline-flex items-center gap-2">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg
+                        class="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
@@ -3556,7 +3579,9 @@ onUnmounted(() => {
                             />
                           </svg>
                           <div class="routing-option-copy">
-                            <div class="routing-option-title">{{ t('chat.routingMode.auto') }}</div>
+                            <div class="routing-option-title">
+                              {{ t('chat.routingMode.auto') }}
+                            </div>
                             <div class="routing-option-desc">
                               {{ t('chat.routingMode.autoDesc') }}
                             </div>
@@ -3705,7 +3730,10 @@ onUnmounted(() => {
                             {{ providerScopedAutoResetLabel }}
                           </button>
                         </div>
-                        <div v-if="showProviderScopedAutoOptions" class="space-y-1 pt-3">
+                        <div
+                          v-if="showProviderScopedAutoOptions"
+                          class="space-y-1 pt-3"
+                        >
                           <div
                             class="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-slate-400"
                           >
@@ -3723,13 +3751,16 @@ onUnmounted(() => {
                             }"
                             @click="selectProviderScopedAuto(option.id)"
                           >
-                            <span class="truncate" style="padding-inline-end: 0.75rem">
+                            <span
+                              class="truncate"
+                              style="padding-inline-end: 0.75rem"
+                            >
                               {{ option.label }}
                             </span>
                             <svg
                               v-if="
                                 chatStore.providerPinOnlyActive &&
-                                chatStore.selectedProviderId === option.id
+                                  chatStore.selectedProviderId === option.id
                               "
                               class="w-4 h-4 text-sky-500 flex-shrink-0"
                               fill="none"
@@ -3746,7 +3777,10 @@ onUnmounted(() => {
                           </button>
                         </div>
                       </div>
-                      <div v-else class="max-h-44 overflow-y-auto space-y-1 pt-2">
+                      <div
+                        v-else
+                        class="max-h-44 overflow-y-auto space-y-1 pt-2"
+                      >
                         <button
                           v-for="option in fixedModelOptions"
                           :key="option.value"
@@ -3758,8 +3792,7 @@ onUnmounted(() => {
                             class="truncate"
                             style="padding-inline-end: 0.75rem"
                             :title="option.value"
-                            >{{ option.label }}</span
-                          >
+                          >{{ option.label }}</span>
                           <svg
                             v-if="chatStore.modelPreference === option.value"
                             class="w-4 h-4 text-emerald-500 flex-shrink-0"
@@ -3886,9 +3919,24 @@ onUnmounted(() => {
                             viewBox="0 0 24 24"
                             stroke="currentColor"
                           >
-                            <circle cx="7" cy="7" r="1.5" stroke-width="1.8" />
-                            <circle cx="17" cy="7" r="1.5" stroke-width="1.8" />
-                            <circle cx="12" cy="17" r="1.5" stroke-width="1.8" />
+                            <circle
+                              cx="7"
+                              cy="7"
+                              r="1.5"
+                              stroke-width="1.8"
+                            />
+                            <circle
+                              cx="17"
+                              cy="7"
+                              r="1.5"
+                              stroke-width="1.8"
+                            />
+                            <circle
+                              cx="12"
+                              cy="17"
+                              r="1.5"
+                              stroke-width="1.8"
+                            />
                             <path
                               stroke-linecap="round"
                               stroke-linejoin="round"
@@ -3915,7 +3963,12 @@ onUnmounted(() => {
                             viewBox="0 0 24 24"
                             stroke="currentColor"
                           >
-                            <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                            <circle
+                              cx="10.5"
+                              cy="10.5"
+                              r="4.75"
+                              stroke-width="1.7"
+                            />
                             <path
                               stroke-linecap="round"
                               stroke-linejoin="round"
@@ -3971,7 +4024,10 @@ onUnmounted(() => {
                       :class="agentcoreRunnerSelectedToneClass"
                     >
                       <div class="chat-mobile-runner-card__header">
-                        <div class="chat-mobile-runner-card__icon" aria-hidden="true">
+                        <div
+                          class="chat-mobile-runner-card__icon"
+                          aria-hidden="true"
+                        >
                           <svg
                             fill="none"
                             viewBox="0 0 24 24"
@@ -4038,7 +4094,10 @@ onUnmounted(() => {
                 @click="closeMobileFeatureSheet"
               >
                 <div class="absolute inset-0 bg-black/55" />
-                <div class="mobile-feature-sheet-panel relative w-full shadow-2xl" @click.stop>
+                <div
+                  class="mobile-feature-sheet-panel relative w-full shadow-2xl"
+                  @click.stop
+                >
                   <div class="flex justify-center pt-3 pb-2">
                     <div class="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
                   </div>
@@ -4054,7 +4113,12 @@ onUnmounted(() => {
                           viewBox="0 0 24 24"
                           stroke="currentColor"
                         >
-                          <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                          <circle
+                            cx="10.5"
+                            cy="10.5"
+                            r="4.75"
+                            stroke-width="1.7"
+                          />
                           <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -4062,7 +4126,12 @@ onUnmounted(() => {
                             d="M14 14l4 4M16 5.25h3M17.5 3.75v3"
                           />
                         </svg>
-                        <svg v-else fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg
+                          v-else
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
                           <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -4129,9 +4198,9 @@ onUnmounted(() => {
             <div
               v-if="
                 isMobile &&
-                providerPoolStore.trialQuota &&
-                providerPoolStore.trialProviders?.length > 0 &&
-                !providerPoolStore.trialQuota.is_exhausted
+                  providerPoolStore.trialQuota &&
+                  providerPoolStore.trialProviders?.length > 0 &&
+                  !providerPoolStore.trialQuota.is_exhausted
               "
               class="px-4 py-2 flex items-center justify-between text-sm border-b bg-gray-100 dark:bg-gray-700/20 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-white"
               :class="{ 'trial-quota-pulse': tokenAnimating }"
@@ -4144,12 +4213,11 @@ onUnmounted(() => {
                   :title="
                     providerPoolStore.trialQuota.tokens_remaining.toLocaleString() + ' tokens'
                   "
-                  >{{
-                    t('chat.trialQuota.remaining', {
-                      tokens: formatTokens(providerPoolStore.trialQuota.tokens_remaining),
-                    })
-                  }}</span
-                >
+                >{{
+                  t('chat.trialQuota.remaining', {
+                    tokens: formatTokens(providerPoolStore.trialQuota.tokens_remaining),
+                  })
+                }}</span>
               </div>
               <div class="flex items-center gap-2">
                 <div
@@ -4160,7 +4228,7 @@ onUnmounted(() => {
                     :style="{
                       width: `${Math.max(3, Math.min(100, (providerPoolStore.trialQuota.tokens_remaining / providerPoolStore.trialQuota.token_limit) * 100))}%`,
                     }"
-                  ></div>
+                  />
                   <span
                     class="absolute inset-0 flex items-center justify-center text-[10px] font-medium text-white drop-shadow-sm"
                   >
@@ -4173,7 +4241,10 @@ onUnmounted(() => {
                     }}%
                   </span>
                 </div>
-                <router-link to="/settings?tab=llm" class="text-xs underline hover:no-underline">
+                <router-link
+                  to="/settings?tab=llm"
+                  class="text-xs underline hover:no-underline"
+                >
                   {{ t('chat.trialQuota.configure') }}
                 </router-link>
               </div>
@@ -4282,9 +4353,21 @@ onUnmounted(() => {
                     stroke="currentColor"
                     stroke-width="1.8"
                   >
-                    <circle cx="7" cy="7" r="1.5" />
-                    <circle cx="17" cy="7" r="1.5" />
-                    <circle cx="12" cy="17" r="1.5" />
+                    <circle
+                      cx="7"
+                      cy="7"
+                      r="1.5"
+                    />
+                    <circle
+                      cx="17"
+                      cy="7"
+                      r="1.5"
+                    />
+                    <circle
+                      cx="12"
+                      cy="17"
+                      r="1.5"
+                    />
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -4299,9 +4382,9 @@ onUnmounted(() => {
               <div
                 v-if="
                   !isMobile &&
-                  providerPoolStore.trialQuota &&
-                  providerPoolStore.trialProviders?.length > 0 &&
-                  !providerPoolStore.trialQuota.is_exhausted
+                    providerPoolStore.trialQuota &&
+                    providerPoolStore.trialProviders?.length > 0 &&
+                    !providerPoolStore.trialQuota.is_exhausted
                 "
                 class="chat-thread-subrow"
               >
@@ -4392,7 +4475,10 @@ onUnmounted(() => {
                     @click="handleEdgeQuickNavJump(item.messageId)"
                   >
                     <span class="chat-edge-quick-nav__text">{{ item.preview }}</span>
-                    <span class="chat-edge-quick-nav__marker" aria-hidden="true" />
+                    <span
+                      class="chat-edge-quick-nav__marker"
+                      aria-hidden="true"
+                    />
                   </button>
                 </div>
               </aside>
@@ -4406,11 +4492,14 @@ onUnmounted(() => {
               @scroll.passive="handleScroll"
             >
               <!-- Load more indicator -->
-              <div v-if="chatStore.loadingMore" class="flex justify-center py-4">
+              <div
+                v-if="chatStore.loadingMore"
+                class="flex justify-center py-4"
+              >
                 <div class="flex items-center gap-2 text-gray-500 dark:text-slate-400 text-sm">
                   <div
                     class="w-4 h-4 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full animate-spin"
-                  ></div>
+                  />
                   {{ t('chat.loadingOlderMessages') }}
                 </div>
               </div>
@@ -4471,7 +4560,7 @@ onUnmounted(() => {
                     :src="publicAsset('logo.svg')"
                     alt="Logo"
                     class="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 opacity-80 dark:opacity-60"
-                  />
+                  >
                   <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-1">
                     {{ t('chat.startConversation') }}
                   </h3>
@@ -4520,7 +4609,7 @@ onUnmounted(() => {
                       <div
                         v-if="
                           providerAttentionMode !== 'unconfigured' &&
-                          providerAttentionItems.length > 0
+                            providerAttentionItems.length > 0
                         "
                         class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/90 p-3 dark:border-slate-700 dark:bg-slate-950/50"
                       >
@@ -4622,7 +4711,9 @@ onUnmounted(() => {
                   v-if="!isMobile"
                   class="mt-5 text-[11px] text-gray-400 dark:text-slate-500 text-center"
                 >
-                  <p class="font-medium mb-2">{{ t('chat.keyboardShortcuts') }}:</p>
+                  <p class="font-medium mb-2">
+                    {{ t('chat.keyboardShortcuts') }}:
+                  </p>
                   <p class="space-x-4">
                     <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">{{
                       isMac ? '⌘N' : 'Alt+N'
@@ -4636,15 +4727,12 @@ onUnmounted(() => {
                     {{ t('chat.toggleSidebarShortcut') }}
                   </p>
                   <p class="mt-3 text-gray-400 dark:text-slate-500">
-                    <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300"
-                      >Enter</span
-                    >
+                    <span class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300">Enter</span>
                     {{ t('chat.sendMessage') }}
                     <span
                       class="px-2 py-1 glass rounded text-gray-600 dark:text-slate-300"
                       style="margin-inline-start: 1rem"
-                      >Shift+Enter</span
-                    >
+                    >Shift+Enter</span>
                     {{ t('chat.newLine') }}
                   </p>
                   <p class="mt-2 text-gray-400 dark:text-slate-500">
@@ -4655,7 +4743,10 @@ onUnmounted(() => {
 
               <!-- Messages list - Virtual scroll for large lists -->
               <template v-if="chatStore.messages.length > 0">
-                <div v-if="runnerExecutionCard" class="chat-message-shell">
+                <div
+                  v-if="runnerExecutionCard"
+                  class="chat-message-shell"
+                >
                   <TypelessCardComponent :card="runnerExecutionCard" />
                 </div>
 
@@ -4675,9 +4766,9 @@ onUnmounted(() => {
                   <template #default="{ item: message, updateHeight }">
                     <div
                       v-if="message"
+                      :id="getChatMessageElementId(message.id)"
                       :key="getMessageRenderKey(message)"
                       :ref="bindVirtualItemHeight(message, updateHeight)"
-                      :id="getChatMessageElementId(message.id)"
                       :data-message-id="message.id"
                       :class="messageShellClasses(message)"
                     >
@@ -4698,13 +4789,13 @@ onUnmounted(() => {
                 <div v-else>
                   <div
                     v-for="message in chatStore.messages"
-                    :key="getMessageRenderKey(message)"
                     :id="getChatMessageElementId(message.id)"
+                    :key="getMessageRenderKey(message)"
+                    v-memo="messageMemoDeps(message)"
                     :data-message-id="message.id"
                     :class="messageShellClasses(message)"
                   >
                     <ChatMessage
-                      v-memo="messageMemoDeps(message)"
                       :message="message"
                       v-bind="messageRenderBindings(message)"
                       @contextmenu="handleMessageContextMenu"
@@ -4716,7 +4807,10 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Current conversation task projections -->
-                <div v-if="taskProjections.currentTasks.length > 0" class="px-4">
+                <div
+                  v-if="taskProjections.currentTasks.length > 0"
+                  class="px-4"
+                >
                   <UserTaskProjectionCard
                     v-for="task in taskProjections.currentTasks"
                     :key="task.id"
@@ -4729,7 +4823,10 @@ onUnmounted(() => {
                 </div>
 
                 <Transition name="fade">
-                  <div v-if="showStreamStatusRail" class="flex justify-center py-1">
+                  <div
+                    v-if="showStreamStatusRail"
+                    class="flex justify-center py-1"
+                  >
                     <div class="chat-stream-status-rail">
                       <div class="chat-stream-status-rail__copy">
                         <span class="chat-stream-status-rail__badge">
@@ -4749,7 +4846,7 @@ onUnmounted(() => {
                         <button
                           v-if="
                             streamStatusRailState.phase === 'interrupted' &&
-                            streamStatusRailState.canRetry
+                              streamStatusRailState.canRetry
                           "
                           class="chat-stream-status-rail__action"
                           @click="handleStreamRetry"
@@ -4770,7 +4867,10 @@ onUnmounted(() => {
 
                 <!-- Context trim indicator (pruning/compaction) -->
                 <Transition name="fade">
-                  <div v-if="showContextTrim" class="flex justify-center py-2">
+                  <div
+                    v-if="showContextTrim"
+                    class="flex justify-center py-2"
+                  >
                     <div
                       class="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-400/70 dark:text-gray-500/70 bg-gray-100/30 dark:bg-gray-800/30 rounded-full"
                     >
@@ -4816,7 +4916,10 @@ onUnmounted(() => {
                 </Transition>
 
                 <!-- Stream error display (shown in chat area with gray text) -->
-                <div v-if="chatStore.streamError" class="flex justify-center py-4">
+                <div
+                  v-if="chatStore.streamError"
+                  class="flex justify-center py-4"
+                >
                   <div
                     class="flex items-center gap-2 px-4 py-2 text-gray-400 dark:text-gray-500 text-sm"
                   >
@@ -4861,10 +4964,10 @@ onUnmounted(() => {
                                               : chatStore.streamError === 'provider_rate_limited'
                                                 ? t('chat.providerRateLimited')
                                                 : chatStore.streamError ===
-                                                    'provider_openrouter_privacy_policy'
+                                                  'provider_openrouter_privacy_policy'
                                                   ? t('chat.providerOpenRouterPrivacyPolicy')
                                                   : chatStore.streamError ===
-                                                      'execDirectoryApprovalTimeout'
+                                                    'execDirectoryApprovalTimeout'
                                                     ? t('chat.execDirectoryApprovalTimeout')
                                                     : chatStore.streamError
                     }}</span>
@@ -4879,7 +4982,12 @@ onUnmounted(() => {
                       class="text-gray-400 hover:text-gray-300 cursor-pointer"
                       @click="chatStore.clearStreamError"
                     >
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg
+                        class="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
                         <path
                           stroke-linecap="round"
                           stroke-linejoin="round"
@@ -4917,7 +5025,10 @@ onUnmounted(() => {
                   </div>
                 </div>
 
-                <div v-if="showProviderAccelerationWaitingTip" class="flex justify-center py-2">
+                <div
+                  v-if="showProviderAccelerationWaitingTip"
+                  class="flex justify-center py-2"
+                >
                   <div
                     class="flex items-center gap-2 px-3 py-1.5 text-xs text-sky-600 dark:text-sky-300 bg-sky-500/10 rounded-full"
                   >
@@ -4941,7 +5052,10 @@ onUnmounted(() => {
                 </div>
 
                 <!-- "I'm listening" indicator (shown when pre-TTFT cancel is active) -->
-                <div v-if="chatStore.preTTFTCancelActive" class="flex justify-center py-3">
+                <div
+                  v-if="chatStore.preTTFTCancelActive"
+                  class="flex justify-center py-3"
+                >
                   <div
                     class="flex items-center gap-2 px-4 py-2 glass-card rounded-lg text-sm text-blue-400"
                   >
@@ -4981,7 +5095,12 @@ onUnmounted(() => {
                   class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                   @click="handleContextCopy"
                 >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -4995,7 +5114,12 @@ onUnmounted(() => {
                   class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                   @click="handleSelectMessage"
                 >
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="w-4 h-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -5012,7 +5136,12 @@ onUnmounted(() => {
                     class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                     @click="handleContextContinue"
                   >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
@@ -5032,7 +5161,12 @@ onUnmounted(() => {
                     class="w-full px-4 py-2 text-start text-sm text-gray-700 dark:text-gray-200 hover:bg-white/10 flex items-center gap-2 cursor-pointer"
                     @click="handleContextRegenerate"
                   >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
@@ -5061,7 +5195,12 @@ onUnmounted(() => {
                     :disabled="chatStore.selectedMessageIds.size === 0"
                     @click="handleDeleteSelectedMessages"
                   >
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg
+                      class="w-4 h-4"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
@@ -5131,9 +5270,7 @@ onUnmounted(() => {
                   />
                 </svg>
                 <span class="truncate">{{ chatStore.securityBlocked.message }}</span>
-                <span class="text-yellow-500/70 text-xs"
-                  >({{ t('chat.threatLevel') }}: {{ chatStore.securityBlocked.threatLevel }})</span
-                >
+                <span class="text-yellow-500/70 text-xs">({{ t('chat.threatLevel') }}: {{ chatStore.securityBlocked.threatLevel }})</span>
               </div>
               <button
                 class="text-yellow-400 hover:text-yellow-300 flex-shrink-0 px-3 py-1 rounded hover:bg-yellow-500/10 transition-colors cursor-pointer"
@@ -5174,7 +5311,10 @@ onUnmounted(() => {
 
             <!-- Input area - floating at bottom (desktop), flex at bottom (mobile) -->
             <div class="chat-input-dock flex-shrink-0">
-              <div v-if="hasBackgroundTasks" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
+              <div
+                v-if="hasBackgroundTasks"
+                class="max-w-5xl mx-auto px-3 sm:px-4 py-1"
+              >
                 <UserTaskProjectionDock
                   :tasks="taskProjections.backgroundTasks"
                   @open="openProjectedTask"
@@ -5182,11 +5322,17 @@ onUnmounted(() => {
                   @navigate="navigateProjectedTask"
                 />
               </div>
-              <div v-if="hasActiveDeepResearchJobs" class="max-w-5xl mx-auto px-3 sm:px-4 py-1">
+              <div
+                v-if="hasActiveDeepResearchJobs"
+                class="max-w-5xl mx-auto px-3 sm:px-4 py-1"
+              >
                 <DeepResearchTaskDock @view="handleOpenDeepResearchJob" />
               </div>
               <!-- Media generation param panel -->
-              <div v-if="mediaGen.showPanel.value" class="max-w-4xl mx-auto px-3 sm:px-4">
+              <div
+                v-if="mediaGen.showPanel.value"
+                class="max-w-4xl mx-auto px-3 sm:px-4"
+              >
                 <MediaParamPanel
                   :intent="mediaGen.intent.value!"
                   :models="mediaGen.models.value"
@@ -5222,8 +5368,15 @@ onUnmounted(() => {
                       data-testid="active-todo-panel-jump"
                       @click="handleActiveTodoPanelJump"
                     >
-                      <span class="active-todo-panel__icon" aria-hidden="true">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <span
+                        class="active-todo-panel__icon"
+                        aria-hidden="true"
+                      >
+                        <svg
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
                           <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -5259,7 +5412,10 @@ onUnmounted(() => {
                       </button>
                     </div>
                   </div>
-                  <ol v-if="!activeTodoPanelCollapsed" class="active-todo-panel__list">
+                  <ol
+                    v-if="!activeTodoPanelCollapsed"
+                    class="active-todo-panel__list"
+                  >
                     <li
                       v-for="(item, index) in activeTodoSummary.items"
                       :key="`${activeTodoSummary.messageId}-${index}`"

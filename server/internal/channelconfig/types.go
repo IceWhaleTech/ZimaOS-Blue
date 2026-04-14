@@ -58,6 +58,8 @@ type Config struct {
 	Slack SlackConfig `yaml:"slack"`
 	// WeChatWork configuration.
 	WeChatWork WeChatWorkConfig `yaml:"wechat_work"`
+	// WeChat iLink configuration.
+	WeChatILink WeChatILinkConfig `yaml:"wechat_ilink"`
 	// Feishu configuration.
 	Feishu FeishuConfig `yaml:"feishu"`
 	// Matrix configuration.
@@ -112,12 +114,22 @@ type SlackConfig struct {
 // WeChatWorkConfig contains WeChat Work configuration.
 type WeChatWorkConfig struct {
 	Enabled        bool   `yaml:"enabled"`
+	Provider       string `yaml:"provider" json:"provider"`
 	CorpID         string `yaml:"corp_id"`
 	AgentID        string `yaml:"agent_id"`
 	Secret         string `yaml:"secret"`
 	Token          string `yaml:"token"`
 	EncodingAESKey string `yaml:"encoding_aes_key"`
 	CallbackURL    string `yaml:"callback_url"`
+	APIBaseURL     string `yaml:"api_base_url" json:"api_base_url"`
+	BotToken       string `yaml:"bot_token" json:"bot_token"`
+}
+
+// WeChatILinkConfig contains personal WeChat iLink configuration.
+type WeChatILinkConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	APIBaseURL string `yaml:"api_base_url" json:"api_base_url"`
+	BotToken   string `yaml:"bot_token" json:"bot_token"`
 }
 
 // FeishuConfig contains Feishu/Lark configuration.
@@ -235,6 +247,9 @@ func DefaultConfig() Config {
 			Enabled: false,
 		},
 		WeChatWork: WeChatWorkConfig{
+			Enabled: false,
+		},
+		WeChatILink: WeChatILinkConfig{
 			Enabled: false,
 		},
 		Feishu: FeishuConfig{

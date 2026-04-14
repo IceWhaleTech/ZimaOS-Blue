@@ -11,6 +11,7 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/autoreply"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/mediagen"
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 )
@@ -23,6 +24,55 @@ func TestBindRouteRuntimeChannels_RegistersFallbackRoutesWithoutConfigStore(t *t
 
 	if !routeExists(e, http.MethodGet, "/api/channels") {
 		t.Fatalf("expected channel fallback route to be registered, got %#v", e.Routes())
+	}
+}
+
+func TestBindRouteRuntimeChannels_RegistersWechatILinkSetupRoutes(t *testing.T) {
+	e := echo.New()
+	api := e.Group("/api")
+
+	bindRouteRuntimeChannels(routeRuntimeContractChannelOptions{
+		api:                api,
+		channelConfigStore: serverpkg.NewChannelConfigStore(kvstore.NewMemoryStore()),
+		tunnelHandler:      stubRuntimeChannelTunnelSetup{},
+		logger:             zap.NewNop(),
+	})
+
+	for _, path := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/channels/wechat_ilink/setup/session"},
+		{method: http.MethodGet, path: "/api/channels/wechat_ilink/setup/session/:id"},
+		{method: http.MethodPost, path: "/api/channels/wechat_ilink/setup/session/:id/complete"},
+	} {
+		if !routeExists(e, path.method, path.path) {
+			t.Fatalf("expected route %s %s to be registered, got %#v", path.method, path.path, e.Routes())
+		}
+	}
+}
+
+func TestBindRouteRuntimeChannels_RegistersWechatILinkSetupRoutesWithoutTunnelHandler(t *testing.T) {
+	e := echo.New()
+	api := e.Group("/api")
+
+	bindRouteRuntimeChannels(routeRuntimeContractChannelOptions{
+		api:                api,
+		channelConfigStore: serverpkg.NewChannelConfigStore(kvstore.NewMemoryStore()),
+		logger:             zap.NewNop(),
+	})
+
+	for _, path := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/channels/wechat_ilink/setup/session"},
+		{method: http.MethodGet, path: "/api/channels/wechat_ilink/setup/session/:id"},
+		{method: http.MethodPost, path: "/api/channels/wechat_ilink/setup/session/:id/complete"},
+	} {
+		if !routeExists(e, path.method, path.path) {
+			t.Fatalf("expected route %s %s to be registered without tunnel handler, got %#v", path.method, path.path, e.Routes())
+		}
 	}
 }
 
@@ -282,6 +332,12 @@ func (s *stubRuntimeChannelLifecycleManager) StartChannel(_ context.Context, nam
 
 type stubRuntimeChannelConfigUpdater struct {
 	configs map[string]*serverpkg.ChannelConfig
+}
+
+type stubRuntimeChannelTunnelSetup struct{}
+
+func (stubRuntimeChannelTunnelSetup) EnsureTunnelURL(context.Context) (string, error) {
+	return "https://blue.example.com", nil
 }
 
 func (s *stubRuntimeChannelConfigUpdater) Set(id string, cfg *serverpkg.ChannelConfig) error {

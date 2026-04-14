@@ -75,17 +75,27 @@ const systemInfoItems = computed(() => [
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">{{ t('dashboard.cards.systemInfo') }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ t('system.cards.info.subtitle') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('dashboard.cards.systemInfo') }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ t('system.cards.info.subtitle') }}
+          </p>
         </div>
         <span class="dashboard-card-chip system-info-chip">{{ t('dashboard.categories.system') }}</span>
       </div>
 
       <div class="system-info-grid">
         <div class="dashboard-card-subsurface system-info-release-panel p-4">
-          <p class="system-info-release-label">{{ t('system.version') }}</p>
-          <p class="system-info-version">v{{ systemStore.health?.version || '-' }}</p>
-          <p class="system-info-release-copy">{{ t('system.cards.info.versionFootnote') }}</p>
+          <p class="system-info-release-label">
+            {{ t('system.version') }}
+          </p>
+          <p class="system-info-version">
+            v{{ systemStore.health?.version || '-' }}
+          </p>
+          <p class="system-info-release-copy">
+            {{ t('system.cards.info.versionFootnote') }}
+          </p>
           <p class="dashboard-card-footnote mt-3">
             {{ t('system.timestamp') }} {{ formatDate(systemStore.health?.timestamp) }}
           </p>
@@ -97,8 +107,12 @@ const systemInfoItems = computed(() => [
             :key="item.key"
             class="dashboard-card-subsurface system-info-stat p-3"
           >
-            <p class="system-info-stat-label">{{ item.label }}</p>
-            <p class="system-info-stat-value">{{ item.value }}</p>
+            <p class="system-info-stat-label">
+              {{ item.label }}
+            </p>
+            <p class="system-info-stat-value">
+              {{ item.value }}
+            </p>
           </div>
         </div>
       </div>
@@ -106,8 +120,12 @@ const systemInfoItems = computed(() => [
       <div class="dashboard-card-subsurface system-info-worker-panel p-4">
         <div class="system-info-worker-head">
           <div class="dashboard-card-copy">
-            <p class="system-info-worker-label">{{ t('system.cards.info.workerPool') }}</p>
-            <p class="system-info-worker-title">{{ workerPoolTitle }}</p>
+            <p class="system-info-worker-label">
+              {{ t('system.cards.info.workerPool') }}
+            </p>
+            <p class="system-info-worker-title">
+              {{ workerPoolTitle }}
+            </p>
           </div>
           <span class="system-info-worker-pill">
             {{ workerUsagePercent == null ? '--' : `${workerUsagePercent}%` }}
@@ -115,10 +133,12 @@ const systemInfoItems = computed(() => [
         </div>
 
         <div class="dashboard-card-progress system-info-worker-progress">
-          <span :style="{ width: workerUsageWidth }"></span>
+          <span :style="{ width: workerUsageWidth }" />
         </div>
 
-        <p class="dashboard-card-footnote">{{ t('system.cards.info.capacityFootnote') }}</p>
+        <p class="dashboard-card-footnote">
+          {{ t('system.cards.info.capacityFootnote') }}
+        </p>
       </div>
     </div>
   </div>

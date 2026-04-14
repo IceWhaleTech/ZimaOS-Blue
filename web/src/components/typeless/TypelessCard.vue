@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, shallowRef, watch, type Component } from 'vue'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import type { TypelessCard } from '@/types/typeless'
 import { canRenderFunctionally, renderCardToHtml } from '@/utils/typelessRenderers'
 import { componentPool } from '@/utils/componentPool'
@@ -78,18 +79,31 @@ function handleSelect(selectedIds: string[], otherText?: string) {
 </script>
 
 <template>
-  <div :id="card.id" class="typeless-card my-3 relative" :class="{ 'opacity-80': isStreaming }">
+  <div
+    :id="card.id"
+    class="typeless-card my-3 relative"
+    :class="{ 'opacity-80': isStreaming }"
+  >
     <!-- Streaming indicator for incomplete cards -->
-    <div v-if="isStreaming" class="absolute top-2 end-2 z-10">
+    <div
+      v-if="isStreaming"
+      class="absolute top-2 end-2 z-10"
+    >
       <div class="w-2 h-2 bg-gray-700 dark:bg-gray-500 rounded-full animate-pulse" />
     </div>
 
     <!-- Functional rendering for simple cards (table, code, list, info, quote, alert) -->
     <!-- Dynamic components: progress, action, result, detection, chart, gallery, file, link, metric, comparison, steps, map, weather, profile, countdown, rating, accordion, audio, choice, collapsible-code, diff, terminal, video, ui-review-progress -->
-    <div v-if="isFunctional" v-html="functionalHtml" />
+    <TrustedHtml
+      v-if="isFunctional"
+      :html="functionalHtml"
+    />
 
     <!-- Loading state -->
-    <div v-else-if="isLoading" class="animate-pulse bg-gray-700 dark:bg-gray-500 rounded-lg h-24" />
+    <div
+      v-else-if="isLoading"
+      class="animate-pulse bg-gray-700 dark:bg-gray-500 rounded-lg h-24"
+    />
 
     <!-- Dynamic component from pool -->
     <template v-else-if="dynamicComponent">

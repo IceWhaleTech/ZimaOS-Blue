@@ -1,9 +1,17 @@
 <template>
-  <div v-if="showDialog" class="privacy-consent-overlay">
+  <div
+    v-if="showDialog"
+    class="privacy-consent-overlay"
+  >
     <div class="privacy-consent-dialog">
       <div class="dialog-header">
         <h2>{{ t('speech.privacyDialog.title', { provider: t('speech.edgeTTSName') }) }}</h2>
-        <button class="close-btn" @click="decline">✕</button>
+        <button
+          class="close-btn"
+          @click="decline"
+        >
+          ✕
+        </button>
       </div>
 
       <div class="dialog-content">
@@ -34,16 +42,30 @@
 
         <div class="checkbox-group">
           <label>
-            <input v-model="dontShowAgain" type="checkbox" />
+            <input
+              v-model="dontShowAgain"
+              type="checkbox"
+            >
             {{ t('speech.privacyDialog.dontShowAgain') }}
           </label>
         </div>
       </div>
 
       <div class="dialog-footer">
-        <button class="btn-secondary" @click="decline">{{ t('decline') }}</button>
-        <a href="#" class="learn-more">{{ t('speech.privacyDialog.learnMore') }}</a>
-        <button class="btn-primary" @click="accept">
+        <button
+          class="btn-secondary"
+          @click="decline"
+        >
+          {{ t('decline') }}
+        </button>
+        <a
+          href="#"
+          class="learn-more"
+        >{{ t('speech.privacyDialog.learnMore') }}</a>
+        <button
+          class="btn-primary"
+          @click="accept"
+        >
           {{ t('speech.privacyDialog.acceptContinue') }}
         </button>
       </div>

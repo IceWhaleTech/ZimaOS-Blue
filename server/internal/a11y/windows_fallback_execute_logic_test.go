@@ -30,6 +30,7 @@ func TestWindowsExecuteFallbackWithInput_PointerBranchesDispatchExpectedCallback
 				tc.fallback,
 				"",
 				750,
+				false,
 				windowsFallbackExecutor{
 					BringFront: func(hwnd uintptr) {
 						if hwnd != 42 {
@@ -85,6 +86,7 @@ func TestWindowsExecuteFallbackWithInput_FocusClickWithoutBoundsIsNoop(t *testin
 		windowsActionInputFocusClick,
 		"",
 		600,
+		false,
 		windowsFallbackExecutor{
 			BringFront: func(hwnd uintptr) {
 				if hwnd != 42 {
@@ -114,6 +116,7 @@ func TestWindowsExecuteFallbackWithInput_TypeWithoutBoundsStillSendsText(t *test
 		windowsActionInputType,
 		"hello",
 		600,
+		false,
 		windowsFallbackExecutor{
 			BringFront: func(hwnd uintptr) {
 				if hwnd != 42 {
@@ -151,6 +154,7 @@ func TestWindowsExecuteFallbackWithInput_RejectsPointerFallbackWithoutBounds(t *
 		windowsActionInputClick,
 		"",
 		600,
+		false,
 		windowsFallbackExecutor{
 			BringFront: func(uintptr) {},
 			Click: func(int, int, int) error {
@@ -177,6 +181,7 @@ func TestWindowsExecuteFallbackWithInput_RejectsUnsupportedFallback(t *testing.T
 		"input_magic",
 		"",
 		600,
+		false,
 		windowsFallbackExecutor{},
 	)
 	if err == nil {
@@ -188,5 +193,45 @@ func TestWindowsExecuteFallbackWithInput_RejectsUnsupportedFallback(t *testing.T
 	}
 	if runtimeErr.Code != "unsupported_action" {
 		t.Fatalf("code = %q, want unsupported_action", runtimeErr.Code)
+	}
+}
+
+func TestWindowsExecuteFallbackWithInput_TypeSkipsClickWhenPrimaryAlreadyFocused(t *testing.T) {
+	var steps []string
+
+	err := windowsExecuteFallbackWithInput(
+		windowsFallbackTarget{HWND: 42, HasBounds: true, CenterX: 100, CenterY: 200},
+		windowsActionInputType,
+		"hello",
+		600,
+		true,
+		windowsFallbackExecutor{
+			BringFront: func(hwnd uintptr) {
+				if hwnd != 42 {
+					t.Fatalf("BringFront hwnd = %d, want 42", hwnd)
+				}
+				steps = append(steps, "front")
+			},
+			Click: func(int, int, int) error {
+				steps = append(steps, "click")
+				return nil
+			},
+			AfterFocus: func() {
+				steps = append(steps, "after_focus")
+			},
+			SendText: func(value string) error {
+				if value != "hello" {
+					t.Fatalf("SendText value = %q, want hello", value)
+				}
+				steps = append(steps, "send")
+				return nil
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("windowsExecuteFallbackWithInput() error = %v", err)
+	}
+	if got := strings.Join(steps, ","); got != "front,after_focus,send" {
+		t.Fatalf("steps = %q, want front,after_focus,send", got)
 	}
 }

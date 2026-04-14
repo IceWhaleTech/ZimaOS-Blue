@@ -59,7 +59,10 @@ const hasExpandedContent = computed(
         {{ question.icon }}
       </span>
       <div class="min-w-0 flex-1">
-        <div v-if="summaryTagLabels.length > 0" class="mb-1 flex flex-wrap gap-1">
+        <div
+          v-if="summaryTagLabels.length > 0"
+          class="mb-1 flex flex-wrap gap-1"
+        >
           <span
             v-for="tag in summaryTagLabels"
             :key="tag"
@@ -92,7 +95,13 @@ const hasExpandedContent = computed(
             d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
           />
         </svg>
-        <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          v-else
+          class="h-4 w-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -102,7 +111,10 @@ const hasExpandedContent = computed(
         </svg>
       </span>
     </div>
-    <div v-if="hasExpandedContent" class="preset-question-card-expanded">
+    <div
+      v-if="hasExpandedContent"
+      class="preset-question-card-expanded"
+    >
       <div
         class="preset-question-card-expanded-surface rounded-[1rem] border border-slate-200/90 bg-white/96 px-3 py-3 text-slate-600 shadow-[0_14px_28px_rgba(15,23,42,0.1)] dark:border-slate-700 dark:bg-slate-900/96 dark:text-slate-300"
       >

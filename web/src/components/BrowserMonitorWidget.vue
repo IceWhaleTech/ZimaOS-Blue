@@ -1503,7 +1503,10 @@ onUnmounted(() => {
       @pointerdown="startLauncherDragging"
       @click="handleLauncherClick"
     >
-      <span class="browser-monitor-launcher__dot" aria-hidden="true" />
+      <span
+        class="browser-monitor-launcher__dot"
+        aria-hidden="true"
+      />
       <span class="browser-monitor-launcher__copy">
         <strong>{{ launcherLabel }}</strong>
         <span>{{ launcherMeta }}</span>
@@ -1520,13 +1523,22 @@ onUnmounted(() => {
     >
       <header class="browser-monitor__header browser-monitor__handle">
         <div class="browser-monitor__title-group">
-          <span v-if="!isCollapsed" class="browser-monitor__eyebrow">{{
+          <span
+            v-if="!isCollapsed"
+            class="browser-monitor__eyebrow"
+          >{{
             tr('browserMonitor.eyebrow', 'Browser execution')
           }}</span>
-          <h3 class="browser-monitor__title" :class="{ 'is-compact': isCollapsed }">
+          <h3
+            class="browser-monitor__title"
+            :class="{ 'is-compact': isCollapsed }"
+          >
             {{ tr('browserMonitor.title', 'Live monitor') }}
           </h3>
-          <p v-if="!isCollapsed" class="browser-monitor__subtitle">
+          <p
+            v-if="!isCollapsed"
+            class="browser-monitor__subtitle"
+          >
             {{ tr('browserMonitor.subtitle', 'Track the latest task and tab state here.') }}
           </p>
         </div>
@@ -1563,8 +1575,14 @@ onUnmounted(() => {
         </div>
       </header>
 
-      <div v-if="isCollapsed" class="browser-monitor__compact">
-        <div v-if="compactSessionThumbnails.length > 1" class="browser-monitor__compact-strip">
+      <div
+        v-if="isCollapsed"
+        class="browser-monitor__compact"
+      >
+        <div
+          v-if="compactSessionThumbnails.length > 1"
+          class="browser-monitor__compact-strip"
+        >
           <button
             v-for="item in compactSessionThumbnails"
             :key="item.session.id"
@@ -1579,18 +1597,24 @@ onUnmounted(() => {
               :src="item.src"
               :alt="item.label"
               class="browser-monitor__compact-thumb-image"
-            />
-            <span v-else class="browser-monitor__compact-thumb-fallback">{{ item.fallback }}</span>
+            >
+            <span
+              v-else
+              class="browser-monitor__compact-thumb-fallback"
+            >{{ item.fallback }}</span>
           </button>
         </div>
 
         <div class="browser-monitor__compact-frame">
-          <div v-if="isTextMonitor && activeTextMonitor" class="browser-monitor__compact-text">
+          <div
+            v-if="isTextMonitor && activeTextMonitor"
+            class="browser-monitor__compact-text"
+          >
             <strong>{{ previewTitle }}</strong>
             <p>
               {{
                 activeTextMonitor.summary ||
-                tr('browserMonitor.textSummaryIdle', 'Waiting for readable summary...')
+                  tr('browserMonitor.textSummaryIdle', 'Waiting for readable summary...')
               }}
             </p>
           </div>
@@ -1599,27 +1623,36 @@ onUnmounted(() => {
             :src="screenshotSrc"
             :alt="tr('browserMonitor.previewAlt', 'Browser preview')"
             class="browser-monitor__compact-image"
-          />
-          <div v-else class="browser-monitor__compact-frame-empty">
+          >
+          <div
+            v-else
+            class="browser-monitor__compact-frame-empty"
+          >
             <strong>{{ tr('browserMonitor.previewEmptyTitle', 'No preview frame yet') }}</strong>
             <span>{{
               screenshotLoading
                 ? tr('browserMonitor.previewLoading', 'Capturing the current viewport...')
                 : tr(
-                    'browserMonitor.previewEmptyBody',
-                    'The monitor will show screenshots as soon as a browser tab is active.'
-                  )
+                  'browserMonitor.previewEmptyBody',
+                  'The monitor will show screenshots as soon as a browser tab is active.'
+                )
             }}</span>
           </div>
         </div>
       </div>
 
-      <div v-else class="browser-monitor__body">
+      <div
+        v-else
+        class="browser-monitor__body"
+      >
         <aside class="browser-monitor__sidebar">
           <div class="browser-monitor__panel">
             <div class="browser-monitor__panel-heading">
               <span>{{ tr('browserMonitor.capabilityHeading', 'Capability priorities') }}</span>
-              <span v-if="overviewLoading" class="browser-monitor__hint">{{
+              <span
+                v-if="overviewLoading"
+                class="browser-monitor__hint"
+              >{{
                 tr('browserMonitor.refreshing', 'Refreshing')
               }}</span>
             </div>
@@ -1635,7 +1668,9 @@ onUnmounted(() => {
                   <span class="browser-monitor__priority-pill">{{ card.priority }}</span>
                   <span class="browser-monitor__capability-label">{{ card.label }}</span>
                 </div>
-                <p class="browser-monitor__capability-detail">{{ card.detail }}</p>
+                <p class="browser-monitor__capability-detail">
+                  {{ card.detail }}
+                </p>
               </article>
             </div>
           </div>
@@ -1661,7 +1696,10 @@ onUnmounted(() => {
             </div>
 
             <div class="browser-monitor__task-list">
-              <div v-if="recentTasks.length === 0" class="browser-monitor__empty">
+              <div
+                v-if="recentTasks.length === 0"
+                class="browser-monitor__empty"
+              >
                 {{ emptyTaskMessage }}
               </div>
 
@@ -1674,7 +1712,10 @@ onUnmounted(() => {
                 @click="openTask(task)"
               >
                 <div class="browser-monitor__task-row">
-                  <span class="browser-monitor__stage-pill" :class="stageTone(task)">
+                  <span
+                    class="browser-monitor__stage-pill"
+                    :class="stageTone(task)"
+                  >
                     {{ stageLabel(task) }}
                   </span>
                   <span class="browser-monitor__task-meta">
@@ -1682,10 +1723,16 @@ onUnmounted(() => {
                   </span>
                 </div>
                 <strong class="browser-monitor__task-title">{{ taskTitle(task) }}</strong>
-                <p v-if="taskSubtitle(task)" class="browser-monitor__task-subtitle">
+                <p
+                  v-if="taskSubtitle(task)"
+                  class="browser-monitor__task-subtitle"
+                >
                   {{ taskSubtitle(task) }}
                 </p>
-                <p v-if="task.blocker" class="browser-monitor__task-blocker">
+                <p
+                  v-if="task.blocker"
+                  class="browser-monitor__task-blocker"
+                >
                   {{ blockerLabel(task) }}
                 </p>
                 <div class="browser-monitor__progress-track">
@@ -1699,7 +1746,12 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <p v-if="overviewError" class="browser-monitor__error">{{ overviewError }}</p>
+          <p
+            v-if="overviewError"
+            class="browser-monitor__error"
+          >
+            {{ overviewError }}
+          </p>
         </aside>
 
         <section class="browser-monitor__preview">
@@ -1708,8 +1760,12 @@ onUnmounted(() => {
               <span class="browser-monitor__preview-eyebrow">{{
                 tr('browserMonitor.previewHeading', 'Browser preview')
               }}</span>
-              <h4 class="browser-monitor__preview-title">{{ previewTitle }}</h4>
-              <p class="browser-monitor__preview-url">{{ previewUrl }}</p>
+              <h4 class="browser-monitor__preview-title">
+                {{ previewTitle }}
+              </h4>
+              <p class="browser-monitor__preview-url">
+                {{ previewUrl }}
+              </p>
             </div>
             <span class="browser-monitor__preview-badge">
               {{
@@ -1720,20 +1776,30 @@ onUnmounted(() => {
             </span>
           </div>
 
-          <div v-if="previewMeta.length > 0" class="browser-monitor__preview-meta">
-            <span v-for="item in previewMeta" :key="item" class="browser-monitor__preview-chip">
+          <div
+            v-if="previewMeta.length > 0"
+            class="browser-monitor__preview-meta"
+          >
+            <span
+              v-for="item in previewMeta"
+              :key="item"
+              class="browser-monitor__preview-chip"
+            >
               {{ item }}
             </span>
           </div>
 
           <div class="browser-monitor__frame">
-            <div v-if="isTextMonitor && activeTextMonitor" class="browser-monitor__text-monitor">
+            <div
+              v-if="isTextMonitor && activeTextMonitor"
+              class="browser-monitor__text-monitor"
+            >
               <div class="browser-monitor__text-card">
                 <strong>{{ tr('browserMonitor.textSummaryHeading', 'Summary') }}</strong>
                 <p>
                   {{
                     activeTextMonitor.summary ||
-                    tr('browserMonitor.textSummaryIdle', 'Waiting for readable summary...')
+                      tr('browserMonitor.textSummaryIdle', 'Waiting for readable summary...')
                   }}
                 </p>
               </div>
@@ -1758,21 +1824,27 @@ onUnmounted(() => {
               :src="screenshotSrc"
               :alt="tr('browserMonitor.previewAlt', 'Browser preview')"
               class="browser-monitor__image"
-            />
-            <div v-else class="browser-monitor__frame-empty">
+            >
+            <div
+              v-else
+              class="browser-monitor__frame-empty"
+            >
               <strong>{{ tr('browserMonitor.previewEmptyTitle', 'No preview frame yet') }}</strong>
               <span>{{
                 screenshotLoading
                   ? tr('browserMonitor.previewLoading', 'Capturing the current viewport...')
                   : tr(
-                      'browserMonitor.previewEmptyBody',
-                      'The monitor will show screenshots as soon as a browser tab is active.'
-                    )
+                    'browserMonitor.previewEmptyBody',
+                    'The monitor will show screenshots as soon as a browser tab is active.'
+                  )
               }}</span>
             </div>
           </div>
 
-          <div v-if="!isTextMonitor && previewFrames.length > 1" class="browser-monitor__timeline">
+          <div
+            v-if="!isTextMonitor && previewFrames.length > 1"
+            class="browser-monitor__timeline"
+          >
             <button
               v-for="frame in previewFrames"
               :key="screenshotFrameKey(frame)"
@@ -1786,14 +1858,17 @@ onUnmounted(() => {
                 :src="`data:image/png;base64,${frame.data}`"
                 :alt="tr('browserMonitor.previewAlt', 'Browser preview')"
                 class="browser-monitor__timeline-image"
-              />
+              >
               <span class="browser-monitor__timeline-time">
                 {{ formatRelativeTime(frame.captured_at) }}
               </span>
             </button>
           </div>
 
-          <div v-if="sessions.length > 1" class="browser-monitor__tabs">
+          <div
+            v-if="sessions.length > 1"
+            class="browser-monitor__tabs"
+          >
             <button
               v-for="session in sessions"
               :key="session.id"
@@ -1815,11 +1890,20 @@ onUnmounted(() => {
             </button>
           </div>
 
-          <p v-if="screenshotError" class="browser-monitor__error">{{ screenshotError }}</p>
+          <p
+            v-if="screenshotError"
+            class="browser-monitor__error"
+          >
+            {{ screenshotError }}
+          </p>
         </section>
       </div>
 
-      <div v-if="!isCollapsed" class="browser-monitor__resize-grip" aria-hidden="true" />
+      <div
+        v-if="!isCollapsed"
+        class="browser-monitor__resize-grip"
+        aria-hidden="true"
+      />
     </section>
   </Teleport>
 </template>

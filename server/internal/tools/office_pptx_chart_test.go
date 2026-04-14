@@ -74,6 +74,48 @@ func TestOfficePPTXChartXMLIncludesLineChartSeries(t *testing.T) {
 	}
 }
 
+func TestOfficeBuildPPTXChartPackageIncludesEmbeddedWorkbookForStringCategories(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "bar",
+		"categories": []interface{}{"North", "South"},
+		"series": []interface{}{
+			map[string]interface{}{"name": "Revenue", "values": []interface{}{120, 98}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartPackage, err := officeBuildPPTXChartPackage(*chart, 1)
+	if err != nil {
+		t.Fatalf("officeBuildPPTXChartPackage() error = %v", err)
+	}
+	if chartPackage.Workbook == nil {
+		t.Fatal("expected chart package to include embedded workbook for string categories")
+	}
+	if chartPackage.ChartRelsXML == "" {
+		t.Fatal("expected chart package to include chart relationships xml")
+	}
+
+	for _, needle := range []string{
+		`<c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>`,
+		`<c:cat><c:strRef><c:f>Data!$A$2:$A$3</c:f><c:strCache><c:ptCount val="2"/>`,
+		`<c:pt idx="0"><c:v>North</c:v></c:pt>`,
+		`<c:pt idx="1"><c:v>South</c:v></c:pt>`,
+		`<c:val><c:numRef><c:f>Data!$B$2:$B$3</c:f><c:numCache><c:formatCode>General</c:formatCode><c:ptCount val="2"/>`,
+	} {
+		if !containsSubstring(chartPackage.ChartXML, needle) {
+			t.Fatalf("string-category chart package XML missing %q in %s", needle, chartPackage.ChartXML)
+		}
+	}
+	if containsSubstring(chartPackage.ChartXML, `<c:strLit>`) {
+		t.Fatalf("expected string-category chart package XML to avoid strLit in %s", chartPackage.ChartXML)
+	}
+	if !containsSubstring(chartPackage.ChartRelsXML, `Target="../embeddings/Microsoft_Excel_Worksheet1.xlsx"`) {
+		t.Fatalf("expected chart relationships to target embedded workbook, got %s", chartPackage.ChartRelsXML)
+	}
+}
+
 func TestOfficePPTXChartXMLIncludesPrimaryDateCategoryAxis(t *testing.T) {
 	firstSerial, ok := officeExcelDateSerial("2026-01-01", false)
 	if !ok {
@@ -2308,6 +2350,246 @@ func TestOfficePPTXChartXMLIncludesComboSeriesLegendKeyAndBubbleSizeControls(t *
 	} {
 		if !containsSubstring(blocks[1], needle) {
 			t.Fatalf("expected line block to include %q in %s", needle, blocks[1])
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesComboSeriesLabelSeparator(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "combo",
+		"categories": []interface{}{"Q1", "Q2", "Q3"},
+		"series": []interface{}{
+			map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{120, 132, 140}},
+			map[string]interface{}{
+				"name":            "Margin",
+				"type":            "line",
+				"labels":          true,
+				"label_separator": " | ",
+				"values":          []interface{}{28, 31, 34},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	blockPattern := regexp.MustCompile(`<c:(barChart|lineChart)>.*?</c:(barChart|lineChart)>`)
+	blocks := blockPattern.FindAllString(chartXML, -1)
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 chart blocks in %s", chartXML)
+	}
+	if containsSubstring(blocks[0], `<c:separator>`) {
+		t.Fatalf("expected bar block to omit label separator in %s", blocks[0])
+	}
+	if !containsSubstring(blocks[1], `<c:separator>|</c:separator>`) {
+		t.Fatalf("expected line block to include label separator in %s", blocks[1])
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesDonutLeaderLineControl(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":              "donut",
+		"labels":            true,
+		"show_leader_lines": true,
+		"categories":        []interface{}{"Won", "Lost"},
+		"series": []interface{}{
+			map[string]interface{}{"name": "Pipeline", "values": []interface{}{55, 45}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:showLeaderLines val="1"/>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("donut leader-line chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesDonutSliceLabelVisibilityOverrides(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "donut",
+		"labels":     true,
+		"categories": []interface{}{"Won", "Lost", "Open"},
+		"series": []interface{}{
+			map[string]interface{}{
+				"name":              "Pipeline",
+				"slice_show_labels": []interface{}{true, false, true},
+				"values":            []interface{}{55, 25, 20},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:dLbl><c:idx val="0"/><c:delete val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:delete val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:delete val="0"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("donut slice-label visibility chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesDonutSliceLabelPositionOverrides(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "donut",
+		"labels":     true,
+		"categories": []interface{}{"Won", "Lost", "Open"},
+		"series": []interface{}{
+			map[string]interface{}{
+				"name":                  "Pipeline",
+				"slice_label_positions": []interface{}{"outside_end", "center", "best_fit"},
+				"values":                []interface{}{55, 25, 20},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:dLbl><c:idx val="0"/><c:dLblPos val="outEnd"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:dLblPos val="ctr"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:dLblPos val="bestFit"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("donut slice-label position chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesDonutSliceLabelFormatOverrides(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "donut",
+		"labels":     true,
+		"categories": []interface{}{"Won", "Lost", "Open"},
+		"series": []interface{}{
+			map[string]interface{}{
+				"name":                "Pipeline",
+				"slice_label_formats": []interface{}{"0.0%", "$#,##0", "0.0"},
+				"values":              []interface{}{55, 25, 20},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:dLbl><c:idx val="0"/><c:numFmt formatCode="0.0%" sourceLinked="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:numFmt formatCode="$#,##0" sourceLinked="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:numFmt formatCode="0.0" sourceLinked="0"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("donut slice-label format chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesDonutSliceLabelSeparatorOverrides(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "donut",
+		"labels":     true,
+		"categories": []interface{}{"Won", "Lost", "Open"},
+		"series": []interface{}{
+			map[string]interface{}{
+				"name":                   "Pipeline",
+				"slice_label_separators": []interface{}{" / ", " | ", " - "},
+				"values":                 []interface{}{55, 25, 20},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:dLbl><c:idx val="0"/><c:separator>/</c:separator></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:separator>|</c:separator></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:separator>-</c:separator></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("donut slice-label separator chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesDonutSliceLabelContentOverrides(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "donut",
+		"labels":     true,
+		"categories": []interface{}{"Won", "Lost", "Open"},
+		"series": []interface{}{
+			map[string]interface{}{
+				"name":                  "Pipeline",
+				"slice_show_values":     []interface{}{true, false, true},
+				"slice_show_categories": []interface{}{false, true, false},
+				"values":                []interface{}{55, 25, 20},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:dLbl><c:idx val="0"/><c:showVal val="1"/><c:showCatName val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:showVal val="0"/><c:showCatName val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:showVal val="1"/><c:showCatName val="0"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("donut slice-label content chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLIncludesDonutSlicePercentAndSeriesNameOverrides(t *testing.T) {
+	chart, err := parseOfficeChart(map[string]interface{}{
+		"type":       "donut",
+		"labels":     true,
+		"categories": []interface{}{"Won", "Lost", "Open"},
+		"series": []interface{}{
+			map[string]interface{}{
+				"name":                    "Pipeline",
+				"slice_show_percents":     []interface{}{true, false, true},
+				"slice_show_series_names": []interface{}{false, true, false},
+				"values":                  []interface{}{55, 25, 20},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeChart() error = %v", err)
+	}
+
+	chartXML := officePPTXChartXML(*chart)
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:dLbl><c:idx val="0"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:showSerName val="1"/><c:showPercent val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbl>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("donut slice percent/series-name chart XML missing %q in %s", needle, chartXML)
 		}
 	}
 }

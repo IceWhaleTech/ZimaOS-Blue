@@ -36,8 +36,10 @@ func officeCleanupDocTable(table *officeTableSpec) *officeTableSpec {
 		return nil
 	}
 	cleaned := &officeTableSpec{
-		Headers: make([]string, 0, len(table.Headers)),
-		Rows:    make([][]string, 0, len(table.Rows)),
+		Headers:          make([]string, 0, len(table.Headers)),
+		Rows:             make([][]string, 0, len(table.Rows)),
+		ColumnWidths:     append([]float64(nil), table.ColumnWidths...),
+		ColumnAlignments: append([]string(nil), table.ColumnAlignments...),
 	}
 	for _, header := range table.Headers {
 		cleaned.Headers = append(cleaned.Headers, officeCleanDocText(header))
@@ -133,6 +135,8 @@ func officeCleanupDocChart(chart *officeChartSpec) *officeChartSpec {
 		Labels:                                officeNormalizeChartLabels(chart.Labels),
 		LabelPosition:                         officeNormalizeChartLabelPosition(chart.LabelPosition),
 		LabelFormat:                           officeNormalizeChartLabelFormat(chart.LabelFormat),
+		LabelSeparator:                        officeNormalizeChartLabelSeparator(chart.LabelSeparator),
+		ShowLeaderLines:                       officeNormalizeChartLabels(chart.ShowLeaderLines),
 		ShowValue:                             officeNormalizeChartLabels(chart.ShowValue),
 		ShowCategory:                          officeNormalizeChartLabels(chart.ShowCategory),
 		ShowSeriesName:                        officeNormalizeChartLabels(chart.ShowSeriesName),
@@ -159,26 +163,36 @@ func officeCleanupDocChart(chart *officeChartSpec) *officeChartSpec {
 		}
 		seriesType := officeNormalizeChartSeriesType(cleaned.Type, series.Type, idx)
 		cleaned.Series = append(cleaned.Series, officeChartSeries{
-			Name:            name,
-			Type:            seriesType,
-			Axis:            officeNormalizeChartSeriesAxis(cleaned.Type, seriesType, series.Axis),
-			Labels:          officeNormalizeChartLabels(series.Labels),
-			LabelPosition:   officeNormalizeChartLabelPosition(series.LabelPosition),
-			LabelFormat:     officeNormalizeChartLabelFormat(series.LabelFormat),
-			ShowValue:       officeNormalizeChartLabels(series.ShowValue),
-			ShowCategory:    officeNormalizeChartLabels(series.ShowCategory),
-			ShowSeriesName:  officeNormalizeChartLabels(series.ShowSeriesName),
-			ShowPercent:     officeNormalizeChartLabels(series.ShowPercent),
-			ShowLegendKey:   officeNormalizeChartLabels(series.ShowLegendKey),
-			ShowBubbleSize:  officeNormalizeChartLabels(series.ShowBubbleSize),
-			PointColors:     officeNormalizeChartPointColors(series.PointColors),
-			PointExplosions: officeNormalizeChartPointExplosions(series.PointExplosions),
-			Smooth:          officeNormalizeChartLabels(series.Smooth),
-			Color:           officeNormalizeChartSeriesColor(series.Color),
-			LineWidth:       officeNormalizeChartSeriesLineWidth(series.LineWidth),
-			Dash:            officeNormalizeChartSeriesDash(series.Dash),
-			Marker:          officeNormalizeChartSeriesMarker(series.Marker),
-			Values:          values,
+			Name:                 name,
+			Type:                 seriesType,
+			Axis:                 officeNormalizeChartSeriesAxis(cleaned.Type, seriesType, series.Axis),
+			Labels:               officeNormalizeChartLabels(series.Labels),
+			LabelPosition:        officeNormalizeChartLabelPosition(series.LabelPosition),
+			LabelFormat:          officeNormalizeChartLabelFormat(series.LabelFormat),
+			LabelSeparator:       officeNormalizeChartLabelSeparator(series.LabelSeparator),
+			ShowLeaderLines:      officeNormalizeChartLabels(series.ShowLeaderLines),
+			ShowValue:            officeNormalizeChartLabels(series.ShowValue),
+			ShowCategory:         officeNormalizeChartLabels(series.ShowCategory),
+			ShowSeriesName:       officeNormalizeChartLabels(series.ShowSeriesName),
+			ShowPercent:          officeNormalizeChartLabels(series.ShowPercent),
+			ShowLegendKey:        officeNormalizeChartLabels(series.ShowLegendKey),
+			ShowBubbleSize:       officeNormalizeChartLabels(series.ShowBubbleSize),
+			PointShowLabels:      officeNormalizeChartPointLabelVisibility(series.PointShowLabels),
+			PointShowValues:      officeNormalizeChartPointLabelVisibility(series.PointShowValues),
+			PointShowCategories:  officeNormalizeChartPointLabelVisibility(series.PointShowCategories),
+			PointShowSeriesNames: officeNormalizeChartPointLabelVisibility(series.PointShowSeriesNames),
+			PointShowPercents:    officeNormalizeChartPointLabelVisibility(series.PointShowPercents),
+			PointLabelPositions:  officeNormalizeChartPointLabelPositions(series.PointLabelPositions),
+			PointLabelFormats:    officeNormalizeChartPointLabelFormats(series.PointLabelFormats),
+			PointLabelSeparators: officeNormalizeChartPointLabelSeparators(series.PointLabelSeparators),
+			PointColors:          officeNormalizeChartPointColors(series.PointColors),
+			PointExplosions:      officeNormalizeChartPointExplosions(series.PointExplosions),
+			Smooth:               officeNormalizeChartLabels(series.Smooth),
+			Color:                officeNormalizeChartSeriesColor(series.Color),
+			LineWidth:            officeNormalizeChartSeriesLineWidth(series.LineWidth),
+			Dash:                 officeNormalizeChartSeriesDash(series.Dash),
+			Marker:               officeNormalizeChartSeriesMarker(series.Marker),
+			Values:               values,
 		})
 	}
 	if cleaned.Type == "" || len(cleaned.Series) == 0 {

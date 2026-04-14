@@ -157,6 +157,55 @@ func TestDocumentReaderReadDocument_PPTXLocalParserReadsChartParts(t *testing.T)
 	}
 }
 
+func TestDocumentReaderReadDocument_PPTXLocalParserFallsBackToEmbeddedWorkbookStringCategories(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "string-workbook-chart-deck.pptx")
+	writeTestOOXMLArchiveBytes(t, path, map[string][]byte{
+		"ppt/slides/slide1.xml": []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld><p:spTree>
+    <p:sp><p:txBody><a:p><a:r><a:t>Revenue Trend</a:t></a:r></a:p></p:txBody></p:sp>
+    <p:graphicFrame><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart r:id="rId2"/></a:graphicData></a:graphic></p:graphicFrame>
+  </p:spTree></p:cSld>
+</p:sld>`),
+		"ppt/slides/_rels/slide1.xml.rels": []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="../charts/chart1.xml"/>
+</Relationships>`),
+		"ppt/charts/chart1.xml": []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <c:chart>
+    <c:plotArea>
+      <c:barChart>
+        <c:ser>
+          <c:tx><c:v>Revenue</c:v></c:tx>
+          <c:cat><c:strRef><c:f>Data!$A$2:$A$3</c:f></c:strRef></c:cat>
+          <c:val><c:numLit><c:ptCount val="2"/><c:pt idx="0"><c:v>120</c:v></c:pt><c:pt idx="1"><c:v>98</c:v></c:pt></c:numLit></c:val>
+        </c:ser>
+      </c:barChart>
+    </c:plotArea>
+  </c:chart>
+  <c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>`),
+		"ppt/charts/_rels/chart1.xml.rels": []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/package" Target="../embeddings/Microsoft_Excel_Worksheet1.xlsx"/>
+</Relationships>`),
+		"ppt/embeddings/Microsoft_Excel_Worksheet1.xlsx": buildTestStringChartWorkbookXLSXBytes(t, "Data", []string{"North", "South"}),
+	})
+
+	reader := NewDocumentReader()
+	result, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument failed: %v", err)
+	}
+	for _, needle := range []string{"Revenue Trend", "Revenue", "North", "South"} {
+		if !strings.Contains(result.Text, needle) {
+			t.Fatalf("expected extracted text to include %q, got %q", needle, result.Text)
+		}
+	}
+}
+
 func TestDocumentReaderReadDocument_PPTXLocalParserReadsDateChartParts(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "date-chart-deck.pptx")
 	firstSerial := pptxDateChartTestSerial(t, 2026, time.January, 1)
@@ -739,6 +788,52 @@ func buildTestChartWorkbookXLSXBytes(t *testing.T, sheetName, formatCode string,
     <xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>
   </cellXfs>
 </styleSheet>`)
+	writeEntry("xl/worksheets/sheet1.xml", buf.String())
+
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close xlsx zip: %v", err)
+	}
+	return out.Bytes()
+}
+
+func buildTestStringChartWorkbookXLSXBytes(t *testing.T, sheetName string, labels []string) []byte {
+	t.Helper()
+
+	var buf strings.Builder
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	buf.WriteString(`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` + "\n")
+	buf.WriteString(`  <sheetData>` + "\n")
+	buf.WriteString(`    <row r="1"><c r="A1" t="inlineStr"><is><t>Category</t></is></c></row>` + "\n")
+	for idx, label := range labels {
+		rowNum := strconv.Itoa(idx + 2)
+		buf.WriteString(`    <row r="` + rowNum + `"><c r="A` + rowNum + `" t="inlineStr"><is><t>` + label + `</t></is></c></row>` + "\n")
+	}
+	buf.WriteString(`  </sheetData>` + "\n")
+	buf.WriteString(`</worksheet>`)
+
+	var out bytes.Buffer
+	zw := zip.NewWriter(&out)
+	writeEntry := func(name, content string) {
+		t.Helper()
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("create zip entry %s: %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("write zip entry %s: %v", name, err)
+		}
+	}
+
+	writeEntry("xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="`+sheetName+`" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`)
+	writeEntry("xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`)
 	writeEntry("xl/worksheets/sheet1.xml", buf.String())
 
 	if err := zw.Close(); err != nil {

@@ -25,7 +25,7 @@ import {
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In desktop mode, the page is loaded from http://localhost:{port} (same-origin as the
 // Go server), so all API calls use relative URLs — no special URL construction needed.
-const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+const isDesktop = typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__
 const isVitestRuntime = Boolean(import.meta.env.VITEST)
 type PreviewModeCheckResult = {
   preview: boolean
@@ -103,7 +103,7 @@ async function doCheckPreviewMode(): Promise<PreviewModeCheckResult> {
       }
 
       return { preview: isPreviewMode, connectionError: false }
-    } catch (err) {
+    } catch (_err) {
       // In desktop mode, retry; in browser, fail immediately
       if (!isDesktop) break
     }
@@ -448,6 +448,16 @@ export const routes: RouteRecordRaw[] = [
     name: 'Channels',
     component: () => import('@/views/ChannelsView.vue'),
     meta: { requiresAuth: true, permission: PagePermissions.CHANNELS },
+  },
+  {
+    path: '/channels/setup/wechat_ilink',
+    name: 'WeChatILinkSetup',
+    component: () => import('@/views/WeChatILinkSetupView.vue'),
+    meta: {
+      requiresAuth: true,
+      permission: PagePermissions.CHANNELS,
+      hideLayout: true,
+    },
   },
   {
     path: '/operations/harness',

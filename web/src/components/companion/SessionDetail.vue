@@ -149,13 +149,20 @@ function formatStatus(status?: string): string {
         <h2 class="text-lg font-bold text-gray-900 dark:text-white">
           {{ t('companion.sessionDetail') }}
         </h2>
-        <p class="text-sm text-gray-500 dark:text-slate-400 font-mono">{{ session.id }}</p>
+        <p class="text-sm text-gray-500 dark:text-slate-400 font-mono">
+          {{ session.id }}
+        </p>
       </div>
       <button
         class="p-2 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
         @click="emit('close')"
       >
-        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          class="w-5 h-5 text-gray-500"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -208,7 +215,9 @@ function formatStatus(status?: string): string {
           <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
             {{ t('companion.threat_score') }}
           </div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.threat_score }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">
+            {{ session.threat_score }}
+          </div>
         </div>
       </div>
 
@@ -218,7 +227,9 @@ function formatStatus(status?: string): string {
           <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
             {{ t('companion.events') }}
           </div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ session.event_count }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">
+            {{ session.event_count }}
+          </div>
         </div>
         <div class="p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg">
           <div class="text-xs text-gray-500 dark:text-slate-400 mb-1">
@@ -249,12 +260,8 @@ function formatStatus(status?: string): string {
       <!-- Time Info -->
       <div class="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-slate-400 mb-6">
         <span>{{ t('companion.started') }}: {{ formatDate(session.started_at) }}</span>
-        <span v-if="session.ended_at"
-          >{{ t('companion.ended') }}: {{ formatDate(session.ended_at) }}</span
-        >
-        <span v-if="session.duration"
-          >{{ t('companion.duration') }}: {{ formatDuration(session.duration) }}</span
-        >
+        <span v-if="session.ended_at">{{ t('companion.ended') }}: {{ formatDate(session.ended_at) }}</span>
+        <span v-if="session.duration">{{ t('companion.duration') }}: {{ formatDuration(session.duration) }}</span>
       </div>
 
       <!-- View Mode Toggle -->
@@ -312,7 +319,10 @@ function formatStatus(status?: string): string {
       </div>
 
       <!-- Flow View -->
-      <div v-if="viewMode === 'flow'" class="flex-1 min-h-0">
+      <div
+        v-if="viewMode === 'flow'"
+        class="flex-1 min-h-0"
+      >
         <div
           class="h-full min-h-[360px] sm:min-h-[420px] border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden"
         >
@@ -327,12 +337,18 @@ function formatStatus(status?: string): string {
       </div>
 
       <!-- Events Timeline -->
-      <div v-else class="mb-6">
+      <div
+        v-else
+        class="mb-6"
+      >
         <h3 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
           {{ t('companion.eventHistory') }}
         </h3>
 
-        <div v-if="loading" class="text-center py-4 text-gray-500 dark:text-slate-400">
+        <div
+          v-if="loading"
+          class="text-center py-4 text-gray-500 dark:text-slate-400"
+        >
           {{ t('common.loading') }}
         </div>
 
@@ -343,7 +359,10 @@ function formatStatus(status?: string): string {
           {{ t('companion.noEvents') }}
         </div>
 
-        <div v-else class="space-y-3">
+        <div
+          v-else
+          class="space-y-3"
+        >
           <div
             v-for="event in events"
             :key="event.id"
@@ -383,8 +402,7 @@ function formatStatus(status?: string): string {
                 </span>
                 <span
                   class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
-                  >{{ event.message.contentType }}</span
-                >
+                >{{ event.message.contentType }}</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5">
                 {{ sanitizePreview(event.message.content, 200) }}
@@ -399,8 +417,7 @@ function formatStatus(status?: string): string {
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
                   class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70"
-                  >{{ event.tool_call.toolName }}</span
-                >
+                >{{ event.tool_call.toolName }}</span>
                 <span
                   v-if="event.tool_call.sandboxUsed"
                   class="text-xs px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 rounded font-medium"
@@ -409,25 +426,20 @@ function formatStatus(status?: string): string {
                 </span>
                 <span
                   class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
-                  >{{ formatDuration(event.tool_call.duration) }}</span
-                >
+                >{{ formatDuration(event.tool_call.duration) }}</span>
               </div>
               <div
                 v-if="event.tool_call.inputPreview"
                 class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2"
               >
-                <span class="font-medium text-gray-600 dark:text-slate-300"
-                  >{{ t('companion.llmDetails.input') }}:</span
-                >
+                <span class="font-medium text-gray-600 dark:text-slate-300">{{ t('companion.llmDetails.input') }}:</span>
                 {{ sanitizePreview(event.tool_call.inputPreview, 220) }}
               </div>
               <div
                 v-if="event.tool_call.outputPreview"
                 class="text-xs text-gray-500 dark:text-slate-400 break-words leading-5 bg-white/70 dark:bg-slate-800/40 rounded p-2 mt-1.5"
               >
-                <span class="font-medium text-gray-600 dark:text-slate-300"
-                  >{{ t('companion.nodes.tokensOut') }}:</span
-                >
+                <span class="font-medium text-gray-600 dark:text-slate-300">{{ t('companion.nodes.tokensOut') }}:</span>
                 {{ sanitizePreview(event.tool_call.outputPreview, 220) }}
               </div>
             </div>
@@ -440,12 +452,10 @@ function formatStatus(status?: string): string {
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
                   class="font-mono text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70"
-                  >{{ event.llm_request.provider }}/{{ event.llm_request.model }}</span
-                >
+                >{{ event.llm_request.provider }}/{{ event.llm_request.model }}</span>
                 <span
                   class="text-xs px-1.5 py-0.5 rounded bg-white/90 dark:bg-slate-800/70 text-gray-500 dark:text-slate-400"
-                  >{{ formatDuration(event.llm_request.duration) }}</span
-                >
+                >{{ formatDuration(event.llm_request.duration) }}</span>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                 <div class="rounded bg-white/70 dark:bg-slate-800/40 p-2">
@@ -476,7 +486,10 @@ function formatStatus(status?: string): string {
             </div>
 
             <!-- Security Event -->
-            <div v-if="event.security" class="session-detail-inline-start-pad text-sm mt-2">
+            <div
+              v-if="event.security"
+              class="session-detail-inline-start-pad text-sm mt-2"
+            >
               <div class="flex items-center gap-2 mb-1.5 flex-wrap">
                 <span
                   :class="[

@@ -31,7 +31,7 @@ func resolveRouteRuntimeChannelConfig(cfg *config.Config, store *serverpkg.Chann
 }
 
 func bindRouteRuntimeChannelChatTarget(chat runtimeChannelChatTarget, manager runtimeChannelSender) {
-	if chat == nil || manager == nil {
+	if !routeRuntimeHasValue(chat) || manager == nil {
 		return
 	}
 	chat.SetChannelSender(func(ctx context.Context, channelName string, out channel.OutgoingMessage) error {
@@ -50,7 +50,7 @@ func bindRouteRuntimeChannelWatcherTarget(
 	manager runtimeChannelSender,
 	resolver mediagen.URLResolver,
 ) {
-	if watcher == nil || manager == nil {
+	if !routeRuntimeHasValue(watcher) || manager == nil {
 		return
 	}
 	watcher.SetNotifier(func(ctx context.Context, channelName string, msg channel.OutgoingMessage) error {
@@ -76,7 +76,7 @@ func bindRouteRuntimeChannelHandler(
 	chat runtimeChannelChatProcessor,
 	autoreplySvc runtimeChannelAutoreplyTarget,
 ) {
-	if target == nil {
+	if !routeRuntimeHasValue(target) {
 		return
 	}
 	target.SetHandler(func(ctx context.Context, msg channel.Message) (*channel.OutgoingMessage, error) {

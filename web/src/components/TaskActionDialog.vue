@@ -438,7 +438,11 @@ watch(
             </p>
 
             <div class="mt-5 space-y-4">
-              <label v-for="field in normalizedActionFields" :key="field.key" class="block">
+              <label
+                v-for="field in normalizedActionFields"
+                :key="field.key"
+                class="block"
+              >
                 <span class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-200">
                   {{ field.label }}
                 </span>
@@ -461,7 +465,7 @@ watch(
                 <input
                   v-if="
                     normalizeFieldKind(field.kind) === 'choice' ||
-                    normalizeFieldKind(field.kind) === 'text'
+                      normalizeFieldKind(field.kind) === 'text'
                   "
                   :ref="(el) => setSchemaInputRef(field.key, el as HTMLInputElement | null)"
                   :value="fieldDrafts[field.key] || ''"
@@ -470,7 +474,7 @@ watch(
                   class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:focus:border-blue-400 dark:focus:ring-blue-500/30"
                   :placeholder="field.placeholder || ''"
                   @input="setFieldDraft(field.key, ($event.target as HTMLInputElement).value)"
-                />
+                >
 
                 <textarea
                   v-else
@@ -481,7 +485,7 @@ watch(
                   class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-900 dark:text-white dark:focus:border-blue-400 dark:focus:ring-blue-500/30"
                   :placeholder="field.placeholder || ''"
                   @input="setFieldDraft(field.key, ($event.target as HTMLTextAreaElement).value)"
-                ></textarea>
+                />
               </label>
 
               <p

@@ -104,8 +104,13 @@ function notificationMessage(notification: {
 
             <!-- Content -->
             <div class="flex-1 min-w-0">
-              <p class="font-medium text-sm">{{ notificationTitle(notification) }}</p>
-              <p v-if="notificationMessage(notification)" class="mt-1 text-sm opacity-80">
+              <p class="font-medium text-sm">
+                {{ notificationTitle(notification) }}
+              </p>
+              <p
+                v-if="notificationMessage(notification)"
+                class="mt-1 text-sm opacity-80"
+              >
                 {{ notificationMessage(notification) }}
               </p>
 

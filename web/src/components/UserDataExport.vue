@@ -489,7 +489,10 @@ function closeDataModal() {
 
           <div class="p-6">
             <!-- Export Tab Content -->
-            <div v-show="activeTab === 'export'" class="glass-card p-4">
+            <div
+              v-show="activeTab === 'export'"
+              class="glass-card p-4"
+            >
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 {{ t('userdata.exportDescription') }}
               </p>
@@ -543,7 +546,7 @@ function closeDataModal() {
                     type="password"
                     :placeholder="t('userdata.passwordPlaceholder')"
                     class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-                  />
+                  >
                 </div>
                 <div>
                   <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
@@ -555,7 +558,7 @@ function closeDataModal() {
                     :placeholder="t('userdata.confirmPasswordPlaceholder')"
                     class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                     :class="{ 'border-red-500': exportConfirmPassword && !exportPasswordsMatch }"
-                  />
+                  >
                   <p
                     v-if="exportConfirmPassword && !exportPasswordsMatch"
                     class="text-xs text-red-500 mt-1"
@@ -593,19 +596,22 @@ function closeDataModal() {
                     r="10"
                     stroke="currentColor"
                     stroke-width="4"
-                  ></circle>
+                  />
                   <path
                     class="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                  />
                 </svg>
                 {{ exporting ? t('userdata.exporting') : t('userdata.exportButton') }}
               </button>
             </div>
 
             <!-- Import Tab Content -->
-            <div v-show="activeTab === 'import'" class="glass-card p-4">
+            <div
+              v-show="activeTab === 'import'"
+              class="glass-card p-4"
+            >
               <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
                 {{ t('userdata.importDescription') }}
               </p>
@@ -622,7 +628,7 @@ function closeDataModal() {
                     accept=".json"
                     class="hidden"
                     @change="handleFileSelect"
-                  />
+                  >
                   <button
                     class="px-4 py-2 bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-700 dark:text-white rounded-lg text-sm transition-colors"
                     @click="fileInputRef?.click()"
@@ -668,11 +674,14 @@ function closeDataModal() {
                   type="password"
                   :placeholder="t('userdata.importPasswordPlaceholder')"
                   class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-                />
+                >
               </div>
 
               <!-- Preview -->
-              <div v-if="importPreview" class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 mb-4">
+              <div
+                v-if="importPreview"
+                class="bg-gray-50 dark:bg-slate-700/50 rounded-lg p-4 mb-4"
+              >
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-2">
                   {{ t('userdata.previewTitle') }}
                 </h4>
@@ -691,13 +700,19 @@ function closeDataModal() {
                       new Date(importPreview.exported_at).toLocaleString()
                     }}</span>
                   </div>
-                  <div v-if="importPreview.has_settings" class="flex justify-between">
+                  <div
+                    v-if="importPreview.has_settings"
+                    class="flex justify-between"
+                  >
                     <span class="text-gray-500 dark:text-slate-400">{{
                       t('userdata.hasSettings')
                     }}</span>
                     <span class="text-green-600 dark:text-green-400">{{ t('common.yes') }}</span>
                   </div>
-                  <div v-if="importPreview.chat_preview" class="flex justify-between">
+                  <div
+                    v-if="importPreview.chat_preview"
+                    class="flex justify-between"
+                  >
                     <span class="text-gray-500 dark:text-slate-400">{{
                       t('userdata.conversations')
                     }}</span>
@@ -705,7 +720,10 @@ function closeDataModal() {
                       importPreview.chat_preview.conversations
                     }}</span>
                   </div>
-                  <div v-if="importPreview.chat_preview" class="flex justify-between">
+                  <div
+                    v-if="importPreview.chat_preview"
+                    class="flex justify-between"
+                  >
                     <span class="text-gray-500 dark:text-slate-400">{{
                       t('userdata.messages')
                     }}</span>
@@ -752,12 +770,12 @@ function closeDataModal() {
                       r="10"
                       stroke="currentColor"
                       stroke-width="4"
-                    ></circle>
+                    />
                     <path
                       class="opacity-75"
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                    />
                   </svg>
                   {{ importing ? t('userdata.importing') : t('userdata.importButton') }}
                 </button>
@@ -765,13 +783,19 @@ function closeDataModal() {
             </div>
 
             <!-- Cleanup Tab Content -->
-            <div v-show="activeTab === 'cleanup'" class="glass-card p-4 space-y-4">
+            <div
+              v-show="activeTab === 'cleanup'"
+              class="glass-card p-4 space-y-4"
+            >
               <p class="text-sm text-gray-500 dark:text-gray-400">
                 {{ t('userdata.cleanup.description') }}
               </p>
 
               <!-- Step 1: Select Data to Clean -->
-              <div v-if="cleanupStep === 'select'" class="space-y-4">
+              <div
+                v-if="cleanupStep === 'select'"
+                class="space-y-4"
+              >
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ t('userdata.cleanup.selectData') }}
                 </h4>
@@ -783,7 +807,7 @@ function closeDataModal() {
                       v-model="cleanupTargets.chatHistory"
                       type="checkbox"
                       class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                    />
+                    >
                     <div class="flex-1">
                       <div class="text-sm font-medium text-gray-900 dark:text-white">
                         {{ t('userdata.cleanup.chatHistory') }}
@@ -792,9 +816,7 @@ function closeDataModal() {
                         {{ t('userdata.cleanup.chatHistoryDesc') }}
                       </div>
                     </div>
-                    <span class="text-sm text-gray-500 dark:text-slate-400"
-                      >{{ chatStore.conversations.length }} {{ t('userdata.conversations') }}</span
-                    >
+                    <span class="text-sm text-gray-500 dark:text-slate-400">{{ chatStore.conversations.length }} {{ t('userdata.conversations') }}</span>
                   </label>
                   <label
                     class="flex items-center gap-3 p-3 bg-gray-50 dark:bg-slate-700/50 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700"
@@ -803,7 +825,7 @@ function closeDataModal() {
                       v-model="cleanupTargets.sessions"
                       type="checkbox"
                       class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                    />
+                    >
                     <div class="flex-1">
                       <div class="text-sm font-medium text-gray-900 dark:text-white">
                         {{ t('userdata.cleanup.sessions') }}
@@ -823,7 +845,7 @@ function closeDataModal() {
                       v-model="cleanupTargets.events"
                       type="checkbox"
                       class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                    />
+                    >
                     <div class="flex-1">
                       <div class="text-sm font-medium text-gray-900 dark:text-white">
                         {{ t('userdata.cleanup.events') }}
@@ -843,7 +865,7 @@ function closeDataModal() {
                       v-model="cleanupTargets.alerts"
                       type="checkbox"
                       class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                    />
+                    >
                     <div class="flex-1">
                       <div class="text-sm font-medium text-gray-900 dark:text-white">
                         {{ t('userdata.cleanup.alerts') }}
@@ -863,7 +885,7 @@ function closeDataModal() {
                       v-model="cleanupTargets.settings"
                       type="checkbox"
                       class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                    />
+                    >
                     <div class="flex-1">
                       <div class="text-sm font-medium text-gray-900 dark:text-white">
                         {{ t('userdata.cleanup.settings') }}
@@ -880,7 +902,7 @@ function closeDataModal() {
                       v-model="cleanupTargets.cache"
                       type="checkbox"
                       class="w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500"
-                    />
+                    >
                     <div class="flex-1">
                       <div class="text-sm font-medium text-gray-900 dark:text-white">
                         {{ t('userdata.cleanup.cache') }}
@@ -901,7 +923,10 @@ function closeDataModal() {
               </div>
 
               <!-- Step 2: Preview -->
-              <div v-else-if="cleanupStep === 'preview'" class="space-y-4">
+              <div
+                v-else-if="cleanupStep === 'preview'"
+                class="space-y-4"
+              >
                 <h4 class="text-sm font-medium text-gray-900 dark:text-white">
                   {{ t('userdata.cleanup.previewTitle') }}
                 </h4>
@@ -916,11 +941,12 @@ function closeDataModal() {
                     <span class="text-red-700 dark:text-red-300">{{
                       t('userdata.cleanup.chatHistory')
                     }}</span>
-                    <span class="font-medium text-red-800 dark:text-red-200"
-                      >{{ cleanupPreviewData.chatHistory }} {{ t('userdata.conversations') }}</span
-                    >
+                    <span class="font-medium text-red-800 dark:text-red-200">{{ cleanupPreviewData.chatHistory }} {{ t('userdata.conversations') }}</span>
                   </div>
-                  <div v-if="cleanupPreviewData.sessions > 0" class="flex justify-between text-sm">
+                  <div
+                    v-if="cleanupPreviewData.sessions > 0"
+                    class="flex justify-between text-sm"
+                  >
                     <span class="text-red-700 dark:text-red-300">{{
                       t('userdata.cleanup.sessions')
                     }}</span>
@@ -928,7 +954,10 @@ function closeDataModal() {
                       cleanupPreviewData.sessions
                     }}</span>
                   </div>
-                  <div v-if="cleanupPreviewData.events > 0" class="flex justify-between text-sm">
+                  <div
+                    v-if="cleanupPreviewData.events > 0"
+                    class="flex justify-between text-sm"
+                  >
                     <span class="text-red-700 dark:text-red-300">{{
                       t('userdata.cleanup.events')
                     }}</span>
@@ -936,7 +965,10 @@ function closeDataModal() {
                       cleanupPreviewData.events
                     }}</span>
                   </div>
-                  <div v-if="cleanupPreviewData.alerts > 0" class="flex justify-between text-sm">
+                  <div
+                    v-if="cleanupPreviewData.alerts > 0"
+                    class="flex justify-between text-sm"
+                  >
                     <span class="text-red-700 dark:text-red-300">{{
                       t('userdata.cleanup.alerts')
                     }}</span>
@@ -944,7 +976,10 @@ function closeDataModal() {
                       cleanupPreviewData.alerts
                     }}</span>
                   </div>
-                  <div v-if="cleanupPreviewData.settings" class="flex justify-between text-sm">
+                  <div
+                    v-if="cleanupPreviewData.settings"
+                    class="flex justify-between text-sm"
+                  >
                     <span class="text-red-700 dark:text-red-300">{{
                       t('userdata.cleanup.settings')
                     }}</span>
@@ -952,7 +987,10 @@ function closeDataModal() {
                       t('userdata.cleanup.willReset')
                     }}</span>
                   </div>
-                  <div v-if="cleanupPreviewData.cache" class="flex justify-between text-sm">
+                  <div
+                    v-if="cleanupPreviewData.cache"
+                    class="flex justify-between text-sm"
+                  >
                     <span class="text-red-700 dark:text-red-300">{{
                       t('userdata.cleanup.cache')
                     }}</span>
@@ -978,12 +1016,17 @@ function closeDataModal() {
               </div>
 
               <!-- Step 3: Confirm -->
-              <div v-else-if="cleanupStep === 'confirm'" class="space-y-4">
+              <div
+                v-else-if="cleanupStep === 'confirm'"
+                class="space-y-4"
+              >
                 <div
                   class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3"
                 >
                   <div class="text-sm text-red-700 dark:text-red-300">
-                    <p class="font-medium">{{ t('userdata.cleanup.confirmStep') }}</p>
+                    <p class="font-medium">
+                      {{ t('userdata.cleanup.confirmStep') }}
+                    </p>
                     <p
                       v-if="previewStore.isPreviewMode"
                       class="mt-1 text-red-600 dark:text-red-400"
@@ -994,7 +1037,10 @@ function closeDataModal() {
                         })
                       }}
                     </p>
-                    <p v-else class="mt-1 text-red-600 dark:text-red-400">
+                    <p
+                      v-else
+                      class="mt-1 text-red-600 dark:text-red-400"
+                    >
                       {{ t('userdata.cleanup.confirmHint') }}
                     </p>
                   </div>
@@ -1012,7 +1058,7 @@ function closeDataModal() {
                       })
                     "
                     class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600"
-                  />
+                  >
                 </div>
                 <div v-else>
                   <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
@@ -1023,7 +1069,7 @@ function closeDataModal() {
                     type="password"
                     :placeholder="t('userdata.cleanup.passwordPlaceholder')"
                     class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-red-500 border border-gray-200 dark:border-slate-600"
-                  />
+                  >
                 </div>
                 <div
                   v-if="cleanupError"
@@ -1057,12 +1103,12 @@ function closeDataModal() {
                         r="10"
                         stroke="currentColor"
                         stroke-width="4"
-                      ></circle>
+                      />
                       <path
                         class="opacity-75"
                         fill="currentColor"
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
+                      />
                     </svg>
                     {{
                       cleanupLoading

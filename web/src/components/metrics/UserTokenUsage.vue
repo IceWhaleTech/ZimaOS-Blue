@@ -22,7 +22,10 @@ function formatCost(cost: number): string {
 </script>
 
 <template>
-  <div v-if="showCard" class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
+  <div
+    v-if="showCard"
+    class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow"
+  >
     <div class="flex items-center justify-between mb-4">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">
         {{ t('metrics.userUsage') }}

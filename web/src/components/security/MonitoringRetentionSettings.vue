@@ -220,7 +220,7 @@ onBeforeUnmount(() => {
                     ($event.target as HTMLInputElement).valueAsNumber
                   )
                 "
-              />
+              >
               <span class="text-sm text-gray-500 dark:text-slate-400">{{
                 t('security.settings.days')
               }}</span>
@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
                     ($event.target as HTMLInputElement).valueAsNumber
                   )
                 "
-              />
+              >
               <span class="text-sm text-gray-500 dark:text-slate-400">{{
                 t('security.settings.days')
               }}</span>
@@ -304,7 +304,7 @@ onBeforeUnmount(() => {
                     ($event.target as HTMLInputElement).valueAsNumber
                   )
                 "
-              />
+              >
               <span class="text-sm text-gray-500 dark:text-slate-400">{{
                 t('security.settings.days')
               }}</span>

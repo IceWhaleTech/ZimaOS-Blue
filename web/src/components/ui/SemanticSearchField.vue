@@ -82,13 +82,17 @@ function handleKeydown(event: KeyboardEvent) {
         stroke-width="1.85"
         aria-hidden="true"
       >
-        <circle cx="11" cy="11" r="7.5" />
+        <circle
+          cx="11"
+          cy="11"
+          r="7.5"
+        />
         <path d="m20 20-3.5-3.5" />
       </svg>
 
       <input
-        :data-testid="testId"
         ref="inputRef"
+        :data-testid="testId"
         class="semantic-search-input"
         type="text"
         :value="modelValue"
@@ -100,7 +104,7 @@ function handleKeydown(event: KeyboardEvent) {
         @focus="handleFocus"
         @blur="handleBlur"
         @keydown="handleKeydown"
-      />
+      >
 
       <button
         v-if="hasContent"
@@ -111,7 +115,12 @@ function handleKeydown(event: KeyboardEvent) {
         @mousedown.prevent
         @click="clearField"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <path d="M6 6l12 12M18 6 6 18" />
         </svg>
       </button>

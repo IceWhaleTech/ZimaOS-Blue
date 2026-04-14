@@ -194,25 +194,19 @@ onUnmounted(() => {
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400"
-            >{{ t('securityAlerts.labels.patterns') }}:</span
-          >
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.patterns') }}:</span>
           <span class="security-alerts-inline-value font-medium text-gray-900 dark:text-white">{{
             guardStats.pattern_count
           }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400"
-            >{{ t('securityAlerts.labels.detections') }}:</span
-          >
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.detections') }}:</span>
           <span class="security-alerts-inline-value font-medium text-yellow-600">{{
             guardStats.detection_count
           }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400"
-            >{{ t('securityAlerts.labels.blocked') }}:</span
-          >
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.blocked') }}:</span>
           <span class="security-alerts-inline-value font-medium text-red-600">{{
             guardStats.blocked_count
           }}</span>
@@ -229,9 +223,7 @@ onUnmounted(() => {
       </h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
-          <span class="text-gray-500 dark:text-gray-400"
-            >{{ t('securityAlerts.labels.auth') }}:</span
-          >
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.auth') }}:</span>
           <span
             :class="authStats.auth_enabled ? 'text-green-600' : 'text-gray-600'"
             class="security-alerts-inline-value font-medium"
@@ -240,17 +232,13 @@ onUnmounted(() => {
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400"
-            >{{ t('securityAlerts.labels.apiKeys') }}:</span
-          >
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.apiKeys') }}:</span>
           <span class="security-alerts-inline-value font-medium text-gray-900 dark:text-white">{{
             authStats.api_key_count
           }}</span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400"
-            >{{ t('securityAlerts.labels.authFailures') }}:</span
-          >
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.authFailures') }}:</span>
           <span
             :class="authStats.auth_failures > 0 ? 'text-red-600' : 'text-green-600'"
             class="security-alerts-inline-value font-medium"
@@ -259,9 +247,7 @@ onUnmounted(() => {
           </span>
         </div>
         <div>
-          <span class="text-gray-500 dark:text-gray-400"
-            >{{ t('securityAlerts.labels.rateLimited') }}:</span
-          >
+          <span class="text-gray-500 dark:text-gray-400">{{ t('securityAlerts.labels.rateLimited') }}:</span>
           <span
             :class="authStats.rate_limit_hits > 0 ? 'text-yellow-600' : 'text-green-600'"
             class="security-alerts-inline-value font-medium"
@@ -299,14 +285,17 @@ onUnmounted(() => {
                 {{ typeLabel(alert.type) }}
               </span>
             </div>
-            <p class="text-sm text-gray-900 dark:text-white">{{ alert.message }}</p>
-            <p v-if="alert.details" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="text-sm text-gray-900 dark:text-white">
+              {{ alert.message }}
+            </p>
+            <p
+              v-if="alert.details"
+              class="text-xs text-gray-500 dark:text-gray-400 mt-1"
+            >
               {{ alert.details }}
             </p>
             <div class="flex items-center gap-4 mt-2 text-xs text-gray-400">
-              <span v-if="alert.source_ip"
-                >{{ t('securityAlerts.labels.ip') }}: {{ alert.source_ip }}</span
-              >
+              <span v-if="alert.source_ip">{{ t('securityAlerts.labels.ip') }}: {{ alert.source_ip }}</span>
               <span>{{ new Date(alert.timestamp).toLocaleString() }}</span>
             </div>
           </div>

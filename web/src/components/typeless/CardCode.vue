@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import type { TypelessCardCode } from '@/types/typeless'
 import { highlightCode } from '@/utils/markdown'
 
@@ -123,13 +124,19 @@ const headerLabel = computed(() => {
     <div class="overflow-x-auto">
       <pre
         class="p-4 text-sm leading-relaxed"
-      ><code class="text-gray-800 dark:text-gray-100"><template v-for="(line, index) in highlightedLines" :key="index"><span
-            class="inline-block w-full"
-            :class="{ 'bg-yellow-500/20': isHighlighted(index + 1) }"
-          ><span
-              v-if="card.showLineNumbers !== false && highlightedLines.length > 1"
-              class="inline-block w-8 text-end me-4 text-gray-400 dark:text-gray-600 select-none"
-            >{{ index + 1 }}</span><span v-html="line"></span>
+      ><code class="text-gray-800 dark:text-gray-100"><template
+        v-for="(line, index) in highlightedLines"
+        :key="index"
+      ><span
+        class="inline-block w-full"
+        :class="{ 'bg-yellow-500/20': isHighlighted(index + 1) }"
+      ><span
+        v-if="card.showLineNumbers !== false && highlightedLines.length > 1"
+        class="inline-block w-8 text-end me-4 text-gray-400 dark:text-gray-600 select-none"
+      >{{ index + 1 }}</span><TrustedHtml
+        tag="span"
+        :html="line"
+      />
 </span></template></code></pre>
     </div>
   </div>

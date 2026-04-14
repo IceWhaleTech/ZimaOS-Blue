@@ -223,7 +223,10 @@ onUnmounted(() => {
         >
           {{ t('settings.failover.noBreakers', 'No circuit breakers active') }}
         </div>
-        <div v-else class="space-y-2">
+        <div
+          v-else
+          class="space-y-2"
+        >
           <div
             v-for="(breaker, provider) in circuitBreakers"
             :key="provider"
@@ -234,7 +237,7 @@ onUnmounted(() => {
               <div
                 class="w-2 h-2 rounded-full"
                 :class="getStateColor(breaker.state).replace('text-', 'bg-')"
-              ></div>
+              />
               <span class="font-medium text-gray-900 dark:text-white">{{ provider }}</span>
             </div>
             <div class="flex items-center gap-4 text-sm">
@@ -264,15 +267,18 @@ onUnmounted(() => {
           >
             {{ t('settings.failover.noErrors', 'No errors recorded') }}
           </div>
-          <div v-else class="space-y-3">
+          <div
+            v-else
+            class="space-y-3"
+          >
             <div
-              v-for="error in topErrors"
-              :key="error.type"
+              v-for="topError in topErrors"
+              :key="topError.type"
               class="flex items-center justify-between"
             >
-              <span class="text-sm text-gray-700 dark:text-gray-300">{{ error.label }}</span>
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ topError.label }}</span>
               <span class="text-sm font-medium text-gray-900 dark:text-white">{{
-                error.count
+                topError.count
               }}</span>
             </div>
           </div>
@@ -293,7 +299,10 @@ onUnmounted(() => {
           >
             {{ t('settings.failover.noFailovers', 'No failovers recorded') }}
           </div>
-          <div v-else class="space-y-3">
+          <div
+            v-else
+            class="space-y-3"
+          >
             <div
               v-for="stat in providerFailoverStats"
               :key="stat.provider"
@@ -324,7 +333,10 @@ onUnmounted(() => {
           <div class="text-gray-500 dark:text-gray-400">
             {{ t('settings.failover.enabled', 'Enabled') }}
           </div>
-          <div class="font-medium" :class="config.enabled ? 'text-green-500' : 'text-red-500'">
+          <div
+            class="font-medium"
+            :class="config.enabled ? 'text-green-500' : 'text-red-500'"
+          >
             {{ config.enabled ? t('common.yes', 'Yes') : t('common.no', 'No') }}
           </div>
         </div>
@@ -332,7 +344,9 @@ onUnmounted(() => {
           <div class="text-gray-500 dark:text-gray-400">
             {{ t('settings.failover.maxRetries', 'Max Retries') }}
           </div>
-          <div class="font-medium text-gray-900 dark:text-white">{{ config.max_retries }}</div>
+          <div class="font-medium text-gray-900 dark:text-white">
+            {{ config.max_retries }}
+          </div>
         </div>
         <div>
           <div class="text-gray-500 dark:text-gray-400">
@@ -372,7 +386,9 @@ onUnmounted(() => {
       v-if="error"
       class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4"
     >
-      <p class="text-red-600 dark:text-red-400">{{ error }}</p>
+      <p class="text-red-600 dark:text-red-400">
+        {{ error }}
+      </p>
     </div>
   </div>
 </template>

@@ -45,7 +45,12 @@ function handleUpgradeSuccess() {
 </script>
 
 <template>
-  <div v-if="isPreviewMode" ref="dropdownRef" class="relative" data-preview-banner>
+  <div
+    v-if="isPreviewMode"
+    ref="dropdownRef"
+    class="relative"
+    data-preview-banner
+  >
     <!-- Preview mode button -->
     <button
       class="flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
@@ -85,7 +90,12 @@ function handleUpgradeSuccess() {
         viewBox="0 0 24 24"
         stroke="currentColor"
       >
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M19 9l-7 7-7-7"
+        />
       </svg>
     </button>
 
@@ -101,7 +111,7 @@ function handleUpgradeSuccess() {
         <span class="text-lg">🎉</span>
         <span class="font-medium">{{ t('preview.createAdminAccount') }}</span>
       </button>
-      <div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
+      <div class="border-t border-gray-200 dark:border-gray-700 my-1" />
       <div class="px-4 py-2 text-xs text-gray-500 dark:text-gray-400">
         {{ t('preview.hint') }}
       </div>

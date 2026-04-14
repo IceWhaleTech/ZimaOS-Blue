@@ -62,7 +62,7 @@ func planDarwinAction(actType string, meta darwinActionMetadata) darwinActionPla
 		return darwinActionPlan{ExecutionMode: "input", InputFallback: darwinInputFallbackClick}
 	case "type":
 		if meta.ValueSettable {
-			return darwinActionPlan{ExecutionMode: "semantic", SetValue: true}
+			return darwinActionPlan{ExecutionMode: "semantic", SetValue: true, InputFallback: darwinInputFallbackType}
 		}
 		return darwinActionPlan{ExecutionMode: "input", InputFallback: darwinInputFallbackType}
 	case "select":
@@ -208,6 +208,7 @@ func planWindowsAction(actType string, meta windowsActionMetadata) windowsAction
 			return windowsActionPlan{
 				ExecutionMode: "semantic",
 				Primary:       windowsActionPutValue,
+				Fallback:      windowsActionInputType,
 			}
 		}
 		return windowsActionPlan{

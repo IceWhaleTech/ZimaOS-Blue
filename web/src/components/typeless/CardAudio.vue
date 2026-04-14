@@ -132,8 +132,11 @@ onUnmounted(() => {
           :src="card.coverImage"
           :alt="card.title"
           class="w-full h-full object-cover"
-        />
-        <div v-else class="w-full h-full flex items-center justify-center text-white text-2xl">
+        >
+        <div
+          v-else
+          class="w-full h-full flex items-center justify-center text-white text-2xl"
+        >
           🎵
         </div>
       </div>
@@ -142,10 +145,16 @@ onUnmounted(() => {
       <div class="flex-1 min-w-0">
         <!-- Title and artist -->
         <div class="mb-2">
-          <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white truncate">
+          <h4
+            v-if="card.title"
+            class="font-medium text-gray-900 dark:text-white truncate"
+          >
             {{ card.title }}
           </h4>
-          <p v-if="card.artist" class="text-sm text-gray-500 dark:text-gray-400 truncate">
+          <p
+            v-if="card.artist"
+            class="text-sm text-gray-500 dark:text-gray-400 truncate"
+          >
             {{ card.artist }}
             <span v-if="card.album"> · {{ card.album }}</span>
           </p>

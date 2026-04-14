@@ -88,13 +88,18 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
             :src="publicAsset('icons/tunnel/remote-access.svg')"
             :alt="t('remoteAccess.title')"
             class="remote-access-detail__icon"
-          />
+          >
         </div>
         <div class="remote-access-detail__copy">
           <div class="remote-access-detail__title-row">
-            <h3 class="remote-access-detail__title">{{ t('remoteAccess.title') }}</h3>
-            <span class="remote-access-detail__status-badge" :class="statusBadgeClass">
-              <span class="remote-access-detail__status-dot"></span>
+            <h3 class="remote-access-detail__title">
+              {{ t('remoteAccess.title') }}
+            </h3>
+            <span
+              class="remote-access-detail__status-badge"
+              :class="statusBadgeClass"
+            >
+              <span class="remote-access-detail__status-dot" />
               {{ statusText }}
             </span>
             <span class="remote-access-detail__badge">
@@ -118,15 +123,22 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
         class="relative inline-flex items-center cursor-pointer"
         @click.stop.prevent="props.state === 'connected' ? emit('stop') : emit('start')"
       >
-        <input :checked="props.state === 'connected'" type="checkbox" class="sr-only peer" />
+        <input
+          :checked="props.state === 'connected'"
+          type="checkbox"
+          class="sr-only peer"
+        >
         <div
           class="remote-access-detail__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
-        ></div>
+        />
       </label>
     </div>
 
     <div class="remote-access-detail__body">
-      <div v-if="props.state === 'loading'" class="flex items-center justify-center py-10">
+      <div
+        v-if="props.state === 'loading'"
+        class="flex items-center justify-center py-10"
+      >
         <svg
           class="animate-spin h-8 w-8 text-gray-900 dark:text-white"
           fill="none"
@@ -148,7 +160,10 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
         </svg>
       </div>
 
-      <div v-else-if="props.state === 'ready'" class="space-y-4">
+      <div
+        v-else-if="props.state === 'ready'"
+        class="space-y-4"
+      >
         <div class="space-y-3">
           <label class="remote-access-detail__label">
             {{ t('remoteAccess.selectProvider') }}
@@ -171,12 +186,17 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
                 :src="getTunnelProviderIcon(provider.id)"
                 :alt="provider.name"
                 class="remote-access-detail__provider-icon"
-              />
+              >
               <div
                 v-else
                 class="remote-access-detail__provider-icon remote-access-detail__provider-icon--fallback"
               >
-                <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <svg
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -186,7 +206,9 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
                 </svg>
               </div>
               <div class="min-w-0 flex-1">
-                <div class="remote-access-detail__provider-name">{{ provider.name }}</div>
+                <div class="remote-access-detail__provider-name">
+                  {{ provider.name }}
+                </div>
                 <div class="remote-access-detail__provider-meta">
                   {{
                     provider.requires_key
@@ -199,7 +221,10 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
           </div>
         </div>
 
-        <div v-if="props.selectedProviderInfo?.requires_key" class="space-y-2">
+        <div
+          v-if="props.selectedProviderInfo?.requires_key"
+          class="space-y-2"
+        >
           <label class="remote-access-detail__label">
             {{ props.selectedProviderInfo.key_label || 'Auth Token' }}
           </label>
@@ -209,7 +234,7 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
             class="remote-access-detail__input"
             :placeholder="props.selectedProviderInfo.key_hint || ''"
             @input="emit('updateProviderToken', ($event.target as HTMLInputElement).value)"
-          />
+          >
           <a
             v-if="props.selectedProviderInfo.doc_url"
             :href="props.selectedProviderInfo.doc_url"
@@ -217,7 +242,12 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
             rel="noreferrer"
             class="remote-access-detail__helper-link"
           >
-            <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="h-3 w-3"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -229,7 +259,10 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
           </a>
         </div>
 
-        <div v-if="props.selectedProvider === 'ngrok'" class="space-y-2">
+        <div
+          v-if="props.selectedProvider === 'ngrok'"
+          class="space-y-2"
+        >
           <label class="remote-access-detail__label">
             {{ t('remoteAccess.ngrokDomain') }}
             <span class="remote-access-detail__optional-note">({{ t('common.optional') }})</span>
@@ -240,7 +273,7 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
             class="remote-access-detail__input"
             :placeholder="t('remoteAccess.ngrokDomainPlaceholder')"
             @input="emit('updateNgrokDomain', ($event.target as HTMLInputElement).value)"
-          />
+          >
           <p class="remote-access-detail__note">
             {{ t('remoteAccess.ngrokDomainHint') }}
             <a
@@ -261,7 +294,12 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
           :class="{ 'opacity-50 cursor-not-allowed': !canStart }"
           @click="emit('start')"
         >
-          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -277,7 +315,10 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
         </p>
       </div>
 
-      <div v-else-if="props.state === 'connecting'" class="space-y-4">
+      <div
+        v-else-if="props.state === 'connecting'"
+        class="space-y-4"
+      >
         <div class="flex items-center justify-center py-4">
           <div class="text-center">
             <svg
@@ -311,14 +352,20 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
         />
       </div>
 
-      <div v-else-if="props.state === 'connected'" class="space-y-4">
+      <div
+        v-else-if="props.state === 'connected'"
+        class="space-y-4"
+      >
         <TunnelStatus
           :status="props.tunnelStatus || { active: true, provider: props.selectedProvider }"
           @disconnect="emit('stop')"
         />
       </div>
 
-      <div v-else-if="props.state === 'error'" class="space-y-4">
+      <div
+        v-else-if="props.state === 'error'"
+        class="space-y-4"
+      >
         <div class="remote-access-detail__error">
           <div class="flex items-start gap-3">
             <svg
@@ -340,7 +387,11 @@ const statusBadgeClass = computed(() => `remote-access-detail__status-badge--${s
           </div>
         </div>
 
-        <button type="button" class="remote-access-detail__secondary-action" @click="emit('retry')">
+        <button
+          type="button"
+          class="remote-access-detail__secondary-action"
+          @click="emit('retry')"
+        >
           {{ t('common.retry') }}
         </button>
         <TunnelStatus

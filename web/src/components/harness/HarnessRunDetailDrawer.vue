@@ -345,25 +345,53 @@ function closeDrawer() {
 
 <template>
   <Transition name="sheet">
-    <div v-if="props.mobile && props.open" class="detail-overlay" @click.self="closeDrawer">
+    <div
+      v-if="props.mobile && props.open"
+      class="detail-overlay"
+      @click.self="closeDrawer"
+    >
       <section class="detail-panel detail-sheet">
         <header class="detail-header">
           <div>
-            <p class="detail-kicker">{{ tr('harness.group.runDetail', 'Run detail') }}</p>
+            <p class="detail-kicker">
+              {{ tr('harness.group.runDetail', 'Run detail') }}
+            </p>
             <h3>{{ overviewRun?.agent_id || overviewRun?.goal || overviewRun?.id }}</h3>
-            <p class="detail-subtitle">{{ overviewRun?.id }}</p>
+            <p class="detail-subtitle">
+              {{ overviewRun?.id }}
+            </p>
           </div>
-          <button type="button" class="close-button" @click="closeDrawer">
+          <button
+            type="button"
+            class="close-button"
+            @click="closeDrawer"
+          >
             {{ tr('common.cancel', 'Close') }}
           </button>
         </header>
         <div class="detail-body">
-          <div v-if="props.warning" class="detail-banner is-warning">{{ props.warning }}</div>
-          <div v-if="props.error && !props.detail" class="detail-banner is-error">{{ props.error }}</div>
-          <div v-if="props.loading && !props.detail" class="detail-state">
+          <div
+            v-if="props.warning"
+            class="detail-banner is-warning"
+          >
+            {{ props.warning }}
+          </div>
+          <div
+            v-if="props.error && !props.detail"
+            class="detail-banner is-error"
+          >
+            {{ props.error }}
+          </div>
+          <div
+            v-if="props.loading && !props.detail"
+            class="detail-state"
+          >
             {{ tr('common.loading', 'Loading') }}
           </div>
-          <div v-else-if="!overviewRun" class="detail-state">
+          <div
+            v-else-if="!overviewRun"
+            class="detail-state"
+          >
             {{ tr('harness.group.selectRunPrompt', 'Select a run to inspect its timeline and artifacts.') }}
           </div>
           <template v-else>
@@ -373,19 +401,35 @@ function closeDrawer() {
               </div>
               <div class="summary-title-row">
                 <strong>{{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}</strong>
-                <span v-if="roleLabel" class="summary-pill role-pill">{{ roleLabel }}</span>
-                <span class="summary-pill" :class="statusTone(overviewRun.status)">
+                <span
+                  v-if="roleLabel"
+                  class="summary-pill role-pill"
+                >{{ roleLabel }}</span>
+                <span
+                  class="summary-pill"
+                  :class="statusTone(overviewRun.status)"
+                >
                   {{ statusLabel(overviewRun.status) }}
                 </span>
               </div>
               <p class="summary-goal">
                 {{
                   overviewRun.goal ||
-                  tr('harness.group.noGoalSummary', 'No goal summary was recorded for this run.')
+                    tr('harness.group.noGoalSummary', 'No goal summary was recorded for this run.')
                 }}
               </p>
-              <p v-if="runSummaryPreview" class="summary-preview">{{ runSummaryPreview }}</p>
-              <p v-if="spawnNarrative" class="spawn-narrative">{{ spawnNarrative }}</p>
+              <p
+                v-if="runSummaryPreview"
+                class="summary-preview"
+              >
+                {{ runSummaryPreview }}
+              </p>
+              <p
+                v-if="spawnNarrative"
+                class="spawn-narrative"
+              >
+                {{ spawnNarrative }}
+              </p>
               <div class="summary-pills">
                 <span v-if="overviewRun.model">{{ tr('harness.group.model', 'Model') }}: {{ overviewRun.model }}</span>
                 <span>{{ tr('common.updatedAt', 'Updated') }}: {{ formatDate(overviewRun.updated_at) }}</span>
@@ -404,29 +448,50 @@ function closeDrawer() {
                 <h4>{{ tr('harness.group.overview', 'Overview') }}</h4>
               </div>
               <dl class="overview-grid">
-                <div v-for="entry in overviewEntries" :key="entry.label">
+                <div
+                  v-for="entry in overviewEntries"
+                  :key="entry.label"
+                >
                   <dt>{{ entry.label }}</dt>
                   <dd>{{ entry.value }}</dd>
                 </div>
               </dl>
             </section>
 
-            <section v-if="contextPackSnapshot" class="detail-section">
+            <section
+              v-if="contextPackSnapshot"
+              class="detail-section"
+            >
               <div class="section-header">
                 <h4>{{ tr('harness.group.contextPacks', 'Context Packs') }}</h4>
                 <span>{{ contextPackFiles.length }}</span>
               </div>
-              <div v-if="contextPackSummaryPills.length" class="summary-pills">
-                <span v-for="pill in contextPackSummaryPills" :key="pill">{{ pill }}</span>
+              <div
+                v-if="contextPackSummaryPills.length"
+                class="summary-pills"
+              >
+                <span
+                  v-for="pill in contextPackSummaryPills"
+                  :key="pill"
+                >{{ pill }}</span>
               </div>
-              <p v-if="contextPackSelectionDigest" class="summary-preview">
+              <p
+                v-if="contextPackSelectionDigest"
+                class="summary-preview"
+              >
                 {{ tr('harness.group.contextPackSelectionDigest', 'Selection digest') }}:
                 <code>{{ contextPackSelectionDigest }}</code>
               </p>
-              <div v-if="contextPackFiles.length === 0" class="detail-state">
+              <div
+                v-if="contextPackFiles.length === 0"
+                class="detail-state"
+              >
                 {{ tr('harness.group.noContextPacks', 'No context pack files were captured for this run.') }}
               </div>
-              <div v-else class="artifact-list">
+              <div
+                v-else
+                class="artifact-list"
+              >
                 <article
                   v-for="(file, index) in contextPackFiles"
                   :key="`${metadataText(file.entry_id)}-${metadataText(file.file)}-${index}`"
@@ -466,24 +531,45 @@ function closeDrawer() {
                 <h4>{{ tr('harness.group.runtimeTrace', 'Runtime trace') }}</h4>
                 <span v-if="runTrace">{{ traceStages.length }}</span>
               </div>
-              <div v-if="!runTrace" class="detail-state">
+              <div
+                v-if="!runTrace"
+                class="detail-state"
+              >
                 {{ tr('harness.group.noRuntimeTrace', 'No runtime trace snapshot is available for this run yet.') }}
               </div>
               <template v-else>
                 <div class="summary-pills">
-                  <span v-for="pill in traceSummaryPills" :key="pill">{{ pill }}</span>
+                  <span
+                    v-for="pill in traceSummaryPills"
+                    :key="pill"
+                  >{{ pill }}</span>
                 </div>
-                <div v-if="traceStages.length" class="trace-stage-list">
-                  <article v-for="stage in traceStages" :key="`${stage.stage}-${stage.created_at}`" class="trace-stage-card">
+                <div
+                  v-if="traceStages.length"
+                  class="trace-stage-list"
+                >
+                  <article
+                    v-for="stage in traceStages"
+                    :key="`${stage.stage}-${stage.created_at}`"
+                    class="trace-stage-card"
+                  >
                     <div class="event-header">
                       <strong>{{ humanizeEnum(stage.stage) }}</strong>
                       <span>{{ formatDate(stage.created_at) }}</span>
                     </div>
-                    <p v-if="stage.message" class="event-message">{{ stage.message }}</p>
+                    <p
+                      v-if="stage.message"
+                      class="event-message"
+                    >
+                      {{ stage.message }}
+                    </p>
                     <div class="event-pills">
                       <span v-if="stage.status">{{ statusLabel(stage.status) }}</span>
                     </div>
-                    <details v-if="stage.details" class="payload-block">
+                    <details
+                      v-if="stage.details"
+                      class="payload-block"
+                    >
                       <summary>{{ tr('harness.group.traceDetails', 'Trace details') }}</summary>
                       <pre>{{ compactJSON(stage.details) }}</pre>
                     </details>
@@ -497,11 +583,21 @@ function closeDrawer() {
                 <h4>{{ tr('harness.group.timeline', 'Timeline') }}</h4>
                 <span>{{ timelineEvents.length }}</span>
               </div>
-              <div v-if="timelineEvents.length === 0" class="detail-state">
+              <div
+                v-if="timelineEvents.length === 0"
+                class="detail-state"
+              >
                 {{ tr('harness.group.noTimelineEvents', 'No timeline events recorded for this run.') }}
               </div>
-              <div v-else class="event-list">
-                <article v-for="event in recentTimelineEvents" :key="event.id" class="event-card">
+              <div
+                v-else
+                class="event-list"
+              >
+                <article
+                  v-for="event in recentTimelineEvents"
+                  :key="event.id"
+                  class="event-card"
+                >
                   <div class="event-header">
                     <strong>{{ event.message || humanizeEnum(event.type) }}</strong>
                     <span>{{ formatDate(event.created_at) }}</span>
@@ -514,7 +610,10 @@ function closeDrawer() {
                       {{ humanizeEnum(event.capability_kind) }}
                     </span>
                   </div>
-                  <details v-if="event.payload_json" class="payload-block">
+                  <details
+                    v-if="event.payload_json"
+                    class="payload-block"
+                  >
                     <summary>{{ tr('harness.group.rawPayload', 'Raw JSON') }}</summary>
                     <pre>{{ event.payload_json }}</pre>
                   </details>
@@ -547,12 +646,19 @@ function closeDrawer() {
                         {{ humanizeEnum(event.capability_kind) }}
                       </span>
                     </div>
-                    <details v-if="event.payload_json" class="payload-block">
+                    <details
+                      v-if="event.payload_json"
+                      class="payload-block"
+                    >
                       <summary>{{ tr('harness.group.rawPayload', 'Raw JSON') }}</summary>
                       <pre>{{ event.payload_json }}</pre>
                     </details>
                   </article>
-                  <button type="button" class="detail-link" @click="showAllEvents = false">
+                  <button
+                    type="button"
+                    class="detail-link"
+                    @click="showAllEvents = false"
+                  >
                     {{ tr('harness.group.collapseEvents', 'Show fewer events') }}
                   </button>
                 </template>
@@ -564,11 +670,21 @@ function closeDrawer() {
                 <h4>{{ tr('harness.group.artifacts', 'Artifacts') }}</h4>
                 <span>{{ artifacts.length }}</span>
               </div>
-              <div v-if="artifacts.length === 0" class="detail-state">
+              <div
+                v-if="artifacts.length === 0"
+                class="detail-state"
+              >
                 {{ tr('harness.group.noArtifacts', 'No artifacts attached to the linked runs yet.') }}
               </div>
-              <div v-else class="artifact-list">
-                <article v-for="artifact in artifacts" :key="artifact.id" class="artifact-card">
+              <div
+                v-else
+                class="artifact-list"
+              >
+                <article
+                  v-for="artifact in artifacts"
+                  :key="artifact.id"
+                  class="artifact-card"
+                >
                   <div>
                     <strong>{{ artifact.label || humanizeEnum(artifact.kind) }}</strong>
                     <p>{{ humanizeEnum(artifact.kind) }} · {{ compactValue(artifact.mime_type) }}</p>
@@ -591,16 +707,25 @@ function closeDrawer() {
                 <h4>{{ tr('harness.group.pending', 'Pending') }}</h4>
                 <span>{{ pendingCount }}</span>
               </div>
-              <div v-if="pendingCount === 0" class="detail-state">
+              <div
+                v-if="pendingCount === 0"
+                class="detail-state"
+              >
                 {{ tr('harness.group.noPendingItems', 'No pending approvals or questions for this run.') }}
               </div>
-              <div v-else class="pending-stack">
+              <div
+                v-else
+                class="pending-stack"
+              >
                 <article class="pending-card">
                   <div class="section-header compact">
                     <strong>{{ tr('harness.group.pendingApprovals', 'Pending approvals') }}</strong>
                     <span>{{ pendingApprovals.length }}</span>
                   </div>
-                  <div v-if="pendingApprovals.length === 0" class="detail-state compact">
+                  <div
+                    v-if="pendingApprovals.length === 0"
+                    class="detail-state compact"
+                  >
                     {{ tr('harness.group.noPendingApprovals', 'No pending approvals.') }}
                   </div>
                   <pre
@@ -615,7 +740,10 @@ function closeDrawer() {
                     <strong>{{ tr('harness.group.pendingQuestions', 'Pending questions') }}</strong>
                     <span>{{ pendingQuestions.length }}</span>
                   </div>
-                  <div v-if="pendingQuestions.length === 0" class="detail-state compact">
+                  <div
+                    v-if="pendingQuestions.length === 0"
+                    class="detail-state compact"
+                  >
                     {{ tr('harness.group.noPendingQuestions', 'No pending questions.') }}
                   </div>
                   <pre
@@ -632,28 +760,58 @@ function closeDrawer() {
     </div>
   </Transition>
 
-  <aside v-if="!props.mobile" class="detail-drawer">
+  <aside
+    v-if="!props.mobile"
+    class="detail-drawer"
+  >
     <section class="detail-panel harness-run-detail-drawer">
       <header class="detail-header">
         <div>
-          <p class="detail-kicker">{{ tr('harness.group.runDetail', 'Run detail') }}</p>
-          <h3 v-if="overviewRun">{{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}</h3>
-          <h3 v-else>{{ tr('harness.group.selectRun', 'Select a run') }}</h3>
+          <p class="detail-kicker">
+            {{ tr('harness.group.runDetail', 'Run detail') }}
+          </p>
+          <h3 v-if="overviewRun">
+            {{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}
+          </h3>
+          <h3 v-else>
+            {{ tr('harness.group.selectRun', 'Select a run') }}
+          </h3>
           <p class="detail-subtitle">
             {{ overviewRun?.id || tr('harness.group.selectRunPrompt', 'Select a run to inspect its timeline and artifacts.') }}
           </p>
         </div>
-        <button v-if="props.open" type="button" class="close-button" @click="closeDrawer">
+        <button
+          v-if="props.open"
+          type="button"
+          class="close-button"
+          @click="closeDrawer"
+        >
           {{ tr('common.cancel', 'Close') }}
         </button>
       </header>
       <div class="detail-body">
-        <div v-if="props.warning" class="detail-banner is-warning">{{ props.warning }}</div>
-        <div v-if="props.error && !props.detail" class="detail-banner is-error">{{ props.error }}</div>
-        <div v-if="props.loading && !props.detail" class="detail-state">
+        <div
+          v-if="props.warning"
+          class="detail-banner is-warning"
+        >
+          {{ props.warning }}
+        </div>
+        <div
+          v-if="props.error && !props.detail"
+          class="detail-banner is-error"
+        >
+          {{ props.error }}
+        </div>
+        <div
+          v-if="props.loading && !props.detail"
+          class="detail-state"
+        >
           {{ tr('common.loading', 'Loading') }}
         </div>
-        <div v-else-if="!props.open || !overviewRun" class="detail-state">
+        <div
+          v-else-if="!props.open || !overviewRun"
+          class="detail-state"
+        >
           {{ tr('harness.group.selectRunPrompt', 'Select a run to inspect its timeline and artifacts.') }}
         </div>
         <template v-else>
@@ -662,31 +820,47 @@ function closeDrawer() {
               <h4>{{ tr('harness.group.runSummary', 'Run summary') }}</h4>
             </div>
             <div class="summary-title-row">
-                <strong>{{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}</strong>
-                <span v-if="roleLabel" class="summary-pill role-pill">{{ roleLabel }}</span>
-                <span class="summary-pill" :class="statusTone(overviewRun.status)">
-                  {{ statusLabel(overviewRun.status) }}
-                </span>
-              </div>
+              <strong>{{ overviewRun.agent_id || overviewRun.goal || overviewRun.id }}</strong>
+              <span
+                v-if="roleLabel"
+                class="summary-pill role-pill"
+              >{{ roleLabel }}</span>
+              <span
+                class="summary-pill"
+                :class="statusTone(overviewRun.status)"
+              >
+                {{ statusLabel(overviewRun.status) }}
+              </span>
+            </div>
             <p class="summary-goal">
               {{
                 overviewRun.goal ||
-                tr('harness.group.noGoalSummary', 'No goal summary was recorded for this run.')
+                  tr('harness.group.noGoalSummary', 'No goal summary was recorded for this run.')
               }}
             </p>
-            <p v-if="runSummaryPreview" class="summary-preview">{{ runSummaryPreview }}</p>
-            <p v-if="spawnNarrative" class="spawn-narrative">{{ spawnNarrative }}</p>
+            <p
+              v-if="runSummaryPreview"
+              class="summary-preview"
+            >
+              {{ runSummaryPreview }}
+            </p>
+            <p
+              v-if="spawnNarrative"
+              class="spawn-narrative"
+            >
+              {{ spawnNarrative }}
+            </p>
             <div class="summary-pills">
               <span v-if="overviewRun.model">{{ tr('harness.group.model', 'Model') }}: {{ overviewRun.model }}</span>
               <span>{{ tr('common.updatedAt', 'Updated') }}: {{ formatDate(overviewRun.updated_at) }}</span>
-                <span v-if="overviewRun.runtime_state">
-                  {{ tr('harness.group.runtimeState', 'Runtime state') }}:
-                  {{ runtimeStateLabel(overviewRun.runtime_state) }}
-                </span>
-                <span v-if="overviewRun.progress != null">
-                  {{ tr('harness.group.progress', 'Progress') }}: {{ overviewRun.progress }}
-                </span>
-              </div>
+              <span v-if="overviewRun.runtime_state">
+                {{ tr('harness.group.runtimeState', 'Runtime state') }}:
+                {{ runtimeStateLabel(overviewRun.runtime_state) }}
+              </span>
+              <span v-if="overviewRun.progress != null">
+                {{ tr('harness.group.progress', 'Progress') }}: {{ overviewRun.progress }}
+              </span>
+            </div>
           </section>
 
           <section class="detail-section">
@@ -694,29 +868,50 @@ function closeDrawer() {
               <h4>{{ tr('harness.group.overview', 'Overview') }}</h4>
             </div>
             <dl class="overview-grid">
-              <div v-for="entry in overviewEntries" :key="entry.label">
+              <div
+                v-for="entry in overviewEntries"
+                :key="entry.label"
+              >
                 <dt>{{ entry.label }}</dt>
                 <dd>{{ entry.value }}</dd>
               </div>
             </dl>
           </section>
 
-          <section v-if="contextPackSnapshot" class="detail-section">
+          <section
+            v-if="contextPackSnapshot"
+            class="detail-section"
+          >
             <div class="section-header">
               <h4>{{ tr('harness.group.contextPacks', 'Context Packs') }}</h4>
               <span>{{ contextPackFiles.length }}</span>
             </div>
-            <div v-if="contextPackSummaryPills.length" class="summary-pills">
-              <span v-for="pill in contextPackSummaryPills" :key="pill">{{ pill }}</span>
+            <div
+              v-if="contextPackSummaryPills.length"
+              class="summary-pills"
+            >
+              <span
+                v-for="pill in contextPackSummaryPills"
+                :key="pill"
+              >{{ pill }}</span>
             </div>
-            <p v-if="contextPackSelectionDigest" class="summary-preview">
+            <p
+              v-if="contextPackSelectionDigest"
+              class="summary-preview"
+            >
               {{ tr('harness.group.contextPackSelectionDigest', 'Selection digest') }}:
               <code>{{ contextPackSelectionDigest }}</code>
             </p>
-            <div v-if="contextPackFiles.length === 0" class="detail-state">
+            <div
+              v-if="contextPackFiles.length === 0"
+              class="detail-state"
+            >
               {{ tr('harness.group.noContextPacks', 'No context pack files were captured for this run.') }}
             </div>
-            <div v-else class="artifact-list">
+            <div
+              v-else
+              class="artifact-list"
+            >
               <article
                 v-for="(file, index) in contextPackFiles"
                 :key="`${metadataText(file.entry_id)}-${metadataText(file.file)}-${index}`"
@@ -756,24 +951,45 @@ function closeDrawer() {
               <h4>{{ tr('harness.group.runtimeTrace', 'Runtime trace') }}</h4>
               <span v-if="runTrace">{{ traceStages.length }}</span>
             </div>
-            <div v-if="!runTrace" class="detail-state">
+            <div
+              v-if="!runTrace"
+              class="detail-state"
+            >
               {{ tr('harness.group.noRuntimeTrace', 'No runtime trace snapshot is available for this run yet.') }}
             </div>
             <template v-else>
               <div class="summary-pills">
-                <span v-for="pill in traceSummaryPills" :key="pill">{{ pill }}</span>
+                <span
+                  v-for="pill in traceSummaryPills"
+                  :key="pill"
+                >{{ pill }}</span>
               </div>
-              <div v-if="traceStages.length" class="trace-stage-list">
-                <article v-for="stage in traceStages" :key="`${stage.stage}-${stage.created_at}`" class="trace-stage-card">
+              <div
+                v-if="traceStages.length"
+                class="trace-stage-list"
+              >
+                <article
+                  v-for="stage in traceStages"
+                  :key="`${stage.stage}-${stage.created_at}`"
+                  class="trace-stage-card"
+                >
                   <div class="event-header">
                     <strong>{{ humanizeEnum(stage.stage) }}</strong>
                     <span>{{ formatDate(stage.created_at) }}</span>
                   </div>
-                  <p v-if="stage.message" class="event-message">{{ stage.message }}</p>
+                  <p
+                    v-if="stage.message"
+                    class="event-message"
+                  >
+                    {{ stage.message }}
+                  </p>
                   <div class="event-pills">
                     <span v-if="stage.status">{{ statusLabel(stage.status) }}</span>
                   </div>
-                  <details v-if="stage.details" class="payload-block">
+                  <details
+                    v-if="stage.details"
+                    class="payload-block"
+                  >
                     <summary>{{ tr('harness.group.traceDetails', 'Trace details') }}</summary>
                     <pre>{{ compactJSON(stage.details) }}</pre>
                   </details>
@@ -787,11 +1003,21 @@ function closeDrawer() {
               <h4>{{ tr('harness.group.timeline', 'Timeline') }}</h4>
               <span>{{ timelineEvents.length }}</span>
             </div>
-            <div v-if="timelineEvents.length === 0" class="detail-state">
+            <div
+              v-if="timelineEvents.length === 0"
+              class="detail-state"
+            >
               {{ tr('harness.group.noTimelineEvents', 'No timeline events recorded for this run.') }}
             </div>
-            <div v-else class="event-list">
-              <article v-for="event in recentTimelineEvents" :key="event.id" class="event-card">
+            <div
+              v-else
+              class="event-list"
+            >
+              <article
+                v-for="event in recentTimelineEvents"
+                :key="event.id"
+                class="event-card"
+              >
                 <div class="event-header">
                   <strong>{{ event.message || humanizeEnum(event.type) }}</strong>
                   <span>{{ formatDate(event.created_at) }}</span>
@@ -804,7 +1030,10 @@ function closeDrawer() {
                     {{ humanizeEnum(event.capability_kind) }}
                   </span>
                 </div>
-                <details v-if="event.payload_json" class="payload-block">
+                <details
+                  v-if="event.payload_json"
+                  class="payload-block"
+                >
                   <summary>{{ tr('harness.group.rawPayload', 'Raw JSON') }}</summary>
                   <pre>{{ event.payload_json }}</pre>
                 </details>
@@ -837,12 +1066,19 @@ function closeDrawer() {
                       {{ humanizeEnum(event.capability_kind) }}
                     </span>
                   </div>
-                  <details v-if="event.payload_json" class="payload-block">
+                  <details
+                    v-if="event.payload_json"
+                    class="payload-block"
+                  >
                     <summary>{{ tr('harness.group.rawPayload', 'Raw JSON') }}</summary>
                     <pre>{{ event.payload_json }}</pre>
                   </details>
                 </article>
-                <button type="button" class="detail-link" @click="showAllEvents = false">
+                <button
+                  type="button"
+                  class="detail-link"
+                  @click="showAllEvents = false"
+                >
                   {{ tr('harness.group.collapseEvents', 'Show fewer events') }}
                 </button>
               </template>
@@ -854,11 +1090,21 @@ function closeDrawer() {
               <h4>{{ tr('harness.group.artifacts', 'Artifacts') }}</h4>
               <span>{{ artifacts.length }}</span>
             </div>
-            <div v-if="artifacts.length === 0" class="detail-state">
+            <div
+              v-if="artifacts.length === 0"
+              class="detail-state"
+            >
               {{ tr('harness.group.noArtifacts', 'No artifacts attached to the linked runs yet.') }}
             </div>
-            <div v-else class="artifact-list">
-              <article v-for="artifact in artifacts" :key="artifact.id" class="artifact-card">
+            <div
+              v-else
+              class="artifact-list"
+            >
+              <article
+                v-for="artifact in artifacts"
+                :key="artifact.id"
+                class="artifact-card"
+              >
                 <div>
                   <strong>{{ artifact.label || humanizeEnum(artifact.kind) }}</strong>
                   <p>{{ humanizeEnum(artifact.kind) }} · {{ compactValue(artifact.mime_type) }}</p>
@@ -881,16 +1127,25 @@ function closeDrawer() {
               <h4>{{ tr('harness.group.pending', 'Pending') }}</h4>
               <span>{{ pendingCount }}</span>
             </div>
-            <div v-if="pendingCount === 0" class="detail-state">
+            <div
+              v-if="pendingCount === 0"
+              class="detail-state"
+            >
               {{ tr('harness.group.noPendingItems', 'No pending approvals or questions for this run.') }}
             </div>
-            <div v-else class="pending-stack">
+            <div
+              v-else
+              class="pending-stack"
+            >
               <article class="pending-card">
                 <div class="section-header compact">
                   <strong>{{ tr('harness.group.pendingApprovals', 'Pending approvals') }}</strong>
                   <span>{{ pendingApprovals.length }}</span>
                 </div>
-                <div v-if="pendingApprovals.length === 0" class="detail-state compact">
+                <div
+                  v-if="pendingApprovals.length === 0"
+                  class="detail-state compact"
+                >
                   {{ tr('harness.group.noPendingApprovals', 'No pending approvals.') }}
                 </div>
                 <pre
@@ -905,7 +1160,10 @@ function closeDrawer() {
                   <strong>{{ tr('harness.group.pendingQuestions', 'Pending questions') }}</strong>
                   <span>{{ pendingQuestions.length }}</span>
                 </div>
-                <div v-if="pendingQuestions.length === 0" class="detail-state compact">
+                <div
+                  v-if="pendingQuestions.length === 0"
+                  class="detail-state compact"
+                >
                   {{ tr('harness.group.noPendingQuestions', 'No pending questions.') }}
                 </div>
                 <pre

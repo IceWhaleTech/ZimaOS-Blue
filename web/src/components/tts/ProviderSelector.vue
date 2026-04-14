@@ -1,15 +1,29 @@
 <template>
   <div class="provider-selector">
     <label>{{ t('speech.ttsProvider') }}</label>
-    <select v-model="selectedProvider" class="provider-select" @change="handleChange">
-      <option v-for="provider in providers" :key="provider.type" :value="provider.type">
+    <select
+      v-model="selectedProvider"
+      class="provider-select"
+      @change="handleChange"
+    >
+      <option
+        v-for="provider in providers"
+        :key="provider.type"
+        :value="provider.type"
+      >
         {{ provider.name }}
       </option>
     </select>
-    <p v-if="selectedProvider === 'espeak-ng'" class="provider-note">
+    <p
+      v-if="selectedProvider === 'espeak-ng'"
+      class="provider-note"
+    >
       ✓ {{ t('speech.espeakNote') }}
     </p>
-    <p v-else-if="selectedProvider === 'sherpa-onnx'" class="provider-note">
+    <p
+      v-else-if="selectedProvider === 'sherpa-onnx'"
+      class="provider-note"
+    >
       ✓ {{ t('speech.sherpaNote') }}
     </p>
   </div>

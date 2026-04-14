@@ -111,8 +111,17 @@ defineExpose({ open, close })
 
 <template>
   <!-- Trigger Button -->
-  <button class="dashboard-customize-trigger" :title="t('dashboard.customize')" @click="open">
-    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+  <button
+    class="dashboard-customize-trigger"
+    :title="t('dashboard.customize')"
+    @click="open"
+  >
+    <svg
+      class="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
       <path
         stroke-linecap="round"
         stroke-linejoin="round"
@@ -127,22 +136,38 @@ defineExpose({ open, close })
   <!-- Modal -->
   <Teleport to="body">
     <Transition name="fade">
-      <div v-if="isOpen" class="dashboard-customize-layer">
+      <div
+        v-if="isOpen"
+        class="dashboard-customize-layer"
+      >
         <!-- Backdrop -->
-        <div class="dashboard-customize-backdrop" @click="close"></div>
+        <div
+          class="dashboard-customize-backdrop"
+          @click="close"
+        />
 
         <!-- Modal Content -->
         <div class="dashboard-customize-modal">
           <!-- Header -->
           <div class="dashboard-customize-head">
             <div class="dashboard-customize-head-copy">
-              <h2 class="dashboard-customize-title">{{ t('dashboard.customizeTitle') }}</h2>
+              <h2 class="dashboard-customize-title">
+                {{ t('dashboard.customizeTitle') }}
+              </h2>
               <p class="dashboard-customize-meta">
                 {{ totals.enabled }}/{{ totals.total }} enabled
               </p>
             </div>
-            <button class="dashboard-customize-close" @click="close">
-              <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button
+              class="dashboard-customize-close"
+              @click="close"
+            >
+              <svg
+                class="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -180,7 +205,7 @@ defineExpose({ open, close })
                     <div
                       class="dashboard-customize-item-dot"
                       :class="{ enabled: card.enabled }"
-                    ></div>
+                    />
                     <div>
                       <div class="dashboard-customize-item-title">
                         {{ tr(card.config.titleKey, card.config.id) }}
@@ -199,9 +224,9 @@ defineExpose({ open, close })
                       class="sr-only"
                       :aria-label="tr(card.config.titleKey, card.config.id)"
                       @change="toggleCard(card.config.id)"
-                    />
+                    >
                     <span class="dashboard-customize-switch-track">
-                      <span class="dashboard-customize-switch-thumb"></span>
+                      <span class="dashboard-customize-switch-thumb" />
                     </span>
                   </label>
                 </div>
@@ -211,10 +236,16 @@ defineExpose({ open, close })
 
           <!-- Footer -->
           <div class="dashboard-customize-foot">
-            <button class="dashboard-customize-reset" @click="resetToDefaults">
+            <button
+              class="dashboard-customize-reset"
+              @click="resetToDefaults"
+            >
               {{ t('dashboard.resetToDefaults') }}
             </button>
-            <button class="dashboard-customize-done" @click="close">
+            <button
+              class="dashboard-customize-done"
+              @click="close"
+            >
               {{ t('common.done') }}
             </button>
           </div>

@@ -846,7 +846,10 @@ onUnmounted(() => {
   >
     <div class="flex items-start justify-between gap-4">
       <div class="flex min-w-0 items-start gap-3">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center" :class="statusIconBgClass">
+        <div
+          class="w-8 h-8 rounded-lg flex items-center justify-center"
+          :class="statusIconBgClass"
+        >
           <svg
             class="w-4 h-4"
             :class="statusIconClass"
@@ -877,7 +880,11 @@ onUnmounted(() => {
           </p>
         </div>
       </div>
-      <label v-if="supportsConfiguration" data-testid="voicewake-header-toggle" class="shrink-0">
+      <label
+        v-if="supportsConfiguration"
+        data-testid="voicewake-header-toggle"
+        class="shrink-0"
+      >
         <span class="sr-only">{{ `${t('common.enable')} ${t('speech.voiceWake.title')}` }}</span>
         <span
           class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors"
@@ -890,7 +897,7 @@ onUnmounted(() => {
             class="peer sr-only"
             :disabled="enableBlocked || saving"
             @change="handleEnabledChange"
-          />
+          >
           <span
             class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
             :class="form.enabled ? 'translate-x-5' : 'translate-x-0.5'"
@@ -921,7 +928,10 @@ onUnmounted(() => {
               class="absolute inline-flex h-full w-full rounded-full opacity-70 animate-ping"
               :class="activityPingClass"
             />
-            <span class="relative inline-flex h-3 w-3 rounded-full" :class="activityDotClass" />
+            <span
+              class="relative inline-flex h-3 w-3 rounded-full"
+              :class="activityDotClass"
+            />
           </span>
           <div class="space-y-1">
             <p
@@ -931,7 +941,11 @@ onUnmounted(() => {
             >
               {{ activityTitle }}
             </p>
-            <p data-testid="voicewake-activity-meta" class="text-xs" :class="activityMetaClass">
+            <p
+              data-testid="voicewake-activity-meta"
+              class="text-xs"
+              :class="activityMetaClass"
+            >
               {{ activityMeta }}
             </p>
           </div>
@@ -989,7 +1003,11 @@ onUnmounted(() => {
                 :disabled="saving"
                 @change="flushDraftSettings"
               >
-                <option v-for="lang in offlineLanguageOptions" :key="lang" :value="lang">
+                <option
+                  v-for="lang in offlineLanguageOptions"
+                  :key="lang"
+                  :value="lang"
+                >
                   {{ langName(lang) }}
                 </option>
               </select>
@@ -1062,7 +1080,7 @@ onUnmounted(() => {
     <div
       v-if="
         supportsConfiguration &&
-        (autoSaveState !== 'idle' || loading || (requestError && !status?.last_error))
+          (autoSaveState !== 'idle' || loading || (requestError && !status?.last_error))
       "
       class="flex flex-wrap items-center gap-3"
     >
@@ -1074,7 +1092,10 @@ onUnmounted(() => {
       >
         {{ autoSaveFeedbackText }}
       </span>
-      <span v-if="loading" class="text-xs text-gray-500 dark:text-gray-400">{{
+      <span
+        v-if="loading"
+        class="text-xs text-gray-500 dark:text-gray-400"
+      >{{
         t('common.refreshing')
       }}</span>
       <span
@@ -1085,7 +1106,10 @@ onUnmounted(() => {
       </span>
     </div>
 
-    <div v-if="showGuidanceActions" class="flex flex-wrap items-center gap-2 pt-1">
+    <div
+      v-if="showGuidanceActions"
+      class="flex flex-wrap items-center gap-2 pt-1"
+    >
       <button
         v-if="statusReason === 'speech_permission_denied'"
         data-testid="voicewake-open-speech-settings"

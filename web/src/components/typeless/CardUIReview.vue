@@ -129,16 +129,25 @@ function handleAction(actionId: string, disabled = false) {
     class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
   >
     <!-- Error state -->
-    <div v-if="isError" class="p-4">
+    <div
+      v-if="isError"
+      class="p-4"
+    >
       <div class="flex items-center gap-2 text-red-500">
         <span class="text-lg">✗</span>
         <span class="text-sm font-medium">{{ t('uiReview.error', 'UI Review Failed') }}</span>
       </div>
-      <p v-if="card.message" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p
+        v-if="card.message"
+        class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+      >
         {{ card.message }}
       </p>
       <!-- Retry button for error state -->
-      <div v-if="card.actions?.length" class="mt-3 flex flex-wrap gap-2">
+      <div
+        v-if="card.actions?.length"
+        class="mt-3 flex flex-wrap gap-2"
+      >
         <button
           v-for="action in card.actions"
           :key="action.id"
@@ -204,22 +213,26 @@ function handleAction(actionId: string, disabled = false) {
             <span
               v-if="card.device"
               class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300"
-              >{{ card.device }}</span
-            >
+            >{{ card.device }}</span>
             <span
               v-if="card.channel"
               class="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-300"
-              >{{ card.channel }}</span
-            >
+            >{{ card.channel }}</span>
           </div>
         </div>
 
         <!-- Score + Pass/Fail badge -->
         <div class="flex items-center gap-2 flex-shrink-0">
-          <span class="text-lg font-bold tabular-nums" :class="scoreColor">
+          <span
+            class="text-lg font-bold tabular-nums"
+            :class="scoreColor"
+          >
             {{ overall.toFixed(1) }}
           </span>
-          <span class="text-xs font-medium px-1.5 py-0.5 rounded" :class="passBadge.bg">
+          <span
+            class="text-xs font-medium px-1.5 py-0.5 rounded"
+            :class="passBadge.bg"
+          >
             {{ passBadge.text }}
           </span>
           <!-- Chevron -->
@@ -243,11 +256,24 @@ function handleAction(actionId: string, disabled = false) {
 
       <!-- Expanded content -->
       <Transition name="expand">
-        <div v-if="expanded" class="border-t border-gray-100 dark:border-gray-700">
+        <div
+          v-if="expanded"
+          class="border-t border-gray-100 dark:border-gray-700"
+        >
           <!-- Steps -->
-          <div v-if="steps.length > 0" class="divide-y divide-gray-100 dark:divide-gray-700/50">
-            <div v-for="step in steps" :key="step.id" class="flex items-center gap-3 px-4 py-2.5">
-              <span class="text-sm flex-shrink-0 w-4 text-center" :class="stepColor(step)">
+          <div
+            v-if="steps.length > 0"
+            class="divide-y divide-gray-100 dark:divide-gray-700/50"
+          >
+            <div
+              v-for="step in steps"
+              :key="step.id"
+              class="flex items-center gap-3 px-4 py-2.5"
+            >
+              <span
+                class="text-sm flex-shrink-0 w-4 text-center"
+                :class="stepColor(step)"
+              >
                 {{ stepIcon(step) }}
               </span>
               <span class="text-sm text-gray-700 dark:text-gray-300 flex-1">{{
@@ -260,10 +286,16 @@ function handleAction(actionId: string, disabled = false) {
                 >
                   {{ step.score.toFixed(0) }}
                 </span>
-                <span v-if="step.issues" class="text-xs text-gray-400">
+                <span
+                  v-if="step.issues"
+                  class="text-xs text-gray-400"
+                >
                   {{ step.issues }} {{ t('uiReview.issues', 'issues') }}
                 </span>
-                <span v-if="step.status === 'skipped'" class="text-xs text-gray-400 italic">
+                <span
+                  v-if="step.status === 'skipped'"
+                  class="text-xs text-gray-400 italic"
+                >
                   {{ t('uiReview.skipped', 'skipped') }}
                 </span>
               </div>
@@ -272,7 +304,10 @@ function handleAction(actionId: string, disabled = false) {
 
           <!-- Score bars -->
           <div class="px-4 py-3 space-y-2 border-t border-gray-100 dark:border-gray-700">
-            <div v-if="card.visual && card.visual.score > 0" class="flex items-center gap-3">
+            <div
+              v-if="card.visual && card.visual.score > 0"
+              class="flex items-center gap-3"
+            >
               <span class="text-xs text-gray-500 dark:text-gray-400 w-24">{{
                 t('uiReview.visual', 'Visual')
               }}</span>
@@ -285,10 +320,12 @@ function handleAction(actionId: string, disabled = false) {
               </div>
               <span
                 class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-end"
-                >{{ card.visual.score.toFixed(0) }}</span
-              >
+              >{{ card.visual.score.toFixed(0) }}</span>
             </div>
-            <div v-if="card.functional" class="flex items-center gap-3">
+            <div
+              v-if="card.functional"
+              class="flex items-center gap-3"
+            >
               <span class="text-xs text-gray-500 dark:text-gray-400 w-24">{{
                 t('uiReview.functional', 'Functional')
               }}</span>
@@ -301,10 +338,12 @@ function handleAction(actionId: string, disabled = false) {
               </div>
               <span
                 class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-end"
-                >{{ card.functional.score.toFixed(0) }}</span
-              >
+              >{{ card.functional.score.toFixed(0) }}</span>
             </div>
-            <div v-if="card.accessibility" class="flex items-center gap-3">
+            <div
+              v-if="card.accessibility"
+              class="flex items-center gap-3"
+            >
               <span class="text-xs text-gray-500 dark:text-gray-400 w-24">{{
                 t('uiReview.accessibility', 'Accessibility')
               }}</span>
@@ -317,8 +356,7 @@ function handleAction(actionId: string, disabled = false) {
               </div>
               <span
                 class="text-xs font-medium tabular-nums text-gray-600 dark:text-gray-400 w-8 text-end"
-                >{{ card.accessibility.score.toFixed(0) }}</span
-              >
+              >{{ card.accessibility.score.toFixed(0) }}</span>
             </div>
           </div>
 
@@ -338,7 +376,11 @@ function handleAction(actionId: string, disabled = false) {
               </div>
             </div>
             <div class="space-y-1.5 max-h-40 overflow-y-auto">
-              <div v-for="(issue, i) in issues" :key="i" class="flex items-start gap-2 text-xs">
+              <div
+                v-for="(issue, i) in issues"
+                :key="i"
+                class="flex items-start gap-2 text-xs"
+              >
                 <span class="flex-shrink-0 mt-0.5">{{ severityIcon(issue.severity) }}</span>
                 <span class="text-gray-600 dark:text-gray-400">{{ issue.description }}</span>
               </div>
@@ -380,7 +422,10 @@ function handleAction(actionId: string, disabled = false) {
                   : t('uiReview.showScreenshot', 'Show screenshot')
               }}
             </button>
-            <div v-if="showScreenshot" class="mt-2 space-y-2">
+            <div
+              v-if="showScreenshot"
+              class="mt-2 space-y-2"
+            >
               <div
                 v-for="(src, idx) in screenshotSources"
                 :key="idx"
@@ -390,7 +435,7 @@ function handleAction(actionId: string, disabled = false) {
                   :src="src"
                   class="w-full"
                   :alt="t('askQuestion.browserCheckpoint.screenshotAlt', 'Page screenshot')"
-                />
+                >
               </div>
             </div>
           </div>

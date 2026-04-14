@@ -265,12 +265,23 @@ function emitTaskAction(actionID: UserTaskActionID) {
         viewBox="0 0 24 24"
         stroke="currentColor"
       >
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          d="M19 9l-7 7-7-7"
+        />
       </svg>
     </button>
 
-    <div v-show="expanded" class="px-4 py-4">
-      <div v-if="!usesCollapsedHeaderOnly" class="flex items-start justify-between gap-3">
+    <div
+      v-show="expanded"
+      class="px-4 py-4"
+    >
+      <div
+        v-if="!usesCollapsedHeaderOnly"
+        class="flex items-start justify-between gap-3"
+      >
         <div class="flex min-w-0 items-start gap-3">
           <span
             class="inline-flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"
@@ -282,12 +293,18 @@ function emitTaskAction(actionID: UserTaskActionID) {
               <span class="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                 {{ localizedTitle }}
               </span>
-              <span class="rounded-full px-2.5 py-1 text-[11px] font-medium" :class="stageClass">
+              <span
+                class="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                :class="stageClass"
+              >
                 {{ stageLabel }}
               </span>
               <span class="text-[11px] text-slate-500 dark:text-slate-400">{{ kindLabel }}</span>
             </div>
-            <p v-if="localizedSubtitle" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <p
+              v-if="localizedSubtitle"
+              class="mt-1 text-xs text-slate-500 dark:text-slate-400"
+            >
               {{ localizedSubtitle }}
             </p>
             <div
@@ -341,9 +358,15 @@ function emitTaskAction(actionID: UserTaskActionID) {
         </div>
       </div>
 
-      <div v-else class="flex flex-wrap items-start justify-between gap-3">
+      <div
+        v-else
+        class="flex flex-wrap items-start justify-between gap-3"
+      >
         <div class="min-w-0 flex-1">
-          <p v-if="localizedSubtitle" class="text-xs text-slate-500 dark:text-slate-400">
+          <p
+            v-if="localizedSubtitle"
+            class="text-xs text-slate-500 dark:text-slate-400"
+          >
             {{ localizedSubtitle }}
           </p>
         </div>
@@ -467,7 +490,10 @@ function emitTaskAction(actionID: UserTaskActionID) {
         {{ previewText }}
       </div>
 
-      <div v-if="task.artifacts?.length" class="mt-3 flex flex-wrap gap-2">
+      <div
+        v-if="task.artifacts?.length"
+        class="mt-3 flex flex-wrap gap-2"
+      >
         <template
           v-for="artifact in task.artifacts"
           :key="`${task.id}-${artifact.kind}-${artifact.label}`"

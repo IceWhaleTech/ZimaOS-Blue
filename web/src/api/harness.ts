@@ -162,7 +162,7 @@ export interface HarnessRun {
   finished_at?: string | null
 }
 
-export interface HarnessRunSummary extends Pick<
+export type HarnessRunSummary = Pick<
   HarnessRun,
   | 'id'
   | 'root_run_id'
@@ -184,7 +184,7 @@ export interface HarnessRunSummary extends Pick<
   | 'updated_at'
   | 'started_at'
   | 'finished_at'
-> {}
+>
 
 export interface HarnessRunEvent {
   id: string

@@ -261,8 +261,11 @@ func officeBuildPPTXChartPackage(chart officeChartSpec, chartIndex int) (officeP
 }
 
 func officePPTXChartShouldEmbedWorkbook(chart officeChartSpec) bool {
-	if !officePPTXChartUsesDateAxis(chart.CategoryAxisType) {
+	if len(chart.Categories) == 0 || len(chart.Series) == 0 {
 		return false
+	}
+	if !officePPTXChartUsesDateAxis(chart.CategoryAxisType) {
+		return true
 	}
 	withTime := officePPTXChartDateAxisIncludesTime(chart.CategoryAxisType)
 	for _, category := range chart.Categories {
@@ -270,7 +273,7 @@ func officePPTXChartShouldEmbedWorkbook(chart officeChartSpec) bool {
 			return false
 		}
 	}
-	return len(chart.Categories) > 0 && len(chart.Series) > 0
+	return true
 }
 
 func officePPTXChartWorkbookPackageForChart(chart officeChartSpec, chartIndex int) (*officePPTXChartWorkbookPackage, error) {
@@ -673,6 +676,8 @@ func officeNormalizePPTXChart(chart officeChartSpec) officeChartSpec {
 		Labels:                                officeNormalizeChartLabels(chart.Labels),
 		LabelPosition:                         officeNormalizeChartLabelPosition(chart.LabelPosition),
 		LabelFormat:                           officeNormalizeChartLabelFormat(chart.LabelFormat),
+		LabelSeparator:                        officeNormalizeChartLabelSeparator(chart.LabelSeparator),
+		ShowLeaderLines:                       officeNormalizeChartLabels(chart.ShowLeaderLines),
 		ShowValue:                             officeNormalizeChartLabels(chart.ShowValue),
 		ShowCategory:                          officeNormalizeChartLabels(chart.ShowCategory),
 		ShowSeriesName:                        officeNormalizeChartLabels(chart.ShowSeriesName),
@@ -697,27 +702,37 @@ func officeNormalizePPTXChart(chart officeChartSpec) officeChartSpec {
 			maxLen = len(values)
 		}
 		normalized.Series = append(normalized.Series, officeChartSeries{
-			Name:            name,
-			WorkbookIndex:   idx,
-			Type:            seriesType,
-			Axis:            officeNormalizeChartSeriesAxis(chart.Type, seriesType, series.Axis),
-			Labels:          officeNormalizeChartLabels(series.Labels),
-			LabelPosition:   officeNormalizeChartLabelPosition(series.LabelPosition),
-			LabelFormat:     officeNormalizeChartLabelFormat(series.LabelFormat),
-			ShowValue:       officeNormalizeChartLabels(series.ShowValue),
-			ShowCategory:    officeNormalizeChartLabels(series.ShowCategory),
-			ShowSeriesName:  officeNormalizeChartLabels(series.ShowSeriesName),
-			ShowPercent:     officeNormalizeChartLabels(series.ShowPercent),
-			ShowLegendKey:   officeNormalizeChartLabels(series.ShowLegendKey),
-			ShowBubbleSize:  officeNormalizeChartLabels(series.ShowBubbleSize),
-			PointColors:     officeNormalizeChartPointColors(series.PointColors),
-			PointExplosions: officeNormalizeChartPointExplosions(series.PointExplosions),
-			Smooth:          officeNormalizeChartLabels(series.Smooth),
-			Color:           officeNormalizeChartSeriesColor(series.Color),
-			LineWidth:       officeNormalizeChartSeriesLineWidth(series.LineWidth),
-			Dash:            officeNormalizeChartSeriesDash(series.Dash),
-			Marker:          officeNormalizeChartSeriesMarker(series.Marker),
-			Values:          values,
+			Name:                 name,
+			WorkbookIndex:        idx,
+			Type:                 seriesType,
+			Axis:                 officeNormalizeChartSeriesAxis(chart.Type, seriesType, series.Axis),
+			Labels:               officeNormalizeChartLabels(series.Labels),
+			LabelPosition:        officeNormalizeChartLabelPosition(series.LabelPosition),
+			LabelFormat:          officeNormalizeChartLabelFormat(series.LabelFormat),
+			LabelSeparator:       officeNormalizeChartLabelSeparator(series.LabelSeparator),
+			ShowLeaderLines:      officeNormalizeChartLabels(series.ShowLeaderLines),
+			ShowValue:            officeNormalizeChartLabels(series.ShowValue),
+			ShowCategory:         officeNormalizeChartLabels(series.ShowCategory),
+			ShowSeriesName:       officeNormalizeChartLabels(series.ShowSeriesName),
+			ShowPercent:          officeNormalizeChartLabels(series.ShowPercent),
+			ShowLegendKey:        officeNormalizeChartLabels(series.ShowLegendKey),
+			ShowBubbleSize:       officeNormalizeChartLabels(series.ShowBubbleSize),
+			PointShowLabels:      officeNormalizeChartPointLabelVisibility(series.PointShowLabels),
+			PointShowValues:      officeNormalizeChartPointLabelVisibility(series.PointShowValues),
+			PointShowCategories:  officeNormalizeChartPointLabelVisibility(series.PointShowCategories),
+			PointShowSeriesNames: officeNormalizeChartPointLabelVisibility(series.PointShowSeriesNames),
+			PointShowPercents:    officeNormalizeChartPointLabelVisibility(series.PointShowPercents),
+			PointLabelPositions:  officeNormalizeChartPointLabelPositions(series.PointLabelPositions),
+			PointLabelFormats:    officeNormalizeChartPointLabelFormats(series.PointLabelFormats),
+			PointLabelSeparators: officeNormalizeChartPointLabelSeparators(series.PointLabelSeparators),
+			PointColors:          officeNormalizeChartPointColors(series.PointColors),
+			PointExplosions:      officeNormalizeChartPointExplosions(series.PointExplosions),
+			Smooth:               officeNormalizeChartLabels(series.Smooth),
+			Color:                officeNormalizeChartSeriesColor(series.Color),
+			LineWidth:            officeNormalizeChartSeriesLineWidth(series.LineWidth),
+			Dash:                 officeNormalizeChartSeriesDash(series.Dash),
+			Marker:               officeNormalizeChartSeriesMarker(series.Marker),
+			Values:               values,
 		})
 	}
 	for len(normalized.Categories) < maxLen {
@@ -756,27 +771,31 @@ type officePPTXChartMode struct {
 }
 
 type officePPTXChartLabelConfig struct {
-	Labels         string
-	Position       string
-	Format         string
-	ShowValue      string
-	ShowCategory   string
-	ShowSeriesName string
-	ShowPercent    string
-	ShowLegendKey  string
-	ShowBubbleSize string
+	Labels          string
+	Position        string
+	Format          string
+	Separator       string
+	ShowLeaderLines string
+	ShowValue       string
+	ShowCategory    string
+	ShowSeriesName  string
+	ShowPercent     string
+	ShowLegendKey   string
+	ShowBubbleSize  string
 }
 
 type officePPTXDataLabelOptions struct {
-	Show           bool
-	Position       string
-	Format         string
-	ShowValue      bool
-	ShowCategory   bool
-	ShowSeriesName bool
-	ShowPercent    bool
-	ShowLegendKey  bool
-	ShowBubbleSize bool
+	Show            bool
+	Position        string
+	Format          string
+	Separator       string
+	ShowLeaderLines bool
+	ShowValue       bool
+	ShowCategory    bool
+	ShowSeriesName  bool
+	ShowPercent     bool
+	ShowLegendKey   bool
+	ShowBubbleSize  bool
 }
 
 func officePPTXChartModeForType(chartType string) officePPTXChartMode {
@@ -989,6 +1008,9 @@ func officePPTXChartCategoryDataXML(categories []string, categoryAxisType, categ
 	if workbook != nil && officePPTXChartUsesDateAxis(categoryAxisType) {
 		return officePPTXChartDateCategoryRefXML(categories, categoryAxisFormat, officePPTXChartDateAxisIncludesTime(categoryAxisType), workbook)
 	}
+	if workbook != nil {
+		return officePPTXChartStringCategoryRefXML(categories, workbook)
+	}
 	if officePPTXChartUsesDateAxis(categoryAxisType) {
 		return officePPTXChartDateCategoryDataXML(categories, categoryAxisFormat, officePPTXChartDateAxisIncludesTime(categoryAxisType))
 	}
@@ -1017,6 +1039,23 @@ func officePPTXChartStringCategoryDataXML(categories []string) string {
 		xml.WriteString(fmt.Sprintf(`<c:pt idx="%d"><c:v>%s</c:v></c:pt>`, catIndex, officeXMLText(category)))
 	}
 	xml.WriteString(`</c:strLit></c:cat>`)
+	return xml.String()
+}
+
+func officePPTXChartStringCategoryRefXML(categories []string, workbook *officePPTXChartWorkbookPackage) string {
+	if workbook == nil {
+		return officePPTXChartStringCategoryDataXML(categories)
+	}
+	var xml strings.Builder
+	xml.WriteString(`<c:cat><c:strRef><c:f>`)
+	xml.WriteString(officeXMLText(officePPTXChartWorkbookCategoryFormula(workbook, len(categories))))
+	xml.WriteString(`</c:f><c:strCache><c:ptCount val="`)
+	xml.WriteString(fmt.Sprintf("%d", len(categories)))
+	xml.WriteString(`"/>`)
+	for catIndex, category := range categories {
+		xml.WriteString(fmt.Sprintf(`<c:pt idx="%d"><c:v>%s</c:v></c:pt>`, catIndex, officeXMLText(category)))
+	}
+	xml.WriteString(`</c:strCache></c:strRef></c:cat>`)
 	return xml.String()
 }
 
@@ -1259,15 +1298,17 @@ func officePPTXChartLineWidth(width float64) int {
 
 func officePPTXChartLabelConfigFromChart(chart officeChartSpec) officePPTXChartLabelConfig {
 	return officePPTXChartLabelConfig{
-		Labels:         chart.Labels,
-		Position:       chart.LabelPosition,
-		Format:         chart.LabelFormat,
-		ShowValue:      chart.ShowValue,
-		ShowCategory:   chart.ShowCategory,
-		ShowSeriesName: chart.ShowSeriesName,
-		ShowPercent:    chart.ShowPercent,
-		ShowLegendKey:  chart.ShowLegendKey,
-		ShowBubbleSize: chart.ShowBubbleSize,
+		Labels:          chart.Labels,
+		Position:        chart.LabelPosition,
+		Format:          chart.LabelFormat,
+		Separator:       chart.LabelSeparator,
+		ShowLeaderLines: chart.ShowLeaderLines,
+		ShowValue:       chart.ShowValue,
+		ShowCategory:    chart.ShowCategory,
+		ShowSeriesName:  chart.ShowSeriesName,
+		ShowPercent:     chart.ShowPercent,
+		ShowLegendKey:   chart.ShowLegendKey,
+		ShowBubbleSize:  chart.ShowBubbleSize,
 	}
 }
 
@@ -1278,11 +1319,18 @@ func officePPTXChartDataLabelsXML(chartType string, labelConfig officePPTXChartL
 	}
 	var labels strings.Builder
 	labels.WriteString(`<c:dLbls>`)
+	labels.WriteString(officePPTXChartDataPointLabelOverridesXML(chartType, seriesList))
 	if options.Format != "" {
 		labels.WriteString(`<c:numFmt formatCode="` + officeXMLText(options.Format) + `" sourceLinked="0"/>`)
 	}
 	if options.Position != "" {
 		labels.WriteString(`<c:dLblPos val="` + officeXMLText(options.Position) + `"/>`)
+	}
+	if options.Separator != "" {
+		labels.WriteString(`<c:separator>` + officeXMLText(options.Separator) + `</c:separator>`)
+	}
+	if options.ShowLeaderLines {
+		labels.WriteString(`<c:showLeaderLines val="1"/>`)
 	}
 	labels.WriteString(
 		`<c:showLegendKey val="` + officePPTXBoolVal(options.ShowLegendKey) + `"/>` +
@@ -1294,6 +1342,145 @@ func officePPTXChartDataLabelsXML(chartType string, labelConfig officePPTXChartL
 	)
 	labels.WriteString(`</c:dLbls>`)
 	return labels.String()
+}
+
+func officePPTXChartDataPointLabelOverridesXML(chartType string, seriesList []officeChartSeries) string {
+	if chartType != "pie" && chartType != "donut" {
+		return ``
+	}
+	var pointVisibility []string
+	var pointShowValues []string
+	var pointShowCategories []string
+	var pointShowSeriesNames []string
+	var pointShowPercents []string
+	var pointPositions []string
+	var pointFormats []string
+	var pointSeparators []string
+	for _, series := range seriesList {
+		if len(series.PointShowLabels) > 0 || len(series.PointShowValues) > 0 || len(series.PointShowCategories) > 0 || len(series.PointShowSeriesNames) > 0 || len(series.PointShowPercents) > 0 || len(series.PointLabelPositions) > 0 || len(series.PointLabelFormats) > 0 || len(series.PointLabelSeparators) > 0 {
+			pointVisibility = series.PointShowLabels
+			pointShowValues = series.PointShowValues
+			pointShowCategories = series.PointShowCategories
+			pointShowSeriesNames = series.PointShowSeriesNames
+			pointShowPercents = series.PointShowPercents
+			pointPositions = series.PointLabelPositions
+			pointFormats = series.PointLabelFormats
+			pointSeparators = series.PointLabelSeparators
+			break
+		}
+	}
+	pointCount := len(pointVisibility)
+	if len(pointShowValues) > pointCount {
+		pointCount = len(pointShowValues)
+	}
+	if len(pointShowCategories) > pointCount {
+		pointCount = len(pointShowCategories)
+	}
+	if len(pointShowSeriesNames) > pointCount {
+		pointCount = len(pointShowSeriesNames)
+	}
+	if len(pointShowPercents) > pointCount {
+		pointCount = len(pointShowPercents)
+	}
+	if len(pointPositions) > pointCount {
+		pointCount = len(pointPositions)
+	}
+	if len(pointFormats) > pointCount {
+		pointCount = len(pointFormats)
+	}
+	if len(pointSeparators) > pointCount {
+		pointCount = len(pointSeparators)
+	}
+	if pointCount == 0 {
+		return ``
+	}
+	var xml strings.Builder
+	for idx := 0; idx < pointCount; idx++ {
+		visibility := ``
+		if idx < len(pointVisibility) {
+			visibility = pointVisibility[idx]
+		}
+		showValue := ``
+		if idx < len(pointShowValues) {
+			showValue = pointShowValues[idx]
+		}
+		showCategory := ``
+		if idx < len(pointShowCategories) {
+			showCategory = pointShowCategories[idx]
+		}
+		showSeriesName := ``
+		if idx < len(pointShowSeriesNames) {
+			showSeriesName = pointShowSeriesNames[idx]
+		}
+		showPercent := ``
+		if idx < len(pointShowPercents) {
+			showPercent = pointShowPercents[idx]
+		}
+		position := ``
+		if idx < len(pointPositions) {
+			position = pointPositions[idx]
+		}
+		format := ``
+		if idx < len(pointFormats) {
+			format = pointFormats[idx]
+		}
+		separator := ``
+		if idx < len(pointSeparators) {
+			separator = pointSeparators[idx]
+		}
+		if visibility == "" && showValue == "" && showCategory == "" && showSeriesName == "" && showPercent == "" && position == "" && format == "" && separator == "" {
+			continue
+		}
+		xml.WriteString(`<c:dLbl><c:idx val="`)
+		xml.WriteString(strconv.Itoa(idx))
+		xml.WriteString(`"/>`)
+		if visibility != "" {
+			xml.WriteString(`<c:delete val="`)
+			if visibility == "hide" {
+				xml.WriteString(`1`)
+			} else {
+				xml.WriteString(`0`)
+			}
+			xml.WriteString(`"/>`)
+		}
+		if showValue != "" {
+			xml.WriteString(`<c:showVal val="`)
+			xml.WriteString(officePPTXBoolVal(showValue == "show"))
+			xml.WriteString(`"/>`)
+		}
+		if showCategory != "" {
+			xml.WriteString(`<c:showCatName val="`)
+			xml.WriteString(officePPTXBoolVal(showCategory == "show"))
+			xml.WriteString(`"/>`)
+		}
+		if showSeriesName != "" {
+			xml.WriteString(`<c:showSerName val="`)
+			xml.WriteString(officePPTXBoolVal(showSeriesName == "show"))
+			xml.WriteString(`"/>`)
+		}
+		if showPercent != "" {
+			xml.WriteString(`<c:showPercent val="`)
+			xml.WriteString(officePPTXBoolVal(showPercent == "show"))
+			xml.WriteString(`"/>`)
+		}
+		if position != "" {
+			xml.WriteString(`<c:dLblPos val="`)
+			xml.WriteString(officeXMLText(position))
+			xml.WriteString(`"/>`)
+		}
+		if format != "" {
+			xml.WriteString(`<c:numFmt formatCode="`)
+			xml.WriteString(officeXMLText(format))
+			xml.WriteString(`" sourceLinked="0"/>`)
+		}
+		if separator != "" {
+			xml.WriteString(`<c:separator>`)
+			xml.WriteString(officeXMLText(separator))
+			xml.WriteString(`</c:separator>`)
+		}
+		xml.WriteString(`</c:dLbl>`)
+	}
+	return xml.String()
 }
 
 func officePPTXChartShowsDataLabels(chartLabels string, seriesList []officeChartSeries) bool {
@@ -1314,15 +1501,20 @@ func officePPTXChartDataLabelOptions(chartType string, labelConfig officePPTXCha
 		return officePPTXDataLabelOptions{}
 	}
 	options := officePPTXDataLabelOptions{
-		Show:           true,
-		Position:       labelConfig.Position,
-		Format:         labelConfig.Format,
-		ShowValue:      true,
-		ShowCategory:   chartType == "pie" || chartType == "donut",
-		ShowSeriesName: false,
-		ShowPercent:    false,
-		ShowLegendKey:  false,
-		ShowBubbleSize: false,
+		Show:            true,
+		Position:        labelConfig.Position,
+		Format:          labelConfig.Format,
+		Separator:       labelConfig.Separator,
+		ShowLeaderLines: false,
+		ShowValue:       true,
+		ShowCategory:    chartType == "pie" || chartType == "donut",
+		ShowSeriesName:  false,
+		ShowPercent:     false,
+		ShowLegendKey:   false,
+		ShowBubbleSize:  false,
+	}
+	if (chartType == "pie" || chartType == "donut") && labelConfig.ShowLeaderLines != "" {
+		options.ShowLeaderLines = labelConfig.ShowLeaderLines == "show"
 	}
 	if labelConfig.ShowValue != "" {
 		options.ShowValue = labelConfig.ShowValue == "show"
@@ -1351,6 +1543,12 @@ func officePPTXChartDataLabelOptions(chartType string, labelConfig officePPTXCha
 		}
 		if series.LabelFormat != "" {
 			options.Format = series.LabelFormat
+		}
+		if series.LabelSeparator != "" {
+			options.Separator = series.LabelSeparator
+		}
+		if (chartType == "pie" || chartType == "donut") && series.ShowLeaderLines != "" {
+			options.ShowLeaderLines = series.ShowLeaderLines == "show"
 		}
 		if series.ShowValue != "" {
 			options.ShowValue = series.ShowValue == "show"
@@ -1710,22 +1908,47 @@ func officePPTXTableXML(table *officeTableSpec, tableWidth int) string {
 	}
 	return `<a:tbl>` +
 		`<a:tblPr firstRow="1" bandRow="1"><a:tableStyleId>{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}</a:tableStyleId></a:tblPr>` +
-		officePPTXTableGridXML(columnCount, tableWidth) +
+		officePPTXTableGridXML(table, columnCount, tableWidth) +
 		officePPTXTableRowsXML(table, columnCount) +
 		`</a:tbl>`
 }
 
-func officePPTXTableGridXML(columnCount, tableWidth int) string {
+func officePPTXTableGridXML(table *officeTableSpec, columnCount, tableWidth int) string {
 	if columnCount <= 0 {
 		return `<a:tblGrid/>`
 	}
 	widths := make([]int, columnCount)
-	baseWidth := tableWidth / columnCount
-	remainder := tableWidth % columnCount
-	for idx := range widths {
-		widths[idx] = baseWidth
-		if idx == columnCount-1 {
-			widths[idx] += remainder
+	if totalWeight := officePPTXTableColumnWeightTotal(table, columnCount); totalWeight > 0 {
+		remainingWidth := tableWidth
+		remainingWeight := totalWeight
+		for idx := range widths {
+			weight := table.ColumnWidths[idx]
+			if weight <= 0 {
+				weight = 1
+			}
+			if idx == columnCount-1 || remainingWeight <= 0 {
+				widths[idx] = remainingWidth
+			} else {
+				width := int(float64(tableWidth) * (weight / totalWeight))
+				if width < 0 {
+					width = 0
+				}
+				if width > remainingWidth {
+					width = remainingWidth
+				}
+				widths[idx] = width
+			}
+			remainingWidth -= widths[idx]
+			remainingWeight -= weight
+		}
+	} else {
+		baseWidth := tableWidth / columnCount
+		remainder := tableWidth % columnCount
+		for idx := range widths {
+			widths[idx] = baseWidth
+			if idx == columnCount-1 {
+				widths[idx] += remainder
+			}
 		}
 	}
 
@@ -1738,18 +1961,33 @@ func officePPTXTableGridXML(columnCount, tableWidth int) string {
 	return grid.String()
 }
 
+func officePPTXTableColumnWeightTotal(table *officeTableSpec, columnCount int) float64 {
+	if table == nil || len(table.ColumnWidths) == 0 {
+		return 0
+	}
+	total := 0.0
+	for idx := 0; idx < columnCount; idx++ {
+		weight := 1.0
+		if idx < len(table.ColumnWidths) && table.ColumnWidths[idx] > 0 {
+			weight = table.ColumnWidths[idx]
+		}
+		total += weight
+	}
+	return total
+}
+
 func officePPTXTableRowsXML(table *officeTableSpec, columnCount int) string {
 	var rows strings.Builder
 	if len(table.Headers) > 0 {
-		rows.WriteString(officePPTXTableRowXML(table.Headers, columnCount, true))
+		rows.WriteString(officePPTXTableRowXML(table, table.Headers, columnCount, true))
 	}
 	for _, row := range table.Rows {
-		rows.WriteString(officePPTXTableRowXML(row, columnCount, false))
+		rows.WriteString(officePPTXTableRowXML(table, row, columnCount, false))
 	}
 	return rows.String()
 }
 
-func officePPTXTableRowXML(values []string, columnCount int, header bool) string {
+func officePPTXTableRowXML(table *officeTableSpec, values []string, columnCount int, header bool) string {
 	const rowHeight = 370840
 
 	var row strings.Builder
@@ -1759,20 +1997,44 @@ func officePPTXTableRowXML(values []string, columnCount int, header bool) string
 		if idx < len(values) {
 			value = values[idx]
 		}
-		row.WriteString(officePPTXTableCellXML(value, header))
+		row.WriteString(officePPTXTableCellXML(value, header, officePPTXTableCellAlignment(table, idx)))
 	}
 	row.WriteString(`</a:tr>`)
 	return row.String()
 }
 
-func officePPTXTableCellXML(value string, header bool) string {
+func officePPTXTableCellXML(value string, header bool, alignment string) string {
 	runStyle := `lang="en-US" sz="1800"`
 	if header {
 		runStyle = `lang="en-US" b="1" sz="1800"`
 	}
-	return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr ` + runStyle + `/><a:t>` +
+	paragraphProps := ""
+	if alignmentAttr := officePPTXTableParagraphAlignment(alignment); alignmentAttr != "" {
+		paragraphProps = `<a:pPr algn="` + alignmentAttr + `"/>`
+	}
+	return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/><a:p>` + paragraphProps + `<a:r><a:rPr ` + runStyle + `/><a:t>` +
 		officeXMLText(value) +
 		`</a:t></a:r></a:p></a:txBody><a:tcPr marL="91440" marR="91440" marT="45720" marB="45720" anchor="ctr"/></a:tc>`
+}
+
+func officePPTXTableCellAlignment(table *officeTableSpec, columnIndex int) string {
+	if table == nil || columnIndex < 0 || columnIndex >= len(table.ColumnAlignments) {
+		return ""
+	}
+	return table.ColumnAlignments[columnIndex]
+}
+
+func officePPTXTableParagraphAlignment(alignment string) string {
+	switch strings.ToLower(strings.TrimSpace(alignment)) {
+	case "left":
+		return "l"
+	case "center":
+		return "ctr"
+	case "right":
+		return "r"
+	default:
+		return ""
+	}
 }
 
 func officePPTXTableColumnCount(table *officeTableSpec) int {

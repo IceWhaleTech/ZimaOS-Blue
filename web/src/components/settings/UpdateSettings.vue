@@ -2,6 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { updateApi, type UpdateInfoResponse, type OTAStatus } from '@/api/update'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import { renderMarkdown } from '@/utils/markdown'
 
 const { t } = useI18n()
@@ -73,7 +74,7 @@ async function startDownload() {
   try {
     await updateApi.downloadOTA()
     startProgressPolling()
-  } catch (e) {
+  } catch (_e) {
     updateState.value = 'idle'
     checkError.value = t('settings.update.downloadFailed')
   }
@@ -213,7 +214,12 @@ onUnmounted(() => {
           v-if="showUpToDate"
           class="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"
         >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -223,11 +229,13 @@ onUnmounted(() => {
           </svg>
           {{ t('settings.update.upToDate') }}
         </span>
-        <span v-if="checkError" class="text-sm text-red-600 dark:text-red-400">{{
+        <span
+          v-if="checkError"
+          class="text-sm text-red-600 dark:text-red-400"
+        >{{
           checkError
         }}</span>
         <button
-          @click="checkUpdate"
           :disabled="loading || isUpdating"
           class="px-3 py-1.5 text-sm rounded-lg transition-colors flex items-center gap-1.5"
           :class="
@@ -235,8 +243,14 @@ onUnmounted(() => {
               ? 'bg-gray-200 dark:bg-gray-700 text-gray-400'
               : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
           "
+          @click="checkUpdate"
         >
-          <svg v-if="loading" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+          <svg
+            v-if="loading"
+            class="w-4 h-4 animate-spin"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
             <circle
               class="opacity-25"
               cx="12"
@@ -265,9 +279,9 @@ onUnmounted(() => {
         type="button"
         role="switch"
         :aria-checked="autoCheck"
-        @click="toggleAutoCheck"
         class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
         :class="autoCheck ? 'bg-green-600 dark:bg-green-500' : 'bg-gray-300 dark:bg-gray-600'"
+        @click="toggleAutoCheck"
       >
         <span
           class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
@@ -304,7 +318,12 @@ onUnmounted(() => {
               class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               @click="showUpdateDialog = false"
             >
-              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -319,12 +338,16 @@ onUnmounted(() => {
           <div
             v-if="
               updateState === 'restarting' ||
-              updateState === 'polling' ||
-              updateState === 'applying'
+                updateState === 'polling' ||
+                updateState === 'applying'
             "
             class="p-8 flex flex-col items-center gap-4"
           >
-            <svg class="w-10 h-10 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+            <svg
+              class="w-10 h-10 animate-spin text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
               <circle
                 class="opacity-25"
                 cx="12"
@@ -374,7 +397,10 @@ onUnmounted(() => {
               </div>
 
               <!-- Download progress bar -->
-              <div v-if="updateState === 'downloading'" class="mb-4">
+              <div
+                v-if="updateState === 'downloading'"
+                class="mb-4"
+              >
                 <div
                   class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1"
                 >
@@ -394,7 +420,12 @@ onUnmounted(() => {
                 v-if="updateState === 'downloaded'"
                 class="mb-4 flex items-center gap-2 text-sm text-green-600 dark:text-green-400"
               >
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -413,7 +444,11 @@ onUnmounted(() => {
                   v-if="loadingNotes"
                   class="flex items-center gap-2 text-gray-400 py-4 justify-center"
                 >
-                  <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <svg
+                    class="w-4 h-4 animate-spin"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
                     <circle
                       class="opacity-25"
                       cx="12"
@@ -430,10 +465,10 @@ onUnmounted(() => {
                   </svg>
                   Loading...
                 </div>
-                <div
+                <TrustedHtml
                   v-else
                   class="prose prose-sm dark:prose-invert max-w-none"
-                  v-html="releaseNotesHtml"
+                  :html="releaseNotesHtml"
                 />
               </div>
             </div>
@@ -441,9 +476,9 @@ onUnmounted(() => {
               class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3"
             >
               <button
-                @click="showUpdateDialog = false"
                 :disabled="isUpdating"
                 class="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                @click="showUpdateDialog = false"
               >
                 {{ t('common.cancel') }}
               </button>
@@ -451,9 +486,9 @@ onUnmounted(() => {
               <!-- Download button (idle state) -->
               <button
                 v-if="updateState === 'idle'"
-                @click="startDownload"
                 class="px-4 py-2 text-sm font-medium rounded-lg transition-colors"
                 :class="'bg-gray-800 hover:bg-gray-700 dark:bg-gray-200 dark:hover:bg-gray-300 text-white dark:text-gray-900'"
+                @click="startDownload"
               >
                 {{ t('common.update') }}
               </button>
@@ -461,8 +496,8 @@ onUnmounted(() => {
               <!-- Apply & Restart button (downloaded state) -->
               <button
                 v-if="updateState === 'downloaded'"
-                @click="applyAndRestart"
                 class="px-4 py-2 text-sm font-medium rounded-lg transition-colors bg-green-600 hover:bg-green-500 text-white"
+                @click="applyAndRestart"
               >
                 {{ t('settings.update.confirmRestart') }}
               </button>
@@ -473,7 +508,11 @@ onUnmounted(() => {
                 disabled
                 class="px-4 py-2 text-sm font-medium rounded-lg bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed flex items-center gap-2"
               >
-                <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <svg
+                  class="w-4 h-4 animate-spin"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
                   <circle
                     class="opacity-25"
                     cx="12"

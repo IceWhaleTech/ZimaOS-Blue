@@ -11,8 +11,13 @@ defineProps<{
     class="comparison-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div
+      v-if="card.title"
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+    >
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <div class="overflow-x-auto">
@@ -50,11 +55,14 @@ defineProps<{
                   :src="item.image"
                   :alt="item.name"
                   class="w-16 h-16 object-contain"
-                />
+                >
                 <!-- Name -->
                 <span class="font-medium text-gray-900 dark:text-white">{{ item.name }}</span>
                 <!-- Price -->
-                <span v-if="item.price" class="text-lg font-bold text-gray-900 dark:text-white">{{
+                <span
+                  v-if="item.price"
+                  class="text-lg font-bold text-gray-900 dark:text-white"
+                >{{
                   item.price
                 }}</span>
               </div>
@@ -112,7 +120,10 @@ defineProps<{
                 </svg>
               </template>
               <!-- String/Number value -->
-              <span v-else class="text-sm text-gray-700 dark:text-gray-300">{{ value }}</span>
+              <span
+                v-else
+                class="text-sm text-gray-700 dark:text-gray-300"
+              >{{ value }}</span>
             </td>
           </tr>
         </tbody>

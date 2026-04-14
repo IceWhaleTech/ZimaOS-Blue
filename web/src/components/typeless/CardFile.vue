@@ -187,20 +187,25 @@ async function handleThumbnailClick() {
             :alt="card.filename"
             class="w-full h-full object-cover"
             loading="lazy"
-          />
+          >
         </button>
         <span v-else>{{ getFileIcon() }}</span>
       </div>
 
       <!-- File info -->
       <div class="flex-1 min-w-0">
-        <h4 class="font-medium text-gray-900 dark:text-white truncate">{{ card.filename }}</h4>
+        <h4 class="font-medium text-gray-900 dark:text-white truncate">
+          {{ card.filename }}
+        </h4>
         <div class="flex items-center gap-2 mt-1 text-sm text-gray-500 dark:text-gray-400">
           <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-medium">
             {{ getFileExtension() }}
           </span>
           <span v-if="card.size">{{ card.size }}</span>
-          <span v-if="card.mimeType" class="truncate">{{ card.mimeType }}</span>
+          <span
+            v-if="card.mimeType"
+            class="truncate"
+          >{{ card.mimeType }}</span>
         </div>
       </div>
 

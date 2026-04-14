@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import type { TypelessCardCollapsibleCode } from '@/types/typeless'
 import { useFullscreen } from '@/composables/useFullscreen'
 import { renderMarkdown } from '@/utils/markdown'
@@ -150,9 +151,7 @@ function getLanguageDisplay(): string {
               >
                 {{ fileExtension }}
               </span>
-              <span class="text-xs text-gray-400 dark:text-gray-500"
-                >{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span
-              >
+              <span class="text-xs text-gray-400 dark:text-gray-500">{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span>
             </div>
             <div class="mt-1 min-w-0">
               <div class="truncate text-xs font-medium text-gray-700 dark:text-gray-200">
@@ -169,7 +168,10 @@ function getLanguageDisplay(): string {
         </template>
         <template v-else>
           <!-- Markdown icon -->
-          <span v-if="isMarkdown" class="text-base">📄</span>
+          <span
+            v-if="isMarkdown"
+            class="text-base"
+          >📄</span>
           <!-- Filename or title -->
           <span
             v-if="card.filename || localizedTitle"
@@ -193,12 +195,12 @@ function getLanguageDisplay(): string {
           <span
             v-if="!isMarkdown && !card.filename && !localizedTitle && !card.language"
             class="text-xs text-gray-500 dark:text-gray-400"
-            >{{ t('codeBlock.code', 'code') }}</span
-          >
+          >{{ t('codeBlock.code', 'code') }}</span>
           <!-- Lines count -->
-          <span v-if="!isMarkdown" class="text-xs text-gray-400 dark:text-gray-500"
-            >{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span
-          >
+          <span
+            v-if="!isMarkdown"
+            class="text-xs text-gray-400 dark:text-gray-500"
+          >{{ lines.length }} {{ t('execCard.lines', 'lines') }}</span>
         </template>
       </div>
       <div class="flex items-center gap-2">
@@ -206,8 +208,7 @@ function getLanguageDisplay(): string {
         <span
           class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline"
           :title="t('media.fullscreen', 'Full Screen')"
-          >⤢</span
-        >
+        >⤢</span>
         <!-- Copy button -->
         <button
           class="flex items-center gap-1 px-1.5 py-0.5 text-xs transition-colors rounded"
@@ -254,11 +255,14 @@ function getLanguageDisplay(): string {
     </div>
 
     <!-- Markdown rendered content -->
-    <div v-if="isMarkdown" class="relative">
-      <div
+    <div
+      v-if="isMarkdown"
+      class="relative"
+    >
+      <TrustedHtml
         class="overflow-y-auto px-4 py-3 prose prose-sm dark:prose-invert max-w-none"
         :class="{ 'max-h-48': shouldCollapse && !expanded }"
-        v-html="renderedMarkdown"
+        :html="renderedMarkdown"
       />
       <div
         v-if="shouldCollapse && !expanded"
@@ -267,14 +271,20 @@ function getLanguageDisplay(): string {
     </div>
 
     <!-- Code content -->
-    <div v-else class="relative">
+    <div
+      v-else
+      class="relative"
+    >
       <div class="overflow-x-auto">
         <pre
           class="p-4 text-sm leading-relaxed"
-        ><code class="text-gray-800 dark:text-gray-100"><template v-for="(line, index) in displayedLines" :key="index"><span class="inline-block w-full"><span
-              v-if="card.showLineNumbers !== false"
-              class="card-collapsible-code-line-number inline-block w-8 text-gray-400 dark:text-gray-600 select-none"
-            >{{ index + 1 }}</span>{{ line }}
+        ><code class="text-gray-800 dark:text-gray-100"><template
+          v-for="(line, index) in displayedLines"
+          :key="index"
+        ><span class="inline-block w-full"><span
+          v-if="card.showLineNumbers !== false"
+          class="card-collapsible-code-line-number inline-block w-8 text-gray-400 dark:text-gray-600 select-none"
+        >{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
       </div>
 
@@ -317,10 +327,8 @@ function getLanguageDisplay(): string {
             d="M19 9l-7 7-7-7"
           />
         </svg>
-        <span v-if="!expanded"
-          >{{ t('execCard.expand', 'Show more') }} {{ hiddenLinesCount }}
-          {{ t('execCard.lines', 'lines') }}</span
-        >
+        <span v-if="!expanded">{{ t('execCard.expand', 'Show more') }} {{ hiddenLinesCount }}
+          {{ t('execCard.lines', 'lines') }}</span>
         <span v-else>{{ t('execCard.collapse', 'Collapse') }}</span>
       </button>
     </div>

@@ -254,7 +254,9 @@ onUnmounted(() => {
       v-if="card.title && !isFullscreen"
       class="px-4 py-3 bg-white dark:bg-gray-700 border-b border-gray-200 dark:border-gray-700"
     >
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Video container -->
@@ -287,7 +289,7 @@ onUnmounted(() => {
           :srclang="subtitle.srclang"
           :label="subtitle.label"
           :default="subtitle.default"
-        />
+        >
       </video>
 
       <!-- Play button overlay (when paused) -->
@@ -315,7 +317,10 @@ onUnmounted(() => {
         :class="showControls || !isPlaying ? 'opacity-100' : 'opacity-0'"
       >
         <!-- Progress bar -->
-        <div class="h-1 bg-white/30 rounded-full cursor-pointer group mb-3" @click="handleSeek">
+        <div
+          class="h-1 bg-white/30 rounded-full cursor-pointer group mb-3"
+          @click="handleSeek"
+        >
           <div
             class="h-full bg-gray-700 dark:bg-gray-500 rounded-full relative transition-all"
             :style="{ width: `${progress}%` }"

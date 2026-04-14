@@ -50,6 +50,13 @@ var darwinCaptureSnapshotScreenshot = func(ctx context.Context, b *darwinBackend
 var darwinFocusWindowForHostAction = func(ctx context.Context, b *darwinBackend, windowID string) (ActionResult, error) {
 	return b.focusWindow(ctx, windowID)
 }
+var darwinPasteTextFunc = darwinPasteTextInput
+var darwinUnicodeTextInputFunc = darwinSendText
+var darwinHighlightInputBoundsFunc = func(bounds darwinRect, duration time.Duration) error {
+	return darwinCLIFallback.showHighlightOverlay(nil, bounds, duration)
+}
+var darwinCaptureRegionPNGFunc = darwinCaptureRegionPNG
+var darwinExtractTextFromPNGFunc = darwinExtractTextFromPNG
 
 func (b *darwinBackend) focusWindow(ctx context.Context, windowID string) (ActionResult, error) {
 	record, err := b.resolveWindowRecord(windowID)
@@ -181,7 +188,7 @@ func (b *darwinBackend) enrichSnapshotPermissionError(ctx context.Context, recor
 	})
 }
 
-func (b *darwinBackend) act(_ context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (ActionResult, error) {
+func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (ActionResult, error) {
 	if err := b.ensureAccessibilityPermission(); err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
 	}
@@ -199,10 +206,26 @@ func (b *darwinBackend) act(_ context.Context, windowID string, ref int, refMap 
 		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", plan.UnsupportedReason, map[string]interface{}{"act_type": actType})
 	}
 	holdMS = NormalizeHoldMS(holdMS)
+	var typeBounds darwinRect
+	hasTypeBounds := false
+	if strings.EqualFold(strings.TrimSpace(actType), "type") {
+		typeBounds, hasTypeBounds = darwinElementBounds(element)
+		darwinHighlightInputBounds(typeBounds, hasTypeBounds, darwinHighlightInputBoundsFunc)
+	}
 
 	if plan.SetValue {
 		if err := darwinSetStringAttribute(element, "AXValue", value); err == nil {
-			return ActionResult{HostOS: b.HostOS(), WindowID: strings.TrimSpace(windowID), ExecutionMode: "semantic", Message: "Host action completed"}, nil
+			if darwinVerifySemanticTextEntry(
+				ctx,
+				value,
+				func() string { return darwinCopyStringAttribute(element, "AXValue") },
+				typeBounds,
+				hasTypeBounds,
+				darwinCaptureRegionPNGFunc,
+				darwinExtractTextFromPNGFunc,
+			) {
+				return ActionResult{HostOS: b.HostOS(), WindowID: strings.TrimSpace(windowID), ExecutionMode: "semantic", Message: "Host action completed"}, nil
+			}
 		}
 	}
 	if plan.SemanticAction != "" {
@@ -589,17 +612,34 @@ func darwinExecuteInputFallback(element uintptr, fallback string, value string, 
 		}
 		return "input", nil
 	case darwinInputFallbackType:
-		if err := darwinClickElement(element, darwinCGMouseButtonLeft, false, false, NormalizeHoldMS(holdMS)); err != nil {
-			return "", err
-		}
-		time.Sleep(darwinSyntheticTextFocusDelay)
-		if err := darwinSendText(value); err != nil {
+		alreadyFocused, _ := darwinCopyBoolAttribute(element, "AXFocused")
+		if err := darwinTypeWithFocusClickFallback(
+			value,
+			alreadyFocused,
+			func() error {
+				return darwinClickElement(element, darwinCGMouseButtonLeft, false, false, NormalizeHoldMS(holdMS))
+			},
+			func() {
+				time.Sleep(darwinSyntheticTextFocusDelay)
+			},
+			func(value string) error {
+				return darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinSendText)
+			},
+		); err != nil {
 			return "", err
 		}
 		return "input", nil
 	default:
 		return "", NewError("unsupported_action", "input fallback is unavailable", map[string]interface{}{"fallback": fallback})
 	}
+}
+
+func darwinPasteTextInput(text string) error {
+	output, err := darwinCLIFallback.pasteTextWithTemporaryClipboard(nil, text)
+	if err != nil {
+		return fmt.Errorf("osascript clipboard paste failed: %s: %w", output, err)
+	}
+	return nil
 }
 
 func darwinClickElement(element uintptr, button uint32, doubleClick bool, hold bool, holdMS int) error {
@@ -670,19 +710,22 @@ func darwinClickElement(element uintptr, button uint32, doubleClick bool, hold b
 }
 
 func darwinSendKeySequence(keys []string, holdMS int) error {
-	cleaned := make([]string, 0, len(keys))
-	for _, key := range keys {
-		if trimmed := strings.TrimSpace(key); trimmed != "" {
-			cleaned = append(cleaned, trimmed)
-		}
+	cleaned, handled, err := handleLiteralTextKeySequence(
+		keys,
+		darwinIsModifierKey,
+		func(value string) bool {
+			_, ok := darwinKeyCodeForName(value)
+			return ok
+		},
+		func(value string) error {
+			return darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinUnicodeTextInputFunc)
+		},
+	)
+	if err != nil {
+		return err
 	}
-	if len(cleaned) == 0 {
-		return NewError("unsupported_action", "keys are required", nil)
-	}
-	if len(cleaned) == 1 && !darwinIsModifierKey(cleaned[0]) {
-		if _, ok := darwinKeyCodeForName(cleaned[0]); !ok && len([]rune(cleaned[0])) > 0 {
-			return darwinSendText(cleaned[0])
-		}
+	if handled {
+		return nil
 	}
 
 	modifiers := make([]string, 0, len(cleaned))
@@ -711,7 +754,7 @@ func darwinSendKeySequence(keys []string, holdMS int) error {
 	if primary != "" {
 		keyCode, ok := darwinKeyCodeForName(primary)
 		if !ok && len([]rune(primary)) > 0 {
-			if err := darwinSendText(primary); err != nil {
+			if err := darwinSendTextWithClipboardFallback(primary, darwinPasteTextFunc, darwinUnicodeTextInputFunc); err != nil {
 				return err
 			}
 		} else {

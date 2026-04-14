@@ -147,7 +147,10 @@ watch(searchQuery, (query) => {
     :class="{ 'conversation-list-mobile': mobile }"
   >
     <div class="list-header sticky top-0 z-10">
-      <div v-if="mobile" class="list-headline">
+      <div
+        v-if="mobile"
+        class="list-headline"
+      >
         <div class="list-heading">
           <button
             v-if="!hasGlobalMobileSidebarToggle"
@@ -173,7 +176,9 @@ watch(searchQuery, (query) => {
               />
             </svg>
           </button>
-          <h2 class="list-title truncate">{{ t('nav.chat') }}</h2>
+          <h2 class="list-title truncate">
+            {{ t('nav.chat') }}
+          </h2>
         </div>
         <div class="list-actions">
           <button
@@ -232,7 +237,7 @@ watch(searchQuery, (query) => {
             type="text"
             :placeholder="t('chat.searchConversations')"
             class="search-input w-full text-gray-900 dark:text-white focus:outline-none"
-          />
+          >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             class="search-input-icon absolute top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
@@ -298,11 +303,16 @@ watch(searchQuery, (query) => {
     <!-- Conversation list -->
     <div class="convo-scroll flex-1 overflow-y-auto">
       <!-- Loading state -->
-      <div v-if="loading || searching" class="p-4 text-center text-gray-500 dark:text-gray-400">
+      <div
+        v-if="loading || searching"
+        class="p-4 text-center text-gray-500 dark:text-gray-400"
+      >
         <div
           class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
         />
-        <p class="mt-2">{{ searching ? t('chat.searching') : t('common.loading') }}</p>
+        <p class="mt-2">
+          {{ searching ? t('chat.searching') : t('common.loading') }}
+        </p>
       </div>
 
       <!-- Empty state -->
@@ -324,13 +334,22 @@ watch(searchQuery, (query) => {
             d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
           />
         </svg>
-        <p v-if="searchQuery">{{ t('chat.noConversationsFound') }}</p>
-        <p v-else>{{ t('chat.noConversationsYet') }}</p>
-        <p class="text-sm mt-1">{{ t('chat.startNewChat') }}</p>
+        <p v-if="searchQuery">
+          {{ t('chat.noConversationsFound') }}
+        </p>
+        <p v-else>
+          {{ t('chat.noConversationsYet') }}
+        </p>
+        <p class="text-sm mt-1">
+          {{ t('chat.startNewChat') }}
+        </p>
       </div>
 
       <!-- Conversation items -->
-      <div v-else class="convo-stack">
+      <div
+        v-else
+        class="convo-stack"
+      >
         <div
           v-for="(conversation, index) in conversations"
           :key="conversation.id"
@@ -366,7 +385,10 @@ watch(searchQuery, (query) => {
                       d="M16 9V4h1c.55 0 1-.45 1-1s-.45-1-1-1H7c-.55 0-1 .45-1 1s.45 1 1 1h1v5c0 1.66-1.34 3-3 3v2h5.97v7l1 1 1-1v-7H19v-2c-1.66 0-3-1.34-3-3z"
                     />
                   </svg>
-                  <span class="convo-title-scroll" :title="conversation.title">
+                  <span
+                    class="convo-title-scroll"
+                    :title="conversation.title"
+                  >
                     <span class="convo-title">{{ conversation.title }}</span>
                   </span>
                 </h3>
@@ -378,7 +400,10 @@ watch(searchQuery, (query) => {
                 <p class="convo-time text-gray-400 dark:text-slate-500">
                   {{ formatDate(conversation.updated_at) }}
                 </p>
-                <span class="convo-actions-slot" aria-hidden="true" />
+                <span
+                  class="convo-actions-slot"
+                  aria-hidden="true"
+                />
               </div>
             </div>
           </button>

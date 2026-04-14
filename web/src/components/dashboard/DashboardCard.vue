@@ -47,16 +47,33 @@ const iconColorClass = computed(() => {
       class="flex items-center justify-between p-4 border-b border-slate-200/70 dark:border-slate-700/70"
     >
       <div class="flex items-center gap-3 min-w-0">
-        <div v-if="icon" class="dashboard-card-chip">
-          <component :is="icon" :class="['w-5 h-5', iconColorClass]" />
+        <div
+          v-if="icon"
+          class="dashboard-card-chip"
+        >
+          <component
+            :is="icon"
+            :class="['w-5 h-5', iconColorClass]"
+          />
         </div>
         <div class="min-w-0">
-          <p class="dashboard-card-label">Card</p>
-          <h3 class="dashboard-card-subtitle mt-2 truncate" :class="iconColorClass">{{ title }}</h3>
+          <p class="dashboard-card-label">
+            Card
+          </p>
+          <h3
+            class="dashboard-card-subtitle mt-2 truncate"
+            :class="iconColorClass"
+          >
+            {{ title }}
+          </h3>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <button v-if="collapsible" class="dashboard-card-chip" @click="emit('toggle-collapse')">
+        <button
+          v-if="collapsible"
+          class="dashboard-card-chip"
+          @click="emit('toggle-collapse')"
+        >
           <svg
             class="w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform"
             :class="{ 'rotate-180': collapsed }"
@@ -72,7 +89,11 @@ const iconColorClass = computed(() => {
             />
           </svg>
         </button>
-        <button v-if="removable" class="dashboard-card-chip" @click="emit('remove')">
+        <button
+          v-if="removable"
+          class="dashboard-card-chip"
+          @click="emit('remove')"
+        >
           <svg
             class="w-4 h-4 text-gray-400 hover:text-red-500"
             fill="none"
@@ -90,14 +111,23 @@ const iconColorClass = computed(() => {
       </div>
     </div>
 
-    <div v-show="!collapsed" class="p-4">
-      <div v-if="loading" class="flex items-center justify-center py-8">
+    <div
+      v-show="!collapsed"
+      class="p-4"
+    >
+      <div
+        v-if="loading"
+        class="flex items-center justify-center py-8"
+      >
         <div
           class="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 dark:border-white"
-        ></div>
+        />
       </div>
 
-      <div v-else-if="error" class="text-center py-8 text-red-500">
+      <div
+        v-else-if="error"
+        class="text-center py-8 text-red-500"
+      >
         {{ error }}
       </div>
 

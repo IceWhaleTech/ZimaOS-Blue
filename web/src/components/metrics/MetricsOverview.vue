@@ -46,7 +46,9 @@ function formatLatency(ms: number | undefined | null): string {
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.totalCalls') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('metrics.totalCalls') }}
+          </p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
             {{ stats ? formatNumber(stats.totalCalls) : '-' }}
           </p>
@@ -81,7 +83,9 @@ function formatLatency(ms: number | undefined | null): string {
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.tokenUsage') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('metrics.tokenUsage') }}
+          </p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
             {{ stats ? formatNumber(stats.totalTokens) : '-' }}
           </p>
@@ -112,7 +116,9 @@ function formatLatency(ms: number | undefined | null): string {
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.avgLatency') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('metrics.avgLatency') }}
+          </p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
             {{ stats ? formatLatency(stats.avgLatency) : '-' }}
           </p>
@@ -144,7 +150,9 @@ function formatLatency(ms: number | undefined | null): string {
     <div class="bg-white dark:bg-gray-700 rounded-lg p-4 shadow">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('metrics.speed') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('metrics.speed') }}
+          </p>
           <p class="text-2xl font-bold text-gray-900 dark:text-white">
             {{ stats ? (stats.tokensPerSecond ?? 0).toFixed(1) : '-' }}
           </p>

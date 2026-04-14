@@ -223,12 +223,20 @@ loadPermissions()
         <!-- Content -->
         <div class="px-6 py-4">
           <!-- Error message -->
-          <div v-if="error" class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
-            <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+          <div
+            v-if="error"
+            class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg"
+          >
+            <p class="text-sm text-red-600 dark:text-red-400">
+              {{ error }}
+            </p>
           </div>
 
           <!-- Form -->
-          <form class="space-y-4" @submit.prevent="handleSubmit">
+          <form
+            class="space-y-4"
+            @submit.prevent="handleSubmit"
+          >
             <!-- Username -->
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -241,7 +249,7 @@ loadPermissions()
                 :placeholder="t('users.usernamePlaceholder')"
                 required
                 minlength="3"
-              />
+              >
             </div>
 
             <!-- Email -->
@@ -254,7 +262,7 @@ loadPermissions()
                 type="email"
                 class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('users.emailPlaceholder')"
-              />
+              >
             </div>
 
             <!-- Role -->
@@ -267,8 +275,12 @@ loadPermissions()
                 class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                 @change="onRoleChange"
               >
-                <option value="user">{{ t('users.roleUser') }}</option>
-                <option value="guest">{{ t('users.roleGuest') }}</option>
+                <option value="user">
+                  {{ t('users.roleUser') }}
+                </option>
+                <option value="guest">
+                  {{ t('users.roleGuest') }}
+                </option>
               </select>
             </div>
 
@@ -284,7 +296,7 @@ loadPermissions()
                   class="w-full px-3 py-2 pe-10 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-400 focus:border-transparent"
                   :minlength="policy.min_length"
                   required
-                />
+                >
                 <button
                   type="button"
                   class="absolute end-2 top-1/2 -translate-y-1/2 p-1 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
@@ -329,7 +341,10 @@ loadPermissions()
                 </button>
               </div>
               <!-- Password Strength Indicator -->
-              <div v-if="!policyLoading && password.length > 0" class="mt-2 space-y-2">
+              <div
+                v-if="!policyLoading && password.length > 0"
+                class="mt-2 space-y-2"
+              >
                 <div class="flex gap-1">
                   <div
                     v-for="i in passwordChecks.length"
@@ -371,8 +386,11 @@ loadPermissions()
                 "
                 :placeholder="t('auth.confirmPasswordPlaceholder')"
                 required
-              />
-              <p v-if="passwordMismatch" class="mt-1 text-sm text-red-500">
+              >
+              <p
+                v-if="passwordMismatch"
+                class="mt-1 text-sm text-red-500"
+              >
                 {{ t('auth.passwordMismatch') }}
               </p>
             </div>
@@ -395,7 +413,7 @@ loadPermissions()
                     type="checkbox"
                     :value="perm.key"
                     class="w-4 h-4 text-gray-900 dark:text-gray-300 border-gray-300 rounded focus:ring-gray-400"
-                  />
+                  >
                   <div>
                     <span class="text-sm text-gray-900 dark:text-white">{{
                       t(`users.pagePermissions.${perm.key}`, perm.name)
@@ -422,7 +440,10 @@ loadPermissions()
                 class="flex-1 px-4 py-2 text-sm font-medium text-white bg-gray-700 dark:bg-gray-500 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 :disabled="!isValid || loading"
               >
-                <span v-if="loading" class="flex items-center justify-center space-x-2">
+                <span
+                  v-if="loading"
+                  class="flex items-center justify-center space-x-2"
+                >
                   <svg
                     class="animate-spin h-4 w-4"
                     xmlns="http://www.w3.org/2000/svg"
@@ -436,12 +457,12 @@ loadPermissions()
                       r="10"
                       stroke="currentColor"
                       stroke-width="4"
-                    ></circle>
+                    />
                     <path
                       class="opacity-75"
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                    />
                   </svg>
                   <span>{{ t('common.creating') }}</span>
                 </span>

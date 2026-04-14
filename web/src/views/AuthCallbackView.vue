@@ -81,7 +81,10 @@ function goToLogin() {
   <div class="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-700 px-4">
     <div class="max-w-md w-full text-center">
       <!-- Loading State -->
-      <div v-if="status === 'loading'" class="space-y-6">
+      <div
+        v-if="status === 'loading'"
+        class="space-y-6"
+      >
         <div
           class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-700 dark:bg-gray-500"
         >
@@ -98,24 +101,29 @@ function goToLogin() {
               r="10"
               stroke="currentColor"
               stroke-width="4"
-            ></circle>
+            />
             <path
               class="opacity-75"
               fill="currentColor"
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
+            />
           </svg>
         </div>
         <div>
           <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
             {{ t('auth.completingSignIn') }}
           </h2>
-          <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.verifyingCredentials') }}</p>
+          <p class="text-gray-500 dark:text-gray-400 mt-2">
+            {{ t('auth.verifyingCredentials') }}
+          </p>
         </div>
       </div>
 
       <!-- Success State -->
-      <div v-else-if="status === 'success'" class="space-y-6">
+      <div
+        v-else-if="status === 'success'"
+        class="space-y-6"
+      >
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-600">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -136,12 +144,17 @@ function goToLogin() {
           <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
             {{ t('auth.signInSuccessful') }}
           </h2>
-          <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.redirecting') }}</p>
+          <p class="text-gray-500 dark:text-gray-400 mt-2">
+            {{ t('auth.redirecting') }}
+          </p>
         </div>
       </div>
 
       <!-- Error State -->
-      <div v-else-if="status === 'error'" class="space-y-6">
+      <div
+        v-else-if="status === 'error'"
+        class="space-y-6"
+      >
         <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-red-600">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -162,7 +175,9 @@ function goToLogin() {
           <h2 class="text-xl font-semibold text-gray-900 dark:text-white">
             {{ t('auth.signInFailed') }}
           </h2>
-          <p class="text-gray-500 dark:text-gray-400 mt-2">{{ errorMessage }}</p>
+          <p class="text-gray-500 dark:text-gray-400 mt-2">
+            {{ errorMessage }}
+          </p>
         </div>
         <button
           type="button"

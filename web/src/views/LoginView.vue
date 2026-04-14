@@ -140,14 +140,21 @@ function getProviderIconSvg(type: ProviderType): string {
           :src="publicAsset('logo.svg')"
           alt="ZimaOS Blue"
           class="w-16 h-16 object-contain mx-auto mb-4 drop-shadow-lg dark:brightness-150"
-        />
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">ZimaOS Blue</h1>
-        <p class="text-gray-500 dark:text-gray-400 mt-2">{{ t('auth.signInToAccount') }}</p>
+        >
+        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+          ZimaOS Blue
+        </h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-2">
+          {{ t('auth.signInToAccount') }}
+        </p>
       </div>
 
       <!-- Login Form -->
       <div class="bg-white dark:bg-gray-700 rounded-lg p-6 shadow-xl">
-        <form class="space-y-6" @submit.prevent="handleSubmit">
+        <form
+          class="space-y-6"
+          @submit.prevent="handleSubmit"
+        >
           <!-- Error Message -->
           <div
             v-if="authStore.error"
@@ -191,7 +198,7 @@ function getProviderIconSvg(type: ProviderType): string {
                 required
                 class="login-view-input login-view-input-with-leading-icon block w-full py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.enterUsername')"
-              />
+              >
             </div>
           </div>
 
@@ -230,7 +237,7 @@ function getProviderIconSvg(type: ProviderType): string {
                 required
                 class="login-view-input login-view-input-with-leading-icon login-view-input-with-trailing-action block w-full py-3 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
                 :placeholder="t('auth.enterPassword')"
-              />
+              >
               <button
                 type="button"
                 class="login-view-trailing-action absolute inset-y-0 flex items-center"
@@ -283,7 +290,7 @@ function getProviderIconSvg(type: ProviderType): string {
                 v-model="rememberMe"
                 type="checkbox"
                 class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400 focus:ring-offset-white dark:focus:ring-offset-gray-800"
-              />
+              >
               <span class="login-view-inline-start-gap text-sm text-gray-700 dark:text-gray-300">{{
                 t('auth.rememberMe')
               }}</span>
@@ -310,21 +317,24 @@ function getProviderIconSvg(type: ProviderType): string {
                 r="10"
                 stroke="currentColor"
                 stroke-width="4"
-              ></circle>
+              />
               <path
                 class="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
+              />
             </svg>
             {{ authStore.loading ? t('auth.signingIn') : t('auth.signIn') }}
           </button>
         </form>
 
         <!-- Divider -->
-        <div v-if="providers.length > 0" class="relative my-6">
+        <div
+          v-if="providers.length > 0"
+          class="relative my-6"
+        >
           <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-gray-300 dark:border-gray-600"></div>
+            <div class="w-full border-t border-gray-300 dark:border-gray-600" />
           </div>
           <div class="relative flex justify-center text-sm">
             <span class="px-2 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400">{{
@@ -334,7 +344,10 @@ function getProviderIconSvg(type: ProviderType): string {
         </div>
 
         <!-- External Auth Providers -->
-        <div v-if="providers.length > 0" class="space-y-3">
+        <div
+          v-if="providers.length > 0"
+          class="space-y-3"
+        >
           <button
             v-for="provider in providers"
             :key="provider.id"
@@ -357,12 +370,12 @@ function getProviderIconSvg(type: ProviderType): string {
                 r="10"
                 stroke="currentColor"
                 stroke-width="4"
-              ></circle>
+              />
               <path
                 class="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
+              />
             </svg>
             <template v-else>
               <img
@@ -370,8 +383,13 @@ function getProviderIconSvg(type: ProviderType): string {
                 :src="provider.icon_url"
                 :alt="getProviderName(provider)"
                 class="h-5 w-5"
-              />
-              <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+              >
+              <svg
+                v-else
+                class="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+              >
                 <path :d="getProviderIconSvg(provider.type)" />
               </svg>
             </template>
@@ -384,7 +402,10 @@ function getProviderIconSvg(type: ProviderType): string {
         </div>
 
         <!-- Loading providers -->
-        <div v-if="loadingProviders" class="flex justify-center py-4">
+        <div
+          v-if="loadingProviders"
+          class="flex justify-center py-4"
+        >
           <svg
             class="animate-spin h-5 w-5 text-gray-500 dark:text-gray-400"
             xmlns="http://www.w3.org/2000/svg"
@@ -398,12 +419,12 @@ function getProviderIconSvg(type: ProviderType): string {
               r="10"
               stroke="currentColor"
               stroke-width="4"
-            ></circle>
+            />
             <path
               class="opacity-75"
               fill="currentColor"
               d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-            ></path>
+            />
           </svg>
         </div>
       </div>

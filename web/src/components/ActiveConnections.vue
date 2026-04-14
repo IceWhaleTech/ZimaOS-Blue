@@ -105,15 +105,21 @@ function toggleSort(field: typeof sortBy.value) {
       <div class="flex items-center gap-4">
         <!-- IP Filter -->
         <div class="flex items-center gap-2">
-          <label class="text-sm text-gray-500 dark:text-gray-400"
-            >{{ t('common.filterByIp') }}:</label
-          >
+          <label class="text-sm text-gray-500 dark:text-gray-400">{{ t('common.filterByIp') }}:</label>
           <select
             v-model="selectedIp"
             class="text-sm bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded px-2 py-1 border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
           >
-            <option value="all">{{ t('common.allIps') }}</option>
-            <option v-for="ip in uniqueIps" :key="ip" :value="ip">{{ ip }}</option>
+            <option value="all">
+              {{ t('common.allIps') }}
+            </option>
+            <option
+              v-for="ip in uniqueIps"
+              :key="ip"
+              :value="ip"
+            >
+              {{ ip }}
+            </option>
           </select>
         </div>
         <span class="text-sm text-gray-500 dark:text-gray-400">
@@ -122,11 +128,16 @@ function toggleSort(field: typeof sortBy.value) {
       </div>
     </div>
 
-    <div v-if="loading" class="p-6 text-center">
+    <div
+      v-if="loading"
+      class="p-6 text-center"
+    >
       <div
         class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
-      ></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingConnections') }}</p>
+      />
+      <p class="mt-2 text-gray-500 dark:text-gray-400">
+        {{ t('common.loadingConnections') }}
+      </p>
     </div>
 
     <div
@@ -136,7 +147,10 @@ function toggleSort(field: typeof sortBy.value) {
       {{ t('common.noActiveConnections') }}
     </div>
 
-    <div v-else class="overflow-x-auto">
+    <div
+      v-else
+      class="overflow-x-auto"
+    >
       <table class="w-full">
         <thead class="bg-gray-50 dark:bg-gray-700">
           <tr>

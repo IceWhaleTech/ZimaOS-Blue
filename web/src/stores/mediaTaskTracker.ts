@@ -17,6 +17,16 @@ interface TrackedTask {
   sseActive: boolean
 }
 
+function isTaskStatus(value: unknown): value is MediaTask['status'] {
+  return (
+    value === 'pending' ||
+    value === 'processing' ||
+    value === 'succeeded' ||
+    value === 'failed' ||
+    value === 'cancelled'
+  )
+}
+
 export const useMediaTaskTracker = defineStore('mediaTaskTracker', () => {
   const tasks = ref<Map<string, TrackedTask>>(new Map())
   let listening = false
@@ -35,8 +45,11 @@ export const useMediaTaskTracker = defineStore('mediaTaskTracker', () => {
   }
 
   // Global SSE listener — shared across all tracked tasks
-  function handleSSEEvent(data: any) {
-    const tracked = tasks.value.get(data.id)
+  function handleSSEEvent(data: Record<string, unknown>) {
+    const taskID = typeof data.id === 'string' ? data.id : ''
+    if (!taskID) return
+
+    const tracked = tasks.value.get(taskID)
     if (!tracked) return
 
     tracked.sseActive = true
@@ -48,16 +61,18 @@ export const useMediaTaskTracker = defineStore('mediaTaskTracker', () => {
 
     tracked.task = {
       ...tracked.task,
-      status: data.status,
-      progress: data.progress || tracked.task.progress,
+      status: isTaskStatus(data.status) ? data.status : tracked.task.status,
+      progress: typeof data.progress === 'number' ? data.progress : tracked.task.progress,
     }
-    if (data.error) tracked.task.error = data.error
-    if (data.response) tracked.task.response = data.response
+    if (typeof data.error === 'string') tracked.task.error = data.error
+    if (data.response && typeof data.response === 'object') {
+      tracked.task.response = data.response as MediaTask['response']
+    }
     tasks.value = new Map(tasks.value)
     tracked.onUpdate(tracked.task)
 
-    if (isTerminal(data.status)) {
-      tasks.value.delete(data.id)
+    if (isTerminal(tracked.task.status)) {
+      tasks.value.delete(taskID)
       tasks.value = new Map(tasks.value)
       maybeStopListening()
     }

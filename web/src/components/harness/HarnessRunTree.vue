@@ -95,7 +95,9 @@ function selectRun(runID?: string) {
   <section class="harness-run-tree">
     <div class="summary-card">
       <div class="summary-copy">
-        <p class="summary-kicker">{{ tr('harness.group.executionSummary', 'Execution summary') }}</p>
+        <p class="summary-kicker">
+          {{ tr('harness.group.executionSummary', 'Execution summary') }}
+        </p>
         <h3>{{ coordinatorLabel }} · {{ workerLabel }}</h3>
         <p class="summary-body">
           {{
@@ -150,10 +152,16 @@ function selectRun(runID?: string) {
       />
     </div>
 
-    <section v-if="props.detachedNodes.length" id="detached-workers" class="detached-section">
+    <section
+      v-if="props.detachedNodes.length"
+      id="detached-workers"
+      class="detached-section"
+    >
       <div class="detached-header">
         <div>
-          <p class="summary-kicker">{{ tr('harness.group.detachedWorkers', 'Detached workers') }}</p>
+          <p class="summary-kicker">
+            {{ tr('harness.group.detachedWorkers', 'Detached workers') }}
+          </p>
           <h3>{{ detachedLabel }}</h3>
         </div>
         <p class="summary-body">

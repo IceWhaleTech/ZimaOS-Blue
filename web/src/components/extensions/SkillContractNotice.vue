@@ -173,15 +173,28 @@ const showNotice = computed(() => !!normalizedStatus.value || mergedNotes.value.
         </p>
         <div class="skill-contract-notice__title-row">
           <span class="skill-contract-notice__badge">{{ statusMeta.label }}</span>
-          <span v-if="sourceLabel" class="skill-contract-notice__source">{{ sourceLabel }}</span>
+          <span
+            v-if="sourceLabel"
+            class="skill-contract-notice__source"
+          >{{ sourceLabel }}</span>
         </div>
       </div>
     </div>
 
-    <p class="skill-contract-notice__summary">{{ statusMeta.summary }}</p>
+    <p class="skill-contract-notice__summary">
+      {{ statusMeta.summary }}
+    </p>
 
-    <ul v-if="mergedNotes.length" class="skill-contract-notice__notes">
-      <li v-for="note in mergedNotes" :key="note">{{ note }}</li>
+    <ul
+      v-if="mergedNotes.length"
+      class="skill-contract-notice__notes"
+    >
+      <li
+        v-for="note in mergedNotes"
+        :key="note"
+      >
+        {{ note }}
+      </li>
     </ul>
   </section>
 </template>

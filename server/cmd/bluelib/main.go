@@ -504,6 +504,9 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		}
 		if services.RuntimeDBConn != nil {
 			zapLogger.Info("Legacy harness store imported into runtime.db", fields...)
+		} else {
+			zapLogger.Info("Legacy harness store imported into blue.db", fields...)
+		}
 	}
 	runtimeActivity := server.NewRuntimeActivityTracker()
 	readDB := services.DB

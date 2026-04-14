@@ -273,12 +273,12 @@ function getSourceLabel(source: string): string {
             r="10"
             stroke="currentColor"
             stroke-width="4"
-          ></circle>
+          />
           <path
             class="opacity-75"
             fill="currentColor"
             d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          ></path>
+          />
         </svg>
         {{ scanning ? t('ideDiscovery.scanning') : t('ideDiscovery.scan') }}
       </button>
@@ -289,14 +289,18 @@ function getSourceLabel(source: string): string {
       v-if="error"
       class="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg"
     >
-      <p class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+      <p class="text-sm text-red-600 dark:text-red-400">
+        {{ error }}
+      </p>
     </div>
 
     <div
       v-if="success"
       class="mb-4 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg"
     >
-      <p class="text-sm text-green-600 dark:text-green-400">{{ success }}</p>
+      <p class="text-sm text-green-600 dark:text-green-400">
+        {{ success }}
+      </p>
     </div>
 
     <!-- Scan Summary (after scan completes) -->
@@ -354,8 +358,12 @@ function getSourceLabel(source: string): string {
               class="w-5 h-5 object-contain"
               :class="{ grayscale: state.status === 'not_found' }"
               @error="($event.target as HTMLImageElement).style.display = 'none'"
-            />
-            <span v-else class="text-lg" :class="{ 'opacity-50': state.status === 'not_found' }">{{
+            >
+            <span
+              v-else
+              class="text-lg"
+              :class="{ 'opacity-50': state.status === 'not_found' }"
+            >{{
               getIDEIcon(state.ide_type)
             }}</span>
           </div>
@@ -398,12 +406,12 @@ function getSourceLabel(source: string): string {
                 r="10"
                 stroke="currentColor"
                 stroke-width="4"
-              ></circle>
+              />
               <path
                 class="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
+              />
             </svg>
 
             <!-- Found -->
@@ -430,7 +438,12 @@ function getSourceLabel(source: string): string {
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4" />
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M20 12H4"
+              />
             </svg>
           </div>
         </div>
@@ -438,9 +451,17 @@ function getSourceLabel(source: string): string {
     </div>
 
     <!-- Importable Configs Section -->
-    <div v-if="hasImportableConfigs" class="border-t border-gray-200 dark:border-gray-700 pt-6">
+    <div
+      v-if="hasImportableConfigs"
+      class="border-t border-gray-200 dark:border-gray-700 pt-6"
+    >
       <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-        <svg class="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          class="w-4 h-4 text-green-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -468,11 +489,16 @@ function getSourceLabel(source: string): string {
                   :alt="config.ide_name"
                   class="w-6 h-6 object-contain"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
-                <span v-else class="text-xl">{{ getIDEIcon(config.ide_type) }}</span>
+                >
+                <span
+                  v-else
+                  class="text-xl"
+                >{{ getIDEIcon(config.ide_type) }}</span>
               </div>
               <div>
-                <h5 class="font-medium text-gray-900 dark:text-white">{{ config.ide_name }}</h5>
+                <h5 class="font-medium text-gray-900 dark:text-white">
+                  {{ config.ide_name }}
+                </h5>
                 <div class="flex items-center gap-2 mt-1">
                   <span
                     :class="providerColors[config.provider || 'custom']"
@@ -503,8 +529,7 @@ function getSourceLabel(source: string): string {
               <span class="font-medium">{{ t('ideDiscovery.apiKey') }}:</span>
               <code
                 class="ide-discovery-inline-gap px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs"
-                >{{ config.api_key }}</code
-              >
+              >{{ config.api_key }}</code>
             </p>
             <p v-if="config.base_url">
               <span class="font-medium">{{ t('ideDiscovery.baseUrl') }}:</span>
@@ -512,12 +537,14 @@ function getSourceLabel(source: string): string {
             </p>
             <!-- Extension config env vars -->
             <template v-if="config.extension_config?.env_vars?.length">
-              <p v-for="ev in config.extension_config.env_vars" :key="ev.name">
+              <p
+                v-for="ev in config.extension_config.env_vars"
+                :key="ev.name"
+              >
                 <span class="font-medium">{{ ev.name }}:</span>
                 <code
                   class="ide-discovery-inline-gap px-1 bg-gray-100 dark:bg-gray-700 rounded text-xs"
-                  >{{ ev.value }}</code
-                >
+                >{{ ev.value }}</code>
               </p>
             </template>
           </div>
@@ -543,12 +570,12 @@ function getSourceLabel(source: string): string {
                 r="10"
                 stroke="currentColor"
                 stroke-width="4"
-              ></circle>
+              />
               <path
                 class="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
+              />
             </svg>
             {{
               importing === config.ide_type ? t('ideDiscovery.importing') : t('ideDiscovery.import')
@@ -564,7 +591,12 @@ function getSourceLabel(source: string): string {
       class="border-t border-gray-200 dark:border-gray-700 pt-6"
     >
       <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2">
-        <svg class="w-4 h-4 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          class="w-4 h-4 text-orange-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -592,11 +624,16 @@ function getSourceLabel(source: string): string {
                   :alt="config.ide_name"
                   class="w-6 h-6 object-contain"
                   @error="($event.target as HTMLImageElement).style.display = 'none'"
-                />
-                <span v-else class="text-xl">{{ getIDEIcon(config.ide_type) }}</span>
+                >
+                <span
+                  v-else
+                  class="text-xl"
+                >{{ getIDEIcon(config.ide_type) }}</span>
               </div>
               <div>
-                <h5 class="font-medium text-gray-900 dark:text-white">{{ config.ide_name }}</h5>
+                <h5 class="font-medium text-gray-900 dark:text-white">
+                  {{ config.ide_name }}
+                </h5>
                 <div class="flex items-center gap-2 mt-1">
                   <span
                     class="px-2 py-0.5 text-xs font-medium rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
@@ -637,12 +674,12 @@ function getSourceLabel(source: string): string {
                 r="10"
                 stroke="currentColor"
                 stroke-width="4"
-              ></circle>
+              />
               <path
                 class="opacity-75"
                 fill="currentColor"
                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
+              />
             </svg>
             {{
               importing === config.ide_type
@@ -660,7 +697,12 @@ function getSourceLabel(source: string): string {
       class="border-t border-gray-200 dark:border-gray-700 pt-6"
     >
       <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4 flex items-center gap-2">
-        <svg class="w-4 h-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          class="w-4 h-4 text-blue-500"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -686,14 +728,20 @@ function getSourceLabel(source: string): string {
                 :src="getIDELogo(config.ide_type) ?? undefined"
                 :alt="config.ide_name"
                 class="w-5 h-5 object-contain"
-              />
-              <span v-else class="text-lg">{{ getIDEIcon(config.ide_type) }}</span>
+              >
+              <span
+                v-else
+                class="text-lg"
+              >{{ getIDEIcon(config.ide_type) }}</span>
             </div>
             <div class="flex-1">
               <h5 class="text-sm font-medium text-gray-600 dark:text-gray-300">
                 {{ config.ide_name }}
               </h5>
-              <p v-if="config.api_key" class="text-xs text-gray-400 dark:text-gray-500">
+              <p
+                v-if="config.api_key"
+                class="text-xs text-gray-400 dark:text-gray-500"
+              >
                 <code class="px-1 bg-gray-100 dark:bg-gray-700 rounded">{{ config.api_key }}</code>
               </p>
             </div>
@@ -713,7 +761,12 @@ function getSourceLabel(source: string): string {
       class="border-t border-gray-200 dark:border-gray-700 pt-6"
     >
       <h4 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4 flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -739,8 +792,11 @@ function getSourceLabel(source: string): string {
                 :src="getIDELogo(config.ide_type) ?? undefined"
                 :alt="config.ide_name"
                 class="w-5 h-5 object-contain opacity-50"
-              />
-              <span v-else class="text-lg opacity-50">{{ getIDEIcon(config.ide_type) }}</span>
+              >
+              <span
+                v-else
+                class="text-lg opacity-50"
+              >{{ getIDEIcon(config.ide_type) }}</span>
             </div>
             <div class="flex-1">
               <h5 class="text-sm font-medium text-gray-600 dark:text-gray-300">

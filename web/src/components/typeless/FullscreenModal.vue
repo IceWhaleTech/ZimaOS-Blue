@@ -214,7 +214,10 @@ const languageDisplay = computed(() => {
               <div class="w-3 h-3 rounded-full bg-green-500" />
             </div>
             <!-- Title -->
-            <h2 v-if="fullscreenContent.title" class="text-lg font-medium text-white">
+            <h2
+              v-if="fullscreenContent.title"
+              class="text-lg font-medium text-white"
+            >
               {{ fullscreenContent.title }}
             </h2>
             <!-- Language badge -->
@@ -225,7 +228,10 @@ const languageDisplay = computed(() => {
               {{ languageDisplay }}
             </span>
             <!-- Diff stats -->
-            <div v-if="fullscreenContent.type === 'diff'" class="flex items-center gap-2 text-sm">
+            <div
+              v-if="fullscreenContent.type === 'diff'"
+              class="flex items-center gap-2 text-sm"
+            >
               <span class="text-green-400">+{{ stats.added }}</span>
               <span class="text-red-400">-{{ stats.removed }}</span>
             </div>
@@ -326,7 +332,7 @@ const languageDisplay = computed(() => {
         <div
           v-if="
             fullscreenContent.type === 'diff' &&
-            (fullscreenContent.oldLabel || fullscreenContent.newLabel)
+              (fullscreenContent.oldLabel || fullscreenContent.newLabel)
           "
           class="flex border-b border-slate-700/60 text-sm"
         >
@@ -352,7 +358,10 @@ const languageDisplay = computed(() => {
           >
             <pre
               class="p-6 text-sm leading-relaxed min-h-full"
-            ><code class="text-slate-100"><template v-for="(line, index) in codeLines" :key="index"><span class="inline-block w-full hover:bg-slate-700/40"><span class="fullscreen-modal-line-number fullscreen-modal-line-number-gap inline-block w-12 text-slate-500 select-none">{{ index + 1 }}</span>{{ line }}
+            ><code class="text-slate-100"><template
+              v-for="(line, index) in codeLines"
+              :key="index"
+            ><span class="inline-block w-full hover:bg-slate-700/40"><span class="fullscreen-modal-line-number fullscreen-modal-line-number-gap inline-block w-12 text-slate-500 select-none">{{ index + 1 }}</span>{{ line }}
 </span></template></code></pre>
           </template>
 
@@ -360,17 +369,20 @@ const languageDisplay = computed(() => {
           <template v-else-if="fullscreenContent.type === 'diff' && viewMode === 'unified'">
             <pre
               class="text-sm min-h-full"
-            ><code><template v-for="(line, index) in diffLines" :key="index"><div
-                  class="flex hover:bg-slate-700/35"
-                  :class="getLineClass(line.type)"
-                ><span class="fullscreen-modal-gutter w-16 px-4 text-slate-500 select-none flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="fullscreen-modal-gutter w-16 px-4 text-slate-500 select-none flex-shrink-0">{{ line.newLineNum || '' }}</span><span
-                    class="w-8 text-center flex-shrink-0"
-                    :class="{
-                      'text-green-400': line.type === 'added',
-                      'text-red-400': line.type === 'removed',
-                      'text-slate-500': line.type === 'unchanged'
-                    }"
-                  >{{ getLinePrefix(line.type) }}</span><span class="flex-1 px-4 text-slate-100">{{ line.content }}</span></div></template></code></pre>
+            ><code><template
+              v-for="(line, index) in diffLines"
+              :key="index"
+            ><div
+              class="flex hover:bg-slate-700/35"
+              :class="getLineClass(line.type)"
+            ><span class="fullscreen-modal-gutter w-16 px-4 text-slate-500 select-none flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="fullscreen-modal-gutter w-16 px-4 text-slate-500 select-none flex-shrink-0">{{ line.newLineNum || '' }}</span><span
+              class="w-8 text-center flex-shrink-0"
+              :class="{
+                'text-green-400': line.type === 'added',
+                'text-red-400': line.type === 'removed',
+                'text-slate-500': line.type === 'unchanged'
+              }"
+            >{{ getLinePrefix(line.type) }}</span><span class="flex-1 px-4 text-slate-100">{{ line.content }}</span></div></template></code></pre>
           </template>
 
           <!-- Diff split view -->
@@ -380,27 +392,39 @@ const languageDisplay = computed(() => {
               <div class="fullscreen-modal-border-end flex-1">
                 <pre
                   class="text-sm"
-                ><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
-                      class="flex hover:bg-slate-700/35"
-                      :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
-                    ><span class="fullscreen-modal-gutter w-14 px-4 text-slate-500 select-none flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
-                        v-if="line"
-                        class="w-8 text-center flex-shrink-0"
-                        :class="line.type === 'removed' ? 'text-red-400' : 'text-slate-500'"
-                      >{{ line.type === 'removed' ? '-' : ' ' }}</span><span v-else class="w-8 flex-shrink-0" /><span class="flex-1 px-4 text-slate-100">{{ line?.content || '' }}</span></div></template></code></pre>
+                ><code><template
+                  v-for="(line, index) in splitDiff.left"
+                  :key="'left-' + index"
+                ><div
+                  class="flex hover:bg-slate-700/35"
+                  :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
+                ><span class="fullscreen-modal-gutter w-14 px-4 text-slate-500 select-none flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
+                  v-if="line"
+                  class="w-8 text-center flex-shrink-0"
+                  :class="line.type === 'removed' ? 'text-red-400' : 'text-slate-500'"
+                >{{ line.type === 'removed' ? '-' : ' ' }}</span><span
+                  v-else
+                  class="w-8 flex-shrink-0"
+                /><span class="flex-1 px-4 text-slate-100">{{ line?.content || '' }}</span></div></template></code></pre>
               </div>
               <!-- Right (new) -->
               <div class="flex-1">
                 <pre
                   class="text-sm"
-                ><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
-                      class="flex hover:bg-slate-700/35"
-                      :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
-                    ><span class="fullscreen-modal-gutter w-14 px-4 text-slate-500 select-none flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
-                        v-if="line"
-                        class="w-8 text-center flex-shrink-0"
-                        :class="line.type === 'added' ? 'text-green-400' : 'text-slate-500'"
-                      >{{ line.type === 'added' ? '+' : ' ' }}</span><span v-else class="w-8 flex-shrink-0" /><span class="flex-1 px-4 text-slate-100">{{ line?.content || '' }}</span></div></template></code></pre>
+                ><code><template
+                  v-for="(line, index) in splitDiff.right"
+                  :key="'right-' + index"
+                ><div
+                  class="flex hover:bg-slate-700/35"
+                  :class="line ? getLineClass(line.type) : 'bg-slate-800/60'"
+                ><span class="fullscreen-modal-gutter w-14 px-4 text-slate-500 select-none flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
+                  v-if="line"
+                  class="w-8 text-center flex-shrink-0"
+                  :class="line.type === 'added' ? 'text-green-400' : 'text-slate-500'"
+                >{{ line.type === 'added' ? '+' : ' ' }}</span><span
+                  v-else
+                  class="w-8 flex-shrink-0"
+                /><span class="flex-1 px-4 text-slate-100">{{ line?.content || '' }}</span></div></template></code></pre>
               </div>
             </div>
           </template>
@@ -415,9 +439,7 @@ const languageDisplay = computed(() => {
             class="text-xs text-slate-300"
           >
             <template #key>
-              <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-slate-100"
-                >Esc</kbd
-              >
+              <kbd class="px-1.5 py-0.5 bg-slate-800 rounded border border-slate-600 text-slate-100">Esc</kbd>
             </template>
           </i18n-t>
         </div>

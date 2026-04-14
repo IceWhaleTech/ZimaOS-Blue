@@ -127,7 +127,10 @@ function getToolPolicy(toolName: string): Policy {
       </div>
 
       <!-- Per-tool overrides (collapsible) -->
-      <div v-if="tools.length > 0" class="mt-3">
+      <div
+        v-if="tools.length > 0"
+        class="mt-3"
+      >
         <button
           class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 mb-1.5 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
           @click="overridesExpanded = !overridesExpanded"
@@ -149,7 +152,10 @@ function getToolPolicy(toolName: string): Policy {
           {{ t('approval.perTool', 'Per-Tool Overrides') }}
           <span class="text-gray-400 dark:text-gray-500">({{ tools.length }})</span>
         </button>
-        <div v-show="overridesExpanded" class="space-y-1 max-h-64 overflow-y-auto">
+        <div
+          v-show="overridesExpanded"
+          class="space-y-1 max-h-64 overflow-y-auto"
+        >
           <div
             v-for="tool in tools"
             :key="tool.name"

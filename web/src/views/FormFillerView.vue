@@ -179,32 +179,54 @@ onMounted(() => {
   <div class="form-filler-view">
     <div class="page-header">
       <h1>{{ t('formFiller.title') }}</h1>
-      <p class="subtitle">{{ t('formFiller.subtitle') }}</p>
+      <p class="subtitle">
+        {{ t('formFiller.subtitle') }}
+      </p>
     </div>
 
     <!-- Save Status Toast -->
-    <div v-if="saveStatus" class="save-status">
+    <div
+      v-if="saveStatus"
+      class="save-status"
+    >
       {{ saveStatus }}
     </div>
 
     <!-- Error Message -->
-    <div v-if="error" class="error-message">
+    <div
+      v-if="error"
+      class="error-message"
+    >
       {{ error }}
-      <button class="close-btn" @click="error = null">&times;</button>
+      <button
+        class="close-btn"
+        @click="error = null"
+      >
+        &times;
+      </button>
     </div>
 
     <!-- Loading State -->
-    <div v-if="isLoading" class="loading">
-      <div class="spinner"></div>
+    <div
+      v-if="isLoading"
+      class="loading"
+    >
+      <div class="spinner" />
       <span>{{ t('common.loading') }}</span>
     </div>
 
-    <div v-else class="content-grid">
+    <div
+      v-else
+      class="content-grid"
+    >
       <!-- Templates Section -->
       <section class="templates-section">
         <div class="section-header">
           <h2>{{ t('formFiller.templates') }}</h2>
-          <button class="btn btn-primary" @click="showCreateDialog = true">
+          <button
+            class="btn btn-primary"
+            @click="showCreateDialog = true"
+          >
             <span class="icon">+</span>
             {{ t('formFiller.newTemplate') }}
           </button>
@@ -219,7 +241,10 @@ onMounted(() => {
           >
             <div class="template-info">
               <span class="template-name">{{ template.name }}</span>
-              <span v-if="template.is_default" class="default-badge">
+              <span
+                v-if="template.is_default"
+                class="default-badge"
+              >
                 {{ t('formFiller.default') }}
               </span>
             </div>
@@ -249,20 +274,30 @@ onMounted(() => {
             </div>
           </div>
 
-          <div v-if="templates.length === 0" class="empty-state">
+          <div
+            v-if="templates.length === 0"
+            class="empty-state"
+          >
             {{ t('formFiller.noTemplates') }}
           </div>
         </div>
       </section>
 
       <!-- Fields Section -->
-      <section v-if="selectedTemplate" class="fields-section">
+      <section
+        v-if="selectedTemplate"
+        class="fields-section"
+      >
         <div class="section-header">
           <h2>{{ t('formFiller.fields') }} - {{ selectedTemplate.name }}</h2>
         </div>
 
         <div class="fields-grid">
-          <div v-for="field in sortedFieldTypes" :key="field.label" class="field-item">
+          <div
+            v-for="field in sortedFieldTypes"
+            :key="field.label"
+            class="field-item"
+          >
             <label :for="field.label">{{ field.label }}</label>
             <input
               :id="field.label"
@@ -276,7 +311,7 @@ onMounted(() => {
                     (e.target as HTMLInputElement).value
                   )
               "
-            />
+            >
           </div>
         </div>
       </section>
@@ -285,14 +320,20 @@ onMounted(() => {
       <section class="patterns-section">
         <div class="section-header">
           <h2>{{ t('formFiller.patterns') }}</h2>
-          <button class="btn btn-secondary" @click="showPatternDialog = true">
+          <button
+            class="btn btn-secondary"
+            @click="showPatternDialog = true"
+          >
             {{ t('formFiller.editPatterns') }}
           </button>
         </div>
 
         <div class="patterns-info">
           <p>{{ t('formFiller.patternsDescription') }}</p>
-          <div v-if="patterns" class="pattern-count">
+          <div
+            v-if="patterns"
+            class="pattern-count"
+          >
             {{ Object.keys(patterns.patterns).length }} {{ t('formFiller.fieldTypes') }}
           </div>
         </div>
@@ -300,7 +341,11 @@ onMounted(() => {
     </div>
 
     <!-- Create Template Dialog -->
-    <div v-if="showCreateDialog" class="dialog-overlay" @click.self="showCreateDialog = false">
+    <div
+      v-if="showCreateDialog"
+      class="dialog-overlay"
+      @click.self="showCreateDialog = false"
+    >
       <div class="dialog">
         <h3>{{ t('formFiller.createTemplate') }}</h3>
         <div class="form-group">
@@ -311,10 +356,13 @@ onMounted(() => {
             type="text"
             :placeholder="t('formFiller.templateNamePlaceholder')"
             @keyup.enter="createTemplate"
-          />
+          >
         </div>
         <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="showCreateDialog = false">
+          <button
+            class="btn btn-secondary"
+            @click="showCreateDialog = false"
+          >
             {{ t('common.cancel') }}
           </button>
           <button
@@ -338,19 +386,32 @@ onMounted(() => {
         <h3>{{ t('formFiller.editTemplate') }}</h3>
         <div class="form-group">
           <label for="edit-template-name">{{ t('formFiller.templateName') }}</label>
-          <input id="edit-template-name" v-model="editingTemplate.name" type="text" />
+          <input
+            id="edit-template-name"
+            v-model="editingTemplate.name"
+            type="text"
+          >
         </div>
         <div class="form-group">
           <label class="checkbox-label">
-            <input v-model="editingTemplate.is_default" type="checkbox" />
+            <input
+              v-model="editingTemplate.is_default"
+              type="checkbox"
+            >
             {{ t('formFiller.setAsDefault') }}
           </label>
         </div>
         <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="showEditDialog = false">
+          <button
+            class="btn btn-secondary"
+            @click="showEditDialog = false"
+          >
             {{ t('common.cancel') }}
           </button>
-          <button class="btn btn-primary" @click="updateTemplate">
+          <button
+            class="btn btn-primary"
+            @click="updateTemplate"
+          >
             {{ t('common.save') }}
           </button>
         </div>
@@ -384,11 +445,14 @@ onMounted(() => {
                     .filter(Boolean)
                 }
               "
-            />
+            >
           </div>
         </div>
         <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="showPatternDialog = false">
+          <button
+            class="btn btn-secondary"
+            @click="showPatternDialog = false"
+          >
             {{ t('common.close') }}
           </button>
           <button

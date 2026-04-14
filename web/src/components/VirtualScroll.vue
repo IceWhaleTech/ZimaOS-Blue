@@ -6,8 +6,10 @@ interface Props {
   // Total number of items
   itemCount: number
   // Optional source items for slot access
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   items?: any[]
   // Stable key for each item so prepend/reorder operations can preserve height mappings
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   itemKey?: string | ((item: any, index: number) => string | number)
   // Estimated height of each item (used for initial calculation)
   estimatedItemHeight?: number
@@ -359,31 +361,32 @@ function getItemHeight(index: number): number {
 
 // Calculate total height of all items
 const totalHeight = computed(() => {
-  layoutVersion.value
-  return heightTree.total()
+  const layoutVersionSnapshot = layoutVersion.value
+  return heightTree.total() + layoutVersionSnapshot * 0
 })
 
 // Calculate visible range
 const visibleRange = computed(() => {
-  layoutVersion.value
+  const layoutVersionSnapshot = layoutVersion.value
+  const overscan = props.overscan + layoutVersionSnapshot * 0
   if (!containerHeight.value) {
     return { start: 0, end: Math.min(10, props.itemCount) }
   }
 
   const rawStart = heightTree.lowerBound(scrollTop.value)
-  const start = Math.max(0, rawStart - props.overscan)
+  const start = Math.max(0, rawStart - overscan)
 
   const viewportBottom = scrollTop.value + containerHeight.value
   const rawEnd = heightTree.lowerBound(viewportBottom)
-  const end = Math.min(props.itemCount, rawEnd + 1 + props.overscan)
+  const end = Math.min(props.itemCount, rawEnd + 1 + overscan)
 
   return { start, end }
 })
 
 // Calculate offset for the first visible item
 const offsetTop = computed(() => {
-  layoutVersion.value
-  return heightTree.sum(visibleRange.value.start)
+  const layoutVersionSnapshot = layoutVersion.value
+  return heightTree.sum(visibleRange.value.start) + layoutVersionSnapshot * 0
 })
 
 const visibleCount = computed(() => Math.max(0, visibleRange.value.end - visibleRange.value.start))
@@ -701,9 +704,15 @@ const containerStyle = computed(() => {
     :style="containerStyle"
   >
     <!-- Spacer for total height -->
-    <div class="virtual-scroll-spacer" :style="{ height: `${totalHeight}px` }">
+    <div
+      class="virtual-scroll-spacer"
+      :style="{ height: `${totalHeight}px` }"
+    >
       <!-- Visible items container -->
-      <div class="virtual-scroll-content" :style="{ transform: `translateY(${offsetTop}px)` }">
+      <div
+        class="virtual-scroll-content"
+        :style="{ transform: `translateY(${offsetTop}px)` }"
+      >
         <slot
           v-for="offset in visibleCount"
           :key="visibleRange.start + offset - 1"

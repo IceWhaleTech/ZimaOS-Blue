@@ -43,6 +43,7 @@ func windowsSendTextWithClipboardFallback(
 
 func windowsTypeWithFocusClickFallback(
 	value string,
+	alreadyFocused bool,
 	hasBounds bool,
 	centerX int,
 	centerY int,
@@ -51,12 +52,12 @@ func windowsTypeWithFocusClickFallback(
 	afterFocus func(),
 	sendText func(string) error,
 ) error {
-	if hasBounds && click != nil {
+	if hasBounds && !alreadyFocused && click != nil {
 		if err := click(centerX, centerY, holdMS); err != nil {
 			return err
 		}
 	}
-	if hasBounds && afterFocus != nil {
+	if (hasBounds || alreadyFocused) && afterFocus != nil {
 		afterFocus()
 	}
 	if sendText == nil {
@@ -94,6 +95,7 @@ func windowsExecuteFallbackWithInput(
 	fallback string,
 	value string,
 	holdMS int,
+	primarySucceeded bool,
 	executor windowsFallbackExecutor,
 ) error {
 	if target.HWND != 0 && executor.BringFront != nil {
@@ -151,6 +153,7 @@ func windowsExecuteFallbackWithInput(
 	case windowsActionInputType:
 		return windowsTypeWithFocusClickFallback(
 			value,
+			primarySucceeded,
 			target.HasBounds,
 			target.CenterX,
 			target.CenterY,

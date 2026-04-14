@@ -898,10 +898,13 @@ watch(
         }}
       </div>
 
-      <div v-else class="relative min-h-[40rem]">
+      <div
+        v-else
+        class="relative min-h-[40rem]"
+      >
         <div
-          data-testid="knowledge-graph-stage"
           ref="stageEl"
+          data-testid="knowledge-graph-stage"
           :data-layer-depth="String(revealLayer)"
           class="absolute inset-0 min-h-[40rem] cursor-grab touch-none"
           :class="{ 'cursor-grabbing': isPanning }"
@@ -996,7 +999,10 @@ watch(
             </div>
           </div>
 
-          <div class="absolute right-3 top-3 z-10 flex flex-col gap-2" data-graph-controls="true">
+          <div
+            class="absolute right-3 top-3 z-10 flex flex-col gap-2"
+            data-graph-controls="true"
+          >
             <button
               data-testid="knowledge-graph-zoom-in"
               type="button"
@@ -1029,7 +1035,10 @@ watch(
             data-testid="knowledge-graph-layer-indicator"
             class="pointer-events-none absolute bottom-3 right-3 max-w-[16rem] rounded-2xl border border-white/70 bg-white/88 px-3 py-2 text-xs text-slate-500 shadow-sm backdrop-blur"
           >
-            <div v-if="layerIndicator.level" class="font-semibold tracking-[0.08em] text-slate-700">
+            <div
+              v-if="layerIndicator.level"
+              class="font-semibold tracking-[0.08em] text-slate-700"
+            >
               {{ layerIndicator.level }}
             </div>
             <div :class="layerIndicator.level ? 'mt-1' : ''">
@@ -1049,7 +1058,9 @@ watch(
           <div class="uppercase tracking-[0.16em] text-slate-400">
             {{ tr('knowledge.graphFocus', 'Focus') }}
           </div>
-          <div class="mt-1 font-semibold text-slate-900">{{ revealedNode.title }}</div>
+          <div class="mt-1 font-semibold text-slate-900">
+            {{ revealedNode.title }}
+          </div>
           <div class="mt-0.5">
             {{ pageTypeLabel(revealedNode.pageType) }} · {{ statusLabel(revealedNode.status) }}
           </div>

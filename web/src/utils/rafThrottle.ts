@@ -1,4 +1,4 @@
-type AnyFn = (...args: any[]) => void
+type AnyFn = (...args: never[]) => void
 
 export type RafThrottledFn<T extends AnyFn> = ((...args: Parameters<T>) => void) & {
   cancel: () => void

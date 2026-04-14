@@ -125,32 +125,38 @@ function deny() {
 
           <!-- Body -->
           <div class="px-5 py-4 space-y-3">
-            <div v-if="approval.directory" class="space-y-1">
+            <div
+              v-if="approval.directory"
+              class="space-y-1"
+            >
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('execApproval.directory') }}
               </p>
               <code
                 class="block text-sm px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-900 text-red-600 dark:text-red-400 break-all"
-                >{{ approval.directory }}</code
-              >
+              >{{ approval.directory }}</code>
             </div>
-            <div v-if="shouldShowWorkdir" class="space-y-1">
+            <div
+              v-if="shouldShowWorkdir"
+              class="space-y-1"
+            >
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('execApproval.workdir') }}
               </p>
               <code
                 class="block text-sm px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 break-all"
-                >{{ approval.workdir }}</code
-              >
+              >{{ approval.workdir }}</code>
             </div>
-            <div v-if="approval.command" class="space-y-1">
+            <div
+              v-if="approval.command"
+              class="space-y-1"
+            >
               <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {{ t('execApproval.command') }}
               </p>
               <code
                 class="block text-sm px-3 py-2 rounded-md bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 whitespace-pre-wrap break-words max-h-32 overflow-y-auto"
-                >{{ approval.command }}</code
-              >
+              >{{ approval.command }}</code>
             </div>
             <p
               v-if="isCommandApproval"

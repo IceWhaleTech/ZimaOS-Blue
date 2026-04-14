@@ -304,8 +304,12 @@ const summaryGridStyle = computed(() => ({
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer resource-chart-card-head">
         <div class="dashboard-card-copy min-w-0">
-          <p class="dashboard-card-label">{{ title }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ headlineSubtitle }}</p>
+          <p class="dashboard-card-label">
+            {{ title }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ headlineSubtitle }}
+          </p>
         </div>
         <span class="dashboard-card-chip resource-chart-card-chip">{{ resolvedBadge }}</span>
       </div>
@@ -314,7 +318,9 @@ const summaryGridStyle = computed(() => ({
         <div class="dashboard-card-subsurface resource-chart-panel p-4">
           <div class="resource-chart-panel-head">
             <div class="resource-chart-panel-copy min-w-0">
-              <p class="resource-chart-panel-value truncate">{{ currentValue }}{{ unit }}</p>
+              <p class="resource-chart-panel-value truncate">
+                {{ currentValue }}{{ unit }}
+              </p>
               <p class="resource-chart-panel-caption">
                 {{ caption || subtitle || t('resourceChart.avg', 'Avg') }}
               </p>
@@ -338,7 +344,10 @@ const summaryGridStyle = computed(() => ({
                 rx="9"
                 class="resource-chart-column"
               />
-              <template v-for="(column, index) in dashboardColumns" :key="`marker-${index}`">
+              <template
+                v-for="(column, index) in dashboardColumns"
+                :key="`marker-${index}`"
+              >
                 <line
                   v-if="column.hasValue"
                   :x1="column.markerX1"
@@ -359,14 +368,21 @@ const summaryGridStyle = computed(() => ({
           </div>
         </div>
 
-        <div class="resource-chart-stats-grid text-xs" :style="summaryGridStyle">
+        <div
+          class="resource-chart-stats-grid text-xs"
+          :style="summaryGridStyle"
+        >
           <div
             v-for="item in resolvedStatItems"
             :key="item.label"
             class="dashboard-card-subsurface resource-chart-stat p-3"
           >
-            <div class="resource-chart-stat-label">{{ item.label }}</div>
-            <div class="resource-chart-stat-value">{{ item.value }}</div>
+            <div class="resource-chart-stat-label">
+              {{ item.label }}
+            </div>
+            <div class="resource-chart-stat-value">
+              {{ item.value }}
+            </div>
           </div>
         </div>
       </template>
@@ -404,7 +420,11 @@ const summaryGridStyle = computed(() => ({
                 class="stroke-gray-200 dark:stroke-gray-700"
                 stroke-dasharray="4"
               />
-              <path v-if="chartData.areaPath" :d="chartData.areaPath" :class="colorClasses.fill" />
+              <path
+                v-if="chartData.areaPath"
+                :d="chartData.areaPath"
+                :class="colorClasses.fill"
+              />
               <path
                 v-if="chartData.path"
                 :d="chartData.path"
@@ -435,16 +455,28 @@ const summaryGridStyle = computed(() => ({
 
         <div class="grid grid-cols-3 gap-2 text-xs">
           <div class="dashboard-card-subsurface p-3 text-center">
-            <div class="text-gray-400 dark:text-gray-500">{{ t('metrics.min', 'Min') }}</div>
-            <div class="mt-1 text-gray-700 dark:text-gray-300">{{ minValue }}{{ unit }}</div>
+            <div class="text-gray-400 dark:text-gray-500">
+              {{ t('metrics.min', 'Min') }}
+            </div>
+            <div class="mt-1 text-gray-700 dark:text-gray-300">
+              {{ minValue }}{{ unit }}
+            </div>
           </div>
           <div class="dashboard-card-subsurface p-3 text-center">
-            <div class="text-gray-400 dark:text-gray-500">{{ t('resourceChart.avg', 'Avg') }}</div>
-            <div class="mt-1 text-gray-700 dark:text-gray-300">{{ avgValue }}{{ unit }}</div>
+            <div class="text-gray-400 dark:text-gray-500">
+              {{ t('resourceChart.avg', 'Avg') }}
+            </div>
+            <div class="mt-1 text-gray-700 dark:text-gray-300">
+              {{ avgValue }}{{ unit }}
+            </div>
           </div>
           <div class="dashboard-card-subsurface p-3 text-center">
-            <div class="text-gray-400 dark:text-gray-500">{{ t('metrics.max', 'Max') }}</div>
-            <div class="mt-1 text-gray-700 dark:text-gray-300">{{ maxValueDisplay }}{{ unit }}</div>
+            <div class="text-gray-400 dark:text-gray-500">
+              {{ t('metrics.max', 'Max') }}
+            </div>
+            <div class="mt-1 text-gray-700 dark:text-gray-300">
+              {{ maxValueDisplay }}{{ unit }}
+            </div>
           </div>
         </div>
       </template>

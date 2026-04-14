@@ -95,15 +95,28 @@ function handleSubmit() {
 
 <template>
   <div class="plugin-config-form">
-    <form class="space-y-4" @submit.prevent="handleSubmit">
+    <form
+      class="space-y-4"
+      @submit.prevent="handleSubmit"
+    >
       <template v-if="schema">
-        <div v-for="(prop, key) in schema.properties" :key="key" class="space-y-2">
+        <div
+          v-for="(prop, key) in schema.properties"
+          :key="key"
+          class="space-y-2"
+        >
           <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
             {{ prop.title || key }}
-            <span v-if="isRequired(key)" class="text-red-500 dark:text-red-400">*</span>
+            <span
+              v-if="isRequired(key)"
+              class="text-red-500 dark:text-red-400"
+            >*</span>
           </label>
 
-          <p v-if="prop.description" class="text-xs text-gray-500">
+          <p
+            v-if="prop.description"
+            class="text-xs text-gray-500"
+          >
             {{ prop.description }}
           </p>
 
@@ -116,7 +129,7 @@ function handleSubmit() {
             class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             :placeholder="(prop.default as string) || ''"
             @input="updateField(key, ($event.target as HTMLInputElement).value)"
-          />
+          >
 
           <!-- Number Input -->
           <input
@@ -129,7 +142,7 @@ function handleSubmit() {
             class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             :placeholder="String(prop.default || '')"
             @input="updateField(key, parseFloat(($event.target as HTMLInputElement).value))"
-          />
+          >
 
           <!-- Checkbox -->
           <label
@@ -141,7 +154,7 @@ function handleSubmit() {
               type="checkbox"
               class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateField(key, ($event.target as HTMLInputElement).checked)"
-            />
+            >
             <span class="text-gray-700 dark:text-gray-300">{{ prop.title || key }}</span>
           </label>
 
@@ -153,14 +166,26 @@ function handleSubmit() {
             class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
             @change="updateField(key, ($event.target as HTMLSelectElement).value)"
           >
-            <option value="" disabled>{{ t('common.selectOption', 'Select an option') }}</option>
-            <option v-for="opt in prop.enum" :key="String(opt)" :value="opt">
+            <option
+              value=""
+              disabled
+            >
+              {{ t('common.selectOption', 'Select an option') }}
+            </option>
+            <option
+              v-for="opt in prop.enum"
+              :key="String(opt)"
+              :value="opt"
+            >
               {{ opt }}
             </option>
           </select>
 
           <!-- Array Input -->
-          <div v-else-if="getFieldType(prop) === 'array'" class="space-y-2">
+          <div
+            v-else-if="getFieldType(prop) === 'array'"
+            class="space-y-2"
+          >
             <div
               v-for="(item, index) in (formData[key] as string[]) || []"
               :key="index"
@@ -171,7 +196,7 @@ function handleSubmit() {
                 type="text"
                 class="flex-1 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
                 @input="updateArrayField(key, index, ($event.target as HTMLInputElement).value)"
-              />
+              >
               <button
                 type="button"
                 class="p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg"
@@ -223,11 +248,14 @@ function handleSubmit() {
             rows="4"
             class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 font-mono text-sm border border-gray-300 dark:border-gray-600"
             @input="updateJsonField(key, ($event.target as HTMLTextAreaElement).value)"
-          ></textarea>
+          />
         </div>
       </template>
 
-      <div v-else class="text-gray-500 dark:text-gray-400 text-center py-4">
+      <div
+        v-else
+        class="text-gray-500 dark:text-gray-400 text-center py-4"
+      >
         {{ t('plugins.configForm.empty', 'This plugin has no configurable options.') }}
       </div>
 

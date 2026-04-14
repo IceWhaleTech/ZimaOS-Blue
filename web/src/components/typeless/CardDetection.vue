@@ -75,16 +75,29 @@ function handleDetectionClick(detection: Detection) {
     class="detection-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div
+      v-if="card.title"
+      class="px-4 py-2 border-b border-gray-200 dark:border-gray-700"
+    >
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Image with detection boxes -->
     <div class="relative">
-      <img ref="imageRef" :src="card.image" class="w-full h-auto" @load="handleImageLoad" />
+      <img
+        ref="imageRef"
+        :src="card.image"
+        class="w-full h-auto"
+        @load="handleImageLoad"
+      >
 
       <!-- Detection boxes overlay -->
-      <div v-if="imageLoaded" class="absolute inset-0">
+      <div
+        v-if="imageLoaded"
+        class="absolute inset-0"
+      >
         <div
           v-for="(detection, index) in card.detections"
           :key="index"
@@ -99,7 +112,10 @@ function handleDetectionClick(detection: Detection) {
             :style="{ backgroundColor: getDetectionColor(detection, index) }"
           >
             {{ detection.label }}
-            <span v-if="detection.confidence" class="detection-inline-gap opacity-80">
+            <span
+              v-if="detection.confidence"
+              class="detection-inline-gap opacity-80"
+            >
               {{ formatConfidence(detection.confidence) }}
             </span>
           </div>
@@ -143,7 +159,10 @@ function handleDetectionClick(detection: Detection) {
           @click="handleDetectionClick(detection)"
         >
           {{ detection.label }}
-          <span v-if="detection.confidence" class="detection-inline-gap opacity-80">
+          <span
+            v-if="detection.confidence"
+            class="detection-inline-gap opacity-80"
+          >
             {{ formatConfidence(detection.confidence) }}
           </span>
         </button>

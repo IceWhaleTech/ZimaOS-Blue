@@ -104,8 +104,15 @@ const sparklineLinePath = computed(() => {
 </script>
 
 <template>
-  <div class="dashboard-mini-sparkline" aria-hidden="true">
-    <svg viewBox="0 0 148 74" class="dashboard-mini-sparkline-svg" preserveAspectRatio="none">
+  <div
+    class="dashboard-mini-sparkline"
+    aria-hidden="true"
+  >
+    <svg
+      viewBox="0 0 148 74"
+      class="dashboard-mini-sparkline-svg"
+      preserveAspectRatio="none"
+    >
       <rect
         v-for="(column, index) in sparklineColumns"
         :key="`bg-${index}`"
@@ -116,7 +123,10 @@ const sparklineLinePath = computed(() => {
         rx="8"
         class="dashboard-mini-sparkline-column"
       />
-      <template v-for="(column, index) in sparklineColumns" :key="`marker-${index}`">
+      <template
+        v-for="(column, index) in sparklineColumns"
+        :key="`marker-${index}`"
+      >
         <line
           v-if="column.hasValue"
           :x1="column.markerX1"

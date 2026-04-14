@@ -31,7 +31,6 @@ const showPricingModal = ref(false)
 const showParamsModal = ref(false)
 const showAllowedModelsModal = ref(false)
 const showIDEDiscoveryModal = ref(false)
-const refreshingModels = ref<string | null>(null)
 const detectingCapabilities = ref<string | null>(null)
 const verifyingProvider = ref<string | null>(null)
 const applyingVerification = ref<string | null>(null)
@@ -317,10 +316,6 @@ const showModelParams = ref(false)
 const showDeleteFor = ref<string | null>(null)
 let longPressTimer: ReturnType<typeof setTimeout> | null = null
 
-// Model drag state
-const draggedModel = ref<Model | null>(null)
-const dragOverModel = ref<string | null>(null)
-
 // Provider to display in detail panel - always show selected provider regardless of tab
 const displayProvider = computed(() =>
   isProviderVisibleInUI(store.selectedProvider) ? store.selectedProvider : null
@@ -347,11 +342,6 @@ const canReorderProviders = computed(() => filteredProviders.value.length > 1)
 const providerOutputLimitLabel = computed(() =>
   tr('providerPool.outputLimit', t('providerPool.maxTokens'))
 )
-
-// Models to display: always provider-level (union of all keys)
-const displayModels = computed(() => {
-  return selectedProviderModels.value
-})
 
 const selectedKeyModels = computed(() => {
   const provider = displayProvider.value
@@ -692,12 +682,6 @@ const filteredProviders = computed(() => {
 
 const displayedProviders = computed(() => providerPreviewOrder.value ?? filteredProviders.value)
 
-// Check if selected provider belongs to current tab
-const currentTabSelectedProvider = computed(() => {
-  if (!store.selectedProvider) return null
-  if (activeTab.value === 'all') return store.selectedProvider
-})
-
 // Get custom pricing for a specific model in the selected provider
 function getModelCustomPricing(modelId: string) {
   const providerId = store.selectedProviderId
@@ -840,51 +824,6 @@ async function clearProviderError(providerId: string) {
   }
 }
 
-async function refreshModels(providerId: string) {
-  refreshingModels.value = providerId
-  try {
-    const provider = store.providers.find((item) => item.id === providerId)
-    if (provider?.metadata_mode === 'catalog') {
-      const fetchResult = await store.refreshModels(providerId)
-      if (!fetchResult.success) {
-        notification.error(t('providerPool.refreshModelsFailed'), fetchResult.error, {
-          duration: 8000,
-          titleKey: 'providerPool.refreshModelsFailed',
-        })
-      }
-      return
-    }
-
-    // Smart refresh: try probe first (tests actual availability), fall back to fetch
-    const probeResult = await store.probeModels(providerId)
-    if (probeResult.success) {
-      notification.success(
-        t('providerPool.probeComplete', {
-          available: probeResult.available,
-          total: probeResult.total,
-        }),
-        undefined,
-        {
-          titleKey: 'providerPool.probeComplete',
-          titleParams: { available: probeResult.available, total: probeResult.total },
-        }
-      )
-      return
-    }
-
-    // Probe failed (maybe no cached models yet) — fall back to fetch
-    const fetchResult = await store.refreshModels(providerId)
-    if (!fetchResult.success) {
-      notification.error(t('providerPool.refreshModelsFailed'), fetchResult.error, {
-        duration: 8000,
-        titleKey: 'providerPool.refreshModelsFailed',
-      })
-    }
-  } finally {
-    refreshingModels.value = null
-  }
-}
-
 async function runProviderVerification(apply = false) {
   const provider = displayProvider.value
   if (!provider) return
@@ -927,9 +866,8 @@ async function runProviderVerification(apply = false) {
         titleKey: 'providerPool.verifySuccess',
       })
     }
-  } catch (e: any) {
-    const message =
-      e?.response?.data?.error || (e instanceof Error ? e.message : t('providerPool.verifyFailed'))
+  } catch (e) {
+    const message = getProviderPoolErrorMessage(e, t('providerPool.verifyFailed'))
     verificationError.value = message
     notification.error(t('providerPool.verifyFailed'), message, {
       titleKey: 'providerPool.verifyFailed',
@@ -954,6 +892,15 @@ function getVerificationProbeLabel(key: string): string {
   return labels[key] || key
 }
 
+function getProviderPoolErrorMessage(error: unknown, fallback: string): string {
+  if (!error || typeof error !== 'object') return fallback
+  const source = error as {
+    message?: string
+    response?: { data?: { error?: string } }
+  }
+  return source.response?.data?.error || source.message || fallback
+}
+
 async function addCustomProvider() {
   addingProvider.value = true
   addingStep.value = 'adding'
@@ -969,7 +916,7 @@ async function addCustomProvider() {
       api_format: newProvider.value.format === 'auto' ? undefined : newProvider.value.format,
       api_format_mode: newProvider.value.format === 'auto' ? 'auto' : 'pinned',
       type: 'custom',
-    } as any)
+    } as Partial<Provider>)
 
     const providerId = provider.id
 
@@ -1289,12 +1236,14 @@ async function startOAuthConnect(providerId: string) {
         providerId,
       }
     }
-  } catch (e: any) {
-    notification.error(
-      e?.response?.data?.error || t('providerPool.oauth.connectFailed'),
-      undefined,
-      { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' }
-    )
+  } catch (e) {
+    const message = getProviderPoolErrorMessage(e, t('providerPool.oauth.connectFailed'))
+    notification.error(message, undefined, {
+      titleKey:
+        message === t('providerPool.oauth.connectFailed')
+          ? 'providerPool.oauth.connectFailed'
+          : undefined,
+    })
   } finally {
     connectingOAuth.value = null
   }
@@ -1325,12 +1274,14 @@ async function completeDeviceFlow() {
     deviceFlowState.value = null
     await store.fetchProviders()
     await fetchOAuthAccounts(providerId)
-  } catch (e: any) {
-    notification.error(
-      e?.response?.data?.error || t('providerPool.oauth.connectFailed'),
-      undefined,
-      { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.connectFailed' }
-    )
+  } catch (e) {
+    const message = getProviderPoolErrorMessage(e, t('providerPool.oauth.connectFailed'))
+    notification.error(message, undefined, {
+      titleKey:
+        message === t('providerPool.oauth.connectFailed')
+          ? 'providerPool.oauth.connectFailed'
+          : undefined,
+    })
   } finally {
     connectingOAuth.value = null
   }
@@ -1347,12 +1298,14 @@ async function disconnectOAuth(providerId: string, accountId?: string) {
     await store.fetchProviders()
     // Refresh accounts list
     await fetchOAuthAccounts(providerId)
-  } catch (e: any) {
-    notification.error(
-      e?.response?.data?.error || t('providerPool.oauth.disconnectFailed'),
-      undefined,
-      { titleKey: e?.response?.data?.error ? undefined : 'providerPool.oauth.disconnectFailed' }
-    )
+  } catch (e) {
+    const message = getProviderPoolErrorMessage(e, t('providerPool.oauth.disconnectFailed'))
+    notification.error(message, undefined, {
+      titleKey:
+        message === t('providerPool.oauth.disconnectFailed')
+          ? 'providerPool.oauth.disconnectFailed'
+          : undefined,
+    })
   } finally {
     disconnectingOAuth.value = null
     disconnectingAccountId.value = null
@@ -1575,72 +1528,6 @@ function getStatusIcon(status: string, enabled: boolean) {
       return '●' // enabled but not yet tested
   }
 }
-
-// Model drag-to-reorder
-function handleModelDragStart(e: DragEvent, model: Model) {
-  draggedModel.value = model
-  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
-}
-
-function handleModelDragOver(e: DragEvent, model: Model) {
-  e.preventDefault()
-  if (draggedModel.value && draggedModel.value.id !== model.id) {
-    dragOverModel.value = model.id
-  }
-}
-
-function handleModelDragLeave() {
-  dragOverModel.value = null
-}
-
-async function handleModelDrop(e: DragEvent, targetModel: Model) {
-  e.preventDefault()
-  dragOverModel.value = null
-  if (!draggedModel.value || draggedModel.value.id === targetModel.id) {
-    draggedModel.value = null
-    return
-  }
-  const models = [...displayModels.value]
-  const dragIdx = models.findIndex((m) => m.id === draggedModel.value!.id)
-  const targetIdx = models.findIndex((m) => m.id === targetModel.id)
-  if (dragIdx === -1 || targetIdx === -1) {
-    draggedModel.value = null
-    return
-  }
-  const [moved] = models.splice(dragIdx, 1)
-  if (!moved) {
-    draggedModel.value = null
-    return
-  }
-  models.splice(targetIdx, 0, moved)
-  draggedModel.value = null
-
-  // Save reordered model IDs as allowed_models (order = priority)
-  const provider = displayProvider.value
-  if (provider) {
-    const orderedIds = models.map((m) => m.id)
-    await store.updateProvider(provider.id, { allowed_models: orderedIds })
-  }
-}
-
-function handleModelDragEnd() {
-  draggedModel.value = null
-  dragOverModel.value = null
-}
-
-const capabilityKeys = [
-  'chat',
-  'completion',
-  'vision',
-  'function_call',
-  'thinking',
-  'streaming',
-  'json',
-  'system_prompt',
-  'image_generation',
-  'video_generation',
-  'audio_generation',
-]
 
 const capabilityEmoji: Record<string, string> = {
   chat: '💬',
@@ -1999,7 +1886,9 @@ onMounted(() => {
     <!-- Header -->
     <div class="flex items-center justify-between mb-4">
       <div>
-        <p class="text-sm text-gray-500 dark:text-slate-400">{{ t('providerPool.description') }}</p>
+        <p class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('providerPool.description') }}
+        </p>
       </div>
       <div class="flex gap-2">
         <button
@@ -2045,7 +1934,7 @@ onMounted(() => {
         :placeholder="t('providerPool.search')"
         autocomplete="off"
         class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-400 text-sm"
-      />
+      >
     </div>
 
     <!-- Trial Quota Banner -->
@@ -2084,8 +1973,8 @@ onMounted(() => {
                 store.trialQuota.is_exhausted
                   ? t('providerPool.trialQuota.exhausted')
                   : t('providerPool.trialQuota.remaining', {
-                      tokens: formatTokens(store.trialQuota.tokens_remaining),
-                    })
+                    tokens: formatTokens(store.trialQuota.tokens_remaining),
+                  })
               }}
             </p>
           </div>
@@ -2101,8 +1990,8 @@ onMounted(() => {
           <div
             :title="
               store.trialQuota.tokens_remaining.toLocaleString() +
-              ' / ' +
-              store.trialQuota.token_limit.toLocaleString()
+                ' / ' +
+                store.trialQuota.token_limit.toLocaleString()
             "
           >
             {{
@@ -2119,18 +2008,23 @@ onMounted(() => {
               :style="{
                 width: `${Math.max(0, Math.min(100, (store.trialQuota.tokens_remaining / store.trialQuota.token_limit) * 100))}%`,
               }"
-            ></div>
+            />
           </div>
         </div>
       </div>
     </div>
 
     <!-- Loading -->
-    <div v-if="store.loading" class="text-center py-8">
+    <div
+      v-if="store.loading"
+      class="text-center py-8"
+    >
       <div
         class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full mx-auto"
-      ></div>
-      <p class="text-gray-400 mt-2 text-sm">{{ t('common.loading') }}</p>
+      />
+      <p class="text-gray-400 mt-2 text-sm">
+        {{ t('common.loading') }}
+      </p>
     </div>
 
     <!-- Error -->
@@ -2138,7 +2032,9 @@ onMounted(() => {
       v-else-if="store.error"
       class="bg-red-100 dark:bg-red-900/20 border border-red-300 dark:border-red-500 rounded-lg p-3 mb-4"
     >
-      <p class="text-red-600 dark:text-red-400 text-sm">{{ store.error }}</p>
+      <p class="text-red-600 dark:text-red-400 text-sm">
+        {{ store.error }}
+      </p>
       <button
         class="text-red-500 dark:text-red-300 underline mt-1 text-sm"
         @click="store.clearError()"
@@ -2148,7 +2044,10 @@ onMounted(() => {
     </div>
 
     <!-- Provider List -->
-    <div v-else class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div
+      v-else
+      class="grid grid-cols-1 lg:grid-cols-2 gap-4"
+    >
       <!-- Provider Cards -->
       <div class="space-y-2 max-h-[360px] overflow-y-auto lg:max-h-[480px]">
         <!-- Drag hint -->
@@ -2156,7 +2055,12 @@ onMounted(() => {
           v-if="canReorderProviders && !searchQuery"
           class="text-xs text-gray-400 dark:text-gray-500 mb-2 flex items-center gap-1"
         >
-          <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            class="w-3 h-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -2198,7 +2102,12 @@ onMounted(() => {
                   draggedProvider ? 'opacity-100' : 'opacity-0',
                 ]"
               >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -2224,7 +2133,9 @@ onMounted(() => {
                     {{ tr('providerPool.beta', 'Beta') }}
                   </span>
                 </div>
-                <p class="text-xs text-gray-500 dark:text-gray-400">{{ provider.id }}</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">
+                  {{ provider.id }}
+                </p>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -2232,16 +2143,16 @@ onMounted(() => {
               <span
                 v-if="
                   provider.id === 'nvidia' ||
-                  provider.id === 'github-copilot' ||
-                  provider.id === 'google-antigravity' ||
-                  provider.id === 'google-gemini-cli' ||
-                  provider.id === 'openrouter-free'
+                    provider.id === 'github-copilot' ||
+                    provider.id === 'google-antigravity' ||
+                    provider.id === 'google-gemini-cli' ||
+                    provider.id === 'openrouter-free'
                 "
                 class="text-[10px] px-1.5 py-0.5 rounded"
                 :class="
                   store.oauthQuota[provider.id]?.tier &&
-                  store.oauthQuota[provider.id].tier !== 'Free' &&
-                  store.oauthQuota[provider.id].tier !== 'FREE'
+                    store.oauthQuota[provider.id].tier !== 'Free' &&
+                    store.oauthQuota[provider.id].tier !== 'FREE'
                     ? tierListBadgeClass(store.oauthQuota[provider.id].tier)
                     : 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400'
                 "
@@ -2302,10 +2213,10 @@ onMounted(() => {
                   :checked="provider.enabled"
                   class="sr-only peer"
                   @change="toggleProvider(provider)"
-                />
+                >
                 <div
                   class="provider-switch-track w-8 h-4 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none rounded-full peer peer-checked:bg-green-600 dark:peer-checked:bg-green-500"
-                ></div>
+                />
               </label>
               <span
                 v-else
@@ -2346,7 +2257,7 @@ onMounted(() => {
                     (displayProvider.type === 'builtin' ||
                       displayProvider.type === 'platform' ||
                       displayProvider.type === 'media') &&
-                    displayProvider.website
+                      displayProvider.website
                   "
                   :href="displayProvider.website"
                   target="_blank"
@@ -2400,9 +2311,12 @@ onMounted(() => {
                   accept="image/*"
                   class="hidden"
                   @change="handleIconUpload"
-                />
+                >
               </div>
-              <div class="cursor-pointer select-none" @click="showModelParams = !showModelParams">
+              <div
+                class="cursor-pointer select-none"
+                @click="showModelParams = !showModelParams"
+              >
                 <div class="flex items-center gap-1.5">
                   <h2 class="font-bold text-gray-900 dark:text-white">
                     {{ getProviderName(displayProvider) }}
@@ -2421,19 +2335,17 @@ onMounted(() => {
                 <div
                   class="flex items-center gap-2 mt-1 text-[10px] text-gray-400 dark:text-gray-500"
                 >
-                  <span
-                    >{{ t('providerPool.temperature') }}:
+                  <span>{{ t('providerPool.temperature') }}:
                     {{
                       displayProvider!.model_params?.temperature ?? t('providerPool.default')
-                    }}</span
-                  >
+                    }}</span>
                   <span>·</span>
                   <span>
                     {{ providerOutputLimitLabel }}:
                     {{
                       displayProvider!.model_params?.max_tokens ||
-                      displayProvider!.model_params?.detected_max_tokens ||
-                      t('providerPool.default')
+                        displayProvider!.model_params?.detected_max_tokens ||
+                        t('providerPool.default')
                     }}
                   </span>
                   <svg
@@ -2451,7 +2363,10 @@ onMounted(() => {
                   </svg>
                 </div>
                 <!-- Location Toggle -->
-                <div class="flex items-center gap-1 mt-1" @click.stop>
+                <div
+                  class="flex items-center gap-1 mt-1"
+                  @click.stop
+                >
                   <span class="text-xs text-gray-400">{{ t('providerPool.location') }}:</span>
                   <template v-if="canEditProviderLocation(displayProvider)">
                     <button
@@ -2506,8 +2421,8 @@ onMounted(() => {
               <button
                 v-if="
                   !displayProvider!.is_builtin &&
-                  displayProvider!.type !== 'trial' &&
-                  displayProvider!.type !== 'media'
+                    displayProvider!.type !== 'trial' &&
+                    displayProvider!.type !== 'media'
                 "
                 :class="[
                   'px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-xs transition-opacity',
@@ -2557,17 +2472,13 @@ onMounted(() => {
             </div>
             <div class="grid grid-cols-3 gap-2 text-xs">
               <div>
-                <span class="text-gray-500 dark:text-gray-400"
-                  >{{ t('providerPool.temperature') }}:</span
-                >
+                <span class="text-gray-500 dark:text-gray-400">{{ t('providerPool.temperature') }}:</span>
                 <span class="text-gray-900 dark:text-white provider-inline-start-1">
                   {{ displayProvider!.model_params?.temperature ?? t('providerPool.default') }}
                 </span>
               </div>
               <div>
-                <span class="text-gray-500 dark:text-gray-400"
-                  >{{ providerOutputLimitLabel }}:</span
-                >
+                <span class="text-gray-500 dark:text-gray-400">{{ providerOutputLimitLabel }}:</span>
                 <span
                   v-if="displayProvider!.model_params?.max_tokens"
                   class="text-gray-900 dark:text-white provider-inline-start-1"
@@ -2582,7 +2493,10 @@ onMounted(() => {
                   {{ displayProvider!.model_params.detected_max_tokens }}
                   <span class="text-gray-400 text-[10px]">({{ t('providerPool.detected') }})</span>
                 </span>
-                <span v-else class="text-gray-900 dark:text-white provider-inline-start-1">
+                <span
+                  v-else
+                  class="text-gray-900 dark:text-white provider-inline-start-1"
+                >
                   {{ t('providerPool.default') }}
                 </span>
               </div>
@@ -2615,7 +2529,11 @@ onMounted(() => {
           </div>
 
           <!-- Base URL Section (for providers that need configuration) -->
-          <div v-if="showBaseURLSection" data-testid="provider-base-url-section" class="mb-4">
+          <div
+            v-if="showBaseURLSection"
+            data-testid="provider-base-url-section"
+            class="mb-4"
+          >
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.baseUrl') }}
@@ -2628,7 +2546,10 @@ onMounted(() => {
                 {{ displayProvider!.base_url ? t('common.edit') : t('providerPool.configure') }}
               </button>
             </div>
-            <div v-if="editingBaseUrl" class="flex gap-2">
+            <div
+              v-if="editingBaseUrl"
+              class="flex gap-2"
+            >
               <input
                 v-model="baseUrlDraft"
                 type="url"
@@ -2640,7 +2561,7 @@ onMounted(() => {
                       : 'https://api.example.com/v1'
                 "
                 class="flex-1 px-2 py-1 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
-              />
+              >
               <button
                 class="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
                 @click="saveBaseUrl(displayProvider!.id)"
@@ -2654,21 +2575,30 @@ onMounted(() => {
                 {{ t('common.cancel') }}
               </button>
             </div>
-            <div v-else class="text-xs">
+            <div
+              v-else
+              class="text-xs"
+            >
               <span
                 v-if="displayProvider!.base_url"
                 class="text-gray-600 dark:text-gray-400 font-mono break-all"
               >
                 {{ displayProvider!.base_url }}
               </span>
-              <span v-else class="text-amber-500 dark:text-amber-400">
+              <span
+                v-else
+                class="text-amber-500 dark:text-amber-400"
+              >
                 {{ t('providerPool.baseUrlNotConfigured') }}
               </span>
             </div>
           </div>
 
           <!-- Custom Provider API Format -->
-          <div v-if="displayProvider!.type === 'custom'" class="mb-4">
+          <div
+            v-if="displayProvider!.type === 'custom'"
+            class="mb-4"
+          >
             <div class="flex items-start justify-between gap-2 mb-2">
               <div>
                 <h3 class="text-sm font-medium text-gray-900 dark:text-white">
@@ -2726,8 +2656,8 @@ onMounted(() => {
                 <button
                   :disabled="
                     verifyingProvider === displayProvider!.id ||
-                    applyingVerification === displayProvider!.id ||
-                    !displayProvider!.base_url
+                      applyingVerification === displayProvider!.id ||
+                      !displayProvider!.base_url
                   "
                   class="px-2 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-700 dark:text-white rounded text-xs disabled:opacity-50"
                   @click="runProviderVerification(false)"
@@ -2741,8 +2671,8 @@ onMounted(() => {
                 <button
                   :disabled="
                     verifyingProvider === displayProvider!.id ||
-                    applyingVerification === displayProvider!.id ||
-                    !displayProvider!.base_url
+                      applyingVerification === displayProvider!.id ||
+                      !displayProvider!.base_url
                   "
                   class="px-2 py-1 bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded text-xs disabled:opacity-50"
                   @click="runProviderVerification(true)"
@@ -2756,7 +2686,10 @@ onMounted(() => {
               </div>
             </div>
 
-            <div v-if="displayProvider!.api_keys?.length" class="mb-2">
+            <div
+              v-if="displayProvider!.api_keys?.length"
+              class="mb-2"
+            >
               <label class="block text-[10px] text-gray-500 dark:text-gray-400 mb-1">{{
                 t('providerPool.verifyKeyLabel')
               }}</label>
@@ -2764,8 +2697,14 @@ onMounted(() => {
                 v-model="verificationKeyId"
                 class="w-full px-2 py-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded text-xs text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-gray-400"
               >
-                <option value="">{{ t('providerPool.verifyKeyAuto') }}</option>
-                <option v-for="key in displayProvider!.api_keys" :key="key.id" :value="key.id">
+                <option value="">
+                  {{ t('providerPool.verifyKeyAuto') }}
+                </option>
+                <option
+                  v-for="key in displayProvider!.api_keys"
+                  :key="key.id"
+                  :value="key.id"
+                >
                   {{ key.key_hash }}{{ key.label ? ` (${formatKeyLabel(key.label)})` : '' }}
                 </option>
               </select>
@@ -2778,7 +2717,10 @@ onMounted(() => {
               {{ verificationError }}
             </div>
 
-            <div v-if="verificationResult" class="space-y-2">
+            <div
+              v-if="verificationResult"
+              class="space-y-2"
+            >
               <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                 <div
                   class="p-2 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700"
@@ -2835,10 +2777,9 @@ onMounted(() => {
                         getVerificationProbeLabel(probeKey)
                       }}</span>
                       <span
-                        class="font-mono text-gray-500 dark:text-gray-400"
                         v-if="probe.status_code"
-                        >HTTP {{ probe.status_code }}</span
-                      >
+                        class="font-mono text-gray-500 dark:text-gray-400"
+                      >HTTP {{ probe.status_code }}</span>
                     </div>
                     <div class="font-mono text-[10px] text-gray-500 dark:text-gray-400 break-all">
                       {{ probe.url }}
@@ -2857,7 +2798,10 @@ onMounted(() => {
                           : t('providerPool.verifyProbeUnreachable')
                       }}
                     </div>
-                    <div v-if="probe.error" class="text-red-600 dark:text-red-400 break-all">
+                    <div
+                      v-if="probe.error"
+                      class="text-red-600 dark:text-red-400 break-all"
+                    >
                       {{ probe.error }}
                     </div>
                   </div>
@@ -2867,7 +2811,10 @@ onMounted(() => {
           </div>
 
           <!-- OAuth Section (for OAuth-capable providers) — shown before API Keys -->
-          <div v-if="displayProvider?.oauth" class="mb-4">
+          <div
+            v-if="displayProvider?.oauth"
+            class="mb-4"
+          >
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.oauth.title') }}
@@ -2882,13 +2829,14 @@ onMounted(() => {
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                    <span class="w-2 h-2 rounded-full bg-green-500" />
                     <span class="text-sm font-medium text-gray-900 dark:text-white">{{
                       account.email || account.provider_type
                     }}</span>
-                    <span v-if="account.project_id" class="text-xs text-gray-500"
-                      >({{ account.project_id }})</span
-                    >
+                    <span
+                      v-if="account.project_id"
+                      class="text-xs text-gray-500"
+                    >({{ account.project_id }})</span>
                   </div>
                   <button
                     :disabled="disconnectingAccountId === account.id"
@@ -2932,21 +2880,24 @@ onMounted(() => {
                 {{ t('providerPool.oauth.loadingQuota') }}
               </div>
               <template v-else-if="store.oauthQuota[displayProvider.id]">
-                <div v-if="store.oauthQuota[displayProvider.id].tier" class="px-1">
+                <div
+                  v-if="store.oauthQuota[displayProvider.id].tier"
+                  class="px-1"
+                >
                   <span
                     class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium"
                     :class="tierBadgeClass(store.oauthQuota[displayProvider.id].tier)"
                   >
                     {{
                       store.oauthQuota[displayProvider.id].tier_name ||
-                      store.oauthQuota[displayProvider.id].tier
+                        store.oauthQuota[displayProvider.id].tier
                     }}
                   </span>
                 </div>
                 <div
                   v-if="
                     store.oauthQuota[displayProvider.id].error &&
-                    !store.oauthQuota[displayProvider.id].tier
+                      !store.oauthQuota[displayProvider.id].tier
                   "
                   class="text-xs text-gray-400 px-1"
                 >
@@ -2968,8 +2919,7 @@ onMounted(() => {
                     <span
                       class="text-gray-600 dark:text-gray-400 w-36 truncate"
                       :title="mq.model"
-                      >{{ mq.model }}</span
-                    >
+                    >{{ mq.model }}</span>
                     <div
                       class="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
                     >
@@ -2985,9 +2935,7 @@ onMounted(() => {
                         :style="{ width: mq.remaining_percent + '%' }"
                       />
                     </div>
-                    <span class="provider-text-end text-gray-500 w-8"
-                      >{{ mq.remaining_percent }}%</span
-                    >
+                    <span class="provider-text-end text-gray-500 w-8">{{ mq.remaining_percent }}%</span>
                   </div>
                 </div>
               </template>
@@ -2998,8 +2946,8 @@ onMounted(() => {
           <div
             v-if="
               !displayProvider?.oauth ||
-              displayProvider!.api_keys?.length ||
-              displayProvider!.type === 'trial'
+                displayProvider!.api_keys?.length ||
+                displayProvider!.type === 'trial'
             "
             class="mb-4"
           >
@@ -3016,7 +2964,12 @@ onMounted(() => {
                   class="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs flex items-center gap-1"
                 >
                   {{ t('providerPool.getApiKey') }}
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="w-3 h-3"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -3042,9 +2995,7 @@ onMounted(() => {
               >
                 <div>
                   <span class="text-gray-700 dark:text-white font-mono">••••••••••••••••</span>
-                  <span class="provider-inline-start-2 text-gray-500"
-                    >({{ t('providerPool.trial.name') }})</span
-                  >
+                  <span class="provider-inline-start-2 text-gray-500">({{ t('providerPool.trial.name') }})</span>
                 </div>
               </div>
               <!-- Non-trial provider: show actual keys -->
@@ -3084,12 +3035,16 @@ onMounted(() => {
                     <span class="text-gray-700 dark:text-white font-mono truncate">{{
                       key.key_hash
                     }}</span>
-                    <span v-if="key.label" class="text-gray-500 truncate"
-                      >({{ formatKeyLabel(key.label) }})</span
-                    >
+                    <span
+                      v-if="key.label"
+                      class="text-gray-500 truncate"
+                    >({{ formatKeyLabel(key.label) }})</span>
                   </div>
                   <div class="flex items-center gap-2 flex-shrink-0">
-                    <span v-if="key.usage_count" class="text-gray-500">
+                    <span
+                      v-if="key.usage_count"
+                      class="text-gray-500"
+                    >
                       {{ key.usage_count }}
                     </span>
                   </div>
@@ -3126,7 +3081,7 @@ onMounted(() => {
                     class="w-full max-w-xs text-center text-2xl font-bold tracking-widest text-gray-900 dark:text-white bg-gray-100 dark:bg-gray-700 px-4 py-2 rounded border border-gray-200 dark:border-gray-600 select-all"
                     @focus="($event.target as HTMLInputElement).select()"
                     @click="($event.target as HTMLInputElement).select()"
-                  />
+                  >
                   <button
                     class="px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded"
                     @click="copyDeviceFlowCode"
@@ -3175,18 +3130,17 @@ onMounted(() => {
                   class="text-gray-700 dark:text-gray-400"
                   :title="
                     (store.trialQuota.token_limit - store.trialQuota.tokens_used).toLocaleString() +
-                    ' / ' +
-                    store.trialQuota.token_limit.toLocaleString()
+                      ' / ' +
+                      store.trialQuota.token_limit.toLocaleString()
                   "
-                  >{{
-                    t('providerPool.trial.tokensUsed', {
-                      remaining: formatTokens(
-                        store.trialQuota.token_limit - store.trialQuota.tokens_used
-                      ),
-                      total: formatTokens(store.trialQuota.token_limit),
-                    })
-                  }}</span
-                >
+                >{{
+                  t('providerPool.trial.tokensUsed', {
+                    remaining: formatTokens(
+                      store.trialQuota.token_limit - store.trialQuota.tokens_used
+                    ),
+                    total: formatTokens(store.trialQuota.token_limit),
+                  })
+                }}</span>
                 <div
                   class="relative w-24 h-4 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden"
                 >
@@ -3223,7 +3177,10 @@ onMounted(() => {
           </div>
 
           <!-- Usage Section -->
-          <div v-if="providerUsage && !loadingUsage" class="mb-4">
+          <div
+            v-if="providerUsage && !loadingUsage"
+            class="mb-4"
+          >
             <div class="mb-2 flex items-center justify-between gap-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.usage.title') }}
@@ -3276,7 +3233,10 @@ onMounted(() => {
               }}
             </div>
           </div>
-          <div v-else-if="loadingUsage" class="mb-4 text-center text-xs text-gray-400 py-2">
+          <div
+            v-else-if="loadingUsage"
+            class="mb-4 text-center text-xs text-gray-400 py-2"
+          >
             {{ t('providerPool.usage.loading') }}
           </div>
 
@@ -3289,14 +3249,23 @@ onMounted(() => {
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ tr('providerPool.accountStatus.title', 'Account Status') }}
               </h3>
-              <span v-if="providerAccountStatus?.key_hash" class="text-[10px] text-gray-500">
+              <span
+                v-if="providerAccountStatus?.key_hash"
+                class="text-[10px] text-gray-500"
+              >
                 {{ getAccountStatusKeyLabel(providerAccountStatus.key_hash) }}
               </span>
             </div>
-            <div v-if="store.loadingAccountStatus === displayProvider!.id" class="text-xs text-gray-400">
+            <div
+              v-if="store.loadingAccountStatus === displayProvider!.id"
+              class="text-xs text-gray-400"
+            >
               {{ tr('providerPool.accountStatus.loading', 'Loading account status...') }}
             </div>
-            <div v-else-if="providerAccountStatus?.items?.length" class="space-y-3">
+            <div
+              v-else-if="providerAccountStatus?.items?.length"
+              class="space-y-3"
+            >
               <div
                 v-if="providerAccountStatusPrimaryItem"
                 class="p-3 bg-white dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700"
@@ -3308,7 +3277,10 @@ onMounted(() => {
                   {{ formatAccountStatusAmount(providerAccountStatusPrimaryItem) }}
                 </div>
               </div>
-              <div v-if="providerAccountStatusSecondaryItems.length" class="grid grid-cols-2 gap-2">
+              <div
+                v-if="providerAccountStatusSecondaryItems.length"
+                class="grid grid-cols-2 gap-2"
+              >
                 <div
                   v-for="item in providerAccountStatusSecondaryItems"
                   :key="item.key"
@@ -3323,7 +3295,10 @@ onMounted(() => {
                 </div>
               </div>
             </div>
-            <div v-else class="text-xs text-gray-400">
+            <div
+              v-else
+              class="text-xs text-gray-400"
+            >
               {{ tr('providerPool.accountStatus.unavailable', 'Account status unavailable') }}
             </div>
           </div>
@@ -3333,14 +3308,12 @@ onMounted(() => {
             <div class="flex items-center justify-between mb-2">
               <h3 class="text-sm font-medium text-gray-900 dark:text-white">
                 {{ t('providerPool.models') }}
-                <span class="text-gray-500 text-xs provider-inline-start-1"
-                  >({{
-                    (selectedKeyId && displayProvider!.type !== 'trial'
-                      ? selectedKeyModels
-                      : selectedProviderModels
-                    ).length
-                  }})</span
-                >
+                <span class="text-gray-500 text-xs provider-inline-start-1">({{
+                  (selectedKeyId && displayProvider!.type !== 'trial'
+                    ? selectedKeyModels
+                    : selectedProviderModels
+                  ).length
+                }})</span>
                 <span
                   v-if="displayProvider?.allowed_models?.length"
                   class="text-gray-900 dark:text-gray-300 text-xs provider-inline-start-1"
@@ -3367,7 +3340,10 @@ onMounted(() => {
             </div>
 
             <!-- Model list -->
-            <div v-else class="space-y-1 max-h-64 overflow-y-auto">
+            <div
+              v-else
+              class="space-y-1 max-h-64 overflow-y-auto"
+            >
               <div
                 v-for="model in selectedKeyId && displayProvider!.type !== 'trial'
                   ? selectedKeyModels
@@ -3379,9 +3355,10 @@ onMounted(() => {
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center flex-1 min-w-0 gap-1.5">
-                    <span class="text-gray-400 cursor-grab select-none" title="Drag to reorder"
-                      >⠿</span
-                    >
+                    <span
+                      class="text-gray-400 cursor-grab select-none"
+                      title="Drag to reorder"
+                    >⠿</span>
                     <span class="text-gray-900 dark:text-white font-medium">{{
                       getLocalizedProviderModelName(model)
                     }}</span>
@@ -3408,14 +3385,16 @@ onMounted(() => {
                     <span
                       v-if="model.capabilities?.length"
                       class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"
-                      >✦</span
-                    >
+                    >✦</span>
                     <span class="text-gray-500 provider-inline-start-1 truncate">{{
                       model.id
                     }}</span>
                   </div>
                   <div class="flex items-center gap-2 provider-inline-start-2">
-                    <span v-if="model.context_window" class="text-gray-500 whitespace-nowrap">
+                    <span
+                      v-if="model.context_window"
+                      class="text-gray-500 whitespace-nowrap"
+                    >
                       {{ (model.context_window / 1000).toFixed(0) }}K
                     </span>
                     <span
@@ -3507,7 +3486,9 @@ onMounted(() => {
                 {{ t('providerPool.noModels') }}
               </div>
             </div>
-            <p class="text-xs text-gray-400 mt-2">{{ t('providerPool.pricingHint') }}</p>
+            <p class="text-xs text-gray-400 mt-2">
+              {{ t('providerPool.pricingHint') }}
+            </p>
           </div>
         </div>
 
@@ -3624,8 +3605,8 @@ onMounted(() => {
                             <div class="mt-1 text-xs text-gray-500 dark:text-gray-400 truncate">
                               {{
                                 getProviderDescription(provider) ||
-                                provider.api_format ||
-                                provider.location
+                                  provider.api_format ||
+                                  provider.location
                               }}
                             </div>
                             <div class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
@@ -3699,7 +3680,10 @@ onMounted(() => {
                 </button>
               </div>
 
-              <form class="flex min-h-0 flex-1 flex-col" @submit.prevent="addCustomProvider">
+              <form
+                class="flex min-h-0 flex-1 flex-col"
+                @submit.prevent="addCustomProvider"
+              >
                 <div class="flex-1 overflow-y-auto p-5">
                   <div class="space-y-4">
                     <div>
@@ -3712,7 +3696,7 @@ onMounted(() => {
                         required
                         :disabled="addingProvider"
                         class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-                      />
+                      >
                     </div>
                     <div>
                       <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
@@ -3725,7 +3709,7 @@ onMounted(() => {
                         :disabled="addingProvider"
                         placeholder="https://api.example.com/v1"
                         class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-                      />
+                      >
                     </div>
                     <div>
                       <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
@@ -3738,7 +3722,7 @@ onMounted(() => {
                           :disabled="addingProvider"
                           placeholder="sk-..."
                           class="provider-input-with-action w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400 disabled:opacity-50"
-                        />
+                        >
                         <button
                           type="button"
                           :disabled="addingProvider"
@@ -3784,7 +3768,9 @@ onMounted(() => {
                           </svg>
                         </button>
                       </div>
-                      <p class="mt-1 text-xs text-gray-400">{{ t('providerPool.apiKeyHint') }}</p>
+                      <p class="mt-1 text-xs text-gray-400">
+                        {{ t('providerPool.apiKeyHint') }}
+                      </p>
                     </div>
 
                     <div class="rounded-xl border border-gray-200 bg-gray-50/80 dark:border-slate-700 dark:bg-slate-800/70">
@@ -3928,7 +3914,7 @@ onMounted(() => {
                     >
                       <div
                         class="animate-spin w-4 h-4 border-2 border-gray-900 dark:border-gray-300 border-t-transparent rounded-full flex-shrink-0"
-                      ></div>
+                      />
                       <span class="text-sm text-gray-600 dark:text-gray-300">
                         {{
                           addingStep === 'adding'
@@ -3980,7 +3966,10 @@ onMounted(() => {
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.addApiKey') }}
           </h2>
-          <form class="space-y-4" @submit.prevent="addAPIKey">
+          <form
+            class="space-y-4"
+            @submit.prevent="addAPIKey"
+          >
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
                 t('providerPool.apiKey')
@@ -3992,7 +3981,7 @@ onMounted(() => {
                   required
                   placeholder="sk-..."
                   class="provider-input-with-action w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                />
+                >
                 <button
                   type="button"
                   class="provider-input-action absolute inset-y-0 px-3 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
@@ -4039,15 +4028,13 @@ onMounted(() => {
               </div>
             </div>
             <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1"
-                >{{ t('providerPool.keyLabel') }} ({{ t('common.optional') }})</label
-              >
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.keyLabel') }} ({{ t('common.optional') }})</label>
               <input
                 v-model="newKey.label"
                 type="text"
                 :placeholder="t('providerPool.keyLabelPlaceholder')"
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
+              >
             </div>
             <div class="flex justify-end gap-3 mt-6">
               <button
@@ -4081,7 +4068,10 @@ onMounted(() => {
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.addModelPricing') }}
           </h2>
-          <form class="space-y-4" @submit.prevent="saveModelPricing">
+          <form
+            class="space-y-4"
+            @submit.prevent="saveModelPricing"
+          >
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
                 t('providerPool.modelId')
@@ -4092,18 +4082,16 @@ onMounted(() => {
                 required
                 placeholder="gpt-4, claude-3-opus, etc."
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
+              >
             </div>
             <div>
-              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1"
-                >{{ t('providerPool.providerId') }} ({{ t('common.optional') }})</label
-              >
+              <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{ t('providerPool.providerId') }} ({{ t('common.optional') }})</label>
               <input
                 v-model="pricingForm.providerId"
                 type="text"
                 :placeholder="t('providerPool.modelIdPlaceholder')"
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
+              >
             </div>
             <template v-if="pricingForm.isMedia">
               <div class="grid grid-cols-2 gap-3">
@@ -4118,7 +4106,7 @@ onMounted(() => {
                     min="0"
                     required
                     class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                  />
+                  >
                 </div>
                 <div>
                   <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
@@ -4128,9 +4116,15 @@ onMounted(() => {
                     v-model="pricingForm.pricingUnit"
                     class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
                   >
-                    <option value="image">{{ t('providerPool.unitImage') }}</option>
-                    <option value="second">{{ t('providerPool.unitSecond') }}</option>
-                    <option value="video">{{ t('providerPool.unitVideo') }}</option>
+                    <option value="image">
+                      {{ t('providerPool.unitImage') }}
+                    </option>
+                    <option value="second">
+                      {{ t('providerPool.unitSecond') }}
+                    </option>
+                    <option value="video">
+                      {{ t('providerPool.unitVideo') }}
+                    </option>
                   </select>
                 </div>
               </div>
@@ -4151,7 +4145,7 @@ onMounted(() => {
                     min="0"
                     required
                     class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                  />
+                  >
                 </div>
                 <div>
                   <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
@@ -4164,7 +4158,7 @@ onMounted(() => {
                     min="0"
                     required
                     class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                  />
+                  >
                 </div>
                 <div>
                   <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
@@ -4176,7 +4170,7 @@ onMounted(() => {
                     step="0.01"
                     min="0"
                     class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-                  />
+                  >
                 </div>
               </div>
               <p class="text-xs text-gray-500 dark:text-gray-400">
@@ -4215,7 +4209,10 @@ onMounted(() => {
           <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-4">
             {{ t('providerPool.editModelParams') }}
           </h2>
-          <form class="space-y-4" @submit.prevent="saveModelParams">
+          <form
+            class="space-y-4"
+            @submit.prevent="saveModelParams"
+          >
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
                 t('providerPool.temperature')
@@ -4228,8 +4225,10 @@ onMounted(() => {
                 max="2"
                 :placeholder="t('providerPool.defaultPlaceholder')"
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
-              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.temperatureHint') }}</p>
+              >
+              <p class="text-xs text-gray-400 mt-1">
+                {{ t('providerPool.temperatureHint') }}
+              </p>
             </div>
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-1">{{
@@ -4242,7 +4241,7 @@ onMounted(() => {
                 min="1"
                 :placeholder="t('providerPool.defaultPlaceholder')"
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
+              >
               <p class="text-xs text-gray-400 mt-1">
                 {{ t('providerPool.maxTokensHint') }}
                 <span
@@ -4266,8 +4265,10 @@ onMounted(() => {
                 max="1"
                 :placeholder="t('providerPool.defaultPlaceholder')"
                 class="w-full px-3 py-2 bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-400"
-              />
-              <p class="text-xs text-gray-400 mt-1">{{ t('providerPool.topPHint') }}</p>
+              >
+              <p class="text-xs text-gray-400 mt-1">
+                {{ t('providerPool.topPHint') }}
+              </p>
             </div>
             <div class="flex justify-end gap-3 mt-6">
               <button
@@ -4306,14 +4307,20 @@ onMounted(() => {
           </p>
 
           <!-- Loading state -->
-          <div v-if="loadingAllModels" class="flex-1 flex items-center justify-center">
+          <div
+            v-if="loadingAllModels"
+            class="flex-1 flex items-center justify-center"
+          >
             <div
               class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full"
-            ></div>
+            />
           </div>
 
           <!-- Model list -->
-          <div v-else class="flex-1 overflow-hidden flex flex-col">
+          <div
+            v-else
+            class="flex-1 overflow-hidden flex flex-col"
+          >
             <!-- Quick actions -->
             <div class="flex gap-2 mb-3">
               <button
@@ -4353,7 +4360,7 @@ onMounted(() => {
                   :checked="allowedModelsForm.includes(model.id)"
                   class="w-4 h-4 text-gray-900 dark:text-gray-300 bg-gray-100 dark:bg-slate-700 border-gray-300 dark:border-slate-500 rounded focus:ring-gray-400"
                   @change="toggleModelInAllowedList(model.id)"
-                />
+                >
                 <div class="flex-1 min-w-0">
                   <span class="text-sm text-gray-900 dark:text-white">{{
                     getLocalizedProviderModelName(model)
@@ -4381,11 +4388,13 @@ onMounted(() => {
                   <span
                     v-if="model.capabilities?.length"
                     class="text-[10px] leading-none text-gray-400 provider-inline-start-0_5"
-                    >✦</span
-                  >
+                  >✦</span>
                   <span class="text-xs text-gray-500 provider-inline-start-1">{{ model.id }}</span>
                 </div>
-                <span v-if="model.context_window" class="text-xs text-gray-400">
+                <span
+                  v-if="model.context_window"
+                  class="text-xs text-gray-400"
+                >
                   {{ (model.context_window / 1000).toFixed(0) }}K
                 </span>
               </label>
@@ -4424,7 +4433,13 @@ onMounted(() => {
 
     <!-- Capability tooltip (teleported to body to escape overflow) -->
     <Teleport to="body">
-      <div v-if="capTipVisible" class="cap-tooltip" :style="capTipStyle">{{ capTipText }}</div>
+      <div
+        v-if="capTipVisible"
+        class="cap-tooltip"
+        :style="capTipStyle"
+      >
+        {{ capTipText }}
+      </div>
     </Teleport>
   </div>
 </template>

@@ -79,8 +79,15 @@ onMounted(() => {
   >
     <div class="flex">
       <!-- Image preview -->
-      <div v-if="displayImage" class="flex-shrink-0 w-32 h-24 bg-gray-100 dark:bg-gray-700">
-        <img :src="displayImage" :alt="displayTitle" class="w-full h-full object-cover" />
+      <div
+        v-if="displayImage"
+        class="flex-shrink-0 w-32 h-24 bg-gray-100 dark:bg-gray-700"
+      >
+        <img
+          :src="displayImage"
+          :alt="displayTitle"
+          class="w-full h-full object-cover"
+        >
       </div>
       <!-- Loading placeholder -->
       <div
@@ -97,7 +104,7 @@ onMounted(() => {
             :src="displayFavicon"
             class="w-4 h-4"
             :alt="displaySiteName || ''"
-          />
+          >
           <div
             v-else-if="isLoading"
             class="w-4 h-4 bg-gray-200 dark:bg-gray-600 rounded animate-pulse"
@@ -114,7 +121,10 @@ onMounted(() => {
         >
           {{ displayTitle }}
         </h4>
-        <div v-else class="h-5 bg-gray-200 dark:bg-gray-600 rounded animate-pulse w-3/4" />
+        <div
+          v-else
+          class="h-5 bg-gray-200 dark:bg-gray-600 rounded animate-pulse w-3/4"
+        />
 
         <!-- Description -->
         <p
@@ -123,7 +133,10 @@ onMounted(() => {
         >
           {{ displayDescription }}
         </p>
-        <div v-else-if="isLoading" class="mt-1 space-y-1">
+        <div
+          v-else-if="isLoading"
+          class="mt-1 space-y-1"
+        >
           <div class="h-4 bg-gray-200 dark:bg-gray-600 rounded animate-pulse w-full" />
           <div class="h-4 bg-gray-200 dark:bg-gray-600 rounded animate-pulse w-2/3" />
         </div>

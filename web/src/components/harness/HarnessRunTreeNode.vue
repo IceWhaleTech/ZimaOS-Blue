@@ -227,23 +227,39 @@ function toggleBatch() {
     >
       <div class="node-title-row">
         <strong>{{ identityLabel }}</strong>
-        <span v-if="roleLabel" class="node-pill role-pill">{{ roleLabel }}</span>
-        <span class="node-pill status-pill" :class="statusTone(props.node.run.status)">
+        <span
+          v-if="roleLabel"
+          class="node-pill role-pill"
+        >{{ roleLabel }}</span>
+        <span
+          class="node-pill status-pill"
+          :class="statusTone(props.node.run.status)"
+        >
           {{ statusLabel(props.node.run.status) }}
         </span>
       </div>
       <p class="node-goal">
         {{
           props.node.run.goal ||
-          tr('harness.group.noGoalSummary', 'No goal summary was recorded for this run.')
+            tr('harness.group.noGoalSummary', 'No goal summary was recorded for this run.')
         }}
       </p>
-      <p class="node-meta">{{ metaSegments.join(' · ') }}</p>
-      <p v-if="preview" class="node-preview">{{ preview }}</p>
+      <p class="node-meta">
+        {{ metaSegments.join(' · ') }}
+      </p>
+      <p
+        v-if="preview"
+        class="node-preview"
+      >
+        {{ preview }}
+      </p>
       <code class="node-id">{{ props.node.run.id }}</code>
     </button>
 
-    <div v-if="props.node.children.length" class="tree-children">
+    <div
+      v-if="props.node.children.length"
+      class="tree-children"
+    >
       <HarnessRunTreeNode
         v-for="child in visibleChildren"
         :key="child.run.id"
@@ -265,7 +281,9 @@ function toggleBatch() {
           <strong>{{ batchSummaryTitle }}</strong>
           <span>{{ tr('harness.group.expandBatch', 'Expand') }}</span>
         </div>
-        <p class="batch-summary-subtitle">{{ batchSummarySubtitle }}</p>
+        <p class="batch-summary-subtitle">
+          {{ batchSummarySubtitle }}
+        </p>
         <p class="batch-summary-meta">
           {{
             tr(

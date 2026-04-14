@@ -264,7 +264,10 @@ watch(
 </script>
 
 <template>
-  <div v-if="shouldRenderPresetQuestions" class="mx-auto w-full max-w-[42rem] px-4">
+  <div
+    v-if="shouldRenderPresetQuestions"
+    class="mx-auto w-full max-w-[42rem] px-4"
+  >
     <div class="flex items-center justify-between gap-3">
       <div class="min-w-0 flex flex-1 items-center gap-3">
         <h3 class="flex-shrink-0 text-[13px] font-medium text-gray-500 dark:text-gray-400">
@@ -296,14 +299,20 @@ watch(
       data-testid="preset-questions-scroll"
       @scroll.passive="handleScroll"
     >
-      <div v-if="loading" class="preset-questions-list flex flex-col">
+      <div
+        v-if="loading"
+        class="preset-questions-list flex flex-col"
+      >
         <div
           v-for="i in PRESET_FEED_PAGE_SIZE"
           :key="i"
           class="h-[var(--preset-question-row-height)] animate-pulse rounded-[1.25rem] bg-gray-100 dark:bg-gray-800"
         />
       </div>
-      <div v-else class="preset-questions-list flex flex-col">
+      <div
+        v-else
+        class="preset-questions-list flex flex-col"
+      >
         <PresetQuestionCard
           v-for="question in visibleQuestions"
           :key="question.id"

@@ -13,6 +13,7 @@ declare global {
     __TAURI__?: Record<string, unknown>
     __BLUE_DESKTOP__?: boolean
     __BLUE_MACOS_GLASS__?: boolean
+    __BLUE_STARTUP_TRACE__?: boolean
   }
 }
 
@@ -302,7 +303,7 @@ export function useTauri() {
  * The __BLUE_DESKTOP__ flag is set by the Tauri on_page_load handler.
  */
 function detectTauri(): void {
-  if (typeof window !== 'undefined' && (window as any).__BLUE_DESKTOP__) {
+  if (typeof window !== 'undefined' && window.__BLUE_DESKTOP__) {
     isTauriApp.value = true
     preloadTauriWindowApi()
     return

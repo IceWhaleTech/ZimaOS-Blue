@@ -38,16 +38,28 @@ function getColor(index: number): string {
   <div
     class="usage-chart bg-white dark:bg-gray-700 rounded-lg p-4 border border-gray-200 dark:border-gray-700"
   >
-    <h3 class="font-medium text-gray-900 dark:text-white mb-4">{{ props.title }}</h3>
+    <h3 class="font-medium text-gray-900 dark:text-white mb-4">
+      {{ props.title }}
+    </h3>
 
     <!-- Empty State -->
-    <div v-if="chartData.length === 0" class="text-center py-8 text-gray-500 dark:text-gray-400">
+    <div
+      v-if="chartData.length === 0"
+      class="text-center py-8 text-gray-500 dark:text-gray-400"
+    >
       No data
     </div>
 
     <!-- Bar Chart -->
-    <div v-else class="space-y-3">
-      <div v-for="(item, index) in chartData" :key="item.label" class="space-y-1">
+    <div
+      v-else
+      class="space-y-3"
+    >
+      <div
+        v-for="(item, index) in chartData"
+        :key="item.label"
+        class="space-y-1"
+      >
         <div class="flex items-center justify-between text-sm">
           <span class="text-gray-700 dark:text-gray-300 truncate">{{ item.label }}</span>
           <span class="text-gray-500 dark:text-gray-400 ms-2">

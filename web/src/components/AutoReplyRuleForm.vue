@@ -134,7 +134,10 @@ function variableTitle(descKey: string, fallback: string): string {
 </script>
 
 <template>
-  <form class="space-y-4" @submit.prevent="handleSubmit">
+  <form
+    class="space-y-4"
+    @submit.prevent="handleSubmit"
+  >
     <!-- Name -->
     <div>
       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{
@@ -146,7 +149,7 @@ function variableTitle(descKey: string, fallback: string): string {
         :placeholder="t('autoReply.enterRuleName')"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
         required
-      />
+      >
     </div>
 
     <!-- Trigger Type -->
@@ -158,11 +161,21 @@ function variableTitle(descKey: string, fallback: string): string {
         v-model="triggerType"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
       >
-        <option value="keyword">{{ t('autoReply.keywordExact') }}</option>
-        <option value="contains">{{ t('autoReply.contains') }}</option>
-        <option value="prefix">{{ t('autoReply.prefixStartsWith') }}</option>
-        <option value="suffix">{{ t('autoReply.suffixEndsWith') }}</option>
-        <option value="regex">{{ t('autoReply.regularExpression') }}</option>
+        <option value="keyword">
+          {{ t('autoReply.keywordExact') }}
+        </option>
+        <option value="contains">
+          {{ t('autoReply.contains') }}
+        </option>
+        <option value="prefix">
+          {{ t('autoReply.prefixStartsWith') }}
+        </option>
+        <option value="suffix">
+          {{ t('autoReply.suffixEndsWith') }}
+        </option>
+        <option value="regex">
+          {{ t('autoReply.regularExpression') }}
+        </option>
       </select>
     </div>
 
@@ -170,7 +183,10 @@ function variableTitle(descKey: string, fallback: string): string {
     <div>
       <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
         {{ t('autoReply.triggerValue') }}
-        <span v-if="triggerType === 'regex'" class="text-gray-400 dark:text-gray-500 font-normal">
+        <span
+          v-if="triggerType === 'regex'"
+          class="text-gray-400 dark:text-gray-500 font-normal"
+        >
           {{ t('autoReply.regexPattern') }}
         </span>
       </label>
@@ -185,8 +201,11 @@ function variableTitle(descKey: string, fallback: string): string {
             : 'focus:ring-gray-900 dark:focus:ring-gray-400'
         "
         required
-      />
-      <p v-if="errors.triggerValue" class="mt-1 text-sm text-red-500 dark:text-red-400">
+      >
+      <p
+        v-if="errors.triggerValue"
+        class="mt-1 text-sm text-red-500 dark:text-red-400"
+      >
         {{ errors.triggerValue }}
       </p>
     </div>
@@ -205,7 +224,7 @@ function variableTitle(descKey: string, fallback: string): string {
         min="0"
         max="100"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
-      />
+      >
     </div>
 
     <!-- Responses -->
@@ -249,7 +268,11 @@ function variableTitle(descKey: string, fallback: string): string {
 
       <!-- Response Inputs -->
       <div class="space-y-2">
-        <div v-for="(_response, index) in responses" :key="index" class="flex gap-2">
+        <div
+          v-for="(_response, index) in responses"
+          :key="index"
+          class="flex gap-2"
+        >
           <textarea
             v-model="responses[index]"
             :data-response-index="index"

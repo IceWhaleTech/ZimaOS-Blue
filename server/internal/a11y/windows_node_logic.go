@@ -17,7 +17,9 @@ func windowsActionMetadataFromFields(roleText string, stateText string, defaultA
 }
 
 func windowsNodeInteractive(meta windowsActionMetadata) bool {
-	return meta.ValueWritable || containsAny(meta.Role, "button", "text", "link", "menu", "list", "tab", "check", "outline") || strings.TrimSpace(meta.DefaultAction) != ""
+	return meta.ValueWritable ||
+		containsAny(meta.Role, "button", "link", "menu", "list", "tab", "check", "outline", "radio", "tree", "combo box", "switch", "slider") ||
+		strings.TrimSpace(meta.DefaultAction) != ""
 }
 
 func windowsLikelyValueWritable(roleText string) bool {

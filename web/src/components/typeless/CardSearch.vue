@@ -369,7 +369,10 @@ onBeforeUnmount(() => {
           {{ statusMessage }}
         </p>
 
-        <div v-if="showCollapsedPreview" class="mt-3 space-y-2">
+        <div
+          v-if="showCollapsedPreview"
+          class="mt-3 space-y-2"
+        >
           <div
             v-for="(result, index) in collapsedPreviewResults"
             :key="`${result.url}-${index}`"
@@ -403,7 +406,7 @@ onBeforeUnmount(() => {
                 class="absolute inset-0 m-auto h-4 w-4 rounded-sm"
                 loading="lazy"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
-              />
+              >
             </span>
 
             <span class="min-w-0 flex-1">
@@ -456,8 +459,14 @@ onBeforeUnmount(() => {
     </button>
 
     <transition name="search-card-content">
-      <div v-if="expanded" class="border-t border-slate-200 dark:border-slate-700">
-        <div v-if="statusMessage" class="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+      <div
+        v-if="expanded"
+        class="border-t border-slate-200 dark:border-slate-700"
+      >
+        <div
+          v-if="statusMessage"
+          class="border-b border-slate-100 px-4 py-3 dark:border-slate-800"
+        >
           <div
             class="search-card__status-note rounded-xl border px-3 py-2 text-xs leading-relaxed"
             :class="{
@@ -471,7 +480,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="results.length > 0" class="py-1.5">
+        <div
+          v-if="results.length > 0"
+          class="py-1.5"
+        >
           <a
             v-for="(result, index) in results"
             :key="`${result.url}-${index}`"
@@ -511,7 +523,7 @@ onBeforeUnmount(() => {
                 class="absolute inset-0 m-auto h-4 w-4 rounded-sm"
                 loading="lazy"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
-              />
+              >
             </span>
 
             <span class="min-w-0 flex-1">
@@ -550,7 +562,10 @@ onBeforeUnmount(() => {
           </a>
         </div>
 
-        <div v-else-if="isStreaming" class="px-4 py-6 text-center">
+        <div
+          v-else-if="isStreaming"
+          class="px-4 py-6 text-center"
+        >
           <svg
             class="mx-auto h-4 w-4 animate-spin text-slate-400 dark:text-slate-500"
             fill="none"
@@ -575,7 +590,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-else class="px-4 py-5 text-sm text-slate-500 dark:text-slate-400">
+        <div
+          v-else
+          class="px-4 py-5 text-sm text-slate-500 dark:text-slate-400"
+        >
           {{ statusMessage || t('common.noResponses', 'No responses') }}
         </div>
       </div>
@@ -596,7 +614,7 @@ onBeforeUnmount(() => {
             :src="currentPreview.image"
             class="h-32 w-full object-cover"
             @error="($event.target as HTMLImageElement).style.display = 'none'"
-          />
+          >
 
           <div class="p-3.5">
             <div class="mb-2 flex items-center gap-2">
@@ -605,7 +623,7 @@ onBeforeUnmount(() => {
                 :src="currentPreview.favicon"
                 class="h-4 w-4 rounded-sm"
                 @error="($event.target as HTMLImageElement).style.display = 'none'"
-              />
+              >
               <span class="truncate text-[11px] text-slate-500 dark:text-slate-400">
                 {{ currentPreview.siteName || getDomain(activePreview) }}
               </span>

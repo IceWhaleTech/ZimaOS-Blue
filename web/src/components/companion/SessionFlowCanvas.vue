@@ -565,7 +565,10 @@ function resetView() {
     />
 
     <!-- Empty state -->
-    <div v-if="events.length === 0" class="absolute inset-0 flex items-center justify-center">
+    <div
+      v-if="events.length === 0"
+      class="absolute inset-0 flex items-center justify-center"
+    >
       <div class="text-center">
         <svg
           class="mx-auto h-12 w-12 text-gray-400"
@@ -580,7 +583,9 @@ function resetView() {
             d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
           />
         </svg>
-        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ t('companion.flow.empty') }}</p>
+        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+          {{ t('companion.flow.empty') }}
+        </p>
       </div>
     </div>
 
@@ -652,37 +657,55 @@ function resetView() {
       </div>
       <div class="grid grid-cols-2 gap-x-4 gap-y-1.5">
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded" style="background-color: #3b82f6" />
+          <div
+            class="w-3 h-3 rounded"
+            style="background-color: #3b82f6"
+          />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{
             t('companion.eventType.message_received')
           }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded" style="background-color: #22c55e" />
+          <div
+            class="w-3 h-3 rounded"
+            style="background-color: #22c55e"
+          />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{
             t('companion.eventType.message_sent')
           }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded" style="background-color: #a855f7" />
+          <div
+            class="w-3 h-3 rounded"
+            style="background-color: #a855f7"
+          />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{
             t('companion.eventType.tool_call')
           }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded" style="background-color: #6366f1" />
+          <div
+            class="w-3 h-3 rounded"
+            style="background-color: #6366f1"
+          />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{
             t('companion.eventType.llm_request')
           }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded" style="background-color: #ef4444" />
+          <div
+            class="w-3 h-3 rounded"
+            style="background-color: #ef4444"
+          />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{
             t('companion.eventType.security_threat')
           }}</span>
         </div>
         <div class="flex items-center gap-2">
-          <div class="w-3 h-3 rounded" style="background-color: #f59e0b" />
+          <div
+            class="w-3 h-3 rounded"
+            style="background-color: #f59e0b"
+          />
           <span class="text-xs text-gray-600 dark:text-gray-400">{{
             t('companion.eventType.sandbox_exec')
           }}</span>

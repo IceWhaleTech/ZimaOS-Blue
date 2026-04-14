@@ -1833,7 +1833,7 @@ async function waitForDiscoverCompletion(initial?: DiscoverStatusResponse | null
       (status.phase as 'started' | 'batch' | 'source_complete' | 'completed' | 'error') || 'status'
     )
   }
-  while (true) {
+  for (;;) {
     if (shouldStopDiscoverPolling(requestId)) return null
     if (!status || status.running) {
       const response = await skillApi.discoverStatus()
@@ -2829,28 +2829,40 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="hero-summary-row">
-        <span v-if="!isInitialCatalogLoad && catalogCount > 0" class="summary-pill">
+        <span
+          v-if="!isInitialCatalogLoad && catalogCount > 0"
+          class="summary-pill"
+        >
           {{
             marketplaceText('results.skillsCount', '{count} skills', {
               count: catalogCount,
             })
           }}
         </span>
-        <span v-if="!isInitialCatalogLoad && installableCount > 0" class="summary-pill">
+        <span
+          v-if="!isInitialCatalogLoad && installableCount > 0"
+          class="summary-pill"
+        >
           {{
             marketplaceText('results.installableCount', '{count} installable', {
               count: installableCount,
             })
           }}
         </span>
-        <span v-if="!isInitialCatalogLoad && greenBadgeCount > 0" class="summary-pill">
+        <span
+          v-if="!isInitialCatalogLoad && greenBadgeCount > 0"
+          class="summary-pill"
+        >
           {{
             marketplaceText('results.safeCount', 'Security {count}', {
               count: greenBadgeCount,
             })
           }}
         </span>
-        <span v-if="!isInitialCatalogLoad && sourceCount > 0" class="summary-pill">
+        <span
+          v-if="!isInitialCatalogLoad && sourceCount > 0"
+          class="summary-pill"
+        >
           {{
             marketplaceText('results.sources', 'Sources {count}', {
               count: sourceCount,
@@ -2972,11 +2984,17 @@ onBeforeUnmount(() => {
             }}
           </p>
 
-          <p v-if="sourceListError" class="source-import-error">
+          <p
+            v-if="sourceListError"
+            class="source-import-error"
+          >
             {{ sourceListError }}
           </p>
 
-          <div v-else class="configured-sources__list">
+          <div
+            v-else
+            class="configured-sources__list"
+          >
             <div
               v-if="sourceListLoading && configuredSources.length === 0"
               class="configured-source-card"
@@ -3030,7 +3048,7 @@ onBeforeUnmount(() => {
             class="source-import-input"
             data-testid="source-import-input"
             placeholder="https://github.com/owner/repo  |  https://example.com/catalog"
-          />
+          >
           <div class="source-import-panel__actions">
             <button
               type="button"
@@ -3076,7 +3094,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <p v-if="sourceImportError" class="source-import-error">
+        <p
+          v-if="sourceImportError"
+          class="source-import-error"
+        >
           {{ sourceImportError }}
         </p>
 
@@ -3089,7 +3110,10 @@ onBeforeUnmount(() => {
             <strong>{{ sourceImportSummaryLabel }}</strong>
             <span class="meta-chip meta-chip-soft">{{ sourceImportPreviewTypeLabel }}</span>
           </div>
-          <p v-if="sourceImportStatusMessage" class="source-import-preview__status">
+          <p
+            v-if="sourceImportStatusMessage"
+            class="source-import-preview__status"
+          >
             {{ sourceImportStatusMessage }}
           </p>
           <p>{{ sourceImportPreviewMessage }}</p>
@@ -3114,7 +3138,11 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="toolbar-controls">
-        <div class="sort-pills" role="tablist" :aria-label="topTabAriaLabel">
+        <div
+          class="sort-pills"
+          role="tablist"
+          :aria-label="topTabAriaLabel"
+        >
           <button
             v-for="option in sortPillOptions"
             :key="option.value"
@@ -3141,11 +3169,19 @@ onBeforeUnmount(() => {
       <div class="filter-grid">
         <label class="filter-field">
           <span>{{ marketplaceText('filters.category', 'Category') }}</span>
-          <select v-model="selectedCategory" class="filter-select" @change="handleSearch">
+          <select
+            v-model="selectedCategory"
+            class="filter-select"
+            @change="handleSearch"
+          >
             <option value="all">
               {{ skillStoreText('filters.allCategories', 'All Categories') }}
             </option>
-            <option v-for="option in categoryOptions" :key="option.value" :value="option.value">
+            <option
+              v-for="option in categoryOptions"
+              :key="option.value"
+              :value="option.value"
+            >
               {{ categoryLabel(option.value) }} ({{ option.count }})
             </option>
           </select>
@@ -3153,7 +3189,11 @@ onBeforeUnmount(() => {
 
         <label class="filter-field">
           <span>{{ marketplaceText('filters.source', 'Source') }}</span>
-          <select v-model="selectedSource" class="filter-select" @change="handleSearch">
+          <select
+            v-model="selectedSource"
+            class="filter-select"
+            @change="handleSearch"
+          >
             <option value="all">{{ skillStoreText('filters.allSources', 'All Sources') }}</option>
             <option
               v-for="option in sourceOptions"
@@ -3174,23 +3214,34 @@ onBeforeUnmount(() => {
               :src="sourceBrandAssetUrl(selectedSourceBrand)"
               alt=""
               aria-hidden="true"
-            />
+            >
             <span>{{ selectedSourceDescription }}</span>
           </small>
         </label>
 
         <label class="filter-field">
           <span>{{ marketplaceText('filters.security', 'Security') }}</span>
-          <select v-model="selectedRisk" class="filter-select" @change="handleSearch">
+          <select
+            v-model="selectedRisk"
+            class="filter-select"
+            @change="handleSearch"
+          >
             <option value="all">{{ marketplaceText('filters.allBadges', 'All badges') }}</option>
-            <option v-for="option in riskOptions" :key="option.value" :value="option.value">
+            <option
+              v-for="option in riskOptions"
+              :key="option.value"
+              :value="option.value"
+            >
               {{ badgeLabelByValue(option.value) }} ({{ option.count }})
             </option>
           </select>
         </label>
       </div>
 
-      <div v-if="activeFilterLabels.length" class="active-filters">
+      <div
+        v-if="activeFilterLabels.length"
+        class="active-filters"
+      >
         <span class="section-label">{{
           marketplaceText('results.activeFilters', 'Active filters')
         }}</span>
@@ -3205,7 +3256,10 @@ onBeforeUnmount(() => {
         </div>
       </div>
 
-      <div v-if="showSkillAdvice" class="advisor-panel dashboard-card-subsurface">
+      <div
+        v-if="showSkillAdvice"
+        class="advisor-panel dashboard-card-subsurface"
+      >
         <div class="advisor-panel__header">
           <div class="advisor-panel__copy">
             <span class="section-label">{{
@@ -3214,7 +3268,10 @@ onBeforeUnmount(() => {
             <strong>{{ advisorTitle }}</strong>
             <p>{{ advisorDescription }}</p>
           </div>
-          <span v-if="adviceLoading" class="summary-pill">
+          <span
+            v-if="adviceLoading"
+            class="summary-pill"
+          >
             {{ commonText('loading', 'Loading') }}
           </span>
           <span
@@ -3227,7 +3284,10 @@ onBeforeUnmount(() => {
           </span>
         </div>
 
-        <div v-if="advisorSuggestedQueries.length" class="advisor-section">
+        <div
+          v-if="advisorSuggestedQueries.length"
+          class="advisor-section"
+        >
           <span class="section-label">{{
             marketplaceText('advisor.searchQueries', 'Suggested search phrases')
           }}</span>
@@ -3244,18 +3304,28 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div v-if="advisorCapabilityTags.length" class="advisor-section">
+        <div
+          v-if="advisorCapabilityTags.length"
+          class="advisor-section"
+        >
           <span class="section-label">{{
             marketplaceText('advisor.capabilityTags', 'Capability tags')
           }}</span>
           <div class="chip-row">
-            <span v-for="tag in advisorCapabilityTags" :key="tag" class="meta-chip meta-chip-soft">
+            <span
+              v-for="tag in advisorCapabilityTags"
+              :key="tag"
+              class="meta-chip meta-chip-soft"
+            >
               {{ tag }}
             </span>
           </div>
         </div>
 
-        <div v-if="advisorRecommendedSkills.length" class="advisor-section">
+        <div
+          v-if="advisorRecommendedSkills.length"
+          class="advisor-section"
+        >
           <span class="section-label">{{
             marketplaceText('advisor.recommendedSkills', 'Recommended skills')
           }}</span>
@@ -3293,7 +3363,7 @@ onBeforeUnmount(() => {
                       :src="sourceBrandAssetUrl(sourceBrand(skill))"
                       alt=""
                       aria-hidden="true"
-                    />
+                    >
                     <span class="source-brand__label">{{ sourceLabel(skill) }}</span>
                   </span>
                 </span>
@@ -3326,10 +3396,18 @@ onBeforeUnmount(() => {
                   }}</span>
                   <span v-else>{{ skillStoreText('install', 'Install') }}</span>
                 </button>
-                <button v-else class="source-button" @click.stop="openSkillSource(skill)">
+                <button
+                  v-else
+                  class="source-button"
+                  @click.stop="openSkillSource(skill)"
+                >
                   {{ marketplaceText('actions.viewSource', 'View source') }}
                 </button>
-                <button type="button" class="btn-text" @click.stop="applyAdvisorQuery(skill.name)">
+                <button
+                  type="button"
+                  class="btn-text"
+                  @click.stop="applyAdvisorQuery(skill.name)"
+                >
                   {{ marketplaceText('advisor.searchByName', 'Search by name') }}
                 </button>
               </div>
@@ -3337,7 +3415,10 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <p v-if="advisorFeedbackNote" class="advisor-note">
+        <p
+          v-if="advisorFeedbackNote"
+          class="advisor-note"
+        >
           {{ advisorFeedbackNote }}
         </p>
       </div>
@@ -3352,7 +3433,10 @@ onBeforeUnmount(() => {
           },
         ]"
       >
-        <section v-if="showDiscoverProgress" class="discover-progress__segment">
+        <section
+          v-if="showDiscoverProgress"
+          class="discover-progress__segment"
+        >
           <div class="discover-progress__header">
             <div class="discover-progress__copy">
               <span class="section-label">{{ discoverProgressLabel }}</span>
@@ -3366,10 +3450,13 @@ onBeforeUnmount(() => {
                   :src="sourceBrandAssetUrl(discoverCurrentSourceBrand)"
                   alt=""
                   aria-hidden="true"
-                />
+                >
                 <span>{{ discoverCurrentSourceLabel }}</span>
               </strong>
-              <p v-if="discoverCurrentSourceDescription" class="discover-progress__source-note">
+              <p
+                v-if="discoverCurrentSourceDescription"
+                class="discover-progress__source-note"
+              >
                 {{ discoverCurrentSourceDescription }}
               </p>
               <p>{{ discoverProgressMeta }}</p>
@@ -3389,10 +3476,16 @@ onBeforeUnmount(() => {
             >
               {{ discoverPhaseLabel }}
             </span>
-            <span v-if="discoverSummaryInline" class="discover-progress__summary">
+            <span
+              v-if="discoverSummaryInline"
+              class="discover-progress__summary"
+            >
               {{ discoverSummaryInline }}
             </span>
-            <span v-if="showResultsRefreshing" class="discover-progress__summary">
+            <span
+              v-if="showResultsRefreshing"
+              class="discover-progress__summary"
+            >
               {{ marketplaceText('progress.refreshingVisible', 'Refreshing visible results') }}
             </span>
           </div>
@@ -3409,9 +3502,11 @@ onBeforeUnmount(() => {
               <div
                 class="discover-progress__fill"
                 :style="{ width: `${discoverProgressPercent}%` }"
-              ></div>
+              />
             </div>
-            <p class="discover-progress__caption">{{ discoverProgressCaption }}</p>
+            <p class="discover-progress__caption">
+              {{ discoverProgressCaption }}
+            </p>
           </div>
 
           <div class="discover-activity">
@@ -3426,24 +3521,36 @@ onBeforeUnmount(() => {
                 `discover-activity__item--${latestDiscoverEntry.phase}`,
               ]"
             >
-              <span class="discover-activity__dot" aria-hidden="true"></span>
+              <span
+                class="discover-activity__dot"
+                aria-hidden="true"
+              />
               <div class="discover-activity__body">
                 <strong>{{ latestDiscoverEntry.title }}</strong>
                 <p>{{ latestDiscoverEntry.detail }}</p>
               </div>
               <time>{{ formatClockTime(latestDiscoverEntry.timestamp) }}</time>
             </article>
-            <details v-if="previousDiscoverEntries.length" class="discover-activity__details">
+            <details
+              v-if="previousDiscoverEntries.length"
+              class="discover-activity__details"
+            >
               <summary class="discover-activity__toggle">
                 {{ discoverActivityToggleLabel }}
               </summary>
-              <div ref="discoverActivityViewport" class="discover-activity__stream">
+              <div
+                ref="discoverActivityViewport"
+                class="discover-activity__stream"
+              >
                 <article
                   v-for="entry in previousDiscoverEntries"
                   :key="entry.id"
                   :class="['discover-activity__item', `discover-activity__item--${entry.phase}`]"
                 >
-                  <span class="discover-activity__dot" aria-hidden="true"></span>
+                  <span
+                    class="discover-activity__dot"
+                    aria-hidden="true"
+                  />
                   <div class="discover-activity__body">
                     <strong>{{ entry.title }}</strong>
                     <p>{{ entry.detail }}</p>
@@ -3456,7 +3563,10 @@ onBeforeUnmount(() => {
               v-else-if="!latestDiscoverEntry && showDiscoverProgress"
               class="discover-activity__tail"
             >
-              <span class="discover-activity__tail-dot" aria-hidden="true"></span>
+              <span
+                class="discover-activity__tail-dot"
+                aria-hidden="true"
+              />
               <span>{{ discoverProgressDescription }}</span>
             </div>
           </div>
@@ -3487,7 +3597,10 @@ onBeforeUnmount(() => {
             >
               {{ embeddingPhaseLabel }}
             </span>
-            <span v-if="embeddingSummaryInline" class="discover-progress__summary">
+            <span
+              v-if="embeddingSummaryInline"
+              class="discover-progress__summary"
+            >
               {{ embeddingSummaryInline }}
             </span>
           </div>
@@ -3504,17 +3617,27 @@ onBeforeUnmount(() => {
               <div
                 class="discover-progress__fill"
                 :style="{ width: `${embeddingProgressPercent}%` }"
-              ></div>
+              />
             </div>
-            <p class="discover-progress__caption">{{ embeddingProgressCaption }}</p>
+            <p class="discover-progress__caption">
+              {{ embeddingProgressCaption }}
+            </p>
           </div>
         </section>
       </div>
     </section>
 
-    <div v-if="error" class="error-banner">
+    <div
+      v-if="error"
+      class="error-banner"
+    >
       <span>{{ error }}</span>
-      <button type="button" @click="error = null">×</button>
+      <button
+        type="button"
+        @click="error = null"
+      >
+        ×
+      </button>
     </div>
 
     <section class="store-shell">
@@ -3522,9 +3645,14 @@ onBeforeUnmount(() => {
         <header class="panel-header">
           <div>
             <h3>{{ marketplaceText('results.discover', 'Discover') }}</h3>
-            <p v-if="resultSubtitle">{{ resultSubtitle }}</p>
+            <p v-if="resultSubtitle">
+              {{ resultSubtitle }}
+            </p>
           </div>
-          <span v-if="page < totalPages" class="summary-pill">{{
+          <span
+            v-if="page < totalPages"
+            class="summary-pill"
+          >{{
             marketplaceText('results.pageState', 'Page {page}/{total}', {
               page: page,
               total: totalPages,
@@ -3532,34 +3660,47 @@ onBeforeUnmount(() => {
           }}</span>
         </header>
 
-        <div v-if="showResultsLoading" class="loading-state">
-          <div class="spinner"></div>
+        <div
+          v-if="showResultsLoading"
+          class="loading-state"
+        >
+          <div class="spinner" />
           <span>{{
             showDiscoverProgress ? discoverProgressLabel : commonText('loading', 'Loading')
           }}</span>
         </div>
 
-        <div v-else-if="!skills.length" class="empty-state">
+        <div
+          v-else-if="!skills.length"
+          class="empty-state"
+        >
           <h3>{{ translate('skillStore.noResults', 'No matching skills') }}</h3>
           <p>
             {{
               normalizeSearchQuery(searchQuery)
                 ? translate(
-                    'skillStore.marketplace.empty.broadenSearch',
-                    'Try broadening the search or relaxing one of the security filters.'
-                  )
+                  'skillStore.marketplace.empty.broadenSearch',
+                  'Try broadening the search or relaxing one of the security filters.'
+                )
                 : translate(
-                    'skillStore.noSkillsAvailable',
-                    'No skills are available from the configured sources yet.'
-                  )
+                  'skillStore.noSkillsAvailable',
+                  'No skills are available from the configured sources yet.'
+                )
             }}
           </p>
-          <button type="button" class="btn-ghost" @click="clearSearch">
+          <button
+            type="button"
+            class="btn-ghost"
+            @click="clearSearch"
+          >
             {{ skillStoreText('clearSearch', 'Clear Search') }}
           </button>
         </div>
 
-        <div v-else class="results-grid">
+        <div
+          v-else
+          class="results-grid"
+        >
           <article
             v-for="skill in skills"
             :key="skill.id"
@@ -3577,7 +3718,10 @@ onBeforeUnmount(() => {
           >
             <div class="card-topline">
               <div class="card-topline-left">
-                <span class="source-chip" :title="sourceDescription(skill) || undefined">
+                <span
+                  class="source-chip"
+                  :title="sourceDescription(skill) || undefined"
+                >
                   <span class="source-brand">
                     <img
                       v-if="sourceBrandAssetUrl(sourceBrand(skill))"
@@ -3585,12 +3729,15 @@ onBeforeUnmount(() => {
                       :src="sourceBrandAssetUrl(sourceBrand(skill))"
                       alt=""
                       aria-hidden="true"
-                    />
+                    >
                     <span class="source-brand__label">{{ sourceLabel(skill) }}</span>
                   </span>
                 </span>
                 <span class="meta-chip meta-chip-soft">{{ categoryLabel(skill.category) }}</span>
-                <span v-if="skill.curated_label" class="meta-chip meta-chip-hot">
+                <span
+                  v-if="skill.curated_label"
+                  class="meta-chip meta-chip-hot"
+                >
                   {{ curatedLabelText(skill.curated_label) }}
                 </span>
               </div>
@@ -3601,7 +3748,10 @@ onBeforeUnmount(() => {
 
             <div class="card-hero dashboard-card-subsurface">
               <div class="card-hero-main">
-                <div class="card-icon" aria-hidden="true">
+                <div
+                  class="card-icon"
+                  aria-hidden="true"
+                >
                   <span>{{ skillMonogram(skill) }}</span>
                 </div>
                 <div class="card-title-copy">
@@ -3610,11 +3760,13 @@ onBeforeUnmount(() => {
                     <span
                       v-if="skill.installed"
                       class="meta-chip meta-chip-installed meta-chip-status"
-                      >{{ skillStoreText('installed', 'Installed') }}</span
-                    >
+                    >{{ skillStoreText('installed', 'Installed') }}</span>
                   </div>
                   <p>{{ cardDescription(skill) }}</p>
-                  <div v-if="visibleSkillTags(skill).length" class="card-tag-row">
+                  <div
+                    v-if="visibleSkillTags(skill).length"
+                    class="card-tag-row"
+                  >
                     <span
                       v-for="tag in visibleSkillTags(skill)"
                       :key="`${skill.id}-${tag}`"
@@ -3627,12 +3779,19 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <p class="card-note">{{ cardSignalSummary(skill) }}</p>
+            <p class="card-note">
+              {{ cardSignalSummary(skill) }}
+            </p>
 
             <div class="card-footer">
               <div class="card-stats-inline">
                 <span class="card-stat-inline">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  >
                     <path d="M12 3v12" />
                     <path d="m7 10 5 5 5-5" />
                     <path d="M5 21h14" />
@@ -3640,7 +3799,12 @@ onBeforeUnmount(() => {
                   {{ formatNumber(skill.downloads) }}
                 </span>
                 <span class="card-stat-inline">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  >
                     <path
                       d="m12 3.6 2.6 5.3 5.9.9-4.3 4.2 1 5.9-5.2-2.8-5.2 2.8 1-5.9-4.3-4.2 5.9-.9Z"
                     />
@@ -3648,7 +3812,12 @@ onBeforeUnmount(() => {
                   {{ formatNumber(skill.stars) }}
                 </span>
                 <span class="card-stat-inline">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <svg
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                  >
                     <path
                       d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"
                     />
@@ -3683,14 +3852,21 @@ onBeforeUnmount(() => {
                 }}</span>
                 <span v-else>{{ skillStoreText('install', 'Install') }}</span>
               </button>
-              <button v-else class="source-button" @click.stop="openSkillSource(skill)">
+              <button
+                v-else
+                class="source-button"
+                @click.stop="openSkillSource(skill)"
+              >
                 {{ marketplaceText('actions.viewSource', 'View source') }}
               </button>
             </div>
           </article>
         </div>
 
-        <div v-if="!loading && page < totalPages" class="load-more">
+        <div
+          v-if="!loading && page < totalPages"
+          class="load-more"
+        >
           <button
             type="button"
             class="btn-ghost"
@@ -3719,7 +3895,10 @@ onBeforeUnmount(() => {
           aria-modal="true"
           :aria-label="detailSkill.name"
         >
-          <div class="store-detail-modal-handle" aria-hidden="true"></div>
+          <div
+            class="store-detail-modal-handle"
+            aria-hidden="true"
+          />
           <div
             class="detail-card dashboard-card-surface store-detail-modal-card"
             :style="skillAccentStyle(detailSkill)"
@@ -3727,7 +3906,10 @@ onBeforeUnmount(() => {
             <header class="detail-header">
               <div class="detail-hero-layout">
                 <div class="detail-hero-main">
-                  <div class="detail-icon" aria-hidden="true">
+                  <div
+                    class="detail-icon"
+                    aria-hidden="true"
+                  >
                     <span>{{ skillMonogram(detailSkill) }}</span>
                   </div>
                   <div class="detail-main">
@@ -3740,10 +3922,12 @@ onBeforeUnmount(() => {
                       <span
                         v-if="detailInstalled"
                         class="meta-chip meta-chip-installed meta-chip-status"
-                        >{{ skillStoreText('installed', 'Installed') }}</span
-                      >
+                      >{{ skillStoreText('installed', 'Installed') }}</span>
                     </div>
-                    <p v-if="detailSkill.curated_reason" class="detail-callout">
+                    <p
+                      v-if="detailSkill.curated_reason"
+                      class="detail-callout"
+                    >
                       {{ detailSkill.curated_reason }}
                     </p>
                   </div>
@@ -3757,7 +3941,12 @@ onBeforeUnmount(() => {
                       :aria-label="marketplaceText('actions.viewSource', 'View source')"
                       @click="openSkillSource(detailSkill)"
                     >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                      >
                         <path d="M14 5h5v5" />
                         <path d="M10 14 19 5" />
                         <path d="M19 14v3a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h3" />
@@ -3769,7 +3958,12 @@ onBeforeUnmount(() => {
                       :aria-label="closeDetailLabel"
                       @click="closeSkillDetail"
                     >
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                      >
                         <path d="M18 6 6 18" />
                         <path d="m6 6 12 12" />
                       </svg>
@@ -3850,7 +4044,11 @@ onBeforeUnmount(() => {
                       }}</span>
                       <span v-else>{{ skillStoreText('install', 'Install') }}</span>
                     </button>
-                    <button v-else class="source-button" @click="openSkillSource(detailSkill)">
+                    <button
+                      v-else
+                      class="source-button"
+                      @click="openSkillSource(detailSkill)"
+                    >
                       {{ marketplaceText('actions.viewSource', 'View source') }}
                     </button>
                   </div>
@@ -3867,24 +4065,33 @@ onBeforeUnmount(() => {
                 <span>{{ marketplaceText('detail.meta.category', 'Category') }}</span>
                 <strong>{{ categoryLabel(detailSkill.category) }}</strong>
               </div>
-              <div v-if="detailSkill.author" class="meta-item">
+              <div
+                v-if="detailSkill.author"
+                class="meta-item"
+              >
                 <span>{{ marketplaceText('detail.meta.author', 'Author') }}</span>
                 <strong>{{ detailSkill.author }}</strong>
               </div>
               <div class="meta-item">
                 <span>{{ skillStoreText('detail.openLink', 'Open Link') }}</span>
-                <strong class="source-brand" :title="sourceDescription(detailSkill) || undefined">
+                <strong
+                  class="source-brand"
+                  :title="sourceDescription(detailSkill) || undefined"
+                >
                   <img
                     v-if="sourceBrandAssetUrl(sourceBrand(detailSkill))"
                     class="source-brand__icon source-brand__icon--prominent"
                     :src="sourceBrandAssetUrl(sourceBrand(detailSkill))"
                     alt=""
                     aria-hidden="true"
-                  />
+                  >
                   <span class="source-brand__label">{{ sourceLabel(detailSkill) }}</span>
                 </strong>
               </div>
-              <div v-if="showOriginSource(detailSkill)" class="meta-item">
+              <div
+                v-if="showOriginSource(detailSkill)"
+                class="meta-item"
+              >
                 <span>{{ marketplaceText('detail.meta.upstream', 'Upstream') }}</span>
                 <strong
                   class="source-brand"
@@ -3896,7 +4103,7 @@ onBeforeUnmount(() => {
                     :src="sourceBrandAssetUrl(originSourceBrand(detailSkill))"
                     alt=""
                     aria-hidden="true"
-                  />
+                  >
                   <span class="source-brand__label">{{ originSourceLabel(detailSkill) }}</span>
                 </strong>
               </div>
@@ -3919,8 +4126,11 @@ onBeforeUnmount(() => {
                   {{ detailRiskLabel }}
                 </span>
               </div>
-              <div v-if="detailLoading" class="detail-loading">
-                <div class="spinner"></div>
+              <div
+                v-if="detailLoading"
+                class="detail-loading"
+              >
+                <div class="spinner" />
                 <span>{{ marketplaceText('security.loading', 'Loading security report...') }}</span>
               </div>
               <template v-else-if="selectedSecurity">
@@ -3984,7 +4194,10 @@ onBeforeUnmount(() => {
                   <span class="section-label">{{
                     marketplaceText('security.signals', 'Risk signals')
                   }}</span>
-                  <div v-if="selectedSecuritySignals.length" class="chip-row">
+                  <div
+                    v-if="selectedSecuritySignals.length"
+                    class="chip-row"
+                  >
                     <span
                       v-for="signal in selectedSecuritySignals"
                       :key="signal.label"
@@ -3993,12 +4206,18 @@ onBeforeUnmount(() => {
                       {{ signal.label }}
                     </span>
                   </div>
-                  <p v-else class="detail-placeholder detail-placeholder-inline">
+                  <p
+                    v-else
+                    class="detail-placeholder detail-placeholder-inline"
+                  >
                     {{ marketplaceText('security.noMajorWarnings', 'No major warnings detected.') }}
                   </p>
                 </div>
 
-                <div v-if="hasSecurityRiskDetails" class="security-disclosure">
+                <div
+                  v-if="hasSecurityRiskDetails"
+                  class="security-disclosure"
+                >
                   <button
                     type="button"
                     class="security-disclosure__toggle"
@@ -4021,7 +4240,7 @@ onBeforeUnmount(() => {
                         { 'security-disclosure__chevron--open': showSecurityRiskDetails },
                       ]"
                       aria-hidden="true"
-                    ></span>
+                    />
                   </button>
                   <p
                     v-if="!showSecurityRiskDetails"
@@ -4041,7 +4260,10 @@ onBeforeUnmount(() => {
                     role="region"
                     :aria-label="marketplaceText('security.riskDetails', 'Risk details')"
                   >
-                    <div v-if="selectedSecurity.permissions?.length" class="list-block">
+                    <div
+                      v-if="selectedSecurity.permissions?.length"
+                      class="list-block"
+                    >
                       <span class="section-label">{{
                         marketplaceText('security.permissions', 'Permissions')
                       }}</span>
@@ -4074,7 +4296,10 @@ onBeforeUnmount(() => {
                       </div>
                     </div>
 
-                    <div v-if="visibleSecurityEvidence.length" class="list-block">
+                    <div
+                      v-if="visibleSecurityEvidence.length"
+                      class="list-block"
+                    >
                       <span class="section-label section-label--compact">{{
                         marketplaceText('security.evidence', 'Evidence')
                       }}</span>
@@ -4088,8 +4313,7 @@ onBeforeUnmount(() => {
                             <strong>{{ evidenceGroupLabel(item.type) }}</strong>
                             <span
                               :class="['severity-chip', evidenceSeverityClass(item.severity)]"
-                              >{{ evidenceSeverityLabel(item.severity) }}</span
-                            >
+                            >{{ evidenceSeverityLabel(item.severity) }}</span>
                           </header>
                           <p>{{ localizedSecurityText(item.title) }}</p>
                           <small v-if="item.description">{{
@@ -4112,7 +4336,10 @@ onBeforeUnmount(() => {
                   </div>
                 </div>
               </template>
-              <p v-else class="detail-placeholder">
+              <p
+                v-else
+                class="detail-placeholder"
+              >
                 {{ marketplaceText('security.noReport', 'No security report available yet.') }}
               </p>
             </section>
@@ -4132,7 +4359,10 @@ onBeforeUnmount(() => {
         class="skill-store-aggregator risk-modal-backdrop"
         @click.self="closeRiskModal"
       >
-        <div class="risk-modal" :style="skillAccentStyle(pendingRiskSkill)">
+        <div
+          class="risk-modal"
+          :style="skillAccentStyle(pendingRiskSkill)"
+        >
           <button
             class="risk-modal__close"
             type="button"
@@ -4144,8 +4374,16 @@ onBeforeUnmount(() => {
 
           <header class="risk-modal__header">
             <div class="risk-modal__hero">
-              <div class="risk-modal__icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <div
+                class="risk-modal__icon"
+                aria-hidden="true"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                >
                   <path
                     d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
                   />
@@ -4169,7 +4407,10 @@ onBeforeUnmount(() => {
           </header>
 
           <section class="risk-modal__subject">
-            <div class="risk-modal__subject-icon" aria-hidden="true">
+            <div
+              class="risk-modal__subject-icon"
+              aria-hidden="true"
+            >
               <span>{{ skillMonogram(pendingRiskSkill) }}</span>
             </div>
             <div class="risk-modal__subject-copy">
@@ -4186,7 +4427,7 @@ onBeforeUnmount(() => {
                       :src="sourceBrandAssetUrl(sourceBrand(pendingRiskSkill))"
                       alt=""
                       aria-hidden="true"
-                    />
+                    >
                     <span class="source-brand__label">{{ sourceLabel(pendingRiskSkill) }}</span>
                   </span>
                 </span>
@@ -4208,7 +4449,10 @@ onBeforeUnmount(() => {
               <span class="section-label">{{ marketplaceText('security.badge', 'Badge') }}</span>
               <strong>{{ badgeLabel(pendingRiskSkill) }}</strong>
             </article>
-            <article v-if="pendingRiskSkill.install_type" class="risk-modal__stat">
+            <article
+              v-if="pendingRiskSkill.install_type"
+              class="risk-modal__stat"
+            >
               <span class="section-label">{{
                 marketplaceText('security.installSurface', 'Install surface')
               }}</span>
@@ -4223,7 +4467,10 @@ onBeforeUnmount(() => {
             </article>
           </section>
 
-          <div v-if="pendingRiskSignals.length" class="modal-signal-block">
+          <div
+            v-if="pendingRiskSignals.length"
+            class="modal-signal-block"
+          >
             <span class="section-label">{{
               marketplaceText('modal.reviewSignals', 'Review these signals')
             }}</span>
@@ -4233,7 +4480,10 @@ onBeforeUnmount(() => {
                 :key="signal"
                 class="risk-modal__signal"
               >
-                <span class="risk-modal__signal-dot" aria-hidden="true"></span>
+                <span
+                  class="risk-modal__signal-dot"
+                  aria-hidden="true"
+                />
                 <span>{{ signal }}</span>
               </article>
             </div>

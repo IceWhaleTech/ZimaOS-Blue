@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { skillApi, type Skill, type SkillContractMetadata } from '@/api/skill'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import SkillContractNotice from './SkillContractNotice.vue'
 import { useSkillStore } from '@/stores/skill'
 import { parseFrontmatter } from '@/utils/frontmatter'
@@ -404,9 +405,15 @@ async function handleUninstall(skill: Skill) {
     <section class="extension-market-hero dashboard-card-surface">
       <div class="extension-market-hero__copy">
         <span class="extension-market-hero__kicker">{{ t('extensions.skills') }}</span>
-        <h2 class="extension-market-hero__title">{{ t('plugins.subtitle') }}</h2>
-        <p class="extension-market-hero__hint">{{ galleryHint }}</p>
-        <p class="extension-market-hero__hint">{{ skillManagementHint }}</p>
+        <h2 class="extension-market-hero__title">
+          {{ t('plugins.subtitle') }}
+        </h2>
+        <p class="extension-market-hero__hint">
+          {{ galleryHint }}
+        </p>
+        <p class="extension-market-hero__hint">
+          {{ skillManagementHint }}
+        </p>
       </div>
 
       <div class="extension-market-hero__stats">
@@ -437,7 +444,11 @@ async function handleUninstall(skill: Skill) {
             stroke="currentColor"
             stroke-width="2"
           >
-            <circle cx="11" cy="11" r="8" />
+            <circle
+              cx="11"
+              cy="11"
+              r="8"
+            />
             <path d="m21 21-4.35-4.35" />
           </svg>
           <input
@@ -445,25 +456,52 @@ async function handleUninstall(skill: Skill) {
             type="text"
             :placeholder="t('skillStore.filters.searchSkillsPlaceholder')"
             class="search-input"
-          />
+          >
         </div>
 
-        <select v-model="filterCategory" class="filter-select">
-          <option value="all">{{ t('plugins.allCategories') }}</option>
-          <option v-for="cat in skillStore.categories" :key="cat" :value="cat">
+        <select
+          v-model="filterCategory"
+          class="filter-select"
+        >
+          <option value="all">
+            {{ t('plugins.allCategories') }}
+          </option>
+          <option
+            v-for="cat in skillStore.categories"
+            :key="cat"
+            :value="cat"
+          >
             {{ getCategoryIcon(cat) }} {{ getCategoryLabel(cat) }}
           </option>
         </select>
 
-        <select v-model="filterStatus" class="filter-select">
-          <option value="all">{{ t('skills.filters.allStatus') }}</option>
-          <option value="enabled">{{ t('common.enabled') }}</option>
-          <option value="disabled">{{ t('common.disabled') }}</option>
+        <select
+          v-model="filterStatus"
+          class="filter-select"
+        >
+          <option value="all">
+            {{ t('skills.filters.allStatus') }}
+          </option>
+          <option value="enabled">
+            {{ t('common.enabled') }}
+          </option>
+          <option value="disabled">
+            {{ t('common.disabled') }}
+          </option>
         </select>
 
         <div class="filter-actions extension-market-hero__actions">
-          <button class="btn-add-source" type="button" @click="emit('install-skill')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <button
+            class="btn-add-source"
+            type="button"
+            @click="emit('install-skill')"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
               <path d="M12 4v16m8-8H4" />
             </svg>
             <span>{{ t('plugins.uploadSkill') }}</span>
@@ -487,25 +525,47 @@ async function handleUninstall(skill: Skill) {
               <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
               <path d="M16 21h5v-5" />
             </svg>
-            <span v-else class="spinner"></span>
+            <span
+              v-else
+              class="spinner"
+            />
           </button>
         </div>
       </div>
     </section>
 
-    <div v-if="skillStore.error" class="error-banner">
+    <div
+      v-if="skillStore.error"
+      class="error-banner"
+    >
       {{ skillStore.error }}
-      <button @click="skillStore.clearError">×</button>
+      <button @click="skillStore.clearError">
+        ×
+      </button>
     </div>
 
-    <div v-if="skillStore.loading && !filteredSkills.length" class="loading">
-      <div class="spinner"></div>
+    <div
+      v-if="skillStore.loading && !filteredSkills.length"
+      class="loading"
+    >
+      <div class="spinner" />
       <span>{{ t('common.loading') }}</span>
     </div>
 
-    <section v-else class="skill-gallery__grid">
-      <div v-if="filteredSkills.length === 0" class="empty-state list-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <section
+      v-else
+      class="skill-gallery__grid"
+    >
+      <div
+        v-if="filteredSkills.length === 0"
+        class="empty-state list-empty"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
           <path d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <h3>{{ t('skills.empty.title') }}</h3>
@@ -541,7 +601,7 @@ async function handleUninstall(skill: Skill) {
                 : 'skill-showcase-card__state--disabled',
             ]"
           >
-            <span class="skill-showcase-card__state-dot"></span>
+            <span class="skill-showcase-card__state-dot" />
             {{ skill.enabled ? t('common.enabled') : t('common.disabled') }}
           </span>
         </div>
@@ -553,15 +613,20 @@ async function handleUninstall(skill: Skill) {
               :src="getSkillIconUrl(skill.icon)!"
               class="skill-showcase-card__orb-image"
               :alt="getSkillName(skill)"
-            />
-            <span v-else class="skill-showcase-card__orb-fallback">{{
+            >
+            <span
+              v-else
+              class="skill-showcase-card__orb-fallback"
+            >{{
               getSkillMonogram(skill)
             }}</span>
           </div>
 
           <div class="skill-showcase-card__hero-copy">
             <div class="skill-showcase-card__title-row">
-              <h3 :title="getSkillName(skill)">{{ getSkillName(skill) }}</h3>
+              <h3 :title="getSkillName(skill)">
+                {{ getSkillName(skill) }}
+              </h3>
               <span
                 v-for="tag in getVisibleTags(skill)"
                 :key="`${skill.id}-${tag}`"
@@ -659,7 +724,10 @@ async function handleUninstall(skill: Skill) {
           :aria-label="getSkillName(selectedSkill)"
           :style="getSkillAccentStyle(selectedSkill)"
         >
-          <div class="skill-detail-modal__handle" aria-hidden="true"></div>
+          <div
+            class="skill-detail-modal__handle"
+            aria-hidden="true"
+          />
           <button
             class="skill-detail-modal__close"
             type="button"
@@ -672,13 +740,16 @@ async function handleUninstall(skill: Skill) {
           <div class="skill-detail-content">
             <div class="detail-header">
               <div class="detail-title-row">
-                <div class="detail-icon" :style="getSkillAccentStyle(selectedSkill)">
+                <div
+                  class="detail-icon"
+                  :style="getSkillAccentStyle(selectedSkill)"
+                >
                   <img
                     v-if="getSkillIconUrl(selectedSkill.icon)"
                     :src="getSkillIconUrl(selectedSkill.icon)!"
                     class="detail-icon__image"
                     :alt="getSkillName(selectedSkill)"
-                  />
+                  >
                   <span v-else>{{ getSkillMonogram(selectedSkill) }}</span>
                 </div>
 
@@ -719,7 +790,7 @@ async function handleUninstall(skill: Skill) {
                       : 'skill-showcase-card__state--disabled',
                   ]"
                 >
-                  <span class="skill-showcase-card__state-dot"></span>
+                  <span class="skill-showcase-card__state-dot" />
                   {{ selectedSkill.enabled ? t('common.enabled') : t('common.disabled') }}
                 </span>
 
@@ -737,7 +808,10 @@ async function handleUninstall(skill: Skill) {
                   }}
                 </button>
               </div>
-              <p v-if="selectedSkill.builtin" class="detail-management-note">
+              <p
+                v-if="selectedSkill.builtin"
+                class="detail-management-note"
+              >
                 {{ builtinSkillDetailHint }}
               </p>
             </div>
@@ -791,27 +865,34 @@ async function handleUninstall(skill: Skill) {
                   <div class="detail-section__head">
                     <h4>{{ t('skills.detail.sections.parameters') }}</h4>
                     <p class="detail-section__caption">
-                      <span
-                        >{{ t('skills.detail.sections.inputs') }}
-                        {{ selectedSkill.inputs?.length || 0 }}</span
-                      >
+                      <span>{{ t('skills.detail.sections.inputs') }}
+                        {{ selectedSkill.inputs?.length || 0 }}</span>
                       <span aria-hidden="true">·</span>
-                      <span
-                        >{{ t('skills.detail.sections.outputs') }}
-                        {{ selectedSkill.outputs?.length || 0 }}</span
-                      >
+                      <span>{{ t('skills.detail.sections.outputs') }}
+                        {{ selectedSkill.outputs?.length || 0 }}</span>
                     </p>
                   </div>
 
                   <div class="param-columns">
-                    <div v-if="selectedSkill.inputs?.length" class="param-group">
-                      <p class="param-title">{{ t('skills.detail.sections.inputs') }}</p>
+                    <div
+                      v-if="selectedSkill.inputs?.length"
+                      class="param-group"
+                    >
+                      <p class="param-title">
+                        {{ t('skills.detail.sections.inputs') }}
+                      </p>
                       <ul class="param-list">
-                        <li v-for="input in selectedSkill.inputs" :key="`in-${input.name}`">
+                        <li
+                          v-for="input in selectedSkill.inputs"
+                          :key="`in-${input.name}`"
+                        >
                           <div class="param-head">
                             <code>{{ input.name }}</code>
                             <span class="param-type">{{ input.type }}</span>
-                            <span v-if="input.required" class="param-required">{{
+                            <span
+                              v-if="input.required"
+                              class="param-required"
+                            >{{
                               t('skills.detail.required')
                             }}</span>
                           </div>
@@ -820,10 +901,18 @@ async function handleUninstall(skill: Skill) {
                       </ul>
                     </div>
 
-                    <div v-if="selectedSkill.outputs?.length" class="param-group">
-                      <p class="param-title">{{ t('skills.detail.sections.outputs') }}</p>
+                    <div
+                      v-if="selectedSkill.outputs?.length"
+                      class="param-group"
+                    >
+                      <p class="param-title">
+                        {{ t('skills.detail.sections.outputs') }}
+                      </p>
                       <ul class="param-list">
-                        <li v-for="output in selectedSkill.outputs" :key="`out-${output.name}`">
+                        <li
+                          v-for="output in selectedSkill.outputs"
+                          :key="`out-${output.name}`"
+                        >
                           <div class="param-head">
                             <code>{{ output.name }}</code>
                             <span class="param-type">{{ output.type }}</span>
@@ -841,21 +930,30 @@ async function handleUninstall(skill: Skill) {
                   </div>
 
                   <div class="detail-docs__surface">
-                    <div v-if="selectedSkillContentLoading" class="loading-content">
-                      <div class="spinner"></div>
+                    <div
+                      v-if="selectedSkillContentLoading"
+                      class="loading-content"
+                    >
+                      <div class="spinner" />
                       <span>{{ t('common.loading') }}</span>
                     </div>
                     <template v-else-if="selectedSkillContent">
-                      <div
+                      <TrustedHtml
                         v-if="selectedSkillDocContent"
                         class="skill-content markdown-body"
-                        v-html="renderMarkdownHtml(selectedSkillDocContent)"
-                      ></div>
-                      <div v-else class="no-content">
+                        :html="renderMarkdownHtml(selectedSkillDocContent)"
+                      />
+                      <div
+                        v-else
+                        class="no-content"
+                      >
                         <p>{{ t('skills.noContent') }}</p>
                       </div>
                     </template>
-                    <div v-else class="no-content">
+                    <div
+                      v-else
+                      class="no-content"
+                    >
                       <p>{{ t('skills.noContent') }}</p>
                     </div>
                   </div>

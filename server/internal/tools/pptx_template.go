@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
+	"html"
 	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -52,26 +54,30 @@ type pptxTemplateState struct {
 	slides  []pptxTemplateSlide
 }
 
-func (t *PPTXTool) executeTemplateMutation(ctx context.Context, args map[string]interface{}
+type pptxTemplateChartSeriesDefault struct {
+	Type string
+	Axis string
+}
+
 // remapChartRelsWorkbook updates chart rels to point to the correct workbook
 func remapChartRelsWorkbook(chartRels []byte, workbookIndex int) []byte {
 	var rels pptxRelationshipsXML
 	if err := xml.Unmarshal(chartRels, &rels); err != nil {
 		return chartRels
 	}
-	
+
 	for i := range rels.Relationships {
 		if strings.Contains(rels.Relationships[i].Type, "package") && strings.Contains(rels.Relationships[i].Target, "embeddings") {
 			// Update target to point to correct workbook
 			rels.Relationships[i].Target = fmt.Sprintf("../embeddings/Microsoft_Excel_Worksheet%d.xlsx", workbookIndex)
 		}
 	}
-	
+
 	output, _ := xml.Marshal(rels)
 	return output
 }
 
-, action string) (string, error) {
+func (t *PPTXTool) executeTemplateMutation(ctx context.Context, args map[string]interface{}, action string) (string, error) {
 	path := strings.TrimSpace(firstCompatPathString(args))
 	if path == "" {
 		var err error
@@ -110,6 +116,16 @@ func remapChartRelsWorkbook(chartRels []byte, workbookIndex int) []byte {
 				return fmt.Errorf("replace_text requires replacements or variables")
 			}
 			return state.replaceText(replacements)
+		case "update_chart_data":
+			rawChart, ok := compatArgValue(args, "chart", "chart_data", "chartData")
+			if !ok {
+				return fmt.Errorf("update_chart_data requires chart data")
+			}
+			chartIndex := compatInt(args, "chart_index", "chartIndex")
+			if chartIndex <= 0 {
+				chartIndex = 1
+			}
+			return state.updateChartData(compatInt(args, "slide", "index"), chartIndex, rawChart)
 		default:
 			return fmt.Errorf("unsupported pptx template action %q", action)
 		}
@@ -220,6 +236,7 @@ func loadPPTXTemplateState(tempDir string) (*pptxTemplateState, error) {
 		relsXML := []byte(officePPTXSlideRelsXML(0))
 		if data, err := os.ReadFile(relsPath); err == nil {
 			relsXML = data
+		}
 		charts, err := loadPPTXSlideCharts(tempDir, relsXML)
 		if err != nil {
 			return nil, fmt.Errorf("load slide charts: %w", err)
@@ -228,7 +245,6 @@ func loadPPTXTemplateState(tempDir string) (*pptxTemplateState, error) {
 			XML:    slideXML,
 			Rels:   relsXML,
 			Charts: charts,
-		})
 		})
 	}
 
@@ -241,39 +257,39 @@ func loadPPTXSlideCharts(tempDir string, slideRels []byte) ([]pptxTemplateSlideC
 	if err := xml.Unmarshal(slideRels, &rels); err != nil {
 		return nil, err
 	}
-	
+
 	var charts []pptxTemplateSlideChart
 	for _, rel := range rels.Relationships {
 		// Check if this is a chart relationship
 		if !strings.Contains(rel.Type, "chart") {
 			continue
 		}
-		
+
 		target := strings.TrimSpace(rel.Target)
 		if target == "" {
 			continue
 		}
-		
+
 		// Extract chart index from target like "../charts/chart1.xml"
 		var chartIndex int
 		if _, err := fmt.Sscanf(filepath.Base(target), "chart%d.xml", &chartIndex); err != nil {
 			continue
 		}
-		
-		// Load chart XML
-		chartPath := filepath.Join(tempDir, "ppt", filepath.FromSlash(target))
+
+		// Slide rel targets are resolved relative to ppt/slides/
+		chartPath := filepath.Join(tempDir, filepath.FromSlash(path.Clean(path.Join("ppt/slides", target))))
 		chartXML, err := os.ReadFile(chartPath)
 		if err != nil {
 			return nil, fmt.Errorf("read chart %s: %w", target, err)
 		}
-		
+
 		// Load chart rels
 		chartRelsPath := filepath.Join(tempDir, "ppt", "charts", "_rels", filepath.Base(target)+".rels")
 		var chartRelsXML []byte
 		if data, err := os.ReadFile(chartRelsPath); err == nil {
 			chartRelsXML = data
 		}
-		
+
 		// Load embedded workbook if any
 		var workbookXML []byte
 		if len(chartRelsXML) > 0 {
@@ -281,7 +297,8 @@ func loadPPTXSlideCharts(tempDir string, slideRels []byte) ([]pptxTemplateSlideC
 			if err := xml.Unmarshal(chartRelsXML, &chartRels); err == nil {
 				for _, chartRel := range chartRels.Relationships {
 					if strings.Contains(chartRel.Type, "package") && strings.Contains(chartRel.Target, "embeddings") {
-						workbookPath := filepath.Join(tempDir, "ppt", filepath.FromSlash(chartRel.Target))
+						// Chart rel targets are resolved relative to ppt/charts/
+						workbookPath := filepath.Join(tempDir, filepath.FromSlash(path.Clean(path.Join("ppt/charts", chartRel.Target))))
 						if data, err := os.ReadFile(workbookPath); err == nil {
 							workbookXML = data
 						}
@@ -290,7 +307,7 @@ func loadPPTXSlideCharts(tempDir string, slideRels []byte) ([]pptxTemplateSlideC
 				}
 			}
 		}
-		
+
 		charts = append(charts, pptxTemplateSlideChart{
 			ChartIndex:   chartIndex,
 			ChartXML:     chartXML,
@@ -298,7 +315,7 @@ func loadPPTXSlideCharts(tempDir string, slideRels []byte) ([]pptxTemplateSlideC
 			WorkbookXML:  workbookXML,
 		})
 	}
-	
+
 	return charts, nil
 }
 
@@ -332,7 +349,7 @@ func (s *pptxTemplateState) duplicateSlide(index int) error {
 		return fmt.Errorf("slide must be between 1 and %d", len(s.slides))
 	}
 	source := s.slides[index-1]
-	
+
 	// Deep copy charts
 	duplicatedCharts := make([]pptxTemplateSlideChart, len(source.Charts))
 	for i, chart := range source.Charts {
@@ -343,7 +360,7 @@ func (s *pptxTemplateState) duplicateSlide(index int) error {
 			WorkbookXML:  append([]byte(nil), chart.WorkbookXML...),
 		}
 	}
-	
+
 	duplicate := pptxTemplateSlide{
 		XML:    append([]byte(nil), source.XML...),
 		Rels:   append([]byte(nil), source.Rels...),
@@ -408,6 +425,1218 @@ func (s *pptxTemplateState) replaceText(replacements map[string]string) error {
 		s.slides[idx].XML = updated
 	}
 	return nil
+}
+
+func (s *pptxTemplateState) updateChartData(slideIndex, chartIndex int, chartRaw interface{}) error {
+	if slideIndex <= 0 || slideIndex > len(s.slides) {
+		return fmt.Errorf("slide must be between 1 and %d", len(s.slides))
+	}
+	slide := &s.slides[slideIndex-1]
+	if len(slide.Charts) == 0 {
+		return fmt.Errorf("slide %d does not contain a native chart", slideIndex)
+	}
+	if chartIndex <= 0 || chartIndex > len(slide.Charts) {
+		return fmt.Errorf("chart_index must be between 1 and %d", len(slide.Charts))
+	}
+
+	target := &slide.Charts[chartIndex-1]
+	chartInput, err := inferPPTXTemplateChartDefaults(chartRaw, target.ChartXML)
+	if err != nil {
+		return err
+	}
+	chartSpec, err := parseOfficeChart(chartInput)
+	if err != nil {
+		return err
+	}
+	chartPackage, err := officeBuildPPTXChartPackage(*chartSpec, target.ChartIndex)
+	if err != nil {
+		return err
+	}
+	target.ChartXML = []byte(chartPackage.ChartXML)
+	target.ChartRelsXML = []byte(chartPackage.ChartRelsXML)
+	if chartPackage.Workbook != nil {
+		target.WorkbookXML = append([]byte(nil), chartPackage.Workbook.Data...)
+	} else {
+		target.WorkbookXML = nil
+	}
+	return nil
+}
+
+func inferPPTXTemplateChartDefaults(rawChart interface{}, existingChartXML []byte) (map[string]interface{}, error) {
+	chartMap, ok := coerceCompatMap(rawChart)
+	if !ok {
+		return nil, fmt.Errorf("chart must be an object")
+	}
+	merged := make(map[string]interface{}, len(chartMap)+2)
+	for key, value := range chartMap {
+		merged[key] = value
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "type", "chart_type", "kind") {
+		if inferredType := inferPPTXTemplateChartType(existingChartXML); inferredType != "" {
+			merged["type"] = inferredType
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "title", "name") {
+		if inferredTitle := inferPPTXTemplateChartTitle(existingChartXML); inferredTitle != "" {
+			merged["title"] = inferredTitle
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "vary_colors", "varyColors") {
+		if inferredVaryColors, ok := inferPPTXTemplateChartVaryColors(existingChartXML); ok {
+			merged["vary_colors"] = inferredVaryColors
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "start_angle", "startAngle", "first_slice_angle", "firstSliceAngle") {
+		if inferredStartAngle, ok := inferPPTXTemplateChartStartAngle(existingChartXML); ok {
+			merged["start_angle"] = inferredStartAngle
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "hole_size", "holeSize", "donut_hole_size", "donutHoleSize") {
+		if inferredHoleSize, ok := inferPPTXTemplateChartHoleSize(existingChartXML); ok {
+			merged["hole_size"] = inferredHoleSize
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "smooth", "smoothed", "smooth_lines", "smoothLines", "line_smoothing", "lineSmoothing") {
+		if inferredSmooth, ok := inferPPTXTemplateChartSmooth(existingChartXML); ok {
+			merged["smooth"] = inferredSmooth
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "gap_width", "gapWidth") {
+		if inferredGapWidth, ok := inferPPTXTemplateChartGapWidth(existingChartXML); ok {
+			merged["gap_width"] = inferredGapWidth
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "overlap") {
+		if inferredOverlap, ok := inferPPTXTemplateChartOverlap(existingChartXML); ok {
+			merged["overlap"] = inferredOverlap
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_type", "categoryAxisType", "x_axis_type", "xAxisType") {
+		if inferredAxisType := inferPPTXTemplateChartAxisType(existingChartXML); inferredAxisType != "" {
+			merged["x_axis_type"] = inferredAxisType
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_format", "categoryAxisFormat", "x_axis_format", "xAxisFormat") {
+		if inferredAxisFormat := inferPPTXTemplateChartAxisFormat(existingChartXML); inferredAxisFormat != "" {
+			merged["x_axis_format"] = inferredAxisFormat
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_format", "secondaryCategoryAxisFormat", "secondary_x_axis_format", "secondaryXAxisFormat", "x2_axis_format", "x2AxisFormat") {
+		if inferredSecondaryAxisFormat := inferPPTXTemplateChartSecondaryAxisFormat(existingChartXML); inferredSecondaryAxisFormat != "" {
+			merged["secondary_x_axis_format"] = inferredSecondaryAxisFormat
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_min", "categoryAxisMin", "x_axis_min", "xAxisMin") {
+		if inferredCategoryAxisMin, ok := inferPPTXTemplateChartDateAxisNumber(existingChartXML, 0, "<c:min"); ok {
+			merged["x_axis_min"] = inferredCategoryAxisMin
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_max", "categoryAxisMax", "x_axis_max", "xAxisMax") {
+		if inferredCategoryAxisMax, ok := inferPPTXTemplateChartDateAxisNumber(existingChartXML, 0, "<c:max"); ok {
+			merged["x_axis_max"] = inferredCategoryAxisMax
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_base_time_unit", "categoryAxisBaseTimeUnit", "x_axis_base_time_unit", "xAxisBaseTimeUnit") {
+		if inferredBaseTimeUnit := inferPPTXTemplateChartDateAxisTimeUnit(existingChartXML, 0, "<c:baseTimeUnit"); inferredBaseTimeUnit != "" {
+			merged["x_axis_base_time_unit"] = inferredBaseTimeUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_major_unit", "categoryAxisMajorUnit", "x_axis_major_unit", "xAxisMajorUnit") {
+		if inferredCategoryAxisMajorUnit, ok := inferPPTXTemplateChartDateAxisNumber(existingChartXML, 0, "<c:majorUnit"); ok {
+			merged["x_axis_major_unit"] = inferredCategoryAxisMajorUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_minor_unit", "categoryAxisMinorUnit", "x_axis_minor_unit", "xAxisMinorUnit") {
+		if inferredCategoryAxisMinorUnit, ok := inferPPTXTemplateChartDateAxisNumber(existingChartXML, 0, "<c:minorUnit"); ok {
+			merged["x_axis_minor_unit"] = inferredCategoryAxisMinorUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_major_time_unit", "categoryAxisMajorTimeUnit", "x_axis_major_time_unit", "xAxisMajorTimeUnit") {
+		if inferredCategoryAxisMajorTimeUnit := inferPPTXTemplateChartDateAxisTimeUnit(existingChartXML, 0, "<c:majorTimeUnit"); inferredCategoryAxisMajorTimeUnit != "" {
+			merged["x_axis_major_time_unit"] = inferredCategoryAxisMajorTimeUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_minor_time_unit", "categoryAxisMinorTimeUnit", "x_axis_minor_time_unit", "xAxisMinorTimeUnit") {
+		if inferredCategoryAxisMinorTimeUnit := inferPPTXTemplateChartDateAxisTimeUnit(existingChartXML, 0, "<c:minorTimeUnit"); inferredCategoryAxisMinorTimeUnit != "" {
+			merged["x_axis_minor_time_unit"] = inferredCategoryAxisMinorTimeUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_label_position", "categoryAxisLabelPosition", "x_axis_label_position", "xAxisLabelPosition") {
+		if inferredCategoryAxisLabelPosition := inferPPTXTemplateChartCategoryAxisLabelPosition(existingChartXML, 0); inferredCategoryAxisLabelPosition != "" {
+			merged["x_axis_label_position"] = inferredCategoryAxisLabelPosition
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_label_position", "secondaryCategoryAxisLabelPosition", "secondary_x_axis_label_position", "secondaryXAxisLabelPosition", "x2_axis_label_position", "x2AxisLabelPosition") {
+		if inferredSecondaryCategoryAxisLabelPosition := inferPPTXTemplateChartCategoryAxisLabelPosition(existingChartXML, 1); inferredSecondaryCategoryAxisLabelPosition != "" {
+			merged["x2_axis_label_position"] = inferredSecondaryCategoryAxisLabelPosition
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_reverse_order", "categoryAxisReverseOrder", "x_axis_reverse_order", "xAxisReverseOrder") {
+		if inferredCategoryAxisReverseOrder := inferPPTXTemplateChartCategoryAxisReverseOrder(existingChartXML, 0); inferredCategoryAxisReverseOrder != "" {
+			merged["x_axis_reverse_order"] = inferredCategoryAxisReverseOrder
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_reverse_order", "secondaryCategoryAxisReverseOrder", "secondary_x_axis_reverse_order", "secondaryXAxisReverseOrder", "x2_axis_reverse_order", "x2AxisReverseOrder") {
+		if inferredSecondaryCategoryAxisReverseOrder := inferPPTXTemplateChartCategoryAxisReverseOrder(existingChartXML, 1); inferredSecondaryCategoryAxisReverseOrder != "" {
+			merged["x2_axis_reverse_order"] = inferredSecondaryCategoryAxisReverseOrder
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_crosses", "categoryAxisCrosses", "x_axis_crosses", "xAxisCrosses") {
+		if inferredCategoryAxisCrosses := inferPPTXTemplateChartCategoryAxisCrosses(existingChartXML, 0); inferredCategoryAxisCrosses != "" {
+			merged["x_axis_crosses"] = inferredCategoryAxisCrosses
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_crosses", "secondaryCategoryAxisCrosses", "secondary_x_axis_crosses", "secondaryXAxisCrosses", "x2_axis_crosses", "x2AxisCrosses") {
+		if inferredSecondaryCategoryAxisCrosses := inferPPTXTemplateChartCategoryAxisCrosses(existingChartXML, 1); inferredSecondaryCategoryAxisCrosses != "" {
+			merged["x2_axis_crosses"] = inferredSecondaryCategoryAxisCrosses
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_major_tick_mark", "categoryAxisMajorTickMark", "x_axis_major_tick_mark", "xAxisMajorTickMark") {
+		if inferredCategoryAxisMajorTickMark := inferPPTXTemplateChartCategoryAxisTickMark(existingChartXML, 0, "<c:majorTickMark"); inferredCategoryAxisMajorTickMark != "" {
+			merged["x_axis_major_tick_mark"] = inferredCategoryAxisMajorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_minor_tick_mark", "categoryAxisMinorTickMark", "x_axis_minor_tick_mark", "xAxisMinorTickMark") {
+		if inferredCategoryAxisMinorTickMark := inferPPTXTemplateChartCategoryAxisTickMark(existingChartXML, 0, "<c:minorTickMark"); inferredCategoryAxisMinorTickMark != "" {
+			merged["x_axis_minor_tick_mark"] = inferredCategoryAxisMinorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_major_tick_mark", "secondaryCategoryAxisMajorTickMark", "secondary_x_axis_major_tick_mark", "secondaryXAxisMajorTickMark", "x2_axis_major_tick_mark", "x2AxisMajorTickMark") {
+		if inferredSecondaryCategoryAxisMajorTickMark := inferPPTXTemplateChartCategoryAxisTickMark(existingChartXML, 1, "<c:majorTickMark"); inferredSecondaryCategoryAxisMajorTickMark != "" {
+			merged["x2_axis_major_tick_mark"] = inferredSecondaryCategoryAxisMajorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_minor_tick_mark", "secondaryCategoryAxisMinorTickMark", "secondary_x_axis_minor_tick_mark", "secondaryXAxisMinorTickMark", "x2_axis_minor_tick_mark", "x2AxisMinorTickMark") {
+		if inferredSecondaryCategoryAxisMinorTickMark := inferPPTXTemplateChartCategoryAxisTickMark(existingChartXML, 1, "<c:minorTickMark"); inferredSecondaryCategoryAxisMinorTickMark != "" {
+			merged["x2_axis_minor_tick_mark"] = inferredSecondaryCategoryAxisMinorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_label_alignment", "categoryAxisLabelAlignment", "x_axis_label_alignment", "xAxisLabelAlignment") {
+		if inferredCategoryAxisLabelAlignment := inferPPTXTemplateChartCategoryAxisLabelAlignment(existingChartXML, 0); inferredCategoryAxisLabelAlignment != "" {
+			merged["x_axis_label_alignment"] = inferredCategoryAxisLabelAlignment
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_label_alignment", "secondaryCategoryAxisLabelAlignment", "secondary_x_axis_label_alignment", "secondaryXAxisLabelAlignment", "x2_axis_label_alignment", "x2AxisLabelAlignment") {
+		if inferredSecondaryCategoryAxisLabelAlignment := inferPPTXTemplateChartCategoryAxisLabelAlignment(existingChartXML, 1); inferredSecondaryCategoryAxisLabelAlignment != "" {
+			merged["x2_axis_label_alignment"] = inferredSecondaryCategoryAxisLabelAlignment
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_label_offset", "categoryAxisLabelOffset", "x_axis_label_offset", "xAxisLabelOffset") {
+		if inferredCategoryAxisLabelOffset, ok := inferPPTXTemplateChartCategoryAxisLabelOffset(existingChartXML, 0); ok {
+			merged["x_axis_label_offset"] = inferredCategoryAxisLabelOffset
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_label_offset", "secondaryCategoryAxisLabelOffset", "secondary_x_axis_label_offset", "secondaryXAxisLabelOffset", "x2_axis_label_offset", "x2AxisLabelOffset") {
+		if inferredSecondaryCategoryAxisLabelOffset, ok := inferPPTXTemplateChartCategoryAxisLabelOffset(existingChartXML, 1); ok {
+			merged["x2_axis_label_offset"] = inferredSecondaryCategoryAxisLabelOffset
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_multi_level_labels", "categoryAxisMultiLevelLabels", "category_axis_multilevel_labels", "categoryAxisMultilevelLabels", "x_axis_multi_level_labels", "xAxisMultiLevelLabels", "x_axis_multilevel_labels", "xAxisMultilevelLabels") {
+		if inferredCategoryAxisMultiLevelLabels, ok := inferPPTXTemplateChartCategoryAxisMultiLevelLabels(existingChartXML, 0); ok {
+			merged["x_axis_multi_level_labels"] = inferredCategoryAxisMultiLevelLabels
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_multi_level_labels", "secondaryCategoryAxisMultiLevelLabels", "secondary_category_axis_multilevel_labels", "secondaryCategoryAxisMultilevelLabels", "secondary_x_axis_multi_level_labels", "secondaryXAxisMultiLevelLabels", "secondary_x_axis_multilevel_labels", "secondaryXAxisMultilevelLabels", "x2_axis_multi_level_labels", "x2AxisMultiLevelLabels", "x2_axis_multilevel_labels", "x2AxisMultilevelLabels") {
+		if inferredSecondaryCategoryAxisMultiLevelLabels, ok := inferPPTXTemplateChartCategoryAxisMultiLevelLabels(existingChartXML, 1); ok {
+			merged["x2_axis_multi_level_labels"] = inferredSecondaryCategoryAxisMultiLevelLabels
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_visible", "categoryAxisVisible", "show_category_axis", "showCategoryAxis", "x_axis_visible", "xAxisVisible") {
+		if inferredCategoryAxisVisible, ok := inferPPTXTemplateChartCategoryAxisVisible(existingChartXML, 0); ok {
+			merged["x_axis_visible"] = inferredCategoryAxisVisible
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_visible", "secondaryCategoryAxisVisible", "show_secondary_category_axis", "showSecondaryCategoryAxis", "secondary_x_axis_visible", "secondaryXAxisVisible", "x2_axis_visible", "x2AxisVisible") {
+		if inferredSecondaryCategoryAxisVisible, ok := inferPPTXTemplateChartCategoryAxisVisible(existingChartXML, 1); ok {
+			merged["x2_axis_visible"] = inferredSecondaryCategoryAxisVisible
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_auto", "categoryAxisAuto", "x_axis_auto", "xAxisAuto") {
+		if inferredCategoryAxisAuto, ok := inferPPTXTemplateChartCategoryAxisAuto(existingChartXML, 0); ok {
+			merged["x_axis_auto"] = inferredCategoryAxisAuto
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_auto", "secondaryCategoryAxisAuto", "secondary_x_axis_auto", "secondaryXAxisAuto", "x2_axis_auto", "x2AxisAuto") {
+		if inferredSecondaryCategoryAxisAuto, ok := inferPPTXTemplateChartCategoryAxisAuto(existingChartXML, 1); ok {
+			merged["x2_axis_auto"] = inferredSecondaryCategoryAxisAuto
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_format", "valueAxisFormat", "y_axis_format", "yAxisFormat") {
+		if inferredValueAxisFormat := inferPPTXTemplateChartValueAxisFormat(existingChartXML, "primary"); inferredValueAxisFormat != "" {
+			merged["y_axis_format"] = inferredValueAxisFormat
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_format", "secondaryValueAxisFormat", "secondary_y_axis_format", "secondaryYAxisFormat", "y2_axis_format", "y2AxisFormat") {
+		if inferredSecondaryValueAxisFormat := inferPPTXTemplateChartValueAxisFormat(existingChartXML, "secondary"); inferredSecondaryValueAxisFormat != "" {
+			merged["y2_axis_format"] = inferredSecondaryValueAxisFormat
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_min", "valueAxisMin", "y_axis_min", "yAxisMin") {
+		if inferredValueAxisMin, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "primary", "<c:min"); ok {
+			merged["y_axis_min"] = inferredValueAxisMin
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_max", "valueAxisMax", "y_axis_max", "yAxisMax") {
+		if inferredValueAxisMax, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "primary", "<c:max"); ok {
+			merged["y_axis_max"] = inferredValueAxisMax
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_min", "secondaryValueAxisMin", "secondary_y_axis_min", "secondaryYAxisMin", "y2_axis_min", "y2AxisMin") {
+		if inferredSecondaryValueAxisMin, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "secondary", "<c:min"); ok {
+			merged["y2_axis_min"] = inferredSecondaryValueAxisMin
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_max", "secondaryValueAxisMax", "secondary_y_axis_max", "secondaryYAxisMax", "y2_axis_max", "y2AxisMax") {
+		if inferredSecondaryValueAxisMax, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "secondary", "<c:max"); ok {
+			merged["y2_axis_max"] = inferredSecondaryValueAxisMax
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_major_unit", "valueAxisMajorUnit", "y_axis_major_unit", "yAxisMajorUnit") {
+		if inferredValueAxisMajorUnit, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "primary", "<c:majorUnit"); ok {
+			merged["y_axis_major_unit"] = inferredValueAxisMajorUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_minor_unit", "valueAxisMinorUnit", "y_axis_minor_unit", "yAxisMinorUnit") {
+		if inferredValueAxisMinorUnit, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "primary", "<c:minorUnit"); ok {
+			merged["y_axis_minor_unit"] = inferredValueAxisMinorUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_major_unit", "secondaryValueAxisMajorUnit", "secondary_y_axis_major_unit", "secondaryYAxisMajorUnit", "y2_axis_major_unit", "y2AxisMajorUnit") {
+		if inferredSecondaryValueAxisMajorUnit, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "secondary", "<c:majorUnit"); ok {
+			merged["y2_axis_major_unit"] = inferredSecondaryValueAxisMajorUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_minor_unit", "secondaryValueAxisMinorUnit", "secondary_y_axis_minor_unit", "secondaryYAxisMinorUnit", "y2_axis_minor_unit", "y2AxisMinorUnit") {
+		if inferredSecondaryValueAxisMinorUnit, ok := inferPPTXTemplateChartValueAxisNumber(existingChartXML, "secondary", "<c:minorUnit"); ok {
+			merged["y2_axis_minor_unit"] = inferredSecondaryValueAxisMinorUnit
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_label_position", "valueAxisLabelPosition", "y_axis_label_position", "yAxisLabelPosition") {
+		if inferredValueAxisLabelPosition := inferPPTXTemplateChartValueAxisLabelPosition(existingChartXML, "primary"); inferredValueAxisLabelPosition != "" {
+			merged["y_axis_label_position"] = inferredValueAxisLabelPosition
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_label_position", "secondaryValueAxisLabelPosition", "secondary_y_axis_label_position", "secondaryYAxisLabelPosition", "y2_axis_label_position", "y2AxisLabelPosition") {
+		if inferredSecondaryValueAxisLabelPosition := inferPPTXTemplateChartValueAxisLabelPosition(existingChartXML, "secondary"); inferredSecondaryValueAxisLabelPosition != "" {
+			merged["y2_axis_label_position"] = inferredSecondaryValueAxisLabelPosition
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_reverse_order", "valueAxisReverseOrder", "y_axis_reverse_order", "yAxisReverseOrder") {
+		if inferredValueAxisReverseOrder := inferPPTXTemplateChartValueAxisReverseOrder(existingChartXML, "primary"); inferredValueAxisReverseOrder != "" {
+			merged["y_axis_reverse_order"] = inferredValueAxisReverseOrder
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_reverse_order", "secondaryValueAxisReverseOrder", "secondary_y_axis_reverse_order", "secondaryYAxisReverseOrder", "y2_axis_reverse_order", "y2AxisReverseOrder") {
+		if inferredSecondaryValueAxisReverseOrder := inferPPTXTemplateChartValueAxisReverseOrder(existingChartXML, "secondary"); inferredSecondaryValueAxisReverseOrder != "" {
+			merged["y2_axis_reverse_order"] = inferredSecondaryValueAxisReverseOrder
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_major_gridlines", "valueAxisMajorGridlines", "y_axis_major_gridlines", "yAxisMajorGridlines") {
+		if inferredValueAxisMajorGridlines, ok := inferPPTXTemplateChartValueAxisHasTag(existingChartXML, "primary", "<c:majorGridlines"); ok {
+			merged["y_axis_major_gridlines"] = inferredValueAxisMajorGridlines
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_minor_gridlines", "valueAxisMinorGridlines", "y_axis_minor_gridlines", "yAxisMinorGridlines") {
+		if inferredValueAxisMinorGridlines, ok := inferPPTXTemplateChartValueAxisHasTag(existingChartXML, "primary", "<c:minorGridlines"); ok {
+			merged["y_axis_minor_gridlines"] = inferredValueAxisMinorGridlines
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_major_gridlines", "secondaryValueAxisMajorGridlines", "secondary_y_axis_major_gridlines", "secondaryYAxisMajorGridlines", "y2_axis_major_gridlines", "y2AxisMajorGridlines") {
+		if inferredSecondaryValueAxisMajorGridlines, ok := inferPPTXTemplateChartValueAxisHasTag(existingChartXML, "secondary", "<c:majorGridlines"); ok {
+			merged["y2_axis_major_gridlines"] = inferredSecondaryValueAxisMajorGridlines
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_minor_gridlines", "secondaryValueAxisMinorGridlines", "secondary_y_axis_minor_gridlines", "secondaryYAxisMinorGridlines", "y2_axis_minor_gridlines", "y2AxisMinorGridlines") {
+		if inferredSecondaryValueAxisMinorGridlines, ok := inferPPTXTemplateChartValueAxisHasTag(existingChartXML, "secondary", "<c:minorGridlines"); ok {
+			merged["y2_axis_minor_gridlines"] = inferredSecondaryValueAxisMinorGridlines
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_crosses", "valueAxisCrosses", "y_axis_crosses", "yAxisCrosses") {
+		if inferredValueAxisCrosses := inferPPTXTemplateChartValueAxisCrosses(existingChartXML, "primary"); inferredValueAxisCrosses != "" {
+			merged["y_axis_crosses"] = inferredValueAxisCrosses
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_crosses", "secondaryValueAxisCrosses", "secondary_y_axis_crosses", "secondaryYAxisCrosses", "y2_axis_crosses", "y2AxisCrosses") {
+		if inferredSecondaryValueAxisCrosses := inferPPTXTemplateChartValueAxisCrosses(existingChartXML, "secondary"); inferredSecondaryValueAxisCrosses != "" {
+			merged["y2_axis_crosses"] = inferredSecondaryValueAxisCrosses
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_cross_between", "valueAxisCrossBetween", "y_axis_cross_between", "yAxisCrossBetween") {
+		if inferredValueAxisCrossBetween := inferPPTXTemplateChartValueAxisCrossBetween(existingChartXML, "primary"); inferredValueAxisCrossBetween != "" {
+			merged["y_axis_cross_between"] = inferredValueAxisCrossBetween
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_cross_between", "secondaryValueAxisCrossBetween", "secondary_y_axis_cross_between", "secondaryYAxisCrossBetween", "y2_axis_cross_between", "y2AxisCrossBetween") {
+		if inferredSecondaryValueAxisCrossBetween := inferPPTXTemplateChartValueAxisCrossBetween(existingChartXML, "secondary"); inferredSecondaryValueAxisCrossBetween != "" {
+			merged["y2_axis_cross_between"] = inferredSecondaryValueAxisCrossBetween
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_major_tick_mark", "valueAxisMajorTickMark", "y_axis_major_tick_mark", "yAxisMajorTickMark") {
+		if inferredValueAxisMajorTickMark := inferPPTXTemplateChartValueAxisTickMark(existingChartXML, "primary", "<c:majorTickMark"); inferredValueAxisMajorTickMark != "" {
+			merged["y_axis_major_tick_mark"] = inferredValueAxisMajorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_minor_tick_mark", "valueAxisMinorTickMark", "y_axis_minor_tick_mark", "yAxisMinorTickMark") {
+		if inferredValueAxisMinorTickMark := inferPPTXTemplateChartValueAxisTickMark(existingChartXML, "primary", "<c:minorTickMark"); inferredValueAxisMinorTickMark != "" {
+			merged["y_axis_minor_tick_mark"] = inferredValueAxisMinorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_major_tick_mark", "secondaryValueAxisMajorTickMark", "secondary_y_axis_major_tick_mark", "secondaryYAxisMajorTickMark", "y2_axis_major_tick_mark", "y2AxisMajorTickMark") {
+		if inferredSecondaryValueAxisMajorTickMark := inferPPTXTemplateChartValueAxisTickMark(existingChartXML, "secondary", "<c:majorTickMark"); inferredSecondaryValueAxisMajorTickMark != "" {
+			merged["y2_axis_major_tick_mark"] = inferredSecondaryValueAxisMajorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_minor_tick_mark", "secondaryValueAxisMinorTickMark", "secondary_y_axis_minor_tick_mark", "secondaryYAxisMinorTickMark", "y2_axis_minor_tick_mark", "y2AxisMinorTickMark") {
+		if inferredSecondaryValueAxisMinorTickMark := inferPPTXTemplateChartValueAxisTickMark(existingChartXML, "secondary", "<c:minorTickMark"); inferredSecondaryValueAxisMinorTickMark != "" {
+			merged["y2_axis_minor_tick_mark"] = inferredSecondaryValueAxisMinorTickMark
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_legend", "showLegend") {
+		if inferredShowLegend, _, ok := inferPPTXTemplateChartLegend(existingChartXML); ok {
+			merged["show_legend"] = inferredShowLegend
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "legend_position", "legendPosition", "legend_pos", "legendPos") {
+		if _, inferredLegendPosition, ok := inferPPTXTemplateChartLegend(existingChartXML); ok && inferredLegendPosition != "" {
+			merged["legend_position"] = inferredLegendPosition
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "labels", "data_labels", "show_labels", "showLabels") {
+		if inferredLabels, ok := inferPPTXTemplateChartLabels(existingChartXML); ok {
+			merged["labels"] = inferredLabels
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "label_position", "labelPosition", "labels_position", "data_label_position", "dataLabelPosition") {
+		if inferredLabelPosition := inferPPTXTemplateChartLabelPosition(existingChartXML); inferredLabelPosition != "" {
+			merged["label_position"] = inferredLabelPosition
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "label_format", "labelFormat", "labels_format", "data_label_format", "dataLabelFormat") {
+		if inferredLabelFormat := inferPPTXTemplateChartLabelFormat(existingChartXML); inferredLabelFormat != "" {
+			merged["label_format"] = inferredLabelFormat
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "label_separator", "labelSeparator", "data_label_separator", "dataLabelSeparator") {
+		if inferredLabelSeparator := inferPPTXTemplateChartLabelSeparator(existingChartXML); inferredLabelSeparator != "" {
+			merged["label_separator"] = inferredLabelSeparator
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_leader_lines", "showLeaderLines", "label_leader_lines", "labelLeaderLines") {
+		if inferredShowLeaderLines, ok := inferPPTXTemplateChartLabelToggle(existingChartXML, "<c:showLeaderLines"); ok {
+			merged["show_leader_lines"] = inferredShowLeaderLines
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_value", "showValue", "label_value", "labelValue") {
+		if inferredShowValue, ok := inferPPTXTemplateChartLabelToggle(existingChartXML, "<c:showVal"); ok {
+			merged["show_value"] = inferredShowValue
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_category", "showCategory", "label_category", "labelCategory") {
+		if inferredShowCategory, ok := inferPPTXTemplateChartLabelToggle(existingChartXML, "<c:showCatName"); ok {
+			merged["show_category"] = inferredShowCategory
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_series_name", "showSeriesName", "label_series_name", "labelSeriesName") {
+		if inferredShowSeriesName, ok := inferPPTXTemplateChartLabelToggle(existingChartXML, "<c:showSerName"); ok {
+			merged["show_series_name"] = inferredShowSeriesName
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_percent", "showPercent", "label_percent", "labelPercent") {
+		if inferredShowPercent, ok := inferPPTXTemplateChartLabelToggle(existingChartXML, "<c:showPercent"); ok {
+			merged["show_percent"] = inferredShowPercent
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_legend_key", "showLegendKey", "label_legend_key", "labelLegendKey") {
+		if inferredShowLegendKey, ok := inferPPTXTemplateChartLabelToggle(existingChartXML, "<c:showLegendKey"); ok {
+			merged["show_legend_key"] = inferredShowLegendKey
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "show_bubble_size", "showBubbleSize", "label_bubble_size", "labelBubbleSize") {
+		if inferredShowBubbleSize, ok := inferPPTXTemplateChartLabelToggle(existingChartXML, "<c:showBubbleSize"); ok {
+			merged["show_bubble_size"] = inferredShowBubbleSize
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "category_axis_title", "categoryAxisTitle", "x_axis_title", "xAxisTitle") {
+		if inferredPrimaryCategoryTitle := inferPPTXTemplateChartCategoryAxisTitle(existingChartXML, 0); inferredPrimaryCategoryTitle != "" {
+			merged["x_axis_title"] = inferredPrimaryCategoryTitle
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_category_axis_title", "secondaryCategoryAxisTitle", "secondary_x_axis_title", "secondaryXAxisTitle", "x2_axis_title", "x2AxisTitle") {
+		if inferredSecondaryCategoryTitle := inferPPTXTemplateChartCategoryAxisTitle(existingChartXML, 1); inferredSecondaryCategoryTitle != "" {
+			merged["x2_axis_title"] = inferredSecondaryCategoryTitle
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "value_axis_title", "valueAxisTitle", "y_axis_title", "yAxisTitle") {
+		if inferredPrimaryValueTitle := inferPPTXTemplateChartValueAxisTitle(existingChartXML, "primary"); inferredPrimaryValueTitle != "" {
+			merged["y_axis_title"] = inferredPrimaryValueTitle
+		}
+	}
+	if !pptxTemplateChartHasAnyKey(merged, "secondary_value_axis_title", "secondaryValueAxisTitle", "secondary_y_axis_title", "secondaryYAxisTitle", "y2_axis_title", "y2AxisTitle") {
+		if inferredSecondaryValueTitle := inferPPTXTemplateChartValueAxisTitle(existingChartXML, "secondary"); inferredSecondaryValueTitle != "" {
+			merged["y2_axis_title"] = inferredSecondaryValueTitle
+		}
+	}
+	if officeNormalizeChartType(anyToStringForLLM(firstMapValue(merged, "type", "chart_type", "kind"))) == "combo" {
+		inferPPTXTemplateComboSeriesDefaults(merged, existingChartXML)
+	}
+	return merged, nil
+}
+
+func pptxTemplateChartHasAnyKey(chart map[string]interface{}, keys ...string) bool {
+	for _, key := range keys {
+		if _, ok := chart[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func inferPPTXTemplateChartType(chartXML []byte) string {
+	xmlText := string(chartXML)
+	hasBar := strings.Contains(xmlText, "<c:barChart")
+	hasLine := strings.Contains(xmlText, "<c:lineChart")
+	switch {
+	case hasBar && hasLine:
+		return "combo"
+	case strings.Contains(xmlText, "<c:doughnutChart"):
+		return "donut"
+	case strings.Contains(xmlText, "<c:pieChart"):
+		return "pie"
+	case hasLine:
+		return "line"
+	case hasBar:
+		barBlock := pptxTemplateFirstChartBlock(xmlText, "<c:barChart", "</c:barChart>")
+		barDir := pptxTemplateTagAttributeValue(barBlock, "<c:barDir", "val")
+		grouping := pptxTemplateTagAttributeValue(barBlock, "<c:grouping", "val")
+		switch grouping {
+		case "percentStacked":
+			if barDir == "bar" {
+				return "percent_stacked_bar"
+			}
+			return "percent_stacked_column"
+		case "stacked":
+			if barDir == "bar" {
+				return "stacked_bar"
+			}
+			return "stacked_column"
+		default:
+			return "bar"
+		}
+	default:
+		return ""
+	}
+}
+
+func inferPPTXTemplateChartAxisType(chartXML []byte) string {
+	xmlText := string(chartXML)
+	if !strings.Contains(xmlText, "<c:dateAx") {
+		return ""
+	}
+	format := pptxTemplateDateAxisFormatCode(xmlText)
+	lower := strings.ToLower(strings.TrimSpace(format))
+	if strings.Contains(lower, "h") || strings.Contains(lower, ":") {
+		return "datetime"
+	}
+	return "date"
+}
+
+func inferPPTXTemplateChartTitle(chartXML []byte) string {
+	xmlText := string(chartXML)
+	start := strings.Index(xmlText, "<c:chart>")
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(xmlText[start:], "<c:plotArea>")
+	if end < 0 {
+		return ""
+	}
+	return pptxTemplateTitleText(xmlText[start : start+end])
+}
+
+func inferPPTXTemplateChartVaryColors(chartXML []byte) (bool, bool) {
+	value := pptxTemplateChartAppearanceAttribute(string(chartXML), "<c:varyColors", "val")
+	switch value {
+	case "0":
+		return false, true
+	case "1":
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+func inferPPTXTemplateChartStartAngle(chartXML []byte) (int, bool) {
+	return pptxTemplateChartAppearanceInt(string(chartXML), "<c:firstSliceAng")
+}
+
+func inferPPTXTemplateChartHoleSize(chartXML []byte) (int, bool) {
+	return pptxTemplateChartAppearanceInt(string(chartXML), "<c:holeSize")
+}
+
+func inferPPTXTemplateChartSmooth(chartXML []byte) (bool, bool) {
+	block := pptxTemplateChartAppearanceBlock(string(chartXML))
+	if block == "" || inferPPTXTemplateChartType(chartXML) != "line" {
+		return false, false
+	}
+	seriesBlocks := pptxTemplateChartBlocks(block, "<c:ser>", "</c:ser>")
+	if len(seriesBlocks) == 0 {
+		return false, false
+	}
+	smoothValue := ""
+	for _, seriesBlock := range seriesBlocks {
+		current := strings.TrimSpace(pptxTemplateTagAttributeValue(seriesBlock, "<c:smooth", "val"))
+		if current == "" {
+			return false, false
+		}
+		if smoothValue == "" {
+			smoothValue = current
+			continue
+		}
+		if current != smoothValue {
+			return false, false
+		}
+	}
+	switch smoothValue {
+	case "0":
+		return false, true
+	case "1":
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+func inferPPTXTemplateChartGapWidth(chartXML []byte) (int, bool) {
+	return pptxTemplateChartAppearanceInt(string(chartXML), "<c:gapWidth")
+}
+
+func inferPPTXTemplateChartOverlap(chartXML []byte) (int, bool) {
+	return pptxTemplateChartAppearanceInt(string(chartXML), "<c:overlap")
+}
+
+func inferPPTXTemplateChartAxisFormat(chartXML []byte) string {
+	return pptxTemplateDateAxisFormatCode(string(chartXML))
+}
+
+func inferPPTXTemplateChartSecondaryAxisFormat(chartXML []byte) string {
+	return pptxTemplateDateAxisFormatCodeAt(string(chartXML), 1)
+}
+
+func inferPPTXTemplateChartValueAxisFormat(chartXML []byte, axisKind string) string {
+	return pptxTemplateValueAxisFormatCode(string(chartXML), axisKind)
+}
+
+func inferPPTXTemplateChartValueAxisNumber(chartXML []byte, axisKind, tagStart string) (float64, bool) {
+	return pptxTemplateValueAxisNumber(string(chartXML), axisKind, tagStart)
+}
+
+func inferPPTXTemplateChartValueAxisLabelPosition(chartXML []byte, axisKind string) string {
+	return pptxTemplateValueAxisAttribute(string(chartXML), axisKind, "<c:tickLblPos", "val")
+}
+
+func inferPPTXTemplateChartValueAxisReverseOrder(chartXML []byte, axisKind string) string {
+	return pptxTemplateValueAxisAttribute(string(chartXML), axisKind, "<c:orientation", "val")
+}
+
+func inferPPTXTemplateChartValueAxisCrosses(chartXML []byte, axisKind string) string {
+	return pptxTemplateValueAxisAttribute(string(chartXML), axisKind, "<c:crosses", "val")
+}
+
+func inferPPTXTemplateChartValueAxisCrossBetween(chartXML []byte, axisKind string) string {
+	return pptxTemplateValueAxisAttribute(string(chartXML), axisKind, "<c:crossBetween", "val")
+}
+
+func inferPPTXTemplateChartValueAxisHasTag(chartXML []byte, axisKind, tagStart string) (bool, bool) {
+	block := pptxTemplateValueAxisBlock(string(chartXML), axisKind)
+	if block == "" {
+		return false, false
+	}
+	return strings.Contains(block, tagStart), true
+}
+
+func inferPPTXTemplateChartValueAxisTickMark(chartXML []byte, axisKind, tagStart string) string {
+	return pptxTemplateValueAxisAttribute(string(chartXML), axisKind, tagStart, "val")
+}
+
+func inferPPTXTemplateChartDateAxisNumber(chartXML []byte, axisIndex int, tagStart string) (float64, bool) {
+	return pptxTemplateDateAxisNumber(string(chartXML), axisIndex, tagStart)
+}
+
+func inferPPTXTemplateChartDateAxisTimeUnit(chartXML []byte, axisIndex int, tagStart string) string {
+	return pptxTemplateDateAxisTimeUnit(string(chartXML), axisIndex, tagStart)
+}
+
+func inferPPTXTemplateChartCategoryAxisLabelPosition(chartXML []byte, axisIndex int) string {
+	return pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:tickLblPos", "val")
+}
+
+func inferPPTXTemplateChartCategoryAxisReverseOrder(chartXML []byte, axisIndex int) string {
+	return pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:orientation", "val")
+}
+
+func inferPPTXTemplateChartCategoryAxisCrosses(chartXML []byte, axisIndex int) string {
+	return pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:crosses", "val")
+}
+
+func inferPPTXTemplateChartCategoryAxisTickMark(chartXML []byte, axisIndex int, tagStart string) string {
+	return pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, tagStart, "val")
+}
+
+func inferPPTXTemplateChartCategoryAxisLabelAlignment(chartXML []byte, axisIndex int) string {
+	return pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:lblAlgn", "val")
+}
+
+func inferPPTXTemplateChartCategoryAxisLabelOffset(chartXML []byte, axisIndex int) (int, bool) {
+	value := pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:lblOffset", "val")
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func inferPPTXTemplateChartCategoryAxisMultiLevelLabels(chartXML []byte, axisIndex int) (bool, bool) {
+	value := pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:noMultiLvlLbl", "val")
+	switch value {
+	case "0":
+		return true, true
+	case "1":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func inferPPTXTemplateChartCategoryAxisVisible(chartXML []byte, axisIndex int) (bool, bool) {
+	value := pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:delete", "val")
+	switch value {
+	case "0":
+		return true, true
+	case "1":
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+func inferPPTXTemplateChartCategoryAxisAuto(chartXML []byte, axisIndex int) (bool, bool) {
+	value := pptxTemplateCategoryAxisAttribute(string(chartXML), axisIndex, "<c:auto", "val")
+	switch value {
+	case "0":
+		return false, true
+	case "1":
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+func inferPPTXTemplateChartLegend(chartXML []byte) (bool, string, bool) {
+	xmlText := string(chartXML)
+	legendBlock := pptxTemplateFirstChartBlock(xmlText, "<c:legend>", "</c:legend>")
+	if legendBlock != "" {
+		return true, strings.TrimSpace(pptxTemplateTagAttributeValue(legendBlock, "<c:legendPos", "val")), true
+	}
+	if pptxTemplateChartWouldShowLegendByDefault(xmlText) {
+		return false, "", true
+	}
+	return false, "", false
+}
+
+func inferPPTXTemplateChartLabels(chartXML []byte) (bool, bool) {
+	if pptxTemplateUniformDataLabelsBlock(string(chartXML)) == "" {
+		return false, false
+	}
+	return true, true
+}
+
+func inferPPTXTemplateChartLabelPosition(chartXML []byte) string {
+	return pptxTemplateChartDataLabelsAttribute(string(chartXML), "<c:dLblPos", "val")
+}
+
+func inferPPTXTemplateChartLabelFormat(chartXML []byte) string {
+	return pptxTemplateChartDataLabelsAttribute(string(chartXML), "<c:numFmt", "formatCode")
+}
+
+func inferPPTXTemplateChartLabelSeparator(chartXML []byte) string {
+	block := pptxTemplateUniformDataLabelsBlock(string(chartXML))
+	if block == "" {
+		return ""
+	}
+	return strings.TrimSpace(html.UnescapeString(pptxTemplateTagValue(block, "<c:separator>", "</c:separator>")))
+}
+
+func inferPPTXTemplateChartLabelToggle(chartXML []byte, tagStart string) (bool, bool) {
+	value := pptxTemplateChartDataLabelsAttribute(string(chartXML), tagStart, "val")
+	switch value {
+	case "0":
+		return false, true
+	case "1":
+		return true, true
+	default:
+		return false, false
+	}
+}
+
+func inferPPTXTemplateChartCategoryAxisTitle(chartXML []byte, axisIndex int) string {
+	xmlText := string(chartXML)
+	var axisBlocks []string
+	if strings.Contains(xmlText, "<c:dateAx") {
+		axisBlocks = pptxTemplateChartBlocks(xmlText, "<c:dateAx>", "</c:dateAx>")
+	} else {
+		axisBlocks = pptxTemplateChartBlocks(xmlText, "<c:catAx>", "</c:catAx>")
+	}
+	if axisIndex < 0 || axisIndex >= len(axisBlocks) {
+		return ""
+	}
+	return pptxTemplateTitleText(axisBlocks[axisIndex])
+}
+
+func inferPPTXTemplateChartValueAxisTitle(chartXML []byte, axisKind string) string {
+	xmlText := string(chartXML)
+	for _, block := range pptxTemplateChartBlocks(xmlText, "<c:valAx>", "</c:valAx>") {
+		currentAxisKind := "primary"
+		if pptxTemplateTagAttributeValue(block, "<c:axPos", "val") == "r" {
+			currentAxisKind = "secondary"
+		}
+		if currentAxisKind != axisKind {
+			continue
+		}
+		return pptxTemplateTitleText(block)
+	}
+	return ""
+}
+
+func inferPPTXTemplateComboSeriesDefaults(chart map[string]interface{}, chartXML []byte) {
+	seriesItems, ok := chart["series"].([]interface{})
+	if !ok || len(seriesItems) == 0 {
+		return
+	}
+	defaults := inferPPTXTemplateExistingComboSeriesDefaults(chartXML)
+	if len(defaults) == 0 {
+		return
+	}
+	for idx, item := range seriesItems {
+		seriesMap, ok := coerceCompatMap(item)
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(anyToStringForLLM(firstMapValue(seriesMap, "name", "label")))
+		if name == "" {
+			name = fmt.Sprintf("Series %d", idx+1)
+		}
+		inferred, ok := defaults[name]
+		if !ok {
+			continue
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "type", "chart_type", "render_as", "renderAs") && inferred.Type != "" {
+			seriesMap["type"] = inferred.Type
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "axis", "y_axis", "yAxis", "value_axis", "valueAxis") && inferred.Axis != "" {
+			seriesMap["axis"] = inferred.Axis
+		}
+		seriesItems[idx] = seriesMap
+	}
+	chart["series"] = seriesItems
+}
+
+func inferPPTXTemplateExistingComboSeriesDefaults(chartXML []byte) map[string]pptxTemplateChartSeriesDefault {
+	xmlText := string(chartXML)
+	valueAxisKinds := pptxTemplateValueAxisKinds(xmlText)
+	defaults := make(map[string]pptxTemplateChartSeriesDefault)
+	for _, group := range []struct {
+		blockType string
+		axisType  string
+	}{
+		{blockType: "barChart", axisType: "bar"},
+		{blockType: "lineChart", axisType: "line"},
+	} {
+		for _, block := range pptxTemplateChartBlocks(xmlText, "<c:"+group.blockType+">", "</c:"+group.blockType+">") {
+			axis := pptxTemplateChartGroupAxis(block, valueAxisKinds)
+			for _, seriesBlock := range pptxTemplateChartBlocks(block, "<c:ser>", "</c:ser>") {
+				name := pptxTemplateSeriesName(seriesBlock)
+				if name == "" {
+					continue
+				}
+				defaults[name] = pptxTemplateChartSeriesDefault{Type: group.axisType, Axis: axis}
+			}
+		}
+	}
+	return defaults
+}
+
+func pptxTemplateDateAxisFormatCode(xmlText string) string {
+	return pptxTemplateDateAxisFormatCodeAt(xmlText, 0)
+}
+
+func pptxTemplateDateAxisFormatCodeAt(xmlText string, axisIndex int) string {
+	block := pptxTemplateDateAxisBlockAt(xmlText, axisIndex)
+	if block == "" {
+		return ""
+	}
+	return strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:numFmt", "formatCode"))
+}
+
+func pptxTemplateDateAxisBlockAt(xmlText string, axisIndex int) string {
+	if axisIndex < 0 {
+		return ""
+	}
+	searchFrom := 0
+	for current := 0; current <= axisIndex; current++ {
+		start := strings.Index(xmlText[searchFrom:], "<c:dateAx")
+		if start < 0 {
+			return ""
+		}
+		start += searchFrom
+		end := strings.Index(xmlText[start:], "</c:dateAx>")
+		if end < 0 {
+			return ""
+		}
+		block := xmlText[start : start+end]
+		if current == axisIndex {
+			return block
+		}
+		searchFrom = start + end + len("</c:dateAx>")
+	}
+	return ""
+}
+
+func pptxTemplateCategoryAxisBlockAt(xmlText string, axisIndex int) string {
+	if strings.Contains(xmlText, "<c:dateAx") {
+		return pptxTemplateDateAxisBlockAt(xmlText, axisIndex)
+	}
+	blocks := pptxTemplateChartBlocks(xmlText, "<c:catAx>", "</c:catAx>")
+	if axisIndex < 0 || axisIndex >= len(blocks) {
+		return ""
+	}
+	return blocks[axisIndex]
+}
+
+func pptxTemplateCategoryAxisAttribute(xmlText string, axisIndex int, tagStart, attribute string) string {
+	block := pptxTemplateCategoryAxisBlockAt(xmlText, axisIndex)
+	if block == "" {
+		return ""
+	}
+	return strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, attribute))
+}
+
+func pptxTemplateFirstChartBlock(xmlText, startTag, endTag string) string {
+	start := strings.Index(xmlText, startTag)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(xmlText[start:], endTag)
+	if end < 0 {
+		return xmlText[start:]
+	}
+	return xmlText[start : start+end+len(endTag)]
+}
+
+func pptxTemplateChartBlocks(xmlText, startTag, endTag string) []string {
+	blocks := make([]string, 0, 2)
+	searchFrom := 0
+	for searchFrom < len(xmlText) {
+		start := strings.Index(xmlText[searchFrom:], startTag)
+		if start < 0 {
+			break
+		}
+		start += searchFrom
+		end := strings.Index(xmlText[start:], endTag)
+		if end < 0 {
+			break
+		}
+		end += start + len(endTag)
+		blocks = append(blocks, xmlText[start:end])
+		searchFrom = end
+	}
+	return blocks
+}
+
+func pptxTemplateChartGroupAxis(chartBlock string, valueAxisKinds map[string]string) string {
+	axisIDs := pptxTemplateAxisIDs(chartBlock)
+	if len(axisIDs) >= 2 {
+		if axis := valueAxisKinds[axisIDs[1]]; axis != "" {
+			return axis
+		}
+	}
+	return "primary"
+}
+
+func pptxTemplateValueAxisKinds(xmlText string) map[string]string {
+	kinds := make(map[string]string)
+	for _, block := range pptxTemplateChartBlocks(xmlText, "<c:valAx>", "</c:valAx>") {
+		axisIDs := pptxTemplateAxisIDs(block)
+		if len(axisIDs) == 0 {
+			continue
+		}
+		axisKind := "primary"
+		if pptxTemplateTagAttributeValue(block, "<c:axPos", "val") == "r" {
+			axisKind = "secondary"
+		}
+		kinds[axisIDs[0]] = axisKind
+	}
+	return kinds
+}
+
+func pptxTemplateValueAxisFormatCode(xmlText, axisKind string) string {
+	block := pptxTemplateValueAxisBlock(xmlText, axisKind)
+	if block == "" {
+		return ""
+	}
+	formatCode := strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:numFmt", "formatCode"))
+	if formatCode == "" {
+		return ""
+	}
+	sourceLinked := strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:numFmt", "sourceLinked"))
+	if strings.EqualFold(formatCode, "General") && sourceLinked != "0" {
+		return ""
+	}
+	return formatCode
+}
+
+func pptxTemplateValueAxisNumber(xmlText, axisKind, tagStart string) (float64, bool) {
+	block := pptxTemplateValueAxisBlock(xmlText, axisKind)
+	if block == "" {
+		return 0, false
+	}
+	value := strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, "val"))
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func pptxTemplateValueAxisAttribute(xmlText, axisKind, tagStart, attribute string) string {
+	block := pptxTemplateValueAxisBlock(xmlText, axisKind)
+	if block == "" {
+		return ""
+	}
+	return strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, attribute))
+}
+
+func pptxTemplateValueAxisBlock(xmlText, axisKind string) string {
+	for _, block := range pptxTemplateChartBlocks(xmlText, "<c:valAx>", "</c:valAx>") {
+		currentAxisKind := "primary"
+		if pptxTemplateTagAttributeValue(block, "<c:axPos", "val") == "r" {
+			currentAxisKind = "secondary"
+		}
+		if currentAxisKind == axisKind {
+			return block
+		}
+	}
+	return ""
+}
+
+func pptxTemplateDateAxisNumber(xmlText string, axisIndex int, tagStart string) (float64, bool) {
+	block := pptxTemplateDateAxisBlockAt(xmlText, axisIndex)
+	if block == "" {
+		return 0, false
+	}
+	value := strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, "val"))
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func pptxTemplateDateAxisTimeUnit(xmlText string, axisIndex int, tagStart string) string {
+	block := pptxTemplateDateAxisBlockAt(xmlText, axisIndex)
+	if block == "" {
+		return ""
+	}
+	return strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, "val"))
+}
+
+func pptxTemplateChartWouldShowLegendByDefault(xmlText string) bool {
+	chartType := inferPPTXTemplateChartType([]byte(xmlText))
+	seriesCount := strings.Count(xmlText, "<c:ser>")
+	categoryCount := pptxTemplateChartCategoryPointCount(xmlText)
+	switch chartType {
+	case "pie", "donut":
+		return categoryCount > 1
+	case "line":
+		return seriesCount > 1
+	case "":
+		return false
+	default:
+		return seriesCount > 0
+	}
+}
+
+func pptxTemplateChartCategoryPointCount(xmlText string) int {
+	categoryBlock := pptxTemplateFirstChartBlock(xmlText, "<c:cat>", "</c:cat>")
+	if categoryBlock == "" {
+		return 0
+	}
+	return strings.Count(categoryBlock, "<c:pt ")
+}
+
+func pptxTemplateChartAppearanceAttribute(xmlText, tagStart, attribute string) string {
+	block := pptxTemplateChartAppearanceBlock(xmlText)
+	if block == "" {
+		return ""
+	}
+	return strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, attribute))
+}
+
+func pptxTemplateChartAppearanceInt(xmlText, tagStart string) (int, bool) {
+	value := pptxTemplateChartAppearanceAttribute(xmlText, tagStart, "val")
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
+func pptxTemplateChartAppearanceBlock(xmlText string) string {
+	switch inferPPTXTemplateChartType([]byte(xmlText)) {
+	case "pie":
+		return pptxTemplateFirstChartBlock(xmlText, "<c:pieChart>", "</c:pieChart>")
+	case "donut":
+		return pptxTemplateFirstChartBlock(xmlText, "<c:doughnutChart>", "</c:doughnutChart>")
+	case "line":
+		return pptxTemplateFirstChartBlock(xmlText, "<c:lineChart>", "</c:lineChart>")
+	case "bar", "stacked_bar", "stacked_column", "percent_stacked_bar", "percent_stacked_column":
+		return pptxTemplateFirstChartBlock(xmlText, "<c:barChart>", "</c:barChart>")
+	default:
+		return ""
+	}
+}
+
+func pptxTemplateChartDataLabelsAttribute(xmlText, tagStart, attribute string) string {
+	block := pptxTemplateUniformDataLabelsBlock(xmlText)
+	if block == "" {
+		return ""
+	}
+	return strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, attribute))
+}
+
+func pptxTemplateUniformDataLabelsBlock(xmlText string) string {
+	if inferPPTXTemplateChartType([]byte(xmlText)) == "combo" {
+		return ""
+	}
+	blocks := pptxTemplateChartBlocks(xmlText, "<c:dLbls>", "</c:dLbls>")
+	if len(blocks) == 0 {
+		return ""
+	}
+	first := blocks[0]
+	for _, block := range blocks[1:] {
+		if block != first {
+			return ""
+		}
+	}
+	return first
+}
+
+func pptxTemplateAxisIDs(xmlText string) []string {
+	ids := make([]string, 0, 2)
+	searchFrom := 0
+	for searchFrom < len(xmlText) {
+		start := strings.Index(xmlText[searchFrom:], "<c:axId")
+		if start < 0 {
+			break
+		}
+		start += searchFrom
+		value := strings.TrimSpace(pptxTemplateTagAttributeValue(xmlText[start:], "<c:axId", "val"))
+		if value != "" {
+			ids = append(ids, value)
+		}
+		searchFrom = start + len("<c:axId")
+	}
+	return ids
+}
+
+func pptxTemplateSeriesName(seriesBlock string) string {
+	txBlock := pptxTemplateFirstChartBlock(seriesBlock, "<c:tx>", "</c:tx>")
+	if txBlock == "" {
+		return ""
+	}
+	return strings.TrimSpace(html.UnescapeString(pptxTemplateTagValue(txBlock, "<c:v>", "</c:v>")))
+}
+
+func pptxTemplateTitleText(xmlText string) string {
+	titleBlock := pptxTemplateFirstChartBlock(xmlText, "<c:title>", "</c:title>")
+	if titleBlock == "" {
+		return ""
+	}
+	values := pptxTemplateTagValues(titleBlock, "<a:t>", "</a:t>")
+	if len(values) == 0 {
+		return ""
+	}
+	var text strings.Builder
+	for _, value := range values {
+		text.WriteString(html.UnescapeString(value))
+	}
+	return strings.TrimSpace(text.String())
+}
+
+func pptxTemplateTagAttributeValue(xmlText, tagStart, attribute string) string {
+	start := strings.Index(xmlText, tagStart)
+	if start < 0 {
+		return ""
+	}
+	end := strings.Index(xmlText[start:], ">")
+	if end < 0 {
+		return ""
+	}
+	tag := xmlText[start : start+end]
+	pattern := attribute + `="`
+	valueStart := strings.Index(tag, pattern)
+	if valueStart < 0 {
+		return ""
+	}
+	valueStart += len(pattern)
+	valueEnd := strings.Index(tag[valueStart:], `"`)
+	if valueEnd < 0 {
+		return ""
+	}
+	return tag[valueStart : valueStart+valueEnd]
+}
+
+func pptxTemplateTagValue(xmlText, startTag, endTag string) string {
+	start := strings.Index(xmlText, startTag)
+	if start < 0 {
+		return ""
+	}
+	start += len(startTag)
+	end := strings.Index(xmlText[start:], endTag)
+	if end < 0 {
+		return ""
+	}
+	return xmlText[start : start+end]
+}
+
+func pptxTemplateTagValues(xmlText, startTag, endTag string) []string {
+	values := make([]string, 0, 2)
+	searchFrom := 0
+	for searchFrom < len(xmlText) {
+		start := strings.Index(xmlText[searchFrom:], startTag)
+		if start < 0 {
+			break
+		}
+		start += searchFrom + len(startTag)
+		end := strings.Index(xmlText[start:], endTag)
+		if end < 0 {
+			break
+		}
+		values = append(values, xmlText[start:start+end])
+		searchFrom = start + end + len(endTag)
+	}
+	return values
 }
 
 func replaceTextNodesInPPTXSlideXML(data []byte, replacements map[string]string) ([]byte, error) {
@@ -481,6 +1710,7 @@ func (s *pptxTemplateState) save() error {
 			}
 		}
 	}
+	seenChartIndices := make(map[int]int)
 
 	for idx, slide := range s.slides {
 		slideName := fmt.Sprintf("slide%d.xml", idx+1)
@@ -492,8 +1722,12 @@ func (s *pptxTemplateState) save() error {
 		// Process slide charts - remap chart indices and write chart files
 		updatedRels := slide.Rels
 		for _, chart := range slide.Charts {
-			maxChartIndex++
-			newChartIndex := maxChartIndex
+			newChartIndex := chart.ChartIndex
+			if seenChartIndices[chart.ChartIndex] > 0 {
+				maxChartIndex++
+				newChartIndex = maxChartIndex
+			}
+			seenChartIndices[chart.ChartIndex]++
 
 			// Write chart XML
 			chartName := fmt.Sprintf("chart%d.xml", newChartIndex)
@@ -531,12 +1765,16 @@ func (s *pptxTemplateState) save() error {
 						return fmt.Errorf("write workbook %s: %w", workbookName, err)
 					}
 				}
+			} else if err := os.Remove(chartRelsPath); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("remove chart rels %s: %w", chartName, err)
 			}
 
 			// Update slide rels to point to new chart index
-			oldPattern := fmt.Sprintf("chart%d.xml", chart.ChartIndex)
-			newPattern := fmt.Sprintf("chart%d.xml", newChartIndex)
-			updatedRels = []byte(strings.ReplaceAll(string(updatedRels), oldPattern, newPattern))
+			if newChartIndex != chart.ChartIndex {
+				oldPattern := fmt.Sprintf("chart%d.xml", chart.ChartIndex)
+				newPattern := fmt.Sprintf("chart%d.xml", newChartIndex)
+				updatedRels = []byte(strings.ReplaceAll(string(updatedRels), oldPattern, newPattern))
+			}
 		}
 
 		relsPath := filepath.Join(relsDir, slideName+".rels")
@@ -555,13 +1793,101 @@ func (s *pptxTemplateState) save() error {
 	if err := os.WriteFile(filepath.Join(s.tempDir, "docProps", "app.xml"), []byte(officePPTXAppPropsXML(titles)), 0o644); err != nil {
 		return fmt.Errorf("write app.xml: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(s.tempDir, "[Content_Types].xml"), []byte(officePPTXContentTypesXML(len(s.slides), 0, 0)), 0o644); err != nil {
-		return fmt.Errorf("write content types: %w", err)
+	if err := cleanupPPTXOrphanChartArtifacts(s.tempDir, len(s.slides)); err != nil {
+		return err
 	}
 	if err := cleanupPPTXOrphanMedia(s.tempDir, len(s.slides)); err != nil {
 		return err
 	}
+	contentTypesXML, err := buildPPTXTemplateContentTypesXML(s.tempDir, len(s.slides))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(s.tempDir, "[Content_Types].xml"), []byte(contentTypesXML), 0o644); err != nil {
+		return fmt.Errorf("write content types: %w", err)
+	}
 	return nil
+}
+
+func buildPPTXTemplateContentTypesXML(tempDir string, slideCount int) (string, error) {
+	chartNames, err := pptxTemplateChartPartNames(tempDir)
+	if err != nil {
+		return "", err
+	}
+	hasEmbeddedWorkbook, err := pptxTemplateHasEmbeddedWorkbook(tempDir)
+	if err != nil {
+		return "", err
+	}
+
+	var overrides strings.Builder
+	for idx := 1; idx <= slideCount; idx++ {
+		overrides.WriteString(fmt.Sprintf(`<Override PartName="/ppt/slides/slide%d.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`, idx))
+	}
+	for _, chartName := range chartNames {
+		overrides.WriteString(`<Override PartName="/ppt/charts/` + officeXMLText(chartName) + `" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>`)
+	}
+	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+		`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+		`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+		`<Default Extension="xml" ContentType="application/xml"/>` +
+		func() string {
+			if hasEmbeddedWorkbook {
+				return `<Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>`
+			}
+			return ``
+		}() +
+		`<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>` +
+		`<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>` +
+		`<Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>` +
+		`<Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>` +
+		`<Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>` +
+		`<Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>` +
+		overrides.String() +
+		`</Types>`, nil
+}
+
+func pptxTemplateChartPartNames(tempDir string) ([]string, error) {
+	chartsDir := filepath.Join(tempDir, "ppt", "charts")
+	entries, err := os.ReadDir(chartsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read charts dir: %w", err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if !strings.HasPrefix(name, "chart") || !strings.HasSuffix(name, ".xml") {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names, nil
+}
+
+func pptxTemplateHasEmbeddedWorkbook(tempDir string) (bool, error) {
+	embeddingsDir := filepath.Join(tempDir, "ppt", "embeddings")
+	entries, err := os.ReadDir(embeddingsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read embeddings dir: %w", err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.EqualFold(filepath.Ext(strings.TrimSpace(entry.Name())), ".xlsx") {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func pptxSlideTitle(data []byte) string {
@@ -632,6 +1958,114 @@ func cleanupPPTXOrphanMedia(tempDir string, slideCount int) error {
 		}
 	}
 	return nil
+}
+
+func cleanupPPTXOrphanChartArtifacts(tempDir string, slideCount int) error {
+	usedCharts := make(map[string]struct{})
+	for idx := 1; idx <= slideCount; idx++ {
+		relsPath := filepath.Join(tempDir, "ppt", "slides", "_rels", fmt.Sprintf("slide%d.xml.rels", idx))
+		rels, err := readPPTXRelationshipsFile(relsPath)
+		if err != nil {
+			continue
+		}
+		for _, rel := range rels.Relationships {
+			target := strings.TrimSpace(rel.Target)
+			if target == "" {
+				continue
+			}
+			resolved := path.Clean(path.Join("ppt/slides", target))
+			if strings.HasPrefix(resolved, "ppt/charts/") && strings.HasSuffix(strings.ToLower(resolved), ".xml") {
+				usedCharts[resolved] = struct{}{}
+			}
+		}
+	}
+
+	usedEmbeddings := make(map[string]struct{})
+	for chartPath := range usedCharts {
+		relsPath := filepath.Join(tempDir, filepath.FromSlash(path.Join("ppt/charts/_rels", path.Base(chartPath)+".rels")))
+		rels, err := readPPTXRelationshipsFile(relsPath)
+		if err != nil {
+			continue
+		}
+		for _, rel := range rels.Relationships {
+			target := strings.TrimSpace(rel.Target)
+			if target == "" {
+				continue
+			}
+			resolved := path.Clean(path.Join("ppt/charts", target))
+			if strings.HasPrefix(resolved, "ppt/embeddings/") && strings.HasSuffix(strings.ToLower(resolved), ".xlsx") {
+				usedEmbeddings[resolved] = struct{}{}
+			}
+		}
+	}
+
+	chartsDir := filepath.Join(tempDir, "ppt", "charts")
+	chartEntries, err := os.ReadDir(chartsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read charts dir: %w", err)
+	}
+	for _, entry := range chartEntries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if !strings.HasPrefix(name, "chart") || !strings.HasSuffix(strings.ToLower(name), ".xml") {
+			continue
+		}
+		relPath := path.Clean(path.Join("ppt/charts", name))
+		if _, ok := usedCharts[relPath]; ok {
+			continue
+		}
+		if err := os.Remove(filepath.Join(chartsDir, name)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove orphan chart %s: %w", name, err)
+		}
+		relsPath := filepath.Join(tempDir, "ppt", "charts", "_rels", name+".rels")
+		if err := os.Remove(relsPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove orphan chart rels %s: %w", name, err)
+		}
+	}
+
+	embeddingsDir := filepath.Join(tempDir, "ppt", "embeddings")
+	embeddingEntries, err := os.ReadDir(embeddingsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read embeddings dir: %w", err)
+	}
+	for _, entry := range embeddingEntries {
+		if entry.IsDir() {
+			continue
+		}
+		name := strings.TrimSpace(entry.Name())
+		if !strings.HasSuffix(strings.ToLower(name), ".xlsx") {
+			continue
+		}
+		relPath := path.Clean(path.Join("ppt/embeddings", name))
+		if _, ok := usedEmbeddings[relPath]; ok {
+			continue
+		}
+		if err := os.Remove(filepath.Join(embeddingsDir, name)); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove orphan embedding %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+func readPPTXRelationshipsFile(path string) (pptxRelationshipsXML, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return pptxRelationshipsXML{}, err
+	}
+	var rels pptxRelationshipsXML
+	if err := xml.Unmarshal(data, &rels); err != nil {
+		return pptxRelationshipsXML{}, err
+	}
+	return rels, nil
 }
 
 func writeZipFromDir(outputPath, root string) error {

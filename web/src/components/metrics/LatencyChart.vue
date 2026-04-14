@@ -95,26 +95,43 @@ const percentileBars = computed(() => {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy min-w-0">
-          <p class="dashboard-card-label">{{ t('metrics.label') }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ t('metrics.latencyPerformance') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('metrics.label') }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ t('metrics.latencyPerformance') }}
+          </p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-2">
-          <span v-if="latencyData" class="dashboard-card-chip">
+          <span
+            v-if="latencyData"
+            class="dashboard-card-chip"
+          >
             {{ formatCount(latencyData.samples ?? 0) }} {{ t('metrics.requests', 'Requests') }}
           </span>
         </div>
       </div>
 
-      <div v-if="!latencyData" class="dashboard-card-empty">
+      <div
+        v-if="!latencyData"
+        class="dashboard-card-empty"
+      >
         {{ t('metrics.noData') }}
       </div>
 
-      <div v-else class="space-y-4">
+      <div
+        v-else
+        class="space-y-4"
+      >
         <div class="dashboard-card-subsurface latency-performance-hero p-4">
           <div class="latency-performance-head">
             <div class="dashboard-card-copy min-w-0">
-              <p class="dashboard-card-value">{{ formatLatency(latencyData.avg ?? 0) }}</p>
-              <p class="dashboard-card-footnote mt-2">{{ t('metrics.avgLatency') }}</p>
+              <p class="dashboard-card-value">
+                {{ formatLatency(latencyData.avg ?? 0) }}
+              </p>
+              <p class="dashboard-card-footnote mt-2">
+                {{ t('metrics.avgLatency') }}
+              </p>
             </div>
             <div class="latency-performance-pill-group">
               <span class="latency-performance-pill">
@@ -140,7 +157,7 @@ const percentileBars = computed(() => {
                 <div
                   :class="[bar.color, 'latency-performance-bar-fill']"
                   :style="{ height: bar.height + '%' }"
-                ></div>
+                />
               </div>
               <div
                 class="mt-3 text-xs font-semibold text-gray-700 dark:text-gray-300 whitespace-nowrap"
@@ -164,19 +181,25 @@ const percentileBars = computed(() => {
             </div>
           </div>
           <div class="dashboard-card-subsurface latency-performance-stat p-3 text-center">
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.p95') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('metrics.p95') }}
+            </div>
             <div class="mt-1 text-lg font-bold text-orange-600 dark:text-orange-400">
               {{ formatLatency(latencyData.p95 ?? 0) }}
             </div>
           </div>
           <div class="dashboard-card-subsurface latency-performance-stat p-3 text-center">
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.p50') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('metrics.p50') }}
+            </div>
             <div class="mt-1 text-lg font-bold text-blue-600 dark:text-blue-400">
               {{ formatLatency(latencyData.p50 ?? 0) }}
             </div>
           </div>
           <div class="dashboard-card-subsurface latency-performance-stat p-3 text-center">
-            <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.p99') }}</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('metrics.p99') }}
+            </div>
             <div class="mt-1 text-lg font-bold text-red-600 dark:text-red-400">
               {{ formatLatency(latencyData.p99 ?? 0) }}
             </div>
@@ -222,7 +245,9 @@ const percentileBars = computed(() => {
                     : formatLatency(speedData.current.time_to_first_token_ms)
                 }}
               </div>
-              <div class="text-xs text-purple-500 dark:text-purple-400">TTFT</div>
+              <div class="text-xs text-purple-500 dark:text-purple-400">
+                TTFT
+              </div>
             </div>
           </div>
 

@@ -16,7 +16,7 @@ import {
 // Desktop detection: __BLUE_DESKTOP__ is injected by the Tauri on_page_load handler.
 // In both browser and desktop modes, the page is same-origin with the Go server,
 // so all API calls use relative URLs — no special URL construction needed.
-const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+const isDesktop = typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__
 
 syncAuthSessionStorage()
 

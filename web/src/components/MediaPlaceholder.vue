@@ -35,6 +35,16 @@ let notified = false
 let sseActive = false
 let initialFetch = true // true until first poll completes — suppresses toast for already-terminal tasks
 
+function isTaskStatus(value: unknown): value is MediaTask['status'] {
+  return (
+    value === 'pending' ||
+    value === 'processing' ||
+    value === 'succeeded' ||
+    value === 'failed' ||
+    value === 'cancelled'
+  )
+}
+
 // Lightbox viewer state
 const viewerUrl = ref('')
 const viewerOpen = ref(false)
@@ -75,7 +85,7 @@ const progressPercent = computed(() => {
 })
 
 const resultUrls = computed(() => {
-  return task.value?.response?.data?.map((d: any) => d.url) || []
+  return task.value?.response?.data?.map((item) => item.url) || []
 })
 
 const isVideo = computed(() => {
@@ -241,25 +251,33 @@ function handleTerminal() {
 }
 
 // --- SSE listener for real-time updates ---
-function onTaskUpdate(data: any) {
-  if (data.id !== activeTaskId.value) return
+function onTaskUpdate(data: Record<string, unknown>) {
+  const taskID = typeof data.id === 'string' ? data.id : ''
+  if (taskID !== activeTaskId.value) return
   sseActive = true
   // Stop polling — SSE is delivering updates
   stopPolling()
 
+  const nextStatus = isTaskStatus(data.status) ? data.status : 'pending'
+  const nextProgress = typeof data.progress === 'number' ? data.progress : 0
+
   // Merge SSE data into task
   if (!task.value) {
-    task.value = { id: data.id, status: data.status, progress: data.progress || 0 } as MediaTask
+    task.value = { id: taskID, status: nextStatus, progress: nextProgress } as MediaTask
   } else {
     task.value = {
       ...task.value,
-      status: data.status,
-      progress: data.progress || task.value.progress,
+      status: nextStatus,
+      progress: nextProgress || task.value.progress,
     }
   }
-  if (data.error) task.value.error = data.error
-  if (data.response) task.value.response = data.response
-  if (data.fallback_info) task.value.fallback_info = data.fallback_info
+  if (typeof data.error === 'string') task.value.error = data.error
+  if (data.response && typeof data.response === 'object') {
+    task.value.response = data.response as MediaTask['response']
+  }
+  if (data.fallback_info && typeof data.fallback_info === 'object') {
+    task.value.fallback_info = data.fallback_info as MediaTask['fallback_info']
+  }
   loading.value = false
 
   if (isTerminal.value) handleTerminal()
@@ -368,7 +386,12 @@ watch(
     >
       <div class="mp-card-inner">
         <div class="mp-card-header">
-          <svg class="mp-spinner" width="20" height="20" viewBox="0 0 24 24">
+          <svg
+            class="mp-spinner"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+          >
             <circle
               cx="12"
               cy="12"
@@ -389,28 +412,69 @@ watch(
               stroke-dasharray="40 23"
             />
             <defs>
-              <linearGradient id="mpGrad" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stop-color="#818cf8" />
-                <stop offset="100%" stop-color="#c084fc" />
+              <linearGradient
+                id="mpGrad"
+                x1="0"
+                y1="0"
+                x2="1"
+                y2="1"
+              >
+                <stop
+                  offset="0%"
+                  stop-color="#818cf8"
+                />
+                <stop
+                  offset="100%"
+                  stop-color="#c084fc"
+                />
               </linearGradient>
             </defs>
           </svg>
           <span class="mp-card-title">{{ statusLabel }}</span>
-          <span v-if="elapsedSeconds >= 0.5" class="mp-card-timer"
-            >{{ elapsedSeconds.toFixed(1) }}s</span
-          >
+          <span
+            v-if="elapsedSeconds >= 0.5"
+            class="mp-card-timer"
+          >{{ elapsedSeconds.toFixed(1) }}s</span>
         </div>
-        <div v-if="taskModelLabel" class="mp-card-model">{{ taskModelLabel }}</div>
-        <div v-if="fallbackInfo?.used" class="mp-fallback" :class="fallbackToneClass">
-          <div v-if="showFallbackTitle" class="mp-fallback-title">{{ fallbackDisplayName }}</div>
-          <div class="mp-fallback-text">{{ fallbackDisclosure }}</div>
-          <div v-if="fallbackMetaLabels.length" class="mp-fallback-meta">
-            <span v-for="label in fallbackMetaLabels" :key="label" class="mp-fallback-chip">
+        <div
+          v-if="taskModelLabel"
+          class="mp-card-model"
+        >
+          {{ taskModelLabel }}
+        </div>
+        <div
+          v-if="fallbackInfo?.used"
+          class="mp-fallback"
+          :class="fallbackToneClass"
+        >
+          <div
+            v-if="showFallbackTitle"
+            class="mp-fallback-title"
+          >
+            {{ fallbackDisplayName }}
+          </div>
+          <div class="mp-fallback-text">
+            {{ fallbackDisclosure }}
+          </div>
+          <div
+            v-if="fallbackMetaLabels.length"
+            class="mp-fallback-meta"
+          >
+            <span
+              v-for="label in fallbackMetaLabels"
+              :key="label"
+              class="mp-fallback-chip"
+            >
               {{ label }}
             </span>
           </div>
         </div>
-        <div v-if="elapsedSeconds > 10" class="mp-card-hint">{{ t('media.processingHint') }}</div>
+        <div
+          v-if="elapsedSeconds > 10"
+          class="mp-card-hint"
+        >
+          {{ t('media.processingHint') }}
+        </div>
         <div class="mp-card-bar">
           <div
             v-if="progressPercent > 0"
@@ -421,7 +485,10 @@ watch(
             aria-valuemin="0"
             aria-valuemax="100"
           />
-          <div v-else class="mp-card-bar-shimmer" />
+          <div
+            v-else
+            class="mp-card-bar-shimmer"
+          />
         </div>
       </div>
     </div>
@@ -433,14 +500,31 @@ watch(
         class="mp-fallback mp-fallback--result"
         :class="fallbackToneClass"
       >
-        <div v-if="showFallbackTitle" class="mp-fallback-title">{{ fallbackDisplayName }}</div>
-        <div class="mp-fallback-text">{{ fallbackDisclosure }}</div>
-        <div v-if="fallbackMetaLabels.length" class="mp-fallback-meta">
-          <span v-for="label in fallbackMetaLabels" :key="label" class="mp-fallback-chip">
+        <div
+          v-if="showFallbackTitle"
+          class="mp-fallback-title"
+        >
+          {{ fallbackDisplayName }}
+        </div>
+        <div class="mp-fallback-text">
+          {{ fallbackDisclosure }}
+        </div>
+        <div
+          v-if="fallbackMetaLabels.length"
+          class="mp-fallback-meta"
+        >
+          <span
+            v-for="label in fallbackMetaLabels"
+            :key="label"
+            class="mp-fallback-chip"
+          >
             {{ label }}
           </span>
         </div>
-        <div v-if="fallbackSources.length" class="mp-fallback-sources">
+        <div
+          v-if="fallbackSources.length"
+          class="mp-fallback-sources"
+        >
           <a
             v-for="(source, index) in fallbackSources"
             :key="source.page_url || source.asset_url || `${source.provider}-${index}`"
@@ -455,9 +539,18 @@ watch(
                 {{ fallbackSourceLicenseStatusLabel(source) }}
               </span>
               <span class="mp-fallback-chip">{{ source.provider }}</span>
-              <span v-if="source.license" class="mp-fallback-chip">{{ source.license }}</span>
-              <span v-if="source.creator" class="mp-fallback-chip">{{ source.creator }}</span>
-              <span v-if="fallbackSourceNoteLabel(source)" class="mp-fallback-chip">
+              <span
+                v-if="source.license"
+                class="mp-fallback-chip"
+              >{{ source.license }}</span>
+              <span
+                v-if="source.creator"
+                class="mp-fallback-chip"
+              >{{ source.creator }}</span>
+              <span
+                v-if="fallbackSourceNoteLabel(source)"
+                class="mp-fallback-chip"
+              >
                 {{ fallbackSourceNoteLabel(source) }}
               </span>
             </div>
@@ -475,8 +568,7 @@ watch(
             :href="fallbackInfo.space_url"
             target="_blank"
             rel="noreferrer"
-            >{{ fallbackSpaceLinkLabel() }}</a
-          >
+          >{{ fallbackSpaceLinkLabel() }}</a>
           <a
             v-for="(url, index) in fallbackInfo.source_urls || []"
             :key="url"
@@ -484,12 +576,14 @@ watch(
             :href="url"
             target="_blank"
             rel="noreferrer"
-            >{{ fallbackSourceLinkLabel(index + 1) }}</a
-          >
+          >{{ fallbackSourceLinkLabel(index + 1) }}</a>
         </div>
       </div>
       <div class="mp-result">
-        <template v-for="(url, i) in resultUrls" :key="i">
+        <template
+          v-for="(url, i) in resultUrls"
+          :key="i"
+        >
           <video
             v-if="isVideo"
             :src="url"
@@ -504,46 +598,56 @@ watch(
             loading="lazy"
             :alt="`Generated image ${i + 1}`"
             @click="openViewer(url)"
-          />
+          >
         </template>
       </div>
     </div>
 
     <!-- Failed -->
-    <div v-else-if="task.status === 'failed'" class="mp-error" role="alert">
+    <div
+      v-else-if="task.status === 'failed'"
+      class="mp-error"
+      role="alert"
+    >
       <div class="mp-error-body">
         <span class="mp-error-text">{{ task.error || statusLabel }}</span>
-        <div v-if="isProviderError" class="mp-error-hint">
+        <div
+          v-if="isProviderError"
+          class="mp-error-hint"
+        >
           {{ t('media.errorHint') }}
           <a
             class="mp-error-link"
             @click.prevent="
               router.push({ path: '/settings', query: { tab: 'llm', section: 'media' } })
             "
-            >{{ t('media.goSettings') }}</a
-          >
+          >{{ t('media.goSettings') }}</a>
         </div>
       </div>
       <button
         class="mp-retry"
         :disabled="retrying"
-        @click="handleRetry"
         :aria-label="t('media.retry')"
+        @click="handleRetry"
       >
         {{ retrying ? '...' : t('media.retry') }}
       </button>
     </div>
 
     <!-- Cancelled -->
-    <div v-else class="mp-cancelled" role="status">
+    <div
+      v-else
+      class="mp-cancelled"
+      role="status"
+    >
       <div class="mp-error-body">
         <span class="mp-cancelled-text">{{ cancelMessage }}</span>
       </div>
       <button
         class="mp-retry mp-retry--cancelled"
         :disabled="retrying"
-        @click="handleRetry"
         :aria-label="t('media.retry')"
+        @click="handleRetry"
       >
         {{ retrying ? '...' : t('media.retry') }}
       </button>
@@ -554,13 +658,17 @@ watch(
       <div
         v-if="viewerOpen"
         class="mp-viewer-overlay"
-        @click.self="closeViewer"
         role="dialog"
         aria-modal="true"
         :aria-label="t('media.fullscreen')"
+        @click.self="closeViewer"
       >
         <div class="mp-viewer-toolbar">
-          <button class="mp-viewer-btn" @click="downloadImage" :title="t('media.download')">
+          <button
+            class="mp-viewer-btn"
+            :title="t('media.download')"
+            @click="downloadImage"
+          >
             <svg
               width="20"
               height="20"
@@ -573,10 +681,19 @@ watch(
             >
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
+              <line
+                x1="12"
+                y1="15"
+                x2="12"
+                y2="3"
+              />
             </svg>
           </button>
-          <button class="mp-viewer-btn" @click="openInNewTab" :title="t('media.openInNewTab')">
+          <button
+            class="mp-viewer-btn"
+            :title="t('media.openInNewTab')"
+            @click="openInNewTab"
+          >
             <svg
               width="20"
               height="20"
@@ -589,10 +706,19 @@ watch(
             >
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
               <polyline points="15 3 21 3 21 9" />
-              <line x1="10" y1="14" x2="21" y2="3" />
+              <line
+                x1="10"
+                y1="14"
+                x2="21"
+                y2="3"
+              />
             </svg>
           </button>
-          <button class="mp-viewer-btn" @click="closeViewer" :title="t('media.exitFullscreen')">
+          <button
+            class="mp-viewer-btn"
+            :title="t('media.exitFullscreen')"
+            @click="closeViewer"
+          >
             <svg
               width="20"
               height="20"
@@ -603,12 +729,26 @@ watch(
               stroke-linecap="round"
               stroke-linejoin="round"
             >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+              <line
+                x1="18"
+                y1="6"
+                x2="6"
+                y2="18"
+              />
+              <line
+                x1="6"
+                y1="6"
+                x2="18"
+                y2="18"
+              />
             </svg>
           </button>
         </div>
-        <img :src="viewerUrl" class="mp-viewer-img" :alt="t('media.fullscreen')" />
+        <img
+          :src="viewerUrl"
+          class="mp-viewer-img"
+          :alt="t('media.fullscreen')"
+        >
       </div>
     </Teleport>
   </div>

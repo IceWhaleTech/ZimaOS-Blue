@@ -131,12 +131,20 @@ function formatTime(timestamp: string): string {
         </p>
 
         <!-- Session Link -->
-        <div v-if="alert.session_id" class="mt-2 flex items-center gap-2">
+        <div
+          v-if="alert.session_id"
+          class="mt-2 flex items-center gap-2"
+        >
           <button
             class="text-xs text-gray-900 dark:text-gray-300 hover:underline flex items-center gap-1"
             @click="emit('viewSession', alert.session_id)"
           >
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -164,7 +172,10 @@ function formatTime(timestamp: string): string {
       </div>
 
       <!-- Actions -->
-      <div v-if="!alert.acknowledged" class="flex-shrink-0">
+      <div
+        v-if="!alert.acknowledged"
+        class="flex-shrink-0"
+      >
         <button
           class="px-3 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           @click="emit('acknowledge', alert.id)"

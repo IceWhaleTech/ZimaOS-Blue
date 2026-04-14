@@ -177,7 +177,10 @@ function getLinePrefix(type: string): string {
       class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between"
     >
       <div class="flex items-center gap-3">
-        <h4 v-if="card.title || card.filename" class="font-medium text-gray-900 dark:text-white">
+        <h4
+          v-if="card.title || card.filename"
+          class="font-medium text-gray-900 dark:text-white"
+        >
           {{ card.title || card.filename }}
         </h4>
         <span
@@ -197,8 +200,7 @@ function getLinePrefix(type: string): string {
         <span
           class="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline"
           :title="t('media.fullscreen', 'Full Screen')"
-          >⤢</span
-        >
+        >⤢</span>
         <!-- View mode toggle -->
         <div class="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
           <button
@@ -247,47 +249,68 @@ function getLinePrefix(type: string): string {
     </div>
 
     <!-- Unified view -->
-    <div v-if="viewMode === 'unified'" class="overflow-x-auto">
-      <pre class="text-sm"><code><template v-for="(line, index) in diffLines" :key="index"><div
-            class="flex"
-            :class="getLineClass(line.type)"
-          ><span class="card-diff-gutter w-12 px-2 text-gray-400 select-none flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="card-diff-gutter w-12 px-2 text-gray-400 select-none flex-shrink-0">{{ line.newLineNum || '' }}</span><span
-              class="w-6 text-center flex-shrink-0"
-              :class="{
-                'text-green-600 dark:text-green-400': line.type === 'added',
-                'text-red-600 dark:text-red-400': line.type === 'removed',
-                'text-gray-400': line.type === 'unchanged'
-              }"
-            >{{ getLinePrefix(line.type) }}</span><span class="flex-1 px-2">{{ line.content }}</span></div></template></code></pre>
+    <div
+      v-if="viewMode === 'unified'"
+      class="overflow-x-auto"
+    >
+      <pre class="text-sm"><code><template
+        v-for="(line, index) in diffLines"
+        :key="index"
+      ><div
+        class="flex"
+        :class="getLineClass(line.type)"
+      ><span class="card-diff-gutter w-12 px-2 text-gray-400 select-none flex-shrink-0">{{ line.oldLineNum || '' }}</span><span class="card-diff-gutter w-12 px-2 text-gray-400 select-none flex-shrink-0">{{ line.newLineNum || '' }}</span><span
+        class="w-6 text-center flex-shrink-0"
+        :class="{
+          'text-green-600 dark:text-green-400': line.type === 'added',
+          'text-red-600 dark:text-red-400': line.type === 'removed',
+          'text-gray-400': line.type === 'unchanged'
+        }"
+      >{{ getLinePrefix(line.type) }}</span><span class="flex-1 px-2">{{ line.content }}</span></div></template></code></pre>
     </div>
 
     <!-- Split view -->
-    <div v-else class="flex overflow-x-auto">
+    <div
+      v-else
+      class="flex overflow-x-auto"
+    >
       <!-- Left (old) -->
       <div class="card-diff-border-end flex-1">
         <pre
           class="text-sm"
-        ><code><template v-for="(line, index) in splitDiff.left" :key="'left-' + index"><div
-              class="flex"
-              :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
-            ><span class="card-diff-gutter w-10 px-2 text-gray-400 select-none flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
-                v-if="line"
-                class="w-6 text-center flex-shrink-0"
-                :class="line.type === 'removed' ? 'text-red-600 dark:text-red-400' : 'text-gray-400'"
-              >{{ line.type === 'removed' ? '-' : ' ' }}</span><span v-else class="w-6 flex-shrink-0" /><span class="flex-1 px-2">{{ line?.content || '' }}</span></div></template></code></pre>
+        ><code><template
+          v-for="(line, index) in splitDiff.left"
+          :key="'left-' + index"
+        ><div
+          class="flex"
+          :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
+        ><span class="card-diff-gutter w-10 px-2 text-gray-400 select-none flex-shrink-0">{{ line?.oldLineNum || '' }}</span><span
+          v-if="line"
+          class="w-6 text-center flex-shrink-0"
+          :class="line.type === 'removed' ? 'text-red-600 dark:text-red-400' : 'text-gray-400'"
+        >{{ line.type === 'removed' ? '-' : ' ' }}</span><span
+          v-else
+          class="w-6 flex-shrink-0"
+        /><span class="flex-1 px-2">{{ line?.content || '' }}</span></div></template></code></pre>
       </div>
       <!-- Right (new) -->
       <div class="flex-1">
         <pre
           class="text-sm"
-        ><code><template v-for="(line, index) in splitDiff.right" :key="'right-' + index"><div
-              class="flex"
-              :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
-            ><span class="card-diff-gutter w-10 px-2 text-gray-400 select-none flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
-                v-if="line"
-                class="w-6 text-center flex-shrink-0"
-                :class="line.type === 'added' ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
-              >{{ line.type === 'added' ? '+' : ' ' }}</span><span v-else class="w-6 flex-shrink-0" /><span class="flex-1 px-2">{{ line?.content || '' }}</span></div></template></code></pre>
+        ><code><template
+          v-for="(line, index) in splitDiff.right"
+          :key="'right-' + index"
+        ><div
+          class="flex"
+          :class="line ? getLineClass(line.type) : 'bg-gray-50 dark:bg-gray-700/50'"
+        ><span class="card-diff-gutter w-10 px-2 text-gray-400 select-none flex-shrink-0">{{ line?.newLineNum || '' }}</span><span
+          v-if="line"
+          class="w-6 text-center flex-shrink-0"
+          :class="line.type === 'added' ? 'text-green-600 dark:text-green-400' : 'text-gray-400'"
+        >{{ line.type === 'added' ? '+' : ' ' }}</span><span
+          v-else
+          class="w-6 flex-shrink-0"
+        /><span class="flex-1 px-2">{{ line?.content || '' }}</span></div></template></code></pre>
       </div>
     </div>
   </div>

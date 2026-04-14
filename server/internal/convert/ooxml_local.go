@@ -128,11 +128,15 @@ func extractPPTXChartText(files []*zip.File, slideName string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		stringLabels, err := extractPPTXStringChartLabelText(files, chartFile)
+		if err != nil {
+			return "", err
+		}
 		dateLabels, err := extractPPTXDateChartLabelText(files, chartFile)
 		if err != nil {
 			return "", err
 		}
-		text = strings.TrimSpace(strings.TrimSpace(text) + "\n\n" + strings.TrimSpace(dateLabels))
+		text = strings.TrimSpace(strings.TrimSpace(text) + "\n\n" + strings.TrimSpace(stringLabels) + "\n\n" + strings.TrimSpace(dateLabels))
 		if text != "" {
 			parts = append(parts, text)
 		}
@@ -216,6 +220,9 @@ var (
 	pptxDateChartNumRefBlockPattern = regexp.MustCompile(`(?s)<c:cat>\s*<c:numRef>(.*?)</c:numRef>\s*</c:cat>`)
 	pptxDateChartNumCachePattern    = regexp.MustCompile(`(?s)<c:numCache>(.*?)</c:numCache>`)
 	pptxChartFormulaRefPattern      = regexp.MustCompile(`(?s)<c:cat>\s*<c:numRef>.*?<c:f>(.*?)</c:f>.*?</c:numRef>\s*</c:cat>`)
+	pptxStringChartRefPattern       = regexp.MustCompile(`(?s)<c:cat>\s*<c:strRef>(.*?)</c:strRef>\s*</c:cat>`)
+	pptxStringChartCachePattern     = regexp.MustCompile(`(?s)<c:strCache>(.*?)</c:strCache>`)
+	pptxChartStringFormulaPattern   = regexp.MustCompile(`(?s)<c:cat>\s*<c:strRef>.*?<c:f>(.*?)</c:f>.*?</c:strRef>\s*</c:cat>`)
 	pptxChartExternalDataPattern    = regexp.MustCompile(`(?s)<c:externalData\b[^>]*\br:id="([^"]+)"`)
 )
 
@@ -283,6 +290,60 @@ func extractPPTXEmbeddedDateChartLabelText(files []*zip.File, chartName, chartXM
 			continue
 		}
 		for _, label := range pptxLabelsForSpreadsheetRange(rows, ref, axisFormatCode) {
+			if _, exists := seen[label]; exists {
+				continue
+			}
+			seen[label] = struct{}{}
+			out = append(out, label)
+		}
+	}
+	return strings.Join(out, "\n\n"), nil
+}
+
+func extractPPTXStringChartLabelText(files []*zip.File, file *zip.File) (string, error) {
+	if file == nil {
+		return "", nil
+	}
+	rc, err := file.Open()
+	if err != nil {
+		return "", fmt.Errorf("open %s: %w", file.Name, err)
+	}
+	defer rc.Close()
+
+	data, err := readSpreadsheetBytes(rc, int(file.UncompressedSize64))
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", file.Name, err)
+	}
+	xmlText := string(data)
+	if !strings.Contains(xmlText, "<c:strRef") || pptxStringChartHasCachedLabels(xmlText) {
+		return "", nil
+	}
+	workbookData, err := pptxEmbeddedWorkbookData(files, file.Name, xmlText)
+	if err != nil || len(workbookData) == 0 {
+		return "", err
+	}
+	archive, err := loadEmbeddedSpreadsheetArchive(workbookData)
+	if err != nil {
+		return "", nil
+	}
+	formulas := pptxChartStringFormulaRefs(xmlText)
+	if len(formulas) == 0 {
+		return "", nil
+	}
+	var (
+		out  []string
+		seen = make(map[string]struct{})
+	)
+	for _, formula := range formulas {
+		ref, ok := parsePPTXChartRangeFormula(formula)
+		if !ok {
+			continue
+		}
+		rows, err := archive.rowsForSheet(ref.SheetName)
+		if err != nil {
+			continue
+		}
+		for _, label := range pptxLabelsForSpreadsheetRange(rows, ref, "") {
 			if _, exists := seen[label]; exists {
 				continue
 			}
@@ -460,6 +521,39 @@ func pptxChartFormulaRefs(chartXML string) []string {
 		out = append(out, formula)
 	}
 	return out
+}
+
+func pptxChartStringFormulaRefs(chartXML string) []string {
+	matches := pptxChartStringFormulaPattern.FindAllStringSubmatch(chartXML, -1)
+	out := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if len(match) != 2 {
+			continue
+		}
+		formula := strings.TrimSpace(match[1])
+		if formula == "" {
+			continue
+		}
+		out = append(out, formula)
+	}
+	return out
+}
+
+func pptxStringChartHasCachedLabels(xmlText string) bool {
+	matches := pptxStringChartRefPattern.FindAllStringSubmatch(xmlText, -1)
+	for _, match := range matches {
+		if len(match) != 2 {
+			continue
+		}
+		cacheMatch := pptxStringChartCachePattern.FindStringSubmatch(match[1])
+		if len(cacheMatch) != 2 {
+			continue
+		}
+		if strings.Contains(cacheMatch[1], "<c:v>") {
+			return true
+		}
+	}
+	return false
 }
 
 func parsePPTXChartRangeFormula(formula string) (pptxChartRangeRef, bool) {

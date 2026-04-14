@@ -96,7 +96,11 @@ function modelLabel(model: MediaModelInfo): string {
     :aria-label="ambiguous ? t('media.ambiguousPrompt') : t('media.mediaDetected')"
   >
     <!-- Close button -->
-    <button class="mpp-close" @click="emit('close')" :aria-label="t('common.close')">
+    <button
+      class="mpp-close"
+      :aria-label="t('common.close')"
+      @click="emit('close')"
+    >
       <svg
         width="16"
         height="16"
@@ -107,8 +111,18 @@ function modelLabel(model: MediaModelInfo): string {
         stroke-linecap="round"
         stroke-linejoin="round"
       >
-        <line x1="18" y1="6" x2="6" y2="18" />
-        <line x1="6" y1="6" x2="18" y2="18" />
+        <line
+          x1="18"
+          y1="6"
+          x2="6"
+          y2="18"
+        />
+        <line
+          x1="6"
+          y1="6"
+          x2="18"
+          y2="18"
+        />
       </svg>
     </button>
 
@@ -127,21 +141,40 @@ function modelLabel(model: MediaModelInfo): string {
         <span class="mpp-tag-label">{{ categoryLabel }}</span>
       </div>
 
-      <div v-if="intent.prompt" class="mpp-prompt">
-        <div class="mpp-prompt-text">{{ intent.prompt }}</div>
+      <div
+        v-if="intent.prompt"
+        class="mpp-prompt"
+      >
+        <div class="mpp-prompt-text">
+          {{ intent.prompt }}
+        </div>
       </div>
 
-      <div v-if="intentMetaLabels.length > 0" class="mpp-meta" :class="intentToneClass">
-        <span v-for="label in intentMetaLabels" :key="label" class="mpp-meta-pill">
+      <div
+        v-if="intentMetaLabels.length > 0"
+        class="mpp-meta"
+        :class="intentToneClass"
+      >
+        <span
+          v-for="label in intentMetaLabels"
+          :key="label"
+          class="mpp-meta-pill"
+        >
           {{ label }}
         </span>
       </div>
 
       <div class="mpp-actions">
-        <button class="mpp-btn mpp-btn-secondary" @click="emit('dismiss')">
+        <button
+          class="mpp-btn mpp-btn-secondary"
+          @click="emit('dismiss')"
+        >
           {{ t('media.noChat') }}
         </button>
-        <button class="mpp-btn mpp-btn-primary" @click="emit('confirm')">
+        <button
+          class="mpp-btn mpp-btn-primary"
+          @click="emit('confirm')"
+        >
           {{ t('media.yesGenerate') }}
         </button>
       </div>
@@ -158,59 +191,101 @@ function modelLabel(model: MediaModelInfo): string {
       </div>
 
       <!-- Category toggle when alternative exists (e.g. i2v ↔ kf2v) -->
-      <div v-if="intent.alternative_category" class="mpp-category-toggle">
-        <button class="mpp-cat-btn active" :disabled="generating">
+      <div
+        v-if="intent.alternative_category"
+        class="mpp-category-toggle"
+      >
+        <button
+          class="mpp-cat-btn active"
+          :disabled="generating"
+        >
           {{ translateMediaCategory(intent.category) }}
         </button>
         <button
           class="mpp-cat-btn"
-          @click="emit('switchCategory', intent.alternative_category!)"
           :disabled="generating"
+          @click="emit('switchCategory', intent.alternative_category!)"
         >
           {{ translateMediaCategory(intent.alternative_category!) }}
           <span class="mpp-cat-hint">{{ t(`media.${intent.alternative_category}Desc`) }}</span>
         </button>
       </div>
 
-      <div v-if="intent.prompt" class="mpp-prompt">
-        <div class="mpp-prompt-text">{{ intent.prompt }}</div>
+      <div
+        v-if="intent.prompt"
+        class="mpp-prompt"
+      >
+        <div class="mpp-prompt-text">
+          {{ intent.prompt }}
+        </div>
       </div>
 
-      <div v-if="intentMetaLabels.length > 0" class="mpp-meta" :class="intentToneClass">
-        <span v-for="label in intentMetaLabels" :key="label" class="mpp-meta-pill">
+      <div
+        v-if="intentMetaLabels.length > 0"
+        class="mpp-meta"
+        :class="intentToneClass"
+      >
+        <span
+          v-for="label in intentMetaLabels"
+          :key="label"
+          class="mpp-meta-pill"
+        >
           {{ label }}
         </span>
       </div>
 
-      <div class="mpp-controls" v-if="models.length > 0">
-        <label class="mpp-label" for="media-model-select">{{ t('media.model') }}</label>
+      <div
+        v-if="models.length > 0"
+        class="mpp-controls"
+      >
+        <label
+          class="mpp-label"
+          for="media-model-select"
+        >{{ t('media.model') }}</label>
         <select
           id="media-model-select"
           class="mpp-select"
           :value="selectedModel"
-          @change="onModelChange"
           :disabled="generating"
+          @change="onModelChange"
         >
-          <option v-for="m in models" :key="m.id" :value="m.id">
+          <option
+            v-for="m in models"
+            :key="m.id"
+            :value="m.id"
+          >
             {{ modelLabel(m) }}
           </option>
         </select>
       </div>
-      <div class="mpp-no-models" v-else role="status">
+      <div
+        v-else
+        class="mpp-no-models"
+        role="status"
+      >
         {{ t('media.noModels') }}
       </div>
 
       <div class="mpp-actions">
-        <button class="mpp-btn mpp-btn-secondary" @click="emit('dismiss')">
+        <button
+          class="mpp-btn mpp-btn-secondary"
+          @click="emit('dismiss')"
+        >
           {{ t('media.noChat') }}
         </button>
         <button
           class="mpp-btn mpp-btn-primary"
-          @click="emit('generate')"
           :disabled="generating || models.length === 0"
           :aria-busy="generating"
+          @click="emit('generate')"
         >
-          <svg v-if="generating" class="mpp-spinner" width="14" height="14" viewBox="0 0 24 24">
+          <svg
+            v-if="generating"
+            class="mpp-spinner"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+          >
             <circle
               cx="12"
               cy="12"

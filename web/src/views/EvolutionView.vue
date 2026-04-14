@@ -1144,7 +1144,7 @@ function buildUnifiedDiff(baseContent: string, nextContent: string): string {
 }
 
 function stripDiffMarker(line: string): string {
-  if (/^[ +\-]/.test(line)) return line.slice(1)
+  if (/^[ +-]/.test(line)) return line.slice(1)
   return line
 }
 
@@ -4885,11 +4885,17 @@ async function reviewSelectedProposal(action: ProposalAction) {
           </div>
         </div>
 
-        <div v-if="activePane === 'knowledge'" class="space-y-4 p-4 sm:p-5">
+        <div
+          v-if="activePane === 'knowledge'"
+          class="space-y-4 p-4 sm:p-5"
+        >
           <EvolutionKnowledgePane @summary-change="updateKnowledgeLaneSummary" />
         </div>
 
-        <div v-else-if="activePane === 'skills'" class="space-y-4 p-4 sm:p-5">
+        <div
+          v-else-if="activePane === 'skills'"
+          class="space-y-4 p-4 sm:p-5"
+        >
           <section class="sticky top-3 z-20 xl:top-6">
             <div
               class="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:p-4"
@@ -4945,7 +4951,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   )
                 }}
               </div>
-              <div v-else class="mt-4 space-y-3">
+              <div
+                v-else
+                class="mt-4 space-y-3"
+              >
                 <input
                   v-model="skillSearch"
                   data-testid="evolution-skill-search-mobile"
@@ -4957,7 +4966,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       'Search writable skills by name, id, or description'
                     )
                   "
-                />
+                >
                 <div class="text-xs text-slate-500">
                   {{
                     trp('evolution.skills.searchCount', '{visible} of {total} skills shown', {
@@ -5106,7 +5115,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   )
                 }}
               </div>
-              <div v-else class="mt-4 space-y-3">
+              <div
+                v-else
+                class="mt-4 space-y-3"
+              >
                 <input
                   v-model="skillSearch"
                   data-testid="evolution-skill-search"
@@ -5118,7 +5130,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       'Search canonical skills by name, id, or description'
                     )
                   "
-                />
+                >
                 <div class="text-xs text-slate-500">
                   {{
                     trp('evolution.skills.searchCount', '{visible} of {total} skills shown', {
@@ -5172,7 +5184,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   {{ tr('evolution.skills.hiddenSelectionAction', 'Show selected skill') }}
                 </button>
               </div>
-              <div v-if="filteredAvailableSkills.length > 0" class="mt-4 space-y-2">
+              <div
+                v-if="filteredAvailableSkills.length > 0"
+                class="mt-4 space-y-2"
+              >
                 <button
                   v-for="skill in filteredAvailableSkills"
                   :key="skill.id"
@@ -5257,7 +5272,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   >
                     {{
                       (selectedSkill ? localizedSkillDescription(selectedSkill) : '') ||
-                      tr('evolution.skills.noDescription', 'No skill description is available.')
+                        tr('evolution.skills.noDescription', 'No skill description is available.')
                     }}
                   </p>
                 </div>
@@ -5508,13 +5523,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     {{
                       selectedRevision?.status === 'accepted'
                         ? tr(
-                            'evolution.skills.switchPreview.promoteSubtitle',
-                            'Preview which revision is live now, which candidate would become live after promote, and what gets preserved for rollback.'
-                          )
+                          'evolution.skills.switchPreview.promoteSubtitle',
+                          'Preview which revision is live now, which candidate would become live after promote, and what gets preserved for rollback.'
+                        )
                         : tr(
-                            'evolution.skills.switchPreview.rollbackSubtitle',
-                            'Preview which revision is live now, which backup content would become live after rollback, and what gets preserved from the current lineage.'
-                          )
+                          'evolution.skills.switchPreview.rollbackSubtitle',
+                          'Preview which revision is live now, which backup content would become live after rollback, and what gets preserved from the current lineage.'
+                        )
                     }}
                   </p>
                 </div>
@@ -5522,13 +5537,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   {{
                     selectedRevision?.status === 'accepted'
                       ? tr(
-                          'evolution.skills.switchPreview.promoteExplicit',
-                          'Promote still requires explicit confirmation.'
-                        )
+                        'evolution.skills.switchPreview.promoteExplicit',
+                        'Promote still requires explicit confirmation.'
+                      )
                       : tr(
-                          'evolution.skills.switchPreview.rollbackExplicit',
-                          'Rollback still requires explicit confirmation.'
-                        )
+                        'evolution.skills.switchPreview.rollbackExplicit',
+                        'Rollback still requires explicit confirmation.'
+                      )
                   }}
                 </div>
               </div>
@@ -5616,18 +5631,18 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     'Optional operator rationale for why this promote or rollback decision is appropriate.'
                   )
                 "
-              ></textarea>
+              />
               <div class="mt-2 text-xs text-slate-500">
                 {{
                   selectedRevisionReviewNoteTrimmed
                     ? tr(
-                        'evolution.skills.reviewNoteConfirmHint',
-                        'This rationale will be echoed in the final confirmation prompt.'
-                      )
+                      'evolution.skills.reviewNoteConfirmHint',
+                      'This rationale will be echoed in the final confirmation prompt.'
+                    )
                     : tr(
-                        'evolution.skills.reviewNoteEmptyHint',
-                        'Add a short note if you want the final confirmation to include the operator rationale.'
-                      )
+                      'evolution.skills.reviewNoteEmptyHint',
+                      'Add a short note if you want the final confirmation to include the operator rationale.'
+                    )
                 }}
               </div>
             </div>
@@ -5823,7 +5838,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           'Search case summary, source, candidate, or revision'
                         )
                       "
-                    />
+                    >
                     <select
                       v-model="caseModeFilter"
                       data-testid="evolution-skill-case-mode-filter"
@@ -5832,8 +5847,12 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       <option value="all">
                         {{ tr('evolution.skills.caseModeAll', 'All modes') }}
                       </option>
-                      <option value="fix">{{ humanizeEnum('fix') }}</option>
-                      <option value="capture">{{ humanizeEnum('capture') }}</option>
+                      <option value="fix">
+                        {{ humanizeEnum('fix') }}
+                      </option>
+                      <option value="capture">
+                        {{ humanizeEnum('capture') }}
+                      </option>
                     </select>
                     <select
                       v-model="caseStatusFilter"
@@ -5843,14 +5862,24 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       <option value="all">
                         {{ tr('evolution.skills.caseStatusAll', 'All statuses') }}
                       </option>
-                      <option value="open">{{ humanizeEnum('open') }}</option>
+                      <option value="open">
+                        {{ humanizeEnum('open') }}
+                      </option>
                       <option value="candidate_created">
                         {{ humanizeEnum('candidate_created') }}
                       </option>
-                      <option value="accepted">{{ humanizeEnum('accepted') }}</option>
-                      <option value="rejected">{{ humanizeEnum('rejected') }}</option>
-                      <option value="promoted">{{ humanizeEnum('promoted') }}</option>
-                      <option value="skipped">{{ humanizeEnum('skipped') }}</option>
+                      <option value="accepted">
+                        {{ humanizeEnum('accepted') }}
+                      </option>
+                      <option value="rejected">
+                        {{ humanizeEnum('rejected') }}
+                      </option>
+                      <option value="promoted">
+                        {{ humanizeEnum('promoted') }}
+                      </option>
+                      <option value="skipped">
+                        {{ humanizeEnum('skipped') }}
+                      </option>
                     </select>
                   </div>
                   <div class="mt-3 text-xs text-slate-500">
@@ -5942,7 +5971,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else class="mt-4 space-y-2.5">
+                  <div
+                    v-else
+                    class="mt-4 space-y-2.5"
+                  >
                     <div
                       v-for="skillCase in filteredSelectedSkillCases"
                       :key="skillCase.id"
@@ -6017,7 +6049,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           <button
                             v-if="
                               normalizeText(skillCase.source_kind) === 'eval_run' &&
-                              normalizeText(skillCase.source_id)
+                                normalizeText(skillCase.source_id)
                             "
                             type="button"
                             :data-testid="`evolution-skill-case-open-source-${skillCase.id}`"
@@ -6075,7 +6107,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                           'Search revisions by id, candidate, case, eval, or path'
                         )
                       "
-                    />
+                    >
                     <select
                       v-model="revisionStatusFilter"
                       data-testid="evolution-skill-revision-status-filter"
@@ -6084,11 +6116,21 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       <option value="all">
                         {{ tr('evolution.skills.revisionStatusAll', 'All statuses') }}
                       </option>
-                      <option value="accepted">{{ humanizeEnum('accepted') }}</option>
-                      <option value="candidate">{{ humanizeEnum('candidate') }}</option>
-                      <option value="promoted">{{ humanizeEnum('promoted') }}</option>
-                      <option value="backup">{{ humanizeEnum('backup') }}</option>
-                      <option value="rejected">{{ humanizeEnum('rejected') }}</option>
+                      <option value="accepted">
+                        {{ humanizeEnum('accepted') }}
+                      </option>
+                      <option value="candidate">
+                        {{ humanizeEnum('candidate') }}
+                      </option>
+                      <option value="promoted">
+                        {{ humanizeEnum('promoted') }}
+                      </option>
+                      <option value="backup">
+                        {{ humanizeEnum('backup') }}
+                      </option>
+                      <option value="rejected">
+                        {{ humanizeEnum('rejected') }}
+                      </option>
                     </select>
                   </div>
                   <div class="mt-3 text-xs text-slate-500">
@@ -6117,13 +6159,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       {{
                         latestCandidateRevision
                           ? tr(
-                              'evolution.skills.noAcceptedRevisionHintCandidate',
-                              'There is not an accepted version ready to promote yet. Review the latest candidate revision next.'
-                            )
+                            'evolution.skills.noAcceptedRevisionHintCandidate',
+                            'There is not an accepted version ready to promote yet. Review the latest candidate revision next.'
+                          )
                           : tr(
-                              'evolution.skills.noAcceptedRevisionHintHarness',
-                              'There is not an accepted version ready to promote yet. Open Harness evals to gather more runtime evidence and trigger another evolution pass.'
-                            )
+                            'evolution.skills.noAcceptedRevisionHintHarness',
+                            'There is not an accepted version ready to promote yet. Open Harness evals to gather more runtime evidence and trigger another evolution pass.'
+                          )
                       }}
                     </p>
                     <button
@@ -6213,7 +6255,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else class="mt-4 space-y-2.5">
+                  <div
+                    v-else
+                    class="mt-4 space-y-2.5"
+                  >
                     <button
                       v-for="revision in filteredSelectedSkillRevisions"
                       :key="revision.id"
@@ -6324,7 +6369,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else class="mt-4 space-y-2.5" data-testid="evolution-skill-case-timeline">
+                  <div
+                    v-else
+                    class="mt-4 space-y-2.5"
+                    data-testid="evolution-skill-case-timeline"
+                  >
                     <div
                       v-for="entry in selectedSkillCaseTimeline"
                       :key="entry.key"
@@ -6335,7 +6384,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       <div
                         class="mt-1 h-3 w-3 shrink-0 rounded-full border-2"
                         :class="caseTimelineMarkerClasses(entry.state)"
-                      ></div>
+                      />
                       <div class="min-w-0">
                         <div
                           :data-testid="`evolution-skill-case-timeline-label-${entry.key}`"
@@ -6380,7 +6429,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else class="mt-4 space-y-2.5">
+                  <div
+                    v-else
+                    class="mt-4 space-y-2.5"
+                  >
                     <div
                       v-for="(entry, index) in selectedRevisionLineage"
                       :key="entry.label + entry.value"
@@ -6439,7 +6491,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else data-testid="evolution-skill-decision-history" class="mt-4 space-y-3">
+                  <div
+                    v-else
+                    data-testid="evolution-skill-decision-history"
+                    class="mt-4 space-y-3"
+                  >
                     <div
                       data-testid="evolution-skill-decision-timeline"
                       class="rounded-2xl border border-slate-200 bg-slate-50/70 p-3"
@@ -6466,11 +6522,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             <div
                               class="h-3 w-3 rounded-full border-2"
                               :class="decisionTimelineMarkerClasses(entry.tone)"
-                            ></div>
+                            />
                             <div
                               v-if="index < selectedSkillDecisionHistory.length - 1"
                               class="mt-2 h-10 w-px bg-slate-200"
-                            ></div>
+                            />
                           </div>
                           <div
                             :data-testid="`evolution-skill-decision-timeline-card-${entry.revisionID}`"
@@ -6608,7 +6664,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <button
                           v-if="
                             entry.links?.sourceRevisionID &&
-                            entry.links.sourceRevisionID !== entry.links.revisionID
+                              entry.links.sourceRevisionID !== entry.links.revisionID
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-source`"
@@ -6622,7 +6678,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <button
                           v-if="
                             entry.links?.targetRevisionID &&
-                            entry.links.targetRevisionID !== entry.links.revisionID
+                              entry.links.targetRevisionID !== entry.links.revisionID
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-target`"
@@ -6636,7 +6692,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <button
                           v-if="
                             entry.links?.currentLiveRevisionID &&
-                            entry.links.currentLiveRevisionID !== entry.links.revisionID
+                              entry.links.currentLiveRevisionID !== entry.links.revisionID
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-view-live`"
@@ -6653,10 +6709,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <button
                           v-if="
                             entry.links?.sourceRevisionID &&
-                            entry.links?.targetRevisionID &&
-                            entry.links.sourceRevisionID !== entry.links.targetRevisionID &&
-                            hasSelectedSkillRevision(entry.links.sourceRevisionID) &&
-                            hasSelectedSkillRevision(entry.links.targetRevisionID)
+                              entry.links?.targetRevisionID &&
+                              entry.links.sourceRevisionID !== entry.links.targetRevisionID &&
+                              hasSelectedSkillRevision(entry.links.sourceRevisionID) &&
+                              hasSelectedSkillRevision(entry.links.targetRevisionID)
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-compare-source-target`"
@@ -6687,10 +6743,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <button
                           v-if="
                             entry.links?.backupRevisionID &&
-                            entry.links?.targetRevisionID &&
-                            entry.links.backupRevisionID !== entry.links.targetRevisionID &&
-                            hasSelectedSkillRevision(entry.links.backupRevisionID) &&
-                            hasSelectedSkillRevision(entry.links.targetRevisionID)
+                              entry.links?.targetRevisionID &&
+                              entry.links.backupRevisionID !== entry.links.targetRevisionID &&
+                              hasSelectedSkillRevision(entry.links.backupRevisionID) &&
+                              hasSelectedSkillRevision(entry.links.targetRevisionID)
                           "
                           type="button"
                           :data-testid="`evolution-skill-decision-history-${entry.revisionID}-action-compare-backup-live`"
@@ -6723,8 +6779,8 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       <div
                         v-if="
                           (entry.evidenceSummary && entry.evidenceSummary.length > 0) ||
-                          (entry.links?.evalRunID &&
-                            decisionHistoryReportLoadingByEvalRunID[entry.links.evalRunID])
+                            (entry.links?.evalRunID &&
+                              decisionHistoryReportLoadingByEvalRunID[entry.links.evalRunID])
                         "
                         :data-testid="`evolution-skill-decision-history-${entry.revisionID}-evidence-panel`"
                         class="mt-4 rounded-2xl border border-slate-200 bg-white/80 p-3"
@@ -6755,7 +6811,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                               }}
                             </p>
                           </div>
-                          <div v-if="entry.links?.evalRunID" class="text-xs text-slate-500">
+                          <div
+                            v-if="entry.links?.evalRunID"
+                            class="text-xs text-slate-500"
+                          >
                             {{ entry.links.evalRunID }}
                           </div>
                         </div>
@@ -6763,7 +6822,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         <div
                           v-if="
                             entry.links?.evalRunID &&
-                            decisionHistoryReportLoadingByEvalRunID[entry.links.evalRunID]
+                              decisionHistoryReportLoadingByEvalRunID[entry.links.evalRunID]
                           "
                           class="mt-3 text-sm text-slate-500"
                         >
@@ -6841,7 +6900,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else class="mt-4 space-y-2.5">
+                  <div
+                    v-else
+                    class="mt-4 space-y-2.5"
+                  >
                     <div
                       v-for="(entry, index) in selectedRevisionMeta"
                       :key="entry.label"
@@ -6977,14 +7039,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <pre
                       data-testid="evolution-skill-history-comparison-diff"
                       class="mt-4 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-sky-100 bg-slate-950 px-4 py-4 text-xs leading-6 text-slate-100"
-                      >{{ decisionHistoryComparisonDiff }}</pre
-                    >
+                    >{{ decisionHistoryComparisonDiff }}</pre>
                   </div>
                   <div
                     v-if="
                       !decisionHistoryComparisonPair &&
-                      !selectedSkillComparison.baselineEvalRunID &&
-                      selectedSkillComparison.deltas.length === 0
+                        !selectedSkillComparison.baselineEvalRunID &&
+                        selectedSkillComparison.deltas.length === 0
                     "
                     class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500"
                   >
@@ -6995,7 +7056,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else class="mt-4 space-y-3" data-testid="evolution-skill-comparison">
+                  <div
+                    v-else
+                    class="mt-4 space-y-3"
+                    data-testid="evolution-skill-comparison"
+                  >
                     <div
                       v-if="selectedSkillComparison.baselineEvalRunID"
                       data-testid="evolution-skill-baseline-id"
@@ -7097,7 +7162,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       )
                     }}
                   </div>
-                  <div v-else class="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div
+                    v-else
+                    class="mt-4 grid gap-3 sm:grid-cols-2"
+                  >
                     <div
                       v-for="metric in selectedSkillMetrics"
                       :key="metric.key"
@@ -7129,13 +7197,13 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     {{
                       selectedSkillCase?.mode === 'capture'
                         ? tr(
-                            'evolution.skills.evidenceHintCapture',
-                            'Capture evidence emphasizes the reusable lesson, when it should be applied, and how grounded the new experience is.'
-                          )
+                          'evolution.skills.evidenceHintCapture',
+                          'Capture evidence emphasizes the reusable lesson, when it should be applied, and how grounded the new experience is.'
+                        )
                         : tr(
-                            'evolution.skills.evidenceHint',
-                            'Evidence stays tied to the specific skill version and case, so reviewers can see why the candidate exists.'
-                          )
+                          'evolution.skills.evidenceHint',
+                          'Evidence stays tied to the specific skill version and case, so reviewers can see why the candidate exists.'
+                        )
                     }}
                   </p>
                   <div class="mt-4 grid gap-3 lg:grid-cols-3">
@@ -7188,8 +7256,8 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <div
                     v-if="
                       normalizeText(selectedCaseRevision?.id) ||
-                      selectedSkillCaseSourceEvalRunID ||
-                      selectedSkillCaseLinkedEvalRunID
+                        selectedSkillCaseSourceEvalRunID ||
+                        selectedSkillCaseLinkedEvalRunID
                     "
                     class="mt-4 flex flex-wrap gap-2"
                   >
@@ -7227,7 +7295,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     class="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
                   >
                     <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <div v-for="entry in selectedCaseMeta" :key="entry.label" class="space-y-1">
+                      <div
+                        v-for="entry in selectedCaseMeta"
+                        :key="entry.label"
+                        class="space-y-1"
+                      >
                         <div
                           class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
                         >
@@ -7242,8 +7314,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <pre
                     data-testid="evolution-skill-case-evidence"
                     class="mt-4 max-h-80 overflow-auto rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
-                    >{{ selectedSkillEvidence }}</pre
-                  >
+                  >{{ selectedSkillEvidence }}</pre>
                 </div>
 
                 <div
@@ -7309,15 +7380,17 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <pre
                     data-testid="evolution-skill-diff"
                     class="mt-4 max-h-[520px] overflow-auto rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
-                    >{{ selectedSkillDiff }}</pre
-                  >
+                  >{{ selectedSkillDiff }}</pre>
                 </div>
               </div>
             </div>
           </section>
         </div>
 
-        <div v-else-if="activePane === 'runner'" class="space-y-4 p-4 sm:p-5">
+        <div
+          v-else-if="activePane === 'runner'"
+          class="space-y-4 p-4 sm:p-5"
+        >
           <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
             <h2 class="text-base font-semibold text-slate-950 sm:text-lg">
               {{ tr('evolution.runner.title', 'Runner Evolution') }}
@@ -7341,7 +7414,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 )
               }}
             </div>
-            <div v-else class="mt-4 space-y-4">
+            <div
+              v-else
+              class="mt-4 space-y-4"
+            >
               <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
                 <h3 class="text-base font-semibold text-slate-950">
                   {{ tr('evolution.runner.panelTitle', 'Runner Settings And Build Status') }}
@@ -7355,7 +7431,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   }}
                 </p>
                 <div class="mt-4">
-                  <AgentcoreRunnerPanel :show-refresh-button="true" :embedded="true" />
+                  <AgentcoreRunnerPanel
+                    :show-refresh-button="true"
+                    :embedded="true"
+                  />
                 </div>
               </section>
 
@@ -7433,8 +7512,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <pre
                       data-testid="evolution-runner-candidate-diff"
                       class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-950 px-4 py-3 text-xs leading-5 text-slate-100"
-                      >{{ runnerCandidateDiff }}</pre
-                    >
+                    >{{ runnerCandidateDiff }}</pre>
                   </section>
 
                   <section class="rounded-2xl border border-slate-200 bg-white/90 p-4 shadow-sm">
@@ -7460,7 +7538,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         )
                       }}
                     </div>
-                    <div v-else data-testid="evolution-runner-transcript" class="mt-4 space-y-2.5">
+                    <div
+                      v-else
+                      data-testid="evolution-runner-transcript"
+                      class="mt-4 space-y-2.5"
+                    >
                       <div
                         v-for="(entry, index) in runnerTranscriptEntries"
                         :key="entry.key"
@@ -7570,10 +7652,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                             [runnerLinkedSkillID, runnerLinkedCase ? runnerLinkedCase.status : '']
                               .filter(Boolean)
                               .join(' · ') ||
-                            tr(
-                              'evolution.runner.links.linkedRevisionHint',
-                              'Open the linked revision in the Skills lane before promoting or rolling back.'
-                            )
+                              tr(
+                                'evolution.runner.links.linkedRevisionHint',
+                                'Open the linked revision in the Skills lane before promoting or rolling back.'
+                              )
                           }}
                         </div>
                         <button
@@ -7604,7 +7686,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div
                       v-if="
                         runnerFollowupEvalRunID &&
-                        runnerReportLoadingByEvalRunID[runnerFollowupEvalRunID]
+                          runnerReportLoadingByEvalRunID[runnerFollowupEvalRunID]
                       "
                       class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500"
                     >
@@ -7621,7 +7703,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         )
                       }}
                     </div>
-                    <div v-else class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div
+                      v-else
+                      class="mt-4 grid gap-3 sm:grid-cols-2"
+                    >
                       <div
                         v-for="entry in runnerFollowupReportMetrics"
                         :key="entry.key"
@@ -7655,7 +7740,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     <div
                       v-if="
                         runnerSourceEvalRunID &&
-                        runnerReportLoadingByEvalRunID[runnerSourceEvalRunID]
+                          runnerReportLoadingByEvalRunID[runnerSourceEvalRunID]
                       "
                       class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-xs leading-5 text-slate-500"
                     >
@@ -7672,7 +7757,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                         )
                       }}
                     </div>
-                    <div v-else class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div
+                      v-else
+                      class="mt-4 grid gap-3 sm:grid-cols-2"
+                    >
                       <div
                         v-for="entry in runnerSourceReportMetrics"
                         :key="entry.key"
@@ -7696,7 +7784,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
           </section>
         </div>
 
-        <div v-else class="space-y-4 p-4 sm:p-5">
+        <div
+          v-else
+          class="space-y-4 p-4 sm:p-5"
+        >
           <section class="sticky top-3 z-20 xl:top-6">
             <div
               class="rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/85 sm:p-4"
@@ -7752,7 +7843,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   )
                 }}
               </div>
-              <div v-else class="mt-4 space-y-3">
+              <div
+                v-else
+                class="mt-4 space-y-3"
+              >
                 <input
                   v-model="instructionSearch"
                   data-testid="evolution-instructions-search-mobile"
@@ -7764,7 +7858,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       'Search proposals by file, lesson, or evidence'
                     )
                   "
-                />
+                >
                 <select
                   v-model="instructionStatusFilter"
                   data-testid="evolution-instructions-status-filter-mobile"
@@ -7773,9 +7867,15 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <option value="all">
                     {{ tr('evolution.instructions.statusAll', 'All statuses') }}
                   </option>
-                  <option value="pending">{{ humanizeEnum('pending') }}</option>
-                  <option value="approved">{{ humanizeEnum('approved') }}</option>
-                  <option value="rejected">{{ humanizeEnum('rejected') }}</option>
+                  <option value="pending">
+                    {{ humanizeEnum('pending') }}
+                  </option>
+                  <option value="approved">
+                    {{ humanizeEnum('approved') }}
+                  </option>
+                  <option value="rejected">
+                    {{ humanizeEnum('rejected') }}
+                  </option>
                 </select>
                 <div class="text-xs text-slate-500">
                   {{
@@ -7945,7 +8045,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   {{ tr('evolution.instructions.emptyAction', 'Open Runner Evolution') }}
                 </button>
               </div>
-              <div v-else class="mt-4 space-y-3">
+              <div
+                v-else
+                class="mt-4 space-y-3"
+              >
                 <input
                   v-model="instructionSearch"
                   data-testid="evolution-instructions-search"
@@ -7957,7 +8060,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                       'Search proposals by file, lesson, or evidence'
                     )
                   "
-                />
+                >
                 <select
                   v-model="instructionStatusFilter"
                   data-testid="evolution-instructions-status-filter"
@@ -7966,9 +8069,15 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <option value="all">
                     {{ tr('evolution.instructions.statusAll', 'All statuses') }}
                   </option>
-                  <option value="pending">{{ humanizeEnum('pending') }}</option>
-                  <option value="approved">{{ humanizeEnum('approved') }}</option>
-                  <option value="rejected">{{ humanizeEnum('rejected') }}</option>
+                  <option value="pending">
+                    {{ humanizeEnum('pending') }}
+                  </option>
+                  <option value="approved">
+                    {{ humanizeEnum('approved') }}
+                  </option>
+                  <option value="rejected">
+                    {{ humanizeEnum('rejected') }}
+                  </option>
                 </select>
                 <div class="text-xs text-slate-500">
                   {{
@@ -8024,7 +8133,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   {{ tr('evolution.instructions.hiddenSelectionAction', 'Show selected proposal') }}
                 </button>
               </div>
-              <div v-if="filteredInstructionProposals.length > 0" class="mt-4 space-y-2">
+              <div
+                v-if="filteredInstructionProposals.length > 0"
+                class="mt-4 space-y-2"
+              >
                 <button
                   v-for="proposal in filteredInstructionProposals"
                   :key="proposal.id"
@@ -8074,10 +8186,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <p class="mt-2 text-sm leading-5 text-slate-600">
                     {{
                       selectedProposal?.lesson ||
-                      tr(
-                        'evolution.instructions.reviewHint',
-                        'Select a proposal to inspect the lesson, evidence, and patch preview.'
-                      )
+                        tr(
+                          'evolution.instructions.reviewHint',
+                          'Select a proposal to inspect the lesson, evidence, and patch preview.'
+                        )
                     }}
                   </p>
                 </div>
@@ -8098,7 +8210,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <button
                     v-if="
                       normalizeText(selectedProposal.source_kind) === 'harness_group' &&
-                      normalizeText(selectedProposal.source_id)
+                        normalizeText(selectedProposal.source_id)
                     "
                     type="button"
                     data-testid="evolution-instructions-open-source-group"
@@ -8110,7 +8222,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                   <button
                     v-else-if="
                       normalizeText(selectedProposal.source_kind) === 'eval_run' &&
-                      normalizeText(selectedProposal.source_id)
+                        normalizeText(selectedProposal.source_id)
                     "
                     type="button"
                     data-testid="evolution-instructions-open-source-eval-run"
@@ -8171,7 +8283,11 @@ async function reviewSelectedProposal(action: ProposalAction) {
                 class="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4"
               >
                 <div class="grid gap-x-4 gap-y-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <div v-for="entry in selectedProposalMeta" :key="entry.label" class="space-y-1">
+                  <div
+                    v-for="entry in selectedProposalMeta"
+                    :key="entry.label"
+                    class="space-y-1"
+                  >
                     <div
                       class="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500"
                     >
@@ -8200,7 +8316,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     }}
                   </p>
                 </div>
-                <div v-if="selectedProposal" class="flex flex-wrap gap-2">
+                <div
+                  v-if="selectedProposal"
+                  class="flex flex-wrap gap-2"
+                >
                   <button
                     type="button"
                     data-testid="evolution-instructions-approve"
@@ -8239,7 +8358,7 @@ async function reviewSelectedProposal(action: ProposalAction) {
                     'Optional review note for the proposal decision.'
                   )
                 "
-              ></textarea>
+              />
 
               <div class="mt-4 grid gap-3 sm:grid-cols-3">
                 <div
@@ -8263,11 +8382,10 @@ async function reviewSelectedProposal(action: ProposalAction) {
               <pre
                 data-testid="evolution-instructions-patch"
                 class="mt-4 max-h-[520px] overflow-auto rounded-2xl border border-slate-200 bg-slate-950 px-4 py-4 text-xs leading-6 whitespace-pre-wrap text-slate-100"
-                >{{
+              >{{
                   selectedInstructionPatch ||
                   tr('evolution.instructions.noPatch', 'No patch preview available.')
-                }}</pre
-              >
+              }}</pre>
             </div>
           </section>
         </div>

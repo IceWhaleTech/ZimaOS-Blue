@@ -102,7 +102,10 @@ onUnmounted(() => {
     class="media-task-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Loading state -->
-    <div v-if="isActive" class="p-4">
+    <div
+      v-if="isActive"
+      class="p-4"
+    >
       <!-- Skeleton placeholder -->
       <div
         class="relative rounded-lg overflow-hidden"
@@ -116,7 +119,11 @@ onUnmounted(() => {
           <!-- Orbit animation -->
           <div class="relative w-16 h-16">
             <!-- Outer ring -->
-            <svg class="absolute inset-0 w-16 h-16 orbit-ring" viewBox="0 0 64 64" fill="none">
+            <svg
+              class="absolute inset-0 w-16 h-16 orbit-ring"
+              viewBox="0 0 64 64"
+              fill="none"
+            >
               <circle
                 cx="32"
                 cy="32"
@@ -172,7 +179,10 @@ onUnmounted(() => {
             <div class="text-sm font-medium text-gray-600 dark:text-gray-300">
               {{ statusLabel }}
             </div>
-            <div v-if="elapsedLabel" class="text-xs text-gray-400 dark:text-gray-500">
+            <div
+              v-if="elapsedLabel"
+              class="text-xs text-gray-400 dark:text-gray-500"
+            >
               {{ elapsedLabel }}
             </div>
           </div>
@@ -203,7 +213,10 @@ onUnmounted(() => {
           />
         </div>
         <!-- Prompt preview -->
-        <p v-if="prompt" class="text-xs text-gray-400 dark:text-gray-500 truncate mt-1 italic">
+        <p
+          v-if="prompt"
+          class="text-xs text-gray-400 dark:text-gray-500 truncate mt-1 italic"
+        >
           "{{ prompt }}"
         </p>
       </div>
@@ -211,7 +224,10 @@ onUnmounted(() => {
 
     <!-- Completed: show results -->
     <div v-else-if="status === 'succeeded' && imageUrls.length > 0">
-      <div class="p-2 grid gap-2" :class="imageUrls.length > 1 ? 'grid-cols-2' : 'grid-cols-1'">
+      <div
+        class="p-2 grid gap-2"
+        :class="imageUrls.length > 1 ? 'grid-cols-2' : 'grid-cols-1'"
+      >
         <div
           v-for="(url, i) in imageUrls"
           :key="i"
@@ -225,7 +241,7 @@ onUnmounted(() => {
             class="w-full h-full rounded-lg result-image"
             :class="imageUrls.length > 1 ? 'object-cover' : 'max-h-80 object-contain'"
             loading="lazy"
-          />
+          >
           <!-- Hover overlay -->
           <div
             class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center"
@@ -251,7 +267,12 @@ onUnmounted(() => {
             class="media-task-download absolute bottom-2 p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70 transition-all opacity-0 group-hover:opacity-100"
             @click.stop
           >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -265,7 +286,10 @@ onUnmounted(() => {
     </div>
 
     <!-- Error -->
-    <div v-else-if="status === 'cancelled'" class="px-4 py-3 flex items-start gap-2.5">
+    <div
+      v-else-if="status === 'cancelled'"
+      class="px-4 py-3 flex items-start gap-2.5"
+    >
       <svg
         class="w-4 h-4 mt-0.5 shrink-0 text-amber-400"
         fill="none"
@@ -280,15 +304,23 @@ onUnmounted(() => {
         />
       </svg>
       <div class="min-w-0">
-        <p class="text-sm text-amber-500 dark:text-amber-400">{{ t('media.cancelled') }}</p>
-        <p v-if="errorMessage" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 break-all">
+        <p class="text-sm text-amber-500 dark:text-amber-400">
+          {{ t('media.cancelled') }}
+        </p>
+        <p
+          v-if="errorMessage"
+          class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 break-all"
+        >
           {{ errorMessage }}
         </p>
       </div>
     </div>
 
     <!-- Error -->
-    <div v-else-if="status === 'failed'" class="px-4 py-3 flex items-start gap-2.5">
+    <div
+      v-else-if="status === 'failed'"
+      class="px-4 py-3 flex items-start gap-2.5"
+    >
       <svg
         class="w-4 h-4 mt-0.5 shrink-0 text-red-400"
         fill="none"
@@ -303,8 +335,13 @@ onUnmounted(() => {
         />
       </svg>
       <div class="min-w-0">
-        <p class="text-sm text-red-500 dark:text-red-400">{{ t('media.error.failed') }}</p>
-        <p v-if="errorMessage" class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 break-all">
+        <p class="text-sm text-red-500 dark:text-red-400">
+          {{ t('media.error.failed') }}
+        </p>
+        <p
+          v-if="errorMessage"
+          class="text-xs text-gray-400 dark:text-gray-500 mt-0.5 break-all"
+        >
           {{ errorMessage }}
         </p>
       </div>
@@ -322,7 +359,12 @@ onUnmounted(() => {
             class="media-task-lightbox-close absolute top-4 p-2 text-white hover:bg-white/10 rounded-full transition-colors z-10"
             @click.stop="closeLightbox"
           >
-            <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="h-6 w-6"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -331,12 +373,15 @@ onUnmounted(() => {
               />
             </svg>
           </button>
-          <div class="max-w-4xl max-h-[90vh] p-4" @click.stop>
+          <div
+            class="max-w-4xl max-h-[90vh] p-4"
+            @click.stop
+          >
             <img
               :src="lightboxUrl"
               alt="Generated media"
               class="max-w-full max-h-[80vh] object-contain rounded-lg"
-            />
+            >
           </div>
           <!-- Download in lightbox -->
           <a
@@ -345,7 +390,12 @@ onUnmounted(() => {
             class="media-task-lightbox-download absolute bottom-6 -translate-x-1/2 flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors text-sm"
             @click.stop
           >
-            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"

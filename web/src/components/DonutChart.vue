@@ -51,8 +51,15 @@ const colorClass = computed(() => {
 
 <template>
   <div class="flex flex-col items-center">
-    <div class="relative" :style="{ width: `${size}px`, height: `${size}px` }">
-      <svg :width="size" :height="size" class="transform -rotate-90">
+    <div
+      class="relative"
+      :style="{ width: `${size}px`, height: `${size}px` }"
+    >
+      <svg
+        :width="size"
+        :height="size"
+        class="transform -rotate-90"
+      >
         <!-- Background circle -->
         <circle
           :cx="size / 2"
@@ -78,14 +85,18 @@ const colorClass = computed(() => {
       </svg>
       <!-- Center text -->
       <div class="absolute inset-0 flex flex-col items-center justify-center">
-        <span class="text-xl font-bold text-gray-900 dark:text-white"
-          >{{ (percent ?? 0).toFixed(0) }}%</span
-        >
-        <span v-if="valueLabel" class="text-xs text-gray-500 dark:text-gray-400">{{
+        <span class="text-xl font-bold text-gray-900 dark:text-white">{{ (percent ?? 0).toFixed(0) }}%</span>
+        <span
+          v-if="valueLabel"
+          class="text-xs text-gray-500 dark:text-gray-400"
+        >{{
           valueLabel
         }}</span>
       </div>
     </div>
-    <span v-if="label" class="mt-2 text-sm text-gray-600 dark:text-gray-400">{{ label }}</span>
+    <span
+      v-if="label"
+      class="mt-2 text-sm text-gray-600 dark:text-gray-400"
+    >{{ label }}</span>
   </div>
 </template>

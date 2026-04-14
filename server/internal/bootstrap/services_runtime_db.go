@@ -3,8 +3,8 @@ package bootstrap
 import (
 	"path/filepath"
 
-	"go.uber.org/zap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/database"
+	"go.uber.org/zap"
 )
 
 // openRuntimeDatabase opens the runtime database (harness + agent tables)
@@ -17,8 +17,8 @@ func openRuntimeDatabase(cfg *ServerConfig, logger *zap.Logger) (*database.SQLit
 		opts := &database.SQLiteOpenOpts{
 			MaxReaders:               4,
 			BusyTimeout:              5000,
-			CacheSize:              -2000,
-			ForeignKeys:            true,
+			CacheSize:                -2000,
+			ForeignKeys:              true,
 			SkipIntegrityCheckOnOpen: true,
 		}
 		return database.OpenSQLite(dbPath, opts)
@@ -36,4 +36,13 @@ func openRuntimeDatabase(cfg *ServerConfig, logger *zap.Logger) (*database.SQLit
 
 	// For now, just return the error - recovery can be added later if needed
 	return nil, err
+}
+
+// OpenRuntimeDatabaseWithPath opens runtime.db at the specified data directory
+// This is a convenience function for use outside of the bootstrap package.
+func OpenRuntimeDatabaseWithPath(dataDir string, logger *zap.Logger) (*database.SQLiteConn, error) {
+	cfg := &ServerConfig{
+		DataDir: dataDir,
+	}
+	return openRuntimeDatabase(cfg, logger)
 }

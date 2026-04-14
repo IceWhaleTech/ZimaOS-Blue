@@ -123,18 +123,25 @@ defineExpose({ refresh: fetchStats })
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">{{ t('tokenEconomy.tokensSaved') }}</p>
-          <p class="dashboard-card-subtitle mt-2">Savings breakdown</p>
+          <p class="dashboard-card-label">
+            {{ t('tokenEconomy.tokensSaved') }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            Savings breakdown
+          </p>
         </div>
         <span class="dashboard-card-chip">{{
           totalTokensSaved > 0 ? formatTokens(totalTokensSaved) : '-'
         }}</span>
       </div>
 
-      <div v-if="loading" class="dashboard-card-empty">
+      <div
+        v-if="loading"
+        class="dashboard-card-empty"
+      >
         <div
           class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 dark:border-white"
-        ></div>
+        />
       </div>
 
       <template v-else>
@@ -146,7 +153,9 @@ defineExpose({ refresh: fetchStats })
             <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
               {{ costSaved > 0 ? formatCost(costSaved) : '-' }}
             </p>
-            <p class="dashboard-card-footnote mt-2">{{ t('tokenEconomy.estimated') }}</p>
+            <p class="dashboard-card-footnote mt-2">
+              {{ t('tokenEconomy.estimated') }}
+            </p>
           </div>
 
           <div class="dashboard-card-subsurface p-4">
@@ -156,7 +165,9 @@ defineExpose({ refresh: fetchStats })
             <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
               {{ totalTokensSaved > 0 ? formatTokens(totalTokensSaved) : '-' }}
             </p>
-            <p class="dashboard-card-footnote mt-2">{{ t('tokenEconomy.combined') }}</p>
+            <p class="dashboard-card-footnote mt-2">
+              {{ t('tokenEconomy.combined') }}
+            </p>
           </div>
         </div>
 
@@ -170,28 +181,41 @@ defineExpose({ refresh: fetchStats })
             </p>
           </div>
 
-          <div v-if="!hasDetailData" class="py-3 text-sm text-gray-500 dark:text-gray-400">
+          <div
+            v-if="!hasDetailData"
+            class="py-3 text-sm text-gray-500 dark:text-gray-400"
+          >
             {{ t('tokenEconomy.noSavingsYet') }}
           </div>
 
-          <div v-else class="space-y-3">
-            <div v-for="row in detailRows" :key="row.key" class="dashboard-card-subsurface p-3">
+          <div
+            v-else
+            class="space-y-3"
+          >
+            <div
+              v-for="row in detailRows"
+              :key="row.key"
+              class="dashboard-card-subsurface p-3"
+            >
               <div class="flex items-center justify-between gap-2">
-                <p class="text-sm font-medium text-gray-900 dark:text-white">{{ row.label }}</p>
+                <p class="text-sm font-medium text-gray-900 dark:text-white">
+                  {{ row.label }}
+                </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
                   {{ contribution(row.tokens) }}%
                 </p>
               </div>
               <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                <span class="font-mono text-gray-900 dark:text-white"
-                  >{{ formatTokens(row.tokens) }} {{ t('common.totalTokens') }}</span
-                >
-                <span class="text-green-600 dark:text-green-400"
-                  >{{ t('tokenEconomy.estCost') }} {{ formatCost(row.cost) }}</span
-                >
+                <span class="font-mono text-gray-900 dark:text-white">{{ formatTokens(row.tokens) }} {{ t('common.totalTokens') }}</span>
+                <span class="text-green-600 dark:text-green-400">{{ t('tokenEconomy.estCost') }} {{ formatCost(row.cost) }}</span>
               </div>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ row.meta }}</p>
-              <p v-if="row.extra" class="text-xs text-gray-500 dark:text-gray-400">
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ row.meta }}
+              </p>
+              <p
+                v-if="row.extra"
+                class="text-xs text-gray-500 dark:text-gray-400"
+              >
                 {{ row.extra }}
               </p>
               <div class="mt-2 dashboard-card-progress">
@@ -200,7 +224,7 @@ defineExpose({ refresh: fetchStats })
                     width: `${totalTokensSaved > 0 ? Math.max((row.tokens / totalTokensSaved) * 100, 2) : 0}%`,
                     background: 'linear-gradient(90deg, #16a34a 0%, #4ade80 100%)',
                   }"
-                ></span>
+                />
               </div>
             </div>
           </div>

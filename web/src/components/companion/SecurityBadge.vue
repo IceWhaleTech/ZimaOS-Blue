@@ -62,10 +62,23 @@ const iconSize = computed(() => {
       colorClasses,
     ]"
   >
-    <svg :class="iconSize" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="iconPath" />
+    <svg
+      :class="iconSize"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+        :d="iconPath"
+      />
     </svg>
     <span>{{ level }}</span>
-    <span v-if="showScore && score !== undefined" class="opacity-75">({{ score }})</span>
+    <span
+      v-if="showScore && score !== undefined"
+      class="opacity-75"
+    >({{ score }})</span>
   </span>
 </template>

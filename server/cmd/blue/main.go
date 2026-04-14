@@ -77,8 +77,8 @@ var (
 	buildTime = "unknown"
 	gitCommit = "unknown"
 
-	openPrimarySQLite                 = dbutil.OpenSQLite
-	quickCheckPrimaryDatabase        = dbutil.QuickCheckDatabase
+	openPrimarySQLite             = dbutil.OpenSQLite
+	quickCheckPrimaryDatabase     = dbutil.QuickCheckDatabase
 	forcePrimaryPreOpenQuickCheck = func() bool {
 		return strings.TrimSpace(os.Getenv("BLUE_PRIMARY_DB_PREOPEN_QUICK_CHECK")) == "1"
 	}
@@ -532,6 +532,21 @@ func runServerDefaultIteration() serverRunOutcome {
 		return serverRunOutcome{Err: fmt.Errorf("failed to open database: %w", err)}
 	}
 	defer dbConn.Close()
+	var runtimeConn *dbutil.SQLiteConn
+	runtimeConn, err = bootstrap.OpenRuntimeDatabaseWithPath(dataDir, nil)
+	if err != nil {
+		logger.Warn().Err(err).Msg("Failed to open runtime database, will use blue.db for harness/agent tables")
+		runtimeConn = nil
+	} else if _, err := bootstrap.PrepareRuntimeDatabase(lm.Context(), dataDir, dbConn, runtimeConn, nil); err != nil {
+		logger.Warn().Err(err).Msg("Failed to prepare runtime database, will use blue.db for harness/agent tables")
+		_ = runtimeConn.Close()
+		runtimeConn = nil
+	}
+	defer func() {
+		if runtimeConn != nil {
+			_ = runtimeConn.Close()
+		}
+	}()
 	db := dbConn.Writer
 	dbReader := dbConn.Reader
 
@@ -1068,35 +1083,35 @@ func runServerDefaultIteration() serverRunOutcome {
 
 	cronIPC := sockipc.NewCronIPCAdapter(cron.NewSkillAdapter(cronHandler.GetService))
 
-		// SSE event broker - created early so push service can use it as EventPublisher
-		sseBroker := ssePkg.NewBroker()
-		const browserMonitorFrameEventType = "browser_session_monitor_updated"
-		const browserMonitorActivityEventType = "browser_session_activity"
-		attachBrowserMonitorFrameHook := func(service *browser.RodService) {
-			if service == nil {
-				return
-			}
-			service.SetMonitorFrameListener(func(targetID string, capturedAt string) {
+	// SSE event broker - created early so push service can use it as EventPublisher
+	sseBroker := ssePkg.NewBroker()
+	const browserMonitorFrameEventType = "browser_session_monitor_updated"
+	const browserMonitorActivityEventType = "browser_session_activity"
+	attachBrowserMonitorFrameHook := func(service *browser.RodService) {
+		if service == nil {
+			return
+		}
+		service.SetMonitorFrameListener(func(targetID string, capturedAt string) {
 			if strings.TrimSpace(targetID) == "" {
 				return
 			}
 			sseBroker.Broadcast(browserMonitorFrameEventType, map[string]string{
 				"session_id":   strings.TrimSpace(targetID),
 				"captured_at":  strings.TrimSpace(capturedAt),
-					"monitor_kind": "image",
-				})
+				"monitor_kind": "image",
 			})
-			service.SetMonitorActivityListener(func(targetID string, observedAt string) {
-				if strings.TrimSpace(targetID) == "" {
-					return
-				}
-				sseBroker.Broadcast(browserMonitorActivityEventType, map[string]string{
-					"session_id":   strings.TrimSpace(targetID),
-					"observed_at":  strings.TrimSpace(observedAt),
-					"monitor_kind": "image",
-				})
+		})
+		service.SetMonitorActivityListener(func(targetID string, observedAt string) {
+			if strings.TrimSpace(targetID) == "" {
+				return
+			}
+			sseBroker.Broadcast(browserMonitorActivityEventType, map[string]string{
+				"session_id":   strings.TrimSpace(targetID),
+				"observed_at":  strings.TrimSpace(observedAt),
+				"monitor_kind": "image",
 			})
-		}
+		})
+	}
 
 	// Wire Web Push notification support (shared with bluelib)
 	wpSender := bootstrap.InitWebPushSenderWithReadDB(db, dbReader, configKV, zapLogger)
@@ -1521,7 +1536,7 @@ func runServerDefaultIteration() serverRunOutcome {
 	srv.RegisterHealthRoutes()
 
 	// Register API routes
-	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, dbConn, db, dbReader, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, lightpandaShimSvc, configKV, configStore)
+	registerAPIRoutes(srv, pool, userHandler, extauthHandler, userService, chatHandler, autoreplyService, autoreplyHandler, metricsCollector, metricsWriter, authMiddleware, apiKeyHandler, apiKeyService, skillRegistry, backupHandler, toolRegistry, securityHandler, sandboxHandler, sandboxManager, cronHandler, browserHandler, workflowHandler, mfaHandler, voiceHandler, voiceWSHandler, formfillerHandler, companionHandler, companionWSHandler, ngrokTunnelMgr, ngrokConfigStore, zapLogger, version, buildTime, gitCommit, dataDir, cfg, llmRegistry, dbConn, runtimeConn, db, dbReader, memoryStore, jwtService, permissionHandler, sttService, ttsService, a2uiManager, ocrService, pdfService, lm, hotReloader, sseBroker, pushIPC, pushSvc, cronIPC, browserBackend, lazyBrowserSvc, acquireBrowserSvc, acquireFallbackBrowserSvc, lightpandaShimSvc, configKV, configStore)
 
 	// Register shutdown hook for server
 	lm.RegisterShutdownHook(func(ctx context.Context) error {
@@ -1656,7 +1671,7 @@ func executeRootCommand() int {
 	return 0
 }
 
-func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, dbConn *dbutil.SQLiteConn, db, dbReader *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {
+func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.Handler, extauthHandler *extauth.Handler, userService *user.Service, chatHandler *server.ChatHandler, autoreplyService *autoreply.Service, autoreplyHandler *autoreply.Handler, metricsCollector *metrics.Collector, metricsWriter *metrics.MetricsWriter, authMiddleware *auth.AuthMiddleware, apiKeyHandler *auth.APIKeyHandler, apiKeyService *auth.APIKeyService, skillRegistry *skill.Registry, backupHandler *backup.Handler, toolRegistry *tools.Registry, securityHandler *security.Handler, sandboxHandler *sandbox.Handler, sandboxManager *sandbox.Manager, cronHandler *cron.Handler, browserHandler *browser.Handler, workflowHandler *workflow.Handler, mfaHandler *mfa.Handler, voiceHandler *voice.Handler, voiceWSHandler *voice.WSHandler, formfillerHandler *formfiller.Handler, companionHandler *companion.Handler, companionWSHandler *companion.WebSocketHandler, ngrokTunnelMgr *ngrok.SDKTunnelManager, ngrokConfigStore *ngrok.ConfigStore, zapLogger *zap.Logger, version, buildTime, gitCommit, dataDir string, cfg *config.Config, llmRegistry *llm.ProviderRegistry, dbConn, runtimeConn *dbutil.SQLiteConn, db, dbReader *sql.DB, memoryStore *memory.Store, jwtService *auth.JWTService, permissionHandler *permission.Handler, sttService stt.Service, ttsService tts.Service, a2uiManager *a2ui.Manager, ocrService *ocrruntime.TesseractService, pdfService *pdfextract.Service, lm *lifecycle.Manager, hotReloader *config.HotReloader, sseBroker *ssePkg.Broker, pushIPC sockipc.PushBackend, pushSvc *push.Service, cronIPC sockipc.CronBackend, browserBackend tools.BrowserBackend, lazyBrowserSvc func() *browser.RodService, acquireBrowserSvc func() (*browser.RodService, func(), error), acquireFallbackBrowserSvc func() (*browser.RodService, func(), error), lightpandaShimSvc *browser.LightpandaService, configKV kvstore.Store, configStore *config.ConfigStore) {
 	e := srv.Echo()
 	logger := zapLogger
 
@@ -1926,6 +1941,7 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 		Services: &bootstrap.Services{
 			DB:            db,
 			DBConn:        dbConn,
+			RuntimeDBConn: runtimeConn,
 			UserService:   userService,
 			UserRepo:      routeUserRepo,
 			JWTService:    jwtService,

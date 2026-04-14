@@ -245,12 +245,12 @@ watch(
                     r="10"
                     stroke="currentColor"
                     stroke-width="4"
-                  ></circle>
+                  />
                   <path
                     class="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                  />
                 </svg>
                 <!-- Download icon for not-downloaded models -->
                 <svg
@@ -276,8 +276,7 @@ watch(
                     <span
                       v-if="model.active"
                       class="text-xs text-green-600 dark:text-green-400 ms-1"
-                      >{{ t('speech.inUse') }}</span
-                    >
+                    >{{ t('speech.inUse') }}</span>
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {{ trModelText(model.description) }}
@@ -328,33 +327,32 @@ watch(
                       r="10"
                       stroke="currentColor"
                       stroke-width="4"
-                    ></circle>
+                    />
                     <path
                       class="opacity-75"
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                    />
                   </svg>
                   {{ t('speech.switching') }}
                 </span>
               </div>
 
               <!-- Progress for this model -->
-              <div v-if="downloadingModelId === model.id" class="mt-3">
+              <div
+                v-if="downloadingModelId === model.id"
+                class="mt-3"
+              >
                 <div class="w-full bg-gray-200 dark:bg-gray-600 rounded-full h-2 mb-1">
                   <div
                     class="bg-gray-700 dark:bg-gray-500 h-2 rounded-full transition-all duration-300"
                     :style="{ width: `${progress?.percentage || 0}%` }"
-                  ></div>
+                  />
                 </div>
                 <div class="flex justify-between text-xs text-gray-500 dark:text-gray-400">
-                  <span
-                    >{{ formatBytes(progress?.downloaded || 0) }} /
-                    {{ formatBytes(progress?.total || 0) }}</span
-                  >
-                  <span
-                    >{{ progress?.speed_human || '-- MB/s' }} · {{ progress?.eta || '--:--' }}</span
-                  >
+                  <span>{{ formatBytes(progress?.downloaded || 0) }} /
+                    {{ formatBytes(progress?.total || 0) }}</span>
+                  <span>{{ progress?.speed_human || '-- MB/s' }} · {{ progress?.eta || '--:--' }}</span>
                 </div>
               </div>
             </div>

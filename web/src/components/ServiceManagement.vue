@@ -379,17 +379,25 @@ onUnmounted(() => {
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading && !serviceInfo" class="text-center py-8 text-gray-500 dark:text-gray-400">
+    <div
+      v-if="loading && !serviceInfo"
+      class="text-center py-8 text-gray-500 dark:text-gray-400"
+    >
       {{ t('common.loading') }}
     </div>
 
     <!-- Service Info -->
-    <div v-else-if="serviceInfo" class="space-y-4">
+    <div
+      v-else-if="serviceInfo"
+      class="space-y-4"
+    >
       <!-- Port Configuration -->
       <div class="bg-gray-100 dark:bg-gray-700/30 rounded-lg p-4">
         <div class="flex items-center justify-between">
           <div>
-            <div class="font-medium text-gray-900 dark:text-white">{{ t('service.port') }}</div>
+            <div class="font-medium text-gray-900 dark:text-white">
+              {{ t('service.port') }}
+            </div>
             <div class="text-sm text-gray-500 dark:text-gray-400">
               {{ t('service.portDescription') }}
             </div>
@@ -400,7 +408,10 @@ onUnmounted(() => {
                 <div class="font-mono text-lg text-gray-900 dark:text-white">
                   {{ serverConfig?.actual_port || serverConfig?.port || '-' }}
                 </div>
-                <div v-if="portChanged" class="text-xs text-yellow-600 dark:text-yellow-400">
+                <div
+                  v-if="portChanged"
+                  class="text-xs text-yellow-600 dark:text-yellow-400"
+                >
                   {{ t('service.configuredPort') }}: {{ serverConfig?.port }}
                 </div>
               </div>
@@ -421,7 +432,7 @@ onUnmounted(() => {
                 :class="{ 'border-red-500': !validatePort(portInput) }"
                 @keyup.enter="savePort"
                 @keyup.escape="cancelEditPort"
-              />
+              >
               <button
                 class="px-3 py-1.5 text-sm bg-gray-700 dark:bg-gray-500 hover:bg-gray-800 dark:hover:bg-gray-400 text-white rounded-lg transition-colors flex items-center gap-1"
                 :disabled="!validatePort(portInput) || actionLoading === 'savePort'"
@@ -440,12 +451,12 @@ onUnmounted(() => {
                     r="10"
                     stroke="currentColor"
                     stroke-width="4"
-                  ></circle>
+                  />
                   <path
                     class="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                  />
                 </svg>
                 {{ t('common.save') }}
               </button>
@@ -466,7 +477,10 @@ onUnmounted(() => {
           {{ t('service.portAutoFallbackInfo') }}
         </div>
         <!-- Port edit hint -->
-        <div v-if="portEditing" class="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        <div
+          v-if="portEditing"
+          class="mt-3 text-xs text-gray-500 dark:text-gray-400"
+        >
           {{ t('service.portEditHint') }}
         </div>
       </div>
@@ -493,7 +507,7 @@ onUnmounted(() => {
             <span
               class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
               :class="autoStartEnabled ? 'translate-x-5' : 'translate-x-0'"
-            ></span>
+            />
           </button>
         </div>
       </div>

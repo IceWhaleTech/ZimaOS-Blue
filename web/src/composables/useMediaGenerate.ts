@@ -41,9 +41,9 @@ async function fetchMediaTask(taskId: string) {
 }
 
 function mergeIntentParams(
-  preferred?: Record<string, any>,
-  fallback?: Record<string, any>
-): Record<string, any> | undefined {
+  preferred?: Record<string, unknown>,
+  fallback?: Record<string, unknown>
+): Record<string, unknown> | undefined {
   if (!preferred && !fallback) return undefined
   return {
     ...(fallback ?? {}),

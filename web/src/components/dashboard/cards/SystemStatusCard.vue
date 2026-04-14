@@ -111,10 +111,15 @@ const statusMetaItems = computed(() => [
 </script>
 
 <template>
-  <div class="dashboard-card-stack" :class="{ 'status-card-compact-layout': props.compact }">
+  <div
+    class="dashboard-card-stack"
+    :class="{ 'status-card-compact-layout': props.compact }"
+  >
     <div class="dashboard-card-footer status-card-header">
       <div class="dashboard-card-copy min-w-0">
-        <p class="dashboard-card-label">{{ t('common.status') }}</p>
+        <p class="dashboard-card-label">
+          {{ t('common.status') }}
+        </p>
         <p class="dashboard-card-subtitle mt-2">
           {{
             props.compact
@@ -123,23 +128,43 @@ const statusMetaItems = computed(() => [
           }}
         </p>
       </div>
-      <span class="dashboard-card-chip status-card-state-pill" :class="statusToneClass">
+      <span
+        class="dashboard-card-chip status-card-state-pill"
+        :class="statusToneClass"
+      >
         {{ statusText }}
       </span>
     </div>
 
-    <div class="status-card-grid" :class="{ 'is-compact': props.compact }">
-      <div class="dashboard-card-subsurface status-card-summary-panel" :class="statusToneClass">
+    <div
+      class="status-card-grid"
+      :class="{ 'is-compact': props.compact }"
+    >
+      <div
+        class="dashboard-card-subsurface status-card-summary-panel"
+        :class="statusToneClass"
+      >
         <div class="status-card-summary-main">
-          <span class="status-card-signal-shell" :class="statusToneClass">
-            <span class="status-card-signal-core" :class="statusDotClass"></span>
+          <span
+            class="status-card-signal-shell"
+            :class="statusToneClass"
+          >
+            <span
+              class="status-card-signal-core"
+              :class="statusDotClass"
+            />
           </span>
 
           <div class="dashboard-card-copy min-w-0">
-            <p class="dashboard-card-value truncate" :class="statusColorClass">
+            <p
+              class="dashboard-card-value truncate"
+              :class="statusColorClass"
+            >
               {{ statusText }}
             </p>
-            <p class="dashboard-card-footnote mt-2">{{ statusSummary }}</p>
+            <p class="dashboard-card-footnote mt-2">
+              {{ statusSummary }}
+            </p>
           </div>
         </div>
       </div>
@@ -150,8 +175,12 @@ const statusMetaItems = computed(() => [
           :key="item.key"
           class="dashboard-card-subsurface status-card-meta-item"
         >
-          <p class="status-card-meta-label">{{ item.label }}</p>
-          <p class="status-card-meta-value">{{ item.value }}</p>
+          <p class="status-card-meta-label">
+            {{ item.label }}
+          </p>
+          <p class="status-card-meta-value">
+            {{ item.value }}
+          </p>
         </div>
       </div>
     </div>

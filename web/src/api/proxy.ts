@@ -148,7 +148,7 @@ export interface MaskingRule {
   enabled: boolean
 }
 
-export interface CreateMaskingRulePayload extends MaskingRule {}
+export type CreateMaskingRulePayload = MaskingRule
 
 export interface MaskingStats {
   enabled: boolean

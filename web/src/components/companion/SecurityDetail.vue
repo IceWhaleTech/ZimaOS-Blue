@@ -62,7 +62,12 @@ function getThreatTypeIcon(type: string): string {
         class="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
         @click="emit('close')"
       >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          class="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -107,9 +112,7 @@ function getThreatTypeIcon(type: string): string {
       <div>
         <div class="flex items-center justify-between text-sm mb-1">
           <span class="text-gray-500 dark:text-gray-400">{{ t('companion.security.score') }}</span>
-          <span class="font-medium text-gray-900 dark:text-white"
-            >{{ security.threatScore }}/100</span
-          >
+          <span class="font-medium text-gray-900 dark:text-white">{{ security.threatScore }}/100</span>
         </div>
         <div class="h-2 bg-gray-700 dark:bg-gray-500 rounded-full overflow-hidden">
           <div

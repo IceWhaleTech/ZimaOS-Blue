@@ -56,15 +56,27 @@ async function pollTask() {
       console.log('[CardMediaGenerate] pollTask response', { status: resp.status, ok: resp.ok })
     }
     if (!resp.ok) return
-    const task = await resp.json()
+    const task = (await resp.json()) as {
+      status?: string
+      error?: string
+      response?: {
+        data?: Array<{
+          url?: string
+          original_url?: string
+          thumbnail_url?: string
+          revised_prompt?: string
+        }>
+      }
+    }
     if (import.meta.env.DEV) {
       console.log('[CardMediaGenerate] task status from API:', task.status)
     }
-    if (task.status === 'succeeded' && task.response?.data?.length > 0) {
-      const imgs: GalleryImage[] = task.response.data.map((d: any) => ({
-        src: d.url || d.original_url,
-        thumbnail: d.thumbnail_url,
-        caption: d.revised_prompt,
+    const responseData = task.response?.data
+    if (task.status === 'succeeded' && responseData && responseData.length > 0) {
+      const imgs: GalleryImage[] = responseData.map((item) => ({
+        src: item.url || item.original_url || '',
+        thumbnail: item.thumbnail_url,
+        caption: item.revised_prompt,
       }))
       taskResult.value = {
         ...props.card,
@@ -118,7 +130,10 @@ onUnmounted(() => {
     class="media-generate-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-800"
   >
     <!-- Generating: dreamy gradient placeholder -->
-    <div v-if="isGenerating" class="relative">
+    <div
+      v-if="isGenerating"
+      class="relative"
+    >
       <div
         class="generating-placeholder w-full aspect-[4/3] max-h-80 flex items-center justify-center"
       >
@@ -154,7 +169,10 @@ onUnmounted(() => {
     </div>
 
     <!-- Error state -->
-    <div v-else-if="isError" class="p-4 flex items-center gap-3">
+    <div
+      v-else-if="isError"
+      class="p-4 flex items-center gap-3"
+    >
       <div
         class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center flex-shrink-0"
       >
@@ -177,14 +195,20 @@ onUnmounted(() => {
         <p class="text-sm font-medium text-gray-900 dark:text-white">
           {{ t('chat.generationFailed', 'Generation failed') }}
         </p>
-        <p v-if="displayCard.message" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+        <p
+          v-if="displayCard.message"
+          class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"
+        >
           {{ displayCard.message }}
         </p>
       </div>
     </div>
 
     <!-- Success: show images -->
-    <div v-else-if="isSuccess && images.length > 0" class="relative">
+    <div
+      v-else-if="isSuccess && images.length > 0"
+      class="relative"
+    >
       <div class="flex gap-2 p-2 overflow-x-auto scrollbar-thin">
         <div
           v-for="(image, index) in images"
@@ -198,7 +222,7 @@ onUnmounted(() => {
             :alt="image.alt || ''"
             class="w-full h-full object-cover transition-transform group-hover:scale-105"
             :class="images.length === 1 ? 'max-h-80' : ''"
-          />
+          >
           <div
             class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center"
           >
@@ -221,7 +245,9 @@ onUnmounted(() => {
             v-if="image.caption"
             class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
           >
-            <p class="text-xs text-white truncate">{{ image.caption }}</p>
+            <p class="text-xs text-white truncate">
+              {{ image.caption }}
+            </p>
           </div>
         </div>
       </div>
@@ -253,13 +279,19 @@ onUnmounted(() => {
             />
           </svg>
         </button>
-        <div class="max-w-4xl max-h-[90vh] p-4" @click.stop>
+        <div
+          class="max-w-4xl max-h-[90vh] p-4"
+          @click.stop
+        >
           <img
             :src="selectedImage.src"
             :alt="selectedImage.alt || ''"
             class="max-w-full max-h-[80vh] object-contain rounded-lg"
-          />
-          <p v-if="selectedImage.caption" class="mt-3 text-center text-white text-sm">
+          >
+          <p
+            v-if="selectedImage.caption"
+            class="mt-3 text-center text-white text-sm"
+          >
             {{ selectedImage.caption }}
           </p>
         </div>

@@ -105,7 +105,12 @@ watch(
         <span
           class="mt-0.5 inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
         >
-          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -137,7 +142,10 @@ watch(
             </span>
           </span>
 
-          <span v-if="!collapsed" class="mt-1.5 block text-xs text-slate-500 dark:text-slate-400">
+          <span
+            v-if="!collapsed"
+            class="mt-1.5 block text-xs text-slate-500 dark:text-slate-400"
+          >
             {{ runningElsewhereLabel }}
           </span>
         </span>
@@ -184,12 +192,9 @@ watch(
               >
                 <span
                   class="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
-                  >{{ stageLabel(job.stage) }}</span
-                >
+                >{{ stageLabel(job.stage) }}</span>
                 <span>{{ Math.round(job.progress || 0) }}%</span>
-                <span v-if="job.iteration"
-                  >{{ t('chat.deepResearchIteration', 'Iteration') }} {{ job.iteration }}</span
-                >
+                <span v-if="job.iteration">{{ t('chat.deepResearchIteration', 'Iteration') }} {{ job.iteration }}</span>
               </div>
               <div class="mt-2 break-words text-sm font-medium text-slate-800 dark:text-slate-100">
                 {{ job.query }}
@@ -198,10 +203,16 @@ watch(
                 v-if="job.latest_action || job.latest_gap"
                 class="mt-2 space-y-1 text-xs text-slate-500 dark:text-slate-400"
               >
-                <div v-if="job.latest_action" class="break-words">
+                <div
+                  v-if="job.latest_action"
+                  class="break-words"
+                >
                   {{ latestActionLabel(job.latest_action) }}
                 </div>
-                <div v-if="job.latest_gap" class="break-words text-amber-700 dark:text-amber-200">
+                <div
+                  v-if="job.latest_gap"
+                  class="break-words text-amber-700 dark:text-amber-200"
+                >
                   {{ localizeDeepResearchGap(job.latest_gap, tr) }}
                 </div>
               </div>

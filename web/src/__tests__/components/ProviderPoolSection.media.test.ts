@@ -1055,7 +1055,7 @@ describe('ProviderPoolSection media verification gating', () => {
     const providerCards = () => wrapper.findAll('[draggable="true"]')
     const findProviderCard = (id: string) =>
       providerCards().find((card) => card.text().includes(id))
-    const topCardIds = () =>
+    const _topCardIds = () =>
       providerCards()
         .slice(0, 3)
         .map((card) => {
@@ -1092,7 +1092,7 @@ describe('ProviderPoolSection media verification gating', () => {
     const providerCards = () => wrapper.findAll('[draggable="true"]')
     const findProviderCard = (id: string) =>
       providerCards().find((card) => card.text().includes(id))
-    const topCardIds = () =>
+    const _topCardIds = () =>
       providerCards()
         .slice(0, 3)
         .map((card) => {

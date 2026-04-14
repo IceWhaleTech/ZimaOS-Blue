@@ -39,6 +39,14 @@ func (cli windowsSystemCLI) captureWindow(ctx context.Context, width int, height
 	return cli.exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-Command", command)
 }
 
+func (cli windowsSystemCLI) captureRegion(ctx context.Context, rect windowsRect, path string) (string, error) {
+	width, height, ok := windowsVisibleRectSize(rect)
+	if !ok {
+		return "", fmt.Errorf("capture region requires visible bounds")
+	}
+	return cli.captureWindow(ctx, width, height, rect.Left, rect.Top, path)
+}
+
 func (cli windowsSystemCLI) captureActiveWindow(ctx context.Context, path string) (string, error) {
 	psPath := windowsPSEscapeLiteral(path)
 	command := strings.Join([]string{

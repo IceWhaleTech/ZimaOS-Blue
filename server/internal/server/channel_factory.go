@@ -31,6 +31,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/validator"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/viber"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/wechat"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/wechatilink"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/whatsapp"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel/zalo"
 )
@@ -58,6 +59,8 @@ func (f *ChannelFactory) CreateChannel(cfg *ChannelConfig) (channel.Channel, err
 		return f.createSlack(cfg)
 	case "wechat":
 		return f.createWechat(cfg)
+	case "wechat_ilink":
+		return f.createWechatILink(cfg)
 	case "matrix":
 		return f.createMatrix(cfg)
 	case "teams":
@@ -185,6 +188,15 @@ func (f *ChannelFactory) createWechat(cfg *ChannelConfig) (channel.Channel, erro
 		Secret:  cfg.Config["secret"],
 	}
 	return wechat.New(wechatCfg, f.logger), nil
+}
+
+func (f *ChannelFactory) createWechatILink(cfg *ChannelConfig) (channel.Channel, error) {
+	wechatCfg := channel.WeChatILinkConfig{
+		Enabled:    cfg.Enabled,
+		APIBaseURL: cfg.Config["api_base_url"],
+		BotToken:   cfg.Config["bot_token"],
+	}
+	return wechatilink.New(wechatCfg, f.logger), nil
 }
 
 func (f *ChannelFactory) createMatrix(cfg *ChannelConfig) (channel.Channel, error) {
@@ -402,6 +414,8 @@ func (f *ChannelFactory) ValidateConnection(ctx context.Context, channelType str
 		v = slack.NewValidator()
 	case "wechat":
 		v = wechat.NewValidator()
+	case "wechat_ilink":
+		v = wechatilink.NewValidator()
 	case "matrix":
 		v = matrix.NewValidator()
 	case "teams":

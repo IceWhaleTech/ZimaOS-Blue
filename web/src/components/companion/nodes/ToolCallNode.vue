@@ -74,12 +74,26 @@ function formatDuration(ms?: number): string {
   <div
     :class="['px-4 py-3 rounded-lg border-2 shadow-sm min-w-[200px] max-w-[300px]', statusColor]"
   >
-    <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
+    <Handle
+      type="target"
+      :position="Position.Top"
+      class="!bg-gray-400"
+    />
 
     <div class="flex items-start gap-3">
       <div :class="['p-2 rounded-full bg-white dark:bg-gray-700', iconColor]">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="statusIcon" />
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            :d="statusIcon"
+          />
         </svg>
       </div>
 
@@ -111,13 +125,20 @@ function formatDuration(ms?: number): string {
           >
             {{ t(`companion.nodes.status.${data.status}`) }}
           </span>
-          <span v-if="data.duration" class="text-xs text-gray-400 dark:text-gray-500">
+          <span
+            v-if="data.duration"
+            class="text-xs text-gray-400 dark:text-gray-500"
+          >
             {{ formatDuration(data.duration) }}
           </span>
         </div>
       </div>
     </div>
 
-    <Handle type="source" :position="Position.Bottom" class="!bg-gray-400" />
+    <Handle
+      type="source"
+      :position="Position.Bottom"
+      class="!bg-gray-400"
+    />
   </div>
 </template>

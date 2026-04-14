@@ -79,7 +79,10 @@ onMounted(() => {
       <!-- Content -->
       <div class="p-6 space-y-6">
         <!-- Loading -->
-        <div v-if="loading" class="flex items-center justify-center py-8">
+        <div
+          v-if="loading"
+          class="flex items-center justify-center py-8"
+        >
           <div
             class="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-gray-900 dark:border-t-gray-400"
           />

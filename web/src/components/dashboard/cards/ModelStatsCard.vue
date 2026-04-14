@@ -53,7 +53,9 @@ function sortIcon(key: SortKey): string {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">{{ t('metrics.modelStats') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('metrics.modelStats') }}
+          </p>
           <p class="dashboard-card-subtitle mt-2">
             {{ t('metrics.cards.modelStats.subtitle', { count: sortedModels.length }) }}
           </p>
@@ -67,36 +69,61 @@ function sortIcon(key: SortKey): string {
         <table>
           <thead>
             <tr>
-              <th class="text-start cursor-pointer select-none" @click="toggleSort('model')">
+              <th
+                class="text-start cursor-pointer select-none"
+                @click="toggleSort('model')"
+              >
                 {{ t('metrics.model') }}
                 <span class="text-xs opacity-60">{{ sortIcon('model') }}</span>
               </th>
-              <th class="text-end cursor-pointer select-none" @click="toggleSort('calls')">
+              <th
+                class="text-end cursor-pointer select-none"
+                @click="toggleSort('calls')"
+              >
                 {{ t('metrics.calls') }}
                 <span class="text-xs opacity-60">{{ sortIcon('calls') }}</span>
               </th>
-              <th class="text-end cursor-pointer select-none" @click="toggleSort('success_rate')">
+              <th
+                class="text-end cursor-pointer select-none"
+                @click="toggleSort('success_rate')"
+              >
                 {{ t('metrics.successRate') }}
                 <span class="text-xs opacity-60">{{ sortIcon('success_rate') }}</span>
               </th>
-              <th class="text-end cursor-pointer select-none" @click="toggleSort('total_tokens')">
+              <th
+                class="text-end cursor-pointer select-none"
+                @click="toggleSort('total_tokens')"
+              >
                 {{ t('metrics.tokens') }}
                 <span class="text-xs opacity-60">{{ sortIcon('total_tokens') }}</span>
               </th>
-              <th class="text-end cursor-pointer select-none" @click="toggleSort('estimated_cost')">
+              <th
+                class="text-end cursor-pointer select-none"
+                @click="toggleSort('estimated_cost')"
+              >
                 {{ t('metrics.cost') }}
                 <span class="text-xs opacity-60">{{ sortIcon('estimated_cost') }}</span>
               </th>
-              <th class="text-end cursor-pointer select-none" @click="toggleSort('avg_latency_ms')">
+              <th
+                class="text-end cursor-pointer select-none"
+                @click="toggleSort('avg_latency_ms')"
+              >
                 {{ t('metrics.avgLatency') }}
                 <span class="text-xs opacity-60">{{ sortIcon('avg_latency_ms') }}</span>
               </th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="model in sortedModels" :key="model.model">
-              <td class="font-medium text-gray-900 dark:text-white">{{ model.model }}</td>
-              <td class="text-end">{{ model.calls ?? 0 }}</td>
+            <tr
+              v-for="model in sortedModels"
+              :key="model.model"
+            >
+              <td class="font-medium text-gray-900 dark:text-white">
+                {{ model.model }}
+              </td>
+              <td class="text-end">
+                {{ model.calls ?? 0 }}
+              </td>
               <td class="text-end">
                 <span
                   :class="
@@ -108,17 +135,24 @@ function sortIcon(key: SortKey): string {
                   {{ (model.success_rate ?? 0).toFixed(1) }}%
                 </span>
               </td>
-              <td class="text-end">{{ (model.total_tokens ?? 0).toLocaleString() }}</td>
+              <td class="text-end">
+                {{ (model.total_tokens ?? 0).toLocaleString() }}
+              </td>
               <td class="text-end text-green-600 dark:text-green-400">
                 ${{ (model.estimated_cost ?? 0).toFixed(4) }}
               </td>
-              <td class="text-end">{{ (model.avg_latency_ms ?? 0).toFixed(0) }}ms</td>
+              <td class="text-end">
+                {{ (model.avg_latency_ms ?? 0).toFixed(0) }}ms
+              </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div v-else class="dashboard-card-empty">
+      <div
+        v-else
+        class="dashboard-card-empty"
+      >
         {{ t('metrics.noData') }}
       </div>
     </div>

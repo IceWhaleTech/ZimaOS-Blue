@@ -55,12 +55,20 @@ function scrollRight() {
     class="gallery-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Title -->
-    <div v-if="card.title" class="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div
+      v-if="card.title"
+      class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
+    >
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Horizontal Scroll Layout -->
-    <div v-if="isHorizontalLayout()" class="relative group">
+    <div
+      v-if="isHorizontalLayout()"
+      class="relative group"
+    >
       <!-- Scroll buttons -->
       <button
         v-if="card.images.length > 2"
@@ -94,7 +102,12 @@ function scrollRight() {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5l7 7-7 7"
+          />
         </svg>
       </button>
 
@@ -115,7 +128,7 @@ function scrollRight() {
             :alt="image.alt || ''"
             class="w-full h-full object-cover transition-transform group-hover/item:scale-105"
             :class="card.images.length === 1 ? 'max-h-80' : ''"
-          />
+          >
           <!-- Overlay on hover -->
           <div
             class="absolute inset-0 bg-black/0 group-hover/item:bg-black/30 transition-colors flex items-center justify-center"
@@ -140,14 +153,20 @@ function scrollRight() {
             v-if="image.caption"
             class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
           >
-            <p class="text-xs text-white truncate">{{ image.caption }}</p>
+            <p class="text-xs text-white truncate">
+              {{ image.caption }}
+            </p>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Grid Layout (default) -->
-    <div v-else class="p-2 grid gap-2" :class="getGridCols()">
+    <div
+      v-else
+      class="p-2 grid gap-2"
+      :class="getGridCols()"
+    >
       <div
         v-for="(image, index) in card.images"
         :key="index"
@@ -158,7 +177,7 @@ function scrollRight() {
           :src="getImageSrc(image)"
           :alt="image.alt || ''"
           class="w-full h-full object-cover transition-transform group-hover:scale-105"
-        />
+        >
         <!-- Overlay on hover -->
         <div
           class="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center"
@@ -183,7 +202,9 @@ function scrollRight() {
           v-if="image.caption"
           class="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/70 to-transparent"
         >
-          <p class="text-xs text-white truncate">{{ image.caption }}</p>
+          <p class="text-xs text-white truncate">
+            {{ image.caption }}
+          </p>
         </div>
       </div>
     </div>
@@ -214,13 +235,19 @@ function scrollRight() {
             />
           </svg>
         </button>
-        <div class="max-w-4xl max-h-[90vh] p-4" @click.stop>
+        <div
+          class="max-w-4xl max-h-[90vh] p-4"
+          @click.stop
+        >
           <img
             :src="selectedImage.src"
             :alt="selectedImage.alt || ''"
             class="max-w-full max-h-[80vh] object-contain rounded-lg"
-          />
-          <p v-if="selectedImage.caption" class="mt-3 text-center text-white">
+          >
+          <p
+            v-if="selectedImage.caption"
+            class="mt-3 text-center text-white"
+          >
             {{ selectedImage.caption }}
           </p>
         </div>

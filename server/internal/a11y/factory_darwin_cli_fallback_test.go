@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDarwinSystemCLI_ActivateAppPrefersOpen(t *testing.T) {
@@ -97,6 +98,44 @@ func TestDarwinSystemCLI_CaptureWindowUsesScreencapture(t *testing.T) {
 	}
 }
 
+func TestDarwinSystemCLI_PasteTextWithTemporaryClipboardUsesClipboardRestoreFlow(t *testing.T) {
+	var name string
+	var args []string
+	cli := darwinSystemCLI{
+		run: func(_ context.Context, command string, commandArgs ...string) (string, error) {
+			name = command
+			args = append([]string(nil), commandArgs...)
+			return "", nil
+		},
+	}
+
+	if _, err := cli.pasteTextWithTemporaryClipboard(context.Background(), "hello\nit's me"); err != nil {
+		t.Fatalf("pasteTextWithTemporaryClipboard() error = %v", err)
+	}
+	if name != "osascript" {
+		t.Fatalf("name = %q, want osascript", name)
+	}
+	if len(args) < 11 {
+		t.Fatalf("args len = %d, want at least 11", len(args))
+	}
+	joined := strings.Join(args, " ")
+	for _, needle := range []string{
+		`-e on run argv`,
+		`-e set oldClipboard to the clipboard`,
+		`-e set the clipboard to item 1 of argv`,
+		`-e tell application "System Events" to keystroke "v" using command down`,
+		`-e set the clipboard to oldClipboard`,
+		`-- hello`,
+	} {
+		if !strings.Contains(joined, needle) {
+			t.Fatalf("args missing %q in %q", needle, joined)
+		}
+	}
+	if args[len(args)-1] != "hello\nit's me" {
+		t.Fatalf("last arg = %q, want original text payload", args[len(args)-1])
+	}
+}
+
 func TestDarwinSystemCLI_OpenAccessibilitySettingsUsesRestrictedOpen(t *testing.T) {
 	var call string
 	cli := darwinSystemCLI{
@@ -111,5 +150,70 @@ func TestDarwinSystemCLI_OpenAccessibilitySettingsUsesRestrictedOpen(t *testing.
 	}
 	if call != "open x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility" {
 		t.Fatalf("call = %q, want settings deep link open", call)
+	}
+}
+
+func TestDarwinSystemCLI_ShowHighlightOverlayUsesTransparentJavaScriptWindow(t *testing.T) {
+	var name string
+	var args []string
+	cli := darwinSystemCLI{
+		run: func(_ context.Context, command string, commandArgs ...string) (string, error) {
+			name = command
+			args = append([]string(nil), commandArgs...)
+			return "", nil
+		},
+	}
+
+	err := cli.showHighlightOverlay(
+		context.Background(),
+		darwinRect{
+			Origin: darwinPoint{X: 120, Y: 240},
+			Size:   darwinSize{Width: 320, Height: 48},
+		},
+		350*time.Millisecond,
+	)
+	if err != nil {
+		t.Fatalf("showHighlightOverlay() error = %v", err)
+	}
+	if name != "osascript" {
+		t.Fatalf("name = %q, want osascript", name)
+	}
+	joined := strings.Join(args, " ")
+	for _, needle := range []string{
+		`-l JavaScript`,
+		`NSWindow.alloc.initWithContentRectStyleMaskBackingDefer`,
+		`setFrameTopLeftPoint`,
+		`setBorderColor`,
+		`setIgnoresMouseEvents(true)`,
+		`-- 120 240 320 48 0.35`,
+	} {
+		if !strings.Contains(joined, needle) {
+			t.Fatalf("args missing %q in %q", needle, joined)
+		}
+	}
+}
+
+func TestDarwinSystemCLI_CaptureRegionUsesScreencaptureRect(t *testing.T) {
+	var call string
+	cli := darwinSystemCLI{
+		run: func(_ context.Context, name string, args ...string) (string, error) {
+			call = name + " " + strings.Join(args, " ")
+			return "", nil
+		},
+	}
+
+	_, err := cli.captureRegion(
+		context.Background(),
+		darwinRect{
+			Origin: darwinPoint{X: 12, Y: 34},
+			Size:   darwinSize{Width: 320, Height: 48},
+		},
+		"/tmp/region.png",
+	)
+	if err != nil {
+		t.Fatalf("captureRegion() error = %v", err)
+	}
+	if call != "screencapture -x -R12,34,320,48 /tmp/region.png" {
+		t.Fatalf("call = %q, want %q", call, "screencapture -x -R12,34,320,48 /tmp/region.png")
 	}
 }

@@ -229,7 +229,10 @@ watch(
         </div>
 
         <!-- Template Selector (compact) -->
-        <div v-if="state.templates.length > 1" class="mb-2">
+        <div
+          v-if="state.templates.length > 1"
+          class="mb-2"
+        >
           <select
             :value="state.selectedTemplate?.id"
             class="w-full px-2 py-1.5 rounded text-xs cursor-pointer bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 border border-gray-300 dark:border-gray-600"
@@ -242,7 +245,11 @@ watch(
               }
             "
           >
-            <option v-for="template in state.templates" :key="template.id" :value="template.id">
+            <option
+              v-for="template in state.templates"
+              :key="template.id"
+              :value="template.id"
+            >
               {{ template.name }}
             </option>
           </select>
@@ -259,7 +266,10 @@ watch(
           </button>
 
           <!-- Expanded Paste Area -->
-          <div v-else class="rounded overflow-hidden border border-gray-200 dark:border-gray-600">
+          <div
+            v-else
+            class="rounded overflow-hidden border border-gray-200 dark:border-gray-600"
+          >
             <div
               class="flex justify-between items-center px-2 py-1.5 text-[11px] bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
             >
@@ -278,7 +288,7 @@ watch(
               class="w-full p-2 text-[11px] font-mono resize-none outline-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 border-t border-gray-200 dark:border-gray-600 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               rows="4"
               @input="handlePasteInput"
-            ></textarea>
+            />
             <div
               class="flex justify-between items-center px-2 py-1 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600"
             >

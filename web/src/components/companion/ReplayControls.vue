@@ -104,7 +104,12 @@ watch(showSpeedMenu, (isOpen) => {
           :title="t('companion.replay.stepBackward')"
           @click="emit('stepBackward')"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"
@@ -119,10 +124,20 @@ watch(showSpeedMenu, (isOpen) => {
           class="p-3 bg-gray-700 dark:bg-gray-500 text-white rounded-full hover:bg-gray-800 dark:hover:bg-gray-400 transition-colors"
           @click="isPlaying ? emit('pause') : emit('play')"
         >
-          <svg v-if="!isPlaying" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <svg
+            v-if="!isPlaying"
+            class="w-6 h-6"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path d="M8 5v14l11-7z" />
           </svg>
-          <svg v-else class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+          <svg
+            v-else
+            class="w-6 h-6"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
           </svg>
         </button>
@@ -134,7 +149,12 @@ watch(showSpeedMenu, (isOpen) => {
           :title="t('companion.replay.stepForward')"
           @click="emit('stepForward')"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg
+            class="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
             <path
               stroke-linecap="round"
               stroke-linejoin="round"

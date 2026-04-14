@@ -64,8 +64,15 @@ const statusLabel = computed(() => localizeStatusToken(props.card.status, t) || 
     </div>
 
     <!-- Steps -->
-    <div v-if="card.steps && card.steps.length > 0" class="mt-4 space-y-2">
-      <div v-for="(step, index) in card.steps" :key="index" class="flex items-center gap-2 text-sm">
+    <div
+      v-if="card.steps && card.steps.length > 0"
+      class="mt-4 space-y-2"
+    >
+      <div
+        v-for="(step, index) in card.steps"
+        :key="index"
+        class="flex items-center gap-2 text-sm"
+      >
         <span
           class="w-5 h-5 rounded-full flex items-center justify-center text-xs"
           :class="{
@@ -77,7 +84,10 @@ const statusLabel = computed(() => localizeStatusToken(props.card.status, t) || 
           }"
         >
           <span v-if="step.status === 'pending'">{{ index + 1 }}</span>
-          <span v-else-if="step.status === 'running'" class="animate-spin">⟳</span>
+          <span
+            v-else-if="step.status === 'running'"
+            class="animate-spin"
+          >⟳</span>
           <span v-else-if="step.status === 'completed'">✓</span>
           <span v-else-if="step.status === 'failed'">✗</span>
         </span>
@@ -91,7 +101,10 @@ const statusLabel = computed(() => localizeStatusToken(props.card.status, t) || 
         >
           {{ step.name }}
         </span>
-        <span v-if="step.message" class="text-gray-400 text-xs"> - {{ step.message }} </span>
+        <span
+          v-if="step.message"
+          class="text-gray-400 text-xs"
+        > - {{ step.message }} </span>
       </div>
     </div>
   </div>

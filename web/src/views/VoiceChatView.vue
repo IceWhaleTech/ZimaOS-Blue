@@ -37,7 +37,7 @@ const autoPlayResponse = ref(isTtsAutoPlayEnabled())
 const continuousListening = ref(false)
 const isPlaying = ref(false)
 const isDesktopRuntime = computed(
-  () => typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+  () => typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__
 )
 
 // Wake word state
@@ -323,7 +323,7 @@ function parseCheckpointDecision(text: string): 'continue' | 'cancel' | '' {
     .trim()
     .toLowerCase()
     .replace(
-      /^[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+|[\s.,!?;:，。！？；：、'"`“”‘’()（）【】\[\]-]+$/g,
+      /^[\s.,!?;:，。！？；：、'"`“”‘’()（）【】[\]-]+|[\s.,!?;:，。！？；：、'"`“”‘’()（）【】[\]-]+$/g,
       ''
     )
 
@@ -537,12 +537,14 @@ watch(wakeWordEnabled, () => {
 <template>
   <div class="voice-chat-view p-6 max-w-4xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">{{ t('voiceView.title') }}</h1>
+      <h1 class="text-2xl font-bold text-white">
+        {{ t('voiceView.title') }}
+      </h1>
       <div class="flex items-center gap-2">
         <span
           class="w-3 h-3 rounded-full"
           :class="isConnected ? 'bg-green-500' : 'bg-red-500'"
-        ></span>
+        />
         <span class="text-sm text-gray-400">
           {{ isConnected ? t('voiceView.connected') : t('voiceView.disconnected') }}
         </span>
@@ -555,7 +557,10 @@ watch(wakeWordEnabled, () => {
       class="mb-4 bg-red-900/50 border border-red-500 text-red-200 px-4 py-3 rounded-lg flex items-center justify-between"
     >
       <span>{{ error }}</span>
-      <button class="text-red-300 hover:text-red-100" @click="error = null">
+      <button
+        class="text-red-300 hover:text-red-100"
+        @click="error = null"
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           class="h-5 w-5"
@@ -575,7 +580,9 @@ watch(wakeWordEnabled, () => {
 
     <!-- Settings -->
     <div class="bg-gray-700 rounded-lg p-4 mb-6">
-      <h2 class="text-sm font-medium text-gray-400 mb-3">{{ t('voiceView.settingsTitle') }}</h2>
+      <h2 class="text-sm font-medium text-gray-400 mb-3">
+        {{ t('voiceView.settingsTitle') }}
+      </h2>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
         <!-- Language -->
         <div>
@@ -585,13 +592,27 @@ watch(wakeWordEnabled, () => {
             class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
             @change="updateConfig"
           >
-            <option value="en">{{ t('voiceView.languages.en') }}</option>
-            <option value="zh">{{ t('voiceView.languages.zh') }}</option>
-            <option value="ja">{{ t('voiceView.languages.ja') }}</option>
-            <option value="ko">{{ t('voiceView.languages.ko') }}</option>
-            <option value="de">{{ t('voiceView.languages.de') }}</option>
-            <option value="fr">{{ t('voiceView.languages.fr') }}</option>
-            <option value="es">{{ t('voiceView.languages.es') }}</option>
+            <option value="en">
+              {{ t('voiceView.languages.en') }}
+            </option>
+            <option value="zh">
+              {{ t('voiceView.languages.zh') }}
+            </option>
+            <option value="ja">
+              {{ t('voiceView.languages.ja') }}
+            </option>
+            <option value="ko">
+              {{ t('voiceView.languages.ko') }}
+            </option>
+            <option value="de">
+              {{ t('voiceView.languages.de') }}
+            </option>
+            <option value="fr">
+              {{ t('voiceView.languages.fr') }}
+            </option>
+            <option value="es">
+              {{ t('voiceView.languages.es') }}
+            </option>
           </select>
         </div>
 
@@ -603,7 +624,11 @@ watch(wakeWordEnabled, () => {
             class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
             @change="updateConfig"
           >
-            <option v-for="voice in voices" :key="voice.id" :value="voice.id">
+            <option
+              v-for="voice in voices"
+              :key="voice.id"
+              :value="voice.id"
+            >
               {{ voice.name }}
             </option>
           </select>
@@ -617,7 +642,7 @@ watch(wakeWordEnabled, () => {
               type="checkbox"
               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateAutoPlayResponse"
-            />
+            >
             <span class="text-sm text-gray-300">{{ t('voiceView.autoPlay') }}</span>
           </label>
         </div>
@@ -630,22 +655,27 @@ watch(wakeWordEnabled, () => {
               type="checkbox"
               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
               @change="updateConfig"
-            />
+            >
             <span class="text-sm text-gray-300">{{ t('voiceView.continuous') }}</span>
           </label>
         </div>
       </div>
 
       <!-- Wake Word Settings -->
-      <div v-if="browserWakeWordAvailable" class="border-t border-gray-700 pt-4 mt-4">
+      <div
+        v-if="browserWakeWordAvailable"
+        class="border-t border-gray-700 pt-4 mt-4"
+      >
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-medium text-gray-400">{{ t('voiceView.wakeWordTitle') }}</h3>
+          <h3 class="text-sm font-medium text-gray-400">
+            {{ t('voiceView.wakeWordTitle') }}
+          </h3>
           <label class="flex items-center gap-2 cursor-pointer">
             <input
               v-model="wakeWordEnabled"
               type="checkbox"
               class="w-4 h-4 rounded border-gray-600 bg-gray-700 text-gray-900 dark:text-white focus:ring-gray-900 dark:focus:ring-gray-400"
-            />
+            >
             <span class="text-sm text-gray-300">{{ t('voiceView.wakeWordEnable') }}</span>
           </label>
         </div>
@@ -660,13 +690,13 @@ watch(wakeWordEnabled, () => {
               class="w-full bg-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400"
               :placeholder="t('voiceView.wakeWordPlaceholder')"
               @change="updateWakeWord"
-            />
+            >
           </div>
           <div class="flex items-center gap-2 pt-5">
             <span
               class="w-2 h-2 rounded-full"
               :class="wakeWordListening ? 'bg-green-500 animate-pulse' : 'bg-gray-500'"
-            ></span>
+            />
             <span class="text-xs text-gray-500">
               {{
                 wakeWordListening ? t('voiceView.wakeWordListening') : t('voiceView.wakeWordIdle')
@@ -681,7 +711,9 @@ watch(wakeWordEnabled, () => {
         class="border-t border-gray-700 pt-4 mt-4"
       >
         <div class="rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-3 text-sm">
-          <p class="font-medium text-blue-200">{{ t('speech.voiceWake.title') }}</p>
+          <p class="font-medium text-blue-200">
+            {{ t('speech.voiceWake.title') }}
+          </p>
           <p class="mt-1 text-blue-100/80">
             {{ t('speech.voiceWake.desktopNoteDescription') }}
           </p>
@@ -700,10 +732,12 @@ watch(wakeWordEnabled, () => {
       <div class="text-xs text-blue-100/90 mb-2">
         {{
           pendingCheckpointQuestion.questions[0]?.question ||
-          t('voiceView.checkpoint.fallbackQuestion')
+            t('voiceView.checkpoint.fallbackQuestion')
         }}
       </div>
-      <div class="text-xs text-blue-200/80 mb-3">{{ t('voiceView.checkpoint.help') }}</div>
+      <div class="text-xs text-blue-200/80 mb-3">
+        {{ t('voiceView.checkpoint.help') }}
+      </div>
       <div class="flex gap-2">
         <button
           class="px-3 py-2 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
@@ -722,7 +756,10 @@ watch(wakeWordEnabled, () => {
 
     <!-- Messages -->
     <div class="bg-gray-700 rounded-lg mb-6 min-h-[300px] max-h-[400px] overflow-y-auto">
-      <div v-if="messages.length === 0" class="p-8 text-center text-gray-500">
+      <div
+        v-if="messages.length === 0"
+        class="p-8 text-center text-gray-500"
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           class="h-12 w-12 mx-auto mb-4 opacity-50"
@@ -739,7 +776,10 @@ watch(wakeWordEnabled, () => {
         </svg>
         <p>{{ t('voiceView.emptyHint') }}</p>
       </div>
-      <div v-else class="p-4 space-y-4">
+      <div
+        v-else
+        class="p-4 space-y-4"
+      >
         <div
           v-for="(msg, index) in messages"
           :key="index"
@@ -775,7 +815,10 @@ watch(wakeWordEnabled, () => {
         >
           {{ stateText }}
         </div>
-        <div v-if="transcript && sessionState !== 'idle'" class="text-sm text-gray-500 mt-1">
+        <div
+          v-if="transcript && sessionState !== 'idle'"
+          class="text-sm text-gray-500 mt-1"
+        >
           "{{ transcript }}"
         </div>
       </div>
@@ -803,7 +846,13 @@ watch(wakeWordEnabled, () => {
           fill="currentColor"
           viewBox="0 0 24 24"
         >
-          <rect x="6" y="6" width="12" height="12" rx="2" />
+          <rect
+            x="6"
+            y="6"
+            width="12"
+            height="12"
+            rx="2"
+          />
         </svg>
         <svg
           v-else

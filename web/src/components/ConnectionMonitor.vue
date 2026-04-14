@@ -106,28 +106,36 @@ onUnmounted(() => {
         <div class="text-2xl font-bold text-gray-900 dark:text-white">
           {{ stats?.total_connections ?? 0 }}
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('connections.total') }}</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('connections.total') }}
+        </div>
       </div>
       <div class="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
         <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-gray-600"></span>
+          <span class="w-3 h-3 rounded-full bg-gray-600" />
           <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ httpCount }}</span>
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">HTTP</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          HTTP
+        </div>
       </div>
       <div class="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
         <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-green-500"></span>
+          <span class="w-3 h-3 rounded-full bg-green-500" />
           <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ wsCount }}</span>
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">WebSocket</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          WebSocket
+        </div>
       </div>
       <div class="p-4 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
         <div class="flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-purple-500"></span>
+          <span class="w-3 h-3 rounded-full bg-purple-500" />
           <span class="text-2xl font-bold text-gray-900 dark:text-white">{{ sseCount }}</span>
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">SSE</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          SSE
+        </div>
       </div>
     </div>
 
@@ -220,7 +228,10 @@ onUnmounted(() => {
         {{ t('common.loading') }}
       </div>
 
-      <div v-else-if="error" class="p-8 text-center text-red-500">
+      <div
+        v-else-if="error"
+        class="p-8 text-center text-red-500"
+      >
         {{ error }}
       </div>
 
@@ -231,7 +242,10 @@ onUnmounted(() => {
         {{ t('connections.noConnections') }}
       </div>
 
-      <div v-else class="divide-y divide-gray-200 dark:divide-slate-700 max-h-96 overflow-y-auto">
+      <div
+        v-else
+        class="divide-y divide-gray-200 dark:divide-slate-700 max-h-96 overflow-y-auto"
+      >
         <div
           v-for="conn in filteredConnections"
           :key="conn.id"
@@ -239,7 +253,7 @@ onUnmounted(() => {
         >
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-2">
-              <span :class="['w-2 h-2 rounded-full', getStatusColor(conn.status)]"></span>
+              <span :class="['w-2 h-2 rounded-full', getStatusColor(conn.status)]" />
               <span
                 :class="[
                   'px-2 py-0.5 rounded text-xs font-medium uppercase',

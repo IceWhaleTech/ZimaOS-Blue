@@ -1,5 +1,5 @@
 const RE_WINDOWS_DRIVE_ABS = /^[a-zA-Z]:[\\/]+/
-const RE_WINDOWS_UNC_ABS = /^\\\\[^\\\/\s]+[\\\/][^\\\/\s]+/
+const RE_WINDOWS_UNC_ABS = /^\\\\[^\\/\s]+[\\/][^\\/\s]+/
 
 function hasUrlScheme(value: string): boolean {
   return /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)

@@ -1,16 +1,20 @@
 type Translate = (key: string, fallback: string) => string
 
-const STATUS_WRAPPER_PREFIX_RE = /^[\[\(\{<【「『"'`]+/
-const STATUS_WRAPPER_SUFFIX_RE = /[\]\)\}>】」』"'`]+$/
 const STATUS_EDGE_PUNCTUATION_RE = /^[,.:;!?]+|[,.:;!?]+$/g
+const STATUS_WRAPPER_CHARS = new Set(['[', '(', '{', '<', '【', '「', '『', '"', "'", '`'])
 
 function unwrapStatusToken(value: string): string {
   let next = value.trim()
   while (next) {
-    const unwrapped = next
-      .replace(STATUS_WRAPPER_PREFIX_RE, '')
-      .replace(STATUS_WRAPPER_SUFFIX_RE, '')
-      .trim()
+    let start = 0
+    let end = next.length
+    while (start < end && STATUS_WRAPPER_CHARS.has(next[start]!)) {
+      start += 1
+    }
+    while (end > start && STATUS_WRAPPER_CHARS.has(next[end - 1]!)) {
+      end -= 1
+    }
+    const unwrapped = next.slice(start, end).trim()
     if (!unwrapped || unwrapped === next) return next
     next = unwrapped
   }

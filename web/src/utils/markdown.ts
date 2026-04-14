@@ -12,6 +12,14 @@ function t(key: string, fallback: string): string {
 let hljsReady = false
 let hljsLoading: Promise<void> | null = null
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isHljsLanguage(value: unknown): value is Parameters<typeof hljs.registerLanguage>[1] {
+  return typeof value === 'function'
+}
+
 /** Preload highlight.js languages. Call this when a component that needs highlighting mounts. */
 export function preloadHljs(): Promise<void> {
   if (hljsReady) return Promise.resolve()
@@ -71,8 +79,14 @@ export function preloadHljs(): Promise<void> {
       import('highlight.js/lib/languages/plaintext'),
     ])
 
-    const register = (names: string[], mod: any) => {
-      const lang = mod.default || mod
+    const register = (names: string[], mod: unknown) => {
+      const lang =
+        isRecord(mod) && isHljsLanguage(mod.default)
+          ? mod.default
+          : isHljsLanguage(mod)
+            ? mod
+            : null
+      if (!lang) return
       for (const name of names) hljs.registerLanguage(name, lang)
     }
 
@@ -247,7 +261,7 @@ export function markdownToText(markdown: string): string {
   text = text.replace(/^[\t ]{0,3}[-*_]{3,}\s*$/gm, '')
 
   // Markdown table separators.
-  text = text.replace(/^[\t ]*\|?[\t :\-]+\|[\t :\-|]*$/gm, '')
+  text = text.replace(/^[\t ]*\|?[\t :-]+\|[\t :-|]*$/gm, '')
 
   // Inline emphasis.
   text = text.replace(/\*\*(.*?)\*\*/g, '$1')
@@ -774,7 +788,7 @@ export function renderMarkdown(markdown: string, _options: RenderOptions = {}): 
       flushTable()
       flushTree()
       inList = true
-      let itemContent = ulMatch[1]
+      const itemContent = ulMatch[1]
       // GFM task list checkbox
       const cbMatch = itemContent.match(/^\[([ xX])\]\s+(.*)$/)
       if (cbMatch) {

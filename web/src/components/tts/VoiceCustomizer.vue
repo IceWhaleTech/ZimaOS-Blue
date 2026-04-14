@@ -4,8 +4,15 @@
 
     <div class="setting-group">
       <label>Voice</label>
-      <select v-model="selectedVoice" class="voice-select">
-        <option v-for="voice in voices" :key="voice.id" :value="voice.id">
+      <select
+        v-model="selectedVoice"
+        class="voice-select"
+      >
+        <option
+          v-for="voice in voices"
+          :key="voice.id"
+          :value="voice.id"
+        >
           {{ voice.name }} ({{ voice.language }})
         </option>
       </select>
@@ -13,23 +20,59 @@
 
     <div class="setting-group">
       <label>Speech Rate: {{ rate.toFixed(1) }}x</label>
-      <input v-model.number="rate" type="range" min="0.5" max="2" step="0.1" class="slider" />
+      <input
+        v-model.number="rate"
+        type="range"
+        min="0.5"
+        max="2"
+        step="0.1"
+        class="slider"
+      >
     </div>
 
     <div class="setting-group">
       <label>Pitch: {{ pitch }}</label>
-      <input v-model.number="pitch" type="range" min="-50" max="50" step="1" class="slider" />
+      <input
+        v-model.number="pitch"
+        type="range"
+        min="-50"
+        max="50"
+        step="1"
+        class="slider"
+      >
     </div>
 
     <div class="setting-group">
       <label>Volume: {{ volume }}%</label>
-      <input v-model.number="volume" type="range" min="0" max="100" step="1" class="slider" />
+      <input
+        v-model.number="volume"
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        class="slider"
+      >
     </div>
 
     <div class="button-group">
-      <button class="btn-preview" @click="playPreview">▶ Preview</button>
-      <button class="btn-reset" @click="resetDefaults">Reset</button>
-      <button class="btn-save" @click="saveSettings">Save</button>
+      <button
+        class="btn-preview"
+        @click="playPreview"
+      >
+        ▶ Preview
+      </button>
+      <button
+        class="btn-reset"
+        @click="resetDefaults"
+      >
+        Reset
+      </button>
+      <button
+        class="btn-save"
+        @click="saveSettings"
+      >
+        Save
+      </button>
     </div>
   </div>
 </template>

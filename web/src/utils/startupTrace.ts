@@ -22,7 +22,7 @@ export function isStartupTraceEnabled(): boolean {
   const urlFlag = parseBoolFlag(
     new URLSearchParams(getCurrentAppLocation().search).get('startup_trace')
   )
-  const desktopFlag = !!(window as any).__BLUE_STARTUP_TRACE__
+  const desktopFlag = !!window.__BLUE_STARTUP_TRACE__
   return urlFlag || desktopFlag
 }
 

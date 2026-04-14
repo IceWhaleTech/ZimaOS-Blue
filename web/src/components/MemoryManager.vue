@@ -363,7 +363,9 @@ onBeforeUnmount(() => {
           <h2 class="text-base font-semibold text-gray-900 dark:text-white">
             {{ t('memory.title') }}
           </h2>
-          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">{{ t('memory.description') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {{ t('memory.description') }}
+          </p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
           <button
@@ -419,7 +421,9 @@ onBeforeUnmount(() => {
         <div
           class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-3 py-2.5"
         >
-          <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.totalSize') }}</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('memory.totalSize') }}
+          </div>
           <div class="text-base font-semibold text-gray-900 dark:text-white">
             {{ totalSizeText }}
           </div>
@@ -427,7 +431,9 @@ onBeforeUnmount(() => {
         <div
           class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-3 py-2.5"
         >
-          <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.oldest') }}</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('memory.oldest') }}
+          </div>
           <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
             {{ formatDate(stats?.oldest_chunk) }}
           </div>
@@ -435,7 +441,9 @@ onBeforeUnmount(() => {
         <div
           class="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20 px-3 py-2.5"
         >
-          <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('memory.newest') }}</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('memory.newest') }}
+          </div>
           <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
             {{ formatDate(stats?.newest_chunk) }}
           </div>
@@ -468,24 +476,24 @@ onBeforeUnmount(() => {
             t('memory.content')
           }}</label>
           <textarea
-            data-testid="memory-add-content"
             v-model="addContent"
+            data-testid="memory-add-content"
             rows="4"
             :placeholder="t('memory.contentPlaceholder')"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
-          ></textarea>
+          />
         </div>
         <div>
           <label class="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">{{
             t('memory.tags')
           }}</label>
           <input
-            data-testid="memory-add-tags"
             v-model="addTags"
+            data-testid="memory-add-tags"
             type="text"
             :placeholder="t('memory.tagsPlaceholder')"
             class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          />
+          >
         </div>
         <div class="flex gap-2">
           <button
@@ -524,10 +532,13 @@ onBeforeUnmount(() => {
           data-testid="memory-search-results-panel"
           class="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden min-h-[280px]"
         >
-          <div v-if="searching" class="p-8 text-center">
+          <div
+            v-if="searching"
+            class="p-8 text-center"
+          >
             <div
               class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
-            ></div>
+            />
           </div>
 
           <template v-else-if="searchResults.length > 0">
@@ -555,9 +566,7 @@ onBeforeUnmount(() => {
                       <span class="text-gray-500 dark:text-gray-400">{{
                         formatDate(memory.created_at)
                       }}</span>
-                      <span :class="getScoreColor(memory.score)"
-                        >{{ (memory.score * 100).toFixed(1) }}%</span
-                      >
+                      <span :class="getScoreColor(memory.score)">{{ (memory.score * 100).toFixed(1) }}%</span>
                       <span
                         v-for="mt in memory.match_types"
                         :key="mt"
@@ -615,12 +624,14 @@ onBeforeUnmount(() => {
             </div>
           </template>
 
-          <div v-else class="p-8 text-center text-gray-500 dark:text-gray-400">
+          <div
+            v-else
+            class="p-8 text-center text-gray-500 dark:text-gray-400"
+          >
             {{ t('memory.noResults') }}
           </div>
         </div>
       </section>
-
     </div>
 
     <Teleport to="body">
@@ -636,7 +647,9 @@ onBeforeUnmount(() => {
             </h3>
           </div>
           <div class="p-6">
-            <p class="text-gray-700 dark:text-gray-300">{{ t('memory.clearAllWarning') }}</p>
+            <p class="text-gray-700 dark:text-gray-300">
+              {{ t('memory.clearAllWarning') }}
+            </p>
           </div>
           <div
             class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3"
@@ -705,13 +718,13 @@ onBeforeUnmount(() => {
             </p>
             <div class="flex items-center gap-2">
               <input
-                data-testid="memory-import-file-input"
                 ref="memoryFileInputRef"
+                data-testid="memory-import-file-input"
                 type="file"
                 accept=".md,.markdown,.txt"
                 class="hidden"
                 @change="handleMemoryFileSelect"
-              />
+              >
               <button
                 data-testid="memory-import-file-picker"
                 class="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-white rounded-lg text-sm"
@@ -723,8 +736,7 @@ onBeforeUnmount(() => {
               <span
                 v-if="memoryImportFile"
                 class="text-sm text-gray-600 dark:text-gray-300 truncate flex-1"
-                >{{ memoryImportFile.name }}</span
-              >
+              >{{ memoryImportFile.name }}</span>
             </div>
             <div>
               <label class="block text-sm text-gray-500 dark:text-gray-400 mb-2">{{
@@ -778,12 +790,12 @@ onBeforeUnmount(() => {
                   r="10"
                   stroke="currentColor"
                   stroke-width="4"
-                ></circle>
+                />
                 <path
                   class="opacity-75"
                   fill="currentColor"
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
+                />
               </svg>
               {{ memoryImporting ? t('userdata.importing') : t('userdata.memory.importButton') }}
             </button>

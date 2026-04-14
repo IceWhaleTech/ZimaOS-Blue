@@ -212,14 +212,29 @@ watch(canShowBackToTop, () => {
       data-tauri-drag-region
       @mousedown="handleWindowChromeMouseDown"
     >
-      <div class="layout-window-chrome-bar" aria-hidden="true" data-tauri-drag-region>
-        <div class="layout-window-chrome-traffic-slot" aria-hidden="true" data-tauri-drag-region />
-        <div class="layout-window-chrome-spacer" aria-hidden="true" data-tauri-drag-region />
+      <div
+        class="layout-window-chrome-bar"
+        aria-hidden="true"
+        data-tauri-drag-region
+      >
+        <div
+          class="layout-window-chrome-traffic-slot"
+          aria-hidden="true"
+          data-tauri-drag-region
+        />
+        <div
+          class="layout-window-chrome-spacer"
+          aria-hidden="true"
+          data-tauri-drag-region
+        />
       </div>
     </header>
 
     <!-- Full-screen layout without navigation for setup/login pages -->
-    <div v-if="hideLayout" class="layout-public-view flex-1 min-h-0 overflow-auto">
+    <div
+      v-if="hideLayout"
+      class="layout-public-view flex-1 min-h-0 overflow-auto"
+    >
       <RouterView />
     </div>
 
@@ -235,7 +250,10 @@ watch(canShowBackToTop, () => {
       <Suspense>
         <AppSidebar ref="sidebarRef" />
         <template #fallback>
-          <aside class="layout-sidebar-loading" aria-hidden="true">
+          <aside
+            class="layout-sidebar-loading"
+            aria-hidden="true"
+          >
             <div class="layout-sidebar-loading__logo" />
             <div class="layout-sidebar-loading__nav">
               <div class="layout-sidebar-loading__item" />
@@ -258,7 +276,10 @@ watch(canShowBackToTop, () => {
             { 'p-[0.9rem] sm:p-[1.125rem] lg:p-[1.35rem]': !noPadding },
           ]"
         >
-          <div v-if="showSidebarToggle" class="layout-mobile-nav-bar lg:hidden">
+          <div
+            v-if="showSidebarToggle"
+            class="layout-mobile-nav-bar lg:hidden"
+          >
             <button
               class="layout-mobile-nav-button"
               aria-label="Open navigation"

@@ -223,12 +223,18 @@ function getPriorityGridClass(cardId: string): string {
       class="dashboard-grid-header"
       :class="{ 'has-left': hasHeaderLeft }"
     >
-      <slot v-if="hasHeaderLeft" name="header-left"></slot>
+      <slot
+        v-if="hasHeaderLeft"
+        name="header-left"
+      />
       <DashboardCustomizer />
     </div>
 
     <!-- Hero Cards Grid -->
-    <section v-if="heroCards.length > 0" class="dashboard-grid-wrap dashboard-grid-wrap-hero">
+    <section
+      v-if="heroCards.length > 0"
+      class="dashboard-grid-wrap dashboard-grid-wrap-hero"
+    >
       <div class="dashboard-grid dashboard-grid-hero">
         <div
           v-for="card in heroCards"

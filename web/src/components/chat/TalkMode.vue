@@ -51,6 +51,18 @@ type TalkBubble = {
 }
 
 type MarkdownModule = typeof import('@/utils/markdown')
+type TalkModeErrorLike = {
+  name?: string
+  message?: string
+  error_code?: string
+  response?: {
+    data?: {
+      error_code?: unknown
+      error?: unknown
+      message?: unknown
+    }
+  }
+}
 
 const conversationState = ref<ConversationState>('idle')
 const autoPlayTTS = ref(isTtsAutoPlayEnabled())
@@ -112,6 +124,33 @@ function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0) return '0.0s'
   if (seconds < 10) return `${seconds.toFixed(1)}s`
   return `${Math.round(seconds)}s`
+}
+
+function getTalkModeErrorMeta(error: unknown): {
+  name?: string
+  message?: string
+  errorCode?: string
+  serverMessage?: string
+} {
+  if (!error || typeof error !== 'object') return {}
+  const source = error as TalkModeErrorLike
+  const responseData = source.response?.data
+  return {
+    name: typeof source.name === 'string' ? source.name : undefined,
+    message: typeof source.message === 'string' ? source.message : undefined,
+    errorCode:
+      typeof source.error_code === 'string'
+        ? source.error_code
+        : typeof responseData?.error_code === 'string'
+          ? responseData.error_code
+          : undefined,
+    serverMessage:
+      typeof responseData?.error === 'string'
+        ? responseData.error
+        : typeof responseData?.message === 'string'
+          ? responseData.message
+          : undefined,
+  }
 }
 
 function summarizeText(text: string, maxLen = 96): string {
@@ -460,12 +499,13 @@ async function open() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
     stream.getTracks().forEach((track) => track.stop())
-  } catch (err: any) {
-    if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+  } catch (err) {
+    const { name } = getTalkModeErrorMeta(err)
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
       error.value = t('chat.voiceMicrophonePermissionDenied')
-    } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+    } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
       error.value = t('chat.voiceMicrophoneNotFound')
-    } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+    } else if (name === 'NotReadableError' || name === 'TrackStartError') {
       error.value = t('chat.voiceMicrophoneInUse')
     } else {
       error.value = t('chat.voiceMicrophoneError')
@@ -673,16 +713,15 @@ async function startListening() {
         } else {
           await resumeListening()
         }
-      } catch (e: any) {
+      } catch (e) {
         console.error('Transcription failed:', e)
-        const errorCode = e?.error_code || e?.response?.data?.error_code
-        if (errorCode === 'timeout' || e?.name === 'AbortError') {
+        const { errorCode, name, message, serverMessage } = getTalkModeErrorMeta(e)
+        if (errorCode === 'timeout' || name === 'AbortError') {
           error.value = t('chat.voiceTranscriptionTimeout')
         } else if (errorCode === 'on_device_unavailable') {
           error.value = t('speech.onDeviceUnavailableError')
         } else {
-          const serverMsg = e?.response?.data?.error || e?.response?.data?.message || e?.message
-          error.value = serverMsg || t('chat.talkMode.transcriptionError')
+          error.value = serverMessage || message || t('chat.talkMode.transcriptionError')
         }
         upsertLocalProcessTrace(
           {
@@ -774,8 +813,9 @@ async function playResponseTTS(text: string) {
       },
       { replaceLatestByEvent: true }
     )
-  } catch (e: any) {
-    if (e?.name !== 'AbortError') {
+  } catch (e) {
+    const { name, message } = getTalkModeErrorMeta(e)
+    if (name !== 'AbortError') {
       console.error('TTS playback failed:', e)
       upsertLocalProcessTrace(
         {
@@ -785,7 +825,7 @@ async function playResponseTTS(text: string) {
           status: 'error',
           label: t('chat.ttsError'),
           detail:
-            e?.message || resolveTraceText('details.ttsPlaybackFailed', 'TTS playback failed.'),
+            message || resolveTraceText('details.ttsPlaybackFailed', 'TTS playback failed.'),
         },
         { replaceLatestByEvent: true }
       )
@@ -908,7 +948,13 @@ onUnmounted(() => {
                     d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
                   />
                 </svg>
-                <svg v-else class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  v-else
+                  class="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -947,7 +993,10 @@ onUnmounted(() => {
             </div>
           </div>
 
-          <div ref="bubbleListRef" class="talk-bubble-list mb-4">
+          <div
+            ref="bubbleListRef"
+            class="talk-bubble-list mb-4"
+          >
             <div
               v-for="bubble in conversationBubbles"
               :key="bubble.id"
@@ -1047,7 +1096,12 @@ onUnmounted(() => {
                   d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"
                 />
               </svg>
-              <svg v-else class="w-10 h-10 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+              <svg
+                v-else
+                class="w-10 h-10 text-white animate-spin"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
                 <circle
                   class="opacity-25"
                   cx="12"
@@ -1068,15 +1122,26 @@ onUnmounted(() => {
               {{ statusLabel }}
             </p>
 
-            <div v-if="conversationState === 'uploading_audio'" class="talk-upload-progress mt-3">
+            <div
+              v-if="conversationState === 'uploading_audio'"
+              class="talk-upload-progress mt-3"
+            >
               <div class="talk-upload-progress__track">
-                <div class="talk-upload-progress__fill" :style="{ width: `${uploadPercent}%` }" />
+                <div
+                  class="talk-upload-progress__fill"
+                  :style="{ width: `${uploadPercent}%` }"
+                />
               </div>
-              <div class="talk-upload-progress__meta">{{ uploadPercent }}%</div>
+              <div class="talk-upload-progress__meta">
+                {{ uploadPercent }}%
+              </div>
             </div>
           </div>
 
-          <div v-if="hasProcessTrace" class="talk-process-panel mt-5">
+          <div
+            v-if="hasProcessTrace"
+            class="talk-process-panel mt-5"
+          >
             <div class="talk-process-panel__header">
               <span class="talk-process-panel__title">{{ t('chat.talkMode.recentActivity') }}</span>
               <button
@@ -1098,8 +1163,16 @@ onUnmounted(() => {
                   <span class="talk-process-item__dot" />
                   <span class="talk-process-item__label">{{ traceItemLabel(item) }}</span>
                 </div>
-                <div v-if="item.command" class="talk-process-item__command">{{ item.command }}</div>
-                <div v-if="processDetailsExpanded && item.detail" class="talk-process-item__detail">
+                <div
+                  v-if="item.command"
+                  class="talk-process-item__command"
+                >
+                  {{ item.command }}
+                </div>
+                <div
+                  v-if="processDetailsExpanded && item.detail"
+                  class="talk-process-item__detail"
+                >
                   {{ item.detail }}
                 </div>
               </div>

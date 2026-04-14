@@ -289,9 +289,15 @@ onMounted(async () => {
     <section class="extension-market-hero dashboard-card-surface">
       <div class="extension-market-hero__copy">
         <span class="extension-market-hero__kicker">{{ t('extensions.tools') }}</span>
-        <h2 class="extension-market-hero__title">{{ t('plugins.subtitle') }}</h2>
-        <p class="extension-market-hero__hint">{{ galleryHint }}</p>
-        <p class="extension-market-hero__hint">{{ toolManagementHint }}</p>
+        <h2 class="extension-market-hero__title">
+          {{ t('plugins.subtitle') }}
+        </h2>
+        <p class="extension-market-hero__hint">
+          {{ galleryHint }}
+        </p>
+        <p class="extension-market-hero__hint">
+          {{ toolManagementHint }}
+        </p>
       </div>
 
       <div class="extension-market-hero__stats">
@@ -318,7 +324,11 @@ onMounted(async () => {
             stroke="currentColor"
             stroke-width="2"
           >
-            <circle cx="11" cy="11" r="8" />
+            <circle
+              cx="11"
+              cy="11"
+              r="8"
+            />
             <path d="m21 21-4.35-4.35" />
           </svg>
           <input
@@ -326,12 +336,21 @@ onMounted(async () => {
             type="text"
             :placeholder="t('plugins.searchPlaceholder')"
             class="search-input"
-          />
+          >
         </div>
 
-        <select v-model="filterCategory" class="filter-select">
-          <option value="all">{{ t('plugins.allCategories') }}</option>
-          <option v-for="cat in categories" :key="cat" :value="cat">
+        <select
+          v-model="filterCategory"
+          class="filter-select"
+        >
+          <option value="all">
+            {{ t('plugins.allCategories') }}
+          </option>
+          <option
+            v-for="cat in categories"
+            :key="cat"
+            :value="cat"
+          >
             {{ getCategoryIcon(cat) }} {{ getCategoryLabel(cat) }}
           </option>
         </select>
@@ -355,25 +374,47 @@ onMounted(async () => {
               <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
               <path d="M16 21h5v-5" />
             </svg>
-            <span v-else class="spinner"></span>
+            <span
+              v-else
+              class="spinner"
+            />
           </button>
         </div>
       </div>
     </section>
 
-    <div v-if="toolStore.error" class="error-banner">
+    <div
+      v-if="toolStore.error"
+      class="error-banner"
+    >
       {{ toolStore.error }}
-      <button @click="toolStore.clearError">×</button>
+      <button @click="toolStore.clearError">
+        ×
+      </button>
     </div>
 
-    <div v-if="toolStore.loading && !filteredTools.length" class="loading">
-      <div class="spinner"></div>
+    <div
+      v-if="toolStore.loading && !filteredTools.length"
+      class="loading"
+    >
+      <div class="spinner" />
       <span>{{ t('common.loading') }}</span>
     </div>
 
-    <section v-else class="tool-gallery__grid">
-      <div v-if="filteredTools.length === 0" class="empty-state list-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+    <section
+      v-else
+      class="tool-gallery__grid"
+    >
+      <div
+        v-if="filteredTools.length === 0"
+        class="empty-state list-empty"
+      >
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.5"
+        >
           <path d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <h3>{{ te('plugins.noToolsTitle') ? t('plugins.noToolsTitle') : 'No tools found' }}</h3>
@@ -403,7 +444,10 @@ onMounted(async () => {
             { 'tool-showcase-card__topline--actions-only': !tool.builtin },
           ]"
         >
-          <span v-if="tool.builtin" class="tool-showcase-card__badge">
+          <span
+            v-if="tool.builtin"
+            class="tool-showcase-card__badge"
+          >
             {{ t('skillStore.status.builtin') }}
           </span>
           <div class="tool-showcase-card__topline-actions">
@@ -415,7 +459,7 @@ onMounted(async () => {
                   : 'tool-showcase-card__state--disabled',
               ]"
             >
-              <span class="tool-showcase-card__state-dot"></span>
+              <span class="tool-showcase-card__state-dot" />
               {{ tool.enabled ? t('common.enabled') : t('common.disabled') }}
             </span>
           </div>
@@ -428,13 +472,18 @@ onMounted(async () => {
               :src="getToolIconUrl(tool)!"
               class="tool-showcase-card__orb-image"
               :alt="getToolName(tool)"
-            />
-            <span v-else class="tool-showcase-card__orb-fallback">{{ getToolMonogram(tool) }}</span>
+            >
+            <span
+              v-else
+              class="tool-showcase-card__orb-fallback"
+            >{{ getToolMonogram(tool) }}</span>
           </div>
 
           <div class="tool-showcase-card__hero-copy">
             <div class="tool-showcase-card__title-row">
-              <h3 :title="getToolName(tool)">{{ getToolName(tool) }}</h3>
+              <h3 :title="getToolName(tool)">
+                {{ getToolName(tool) }}
+              </h3>
               <span
                 v-for="tag in getVisibleTags(tool)"
                 :key="`${tool.id}-${tag}`"
@@ -486,7 +535,13 @@ onMounted(async () => {
                   stroke="currentColor"
                   stroke-width="1.8"
                 >
-                  <rect x="4" y="5" width="16" height="14" rx="2" />
+                  <rect
+                    x="4"
+                    y="5"
+                    width="16"
+                    height="14"
+                    rx="2"
+                  />
                   <path d="M8 9h8" />
                   <path d="M8 13h5" />
                 </svg>

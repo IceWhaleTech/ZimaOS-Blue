@@ -167,10 +167,16 @@ onUnmounted(() => {
     </div>
 
     <!-- Grid + Editor -->
-    <div v-else class="relative">
+    <div
+      v-else
+      class="relative"
+    >
       <!-- Grid of cards -->
       <Transition name="ws-grid">
-        <div v-if="!editingFile" class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <div
+          v-if="!editingFile"
+          class="grid grid-cols-2 sm:grid-cols-3 gap-2"
+        >
           <button
             v-for="file in files"
             :key="file.name"

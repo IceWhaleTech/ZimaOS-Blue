@@ -1,8 +1,30 @@
 type Translate = (key: string, fallback: string) => string
 
-const DEEP_RESEARCH_WRAPPER_PREFIX_RE = /^[\[\(\{<【「『"'`]+/
-const DEEP_RESEARCH_WRAPPER_SUFFIX_RE = /[\]\)\}>】」』"'`]+$/
 const DEEP_RESEARCH_EDGE_PUNCTUATION_RE = /^[,.:;!?]+|[,.:;!?]+$/g
+const DEEP_RESEARCH_WRAPPER_PREFIX_CHARS = new Set([
+  '[',
+  '(',
+  '{',
+  '<',
+  '【',
+  '「',
+  '『',
+  '"',
+  "'",
+  '`',
+])
+const DEEP_RESEARCH_WRAPPER_SUFFIX_CHARS = new Set([
+  ']',
+  ')',
+  '}',
+  '>',
+  '】',
+  '」',
+  '』',
+  '"',
+  "'",
+  '`',
+])
 
 const DEEP_RESEARCH_STAGE_KEYS: Record<string, [key: string, fallback: string]> = {
   intake: ['chat.deepResearchStageIntake', 'Intake'],
@@ -192,10 +214,15 @@ function humanizeDeepResearchToken(value: string | null | undefined): string {
 function unwrapDeepResearchToken(value: string): string {
   let next = value.trim()
   while (next) {
-    const unwrapped = next
-      .replace(DEEP_RESEARCH_WRAPPER_PREFIX_RE, '')
-      .replace(DEEP_RESEARCH_WRAPPER_SUFFIX_RE, '')
-      .trim()
+    let start = 0
+    let end = next.length
+    while (start < end && DEEP_RESEARCH_WRAPPER_PREFIX_CHARS.has(next[start]!)) {
+      start += 1
+    }
+    while (end > start && DEEP_RESEARCH_WRAPPER_SUFFIX_CHARS.has(next[end - 1]!)) {
+      end -= 1
+    }
+    const unwrapped = next.slice(start, end).trim()
     if (!unwrapped || unwrapped === next) {
       return next
     }

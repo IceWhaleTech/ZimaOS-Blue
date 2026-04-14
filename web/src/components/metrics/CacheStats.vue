@@ -51,25 +51,39 @@ defineExpose({ refresh: fetchStats })
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">{{ t('cache.proxyCache') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('cache.proxyCache') }}
+          </p>
           <p class="dashboard-card-subtitle mt-2">
             {{ cacheEnabled ? t('cache.enabled') : t('cache.disabled') }}
           </p>
         </div>
-        <button :disabled="loading" class="dashboard-card-chip" @click="fetchStats">
+        <button
+          :disabled="loading"
+          class="dashboard-card-chip"
+          @click="fetchStats"
+        >
           {{ t('common.refresh') }}
         </button>
       </div>
 
-      <div v-if="loading" class="dashboard-card-empty">
+      <div
+        v-if="loading"
+        class="dashboard-card-empty"
+      >
         <div
           class="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 dark:border-white"
-        ></div>
+        />
       </div>
 
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      <div
+        v-else
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3"
+      >
         <div class="dashboard-card-subsurface p-4">
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.entries') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('cache.entries') }}
+          </p>
           <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
             {{ stats?.requests ?? '-' }}
           </p>
@@ -79,7 +93,9 @@ defineExpose({ refresh: fetchStats })
         </div>
 
         <div class="dashboard-card-subsurface p-4">
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.hitRate') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('cache.hitRate') }}
+          </p>
           <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
             {{ stats ? hitRate.toFixed(1) + '%' : '-' }}
           </p>
@@ -92,7 +108,9 @@ defineExpose({ refresh: fetchStats })
         </div>
 
         <div class="dashboard-card-subsurface p-4">
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.tokensSaved') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('cache.tokensSaved') }}
+          </p>
           <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
             {{ tokensSaved > 0 ? formatTokens(tokensSaved) : '-' }}
           </p>
@@ -107,7 +125,9 @@ defineExpose({ refresh: fetchStats })
         </div>
 
         <div class="dashboard-card-subsurface p-4">
-          <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('cache.status') }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400">
+            {{ t('cache.status') }}
+          </p>
           <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
             {{ cacheEnabled ? t('cache.enabled') : t('cache.disabled') }}
           </p>

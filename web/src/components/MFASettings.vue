@@ -149,7 +149,10 @@ function closeDisableModal() {
 
     <div class="glass-card p-4 sm:p-6">
       <!-- Loading state -->
-      <div v-if="loading && !setupData" class="text-gray-500 dark:text-slate-400 text-center py-4">
+      <div
+        v-if="loading && !setupData"
+        class="text-gray-500 dark:text-slate-400 text-center py-4"
+      >
         {{ t('common.loading') }}
       </div>
 
@@ -167,7 +170,10 @@ function closeDisableModal() {
               {{ mfaStatus.enabled ? t('mfa.enabled') : t('mfa.disabled') }}
             </span>
           </div>
-          <span v-if="mfaStatus.enabled" class="text-sm text-gray-500 dark:text-slate-400">
+          <span
+            v-if="mfaStatus.enabled"
+            class="text-sm text-gray-500 dark:text-slate-400"
+          >
             {{ t('mfa.recoveryCodesRemaining', { count: mfaStatus.recovery_codes_remaining }) }}
           </span>
         </div>
@@ -205,25 +211,35 @@ function closeDisableModal() {
       </div>
 
       <!-- MFA Setup Flow -->
-      <div v-if="setupData" class="space-y-6">
+      <div
+        v-if="setupData"
+        class="space-y-6"
+      >
         <div>
-          <h3 class="text-gray-900 dark:text-white font-medium mb-2">{{ t('mfa.step1Title') }}</h3>
+          <h3 class="text-gray-900 dark:text-white font-medium mb-2">
+            {{ t('mfa.step1Title') }}
+          </h3>
           <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">
             {{ t('mfa.step1Description') }}
           </p>
 
           <!-- QR Code -->
-          <div v-if="setupData.qr_code" class="flex justify-center mb-4">
+          <div
+            v-if="setupData.qr_code"
+            class="flex justify-center mb-4"
+          >
             <img
               :src="setupData.qr_code"
               alt="MFA QR Code"
               class="w-48 h-48 bg-white p-2 rounded-lg"
-            />
+            >
           </div>
 
           <!-- Manual entry -->
           <div class="bg-gray-100 dark:bg-slate-700 rounded-lg p-3">
-            <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">{{ t('mfa.manualEntry') }}</p>
+            <p class="text-xs text-gray-500 dark:text-slate-400 mb-1">
+              {{ t('mfa.manualEntry') }}
+            </p>
             <code class="text-sm text-gray-900 dark:text-white break-all">{{
               setupData.secret
             }}</code>
@@ -231,7 +247,9 @@ function closeDisableModal() {
         </div>
 
         <div>
-          <h3 class="text-gray-900 dark:text-white font-medium mb-2">{{ t('mfa.step2Title') }}</h3>
+          <h3 class="text-gray-900 dark:text-white font-medium mb-2">
+            {{ t('mfa.step2Title') }}
+          </h3>
           <p class="text-sm text-gray-500 dark:text-slate-400 mb-4">
             {{ t('mfa.step2Description') }}
           </p>
@@ -246,7 +264,7 @@ function closeDisableModal() {
               :placeholder="t('mfa.enterCode')"
               class="flex-1 bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600 text-center text-lg tracking-widest"
               @keyup.enter="verifySetup"
-            />
+            >
           </div>
         </div>
 
@@ -378,7 +396,7 @@ function closeDisableModal() {
               type="password"
               :placeholder="t('mfa.passwordPlaceholder')"
               class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
-            />
+            >
           </div>
 
           <div class="flex gap-3">

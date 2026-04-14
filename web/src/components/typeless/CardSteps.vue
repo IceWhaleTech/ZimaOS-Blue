@@ -33,14 +33,25 @@ const lineColors: Record<string, string> = {
     class="steps-card rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden bg-white dark:bg-gray-700"
   >
     <!-- Title -->
-    <div v-if="card.title" class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700">
-      <h4 class="text-sm font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+    <div
+      v-if="card.title"
+      class="px-3 py-1.5 border-b border-gray-200 dark:border-gray-700"
+    >
+      <h4 class="text-sm font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Horizontal Steps -->
-    <div v-if="card.variant !== 'vertical'" class="p-6">
+    <div
+      v-if="card.variant !== 'vertical'"
+      class="p-6"
+    >
       <div class="flex items-start">
-        <template v-for="(step, index) in card.steps" :key="index">
+        <template
+          v-for="(step, index) in card.steps"
+          :key="index"
+        >
           <!-- Step -->
           <div class="flex flex-col items-center flex-1">
             <!-- Circle -->
@@ -118,9 +129,15 @@ const lineColors: Record<string, string> = {
     </div>
 
     <!-- Vertical Steps -->
-    <div v-else class="px-3 py-2">
+    <div
+      v-else
+      class="px-3 py-2"
+    >
       <div class="relative">
-        <template v-for="(step, index) in card.steps" :key="index">
+        <template
+          v-for="(step, index) in card.steps"
+          :key="index"
+        >
           <div class="flex gap-3 pb-3 last:pb-0">
             <!-- Circle and line -->
             <div class="flex flex-col items-center">
@@ -170,7 +187,10 @@ const lineColors: Record<string, string> = {
               >
                 {{ step.title }}
               </p>
-              <div v-if="step.description" class="mt-1 flex flex-wrap gap-1">
+              <div
+                v-if="step.description"
+                class="mt-1 flex flex-wrap gap-1"
+              >
                 <span
                   v-for="(tag, ti) in step.description.split('|')"
                   :key="ti"

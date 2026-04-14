@@ -187,6 +187,7 @@ declare module 'vue' {
     ToolDetailCard: typeof import('./components/ToolDetailCard.vue')['default']
     ToolTab: typeof import('./components/extensions/ToolTab.vue')['default']
     TranscriptionEditor: typeof import('./components/chat/TranscriptionEditor.vue')['default']
+    TrustedHtml: typeof import('./components/common/TrustedHtml.vue')['default']
     TunnelStatus: typeof import('./components/remote-access/TunnelStatus.vue')['default']
     TypelessCard: typeof import('./components/typeless/TypelessCard.vue')['default']
     UpdateSettings: typeof import('./components/settings/UpdateSettings.vue')['default']

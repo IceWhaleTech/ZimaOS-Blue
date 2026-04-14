@@ -92,6 +92,40 @@ function getSpeechErrorMessage(errorCodeRaw: unknown): string | null {
   return t(key)
 }
 
+type TranscriptionErrorLike = {
+  code?: string
+  message?: string
+  response?: {
+    data?: {
+      error_code?: unknown
+      error?: unknown
+      message?: unknown
+    }
+  }
+}
+
+function getTranscriptionErrorMeta(error: unknown): {
+  code?: string
+  message?: string
+  errorCode?: string
+  serverMessage?: string
+} {
+  if (!error || typeof error !== 'object') return {}
+  const source = error as TranscriptionErrorLike
+  const responseData = source.response?.data
+  return {
+    code: typeof source.code === 'string' ? source.code : undefined,
+    message: typeof source.message === 'string' ? source.message : undefined,
+    errorCode: typeof responseData?.error_code === 'string' ? responseData.error_code : undefined,
+    serverMessage:
+      typeof responseData?.error === 'string'
+        ? responseData.error
+        : typeof responseData?.message === 'string'
+          ? responseData.message
+          : undefined,
+  }
+}
+
 function chatText(
   key: string,
   fallback: string,
@@ -948,10 +982,11 @@ async function startRecording() {
           // Focus textarea so user can edit or press Enter to send
           nextTick(() => textareaRef.value?.focus())
         }
-      } catch (error: any) {
+      } catch (error) {
         console.error('Transcription error:', error)
-        const errorCode = error?.response?.data?.error_code
-        if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+        const { code, message: errorMessage, errorCode, serverMessage } =
+          getTranscriptionErrorMeta(error)
+        if (code === 'ECONNABORTED' || errorMessage?.includes('timeout')) {
           voiceError.value = t('chat.voiceTranscriptionTimeout')
         } else if (errorCode === 'on_device_unavailable') {
           voiceError.value = t('speech.onDeviceUnavailableError')
@@ -960,9 +995,7 @@ async function startRecording() {
           if (mappedError) {
             voiceError.value = mappedError
           } else {
-            const serverMsg =
-              error?.response?.data?.error || error?.response?.data?.message || error?.message
-            voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+            voiceError.value = serverMessage || errorMessage || t('chat.voiceTranscriptionError')
           }
         }
       } finally {
@@ -1107,7 +1140,7 @@ function handleVoiceTouchEnd() {
     if (slideCancelled.value) {
       // Swipe up — discard recording
       if (recorder.value) {
-        recorder.value.onStop = null as any
+        recorder.value.onStop = null
         recorder.value.stop()
       }
       isRecording.value = false
@@ -1115,7 +1148,7 @@ function handleVoiceTouchEnd() {
     } else if (duration < 1) {
       // Too short — discard
       if (recorder.value) {
-        recorder.value.onStop = null as any
+        recorder.value.onStop = null
         recorder.value.stop()
       }
       isRecording.value = false
@@ -1184,10 +1217,11 @@ async function handleVoiceChoiceTranscribe() {
       handleInput()
       nextTick(() => textareaRef.value?.focus())
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Transcription error:', error)
-    const errorCode = error?.response?.data?.error_code
-    if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+    const { code, message: errorMessage, errorCode, serverMessage } =
+      getTranscriptionErrorMeta(error)
+    if (code === 'ECONNABORTED' || errorMessage?.includes('timeout')) {
       voiceError.value = t('chat.voiceTranscriptionTimeout')
     } else if (errorCode === 'on_device_unavailable') {
       voiceError.value = t('speech.onDeviceUnavailableError')
@@ -1196,9 +1230,7 @@ async function handleVoiceChoiceTranscribe() {
       if (mappedError) {
         voiceError.value = mappedError
       } else {
-        const serverMsg =
-          error?.response?.data?.error || error?.response?.data?.message || error?.message
-        voiceError.value = serverMsg || t('chat.voiceTranscriptionError')
+        voiceError.value = serverMessage || errorMessage || t('chat.voiceTranscriptionError')
       }
     }
   } finally {
@@ -1220,7 +1252,7 @@ function handleVoiceTouchCancel() {
   if (isRecording.value) {
     // Cancel — discard recording
     if (recorder.value) {
-      recorder.value.onStop = null as any
+      recorder.value.onStop = null
       recorder.value.stop()
     }
     isRecording.value = false
@@ -1282,7 +1314,7 @@ async function toggleDictation() {
             handleInput()
             nextTick(() => textareaRef.value?.focus())
           }
-        } catch (err: any) {
+        } catch (err) {
           console.error('Dictation transcription error:', err)
           voiceError.value = t('chat.voiceTranscriptionError')
         } finally {
@@ -1503,7 +1535,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         class="hidden"
         :accept="allowedMimeTypes.join(',')"
         @change="handleFileSelect"
-      />
+      >
 
       <!-- Hidden camera input -->
       <input
@@ -1513,7 +1545,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         capture="environment"
         class="hidden"
         @change="handleCameraCapture"
-      />
+      >
 
       <!-- Image Preview Modal -->
       <ImagePreview
@@ -1532,7 +1564,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
       />
 
       <!-- Attachments preview -->
-      <div v-if="attachments.length > 0" class="mb-3 flex flex-wrap gap-2">
+      <div
+        v-if="attachments.length > 0"
+        class="mb-3 flex flex-wrap gap-2"
+      >
         <div
           v-for="attachment in attachments"
           :key="attachment.id"
@@ -1549,7 +1584,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               :src="attachment.preview"
               :alt="attachment.name"
               class="w-full h-full object-cover hover:opacity-80 transition-opacity"
-            />
+            >
             <svg
               v-else-if="getFileIcon(attachment.type) === 'pdf'"
               class="w-6 h-6 text-red-400"
@@ -1596,7 +1631,9 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
 
           <!-- File info -->
           <div class="flex-1 min-w-0">
-            <p class="text-sm text-gray-900 dark:text-white truncate">{{ attachment.name }}</p>
+            <p class="text-sm text-gray-900 dark:text-white truncate">
+              {{ attachment.name }}
+            </p>
             <p class="text-xs text-gray-500 dark:text-slate-400">
               {{ formatFileSize(attachment.size) }}
             </p>
@@ -1608,7 +1645,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
             :style="attachmentRemoveButtonStyle"
             @click="removeAttachment(attachment.id)"
           >
-            <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="w-3 h-3 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -1620,7 +1662,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         </div>
       </div>
 
-      <div v-if="showFeatureHint" class="mb-2 flex flex-wrap items-center gap-2 text-xs">
+      <div
+        v-if="showFeatureHint"
+        class="mb-2 flex flex-wrap items-center gap-2 text-xs"
+      >
         <span class="text-gray-500 dark:text-slate-400">{{
           t('chat.featureHintTapToEnable')
         }}</span>
@@ -1633,7 +1678,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
             class="h-3.5 w-3.5 accent-blue-500"
             :checked="settingsStore.agentMode"
             @change="toggleAgentModeFromHint"
-          />
+          >
           <span>{{ t('chat.taskLoop') }}</span>
         </label>
       </div>
@@ -1671,7 +1716,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           <span>{{ skillHintInstalledSkill }}</span>
         </div>
 
-        <div v-if="skillHintQueries.length" class="mt-2.5 flex flex-col gap-1.5">
+        <div
+          v-if="skillHintQueries.length"
+          class="mt-2.5 flex flex-col gap-1.5"
+        >
           <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
             {{ chatText('chat.skillAdvisorSearchQueries', 'Suggested search phrases') }}
           </span>
@@ -1688,7 +1736,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           </div>
         </div>
 
-        <div v-if="skillHintTags.length" class="mt-2.5 flex flex-col gap-1.5">
+        <div
+          v-if="skillHintTags.length"
+          class="mt-2.5 flex flex-col gap-1.5"
+        >
           <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
             {{ chatText('chat.skillAdvisorCapabilityTags', 'Capability tags') }}
           </span>
@@ -1705,7 +1756,10 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           </div>
         </div>
 
-        <div v-if="skillHintRecommendedSkills.length" class="mt-2.5 flex flex-col gap-1.5">
+        <div
+          v-if="skillHintRecommendedSkills.length"
+          class="mt-2.5 flex flex-col gap-1.5"
+        >
           <span class="text-[11px] font-medium text-amber-700/90 dark:text-amber-200/80">
             {{ chatText('chat.skillAdvisorRecommendedSkills', 'Marketplace matches') }}
           </span>
@@ -1723,15 +1777,28 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         </div>
       </div>
 
-      <div v-if="isCompact && !isMobile" class="compact-mode-section mb-3">
+      <div
+        v-if="isCompact && !isMobile"
+        class="compact-mode-section mb-3"
+      >
         <div class="composer-mode-row">
           <div class="compact-mode-action">
             <button
               class="mode-chip mode-chip-research is-active"
               :title="researchModeTitle"
             >
-              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+              <svg
+                class="mode-chip__icon"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <circle
+                  cx="10.5"
+                  cy="10.5"
+                  r="4.75"
+                  stroke-width="1.7"
+                />
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -1747,8 +1814,17 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               :title="t('chat.showShortcutDetails', 'Show details')"
               @click.stop="toggleCompactModeInfo('research')"
             >
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
+              <svg
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="8.25"
+                  stroke-width="1.8"
+                />
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -1768,7 +1844,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               @click="toggleAgentMode"
               @contextmenu="handleAgentModeContextMenu"
             >
-              <svg class="mode-chip__icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                class="mode-chip__icon"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -1790,8 +1871,17 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               :title="t('chat.showShortcutDetails', 'Show details')"
               @click.stop="toggleCompactModeInfo('loop')"
             >
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <circle cx="12" cy="12" r="8.25" stroke-width="1.8" />
+              <svg
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="8.25"
+                  stroke-width="1.8"
+                />
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -1809,13 +1899,19 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           :class="`compact-mode-info-card--${compactModeInfoCardMeta.kind}`"
         >
           <div class="compact-mode-info-card__header">
-            <div class="compact-mode-info-card__eyebrow">{{ compactModeInfoCardMeta.state }}</div>
+            <div class="compact-mode-info-card__eyebrow">
+              {{ compactModeInfoCardMeta.state }}
+            </div>
             <button
               class="compact-mode-info-card__close"
               :title="t('chat.hideShortcutDetails', 'Hide details')"
               @click="closeCompactModeInfo"
             >
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -1825,7 +1921,9 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               </svg>
             </button>
           </div>
-          <div class="compact-mode-info-card__title">{{ compactModeInfoCardMeta.title }}</div>
+          <div class="compact-mode-info-card__title">
+            {{ compactModeInfoCardMeta.title }}
+          </div>
           <p class="compact-mode-info-card__description">
             {{ compactModeInfoCardMeta.description }}
           </p>
@@ -1860,7 +1958,14 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               viewBox="0 0 24 24"
               stroke="currentColor"
             >
-              <rect x="2" y="4" width="20" height="16" rx="2" stroke-width="2" />
+              <rect
+                x="2"
+                y="4"
+                width="20"
+                height="16"
+                rx="2"
+                stroke-width="2"
+              />
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -1887,9 +1992,15 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
           </button>
 
           <!-- Center: Voice hold-to-speak or Textarea -->
-          <div v-if="voiceMode" class="flex-1 relative">
+          <div
+            v-if="voiceMode"
+            class="flex-1 relative"
+          >
             <!-- Voice choice panel (shown after recording) -->
-            <div v-if="showVoiceChoice" class="voice-choice-panel flex items-center gap-2 w-full">
+            <div
+              v-if="showVoiceChoice"
+              class="voice-choice-panel flex items-center gap-2 w-full"
+            >
               <button
                 class="voice-choice-btn voice-choice-btn--transcribe flex-1 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 @click="handleVoiceChoiceTranscribe"
@@ -1913,7 +2024,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                 class="voice-choice-btn voice-choice-btn--send flex-1 h-10 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 @click="handleVoiceChoiceSend"
               >
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <svg
+                  class="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
                   <path
                     d="M3 20l1.3-4.8C3.5 13.8 3 12.4 3 11c0-5 4-9 9-9s9 4 9 9-4 9-9 9c-1.4 0-2.8-.5-4.2-1.2L3 20z"
                   />
@@ -1925,9 +2040,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     stroke-linecap="round"
                   />
                 </svg>
-                <span class="text-sm font-medium"
-                  >{{ pendingAudioDuration }}s · {{ t('chat.sendVoice') }}</span
-                >
+                <span class="text-sm font-medium">{{ pendingAudioDuration }}s · {{ t('chat.sendVoice') }}</span>
               </button>
               <button
                 class="voice-choice-dismiss flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer"
@@ -1940,7 +2053,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   stroke="currentColor"
                   stroke-width="2.5"
                 >
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -1977,12 +2094,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   r="10"
                   stroke="currentColor"
                   stroke-width="4"
-                ></circle>
+                />
                 <path
                   class="opacity-75"
                   fill="currentColor"
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
+                />
               </svg>
               <svg
                 v-else
@@ -2004,14 +2121,15 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                 <template v-else-if="isRecording && slideCancelled">{{
                   t('chat.releaseToCancel')
                 }}</template>
-                <template v-else-if="isRecording"
-                  >{{ recordingDuration }}s · {{ t('chat.recording') }}</template
-                >
+                <template v-else-if="isRecording">{{ recordingDuration }}s · {{ t('chat.recording') }}</template>
                 <template v-else>{{ t('chat.holdToSpeak') }}</template>
               </span>
             </button>
           </div>
-          <div v-else class="flex-1 relative">
+          <div
+            v-else
+            class="flex-1 relative"
+          >
             <textarea
               ref="textareaRef"
               v-model="message"
@@ -2068,7 +2186,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                 stroke="currentColor"
                 stroke-width="2.5"
               >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -2142,7 +2264,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
               />
             </svg>
           </button>
-          <div v-else-if="!showCompactInlineCancelButton" ref="mobileMenuRef" class="relative">
+          <div
+            v-else-if="!showCompactInlineCancelButton"
+            ref="mobileMenuRef"
+            class="relative"
+          >
             <button
               :disabled="disabled"
               class="flex-shrink-0 w-10 h-10 rounded-xl glass-card text-gray-500 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
@@ -2160,7 +2286,11 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                 stroke="currentColor"
                 stroke-width="2"
               >
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
             </button>
 
@@ -2183,7 +2313,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
                   @click="handleMobileAttachment"
                 >
-                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -2199,7 +2334,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
                   @click="handleMobileCamera"
                 >
-                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -2221,7 +2361,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   class="w-full px-4 py-3 flex items-center gap-3 text-gray-700 dark:text-slate-200 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
                   @click="handleMobileTalkMode"
                 >
-                  <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg
+                    class="w-5 h-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -2281,7 +2426,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                       stroke-width="1.7"
                       d="M4.75 8.5A1.75 1.75 0 016.5 6.75h1.4a1 1 0 00.8-.4l.8-1.05a1 1 0 01.8-.4h3.4a1 1 0 01.8.4l.8 1.05a1 1 0 00.8.4h1.4a1.75 1.75 0 011.75 1.75v8.75A1.75 1.75 0 0119.5 19H6.5a1.75 1.75 0 01-1.75-1.75V8.5z"
                     />
-                    <circle cx="13" cy="13" r="3.25" stroke-width="1.7" />
+                    <circle
+                      cx="13"
+                      cy="13"
+                      r="3.25"
+                      stroke-width="1.7"
+                    />
                   </svg>
                 </button>
 
@@ -2306,12 +2456,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                       r="10"
                       stroke="currentColor"
                       stroke-width="4"
-                    ></circle>
+                    />
                     <path
                       class="opacity-75"
                       fill="currentColor"
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
+                    />
                   </svg>
                   <svg
                     v-else
@@ -2358,8 +2508,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                   </svg>
                 </button>
 
-                <div v-if="isRecording" class="desktop-recording-indicator" aria-live="polite">
-                  <span class="desktop-recording-indicator__dot"></span>
+                <div
+                  v-if="isRecording"
+                  class="desktop-recording-indicator"
+                  aria-live="polite"
+                >
+                  <span class="desktop-recording-indicator__dot" />
                   <span>{{ t('chat.recording') }} {{ recordingDuration }}s</span>
                 </div>
               </div>
@@ -2376,7 +2530,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                       viewBox="0 0 24 24"
                       stroke="currentColor"
                     >
-                      <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                      <circle
+                        cx="10.5"
+                        cy="10.5"
+                        r="4.75"
+                        stroke-width="1.7"
+                      />
                       <path
                         stroke-linecap="round"
                         stroke-linejoin="round"
@@ -2386,11 +2545,23 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     </svg>
                     <span class="mode-chip__label">{{ researchModeTitle }}</span>
                   </button>
-                  <div class="mode-info-card mode-info-card--research" aria-hidden="true">
+                  <div
+                    class="mode-info-card mode-info-card--research"
+                    aria-hidden="true"
+                  >
                     <div class="mode-info-card__hero">
                       <div class="mode-info-card__hero-orb">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <circle cx="10.5" cy="10.5" r="4.75" stroke-width="1.7" />
+                        <svg
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <circle
+                            cx="10.5"
+                            cy="10.5"
+                            r="4.75"
+                            stroke-width="1.7"
+                          />
                           <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -2399,14 +2570,19 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                           />
                         </svg>
                       </div>
-                      <div class="mode-info-card__hero-meters" aria-hidden="true">
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                      <div
+                        class="mode-info-card__hero-meters"
+                        aria-hidden="true"
+                      >
+                        <span />
+                        <span />
+                        <span />
                       </div>
                       <span class="mode-info-card__state">{{ t('chat.alwaysOn', 'Automatic') }}</span>
                     </div>
-                    <div class="mode-info-card__title">{{ researchModeTitle }}</div>
+                    <div class="mode-info-card__title">
+                      {{ researchModeTitle }}
+                    </div>
                     <p class="mode-info-card__description">
                       {{ researchFamilyHoverDescription }}
                     </p>
@@ -2452,10 +2628,17 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                     </svg>
                     <span class="mode-chip__label">{{ t('chat.taskLoop') }}</span>
                   </button>
-                  <div class="mode-info-card mode-info-card--loop" aria-hidden="true">
+                  <div
+                    class="mode-info-card mode-info-card--loop"
+                    aria-hidden="true"
+                  >
                     <div class="mode-info-card__hero">
                       <div class="mode-info-card__hero-orb">
-                        <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
                           <path
                             stroke-linecap="round"
                             stroke-linejoin="round"
@@ -2470,10 +2653,13 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                           />
                         </svg>
                       </div>
-                      <div class="mode-info-card__hero-meters" aria-hidden="true">
-                        <span></span>
-                        <span></span>
-                        <span></span>
+                      <div
+                        class="mode-info-card__hero-meters"
+                        aria-hidden="true"
+                      >
+                        <span />
+                        <span />
+                        <span />
                       </div>
                       <span class="mode-info-card__state">
                         {{
@@ -2483,7 +2669,9 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                         }}
                       </span>
                     </div>
-                    <div class="mode-info-card__title">{{ t('chat.taskLoop') }}</div>
+                    <div class="mode-info-card__title">
+                      {{ t('chat.taskLoop') }}
+                    </div>
                     <p class="mode-info-card__description">
                       {{
                         t(
@@ -2544,8 +2732,15 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                       />
                     </svg>
                   </button>
-                  <div v-else-if="isTranscribing" class="desktop-inline-icon-btn is-passive">
-                    <svg class="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <div
+                    v-else-if="isTranscribing"
+                    class="desktop-inline-icon-btn is-passive"
+                  >
+                    <svg
+                      class="h-5 w-5 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
                       <circle
                         class="opacity-25"
                         cx="12"
@@ -2553,12 +2748,12 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
                         r="10"
                         stroke="currentColor"
                         stroke-width="4"
-                      ></circle>
+                      />
                       <path
                         class="opacity-75"
                         fill="currentColor"
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
+                      />
                     </svg>
                   </div>
 
@@ -2633,7 +2828,7 @@ defineExpose({ focus, setInput, handleDragOver, handleDragLeave, handleDrop, res
         v-if="isRecording && isCompact && !voiceMode"
         class="text-xs text-red-400 mt-2 text-center flex items-center justify-center gap-2"
       >
-        <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+        <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
         <span>{{ t('chat.recording') }} {{ recordingDuration }}s</span>
       </div>
     </div>

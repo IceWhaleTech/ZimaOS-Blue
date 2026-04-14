@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 
 const route = useRoute()
 const { t, te } = useI18n()
@@ -52,7 +53,10 @@ const tabs = computed(() => [
 </script>
 
 <template>
-  <nav class="automation-tab-nav" :aria-label="tr('nav.automation', 'Operations')">
+  <nav
+    class="automation-tab-nav"
+    :aria-label="tr('nav.automation', 'Operations')"
+  >
     <RouterLink
       v-for="tab in tabs"
       :key="tab.id"
@@ -64,17 +68,33 @@ const tabs = computed(() => [
       :title="tab.description"
       :data-testid="`automation-tab-${tab.id}`"
     >
-      <span class="automation-tab-button__icon" aria-hidden="true">
-        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" v-html="tab.icon" />
+      <span
+        class="automation-tab-button__icon"
+        aria-hidden="true"
+      >
+        <TrustedHtml
+          tag="svg"
+          class="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          :html="tab.icon"
+        />
       </span>
       <span class="automation-tab-button__body">
         <span class="automation-tab-button__label-row">
           <span class="automation-tab-button__label">{{ tab.label }}</span>
-          <span v-if="tab.badge" class="automation-tab-beta">{{ tab.badge }}</span>
+          <span
+            v-if="tab.badge"
+            class="automation-tab-beta"
+          >{{ tab.badge }}</span>
         </span>
         <span class="automation-tab-button__description">{{ tab.description }}</span>
       </span>
-      <span class="automation-tab-button__state" aria-hidden="true"></span>
+      <span
+        class="automation-tab-button__state"
+        aria-hidden="true"
+      />
     </RouterLink>
   </nav>
 </template>

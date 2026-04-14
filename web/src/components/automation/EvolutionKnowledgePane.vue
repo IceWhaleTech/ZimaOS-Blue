@@ -474,7 +474,10 @@ onMounted(async () => {
           <div class="mt-2 text-sm font-semibold">
             {{ repairProgressStage }}
           </div>
-          <p v-if="repairProgressDetail" class="mt-1 text-sm text-rose-800">
+          <p
+            v-if="repairProgressDetail"
+            class="mt-1 text-sm text-rose-800"
+          >
             {{ tr('knowledge.repairConflictsCurrent', 'Currently processing') }}:
             {{ repairProgressDetail }}
           </p>
@@ -588,12 +591,16 @@ onMounted(async () => {
           type="search"
           class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
           :placeholder="tr('knowledge.searchPlaceholder', 'Search titles, sources, keywords')"
-        />
+        >
         <select
           v-model="pageTypeFilter"
           class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
         >
-          <option v-for="pageType in allPageTypes" :key="pageType" :value="pageType">
+          <option
+            v-for="pageType in allPageTypes"
+            :key="pageType"
+            :value="pageType"
+          >
             {{ pageTypeLabel(pageType) }}
           </option>
         </select>
@@ -601,10 +608,18 @@ onMounted(async () => {
           v-model="statusFilter"
           class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
         >
-          <option value="all">{{ tr('knowledge.allStatuses', 'all statuses') }}</option>
-          <option value="active">{{ statusLabel('active') }}</option>
-          <option value="superseded">{{ statusLabel('superseded') }}</option>
-          <option value="conflicted">{{ statusLabel('conflicted') }}</option>
+          <option value="all">
+            {{ tr('knowledge.allStatuses', 'all statuses') }}
+          </option>
+          <option value="active">
+            {{ statusLabel('active') }}
+          </option>
+          <option value="superseded">
+            {{ statusLabel('superseded') }}
+          </option>
+          <option value="conflicted">
+            {{ statusLabel('conflicted') }}
+          </option>
         </select>
       </div>
 
@@ -615,7 +630,10 @@ onMounted(async () => {
         {{ tr('common.loading', 'Loading...') }}
       </div>
 
-      <div v-else class="mt-4 space-y-4">
+      <div
+        v-else
+        class="mt-4 space-y-4"
+      >
         <KnowledgeGraphMap
           :pages="filteredPages"
           :selected-slug="selectedSlug"
@@ -685,7 +703,9 @@ onMounted(async () => {
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
-                    <div class="truncate text-sm font-semibold">{{ page.title }}</div>
+                    <div class="truncate text-sm font-semibold">
+                      {{ page.title }}
+                    </div>
                     <div class="mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
                       {{ page.summary }}
                     </div>
@@ -705,7 +725,10 @@ onMounted(async () => {
                 </div>
               </button>
 
-              <div v-if="groupPages.length === 0" class="text-sm text-slate-500">
+              <div
+                v-if="groupPages.length === 0"
+                class="text-sm text-slate-500"
+              >
                 {{ tr('knowledge.emptyGroup', 'No pages in this group yet.') }}
               </div>
             </div>
@@ -732,11 +755,13 @@ onMounted(async () => {
           </div>
 
           <select
-            data-testid="knowledge-query-scope"
             v-model="queryScope"
+            data-testid="knowledge-query-scope"
             class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
           >
-            <option value="all">{{ tr('knowledge.scopeAll', 'all') }}</option>
+            <option value="all">
+              {{ tr('knowledge.scopeAll', 'all') }}
+            </option>
             <option value="current_page">
               {{ tr('knowledge.scopeCurrentPage', 'current page') }}
             </option>
@@ -747,8 +772,8 @@ onMounted(async () => {
         </div>
 
         <textarea
-          data-testid="knowledge-query-input"
           v-model="queryText"
+          data-testid="knowledge-query-input"
           rows="4"
           class="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
           :placeholder="
@@ -764,7 +789,7 @@ onMounted(async () => {
             v-model="saveAnswer"
             type="checkbox"
             class="h-4 w-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
-          />
+          >
           {{ tr('knowledge.saveAnswer', 'Save answer history') }}
         </label>
 
@@ -814,7 +839,10 @@ onMounted(async () => {
             </span>
           </div>
 
-          <div v-if="answerReport.citations?.length" class="mt-4 flex flex-wrap gap-2">
+          <div
+            v-if="answerReport.citations?.length"
+            class="mt-4 flex flex-wrap gap-2"
+          >
             <span
               v-for="citation in answerReport.citations"
               :key="`${citation.page_slug}-${citation.title}`"
@@ -848,7 +876,10 @@ onMounted(async () => {
           {{ tr('common.loading', 'Loading...') }}
         </div>
 
-        <div v-else-if="selectedPage" class="space-y-4">
+        <div
+          v-else-if="selectedPage"
+          class="space-y-4"
+        >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div class="flex flex-wrap items-center gap-2">
@@ -926,7 +957,10 @@ onMounted(async () => {
                 >
                   {{ slug }}
                 </button>
-                <span v-if="selectedPage.backlinks.length === 0" class="text-sm text-slate-500">
+                <span
+                  v-if="selectedPage.backlinks.length === 0"
+                  class="text-sm text-slate-500"
+                >
                   {{ tr('knowledge.noRelatedPages', 'No related pages linked yet.') }}
                 </span>
               </div>
@@ -942,10 +976,17 @@ onMounted(async () => {
                   :key="answer.path"
                   class="rounded-2xl bg-white px-3 py-2 text-[13px] text-slate-700 shadow-sm sm:text-sm"
                 >
-                  <div class="font-medium">{{ answer.query }}</div>
-                  <div class="mt-1 text-xs text-slate-500">{{ answer.summary }}</div>
+                  <div class="font-medium">
+                    {{ answer.query }}
+                  </div>
+                  <div class="mt-1 text-xs text-slate-500">
+                    {{ answer.summary }}
+                  </div>
                 </div>
-                <div v-if="selectedAnswers.length === 0" class="text-sm text-slate-500">
+                <div
+                  v-if="selectedAnswers.length === 0"
+                  class="text-sm text-slate-500"
+                >
                   {{
                     tr('knowledge.noArchivedAnswers', 'No saved answers linked to this page yet.')
                   }}
@@ -968,7 +1009,10 @@ onMounted(async () => {
                 >
                   {{ lintIssueKindLabel(issue.kind) }}
                 </span>
-                <span v-if="!latestLint?.issues?.length" class="text-sm text-slate-500">
+                <span
+                  v-if="!latestLint?.issues?.length"
+                  class="text-sm text-slate-500"
+                >
                   {{ tr('knowledge.lintHealthy', 'Latest lint found no open issues.') }}
                 </span>
               </div>
@@ -981,8 +1025,7 @@ onMounted(async () => {
             </div>
             <pre
               class="mt-3 overflow-x-auto whitespace-pre-wrap text-[13px] leading-5 text-slate-100 sm:text-sm"
-              >{{ selectedPage.content }}</pre
-            >
+            >{{ selectedPage.content }}</pre>
           </div>
         </div>
 
@@ -1106,8 +1149,8 @@ onMounted(async () => {
             </div>
 
             <textarea
-              data-testid="knowledge-schema-editor"
               v-model="schemaContent"
+              data-testid="knowledge-schema-editor"
               rows="10"
               class="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition focus:border-amber-300 focus:ring-2 focus:ring-amber-200"
             />
@@ -1173,7 +1216,10 @@ onMounted(async () => {
               <div class="mt-2 text-xs text-slate-500">
                 {{ formatDate(entry.timestamp) }}
               </div>
-              <div v-if="entry.reason" class="mt-2 text-sm text-slate-600">
+              <div
+                v-if="entry.reason"
+                class="mt-2 text-sm text-slate-600"
+              >
                 {{ entry.reason }}
               </div>
             </article>

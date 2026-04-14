@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
@@ -13,6 +14,7 @@ type a11yCompatBackend struct {
 	windows              []a11yruntime.WindowInfo
 	snapshotResult       a11yruntime.SnapshotResult
 	interactiveResult    a11yruntime.SnapshotResult
+	interactiveResults   []a11yruntime.SnapshotResult
 	snapshotErr          error
 	focusResultWindowID  string
 	scrollResultWindowID string
@@ -20,12 +22,15 @@ type a11yCompatBackend struct {
 	screenshotResultID   string
 	lastFocusWindowID    string
 	lastSnapshotWindowID string
+	snapshotWindowHistory []string
 	lastActWindowID      string
 	lastActRef           int
 	lastActType          string
 	lastActValue         string
 	lastActHoldMS        int
 	lastActRefMap        map[int]string
+	actTypeHistory       []string
+	actRefHistory        []int
 	lastScrollWindowID   string
 	lastScrollDirection  string
 	lastScrollLines      int
@@ -34,12 +39,16 @@ type a11yCompatBackend struct {
 	lastKeyWindowID      string
 	lastKeys             []string
 	lastKeyHoldMS        int
+	keyHistory           [][]string
 	lastScreenshotWindow string
 	actExecutionMode     string
 	scrollExecutionMode  string
 	keyExecutionMode     string
 	screenshotImagePath  string
 	actCalls             int
+	interactiveCalls     int
+	actErrorsByType      map[string]error
+	keyErrorsByChord     map[string]error
 }
 
 type a11yBrowserCompatBackend struct {
@@ -93,6 +102,7 @@ func (b *a11yCompatBackend) FocusWindow(_ context.Context, windowID string) (a11
 
 func (b *a11yCompatBackend) Snapshot(_ context.Context, windowID string) (a11yruntime.SnapshotResult, error) {
 	b.lastSnapshotWindowID = windowID
+	b.snapshotWindowHistory = append(b.snapshotWindowHistory, windowID)
 	if b.snapshotErr != nil {
 		return a11yruntime.SnapshotResult{}, b.snapshotErr
 	}
@@ -110,6 +120,19 @@ func (b *a11yCompatBackend) Snapshot(_ context.Context, windowID string) (a11yru
 
 func (b *a11yCompatBackend) SnapshotInteractive(_ context.Context, windowID string) (a11yruntime.SnapshotResult, error) {
 	b.lastSnapshotWindowID = windowID
+	b.snapshotWindowHistory = append(b.snapshotWindowHistory, windowID)
+	b.interactiveCalls++
+	if len(b.interactiveResults) > 0 {
+		result := b.interactiveResults[0]
+		b.interactiveResults = b.interactiveResults[1:]
+		if result.WindowID == "" {
+			result.WindowID = windowID
+		}
+		if result.HostOS == "" {
+			result.HostOS = "darwin"
+		}
+		return result, nil
+	}
 	if b.interactiveResult.WindowID == "" {
 		return a11yruntime.SnapshotResult{
 			HostOS:   "darwin",
@@ -129,7 +152,12 @@ func (b *a11yCompatBackend) Act(_ context.Context, windowID string, ref int, ref
 	b.lastActValue = value
 	b.lastActHoldMS = holdMS
 	b.lastActRefMap = refMap
+	b.actTypeHistory = append(b.actTypeHistory, actType)
+	b.actRefHistory = append(b.actRefHistory, ref)
 	b.actCalls++
+	if err := b.actErrorsByType[actType]; err != nil {
+		return a11yruntime.ActionResult{}, err
+	}
 	mode := b.actExecutionMode
 	if mode == "" {
 		mode = "semantic"
@@ -156,6 +184,10 @@ func (b *a11yCompatBackend) Key(_ context.Context, windowID string, keys []strin
 	b.lastKeyWindowID = windowID
 	b.lastKeys = append([]string(nil), keys...)
 	b.lastKeyHoldMS = holdMS
+	b.keyHistory = append(b.keyHistory, append([]string(nil), keys...))
+	if err := b.keyErrorsByChord[strings.Join(keys, "+")]; err != nil {
+		return a11yruntime.ActionResult{}, err
+	}
 	mode := b.keyExecutionMode
 	if mode == "" {
 		mode = "input"
@@ -887,6 +919,124 @@ func TestA11yToolExecute_FocusCachesWindowForSubsequentScreenshot(t *testing.T) 
 	}
 	if backend.lastScreenshotWindow != "win-2" {
 		t.Fatalf("lastScreenshotWindow = %q, want win-2", backend.lastScreenshotWindow)
+	}
+}
+
+func TestA11yToolExecute_FocusResolvesUniqueExactWindowAliasBeforeFocus(t *testing.T) {
+	backend := &a11yCompatBackend{
+		focusResultWindowID: "win-2",
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-1", Title: "Code", AppName: "Code"},
+			{ID: "win-2", Title: "Feishu", AppName: "Feishu"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "focus",
+		"window_id": "Feishu",
+	}); err != nil {
+		t.Fatalf("focus error = %v", err)
+	}
+	if backend.lastFocusWindowID != "win-2" {
+		t.Fatalf("lastFocusWindowID = %q, want win-2", backend.lastFocusWindowID)
+	}
+}
+
+func TestA11yToolExecute_SnapshotResolvesWindowTitleBeforeSnapshot(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-1", Title: "Code", AppName: "Code"},
+			{ID: "win-2", Title: "Feishu", AppName: "Feishu"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "snapshot_interactive",
+		"window_title": "Feishu",
+	}); err != nil {
+		t.Fatalf("snapshot_interactive error = %v", err)
+	}
+	if backend.lastSnapshotWindowID != "win-2" {
+		t.Fatalf("lastSnapshotWindowID = %q, want win-2", backend.lastSnapshotWindowID)
+	}
+}
+
+func TestA11yToolExecute_SnapshotResolvesFuzzyWindowTitleAliasesBeforeSnapshot(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-1", Title: "Code", AppName: "Code"},
+			{ID: "win-2", Title: "Lark - Orca", AppName: "Lark"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "snapshot_interactive",
+		"window_title": "Feishu，飞书，Lark",
+	}); err != nil {
+		t.Fatalf("snapshot_interactive error = %v", err)
+	}
+	if backend.lastSnapshotWindowID != "win-2" {
+		t.Fatalf("lastSnapshotWindowID = %q, want win-2", backend.lastSnapshotWindowID)
+	}
+}
+
+func TestA11yToolExecute_SnapshotResolvesBestFuzzyWindowTitleCandidateBeforeSnapshot(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-1", Title: "Feishu - Docs", AppName: "Lark"},
+			{ID: "win-2", Title: "Lark Feishu Orca", AppName: "Lark"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "snapshot_interactive",
+		"window_title": "Feishu 飞书 Lark Orca",
+	}); err != nil {
+		t.Fatalf("snapshot_interactive error = %v", err)
+	}
+	if backend.lastSnapshotWindowID != "win-2" {
+		t.Fatalf("lastSnapshotWindowID = %q, want win-2", backend.lastSnapshotWindowID)
+	}
+}
+
+func TestA11yToolExecute_FocusRejectsAmbiguousWindowAlias(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-1", Title: "Feishu", AppName: "Feishu"},
+			{ID: "win-2", Title: "Feishu", AppName: "Feishu"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "focus",
+		"window_title": "Feishu",
+	})
+	if err != nil {
+		t.Fatalf("focus Execute() error = %v", err)
+	}
+	if backend.lastFocusWindowID != "" {
+		t.Fatalf("lastFocusWindowID = %q, want empty on ambiguity", backend.lastFocusWindowID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "backend_unavailable" {
+		t.Fatalf("error_code = %v, want backend_unavailable", out["error_code"])
+	}
+	if out["error"] != "target window is ambiguous" {
+		t.Fatalf("error = %v, want target window is ambiguous", out["error"])
 	}
 }
 

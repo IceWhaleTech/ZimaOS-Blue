@@ -37,4 +37,5 @@ func bindRouteRuntimeChannels(options routeRuntimeContractChannelOptions) {
 
 	channelConfigHandler := serverpkg.NewChannelConfigHandler(options.channelConfigStore)
 	registerChannelConfigRoutes(options.api, channelConfigHandler, options.authMiddleware, pageMiddleware, channelManager, channelFactory)
+	registerRouteRuntimeWechatILinkSetupRoutes(options, pageMiddleware, channelManager, channelFactory)
 }

@@ -30,7 +30,8 @@ func TestWindowsActionResultWithPlan_ReturnsSemanticResultOnPrimarySuccess(t *te
 			}
 			return nil
 		},
-		func(string, string, int) error {
+		nil,
+		func(string, string, int, bool) error {
 			fallbackCalls++
 			return nil
 		},
@@ -78,9 +79,13 @@ func TestWindowsActionResultWithPlan_FallsBackToInputWhenPrimaryFails(t *testing
 			}
 			return errors.New("accSelect failed")
 		},
-		func(fallback string, value string, holdMS int) error {
+		nil,
+		func(fallback string, value string, holdMS int, primarySucceeded bool) error {
 			fallbackCalls++
 			fallbackHoldMS = holdMS
+			if primarySucceeded {
+				t.Fatal("primarySucceeded = true, want false when primary failed")
+			}
 			if fallback != windowsActionInputType {
 				t.Fatalf("fallback = %q, want input_type", fallback)
 			}
@@ -107,6 +112,130 @@ func TestWindowsActionResultWithPlan_FallsBackToInputWhenPrimaryFails(t *testing
 	}
 }
 
+func TestWindowsActionResultWithPlan_TypeContinuesToFallbackAfterPrimaryFocusSucceeds(t *testing.T) {
+	primaryCalls := 0
+	fallbackCalls := 0
+
+	result, err := windowsActionResultWithPlan(
+		"windows",
+		"42",
+		"type",
+		"hello",
+		0,
+		windowsActionPlan{
+			ExecutionMode: "input",
+			Primary:       windowsActionSelectFocus,
+			Fallback:      windowsActionInputType,
+		},
+		func(plan windowsActionPlan, value string) error {
+			primaryCalls++
+			if plan.Primary != windowsActionSelectFocus {
+				t.Fatalf("plan.Primary = %q, want select_focus", plan.Primary)
+			}
+			if value != "hello" {
+				t.Fatalf("value = %q, want hello", value)
+			}
+			return nil
+		},
+		nil,
+		func(fallback string, value string, holdMS int, primarySucceeded bool) error {
+			fallbackCalls++
+			if !primarySucceeded {
+				t.Fatal("primarySucceeded = false, want true")
+			}
+			if fallback != windowsActionInputType {
+				t.Fatalf("fallback = %q, want input_type", fallback)
+			}
+			if value != "hello" {
+				t.Fatalf("value = %q, want hello", value)
+			}
+			if holdMS != DefaultHoldMS {
+				t.Fatalf("holdMS = %d, want %d", holdMS, DefaultHoldMS)
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("windowsActionResultWithPlan() error = %v", err)
+	}
+	if primaryCalls != 1 {
+		t.Fatalf("primaryCalls = %d, want 1", primaryCalls)
+	}
+	if fallbackCalls != 1 {
+		t.Fatalf("fallbackCalls = %d, want 1", fallbackCalls)
+	}
+	if result.ExecutionMode != "input" {
+		t.Fatalf("execution_mode = %q, want input", result.ExecutionMode)
+	}
+}
+
+func TestWindowsActionResultWithPlan_TypeFallsBackWhenSemanticPutValueIsNotConfirmed(t *testing.T) {
+	primaryCalls := 0
+	verifyCalls := 0
+	fallbackCalls := 0
+
+	result, err := windowsActionResultWithPlan(
+		"windows",
+		"42",
+		"type",
+		"hello",
+		0,
+		windowsActionPlan{
+			ExecutionMode: "semantic",
+			Primary:       windowsActionPutValue,
+			Fallback:      windowsActionInputType,
+		},
+		func(plan windowsActionPlan, value string) error {
+			primaryCalls++
+			if plan.Primary != windowsActionPutValue {
+				t.Fatalf("plan.Primary = %q, want put_value", plan.Primary)
+			}
+			if value != "hello" {
+				t.Fatalf("value = %q, want hello", value)
+			}
+			return nil
+		},
+		func(plan windowsActionPlan, value string) bool {
+			verifyCalls++
+			if plan.Primary != windowsActionPutValue {
+				t.Fatalf("verify plan.Primary = %q, want put_value", plan.Primary)
+			}
+			if value != "hello" {
+				t.Fatalf("verify value = %q, want hello", value)
+			}
+			return false
+		},
+		func(fallback string, value string, holdMS int, primarySucceeded bool) error {
+			fallbackCalls++
+			if fallback != windowsActionInputType {
+				t.Fatalf("fallback = %q, want input_type", fallback)
+			}
+			if primarySucceeded {
+				t.Fatal("primarySucceeded = true, want false when semantic write was not confirmed")
+			}
+			if holdMS != DefaultHoldMS {
+				t.Fatalf("holdMS = %d, want %d", holdMS, DefaultHoldMS)
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("windowsActionResultWithPlan() error = %v", err)
+	}
+	if primaryCalls != 1 {
+		t.Fatalf("primaryCalls = %d, want 1", primaryCalls)
+	}
+	if verifyCalls != 1 {
+		t.Fatalf("verifyCalls = %d, want 1", verifyCalls)
+	}
+	if fallbackCalls != 1 {
+		t.Fatalf("fallbackCalls = %d, want 1", fallbackCalls)
+	}
+	if result.ExecutionMode != "input" {
+		t.Fatalf("execution_mode = %q, want input", result.ExecutionMode)
+	}
+}
+
 func TestWindowsActionResultWithPlan_ReturnsUnsupportedForUnsupportedPlan(t *testing.T) {
 	_, err := windowsActionResultWithPlan(
 		"windows",
@@ -118,6 +247,7 @@ func TestWindowsActionResultWithPlan_ReturnsUnsupportedForUnsupportedPlan(t *tes
 			Unsupported:       true,
 			UnsupportedReason: "element does not support toggle",
 		},
+		nil,
 		nil,
 		nil,
 	)
@@ -147,6 +277,7 @@ func TestWindowsActionResultWithPlan_ReturnsUnsupportedWhenNoFallbackExists(t *t
 		func(windowsActionPlan, string) error {
 			return errors.New("accDoDefaultAction failed")
 		},
+		nil,
 		nil,
 	)
 	if err == nil {

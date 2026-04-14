@@ -128,7 +128,10 @@ function getActionColor(action: string): string {
     </div>
 
     <!-- Stats -->
-    <div v-if="stats" class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div
+      v-if="stats"
+      class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6"
+    >
       <div class="glass-card p-4">
         <div class="text-2xl font-bold text-green-600 dark:text-green-400">
           {{ stats.by_status.success }}
@@ -141,17 +144,25 @@ function getActionColor(action: string): string {
         <div class="text-2xl font-bold text-red-600 dark:text-red-400">
           {{ stats.by_status.failure }}
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.failedActions') }}</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('audit.failedActions') }}
+        </div>
       </div>
       <div class="glass-card p-4">
         <div class="text-2xl font-bold text-gray-900 dark:text-white dark:text-white">
           {{ stats.by_action.login || 0 }}
         </div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.logins') }}</div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('audit.logins') }}
+        </div>
       </div>
       <div class="glass-card p-4">
-        <div class="text-2xl font-bold text-gray-900 dark:text-white">{{ total }}</div>
-        <div class="text-sm text-gray-500 dark:text-slate-400">{{ t('audit.totalEntries') }}</div>
+        <div class="text-2xl font-bold text-gray-900 dark:text-white">
+          {{ total }}
+        </div>
+        <div class="text-sm text-gray-500 dark:text-slate-400">
+          {{ t('audit.totalEntries') }}
+        </div>
       </div>
     </div>
 
@@ -162,22 +173,44 @@ function getActionColor(action: string): string {
           v-model="filters.action"
           class="bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-200 dark:border-slate-600"
         >
-          <option :value="undefined">{{ t('audit.allActions') }}</option>
-          <option value="login">Login</option>
-          <option value="logout">Logout</option>
-          <option value="user_create">User Create</option>
-          <option value="user_update">User Update</option>
-          <option value="user_delete">User Delete</option>
-          <option value="mfa_setup">MFA Setup</option>
-          <option value="mfa_disable">MFA Disable</option>
+          <option :value="undefined">
+            {{ t('audit.allActions') }}
+          </option>
+          <option value="login">
+            Login
+          </option>
+          <option value="logout">
+            Logout
+          </option>
+          <option value="user_create">
+            User Create
+          </option>
+          <option value="user_update">
+            User Update
+          </option>
+          <option value="user_delete">
+            User Delete
+          </option>
+          <option value="mfa_setup">
+            MFA Setup
+          </option>
+          <option value="mfa_disable">
+            MFA Disable
+          </option>
         </select>
         <select
           v-model="filters.status"
           class="bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 border border-gray-200 dark:border-slate-600"
         >
-          <option :value="undefined">{{ t('audit.allStatuses') }}</option>
-          <option value="success">{{ t('audit.success') }}</option>
-          <option value="failure">{{ t('audit.failure') }}</option>
+          <option :value="undefined">
+            {{ t('audit.allStatuses') }}
+          </option>
+          <option value="success">
+            {{ t('audit.success') }}
+          </option>
+          <option value="failure">
+            {{ t('audit.failure') }}
+          </option>
         </select>
         <div class="flex gap-2">
           <button
@@ -197,7 +230,10 @@ function getActionColor(action: string): string {
     </div>
 
     <!-- Entries List -->
-    <div v-if="loading" class="text-center py-8 text-gray-500 dark:text-slate-400">
+    <div
+      v-if="loading"
+      class="text-center py-8 text-gray-500 dark:text-slate-400"
+    >
       {{ t('common.loading') }}
     </div>
 
@@ -208,8 +244,15 @@ function getActionColor(action: string): string {
       {{ t('audit.noEntries') }}
     </div>
 
-    <div v-else class="space-y-3">
-      <div v-for="entry in entries" :key="entry.id" class="glass-card p-4">
+    <div
+      v-else
+      class="space-y-3"
+    >
+      <div
+        v-for="entry in entries"
+        :key="entry.id"
+        class="glass-card p-4"
+      >
         <div class="flex items-start justify-between mb-2">
           <div class="flex items-center gap-2 flex-wrap">
             <span
@@ -244,7 +287,10 @@ function getActionColor(action: string): string {
     </div>
 
     <!-- Pagination -->
-    <div v-if="totalPages > 1" class="flex items-center justify-center gap-2 mt-6">
+    <div
+      v-if="totalPages > 1"
+      class="flex items-center justify-center gap-2 mt-6"
+    >
       <button
         :disabled="page === 1"
         class="px-3 py-1 bg-gray-200 dark:bg-slate-600 hover:bg-gray-300 dark:hover:bg-slate-500 text-gray-900 dark:text-white rounded text-sm disabled:opacity-50"

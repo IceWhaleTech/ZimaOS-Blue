@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import type { ActionButton, TypelessCardWebFetch } from '@/types/typeless'
 import { renderMarkdown } from '@/utils/markdown'
 import { formatToolWarningCodeLabel } from '@/utils/toolWarnings'
@@ -21,7 +22,7 @@ const emit = defineEmits<{
 }>()
 
 function unescapeBackticks(s: string): string {
-  return s.replace(/`​``/g, '```')
+  return s.replace(/`\u200B``/gu, '```')
 }
 
 function hostFromUrl(url?: string): string {
@@ -178,8 +179,7 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
       <span class="min-w-0 flex-1">
         <span
           class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400"
-          >{{ t('webFetchCard.title', 'Web fetch') }}</span
-        >
+        >{{ t('webFetchCard.title', 'Web fetch') }}</span>
         <span class="flex min-w-0 items-center gap-2">
           <span
             class="inline-flex h-2.5 w-2.5 rounded-full flex-shrink-0"
@@ -210,13 +210,11 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
         <span
           v-if="card.extract_mode"
           class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
-          >{{ card.extract_mode }}</span
-        >
+        >{{ card.extract_mode }}</span>
         <span
           v-if="card.truncated"
           class="rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 px-2 py-0.5"
-          >{{ t('execCard.outputTruncated', 'truncated') }}</span
-        >
+        >{{ t('execCard.outputTruncated', 'truncated') }}</span>
         <svg
           xmlns="http://www.w3.org/2000/svg"
           class="h-4 w-4 text-gray-400 transition-transform duration-200"
@@ -236,8 +234,14 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
     </button>
 
     <transition name="web-fetch-content">
-      <div v-if="expanded" class="border-t border-gray-100 dark:border-gray-700/60">
-        <div class="px-4 py-3 border-b" :class="toneClasses.header">
+      <div
+        v-if="expanded"
+        class="border-t border-gray-100 dark:border-gray-700/60"
+      >
+        <div
+          class="px-4 py-3 border-b"
+          :class="toneClasses.header"
+        >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0 flex-1">
               <div
@@ -246,23 +250,19 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
                 <span
                   v-if="hostname"
                   class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
-                  >{{ hostname }}</span
-                >
+                >{{ hostname }}</span>
                 <span
                   v-if="card.extract_mode"
                   class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
-                  >{{ card.extract_mode }}</span
-                >
+                >{{ card.extract_mode }}</span>
                 <span
                   v-if="card.extractor"
                   class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
-                  >{{ card.extractor }}</span
-                >
+                >{{ card.extractor }}</span>
                 <span
                   v-if="card.content_type"
                   class="rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5"
-                  >{{ card.content_type }}</span
-                >
+                >{{ card.content_type }}</span>
               </div>
 
               <a
@@ -340,16 +340,15 @@ function actionButtonClasses(variant?: ActionButton['variant']): string {
             v-if="hasContent"
             class="mt-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-900/40 overflow-hidden"
           >
-            <div
+            <TrustedHtml
               v-if="isMarkdown"
               class="prose prose-sm dark:prose-invert max-w-none px-4 py-3"
-              v-html="renderedMarkdown"
+              :html="renderedMarkdown"
             />
             <pre
               v-else
               class="px-4 py-3 text-sm leading-6 text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words"
-              >{{ content }}</pre
-            >
+            >{{ content }}</pre>
           </div>
 
           <div

@@ -2,7 +2,7 @@
  * Debounce utility for delaying function execution
  */
 
-export type DebouncedFn<T extends (...args: any[]) => any> = ((...args: Parameters<T>) => void) & {
+export type DebouncedFn<T extends (...args: unknown[]) => unknown> = ((...args: Parameters<T>) => void) & {
   cancel: () => void
   flush: () => void
   pending: () => boolean
@@ -12,29 +12,26 @@ export type DebouncedFn<T extends (...args: any[]) => any> = ((...args: Paramete
  * Creates a debounced function that delays invoking `fn` until after `wait` milliseconds
  * have elapsed since the last time the debounced function was invoked.
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   fn: T,
   wait: number,
   immediate = false
 ): DebouncedFn<T> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
-  let lastArgs: Parameters<T> | null = null
-  let lastThis: ThisParameterType<T> | null = null
+  let pendingInvoke: (() => ReturnType<T>) | null = null
   let result: ReturnType<T>
 
   const invoke = () => {
-    if (lastArgs) {
-      result = fn.apply(lastThis, lastArgs)
-      lastArgs = null
-      lastThis = null
+    if (pendingInvoke) {
+      result = pendingInvoke()
+      pendingInvoke = null
     }
     return result
   }
 
   const debounced = Object.assign(
     function (this: ThisParameterType<T>, ...args: Parameters<T>) {
-      lastArgs = args
-      lastThis = this
+      pendingInvoke = () => fn.apply(this, args) as ReturnType<T>
 
       const callNow = immediate && !timeoutId
 
@@ -61,8 +58,7 @@ export function debounce<T extends (...args: any[]) => any>(
           clearTimeout(timeoutId)
           timeoutId = null
         }
-        lastArgs = null
-        lastThis = null
+        pendingInvoke = null
       },
       flush: () => {
         if (timeoutId) {

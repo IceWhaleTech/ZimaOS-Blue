@@ -232,7 +232,7 @@ function containsAnyExplicit(text: string, tokens: string[]): boolean {
 function stripLeadingCourtesyPrefixes(text: string): string {
   let current = text.trimStart()
 
-  while (true) {
+  for (;;) {
     const matched = LEADING_COURTESY_PREFIXES.find((prefix) => current.startsWith(prefix))
     if (!matched) return current
     current = current.slice(matched.length).trimStart()

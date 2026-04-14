@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import type { TypelessCardTable } from '@/types/typeless'
 import { parseInline } from '@/utils/markdown'
 import { useI18n } from 'vue-i18n'
@@ -33,19 +34,25 @@ function renderContent(content: string | number | null | undefined): string {
       v-if="card.title"
       class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"
     >
-      <h4 class="font-medium text-gray-900 dark:text-white">{{ card.title }}</h4>
+      <h4 class="font-medium text-gray-900 dark:text-white">
+        {{ card.title }}
+      </h4>
     </div>
 
     <!-- Table -->
     <div class="overflow-x-auto">
-      <table class="w-full" :class="{ 'text-sm': card.compact }">
+      <table
+        class="w-full"
+        :class="{ 'text-sm': card.compact }"
+      >
         <thead>
           <tr class="bg-gray-50 dark:bg-gray-700/50">
-            <th
+            <TrustedHtml
               v-for="(header, index) in card.headers"
               :key="index"
+              tag="th"
               class="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
-              v-html="renderContent(header)"
+              :html="renderContent(header)"
             />
           </tr>
         </thead>
@@ -58,12 +65,13 @@ function renderContent(content: string | number | null | undefined): string {
               'hover:bg-gray-50 dark:hover:bg-gray-700/50': true,
             }"
           >
-            <td
+            <TrustedHtml
               v-for="(cell, cellIndex) in row"
               :key="cellIndex"
+              tag="td"
               class="px-4 py-3 text-gray-700 dark:text-gray-300"
               :class="{ 'py-2': card.compact }"
-              v-html="renderContent(cell)"
+              :html="renderContent(cell)"
             />
           </tr>
         </tbody>
@@ -75,7 +83,9 @@ function renderContent(content: string | number | null | undefined): string {
       v-if="card.footer"
       class="px-4 py-2 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/50"
     >
-      <p class="text-xs text-gray-500 dark:text-gray-400">{{ card.footer }}</p>
+      <p class="text-xs text-gray-500 dark:text-gray-400">
+        {{ card.footer }}
+      </p>
     </div>
   </div>
 </template>

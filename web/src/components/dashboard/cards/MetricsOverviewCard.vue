@@ -45,18 +45,30 @@ function formatLatency(ms: number | undefined | null): string {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">{{ t('dashboard.cards.metricsOverview') }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ t('metrics.cards.overview.subtitle') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('dashboard.cards.metricsOverview') }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ t('metrics.cards.overview.subtitle') }}
+          </p>
         </div>
       </div>
 
-      <div v-if="!stats" class="dashboard-card-empty">
+      <div
+        v-if="!stats"
+        class="dashboard-card-empty"
+      >
         {{ t('metrics.noData') }}
       </div>
 
-      <div v-else class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div
+        v-else
+        class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4"
+      >
         <div class="dashboard-card-subsurface p-3">
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.totalCalls') }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('metrics.totalCalls') }}
+          </p>
           <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
             {{ formatNumber(stats.totalCalls) }}
           </p>
@@ -75,7 +87,9 @@ function formatLatency(ms: number | undefined | null): string {
         </div>
 
         <div class="dashboard-card-subsurface p-3">
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.tokenUsage') }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('metrics.tokenUsage') }}
+          </p>
           <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
             {{ formatNumber(stats.totalTokens) }}
           </p>
@@ -85,7 +99,9 @@ function formatLatency(ms: number | undefined | null): string {
         </div>
 
         <div class="dashboard-card-subsurface p-3">
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.avgLatency') }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('metrics.avgLatency') }}
+          </p>
           <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
             {{ formatLatency(stats.avgLatency) }}
           </p>
@@ -96,11 +112,15 @@ function formatLatency(ms: number | undefined | null): string {
         </div>
 
         <div class="dashboard-card-subsurface p-3">
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('metrics.speed') }}</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('metrics.speed') }}
+          </p>
           <p class="mt-1 text-2xl font-semibold text-gray-900 dark:text-white">
             {{ (stats.tokensPerSecond ?? 0).toFixed(1) }}
           </p>
-          <p class="dashboard-card-footnote mt-2">{{ t('metrics.tokensPerSecond') }}</p>
+          <p class="dashboard-card-footnote mt-2">
+            {{ t('metrics.tokensPerSecond') }}
+          </p>
         </div>
       </div>
     </div>

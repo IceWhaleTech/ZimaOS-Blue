@@ -256,21 +256,33 @@ function stepDuration(step: PlanStep): string {
     </div>
 
     <!-- Steps -->
-    <div v-if="task.plan?.length" class="space-y-1">
-      <div v-for="step in task.plan" :key="step.index" class="text-sm">
+    <div
+      v-if="task.plan?.length"
+      class="space-y-1"
+    >
+      <div
+        v-for="step in task.plan"
+        :key="step.index"
+        class="text-sm"
+      >
         <div
           class="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 rounded px-1 py-0.5"
           @click="toggleStep(step.index)"
         >
-          <span :class="stepColor(step.status)" class="text-xs w-4 text-center">{{
+          <span
+            :class="stepColor(step.status)"
+            class="text-xs w-4 text-center"
+          >{{
             stepIcon(step.status)
           }}</span>
           <span
             class="text-gray-700 dark:text-gray-300 flex-1"
             :class="{ 'line-through opacity-50': step.status === 'skipped' }"
-            >{{ step.description }}</span
-          >
-          <span v-if="stepDuration(step)" class="text-xs text-gray-400 shrink-0">{{
+          >{{ step.description }}</span>
+          <span
+            v-if="stepDuration(step)"
+            class="text-xs text-gray-400 shrink-0"
+          >{{
             stepDuration(step)
           }}</span>
         </div>
@@ -294,7 +306,10 @@ function stepDuration(step: PlanStep): string {
       </div>
 
       <!-- Tab bar (multiple questions) -->
-      <div v-if="questions.length > 1" class="flex gap-1 mb-3 overflow-x-auto">
+      <div
+        v-if="questions.length > 1"
+        class="flex gap-1 mb-3 overflow-x-auto"
+      >
         <button
           v-for="(q, idx) in questions"
           :key="q.id"
@@ -311,10 +326,17 @@ function stepDuration(step: PlanStep): string {
       </div>
 
       <!-- Active question -->
-      <div v-for="(q, idx) in questions" :key="q.id" v-show="activeTab === idx">
+      <div
+        v-for="(q, idx) in questions"
+        v-show="activeTab === idx"
+        :key="q.id"
+      >
         <p class="text-sm text-gray-800 dark:text-gray-200 mb-2">
           {{ q.question }}
-          <span v-if="q.required" class="text-red-500 ms-0.5">*</span>
+          <span
+            v-if="q.required"
+            class="text-red-500 ms-0.5"
+          >*</span>
         </p>
         <p
           v-if="q.detail"
@@ -324,7 +346,10 @@ function stepDuration(step: PlanStep): string {
         </p>
 
         <!-- Options -->
-        <div v-if="q.options?.length" class="space-y-1.5">
+        <div
+          v-if="q.options?.length"
+          class="space-y-1.5"
+        >
           <button
             v-for="opt in q.options"
             :key="opt.value"
@@ -365,7 +390,10 @@ function stepDuration(step: PlanStep): string {
             </div>
             <div class="flex-1 min-w-0">
               <span class="text-gray-900 dark:text-white">{{ opt.label }}</span>
-              <p v-if="opt.description" class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              <p
+                v-if="opt.description"
+                class="text-xs text-gray-500 dark:text-gray-400 mt-0.5"
+              >
                 {{ opt.description }}
               </p>
             </div>
@@ -379,7 +407,7 @@ function stepDuration(step: PlanStep): string {
             type="text"
             :placeholder="t('agent.otherPlaceholder')"
             class="w-full text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
-          />
+          >
         </div>
       </div>
 
@@ -402,19 +430,25 @@ function stepDuration(step: PlanStep): string {
     >
       {{ task.result }}
     </div>
-    <div v-if="task.error" class="mt-2 text-sm text-red-600 dark:text-red-400">
+    <div
+      v-if="task.error"
+      class="mt-2 text-sm text-red-600 dark:text-red-400"
+    >
       {{ task.error }}
     </div>
 
     <!-- Message injection (when running, no pending questions) -->
-    <div v-if="isRunning && !hasQuestions" class="mt-3 flex gap-2">
+    <div
+      v-if="isRunning && !hasQuestions"
+      class="mt-3 flex gap-2"
+    >
       <input
         v-model="injectionMessage"
         type="text"
         :placeholder="t('agent.sendMessage')"
         class="flex-1 text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
         @keydown.enter="sendInjection"
-      />
+      >
       <button
         :disabled="!injectionMessage.trim()"
         class="px-3 py-1.5 rounded-lg bg-blue-500 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-600 transition-colors"

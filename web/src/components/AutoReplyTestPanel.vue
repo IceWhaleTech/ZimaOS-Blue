@@ -85,7 +85,11 @@ defineExpose({
         v-model="testChannel"
         class="w-full bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 border border-gray-300 dark:border-gray-600"
       >
-        <option v-for="channel in channels" :key="channel.value" :value="channel.value">
+        <option
+          v-for="channel in channels"
+          :key="channel.value"
+          :value="channel.value"
+        >
           {{ channel.label }}
         </option>
       </select>
@@ -101,7 +105,10 @@ defineExpose({
     </button>
 
     <!-- Result -->
-    <div v-if="tested && testResult !== null" class="mt-4">
+    <div
+      v-if="tested && testResult !== null"
+      class="mt-4"
+    >
       <div class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
         {{ t('autoReply.result') }}
       </div>

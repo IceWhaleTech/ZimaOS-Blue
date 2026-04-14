@@ -182,7 +182,10 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
     </div>
 
     <div class="px-3.5 py-2.5 space-y-2.5">
-      <div v-if="sources.length > 0" class="space-y-2">
+      <div
+        v-if="sources.length > 0"
+        class="space-y-2"
+      >
         <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
           {{ t('chat.deepResearchLiveSources', 'Live sources') }}
         </div>
@@ -226,15 +229,29 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
         </summary>
 
         <div class="mt-2.5 space-y-2.5 text-sm text-slate-700 dark:text-slate-200">
-          <div v-if="brief" class="rounded-xl bg-slate-50 px-2.5 py-2.5 dark:bg-slate-900/60">
+          <div
+            v-if="brief"
+            class="rounded-xl bg-slate-50 px-2.5 py-2.5 dark:bg-slate-900/60"
+          >
             <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
               {{ t('chat.deepResearchResearchBrief', 'Research brief') }}
             </div>
-            <div v-if="brief.goal" class="mt-2 break-words">{{ brief.goal }}</div>
-            <div v-if="brief.entity" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            <div
+              v-if="brief.goal"
+              class="mt-2 break-words"
+            >
+              {{ brief.goal }}
+            </div>
+            <div
+              v-if="brief.entity"
+              class="mt-2 text-xs text-slate-500 dark:text-slate-400"
+            >
               {{ brief.entity }}
             </div>
-            <div v-if="brief.time_windows?.length" class="mt-2 flex flex-wrap gap-2">
+            <div
+              v-if="brief.time_windows?.length"
+              class="mt-2 flex flex-wrap gap-2"
+            >
               <span
                 v-for="window in brief.time_windows"
                 :key="window"
@@ -243,12 +260,20 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
                 {{ localizeDeepResearchTimeWindow(window, resolveLabel) }}
               </span>
             </div>
-            <div v-if="brief.must_verify_claims?.length" class="mt-3">
+            <div
+              v-if="brief.must_verify_claims?.length"
+              class="mt-3"
+            >
               <div class="text-xs font-medium text-slate-500 dark:text-slate-400">
                 {{ t('chat.deepResearchMustVerify', 'Must verify') }}
               </div>
               <ul class="mt-2 list-disc space-y-1 ps-4 text-xs text-slate-600 dark:text-slate-300">
-                <li v-for="claim in brief.must_verify_claims" :key="claim">{{ claim }}</li>
+                <li
+                  v-for="claim in brief.must_verify_claims"
+                  :key="claim"
+                >
+                  {{ claim }}
+                </li>
               </ul>
             </div>
             <div
@@ -264,14 +289,22 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
               >
                 {{ brief.retry_context }}
               </div>
-              <div v-if="brief.retry_queries?.length" class="mt-3">
+              <div
+                v-if="brief.retry_queries?.length"
+                class="mt-3"
+              >
                 <div class="text-xs font-medium text-amber-700 dark:text-amber-200">
                   {{ t('chat.deepResearchRetryQueries', 'Recovery queries') }}
                 </div>
                 <ul
                   class="mt-2 list-disc space-y-1 ps-4 text-xs text-amber-700/90 dark:text-amber-100"
                 >
-                  <li v-for="query in brief.retry_queries" :key="query">{{ query }}</li>
+                  <li
+                    v-for="query in brief.retry_queries"
+                    :key="query"
+                  >
+                    {{ query }}
+                  </li>
                 </ul>
               </div>
             </div>
@@ -301,8 +334,7 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
                     v-for="meta in taskMeta(task)"
                     :key="meta"
                     class="rounded-full bg-slate-100 px-2 py-0.5 dark:bg-slate-800"
-                    >{{ meta }}</span
-                  >
+                  >{{ meta }}</span>
                 </div>
               </div>
             </div>
@@ -340,24 +372,30 @@ function taskMeta(task: DeepResearchPlannedTask): string[] {
           <div
             v-if="
               card.gap ||
-              card.focus ||
-              card.search_query ||
-              card.follow_up_query ||
-              card.stop_reason
+                card.focus ||
+                card.search_query ||
+                card.follow_up_query ||
+                card.stop_reason
             "
             class="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30"
           >
             <div class="text-xs font-medium text-amber-700 dark:text-amber-200">
               {{ t('chat.deepResearchStageErrors', 'Stage warnings') }}
             </div>
-            <div v-if="card.focus" class="mt-2 text-sm break-words">
+            <div
+              v-if="card.focus"
+              class="mt-2 text-sm break-words"
+            >
               {{
                 localizeDeepResearchStructuredValue(card.focus, resolveLabel) ||
-                localizeDeepResearchSegment(card.focus, resolveLabel) ||
-                card.focus
+                  localizeDeepResearchSegment(card.focus, resolveLabel) ||
+                  card.focus
               }}
             </div>
-            <div v-if="card.gap" class="mt-1 text-sm break-words">
+            <div
+              v-if="card.gap"
+              class="mt-1 text-sm break-words"
+            >
               {{ localizeDeepResearchGap(card.gap, resolveLabel) }}
             </div>
             <div

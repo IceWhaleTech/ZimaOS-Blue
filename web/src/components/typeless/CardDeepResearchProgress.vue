@@ -131,11 +131,13 @@ async function handleCancel() {
             >
               {{ researchProgressLabel }}
             </span>
-            <span class="rounded-full px-2 py-0.5" :class="statusClass">{{ stageLabel }}</span>
+            <span
+              class="rounded-full px-2 py-0.5"
+              :class="statusClass"
+            >{{ stageLabel }}</span>
             <span
               class="rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
-              >{{ modeLabel }}</span
-            >
+            >{{ modeLabel }}</span>
           </div>
           <div
             v-if="query"
@@ -147,9 +149,7 @@ async function handleCancel() {
             class="mt-1.5 flex flex-wrap items-center gap-2.5 text-xs text-slate-500 dark:text-slate-400"
           >
             <span>{{ progress }}%</span>
-            <span v-if="iteration"
-              >{{ t('chat.deepResearchIteration', 'Iteration') }} {{ iteration }}</span
-            >
+            <span v-if="iteration">{{ t('chat.deepResearchIteration', 'Iteration') }} {{ iteration }}</span>
             <span v-if="latestAction">{{ latestActionLabel(latestAction) }}</span>
           </div>
         </div>
@@ -157,9 +157,7 @@ async function handleCancel() {
           data-testid="deep-research-progress-header-actions"
           class="flex w-full flex-col items-start gap-2 sm:w-auto sm:items-end"
         >
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300 sm:text-right"
-            >{{ progress }}%</span
-          >
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300 sm:text-right">{{ progress }}%</span>
           <div
             data-testid="deep-research-progress-button-row"
             class="flex flex-wrap items-center gap-2 sm:justify-end"
@@ -198,22 +196,34 @@ async function handleCancel() {
       </div>
 
       <div class="grid gap-2 md:grid-cols-2 text-xs text-slate-500 dark:text-slate-400">
-        <div v-if="latestAction" class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/60">
+        <div
+          v-if="latestAction"
+          class="rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-900/60"
+        >
           <div class="font-medium text-slate-600 dark:text-slate-300">
             {{ t('chat.deepResearchLatestAction', 'Latest action') }}
           </div>
-          <div class="mt-1 break-words">{{ latestActionLabel(latestAction) }}</div>
+          <div class="mt-1 break-words">
+            {{ latestActionLabel(latestAction) }}
+          </div>
         </div>
         <div
           v-if="latestGap"
           class="rounded-lg bg-amber-50 px-2.5 py-2 text-amber-700 dark:bg-amber-950/30 dark:text-amber-200"
         >
-          <div class="font-medium">{{ t('chat.deepResearchLatestGap', 'Latest gap') }}</div>
-          <div class="mt-1 break-words">{{ latestGap }}</div>
+          <div class="font-medium">
+            {{ t('chat.deepResearchLatestGap', 'Latest gap') }}
+          </div>
+          <div class="mt-1 break-words">
+            {{ latestGap }}
+          </div>
         </div>
       </div>
 
-      <div v-if="!conversationId" class="text-xs text-slate-500 dark:text-slate-400">
+      <div
+        v-if="!conversationId"
+        class="text-xs text-slate-500 dark:text-slate-400"
+      >
         {{ runningElsewhereLabel }}
       </div>
     </div>

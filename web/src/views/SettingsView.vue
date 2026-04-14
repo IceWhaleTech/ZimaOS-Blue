@@ -10,6 +10,7 @@ import { backupApi } from '@/api/index'
 import { type ContextCompressionMode } from '@/api/settings'
 import type { LocaleKey } from '@/i18n'
 import type { BackupInfo } from '@/api/index'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import ProviderPoolSection from '@/components/ProviderPoolSection.vue'
 import UserDataExport from '@/components/UserDataExport.vue'
 import NetworkSettings from '@/components/settings/NetworkSettings.vue'
@@ -514,7 +515,7 @@ async function toggleAutoStart() {
       showSaveStatus(t('service.enableSuccess'))
     }
     await fetchServiceInfo()
-  } catch (e) {
+  } catch (_e) {
     showSaveStatus(autoStartEnabled.value ? t('service.disableFailed') : t('service.enableFailed'))
   } finally {
     autoStartLoading.value = false
@@ -649,7 +650,10 @@ onUnmounted(() => {
     <section class="settings-stage dashboard-page-stage configuration-page-stage">
       <div class="settings-shell">
         <Transition name="notification">
-          <div v-if="saveStatus" class="settings-toast">
+          <div
+            v-if="saveStatus"
+            class="settings-toast"
+          >
             <span class="settings-toast__message">{{ saveStatus.message }}</span>
             <button
               v-if="saveStatus.action"
@@ -692,21 +696,28 @@ onUnmounted(() => {
             @click="switchTab(tab.id)"
           >
             <span class="settings-tab-button__icon">
-              <svg
+              <TrustedHtml
+                tag="svg"
                 class="h-5 w-5"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
-                v-html="tabIcons[tab.id]"
+                :html="tabIcons[tab.id]"
               />
             </span>
             <span class="settings-tab-button__body">
               <span class="settings-tab-button__label-row">
                 <span class="settings-tab-button__label">{{ tab.label }}</span>
-                <span v-if="tab.badge" class="settings-tab-beta">{{ tab.badge }}</span>
+                <span
+                  v-if="tab.badge"
+                  class="settings-tab-beta"
+                >{{ tab.badge }}</span>
               </span>
             </span>
-            <span class="settings-tab-button__state" aria-hidden="true"></span>
+            <span
+              class="settings-tab-button__state"
+              aria-hidden="true"
+            />
           </button>
         </nav>
 
@@ -720,7 +731,9 @@ onUnmounted(() => {
                 <span class="settings-module__eyebrow">{{
                   t('settings.workspaceBasics', '基础设置')
                 }}</span>
-                <h2 class="settings-module__title">{{ t('settings.tab.general') }}</h2>
+                <h2 class="settings-module__title">
+                  {{ t('settings.tab.general') }}
+                </h2>
               </div>
             </div>
 
@@ -753,7 +766,13 @@ onUnmounted(() => {
                   class="settings-select"
                   @change="handleTimezoneChange(($event.target as HTMLSelectElement).value)"
                 >
-                  <option v-for="tz in timezones" :key="tz" :value="tz">{{ tz }}</option>
+                  <option
+                    v-for="tz in timezones"
+                    :key="tz"
+                    :value="tz"
+                  >
+                    {{ tz }}
+                  </option>
                 </select>
               </div>
 
@@ -761,7 +780,11 @@ onUnmounted(() => {
                 <div class="settings-card-heading">
                   <label class="settings-field-label">{{ t('common.theme') }}</label>
                 </div>
-                <div class="settings-theme-group" role="group" :aria-label="t('common.theme')">
+                <div
+                  class="settings-theme-group"
+                  role="group"
+                  :aria-label="t('common.theme')"
+                >
                   <button
                     v-for="theme in themeOptions"
                     :key="theme"
@@ -773,18 +796,22 @@ onUnmounted(() => {
                     :aria-pressed="themeStore.theme === theme"
                     @click="themeStore.setTheme(theme)"
                   >
-                    <svg
+                    <TrustedHtml
+                      tag="svg"
                       class="settings-theme-button__icon"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
-                      v-html="themeIcons[theme]"
+                      :html="themeIcons[theme]"
                     />
                   </button>
                 </div>
               </div>
 
-              <div v-if="isTauri" class="dashboard-card-subsurface settings-field-card">
+              <div
+                v-if="isTauri"
+                class="dashboard-card-subsurface settings-field-card"
+              >
                 <div class="settings-card-heading">
                   <label class="settings-field-label">{{ t('settings.closeBehavior') }}</label>
                 </div>
@@ -807,24 +834,33 @@ onUnmounted(() => {
                     :aria-pressed="settingsStore.closeBehavior === behavior"
                     @click="handleCloseBehaviorChange(behavior)"
                   >
-                    <span class="settings-pill-button__icon-shell" aria-hidden="true">
-                      <svg
+                    <span
+                      class="settings-pill-button__icon-shell"
+                      aria-hidden="true"
+                    >
+                      <TrustedHtml
+                        tag="svg"
                         class="settings-pill-button__icon"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
-                        v-html="closeBehaviorIcons[behavior]"
+                        :html="closeBehaviorIcons[behavior]"
                       />
                     </span>
                   </button>
                 </div>
               </div>
 
-              <div v-if="serviceInfo" class="dashboard-card-subsurface settings-field-card">
+              <div
+                v-if="serviceInfo"
+                class="dashboard-card-subsurface settings-field-card"
+              >
                 <div class="settings-field-card__row">
                   <div class="settings-card-heading">
                     <label class="settings-field-label">{{ t('service.autoStart') }}</label>
-                    <p class="settings-field-hint">{{ t('service.autoStartDescription') }}</p>
+                    <p class="settings-field-hint">
+                      {{ t('service.autoStartDescription') }}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -894,7 +930,9 @@ onUnmounted(() => {
                 <span class="settings-module__eyebrow">{{
                   t('settings.providerMatrix', '模型来源')
                 }}</span>
-                <h2 class="settings-module__title">{{ t('settings.tab.llm') }}</h2>
+                <h2 class="settings-module__title">
+                  {{ t('settings.tab.llm') }}
+                </h2>
               </div>
             </div>
             <div class="dashboard-card-subsurface settings-field-card settings-field-card--flush">
@@ -924,7 +962,9 @@ onUnmounted(() => {
                 <span class="settings-module__eyebrow">{{
                   t('settings.codingRuntime', '编码能力')
                 }}</span>
-                <h2 class="settings-module__title">{{ t('chat.taskLoop') }}</h2>
+                <h2 class="settings-module__title">
+                  {{ t('chat.taskLoop') }}
+                </h2>
               </div>
             </div>
 
@@ -933,7 +973,9 @@ onUnmounted(() => {
                 <div class="settings-field-card__row">
                   <div class="settings-card-heading">
                     <label class="settings-field-label">{{ t('agent.mode') }}</label>
-                    <p class="settings-field-hint">{{ t('agent.modeDescription') }}</p>
+                    <p class="settings-field-hint">
+                      {{ t('agent.modeDescription') }}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -960,7 +1002,9 @@ onUnmounted(() => {
                 <div class="settings-field-card__row">
                   <div class="settings-card-heading">
                     <label class="settings-field-label">{{ t('agent.autoConfirm') }}</label>
-                    <p class="settings-field-hint">{{ t('agent.autoConfirmDescription') }}</p>
+                    <p class="settings-field-hint">
+                      {{ t('agent.autoConfirmDescription') }}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -1016,9 +1060,15 @@ onUnmounted(() => {
               </div>
             </div>
 
-            <div data-testid="small-model-sections" class="space-y-4">
+            <div
+              data-testid="small-model-sections"
+              class="space-y-4"
+            >
               <div class="dashboard-card-subsurface settings-feature-card p-4">
-                <div data-testid="small-model-main-section-header" class="mb-4 space-y-3">
+                <div
+                  data-testid="small-model-main-section-header"
+                  class="mb-4 space-y-3"
+                >
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -1134,7 +1184,10 @@ onUnmounted(() => {
                     </ul>
                   </div>
 
-                  <div data-testid="small-model-feature-layout" class="small-model-feature-layout">
+                  <div
+                    data-testid="small-model-feature-layout"
+                    class="small-model-feature-layout"
+                  >
                     <div class="small-model-feature-card small-model-feature-card--summary">
                       <div class="flex items-center justify-between gap-3">
                         <div class="font-medium text-gray-900 dark:text-white">
@@ -1243,22 +1296,26 @@ onUnmounted(() => {
                             )
                           "
                         >
-                          <option v-for="mode in contextCompressionModes" :key="mode" :value="mode">
+                          <option
+                            v-for="mode in contextCompressionModes"
+                            :key="mode"
+                            :value="mode"
+                          >
                             {{
                               mode === 'auto'
                                 ? t(
-                                    'settings.smallModel.contextCompressionModeAuto',
-                                    'Auto: prefer small-model compression, fallback to offline'
-                                  )
+                                  'settings.smallModel.contextCompressionModeAuto',
+                                  'Auto: prefer small-model compression, fallback to offline'
+                                )
                                 : mode === 'small_model'
                                   ? t(
-                                      'settings.smallModel.contextCompressionModeSmallModel',
-                                      'Small Model First'
-                                    )
+                                    'settings.smallModel.contextCompressionModeSmallModel',
+                                    'Small Model First'
+                                  )
                                   : t(
-                                      'settings.smallModel.contextCompressionModeOffline',
-                                      'Offline Deterministic'
-                                    )
+                                    'settings.smallModel.contextCompressionModeOffline',
+                                    'Offline Deterministic'
+                                  )
                             }}
                           </option>
                         </select>
@@ -1467,7 +1524,10 @@ onUnmounted(() => {
                       }}
                     </p>
 
-                    <div v-if="smallModelStatsExpanded" class="mt-3 space-y-3">
+                    <div
+                      v-if="smallModelStatsExpanded"
+                      class="mt-3 space-y-3"
+                    >
                       <div class="flex items-center justify-end gap-2">
                         <button
                           data-testid="small-model-stats-refresh"
@@ -1706,7 +1766,10 @@ onUnmounted(() => {
                             )
                           }}
                         </div>
-                        <div v-else class="space-y-1">
+                        <div
+                          v-else
+                          class="space-y-1"
+                        >
                           <div
                             v-for="[reason, count] in fallbackReasonEntries"
                             :key="reason"
@@ -1728,18 +1791,16 @@ onUnmounted(() => {
                     <div
                       v-if="
                         settingsStore.smallModelStatus.state === 'connecting' &&
-                        settingsStore.smallModelStatus.progress
+                          settingsStore.smallModelStatus.progress
                       "
                       class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
                     >
                       <div
                         class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
                       >
-                        <span
-                          >{{ settingsStore.smallModelStatus.progress.file }} ({{
-                            settingsStore.smallModelStatus.progress.file_index + 1
-                          }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span
-                        >
+                        <span>{{ settingsStore.smallModelStatus.progress.file }} ({{
+                          settingsStore.smallModelStatus.progress.file_index + 1
+                        }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span>
                         <span>{{ t('settings.smallModel.connecting', 'Connecting') }}</span>
                       </div>
                       <div
@@ -1747,29 +1808,25 @@ onUnmounted(() => {
                       >
                         <div
                           class="h-full bg-blue-500/50 dark:bg-blue-400/50 rounded-full animate-pulse w-full"
-                        ></div>
+                        />
                       </div>
                     </div>
                     <div
                       v-else-if="
                         settingsStore.smallModelStatus.state === 'downloading' &&
-                        settingsStore.smallModelStatus.progress
+                          settingsStore.smallModelStatus.progress
                       "
                       class="space-y-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg"
                     >
                       <div
                         class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400"
                       >
-                        <span
-                          >{{ settingsStore.smallModelStatus.progress.file }} ({{
-                            settingsStore.smallModelStatus.progress.file_index + 1
-                          }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span
-                        >
-                        <span
-                          >{{
-                            settingsStore.smallModelStatus.progress.percentage.toFixed(1)
-                          }}%</span
-                        >
+                        <span>{{ settingsStore.smallModelStatus.progress.file }} ({{
+                          settingsStore.smallModelStatus.progress.file_index + 1
+                        }}/{{ settingsStore.smallModelStatus.progress.total_files }})</span>
+                        <span>{{
+                          settingsStore.smallModelStatus.progress.percentage.toFixed(1)
+                        }}%</span>
                       </div>
                       <div
                         class="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden"
@@ -1779,23 +1836,19 @@ onUnmounted(() => {
                           :style="{
                             width: settingsStore.smallModelStatus.progress.percentage + '%',
                           }"
-                        ></div>
+                        />
                       </div>
                       <div
                         class="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500"
                       >
-                        <span
-                          >{{ formatBytes(settingsStore.smallModelStatus.progress.downloaded) }} /
+                        <span>{{ formatBytes(settingsStore.smallModelStatus.progress.downloaded) }} /
                           {{
                             settingsStore.smallModelStatus.progress.total > 0
                               ? formatBytes(settingsStore.smallModelStatus.progress.total)
                               : '...'
-                          }}</span
-                        >
-                        <span
-                          >{{ settingsStore.smallModelStatus.progress.speed_human }} &middot;
-                          {{ settingsStore.smallModelStatus.progress.eta || '...' }}</span
-                        >
+                          }}</span>
+                        <span>{{ settingsStore.smallModelStatus.progress.speed_human }} &middot;
+                          {{ settingsStore.smallModelStatus.progress.eta || '...' }}</span>
                       </div>
                     </div>
                   </template>
@@ -1803,7 +1856,7 @@ onUnmounted(() => {
                   <div
                     v-if="
                       settingsStore.smallModelStatus?.state === 'error' &&
-                      settingsStore.smallModelStatus.error
+                        settingsStore.smallModelStatus.error
                     "
                     class="px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg flex items-center justify-between"
                   >
@@ -1902,7 +1955,9 @@ onUnmounted(() => {
                 <span class="settings-module__eyebrow">{{
                   t('settings.voicePipeline', '语音能力')
                 }}</span>
-                <h2 class="settings-module__title">{{ t('settings.tab.speech') }}</h2>
+                <h2 class="settings-module__title">
+                  {{ t('settings.tab.speech') }}
+                </h2>
               </div>
             </div>
             <SpeechSettings />

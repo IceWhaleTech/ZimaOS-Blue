@@ -12,6 +12,8 @@ func newRouteRuntimeManagementChannelOptions(state *routeRegistrationState) rout
 		channelConfigStore:    state.deps.ChannelConfigStore,
 		channelTaskWatcher:    state.deps.ChannelTaskWatcher,
 		ngrokTunnelMgr:        state.deps.NgrokTunnelMgr,
+		tunnelHandler:         state.bootstrapSupport.tunnelHandler,
+		jwtService:            state.services.JWTService,
 		autoreplyService:      state.deps.AutoreplyService,
 	}
 }

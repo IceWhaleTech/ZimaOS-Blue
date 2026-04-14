@@ -79,16 +79,24 @@ onMounted(fetchAll)
 <template>
   <div class="space-y-6">
     <!-- Loading -->
-    <div v-if="loading" class="text-center py-8">
+    <div
+      v-if="loading"
+      class="text-center py-8"
+    >
       <div
         class="animate-spin w-6 h-6 border-2 border-gray-900 dark:border-gray-700 border-t-transparent rounded-full mx-auto"
-      ></div>
-      <p class="text-gray-400 mt-2 text-sm">{{ t('common.loading') }}</p>
+      />
+      <p class="text-gray-400 mt-2 text-sm">
+        {{ t('common.loading') }}
+      </p>
     </div>
 
     <template v-else>
       <!-- Smart Failover Section -->
-      <div v-if="failoverConfig" class="glass-card p-4">
+      <div
+        v-if="failoverConfig"
+        class="glass-card p-4"
+      >
         <div class="mb-4">
           <p class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('apiProxy.failoverDesc') }}
@@ -209,7 +217,10 @@ onMounted(fetchAll)
             }}
           </p>
 
-          <div data-testid="provider-race-stats" class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+          <div
+            data-testid="provider-race-stats"
+            class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3"
+          >
             <div class="py-2 px-2 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
               <p class="text-[11px] text-gray-400 dark:text-gray-500">
                 {{ t('cache.hitRate') }}

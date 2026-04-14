@@ -34,7 +34,11 @@ function handleLinkClick(url: string) {
           v-if="card.avatar"
           class="w-24 h-24 rounded-full border-4 border-white dark:border-gray-800 overflow-hidden bg-gray-100 dark:bg-gray-700"
         >
-          <img :src="card.avatar" :alt="card.name" class="w-full h-full object-cover" />
+          <img
+            :src="card.avatar"
+            :alt="card.name"
+            class="w-full h-full object-cover"
+          >
         </div>
         <div
           v-else
@@ -69,11 +73,19 @@ function handleLinkClick(url: string) {
         <h3 class="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
           {{ card.name }}
         </h3>
-        <p v-if="card.title" class="text-sm text-gray-500 dark:text-gray-400">{{ card.title }}</p>
+        <p
+          v-if="card.title"
+          class="text-sm text-gray-500 dark:text-gray-400"
+        >
+          {{ card.title }}
+        </p>
       </div>
 
       <!-- Description -->
-      <p v-if="card.description" class="text-sm text-gray-600 dark:text-gray-300 mb-4">
+      <p
+        v-if="card.description"
+        class="text-sm text-gray-600 dark:text-gray-300 mb-4"
+      >
         {{ card.description }}
       </p>
 
@@ -82,14 +94,25 @@ function handleLinkClick(url: string) {
         v-if="card.stats?.length"
         class="flex gap-6 mb-4 py-4 border-y border-gray-200 dark:border-gray-700"
       >
-        <div v-for="(stat, index) in card.stats" :key="index" class="text-center">
-          <p class="text-xl font-bold text-gray-900 dark:text-white">{{ stat.value }}</p>
-          <p class="text-xs text-gray-500 dark:text-gray-400">{{ stat.label }}</p>
+        <div
+          v-for="(stat, index) in card.stats"
+          :key="index"
+          class="text-center"
+        >
+          <p class="text-xl font-bold text-gray-900 dark:text-white">
+            {{ stat.value }}
+          </p>
+          <p class="text-xs text-gray-500 dark:text-gray-400">
+            {{ stat.label }}
+          </p>
         </div>
       </div>
 
       <!-- Links -->
-      <div v-if="card.links?.length" class="flex gap-3">
+      <div
+        v-if="card.links?.length"
+        class="flex gap-3"
+      >
         <button
           v-for="(link, index) in card.links"
           :key="index"

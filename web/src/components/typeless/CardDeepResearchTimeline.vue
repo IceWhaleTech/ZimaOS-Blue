@@ -244,7 +244,10 @@ const emptyStateLabel = computed(() => {
             >
               {{ localizeResearchSurfaceTitle(resolveLabel) }}
             </span>
-            <span class="rounded-full px-2 py-0.5" :class="statusClass">
+            <span
+              class="rounded-full px-2 py-0.5"
+              :class="statusClass"
+            >
               {{ stageLabel(stage || status) }}
             </span>
             <span
@@ -268,7 +271,9 @@ const emptyStateLabel = computed(() => {
             <span v-if="latestAction">{{ latestActionLabel(latestAction) }}</span>
           </div>
         </div>
-        <div class="text-xs font-medium text-slate-600 dark:text-slate-300">{{ progress }}%</div>
+        <div class="text-xs font-medium text-slate-600 dark:text-slate-300">
+          {{ progress }}%
+        </div>
       </div>
       <div class="mt-2.5 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         <div
@@ -287,7 +292,9 @@ const emptyStateLabel = computed(() => {
         <div class="font-medium">
           {{ resolveLabel('chat.deepResearchLatestGap', 'Latest gap') }}
         </div>
-        <div class="mt-1 break-words">{{ latestGap }}</div>
+        <div class="mt-1 break-words">
+          {{ latestGap }}
+        </div>
       </div>
 
       <div
@@ -302,7 +309,10 @@ const emptyStateLabel = computed(() => {
         </div>
       </div>
 
-      <div v-else class="space-y-2.5">
+      <div
+        v-else
+        class="space-y-2.5"
+      >
         <div
           v-for="(step, index) in steps"
           :key="step.id || `deep-research-step-${index}`"
@@ -379,11 +389,22 @@ const emptyStateLabel = computed(() => {
                 <div class="font-medium text-slate-500 dark:text-slate-400">
                   {{ resolveLabel('chat.deepResearchResearchBrief', 'Research brief') }}
                 </div>
-                <div v-if="step.brief.goal" class="mt-2 break-words">{{ step.brief.goal }}</div>
-                <div v-if="step.brief.entity" class="mt-2 text-slate-500 dark:text-slate-400">
+                <div
+                  v-if="step.brief.goal"
+                  class="mt-2 break-words"
+                >
+                  {{ step.brief.goal }}
+                </div>
+                <div
+                  v-if="step.brief.entity"
+                  class="mt-2 text-slate-500 dark:text-slate-400"
+                >
                   {{ step.brief.entity }}
                 </div>
-                <div v-if="step.brief.time_windows?.length" class="mt-2 flex flex-wrap gap-2">
+                <div
+                  v-if="step.brief.time_windows?.length"
+                  class="mt-2 flex flex-wrap gap-2"
+                >
                   <span
                     v-for="window in step.brief.time_windows"
                     :key="window"
@@ -392,14 +413,22 @@ const emptyStateLabel = computed(() => {
                     {{ localizeDeepResearchTimeWindow(window, resolveLabel) }}
                   </span>
                 </div>
-                <div v-if="step.brief.must_verify_claims?.length" class="mt-3">
+                <div
+                  v-if="step.brief.must_verify_claims?.length"
+                  class="mt-3"
+                >
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchMustVerify', 'Must verify') }}
                   </div>
                   <ul
                     class="deep-research-timeline-list mt-2 list-disc space-y-1 text-slate-600 dark:text-slate-300"
                   >
-                    <li v-for="claim in step.brief.must_verify_claims" :key="claim">{{ claim }}</li>
+                    <li
+                      v-for="claim in step.brief.must_verify_claims"
+                      :key="claim"
+                    >
+                      {{ claim }}
+                    </li>
                   </ul>
                 </div>
                 <div
@@ -415,14 +444,22 @@ const emptyStateLabel = computed(() => {
                   >
                     {{ step.brief.retry_context }}
                   </div>
-                  <div v-if="step.brief.retry_queries?.length" class="mt-3">
+                  <div
+                    v-if="step.brief.retry_queries?.length"
+                    class="mt-3"
+                  >
                     <div class="font-medium text-amber-700 dark:text-amber-200">
                       {{ resolveLabel('chat.deepResearchRetryQueries', 'Recovery queries') }}
                     </div>
                     <ul
                       class="deep-research-timeline-list mt-2 list-disc space-y-1 text-amber-700/90 dark:text-amber-100"
                     >
-                      <li v-for="query in step.brief.retry_queries" :key="query">{{ query }}</li>
+                      <li
+                        v-for="retryQuery in step.brief.retry_queries"
+                        :key="retryQuery"
+                      >
+                        {{ retryQuery }}
+                      </li>
                     </ul>
                   </div>
                 </div>
@@ -521,11 +558,11 @@ const emptyStateLabel = computed(() => {
               <div
                 v-if="
                   step.follow_up_query ||
-                  step.gap ||
-                  step.focus ||
-                  step.search_query ||
-                  step.stop_reason ||
-                  step.source_title
+                    step.gap ||
+                    step.focus ||
+                    step.search_query ||
+                    step.stop_reason ||
+                    step.source_title
                 "
                 class="grid gap-2 md:grid-cols-2 text-xs"
               >
@@ -536,7 +573,9 @@ const emptyStateLabel = computed(() => {
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchFollowUpQuery', 'Follow-up query') }}
                   </div>
-                  <div class="mt-1 break-words">{{ step.follow_up_query }}</div>
+                  <div class="mt-1 break-words">
+                    {{ step.follow_up_query }}
+                  </div>
                 </div>
                 <div
                   v-if="step.search_query"
@@ -545,7 +584,9 @@ const emptyStateLabel = computed(() => {
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchSearchQuery', 'Search query') }}
                   </div>
-                  <div class="mt-1 break-words">{{ step.search_query }}</div>
+                  <div class="mt-1 break-words">
+                    {{ step.search_query }}
+                  </div>
                 </div>
                 <div
                   v-if="step.gap"
@@ -568,8 +609,8 @@ const emptyStateLabel = computed(() => {
                   <div class="mt-1 break-words">
                     {{
                       localizeDeepResearchStructuredValue(step.focus, resolveLabel) ||
-                      localizeDeepResearchSegment(step.focus, resolveLabel) ||
-                      step.focus
+                        localizeDeepResearchSegment(step.focus, resolveLabel) ||
+                        step.focus
                     }}
                   </div>
                 </div>
@@ -580,7 +621,9 @@ const emptyStateLabel = computed(() => {
                   <div class="font-medium text-slate-500 dark:text-slate-400">
                     {{ resolveLabel('chat.deepResearchEvidence', 'Evidence') }}
                   </div>
-                  <div class="mt-1 break-words">{{ step.source_title }}</div>
+                  <div class="mt-1 break-words">
+                    {{ step.source_title }}
+                  </div>
                 </div>
                 <div
                   v-if="step.stop_reason"
@@ -592,7 +635,7 @@ const emptyStateLabel = computed(() => {
                   <div class="mt-1 break-words">
                     {{
                       localizeDeepResearchStopReason(step.stop_reason, resolveLabel) ||
-                      step.stop_reason
+                        step.stop_reason
                     }}
                   </div>
                 </div>

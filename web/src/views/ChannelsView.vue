@@ -19,6 +19,11 @@ import ChannelCardShell from '@/components/channels/ChannelCardShell.vue'
 import ChannelDetailPanel from '@/components/channels/ChannelDetailPanel.vue'
 import RemoteAccessDetailPanel from '@/components/remote-access/RemoteAccessDetailPanel.vue'
 import {
+  createWeChatILinkSetupSession,
+  getWeChatILinkSetupSession,
+  type WeChatILinkSetupSessionResponse,
+} from '@/api/wechat-ilink-setup'
+import {
   getRemoteAccessStatus,
   startRemoteAccess,
   stopRemoteAccess,
@@ -35,11 +40,20 @@ const settingsStore = useSettingsStore()
 interface ChannelFieldDef {
   key: string
   labelKey: string
-  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle'
+  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle' | 'select'
   placeholder?: string
   placeholderKey?: string
   value: string
   required?: boolean
+  options?: Array<{
+    value: string
+    labelKey?: string
+    label?: string
+  }>
+  visibleWhen?: {
+    fieldKey: string
+    value: string
+  }
 }
 
 interface ChannelDef {
@@ -92,6 +106,21 @@ const savingGroupAccess = ref(false)
 const groupAccessResult = ref<{ success: boolean; message: string } | null>(null)
 const channelLoadError = ref<string | null>(null)
 const pageRuntimeError = ref<string | null>(null)
+const wechatILinkSetupOpen = ref(false)
+const wechatILinkSetupPending = ref(false)
+const wechatILinkSetupError = ref('')
+const wechatILinkSetupSession = ref<WeChatILinkSetupSessionResponse | null>(null)
+let wechatILinkSetupPoller: ReturnType<typeof setInterval> | null = null
+
+function isChannelFieldVisible(channel: ChannelDef, field: ChannelFieldDef): boolean {
+  if (!field.visibleWhen) return true
+  const driver = channel.fields.find((candidate) => candidate.key === field.visibleWhen?.fieldKey)
+  return (driver?.value || '') === field.visibleWhen.value
+}
+
+function getVisibleChannelFields(channel: ChannelDef): ChannelFieldDef[] {
+  return channel.fields.filter((field) => isChannelFieldVisible(channel, field))
+}
 
 // Channel/runtime errors already include display-ready server text.
 function resolveChannelError(channel: ChannelDef): string {
@@ -219,7 +248,7 @@ const getLocalizedChannelOrder = (): string[] => {
 
   // Chinese regions (Mainland China)
   if (locale === 'zh-CN') {
-    return ['wechat', 'dingtalk', 'feishu', 'qq', 'telegram', 'imessage']
+    return ['wechat', 'wechat_ilink', 'dingtalk', 'feishu', 'qq', 'telegram', 'imessage']
   }
 
   // Taiwan region
@@ -709,6 +738,33 @@ const channelDefs = shallowRef<ChannelDef[]>([
     ],
   },
   {
+    id: 'wechat_ilink',
+    nameKey: 'channels.wechatILink',
+    icon: getChannelIconOrDefault('wechat'),
+    enabled: false,
+    status: 'disconnected',
+    descriptionKey: 'channels.wechatILinkDesc',
+    hintKey: 'channels.wechatILinkHint',
+    fields: [
+      {
+        key: 'api_base_url',
+        labelKey: 'channels.apiBaseURL',
+        type: 'url',
+        placeholderKey: 'channels.placeholderILinkAPIBaseURL',
+        value: '',
+        required: true,
+      },
+      {
+        key: 'bot_token',
+        labelKey: 'channels.botToken',
+        type: 'password',
+        placeholderKey: 'channels.placeholderBotTokenGeneric',
+        value: '',
+        required: true,
+      },
+    ],
+  },
+  {
     id: 'matrix',
     nameKey: 'channels.matrix',
     icon: getChannelIconOrDefault('matrix'),
@@ -1093,6 +1149,7 @@ const selectedChannel = computed(() => {
   return expandedChannel.value ? channelMap.value.get(expandedChannel.value) || null : null
 })
 const selectedChannelId = computed(() => selectedChannel.value?.id || '')
+const isWeChatILinkSelected = computed(() => selectedChannelId.value === 'wechat_ilink')
 const selectedChannelRenderKey = computed(() => {
   const channel = selectedChannel.value
   if (!channel) return 'no-channel'
@@ -1279,7 +1336,7 @@ async function toggleChannelEnabled(channelId: string, enabled: boolean) {
 
   // Check if required fields are filled when enabling
   if (enabled) {
-    const missingFields = channelDef.fields.filter((f) => f.required && !f.value)
+    const missingFields = getVisibleChannelFields(channelDef).filter((f) => f.required && !f.value)
     if (missingFields.length > 0) {
       // Expand the channel to show config
       expandedChannel.value = channelId
@@ -1377,7 +1434,10 @@ async function loadChannelConfigs() {
             serverChannel.config &&
             Object.prototype.hasOwnProperty.call(serverChannel.config, field.key)
           ) {
-            field.value = serverChannel.config[field.key]
+            const fieldValue = serverChannel.config[field.key]
+            if (typeof fieldValue === 'string') {
+              field.value = fieldValue
+            }
           }
         }
       }
@@ -1420,6 +1480,77 @@ function closeGroupAccessModal() {
   if (savingGroupAccess.value) return
   showGroupAccessModal.value = false
   syncGroupAccessDraftFromCurrent()
+}
+
+function stopWeChatILinkSetupPolling() {
+  if (wechatILinkSetupPoller) {
+    clearInterval(wechatILinkSetupPoller)
+    wechatILinkSetupPoller = null
+  }
+}
+
+function closeWeChatILinkSetupModal() {
+  stopWeChatILinkSetupPolling()
+  wechatILinkSetupOpen.value = false
+}
+
+function useWeChatILinkManualConfig() {
+  closeWeChatILinkSetupModal()
+}
+
+async function refreshWeChatILinkSetupSession(sessionId: string) {
+  try {
+    const response = await getWeChatILinkSetupSession(sessionId)
+    if (!isSuccessfulStatus(response.status)) {
+      wechatILinkSetupError.value =
+        response.data?.error || t('channels.wechatILinkSetupLoadFailed')
+      stopWeChatILinkSetupPolling()
+      return
+    }
+
+    wechatILinkSetupSession.value = response.data
+    wechatILinkSetupError.value = response.data.error || ''
+
+    if (
+      response.data.status === 'connected' ||
+      response.data.status === 'error' ||
+      response.data.status === 'expired'
+    ) {
+      stopWeChatILinkSetupPolling()
+      if (response.data.status === 'connected') {
+        await loadChannelConfigs()
+      }
+    }
+  } catch {
+    wechatILinkSetupError.value = t('channels.wechatILinkSetupLoadFailed')
+    stopWeChatILinkSetupPolling()
+  }
+}
+
+async function startWeChatILinkSetup() {
+  wechatILinkSetupPending.value = true
+  wechatILinkSetupError.value = ''
+  wechatILinkSetupOpen.value = true
+
+  try {
+    const response = await createWeChatILinkSetupSession()
+    if (!isSuccessfulStatus(response.status)) {
+      wechatILinkSetupError.value =
+        response.data?.error || t('channels.wechatILinkSetupCreateFailed')
+      return
+    }
+
+    wechatILinkSetupSession.value = response.data
+    stopWeChatILinkSetupPolling()
+    wechatILinkSetupPoller = setInterval(() => {
+      if (!wechatILinkSetupSession.value?.session_id) return
+      void refreshWeChatILinkSetupSession(wechatILinkSetupSession.value.session_id)
+    }, 1500)
+  } catch {
+    wechatILinkSetupError.value = t('channels.wechatILinkSetupCreateFailed')
+  } finally {
+    wechatILinkSetupPending.value = false
+  }
 }
 
 async function saveGroupAccessSettings() {
@@ -1727,7 +1858,7 @@ async function handleRemoteAccessStart() {
 }
 
 async function handleRemoteAccessStop() {
-  const isDesktop = typeof window !== 'undefined' && !!(window as any).__BLUE_DESKTOP__
+  const isDesktop = typeof window !== 'undefined' && !!window.__BLUE_DESKTOP__
 
   if (!isDesktop) {
     const tunnelUrl = tunnelStatus.value?.url
@@ -1826,6 +1957,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopRemoteAccessPolling()
+  stopWeChatILinkSetupPolling()
   // Clean up all channel polling intervals
   for (const interval of channelPollIntervals.values()) {
     clearInterval(interval)
@@ -1900,7 +2032,7 @@ onErrorCaptured((error, _instance, info) => {
                   :alt="channel.nameKey ? t(channel.nameKey) : channel.name || channel.id"
                   class="channels-summary-icon"
                   :style="getChannelIconStyleVars(channel.id)"
-                />
+                >
               </div>
               <div
                 v-if="secondaryChannels.length > 0"
@@ -1927,7 +2059,11 @@ onErrorCaptured((error, _instance, info) => {
                 >
                   {{ groupAccessPolicyLabel }}
                 </span>
-                <button type="button" class="channels-summary-button" @click="openGroupAccessModal">
+                <button
+                  type="button"
+                  class="channels-summary-button"
+                  @click="openGroupAccessModal"
+                >
                   {{ t('common.configure') }}
                 </button>
               </div>
@@ -1935,7 +2071,10 @@ onErrorCaptured((error, _instance, info) => {
             <p class="channels-summary-note">
               {{ groupAccessSummaryDetail }}
             </p>
-            <div v-if="groupAccessResult && !showGroupAccessModal" class="channels-summary-footer">
+            <div
+              v-if="groupAccessResult && !showGroupAccessModal"
+              class="channels-summary-footer"
+            >
               <p
                 class="channels-summary-result"
                 :class="
@@ -1950,16 +2089,30 @@ onErrorCaptured((error, _instance, info) => {
           </article>
         </section>
 
-        <div v-if="loading" class="text-center py-8">
+        <div
+          v-if="loading"
+          class="text-center py-8"
+        >
           <div
             class="animate-spin w-8 h-8 border-2 border-gray-900 dark:border-gray-400 border-t-transparent rounded-full mx-auto mb-2"
-          ></div>
-          <p class="text-gray-500 dark:text-slate-300">{{ t('common.loading') }}</p>
+          />
+          <p class="text-gray-500 dark:text-slate-300">
+            {{ t('common.loading') }}
+          </p>
         </div>
 
-        <div v-else class="channels-board">
-          <div v-if="pageErrorMessage" class="channels-error-banner">
-            <div class="channels-error-banner__icon-shell" aria-hidden="true">
+        <div
+          v-else
+          class="channels-board"
+        >
+          <div
+            v-if="pageErrorMessage"
+            class="channels-error-banner"
+          >
+            <div
+              class="channels-error-banner__icon-shell"
+              aria-hidden="true"
+            >
               <svg
                 class="channels-error-banner__icon"
                 fill="none"
@@ -1975,14 +2128,19 @@ onErrorCaptured((error, _instance, info) => {
               </svg>
             </div>
             <div class="channels-error-banner__copy">
-              <h3 class="channels-error-banner__title">Channels did not fully load</h3>
+              <h3 class="channels-error-banner__title">
+                Channels did not fully load
+              </h3>
               <p class="channels-error-banner__description">
                 {{ pageErrorMessage }}
               </p>
             </div>
           </div>
 
-          <div v-if="pageRuntimeError" class="channels-safe-list">
+          <div
+            v-if="pageRuntimeError"
+            class="channels-safe-list"
+          >
             <article
               v-for="channel in orderedChannels"
               :key="channel.id"
@@ -2006,7 +2164,10 @@ onErrorCaptured((error, _instance, info) => {
             </article>
           </div>
 
-          <div v-else class="channels-board__content">
+          <div
+            v-else
+            class="channels-board__content"
+          >
             <div class="channels-board__main">
               <div class="channels-board__stack">
                 <ChannelCardShell
@@ -2037,10 +2198,10 @@ onErrorCaptured((error, _instance, info) => {
                         :checked="remoteAccessState === 'connected'"
                         type="checkbox"
                         class="sr-only peer channels-remote-card__toggle-input"
-                      />
+                      >
                       <div
                         class="channels-remote-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
-                      ></div>
+                      />
                     </label>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -2085,7 +2246,12 @@ onErrorCaptured((error, _instance, info) => {
                 class="channels-load-more"
                 @click="showMoreChannels = true"
               >
-                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  class="w-5 h-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -2139,29 +2305,78 @@ onErrorCaptured((error, _instance, info) => {
                 @stop="handleRemoteAccessStop"
                 @retry="loadRemoteAccessStatus"
               />
-              <ChannelDetailPanel
+              <div
                 v-else-if="selectedChannel"
-                :key="selectedChannelRenderKey"
-                :channel="selectedChannel"
-                :toggling="toggling === selectedChannelId"
-                :saving="saving === selectedChannelId"
-                :testing-connection="testingConnection === selectedChannelId"
-                :test-result="testResult"
-                @toggle-enabled="toggleChannelEnabled(selectedChannelId, $event)"
-                @save="saveChannel(selectedChannelId)"
-                @test-connection="testConnection(selectedChannelId)"
-                @update-field="
-                  (fieldIndex: number, value: string) =>
-                    updateChannelField(selectedChannelId, fieldIndex, value)
-                "
-              />
+                class="channels-board__detail-stack"
+              >
+                <section
+                  v-if="isWeChatILinkSelected"
+                  class="channels-ilink-setup-card dashboard-card-surface"
+                >
+                  <div class="channels-ilink-setup-card__copy">
+                    <p class="channels-ilink-setup-card__eyebrow">
+                      {{ t('channels.wechatILinkPrimaryAction') }}
+                    </p>
+                    <h3 class="channels-ilink-setup-card__title">
+                      {{ t('channels.wechatILinkScanAction') }}
+                    </h3>
+                    <p class="channels-ilink-setup-card__description">
+                      {{ t('channels.wechatILinkScanHint') }}
+                    </p>
+                  </div>
+                  <div class="channels-ilink-setup-card__actions">
+                    <button
+                      type="button"
+                      class="channels-ilink-setup-card__primary"
+                      :disabled="wechatILinkSetupPending"
+                      @click="startWeChatILinkSetup"
+                    >
+                      {{
+                        wechatILinkSetupPending
+                          ? t('channels.wechatILinkSetupCreating')
+                          : t('channels.wechatILinkScanAction')
+                      }}
+                    </button>
+                    <button
+                      type="button"
+                      class="channels-ilink-setup-card__secondary"
+                      @click="useWeChatILinkManualConfig"
+                    >
+                      {{ t('channels.wechatILinkManualAction') }}
+                    </button>
+                  </div>
+                </section>
+
+                <ChannelDetailPanel
+                  :key="selectedChannelRenderKey"
+                  :channel="selectedChannel"
+                  :toggling="toggling === selectedChannelId"
+                  :saving="saving === selectedChannelId"
+                  :testing-connection="testingConnection === selectedChannelId"
+                  :test-result="testResult"
+                  @toggle-enabled="toggleChannelEnabled(selectedChannelId, $event)"
+                  @save="saveChannel(selectedChannelId)"
+                  @test-connection="testConnection(selectedChannelId)"
+                  @update-field="
+                    (fieldIndex: number, value: string) =>
+                      updateChannelField(selectedChannelId, fieldIndex, value)
+                  "
+                />
+              </div>
               <article
                 v-else
                 class="channels-board__detail-empty dashboard-card-surface"
                 aria-live="polite"
               >
-                <div class="channels-board__detail-empty-icon" aria-hidden="true">
-                  <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div
+                  class="channels-board__detail-empty-icon"
+                  aria-hidden="true"
+                >
+                  <svg
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -2185,6 +2400,96 @@ onErrorCaptured((error, _instance, info) => {
 
     <Teleport to="body">
       <div
+        v-if="wechatILinkSetupOpen"
+        class="channels-ilink-modal-backdrop"
+        @click.self="closeWeChatILinkSetupModal"
+      >
+        <section
+          class="channels-ilink-modal"
+          role="dialog"
+          aria-modal="true"
+        >
+          <header class="channels-ilink-modal__header">
+            <div>
+              <p class="channels-ilink-modal__eyebrow">
+                {{ t('channels.wechatILinkPrimaryAction') }}
+              </p>
+              <h2 class="channels-ilink-modal__title">
+                {{ t('channels.wechatILinkScanAction') }}
+              </h2>
+            </div>
+            <button
+              type="button"
+              class="channels-ilink-modal__close"
+              :aria-label="t('common.close')"
+              @click="closeWeChatILinkSetupModal"
+            >
+              ×
+            </button>
+          </header>
+
+          <div class="channels-ilink-modal__body">
+            <div
+              v-if="wechatILinkSetupSession?.qrcode"
+              class="channels-ilink-modal__qr"
+            >
+              <img
+                :src="wechatILinkSetupSession.qrcode"
+                :alt="t('channels.wechatILinkScanAction')"
+                class="channels-ilink-modal__qr-image"
+              >
+            </div>
+
+            <p class="channels-ilink-modal__description">
+              {{ t('channels.wechatILinkSetupDescription') }}
+            </p>
+
+            <div class="channels-ilink-modal__status">
+              {{ t('channels.wechatILinkSetupStatus') }}:
+              {{ wechatILinkSetupSession?.status || t('channels.statusConnecting') }}
+            </div>
+
+            <a
+              v-if="wechatILinkSetupSession?.mobile_url"
+              :href="wechatILinkSetupSession.mobile_url"
+              target="_blank"
+              rel="noreferrer"
+              class="channels-ilink-modal__link"
+            >
+              {{ t('channels.wechatILinkOpenOnPhone') }}
+            </a>
+
+            <p
+              v-if="wechatILinkSetupError"
+              class="channels-ilink-modal__error"
+            >
+              {{ wechatILinkSetupError }}
+            </p>
+          </div>
+
+          <footer class="channels-ilink-modal__footer">
+            <button
+              type="button"
+              class="channels-ilink-modal__secondary"
+              @click="closeWeChatILinkSetupModal"
+            >
+              {{ t('common.close') }}
+            </button>
+            <button
+              type="button"
+              class="channels-ilink-modal__primary"
+              :disabled="wechatILinkSetupPending"
+              @click="startWeChatILinkSetup"
+            >
+              {{ t('common.retry') }}
+            </button>
+          </footer>
+        </section>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
         v-if="showGroupAccessModal"
         class="channels-group-modal-backdrop"
         @click.self="closeGroupAccessModal"
@@ -2200,7 +2505,10 @@ onErrorCaptured((error, _instance, info) => {
               <span class="channels-group-modal__eyebrow">{{
                 t('channels.groupAccessTitle')
               }}</span>
-              <h2 id="channels-group-access-title" class="channels-group-modal__title">
+              <h2
+                id="channels-group-access-title"
+                class="channels-group-modal__title"
+              >
                 {{ t('channels.groupAccessTitle') }}
               </h2>
               <p class="channels-group-modal__description">
@@ -2214,7 +2522,12 @@ onErrorCaptured((error, _instance, info) => {
               @click="closeGroupAccessModal"
             >
               <span class="sr-only">{{ t('common.close') }}</span>
-              <svg fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <svg
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -2236,7 +2549,9 @@ onErrorCaptured((error, _instance, info) => {
                 v-model="groupAccessDraftPolicy"
                 class="channels-policy-card__select w-full border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900/70 text-gray-900 dark:text-white focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent"
               >
-                <option value="open">{{ t('channels.groupAccessPolicyOpen') }}</option>
+                <option value="open">
+                  {{ t('channels.groupAccessPolicyOpen') }}
+                </option>
                 <option value="allowlist">
                   {{ t('channels.groupAccessPolicyAllowlist') }}
                 </option>
@@ -2271,7 +2586,10 @@ onErrorCaptured((error, _instance, info) => {
               </p>
             </div>
 
-            <div v-if="groupAccessDraftPolicy === 'allowlist'" class="space-y-2">
+            <div
+              v-if="groupAccessDraftPolicy === 'allowlist'"
+              class="space-y-2"
+            >
               <label
                 class="channels-policy-card__label block text-sm font-medium text-gray-700 dark:text-slate-200"
               >
@@ -2653,6 +2971,198 @@ onErrorCaptured((error, _instance, info) => {
   font-size: 0.76rem;
   line-height: 1.5;
   color: #64748b;
+}
+
+.channels-board__detail-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.channels-ilink-setup-card {
+  display: grid;
+  gap: 1rem;
+  padding: 1.4rem;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(34, 197, 94, 0.16);
+  background:
+    radial-gradient(circle at top right, rgba(34, 197, 94, 0.16), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+}
+
+.channels-ilink-setup-card__copy {
+  display: grid;
+  gap: 0.44rem;
+}
+
+.channels-ilink-setup-card__eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #166534;
+}
+
+.channels-ilink-setup-card__title {
+  margin: 0;
+  font-size: 1.14rem;
+  line-height: 1.15;
+  color: #0f172a;
+}
+
+.channels-ilink-setup-card__description {
+  margin: 0;
+  color: #475569;
+  line-height: 1.55;
+}
+
+.channels-ilink-setup-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.72rem;
+}
+
+.channels-ilink-setup-card__primary,
+.channels-ilink-setup-card__secondary {
+  border-radius: 999px;
+  padding: 0.68rem 1rem;
+  font: inherit;
+  font-weight: 700;
+}
+
+.channels-ilink-setup-card__primary {
+  border: none;
+  background: linear-gradient(135deg, #15803d 0%, #22c55e 100%);
+  color: #fff;
+}
+
+.channels-ilink-setup-card__secondary {
+  border: 1px solid rgba(21, 128, 61, 0.18);
+  background: rgba(255, 255, 255, 0.84);
+  color: #166534;
+}
+
+.channels-ilink-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(14px);
+}
+
+.channels-ilink-modal {
+  width: min(100%, 27.5rem);
+  border-radius: 1.75rem;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24);
+  overflow: hidden;
+}
+
+.channels-ilink-modal__header,
+.channels-ilink-modal__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.35rem;
+}
+
+.channels-ilink-modal__header {
+  border-bottom: 1px solid rgba(226, 232, 240, 0.85);
+}
+
+.channels-ilink-modal__footer {
+  border-top: 1px solid rgba(226, 232, 240, 0.85);
+}
+
+.channels-ilink-modal__eyebrow {
+  margin: 0 0 0.32rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #166534;
+}
+
+.channels-ilink-modal__title {
+  margin: 0;
+  font-size: 1.16rem;
+  line-height: 1.15;
+  color: #0f172a;
+}
+
+.channels-ilink-modal__close {
+  border: none;
+  background: transparent;
+  color: #64748b;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.channels-ilink-modal__body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.35rem;
+}
+
+.channels-ilink-modal__qr {
+  display: flex;
+  justify-content: center;
+}
+
+.channels-ilink-modal__qr-image {
+  width: min(100%, 15rem);
+  border-radius: 1.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: #fff;
+  padding: 0.62rem;
+}
+
+.channels-ilink-modal__description {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.channels-ilink-modal__status {
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.04);
+  padding: 0.78rem 0.92rem;
+  color: #0f172a;
+}
+
+.channels-ilink-modal__link {
+  color: #166534;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.channels-ilink-modal__error {
+  margin: 0;
+  color: #b91c1c;
+}
+
+.channels-ilink-modal__primary,
+.channels-ilink-modal__secondary {
+  border-radius: 999px;
+  padding: 0.68rem 1rem;
+  font: inherit;
+  font-weight: 700;
+}
+
+.channels-ilink-modal__primary {
+  border: none;
+  background: linear-gradient(135deg, #15803d 0%, #22c55e 100%);
+  color: #fff;
+}
+
+.channels-ilink-modal__secondary {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.88);
+  color: #0f172a;
 }
 
 .channels-error-banner {

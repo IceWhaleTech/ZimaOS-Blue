@@ -50,24 +50,67 @@ function formatTokens(tokens?: number): string {
   <div
     :class="['px-4 py-3 rounded-lg border-2 shadow-sm min-w-[220px] max-w-[320px]', statusColor]"
   >
-    <Handle type="target" :position="Position.Top" class="!bg-gray-400" />
+    <Handle
+      type="target"
+      :position="Position.Top"
+      class="!bg-gray-400"
+    />
 
     <div class="flex items-start gap-3">
       <div class="p-2 rounded-full bg-white dark:bg-gray-700 text-indigo-500 dark:text-indigo-400">
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24">
+        <svg
+          class="w-4 h-4"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
           <path
             d="M12 7.8L15.64 9.9V14.1L12 16.2L8.36 14.1V9.9L12 7.8Z"
             stroke="currentColor"
             stroke-width="1.7"
             stroke-linejoin="round"
           />
-          <circle cx="12" cy="6.1" r="1.15" fill="currentColor" />
-          <circle cx="17.05" cy="9.05" r="1.15" fill="currentColor" />
-          <circle cx="17.05" cy="14.95" r="1.15" fill="currentColor" />
-          <circle cx="12" cy="17.9" r="1.15" fill="currentColor" />
-          <circle cx="6.95" cy="14.95" r="1.15" fill="currentColor" />
-          <circle cx="6.95" cy="9.05" r="1.15" fill="currentColor" />
-          <path d="M12 7.2V6.95" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+          <circle
+            cx="12"
+            cy="6.1"
+            r="1.15"
+            fill="currentColor"
+          />
+          <circle
+            cx="17.05"
+            cy="9.05"
+            r="1.15"
+            fill="currentColor"
+          />
+          <circle
+            cx="17.05"
+            cy="14.95"
+            r="1.15"
+            fill="currentColor"
+          />
+          <circle
+            cx="12"
+            cy="17.9"
+            r="1.15"
+            fill="currentColor"
+          />
+          <circle
+            cx="6.95"
+            cy="14.95"
+            r="1.15"
+            fill="currentColor"
+          />
+          <circle
+            cx="6.95"
+            cy="9.05"
+            r="1.15"
+            fill="currentColor"
+          />
+          <path
+            d="M12 7.2V6.95"
+            stroke="currentColor"
+            stroke-width="1.4"
+            stroke-linecap="round"
+          />
           <path
             d="M15.24 9.42L16.15 8.9"
             stroke="currentColor"
@@ -120,7 +163,12 @@ function formatTokens(tokens?: number): string {
         <!-- Token info -->
         <div class="flex items-center gap-3 mt-2 text-xs text-gray-500 dark:text-gray-400">
           <div class="flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -130,8 +178,16 @@ function formatTokens(tokens?: number): string {
             </svg>
             <span>{{ t('companion.llmDetails.total') }}: {{ formatTokens(data.totalTokens) }}</span>
           </div>
-          <div v-if="data.duration" class="flex items-center gap-1">
-            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div
+            v-if="data.duration"
+            class="flex items-center gap-1"
+          >
+            <svg
+              class="w-3 h-3"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -144,16 +200,21 @@ function formatTokens(tokens?: number): string {
         </div>
 
         <!-- Token breakdown -->
-        <div v-if="hasTokenBreakdown" class="mt-2 text-[10px] text-gray-400 dark:text-gray-500">
+        <div
+          v-if="hasTokenBreakdown"
+          class="mt-2 text-[10px] text-gray-400 dark:text-gray-500"
+        >
           <span>{{ t('companion.nodes.tokensIn') }}: {{ formatTokens(data.promptTokens) }}</span>
           <span class="mx-1">|</span>
-          <span
-            >{{ t('companion.nodes.tokensOut') }}: {{ formatTokens(data.completionTokens) }}</span
-          >
+          <span>{{ t('companion.nodes.tokensOut') }}: {{ formatTokens(data.completionTokens) }}</span>
         </div>
       </div>
     </div>
 
-    <Handle type="source" :position="Position.Bottom" class="!bg-gray-400" />
+    <Handle
+      type="source"
+      :position="Position.Bottom"
+      class="!bg-gray-400"
+    />
   </div>
 </template>

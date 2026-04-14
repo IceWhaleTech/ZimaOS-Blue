@@ -20,6 +20,7 @@ import { stripFirstLineHeading } from '@/utils/chat-message-text'
 import { localizeCompletionFollowupHeading } from '@/utils/completionFollowupText'
 import { stripDuplicateTodoChecklistForMessage } from '@/utils/todoChecklist'
 import type { TypelessCard, TypelessCardChoice, ParsedContent } from '@/types/typeless'
+import TrustedHtml from '@/components/common/TrustedHtml.vue'
 import TypelessCardComponent from '@/components/typeless/TypelessCard.vue'
 import ToolDetailCard from '@/components/ToolDetailCard.vue'
 import MediaPlaceholder from '@/components/MediaPlaceholder.vue'
@@ -226,7 +227,7 @@ const parsedInlineContent = computed(() => {
 // while bursty deltas collapse into short word/sentence chunks.
 const revealedStreamingContent = ref(props.message.content)
 let streamingRevealRafId: number | null = null
-let streamingRevealTarget = props.message.content
+let streamingRevealTarget = ''
 let lastStreamingTargetAt = Date.now()
 
 const STREAMING_REVEAL_FAST_THRESHOLD_MS = 28
@@ -2419,11 +2420,11 @@ async function handleCardAction(actionId: string, cardId?: string) {
   const card = parsedContent.value?.cards.find((c) => c.id === cardId)
   if (card) {
     cardType = card.type
-    if ('title' in card && typeof (card as any).title === 'string') {
-      cardTitle = (card as any).title
+    if ('title' in card && typeof card.title === 'string') {
+      cardTitle = card.title
     }
-    if ('actions' in card && Array.isArray((card as any).actions)) {
-      const action = (card as any).actions.find((a: any) => a.id === actionId)
+    if ('actions' in card && Array.isArray(card.actions)) {
+      const action = card.actions.find((candidate) => candidate.id === actionId)
       actionLabel = action?.label
       if (
         action?.form_data &&
@@ -3084,14 +3085,23 @@ async function handleMobileDelete() {
             providerPoolStore.getProviderDisplayName(metadata.provider)
           }}</span>
           <!-- Model name -->
-          <span v-if="metadata.model" class="text-gray-400 dark:text-gray-500">/</span>
+          <span
+            v-if="metadata.model"
+            class="text-gray-400 dark:text-gray-500"
+          >/</span>
           <span v-if="metadata.model">{{ metadata.model }}</span>
         </div>
 
         <!-- User message bubble -->
-        <div v-if="isUser" class="user-message-wrapper relative">
+        <div
+          v-if="isUser"
+          class="user-message-wrapper relative"
+        >
           <!-- Voice message bubble (WeChat/WhatsApp style) -->
-          <div v-if="isVoiceMessage" class="voice-message-container">
+          <div
+            v-if="isVoiceMessage"
+            class="voice-message-container"
+          >
             <div
               v-for="(attachment, index) in audioAttachments"
               :key="index"
@@ -3108,10 +3118,27 @@ async function handleMobileDelete() {
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <rect x="6" y="4" width="4" height="16" rx="1" />
-                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                    <rect
+                      x="6"
+                      y="4"
+                      width="4"
+                      height="16"
+                      rx="1"
+                    />
+                    <rect
+                      x="14"
+                      y="4"
+                      width="4"
+                      height="16"
+                      rx="1"
+                    />
                   </svg>
-                  <svg v-else class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                  <svg
+                    v-else
+                    class="w-5 h-5"
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
                     <path d="M8 5v14l11-7z" />
                   </svg>
                 </div>
@@ -3136,9 +3163,15 @@ async function handleMobileDelete() {
             </div>
           </div>
           <!-- Normal message bubble -->
-          <div v-else :class="userBubbleClasses">
+          <div
+            v-else
+            :class="userBubbleClasses"
+          >
             <!-- Attachments display inside bubble -->
-            <div v-if="hasAttachments" class="mb-2 flex flex-wrap gap-2">
+            <div
+              v-if="hasAttachments"
+              class="mb-2 flex flex-wrap gap-2"
+            >
               <div
                 v-for="(attachment, index) in message.attachments"
                 :key="index"
@@ -3152,7 +3185,7 @@ async function handleMobileDelete() {
                   :alt="attachment.name"
                   class="max-w-[200px] max-h-[150px] object-cover"
                   :title="attachment.name"
-                />
+                >
                 <!-- Audio attachment (inline mini player) -->
                 <div
                   v-else-if="attachment.type === 'audio'"
@@ -3164,8 +3197,20 @@ async function handleMobileDelete() {
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <rect x="6" y="4" width="4" height="16" rx="1" />
-                    <rect x="14" y="4" width="4" height="16" rx="1" />
+                    <rect
+                      x="6"
+                      y="4"
+                      width="4"
+                      height="16"
+                      rx="1"
+                    />
+                    <rect
+                      x="14"
+                      y="4"
+                      width="4"
+                      height="16"
+                      rx="1"
+                    />
                   </svg>
                   <svg
                     v-else
@@ -3180,7 +3225,10 @@ async function handleMobileDelete() {
                   }}</span>
                 </div>
                 <!-- File attachment with icon -->
-                <div v-else class="flex items-center gap-2 px-3 py-2">
+                <div
+                  v-else
+                  class="flex items-center gap-2 px-3 py-2"
+                >
                   <span class="text-lg">{{ getFileIcon(attachment.name) }}</span>
                   <span class="text-sm text-gray-700 dark:text-white/90 max-w-[150px] truncate">{{
                     attachment.name
@@ -3214,14 +3262,17 @@ async function handleMobileDelete() {
             </template>
             <template v-else>
               <!-- Inline images extracted from message content (e.g. media generation reference images) -->
-              <div v-if="inlineImages.length > 0" class="mb-2 flex flex-wrap gap-2">
+              <div
+                v-if="inlineImages.length > 0"
+                class="mb-2 flex flex-wrap gap-2"
+              >
                 <img
                   v-for="(img, idx) in inlineImages"
                   :key="idx"
                   :src="img.url"
                   :alt="img.alt"
                   class="rounded-lg max-w-[200px] max-h-[150px] object-cover border border-gray-300 dark:border-white/20"
-                />
+                >
               </div>
               <!-- Text content (hide placeholder patterns like [filename.txt], [Attachments:...]) -->
               <span v-if="userTextContent && !isPlaceholderContent(userTextContent)">{{
@@ -3231,11 +3282,16 @@ async function handleMobileDelete() {
               <span
                 v-else-if="
                   message.content === '[CONTINUE]' &&
-                  (!message.attachments || message.attachments.length === 0)
+                    (!message.attachments || message.attachments.length === 0)
                 "
                 class="flex items-center gap-1 text-gray-500 dark:text-gray-400"
               >
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg
+                  class="w-4 h-4"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
                   <path
                     stroke-linecap="round"
                     stroke-linejoin="round"
@@ -3309,7 +3365,10 @@ async function handleMobileDelete() {
         </div>
 
         <!-- Card-only assistant message: render cards directly without bubble wrapper -->
-        <div v-else-if="isCardOnly && cardOnlySegments" class="assistant-message-wrapper relative">
+        <div
+          v-else-if="isCardOnly && cardOnlySegments"
+          class="assistant-message-wrapper relative"
+        >
           <TypelessCardComponent
             v-for="segment in cardOnlySegments"
             :key="segment.key"
@@ -3332,7 +3391,10 @@ async function handleMobileDelete() {
           ]"
         >
           <!-- Action buttons for assistant message -->
-          <div v-if="!isStreaming && !isMultiSelectMode" class="assistant-actions">
+          <div
+            v-if="!isStreaming && !isMultiSelectMode"
+            class="assistant-actions"
+          >
             <!-- Copy button -->
             <button
               class="copy-message-btn assistant-action-btn"
@@ -3433,11 +3495,18 @@ async function handleMobileDelete() {
           </div>
 
           <!-- Media task card (replaces normal assistant content) -->
-          <div v-if="hasMediaTask" class="assistant-message assistant-message--media max-w-none">
+          <div
+            v-if="hasMediaTask"
+            class="assistant-message assistant-message--media max-w-none"
+          >
             <MediaPlaceholder :task-id="mediaTaskId" />
           </div>
 
-          <div v-else class="assistant-message-stack" @click="handleCopyClick">
+          <div
+            v-else
+            class="assistant-message-stack"
+            @click="handleCopyClick"
+          >
             <div
               v-if="assistantRenderBlocks.length > 0 || showProcessOnlyAssistantBubble"
               :class="[
@@ -3458,8 +3527,15 @@ async function handleMobileDelete() {
                     : 'assistant-message-block--card',
                 ]"
               >
-                <template v-for="item in block.items" :key="item.key">
-                  <div v-if="item.type === 'text'" class="prose-content" v-html="item.html" />
+                <template
+                  v-for="item in block.items"
+                  :key="item.key"
+                >
+                  <TrustedHtml
+                    v-if="item.type === 'text'"
+                    class="prose-content"
+                    :html="item.html"
+                  />
                   <TypelessCardComponent
                     v-else
                     :card="item.card"
@@ -3473,14 +3549,23 @@ async function handleMobileDelete() {
                   />
                 </template>
               </div>
-              <div v-if="showProcessDetailsToggle" class="assistant-process-toggle-row">
-                <button class="assistant-process-toggle" @click.stop="toggleProcessDetails">
+              <div
+                v-if="showProcessDetailsToggle"
+                class="assistant-process-toggle-row"
+              >
+                <button
+                  class="assistant-process-toggle"
+                  @click.stop="toggleProcessDetails"
+                >
                   {{
                     processDetailsExpanded ? t('chat.hideToolDetails') : t('chat.showToolDetails')
                   }}
                 </button>
               </div>
-              <div v-if="showPersistedProcessPanel" class="tool-detail-cards my-2 -mx-1">
+              <div
+                v-if="showPersistedProcessPanel"
+                class="tool-detail-cards my-2 -mx-1"
+              >
                 <ToolDetailCard
                   v-for="item in effectiveProcessToolResults"
                   :key="item.id"
@@ -3502,12 +3587,20 @@ async function handleMobileDelete() {
                     aria-hidden="true"
                   />
                   <div class="assistant-process-trace-main">
-                    <div class="assistant-process-trace-label">{{ item.label }}</div>
-                    <div v-if="item.command" class="assistant-process-trace-command">
+                    <div class="assistant-process-trace-label">
+                      {{ item.label }}
+                    </div>
+                    <div
+                      v-if="item.command"
+                      class="assistant-process-trace-command"
+                    >
                       <span class="assistant-process-trace-command-prefix">$</span>
                       <span class="assistant-process-trace-command-text">{{ item.command }}</span>
                     </div>
-                    <div v-if="item.detail" class="assistant-process-trace-detail">
+                    <div
+                      v-if="item.detail"
+                      class="assistant-process-trace-detail"
+                    >
                       {{ item.detail }}
                     </div>
                   </div>
@@ -3517,20 +3610,26 @@ async function handleMobileDelete() {
                 v-if="showStreamingProcessPanel && streamToolResults.length > 0"
                 class="tool-detail-cards my-2 -mx-1"
               >
-                <ToolDetailCard v-for="item in streamToolResults" :key="item.id" :item="item" />
+                <ToolDetailCard
+                  v-for="item in streamToolResults"
+                  :key="item.id"
+                  :item="item"
+                />
               </div>
               <div
                 v-if="showAssistantStatusBar"
                 :class="['assistant-status-bar', { 'mt-0': showAssistantStatusOnly }]"
               >
-                <div class="tool-pill assistant-status-pill" :class="assistantStatusVariantClass">
+                <div
+                  class="tool-pill assistant-status-pill"
+                  :class="assistantStatusVariantClass"
+                >
                   <span class="tool-dots"> <span /><span /><span /> </span>
                   <span class="tool-label assistant-status-label">{{ assistantStatusLabel }}</span>
                   <span
                     v-if="assistantStatusElapsedSeconds"
                     class="tool-timer assistant-status-timer tabular-nums"
-                    >{{ assistantStatusElapsedSeconds }}s</span
-                  >
+                  >{{ assistantStatusElapsedSeconds }}s</span>
                   <span
                     v-if="streamToolSandboxAvailable"
                     class="sandbox-badge"
@@ -3550,13 +3649,24 @@ async function handleMobileDelete() {
                     </svg>
                   </span>
                 </div>
-                <div v-if="streamToolExecuting && toolDisplayNames.length > 0" class="tool-names">
-                  <span v-for="name in toolDisplayNames" :key="name" class="tool-name-tag">{{
+                <div
+                  v-if="streamToolExecuting && toolDisplayNames.length > 0"
+                  class="tool-names"
+                >
+                  <span
+                    v-for="name in toolDisplayNames"
+                    :key="name"
+                    class="tool-name-tag"
+                  >{{
                     name
                   }}</span>
                 </div>
               </div>
-              <div v-if="showStreamingCaret" class="assistant-message-caret-row" aria-hidden="true">
+              <div
+                v-if="showStreamingCaret"
+                class="assistant-message-caret-row"
+                aria-hidden="true"
+              >
                 <span class="streaming-caret" />
               </div>
             </div>
@@ -3570,7 +3680,11 @@ async function handleMobileDelete() {
         >
           <template v-if="showAssistantStatsBar">
             <div class="message-stats-inline">
-              <span v-for="item in messageStatItems" :key="item.key" class="message-stat-chip">
+              <span
+                v-for="item in messageStatItems"
+                :key="item.key"
+                class="message-stat-chip"
+              >
                 <svg
                   v-if="item.icon === 'input'"
                   class="message-stat-icon"
@@ -3623,7 +3737,12 @@ async function handleMobileDelete() {
             class="attachment-preview-close absolute -top-10 text-white hover:text-gray-300 transition-colors"
             @click="closeAttachmentPreview"
           >
-            <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg
+              class="w-8 h-8"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -3651,7 +3770,7 @@ async function handleMobileDelete() {
                 :src="previewAttachment.src"
                 :alt="previewAttachment.name"
                 class="attachment-image-preview"
-              />
+              >
             </div>
           </div>
           <!-- Text file preview -->
@@ -3668,9 +3787,9 @@ async function handleMobileDelete() {
                 </div>
               </div>
             </div>
-            <div
+            <TrustedHtml
               class="attachment-preview-body attachment-markdown-preview prose prose-slate dark:prose-invert prose-content max-w-none"
-              v-html="previewAttachmentHtml"
+              :html="previewAttachmentHtml"
             />
           </div>
           <!-- PDF preview -->
@@ -3714,7 +3833,10 @@ async function handleMobileDelete() {
             </div>
           </div>
           <!-- Generic file preview -->
-          <div v-else class="attachment-preview-shell attachment-preview-shell--file">
+          <div
+            v-else
+            class="attachment-preview-shell attachment-preview-shell--file"
+          >
             <div class="attachment-preview-header">
               <div class="attachment-preview-meta">
                 <span class="attachment-preview-badge">{{ previewAttachmentBadge }}</span>

@@ -69,18 +69,29 @@ function actionDescription(action: QuickAction): string {
       </h2>
     </div>
 
-    <div v-if="loading" class="p-6 text-center">
+    <div
+      v-if="loading"
+      class="p-6 text-center"
+    >
       <div
         class="animate-spin h-8 w-8 border-4 border-gray-900 dark:border-white border-t-transparent rounded-full mx-auto"
-      ></div>
-      <p class="mt-2 text-gray-500 dark:text-gray-400">{{ t('common.loadingActions') }}</p>
+      />
+      <p class="mt-2 text-gray-500 dark:text-gray-400">
+        {{ t('common.loadingActions') }}
+      </p>
     </div>
 
-    <div v-else-if="actions.length === 0" class="p-6 text-center text-gray-500 dark:text-gray-400">
+    <div
+      v-else-if="actions.length === 0"
+      class="p-6 text-center text-gray-500 dark:text-gray-400"
+    >
       {{ t('common.noActionsAvailable') }}
     </div>
 
-    <div v-else class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+    <div
+      v-else
+      class="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3"
+    >
       <button
         v-for="action in actions"
         :key="action.id"
@@ -99,10 +110,18 @@ function actionDescription(action: QuickAction): string {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" :d="action.icon" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            :d="action.icon"
+          />
         </svg>
         <span class="text-sm font-medium text-center">{{ actionLabel(action) }}</span>
-        <span v-if="actionDescription(action)" class="text-xs opacity-75 text-center mt-1">
+        <span
+          v-if="actionDescription(action)"
+          class="text-xs opacity-75 text-center mt-1"
+        >
           {{ actionDescription(action) }}
         </span>
       </button>

@@ -49,6 +49,6 @@ func bindRouteRuntimeBootstrapSupport(
 		result.approvalHandler = approvalHandler
 	}
 	registerRouteRuntimeVoiceWakeSurface(settingsHandler, options)
-	registerRouteRuntimeTunnelSurface(options)
+	result.tunnelHandler = registerRouteRuntimeTunnelSurface(options)
 	return result
 }

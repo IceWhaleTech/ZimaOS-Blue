@@ -69,14 +69,3 @@ func initServicesWorkerPool(s *Services, trace *StartupTrace) {
 	s.WorkerPool = worker.NewPool(context.Background(), 10)
 	trace.Mark("worker_pool_ready")
 }
-
-// initServicesRuntimeDatabase opens runtime.db for harness/agent tables
-func initServicesRuntimeDatabase(s *Services, cfg *ServerConfig, trace *StartupTrace) error {
-	conn, err := openRuntimeDatabase(cfg, s.Logger)
-	if err != nil {
-		return fmt.Errorf("failed to open runtime database: %w", err)
-	}
-	s.RuntimeDBConn = conn
-	trace.Mark("runtime_db_opened")
-	return nil
-}

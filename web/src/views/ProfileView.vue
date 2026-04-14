@@ -345,7 +345,10 @@ function getScopeLabel(scope: string): string {
       </h2>
 
       <div class="glass-card p-4 sm:p-6">
-        <div v-if="authStore.user" class="space-y-4">
+        <div
+          v-if="authStore.user"
+          class="space-y-4"
+        >
           <!-- Username (read-only) -->
           <div>
             <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
@@ -374,8 +377,8 @@ function getScopeLabel(scope: string): string {
               {{
                 authStore.user?.role
                   ? $t(
-                      `users.role${authStore.user.role.charAt(0).toUpperCase()}${authStore.user.role.slice(1)}`
-                    )
+                    `users.role${authStore.user.role.charAt(0).toUpperCase()}${authStore.user.role.slice(1)}`
+                  )
                   : ''
               }}
             </span>
@@ -386,7 +389,10 @@ function getScopeLabel(scope: string): string {
             <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
               $t('profile.email')
             }}</label>
-            <div v-if="!isEditingProfile" class="flex items-center gap-2">
+            <div
+              v-if="!isEditingProfile"
+              class="flex items-center gap-2"
+            >
               <span class="text-gray-900 dark:text-white">{{
                 authStore.user.email || $t('profile.notSet')
               }}</span>
@@ -397,11 +403,14 @@ function getScopeLabel(scope: string): string {
               type="email"
               class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
               :placeholder="$t('profile.enterEmailAddress')"
-            />
+            >
           </div>
 
           <!-- Password (edit mode only) -->
-          <div v-if="isEditingProfile" class="space-y-4">
+          <div
+            v-if="isEditingProfile"
+            class="space-y-4"
+          >
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
                 $t('profile.newPassword')
@@ -411,7 +420,7 @@ function getScopeLabel(scope: string): string {
                 type="password"
                 class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 :placeholder="$t('profile.leaveBlankToKeepPassword')"
-              />
+              >
             </div>
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-1">{{
@@ -423,7 +432,7 @@ function getScopeLabel(scope: string): string {
                 class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 :class="{ 'ring-2 ring-red-500': editPassword && !passwordsMatch }"
                 :placeholder="$t('profile.confirmNewPasswordPlaceholder')"
-              />
+              >
               <p
                 v-if="editPassword && !passwordsMatch"
                 class="text-red-500 dark:text-red-400 text-sm mt-1"
@@ -470,14 +479,20 @@ function getScopeLabel(scope: string): string {
           </div>
         </div>
 
-        <div v-else class="text-gray-500 dark:text-slate-400 text-center py-4">
+        <div
+          v-else
+          class="text-gray-500 dark:text-slate-400 text-center py-4"
+        >
           {{ $t('profile.loadingUserInformation') }}
         </div>
       </div>
     </section>
 
     <!-- User Management Link (Admin Only) -->
-    <section v-if="authStore.isAdmin" class="mb-6 sm:mb-8">
+    <section
+      v-if="authStore.isAdmin"
+      class="mb-6 sm:mb-8"
+    >
       <RouterLink
         to="/users"
         class="glass-card p-4 sm:p-6 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group"
@@ -517,7 +532,12 @@ function getScopeLabel(scope: string): string {
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 5l7 7-7 7"
+          />
         </svg>
       </RouterLink>
     </section>
@@ -526,7 +546,10 @@ function getScopeLabel(scope: string): string {
     <Suspense>
       <MFASettings @status-change="handleMFAStatusChange" />
       <template #fallback>
-        <section class="mb-6 sm:mb-8 glass-card p-4 sm:p-6" aria-hidden="true">
+        <section
+          class="mb-6 sm:mb-8 glass-card p-4 sm:p-6"
+          aria-hidden="true"
+        >
           <div class="animate-pulse space-y-3">
             <div class="h-5 w-40 rounded bg-gray-200/80 dark:bg-slate-700/70" />
             <div class="h-4 w-full rounded bg-gray-200/60 dark:bg-slate-700/50" />
@@ -540,7 +563,10 @@ function getScopeLabel(scope: string): string {
     <Suspense>
       <WebAuthnSettings @status-change="handleMFAStatusChange" />
       <template #fallback>
-        <section class="mb-6 sm:mb-8 glass-card p-4 sm:p-6" aria-hidden="true">
+        <section
+          class="mb-6 sm:mb-8 glass-card p-4 sm:p-6"
+          aria-hidden="true"
+        >
           <div class="animate-pulse space-y-3">
             <div class="h-5 w-40 rounded bg-gray-200/80 dark:bg-slate-700/70" />
             <div class="h-4 w-full rounded bg-gray-200/60 dark:bg-slate-700/50" />
@@ -551,7 +577,10 @@ function getScopeLabel(scope: string): string {
     </Suspense>
 
     <!-- Linked Accounts Section -->
-    <section v-if="availableProviders.length > 0" class="mb-6 sm:mb-8">
+    <section
+      v-if="availableProviders.length > 0"
+      class="mb-6 sm:mb-8"
+    >
       <h2
         class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white mb-3 sm:mb-4 flex items-center gap-2"
       >
@@ -579,7 +608,10 @@ function getScopeLabel(scope: string): string {
         >
           {{ $t('profile.loadingLinkedAccounts') }}
         </div>
-        <div v-else class="divide-y divide-gray-200 dark:divide-slate-700">
+        <div
+          v-else
+          class="divide-y divide-gray-200 dark:divide-slate-700"
+        >
           <div
             v-for="provider in availableProviders"
             :key="provider.id"
@@ -595,7 +627,7 @@ function getScopeLabel(scope: string): string {
                   :src="provider.icon_url"
                   :alt="getProviderName(provider)"
                   class="h-6 w-6"
-                />
+                >
                 <svg
                   v-else
                   class="h-6 w-6 text-gray-600 dark:text-gray-300"
@@ -615,8 +647,8 @@ function getScopeLabel(scope: string): string {
                   <p class="text-sm text-gray-500 dark:text-slate-400 truncate">
                     {{
                       getLinkedAccount(provider.id)?.email ||
-                      getLinkedAccount(provider.id)?.name ||
-                      $t('profile.connected')
+                        getLinkedAccount(provider.id)?.name ||
+                        $t('profile.connected')
                     }}
                   </p>
                   <p class="text-xs text-gray-400 dark:text-slate-500">
@@ -624,7 +656,10 @@ function getScopeLabel(scope: string): string {
                     {{ formatDate(getLinkedAccount(provider.id)!.created_at) }}
                   </p>
                 </template>
-                <p v-else class="text-sm text-gray-400 dark:text-slate-500">
+                <p
+                  v-else
+                  class="text-sm text-gray-400 dark:text-slate-500"
+                >
                   {{ $t('profile.notConnected') }}
                 </p>
               </div>
@@ -708,7 +743,10 @@ function getScopeLabel(scope: string): string {
         >
           {{ $t('profile.noApiKeysCreated') }}
         </div>
-        <div v-else class="divide-y divide-gray-200 dark:divide-slate-700">
+        <div
+          v-else
+          class="divide-y divide-gray-200 dark:divide-slate-700"
+        >
           <div
             v-for="key in authStore.apiKeys"
             :key="key.id"
@@ -716,7 +754,9 @@ function getScopeLabel(scope: string): string {
           >
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
-                <h3 class="text-gray-900 dark:text-white font-medium">{{ key.name }}</h3>
+                <h3 class="text-gray-900 dark:text-white font-medium">
+                  {{ key.name }}
+                </h3>
                 <code
                   class="text-xs bg-gray-100 dark:bg-slate-700 px-2 py-1 rounded text-gray-600 dark:text-gray-300"
                 >
@@ -727,15 +767,17 @@ function getScopeLabel(scope: string): string {
                 class="flex items-center gap-2 sm:gap-4 mt-2 text-xs sm:text-sm text-gray-500 dark:text-slate-400 flex-wrap"
               >
                 <span>{{ $t('profile.created') }}: {{ formatDate(key.created_at) }}</span>
-                <span v-if="key.expires_at"
-                  >{{ $t('profile.expires') }}: {{ formatDate(key.expires_at) }}</span
-                >
-                <span v-else class="text-green-600 dark:text-green-400">{{
+                <span v-if="key.expires_at">{{ $t('profile.expires') }}: {{ formatDate(key.expires_at) }}</span>
+                <span
+                  v-else
+                  class="text-green-600 dark:text-green-400"
+                >{{
                   $t('profile.neverExpires')
                 }}</span>
-                <span v-if="key.last_used_at" class="hidden sm:inline"
-                  >{{ $t('profile.lastUsed') }}: {{ formatDate(key.last_used_at) }}</span
-                >
+                <span
+                  v-if="key.last_used_at"
+                  class="hidden sm:inline"
+                >{{ $t('profile.lastUsed') }}: {{ formatDate(key.last_used_at) }}</span>
               </div>
               <div class="flex flex-wrap gap-1 mt-2">
                 <span
@@ -787,7 +829,10 @@ function getScopeLabel(scope: string): string {
           </h3>
 
           <!-- Show created key -->
-          <div v-if="createdKey" class="space-y-4">
+          <div
+            v-if="createdKey"
+            class="space-y-4"
+          >
             <div
               class="bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-300 dark:border-yellow-600 rounded-lg p-4"
             >
@@ -847,7 +892,11 @@ function getScopeLabel(scope: string): string {
           </div>
 
           <!-- Create key form -->
-          <form v-else class="space-y-4" @submit.prevent="createApiKey">
+          <form
+            v-else
+            class="space-y-4"
+            @submit.prevent="createApiKey"
+          >
             <!-- Name -->
             <div>
               <label class="block text-sm text-gray-500 dark:text-slate-400 mb-2">{{
@@ -859,7 +908,7 @@ function getScopeLabel(scope: string): string {
                 required
                 class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
                 :placeholder="$t('profile.apiKeyNamePlaceholder')"
-              />
+              >
             </div>
 
             <!-- Scopes -->
@@ -878,7 +927,7 @@ function getScopeLabel(scope: string): string {
                     :checked="newKeyScopes.includes(scope.value)"
                     class="mt-1 w-4 h-4 rounded border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-gray-900 dark:text-gray-300 focus:ring-gray-400"
                     @change="toggleScope(scope.value)"
-                  />
+                  >
                   <div>
                     <div class="text-gray-900 dark:text-white text-sm font-medium">
                       {{ scope.label }}
@@ -900,7 +949,11 @@ function getScopeLabel(scope: string): string {
                 v-model="newKeyExpiry"
                 class="w-full bg-gray-100 dark:bg-slate-700 text-gray-900 dark:text-white rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-gray-400 border border-gray-200 dark:border-slate-600"
               >
-                <option v-for="opt in expiryOptions" :key="opt.value" :value="opt.value">
+                <option
+                  v-for="opt in expiryOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
                   {{ opt.label }}
                 </option>
               </select>

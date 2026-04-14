@@ -210,8 +210,12 @@ async function installSkill() {
             <span class="install-result-banner__eyebrow">{{
               pluginsText('plugins.installResultHeading', 'Install result', '安装结果')
             }}</span>
-            <h2 class="install-result-banner__title">{{ installResultSkillName }}</h2>
-            <p class="install-result-banner__message">{{ installResultMessage }}</p>
+            <h2 class="install-result-banner__title">
+              {{ installResultSkillName }}
+            </h2>
+            <p class="install-result-banner__message">
+              {{ installResultMessage }}
+            </p>
           </div>
 
           <button
@@ -232,7 +236,10 @@ async function installSkill() {
       </section>
 
       <section class="plugins-shell">
-        <nav class="plugins-tab-nav dashboard-card-surface" aria-label="Extension sections">
+        <nav
+          class="plugins-tab-nav dashboard-card-surface"
+          aria-label="Extension sections"
+        >
           <button
             v-for="tab in tabs"
             :key="tab.id"
@@ -246,7 +253,12 @@ async function installSkill() {
             @click="setActiveTab(tab.id)"
           >
             <span class="plugins-tab-button__icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+              >
                 <path :d="tab.icon" />
               </svg>
             </span>
@@ -257,7 +269,10 @@ async function installSkill() {
               </span>
             </span>
 
-            <span class="plugins-tab-button__state" aria-hidden="true"></span>
+            <span
+              class="plugins-tab-button__state"
+              aria-hidden="true"
+            />
           </button>
         </nav>
         <section
@@ -265,7 +280,10 @@ async function installSkill() {
           :style="{ '--shell-accent': activeTabMeta.accent, '--shell-soft': activeTabMeta.soft }"
         >
           <div class="tab-content">
-            <Transition name="tab-fade" mode="out-in">
+            <Transition
+              name="tab-fade"
+              mode="out-in"
+            >
               <SkillTab
                 v-if="activeMainTab === 'skill'"
                 key="skill"
@@ -276,18 +294,30 @@ async function installSkill() {
                 key="store"
                 :initial-search-query="skillStoreInitialQuery"
               />
-              <ToolTab v-else key="tool" />
+              <ToolTab
+                v-else
+                key="tool"
+              />
             </Transition>
           </div>
         </section>
       </section>
     </section>
 
-    <div v-if="showUploadModal" class="modal-overlay" @click.self="closeUploadModal">
+    <div
+      v-if="showUploadModal"
+      class="modal-overlay"
+      @click.self="closeUploadModal"
+    >
       <div class="modal">
         <div class="modal-header">
           <h2>{{ t('plugins.installSkillTitle') }}</h2>
-          <button class="modal-close" @click="closeUploadModal">&times;</button>
+          <button
+            class="modal-close"
+            @click="closeUploadModal"
+          >
+            &times;
+          </button>
         </div>
 
         <div class="modal-body">
@@ -296,7 +326,12 @@ async function installSkill() {
               :class="['method-tab', { active: installMethod === 'url' }]"
               @click="installMethod = 'url'"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path
                   d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101m-.758-4.899a4 4 0 0 0 5.656 0l4-4a4 4 0 0 0-5.656-5.656l-1.1 1.1"
                 />
@@ -307,16 +342,29 @@ async function installSkill() {
               :class="['method-tab', { active: installMethod === 'file' }]"
               @click="installMethod = 'file'"
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                 <polyline points="17,8 12,3 7,8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
+                <line
+                  x1="12"
+                  y1="3"
+                  x2="12"
+                  y2="15"
+                />
               </svg>
               {{ t('plugins.uploadFile') }}
             </button>
           </div>
 
-          <div v-if="installMethod === 'url'" class="url-input-section">
+          <div
+            v-if="installMethod === 'url'"
+            class="url-input-section"
+          >
             <label>{{ t('plugins.skillUrlLabel') }}</label>
             <input
               v-model="installUrl"
@@ -324,8 +372,10 @@ async function installSkill() {
               :placeholder="t('plugins.skillUrlPlaceholder')"
               class="url-input"
               @keyup.enter="installSkill"
-            />
-            <p class="url-hint">{{ t('plugins.skillUrlHint') }}</p>
+            >
+            <p class="url-hint">
+              {{ t('plugins.skillUrlHint') }}
+            </p>
           </div>
 
           <div v-else>
@@ -340,7 +390,7 @@ async function installSkill() {
                 accept=".zip,.tar.gz,.tgz"
                 class="file-input"
                 @change="handleFileSelect"
-              />
+              >
               <svg
                 v-if="!uploadFile"
                 viewBox="0 0 24 24"
@@ -362,13 +412,23 @@ async function installSkill() {
               >
                 <path d="M9 12l2 2 4-4m6 2a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
               </svg>
-              <p v-if="!uploadFile">{{ t('plugins.dropFileHere') }}</p>
-              <p v-else class="file-name">{{ uploadFile.name }}</p>
+              <p v-if="!uploadFile">
+                {{ t('plugins.dropFileHere') }}
+              </p>
+              <p
+                v-else
+                class="file-name"
+              >
+                {{ uploadFile.name }}
+              </p>
               <span class="upload-hint">{{ t('plugins.supportedFormats') }}: .zip, .tar.gz</span>
             </div>
           </div>
 
-          <div v-if="uploadError" class="upload-error">
+          <div
+            v-if="uploadError"
+            class="upload-error"
+          >
             {{ uploadError }}
           </div>
 
@@ -382,13 +442,21 @@ async function installSkill() {
         </div>
 
         <div class="modal-footer">
-          <button class="btn-cancel" @click="closeUploadModal">{{ t('common.cancel') }}</button>
+          <button
+            class="btn-cancel"
+            @click="closeUploadModal"
+          >
+            {{ t('common.cancel') }}
+          </button>
           <button
             class="btn-confirm"
             :disabled="(installMethod === 'url' ? !installUrl.trim() : !uploadFile) || uploading"
             @click="installSkill"
           >
-            <span v-if="uploading" class="spinner"></span>
+            <span
+              v-if="uploading"
+              class="spinner"
+            />
             {{ uploading ? t('plugins.installing') : t('plugins.install') }}
           </button>
         </div>

@@ -44,8 +44,8 @@ func TestPlanDarwinAction(t *testing.T) {
 				ValueSettable: true,
 			},
 			check: func(t *testing.T, plan darwinActionPlan) {
-				if !plan.SetValue || plan.ExecutionMode != "semantic" {
-					t.Fatalf("plan = %#v, want semantic set-value plan", plan)
+				if !plan.SetValue || plan.ExecutionMode != "semantic" || plan.InputFallback != darwinInputFallbackType {
+					t.Fatalf("plan = %#v, want semantic set-value plan with type fallback", plan)
 				}
 			},
 		},
@@ -138,8 +138,8 @@ func TestPlanWindowsAction(t *testing.T) {
 				ValueWritable: true,
 			},
 			check: func(t *testing.T, plan windowsActionPlan) {
-				if plan.Primary != windowsActionPutValue || plan.ExecutionMode != "semantic" {
-					t.Fatalf("plan = %#v, want semantic put-value", plan)
+				if plan.Primary != windowsActionPutValue || plan.ExecutionMode != "semantic" || plan.Fallback != windowsActionInputType {
+					t.Fatalf("plan = %#v, want semantic put-value with type fallback", plan)
 				}
 			},
 		},

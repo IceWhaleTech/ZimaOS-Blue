@@ -21,6 +21,7 @@ type stubTunnelManager struct {
 	provider tunnel.Provider
 	startCfg *tunnel.Config
 	running  bool
+	url      string
 }
 
 func (m *stubTunnelManager) Start(_ context.Context, cfg *tunnel.Config) error {
@@ -43,7 +44,7 @@ func (m *stubTunnelManager) GetStatus() tunnel.Status {
 	return tunnel.Status{Active: m.running, Provider: m.provider}
 }
 
-func (m *stubTunnelManager) GetURL() string { return "" }
+func (m *stubTunnelManager) GetURL() string { return m.url }
 
 func (m *stubTunnelManager) GetProvider() tunnel.Provider { return m.provider }
 

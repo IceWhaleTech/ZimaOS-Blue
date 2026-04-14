@@ -78,10 +78,15 @@ const cpuSummaryItems = computed(() => [
 </script>
 
 <template>
-  <div v-if="compact" class="dashboard-card-stack">
+  <div
+    v-if="compact"
+    class="dashboard-card-stack"
+  >
     <div class="dashboard-card-footer">
       <div class="dashboard-card-copy">
-        <p class="dashboard-card-label">{{ t('system.cpuUsage') }}</p>
+        <p class="dashboard-card-label">
+          {{ t('system.cpuUsage') }}
+        </p>
         <p class="dashboard-card-subtitle mt-2">
           {{ t('system.cpuCores') }} · {{ systemStore.health?.num_cpu ?? '-' }}
         </p>
@@ -109,7 +114,7 @@ const cpuSummaryItems = computed(() => [
           :key="index"
           class="dashboard-mini-bar"
           :style="{ '--bar-level': `${level}%` }"
-        ></div>
+        />
       </div>
     </div>
   </div>

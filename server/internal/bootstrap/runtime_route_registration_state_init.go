@@ -3,8 +3,8 @@ package bootstrap
 import (
 	"time"
 
-	"github.com/labstack/echo/v4"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
+	"github.com/labstack/echo/v4"
 )
 
 func newRouteRegistrationStateBase(e *echo.Echo, deps *RoutesDeps) *routeRegistrationState {
@@ -30,14 +30,7 @@ func bindRouteRegistrationStateRuntime(state *routeRegistrationState) {
 	state.workspaceAllowedPaths = ResolveBuiltinToolAllowedPaths(state.deps.Config, state.cfg.DataDir)
 	state.webSearchConfig = buildWebSearchConfig(state.deps.Config)
 	bindRouteRegistrationStateDB(state)
-	state.runtimeContract = newRouteRuntimeContract(
-		state.runtimeWriteDB,
-		state.runtimeReadDB,
-		state.deps.Config,
-		state.logger,
-		state.deps.WorkspaceHandler,
-		state.webSearchConfig,
-	)
+	state.runtimeContract = newRouteRuntimeContract(state.runtimeWriteDB, state.runtimeReadDB, state.deps.Config, state.logger, state.deps.WorkspaceHandler, state.webSearchConfig)
 	state.runtimeLLM = state.runtimeContract.NewRuntimeLLMRef()
 	bindRouteRegistrationStateFlags(state)
 }
@@ -46,22 +39,16 @@ func bindRouteRegistrationStateDB(state *routeRegistrationState) {
 	if state == nil {
 		return
 	}
-
-	// Use RuntimeDBConn (runtime.db) for harness and agent tables
-	// This reduces startup time by separating large runtime tables from blue.db
-	if state.services.RuntimeDBConn != nil {
-		state.runtimeReadDB = state.services.RuntimeDBConn.Reader
-		state.runtimeWriteDB = state.services.RuntimeDBConn.Writer
+	if conn := state.services.RuntimeDBConn; conn != nil {
+		state.runtimeReadDB = conn.Reader
+		state.runtimeWriteDB = conn.Writer
 		return
 	}
-
-	// Fallback to primary database (backward compatibility)
-	if state.services.DBConn != nil {
-		state.runtimeReadDB = state.services.DBConn.Reader
-		state.runtimeWriteDB = state.services.DBConn.Writer
+	if conn := state.services.DBConn; conn != nil {
+		state.runtimeReadDB = conn.Reader
+		state.runtimeWriteDB = conn.Writer
 		return
 	}
-
 	state.runtimeWriteDB = state.deps.DB
 }
 

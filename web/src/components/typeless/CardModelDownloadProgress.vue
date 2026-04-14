@@ -150,7 +150,10 @@ onBeforeUnmount(stopPolling)
     class="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden shadow-sm"
   >
     <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-700/50">
-      <span class="w-2.5 h-2.5 rounded-full" :class="indicatorClass" />
+      <span
+        class="w-2.5 h-2.5 rounded-full"
+        :class="indicatorClass"
+      />
       <div class="min-w-0">
         <p class="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
           {{ props.card.title }}
@@ -159,11 +162,17 @@ onBeforeUnmount(stopPolling)
           {{ statusText }}
         </p>
       </div>
-      <span v-if="currentState" class="text-[11px] font-mono text-gray-400 dark:text-gray-500">
+      <span
+        v-if="currentState"
+        class="text-[11px] font-mono text-gray-400 dark:text-gray-500"
+      >
         {{ currentState }}
       </span>
     </div>
-    <div v-if="currentStatus === 'downloading' && currentProgress" class="px-4 pt-4">
+    <div
+      v-if="currentStatus === 'downloading' && currentProgress"
+      class="px-4 pt-4"
+    >
       <div class="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
         <div
           class="h-full bg-amber-500 transition-all duration-300"
@@ -192,7 +201,10 @@ onBeforeUnmount(stopPolling)
       >
         {{ currentError }}
       </p>
-      <ul v-if="currentFiles.length > 0" class="space-y-1">
+      <ul
+        v-if="currentFiles.length > 0"
+        class="space-y-1"
+      >
         <li
           v-for="file in currentFiles"
           :key="file.filename"

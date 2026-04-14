@@ -88,10 +88,18 @@ onUnmounted(() => {
     <div class="dashboard-card-stack">
       <div class="dashboard-card-footer">
         <div class="dashboard-card-copy">
-          <p class="dashboard-card-label">{{ t('dashboard.cards.smallModelStats') }}</p>
-          <p class="dashboard-card-subtitle mt-2">{{ t('settings.smallModel.statsTitle') }}</p>
+          <p class="dashboard-card-label">
+            {{ t('dashboard.cards.smallModelStats') }}
+          </p>
+          <p class="dashboard-card-subtitle mt-2">
+            {{ t('settings.smallModel.statsTitle') }}
+          </p>
         </div>
-        <button class="dashboard-card-chip" :disabled="loading" @click="fetchStats">
+        <button
+          class="dashboard-card-chip"
+          :disabled="loading"
+          @click="fetchStats"
+        >
           {{ t('common.refresh') }}
         </button>
       </div>
@@ -109,7 +117,10 @@ onUnmounted(() => {
           <p class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('settings.smallModel.shortQASuccessRate') }}
           </p>
-          <p class="mt-1 text-lg font-semibold" :class="successRateColor">
+          <p
+            class="mt-1 text-lg font-semibold"
+            :class="successRateColor"
+          >
             {{ shortQASuccessRate }}%
           </p>
         </div>
@@ -117,7 +128,10 @@ onUnmounted(() => {
           <p class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('settings.smallModel.summarySuccessRate') }}
           </p>
-          <p class="mt-1 text-lg font-semibold" :class="summarySuccessRateColor">
+          <p
+            class="mt-1 text-lg font-semibold"
+            :class="summarySuccessRateColor"
+          >
             {{ summarySuccessRate }}%
           </p>
         </div>
@@ -125,7 +139,10 @@ onUnmounted(() => {
           <p class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('settings.smallModel.docExtractSuccessRate') }}
           </p>
-          <p class="mt-1 text-lg font-semibold" :class="docExtractSuccessRateColor">
+          <p
+            class="mt-1 text-lg font-semibold"
+            :class="docExtractSuccessRateColor"
+          >
             {{ docExtractSuccessRate }}%
           </p>
         </div>
@@ -183,11 +200,21 @@ onUnmounted(() => {
         <p class="mb-2 text-gray-500 dark:text-gray-400">
           {{ t('settings.smallModel.fallbackReasons') }}
         </p>
-        <div v-if="fallbackTop.length === 0" class="text-gray-400">
+        <div
+          v-if="fallbackTop.length === 0"
+          class="text-gray-400"
+        >
           {{ t('settings.smallModel.noFallbackReasons') }}
         </div>
-        <div v-else class="flex flex-wrap gap-2">
-          <span v-for="[reason, count] in fallbackTop" :key="reason" class="dashboard-card-chip">
+        <div
+          v-else
+          class="flex flex-wrap gap-2"
+        >
+          <span
+            v-for="[reason, count] in fallbackTop"
+            :key="reason"
+            class="dashboard-card-chip"
+          >
             {{ formatFallbackReason(reason) }} <span class="font-semibold">{{ count }}</span>
           </span>
         </div>

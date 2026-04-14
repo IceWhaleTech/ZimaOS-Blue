@@ -152,3 +152,35 @@ func TestWindowsSystemCLI_PasteTextWithTemporaryClipboardUsesClipboardRestoreFlo
 		}
 	}
 }
+
+func TestWindowsSystemCLI_CaptureRegionUsesRestrictedPowerShell(t *testing.T) {
+	var name string
+	var args []string
+	cli := windowsSystemCLI{
+		run: func(_ context.Context, command string, commandArgs ...string) (string, error) {
+			name = command
+			args = append([]string(nil), commandArgs...)
+			return "", nil
+		},
+	}
+
+	if _, err := cli.captureRegion(context.Background(), windowsRect{Left: 12, Top: 34, Right: 332, Bottom: 82}, `C:\tmp\region.png`); err != nil {
+		t.Fatalf("captureRegion() error = %v", err)
+	}
+	if name != "powershell" {
+		t.Fatalf("name = %q, want powershell", name)
+	}
+	if len(args) != 4 {
+		t.Fatalf("args len = %d, want 4", len(args))
+	}
+	script := args[3]
+	for _, needle := range []string{
+		"System.Drawing.Bitmap(320,48)",
+		"CopyFromScreen(12,34,0,0,$bmp.Size)",
+		"$bmp.Save('C:\\tmp\\region.png'",
+	} {
+		if !strings.Contains(script, needle) {
+			t.Fatalf("script missing %q in %q", needle, script)
+		}
+	}
+}

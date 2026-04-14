@@ -7,7 +7,7 @@ import ChannelCardShell from '@/components/channels/ChannelCardShell.vue'
 interface ChannelFieldDef {
   key: string
   labelKey: string
-  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle'
+  type: 'text' | 'password' | 'tel' | 'url' | 'textarea' | 'toggle' | 'select'
   placeholder?: string
   placeholderKey?: string
   value: string
@@ -111,17 +111,20 @@ const channelIconStyle = computed(() => getChannelIconStyleVars(props.channel.id
     @header-click="emit('toggle')"
   >
     <template #actions>
-      <label class="relative inline-flex items-center cursor-pointer" @click.stop>
+      <label
+        class="relative inline-flex items-center cursor-pointer"
+        @click.stop
+      >
         <input
           :checked="channel.enabled"
           type="checkbox"
           class="sr-only peer channel-card__toggle-input"
           :disabled="toggling"
           @change="emit('toggleEnabled', ($event.target as HTMLInputElement).checked)"
-        />
+        >
         <div
           class="channel-card__toggle bg-gray-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-gray-900 dark:peer-focus:ring-gray-400 rounded-full peer dark:bg-slate-700 after:content-[''] after:absolute after:bg-white after:border-gray-300 after:border after:rounded-full after:transition-all dark:border-slate-500 peer-checked:bg-green-600 dark:peer-checked:bg-green-500 peer-disabled:opacity-50"
-        ></div>
+        />
       </label>
       <svg
         xmlns="http://www.w3.org/2000/svg"

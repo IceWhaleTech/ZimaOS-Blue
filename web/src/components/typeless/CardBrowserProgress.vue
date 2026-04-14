@@ -184,8 +184,7 @@ const summaryBadge = computed(() => {
       <span class="min-w-0 flex-1">
         <span
           class="block text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400"
-          >{{ browserProgressTitle }}</span
-        >
+        >{{ browserProgressTitle }}</span>
         <span class="block truncate text-sm font-medium text-gray-800 dark:text-gray-100">
           {{ summaryTitle }}
         </span>
@@ -222,7 +221,10 @@ const summaryBadge = computed(() => {
     </button>
 
     <transition name="browser-progress-content">
-      <div v-if="expanded" class="border-t border-gray-100 dark:border-gray-700/60">
+      <div
+        v-if="expanded"
+        class="border-t border-gray-100 dark:border-gray-700/60"
+      >
         <div class="px-3 py-2.5 border-b border-gray-100 dark:border-gray-700/50">
           <div class="flex items-center gap-2">
             <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{
@@ -232,9 +234,10 @@ const summaryBadge = computed(() => {
               v-if="isRunning"
               class="ms-auto inline-block w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse flex-shrink-0"
             />
-            <span v-else class="ms-auto text-xs text-gray-400 tabular-nums"
-              >{{ progressPercent }}%</span
-            >
+            <span
+              v-else
+              class="ms-auto text-xs text-gray-400 tabular-nums"
+            >{{ progressPercent }}%</span>
           </div>
           <div
             v-if="currentURL"
@@ -262,7 +265,10 @@ const summaryBadge = computed(() => {
               class="w-5 h-5 rounded-full flex items-center justify-center text-xs font-medium flex-shrink-0"
               :class="[stepColor(step.status), stepBg(step.status)]"
             >
-              <span v-if="step.status === 'running'" class="animate-spin">{{
+              <span
+                v-if="step.status === 'running'"
+                class="animate-spin"
+              >{{
                 stepIcon(step.status)
               }}</span>
               <span v-else>{{ stepIcon(step.status) }}</span>

@@ -287,7 +287,7 @@ func officeDOCXTableXML(table *officeTableSpec, theme officeTheme) string {
 	for len(headers) < columnCount {
 		headers = append(headers, fmt.Sprintf("Column %d", len(headers)+1))
 	}
-	widths := officeDOCXColumnWidths(headers, table.Rows)
+	widths := officeDOCXColumnWidths(table, headers, table.Rows)
 
 	var sb strings.Builder
 	sb.WriteString(`<w:tbl>`)
@@ -303,7 +303,7 @@ func officeDOCXTableXML(table *officeTableSpec, theme officeTheme) string {
 		sb.WriteString(`"/>`)
 	}
 	sb.WriteString(`</w:tblGrid>`)
-	sb.WriteString(officeDOCXTableRowXML(headers, widths, theme.Primary, "FFFFFF", true))
+	sb.WriteString(officeDOCXTableRowXML(table, headers, widths, theme.Primary, "FFFFFF", true))
 	for idx, row := range table.Rows {
 		fill := ""
 		if idx%2 == 1 {
@@ -311,13 +311,13 @@ func officeDOCXTableXML(table *officeTableSpec, theme officeTheme) string {
 		}
 		values := make([]string, columnCount)
 		copy(values, row)
-		sb.WriteString(officeDOCXTableRowXML(values, widths, fill, "", false))
+		sb.WriteString(officeDOCXTableRowXML(table, values, widths, fill, "", false))
 	}
 	sb.WriteString(`</w:tbl>`)
 	return sb.String()
 }
 
-func officeDOCXTableRowXML(values []string, widths []int, fill, textColor string, bold bool) string {
+func officeDOCXTableRowXML(table *officeTableSpec, values []string, widths []int, fill, textColor string, bold bool) string {
 	var sb strings.Builder
 	sb.WriteString(`<w:tr>`)
 	for idx, value := range values {
@@ -325,13 +325,13 @@ func officeDOCXTableRowXML(values []string, widths []int, fill, textColor string
 		if idx < len(widths) {
 			width = widths[idx]
 		}
-		sb.WriteString(officeDOCXTableCellXML(value, width, fill, textColor, bold))
+		sb.WriteString(officeDOCXTableCellXML(value, width, fill, textColor, bold, officeDOCXTableCellAlignment(table, idx)))
 	}
 	sb.WriteString(`</w:tr>`)
 	return sb.String()
 }
 
-func officeDOCXTableCellXML(text string, width int, fill, textColor string, bold bool) string {
+func officeDOCXTableCellXML(text string, width int, fill, textColor string, bold bool, alignment string) string {
 	var sb strings.Builder
 	sb.WriteString(`<w:tc><w:tcPr><w:tcW w:w="`)
 	sb.WriteString(strconv.Itoa(width))
@@ -342,13 +342,42 @@ func officeDOCXTableCellXML(text string, width int, fill, textColor string, bold
 		sb.WriteString(`"/>`)
 	}
 	sb.WriteString(`<w:vAlign w:val="top"/></w:tcPr>`)
-	sb.WriteString(`<w:p><w:pPr><w:spacing w:after="0" w:line="260" w:lineRule="auto"/></w:pPr>`)
+	sb.WriteString(`<w:p><w:pPr><w:spacing w:after="0" w:line="260" w:lineRule="auto"/>`)
+	if wordAlignment := officeDOCXTableParagraphAlignment(alignment); wordAlignment != "" {
+		sb.WriteString(`<w:jc w:val="`)
+		sb.WriteString(wordAlignment)
+		sb.WriteString(`"/>`)
+	}
+	sb.WriteString(`</w:pPr>`)
 	sb.WriteString(officeDOCXTextRunsXML(strings.TrimSpace(text), textColor, "", bold))
 	sb.WriteString(`</w:p></w:tc>`)
 	return sb.String()
 }
 
-func officeDOCXColumnWidths(headers []string, rows [][]string) []int {
+func officeDOCXTableCellAlignment(table *officeTableSpec, columnIndex int) string {
+	if table == nil || columnIndex < 0 || columnIndex >= len(table.ColumnAlignments) {
+		return ""
+	}
+	return table.ColumnAlignments[columnIndex]
+}
+
+func officeDOCXTableParagraphAlignment(alignment string) string {
+	switch strings.ToLower(strings.TrimSpace(alignment)) {
+	case "left":
+		return "left"
+	case "center":
+		return "center"
+	case "right":
+		return "right"
+	default:
+		return ""
+	}
+}
+
+func officeDOCXColumnWidths(table *officeTableSpec, headers []string, rows [][]string) []int {
+	if widths := officeDOCXExplicitColumnWidths(table, len(headers)); len(widths) > 0 {
+		return widths
+	}
 	weights := make([]int, len(headers))
 	total := 0
 	for idx, header := range headers {
@@ -378,6 +407,49 @@ func officeDOCXColumnWidths(headers []string, rows [][]string) []int {
 			width = 1200
 		}
 		widths[idx] = width
+	}
+	return widths
+}
+
+func officeDOCXExplicitColumnWidths(table *officeTableSpec, columnCount int) []int {
+	if table == nil || columnCount <= 0 || len(table.ColumnWidths) == 0 {
+		return nil
+	}
+	totalWeight := 0.0
+	for idx := 0; idx < columnCount; idx++ {
+		weight := 1.0
+		if idx < len(table.ColumnWidths) && table.ColumnWidths[idx] > 0 {
+			weight = table.ColumnWidths[idx]
+		}
+		totalWeight += weight
+	}
+	if totalWeight <= 0 {
+		return nil
+	}
+
+	const tableWidth = 9000
+	widths := make([]int, columnCount)
+	remainingWidth := tableWidth
+	remainingWeight := totalWeight
+	for idx := range widths {
+		weight := 1.0
+		if idx < len(table.ColumnWidths) && table.ColumnWidths[idx] > 0 {
+			weight = table.ColumnWidths[idx]
+		}
+		if idx == columnCount-1 || remainingWeight <= 0 {
+			widths[idx] = remainingWidth
+		} else {
+			width := int(float64(tableWidth) * (weight / totalWeight))
+			if width < 0 {
+				width = 0
+			}
+			if width > remainingWidth {
+				width = remainingWidth
+			}
+			widths[idx] = width
+		}
+		remainingWidth -= widths[idx]
+		remainingWeight -= weight
 	}
 	return widths
 }

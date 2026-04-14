@@ -103,7 +103,10 @@ const POSIX_LOCAL_ROOT_SEGMENTS = new Set([
 ])
 
 // Title is explicitly marked as copyable by the backend (e.g. exec command)
-const isTitleCopyable = computed(() => !!(props.card as any).title_copyable)
+const isTitleCopyable = computed(() => {
+  if (!('title_copyable' in props.card)) return false
+  return props.card.title_copyable === true
+})
 
 const statusConfig = {
   success: {
@@ -1399,8 +1402,11 @@ const showEmptyState = computed(() => {
           :alt="resolvedImageItems[0]?.alt || translatedTitle || 'image'"
           class="w-full max-h-[22rem] object-contain"
           loading="lazy"
-        />
-        <div v-else class="grid grid-cols-2 gap-2 p-2">
+        >
+        <div
+          v-else
+          class="grid grid-cols-2 gap-2 p-2"
+        >
           <img
             v-for="(image, index) in resolvedImageItems"
             :key="`${image.src}-${index}`"
@@ -1408,7 +1414,7 @@ const showEmptyState = computed(() => {
             :alt="image.alt || translatedTitle || 'image'"
             class="w-full max-h-56 rounded object-contain bg-white/60 dark:bg-gray-950/40"
             loading="lazy"
-          />
+          >
         </div>
       </div>
 
@@ -1495,8 +1501,7 @@ const showEmptyState = computed(() => {
                 <pre
                   v-if="match.preview"
                   class="mt-2 overflow-x-auto rounded border border-gray-200 bg-white px-3 py-2 text-xs leading-relaxed text-gray-700 dark:border-gray-700/60 dark:bg-gray-950/50 dark:text-gray-200 font-mono whitespace-pre-wrap break-all"
-                  >{{ match.preview }}</pre
-                >
+                >{{ match.preview }}</pre>
               </div>
             </div>
           </div>
@@ -1561,7 +1566,10 @@ const showEmptyState = computed(() => {
       </div>
 
       <!-- Details -->
-      <div v-if="visibleDetails.length > 0" class="mt-2.5">
+      <div
+        v-if="visibleDetails.length > 0"
+        class="mt-2.5"
+      >
         <div
           class="rounded-md bg-gray-50 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-700/50"
         >
@@ -1591,8 +1599,7 @@ const showEmptyState = computed(() => {
                 <span class="text-gray-400 dark:text-gray-500">{{ tLabel(String(subKey)) }}</span>
                 <span
                   class="result-detail-value text-gray-700 dark:text-gray-300 font-mono max-w-[70%] break-all"
-                  >{{ toDisplayString(subVal) }}</span
-                >
+                >{{ toDisplayString(subVal) }}</span>
               </div>
             </div>
             <!-- Multiline text value (e.g. stdout) -->
@@ -1602,20 +1609,24 @@ const showEmptyState = computed(() => {
             >
               <pre
                 class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64 overflow-y-auto leading-relaxed"
-                >{{ detail.value }}</pre
-              >
+              >{{ detail.value }}</pre>
             </div>
             <!-- Link value -->
-            <div v-else-if="detail.isLink" class="flex items-center gap-1.5">
+            <div
+              v-else-if="detail.isLink"
+              class="flex items-center gap-1.5"
+            >
               <a
                 :href="String(detail.value)"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-                >{{ t('resultCard.openLink', 'Open') }} ↗</a
-              >
+              >{{ t('resultCard.openLink', 'Open') }} ↗</a>
             </div>
-            <div v-else-if="detail.isLocalPath" class="flex min-w-0 items-center gap-3">
+            <div
+              v-else-if="detail.isLocalPath"
+              class="flex min-w-0 items-center gap-3"
+            >
               <span class="min-w-0 flex-1 break-all text-gray-700 dark:text-gray-300 font-mono text-xs">
                 {{ tDetailValue(detail.label, detail.value)
                 }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template>
@@ -1628,11 +1639,12 @@ const showEmptyState = computed(() => {
               </button>
             </div>
             <!-- Simple string value -->
-            <div v-else class="flex items-center gap-1.5">
-              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs"
-                >{{ tDetailValue(detail.label, detail.value)
-                }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span
-              >
+            <div
+              v-else
+              class="flex items-center gap-1.5"
+            >
+              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs">{{ tDetailValue(detail.label, detail.value)
+              }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span>
               <button
                 v-if="detail.copyable"
                 class="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
@@ -1680,7 +1692,10 @@ const showEmptyState = computed(() => {
       </div>
 
       <!-- Actions -->
-      <div v-if="card.actions && card.actions.length > 0" class="mt-3 flex flex-wrap gap-2">
+      <div
+        v-if="card.actions && card.actions.length > 0"
+        class="mt-3 flex flex-wrap gap-2"
+      >
         <button
           v-for="action in card.actions"
           :key="action.id"
@@ -1697,7 +1712,10 @@ const showEmptyState = computed(() => {
             v-if="isActionActive(action.id)"
             class="result-action-icon-gap result-action-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
           />
-          <span v-else-if="action.icon" class="result-action-icon-gap">{{ action.icon }}</span>
+          <span
+            v-else-if="action.icon"
+            class="result-action-icon-gap"
+          >{{ action.icon }}</span>
           {{ actionButtonLabel(action) }}
         </button>
       </div>

@@ -22,7 +22,10 @@ const iconClasses = {
 </script>
 
 <template>
-  <div class="rounded-lg border p-4" :class="variantClasses[card.variant || 'default']">
+  <div
+    class="rounded-lg border p-4"
+    :class="variantClasses[card.variant || 'default']"
+  >
     <div class="flex items-start gap-3">
       <span
         v-if="card.icon"
@@ -32,7 +35,10 @@ const iconClasses = {
         {{ card.icon }}
       </span>
       <div class="flex-1 min-w-0">
-        <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white mb-1">
+        <h4
+          v-if="card.title"
+          class="font-medium text-gray-900 dark:text-white mb-1"
+        >
           {{ card.title }}
         </h4>
         <p class="text-sm text-gray-600 dark:text-gray-300 whitespace-pre-wrap">

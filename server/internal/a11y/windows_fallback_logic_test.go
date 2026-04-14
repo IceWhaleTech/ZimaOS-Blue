@@ -69,6 +69,7 @@ func TestWindowsTypeWithFocusClickFallback_ClicksBeforeSendingText(t *testing.T)
 
 	err := windowsTypeWithFocusClickFallback(
 		"hello",
+		false,
 		true,
 		100,
 		200,
@@ -106,6 +107,7 @@ func TestWindowsTypeWithFocusClickFallback_SkipsClickWhenBoundsUnavailable(t *te
 	err := windowsTypeWithFocusClickFallback(
 		"hello",
 		false,
+		false,
 		0,
 		0,
 		600,
@@ -129,6 +131,39 @@ func TestWindowsTypeWithFocusClickFallback_SkipsClickWhenBoundsUnavailable(t *te
 	}
 	if sendCalls != 1 {
 		t.Fatalf("sendCalls = %d, want 1", sendCalls)
+	}
+}
+
+func TestWindowsTypeWithFocusClickFallback_SkipsRedundantClickWhenAlreadyFocused(t *testing.T) {
+	var steps []string
+
+	err := windowsTypeWithFocusClickFallback(
+		"hello",
+		true,
+		true,
+		100,
+		200,
+		600,
+		func(int, int, int) error {
+			steps = append(steps, "click")
+			return nil
+		},
+		func() {
+			steps = append(steps, "after_focus")
+		},
+		func(value string) error {
+			if value != "hello" {
+				t.Fatalf("send value = %q, want hello", value)
+			}
+			steps = append(steps, "send")
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("windowsTypeWithFocusClickFallback() error = %v", err)
+	}
+	if strings.Join(steps, ",") != "after_focus,send" {
+		t.Fatalf("steps = %v, want after_focus,send", steps)
 	}
 }
 

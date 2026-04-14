@@ -608,7 +608,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="external-agents" data-testid="external-agents-section">
+  <div
+    class="external-agents"
+    data-testid="external-agents-section"
+  >
     <div class="external-agents__toolbar">
       <div class="external-agents__actions">
         <button
@@ -641,10 +644,16 @@ onMounted(() => {
 
     <div class="external-agents__workspace">
       <aside class="external-agents__panel external-agents__panel--sidebar">
-        <div v-if="loading" class="external-agents__empty">
+        <div
+          v-if="loading"
+          class="external-agents__empty"
+        >
           {{ t('common.loading', 'Loading') }}
         </div>
-        <div v-else-if="profiles.length === 0" class="external-agents__empty">
+        <div
+          v-else-if="profiles.length === 0"
+          class="external-agents__empty"
+        >
           <p>{{ t('settings.externalAgents.title') }}</p>
           <button
             type="button"
@@ -656,7 +665,10 @@ onMounted(() => {
             }}
           </button>
         </div>
-        <div v-else class="external-agents__profile-list">
+        <div
+          v-else
+          class="external-agents__profile-list"
+        >
           <button
             v-for="profile in profiles"
             :key="profile.id"
@@ -670,9 +682,11 @@ onMounted(() => {
             @click="selectProfile(profile.id)"
           >
             <div class="external-agents__profile-top">
-                <div class="external-agents__profile-main">
+              <div class="external-agents__profile-main">
                 <div class="external-agents__profile-heading">
-                  <h3 class="external-agents__profile-name">{{ profileDisplayTitle(profile) }}</h3>
+                  <h3 class="external-agents__profile-name">
+                    {{ profileDisplayTitle(profile) }}
+                  </h3>
                   <span
                     class="external-agents__badge external-agents__badge--protocol"
                     :class="`external-agents__badge--${profile.protocol}`"
@@ -686,7 +700,10 @@ onMounted(() => {
                 >
                   {{ profileSidebarMeta(profile) }}
                 </p>
-                <p v-if="profileSidebarSummary(profile)" class="external-agents__profile-summary">
+                <p
+                  v-if="profileSidebarSummary(profile)"
+                  class="external-agents__profile-summary"
+                >
                   {{ profileSidebarSummary(profile) }}
                 </p>
               </div>
@@ -698,8 +715,12 @@ onMounted(() => {
       <section class="external-agents__panel external-agents__panel--editor">
         <div class="external-agents__editor-head">
           <div class="external-agents__editor-copy">
-            <h4 class="external-agents__editor-title">{{ currentSelectionLabel }}</h4>
-            <p class="external-agents__editor-meta">{{ currentSelectionMeta }}</p>
+            <h4 class="external-agents__editor-title">
+              {{ currentSelectionLabel }}
+            </h4>
+            <p class="external-agents__editor-meta">
+              {{ currentSelectionMeta }}
+            </p>
           </div>
 
           <div class="external-agents__actions">
@@ -752,7 +773,10 @@ onMounted(() => {
           </div>
         </div>
 
-        <div v-if="isBuiltinSelection" class="external-agents__locked">
+        <div
+          v-if="isBuiltinSelection"
+          class="external-agents__locked"
+        >
           <div>
             <strong>{{ lockedHeadingText }}</strong>
             <p>{{ lockedHelpText }}</p>
@@ -803,7 +827,7 @@ onMounted(() => {
               class="external-agents__input"
               data-testid="external-agents-name"
               :disabled="isBuiltinSelection"
-            />
+            >
           </label>
 
           <template v-if="draft.protocol === 'acp'">
@@ -828,7 +852,7 @@ onMounted(() => {
                 data-testid="external-agents-endpoint"
                 :disabled="isBuiltinSelection"
                 placeholder="https://agent.example.com/rpc"
-              />
+              >
             </label>
 
             <label class="external-agents__field">
@@ -839,7 +863,7 @@ onMounted(() => {
                 data-testid="external-agents-card-url"
                 :disabled="isBuiltinSelection"
                 placeholder="https://agent.example.com/.well-known/agent-card.json"
-              />
+              >
             </label>
           </template>
         </div>
@@ -857,7 +881,7 @@ onMounted(() => {
                 class="external-agents__input"
                 :disabled="isBuiltinSelection"
                 @input="updateDraftTitle"
-              />
+              >
             </label>
 
             <label class="external-agents__field">
@@ -867,7 +891,7 @@ onMounted(() => {
                 class="external-agents__input"
                 :disabled="isBuiltinSelection"
                 placeholder="openai-codex"
-              />
+              >
             </label>
 
             <label class="external-agents__field external-agents__field--full">
@@ -876,7 +900,7 @@ onMounted(() => {
                 v-model="draft.description"
                 class="external-agents__input"
                 :disabled="isBuiltinSelection"
-              />
+              >
             </label>
 
             <template v-if="draft.protocol === 'acp'">
@@ -887,7 +911,7 @@ onMounted(() => {
                   class="external-agents__input"
                   :disabled="isBuiltinSelection"
                   placeholder="/workspace/project"
-                />
+                >
               </label>
 
               <label class="external-agents__field">
@@ -897,7 +921,7 @@ onMounted(() => {
                   class="external-agents__input"
                   :disabled="isBuiltinSelection"
                   placeholder="oauth"
-                />
+                >
               </label>
 
               <label class="external-agents__field external-agents__field--full">
@@ -906,7 +930,7 @@ onMounted(() => {
                   v-model="draft.envText"
                   class="external-agents__textarea"
                   :disabled="isBuiltinSelection"
-                  placeholder='{&#10;  "LOG_LEVEL": "debug"&#10;}'
+                  placeholder="{&#10;  &quot;LOG_LEVEL&quot;: &quot;debug&quot;&#10;}"
                 />
               </label>
             </template>
@@ -918,7 +942,7 @@ onMounted(() => {
                   v-model="draft.headersText"
                   class="external-agents__textarea"
                   :disabled="isBuiltinSelection"
-                  placeholder='{&#10;  "Authorization": "Bearer ..."&#10;}'
+                  placeholder="{&#10;  &quot;Authorization&quot;: &quot;Bearer ...&quot;&#10;}"
                 />
               </label>
             </template>
@@ -929,7 +953,7 @@ onMounted(() => {
                 v-model="draft.id"
                 class="external-agents__input"
                 :disabled="isBuiltinSelection"
-              />
+              >
             </label>
 
             <label
@@ -941,7 +965,7 @@ onMounted(() => {
                 v-model="draft.metadataText"
                 class="external-agents__textarea"
                 :disabled="isBuiltinSelection"
-                placeholder='{&#10;  "team": "blue"&#10;}'
+                placeholder="{&#10;  &quot;team&quot;: &quot;blue&quot;&#10;}"
               />
             </label>
           </div>

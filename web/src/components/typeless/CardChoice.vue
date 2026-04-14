@@ -79,14 +79,26 @@ function emitSelection() {
       v-if="card.title || card.description"
       class="px-4 py-3 border-b border-gray-200 dark:border-gray-700"
     >
-      <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white">
+      <h4
+        v-if="card.title"
+        class="font-medium text-gray-900 dark:text-white"
+      >
         {{ card.title }}
-        <span v-if="card.required" class="choice-inline-gap text-red-500">*</span>
+        <span
+          v-if="card.required"
+          class="choice-inline-gap text-red-500"
+        >*</span>
       </h4>
-      <p v-if="card.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+      <p
+        v-if="card.description"
+        class="mt-1 text-sm text-gray-500 dark:text-gray-400"
+      >
         {{ card.description }}
       </p>
-      <p v-if="card.multiple" class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+      <p
+        v-if="card.multiple"
+        class="mt-1 text-xs text-gray-400 dark:text-gray-500"
+      >
         ({{ t('common.selectMultipleOptions', 'Select multiple options') }})
       </p>
     </div>
@@ -134,17 +146,28 @@ function emitSelection() {
           </svg>
         </div>
 
-        <span v-if="option.icon" class="flex-shrink-0 text-xl">{{ option.icon }}</span>
+        <span
+          v-if="option.icon"
+          class="flex-shrink-0 text-xl"
+        >{{ option.icon }}</span>
 
         <div class="flex-1 min-w-0">
-          <p class="font-medium text-gray-900 dark:text-white">{{ option.label }}</p>
-          <p v-if="option.description" class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
+          <p class="font-medium text-gray-900 dark:text-white">
+            {{ option.label }}
+          </p>
+          <p
+            v-if="option.description"
+            class="mt-0.5 text-sm text-gray-500 dark:text-gray-400"
+          >
             {{ option.description }}
           </p>
         </div>
       </button>
 
-      <div v-if="card.allowOther" class="space-y-2">
+      <div
+        v-if="card.allowOther"
+        class="space-y-2"
+      >
         <button
           class="choice-option-button w-full p-3 rounded-lg border-2 transition-all flex items-start gap-3 disabled:cursor-wait"
           :class="{
@@ -187,7 +210,10 @@ function emitSelection() {
           }}</span>
         </button>
 
-        <div v-if="otherSelected" class="choice-other-input">
+        <div
+          v-if="otherSelected"
+          class="choice-other-input"
+        >
           <input
             v-model="otherText"
             type="text"
@@ -197,7 +223,7 @@ function emitSelection() {
             class="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-900 dark:focus:ring-gray-400 focus:border-transparent disabled:opacity-60 disabled:cursor-wait"
             :disabled="isSubmitting"
             @input="handleOtherInput"
-          />
+          >
         </div>
       </div>
     </div>

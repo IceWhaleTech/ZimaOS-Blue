@@ -1,10 +1,16 @@
 <template>
   <div class="voice-pack-manager">
     <h3>{{ t('speech.languagePacks') }}</h3>
-    <p class="description">{{ t('speech.voicePackManager.description') }}</p>
+    <p class="description">
+      {{ t('speech.voicePackManager.description') }}
+    </p>
 
     <div class="pack-list">
-      <div v-for="pack in packs" :key="pack.language" class="pack-item">
+      <div
+        v-for="pack in packs"
+        :key="pack.language"
+        class="pack-item"
+      >
         <div class="pack-info">
           <span class="pack-name">{{ pack.name }}</span>
           <span class="pack-size">{{ pack.size_kb }} KB</span>
@@ -17,13 +23,21 @@
         >
           {{ loading ? t('common.downloading') : t('common.download') }}
         </button>
-        <button v-else :disabled="loading" class="btn-delete" @click="deletePack(pack.language)">
+        <button
+          v-else
+          :disabled="loading"
+          class="btn-delete"
+          @click="deletePack(pack.language)"
+        >
           {{ t('common.delete') }}
         </button>
       </div>
     </div>
 
-    <div v-if="error" class="error-message">
+    <div
+      v-if="error"
+      class="error-message"
+    >
       {{ error }}
     </div>
   </div>

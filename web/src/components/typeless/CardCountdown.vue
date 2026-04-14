@@ -54,21 +54,34 @@ function padZero(num: number): string {
     :class="{ 'p-4': card.variant === 'compact', 'p-6': card.variant !== 'compact' }"
   >
     <!-- Title -->
-    <h4 v-if="card.title" class="font-medium text-gray-900 dark:text-white text-center mb-4">
+    <h4
+      v-if="card.title"
+      class="font-medium text-gray-900 dark:text-white text-center mb-4"
+    >
       {{ card.title }}
     </h4>
 
     <!-- Expired state -->
-    <div v-if="timeLeft.expired" class="text-center py-4">
+    <div
+      v-if="timeLeft.expired"
+      class="text-center py-4"
+    >
       <p class="text-2xl font-bold text-gray-900 dark:text-white">
         {{ t('countdownCard.expired', "Time's up!") }}
       </p>
     </div>
 
     <!-- Countdown display -->
-    <div v-else class="flex justify-center gap-3" :class="{ 'gap-2': card.variant === 'compact' }">
+    <div
+      v-else
+      class="flex justify-center gap-3"
+      :class="{ 'gap-2': card.variant === 'compact' }"
+    >
       <!-- Days -->
-      <div v-if="showDays" class="text-center">
+      <div
+        v-if="showDays"
+        class="text-center"
+      >
         <div
           class="bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center font-mono font-bold text-gray-900 dark:text-white"
           :class="{
@@ -85,12 +98,18 @@ function padZero(num: number): string {
       </div>
 
       <!-- Separator -->
-      <div v-if="showDays && showHours" class="flex items-center text-2xl text-gray-400 font-bold">
+      <div
+        v-if="showDays && showHours"
+        class="flex items-center text-2xl text-gray-400 font-bold"
+      >
         :
       </div>
 
       <!-- Hours -->
-      <div v-if="showHours" class="text-center">
+      <div
+        v-if="showHours"
+        class="text-center"
+      >
         <div
           class="bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center font-mono font-bold text-gray-900 dark:text-white"
           :class="{
@@ -115,7 +134,10 @@ function padZero(num: number): string {
       </div>
 
       <!-- Minutes -->
-      <div v-if="showMinutes" class="text-center">
+      <div
+        v-if="showMinutes"
+        class="text-center"
+      >
         <div
           class="bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center font-mono font-bold text-gray-900 dark:text-white"
           :class="{
@@ -140,7 +162,10 @@ function padZero(num: number): string {
       </div>
 
       <!-- Seconds -->
-      <div v-if="showSeconds" class="text-center">
+      <div
+        v-if="showSeconds"
+        class="text-center"
+      >
         <div
           class="bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center font-mono font-bold text-gray-900 dark:text-white"
           :class="{
@@ -158,7 +183,10 @@ function padZero(num: number): string {
     </div>
 
     <!-- Description -->
-    <p v-if="card.description" class="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center">
+    <p
+      v-if="card.description"
+      class="mt-4 text-sm text-gray-500 dark:text-gray-400 text-center"
+    >
       {{ card.description }}
     </p>
   </div>
