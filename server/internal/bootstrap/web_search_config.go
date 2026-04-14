@@ -7,6 +7,9 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
+// buildWebSearchConfig maps config.yaml web_search settings into the tools layer.
+// The ProviderSettings map is generic and propagates any provider key, including
+// "tavily" — no code changes are needed here to support new providers.
 func buildWebSearchConfig(cfg *config.Config) tools.WebSearchConfig {
 	if cfg == nil {
 		return tools.WebSearchConfig{}

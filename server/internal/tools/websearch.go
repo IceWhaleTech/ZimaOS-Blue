@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -44,7 +45,7 @@ const (
 // WebSearchConfig holds configuration for the web search tool.
 type WebSearchConfig struct {
 	// Provider specifies the search provider to use.
-	// Supported: "duckduckgo", "bing", "searxng", "brave"
+	// Supported: "duckduckgo", "bing", "searxng", "brave", "tavily"
 	Provider string
 
 	// Providers specifies a prioritized provider list for fallback (high availability).
@@ -109,6 +110,12 @@ type WebSearchTool struct {
 	inFlight   map[string]*inflightWebSearchCall
 	retryMax   int
 	retrySleep func(context.Context, time.Duration) error
+}
+
+// SetHTTPClientForTest overrides the HTTP client used by this tool.
+// Intended for use in tests outside this package.
+func (w *WebSearchTool) SetHTTPClientForTest(c *http.Client) {
+	w.httpClient = c
 }
 
 type webSearchCacheEntry struct {
@@ -440,6 +447,8 @@ func (w *WebSearchTool) searchWithProviderOnce(ctx context.Context, provider, qu
 		return w.searchSearXNG(ctx, query, maxResults)
 	case "brave":
 		return w.searchBrave(ctx, query, maxResults)
+	case "tavily":
+		return w.searchTavily(ctx, query, maxResults)
 	default:
 		return nil, fmt.Errorf("unsupported search provider: %s", provider)
 	}
@@ -1431,6 +1440,71 @@ func (w *WebSearchTool) searchBrave(ctx context.Context, query string, maxResult
 		Results:    results,
 		TotalCount: len(results),
 		Provider:   "brave",
+	}, nil
+}
+
+func (w *WebSearchTool) searchTavily(ctx context.Context, query string, maxResults int) (*WebSearchResponse, error) {
+	apiKey := w.apiKeyForProvider("tavily")
+	if apiKey == "" {
+		return nil, errors.New("Tavily API key is required")
+	}
+
+	bodyMap := map[string]interface{}{
+		"api_key":      apiKey,
+		"query":        query,
+		"max_results":  maxResults,
+		"search_depth": "basic",
+	}
+
+	bodyBytes, err := json.Marshal(bodyMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.tavily.com/search", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := w.httpClient.Do(req)
+	if err != nil {
+		return nil, wrapWebSearchTransportError(err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, newWebSearchHTTPStatusError(resp.StatusCode, readWebSearchErrorBody(resp.Body))
+	}
+
+	var tavilyResp struct {
+		Results []struct {
+			Title   string `json:"title"`
+			URL     string `json:"url"`
+			Content string `json:"content"`
+		} `json:"results"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&tavilyResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	var results []WebSearchResult
+	for _, r := range tavilyResp.Results {
+		results = append(results, WebSearchResult{
+			Title:       r.Title,
+			URL:         r.URL,
+			Description: r.Content,
+		})
+	}
+
+	return &WebSearchResponse{
+		Query:      query,
+		Results:    results,
+		TotalCount: len(results),
+		Provider:   "tavily",
 	}, nil
 }
 

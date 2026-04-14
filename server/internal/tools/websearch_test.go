@@ -1177,3 +1177,104 @@ func TestWebSearchConfig_Defaults(t *testing.T) {
 		t.Errorf("expected default browser fallback retries 1, got %d", tool.config.BrowserFallback.MaxBrowserRetries)
 	}
 }
+
+func TestWebSearchTool_Tavily(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			t.Fatalf("expected POST, got %s", r.Method)
+		}
+
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+		if body["api_key"] != "test-tavily-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		response := map[string]interface{}{
+			"results": []map[string]interface{}{
+				{
+					"title":   "Tavily Result 1",
+					"url":     "https://example.com/tavily/1",
+					"content": "Tavily content snippet 1",
+				},
+				{
+					"title":   "Tavily Result 2",
+					"url":     "https://example.com/tavily/2",
+					"content": "Tavily content snippet 2",
+				},
+			},
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	// Test without API key — should fail.
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider: "tavily",
+	})
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query": "test",
+	})
+	if err == nil {
+		t.Error("expected error without API key")
+	}
+
+	// Test with stubbed server.
+	serverURL, _ := url.Parse(server.URL)
+	tool = NewWebSearchTool(WebSearchConfig{
+		Provider:   "tavily",
+		MaxResults: 5,
+		Timeout:    5 * time.Second,
+		ProviderSettings: map[string]WebSearchProviderSetting{
+			"tavily": {
+				APIKey: "test-tavily-key",
+			},
+		},
+	})
+	tool.httpClient = &http.Client{
+		Transport: rewriteHostTransport{
+			host:   serverURL.Host,
+			scheme: serverURL.Scheme,
+		},
+	}
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":  "test query",
+		"format": "json",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	raw, ok := result.(string)
+	if !ok {
+		t.Fatalf("expected string result, got %T", result)
+	}
+
+	var resp WebSearchResponse
+	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if resp.Provider != "tavily" {
+		t.Errorf("expected provider 'tavily', got %q", resp.Provider)
+	}
+	if len(resp.Results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(resp.Results))
+	}
+	if resp.Results[0].Title != "Tavily Result 1" {
+		t.Errorf("unexpected title: %q", resp.Results[0].Title)
+	}
+	if resp.Results[0].Description != "Tavily content snippet 1" {
+		t.Errorf("unexpected description: %q", resp.Results[0].Description)
+	}
+	if resp.Results[1].URL != "https://example.com/tavily/2" {
+		t.Errorf("unexpected URL: %q", resp.Results[1].URL)
+	}
+}
