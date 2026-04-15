@@ -10,45 +10,55 @@ import (
 )
 
 type a11yCompatBackend struct {
-	capabilities         a11yruntime.CapabilitiesResult
-	windows              []a11yruntime.WindowInfo
-	snapshotResult       a11yruntime.SnapshotResult
-	interactiveResult    a11yruntime.SnapshotResult
-	interactiveResults   []a11yruntime.SnapshotResult
-	snapshotErr          error
-	focusResultWindowID  string
-	scrollResultWindowID string
-	keyResultWindowID    string
-	screenshotResultID   string
-	lastFocusWindowID    string
-	lastSnapshotWindowID string
+	capabilities          a11yruntime.CapabilitiesResult
+	windows               []a11yruntime.WindowInfo
+	windowsResults        [][]a11yruntime.WindowInfo
+	allWindows            []a11yruntime.WindowInfo
+	allWindowsResults     [][]a11yruntime.WindowInfo
+	snapshotResult        a11yruntime.SnapshotResult
+	interactiveResult     a11yruntime.SnapshotResult
+	interactiveResults    []a11yruntime.SnapshotResult
+	snapshotErr           error
+	focusResultWindowID   string
+	scrollResultWindowID  string
+	keyResultWindowID     string
+	screenshotResultID    string
+	lastFocusWindowID     string
+	lastSnapshotWindowID  string
 	snapshotWindowHistory []string
-	lastActWindowID      string
-	lastActRef           int
-	lastActType          string
-	lastActValue         string
-	lastActHoldMS        int
-	lastActRefMap        map[int]string
-	actTypeHistory       []string
-	actRefHistory        []int
-	lastScrollWindowID   string
-	lastScrollDirection  string
-	lastScrollLines      int
-	lastPointerMoveX     int
-	lastPointerMoveY     int
-	lastKeyWindowID      string
-	lastKeys             []string
-	lastKeyHoldMS        int
-	keyHistory           [][]string
-	lastScreenshotWindow string
-	actExecutionMode     string
-	scrollExecutionMode  string
-	keyExecutionMode     string
-	screenshotImagePath  string
-	actCalls             int
-	interactiveCalls     int
-	actErrorsByType      map[string]error
-	keyErrorsByChord     map[string]error
+	lastActWindowID       string
+	lastActRef            int
+	lastActType           string
+	lastActValue          string
+	lastActHoldMS         int
+	lastActRefMap         map[int]string
+	actTypeHistory        []string
+	actRefHistory         []int
+	lastScrollWindowID    string
+	lastScrollDirection   string
+	lastScrollLines       int
+	lastPointerMoveX      int
+	lastPointerMoveY      int
+	lastKeyWindowID       string
+	lastKeys              []string
+	lastKeyHoldMS         int
+	keyHistory            [][]string
+	lastScreenshotWindow  string
+	actExecutionMode      string
+	scrollExecutionMode   string
+	keyExecutionMode      string
+	screenshotImagePath   string
+	actResultSet          bool
+	actResult             a11yruntime.ActionResult
+	actCalls              int
+	interactiveCalls      int
+	listWindowsCalls      int
+	listAllWindowsCalls   int
+	activateAppCalls      []string
+	activateAppResult     a11yruntime.ActionResult
+	activateAppErrs       map[string]error
+	actErrorsByType       map[string]error
+	keyErrorsByChord      map[string]error
 }
 
 type a11yBrowserCompatBackend struct {
@@ -89,15 +99,52 @@ func (b *a11yCompatBackend) Capabilities(context.Context) (a11yruntime.Capabilit
 }
 
 func (b *a11yCompatBackend) ListWindows(context.Context) ([]a11yruntime.WindowInfo, error) {
+	b.listWindowsCalls++
+	if len(b.windowsResults) > 0 {
+		result := b.windowsResults[0]
+		b.windowsResults = b.windowsResults[1:]
+		return append([]a11yruntime.WindowInfo(nil), result...), nil
+	}
 	if len(b.windows) == 0 {
 		return []a11yruntime.WindowInfo{{ID: "win-1", Title: "Example", Focused: true}}, nil
 	}
 	return b.windows, nil
 }
 
+func (b *a11yCompatBackend) ListAllWindows(context.Context) ([]a11yruntime.WindowInfo, error) {
+	b.listAllWindowsCalls++
+	if len(b.allWindowsResults) > 0 {
+		result := b.allWindowsResults[0]
+		b.allWindowsResults = b.allWindowsResults[1:]
+		return append([]a11yruntime.WindowInfo(nil), result...), nil
+	}
+	if len(b.allWindows) == 0 {
+		return nil, nil
+	}
+	return append([]a11yruntime.WindowInfo(nil), b.allWindows...), nil
+}
+
 func (b *a11yCompatBackend) FocusWindow(_ context.Context, windowID string) (a11yruntime.ActionResult, error) {
 	b.lastFocusWindowID = windowID
 	return a11yruntime.ActionResult{WindowID: b.focusResultWindowID, ExecutionMode: "semantic", Message: "focused"}, nil
+}
+
+func (b *a11yCompatBackend) ActivateApp(_ context.Context, appName string) (a11yruntime.ActionResult, error) {
+	b.activateAppCalls = append(b.activateAppCalls, appName)
+	if err := b.activateAppErrs[appName]; err != nil {
+		return a11yruntime.ActionResult{}, err
+	}
+	result := b.activateAppResult
+	if strings.TrimSpace(result.HostOS) == "" {
+		result.HostOS = "darwin"
+	}
+	if strings.TrimSpace(result.ExecutionMode) == "" {
+		result.ExecutionMode = "automation"
+	}
+	if strings.TrimSpace(result.Message) == "" {
+		result.Message = "Application activated"
+	}
+	return result, nil
 }
 
 func (b *a11yCompatBackend) Snapshot(_ context.Context, windowID string) (a11yruntime.SnapshotResult, error) {
@@ -157,6 +204,22 @@ func (b *a11yCompatBackend) Act(_ context.Context, windowID string, ref int, ref
 	b.actCalls++
 	if err := b.actErrorsByType[actType]; err != nil {
 		return a11yruntime.ActionResult{}, err
+	}
+	if b.actResultSet {
+		result := b.actResult
+		if strings.TrimSpace(result.WindowID) == "" {
+			result.WindowID = windowID
+		}
+		if strings.TrimSpace(result.HostOS) == "" {
+			result.HostOS = "darwin"
+		}
+		if strings.TrimSpace(result.Message) == "" {
+			result.Message = "ok"
+		}
+		if strings.TrimSpace(result.ExecutionMode) == "" {
+			result.ExecutionMode = "semantic"
+		}
+		return result, nil
 	}
 	mode := b.actExecutionMode
 	if mode == "" {
@@ -349,9 +412,9 @@ func TestA11yDefinition_UsesCompactParamsEnvelope(t *testing.T) {
 	if _, ok := props["params"]; !ok {
 		t.Fatal("expected params property in a11y schema")
 	}
-	for _, legacy := range []string{"ref", "act_type", "value", "direction", "keys"} {
-		if _, ok := props[legacy]; ok {
-			t.Fatalf("did not expect legacy %q in a11y schema", legacy)
+	for _, key := range []string{"ref", "target_name", "target_role", "act_type", "value"} {
+		if _, ok := props[key]; !ok {
+			t.Fatalf("expected %q in a11y schema for top-level compatibility", key)
 		}
 	}
 }
@@ -1355,6 +1418,81 @@ func TestA11yToolExecute_ActForwardsHoldMS(t *testing.T) {
 	}
 }
 
+func TestA11yToolExecute_ActIncludesTelemetryFieldsWhenVerificationFails(t *testing.T) {
+	backend := &a11yCompatBackend{
+		snapshotResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-telemetry",
+			Title:    "Telemetry",
+			Tree:     "@1 [input] \"Composer\"",
+			RefMap:   map[int]string{1: "token-input"},
+		},
+		actResult: a11yruntime.ActionResult{
+			HostOS:             "darwin",
+			WindowID:           "win-telemetry",
+			ExecutionMode:      "input",
+			Intent:             "message",
+			TargetHit:          false,
+			VerificationPassed: false,
+			VerificationMethod: "ocr",
+			InputMethod:        "clipboard",
+			Fallbacks:          []string{"set_value", "clipboard", "verify_failed"},
+			OverlayMode:        "mask",
+			Message:            "Host action completed",
+		},
+		actResultSet: true,
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "snapshot",
+		"window_id": "win-telemetry",
+	}); err != nil {
+		t.Fatalf("snapshot error = %v", err)
+	}
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "act",
+		"params": map[string]interface{}{
+			"ref":      "@1",
+			"act_type": "type",
+			"intent":   "message",
+			"value":    "hello",
+		},
+	})
+	if err != nil {
+		t.Fatalf("act Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["intent"]; got != "message" {
+		t.Fatalf("intent = %v, want message", got)
+	}
+	if got, ok := out["target_hit"]; !ok || got != false {
+		t.Fatalf("target_hit = %#v (present=%v), want false", got, ok)
+	}
+	if got, ok := out["verification_passed"]; !ok || got != false {
+		t.Fatalf("verification_passed = %#v (present=%v), want false", got, ok)
+	}
+	if got := out["verification_method"]; got != "ocr" {
+		t.Fatalf("verification_method = %v, want ocr", got)
+	}
+	if got := out["input_method"]; got != "clipboard" {
+		t.Fatalf("input_method = %v, want clipboard", got)
+	}
+	if got := out["overlay_mode"]; got != "mask" {
+		t.Fatalf("overlay_mode = %v, want mask", got)
+	}
+	fallbacks, ok := out["fallbacks"].([]interface{})
+	if !ok || len(fallbacks) != 3 {
+		t.Fatalf("fallbacks = %#v, want 3 entries", out["fallbacks"])
+	}
+}
+
 func TestA11yToolExecute_KeyDefaultsAndForwardsHoldMS(t *testing.T) {
 	backend := &a11yCompatBackend{}
 	tool := NewA11yTool()
@@ -1703,6 +1841,170 @@ func TestA11yToolExecute_BrowserKeySupportsSingleChordString(t *testing.T) {
 	}
 	if out["surface"] != "browser" {
 		t.Fatalf("surface = %v, want browser", out["surface"])
+	}
+}
+
+func TestA11yToolExecute_FocusUsesAllWindowsFallbackWhenWindowIsOnAnotherSpace(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windowsResults: [][]a11yruntime.WindowInfo{
+			{},
+		},
+		allWindows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "飞书", AppName: "飞书"},
+		},
+		focusResultWindowID: "win-feishu",
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "focus",
+		"app_name": "Feishu,飞书,Lark",
+	})
+	if err != nil {
+		t.Fatalf("focus Execute() error = %v", err)
+	}
+	if backend.lastFocusWindowID != "win-feishu" {
+		t.Fatalf("lastFocusWindowID = %q, want win-feishu", backend.lastFocusWindowID)
+	}
+	if backend.listWindowsCalls != 1 {
+		t.Fatalf("listWindowsCalls = %d, want 1", backend.listWindowsCalls)
+	}
+	if backend.listAllWindowsCalls != 1 {
+		t.Fatalf("listAllWindowsCalls = %d, want 1", backend.listAllWindowsCalls)
+	}
+	if len(backend.activateAppCalls) != 0 {
+		t.Fatalf("activateAppCalls = %v, want no app activation fallback", backend.activateAppCalls)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["window_id"] != "win-feishu" {
+		t.Fatalf("window_id = %v, want win-feishu", out["window_id"])
+	}
+}
+
+func TestA11yToolExecute_ActionSelectActivatesAppWhenWindowIsNotYetVisible(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windowsResults: [][]a11yruntime.WindowInfo{
+			{},
+			{
+				{ID: "win-feishu", Title: "Lark - Orca", AppName: "Lark", Focused: true},
+			},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Lark - Orca",
+			Tree:     "@1 [list_item] \"Orca\"",
+			RefMap: map[int]string{
+				1: "token-orca-conversation",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+	}); err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if len(backend.activateAppCalls) == 0 {
+		t.Fatal("activateAppCalls = 0, want activation fallback")
+	}
+	if backend.lastActWindowID != "win-feishu" {
+		t.Fatalf("lastActWindowID = %q, want win-feishu", backend.lastActWindowID)
+	}
+	if backend.lastActRef != 1 {
+		t.Fatalf("lastActRef = %d, want 1", backend.lastActRef)
+	}
+}
+
+func TestA11yToolExecute_ActionSelectUsesAllWindowsFallbackWhenWindowIsOnAnotherSpace(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windowsResults: [][]a11yruntime.WindowInfo{
+			{},
+		},
+		allWindows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "飞书", AppName: "飞书"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "飞书",
+			Tree:     "@1 [list_item] \"Orca\"",
+			RefMap: map[int]string{
+				1: "token-orca-conversation",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+	}); err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if backend.lastActWindowID != "win-feishu" {
+		t.Fatalf("lastActWindowID = %q, want win-feishu", backend.lastActWindowID)
+	}
+	if backend.lastActRef != 1 {
+		t.Fatalf("lastActRef = %d, want 1", backend.lastActRef)
+	}
+	if backend.listAllWindowsCalls != 1 {
+		t.Fatalf("listAllWindowsCalls = %d, want 1", backend.listAllWindowsCalls)
+	}
+}
+
+func TestA11yToolExecute_SnapshotActivatesAppWhenWindowIsNotYetVisible(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windowsResults: [][]a11yruntime.WindowInfo{
+			{},
+			{
+				{ID: "win-feishu", Title: "Lark - Orca", AppName: "Lark", Focused: true},
+			},
+		},
+		snapshotResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Lark - Orca",
+			Tree:     "@1 [document]",
+			RefMap: map[int]string{
+				1: "token-editor",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "snapshot",
+		"app_name": "Feishu,飞书,Lark",
+	})
+	if err != nil {
+		t.Fatalf("snapshot Execute() error = %v", err)
+	}
+	if len(backend.activateAppCalls) == 0 {
+		t.Fatal("activateAppCalls = 0, want activation fallback")
+	}
+	if backend.lastSnapshotWindowID != "win-feishu" {
+		t.Fatalf("lastSnapshotWindowID = %q, want win-feishu", backend.lastSnapshotWindowID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["window_id"] != "win-feishu" {
+		t.Fatalf("window_id = %v, want win-feishu", out["window_id"])
 	}
 }
 

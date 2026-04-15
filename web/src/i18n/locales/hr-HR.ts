@@ -349,8 +349,8 @@ export default mergeHarnessLocale('hr-HR', {
     workspaceLoadFailed: 'Učitavanje pojedinosti radnog prostora nije uspjelo',
     workspaceFilesLoadFailed: 'Učitavanje datoteka radnog prostora nije uspjelo',
     workspaceOpenFailed: 'Nije moguće otvoriti radni prostor u upravitelju datoteka',
-    workspaceCoreTab: 'Osnovne datoteke radnog prostora',
-    workspaceGeneratedTab: 'Izvori datoteka',
+    workspaceCoreTab: 'Datoteke glavnog konteksta',
+    workspaceGeneratedTab: 'Datoteke radnog prostora',
     workspaceGeneratedTitle: 'Stablo direktorija radnog prostora',
     workspaceGeneratedDescription:
       'Prikaži stvarne direktorije i datoteke s hijerarhijom i poveži generirane datoteke s izvornim razgovorima kada su dostupni.',
@@ -699,6 +699,9 @@ export default mergeHarnessLocale('hr-HR', {
       expand: 'Proširi popis obveza',
       collapse: 'Sažmi popis obveza',
       jumpToMessage: 'Skoči na poruku popisa za provjeru',
+    },
+    todoChecklist: {
+      progress: '{completed} od {total} zadataka dovršeno',
     },
     send: 'Pošalji',
     sendDuringStream: 'Pošalji (dodaj u razgovor)',
@@ -1558,7 +1561,7 @@ export default mergeHarnessLocale('hr-HR', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Datoteke radnog prostora',
+    title: 'Datoteke glavnog konteksta',
     description: 'Ove datoteke definiraju osobnost, pamćenje i ponašanje Bluea.',
     saved: '{name} spremljeno',
     noFiles: 'Nisu pronađene datoteke radnog prostora.',

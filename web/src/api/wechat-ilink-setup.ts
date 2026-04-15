@@ -10,17 +10,30 @@ export interface WeChatILinkSetupSessionResponse {
   message?: string
 }
 
+const channelAPIConfig = {
+  baseURL: '/api',
+  validateStatus: () => true,
+}
+
 export function createWeChatILinkSetupSession() {
-  return api.post<WeChatILinkSetupSessionResponse>('/channels/wechat_ilink/setup/session')
+  return api.post<WeChatILinkSetupSessionResponse>(
+    '/channels/wechat_ilink/setup/session',
+    undefined,
+    channelAPIConfig
+  )
 }
 
 export function getWeChatILinkSetupSession(sessionId: string) {
-  return api.get<WeChatILinkSetupSessionResponse>(`/channels/wechat_ilink/setup/session/${sessionId}`)
+  return api.get<WeChatILinkSetupSessionResponse>(
+    `/channels/wechat_ilink/setup/session/${sessionId}`,
+    channelAPIConfig
+  )
 }
 
 export function completeWeChatILinkSetupSession(sessionId: string, pairingPayload: unknown) {
   return api.post<WeChatILinkSetupSessionResponse>(
     `/channels/wechat_ilink/setup/session/${sessionId}/complete`,
-    { pairing_payload: pairingPayload }
+    { pairing_payload: pairingPayload },
+    channelAPIConfig
   )
 }

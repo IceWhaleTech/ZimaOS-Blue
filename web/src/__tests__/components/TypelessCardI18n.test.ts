@@ -8,8 +8,10 @@ import CardAccordion from '@/components/typeless/CardAccordion.vue'
 import CardChoice from '@/components/typeless/CardChoice.vue'
 import CardCountdown from '@/components/typeless/CardCountdown.vue'
 import CardFile from '@/components/typeless/CardFile.vue'
+import CardResult from '@/components/typeless/CardResult.vue'
 import FullscreenModal from '@/components/typeless/FullscreenModal.vue'
 import { fullscreenContent, isFullscreen } from '@/composables/useFullscreen'
+import { mergeHarnessLocale as mergeRuntimeHarnessLocale } from '@/i18n/harness-locale-additions'
 
 function createTestI18n(locale = 'zh-CN') {
   return createI18n({
@@ -165,6 +167,58 @@ describe('Typeless card i18n', () => {
 
     const input = wrapper.find('input')
     expect(input.exists()).toBe(false)
+  })
+
+  it('localizes ask result detail labels at render time', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'ask',
+          status: 'success',
+          details: [
+            { label: 'q', value: '你想怎么做？' },
+            { label: 'o', value: '方案 A / 方案 B' },
+            { label: 'a', value: '方案 A' },
+          ],
+        },
+      },
+      global: {
+        plugins: [
+          createI18n({
+            legacy: false,
+            locale: 'zh-CN',
+            fallbackLocale: 'en-US',
+            messages: {
+              'en-US': mergeRuntimeHarnessLocale('en-US', {
+                common: {
+                  yes: 'Yes',
+                  no: 'No',
+                },
+                resultCard: {
+                  labels: {},
+                },
+              }),
+              'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+                common: {
+                  yes: '是',
+                  no: '否',
+                },
+                resultCard: {
+                  labels: {},
+                },
+              }),
+            },
+          }),
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('问题')
+    expect(wrapper.text()).toContain('选项')
+    expect(wrapper.text()).toContain('回答')
+    expect(wrapper.text()).not.toContain('\nq\n')
+    expect(wrapper.text()).not.toContain('\no\n')
   })
 
   it('localizes thinking accordion header', () => {

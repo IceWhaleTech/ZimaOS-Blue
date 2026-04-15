@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '@/stores/settings'
 import { channelsApi } from '@/api/channels'
 import { getChannelIconOrDefault, getChannelIconStyleVars } from '@/utils/channelIcons'
+import { getErrorMessage } from '@/utils/error'
 import { publicAsset } from '@/utils/publicAsset'
 import ChannelCard from '@/components/channels/ChannelCard.vue'
 import ChannelCardShell from '@/components/channels/ChannelCardShell.vue'
@@ -1521,8 +1522,8 @@ async function refreshWeChatILinkSetupSession(sessionId: string) {
         await loadChannelConfigs()
       }
     }
-  } catch {
-    wechatILinkSetupError.value = t('channels.wechatILinkSetupLoadFailed')
+  } catch (error) {
+    wechatILinkSetupError.value = getErrorMessage(error) || t('channels.wechatILinkSetupLoadFailed')
     stopWeChatILinkSetupPolling()
   }
 }
@@ -1546,8 +1547,9 @@ async function startWeChatILinkSetup() {
       if (!wechatILinkSetupSession.value?.session_id) return
       void refreshWeChatILinkSetupSession(wechatILinkSetupSession.value.session_id)
     }, 1500)
-  } catch {
-    wechatILinkSetupError.value = t('channels.wechatILinkSetupCreateFailed')
+  } catch (error) {
+    wechatILinkSetupError.value =
+      getErrorMessage(error) || t('channels.wechatILinkSetupCreateFailed')
   } finally {
     wechatILinkSetupPending.value = false
   }

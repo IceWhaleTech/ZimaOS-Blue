@@ -12,7 +12,7 @@ func TestResolveA11yWindowTarget_PrefersExplicitIDMatch(t *testing.T) {
 		{ID: "win-2", Title: "Code", AppName: "Code"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("win-2", "", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("win-2", "", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -27,7 +27,7 @@ func TestResolveA11yWindowTarget_UsesUniqueExactWindowTitle(t *testing.T) {
 		{ID: "win-2", Title: "Feishu", AppName: "Feishu"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "  feishu  ", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "  feishu  ", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -42,7 +42,7 @@ func TestResolveA11yWindowTarget_UsesUniqueExactAppName(t *testing.T) {
 		{ID: "win-2", Title: "Code", AppName: "Code"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "", "feishu", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "", "feishu", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -57,7 +57,7 @@ func TestResolveA11yWindowTarget_UsesUniqueFuzzyWindowTitleAcrossAliasTerms(t *t
 		{ID: "win-2", Title: "Lark - Orca", AppName: "Lark"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "Feishu，飞书，Lark", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "Feishu，飞书，Lark", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -72,7 +72,7 @@ func TestResolveA11yWindowTarget_UsesUniqueFuzzyWindowTitleAcrossSpaceSeparatedA
 		{ID: "win-2", Title: "Lark - Orca", AppName: "Lark"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "Feishu 飞书 Lark", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "Feishu 飞书 Lark", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -87,7 +87,7 @@ func TestResolveA11yWindowTarget_UsesUniqueFuzzyAppNameAcrossAliasTerms(t *testi
 		{ID: "win-2", Title: "Code", AppName: "Code"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "", "Feishu，飞书，Lark", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "", "Feishu，飞书，Lark", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -102,7 +102,7 @@ func TestResolveA11yWindowTarget_AllowsWindowIDAliasForUniqueExactMatch(t *testi
 		{ID: "win-2", Title: "Feishu", AppName: "Feishu"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("Feishu", "", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("Feishu", "", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -117,7 +117,7 @@ func TestResolveA11yWindowTarget_RejectsAmbiguousExactAlias(t *testing.T) {
 		{ID: "win-2", Title: "Feishu", AppName: "Feishu"},
 	}
 
-	_, err := resolveA11yWindowTarget("", "Feishu", "", windows)
+	_, _, err := resolveA11yWindowTarget("", "Feishu", "", windows)
 	if err == nil {
 		t.Fatal("resolveA11yWindowTarget() error = nil, want ambiguity failure")
 	}
@@ -139,7 +139,7 @@ func TestResolveA11yWindowTarget_UsesFocusedWindowToBreakExactAmbiguity(t *testi
 		{ID: "win-2", Title: "Feishu", AppName: "Feishu", Focused: true},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "Feishu", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "Feishu", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -154,7 +154,7 @@ func TestResolveA11yWindowTarget_RejectsAmbiguousFuzzyWindowTitle(t *testing.T) 
 		{ID: "win-2", Title: "Lark - Team", AppName: "Lark"},
 	}
 
-	_, err := resolveA11yWindowTarget("", "Feishu，飞书，Lark", "", windows)
+	_, _, err := resolveA11yWindowTarget("", "Feishu，飞书，Lark", "", windows)
 	if err == nil {
 		t.Fatal("resolveA11yWindowTarget() error = nil, want ambiguity failure")
 	}
@@ -173,7 +173,7 @@ func TestResolveA11yWindowTarget_UsesFocusedWindowToBreakBestFuzzyTie(t *testing
 		{ID: "win-2", Title: "Lark - Orca", AppName: "Lark", Focused: true},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "Feishu，飞书，Lark", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "Feishu，飞书，Lark", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}
@@ -188,7 +188,7 @@ func TestResolveA11yWindowTarget_ResolvesBestFuzzyWindowTitleCandidateByMatchedT
 		{ID: "win-2", Title: "Lark Feishu Orca", AppName: "Lark"},
 	}
 
-	resolved, err := resolveA11yWindowTarget("", "Feishu Lark Orca", "", windows)
+	resolved, _, err := resolveA11yWindowTarget("", "Feishu Lark Orca", "", windows)
 	if err != nil {
 		t.Fatalf("resolveA11yWindowTarget() error = %v", err)
 	}

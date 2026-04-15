@@ -20,7 +20,7 @@ func TestWindowsExecuteFallbackWithInput_PointerBranchesDispatchExpectedCallback
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			var steps []string
-			err := windowsExecuteFallbackWithInput(
+			method, err := windowsExecuteFallbackWithInput(
 				windowsFallbackTarget{
 					HWND:      42,
 					HasBounds: true,
@@ -71,6 +71,9 @@ func TestWindowsExecuteFallbackWithInput_PointerBranchesDispatchExpectedCallback
 			if err != nil {
 				t.Fatalf("windowsExecuteFallbackWithInput() error = %v", err)
 			}
+			if method == "" {
+				t.Fatalf("method = empty, want %s", tc.fallback)
+			}
 			if got := strings.Join(steps, ","); got != "front,"+tc.wantStep {
 				t.Fatalf("steps = %q, want %q", got, "front,"+tc.wantStep)
 			}
@@ -81,7 +84,7 @@ func TestWindowsExecuteFallbackWithInput_PointerBranchesDispatchExpectedCallback
 func TestWindowsExecuteFallbackWithInput_FocusClickWithoutBoundsIsNoop(t *testing.T) {
 	var steps []string
 
-	err := windowsExecuteFallbackWithInput(
+	method, err := windowsExecuteFallbackWithInput(
 		windowsFallbackTarget{HWND: 42},
 		windowsActionInputFocusClick,
 		"",
@@ -103,6 +106,9 @@ func TestWindowsExecuteFallbackWithInput_FocusClickWithoutBoundsIsNoop(t *testin
 	if err != nil {
 		t.Fatalf("windowsExecuteFallbackWithInput() error = %v", err)
 	}
+	if method != "input_focus_click" {
+		t.Fatalf("method = %q, want input_focus_click", method)
+	}
 	if got := strings.Join(steps, ","); got != "front" {
 		t.Fatalf("steps = %q, want front", got)
 	}
@@ -111,7 +117,7 @@ func TestWindowsExecuteFallbackWithInput_FocusClickWithoutBoundsIsNoop(t *testin
 func TestWindowsExecuteFallbackWithInput_TypeWithoutBoundsStillSendsText(t *testing.T) {
 	var steps []string
 
-	err := windowsExecuteFallbackWithInput(
+	method, err := windowsExecuteFallbackWithInput(
 		windowsFallbackTarget{HWND: 42},
 		windowsActionInputType,
 		"hello",
@@ -131,9 +137,13 @@ func TestWindowsExecuteFallbackWithInput_TypeWithoutBoundsStillSendsText(t *test
 			AfterFocus: func() {
 				t.Fatal("AfterFocus should not run without bounds")
 			},
-			SendText: func(value string) error {
+			ClipboardPaste: func(string) error {
+				t.Fatal("Clipboard paste should not run in this test")
+				return nil
+			},
+			UnicodeInput: func(value string) error {
 				if value != "hello" {
-					t.Fatalf("SendText value = %q, want hello", value)
+					t.Fatalf("UnicodeInput value = %q, want hello", value)
 				}
 				steps = append(steps, "send")
 				return nil
@@ -143,13 +153,16 @@ func TestWindowsExecuteFallbackWithInput_TypeWithoutBoundsStillSendsText(t *test
 	if err != nil {
 		t.Fatalf("windowsExecuteFallbackWithInput() error = %v", err)
 	}
+	if method != "unicode" {
+		t.Fatalf("method = %q, want unicode", method)
+	}
 	if got := strings.Join(steps, ","); got != "front,send" {
 		t.Fatalf("steps = %q, want front,send", got)
 	}
 }
 
 func TestWindowsExecuteFallbackWithInput_RejectsPointerFallbackWithoutBounds(t *testing.T) {
-	err := windowsExecuteFallbackWithInput(
+	_, err := windowsExecuteFallbackWithInput(
 		windowsFallbackTarget{HWND: 42},
 		windowsActionInputClick,
 		"",
@@ -176,7 +189,7 @@ func TestWindowsExecuteFallbackWithInput_RejectsPointerFallbackWithoutBounds(t *
 }
 
 func TestWindowsExecuteFallbackWithInput_RejectsUnsupportedFallback(t *testing.T) {
-	err := windowsExecuteFallbackWithInput(
+	_, err := windowsExecuteFallbackWithInput(
 		windowsFallbackTarget{HWND: 42, HasBounds: true, CenterX: 100, CenterY: 200},
 		"input_magic",
 		"",
@@ -199,7 +212,7 @@ func TestWindowsExecuteFallbackWithInput_RejectsUnsupportedFallback(t *testing.T
 func TestWindowsExecuteFallbackWithInput_TypeSkipsClickWhenPrimaryAlreadyFocused(t *testing.T) {
 	var steps []string
 
-	err := windowsExecuteFallbackWithInput(
+	method, err := windowsExecuteFallbackWithInput(
 		windowsFallbackTarget{HWND: 42, HasBounds: true, CenterX: 100, CenterY: 200},
 		windowsActionInputType,
 		"hello",
@@ -219,17 +232,24 @@ func TestWindowsExecuteFallbackWithInput_TypeSkipsClickWhenPrimaryAlreadyFocused
 			AfterFocus: func() {
 				steps = append(steps, "after_focus")
 			},
-			SendText: func(value string) error {
+			ClipboardPaste: func(value string) error {
 				if value != "hello" {
-					t.Fatalf("SendText value = %q, want hello", value)
+					t.Fatalf("ClipboardPaste value = %q, want hello", value)
 				}
 				steps = append(steps, "send")
+				return nil
+			},
+			UnicodeInput: func(string) error {
+				t.Fatal("UnicodeInput should not run when clipboard succeeds")
 				return nil
 			},
 		},
 	)
 	if err != nil {
 		t.Fatalf("windowsExecuteFallbackWithInput() error = %v", err)
+	}
+	if method != "clipboard" {
+		t.Fatalf("method = %q, want clipboard", method)
 	}
 	if got := strings.Join(steps, ","); got != "front,after_focus,send" {
 		t.Fatalf("steps = %q, want front,after_focus,send", got)

@@ -14,6 +14,7 @@ declare global {
     __BLUE_DESKTOP__?: boolean
     __BLUE_MACOS_GLASS__?: boolean
     __BLUE_STARTUP_TRACE__?: boolean
+    __ZIMAOS__?: boolean
   }
 }
 
@@ -24,6 +25,8 @@ export type Platform = 'macos' | 'windows' | 'linux' | 'unknown'
 const isTauriApp = ref(false)
 const isInitialized = ref(false)
 const detectedPlatform = ref<Platform>('unknown')
+const isZimaOSMode = ref(false)
+
 type TauriWindowModule = typeof import('@tauri-apps/api/window')
 type TauriCurrentWindow = ReturnType<TauriWindowModule['getCurrentWindow']>
 
@@ -37,7 +40,6 @@ function loadTauriWindowModule(): Promise<TauriWindowModule> {
       throw error
     })
   }
-
   return tauriWindowModulePromise
 }
 
@@ -49,10 +51,62 @@ function preloadTauriWindowApi(): void {
 async function getCurrentTauriWindow(): Promise<TauriCurrentWindow | null> {
   if (!isTauriApp.value) return null
   if (tauriCurrentWindow) return tauriCurrentWindow
-
   const windowModule = await loadTauriWindowModule()
   tauriCurrentWindow = windowModule.getCurrentWindow()
   return tauriCurrentWindow
+}
+
+/**
+ * Detect if running in ZimaOS module UI environment.
+ * Checks for module UI mode and ZimaOS-specific indicators.
+ */
+function detectZimaOS(): boolean {
+  // Check for explicit ZimaOS marker
+  if (typeof window !== 'undefined' && window.__ZIMAOS__) {
+    return true
+  }
+
+  // Check if in module UI mode with ZimaOS indicators
+  if (import.meta.env.VITE_MODULE_UI === '1') {
+    // Check URL contains ZimaOS module path
+    if (typeof window !== 'undefined' && window.location) {
+      const pathname = window.location.pathname || ''
+      const hash = window.location.hash || ''
+      if (pathname.includes('zimaos') || pathname.includes('icewhale') ||
+          hash.includes('zimaos') || hash.includes('icewhale')) {
+        return true
+      }
+    }
+  }
+
+  return false
+}
+
+/**
+ * Convert local filesystem path to ZimaOS Files module URL.
+ * Rules:
+ * - /DATA/... -> //modules/icewhale_files/#/files/...
+ * - /media/... -> //modules/icewhale_files/#/files/... (remove /media/ prefix)
+ * - Others -> //modules/icewhale_files/#/files/...
+ */
+function toZimaOSFilesURL(localPath: string): string {
+  // Normalize path separators
+  const normalized = localPath.replace(/\\/g, '/')
+
+  // Handle /DATA prefix - replace with ZimaOS-HD
+  if (normalized.startsWith('/DATA/') || normalized === '/DATA') {
+    const remainder = normalized === '/DATA' ? '' : normalized.slice('/DATA/'.length)
+    return `//modules/icewhale_files/#/files/${remainder}`
+  }
+
+  // Handle /media prefix - remove it
+  if (normalized.startsWith('/media/')) {
+    const remainder = normalized.slice(7) // Remove '/media/'
+    return `//modules/icewhale_files/#/files/${remainder}`
+  }
+
+  // For other absolute paths, use as-is
+  return `//modules/icewhale_files/#/files${normalized}`
 }
 
 /**
@@ -70,7 +124,7 @@ async function getCurrentTauriWindow(): Promise<TauriCurrentWindow | null> {
  * </script>
  *
  * <template>
- *   <div v-if="isTauri">Desktop-only content</div>
+ * <div v-if="isTauri">Desktop-only content</div>
  * </template>
  * ```
  */
@@ -79,6 +133,7 @@ export function useTauri() {
   if (!isInitialized.value) {
     detectTauri()
     detectPlatform()
+    isZimaOSMode.value = detectZimaOS()
     isInitialized.value = true
   }
 
@@ -195,15 +250,12 @@ export function useTauri() {
 
   async function restartServerRuntime(path?: string): Promise<boolean> {
     if (!isTauriApp.value) return false
-
     const targetPath = path?.trim() || getCurrentAppLocation().fullPath || '/'
-
     try {
       const internals = window.__TAURI_INTERNALS__
       if (!internals?.invoke) {
         return false
       }
-
       await internals.invoke('restart_server_runtime', { path: targetPath })
       return true
     } catch (e) {
@@ -214,7 +266,6 @@ export function useTauri() {
 
   async function startWindowDragging(): Promise<boolean> {
     if (!isTauriApp.value) return false
-
     try {
       const currentWindow = await getCurrentTauriWindow()
       if (!currentWindow) return false
@@ -229,11 +280,24 @@ export function useTauri() {
   /**
    * Reveal a local path in the system file manager.
    * Only available in desktop runtime.
+   * On ZimaOS, opens the Files module instead of native file manager.
    */
   async function revealInFileManager(path: string): Promise<boolean> {
     const trimmedPath = path.trim()
     if (!trimmedPath) return false
     if (!isLocalAbsolutePath(trimmedPath)) return false
+
+    // ZimaOS: Use Files module URL instead of native reveal
+    if (isZimaOSMode.value) {
+      const filesUrl = toZimaOSFilesURL(trimmedPath)
+      try {
+        window.open(filesUrl, '_blank')
+        return true
+      } catch (e) {
+        console.error('Failed to open ZimaOS Files URL:', e)
+        return false
+      }
+    }
 
     const revealViaLoopbackApi = async (): Promise<boolean> => {
       if (!isCurrentHostLoopback()) return false
@@ -281,6 +345,8 @@ export function useTauri() {
     isTauri: readonly(isTauriApp),
     /** The detected platform */
     platform: readonly(detectedPlatform),
+    /** Whether running in ZimaOS mode */
+    isZimaOS: readonly(isZimaOSMode),
     /** Browser name based on platform */
     browserName,
     /** Open a URL in the system's default browser */
@@ -308,14 +374,12 @@ function detectTauri(): void {
     preloadTauriWindowApi()
     return
   }
-
   // Fallback: check for Tauri v2/v1 internals (e.g. when loaded via asset protocol)
   if (typeof window !== 'undefined' && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window)) {
     isTauriApp.value = true
     preloadTauriWindowApi()
     return
   }
-
   isTauriApp.value = false
 }
 
@@ -327,9 +391,7 @@ function detectPlatform(): void {
     detectedPlatform.value = 'unknown'
     return
   }
-
   const ua = navigator.userAgent.toLowerCase()
-
   if (ua.includes('mac')) {
     detectedPlatform.value = 'macos'
   } else if (ua.includes('win')) {
@@ -348,4 +410,5 @@ function detectPlatform(): void {
 export function refreshTauriDetection(): void {
   detectTauri()
   detectPlatform()
+  isZimaOSMode.value = detectZimaOS()
 }

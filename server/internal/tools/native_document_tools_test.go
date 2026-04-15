@@ -2499,11 +2499,24 @@ func TestPPTXToolCreateWithValueAxisMinorGridlines(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
-	if count := strings.Count(chartXML, `<c:minorGridlines/>`); count != 2 {
+	if count := strings.Count(chartXML, `<c:minorGridlines>`); count != 2 {
 		t.Fatalf("expected chart1.xml to include 2 minor gridline nodes, got %d in %s", count, chartXML)
 	}
-	if containsSubstring(chartXML, `<c:majorGridlines/><c:minorGridlines/>`) {
-		t.Fatalf("expected primary axis to keep major/minor gridlines independently configurable, got %s", chartXML)
+	valueAxisBlocks := regexp.MustCompile(`<c:valAx>.*?</c:valAx>`).FindAllString(chartXML, -1)
+	if len(valueAxisBlocks) != 2 {
+		t.Fatalf("expected chart1.xml to include 2 value-axis blocks, got %d in %s", len(valueAxisBlocks), chartXML)
+	}
+	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines`) {
+		t.Fatalf("expected primary axis to keep major gridlines hidden in %s", valueAxisBlocks[0])
+	}
+	if !containsSubstring(valueAxisBlocks[0], `<c:minorGridlines`) {
+		t.Fatalf("expected primary axis to include minor gridlines in %s", valueAxisBlocks[0])
+	}
+	if containsSubstring(valueAxisBlocks[1], `<c:majorGridlines`) {
+		t.Fatalf("expected secondary axis to keep major gridlines independently hidden in %s", valueAxisBlocks[1])
+	}
+	if !containsSubstring(valueAxisBlocks[1], `<c:minorGridlines`) {
+		t.Fatalf("expected secondary axis to include minor gridlines in %s", valueAxisBlocks[1])
 	}
 
 	reader := convertpkg.NewDocumentReader()
@@ -3651,8 +3664,13 @@ func TestPPTXToolCreateWithLegendControls(t *testing.T) {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
-	if !containsSubstring(chartXML, `<c:legend><c:legendPos val="t"/><c:layout/></c:legend>`) {
-		t.Fatalf("expected chart1.xml to include a top legend, got %s", chartXML)
+	for _, needle := range []string{
+		`<c:legend><c:legendPos val="t"/><c:layout/>`,
+		`<c:txPr>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
 	}
 
 	reader := convertpkg.NewDocumentReader()
@@ -4786,6 +4804,400 @@ func TestPDFToolReformat(t *testing.T) {
 		if !containsSubstring(text, needle) {
 			t.Fatalf("expected reformatted PDF bytes to contain %q", needle)
 		}
+	}
+}
+
+func TestNativeCreateTools_IncludeThemePreviewMetadata(t *testing.T) {
+	testCases := []struct {
+		name           string
+		run            func(tmpDir string) (interface{}, error)
+		wantTheme      string
+		wantMood       string
+		wantDisplay    string
+		wantBody       string
+		wantHTMLNeedle string
+	}{
+		{
+			name: "docx",
+			run: func(tmpDir string) (interface{}, error) {
+				tool := NewDOCXTool([]string{tmpDir}, nil, nil)
+				return tool.Execute(context.Background(), map[string]interface{}{
+					"action":  "create",
+					"path":    "reports/board_update.docx",
+					"theme":   "midnight",
+					"title":   "Board Update",
+					"summary": "A concise executive summary.",
+				})
+			},
+			wantTheme:      "midnight",
+			wantMood:       "trustworthy",
+			wantDisplay:    "Georgia",
+			wantBody:       "Segoe UI",
+			wantHTMLNeedle: "#1E3A5F",
+		},
+		{
+			name: "xlsx",
+			run: func(tmpDir string) (interface{}, error) {
+				tool := NewXLSXTool([]string{tmpDir}, nil, nil)
+				return tool.Execute(context.Background(), map[string]interface{}{
+					"action":     "create",
+					"path":       "reports/growth.xlsx",
+					"style_hint": "startup launch metrics",
+					"title":      "Growth Dashboard",
+					"sheets": []interface{}{
+						map[string]interface{}{
+							"name": "Metrics",
+							"columns": []interface{}{
+								map[string]interface{}{"header": "Metric"},
+								map[string]interface{}{"header": "Value"},
+							},
+							"rows": []interface{}{
+								[]interface{}{"Activation", "42%"},
+							},
+						},
+					},
+				})
+			},
+			wantTheme:      "coral",
+			wantMood:       "energetic",
+			wantDisplay:    "Poppins",
+			wantBody:       "Nunito",
+			wantHTMLNeedle: "#FF6B6B",
+		},
+		{
+			name: "pdf",
+			run: func(tmpDir string) (interface{}, error) {
+				tool := NewPDFTool(nil)
+				tool.scope = newFSToolScope([]string{tmpDir})
+				return tool.Execute(context.Background(), map[string]interface{}{
+					"action":  "create",
+					"path":    "reports/sustainability.pdf",
+					"theme":   "forest",
+					"title":   "Sustainability Brief",
+					"summary": "A grounded update for stakeholders.",
+				})
+			},
+			wantTheme:      "forest",
+			wantMood:       "natural",
+			wantDisplay:    "Times New Roman",
+			wantBody:       "Open Sans",
+			wantHTMLNeedle: "#2D5A3D",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			result, err := tc.run(tmpDir)
+			if err != nil {
+				t.Fatalf("create failed: %v", err)
+			}
+
+			payload := parseNativeDocumentPayload(t, result)
+			if got := payload["theme"]; got != tc.wantTheme {
+				t.Fatalf("theme = %v, want %s", got, tc.wantTheme)
+			}
+			preview, ok := payload["theme_preview"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("theme_preview = %#v, want object", payload["theme_preview"])
+			}
+			if got := preview["mood"]; got != tc.wantMood {
+				t.Fatalf("theme_preview.mood = %v, want %s", got, tc.wantMood)
+			}
+			fonts, ok := preview["fonts"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("theme_preview.fonts = %#v, want object", preview["fonts"])
+			}
+			if fonts["display"] != tc.wantDisplay || fonts["body"] != tc.wantBody {
+				t.Fatalf("theme_preview.fonts = %#v, want %s/%s", fonts, tc.wantDisplay, tc.wantBody)
+			}
+			html := asNativeToolString(t, preview["html"])
+			if !containsSubstring(html, tc.wantHTMLNeedle) {
+				t.Fatalf("theme_preview.html = %q, want %q", html, tc.wantHTMLNeedle)
+			}
+		})
+	}
+}
+
+func TestPPTXToolCreate_UsesExplicitThemeMetadataAndThemeXML(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/board_update.pptx",
+		"theme":    "midnight",
+		"title":    "Board Update",
+		"subtitle": "Q2 review",
+		"sections": []interface{}{map[string]interface{}{"heading": "Overview", "paragraphs": []interface{}{"Margins improved"}}},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "midnight" {
+		t.Fatalf("theme = %v, want midnight", got)
+	}
+	preview, ok := payload["theme_preview"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("theme_preview = %#v, want object", payload["theme_preview"])
+	}
+	if got := preview["mood"]; got != "trustworthy" {
+		t.Fatalf("theme_preview.mood = %v, want trustworthy", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "board_update.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	themeXML := officeZipEntryText(t, data, "ppt/theme/theme1.xml")
+	for _, needle := range []string{
+		`name="Midnight Theme"`,
+		`val="1E3A5F"`,
+		`val="00D4AA"`,
+		`typeface="Georgia"`,
+		`typeface="Segoe UI"`,
+	} {
+		if !containsSubstring(themeXML, needle) {
+			t.Fatalf("expected theme1.xml to include %q, got %s", needle, themeXML)
+		}
+	}
+
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`name="Theme Background"`,
+		`name="Theme Band"`,
+		`name="Theme Accent Mark"`,
+		`typeface="Georgia"`,
+		`typeface="Segoe UI"`,
+		`val="0F1D2F"`,
+		`val="334155"`,
+		`val="E8EEF4"`,
+		`val="00D4AA"`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+}
+
+func TestPPTXToolCreate_UsesThemePaletteForCharts(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/midnight_chart_theme.pptx",
+		"theme":  "midnight",
+		"title":  "Board Metrics",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading": "Revenue Mix",
+				"chart": map[string]interface{}{
+					"type":       "bar",
+					"categories": []interface{}{"Q1", "Q2"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "values": []interface{}{120, 132}},
+						map[string]interface{}{"name": "Margin", "values": []interface{}{28, 31}},
+						map[string]interface{}{"name": "Pipeline", "values": []interface{}{80, 96}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "midnight" {
+		t.Fatalf("theme = %v, want midnight", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "midnight_chart_theme.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:v>Revenue</c:v>`,
+		`<c:v>Margin</c:v>`,
+		`<c:v>Pipeline</c:v>`,
+		`<a:srgbClr val="1E3A5F"/>`,
+		`<a:srgbClr val="00D4AA"/>`,
+		`<a:srgbClr val="4A5568"/>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+}
+
+func TestPPTXToolCreate_UsesThemeTypographyForChartText(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/midnight_chart_type.pptx",
+		"theme":  "midnight",
+		"title":  "Board Metrics",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading": "Revenue Mix",
+				"chart": map[string]interface{}{
+					"type":         "bar",
+					"title":        "Board Metrics",
+					"x_axis_title": "Quarter",
+					"y_axis_title": "Revenue ($M)",
+					"categories":   []interface{}{"Q1", "Q2"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "values": []interface{}{120, 132}},
+						map[string]interface{}{"name": "Margin", "values": []interface{}{28, 31}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "midnight" {
+		t.Fatalf("theme = %v, want midnight", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "midnight_chart_type.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<a:latin typeface="Georgia"/>`,
+		`<a:latin typeface="Segoe UI"/>`,
+		`<a:srgbClr val="0F1D2F"/>`,
+		`<a:srgbClr val="334155"/>`,
+		`<c:legend><c:legendPos val="r"/><c:layout/><c:txPr>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+}
+
+func TestPPTXToolCreate_UsesThemeAxisChromeForCharts(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/midnight_chart_axis_theme.pptx",
+		"theme":  "midnight",
+		"title":  "Board Metrics",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading": "Revenue Mix",
+				"chart": map[string]interface{}{
+					"type":       "bar",
+					"categories": []interface{}{"Q1", "Q2"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "values": []interface{}{120, 132}},
+						map[string]interface{}{"name": "Margin", "values": []interface{}{28, 31}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "midnight" {
+		t.Fatalf("theme = %v, want midnight", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "midnight_chart_axis_theme.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	for _, needle := range []string{
+		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="F1F5F9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
+		`<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr lang="en-US" sz="1000"><a:latin typeface="Segoe UI"/><a:solidFill><a:srgbClr val="334155"/></a:solidFill></a:defRPr></a:pPr>`,
+		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
+		}
+	}
+}
+
+func TestPPTXToolCreate_UsesThemeCalloutRailForChartSlides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/midnight_chart_callout_theme.pptx",
+		"theme":  "midnight",
+		"title":  "Board Metrics",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading": "Revenue Mix",
+				"bullets": []interface{}{
+					"Revenue: $12.4M",
+					"Watch conversion quality",
+				},
+				"chart": map[string]interface{}{
+					"type":       "bar",
+					"categories": []interface{}{"Q1", "Q2"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "values": []interface{}{120, 132}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "midnight" {
+		t.Fatalf("theme = %v, want midnight", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "midnight_chart_callout_theme.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`name="Chart Callout Rail"`,
+		`name="Chart Callout 1"`,
+		`name="Chart Callout 2"`,
+		`<a:t>Revenue</a:t>`,
+		`<a:t>$12.4M</a:t>`,
+		`<a:t>Watch conversion quality</a:t>`,
+		`typeface="Georgia"`,
+		`typeface="Segoe UI"`,
+		`val="00D4AA"`,
+		`cx="8031480"`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+	if count := strings.Count(slideXML, "Watch conversion quality"); count != 1 {
+		t.Fatalf("expected callout text to appear once in slide3.xml, got %d in %s", count, slideXML)
+	}
+	if count := strings.Count(slideXML, "$12.4M"); count != 1 {
+		t.Fatalf("expected stat value to appear once in slide3.xml, got %d in %s", count, slideXML)
 	}
 }
 

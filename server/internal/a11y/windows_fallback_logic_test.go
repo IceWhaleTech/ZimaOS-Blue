@@ -10,7 +10,7 @@ func TestWindowsSendTextWithClipboardFallback_PrefersClipboardPaste(t *testing.T
 	clipboardCalls := 0
 	unicodeCalls := 0
 
-	err := windowsSendTextWithClipboardFallback(
+	method, err := windowsSendTextWithClipboardFallback(
 		"hello",
 		func(value string) error {
 			clipboardCalls++
@@ -27,6 +27,9 @@ func TestWindowsSendTextWithClipboardFallback_PrefersClipboardPaste(t *testing.T
 	if err != nil {
 		t.Fatalf("windowsSendTextWithClipboardFallback() error = %v", err)
 	}
+	if method != "clipboard" {
+		t.Fatalf("method = %q, want clipboard", method)
+	}
 	if clipboardCalls != 1 {
 		t.Fatalf("clipboardCalls = %d, want 1", clipboardCalls)
 	}
@@ -39,7 +42,7 @@ func TestWindowsSendTextWithClipboardFallback_FallsBackToUnicodeInput(t *testing
 	clipboardCalls := 0
 	unicodeCalls := 0
 
-	err := windowsSendTextWithClipboardFallback(
+	method, err := windowsSendTextWithClipboardFallback(
 		"hello",
 		func(string) error {
 			clipboardCalls++
@@ -55,6 +58,9 @@ func TestWindowsSendTextWithClipboardFallback_FallsBackToUnicodeInput(t *testing
 	)
 	if err != nil {
 		t.Fatalf("windowsSendTextWithClipboardFallback() error = %v", err)
+	}
+	if method != "unicode" {
+		t.Fatalf("method = %q, want unicode", method)
 	}
 	if clipboardCalls != 1 {
 		t.Fatalf("clipboardCalls = %d, want 1", clipboardCalls)

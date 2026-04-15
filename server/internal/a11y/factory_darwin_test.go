@@ -843,3 +843,32 @@ func TestDarwinSnapshot_ReturnsBackendUnavailableWhenCreateApplicationBindingMis
 		t.Fatalf("code = %q, want backend_unavailable", runtimeErr.Code)
 	}
 }
+
+func TestDarwinResolveWindowRecordFromLists_FallsBackToAllWindowsByID(t *testing.T) {
+	record, err := darwinResolveWindowRecordFromLists("win-feishu", []darwinWindowRecord{
+		{ID: "win-code", Title: "Code", AppName: "Code", Focused: true},
+	}, []darwinWindowRecord{
+		{ID: "win-feishu", Title: "飞书", AppName: "飞书"},
+	})
+	if err != nil {
+		t.Fatalf("darwinResolveWindowRecordFromLists() error = %v", err)
+	}
+	if record.ID != "win-feishu" {
+		t.Fatalf("record.ID = %q, want win-feishu", record.ID)
+	}
+}
+
+func TestDarwinRefreshWindowRecordFromLists_PrefersExactAllWindowMatchBeforeSimilarityFallback(t *testing.T) {
+	current := darwinWindowRecord{ID: "win-feishu", Title: "飞书", AppName: "飞书", PID: 100}
+	refreshed := darwinRefreshWindowRecordFromLists(current, []darwinWindowRecord{
+		{ID: "win-code", Title: "Code", AppName: "Code", PID: 200, Focused: true},
+	}, []darwinWindowRecord{
+		{ID: "win-feishu", Title: "飞书", AppName: "飞书", PID: 100},
+	})
+	if refreshed.ID != "win-feishu" {
+		t.Fatalf("refreshed.ID = %q, want win-feishu", refreshed.ID)
+	}
+	if refreshed.PID != 100 {
+		t.Fatalf("refreshed.PID = %d, want 100", refreshed.PID)
+	}
+}

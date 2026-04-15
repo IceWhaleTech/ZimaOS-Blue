@@ -69,16 +69,15 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "xlsx"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 19 {
-		t.Fatalf("expected 19 tools after expanded default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 15 {
+		t.Fatalf("expected 15 tools after narrowed default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
-		"a11y":    true,
 		"ask":     true,
 		"bash":    true,
 		"browser": true, "calendar": true, "file_read": true, "file_write": true,
-		"docx": true, "image": true, "pdf": true, "pptx": true, "plan_append": true, "plan_create": true,
-		"plan_update": true, "deep_research": true, "sessions": true, "tool_search": true, "web_query": true, "xlsx": true,
+		"image": true, "pdf": true, "plan_append": true, "plan_create": true,
+		"plan_update": true, "deep_research": true, "sessions": true, "tool_search": true, "web_query": true,
 	}
 	for _, def := range filtered {
 		if !allowed[def.Name] {

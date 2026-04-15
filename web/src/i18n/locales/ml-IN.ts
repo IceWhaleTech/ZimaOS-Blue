@@ -348,8 +348,8 @@ export default mergeHarnessLocale('ml-IN', {
     workspaceLoadFailed: 'വർക്ക്‌സ്‌പെയ്‌സ് വിശദാംശങ്ങൾ ലോഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു',
     workspaceFilesLoadFailed: 'വർക്ക്‌സ്‌പെയ്‌സ് ഫയലുകൾ ലോഡ് ചെയ്യുന്നതിൽ പരാജയപ്പെട്ടു',
     workspaceOpenFailed: 'ഫയൽ മാനേജറിൽ വർക്ക്‌സ്‌പെയ്‌സ് തുറക്കാനായില്ല',
-    workspaceCoreTab: 'വർക്ക്‌സ്‌പേസ് കോർ ഫയലുകൾ',
-    workspaceGeneratedTab: 'ഫയൽ ഉറവിടങ്ങൾ',
+    workspaceCoreTab: 'കോർ കോൺടെക്സ്റ്റ് ഫയലുകൾ',
+    workspaceGeneratedTab: 'വർക്ക്‌സ്‌പെയ്‌സ് ഫയലുകൾ',
     workspaceGeneratedTitle: 'വർക്ക്‌സ്‌പെയ്‌സ് ഡയറക്ടറി ട്രീ',
     workspaceGeneratedDescription:
       'ശ്രേണിയിലുള്ള യഥാർത്ഥ ഡയറക്‌ടറികളും ഫയലുകളും കാണിക്കുക, ലഭ്യമാകുമ്പോൾ സൃഷ്‌ടിച്ച ഫയലുകൾ ഉറവിട സംഭാഷണങ്ങളിലേക്ക് ലിങ്ക് ചെയ്യുക.',
@@ -699,6 +699,9 @@ export default mergeHarnessLocale('ml-IN', {
       expand: 'ടോഡോ ലിസ്റ്റ് വികസിപ്പിക്കുക',
       collapse: 'ചെയ്യേണ്ടവ ലിസ്റ്റ് ചുരുക്കുക',
       jumpToMessage: 'ചെക്ക്‌ലിസ്റ്റ് സന്ദേശത്തിലേക്ക് പോകുക',
+    },
+    todoChecklist: {
+      progress: '{completed}-ൽ {total} ടാസ്‌ക്കുകൾ പൂർത്തിയായി',
     },
     send: 'അയയ്ക്കുക',
     sendDuringStream: 'അയയ്ക്കുക (സംഭാഷണത്തിലേക്ക് ചേർക്കുക)',
@@ -1576,7 +1579,7 @@ export default mergeHarnessLocale('ml-IN', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'വർക്ക്‌സ്‌പേസ് ഫയലുകൾ',
+    title: 'കോർ കോൺടെക്സ്റ്റ് ഫയലുകൾ',
     description: 'ഈ ഫയലുകൾ Blue-ന്റെ വ്യക്തിത്വം, ഓർമ്മ, പെരുമാറ്റം എന്നിവ നിർവചിക്കുന്നു.',
     saved: '{name} സേവ് ചെയ്തു',
     noFiles: 'വർക്ക്‌സ്‌പേസ് ഫയലുകൾ കണ്ടെത്തിയില്ല.',

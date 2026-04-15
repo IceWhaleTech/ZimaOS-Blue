@@ -45,17 +45,17 @@ func darwinSendTextWithClipboardFallback(
 	value string,
 	clipboardPaste func(string) error,
 	unicodeInput func(string) error,
-) error {
+) (string, error) {
 	var clipboardErr error
 	if clipboardPaste != nil {
 		if err := clipboardPaste(value); err == nil {
-			return nil
+			return "clipboard", nil
 		} else {
 			clipboardErr = err
 		}
 	}
 	if unicodeInput != nil {
-		return unicodeInput(value)
+		return "unicode", unicodeInput(value)
 	}
-	return clipboardErr
+	return "", clipboardErr
 }

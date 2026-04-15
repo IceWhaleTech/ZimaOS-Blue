@@ -12,17 +12,19 @@ func cleanupOfficeDocSpec(spec officeDocSpec) officeDocSpec {
 	spec.Title = officeCleanDocText(spec.Title)
 	spec.Subtitle = officeCleanDocText(spec.Subtitle)
 	spec.Summary = officeJoinDocParagraphs(officeCleanupDocStringList(splitOfficeParagraphs(spec.Summary)))
+	spec.ParagraphBlocks = officeCleanupDocBlocks(spec.ParagraphBlocks)
 	spec.Paragraphs = officeCleanupDocStringList(spec.Paragraphs)
 	spec.Notes = officeCleanupDocStringList(spec.Notes)
 
 	sections := make([]officeDocSection, 0, len(spec.Sections))
 	for _, section := range spec.Sections {
 		section.Heading = officeCleanDocText(section.Heading)
+		section.ParagraphBlocks = officeCleanupDocBlocks(section.ParagraphBlocks)
 		section.Paragraphs = officeCleanupDocStringList(section.Paragraphs)
 		section.Bullets = officeCleanupDocStringList(section.Bullets)
 		section.Table = officeCleanupDocTable(section.Table)
 		section.Chart = officeCleanupDocChart(section.Chart)
-		if section.Heading == "" && len(section.Paragraphs) == 0 && len(section.Bullets) == 0 && section.Table == nil && section.Chart == nil {
+		if section.Heading == "" && len(section.ParagraphBlocks) == 0 && len(section.Paragraphs) == 0 && len(section.Bullets) == 0 && section.Table == nil && section.Chart == nil {
 			continue
 		}
 		sections = append(sections, section)
@@ -235,6 +237,82 @@ func officeCleanupDocStringList(values []string) []string {
 		fingerprints = append(fingerprints, fingerprint)
 	}
 	return out
+}
+
+func officeCleanupDocBlocks(values []officeDocBlock) []officeDocBlock {
+	out := make([]officeDocBlock, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		cleaned, ok := officeCleanDocBlock(value)
+		if !ok {
+			continue
+		}
+		key := string(cleaned.Kind) + "\x00" + cleaned.Text + "\x00" + cleaned.Source
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, cleaned)
+	}
+	return out
+}
+
+func officeCleanDocBlock(block officeDocBlock) (officeDocBlock, bool) {
+	switch block.Kind {
+	case officeDocBlockQuote:
+		block.Text = officeNormalizeQuotedBlockText(block.Text)
+	case officeDocBlockCode:
+		block.Text = officeNormalizeCodeBlockText(block.Text)
+	case officeDocBlockSeparator:
+		if separator, ok := officeMarkdownThematicBreak(block.Text); ok {
+			block.Text = separator
+		} else {
+			block.Text = "---"
+		}
+	case officeDocBlockImage:
+		block.Text = officeCleanDocText(block.Text)
+		block.Source = strings.TrimSpace(block.Source)
+	default:
+		block.Kind = officeDocBlockParagraph
+		block.Text = officeCleanDocText(block.Text)
+	}
+	if block.Kind == officeDocBlockImage {
+		return block, block.Source != ""
+	}
+	return block, block.Text != ""
+}
+
+func officeNormalizeQuotedBlockText(text string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, officeCleanDocText(line))
+	}
+	return officeTrimStructuredDocLines(out)
+}
+
+func officeNormalizeCodeBlockText(text string) string {
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, strings.TrimRight(line, " \t"))
+	}
+	return officeTrimStructuredDocLines(out)
+}
+
+func officeTrimStructuredDocLines(lines []string) string {
+	start := 0
+	for start < len(lines) && strings.TrimSpace(lines[start]) == "" {
+		start++
+	}
+	end := len(lines)
+	for end > start && strings.TrimSpace(lines[end-1]) == "" {
+		end--
+	}
+	if start >= end {
+		return ""
+	}
+	return strings.Join(lines[start:end], "\n")
 }
 
 func officeFindDuplicateDocString(existing []string, candidate string) int {

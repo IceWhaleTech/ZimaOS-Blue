@@ -27,14 +27,31 @@ type officeWorkbookSpec struct {
 }
 
 type officeDocSpec struct {
-	Title      string
-	Subtitle   string
-	Summary    string
-	Theme      officeTheme
-	StyleHint  string
-	Sections   []officeDocSection
-	Paragraphs []string
-	Notes      []string
+	Title           string
+	Subtitle        string
+	Summary         string
+	Theme           officeTheme
+	StyleHint       string
+	Sections        []officeDocSection
+	ParagraphBlocks []officeDocBlock
+	Paragraphs      []string
+	Notes           []string
+}
+
+type officeDocBlockKind string
+
+const (
+	officeDocBlockParagraph officeDocBlockKind = "paragraph"
+	officeDocBlockQuote     officeDocBlockKind = "quote"
+	officeDocBlockCode      officeDocBlockKind = "code"
+	officeDocBlockSeparator officeDocBlockKind = "separator"
+	officeDocBlockImage     officeDocBlockKind = "image"
+)
+
+type officeDocBlock struct {
+	Kind   officeDocBlockKind
+	Text   string
+	Source string
 }
 
 type officeStat struct {
@@ -59,11 +76,12 @@ type officeColumnSpec struct {
 }
 
 type officeDocSection struct {
-	Heading    string
-	Paragraphs []string
-	Bullets    []string
-	Table      *officeTableSpec
-	Chart      *officeChartSpec
+	Heading         string
+	ParagraphBlocks []officeDocBlock
+	Paragraphs      []string
+	Bullets         []string
+	Table           *officeTableSpec
+	Chart           *officeChartSpec
 }
 
 type officeTableSpec struct {
@@ -217,7 +235,7 @@ func RegisterOfficeTool(registry *Registry, allowedPaths []string, approvals *Ap
 func (t *OfficeTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "office",
-		Description: "Create polished .xlsx spreadsheets and .docx reports with native built-in themes. Prefer this for styled Excel/Word artifacts instead of raw file_write when the target path ends in .xlsx or .docx. Use theme values such as analysis, ui_review, executive, or clean, and optionally provide style_hint for tone guidance.",
+		Description: "Create polished .xlsx spreadsheets and .docx reports with native built-in themes. Prefer this for styled Excel/Word artifacts instead of raw file_write when the target path ends in .xlsx or .docx. Themes include analysis, ui_review, executive, clean, midnight, terracotta, forest, and coral. You can also omit theme and provide style_hint for mood- or use-case-based selection.",
 		Icon:        "file-text",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -241,8 +259,8 @@ func (t *OfficeTool) Definition() ToolDefinition {
 				},
 				"theme": map[string]interface{}{
 					"type":        "string",
-					"enum":        []string{"analysis", "ui_review", "executive", "clean"},
-					"description": "Built-in visual theme. Default is inferred from style_hint, otherwise analysis.",
+					"enum":        []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"},
+					"description": "Built-in visual theme. Default is inferred from style_hint/use-case hints, otherwise analysis.",
 				},
 				"style_hint": map[string]interface{}{
 					"type":        "string",
@@ -369,6 +387,9 @@ func (t *OfficeTool) Execute(ctx context.Context, args map[string]interface{}) (
 		"size":          len(data),
 		"message":       fmt.Sprintf("Created styled %s artifact at %s", format, relPath),
 	}
+	if themePreview, previewErr := GetThemePreview(theme.Name); previewErr == nil {
+		response["theme_preview"] = themePreview
+	}
 	if info.SheetCount > 0 {
 		response["sheet_count"] = info.SheetCount
 		response["row_count"] = info.RowCount
@@ -479,13 +500,14 @@ func parseOfficeDocSpec(args map[string]interface{}, title, subtitle string, the
 				spec.Summary = contentSpec.Summary
 			}
 			spec.Sections = append(spec.Sections, contentSpec.Sections...)
+			spec.ParagraphBlocks = append(spec.ParagraphBlocks, contentSpec.ParagraphBlocks...)
 			spec.Paragraphs = append(spec.Paragraphs, contentSpec.Paragraphs...)
 		}
 	}
 	if topParagraphs := officeStringSliceArg(args, "paragraphs"); len(topParagraphs) > 0 {
-		spec.Paragraphs = append(spec.Paragraphs, topParagraphs...)
+		spec.ParagraphBlocks = append(spec.ParagraphBlocks, officeDocBlocksFromLegacyParagraphs(topParagraphs)...)
 	}
-	if len(spec.Sections) == 0 && len(spec.Paragraphs) == 0 && strings.TrimSpace(spec.Summary) == "" {
+	if len(spec.Sections) == 0 && len(spec.ParagraphBlocks) == 0 && len(spec.Paragraphs) == 0 && strings.TrimSpace(spec.Summary) == "" {
 		return spec, errors.New("docx content requires sections, content/markdown, paragraphs, or summary")
 	}
 	return spec, nil
@@ -778,11 +800,11 @@ func parseOfficeDocSections(raw interface{}) ([]officeDocSection, error) {
 		if section.Heading == "" {
 			section.Heading = strings.TrimSpace(anyToStringForLLM(m["title"]))
 		}
-		section.Paragraphs = append(section.Paragraphs, officeStringSliceAny(m["paragraphs"])...)
-		if len(section.Paragraphs) == 0 {
+		section.ParagraphBlocks = append(section.ParagraphBlocks, officeDocBlocksFromLegacyParagraphs(officeStringSliceAny(m["paragraphs"]))...)
+		if len(section.ParagraphBlocks) == 0 {
 			body := strings.TrimSpace(anyToStringForLLM(firstMapValue(m, "body", "text", "content")))
 			if body != "" {
-				section.Paragraphs = append(section.Paragraphs, splitOfficeParagraphs(body)...)
+				section.ParagraphBlocks = append(section.ParagraphBlocks, officeDocBlocksFromBodyText(body)...)
 			}
 		}
 		if rawTable, ok := m["table"]; ok {

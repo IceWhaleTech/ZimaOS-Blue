@@ -340,7 +340,7 @@ export default mergeHarnessLocale('pt-PT', {
     cache: 'Cache',
     billing: 'Faturação',
     workspace: 'Espaço de trabalho',
-    workspacePanelTitle: 'Arquivos do espaço de trabalho',
+    workspacePanelTitle: 'Ficheiros do espaço de trabalho',
     openWorkspaceIn: 'Abrir no gestor de ficheiros',
     openWorkspaceInFinder: 'Abrir no Finder',
     openWorkspaceInExplorer: 'Abrir no Explorador',
@@ -349,8 +349,8 @@ export default mergeHarnessLocale('pt-PT', {
     workspaceLoadFailed: 'Falha ao carregar os detalhes do espaço de trabalho',
     workspaceFilesLoadFailed: 'Falha ao carregar ficheiros do espaço de trabalho',
     workspaceOpenFailed: 'Não é possível abrir o espaço de trabalho no gestor de ficheiros',
-    workspaceCoreTab: 'Ficheiros principais do espaço de trabalho',
-    workspaceGeneratedTab: 'Origem dos ficheiros',
+    workspaceCoreTab: 'Ficheiros de contexto principal',
+    workspaceGeneratedTab: 'Ficheiros do espaço de trabalho',
     workspaceGeneratedTitle: 'Árvore de diretórios do espaço de trabalho',
     workspaceGeneratedDescription:
       'Mostrar diretórios e ficheiros reais com hierarquia e ligar ficheiros gerados a conversas de origem, quando disponíveis.',
@@ -702,6 +702,9 @@ export default mergeHarnessLocale('pt-PT', {
       expand: 'Expandir lista de tarefas',
       collapse: 'Recolher lista de tarefas',
       jumpToMessage: 'Ir para a mensagem da lista de verificação',
+    },
+    todoChecklist: {
+      progress: '{completed} de {total} tarefas concluídas',
     },
     send: 'Enviar',
     sendDuringStream: 'Enviar (adicionar à conversa)',
@@ -1568,7 +1571,7 @@ export default mergeHarnessLocale('pt-PT', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Ficheiros do espaço de trabalho',
+    title: 'Ficheiros de contexto principal',
     description: 'Estes ficheiros definem a personalidade, memória e comportamento do Blue.',
     saved: '{name} guardado',
     noFiles: 'Nenhum ficheiro do espaço de trabalho encontrado.',

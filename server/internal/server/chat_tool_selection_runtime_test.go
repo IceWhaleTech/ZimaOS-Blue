@@ -452,7 +452,7 @@ func TestSelectTools_PublicStockArtifactKeepsWebQueryAndWrite(t *testing.T) {
 	}
 }
 
-func TestSelectChatToolSurfacesForRequest_GenericDocxResearchKeepsNativeDocxWorkflow(t *testing.T) {
+func TestSelectChatToolSurfacesForRequest_GenericDocxResearchUsesToolSearchInsteadOfDirectDocx(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewToolSearchTool(registry))
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
@@ -472,13 +472,68 @@ func TestSelectChatToolSurfacesForRequest_GenericDocxResearchKeepsNativeDocxWork
 		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeLegacy)
 	}
 	names := toolNameSet(selection.NativeDefs)
-	for _, required := range []string{"docx", "read", "web_query", "write", "tool_search"} {
+	for _, required := range []string{"read", "web_query", "write", "tool_search"} {
 		if _, ok := names[required]; !ok {
 			t.Fatalf("expected %q in generic .docx research workflow, got=%v", required, selectedToolNames(selection.NativeDefs))
 		}
 	}
-	if _, ok := names["exec"]; ok {
-		t.Fatalf("expected generic .docx research workflow to keep mixed tools instead of exec-only cutover, got=%v", selectedToolNames(selection.NativeDefs))
+	if _, ok := names["docx"]; ok {
+		t.Fatalf("expected generic .docx research workflow to discover docx through tool_search, got=%v", selectedToolNames(selection.NativeDefs))
+	}
+}
+
+func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndA11YTools(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "a11y", Description: "Inspect and interact with accessibility trees"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "docx", Description: "Read, create, edit, validate, or template native .docx workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	searchTool := bindToolSearchTestRuntime(t, handler, nil, "")
+
+	initial := handler.selectChatToolsForRequest(
+		context.Background(),
+		`Say "Hello, I'm ready!" to confirm you can respond.`,
+		"claude-3-5-haiku-20241022",
+		"conv-hidden-native-tools",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-hidden-native-tools"},
+		nil,
+		nil,
+	)
+	initialNames := toolNameSet(initial)
+	for _, hidden := range []string{"a11y", "docx"} {
+		if _, ok := initialNames[hidden]; ok {
+			t.Fatalf("expected %q to stay hidden until tool_search activation, got=%v", hidden, selectedToolNames(initial))
+		}
+	}
+	if _, ok := initialNames["tool_search"]; !ok {
+		t.Fatalf("expected tool_search to stay visible for discovery, got=%v", selectedToolNames(initial))
+	}
+
+	ctx := tools.WithSessionID(context.Background(), "conv-hidden-native-tools")
+	ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
+	if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:a11y,docx"}); err != nil {
+		t.Fatalf("tool_search Execute returned error: %v", err)
+	}
+
+	activated := handler.selectChatToolsForRequest(
+		context.Background(),
+		"检查当前页面的可访问性，然后把结论整理进 report.docx。",
+		"claude-3-5-haiku-20241022",
+		"conv-hidden-native-tools",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-hidden-native-tools"},
+		nil,
+		nil,
+	)
+	activatedNames := toolNameSet(activated)
+	for _, required := range []string{"tool_search", "a11y", "docx"} {
+		if _, ok := activatedNames[required]; !ok {
+			t.Fatalf("expected %q after tool_search hydration, got=%v", required, selectedToolNames(activated))
+		}
 	}
 }
 

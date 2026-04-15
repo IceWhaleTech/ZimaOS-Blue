@@ -45,9 +45,9 @@ class RenderCache {
   }
 
   private generateKey(card: TypelessCard): string {
-    // Always hash the full card content to avoid collisions between cards
-    // with the same ID from different messages
-    return `${card.type}:${this.hashCard(card)}`
+    // Include the active locale so localized functional cards re-render
+    // correctly after a language switch.
+    return `${i18n.global.locale.value}:${card.type}:${this.hashCard(card)}`
   }
 
   private hashCard(card: TypelessCard): string {
@@ -480,6 +480,12 @@ function renderList(card: TypelessCardList): string {
     const totalItems = card.items.length
     const completedItems = card.items.filter((item) => item.checked).length
     const progressPercent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0
+    const progressLabel = escapeHtml(
+      t('chat.todoChecklist.progress', `${completedItems}/${totalItems} completed`, {
+        completed: completedItems,
+        total: totalItems,
+      })
+    )
 
     // Progress header
     const progressHtml = `<div class="flex items-center justify-between px-4 py-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
@@ -487,7 +493,7 @@ function renderList(card: TypelessCardList): string {
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-500 dark:text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
         </svg>
-        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${completedItems}/${totalItems} completed</span>
+        <span class="text-sm font-medium text-gray-700 dark:text-gray-300">${progressLabel}</span>
       </div>
       <div class="flex items-center gap-2">
         <div class="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">

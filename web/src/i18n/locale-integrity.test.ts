@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mergeHarnessLocale as mergeRuntimeHarnessLocale } from './harness-locale-additions'
 import type { LocaleKey } from './locale-catalog'
+import { workspaceNavigationLocaleBackfills } from './locale-post-merge-backfills'
 import { smallModelFallbackReasonCodes } from '@/utils/smallModelFallbackReason'
 
 type LocaleMessages = Record<string, unknown>
@@ -240,6 +241,43 @@ describe('locale integrity', () => {
           0
         )
       }
+    }
+  })
+
+  it('provides localized ask result-card labels in runtime locale merges for all 27 locales', () => {
+    const protectedKeys = ['q', 'o', 'a'] as const
+
+    for (const [modulePath, mod] of Object.entries(localeModules).sort(([a], [b]) =>
+      a.localeCompare(b)
+    )) {
+      const locale = localeFromModulePath(modulePath)
+      const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+
+      for (const key of protectedKeys) {
+        const path = `resultCard.labels.${key}`
+        const value = getPathValue(runtimeMessages, path)
+        expect(typeof value, `${locale} missing runtime locale key ${path}`).toBe('string')
+        expect(String(value).trim().length, `${locale} empty runtime locale key ${path}`).toBeGreaterThan(
+          0
+        )
+        expect(value, `${locale} should not leave ${path} as the raw compact key`).not.toBe(key)
+      }
+    }
+  })
+
+  it('provides localized workspace tab labels in runtime locale merges for all 27 locales', () => {
+    for (const [locale, labels] of Object.entries(workspaceNavigationLocaleBackfills)) {
+      const rawMessages = localeMessages(locale)
+      const runtimeMessages = resolveRuntimeMessages(locale, localeMessages(locale))
+
+      expect(getPathValue(rawMessages, 'nav.workspacePanelTitle')).toBe(labels.generatedTab)
+      expect(getPathValue(rawMessages, 'nav.workspaceCoreTab')).toBe(labels.coreTab)
+      expect(getPathValue(rawMessages, 'nav.workspaceGeneratedTab')).toBe(labels.generatedTab)
+      expect(getPathValue(rawMessages, 'workspace.title')).toBe(labels.coreTab)
+      expect(getPathValue(runtimeMessages, 'nav.workspacePanelTitle')).toBe(labels.generatedTab)
+      expect(getPathValue(runtimeMessages, 'nav.workspaceCoreTab')).toBe(labels.coreTab)
+      expect(getPathValue(runtimeMessages, 'nav.workspaceGeneratedTab')).toBe(labels.generatedTab)
+      expect(getPathValue(runtimeMessages, 'workspace.title')).toBe(labels.coreTab)
     }
   })
 

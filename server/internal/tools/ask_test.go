@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
 func TestAskDefinition_ExposesCanonicalQuestionsOnly(t *testing.T) {
@@ -99,6 +102,88 @@ func TestAskExecute_UsesQuestionOptionLabelsInQA(t *testing.T) {
 	selected, ok := out["a"].([]interface{})
 	if !ok || len(selected) != 1 || selected[0] != "stable" {
 		t.Fatalf("a = %#v, want [\"stable\"]", out["a"])
+	}
+}
+
+func TestAskExecute_IncludesOtherTextInQAAnswers(t *testing.T) {
+	broker := sse.NewBroker()
+	ch := broker.Subscribe("user-ask-other")
+	defer broker.Unsubscribe("user-ask-other", ch)
+
+	mgr := NewQuestionManager(broker, func() bool { return false }, 2*time.Minute)
+	tool := NewAskTool(mgr)
+
+	ctx := WithChannel(WithUserID(context.Background(), "user-ask-other"), "web")
+	done := make(chan struct {
+		raw interface{}
+		err error
+	}, 1)
+
+	go func() {
+		raw, err := tool.Execute(ctx, map[string]interface{}{
+			"questions": []interface{}{
+				map[string]interface{}{
+					"question": "How should we proceed?",
+					"type":     "radio",
+					"options":  []interface{}{"Option A", "Option B"},
+				},
+			},
+		})
+		done <- struct {
+			raw interface{}
+			err error
+		}{raw: raw, err: err}
+	}()
+
+	deadline := time.Now().Add(2 * time.Second)
+	var pending *QuestionRequest
+	for time.Now().Before(deadline) {
+		pending = mgr.GetPending("user-ask-other")
+		if pending != nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if pending == nil {
+		t.Fatal("expected pending question request")
+	}
+
+	if !mgr.ResolveAnswer(pending.ID, []QuestionAnswerResult{{
+		QuestionID: "q0",
+		Selected:   nil,
+		OtherText:  "Custom plan",
+	}}) {
+		t.Fatalf("failed to resolve question id=%s", pending.ID)
+	}
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("Execute() error = %v", result.err)
+		}
+		outStr, ok := result.raw.(string)
+		if !ok {
+			t.Fatalf("Execute() type = %T, want string", result.raw)
+		}
+		var out map[string]interface{}
+		if err := json.Unmarshal([]byte(outStr), &out); err != nil {
+			t.Fatalf("unmarshal output error = %v", err)
+		}
+
+		qa, ok := out["qa"].([]interface{})
+		if !ok || len(qa) != 1 {
+			t.Fatalf("qa = %#v, want single item", out["qa"])
+		}
+		first, ok := qa[0].(map[string]interface{})
+		if !ok {
+			t.Fatalf("qa[0] type = %T, want object", qa[0])
+		}
+		answers, ok := first["a"].([]interface{})
+		if !ok || len(answers) != 1 || answers[0] != "Custom plan" {
+			t.Fatalf("qa[0].a = %#v, want [\"Custom plan\"]", first["a"])
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timeout waiting for ask execution result")
 	}
 }
 

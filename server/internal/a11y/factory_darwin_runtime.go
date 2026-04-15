@@ -98,6 +98,7 @@ var (
 )
 
 const (
+	darwinCGWindowListOptionAll          = 0
 	darwinUTF8Encoding                   = 0x08000100
 	darwinCGWindowListOptionOnScreenOnly = 1
 	darwinCGWindowListExcludeDesktop     = 16
@@ -164,6 +165,18 @@ func (b *darwinBackend) listWindows(context.Context) ([]WindowInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+	return darwinWindowInfosFromRecords(records), nil
+}
+
+func (b *darwinBackend) listAllWindows(context.Context) ([]WindowInfo, error) {
+	records, err := b.listAllWindowRecords()
+	if err != nil {
+		return nil, err
+	}
+	return darwinWindowInfosFromRecords(records), nil
+}
+
+func darwinWindowInfosFromRecords(records []darwinWindowRecord) []WindowInfo {
 	windows := make([]WindowInfo, 0, len(records))
 	for _, record := range records {
 		windows = append(windows, WindowInfo{
@@ -174,7 +187,7 @@ func (b *darwinBackend) listWindows(context.Context) ([]WindowInfo, error) {
 			Focused: record.Focused,
 		})
 	}
-	return windows, nil
+	return windows
 }
 
 func (b *darwinBackend) screenshot(ctx context.Context, windowID string) (ScreenshotResult, error) {

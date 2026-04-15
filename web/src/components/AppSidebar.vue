@@ -155,7 +155,7 @@ const showMacosDesktopDragRegion = computed(() => isTauri.value && platform.valu
 
 // Workspace panel state
 const showWorkspacePanel = ref(false)
-const activeWorkspaceTab = ref<'core' | 'generated'>('core')
+const activeWorkspaceTab = ref<'core' | 'generated'>('generated')
 const workspaceDir = ref('')
 const workspaceMetaRequested = ref(false)
 const workspaceMetaLoading = ref(false)
@@ -246,6 +246,14 @@ function formatTimestamp(value: string): string {
 function messageTimeMs(value: string): number {
   const parsed = Date.parse(value)
   return Number.isNaN(parsed) ? 0 : parsed
+}
+
+function workspaceGeneratedMessageFingerprint(content: string): string {
+  let hash = 0
+  for (let index = 0; index < content.length; index += 1) {
+    hash = (hash * 31 + content.charCodeAt(index)) | 0
+  }
+  return `${content.length}:${hash >>> 0}`
 }
 
 function normalizeConversationId(value: unknown): string {
@@ -598,7 +606,7 @@ function closeWorkspacePanel() {
   clearWorkspaceGeneratedRefreshTimer()
   cancelCoreEdit()
   showWorkspacePanel.value = false
-  activeWorkspaceTab.value = 'core'
+  activeWorkspaceTab.value = 'generated'
 }
 
 async function switchWorkspaceTab(tab: 'core' | 'generated') {
@@ -619,7 +627,11 @@ async function handleWorkspaceClick() {
   workspaceError.value = ''
   showWorkspacePanel.value = true
   await ensureWorkspaceMeta()
-  await ensureWorkspaceFiles()
+  if (activeWorkspaceTab.value === 'core') {
+    await ensureWorkspaceFiles()
+    return
+  }
+  await refreshGeneratedWorkspaceView()
 }
 
 async function handleOpenWorkspaceLocation() {
@@ -1100,8 +1112,8 @@ const workspaceGeneratedRefreshSignal = computed(() => {
   const tail = chatStore.messages
     .slice(-4)
     .map((message) => {
-      const contentLength = String(message.content || '').length
-      return `${message.id}:${message.role}:${message.created_at}:${contentLength}`
+      const contentFingerprint = workspaceGeneratedMessageFingerprint(String(message.content || ''))
+      return `${message.id}:${message.role}:${message.created_at}:${contentFingerprint}`
     })
     .join('|')
   return `${conversationId}::${tail}`
@@ -1810,7 +1822,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               "
               @click="switchWorkspaceTab('core')"
             >
-              {{ tr('nav.workspaceCoreTab', 'Workspace Files') }}
+              {{ tr('nav.workspaceCoreTab', 'Core Context Files') }}
             </button>
             <button
               class="px-3 py-1.5 text-xs rounded-md transition-colors"
@@ -1821,7 +1833,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
               "
               @click="switchWorkspaceTab('generated')"
             >
-              {{ tr('nav.workspaceGeneratedTab', 'File Sources') }}
+              {{ tr('nav.workspaceGeneratedTab', 'Workspace Files') }}
             </button>
           </div>
         </div>
@@ -1967,7 +1979,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
           >
             <div class="flex items-start justify-between gap-3">
               <h4 class="text-base font-semibold text-gray-900 dark:text-white">
-                {{ tr('nav.workspaceGeneratedTitle', 'Workspace Tree') }}
+                {{ tr('nav.workspaceGeneratedTitle', 'Workspace Directory Tree') }}
               </h4>
               <div
                 class="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 flex-wrap justify-end"

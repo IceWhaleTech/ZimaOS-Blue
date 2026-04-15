@@ -1,0 +1,266 @@
+{
+  "dataset": {
+    "name": "a11y-quickpaths",
+    "subject": "a11y_quickpaths"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "profile": "a11y_quickpaths",
+    "scheduler": {
+      "max_concurrency": 1,
+      "max_attempts": 1,
+      "retry_backoff": 10000000000
+    },
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    },
+    "runtime_policy": {
+      "dataset_family": "a11y_quickpaths",
+      "policy_model_hint": "claude-sonnet-4.6",
+      "provider_config_mode": "runtime_injected"
+    }
+  },
+  "items": [
+    {
+      "id": "macos-feishu-message-orca",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 macOS 上，用最短确定性路径在飞书里给 Orca 发送“你好，Orca”。优先直接使用桌面 a11y 快速路径，不要先列窗口；如果窗口唯一匹配就直接激活；如果需要输入，优先走可设置文本并做 AX/OCR 校验，再降级剪贴板，最后才逐字输入。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加任何解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "im",
+        "critical": true,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Deliver the greeting in Feishu to Orca and return raw a11y JSON proving target hit and verification success."
+      }
+    },
+    {
+      "id": "windows-feishu-message-orca",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 Windows 上，用最短确定性路径在飞书里给 Orca 发送“你好，Orca”。优先直接使用桌面 a11y 快速路径，不要先列窗口；如果窗口唯一匹配就直接激活；如果需要输入，优先走可设置文本并做 AX/OCR 校验，再降级剪贴板，最后才逐字输入。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加任何解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "im",
+        "critical": true,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Deliver the greeting in Feishu to Orca and return raw a11y JSON proving target hit and verification success."
+      }
+    },
+    {
+      "id": "macos-settings-toggle-notifications",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 macOS 上，用桌面 a11y 快速路径打开系统设置并切换一个名为“通知”或 Notifications 的设置项。优先使用 setting/toggle 场景动作，不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "settings",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Use a deterministic settings toggle path and return raw a11y JSON proving the labeled setting was hit and verified."
+      }
+    },
+    {
+      "id": "windows-settings-toggle-notifications",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 Windows 上，用桌面 a11y 快速路径打开设置并切换一个名为“通知”或 Notifications 的设置项。优先使用 setting/toggle 场景动作，不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "settings",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Use a deterministic settings toggle path and return raw a11y JSON proving the labeled setting was hit and verified."
+      }
+    },
+    {
+      "id": "macos-browser-click-address-bar",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 macOS 上，把 Chrome、Edge 或 Safari 的地址栏聚焦出来。优先对浏览器原生窗口控件做 host a11y 操作，不要切到 DOM 自动化，也不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "browser",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Hit the browser chrome address bar through host a11y and return raw JSON with positive target and verification telemetry."
+      }
+    },
+    {
+      "id": "windows-browser-click-address-bar",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 Windows 上，把 Chrome 或 Edge 的地址栏聚焦出来。优先对浏览器原生窗口控件做 host a11y 操作，不要切到 DOM 自动化，也不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "browser",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Hit the browser chrome address bar through host a11y and return raw JSON with positive target and verification telemetry."
+      }
+    },
+    {
+      "id": "macos-finder-select-downloads",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 macOS 上，用桌面 a11y 快速路径把 Finder 里的“下载”或 Downloads 选中。优先使用 select 场景动作，不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "file_manager",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Select the Finder Downloads entry deterministically and return raw JSON with positive target and verification telemetry."
+      }
+    },
+    {
+      "id": "windows-explorer-select-downloads",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 Windows 上，用桌面 a11y 快速路径把文件资源管理器里的“下载”或 Downloads 选中。优先使用 select 场景动作，不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "file_manager",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Select the Explorer Downloads entry deterministically and return raw JSON with positive target and verification telemetry."
+      }
+    },
+    {
+      "id": "macos-mail-click-new-message",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 macOS 上，用桌面 a11y 快速路径在 Apple Mail 里点击“新建邮件”或 New Message。优先使用 click/control 场景动作，不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "mail",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Open the mail compose entry point deterministically and return raw JSON with positive target and verification telemetry."
+      }
+    },
+    {
+      "id": "windows-outlook-click-new-message",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "请在 Windows 上，用桌面 a11y 快速路径在 Outlook 里点击“新建邮件”或 New Message。优先使用 click/control 场景动作，不要先列窗口。完成后只输出最后一次 blue a11y 调用返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "mail",
+        "critical": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Open the mail compose entry point deterministically and return raw JSON with positive target and verification telemetry."
+      }
+    }
+  ]
+}

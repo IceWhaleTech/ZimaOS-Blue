@@ -349,8 +349,8 @@ export default mergeHarnessLocale('de-DE', {
     workspaceLoadFailed: 'Arbeitsbereichsdetails konnten nicht geladen werden',
     workspaceFilesLoadFailed: 'Arbeitsbereichsdateien konnten nicht geladen werden',
     workspaceOpenFailed: 'Der Arbeitsbereich im Dateimanager kann nicht geöffnet werden',
-    workspaceCoreTab: 'Workspace-Kerndateien',
-    workspaceGeneratedTab: 'Dateiquellen',
+    workspaceCoreTab: 'Kernkontextdateien',
+    workspaceGeneratedTab: 'Arbeitsbereichsdateien',
     workspaceGeneratedTitle: 'Arbeitsbereichsverzeichnisbaum',
     workspaceGeneratedDescription:
       'Zeigen Sie echte Verzeichnisse und Dateien mit Hierarchie an und verknüpfen Sie generierte Dateien mit Quellkonversationen, sofern verfügbar.',
@@ -702,6 +702,9 @@ export default mergeHarnessLocale('de-DE', {
       expand: 'Erweitern Sie die Aufgabenliste',
       collapse: 'Aufgabenliste reduzieren',
       jumpToMessage: 'Zur Checklistennachricht springen',
+    },
+    todoChecklist: {
+      progress: '{completed} von {total} Aufgaben abgeschlossen',
     },
     send: 'Senden',
     sendDuringStream: 'Senden (zur Konversation hinzufügen)',
@@ -1583,7 +1586,7 @@ export default mergeHarnessLocale('de-DE', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Arbeitsbereich-Dateien',
+    title: 'Kernkontextdateien',
     description: 'Diese Dateien definieren Blues Persönlichkeit, Gedächtnis und Verhalten.',
     saved: '{name} gespeichert',
     noFiles: 'Keine Arbeitsbereich-Dateien gefunden.',

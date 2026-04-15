@@ -72,7 +72,7 @@ func TestDarwinSendTextWithClipboardFallback_PrefersClipboardPaste(t *testing.T)
 	clipboardCalls := 0
 	unicodeCalls := 0
 
-	err := darwinSendTextWithClipboardFallback(
+	method, err := darwinSendTextWithClipboardFallback(
 		"hello",
 		func(value string) error {
 			clipboardCalls++
@@ -89,6 +89,9 @@ func TestDarwinSendTextWithClipboardFallback_PrefersClipboardPaste(t *testing.T)
 	if err != nil {
 		t.Fatalf("darwinSendTextWithClipboardFallback() error = %v", err)
 	}
+	if method != "clipboard" {
+		t.Fatalf("method = %q, want clipboard", method)
+	}
 	if clipboardCalls != 1 {
 		t.Fatalf("clipboardCalls = %d, want 1", clipboardCalls)
 	}
@@ -101,7 +104,7 @@ func TestDarwinSendTextWithClipboardFallback_FallsBackToUnicodeInput(t *testing.
 	clipboardCalls := 0
 	unicodeCalls := 0
 
-	err := darwinSendTextWithClipboardFallback(
+	method, err := darwinSendTextWithClipboardFallback(
 		"hello",
 		func(string) error {
 			clipboardCalls++
@@ -117,6 +120,9 @@ func TestDarwinSendTextWithClipboardFallback_FallsBackToUnicodeInput(t *testing.
 	)
 	if err != nil {
 		t.Fatalf("darwinSendTextWithClipboardFallback() error = %v", err)
+	}
+	if method != "unicode" {
+		t.Fatalf("method = %q, want unicode", method)
 	}
 	if clipboardCalls != 1 {
 		t.Fatalf("clipboardCalls = %d, want 1", clipboardCalls)
@@ -174,7 +180,7 @@ func TestDarwinVerifySemanticTextEntry_PrefersAXValueReadback(t *testing.T) {
 	captureCalls := 0
 	ocrCalls := 0
 
-	ok := darwinVerifySemanticTextEntry(
+	ok, method := darwinVerifySemanticTextEntry(
 		nil,
 		"你好，Orca",
 		func() string { return "你好，Orca" },
@@ -192,6 +198,9 @@ func TestDarwinVerifySemanticTextEntry_PrefersAXValueReadback(t *testing.T) {
 	if !ok {
 		t.Fatal("darwinVerifySemanticTextEntry() = false, want true")
 	}
+	if method != "ax_value" {
+		t.Fatalf("method = %q, want ax_value", method)
+	}
 	if captureCalls != 0 {
 		t.Fatalf("captureCalls = %d, want 0", captureCalls)
 	}
@@ -204,7 +213,7 @@ func TestDarwinVerifySemanticTextEntry_FallsBackToOCR(t *testing.T) {
 	captureCalls := 0
 	ocrCalls := 0
 
-	ok := darwinVerifySemanticTextEntry(
+	ok, method := darwinVerifySemanticTextEntry(
 		nil,
 		"你好，Orca",
 		func() string { return "" },
@@ -231,6 +240,9 @@ func TestDarwinVerifySemanticTextEntry_FallsBackToOCR(t *testing.T) {
 	if !ok {
 		t.Fatal("darwinVerifySemanticTextEntry() = false, want true")
 	}
+	if method != "ocr" {
+		t.Fatalf("method = %q, want ocr", method)
+	}
 	if captureCalls != 1 {
 		t.Fatalf("captureCalls = %d, want 1", captureCalls)
 	}
@@ -240,7 +252,7 @@ func TestDarwinVerifySemanticTextEntry_FallsBackToOCR(t *testing.T) {
 }
 
 func TestDarwinVerifySemanticTextEntry_ReturnsFalseWhenVerificationFails(t *testing.T) {
-	ok := darwinVerifySemanticTextEntry(
+	ok, method := darwinVerifySemanticTextEntry(
 		nil,
 		"hello orca",
 		func() string { return "draft" },
@@ -251,5 +263,8 @@ func TestDarwinVerifySemanticTextEntry_ReturnsFalseWhenVerificationFails(t *test
 	)
 	if ok {
 		t.Fatal("darwinVerifySemanticTextEntry() = true, want false")
+	}
+	if method != "" {
+		t.Fatalf("method = %q, want empty", method)
 	}
 }

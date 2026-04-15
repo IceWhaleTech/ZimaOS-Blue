@@ -1,0 +1,18 @@
+api_version: harness.blue/v1alpha1
+kind: dataset_bundle
+name: a11y-quickpaths
+description: Deterministic desktop a11y quick paths for common Mac and Windows app flows with routing contract enforcement.
+subject: a11y_quickpaths
+default_run_kind: agent_task
+default_profile: a11y_quickpaths
+default_version: v5
+metadata:
+  suite: a11y
+  dataset_family: a11y_quickpaths
+  target_platforms:
+    - macos
+    - windows
+versions:
+  v5:
+    eval_specs:
+      - default.yaml

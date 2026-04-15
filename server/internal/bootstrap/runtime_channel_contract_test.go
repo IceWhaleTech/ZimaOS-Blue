@@ -27,6 +27,30 @@ func TestBindRouteRuntimeChannels_RegistersFallbackRoutesWithoutConfigStore(t *t
 	}
 }
 
+func TestBindRouteRuntimeChannels_RegistersWechatILinkSetupRoutesWithoutConfigStore(t *testing.T) {
+	e := echo.New()
+	api := e.Group("/api")
+
+	bindRouteRuntimeChannels(routeRuntimeContractChannelOptions{
+		api:           api,
+		tunnelHandler: stubRuntimeChannelTunnelSetup{},
+		logger:        zap.NewNop(),
+	})
+
+	for _, path := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodPost, path: "/api/channels/wechat_ilink/setup/session"},
+		{method: http.MethodGet, path: "/api/channels/wechat_ilink/setup/session/:id"},
+		{method: http.MethodPost, path: "/api/channels/wechat_ilink/setup/session/:id/complete"},
+	} {
+		if !routeExists(e, path.method, path.path) {
+			t.Fatalf("expected route %s %s to be registered without config store, got %#v", path.method, path.path, e.Routes())
+		}
+	}
+}
+
 func TestBindRouteRuntimeChannels_RegistersWechatILinkSetupRoutes(t *testing.T) {
 	e := echo.New()
 	api := e.Group("/api")

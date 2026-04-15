@@ -69,15 +69,41 @@ func browserCheckpointLocale(lang i18n.Language) browserCheckpointLocaleStrings 
 	return browserCheckpointStrings[i18n.DefaultLanguage]
 }
 
+var browserCheckpointAllowSiteLabels = map[i18n.Language]string{
+	i18n.LangEnUS: "Always allow this site",
+	i18n.LangEnGB: "Always allow this site",
+	i18n.LangZhCN: "始终允许此网站",
+	i18n.LangZhTW: "一律允許此網站",
+	i18n.LangJaJP: "このサイトを常に許可する",
+	i18n.LangKoKR: "이 사이트를 항상 허용",
+	i18n.LangDeDE: "Erlauben Sie diese Seite immer",
+	i18n.LangFrFR: "Toujours autoriser ce site",
+	i18n.LangEsES: "Permitir siempre este sitio",
+	i18n.LangItIT: "Consenti sempre questo sito",
+	i18n.LangPtBR: "Sempre permitir este site",
+	i18n.LangPtPT: "Permitir sempre este site",
+	i18n.LangRuRU: "Всегда разрешать этот сайт",
+	i18n.LangPlPL: "Zawsze zezwalaj na tę witrynę",
+	i18n.LangNlNL: "Sta deze site altijd toe",
+	i18n.LangSvSE: "Tillåt alltid den här webbplatsen",
+	i18n.LangDaDK: "Tillad altid dette websted",
+	i18n.LangNbNO: "Tillat alltid dette nettstedet",
+	i18n.LangCsCZ: "Vždy povolit tento web",
+	i18n.LangSkSK: "Vždy povoliť túto stránku",
+	i18n.LangHuHU: "Mindig engedélyezze ezt a webhelyet",
+	i18n.LangRoRO: "Permiteți întotdeauna acest site",
+	i18n.LangHrHR: "Uvijek dopusti ovu stranicu",
+	i18n.LangElGR: "Να επιτρέπεται πάντα αυτός ο ιστότοπος",
+	i18n.LangCaES: "Permet sempre aquest lloc",
+	i18n.LangGaIE: "Ceadaigh an suíomh seo i gcónaí",
+	i18n.LangMlIN: "ഈ സൈറ്റ് എപ്പോഴും അനുവദിക്കുക",
+}
+
 func browserCheckpointAllowSiteLabel(lang i18n.Language) string {
-	switch i18n.ParseLanguage(string(lang)) {
-	case i18n.LangZhCN:
-		return "始终允许此网站"
-	case i18n.LangZhTW:
-		return "永遠允許此網站"
-	default:
-		return "Always allow this site"
+	if label, ok := browserCheckpointAllowSiteLabels[i18n.ParseLanguage(string(lang))]; ok {
+		return label
 	}
+	return browserCheckpointAllowSiteLabels[i18n.DefaultLanguage]
 }
 
 func localizedBrowserCheckpointStep(lang i18n.Language, step string) string {

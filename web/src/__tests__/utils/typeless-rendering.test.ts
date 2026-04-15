@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { renderCardToHtml } from '@/utils/typelessRenderers'
-import type { TypelessCardCode, TypelessCardInfo } from '@/types/typeless'
+import enUS from '@/i18n/locales/en-US'
+import zhCN from '@/i18n/locales/zh-CN'
+import { i18n } from '@/i18n'
+import { renderCardToHtml, renderCache } from '@/utils/typelessRenderers'
+import type { TypelessCardCode, TypelessCardInfo, TypelessCardList } from '@/types/typeless'
+
+i18n.global.setLocaleMessage('en-US', enUS as never)
+i18n.global.setLocaleMessage('zh-CN', zhCN as never)
 
 describe('Typeless Code Card Rendering', () => {
   it('should render code card without language as "Text"', () => {
@@ -116,5 +122,34 @@ describe('Typeless Inline Parsing', () => {
     expect(html).toContain('<em>done</em>')
     expect(html).toContain('_raw_token_')
     expect(html).not.toContain('<em>raw_token</em>')
+  })
+
+  it('localizes checklist progress with the active locale across cached renders', () => {
+    const card: TypelessCardList = {
+      type: 'list',
+      id: 'todo-1',
+      variant: 'checklist',
+      items: [
+        { content: 'First task', checked: true },
+        { content: 'Second task', checked: false },
+      ],
+    }
+
+    renderCache.clear()
+    i18n.global.locale.value = 'en-US'
+
+    const englishHtml = renderCardToHtml(card)
+
+    expect(englishHtml).toContain('1 out of 2 tasks completed')
+
+    i18n.global.locale.value = 'zh-CN'
+
+    const chineseHtml = renderCardToHtml(card)
+
+    expect(chineseHtml).toContain('已完成 1 / 2 项')
+    expect(chineseHtml).not.toContain('tasks completed')
+
+    i18n.global.locale.value = 'en-US'
+    renderCache.clear()
   })
 })

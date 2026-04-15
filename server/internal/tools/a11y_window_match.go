@@ -7,90 +7,172 @@ import (
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
 )
 
-func (t *A11yTool) resolveHostWindowID(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (string, error) {
+type a11yWindowMatch struct {
+	ResolvedID string
+	MatchedBy  string
+	Exact      bool
+	Unique     bool
+	Candidates int
+}
+
+func (t *A11yTool) resolveHostWindowID(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (string, *a11yWindowMatch, error) {
 	windowID = strings.TrimSpace(windowID)
 	windowTitle := firstCompatString(args, "window_title", "windowTitle", "title")
 	appName := firstCompatString(args, "app_name", "appName", "application", "app")
+	cachedWindow, cachedHint := t.effectiveWindowContext()
+	currentHint := a11yWindowQueryHint(windowTitle, appName)
 
 	if windowID == "" && strings.TrimSpace(windowTitle) == "" && strings.TrimSpace(appName) == "" {
-		return t.effectiveWindow(""), nil
+		return t.effectiveWindow(""), nil, nil
 	}
 
 	windows, err := backend.ListWindows(ctx)
 	if err != nil {
 		if strings.TrimSpace(windowTitle) != "" || strings.TrimSpace(appName) != "" {
-			return "", err
+			return "", nil, err
 		}
-		return windowID, nil
+		return windowID, nil, nil
 	}
 
-	resolved, err := resolveA11yWindowTarget(windowID, windowTitle, appName, windows)
+	resolved, match, err := resolveA11yWindowTarget(windowID, windowTitle, appName, windows)
 	if err != nil {
-		return "", err
+		if fallback, fallbackMatch, ok := resolveA11yWindowContextFallback(err, cachedWindow, cachedHint, currentHint, windows); ok {
+			return fallback, fallbackMatch, nil
+		}
+		if fallback, fallbackMatch, fallbackErr, ok := resolveA11yWindowAllWindowsFallback(ctx, backend, windowID, windowTitle, appName, err); ok {
+			return fallback, fallbackMatch, fallbackErr
+		}
+		return "", nil, err
 	}
 	if strings.TrimSpace(resolved) != "" {
-		return resolved, nil
+		return resolved, match, nil
 	}
-	return t.effectiveWindow(""), nil
+	return t.effectiveWindow(""), nil, nil
 }
 
-func resolveA11yWindowTarget(windowID string, windowTitle string, appName string, windows []a11yruntime.WindowInfo) (string, error) {
+func resolveA11yWindowAllWindowsFallback(ctx context.Context, backend a11yruntime.Backend, windowID string, windowTitle string, appName string, resolveErr error) (string, *a11yWindowMatch, error, bool) {
+	runtimeErr, ok := resolveErr.(*a11yruntime.RuntimeError)
+	if !ok || runtimeErr.Code != "backend_unavailable" || runtimeErr.Message != "target window not found" {
+		return "", nil, nil, false
+	}
+	lister, ok := backend.(hostAllWindowsLister)
+	if !ok {
+		return "", nil, nil, false
+	}
+	allWindows, err := lister.ListAllWindows(ctx)
+	if err != nil {
+		return "", nil, err, true
+	}
+	if len(allWindows) == 0 {
+		return "", nil, nil, false
+	}
+	resolved, match, err := resolveA11yWindowTarget(windowID, windowTitle, appName, allWindows)
+	if err != nil {
+		return "", nil, err, true
+	}
+	if strings.TrimSpace(resolved) == "" {
+		return "", nil, nil, false
+	}
+	return resolved, match, nil, true
+}
+
+func resolveA11yWindowContextFallback(err error, cachedWindow string, cachedHint string, currentHint string, windows []a11yruntime.WindowInfo) (string, *a11yWindowMatch, bool) {
+	cachedWindow = strings.TrimSpace(cachedWindow)
+	cachedHint = strings.TrimSpace(cachedHint)
+	currentHint = strings.TrimSpace(currentHint)
+	if cachedWindow == "" || cachedHint == "" || currentHint == "" || cachedHint != currentHint || len(windows) == 0 {
+		return "", nil, false
+	}
+	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+	if !ok || runtimeErr.Code != "backend_unavailable" || runtimeErr.Message != "target window not found" {
+		return "", nil, false
+	}
+	contextWindow := rememberedWindowFromList(windows)
+	if contextWindow == "" || contextWindow != cachedWindow {
+		return "", nil, false
+	}
+	return cachedWindow, &a11yWindowMatch{
+		ResolvedID: cachedWindow,
+		MatchedBy:  "cached_window",
+		Exact:      false,
+		Unique:     true,
+		Candidates: 1,
+	}, true
+}
+
+func resolveA11yWindowTarget(windowID string, windowTitle string, appName string, windows []a11yruntime.WindowInfo) (string, *a11yWindowMatch, error) {
 	windowID = strings.TrimSpace(windowID)
 	windowTitle = strings.TrimSpace(windowTitle)
 	appName = strings.TrimSpace(appName)
 
 	if len(windows) == 0 {
 		if windowID != "" {
-			return windowID, nil
+			return windowID, &a11yWindowMatch{ResolvedID: windowID, MatchedBy: "window_id", Exact: true, Unique: true, Candidates: 1}, nil
 		}
 		if windowTitle == "" && appName == "" {
-			return "", nil
+			return "", nil, nil
 		}
-		return "", a11yruntime.NewError("backend_unavailable", "target window not found", windowMatchDetails(windowID, windowTitle, appName, 0))
+		return "", nil, a11yruntime.NewError("backend_unavailable", "target window not found", windowMatchDetails(windowID, windowTitle, appName, 0))
 	}
 
 	if windowID != "" && hasExactWindowID(windowID, windows) {
-		return windowID, nil
+		return windowID, &a11yWindowMatch{ResolvedID: windowID, MatchedBy: "window_id", Exact: true, Unique: true, Candidates: 1}, nil
 	}
 
 	if windowTitle != "" || appName != "" {
 		candidates := windows
+		exactTitle := true
+		exactApp := true
 		if windowTitle != "" {
-			candidates = filterWindowsByResolvedQuery(windowTitle, candidates, func(item a11yruntime.WindowInfo) string {
+			var exact bool
+			candidates, exact = filterWindowsByResolvedQuery(windowTitle, candidates, func(item a11yruntime.WindowInfo) string {
 				return item.Title
 			})
+			exactTitle = exact
 		}
 		if appName != "" {
-			candidates = filterWindowsByResolvedQuery(appName, candidates, func(item a11yruntime.WindowInfo) string {
+			var exact bool
+			candidates, exact = filterWindowsByResolvedQuery(appName, candidates, func(item a11yruntime.WindowInfo) string {
 				return item.AppName
 			})
+			exactApp = exact
 		}
-		return resolveUniqueWindowCandidate(candidates, windowID, windowTitle, appName)
+		matchedBy := ""
+		switch {
+		case windowTitle != "" && appName != "":
+			matchedBy = "window_title+app_name"
+		case windowTitle != "":
+			matchedBy = "window_title"
+		default:
+			matchedBy = "app_name"
+		}
+		return resolveUniqueWindowCandidate(candidates, windowID, windowTitle, appName, exactTitle && exactApp, matchedBy)
 	}
 
 	if windowID == "" {
-		return "", nil
+		return "", nil, nil
 	}
 
 	candidates := filterWindowsByExactTitle(windowID, windows)
 	candidates = appendMissingWindows(candidates, filterWindowsByExactAppName(windowID, windows))
 	if len(candidates) == 0 {
-		return windowID, nil
+		return windowID, &a11yWindowMatch{ResolvedID: windowID, MatchedBy: "window_id", Exact: true, Unique: true, Candidates: 1}, nil
 	}
-	return resolveUniqueWindowCandidate(candidates, windowID, "", "")
+	return resolveUniqueWindowCandidate(candidates, windowID, "", "", true, "window_id")
 }
 
-func resolveUniqueWindowCandidate(candidates []a11yruntime.WindowInfo, windowID string, windowTitle string, appName string) (string, error) {
+func resolveUniqueWindowCandidate(candidates []a11yruntime.WindowInfo, windowID string, windowTitle string, appName string, exact bool, matchedBy string) (string, *a11yWindowMatch, error) {
 	switch len(candidates) {
 	case 0:
-		return "", a11yruntime.NewError("backend_unavailable", "target window not found", windowMatchDetails(windowID, windowTitle, appName, 0))
+		return "", nil, a11yruntime.NewError("backend_unavailable", "target window not found", windowMatchDetails(windowID, windowTitle, appName, 0))
 	case 1:
-		return strings.TrimSpace(candidates[0].ID), nil
+		id := strings.TrimSpace(candidates[0].ID)
+		return id, &a11yWindowMatch{ResolvedID: id, MatchedBy: matchedBy, Exact: exact, Unique: true, Candidates: 1}, nil
 	default:
 		if resolved, ok := resolveFocusedWindowCandidate(candidates); ok {
-			return resolved, nil
+			return resolved, &a11yWindowMatch{ResolvedID: resolved, MatchedBy: matchedBy, Exact: exact, Unique: false, Candidates: len(candidates)}, nil
 		}
-		return "", a11yruntime.NewError("backend_unavailable", "target window is ambiguous", windowMatchDetails(windowID, windowTitle, appName, len(candidates)))
+		return "", nil, a11yruntime.NewError("backend_unavailable", "target window is ambiguous", windowMatchDetails(windowID, windowTitle, appName, len(candidates)))
 	}
 }
 
@@ -136,12 +218,12 @@ func filterWindowsByExactAppName(query string, windows []a11yruntime.WindowInfo)
 	})
 }
 
-func filterWindowsByResolvedQuery(query string, windows []a11yruntime.WindowInfo, primaryField func(a11yruntime.WindowInfo) string) []a11yruntime.WindowInfo {
+func filterWindowsByResolvedQuery(query string, windows []a11yruntime.WindowInfo, primaryField func(a11yruntime.WindowInfo) string) ([]a11yruntime.WindowInfo, bool) {
 	exactMatches := filterWindowsByExactField(query, windows, primaryField)
 	if len(exactMatches) > 0 {
-		return exactMatches
+		return exactMatches, true
 	}
-	return filterWindowsByBestFuzzyField(query, windows, primaryField)
+	return filterWindowsByBestFuzzyField(query, windows, primaryField), false
 }
 
 func filterWindowsByExactField(query string, windows []a11yruntime.WindowInfo, field func(a11yruntime.WindowInfo) string) []a11yruntime.WindowInfo {
@@ -183,6 +265,17 @@ func filterWindowsByBestFuzzyField(query string, windows []a11yruntime.WindowInf
 }
 
 func parseA11yWindowMatchTerms(query string) []string {
+	rawTerms := parseA11yWindowMatchAliases(query)
+	terms := make([]string, 0, len(rawTerms))
+	for _, part := range rawTerms {
+		if normalized := normalizeA11yWindowMatchValue(part); normalized != "" {
+			terms = append(terms, normalized)
+		}
+	}
+	return terms
+}
+
+func parseA11yWindowMatchAliases(query string) []string {
 	if strings.TrimSpace(query) == "" {
 		return nil
 	}
@@ -191,9 +284,10 @@ func parseA11yWindowMatchTerms(query string) []string {
 		return r == ',' || r == ' '
 	})
 	seen := make(map[string]struct{}, len(parts))
-	terms := make([]string, 0, len(parts))
+	aliases := make([]string, 0, len(parts))
 	for _, part := range parts {
-		normalized := normalizeA11yWindowMatchValue(part)
+		trimmed := strings.TrimSpace(part)
+		normalized := normalizeA11yWindowMatchValue(trimmed)
 		if normalized == "" {
 			continue
 		}
@@ -201,9 +295,9 @@ func parseA11yWindowMatchTerms(query string) []string {
 			continue
 		}
 		seen[normalized] = struct{}{}
-		terms = append(terms, normalized)
+		aliases = append(aliases, trimmed)
 	}
-	return terms
+	return aliases
 }
 
 func windowFieldMatchScore(value string, terms []string) int {

@@ -529,4 +529,72 @@ describe('ChannelsView', () => {
       'data:image/png;base64,abc'
     )
   })
+
+  it('shows the backend error when WeChat iLink setup creation fails', async () => {
+    createWeChatILinkSetupSessionMock.mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 503,
+        data: {
+          error: 'tunnel runtime not available',
+        },
+      },
+    })
+    listChannelsMock.mockResolvedValue({
+      status: 200,
+      data: {
+        channels: [
+          {
+            id: 'wechat_ilink',
+            enabled: false,
+            status: 'disconnected',
+            config: {},
+          },
+        ],
+      },
+    })
+    getChannelSettingsMock.mockResolvedValue({
+      status: 200,
+      data: {},
+    })
+
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const loadMoreButton = wrapper.find('.channels-load-more')
+    if (loadMoreButton.exists()) {
+      await loadMoreButton.trigger('click')
+      await flushPromises()
+    }
+
+    const wechatCard = wrapper.find('.channel-card-stub[data-id="wechat"]')
+    if (wechatCard.exists()) {
+      await wechatCard.find('.channel-card-select-stub').trigger('click')
+      await flushPromises()
+    }
+
+    const wechatILinkCard = wrapper.find('.channel-card-stub[data-id="wechat_ilink"]')
+    expect(wechatILinkCard.exists()).toBe(true)
+    await wechatILinkCard.find('.channel-card-select-stub').trigger('click')
+    await flushPromises()
+
+    const startButton = wrapper.find('.channels-ilink-setup-card__primary')
+    expect(startButton.exists()).toBe(true)
+    await startButton.trigger('click')
+    await flushPromises()
+
+    expect(createWeChatILinkSetupSessionMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('.channels-ilink-modal__error').text()).toContain(
+      'tunnel runtime not available'
+    )
+  })
 })

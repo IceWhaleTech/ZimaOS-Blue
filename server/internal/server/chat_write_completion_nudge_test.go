@@ -589,6 +589,22 @@ func TestBuildArtifactWorkflowExecutionHint_PrefersDocxForDocxArtifacts(t *testi
 	}
 }
 
+func TestBuildArtifactWorkflowExecutionHint_ForConvertedDocxWorkflow_AllowsDirectMarkdownOrStagedConversion(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Read findings.md, write the polished report to report.md, then convert it to report.docx.")
+	if !containsSubstring(hint, "prefer the native docx tool") {
+		t.Fatalf("expected docx hint, got=%q", hint)
+	}
+	if !containsSubstring(hint, "hand Markdown content directly") {
+		t.Fatalf("expected direct markdown handoff guidance, got=%q", hint)
+	}
+	if !containsSubstring(hint, "write Markdown first and then convert it") {
+		t.Fatalf("expected staged markdown conversion guidance, got=%q", hint)
+	}
+	if !containsSubstring(hint, "intermediate Markdown file does not complete the task") {
+		t.Fatalf("expected conversion completion guidance, got=%q", hint)
+	}
+}
+
 func TestBuildWorkspaceArtifactWriteRecoveryTools_PrefersXLSXForXLSXArtifacts(t *testing.T) {
 	reduced := buildWorkspaceArtifactWriteRecoveryTools([]llm.Tool{
 		{Name: "xlsx"},
@@ -664,6 +680,50 @@ func TestBuildArtifactWorkflowExecutionHint_PrefersPDFForPDFArtifacts(t *testing
 	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the reformatted report to launch_plan.pdf.")
 	if !containsSubstring(hint, "prefer the native pdf tool") {
 		t.Fatalf("expected pdf hint, got=%q", hint)
+	}
+}
+
+func TestBuildPostWriteCompletionNudge_SkipsIntermediateMarkdownWriteForConvertedDocx(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "write"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"report.md","size":512,"success":true,"append":false}`},
+	}
+
+	nudge := buildPostWriteCompletionNudge(
+		"Read findings.md, write the polished report to report.md, then convert it to report.docx.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge != "" {
+		t.Fatalf("expected no completion nudge after intermediate markdown write, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationNudge_PrefersFinalConvertedDocxAfterMarkdownWrite(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "file_read"},
+		{ID: "call-2", Name: "write"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"findings.md","content":"Key findings"}`},
+		{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"path":"report.md","size":512,"success":true,"append":false}`},
+	}
+
+	nudge := buildPostWorkspaceArtifactContinuationNudge(
+		"Read findings.md, write the polished report to report.md, then convert it to report.docx.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected continuation nudge after intermediate markdown write")
+	}
+	if want := `report.docx`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected continuation nudge to mention final converted target %q, got=%q", want, nudge)
+	}
+	if want := `Do not stop after listing files`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected continuation nudge to keep task open until final artifact, got=%q", nudge)
 	}
 }
 

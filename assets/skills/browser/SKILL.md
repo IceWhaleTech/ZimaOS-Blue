@@ -1,7 +1,7 @@
 ---
 name: browser
 version: "1.0.0"
-description: "Interact with live web pages using the built-in browser tool (navigate, inspect, click/type, screenshot, tab management). Use when the user asks to open/read a URL, extract page content, fill forms, click elements, reproduce web behavior, or capture screenshots."
+description: "Interact with live web pages using the built-in browser tool (navigate, inspect, click/type, screenshot, tab management). Use when the user asks to open/read a URL, extract page content, fill forms, click elements, reproduce web behavior, or capture screenshots. For auth-gated pages, prefer existing cookie/session state or relay/local Chrome over a fresh anonymous browser when possible."
 invocation: "blue browser navigate url=https://example.com"
 examples:
   - "blue browser navigate url=https://example.com"
@@ -30,6 +30,7 @@ No external dependencies required. Uses built-in browser commands.
 | Click/type/select on page elements | `blue browser snapshot*` to get `@ref`, then `blue browser act` |
 | Capture screenshot evidence | `blue browser screenshot` |
 | Inspect or switch active browser tabs | `blue browser tabs` |
+| Need a live logged-in browser session | Prefer reusing an existing tab/session first; if the login already lives in local Chrome, prefer relay/local Chrome (Chrome replay) |
 
 ---
 
@@ -108,4 +109,6 @@ blue browser tabs
 - Common aliases are normalized for compatibility, for example `open -> navigate`, `list -> tabs`, and direct verbs like `click/type/select -> act`.
 - For simple keyword lookup or public-page reads, prefer `web_query` first.
 - For known public URLs that only need content, prefer the lighter unified web read/fetch surface first. When exposed, this may appear as compatibility actions such as `web_fetch` or `web_read`.
+- If readable content only needs an authenticated session, prefer reusing `Cookie`, `Authorization`, or `browser_target_id` through the lighter fetch/read path before opening a full browser workflow.
+- If the site must stay inside an existing logged-in browser context, prefer an existing tab or relay/local Chrome (Chrome replay) instead of a brand-new anonymous browser tab.
 - Treat `browser` as the final fallback when lighter web tools are insufficient.

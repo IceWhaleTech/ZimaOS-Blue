@@ -118,7 +118,7 @@ func TestHandleCardAction_WebFetchUseBrowser_HTTP(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	want := "Open https://www.reddit.com/r/golang with the browser tool. If the page needs login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
+	want := "Open https://www.reddit.com/r/golang with the browser tool. If you only need readable content from an existing logged-in session, prefer web_fetch with browser_target_id or current session cookies first. If the page needs live login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
 	if !resp.Success || resp.Message != want {
 		t.Fatalf("response = %#v, want message %q", resp, want)
 	}
@@ -156,7 +156,7 @@ func TestHandleCardAction_RedditLoginWallToBrowserExtract_HTTP(t *testing.T) {
 	}
 
 	stepOneResp := submitCardActionHTTP(t, h, conv.ID, webFetchCard)
-	wantStepOne := "Open https://www.reddit.com/r/test with the browser tool. If the page needs login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
+	wantStepOne := "Open https://www.reddit.com/r/test with the browser tool. If you only need readable content from an existing logged-in session, prefer web_fetch with browser_target_id or current session cookies first. If the page needs live login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
 	if !stepOneResp.Success || stepOneResp.Message != wantStepOne {
 		t.Fatalf("step one response = %#v, want message %q", stepOneResp, wantStepOne)
 	}

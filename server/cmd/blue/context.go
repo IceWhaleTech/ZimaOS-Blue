@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	contextpackembed "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack/embedded"
@@ -111,15 +111,15 @@ func openLocalContextRuntime() (*localContextRuntime, error) {
 	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		return nil, err
 	}
-	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
+	cfg, err := config.Load("")
+	if err != nil {
+		return nil, err
+	}
+	workspaceMgr := workspace.NewManager(bootstrap.ResolveWorkspaceDir(dataDir, cfg))
 	if err := workspaceMgr.EnsureWorkspace(); err != nil {
 		return nil, err
 	}
 	if err := workspaceMgr.ReleaseContextPacks(contextpackembed.PacksFS); err != nil {
-		return nil, err
-	}
-	cfg, err := config.Load("")
-	if err != nil {
 		return nil, err
 	}
 	dbConn, err := openPrimaryDatabaseWithStartupRecovery(dataDir, cfg.Performance.Database)

@@ -197,10 +197,14 @@ func (t *AskTool) Execute(ctx context.Context, args map[string]interface{}) (int
 				}
 			}
 		}
+		answerValues := append([]string(nil), ans.Selected...)
+		if otherText := strings.TrimSpace(ans.OtherText); otherText != "" {
+			answerValues = append(answerValues, otherText)
+		}
 		qaList[i] = map[string]interface{}{
 			"q": qText,
 			"o": optLabels,
-			"a": ans.Selected,
+			"a": answerValues,
 		}
 	}
 

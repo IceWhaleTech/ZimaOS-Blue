@@ -347,8 +347,8 @@ export default mergeHarnessLocale('nl-NL', {
     workspaceLoadFailed: 'Kan werkruimtedetails niet laden',
     workspaceFilesLoadFailed: 'Kan werkruimtebestanden niet laden',
     workspaceOpenFailed: 'Kan werkruimte niet openen in bestandsbeheer',
-    workspaceCoreTab: 'Kernbestanden van de werkruimte',
-    workspaceGeneratedTab: 'Bestandsbronnen',
+    workspaceCoreTab: 'Kerncontextbestanden',
+    workspaceGeneratedTab: 'Werkruimtebestanden',
     workspaceGeneratedTitle: 'Directorystructuur van de werkruimte',
     workspaceGeneratedDescription:
       'Toon echte mappen en bestanden met hiërarchie en koppel gegenereerde bestanden aan brongesprekken, indien beschikbaar.',
@@ -699,6 +699,9 @@ export default mergeHarnessLocale('nl-NL', {
       expand: 'Vouw de takenlijst uit',
       collapse: 'Todolijst samenvouwen',
       jumpToMessage: 'Ga naar checklistbericht',
+    },
+    todoChecklist: {
+      progress: '{completed} van {total} taken voltooid',
     },
     send: 'Verzenden',
     sendDuringStream: 'Verzenden (toevoegen aan gesprek)',
@@ -1573,7 +1576,7 @@ export default mergeHarnessLocale('nl-NL', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Werkruimtebestanden',
+    title: 'Kerncontextbestanden',
     description:
       'Deze bestanden definiëren de persoonlijkheid, het geheugen en het gedrag van Blue.',
     saved: '{name} opgeslagen',

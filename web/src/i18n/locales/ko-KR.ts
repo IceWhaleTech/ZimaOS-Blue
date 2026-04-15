@@ -347,8 +347,8 @@ export default mergeHarnessLocale('ko-KR', {
     workspaceLoadFailed: '작업공간 세부정보를 로드하지 못했습니다.',
     workspaceFilesLoadFailed: '작업공간 파일을 로드하지 못했습니다.',
     workspaceOpenFailed: '파일 관리자에서 작업 공간을 열 수 없습니다',
-    workspaceCoreTab: '작업공간 핵심 파일',
-    workspaceGeneratedTab: '파일 출처',
+    workspaceCoreTab: '핵심 컨텍스트 파일',
+    workspaceGeneratedTab: '작업공간 파일',
     workspaceGeneratedTitle: '작업공간 디렉토리 트리',
     workspaceGeneratedDescription:
       '계층 구조가 포함된 실제 디렉터리와 파일을 표시하고, 가능한 경우 생성된 파일을 소스 대화에 연결합니다.',
@@ -695,6 +695,9 @@ export default mergeHarnessLocale('ko-KR', {
       expand: '할 일 목록 펼치기',
       collapse: '할 일 목록 접기',
       jumpToMessage: '체크리스트 메시지로 이동',
+    },
+    todoChecklist: {
+      progress: '{total} 작업 중 {completed} 완료됨',
     },
     send: '보내기',
     sendDuringStream: '보내기 (대화에 추가)',
@@ -1544,7 +1547,7 @@ export default mergeHarnessLocale('ko-KR', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: '워크스페이스 파일',
+    title: '핵심 컨텍스트 파일',
     description: '이 파일들은 Blue의 성격, 기억, 행동을 정의합니다.',
     saved: '{name} 저장됨',
     noFiles: '워크스페이스 파일을 찾을 수 없습니다.',

@@ -27,6 +27,7 @@ import {
 } from '@/utils/processTrace'
 import { localizeResearchSurfaceTitle } from '@/utils/deepResearchText'
 import { reportStartupMark } from '@/utils/startupTrace'
+import { translateHistoricalEnglishBrowserResult } from '@/i18n/browser-result-compat'
 
 type PendingConfirmationSnapshot = Pick<
   ConversationBootstrapResponse,
@@ -299,6 +300,24 @@ function formatScreenshotCapturedStatus(): string {
   return te(key) ? String(t(key)) : 'Screenshot captured'
 }
 
+function translateScreenshotStatus(message: string): string {
+  const trimmed = message.trim()
+  if (!trimmed) return ''
+
+  const fallbackStatus = formatScreenshotCapturedStatus()
+  return translateHistoricalEnglishBrowserResult(
+    trimmed,
+    {
+      t: (key, named) => String(named ? i18n.global.t(key, named) : i18n.global.t(key)),
+      te: (key) => i18n.global.te(key),
+    },
+    {
+      screenshotFallback: fallbackStatus,
+      preserveRawEnglishScreenshot: fallbackStatus === 'Screenshot captured',
+    }
+  )
+}
+
 /** Parse raw tool results into structured ToolResultItems. */
 export function parseToolResults(
   results: Array<{ name: string; id: string; args?: string; result?: string }>
@@ -426,9 +445,23 @@ export function parseToolResults(
         if (typeof res.warning_code === 'string' && res.warning_code.trim())
           warningCode = res.warning_code.trim()
         const screenshot = typeof res.screenshot === 'string' ? res.screenshot.trim() : ''
+        const message = typeof res.message === 'string' ? res.message.trim() : ''
         if (screenshot && !status) {
-          const message = typeof res.message === 'string' ? res.message.trim() : ''
-          status = message || formatScreenshotCapturedStatus()
+          status = translateScreenshotStatus(message) || formatScreenshotCapturedStatus()
+        }
+        if (!status && r.name === 'browser' && message) {
+          status = translateHistoricalEnglishBrowserResult(
+            message,
+            {
+              t: (key, named) => String(named ? i18n.global.t(key, named) : i18n.global.t(key)),
+              te: (key) => i18n.global.te(key),
+            },
+            {
+              screenshotFallback: formatScreenshotCapturedStatus(),
+              preserveRawEnglishScreenshot:
+                formatScreenshotCapturedStatus() === 'Screenshot captured',
+            }
+          )
         }
         if (res.stdout?.trim() && r.name !== 'ask') {
           output = res.stdout.trim()
@@ -447,7 +480,7 @@ export function parseToolResults(
           icon = '✓'
           const messageMatch = r.result.match(/"message"\s*:\s*"([^"]+)/)
           if (messageMatch && messageMatch[1]) {
-            status = messageMatch[1]
+            status = translateScreenshotStatus(messageMatch[1])
           } else {
             status = formatScreenshotCapturedStatus()
           }

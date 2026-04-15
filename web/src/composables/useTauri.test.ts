@@ -44,9 +44,11 @@ describe('useTauri', () => {
   }
 
   beforeEach(() => {
+    vi.unstubAllEnvs()
     delete window.__TAURI_INTERNALS__
     delete window.__TAURI__
     delete window.__BLUE_DESKTOP__
+    delete (window as any).__ZIMAOS__
 
     revealPathMock.mockReset()
     revealPathMock.mockResolvedValue({ success: true })
@@ -67,9 +69,11 @@ describe('useTauri', () => {
   })
 
   afterEach(() => {
+    vi.unstubAllEnvs()
     delete window.__TAURI_INTERNALS__
     delete window.__TAURI__
     delete window.__BLUE_DESKTOP__
+    delete (window as any).__ZIMAOS__
     vi.restoreAllMocks()
   })
 
@@ -231,6 +235,32 @@ describe('useTauri', () => {
   })
 
   describe('revealInFileManager', () => {
+    it('should open the ZimaOS Files module for /DATA paths in module UI', async () => {
+      window.__ZIMAOS__ = true
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/DATA/a/b')
+
+      expect(ok).toBe(true)
+      expect(openSpy).toHaveBeenCalledWith('//modules/icewhale_files/#/files/a/b', '_blank')
+      expect(revealPathMock).not.toHaveBeenCalled()
+    })
+
+    it('should open the ZimaOS Files module for /media paths in module UI', async () => {
+      window.__ZIMAOS__ = true
+      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+      refreshTauriDetection()
+      const { revealInFileManager } = useTauri()
+      const ok = await revealInFileManager('/media/sda/x/y')
+
+      expect(ok).toBe(true)
+      expect(openSpy).toHaveBeenCalledWith('//modules/icewhale_files/#/files/sda/x/y', '_blank')
+      expect(revealPathMock).not.toHaveBeenCalled()
+    })
+
     it('should invoke reveal_path in tauri desktop runtime', async () => {
       const invoke = vi.fn().mockResolvedValue(undefined)
       window.__TAURI_INTERNALS__ = { invoke }

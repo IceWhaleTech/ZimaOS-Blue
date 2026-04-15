@@ -31,6 +31,91 @@ func TestOfficePPTXSlideXMLIncludesNativeChart(t *testing.T) {
 	}
 }
 
+func TestOfficeBuildPresentationSlidesExtractsChartCalloutsFromBullets(t *testing.T) {
+	slides := officeBuildPresentationSlides(officeDocSpec{
+		Title: "Board Metrics",
+		Sections: []officeDocSection{
+			{
+				Heading:    "Revenue Mix",
+				Paragraphs: []string{"This longer narrative should remain in the body because it gives more context than a compact callout card should try to hold on the slide."},
+				Bullets:    []string{"Revenue: $12.4M", "Watch conversion quality"},
+				Chart: &officeChartSpec{
+					Type:       "bar",
+					Categories: []string{"Q1", "Q2"},
+					Series: []officeChartSeries{
+						{Name: "Revenue", Values: []float64{120, 132}},
+					},
+				},
+			},
+		},
+	})
+
+	var chartSlide *officePPTXSlide
+	for idx := range slides {
+		if slides[idx].Chart != nil {
+			chartSlide = &slides[idx]
+			break
+		}
+	}
+	if chartSlide == nil {
+		t.Fatalf("expected a chart slide in %#v", slides)
+	}
+	if len(chartSlide.Callouts) != 2 {
+		t.Fatalf("len(callouts) = %d, want 2 (%#v)", len(chartSlide.Callouts), chartSlide.Callouts)
+	}
+	if chartSlide.Callouts[0].Label != "Revenue" || chartSlide.Callouts[0].Value != "$12.4M" {
+		t.Fatalf("first callout = %#v, want Revenue/$12.4M", chartSlide.Callouts[0])
+	}
+	if chartSlide.Callouts[1].Body != "Watch conversion quality" || chartSlide.Callouts[1].Tone != "warning" {
+		t.Fatalf("second callout = %#v, want warning body callout", chartSlide.Callouts[1])
+	}
+	if len(chartSlide.Blocks) != 1 {
+		t.Fatalf("len(blocks) = %d, want 1 (%#v)", len(chartSlide.Blocks), chartSlide.Blocks)
+	}
+	if chartSlide.Blocks[0].Text != "This longer narrative should remain in the body because it gives more context than a compact callout card should try to hold on the slide." {
+		t.Fatalf("remaining block = %#v", chartSlide.Blocks[0])
+	}
+}
+
+func TestOfficePPTXSlideXMLIncludesThemeAwareChartCalloutRail(t *testing.T) {
+	slide := officePPTXSlide{
+		Title: "Revenue Mix",
+		Theme: resolveOfficeTheme("midnight", ""),
+		Chart: &officeChartSpec{
+			Type:       "bar",
+			Categories: []string{"Q1", "Q2"},
+			Series: []officeChartSeries{
+				{Name: "Revenue", Values: []float64{120, 132}},
+			},
+		},
+		Callouts: []officePPTXCallout{
+			{Label: "Revenue", Value: "$12.4M", Tone: "primary"},
+			{Body: "Watch conversion quality", Tone: "warning"},
+		},
+	}
+
+	xml := officePPTXSlideXML(slide)
+	for _, needle := range []string{
+		`name="Chart Callout Rail"`,
+		`name="Chart Callout Accent"`,
+		`name="Chart Callout 1"`,
+		`name="Chart Callout 2"`,
+		`<a:t>Key Takeaways</a:t>`,
+		`<a:t>Revenue</a:t>`,
+		`<a:t>$12.4M</a:t>`,
+		`<a:t>Watch conversion quality</a:t>`,
+		`typeface="Georgia"`,
+		`typeface="Segoe UI"`,
+		`val="00D4AA"`,
+		`val="FEF3C7"`,
+		`cx="8031480"`,
+	} {
+		if !containsSubstring(xml, needle) {
+			t.Fatalf("slide XML missing %q in %s", needle, xml)
+		}
+	}
+}
+
 func TestOfficePPTXChartXMLIncludesBarChartSeries(t *testing.T) {
 	chartXML := officePPTXChartXML(officeChartSpec{
 		Type:       "bar",
@@ -956,7 +1041,7 @@ func TestOfficePPTXChartXMLIncludesPrimaryValueAxisTickGridControls(t *testing.T
 	if len(valueAxisBlocks) != 1 {
 		t.Fatalf("expected 1 value-axis block in %s", chartXML)
 	}
-	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines/>`) {
+	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines`) {
 		t.Fatalf("expected primary value axis to omit major gridlines in %s", valueAxisBlocks[0])
 	}
 	for _, needle := range []string{
@@ -993,10 +1078,10 @@ func TestOfficePPTXChartXMLIncludesSecondaryValueAxisTickGridControls(t *testing
 	if len(valueAxisBlocks) != 2 {
 		t.Fatalf("expected 2 value-axis blocks in %s", chartXML)
 	}
-	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines/>`) {
+	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines`) {
 		t.Fatalf("expected primary value axis to omit major gridlines in %s", valueAxisBlocks[0])
 	}
-	if !containsSubstring(valueAxisBlocks[1], `<c:majorGridlines/>`) {
+	if !containsSubstring(valueAxisBlocks[1], `<c:majorGridlines`) {
 		t.Fatalf("expected secondary value axis to include major gridlines in %s", valueAxisBlocks[1])
 	}
 	if !containsSubstring(valueAxisBlocks[1], `<c:majorTickMark val="cross"/>`) || !containsSubstring(valueAxisBlocks[1], `<c:minorTickMark val="in"/>`) {
@@ -1023,10 +1108,10 @@ func TestOfficePPTXChartXMLIncludesPrimaryValueAxisMinorGridlines(t *testing.T) 
 	if len(valueAxisBlocks) != 1 {
 		t.Fatalf("expected 1 value-axis block in %s", chartXML)
 	}
-	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines/>`) {
+	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines`) {
 		t.Fatalf("expected primary value axis to omit major gridlines in %s", valueAxisBlocks[0])
 	}
-	if !containsSubstring(valueAxisBlocks[0], `<c:minorGridlines/>`) {
+	if !containsSubstring(valueAxisBlocks[0], `<c:minorGridlines`) {
 		t.Fatalf("expected primary value axis to include minor gridlines in %s", valueAxisBlocks[0])
 	}
 }
@@ -1051,10 +1136,10 @@ func TestOfficePPTXChartXMLIncludesSecondaryValueAxisMinorGridlines(t *testing.T
 	if len(valueAxisBlocks) != 2 {
 		t.Fatalf("expected 2 value-axis blocks in %s", chartXML)
 	}
-	if containsSubstring(valueAxisBlocks[0], `<c:minorGridlines/>`) {
+	if containsSubstring(valueAxisBlocks[0], `<c:minorGridlines`) {
 		t.Fatalf("expected primary value axis to omit minor gridlines in %s", valueAxisBlocks[0])
 	}
-	if !containsSubstring(valueAxisBlocks[1], `<c:minorGridlines/>`) {
+	if !containsSubstring(valueAxisBlocks[1], `<c:minorGridlines`) {
 		t.Fatalf("expected secondary value axis to include minor gridlines in %s", valueAxisBlocks[1])
 	}
 }
@@ -1748,6 +1833,120 @@ func TestOfficePPTXChartXMLIncludesSeriesColors(t *testing.T) {
 	}
 }
 
+func TestOfficePPTXChartXMLForThemeAppliesDefaultSeriesPalette(t *testing.T) {
+	chartXML := officePPTXChartXMLForTheme(officeChartSpec{
+		Type:       "bar",
+		Categories: []string{"Q1", "Q2"},
+		Series: []officeChartSeries{
+			{Name: "Revenue", Values: []float64{120, 132}},
+			{Name: "Margin", Values: []float64{28, 31}},
+			{Name: "Pipeline", Values: []float64{80, 96}},
+		},
+	}, resolveOfficeTheme("midnight", ""))
+
+	for _, needle := range []string{
+		`<c:v>Revenue</c:v>`,
+		`<c:v>Margin</c:v>`,
+		`<c:v>Pipeline</c:v>`,
+		`<a:srgbClr val="1E3A5F"/>`,
+		`<a:srgbClr val="00D4AA"/>`,
+		`<a:srgbClr val="4A5568"/>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("theme-colored chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLForThemeAppliesDefaultPiePointPalette(t *testing.T) {
+	chartXML := officePPTXChartXMLForTheme(officeChartSpec{
+		Type:       "pie",
+		Categories: []string{"North", "South", "West"},
+		Series: []officeChartSeries{
+			{Name: "Revenue", Values: []float64{120, 98, 110}},
+		},
+	}, resolveOfficeTheme("midnight", ""))
+
+	for _, needle := range []string{
+		`<c:dPt><c:idx val="0"/><c:spPr><a:solidFill><a:srgbClr val="1E3A5F"/></a:solidFill>`,
+		`<c:dPt><c:idx val="1"/><c:spPr><a:solidFill><a:srgbClr val="00D4AA"/></a:solidFill>`,
+		`<c:dPt><c:idx val="2"/><c:spPr><a:solidFill><a:srgbClr val="4A5568"/></a:solidFill>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("theme pie chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLForThemeUsesThemeTypography(t *testing.T) {
+	chartXML := officePPTXChartXMLForTheme(officeChartSpec{
+		Type:              "bar",
+		Title:             "Board Metrics",
+		CategoryAxisTitle: "Quarter",
+		ValueAxisTitle:    "Revenue ($M)",
+		Categories:        []string{"Q1", "Q2"},
+		Series: []officeChartSeries{
+			{Name: "Revenue", Values: []float64{120, 132}},
+			{Name: "Margin", Values: []float64{28, 31}},
+		},
+	}, resolveOfficeTheme("midnight", ""))
+
+	for _, needle := range []string{
+		`<a:latin typeface="Georgia"/>`,
+		`<a:latin typeface="Segoe UI"/>`,
+		`<a:srgbClr val="0F1D2F"/>`,
+		`<a:srgbClr val="334155"/>`,
+		`<c:legend><c:legendPos val="r"/><c:layout/><c:txPr>`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("theme-typography chart XML missing %q in %s", needle, chartXML)
+		}
+	}
+}
+
+func TestOfficePPTXChartXMLForThemeUsesThemeAxisChrome(t *testing.T) {
+	chartXML := officePPTXChartXMLForTheme(officeChartSpec{
+		Type:       "bar",
+		Categories: []string{"Q1", "Q2"},
+		Series: []officeChartSeries{
+			{Name: "Revenue", Values: []float64{120, 132}},
+			{Name: "Margin", Values: []float64{28, 31}},
+		},
+	}, resolveOfficeTheme("midnight", ""))
+
+	categoryAxisBlocks := regexp.MustCompile(`<c:catAx>.*?</c:catAx>`).FindAllString(chartXML, -1)
+	if len(categoryAxisBlocks) != 1 {
+		t.Fatalf("expected 1 category-axis block in %s", chartXML)
+	}
+	valueAxisBlocks := regexp.MustCompile(`<c:valAx>.*?</c:valAx>`).FindAllString(chartXML, -1)
+	if len(valueAxisBlocks) != 1 {
+		t.Fatalf("expected 1 value-axis block in %s", chartXML)
+	}
+
+	for _, needle := range []string{
+		`<c:txPr>`,
+		`<a:latin typeface="Segoe UI"/>`,
+		`<a:srgbClr val="334155"/>`,
+		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
+	} {
+		if !containsSubstring(categoryAxisBlocks[0], needle) {
+			t.Fatalf("theme category-axis XML missing %q in %s", needle, categoryAxisBlocks[0])
+		}
+	}
+
+	for _, needle := range []string{
+		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="F1F5F9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
+		`<c:txPr>`,
+		`<a:latin typeface="Segoe UI"/>`,
+		`<a:srgbClr val="334155"/>`,
+		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
+	} {
+		if !containsSubstring(valueAxisBlocks[0], needle) {
+			t.Fatalf("theme value-axis XML missing %q in %s", needle, valueAxisBlocks[0])
+		}
+	}
+}
+
 func TestOfficePPTXChartXMLIncludesSeriesLineStyling(t *testing.T) {
 	chart, err := parseOfficeChart(map[string]interface{}{
 		"type":       "line",
@@ -1942,8 +2141,14 @@ func TestOfficePPTXChartXMLIncludesLegendPositionOverride(t *testing.T) {
 	}
 
 	chartXML := officePPTXChartXML(*chart)
-	if !containsSubstring(chartXML, `<c:legend><c:legendPos val="t"/><c:layout/></c:legend>`) {
-		t.Fatalf("legend-position chart XML missing top legend in %s", chartXML)
+	for _, needle := range []string{
+		`<c:legend><c:legendPos val="t"/><c:layout/>`,
+		`<c:txPr>`,
+		`<a:defRPr lang="en-US" sz="1100">`,
+	} {
+		if !containsSubstring(chartXML, needle) {
+			t.Fatalf("legend-position chart XML missing %q in %s", needle, chartXML)
+		}
 	}
 }
 

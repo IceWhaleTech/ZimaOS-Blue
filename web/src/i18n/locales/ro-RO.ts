@@ -348,8 +348,8 @@ export default mergeHarnessLocale('ro-RO', {
     workspaceLoadFailed: 'Nu s-au încărcat detaliile spațiului de lucru',
     workspaceFilesLoadFailed: 'Nu s-au încărcat fișierele spațiului de lucru',
     workspaceOpenFailed: 'Nu se poate deschide spațiul de lucru în managerul de fișiere',
-    workspaceCoreTab: 'Fișierele de bază ale spațiului de lucru',
-    workspaceGeneratedTab: 'Originea fișierelor',
+    workspaceCoreTab: 'Fișiere de context principal',
+    workspaceGeneratedTab: 'Fișierele spațiului de lucru',
     workspaceGeneratedTitle: 'Arborele directorului spațiului de lucru',
     workspaceGeneratedDescription:
       'Afișați directoare și fișiere reale cu ierarhie și conectați fișierele generate la conversațiile sursă atunci când sunt disponibile.',
@@ -700,6 +700,9 @@ export default mergeHarnessLocale('ro-RO', {
       expand: 'Extindeți lista de sarcini',
       collapse: 'Restrângeți lista de sarcini',
       jumpToMessage: 'Salt la mesajul din lista de verificare',
+    },
+    todoChecklist: {
+      progress: '{completed} din {total} sarcini finalizate',
     },
     send: 'Trimite',
     sendDuringStream: 'Trimite (adaugă la conversație)',
@@ -1568,7 +1571,7 @@ export default mergeHarnessLocale('ro-RO', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Fișiere spațiu de lucru',
+    title: 'Fișiere de context principal',
     description: 'Aceste fișiere definesc personalitatea, memoria și comportamentul lui Blue.',
     saved: '{name} salvat',
     noFiles: 'Nu s-au găsit fișiere în spațiul de lucru.',

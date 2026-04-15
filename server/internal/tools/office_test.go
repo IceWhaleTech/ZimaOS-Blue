@@ -232,3 +232,48 @@ func TestOfficeToolExecute_CreatesParentDirectories(t *testing.T) {
 		t.Fatalf("expected output file to exist: %v", err)
 	}
 }
+
+func TestOfficeToolExecute_IncludesThemePreviewMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewOfficeTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":    "reports/board_update.docx",
+		"theme":   "midnight",
+		"title":   "Board Update",
+		"summary": "A concise executive summary.",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	payload := parseOfficeToolPayload(t, result)
+	preview, ok := payload["theme_preview"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("theme_preview = %#v, want object", payload["theme_preview"])
+	}
+	if got := preview["name"]; got != "midnight" {
+		t.Fatalf("theme_preview.name = %v, want midnight", got)
+	}
+	if got := preview["mood"]; got != "trustworthy" {
+		t.Fatalf("theme_preview.mood = %v, want trustworthy", got)
+	}
+	if got := preview["personality"]; got != "professional yet distinctive" {
+		t.Fatalf("theme_preview.personality = %v", got)
+	}
+	fonts, ok := preview["fonts"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("theme_preview.fonts = %#v, want object", preview["fonts"])
+	}
+	if fonts["display"] != "Georgia" || fonts["body"] != "Segoe UI" {
+		t.Fatalf("theme_preview.fonts = %#v, want Georgia/Segoe UI", fonts)
+	}
+	html, ok := preview["html"].(string)
+	if !ok || !containsSubstring(html, "#1E3A5F") || !containsSubstring(html, "#00D4AA") {
+		t.Fatalf("theme_preview.html = %q, want theme colors", html)
+	}
+	swatchValues, ok := preview["swatches"].([]interface{})
+	if !ok || len(swatchValues) < 3 {
+		t.Fatalf("theme_preview.swatches = %#v, want at least 3 swatches", preview["swatches"])
+	}
+}

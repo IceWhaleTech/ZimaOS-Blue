@@ -358,6 +358,33 @@ func cleanFSToolRelPath(raw string, allowDot bool) (string, error) {
 	return clean, nil
 }
 
+func fsDirectoryScopeOrWorkspaceRoot(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !fsLooksLikeBareFilename(trimmed) {
+		return trimmed
+	}
+	return "."
+}
+
+func fsLooksLikeBareFilename(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || filepath.IsAbs(trimmed) {
+		return false
+	}
+	if strings.HasSuffix(trimmed, "/") || strings.HasSuffix(trimmed, `\`) {
+		return false
+	}
+	clean := filepath.Clean(trimmed)
+	if clean == "." || clean == ".." {
+		return false
+	}
+	cleanSlash := filepath.ToSlash(clean)
+	if strings.Contains(cleanSlash, "/") {
+		return false
+	}
+	return strings.TrimSpace(filepath.Ext(clean)) != ""
+}
+
 func fsPathWithinRoot(root, target string) bool {
 	rel, err := filepath.Rel(root, target)
 	if err != nil {
@@ -869,6 +896,7 @@ func (t *LsTool) Execute(ctx context.Context, args map[string]interface{}) (inte
 	if err != nil {
 		return nil, err
 	}
+	listPath = fsDirectoryScopeOrWorkspaceRoot(listPath)
 	maxDepth, err := fsAsInt(args, "max_depth", defaultFSToolLsDepth)
 	if err != nil {
 		return nil, err

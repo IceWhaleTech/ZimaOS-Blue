@@ -89,7 +89,7 @@ func applyPendingBackupRestore(dataDir string) (bool, error) {
 		Enabled:       true,
 		RetentionDays: 7,
 		Path:          filepath.Join(dataDir, "backups"),
-		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
+		SkillsPath:    bootstrap.ResolveWorkspaceSkillsDir(dataDir, nil),
 	}, dataDir, dataDir)
 	if err != nil {
 		return false, err
@@ -232,7 +232,7 @@ func openPrimaryDatabaseWithStartupRecovery(dataDir string, perfCfg config.Datab
 		Enabled:       true,
 		RetentionDays: 7,
 		Path:          filepath.Join(dataDir, "backups"),
-		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
+		SkillsPath:    bootstrap.ResolveWorkspaceSkillsDir(dataDir, nil),
 	}, dataDir, dataDir)
 	if mgrErr != nil {
 		recoverErr = fmt.Errorf("init backup manager: %w", mgrErr)
@@ -963,7 +963,7 @@ func runServerDefaultIteration() serverRunOutcome {
 			Enabled:            true,
 			RetentionDays:      7,
 			Path:               filepath.Join(dataDir, "backups"),
-			SkillsPath:         filepath.Join(dataDir, "workspace", ".claude", "skills"),
+			SkillsPath:         bootstrap.ResolveWorkspaceSkillsDir(dataDir, cfg),
 			AutoBackup:         false,
 			AutoBackupInterval: 6 * time.Hour,
 			AutoBackupOnChange: false,

@@ -2,8 +2,10 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -1089,7 +1091,8 @@ func TestPPTXToolTemplateUpdateChartDataPreservesChartPresentationMetadataWhenOm
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
 	for _, needle := range []string{
 		`<a:t>Revenue vs Margin</a:t>`,
-		`<c:legend><c:legendPos val="t"/><c:layout/></c:legend>`,
+		`<c:legend><c:legendPos val="t"/><c:layout/>`,
+		`<c:txPr>`,
 		`<a:t>Quarter</a:t>`,
 		`<a:t>Quarter (Top)</a:t>`,
 		`<a:t>Revenue ($M)</a:t>`,
@@ -1452,6 +1455,981 @@ func TestPPTXToolTemplateUpdateChartDataPreservesCircularChartAppearanceWhenOmit
 	} {
 		if !containsSubstring(donutChartBlock, needle) {
 			t.Fatalf("expected donut-chart block to include %q, got %s", needle, donutChartBlock)
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesComboChartAppearanceWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_combo_appearance.pptx",
+		"title":  "Chart Update Infer Combo Appearance",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Revenue",
+				"paragraphs": []interface{}{"Original combo chart slide"},
+				"chart": map[string]interface{}{
+					"type":        "combo",
+					"vary_colors": true,
+					"gap_width":   72,
+					"overlap":     18,
+					"smooth":      true,
+					"categories":  []interface{}{"Q1", "Q2", "Q3"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{120, 132, 140}},
+						map[string]interface{}{"name": "Margin", "type": "line", "axis": "secondary", "values": []interface{}{28, 31, 34}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_combo_appearance.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Q2", "Q3", "Q4"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{150, 165, 172}},
+				map[string]interface{}{"name": "Margin", "type": "line", "axis": "secondary", "values": []interface{}{35, 37, 39}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_combo_appearance.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	blockPattern := regexp.MustCompile(`<c:(barChart|lineChart)>.*?</c:(barChart|lineChart)>`)
+	blocks := blockPattern.FindAllString(chartXML, -1)
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 combo chart blocks in %s", chartXML)
+	}
+	for _, needle := range []string{
+		`<c:varyColors val="1"/>`,
+		`<c:gapWidth val="72"/>`,
+		`<c:overlap val="18"/>`,
+	} {
+		if !containsSubstring(blocks[0], needle) {
+			t.Fatalf("expected combo bar-chart block to include %q, got %s", needle, blocks[0])
+		}
+	}
+	for _, needle := range []string{
+		`<c:varyColors val="1"/>`,
+		`<c:smooth val="1"/>`,
+	} {
+		if !containsSubstring(blocks[1], needle) {
+			t.Fatalf("expected combo line-chart block to include %q, got %s", needle, blocks[1])
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesComboSeriesLabelsWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_combo_series_labels.pptx",
+		"title":  "Chart Update Infer Combo Series Labels",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Revenue",
+				"paragraphs": []interface{}{"Original combo chart slide"},
+				"chart": map[string]interface{}{
+					"type":       "combo",
+					"categories": []interface{}{"Q1", "Q2", "Q3"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{120, 132, 140}},
+						map[string]interface{}{
+							"name":             "Margin",
+							"type":             "line",
+							"axis":             "secondary",
+							"labels":           true,
+							"label_position":   "above",
+							"label_format":     "0.0",
+							"label_separator":  " | ",
+							"show_value":       false,
+							"show_series_name": true,
+							"values":           []interface{}{28, 31, 34},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_combo_series_labels.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Q2", "Q3", "Q4"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{150, 165, 172}},
+				map[string]interface{}{"name": "Margin", "type": "line", "axis": "secondary", "values": []interface{}{35, 37, 39}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_combo_series_labels.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	blockPattern := regexp.MustCompile(`<c:(barChart|lineChart)>.*?</c:(barChart|lineChart)>`)
+	blocks := blockPattern.FindAllString(chartXML, -1)
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 combo chart blocks in %s", chartXML)
+	}
+	if containsSubstring(blocks[0], `<c:dLbls>`) {
+		t.Fatalf("expected combo bar-chart block to omit data labels, got %s", blocks[0])
+	}
+	for _, needle := range []string{
+		`<c:dLbls>`,
+		`<c:dLblPos val="t"/>`,
+		`<c:numFmt formatCode="0.0" sourceLinked="0"/>`,
+		`<c:separator>|</c:separator>`,
+		`<c:showVal val="0"/>`,
+		`<c:showSerName val="1"/>`,
+	} {
+		if !containsSubstring(blocks[1], needle) {
+			t.Fatalf("expected combo line-chart block to include %q, got %s", needle, blocks[1])
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesLineSeriesStyleWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_line_series_style.pptx",
+		"title":  "Chart Update Infer Line Series Style",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Trend",
+				"paragraphs": []interface{}{"Original styled line chart slide"},
+				"chart": map[string]interface{}{
+					"type":       "line",
+					"categories": []interface{}{"Jan", "Feb", "Mar"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":       "Trend",
+							"color":      "#2563EB",
+							"line_width": 3,
+							"dash":       "dash",
+							"marker":     "diamond",
+							"values":     []interface{}{10, 12, 15},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_line_series_style.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Feb", "Mar", "Apr"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Trend", "values": []interface{}{12, 15, 18}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_line_series_style.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	lineBlock := regexp.MustCompile(`<c:lineChart>.*?</c:lineChart>`).FindString(chartXML)
+	if lineBlock == "" {
+		t.Fatalf("expected chart1.xml to include a lineChart block, got %s", chartXML)
+	}
+	for _, needle := range []string{
+		`<c:marker><c:symbol val="diamond"/></c:marker>`,
+		`<a:ln w="38100">`,
+		`<a:prstDash val="dash"/>`,
+		`<a:srgbClr val="2563EB"/>`,
+	} {
+		if !containsSubstring(lineBlock, needle) {
+			t.Fatalf("expected line-chart block to include %q, got %s", needle, lineBlock)
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesComboSeriesStyleWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_combo_series_style.pptx",
+		"title":  "Chart Update Infer Combo Series Style",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Revenue",
+				"paragraphs": []interface{}{"Original combo chart slide"},
+				"chart": map[string]interface{}{
+					"type":       "combo",
+					"categories": []interface{}{"Q1", "Q2", "Q3"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":   "Revenue",
+							"type":   "bar",
+							"color":  "#D97706",
+							"values": []interface{}{120, 132, 140},
+						},
+						map[string]interface{}{
+							"name":       "Margin",
+							"type":       "line",
+							"axis":       "secondary",
+							"color":      "#2563EB",
+							"line_width": 3,
+							"dash":       "dash",
+							"marker":     "diamond",
+							"values":     []interface{}{28, 31, 34},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_combo_series_style.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Q2", "Q3", "Q4"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{150, 165, 172}},
+				map[string]interface{}{"name": "Margin", "type": "line", "axis": "secondary", "values": []interface{}{35, 37, 39}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_combo_series_style.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	blockPattern := regexp.MustCompile(`<c:(barChart|lineChart)>.*?</c:(barChart|lineChart)>`)
+	blocks := blockPattern.FindAllString(chartXML, -1)
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 combo chart blocks in %s", chartXML)
+	}
+	if !containsSubstring(blocks[0], `<a:srgbClr val="D97706"/>`) {
+		t.Fatalf("expected combo bar-chart block to preserve series color, got %s", blocks[0])
+	}
+	for _, needle := range []string{
+		`<c:marker><c:symbol val="diamond"/></c:marker>`,
+		`<a:ln w="38100">`,
+		`<a:prstDash val="dash"/>`,
+		`<a:srgbClr val="2563EB"/>`,
+	} {
+		if !containsSubstring(blocks[1], needle) {
+			t.Fatalf("expected combo line-chart block to include %q, got %s", needle, blocks[1])
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesLinePointColorsWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_line_point_colors.pptx",
+		"title":  "Chart Update Infer Line Point Colors",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Trend",
+				"paragraphs": []interface{}{"Original line chart slide with colored points"},
+				"chart": map[string]interface{}{
+					"type":       "line",
+					"categories": []interface{}{"Jan", "Feb", "Mar"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":         "Trend",
+							"point_colors": []interface{}{"#2563EB", "10B981", "F59E0B"},
+							"values":       []interface{}{10, 12, 15},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_line_point_colors.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Feb", "Mar", "Apr"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Trend", "values": []interface{}{12, 15, 18}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_line_point_colors.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	lineBlock := regexp.MustCompile(`<c:lineChart>.*?</c:lineChart>`).FindString(chartXML)
+	if lineBlock == "" {
+		t.Fatalf("expected chart1.xml to include a lineChart block, got %s", chartXML)
+	}
+	for _, needle := range []string{
+		`<c:dPt><c:idx val="0"/><c:spPr><a:solidFill><a:srgbClr val="2563EB"/></a:solidFill>`,
+		`<c:dPt><c:idx val="1"/><c:spPr><a:solidFill><a:srgbClr val="10B981"/></a:solidFill>`,
+		`<c:dPt><c:idx val="2"/><c:spPr><a:solidFill><a:srgbClr val="F59E0B"/></a:solidFill>`,
+	} {
+		if !containsSubstring(lineBlock, needle) {
+			t.Fatalf("expected line-chart block to include %q, got %s", needle, lineBlock)
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesComboSeriesPointColorsWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_combo_point_colors.pptx",
+		"title":  "Chart Update Infer Combo Point Colors",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Revenue",
+				"paragraphs": []interface{}{"Original combo chart slide with colored line points"},
+				"chart": map[string]interface{}{
+					"type":       "combo",
+					"categories": []interface{}{"Q1", "Q2", "Q3"},
+					"series": []interface{}{
+						map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{120, 132, 140}},
+						map[string]interface{}{
+							"name":         "Margin",
+							"type":         "line",
+							"axis":         "secondary",
+							"point_colors": []interface{}{"#2563EB", "10B981", "F59E0B"},
+							"values":       []interface{}{28, 31, 34},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_combo_point_colors.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Q2", "Q3", "Q4"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Revenue", "type": "bar", "values": []interface{}{150, 165, 172}},
+				map[string]interface{}{"name": "Margin", "type": "line", "axis": "secondary", "values": []interface{}{35, 37, 39}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_combo_point_colors.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	blockPattern := regexp.MustCompile(`<c:(barChart|lineChart)>.*?</c:(barChart|lineChart)>`)
+	blocks := blockPattern.FindAllString(chartXML, -1)
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 combo chart blocks in %s", chartXML)
+	}
+	if containsSubstring(blocks[0], `<c:dPt>`) {
+		t.Fatalf("expected combo bar-chart block to omit point colors, got %s", blocks[0])
+	}
+	for _, needle := range []string{
+		`<c:dPt><c:idx val="0"/><c:spPr><a:solidFill><a:srgbClr val="2563EB"/></a:solidFill>`,
+		`<c:dPt><c:idx val="1"/><c:spPr><a:solidFill><a:srgbClr val="10B981"/></a:solidFill>`,
+		`<c:dPt><c:idx val="2"/><c:spPr><a:solidFill><a:srgbClr val="F59E0B"/></a:solidFill>`,
+	} {
+		if !containsSubstring(blocks[1], needle) {
+			t.Fatalf("expected combo line-chart block to include %q, got %s", needle, blocks[1])
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesSliceExplosionsWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_slice_explosions.pptx",
+		"title":  "Chart Update Infer Slice Explosions",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Status",
+				"paragraphs": []interface{}{"Original donut chart slide with exploded slices"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"categories": []interface{}{"Adoption", "Pending", "Blocked"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":             "Status",
+							"slice_explosions": []interface{}{18, 0, 32},
+							"values":           []interface{}{70, 20, 10},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_slice_explosions.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Active", "Pending", "Blocked"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Status", "values": []interface{}{68, 22, 10}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_slice_explosions.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	donutBlock := regexp.MustCompile(`<c:doughnutChart>.*?</c:doughnutChart>`).FindString(chartXML)
+	if donutBlock == "" {
+		t.Fatalf("expected chart1.xml to include a doughnutChart block, got %s", chartXML)
+	}
+	for _, needle := range []string{
+		`<c:dPt><c:idx val="0"/><c:explosion val="18"/>`,
+		`<c:dPt><c:idx val="2"/><c:explosion val="32"/>`,
+	} {
+		if !containsSubstring(donutBlock, needle) {
+			t.Fatalf("expected doughnut-chart block to include %q, got %s", needle, donutBlock)
+		}
+	}
+	if containsSubstring(donutBlock, `<c:dPt><c:idx val="1"/><c:explosion val="0"/>`) {
+		t.Fatalf("expected zero explosion slice to remain omitted, got %s", donutBlock)
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesSliceLabelVisibilityWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_slice_label_visibility.pptx",
+		"title":  "Chart Update Infer Slice Label Visibility",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Original donut chart slide with per-slice label visibility"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":              "Pipeline",
+							"slice_show_labels": []interface{}{true, false, true},
+							"values":            []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_slice_label_visibility.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Active", "Pending", "Blocked"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Pipeline", "values": []interface{}{58, 22, 20}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_slice_label_visibility.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	donutBlock := regexp.MustCompile(`<c:doughnutChart>.*?</c:doughnutChart>`).FindString(chartXML)
+	if donutBlock == "" {
+		t.Fatalf("expected chart1.xml to include a doughnutChart block, got %s", chartXML)
+	}
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:delete val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:delete val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:delete val="0"/></c:dLbl>`,
+	} {
+		if !containsSubstring(donutBlock, needle) {
+			t.Fatalf("expected doughnut-chart block to include %q, got %s", needle, donutBlock)
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesSliceLabelFormattingWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_slice_label_formatting.pptx",
+		"title":  "Chart Update Infer Slice Label Formatting",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Original donut chart slide with per-slice label formatting"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                   "Pipeline",
+							"slice_label_positions":  []interface{}{"outside_end", "center", "best_fit"},
+							"slice_label_formats":    []interface{}{"0.0%", "$#,##0", "0.0"},
+							"slice_label_separators": []interface{}{" / ", " | ", " - "},
+							"values":                 []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_slice_label_formatting.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Active", "Pending", "Blocked"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Pipeline", "values": []interface{}{58, 22, 20}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_slice_label_formatting.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	donutBlock := regexp.MustCompile(`<c:doughnutChart>.*?</c:doughnutChart>`).FindString(chartXML)
+	if donutBlock == "" {
+		t.Fatalf("expected chart1.xml to include a doughnutChart block, got %s", chartXML)
+	}
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:dLblPos val="outEnd"/><c:numFmt formatCode="0.0%" sourceLinked="0"/><c:separator>/</c:separator></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:dLblPos val="ctr"/><c:numFmt formatCode="$#,##0" sourceLinked="0"/><c:separator>|</c:separator></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:dLblPos val="bestFit"/><c:numFmt formatCode="0.0" sourceLinked="0"/><c:separator>-</c:separator></c:dLbl>`,
+	} {
+		if !containsSubstring(donutBlock, needle) {
+			t.Fatalf("expected doughnut-chart block to include %q, got %s", needle, donutBlock)
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesSliceLabelContentWhenOmitted(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_slice_label_content.pptx",
+		"title":  "Chart Update Infer Slice Label Content",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Original donut chart slide with per-slice label content controls"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                    "Pipeline",
+							"slice_show_values":       []interface{}{true, false, true},
+							"slice_show_categories":   []interface{}{false, true, false},
+							"slice_show_percents":     []interface{}{true, false, true},
+							"slice_show_series_names": []interface{}{false, true, false},
+							"values":                  []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_slice_label_content.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Active", "Pending", "Blocked"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Pipeline", "values": []interface{}{58, 22, 20}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_slice_label_content.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	donutBlock := regexp.MustCompile(`<c:doughnutChart>.*?</c:doughnutChart>`).FindString(chartXML)
+	if donutBlock == "" {
+		t.Fatalf("expected chart1.xml to include a doughnutChart block, got %s", chartXML)
+	}
+	for _, needle := range []string{
+		`<c:dLbl><c:idx val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="1"/><c:showVal val="0"/><c:showCatName val="1"/><c:showSerName val="1"/><c:showPercent val="0"/></c:dLbl>`,
+		`<c:dLbl><c:idx val="2"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbl>`,
+	} {
+		if !containsSubstring(donutBlock, needle) {
+			t.Fatalf("expected doughnut-chart block to include %q, got %s", needle, donutBlock)
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesCircularChartLabelDefaultsSeparatelyFromSliceOverrides(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_circular_label_defaults_vs_slice_overrides.pptx",
+		"title":  "Chart Update Infer Circular Label Defaults",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Original donut chart slide with chart defaults plus slice overrides"},
+				"chart": map[string]interface{}{
+					"type":             "donut",
+					"labels":           true,
+					"label_position":   "best_fit",
+					"label_format":     "0.0",
+					"label_separator":  " | ",
+					"show_value":       false,
+					"show_category":    false,
+					"show_series_name": true,
+					"show_percent":     false,
+					"categories":       []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                    "Pipeline",
+							"slice_show_values":       []interface{}{true},
+							"slice_show_categories":   []interface{}{false},
+							"slice_show_series_names": []interface{}{false},
+							"slice_show_percents":     []interface{}{true},
+							"slice_label_positions":   []interface{}{"outside_end"},
+							"slice_label_formats":     []interface{}{"0.0%"},
+							"slice_label_separators":  []interface{}{" / "},
+							"values":                  []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_circular_label_defaults_vs_slice_overrides.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Active", "Pending", "Blocked"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Pipeline", "values": []interface{}{58, 22, 20}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_circular_label_defaults_vs_slice_overrides.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	donutBlock := regexp.MustCompile(`<c:doughnutChart>.*?</c:doughnutChart>`).FindString(chartXML)
+	if donutBlock == "" {
+		t.Fatalf("expected chart1.xml to include a doughnutChart block, got %s", chartXML)
+	}
+	pointNeedle := `<c:dLbl><c:idx val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="1"/><c:dLblPos val="outEnd"/><c:numFmt formatCode="0.0%" sourceLinked="0"/><c:separator>/</c:separator></c:dLbl>`
+	if !containsSubstring(donutBlock, pointNeedle) {
+		t.Fatalf("expected doughnut-chart block to preserve slice override %q, got %s", pointNeedle, donutBlock)
+	}
+
+	dLblsBlock := regexp.MustCompile(`<c:dLbls>.*?</c:dLbls>`).FindString(donutBlock)
+	if dLblsBlock == "" {
+		t.Fatalf("expected doughnut-chart block to include a dLbls block, got %s", donutBlock)
+	}
+	chartDefaultsBlock := dLblsBlock
+	if lastPointEnd := strings.LastIndex(dLblsBlock, `</c:dLbl>`); lastPointEnd >= 0 {
+		chartDefaultsBlock = dLblsBlock[lastPointEnd+len(`</c:dLbl>`):]
+	}
+	for _, needle := range []string{
+		`<c:numFmt formatCode="0.0" sourceLinked="0"/>`,
+		`<c:dLblPos val="bestFit"/>`,
+		`<c:separator>|</c:separator>`,
+		`<c:showVal val="0"/>`,
+		`<c:showCatName val="0"/>`,
+		`<c:showSerName val="1"/>`,
+		`<c:showPercent val="0"/>`,
+	} {
+		if !containsSubstring(chartDefaultsBlock, needle) {
+			t.Fatalf("expected chart-level label defaults to include %q, got %s", needle, chartDefaultsBlock)
+		}
+	}
+}
+
+func TestPPTXToolTemplateUpdateChartDataPreservesSliceOverridesWithoutInferringCircularChartLabelDefaults(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	_, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/chart_update_infer_point_only_slice_labels.pptx",
+		"title":  "Chart Update Infer Point-Only Slice Labels",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Pipeline",
+				"paragraphs": []interface{}{"Original donut chart slide with slice-only label overrides"},
+				"chart": map[string]interface{}{
+					"type":       "donut",
+					"labels":     true,
+					"categories": []interface{}{"Won", "Lost", "Open"},
+					"series": []interface{}{
+						map[string]interface{}{
+							"name":                    "Pipeline",
+							"slice_show_values":       []interface{}{true},
+							"slice_show_categories":   []interface{}{false},
+							"slice_show_series_names": []interface{}{false},
+							"slice_show_percents":     []interface{}{true},
+							"values":                  []interface{}{55, 25, 20},
+						},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "chart_update_infer_point_only_slice_labels.pptx")
+	changed, err := replaceArchiveEntries(path, func(name string) bool {
+		return name == "ppt/charts/chart1.xml"
+	}, func(_ string, data []byte) ([]byte, bool, error) {
+		chartXML := string(data)
+		dLblsBlock := regexp.MustCompile(`<c:dLbls>.*?</c:dLbls>`).FindString(chartXML)
+		if dLblsBlock == "" {
+			return nil, false, fmt.Errorf("expected chart1.xml to include a dLbls block")
+		}
+		pointBlocks := regexp.MustCompile(`<c:dLbl>.*?</c:dLbl>`).FindAllString(dLblsBlock, -1)
+		if len(pointBlocks) == 0 {
+			return nil, false, fmt.Errorf("expected dLbls block to include point-level overrides")
+		}
+		pointOnlyBlock := `<c:dLbls>` + strings.Join(pointBlocks, "") + `</c:dLbls>`
+		updated := strings.Replace(chartXML, dLblsBlock, pointOnlyBlock, 1)
+		return []byte(updated), updated != chartXML, nil
+	})
+	if err != nil {
+		t.Fatalf("rewrite chart1.xml for point-only slice labels failed: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected chart1.xml rewrite to remove chart-level label defaults")
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	pointOnlyChartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	pointOnlyDonutBlock := regexp.MustCompile(`<c:doughnutChart>.*?</c:doughnutChart>`).FindString(pointOnlyChartXML)
+	if pointOnlyDonutBlock == "" {
+		t.Fatalf("expected point-only template chart1.xml to include a doughnutChart block, got %s", pointOnlyChartXML)
+	}
+	pointNeedle := `<c:dLbl><c:idx val="0"/><c:showVal val="1"/><c:showCatName val="0"/><c:showSerName val="0"/><c:showPercent val="1"/></c:dLbl>`
+	if !containsSubstring(pointOnlyDonutBlock, pointNeedle) {
+		t.Fatalf("expected point-only template chart XML to include %q, got %s", pointNeedle, pointOnlyDonutBlock)
+	}
+	pointOnlyDefaultsBlock := pptxTemplateUniformDataLabelsDefaultsBlock(pointOnlyChartXML)
+	for _, needle := range []string{
+		`<c:showVal`,
+		`<c:showCatName`,
+		`<c:showSerName`,
+		`<c:showPercent`,
+		`<c:showLegendKey`,
+		`<c:showBubbleSize`,
+		`<c:dLblPos`,
+		`<c:numFmt`,
+		`<c:separator`,
+		`<c:showLeaderLines`,
+	} {
+		if containsSubstring(pointOnlyDefaultsBlock, needle) {
+			t.Fatalf("expected rewritten point-only template to omit chart-level label default %q, got %s", needle, pointOnlyDefaultsBlock)
+		}
+	}
+
+	_, err = tool.Execute(context.Background(), map[string]interface{}{
+		"action": "update_chart_data",
+		"path":   "decks/chart_update_infer_point_only_slice_labels.pptx",
+		"slide":  3,
+		"chart": map[string]interface{}{
+			"categories": []interface{}{"Active", "Pending", "Blocked"},
+			"series": []interface{}{
+				map[string]interface{}{"name": "Pipeline", "values": []interface{}{58, 22, 20}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("update_chart_data failed: %v", err)
+	}
+
+	data, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
+	donutBlock := regexp.MustCompile(`<c:doughnutChart>.*?</c:doughnutChart>`).FindString(chartXML)
+	if donutBlock == "" {
+		t.Fatalf("expected chart1.xml to include a doughnutChart block, got %s", chartXML)
+	}
+	if !containsSubstring(donutBlock, pointNeedle) {
+		t.Fatalf("expected doughnut-chart block to preserve point-only slice override %q, got %s", pointNeedle, donutBlock)
+	}
+
+	if inferredLabels, ok := inferPPTXTemplateChartLabels([]byte(chartXML)); ok || inferredLabels {
+		t.Fatalf("expected point-only circular dLbls not to infer chart-level labels, got labels=%v ok=%v in %s", inferredLabels, ok, donutBlock)
+	}
+
+	defaultsBlock := pptxTemplateUniformDataLabelsDefaultsBlock(chartXML)
+	for _, needle := range []string{
+		`<c:showVal`,
+		`<c:showCatName`,
+		`<c:showSerName`,
+		`<c:showPercent`,
+		`<c:showLegendKey`,
+		`<c:showBubbleSize`,
+		`<c:dLblPos`,
+		`<c:numFmt`,
+		`<c:separator`,
+		`<c:showLeaderLines`,
+	} {
+		if containsSubstring(defaultsBlock, needle) {
+			t.Fatalf("expected updated point-only circular dLbls to omit chart-level label default %q, got %s", needle, defaultsBlock)
 		}
 	}
 }
@@ -2099,7 +3077,7 @@ func TestPPTXToolTemplateUpdateChartDataPreservesValueAxisBehaviorWhenOmitted(t 
 		`<c:orientation val="maxMin"/>`,
 		`<c:majorTickMark val="none"/>`,
 		`<c:minorTickMark val="none"/>`,
-		`<c:minorGridlines/>`,
+		`<c:minorGridlines`,
 		`<c:tickLblPos val="high"/>`,
 		`<c:crosses val="max"/>`,
 		`<c:crossBetween val="midCat"/>`,
@@ -2108,13 +3086,13 @@ func TestPPTXToolTemplateUpdateChartDataPreservesValueAxisBehaviorWhenOmitted(t 
 			t.Fatalf("expected primary value-axis block to include %q, got %s", needle, valueAxisBlocks[0])
 		}
 	}
-	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines/>`) {
+	if containsSubstring(valueAxisBlocks[0], `<c:majorGridlines`) {
 		t.Fatalf("expected primary value-axis block to preserve hidden major gridlines, got %s", valueAxisBlocks[0])
 	}
 	for _, needle := range []string{
 		`<c:orientation val="maxMin"/>`,
-		`<c:majorGridlines/>`,
-		`<c:minorGridlines/>`,
+		`<c:majorGridlines`,
+		`<c:minorGridlines`,
 		`<c:majorTickMark val="cross"/>`,
 		`<c:minorTickMark val="in"/>`,
 		`<c:tickLblPos val="low"/>`,

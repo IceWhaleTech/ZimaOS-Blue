@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 type windowsSystemCLI struct {
@@ -83,6 +84,50 @@ func (cli windowsSystemCLI) pasteTextWithTemporaryClipboard(ctx context.Context,
 		"} finally {",
 		"if ($backup -ne $null) { [System.Windows.Forms.Clipboard]::SetDataObject($backup,$true) } else { [System.Windows.Forms.Clipboard]::Clear() }",
 		"}",
+	}, "; ")
+	return cli.exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", command)
+}
+
+func (cli windowsSystemCLI) showHighlightOverlay(ctx context.Context, rect windowsRect, duration time.Duration) (string, error) {
+	width, height, ok := windowsVisibleRectSize(rect)
+	if !ok {
+		return "", fmt.Errorf("highlight overlay requires visible bounds")
+	}
+	left := rect.Left
+	top := rect.Top
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
+	ms := int(duration.Milliseconds())
+	if ms < 120 {
+		ms = 120
+	}
+	command := strings.Join([]string{
+		"Add-Type -AssemblyName PresentationFramework",
+		"Add-Type -AssemblyName PresentationCore",
+		"Add-Type -AssemblyName WindowsBase",
+		"$window = New-Object System.Windows.Window",
+		"$window.WindowStyle = 'None'",
+		"$window.AllowsTransparency = $true",
+		"$window.Background = [System.Windows.Media.Brushes]::Transparent",
+		"$window.Topmost = $true",
+		"$window.ShowInTaskbar = $false",
+		fmt.Sprintf("$window.Left = %d", left),
+		fmt.Sprintf("$window.Top = %d", top),
+		fmt.Sprintf("$window.Width = %d", width),
+		fmt.Sprintf("$window.Height = %d", height),
+		"$border = New-Object System.Windows.Controls.Border",
+		"$border.BorderThickness = '3'",
+		"$border.CornerRadius = '6'",
+		"$border.Background = [System.Windows.Media.Brushes]::Transparent",
+		"$border.BorderBrush = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Color]::FromArgb(255,0,120,255))",
+		"$window.Content = $border",
+		"$window.Show()",
+		fmt.Sprintf("Start-Sleep -Milliseconds %d", ms),
+		"$window.Close()",
 	}, "; ")
 	return cli.exec(ctx, "powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", command)
 }

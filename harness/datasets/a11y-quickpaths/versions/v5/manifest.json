@@ -1,0 +1,389 @@
+{
+  "dataset": {
+    "name": "a11y-quickpaths",
+    "subject": "a11y_quickpaths"
+  },
+  "defaults": {
+    "run_kind": "agent_task",
+    "profile": "a11y_quickpaths",
+    "scheduler": {
+      "max_concurrency": 1,
+      "max_attempts": 1,
+      "retry_backoff": 10000000000
+    },
+    "scoring": {
+      "mode": "rule",
+      "pass_threshold": 1
+    },
+    "runtime_policy": {
+      "dataset_family": "a11y_quickpaths",
+      "policy_model_hint": "claude-sonnet-4.6",
+      "provider_config_mode": "runtime_injected"
+    },
+    "metadata": {
+      "primary_route": "a11y",
+      "allow_fallback": false,
+      "task_fallback_plan": [
+        "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+        "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+      ],
+      "task_success_criteria": [
+        "Use the native a11y tool directly.",
+        "Return raw JSON from the final a11y tool call only.",
+        "The final JSON must show target_hit=true and verification_passed=true."
+      ]
+    }
+  },
+  "items": [
+    {
+      "id": "macos-feishu-message-orca",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具，按这三个动作执行：1) action=focus app_name=\"Feishu,飞书,Lark\"；2) action=select app_name=\"Feishu,飞书,Lark\" conversation=\"Orca\"；3) action=type app_name=\"Feishu,飞书,Lark\" conversation=\"Orca\" value=\"你好，Orca\"。只输出第 3 步 a11y 工具返回的原始 JSON，不要添加任何解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "im",
+        "critical": true,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Deliver the greeting in Feishu to Orca and return raw a11y JSON proving target hit and verification success.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-feishu-message-orca",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具，按这三个动作执行：1) action=focus app_name=\"Feishu,飞书,Lark\"；2) action=select app_name=\"Feishu,飞书,Lark\" conversation=\"Orca\"；3) action=type app_name=\"Feishu,飞书,Lark\" conversation=\"Orca\" value=\"你好，Orca\"。只输出第 3 步 a11y 工具返回的原始 JSON，不要添加任何解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "im",
+        "critical": true,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Deliver the greeting in Feishu to Orca and return raw a11y JSON proving target hit and verification success.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-settings-toggle-notifications",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=toggle window_title=\"Settings,System Settings,设置\" setting=\"Notifications,通知\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "settings",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Use a deterministic settings toggle path and return raw a11y JSON proving the labeled setting was hit and verified.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-settings-toggle-notifications",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=toggle window_title=\"Settings,System Settings,设置\" setting=\"Notifications,通知\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "settings",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Use a deterministic settings toggle path and return raw a11y JSON proving the labeled setting was hit and verified.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-browser-click-address-bar",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=click app_name=\"Google Chrome,Chrome,Microsoft Edge,Edge,Safari\" control=\"Address Bar\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "browser",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Hit the browser chrome address bar through host a11y and return raw JSON with positive target and verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-browser-click-address-bar",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=click app_name=\"Google Chrome,Chrome,Microsoft Edge,Edge,Safari\" control=\"Address Bar\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "browser",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Hit the browser chrome address bar through host a11y and return raw JSON with positive target and verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-finder-select-downloads",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=select app_name=\"Finder,访达,Explorer,文件资源管理器\" item=\"Downloads,下载\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "file_manager",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Select the Finder Downloads entry deterministically and return raw JSON with positive target and verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-explorer-select-downloads",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=select app_name=\"Finder,访达,Explorer,文件资源管理器\" item=\"Downloads,下载\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "file_manager",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Select the Explorer Downloads entry deterministically and return raw JSON with positive target and verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-mail-click-new-message",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=click app_name=\"Mail,Apple Mail,Outlook\" control=\"New Message\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "mail",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Open the mail compose entry point deterministically and return raw JSON with positive target and verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-outlook-click-new-message",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=click app_name=\"Outlook,Mail,Apple Mail\" control=\"New Message\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "mail",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "success_rubric": "Open the mail compose entry point deterministically and return raw JSON with positive target and verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    }
+  ]
+}

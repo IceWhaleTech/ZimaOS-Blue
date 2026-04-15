@@ -153,7 +153,7 @@ func TestDarwinSystemCLI_OpenAccessibilitySettingsUsesRestrictedOpen(t *testing.
 	}
 }
 
-func TestDarwinSystemCLI_ShowHighlightOverlayUsesTransparentJavaScriptWindow(t *testing.T) {
+func TestDarwinSystemCLI_ShowHighlightOverlayUsesMaskedJavaScriptOverlay(t *testing.T) {
 	var name string
 	var args []string
 	cli := darwinSystemCLI{
@@ -181,9 +181,12 @@ func TestDarwinSystemCLI_ShowHighlightOverlayUsesTransparentJavaScriptWindow(t *
 	joined := strings.Join(args, " ")
 	for _, needle := range []string{
 		`-l JavaScript`,
+		`ObjC.import('QuartzCore')`,
 		`NSWindow.alloc.initWithContentRectStyleMaskBackingDefer`,
-		`setFrameTopLeftPoint`,
-		`setBorderColor`,
+		`setBackgroundColor($.NSColor.colorWithCalibratedWhiteAlpha(0.0, 0.28).CGColor)`,
+		`bezierPathWithRoundedRectXRadiusYRadius`,
+		`setFillRule($.kCAFillRuleEvenOdd)`,
+		`setStrokeColor($.NSColor.systemBlueColor.CGColor)`,
 		`setIgnoresMouseEvents(true)`,
 		`-- 120 240 320 48 0.35`,
 	} {

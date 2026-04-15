@@ -721,6 +721,52 @@ func TestWorkspaceTools_CompatPayloadArgs(t *testing.T) {
 	}
 }
 
+func TestWorkspaceListFiles_BareFilenameFallsBackToWorkspaceRoot(t *testing.T) {
+	root := t.TempDir()
+	targetName := "orca_命理完整报告.pdf"
+	if err := os.WriteFile(filepath.Join(root, targetName), []byte("pdf"), 0o644); err != nil {
+		t.Fatalf("write target file: %v", err)
+	}
+
+	s := testServer(t)
+	s.SetWorkspaceRoot(root)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/call", toolCallParams{
+		Name: workspaceListFilesTool,
+		Arguments: map[string]interface{}{
+			"path": targetName,
+		},
+	})
+	result := parseToolCallResult(t, resp)
+	if result.IsError {
+		t.Fatalf("workspace list_files should fall back to workspace root, got error: %v", result.Content)
+	}
+
+	payload := parseToolContentJSON(t, result.Content[0].Text)
+	if got := payload["base_path"]; got != "." {
+		t.Fatalf("base_path = %v, want .", got)
+	}
+	entries, ok := payload["entries"].([]interface{})
+	if !ok || len(entries) == 0 {
+		t.Fatalf("expected list entries, got %v", payload["entries"])
+	}
+	found := false
+	for _, raw := range entries {
+		entry, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if entry["path"] == targetName {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("entries = %#v, want %q present", payload["entries"], targetName)
+	}
+}
+
 func TestWorkspaceTools_CompatNestedCamelCaseArgs(t *testing.T) {
 	root := t.TempDir()
 	s := testServer(t)

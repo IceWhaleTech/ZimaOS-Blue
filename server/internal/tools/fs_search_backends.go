@@ -344,6 +344,7 @@ func (t *FindTool) executeFind(ctx context.Context, args map[string]interface{})
 	if err != nil {
 		return nil, err
 	}
+	req.BasePath = fsDirectoryScopeOrWorkspaceRoot(req.BasePath)
 	baseAbs, baseRel, _, err := t.Scope.resolvePathWithContext(ctx, "find", req.BasePath, true)
 	if err != nil {
 		return nil, err

@@ -9,7 +9,7 @@ func TestWindowsVerifySemanticTextEntry_PrefersAccValueReadback(t *testing.T) {
 	captureCalls := 0
 	ocrCalls := 0
 
-	ok := windowsVerifySemanticTextEntry(
+	ok, method := windowsVerifySemanticTextEntry(
 		nil,
 		"hello orca",
 		func() string { return "hello orca" },
@@ -27,6 +27,9 @@ func TestWindowsVerifySemanticTextEntry_PrefersAccValueReadback(t *testing.T) {
 	if !ok {
 		t.Fatal("windowsVerifySemanticTextEntry() = false, want true")
 	}
+	if method != "ax_value" {
+		t.Fatalf("method = %q, want ax_value", method)
+	}
 	if captureCalls != 0 {
 		t.Fatalf("captureCalls = %d, want 0", captureCalls)
 	}
@@ -39,7 +42,7 @@ func TestWindowsVerifySemanticTextEntry_FallsBackToOCR(t *testing.T) {
 	captureCalls := 0
 	ocrCalls := 0
 
-	ok := windowsVerifySemanticTextEntry(
+	ok, method := windowsVerifySemanticTextEntry(
 		nil,
 		"你好，Orca",
 		func() string { return "" },
@@ -63,6 +66,9 @@ func TestWindowsVerifySemanticTextEntry_FallsBackToOCR(t *testing.T) {
 	if !ok {
 		t.Fatal("windowsVerifySemanticTextEntry() = false, want true")
 	}
+	if method != "ocr" {
+		t.Fatalf("method = %q, want ocr", method)
+	}
 	if captureCalls != 1 {
 		t.Fatalf("captureCalls = %d, want 1", captureCalls)
 	}
@@ -72,7 +78,7 @@ func TestWindowsVerifySemanticTextEntry_FallsBackToOCR(t *testing.T) {
 }
 
 func TestWindowsVerifySemanticTextEntry_ReturnsFalseWhenVerificationFails(t *testing.T) {
-	ok := windowsVerifySemanticTextEntry(
+	ok, method := windowsVerifySemanticTextEntry(
 		nil,
 		"hello orca",
 		func() string { return "draft" },
@@ -83,5 +89,8 @@ func TestWindowsVerifySemanticTextEntry_ReturnsFalseWhenVerificationFails(t *tes
 	)
 	if ok {
 		t.Fatal("windowsVerifySemanticTextEntry() = true, want false")
+	}
+	if method != "" {
+		t.Fatalf("method = %q, want empty", method)
 	}
 }

@@ -350,8 +350,8 @@ export default mergeHarnessLocale('ru-RU', {
     workspaceLoadFailed: 'Не удалось загрузить сведения о рабочей области.',
     workspaceFilesLoadFailed: 'Не удалось загрузить файлы рабочей области.',
     workspaceOpenFailed: 'Невозможно открыть рабочую область в файловом менеджере',
-    workspaceCoreTab: 'Основные файлы рабочей области',
-    workspaceGeneratedTab: 'Источники файлов',
+    workspaceCoreTab: 'Файлы основного контекста',
+    workspaceGeneratedTab: 'Файлы рабочей области',
     workspaceGeneratedTitle: 'Дерево каталогов рабочей области',
     workspaceGeneratedDescription:
       'Покажите реальные каталоги и файлы с иерархией и свяжите созданные файлы с исходными диалогами, если они доступны.',
@@ -703,6 +703,9 @@ export default mergeHarnessLocale('ru-RU', {
       expand: 'Развернуть список дел',
       collapse: 'Свернуть список дел',
       jumpToMessage: 'Перейти к сообщению контрольного списка',
+    },
+    todoChecklist: {
+      progress: '{completed} из {total} задач выполнено',
     },
     send: 'Отправить',
     sendDuringStream: 'Отправить (добавить в разговор)',
@@ -1570,7 +1573,7 @@ export default mergeHarnessLocale('ru-RU', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Файлы рабочего пространства',
+    title: 'Файлы основного контекста',
     description: 'Эти файлы определяют личность, память и поведение Blue.',
     saved: '{name} сохранён',
     noFiles: 'Файлы рабочего пространства не найдены.',

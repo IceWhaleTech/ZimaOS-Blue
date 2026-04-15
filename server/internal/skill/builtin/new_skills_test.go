@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -679,6 +680,24 @@ func TestBrowserSkill(t *testing.T) {
 		}
 	})
 
+	t.Run("scroll_down_compat_localized", func(t *testing.T) {
+		mock.lastPageScrollTargetID = ""
+		mock.lastPageScrollX = 0
+		mock.lastPageScrollY = 0
+
+		result, err := br.Execute(tools.WithLang(context.Background(), "zh-CN"), map[string]any{
+			"action":    "scroll_down",
+			"target_id": "tab-compat",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("scroll_down compat localized failed: err=%v success=%v", err, result.Success)
+		}
+		want := tools.BrowserPageScrolledMessage(i18n.ParseLanguage("zh-CN"), "down")
+		if got := result.Data.(map[string]any)["message"]; got != want {
+			t.Fatalf("message = %v, want %q", got, want)
+		}
+	})
+
 	t.Run("inspect_action_alias", func(t *testing.T) {
 		result, err := br.Execute(context.Background(), map[string]any{
 			"action":    "inspect",
@@ -797,6 +816,22 @@ func TestBrowserSkill(t *testing.T) {
 		mock.screenshotTabData = ""
 	})
 
+	t.Run("screenshot_active_tab_localized", func(t *testing.T) {
+		mock.screenshotTabData = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+		mock.lastScreenshotURL = ""
+		mock.lastScreenshotTab = "non-empty"
+		result, err := br.Execute(tools.WithLang(context.Background(), "zh-CN"), map[string]any{
+			"action": "screenshot",
+		})
+		if err != nil || !result.Success {
+			t.Fatalf("localized screenshot active tab failed: err=%v", err)
+		}
+		if got := result.Data.(map[string]any)["message"]; got != "已为当前标签页捕获截图" {
+			t.Fatalf("message = %v, want localized active-tab message", got)
+		}
+		mock.screenshotTabData = ""
+	})
+
 	t.Run("screenshot_persists_file_when_media_dir_configured", func(t *testing.T) {
 		const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
 		mock.screenshotData = pngBase64
@@ -835,6 +870,20 @@ func TestBrowserSkill(t *testing.T) {
 		result, err := br.Execute(context.Background(), map[string]any{"action": "tabs"})
 		if err != nil || !result.Success {
 			t.Fatalf("tabs failed: err=%v", err)
+		}
+	})
+
+	t.Run("tabs_localized_message", func(t *testing.T) {
+		br.Execute(context.Background(), map[string]any{
+			"action": "navigate", "url": "https://example.com",
+		})
+		result, err := br.Execute(tools.WithLang(context.Background(), "ja-JP"), map[string]any{"action": "tabs"})
+		if err != nil || !result.Success {
+			t.Fatalf("localized tabs failed: err=%v", err)
+		}
+		want := tools.BrowserOpenTabsMessage(i18n.ParseLanguage("ja-JP"), 1)
+		if got := result.Data.(map[string]any)["message"]; got != want {
+			t.Fatalf("message = %v, want %q", got, want)
 		}
 	})
 

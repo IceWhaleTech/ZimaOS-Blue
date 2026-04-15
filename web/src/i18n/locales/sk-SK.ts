@@ -347,8 +347,8 @@ export default mergeHarnessLocale('sk-SK', {
     workspaceLoadFailed: 'Nepodarilo sa načítať podrobnosti pracovného priestoru',
     workspaceFilesLoadFailed: 'Nepodarilo sa načítať súbory pracovného priestoru',
     workspaceOpenFailed: 'Nie je možné otvoriť pracovný priestor v správcovi súborov',
-    workspaceCoreTab: 'Základné súbory pracovného priestoru',
-    workspaceGeneratedTab: 'Pôvod súborov',
+    workspaceCoreTab: 'Súbory hlavného kontextu',
+    workspaceGeneratedTab: 'Súbory pracovného priestoru',
     workspaceGeneratedTitle: 'Strom adresárov pracovného priestoru',
     workspaceGeneratedDescription:
       'Zobrazte skutočné adresáre a súbory s hierarchiou a prepojte vygenerované súbory so zdrojovými konverzáciami, ak sú k dispozícii.',
@@ -698,6 +698,9 @@ export default mergeHarnessLocale('sk-SK', {
       expand: 'Rozbaliť zoznam úloh',
       collapse: 'Zbaliť zoznam úloh',
       jumpToMessage: 'Prejsť na správu kontrolného zoznamu',
+    },
+    todoChecklist: {
+      progress: '{completed} z {total} dokončených úloh',
     },
     send: 'Odoslať',
     sendDuringStream: 'Odoslať (pridať do konverzácie)',
@@ -1560,7 +1563,7 @@ export default mergeHarnessLocale('sk-SK', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Súbory pracovného priestoru',
+    title: 'Súbory hlavného kontextu',
     description: 'Tieto súbory definujú osobnosť, pamäť a správanie Blue.',
     saved: '{name} uložené',
     noFiles: 'Nenašli sa žiadne súbory pracovného priestoru.',

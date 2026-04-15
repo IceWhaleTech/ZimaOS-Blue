@@ -196,11 +196,37 @@ func shouldBypassBlueSkillShortCircuit(command string) bool {
 	if blueCLIRequestsHelp(command) {
 		return true
 	}
-	if strings.HasPrefix(head, "/") {
+	if strings.HasPrefix(head, "/") || strings.HasPrefix(head, "-") {
+		return true
+	}
+	if blueCLIUsesFlagStyleArgs(command) {
 		return true
 	}
 	_, ok := execReservedBlueCLICommands[head]
 	return ok
+}
+
+func blueCLIUsesFlagStyleArgs(command string) bool {
+	tokens := tokenizeShell(strings.TrimSpace(command))
+	if len(tokens) < 3 || !strings.EqualFold(strings.TrimSpace(tokens[0]), "blue") {
+		return false
+	}
+	for _, token := range tokens[2:] {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			continue
+		}
+		if token == "--" {
+			return true
+		}
+		if strings.HasPrefix(token, "--") && len(token) > 2 {
+			return true
+		}
+		if strings.HasPrefix(token, "-") && len(token) > 1 {
+			return true
+		}
+	}
+	return false
 }
 
 func blueCLIRequestsHelp(command string) bool {
@@ -1210,7 +1236,10 @@ func (t *ExecTool) trySkillShortCircuit(ctx context.Context, command string, war
 	// - For blue prefix calls: fall through to normal exec when no fallback is available.
 	if err != nil {
 		if strings.Contains(err.Error(), "unknown skill") || strings.Contains(err.Error(), "is disabled") {
-			if toolResp, toolOK := t.tryToolCompatFallback(ctx, execSkillName, input); toolOK {
+			if toolResp, actualTool, toolOK, toolErr := t.tryToolCompatFallback(ctx, execSkillName, input); toolOK {
+				if toolErr != nil {
+					return t.buildToolCompatErrorResult(ctx, command, actualTool, toolErr, warnings), true
+				}
 				return toolResp, true
 			}
 			if t.skillSelect != nil {
@@ -1300,21 +1329,21 @@ func (t *ExecTool) tryCompatAskCarrier(ctx context.Context, command string) (int
 	return nil, false, nil
 }
 
-func (t *ExecTool) tryToolCompatFallback(ctx context.Context, skillName string, input map[string]any) (interface{}, bool) {
+func (t *ExecTool) tryToolCompatFallback(ctx context.Context, skillName string, input map[string]any) (interface{}, string, bool, error) {
 	if t == nil || t.registry == nil {
-		return nil, false
+		return nil, "", false, nil
 	}
 
 	trimmed := strings.TrimSpace(skillName)
 	if trimmed == "" {
-		return nil, false
+		return nil, "", false, nil
 	}
 
 	actualTool := trimmed
 	if t.registry.Get(trimmed) == nil {
 		normalized := normalizeCompatToolName(trimmed)
 		if normalized == trimmed || t.registry.Get(normalized) == nil {
-			return nil, false
+			return nil, "", false, nil
 		}
 		actualTool = normalized
 	}
@@ -1330,7 +1359,7 @@ func (t *ExecTool) tryToolCompatFallback(ctx context.Context, skillName string, 
 			"skill", trimmed,
 			"tool", actualTool,
 			"err", err)
-		return nil, false
+		return nil, actualTool, true, err
 	}
 
 	slog.Info("[exec] tool compat fallback succeeded",
@@ -1338,9 +1367,25 @@ func (t *ExecTool) tryToolCompatFallback(ctx context.Context, skillName string, 
 		"tool", actualTool)
 
 	if forwarded, ok := result.(*ForwardedResult); ok {
-		return forwarded, true
+		return forwarded, actualTool, true, nil
 	}
-	return &ForwardedResult{ActualTool: actualTool, Result: result}, true
+	return &ForwardedResult{ActualTool: actualTool, Result: result}, actualTool, true, nil
+}
+
+func (t *ExecTool) buildToolCompatErrorResult(ctx context.Context, command, toolName string, err error, warnings []string) interface{} {
+	emitSkillErrorCard(ctx, toolName, err)
+	exitCode := 1
+	result := execResult{
+		SessionID: NewSessionID(),
+		Command:   command,
+		Status:    "failed",
+		ExitCode:  &exitCode,
+		Stderr:    err.Error(),
+		Warnings:  warnings,
+		Host:      "local",
+	}
+	b, _ := json.Marshal(result)
+	return string(b)
 }
 
 func (t *ExecTool) buildSkillResult(ctx context.Context, command, skillName string, data map[string]string, warnings []string) interface{} {

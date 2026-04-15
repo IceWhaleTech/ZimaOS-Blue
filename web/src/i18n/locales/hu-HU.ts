@@ -338,7 +338,7 @@ export default mergeHarnessLocale('hu-HU', {
     cache: 'Gyorsítótár',
     billing: 'Számlázás',
     workspace: 'Munkaterület',
-    workspacePanelTitle: 'Munkaterület fájlok',
+    workspacePanelTitle: 'Munkaterületfájlok',
     openWorkspaceIn: 'Nyissa meg a fájlkezelőben',
     openWorkspaceInFinder: 'Nyissa meg a Finderben',
     openWorkspaceInExplorer: 'Nyissa meg az Explorerben',
@@ -347,8 +347,8 @@ export default mergeHarnessLocale('hu-HU', {
     workspaceLoadFailed: 'Nem sikerült betölteni a munkaterület részleteit',
     workspaceFilesLoadFailed: 'Nem sikerült betölteni a munkaterület fájljait',
     workspaceOpenFailed: 'Nem lehet megnyitni a munkaterületet a fájlkezelőben',
-    workspaceCoreTab: 'Munkaterület alapfájlok',
-    workspaceGeneratedTab: 'Fájlforrások',
+    workspaceCoreTab: 'Alap kontextusfájlok',
+    workspaceGeneratedTab: 'Munkaterületfájlok',
     workspaceGeneratedTitle: 'Munkaterületi címtárfa',
     workspaceGeneratedDescription:
       'Valódi könyvtárakat és fájlokat jelenítsen meg hierarchiával, és a generált fájlokat csatolja a forrásbeszélgetésekhez, ha elérhető.',
@@ -700,6 +700,9 @@ export default mergeHarnessLocale('hu-HU', {
       expand: 'Teendőlista bővítése',
       collapse: 'Teendőlista összecsukása',
       jumpToMessage: 'Ugrás az ellenőrzőlista üzenethez',
+    },
+    todoChecklist: {
+      progress: '{completed}/{total} feladat befejezve',
     },
     send: 'Küldés',
     sendDuringStream: 'Küldés (hozzáadás a beszélgetéshez)',
@@ -1571,7 +1574,7 @@ export default mergeHarnessLocale('hu-HU', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Munkaterület fájlok',
+    title: 'Alap kontextusfájlok',
     description: 'Ezek a fájlok határozzák meg Blue személyiségét, memóriáját és viselkedését.',
     saved: '{name} mentve',
     noFiles: 'Nem találhatók munkaterület fájlok.',

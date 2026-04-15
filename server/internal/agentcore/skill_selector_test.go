@@ -850,6 +850,50 @@ func TestSkillSelector_URLAnalyzeBypassesBrowserRule(t *testing.T) {
 	}
 }
 
+func TestSkillSelector_URLAuthSessionReadPrefersWebQuery(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
+	writeSelectorSkill(t, workspaceDir, "web_query", "search the web for latest docs and official references", `blue web_query input="https://example.com"`, "search", "web", "docs")
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Open https://example.com/private with browser_target_id=tab-42 and read the page using the existing logged-in session.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "web_query" {
+		t.Fatalf("expected web_query for authenticated URL read with session reuse, got=%+v", decision)
+	}
+}
+
+func TestSkillSelector_URLAuthSessionInteractiveStillUsesBrowser(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
+	writeSelectorSkill(t, workspaceDir, "web_query", "search the web for latest docs and official references", `blue web_query input="https://example.com"`, "search", "web", "docs")
+
+	sel := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := sel.Select(context.Background(), "Open https://example.com/private with browser_target_id=tab-42, click the profile menu, and fill the form in the existing logged-in session.", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "browser" {
+		t.Fatalf("expected browser for authenticated URL interaction, got=%+v", decision)
+	}
+}
+
 func TestSkillSelector_URLDeepResearchBypassesBrowserRule(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()

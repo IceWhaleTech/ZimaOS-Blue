@@ -351,8 +351,8 @@ export default mergeHarnessLocale('el-GR', {
     workspaceLoadFailed: 'Η φόρτωση των λεπτομερειών του χώρου εργασίας απέτυχε',
     workspaceFilesLoadFailed: 'Αποτυχία φόρτωσης αρχείων χώρου εργασίας',
     workspaceOpenFailed: 'Δεν είναι δυνατό το άνοιγμα του χώρου εργασίας στη διαχείριση αρχείων',
-    workspaceCoreTab: 'Αρχεία πυρήνων χώρου εργασίας',
-    workspaceGeneratedTab: 'Πηγές αρχείων',
+    workspaceCoreTab: 'Αρχεία βασικού πλαισίου',
+    workspaceGeneratedTab: 'Αρχεία χώρου εργασίας',
     workspaceGeneratedTitle: 'Δέντρο καταλόγου χώρου εργασίας',
     workspaceGeneratedDescription:
       'Εμφάνιση πραγματικών καταλόγων και αρχείων με ιεραρχία και σύνδεση αρχείων που δημιουργούνται σε συνομιλίες πηγής όταν είναι διαθέσιμα.',
@@ -704,6 +704,9 @@ export default mergeHarnessLocale('el-GR', {
       expand: 'Αναπτύξτε τη λίστα εργασιών',
       collapse: 'Σύμπτυξη λίστας εργασιών',
       jumpToMessage: 'Μήνυμα μετάβασης στη λίστα ελέγχου',
+    },
+    todoChecklist: {
+      progress: 'Ολοκληρώθηκαν {completed} από {total} εργασίες',
     },
     send: 'Αποστολή',
     sendDuringStream: 'Αποστολή (προσθήκη στη συνομιλία)',
@@ -1579,7 +1582,7 @@ export default mergeHarnessLocale('el-GR', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Αρχεία χώρου εργασίας',
+    title: 'Αρχεία βασικού πλαισίου',
     description: 'Αυτά τα αρχεία ορίζουν την προσωπικότητα, τη μνήμη και τη συμπεριφορά του Blue.',
     saved: '{name} αποθηκεύτηκε',
     noFiles: 'Δεν βρέθηκαν αρχεία χώρου εργασίας.',

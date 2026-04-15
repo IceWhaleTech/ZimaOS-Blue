@@ -363,6 +363,7 @@ func (t *PDFTool) executeCreate(ctx context.Context, args map[string]interface{}
 		Size:         int64(len(data)),
 		Success:      true,
 	}
+	attachOfficeThemeMetadata(&payload, theme)
 	return marshalNativeDocumentPayload(payload)
 }
 
@@ -473,6 +474,7 @@ func (t *PDFTool) executeReformat(ctx context.Context, args map[string]interface
 		Size:         int64(len(data)),
 		Success:      true,
 	}
+	attachOfficeThemeMetadata(&payload, spec.Theme)
 	return marshalNativeDocumentPayload(payload)
 }
 
@@ -922,17 +924,29 @@ func looksLikePDFBytes(data []byte) bool {
 }
 
 func nativePDFCreateRequest(spec officeDocSpec) pdfextract.CreateRequest {
+	paragraphs := make([]string, 0, len(spec.ParagraphBlocks)+len(spec.Paragraphs))
+	for _, block := range officeDocBlocksOrParagraphs(spec.ParagraphBlocks, spec.Paragraphs) {
+		if text := strings.TrimSpace(officePDFTextForDocBlock(block)); text != "" {
+			paragraphs = append(paragraphs, text)
+		}
+	}
 	req := pdfextract.CreateRequest{
 		Title:      spec.Title,
 		Subtitle:   spec.Subtitle,
 		Summary:    spec.Summary,
-		Paragraphs: append([]string(nil), spec.Paragraphs...),
+		Paragraphs: paragraphs,
 		Notes:      append([]string(nil), spec.Notes...),
 	}
 	for _, section := range spec.Sections {
+		sectionParagraphs := make([]string, 0, len(section.ParagraphBlocks)+len(section.Paragraphs))
+		for _, block := range officeDocBlocksOrParagraphs(section.ParagraphBlocks, section.Paragraphs) {
+			if text := strings.TrimSpace(officePDFTextForDocBlock(block)); text != "" {
+				sectionParagraphs = append(sectionParagraphs, text)
+			}
+		}
 		next := pdfextract.CreateSection{
 			Heading:    section.Heading,
-			Paragraphs: append([]string(nil), section.Paragraphs...),
+			Paragraphs: sectionParagraphs,
 			Bullets:    append([]string(nil), section.Bullets...),
 		}
 		if section.Table != nil {
@@ -947,6 +961,16 @@ func nativePDFCreateRequest(spec officeDocSpec) pdfextract.CreateRequest {
 		req.Sections = append(req.Sections, next)
 	}
 	return req
+}
+
+func officePDFTextForDocBlock(block officeDocBlock) string {
+	if block.Kind == officeDocBlockSeparator {
+		return "────────"
+	}
+	if block.Kind == officeDocBlockImage {
+		return "[Image: " + officeImageAltText(block) + "]"
+	}
+	return block.Text
 }
 
 func buildPDFReformatSpec(args map[string]interface{}, input resolvedPDFInput, extracted pdfextract.ExtractResult) (officeDocSpec, error) {

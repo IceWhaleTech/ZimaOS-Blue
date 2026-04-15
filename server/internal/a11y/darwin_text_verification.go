@@ -22,22 +22,25 @@ func darwinVerifySemanticTextEntry(
 	hasBounds bool,
 	captureRegion func(context.Context, darwinRect) ([]byte, error),
 	extractText func(context.Context, []byte) (string, error),
-) bool {
+) (bool, string) {
 	if darwinTextEntryReadbackMatches(value, valueFromFunc(readback)) {
-		return true
+		return true, "ax_value"
 	}
 	if !hasBounds || captureRegion == nil || extractText == nil {
-		return false
+		return false, ""
 	}
 	imagePNG, err := captureRegion(ctx, bounds)
 	if err != nil || len(imagePNG) == 0 {
-		return false
+		return false, ""
 	}
 	observed, err := extractText(ctx, imagePNG)
 	if err != nil {
-		return false
+		return false, ""
 	}
-	return darwinTextEntryOCRMatches(value, observed)
+	if darwinTextEntryOCRMatches(value, observed) {
+		return true, "ocr"
+	}
+	return false, ""
 }
 
 func valueFromFunc(fn func() string) string {

@@ -368,17 +368,19 @@ func TestBuildAgentModeGuidance_IncludesChecklistAndAskFormat(t *testing.T) {
 	if !strings.Contains(out, "injects `<tp>` with current task") || !strings.Contains(out, "Do NOT re-output the checklist") {
 		t.Fatalf("agent mode guidance should include tp progress signal and single-checklist rule: %s", out)
 	}
-	if !strings.Contains(out, "Prefer ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"radio\",\"options\":[...]}]}.") {
-		t.Fatalf("agent mode guidance should include ask questions-format preference: %s", out)
+	if !strings.Contains(out, "Prefer ask with questions=[{question,type,options,detail}]") {
+		t.Fatalf("agent mode guidance should include simplified ask questions contract: %s", out)
 	}
-	if !strings.Contains(out, "Text-input ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"text\"}]}.") {
-		t.Fatalf("agent mode guidance should include ask text-format preference: %s", out)
+	if !strings.Contains(out, "type=radio|checkbox|text") {
+		t.Fatalf("agent mode guidance should include ask type contract: %s", out)
 	}
-	if !strings.Contains(out, "Single-question shorthand: use \"q\" for single-select or \"mq\" for multi-select") || !strings.Contains(out, "\"a\" as the options array (2-4 strings)") {
-		t.Fatalf("agent mode guidance should include ask q/mq+a contract: %s", out)
+	if !strings.Contains(out, "Use q+a only as single-question shorthand when that is clearly simpler.") {
+		t.Fatalf("agent mode guidance should include simplified ask shorthand guidance: %s", out)
 	}
-	if !strings.Contains(out, "Example: {\"q\":\"Which approach?\",\"a\":[\"Option A\",\"Option B\"]}") {
-		t.Fatalf("agent mode guidance should include ask example payload: %s", out)
+	if strings.Contains(out, "Single-question shorthand: use \"q\" for single-select or \"mq\" for multi-select") ||
+		strings.Contains(out, "Text-input ask format: {\"questions\":[{\"question\":\"...\",\"type\":\"text\"}]}.") ||
+		strings.Contains(out, "Example: {\"q\":\"Which approach?\",\"a\":[\"Option A\",\"Option B\"]}") {
+		t.Fatalf("agent mode guidance should not include legacy verbose ask examples: %s", out)
 	}
 	if strings.Contains(out, "<orchestrator_fsm>") || strings.Contains(out, "<protocol>") {
 		t.Fatalf("agent mode guidance should not include legacy fsm/protocol sections: %s", out)
@@ -505,7 +507,8 @@ func TestWriteToolsInfoTo_IncludesToolUsageRules(t *testing.T) {
 		"parallelize them when the runtime supports it",
 		"Use subagents only for bounded independent work",
 		"After research, synthesize the findings yourself before delegating follow-up work",
-		"Use ask only when key requirements are missing",
+		"Use ask only when needed",
+		"Prefer questions=[{question,type,options,detail}]",
 		"run independent verification",
 	}
 	for _, want := range required {
@@ -520,6 +523,8 @@ func TestWriteToolsInfoTo_IncludesNativeDocumentGuide(t *testing.T) {
 	registry.Register(tools.NewMockTool("docx", "Native DOCX tool"))
 	registry.Register(tools.NewMockTool("xlsx", "Native XLSX tool"))
 	registry.Register(tools.NewMockTool("pptx", "Native PPTX tool"))
+	registry.Register(tools.NewMockTool("pdf", "Native PDF tool"))
+	registry.Register(tools.NewMockTool("a11y", "Native accessibility tool"))
 
 	b := NewSystemPromptBuilder(&Config{})
 	b.SetToolRegistry(registry)
@@ -529,11 +534,43 @@ func TestWriteToolsInfoTo_IncludesNativeDocumentGuide(t *testing.T) {
 		t.Fatal("expected tool guidance to be written")
 	}
 	out := sb.String()
-	if !strings.Contains(out, "docx/xlsx/pptx") {
+	if !strings.Contains(out, "docx/xlsx/pptx/pdf") {
 		t.Fatalf("expected native document tool guidance, got: %s", out)
+	}
+	if !strings.Contains(out, "For document read/write and polished workspace artifacts") {
+		t.Fatalf("expected document read/write guidance, got: %s", out)
+	}
+	if !strings.Contains(out, "For application and window operations, prefer a11y") {
+		t.Fatalf("expected a11y host UI guidance, got: %s", out)
 	}
 	if strings.Contains(out, "office over raw file_write") {
 		t.Fatalf("did not expect legacy office guidance, got: %s", out)
+	}
+}
+
+func TestWriteToolsInfoTo_IncludesMarkdownConversionCompletionGuidance(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewMockTool("docx", "Native DOCX tool"))
+	registry.Register(tools.NewMockTool("xlsx", "Native XLSX tool"))
+	registry.Register(tools.NewMockTool("pptx", "Native PPTX tool"))
+	registry.Register(tools.NewMockTool("pdf", "Native PDF tool"))
+
+	b := NewSystemPromptBuilder(&Config{})
+	b.SetToolRegistry(registry)
+
+	var sb strings.Builder
+	if !b.writeToolsInfoTo(&sb, false) {
+		t.Fatal("expected tool guidance to be written")
+	}
+	out := sb.String()
+	if !strings.Contains(out, "hand Markdown directly to those native tools") {
+		t.Fatalf("expected direct markdown handoff guidance, got: %s", out)
+	}
+	if !strings.Contains(out, "stage through Markdown first and then convert") {
+		t.Fatalf("expected staged markdown conversion guidance, got: %s", out)
+	}
+	if !strings.Contains(out, "intermediate Markdown file is not the finished task") {
+		t.Fatalf("expected conversion completion guidance, got: %s", out)
 	}
 }
 
@@ -663,11 +700,14 @@ func TestBuildStructured_StaticIncludesWebToolRoutingGuidance(t *testing.T) {
 	b := NewSystemPromptBuilder(&Config{})
 	static := b.BuildStructured(context.Background(), "").Static
 
-	if !strings.Contains(static, "Use web_query as the default web tool for both queries and URLs") {
+	if !strings.Contains(static, "Use web_query as the default web tool for queries and public URLs") {
 		t.Fatalf("expected static prompt to mention web_query routing, got: %s", static)
 	}
 	if !strings.Contains(static, "let it discover links, read the best page, retry, and degrade automatically") {
 		t.Fatalf("expected static prompt to describe web_query orchestration, got: %s", static)
+	}
+	if !strings.Contains(static, "Authorization, Cookie, or browser_target_id") {
+		t.Fatalf("expected static prompt to mention authenticated fetch/session reuse hints, got: %s", static)
 	}
 	if !strings.Contains(static, "retry_browser") {
 		t.Fatalf("expected static prompt to mention structured browser fallback codes, got: %s", static)
@@ -677,6 +717,9 @@ func TestBuildStructured_StaticIncludesWebToolRoutingGuidance(t *testing.T) {
 	}
 	if !strings.Contains(static, "browser_target_id") {
 		t.Fatalf("expected static prompt to mention browser_target_id reuse, got: %s", static)
+	}
+	if !strings.Contains(static, "relay/local Chrome (Chrome replay)") {
+		t.Fatalf("expected static prompt to mention relay/local Chrome reuse, got: %s", static)
 	}
 }
 
@@ -700,11 +743,14 @@ func TestBuildSkillsSection_UsesWebFetchBrowserRouting(t *testing.T) {
 	b := NewSystemPromptBuilder(&Config{WorkspaceDir: workspaceDir})
 	section := b.buildSkillsSection()
 
-	if !strings.Contains(section, "normal web discovery/read→web_query") {
+	if !strings.Contains(section, "normal public web discovery/read→web_query") {
 		t.Fatalf("expected skills section to route normal web work to web_query, got: %s", section)
 	}
-	if !strings.Contains(section, "If web_query reports login_wall, challenge, browser_required, or next_action=retry_browser, switch to browser") {
-		t.Fatalf("expected skills section to mention browser fallback on structured web_query warnings, got: %s", section)
+	if !strings.Contains(section, "auth-gated readable URL with existing session state→authenticated fetch/read using `Authorization`, `Cookie`, or `browser_target_id`") {
+		t.Fatalf("expected skills section to mention auth/session reuse routing, got: %s", section)
+	}
+	if !strings.Contains(section, "If web_query reports login_wall, challenge, browser_required, or next_action=retry_browser, retry with `Authorization`, `Cookie`, or `browser_target_id` reuse first") {
+		t.Fatalf("expected skills section to mention auth/session reuse before browser fallback, got: %s", section)
 	}
 	if !strings.Contains(section, "Final web fallback→browser") {
 		t.Fatalf("expected skills section to mention final browser fallback, got: %s", section)

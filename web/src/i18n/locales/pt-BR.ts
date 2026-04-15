@@ -349,8 +349,8 @@ export default mergeHarnessLocale('pt-BR', {
     workspaceLoadFailed: 'Falha ao carregar detalhes do espaço de trabalho',
     workspaceFilesLoadFailed: 'Falha ao carregar arquivos do espaço de trabalho',
     workspaceOpenFailed: 'Não é possível abrir o espaço de trabalho no gerenciador de arquivos',
-    workspaceCoreTab: 'Arquivos principais do espaço de trabalho',
-    workspaceGeneratedTab: 'Origem dos arquivos',
+    workspaceCoreTab: 'Arquivos de contexto principal',
+    workspaceGeneratedTab: 'Arquivos do espaço de trabalho',
     workspaceGeneratedTitle: 'Árvore de diretórios do espaço de trabalho',
     workspaceGeneratedDescription:
       'Mostre diretórios e arquivos reais com hierarquia e vincule arquivos gerados a conversas de origem, quando disponíveis.',
@@ -701,6 +701,9 @@ export default mergeHarnessLocale('pt-BR', {
       expand: 'Expandir lista de tarefas',
       collapse: 'Recolher lista de tarefas',
       jumpToMessage: 'Ir para a mensagem da lista de verificação',
+    },
+    todoChecklist: {
+      progress: '{completed} de {total} tarefas concluídas',
     },
     send: 'Enviar',
     sendDuringStream: 'Enviar (adicionar à conversa)',
@@ -1568,7 +1571,7 @@ export default mergeHarnessLocale('pt-BR', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Arquivos do espaço de trabalho',
+    title: 'Arquivos de contexto principal',
     description: 'Estes arquivos definem a personalidade, memória e comportamento do Blue.',
     saved: '{name} salvo',
     noFiles: 'Nenhum arquivo do espaço de trabalho encontrado.',

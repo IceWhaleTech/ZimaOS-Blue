@@ -33,13 +33,11 @@ type ToolPolicyResolver struct {
 // intentionally small. Richer capabilities remain available through exec-routed
 // skills or compat paths without inflating the default tool list.
 var defaultChatDirectToolAllowlist = map[string]struct{}{
-	"a11y":        {},
 	"ask":         {},
 	"bash":        {},
 	"browser":     {},
 	"calendar":    {},
 	"convert":     {},
-	"docx":        {},
 	"edit":        {},
 	"find":        {},
 	"grep":        {},
@@ -49,14 +47,12 @@ var defaultChatDirectToolAllowlist = map[string]struct{}{
 	"plan_append": {},
 	"plan_create": {},
 	"plan_update": {},
-	"pptx":        {},
 	"read":        {},
 	"research":    {},
 	"sessions":    {},
 	"tool_search": {},
 	"web_query":   {},
 	"write":       {},
-	"xlsx":        {},
 }
 
 // NewToolPolicyResolver creates a resolver from app config.

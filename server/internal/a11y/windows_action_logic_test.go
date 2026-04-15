@@ -31,9 +31,10 @@ func TestWindowsActionResultWithPlan_ReturnsSemanticResultOnPrimarySuccess(t *te
 			return nil
 		},
 		nil,
-		func(string, string, int, bool) error {
+		nil,
+		func(string, string, int, bool) (string, error) {
 			fallbackCalls++
-			return nil
+			return "input_click", nil
 		},
 	)
 	if err != nil {
@@ -80,7 +81,10 @@ func TestWindowsActionResultWithPlan_FallsBackToInputWhenPrimaryFails(t *testing
 			return errors.New("accSelect failed")
 		},
 		nil,
-		func(fallback string, value string, holdMS int, primarySucceeded bool) error {
+		func() (bool, string) {
+			return false, ""
+		},
+		func(fallback string, value string, holdMS int, primarySucceeded bool) (string, error) {
 			fallbackCalls++
 			fallbackHoldMS = holdMS
 			if primarySucceeded {
@@ -92,7 +96,7 @@ func TestWindowsActionResultWithPlan_FallsBackToInputWhenPrimaryFails(t *testing
 			if value != "hello" {
 				t.Fatalf("value = %q, want hello", value)
 			}
-			return nil
+			return "input_type", nil
 		},
 	)
 	if err != nil {
@@ -138,7 +142,10 @@ func TestWindowsActionResultWithPlan_TypeContinuesToFallbackAfterPrimaryFocusSuc
 			return nil
 		},
 		nil,
-		func(fallback string, value string, holdMS int, primarySucceeded bool) error {
+		func() (bool, string) {
+			return true, "ocr"
+		},
+		func(fallback string, value string, holdMS int, primarySucceeded bool) (string, error) {
 			fallbackCalls++
 			if !primarySucceeded {
 				t.Fatal("primarySucceeded = false, want true")
@@ -152,7 +159,7 @@ func TestWindowsActionResultWithPlan_TypeContinuesToFallbackAfterPrimaryFocusSuc
 			if holdMS != DefaultHoldMS {
 				t.Fatalf("holdMS = %d, want %d", holdMS, DefaultHoldMS)
 			}
-			return nil
+			return "clipboard", nil
 		},
 	)
 	if err != nil {
@@ -195,7 +202,7 @@ func TestWindowsActionResultWithPlan_TypeFallsBackWhenSemanticPutValueIsNotConfi
 			}
 			return nil
 		},
-		func(plan windowsActionPlan, value string) bool {
+		func(plan windowsActionPlan, value string) (bool, string) {
 			verifyCalls++
 			if plan.Primary != windowsActionPutValue {
 				t.Fatalf("verify plan.Primary = %q, want put_value", plan.Primary)
@@ -203,9 +210,12 @@ func TestWindowsActionResultWithPlan_TypeFallsBackWhenSemanticPutValueIsNotConfi
 			if value != "hello" {
 				t.Fatalf("verify value = %q, want hello", value)
 			}
-			return false
+			return false, ""
 		},
-		func(fallback string, value string, holdMS int, primarySucceeded bool) error {
+		func() (bool, string) {
+			return true, "ocr"
+		},
+		func(fallback string, value string, holdMS int, primarySucceeded bool) (string, error) {
 			fallbackCalls++
 			if fallback != windowsActionInputType {
 				t.Fatalf("fallback = %q, want input_type", fallback)
@@ -216,7 +226,7 @@ func TestWindowsActionResultWithPlan_TypeFallsBackWhenSemanticPutValueIsNotConfi
 			if holdMS != DefaultHoldMS {
 				t.Fatalf("holdMS = %d, want %d", holdMS, DefaultHoldMS)
 			}
-			return nil
+			return "unicode", nil
 		},
 	)
 	if err != nil {
@@ -250,6 +260,7 @@ func TestWindowsActionResultWithPlan_ReturnsUnsupportedForUnsupportedPlan(t *tes
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 	if err == nil {
 		t.Fatal("windowsActionResultWithPlan() error = nil, want unsupported_action")
@@ -277,6 +288,7 @@ func TestWindowsActionResultWithPlan_ReturnsUnsupportedWhenNoFallbackExists(t *t
 		func(windowsActionPlan, string) error {
 			return errors.New("accDoDefaultAction failed")
 		},
+		nil,
 		nil,
 		nil,
 	)

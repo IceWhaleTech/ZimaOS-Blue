@@ -64,10 +64,17 @@ type SnapshotResult struct {
 }
 
 type ActionResult struct {
-	HostOS        string `json:"host_os,omitempty"`
-	WindowID      string `json:"window_id,omitempty"`
-	ExecutionMode string `json:"execution_mode,omitempty"`
-	Message       string `json:"message,omitempty"`
+	HostOS             string   `json:"host_os,omitempty"`
+	WindowID           string   `json:"window_id,omitempty"`
+	ExecutionMode      string   `json:"execution_mode,omitempty"`
+	Intent             string   `json:"intent,omitempty"`
+	TargetHit          bool     `json:"target_hit,omitempty"`
+	VerificationPassed bool     `json:"verification_passed,omitempty"`
+	VerificationMethod string   `json:"verification_method,omitempty"`
+	InputMethod        string   `json:"input_method,omitempty"`
+	Fallbacks          []string `json:"fallbacks,omitempty"`
+	OverlayMode        string   `json:"overlay_mode,omitempty"`
+	Message            string   `json:"message,omitempty"`
 }
 
 type ScreenshotResult struct {

@@ -338,7 +338,7 @@ export default mergeHarnessLocale('sv-SE', {
     cache: 'Cache',
     billing: 'Fakturering',
     workspace: 'Arbetsyta',
-    workspacePanelTitle: 'Arbetsyta filer',
+    workspacePanelTitle: 'Arbetsytefiler',
     openWorkspaceIn: 'Öppna i filhanteraren',
     openWorkspaceInFinder: 'Öppna i Finder',
     openWorkspaceInExplorer: 'Öppna i Utforskaren',
@@ -347,8 +347,8 @@ export default mergeHarnessLocale('sv-SE', {
     workspaceLoadFailed: 'Det gick inte att läsa in uppgifter om arbetsytan',
     workspaceFilesLoadFailed: 'Det gick inte att läsa in arbetsytefiler',
     workspaceOpenFailed: 'Det går inte att öppna arbetsytan i filhanteraren',
-    workspaceCoreTab: 'Arbetsyta kärnfiler',
-    workspaceGeneratedTab: 'Filkällor',
+    workspaceCoreTab: 'Kärnkontextfiler',
+    workspaceGeneratedTab: 'Arbetsytefiler',
     workspaceGeneratedTitle: 'Arbetsytakatalogträd',
     workspaceGeneratedDescription:
       'Visa riktiga kataloger och filer med hierarki och länka genererade filer till källkonversationer när de är tillgängliga.',
@@ -699,6 +699,9 @@ export default mergeHarnessLocale('sv-SE', {
       expand: 'Utöka att göra-listan',
       collapse: 'Komprimera att göra-listan',
       jumpToMessage: 'Hoppa till checklista meddelande',
+    },
+    todoChecklist: {
+      progress: '{completed} av {total} uppgifter slutförda',
     },
     send: 'Skicka',
     sendDuringStream: 'Skicka (lägg till i konversationen)',
@@ -1564,7 +1567,7 @@ export default mergeHarnessLocale('sv-SE', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Arbetsytefiler',
+    title: 'Kärnkontextfiler',
     description: 'Dessa filer definierar Blues personlighet, minne och beteende.',
     saved: '{name} sparad',
     noFiles: 'Inga arbetsytefiler hittades.',

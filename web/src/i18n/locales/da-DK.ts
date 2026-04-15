@@ -339,7 +339,7 @@ export default mergeHarnessLocale('da-DK', {
     cache: 'Cache',
     billing: 'Fakturering',
     workspace: 'Arbejdsplads',
-    workspacePanelTitle: 'Arbejdsområde filer',
+    workspacePanelTitle: 'Arbejdsområdefiler',
     openWorkspaceIn: 'Åbn i filhåndtering',
     openWorkspaceInFinder: 'Åbn i Finder',
     openWorkspaceInExplorer: 'Åbn i Stifinder',
@@ -348,8 +348,8 @@ export default mergeHarnessLocale('da-DK', {
     workspaceLoadFailed: 'Kunne ikke indlæse arbejdsområdeoplysninger',
     workspaceFilesLoadFailed: 'Kunne ikke indlæse arbejdsområdefiler',
     workspaceOpenFailed: 'Kan ikke åbne arbejdsområdet i filhåndtering',
-    workspaceCoreTab: 'Arbejdsområde kernefiler',
-    workspaceGeneratedTab: 'Filkilder',
+    workspaceCoreTab: 'Kernekontekstfiler',
+    workspaceGeneratedTab: 'Arbejdsområdefiler',
     workspaceGeneratedTitle: 'Arbejdsområdekatalogtræ',
     workspaceGeneratedDescription:
       'Vis rigtige mapper og filer med hierarki, og link genererede filer til kildesamtaler, når de er tilgængelige.',
@@ -698,6 +698,9 @@ export default mergeHarnessLocale('da-DK', {
       expand: 'Udvid todo-listen',
       collapse: 'Skjul todo-listen',
       jumpToMessage: 'Hop til tjeklistemeddelelse',
+    },
+    todoChecklist: {
+      progress: '{completed} ud af {total} opgaver udført',
     },
     send: 'Send',
     sendDuringStream: 'Send (tilføj til samtalen)',
@@ -1558,7 +1561,7 @@ export default mergeHarnessLocale('da-DK', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Arbejdsområdefiler',
+    title: 'Kernekontekstfiler',
     description: 'Disse filer definerer Blues personlighed, hukommelse og adfærd.',
     saved: '{name} gemt',
     noFiles: 'Ingen arbejdsområdefiler fundet.',

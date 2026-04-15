@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -104,7 +104,7 @@ func NewBrowser() *Browser {
 			ID:          "browser",
 			Name:        "Browser",
 			Version:     "1.0.0",
-			Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots. For keyword search or public-page reads use web_query; for UI quality scoring use ui_reviewer.",
+			Description: "Open a URL, read page content (accessibility tree), interact with elements (@ref), take screenshots. For keyword search or public-page reads use web_query; for auth-gated pages prefer existing cookie/session reuse or relay/local Chrome over a fresh anonymous tab when possible; for UI quality scoring use ui_reviewer.",
 			Category:    "system",
 			Icon:        "browser",
 			Tags:        []string{"browser", "web", "scrape", "automate", "navigate", "accessibility"},
@@ -403,6 +403,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		if err != nil {
 			return skill.NewErrorResult(err), nil
 		}
+		lang := i18n.ParseLanguage(tools.GetLang(ctx))
 
 		b.cacheRefs(a11y.TargetID, a11y.RefMap, nil)
 
@@ -411,7 +412,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 			"url":       a11y.URL,
 			"title":     a11y.Title,
 			"target_id": a11y.TargetID,
-			"message":   pageMessage(a11y.Title, a11y.URL, a11y.Tree, -1),
+			"message":   tools.BrowserPageMessage(lang, a11y.Title, a11y.URL, a11y.Tree, -1),
 		}
 		b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
 		return skill.NewResult(payload), nil
@@ -476,7 +477,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 
 		return skill.NewResult(map[string]any{
 			"success": true,
-			"message": fmt.Sprintf("Performed %s on @%d", actType, ref),
+			"message": tools.BrowserActionPerformedMessage(i18n.ParseLanguage(tools.GetLang(ctx)), actType, ref),
 		}), nil
 
 	case "scroll_page":
@@ -494,12 +495,13 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return skill.NewResult(map[string]any{
 			"success":   true,
 			"target_id": targetID,
-			"message":   fmt.Sprintf("Scrolled page %s", direction),
+			"message":   tools.BrowserPageScrolledMessage(i18n.ParseLanguage(tools.GetLang(ctx)), direction),
 		}), nil
 
 	case "screenshot":
 		url, _ := input["url"].(string)
 		targetID, _ := input["target_id"].(string)
+		lang := i18n.ParseLanguage(tools.GetLang(ctx))
 		_ = svc.Start(ctx)
 
 		var (
@@ -510,13 +512,13 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		switch {
 		case url != "":
 			data, err = svc.Screenshot(ctx, url)
-			message = fmt.Sprintf("Screenshot captured for %s", url)
+			message = tools.BrowserScreenshotMessage(lang, url, "")
 		case targetID != "":
 			data, err = svc.ScreenshotTab(ctx, targetID)
-			message = fmt.Sprintf("Screenshot captured for tab %s", targetID)
+			message = tools.BrowserScreenshotMessage(lang, "", targetID)
 		default:
 			data, err = svc.ScreenshotTab(ctx, "")
-			message = "Screenshot captured for active tab"
+			message = tools.BrowserScreenshotMessage(lang, "", "")
 		}
 		if err != nil {
 			return skill.NewErrorResult(err), nil
@@ -543,7 +545,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return skill.NewResult(map[string]any{
 			"tabs":    tabs,
 			"count":   len(tabs),
-			"message": fmt.Sprintf("%d open tabs", len(tabs)),
+			"message": tools.BrowserOpenTabsMessage(i18n.ParseLanguage(tools.GetLang(ctx)), len(tabs)),
 		}), nil
 
 	case "close":
@@ -560,7 +562,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		}
 		return skill.NewResult(map[string]any{
 			"closed":  true,
-			"message": fmt.Sprintf("Tab %s closed", targetID),
+			"message": tools.BrowserTabClosedMessage(i18n.ParseLanguage(tools.GetLang(ctx)), targetID),
 		}), nil
 
 	case "recipe":
@@ -588,7 +590,7 @@ func (b *Browser) Execute(ctx context.Context, input map[string]any) (*skill.Res
 		return skill.NewResult(map[string]any{
 			"recipes": infos,
 			"count":   len(infos),
-			"message": fmt.Sprintf("%d recipes available", len(infos)),
+			"message": tools.BrowserRecipesAvailableMessage(i18n.ParseLanguage(tools.GetLang(ctx)), len(infos)),
 		}), nil
 	}
 
@@ -605,30 +607,6 @@ const (
 	readableContentMinChars = 140
 )
 
-// pageMessage builds the human-readable message for snapshot results.
-func pageMessage(title, url, tree string, count int) string {
-	// "Page: Title (url) — N interactive elements\n\nTree"
-	n := len("Page: ") + len(title) + len(" (") + len(url) + len(")")
-	if count >= 0 {
-		n += len(" — ") + 10 + len(" interactive elements")
-	}
-	n += 2 + len(tree)
-	buf := make([]byte, 0, n)
-	buf = append(buf, "Page: "...)
-	buf = append(buf, title...)
-	buf = append(buf, " ("...)
-	buf = append(buf, url...)
-	buf = append(buf, ')')
-	if count >= 0 {
-		buf = append(buf, " — "...)
-		buf = append(buf, strconv.Itoa(count)...)
-		buf = append(buf, " interactive elements"...)
-	}
-	buf = append(buf, "\n\n"...)
-	buf = append(buf, tree...)
-	return string(buf)
-}
-
 // autoSnapshot picks the best snapshot strategy based on page complexity and model capabilities.
 //
 // Strategy:
@@ -637,6 +615,7 @@ func pageMessage(title, url, tree string, count int) string {
 //  3. If > 30 and vision → screenshot + interactive elements (visual layout + action refs)
 //  4. If > 30 and no vision → try a11y tree; if truncated → fall back to interactive + warning
 func (b *Browser) autoSnapshot(ctx context.Context, svc BrowserServiceInterface, targetID string, vision bool) (*skill.Result, error) {
+	lang := i18n.ParseLanguage(tools.GetLang(ctx))
 	count, err := svc.CountInteractiveElements(ctx, targetID)
 	if err != nil {
 		// Can't count — fall back to interactive snapshot
@@ -669,7 +648,7 @@ func (b *Browser) autoSnapshot(ctx context.Context, svc BrowserServiceInterface,
 		}
 		// Append note about complexity
 		if data, ok := result.Data.(map[string]any); ok {
-			data["note"] = fmt.Sprintf("Page has %d interactive elements and a large DOM. Using interactive elements list. Use 'screenshot' for visual layout.", count)
+			data["note"] = tools.BrowserLargeDOMNoteMessage(lang, count)
 		}
 		return result, nil
 	}
@@ -688,7 +667,7 @@ func (b *Browser) autoSnapshot(ctx context.Context, svc BrowserServiceInterface,
 		"title":     a11y.Title,
 		"target_id": a11y.TargetID,
 		"strategy":  "a11y",
-		"message":   fmt.Sprintf("Page: %s (%s)\n\n%s", a11y.Title, a11y.URL, a11y.Tree),
+		"message":   tools.BrowserPageMessage(lang, a11y.Title, a11y.URL, a11y.Tree, -1),
 	}
 	b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
 	return skill.NewResult(payload), nil
@@ -696,6 +675,7 @@ func (b *Browser) autoSnapshot(ctx context.Context, svc BrowserServiceInterface,
 
 // doSnapshotInteractive extracts interactive elements and caches the ref map.
 func (b *Browser) doSnapshotInteractive(ctx context.Context, svc BrowserServiceInterface, targetID string) (*skill.Result, error) {
+	lang := i18n.ParseLanguage(tools.GetLang(ctx))
 	result, err := svc.InteractiveElements(ctx, targetID)
 	if err != nil {
 		return skill.NewErrorResult(err), nil
@@ -710,7 +690,7 @@ func (b *Browser) doSnapshotInteractive(ctx context.Context, svc BrowserServiceI
 		"target_id": result.TargetID,
 		"count":     result.Count,
 		"strategy":  "interactive",
-		"message":   pageMessage(result.Title, result.URL, result.Tree, result.Count),
+		"message":   tools.BrowserPageMessage(lang, result.Title, result.URL, result.Tree, result.Count),
 	}
 	b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
 	return skill.NewResult(payload), nil
@@ -719,6 +699,7 @@ func (b *Browser) doSnapshotInteractive(ctx context.Context, svc BrowserServiceI
 // doScreenshotWithInteractive returns a screenshot + interactive elements list.
 // Best for vision-capable models on complex pages.
 func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserServiceInterface, targetID string) (*skill.Result, error) {
+	lang := i18n.ParseLanguage(tools.GetLang(ctx))
 	// Get interactive elements for action refs
 	interactive, err := svc.InteractiveElements(ctx, targetID)
 	if err != nil {
@@ -731,7 +712,7 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 		return skill.NewResult(map[string]any{
 			"screenshot": data,
 			"strategy":   "screenshot",
-			"message":    "Screenshot captured (interactive elements unavailable)",
+			"message":    tools.BrowserScreenshotInteractiveUnavailableMessage(lang),
 		}), nil
 	}
 
@@ -748,7 +729,7 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 			"target_id": interactive.TargetID,
 			"count":     interactive.Count,
 			"strategy":  "interactive",
-			"message":   pageMessage(interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
+			"message":   tools.BrowserPageMessage(lang, interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
 		}
 		b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
 		return skill.NewResult(payload), nil
@@ -763,7 +744,7 @@ func (b *Browser) doScreenshotWithInteractive(ctx context.Context, svc BrowserSe
 		"target_id":  interactive.TargetID,
 		"count":      interactive.Count,
 		"strategy":   "screenshot+interactive",
-		"message":    "Page: " + interactive.Title + " (" + interactive.URL + ") — screenshot + " + strconv.Itoa(interactive.Count) + " interactive elements\n\n" + interactive.Tree,
+		"message":    tools.BrowserPageWithScreenshotInteractiveMessage(lang, interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
 	}
 	b.maybeAugmentSnapshotWithReadableContent(ctx, svc, payload)
 	return skill.NewResult(payload), nil
@@ -773,6 +754,7 @@ func (b *Browser) maybeAugmentSnapshotWithReadableContent(ctx context.Context, s
 	if payload == nil || svc == nil {
 		return
 	}
+	lang := i18n.ParseLanguage(tools.GetLang(ctx))
 	url, _ := payload["url"].(string)
 	title, _ := payload["title"].(string)
 	tree, _ := payload["tree"].(string)
@@ -791,15 +773,17 @@ func (b *Browser) maybeAugmentSnapshotWithReadableContent(ctx context.Context, s
 	payload["content_format"] = "text"
 	payload["content_strategy"] = "extract_recipe"
 	if tree == "" {
-		payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s", title, url, content)
+		payload["message"] = tools.BrowserReadableContentMessage(lang, title, url, content)
 		return
 	}
-	sectionLabel := "Page structure"
-	switch strings.TrimSpace(fmt.Sprintf("%v", payload["strategy"])) {
-	case "interactive", "screenshot+interactive":
-		sectionLabel = "Interactive elements"
-	}
-	payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s\n\n%s:\n%s", title, url, content, sectionLabel, tree)
+	payload["message"] = tools.BrowserReadableContentWithTreeMessage(
+		lang,
+		title,
+		url,
+		content,
+		strings.TrimSpace(fmt.Sprintf("%v", payload["strategy"])),
+		tree,
+	)
 }
 
 func browserShouldTryReadableContent(url, title, tree string, count int) bool {

@@ -340,7 +340,7 @@ export default mergeHarnessLocale('it-IT', {
     cache: 'Cache',
     billing: 'Fatturazione',
     workspace: 'Spazio di lavoro',
-    workspacePanelTitle: "File dell'area di lavoro",
+    workspacePanelTitle: 'File dell\'area di lavoro',
     openWorkspaceIn: 'Apri nel file manager',
     openWorkspaceInFinder: 'Apri nel Finder',
     openWorkspaceInExplorer: 'Apri in Esplora risorse',
@@ -349,8 +349,8 @@ export default mergeHarnessLocale('it-IT', {
     workspaceLoadFailed: "Impossibile caricare i dettagli dell'area di lavoro",
     workspaceFilesLoadFailed: "Impossibile caricare i file dell'area di lavoro",
     workspaceOpenFailed: "Impossibile aprire l'area di lavoro nel file manager",
-    workspaceCoreTab: "File principali dell'area di lavoro",
-    workspaceGeneratedTab: 'Origine dei file',
+    workspaceCoreTab: 'File del contesto principale',
+    workspaceGeneratedTab: 'File dell\'area di lavoro',
     workspaceGeneratedTitle: "Albero delle directory dell'area di lavoro",
     workspaceGeneratedDescription:
       'Mostra directory e file reali con gerarchia e collega i file generati alle conversazioni di origine quando disponibili.',
@@ -704,6 +704,9 @@ export default mergeHarnessLocale('it-IT', {
       expand: "Espandi l'elenco delle cose da fare",
       collapse: "Comprimi l'elenco delle cose da fare",
       jumpToMessage: 'Vai al messaggio della lista di controllo',
+    },
+    todoChecklist: {
+      progress: '{completed} attività su {total} completate',
     },
     send: 'Invia',
     sendDuringStream: 'Invia (aggiungi alla conversazione)',
@@ -1574,7 +1577,7 @@ export default mergeHarnessLocale('it-IT', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: "File dell'area di lavoro",
+    title: 'File del contesto principale',
     description: 'Questi file definiscono la personalità, la memoria e il comportamento di Blue.',
     saved: '{name} salvato',
     noFiles: "Nessun file dell'area di lavoro trovato.",

@@ -42,8 +42,16 @@ func (t *PPTXTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "Workspace path to the target .pptx file.",
 				},
-				"title":      map[string]interface{}{"type": "string"},
-				"subtitle":   map[string]interface{}{"type": "string"},
+				"title":    map[string]interface{}{"type": "string"},
+				"subtitle": map[string]interface{}{"type": "string"},
+				"theme": map[string]interface{}{
+					"type": "string",
+					"enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"},
+				},
+				"style_hint": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional tone/style hint used to infer a presentation theme when theme is omitted.",
+				},
 				"summary":    map[string]interface{}{},
 				"content":    map[string]interface{}{"type": "string"},
 				"sections":   map[string]interface{}{"type": "array", "description": "Structured slides. Each section can include heading, paragraphs/body, bullets, table, and native chart data."},
@@ -108,7 +116,12 @@ func (t *PPTXTool) executeCreateLike(ctx context.Context, args map[string]interf
 	}
 	title := strings.TrimSpace(firstCompatString(args, "title"))
 	subtitle := strings.TrimSpace(firstCompatString(args, "subtitle"))
-	spec, err := parseOfficeDocSpec(args, title, subtitle, resolveOfficeTheme("", "presentation"), "presentation")
+	styleHint := firstCompatString(args, "style_hint", "styleHint", "style", "visual_style", "visualStyle")
+	if strings.TrimSpace(styleHint) == "" {
+		styleHint = "presentation"
+	}
+	theme := resolveOfficeTheme(firstCompatString(args, "theme"), styleHint)
+	spec, err := parseOfficeDocSpec(args, title, subtitle, theme, styleHint)
 	if err != nil {
 		return "", err
 	}
@@ -147,6 +160,7 @@ func (t *PPTXTool) executeCreateLike(ctx context.Context, args map[string]interf
 		SlideCount:   len(slides),
 		Success:      true,
 	}
+	attachOfficeThemeMetadata(&payload, theme)
 	return marshalNativeDocumentPayload(payload)
 }
 

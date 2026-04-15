@@ -45,8 +45,23 @@ func (b *darwinBackend) ListWindows(ctx context.Context) ([]WindowInfo, error) {
 	return b.listWindows(ctx)
 }
 
+func (b *darwinBackend) ListAllWindows(ctx context.Context) ([]WindowInfo, error) {
+	return b.listAllWindows(ctx)
+}
+
 func (b *darwinBackend) FocusWindow(ctx context.Context, windowID string) (ActionResult, error) {
 	return b.focusWindow(ctx, windowID)
+}
+
+func (b *darwinBackend) ActivateApp(_ context.Context, appName string) (ActionResult, error) {
+	if err := darwinActivateApp(appName); err != nil {
+		return ActionResult{}, err
+	}
+	return ActionResult{
+		HostOS:        b.HostOS(),
+		ExecutionMode: "automation",
+		Message:       "Application activated",
+	}, nil
 }
 
 func (b *darwinBackend) Snapshot(ctx context.Context, windowID string) (SnapshotResult, error) {

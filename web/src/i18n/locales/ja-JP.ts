@@ -348,8 +348,8 @@ export default mergeHarnessLocale('ja-JP', {
     workspaceLoadFailed: 'ワークスペースの詳細の読み込みに失敗しました',
     workspaceFilesLoadFailed: 'ワークスペースファイルの読み込みに失敗しました',
     workspaceOpenFailed: 'ファイルマネージャーでワークスペースを開けませんでした',
-    workspaceCoreTab: 'ワークスペースのコアファイル',
-    workspaceGeneratedTab: 'ファイルの出所',
+    workspaceCoreTab: 'コアコンテキストファイル',
+    workspaceGeneratedTab: 'ワークスペースファイル',
     workspaceGeneratedTitle: 'ワークスペースのディレクトリツリー',
     workspaceGeneratedDescription:
       '実際のディレクトリとファイルを階層付きで表示し、可能な場合は生成ファイルを元の会話に関連付けます。',
@@ -698,6 +698,9 @@ export default mergeHarnessLocale('ja-JP', {
       expand: 'ToDoリストを展開する',
       collapse: 'ToDo リストを折りたたむ',
       jumpToMessage: 'チェックリストメッセージにジャンプ',
+    },
+    todoChecklist: {
+      progress: '{total} 個のタスクのうち {completed} 個が完了しました',
     },
     send: '送信',
     sendDuringStream: '送信（会話に追加）',
@@ -1560,7 +1563,7 @@ export default mergeHarnessLocale('ja-JP', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'ワークスペースファイル',
+    title: 'コアコンテキストファイル',
     description: 'これらのファイルはBlueの性格、記憶、行動を定義します。',
     saved: '{name} を保存しました',
     noFiles: 'ワークスペースファイルが見つかりません。',

@@ -1140,6 +1140,7 @@ func (s *Server) workspaceListFiles(args map[string]interface{}) (string, error)
 	if path := workspaceCompatPathString(args); path != "" {
 		scope = path
 	}
+	scope = workspaceDirectoryScopeOrRoot(scope)
 	maxDepth := defaultWorkspaceListDepth
 	if v, ok := workspaceCompatValue(args, "max_depth", "maxDepth"); ok {
 		n, err := asInt(v)
@@ -1888,6 +1889,33 @@ func cleanWorkspaceRelPath(raw string, allowDot bool) (string, error) {
 		return "", errors.New("path cannot escape workspace root")
 	}
 	return clean, nil
+}
+
+func workspaceDirectoryScopeOrRoot(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !workspaceLooksLikeBareFilename(trimmed) {
+		return trimmed
+	}
+	return "."
+}
+
+func workspaceLooksLikeBareFilename(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" || filepath.IsAbs(trimmed) {
+		return false
+	}
+	if strings.HasSuffix(trimmed, "/") || strings.HasSuffix(trimmed, `\`) {
+		return false
+	}
+	clean := filepath.Clean(trimmed)
+	if clean == "." || clean == ".." {
+		return false
+	}
+	cleanSlash := filepath.ToSlash(clean)
+	if strings.Contains(cleanSlash, "/") {
+		return false
+	}
+	return strings.TrimSpace(filepath.Ext(clean)) != ""
 }
 
 func pathWithinRoot(root, target string) bool {

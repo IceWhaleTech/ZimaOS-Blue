@@ -1024,7 +1024,14 @@ func nativeDocumentArtifactHint(target, genericFormat string) string {
 		}
 		scope = "deliverable is " + format
 	}
-	return fmt.Sprintf(" When the %s, prefer the native %s tool instead of raw file_write so %s are preserved.", scope, tool, nativeDocumentArtifactBenefit(tool))
+	return fmt.Sprintf(
+		" When the %s, prefer the native %s tool instead of raw file_write so %s are preserved. For writing-heavy document tasks, you can hand Markdown content directly to the native %s tool when its schema accepts it, or write Markdown first and then convert it if that is safer. If you use an intermediate Markdown file, that intermediate Markdown file does not complete the task; the task is complete only after the requested final %s artifact exists.",
+		scope,
+		tool,
+		nativeDocumentArtifactBenefit(tool),
+		tool,
+		format,
+	)
 }
 
 func shouldPreferDirectArtifactWriting(message string) bool {
@@ -7486,7 +7493,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
 	if policyReq.RouteKind == tools.ToolRouteKindChat &&
 		!policyReq.SkipDefaultChatDirectAllowlist &&
-		(shouldExpandChatToolAllowlistForNativeDocumentArtifact(userMessage) || shouldExpandChatToolAllowlistForEmailIntent(userMessage)) {
+		shouldExpandChatToolAllowlistForEmailIntent(userMessage) {
 		expandedReq := policyReq
 		expandedReq.SkipDefaultChatDirectAllowlist = true
 		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
@@ -7521,14 +7528,6 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		Msg("[chat] selectTools")
 
 	return routed, nil
-}
-
-func shouldExpandChatToolAllowlistForNativeDocumentArtifact(userMessage string) bool {
-	target := extractRequestedArtifactPath(userMessage)
-	if isNativeDocumentArtifactPath(target) {
-		return true
-	}
-	return hasGenericNativeDocumentArtifactIntent(userMessage)
 }
 
 func shouldExpandChatToolAllowlistForEmailIntent(userMessage string) bool {
@@ -16243,9 +16242,50 @@ func localizeToolExecutionErrorMessage(lang i18n.Language, raw string) string {
 	if trimmed == "" {
 		return ""
 	}
-	switch strings.ToLower(trimmed) {
-	case "path escapes workspace root":
+	normalized := strings.ToLower(
+		strings.Join(
+			strings.Fields(
+				strings.NewReplacer("—", "-", "–", "-", "\u00a0", " ").Replace(trimmed),
+			),
+			" ",
+		),
+	)
+
+	switch {
+	case normalized == "path escapes workspace root":
 		return i18n.T(lang, i18n.MsgPathEscapesWorkspaceRoot)
+	case normalized == "browser not running":
+		return i18n.T(lang, i18n.MsgBrowserNotRunning)
+	case normalized == "browser service not available":
+		return i18n.T(lang, i18n.MsgBrowserServiceNotAvailable)
+	case normalized == "browser service not available - cannot review url":
+		return i18n.T(lang, i18n.MsgBrowserServiceNotAvailableReviewURL)
+	case normalized == "proxy bridge not available":
+		return i18n.T(lang, i18n.MsgProxyBridgeNotAvailable)
+	case normalized == "proxy bridge not available - cannot call vlm":
+		return i18n.T(lang, i18n.MsgProxyBridgeNotAvailableCallVLM)
+	case normalized == "navigation failed: url not allowed":
+		return i18n.T(lang, i18n.MsgNavigationURLNotAllowed)
+	case strings.HasPrefix(normalized, "browser start failed:"):
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) != 2 {
+			return raw
+		}
+		detail := strings.TrimSpace(parts[1])
+		if detail == "" {
+			return raw
+		}
+		return i18n.T(lang, i18n.MsgBrowserStartFailed, detail)
+	case strings.HasPrefix(normalized, "navigation failed:"):
+		parts := strings.SplitN(trimmed, ":", 2)
+		if len(parts) != 2 {
+			return raw
+		}
+		detail := strings.TrimSpace(parts[1])
+		if detail == "" {
+			return raw
+		}
+		return i18n.T(lang, i18n.MsgNavigationFailed, detail)
 	default:
 		return raw
 	}
@@ -17493,13 +17533,14 @@ func isResearchRecoveryToolName(name string) bool {
 }
 
 var (
-	requestedArtifactPathRegex        *regexp.Regexp
-	savedGeneratedImagePathRegex      *regexp.Regexp
-	artifactWriteTargetPrepCueRegex   *regexp.Regexp
-	artifactWriteTargetAsCueRegex     *regexp.Regexp
-	artifactWriteTargetDirectCueRegex *regexp.Regexp
-	artifactPathRegexesOnce           sync.Once
-	artifactWriteTargetRegexesOnce    sync.Once
+	requestedArtifactPathRegex         *regexp.Regexp
+	savedGeneratedImagePathRegex       *regexp.Regexp
+	artifactWriteTargetConvertCueRegex *regexp.Regexp
+	artifactWriteTargetPrepCueRegex    *regexp.Regexp
+	artifactWriteTargetAsCueRegex      *regexp.Regexp
+	artifactWriteTargetDirectCueRegex  *regexp.Regexp
+	artifactPathRegexesOnce            sync.Once
+	artifactWriteTargetRegexesOnce     sync.Once
 )
 
 func ensureArtifactPathRegexes() {
@@ -17511,6 +17552,7 @@ func ensureArtifactPathRegexes() {
 
 func ensureArtifactWriteTargetRegexes() {
 	artifactWriteTargetRegexesOnce.Do(func() {
+		artifactWriteTargetConvertCueRegex = regexp.MustCompile(`(?is)(?:convert|converted|converting|transform|transformed|render|rendered|reformat|reformatted|export|exported|turn|turned)[^\n]{0,96}(?:to|into|as)\s*$|(?:转(?:成|为)|转换(?:成|为)?|转化(?:成|为)?|导出(?:成|为|到)|另存为|输出(?:成|为|到))\s*$`)
 		artifactWriteTargetPrepCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}(?:to|into|in|under|at)\s*$|(?:写(?:到|入|进)|保存(?:到|在)|输出到|导出到|生成到|存(?:到|入|在)|记录到|整理到|总结到|提取到)\s*$`)
 		artifactWriteTargetAsCueRegex = regexp.MustCompile(`(?is)(?:write|save|saved|output|export|append|store|persist|create|generate|generated|draft|produce|document|summari[sz]e|record|capture|extract|answer|list)[^\n]{0,96}\bas\s*$|(?:写(?:成|为)|保存为|输出为|导出为|生成为|存为|记录为|整理为|总结为|提取为)\s*$`)
 		artifactWriteTargetDirectCueRegex = regexp.MustCompile(`(?is)(?:create|generate|generated|draft|produce|output|export|write)\s*$|(?:创建|生成|写入|写出)\s*$`)
@@ -17641,6 +17683,8 @@ func scoreArtifactWriteTargetCandidate(userMessage string, candidate artifactPat
 		return 0
 	}
 	switch {
+	case artifactWriteTargetConvertCueRegex.MatchString(before):
+		return 5
 	case artifactWriteTargetPrepCueRegex.MatchString(before):
 		return 3
 	case artifactWriteTargetAsCueRegex.MatchString(before):
@@ -22890,7 +22934,7 @@ func (h *ChatHandler) mapCardAction(cardID, actionID, actionLabel, cardType, car
 			}
 		}
 		if strings.TrimSpace(fetchURL) != "" {
-			return "Open " + fetchURL + " with the browser tool. If the page needs login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
+			return "Open " + fetchURL + " with the browser tool. If you only need readable content from an existing logged-in session, prefer web_fetch with browser_target_id or current session cookies first. If the page needs live login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
 		}
 	}
 

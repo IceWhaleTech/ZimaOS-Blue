@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWindowsSystemCLI_CaptureWindowUsesRestrictedPowerShell(t *testing.T) {
@@ -178,6 +179,48 @@ func TestWindowsSystemCLI_CaptureRegionUsesRestrictedPowerShell(t *testing.T) {
 		"System.Drawing.Bitmap(320,48)",
 		"CopyFromScreen(12,34,0,0,$bmp.Size)",
 		"$bmp.Save('C:\\tmp\\region.png'",
+	} {
+		if !strings.Contains(script, needle) {
+			t.Fatalf("script missing %q in %q", needle, script)
+		}
+	}
+}
+
+func TestWindowsSystemCLI_ShowHighlightOverlayUsesTopmostBorderWindow(t *testing.T) {
+	var name string
+	var args []string
+	cli := windowsSystemCLI{
+		run: func(_ context.Context, command string, commandArgs ...string) (string, error) {
+			name = command
+			args = append([]string(nil), commandArgs...)
+			return "", nil
+		},
+	}
+
+	_, err := cli.showHighlightOverlay(context.Background(), windowsRect{Left: 10, Top: 20, Right: 210, Bottom: 60}, 350*time.Millisecond)
+	if err != nil {
+		t.Fatalf("showHighlightOverlay() error = %v", err)
+	}
+	if name != "powershell" {
+		t.Fatalf("name = %q, want powershell", name)
+	}
+	if len(args) != 5 {
+		t.Fatalf("args len = %d, want 5", len(args))
+	}
+	if strings.Join(args[:4], " ") != "-NoProfile -NonInteractive -STA -Command" {
+		t.Fatalf("prefix args = %q, want PowerShell STA flags", strings.Join(args[:4], " "))
+	}
+	script := args[4]
+	for _, needle := range []string{
+		"PresentationFramework",
+		"AllowsTransparency",
+		"Topmost = $true",
+		"$window.Left = 10",
+		"$window.Top = 20",
+		"$window.Width = 200",
+		"$window.Height = 40",
+		"BorderThickness",
+		"Start-Sleep -Milliseconds 350",
 	} {
 		if !strings.Contains(script, needle) {
 			t.Fatalf("script missing %q in %q", needle, script)

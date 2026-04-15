@@ -596,6 +596,11 @@ func stage0RuleRoute(query string) Decision {
 	if strings.HasPrefix(lower, "ask ") || strings.HasPrefix(lower, "blue ask ") {
 		return selectSkill("ask", "rule_ask")
 	}
+	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) &&
+		!shouldBypassURLBrowserRule(lower) &&
+		shouldRouteURLToWebQueryWithAuthSession(lower) {
+		return selectSkill("web_query", "rule_url_auth_session_read")
+	}
 	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) && !shouldBypassURLBrowserRule(lower) {
 		return selectSkill("browser", "rule_url")
 	}
@@ -650,6 +655,33 @@ func shouldBypassURLBrowserRule(lower string) bool {
 	return hasSelectorTerm(lower, []string{
 		"analyze", "analysis", "summarize", "summary", "synthesize", "compare", "report", "insight", "insights", "findings", "extract",
 		"research", "investigate", "study", "citations", "citation", "evidence", "sources", "source", "timeline", "tradeoff", "benchmark", "analyze this", "summarize this", "分析", "总结", "提炼", "比较", "报告", "洞察", "研究", "梳理", "评估", "引用", "证据", "来源", "时间线", "权衡", "基准",
+	})
+}
+
+func shouldRouteURLToWebQueryWithAuthSession(lower string) bool {
+	if lower == "" {
+		return false
+	}
+	hasAuthSessionCue := hasSelectorTerm(lower, []string{
+		"browser_target_id", "authorization", "auth header", "bearer token", "cookie", "cookies",
+		"session cookie", "logged-in session", "logged in session", "existing session", "current session",
+		"reuse session", "reuse cookie", "reuse cookies", "login state", "authenticated session",
+		"登录态", "会话", "会话 cookie", "cookie 会话", "授权头", "带 cookie", "带上 cookie",
+		"复用会话", "复用 cookie", "现有会话", "当前会话", "已登录会话",
+	})
+	if !hasAuthSessionCue {
+		return false
+	}
+	if hasSelectorTerm(lower, []string{
+		"click", "tap", "press", "fill", "type", "input", "scroll", "hover", "select", "drag",
+		"submit", "sign in", "log in", "login", "form", "interact", "interaction",
+		"点击", "填写", "输入", "滚动", "悬停", "选择", "拖动", "提交", "登录", "表单", "交互",
+	}) {
+		return false
+	}
+	return hasSelectorTerm(lower, []string{
+		"read", "fetch", "load", "view", "extract", "content", "page", "html", "markdown", "text",
+		"读取", "抓取", "获取", "查看", "提取", "内容", "正文", "页面", "文本",
 	})
 }
 

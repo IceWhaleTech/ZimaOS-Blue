@@ -348,8 +348,8 @@ export default mergeHarnessLocale('en-US', {
     workspaceLoadFailed: 'Failed to load workspace details',
     workspaceFilesLoadFailed: 'Failed to load workspace files',
     workspaceOpenFailed: 'Unable to open workspace in file manager',
-    workspaceCoreTab: 'Workspace Core Files',
-    workspaceGeneratedTab: 'File Sources',
+    workspaceCoreTab: 'Core Context Files',
+    workspaceGeneratedTab: 'Workspace Files',
     workspaceGeneratedTitle: 'Workspace Directory Tree',
     workspaceGeneratedDescription:
       'Show real directories and files with hierarchy, and link generated files to source conversations when available.',
@@ -696,6 +696,9 @@ export default mergeHarnessLocale('en-US', {
       expand: 'Expand todo list',
       collapse: 'Collapse todo list',
       jumpToMessage: 'Jump to checklist message',
+    },
+    todoChecklist: {
+      progress: '{completed} out of {total} tasks completed',
     },
     quickNav: {
       title: 'Quick navigation',
@@ -1563,7 +1566,7 @@ export default mergeHarnessLocale('en-US', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Workspace Files',
+    title: 'Core Context Files',
     description: "These files shape Blue's personality, memory, and behavior.",
     saved: '{name} saved',
     noFiles: 'No workspace files found.',

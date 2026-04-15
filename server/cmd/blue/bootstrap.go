@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/workspace"
 )
 
@@ -12,7 +12,7 @@ import (
 // first-run onboarding guide as done.
 func runCompleteBootstrap() {
 	dataDir := getDataDir()
-	mgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
+	mgr := workspace.NewManager(bootstrap.ResolveWorkspaceDir(dataDir, nil))
 
 	if err := mgr.CompleteBootstrap(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

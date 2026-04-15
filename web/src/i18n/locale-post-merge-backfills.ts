@@ -80,6 +80,167 @@ const commonFilterLabels: Record<LocaleKey, string> = {
   'zh-TW': '篩選',
 }
 
+export const workspaceNavigationLocaleBackfills: Record<
+  LocaleKey,
+  { coreTab: string; generatedTab: string }
+> = {
+  'ca-ES': {
+    coreTab: "Fitxers de context principal",
+    generatedTab: "Fitxers de l'espai de treball",
+  },
+  'cs-CZ': {
+    coreTab: 'Soubory hlavního kontextu',
+    generatedTab: 'Soubory pracovního prostoru',
+  },
+  'da-DK': {
+    coreTab: 'Kernekontekstfiler',
+    generatedTab: 'Arbejdsområdefiler',
+  },
+  'de-DE': {
+    coreTab: 'Kernkontextdateien',
+    generatedTab: 'Arbeitsbereichsdateien',
+  },
+  'el-GR': {
+    coreTab: 'Αρχεία βασικού πλαισίου',
+    generatedTab: 'Αρχεία χώρου εργασίας',
+  },
+  'en-GB': {
+    coreTab: 'Core Context Files',
+    generatedTab: 'Workspace Files',
+  },
+  'en-US': {
+    coreTab: 'Core Context Files',
+    generatedTab: 'Workspace Files',
+  },
+  'es-ES': {
+    coreTab: 'Archivos de contexto principal',
+    generatedTab: 'Archivos del espacio de trabajo',
+  },
+  'fr-FR': {
+    coreTab: 'Fichiers de contexte principal',
+    generatedTab: "Fichiers de l'espace de travail",
+  },
+  'ga-IE': {
+    coreTab: 'Croíchomhaid chomhthéacs',
+    generatedTab: 'Comhaid spáis oibre',
+  },
+  'hr-HR': {
+    coreTab: 'Datoteke glavnog konteksta',
+    generatedTab: 'Datoteke radnog prostora',
+  },
+  'hu-HU': {
+    coreTab: 'Alap kontextusfájlok',
+    generatedTab: 'Munkaterületfájlok',
+  },
+  'it-IT': {
+    coreTab: 'File del contesto principale',
+    generatedTab: "File dell'area di lavoro",
+  },
+  'ja-JP': {
+    coreTab: 'コアコンテキストファイル',
+    generatedTab: 'ワークスペースファイル',
+  },
+  'ko-KR': {
+    coreTab: '핵심 컨텍스트 파일',
+    generatedTab: '작업공간 파일',
+  },
+  'ml-IN': {
+    coreTab: 'കോർ കോൺടെക്സ്റ്റ് ഫയലുകൾ',
+    generatedTab: 'വർക്ക്‌സ്‌പെയ്‌സ് ഫയലുകൾ',
+  },
+  'nb-NO': {
+    coreTab: 'Kjernekontekstfiler',
+    generatedTab: 'Arbeidsområdefiler',
+  },
+  'nl-NL': {
+    coreTab: 'Kerncontextbestanden',
+    generatedTab: 'Werkruimtebestanden',
+  },
+  'pl-PL': {
+    coreTab: 'Pliki głównego kontekstu',
+    generatedTab: 'Pliki obszaru roboczego',
+  },
+  'pt-BR': {
+    coreTab: 'Arquivos de contexto principal',
+    generatedTab: 'Arquivos do espaço de trabalho',
+  },
+  'pt-PT': {
+    coreTab: 'Ficheiros de contexto principal',
+    generatedTab: 'Ficheiros do espaço de trabalho',
+  },
+  'ro-RO': {
+    coreTab: 'Fișiere de context principal',
+    generatedTab: 'Fișierele spațiului de lucru',
+  },
+  'ru-RU': {
+    coreTab: 'Файлы основного контекста',
+    generatedTab: 'Файлы рабочей области',
+  },
+  'sk-SK': {
+    coreTab: 'Súbory hlavného kontextu',
+    generatedTab: 'Súbory pracovného priestoru',
+  },
+  'sv-SE': {
+    coreTab: 'Kärnkontextfiler',
+    generatedTab: 'Arbetsytefiler',
+  },
+  'zh-CN': {
+    coreTab: '核心上下文文件',
+    generatedTab: '工作区文件',
+  },
+  'zh-TW': {
+    coreTab: '核心上下文檔案',
+    generatedTab: '工作區檔案',
+  },
+}
+
+type AskResultCardLocalePatch = {
+  title: string
+  question: string
+  options: string
+  answer: string
+}
+
+const askResultCardBackfills: Record<LocaleKey, AskResultCardLocalePatch> = {
+  'ca-ES': { title: 'Pregunta', question: 'Pregunta', options: 'Opcions', answer: 'Resposta' },
+  'cs-CZ': { title: 'Otázka', question: 'Otázka', options: 'Možnosti', answer: 'Odpověď' },
+  'da-DK': {
+    title: 'Spørgsmål',
+    question: 'Spørgsmål',
+    options: 'Valgmuligheder',
+    answer: 'Svar',
+  },
+  'de-DE': { title: 'Frage', question: 'Frage', options: 'Optionen', answer: 'Antwort' },
+  'el-GR': {
+    title: 'Ερώτηση',
+    question: 'Ερώτηση',
+    options: 'Επιλογές',
+    answer: 'Απάντηση',
+  },
+  'en-GB': { title: 'Question', question: 'Question', options: 'Options', answer: 'Answer' },
+  'en-US': { title: 'Question', question: 'Question', options: 'Options', answer: 'Answer' },
+  'es-ES': { title: 'Pregunta', question: 'Pregunta', options: 'Opciones', answer: 'Respuesta' },
+  'fr-FR': { title: 'Question', question: 'Question', options: 'Options', answer: 'Réponse' },
+  'ga-IE': { title: 'Ceist', question: 'Ceist', options: 'Roghanna', answer: 'Freagra' },
+  'hr-HR': { title: 'Pitanje', question: 'Pitanje', options: 'Opcije', answer: 'Odgovor' },
+  'hu-HU': { title: 'Kérdés', question: 'Kérdés', options: 'Lehetőségek', answer: 'Válasz' },
+  'it-IT': { title: 'Domanda', question: 'Domanda', options: 'Opzioni', answer: 'Risposta' },
+  'ja-JP': { title: '質問', question: '質問', options: '選択肢', answer: '回答' },
+  'ko-KR': { title: '질문', question: '질문', options: '옵션', answer: '답변' },
+  'ml-IN': { title: 'ചോദ്യം', question: 'ചോദ്യം', options: 'ഓപ്ഷനുകൾ', answer: 'ഉത്തരം' },
+  'nb-NO': { title: 'Spørsmål', question: 'Spørsmål', options: 'Alternativer', answer: 'Svar' },
+  'nl-NL': { title: 'Vraag', question: 'Vraag', options: 'Opties', answer: 'Antwoord' },
+  'pl-PL': { title: 'Pytanie', question: 'Pytanie', options: 'Opcje', answer: 'Odpowiedź' },
+  'pt-BR': { title: 'Pergunta', question: 'Pergunta', options: 'Opções', answer: 'Resposta' },
+  'pt-PT': { title: 'Pergunta', question: 'Pergunta', options: 'Opções', answer: 'Resposta' },
+  'ro-RO': { title: 'Întrebare', question: 'Întrebare', options: 'Opțiuni', answer: 'Răspuns' },
+  'ru-RU': { title: 'Вопрос', question: 'Вопрос', options: 'Варианты', answer: 'Ответ' },
+  'sk-SK': { title: 'Otázka', question: 'Otázka', options: 'Možnosti', answer: 'Odpoveď' },
+  'sv-SE': { title: 'Fråga', question: 'Fråga', options: 'Alternativ', answer: 'Svar' },
+  'zh-CN': { title: '提问', question: '问题', options: '选项', answer: '回答' },
+  'zh-TW': { title: '提問', question: '問題', options: '選項', answer: '回答' },
+}
+
 type ProviderRecoveryLocalePatch = {
   recoverableEyebrow: string
   recoverableTitle: string
@@ -1134,6 +1295,7 @@ export function buildLocalePostMergeBackfill(
   const profilePatch: LocaleNode = {}
   const resultCardPatch: LocaleNode = {}
   const resultCardLabelsPatch: LocaleNode = {}
+  const resultCardTitlesPatch: LocaleNode = {}
   const routingModePatch: LocaleNode = {}
   const companionPatch: LocaleNode = {}
   const companionPlatformsPatch: LocaleNode = {}
@@ -1151,6 +1313,7 @@ export function buildLocalePostMergeBackfill(
   const userdataMemoryPatch: LocaleNode = {}
   const usersPatch: LocaleNode = {}
   const usersRolesPatch: LocaleNode = {}
+  const workspacePatch: LocaleNode = {}
   const harnessTermGlossary = buildHarnessTermGlossary(messages)
 
   const mirrors: Array<[LocaleNode, string, string | null]> = [
@@ -1343,6 +1506,28 @@ export function buildLocalePostMergeBackfill(
     maybeFillEnglishBackendFallback(resultCardLabelsPatch, 'backend', 'resultCard.labels.backend')
     maybeFillEnglishBackendFallback(userdataMemoryPatch, 'backend', 'userdata.memory.backend')
   }
+  const askResultCardLabels = askResultCardBackfills[localeKey]
+  if (askResultCardLabels) {
+    const maybeFillAskResultCardLabel = (
+      key: 'q' | 'o' | 'a',
+      localized: string,
+      englishFallback: string
+    ) => {
+      const current = getString(messages, `resultCard.labels.${key}`)
+      if (!current || current === englishFallback || current === key) {
+        resultCardLabelsPatch[key] = localized
+      }
+    }
+
+    const currentAskTitle = getString(messages, 'resultCard.titles.ask')
+    if (!currentAskTitle || currentAskTitle === 'ask' || currentAskTitle === 'Question') {
+      resultCardTitlesPatch.ask = askResultCardLabels.title
+    }
+
+    maybeFillAskResultCardLabel('q', askResultCardLabels.question, 'Question')
+    maybeFillAskResultCardLabel('o', askResultCardLabels.options, 'Options')
+    maybeFillAskResultCardLabel('a', askResultCardLabels.answer, 'Answer')
+  }
   const webQueryResultCardLabels = webQueryResultCardLabelBackfills[localeKey]
   if (webQueryResultCardLabels) {
     const maybeFillResultCardLabel = (
@@ -1418,6 +1603,13 @@ export function buildLocalePostMergeBackfill(
     if (!currentWorkspaceTreeDirCount || currentWorkspaceTreeDirCount === 'Dirs') {
       navPatch.workspaceTreeDirCount = localizedWorkspaceTreeDirCount
     }
+  }
+  const workspaceNavigationBackfill = workspaceNavigationLocaleBackfills[localeKey]
+  if (workspaceNavigationBackfill) {
+    navPatch.workspacePanelTitle = workspaceNavigationBackfill.generatedTab
+    navPatch.workspaceGeneratedTab = workspaceNavigationBackfill.generatedTab
+    navPatch.workspaceCoreTab = workspaceNavigationBackfill.coreTab
+    workspacePatch.title = workspaceNavigationBackfill.coreTab
   }
   const localizedMountPoint = localizedMountPointLabels[localeKey]
   if (localizedMountPoint) {
@@ -1638,6 +1830,9 @@ export function buildLocalePostMergeBackfill(
   if (hasKeys(resultCardLabelsPatch)) {
     resultCardPatch.labels = resultCardLabelsPatch
   }
+  if (hasKeys(resultCardTitlesPatch)) {
+    resultCardPatch.titles = resultCardTitlesPatch
+  }
   if (hasKeys(resultCardPatch)) {
     patch.resultCard = resultCardPatch
   }
@@ -1673,6 +1868,12 @@ export function buildLocalePostMergeBackfill(
   }
   if (hasKeys(tokenEconomyPatch)) {
     patch.tokenEconomy = tokenEconomyPatch
+  }
+  if (hasKeys(workspacePatch)) {
+    patch.workspace = {
+      ...(patch.workspace as LocaleNode | undefined),
+      ...workspacePatch,
+    }
   }
   if (hasKeys(toolsNamesPatch)) {
     toolsPatch.names = toolsNamesPatch

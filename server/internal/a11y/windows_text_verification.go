@@ -20,22 +20,25 @@ func windowsVerifySemanticTextEntry(
 	hasBounds bool,
 	captureRegion func(context.Context, windowsRect) ([]byte, error),
 	extractText func(context.Context, []byte) (string, error),
-) bool {
+) (bool, string) {
 	if windowsTextEntryReadbackMatches(value, windowsValueFromFunc(readback)) {
-		return true
+		return true, "ax_value"
 	}
 	if !hasBounds || captureRegion == nil || extractText == nil {
-		return false
+		return false, ""
 	}
 	imagePNG, err := captureRegion(ctx, bounds)
 	if err != nil || len(imagePNG) == 0 {
-		return false
+		return false, ""
 	}
 	observed, err := extractText(ctx, imagePNG)
 	if err != nil {
-		return false
+		return false, ""
 	}
-	return windowsTextEntryOCRMatches(value, observed)
+	if windowsTextEntryOCRMatches(value, observed) {
+		return true, "ocr"
+	}
+	return false, ""
 }
 
 func windowsValueFromFunc(fn func() string) string {

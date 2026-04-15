@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { parseToolResults, useChatStore } from '@/stores/chat'
 import { i18n } from '@/i18n'
+import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 import caESMessages from '@/i18n/locales/ca-ES'
+import zhCNMessages from '@/i18n/locales/zh-CN'
 import {
   conversationApi,
   messageApi,
@@ -3421,6 +3423,131 @@ describe('Chat Store', () => {
       expect(items[0]?.status).toBe('Screenshot captured for https://example.com')
       expect(items[0]?.output).toBe('')
       expect(items[0]?.icon).toBe('✓')
+    })
+
+    it('localizes screenshot tool statuses from browser result messages', () => {
+      i18n.global.setLocaleMessage(
+        'zh-CN',
+        mergeHarnessLocale('zh-CN', zhCNMessages as Record<string, unknown>)
+      )
+      i18n.global.locale.value = 'zh-CN'
+
+      const items = parseToolResults([
+        {
+          name: 'browser',
+          id: 'browser-shot-localized',
+          args: JSON.stringify({ action: 'screenshot', url: 'https://example.com' }),
+          result: JSON.stringify({
+            message: 'Screenshot captured for https://example.com',
+            screenshot:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII=',
+          }),
+        },
+        {
+          name: 'browser',
+          id: 'browser-shot-interactive-fallback',
+          args: JSON.stringify({ action: 'snapshot_auto' }),
+          result: JSON.stringify({
+            message: 'Screenshot captured (interactive elements unavailable)',
+            screenshot:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII=',
+          }),
+        },
+        {
+          name: 'browser',
+          id: 'browser-shot-tab-localized',
+          args: JSON.stringify({ action: 'screenshot', target_id: 'tab-7' }),
+          result: JSON.stringify({
+            message: 'Screenshot captured for tab tab-7',
+            screenshot:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII=',
+          }),
+        },
+        {
+          name: 'browser',
+          id: 'browser-shot-active-tab-localized',
+          args: JSON.stringify({ action: 'screenshot' }),
+          result: JSON.stringify({
+            message: 'Screenshot captured for active tab',
+            screenshot:
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII=',
+          }),
+        },
+      ])
+
+      expect(items).toHaveLength(4)
+      expect(items[0]?.status).toBe('已为 https://example.com 捕获截图')
+      expect(items[1]?.status).toBe('已捕获截图（交互元素不可用）')
+      expect(items[2]?.status).toBe('已为标签页 tab-7 捕获截图')
+      expect(items[3]?.status).toBe('已为当前标签页捕获截图')
+
+      i18n.global.locale.value = 'en-US'
+    })
+
+    it('localizes legacy browser result statuses from historical English messages', () => {
+      i18n.global.setLocaleMessage(
+        'zh-CN',
+        mergeHarnessLocale('zh-CN', zhCNMessages as Record<string, unknown>)
+      )
+      i18n.global.locale.value = 'zh-CN'
+
+      const items = parseToolResults([
+        {
+          name: 'browser',
+          id: 'browser-act-localized',
+          args: JSON.stringify({ action: 'act', ref: 7, act_type: 'click' }),
+          result: JSON.stringify({
+            message: 'Performed click on @7',
+          }),
+        },
+        {
+          name: 'browser',
+          id: 'browser-scroll-localized',
+          args: JSON.stringify({ action: 'scroll_down' }),
+          result: JSON.stringify({
+            message: 'Scrolled page down',
+          }),
+        },
+        {
+          name: 'browser',
+          id: 'browser-tabs-localized',
+          args: JSON.stringify({ action: 'tabs' }),
+          result: JSON.stringify({
+            message: '2 open tabs',
+          }),
+        },
+        {
+          name: 'browser',
+          id: 'browser-note-localized',
+          args: JSON.stringify({ action: 'snapshot_auto' }),
+          result: JSON.stringify({
+            message:
+              "Page has 66 interactive elements and a large DOM. Using interactive elements list. Use 'screenshot' for visual layout.",
+          }),
+        },
+        {
+          name: 'browser',
+          id: 'browser-page-localized',
+          args: JSON.stringify({ action: 'snapshot_auto' }),
+          result: JSON.stringify({
+            message:
+              'Page: Example (https://example.com)\n\nMain content:\nAlpha\n\nInteractive elements:\n[@1] button \"OK\"',
+          }),
+        },
+      ])
+
+      expect(items).toHaveLength(5)
+      expect(items[0]?.status).toBe('已在 @7 上执行 click')
+      expect(items[1]?.status).toBe('页面已向下滚动')
+      expect(items[2]?.status).toBe('2 个打开的标签页')
+      expect(items[3]?.status).toBe(
+        '页面有 66 个交互元素且 DOM 很大。正在使用交互元素列表。若要查看视觉布局，请使用“screenshot”。'
+      )
+      expect(items[4]?.status).toBe(
+        '页面：Example (https://example.com)\n\n主要内容：\nAlpha\n\n交互元素：\n[@1] button "OK"'
+      )
+
+      i18n.global.locale.value = 'en-US'
     })
   })
 })

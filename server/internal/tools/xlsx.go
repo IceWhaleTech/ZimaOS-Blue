@@ -42,7 +42,11 @@ func (t *XLSXTool) Definition() ToolDefinition {
 				},
 				"title":    map[string]interface{}{"type": "string"},
 				"subtitle": map[string]interface{}{"type": "string"},
-				"theme":    map[string]interface{}{"type": "string"},
+				"theme":    map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"}},
+				"style_hint": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional tone/style hint used to infer the workbook theme when theme is omitted.",
+				},
 				"summary":  map[string]interface{}{},
 				"notes":    map[string]interface{}{"type": "array"},
 				"sheets":   map[string]interface{}{"type": "array"},
@@ -111,7 +115,8 @@ func (t *XLSXTool) executeCreateLike(ctx context.Context, args map[string]interf
 			return "", fmt.Errorf("path must be a non-empty string")
 		}
 	}
-	theme := resolveOfficeTheme(firstCompatString(args, "theme"), "")
+	styleHint := firstCompatString(args, "style_hint", "styleHint", "style", "visual_style", "visualStyle")
+	theme := resolveOfficeTheme(firstCompatString(args, "theme"), styleHint)
 	title := strings.TrimSpace(firstCompatString(args, "title"))
 	subtitle := strings.TrimSpace(firstCompatString(args, "subtitle"))
 	spec, err := parseOfficeWorkbookSpec(args, title, subtitle, theme)
@@ -155,6 +160,7 @@ func (t *XLSXTool) executeCreateLike(ctx context.Context, args map[string]interf
 		RowCount:     info.RowCount,
 		Success:      true,
 	}
+	attachOfficeThemeMetadata(&payload, theme)
 	return marshalNativeDocumentPayload(payload)
 }
 

@@ -429,7 +429,7 @@ describe('AppSidebar', () => {
     await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
     await flushPromises()
 
-    const generatedTabLabel = 'File Sources'
+    const generatedTabLabel = 'Workspace Files'
     const generatedTab = wrapper
       .findAll('button')
       .find((button) => button.text().includes(generatedTabLabel))
@@ -456,8 +456,8 @@ describe('AppSidebar', () => {
     await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
     await flushPromises()
 
-    const generatedTab = findButtonByText(wrapper, 'File Sources')
-    const coreTab = findButtonByText(wrapper, 'Workspace Files')
+    const generatedTab = findButtonByText(wrapper, 'Workspace Files')
+    const coreTab = findButtonByText(wrapper, 'Core Context Files')
 
     expect(generatedTab).toBeTruthy()
     expect(coreTab).toBeTruthy()
@@ -542,7 +542,7 @@ describe('AppSidebar', () => {
     await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
     await flushPromises()
 
-    const generatedTab = findButtonByText(wrapper, 'File Sources')
+    const generatedTab = findButtonByText(wrapper, 'Workspace Files')
     expect(generatedTab).toBeTruthy()
 
     await generatedTab!.trigger('click')
@@ -580,11 +580,85 @@ describe('AppSidebar', () => {
 
     await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
     await flushPromises()
+    await findButtonByText(wrapper, 'Core Context Files')!.trigger('click')
+    await flushPromises()
 
     const tokenBadge = wrapper
       .findAll('span')
       .find((node) => node.text().includes('core-file tokens'))
 
     expect(tokenBadge?.text()).toContain('~1,800 core-file tokens')
+  })
+
+  it('opens the workspace panel on the real workspace file tree by default', async () => {
+    const { wrapper } = await mountSidebar('/chat')
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Workspace Directory Tree')
+    expect(vi.mocked(workspaceApi.getTree)).toHaveBeenCalled()
+  })
+
+  it('refreshes generated workspace data when conversation output changes but keeps the same length', async () => {
+    vi.useFakeTimers()
+    try {
+      const { wrapper } = await mountSidebar('/chat')
+      const chatStore = useChatStore()
+      chatStore.currentConversationId = 'conv-refresh'
+
+      await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      chatStore.messages = [
+        {
+          id: 'msg-refresh',
+          conversation_id: 'conv-refresh',
+          role: 'assistant',
+          content:
+            '```typeless\n' +
+            '{"details":[{"label":"path","value":"reports/report_a.md"}],"status":"success","title":"write_commit","type":"result"}\n' +
+            '```',
+          created_at: '2026-04-15T09:00:00Z',
+        },
+      ] as never
+      await flushPromises()
+      await vi.advanceTimersByTimeAsync(1300)
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      const initialTreeCalls = vi.mocked(workspaceApi.getTree).mock.calls.length
+      const initialConversationCalls = vi.mocked(conversationApi.list).mock.calls.length
+
+      chatStore.messages = [
+        {
+          id: 'msg-refresh',
+          conversation_id: 'conv-refresh',
+          role: 'assistant',
+          content:
+            '```typeless\n' +
+            '{"details":[{"label":"path","value":"reports/report_b.md"}],"status":"success","title":"write_commit","type":"result"}\n' +
+            '```',
+          created_at: '2026-04-15T09:00:00Z',
+        },
+      ] as never
+      await flushPromises()
+
+      await vi.advanceTimersByTimeAsync(1300)
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(vi.mocked(workspaceApi.getTree).mock.calls.length).toBeGreaterThan(initialTreeCalls)
+      expect(vi.mocked(conversationApi.list).mock.calls.length).toBeGreaterThan(
+        initialConversationCalls
+      )
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

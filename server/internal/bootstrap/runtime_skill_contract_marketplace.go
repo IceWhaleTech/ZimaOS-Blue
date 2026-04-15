@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -29,7 +28,7 @@ func bindRouteRuntimeSkillMarketplace(
 	}
 
 	dataDir := strings.TrimSpace(options.dataDir)
-	marketCfg := skillmarket.DefaultConfig(dataDir, filepath.Join(dataDir, "workspace", ".claude", "skills"))
+	marketCfg := skillmarket.DefaultConfig(dataDir, ResolveWorkspaceSkillsDir(dataDir, options.appConfig))
 	marketCfg.GitHubToken = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 	if options.appConfig != nil {
 		marketCfg.DiscoveryPageURLs = append([]string{}, options.appConfig.SkillMarket.DiscoveryPageURLs...)

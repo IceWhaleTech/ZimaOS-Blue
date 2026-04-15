@@ -339,7 +339,7 @@ export default mergeHarnessLocale('es-ES', {
     cache: 'caché',
     billing: 'Facturación',
     workspace: 'Espacio de trabajo',
-    workspacePanelTitle: 'Archivos de espacio de trabajo',
+    workspacePanelTitle: 'Archivos del espacio de trabajo',
     openWorkspaceIn: 'Abrir en el administrador de archivos',
     openWorkspaceInFinder: 'Abrir en el Finder',
     openWorkspaceInExplorer: 'Abrir en el Explorador',
@@ -348,8 +348,8 @@ export default mergeHarnessLocale('es-ES', {
     workspaceLoadFailed: 'No se pudieron cargar los detalles del espacio de trabajo',
     workspaceFilesLoadFailed: 'No se pudieron cargar los archivos del espacio de trabajo',
     workspaceOpenFailed: 'No se puede abrir el espacio de trabajo en el administrador de archivos',
-    workspaceCoreTab: 'Archivos principales del espacio de trabajo',
-    workspaceGeneratedTab: 'Origen de archivos',
+    workspaceCoreTab: 'Archivos de contexto principal',
+    workspaceGeneratedTab: 'Archivos del espacio de trabajo',
     workspaceGeneratedTitle: 'Árbol de directorios del espacio de trabajo',
     workspaceGeneratedDescription:
       'Muestre directorios y archivos reales con jerarquía y vincule los archivos generados a las conversaciones de origen cuando estén disponibles.',
@@ -701,6 +701,9 @@ export default mergeHarnessLocale('es-ES', {
       expand: 'Expandir la lista de tareas pendientes',
       collapse: 'Contraer lista de tareas pendientes',
       jumpToMessage: 'Saltar al mensaje de lista de verificación',
+    },
+    todoChecklist: {
+      progress: '{completed} de {total} tareas completadas',
     },
     send: 'Enviar',
     sendDuringStream: 'Enviar (añadir a la conversación)',
@@ -1576,7 +1579,7 @@ export default mergeHarnessLocale('es-ES', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Archivos del espacio de trabajo',
+    title: 'Archivos de contexto principal',
     description: 'Estos archivos definen la personalidad, memoria y comportamiento de Blue.',
     saved: '{name} guardado',
     noFiles: 'No se encontraron archivos del espacio de trabajo.',

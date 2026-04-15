@@ -18,6 +18,19 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sse"
 )
 
+type errorTool struct {
+	def ToolDefinition
+	err error
+}
+
+func (t *errorTool) Definition() ToolDefinition {
+	return t.def
+}
+
+func (t *errorTool) Execute(_ context.Context, _ map[string]interface{}) (interface{}, error) {
+	return nil, t.err
+}
+
 // --- Shell utilities ---
 
 func TestGetShellConfig(t *testing.T) {
@@ -1215,6 +1228,76 @@ func TestExecBlueSkillHelpBypassesSkillShortCircuit(t *testing.T) {
 	}
 }
 
+func TestExecBlueFlagStyleToolCommandBypassesSkillShortCircuit(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	script := "#!/bin/sh\nprintf 'cli:%s|%s|%s|%s|%s\\n' \"$1\" \"$2\" \"$3\" \"$4\" \"$5\"\n"
+	if err := os.WriteFile(bluePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	registry := NewRegistry()
+	registry.Register(&errorTool{
+		def: ToolDefinition{
+			Name:        "a11y",
+			Description: "host accessibility",
+			Parameters: map[string]interface{}{
+				"type": "object",
+			},
+		},
+		err: errors.New("action is required"),
+	})
+	tool.SetRegistry(registry)
+
+	skillCalls := 0
+	selectorCalls := 0
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
+		skillCalls++
+		switch skillID {
+		case "a11y":
+			return nil, fmt.Errorf("unknown skill: %s", skillID)
+		case "ask":
+			t.Fatal("ask should not run for flag-style blue tool commands")
+		}
+		return nil, fmt.Errorf("unexpected skill: %s", skillID)
+	})
+	tool.SetSkillSelector(func(_ context.Context, _ string) SkillSelectionDecision {
+		selectorCalls++
+		return SkillSelectionDecision{SelectedSkill: "browser"}
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": `blue a11y --action focus --app-name "Feishu,飞书,Lark"`,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if skillCalls != 0 {
+		t.Fatalf("skill executor calls = %d, want 0", skillCalls)
+	}
+	if selectorCalls != 0 {
+		t.Fatalf("skill selector calls = %d, want 0", selectorCalls)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if got := strings.TrimSpace(res.Stdout); got != "cli:a11y|--action|focus|--app-name|Feishu,飞书,Lark" {
+		t.Fatalf("stdout = %q, want flag-style command to run via blue CLI", got)
+	}
+}
+
 func TestExecBlueCLICommandInjectsRuntimeServerEnv(t *testing.T) {
 	sessions := NewSessionRegistry()
 	defer sessions.Cleanup()
@@ -1923,6 +2006,11 @@ func TestCanStrictShellBlueSkillShortCircuit(t *testing.T) {
 			want:    false,
 		},
 		{
+			name:    "flag-style blue commands are not short-circuited",
+			command: `blue a11y --action focus --app-name "Feishu,飞书,Lark"`,
+			want:    false,
+		},
+		{
 			name:    "redirects are rejected",
 			command: `blue web_query input="latest docs" > /tmp/out`,
 			want:    false,
@@ -1933,6 +2021,43 @@ func TestCanStrictShellBlueSkillShortCircuit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := canStrictShellBlueSkillShortCircuit(tt.command); got != tt.want {
 				t.Fatalf("canStrictShellBlueSkillShortCircuit(%q) = %v, want %v", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldBypassBlueSkillShortCircuit(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		want    bool
+	}{
+		{
+			name:    "key value blue skill command stays short-circuitable",
+			command: `blue web_query input="latest docs"`,
+			want:    false,
+		},
+		{
+			name:    "flag-style blue tool command bypasses short-circuit",
+			command: `blue a11y --action focus --app-name "Feishu,飞书,Lark"`,
+			want:    true,
+		},
+		{
+			name:    "flag-style blue skill command bypasses short-circuit",
+			command: `blue browser --action navigate --url https://example.com`,
+			want:    true,
+		},
+		{
+			name:    "top level help bypasses short-circuit",
+			command: `blue --help`,
+			want:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldBypassBlueSkillShortCircuit(tt.command); got != tt.want {
+				t.Fatalf("shouldBypassBlueSkillShortCircuit(%q) = %v, want %v", tt.command, got, tt.want)
 			}
 		})
 	}
@@ -2119,6 +2244,65 @@ func TestExecSkillShortCircuit_UnknownWebFetchSkillFallsBackToRegisteredTool(t *
 	}
 	if got := webFetchTool.args["extract_mode"]; got != "text" {
 		t.Fatalf("web_fetch extract_mode = %v, want text", got)
+	}
+}
+
+func TestExecSkillShortCircuit_RegisteredToolErrorDoesNotTriggerSkillClarification(t *testing.T) {
+	sessions := NewSessionRegistry()
+	defer sessions.Cleanup()
+
+	tool := NewExecTool(ExecConfig{
+		Security:       ExecSecurityFull,
+		DefaultTimeout: 5 * time.Second,
+		MaxTimeout:     30 * time.Second,
+	}, sessions, nil, nil, nil)
+
+	registry := NewRegistry()
+	registry.Register(&errorTool{
+		def: ToolDefinition{
+			Name:        "a11y",
+			Description: "host accessibility",
+			Parameters: map[string]interface{}{
+				"type": "object",
+			},
+		},
+		err: errors.New("action is required"),
+	})
+	tool.SetRegistry(registry)
+
+	tool.SetSkillSelector(func(_ context.Context, _ string) SkillSelectionDecision {
+		t.Fatal("skill selector should not run when a registered tool handled the command")
+		return SkillSelectionDecision{}
+	})
+	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
+		switch skillID {
+		case "a11y":
+			return nil, fmt.Errorf("unknown skill: %s", skillID)
+		case "ask":
+			t.Fatal("ask should not be called when a registered tool fails with argument error")
+		}
+		return nil, fmt.Errorf("unexpected skill: %s", skillID)
+	})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"command": "blue a11y",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var res execResult
+	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
+		t.Fatalf("unmarshal result: %v", err)
+	}
+	if res.Status != "failed" {
+		t.Fatalf("status = %q, want failed", res.Status)
+	}
+	if !strings.Contains(res.Stderr, "action is required") {
+		t.Fatalf("stderr = %q, want action is required", res.Stderr)
+	}
+	if containsWarning(res.Warnings, "skill clarification required") {
+		t.Fatalf("warnings = %+v, should not include clarification marker", res.Warnings)
 	}
 }
 

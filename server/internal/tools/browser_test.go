@@ -7,12 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
 type browserCompatBackend struct {
 	navigateURL               string
 	navigateTargetID          string
 	lastRouteHint             BrowserRouteHint
+	tabs                      []BrowserTabResult
+	recipes                   []BrowserRecipeInfo
 	recipeName                string
 	recipeParams              map[string]string
 	recipeData                map[string]interface{}
@@ -126,8 +130,13 @@ func (b *browserCompatBackend) ScreenshotTab(_ context.Context, targetID string)
 	}
 	return "", nil
 }
-func (b *browserCompatBackend) CloseTab(context.Context, string) error           { return nil }
-func (b *browserCompatBackend) Tabs(context.Context) ([]BrowserTabResult, error) { return nil, nil }
+func (b *browserCompatBackend) CloseTab(context.Context, string) error { return nil }
+func (b *browserCompatBackend) Tabs(context.Context) ([]BrowserTabResult, error) {
+	if b.tabs != nil {
+		return b.tabs, nil
+	}
+	return nil, nil
+}
 func (b *browserCompatBackend) ExecuteRecipe(_ context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
 	b.recipeName = recipe
 	b.recipeParams = params
@@ -136,7 +145,12 @@ func (b *browserCompatBackend) ExecuteRecipe(_ context.Context, recipe string, p
 	}
 	return BrowserRecipeResult{Success: true, Message: "ok", Data: map[string]interface{}{"recipe": recipe}}, nil
 }
-func (b *browserCompatBackend) ListRecipes(context.Context) []BrowserRecipeInfo { return nil }
+func (b *browserCompatBackend) ListRecipes(context.Context) []BrowserRecipeInfo {
+	if b.recipes != nil {
+		return b.recipes
+	}
+	return nil
+}
 
 func TestBrowserDefinition_UsesCompactParamsEnvelope(t *testing.T) {
 	tool := NewBrowserTool()
@@ -602,6 +616,29 @@ func TestBrowserToolScreenshotUsesTargetIDWithoutURL(t *testing.T) {
 	}
 }
 
+func TestBrowserToolScreenshotLocalizesTargetIDWithoutURL(t *testing.T) {
+	const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+
+	backend := &browserCompatBackend{screenshotTabData: pngBase64}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(WithLang(context.Background(), "zh-CN"), map[string]interface{}{
+		"action":    "screenshot",
+		"target_id": "tab-42",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got, want := out["message"], "已为标签页 tab-42 捕获截图"; got != want {
+		t.Fatalf("message = %v, want %q", got, want)
+	}
+}
+
 func TestBrowserToolScreenshotUsesActiveTabWhenURLAndTargetMissing(t *testing.T) {
 	const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
 
@@ -627,6 +664,126 @@ func TestBrowserToolScreenshotUsesActiveTabWhenURLAndTargetMissing(t *testing.T)
 	}
 	if got := out["message"]; got != "Screenshot captured for active tab" {
 		t.Fatalf("message = %v, want active-tab message", got)
+	}
+}
+
+func TestBrowserToolScreenshotLocalizesActiveTabWithoutURLAndTarget(t *testing.T) {
+	const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII="
+
+	backend := &browserCompatBackend{screenshotTabData: pngBase64}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(WithLang(context.Background(), "ja-JP"), map[string]interface{}{
+		"action": "screenshot",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	want := i18n.T(i18n.LangJaJP, "browser.screenshot_captured_for_active_tab")
+	if got := out["message"]; got != want {
+		t.Fatalf("message = %v, want %q", got, want)
+	}
+}
+
+func TestBrowserToolActLocalizesMessage(t *testing.T) {
+	backend := &browserCompatBackend{}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "snapshot_interactive",
+	}); err != nil {
+		t.Fatalf("snapshot_interactive error = %v", err)
+	}
+
+	raw, err := tool.Execute(WithLang(context.Background(), "zh-CN"), map[string]interface{}{
+		"action":   "act",
+		"ref":      1,
+		"act_type": "click",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	want := BrowserActionPerformedMessage(i18n.LangZhCN, "click", 1)
+	if got := out["message"]; got != want {
+		t.Fatalf("message = %v, want %q", got, want)
+	}
+}
+
+func TestBrowserToolTabsLocalizesMessage(t *testing.T) {
+	backend := &browserCompatBackend{
+		tabs: []BrowserTabResult{
+			{TargetID: "tab-1", URL: "https://example.com", Title: "Example", Active: true},
+			{TargetID: "tab-2", URL: "https://example.org", Title: "Example 2", Active: false},
+		},
+	}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(WithLang(context.Background(), "ja-JP"), map[string]interface{}{
+		"action": "tabs",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	want := BrowserOpenTabsMessage(i18n.LangJaJP, 2)
+	if got := out["message"]; got != want {
+		t.Fatalf("message = %v, want %q", got, want)
+	}
+}
+
+func TestBrowserToolAutoSnapshotLocalizesLargeDOMNote(t *testing.T) {
+	backend := &browserCompatBackend{
+		interactiveCount: 66,
+		a11yResult: BrowserA11yTreeResult{
+			Tree:     strings.Repeat("x", browserA11yTreeMaxLen),
+			URL:      "https://example.com",
+			Title:    "Example",
+			TargetID: "tab-9",
+			RefMap:   map[int]int{1: 1},
+		},
+		interactiveResult: BrowserInteractiveResult{
+			Tree:     "[@1] button \"OK\"",
+			URL:      "https://example.com",
+			Title:    "Example",
+			TargetID: "tab-9",
+			RefMap:   map[int]string{1: "button"},
+			Count:    66,
+		},
+	}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(WithLang(context.Background(), "zh-CN"), map[string]interface{}{
+		"action": "snapshot_auto",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	wantNote := BrowserLargeDOMNoteMessage(i18n.LangZhCN, 66)
+	if got := out["note"]; got != wantNote {
+		t.Fatalf("note = %v, want %q", got, wantNote)
+	}
+	wantMessage := BrowserPageMessage(i18n.LangZhCN, "Example", "https://example.com", "[@1] button \"OK\"", 66)
+	if got := out["message"]; got != wantMessage {
+		t.Fatalf("message = %v, want %q", got, wantMessage)
 	}
 }
 

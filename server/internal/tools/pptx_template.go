@@ -55,8 +55,32 @@ type pptxTemplateState struct {
 }
 
 type pptxTemplateChartSeriesDefault struct {
-	Type string
-	Axis string
+	Type                 string
+	Axis                 string
+	Labels               string
+	LabelPosition        string
+	LabelFormat          string
+	LabelSeparator       string
+	ShowValue            string
+	ShowCategory         string
+	ShowSeriesName       string
+	ShowPercent          string
+	ShowLegendKey        string
+	ShowBubbleSize       string
+	PointShowLabels      []string
+	PointShowValues      []string
+	PointShowCategories  []string
+	PointShowSeriesNames []string
+	PointShowPercents    []string
+	PointLabelPositions  []string
+	PointLabelFormats    []string
+	PointLabelSeparators []string
+	Color                string
+	LineWidth            float64
+	Dash                 string
+	Marker               string
+	PointColors          []string
+	PointExplosions      []int
 }
 
 // remapChartRelsWorkbook updates chart rels to point to the correct workbook
@@ -876,6 +900,7 @@ func inferPPTXTemplateChartDefaults(rawChart interface{}, existingChartXML []byt
 			merged["y2_axis_title"] = inferredSecondaryValueTitle
 		}
 	}
+	inferPPTXTemplateSeriesStyleDefaults(merged, existingChartXML)
 	if officeNormalizeChartType(anyToStringForLLM(firstMapValue(merged, "type", "chart_type", "kind"))) == "combo" {
 		inferPPTXTemplateComboSeriesDefaults(merged, existingChartXML)
 	}
@@ -954,7 +979,10 @@ func inferPPTXTemplateChartTitle(chartXML []byte) string {
 }
 
 func inferPPTXTemplateChartVaryColors(chartXML []byte) (bool, bool) {
-	value := pptxTemplateChartAppearanceAttribute(string(chartXML), "<c:varyColors", "val")
+	value, ok := pptxTemplateUniformAttributeAcrossBlocks(pptxTemplateChartAppearanceBlocks(string(chartXML)), "<c:varyColors", "val")
+	if !ok {
+		return false, false
+	}
 	switch value {
 	case "0":
 		return false, true
@@ -974,26 +1002,28 @@ func inferPPTXTemplateChartHoleSize(chartXML []byte) (int, bool) {
 }
 
 func inferPPTXTemplateChartSmooth(chartXML []byte) (bool, bool) {
-	block := pptxTemplateChartAppearanceBlock(string(chartXML))
-	if block == "" || inferPPTXTemplateChartType(chartXML) != "line" {
-		return false, false
-	}
-	seriesBlocks := pptxTemplateChartBlocks(block, "<c:ser>", "</c:ser>")
-	if len(seriesBlocks) == 0 {
+	lineBlocks := pptxTemplateChartBlocks(string(chartXML), "<c:lineChart>", "</c:lineChart>")
+	if len(lineBlocks) == 0 {
 		return false, false
 	}
 	smoothValue := ""
-	for _, seriesBlock := range seriesBlocks {
-		current := strings.TrimSpace(pptxTemplateTagAttributeValue(seriesBlock, "<c:smooth", "val"))
-		if current == "" {
+	for _, block := range lineBlocks {
+		seriesBlocks := pptxTemplateChartBlocks(block, "<c:ser>", "</c:ser>")
+		if len(seriesBlocks) == 0 {
 			return false, false
 		}
-		if smoothValue == "" {
-			smoothValue = current
-			continue
-		}
-		if current != smoothValue {
-			return false, false
+		for _, seriesBlock := range seriesBlocks {
+			current := strings.TrimSpace(pptxTemplateTagAttributeValue(seriesBlock, "<c:smooth", "val"))
+			if current == "" {
+				return false, false
+			}
+			if smoothValue == "" {
+				smoothValue = current
+				continue
+			}
+			if current != smoothValue {
+				return false, false
+			}
 		}
 	}
 	switch smoothValue {
@@ -1007,11 +1037,11 @@ func inferPPTXTemplateChartSmooth(chartXML []byte) (bool, bool) {
 }
 
 func inferPPTXTemplateChartGapWidth(chartXML []byte) (int, bool) {
-	return pptxTemplateChartAppearanceInt(string(chartXML), "<c:gapWidth")
+	return pptxTemplateChartUniformIntAcrossBlocks(pptxTemplateChartBlocks(string(chartXML), "<c:barChart>", "</c:barChart>"), "<c:gapWidth")
 }
 
 func inferPPTXTemplateChartOverlap(chartXML []byte) (int, bool) {
-	return pptxTemplateChartAppearanceInt(string(chartXML), "<c:overlap")
+	return pptxTemplateChartUniformIntAcrossBlocks(pptxTemplateChartBlocks(string(chartXML), "<c:barChart>", "</c:barChart>"), "<c:overlap")
 }
 
 func inferPPTXTemplateChartAxisFormat(chartXML []byte) string {
@@ -1147,22 +1177,22 @@ func inferPPTXTemplateChartLegend(chartXML []byte) (bool, string, bool) {
 }
 
 func inferPPTXTemplateChartLabels(chartXML []byte) (bool, bool) {
-	if pptxTemplateUniformDataLabelsBlock(string(chartXML)) == "" {
+	if !pptxTemplateUniformDataLabelsHasChartDefaults(string(chartXML)) {
 		return false, false
 	}
 	return true, true
 }
 
 func inferPPTXTemplateChartLabelPosition(chartXML []byte) string {
-	return pptxTemplateChartDataLabelsAttribute(string(chartXML), "<c:dLblPos", "val")
+	return pptxTemplateChartDataLabelsDefaultAttribute(string(chartXML), "<c:dLblPos", "val")
 }
 
 func inferPPTXTemplateChartLabelFormat(chartXML []byte) string {
-	return pptxTemplateChartDataLabelsAttribute(string(chartXML), "<c:numFmt", "formatCode")
+	return pptxTemplateChartDataLabelsDefaultAttribute(string(chartXML), "<c:numFmt", "formatCode")
 }
 
 func inferPPTXTemplateChartLabelSeparator(chartXML []byte) string {
-	block := pptxTemplateUniformDataLabelsBlock(string(chartXML))
+	block := pptxTemplateUniformDataLabelsDefaultsBlock(string(chartXML))
 	if block == "" {
 		return ""
 	}
@@ -1170,7 +1200,7 @@ func inferPPTXTemplateChartLabelSeparator(chartXML []byte) string {
 }
 
 func inferPPTXTemplateChartLabelToggle(chartXML []byte, tagStart string) (bool, bool) {
-	value := pptxTemplateChartDataLabelsAttribute(string(chartXML), tagStart, "val")
+	value := pptxTemplateChartDataLabelsDefaultAttribute(string(chartXML), tagStart, "val")
 	switch value {
 	case "0":
 		return false, true
@@ -1210,6 +1240,357 @@ func inferPPTXTemplateChartValueAxisTitle(chartXML []byte, axisKind string) stri
 	return ""
 }
 
+func inferPPTXTemplateSeriesStyleDefaults(chart map[string]interface{}, chartXML []byte) {
+	seriesItems, ok := chart["series"].([]interface{})
+	if !ok || len(seriesItems) == 0 {
+		return
+	}
+	defaults := inferPPTXTemplateExistingSeriesStyleDefaults(chartXML)
+	if len(defaults) == 0 {
+		return
+	}
+	for idx, item := range seriesItems {
+		seriesMap, ok := coerceCompatMap(item)
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(anyToStringForLLM(firstMapValue(seriesMap, "name", "label")))
+		if name == "" {
+			name = fmt.Sprintf("Series %d", idx+1)
+		}
+		inferred, ok := defaults[name]
+		if !ok {
+			continue
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "color", "series_color", "seriesColor") && inferred.Color != "" {
+			seriesMap["color"] = inferred.Color
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "line_width", "lineWidth", "stroke_width", "strokeWidth") && inferred.LineWidth > 0 {
+			seriesMap["line_width"] = inferred.LineWidth
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "dash", "dash_style", "dashStyle") && inferred.Dash != "" {
+			seriesMap["dash"] = inferred.Dash
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "marker", "marker_style", "markerStyle") && inferred.Marker != "" {
+			seriesMap["marker"] = inferred.Marker
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_colors", "pointColors", "slice_colors", "sliceColors") && len(inferred.PointColors) > 0 {
+			seriesMap["point_colors"] = append([]string(nil), inferred.PointColors...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_explosions", "pointExplosions", "slice_explosions", "sliceExplosions") && len(inferred.PointExplosions) > 0 {
+			seriesMap["point_explosions"] = append([]int(nil), inferred.PointExplosions...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_show_labels", "pointShowLabels", "slice_show_labels", "sliceShowLabels") && len(inferred.PointShowLabels) > 0 {
+			seriesMap["point_show_labels"] = append([]string(nil), inferred.PointShowLabels...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_show_values", "pointShowValues", "slice_show_values", "sliceShowValues") && len(inferred.PointShowValues) > 0 {
+			seriesMap["point_show_values"] = append([]string(nil), inferred.PointShowValues...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_show_categories", "pointShowCategories", "slice_show_categories", "sliceShowCategories") && len(inferred.PointShowCategories) > 0 {
+			seriesMap["point_show_categories"] = append([]string(nil), inferred.PointShowCategories...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_show_series_names", "pointShowSeriesNames", "point_show_series_name", "pointShowSeriesName", "slice_show_series_names", "sliceShowSeriesNames", "slice_show_series_name", "sliceShowSeriesName") && len(inferred.PointShowSeriesNames) > 0 {
+			seriesMap["point_show_series_names"] = append([]string(nil), inferred.PointShowSeriesNames...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_show_percents", "pointShowPercents", "point_show_percent", "pointShowPercent", "slice_show_percents", "sliceShowPercents", "slice_show_percent", "sliceShowPercent") && len(inferred.PointShowPercents) > 0 {
+			seriesMap["point_show_percents"] = append([]string(nil), inferred.PointShowPercents...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_label_positions", "pointLabelPositions", "slice_label_positions", "sliceLabelPositions") && len(inferred.PointLabelPositions) > 0 {
+			seriesMap["point_label_positions"] = append([]string(nil), inferred.PointLabelPositions...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_label_formats", "pointLabelFormats", "slice_label_formats", "sliceLabelFormats") && len(inferred.PointLabelFormats) > 0 {
+			seriesMap["point_label_formats"] = append([]string(nil), inferred.PointLabelFormats...)
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "point_label_separators", "pointLabelSeparators", "slice_label_separators", "sliceLabelSeparators") && len(inferred.PointLabelSeparators) > 0 {
+			seriesMap["point_label_separators"] = append([]string(nil), inferred.PointLabelSeparators...)
+		}
+		seriesItems[idx] = seriesMap
+	}
+	chart["series"] = seriesItems
+}
+
+func inferPPTXTemplateExistingSeriesStyleDefaults(chartXML []byte) map[string]pptxTemplateChartSeriesDefault {
+	defaults := make(map[string]pptxTemplateChartSeriesDefault)
+	seriesNames := make([]string, 0, 2)
+	xmlText := string(chartXML)
+	for idx, seriesBlock := range pptxTemplateChartBlocks(xmlText, "<c:ser>", "</c:ser>") {
+		name := pptxTemplateSeriesName(seriesBlock)
+		if name == "" {
+			name = fmt.Sprintf("Series %d", idx+1)
+		}
+		defaults[name] = pptxTemplateSeriesStyleDefaults(seriesBlock)
+		seriesNames = append(seriesNames, name)
+	}
+	if len(seriesNames) > 0 {
+		if pointLabelDefaults := pptxTemplateCircularSeriesPointLabelDefaults(xmlText); pointLabelDefaults.hasPointLabelDefaults() {
+			inferred := defaults[seriesNames[0]]
+			inferred.PointShowLabels = pointLabelDefaults.PointShowLabels
+			inferred.PointShowValues = pointLabelDefaults.PointShowValues
+			inferred.PointShowCategories = pointLabelDefaults.PointShowCategories
+			inferred.PointShowSeriesNames = pointLabelDefaults.PointShowSeriesNames
+			inferred.PointShowPercents = pointLabelDefaults.PointShowPercents
+			inferred.PointLabelPositions = pointLabelDefaults.PointLabelPositions
+			inferred.PointLabelFormats = pointLabelDefaults.PointLabelFormats
+			inferred.PointLabelSeparators = pointLabelDefaults.PointLabelSeparators
+			defaults[seriesNames[0]] = inferred
+		}
+	}
+	return defaults
+}
+
+func pptxTemplateSeriesStyleDefaults(seriesBlock string) pptxTemplateChartSeriesDefault {
+	defaults := pptxTemplateChartSeriesDefault{}
+	spPrBlock := pptxTemplateSeriesStyleBlock(seriesBlock)
+	if spPrBlock != "" {
+		defaults.Color = strings.TrimSpace(pptxTemplateTagAttributeValue(spPrBlock, "<a:srgbClr", "val"))
+		if lineWidth, ok := pptxTemplateSeriesLineWidth(spPrBlock); ok {
+			defaults.LineWidth = lineWidth
+		}
+		defaults.Dash = pptxTemplateSeriesDashValue(spPrBlock)
+	}
+	markerBlock := pptxTemplateFirstChartBlock(seriesBlock, "<c:marker>", "</c:marker>")
+	if markerBlock != "" {
+		defaults.Marker = strings.ToLower(strings.TrimSpace(pptxTemplateTagAttributeValue(markerBlock, "<c:symbol", "val")))
+	}
+	defaults.PointColors = pptxTemplateSeriesPointColors(seriesBlock)
+	defaults.PointExplosions = pptxTemplateSeriesPointExplosions(seriesBlock)
+	return defaults
+}
+
+func (d pptxTemplateChartSeriesDefault) hasPointLabelDefaults() bool {
+	return len(d.PointShowLabels) > 0 ||
+		len(d.PointShowValues) > 0 ||
+		len(d.PointShowCategories) > 0 ||
+		len(d.PointShowSeriesNames) > 0 ||
+		len(d.PointShowPercents) > 0 ||
+		len(d.PointLabelPositions) > 0 ||
+		len(d.PointLabelFormats) > 0 ||
+		len(d.PointLabelSeparators) > 0
+}
+
+func pptxTemplateCircularSeriesPointLabelDefaults(chartXML string) pptxTemplateChartSeriesDefault {
+	switch inferPPTXTemplateChartType([]byte(chartXML)) {
+	case "pie", "donut":
+	default:
+		return pptxTemplateChartSeriesDefault{}
+	}
+	chartBlock := pptxTemplateChartAppearanceBlock(chartXML)
+	if chartBlock == "" {
+		return pptxTemplateChartSeriesDefault{}
+	}
+	dLblsBlock := pptxTemplateFirstChartBlock(chartBlock, "<c:dLbls>", "</c:dLbls>")
+	if dLblsBlock == "" {
+		return pptxTemplateChartSeriesDefault{}
+	}
+	return pptxTemplateChartSeriesDefault{
+		PointShowLabels:      pptxTemplateDataLabelPointValues(dLblsBlock, pptxTemplateDataLabelDeleteSetting),
+		PointShowValues:      pptxTemplateDataLabelPointValues(dLblsBlock, func(block string) string { return pptxTemplateChartLabelSetting(block, "<c:showVal") }),
+		PointShowCategories:  pptxTemplateDataLabelPointValues(dLblsBlock, func(block string) string { return pptxTemplateChartLabelSetting(block, "<c:showCatName") }),
+		PointShowSeriesNames: pptxTemplateDataLabelPointValues(dLblsBlock, func(block string) string { return pptxTemplateChartLabelSetting(block, "<c:showSerName") }),
+		PointShowPercents:    pptxTemplateDataLabelPointValues(dLblsBlock, func(block string) string { return pptxTemplateChartLabelSetting(block, "<c:showPercent") }),
+		PointLabelPositions: pptxTemplateDataLabelPointValues(dLblsBlock, func(block string) string {
+			return officeNormalizeChartLabelPosition(strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:dLblPos", "val")))
+		}),
+		PointLabelFormats: pptxTemplateDataLabelPointValues(dLblsBlock, pptxTemplateDataLabelFormatValue),
+		PointLabelSeparators: pptxTemplateDataLabelPointValues(dLblsBlock, func(block string) string {
+			return officeNormalizeChartLabelSeparator(html.UnescapeString(pptxTemplateTagValue(block, "<c:separator>", "</c:separator>")))
+		}),
+	}
+}
+
+func pptxTemplateDataLabelPointValues(dLblsBlock string, valueFunc func(string) string) []string {
+	pointBlocks := pptxTemplateChartBlocks(dLblsBlock, "<c:dLbl>", "</c:dLbl>")
+	if len(pointBlocks) == 0 {
+		return nil
+	}
+	valuesByIndex := make(map[int]string, len(pointBlocks))
+	lastNonEmpty := -1
+	for _, block := range pointBlocks {
+		idx, ok := pptxTemplateDataPointIndex(block)
+		if !ok {
+			continue
+		}
+		value := valueFunc(block)
+		if value == "" {
+			continue
+		}
+		valuesByIndex[idx] = value
+		if idx > lastNonEmpty {
+			lastNonEmpty = idx
+		}
+	}
+	if lastNonEmpty < 0 {
+		return nil
+	}
+	values := make([]string, lastNonEmpty+1)
+	for idx, value := range valuesByIndex {
+		if idx >= 0 && idx < len(values) {
+			values[idx] = value
+		}
+	}
+	return values
+}
+
+func pptxTemplateDataLabelDeleteSetting(block string) string {
+	switch strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:delete", "val")) {
+	case "0":
+		return "show"
+	case "1":
+		return "hide"
+	default:
+		return ""
+	}
+}
+
+func pptxTemplateDataLabelFormatValue(block string) string {
+	formatCode := strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:numFmt", "formatCode"))
+	if formatCode == "" {
+		return ""
+	}
+	sourceLinked := strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:numFmt", "sourceLinked"))
+	if strings.EqualFold(formatCode, "General") && sourceLinked != "0" {
+		return ""
+	}
+	return officeNormalizeChartLabelFormat(formatCode)
+}
+
+func pptxTemplateSeriesStyleBlock(seriesBlock string) string {
+	searchLimit := len(seriesBlock)
+	for _, marker := range []string{
+		"<c:invertIfNegative",
+		"<c:marker>",
+		"<c:dPt>",
+		"<c:cat>",
+		"<c:val>",
+		"<c:xVal>",
+		"<c:yVal>",
+		"<c:bubbleSize>",
+		"<c:bubble3D>",
+		"<c:smooth",
+	} {
+		if idx := strings.Index(seriesBlock, marker); idx >= 0 && idx < searchLimit {
+			searchLimit = idx
+		}
+	}
+	if searchLimit <= 0 {
+		return ""
+	}
+	return pptxTemplateFirstChartBlock(seriesBlock[:searchLimit], "<c:spPr>", "</c:spPr>")
+}
+
+func pptxTemplateSeriesLineWidth(xmlText string) (float64, bool) {
+	value := strings.TrimSpace(pptxTemplateTagAttributeValue(xmlText, "<a:ln", "w"))
+	if value == "" {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, false
+	}
+	return float64(parsed) / 12700, true
+}
+
+func pptxTemplateSeriesDashValue(xmlText string) string {
+	switch strings.ToLower(strings.TrimSpace(pptxTemplateTagAttributeValue(xmlText, "<a:prstDash", "val"))) {
+	case "solid":
+		return "solid"
+	case "dash":
+		return "dash"
+	case "sysdot":
+		return "dot"
+	case "dashdot":
+		return "dash_dot"
+	default:
+		return ""
+	}
+}
+
+func pptxTemplateSeriesPointColors(seriesBlock string) []string {
+	pointBlocks := pptxTemplateChartBlocks(seriesBlock, "<c:dPt>", "</c:dPt>")
+	if len(pointBlocks) == 0 {
+		return nil
+	}
+	colorsByIndex := make(map[int]string, len(pointBlocks))
+	lastNonEmpty := -1
+	for _, block := range pointBlocks {
+		idx, ok := pptxTemplateDataPointIndex(block)
+		if !ok {
+			continue
+		}
+		spPrBlock := pptxTemplateFirstChartBlock(block, "<c:spPr>", "</c:spPr>")
+		if spPrBlock == "" {
+			continue
+		}
+		color := strings.TrimSpace(pptxTemplateTagAttributeValue(spPrBlock, "<a:srgbClr", "val"))
+		if color == "" {
+			continue
+		}
+		colorsByIndex[idx] = color
+		if idx > lastNonEmpty {
+			lastNonEmpty = idx
+		}
+	}
+	if lastNonEmpty < 0 {
+		return nil
+	}
+	colors := make([]string, lastNonEmpty+1)
+	for idx, color := range colorsByIndex {
+		if idx >= 0 && idx < len(colors) {
+			colors[idx] = color
+		}
+	}
+	return colors
+}
+
+func pptxTemplateSeriesPointExplosions(seriesBlock string) []int {
+	pointBlocks := pptxTemplateChartBlocks(seriesBlock, "<c:dPt>", "</c:dPt>")
+	if len(pointBlocks) == 0 {
+		return nil
+	}
+	explosionsByIndex := make(map[int]int, len(pointBlocks))
+	lastNonZero := -1
+	for _, block := range pointBlocks {
+		idx, ok := pptxTemplateDataPointIndex(block)
+		if !ok {
+			continue
+		}
+		value := strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:explosion", "val"))
+		if value == "" {
+			continue
+		}
+		explosion, err := strconv.Atoi(value)
+		if err != nil || explosion <= 0 {
+			continue
+		}
+		explosionsByIndex[idx] = explosion
+		if idx > lastNonZero {
+			lastNonZero = idx
+		}
+	}
+	if lastNonZero < 0 {
+		return nil
+	}
+	explosions := make([]int, lastNonZero+1)
+	for idx, explosion := range explosionsByIndex {
+		if idx >= 0 && idx < len(explosions) {
+			explosions[idx] = explosion
+		}
+	}
+	return explosions
+}
+
+func pptxTemplateDataPointIndex(block string) (int, bool) {
+	value := strings.TrimSpace(pptxTemplateTagAttributeValue(block, "<c:idx", "val"))
+	if value == "" {
+		return 0, false
+	}
+	idx, err := strconv.Atoi(value)
+	if err != nil || idx < 0 {
+		return 0, false
+	}
+	return idx, true
+}
+
 func inferPPTXTemplateComboSeriesDefaults(chart map[string]interface{}, chartXML []byte) {
 	seriesItems, ok := chart["series"].([]interface{})
 	if !ok || len(seriesItems) == 0 {
@@ -1238,6 +1619,36 @@ func inferPPTXTemplateComboSeriesDefaults(chart map[string]interface{}, chartXML
 		if !pptxTemplateChartHasAnyKey(seriesMap, "axis", "y_axis", "yAxis", "value_axis", "valueAxis") && inferred.Axis != "" {
 			seriesMap["axis"] = inferred.Axis
 		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "labels", "data_labels", "show_labels", "showLabels") && inferred.Labels != "" {
+			seriesMap["labels"] = inferred.Labels
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "label_position", "labelPosition", "labels_position", "data_label_position", "dataLabelPosition") && inferred.LabelPosition != "" {
+			seriesMap["label_position"] = inferred.LabelPosition
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "label_format", "labelFormat", "labels_format", "data_label_format", "dataLabelFormat") && inferred.LabelFormat != "" {
+			seriesMap["label_format"] = inferred.LabelFormat
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "label_separator", "labelSeparator", "data_label_separator", "dataLabelSeparator") && inferred.LabelSeparator != "" {
+			seriesMap["label_separator"] = inferred.LabelSeparator
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "show_value", "showValue", "label_value", "labelValue") && inferred.ShowValue != "" {
+			seriesMap["show_value"] = inferred.ShowValue
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "show_category", "showCategory", "label_category", "labelCategory") && inferred.ShowCategory != "" {
+			seriesMap["show_category"] = inferred.ShowCategory
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "show_series_name", "showSeriesName", "label_series_name", "labelSeriesName") && inferred.ShowSeriesName != "" {
+			seriesMap["show_series_name"] = inferred.ShowSeriesName
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "show_percent", "showPercent", "label_percent", "labelPercent") && inferred.ShowPercent != "" {
+			seriesMap["show_percent"] = inferred.ShowPercent
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "show_legend_key", "showLegendKey", "label_legend_key", "labelLegendKey") && inferred.ShowLegendKey != "" {
+			seriesMap["show_legend_key"] = inferred.ShowLegendKey
+		}
+		if !pptxTemplateChartHasAnyKey(seriesMap, "show_bubble_size", "showBubbleSize", "label_bubble_size", "labelBubbleSize") && inferred.ShowBubbleSize != "" {
+			seriesMap["show_bubble_size"] = inferred.ShowBubbleSize
+		}
 		seriesItems[idx] = seriesMap
 	}
 	chart["series"] = seriesItems
@@ -1256,16 +1667,64 @@ func inferPPTXTemplateExistingComboSeriesDefaults(chartXML []byte) map[string]pp
 	} {
 		for _, block := range pptxTemplateChartBlocks(xmlText, "<c:"+group.blockType+">", "</c:"+group.blockType+">") {
 			axis := pptxTemplateChartGroupAxis(block, valueAxisKinds)
-			for _, seriesBlock := range pptxTemplateChartBlocks(block, "<c:ser>", "</c:ser>") {
+			seriesBlocks := pptxTemplateChartBlocks(block, "<c:ser>", "</c:ser>")
+			labelDefaults := pptxTemplateChartSeriesDefault{}
+			if len(seriesBlocks) == 1 {
+				labelDefaults = pptxTemplateComboSeriesLabelDefaults(block)
+			}
+			for _, seriesBlock := range seriesBlocks {
 				name := pptxTemplateSeriesName(seriesBlock)
 				if name == "" {
 					continue
 				}
-				defaults[name] = pptxTemplateChartSeriesDefault{Type: group.axisType, Axis: axis}
+				defaults[name] = pptxTemplateChartSeriesDefault{
+					Type:           group.axisType,
+					Axis:           axis,
+					Labels:         labelDefaults.Labels,
+					LabelPosition:  labelDefaults.LabelPosition,
+					LabelFormat:    labelDefaults.LabelFormat,
+					LabelSeparator: labelDefaults.LabelSeparator,
+					ShowValue:      labelDefaults.ShowValue,
+					ShowCategory:   labelDefaults.ShowCategory,
+					ShowSeriesName: labelDefaults.ShowSeriesName,
+					ShowPercent:    labelDefaults.ShowPercent,
+					ShowLegendKey:  labelDefaults.ShowLegendKey,
+					ShowBubbleSize: labelDefaults.ShowBubbleSize,
+				}
 			}
 		}
 	}
 	return defaults
+}
+
+func pptxTemplateComboSeriesLabelDefaults(groupBlock string) pptxTemplateChartSeriesDefault {
+	dLblsBlock := pptxTemplateFirstChartBlock(groupBlock, "<c:dLbls>", "</c:dLbls>")
+	if dLblsBlock == "" {
+		return pptxTemplateChartSeriesDefault{}
+	}
+	return pptxTemplateChartSeriesDefault{
+		Labels:         "show",
+		LabelPosition:  strings.TrimSpace(pptxTemplateTagAttributeValue(dLblsBlock, "<c:dLblPos", "val")),
+		LabelFormat:    strings.TrimSpace(pptxTemplateTagAttributeValue(dLblsBlock, "<c:numFmt", "formatCode")),
+		LabelSeparator: strings.TrimSpace(html.UnescapeString(pptxTemplateTagValue(dLblsBlock, "<c:separator>", "</c:separator>"))),
+		ShowValue:      pptxTemplateChartLabelSetting(dLblsBlock, "<c:showVal"),
+		ShowCategory:   pptxTemplateChartLabelSetting(dLblsBlock, "<c:showCatName"),
+		ShowSeriesName: pptxTemplateChartLabelSetting(dLblsBlock, "<c:showSerName"),
+		ShowPercent:    pptxTemplateChartLabelSetting(dLblsBlock, "<c:showPercent"),
+		ShowLegendKey:  pptxTemplateChartLabelSetting(dLblsBlock, "<c:showLegendKey"),
+		ShowBubbleSize: pptxTemplateChartLabelSetting(dLblsBlock, "<c:showBubbleSize"),
+	}
+}
+
+func pptxTemplateChartLabelSetting(xmlText, tagStart string) string {
+	switch strings.TrimSpace(pptxTemplateTagAttributeValue(xmlText, tagStart, "val")) {
+	case "0":
+		return "hide"
+	case "1":
+		return "show"
+	default:
+		return ""
+	}
 }
 
 func pptxTemplateDateAxisFormatCode(xmlText string) string {
@@ -1502,6 +1961,18 @@ func pptxTemplateChartAppearanceInt(xmlText, tagStart string) (int, bool) {
 	return parsed, true
 }
 
+func pptxTemplateChartUniformIntAcrossBlocks(blocks []string, tagStart string) (int, bool) {
+	value, ok := pptxTemplateUniformAttributeAcrossBlocks(blocks, tagStart, "val")
+	if !ok {
+		return 0, false
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
+}
+
 func pptxTemplateChartAppearanceBlock(xmlText string) string {
 	switch inferPPTXTemplateChartType([]byte(xmlText)) {
 	case "pie":
@@ -1517,12 +1988,74 @@ func pptxTemplateChartAppearanceBlock(xmlText string) string {
 	}
 }
 
-func pptxTemplateChartDataLabelsAttribute(xmlText, tagStart, attribute string) string {
-	block := pptxTemplateUniformDataLabelsBlock(xmlText)
+func pptxTemplateChartAppearanceBlocks(xmlText string) []string {
+	switch inferPPTXTemplateChartType([]byte(xmlText)) {
+	case "combo":
+		blocks := make([]string, 0, 4)
+		blocks = append(blocks, pptxTemplateChartBlocks(xmlText, "<c:barChart>", "</c:barChart>")...)
+		blocks = append(blocks, pptxTemplateChartBlocks(xmlText, "<c:lineChart>", "</c:lineChart>")...)
+		return blocks
+	case "pie", "donut", "line", "bar", "stacked_bar", "stacked_column", "percent_stacked_bar", "percent_stacked_column":
+		if block := pptxTemplateChartAppearanceBlock(xmlText); block != "" {
+			return []string{block}
+		}
+	}
+	return nil
+}
+
+func pptxTemplateUniformAttributeAcrossBlocks(blocks []string, tagStart, attribute string) (string, bool) {
+	value := ""
+	found := false
+	for _, block := range blocks {
+		current := strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, attribute))
+		if current == "" {
+			return "", false
+		}
+		if !found {
+			value = current
+			found = true
+			continue
+		}
+		if current != value {
+			return "", false
+		}
+	}
+	if !found {
+		return "", false
+	}
+	return value, true
+}
+
+func pptxTemplateChartDataLabelsDefaultAttribute(xmlText, tagStart, attribute string) string {
+	block := pptxTemplateUniformDataLabelsDefaultsBlock(xmlText)
 	if block == "" {
 		return ""
 	}
 	return strings.TrimSpace(pptxTemplateTagAttributeValue(block, tagStart, attribute))
+}
+
+func pptxTemplateUniformDataLabelsDefaultsBlock(xmlText string) string {
+	block := pptxTemplateUniformDataLabelsBlock(xmlText)
+	if block == "" {
+		return ""
+	}
+	for _, pointBlock := range pptxTemplateChartBlocks(block, "<c:dLbl>", "</c:dLbl>") {
+		block = strings.Replace(block, pointBlock, "", 1)
+	}
+	return block
+}
+
+func pptxTemplateUniformDataLabelsHasChartDefaults(xmlText string) bool {
+	block := pptxTemplateUniformDataLabelsDefaultsBlock(xmlText)
+	if block == "" {
+		return false
+	}
+	start := strings.Index(block, ">")
+	end := strings.LastIndex(block, "</c:dLbls>")
+	if start < 0 || end <= start {
+		return false
+	}
+	return strings.TrimSpace(block[start+1:end]) != ""
 }
 
 func pptxTemplateUniformDataLabelsBlock(xmlText string) string {

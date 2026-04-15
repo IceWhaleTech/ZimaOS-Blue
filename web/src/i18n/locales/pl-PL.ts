@@ -347,8 +347,8 @@ export default mergeHarnessLocale('pl-PL', {
     workspaceLoadFailed: 'Nie udało się wczytać szczegółów obszaru roboczego',
     workspaceFilesLoadFailed: 'Nie udało się załadować plików obszaru roboczego',
     workspaceOpenFailed: 'Nie można otworzyć obszaru roboczego w menedżerze plików',
-    workspaceCoreTab: 'Pliki podstawowe obszaru roboczego',
-    workspaceGeneratedTab: 'Źródła plików',
+    workspaceCoreTab: 'Pliki głównego kontekstu',
+    workspaceGeneratedTab: 'Pliki obszaru roboczego',
     workspaceGeneratedTitle: 'Drzewo katalogów obszaru roboczego',
     workspaceGeneratedDescription:
       'Pokaż prawdziwe katalogi i pliki z hierarchią oraz połącz wygenerowane pliki z konwersacjami źródłowymi, jeśli są dostępne.',
@@ -698,6 +698,9 @@ export default mergeHarnessLocale('pl-PL', {
       expand: 'Rozwiń listę rzeczy do zrobienia',
       collapse: 'Zwiń listę rzeczy do zrobienia',
       jumpToMessage: 'Przejdź do wiadomości z listą kontrolną',
+    },
+    todoChecklist: {
+      progress: 'Ukończono {completed} z {total} zadań',
     },
     send: 'Wyślij',
     sendDuringStream: 'Wyślij (dodaj do rozmowy)',
@@ -1562,7 +1565,7 @@ export default mergeHarnessLocale('pl-PL', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Pliki przestrzeni roboczej',
+    title: 'Pliki głównego kontekstu',
     description: 'Te pliki definiują osobowość, pamięć i zachowanie Blue.',
     saved: '{name} zapisano',
     noFiles: 'Nie znaleziono plików przestrzeni roboczej.',

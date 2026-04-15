@@ -38,7 +38,7 @@ func openPrimaryDatabase(cfg *ServerConfig, logger *zap.Logger) (*database.SQLit
 		Enabled:       true,
 		RetentionDays: 7,
 		Path:          filepath.Join(cfg.DataDir, "backups"),
-		SkillsPath:    filepath.Join(cfg.DataDir, "workspace", ".claude", "skills"),
+		SkillsPath:    ResolveWorkspaceSkillsDir(cfg.DataDir, nil),
 	}, cfg.DataDir, cfg.DataDir)
 	if mgrErr != nil {
 		recoverErr = fmt.Errorf("init backup manager: %w", mgrErr)

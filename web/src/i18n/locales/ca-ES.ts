@@ -340,7 +340,7 @@ export default mergeHarnessLocale('ca-ES', {
     cache: 'Memòria cau',
     billing: 'Facturació',
     workspace: 'Espai de treball',
-    workspacePanelTitle: "Fitxers de l'espai de treball",
+    workspacePanelTitle: 'Fitxers de l\'espai de treball',
     openWorkspaceIn: 'Obre al gestor de fitxers',
     openWorkspaceInFinder: 'Obre al Finder',
     openWorkspaceInExplorer: "Obre a l'Explorador",
@@ -349,8 +349,8 @@ export default mergeHarnessLocale('ca-ES', {
     workspaceLoadFailed: "No s'han pogut carregar els detalls de l'espai de treball",
     workspaceFilesLoadFailed: "No s'han pogut carregar els fitxers de l'espai de treball",
     workspaceOpenFailed: "No es pot obrir l'espai de treball al gestor de fitxers",
-    workspaceCoreTab: "Fitxers bàsics de l'espai de treball",
-    workspaceGeneratedTab: 'Origen dels fitxers',
+    workspaceCoreTab: 'Fitxers de context principal',
+    workspaceGeneratedTab: 'Fitxers de l\'espai de treball',
     workspaceGeneratedTitle: "Arbre de directoris de l'espai de treball",
     workspaceGeneratedDescription:
       "Mostra directoris i fitxers reals amb jerarquia i enllaça els fitxers generats a les converses d'origen quan estiguin disponibles.",
@@ -702,6 +702,9 @@ export default mergeHarnessLocale('ca-ES', {
       expand: 'Amplieu la llista de tasques',
       collapse: 'Replega la llista de tasques',
       jumpToMessage: 'Ves al missatge de la llista de verificació',
+    },
+    todoChecklist: {
+      progress: '{completed} de {total} tasques completades',
     },
     send: 'Enviar',
     sendDuringStream: 'Enviar (afegeix a la conversa)',
@@ -1576,7 +1579,7 @@ export default mergeHarnessLocale('ca-ES', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: "Fitxers de l'espai de treball",
+    title: 'Fitxers de context principal',
     description:
       'Aquests fitxers defineixen la personalitat, la memòria i el comportament de Blue.',
     saved: '{name} desat',

@@ -308,6 +308,92 @@ func TestA11yToolExecute_ActionSelectAliasPrefersConversationRolePriority(t *tes
 	}
 }
 
+func TestA11yToolExecute_ActionSelectReusesFocusedWindowWhenAppAliasDisappearsAfterFocus(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windowsResults: [][]a11yruntime.WindowInfo{
+			{
+				{ID: "win-feishu", Title: "Lark - Orca", AppName: "Lark", Focused: false},
+			},
+			{
+				{ID: "win-feishu", Title: "Orca", AppName: "", Focused: true},
+			},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Orca",
+			Tree:     "@1 [list_item] \"Orca\"",
+			RefMap: map[int]string{
+				1: "token-orca-conversation",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "focus",
+		"app_name": "Feishu,飞书,Lark",
+	}); err != nil {
+		t.Fatalf("focus Execute() error = %v", err)
+	}
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+	}); err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if backend.lastFocusWindowID != "win-feishu" {
+		t.Fatalf("lastFocusWindowID = %q, want win-feishu", backend.lastFocusWindowID)
+	}
+	if backend.lastActWindowID != "win-feishu" {
+		t.Fatalf("lastActWindowID = %q, want win-feishu", backend.lastActWindowID)
+	}
+	if backend.lastActRef != 1 {
+		t.Fatalf("lastActRef = %d, want 1", backend.lastActRef)
+	}
+	if backend.listWindowsCalls != 2 {
+		t.Fatalf("listWindowsCalls = %d, want 2", backend.listWindowsCalls)
+	}
+}
+
+func TestA11yToolExecute_FocusActivatesAppWhenWindowIsNotYetVisible(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windowsResults: [][]a11yruntime.WindowInfo{
+			{},
+			{
+				{ID: "win-feishu", Title: "Lark - Orca", AppName: "Lark", Focused: true},
+			},
+		},
+		focusResultWindowID: "win-feishu",
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "focus",
+		"app_name": "Feishu,飞书,Lark",
+	})
+	if err != nil {
+		t.Fatalf("focus Execute() error = %v", err)
+	}
+	if len(backend.activateAppCalls) == 0 {
+		t.Fatal("activateAppCalls = 0, want activation fallback")
+	}
+	if backend.lastFocusWindowID != "win-feishu" {
+		t.Fatalf("lastFocusWindowID = %q, want win-feishu", backend.lastFocusWindowID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["window_id"] != "win-feishu" {
+		t.Fatalf("window_id = %v, want win-feishu", out["window_id"])
+	}
+}
+
 func TestA11yToolExecute_ActionClickAliasFallsBackToFullSnapshotLabelProximity(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{

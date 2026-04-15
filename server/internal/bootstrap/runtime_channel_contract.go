@@ -16,6 +16,7 @@ func bindRouteRuntimeChannels(options routeRuntimeContractChannelOptions) {
 	pageMiddleware := routeRuntimePageMiddleware(options.requirePagePermission, permission.PageChannels)
 	if options.channelConfigStore == nil {
 		registerChannelConfigRoutes(options.api, nil, options.authMiddleware, pageMiddleware, nil, nil)
+		registerRouteRuntimeWechatILinkSetupRoutes(options, pageMiddleware, nil, nil)
 		return
 	}
 

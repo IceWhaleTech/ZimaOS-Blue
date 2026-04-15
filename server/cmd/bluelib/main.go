@@ -83,7 +83,7 @@ func applyPendingBackupRestore(dataDir string) (bool, error) {
 		Enabled:       true,
 		RetentionDays: 7,
 		Path:          filepath.Join(dataDir, "backups"),
-		SkillsPath:    filepath.Join(dataDir, "workspace", ".claude", "skills"),
+		SkillsPath:    bootstrap.ResolveWorkspaceSkillsDir(dataDir, nil),
 	}, dataDir, dataDir)
 	if err != nil {
 		return false, err
@@ -648,7 +648,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		Enabled:            true,
 		RetentionDays:      7,
 		Path:               filepath.Join(dataDir, "backups"),
-		SkillsPath:         filepath.Join(dataDir, "workspace", ".claude", "skills"),
+		SkillsPath:         bootstrap.ResolveWorkspaceSkillsDir(dataDir, nil),
 		AutoBackup:         false,
 		AutoBackupInterval: 6 * time.Hour,
 		AutoBackupOnChange: false,
@@ -1020,7 +1020,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 	ngrokTunnelMgr := ngrok.NewSDKTunnelManager(nil)
 
 	// Initialize workspace (SOUL.md, USER.md, IDENTITY.md, etc.)
-	workspaceMgr := workspace.NewManager(filepath.Join(dataDir, "workspace"))
+	workspaceMgr := workspace.NewManager(bootstrap.ResolveWorkspaceDir(dataDir, nil))
 	if err := workspaceMgr.EnsureWorkspace(); err != nil {
 		zapLogger.Warn("Failed to initialize workspace", zap.Error(err))
 	}

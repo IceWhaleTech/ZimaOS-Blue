@@ -19,26 +19,27 @@ type windowsFallbackExecutor struct {
 	RightClick  func(int, int, int) error
 	LongPress   func(int, int, int) error
 	AfterFocus  func()
-	SendText    func(string) error
+	ClipboardPaste func(string) error
+	UnicodeInput   func(string) error
 }
 
 func windowsSendTextWithClipboardFallback(
 	value string,
 	clipboardPaste func(string) error,
 	unicodeInput func(string) error,
-) error {
+) (string, error) {
 	var clipboardErr error
 	if clipboardPaste != nil {
 		if err := clipboardPaste(value); err == nil {
-			return nil
+			return "clipboard", nil
 		} else {
 			clipboardErr = err
 		}
 	}
 	if unicodeInput != nil {
-		return unicodeInput(value)
+		return "unicode", unicodeInput(value)
 	}
-	return clipboardErr
+	return "", clipboardErr
 }
 
 func windowsTypeWithFocusClickFallback(
@@ -97,7 +98,7 @@ func windowsExecuteFallbackWithInput(
 	holdMS int,
 	primarySucceeded bool,
 	executor windowsFallbackExecutor,
-) error {
+) (string, error) {
 	if target.HWND != 0 && executor.BringFront != nil {
 		executor.BringFront(target.HWND)
 	}
@@ -112,46 +113,62 @@ func windowsExecuteFallbackWithInput(
 	switch fallback {
 	case windowsActionInputClick:
 		if !target.HasBounds {
-			return pointerBoundsError()
+			return "", pointerBoundsError()
 		}
 		if executor.Click == nil {
-			return fallbackUnavailableError()
+			return "", fallbackUnavailableError()
 		}
-		return executor.Click(target.CenterX, target.CenterY, holdMS)
+		if err := executor.Click(target.CenterX, target.CenterY, holdMS); err != nil {
+			return "", err
+		}
+		return "input_click", nil
 	case windowsActionInputDoubleClick:
 		if !target.HasBounds {
-			return pointerBoundsError()
+			return "", pointerBoundsError()
 		}
 		if executor.DoubleClick == nil {
-			return fallbackUnavailableError()
+			return "", fallbackUnavailableError()
 		}
-		return executor.DoubleClick(target.CenterX, target.CenterY)
+		if err := executor.DoubleClick(target.CenterX, target.CenterY); err != nil {
+			return "", err
+		}
+		return "input_double_click", nil
 	case windowsActionInputRightClick:
 		if !target.HasBounds {
-			return pointerBoundsError()
+			return "", pointerBoundsError()
 		}
 		if executor.RightClick == nil {
-			return fallbackUnavailableError()
+			return "", fallbackUnavailableError()
 		}
-		return executor.RightClick(target.CenterX, target.CenterY, holdMS)
+		if err := executor.RightClick(target.CenterX, target.CenterY, holdMS); err != nil {
+			return "", err
+		}
+		return "input_right_click", nil
 	case windowsActionInputLongPress:
 		if !target.HasBounds {
-			return pointerBoundsError()
+			return "", pointerBoundsError()
 		}
 		if executor.LongPress == nil {
-			return fallbackUnavailableError()
+			return "", fallbackUnavailableError()
 		}
-		return executor.LongPress(target.CenterX, target.CenterY, holdMS)
+		if err := executor.LongPress(target.CenterX, target.CenterY, holdMS); err != nil {
+			return "", err
+		}
+		return "input_long_press", nil
 	case windowsActionInputFocusClick:
 		if !target.HasBounds {
-			return nil
+			return "input_focus_click", nil
 		}
 		if executor.Click == nil {
-			return fallbackUnavailableError()
+			return "", fallbackUnavailableError()
 		}
-		return executor.Click(target.CenterX, target.CenterY, holdMS)
+		if err := executor.Click(target.CenterX, target.CenterY, holdMS); err != nil {
+			return "", err
+		}
+		return "input_focus_click", nil
 	case windowsActionInputType:
-		return windowsTypeWithFocusClickFallback(
+		inputMethod := ""
+		if err := windowsTypeWithFocusClickFallback(
 			value,
 			primarySucceeded,
 			target.HasBounds,
@@ -160,10 +177,22 @@ func windowsExecuteFallbackWithInput(
 			holdMS,
 			executor.Click,
 			executor.AfterFocus,
-			executor.SendText,
-		)
+			func(value string) error {
+				method, err := windowsSendTextWithClipboardFallback(value, executor.ClipboardPaste, executor.UnicodeInput)
+				if method != "" {
+					inputMethod = method
+				}
+				return err
+			},
+		); err != nil {
+			return "", err
+		}
+		if inputMethod == "" {
+			inputMethod = "input_type"
+		}
+		return inputMethod, nil
 	default:
-		return fallbackUnavailableError()
+		return "", fallbackUnavailableError()
 	}
 }
 

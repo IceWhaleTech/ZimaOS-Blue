@@ -17,7 +17,7 @@ func TestMapCardAction_WebFetchUseBrowser(t *testing.T) {
 		"Reddit",
 		map[string]interface{}{"url": "https://www.reddit.com/r/golang"},
 	)
-	want := "Open https://www.reddit.com/r/golang with the browser tool. If the page needs login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
+	want := "Open https://www.reddit.com/r/golang with the browser tool. If you only need readable content from an existing logged-in session, prefer web_fetch with browser_target_id or current session cookies first. If the page needs live login, challenge handling, or dynamic interaction, continue in the browser and summarize the relevant content."
 	if msg != want {
 		t.Fatalf("mapCardAction returned %q, want %q", msg, want)
 	}

@@ -346,8 +346,8 @@ export default mergeHarnessLocale('zh-CN', {
     workspaceLoadFailed: '加载工作区信息失败',
     workspaceFilesLoadFailed: '加载工作区文件失败',
     workspaceOpenFailed: '无法在文件管理器中打开工作区',
-    workspaceCoreTab: '工作区核心文件',
-    workspaceGeneratedTab: '文件来源',
+    workspaceCoreTab: '核心上下文文件',
+    workspaceGeneratedTab: '工作区文件',
     workspaceGeneratedTitle: '工作区目录树',
     workspaceGeneratedDescription: '展示真实目录与文件层级，并在可识别时关联到来源会话。',
     workspaceGeneratedLoadFailed: '扫描生成文件来源失败',
@@ -691,6 +691,9 @@ export default mergeHarnessLocale('zh-CN', {
       expand: '展开 todo 列表',
       collapse: '收起 todo 列表',
       jumpToMessage: '跳转到 checklist 消息',
+    },
+    todoChecklist: {
+      progress: '已完成 {completed} / {total} 项',
     },
     quickNav: {
       title: '快速导航',
@@ -1535,7 +1538,7 @@ export default mergeHarnessLocale('zh-CN', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: '工作区文件',
+    title: '核心上下文文件',
     description: '这些文件定义了 Blue 的性格、记忆和行为。',
     saved: '{name} 已保存',
     noFiles: '未找到工作区文件。',

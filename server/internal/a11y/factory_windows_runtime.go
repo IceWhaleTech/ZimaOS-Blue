@@ -73,6 +73,10 @@ var (
 	windowsUnicodeTextInputFunc    = windowsSendUnicodeText
 	windowsCaptureRegionPNGFunc    = windowsCaptureRegionPNG
 	windowsExtractTextFromPNGFunc  = windowsExtractTextFromPNG
+	windowsHighlightInputBoundsFunc = func(bounds windowsRect, duration time.Duration) error {
+		_, err := windowsCLIFallback.showHighlightOverlay(nil, bounds, duration)
+		return err
+	}
 )
 
 func init() {
@@ -80,6 +84,22 @@ func init() {
 		hwnd, _, _ := procGetForegroundWindow.Call()
 		return hwnd
 	}
+}
+
+const windowsInputHighlightDuration = 350 * time.Millisecond
+
+func windowsHighlightInputBounds(bounds windowsRect, hasBounds bool) bool {
+	if !hasBounds {
+		return false
+	}
+	if bounds.Right-bounds.Left <= 1 || bounds.Bottom-bounds.Top <= 1 {
+		return false
+	}
+	if windowsHighlightInputBoundsFunc == nil {
+		return false
+	}
+	_ = windowsHighlightInputBoundsFunc(bounds, windowsInputHighlightDuration)
+	return true
 }
 
 type windowsAccessibleChild struct {
@@ -154,6 +174,12 @@ func (b *windowsBackend) Act(ctx context.Context, windowID string, ref int, refM
 		meta := windowsReadActionMetadata(target)
 		plan := planWindowsAction(actType, meta)
 		bounds, hasBounds := windowsAccessibleLocation(target.Dispatch, target.ChildID)
+		overlayMode := ""
+		if strings.EqualFold(strings.TrimSpace(actType), "type") && hasBounds {
+			if windowsHighlightInputBounds(bounds, true) {
+				overlayMode = "border"
+			}
+		}
 		result, err := windowsActionResultWithPlan(
 			b.HostOS(),
 			strconv.FormatUint(uint64(hwnd), 10),
@@ -164,9 +190,9 @@ func (b *windowsBackend) Act(ctx context.Context, windowID string, ref int, refM
 			func(plan windowsActionPlan, value string) error {
 				return windowsExecutePrimaryAction(target, plan, value)
 			},
-			func(plan windowsActionPlan, value string) bool {
+			func(plan windowsActionPlan, value string) (bool, string) {
 				if plan.Primary != windowsActionPutValue || !strings.EqualFold(strings.TrimSpace(actType), "type") {
-					return true
+					return true, "semantic_action"
 				}
 				return windowsVerifySemanticTextEntry(
 					ctx,
@@ -178,12 +204,29 @@ func (b *windowsBackend) Act(ctx context.Context, windowID string, ref int, refM
 					windowsExtractTextFromPNGFunc,
 				)
 			},
-			func(fallback string, value string, holdMS int, primarySucceeded bool) error {
+			func() (bool, string) {
+				if !strings.EqualFold(strings.TrimSpace(actType), "type") {
+					return true, "input_action"
+				}
+				return windowsVerifySemanticTextEntry(
+					ctx,
+					value,
+					func() string { return windowsAccessibleString(target.Dispatch, "accValue", target.ChildID) },
+					bounds,
+					hasBounds,
+					windowsCaptureRegionPNGFunc,
+					windowsExtractTextFromPNGFunc,
+				)
+			},
+			func(fallback string, value string, holdMS int, primarySucceeded bool) (string, error) {
 				return windowsExecuteFallback(target, fallback, value, holdMS, primarySucceeded)
 			},
 		)
 		if err != nil {
 			return err
+		}
+		if overlayMode != "" && strings.EqualFold(strings.TrimSpace(actType), "type") {
+			result.OverlayMode = overlayMode
 		}
 		actionResult = result
 		return nil
@@ -581,7 +624,7 @@ func windowsExecutePrimaryAction(target windowsAccessibleTarget, plan windowsAct
 	}
 }
 
-func windowsExecuteFallback(target windowsAccessibleTarget, fallback string, value string, holdMS int, primarySucceeded bool) error {
+func windowsExecuteFallback(target windowsAccessibleTarget, fallback string, value string, holdMS int, primarySucceeded bool) (string, error) {
 	bounds, hasBounds := windowsAccessibleLocation(target.Dispatch, target.ChildID)
 	derivedTarget := windowsFallbackTargetFromRect(target.HWND, bounds)
 	derivedTarget.HasBounds = hasBounds && derivedTarget.HasBounds
@@ -602,8 +645,9 @@ func windowsExecuteFallback(target windowsAccessibleTarget, fallback string, val
 			AfterFocus: func() {
 				time.Sleep(50 * time.Millisecond)
 			},
-			SendText: func(value string) error {
-				return windowsSendTextWithClipboardFallback(value, windowsPasteTextFunc, windowsSendUnicodeText)
+			ClipboardPaste: windowsPasteTextFunc,
+			UnicodeInput: func(value string) error {
+				return windowsSendUnicodeText(value)
 			},
 		},
 	)
@@ -825,7 +869,8 @@ func windowsSendKeys(keys []string, holdMS int) error {
 			return ok
 		},
 		func(value string) error {
-			return windowsSendTextWithClipboardFallback(value, windowsPasteTextFunc, windowsUnicodeTextInputFunc)
+			_, err := windowsSendTextWithClipboardFallback(value, windowsPasteTextFunc, windowsUnicodeTextInputFunc)
+			return err
 		},
 	)
 	if err != nil {
@@ -842,7 +887,8 @@ func windowsSendKeys(keys []string, holdMS int) error {
 			time.Sleep(time.Duration(holdMS) * time.Millisecond)
 			return windowsSendVirtualKey(vk, false)
 		}
-		return windowsSendTextWithClipboardFallback(cleaned[0], windowsPasteTextFunc, windowsUnicodeTextInputFunc)
+		_, err := windowsSendTextWithClipboardFallback(cleaned[0], windowsPasteTextFunc, windowsUnicodeTextInputFunc)
+		return err
 	}
 
 	modifiers := make([]uint16, 0, len(cleaned))

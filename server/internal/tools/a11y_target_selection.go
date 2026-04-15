@@ -1353,6 +1353,31 @@ func mergeA11yActionResults(primary a11yruntime.ActionResult, followup a11yrunti
 	if strings.TrimSpace(followup.WindowID) != "" {
 		merged.WindowID = followup.WindowID
 	}
+	if strings.TrimSpace(followup.Intent) != "" {
+		merged.Intent = followup.Intent
+	}
+	if followup.TargetHit {
+		merged.TargetHit = true
+	}
+	if followup.VerificationPassed {
+		merged.VerificationPassed = true
+	}
+	if strings.TrimSpace(followup.VerificationMethod) != "" {
+		merged.VerificationMethod = followup.VerificationMethod
+	}
+	if strings.TrimSpace(followup.InputMethod) != "" {
+		merged.InputMethod = followup.InputMethod
+	}
+	if len(followup.Fallbacks) > 0 {
+		if len(merged.Fallbacks) == 0 {
+			merged.Fallbacks = append([]string(nil), followup.Fallbacks...)
+		} else {
+			merged.Fallbacks = append(merged.Fallbacks, followup.Fallbacks...)
+		}
+	}
+	if strings.TrimSpace(followup.OverlayMode) != "" {
+		merged.OverlayMode = followup.OverlayMode
+	}
 	primaryMode := strings.TrimSpace(primary.ExecutionMode)
 	followupMode := strings.TrimSpace(followup.ExecutionMode)
 	switch {

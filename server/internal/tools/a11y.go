@@ -18,13 +18,14 @@ var (
 )
 
 type A11yTool struct {
-	mu         sync.RWMutex
-	backend    a11yruntime.Backend
-	browser    *BrowserTool
-	lastWindow string
-	lastRefMap map[int]string
-	lastRefs   []a11ySnapshotEntry
-	mediaDir   string
+	mu             sync.RWMutex
+	backend        a11yruntime.Backend
+	browser        *BrowserTool
+	lastWindow     string
+	lastWindowHint string
+	lastRefMap     map[int]string
+	lastRefs       []a11ySnapshotEntry
+	mediaDir       string
 }
 
 func NewA11yTool() *A11yTool {
@@ -56,7 +57,7 @@ func (t *A11yTool) SetMediaDir(dir string) {
 func (t *A11yTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "a11y",
-		Description: "Desktop/browser accessibility actions. Prefer `message|type|select|click|toggle`.",
+		Description: "Desktop/browser accessibility actions. Prefer `message|type|select|click|toggle`. For `act`, put fields under `params`.",
 		Icon:        "sparkles",
 		SearchHints: []string{
 			"a11y automation",
@@ -66,7 +67,7 @@ func (t *A11yTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Action",
+					"description": "Action. Common: `message|type|select|click|toggle`.",
 				},
 				"surface": map[string]interface{}{
 					"type":        "string",
@@ -94,8 +95,75 @@ func (t *A11yTool) Definition() ToolDefinition {
 				},
 				"params": map[string]interface{}{
 					"type":                 "object",
-					"description":          "Args",
+					"description":          "Args (top-level or params)",
 					"additionalProperties": true,
+				},
+				"ref": map[string]interface{}{
+					"type":        "string",
+					"description": "Target ref",
+				},
+				"target_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Target name",
+				},
+				"target_role": map[string]interface{}{
+					"type":        "string",
+					"description": "Target role",
+				},
+				"act_type": map[string]interface{}{
+					"type":        "string",
+					"description": "Act type",
+				},
+				"value": map[string]interface{}{
+					"type":        "string",
+					"description": "Text value",
+				},
+				"intent": map[string]interface{}{
+					"type":        "string",
+					"description": "Scenario intent",
+				},
+				"conversation": map[string]interface{}{
+					"type":        "string",
+					"description": "Conversation name",
+				},
+				"control": map[string]interface{}{
+					"type":        "string",
+					"description": "Control name",
+				},
+				"setting": map[string]interface{}{
+					"type":        "string",
+					"description": "Setting name",
+				},
+				"item": map[string]interface{}{
+					"type":        "string",
+					"description": "Selectable item",
+				},
+				"option": map[string]interface{}{
+					"type":        "string",
+					"description": "Selectable option",
+				},
+				"choice": map[string]interface{}{
+					"type":        "string",
+					"description": "Selectable choice",
+				},
+				"submit": map[string]interface{}{
+					"type":        "boolean",
+					"description": "Submit after type",
+				},
+				"submit_keys": map[string]interface{}{
+					"type":        "array",
+					"description": "Submit key sequence",
+					"items": map[string]interface{}{
+						"type": "string",
+					},
+				},
+				"submit_target_name": map[string]interface{}{
+					"type":        "string",
+					"description": "Submit target name",
+				},
+				"submit_target_role": map[string]interface{}{
+					"type":        "string",
+					"description": "Submit target role",
 				},
 			},
 			"required": []string{"action"},
@@ -231,6 +299,14 @@ type browserTabFocusCompat interface {
 
 type browserKeyCompat interface {
 	PressKeys(ctx context.Context, targetID string, keys []string, holdMS int) error
+}
+
+type hostAllWindowsLister interface {
+	ListAllWindows(ctx context.Context) ([]a11yruntime.WindowInfo, error)
+}
+
+type hostAppActivator interface {
+	ActivateApp(ctx context.Context, appName string) (a11yruntime.ActionResult, error)
 }
 
 func (t *A11yTool) doBrowser(ctx context.Context, browser *BrowserTool, action string, args map[string]interface{}) (interface{}, error) {
@@ -622,7 +698,6 @@ func (t *A11yTool) doWindows(ctx context.Context, backend a11yruntime.Backend) (
 	if err != nil {
 		return a11yErrorPayload(err), nil
 	}
-	t.syncWindowContext(rememberedWindowFromList(windows))
 	return a11yJSON(map[string]interface{}{
 		"host_os": backend.HostOS(),
 		"windows": windows,
@@ -631,8 +706,11 @@ func (t *A11yTool) doWindows(ctx context.Context, backend a11yruntime.Backend) (
 }
 
 func (t *A11yTool) doFocus(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
-	resolvedTarget, err := t.resolveHostWindowID(ctx, backend, args, windowID)
+	resolvedTarget, _, err := t.resolveHostWindowID(ctx, backend, args, windowID)
 	if err != nil {
+		if activated, handled := t.tryActivateHostAppForFocus(ctx, backend, args, err); handled {
+			return activated, nil
+		}
 		return a11yErrorPayload(err), nil
 	}
 	result, err := backend.FocusWindow(ctx, resolvedTarget)
@@ -641,7 +719,7 @@ func (t *A11yTool) doFocus(ctx context.Context, backend a11yruntime.Backend, arg
 	}
 	resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, resolvedTarget))
 	t.clearSnapshotRefs()
-	t.syncWindowContext(resolvedWindow)
+	t.syncWindowContextWithHint(resolvedWindow, a11yWindowQueryHintFromArgs(args))
 	return a11yJSON(map[string]interface{}{
 		"host_os":        valueOrDefault(result.HostOS, backend.HostOS()),
 		"window_id":      resolvedWindow,
@@ -650,10 +728,95 @@ func (t *A11yTool) doFocus(ctx context.Context, backend a11yruntime.Backend, arg
 	}), nil
 }
 
-func (t *A11yTool) doSnapshot(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, interactive bool) (interface{}, error) {
-	resolvedTarget, err := t.resolveHostWindowID(ctx, backend, args, windowID)
+func (t *A11yTool) tryActivateHostAppForWindowResolve(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, resolveErr error) (string, *a11yWindowMatch, a11yruntime.ActionResult, error, bool) {
+	runtimeErr, ok := resolveErr.(*a11yruntime.RuntimeError)
+	if !ok || runtimeErr.Code != "backend_unavailable" || runtimeErr.Message != "target window not found" {
+		return "", nil, a11yruntime.ActionResult{}, nil, false
+	}
+	activator, ok := backend.(hostAppActivator)
+	if !ok {
+		return "", nil, a11yruntime.ActionResult{}, nil, false
+	}
+	appNames := parseA11yWindowMatchAliases(firstCompatString(args, "app_name", "appName", "application", "app"))
+	if len(appNames) == 0 {
+		return "", nil, a11yruntime.ActionResult{}, nil, false
+	}
+
+	lastErr := resolveErr
+	var activationResult a11yruntime.ActionResult
+	activated := false
+	for _, appName := range appNames {
+		result, err := activator.ActivateApp(ctx, appName)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		activated = true
+		activationResult = result
+		resolvedTarget, match, retryErr := t.resolveHostWindowID(ctx, backend, args, windowID)
+		if retryErr == nil && strings.TrimSpace(resolvedTarget) != "" {
+			return resolvedTarget, match, activationResult, nil, true
+		}
+		if retryErr != nil {
+			lastErr = retryErr
+		}
+	}
+	if !activated {
+		return "", nil, a11yruntime.ActionResult{}, lastErr, true
+	}
+	return "", nil, activationResult, lastErr, true
+}
+
+func (t *A11yTool) tryActivateHostAppForFocus(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, resolveErr error) (interface{}, bool) {
+	resolvedTarget, _, result, err, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, "", resolveErr)
+	if !handled {
+		return nil, false
+	}
+	if strings.TrimSpace(resolvedTarget) != "" {
+		focusResult, focusErr := backend.FocusWindow(ctx, resolvedTarget)
+		if focusErr == nil {
+			resolvedWindow := strings.TrimSpace(valueOrDefault(focusResult.WindowID, resolvedTarget))
+			t.clearSnapshotRefs()
+			t.syncWindowContextWithHint(resolvedWindow, a11yWindowQueryHintFromArgs(args))
+			return a11yJSON(map[string]interface{}{
+				"host_os":        valueOrDefault(focusResult.HostOS, backend.HostOS()),
+				"window_id":      resolvedWindow,
+				"execution_mode": focusResult.ExecutionMode,
+				"message":        valueOrDefault(focusResult.Message, "Window focused"),
+			}), true
+		}
+		err = focusErr
+	}
 	if err != nil {
-		return a11yErrorPayload(err), nil
+		if strings.TrimSpace(result.WindowID) == "" {
+			return a11yErrorPayload(err), true
+		}
+	}
+	resolvedWindow := strings.TrimSpace(result.WindowID)
+	t.clearSnapshotRefs()
+	t.syncWindowContext(resolvedWindow)
+	payload := map[string]interface{}{
+		"host_os":        valueOrDefault(result.HostOS, backend.HostOS()),
+		"execution_mode": valueOrDefault(result.ExecutionMode, "automation"),
+		"message":        valueOrDefault(result.Message, "Application activated"),
+	}
+	if resolvedWindow != "" {
+		payload["window_id"] = resolvedWindow
+	}
+	return a11yJSON(payload), true
+}
+
+func (t *A11yTool) doSnapshot(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, interactive bool) (interface{}, error) {
+	resolvedTarget, _, err := t.resolveHostWindowID(ctx, backend, args, windowID)
+	if err != nil {
+		if retriedTarget, _, _, retryErr, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, windowID, err); handled {
+			if retryErr != nil {
+				return a11yErrorPayload(retryErr), nil
+			}
+			resolvedTarget = retriedTarget
+		} else {
+			return a11yErrorPayload(err), nil
+		}
 	}
 	action := a11yruntime.ActionSnapshot
 	if interactive {
@@ -734,10 +897,19 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		holdMS = a11yruntime.DefaultHoldMS
 	}
 	holdMS = a11yruntime.NormalizeHoldMS(holdMS)
-	resolvedTarget, err := t.resolveHostWindowID(ctx, backend, args, windowID)
+	resolvedTarget, match, err := t.resolveHostWindowID(ctx, backend, args, windowID)
 	if err != nil {
-		return a11yErrorPayload(err), nil
+		if retriedTarget, retriedMatch, _, retryErr, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, windowID, err); handled {
+			if retryErr != nil {
+				return a11yErrorPayload(retryErr), nil
+			}
+			resolvedTarget = retriedTarget
+			match = retriedMatch
+		} else {
+			return a11yErrorPayload(err), nil
+		}
 	}
+	t.maybeAutoFocusExactMatch(ctx, backend, match, resolvedTarget)
 	if degraded, handled, err := t.maybeHandleHostPermissionFallback(ctx, backend, a11yruntime.ActionAct, strings.TrimSpace(resolvedTarget)); handled || err != nil {
 		return degraded, err
 	}
@@ -820,21 +992,81 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		}
 		result = mergeA11yActionResults(result, submitResult)
 	}
-	t.syncWindowContext(valueOrDefault(result.WindowID, resolvedTarget))
+	t.syncWindowContextWithHint(valueOrDefault(result.WindowID, resolvedTarget), a11yWindowQueryHintFromArgs(args))
 	t.clearSnapshotRefs()
-	return a11yJSON(map[string]interface{}{
+	payload := map[string]interface{}{
 		"host_os":        valueOrDefault(result.HostOS, backend.HostOS()),
 		"window_id":      valueOrDefault(result.WindowID, resolvedTarget),
 		"execution_mode": result.ExecutionMode,
 		"message":        valueOrDefault(result.Message, "Host action completed"),
-	}), nil
+	}
+	effectiveIntent := valueOrDefault(result.Intent, intent)
+	if strings.TrimSpace(effectiveIntent) != "" {
+		payload["intent"] = effectiveIntent
+	}
+	targetHit := result.TargetHit || result.VerificationPassed
+	if !targetHit && !a11yActionResultHasTelemetry(result) {
+		targetHit = true
+	}
+	payload["target_hit"] = targetHit
+	if result.InputMethod != "" {
+		payload["input_method"] = result.InputMethod
+	}
+	if result.VerificationMethod != "" {
+		payload["verification_method"] = result.VerificationMethod
+	}
+	if a11yShouldExposeVerification(result, actType, effectiveIntent) {
+		payload["verification_passed"] = result.VerificationPassed
+	}
+	if len(result.Fallbacks) > 0 {
+		payload["fallbacks"] = result.Fallbacks
+	}
+	if result.OverlayMode != "" {
+		payload["overlay_mode"] = result.OverlayMode
+	}
+	return a11yJSON(payload), nil
+}
+
+func a11yActionResultHasTelemetry(result a11yruntime.ActionResult) bool {
+	return strings.TrimSpace(result.Intent) != "" ||
+		strings.TrimSpace(result.VerificationMethod) != "" ||
+		strings.TrimSpace(result.InputMethod) != "" ||
+		len(result.Fallbacks) > 0 ||
+		strings.TrimSpace(result.OverlayMode) != ""
+}
+
+func a11yShouldExposeVerification(result a11yruntime.ActionResult, actType string, intent string) bool {
+	if result.VerificationPassed {
+		return true
+	}
+	if strings.TrimSpace(result.VerificationMethod) != "" {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(actType), "type") {
+		return true
+	}
+	switch normalizeA11yActIntent(intent) {
+	case "message", "type":
+		return true
+	default:
+		return false
+	}
 }
 
 func (t *A11yTool) doScroll(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
-	resolvedTarget, err := t.resolveHostWindowID(ctx, backend, args, windowID)
+	resolvedTarget, match, err := t.resolveHostWindowID(ctx, backend, args, windowID)
 	if err != nil {
-		return a11yErrorPayload(err), nil
+		if retriedTarget, retriedMatch, _, retryErr, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, windowID, err); handled {
+			if retryErr != nil {
+				return a11yErrorPayload(retryErr), nil
+			}
+			resolvedTarget = retriedTarget
+			match = retriedMatch
+		} else {
+			return a11yErrorPayload(err), nil
+		}
 	}
+	t.maybeAutoFocusExactMatch(ctx, backend, match, resolvedTarget)
 	direction := strings.ToLower(strings.TrimSpace(firstCompatString(args, "direction")))
 	if direction == "" {
 		direction = "down"
@@ -850,7 +1082,7 @@ func (t *A11yTool) doScroll(ctx context.Context, backend a11yruntime.Backend, ar
 	if err != nil {
 		return a11yErrorPayload(err), nil
 	}
-	t.syncWindowContext(valueOrDefault(result.WindowID, resolvedTarget))
+	t.syncWindowContextWithHint(valueOrDefault(result.WindowID, resolvedTarget), a11yWindowQueryHintFromArgs(args))
 	t.clearSnapshotRefs()
 	return a11yJSON(map[string]interface{}{
 		"host_os":        valueOrDefault(result.HostOS, backend.HostOS()),
@@ -885,10 +1117,19 @@ func (t *A11yTool) doPointerMove(ctx context.Context, backend a11yruntime.Backen
 }
 
 func (t *A11yTool) doKey(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
-	resolvedTarget, err := t.resolveHostWindowID(ctx, backend, args, windowID)
+	resolvedTarget, match, err := t.resolveHostWindowID(ctx, backend, args, windowID)
 	if err != nil {
-		return a11yErrorPayload(err), nil
+		if retriedTarget, retriedMatch, _, retryErr, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, windowID, err); handled {
+			if retryErr != nil {
+				return a11yErrorPayload(retryErr), nil
+			}
+			resolvedTarget = retriedTarget
+			match = retriedMatch
+		} else {
+			return a11yErrorPayload(err), nil
+		}
 	}
+	t.maybeAutoFocusExactMatch(ctx, backend, match, resolvedTarget)
 	keys, ok := compatStringSlice(args, "keys")
 	if !ok || len(keys) == 0 {
 		return nil, errors.New("keys is required for key")
@@ -908,7 +1149,7 @@ func (t *A11yTool) doKey(ctx context.Context, backend a11yruntime.Backend, args 
 	if err != nil {
 		return a11yErrorPayload(err), nil
 	}
-	t.syncWindowContext(valueOrDefault(result.WindowID, resolvedTarget))
+	t.syncWindowContextWithHint(valueOrDefault(result.WindowID, resolvedTarget), a11yWindowQueryHintFromArgs(args))
 	t.clearSnapshotRefs()
 	return a11yJSON(map[string]interface{}{
 		"host_os":        valueOrDefault(result.HostOS, backend.HostOS()),
@@ -919,15 +1160,22 @@ func (t *A11yTool) doKey(ctx context.Context, backend a11yruntime.Backend, args 
 }
 
 func (t *A11yTool) doScreenshot(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
-	resolvedTarget, err := t.resolveHostWindowID(ctx, backend, args, windowID)
+	resolvedTarget, _, err := t.resolveHostWindowID(ctx, backend, args, windowID)
 	if err != nil {
-		return a11yErrorPayload(err), nil
+		if retriedTarget, _, _, retryErr, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, windowID, err); handled {
+			if retryErr != nil {
+				return a11yErrorPayload(retryErr), nil
+			}
+			resolvedTarget = retriedTarget
+		} else {
+			return a11yErrorPayload(err), nil
+		}
 	}
 	result, err := backend.Screenshot(ctx, resolvedTarget)
 	if err != nil {
 		return a11yErrorPayload(err), nil
 	}
-	t.syncWindowContext(valueOrDefault(result.WindowID, resolvedTarget))
+	t.syncWindowContextWithHint(valueOrDefault(result.WindowID, resolvedTarget), a11yWindowQueryHintFromArgs(args))
 	return a11yJSON(map[string]interface{}{
 		"host_os":    valueOrDefault(result.HostOS, backend.HostOS()),
 		"window_id":  valueOrDefault(result.WindowID, resolvedTarget),
@@ -956,6 +1204,7 @@ func (t *A11yTool) clearRefs() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.lastWindow = ""
+	t.lastWindowHint = ""
 	t.lastRefMap = nil
 	t.lastRefs = nil
 }
@@ -978,7 +1227,12 @@ func (t *A11yTool) rememberWindow(windowID string) {
 }
 
 func (t *A11yTool) syncWindowContext(windowID string) {
+	t.syncWindowContextWithHint(windowID, "")
+}
+
+func (t *A11yTool) syncWindowContextWithHint(windowID string, hint string) {
 	windowID = strings.TrimSpace(windowID)
+	hint = strings.TrimSpace(hint)
 	if windowID == "" {
 		return
 	}
@@ -989,6 +1243,7 @@ func (t *A11yTool) syncWindowContext(windowID string) {
 		t.lastRefs = nil
 	}
 	t.lastWindow = windowID
+	t.lastWindowHint = hint
 }
 
 func (t *A11yTool) effectiveWindow(windowID string) string {
@@ -999,6 +1254,30 @@ func (t *A11yTool) effectiveWindow(windowID string) string {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 	return t.lastWindow
+}
+
+func (t *A11yTool) effectiveWindowContext() (string, string) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	return t.lastWindow, t.lastWindowHint
+}
+
+func (t *A11yTool) maybeAutoFocusExactMatch(ctx context.Context, backend a11yruntime.Backend, match *a11yWindowMatch, windowID string) {
+	if match == nil || !match.Exact || !match.Unique {
+		return
+	}
+	switch strings.TrimSpace(match.MatchedBy) {
+	case "window_title", "app_name", "window_title+app_name":
+	default:
+		return
+	}
+	resolved := strings.TrimSpace(windowID)
+	if resolved == "" {
+		return
+	}
+	if result, err := backend.FocusWindow(ctx, resolved); err == nil {
+		t.syncWindowContext(valueOrDefault(result.WindowID, resolved))
+	}
 }
 
 func rememberedWindowFromList(windows []a11yruntime.WindowInfo) string {
@@ -1014,6 +1293,21 @@ func rememberedWindowFromList(windows []a11yruntime.WindowInfo) string {
 		return strings.TrimSpace(windows[0].ID)
 	}
 	return ""
+}
+
+func a11yWindowQueryHintFromArgs(args map[string]interface{}) string {
+	return a11yWindowQueryHint(
+		firstCompatString(args, "window_title", "windowTitle", "title"),
+		firstCompatString(args, "app_name", "appName", "application", "app"),
+	)
+}
+
+func a11yWindowQueryHint(windowTitle string, appName string) string {
+	parts := []string{
+		normalizeA11yWindowMatchValue(windowTitle),
+		normalizeA11yWindowMatchValue(appName),
+	}
+	return strings.Trim(strings.Join(parts, "|"), "|")
 }
 
 func (t *A11yTool) maybeHandleHostPermissionFallback(ctx context.Context, backend a11yruntime.Backend, action string, windowID string) (interface{}, bool, error) {

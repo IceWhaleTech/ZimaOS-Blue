@@ -1,0 +1,22 @@
+api_version: harness.blue/v1alpha1
+kind: eval_spec
+name: A11y Quick Paths v5
+subject: a11y_quickpaths
+run_kind: agent_task
+profile: a11y_quickpaths
+scheduler:
+  max_concurrency: 1
+  max_attempts: 1
+  retry_backoff: 10s
+scoring:
+  mode: rule
+  pass_threshold: 1
+runtime_policy:
+  dataset_family: a11y_quickpaths
+  policy_model_hint: claude-sonnet-4.6
+  provider_config_mode: runtime_injected
+  primary_route: a11y
+  allow_fallback: false
+metadata:
+  lane: a11y_quickpaths
+  provider_hint: 114.xxx

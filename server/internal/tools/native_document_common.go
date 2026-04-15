@@ -21,6 +21,8 @@ type nativeDocumentPayload struct {
 	AbsolutePath   string                 `json:"absolute_path,omitempty"`
 	OriginalPath   string                 `json:"original_path,omitempty"`
 	Format         string                 `json:"format"`
+	Theme          string                 `json:"theme,omitempty"`
+	ThemePreview   *officeThemePreview    `json:"theme_preview,omitempty"`
 	Engine         string                 `json:"engine"`
 	EngineChain    []string               `json:"engine_chain"`
 	Degraded       bool                   `json:"degraded"`
@@ -51,6 +53,19 @@ func marshalNativeDocumentPayload(payload nativeDocumentPayload) (string, error)
 		return "", err
 	}
 	return string(body), nil
+}
+
+func attachOfficeThemeMetadata(payload *nativeDocumentPayload, theme officeTheme) {
+	if payload == nil {
+		return
+	}
+	if strings.TrimSpace(theme.Name) == "" {
+		return
+	}
+	payload.Theme = theme.Name
+	if preview, err := GetThemePreview(theme.Name); err == nil {
+		payload.ThemePreview = &preview
+	}
 }
 
 func nativeDocumentToolNameForPath(path string) string {

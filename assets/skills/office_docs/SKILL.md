@@ -129,9 +129,179 @@ blue a11y action=screenshot
   - otherwise a unique fuzzy match on the same role is accepted
   - if same-name matches still remain inside that role family, the tool prefers the most likely role for the scenario such as conversation row/list item over a generic button, or switch over a menu item
   - if fuzzy matching still ties, the tool fails closed with ambiguity instead of guessing
+- If a compact interactive snapshot still cannot see the visible label because the real control is an unlabeled nearby switch/button, the tool can do one internal full-snapshot proximity pass for common `setting` / `control` / `select` scenarios before giving up.
 - Only reach for `params.target_name=...` or `params.target_role=...` when the default input resolution is ambiguous and you need to pin a specific control.
 - If the flow is "type then send", prefer a single `act` call with `params.submit=true`; the tool will internally try the most likely send button first, prefer the one nearest the chosen input when multiple send-like controls exist, then downgrade to platform submit keys if needed, and keep retrying only when the post-submit UI still clearly shows the typed text sitting in the composer.
 - Prefer `snapshot_interactive` over the full snapshot when the goal is to act quickly on visible controls.
 - Prefer `act_type=type` for text entry because the runtime can use native set-value or clipboard-backed paste; reserve `key` for shortcuts such as save, submit, or navigation.
 - Do not try to use `docx`, `xlsx`, `pptx`, or `pdf` to click through native application chrome; that is `a11y` work.
 - Do not use `a11y` as a substitute for structured file edits when the artifact can be produced directly with `docx`, `xlsx`, `pptx`, or `pdf`.
+
+---
+
+## Quick Paths (High Success)
+
+### Feishu Send Message (Deterministic Path)
+
+Goal: open or focus Feishu, switch to a conversation, type, and send once.
+
+Conversation search rule for Feishu / Lark:
+
+- Prefer the app's search shortcut before exploratory snapshots.
+- On macOS, search the target conversation with `Cmd+K` first; if that search surface does not appear, retry with `Cmd+F` twice.
+- On Windows, use the same rule with `Ctrl+K` first and `Ctrl+F` twice as fallback.
+
+Preferred one-shot:
+
+```bash
+blue a11y action=message app_name="Feishu、飞书、Lark" conversation="Orca" value="你好，Orca"
+```
+
+If you want the steps spelled out (same logic, more explicit):
+
+1. Focus or match the app
+```
+blue a11y action=focus app_name="Feishu、飞书、Lark"
+```
+1. Switch to the conversation
+```
+blue a11y action=select app_name="Feishu、飞书、Lark" conversation="Orca"
+```
+1. Type and send
+```
+blue a11y action=message app_name="Feishu、飞书、Lark" conversation="Orca" value="你好，Orca"
+```
+
+### Feishu Draft Only (Type Without Send)
+
+```bash
+blue a11y action=type app_name="Feishu、飞书、Lark" conversation="Orca" value="你好，Orca"
+```
+
+### Settings Toggle (Label + Switch)
+
+```bash
+blue a11y action=toggle window_title="Settings" setting="Enable notifications"
+```
+
+---
+
+## Common App Quick Paths (Mac/Windows)
+
+Use these when the user goal is singular and obvious. Prefer one decisive path over exploratory snapshots.
+
+### IM / Chat Apps
+
+Targets: Feishu / Lark, WeCom / Enterprise WeChat, DingTalk, Slack, Teams.
+
+- Deterministic path: app -> conversation -> composer -> send
+- For Feishu / Lark specifically, searching the conversation should prefer shortcut search over scanning the sidebar:
+  - macOS: `Cmd+K` first, then `Cmd+F` twice if needed
+  - Windows: `Ctrl+K` first, then `Ctrl+F` twice if needed
+- Prefer one shot when the user clearly wants a message delivered:
+
+```bash
+blue a11y action=message app_name="Feishu,飞书,Lark" conversation="Orca" value="你好，Orca"
+blue a11y action=message app_name="Slack" conversation="Orca" value="hello"
+blue a11y action=message app_name="Microsoft Teams,Teams" conversation="Orca" value="hello"
+```
+
+- Prefer draft-only when the user does not want to send yet:
+
+```bash
+blue a11y action=type app_name="Feishu,飞书,Lark" conversation="Orca" value="你好，Orca"
+```
+
+- Do not list windows first unless the first one-shot attempt is ambiguous.
+- Let `app_name` carry aliases such as `Feishu,飞书,Lark`; fuzzy matching is the default.
+
+### System Settings
+
+Targets: macOS Settings / System Settings, Windows Settings / Control Panel surfaces.
+
+- Deterministic path: settings window -> labeled control/setting -> click or toggle
+
+```bash
+blue a11y action=toggle window_title="Settings,System Settings,设置" setting="Enable notifications"
+blue a11y action=click window_title="Settings,System Settings,设置" control="Open Network"
+```
+
+- Prefer `setting=...` for labeled switches.
+- Prefer `control=...` for buttons, rows, or navigation entries.
+
+### Browser
+
+Targets: Chrome, Edge, Safari, Firefox.
+
+- Deterministic path: browser app/window -> visible control -> click or select
+
+```bash
+blue a11y action=click app_name="Google Chrome,Chrome,Microsoft Edge,Edge,Safari" control="Address Bar"
+blue a11y action=select app_name="Google Chrome,Chrome,Microsoft Edge,Edge,Safari" item="Downloads"
+```
+
+- Use browser-surface tools only when the task is clearly about web DOM automation; stay on host `a11y` for native browser chrome.
+
+### File Manager
+
+Targets: Finder / Files / Explorer.
+
+- Deterministic path: app -> sidebar/list item -> select or click
+
+```bash
+blue a11y action=select app_name="Finder,访达,Explorer,文件资源管理器" item="Downloads"
+blue a11y action=click app_name="Finder,访达,Explorer,文件资源管理器" control="Desktop"
+```
+
+- Prefer `select` for folders, rows, and sidebar entries.
+- Prefer `click` when the user explicitly wants to press a named button or toolbar control.
+
+### Mail
+
+Targets: Apple Mail, Outlook, Mail app.
+
+- Deterministic path: app -> target conversation or compose surface -> type or message
+
+```bash
+blue a11y action=type app_name="Mail,Apple Mail,Outlook" value="你好，Orca"
+blue a11y action=click app_name="Mail,Apple Mail,Outlook" control="New Message"
+```
+
+- Prefer `type` when the compose input is already frontmost.
+- Prefer `click` on `New Message` or a clearly labeled thread first when compose is not visible.
+
+---
+
+## 10-Second Feishu Flow
+
+Prompt: `帮我在飞书上和 Orca 打一个招呼`
+
+Preferred path:
+
+```bash
+blue a11y action=message app_name="Feishu,飞书,Lark" conversation="Orca" value="你好，Orca"
+```
+
+Why this is the default path:
+
+- It skips window listing and goes straight to fuzzy app resolution.
+- If the app match is unique and exact enough, the tool activates it immediately.
+- For Feishu / Lark, the conversation lookup should first try the app's search shortcut surface:
+  - macOS: `Cmd+K` first, then `Cmd+F` twice
+  - Windows: `Ctrl+K` first, then `Ctrl+F` twice
+- After entering the search surface, the conversation lookup remains scenario-aware and prefers chat rows over unrelated controls.
+- Text entry prefers `set_value`, then verifies via AX/OCR, then degrades to clipboard paste, then unicode typing only if needed.
+- The send step is bundled into the message flow, so the model does not need to decide whether to click Send or press Enter.
+
+If the one-shot path cannot complete directly, use this fallback sequence and stop as soon as one step succeeds:
+
+1. `blue a11y action=focus app_name="Feishu,飞书,Lark"`
+2. Open conversation search first:
+   - macOS: `blue a11y action=key app_name="Feishu,飞书,Lark" keys='["cmd","k"]'`
+   - fallback: `blue a11y action=key app_name="Feishu,飞书,Lark" keys='["cmd","f"]'` twice
+3. `blue a11y action=select app_name="Feishu,飞书,Lark" conversation="Orca"`
+4. `blue a11y action=message app_name="Feishu,飞书,Lark" conversation="Orca" value="你好，Orca"`
+
+Expected success signal in eval mode:
+
+- Final output should contain raw a11y JSON with `intent=message`, `target_hit=true`, and `verification_passed=true`.

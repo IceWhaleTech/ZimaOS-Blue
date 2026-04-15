@@ -323,7 +323,7 @@ func (w *WebFetchTool) SetDocumentReadService(service DocumentReadService) {
 func (w *WebFetchTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "web_fetch",
-		Description: "Fast lightweight HTTP read for a known public URL. Best for static docs, articles, text, PDFs, or downloadable office-style documents when a quick readable extract is enough. Does not run JS or interact with pages; if the response indicates login_wall, challenge, or browser_required, switch to browser.",
+		Description: "Fast lightweight HTTP read for a known URL. Best for static docs, articles, text, PDFs, or downloadable office-style documents when a quick readable extract is enough. If a page needs login state, prefer passing Authorization/Cookie or browser_target_id to reuse existing session access before falling back to browser. Does not run JS or interact with pages; if the response still indicates login_wall, challenge, or browser_required, escalate to browser.",
 		Icon:        "web-search",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -345,12 +345,12 @@ func (w *WebFetchTool) Definition() ToolDefinition {
 				},
 				"headers": map[string]interface{}{
 					"type":                 "object",
-					"description":          "Optional request headers. For authenticated pages, pass Authorization/Cookie here.",
+					"description":          "Optional request headers. For authenticated pages, pass Authorization/Cookie here before escalating to full browser automation.",
 					"additionalProperties": map[string]interface{}{"type": "string"},
 				},
 				"cookies": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional Cookie header value (e.g., session tokens).",
+					"description": "Optional Cookie header value (e.g., session tokens). Prefer this when readable content only needs an existing logged-in session.",
 				},
 				"authorization": map[string]interface{}{
 					"type":        "string",
@@ -362,7 +362,7 @@ func (w *WebFetchTool) Definition() ToolDefinition {
 				},
 				"browser_target_id": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional browser tab target ID. When set, reuse matching cookies from that browser session for this fetch.",
+					"description": "Optional browser tab target ID. When set, reuse matching cookies from that browser session for this fetch before falling back to full browser handoff.",
 				},
 			},
 			"required": []string{"url"},
@@ -1585,18 +1585,18 @@ func detectWebFetchAuthWall(statusCode int, finalURL, title, content string) (bo
 	lowerContent := strings.ToLower(strings.TrimSpace(content))
 
 	if statusCode == http.StatusUnauthorized || statusCode == http.StatusForbidden {
-		return true, webFetchWarningCodeBrowserRequired, "page appears to require login or a verified browser session; use browser or pass browser_target_id"
+		return true, webFetchWarningCodeBrowserRequired, "page appears to require login or a verified browser session; retry with Authorization/Cookie or browser_target_id, otherwise use browser or relay/local Chrome"
 	}
 	if statusCode == http.StatusTooManyRequests || statusCode == http.StatusServiceUnavailable {
 		if containsWebFetchChallengeSignal(lowerURL, lowerTitle, lowerContent) {
-			return true, webFetchWarningCodeChallenge, "page appears blocked by a login, rate-limit, or anti-bot challenge; use browser or pass browser_target_id"
+			return true, webFetchWarningCodeChallenge, "page appears blocked by a login, rate-limit, or anti-bot challenge; retry with existing cookies/session or browser_target_id, otherwise use browser or relay/local Chrome"
 		}
 	}
 	if containsWebFetchLoginSignal(lowerURL, lowerTitle, lowerContent) {
-		return true, webFetchWarningCodeLoginWall, "page appears to be a login wall; use browser or pass browser_target_id"
+		return true, webFetchWarningCodeLoginWall, "page appears to be a login wall; retry with existing cookies/session or browser_target_id, otherwise use browser or relay/local Chrome"
 	}
 	if containsWebFetchChallengeSignal(lowerURL, lowerTitle, lowerContent) {
-		return true, webFetchWarningCodeChallenge, "page appears blocked by an anti-bot or verification challenge; use browser or pass browser_target_id"
+		return true, webFetchWarningCodeChallenge, "page appears blocked by an anti-bot or verification challenge; retry with existing cookies/session or browser_target_id, otherwise use browser or relay/local Chrome"
 	}
 	return false, "", ""
 }

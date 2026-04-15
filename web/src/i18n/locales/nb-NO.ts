@@ -338,7 +338,7 @@ export default mergeHarnessLocale('nb-NO', {
     cache: 'Cache',
     billing: 'Fakturering',
     workspace: 'Arbeidsområde',
-    workspacePanelTitle: 'Arbeidsområde filer',
+    workspacePanelTitle: 'Arbeidsområdefiler',
     openWorkspaceIn: 'Åpne i filbehandling',
     openWorkspaceInFinder: 'Åpne i Finder',
     openWorkspaceInExplorer: 'Åpne i Utforsker',
@@ -347,8 +347,8 @@ export default mergeHarnessLocale('nb-NO', {
     workspaceLoadFailed: 'Kunne ikke laste inn arbeidsområdedetaljer',
     workspaceFilesLoadFailed: 'Kunne ikke laste inn arbeidsområdefiler',
     workspaceOpenFailed: 'Kan ikke åpne arbeidsområdet i filbehandling',
-    workspaceCoreTab: 'Arbeidsområde kjernefiler',
-    workspaceGeneratedTab: 'Filkilder',
+    workspaceCoreTab: 'Kjernekontekstfiler',
+    workspaceGeneratedTab: 'Arbeidsområdefiler',
     workspaceGeneratedTitle: 'Arbeidsområdekatalogtre',
     workspaceGeneratedDescription:
       'Vis ekte kataloger og filer med hierarki, og koble genererte filer til kildesamtaler når tilgjengelig.',
@@ -698,6 +698,9 @@ export default mergeHarnessLocale('nb-NO', {
       expand: 'Utvid gjøremålslisten',
       collapse: 'Skjul gjøremålslisten',
       jumpToMessage: 'Gå til sjekklistemelding',
+    },
+    todoChecklist: {
+      progress: '{completed} av {total} oppgaver fullført',
     },
     send: 'Send',
     sendDuringStream: 'Send (legg til i samtalen)',
@@ -1559,7 +1562,7 @@ export default mergeHarnessLocale('nb-NO', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Arbeidsområdefiler',
+    title: 'Kjernekontekstfiler',
     description: 'Disse filene definerer Blues personlighet, hukommelse og oppførsel.',
     saved: '{name} lagret',
     noFiles: 'Ingen arbeidsområdefiler funnet.',

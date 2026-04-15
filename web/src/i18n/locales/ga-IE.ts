@@ -340,7 +340,7 @@ export default mergeHarnessLocale('ga-IE', {
     cache: 'Taisce',
     billing: 'Billeáil',
     workspace: 'Spás oibre',
-    workspacePanelTitle: 'Comhaid Spás Oibre',
+    workspacePanelTitle: 'Comhaid spáis oibre',
     openWorkspaceIn: 'Oscail i bainisteoir comhad',
     openWorkspaceInFinder: 'Oscail i Aimsitheoir',
     openWorkspaceInExplorer: 'Oscail in Explorer',
@@ -349,8 +349,8 @@ export default mergeHarnessLocale('ga-IE', {
     workspaceLoadFailed: 'Theip ar lódáil sonraí spás oibre',
     workspaceFilesLoadFailed: 'Theip ar lódáil comhaid spás oibre',
     workspaceOpenFailed: 'Ní féidir spás oibre a oscailt sa bhainisteoir comhad',
-    workspaceCoreTab: 'Croíchomhaid Spás Oibre',
-    workspaceGeneratedTab: 'Foinsí comhad',
+    workspaceCoreTab: 'Croíchomhaid chomhthéacs',
+    workspaceGeneratedTab: 'Comhaid spáis oibre',
     workspaceGeneratedTitle: 'Crann Eolaire Spás Oibre',
     workspaceGeneratedDescription:
       'Taispeáin fíor-eolairí agus comhaid le hordlathas, agus nasc comhaid ghinte le comhráite foinse nuair atá siad ar fáil.',
@@ -700,6 +700,9 @@ export default mergeHarnessLocale('ga-IE', {
       expand: 'Leathnaigh an liosta taisc',
       collapse: 'Laghdaigh an liosta taisc',
       jumpToMessage: 'Léim go dtí an teachtaireacht seicliosta',
+    },
+    todoChecklist: {
+      progress: '{completed} as {total} tascanna críochnaithe',
     },
     send: 'Seol',
     sendDuringStream: 'Seol (cuir leis an gcomhrá)',
@@ -1572,7 +1575,7 @@ export default mergeHarnessLocale('ga-IE', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: 'Comhaid spáis oibre',
+    title: 'Croíchomhaid chomhthéacs',
     description: 'Sainmhíníonn na comhaid seo pearsantacht, cuimhne agus iompar Blue.',
     saved: '{name} sábháilte',
     noFiles: 'Níor aimsíodh aon chomhaid spáis oibre.',

@@ -7,6 +7,7 @@ import { translateCardActionLabel } from '@/utils/cardActionLabels'
 import { useTauri } from '@/composables/useTauri'
 import { isApiPath, isHttpUrl, isLocalAbsolutePath } from '@/utils/localPath'
 import { getLocalizedToolName } from '@/utils/toolLocalization'
+import { translateHistoricalEnglishBrowserResult } from '@/i18n/browser-result-compat'
 
 const { t, te } = useI18n()
 const { openInBrowser } = useTauri()
@@ -841,9 +842,24 @@ const RESULT_CARD_MESSAGE_PATTERNS: ResultCardPattern[] = [
     params: (match) => ({ pattern: match[1] || '', path: match[2] || '' }),
   },
   {
+    key: 'screenshot_captured_for_tab',
+    regex: /^Screenshot captured for tab (.+)$/,
+    params: (match) => ({ target: match[1] || '' }),
+  },
+  {
     key: 'screenshot_captured_for',
     regex: /^Screenshot captured for (.+)$/,
     params: (match) => ({ target: match[1] || '' }),
+  },
+  {
+    key: 'browser_start_failed',
+    regex: /^browser start failed:\s*(.+)$/i,
+    params: (match) => ({ detail: match[1] || '' }),
+  },
+  {
+    key: 'navigation_failed',
+    regex: /^navigation failed:\s*(.+)$/i,
+    params: (match) => ({ detail: match[1] || '' }),
   },
 ]
 
@@ -876,6 +892,18 @@ function translateResultCardMessage(raw: string): string {
 
   const directKey = `resultCard.messages.${normalizeResultCardKey(trimmed)}`
   if (te(directKey)) return t(directKey)
+
+  const browserCompat = translateHistoricalEnglishBrowserResult(
+    trimmed,
+    {
+      t: (key, named) => String(named ? t(key, named) : t(key)),
+      te: (key) => te(key),
+    },
+    {
+      preserveRawEnglishScreenshot: true,
+    }
+  )
+  if (browserCompat !== trimmed) return browserCompat
 
   return translateResultCardPattern(
     'resultCard.messageTemplates',
@@ -1126,22 +1154,19 @@ const displayMessage = computed(() => {
   return ''
 })
 
-const errorKeyMap: [RegExp, string][] = [
-  [/browser start failed/i, 'uiReview.errors.browserStartFailed'],
-  [/browser service not available/i, 'uiReview.errors.browserNotAvailable'],
-  [/navigation failed/i, 'uiReview.errors.navigationFailed'],
-  [/proxy bridge not available/i, 'uiReview.errors.vlmNotAvailable'],
-]
+const errorKeyMap: [RegExp, string][] = []
 
 const translatedMessage = computed(() => {
   const msg = displayMessage.value
   if (!msg) return ''
+  const directOrTemplated = translateResultCardMessage(msg)
+  if (directOrTemplated !== msg) return directOrTemplated
   if (props.card.status === 'error') {
     for (const [re, key] of errorKeyMap) {
-      if (re.test(msg)) return t(key, msg)
+      if (re.test(msg) && te(key)) return t(key, msg)
     }
   }
-  return translateResultCardMessage(msg)
+  return msg
 })
 
 const warningText = computed(() => (props.card.warning || '').trim())
@@ -1402,11 +1427,8 @@ const showEmptyState = computed(() => {
           :alt="resolvedImageItems[0]?.alt || translatedTitle || 'image'"
           class="w-full max-h-[22rem] object-contain"
           loading="lazy"
-        >
-        <div
-          v-else
-          class="grid grid-cols-2 gap-2 p-2"
-        >
+        />
+        <div v-else class="grid grid-cols-2 gap-2 p-2">
           <img
             v-for="(image, index) in resolvedImageItems"
             :key="`${image.src}-${index}`"
@@ -1414,7 +1436,7 @@ const showEmptyState = computed(() => {
             :alt="image.alt || translatedTitle || 'image'"
             class="w-full max-h-56 rounded object-contain bg-white/60 dark:bg-gray-950/40"
             loading="lazy"
-          >
+          />
         </div>
       </div>
 
@@ -1501,7 +1523,8 @@ const showEmptyState = computed(() => {
                 <pre
                   v-if="match.preview"
                   class="mt-2 overflow-x-auto rounded border border-gray-200 bg-white px-3 py-2 text-xs leading-relaxed text-gray-700 dark:border-gray-700/60 dark:bg-gray-950/50 dark:text-gray-200 font-mono whitespace-pre-wrap break-all"
-                >{{ match.preview }}</pre>
+                  >{{ match.preview }}</pre
+                >
               </div>
             </div>
           </div>
@@ -1566,10 +1589,7 @@ const showEmptyState = computed(() => {
       </div>
 
       <!-- Details -->
-      <div
-        v-if="visibleDetails.length > 0"
-        class="mt-2.5"
-      >
+      <div v-if="visibleDetails.length > 0" class="mt-2.5">
         <div
           class="rounded-md bg-gray-50 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-700/50"
         >
@@ -1599,7 +1619,8 @@ const showEmptyState = computed(() => {
                 <span class="text-gray-400 dark:text-gray-500">{{ tLabel(String(subKey)) }}</span>
                 <span
                   class="result-detail-value text-gray-700 dark:text-gray-300 font-mono max-w-[70%] break-all"
-                >{{ toDisplayString(subVal) }}</span>
+                  >{{ toDisplayString(subVal) }}</span
+                >
               </div>
             </div>
             <!-- Multiline text value (e.g. stdout) -->
@@ -1609,25 +1630,23 @@ const showEmptyState = computed(() => {
             >
               <pre
                 class="px-3 py-2 text-xs text-gray-700 dark:text-gray-300 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-64 overflow-y-auto leading-relaxed"
-              >{{ detail.value }}</pre>
+                >{{ detail.value }}</pre
+              >
             </div>
             <!-- Link value -->
-            <div
-              v-else-if="detail.isLink"
-              class="flex items-center gap-1.5"
-            >
+            <div v-else-if="detail.isLink" class="flex items-center gap-1.5">
               <a
                 :href="String(detail.value)"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
-              >{{ t('resultCard.openLink', 'Open') }} ↗</a>
+                >{{ t('resultCard.openLink', 'Open') }} ↗</a
+              >
             </div>
-            <div
-              v-else-if="detail.isLocalPath"
-              class="flex min-w-0 items-center gap-3"
-            >
-              <span class="min-w-0 flex-1 break-all text-gray-700 dark:text-gray-300 font-mono text-xs">
+            <div v-else-if="detail.isLocalPath" class="flex min-w-0 items-center gap-3">
+              <span
+                class="min-w-0 flex-1 break-all text-gray-700 dark:text-gray-300 font-mono text-xs"
+              >
                 {{ tDetailValue(detail.label, detail.value)
                 }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template>
               </span>
@@ -1639,12 +1658,11 @@ const showEmptyState = computed(() => {
               </button>
             </div>
             <!-- Simple string value -->
-            <div
-              v-else
-              class="flex items-center gap-1.5"
-            >
-              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs">{{ tDetailValue(detail.label, detail.value)
-              }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span>
+            <div v-else class="flex items-center gap-1.5">
+              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs"
+                >{{ tDetailValue(detail.label, detail.value)
+                }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span
+              >
               <button
                 v-if="detail.copyable"
                 class="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
@@ -1692,10 +1710,7 @@ const showEmptyState = computed(() => {
       </div>
 
       <!-- Actions -->
-      <div
-        v-if="card.actions && card.actions.length > 0"
-        class="mt-3 flex flex-wrap gap-2"
-      >
+      <div v-if="card.actions && card.actions.length > 0" class="mt-3 flex flex-wrap gap-2">
         <button
           v-for="action in card.actions"
           :key="action.id"
@@ -1712,10 +1727,7 @@ const showEmptyState = computed(() => {
             v-if="isActionActive(action.id)"
             class="result-action-icon-gap result-action-spinner inline-block h-3 w-3 animate-spin rounded-full border border-current align-[-2px]"
           />
-          <span
-            v-else-if="action.icon"
-            class="result-action-icon-gap"
-          >{{ action.icon }}</span>
+          <span v-else-if="action.icon" class="result-action-icon-gap">{{ action.icon }}</span>
           {{ actionButtonLabel(action) }}
         </button>
       </div>

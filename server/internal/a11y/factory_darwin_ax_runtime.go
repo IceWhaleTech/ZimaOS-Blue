@@ -208,14 +208,19 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 	holdMS = NormalizeHoldMS(holdMS)
 	var typeBounds darwinRect
 	hasTypeBounds := false
+	overlayMode := ""
 	if strings.EqualFold(strings.TrimSpace(actType), "type") {
 		typeBounds, hasTypeBounds = darwinElementBounds(element)
 		darwinHighlightInputBounds(typeBounds, hasTypeBounds, darwinHighlightInputBoundsFunc)
+		if hasTypeBounds {
+			overlayMode = "mask"
+		}
 	}
 
+	fallbacks := make([]string, 0, 3)
 	if plan.SetValue {
 		if err := darwinSetStringAttribute(element, "AXValue", value); err == nil {
-			if darwinVerifySemanticTextEntry(
+			if ok, method := darwinVerifySemanticTextEntry(
 				ctx,
 				value,
 				func() string { return darwinCopyStringAttribute(element, "AXValue") },
@@ -223,24 +228,83 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 				hasTypeBounds,
 				darwinCaptureRegionPNGFunc,
 				darwinExtractTextFromPNGFunc,
-			) {
-				return ActionResult{HostOS: b.HostOS(), WindowID: strings.TrimSpace(windowID), ExecutionMode: "semantic", Message: "Host action completed"}, nil
+			); ok {
+				return ActionResult{
+					HostOS:             b.HostOS(),
+					WindowID:           strings.TrimSpace(windowID),
+					ExecutionMode:      "semantic",
+					TargetHit:          true,
+					InputMethod:        "set_value",
+					VerificationPassed: true,
+					VerificationMethod: method,
+					OverlayMode:        overlayMode,
+					Message:            "Host action completed",
+				}, nil
 			}
 		}
+		fallbacks = append(fallbacks, "set_value", "verify_failed")
 	}
 	if plan.SemanticAction != "" {
 		if err := darwinPerformAXAction(element, plan.SemanticAction); err == nil {
-			return ActionResult{HostOS: b.HostOS(), WindowID: strings.TrimSpace(windowID), ExecutionMode: "semantic", Message: "Host action completed"}, nil
+			return ActionResult{
+				HostOS:             b.HostOS(),
+				WindowID:           strings.TrimSpace(windowID),
+				ExecutionMode:      "semantic",
+				TargetHit:          true,
+				InputMethod:        "semantic_action",
+				VerificationPassed: true,
+				VerificationMethod: "semantic_action",
+				OverlayMode:        overlayMode,
+				Message:            "Host action completed",
+			}, nil
 		}
 	}
 	if plan.InputFallback == "" {
 		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "element could not be activated on this host", map[string]interface{}{"act_type": actType})
 	}
-	mode, err := darwinExecuteInputFallback(element, plan.InputFallback, value, holdMS)
+	mode, inputMethod, err := darwinExecuteInputFallback(element, plan.InputFallback, value, holdMS)
 	if err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
 	}
-	return ActionResult{HostOS: b.HostOS(), WindowID: strings.TrimSpace(windowID), ExecutionMode: mode, Message: "Host action completed"}, nil
+	if plan.InputFallback != "" {
+		fallbacks = append(fallbacks, plan.InputFallback)
+	}
+	if strings.TrimSpace(inputMethod) != "" {
+		fallbacks = append(fallbacks, inputMethod)
+	}
+	verificationPassed := true
+	verificationMethod := "input_action"
+	if strings.EqualFold(strings.TrimSpace(actType), "type") {
+		ok, method := darwinVerifySemanticTextEntry(
+			ctx,
+			value,
+			func() string { return darwinCopyStringAttribute(element, "AXValue") },
+			typeBounds,
+			hasTypeBounds,
+			darwinCaptureRegionPNGFunc,
+			darwinExtractTextFromPNGFunc,
+		)
+		verificationPassed = ok
+		verificationMethod = method
+		if !ok {
+			fallbacks = append(fallbacks, "verify_failed")
+		}
+	}
+	if strings.TrimSpace(inputMethod) == "" {
+		inputMethod = plan.InputFallback
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           strings.TrimSpace(windowID),
+		ExecutionMode:      mode,
+		TargetHit:          true,
+		InputMethod:        inputMethod,
+		VerificationPassed: verificationPassed,
+		VerificationMethod: verificationMethod,
+		Fallbacks:          fallbacks,
+		OverlayMode:        overlayMode,
+		Message:            "Host action completed",
+	}, nil
 }
 
 func (b *darwinBackend) scroll(ctx context.Context, windowID string, direction string, lines int) (ActionResult, error) {
@@ -339,6 +403,14 @@ func darwinAccessibilityPermissionMessage() string {
 }
 
 func (b *darwinBackend) listWindowRecords() ([]darwinWindowRecord, error) {
+	return b.listWindowRecordsWithOptions(darwinCGWindowListOptionOnScreenOnly | darwinCGWindowListExcludeDesktop)
+}
+
+func (b *darwinBackend) listAllWindowRecords() ([]darwinWindowRecord, error) {
+	return b.listWindowRecordsWithOptions(darwinCGWindowListOptionAll | darwinCGWindowListExcludeDesktop)
+}
+
+func (b *darwinBackend) listWindowRecordsWithOptions(options uint32) ([]darwinWindowRecord, error) {
 	initDarwinRuntime()
 	if darwinCGWindowListCopyInfo == nil {
 		return nil, NewError("backend_unavailable", "CoreGraphics window listing is unavailable", nil)
@@ -346,7 +418,7 @@ func (b *darwinBackend) listWindowRecords() ([]darwinWindowRecord, error) {
 	if darwinCFArrayGetCount == nil || darwinCFArrayGetValueAtIndex == nil {
 		return nil, NewError("backend_unavailable", "CoreFoundation array access is unavailable", nil)
 	}
-	array := darwinCGWindowListCopyInfo(darwinCGWindowListOptionOnScreenOnly|darwinCGWindowListExcludeDesktop, 0)
+	array := darwinCGWindowListCopyInfo(options, 0)
 	if array == 0 {
 		return nil, nil
 	}
@@ -382,24 +454,19 @@ func (b *darwinBackend) resolveWindowRecord(windowID string) (darwinWindowRecord
 	if err != nil {
 		return darwinWindowRecord{}, err
 	}
-	if len(records) == 0 {
-		return darwinWindowRecord{}, NewError("backend_unavailable", "no host windows available", nil)
+	record, resolveErr := darwinResolveWindowRecordFromLists(windowID, records, nil)
+	if resolveErr == nil || strings.TrimSpace(windowID) == "" {
+		return record, resolveErr
 	}
-	windowID = strings.TrimSpace(windowID)
-	if windowID == "" {
-		for _, record := range records {
-			if record.Focused {
-				return record, nil
-			}
-		}
-		return records[0], nil
+	runtimeErr, ok := resolveErr.(*RuntimeError)
+	if !ok || runtimeErr.Code != "backend_unavailable" || runtimeErr.Message != "target window not found" {
+		return darwinWindowRecord{}, resolveErr
 	}
-	for _, record := range records {
-		if record.ID == windowID {
-			return record, nil
-		}
+	allRecords, err := b.listAllWindowRecords()
+	if err != nil {
+		return darwinWindowRecord{}, err
 	}
-	return darwinWindowRecord{}, NewError("backend_unavailable", "target window not found", map[string]interface{}{"window_id": windowID})
+	return darwinResolveWindowRecordFromLists(windowID, records, allRecords)
 }
 
 func (b *darwinBackend) refreshWindowRecord(current darwinWindowRecord) (darwinWindowRecord, error) {
@@ -407,16 +474,78 @@ func (b *darwinBackend) refreshWindowRecord(current darwinWindowRecord) (darwinW
 	if err != nil {
 		return darwinWindowRecord{}, err
 	}
-	if len(records) == 0 {
-		return current, nil
-	}
+	allRecords := records
 	if strings.TrimSpace(current.ID) != "" {
-		for _, record := range records {
-			if record.ID == current.ID {
-				return record, nil
+		if _, ok := darwinFindWindowRecordByID(records, current.ID); !ok {
+			allRecords, err = b.listAllWindowRecords()
+			if err != nil {
+				return darwinWindowRecord{}, err
 			}
 		}
 	}
+	return darwinRefreshWindowRecordFromLists(current, records, allRecords), nil
+}
+
+func darwinResolveWindowRecordFromLists(windowID string, records []darwinWindowRecord, allRecords []darwinWindowRecord) (darwinWindowRecord, error) {
+	windowID = strings.TrimSpace(windowID)
+	if windowID == "" {
+		if len(records) == 0 {
+			return darwinWindowRecord{}, NewError("backend_unavailable", "no host windows available", nil)
+		}
+		for _, record := range records {
+			if record.Focused {
+				return record, nil
+			}
+		}
+		return records[0], nil
+	}
+	if record, ok := darwinFindWindowRecordByID(records, windowID); ok {
+		return record, nil
+	}
+	if record, ok := darwinFindWindowRecordByID(allRecords, windowID); ok {
+		return record, nil
+	}
+	if len(records) == 0 && len(allRecords) == 0 {
+		return darwinWindowRecord{}, NewError("backend_unavailable", "no host windows available", nil)
+	}
+	return darwinWindowRecord{}, NewError("backend_unavailable", "target window not found", map[string]interface{}{"window_id": windowID})
+}
+
+func darwinRefreshWindowRecordFromLists(current darwinWindowRecord, records []darwinWindowRecord, allRecords []darwinWindowRecord) darwinWindowRecord {
+	if len(records) == 0 && len(allRecords) == 0 {
+		return current
+	}
+	if record, ok := darwinFindWindowRecordByID(records, current.ID); ok {
+		return record
+	}
+	if record, ok := darwinFindWindowRecordByID(allRecords, current.ID); ok {
+		return record
+	}
+	best, ok := darwinBestWindowRecordSimilarity(current, records)
+	if ok {
+		return best
+	}
+	best, ok = darwinBestWindowRecordSimilarity(current, allRecords)
+	if ok {
+		return best
+	}
+	return current
+}
+
+func darwinFindWindowRecordByID(records []darwinWindowRecord, windowID string) (darwinWindowRecord, bool) {
+	windowID = strings.TrimSpace(windowID)
+	if windowID == "" {
+		return darwinWindowRecord{}, false
+	}
+	for _, record := range records {
+		if record.ID == windowID {
+			return record, true
+		}
+	}
+	return darwinWindowRecord{}, false
+}
+
+func darwinBestWindowRecordSimilarity(current darwinWindowRecord, records []darwinWindowRecord) (darwinWindowRecord, bool) {
 	best := current
 	bestScore := -1
 	for _, record := range records {
@@ -427,9 +556,9 @@ func (b *darwinBackend) refreshWindowRecord(current darwinWindowRecord) (darwinW
 		}
 	}
 	if bestScore < 0 {
-		return current, nil
+		return darwinWindowRecord{}, false
 	}
-	return best, nil
+	return best, true
 }
 
 func darwinWindowRecordSimilarityScore(current darwinWindowRecord, candidate darwinWindowRecord) int {
@@ -589,30 +718,31 @@ func darwinInspectActionMetadata(element uintptr) darwinActionMetadata {
 	return meta
 }
 
-func darwinExecuteInputFallback(element uintptr, fallback string, value string, holdMS int) (string, error) {
+func darwinExecuteInputFallback(element uintptr, fallback string, value string, holdMS int) (string, string, error) {
 	switch fallback {
 	case darwinInputFallbackClick:
 		if err := darwinClickElement(element, darwinCGMouseButtonLeft, false, false, NormalizeHoldMS(holdMS)); err != nil {
-			return "", err
+			return "", "", err
 		}
-		return "input", nil
+		return "input", "input_click", nil
 	case darwinInputFallbackDoubleClick:
 		if err := darwinClickElement(element, darwinCGMouseButtonLeft, true, false, NormalizeHoldMS(holdMS)); err != nil {
-			return "", err
+			return "", "", err
 		}
-		return "input", nil
+		return "input", "input_double_click", nil
 	case darwinInputFallbackRightClick:
 		if err := darwinClickElement(element, darwinCGMouseButtonRight, false, false, NormalizeHoldMS(holdMS)); err != nil {
-			return "", err
+			return "", "", err
 		}
-		return "input", nil
+		return "input", "input_right_click", nil
 	case darwinInputFallbackClickHold:
 		if err := darwinClickElement(element, darwinCGMouseButtonLeft, false, true, NormalizeHoldMS(holdMS)); err != nil {
-			return "", err
+			return "", "", err
 		}
-		return "input", nil
+		return "input", "input_long_press", nil
 	case darwinInputFallbackType:
 		alreadyFocused, _ := darwinCopyBoolAttribute(element, "AXFocused")
+		inputMethod := ""
 		if err := darwinTypeWithFocusClickFallback(
 			value,
 			alreadyFocused,
@@ -623,14 +753,21 @@ func darwinExecuteInputFallback(element uintptr, fallback string, value string, 
 				time.Sleep(darwinSyntheticTextFocusDelay)
 			},
 			func(value string) error {
-				return darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinSendText)
+				method, err := darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinSendText)
+				if method != "" {
+					inputMethod = method
+				}
+				return err
 			},
 		); err != nil {
-			return "", err
+			return "", "", err
 		}
-		return "input", nil
+		if inputMethod == "" {
+			inputMethod = "input_type"
+		}
+		return "input", inputMethod, nil
 	default:
-		return "", NewError("unsupported_action", "input fallback is unavailable", map[string]interface{}{"fallback": fallback})
+		return "", "", NewError("unsupported_action", "input fallback is unavailable", map[string]interface{}{"fallback": fallback})
 	}
 }
 
@@ -718,7 +855,8 @@ func darwinSendKeySequence(keys []string, holdMS int) error {
 			return ok
 		},
 		func(value string) error {
-			return darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinUnicodeTextInputFunc)
+			_, err := darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinUnicodeTextInputFunc)
+			return err
 		},
 	)
 	if err != nil {
@@ -754,7 +892,7 @@ func darwinSendKeySequence(keys []string, holdMS int) error {
 	if primary != "" {
 		keyCode, ok := darwinKeyCodeForName(primary)
 		if !ok && len([]rune(primary)) > 0 {
-			if err := darwinSendTextWithClipboardFallback(primary, darwinPasteTextFunc, darwinUnicodeTextInputFunc); err != nil {
+			if _, err := darwinSendTextWithClipboardFallback(primary, darwinPasteTextFunc, darwinUnicodeTextInputFunc); err != nil {
 				return err
 			}
 		} else {

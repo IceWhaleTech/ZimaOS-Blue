@@ -340,7 +340,7 @@ export default mergeHarnessLocale('fr-FR', {
     cache: 'Cache',
     billing: 'Facturation',
     workspace: 'Espace de travail',
-    workspacePanelTitle: "Fichiers de l'espace de travail",
+    workspacePanelTitle: 'Fichiers de l\'espace de travail',
     openWorkspaceIn: 'Ouvrir dans le gestionnaire de fichiers',
     openWorkspaceInFinder: 'Ouvrir dans le Finder',
     openWorkspaceInExplorer: "Ouvrir dans l'Explorateur",
@@ -349,8 +349,8 @@ export default mergeHarnessLocale('fr-FR', {
     workspaceLoadFailed: "Échec du chargement des détails de l'espace de travail",
     workspaceFilesLoadFailed: "Échec du chargement des fichiers de l'espace de travail",
     workspaceOpenFailed: "Impossible d'ouvrir l'espace de travail dans le gestionnaire de fichiers",
-    workspaceCoreTab: "Fichiers de base de l'espace de travail",
-    workspaceGeneratedTab: 'Sources des fichiers',
+    workspaceCoreTab: 'Fichiers de contexte principal',
+    workspaceGeneratedTab: 'Fichiers de l\'espace de travail',
     workspaceGeneratedTitle: "Arborescence du répertoire de l'espace de travail",
     workspaceGeneratedDescription:
       "Affichez les vrais répertoires et fichiers avec une hiérarchie et liez les fichiers générés aux conversations sources lorsqu'ils sont disponibles.",
@@ -707,6 +707,9 @@ export default mergeHarnessLocale('fr-FR', {
       expand: 'Développer la liste de tâches',
       collapse: 'Réduire la liste de tâches',
       jumpToMessage: 'Passer au message de la liste de contrôle',
+    },
+    todoChecklist: {
+      progress: '{completed} sur {total} tâches terminées',
     },
     send: 'Envoyer',
     sendDuringStream: 'Envoyer (ajouter à la conversation)',
@@ -1582,7 +1585,7 @@ export default mergeHarnessLocale('fr-FR', {
     version: 'ZimaOS Blue v{version}',
   },
   workspace: {
-    title: "Fichiers d'espace de travail",
+    title: 'Fichiers de contexte principal',
     description: 'Ces fichiers définissent la personnalité, la mémoire et le comportement de Blue.',
     saved: '{name} enregistré',
     noFiles: "Aucun fichier d'espace de travail trouvé.",

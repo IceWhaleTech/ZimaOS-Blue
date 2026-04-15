@@ -1,7 +1,7 @@
 ---
 name: web_query
 version: "1.0.0"
-description: "Unified web discovery and reading entry point. Use when the user asks to find references, official docs, latest links, or read a public page from either a query or URL."
+description: "Unified web discovery and reading entry point. Use when the user asks to find references, official docs, latest links, or read a public page from either a query or URL. If a page needs login state, prefer reusing cookie/session access before escalating to full browser handoff."
 invocation: "blue web_query input=\"OpenAI Responses API docs\""
 examples:
   - "blue web_query input=\"OpenAI Responses API docs\""
@@ -29,6 +29,7 @@ No external dependencies required. Uses built-in web search capability.
 | Need relevant links/sources quickly and do not yet have the right URL | `blue web_query input=...` |
 | Need official docs/reference pages | `blue web_query` with precise query terms |
 | Already have a concrete public URL and only need page content | `blue web_query input="https://..."` |
+| Already have a concrete URL that needs login state but only need readable content | Prefer authenticated read/fetch with `Cookie`, `Authorization`, or `browser_target_id` before using full browser automation |
 | Need page interaction/login/JS rendering | Search first, then switch to `browser` |
 
 ---
@@ -55,7 +56,7 @@ Parameters:
 | Error | Resolution |
 |-------|------------|
 | `input is required` | Provide a non-empty search query or URL |
-| Public page requires login or interaction | Switch to `browser` |
+| Page requires login or interaction | Reuse existing `Cookie`, `Authorization`, or `browser_target_id` first; if the site still needs a live session, switch to `browser` |
 
 ---
 
@@ -63,7 +64,8 @@ Parameters:
 
 - `web_query` is the canonical public web skill.
 - Legacy `web_search`, `web_fetch`, and `web_read` names are compatibility aliases and should not be used as the primary route in new prompts or harness cases.
-- If `web_query` reports login wall, challenge, or browser-required warnings, switch to `browser`.
+- If `web_query` reports login wall, challenge, or browser-required warnings, prefer an authenticated read/fetch path with existing `Cookie`, `Authorization`, or `browser_target_id` before escalating to `browser`.
+- When the login state already exists in Chrome and the site needs a live authenticated browser, prefer `browser` with relay/local Chrome (Chrome replay) instead of starting from a fresh anonymous tab.
 - Blue also uses an internal recent multi-site retrieval profile inside the web layer for Research requests such as `what are people saying in the last 30 days` / `最近30天大家怎么说`.
 - That recent profile is native to `web_query` internals, not a separate public mode or command.
 - The current native source mix includes public web, Reddit, Hacker News, GitHub, Polymarket, X, TikTok, Instagram, and Bluesky. Known YouTube URLs can be added as enrichment when they are already present in the request.

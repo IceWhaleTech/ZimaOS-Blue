@@ -394,6 +394,7 @@ func (t *BrowserTool) doSnapshot(ctx context.Context, b BrowserBackend, targetID
 	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "inspect_connected_session"); handled || err != nil {
 		return gated, err
 	}
+	lang := browserToolLanguage(GetLang(ctx))
 	a11y, err := b.AccessibilityTree(ctx, targetID, 10)
 	if err != nil {
 		return jsonErr(err.Error()), nil
@@ -404,7 +405,7 @@ func (t *BrowserTool) doSnapshot(ctx context.Context, b BrowserBackend, targetID
 		"url":       a11y.URL,
 		"title":     a11y.Title,
 		"target_id": a11y.TargetID,
-		"message":   browserPageMsg(a11y.Title, a11y.URL, a11y.Tree, -1),
+		"message":   BrowserPageMessage(lang, a11y.Title, a11y.URL, a11y.Tree, -1),
 	}
 	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
 	return jsonResult(payload), nil
@@ -414,6 +415,7 @@ func (t *BrowserTool) doSnapshotInteractive(ctx context.Context, b BrowserBacken
 	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "inspect_connected_session"); handled || err != nil {
 		return gated, err
 	}
+	lang := browserToolLanguage(GetLang(ctx))
 	result, err := b.InteractiveElements(ctx, targetID)
 	if err != nil {
 		return jsonErr(err.Error()), nil
@@ -426,7 +428,7 @@ func (t *BrowserTool) doSnapshotInteractive(ctx context.Context, b BrowserBacken
 		"target_id": result.TargetID,
 		"count":     result.Count,
 		"strategy":  "interactive",
-		"message":   browserPageMsg(result.Title, result.URL, result.Tree, result.Count),
+		"message":   BrowserPageMessage(lang, result.Title, result.URL, result.Tree, result.Count),
 	}
 	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
 	return jsonResult(payload), nil
@@ -442,6 +444,7 @@ func (t *BrowserTool) doAutoSnapshot(ctx context.Context, b BrowserBackend, targ
 	if gated, handled, err := t.maybeRequireRelayApproval(ctx, b, targetID, "", "inspect_connected_session"); handled || err != nil {
 		return gated, err
 	}
+	lang := browserToolLanguage(GetLang(ctx))
 	count, err := b.CountInteractiveElements(ctx, targetID)
 	if err != nil {
 		return t.doSnapshotInteractive(ctx, b, targetID)
@@ -469,7 +472,7 @@ func (t *BrowserTool) doAutoSnapshot(ctx context.Context, b BrowserBackend, targ
 		if s, ok := result.(string); ok {
 			var m map[string]interface{}
 			if json.Unmarshal([]byte(s), &m) == nil {
-				m["note"] = fmt.Sprintf("Page has %d interactive elements and a large DOM. Using interactive elements list. Use 'screenshot' for visual layout.", count)
+				m["note"] = BrowserLargeDOMNoteMessage(lang, count)
 				b2, _ := json.Marshal(m)
 				return string(b2), nil
 			}
@@ -484,13 +487,14 @@ func (t *BrowserTool) doAutoSnapshot(ctx context.Context, b BrowserBackend, targ
 		"title":     a11y.Title,
 		"target_id": a11y.TargetID,
 		"strategy":  "a11y",
-		"message":   fmt.Sprintf("Page: %s (%s)\n\n%s", a11y.Title, a11y.URL, a11y.Tree),
+		"message":   BrowserPageMessage(lang, a11y.Title, a11y.URL, a11y.Tree, -1),
 	}
 	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
 	return jsonResult(payload), nil
 }
 
 func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b BrowserBackend, targetID string) (interface{}, error) {
+	lang := browserToolLanguage(GetLang(ctx))
 	interactive, err := b.InteractiveElements(ctx, targetID)
 	if err != nil {
 		data, sErr := b.ScreenshotTab(ctx, targetID)
@@ -501,7 +505,7 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 		return jsonResult(map[string]interface{}{
 			"screenshot": data,
 			"strategy":   "screenshot",
-			"message":    "Screenshot captured (interactive elements unavailable)",
+			"message":    BrowserScreenshotInteractiveUnavailableMessage(lang),
 		}), nil
 	}
 
@@ -516,7 +520,7 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 			"target_id": interactive.TargetID,
 			"count":     interactive.Count,
 			"strategy":  "interactive",
-			"message":   browserPageMsg(interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
+			"message":   BrowserPageMessage(lang, interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
 		}), nil
 	}
 	data = t.normalizeScreenshotPayload(data)
@@ -529,7 +533,7 @@ func (t *BrowserTool) doScreenshotWithInteractive(ctx context.Context, b Browser
 		"target_id":  interactive.TargetID,
 		"count":      interactive.Count,
 		"strategy":   "screenshot+interactive",
-		"message":    "Page: " + interactive.Title + " (" + interactive.URL + ") — screenshot + " + strconv.Itoa(interactive.Count) + " interactive elements\n\n" + interactive.Tree,
+		"message":    BrowserPageWithScreenshotInteractiveMessage(lang, interactive.Title, interactive.URL, interactive.Tree, interactive.Count),
 	}
 	t.maybeAugmentSnapshotWithReadableContent(ctx, b, payload)
 	return jsonResult(payload), nil
@@ -618,7 +622,7 @@ func (t *BrowserTool) doAct(ctx context.Context, b BrowserBackend, args map[stri
 
 	return jsonResult(map[string]interface{}{
 		"success": true,
-		"message": fmt.Sprintf("Performed %s on @%d", actType, ref),
+		"message": BrowserActionPerformedMessage(browserToolLanguage(GetLang(ctx)), actType, ref),
 	}), nil
 }
 
@@ -640,7 +644,7 @@ func (t *BrowserTool) doPageScroll(ctx context.Context, b BrowserBackend, target
 	return jsonResult(map[string]interface{}{
 		"success":   true,
 		"target_id": targetID,
-		"message":   fmt.Sprintf("Scrolled page %s", direction),
+		"message":   BrowserPageScrolledMessage(browserToolLanguage(GetLang(ctx)), direction),
 	}), nil
 }
 
@@ -664,6 +668,7 @@ func CoerceBrowserRef(v interface{}) (int, bool) {
 func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args map[string]interface{}) (interface{}, error) {
 	url := firstCompatString(args, "url", "href")
 	targetID := firstCompatString(args, "target_id", "targetId")
+	lang := browserToolLanguage(GetLang(ctx))
 	checkpointURL := strings.TrimSpace(url)
 	if checkpointURL == "" {
 		checkpointURL = t.resolveCheckpointURL(ctx, b, targetID)
@@ -685,13 +690,13 @@ func (t *BrowserTool) doScreenshot(ctx context.Context, b BrowserBackend, args m
 	switch {
 	case url != "":
 		data, err = b.Screenshot(ctx, url)
-		message = fmt.Sprintf("Screenshot captured for %s", url)
+		message = BrowserScreenshotMessage(lang, url, "")
 	case targetID != "":
 		data, err = b.ScreenshotTab(ctx, targetID)
-		message = fmt.Sprintf("Screenshot captured for tab %s", targetID)
+		message = BrowserScreenshotMessage(lang, "", targetID)
 	default:
 		data, err = b.ScreenshotTab(ctx, "")
-		message = "Screenshot captured for active tab"
+		message = BrowserScreenshotMessage(lang, "", "")
 	}
 	if err != nil {
 		emitBrowserProgress(ctx, "screenshot", "Capturing screenshot", "failed", progressURL)
@@ -723,7 +728,7 @@ func (t *BrowserTool) doTabs(ctx context.Context, b BrowserBackend) (interface{}
 	return jsonResult(map[string]interface{}{
 		"tabs":    tabs,
 		"count":   len(tabs),
-		"message": fmt.Sprintf("%d open tabs", len(tabs)),
+		"message": BrowserOpenTabsMessage(browserToolLanguage(GetLang(ctx)), len(tabs)),
 	}), nil
 }
 
@@ -744,7 +749,7 @@ func (t *BrowserTool) doClose(ctx context.Context, b BrowserBackend, targetID st
 	}
 	return jsonResult(map[string]interface{}{
 		"closed":  true,
-		"message": fmt.Sprintf("Tab %s closed", targetID),
+		"message": BrowserTabClosedMessage(browserToolLanguage(GetLang(ctx)), targetID),
 	}), nil
 }
 
@@ -825,7 +830,7 @@ func (t *BrowserTool) doListRecipes(ctx context.Context, b BrowserBackend) (inte
 	return jsonResult(map[string]interface{}{
 		"recipes": infos,
 		"count":   len(infos),
-		"message": fmt.Sprintf("%d recipes available", len(infos)),
+		"message": BrowserRecipesAvailableMessage(browserToolLanguage(GetLang(ctx)), len(infos)),
 	}), nil
 }
 
@@ -916,32 +921,11 @@ func GetBrowserTool(registry *Registry) *BrowserTool {
 	return nil
 }
 
-func browserPageMsg(title, url, tree string, count int) string {
-	n := len("Page: ") + len(title) + len(" (") + len(url) + len(")")
-	if count >= 0 {
-		n += len(" — ") + 10 + len(" interactive elements")
-	}
-	n += 2 + len(tree)
-	buf := make([]byte, 0, n)
-	buf = append(buf, "Page: "...)
-	buf = append(buf, title...)
-	buf = append(buf, " ("...)
-	buf = append(buf, url...)
-	buf = append(buf, ')')
-	if count >= 0 {
-		buf = append(buf, " — "...)
-		buf = append(buf, strconv.Itoa(count)...)
-		buf = append(buf, " interactive elements"...)
-	}
-	buf = append(buf, "\n\n"...)
-	buf = append(buf, tree...)
-	return string(buf)
-}
-
 func (t *BrowserTool) maybeAugmentSnapshotWithReadableContent(ctx context.Context, b BrowserBackend, payload map[string]interface{}) {
 	if payload == nil || b == nil {
 		return
 	}
+	lang := browserToolLanguage(GetLang(ctx))
 	url := strings.TrimSpace(asString(payload["url"]))
 	title := strings.TrimSpace(asString(payload["title"]))
 	tree := strings.TrimSpace(asString(payload["tree"]))
@@ -960,15 +944,17 @@ func (t *BrowserTool) maybeAugmentSnapshotWithReadableContent(ctx context.Contex
 	payload["content_format"] = "text"
 	payload["content_strategy"] = "extract_recipe"
 	if tree == "" {
-		payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s", title, url, content)
+		payload["message"] = BrowserReadableContentMessage(lang, title, url, content)
 		return
 	}
-	sectionLabel := "Page structure"
-	switch strings.TrimSpace(asString(payload["strategy"])) {
-	case "interactive", "screenshot+interactive":
-		sectionLabel = "Interactive elements"
-	}
-	payload["message"] = fmt.Sprintf("Page: %s (%s)\n\nMain content:\n%s\n\n%s:\n%s", title, url, content, sectionLabel, tree)
+	payload["message"] = BrowserReadableContentWithTreeMessage(
+		lang,
+		title,
+		url,
+		content,
+		strings.TrimSpace(asString(payload["strategy"])),
+		tree,
+	)
 }
 
 func shouldTryReadableBrowserContent(url, title, tree string, count int) bool {

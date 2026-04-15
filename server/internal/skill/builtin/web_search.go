@@ -17,8 +17,8 @@ type WebSearcher interface {
 
 // WebSearch is a built-in skill that wraps a web search backend for IPC access.
 type WebSearch struct {
-	manifest *skill.Manifest
-	searcher WebSearcher
+	manifest  *skill.Manifest
+	searcher  WebSearcher
 	queryMode bool
 }
 
@@ -71,7 +71,7 @@ func NewWebQuery() *WebSearch {
 			ID:          "web_query",
 			Name:        "Web Query",
 			Version:     "1.0.0",
-			Description: "Unified public web discovery and reading skill. Accepts a query or URL and returns the best grounded page, title, and content when available.",
+			Description: "Unified public web discovery and reading skill. Accepts a query or URL and returns the best grounded page, title, and content when available. For auth-gated pages, prefer authenticated fetch/read with existing cookie or session reuse before full browser handoff.",
 			Category:    "system",
 			Icon:        "web-search",
 			Tags:        []string{"web", "docs", "search", "read"},

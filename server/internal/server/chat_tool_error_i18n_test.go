@@ -38,6 +38,48 @@ func TestLocalizeToolExecutionErrorMessage(t *testing.T) {
 			want: i18n.T(i18n.LangZhCN, i18n.MsgPathEscapesWorkspaceRoot),
 		},
 		{
+			name: "browser not running translated",
+			lang: i18n.LangZhCN,
+			raw:  "browser not running",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgBrowserNotRunning),
+		},
+		{
+			name: "browser service unavailable translated",
+			lang: i18n.LangZhCN,
+			raw:  "browser service not available",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgBrowserServiceNotAvailable),
+		},
+		{
+			name: "browser review error translated",
+			lang: i18n.LangZhCN,
+			raw:  "browser service not available — cannot review URL",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgBrowserServiceNotAvailableReviewURL),
+		},
+		{
+			name: "proxy bridge vlm error translated",
+			lang: i18n.LangZhCN,
+			raw:  "proxy bridge not available — cannot call VLM",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgProxyBridgeNotAvailableCallVLM),
+		},
+		{
+			name: "browser start failed template translated",
+			lang: i18n.LangZhCN,
+			raw:  "browser start failed: launch timeout",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgBrowserStartFailed, "launch timeout"),
+		},
+		{
+			name: "navigation failed url not allowed translated",
+			lang: i18n.LangZhCN,
+			raw:  "navigation failed: URL not allowed",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgNavigationURLNotAllowed),
+		},
+		{
+			name: "navigation failed template translated",
+			lang: i18n.LangZhCN,
+			raw:  "navigation failed: net::ERR_NAME_NOT_RESOLVED",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgNavigationFailed, "net::ERR_NAME_NOT_RESOLVED"),
+		},
+		{
 			name: "unknown error unchanged",
 			lang: i18n.LangZhCN,
 			raw:  "some custom error",

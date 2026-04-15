@@ -64,13 +64,28 @@ function createTestI18n(locale = 'en-US') {
           },
           messages: {
             browser_tab_ready: 'Browser tab ready',
+            browser_not_running: 'Browser is not running',
+            browser_service_not_available: 'Browser service not available',
+            browser_service_not_available_cannot_review_url:
+              'Browser service not available: cannot review URL',
+            browser_page_structure_section: 'Page structure',
+            browser_interactive_elements_section: 'Interactive elements',
+            browser_scroll_direction_up: 'up',
+            browser_scroll_direction_down: 'down',
+            browser_scroll_direction_left: 'left',
+            browser_scroll_direction_right: 'right',
             no_result_data: 'No result data',
             file_written_successfully: 'File written successfully',
+            navigation_failed_url_not_allowed: 'Navigation failed: URL not allowed',
+            proxy_bridge_not_available: 'Proxy bridge not available',
+            proxy_bridge_not_available_cannot_call_vlm:
+              'Proxy bridge not available: cannot call VLM',
             search_completed: 'Search completed',
             auto_answered_silent_mode: 'Auto-answered (silent mode)',
             screenshot_captured: 'Screenshot captured',
             screenshot_captured_interactive_elements_unavailable:
               'Screenshot captured (interactive elements unavailable)',
+            screenshot_captured_for_active_tab: 'Screenshot captured for active tab',
           },
           messageTemplates: {
             found_results: 'Found {count} results',
@@ -82,7 +97,25 @@ function createTestI18n(locale = 'en-US') {
             showing_first_entries_in_path: 'Showing first {count} entries in {path} (more omitted)',
             matches_for_pattern_in_path: '{count} matches for {pattern} in {path}',
             no_matches_for_pattern_in_path: 'No matches for {pattern} in {path}',
+            browser_start_failed: 'Browser start failed: {detail}',
+            navigation_failed: 'Navigation failed: {detail}',
+            browser_action_performed_on_ref: "Performed {action} on {'@'}{ref}",
+            browser_scrolled_page: 'Scrolled page {direction}',
+            browser_open_tabs: '{count} open tabs',
+            browser_tab_closed: 'Tab {target} closed',
+            browser_recipes_available: '{count} recipes available',
+            browser_large_dom_note:
+              "Page has {count} interactive elements and a large DOM. Using interactive elements list. Use 'screenshot' for visual layout.",
+            browser_page: 'Page: {title} ({url})\n\n{body}',
+            browser_page_with_interactive_count:
+              'Page: {title} ({url}) — {count} interactive elements\n\n{body}',
+            browser_page_with_screenshot_interactive_count:
+              'Page: {title} ({url}) — screenshot + {count} interactive elements\n\n{body}',
+            browser_page_main_content: 'Page: {title} ({url})\n\nMain content:\n{content}',
+            browser_page_main_content_with_section:
+              'Page: {title} ({url})\n\nMain content:\n{content}\n\n{section}:\n{body}',
             screenshot_captured_for: 'Screenshot captured for {target}',
+            screenshot_captured_for_tab: 'Screenshot captured for tab {target}',
           },
           warnings: {
             listing_truncated: 'Listing was truncated; narrow the path or increase max_entries.',
@@ -145,12 +178,25 @@ function createTestI18n(locale = 'en-US') {
           },
           messages: {
             browser_tab_ready: '浏览器标签页已就绪',
+            browser_not_running: '浏览器未运行',
+            browser_service_not_available: '浏览器服务不可用',
+            browser_service_not_available_cannot_review_url: '浏览器服务不可用：无法评审 URL',
+            browser_page_structure_section: '页面结构',
+            browser_interactive_elements_section: '交互元素',
+            browser_scroll_direction_up: '上',
+            browser_scroll_direction_down: '下',
+            browser_scroll_direction_left: '左',
+            browser_scroll_direction_right: '右',
             no_result_data: '没有结果数据',
             file_written_successfully: '文件写入成功',
+            navigation_failed_url_not_allowed: '导航失败：URL 不被允许',
+            proxy_bridge_not_available: '代理桥不可用',
+            proxy_bridge_not_available_cannot_call_vlm: '代理桥不可用：无法调用 VLM',
             search_completed: '搜索完成',
             auto_answered_silent_mode: '已自动回答（静默模式）',
             screenshot_captured: '已捕获截图',
             screenshot_captured_interactive_elements_unavailable: '已捕获截图（交互元素不可用）',
+            screenshot_captured_for_active_tab: '已为当前标签页捕获截图',
           },
           messageTemplates: {
             found_results: '找到 {count} 条结果',
@@ -162,7 +208,25 @@ function createTestI18n(locale = 'en-US') {
             showing_first_entries_in_path: '显示 {path} 中前 {count} 个条目（更多已省略）',
             matches_for_pattern_in_path: '{path} 中找到 {count} 处匹配 {pattern}',
             no_matches_for_pattern_in_path: '{path} 中未找到 {pattern} 的匹配',
+            browser_start_failed: '浏览器启动失败：{detail}',
+            navigation_failed: '导航失败：{detail}',
+            browser_action_performed_on_ref: "已在 {'@'}{ref} 上执行 {action}",
+            browser_scrolled_page: '页面已向{direction}滚动',
+            browser_open_tabs: '{count} 个打开的标签页',
+            browser_tab_closed: '标签页 {target} 已关闭',
+            browser_recipes_available: '{count} 个可用配方',
+            browser_large_dom_note:
+              '页面有 {count} 个交互元素且 DOM 很大。正在使用交互元素列表。若要查看视觉布局，请使用“screenshot”。',
+            browser_page: '页面：{title} ({url})\n\n{body}',
+            browser_page_with_interactive_count:
+              '页面：{title} ({url}) — {count} 个交互元素\n\n{body}',
+            browser_page_with_screenshot_interactive_count:
+              '页面：{title} ({url}) — 截图 + {count} 个交互元素\n\n{body}',
+            browser_page_main_content: '页面：{title} ({url})\n\n主要内容：\n{content}',
+            browser_page_main_content_with_section:
+              '页面：{title} ({url})\n\n主要内容：\n{content}\n\n{section}：\n{body}',
             screenshot_captured_for: '已为 {target} 捕获截图',
+            screenshot_captured_for_tab: '已为标签页 {target} 捕获截图',
           },
           warnings: {
             listing_truncated: '列表已截断；请缩小路径范围或增大 max_entries。',
@@ -291,6 +355,125 @@ describe('CardResult', () => {
     expect(wrapper.text()).not.toContain('File written successfully')
   })
 
+  it('translates exact browser navigation errors without leaking fallback keys', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'error',
+          message: 'navigation failed: URL not allowed',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('导航失败：URL 不被允许')
+    expect(wrapper.text()).not.toContain('navigation failed: URL not allowed')
+    expect(wrapper.text()).not.toContain('uiReview.errors.navigationFailed')
+  })
+
+  it('translates exact browser infrastructure errors', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'error',
+          message: 'browser service not available — cannot review URL',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('浏览器服务不可用：无法评审 URL')
+    expect(wrapper.text()).not.toContain('browser service not available')
+  })
+
+  it('translates templated browser startup and navigation failures', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'error',
+          message: 'browser start failed: launch timeout',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('浏览器启动失败：launch timeout')
+    expect(wrapper.text()).not.toContain('browser start failed: launch timeout')
+  })
+
+  it('translates proxy bridge errors for browser review flows', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'error',
+          message: 'proxy bridge not available — cannot call VLM',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('代理桥不可用：无法调用 VLM')
+    expect(wrapper.text()).not.toContain('proxy bridge not available')
+  })
+
+  it('translates legacy browser scroll summaries with localized directions', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'success',
+          message: 'Scrolled page down',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('页面已向下滚动')
+    expect(wrapper.text()).not.toContain('Scrolled page down')
+  })
+
+  it('translates legacy browser page summaries with localized section labels', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser',
+          status: 'success',
+          message:
+            'Page: Example (https://example.com)\n\nMain content:\nAlpha\n\nInteractive elements:\n[@1] button "OK"',
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('页面：Example (https://example.com)')
+    expect(wrapper.text()).toContain('主要内容：')
+    expect(wrapper.text()).toContain('交互元素：')
+    expect(wrapper.text()).not.toContain('Main content:')
+    expect(wrapper.text()).not.toContain('Interactive elements:')
+  })
+
   it('translates templated backend summaries and warnings', () => {
     const wrapper = mount(CardResult, {
       props: {
@@ -369,7 +552,11 @@ describe('CardResult', () => {
           details: [
             { label: 'path', value: '.' },
             { label: 'count', value: '3' },
-            { label: 'entries', value: '[dir] sub\n[file] README.md (123 B)\n[dir] server', multiline: true },
+            {
+              label: 'entries',
+              value: '[dir] sub\n[file] README.md (123 B)\n[dir] server',
+              multiline: true,
+            },
           ],
         },
       },
@@ -643,6 +830,54 @@ describe('CardResult', () => {
     expect(wrapper.text()).not.toContain('Screenshot captured for https://example.com')
   })
 
+  it('translates screenshot-captured tab summary templates from JSON-encoded message payloads', () => {
+    const base64PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'browser',
+          status: 'info',
+          message: JSON.stringify({
+            message: 'Screenshot captured for tab tab-7',
+            screenshot: base64PNG,
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已为标签页 tab-7 捕获截图')
+    expect(wrapper.text()).not.toContain('Screenshot captured for tab tab-7')
+  })
+
+  it('translates screenshot-captured active-tab summaries from JSON-encoded message payloads', () => {
+    const base64PNG =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO7+5VQAAAAASUVORK5CYII='
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'browser',
+          status: 'info',
+          message: JSON.stringify({
+            message: 'Screenshot captured for active tab',
+            screenshot: base64PNG,
+          }),
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已为当前标签页捕获截图')
+    expect(wrapper.text()).not.toContain('Screenshot captured for active tab')
+  })
+
   it('bridges local screenshot file paths from JSON-encoded message payloads', () => {
     const screenshotPath = '/Users/orca/.zimaos-blue/data/browser-checkpoints/example-shot.png'
     const wrapper = mount(CardResult, {
@@ -773,7 +1008,9 @@ describe('CardResult', () => {
     expect(wrapper.text()).toContain('@docs/reports/summary.md')
     expect(wrapper.text()).toContain('打开所在位置')
     await wrapper.get('button').trigger('click')
-    expect(openInBrowserMock).toHaveBeenCalledWith('/Users/orca/Documents/project/reports/summary.md')
+    expect(openInBrowserMock).toHaveBeenCalledWith(
+      '/Users/orca/Documents/project/reports/summary.md'
+    )
   })
 
   it('keeps /api detail paths as links instead of local file paths', () => {

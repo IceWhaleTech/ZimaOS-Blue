@@ -48,7 +48,7 @@ func (t *DOCXTool) Definition() ToolDefinition {
 				"subtitle": map[string]interface{}{"type": "string"},
 				"theme": map[string]interface{}{
 					"type": "string",
-					"enum": []string{"analysis", "ui_review", "executive", "clean"},
+					"enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"},
 				},
 				"style_hint": map[string]interface{}{"type": "string"},
 				"summary":    map[string]interface{}{},
@@ -142,6 +142,7 @@ func (t *DOCXTool) executeCreateLike(ctx context.Context, args map[string]interf
 		Size:         int64(len(data)),
 		Success:      true,
 	}
+	attachOfficeThemeMetadata(&payload, theme)
 	if info.SectionCount > 0 {
 		payload.Validation["section_count"] = info.SectionCount
 	}

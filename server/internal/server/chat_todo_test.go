@@ -1527,6 +1527,9 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "Prefer `web_query` as the unified public-web tool") || !strings.Contains(got, "`web_search`, `web_fetch`, and `web_read` are compatibility aliases") {
 		t.Fatalf("expected non-agent toolless nudge to mention unified web_query routing, got=%q", got)
 	}
+	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "`Authorization`, `Cookie`, or `browser_target_id`") || !strings.Contains(got, "relay/local Chrome") {
+		t.Fatalf("expected non-agent toolless nudge to mention auth/session reuse before browser fallback, got=%q", got)
+	}
 
 	if got := buildToollessAutoContinueNudge(false); !strings.Contains(got, "append=true") || !strings.Contains(got, "large file writes") {
 		t.Fatalf("expected non-agent toolless nudge to include chunked write guidance, got=%q", got)
@@ -2321,6 +2324,13 @@ func TestExtractRequestedArtifactWriteTarget_PrefersExplicitMemoryStoreTargetInM
 	prompt := "Use `memory/MEMORY.md` as the source of truth and save the cleaned summary to `memory/project_summary.md` for future recall."
 	if got := extractRequestedArtifactWriteTarget(prompt); got != "memory/project_summary.md" {
 		t.Fatalf("write target = %q, want memory/project_summary.md", got)
+	}
+}
+
+func TestExtractRequestedArtifactWriteTarget_PrefersConvertedNativeArtifactOverIntermediateMarkdown(t *testing.T) {
+	prompt := "Read findings.md, write the polished report to `report.md`, then convert it to `report.docx`."
+	if got := extractRequestedArtifactWriteTarget(prompt); got != "report.docx" {
+		t.Fatalf("write target = %q, want report.docx", got)
 	}
 }
 

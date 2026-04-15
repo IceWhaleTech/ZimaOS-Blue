@@ -10,6 +10,7 @@ import (
 // ResolveWorkspaceDir returns the shared runtime workspace directory.
 // Explicit non-default workspace settings win; otherwise we keep the
 // historical data-dir workspace to avoid surprising runtime behavior.
+// On ZimaOS, defaults to /media/ZimaOS-HD/AppData/zimaos-blue
 func ResolveWorkspaceDir(dataDir string, appCfg *config.Config) string {
 	candidates := make([]string, 0, 2)
 	if appCfg != nil {
@@ -17,7 +18,10 @@ func ResolveWorkspaceDir(dataDir string, appCfg *config.Config) string {
 			candidates = append(candidates, v)
 		}
 	}
-	if strings.TrimSpace(dataDir) != "" {
+	// Check ZimaOS first - if detected, use the ZimaOS default
+	if IsZimaOS() {
+		candidates = append(candidates, zimaOSDefaultWorkspaceDir)
+	} else if strings.TrimSpace(dataDir) != "" {
 		candidates = append(candidates, filepath.Join(dataDir, "workspace"))
 	}
 	for _, candidate := range candidates {
@@ -54,4 +58,8 @@ func normalizeWorkspacePath(raw string) string {
 
 func ResolveBuiltinToolAllowedPaths(appCfg *config.Config, dataDir string) []string {
 	return resolveBuiltinToolAllowedPaths(appCfg, dataDir)
+}
+
+func ResolveWorkspaceSkillsDir(dataDir string, appCfg *config.Config) string {
+	return filepath.Join(ResolveWorkspaceDir(dataDir, appCfg), ".claude", "skills")
 }
