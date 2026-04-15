@@ -1024,11 +1024,16 @@ func nativeDocumentArtifactHint(target, genericFormat string) string {
 		}
 		scope = "deliverable is " + format
 	}
+	extraRoutingNote := ""
+	if tool == "pptx" {
+		extraRoutingNote = " Do not treat this as slide-asset generation unless the user explicitly asks for a visual-only slide image."
+	}
 	return fmt.Sprintf(
-		" When the %s, prefer the native %s tool instead of convert, raw file_write, or helper scripts so %s are preserved. For writing-heavy document tasks, you can hand Markdown content directly to the native %s tool when its schema accepts it. Only write Markdown first and then convert it when the native tool cannot safely express the request or when format bridging is genuinely needed. If you use an intermediate Markdown file, that intermediate Markdown file does not complete the task. Likewise, a helper script, code generator, or automation file does not complete the task by itself; the task is complete only after the requested final %s artifact exists.",
+		" When the %s, prefer the native %s tool instead of convert, raw file_write, or helper scripts so %s are preserved.%s For writing-heavy document tasks, you can hand Markdown content directly to the native %s tool when its schema accepts it. Only write Markdown first and then convert it when the native tool cannot safely express the request or when format bridging is genuinely needed. If you use an intermediate Markdown file, that intermediate Markdown file does not complete the task. Likewise, a helper script, code generator, or automation file does not complete the task by itself; the task is complete only after the requested final %s artifact exists.",
 		scope,
 		tool,
 		nativeDocumentArtifactBenefit(tool),
+		extraRoutingNote,
 		tool,
 		format,
 	)
@@ -7515,6 +7520,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
 	routed = preferForcedDeepResearchTools(userMessage, allDefs, routed, policyReq.DeepResearchEnabled)
 	routed = h.ensureExplicitNativeArtifactWriteTools(userMessage, policyReq, allDefs, routed)
+	routed = suppressConvertForNativeArtifactRouting(userMessage, routed)
 	routed = applyEmailToolPreference(routed, userMessage)
 	routed = keepAlwaysExposedChatTools(allDefs, routed)
 
@@ -7749,6 +7755,25 @@ func (h *ChatHandler) ensureExplicitNativeArtifactWriteTools(userMessage string,
 		return filtered
 	}
 	return mergeToolDefsByName(filterToolDefsToNames(candidateDefs, tool), current)
+}
+
+func suppressConvertForNativeArtifactRouting(userMessage string, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(current) == 0 {
+		return current
+	}
+	docTools := nativeDocumentArtifactWorkflowToolNamesForMessage(userMessage)
+	if len(docTools) != 1 {
+		return current
+	}
+	tool := strings.ToLower(strings.TrimSpace(docTools[0]))
+	if tool == "" || !hasToolDefName(current, tool) || !hasToolDefName(current, "convert") {
+		return current
+	}
+	filtered := filterToolDefsToNames(current, tool, "read", "write", "edit", "ls", "find", "grep", "pdf", "image", "generate_image", "tool_search", "bash")
+	if len(filtered) == 0 {
+		return current
+	}
+	return filtered
 }
 
 func shouldPreferExplicitMemoryFileWorkflow(userMessage string) bool {
@@ -8461,12 +8486,32 @@ func artifactBaseWorkflowToolNames() []string {
 	}
 }
 
-func artifactFileWorkflowToolNamesForPath(target string) []string {
+func artifactBaseWorkflowToolNamesForNativeTool(tool string) []string {
 	names := append([]string{}, artifactBaseWorkflowToolNames()...)
-	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
-		names = append([]string{tool}, names...)
+	switch strings.ToLower(strings.TrimSpace(tool)) {
+	case "docx", "xlsx", "pdf", "pptx":
+		filtered := make([]string, 0, len(names))
+		for _, name := range names {
+			compat := normalizeFileToolCompatName(name)
+			if compat == "convert" {
+				continue
+			}
+			if strings.EqualFold(strings.TrimSpace(tool), "pptx") && compat == "image" {
+				continue
+			}
+			filtered = append(filtered, name)
+		}
+		return filtered
 	}
 	return names
+}
+
+func artifactFileWorkflowToolNamesForPath(target string) []string {
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+		names := artifactBaseWorkflowToolNamesForNativeTool(tool)
+		return append([]string{tool}, names...)
+	}
+	return append([]string{}, artifactBaseWorkflowToolNames()...)
 }
 
 func workspaceEditWorkflowToolNames() []string {
@@ -8523,13 +8568,20 @@ func artifactFileWorkflowToolNamesForMessage(userMessage string) []string {
 		return memoryFileWorkflowToolNames()
 	}
 	if isStructuredWorkspaceArtifactTask(userMessage) {
+		if target := extractRequestedArtifactWriteTarget(userMessage); target != "" && isNativeDocumentArtifactPath(target) {
+			return artifactFileWorkflowToolNamesForPath(target)
+		}
 		return tools.StructuredWorkspaceArtifactWorkflowToolNames(userMessage)
 	}
 	if target := extractRequestedArtifactPath(userMessage); target != "" {
 		return artifactFileWorkflowToolNamesForPath(target)
 	}
 	if docTools := nativeDocumentArtifactWorkflowToolNamesForMessage(userMessage); len(docTools) > 0 {
-		return append(docTools, artifactBaseWorkflowToolNames()...)
+		names := artifactBaseWorkflowToolNames()
+		if len(docTools) == 1 {
+			names = artifactBaseWorkflowToolNamesForNativeTool(docTools[0])
+		}
+		return append(docTools, names...)
 	}
 	if shouldPreferWorkspaceEditWorkflow(userMessage) {
 		return workspaceEditWorkflowToolNames()
@@ -16463,18 +16515,46 @@ func shouldStabilizeArtifactAfterWrite(userMessage string) bool {
 		shouldUseHeavyResearchWorkflow(userMessage)
 }
 
+func artifactPostWriteCompletionToolNames(target string) []string {
+	names := make([]string, 0, 7)
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+		names = append(names, tool)
+	}
+	names = append(names, "read", "ls", "find", "grep", "pdf")
+	if nativeDocumentArtifactToolForPath(target) == "" {
+		names = append(names, "convert")
+	}
+	return names
+}
+
+func artifactContinuationLocalSourceToolNames(target string, includeDiscovery bool) []string {
+	names := []string{"read", "grep", "pdf"}
+	if nativeDocumentArtifactToolForPath(target) == "" {
+		names = append(names, "convert")
+	}
+	if includeDiscovery {
+		names = append(names, "ls", "find")
+	}
+	return names
+}
+
+func buildArtifactContinuationLocalSourcePreference(target string) string {
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+		format := strings.ToLower(strings.TrimSpace(filepath.Ext(strings.TrimSpace(target))))
+		return fmt.Sprintf(
+			"Prefer the native %s tool for the requested %s output. Only fall back to convert if the native tool cannot safely express the request. Use read/pdf/grep/ls/find only to inspect local sources when needed, and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.",
+			tool,
+			format,
+		)
+	}
+	return "Prefer pdf/convert/read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them."
+}
+
 func buildPostWriteCompletionTools(tools []llm.Tool, userMessage string) []llm.Tool {
 	if len(tools) == 0 || !shouldStabilizeArtifactAfterWrite(userMessage) {
 		return tools
 	}
-	priority := []string{
-		"read",
-		"ls",
-		"find",
-		"grep",
-		"convert",
-		"pdf",
-	}
+	priority := artifactPostWriteCompletionToolNames(extractRequestedArtifactWriteTarget(userMessage))
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
 		name := normalizeFileToolCompatName(tool.Name)
@@ -16512,7 +16592,12 @@ func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls [
 	if !hasWorkspaceArtifactProgress(toolCalls, toolResults) && !hasIntermediateArtifactWriteWithoutRequestedTarget(userMessage, toolCalls, toolResults) {
 		return ""
 	}
-	nudge := fmt.Sprintf("This is still an artifact-writing task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, extracting raw content, or writing helper scripts or other intermediate files. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. Prefer pdf/convert/read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.", target, target)
+	nudge := fmt.Sprintf(
+		"This is still an artifact-writing task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, extracting raw content, or writing helper scripts or other intermediate files. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. %s",
+		target,
+		target,
+		buildArtifactContinuationLocalSourcePreference(target),
+	)
 	return nudge + " After saving the file, give a brief final confirmation."
 }
 
@@ -16580,21 +16665,9 @@ func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage s
 		priority = filteredPriority
 	}
 	if !hasContentEvidence {
-		priority = append(priority,
-			"read",
-			"grep",
-			"convert",
-			"pdf",
-			"ls",
-			"find",
-		)
+		priority = append(priority, artifactContinuationLocalSourceToolNames(target, true)...)
 	} else if !isStructuredWorkspaceArtifactTask(userMessage) {
-		priority = append(priority,
-			"read",
-			"grep",
-			"convert",
-			"pdf",
-		)
+		priority = append(priority, artifactContinuationLocalSourceToolNames(target, false)...)
 	}
 	indexByName := make(map[string]llm.Tool, len(tools))
 	for _, tool := range tools {
@@ -16674,13 +16747,12 @@ func buildPostWorkspaceArtifactCoverageContinuationTools(tools []llm.Tool, userM
 		return nil
 	}
 
-	priority := []string{
-		"read",
-		"pdf",
-		"convert",
-		"grep",
-		"ls",
-		"find",
+	priority := []string{"read"}
+	for _, name := range artifactContinuationLocalSourceToolNames(extractRequestedArtifactWriteTarget(userMessage), true) {
+		if normalizeFileToolCompatName(name) == "read" {
+			continue
+		}
+		priority = append(priority, name)
 	}
 	priority = append(priority, artifactWriteCompletionToolNames(extractRequestedArtifactWriteTarget(userMessage))...)
 	indexByName := make(map[string]llm.Tool, len(tools))

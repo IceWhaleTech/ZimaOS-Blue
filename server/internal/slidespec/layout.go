@@ -959,6 +959,7 @@ func buildCardElements(bullets []string, x, y, width, height, preferredCols int)
 }
 
 func splitMetricBullet(bullet string, ordinal int) (string, string) {
+	ensureMetricValueTokenRE()
 	cleaned := cleanBulletLine(bullet)
 	if cleaned == "" {
 		return cardOrdinal(ordinal), defaultMetricLabel(ordinal, false)
@@ -1015,6 +1016,7 @@ func buildMetricTrendValues(valueText, label string, ordinal int) []float64 {
 }
 
 func parseMetricMagnitude(valueText string) (float64, bool) {
+	ensureMetricValueTokenRE()
 	text := cleanLine(valueText)
 	if text == "" {
 		return 0, false

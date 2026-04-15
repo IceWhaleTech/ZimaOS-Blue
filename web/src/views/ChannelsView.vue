@@ -112,6 +112,37 @@ const wechatILinkSetupPending = ref(false)
 const wechatILinkSetupError = ref('')
 const wechatILinkSetupSession = ref<WeChatILinkSetupSessionResponse | null>(null)
 let wechatILinkSetupPoller: ReturnType<typeof setInterval> | null = null
+const wechatILinkSetupFailureStatuses = new Set(['error', 'expired'])
+
+function getWeChatILinkSetupStatusLabel(status?: string): string {
+  switch ((status || '').trim()) {
+    case 'pending':
+      return t('channels.wechatILinkSetupStatePending')
+    case 'authorizing':
+      return t('channels.wechatILinkSetupStateAuthorizing')
+    case 'configuring':
+      return t('channels.wechatILinkSetupStateConfiguring')
+    case 'connected':
+      return t('channels.wechatILinkSetupStateConnected')
+    case 'error':
+      return t('channels.wechatILinkSetupStateError')
+    case 'expired':
+      return t('channels.wechatILinkSetupStateExpired')
+    default:
+      return status?.trim() || t('channels.statusConnecting')
+  }
+}
+
+const canRetryWeChatILinkSetup = computed(() => {
+  if (wechatILinkSetupPending.value) return false
+  if (wechatILinkSetupError.value) return true
+  const status = wechatILinkSetupSession.value?.status || ''
+  return wechatILinkSetupFailureStatuses.has(status)
+})
+
+const hasWeChatILinkSetupStatus = computed(() =>
+  Boolean((wechatILinkSetupSession.value?.status || '').trim())
+)
 
 function isChannelFieldVisible(channel: ChannelDef, field: ChannelFieldDef): boolean {
   if (!field.visibleWhen) return true
@@ -1493,10 +1524,8 @@ function stopWeChatILinkSetupPolling() {
 function closeWeChatILinkSetupModal() {
   stopWeChatILinkSetupPolling()
   wechatILinkSetupOpen.value = false
-}
-
-function useWeChatILinkManualConfig() {
-  closeWeChatILinkSetupModal()
+  wechatILinkSetupError.value = ''
+  wechatILinkSetupSession.value = null
 }
 
 async function refreshWeChatILinkSetupSession(sessionId: string) {
@@ -1509,7 +1538,13 @@ async function refreshWeChatILinkSetupSession(sessionId: string) {
       return
     }
 
-    wechatILinkSetupSession.value = response.data
+    const previousSession = wechatILinkSetupSession.value
+    wechatILinkSetupSession.value = {
+      ...previousSession,
+      ...response.data,
+      qrcode: response.data.qrcode || previousSession?.qrcode,
+      mobile_url: response.data.mobile_url || previousSession?.mobile_url,
+    }
     wechatILinkSetupError.value = response.data.error || ''
 
     if (
@@ -1531,6 +1566,7 @@ async function refreshWeChatILinkSetupSession(sessionId: string) {
 async function startWeChatILinkSetup() {
   wechatILinkSetupPending.value = true
   wechatILinkSetupError.value = ''
+  wechatILinkSetupSession.value = null
   wechatILinkSetupOpen.value = true
 
   try {
@@ -2339,13 +2375,6 @@ onErrorCaptured((error, _instance, info) => {
                           : t('channels.wechatILinkScanAction')
                       }}
                     </button>
-                    <button
-                      type="button"
-                      class="channels-ilink-setup-card__secondary"
-                      @click="useWeChatILinkManualConfig"
-                    >
-                      {{ t('channels.wechatILinkManualAction') }}
-                    </button>
                   </div>
                 </section>
 
@@ -2446,9 +2475,12 @@ onErrorCaptured((error, _instance, info) => {
               {{ t('channels.wechatILinkSetupDescription') }}
             </p>
 
-            <div class="channels-ilink-modal__status">
+            <div
+              v-if="hasWeChatILinkSetupStatus"
+              class="channels-ilink-modal__status"
+            >
               {{ t('channels.wechatILinkSetupStatus') }}:
-              {{ wechatILinkSetupSession?.status || t('channels.statusConnecting') }}
+              {{ getWeChatILinkSetupStatusLabel(wechatILinkSetupSession?.status) }}
             </div>
 
             <a
@@ -2478,9 +2510,9 @@ onErrorCaptured((error, _instance, info) => {
               {{ t('common.close') }}
             </button>
             <button
+              v-if="canRetryWeChatILinkSetup"
               type="button"
               class="channels-ilink-modal__primary"
-              :disabled="wechatILinkSetupPending"
               @click="startWeChatILinkSetup"
             >
               {{ t('common.retry') }}

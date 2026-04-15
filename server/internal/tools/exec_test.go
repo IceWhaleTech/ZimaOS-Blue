@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -177,13 +178,34 @@ func TestNormalizeBlueCLIExecCommand(t *testing.T) {
 	}
 }
 
-func TestRewriteBlueCLIExecutable_UsesCurrentBinary(t *testing.T) {
+func TestRewriteBlueCLIExecutable_FallsBackToCurrentBinaryWhenPATHBlueMissing(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
 	rewritten := rewriteBlueCLIExecutable("blue /install humanizer")
 	if !strings.Contains(rewritten, "/install humanizer") {
 		t.Fatalf("rewritten command = %q, want slash command preserved", rewritten)
 	}
-	if strings.HasPrefix(rewritten, "blue ") {
-		t.Fatalf("rewritten command = %q, want current executable path prefix", rewritten)
+	exePath, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+	wantPrefix := strconv.Quote(exePath) + " "
+	if !strings.HasPrefix(rewritten, wantPrefix) {
+		t.Fatalf("rewritten command = %q, want current executable path prefix %q", rewritten, wantPrefix)
+	}
+}
+
+func TestRewriteBlueCLIExecutable_UsesPATHBlueWhenAvailable(t *testing.T) {
+	binDir := t.TempDir()
+	bluePath := filepath.Join(binDir, "blue")
+	if err := os.WriteFile(bluePath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write blue script: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	rewritten := rewriteBlueCLIExecutable("blue /install humanizer")
+	if rewritten != "blue /install humanizer" {
+		t.Fatalf("rewritten command = %q, want original command when PATH blue is available", rewritten)
 	}
 }
 

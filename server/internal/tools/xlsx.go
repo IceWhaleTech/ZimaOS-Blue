@@ -26,7 +26,7 @@ func NewXLSXTool(allowedPaths []string, approvals *ApprovalManager, dirStore *Di
 func (t *XLSXTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "xlsx",
-		Description: "Read, create, edit, fix, or validate native .xlsx workspace files with native-first OOXML handling and explicit degradation telemetry.",
+		Description: "Use when the task centers on a workspace .xlsx file and needs a native spreadsheet for tables, formulas, sheet edits, analysis, or validation.",
 		Icon:        "sheet",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -47,7 +47,23 @@ func (t *XLSXTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "Optional tone/style hint used to infer the workbook theme when theme is omitted.",
 				},
-				"summary":  map[string]interface{}{},
+				"summary": map[string]interface{}{},
+				"content": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional Markdown-like workbook seed. Markdown tables become sheets; Markdown lists or paragraphs become content sheets or overview notes during create/edit.",
+				},
+				"markdown": map[string]interface{}{
+					"type":        "string",
+					"description": "Alias of content for Markdown-first workbook creation.",
+				},
+				"body": map[string]interface{}{
+					"type":        "string",
+					"description": "Alias of content.",
+				},
+				"text": map[string]interface{}{
+					"type":        "string",
+					"description": "Alias of content.",
+				},
 				"notes":    map[string]interface{}{"type": "array"},
 				"sheets":   map[string]interface{}{"type": "array"},
 				"sheet":    map[string]interface{}{},
@@ -165,7 +181,7 @@ func (t *XLSXTool) executeCreateLike(ctx context.Context, args map[string]interf
 }
 
 func (t *XLSXTool) executeEdit(ctx context.Context, args map[string]interface{}, action string) (string, error) {
-	if _, ok := compatArgValue(args, "sheets", "sheet", "columns", "rows", "summary", "notes", "title", "subtitle"); ok {
+	if _, ok := compatArgValue(args, "sheets", "sheet", "columns", "headers", "rows", "table", "summary", "notes", "title", "subtitle", "content", "markdown", "body", "text"); ok {
 		return t.executeCreateLike(ctx, args, action)
 	}
 	replacements := parseReplacementMap(args, "replacements", "variables")

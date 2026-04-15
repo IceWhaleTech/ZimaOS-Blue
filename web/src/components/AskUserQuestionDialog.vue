@@ -231,6 +231,12 @@ const currentQuestionAnswered = computed(() => {
 })
 
 const autoDismissEnabled = computed(() => !question.value?.require_explicit_answer)
+const showActions = computed(() => {
+  if (!isQuickMode.value) return true
+  const q = currentQuestion.value
+  if (!q) return false
+  return isOtherSelected(q.id)
+})
 
 const canSubmit = computed(() => {
   if (!question.value) return false
@@ -598,7 +604,7 @@ async function dismiss() {
 
           <!-- Actions (hidden in quick mode) -->
           <div
-            v-if="!isQuickMode"
+            v-if="showActions"
             class="flex gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50"
           >
             <button

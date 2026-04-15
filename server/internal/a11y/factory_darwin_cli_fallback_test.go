@@ -19,14 +19,14 @@ func TestDarwinSystemCLI_ActivateAppPrefersOpen(t *testing.T) {
 		},
 	}
 
-	if err := cli.activateApp("Feishu"); err != nil {
+	if err := cli.activateApp("Safari"); err != nil {
 		t.Fatalf("activateApp() error = %v", err)
 	}
 	if len(calls) != 1 {
 		t.Fatalf("calls = %v, want one open call", calls)
 	}
-	if calls[0] != "open -a Feishu" {
-		t.Fatalf("first call = %q, want %q", calls[0], "open -a Feishu")
+	if calls[0] != "open -a Safari" {
+		t.Fatalf("first call = %q, want %q", calls[0], "open -a Safari")
 	}
 }
 
@@ -78,6 +78,133 @@ func TestDarwinSystemCLI_ActivateAppReturnsFallbackFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "script failed") {
 		t.Fatalf("error = %v, want osascript output", err)
+	}
+}
+
+func TestDarwinSystemCLI_ActivateFeishuAppRetriesOpenBeforeAppleScript(t *testing.T) {
+	prevWait := darwinActivateAppFrontmostWait
+	prevPoll := darwinActivateAppFrontmostPollInterval
+	darwinActivateAppFrontmostWait = 0
+	darwinActivateAppFrontmostPollInterval = 0
+	defer func() {
+		darwinActivateAppFrontmostWait = prevWait
+		darwinActivateAppFrontmostPollInterval = prevPoll
+	}()
+
+	var calls []string
+	frontmostChecks := 0
+	cli := darwinSystemCLI{
+		run: func(_ context.Context, name string, args ...string) (string, error) {
+			call := name + " " + strings.Join(args, " ")
+			calls = append(calls, call)
+			switch {
+			case name == "open":
+				return "", nil
+			case name == "lsappinfo" && len(args) == 1 && args[0] == "front":
+				frontmostChecks++
+				if frontmostChecks == 1 {
+					return "ASN:0x0-0x1:", nil
+				}
+				return "ASN:0x0-0x2:", nil
+			case name == "lsappinfo" && len(args) == 4 && args[0] == "info":
+				if args[3] == "ASN:0x0-0x1:" {
+					return `"LSDisplayName"="Google Chrome"`, nil
+				}
+				return `"LSDisplayName"="Lark"`, nil
+			default:
+				return "", nil
+			}
+		},
+	}
+
+	if err := cli.activateApp("Feishu"); err != nil {
+		t.Fatalf("activateApp() error = %v", err)
+	}
+	if len(calls) != 6 {
+		t.Fatalf("calls = %v, want open + frontmost check + open retry + frontmost check", calls)
+	}
+	if calls[0] != "open -a Feishu" {
+		t.Fatalf("calls[0] = %q, want first open", calls[0])
+	}
+	if calls[3] != "open -a Feishu" {
+		t.Fatalf("calls[3] = %q, want second open retry", calls[3])
+	}
+	for _, call := range calls {
+		if strings.HasPrefix(call, "osascript ") {
+			t.Fatalf("calls = %v, want no osascript when second open makes Feishu/Lark frontmost", calls)
+		}
+	}
+}
+
+func TestDarwinSystemCLI_ActivateFeishuAppFallsBackToAppleScriptAfterOpenRetry(t *testing.T) {
+	prevWait := darwinActivateAppFrontmostWait
+	prevPoll := darwinActivateAppFrontmostPollInterval
+	darwinActivateAppFrontmostWait = 0
+	darwinActivateAppFrontmostPollInterval = 0
+	defer func() {
+		darwinActivateAppFrontmostWait = prevWait
+		darwinActivateAppFrontmostPollInterval = prevPoll
+	}()
+
+	var calls []string
+	cli := darwinSystemCLI{
+		run: func(_ context.Context, name string, args ...string) (string, error) {
+			call := name + " " + strings.Join(args, " ")
+			calls = append(calls, call)
+			switch {
+			case name == "open":
+				return "", nil
+			case name == "lsappinfo" && len(args) == 1 && args[0] == "front":
+				return "ASN:0x0-0x1:", nil
+			case name == "lsappinfo" && len(args) == 4 && args[0] == "info":
+				return `"LSDisplayName"="Google Chrome"`, nil
+			case name == "osascript":
+				return "", nil
+			default:
+				return "", nil
+			}
+		},
+	}
+
+	if err := cli.activateApp("Feishu"); err != nil {
+		t.Fatalf("activateApp() error = %v", err)
+	}
+	if len(calls) != 7 {
+		t.Fatalf("calls = %v, want open + checks + retry open + checks + osascript", calls)
+	}
+	if calls[0] != "open -a Feishu" {
+		t.Fatalf("calls[0] = %q, want first open", calls[0])
+	}
+	if calls[3] != "open -a Feishu" {
+		t.Fatalf("calls[3] = %q, want second open retry", calls[3])
+	}
+	if !strings.HasPrefix(calls[6], "osascript -e tell application ") {
+		t.Fatalf("calls[6] = %q, want osascript fallback after open retries", calls[6])
+	}
+}
+
+func TestDarwinSystemCLI_WaitForFrontmostAppNameHandlesNilContext(t *testing.T) {
+	prevPoll := darwinActivateAppFrontmostPollInterval
+	darwinActivateAppFrontmostPollInterval = time.Millisecond
+	defer func() {
+		darwinActivateAppFrontmostPollInterval = prevPoll
+	}()
+
+	cli := darwinSystemCLI{
+		run: func(_ context.Context, name string, args ...string) (string, error) {
+			switch {
+			case name == "lsappinfo" && len(args) == 1 && args[0] == "front":
+				return "ASN:0x0-0x1:", nil
+			case name == "lsappinfo" && len(args) == 4 && args[0] == "info":
+				return `"LSDisplayName"="Google Chrome"`, nil
+			default:
+				return "", nil
+			}
+		},
+	}
+
+	if cli.waitForFrontmostAppName(nil, "Feishu", time.Millisecond) {
+		t.Fatal("waitForFrontmostAppName() = true, want false when frontmost app never matches")
 	}
 }
 

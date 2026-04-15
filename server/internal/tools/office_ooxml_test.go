@@ -264,7 +264,7 @@ func TestBuildOfficeDOCX_ConvertsCommonMarkdownVariantsToOfficeRuns(t *testing.T
 	}
 }
 
-func TestBuildOfficeDOCX_PreservesOrderedAndTaskListText(t *testing.T) {
+func TestBuildOfficeDOCX_PreservesOrderedAndTaskListSemantics(t *testing.T) {
 	docxData, _, err := buildOfficeDOCX(officeDocSpec{
 		Title: "Quarterly Update",
 		Sections: []officeDocSection{
@@ -276,12 +276,22 @@ func TestBuildOfficeDOCX_PreservesOrderedAndTaskListText(t *testing.T) {
 	}
 
 	xml := officeZipEntryText(t, docxData, "word/document.xml")
-	for _, needle := range []string{"1. First step", "☑ Finished", "☐ Pending"} {
+	for _, needle := range []string{
+		`<w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>`,
+		"First step",
+		"☑ Finished",
+		"☐ Pending",
+	} {
 		if !containsSubstring(xml, needle) {
 			t.Fatalf("document.xml missing %q in %s", needle, xml)
 		}
 	}
-	for _, unwanted := range []string{"• 1. First step", "• ☑ Finished", "• ☐ Pending"} {
+	for _, unwanted := range []string{
+		"1. First step",
+		"• 1. First step",
+		"• ☑ Finished",
+		"• ☐ Pending",
+	} {
 		if containsSubstring(xml, unwanted) {
 			t.Fatalf("document.xml should not contain %q in %s", unwanted, xml)
 		}

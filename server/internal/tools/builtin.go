@@ -402,7 +402,7 @@ func (f *FileWriteTool) SetSkillExposureManager(manager *skillmanifest.SkillExpo
 func (f *FileWriteTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "file_write",
-		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does. Keep each write at or below 200 lines and 64 KiB. For larger files, prefer write_begin/write_chunk/write_commit; otherwise write the first chunk, then continue with append=true across multiple calls instead of sending one huge payload.",
+		Description: "Writes content to a file. Creates the file if it doesn't exist, or overwrites if it does. Keep each write at or below 500 lines and 64 KiB. For larger files, prefer write_begin/write_chunk/write_commit; otherwise write the first chunk, then continue with append=true across multiple calls instead of sending one huge payload.",
 		Icon:        "file-write",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -413,7 +413,7 @@ func (f *FileWriteTool) Definition() ToolDefinition {
 				},
 				"content": map[string]interface{}{
 					"type":        "string",
-					"description": "The content chunk to write. Keep each call at or below 200 lines and 64 KiB. For large files, split content across multiple calls instead of sending one huge string.",
+					"description": "The content chunk to write. Keep each call at or below 500 lines and 64 KiB. For large files, split content across multiple calls instead of sending one huge string.",
 				},
 				"append": map[string]interface{}{
 					"type":        "boolean",

@@ -15,12 +15,13 @@ import (
 )
 
 type Controller struct {
-	store          *SQLiteStore
-	resolver       *PolicyResolver
-	judgeEvaluator JudgeEvaluator
-	reflector      ProposalReflector
-	runTrace       RunTraceProvider
-	optimization   OptimizationTriggerer
+	store             *SQLiteStore
+	resolver          *PolicyResolver
+	judgeEvaluator    JudgeEvaluator
+	reflector         ProposalReflector
+	runTrace          RunTraceProvider
+	optimization      OptimizationTriggerer
+	runtimeReflection *RuntimeReflectionCoordinator
 
 	mu          sync.RWMutex
 	drivers     map[RunKind]Driver
@@ -558,6 +559,9 @@ func (c *Controller) SyncSnapshot(ctx context.Context, snapshot *Run) error {
 		return err
 	}
 	if current.Status != snapshot.Status && isTerminalRunStatus(snapshot.Status) {
+		if coordinator := c.runtimeReflectionCoordinator(); coordinator != nil {
+			coordinator.OnRunTerminal(ctx, snapshot)
+		}
 		_ = c.appendStageEvent(ctx, snapshot, RuntimeStageFinalize, "run terminal state synced", map[string]interface{}{
 			"status": snapshot.Status,
 			"error":  strings.TrimSpace(snapshot.Error),
@@ -603,11 +607,38 @@ func (c *Controller) syncRun(ctx context.Context, run *Run) (*Run, error) {
 		}
 		if !applied {
 			if latest, latestErr := c.store.GetRun(ctx, updated.ID); latestErr == nil && latest != nil {
+				expectedLatest := *latest
+				if normalizeRunLifecycleTimes(updated, latest) {
+					if latestApplied, latestUpdateErr := c.store.UpdateRunIfMaterialStateMatches(ctx, &expectedLatest, latest); latestUpdateErr == nil && !latestApplied {
+						if freshest, freshestErr := c.store.GetRun(ctx, updated.ID); freshestErr == nil && freshest != nil {
+							latest = freshest
+							normalizeRunLifecycleTimes(updated, latest)
+						}
+					}
+				}
 				return latest, nil
 			}
 		}
 	}
 	return updated, nil
+}
+
+func (c *Controller) SetRuntimeReflectionCoordinator(coordinator *RuntimeReflectionCoordinator) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.runtimeReflection = coordinator
+}
+
+func (c *Controller) runtimeReflectionCoordinator() *RuntimeReflectionCoordinator {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.runtimeReflection
 }
 
 func (c *Controller) startRun(ctx context.Context, run *Run, parent *Run, driver Driver) error {

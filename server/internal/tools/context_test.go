@@ -3,6 +3,8 @@ package tools
 import (
 	"context"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 )
 
 func TestWithSessionID(t *testing.T) {
@@ -37,6 +39,9 @@ func TestSessionIDDoesNotInterfereWithOtherKeys(t *testing.T) {
 	}
 	if got := GetLang(ctx); got != "zh-CN" {
 		t.Errorf("GetLang() = %q, want %q", got, "zh-CN")
+	}
+	if got := skill.GetLang(ctx); got != "zh-CN" {
+		t.Errorf("skill.GetLang() = %q, want %q", got, "zh-CN")
 	}
 }
 

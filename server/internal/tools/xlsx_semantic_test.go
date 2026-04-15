@@ -107,6 +107,62 @@ func TestXLSXToolCreateWritesFormulaCellsAndReadMetadata(t *testing.T) {
 	}
 }
 
+func TestXLSXToolCreateAcceptsMarkdownInput(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewXLSXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "reports/markdown.xlsx",
+		"markdown": `# Launch Scorecard
+Quarterly planning workbook
+
+Summary: Capture the latest status in a spreadsheet-friendly format.
+
+## Metrics
+| Metric | Value |
+| --- | --- |
+| Launch | Ready |
+| Risk | Low |
+
+## Owners
+- Platform
+- Design
+`,
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_xlsx_ooxml" {
+		t.Fatalf("engine = %v, want native_xlsx_ooxml", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "markdown.xlsx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	workbookXML := officeZipEntryText(t, data, "xl/workbook.xml")
+	for _, needle := range []string{"Overview", "Metrics", "Owners"} {
+		if !strings.Contains(workbookXML, needle) {
+			t.Fatalf("workbook.xml missing %q: %s", needle, workbookXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	for _, needle := range []string{"Launch Scorecard", "Launch", "Ready", "Platform", "Design"} {
+		if !strings.Contains(doc.Text, needle) {
+			t.Fatalf("expected workbook text to include %q, got %q", needle, doc.Text)
+		}
+	}
+}
+
 func TestXLSXToolCreateComputesSupportedFormulaCachedValues(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewXLSXTool([]string{tmpDir}, nil, nil)

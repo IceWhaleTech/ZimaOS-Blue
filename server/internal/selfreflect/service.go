@@ -37,6 +37,15 @@ type Step struct {
 	Output      string `json:"output,omitempty"`
 }
 
+type RuntimeEvidenceItem struct {
+	ID           string `json:"id,omitempty"`
+	EventType    string `json:"event_type,omitempty"`
+	StepIndex    int    `json:"step_index,omitempty"`
+	PlannerRound int    `json:"planner_round,omitempty"`
+	Summary      string `json:"summary,omitempty"`
+	PayloadJSON  string `json:"payload_json,omitempty"`
+}
+
 type Input struct {
 	TaskID             string                 `json:"task_id,omitempty"`
 	Goal               string                 `json:"goal"`
@@ -48,6 +57,10 @@ type Input struct {
 	OwnerUserID        string                 `json:"owner_user_id,omitempty"`
 	SourceKind         string                 `json:"source_kind,omitempty"`
 	SourceID           string                 `json:"source_id,omitempty"`
+	TriggerKind        string                 `json:"trigger_kind,omitempty"`
+	EvidenceWindow     []RuntimeEvidenceItem  `json:"evidence_window,omitempty"`
+	RuntimeSignals     map[string]interface{} `json:"runtime_signals,omitempty"`
+	DisableMemoryWrite bool                   `json:"disable_memory_write,omitempty"`
 	EvaluationSummary  map[string]interface{} `json:"evaluation_summary,omitempty"`
 	ProposalCandidates []ProposalCandidate    `json:"proposal_candidates,omitempty"`
 	ProposalMode       ProposalMode           `json:"proposal_mode,omitempty"`
@@ -60,14 +73,26 @@ type Lesson struct {
 	Evidence    string     `json:"evidence"`
 }
 
+type MutationSuggestion struct {
+	Kind          string   `json:"kind,omitempty"`
+	TargetSkillID string   `json:"target_skill_id,omitempty"`
+	Rationale     string   `json:"rationale,omitempty"`
+	SuggestedText string   `json:"suggested_text,omitempty"`
+	EvidenceIDs   []string `json:"evidence_ids,omitempty"`
+	Signature     string   `json:"signature,omitempty"`
+}
+
 type Result struct {
-	Summary              string   `json:"summary"`
-	Lessons              []Lesson `json:"lessons,omitempty"`
-	MemoryWritten        int      `json:"memory_written"`
-	SkippedReason        string   `json:"skipped_reason,omitempty"`
-	ProposalCount        int      `json:"proposal_count,omitempty"`
-	ProposalIDs          []string `json:"proposal_ids,omitempty"`
-	ProposalSkippedReason string  `json:"proposal_skipped_reason,omitempty"`
+	Summary               string               `json:"summary"`
+	Lessons               []Lesson             `json:"lessons,omitempty"`
+	MutationSuggestions   []MutationSuggestion `json:"mutation_suggestions,omitempty"`
+	ReflectionSignature   string               `json:"reflection_signature,omitempty"`
+	SignalStrength        string               `json:"signal_strength,omitempty"`
+	MemoryWritten         int                  `json:"memory_written"`
+	SkippedReason         string               `json:"skipped_reason,omitempty"`
+	ProposalCount         int                  `json:"proposal_count,omitempty"`
+	ProposalIDs           []string             `json:"proposal_ids,omitempty"`
+	ProposalSkippedReason string               `json:"proposal_skipped_reason,omitempty"`
 }
 
 type Service struct {
@@ -130,7 +155,10 @@ func (s *Service) Reflect(ctx context.Context, input Input) (*Result, error) {
 		result = parsed
 		result.Summary = strings.TrimSpace(result.Summary)
 		result.Lessons = filterLessons(result.Lessons, input, s.maxLessons)
-		if len(result.Lessons) == 0 {
+		result.MutationSuggestions = normalizeMutationSuggestions(result.MutationSuggestions)
+		result.SignalStrength = normalizeSignalStrength(result.SignalStrength)
+		refreshReflectionSignature(result)
+		if len(result.Lessons) == 0 && len(result.MutationSuggestions) == 0 {
 			if result.Summary == "" {
 				result.Summary = fallbackSummary(input)
 			}
@@ -140,7 +168,7 @@ func (s *Service) Reflect(ctx context.Context, input Input) (*Result, error) {
 				result.Summary = fallbackSummary(input)
 			}
 			writer := s.memoryWriter()
-			if writer != nil {
+			if writer != nil && !input.DisableMemoryWrite {
 				for _, lesson := range result.Lessons {
 					if err := writer.Write(ctx, formatMemoryEntry(lesson), buildMemoryTags(input, lesson.Kind)); err == nil {
 						result.MemoryWritten++
@@ -331,7 +359,7 @@ func (s *Service) buildProposal(ctx context.Context, store ProposalStore, mgr *w
 }
 
 func buildReflectionSystemPrompt() string {
-	return strings.TrimSpace(`You are a post-task reflection engine for ZimaOS Blue.
+	return strings.TrimSpace(`You are a runtime-aware reflection engine for ZimaOS Blue.
 
 ## Output Contract
 Return ONLY one JSON object in this exact shape:
@@ -344,17 +372,31 @@ Return ONLY one JSON object in this exact shape:
       "when_to_apply": "<when this lesson applies>",
       "evidence": "<specific evidence from the task record>"
     }
-  ]
+  ],
+  "mutation_suggestions": [
+    {
+      "kind": "instruction_add|instruction_replace|guardrail_add|workflow_capture|anti_pattern",
+      "target_skill_id": "<canonical skill id>",
+      "rationale": "<brief grounded reason>",
+      "suggested_text": "<proposed instruction text>",
+      "evidence_ids": ["<evidence id>", "<evidence id>"],
+      "signature": "<optional stable short signature>"
+    }
+  ],
+  "reflection_signature": "<optional stable signature>",
+  "signal_strength": "low|medium|high"
 }
 
 ## Reflection Rules
 - Extract 0-5 grounded, reusable lessons from the task record.
+- Extract 0-N mutation suggestions only when the evidence supports a reusable skill/instruction change.
 - Prefer concrete heuristics over generic advice.
 - No self-praise, self-blame, motivational language, or vague best-practice slogans.
 - Each lesson must be supported by evidence from the task record.
+- Each mutation suggestion must cite at least two evidence ids and name the target canonical skill.
 - Keep each field concise and operational.
 - Use "heuristic" for tactics that worked, "anti_pattern" for approaches that failed, and "guardrail" for checks that should be added next time.
-- If the record is too weak, return an empty lessons array.
+- If the record is too weak, return empty lessons and empty mutation_suggestions arrays.
 
 ## Output Rules
 - No markdown, no code fences, and no prose outside the JSON object.`)
@@ -363,6 +405,9 @@ Return ONLY one JSON object in this exact shape:
 func buildReflectionUserPrompt(input Input) string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("Goal: %s\n", input.Goal))
+	if input.TriggerKind != "" {
+		sb.WriteString(fmt.Sprintf("Trigger kind: %s\n", input.TriggerKind))
+	}
 	if input.FinalStatus != "" {
 		sb.WriteString(fmt.Sprintf("Final status: %s\n", input.FinalStatus))
 	}
@@ -392,6 +437,34 @@ func buildReflectionUserPrompt(input Input) string {
 		sb.WriteString(truncate(input.VerificationOutput, 1200))
 		sb.WriteString("\n")
 	}
+	if len(input.RuntimeSignals) > 0 {
+		if raw, err := json.Marshal(input.RuntimeSignals); err == nil {
+			sb.WriteString("\nRuntime signals:\n")
+			sb.WriteString(truncate(string(raw), 1200))
+			sb.WriteString("\n")
+		}
+	}
+	if len(input.EvidenceWindow) > 0 {
+		sb.WriteString("\nEvidence window:\n")
+		for _, item := range input.EvidenceWindow {
+			sb.WriteString("- ")
+			if item.ID != "" {
+				sb.WriteString(item.ID)
+				sb.WriteString(" ")
+			}
+			if item.EventType != "" {
+				sb.WriteString("[")
+				sb.WriteString(item.EventType)
+				sb.WriteString("] ")
+			}
+			sb.WriteString(truncate(item.Summary, 240))
+			if item.PayloadJSON != "" {
+				sb.WriteString(" :: ")
+				sb.WriteString(truncate(item.PayloadJSON, 240))
+			}
+			sb.WriteString("\n")
+		}
+	}
 	return strings.TrimSpace(sb.String())
 }
 
@@ -406,6 +479,9 @@ func parseReflectionResult(content string) (*Result, error) {
 	if err := json.Unmarshal([]byte(trimmed), &out); err != nil {
 		return nil, fmt.Errorf("failed to parse reflection result: %w", err)
 	}
+	out.SignalStrength = normalizeSignalStrength(out.SignalStrength)
+	out.MutationSuggestions = normalizeMutationSuggestions(out.MutationSuggestions)
+	refreshReflectionSignature(&out)
 	return &out, nil
 }
 
@@ -418,12 +494,17 @@ func normalizeInput(input Input) Input {
 	input.OwnerUserID = strings.TrimSpace(input.OwnerUserID)
 	input.SourceKind = strings.TrimSpace(input.SourceKind)
 	input.SourceID = strings.TrimSpace(input.SourceID)
+	input.TriggerKind = strings.TrimSpace(input.TriggerKind)
+	input.RuntimeSignals = cloneRuntimeSignals(input.RuntimeSignals)
 	input.FinalStatus = normalizeStatus(input.FinalStatus)
 	input.ProposalMode = normalizeProposalMode(input.ProposalMode)
 	for i := range input.Plan {
 		input.Plan[i].Description = strings.TrimSpace(input.Plan[i].Description)
 		input.Plan[i].Status = normalizeStatus(input.Plan[i].Status)
 		input.Plan[i].Output = strings.TrimSpace(input.Plan[i].Output)
+	}
+	for i := range input.EvidenceWindow {
+		input.EvidenceWindow[i] = normalizeRuntimeEvidenceItem(input.EvidenceWindow[i])
 	}
 	for i := range input.ProposalCandidates {
 		input.ProposalCandidates[i] = normalizeProposalCandidate(input.ProposalCandidates[i])
@@ -557,6 +638,14 @@ func buildCorpus(input Input) string {
 	parts := []string{input.Goal, input.ResultSummary, input.FailureReason, input.VerificationOutput}
 	for _, step := range input.Plan {
 		parts = append(parts, step.Description, step.Output)
+	}
+	for _, item := range input.EvidenceWindow {
+		parts = append(parts, item.EventType, item.Summary, item.PayloadJSON)
+	}
+	if len(input.RuntimeSignals) > 0 {
+		if raw, err := json.Marshal(input.RuntimeSignals); err == nil {
+			parts = append(parts, string(raw))
+		}
 	}
 	return strings.ToLower(strings.Join(parts, "\n"))
 }

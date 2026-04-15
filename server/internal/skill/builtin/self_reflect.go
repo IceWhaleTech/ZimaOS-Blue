@@ -39,6 +39,10 @@ func NewSelfReflect() *SelfReflect {
 				{Name: "final_status", Type: "string", Description: "completed|failed|partial", Required: true},
 				{Name: "result_summary", Type: "string", Description: "Task outcome summary"},
 				{Name: "failure_reason", Type: "string", Description: "Failure reason if the task failed"},
+				{Name: "trigger_kind", Type: "string", Description: "Optional runtime reflection trigger kind"},
+				{Name: "evidence_window", Type: "array", Description: "Optional runtime evidence window"},
+				{Name: "runtime_signals", Type: "object", Description: "Optional runtime signal summary"},
+				{Name: "disable_memory_write", Type: "boolean", Description: "Optional flag to suppress memory writes"},
 				{Name: "source_kind", Type: "string", Description: "Optional source kind for human-review proposals"},
 				{Name: "source_id", Type: "string", Description: "Optional source identifier for human-review proposals"},
 				{Name: "evaluation_summary", Type: "object", Description: "Optional calibration or evaluator summary"},
@@ -48,6 +52,9 @@ func NewSelfReflect() *SelfReflect {
 			Outputs: []skill.Parameter{
 				{Name: "summary", Type: "string", Description: "Short reflection summary"},
 				{Name: "lessons", Type: "array", Description: "Grounded reusable lessons"},
+				{Name: "mutation_suggestions", Type: "array", Description: "Optional structured runtime mutation suggestions"},
+				{Name: "reflection_signature", Type: "string", Description: "Stable signature for repeated runtime reflections"},
+				{Name: "signal_strength", Type: "string", Description: "Low|medium|high confidence signal strength"},
 				{Name: "memory_written", Type: "number", Description: "Number of memory entries written"},
 				{Name: "skipped_reason", Type: "string", Description: "Reason reflection was skipped or filtered"},
 				{Name: "proposal_count", Type: "number", Description: "Number of AGENTS.md review proposals created"},
@@ -85,9 +92,9 @@ func (s *SelfReflect) Validate(input map[string]any) error {
 		return nil
 	}
 	switch status {
-	case "completed", "failed", "partial":
+	case "completed", "failed", "partial", "running", "pending", "skipped":
 	default:
-		return fmt.Errorf("final_status must be one of: completed, failed, partial")
+		return fmt.Errorf("final_status must be one of: completed, failed, partial, running, pending, skipped")
 	}
 	return nil
 }
@@ -99,6 +106,7 @@ func normalizeSelfReflectSkillInput(input map[string]any) {
 	normalizeStringAlias(input, "failure_reason", "error", "reason")
 	normalizeStringAlias(input, "verification_output", "verification", "verification_result", "verificationResult")
 	normalizeStringAlias(input, "task_id", "taskId")
+	normalizeStringAlias(input, "trigger_kind", "triggerKind")
 	normalizeStringAlias(input, "source_kind", "sourceKind")
 	normalizeStringAlias(input, "source_id", "sourceId")
 	normalizeStringAlias(input, "proposal_mode", "proposalMode")
@@ -112,6 +120,21 @@ func normalizeSelfReflectSkillInput(input map[string]any) {
 		status := strings.ToLower(strings.TrimSpace(rawStatus))
 		if status != "" {
 			input["final_status"] = status
+		}
+	}
+	if _, ok := input["evidence_window"]; !ok {
+		if raw, ok := input["evidenceWindow"]; ok {
+			input["evidence_window"] = raw
+		}
+	}
+	if _, ok := input["runtime_signals"]; !ok {
+		if raw, ok := input["runtimeSignals"]; ok {
+			input["runtime_signals"] = raw
+		}
+	}
+	if _, ok := input["disable_memory_write"]; !ok {
+		if raw, ok := input["disableMemoryWrite"]; ok {
+			input["disable_memory_write"] = raw
 		}
 	}
 }
@@ -136,6 +159,10 @@ func (s *SelfReflect) Execute(ctx context.Context, input map[string]any) (*skill
 		FinalStatus:        asString(input["final_status"]),
 		ResultSummary:      asString(input["result_summary"]),
 		FailureReason:      asString(input["failure_reason"]),
+		TriggerKind:        asString(input["trigger_kind"]),
+		EvidenceWindow:     parseRuntimeEvidenceWindow(input["evidence_window"]),
+		RuntimeSignals:     asMap(input["runtime_signals"]),
+		DisableMemoryWrite: asBool(input["disable_memory_write"]),
 		SourceKind:         asString(input["source_kind"]),
 		SourceID:           asString(input["source_id"]),
 		EvaluationSummary:  asMap(input["evaluation_summary"]),
@@ -151,6 +178,9 @@ func (s *SelfReflect) Execute(ctx context.Context, input map[string]any) (*skill
 	return skill.NewResult(map[string]any{
 		"summary":                 result.Summary,
 		"lessons":                 result.Lessons,
+		"mutation_suggestions":    result.MutationSuggestions,
+		"reflection_signature":    result.ReflectionSignature,
+		"signal_strength":         result.SignalStrength,
 		"memory_written":          result.MemoryWritten,
 		"skipped_reason":          result.SkippedReason,
 		"proposal_count":          result.ProposalCount,
@@ -211,6 +241,11 @@ func asMap(value any) map[string]any {
 	return m
 }
 
+func asBool(value any) bool {
+	v, _ := value.(bool)
+	return v
+}
+
 func parseProposalCandidates(raw any) []selfreflect.ProposalCandidate {
 	items, ok := raw.([]interface{})
 	if !ok {
@@ -245,4 +280,38 @@ func parseStringArray(raw any) []string {
 		}
 	}
 	return out
+}
+
+func parseRuntimeEvidenceWindow(raw any) []selfreflect.RuntimeEvidenceItem {
+	items, ok := raw.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]selfreflect.RuntimeEvidenceItem, 0, len(items))
+	for _, item := range items {
+		value, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		out = append(out, selfreflect.RuntimeEvidenceItem{
+			ID:           asString(value["id"]),
+			EventType:    asString(value["event_type"]),
+			StepIndex:    asInt(value["step_index"]),
+			PlannerRound: asInt(value["planner_round"]),
+			Summary:      asString(value["summary"]),
+			PayloadJSON:  asString(value["payload_json"]),
+		})
+	}
+	return out
+}
+
+func asInt(value any) int {
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case float64:
+		return int(typed)
+	default:
+		return 0
+	}
 }

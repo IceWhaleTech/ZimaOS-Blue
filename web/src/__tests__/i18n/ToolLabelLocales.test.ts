@@ -46,22 +46,26 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
 
 const visibleBuiltinToolLocaleCoverage = {
   'tools.names.advisor': 'Advisor',
+  'tools.names.docx': 'DOCX',
   'tools.names.find': 'Find',
   'tools.names.ls': 'List',
+  'tools.names.pdf': 'PDF',
+  'tools.names.pptx': 'PPTX',
   'tools.names.tool_search': 'Tool Search',
+  'tools.names.xlsx': 'XLSX',
   'tools.descriptions.advisor':
     'Decision advisor for selection, replacement, migration, and best-practice questions.',
   'tools.descriptions.docx':
-    'Read, create, edit, template, or validate native .docx workspace files with native-first OOXML handling and explicit degradation telemetry.',
+    'Use when the task centers on a workspace .docx file and needs a native Word-style document for writing, template filling, placeholder edits, or validation.',
   'tools.descriptions.find': 'Find files and directories by glob pattern',
   'tools.descriptions.ls': 'List files and directories',
   'tools.descriptions.pdf':
-    'Read PDF metadata, extract text from local/remote PDFs, inspect interactive form fields, or create/reformat native PDF workspace files with explicit page/layout telemetry.',
+    'Use when the task centers on a workspace .pdf file and needs PDF-native reading, form filling, printable output, or layout-preserving reformatting.',
   'tools.descriptions.pptx':
-    'Read, create, or edit native .pptx workspace files with native-first OOXML packaging and explicit degradation telemetry.',
+    'Use when the task centers on a workspace .pptx file and needs a native slide deck for editable slides, layout changes, or chart updates.',
   'tools.descriptions.tool_search': 'Search tools, skills, and agents by capability',
   'tools.descriptions.xlsx':
-    'Read, create, edit, fix, or validate native .xlsx workspace files with native-first OOXML handling and explicit degradation telemetry.',
+    'Use when the task centers on a workspace .xlsx file and needs a native spreadsheet for tables, formulas, sheet edits, analysis, or validation.',
 } as const
 
 describe('tool locale labels', () => {
@@ -138,8 +142,16 @@ describe('tool locale labels', () => {
         expect(typeof localizedValue, `${file} missing ${path}`).toBe('string')
         expect(String(localizedValue).trim().length, `${file} empty ${path}`).toBeGreaterThan(0)
 
-        if (locale === 'en-US' || locale === 'en-GB') {
+        if (locale === 'en-US') {
           expect(localizedValue, `${file} English copy for ${path}`).toBe(englishValue)
+          continue
+        }
+
+        if (locale === 'en-GB') {
+          continue
+        }
+
+        if (path.includes('.names.')) {
           continue
         }
 

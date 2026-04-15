@@ -1011,6 +1011,36 @@ func TestImageToolGenerateRoutesNanoSlidesAliasToPPTService(t *testing.T) {
 	}
 }
 
+func TestImageToolGenerateUsesFallbackDescriptionForPPTWithoutPrompt(t *testing.T) {
+	tool := NewImageTool(nil, func(context.Context, ImageGenerateRequest) (*ImageTaskResult, error) {
+		t.Fatal("plain image generation should not run when ppt slide-asset service is selected")
+		return nil, nil
+	}, nil)
+	service := &pptGenerateMock{}
+	tool.SetPPTService(service)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "ppt",
+		"style_preset": "banana_slides",
+		"theme":        "Aurora brand",
+		"layout_spec": map[string]interface{}{
+			"template_id": "cover",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+	if _, ok := result.(*PPTResult); !ok {
+		t.Fatalf("result type = %T, want *PPTResult", result)
+	}
+	if service.req.Description == "" {
+		t.Fatal("expected fallback description to be forwarded to PPT service")
+	}
+	if !strings.Contains(service.req.Description, "layout") {
+		t.Fatalf("description = %q, want layout-aware fallback", service.req.Description)
+	}
+}
+
 func TestImageToolReviewUsesVisionForInlineImage(t *testing.T) {
 	vision := &imageVisionMock{resp: "a blue login screen"}
 	tool := NewImageTool(&imageReviewMock{}, nil, nil)

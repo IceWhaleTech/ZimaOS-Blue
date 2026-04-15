@@ -102,6 +102,40 @@ describe('CardFile', () => {
     expect(image.attributes('src')).toContain('size=128')
   })
 
+  it('shows the filename extension badge for pptx files', async () => {
+    resolveLocalFileMock.mockResolvedValueOnce({
+      data: {
+        path: '/Users/orca/Documents/launch_deck.pptx',
+        name: 'launch_deck.pptx',
+        size_bytes: 2048,
+        mime_type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        download_url:
+          '/api/v1/system/local-file/content?path=%2FUsers%2Forca%2FDocuments%2Flaunch_deck.pptx',
+        thumbnail_url:
+          '/api/v1/system/local-file/thumbnail?path=%2FUsers%2Forca%2FDocuments%2Flaunch_deck.pptx',
+      },
+    })
+
+    const wrapper = mount(CardFile, {
+      props: {
+        card: {
+          type: 'file',
+          filename: 'launch_deck.pptx',
+          downloadUrl: '/Users/orca/Documents/launch_deck.pptx',
+          mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        },
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('launch_deck.pptx')
+    expect(wrapper.text()).toContain('PPTX')
+  })
+
   it('thumbnail click opens resolved download URL', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
     const wrapper = mount(CardFile, {

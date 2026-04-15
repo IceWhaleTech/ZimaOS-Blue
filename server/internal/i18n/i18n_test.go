@@ -120,6 +120,28 @@ func TestT_AllLanguagesHaveWorkspaceRootEscapeError(t *testing.T) {
 	}
 }
 
+func TestT_AllLanguagesHaveDeclarativeSkillMessage(t *testing.T) {
+	for _, lang := range testAllLanguages() {
+		got := T(lang, MsgSkillDeclarativeHandledByLLM, "a11y")
+		if got == MsgSkillDeclarativeHandledByLLM {
+			t.Errorf("T(%q, %q) returned key itself — missing translation", lang, MsgSkillDeclarativeHandledByLLM)
+		}
+	}
+}
+
+func TestT_DeclarativeSkillMessageIsLocalizedOutsideEnglish(t *testing.T) {
+	en := T(LangEnUS, MsgSkillDeclarativeHandledByLLM, "a11y")
+	for _, lang := range testAllLanguages() {
+		if lang == LangEnUS || lang == LangEnGB {
+			continue
+		}
+		got := T(lang, MsgSkillDeclarativeHandledByLLM, "a11y")
+		if got == en {
+			t.Errorf("T(%q, %q) = %q, expected a non-English translation", lang, MsgSkillDeclarativeHandledByLLM, got)
+		}
+	}
+}
+
 func TestT_AllLanguagesHaveBrowserToolErrorKeys(t *testing.T) {
 	tests := []struct {
 		key  string

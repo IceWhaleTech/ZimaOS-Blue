@@ -216,6 +216,32 @@ func TestBuildPostWriteCompletionTools_RemovesWriteAfterSuccessfulArtifactWrite(
 	}
 }
 
+func TestBuildPostWriteCompletionTools_PrefersNativeDocxOverConvert(t *testing.T) {
+	toolsIn := []llm.Tool{
+		{Name: "docx"},
+		{Name: "file_read"},
+		{Name: "find"},
+		{Name: "ls"},
+		{Name: "grep"},
+		{Name: "convert"},
+		{Name: "pdf"},
+	}
+
+	reduced := buildPostWriteCompletionTools(
+		toolsIn,
+		"Read findings.md and save the polished report to ui_review.docx.",
+	)
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced toolset for native docx artifact")
+	}
+	if got := reduced[0].Name; got != "docx" {
+		t.Fatalf("expected docx to lead post-write completion tools, got=%q", got)
+	}
+	if containsLLMToolName(reduced, "convert") {
+		t.Fatalf("expected convert to be removed for native docx artifact completion, got=%v", reduced)
+	}
+}
+
 func TestCollectSuccessfulWriteTargets_IgnoresAppendWrites(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call-1", Name: "write"},
@@ -659,6 +685,9 @@ func TestBuildArtifactWorkflowExecutionHint_PrefersPPTXForPPTXArtifacts(t *testi
 	if !containsSubstring(hint, "prefer the native pptx tool") {
 		t.Fatalf("expected pptx hint, got=%q", hint)
 	}
+	if !containsSubstring(hint, "Do not treat this as slide-asset generation") {
+		t.Fatalf("expected pptx hint to reject slide-asset routing, got=%q", hint)
+	}
 	if !containsSubstring(hint, "helper script") {
 		t.Fatalf("expected pptx hint to reject helper-script-only completion, got=%q", hint)
 	}
@@ -734,6 +763,32 @@ func TestBuildPostWorkspaceArtifactContinuationNudge_PrefersFinalConvertedDocxAf
 	}
 }
 
+func TestBuildPostWorkspaceArtifactContinuationNudge_PrefersNativeDocxOverConvert(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "file_read"},
+		{ID: "call-2", Name: "write"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"findings.md","content":"Key findings"}`},
+		{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"path":"report.md","size":512,"success":true,"append":false}`},
+	}
+
+	nudge := buildPostWorkspaceArtifactContinuationNudge(
+		"Read findings.md, write the polished report to report.md, then convert it to report.docx.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected continuation nudge after intermediate markdown write")
+	}
+	if containsSubstring(nudge, "Prefer pdf/convert/read") {
+		t.Fatalf("expected continuation nudge to avoid convert-first guidance, got=%q", nudge)
+	}
+	if !containsSubstring(strings.ToLower(nudge), "native docx tool") {
+		t.Fatalf("expected continuation nudge to point back to the native docx tool, got=%q", nudge)
+	}
+}
+
 func TestBuildPostWorkspaceArtifactContinuationNudge_PrefersFinalPPTXAfterHelperScriptWrite(t *testing.T) {
 	toolCalls := []llm.ToolCall{
 		{ID: "call-1", Name: "write"},
@@ -781,6 +836,71 @@ func TestBuildPostWorkspaceArtifactContinuationTools_PrefersPPTXAfterHelperScrip
 	}
 	if containsLLMToolName(reduced, "web_query") {
 		t.Fatalf("expected continuation tools to drop unrelated web_query after helper script detour, got=%v", reduced)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationTools_PrefersDocxAndDropsConvertAfterIntermediateMarkdownWrite(t *testing.T) {
+	reduced := buildPostWorkspaceArtifactContinuationTools([]llm.Tool{
+		{Name: "docx"},
+		{Name: "convert"},
+		{Name: "file_read"},
+		{Name: "file_write"},
+		{Name: "edit"},
+		{Name: "pdf"},
+	}, "Read findings.md, write the polished report to report.md, then convert it to report.docx.",
+		[]llm.ToolCall{
+			{ID: "call-1", Name: "file_read"},
+			{ID: "call-2", Name: "write", Arguments: `{"path":"report.md","content":"# Report"}`},
+		},
+		[]llm.Message{
+			{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"findings.md","content":"Key findings"}`},
+			{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"success":true,"path":"report.md","append":false}`},
+		},
+	)
+
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced continuation toolset for docx artifact")
+	}
+	if got := reduced[0].Name; got != "docx" {
+		t.Fatalf("expected docx to lead continuation tools, got=%q", got)
+	}
+	if containsLLMToolName(reduced, "convert") {
+		t.Fatalf("expected continuation tools to drop convert for native docx completion, got=%v", reduced)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactCoverageContinuationTools_PrefersNativeDocxAndDropsConvert(t *testing.T) {
+	reduced := buildPostWorkspaceArtifactCoverageContinuationTools([]llm.Tool{
+		{Name: "docx"},
+		{Name: "file_read"},
+		{Name: "pdf"},
+		{Name: "convert"},
+		{Name: "grep"},
+		{Name: "ls"},
+		{Name: "find"},
+		{Name: "file_write"},
+	}, "Review all files in the research/ folder and write the final report to research_summary.docx.",
+		[]llm.ToolCall{
+			{ID: "call-1", Name: "ls"},
+			{ID: "call-2", Name: "file_read"},
+		},
+		[]llm.Message{
+			{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"base_path":"research","entries":[{"path":"market.md","type":"file"},{"path":"customer.md","type":"file"}],"status":"success"}`},
+			{Role: llm.RoleTool, ToolCallID: "call-2", Content: `{"path":"research/market.md","content":"Market notes"}`},
+		},
+	)
+
+	if len(reduced) == 0 {
+		t.Fatal("expected reduced coverage continuation toolset")
+	}
+	if got := reduced[0].Name; got != "file_read" {
+		t.Fatalf("expected file_read to remain first while coverage is incomplete, got=%q", got)
+	}
+	if !containsLLMToolName(reduced, "docx") {
+		t.Fatalf("expected coverage continuation tools to preserve docx completion path, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "convert") {
+		t.Fatalf("expected coverage continuation tools to drop convert for native docx artifact, got=%v", reduced)
 	}
 }
 

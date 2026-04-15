@@ -102,17 +102,17 @@ const descriptionCoverage = [
   {
     name: 'docx',
     description:
-      'Read, create, edit, template, or validate native .docx workspace files with native-first OOXML handling and explicit degradation telemetry.',
+      'Use when the task centers on a workspace .docx file and needs a native Word-style document for writing, template filling, placeholder edits, or validation.',
   },
   {
     name: 'pdf',
     description:
-      'Read PDF metadata, extract text from local/remote PDFs, inspect interactive form fields, or create/reformat native PDF workspace files with explicit page/layout telemetry.',
+      'Use when the task centers on a workspace .pdf file and needs PDF-native reading, form filling, printable output, or layout-preserving reformatting.',
   },
   {
     name: 'pptx',
     description:
-      'Read, create, or edit native .pptx workspace files with native-first OOXML packaging and explicit degradation telemetry.',
+      'Use when the task centers on a workspace .pptx file and needs a native slide deck for editable slides, layout changes, or chart updates.',
   },
   {
     name: 'web',
@@ -216,7 +216,7 @@ const descriptionCoverage = [
   {
     name: 'xlsx',
     description:
-      'Read, create, edit, fix, or validate native .xlsx workspace files with native-first OOXML handling and explicit degradation telemetry.',
+      'Use when the task centers on a workspace .xlsx file and needs a native spreadsheet for tables, formulas, sheet edits, analysis, or validation.',
   },
 ] as const
 

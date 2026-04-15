@@ -54,7 +54,7 @@ func detectDocumentEngines(ctx context.Context, goos string, locator commandLoca
 		{ID: documentEngineLibreOffice, Priority: 20, Formats: append([]string(nil), officeDocumentFormats...)},
 		{ID: documentEngineOpenOffice, Priority: 30, Formats: append([]string(nil), officeDocumentFormats...)},
 		{ID: documentEngineUnoconv, Priority: 40, Formats: append([]string(nil), officeDocumentFormats...)},
-		{ID: documentEnginePandoc, Priority: 50, Formats: append([]string(nil), pandocFormats...)},
+		{ID: documentEnginePandoc, Priority: 50, Formats: append([]string(nil), pandocCapabilityFormats...)},
 	}
 	if goos == "darwin" {
 		engines = append(engines, DocumentEngineInfo{ID: documentEngineTextutil, Priority: 60, Formats: append([]string(nil), textutilFormats...)})
@@ -205,7 +205,7 @@ func engineSupportsConversion(engineID, sourceExt, targetExt string) bool {
 	case documentEngineLibreOffice, documentEngineOpenOffice, documentEngineUnoconv:
 		return stringInSlice(sourceExt, officeDocumentFormats) && stringInSlice(targetExt, officeDocumentFormats)
 	case documentEnginePandoc:
-		return stringInSlice(sourceExt, pandocFormats) && stringInSlice(targetExt, pandocFormats)
+		return stringInSlice(sourceExt, pandocInputFormats) && stringInSlice(targetExt, pandocOutputFormats)
 	case documentEngineTextutil:
 		return stringInSlice(sourceExt, textutilFormats) && stringInSlice(targetExt, textutilFormats)
 	default:
@@ -251,7 +251,9 @@ func officeOutputPath(outputDir, sourcePath, target string) (string, error) {
 var (
 	officeDocumentFormats    = []string{"doc", "docx", "odt", "rtf", "txt", "html", "htm", "md", "xls", "xlsx", "ods", "csv", "tsv", "ppt", "pptx", "odp", "pdf"}
 	x2tOfficeFormats         = []string{"doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "csv", "tsv", "ppt", "pptx", "odp", "pdf"}
-	pandocFormats            = []string{"txt", "md", "html", "htm", "rtf", "docx", "odt", "pdf"}
+	pandocInputFormats       = []string{"txt", "md", "html", "htm", "rtf", "docx", "odt", "pptx"}
+	pandocOutputFormats      = []string{"txt", "md", "html", "htm", "rtf", "docx", "odt", "pdf", "pptx"}
+	pandocCapabilityFormats  = sortedUniqueStrings(append(append([]string(nil), pandocInputFormats...), pandocOutputFormats...))
 	textutilFormats          = []string{"txt", "md", "rtf", "rtfd", "html", "doc", "docx", "odt", "wordml", "webarchive"}
 	helperPDFFallbackFormats = []string{"txt", "md", "rtf", "rtfd", "html", "htm", "doc", "docx", "odt", "wordml", "webarchive", "csv", "tsv", "xls", "xlsx", "ods", "ppt", "pptx", "odp"}
 )

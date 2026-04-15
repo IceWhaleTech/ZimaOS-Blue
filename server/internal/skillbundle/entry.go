@@ -65,7 +65,7 @@ func FindEntryDocumentInDir(dir string) (*EntryDocument, error) {
 }
 
 func FindEntryDocument(root string, skillID string) (*EntryDocument, error) {
-	info, err := os.Stat(root)
+	info, err := os.Lstat(root)
 	if err != nil {
 		return nil, err
 	}
@@ -88,31 +88,46 @@ func FindEntryDocument(root string, skillID string) (*EntryDocument, error) {
 		}, nil
 	}
 
-	candidates := make([]*EntryDocument, 0, 4)
-	if err := filepath.Walk(root, func(path string, walkInfo os.FileInfo, walkErr error) error {
-		if walkErr != nil || walkInfo == nil || walkInfo.IsDir() || !IsEntryDocumentName(walkInfo.Name()) {
-			return nil
-		}
-		dir := filepath.Dir(path)
-		rel, err := filepath.Rel(root, dir)
-		if err != nil {
-			return nil
-		}
-		depth := 0
-		if rel != "." {
-			depth = len(strings.Split(filepath.ToSlash(rel), "/"))
-		}
-		candidates = append(candidates, &EntryDocument{
-			Dir:       dir,
-			Path:      path,
-			Name:      walkInfo.Name(),
-			Depth:     depth,
-			MatchesID: normalizeID(filepath.Base(dir)) == normalizeID(skillID),
-		})
-		return nil
-	}); err != nil {
-		return nil, err
+	type dirState struct {
+		path  string
+		depth int
 	}
+	queue := []dirState{{path: root, depth: 0}}
+	candidates := make([]*EntryDocument, 0, 4)
+
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+
+		entries, err := os.ReadDir(current.path)
+		if err != nil {
+			continue
+		}
+
+		for _, entry := range entries {
+			entryPath := filepath.Join(current.path, entry.Name())
+			if entry.IsDir() {
+				queue = append(queue, dirState{
+					path:  entryPath,
+					depth: current.depth + 1,
+				})
+				continue
+			}
+			if !IsEntryDocumentName(entry.Name()) {
+				continue
+			}
+
+			dir := filepath.Dir(entryPath)
+			candidates = append(candidates, &EntryDocument{
+				Dir:       dir,
+				Path:      entryPath,
+				Name:      entry.Name(),
+				Depth:     current.depth,
+				MatchesID: normalizeID(filepath.Base(dir)) == normalizeID(skillID),
+			})
+		}
+	}
+
 	if len(candidates) == 0 {
 		return nil, ErrEntryDocumentNotFound
 	}

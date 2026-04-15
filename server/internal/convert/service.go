@@ -849,7 +849,7 @@ func (s *Service) convertDocument(ctx context.Context, task *ConvertTask, source
 	}
 
 	engines := availableDocumentEngines(s.documentEngines(ctx))
-	if len(engines) == 0 && !helperSupportsDocumentPDFFallback(sourceExt, target) {
+	if len(engines) == 0 && !helperSupportsDocumentPDFFallback(sourceExt, target) && !supportsNativeMarkdownPPTXConversion(sourceExt, target) {
 		return nil, "", fmt.Errorf("no document conversion engine is available on this host")
 	}
 
@@ -873,6 +873,24 @@ func (s *Service) convertDocument(ctx context.Context, task *ConvertTask, source
 			return nil, "", err
 		}
 		return []ConvertOutput{output}, "Document converted", nil
+	}
+
+	if supportsNativeMarkdownPPTXConversion(sourceExt, target) {
+		_ = os.Remove(outputPath)
+		data, err := buildNativeMarkdownPPTXFromFile(source.Path)
+		if err != nil {
+			attempts = append(attempts, fmt.Sprintf("native_markdown_pptx: %v", err))
+		} else {
+			if err := os.WriteFile(outputPath, data, 0o640); err != nil {
+				attempts = append(attempts, fmt.Sprintf("native_markdown_pptx: write output: %v", err))
+			} else {
+				output, err := s.outputForPath(task.ID, outputPath, "")
+				if err != nil {
+					return nil, "", err
+				}
+				return []ConvertOutput{output}, "Document converted", nil
+			}
+		}
 	}
 
 	if helperSupportsDocumentPDFFallback(sourceExt, target) {

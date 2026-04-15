@@ -130,8 +130,26 @@ func TestPPTXToolReplaceTextOnlyTouchesTextNodes(t *testing.T) {
 	}
 
 	path := filepath.Join(tmpDir, "decks", "text_only.pptx")
+	entries, err := readZipArchive(path)
+	if err != nil {
+		t.Fatalf("readZipArchive() error = %v", err)
+	}
+	targetSlide := ""
+	for _, entry := range entries {
+		if !strings.HasPrefix(entry.Name, "ppt/slides/slide") || !strings.HasSuffix(entry.Name, ".xml") {
+			continue
+		}
+		if strings.Contains(string(entry.Data), ">Token<") {
+			targetSlide = entry.Name
+			break
+		}
+	}
+	if targetSlide == "" {
+		t.Fatal("expected to find slide XML containing Token text")
+	}
+
 	_, err = replaceArchiveEntries(path, func(name string) bool {
-		return name == "ppt/slides/slide2.xml"
+		return name == targetSlide
 	}, func(_ string, data []byte) ([]byte, bool, error) {
 		updated := strings.Replace(string(data), `name="Title"`, `name="TokenShape"`, 1)
 		return []byte(updated), true, nil
@@ -155,7 +173,7 @@ func TestPPTXToolReplaceTextOnlyTouchesTextNodes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile() error = %v", err)
 	}
-	slideXML := officeZipEntryText(t, data, "ppt/slides/slide2.xml")
+	slideXML := officeZipEntryText(t, data, targetSlide)
 	if !strings.Contains(slideXML, ">Updated<") {
 		t.Fatalf("expected slide text to be updated, got %s", slideXML)
 	}

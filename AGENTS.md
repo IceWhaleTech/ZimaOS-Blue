@@ -73,7 +73,7 @@ Manus-style file-based planning for complex tasks. Creates persistent markdown f
 - Building/creating projects
 - Tasks spanning many tool calls
 
-**Usage:** Read `.agent/skills/planning-with-files/.agent/skills/planning-with-files/SKILL.md`
+**Usage:** Read `.agent/skills/planning-with-files/skills/planning-with-files/SKILL.md`
 
 ### UI/UX Pro Max (ui-ux-pro-max-skill)
 Comprehensive UI/UX design intelligence with 50+ styles, 97 color palettes, 57 font pairings, and 9 technology stacks.
@@ -110,10 +110,9 @@ When working on tasks, reference the appropriate skill:
 3. **For TDD:** Read `.agent/skills/superpowers/skills/test-driven-development/SKILL.md`
 4. **For debugging:** Read `.agent/skills/superpowers/skills/systematic-debugging/SKILL.md`
 5. **For Golang best practices:** Read `.agent/skills/golang-best-practices/SKILL.md`
-6. **For file-based planning:** Read `.agent/skills/planning-with-files/.agent/skills/planning-with-files/SKILL.md`
+6. **For file-based planning:** Read `.agent/skills/planning-with-files/skills/planning-with-files/SKILL.md`
 7. **For UI/UX design:** Read `.agent/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
-8. **For mobile toggle optimization:** Read `.agent/skill/mobile-toggle-ux/SKILL.md`
-9. **For product skills:** Read `assets/skills/<name>/SKILL.md`
+8. **For product skills:** Read `assets/skills/<name>/SKILL.md`
 
 ## Task Execution Rules
 

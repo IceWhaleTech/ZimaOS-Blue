@@ -1719,7 +1719,7 @@ func executePPTService(ctx context.Context, args map[string]interface{}, service
 func buildPPTRequest(args map[string]interface{}) (PPTRequest, error) {
 	description := strings.TrimSpace(firstCompatString(args, "description", "prompt", "query", "input", "text", "message", "content"))
 	if description == "" {
-		return PPTRequest{}, errors.New("description/prompt is required for ppt slide-asset generation")
+		description = defaultPPTDescription(args)
 	}
 	referenceImages, err := collectPPTReferenceImages(args)
 	if err != nil {
@@ -1738,6 +1738,24 @@ func buildPPTRequest(args map[string]interface{}) (PPTRequest, error) {
 		QualityProfile:    firstCompatString(args, "quality_profile", "qualityProfile"),
 		Lang:              firstCompatString(args, "language", "lang"),
 	}, nil
+}
+
+func defaultPPTDescription(args map[string]interface{}) string {
+	description := "Create a presentation-ready slide visual"
+	if _, ok := compatArgValue(args, "layout_spec", "layoutSpec", "ppt_layout_spec", "slide_layout_spec"); ok {
+		description += " that follows the provided layout specification"
+	}
+	stylePreset := normalizePPTStylePreset(firstCompatString(args, "style_preset", "stylePreset"))
+	switch stylePreset {
+	case "banana_slides":
+		description += " in a polished editorial presentation style"
+	case "nano_slides":
+		description += " in a clean minimal presentation style"
+	}
+	if theme := strings.TrimSpace(firstCompatString(args, "style_theme", "styleTheme", "theme", "brand_guidance", "brandGuidance")); theme != "" {
+		description += " using the provided theme or brand guidance"
+	}
+	return description + "."
 }
 
 func collectPPTReferenceImages(args map[string]interface{}) ([]string, error) {

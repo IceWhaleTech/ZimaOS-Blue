@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
 
@@ -125,6 +125,12 @@ function createTestI18n() {
           wechatILinkSetupCreating: 'Creating Session...',
           wechatILinkSetupDescription: 'Setup description',
           wechatILinkSetupStatus: 'Setup Status',
+          wechatILinkSetupStatePending: 'Pending',
+          wechatILinkSetupStateAuthorizing: 'Authorizing',
+          wechatILinkSetupStateConfiguring: 'Configuring',
+          wechatILinkSetupStateConnected: 'Connected',
+          wechatILinkSetupStateError: 'Error',
+          wechatILinkSetupStateExpired: 'Expired',
           wechatILinkOpenOnPhone: 'Open Setup On Phone',
         },
         common: {
@@ -149,6 +155,10 @@ function createTestI18n() {
 }
 
 describe('ChannelsView', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     settingsStoreMock.backendSettings = {}
@@ -530,6 +540,86 @@ describe('ChannelsView', () => {
     )
   })
 
+  it('keeps the QR code visible during polling, translates setup status, hides retry before failure, and removes the manual action', async () => {
+    vi.useFakeTimers()
+    createWeChatILinkSetupSessionMock.mockResolvedValue({
+      status: 200,
+      data: {
+        session_id: 'session-1',
+        status: 'pending',
+        qrcode: 'data:image/png;base64,abc',
+        mobile_url: 'https://blue.example.com/channels/setup/wechat_ilink?session_id=session-1',
+        expires_at: '2026-04-14T10:10:00Z',
+      },
+    })
+    getWeChatILinkSetupSessionMock.mockResolvedValue({
+      status: 200,
+      data: {
+        session_id: 'session-1',
+        status: 'authorizing',
+        expires_at: '2026-04-14T10:10:00Z',
+      },
+    })
+    listChannelsMock.mockResolvedValue({
+      status: 200,
+      data: {
+        channels: [
+          {
+            id: 'wechat_ilink',
+            enabled: false,
+            status: 'disconnected',
+            config: {},
+          },
+        ],
+      },
+    })
+    getChannelSettingsMock.mockResolvedValue({
+      status: 200,
+      data: {},
+    })
+
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const loadMoreButton = wrapper.find('.channels-load-more')
+    if (loadMoreButton.exists()) {
+      await loadMoreButton.trigger('click')
+      await flushPromises()
+    }
+
+    const wechatILinkCard = wrapper.find('.channel-card-stub[data-id="wechat_ilink"]')
+    expect(wechatILinkCard.exists()).toBe(true)
+    await wechatILinkCard.find('.channel-card-select-stub').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.channels-ilink-setup-card__secondary').exists()).toBe(false)
+
+    const startButton = wrapper.find('.channels-ilink-setup-card__primary')
+    await startButton.trigger('click')
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(1500)
+    await flushPromises()
+
+    expect(getWeChatILinkSetupSessionMock).toHaveBeenCalledWith('session-1')
+    expect(wrapper.find('.channels-ilink-modal__qr-image').attributes('src')).toBe(
+      'data:image/png;base64,abc'
+    )
+    expect(wrapper.find('.channels-ilink-modal__status').text()).toContain('Authorizing')
+    expect(wrapper.find('.channels-ilink-modal__primary').exists()).toBe(false)
+
+    wrapper.unmount()
+  })
+
   it('shows the backend error when WeChat iLink setup creation fails', async () => {
     createWeChatILinkSetupSessionMock.mockRejectedValue({
       isAxiosError: true,
@@ -596,5 +686,10 @@ describe('ChannelsView', () => {
     expect(wrapper.find('.channels-ilink-modal__error').text()).toContain(
       'tunnel runtime not available'
     )
+    expect(wrapper.find('.channels-ilink-modal__status').exists()).toBe(false)
+
+    const retryButton = wrapper.find('.channels-ilink-modal__primary')
+    expect(retryButton.exists()).toBe(true)
+    expect(retryButton.attributes('disabled')).toBeUndefined()
   })
 })

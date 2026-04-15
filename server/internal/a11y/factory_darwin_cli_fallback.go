@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+var darwinActivateAppFrontmostWait = 1500 * time.Millisecond
+var darwinActivateAppFrontmostPollInterval = 200 * time.Millisecond
+
 type darwinSystemCLI struct {
 	run func(ctx context.Context, name string, args ...string) (string, error)
 }
@@ -44,13 +47,112 @@ func (cli darwinSystemCLI) activateApp(appName string) error {
 		return nil
 	}
 	if _, err := cli.exec(nil, "open", "-a", appName); err == nil {
-		return nil
+		if !darwinActivationNeedsFrontmostOpenRetry(appName) {
+			return nil
+		}
+		if cli.waitForFrontmostAppName(nil, appName, darwinActivateAppFrontmostWait) {
+			return nil
+		}
+		if _, err := cli.exec(nil, "open", "-a", appName); err == nil && cli.waitForFrontmostAppName(nil, appName, darwinActivateAppFrontmostWait) {
+			return nil
+		}
 	}
 	script := fmt.Sprintf(`tell application "%s" to activate`, darwinEscapeAppleScript(appName))
 	if output, err := cli.exec(nil, "osascript", "-e", script); err != nil {
 		return fmt.Errorf("activate app %q failed: %s: %w", appName, output, err)
 	}
 	return nil
+}
+
+func (cli darwinSystemCLI) waitForFrontmostAppName(ctx context.Context, appName string, timeout time.Duration) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		frontmost, err := cli.frontmostAppName(ctx)
+		if err == nil && darwinFrontmostAppMatches(appName, frontmost) {
+			return true
+		}
+		if timeout <= 0 || time.Now().After(deadline) {
+			return false
+		}
+		if err := darwinSleepWithContext(ctx, darwinActivateAppFrontmostPollInterval); err != nil {
+			return false
+		}
+	}
+}
+
+func (cli darwinSystemCLI) frontmostAppName(ctx context.Context) (string, error) {
+	asn, err := cli.exec(ctx, "lsappinfo", "front")
+	if err != nil {
+		return "", err
+	}
+	asn = strings.TrimSpace(asn)
+	if asn == "" {
+		return "", fmt.Errorf("lsappinfo front returned empty app serial number")
+	}
+	info, err := cli.exec(ctx, "lsappinfo", "info", "-only", "name", asn)
+	if err != nil {
+		return "", err
+	}
+	name := darwinParseLSAppInfoDisplayName(info)
+	if name == "" {
+		return "", fmt.Errorf("lsappinfo info returned empty display name")
+	}
+	return name, nil
+}
+
+func darwinParseLSAppInfoDisplayName(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, `"LSDisplayName"=`) {
+			continue
+		}
+		value := strings.TrimSpace(strings.TrimPrefix(line, `"LSDisplayName"=`))
+		value = strings.Trim(value, `"`)
+		value = strings.ReplaceAll(value, `\"`, `"`)
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+func darwinActivationNeedsFrontmostOpenRetry(appName string) bool {
+	return darwinLooksLikeFeishuAlias(appName)
+}
+
+func darwinFrontmostAppMatches(targetName string, frontmostName string) bool {
+	target := normalizeDarwinActivationAppName(targetName)
+	frontmost := normalizeDarwinActivationAppName(frontmostName)
+	if target == "" || frontmost == "" {
+		return false
+	}
+	if target == frontmost || strings.Contains(target, frontmost) || strings.Contains(frontmost, target) {
+		return true
+	}
+	return darwinLooksLikeFeishuAlias(target) && darwinLooksLikeFeishuAlias(frontmost)
+}
+
+func normalizeDarwinActivationAppName(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ""
+	}
+	value = strings.NewReplacer(" ", "", "-", "", "_", "", ",", "", ".", "", "，", "", "、", "").Replace(value)
+	return value
+}
+
+func darwinLooksLikeFeishuAlias(value string) bool {
+	value = normalizeDarwinActivationAppName(value)
+	if value == "" {
+		return false
+	}
+	for _, alias := range []string{"feishu", "飞书", "lark"} {
+		if strings.Contains(value, normalizeDarwinActivationAppName(alias)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (cli darwinSystemCLI) captureWindow(ctx context.Context, windowID string, path string) (string, error) {

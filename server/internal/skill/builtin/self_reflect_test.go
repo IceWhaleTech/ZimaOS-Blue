@@ -123,3 +123,47 @@ func TestSelfReflectSkill_ExecuteAcceptsAliases(t *testing.T) {
 		t.Fatalf("verification_output = %q", exec.input.VerificationOutput)
 	}
 }
+
+func TestSelfReflectSkill_ExecuteForwardsRuntimeReflectionFields(t *testing.T) {
+	exec := &mockSelfReflectExecutor{result: &selfreflect.Result{Summary: "ok"}}
+	skill := NewSelfReflect()
+	skill.SetExecutor(exec)
+
+	res, err := skill.Execute(context.Background(), map[string]any{
+		"goal":                 "Investigate browser regression",
+		"final_status":         "running",
+		"trigger_kind":         "interval_tool_finishes",
+		"disable_memory_write": true,
+		"runtime_signals": map[string]any{
+			"tool_finishes_since_review": 10,
+		},
+		"evidence_window": []interface{}{
+			map[string]any{
+				"id":            "ev-1",
+				"event_type":    "tool_finished",
+				"step_index":    2,
+				"planner_round": 1,
+				"summary":       "browser navigate returned partial output",
+				"payload_json":  `{"error":"missing_title"}`,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+	if !res.Success {
+		t.Fatalf("expected success, got error=%s", res.Error)
+	}
+	if exec.input.TriggerKind != "interval_tool_finishes" {
+		t.Fatalf("trigger_kind = %q, want interval_tool_finishes", exec.input.TriggerKind)
+	}
+	if !exec.input.DisableMemoryWrite {
+		t.Fatal("expected disable_memory_write to be forwarded")
+	}
+	if got, _ := exec.input.RuntimeSignals["tool_finishes_since_review"].(int); got != 10 {
+		t.Fatalf("runtime_signals.tool_finishes_since_review = %#v, want 10", exec.input.RuntimeSignals["tool_finishes_since_review"])
+	}
+	if len(exec.input.EvidenceWindow) != 1 || exec.input.EvidenceWindow[0].ID != "ev-1" {
+		t.Fatalf("evidence_window = %#v, want one forwarded record", exec.input.EvidenceWindow)
+	}
+}

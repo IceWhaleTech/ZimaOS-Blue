@@ -77,6 +77,91 @@ func TestOfficeBuildPresentationSlidesExtractsChartCalloutsFromBullets(t *testin
 	}
 }
 
+func TestOfficeBuildPresentationSlidesSkipsTOCWhenDeckHasNoCoverMetadata(t *testing.T) {
+	slides := officeBuildPresentationSlides(officeDocSpec{
+		Sections: []officeDocSection{
+			{Heading: "Core Upgrades", Bullets: []string{"MoE architecture", "Long context"}},
+			{Heading: "Benchmarks", Bullets: []string{"AIME", "LiveCodeBench"}},
+			{Heading: "Use Cases", Bullets: []string{"Coding", "Agents"}},
+		},
+	})
+
+	if len(slides) != 3 {
+		t.Fatalf("len(slides) = %d, want 3 (%#v)", len(slides), slides)
+	}
+	if slides[0].Title == "Table of Contents" {
+		t.Fatalf("first slide should not be TOC when deck has no title/subtitle/summary: %#v", slides)
+	}
+}
+
+func TestOfficeBuildPresentationSlidesExtractsStandaloneCalloutsFromShortBullets(t *testing.T) {
+	slides := officeBuildPresentationSlides(officeDocSpec{
+		Title: "Qwen 3.5",
+		Sections: []officeDocSection{
+			{
+				Heading: "Core Upgrades",
+				Bullets: []string{
+					"MoE architecture",
+					"36T training tokens",
+					"Hybrid reasoning",
+					"128K context window",
+				},
+			},
+		},
+	})
+
+	var target *officePPTXSlide
+	for idx := range slides {
+		if slides[idx].Title == "Core Upgrades" {
+			target = &slides[idx]
+			break
+		}
+	}
+	if target == nil {
+		t.Fatalf("expected Core Upgrades slide in %#v", slides)
+	}
+	if len(target.Callouts) != 4 {
+		t.Fatalf("len(callouts) = %d, want 4 (%#v)", len(target.Callouts), target.Callouts)
+	}
+	if len(target.Blocks) != 0 {
+		t.Fatalf("len(blocks) = %d, want 0 once short bullets become callouts (%#v)", len(target.Blocks), target.Blocks)
+	}
+	if target.Callouts[0].Body != "MoE architecture" {
+		t.Fatalf("first callout = %#v, want body callout", target.Callouts[0])
+	}
+}
+
+func TestOfficePPTXSlideXMLIncludesCalloutGridForStandaloneCallouts(t *testing.T) {
+	slide := officePPTXSlide{
+		Title: "Core Upgrades",
+		Theme: resolveOfficeTheme("analysis", ""),
+		Callouts: []officePPTXCallout{
+			{Body: "MoE architecture", Tone: "primary"},
+			{Body: "36T training tokens", Tone: "success"},
+			{Body: "Hybrid reasoning", Tone: "warning"},
+			{Body: "128K context window", Tone: "muted"},
+		},
+	}
+
+	xml := officePPTXSlideXML(slide)
+	for _, needle := range []string{
+		`name="Standalone Callout Grid"`,
+		`name="Standalone Callout 1"`,
+		`name="Standalone Callout 4"`,
+		`<a:t>MoE architecture</a:t>`,
+		`<a:t>36T training tokens</a:t>`,
+		`<a:t>Hybrid reasoning</a:t>`,
+		`<a:t>128K context window</a:t>`,
+	} {
+		if !containsSubstring(xml, needle) {
+			t.Fatalf("slide XML missing %q in %s", needle, xml)
+		}
+	}
+	if containsSubstring(xml, `name="Content"`) && containsSubstring(xml, `<a:t>MoE architecture</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="60"`) {
+		t.Fatalf("standalone callout text should not be duplicated in the default content body: %s", xml)
+	}
+}
+
 func TestOfficePPTXSlideXMLIncludesThemeAwareChartCalloutRail(t *testing.T) {
 	slide := officePPTXSlide{
 		Title: "Revenue Mix",

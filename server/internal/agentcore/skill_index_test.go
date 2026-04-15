@@ -58,6 +58,14 @@ func TestBuildSkillIndex_IncludesEmbeddedBuiltinFallback(t *testing.T) {
 	if _, ok := findSkillDocByName(docs, "web_query"); !ok {
 		t.Fatalf("expected embedded web_query skill in index, got %v", docs)
 	}
+	_, hasA11y := findSkillDocByName(docs, "a11y")
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		if !hasA11y {
+			t.Fatalf("expected embedded a11y skill on supported host %q, got %v", runtime.GOOS, docs)
+		}
+	} else if hasA11y {
+		t.Fatalf("expected a11y skill to stay filtered on unsupported host %q, got %v", runtime.GOOS, docs)
+	}
 }
 
 func TestBuildSkillIndex_WorkspaceOverridesEmbeddedBuiltin(t *testing.T) {

@@ -26,7 +26,7 @@ func NewDOCXTool(allowedPaths []string, approvals *ApprovalManager, dirStore *Di
 func (t *DOCXTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "docx",
-		Description: "Read, create, edit, template, or validate native .docx workspace files with native-first OOXML handling and explicit degradation telemetry.",
+		Description: "Use when the task centers on a workspace .docx file and needs a native Word-style document for writing, template filling, placeholder edits, or validation.",
 		Icon:        "file-text",
 		Parameters: map[string]interface{}{
 			"type": "object",

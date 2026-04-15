@@ -28,7 +28,7 @@ func NewPPTXTool(allowedPaths []string, approvals *ApprovalManager, dirStore *Di
 func (t *PPTXTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "pptx",
-		Description: "Read, create, or edit native .pptx workspace files with native-first OOXML packaging and explicit degradation telemetry.",
+		Description: "Use when the task centers on a workspace .pptx file and needs a native slide deck for editable slides, layout changes, or chart updates.",
 		Icon:        "presentation",
 		Parameters: map[string]interface{}{
 			"type": "object",

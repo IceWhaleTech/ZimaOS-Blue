@@ -1030,14 +1030,14 @@ func (t *A11yTool) maybeActivateA11yMessageConversation(ctx context.Context, bac
 	if !selector.Provided() {
 		return strings.TrimSpace(windowID), nil
 	}
-	if fastWindow, fastErr, handled := t.tryA11yOrcaConversationFastPath(ctx, backend, args, strings.TrimSpace(windowID), selector, holdMS); handled {
-		if fastErr != nil {
-			return "", enrichA11yActionPhaseError(fastErr, "conversation", false)
-		}
-		return fastWindow, nil
-	}
 	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, windowID, selector)
 	if err != nil {
+		if fastWindow, fastErr, handled := t.tryA11yConversationVisualFastPath(ctx, backend, args, strings.TrimSpace(valueOrDefault(resolvedWindow, windowID)), selector, holdMS); handled {
+			if fastErr != nil {
+				return "", enrichA11yActionPhaseError(fastErr, "conversation", false)
+			}
+			return fastWindow, nil
+		}
 		if fastWindow, fastErr, handled := t.tryA11yConversationSearchFallback(ctx, backend, args, strings.TrimSpace(valueOrDefault(resolvedWindow, windowID)), selector, holdMS, err); handled {
 			if fastErr != nil {
 				return "", enrichA11yActionPhaseError(fastErr, "conversation", false)
@@ -1053,8 +1053,8 @@ func (t *A11yTool) maybeActivateA11yMessageConversation(ctx context.Context, bac
 	return confirmedWindow, nil
 }
 
-func (t *A11yTool) tryA11yOrcaConversationFastPath(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, selector a11yTargetSelector, holdMS int) (string, error, bool) {
-	if !a11yAllowsOrcaConversationFastPath(backend, args, selector) {
+func (t *A11yTool) tryA11yConversationVisualFastPath(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, selector a11yTargetSelector, holdMS int) (string, error, bool) {
+	if !a11yAllowsConversationVisualFastPath(backend, args, selector) {
 		return "", nil, false
 	}
 	resolvedWindow := strings.TrimSpace(windowID)
@@ -1075,7 +1075,7 @@ func (t *A11yTool) tryA11yOrcaConversationFastPath(ctx context.Context, backend 
 	}
 	var lastErr error = a11yruntime.NewError("target_not_found", "target selector did not match any interactive element", a11yTargetSelectorDetails(selector, nil))
 	for _, plan := range plans {
-		nextWindow, point, err := t.executeA11yOrcaConversationSearchPlan(ctx, backend, resolvedWindow, selector, holdMS, plan)
+		nextWindow, point, err := t.executeA11yConversationVisualSearchPlan(ctx, backend, resolvedWindow, selector, holdMS, plan)
 		if err == nil {
 			if point != nil {
 				t.a11yConversationClickCacheSet(cacheKey, *point)
@@ -1126,8 +1126,14 @@ func (t *A11yTool) executeA11yConversationSearchPlan(ctx context.Context, backen
 	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, clearSequences, holdMS); err != nil {
 		return resolvedWindow, err
 	}
-	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, [][]string{{selector.Name}}, holdMS); err != nil {
+	typedWithSearchField := false
+	if resolvedWindow, typedWithSearchField, err = t.tryTypeA11yConversationSearchQuery(ctx, backend, resolvedWindow, selector, holdMS); err != nil {
 		return resolvedWindow, err
+	}
+	if !typedWithSearchField {
+		if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, [][]string{{selector.Name}}, holdMS); err != nil {
+			return resolvedWindow, err
+		}
 	}
 	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, resolvedWindow, selector)
 	if err != nil {
@@ -1136,7 +1142,7 @@ func (t *A11yTool) executeA11yConversationSearchPlan(ctx context.Context, backen
 	return t.activateA11yMessageConversationTarget(ctx, backend, resolvedWindow, ref, refMap, selector, holdMS)
 }
 
-func (t *A11yTool) executeA11yOrcaConversationSearchPlan(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int, plan a11yConversationSearchPlan) (string, *a11yConversationClickPoint, error) {
+func (t *A11yTool) executeA11yConversationVisualSearchPlan(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int, plan a11yConversationSearchPlan) (string, *a11yConversationClickPoint, error) {
 	resolvedWindow := strings.TrimSpace(windowID)
 	var err error
 	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, plan.Open, holdMS); err != nil {
@@ -1146,8 +1152,14 @@ func (t *A11yTool) executeA11yOrcaConversationSearchPlan(ctx context.Context, ba
 	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, clearSequences, holdMS); err != nil {
 		return resolvedWindow, nil, err
 	}
-	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, [][]string{{selector.Name}}, holdMS); err != nil {
+	typedWithSearchField := false
+	if resolvedWindow, typedWithSearchField, err = t.tryTypeA11yConversationSearchQuery(ctx, backend, resolvedWindow, selector, holdMS); err != nil {
 		return resolvedWindow, nil, err
+	}
+	if !typedWithSearchField {
+		if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, [][]string{{selector.Name}}, holdMS); err != nil {
+			return resolvedWindow, nil, err
+		}
 	}
 	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, resolvedWindow, selector)
 	if err == nil {
@@ -1238,6 +1250,87 @@ func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend 
 	return hit, nil
 }
 
+func (t *A11yTool) tryTypeA11yConversationSearchQuery(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int) (string, bool, error) {
+	ref, refMap, resolvedWindow, err := t.resolveA11yConversationSearchField(ctx, backend, windowID)
+	if err != nil {
+		return resolvedWindow, false, nil
+	}
+	result, err := backend.Act(ctx, resolvedWindow, ref, refMap, "type", selector.Name, holdMS)
+	if err != nil {
+		return strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow)), true, err
+	}
+	resolvedWindow = strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow))
+	t.syncWindowContext(resolvedWindow)
+	t.clearSnapshotRefs()
+	if err := a11yWaitForConversationSettle(ctx); err != nil {
+		return resolvedWindow, true, err
+	}
+	return resolvedWindow, true, nil
+}
+
+func (t *A11yTool) resolveA11yConversationSearchField(ctx context.Context, backend a11yruntime.Backend, windowID string) (int, map[int]string, string, error) {
+	snapshotTarget := strings.TrimSpace(windowID)
+	result, err := backend.SnapshotInteractive(ctx, snapshotTarget)
+	if err != nil {
+		return 0, nil, snapshotTarget, err
+	}
+	resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, snapshotTarget))
+	t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
+	ref, err := resolveA11yConversationSearchRef(parseA11ySnapshotEntries(result.Tree))
+	if err != nil {
+		return 0, nil, resolvedWindow, err
+	}
+	return ref, cloneA11yRefMap(result.RefMap), resolvedWindow, nil
+}
+
+func resolveA11yConversationSearchRef(entries []a11ySnapshotEntry) (int, error) {
+	matches := make([]a11ySnapshotEntry, 0, 2)
+	bestRef := 0
+	bestScore := 0
+	tied := false
+	for _, entry := range entries {
+		if !a11ySnapshotRoleLooksLikeConversationSearch(entry.Role, entry.Label) {
+			continue
+		}
+		matches = append(matches, entry)
+		score := a11yConversationSearchEntryScore(entry)
+		switch {
+		case score > bestScore:
+			bestRef = entry.Ref
+			bestScore = score
+			tied = false
+		case score == bestScore:
+			tied = true
+		}
+	}
+	selector := a11yTargetSelector{Role: "search_field"}
+	if len(matches) == 0 || bestRef == 0 {
+		return 0, a11yruntime.NewError("target_not_found", "conversation search field not found", a11yTargetSelectorDetails(selector, nil))
+	}
+	if tied {
+		return 0, a11yruntime.NewError("ambiguous_target", "conversation search field matched multiple interactive elements", a11yTargetSelectorDetails(selector, matches))
+	}
+	return bestRef, nil
+}
+
+func a11yConversationSearchEntryScore(entry a11ySnapshotEntry) int {
+	score := 0
+	switch normalizeA11yTargetRole(entry.Role) {
+	case "search_field", "search":
+		score += 200
+	case "combo_box":
+		score += 140
+	case "text_field":
+		score += 120
+	default:
+		score += 80
+	}
+	if a11yTargetLabelContainsAny(normalizeA11yTargetName(entry.Label), "search", "find", "lookup", "搜索", "查找") {
+		score += 40
+	}
+	return score
+}
+
 func a11yAllowsConversationSearchFallback(args map[string]interface{}, err error) bool {
 	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
 	if !ok || runtimeErr.Code != "target_not_found" {
@@ -1260,11 +1353,11 @@ func a11yLooksLikeFeishuWindowQuery(value string) bool {
 	return false
 }
 
-func a11yAllowsOrcaConversationFastPath(backend a11yruntime.Backend, args map[string]interface{}, selector a11yTargetSelector) bool {
+func a11yAllowsConversationVisualFastPath(backend a11yruntime.Backend, args map[string]interface{}, selector a11yTargetSelector) bool {
 	if backend == nil || !strings.EqualFold(strings.TrimSpace(backend.HostOS()), "darwin") {
 		return false
 	}
-	if normalizeA11yTargetName(selector.Name) != normalizeA11yTargetName("Orca") {
+	if !selector.Provided() || strings.TrimSpace(selector.Name) == "" {
 		return false
 	}
 	return a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "app_name", "appName", "application", "app")) ||

@@ -257,6 +257,155 @@ func TestHarnessControllerEmitsRuntimeSkillCaptureOnlyAfterRepeatedLessons(t *te
 	}
 }
 
+func TestHarnessControllerEmitsRuntimeSkillCaptureFromRepeatedRuntimeReflectionSignature(t *testing.T) {
+	repoRoot, _ := createRuntimeSkillEvolutionRepoForTest(t, "browser")
+	restoreWD := chdirRuntimeSkillEvolutionTest(t, repoRoot)
+	defer restoreWD()
+
+	reflectionPayload := `{
+		"record_id":"rr-1",
+		"run_id":"task-placeholder",
+		"trigger_kind":"interval_tool_finishes",
+		"review_seq":1,
+		"step_index":2,
+		"tool_count_window":10,
+		"evidence_event_ids":["ev-1","ev-2"],
+		"signals":{"tool_finishes_since_review":10},
+		"summary":"Runtime review captured a reusable browser validation heuristic.",
+		"lessons":[{"kind":"heuristic","lesson":"Validate page title extraction before summarizing","when_to_apply":"After browser navigation returns partial content","evidence":"Two runtime evidence events showed missing title extraction before summarization."}],
+		"mutation_suggestions":[{"kind":"guardrail_add","target_skill_id":"browser","rationale":"Add a title-validation guardrail before summarization.","suggested_text":"Validate page title extraction before summarizing browser results.","evidence_ids":["ev-1","ev-2"],"signature":"mut-title-guardrail"}],
+		"reflection_signature":"runtime-browser-title-validation",
+		"status":"recorded"
+	}`
+
+	controller := newOptimizationHarnessControllerForFollowupTest(t)
+	driver := &runtimeTerminalHarnessDriver{
+		kind:           harness.RunKindAgentTask,
+		terminalStatus: harness.RunStatusCompleted,
+		terminalResult: "Browser task completed successfully.",
+		events: []harness.RunEvent{
+			{
+				Type:        "runtime_reflection_recorded",
+				Message:     "Runtime review captured a reusable browser validation heuristic.",
+				PayloadJSON: reflectionPayload,
+			},
+		},
+	}
+	controller.RegisterDriver(driver)
+	triggerer := &runtimeRecordingOptimizationTriggerer{}
+	controller.SetOptimizationTriggerer(triggerer)
+
+	for i := 0; i < 2; i++ {
+		_, submitErr := controller.Submit(context.Background(), harness.RunSpec{
+			Kind:   harness.RunKindAgentTask,
+			Goal:   "Capture browser lesson from runtime reflection",
+			UserID: "user-1",
+			Metadata: map[string]interface{}{
+				"selected_canonical_skill": "browser",
+			},
+		})
+		if submitErr != nil {
+			t.Fatalf("Submit(%d) failed: %v", i, submitErr)
+		}
+	}
+	if len(triggerer.events) != 1 {
+		t.Fatalf("trigger count = %d, want 1", len(triggerer.events))
+	}
+	event := triggerer.events[0]
+	if got, want := event.Reason, harness.OptimizationReasonRuntimeSkillCapture; got != want {
+		t.Fatalf("reason = %q, want %q", got, want)
+	}
+	if got := stringsTrim(event.Metadata, "capture_signature"); got != "runtime-browser-title-validation" {
+		t.Fatalf("capture_signature = %q, want runtime-browser-title-validation", got)
+	}
+	if got, ok := event.Metadata["runtime_capture_occurrences"].(int); !ok || got != 2 {
+		t.Fatalf("runtime_capture_occurrences = %#v, want 2", event.Metadata["runtime_capture_occurrences"])
+	}
+	reflectivePacket, ok := event.Metadata["reflective_evidence_packet"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("reflective_evidence_packet = %#v, want map", event.Metadata["reflective_evidence_packet"])
+	}
+	if got := stringsTrim(reflectivePacket, "capture_signature"); got != "runtime-browser-title-validation" {
+		t.Fatalf("reflective_evidence_packet.capture_signature = %q, want runtime-browser-title-validation", got)
+	}
+	lessons, ok := reflectivePacket["grounded_lessons"].([]interface{})
+	if !ok || len(lessons) == 0 {
+		t.Fatalf("reflective_evidence_packet.grounded_lessons = %#v, want non-empty list", reflectivePacket["grounded_lessons"])
+	}
+}
+
+func TestHarnessControllerFailureReflectivePacketIncludesRuntimeReflections(t *testing.T) {
+	repoRoot, _ := createRuntimeSkillEvolutionRepoForTest(t, "browser")
+	restoreWD := chdirRuntimeSkillEvolutionTest(t, repoRoot)
+	defer restoreWD()
+
+	reflectionPayload := `{
+		"record_id":"rr-2",
+		"run_id":"task-placeholder",
+		"trigger_kind":"repeated_fingerprint",
+		"review_seq":2,
+		"step_index":3,
+		"tool_count_window":7,
+		"evidence_event_ids":["ev-3","ev-4"],
+		"signals":{"repeated_fingerprint":"browser.navigate|missing_title"},
+		"summary":"Runtime review captured a browser anti-pattern.",
+		"lessons":[{"kind":"anti_pattern","lesson":"Do not summarize browser results before title extraction succeeds","when_to_apply":"When browser navigation returns partial content","evidence":"Repeated runtime events showed missing_title failures before summarization."}],
+		"mutation_suggestions":[{"kind":"guardrail_add","target_skill_id":"browser","rationale":"Prevent early summarization on missing title.","suggested_text":"Abort summary generation when browser title extraction is missing.","evidence_ids":["ev-3","ev-4"],"signature":"guardrail-missing-title"}],
+		"reflection_signature":"runtime-browser-missing-title",
+		"status":"recorded"
+	}`
+
+	controller := newOptimizationHarnessControllerForFollowupTest(t)
+	driver := &runtimeTerminalHarnessDriver{
+		kind:           harness.RunKindAgentTask,
+		terminalStatus: harness.RunStatusFailed,
+		terminalError:  "Page title extraction failed after browser navigation.",
+		events: []harness.RunEvent{
+			{
+				Type:        "runtime_reflection_recorded",
+				Message:     "Runtime review captured a browser anti-pattern.",
+				PayloadJSON: reflectionPayload,
+			},
+			{
+				Type:        "tool_result",
+				ToolName:    "browser.navigate",
+				Message:     "browser navigation returned partial output",
+				PayloadJSON: `{"verification":{"verification_passed":false,"failure_label":"missing_title"}}`,
+			},
+		},
+	}
+	controller.RegisterDriver(driver)
+	triggerer := &runtimeRecordingOptimizationTriggerer{}
+	controller.SetOptimizationTriggerer(triggerer)
+
+	_, err := controller.Submit(context.Background(), harness.RunSpec{
+		Kind:   harness.RunKindAgentTask,
+		Goal:   "Investigate browser regression with runtime reflection",
+		UserID: "user-1",
+		Metadata: map[string]interface{}{
+			"selected_canonical_skill": "browser",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if len(triggerer.events) != 1 {
+		t.Fatalf("trigger count = %d, want 1", len(triggerer.events))
+	}
+	reflectivePacket, ok := triggerer.events[0].Metadata["reflective_evidence_packet"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("reflective_evidence_packet = %#v, want map", triggerer.events[0].Metadata["reflective_evidence_packet"])
+	}
+	reflections, ok := reflectivePacket["runtime_reflections"].([]interface{})
+	if !ok || len(reflections) == 0 {
+		t.Fatalf("runtime_reflections = %#v, want non-empty list", reflectivePacket["runtime_reflections"])
+	}
+	suggestions, ok := reflectivePacket["mutation_suggestions"].([]interface{})
+	if !ok || len(suggestions) == 0 {
+		t.Fatalf("mutation_suggestions = %#v, want non-empty list", reflectivePacket["mutation_suggestions"])
+	}
+}
+
 func TestHarnessOptimizationTriggererSubmitsRuntimeSkillFollowupEval(t *testing.T) {
 	repoRoot, canonicalContent := createRuntimeSkillEvolutionRepoForTest(t, "browser")
 	restoreWD := chdirRuntimeSkillEvolutionTest(t, repoRoot)

@@ -33,6 +33,8 @@ function createTestI18n() {
           submit: 'Submit',
           next: 'Next',
           step: '{current}/{total}',
+          other: 'Other',
+          otherPlaceholder: 'Type your answer...',
           browserCheckpoint: {
             title: 'Browser Checkpoint',
             riskLevel: 'Risk',
@@ -100,6 +102,26 @@ function createExplicitAnswerQuestion() {
         options: [
           { label: 'A', value: 'a' },
           { label: 'B', value: 'b' },
+        ],
+      },
+    ],
+  }
+}
+
+function createQuickModeOtherQuestion() {
+  return {
+    id: 'ask-quick-other',
+    expires_at: Date.now() + 60_000,
+    require_explicit_answer: true,
+    questions: [
+      {
+        id: 'q1',
+        question: 'How should I continue?',
+        header: 'Question',
+        multi_select: false,
+        options: [
+          { label: 'Use browser', value: 'browser' },
+          { label: 'Skip', value: 'skip' },
         ],
       },
     ],
@@ -202,6 +224,45 @@ describe('AskUserQuestionDialog browser checkpoint', () => {
 
     expect(mockChatStore.dismissQuestion).not.toHaveBeenCalled()
     expect(mockChatStore.submitQuestionAnswers).not.toHaveBeenCalled()
+
+    mockChatStore.pendingQuestion = null
+    await nextTick()
+    wrapper.unmount()
+  })
+
+  it('shows a submit action for quick-mode Other answers and sends other_text', async () => {
+    const wrapper = mountCheckpointDialog()
+    mockChatStore.pendingQuestion = createQuickModeOtherQuestion()
+    await nextTick()
+
+    expect(wrapper.text()).not.toContain('Submit')
+
+    const otherOption = wrapper.findAll('label').find((node) => node.text().includes('Other'))
+    expect(otherOption).toBeTruthy()
+
+    await otherOption!.trigger('click')
+    await nextTick()
+
+    const input = wrapper.find('input[type="text"]')
+    expect(input.exists()).toBe(true)
+
+    await input.setValue('Continue with Feishu browser version')
+    await nextTick()
+
+    const submitButton = wrapper.findAll('button').find((node) => node.text().trim() === 'Submit')
+    expect(submitButton).toBeTruthy()
+    expect((submitButton!.element as HTMLButtonElement).disabled).toBe(false)
+
+    await submitButton!.trigger('click')
+
+    expect(mockChatStore.submitQuestionAnswers).toHaveBeenCalledTimes(1)
+    expect(mockChatStore.submitQuestionAnswers).toHaveBeenCalledWith([
+      {
+        question_id: 'q1',
+        selected: [],
+        other_text: 'Continue with Feishu browser version',
+      },
+    ])
 
     mockChatStore.pendingQuestion = null
     await nextTick()

@@ -4,12 +4,17 @@ package skill
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"strings"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
 type contextKey string
 
-const userIDKey contextKey = "skill_user_id"
+const (
+	userIDKey contextKey = "skill_user_id"
+	langKey   contextKey = "skill_lang"
+)
 
 // WithUserID returns a context carrying the user ID for skill execution.
 func WithUserID(ctx context.Context, userID string) context.Context {
@@ -22,6 +27,25 @@ func GetUserID(ctx context.Context) string {
 		return v
 	}
 	return ""
+}
+
+// WithLang returns a context carrying the language/locale (e.g. "en-US", "zh-CN").
+func WithLang(ctx context.Context, lang string) context.Context {
+	trimmed := strings.TrimSpace(lang)
+	if trimmed == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, langKey, trimmed)
+}
+
+// GetLang extracts the language from the context. Returns "en-US" if not set.
+func GetLang(ctx context.Context) string {
+	if v, ok := ctx.Value(langKey).(string); ok {
+		if trimmed := strings.TrimSpace(v); trimmed != "" {
+			return trimmed
+		}
+	}
+	return string(i18n.DefaultLanguage)
 }
 
 // Manifest represents a skill manifest
@@ -138,13 +162,14 @@ func NewManifestSkill(m *Manifest) *ManifestSkill {
 
 func (s *ManifestSkill) Manifest() *Manifest { return s.manifest }
 
-func (s *ManifestSkill) Execute(_ context.Context, input map[string]any) (*Result, error) {
+func (s *ManifestSkill) Execute(ctx context.Context, input map[string]any) (*Result, error) {
 	// Declarative skills have no Go backend — the LLM handles them directly.
 	// Return the input as-is so the tool adapter can surface it.
+	lang := i18n.ParseLanguage(GetLang(ctx))
 	return NewResult(map[string]any{
 		"skill":   s.manifest.ID,
 		"input":   input,
-		"message": fmt.Sprintf("Skill %q is declarative — handled by LLM", s.manifest.ID),
+		"message": i18n.T(lang, i18n.MsgSkillDeclarativeHandledByLLM, s.manifest.ID),
 	}), nil
 }
 

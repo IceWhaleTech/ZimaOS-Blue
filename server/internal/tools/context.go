@@ -144,6 +144,7 @@ func GetUserID(ctx context.Context) string {
 
 // WithLang returns a context carrying the language/locale (e.g. "en-US", "zh-CN").
 func WithLang(ctx context.Context, lang string) context.Context {
+	ctx = skill.WithLang(ctx, lang)
 	return context.WithValue(ctx, langKey, lang)
 }
 
@@ -152,7 +153,7 @@ func GetLang(ctx context.Context) string {
 	if v, ok := ctx.Value(langKey).(string); ok && v != "" {
 		return v
 	}
-	return "en-US"
+	return skill.GetLang(ctx)
 }
 
 // WithChannel returns a context carrying the channel name (e.g. "telegram", "web").

@@ -8,7 +8,7 @@ import (
 
 const (
 	maxFileWriteChunkBytes = 64 << 10 // 64 KiB per write call.
-	maxFileWriteChunkLines = 200
+	maxFileWriteChunkLines = 500
 )
 
 func validateWriteContentChunk(content, limitLabel, guidance string) error {

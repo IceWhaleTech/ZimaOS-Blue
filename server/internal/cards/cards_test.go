@@ -67,6 +67,41 @@ func TestToCard(t *testing.T) {
 	}
 }
 
+func TestNativeDocumentCard_PPTXCreateBecomesFileCard(t *testing.T) {
+	card := ToCard("pptx", `{"action":"create","path":"reports/launch_deck.pptx","absolute_path":"/tmp/workspace/reports/launch_deck.pptx","original_path":"reports/launch_deck.pptx","format":"pptx","engine":"native_pptx_ooxml","success":true}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "file" {
+		t.Fatalf("type=%v, want file", got)
+	}
+	if got := card["filename"]; got != "launch_deck.pptx" {
+		t.Fatalf("filename=%v, want launch_deck.pptx", got)
+	}
+	if got := card["downloadUrl"]; got != "/tmp/workspace/reports/launch_deck.pptx" {
+		t.Fatalf("downloadUrl=%v, want absolute pptx path", got)
+	}
+	if got := card["previewUrl"]; got != "/tmp/workspace/reports/launch_deck.pptx" {
+		t.Fatalf("previewUrl=%v, want absolute pptx path", got)
+	}
+	if got := card["mimeType"]; got != "application/vnd.openxmlformats-officedocument.presentationml.presentation" {
+		t.Fatalf("mimeType=%v, want pptx mime type", got)
+	}
+}
+
+func TestNativeDocumentCard_PDFReadFallsBackToResultCard(t *testing.T) {
+	card := ToCard("pdf", `{"action":"read","path":"reports/launch.pdf","absolute_path":"/tmp/workspace/reports/launch.pdf","format":"pdf","text":"Page 1 summary","success":true}`)
+	if card == nil {
+		t.Fatal("expected non-nil card")
+	}
+	if got := card["type"]; got != "result" {
+		t.Fatalf("type=%v, want result fallback", got)
+	}
+	if got := card["title"]; got != "pdf" {
+		t.Fatalf("title=%v, want pdf", got)
+	}
+}
+
 func TestImageCard_MapsTaskEnvelopeToMediaGenerate(t *testing.T) {
 	card := ToCard("image", `{"task":{"id":"task-9","status":"succeeded","outputs":[{"url":"https://example.com/a.png","thumbnail_url":"https://example.com/a-thumb.png","revised_prompt":"sunset city"}]}}`)
 	if card == nil {

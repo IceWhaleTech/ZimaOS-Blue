@@ -15,6 +15,13 @@ function getLocaleCode(modulePath: string): string {
   return fileNameFromModulePath(modulePath).replace(/\.ts$/, '')
 }
 
+function findLocaleMessages(localeCode: string): LocaleMessages | undefined {
+  const match = Object.entries(localeModules).find(([modulePath]) =>
+    modulePath.endsWith(`/${localeCode}.ts`) || fileNameFromModulePath(modulePath) === `${localeCode}.ts`
+  )
+  return match?.[1].default
+}
+
 function getPathValue(messages: LocaleMessages, path: string): unknown {
   return path.split('.').reduce<unknown>((current, segment) => {
     if (current && typeof current === 'object' && segment in current) {
@@ -48,6 +55,12 @@ const requiredWeChatILinkKeys = [
   'channels.wechatILinkSetupSubmitting',
   'channels.wechatILinkSetupSubmitFailed',
   'channels.wechatILinkSetupSuccess',
+  'channels.wechatILinkSetupStatePending',
+  'channels.wechatILinkSetupStateAuthorizing',
+  'channels.wechatILinkSetupStateConfiguring',
+  'channels.wechatILinkSetupStateConnected',
+  'channels.wechatILinkSetupStateError',
+  'channels.wechatILinkSetupStateExpired',
   'channels.wechatILinkPairingPayload',
   'channels.wechatILinkPairingPayloadPlaceholder',
   'channels.wechatILinkDesc',
@@ -102,6 +115,30 @@ describe('WeChat iLink locale coverage', () => {
         expect(typeof value, `${file} missing ${key}`).toBe('string')
         expect(String(value).trim().length, `${file} empty ${key}`).toBeGreaterThan(0)
         expect(value, `${file} should not fall back to English for ${key}`).not.toBe(englishValue)
+      }
+    }
+  })
+
+  it('keeps setup-session wording localized in Chinese locales', () => {
+    const zhCN = findLocaleMessages('zh-CN')
+    const zhTW = findLocaleMessages('zh-TW')
+
+    for (const [file, messages] of [
+      ['zh-CN.ts', zhCN],
+      ['zh-TW.ts', zhTW],
+    ] as const) {
+      expect(messages, `${file} should be loaded`).toBeTruthy()
+
+      for (const key of [
+        'channels.wechatILinkScanHint',
+        'channels.wechatILinkSetupCreateFailed',
+        'channels.wechatILinkSetupMissingSession',
+        'channels.wechatILinkSetupLoadFailed',
+      ]) {
+        const value = String(getPathValue(messages as LocaleMessages, key) || '')
+        expect(value, `${file} should not keep raw setup/session wording for ${key}`).not.toMatch(
+          /setup session|setup 会话|setup 會話/i
+        )
       }
     }
   })

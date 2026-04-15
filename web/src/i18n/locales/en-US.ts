@@ -2497,6 +2497,12 @@ export default mergeHarnessLocale('en-US', {
     wechatILinkSetupSubmitting: 'Completing...',
     wechatILinkSetupSubmitFailed: 'Failed to complete setup',
     wechatILinkSetupSuccess: 'Configuration complete. You can close this page now.',
+    wechatILinkSetupStatePending: "Pending",
+    wechatILinkSetupStateAuthorizing: "Authorizing",
+    wechatILinkSetupStateConfiguring: "Configuring",
+    wechatILinkSetupStateConnected: "Connected",
+    wechatILinkSetupStateError: "Error",
+    wechatILinkSetupStateExpired: "Expired",
     wechatILinkPairingPayload: 'Pairing Payload',
     wechatILinkPairingPayloadPlaceholder:
       'Paste the iLink pairing payload here, or leave it empty and fill API Base URL + Bot Token below.',

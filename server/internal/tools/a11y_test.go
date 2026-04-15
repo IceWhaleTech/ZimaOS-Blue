@@ -35,6 +35,7 @@ type a11yCompatBackend struct {
 	lastActRefMap         map[int]string
 	actTypeHistory        []string
 	actRefHistory         []int
+	actValueHistory       []string
 	lastScrollWindowID    string
 	lastScrollDirection   string
 	lastScrollLines       int
@@ -212,6 +213,7 @@ func (b *a11yCompatBackend) Act(_ context.Context, windowID string, ref int, ref
 	b.lastActRefMap = refMap
 	b.actTypeHistory = append(b.actTypeHistory, actType)
 	b.actRefHistory = append(b.actRefHistory, ref)
+	b.actValueHistory = append(b.actValueHistory, value)
 	b.actCalls++
 	if err := b.actErrorsByType[actType]; err != nil {
 		return a11yruntime.ActionResult{}, err

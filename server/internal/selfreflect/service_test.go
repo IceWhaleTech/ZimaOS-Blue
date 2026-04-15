@@ -2,6 +2,7 @@ package selfreflect
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -138,5 +139,68 @@ func TestServiceReflect_SkipsWhenNoGroundedLessonsRemain(t *testing.T) {
 	}
 	if result.MemoryWritten != 0 {
 		t.Fatalf("memory_written = %d, want 0", result.MemoryWritten)
+	}
+}
+
+func TestBuildReflectionSystemPrompt_AdvertisesRuntimeMutationContract(t *testing.T) {
+	prompt := buildReflectionSystemPrompt()
+	for _, token := range []string{
+		`"mutation_suggestions"`,
+		`"reflection_signature"`,
+		`"signal_strength"`,
+		`instruction_add|instruction_replace|guardrail_add|workflow_capture|anti_pattern`,
+	} {
+		if !strings.Contains(prompt, token) {
+			t.Fatalf("expected reflection prompt to contain %q", token)
+		}
+	}
+}
+
+func TestServiceReflect_DisableMemoryWritePreservesRuntimeMutationOutput(t *testing.T) {
+	llmStub := &mockLLM{content: `{
+		"summary":"Runtime reflection complete.",
+		"lessons":[
+			{"kind":"heuristic","lesson":"Validate browser title extraction before summarizing.","when_to_apply":"When browser navigation returns partial content.","evidence":"Two runtime evidence items showed missing title extraction before summary generation."}
+		],
+		"mutation_suggestions":[
+			{"kind":"guardrail_add","target_skill_id":"browser","rationale":"Prevent summary generation without a browser title.","suggested_text":"Abort summary generation when browser title extraction is missing.","evidence_ids":["ev-1","ev-2"]}
+		],
+		"signal_strength":"high"
+	}`}
+	writer := &mockWriter{}
+	svc := NewService(llmStub, writer)
+
+	result, err := svc.Reflect(context.Background(), Input{
+		Goal:               "Investigate browser regression",
+		FinalStatus:        "running",
+		TriggerKind:        "interval_tool_finishes",
+		DisableMemoryWrite: true,
+		ResultSummary:      "Runtime review observed repeated missing title errors.",
+		RuntimeSignals: map[string]interface{}{
+			"tool_finishes_since_review": 10,
+			"consecutive_failures":       2,
+		},
+		EvidenceWindow: []RuntimeEvidenceItem{
+			{ID: "ev-1", EventType: "tool_finished", Summary: "browser navigate returned partial output", PayloadJSON: `{"error":"missing_title"}`},
+			{ID: "ev-2", EventType: "tool_finished", Summary: "browser summary attempted before title extraction", PayloadJSON: `{"failure_label":"missing_title"}`},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Reflect returned error: %v", err)
+	}
+	if result.MemoryWritten != 0 {
+		t.Fatalf("memory_written = %d, want 0", result.MemoryWritten)
+	}
+	if len(writer.writes) != 0 {
+		t.Fatalf("writes len = %d, want 0", len(writer.writes))
+	}
+	if len(result.MutationSuggestions) != 1 {
+		t.Fatalf("mutation_suggestions len = %d, want 1", len(result.MutationSuggestions))
+	}
+	if result.SignalStrength != "high" {
+		t.Fatalf("signal_strength = %q, want high", result.SignalStrength)
+	}
+	if result.ReflectionSignature == "" {
+		t.Fatal("expected reflection_signature to be populated")
 	}
 }

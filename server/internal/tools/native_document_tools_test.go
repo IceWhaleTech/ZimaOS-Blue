@@ -629,9 +629,9 @@ func TestPPTXToolCreateWithStructuredTableColumnAlignmentHints(t *testing.T) {
 	}
 	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
 	for _, needle := range []string{
-		`<a:pPr algn="l"/>`,
-		`<a:pPr algn="r"/>`,
-		`<a:pPr algn="ctr"/>`,
+		`<a:pPr algn="l">`,
+		`<a:pPr algn="r">`,
+		`<a:pPr algn="ctr">`,
 		`<a:t>North</a:t>`,
 		`<a:t>120</a:t>`,
 		`<a:t>Good</a:t>`,

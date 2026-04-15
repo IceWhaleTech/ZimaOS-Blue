@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -433,6 +434,8 @@ func ToCard(toolName, content string) map[string]interface{} {
 		return imageCard(content)
 	case "ppt":
 		return pptCard(content)
+	case "docx", "xlsx", "pptx", "pdf":
+		return nativeDocumentCard(normalizedToolName, content)
 	case "calculator":
 		return calculatorCard(content)
 	case "current_time":
@@ -1847,6 +1850,24 @@ func stringSliceValue(v interface{}) []string {
 	}
 }
 
+func compatBool(v interface{}) bool {
+	switch typed := v.(type) {
+	case bool:
+		return typed
+	case string:
+		switch strings.ToLower(strings.TrimSpace(typed)) {
+		case "1", "true", "yes", "on":
+			return true
+		default:
+			return false
+		}
+	case float64:
+		return typed != 0
+	default:
+		return false
+	}
+}
+
 func limitCardStringItems(v interface{}, limit int) []string {
 	items := stringSliceValue(v)
 	if limit <= 0 || len(items) <= limit {
@@ -1925,6 +1946,113 @@ func GenericCard(toolName, content string) map[string]interface{} {
 		"title":   toolName,
 		"status":  "info",
 		"message": message,
+	}
+}
+
+func nativeDocumentCard(toolName, content string) map[string]interface{} {
+	var data map[string]interface{}
+	if json.Unmarshal([]byte(content), &data) != nil {
+		return GenericCard(toolName, content)
+	}
+	if hasNonEmptyError(data) {
+		return buildToolErrorCard(toolName, data)
+	}
+	if !nativeDocumentPayloadShouldRenderFileCard(data) {
+		return GenericCard(toolName, content)
+	}
+
+	downloadPath := firstCardNonEmpty(
+		nativeDocumentCardDownloadPath(data),
+		strings.TrimSpace(formatValue(data["absolute_path"])),
+	)
+	filename := nativeDocumentCardFilename(data, downloadPath)
+	if filename == "" || downloadPath == "" {
+		return GenericCard(toolName, content)
+	}
+
+	card := map[string]interface{}{
+		"type":        "file",
+		"id":          "native-document-" + url.QueryEscape(downloadPath),
+		"filename":    filename,
+		"downloadUrl": downloadPath,
+		"mimeType":    nativeDocumentMimeType(strings.TrimSpace(formatValue(data["format"]))),
+	}
+	if nativeDocumentHasPreview(strings.TrimSpace(formatValue(data["format"]))) {
+		card["previewUrl"] = downloadPath
+	}
+	return card
+}
+
+func nativeDocumentPayloadShouldRenderFileCard(data map[string]interface{}) bool {
+	if !compatBool(data["success"]) {
+		return false
+	}
+	action := strings.ToLower(strings.TrimSpace(formatValue(data["action"])))
+	switch action {
+	case "create", "edit", "apply_template", "fill", "reformat", "duplicate_slide", "delete_slide", "reorder_slides", "replace_text", "update_chart_data":
+		return nativeDocumentCardDownloadPath(data) != ""
+	default:
+		return false
+	}
+}
+
+func nativeDocumentCardDownloadPath(data map[string]interface{}) string {
+	for _, candidate := range []string{
+		strings.TrimSpace(formatValue(data["absolute_path"])),
+		strings.TrimSpace(formatValue(data["path"])),
+		strings.TrimSpace(formatValue(data["original_path"])),
+	} {
+		if candidate == "" {
+			continue
+		}
+		if isGenericCardLocalAbsolutePath(candidate) {
+			return candidate
+		}
+		if strings.HasPrefix(candidate, "http://") || strings.HasPrefix(candidate, "https://") {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func nativeDocumentCardFilename(data map[string]interface{}, downloadPath string) string {
+	for _, candidate := range []string{
+		strings.TrimSpace(formatValue(data["original_path"])),
+		strings.TrimSpace(formatValue(data["path"])),
+		downloadPath,
+	} {
+		if candidate == "" {
+			continue
+		}
+		base := filepath.Base(candidate)
+		if strings.TrimSpace(base) != "" && base != "." && base != string(filepath.Separator) {
+			return base
+		}
+	}
+	return ""
+}
+
+func nativeDocumentMimeType(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case "xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case "pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case "pdf":
+		return "application/pdf"
+	default:
+		return ""
+	}
+}
+
+func nativeDocumentHasPreview(format string) bool {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "docx", "xlsx", "pptx", "pdf":
+		return true
+	default:
+		return false
 	}
 }
 

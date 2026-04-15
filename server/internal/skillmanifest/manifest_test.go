@@ -562,7 +562,11 @@ func TestAllEnabledSkillAssets_StrictContractAndEmbeddedSync(t *testing.T) {
 
 func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	supplemental := []string{
-		"office_docs",
+		"a11y",
+		"docx",
+		"xlsx",
+		"pptx",
+		"pdf",
 		"summarize",
 		"himalaya",
 		"tasks",
@@ -608,8 +612,8 @@ func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	}
 }
 
-func TestReadEmbedded_OfficeDocsMentionsNativeDocumentToolsAndA11y(t *testing.T) {
-	doc, raw, err := ReadEmbedded("office_docs", Options{RequireContract: true})
+func TestReadEmbedded_DOCXMentionsNativeDocumentActions(t *testing.T) {
+	doc, raw, err := ReadEmbedded("docx", Options{RequireContract: true})
 	if err != nil {
 		t.Fatalf("ReadEmbedded strict contract error: %v", err)
 	}
@@ -617,9 +621,92 @@ func TestReadEmbedded_OfficeDocsMentionsNativeDocumentToolsAndA11y(t *testing.T)
 		t.Fatal("expected embedded manifest")
 	}
 	content := string(raw)
-	for _, needle := range []string{"docx", "xlsx", "pptx", "pdf", "a11y"} {
+	for _, needle := range []string{"blue docx action=create", "apply_template", "validate"} {
 		if !strings.Contains(content, needle) {
-			t.Fatalf("embedded office_docs skill missing %q: %s", needle, content)
+			t.Fatalf("embedded docx skill missing %q: %s", needle, content)
+		}
+	}
+	if strings.Contains(content, "blue a11y action=message") {
+		t.Fatalf("embedded docx skill should not inline host a11y walkthroughs: %s", content)
+	}
+}
+
+func TestReadEmbedded_XLSXMentionsMutationAndAnalysisActions(t *testing.T) {
+	doc, raw, err := ReadEmbedded("xlsx", Options{RequireContract: true})
+	if err != nil {
+		t.Fatalf("ReadEmbedded strict contract error: %v", err)
+	}
+	if doc.Manifest == nil {
+		t.Fatal("expected embedded manifest")
+	}
+	content := string(raw)
+	for _, needle := range []string{"blue xlsx action=create", "append_rows", "update_cells", "sheet_compare", "Markdown"} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("embedded xlsx skill missing %q: %s", needle, content)
+		}
+	}
+}
+
+func TestReadEmbedded_PPTXMentionsSlideAndChartActions(t *testing.T) {
+	doc, raw, err := ReadEmbedded("pptx", Options{RequireContract: true})
+	if err != nil {
+		t.Fatalf("ReadEmbedded strict contract error: %v", err)
+	}
+	if doc.Manifest == nil {
+		t.Fatal("expected embedded manifest")
+	}
+	content := string(raw)
+	for _, needle := range []string{"blue pptx action=create", "duplicate_slide", "update_chart_data", "validate_template"} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("embedded pptx skill missing %q: %s", needle, content)
+		}
+	}
+}
+
+func TestReadEmbedded_PDFMentionsReadFillAndReformatActions(t *testing.T) {
+	doc, raw, err := ReadEmbedded("pdf", Options{RequireContract: true})
+	if err != nil {
+		t.Fatalf("ReadEmbedded strict contract error: %v", err)
+	}
+	if doc.Manifest == nil {
+		t.Fatal("expected embedded manifest")
+	}
+	content := string(raw)
+	for _, needle := range []string{"blue pdf action=read", "action=fill", "action=reformat"} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("embedded pdf skill missing %q: %s", needle, content)
+		}
+	}
+}
+
+func TestRemovedOfficeDocsUmbrellaSkill_IsNotBundled(t *testing.T) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+
+	assetPath := filepath.Join(repoRoot, "assets", "skills", "office_docs", "SKILL.md")
+	if _, err := os.Stat(assetPath); !os.IsNotExist(err) {
+		t.Fatalf("expected office_docs umbrella asset to stay absent, err=%v", err)
+	}
+	if _, _, err := ReadEmbedded("office_docs", Options{}); err == nil {
+		t.Fatal("expected office_docs umbrella embedded skill to stay absent")
+	}
+}
+
+func TestReadEmbedded_A11yMentionsScenarioActions(t *testing.T) {
+	doc, raw, err := ReadEmbedded("a11y", Options{RequireContract: true})
+	if err != nil {
+		t.Fatalf("ReadEmbedded strict contract error: %v", err)
+	}
+	if doc.Manifest == nil {
+		t.Fatal("expected embedded manifest")
+	}
+	content := string(raw)
+	for _, needle := range []string{"message", "type", "select", "click", "toggle"} {
+		if !strings.Contains(content, needle) {
+			t.Fatalf("embedded a11y skill missing %q: %s", needle, content)
 		}
 	}
 }

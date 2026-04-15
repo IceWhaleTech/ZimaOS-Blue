@@ -288,7 +288,7 @@ func (t *OfficeTool) Definition() ToolDefinition {
 				},
 				"content": map[string]interface{}{
 					"type":        "string",
-					"description": "For docx output, optional plain text or simple Markdown-like content. Supports # headings, bullets, and pipe tables.",
+					"description": "Optional plain text or Markdown-like content. For docx, # headings, bullets, and pipe tables become document structure. For xlsx, Markdown tables become sheets and lists/paragraphs become content sheets or overview notes.",
 				},
 				"sections": map[string]interface{}{
 					"type":        "array",
@@ -447,6 +447,22 @@ func parseOfficeWorkbookSpec(args map[string]interface{}, title, subtitle string
 		spec.Sheets = append(spec.Sheets, sheets...)
 	}
 	if len(spec.Sheets) == 0 {
+		if !officeWorkbookHasStructuredGridArgs(args) {
+			content := strings.TrimSpace(firstCompatString(args, "content", "markdown", "body", "text"))
+			if content != "" {
+				contentSpec := parseMarkdownishOfficeWorkbook(content)
+				if spec.Title == "" {
+					spec.Title = contentSpec.Title
+				}
+				if spec.Subtitle == "" {
+					spec.Subtitle = contentSpec.Subtitle
+				}
+				spec.Notes = officeWorkbookAppendUniqueLines(spec.Notes, contentSpec.Notes...)
+				spec.Sheets = append(spec.Sheets, contentSpec.Sheets...)
+			}
+		}
+	}
+	if len(spec.Sheets) == 0 {
 		sheet, err := parseOfficeSingleSheet(args)
 		if err != nil {
 			return spec, err
@@ -466,6 +482,15 @@ func parseOfficeWorkbookSpec(args map[string]interface{}, title, subtitle string
 		}
 	}
 	return spec, nil
+}
+
+func officeWorkbookHasStructuredGridArgs(args map[string]interface{}) bool {
+	for _, key := range []string{"rows", "table", "columns", "headers"} {
+		if raw, ok := compatArgValue(args, key); ok && raw != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func parseOfficeDocSpec(args map[string]interface{}, title, subtitle string, theme officeTheme, styleHint string) (officeDocSpec, error) {

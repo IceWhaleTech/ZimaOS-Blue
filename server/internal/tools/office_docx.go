@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/officemd"
 )
 
 type officeDOCXHyperlink struct {
@@ -771,129 +773,7 @@ func officeDOCXSectionPropsXML() string {
 }
 
 func parseMarkdownishOfficeDoc(content string) officeDocSpec {
-	spec := officeDocSpec{}
-	normalized := strings.ReplaceAll(content, "\r\n", "\n")
-	blocks := strings.Split(normalized, "\n\n")
-	currentSection := -1
-
-	appendTopParagraph := func(text string) {
-		text = strings.TrimSpace(text)
-		if text == "" {
-			return
-		}
-		lower := strings.ToLower(text)
-		if strings.HasPrefix(lower, "summary:") || strings.HasPrefix(lower, "摘要：") || strings.HasPrefix(lower, "摘要:") {
-			text = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(strings.TrimPrefix(text, "Summary:"), "摘要:"), "摘要："))
-			if text != "" {
-				spec.Summary = text
-			}
-			return
-		}
-		if spec.Title != "" && spec.Subtitle == "" && spec.Summary == "" && len(spec.ParagraphBlocks) == 0 && len(spec.Paragraphs) == 0 && runeCount(text) <= 96 {
-			spec.Subtitle = text
-			return
-		}
-		if spec.Summary == "" {
-			spec.Summary = text
-			return
-		}
-		spec.ParagraphBlocks = append(spec.ParagraphBlocks, officeDocBlock{Kind: officeDocBlockParagraph, Text: text})
-	}
-
-	appendBlock := func(block officeDocBlock) {
-		block.Text = strings.TrimSpace(block.Text)
-		if block.Kind == officeDocBlockImage {
-			block.Source = strings.TrimSpace(block.Source)
-			if block.Source == "" {
-				return
-			}
-		} else if block.Text == "" {
-			return
-		}
-		if currentSection >= 0 && currentSection < len(spec.Sections) {
-			spec.Sections[currentSection].ParagraphBlocks = append(spec.Sections[currentSection].ParagraphBlocks, block)
-			return
-		}
-		if block.Kind == officeDocBlockParagraph {
-			appendTopParagraph(block.Text)
-			return
-		}
-		spec.ParagraphBlocks = append(spec.ParagraphBlocks, block)
-	}
-
-	startSection := func(heading string) {
-		spec.Sections = append(spec.Sections, officeDocSection{Heading: strings.TrimSpace(heading)})
-		currentSection = len(spec.Sections) - 1
-	}
-
-	for _, block := range blocks {
-		block = strings.TrimSpace(strings.ReplaceAll(block, "\r\n", "\n"))
-		if block == "" {
-			continue
-		}
-
-		firstLine, rest := officeSplitFirstMarkdownLine(block)
-		if heading, level, ok := officeMarkdownHeading(firstLine); ok {
-			if level == 1 && spec.Title == "" && currentSection < 0 && spec.Summary == "" && len(spec.ParagraphBlocks) == 0 && len(spec.Paragraphs) == 0 {
-				spec.Title = heading
-			} else {
-				startSection(heading)
-			}
-			block = strings.TrimSpace(rest)
-			if block == "" {
-				continue
-			}
-		}
-
-		if alt, source, ok := officeMarkdownImageBlock(block); ok {
-			appendBlock(officeDocBlock{Kind: officeDocBlockImage, Text: alt, Source: source})
-			continue
-		}
-		if separator, ok := officeMarkdownThematicBreak(block); ok {
-			appendBlock(officeDocBlock{Kind: officeDocBlockSeparator, Text: separator})
-			continue
-		}
-		if code, ok := officeMarkdownFencedCodeBlock(block); ok {
-			appendBlock(officeDocBlock{Kind: officeDocBlockCode, Text: code})
-			continue
-		}
-
-		lines := officeTrimmedLines(block)
-		if len(lines) == 0 {
-			continue
-		}
-		if quote, ok := officeMarkdownBlockquote(lines); ok {
-			appendBlock(officeDocBlock{Kind: officeDocBlockQuote, Text: quote})
-			continue
-		}
-		if officeAllBulletLines(lines) {
-			bullets := officeMarkdownBullets(lines)
-			if len(bullets) == 0 {
-				continue
-			}
-			if currentSection >= 0 && currentSection < len(spec.Sections) {
-				spec.Sections[currentSection].Bullets = append(spec.Sections[currentSection].Bullets, bullets...)
-			} else {
-				startSection("Highlights")
-				spec.Sections[currentSection].Bullets = append(spec.Sections[currentSection].Bullets, bullets...)
-			}
-			continue
-		}
-
-		if table := officeParseMarkdownTable(lines); table != nil {
-			if currentSection >= 0 && currentSection < len(spec.Sections) {
-				spec.Sections[currentSection].Table = table
-			} else {
-				startSection("Table")
-				spec.Sections[currentSection].Table = table
-			}
-			continue
-		}
-
-		appendBlock(officeDocBlock{Kind: officeDocBlockParagraph, Text: officeJoinTextFragments(lines)})
-	}
-
-	return spec
+	return officeDocSpecFromMarkdown(officemd.ParseDocument(content))
 }
 
 func officeSplitFirstMarkdownLine(text string) (string, string) {

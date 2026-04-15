@@ -173,7 +173,7 @@ func officeBuildPresentationSlides(spec officeDocSpec) []officePPTXSlide {
 		})
 	}
 
-	if len(sectionTitles) > 0 {
+	if officePPTXShouldIncludeTOC(spec, sectionTitles) {
 		tocLines := make([]string, 0, len(sectionTitles))
 		for idx, sectionTitle := range sectionTitles {
 			tocLines = append(tocLines, fmt.Sprintf("%d. %s", idx+1, sectionTitle))
@@ -198,8 +198,10 @@ func officeBuildPresentationSlides(spec officeDocSpec) []officePPTXSlide {
 		callouts := []officePPTXCallout(nil)
 		if section.Chart != nil && section.Table == nil {
 			callouts, blocks = officePPTXExtractChartCallouts(blocks)
+		} else if officePPTXShouldUseStandaloneCallouts(section, blocks) {
+			callouts, blocks = officePPTXExtractStandaloneCallouts(blocks)
 		}
-		if len(blocks) == 0 && officePPTXTableRowCount(section.Table) == 0 && section.Chart == nil {
+		if len(blocks) == 0 && len(callouts) == 0 && officePPTXTableRowCount(section.Table) == 0 && section.Chart == nil {
 			continue
 		}
 		title := strings.TrimSpace(section.Heading)
@@ -226,6 +228,52 @@ func officeBuildPresentationSlides(spec officeDocSpec) []officePPTXSlide {
 		slides[idx].Theme = theme
 	}
 	return slides
+}
+
+func officePPTXShouldIncludeTOC(spec officeDocSpec, sectionTitles []string) bool {
+	if len(sectionTitles) == 0 {
+		return false
+	}
+	return strings.TrimSpace(spec.Title) != "" ||
+		strings.TrimSpace(spec.Subtitle) != "" ||
+		strings.TrimSpace(spec.Summary) != ""
+}
+
+func officePPTXShouldUseStandaloneCallouts(section officeDocSection, blocks []officeDocBlock) bool {
+	if section.Chart != nil || section.Table != nil {
+		return false
+	}
+	if len(section.ParagraphBlocks) > 0 || len(section.Paragraphs) > 0 {
+		return false
+	}
+	if len(section.Bullets) < 3 || len(section.Bullets) > 6 {
+		return false
+	}
+	if len(blocks) != len(section.Bullets) {
+		return false
+	}
+	for _, bullet := range section.Bullets {
+		if !officePPTXBulletSupportsStandaloneCallout(bullet) {
+			return false
+		}
+	}
+	return true
+}
+
+func officePPTXBulletSupportsStandaloneCallout(bullet string) bool {
+	trimmed := strings.TrimSpace(bullet)
+	if trimmed == "" || strings.Contains(trimmed, "\n") {
+		return false
+	}
+	if officePPTXOrderedListPrefixLength(trimmed) > 0 {
+		return false
+	}
+	for _, prefix := range []string{"☑ ", "☐ ", "✓ ", "✔ "} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return false
+		}
+	}
+	return runeCount(trimmed) <= 56
 }
 
 func officePPTXSectionTitles(sections []officeDocSection) []string {
@@ -298,6 +346,24 @@ func officePPTXExtractChartCallouts(blocks []officeDocBlock) ([]officePPTXCallou
 		remaining = append(remaining, block)
 	}
 	return callouts, remaining
+}
+
+func officePPTXExtractStandaloneCallouts(blocks []officeDocBlock) ([]officePPTXCallout, []officeDocBlock) {
+	if len(blocks) < 3 || len(blocks) > 6 {
+		return nil, blocks
+	}
+	callouts := make([]officePPTXCallout, 0, len(blocks))
+	for _, block := range blocks {
+		if block.Kind != officeDocBlockParagraph && block.Kind != officeDocBlockQuote {
+			return nil, blocks
+		}
+		callout, ok := officePPTXCalloutFromText(block.Text, officePPTXTextLooksLikeListItem(block.Text))
+		if !ok {
+			return nil, blocks
+		}
+		callouts = append(callouts, callout)
+	}
+	return callouts, nil
 }
 
 func officePPTXCalloutFromText(text string, preferListItem bool) (officePPTXCallout, bool) {
@@ -798,6 +864,7 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 	theme := officePPTXResolvedTheme(slide.Theme)
 	var body strings.Builder
 	hasBodyText := len(slide.Blocks) > 0 || len(slide.Lines) > 0
+	useStandaloneCalloutGrid := slide.Chart == nil && slide.Table == nil && len(slide.Callouts) > 0 && !hasBodyText
 	if len(slide.Blocks) > 0 {
 		for _, block := range slide.Blocks {
 			if paragraph := officePPTXParagraphXML(block, theme, slide.hyperlinks); paragraph != "" {
@@ -834,7 +901,12 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 		`<p:sp><p:nvSpPr><p:cNvPr id="3" name="Content"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>` + body.String() + `</p:txBody></p:sp>` +
 		officePPTXSeparatorShapesXML(slide.Blocks, theme) +
 		officePPTXImageShapesXML(slide.Blocks, slide.images) +
-		officePPTXChartCalloutShapesXML(slide.Callouts, theme, hasBodyText, slide.Table != nil, slide.hyperlinks) +
+		func() string {
+			if useStandaloneCalloutGrid {
+				return officePPTXStandaloneCalloutShapesXML(slide.Callouts, theme, slide.hyperlinks)
+			}
+			return officePPTXChartCalloutShapesXML(slide.Callouts, theme, hasBodyText, slide.Table != nil, slide.hyperlinks)
+		}() +
 		officePPTXChartGraphicFrameXML(slide.Chart, slide.chartRelID, hasBodyText, slide.Table != nil, len(slide.Callouts) > 0) +
 		officePPTXTableGraphicFrameXML(slide.Table, hasBodyText, slide.Chart != nil, theme, slide.hyperlinks) +
 		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
@@ -1412,6 +1484,74 @@ func officePPTXChartCalloutBodyXML(callout officePPTXCallout, theme officeTheme,
 		1200,
 		"",
 	))
+	return sb.String()
+}
+
+func officePPTXStandaloneCalloutShapesXML(callouts []officePPTXCallout, theme officeTheme, hyperlinks []officePPTXHyperlink) string {
+	if len(callouts) == 0 {
+		return ""
+	}
+	if len(callouts) > 6 {
+		callouts = callouts[:6]
+	}
+
+	const (
+		slideWidth         = 12192000
+		contentMargin      = 685800
+		gridTop            = 1600200
+		gridBottomMargin   = 685800
+		gridGap            = 182880
+		backgroundShapeID  = 60
+		calloutShapeIDBase = 70
+		cornerGeometry     = "roundRect"
+	)
+
+	gridWidth := slideWidth - contentMargin*2
+	gridHeight := 6858000 - gridTop - gridBottomMargin
+	columns := 2
+	if len(callouts) <= 2 {
+		columns = 1
+	}
+	rows := (len(callouts) + columns - 1) / columns
+	cardWidth := gridWidth
+	if columns > 1 {
+		cardWidth = (gridWidth - gridGap) / 2
+	}
+	cardHeight := (gridHeight - gridGap*(rows-1)) / rows
+
+	var sb strings.Builder
+	sb.WriteString(officePPTXTextBoxShapeXML(
+		backgroundShapeID,
+		"Standalone Callout Grid",
+		contentMargin,
+		gridTop,
+		gridWidth,
+		gridHeight,
+		theme.Surface,
+		theme.Border,
+		"rect",
+		`<a:p/>`,
+	))
+
+	for idx, callout := range callouts {
+		fill, line, labelColor, valueColor, bodyColor := officePPTXChartCalloutColors(callout, theme)
+		col := idx % columns
+		row := idx / columns
+		x := contentMargin + col*(cardWidth+gridGap)
+		y := gridTop + row*(cardHeight+gridGap)
+		sb.WriteString(officePPTXTextBoxShapeXML(
+			calloutShapeIDBase+idx,
+			fmt.Sprintf("Standalone Callout %d", idx+1),
+			x,
+			y,
+			cardWidth,
+			cardHeight,
+			fill,
+			line,
+			cornerGeometry,
+			officePPTXChartCalloutBodyXML(callout, theme, labelColor, valueColor, bodyColor, hyperlinks),
+		))
+	}
 	return sb.String()
 }
 

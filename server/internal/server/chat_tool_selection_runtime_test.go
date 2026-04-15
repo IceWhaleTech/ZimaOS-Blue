@@ -636,6 +636,111 @@ func TestSelectChatToolsForRequest_ExplicitPPTXPathWithRealRegisteredToolsKeepsP
 	}
 }
 
+func TestSelectToolsDetailed_ExplicitPPTXPathExcludesImageSurface(t *testing.T) {
+	registry := tools.NewRegistry()
+	workspaceDir := t.TempDir()
+	registry.Register(tools.NewFileWriteTool([]string{workspaceDir}, 0))
+	registry.Register(tools.NewPPTXTool([]string{workspaceDir}, nil, nil))
+	tools.RegisterImageTool(registry, nil, func(context.Context, tools.ImageGenerateRequest) (*tools.ImageTaskResult, error) {
+		return &tools.ImageTaskResult{Status: "succeeded", ID: "img-1"}, nil
+	}, nil)
+
+	handler := NewChatHandler(nil, nil, registry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	policyReq := tools.ToolPolicyRequest{
+		Model:     "gpt-5.3-codex-spark",
+		RouteKind: tools.ToolRouteKindChat,
+	}
+
+	routed, _ := handler.selectToolsDetailed("Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.", policyReq)
+	routedNames := toolNameSet(routed)
+	if _, ok := routedNames["pptx"]; !ok {
+		t.Fatalf("expected pptx in routed defs for explicit pptx artifact request, got=%v", selectedToolNames(routed))
+	}
+	if _, ok := routedNames["image"]; ok {
+		t.Fatalf("expected image surface to stay hidden for explicit pptx artifact request, got=%v", selectedToolNames(routed))
+	}
+	if _, ok := routedNames["generate_image"]; ok {
+		t.Fatalf("expected generate_image to stay hidden for explicit pptx artifact request, got=%v", selectedToolNames(routed))
+	}
+}
+
+func TestSelectToolsDetailed_GenericPPTXArtifactExcludesImageSurface(t *testing.T) {
+	registry := tools.NewRegistry()
+	workspaceDir := t.TempDir()
+	registry.Register(tools.NewFileWriteTool([]string{workspaceDir}, 0))
+	registry.Register(tools.NewPPTXTool([]string{workspaceDir}, nil, nil))
+	tools.RegisterImageTool(registry, nil, func(context.Context, tools.ImageGenerateRequest) (*tools.ImageTaskResult, error) {
+		return &tools.ImageTaskResult{Status: "succeeded", ID: "img-1"}, nil
+	}, nil)
+
+	handler := NewChatHandler(nil, nil, registry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	policyReq := tools.ToolPolicyRequest{
+		Model:     "gpt-5.3-codex-spark",
+		RouteKind: tools.ToolRouteKindChat,
+	}
+
+	routed, _ := handler.selectToolsDetailed("先做多轮资料研究，再整理成演示结论，最后生成 .pptx 并做一次文件校验。", policyReq)
+	routedNames := toolNameSet(routed)
+	if _, ok := routedNames["pptx"]; !ok {
+		t.Fatalf("expected pptx in routed defs for generic pptx artifact request, got=%v", selectedToolNames(routed))
+	}
+	if _, ok := routedNames["image"]; ok {
+		t.Fatalf("expected image surface to stay hidden for generic pptx artifact request, got=%v", selectedToolNames(routed))
+	}
+	if _, ok := routedNames["generate_image"]; ok {
+		t.Fatalf("expected generate_image to stay hidden for generic pptx artifact request, got=%v", selectedToolNames(routed))
+	}
+}
+
+func TestSelectToolsDetailed_ExplicitNativeDocumentArtifactsExcludeConvert(t *testing.T) {
+	testCases := []struct {
+		name    string
+		message string
+		native  string
+	}{
+		{
+			name:    "docx",
+			message: "Read findings.md and save the polished report to ui_review.docx.",
+			native:  "docx",
+		},
+		{
+			name:    "xlsx",
+			message: "Read findings.md and save the scorecard to ui_review.xlsx.",
+			native:  "xlsx",
+		},
+		{
+			name:    "pdf",
+			message: "Read findings.md and save the reformatted report to launch_plan.pdf.",
+			native:  "pdf",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := tools.NewRegistry()
+			registry.ExposeDefinition(tools.ToolDefinition{Name: tc.native, Description: "Native document tool"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "convert", Description: "Convert local files"})
+
+			handler := newChatToolSelectionTestHandler(registry)
+			routed, _ := handler.selectToolsDetailed(tc.message, tools.ToolPolicyRequest{
+				Model:     "gpt-5.3-codex-spark",
+				RouteKind: tools.ToolRouteKindChat,
+			})
+			routedNames := toolNameSet(routed)
+			if _, ok := routedNames[tc.native]; !ok {
+				t.Fatalf("expected %q in routed defs for explicit native artifact request, got=%v", tc.native, selectedToolNames(routed))
+			}
+			if _, ok := routedNames["convert"]; ok {
+				t.Fatalf("expected convert to stay hidden for explicit native artifact request, got=%v", selectedToolNames(routed))
+			}
+		})
+	}
+}
+
 func TestShouldPreferExplicitMemoryFileWorkflow_DoesNotCaptureNativeDocumentTargets(t *testing.T) {
 	if shouldPreferExplicitMemoryFileWorkflow("Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.") {
 		t.Fatal("expected native pptx save request not to be treated as explicit memory-file workflow")

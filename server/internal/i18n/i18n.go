@@ -179,6 +179,11 @@ const (
 	MsgToolLoopRecoveryGeneric           = "tool_loop.recovery.generic"
 )
 
+// Message keys for declarative skill execution.
+const (
+	MsgSkillDeclarativeHandledByLLM = "skill.declarative_handled_by_llm"
+)
+
 var (
 	translations           map[Language]map[string]string
 	translationBuildTarget map[Language]map[string]string
@@ -844,6 +849,7 @@ func ensureTranslations() {
 		registerTranslationsPart1()
 		registerTranslationsPart2()
 		registerTranslationsPart3()
+		registerDeclarativeSkillTranslations()
 		registerBrowserErrorTranslations()
 		registerBrowserScreenshotTranslations()
 		registerBrowserResultTranslations()

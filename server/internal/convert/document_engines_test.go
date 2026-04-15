@@ -164,6 +164,18 @@ func TestEngineSupportsConversionCrossFamily(t *testing.T) {
 	}
 }
 
+func TestEngineSupportsConversionPandocMarkdownToPPTX(t *testing.T) {
+	if !engineSupportsConversion(documentEnginePandoc, "md", "pptx") {
+		t.Fatalf("pandoc should allow md->pptx")
+	}
+}
+
+func TestEngineSupportsConversionPandocRejectsPDFInput(t *testing.T) {
+	if engineSupportsConversion(documentEnginePandoc, "pdf", "docx") {
+		t.Fatalf("pandoc should not claim pdf->docx support")
+	}
+}
+
 func TestEngineSupportsConversionTextutilMarkdownAndTextAlias(t *testing.T) {
 	if engineSupportsConversion(documentEngineTextutil, "md", "pdf") {
 		t.Fatalf("textutil should not claim md->pdf support")
@@ -271,6 +283,176 @@ func TestConvertDocumentFallsBackToHelperPDFWhenNoEngineSupportsSource(t *testin
 	}
 	if !strings.HasSuffix(outputs[0].Name, ".pdf") {
 		t.Fatalf("output name = %q, want .pdf suffix", outputs[0].Name)
+	}
+}
+
+func TestConvertDocumentUsesPandocForMarkdownToPPTX(t *testing.T) {
+	svc := setupConvertTestService(t)
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.md")
+	if err := os.WriteFile(sourcePath, []byte("# hello\n\n- one\n- two"), 0o640); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	pandocPath := filepath.Join(tmpDir, "pandoc")
+	pandocScript := "#!/bin/sh\nout=\"\"\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = \"-o\" ]; then\n    out=\"$2\"\n    shift 2\n    continue\n  fi\n  shift\ndone\nif [ -z \"$out\" ]; then\n  exit 2\nfi\nprintf 'pptx' > \"$out\"\n"
+	if err := os.WriteFile(pandocPath, []byte(pandocScript), 0o755); err != nil {
+		t.Fatalf("write pandoc script: %v", err)
+	}
+
+	svc.locator = commandLocator{
+		lookPath: func(name string) (string, error) {
+			if name == documentEnginePandoc {
+				return pandocPath, nil
+			}
+			return "", exec.ErrNotFound
+		},
+		stat: func(path string) (fs.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		runVersion: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+
+	task := &ConvertTask{ID: "task-pandoc-pptx"}
+	source := ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath, Category: "document"}
+	outputs, message, err := svc.convertDocument(context.Background(), task, source, "pptx")
+	if err != nil {
+		t.Fatalf("convertDocument failed: %v", err)
+	}
+	if message != "Document converted" {
+		t.Fatalf("message = %q, want %q", message, "Document converted")
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(outputs))
+	}
+	if !strings.HasSuffix(outputs[0].Name, ".pptx") {
+		t.Fatalf("output name = %q, want .pptx suffix", outputs[0].Name)
+	}
+}
+
+func TestConvertDocumentFallsBackToNativeMarkdownPPTXWithoutEngines(t *testing.T) {
+	svc := setupConvertTestService(t)
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.md")
+	markdown := "" +
+		"# Product Update\n\n" +
+		"## Cover\n\n" +
+		"Title: Product Update\n" +
+		"Subtitle: Native markdown fallback\n\n" +
+		"---\n\n" +
+		"## Highlights\n\n" +
+		"- Faster conversions\n" +
+		"- Native PPTX fallback\n\n" +
+		"| Area | Status |\n" +
+		"| --- | --- |\n" +
+		"| Convert | Green |\n" +
+		"| Native | Ready |\n"
+	if err := os.WriteFile(sourcePath, []byte(markdown), 0o640); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	svc.locator = commandLocator{
+		lookPath: func(name string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		stat: func(path string) (fs.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		runVersion: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+
+	task := &ConvertTask{ID: "task-native-markdown-pptx"}
+	source := ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath, Category: "document"}
+	outputs, message, err := svc.convertDocument(context.Background(), task, source, "pptx")
+	if err != nil {
+		t.Fatalf("convertDocument failed: %v", err)
+	}
+	if message != "Document converted" {
+		t.Fatalf("message = %q, want %q", message, "Document converted")
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(outputs))
+	}
+	if !strings.HasSuffix(outputs[0].Name, ".pptx") {
+		t.Fatalf("output name = %q, want .pptx suffix", outputs[0].Name)
+	}
+
+	reader := NewDocumentReader()
+	result, err := reader.ReadDocument(context.Background(), outputs[0].Path)
+	if err != nil {
+		t.Fatalf("ReadDocument failed: %v", err)
+	}
+	for _, needle := range []string{
+		"Product Update",
+		"Native markdown fallback",
+		"Faster conversions",
+		"Native PPTX fallback",
+		"Convert",
+		"Green",
+	} {
+		if !strings.Contains(result.Text, needle) {
+			t.Fatalf("result text missing %q in %q", needle, result.Text)
+		}
+	}
+}
+
+func TestConvertDocumentFallsBackToNativeMarkdownPPTXWithoutEnginesForChineseLabels(t *testing.T) {
+	svc := setupConvertTestService(t)
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.md")
+	markdown := "" +
+		"# Qwen Update\n\n" +
+		"## First Page: Cover\n\n" +
+		"标题：通义千问 Qwen3 最新优化介绍\n" +
+		"副标题：混合思考架构\n\n" +
+		"---\n\n" +
+		"## Second Page: Highlights\n\n" +
+		"- 支持中文内容\n" +
+		"- 原生 PPTX 回退\n"
+	if err := os.WriteFile(sourcePath, []byte(markdown), 0o640); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	svc.locator = commandLocator{
+		lookPath: func(name string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		stat: func(path string) (fs.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		runVersion: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+
+	task := &ConvertTask{ID: "task-native-markdown-pptx-zh"}
+	source := ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath, Category: "document"}
+	outputs, _, err := svc.convertDocument(context.Background(), task, source, "pptx")
+	if err != nil {
+		t.Fatalf("convertDocument failed: %v", err)
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(outputs))
+	}
+
+	reader := NewDocumentReader()
+	result, err := reader.ReadDocument(context.Background(), outputs[0].Path)
+	if err != nil {
+		t.Fatalf("ReadDocument failed: %v", err)
+	}
+	for _, needle := range []string{
+		"通义千问 Qwen3 最新优化介绍",
+		"混合思考架构",
+		"支持中文内容",
+		"原生 PPTX 回退",
+	} {
+		if !strings.Contains(result.Text, needle) {
+			t.Fatalf("result text missing %q in %q", needle, result.Text)
+		}
 	}
 }
 

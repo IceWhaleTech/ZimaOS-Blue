@@ -1815,7 +1815,7 @@ func TestTransactionalWriteToolsRejectTooManyLineChunk(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected oversized line chunk to fail")
 	}
-	if !strings.Contains(err.Error(), "200 lines") {
+	if !strings.Contains(err.Error(), "500 lines") {
 		t.Fatalf("expected line-limit guidance, got %v", err)
 	}
 }
@@ -2319,7 +2319,7 @@ func TestFileWriteToolRejectsTooManyLines(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for oversized line count")
 	}
-	if !strings.Contains(err.Error(), "200 lines") {
+	if !strings.Contains(err.Error(), "500 lines") {
 		t.Fatalf("expected line-limit guidance, got %v", err)
 	}
 }
@@ -2369,9 +2369,10 @@ func TestFileWriteToolAllows64KiBChunk(t *testing.T) {
 	}
 }
 
-func TestWriteBeginAdvertises64KiBChunkLimit(t *testing.T) {
+func TestWriteBeginAdvertisesChunkLimits(t *testing.T) {
 	tmpDir := t.TempDir()
 	const wantChunkBytes = 64 << 10
+	const wantChunkLines = 500
 	beginTool := NewFileWriteBeginTool([]string{tmpDir}, NewWriteSessionManager(0))
 
 	result, err := beginTool.Execute(context.Background(), map[string]interface{}{
@@ -2387,6 +2388,9 @@ func TestWriteBeginAdvertises64KiBChunkLimit(t *testing.T) {
 	}
 	if got, _ := payload["max_chunk_bytes"].(float64); int(got) != wantChunkBytes {
 		t.Fatalf("max_chunk_bytes = %v, want %d", payload["max_chunk_bytes"], wantChunkBytes)
+	}
+	if got, _ := payload["max_chunk_lines"].(float64); int(got) != wantChunkLines {
+		t.Fatalf("max_chunk_lines = %v, want %d", payload["max_chunk_lines"], wantChunkLines)
 	}
 }
 
@@ -2422,14 +2426,14 @@ func TestWriteToolDefinitionsMention64KiBLimit(t *testing.T) {
 	tmpDir := t.TempDir()
 	sessions := NewWriteSessionManager(0)
 
-	if got := NewFileWriteTool(nil, 0).Definition().Description; !strings.Contains(got, "64 KiB") {
-		t.Fatalf("file_write description = %q, want 64 KiB guidance", got)
+	if got := NewFileWriteTool(nil, 0).Definition().Description; !strings.Contains(got, "64 KiB") || !strings.Contains(got, "500 lines") {
+		t.Fatalf("file_write description = %q, want 500-line and 64 KiB guidance", got)
 	}
-	if got := NewFileWriteBeginTool([]string{tmpDir}, sessions).Definition().Description; !strings.Contains(got, "64 KiB") {
-		t.Fatalf("write_begin description = %q, want 64 KiB guidance", got)
+	if got := NewFileWriteBeginTool([]string{tmpDir}, sessions).Definition().Description; !strings.Contains(got, "64 KiB") || !strings.Contains(got, "500 lines") {
+		t.Fatalf("write_begin description = %q, want 500-line and 64 KiB guidance", got)
 	}
-	if got := NewFileWriteChunkTool(sessions).Definition().Description; !strings.Contains(got, "64 KiB") {
-		t.Fatalf("write_chunk description = %q, want 64 KiB guidance", got)
+	if got := NewFileWriteChunkTool(sessions).Definition().Description; !strings.Contains(got, "64 KiB") || !strings.Contains(got, "500 lines") {
+		t.Fatalf("write_chunk description = %q, want 500-line and 64 KiB guidance", got)
 	}
 }
 

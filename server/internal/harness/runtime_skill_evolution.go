@@ -61,6 +61,7 @@ func (c *Controller) buildRuntimeSkillEvolutionTrigger(ctx context.Context, run 
 	if err != nil {
 		events = nil
 	}
+	reflectionRecords := runtimeReflectionRecordsFromEvents(events)
 
 	candidateID := runtimeSkillEvolutionCandidateID(skillID, sourceState.ContentSHA256)
 	metadata := map[string]interface{}{
@@ -97,6 +98,12 @@ func (c *Controller) buildRuntimeSkillEvolutionTrigger(ctx context.Context, run 
 	}
 	if validation := runtimeSkillEvolutionValidation(run, events); len(validation) > 0 {
 		metadata["validation"] = validation
+	}
+	if reflections := runtimeReflectionRecordMaps(reflectionRecords, 3); len(reflections) > 0 {
+		metadata["runtime_reflections"] = reflections
+	}
+	if suggestions := runtimeReflectionMutationSuggestionMaps(reflectionRecords); len(suggestions) > 0 {
+		metadata["runtime_mutation_suggestions"] = suggestions
 	}
 
 	if structured := nestedMetadataMap(run.Metadata, "selector_dry_run_response"); len(structured) > 0 {
@@ -171,6 +178,12 @@ func runtimeSkillEvolutionReflectiveEvidencePacket(kind string, skillID string, 
 			"runtime_validation":      cloneMetadataMap(nestedMetadataMap(metadata, "validation")),
 			"runtime_event_summaries": cloneInterfaceSlice(metadata["runtime_event_summaries"]),
 		},
+	}
+	if reflections := cloneInterfaceSlice(metadata["runtime_reflections"]); len(reflections) > 0 {
+		packet["runtime_reflections"] = reflections
+	}
+	if suggestions := cloneInterfaceSlice(metadata["runtime_mutation_suggestions"]); len(suggestions) > 0 {
+		packet["mutation_suggestions"] = suggestions
 	}
 	if occurrences := metadata["runtime_capture_occurrences"]; occurrences != nil {
 		packet["capture_occurrences"] = occurrences
@@ -344,6 +357,19 @@ func runtimeSkillEvolutionFailureSignature(run *Run, events []RunEvent) string {
 }
 
 func runtimeSkillEvolutionCaptureSignature(events []RunEvent) (string, []string) {
+	records := runtimeReflectionRecordsFromEvents(events)
+	for i := len(records) - 1; i >= 0; i-- {
+		record := records[i]
+		if strings.TrimSpace(record.Status) != "recorded" {
+			continue
+		}
+		signature := strings.TrimSpace(record.ReflectionSignature)
+		lessons := runtimeReflectionLessons([]runtimeReflectionRecord{record})
+		if signature == "" || len(lessons) == 0 {
+			continue
+		}
+		return signature, lessons
+	}
 	for i := len(events) - 1; i >= 0; i-- {
 		event := events[i]
 		if strings.TrimSpace(event.Type) != "task_reflection_completed" {

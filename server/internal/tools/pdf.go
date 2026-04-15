@@ -67,7 +67,7 @@ func (t *PDFTool) SetHTTPClient(client *http.Client) {
 func (t *PDFTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "pdf",
-		Description: "Read PDF metadata, extract text from local/remote PDFs, inspect interactive form fields, or create/reformat native PDF workspace files with explicit page/layout telemetry.",
+		Description: "Use when the task centers on a workspace .pdf file and needs PDF-native reading, form filling, printable output, or layout-preserving reformatting.",
 		Icon:        "pdf",
 		Parameters: map[string]interface{}{
 			"type": "object",

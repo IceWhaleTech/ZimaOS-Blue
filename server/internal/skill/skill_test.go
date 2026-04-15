@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/i18n"
 )
 
 // mockSkill is a mock skill for testing
@@ -239,4 +241,35 @@ func TestResult(t *testing.T) {
 			t.Error("expected non-empty JSON")
 		}
 	})
+}
+
+func TestLangContext(t *testing.T) {
+	ctx := context.Background()
+	if got := GetLang(ctx); got != "en-US" {
+		t.Fatalf("GetLang() on empty ctx = %q, want %q", got, "en-US")
+	}
+
+	ctx = WithLang(ctx, "zh-CN")
+	if got := GetLang(ctx); got != "zh-CN" {
+		t.Fatalf("GetLang() = %q, want %q", got, "zh-CN")
+	}
+}
+
+func TestManifestSkillExecute_LocalizesDeclarativeMessage(t *testing.T) {
+	s := NewManifestSkill(&Manifest{ID: "a11y"})
+	ctx := WithLang(context.Background(), "zh-CN")
+
+	result, err := s.Execute(ctx, map[string]any{"foo": "bar"})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	data, ok := result.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("result.Data type = %T, want map[string]any", result.Data)
+	}
+
+	want := i18n.T(i18n.LangZhCN, i18n.MsgSkillDeclarativeHandledByLLM, "a11y")
+	if got := data["message"]; got != want {
+		t.Fatalf("message = %#v, want %#v", got, want)
+	}
 }

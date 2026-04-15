@@ -40,6 +40,7 @@
   },
   "overrides": {
     "flatted": "^3.4.2",
+    "follow-redirects": "^1.16.0",
     "lodash": "^4.17.24",
     "picomatch": "^4.0.4",
     "minimatch@3": {

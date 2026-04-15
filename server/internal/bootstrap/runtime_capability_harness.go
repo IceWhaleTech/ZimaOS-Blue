@@ -43,12 +43,10 @@ func newHarnessRuntimeBundleWithReadDB(writeDB, readDB *sql.DB, cfg *config.Conf
 	if writeDB == nil || cfg == nil || !cfg.Harness.Enabled {
 		return nil, nil
 	}
-
 	store, err := harness.NewSQLiteStoreWithReadDB(writeDB, readDB)
 	if err != nil {
 		return nil, err
 	}
-
 	controller := harness.NewController(store, harness.NewPolicyResolver(cfg.Harness, &cfg.Agents))
 	if reflectService != nil {
 		controller.SetReflector(reflectService)
@@ -59,14 +57,10 @@ func newHarnessRuntimeBundleWithReadDB(writeDB, readDB *sql.DB, cfg *config.Conf
 		controller.UseExecutionMiddleware(runTracer.Middleware())
 	}
 	controller.UseExecutionMiddleware(harness.NewSkillCandidateMiddleware())
-
-	return &HarnessRuntimeBundle{
-		Controller:       controller,
-		GroupDispatcher:  harness.NewGroupDispatcher(controller),
-		RunTracer:        runTracer,
-		RuntimeObserver:  harness.NewRuntimeObserver(controller),
-		SubagentExecutor: harness.NewSubagentExecutor(controller, &cfg.Agents),
-		WriteGuard:       harness.NewWritePathGuard(controller),
-		ExecGuard:        harness.NewExecPathGuard(controller),
-	}, nil
+	return buildHarnessRuntimeBundle(
+		controller,
+		runTracer,
+		selectHarnessRuntimeObserver(controller, cfg.Harness.RuntimeReflection, reflectService != nil),
+		&cfg.Agents,
+	), nil
 }

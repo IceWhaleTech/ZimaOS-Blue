@@ -47,6 +47,9 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
 }
 
 const visibleBuiltinSkillLocaleCoverage = {
+  'skills.catalog.a11y.name': 'Accessibility',
+  'skills.catalog.a11y.description':
+    'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots.',
   'skills.catalog.ask.name': 'Ask',
   'skills.catalog.ask.description': 'Ask the user follow-up questions needed to continue the task',
   'skills.catalog.advisor.name': 'Advisor',
@@ -61,18 +64,27 @@ const visibleBuiltinSkillLocaleCoverage = {
   'skills.catalog.deep_research.name': 'Deep Research',
   'skills.catalog.deep_research.description':
     'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',
+  'skills.catalog.docx.name': 'DOCX',
+  'skills.catalog.docx.description':
+    'Use when the task centers on a workspace .docx file and needs a native Word-style document for writing, template filling, placeholder edits, or validation.',
   'skills.catalog.email.name': 'Email',
   'skills.catalog.email.description': 'Send and manage emails via SMTP/IMAP',
   'skills.catalog.himalaya.name': 'Himalaya Email CLI',
   'skills.catalog.himalaya.description': 'Use the external Himalaya email CLI for real mail workflows.',
   'skills.catalog.humanizer.name': 'Humanizer',
   'skills.catalog.humanizer.description': 'Rewrite a local text file into more natural language.',
+  'skills.catalog.pdf.name': 'PDF',
+  'skills.catalog.pdf.description':
+    'Use when the task centers on a workspace .pdf file and needs PDF-native reading, form filling, printable output, or layout-preserving reformatting.',
   'skills.catalog.plan_append.name': 'Plan Append',
   'skills.catalog.plan_append.description': 'Append a task to an existing plan.',
   'skills.catalog.plan_create.name': 'Plan Create',
   'skills.catalog.plan_create.description': 'Create a checklist plan for the current scope.',
   'skills.catalog.plan_update.name': 'Plan Update',
   'skills.catalog.plan_update.description': 'Update an existing plan task.',
+  'skills.catalog.pptx.name': 'PPTX',
+  'skills.catalog.pptx.description':
+    'Use when the task centers on a workspace .pptx file and needs a native slide deck for editable slides, layout changes, or chart updates.',
   'skills.catalog.scheduler.name': 'Scheduler',
   'skills.catalog.scheduler.description':
     'Create, list, delete, and trigger scheduled tasks (cron jobs)',
@@ -85,6 +97,9 @@ const visibleBuiltinSkillLocaleCoverage = {
   'skills.catalog.tasks.description': 'Task and todo management',
   'skills.catalog.web_query.name': 'Web Query',
   'skills.catalog.web_query.description': 'Search or read public web pages from a query or URL.',
+  'skills.catalog.xlsx.name': 'XLSX',
+  'skills.catalog.xlsx.description':
+    'Use when the task centers on a workspace .xlsx file and needs a native spreadsheet for tables, formulas, sheet edits, analysis, or validation.',
 } as const
 
 describe('skill locale labels', () => {
