@@ -1069,7 +1069,7 @@ func (t *A11yTool) tryA11yConversationVisualFastPath(ctx context.Context, backen
 			resolvedWindow = strings.TrimSpace(nextWindow)
 		}
 	}
-	plans := a11yConversationSearchPlans(backend.HostOS())
+	plans := a11yConversationSearchPlansForArgs(args, backend.HostOS())
 	if len(plans) == 0 {
 		return "", a11yruntime.NewError("target_not_found", "target selector did not match any interactive element", a11yTargetSelectorDetails(selector, nil)), true
 	}
@@ -1090,14 +1090,14 @@ func (t *A11yTool) tryA11yConversationVisualFastPath(ctx context.Context, backen
 			resolvedWindow = strings.TrimSpace(nextWindow)
 		}
 	}
-	return "", lastErr, true
+	return "", a11yConversationFallbackExhaustedError(lastErr, selector, "visual_confirmation", len(plans)), true
 }
 
 func (t *A11yTool) tryA11yConversationSearchFallback(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, selector a11yTargetSelector, holdMS int, originalErr error) (string, error, bool) {
 	if !a11yAllowsConversationSearchFallback(args, originalErr) {
 		return "", nil, false
 	}
-	plans := a11yConversationSearchPlans(backend.HostOS())
+	plans := a11yConversationSearchPlansForArgs(args, backend.HostOS())
 	if len(plans) == 0 {
 		return "", nil, false
 	}
@@ -1108,12 +1108,15 @@ func (t *A11yTool) tryA11yConversationSearchFallback(ctx context.Context, backen
 		if err == nil {
 			return nextWindow, nil, true
 		}
+		if !a11yIsTargetNotFound(err) {
+			return "", err, true
+		}
 		lastErr = err
 		if strings.TrimSpace(nextWindow) != "" {
 			resolvedWindow = strings.TrimSpace(nextWindow)
 		}
 	}
-	return "", lastErr, true
+	return "", a11yConversationFallbackExhaustedError(lastErr, selector, "keyboard_search", len(plans)), true
 }
 
 func (t *A11yTool) executeA11yConversationSearchPlan(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int, plan a11yConversationSearchPlan) (string, error) {
@@ -1189,7 +1192,9 @@ func (t *A11yTool) sendA11yConversationSearchKeySequences(ctx context.Context, b
 		if len(keys) == 0 {
 			continue
 		}
-		result, err := backend.Key(ctx, resolvedWindow, keys, holdMS)
+		result, err := a11yRunActionResultWithTimeout(ctx, "key", resolvedWindow, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+			return backend.Key(actionCtx, resolvedWindow, keys, holdMS)
+		})
 		if err != nil {
 			return resolvedWindow, err
 		}
@@ -1204,7 +1209,9 @@ func (t *A11yTool) sendA11yConversationSearchKeySequences(ctx context.Context, b
 }
 
 func (t *A11yTool) activateA11yMessageConversationTarget(ctx context.Context, backend a11yruntime.Backend, windowID string, ref int, refMap map[int]string, selector a11yTargetSelector, holdMS int) (string, error) {
-	result, err := backend.Act(ctx, windowID, ref, refMap, "click", "", holdMS)
+	result, err := a11yRunActionResultWithTimeout(ctx, "click", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return backend.Act(actionCtx, windowID, ref, refMap, "click", "", holdMS)
+	})
 	if err != nil {
 		return "", err
 	}
@@ -1218,7 +1225,9 @@ func (t *A11yTool) activateA11yMessageConversationTarget(ctx context.Context, ba
 }
 
 func (t *A11yTool) tryA11yConversationPointClick(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int, point a11yConversationClickPoint) (string, error) {
-	result, err := backend.ClickWindowPoint(ctx, windowID, a11yruntime.NormalizedPoint{X: point.X, Y: point.Y}, holdMS)
+	result, err := a11yRunActionResultWithTimeout(ctx, "point_click", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return backend.ClickWindowPoint(actionCtx, windowID, a11yruntime.NormalizedPoint{X: point.X, Y: point.Y}, holdMS)
+	})
 	if err != nil {
 		return "", err
 	}
@@ -1232,6 +1241,15 @@ func (t *A11yTool) tryA11yConversationPointClick(ctx context.Context, backend a1
 }
 
 func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (a11yConversationVisualHit, error) {
+	if grounding, ok := backend.(a11yruntime.GroundingScreenshotter); ok {
+		result, err := grounding.ScreenshotForGrounding(ctx, windowID)
+		if err == nil && len(result.ImageBytes) > 0 && a11yLocateConversationVisualHitFromPNG != nil {
+			hit, locateErr := a11yLocateConversationVisualHitFromPNG(ctx, result.ImageBytes, selector.Name)
+			if locateErr == nil {
+				return hit, nil
+			}
+		}
+	}
 	result, err := backend.Screenshot(ctx, windowID)
 	if err != nil {
 		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", a11yTargetSelectorDetails(selector, nil))
@@ -1255,7 +1273,9 @@ func (t *A11yTool) tryTypeA11yConversationSearchQuery(ctx context.Context, backe
 	if err != nil {
 		return resolvedWindow, false, nil
 	}
-	result, err := backend.Act(ctx, resolvedWindow, ref, refMap, "type", selector.Name, holdMS)
+	result, err := a11yRunActionResultWithTimeout(ctx, "type", resolvedWindow, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return backend.Act(actionCtx, resolvedWindow, ref, refMap, "type", selector.Name, holdMS)
+	})
 	if err != nil {
 		return strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow)), true, err
 	}
@@ -1336,21 +1356,8 @@ func a11yAllowsConversationSearchFallback(args map[string]interface{}, err error
 	if !ok || runtimeErr.Code != "target_not_found" {
 		return false
 	}
-	return a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "app_name", "appName", "application", "app")) ||
-		a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "window_title", "windowTitle", "title"))
-}
-
-func a11yLooksLikeFeishuWindowQuery(value string) bool {
-	normalizedValue := normalizeA11yWindowMatchValue(value)
-	if normalizedValue == "" {
-		return false
-	}
-	for _, alias := range []string{"feishu", "飞书", "lark"} {
-		if strings.Contains(normalizedValue, normalizeA11yWindowMatchValue(alias)) {
-			return true
-		}
-	}
-	return false
+	profile := lookupA11yConversationAppProfile(args)
+	return profile != nil && profile.EnableSearchFallback
 }
 
 func a11yAllowsConversationVisualFastPath(backend a11yruntime.Backend, args map[string]interface{}, selector a11yTargetSelector) bool {
@@ -1360,8 +1367,8 @@ func a11yAllowsConversationVisualFastPath(backend a11yruntime.Backend, args map[
 	if !selector.Provided() || strings.TrimSpace(selector.Name) == "" {
 		return false
 	}
-	return a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "app_name", "appName", "application", "app")) ||
-		a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "window_title", "windowTitle", "title"))
+	profile := lookupA11yConversationAppProfile(args)
+	return profile != nil && profile.EnableVisualFastPath
 }
 
 func a11yIsTargetNotFound(err error) bool {
@@ -1370,10 +1377,7 @@ func a11yIsTargetNotFound(err error) bool {
 }
 
 func a11yConversationSearchPlans(hostOS string) []a11yConversationSearchPlan {
-	modifier := "command"
-	if strings.EqualFold(strings.TrimSpace(hostOS), "windows") {
-		modifier = "ctrl"
-	}
+	modifier := a11yConversationShortcutModifier(hostOS)
 	return []a11yConversationSearchPlan{
 		{Open: [][]string{{modifier, "k"}}},
 		{Open: [][]string{{modifier, "f"}, {modifier, "f"}}},
@@ -1381,10 +1385,7 @@ func a11yConversationSearchPlans(hostOS string) []a11yConversationSearchPlan {
 }
 
 func a11yConversationSearchClearSequences(hostOS string) [][]string {
-	modifier := "command"
-	if strings.EqualFold(strings.TrimSpace(hostOS), "windows") {
-		modifier = "ctrl"
-	}
+	modifier := a11yConversationShortcutModifier(hostOS)
 	return [][]string{
 		{modifier, "a"},
 		{"delete"},
@@ -1478,6 +1479,30 @@ func a11yConversationConfirmationError(selector a11yTargetSelector) error {
 	details := a11yTargetSelectorDetails(selector, nil)
 	details["confirmation"] = "composer_not_ready"
 	return a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", details)
+}
+
+func a11yConversationFallbackExhaustedError(err error, selector a11yTargetSelector, stage string, attempts int) error {
+	details := a11yTargetSelectorDetails(selector, nil)
+	if runtimeErr, ok := err.(*a11yruntime.RuntimeError); ok {
+		for key, value := range runtimeErr.Details {
+			details[key] = value
+		}
+		if strings.TrimSpace(runtimeErr.Code) != "" {
+			details["original_error_code"] = runtimeErr.Code
+		}
+		if strings.TrimSpace(runtimeErr.Message) != "" {
+			details["original_error"] = runtimeErr.Message
+		}
+	} else if err != nil {
+		details["original_error"] = err.Error()
+	}
+	if strings.TrimSpace(stage) != "" {
+		details["fallback_stage"] = stage
+	}
+	if attempts > 0 {
+		details["fallback_attempts"] = attempts
+	}
+	return a11yruntime.NewError("fallback_exhausted", "conversation fallback chain exhausted without a confirmed target", details)
 }
 
 func a11yTargetLabelContainsAny(value string, terms ...string) bool {
@@ -1714,7 +1739,9 @@ func (t *A11yTool) executeActSubmitPlanWithConfirmation(ctx context.Context, bac
 	}
 	var lastErr error
 	if plan.Ref != 0 && len(plan.RefMap) > 0 {
-		result, err := backend.Act(ctx, windowID, plan.Ref, plan.RefMap, "submit", "", holdMS)
+		result, err := a11yRunActionResultWithTimeout(ctx, "submit", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+			return backend.Act(actionCtx, windowID, plan.Ref, plan.RefMap, "submit", "", holdMS)
+		})
 		if err == nil && !t.a11ySubmitNeedsRetry(ctx, backend, windowID, confirmation) {
 			return result, nil
 		}
@@ -1728,7 +1755,9 @@ func (t *A11yTool) executeActSubmitPlanWithConfirmation(ctx context.Context, bac
 		if len(keys) == 0 {
 			continue
 		}
-		result, err := backend.Key(ctx, windowID, keys, holdMS)
+		result, err := a11yRunActionResultWithTimeout(ctx, "key", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+			return backend.Key(actionCtx, windowID, keys, holdMS)
+		})
 		if err == nil && !t.a11ySubmitNeedsRetry(ctx, backend, windowID, confirmation) {
 			return result, nil
 		}

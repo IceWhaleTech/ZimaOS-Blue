@@ -150,13 +150,16 @@ func TestA11yConversationSearchPlans_PrefersPlatformShortcuts(t *testing.T) {
 	}
 }
 
-func TestA11yAllowsConversationSearchFallback_OnlyForFeishuAliasesAndTargetNotFound(t *testing.T) {
+func TestA11yAllowsConversationSearchFallback_UsesRegisteredProfilesAndTargetNotFound(t *testing.T) {
 	notFoundErr := a11yruntime.NewError("target_not_found", "missing", nil)
 	if !a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Feishu,飞书,Lark"}, notFoundErr) {
 		t.Fatal("expected Feishu aliases to enable conversation search fallback")
 	}
-	if a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Slack"}, notFoundErr) {
-		t.Fatal("expected non-Feishu app aliases to skip conversation search fallback")
+	if !a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Slack"}, notFoundErr) {
+		t.Fatal("expected Slack to enable conversation search fallback")
+	}
+	if a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Messages"}, notFoundErr) {
+		t.Fatal("expected unknown app aliases to skip conversation search fallback")
 	}
 	if a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Feishu"}, a11yruntime.NewError("ambiguous_target", "ambiguous", nil)) {
 		t.Fatal("expected non-target_not_found errors to skip conversation search fallback")
@@ -1229,8 +1232,14 @@ func TestA11yToolExecute_ActionMessageAliasStopsWhenConversationSearchRemainsFoc
 	if out["error"] != "conversation switch could not be confirmed" {
 		t.Fatalf("error = %v, want conversation switch could not be confirmed", out["error"])
 	}
+	if out["error_code"] != "confirmation_failed" {
+		t.Fatalf("error_code = %v, want confirmation_failed", out["error_code"])
+	}
 	if out["phase"] != "conversation" {
 		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["confirmation"] != "composer_not_ready" {
+		t.Fatalf("confirmation = %v, want composer_not_ready", out["confirmation"])
 	}
 }
 
@@ -1290,6 +1299,15 @@ func TestA11yToolExecute_ActionMessageAliasStopsWhenConversationSearchStillConta
 	if out["error"] != "conversation switch could not be confirmed" {
 		t.Fatalf("error = %v, want conversation switch could not be confirmed", out["error"])
 	}
+	if out["error_code"] != "confirmation_failed" {
+		t.Fatalf("error_code = %v, want confirmation_failed", out["error_code"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["confirmation"] != "composer_not_ready" {
+		t.Fatalf("confirmation = %v, want composer_not_ready", out["confirmation"])
+	}
 }
 
 func TestA11yToolExecute_ActionMessageAliasDoesNotSendWhenConversationOnlyMatchesButton(t *testing.T) {
@@ -1329,11 +1347,17 @@ func TestA11yToolExecute_ActionMessageAliasDoesNotSendWhenConversationOnlyMatche
 	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
 		t.Fatalf("unmarshal output error = %v", err)
 	}
-	if out["error_code"] != "target_not_found" {
-		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	if out["error_code"] != "fallback_exhausted" {
+		t.Fatalf("error_code = %v, want fallback_exhausted", out["error_code"])
 	}
 	if out["phase"] != "conversation" {
 		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["fallback_stage"] != "visual_confirmation" {
+		t.Fatalf("fallback_stage = %v, want visual_confirmation", out["fallback_stage"])
+	}
+	if out["original_error_code"] != "target_not_found" {
+		t.Fatalf("original_error_code = %v, want target_not_found", out["original_error_code"])
 	}
 }
 
@@ -1412,6 +1436,208 @@ func TestA11yToolExecute_ActionMessageAliasFallsBackToFeishuShortcutSearchWhenDi
 	}
 	if len(backend.actRefHistory) != 4 || backend.actRefHistory[0] != 1 || backend.actRefHistory[1] != 2 || backend.actRefHistory[2] != 1 || backend.actRefHistory[3] != 2 {
 		t.Fatalf("actRefHistory = %#v, want [1 2 1 2]", backend.actRefHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "Host action completed and submitted" {
+		t.Fatalf("message = %v, want Host action completed and submitted", out["message"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasFailsClosedWhenShortcutSearchKeyInjectionHangs(t *testing.T) {
+	prevTimeout := a11yHostInputActionTimeout
+	a11yHostInputActionTimeout = 10 * time.Millisecond
+	defer func() { a11yHostInputActionTimeout = prevTimeout }()
+
+	blockCh := make(chan struct{})
+	defer close(blockCh)
+
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+		},
+		keyBlockCh: blockCh,
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+		"value":        "你好，Orca。",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "backend_timeout" {
+		t.Fatalf("error_code = %v, want backend_timeout", out["error_code"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasSlackQuickSwitcherFailsClosedAfterSingleProfilePlan(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-slack", Title: "Slack", AppName: "Slack"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-slack",
+				Title:    "Slack",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-slack",
+				Title:    "Slack",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-slack",
+				Title:    "Slack",
+				Tree:     "@1 [search_field] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Slack",
+		"conversation": "Echo",
+		"value":        "你好，Echo",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 3 {
+		t.Fatalf("keyHistory = %#v, want only one quick-switcher plan", backend.keyHistory)
+	}
+	if want := []string{"command", "k"}; len(backend.keyHistory[0]) != len(want) || backend.keyHistory[0][0] != want[0] || backend.keyHistory[0][1] != want[1] {
+		t.Fatalf("keyHistory[0] = %#v, want %v", backend.keyHistory[0], want)
+	}
+	if len(backend.actTypeHistory) != 1 || backend.actTypeHistory[0] != "type" {
+		t.Fatalf("actTypeHistory = %#v, want only search typing", backend.actTypeHistory)
+	}
+	if backend.lastGroundingScreenshotWindow != "" || backend.lastScreenshotWindow != "" {
+		t.Fatalf("unexpected visual fallback screenshots: grounding=%q screenshot=%q", backend.lastGroundingScreenshotWindow, backend.lastScreenshotWindow)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "fallback_exhausted" {
+		t.Fatalf("error_code = %v, want fallback_exhausted", out["error_code"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["fallback_stage"] != "keyboard_search" {
+		t.Fatalf("fallback_stage = %v, want keyboard_search", out["fallback_stage"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasFallsBackToSlackQuickSwitcherWhenDirectConversationMatchIsMissing(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-slack", Title: "Slack", AppName: "Slack"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-slack",
+				Title:    "Slack",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-slack",
+				Title:    "Slack",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-slack",
+				Title:    "Slack",
+				Tree:     "@1 [search_field] \"Echo\"\n@2 [list_item] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-echo-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-slack",
+				Title:    "Slack",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Slack",
+		"conversation": "Echo",
+		"value":        "你好，Echo",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 3 {
+		t.Fatalf("keyHistory = %#v, want only one quick-switcher plan", backend.keyHistory)
+	}
+	if len(backend.actTypeHistory) != 4 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "click" || backend.actTypeHistory[2] != "type" || backend.actTypeHistory[3] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [type click type submit]", backend.actTypeHistory)
+	}
+	if backend.lastGroundingScreenshotWindow != "" || backend.lastScreenshotWindow != "" {
+		t.Fatalf("unexpected visual fallback screenshots: grounding=%q screenshot=%q", backend.lastGroundingScreenshotWindow, backend.lastScreenshotWindow)
 	}
 
 	var out map[string]interface{}
@@ -1590,11 +1816,17 @@ func TestA11yToolExecute_ActionMessageAliasShortcutSearchDoesNotTypeBodyWhenConv
 	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
 		t.Fatalf("unmarshal output error = %v", err)
 	}
-	if out["error_code"] != "target_not_found" {
-		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	if out["error_code"] != "fallback_exhausted" {
+		t.Fatalf("error_code = %v, want fallback_exhausted", out["error_code"])
 	}
 	if out["phase"] != "conversation" {
 		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["fallback_stage"] != "visual_confirmation" {
+		t.Fatalf("fallback_stage = %v, want visual_confirmation", out["fallback_stage"])
+	}
+	if out["original_error_code"] != "target_not_found" {
+		t.Fatalf("original_error_code = %v, want target_not_found", out["original_error_code"])
 	}
 }
 
@@ -1819,11 +2051,17 @@ func TestA11yToolExecute_ActionMessageAliasFailsClosedWhenConversationVisualFall
 	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
 		t.Fatalf("unmarshal output error = %v", err)
 	}
-	if out["error_code"] != "target_not_found" {
-		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	if out["error_code"] != "fallback_exhausted" {
+		t.Fatalf("error_code = %v, want fallback_exhausted", out["error_code"])
 	}
 	if out["phase"] != "conversation" {
 		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["fallback_stage"] != "visual_confirmation" {
+		t.Fatalf("fallback_stage = %v, want visual_confirmation", out["fallback_stage"])
+	}
+	if out["original_error_code"] != "target_not_found" {
+		t.Fatalf("original_error_code = %v, want target_not_found", out["original_error_code"])
 	}
 }
 
@@ -1906,8 +2144,17 @@ func TestA11yToolExecute_ActionMessageAliasConversationVisualFastPathOnlyRunsOnD
 	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
 		t.Fatalf("unmarshal output error = %v", err)
 	}
-	if out["error_code"] != "target_not_found" {
-		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	if out["error_code"] != "fallback_exhausted" {
+		t.Fatalf("error_code = %v, want fallback_exhausted", out["error_code"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["fallback_stage"] != "keyboard_search" {
+		t.Fatalf("fallback_stage = %v, want keyboard_search", out["fallback_stage"])
+	}
+	if out["original_error_code"] != "target_not_found" {
+		t.Fatalf("original_error_code = %v, want target_not_found", out["original_error_code"])
 	}
 }
 

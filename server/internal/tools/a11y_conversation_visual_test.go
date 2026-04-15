@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"bytes"
+	"context"
 	"testing"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
@@ -93,5 +95,46 @@ func TestResolveA11yConversationVisualHitFromLines_IgnoresLowConfidenceMatches(t
 	}
 	if got := runtimeErr.Details["matches"]; got != 0 {
 		t.Fatalf("matches = %#v, want 0", got)
+	}
+}
+
+func TestLocateA11yConversationVisualHit_PrefersGroundingScreenshotBytes(t *testing.T) {
+	backend := &a11yCompatBackend{
+		hostOS:                   "darwin",
+		screenshotGroundingBytes: []byte("grounding-png"),
+	}
+	tool := NewA11yTool()
+
+	prevLocate := a11yLocateConversationVisualHitFromPNG
+	var gotPNG []byte
+	var gotSelector string
+	a11yLocateConversationVisualHitFromPNG = func(_ context.Context, imagePNG []byte, selectorName string) (a11yConversationVisualHit, error) {
+		gotPNG = append([]byte(nil), imagePNG...)
+		gotSelector = selectorName
+		return a11yConversationVisualHit{
+			Point:      a11yruntime.NormalizedPoint{X: 0.33, Y: 0.44},
+			Confidence: 0.91,
+		}, nil
+	}
+	defer func() { a11yLocateConversationVisualHitFromPNG = prevLocate }()
+
+	hit, err := tool.locateA11yConversationVisualHit(context.Background(), backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("locateA11yConversationVisualHit() error = %v", err)
+	}
+	if !bytes.Equal(gotPNG, []byte("grounding-png")) {
+		t.Fatalf("png bytes = %q, want grounding-png", string(gotPNG))
+	}
+	if gotSelector != "Orca" {
+		t.Fatalf("selectorName = %q, want Orca", gotSelector)
+	}
+	if hit.Point.X != 0.33 || hit.Point.Y != 0.44 {
+		t.Fatalf("point = %#v, want forwarded visual hit", hit.Point)
+	}
+	if backend.lastGroundingScreenshotWindow != "win-feishu" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want win-feishu", backend.lastGroundingScreenshotWindow)
+	}
+	if backend.lastScreenshotWindow != "" {
+		t.Fatalf("lastScreenshotWindow = %q, want public screenshot path to stay unused", backend.lastScreenshotWindow)
 	}
 }

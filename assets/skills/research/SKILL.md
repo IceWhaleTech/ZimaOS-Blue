@@ -1,14 +1,14 @@
 ---
-name: deep_research
+name: research
 version: "1.0.0"
-description: "Legacy entry for the unified Research family. Research covers four modes: deep_research for citation-first investigation, analyze for bounded synthesis/report generation, advisor for decision support, and ui_review for UI/UX or accessibility review."
-invocation: "blue deep_research query=\"ZimaOS-Blue deep research architecture\" --json"
+description: "Unified Research family. Use Research for citation-first investigation, bounded synthesis, decision support, and UI/UX or accessibility review."
+invocation: "blue research query=\"ZimaOS-Blue research architecture\" --json"
 examples:
-  - "blue deep_research query=\"ZimaOS-Blue deep research architecture\" --json"
-  - "blue deep_research mode=analyze topic=\"Product feedback analysis\" urls='[\"https://example.com/reviews\"]' --json"
-  - "blue deep_research mode=advisor question=\"Go vs Python for backend services\" category=language decision_mode=compare --json"
-  - "blue deep_research mode=ui_review url=https://example.com/pricing review_action=check_accessibility --json"
-  - "blue deep_research action=status job_id=job_123"
+  - "blue research query=\"ZimaOS-Blue research architecture\" --json"
+  - "blue research mode=analyze topic=\"Product feedback analysis\" urls='[\"https://example.com/reviews\"]' --json"
+  - "blue research mode=advisor question=\"Go vs Python for backend services\" category=language decision_mode=compare --json"
+  - "blue research mode=ui_review url=https://example.com/pricing review_action=check_accessibility --json"
+  - "blue research action=status job_id=job_123"
 capability_tags:
   - research
   - citations
@@ -21,7 +21,7 @@ card_support: both
 
 This document describes the unified Research family.
 
-The file and manifest name stay `deep_research` for compatibility, but the runtime concept is now one research surface with four execution modes:
+Research is one public surface with four execution modes:
 
 - `mode=deep_research`: citation-first, multi-source investigation
 - `mode=analyze`: bounded synthesis over provided text, URLs, and/or search queries
@@ -30,13 +30,13 @@ The file and manifest name stay `deep_research` for compatibility, but the runti
 
 ## How To Send
 
-Use the retained compatibility entry:
+Use the canonical Research entry:
 
 ```bash
-blue deep_research query="ZimaOS-Blue deep research architecture" --json
+blue research query="ZimaOS-Blue research architecture" --json
 ```
 
-When the runtime exposes the canonical `research` entry directly, treat it as the same family and use the same arguments.
+Older prompts, wrappers, or internal routes may still refer to `deep_research`, `analyze`, or `ui_reviewer`. Treat those as compatibility aliases that now route to Research.
 
 ## Routing Guide
 
@@ -69,7 +69,7 @@ Use this for citation-first investigation.
 Example:
 
 ```bash
-blue deep_research query="Compare ZimaOS and CasaOS with citations and a timeline" mode=deep_research research_depth=deep --json
+blue research query="Compare ZimaOS and CasaOS with citations and a timeline" mode=deep_research research_depth=deep --json
 ```
 
 Key parameters:
@@ -101,8 +101,8 @@ Use this for a bounded report when the materials are already known or can be col
 Examples:
 
 ```bash
-blue deep_research mode=analyze topic="Product feedback analysis" urls='["https://example.com/reviews"]' search_queries='["product reviews 2026"]' --json
-blue deep_research mode=analyze topic="Survey insights" text="..." lang=en-US --json
+blue research mode=analyze topic="Product feedback analysis" urls='["https://example.com/reviews"]' search_queries='["product reviews 2026"]' --json
+blue research mode=analyze topic="Survey insights" text="..." lang=en-US --json
 ```
 
 Key parameters:
@@ -126,8 +126,8 @@ Use this for selection, replacement, migration, and best-practice decisions.
 Examples:
 
 ```bash
-blue deep_research mode=advisor question="Go vs Python for backend services" category=language decision_mode=compare --json
-blue deep_research mode=advisor question="Should we replace LibreOffice with OnlyOffice?" category=library decision_mode=replace --json
+blue research mode=advisor question="Go vs Python for backend services" category=language decision_mode=compare --json
+blue research mode=advisor question="Should we replace LibreOffice with OnlyOffice?" category=library decision_mode=replace --json
 ```
 
 Key parameters:
@@ -146,8 +146,8 @@ Key parameters:
 Deep advisor examples:
 
 ```bash
-blue deep_research mode=advisor question="Go vs Python vs Node" category=language decision_mode=compare output=scorecard --json
-blue deep_research mode=advisor question="Should we replace Python with Go?" category=migration decision_mode=replace depth=deep output=decision_pack --json
+blue research mode=advisor question="Go vs Python vs Node" category=language decision_mode=compare output=scorecard --json
+blue research mode=advisor question="Should we replace Python with Go?" category=migration decision_mode=replace depth=deep output=decision_pack --json
 ```
 
 ## Mode: `ui_review`
@@ -157,9 +157,9 @@ Use this for visual quality or accessibility review of a webpage or screenshot.
 Examples:
 
 ```bash
-blue deep_research mode=ui_review url=https://example.com/pricing --json
-blue deep_research mode=ui_review url=https://example.com/pricing review_action=check_accessibility --json
-blue deep_research mode=ui_review image=<base64_png_data> review_action=review_image --json
+blue research mode=ui_review url=https://example.com/pricing --json
+blue research mode=ui_review url=https://example.com/pricing review_action=check_accessibility --json
+blue research mode=ui_review image=<base64_png_data> review_action=review_image --json
 ```
 
 Key parameters:
@@ -179,7 +179,7 @@ Important:
 Poll an existing research-family job with:
 
 ```bash
-blue deep_research action=status job_id=job_123
+blue research action=status job_id=job_123
 ```
 
 ## Output

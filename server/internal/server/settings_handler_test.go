@@ -871,7 +871,7 @@ func TestSelectorDryRun_DynamicExposureCollapsesReminderUIReviewerAndHimalayaToE
 	}{
 		{name: "reminder", query: "帮我明早 9 点提醒", wantCanonical: "reminder"},
 		{name: "ui_reviewer", query: "帮我 review 一下 https://example.com 的 UI", wantCanonical: "research", wantResearchMode: "ui_review"},
-		{name: "himalaya", query: "帮我回复最新那封邮件", wantCanonical: "himalaya"},
+		{name: "email", query: "帮我回复最新那封邮件", wantCanonical: "email"},
 	}
 
 	for _, tc := range tests {

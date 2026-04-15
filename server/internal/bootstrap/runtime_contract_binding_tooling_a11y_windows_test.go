@@ -16,7 +16,7 @@ func TestBindTooling_RegistersHostA11yToolOnWindows(t *testing.T) {
 		registry: registry,
 	})
 
-	if registry.Get("a11y") == nil {
-		t.Fatal("expected host a11y tool to be registered on windows")
+	if registry.Get("computer_use") == nil {
+		t.Fatal("expected host computer_use tool to be registered on windows")
 	}
 }

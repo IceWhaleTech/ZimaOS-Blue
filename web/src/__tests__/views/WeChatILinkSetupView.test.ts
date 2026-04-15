@@ -61,7 +61,7 @@ function createTestI18n() {
   })
 }
 
-describe('WeChatILinkSetupView', () => {
+describe('WeChatILinkSetupView (legacy fallback)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     routeMock.query = {}

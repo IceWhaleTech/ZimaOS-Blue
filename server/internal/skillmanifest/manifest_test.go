@@ -439,11 +439,8 @@ card_support: none
 func TestPinnedBuiltinSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	pinned := []string{
 		"ask",
-		"browser",
 		"web_query",
-		"deep_research",
-		"analyze",
-		"ui_reviewer",
+		"research",
 		"config",
 		"mediagen",
 		"reminder",
@@ -562,13 +559,13 @@ func TestAllEnabledSkillAssets_StrictContractAndEmbeddedSync(t *testing.T) {
 
 func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	supplemental := []string{
-		"a11y",
+		"computer_use",
 		"docx",
 		"xlsx",
 		"pptx",
 		"pdf",
 		"summarize",
-		"himalaya",
+		"email",
 		"tasks",
 	}
 
@@ -607,6 +604,16 @@ func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 			}
 			if assetDoc.Invocation != embeddedDoc.Invocation {
 				t.Fatalf("invocation mismatch: asset=%q embedded=%q", assetDoc.Invocation, embeddedDoc.Invocation)
+			}
+		})
+	}
+}
+
+func TestLegacyResearchAndEmailEmbeddedAssetsAreRemoved(t *testing.T) {
+	for _, id := range []string{"browser", "analyze", "ui_reviewer", "deep_research", "himalaya"} {
+		t.Run(id, func(t *testing.T) {
+			if _, _, err := ReadEmbedded(id, Options{}); err == nil {
+				t.Fatalf("expected %q embedded asset to be removed", id)
 			}
 		})
 	}
@@ -695,8 +702,8 @@ func TestRemovedOfficeDocsUmbrellaSkill_IsNotBundled(t *testing.T) {
 	}
 }
 
-func TestReadEmbedded_A11yMentionsScenarioActions(t *testing.T) {
-	doc, raw, err := ReadEmbedded("a11y", Options{RequireContract: true})
+func TestReadEmbedded_ComputerUseMentionsScenarioActions(t *testing.T) {
+	doc, raw, err := ReadEmbedded("computer_use", Options{RequireContract: true})
 	if err != nil {
 		t.Fatalf("ReadEmbedded strict contract error: %v", err)
 	}
@@ -706,8 +713,35 @@ func TestReadEmbedded_A11yMentionsScenarioActions(t *testing.T) {
 	content := string(raw)
 	for _, needle := range []string{"message", "type", "select", "click", "toggle"} {
 		if !strings.Contains(content, needle) {
-			t.Fatalf("embedded a11y skill missing %q: %s", needle, content)
+			t.Fatalf("embedded computer_use skill missing %q: %s", needle, content)
 		}
+	}
+	if strings.Contains(content, "blue a11y") {
+		t.Fatalf("embedded computer_use skill should not retain legacy a11y command examples: %s", content)
+	}
+}
+
+func TestReadEmbedded_A11ySkillIsRemoved(t *testing.T) {
+	if _, _, err := ReadEmbedded("a11y", Options{}); err == nil {
+		t.Fatal("expected legacy a11y embedded skill to be absent")
+	}
+}
+
+func TestReadEmbedded_NativeDocumentSkillsReferenceComputerUse(t *testing.T) {
+	for _, id := range []string{"docx", "xlsx", "pptx", "pdf"} {
+		t.Run(id, func(t *testing.T) {
+			_, raw, err := ReadEmbedded(id, Options{RequireContract: true})
+			if err != nil {
+				t.Fatalf("ReadEmbedded strict contract error: %v", err)
+			}
+			content := string(raw)
+			if !strings.Contains(content, "computer_use") {
+				t.Fatalf("embedded %s skill should reference computer_use: %s", id, content)
+			}
+			if strings.Contains(content, "`a11y`") || strings.Contains(content, "blue a11y") {
+				t.Fatalf("embedded %s skill should not reference legacy a11y surface: %s", id, content)
+			}
+		})
 	}
 }
 

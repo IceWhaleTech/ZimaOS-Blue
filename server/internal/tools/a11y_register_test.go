@@ -17,7 +17,7 @@ func TestRegisterHostA11yTool_SkipsWhenFactoryReturnsNil(t *testing.T) {
 	if tool != nil {
 		t.Fatalf("RegisterHostA11yTool() = %#v, want nil when backend is unavailable", tool)
 	}
-	if got := registry.Get("a11y"); got != nil {
-		t.Fatalf("registry.Get(a11y) = %#v, want nil", got)
+	if got := registry.Get("computer_use"); got != nil {
+		t.Fatalf("registry.Get(computer_use) = %#v, want nil", got)
 	}
 }

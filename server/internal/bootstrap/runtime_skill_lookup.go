@@ -112,7 +112,7 @@ func lookupRuntimeSkillInRegistry(
 
 func runtimeManifestSkillRequiresToolFallback(id string) bool {
 	switch strings.ToLower(strings.TrimSpace(id)) {
-	case "web_query":
+	case "web_query", "computer_use":
 		return true
 	default:
 		return false

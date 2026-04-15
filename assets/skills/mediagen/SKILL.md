@@ -31,8 +31,8 @@ No external dependencies are required for the CLI surface itself. Availability s
 | Explicitly generate an image or video from a prompt | `blue media generate "..." --category ...` |
 | Check whether a submitted media task has finished | `blue media status <task_id>` |
 | User wants image creation in normal chat and no special control is needed | The chat runtime may auto-route some image-generation intents directly to the media pipeline |
-| User wants screenshot critique, accessibility review, or visual QA | Use `ui_reviewer`, not `mediagen` |
-| User wants generic web/image search rather than generation | Use web or browser skills, not `mediagen` |
+| User wants screenshot critique, accessibility review, or visual QA | Use `research` with `mode=ui_review`, not `mediagen` |
+| User wants generic web/image search rather than generation | Use `web_query` or the built-in `browser` tool, not `mediagen` |
 
 ---
 
@@ -82,7 +82,7 @@ Useful flags:
 | No provider available for the requested category/model | Check provider configuration or retry with a different category/model |
 | Task remains pending/processing | Use `blue media status <task_id>` or `--poll` until completion |
 | Generation failed or returned no results | Retry with a simpler prompt, different model, or different category |
-| User asks for image review instead of generation | Route to `ui_reviewer` |
+| User asks for image review instead of generation | Route to `research` with `mode=ui_review` |
 
 ---
 

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
 )
@@ -15,6 +16,7 @@ import (
 var (
 	a11yBackendFactoryMu sync.RWMutex
 	a11yBackendFactory   = a11yruntime.DefaultHostBackend
+	a11yHostInputActionTimeout = 10 * time.Second
 )
 
 type A11yTool struct {
@@ -57,11 +59,11 @@ func (t *A11yTool) SetMediaDir(dir string) {
 
 func (t *A11yTool) Definition() ToolDefinition {
 	return ToolDefinition{
-		Name:        "a11y",
-		Description: "Desktop/browser accessibility actions. Prefer `message|type|select|click|toggle`. For `act`, put fields under `params`.",
+		Name:        "computer_use",
+		Description: "Desktop/browser computer-use actions. Prefer `message|type|select|click|toggle`. For `act`, put fields under `params`.",
 		Icon:        "sparkles",
 		SearchHints: []string{
-			"a11y automation",
+			"computer use automation",
 		},
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -734,7 +736,7 @@ func (t *A11yTool) doFocus(ctx context.Context, backend a11yruntime.Backend, arg
 
 func (t *A11yTool) tryActivateHostAppForWindowResolve(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, resolveErr error) (string, *a11yWindowMatch, a11yruntime.ActionResult, error, bool) {
 	runtimeErr, ok := resolveErr.(*a11yruntime.RuntimeError)
-	if !ok || runtimeErr.Code != "backend_unavailable" || runtimeErr.Message != "target window not found" {
+	if !ok || runtimeErr.Code != "backend_unavailable" || (runtimeErr.Message != "target window not found" && runtimeErr.Message != "target window is ambiguous") {
 		return "", nil, a11yruntime.ActionResult{}, nil, false
 	}
 	activator, ok := backend.(hostAppActivator)
@@ -987,10 +989,14 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	if submitPlanErr != nil {
 		return a11yErrorPayload(submitPlanErr), nil
 	}
-	result, err := backend.Act(ctx, resolvedTarget, ref, refMap, actType, value, holdMS)
+	result, err := a11yRunActionResultWithTimeout(ctx, actType, resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return backend.Act(actionCtx, resolvedTarget, ref, refMap, actType, value, holdMS)
+	})
 	if err != nil {
 		if fallbackActType, ok := a11yFallbackActTypeOnUnsupported(actType, intent, err); ok {
-			result, err = backend.Act(ctx, resolvedTarget, ref, refMap, fallbackActType, value, holdMS)
+			result, err = a11yRunActionResultWithTimeout(ctx, fallbackActType, resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+				return backend.Act(actionCtx, resolvedTarget, ref, refMap, fallbackActType, value, holdMS)
+			})
 		}
 	}
 	if err != nil {
@@ -1275,7 +1281,9 @@ func (t *A11yTool) doKey(ctx context.Context, backend a11yruntime.Backend, args 
 	if gated, handled, err := t.maybeRequireA11yCheckpoint(ctx, "key", "key"); handled || err != nil {
 		return gated, err
 	}
-	result, err := backend.Key(ctx, resolvedTarget, keys, holdMS)
+	result, err := a11yRunActionResultWithTimeout(ctx, "key", resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return backend.Key(actionCtx, resolvedTarget, keys, holdMS)
+	})
 	if err != nil {
 		return a11yErrorPayload(err), nil
 	}
@@ -1651,6 +1659,46 @@ func a11yErrorPayload(err error) string {
 		"error":      err.Error(),
 		"error_code": "backend_unavailable",
 	})
+}
+
+func a11yRunActionResultWithTimeout(ctx context.Context, action string, windowID string, fn func(context.Context) (a11yruntime.ActionResult, error)) (a11yruntime.ActionResult, error) {
+	timeout := a11yHostInputActionTimeout
+	if timeout <= 0 {
+		return fn(ctx)
+	}
+
+	type actionResult struct {
+		result a11yruntime.ActionResult
+		err    error
+	}
+
+	actionCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	done := make(chan actionResult, 1)
+	go func() {
+		result, err := fn(actionCtx)
+		done <- actionResult{result: result, err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case out := <-done:
+		return out.result, out.err
+	case <-ctx.Done():
+		return a11yruntime.ActionResult{}, ctx.Err()
+	case <-timer.C:
+		details := map[string]interface{}{
+			"action":     strings.TrimSpace(valueOrDefault(action, "host_action")),
+			"timeout_ms": timeout.Milliseconds(),
+		}
+		if trimmedWindow := strings.TrimSpace(windowID); trimmedWindow != "" {
+			details["window_id"] = trimmedWindow
+		}
+		return a11yruntime.ActionResult{}, a11yruntime.NewError("backend_timeout", fmt.Sprintf("host %s action timed out", strings.TrimSpace(valueOrDefault(action, "host_action"))), details)
+	}
 }
 
 func valueOrDefault(value string, fallback string) string {

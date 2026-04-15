@@ -273,6 +273,34 @@ func TestToolsList(t *testing.T) {
 	}
 }
 
+func TestToolsList_ComputerUseExposesCanonicalNameOnly(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(&mockTool{name: "computer_use", desc: "host computer-use actions", result: "ok"})
+	executor := tools.NewExecutor(registry)
+	s := NewServer(registry, executor)
+	sess := s.CreateSession()
+
+	resp := rpcCall(t, s, sess.ID, "tools/list", nil)
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %v", resp.Error)
+	}
+
+	result, _ := json.Marshal(resp.Result)
+	var listResult toolsListResult
+	json.Unmarshal(result, &listResult)
+
+	names := map[string]bool{}
+	for _, tool := range listResult.Tools {
+		names[tool.Name] = true
+	}
+	if !names["computer_use"] {
+		t.Fatalf("expected tools/list to expose computer_use, got %v", names)
+	}
+	if names["a11y"] {
+		t.Fatalf("did not expect tools/list to expose legacy a11y alias, got %v", names)
+	}
+}
+
 func TestToolsCall(t *testing.T) {
 	s := testServer(t)
 	sess := s.CreateSession()

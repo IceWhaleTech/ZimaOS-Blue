@@ -4,6 +4,7 @@ export interface WeChatILinkSetupSessionResponse {
   session_id: string
   status: string
   qrcode?: string
+  scan_url?: string
   mobile_url?: string
   expires_at: string
   error?: string

@@ -526,8 +526,8 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 		sb.WriteString(strings.Join(nativeDocumentTools, "/"))
 		sb.WriteString(" files when the corresponding native tool is available; call the native document tool directly instead. You can hand Markdown directly to those native tools when their schema accepts it. Only stage through Markdown first and then convert when the native tool cannot safely express the request or when format bridging is genuinely needed. If a native document is the requested final artifact, an intermediate Markdown file is not the finished task.</document_guide>")
 	}
-	if b.toolRegistry.Get("a11y") != nil {
-		sb.WriteString("<host_ui_guide>For application and window operations, prefer a11y over exec or document tools so the runtime can inspect and act on native UI safely.</host_ui_guide>")
+	if b.toolRegistry.Get("computer_use") != nil {
+		sb.WriteString("<host_ui_guide>For application and window operations, prefer computer_use over exec or document tools so the runtime can inspect and act on native UI safely.</host_ui_guide>")
 	}
 	if b.toolRegistry.Get("subagents") != nil {
 		sb.WriteString("<subagent_guide>Use subagents only for bounded independent work such as research, isolated implementation slices, or independent verification. After research, synthesize the findings yourself before delegating follow-up work. Never send overlapping writers to the same file set.</subagent_guide>")

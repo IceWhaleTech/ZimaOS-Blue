@@ -87,8 +87,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
   },
   'en-GB': {
     configDescription: 'Manage runtime settings, providers, users, and admin controls.',
-    himalayaName: 'Himalaya Email CLI',
-    himalayaDescription: 'Use the external Himalaya email CLI for real mail workflows.',
+    himalayaName: 'Email',
+    himalayaDescription: 'Use the external email CLI for real mail workflows.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Rewrite a local text file into more natural language.',
     planAppendName: 'Plan Append',
@@ -106,8 +106,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
   },
   'en-US': {
     configDescription: 'Manage runtime settings, providers, users, and admin controls.',
-    himalayaName: 'Himalaya Email CLI',
-    himalayaDescription: 'Use the external Himalaya email CLI for real mail workflows.',
+    himalayaName: 'Email',
+    himalayaDescription: 'Use the external email CLI for real mail workflows.',
     humanizerName: 'Humanizer',
     humanizerDescription: 'Rewrite a local text file into more natural language.',
     planAppendName: 'Plan Append',
@@ -269,8 +269,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
   },
   'zh-CN': {
     configDescription: '管理运行时设置、提供商、用户和管理控制项。',
-    himalayaName: 'Himalaya 邮件 CLI',
-    himalayaDescription: '使用外部 Himalaya 邮件 CLI 处理真实邮箱工作流。',
+    himalayaName: '邮件',
+    himalayaDescription: '使用外部邮件 CLI 处理真实邮箱工作流。',
     humanizerName: '文本润色',
     humanizerDescription: '将本地文本文件改写成更自然的表达。',
     planAppendName: '计划追加',
@@ -288,8 +288,8 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
   },
   'zh-TW': {
     configDescription: '管理執行階段設定、供應商、使用者與管理控制項。',
-    himalayaName: 'Himalaya 郵件 CLI',
-    himalayaDescription: '使用外部 Himalaya 郵件 CLI 處理真實郵件工作流程。',
+    himalayaName: '郵件',
+    himalayaDescription: '使用外部郵件 CLI 處理真實郵件工作流程。',
     humanizerName: '文字潤飾',
     humanizerDescription: '將本機文字檔改寫成更自然的表達。',
     planAppendName: '追加計畫',
@@ -638,9 +638,12 @@ export function buildBuiltinSkillBackfill(
   )
   setCatalogEntry(
     catalog,
-    'a11y',
-    firstString(messages, ['skills.catalog.a11y.name', 'tools.names.a11y']),
-    firstString(messages, ['skills.catalog.a11y.description', 'tools.descriptions.a11y'])
+    'computer_use',
+    firstString(messages, ['skills.catalog.computer_use.name', 'tools.names.computer_use']),
+    firstString(messages, [
+      'skills.catalog.computer_use.description',
+      'tools.descriptions.computer_use',
+    ])
   )
   setCatalogEntry(
     catalog,
@@ -682,7 +685,6 @@ export function buildBuiltinSkillBackfill(
     firstString(messages, ['skills.builtin.email.name', 'tools.names.email']),
     firstString(messages, ['skills.builtin.email.description'])
   )
-  setCatalogEntry(catalog, 'himalaya', terms.himalayaName, terms.himalayaDescription)
   setCatalogEntry(catalog, 'humanizer', terms.humanizerName, terms.humanizerDescription)
   setCatalogEntry(
     catalog,

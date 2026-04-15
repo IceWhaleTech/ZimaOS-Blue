@@ -51,12 +51,17 @@ var (
 
 	darwinCoreGraphicsHandle                     uintptr
 	darwinCoreFoundationHandle                   uintptr
+	darwinImageIOHandle                          uintptr
 	darwinApplicationServices                    uintptr
 	darwinCGWindowListCopyInfo                   func(option uint32, relativeToWindow uint32) uintptr
+	darwinCGWindowListCreateImage                func(screenBounds darwinRect, listOption uint32, windowID uint32, imageOption uint32) uintptr
 	darwinCGRectMakeWithDictionaryRepresentation func(dict uintptr, rect *darwinRect) bool
 	darwinCFArrayGetCount                        func(array uintptr) int64
 	darwinCFArrayGetValueAtIndex                 func(array uintptr, index int64) uintptr
 	darwinCFDictionaryGetValue                   func(dict uintptr, key uintptr) uintptr
+	darwinCFDataCreateMutable                    func(allocator uintptr, capacity int64) uintptr
+	darwinCFDataGetLength                        func(data uintptr) int64
+	darwinCFDataGetBytePtr                       func(data uintptr) uintptr
 	darwinCFGetTypeID                            func(ref uintptr) uintptr
 	darwinCFStringGetTypeID                      func() uintptr
 	darwinCFNumberGetTypeID                      func() uintptr
@@ -87,24 +92,31 @@ var (
 	darwinCGEventKeyboardSetUnicodeString        func(event uintptr, length uint64, chars *uint16)
 	darwinCGEventPost                            func(tap uint32, event uintptr)
 	darwinCGWarpMouseCursorPosition              func(point darwinPoint) int32
+	darwinCGImageDestinationCreateWithData       func(data uintptr, typeRef uintptr, count uintptr, options uintptr) uintptr
+	darwinCGImageDestinationAddImage             func(dest uintptr, image uintptr, properties uintptr)
+	darwinCGImageDestinationFinalize             func(dest uintptr) bool
 	darwinResolveWindowRecordForCapture          = func(b *darwinBackend, windowID string) (darwinWindowRecord, error) {
 		return b.resolveWindowRecord(strings.TrimSpace(windowID))
 	}
 	darwinRefreshWindowRecordForCapture = func(b *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
 		return b.refreshWindowRecord(current)
 	}
-	darwinCaptureWindowImage   = darwinRunWindowCapture
-	darwinScreenshotRetrySleep = darwinSleepWithContext
+	darwinCaptureWindowImage    = darwinRunWindowCapture
+	darwinCaptureWindowPNGBytes = darwinCaptureWindowRecordPNGBytes
+	darwinScreenshotRetrySleep  = darwinSleepWithContext
 )
 
 const (
-	darwinCGWindowListOptionAll          = 0
-	darwinUTF8Encoding                   = 0x08000100
-	darwinCGWindowListOptionOnScreenOnly = 1
-	darwinCGWindowListExcludeDesktop     = 16
-	darwinCFNumberSInt64Type             = 4
-	darwinScreenshotMaxAttempts          = 3
-	darwinScreenshotRetryDelay           = 180 * time.Millisecond
+	darwinCGWindowListOptionAll             = 0
+	darwinUTF8Encoding                      = 0x08000100
+	darwinCGWindowListOptionOnScreenOnly    = 1
+	darwinCGWindowListOptionIncludingWindow = 1 << 3
+	darwinCGWindowListExcludeDesktop        = 16
+	darwinCGWindowImageBoundsIgnoreFraming  = 1 << 0
+	darwinCGWindowImageBestResolution       = 1 << 3
+	darwinCFNumberSInt64Type                = 4
+	darwinScreenshotMaxAttempts             = 3
+	darwinScreenshotRetryDelay              = 180 * time.Millisecond
 )
 
 func initDarwinRuntime() {
@@ -118,15 +130,23 @@ func initDarwinRuntime() {
 		if err != nil {
 			return
 		}
+		darwinImageIOHandle, err = purego.Dlopen("/System/Library/Frameworks/ImageIO.framework/ImageIO", purego.RTLD_LAZY|purego.RTLD_GLOBAL)
+		if err != nil {
+			return
+		}
 		darwinApplicationServices, err = purego.Dlopen("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices", purego.RTLD_LAZY|purego.RTLD_GLOBAL)
 		if err != nil {
 			return
 		}
 		purego.RegisterLibFunc(&darwinCGWindowListCopyInfo, darwinCoreGraphicsHandle, "CGWindowListCopyWindowInfo")
+		purego.RegisterLibFunc(&darwinCGWindowListCreateImage, darwinCoreGraphicsHandle, "CGWindowListCreateImage")
 		purego.RegisterLibFunc(&darwinCGRectMakeWithDictionaryRepresentation, darwinCoreGraphicsHandle, "CGRectMakeWithDictionaryRepresentation")
 		purego.RegisterLibFunc(&darwinCFArrayGetCount, darwinCoreFoundationHandle, "CFArrayGetCount")
 		purego.RegisterLibFunc(&darwinCFArrayGetValueAtIndex, darwinCoreFoundationHandle, "CFArrayGetValueAtIndex")
 		purego.RegisterLibFunc(&darwinCFDictionaryGetValue, darwinCoreFoundationHandle, "CFDictionaryGetValue")
+		purego.RegisterLibFunc(&darwinCFDataCreateMutable, darwinCoreFoundationHandle, "CFDataCreateMutable")
+		purego.RegisterLibFunc(&darwinCFDataGetLength, darwinCoreFoundationHandle, "CFDataGetLength")
+		purego.RegisterLibFunc(&darwinCFDataGetBytePtr, darwinCoreFoundationHandle, "CFDataGetBytePtr")
 		purego.RegisterLibFunc(&darwinCFGetTypeID, darwinCoreFoundationHandle, "CFGetTypeID")
 		purego.RegisterLibFunc(&darwinCFStringGetTypeID, darwinCoreFoundationHandle, "CFStringGetTypeID")
 		purego.RegisterLibFunc(&darwinCFNumberGetTypeID, darwinCoreFoundationHandle, "CFNumberGetTypeID")
@@ -157,6 +177,9 @@ func initDarwinRuntime() {
 		purego.RegisterLibFunc(&darwinCGEventKeyboardSetUnicodeString, darwinCoreGraphicsHandle, "CGEventKeyboardSetUnicodeString")
 		purego.RegisterLibFunc(&darwinCGEventPost, darwinCoreGraphicsHandle, "CGEventPost")
 		purego.RegisterLibFunc(&darwinCGWarpMouseCursorPosition, darwinCoreGraphicsHandle, "CGWarpMouseCursorPosition")
+		purego.RegisterLibFunc(&darwinCGImageDestinationCreateWithData, darwinImageIOHandle, "CGImageDestinationCreateWithData")
+		purego.RegisterLibFunc(&darwinCGImageDestinationAddImage, darwinImageIOHandle, "CGImageDestinationAddImage")
+		purego.RegisterLibFunc(&darwinCGImageDestinationFinalize, darwinImageIOHandle, "CGImageDestinationFinalize")
 	})
 }
 
@@ -231,6 +254,23 @@ func (b *darwinBackend) screenshotWindowRecord(ctx context.Context, record darwi
 		}
 	}
 	return ScreenshotResult{HostOS: b.HostOS()}, lastErr
+}
+
+func (b *darwinBackend) screenshotForGrounding(ctx context.Context, windowID string) (ScreenshotResult, error) {
+	record, err := darwinResolveWindowRecordForCapture(b, strings.TrimSpace(windowID))
+	if err != nil {
+		return ScreenshotResult{HostOS: b.HostOS()}, err
+	}
+	imagePNG, err := darwinCaptureWindowPNGBytes(ctx, record)
+	if err != nil {
+		return ScreenshotResult{HostOS: b.HostOS()}, err
+	}
+	return ScreenshotResult{
+		HostOS:     b.HostOS(),
+		WindowID:   record.ID,
+		ImageBytes: append([]byte(nil), imagePNG...),
+		Message:    "Host screenshot captured",
+	}, nil
 }
 
 func darwinWindowInfoFromDictionary(dict uintptr) darwinWindowRecord {
@@ -309,6 +349,58 @@ func darwinCFDictionaryRectValue(ref uintptr) darwinRect {
 
 func darwinRunWindowCapture(ctx context.Context, windowID string, path string) (string, error) {
 	return darwinCLIFallback.captureWindow(ctx, windowID, path)
+}
+
+func darwinCaptureWindowRecordPNGBytes(_ context.Context, record darwinWindowRecord) ([]byte, error) {
+	initDarwinRuntime()
+	if darwinCGWindowListCreateImage == nil || darwinCFDataCreateMutable == nil || darwinCFDataGetLength == nil || darwinCFDataGetBytePtr == nil || darwinCGImageDestinationCreateWithData == nil || darwinCGImageDestinationAddImage == nil || darwinCGImageDestinationFinalize == nil {
+		return nil, fmt.Errorf("native screenshot bytes capture is unavailable")
+	}
+	windowID, err := strconv.ParseUint(strings.TrimSpace(record.ID), 10, 32)
+	if err != nil {
+		return nil, fmt.Errorf("parse window id for screenshot: %w", err)
+	}
+	if record.Bounds.Size.Width <= 0 || record.Bounds.Size.Height <= 0 {
+		return nil, fmt.Errorf("target window has no visible bounds")
+	}
+	imageRef := darwinCGWindowListCreateImage(
+		record.Bounds,
+		darwinCGWindowListOptionIncludingWindow,
+		uint32(windowID),
+		darwinCGWindowImageBoundsIgnoreFraming|darwinCGWindowImageBestResolution,
+	)
+	if imageRef == 0 {
+		return nil, fmt.Errorf("native screenshot returned empty image")
+	}
+	defer darwinRelease(imageRef)
+	dataRef := darwinCFDataCreateMutable(0, 0)
+	if dataRef == 0 {
+		return nil, fmt.Errorf("create mutable PNG data failed")
+	}
+	defer darwinRelease(dataRef)
+	pngType := darwinCFStringRef("public.png")
+	if pngType == 0 {
+		return nil, fmt.Errorf("create png type ref failed")
+	}
+	defer darwinRelease(pngType)
+	destRef := darwinCGImageDestinationCreateWithData(dataRef, pngType, 1, 0)
+	if destRef == 0 {
+		return nil, fmt.Errorf("create image destination failed")
+	}
+	defer darwinRelease(destRef)
+	darwinCGImageDestinationAddImage(destRef, imageRef, 0)
+	if !darwinCGImageDestinationFinalize(destRef) {
+		return nil, fmt.Errorf("finalize image destination failed")
+	}
+	length := darwinCFDataGetLength(dataRef)
+	if length <= 0 {
+		return nil, fmt.Errorf("native screenshot produced empty png data")
+	}
+	dataPtr := darwinCFDataGetBytePtr(dataRef)
+	if dataPtr == 0 {
+		return nil, fmt.Errorf("native screenshot png bytes unavailable")
+	}
+	return append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(dataPtr)), int(length))...), nil
 }
 
 func darwinSleepWithContext(ctx context.Context, delay time.Duration) error {

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"image"
@@ -28,7 +29,10 @@ var a11yConversationVisualSearchRegions = []a11yConversationImageRegion{
 
 func init() {
 	a11yLocateConversationVisualHit = locateA11yConversationVisualHitFromImage
+	a11yLocateConversationVisualHitFromPNG = locateA11yConversationVisualHitFromPNGBytes
 }
+
+var a11yLocateConversationVisualHitFromPNG func(ctx context.Context, imagePNG []byte, selectorName string) (a11yConversationVisualHit, error)
 
 func locateA11yConversationVisualHitFromImage(ctx context.Context, imagePath string, selectorName string) (a11yConversationVisualHit, error) {
 	var lastErr error = a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", map[string]interface{}{
@@ -36,6 +40,25 @@ func locateA11yConversationVisualHitFromImage(ctx context.Context, imagePath str
 	})
 	for _, region := range a11yConversationVisualSearchRegions {
 		lines, err := locateA11yConversationTextLines(ctx, imagePath, region)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		hit, err := resolveA11yConversationVisualHitFromLines(lines, selectorName, region)
+		if err == nil {
+			return hit, nil
+		}
+		lastErr = err
+	}
+	return a11yConversationVisualHit{}, lastErr
+}
+
+func locateA11yConversationVisualHitFromPNGBytes(ctx context.Context, imagePNG []byte, selectorName string) (a11yConversationVisualHit, error) {
+	var lastErr error = a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", map[string]interface{}{
+		"target_name": selectorName,
+	})
+	for _, region := range a11yConversationVisualSearchRegions {
+		lines, err := locateA11yConversationTextLinesFromPNG(ctx, imagePNG, region)
 		if err != nil {
 			lastErr = err
 			continue
@@ -68,6 +91,18 @@ func a11yConversationImageRegionIsFull(region a11yConversationImageRegion) bool 
 	return region.X == 0 && region.Y == 0 && region.Width == 1 && region.Height == 1
 }
 
+func locateA11yConversationTextLinesFromPNG(ctx context.Context, imagePNG []byte, region a11yConversationImageRegion) ([]a11yruntime.TextLine, error) {
+	targetPNG := imagePNG
+	if !a11yConversationImageRegionIsFull(region) {
+		croppedPNG, err := cropA11yConversationSearchImageBytes(targetPNG, region)
+		if err != nil {
+			return nil, err
+		}
+		targetPNG = croppedPNG
+	}
+	return a11yruntime.LocateTextInPNG(ctx, targetPNG)
+}
+
 func cropA11yConversationSearchImage(imagePath string, region a11yConversationImageRegion) (string, func(), error) {
 	file, err := os.Open(imagePath)
 	if err != nil {
@@ -79,11 +114,36 @@ func cropA11yConversationSearchImage(imagePath string, region a11yConversationIm
 	if err != nil {
 		return "", nil, fmt.Errorf("decode screenshot for conversation crop: %w", err)
 	}
+	croppedPNG, err := cropA11yConversationDecodedImageToPNG(source, region)
+	if err != nil {
+		return "", nil, err
+	}
+	tmpFile, err := os.CreateTemp("", "zimaos-blue-a11y-conversation-*.png")
+	if err != nil {
+		return "", nil, fmt.Errorf("create conversation crop temp file: %w", err)
+	}
+	defer tmpFile.Close()
+	if _, err := tmpFile.Write(croppedPNG); err != nil {
+		os.Remove(tmpFile.Name())
+		return "", nil, fmt.Errorf("write conversation crop image: %w", err)
+	}
+	return tmpFile.Name(), func() { _ = os.Remove(tmpFile.Name()) }, nil
+}
+
+func cropA11yConversationSearchImageBytes(imagePNG []byte, region a11yConversationImageRegion) ([]byte, error) {
+	source, err := png.Decode(bytes.NewReader(imagePNG))
+	if err != nil {
+		return nil, fmt.Errorf("decode screenshot for conversation crop: %w", err)
+	}
+	return cropA11yConversationDecodedImageToPNG(source, region)
+}
+
+func cropA11yConversationDecodedImageToPNG(source image.Image, region a11yConversationImageRegion) ([]byte, error) {
 	bounds := source.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
 	if width <= 0 || height <= 0 {
-		return "", nil, fmt.Errorf("conversation crop source image has invalid bounds")
+		return nil, fmt.Errorf("conversation crop source image has invalid bounds")
 	}
 	minX := bounds.Min.X + int(region.X*float64(width))
 	minY := bounds.Min.Y + int(region.Y*float64(height))
@@ -104,17 +164,11 @@ func cropA11yConversationSearchImage(imagePath string, region a11yConversationIm
 	cropBounds := image.Rect(0, 0, maxX-minX, maxY-minY)
 	cropped := image.NewRGBA(cropBounds)
 	draw.Draw(cropped, cropBounds, source, image.Point{X: minX, Y: minY}, draw.Src)
-
-	tmpFile, err := os.CreateTemp("", "zimaos-blue-a11y-conversation-*.png")
-	if err != nil {
-		return "", nil, fmt.Errorf("create conversation crop temp file: %w", err)
+	var out bytes.Buffer
+	if err := png.Encode(&out, cropped); err != nil {
+		return nil, fmt.Errorf("encode conversation crop image: %w", err)
 	}
-	defer tmpFile.Close()
-	if err := png.Encode(tmpFile, cropped); err != nil {
-		os.Remove(tmpFile.Name())
-		return "", nil, fmt.Errorf("encode conversation crop image: %w", err)
-	}
-	return tmpFile.Name(), func() { _ = os.Remove(tmpFile.Name()) }, nil
+	return out.Bytes(), nil
 }
 
 func resolveA11yConversationVisualHitFromLines(lines []a11yruntime.TextLine, selectorName string, region a11yConversationImageRegion) (a11yConversationVisualHit, error) {

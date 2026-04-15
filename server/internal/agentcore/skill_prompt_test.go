@@ -181,32 +181,38 @@ func TestScanSkillsDir_SortedByName(t *testing.T) {
 func TestScanSkillsDir_PrioritySort(t *testing.T) {
 	dir := t.TempDir()
 
-	// browser and web-search should sort before alphabetical skills
-	for _, name := range []string{"weather", "browser", "calculator"} {
+	// web_query and research should sort before alphabetical skills
+	for _, name := range []string{"weather", "research", "calculator", "web_query"} {
 		skillDir := filepath.Join(dir, name)
 		os.MkdirAll(skillDir, 0o755)
 		os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# "+name+"\n\nDescription of "+name+"."), 0o644)
 	}
 
 	skills := ScanSkillsDir(dir)
-	if len(skills) != 3 {
-		t.Fatalf("expected 3 skills, got %d", len(skills))
+	if len(skills) != 4 {
+		t.Fatalf("expected 4 skills, got %d", len(skills))
 	}
-	// browser (priority 0) should be first, then calculator and weather (both priority 100, alphabetical)
-	if skills[0].Name != "browser" {
-		t.Errorf("expected browser first, got %q", skills[0].Name)
+	// web_query (priority 0) then research (priority 1), then alphabetical remainder.
+	if skills[0].Name != "web_query" {
+		t.Errorf("expected web_query first, got %q", skills[0].Name)
 	}
-	if skills[1].Name != "calculator" {
-		t.Errorf("expected calculator second, got %q", skills[1].Name)
+	if skills[1].Name != "research" {
+		t.Errorf("expected research second, got %q", skills[1].Name)
 	}
-	if skills[2].Name != "weather" {
-		t.Errorf("expected weather third, got %q", skills[2].Name)
+	if skills[2].Name != "calculator" {
+		t.Errorf("expected calculator third, got %q", skills[2].Name)
+	}
+	if skills[3].Name != "weather" {
+		t.Errorf("expected weather fourth, got %q", skills[3].Name)
 	}
 }
 
 func TestSkillSortPriority_LegacyWebAliasesAreDeprioritized(t *testing.T) {
-	if got := skillSortPriority("web_query"); got != 1 {
-		t.Fatalf("web_query priority = %d, want 1", got)
+	if got := skillSortPriority("web_query"); got != 0 {
+		t.Fatalf("web_query priority = %d, want 0", got)
+	}
+	if got := skillSortPriority("research"); got != 1 {
+		t.Fatalf("research priority = %d, want 1", got)
 	}
 	for _, alias := range []string{"web_search", "web-search", "websearch"} {
 		if got := skillSortPriority(alias); got != 100 {
@@ -326,6 +332,8 @@ func TestPinnedSkills_ContainsCoreRoutedSkillSet(t *testing.T) {
 	}
 
 	required := []string{
+		"web_query",
+		"research",
 		"reminder",
 		"scheduler",
 	}
@@ -342,6 +350,11 @@ func TestPinnedSkills_ContainsCoreRoutedSkillSet(t *testing.T) {
 			t.Fatalf("PinnedSkills should not pin %q by default; got=%v", id, got)
 		}
 	}
+	for _, id := range []string{"browser", "deep_research", "analyze", "ui_reviewer"} {
+		if _, ok := gotSet[id]; ok {
+			t.Fatalf("PinnedSkills should not pin legacy/removed skill %q; got=%v", id, got)
+		}
+	}
 }
 
 func TestFormatPinnedSkills_FallbackToHomeDefaultDir(t *testing.T) {
@@ -349,15 +362,15 @@ func TestFormatPinnedSkills_FallbackToHomeDefaultDir(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	homeSkillDir := filepath.Join(homeDir, ".claude", "skills", "browser")
+	homeSkillDir := filepath.Join(homeDir, ".claude", "skills", "research")
 	if err := os.MkdirAll(homeSkillDir, 0o755); err != nil {
 		t.Fatalf("mkdir home skill dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(homeSkillDir, "SKILL.md"), []byte(`---
-name: browser
-description: Browser from home default path
+name: research
+description: Research from home default path
 ---
-# browser
+# research
 `), 0o644); err != nil {
 		t.Fatalf("write home SKILL.md: %v", err)
 	}
@@ -366,10 +379,10 @@ description: Browser from home default path
 	if !contains(got, `<pinned_skills>`) {
 		t.Fatalf("expected pinned_skills output, got: %q", got)
 	}
-	if !contains(got, `name="browser"`) {
-		t.Fatalf("expected browser skill from home path, got: %q", got)
+	if !contains(got, `name="research"`) {
+		t.Fatalf("expected research skill from home path, got: %q", got)
 	}
-	if !contains(got, `desc="Browser from home default path"`) {
+	if !contains(got, `desc="Research from home default path"`) {
 		t.Fatalf("expected home description, got: %q", got)
 	}
 }
@@ -379,37 +392,37 @@ func TestFormatPinnedSkills_WorkspaceOverridesHome(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	workspaceSkillDir := filepath.Join(workspaceDir, ".claude", "skills", "browser")
+	workspaceSkillDir := filepath.Join(workspaceDir, ".claude", "skills", "research")
 	if err := os.MkdirAll(workspaceSkillDir, 0o755); err != nil {
 		t.Fatalf("mkdir workspace skill dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(workspaceSkillDir, "SKILL.md"), []byte(`---
-name: browser
-description: Browser from workspace path
+name: research
+description: Research from workspace path
 ---
-# browser
+# research
 `), 0o644); err != nil {
 		t.Fatalf("write workspace SKILL.md: %v", err)
 	}
 
-	homeSkillDir := filepath.Join(homeDir, ".claude", "skills", "browser")
+	homeSkillDir := filepath.Join(homeDir, ".claude", "skills", "research")
 	if err := os.MkdirAll(homeSkillDir, 0o755); err != nil {
 		t.Fatalf("mkdir home skill dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(homeSkillDir, "SKILL.md"), []byte(`---
-name: browser
-description: Browser from home path
+name: research
+description: Research from home path
 ---
-# browser
+# research
 `), 0o644); err != nil {
 		t.Fatalf("write home SKILL.md: %v", err)
 	}
 
 	got := FormatPinnedSkills(workspaceDir)
-	if !contains(got, `desc="Browser from workspace path"`) {
+	if !contains(got, `desc="Research from workspace path"`) {
 		t.Fatalf("expected workspace description to win, got: %q", got)
 	}
-	if contains(got, `desc="Browser from home path"`) {
+	if contains(got, `desc="Research from home path"`) {
 		t.Fatalf("did not expect home description when workspace exists, got: %q", got)
 	}
 }
@@ -419,37 +432,37 @@ func TestFormatPinnedSkills_AgentsRootOverridesClaudeRoot(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	agentsSkillDir := filepath.Join(workspaceDir, ".agents", "skills", "browser")
+	agentsSkillDir := filepath.Join(workspaceDir, ".agents", "skills", "research")
 	if err := os.MkdirAll(agentsSkillDir, 0o755); err != nil {
 		t.Fatalf("mkdir agents skill dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(agentsSkillDir, "CLAUDE.md"), []byte(`---
-name: browser
-description: Browser from agents path
+name: research
+description: Research from agents path
 ---
-# browser
+# research
 `), 0o644); err != nil {
 		t.Fatalf("write agents CLAUDE.md: %v", err)
 	}
 
-	claudeSkillDir := filepath.Join(workspaceDir, ".claude", "skills", "browser")
+	claudeSkillDir := filepath.Join(workspaceDir, ".claude", "skills", "research")
 	if err := os.MkdirAll(claudeSkillDir, 0o755); err != nil {
 		t.Fatalf("mkdir claude skill dir: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(claudeSkillDir, "SKILL.md"), []byte(`---
-name: browser
-description: Browser from claude path
+name: research
+description: Research from claude path
 ---
-# browser
+# research
 `), 0o644); err != nil {
 		t.Fatalf("write claude SKILL.md: %v", err)
 	}
 
 	got := FormatPinnedSkills(workspaceDir)
-	if !contains(got, `desc="Browser from agents path"`) {
+	if !contains(got, `desc="Research from agents path"`) {
 		t.Fatalf("expected agents description to win, got: %q", got)
 	}
-	if contains(got, `desc="Browser from claude path"`) {
+	if contains(got, `desc="Research from claude path"`) {
 		t.Fatalf("did not expect claude description when agents path exists, got: %q", got)
 	}
 }

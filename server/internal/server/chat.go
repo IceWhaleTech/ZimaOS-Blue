@@ -6806,8 +6806,11 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	// cutover here avoids clarify-only or exec-only surfaces that can block the
 	// end-to-end artifact workflow.
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
+		originalRoutedDefs := selection.RoutedDefs
 		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
 		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
+		selection.RoutedDefs = ensureExplicitNamedNativeTools(userMessage, originalRoutedDefs, selection.RoutedDefs)
+		selection.NativeDefs = ensureExplicitNamedNativeTools(userMessage, originalRoutedDefs, selection.NativeDefs)
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 
@@ -7502,7 +7505,9 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
 	if policyReq.RouteKind == tools.ToolRouteKindChat &&
 		!policyReq.SkipDefaultChatDirectAllowlist &&
-		(shouldExpandChatToolAllowlistForEmailIntent(userMessage) || shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage)) {
+		(shouldExpandChatToolAllowlistForEmailIntent(userMessage) ||
+			shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage) ||
+			shouldExpandChatToolAllowlistForExplicitNamedNativeTool(userMessage)) {
 		expandedReq := policyReq
 		expandedReq.SkipDefaultChatDirectAllowlist = true
 		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
@@ -7520,6 +7525,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
 	routed = preferForcedDeepResearchTools(userMessage, allDefs, routed, policyReq.DeepResearchEnabled)
 	routed = h.ensureExplicitNativeArtifactWriteTools(userMessage, policyReq, allDefs, routed)
+	routed = ensureExplicitNamedNativeTools(userMessage, allDefs, routed)
 	routed = suppressConvertForNativeArtifactRouting(userMessage, routed)
 	routed = applyEmailToolPreference(routed, userMessage)
 	routed = keepAlwaysExposedChatTools(allDefs, routed)
@@ -7551,6 +7557,95 @@ func shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage string) 
 		return false
 	}
 	return nativeDocumentArtifactToolForPath(target) != ""
+}
+
+func shouldExpandChatToolAllowlistForExplicitNamedNativeTool(userMessage string) bool {
+	return len(explicitNamedNativeToolsForMessage(userMessage)) > 0
+}
+
+func explicitNamedNativeToolsForMessage(userMessage string) []string {
+	lower := strings.ToLower(strings.TrimSpace(userMessage))
+	if lower == "" {
+		return nil
+	}
+	tools := []struct {
+		name     string
+		variants []string
+	}{
+		{name: "computer_use", variants: []string{"computer_use", "computer-use", "computer use"}},
+		{name: "docx", variants: []string{"docx"}},
+		{name: "xlsx", variants: []string{"xlsx"}},
+		{name: "pptx", variants: []string{"pptx"}},
+	}
+	matches := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if hasAnyExplicitNamedNativeToolCue(lower, tool.variants...) {
+			matches = append(matches, tool.name)
+		}
+	}
+	if len(matches) == 0 {
+		return nil
+	}
+	return matches
+}
+
+func hasAnyExplicitNamedNativeToolCue(lowerMessage string, tools ...string) bool {
+	for _, tool := range tools {
+		if hasExplicitNamedNativeToolCue(lowerMessage, tool) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasExplicitNamedNativeToolCue(lowerMessage, tool string) bool {
+	if lowerMessage == "" || tool == "" {
+		return false
+	}
+	if strings.Contains(lowerMessage, "`"+tool+"`") ||
+		strings.Contains(lowerMessage, `"`+tool+`"`) ||
+		strings.Contains(lowerMessage, `'`+tool+`'`) {
+		return true
+	}
+	for _, cue := range []string{
+		"use " + tool,
+		"use the " + tool,
+		"using " + tool,
+		"using the " + tool,
+		"via " + tool,
+		"via the " + tool,
+		"with " + tool,
+		"with the " + tool,
+		"prefer " + tool,
+		"pick " + tool,
+		"select " + tool,
+		"choose " + tool,
+		"call " + tool,
+		"run " + tool,
+		"用" + tool,
+		"用 " + tool,
+		"使用" + tool,
+		"使用 " + tool,
+		"走" + tool,
+		"走 " + tool,
+		"选" + tool,
+		"选 " + tool,
+		"选择" + tool,
+		"选择 " + tool,
+		"调用" + tool,
+		"调用 " + tool,
+		tool + " tool",
+		tool + " 工具",
+		tool + "工具",
+		tool + " action",
+		tool + " 能力",
+		tool + "能力",
+	} {
+		if strings.Contains(lowerMessage, cue) {
+			return true
+		}
+	}
+	return false
 }
 
 func keepAlwaysExposedChatTools(allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
@@ -7755,6 +7850,14 @@ func (h *ChatHandler) ensureExplicitNativeArtifactWriteTools(userMessage string,
 		return filtered
 	}
 	return mergeToolDefsByName(filterToolDefsToNames(candidateDefs, tool), current)
+}
+
+func ensureExplicitNamedNativeTools(userMessage string, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	explicit := explicitNamedNativeToolsForMessage(userMessage)
+	if len(explicit) == 0 {
+		return current
+	}
+	return mergeToolDefsByName(current, filterToolDefsToNames(allDefs, explicit...))
 }
 
 func suppressConvertForNativeArtifactRouting(userMessage string, current []tools.ToolDefinition) []tools.ToolDefinition {

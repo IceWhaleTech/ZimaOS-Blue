@@ -48,4 +48,4 @@ blue xlsx action=sheet_compare path=reports/current.xlsx compare_path=reports/ba
 - Use `docx` for narrative reports.
 - Use `pptx` for slide decks.
 - Use `pdf` for final printable documents.
-- Use `a11y` for host-window interaction instead of spreadsheet file edits.
+- Use `computer_use` for host-window interaction instead of spreadsheet file edits.

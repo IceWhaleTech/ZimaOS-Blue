@@ -45,7 +45,7 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 	}
 	resolver := NewToolPolicyResolver(cfg)
 	defs := []ToolDefinition{
-		{Name: "a11y"},
+		{Name: "computer_use"},
 		{Name: "ask"},
 		{Name: "bash"},
 		{Name: "calendar"},

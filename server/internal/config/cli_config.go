@@ -361,7 +361,7 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 			"group:fs":         {"read", "write", "edit", "grep", "find", "ls"},
 			"group:sessions":   {"sessions"},
 			"group:memory":     {"memory"},
-			"group:research":   {"deep_research"},
+			"group:research":   {"research"},
 			"group:web":        {"web"},
 			"group:ui":         {"browser", "canvas"},
 			"group:automation": {"cron", "gateway", "nodes"},

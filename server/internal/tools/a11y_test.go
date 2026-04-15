@@ -5,67 +5,73 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
 )
 
 type a11yCompatBackend struct {
-	capabilities          a11yruntime.CapabilitiesResult
-	hostOS                string
-	windows               []a11yruntime.WindowInfo
-	windowsResults        [][]a11yruntime.WindowInfo
-	allWindows            []a11yruntime.WindowInfo
-	allWindowsResults     [][]a11yruntime.WindowInfo
-	snapshotResult        a11yruntime.SnapshotResult
-	interactiveResult     a11yruntime.SnapshotResult
-	interactiveResults    []a11yruntime.SnapshotResult
-	snapshotErr           error
-	focusResultWindowID   string
-	scrollResultWindowID  string
-	keyResultWindowID     string
-	screenshotResultID    string
-	lastFocusWindowID     string
-	lastSnapshotWindowID  string
-	snapshotWindowHistory []string
-	lastActWindowID       string
-	lastActRef            int
-	lastActType           string
-	lastActValue          string
-	lastActHoldMS         int
-	lastActRefMap         map[int]string
-	actTypeHistory        []string
-	actRefHistory         []int
-	actValueHistory       []string
-	lastScrollWindowID    string
-	lastScrollDirection   string
-	lastScrollLines       int
-	lastPointerMoveX      int
-	lastPointerMoveY      int
-	lastPointClickWindow  string
-	lastPointClick        a11yruntime.NormalizedPoint
-	pointClickHistory     []a11yruntime.NormalizedPoint
-	pointClickWindowIDs   []string
-	lastKeyWindowID       string
-	lastKeys              []string
-	lastKeyHoldMS         int
-	keyHistory            [][]string
-	lastScreenshotWindow  string
-	actExecutionMode      string
-	scrollExecutionMode   string
-	keyExecutionMode      string
-	screenshotImagePath   string
-	actResultSet          bool
-	actResult             a11yruntime.ActionResult
-	actCalls              int
-	interactiveCalls      int
-	listWindowsCalls      int
-	listAllWindowsCalls   int
-	activateAppCalls      []string
-	activateAppResult     a11yruntime.ActionResult
-	activateAppErrs       map[string]error
-	actErrorsByType       map[string]error
-	keyErrorsByChord      map[string]error
-	pointClickErr         error
+	capabilities                  a11yruntime.CapabilitiesResult
+	hostOS                        string
+	windows                       []a11yruntime.WindowInfo
+	windowsResults                [][]a11yruntime.WindowInfo
+	allWindows                    []a11yruntime.WindowInfo
+	allWindowsResults             [][]a11yruntime.WindowInfo
+	snapshotResult                a11yruntime.SnapshotResult
+	interactiveResult             a11yruntime.SnapshotResult
+	interactiveResults            []a11yruntime.SnapshotResult
+	snapshotErr                   error
+	focusResultWindowID           string
+	scrollResultWindowID          string
+	keyResultWindowID             string
+	screenshotResultID            string
+	lastFocusWindowID             string
+	lastSnapshotWindowID          string
+	snapshotWindowHistory         []string
+	lastActWindowID               string
+	lastActRef                    int
+	lastActType                   string
+	lastActValue                  string
+	lastActHoldMS                 int
+	lastActRefMap                 map[int]string
+	actTypeHistory                []string
+	actRefHistory                 []int
+	actValueHistory               []string
+	lastScrollWindowID            string
+	lastScrollDirection           string
+	lastScrollLines               int
+	lastPointerMoveX              int
+	lastPointerMoveY              int
+	lastPointClickWindow          string
+	lastPointClick                a11yruntime.NormalizedPoint
+	pointClickHistory             []a11yruntime.NormalizedPoint
+	pointClickWindowIDs           []string
+	lastKeyWindowID               string
+	lastKeys                      []string
+	lastKeyHoldMS                 int
+	keyHistory                    [][]string
+	actBlockCh                    chan struct{}
+	keyBlockCh                    chan struct{}
+	pointClickBlockCh             chan struct{}
+	lastScreenshotWindow          string
+	lastGroundingScreenshotWindow string
+	actExecutionMode              string
+	scrollExecutionMode           string
+	keyExecutionMode              string
+	screenshotImagePath           string
+	screenshotGroundingBytes      []byte
+	actResultSet                  bool
+	actResult                     a11yruntime.ActionResult
+	actCalls                      int
+	interactiveCalls              int
+	listWindowsCalls              int
+	listAllWindowsCalls           int
+	activateAppCalls              []string
+	activateAppResult             a11yruntime.ActionResult
+	activateAppErrs               map[string]error
+	actErrorsByType               map[string]error
+	keyErrorsByChord              map[string]error
+	pointClickErr                 error
 }
 
 type a11yBrowserCompatBackend struct {
@@ -205,6 +211,9 @@ func (b *a11yCompatBackend) SnapshotInteractive(_ context.Context, windowID stri
 }
 
 func (b *a11yCompatBackend) Act(_ context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (a11yruntime.ActionResult, error) {
+	if b.actBlockCh != nil {
+		<-b.actBlockCh
+	}
 	b.lastActWindowID = windowID
 	b.lastActRef = ref
 	b.lastActType = actType
@@ -257,6 +266,9 @@ func (b *a11yCompatBackend) PointerMove(context.Context, int, int) (a11yruntime.
 }
 
 func (b *a11yCompatBackend) ClickWindowPoint(_ context.Context, windowID string, point a11yruntime.NormalizedPoint, holdMS int) (a11yruntime.ActionResult, error) {
+	if b.pointClickBlockCh != nil {
+		<-b.pointClickBlockCh
+	}
 	b.lastPointClickWindow = windowID
 	b.lastPointClick = point
 	b.pointClickWindowIDs = append(b.pointClickWindowIDs, windowID)
@@ -277,6 +289,9 @@ func (b *a11yCompatBackend) ClickWindowPoint(_ context.Context, windowID string,
 }
 
 func (b *a11yCompatBackend) Key(_ context.Context, windowID string, keys []string, holdMS int) (a11yruntime.ActionResult, error) {
+	if b.keyBlockCh != nil {
+		<-b.keyBlockCh
+	}
 	b.lastKeyWindowID = windowID
 	b.lastKeys = append([]string(nil), keys...)
 	b.lastKeyHoldMS = holdMS
@@ -302,6 +317,19 @@ func (b *a11yCompatBackend) Screenshot(_ context.Context, windowID string) (a11y
 		resultWindow = b.screenshotResultID
 	}
 	return a11yruntime.ScreenshotResult{HostOS: "darwin", WindowID: resultWindow, ImagePath: imagePath}, nil
+}
+
+func (b *a11yCompatBackend) ScreenshotForGrounding(_ context.Context, windowID string) (a11yruntime.ScreenshotResult, error) {
+	b.lastGroundingScreenshotWindow = windowID
+	resultWindow := windowID
+	if b.screenshotResultID != "" {
+		resultWindow = b.screenshotResultID
+	}
+	return a11yruntime.ScreenshotResult{
+		HostOS:     "darwin",
+		WindowID:   resultWindow,
+		ImageBytes: append([]byte(nil), b.screenshotGroundingBytes...),
+	}, nil
 }
 
 func (b *a11yBrowserCompatBackend) Start(context.Context) error { return nil }
@@ -1919,6 +1947,49 @@ func TestA11yToolExecute_FocusUsesAllWindowsFallbackWhenWindowIsOnAnotherSpace(t
 	}
 }
 
+func TestA11yToolExecute_FocusActivatesAppWhenAllWindowsFallbackIsAmbiguous(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windowsResults: [][]a11yruntime.WindowInfo{
+			{},
+			{
+				{ID: "win-feishu", Title: "Lark - Orca", AppName: "Lark", Focused: true},
+			},
+		},
+		allWindows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu-hidden-1", Title: "Lark - Team Alpha", AppName: "Lark"},
+			{ID: "win-feishu-hidden-2", Title: "Lark - Team Beta", AppName: "Lark"},
+		},
+		focusResultWindowID: "win-feishu",
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "focus",
+		"app_name": "Feishu,飞书,Lark",
+	})
+	if err != nil {
+		t.Fatalf("focus Execute() error = %v", err)
+	}
+	if len(backend.activateAppCalls) == 0 {
+		t.Fatal("activateAppCalls = 0, want activation retry after all-windows ambiguity")
+	}
+	if backend.lastFocusWindowID != "win-feishu" {
+		t.Fatalf("lastFocusWindowID = %q, want win-feishu", backend.lastFocusWindowID)
+	}
+	if backend.listAllWindowsCalls != 1 {
+		t.Fatalf("listAllWindowsCalls = %d, want 1", backend.listAllWindowsCalls)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["window_id"] != "win-feishu" {
+		t.Fatalf("window_id = %v, want win-feishu", out["window_id"])
+	}
+}
+
 func TestA11yToolExecute_ActionSelectActivatesAppWhenWindowIsNotYetVisible(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windowsResults: [][]a11yruntime.WindowInfo{
@@ -2038,6 +2109,39 @@ func TestA11yToolExecute_SnapshotActivatesAppWhenWindowIsNotYetVisible(t *testin
 	}
 	if out["window_id"] != "win-feishu" {
 		t.Fatalf("window_id = %v, want win-feishu", out["window_id"])
+	}
+}
+
+func TestA11yToolExecute_KeyFailsClosedWhenHostKeyInjectionHangs(t *testing.T) {
+	prevTimeout := a11yHostInputActionTimeout
+	a11yHostInputActionTimeout = 10 * time.Millisecond
+	defer func() { a11yHostInputActionTimeout = prevTimeout }()
+
+	blockCh := make(chan struct{})
+	defer close(blockCh)
+
+	backend := &a11yCompatBackend{keyBlockCh: blockCh}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "key",
+		"window_id": "win-1",
+		"keys":      []interface{}{"down"},
+	})
+	if err != nil {
+		t.Fatalf("key Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "backend_timeout" {
+		t.Fatalf("error_code = %v, want backend_timeout", out["error_code"])
+	}
+	if out["action"] != "key" {
+		t.Fatalf("action = %v, want key", out["action"])
 	}
 }
 

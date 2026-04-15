@@ -71,6 +71,7 @@ function getMergedLocaleMessages(locale: string): LocaleMessages {
 
 const nameCoverage = [
   'advisor',
+  'computer_use',
   'cron',
   'docx',
   'web',
@@ -94,6 +95,11 @@ const nameCoverage = [
 ] as const
 
 const descriptionCoverage = [
+  {
+    name: 'computer_use',
+    description:
+      'Control supported host OS windows and accessibility-backed browser flows for snapshots, targeting, scrolling, input, screenshots, and chat-style actions.',
+  },
   {
     name: 'advisor',
     description:
@@ -492,8 +498,12 @@ describe('tool page localization coverage', () => {
     expect(getLocalizedToolName('generate_image', t, te)).toBe('Image')
     expect(getLocalizedToolName('generateImage', t, te)).toBe('Image')
     expect(getLocalizedToolName('sessions_list', t, te)).toBe('Sessions')
+    expect(getLocalizedToolName('computer_use', t, te)).toBe('Computer Use')
     expect(getLocalizedToolName('research', t, te)).toBe('Deep Research')
     expect(getLocalizedToolName('deep_research', t, te)).toBe('Deep Research')
+    expect(getLocalizedToolDescription('computer_use', 'fallback', t, te)).toBe(
+      'Control supported host OS windows and accessibility-backed browser flows for snapshots, targeting, scrolling, input, screenshots, and chat-style actions.'
+    )
     expect(getLocalizedToolDescription('web_query', 'fallback', t, te)).toBe(
       'Unified web tool for searching, reading, extracting, or crawling web content'
     )

@@ -47,4 +47,4 @@ blue pptx action=validate_template path=decks/launch_plan.pptx
 
 - Use `generate_image` only for standalone slide visuals or image assets, not for editable `.pptx` files.
 - Use `docx` for document-style reports and `xlsx` for spreadsheets.
-- Use `a11y` for host presentation-app UI work such as menus, toolbars, dialogs, or screenshots.
+- Use `computer_use` for host presentation-app UI work such as menus, toolbars, dialogs, or screenshots.

@@ -180,8 +180,8 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 	if len(cfg.Groups["group:research"]) == 0 {
 		t.Fatalf("expected group:research entries to be populated")
 	}
-	if got := cfg.Groups["group:research"]; len(got) != 1 || got[0] != "deep_research" {
-		t.Fatalf("expected group:research to expose only deep_research, got %#v", got)
+	if got := cfg.Groups["group:research"]; len(got) != 1 || got[0] != "research" {
+		t.Fatalf("expected group:research to expose only research, got %#v", got)
 	}
 
 	if cfg.WebSearch.Provider != "bing" {

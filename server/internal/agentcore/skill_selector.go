@@ -504,7 +504,7 @@ func applySkillHardAnchors(signals sel.QueryIntentSignals, doc SkillDoc, match *
 		}
 		match.MatchedSignals = append(match.MatchedSignals, "rule:web_analysis")
 		sort.Strings(match.MatchedSignals)
-	case "himalaya":
+	case "email", "himalaya":
 		if signals.LiveWeb || !hasSelectorTerm(signals.Normalized, []string{
 			"email", "mail", "inbox", "imap", "smtp", "reply", "forward", "attachment",
 			"邮件", "邮箱", "收件箱", "回复", "转发", "附件",
@@ -596,6 +596,16 @@ func stage0RuleRoute(query string) Decision {
 	if strings.HasPrefix(lower, "ask ") || strings.HasPrefix(lower, "blue ask ") {
 		return selectSkill("ask", "rule_ask")
 	}
+	if hasSelectorTerm(lower, []string{
+		"computer_use", "computer-use", "computer use",
+		"host ui", "desktop app", "desktop apps",
+		"点击按钮", "桌面应用", "桌面 app",
+	}) && hasSelectorTerm(lower, []string{
+		"click", "type", "select", "toggle", "message", "scroll", "focus", "snapshot",
+		"点击", "输入", "选择", "切换", "消息", "滚动", "聚焦", "快照",
+	}) {
+		return selectSkill("computer_use", "rule_computer_use")
+	}
 	if (strings.Contains(lower, "http://") || strings.Contains(lower, "https://")) &&
 		!shouldBypassURLBrowserRule(lower) &&
 		shouldRouteURLToWebQueryWithAuthSession(lower) {
@@ -631,7 +641,7 @@ func stage0RuleRoute(query string) Decision {
 			"email", "mail", "inbox", "imap", "smtp", "reply", "forward", "attachment",
 			"邮件", "邮箱", "收件箱", "回复", "转发", "附件",
 		}) {
-		return selectSkill("himalaya", "rule_email_cli")
+		return selectSkill("email", "rule_email_cli")
 	}
 	if strings.Contains(lower, "plan_create") || strings.Contains(lower, "plan_update") || strings.Contains(lower, "plan_append") {
 		return selectSkill("plan_create", "rule_plan")
@@ -648,7 +658,7 @@ func shouldBypassURLBrowserRule(lower string) bool {
 	}
 	if hasSelectorTerm(lower, uniqueStringTerms(append([]string{
 		"ui", "ux", "interface", "layout", "design", "mockup", "wireframe", "component", "visual",
-		"accessibility", "a11y", "界面", "布局", "设计", "设计稿", "组件", "视觉", "无障碍", "可访问性",
+		"accessibility", "computer_use", "computer-use", "computer use", "界面", "布局", "设计", "设计稿", "组件", "视觉", "无障碍", "可访问性",
 	}, routingcue.URLBypassTerms()...))) {
 		return true
 	}
@@ -709,7 +719,7 @@ func shouldRouteURLBypassToAdvisor(lower string) bool {
 func shouldRouteURLBypassToUIReviewer(lower string) bool {
 	return hasSelectorTerm(lower, uniqueStringTerms(append([]string{
 		"ui", "ux", "interface", "layout", "design", "mockup", "wireframe", "component", "visual",
-		"accessibility", "a11y", "review", "audit", "inspect", "evaluate", "critique", "score", "rate", "assess",
+		"accessibility", "computer_use", "computer-use", "computer use", "review", "audit", "inspect", "evaluate", "critique", "score", "rate", "assess",
 		"界面", "布局", "设计", "设计稿", "组件", "视觉", "无障碍", "可访问性", "评审", "审查", "检查", "点评", "打分", "评分",
 	}, routingcue.URLBypassTermsForSkill("ui_reviewer")...)))
 }
@@ -754,13 +764,15 @@ func hasActionAlignment(query, skill string) bool {
 		"web_query":     {"search", "搜索", "检索", "news", "sources", "citations", "docs", "documentation", "manual", "文档", "官方文档"},
 		"web_search":    {"search", "搜索", "检索", "news", "sources", "citations", "docs", "documentation", "manual", "文档", "官方文档"},
 		"browser":       {"url", "网页", "open", "navigate", "visit"},
+		"computer_use":  {"computer_use", "computer-use", "computer use", "desktop", "app", "window", "click", "type", "select", "toggle", "message", "screenshot", "快照", "桌面", "窗口", "点击", "输入", "选择", "切换", "消息"},
 		"exec":          {"workspace", "repo", "repository", "readme", "file", "files", "folder", "directory", "local", "shell", "terminal", "工作区", "仓库", "文件", "目录", "本地", "终端"},
 		"ask":           {"ask", "询问", "clarify", "question"},
 		"ui_reviewer":   {"ui", "界面", "review", "评审", "screenshot", "design"},
 		"deep_research": {"research", "investigate", "citations", "evidence", "sources", "source", "timeline", "benchmark", "tradeoff", "调研", "深入", "查阅", "引用", "证据", "来源", "时间线", "基准", "权衡"},
 		"advisor":       {"advisor", "recommend", "replace", "replacement", "migration", "tradeoff", "best practice", "选型", "推荐", "替代", "替换", "迁移", "权衡", "最佳实践"},
 		"analyze":       {"analyze", "analysis", "summarize", "summary", "report", "url", "urls", "link", "links", "text", "article", "articles", "网页", "链接", "文本", "文章", "分析", "总结", "报告", "文档"},
-		"himalaya":      {"email", "mail", "inbox", "imap", "smtp", "reply", "forward", "attachment", "terminal", "邮件", "邮箱", "收件箱", "回复", "转发", "附件"},
+		"email":         {"email", "mail", "himalaya", "inbox", "imap", "smtp", "reply", "forward", "attachment", "terminal", "邮件", "邮箱", "收件箱", "回复", "转发", "附件"},
+		"himalaya":      {"email", "mail", "himalaya", "inbox", "imap", "smtp", "reply", "forward", "attachment", "terminal", "邮件", "邮箱", "收件箱", "回复", "转发", "附件"},
 		"reminder":      {"remind", "reminder", "notify", "提醒", "通知", "tomorrow", "明天", "明早", "later", "稍后", "时间"},
 	}
 	if kws, ok := pairs[s]; ok {

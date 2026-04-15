@@ -3,6 +3,7 @@
 package a11y
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -16,19 +17,28 @@ var darwinActivateAppFrontmostWait = 1500 * time.Millisecond
 var darwinActivateAppFrontmostPollInterval = 200 * time.Millisecond
 
 type darwinSystemCLI struct {
-	run func(ctx context.Context, name string, args ...string) (string, error)
+	run          func(ctx context.Context, name string, args ...string) (string, error)
+	runWithInput func(ctx context.Context, input []byte, name string, args ...string) (string, error)
 }
 
 var darwinCLIFallback = darwinSystemCLI{
-	run: darwinRunSystemCLICommand,
+	run:          darwinRunSystemCLICommand,
+	runWithInput: darwinRunSystemCLICommandWithInput,
 }
 
 func darwinRunSystemCLICommand(ctx context.Context, name string, args ...string) (string, error) {
+	return darwinRunSystemCLICommandWithInput(ctx, nil, name, args...)
+}
+
+func darwinRunSystemCLICommandWithInput(ctx context.Context, input []byte, name string, args ...string) (string, error) {
 	var cmd *exec.Cmd
 	if ctx != nil {
 		cmd = exec.CommandContext(ctx, name, args...)
 	} else {
 		cmd = exec.Command(name, args...)
+	}
+	if len(input) > 0 {
+		cmd.Stdin = bytes.NewReader(input)
 	}
 	output, err := cmd.CombinedOutput()
 	return strings.TrimSpace(string(output)), err
@@ -39,6 +49,13 @@ func (cli darwinSystemCLI) exec(ctx context.Context, name string, args ...string
 		return cli.run(ctx, name, args...)
 	}
 	return darwinRunSystemCLICommand(ctx, name, args...)
+}
+
+func (cli darwinSystemCLI) execWithInput(ctx context.Context, input []byte, name string, args ...string) (string, error) {
+	if cli.runWithInput != nil {
+		return cli.runWithInput(ctx, input, name, args...)
+	}
+	return darwinRunSystemCLICommandWithInput(ctx, input, name, args...)
 }
 
 func (cli darwinSystemCLI) activateApp(appName string) error {

@@ -2193,11 +2193,11 @@ for (const [localeKey, patch] of Object.entries(a11yLocaleTerms) as Array<
       ...currentTools,
       names: {
         ...currentToolNames,
-        a11y: patch.name,
+        computer_use: patch.name,
       },
       descriptions: {
         ...currentToolDescriptions,
-        a11y: patch.description,
+        computer_use: patch.description,
       },
     },
   }

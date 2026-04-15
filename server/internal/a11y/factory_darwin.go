@@ -8,12 +8,12 @@ import (
 )
 
 type darwinBackend struct {
-	mediaDir      string
-	mu            sync.Mutex
-	nextRef       int
+	mediaDir       string
+	mu             sync.Mutex
+	nextRef        int
 	snapshotWindow string
-	elements      map[string]darwinElementRef
-	snapshots     *SnapshotStore
+	elements       map[string]darwinElementRef
+	snapshots      *SnapshotStore
 }
 
 func DefaultHostBackend(mediaDir string) Backend {
@@ -97,4 +97,8 @@ func (b *darwinBackend) Key(ctx context.Context, windowID string, keys []string,
 
 func (b *darwinBackend) Screenshot(ctx context.Context, windowID string) (ScreenshotResult, error) {
 	return b.screenshot(ctx, windowID)
+}
+
+func (b *darwinBackend) ScreenshotForGrounding(ctx context.Context, windowID string) (ScreenshotResult, error) {
+	return b.screenshotForGrounding(ctx, windowID)
 }

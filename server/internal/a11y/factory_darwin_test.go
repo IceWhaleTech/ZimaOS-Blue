@@ -480,6 +480,44 @@ func TestDarwinScreenshot_ReturnsLastCaptureErrorAfterRetries(t *testing.T) {
 	}
 }
 
+func TestDarwinScreenshotForGrounding_ReturnsInMemoryPNGBytes(t *testing.T) {
+	prevResolve := darwinResolveWindowRecordForCapture
+	prevCaptureBytes := darwinCaptureWindowPNGBytes
+	captureCalls := 0
+	darwinResolveWindowRecordForCapture = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
+		return darwinWindowRecord{ID: windowID, AppName: "Feishu", Title: "Feishu", PID: 100}, nil
+	}
+	darwinCaptureWindowPNGBytes = func(_ context.Context, record darwinWindowRecord) ([]byte, error) {
+		captureCalls++
+		if record.ID != "6263" {
+			t.Fatalf("record.ID = %q, want 6263", record.ID)
+		}
+		return []byte("png-bytes"), nil
+	}
+	defer func() {
+		darwinResolveWindowRecordForCapture = prevResolve
+		darwinCaptureWindowPNGBytes = prevCaptureBytes
+	}()
+
+	backend := DefaultHostBackend(filepath.Join(t.TempDir(), "media")).(*darwinBackend)
+	result, err := backend.ScreenshotForGrounding(context.Background(), "6263")
+	if err != nil {
+		t.Fatalf("ScreenshotForGrounding() error = %v", err)
+	}
+	if captureCalls != 1 {
+		t.Fatalf("captureCalls = %d, want 1", captureCalls)
+	}
+	if result.WindowID != "6263" {
+		t.Fatalf("window_id = %q, want 6263", result.WindowID)
+	}
+	if got := string(result.ImageBytes); got != "png-bytes" {
+		t.Fatalf("image bytes = %q, want png-bytes", got)
+	}
+	if result.ImagePath != "" {
+		t.Fatalf("image_path = %q, want empty for grounding capture", result.ImagePath)
+	}
+}
+
 func TestDarwinSnapshot_PermissionDeniedIncludesNativeScreenshotHint(t *testing.T) {
 	prevGranted := darwinAccessibilityGrantedProbe
 	prevPrompt := darwinAccessibilityPromptProbe

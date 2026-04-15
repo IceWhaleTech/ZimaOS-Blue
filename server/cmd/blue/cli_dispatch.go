@@ -76,7 +76,7 @@ func cliDispatch(args []string) bool {
 			break
 		}
 		return false // let cobra render help/usage for unsupported shapes
-	case "a11y":
+	case "computer_use":
 		if dispatchA11yFastPath(rest) {
 			break
 		}

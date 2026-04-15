@@ -227,6 +227,40 @@ func TestSkillSelector_LatestDocsRouteToWebQuery(t *testing.T) {
 	}
 }
 
+func TestSkillSelector_ComputerUseQuerySelectsComputerUseSkill(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	writeSelectorSkill(
+		t,
+		workspaceDir,
+		"computer_use",
+		"operate live desktop apps and browser-backed UI through the computer-use tool",
+		`blue computer_use action=snapshot_interactive`,
+		"computer-use",
+		"desktop",
+		"ui",
+	)
+	writeSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
+
+	selector := NewSkillSelector(workspaceDir, NewHeuristicSkillReranker())
+	decision, err := selector.Select(context.Background(), "please use computer-use to click the Save button in Settings", SelectOptions{
+		Mode:                SkillSelectorModeHybrid,
+		EnableRerank:        true,
+		ConfidenceThreshold: 0.78,
+	})
+	if err != nil {
+		t.Fatalf("Select error: %v", err)
+	}
+	if decision.SelectedSkill != "computer_use" {
+		t.Fatalf("expected computer_use, got %+v", decision)
+	}
+	if decision.NeedClarify {
+		t.Fatalf("expected computer_use without clarification, got %+v", decision)
+	}
+}
+
 func TestSkillSelector_ModelInvocableFalseIsHiddenFromSelector(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
@@ -540,8 +574,8 @@ func TestStage0RuleRoute_RoutesWorkspaceQueryToExec(t *testing.T) {
 func TestStage0RuleRoute_RoutesEmailCLIQuery(t *testing.T) {
 	query := "Search my IMAP inbox for unread mail from Alice and reply from the terminal."
 	d := stage0RuleRoute(query)
-	if d.SelectedSkill != "himalaya" {
-		t.Fatalf("expected email CLI rule to route himalaya, got=%+v signals=%+v", d, sel.AnalyzeQuery(query))
+	if d.SelectedSkill != "email" {
+		t.Fatalf("expected email CLI rule to route email, got=%+v signals=%+v", d, sel.AnalyzeQuery(query))
 	}
 }
 
@@ -693,7 +727,7 @@ func TestSkillSelector_MixedLocalAndWebIntentNeedsClarify(t *testing.T) {
 	}
 }
 
-func TestSkillSelector_RoutesHimalayaForRealEmailCLIQueries(t *testing.T) {
+func TestSkillSelector_RoutesEmailForRealEmailCLIQueries(t *testing.T) {
 	workspaceDir := t.TempDir()
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -702,7 +736,7 @@ func TestSkillSelector_RoutesHimalayaForRealEmailCLIQueries(t *testing.T) {
 		id   string
 		desc string
 	}{
-		{id: "himalaya", desc: "real email cli for imap and smtp inbox workflows"},
+		{id: "email", desc: "real email cli for imap and smtp inbox workflows"},
 		{id: "analyze", desc: "analyze reports and urls"},
 		{id: "web_query", desc: "search the web"},
 	} {
@@ -725,8 +759,8 @@ func TestSkillSelector_RoutesHimalayaForRealEmailCLIQueries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Select error: %v", err)
 	}
-	if decision.SelectedSkill != "himalaya" {
-		t.Fatalf("expected himalaya, got=%+v", decision)
+	if decision.SelectedSkill != "email" {
+		t.Fatalf("expected email, got=%+v", decision)
 	}
 }
 

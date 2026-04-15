@@ -18,7 +18,8 @@ func TestResolveCanonicalSkill(t *testing.T) {
 		{"analyze", CanonicalUnknown, false},
 		{"reminder", CanonicalReminder, true},
 		{"ui_reviewer", CanonicalUnknown, false},
-		{"himalaya", CanonicalHimalaya, true},
+		{"email", CanonicalSkillID("email"), true},
+		{"himalaya", CanonicalSkillID("email"), true},
 		{"deep_research", CanonicalUnknown, false},
 		{"config", CanonicalConfig, true},
 		{"mgmt", CanonicalUnknown, false},
@@ -54,8 +55,8 @@ func TestIsCutoverEligibleCanonical(t *testing.T) {
 	if !IsCutoverEligibleCanonical(CanonicalReminder) {
 		t.Error("reminder should be cutover eligible")
 	}
-	if !IsCutoverEligibleCanonical(CanonicalHimalaya) {
-		t.Error("himalaya should be cutover eligible")
+	if !IsCutoverEligibleCanonical(CanonicalSkillID("email")) {
+		t.Error("email should be cutover eligible")
 	}
 	if !IsCutoverEligibleCanonical(CanonicalConfig) {
 		t.Error("config should be cutover eligible")
@@ -81,8 +82,8 @@ func TestExecutionProfileForSkill(t *testing.T) {
 	if ExecutionProfileForSkill(CanonicalReminder) != ExecutionProfileInline {
 		t.Error("reminder should be inline")
 	}
-	if ExecutionProfileForSkill(CanonicalHimalaya) != ExecutionProfileInline {
-		t.Error("himalaya should be inline")
+	if ExecutionProfileForSkill(CanonicalSkillID("email")) != ExecutionProfileInline {
+		t.Error("email should be inline")
 	}
 	if ExecutionProfileForSkill(CanonicalAsk) != ExecutionProfileInline {
 		t.Error("ask should be inline")
@@ -105,8 +106,8 @@ func TestNativeSurfaceModeForSkill(t *testing.T) {
 	if NativeSurfaceModeForSkill(CanonicalResearch) != NativeSurfaceModeSkillExec {
 		t.Error("research should be skill_exec")
 	}
-	if NativeSurfaceModeForSkill(CanonicalHimalaya) != NativeSurfaceModeSkillExec {
-		t.Error("himalaya should be skill_exec")
+	if NativeSurfaceModeForSkill(CanonicalSkillID("email")) != NativeSurfaceModeSkillExec {
+		t.Error("email should be skill_exec")
 	}
 	if NativeSurfaceModeForSkill(CanonicalConfig) != NativeSurfaceModeSkillExec {
 		t.Error("config should be skill_exec")
@@ -161,12 +162,20 @@ func TestBuildDiscoveryDecision_UsesCanonicalCutoverOnlyForEligibleDynamicRoutes
 		t.Fatalf("research NativeSurfaceMode = %q, want %q", research.NativeSurfaceMode, NativeSurfaceModeSkillExec)
 	}
 
-	himalaya := BuildDiscoveryDecision(Decision{SelectedSkill: "himalaya"}, true)
-	if himalaya.CanonicalTarget != CanonicalHimalaya {
-		t.Fatalf("himalaya CanonicalTarget = %q, want %q", himalaya.CanonicalTarget, CanonicalHimalaya)
+	email := BuildDiscoveryDecision(Decision{SelectedSkill: "email"}, true)
+	if email.CanonicalTarget != CanonicalSkillID("email") {
+		t.Fatalf("email CanonicalTarget = %q, want %q", email.CanonicalTarget, CanonicalSkillID("email"))
 	}
-	if himalaya.NativeSurfaceMode != NativeSurfaceModeSkillExec {
-		t.Fatalf("himalaya NativeSurfaceMode = %q, want %q", himalaya.NativeSurfaceMode, NativeSurfaceModeSkillExec)
+	if email.NativeSurfaceMode != NativeSurfaceModeSkillExec {
+		t.Fatalf("email NativeSurfaceMode = %q, want %q", email.NativeSurfaceMode, NativeSurfaceModeSkillExec)
+	}
+
+	himalayaAlias := BuildDiscoveryDecision(Decision{SelectedSkill: "himalaya"}, true)
+	if himalayaAlias.CanonicalTarget != CanonicalSkillID("email") {
+		t.Fatalf("himalaya alias CanonicalTarget = %q, want %q", himalayaAlias.CanonicalTarget, CanonicalSkillID("email"))
+	}
+	if himalayaAlias.NativeSurfaceMode != NativeSurfaceModeSkillExec {
+		t.Fatalf("himalaya alias NativeSurfaceMode = %q, want %q", himalayaAlias.NativeSurfaceMode, NativeSurfaceModeSkillExec)
 	}
 
 	ineligible := BuildDiscoveryDecision(Decision{SelectedSkill: "unknown_skill"}, true)
@@ -189,7 +198,8 @@ func TestBuildDiscoveryDecision_CutoverCoversAskConfigAndExecRoutes(t *testing.T
 		{name: "reminder", selected: "reminder", wantTarget: CanonicalReminder, wantProfile: ExecutionProfileInline},
 		{name: "config", selected: "config", wantTarget: CanonicalConfig, wantProfile: ExecutionProfileInline},
 		{name: "research", selected: "research", wantTarget: CanonicalResearch, wantProfile: ExecutionProfileRequireFork},
-		{name: "himalaya", selected: "himalaya", wantTarget: CanonicalHimalaya, wantProfile: ExecutionProfileInline},
+		{name: "email", selected: "email", wantTarget: CanonicalSkillID("email"), wantProfile: ExecutionProfileInline},
+		{name: "himalaya_alias", selected: "himalaya", wantTarget: CanonicalSkillID("email"), wantProfile: ExecutionProfileInline},
 		{name: "exec", selected: "exec", wantTarget: CanonicalExec, wantProfile: ExecutionProfileInline},
 	}
 

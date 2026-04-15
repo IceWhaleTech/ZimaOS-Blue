@@ -580,6 +580,12 @@ func canonicalSkillIdentity(id, name string) (string, string) {
 	if canonicalID == "" {
 		canonicalID = firstString(strings.TrimSpace(id), strings.TrimSpace(name))
 	}
+	switch canonicalID {
+	case "deep_research", "analyze", "ui_reviewer", "ui_review":
+		canonicalID = "research"
+	case "himalaya":
+		canonicalID = "email"
+	}
 
 	displayName := strings.TrimSpace(name)
 	switch canonicalID {
@@ -588,12 +594,37 @@ func canonicalSkillIdentity(id, name string) (string, string) {
 		case "", "config", "management":
 			displayName = "Configuration"
 		}
+	case "research":
+		switch strings.ToLower(strings.TrimSpace(displayName)) {
+		case "", "research", "deep_research", "deep research", "analyze", "analysis", "ui_reviewer", "ui reviewer", "ui_review":
+			displayName = "Research"
+		}
+	case "email":
+		switch strings.ToLower(strings.TrimSpace(displayName)) {
+		case "", "email", "mail", "himalaya", "himalaya email cli":
+			displayName = "Email"
+		}
 	}
 	if displayName == "" {
 		displayName = canonicalID
 	}
 
 	return canonicalID, displayName
+}
+
+func semanticSkillAliases(id string) []string {
+	switch strings.TrimSpace(id) {
+	case "research":
+		return []string{"deep_research", "analyze", "ui_reviewer", "ui_review"}
+	case "deep_research", "analyze", "ui_reviewer", "ui_review":
+		return []string{"research"}
+	case "email":
+		return []string{"himalaya"}
+	case "himalaya":
+		return []string{"email"}
+	default:
+		return nil
+	}
 }
 
 func skillIDAliases(id string) []string {
@@ -619,6 +650,11 @@ func skillIDAliases(id string) []string {
 	add(validatedID)
 	add(strings.ReplaceAll(validatedID, "-", "_"))
 	add(strings.ReplaceAll(validatedID, "_", "-"))
+	for _, alias := range semanticSkillAliases(validatedID) {
+		add(alias)
+		add(strings.ReplaceAll(alias, "-", "_"))
+		add(strings.ReplaceAll(alias, "_", "-"))
+	}
 	return aliases
 }
 
@@ -952,6 +988,7 @@ var skillsHiddenFromSkillTab = map[string]bool{
 	"browser":           true,
 	"ui_reviewer":       true,
 	"analyze":           true,
+	"himalaya":          true,
 	"mediagen":          true,
 	"reminder":          true,
 	"push-notification": true, // legacy name for reminder
@@ -1305,7 +1342,7 @@ func (h *SkillHandler) GetSkillContent(c echo.Context) error {
 	if info.Builtin {
 		m := info.Manifest
 		canonicalID, canonicalName := canonicalSkillIdentity(m.ID, m.Name)
-		content := fmt.Sprintf("# %s\n\n%s\n\n", m.Name, m.Description)
+		content := fmt.Sprintf("# %s\n\n%s\n\n", canonicalName, m.Description)
 		if m.Author != "" {
 			content += fmt.Sprintf("**Author:** %s\n\n", m.Author)
 		}
@@ -3991,6 +4028,9 @@ func (h *SkillHandler) ListLocalSkills(c echo.Context) error {
 	// Convert to response format
 	result := make([]map[string]interface{}, 0, len(skills))
 	for _, s := range skills {
+		if skillsHiddenFromSkillTab[s.ID] {
+			continue
+		}
 		meta := defaultSkillExposureMetadata()
 		contractMeta := skillContractMetadata{}
 		if doc, ok := parseSkillDocumentFromEntryPath(s.FilePath); ok {

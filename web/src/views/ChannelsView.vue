@@ -144,6 +144,14 @@ const hasWeChatILinkSetupStatus = computed(() =>
   Boolean((wechatILinkSetupSession.value?.status || '').trim())
 )
 
+const wechatILinkSetupLink = computed(() => {
+  return (
+    wechatILinkSetupSession.value?.scan_url ||
+    wechatILinkSetupSession.value?.mobile_url ||
+    ''
+  )
+})
+
 function isChannelFieldVisible(channel: ChannelDef, field: ChannelFieldDef): boolean {
   if (!field.visibleWhen) return true
   const driver = channel.fields.find((candidate) => candidate.key === field.visibleWhen?.fieldKey)
@@ -1543,6 +1551,7 @@ async function refreshWeChatILinkSetupSession(sessionId: string) {
       ...previousSession,
       ...response.data,
       qrcode: response.data.qrcode || previousSession?.qrcode,
+      scan_url: response.data.scan_url || previousSession?.scan_url,
       mobile_url: response.data.mobile_url || previousSession?.mobile_url,
     }
     wechatILinkSetupError.value = response.data.error || ''
@@ -2484,8 +2493,8 @@ onErrorCaptured((error, _instance, info) => {
             </div>
 
             <a
-              v-if="wechatILinkSetupSession?.mobile_url"
-              :href="wechatILinkSetupSession.mobile_url"
+              v-if="wechatILinkSetupLink"
+              :href="wechatILinkSetupLink"
               target="_blank"
               rel="noreferrer"
               class="channels-ilink-modal__link"

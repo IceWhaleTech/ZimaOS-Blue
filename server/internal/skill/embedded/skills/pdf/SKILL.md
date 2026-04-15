@@ -46,4 +46,4 @@ blue pdf action=reformat input_path=reports/source.pdf output_path=reports/sourc
 ## Boundaries
 
 - Use `docx`, `xlsx`, or `pptx` when the editable source of truth is an OOXML workspace file.
-- Use `a11y` for live PDF viewer window interaction rather than file conversion or extraction.
+- Use `computer_use` for live PDF viewer window interaction rather than file conversion or extraction.

@@ -119,11 +119,12 @@ function createTestI18n() {
           groupAccessAllowedChatsHint: 'Allowed chats hint',
           saving: 'Saving...',
           wechatILinkPrimaryAction: 'Primary Action',
-          wechatILinkScanAction: 'Scan To Configure',
+          wechatILinkScanAction: 'Scan To Connect',
           wechatILinkManualAction: 'Manual Config',
-          wechatILinkScanHint: 'Scan hint',
+          wechatILinkScanHint: 'Scan the iLink QR code with WeChat and confirm the login on your phone.',
           wechatILinkSetupCreating: 'Creating Session...',
-          wechatILinkSetupDescription: 'Setup description',
+          wechatILinkSetupDescription:
+            'Scan the QR code with WeChat and confirm the iLink login. Blue will enable the channel automatically.',
           wechatILinkSetupStatus: 'Setup Status',
           wechatILinkSetupStatePending: 'Pending',
           wechatILinkSetupStateAuthorizing: 'Authorizing',
@@ -131,7 +132,7 @@ function createTestI18n() {
           wechatILinkSetupStateConnected: 'Connected',
           wechatILinkSetupStateError: 'Error',
           wechatILinkSetupStateExpired: 'Expired',
-          wechatILinkOpenOnPhone: 'Open Setup On Phone',
+          wechatILinkOpenOnPhone: 'Open Authorization Link',
         },
         common: {
           loading: 'Loading',
@@ -477,6 +478,7 @@ describe('ChannelsView', () => {
         session_id: 'session-1',
         status: 'pending',
         qrcode: 'data:image/png;base64,abc',
+        scan_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
         mobile_url: 'https://blue.example.com/channels/setup/wechat_ilink?session_id=session-1',
         expires_at: '2026-04-14T10:10:00Z',
       },
@@ -538,9 +540,13 @@ describe('ChannelsView', () => {
     expect(wrapper.find('.channels-ilink-modal__qr-image').attributes('src')).toBe(
       'data:image/png;base64,abc'
     )
+    const mobileLink = wrapper.find('.channels-ilink-modal__link')
+    expect(mobileLink.exists()).toBe(true)
+    expect(mobileLink.attributes('href')).toBe('https://ilinkai.weixin.qq.com/connect/scan-session-1')
+    expect(mobileLink.attributes('href')).not.toContain('/channels/setup/wechat_ilink')
   })
 
-  it('keeps the QR code visible during polling, translates setup status, hides retry before failure, and removes the manual action', async () => {
+  it('keeps the QR code visible during polling, uses the upstream scan link, auto-refreshes on connected, hides retry before failure, and removes the manual action', async () => {
     vi.useFakeTimers()
     createWeChatILinkSetupSessionMock.mockResolvedValue({
       status: 200,
@@ -548,15 +554,25 @@ describe('ChannelsView', () => {
         session_id: 'session-1',
         status: 'pending',
         qrcode: 'data:image/png;base64,abc',
+        scan_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
         mobile_url: 'https://blue.example.com/channels/setup/wechat_ilink?session_id=session-1',
         expires_at: '2026-04-14T10:10:00Z',
       },
     })
-    getWeChatILinkSetupSessionMock.mockResolvedValue({
+    getWeChatILinkSetupSessionMock.mockResolvedValueOnce({
       status: 200,
       data: {
         session_id: 'session-1',
         status: 'authorizing',
+        expires_at: '2026-04-14T10:10:00Z',
+      },
+    })
+    getWeChatILinkSetupSessionMock.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        session_id: 'session-1',
+        status: 'connected',
+        message: 'configured',
         expires_at: '2026-04-14T10:10:00Z',
       },
     })
@@ -616,6 +632,19 @@ describe('ChannelsView', () => {
     )
     expect(wrapper.find('.channels-ilink-modal__status').text()).toContain('Authorizing')
     expect(wrapper.find('.channels-ilink-modal__primary').exists()).toBe(false)
+    expect(wrapper.find('.channels-ilink-modal__link').attributes('href')).toBe(
+      'https://ilinkai.weixin.qq.com/connect/scan-session-1'
+    )
+    expect(listChannelsMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1500)
+    await flushPromises()
+
+    expect(wrapper.find('.channels-ilink-modal__status').text()).toContain('Connected')
+    expect(wrapper.find('.channels-ilink-modal__qr-image').attributes('src')).toBe(
+      'data:image/png;base64,abc'
+    )
+    expect(listChannelsMock).toHaveBeenCalledTimes(2)
 
     wrapper.unmount()
   })

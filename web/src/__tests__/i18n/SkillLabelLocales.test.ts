@@ -47,9 +47,9 @@ function getPathValue(messages: LocaleMessages, path: string): unknown {
 }
 
 const visibleBuiltinSkillLocaleCoverage = {
-  'skills.catalog.a11y.name': 'Accessibility',
-  'skills.catalog.a11y.description':
-    'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots.',
+  'skills.catalog.computer_use.name': 'Computer Use',
+  'skills.catalog.computer_use.description':
+    'Control supported host OS windows and accessibility-backed browser flows for snapshots, targeting, scrolling, input, screenshots, and chat-style actions.',
   'skills.catalog.ask.name': 'Ask',
   'skills.catalog.ask.description': 'Ask the user follow-up questions needed to continue the task',
   'skills.catalog.advisor.name': 'Advisor',
@@ -69,8 +69,6 @@ const visibleBuiltinSkillLocaleCoverage = {
     'Use when the task centers on a workspace .docx file and needs a native Word-style document for writing, template filling, placeholder edits, or validation.',
   'skills.catalog.email.name': 'Email',
   'skills.catalog.email.description': 'Send and manage emails via SMTP/IMAP',
-  'skills.catalog.himalaya.name': 'Himalaya Email CLI',
-  'skills.catalog.himalaya.description': 'Use the external Himalaya email CLI for real mail workflows.',
   'skills.catalog.humanizer.name': 'Humanizer',
   'skills.catalog.humanizer.description': 'Rewrite a local text file into more natural language.',
   'skills.catalog.pdf.name': 'PDF',
@@ -138,6 +136,20 @@ describe('skill locale labels', () => {
           englishValue
         )
       }
+
+      expect(getPathValue(messages, 'skills.catalog.a11y.name'), `${file} should drop legacy a11y skill label`).toBeUndefined()
+      expect(
+        getPathValue(messages, 'skills.catalog.a11y.description'),
+        `${file} should drop legacy a11y skill description`
+      ).toBeUndefined()
+      expect(
+        getPathValue(messages, 'skills.catalog.himalaya.name'),
+        `${file} should drop legacy himalaya skill label`
+      ).toBeUndefined()
+      expect(
+        getPathValue(messages, 'skills.catalog.himalaya.description'),
+        `${file} should drop legacy himalaya skill description`
+      ).toBeUndefined()
     }
   })
 

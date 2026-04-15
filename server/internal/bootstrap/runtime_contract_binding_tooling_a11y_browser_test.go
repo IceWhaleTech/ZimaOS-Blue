@@ -48,7 +48,7 @@ func (stubA11yBrowserBackend) ExecuteRecipe(context.Context, string, map[string]
 }
 func (stubA11yBrowserBackend) ListRecipes(context.Context) []tools.BrowserRecipeInfo { return nil }
 
-func TestBindTooling_InjectsBrowserBackendIntoHostA11yTool(t *testing.T) {
+func TestBindTooling_InjectsBrowserBackendIntoComputerUseTool(t *testing.T) {
 	registry := tools.NewRegistry()
 	binding := &runtimeContractBinding{}
 
@@ -57,11 +57,11 @@ func TestBindTooling_InjectsBrowserBackendIntoHostA11yTool(t *testing.T) {
 		browserBackend: stubA11yBrowserBackend{},
 	})
 
-	tool, ok := registry.Get("a11y").(*tools.A11yTool)
+	tool, ok := registry.Get("computer_use").(*tools.A11yTool)
 	if !ok || tool == nil {
-		t.Fatalf("registry.Get(a11y) = %#v, want *tools.A11yTool", registry.Get("a11y"))
+		t.Fatalf("registry.Get(computer_use) = %#v, want *tools.A11yTool", registry.Get("computer_use"))
 	}
 	if tool.BrowserBackend() == nil {
-		t.Fatal("expected browser backend to be injected into a11y tool")
+		t.Fatal("expected browser backend to be injected into computer_use tool")
 	}
 }

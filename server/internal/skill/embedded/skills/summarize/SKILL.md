@@ -58,7 +58,7 @@ blue exec command="brew install steipete/tap/summarize"
 | User explicitly asks for summarize.sh | `blue exec command='summarize ...'` |
 | Need best-effort transcript extraction for a YouTube URL | `blue exec command='summarize ... --youtube auto --extract-only'` |
 | Need a plain webpage/article summary and summarize.sh is not required | Prefer built-in web tools plus a normal answer |
-| Need JS/login/interactive browsing first | Use `browser` / unified web tools first, then summarize the retrieved content |
+| Need JS/login/interactive browsing first | Use the built-in `browser` tool / unified web tools first, then summarize the retrieved content |
 
 ---
 

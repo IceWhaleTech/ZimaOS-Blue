@@ -132,7 +132,7 @@ func TestCLIDispatch_BrowserNavigateRoutesThroughIPC(t *testing.T) {
 	}
 }
 
-func TestCLIDispatch_A11yRoutesThroughIPC(t *testing.T) {
+func TestCLIDispatch_ComputerUseRoutesThroughIPC(t *testing.T) {
 	oldRoundTrip := ipcRoundTripFunc
 	oldIPCExit := ipcExit
 	oldCLIExit := cliDispatchExit
@@ -148,16 +148,16 @@ func TestCLIDispatch_A11yRoutesThroughIPC(t *testing.T) {
 	ipcRoundTripFunc = func(req *sockipc.Request) (*sockipc.Response, error) {
 		capturedReq = req
 		return sockipc.OkResponse(map[string]string{
-			"__stdout":    "a11y ok\n",
+			"__stdout":    "computer_use ok\n",
 			"__exit_code": "0",
 		}), nil
 	}
 	ipcExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
 	cliDispatchExit = func(code int) { panic(cliDispatchExitPanic{code: code}) }
 
-	handled, exitCode, stdout := runCLIDispatchForTest([]string{"a11y", "focus", "--app-name", "Finder"})
+	handled, exitCode, stdout := runCLIDispatchForTest([]string{"computer_use", "focus", "--app-name", "Finder"})
 	if !handled {
-		t.Fatal("expected cliDispatch to handle a11y")
+		t.Fatal("expected cliDispatch to handle computer_use")
 	}
 	if exitCode != 0 {
 		t.Fatalf("exitCode = %d, want 0 (stdout=%q)", exitCode, stdout)
@@ -165,8 +165,8 @@ func TestCLIDispatch_A11yRoutesThroughIPC(t *testing.T) {
 	if capturedReq == nil {
 		t.Fatal("expected IPC request to be issued")
 	}
-	if capturedReq.Cmd != "a11y" {
-		t.Fatalf("cmd = %q, want %q", capturedReq.Cmd, "a11y")
+	if capturedReq.Cmd != "computer_use" {
+		t.Fatalf("cmd = %q, want %q", capturedReq.Cmd, "computer_use")
 	}
 	if got := capturedReq.Params["action"]; got != "focus" {
 		t.Fatalf("action = %q, want %q", got, "focus")
@@ -174,7 +174,7 @@ func TestCLIDispatch_A11yRoutesThroughIPC(t *testing.T) {
 	if got := capturedReq.Params["app_name"]; got != "Finder" {
 		t.Fatalf("app_name = %q, want %q", got, "Finder")
 	}
-	if !strings.Contains(stdout, "a11y ok") {
+	if !strings.Contains(stdout, "computer_use ok") {
 		t.Fatalf("stdout = %q, want IPC output", stdout)
 	}
 }

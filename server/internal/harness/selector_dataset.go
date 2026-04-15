@@ -133,7 +133,7 @@ func SelectorCuratedEvalSpecSpec(datasetID, datasetVersionID, ownerUserID string
 			MaxAttempts:    selectorCuratedMaxAttempts,
 			RetryBackoff:   selectorCuratedRetryBackoff,
 		},
-		RuntimePolicy:    selectorDryRunRuntimePolicy(),
+		RuntimePolicy: selectorDryRunRuntimePolicy(),
 		Metadata: map[string]interface{}{
 			"dataset_family": "builtin_selector_curated",
 			"gate_type":      "selection",
@@ -177,10 +177,10 @@ func selectorCuratedCriticalCases() []DatasetManifestItem {
 		),
 		selectorCriticalSelectedCase(
 			"selected-himalaya-email-cli-en-us",
-			"himalaya",
+			"email",
 			"en-US",
 			"Search my IMAP inbox for unread mail from Alice and reply from the terminal.",
-			"Keep real email CLI requests routed to himalaya instead of web_query.",
+			"Keep real email CLI requests routed to email instead of web_query.",
 			"email_cli",
 		),
 		{

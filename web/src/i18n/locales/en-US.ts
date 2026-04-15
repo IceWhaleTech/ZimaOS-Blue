@@ -2479,16 +2479,16 @@ export default mergeHarnessLocale('en-US', {
     placeholderSecret: 'Secret',
     apiBaseURL: 'API Base URL',
     wechatILinkPrimaryAction: 'Primary Action',
-    wechatILinkScanAction: 'Scan To Configure',
+    wechatILinkScanAction: 'Scan To Connect',
     wechatILinkManualAction: 'Manual Config',
     wechatILinkScanHint:
-      'Create a one-time setup session, reuse or auto-start remote access, then finish authorization on your phone.',
+      'Scan the iLink QR code with WeChat and confirm the login on your phone.',
     wechatILinkSetupCreating: 'Creating Session...',
     wechatILinkSetupCreateFailed: 'Failed to create setup session',
     wechatILinkSetupDescription:
-      'Scan the QR code on your phone, finish iLink authorization, then Blue will write the configuration and enable the channel automatically.',
+      'Scan the QR code with WeChat and confirm the iLink login. Blue will enable the channel automatically.',
     wechatILinkSetupStatus: 'Setup Status',
-    wechatILinkOpenOnPhone: 'Open Setup On Phone',
+    wechatILinkOpenOnPhone: 'Open Authorization Link',
     wechatILinkSetupEyebrow: 'Mobile Setup',
     wechatILinkSetupTitle: 'Finish WeChat iLink Setup',
     wechatILinkSetupMissingSession: 'Missing setup session',
@@ -2584,7 +2584,7 @@ export default mergeHarnessLocale('en-US', {
     qqHint: 'Create a bot in QQ Open Platform',
     wechatHint: 'Use enterprise WeChat credentials for your WeChat Work app',
     wechatILinkHint:
-      'Use scan-to-config as the primary path, or fill API Base URL and Bot Token manually as fallback',
+      'Use WeChat QR authorization as the primary path, or fill API Base URL and Bot Token manually if needed',
     matrixHint: 'Configure Matrix bot',
     imessageHint: 'Configure iMessage bridge',
     blueBubblesHint: 'Configure BlueBubbles server',
@@ -4645,7 +4645,7 @@ export default mergeHarnessLocale('en-US', {
       analyze: 'Analysis Report',
       mediagen: 'Media Generation',
       ask: 'Ask',
-      a11y: 'Accessibility',
+      computer_use: 'Computer Use',
       research: 'Deep Research',
       research_run: 'Deep Research',
       research_status: 'Deep Research Status',
@@ -4670,8 +4670,8 @@ export default mergeHarnessLocale('en-US', {
       exec: 'Run shell commands and capture their output',
       analyze: 'Collect data from the web and generate a structured analysis report',
       ask: 'Ask the user follow-up questions needed to continue the task',
-      a11y:
-        'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots',
+      computer_use:
+        'Control supported host OS windows and accessibility-backed browser flows for snapshots, targeting, scrolling, input, screenshots, and chat-style actions.',
       mediagen: 'Generate images, videos, and slide decks with AI models',
       research:
         'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',

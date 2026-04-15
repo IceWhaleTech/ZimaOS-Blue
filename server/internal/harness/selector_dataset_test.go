@@ -202,8 +202,8 @@ func TestSelectorCuratedDatasetManifest_CriticalCasesPreserveExpectations(t *tes
 	}
 
 	emailCLI := findSelectorManifestItem(t, manifest.Items, "selected-himalaya-email-cli-en-us")
-	if emailCLI.Expected["canonical_skill_id"] != "himalaya" {
-		t.Fatalf("email CLI expected canonical_skill_id = %#v, want himalaya", emailCLI.Expected["canonical_skill_id"])
+	if emailCLI.Expected["canonical_skill_id"] != "email" {
+		t.Fatalf("email CLI expected canonical_skill_id = %#v, want email", emailCLI.Expected["canonical_skill_id"])
 	}
 	if metadataString(emailCLI.Metadata, "selector_case_type") != "email_cli" {
 		t.Fatalf("email CLI selector_case_type = %q, want email_cli", metadataString(emailCLI.Metadata, "selector_case_type"))

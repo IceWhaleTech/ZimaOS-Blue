@@ -16,8 +16,6 @@ func registerRouteRuntimeWechatILinkSetupRoutes(
 		options.channelConfigStore,
 		channelManager,
 		channelFactory,
-		options.tunnelHandler,
-		options.jwtService,
 		options.logger,
 	)
 	setupGroup := options.api.Group("", filterRouteMiddlewares(options.authMiddleware, pageMiddleware)...)

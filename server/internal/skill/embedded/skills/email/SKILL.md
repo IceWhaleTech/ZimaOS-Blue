@@ -1,7 +1,7 @@
 ---
-name: himalaya
+name: email
 version: "1.0.0"
-description: "Run the external Himalaya email CLI through exec for real IMAP/SMTP/Notmuch mailboxes. Use when the user explicitly wants Himalaya or a real terminal email workflow instead of the built-in benchmark email surfaces."
+description: "Run the external email CLI through exec for real IMAP/SMTP/Notmuch mailboxes. Use when the user explicitly wants a real terminal email workflow instead of the built-in benchmark email surfaces."
 invocation: "blue exec command='himalaya envelope list --output json'"
 examples:
   - "blue exec command='himalaya envelope list --output json'"
@@ -9,7 +9,7 @@ examples:
 capability_tags:
   - email
   - external-cli
-  - himalaya
+  - mail
 interaction_mode: stateless
 card_support: none
 tags: ["email", "mail", "imap", "smtp", "notmuch", "maildir", "cli", "himalaya"]
@@ -31,7 +31,7 @@ metadata:
         label: Install Himalaya (brew)
 ---
 
-# Himalaya Email CLI
+# Email
 
 Run the external `himalaya` binary via `blue exec` when the task is about a real mailbox.
 
@@ -40,6 +40,7 @@ Himalaya is a CLI email client that supports IMAP, SMTP, Notmuch, and Sendmail b
 ## Prefer This Skill When
 
 - The user explicitly mentions `himalaya`
+- The user explicitly mentions `email`
 - The task is about a real inbox, IMAP/SMTP account, or terminal email workflow
 - The user wants a CLI path for listing, reading, replying to, archiving, or sending emails
 - The user is using multiple mail accounts and wants account-aware commands
@@ -179,5 +180,6 @@ blue exec command="himalaya --account work envelope list --output json"
 - Prefer `message read` for user-facing summaries and `message export --full` only when MIME inspection is necessary.
 - Use `--account <name>` when the default account is not the intended mailbox.
 - For sending rich or multi-line email content, prefer `template send` or a body file over inline shell quoting.
-- This is an external CLI guide, not a native `blue himalaya` subcommand.
+- Older prompts may still refer to `himalaya`; treat that as a compatibility alias for Email.
+- This is an external CLI guide, not a native `blue email` subcommand.
 - Prefer the built-in email skill for local benchmark fixtures; prefer Himalaya only for real mailbox operations.

@@ -51,7 +51,8 @@ func buildSkillSelectorProfile(doc SkillDoc) sel.SelectorProfile {
 		profile.Objects = sel.CompactTerms(append(profile.Objects, "report", "text", "data", "content", "url", "urls", "link", "links", "page", "pages", "website", "site", "webpage", "topic", "article", "articles", "document", "documents", "http://", "https://", "www.", "报告", "文本", "数据", "内容", "网址", "链接", "页面", "网站", "主题", "文章", "文档")...)
 		profile.PreferredDomains = []string{sel.DomainLiveWeb}
 		profile.ConflictDomains = []string{sel.DomainLocalWorkspace}
-	case "himalaya":
+	case "email", "himalaya":
+		profile.ExactAliases = sel.CompactTerms(append(profile.ExactAliases, "email", "himalaya", "mail")...)
 		profile.Actions = sel.CompactTerms("email", "mail", "imap", "smtp", "reply", "forward", "compose", "send", "archive", "search", "triage", "download attachment", "邮件", "邮箱", "回复", "转发", "发送", "归档", "检索", "整理")
 		profile.Objects = sel.CompactTerms(append(profile.Objects, "email", "mail", "inbox", "folder", "message", "attachment", "account", "imap", "smtp", "notmuch", "maildir", "收件箱", "邮件", "附件", "账户")...)
 		profile.PreferredDomains = []string{sel.DomainProductivity}

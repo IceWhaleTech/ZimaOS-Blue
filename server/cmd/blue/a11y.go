@@ -7,14 +7,14 @@ import (
 )
 
 var a11yCmd = &cobra.Command{
-	Use:   "a11y [action] [options]",
-	Short: "Run native desktop accessibility actions through the local Blue service",
-	Long: `Run native desktop accessibility actions through the local Blue service.
+	Use:   "computer_use [action] [options]",
+	Short: "Run native desktop computer-use actions through the local Blue service",
+	Long: `Run native desktop computer-use actions through the local Blue service.
 
 Examples:
-  blue a11y --action focus --app-name "Feishu,飞书,Lark"
-  blue a11y message --app-name "Feishu,飞书,Lark" --conversation "Orca" --value "你好，Orca"
-  blue a11y act --ref @5 --act-type click
+  blue computer_use --action focus --app-name "Feishu,飞书,Lark"
+  blue computer_use message --app-name "Feishu,飞书,Lark" --conversation "Orca" --value "你好，Orca"
+  blue computer_use act --ref @5 --act-type click
 `,
 	Args:               cobra.ArbitraryArgs,
 	DisableFlagParsing: true,
@@ -38,7 +38,7 @@ func runA11yCLIArgs(args []string) {
 	if len(positional) > 0 && strings.TrimSpace(params["value"]) == "" {
 		params["value"] = strings.Join(positional, " ")
 	}
-	ipcDispatchPreparedCommand("a11y", prepareIPCParams(params), true)
+	ipcDispatchPreparedCommand("computer_use", prepareIPCParams(params), true)
 }
 
 func normalizeA11yCLIArgs(params map[string]string, positional []string) (map[string]string, []string) {

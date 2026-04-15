@@ -1644,14 +1644,14 @@ export const a11yLocaleTerms: Record<LocaleKey, NamedLocaleTerms> = {
       'Ελεγχει υποστηριζομενα παραθυρα του host λειτουργικου συστηματος μεσω εγγενων API προσβασιμοτητας για λιστα παραθυρων, εστιαση, στιγμιοτυπα, κυλιση, εισοδο και ληψη screenshot.',
   },
   'en-GB': {
-    name: 'Accessibility',
+    name: 'Computer Use',
     description:
-      'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots.',
+      'Control supported host OS windows and accessibility-backed browser flows for snapshots, targeting, scrolling, input, screenshots, and chat-style actions.',
   },
   'en-US': {
-    name: 'Accessibility',
+    name: 'Computer Use',
     description:
-      'Control supported host OS windows through native accessibility APIs for listing windows, focusing, snapshots, scrolling, input, and screenshots.',
+      'Control supported host OS windows and accessibility-backed browser flows for snapshots, targeting, scrolling, input, screenshots, and chat-style actions.',
   },
   'es-ES': {
     name: 'Accesibilidad',
@@ -1744,14 +1744,14 @@ export const a11yLocaleTerms: Record<LocaleKey, NamedLocaleTerms> = {
       'Styr stodda vard-OS-fonster via inbyggda tillganglighets-API:er for att lista fonster, fokusera, ta snapshots, scrolla, mata in och ta skarmdumpar.',
   },
   'zh-CN': {
-    name: '辅助功能',
+    name: '电脑控制',
     description:
-      '通过原生辅助功能 API 控制受支持的宿主操作系统窗口，可列出窗口、聚焦、读取快照、滚动、输入和截图。',
+      '控制受支持的宿主操作系统窗口和基于辅助功能树的浏览器流程，可执行快照、定位、滚动、输入、截图和聊天式操作。',
   },
   'zh-TW': {
-    name: '輔助功能',
+    name: '電腦控制',
     description:
-      '透過原生輔助功能 API 控制受支援的宿主作業系統視窗，可列出視窗、聚焦、讀取快照、捲動、輸入與截圖。',
+      '控制受支援的宿主作業系統視窗和以輔助功能樹為基礎的瀏覽器流程，可執行快照、定位、捲動、輸入、截圖和聊天式操作。',
   },
 }
 
@@ -1775,7 +1775,7 @@ const builtinToolBackfills = Object.fromEntries(
             tool_search: terms.toolSearchName,
             agents_list: terms.agentsListName,
             advisor: advisorTerms.name,
-            a11y: a11yTerms.name,
+            computer_use: a11yTerms.name,
             bash: terms.bashName,
             canvas: terms.canvasName,
             config: configTerms.name,
@@ -1801,7 +1801,7 @@ const builtinToolBackfills = Object.fromEntries(
             tool_search: terms.toolSearchDescription,
             agents_list: terms.agentsListDescription,
             advisor: advisorTerms.description,
-            a11y: a11yTerms.description,
+            computer_use: a11yTerms.description,
             bash: terms.bashDescription,
             canvas: terms.canvasDescription,
             config: configTerms.description,

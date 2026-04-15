@@ -8,18 +8,24 @@ import (
 	"testing"
 	"time"
 
+	skillpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sockipc"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 	"go.uber.org/zap"
 )
 
 type stubTool struct {
+	name   string
 	result interface{}
 	seen   map[string]interface{}
 }
 
 func (s *stubTool) Definition() tools.ToolDefinition {
-	return tools.ToolDefinition{Name: "web_fetch"}
+	name := s.name
+	if name == "" {
+		name = "web_fetch"
+	}
+	return tools.ToolDefinition{Name: name}
 }
 
 func (s *stubTool) Execute(_ context.Context, args map[string]interface{}) (interface{}, error) {
@@ -111,5 +117,60 @@ func TestRegisterSkillFallback_AllowsBuiltinWebFetchIPC(t *testing.T) {
 	}
 	if resp.Data["content"] != "Hello from IPC" {
 		t.Fatalf("content=%q, want Hello from IPC", resp.Data["content"])
+	}
+}
+
+func TestRuntimeIPCSkillExecutor_ComputerUseManifestFallsBackToTool(t *testing.T) {
+	workspaceDir := t.TempDir()
+	skillDir := filepath.Join(workspaceDir, ".agents", "skills", "computer_use")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: computer_use
+version: 1.0.0
+description: Computer use declarative manifest
+invocation: blue computer_use
+examples:
+  - blue computer_use action=snapshot_interactive
+capability_tags:
+  - computer-use
+interaction_mode: stateless
+card_support: none
+---
+# Computer Use
+`), 0o644); err != nil {
+		t.Fatalf("write SKILL.md: %v", err)
+	}
+
+	registry := tools.NewRegistry()
+	registry.Register(&stubTool{
+		name:   "computer_use",
+		result: `{"message":"Host action completed and submitted","window_id":"win-feishu"}`,
+	})
+	executor := newRuntimeIPCSkillExecutor(&Services{
+		ToolRegistry:  registry,
+		SkillRegistry: skillpkg.NewRegistry(),
+	}, workspaceDir)
+	if executor == nil {
+		t.Fatal("expected runtime IPC skill executor")
+	}
+
+	out, err := executor.Execute(context.Background(), "computer_use", map[string]any{
+		"action":       "message",
+		"conversation": "Orca",
+		"value":        "你好，Orca。",
+	})
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if out["message"] != "Host action completed and submitted" {
+		t.Fatalf("message=%q, want tool fallback result", out["message"])
+	}
+	if out["window_id"] != "win-feishu" {
+		t.Fatalf("window_id=%q, want win-feishu", out["window_id"])
+	}
+	if out["skill"] != "" {
+		t.Fatalf("expected tool fallback instead of declarative skill payload, got %#v", out)
 	}
 }

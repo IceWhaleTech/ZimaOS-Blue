@@ -54,6 +54,50 @@ function run(argv) {
   return JSON.stringify(out);
 }`
 
+const darwinVisionTextLocatorPNGScript = `ObjC.import('Foundation');
+ObjC.import('Vision');
+function run(argv) {
+  var data = $.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile;
+  if (!data || data.length === 0) {
+    throw new Error('missing image data');
+  }
+  var request = $.VNRecognizeTextRequest.alloc.init;
+  request.setRecognitionLevel($.VNRequestTextRecognitionLevelFast);
+  request.setUsesLanguageCorrection(false);
+  var handler = $.VNImageRequestHandler.alloc.initWithDataOptions(data, $({}));
+  var error = Ref();
+  if (!handler.performRequestsError($.NSArray.arrayWithObject(request), error)) {
+    var reason = error[0] ? ObjC.unwrap(error[0].localizedDescription) : 'performRequests failed';
+    throw new Error(reason);
+  }
+  var observations = request.results ? request.results.js : [];
+  var out = [];
+  for (var i = 0; i < observations.length; i++) {
+    var observation = observations[i];
+    var candidates = observation.topCandidates(1);
+    if (!candidates || candidates.count === 0) {
+      continue;
+    }
+    var candidate = candidates.objectAtIndex(0);
+    var text = ObjC.unwrap(candidate.string);
+    if (!text || !text.trim()) {
+      continue;
+    }
+    var box = observation.boundingBox;
+    out.push({
+      text: text,
+      bounds: {
+        x: Number(box.origin.x),
+        y: Number(1 - box.origin.y - box.size.height),
+        width: Number(box.size.width),
+        height: Number(box.size.height)
+      },
+      confidence: Number(candidate.confidence)
+    });
+  }
+  return JSON.stringify(out);
+}`
+
 func LocateTextInImage(ctx context.Context, imagePath string) ([]TextLine, error) {
 	imagePath = strings.TrimSpace(imagePath)
 	if imagePath == "" {
@@ -66,6 +110,34 @@ func LocateTextInImage(ctx context.Context, imagePath string) ([]TextLine, error
 		"-e", darwinVisionTextLocatorScript,
 		"--",
 		imagePath,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("vision text locate failed: %s: %w", strings.TrimSpace(output), err)
+	}
+	output = strings.TrimSpace(output)
+	if output == "" || output == "null" {
+		return nil, nil
+	}
+	var lines []TextLine
+	if err := json.Unmarshal([]byte(output), &lines); err != nil {
+		return nil, fmt.Errorf("decode vision text locate output: %w", err)
+	}
+	for idx := range lines {
+		lines[idx].Bounds = clampNormalizedRect(lines[idx].Bounds)
+	}
+	return lines, nil
+}
+
+func LocateTextInPNG(ctx context.Context, imagePNG []byte) ([]TextLine, error) {
+	if len(imagePNG) == 0 {
+		return nil, fmt.Errorf("locate text in image: image bytes are required")
+	}
+	output, err := darwinCLIFallback.execWithInput(
+		ctx,
+		imagePNG,
+		"osascript",
+		"-l", "JavaScript",
+		"-e", darwinVisionTextLocatorPNGScript,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("vision text locate failed: %s: %w", strings.TrimSpace(output), err)

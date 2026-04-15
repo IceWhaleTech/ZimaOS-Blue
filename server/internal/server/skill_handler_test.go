@@ -20,10 +20,28 @@ import (
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill/builtin"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmanifest"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillmarket"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skillstore"
 	"github.com/labstack/echo/v4"
 )
+
+type mockServerSkill struct {
+	manifest *skill.Manifest
+}
+
+func (m *mockServerSkill) Manifest() *skill.Manifest {
+	return m.manifest
+}
+
+func (m *mockServerSkill) Validate(map[string]any) error {
+	return nil
+}
+
+func (m *mockServerSkill) Execute(context.Context, map[string]any) (*skill.Result, error) {
+	return skill.NewResult("ok"), nil
+}
 
 func newTestSkillHandler(t *testing.T, registry *skill.Registry) *SkillHandler {
 	t.Helper()
@@ -282,6 +300,38 @@ func TestSkillHandler_RemoveSource(t *testing.T) {
 
 		if rec.Code != http.StatusNotFound {
 			t.Errorf("expected status %d, got %d", http.StatusNotFound, rec.Code)
+		}
+	})
+}
+
+func TestCanonicalSkillIdentity_DisplayNameOverrides(t *testing.T) {
+	t.Run("config maps to Configuration", func(t *testing.T) {
+		canonicalID, displayName := canonicalSkillIdentity("config", "config")
+		if canonicalID != "config" {
+			t.Fatalf("canonicalID = %q, want %q", canonicalID, "config")
+		}
+		if displayName != "Configuration" {
+			t.Fatalf("displayName = %q, want %q", displayName, "Configuration")
+		}
+	})
+
+	t.Run("deep_research maps to Research", func(t *testing.T) {
+		canonicalID, displayName := canonicalSkillIdentity("deep_research", "deep_research")
+		if canonicalID != "research" {
+			t.Fatalf("canonicalID = %q, want %q", canonicalID, "research")
+		}
+		if displayName != "Research" {
+			t.Fatalf("displayName = %q, want %q", displayName, "Research")
+		}
+	})
+
+	t.Run("himalaya maps to Email", func(t *testing.T) {
+		canonicalID, displayName := canonicalSkillIdentity("himalaya", "himalaya")
+		if canonicalID != "email" {
+			t.Fatalf("canonicalID = %q, want %q", canonicalID, "email")
+		}
+		if displayName != "Email" {
+			t.Fatalf("displayName = %q, want %q", displayName, "Email")
 		}
 	})
 }
@@ -898,6 +948,203 @@ func TestSkillHandler_GetSkillContentRejectsTraversalID(t *testing.T) {
 	}
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestSkillHandler_GetSkillContentUsesCanonicalDisplayNameForHimalaya(t *testing.T) {
+	registry := skill.NewRegistry()
+	if err := registry.Register(&mockServerSkill{
+		manifest: &skill.Manifest{
+			ID:          "himalaya",
+			Name:        "himalaya",
+			Version:     "1.0.0",
+			Description: "External email CLI",
+		},
+	}, true); err != nil {
+		t.Fatalf("register skill: %v", err)
+	}
+	handler := newTestSkillHandler(t, registry)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/himalaya/content", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("himalaya")
+
+	if err := handler.GetSkillContent(c); err != nil {
+		t.Fatalf("GetSkillContent failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload["id"] != "email" {
+		t.Fatalf("id = %v, want %q", payload["id"], "email")
+	}
+	if payload["name"] != "Email" {
+		t.Fatalf("name = %v, want %q", payload["name"], "Email")
+	}
+	content, _ := payload["content"].(string)
+	if !strings.HasPrefix(content, "# Email\n\n") {
+		t.Fatalf("content = %q, want markdown heading for Email", content)
+	}
+}
+
+func TestSkillHandler_GetSkillContentUsesCanonicalIdentityForDeepResearch(t *testing.T) {
+	registry := skill.NewRegistry()
+	if err := registry.Register(&mockServerSkill{
+		manifest: &skill.Manifest{
+			ID:          "deep_research",
+			Name:        "deep_research",
+			Version:     "1.0.0",
+			Description: "Legacy research entry",
+		},
+	}, true); err != nil {
+		t.Fatalf("register skill: %v", err)
+	}
+	handler := newTestSkillHandler(t, registry)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/deep_research/content", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues("deep_research")
+
+	if err := handler.GetSkillContent(c); err != nil {
+		t.Fatalf("GetSkillContent failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload["id"] != "research" {
+		t.Fatalf("id = %v, want %q", payload["id"], "research")
+	}
+	if payload["name"] != "Research" {
+		t.Fatalf("name = %v, want %q", payload["name"], "Research")
+	}
+	content, _ := payload["content"].(string)
+	if !strings.HasPrefix(content, "# Research\n\n") {
+		t.Fatalf("content = %q, want markdown heading for Research", content)
+	}
+}
+
+func TestSkillHandler_ListSkills_HidesLegacyHimalayaFromVisibleCatalog(t *testing.T) {
+	registry := skill.NewRegistry()
+	if err := registry.Register(builtin.NewEmail(), true); err != nil {
+		t.Fatalf("register builtin email: %v", err)
+	}
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "himalaya")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: himalaya
+description: External email CLI
+version: 1.0.0
+---
+
+# Email
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListSkills(c); err != nil {
+		t.Fatalf("ListSkills failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var skills []map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &skills); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+
+	foundEmail := false
+	for _, item := range skills {
+		if item["id"] == "himalaya" {
+			t.Fatalf("legacy himalaya should be hidden from visible skills list: %#v", item)
+		}
+		if item["id"] == "email" {
+			foundEmail = true
+		}
+	}
+	if !foundEmail {
+		t.Fatalf("builtin email should remain visible: %#v", skills)
+	}
+}
+
+func TestSkillHandler_ListLocalSkills_HidesLegacyHimalayaFromVisibleCatalog(t *testing.T) {
+	registry := skill.NewRegistry()
+	handler := newTestSkillHandler(t, registry)
+
+	skillDir := filepath.Join(handler.skillsDir, "himalaya")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: himalaya
+description: External email CLI
+version: 1.0.0
+---
+
+# Email
+`), 0o644); err != nil {
+		t.Fatalf("write skill file: %v", err)
+	}
+
+	scanner := skillstore.NewLocalSkillScanner(handler.skillsDir)
+	if err := scanner.Scan(); err != nil {
+		t.Fatalf("scan skills: %v", err)
+	}
+	handler.SetLocalScanner(scanner)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/skills/local", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListLocalSkills(c); err != nil {
+		t.Fatalf("ListLocalSkills failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var payload struct {
+		Skills []map[string]any `json:"skills"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	for _, item := range payload.Skills {
+		if item["id"] == "himalaya" {
+			t.Fatalf("legacy himalaya should be hidden from visible local skills list: %#v", item)
+		}
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
-func TestBindTooling_DoesNotRegisterHostA11yToolOnUnsupportedHost(t *testing.T) {
+func TestBindTooling_DoesNotRegisterHostComputerUseToolOnUnsupportedHost(t *testing.T) {
 	registry := tools.NewRegistry()
 	binding := &runtimeContractBinding{}
 
@@ -16,7 +16,7 @@ func TestBindTooling_DoesNotRegisterHostA11yToolOnUnsupportedHost(t *testing.T) 
 		registry: registry,
 	})
 
-	if registry.Get("a11y") != nil {
-		t.Fatal("expected host a11y tool to stay unregistered on unsupported hosts")
+	if registry.Get("computer_use") != nil {
+		t.Fatal("expected host computer_use tool to stay unregistered on unsupported hosts")
 	}
 }

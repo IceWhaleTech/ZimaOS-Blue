@@ -14,7 +14,8 @@ const (
 	CanonicalAnalyze      CanonicalSkillID = "analyze"
 	CanonicalReminder     CanonicalSkillID = "reminder"
 	CanonicalUIReviewer   CanonicalSkillID = "ui_reviewer"
-	CanonicalHimalaya     CanonicalSkillID = "himalaya"
+	CanonicalEmail        CanonicalSkillID = "email"
+	CanonicalHimalaya     CanonicalSkillID = CanonicalEmail
 	CanonicalDeepResearch CanonicalSkillID = "deep_research"
 	CanonicalResearch     CanonicalSkillID = "research"
 	CanonicalConfig       CanonicalSkillID = "config"
@@ -148,16 +149,16 @@ func init() {
 			CutoverEligible:   false,
 			Description:       "Legacy UI reviewer capability; prefer research with mode=ui_review",
 		},
-		CanonicalHimalaya: {
-			CanonicalID:       CanonicalHimalaya,
+		CanonicalEmail: {
+			CanonicalID:       CanonicalEmail,
 			Kind:              "skill",
-			Aliases:           []string{"email", "mail"},
-			SearchHints:       []string{"email", "mail", "inbox", "reply", "forward", "attachment"},
+			Aliases:           []string{"himalaya", "mail"},
+			SearchHints:       []string{"email", "mail", "himalaya", "inbox", "reply", "forward", "attachment"},
 			CapabilityTags:    []string{"email", "mail", "productivity"},
 			ExecutionProfile:  ExecutionProfileInline,
 			NativeSurfaceMode: NativeSurfaceModeSkillExec,
 			CutoverEligible:   true,
-			Description:       "Manage email workflows via Himalaya-compatible flows",
+			Description:       "Manage real email workflows via CLI-compatible flows",
 		},
 		CanonicalDeepResearch: {
 			CanonicalID:       CanonicalDeepResearch,

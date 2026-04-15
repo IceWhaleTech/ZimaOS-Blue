@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -27,29 +28,30 @@ const (
 	wechatILinkSessionStatusExpired     = "expired"
 	wechatILinkSetupChannelID           = "wechat_ilink"
 	wechatILinkSetupSessionTTL          = 10 * time.Minute
+	wechatILinkDefaultAPIBaseURL        = "https://ilinkai.weixin.qq.com"
 )
 
-type wechatILinkSetupTunnelRuntime interface {
-	EnsureTunnelURL(ctx context.Context) (string, error)
-}
-
 type wechatILinkSetupSession struct {
-	ID        string
-	UserID    string
-	Status    string
-	Error     string
-	Message   string
-	ExpiresAt time.Time
-	Consumed  bool
+	ID                 string
+	UserID             string
+	Status             string
+	Error              string
+	Message            string
+	ExpiresAt          time.Time
+	Consumed           bool
+	QRKey              string
+	ScanURL            string
+	QRCode             string
+	ResolvedAPIBaseURL string
+	ActivationStarted  bool
 }
 
 type WeChatILinkSetupHandler struct {
 	store      *ChannelConfigStore
 	manager    *channel.Manager
 	factory    *ChannelFactory
-	tunnel     wechatILinkSetupTunnelRuntime
-	jwtService *auth.JWTService
 	logger     *zap.Logger
+	httpClient *http.Client
 
 	mu       sync.RWMutex
 	sessions map[string]*wechatILinkSetupSession
@@ -61,8 +63,6 @@ func NewWeChatILinkSetupHandler(
 	store *ChannelConfigStore,
 	manager *channel.Manager,
 	factory *ChannelFactory,
-	tunnel wechatILinkSetupTunnelRuntime,
-	jwtService *auth.JWTService,
 	logger *zap.Logger,
 ) *WeChatILinkSetupHandler {
 	if logger == nil {
@@ -72,9 +72,8 @@ func NewWeChatILinkSetupHandler(
 		store:      store,
 		manager:    manager,
 		factory:    factory,
-		tunnel:     tunnel,
-		jwtService: jwtService,
 		logger:     logger.With(zap.String("component", "wechat_ilink_setup")),
+		httpClient: &http.Client{Timeout: 45 * time.Second},
 		sessions:   make(map[string]*wechatILinkSetupSession),
 		now:        time.Now,
 		ttl:        wechatILinkSetupSessionTTL,
@@ -93,34 +92,26 @@ func (h *WeChatILinkSetupHandler) CreateSession(c echo.Context) error {
 	if userClaims == nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
 	}
-	if h.tunnel == nil {
-		return echo.NewHTTPError(http.StatusServiceUnavailable, "tunnel runtime not available")
-	}
 
-	tunnelURL, err := h.tunnel.EnsureTunnelURL(c.Request().Context())
+	resolvedAPIBaseURL := h.resolveWeChatILinkAPIBaseURL()
+	qrResp, err := h.fetchWeChatILinkQRCode(c.Request().Context(), resolvedAPIBaseURL)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 	}
 
+	qrcode, err := ngrok.GenerateQRCode(qrResp.ScanURL, 200)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
 	session := h.newSession(userClaims.UserID)
+	session.QRKey = qrResp.QRKey
+	session.ScanURL = qrResp.ScanURL
+	session.QRCode = qrcode
+	session.ResolvedAPIBaseURL = resolvedAPIBaseURL
 	h.storeSession(session)
 
-	mobileURL, err := h.buildMobileURL(strings.TrimRight(tunnelURL, "/"), session.ID, userClaims)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-	qrcode, err := ngrok.GenerateQRCode(mobileURL, 200)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-	}
-
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"session_id": session.ID,
-		"status":     session.Status,
-		"qrcode":     qrcode,
-		"mobile_url": mobileURL,
-		"expires_at": session.ExpiresAt.UTC().Format(time.RFC3339),
-	})
+	return c.JSON(http.StatusOK, h.sessionResponse(session))
 }
 
 func (h *WeChatILinkSetupHandler) GetSession(c echo.Context) error {
@@ -128,7 +119,15 @@ func (h *WeChatILinkSetupHandler) GetSession(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, h.sessionResponse(session))
+
+	if session.Status != wechatILinkSessionStatusConnected &&
+		session.Status != wechatILinkSessionStatusError &&
+		session.Status != wechatILinkSessionStatusExpired {
+		h.refreshWeChatILinkSetupSession(c.Request().Context(), session)
+	}
+
+	current, _ := h.getSession(session.ID)
+	return c.JSON(http.StatusOK, h.sessionResponse(current))
 }
 
 func (h *WeChatILinkSetupHandler) CompleteSession(c echo.Context) error {
@@ -224,6 +223,13 @@ func (h *WeChatILinkSetupHandler) sessionResponse(session *wechatILinkSetupSessi
 		"status":     session.Status,
 		"expires_at": session.ExpiresAt.UTC().Format(time.RFC3339),
 	}
+	if session.QRCode != "" {
+		resp["qrcode"] = session.QRCode
+	}
+	if session.ScanURL != "" {
+		resp["scan_url"] = session.ScanURL
+		resp["mobile_url"] = session.ScanURL
+	}
 	if session.Error != "" {
 		resp["error"] = session.Error
 	}
@@ -260,17 +266,216 @@ func (h *WeChatILinkSetupHandler) requireOwnedSession(c echo.Context, forComplet
 	return session, nil
 }
 
-func (h *WeChatILinkSetupHandler) buildMobileURL(tunnelURL, sessionID string, userClaims *auth.UserClaims) (string, error) {
-	values := url.Values{}
-	values.Set("session_id", sessionID)
-	if h.jwtService != nil && userClaims != nil {
-		token, err := h.jwtService.GenerateAccessToken(userClaims)
-		if err != nil {
-			return "", err
+func (h *WeChatILinkSetupHandler) resolveWeChatILinkAPIBaseURL() string {
+	if h.store != nil {
+		if cfg, ok := h.store.Get(wechatILinkSetupChannelID); ok && cfg != nil {
+			if raw := strings.TrimSpace(cfg.Config["api_base_url"]); raw != "" {
+				return strings.TrimRight(raw, "/")
+			}
 		}
-		values.Set("access_token", token)
 	}
-	return tunnelURL + "/channels/setup/wechat_ilink?" + values.Encode(), nil
+	return wechatILinkDefaultAPIBaseURL
+}
+
+func (h *WeChatILinkSetupHandler) refreshWeChatILinkSetupSession(ctx context.Context, session *wechatILinkSetupSession) {
+	if strings.TrimSpace(session.QRKey) == "" {
+		h.markSessionError(session.ID, "setup session missing qr_key")
+		return
+	}
+	if strings.TrimSpace(session.ResolvedAPIBaseURL) == "" {
+		h.markSessionError(session.ID, "setup session missing api_base_url")
+		return
+	}
+
+	status, err := h.pollWeChatILinkQRCodeStatus(ctx, session.ResolvedAPIBaseURL, session.QRKey)
+	if err != nil {
+		h.markSessionError(session.ID, err.Error())
+		return
+	}
+
+	switch strings.TrimSpace(status.Status) {
+	case "", "wait":
+		h.updateSession(session.ID, func(current *wechatILinkSetupSession) {
+			current.Status = wechatILinkSessionStatusPending
+			current.Error = ""
+			current.Message = ""
+		})
+	case "scaned":
+		h.updateSession(session.ID, func(current *wechatILinkSetupSession) {
+			current.Status = wechatILinkSessionStatusAuthorizing
+			current.Error = ""
+			current.Message = ""
+		})
+	case "confirmed":
+		if h.beginWeChatILinkActivation(session.ID) {
+			apiBaseURL := strings.TrimSpace(status.BaseURL)
+			if apiBaseURL == "" {
+				apiBaseURL = strings.TrimSpace(session.ResolvedAPIBaseURL)
+			}
+			if strings.TrimSpace(status.BotToken) == "" {
+				h.markSessionError(session.ID, "confirmed QR status missing bot_token")
+				return
+			}
+			if apiBaseURL == "" {
+				h.markSessionError(session.ID, "confirmed QR status missing api_base_url")
+				return
+			}
+			if err := h.activateChannel(ctx, apiBaseURL, strings.TrimSpace(status.BotToken)); err != nil {
+				h.markSessionError(session.ID, err.Error())
+				return
+			}
+			h.updateSession(session.ID, func(current *wechatILinkSetupSession) {
+				current.Status = wechatILinkSessionStatusConnected
+				current.Error = ""
+				current.Message = "configured"
+				current.ResolvedAPIBaseURL = strings.TrimRight(apiBaseURL, "/")
+			})
+			return
+		}
+
+		h.updateSession(session.ID, func(current *wechatILinkSetupSession) {
+			if current.Status != wechatILinkSessionStatusConnected &&
+				current.Status != wechatILinkSessionStatusError {
+				current.Status = wechatILinkSessionStatusConfiguring
+				current.Error = ""
+				current.Message = ""
+			}
+		})
+	case "expired":
+		h.updateSession(session.ID, func(current *wechatILinkSetupSession) {
+			current.Status = wechatILinkSessionStatusExpired
+			current.Error = "setup session expired"
+			current.Message = ""
+		})
+	default:
+		h.markSessionError(session.ID, fmt.Sprintf("unexpected QR status: %s", strings.TrimSpace(status.Status)))
+	}
+}
+
+func (h *WeChatILinkSetupHandler) beginWeChatILinkActivation(id string) bool {
+	started := false
+	h.updateSession(id, func(session *wechatILinkSetupSession) {
+		if session.ActivationStarted {
+			return
+		}
+		session.ActivationStarted = true
+		session.Status = wechatILinkSessionStatusConfiguring
+		session.Error = ""
+		session.Message = ""
+		started = true
+	})
+	return started
+}
+
+type wechatILinkQRCodeResponse struct {
+	QRKey   string
+	ScanURL string
+}
+
+type wechatILinkQRCodeStatus struct {
+	Status      string `json:"status"`
+	BotToken    string `json:"bot_token"`
+	IlinkBotID  string `json:"ilink_bot_id"`
+	BaseURL     string `json:"baseurl"`
+	IlinkUserID string `json:"ilink_user_id"`
+}
+
+func (h *WeChatILinkSetupHandler) fetchWeChatILinkQRCode(ctx context.Context, apiBaseURL string) (*wechatILinkQRCodeResponse, error) {
+	endpoint, err := url.Parse(strings.TrimRight(apiBaseURL, "/") + "/")
+	if err != nil {
+		return nil, fmt.Errorf("invalid iLink api_base_url: %w", err)
+	}
+	endpoint = endpoint.JoinPath("ilink", "bot", "get_bot_qrcode")
+	query := endpoint.Query()
+	query.Set("bot_type", "3")
+	endpoint.RawQuery = query.Encode()
+
+	var raw struct {
+		QRKey   string `json:"qrcode"`
+		ScanURL string `json:"qrcode_img_content"`
+	}
+	if err := h.getWeChatILinkJSON(ctx, endpoint.String(), nil, &raw); err != nil {
+		return nil, fmt.Errorf("get_bot_qrcode: %w", err)
+	}
+
+	raw.QRKey = strings.TrimSpace(raw.QRKey)
+	raw.ScanURL = strings.TrimSpace(raw.ScanURL)
+	if raw.QRKey == "" {
+		return nil, fmt.Errorf("get_bot_qrcode: missing qrcode")
+	}
+	if raw.ScanURL == "" {
+		return nil, fmt.Errorf("get_bot_qrcode: missing qrcode_img_content")
+	}
+	return &wechatILinkQRCodeResponse{
+		QRKey:   raw.QRKey,
+		ScanURL: raw.ScanURL,
+	}, nil
+}
+
+func (h *WeChatILinkSetupHandler) pollWeChatILinkQRCodeStatus(ctx context.Context, apiBaseURL, qrKey string) (*wechatILinkQRCodeStatus, error) {
+	endpoint, err := url.Parse(strings.TrimRight(apiBaseURL, "/") + "/")
+	if err != nil {
+		return nil, fmt.Errorf("invalid iLink api_base_url: %w", err)
+	}
+	endpoint = endpoint.JoinPath("ilink", "bot", "get_qrcode_status")
+	query := endpoint.Query()
+	query.Set("qrcode", qrKey)
+	endpoint.RawQuery = query.Encode()
+
+	var status wechatILinkQRCodeStatus
+	if err := h.getWeChatILinkJSON(ctx, endpoint.String(), map[string]string{
+		"iLink-App-ClientVersion": "1",
+	}, &status); err != nil {
+		return nil, fmt.Errorf("get_qrcode_status: %w", err)
+	}
+	return &status, nil
+}
+
+func (h *WeChatILinkSetupHandler) getWeChatILinkJSON(
+	ctx context.Context,
+	endpoint string,
+	headers map[string]string,
+	out any,
+) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return err
+	}
+	for key, value := range headers {
+		if strings.TrimSpace(value) != "" {
+			req.Header.Set(key, value)
+		}
+	}
+
+	client := h.httpClient
+	if client == nil {
+		client = &http.Client{Timeout: 45 * time.Second}
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("http %d: %s", resp.StatusCode, truncateWeChatILinkBody(body, 256))
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+	return nil
+}
+
+func truncateWeChatILinkBody(body []byte, max int) string {
+	text := strings.TrimSpace(string(body))
+	if len(text) <= max {
+		return text
+	}
+	return text[:max] + "..."
 }
 
 func (h *WeChatILinkSetupHandler) activateChannel(ctx context.Context, apiBaseURL, botToken string) error {

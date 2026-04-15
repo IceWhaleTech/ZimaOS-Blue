@@ -46,4 +46,4 @@ blue docx action=validate path=reports/brief.docx
 - Use `pdf` when the final deliverable must be `.pdf`.
 - Use `xlsx` for workbook or table-first tasks.
 - Use `pptx` for slide decks.
-- Use `a11y` for host-window menus, dialogs, clicks, scrolling, typing, or screenshots.
+- Use `computer_use` for host-window menus, dialogs, clicks, scrolling, typing, or screenshots.

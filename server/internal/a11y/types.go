@@ -68,13 +68,13 @@ type ActionTelemetry struct {
 }
 
 type SnapshotResult struct {
-	HostOS          string         `json:"host_os"`
-	WindowID        string         `json:"window_id"`
-	Title           string         `json:"title,omitempty"`
-	Tree            string         `json:"tree,omitempty"`
-	RefMap          map[int]string `json:"ref_map,omitempty"`
-	ImagePath       string         `json:"image_path,omitempty"`
-	Message         string         `json:"message,omitempty"`
+	HostOS          string          `json:"host_os"`
+	WindowID        string          `json:"window_id"`
+	Title           string          `json:"title,omitempty"`
+	Tree            string          `json:"tree,omitempty"`
+	RefMap          map[int]string  `json:"ref_map,omitempty"`
+	ImagePath       string          `json:"image_path,omitempty"`
+	Message         string          `json:"message,omitempty"`
 	ActionTelemetry ActionTelemetry `json:"telemetry,omitempty"`
 }
 
@@ -94,10 +94,11 @@ type ActionResult struct {
 }
 
 type ScreenshotResult struct {
-	HostOS    string `json:"host_os,omitempty"`
-	WindowID  string `json:"window_id,omitempty"`
-	ImagePath string `json:"image_path,omitempty"`
-	Message   string `json:"message,omitempty"`
+	HostOS     string `json:"host_os,omitempty"`
+	WindowID   string `json:"window_id,omitempty"`
+	ImagePath  string `json:"image_path,omitempty"`
+	ImageBytes []byte `json:"-"`
+	Message    string `json:"message,omitempty"`
 }
 
 type NormalizedPoint struct {
@@ -160,4 +161,8 @@ type TargetResolver interface {
 
 type SnapshotRuntime interface {
 	UpdateSnapshotAfterAction(windowID string, token string, actType string, value string)
+}
+
+type GroundingScreenshotter interface {
+	ScreenshotForGrounding(ctx context.Context, windowID string) (ScreenshotResult, error)
 }

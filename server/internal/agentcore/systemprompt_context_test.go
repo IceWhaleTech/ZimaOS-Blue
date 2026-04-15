@@ -524,7 +524,7 @@ func TestWriteToolsInfoTo_IncludesNativeDocumentGuide(t *testing.T) {
 	registry.Register(tools.NewMockTool("xlsx", "Native XLSX tool"))
 	registry.Register(tools.NewMockTool("pptx", "Native PPTX tool"))
 	registry.Register(tools.NewMockTool("pdf", "Native PDF tool"))
-	registry.Register(tools.NewMockTool("a11y", "Native accessibility tool"))
+	registry.Register(tools.NewMockTool("computer_use", "Native computer-use tool"))
 
 	b := NewSystemPromptBuilder(&Config{})
 	b.SetToolRegistry(registry)
@@ -540,8 +540,11 @@ func TestWriteToolsInfoTo_IncludesNativeDocumentGuide(t *testing.T) {
 	if !strings.Contains(out, "For document read/write and polished workspace artifacts") {
 		t.Fatalf("expected document read/write guidance, got: %s", out)
 	}
-	if !strings.Contains(out, "For application and window operations, prefer a11y") {
-		t.Fatalf("expected a11y host UI guidance, got: %s", out)
+	if !strings.Contains(out, "For application and window operations, prefer computer_use") {
+		t.Fatalf("expected computer_use host UI guidance, got: %s", out)
+	}
+	if strings.Contains(out, "prefer a11y") {
+		t.Fatalf("did not expect legacy a11y host UI guidance, got: %s", out)
 	}
 	if strings.Contains(out, "office over raw file_write") {
 		t.Fatalf("did not expect legacy office guidance, got: %s", out)

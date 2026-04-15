@@ -482,10 +482,10 @@ func TestSelectChatToolSurfacesForRequest_GenericDocxResearchUsesToolSearchInste
 	}
 }
 
-func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndA11YTools(t *testing.T) {
+func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndComputerUseTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewToolSearchTool(registry))
-	registry.ExposeDefinition(tools.ToolDefinition{Name: "a11y", Description: "Inspect and interact with accessibility trees"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "computer_use", Description: "Inspect and interact with host UI through the computer-use tool"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "docx", Description: "Read, create, edit, validate, or template native .docx workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
@@ -504,7 +504,7 @@ func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndA11YTools(t 
 		nil,
 	)
 	initialNames := toolNameSet(initial)
-	for _, hidden := range []string{"a11y", "docx"} {
+	for _, hidden := range []string{"computer_use", "docx"} {
 		if _, ok := initialNames[hidden]; ok {
 			t.Fatalf("expected %q to stay hidden until tool_search activation, got=%v", hidden, selectedToolNames(initial))
 		}
@@ -515,7 +515,7 @@ func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndA11YTools(t 
 
 	ctx := tools.WithSessionID(context.Background(), "conv-hidden-native-tools")
 	ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
-	if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:a11y,docx"}); err != nil {
+	if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:computer_use,docx"}); err != nil {
 		t.Fatalf("tool_search Execute returned error: %v", err)
 	}
 
@@ -530,10 +530,73 @@ func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndA11YTools(t 
 		nil,
 	)
 	activatedNames := toolNameSet(activated)
-	for _, required := range []string{"tool_search", "a11y", "docx"} {
+	for _, required := range []string{"tool_search", "computer_use", "docx"} {
 		if _, ok := activatedNames[required]; !ok {
 			t.Fatalf("expected %q after tool_search hydration, got=%v", required, selectedToolNames(activated))
 		}
+	}
+	if _, ok := activatedNames["a11y"]; ok {
+		t.Fatalf("did not expect legacy a11y name after tool_search hydration, got=%v", selectedToolNames(activated))
+	}
+}
+
+func TestSelectChatToolsForRequest_ExplicitNamedHiddenNativeToolsExposeDirectly(t *testing.T) {
+	testCases := []struct {
+		name    string
+		tool    string
+		message string
+	}{
+		{
+			name:    "computer_use",
+			tool:    "computer_use",
+			message: "Use the `computer-use` tool to inspect the current Settings window and tell me what controls are visible.",
+		},
+		{
+			name:    "docx",
+			tool:    "docx",
+			message: "Use the `docx` tool to create a polished report from findings.md.",
+		},
+		{
+			name:    "xlsx",
+			tool:    "xlsx",
+			message: "Use the `xlsx` tool to build a scorecard workbook from metrics.md.",
+		},
+		{
+			name:    "pptx",
+			tool:    "pptx",
+			message: "Use the `pptx` tool to create a launch deck from findings.md.",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := tools.NewRegistry()
+			registry.Register(tools.NewToolSearchTool(registry))
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "computer_use", Description: "Inspect and interact with host UI through the computer-use tool"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "docx", Description: "Read, create, edit, validate, or template native .docx workspace files"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "xlsx", Description: "Create and edit native .xlsx workbooks"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "pptx", Description: "Create and edit native .pptx slide decks"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+			handler := newChatToolSelectionTestHandler(registry)
+
+			got := handler.selectChatToolsForRequest(
+				context.Background(),
+				tc.message,
+				"claude-3-5-haiku-20241022",
+				"conv-explicit-hidden-native-"+tc.tool,
+				"",
+				memory.ConversationCommandState{ConversationID: "conv-explicit-hidden-native-" + tc.tool},
+				nil,
+				nil,
+			)
+
+			names := toolNameSet(got)
+			if _, ok := names[tc.tool]; !ok {
+				t.Fatalf("expected explicitly named tool %q to be directly visible, got=%v", tc.tool, selectedToolNames(got))
+			}
+		})
 	}
 }
 

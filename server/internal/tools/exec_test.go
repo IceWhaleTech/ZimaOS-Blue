@@ -1271,7 +1271,7 @@ func TestExecBlueFlagStyleToolCommandBypassesSkillShortCircuit(t *testing.T) {
 	registry := NewRegistry()
 	registry.Register(&errorTool{
 		def: ToolDefinition{
-			Name:        "a11y",
+			Name:        "computer_use",
 			Description: "host accessibility",
 			Parameters: map[string]interface{}{
 				"type": "object",
@@ -1286,7 +1286,7 @@ func TestExecBlueFlagStyleToolCommandBypassesSkillShortCircuit(t *testing.T) {
 	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
 		skillCalls++
 		switch skillID {
-		case "a11y":
+		case "computer_use":
 			return nil, fmt.Errorf("unknown skill: %s", skillID)
 		case "ask":
 			t.Fatal("ask should not run for flag-style blue tool commands")
@@ -1299,7 +1299,7 @@ func TestExecBlueFlagStyleToolCommandBypassesSkillShortCircuit(t *testing.T) {
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"command": `blue a11y --action focus --app-name "Feishu,飞书,Lark"`,
+		"command": `blue computer_use --action focus --app-name "Feishu,飞书,Lark"`,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1315,7 +1315,7 @@ func TestExecBlueFlagStyleToolCommandBypassesSkillShortCircuit(t *testing.T) {
 	if err := json.Unmarshal([]byte(result.(string)), &res); err != nil {
 		t.Fatalf("unmarshal result: %v", err)
 	}
-	if got := strings.TrimSpace(res.Stdout); got != "cli:a11y|--action|focus|--app-name|Feishu,飞书,Lark" {
+	if got := strings.TrimSpace(res.Stdout); got != "cli:computer_use|--action|focus|--app-name|Feishu,飞书,Lark" {
 		t.Fatalf("stdout = %q, want flag-style command to run via blue CLI", got)
 	}
 }
@@ -2029,7 +2029,7 @@ func TestCanStrictShellBlueSkillShortCircuit(t *testing.T) {
 		},
 		{
 			name:    "flag-style blue commands are not short-circuited",
-			command: `blue a11y --action focus --app-name "Feishu,飞书,Lark"`,
+			command: `blue computer_use --action focus --app-name "Feishu,飞书,Lark"`,
 			want:    false,
 		},
 		{
@@ -2061,7 +2061,7 @@ func TestShouldBypassBlueSkillShortCircuit(t *testing.T) {
 		},
 		{
 			name:    "flag-style blue tool command bypasses short-circuit",
-			command: `blue a11y --action focus --app-name "Feishu,飞书,Lark"`,
+			command: `blue computer_use --action focus --app-name "Feishu,飞书,Lark"`,
 			want:    true,
 		},
 		{
@@ -2282,7 +2282,7 @@ func TestExecSkillShortCircuit_RegisteredToolErrorDoesNotTriggerSkillClarificati
 	registry := NewRegistry()
 	registry.Register(&errorTool{
 		def: ToolDefinition{
-			Name:        "a11y",
+			Name:        "computer_use",
 			Description: "host accessibility",
 			Parameters: map[string]interface{}{
 				"type": "object",
@@ -2298,7 +2298,7 @@ func TestExecSkillShortCircuit_RegisteredToolErrorDoesNotTriggerSkillClarificati
 	})
 	tool.SetSkillExecutor(func(_ context.Context, skillID string, _ map[string]any) (map[string]string, error) {
 		switch skillID {
-		case "a11y":
+		case "computer_use":
 			return nil, fmt.Errorf("unknown skill: %s", skillID)
 		case "ask":
 			t.Fatal("ask should not be called when a registered tool fails with argument error")
@@ -2307,7 +2307,7 @@ func TestExecSkillShortCircuit_RegisteredToolErrorDoesNotTriggerSkillClarificati
 	})
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"command": "blue a11y",
+		"command": "blue computer_use",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

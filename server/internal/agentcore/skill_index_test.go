@@ -52,19 +52,22 @@ func TestBuildSkillIndex_IncludesEmbeddedBuiltinFallback(t *testing.T) {
 	if len(docs) == 0 {
 		t.Fatal("expected embedded builtin skills in index")
 	}
-	if _, ok := findSkillDocByName(docs, "browser"); !ok {
-		t.Fatalf("expected embedded browser skill in index, got %v", docs)
-	}
 	if _, ok := findSkillDocByName(docs, "web_query"); !ok {
 		t.Fatalf("expected embedded web_query skill in index, got %v", docs)
 	}
-	_, hasA11y := findSkillDocByName(docs, "a11y")
+	if _, ok := findSkillDocByName(docs, "research"); !ok {
+		t.Fatalf("expected embedded research skill in index, got %v", docs)
+	}
+	if _, ok := findSkillDocByName(docs, "browser"); ok {
+		t.Fatalf("did not expect embedded browser skill in index, got %v", docs)
+	}
+	_, hasComputerUse := findSkillDocByName(docs, "computer_use")
 	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
-		if !hasA11y {
-			t.Fatalf("expected embedded a11y skill on supported host %q, got %v", runtime.GOOS, docs)
+		if !hasComputerUse {
+			t.Fatalf("expected embedded computer_use skill on supported host %q, got %v", runtime.GOOS, docs)
 		}
-	} else if hasA11y {
-		t.Fatalf("expected a11y skill to stay filtered on unsupported host %q, got %v", runtime.GOOS, docs)
+	} else if hasComputerUse {
+		t.Fatalf("expected computer_use skill to stay filtered on unsupported host %q, got %v", runtime.GOOS, docs)
 	}
 }
 
@@ -73,18 +76,18 @@ func TestBuildSkillIndex_WorkspaceOverridesEmbeddedBuiltin(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	writeIndexSkill(t, workspaceDir, ".claude", "browser", "workspace browser override")
+	writeIndexSkill(t, workspaceDir, ".claude", "research", "workspace research override")
 
 	docs, err := BuildSkillIndex(workspaceDir)
 	if err != nil {
 		t.Fatalf("BuildSkillIndex error: %v", err)
 	}
-	doc, ok := findSkillDocByName(docs, "browser")
+	doc, ok := findSkillDocByName(docs, "research")
 	if !ok {
-		t.Fatalf("expected browser doc in index, got %v", docs)
+		t.Fatalf("expected research doc in index, got %v", docs)
 	}
-	if doc.Description != "workspace browser override" {
-		t.Fatalf("expected workspace browser override, got %q", doc.Description)
+	if doc.Description != "workspace research override" {
+		t.Fatalf("expected workspace research override, got %q", doc.Description)
 	}
 }
 

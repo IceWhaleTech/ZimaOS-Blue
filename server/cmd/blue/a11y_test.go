@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-func TestNormalizeA11yCLIArgs_UsesPositionalAction(t *testing.T) {
+func TestNormalizeComputerUseCLIArgs_UsesPositionalAction(t *testing.T) {
 	params, positional := normalizeA11yCLIArgs(nil, []string{"focus", "Finder"})
 
 	if got := params["action"]; got != "focus" {
@@ -13,7 +13,7 @@ func TestNormalizeA11yCLIArgs_UsesPositionalAction(t *testing.T) {
 	}
 }
 
-func TestNormalizeA11yCLIArgs_CanonicalizesHyphenatedKeys(t *testing.T) {
+func TestNormalizeComputerUseCLIArgs_CanonicalizesHyphenatedKeys(t *testing.T) {
 	params, positional := normalizeA11yCLIArgs(map[string]string{
 		"app-name":     "Feishu",
 		"window-title": "Lark",
@@ -34,12 +34,17 @@ func TestNormalizeA11yCLIArgs_CanonicalizesHyphenatedKeys(t *testing.T) {
 	}
 }
 
-func TestRootCmdFind_A11yCommandRegistered(t *testing.T) {
-	cmd, _, err := rootCmd.Find([]string{"a11y"})
+func TestRootCmdFind_ComputerUseCommandRegistered(t *testing.T) {
+	cmd, _, err := rootCmd.Find([]string{"computer_use"})
 	if err != nil {
-		t.Fatalf("rootCmd.Find(a11y): %v", err)
+		t.Fatalf("rootCmd.Find(computer_use): %v", err)
 	}
-	if cmd == nil || cmd.Name() != "a11y" {
-		t.Fatalf("command = %#v, want a11y", cmd)
+	if cmd == nil || cmd.Name() != "computer_use" {
+		t.Fatalf("command = %#v, want computer_use", cmd)
+	}
+
+	legacyCmd, _, legacyErr := rootCmd.Find([]string{"a11y"})
+	if legacyErr == nil && legacyCmd != nil && legacyCmd.Name() == "a11y" {
+		t.Fatalf("legacy a11y command should be removed, got %#v", legacyCmd)
 	}
 }
