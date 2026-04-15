@@ -256,6 +256,40 @@ func (a *RodBrowserBackend) CookieHeader(ctx context.Context, targetID string, u
 	return lease.svc.CookieHeader(ctx, targetID, url)
 }
 
+func (a *RodBrowserBackend) ExportSessionState(ctx context.Context, targetID string, rawURL string) (*SessionCoreState, error) {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return nil, err
+	}
+	defer lease.close()
+	profile, err := lease.svc.ExportSessionProfile(ctx, targetID, rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if profile == nil {
+		return nil, nil
+	}
+	return &SessionCoreState{
+		ID:             strings.TrimSpace(profile.ID),
+		UserAgent:      strings.TrimSpace(profile.UserAgent),
+		Headers:        cloneStringMap(profile.Headers),
+		Cookies:        append([]browser.Cookie(nil), profile.Cookies...),
+		LocalStorage:   cloneNestedStringMap(profile.LocalStorage),
+		SessionStorage: cloneNestedStringMap(profile.SessionStorage),
+		PrimaryRuntime: ternaryString(lease.svc.UsesRelayDriver(), string(browser.SessionEngineDetailChromiumRelay), string(browser.SessionEngineDetailChromiumManaged)),
+		MirrorTargets:  compactStrings([]string{targetID}),
+	}, nil
+}
+
+func (a *RodBrowserBackend) ApplySessionState(ctx context.Context, targetID string, rawURL string, state SessionCoreState) error {
+	lease, err := a.acquireForTarget(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	defer lease.close()
+	return lease.svc.ApplySessionProfile(ctx, targetID, rawURL, sessionCoreAsBrowserProfile(state))
+}
+
 func (a *RodBrowserBackend) ObserveNetwork(ctx context.Context, targetID string, maxEntries int, clear bool) (BrowserObservedNetworkResult, error) {
 	lease, err := a.acquireForTarget(ctx, targetID)
 	if err != nil {

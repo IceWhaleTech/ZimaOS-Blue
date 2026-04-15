@@ -739,6 +739,84 @@ func TestFetchOrchestratorTracksLightpandaShimAsReadLayer(t *testing.T) {
 	}
 }
 
+func TestFetchOrchestratorReusesSessionCoreForLightpandaShim(t *testing.T) {
+	ctx := WithSessionID(context.Background(), "conv-lightpanda-session-core")
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Cookie"); got != "sid=ok" {
+			http.Error(w, "login required", http.StatusUnauthorized)
+			return
+		}
+		n := hits.Add(1)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte("<!doctype html><html><head><title>Session Core</title></head><body><main><h1>Session Core</h1><p>Cookie-backed lightpanda read number " + strconv.Itoa(int(n)) + " proves the Chromium session core was reused by the read-layer runtime instead of falling back to a fresh anonymous request. The response includes enough readable text to count as a strong result for layered retrieval.</p></main></body></html>"))
+	}))
+	defer srv.Close()
+
+	cfg := browser.DefaultConfig()
+	shim := browser.NewLightpandaService(cfg)
+	browserBackend := &mockBrowserBackend{
+		cookieValue: "sid=ok",
+		exportedState: &SessionCoreState{
+			ID:             "session-core-example",
+			UserAgent:      "Blue Session Core",
+			Headers:        map[string]string{"X-Session-Core": "true"},
+			Cookies:        []browser.Cookie{{Name: "sid", Value: "ok", Domain: "127.0.0.1", Path: "/"}},
+			LocalStorage:   map[string]map[string]string{"https://example.com": {"mode": "session"}},
+			SessionStorage: map[string]map[string]string{"https://example.com": {"nonce": "abc"}},
+			PrimaryRuntime: webFetchStrategyBrowser,
+			MirrorTargets:  []string{"relay-tab-1"},
+		},
+	}
+
+	tool := NewWebFetchTool(WebFetchConfig{
+		Timeout:               5 * time.Second,
+		CacheTTL:              -1,
+		AllowPrivateHosts:     true,
+		LayeredFetchEnabled:   true,
+		SessionMemoryEnabled:  true,
+		DomainStrategyEnabled: true,
+	})
+	tool.SetBrowser(browserBackend)
+	tool.SetLightpandaShim(shim)
+
+	_, err := tool.orchestrator.Fetch(ctx, FetchRequest{
+		URL:               srv.URL,
+		Mode:              webReadFormatText,
+		PreferredLane:     webAccessLaneHTTP,
+		Options:           webFetchRequestOptions{browserTargetID: "tab-session-core"},
+		AllowSession:      true,
+		AllowAutoFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("prime fetch failed: %v", err)
+	}
+
+	second, err := tool.orchestrator.Fetch(ctx, FetchRequest{
+		URL:               srv.URL,
+		Mode:              webReadFormatText,
+		PreferredLane:     webAccessLaneLightpandaShim,
+		AllowSession:      true,
+		AllowAutoFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("lightpanda fetch failed: %v", err)
+	}
+
+	if second.StrategyUsed != webAccessLaneLightpandaShim {
+		t.Fatalf("strategy_used = %q, want %q", second.StrategyUsed, webAccessLaneLightpandaShim)
+	}
+	if !strings.Contains(second.Payload.Content, "Chromium session core was reused") {
+		t.Fatalf("content = %q, want lightpanda session-core content", second.Payload.Content)
+	}
+	if browserBackend.exportCalls != 1 {
+		t.Fatalf("export calls = %d, want 1", browserBackend.exportCalls)
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("server hit count = %d, want 2", hits.Load())
+	}
+}
+
 func TestWebFetchToolRejectsLightpandaShimForGitHubHosts(t *testing.T) {
 	tool := NewWebFetchTool(WebFetchConfig{
 		Timeout:           5 * time.Second,
@@ -746,7 +824,7 @@ func TestWebFetchToolRejectsLightpandaShimForGitHubHosts(t *testing.T) {
 	})
 	tool.SetLightpandaShim(browser.NewLightpandaService(browser.DefaultConfig()))
 
-	_, err := tool.fetchViaLightpandaShim(context.Background(), "https://github.com/search?q=openclaw&type=repositories", webFetchExtractText)
+	_, err := tool.fetchViaLightpandaShim(context.Background(), "https://github.com/search?q=openclaw&type=repositories", webFetchExtractText, "")
 	if err == nil {
 		t.Fatal("expected github.com to reject lightpanda shim")
 	}
@@ -1289,5 +1367,37 @@ func TestParseWebFetchRequestOptions_SupportsGroupedRequestObject(t *testing.T) 
 	}
 	if opts.browserTargetID != "tab_2" {
 		t.Fatalf("browserTargetID = %q, want tab_2", opts.browserTargetID)
+	}
+}
+
+func TestWebFetchToolBrowserSessionContextDefaultsToFiveMinutes(t *testing.T) {
+	tool := NewWebFetchTool(WebFetchConfig{})
+
+	ctx, cancel := tool.browserSessionContext(context.Background())
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("expected browser session context deadline")
+	}
+	remaining := time.Until(deadline)
+	if remaining < 4*time.Minute+55*time.Second || remaining > 5*time.Minute+1*time.Second {
+		t.Fatalf("remaining timeout = %s, want about 5m", remaining)
+	}
+}
+
+func TestWebFetchToolBrowserSessionContextHonorsShorterConfiguredTimeout(t *testing.T) {
+	tool := NewWebFetchTool(WebFetchConfig{Timeout: 3 * time.Second})
+
+	ctx, cancel := tool.browserSessionContext(context.Background())
+	defer cancel()
+
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		t.Fatal("expected browser session context deadline")
+	}
+	remaining := time.Until(deadline)
+	if remaining < 2*time.Second || remaining > 4*time.Second {
+		t.Fatalf("remaining timeout = %s, want about 3s", remaining)
 	}
 }

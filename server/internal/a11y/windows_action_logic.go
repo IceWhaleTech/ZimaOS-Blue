@@ -1,6 +1,9 @@
 package a11y
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 func windowsActionResultWithPlan(
 	hostOS string,
@@ -14,6 +17,20 @@ func windowsActionResultWithPlan(
 	verifyFallback func() (bool, string),
 	fallback func(string, string, int, bool) (string, error),
 ) (ActionResult, error) {
+	start := time.Now()
+	buildTelemetry := func(verificationMS int64, fallbacks []string) ActionTelemetry {
+		total := time.Since(start).Milliseconds()
+		actionMS := total - verificationMS
+		if actionMS < 0 {
+			actionMS = 0
+		}
+		return ActionTelemetry{
+			ActionMS:       actionMS,
+			VerificationMS: verificationMS,
+			EndToEndMS:     total,
+			Fallbacks:      append([]string(nil), fallbacks...),
+		}
+	}
 	if plan.Unsupported {
 		return ActionResult{HostOS: hostOS}, NewError("unsupported_action", plan.UnsupportedReason, map[string]interface{}{"act_type": actType})
 	}
@@ -25,8 +42,11 @@ func windowsActionResultWithPlan(
 		if err := primary(plan, value); err == nil {
 			primarySucceeded = true
 			primaryVerified = true
+			verificationMS := int64(0)
 			if verifyPrimary != nil {
+				verifyStart := time.Now()
 				primaryVerified, verificationMethod = verifyPrimary(plan, value)
+				verificationMS = time.Since(verifyStart).Milliseconds()
 			}
 			if primaryVerified && !windowsShouldContinueWithFallbackAfterPrimary(actType, plan) {
 				return ActionResult{
@@ -38,6 +58,7 @@ func windowsActionResultWithPlan(
 					VerificationMethod: valueOrFallback(verificationMethod, "semantic_action"),
 					InputMethod:        windowsPrimaryInputMethod(actType, plan),
 					Message:            "Host action completed",
+					ActionTelemetry:    buildTelemetry(verificationMS, nil),
 				}, nil
 			}
 		}
@@ -55,8 +76,11 @@ func windowsActionResultWithPlan(
 	}
 	fallbackVerified := false
 	fallbackVerificationMethod := ""
+	verificationMS := int64(0)
 	if strings.EqualFold(strings.TrimSpace(actType), "type") && verifyFallback != nil {
+		verifyStart := time.Now()
 		fallbackVerified, fallbackVerificationMethod = verifyFallback()
+		verificationMS = time.Since(verifyStart).Milliseconds()
 	}
 	executionMode := "input"
 	if primaryVerified && strings.TrimSpace(plan.ExecutionMode) != "" {
@@ -64,6 +88,7 @@ func windowsActionResultWithPlan(
 	}
 	verificationPassed := !strings.EqualFold(strings.TrimSpace(actType), "type") || fallbackVerified
 	verificationMethod = windowsFallbackVerificationMethod(actType, plan, verificationMethod, fallbackVerificationMethod)
+	fallbacks := windowsFallbackStages(plan, verificationMethod, fallbackMethod, fallbackVerified)
 	return ActionResult{
 		HostOS:             hostOS,
 		WindowID:           windowID,
@@ -72,8 +97,9 @@ func windowsActionResultWithPlan(
 		VerificationPassed: verificationPassed,
 		VerificationMethod: verificationMethod,
 		InputMethod:        valueOrFallback(fallbackMethod, plan.Fallback),
-		Fallbacks:          windowsFallbackStages(plan, verificationMethod, fallbackMethod, fallbackVerified),
+		Fallbacks:          fallbacks,
 		Message:            "Host action completed",
+		ActionTelemetry:    buildTelemetry(verificationMS, fallbacks),
 	}, nil
 }
 

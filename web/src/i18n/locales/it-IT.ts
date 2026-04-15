@@ -4553,6 +4553,7 @@ export default mergeHarnessLocale('it-IT', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Percorso',
     },
     values: {
       strategy: {
@@ -4561,6 +4562,8 @@ export default mergeHarnessLocale('it-IT', {
     },
     messages: {
       no_result_data: 'Nessun dato di risultato',
+      file_written_successfully: 'File scritto correttamente',
+      document_converted: 'Documento convertito',
     },
     warnings: {
       listing_truncated: 'L\'elenco è stato troncato; restringi il percorso o aumenta max_entries.',

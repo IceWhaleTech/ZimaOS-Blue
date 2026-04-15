@@ -4553,6 +4553,7 @@ export default mergeHarnessLocale('ro-RO', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Cale',
     },
     values: {
       strategy: {
@@ -4561,6 +4562,8 @@ export default mergeHarnessLocale('ro-RO', {
     },
     messages: {
       no_result_data: 'Fără date de rezultat',
+      file_written_successfully: 'Fișier scris cu succes',
+      document_converted: 'Document convertit',
     },
     warnings: {
       listing_truncated: 'Lista a fost trunchiată; restrânge calea sau mărește max_entries.',

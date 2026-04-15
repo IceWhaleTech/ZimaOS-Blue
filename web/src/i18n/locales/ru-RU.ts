@@ -4537,6 +4537,7 @@ export default mergeHarnessLocale('ru-RU', {
   resultCard: {
     labels: {
       backend: 'Бэкенд',
+      path: 'Путь',
     },
     values: {
       strategy: {
@@ -4545,6 +4546,8 @@ export default mergeHarnessLocale('ru-RU', {
     },
     messages: {
       no_result_data: 'Нет данных результата',
+      file_written_successfully: 'Файл успешно записан',
+      document_converted: 'Документ преобразован',
     },
     warnings: {
       listing_truncated: 'Список был обрезан; сузьте путь или увеличьте max_entries.',

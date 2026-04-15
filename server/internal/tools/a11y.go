@@ -26,6 +26,7 @@ type A11yTool struct {
 	lastRefMap     map[int]string
 	lastRefs       []a11ySnapshotEntry
 	mediaDir       string
+	clickCache     map[string]a11yConversationClickPoint
 }
 
 func NewA11yTool() *A11yTool {
@@ -698,6 +699,9 @@ func (t *A11yTool) doWindows(ctx context.Context, backend a11yruntime.Backend) (
 	if err != nil {
 		return a11yErrorPayload(err), nil
 	}
+	if remembered := rememberedWindowFromList(windows); remembered != "" {
+		t.syncWindowContext(remembered)
+	}
 	return a11yJSON(map[string]interface{}{
 		"host_os": backend.HostOS(),
 		"windows": windows,
@@ -838,7 +842,7 @@ func (t *A11yTool) doSnapshot(ctx context.Context, backend a11yruntime.Backend, 
 		return a11yErrorPayload(snapshotErr), nil
 	}
 	t.cacheSnapshotContext(valueOrDefault(result.WindowID, resolvedTarget), result.RefMap, result.Tree)
-	return a11yJSON(map[string]interface{}{
+	payload := map[string]interface{}{
 		"host_os":    valueOrDefault(result.HostOS, backend.HostOS()),
 		"window_id":  valueOrDefault(result.WindowID, resolvedTarget),
 		"title":      result.Title,
@@ -846,7 +850,9 @@ func (t *A11yTool) doSnapshot(ctx context.Context, backend a11yruntime.Backend, 
 		"ref_map":    result.RefMap,
 		"image_path": result.ImagePath,
 		"message":    valueOrDefault(result.Message, "Host accessibility snapshot ready"),
-	}), nil
+	}
+	applyA11yTelemetryPayload(payload, result.ActionTelemetry)
+	return a11yJSON(payload), nil
 }
 
 func (t *A11yTool) doScenarioAct(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, intent string) (interface{}, error) {
@@ -922,8 +928,9 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	}
 
 	var (
-		ref    int
-		refMap map[int]string
+		ref             int
+		refMap          map[int]string
+		targetTelemetry a11yruntime.TargetResolution
 	)
 	if rawRef, ok := firstCompatValueDeep(args, "ref"); ok {
 		var valid bool
@@ -966,9 +973,14 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 			}
 		}
 		var resolveErr error
-		ref, refMap, resolvedTarget, resolveErr = t.resolveActRefByTarget(ctx, backend, resolvedTarget, selector)
+		targetTelemetry, resolveErr = t.resolveActTarget(ctx, backend, resolvedTarget, selector)
 		if resolveErr != nil {
 			return a11yErrorPayload(resolveErr), nil
+		}
+		ref = targetTelemetry.Ref
+		refMap = cloneA11yRefMap(targetTelemetry.RefMap)
+		if strings.TrimSpace(targetTelemetry.WindowID) != "" {
+			resolvedTarget = strings.TrimSpace(targetTelemetry.WindowID)
 		}
 	}
 	submitPlan, submitPlanErr := t.resolveActSubmitPlan(ctx, backend, args, resolvedTarget, actType, ref, intent)
@@ -992,8 +1004,12 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		}
 		result = mergeA11yActionResults(result, submitResult)
 	}
+	if runtime, ok := backend.(a11yruntime.SnapshotRuntime); ok {
+		runtime.UpdateSnapshotAfterAction(valueOrDefault(result.WindowID, resolvedTarget), refMap[ref], actType, value)
+	}
 	t.syncWindowContextWithHint(valueOrDefault(result.WindowID, resolvedTarget), a11yWindowQueryHintFromArgs(args))
 	t.clearSnapshotRefs()
+	telemetry := mergeA11yTargetAndActionTelemetry(targetTelemetry, result.ActionTelemetry)
 	payload := map[string]interface{}{
 		"host_os":        valueOrDefault(result.HostOS, backend.HostOS()),
 		"window_id":      valueOrDefault(result.WindowID, resolvedTarget),
@@ -1018,12 +1034,13 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	if a11yShouldExposeVerification(result, actType, effectiveIntent) {
 		payload["verification_passed"] = result.VerificationPassed
 	}
-	if len(result.Fallbacks) > 0 {
-		payload["fallbacks"] = result.Fallbacks
+	if fallbacks := mergeA11yFallbacks(result.Fallbacks, telemetry.Fallbacks); len(fallbacks) > 0 {
+		payload["fallbacks"] = fallbacks
 	}
 	if result.OverlayMode != "" {
 		payload["overlay_mode"] = result.OverlayMode
 	}
+	applyA11yTelemetryPayload(payload, telemetry)
 	return a11yJSON(payload), nil
 }
 
@@ -1032,7 +1049,8 @@ func a11yActionResultHasTelemetry(result a11yruntime.ActionResult) bool {
 		strings.TrimSpace(result.VerificationMethod) != "" ||
 		strings.TrimSpace(result.InputMethod) != "" ||
 		len(result.Fallbacks) > 0 ||
-		strings.TrimSpace(result.OverlayMode) != ""
+		strings.TrimSpace(result.OverlayMode) != "" ||
+		a11yTelemetryHasData(result.ActionTelemetry)
 }
 
 func a11yShouldExposeVerification(result a11yruntime.ActionResult, actType string, intent string) bool {
@@ -1051,6 +1069,118 @@ func a11yShouldExposeVerification(result a11yruntime.ActionResult, actType strin
 	default:
 		return false
 	}
+}
+
+func mergeA11yTargetAndActionTelemetry(target a11yruntime.TargetResolution, action a11yruntime.ActionTelemetry) a11yruntime.ActionTelemetry {
+	merged := action
+	if merged.SnapshotRevision == 0 {
+		merged.SnapshotRevision = target.SnapshotRevision
+	}
+	if !merged.CacheHit {
+		merged.CacheHit = target.CacheHit
+	}
+	if merged.NodeCount == 0 {
+		merged.NodeCount = target.NodeCount
+	}
+	if merged.CandidateCount == 0 {
+		merged.CandidateCount = target.CandidateCount
+	}
+	if merged.QueryMS == 0 {
+		merged.QueryMS = target.QueryMS
+	}
+	if len(merged.Fallbacks) == 0 && len(target.Fallbacks) > 0 {
+		merged.Fallbacks = append([]string(nil), target.Fallbacks...)
+	}
+	return merged
+}
+
+func applyA11yTelemetryPayload(payload map[string]interface{}, telemetry a11yruntime.ActionTelemetry) {
+	if payload == nil || !a11yTelemetryHasData(telemetry) {
+		return
+	}
+	if telemetry.SnapshotRevision > 0 {
+		payload["snapshot_revision"] = telemetry.SnapshotRevision
+	}
+	if telemetry.CacheHit {
+		payload["cache_hit"] = true
+	}
+	if telemetry.NodeCount > 0 {
+		payload["node_count"] = telemetry.NodeCount
+	}
+	if telemetry.CandidateCount > 0 {
+		payload["candidate_count"] = telemetry.CandidateCount
+	}
+	if telemetry.TreeFetchMS > 0 {
+		payload["tree_fetch_ms"] = telemetry.TreeFetchMS
+	}
+	if telemetry.TreeSerializeMS > 0 {
+		payload["tree_serialize_ms"] = telemetry.TreeSerializeMS
+	}
+	if telemetry.QueryMS > 0 {
+		payload["query_ms"] = telemetry.QueryMS
+	}
+	if telemetry.ActionMS > 0 {
+		payload["action_ms"] = telemetry.ActionMS
+	}
+	if telemetry.VerificationMS > 0 {
+		payload["verification_ms"] = telemetry.VerificationMS
+	}
+	if telemetry.EndToEndMS > 0 {
+		payload["end_to_end_ms"] = telemetry.EndToEndMS
+	}
+	if len(telemetry.Fallbacks) > 0 {
+		if existing, ok := payload["fallbacks"].([]string); ok {
+			payload["fallbacks"] = mergeA11yFallbacks(existing, telemetry.Fallbacks)
+			return
+		}
+		if existing, ok := payload["fallbacks"].([]interface{}); ok {
+			values := make([]string, 0, len(existing))
+			for _, item := range existing {
+				if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+					values = append(values, text)
+				}
+			}
+			payload["fallbacks"] = mergeA11yFallbacks(values, telemetry.Fallbacks)
+			return
+		}
+		payload["fallbacks"] = append([]string(nil), telemetry.Fallbacks...)
+	}
+}
+
+func a11yTelemetryHasData(telemetry a11yruntime.ActionTelemetry) bool {
+	return telemetry.SnapshotRevision > 0 ||
+		telemetry.CacheHit ||
+		telemetry.NodeCount > 0 ||
+		telemetry.CandidateCount > 0 ||
+		telemetry.TreeFetchMS > 0 ||
+		telemetry.TreeSerializeMS > 0 ||
+		telemetry.QueryMS > 0 ||
+		telemetry.ActionMS > 0 ||
+		telemetry.VerificationMS > 0 ||
+		telemetry.EndToEndMS > 0 ||
+		len(telemetry.Fallbacks) > 0
+}
+
+func mergeA11yFallbacks(groups ...[]string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, 4)
+	for _, group := range groups {
+		for _, item := range group {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			if _, ok := seen[item]; ok {
+				continue
+			}
+			seen[item] = struct{}{}
+			out = append(out, item)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func (t *A11yTool) doScroll(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {

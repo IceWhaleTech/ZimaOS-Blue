@@ -152,6 +152,25 @@ type webSearchProviderOutcome struct {
 	Err      error
 }
 
+type SearchProvider interface {
+	Name() string
+	Search(ctx context.Context, query string, maxResults int, region string) (*WebSearchResponse, error)
+}
+
+type searchProviderFunc struct {
+	name string
+	run  func(ctx context.Context, query string, maxResults int, region string) (*WebSearchResponse, error)
+}
+
+func (p searchProviderFunc) Name() string { return p.name }
+
+func (p searchProviderFunc) Search(ctx context.Context, query string, maxResults int, region string) (*WebSearchResponse, error) {
+	if p.run == nil {
+		return nil, fmt.Errorf("search provider %s is not configured", p.name)
+	}
+	return p.run(ctx, query, maxResults, region)
+}
+
 type webSearchProviderError struct {
 	StatusCode int
 	Retryable  bool
@@ -438,17 +457,31 @@ func (w *WebSearchTool) searchWithProvider(ctx context.Context, provider, query 
 }
 
 func (w *WebSearchTool) searchWithProviderOnce(ctx context.Context, provider, query string, maxResults int, region string) (*WebSearchResponse, error) {
-	switch provider {
+	searchProvider, err := w.providerFor(provider)
+	if err != nil {
+		return nil, err
+	}
+	return searchProvider.Search(ctx, query, maxResults, region)
+}
+
+func (w *WebSearchTool) providerFor(provider string) (SearchProvider, error) {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "duckduckgo":
-		return w.searchDuckDuckGo(ctx, query, maxResults, region)
+		return searchProviderFunc{name: "duckduckgo", run: w.searchDuckDuckGo}, nil
 	case "bing":
-		return w.searchBing(ctx, query, maxResults, region)
+		return searchProviderFunc{name: "bing", run: w.searchBing}, nil
 	case "searxng":
-		return w.searchSearXNG(ctx, query, maxResults)
+		return searchProviderFunc{name: "searxng", run: func(ctx context.Context, query string, maxResults int, _ string) (*WebSearchResponse, error) {
+			return w.searchSearXNG(ctx, query, maxResults)
+		}}, nil
 	case "brave":
-		return w.searchBrave(ctx, query, maxResults)
+		return searchProviderFunc{name: "brave", run: func(ctx context.Context, query string, maxResults int, _ string) (*WebSearchResponse, error) {
+			return w.searchBrave(ctx, query, maxResults)
+		}}, nil
 	case "tavily":
-		return w.searchTavily(ctx, query, maxResults)
+		return searchProviderFunc{name: "tavily", run: func(ctx context.Context, query string, maxResults int, _ string) (*WebSearchResponse, error) {
+			return w.searchTavily(ctx, query, maxResults)
+		}}, nil
 	default:
 		return nil, fmt.Errorf("unsupported search provider: %s", provider)
 	}

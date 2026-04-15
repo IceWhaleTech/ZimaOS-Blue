@@ -4547,6 +4547,7 @@ export default mergeHarnessLocale('nl-NL', {
   resultCard: {
     labels: {
       backend: 'Achterkant',
+      path: 'Pad',
     },
     values: {
       strategy: {
@@ -4555,6 +4556,8 @@ export default mergeHarnessLocale('nl-NL', {
     },
     messages: {
       no_result_data: 'Geen resultaatgegevens',
+      file_written_successfully: 'Bestand succesvol geschreven',
+      document_converted: 'Document geconverteerd',
     },
     warnings: {
       listing_truncated: 'De lijst is afgekapt; beperk het pad of verhoog max_entries.',

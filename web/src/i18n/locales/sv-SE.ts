@@ -4525,6 +4525,7 @@ export default mergeHarnessLocale('sv-SE', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Sokvag',
     },
     values: {
       strategy: {
@@ -4533,6 +4534,8 @@ export default mergeHarnessLocale('sv-SE', {
     },
     messages: {
       no_result_data: 'Inga resultatdata',
+      file_written_successfully: 'Filen skrevs',
+      document_converted: 'Dokument konverterat',
     },
     warnings: {
       listing_truncated: 'Listan trunkerades; begränsa sökvägen eller öka max_entries.',

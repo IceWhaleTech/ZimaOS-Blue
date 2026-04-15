@@ -125,6 +125,36 @@ func TestConvertToolResolveLocalPathsSupportsRelativeWorkspacePaths(t *testing.T
 	}
 }
 
+func TestConvertToolResolveLocalPathsPreservesWorkspaceRootPrecedenceOverAgentRoots(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_root_precedence.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	service, err := convertpkg.NewService(db, t.TempDir())
+	if err != nil {
+		t.Fatalf("new convert service: %v", err)
+	}
+	defer service.Close()
+
+	baseDir := t.TempDir()
+	workspaceDir := filepath.Join(baseDir, ".zimaos-blue", "data", "workspace")
+	agentsDir := filepath.Join(baseDir, ".agents")
+	tool := NewConvertTool(service, nil, nil, []string{workspaceDir, agentsDir})
+
+	paths, err := tool.resolveLocalPaths(context.Background(), []string{"leave_application_template.md", "leave_application.docx"})
+	if err != nil {
+		t.Fatalf("resolveLocalPaths() error = %v", err)
+	}
+	if got, want := paths[0], filepath.Join(workspaceDir, "leave_application_template.md"); got != want {
+		t.Fatalf("paths[0] = %q, want %q", got, want)
+	}
+	if got, want := paths[1], filepath.Join(workspaceDir, "leave_application.docx"); got != want {
+		t.Fatalf("paths[1] = %q, want %q", got, want)
+	}
+}
+
 func TestConvertToolRequestLocalPathApprovalAllowAlwaysPersistsDirectory(t *testing.T) {
 	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_test.db"))
 	if err != nil {

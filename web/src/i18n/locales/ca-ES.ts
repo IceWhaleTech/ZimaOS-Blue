@@ -4561,6 +4561,7 @@ export default mergeHarnessLocale('ca-ES', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Cami',
     },
     values: {
       strategy: {
@@ -4569,6 +4570,8 @@ export default mergeHarnessLocale('ca-ES', {
     },
     messages: {
       no_result_data: 'No hi ha dades de resultat',
+      file_written_successfully: 'Fitxer escrit correctament',
+      document_converted: 'Document convertit',
     },
     warnings: {
       listing_truncated: 'La llista ha estat truncada; reduiu el cami o augmenteu max_entries.',

@@ -114,6 +114,21 @@ func TestEnsureAccessibilityPermission_OpensSettingsWhenDenied(t *testing.T) {
 	}
 }
 
+func TestDarwinActivationWaitBudget_AllowsSlowWindowFocus(t *testing.T) {
+	if darwinActivationWaitTimeout < 30*time.Second {
+		t.Fatalf("darwinActivationWaitTimeout = %v, want at least 30s", darwinActivationWaitTimeout)
+	}
+	if darwinActivationWaitTimeout > 60*time.Second {
+		t.Fatalf("darwinActivationWaitTimeout = %v, want at most 60s", darwinActivationWaitTimeout)
+	}
+	if darwinActivationPollInterval < time.Second {
+		t.Fatalf("darwinActivationPollInterval = %v, want at least 1s to avoid millisecond polling", darwinActivationPollInterval)
+	}
+	if darwinActivationPollInterval > 5*time.Second {
+		t.Fatalf("darwinActivationPollInterval = %v, want bounded second-level polling", darwinActivationPollInterval)
+	}
+}
+
 func TestEnsureAccessibilityPermission_ThrottlesRepeatedSettingsOpens(t *testing.T) {
 	prevGranted := darwinAccessibilityGrantedProbe
 	prevPrompt := darwinAccessibilityPromptProbe

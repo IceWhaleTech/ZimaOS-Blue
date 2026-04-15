@@ -4569,6 +4569,7 @@ export default mergeHarnessLocale('de-DE', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Pfad',
     },
     values: {
       strategy: {
@@ -4577,6 +4578,8 @@ export default mergeHarnessLocale('de-DE', {
     },
     messages: {
       no_result_data: 'Keine Ergebnisdaten',
+      file_written_successfully: 'Datei erfolgreich geschrieben',
+      document_converted: 'Dokument konvertiert',
     },
     warnings: {
       listing_truncated: 'Die Liste wurde gekürzt; grenzt den Pfad ein oder erhöht max_entries.',

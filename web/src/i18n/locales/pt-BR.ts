@@ -4539,6 +4539,7 @@ export default mergeHarnessLocale('pt-BR', {
   resultCard: {
     labels: {
       backend: 'Back-end',
+      path: 'Caminho',
     },
     values: {
       strategy: {
@@ -4547,6 +4548,8 @@ export default mergeHarnessLocale('pt-BR', {
     },
     messages: {
       no_result_data: 'Sem dados de resultado',
+      file_written_successfully: 'Arquivo gravado com sucesso',
+      document_converted: 'Documento convertido',
     },
     warnings: {
       listing_truncated: 'A lista foi truncada; restrinja o caminho ou aumente max_entries.',

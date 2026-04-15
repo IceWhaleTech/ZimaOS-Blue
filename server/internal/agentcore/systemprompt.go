@@ -508,7 +508,7 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 	}
 
 	sb.WriteString("<tool_guidance>Built-in API tools. Call via tool_use. Do not fake file/tool calls by routing them through shell commands.")
-	sb.WriteString("<routing_guide>Prefer dedicated tools over exec when they directly cover the action so the runtime can validate, route, and audit the work more precisely.</routing_guide>")
+	sb.WriteString("<routing_guide>Prefer dedicated native tools over convert, exec, or ad hoc Python scripts when they directly cover the action so the runtime can validate, route, and audit the work more precisely.</routing_guide>")
 	sb.WriteString("<parallel_guide>When multiple read-only checks do not depend on each other, batch or parallelize them when the runtime supports it. Keep dependent or state-changing actions sequential.</parallel_guide>")
 	if b.toolRegistry.Get("write") != nil || b.toolRegistry.Get("file_write") != nil {
 		sb.WriteString("<write_guide>For large file writes, prefer write_begin + repeated write_chunk + write_commit. If you must use write directly, never send one huge write payload: write the first chunk, then continue with smaller chunks using append=true.</write_guide>")
@@ -522,7 +522,7 @@ func (b *SystemPromptBuilder) writeToolsInfoTo(sb *strings.Builder, hasSandbox b
 	if len(nativeDocumentTools) > 0 {
 		sb.WriteString("<document_guide>For document read/write and polished workspace artifacts, prefer native document tools such as ")
 		sb.WriteString(strings.Join(nativeDocumentTools, "/"))
-		sb.WriteString(" over raw file_write so structure, layout, and formatting are preserved. You can hand Markdown directly to those native tools when their schema accepts it, or stage through Markdown first and then convert. If a native document is the requested final artifact, an intermediate Markdown file is not the finished task.</document_guide>")
+		sb.WriteString(" over convert, raw file_write, or one-off Python generators so structure, layout, and formatting are preserved. You can hand Markdown directly to those native tools when their schema accepts it. Only stage through Markdown first and then convert when the native tool cannot safely express the request or when format bridging is genuinely needed. If a native document is the requested final artifact, an intermediate Markdown file is not the finished task.</document_guide>")
 	}
 	if b.toolRegistry.Get("a11y") != nil {
 		sb.WriteString("<host_ui_guide>For application and window operations, prefer a11y over exec or document tools so the runtime can inspect and act on native UI safely.</host_ui_guide>")

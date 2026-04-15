@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
-	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
 
 // Profile represents a browser profile configuration.
@@ -31,6 +31,8 @@ type Profile struct {
 	Headers map[string]string `json:"headers,omitempty"`
 	// LocalStorage is pre-set local storage data.
 	LocalStorage map[string]map[string]string `json:"local_storage,omitempty"`
+	// SessionStorage is pre-set session storage data.
+	SessionStorage map[string]map[string]string `json:"session_storage,omitempty"`
 	// Geolocation is the geolocation override.
 	Geolocation *Geolocation `json:"geolocation,omitempty"`
 	// Timezone is the timezone override.

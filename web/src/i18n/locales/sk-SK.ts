@@ -4525,6 +4525,7 @@ export default mergeHarnessLocale('sk-SK', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Cesta',
     },
     values: {
       strategy: {
@@ -4533,6 +4534,8 @@ export default mergeHarnessLocale('sk-SK', {
     },
     messages: {
       no_result_data: 'Žiadne údaje o výsledku',
+      file_written_successfully: 'Súbor bol úspešne zapísaný',
+      document_converted: 'Dokument bol konvertovaný',
     },
     warnings: {
       listing_truncated: 'Zoznam bol skrátený; zúžte cestu alebo zvýšte max_entries.',

@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -694,7 +695,7 @@ func (t *ImageTool) executeSingleReviewInput(ctx context.Context, prompt string,
 		}
 		return t.analyzeImageBytes(ctx, prompt, base64.StdEncoding.EncodeToString(normalized), normalized, meta, analysisMode)
 	case "file":
-		localPath, imageBytes, err := readLocalImageBytes(input.Value)
+		localPath, imageBytes, err := readLocalImageBytes(ctx, input.Value)
 		if err != nil {
 			return nil, err
 		}
@@ -886,8 +887,8 @@ func looksLikeRemoteHTTPURL(raw string) bool {
 	return scheme == "http" || scheme == "https"
 }
 
-func readLocalImageBytes(raw string) (string, []byte, error) {
-	localPath, err := resolveImageLocalPath(raw)
+func readLocalImageBytes(ctx context.Context, raw string) (string, []byte, error) {
+	localPath, err := resolveImageLocalPath(ctx, raw)
 	if err != nil {
 		return "", nil, err
 	}
@@ -906,16 +907,64 @@ func readLocalImageBytes(raw string) (string, []byte, error) {
 	return localPath, data, nil
 }
 
-func resolveImageLocalPath(raw string) (string, error) {
+func resolveImageLocalPath(ctx context.Context, raw string) (string, error) {
 	trimmed := strings.TrimSpace(raw)
 	if strings.HasPrefix(strings.ToLower(trimmed), "file://") {
 		parsed, err := url.Parse(trimmed)
 		if err != nil {
 			return "", fmt.Errorf("parse image file url: %w", err)
 		}
-		return fileURLToPath(parsed)
+		resolved, err := fileURLToPath(parsed)
+		if err != nil {
+			return "", err
+		}
+		trimmed = resolved
 	}
+
+	if roots := imageScopeRootsFromContext(ctx); len(roots) > 0 {
+		scope := &fsToolScope{roots: roots}
+		resolved, _, _, err := scope.resolvePathWithContext(ctx, "image", trimmed, false)
+		if err != nil {
+			return "", err
+		}
+		return resolved, nil
+	}
+
 	return trimmed, nil
+}
+
+func imageScopeRootsFromContext(ctx context.Context) []string {
+	roots, aliases := GetFSScope(ctx)
+	if len(roots) == 0 && len(aliases) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(roots)+len(aliases))
+	seen := make(map[string]struct{}, len(roots)+len(aliases))
+	add := func(raw string) {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return
+		}
+		abs, err := filepath.Abs(trimmed)
+		if err != nil {
+			return
+		}
+		clean := filepath.Clean(abs)
+		if _, ok := seen[clean]; ok {
+			return
+		}
+		seen[clean] = struct{}{}
+		out = append(out, clean)
+	}
+
+	for _, root := range roots {
+		add(root)
+	}
+	for _, root := range aliases {
+		add(root)
+	}
+	return out
 }
 
 func (t *ImageTool) tryAnalyzeRemoteImageURL(ctx context.Context, prompt, targetURL, analysisMode string) (interface{}, error) {

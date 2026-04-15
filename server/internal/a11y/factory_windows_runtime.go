@@ -64,15 +64,15 @@ var (
 	procGetRoleTextW               = oleaccDLL.NewProc("GetRoleTextW")
 	procGetStateTextW              = oleaccDLL.NewProc("GetStateTextW")
 
-	windowsResolveWindowFunc       = windowsResolveWindow
-	windowsSnapshotMSAAFunc        = windowsSnapshotMSAA
-	windowsGetRectFunc             = windowsGetRect
-	windowsCaptureWindowFunc       = windowsCaptureWindowImage
-	windowsCaptureActiveWindowFunc = windowsCaptureActiveWindowImage
-	windowsPasteTextFunc           = windowsPasteTextInput
-	windowsUnicodeTextInputFunc    = windowsSendUnicodeText
-	windowsCaptureRegionPNGFunc    = windowsCaptureRegionPNG
-	windowsExtractTextFromPNGFunc  = windowsExtractTextFromPNG
+	windowsResolveWindowFunc        = windowsResolveWindow
+	windowsSnapshotMSAAFunc         = windowsSnapshotMSAA
+	windowsGetRectFunc              = windowsGetRect
+	windowsCaptureWindowFunc        = windowsCaptureWindowImage
+	windowsCaptureActiveWindowFunc  = windowsCaptureActiveWindowImage
+	windowsPasteTextFunc            = windowsPasteTextInput
+	windowsUnicodeTextInputFunc     = windowsSendUnicodeText
+	windowsCaptureRegionPNGFunc     = windowsCaptureRegionPNG
+	windowsExtractTextFromPNGFunc   = windowsExtractTextFromPNG
 	windowsHighlightInputBoundsFunc = func(bounds windowsRect, duration time.Duration) error {
 		_, err := windowsCLIFallback.showHighlightOverlay(nil, bounds, duration)
 		return err
@@ -153,15 +153,34 @@ func (b *windowsBackend) SnapshotInteractive(ctx context.Context, windowID strin
 }
 
 func (b *windowsBackend) snapshot(ctx context.Context, windowID string, interactiveOnly bool) (SnapshotResult, error) {
-	return windowsSnapshotWithImageFallback(
-		ctx,
-		b.HostOS(),
-		windowID,
-		interactiveOnly,
-		windowsResolveWindowFunc,
-		windowsSnapshotMSAAFunc,
-		b.Screenshot,
-	)
+	hwnd, info, err := windowsResolveWindowFunc(windowID)
+	if err != nil {
+		return SnapshotResult{HostOS: b.HostOS()}, err
+	}
+	start := time.Now()
+	snapshot, cacheHit, telemetry, err := b.ensureStructuredSnapshot(ctx, hwnd, info)
+	if err != nil {
+		return SnapshotResult{HostOS: b.HostOS()}, enrichSnapshotErrorWithImage(ctx, err, info.ID, b.Screenshot)
+	}
+	mode := SnapshotProjectionFull
+	if interactiveOnly {
+		mode = SnapshotProjectionInteractive
+	}
+	projection := snapshot.Projection(mode)
+	telemetry.SnapshotRevision = snapshot.Revision
+	telemetry.CacheHit = cacheHit
+	telemetry.NodeCount = len(snapshot.Nodes)
+	telemetry.EndToEndMS = time.Since(start).Milliseconds()
+	result := SnapshotResult{
+		HostOS:          b.HostOS(),
+		WindowID:        info.ID,
+		Title:           info.Title,
+		Tree:            projection.Tree,
+		RefMap:          projection.RefMap,
+		Message:         "Host accessibility snapshot ready",
+		ActionTelemetry: telemetry,
+	}
+	return attachSnapshotImage(ctx, result, b.Screenshot), nil
 }
 
 func (b *windowsBackend) Act(ctx context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (ActionResult, error) {
@@ -267,6 +286,43 @@ func (b *windowsBackend) PointerMove(_ context.Context, x int, y int) (ActionRes
 		}
 		return nil
 	})
+}
+
+func (b *windowsBackend) ClickWindowPoint(_ context.Context, windowID string, point NormalizedPoint, holdMS int) (ActionResult, error) {
+	hwnd, _, err := windowsResolveWindowFunc(windowID)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	rect, err := windowsGetRectFunc(hwnd)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	width, height, ok := windowsVisibleRectSize(rect)
+	if !ok {
+		return ActionResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "target window has no visible bounds", nil)
+	}
+	if point.X < 0 || point.X > 1 || point.Y < 0 || point.Y > 1 {
+		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "normalized click point must be between 0 and 1", map[string]interface{}{
+			"x": point.X,
+			"y": point.Y,
+		})
+	}
+	x := int(rect.Left) + int(point.X*float64(width))
+	y := int(rect.Top) + int(point.Y*float64(height))
+	windowsBringWindowToFront(hwnd)
+	if err := windowsClickAt(x, y, false, false, NormalizeHoldMS(holdMS)); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_click",
+		VerificationPassed: true,
+		VerificationMethod: "point_click",
+		Message:            "Host action completed",
+	}, nil
 }
 
 func (b *windowsBackend) Key(_ context.Context, windowID string, keys []string, holdMS int) (ActionResult, error) {

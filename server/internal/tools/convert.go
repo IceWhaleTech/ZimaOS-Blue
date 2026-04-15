@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -639,29 +638,18 @@ func uniqueCleanPaths(values []string) []string {
 		return nil
 	}
 	cleaned := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
 			continue
 		}
-		cleaned = append(cleaned, filepath.Clean(trimmed))
-	}
-	return sortedUniqueStrings(cleaned)
-}
-
-func sortedUniqueStrings(values []string) []string {
-	set := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		trimmed := strings.TrimSpace(value)
-		if trimmed == "" {
+		clean := filepath.Clean(trimmed)
+		if _, ok := seen[clean]; ok {
 			continue
 		}
-		set[trimmed] = struct{}{}
+		seen[clean] = struct{}{}
+		cleaned = append(cleaned, clean)
 	}
-	out := make([]string, 0, len(set))
-	for value := range set {
-		out = append(out, value)
-	}
-	sort.Strings(out)
-	return out
+	return cleaned
 }

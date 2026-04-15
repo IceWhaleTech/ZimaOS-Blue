@@ -4511,6 +4511,7 @@ export default mergeHarnessLocale('cs-CZ', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Cesta',
     },
     values: {
       strategy: {
@@ -4519,6 +4520,8 @@ export default mergeHarnessLocale('cs-CZ', {
     },
     messages: {
       no_result_data: 'Žádná výsledná data',
+      file_written_successfully: 'Soubor byl úspěšně zapsán',
+      document_converted: 'Dokument byl převeden',
     },
     warnings: {
       listing_truncated: 'Výpis byl zkrácen; zužte cestu nebo zvyšte max_entries.',

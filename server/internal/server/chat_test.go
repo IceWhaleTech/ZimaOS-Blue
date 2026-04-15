@@ -5292,6 +5292,126 @@ func TestChatHandlerSendMessage_RecoversBracketedToolCallPseudoToolCallIntoRealT
 	}
 }
 
+func TestChatHandlerSendMessage_RecoversBracketedToolUsePseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered bracketed tool_use pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `[tool_use]
+{"name":"web_query","arguments":{"input":"Apple AAPL stock price today April 2026","max_results":5}}
+[/tool_use]
+我整理好后发你。`
+	scripted := &scriptedChatProvider{
+		name: "scripted-bracketed-tool-use",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-bracketed-tool-use-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 54, TotalTokens: 98},
+			},
+			{
+				ID:    "recovered-bracketed-tool-use-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好 AAPL 股价信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 60, CompletionTokens: 12, TotalTokens: 72},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "bracketed tool_use finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-bracketed-tool-use","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query input = %q, want Apple AAPL stock price today April 2026", input)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "bracketed tool_use finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered bracketed tool_use execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已基于真实 web_query 结果整理好 AAPL 股价信息。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(strings.ToLower(content), "[tool_use]") || strings.Contains(content, "\"arguments\"") {
+		t.Fatalf("expected recovered bracketed tool_use text to be removed from response body, got %q", content)
+	}
+}
+
 func TestChatHandlerSendMessage_RecoversNestedFunctionWrapperPseudoToolCallIntoRealToolExecution(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -6346,6 +6466,32 @@ func TestRecoverPseudoToolCallsFromContent(t *testing.T) {
 		}
 	})
 
+	t.Run("bracketed tool_use wrapper with json body", func(t *testing.T) {
+		content := `[tool_use]
+{"name":"write_begin","arguments":{"file_path":"leave_application.docx","content":"","mode":"binary"}}
+[/tool_use]`
+		calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "write_begin"}})
+		if !ok {
+			t.Fatal("expected bracketed tool_use wrapper recovery to succeed")
+		}
+		if len(calls) != 1 {
+			t.Fatalf("recovered calls = %d, want 1", len(calls))
+		}
+		if calls[0].Name != "write_begin" {
+			t.Fatalf("call name = %q, want write_begin", calls[0].Name)
+		}
+		var args map[string]interface{}
+		if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+			t.Fatalf("unmarshal arguments: %v", err)
+		}
+		if got, _ := args["file_path"].(string); got != "leave_application.docx" {
+			t.Fatalf("file_path = %q, want leave_application.docx", got)
+		}
+		if got, _ := args["mode"].(string); got != "binary" {
+			t.Fatalf("mode = %q, want binary", got)
+		}
+	})
+
 	t.Run("xml tool_call wrapper with nested function object body", func(t *testing.T) {
 		content := `<tool_call>
 {"type":"function","function":{"name":"tzkz0_web_search","arguments":"{\"query\":\"Apple AAPL stock price today April 2026\",\"max_results\":5}"}}
@@ -6680,6 +6826,14 @@ func TestPseudoJSONToolCallStartIndex_DoesNotFlagCodeFenceExample(t *testing.T) 
 		"\n```"
 	if got := pseudoJSONToolCallStartIndex(delta, []llm.Tool{{Name: "web_query"}}); got != -1 {
 		t.Fatalf("pseudoJSONToolCallStartIndex() = %d, want -1", got)
+	}
+}
+
+func TestPseudoDirectiveStartIndex_FlagsBracketedToolUseLeak(t *testing.T) {
+	delta := `我来处理。[tool_use]{"name":"write_begin","arguments":{"file_path":"leave_application.docx","content":"","mode":"binary"}}[/tool_use]`
+	want := 0
+	if got := pseudoDirectiveStartIndex(delta, []llm.Tool{{Name: "write_begin"}}); got != want {
+		t.Fatalf("pseudoDirectiveStartIndex() = %d, want %d", got, want)
 	}
 }
 
@@ -8795,6 +8949,130 @@ func TestChatHandlerSendMessage_ImageArtifactSuccessSkipsChecklistBootstrap(t *t
 	}
 	if strings.Contains(content, "bootstrap an agent mode checklist") || strings.Contains(content, "haven't provided a specific task yet") {
 		t.Fatalf("expected checklist bootstrap path to be skipped, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_DirectPPTXHelperScriptDetourContinuesUntilFinalArtifact(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Direct PPTX Helper Script Detour")
+	workspaceRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-pptx-detour",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "pptx-detour-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_helper_script_1",
+						Name:      "write",
+						Arguments: `{"path":"generate_qwen35_pptx.py","content":"print('generate pptx')\n"}`,
+					}},
+				},
+				Usage: llm.Usage{PromptTokens: 64, CompletionTokens: 18, TotalTokens: 82},
+			},
+			{
+				ID:    "pptx-detour-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_pptx_create_2",
+						Name:      "pptx",
+						Arguments: `{"action":"create","path":"Qwen3.5_Introduction.pptx","title":"Qwen3.5 Introduction","sections":[{"heading":"Overview","bullets":["Open-source reasoning model","Strong multilingual support"]},{"heading":"Use Cases","bullets":["Coding assistance","Long-form analysis"]}]}`,
+					}},
+				},
+				Usage: llm.Usage{PromptTokens: 92, CompletionTokens: 26, TotalTokens: 118},
+			},
+			{
+				ID:    "pptx-detour-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `Saved the requested file to "Qwen3.5_Introduction.pptx".`,
+				},
+				Usage: llm.Usage{PromptTokens: 104, CompletionTokens: 14, TotalTokens: 118},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewFileWriteTool([]string{workspaceRoot}, 0))
+	toolRegistry.Register(tools.NewPPTXTool([]string{workspaceRoot}, nil, nil))
+	toolRegistry.Register(&webSearchToolMock{
+		name:   "web_query",
+		result: map[string]interface{}{"results": []map[string]interface{}{{"title": "unused"}}},
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.","provider":"scripted-pptx-detour","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() < 2 || scripted.CallCount() > 3 {
+		t.Fatalf("expected bounded completion in 2-3 LLM rounds (helper detour + final artifact), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	last := secondReq.Messages[len(secondReq.Messages)-1]
+	if last.Role != llm.RoleUser || !strings.Contains(last.Content, "helper scripts") || !strings.Contains(last.Content, "Qwen3.5_Introduction.pptx") {
+		t.Fatalf("expected helper-script continuation nudge in second request, got role=%s content=%q", last.Role, last.Content)
+	}
+	if len(secondReq.Tools) == 0 || normalizeFileToolCompatName(secondReq.Tools[0].Name) != "pptx" {
+		t.Fatalf("expected pptx to lead second-round tool surface, got=%v", secondReq.Tools)
+	}
+	if !containsLLMToolName(secondReq.Tools, "file_write") {
+		t.Fatalf("expected file_write to remain available until final artifact exists, got=%v", secondReq.Tools)
+	}
+	if containsLLMToolName(secondReq.Tools, "web_query") {
+		t.Fatalf("expected unrelated web_query to be pruned from second-round tool surface, got=%v", secondReq.Tools)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, `Qwen3.5_Introduction.pptx`) {
+		t.Fatalf("expected final response to mention saved pptx target, got %q", content)
+	}
+	if strings.Contains(content, "generate_qwen35_pptx.py") {
+		t.Fatalf("expected final response not to claim helper script as final artifact, got %q", content)
+	}
+
+	helperPath := filepath.Join(workspaceRoot, "generate_qwen35_pptx.py")
+	if _, err := os.Stat(helperPath); err != nil {
+		t.Fatalf("expected helper script detour to be written, stat error: %v", err)
+	}
+	finalPPTXPath := filepath.Join(workspaceRoot, "Qwen3.5_Introduction.pptx")
+	info, err := os.Stat(finalPPTXPath)
+	if err != nil {
+		t.Fatalf("expected final pptx to exist, stat error: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatalf("expected final pptx to be non-empty")
 	}
 }
 

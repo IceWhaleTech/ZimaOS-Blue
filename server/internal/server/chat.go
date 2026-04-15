@@ -490,8 +490,8 @@ func ensureChatMiscRegexes() {
 		rePseudoDirectivePayloadJSON = regexp.MustCompile(`(?i)^\s*\{"(?:command|parameters|tool_uses)"\s*:`)
 		rePseudoToolCallBlock = regexp.MustCompile(`(?is)<(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>[\s\S]*?</(?:[a-z0-9_.-]+:)?tool_call>`)
 		rePseudoToolCallTag = regexp.MustCompile(`(?is)</?(?:[a-z0-9_.-]+:)?tool_call\b[^>]*>`)
-		rePseudoBracketedToolCallBlock = regexp.MustCompile(`(?is)\[(?:[a-z0-9_.-]+:)?tool_call\][\s\S]*?\[/(?:[a-z0-9_.-]+:)?tool_call\]`)
-		rePseudoBracketedToolCallTag = regexp.MustCompile(`(?is)\[/?(?:[a-z0-9_.-]+:)?tool_call\]`)
+		rePseudoBracketedToolCallBlock = regexp.MustCompile(`(?is)\[(?:[a-z0-9_.-]+:)?(?:tool_call|tool_use)\][\s\S]*?\[/(?:[a-z0-9_.-]+:)?(?:tool_call|tool_use)\]`)
+		rePseudoBracketedToolCallTag = regexp.MustCompile(`(?is)\[/?(?:[a-z0-9_.-]+:)?(?:tool_call|tool_use)\]`)
 		rePseudoInlineTokenFunctions = regexp.MustCompile(`(?i)to\s*=\s*functions\.[a-z0-9_.-]+`)
 		rePseudoInlineTokenParallel = regexp.MustCompile(`(?i)to\s*=\s*multi_tool_use\.parallel`)
 		rePseudoInlineTokenRecipient = regexp.MustCompile(`(?i)\brecipient_?name\b|\bwith\s+recipient\b`)
@@ -1025,7 +1025,7 @@ func nativeDocumentArtifactHint(target, genericFormat string) string {
 		scope = "deliverable is " + format
 	}
 	return fmt.Sprintf(
-		" When the %s, prefer the native %s tool instead of raw file_write so %s are preserved. For writing-heavy document tasks, you can hand Markdown content directly to the native %s tool when its schema accepts it, or write Markdown first and then convert it if that is safer. If you use an intermediate Markdown file, that intermediate Markdown file does not complete the task; the task is complete only after the requested final %s artifact exists.",
+		" When the %s, prefer the native %s tool instead of convert, raw file_write, or helper scripts so %s are preserved. For writing-heavy document tasks, you can hand Markdown content directly to the native %s tool when its schema accepts it. Only write Markdown first and then convert it when the native tool cannot safely express the request or when format bridging is genuinely needed. If you use an intermediate Markdown file, that intermediate Markdown file does not complete the task. Likewise, a helper script, code generator, or automation file does not complete the task by itself; the task is complete only after the requested final %s artifact exists.",
 		scope,
 		tool,
 		nativeDocumentArtifactBenefit(tool),
@@ -1039,7 +1039,8 @@ func shouldPreferDirectArtifactWriting(message string) bool {
 	if trimmed == "" {
 		return false
 	}
-	if extractRequestedArtifactPath(trimmed) == "" {
+	target := extractRequestedArtifactPath(trimmed)
+	if target == "" {
 		return false
 	}
 	if shouldPreferWorkspaceFileWorkflow(trimmed) || shouldUseHeavyResearchWorkflow(trimmed) || shouldPreferPublicArtifactResearchWorkflow(trimmed) {
@@ -1050,6 +1051,9 @@ func shouldPreferDirectArtifactWriting(message string) bool {
 	}
 	if directArtifactWritingBlockerCueMatcher.ContainsAnyFold(trimmed) {
 		return false
+	}
+	if isNativeDocumentArtifactPath(target) {
+		return true
 	}
 	return directArtifactWritingCueMatcher.ContainsAnyFold(trimmed)
 }
@@ -7493,7 +7497,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	allDefs := h.toolDefinitionsForPolicy(policyReq)
 	if policyReq.RouteKind == tools.ToolRouteKindChat &&
 		!policyReq.SkipDefaultChatDirectAllowlist &&
-		shouldExpandChatToolAllowlistForEmailIntent(userMessage) {
+		(shouldExpandChatToolAllowlistForEmailIntent(userMessage) || shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage)) {
 		expandedReq := policyReq
 		expandedReq.SkipDefaultChatDirectAllowlist = true
 		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
@@ -7510,6 +7514,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	routed = preferDirectArtifactWritingTools(userMessage, allDefs, routed)
 	routed = preferImageGenerationWorkflowTools(userMessage, allDefs, routed)
 	routed = preferForcedDeepResearchTools(userMessage, allDefs, routed, policyReq.DeepResearchEnabled)
+	routed = h.ensureExplicitNativeArtifactWriteTools(userMessage, policyReq, allDefs, routed)
 	routed = applyEmailToolPreference(routed, userMessage)
 	routed = keepAlwaysExposedChatTools(allDefs, routed)
 
@@ -7532,6 +7537,14 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 
 func shouldExpandChatToolAllowlistForEmailIntent(userMessage string) bool {
 	return isEmailIntentMessage(userMessage)
+}
+
+func shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage string) bool {
+	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
+	if target == "" {
+		return false
+	}
+	return nativeDocumentArtifactToolForPath(target) != ""
 }
 
 func keepAlwaysExposedChatTools(allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
@@ -7704,9 +7717,47 @@ func preferImageGenerationWorkflowTools(userMessage string, allDefs, current []t
 	return current
 }
 
+func (h *ChatHandler) ensureExplicitNativeArtifactWriteTools(userMessage string, policyReq tools.ToolPolicyRequest, allDefs, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if len(current) == 0 || !shouldStabilizeArtifactAfterWrite(userMessage) {
+		return current
+	}
+	target := strings.TrimSpace(extractRequestedArtifactWriteTarget(userMessage))
+	if target == "" {
+		return current
+	}
+	tool := nativeDocumentArtifactToolForPath(target)
+	if tool == "" {
+		return current
+	}
+
+	candidateDefs := allDefs
+	if len(filterToolDefsToNames(candidateDefs, tool)) == 0 && policyReq.RouteKind == tools.ToolRouteKindChat && !policyReq.SkipDefaultChatDirectAllowlist {
+		expandedReq := policyReq
+		expandedReq.SkipDefaultChatDirectAllowlist = true
+		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
+			candidateDefs = expandedDefs
+		}
+	}
+	if len(filterToolDefsToNames(candidateDefs, tool)) == 0 {
+		return current
+	}
+
+	if shouldUseHeavyResearchWorkflow(userMessage) || shouldPreferPublicArtifactResearchWorkflow(userMessage) {
+		return mergeToolDefsByName(current, filterToolDefsToNames(candidateDefs, tool))
+	}
+	if filtered := filterToolDefsToNames(candidateDefs, artifactFileWorkflowToolNamesForPath(target)...); len(filtered) > 0 {
+		return filtered
+	}
+	return mergeToolDefsByName(filterToolDefsToNames(candidateDefs, tool), current)
+}
+
 func shouldPreferExplicitMemoryFileWorkflow(userMessage string) bool {
 	lower := strings.ToLower(strings.TrimSpace(userMessage))
-	if lower == "" || strings.TrimSpace(extractRequestedArtifactPath(userMessage)) == "" {
+	target := strings.TrimSpace(extractRequestedArtifactPath(userMessage))
+	if lower == "" || target == "" {
+		return false
+	}
+	if isNativeDocumentArtifactPath(target) || isImageArtifactPath(target) {
 		return false
 	}
 	if isFinancialQuoteArtifactRequest(lower) {
@@ -8927,6 +8978,10 @@ func streamContinuationFailureText(_ string) string {
 // preContentRetrySkipReason returns a stable reason string when chat layer
 // pre-content retries should be skipped; empty means "retry is allowed".
 func preContentRetrySkipReason(err error) string {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "context_canceled"
+	}
+
 	pe, ok := err.(*proxybridge.ProxyError)
 	if !ok {
 		return ""
@@ -8950,10 +9005,6 @@ func preContentRetrySkipReason(err error) string {
 		return "overloaded"
 	case pe.IsNoProvider():
 		return "no_provider"
-	case strings.Contains(bodyLower, "context canceled"),
-		strings.Contains(bodyLower, "context cancelled"),
-		strings.Contains(bodyLower, "deadline exceeded"):
-		return "context_canceled"
 	case strings.Contains(bodyLower, "does not support tool calls"):
 		return "tool_unsupported"
 	}
@@ -16448,7 +16499,7 @@ func buildPostWriteCompletionTools(tools []llm.Tool, userMessage string) []llm.T
 }
 
 func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
-	if !shouldPreferWorkspaceFileWorkflow(userMessage) {
+	if !shouldStabilizeArtifactAfterWrite(userMessage) {
 		return ""
 	}
 	target := extractRequestedArtifactWriteTarget(userMessage)
@@ -16458,10 +16509,10 @@ func buildPostWorkspaceArtifactContinuationNudge(userMessage string, toolCalls [
 	if hasSatisfiedRequestedArtifactWrite(userMessage, toolCalls, toolResults) {
 		return ""
 	}
-	if !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
+	if !hasWorkspaceArtifactProgress(toolCalls, toolResults) && !hasIntermediateArtifactWriteWithoutRequestedTarget(userMessage, toolCalls, toolResults) {
 		return ""
 	}
-	nudge := fmt.Sprintf("This is still a local workspace synthesis task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, or extracting raw content. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. Prefer pdf/convert/read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.", target, target)
+	nudge := fmt.Sprintf("This is still an artifact-writing task for %q. You must finish with exactly one acceptable outcome: (1) save the requested file, or (2) if no file was requested, return the final summary directly in the reply. For this request, the only acceptable outcome is saving %q. Do not stop after listing files, searching, extracting raw content, or writing helper scripts or other intermediate files. Do not guess new filenames that were not actually discovered. Continue from the evidence you already gathered, use local file tools only as needed, then write the completed deliverable in this turn. Prefer pdf/convert/read for local sources and avoid browser, email, calendar, or research detours unless the user explicitly asked for them.", target, target)
 	return nudge + " After saving the file, give a brief final confirmation."
 }
 
@@ -16503,11 +16554,16 @@ func buildPostWorkspaceArtifactCoverageContinuationNudge(userMessage string, too
 }
 
 func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) []llm.Tool {
-	if len(tools) == 0 || !shouldPreferWorkspaceFileWorkflow(userMessage) {
+	if len(tools) == 0 || !shouldStabilizeArtifactAfterWrite(userMessage) {
 		return tools
 	}
 	target := extractRequestedArtifactWriteTarget(userMessage)
-	if target == "" || hasSatisfiedRequestedArtifactWrite(userMessage, toolCalls, toolResults) || !hasWorkspaceArtifactProgress(toolCalls, toolResults) {
+	if target == "" || hasSatisfiedRequestedArtifactWrite(userMessage, toolCalls, toolResults) {
+		return tools
+	}
+
+	hasContinuationSignal := hasWorkspaceArtifactProgress(toolCalls, toolResults) || hasIntermediateArtifactWriteWithoutRequestedTarget(userMessage, toolCalls, toolResults)
+	if !hasContinuationSignal {
 		return tools
 	}
 
@@ -16564,6 +16620,23 @@ func buildPostWorkspaceArtifactContinuationTools(tools []llm.Tool, userMessage s
 		return tools
 	}
 	return reduced
+}
+
+func hasIntermediateArtifactWriteWithoutRequestedTarget(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
+	target := normalizeWorkspaceArtifactComparablePath(extractRequestedArtifactWriteTarget(userMessage))
+	if target == "" {
+		return false
+	}
+	targets := collectSuccessfulWriteTargets(toolCalls, toolResults)
+	if len(targets) == 0 {
+		return false
+	}
+	for _, candidate := range targets {
+		if normalizeWorkspaceArtifactComparablePath(candidate) == target {
+			return false
+		}
+	}
+	return true
 }
 
 func hasRequestedArtifactWriteSuccess(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) bool {

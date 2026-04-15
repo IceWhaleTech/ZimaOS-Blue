@@ -537,6 +537,114 @@ func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndA11YTools(t 
 	}
 }
 
+func TestSelectTools_ExplicitPPTXPathExpandsAllowlistToExposePPTX(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "pptx", Description: "Read, create, edit, validate, or template native .pptx workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Research current public web information"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	got := handler.selectTools("Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	})
+
+	names := toolNameSet(got)
+	for _, required := range []string{"pptx", "read", "write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q for explicit pptx artifact request, got=%v", required, selectedToolNames(got))
+		}
+	}
+	if _, ok := names["web_query"]; ok {
+		t.Fatalf("expected unrelated web_query to stay hidden for direct pptx writing, got=%v", selectedToolNames(got))
+	}
+}
+
+func TestSelectChatToolsForRequest_ExplicitPPTXPathWithRealRegisteredToolsKeepsPPTX(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewFileWriteTool([]string{t.TempDir()}, 0))
+	registry.Register(tools.NewPPTXTool([]string{t.TempDir()}, nil, nil))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Research current public web information"})
+
+	handler := NewChatHandler(nil, nil, registry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+	policyReq := tools.ToolPolicyRequest{
+		Model:     "gpt-5.3-codex-spark",
+		RouteKind: tools.ToolRouteKindChat,
+	}
+	allDefs := handler.toolDefinitionsForPolicy(policyReq)
+	allNames := toolNameSet(allDefs)
+	for _, required := range []string{"pptx", "file_write", "web_query"} {
+		if _, ok := allNames[required]; !ok {
+			t.Fatalf("expected %q in raw policy definitions for real registered tools, got=%v", required, selectedToolNames(allDefs))
+		}
+	}
+
+	routed, _ := handler.selectToolsDetailed("Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.", policyReq)
+	routedNames := toolNameSet(routed)
+	for _, required := range []string{"pptx", "file_write"} {
+		if _, ok := routedNames[required]; !ok {
+			t.Fatalf("expected %q in routed tool defs for explicit pptx artifact request, got=%v", required, selectedToolNames(routed))
+		}
+	}
+	if _, ok := routedNames["web_query"]; ok {
+		t.Fatalf("expected routed tool defs to prune unrelated web_query, got=%v", selectedToolNames(routed))
+	}
+
+	selection := handler.selectChatToolSurfacesForRequest(
+		context.Background(),
+		"Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.",
+		tools.ToolPolicyRequest{
+			Model:     "gpt-5.3-codex-spark",
+			SessionID: "conv-pptx-real-tools",
+			RouteKind: tools.ToolRouteKindChat,
+		},
+		nil,
+		nil,
+	)
+	selectionNames := toolNameSet(selection.NativeDefs)
+	for _, required := range []string{"pptx", "file_write"} {
+		if _, ok := selectionNames[required]; !ok {
+			t.Fatalf("expected %q in chat tool surface selection for explicit pptx artifact request, got=%v", required, selectedToolNames(selection.NativeDefs))
+		}
+	}
+	if _, ok := selectionNames["web_query"]; ok {
+		t.Fatalf("expected chat tool surface selection to prune unrelated web_query, got=%v", selectedToolNames(selection.NativeDefs))
+	}
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		"Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.",
+		"gpt-5.3-codex-spark",
+		"conv-pptx-real-tools",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-pptx-real-tools"},
+		nil,
+		nil,
+	)
+
+	names := toolNameSet(got)
+	for _, required := range []string{"pptx", "file_write"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q for explicit pptx artifact request with real registered tools, got=%v", required, selectedToolNames(got))
+		}
+	}
+	if _, ok := names["web_query"]; ok {
+		t.Fatalf("expected unrelated web_query to stay hidden for direct pptx writing, got=%v", selectedToolNames(got))
+	}
+}
+
+func TestShouldPreferExplicitMemoryFileWorkflow_DoesNotCaptureNativeDocumentTargets(t *testing.T) {
+	if shouldPreferExplicitMemoryFileWorkflow("Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.") {
+		t.Fatal("expected native pptx save request not to be treated as explicit memory-file workflow")
+	}
+	if shouldPreferExplicitMemoryFileWorkflow("Export the final report to quarterly_summary.pdf for me to review later.") {
+		t.Fatal("expected native pdf save request not to be treated as explicit memory-file workflow")
+	}
+}
+
 func TestSelectChatToolsForRequest_ExplicitCapabilityTogglesNoLongerFilterTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})

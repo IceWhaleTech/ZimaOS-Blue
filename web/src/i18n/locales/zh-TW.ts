@@ -4432,6 +4432,7 @@ export default mergeHarnessLocale('zh-TW', {
   resultCard: {
     labels: {
       backend: '後端',
+      path: '路徑',
     },
     values: {
       strategy: {
@@ -4440,6 +4441,8 @@ export default mergeHarnessLocale('zh-TW', {
     },
     messages: {
       no_result_data: '沒有結果資料',
+      file_written_successfully: '檔案寫入成功',
+      document_converted: '文件已轉換',
     },
     warnings: {
       listing_truncated: '列表已截斷；請縮小路徑範圍或增大 max_entries。',

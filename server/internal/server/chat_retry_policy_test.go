@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -109,19 +110,29 @@ func TestShouldSkipPreContentRetry(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "context canceled skips retry",
+			name: "proxy wrapped context canceled keeps retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       `Post "[server]": context canceled`,
 			},
-			want: true,
+			want: false,
 		},
 		{
-			name: "deadline exceeded skips retry",
+			name: "proxy wrapped deadline exceeded keeps retry",
 			err: &proxybridge.ProxyError{
 				StatusCode: 502,
 				Body:       "upstream request failed: context deadline exceeded",
 			},
+			want: false,
+		},
+		{
+			name: "local context canceled skips retry",
+			err:  context.Canceled,
+			want: true,
+		},
+		{
+			name: "local deadline exceeded skips retry",
+			err:  context.DeadlineExceeded,
 			want: true,
 		},
 	}

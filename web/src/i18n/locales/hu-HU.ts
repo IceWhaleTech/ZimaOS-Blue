@@ -4552,6 +4552,7 @@ export default mergeHarnessLocale('hu-HU', {
   resultCard: {
     labels: {
       backend: 'Háttérrendszer',
+      path: 'Ut',
     },
     values: {
       strategy: {
@@ -4560,6 +4561,8 @@ export default mergeHarnessLocale('hu-HU', {
     },
     messages: {
       no_result_data: 'Nincs eredményadat',
+      file_written_successfully: 'A fájl sikeresen mentve',
+      document_converted: 'A dokumentum konvertálva',
     },
     warnings: {
       listing_truncated: 'A lista csonkolva lett; szűkítsd az útvonalat, vagy növeld a max_entries értékét.',

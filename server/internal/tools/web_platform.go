@@ -802,6 +802,9 @@ func (r *webAccessRuntime) fetch(ctx context.Context, rawURL string, opts webAcc
 	if opts.request.extraHeaders == nil {
 		opts.request.extraHeaders = make(map[string]string)
 	}
+	if err := r.base.applySessionCoreToRequestOptions(ctx, normalizedURL, &opts.request); err != nil {
+		return webAccessDocument{}, err
+	}
 	if err := r.base.applyBrowserSessionCookies(ctx, normalizedURL, &opts.request); err != nil {
 		return webAccessDocument{}, err
 	}
@@ -1049,7 +1052,7 @@ func (r *webAccessRuntime) fetchViaBrowser(ctx context.Context, normalizedURL, f
 }
 
 func (r *webAccessRuntime) fetchViaLightpandaShim(ctx context.Context, normalizedURL, format string, maxChars int) (webAccessDocument, error) {
-	payload, err := r.base.fetchViaLightpandaShim(ctx, normalizedURL, format)
+	payload, err := r.base.fetchViaLightpandaShim(ctx, normalizedURL, format, "")
 	if err != nil {
 		return webAccessDocument{}, err
 	}

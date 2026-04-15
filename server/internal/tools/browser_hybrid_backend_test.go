@@ -302,6 +302,50 @@ func TestHybridCapabilityBrowserBackendPrefersWarmRelayChromiumOverColdManaged(t
 	}
 }
 
+func TestHybridCapabilityBrowserBackendNavigateUsesExplicitExecutionPlanForNewTarget(t *testing.T) {
+	cfg := makeHybridLightpandaConfig(t)
+
+	managedCalls := 0
+	relayCalls := 0
+	managed := &stubSessionBrowserBackend{
+		navigateFn: func(_ context.Context, url string, targetID string) (BrowserNavResult, error) {
+			managedCalls++
+			return BrowserNavResult{URL: url, Title: "Managed", TargetID: "managed-tab"}, nil
+		},
+	}
+	relay := &stubSessionBrowserBackend{
+		navigateFn: func(_ context.Context, url string, targetID string) (BrowserNavResult, error) {
+			relayCalls++
+			return BrowserNavResult{URL: url, Title: "Relay", TargetID: "relay-tab"}, nil
+		},
+	}
+
+	backend := NewHybridCapabilityBrowserBackend(cfg, browser.NewLightpandaService(cfg), nil, managed, relay, nil, func(context.Context) bool { return true })
+	ctx := WithWebExecutionPlan(context.Background(), ExecutionPlan{
+		Kind:           WebTaskKindOperate,
+		PrimaryRuntime: string(browser.SessionEngineDetailChromiumRelay),
+		Steps: []PlanStep{{
+			Kind:    WebTaskKindOperate,
+			Runtime: string(browser.SessionEngineDetailChromiumRelay),
+			Reason:  "planner selected relay runtime",
+		}},
+	})
+
+	nav, err := backend.Navigate(ctx, "https://example.com/explicit-plan", "")
+	if err != nil {
+		t.Fatalf("Navigate() error = %v", err)
+	}
+	if nav.TargetID != "relay-tab" {
+		t.Fatalf("target = %q, want relay-tab", nav.TargetID)
+	}
+	if relayCalls != 1 {
+		t.Fatalf("relay navigate calls = %d, want 1", relayCalls)
+	}
+	if managedCalls != 0 {
+		t.Fatalf("managed navigate calls = %d, want 0", managedCalls)
+	}
+}
+
 func TestHybridCapabilityBrowserBackendKeepsLightpandaTargetOnUnsupportedScreenshot(t *testing.T) {
 	pageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -4580,6 +4580,7 @@ export default mergeHarnessLocale('fr-FR', {
   resultCard: {
     labels: {
       backend: 'Back-end',
+      path: 'Chemin',
     },
     values: {
       strategy: {
@@ -4588,6 +4589,8 @@ export default mergeHarnessLocale('fr-FR', {
     },
     messages: {
       no_result_data: 'Aucune donnée de résultat',
+      file_written_successfully: 'Fichier écrit avec succès',
+      document_converted: 'Document converti',
     },
     warnings: {
       listing_truncated: 'La liste a été tronquée ; réduisez le chemin ou augmentez max_entries.',

@@ -4535,6 +4535,7 @@ export default mergeHarnessLocale('pl-PL', {
   resultCard: {
     labels: {
       backend: 'Zaplecze',
+      path: 'Sciezka',
     },
     values: {
       strategy: {
@@ -4543,6 +4544,8 @@ export default mergeHarnessLocale('pl-PL', {
     },
     messages: {
       no_result_data: 'Brak danych wyniku',
+      file_written_successfully: 'Plik został zapisany pomyślnie',
+      document_converted: 'Dokument przekonwertowano',
     },
     warnings: {
       listing_truncated: 'Lista została obcięta; zawęź ścieżkę lub zwiększ max_entries.',

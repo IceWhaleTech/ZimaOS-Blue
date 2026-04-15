@@ -1149,6 +1149,68 @@ func TestImageToolReviewUsesVisionForFileURL(t *testing.T) {
 	}
 }
 
+func TestImageToolReviewRejectsLocalFileOutsideFSScope(t *testing.T) {
+	vision := &imageVisionMock{resp: "external image description"}
+	tool := NewImageTool(nil, nil, nil)
+	tool.SetVisionBridge(vision)
+
+	workspaceRoot := t.TempDir()
+	externalRoot := t.TempDir()
+	path := filepath.Join(externalRoot, "sample.png")
+	if err := os.WriteFile(path, testPNGBytes(t), 0o644); err != nil {
+		t.Fatalf("write external image: %v", err)
+	}
+
+	ctx := WithFSScope(context.Background(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot})
+	_, err := tool.Execute(ctx, map[string]interface{}{
+		"image_path": path,
+		"prompt":     "what is in this local image?",
+	})
+	if err == nil {
+		t.Fatal("expected scope rejection for external local image")
+	}
+	if !strings.Contains(err.Error(), "path escapes workspace root") {
+		t.Fatalf("error = %v, want path escapes workspace root", err)
+	}
+}
+
+func TestOCRToolAllowsTempFileWithinFSScope(t *testing.T) {
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Quarterly revenue 119,900", Engine: "tesseract/wasm", Model: "eng"}}
+	native := NewImageTool(nil, nil, nil)
+	native.SetOCRService(ocr)
+
+	file, err := os.CreateTemp("", "ocr-scope-*.png")
+	if err != nil {
+		t.Fatalf("create temp image: %v", err)
+	}
+	tempPath := file.Name()
+	t.Cleanup(func() {
+		_ = os.Remove(tempPath)
+	})
+	if _, err := file.Write(testPNGBytes(t)); err != nil {
+		_ = file.Close()
+		t.Fatalf("write temp image: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close temp image: %v", err)
+	}
+
+	ctx := WithFSScope(context.Background(), []string{os.TempDir()}, map[string]string{"tmp": os.TempDir()})
+	result, err := newOCRTool(native).Execute(ctx, map[string]interface{}{
+		"image_path": tempPath,
+	})
+	if err != nil {
+		t.Fatalf("ocr execute with temp scope failed: %v", err)
+	}
+	payload := result.(map[string]interface{})
+	if payload["mode"] != "ocr" {
+		t.Fatalf("mode = %v, want ocr", payload["mode"])
+	}
+	if payload["source_path"] != tempPath {
+		t.Fatalf("source_path = %v, want %q", payload["source_path"], tempPath)
+	}
+}
+
 func TestImageToolReviewRejectsPrivateRemoteURL(t *testing.T) {
 	tool := NewImageTool(nil, nil, nil)
 	_, err := tool.Execute(context.Background(), map[string]interface{}{

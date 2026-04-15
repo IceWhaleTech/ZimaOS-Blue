@@ -41,6 +41,8 @@ type scriptedWebQueryBrowserBackend struct {
 	recipeCalls  int
 	recipeName   string
 	recipeParams map[string]string
+	recipePlan   ExecutionPlan
+	recipePlanOK bool
 }
 
 type blockingWebQueryBrowserBackend struct{}
@@ -126,15 +128,18 @@ func (b *scriptedWebQueryBrowserBackend) CloseTab(_ context.Context, _ string) e
 func (b *scriptedWebQueryBrowserBackend) Tabs(_ context.Context) ([]BrowserTabResult, error) {
 	return nil, nil
 }
-func (b *scriptedWebQueryBrowserBackend) ExecuteRecipe(_ context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
+func (b *scriptedWebQueryBrowserBackend) ExecuteRecipe(ctx context.Context, recipe string, params map[string]string) (BrowserRecipeResult, error) {
 	cloned := make(map[string]string, len(params))
 	for k, v := range params {
 		cloned[k] = v
 	}
+	plan, ok := WebExecutionPlanFromContext(ctx)
 	b.mu.Lock()
 	b.recipeCalls++
 	b.recipeName = recipe
 	b.recipeParams = cloned
+	b.recipePlan = plan
+	b.recipePlanOK = ok
 	b.mu.Unlock()
 	if b.execute != nil {
 		return b.execute(recipe, cloned)
@@ -2897,6 +2902,55 @@ func TestWebQueryToolStrongNormalizedBingResultSkipsBrowserSearchFallback(t *tes
 	}
 	if browser.recipeCalls != 0 {
 		t.Fatalf("browser recipe calls = %d, want 0", browser.recipeCalls)
+	}
+}
+
+func TestWebToolRunBrowserSearchDiscoveryUsesExplicitExecutionPlan(t *testing.T) {
+	browser := &scriptedWebQueryBrowserBackend{
+		execute: func(recipe string, params map[string]string) (BrowserRecipeResult, error) {
+			if recipe != "search" {
+				t.Fatalf("recipe = %q, want search", recipe)
+			}
+			payload := map[string]interface{}{
+				"engine": "bing",
+				"results": []map[string]string{{
+					"title":   "Blue Docs",
+					"url":     "https://example.com/docs",
+					"snippet": "Planner-driven browser search result.",
+				}},
+			}
+			return BrowserRecipeResult{Success: true, Data: payload}, nil
+		},
+	}
+
+	tool := &WebTool{browser: browser}
+	resp, attempt, err := tool.runBrowserSearchDiscovery(context.Background(), "latest blue docs", 3, WebSearchBrowserFallbackConfig{Engine: "bing"})
+	if err != nil {
+		t.Fatalf("runBrowserSearchDiscovery() error = %v", err)
+	}
+	if attempt.Stage != "search_browser" {
+		t.Fatalf("attempt stage = %q, want search_browser", attempt.Stage)
+	}
+	if !browser.recipePlanOK {
+		t.Fatal("expected ExecuteRecipe context to include explicit web execution plan")
+	}
+	if browser.recipePlan.Kind != WebTaskKindSearch {
+		t.Fatalf("plan kind = %q, want %q", browser.recipePlan.Kind, WebTaskKindSearch)
+	}
+	if browser.recipePlan.PrimaryRuntime != webAccessLaneBrowser {
+		t.Fatalf("plan primary runtime = %q, want %q", browser.recipePlan.PrimaryRuntime, webAccessLaneBrowser)
+	}
+	if len(browser.recipePlan.Steps) != 1 {
+		t.Fatalf("plan steps len = %d, want 1", len(browser.recipePlan.Steps))
+	}
+	if browser.recipePlan.Steps[0].Runtime != webAccessLaneBrowser {
+		t.Fatalf("plan step runtime = %q, want %q", browser.recipePlan.Steps[0].Runtime, webAccessLaneBrowser)
+	}
+	if got := browser.recipePlan.TraceLabels["engine"]; got != "bing" {
+		t.Fatalf("plan trace engine = %q, want bing", got)
+	}
+	if resp.Provider != "browser:bing" {
+		t.Fatalf("provider = %q, want browser:bing", resp.Provider)
 	}
 }
 

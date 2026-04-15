@@ -2040,6 +2040,34 @@ func TestExecutorTransactionalWriteFlowWithCompatArgs(t *testing.T) {
 	}
 }
 
+func TestExecutorWriteBeginFilePathAliasFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "nested", "alias-begin.txt")
+
+	registry := NewRegistry()
+	RegisterBuiltinToolsWithConfig(registry, WebSearchConfig{}, WebFetchConfig{}, []string{tmpDir}, 0)
+	executor := NewExecutor(registry)
+
+	result, err := executor.Execute(context.Background(), "write_begin", map[string]interface{}{
+		"file_path":   target,
+		"create_dirs": true,
+	})
+	if err != nil {
+		t.Fatalf("executor write_begin with file_path alias failed: %v", err)
+	}
+
+	var beginPayload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &beginPayload); err != nil {
+		t.Fatalf("parse write_begin payload: %v", err)
+	}
+	if got, _ := beginPayload["original_path"].(string); got != target {
+		t.Fatalf("write_begin original_path = %q, want %q", got, target)
+	}
+	if sessionID, _ := beginPayload["session_id"].(string); strings.TrimSpace(sessionID) == "" {
+		t.Fatalf("write_begin returned empty session_id: %#v", beginPayload)
+	}
+}
+
 func TestExecutorTransactionalWriteAbortWithCompatArgs(t *testing.T) {
 	tmpDir := t.TempDir()
 	target := filepath.Join(tmpDir, "abort-via-executor.txt")

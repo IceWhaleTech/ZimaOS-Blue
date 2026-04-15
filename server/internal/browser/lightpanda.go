@@ -217,6 +217,12 @@ func (s *LightpandaService) BinaryAvailable() bool {
 // ReadDocument fetches a page through the Lightpanda shim without persisting a
 // browser session. This is used by fetch/read-layer routing.
 func (s *LightpandaService) ReadDocument(ctx context.Context, rawURL string, timeoutMS int) (*LightpandaReadDocument, error) {
+	return s.ReadDocumentWithProfile(ctx, rawURL, timeoutMS, nil)
+}
+
+// ReadDocumentWithProfile fetches a page through the Lightpanda shim while
+// applying cookie/header/user-agent state exported from another runtime.
+func (s *LightpandaService) ReadDocumentWithProfile(ctx context.Context, rawURL string, timeoutMS int, profile *Profile) (*LightpandaReadDocument, error) {
 	if s == nil {
 		return nil, ErrBrowserNotAvailable
 	}
@@ -227,11 +233,11 @@ func (s *LightpandaService) ReadDocument(ctx context.Context, rawURL string, tim
 	if err != nil {
 		return nil, err
 	}
-	client, err := s.newHTTPClient()
+	client, err := s.newHTTPClient(profile, urlString)
 	if err != nil {
 		return nil, err
 	}
-	doc, err := s.fetchDocument(ctx, &lightpandaSession{client: client}, urlString, timeoutMS)
+	doc, err := s.fetchDocument(ctx, &lightpandaSession{client: client}, urlString, timeoutMS, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +308,7 @@ func (s *LightpandaService) Navigate(ctx context.Context, req *NavigateRequest) 
 	if err != nil {
 		return nil, err
 	}
-	doc, err := s.fetchDocument(ctx, session, urlString, req.Timeout)
+	doc, err := s.fetchDocument(ctx, session, urlString, req.Timeout, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -455,7 +461,7 @@ func (s *LightpandaService) ensureSession(targetID string) (*lightpandaSession, 
 	if targetID != "" {
 		return s.session(targetID)
 	}
-	client, err := s.newHTTPClient()
+	client, err := s.newHTTPClient(nil, "")
 	if err != nil {
 		return nil, err
 	}
@@ -497,7 +503,7 @@ func (s *LightpandaService) touchSession(targetID string) {
 	}
 }
 
-func (s *LightpandaService) fetchDocument(ctx context.Context, session *lightpandaSession, rawURL string, timeoutMS int) (*lightpandaDocument, error) {
+func (s *LightpandaService) fetchDocument(ctx context.Context, session *lightpandaSession, rawURL string, timeoutMS int, profile *Profile) (*lightpandaDocument, error) {
 	if session == nil || session.client == nil {
 		return nil, lightpandaCapabilityError(ErrLightpandaNavigationBlocked, "session client unavailable")
 	}
@@ -511,8 +517,14 @@ func (s *LightpandaService) fetchDocument(ctx context.Context, session *lightpan
 	if err != nil {
 		return nil, lightpandaCapabilityError(ErrLightpandaNavigationBlocked, err.Error())
 	}
-	req.Header.Set("User-Agent", s.userAgent())
+	req.Header.Set("User-Agent", lightpandaProfileUserAgent(profile, s.userAgent()))
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7")
+	for name, value := range lightpandaProfileHeaders(profile) {
+		if strings.TrimSpace(name) == "" || strings.TrimSpace(value) == "" {
+			continue
+		}
+		req.Header.Set(name, value)
+	}
 
 	resp, err := session.client.Do(req)
 	if err != nil {
@@ -553,7 +565,7 @@ func (s *LightpandaService) fetchDocument(ctx context.Context, session *lightpan
 	return doc, nil
 }
 
-func (s *LightpandaService) newHTTPClient() (*http.Client, error) {
+func (s *LightpandaService) newHTTPClient(profile *Profile, rawURL string) (*http.Client, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
@@ -570,7 +582,68 @@ func (s *LightpandaService) newHTTPClient() (*http.Client, error) {
 		Jar:       jar,
 		Timeout:   GetTimeout(0, s.config),
 		Transport: transport,
-	}, nil
+	}, lightpandaSeedCookieJar(jar, rawURL, profile)
+}
+
+func lightpandaSeedCookieJar(jar http.CookieJar, rawURL string, profile *Profile) error {
+	if jar == nil || profile == nil || len(profile.Cookies) == 0 {
+		return nil
+	}
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return err
+	}
+	for _, cookie := range profile.Cookies {
+		if strings.TrimSpace(cookie.Name) == "" {
+			continue
+		}
+		target := &url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: "/"}
+		if domain := strings.TrimSpace(strings.TrimPrefix(cookie.Domain, ".")); domain != "" {
+			target.Host = domain
+		}
+		httpCookie := &http.Cookie{
+			Name:     cookie.Name,
+			Value:    cookie.Value,
+			Path:     lightpandaCookiePath(cookie.Path),
+			Domain:   strings.TrimSpace(cookie.Domain),
+			HttpOnly: cookie.HTTPOnly,
+			Secure:   cookie.Secure,
+		}
+		if cookie.Expires != nil {
+			httpCookie.Expires = *cookie.Expires
+		}
+		jar.SetCookies(target, []*http.Cookie{httpCookie})
+	}
+	return nil
+}
+
+func lightpandaProfileHeaders(profile *Profile) map[string]string {
+	if profile == nil || len(profile.Headers) == 0 {
+		return nil
+	}
+	headers := make(map[string]string, len(profile.Headers))
+	for name, value := range profile.Headers {
+		if strings.EqualFold(name, "Cookie") || strings.EqualFold(name, "User-Agent") {
+			continue
+		}
+		headers[http.CanonicalHeaderKey(strings.TrimSpace(name))] = value
+	}
+	return headers
+}
+
+func lightpandaProfileUserAgent(profile *Profile, fallback string) string {
+	if profile != nil && strings.TrimSpace(profile.UserAgent) != "" {
+		return strings.TrimSpace(profile.UserAgent)
+	}
+	return fallback
+}
+
+func lightpandaCookiePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "/"
+	}
+	return path
 }
 
 func (s *LightpandaService) userAgent() string {

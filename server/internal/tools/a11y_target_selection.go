@@ -31,19 +31,132 @@ type a11yActSubmitPlan struct {
 	KeySequences [][]string
 }
 
+type a11yConversationSearchPlan struct {
+	Open [][]string
+}
+
 type a11ySubmitConfirmation struct {
 	TypedValue string
 	InputToken string
 }
 
-var a11ySubmitConfirmationRetryDelay = 120 * time.Millisecond
-var a11yMessageConversationSettleDelay = 80 * time.Millisecond
+type a11yConversationClickPoint struct {
+	X float64
+	Y float64
+}
+
+type a11yConversationVisualHit struct {
+	Point      a11yruntime.NormalizedPoint
+	Confidence float64
+}
+
+var a11ySubmitConfirmationTimeout = 45 * time.Second
+var a11ySubmitConfirmationPollInterval = 1 * time.Second
+var a11yMessageConversationSettleDelay = 1 * time.Second
+var a11yMessageConversationConfirmationTimeout = 30 * time.Second
+var a11yMessageConversationConfirmationPollInterval = 1 * time.Second
+var a11yLocateConversationVisualHit = func(context.Context, string, string) (a11yConversationVisualHit, error) {
+	return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", nil)
+}
 
 func (s a11yTargetSelector) Provided() bool {
 	return strings.TrimSpace(s.Name) != "" || strings.TrimSpace(s.Role) != ""
 }
 
+func a11yConversationClickCacheKey(windowHint string, selectorName string) string {
+	return normalizeA11yWindowMatchValue(windowHint) + "|" + normalizeA11yTargetName(selectorName)
+}
+
+func (t *A11yTool) a11yConversationClickCacheGet(key string) (a11yConversationClickPoint, bool) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if len(t.clickCache) == 0 {
+		return a11yConversationClickPoint{}, false
+	}
+	point, ok := t.clickCache[key]
+	return point, ok
+}
+
+func (t *A11yTool) a11yConversationClickCacheSet(key string, point a11yConversationClickPoint) {
+	if strings.TrimSpace(key) == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.clickCache == nil {
+		t.clickCache = make(map[string]a11yConversationClickPoint)
+	}
+	t.clickCache[key] = point
+}
+
+func (t *A11yTool) a11yConversationClickCacheDelete(key string) {
+	if strings.TrimSpace(key) == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.clickCache) == 0 {
+		return
+	}
+	delete(t.clickCache, key)
+}
+
+func (t *A11yTool) a11yConversationClickCacheKeyForArgs(args map[string]interface{}, selector a11yTargetSelector, fallbackWindow string) string {
+	hint := a11yWindowQueryHintFromArgs(args)
+	if strings.TrimSpace(hint) == "" {
+		_, rememberedHint := t.effectiveWindowContext()
+		hint = rememberedHint
+	}
+	if strings.TrimSpace(hint) == "" {
+		hint = strings.TrimSpace(fallbackWindow)
+	}
+	return a11yConversationClickCacheKey(hint, selector.Name)
+}
+
+func (t *A11yTool) resolveActTarget(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (a11yruntime.TargetResolution, error) {
+	if resolver, ok := backend.(a11yruntime.TargetResolver); ok {
+		resolution, err := resolver.ResolveTarget(ctx, windowID, a11yruntime.TargetSelector{
+			Name: selector.Name,
+			Role: selector.Role,
+		})
+		if err == nil {
+			resolvedWindow := strings.TrimSpace(resolution.WindowID)
+			if resolvedWindow == "" {
+				resolvedWindow = strings.TrimSpace(windowID)
+			}
+			if resolution.RefMap == nil && resolution.Ref > 0 && strings.TrimSpace(resolution.Token) != "" {
+				resolution.RefMap = map[int]string{resolution.Ref: resolution.Token}
+			}
+			if resolution.WindowID == "" {
+				resolution.WindowID = resolvedWindow
+			}
+			if resolution.Tree != "" || len(resolution.RefMap) > 0 {
+				t.cacheSnapshotContext(resolvedWindow, resolution.RefMap, resolution.Tree)
+			}
+			return resolution, nil
+		}
+	}
+
+	ref, refMap, resolvedWindow, err := t.resolveActRefByTargetLegacy(ctx, backend, windowID, selector)
+	if err != nil {
+		return a11yruntime.TargetResolution{}, err
+	}
+	return a11yruntime.TargetResolution{
+		WindowID: resolvedWindow,
+		Ref:      ref,
+		RefMap:   refMap,
+	}, nil
+}
+
 func (t *A11yTool) resolveActRefByTarget(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (int, map[int]string, string, error) {
+	result, err := t.resolveActTarget(ctx, backend, windowID, selector)
+	if err != nil {
+		return 0, nil, strings.TrimSpace(windowID), err
+	}
+	return result.Ref, cloneA11yRefMap(result.RefMap), strings.TrimSpace(result.WindowID), nil
+}
+
+func (t *A11yTool) resolveActRefByTargetLegacy(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (int, map[int]string, string, error) {
 	t.mu.RLock()
 	cachedWindow := strings.TrimSpace(t.lastWindow)
 	cachedRefMap := cloneA11yRefMap(t.lastRefMap)
@@ -806,7 +919,7 @@ func a11ySnapshotRoleIsSetting(role string) bool {
 
 func a11ySnapshotRoleIsConversation(role string) bool {
 	switch normalizeA11yTargetRole(role) {
-	case "list_item", "tree_item", "row", "cell", "button", "link", "tab":
+	case "list_item", "tree_item", "row", "cell", "tab":
 		return true
 	default:
 		return false
@@ -917,25 +1030,361 @@ func (t *A11yTool) maybeActivateA11yMessageConversation(ctx context.Context, bac
 	if !selector.Provided() {
 		return strings.TrimSpace(windowID), nil
 	}
+	if fastWindow, fastErr, handled := t.tryA11yOrcaConversationFastPath(ctx, backend, args, strings.TrimSpace(windowID), selector, holdMS); handled {
+		if fastErr != nil {
+			return "", enrichA11yActionPhaseError(fastErr, "conversation", false)
+		}
+		return fastWindow, nil
+	}
 	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, windowID, selector)
 	if err != nil {
+		if fastWindow, fastErr, handled := t.tryA11yConversationSearchFallback(ctx, backend, args, strings.TrimSpace(valueOrDefault(resolvedWindow, windowID)), selector, holdMS, err); handled {
+			if fastErr != nil {
+				return "", enrichA11yActionPhaseError(fastErr, "conversation", false)
+			}
+			return fastWindow, nil
+		}
 		return "", enrichA11yActionPhaseError(err, "conversation", false)
 	}
-	result, err := backend.Act(ctx, resolvedWindow, ref, refMap, "click", "", holdMS)
+	confirmedWindow, confirmErr := t.activateA11yMessageConversationTarget(ctx, backend, resolvedWindow, ref, refMap, selector, holdMS)
+	if confirmErr != nil {
+		return "", enrichA11yActionPhaseError(confirmErr, "conversation", false)
+	}
+	return confirmedWindow, nil
+}
+
+func (t *A11yTool) tryA11yOrcaConversationFastPath(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, selector a11yTargetSelector, holdMS int) (string, error, bool) {
+	if !a11yAllowsOrcaConversationFastPath(backend, args, selector) {
+		return "", nil, false
+	}
+	resolvedWindow := strings.TrimSpace(windowID)
+	cacheKey := t.a11yConversationClickCacheKeyForArgs(args, selector, resolvedWindow)
+	if cachedPoint, ok := t.a11yConversationClickCacheGet(cacheKey); ok {
+		nextWindow, err := t.tryA11yConversationPointClick(ctx, backend, resolvedWindow, selector, holdMS, cachedPoint)
+		if err == nil {
+			return nextWindow, nil, true
+		}
+		t.a11yConversationClickCacheDelete(cacheKey)
+		if strings.TrimSpace(nextWindow) != "" {
+			resolvedWindow = strings.TrimSpace(nextWindow)
+		}
+	}
+	plans := a11yConversationSearchPlans(backend.HostOS())
+	if len(plans) == 0 {
+		return "", a11yruntime.NewError("target_not_found", "target selector did not match any interactive element", a11yTargetSelectorDetails(selector, nil)), true
+	}
+	var lastErr error = a11yruntime.NewError("target_not_found", "target selector did not match any interactive element", a11yTargetSelectorDetails(selector, nil))
+	for _, plan := range plans {
+		nextWindow, point, err := t.executeA11yOrcaConversationSearchPlan(ctx, backend, resolvedWindow, selector, holdMS, plan)
+		if err == nil {
+			if point != nil {
+				t.a11yConversationClickCacheSet(cacheKey, *point)
+			}
+			return nextWindow, nil, true
+		}
+		if !a11yIsTargetNotFound(err) {
+			return "", err, true
+		}
+		lastErr = err
+		if strings.TrimSpace(nextWindow) != "" {
+			resolvedWindow = strings.TrimSpace(nextWindow)
+		}
+	}
+	return "", lastErr, true
+}
+
+func (t *A11yTool) tryA11yConversationSearchFallback(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, selector a11yTargetSelector, holdMS int, originalErr error) (string, error, bool) {
+	if !a11yAllowsConversationSearchFallback(args, originalErr) {
+		return "", nil, false
+	}
+	plans := a11yConversationSearchPlans(backend.HostOS())
+	if len(plans) == 0 {
+		return "", nil, false
+	}
+	resolvedWindow := strings.TrimSpace(windowID)
+	lastErr := originalErr
+	for _, plan := range plans {
+		nextWindow, err := t.executeA11yConversationSearchPlan(ctx, backend, resolvedWindow, selector, holdMS, plan)
+		if err == nil {
+			return nextWindow, nil, true
+		}
+		lastErr = err
+		if strings.TrimSpace(nextWindow) != "" {
+			resolvedWindow = strings.TrimSpace(nextWindow)
+		}
+	}
+	return "", lastErr, true
+}
+
+func (t *A11yTool) executeA11yConversationSearchPlan(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int, plan a11yConversationSearchPlan) (string, error) {
+	resolvedWindow := strings.TrimSpace(windowID)
+	var err error
+	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, plan.Open, holdMS); err != nil {
+		return resolvedWindow, err
+	}
+	clearSequences := a11yConversationSearchClearSequences(backend.HostOS())
+	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, clearSequences, holdMS); err != nil {
+		return resolvedWindow, err
+	}
+	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, [][]string{{selector.Name}}, holdMS); err != nil {
+		return resolvedWindow, err
+	}
+	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, resolvedWindow, selector)
 	if err != nil {
-		return "", enrichA11yActionPhaseError(err, "conversation", false)
+		return resolvedWindow, err
 	}
-	resolvedWindow = valueOrDefault(result.WindowID, resolvedWindow)
-	t.syncWindowContext(resolvedWindow)
-	t.clearSnapshotRefs()
-	if a11yMessageConversationSettleDelay > 0 {
-		select {
-		case <-ctx.Done():
-			return resolvedWindow, ctx.Err()
-		case <-time.After(a11yMessageConversationSettleDelay):
+	return t.activateA11yMessageConversationTarget(ctx, backend, resolvedWindow, ref, refMap, selector, holdMS)
+}
+
+func (t *A11yTool) executeA11yOrcaConversationSearchPlan(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int, plan a11yConversationSearchPlan) (string, *a11yConversationClickPoint, error) {
+	resolvedWindow := strings.TrimSpace(windowID)
+	var err error
+	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, plan.Open, holdMS); err != nil {
+		return resolvedWindow, nil, err
+	}
+	clearSequences := a11yConversationSearchClearSequences(backend.HostOS())
+	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, clearSequences, holdMS); err != nil {
+		return resolvedWindow, nil, err
+	}
+	if resolvedWindow, err = t.sendA11yConversationSearchKeySequences(ctx, backend, resolvedWindow, [][]string{{selector.Name}}, holdMS); err != nil {
+		return resolvedWindow, nil, err
+	}
+	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, resolvedWindow, selector)
+	if err == nil {
+		nextWindow, confirmErr := t.activateA11yMessageConversationTarget(ctx, backend, resolvedWindow, ref, refMap, selector, holdMS)
+		return nextWindow, nil, confirmErr
+	}
+	if !a11yIsTargetNotFound(err) {
+		return resolvedWindow, nil, err
+	}
+	hit, locateErr := t.locateA11yConversationVisualHit(ctx, backend, resolvedWindow, selector)
+	if locateErr != nil {
+		return resolvedWindow, nil, locateErr
+	}
+	nextWindow, clickErr := t.tryA11yConversationPointClick(ctx, backend, resolvedWindow, selector, holdMS, a11yConversationClickPoint{
+		X: hit.Point.X,
+		Y: hit.Point.Y,
+	})
+	if clickErr != nil {
+		return nextWindow, nil, clickErr
+	}
+	return nextWindow, &a11yConversationClickPoint{X: hit.Point.X, Y: hit.Point.Y}, nil
+}
+
+func (t *A11yTool) sendA11yConversationSearchKeySequences(ctx context.Context, backend a11yruntime.Backend, windowID string, sequences [][]string, holdMS int) (string, error) {
+	resolvedWindow := strings.TrimSpace(windowID)
+	for _, keys := range sequences {
+		if len(keys) == 0 {
+			continue
+		}
+		result, err := backend.Key(ctx, resolvedWindow, keys, holdMS)
+		if err != nil {
+			return resolvedWindow, err
+		}
+		resolvedWindow = strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow))
+		t.syncWindowContext(resolvedWindow)
+		t.clearSnapshotRefs()
+		if err := a11yWaitForConversationSettle(ctx); err != nil {
+			return resolvedWindow, err
 		}
 	}
 	return resolvedWindow, nil
+}
+
+func (t *A11yTool) activateA11yMessageConversationTarget(ctx context.Context, backend a11yruntime.Backend, windowID string, ref int, refMap map[int]string, selector a11yTargetSelector, holdMS int) (string, error) {
+	result, err := backend.Act(ctx, windowID, ref, refMap, "click", "", holdMS)
+	if err != nil {
+		return "", err
+	}
+	resolvedWindow := valueOrDefault(result.WindowID, windowID)
+	t.syncWindowContext(resolvedWindow)
+	t.clearSnapshotRefs()
+	if err := a11yWaitForConversationSettle(ctx); err != nil {
+		return resolvedWindow, err
+	}
+	return t.confirmA11yMessageConversationActivated(ctx, backend, resolvedWindow, selector)
+}
+
+func (t *A11yTool) tryA11yConversationPointClick(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int, point a11yConversationClickPoint) (string, error) {
+	result, err := backend.ClickWindowPoint(ctx, windowID, a11yruntime.NormalizedPoint{X: point.X, Y: point.Y}, holdMS)
+	if err != nil {
+		return "", err
+	}
+	resolvedWindow := valueOrDefault(result.WindowID, windowID)
+	t.syncWindowContext(resolvedWindow)
+	t.clearSnapshotRefs()
+	if err := a11yWaitForConversationSettle(ctx); err != nil {
+		return resolvedWindow, err
+	}
+	return t.confirmA11yMessageConversationActivated(ctx, backend, resolvedWindow, selector)
+}
+
+func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (a11yConversationVisualHit, error) {
+	result, err := backend.Screenshot(ctx, windowID)
+	if err != nil {
+		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", a11yTargetSelectorDetails(selector, nil))
+	}
+	imagePath := strings.TrimSpace(result.ImagePath)
+	if imagePath == "" {
+		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", a11yTargetSelectorDetails(selector, nil))
+	}
+	hit, err := a11yLocateConversationVisualHit(ctx, imagePath, selector.Name)
+	if err != nil {
+		if runtimeErr, ok := err.(*a11yruntime.RuntimeError); ok {
+			return a11yConversationVisualHit{}, runtimeErr
+		}
+		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", a11yTargetSelectorDetails(selector, nil))
+	}
+	return hit, nil
+}
+
+func a11yAllowsConversationSearchFallback(args map[string]interface{}, err error) bool {
+	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+	if !ok || runtimeErr.Code != "target_not_found" {
+		return false
+	}
+	return a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "app_name", "appName", "application", "app")) ||
+		a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "window_title", "windowTitle", "title"))
+}
+
+func a11yLooksLikeFeishuWindowQuery(value string) bool {
+	normalizedValue := normalizeA11yWindowMatchValue(value)
+	if normalizedValue == "" {
+		return false
+	}
+	for _, alias := range []string{"feishu", "飞书", "lark"} {
+		if strings.Contains(normalizedValue, normalizeA11yWindowMatchValue(alias)) {
+			return true
+		}
+	}
+	return false
+}
+
+func a11yAllowsOrcaConversationFastPath(backend a11yruntime.Backend, args map[string]interface{}, selector a11yTargetSelector) bool {
+	if backend == nil || !strings.EqualFold(strings.TrimSpace(backend.HostOS()), "darwin") {
+		return false
+	}
+	if normalizeA11yTargetName(selector.Name) != normalizeA11yTargetName("Orca") {
+		return false
+	}
+	return a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "app_name", "appName", "application", "app")) ||
+		a11yLooksLikeFeishuWindowQuery(firstCompatString(args, "window_title", "windowTitle", "title"))
+}
+
+func a11yIsTargetNotFound(err error) bool {
+	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+	return ok && runtimeErr.Code == "target_not_found"
+}
+
+func a11yConversationSearchPlans(hostOS string) []a11yConversationSearchPlan {
+	modifier := "command"
+	if strings.EqualFold(strings.TrimSpace(hostOS), "windows") {
+		modifier = "ctrl"
+	}
+	return []a11yConversationSearchPlan{
+		{Open: [][]string{{modifier, "k"}}},
+		{Open: [][]string{{modifier, "f"}, {modifier, "f"}}},
+	}
+}
+
+func a11yConversationSearchClearSequences(hostOS string) [][]string {
+	modifier := "command"
+	if strings.EqualFold(strings.TrimSpace(hostOS), "windows") {
+		modifier = "ctrl"
+	}
+	return [][]string{
+		{modifier, "a"},
+		{"delete"},
+	}
+}
+
+func a11yWaitForConversationSettle(ctx context.Context) error {
+	if a11yMessageConversationSettleDelay <= 0 {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(a11yMessageConversationSettleDelay):
+		return nil
+	}
+}
+
+func a11yWaitForPollInterval(ctx context.Context, interval time.Duration) error {
+	if interval <= 0 {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(interval):
+		return nil
+	}
+}
+
+func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (string, error) {
+	timeout := a11yMessageConversationConfirmationTimeout
+	deadline := time.Now().Add(timeout)
+	for {
+		result, err := backend.SnapshotInteractive(ctx, windowID)
+		if err != nil {
+			return "", err
+		}
+		resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
+		t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
+		entries := parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
+		if !a11ySnapshotHasPendingConversationSearch(entries, selector.Name) && a11ySnapshotHasComposer(entries) {
+			return resolvedWindow, nil
+		}
+		if timeout <= 0 || time.Now().After(deadline) {
+			return "", a11yConversationConfirmationError(selector)
+		}
+		if err := a11yWaitForPollInterval(ctx, a11yMessageConversationConfirmationPollInterval); err != nil {
+			return "", err
+		}
+	}
+}
+
+func a11ySnapshotHasComposer(entries []a11ySnapshotEntry) bool {
+	for _, entry := range entries {
+		if a11ySnapshotRoleCouldBeComposer(entry.Role, entry.Label) {
+			return true
+		}
+	}
+	return false
+}
+
+func a11ySnapshotHasPendingConversationSearch(entries []a11ySnapshotEntry, selectorName string) bool {
+	terms := parseA11yTargetMatchTerms(selectorName)
+	if len(entries) == 0 || len(terms) == 0 {
+		return false
+	}
+	for _, entry := range entries {
+		if !a11ySnapshotRoleLooksLikeConversationSearch(entry.Role, entry.Label) {
+			continue
+		}
+		if a11yTargetNameMatchScore(entry.Label, terms) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func a11ySnapshotRoleLooksLikeConversationSearch(role string, label string) bool {
+	switch normalizeA11yTargetRole(role) {
+	case "search_field", "search":
+		return true
+	case "text_field", "combo_box":
+		return a11yTargetLabelContainsAny(normalizeA11yTargetName(label), "search", "find", "lookup", "搜索", "查找")
+	default:
+		return false
+	}
+}
+
+func a11yConversationConfirmationError(selector a11yTargetSelector) error {
+	details := a11yTargetSelectorDetails(selector, nil)
+	details["confirmation"] = "composer_not_ready"
+	return a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", details)
 }
 
 func a11yTargetLabelContainsAny(value string, terms ...string) bool {
@@ -1220,14 +1669,19 @@ func (t *A11yTool) a11ySubmitNeedsRetry(ctx context.Context, backend a11yruntime
 	if !t.a11ySubmitSnapshotShowsPendingTypedValue(ctx, backend, windowID, confirmation, expected) {
 		return false
 	}
-	if a11ySubmitConfirmationRetryDelay > 0 {
-		select {
-		case <-ctx.Done():
+	timeout := a11ySubmitConfirmationTimeout
+	deadline := time.Now().Add(timeout)
+	for {
+		if timeout <= 0 || time.Now().After(deadline) {
 			return true
-		case <-time.After(a11ySubmitConfirmationRetryDelay):
+		}
+		if err := a11yWaitForPollInterval(ctx, a11ySubmitConfirmationPollInterval); err != nil {
+			return true
+		}
+		if !t.a11ySubmitSnapshotShowsPendingTypedValue(ctx, backend, windowID, confirmation, expected) {
+			return false
 		}
 	}
-	return t.a11ySubmitSnapshotShowsPendingTypedValue(ctx, backend, windowID, confirmation, expected)
 }
 
 func (t *A11yTool) a11ySubmitSnapshotShowsPendingTypedValue(ctx context.Context, backend a11yruntime.Backend, windowID string, confirmation a11ySubmitConfirmation, expected string) bool {
@@ -1369,12 +1823,9 @@ func mergeA11yActionResults(primary a11yruntime.ActionResult, followup a11yrunti
 		merged.InputMethod = followup.InputMethod
 	}
 	if len(followup.Fallbacks) > 0 {
-		if len(merged.Fallbacks) == 0 {
-			merged.Fallbacks = append([]string(nil), followup.Fallbacks...)
-		} else {
-			merged.Fallbacks = append(merged.Fallbacks, followup.Fallbacks...)
-		}
+		merged.Fallbacks = mergeA11yFallbacks(merged.Fallbacks, followup.Fallbacks)
 	}
+	merged.ActionTelemetry = mergeA11yActionTelemetry(merged.ActionTelemetry, followup.ActionTelemetry)
 	if strings.TrimSpace(followup.OverlayMode) != "" {
 		merged.OverlayMode = followup.OverlayMode
 	}
@@ -1391,6 +1842,30 @@ func mergeA11yActionResults(primary a11yruntime.ActionResult, followup a11yrunti
 	if strings.TrimSpace(followup.Message) != "" {
 		merged.Message = "Host action completed and submitted"
 	}
+	return merged
+}
+
+func mergeA11yActionTelemetry(primary a11yruntime.ActionTelemetry, followup a11yruntime.ActionTelemetry) a11yruntime.ActionTelemetry {
+	merged := primary
+	if followup.SnapshotRevision > 0 {
+		merged.SnapshotRevision = followup.SnapshotRevision
+	}
+	if followup.CacheHit {
+		merged.CacheHit = true
+	}
+	if followup.NodeCount > 0 {
+		merged.NodeCount = followup.NodeCount
+	}
+	if followup.CandidateCount > 0 {
+		merged.CandidateCount = followup.CandidateCount
+	}
+	merged.TreeFetchMS += followup.TreeFetchMS
+	merged.TreeSerializeMS += followup.TreeSerializeMS
+	merged.QueryMS += followup.QueryMS
+	merged.ActionMS += followup.ActionMS
+	merged.VerificationMS += followup.VerificationMS
+	merged.EndToEndMS += followup.EndToEndMS
+	merged.Fallbacks = mergeA11yFallbacks(merged.Fallbacks, followup.Fallbacks)
 	return merged
 }
 

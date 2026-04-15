@@ -45,7 +45,7 @@ const (
 	webFetchDefaultJinaReaderTimeout = webFetchDefaultTimeout
 	webFetchMinReadableChars         = 240
 	webFetchDefaultUserAgent         = "Mozilla/5.0 (compatible; ZimaOS-Blue/1.0; +https://github.com/IceWhaleTech/ZimaOS-Blue)"
-	webFetchBrowserSessionTimeout    = 8 * time.Second
+	webFetchBrowserSessionTimeout    = webFetchDefaultTimeout
 
 	webFetchProxyProviderFirecrawl  = "firecrawl"
 	webFetchProxyProviderJinaReader = "jina_reader"
@@ -101,6 +101,7 @@ type WebFetchTool struct {
 	cache          map[string]webFetchCacheEntry
 	fetchGroup     singleflight.Group
 	orchestrator   *FetchOrchestrator
+	sessionCore    *webSessionCoreStore
 }
 
 type webFetchCacheEntry struct {
@@ -283,6 +284,7 @@ func NewWebFetchTool(config WebFetchConfig) *WebFetchTool {
 		nativeClient:   newWebFetchHTTPNativeClient(config),
 		documentReader: convertpkg.NewDocumentReader(),
 		cache:          make(map[string]webFetchCacheEntry),
+		sessionCore:    newWebSessionCoreStore(),
 	}
 	tool.orchestrator = newFetchOrchestrator(tool)
 	return tool
@@ -1012,14 +1014,22 @@ type webFetchBrowserSessionResult struct {
 	TargetID string
 }
 
-func (w *WebFetchTool) fetchViaLightpandaShim(ctx context.Context, targetURL, mode string) (webFetchPayload, error) {
+func (w *WebFetchTool) fetchViaLightpandaShim(ctx context.Context, targetURL, mode, browserTargetID string) (webFetchPayload, error) {
 	if w == nil || w.lightpandaShim == nil {
 		return webFetchPayload{}, errors.New("lightpanda shim is not available")
 	}
 	if host := webFetchHostForURL(targetURL); host != "" && !webFetchSupportsLightpandaHost(host) {
 		return webFetchPayload{}, fmt.Errorf("lightpanda shim is not supported for %s; use browser or browser_target_id", host)
 	}
-	doc, err := w.lightpandaShim.ReadDocument(ctx, targetURL, 0)
+	var (
+		doc *browser.LightpandaReadDocument
+		err error
+	)
+	if state, ok := w.loadSessionCore(ctx, targetURL, browserTargetID); ok {
+		doc, err = w.lightpandaShim.ReadDocumentWithProfile(ctx, targetURL, 0, sessionCoreAsBrowserProfile(state))
+	} else {
+		doc, err = w.lightpandaShim.ReadDocument(ctx, targetURL, 0)
+	}
 	if err != nil {
 		return webFetchPayload{}, err
 	}
@@ -1066,6 +1076,21 @@ func (w *WebFetchTool) fetchViaBrowserSessionDetailed(ctx context.Context, targe
 
 	browserCtx, cancel := w.browserSessionContext(ctx)
 	defer cancel()
+	if strings.TrimSpace(browserTargetID) == "" {
+		plannedRuntime := string(browser.SessionEngineDetailChromiumManaged)
+		if relayBackend, ok := w.browser.(relayURLAwareBrowserBackend); ok && relayBackend.UsesRelayFor(browserCtx, browserTargetID, targetURL) {
+			plannedRuntime = string(browser.SessionEngineDetailChromiumRelay)
+		}
+		browserCtx = WithWebExecutionPlan(browserCtx, ExecutionPlan{
+			Kind:           WebTaskKindOperate,
+			PrimaryRuntime: plannedRuntime,
+			Steps: []PlanStep{{
+				Kind:    WebTaskKindOperate,
+				Runtime: plannedRuntime,
+				Reason:  "retrieve planner selected browser runtime",
+			}},
+		})
+	}
 
 	nav, err := w.browser.Navigate(browserCtx, targetURL, browserTargetID)
 	if err != nil {
@@ -1571,12 +1596,17 @@ func (w *WebFetchTool) applyBrowserSessionCookies(ctx context.Context, normalize
 		return fmt.Errorf("failed to read browser session cookies: %w", err)
 	}
 	if strings.TrimSpace(cookieHeader) == "" {
+		w.rememberSessionCore(ctx, normalizedURL, opts.browserTargetID, webFetchStrategySession)
 		return nil
 	}
 	if existing := strings.TrimSpace(opts.extraHeaders[http.CanonicalHeaderKey("Cookie")]); existing != "" {
 		cookieHeader = mergeWebFetchCookieHeaders(cookieHeader, existing)
 	}
-	return setWebFetchHeader(opts.extraHeaders, "Cookie", cookieHeader)
+	if err := setWebFetchHeader(opts.extraHeaders, "Cookie", cookieHeader); err != nil {
+		return err
+	}
+	w.rememberSessionCore(ctx, normalizedURL, opts.browserTargetID, webFetchStrategySession)
+	return nil
 }
 
 func detectWebFetchAuthWall(statusCode int, finalURL, title, content string) (bool, string, string) {

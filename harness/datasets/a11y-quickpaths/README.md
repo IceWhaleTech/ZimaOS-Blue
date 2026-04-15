@@ -1,6 +1,6 @@
 # A11y Quick Paths
 
-This bundle evaluates deterministic desktop a11y quick paths on real macOS and Windows hosts.
+This bundle evaluates 24 deterministic desktop a11y quick paths on real macOS and Windows hosts.
 
 ## Scope
 
@@ -9,6 +9,9 @@ This bundle evaluates deterministic desktop a11y quick paths on real macOS and W
 - Browser native chrome control
 - File manager selection
 - Mail compose entry point
+- Window focus
+- Browser address typing
+- Settings and file-manager scrolling
 
 Each case asks the agent to return only the raw JSON from the final `blue a11y ...` call so Harness can score `target_hit` and `verification_passed` directly from `run.Result`.
 
@@ -39,4 +42,7 @@ The summary reports:
 
 - `success_rate`: share of cases with `verification_passed=true`
 - `accuracy_rate`: share of cases with `target_hit=true`
+- `cache_hit_rate`: share of cases where the runtime reused a warmed structured snapshot
+- `fallback_rate`: share of cases where fallback paths were triggered
+- latency percentile tables for native runtime and approximate LLM time
 - OS breakdown for `macos` and `windows`

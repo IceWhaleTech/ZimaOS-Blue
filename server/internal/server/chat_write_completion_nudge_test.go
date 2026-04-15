@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
@@ -594,11 +595,14 @@ func TestBuildArtifactWorkflowExecutionHint_ForConvertedDocxWorkflow_AllowsDirec
 	if !containsSubstring(hint, "prefer the native docx tool") {
 		t.Fatalf("expected docx hint, got=%q", hint)
 	}
+	if !containsSubstring(hint, "instead of convert") {
+		t.Fatalf("expected native-over-convert guidance, got=%q", hint)
+	}
 	if !containsSubstring(hint, "hand Markdown content directly") {
 		t.Fatalf("expected direct markdown handoff guidance, got=%q", hint)
 	}
-	if !containsSubstring(hint, "write Markdown first and then convert it") {
-		t.Fatalf("expected staged markdown conversion guidance, got=%q", hint)
+	if !containsSubstring(hint, "Only write Markdown first and then convert it") {
+		t.Fatalf("expected convert-fallback guidance, got=%q", hint)
 	}
 	if !containsSubstring(hint, "intermediate Markdown file does not complete the task") {
 		t.Fatalf("expected conversion completion guidance, got=%q", hint)
@@ -654,6 +658,9 @@ func TestBuildArtifactWorkflowExecutionHint_PrefersPPTXForPPTXArtifacts(t *testi
 	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the launch deck to launch_plan.pptx.")
 	if !containsSubstring(hint, "prefer the native pptx tool") {
 		t.Fatalf("expected pptx hint, got=%q", hint)
+	}
+	if !containsSubstring(hint, "helper script") {
+		t.Fatalf("expected pptx hint to reject helper-script-only completion, got=%q", hint)
 	}
 }
 
@@ -724,6 +731,56 @@ func TestBuildPostWorkspaceArtifactContinuationNudge_PrefersFinalConvertedDocxAf
 	}
 	if want := `Do not stop after listing files`; !containsSubstring(nudge, want) {
 		t.Fatalf("expected continuation nudge to keep task open until final artifact, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationNudge_PrefersFinalPPTXAfterHelperScriptWrite(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "write"},
+	}
+	toolResults := []llm.Message{
+		{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"path":"generate_qwen35_pptx.py","size":512,"success":true,"append":false}`},
+	}
+
+	nudge := buildPostWorkspaceArtifactContinuationNudge(
+		"Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.",
+		toolCalls,
+		toolResults,
+	)
+	if nudge == "" {
+		t.Fatal("expected continuation nudge after helper script write for direct pptx task")
+	}
+	if want := `Qwen3.5_Introduction.pptx`; !containsSubstring(nudge, want) {
+		t.Fatalf("expected continuation nudge to mention final pptx target %q, got=%q", want, nudge)
+	}
+	if want := `helper script`; !containsSubstring(strings.ToLower(nudge), want) {
+		t.Fatalf("expected continuation nudge to reject helper-script completion, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactContinuationTools_PrefersPPTXAfterHelperScriptWrite(t *testing.T) {
+	reduced := buildPostWorkspaceArtifactContinuationTools([]llm.Tool{
+		{Name: "pptx"},
+		{Name: "file_write"},
+		{Name: "edit"},
+		{Name: "web_query"},
+	}, "Create an introduction deck for Qwen3.5 and save it to Qwen3.5_Introduction.pptx.",
+		[]llm.ToolCall{
+			{ID: "call-1", Name: "write", Arguments: `{"path":"generate_qwen35_pptx.py","content":"print('hello')"}`},
+		},
+		[]llm.Message{
+			{Role: llm.RoleTool, ToolCallID: "call-1", Content: `{"success":true,"path":"generate_qwen35_pptx.py","append":false}`},
+		},
+	)
+
+	if len(reduced) == 0 || reduced[0].Name != "pptx" {
+		t.Fatalf("expected continuation tools to prioritize pptx after helper script write, got=%v", reduced)
+	}
+	if !containsLLMToolName(reduced, "file_write") {
+		t.Fatalf("expected continuation tools to preserve file_write until the final pptx exists, got=%v", reduced)
+	}
+	if containsLLMToolName(reduced, "web_query") {
+		t.Fatalf("expected continuation tools to drop unrelated web_query after helper script detour, got=%v", reduced)
 	}
 }
 

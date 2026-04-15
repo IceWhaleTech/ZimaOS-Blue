@@ -1596,14 +1596,14 @@ const showEmptyState = computed(() => {
           <div
             v-for="(detail, index) in visibleDetails"
             :key="index"
-            class="px-3.5 py-2.5 text-sm group"
+            class="result-detail-row px-3.5 py-2.5 text-sm group"
             :class="
               detail.parsedObject || detail.isMultiline
-                ? 'flex flex-col gap-1.5'
-                : 'flex items-center justify-between'
+                ? 'result-detail-row--stacked flex flex-col gap-1.5'
+                : 'result-detail-row--inline grid grid-cols-[fit-content(8rem)_minmax(0,1fr)] items-center gap-3'
             "
           >
-            <span class="text-gray-400 dark:text-gray-500 text-xs flex-shrink-0">{{
+            <span class="result-detail-label text-gray-400 dark:text-gray-500 text-xs">{{
               tLabel(detail.label)
             }}</span>
             <!-- Nested table for map/object values -->
@@ -1614,11 +1614,13 @@ const showEmptyState = computed(() => {
               <div
                 v-for="(subVal, subKey) in detail.parsedObject"
                 :key="String(subKey)"
-                class="flex items-center justify-between px-3 py-1.5 text-xs"
+                class="result-detail-subrow grid grid-cols-[fit-content(8rem)_minmax(0,1fr)] items-center gap-3 px-3 py-1.5 text-xs"
               >
-                <span class="text-gray-400 dark:text-gray-500">{{ tLabel(String(subKey)) }}</span>
+                <span class="result-detail-label text-gray-400 dark:text-gray-500">{{
+                  tLabel(String(subKey))
+                }}</span>
                 <span
-                  class="result-detail-value text-gray-700 dark:text-gray-300 font-mono max-w-[70%] break-all"
+                  class="result-detail-value text-gray-700 dark:text-gray-300 font-mono min-w-0 break-all"
                   >{{ toDisplayString(subVal) }}</span
                 >
               </div>
@@ -1643,9 +1645,12 @@ const showEmptyState = computed(() => {
                 >{{ t('resultCard.openLink', 'Open') }} ↗</a
               >
             </div>
-            <div v-else-if="detail.isLocalPath" class="flex min-w-0 items-center gap-3">
+            <div
+              v-else-if="detail.isLocalPath"
+              class="result-detail-content flex min-w-0 items-center justify-end gap-3"
+            >
               <span
-                class="min-w-0 flex-1 break-all text-gray-700 dark:text-gray-300 font-mono text-xs"
+                class="min-w-0 flex-1 break-all text-right text-gray-700 dark:text-gray-300 font-mono text-xs"
               >
                 {{ tDetailValue(detail.label, detail.value)
                 }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template>
@@ -1658,14 +1663,17 @@ const showEmptyState = computed(() => {
               </button>
             </div>
             <!-- Simple string value -->
-            <div v-else class="flex items-center gap-1.5">
-              <span class="text-gray-700 dark:text-gray-300 font-mono text-xs"
+            <div
+              v-else
+              class="result-detail-content flex min-w-0 items-center justify-end gap-1.5"
+            >
+              <span class="min-w-0 break-all text-right text-gray-700 dark:text-gray-300 font-mono text-xs"
                 >{{ tDetailValue(detail.label, detail.value)
                 }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span
               >
               <button
                 v-if="detail.copyable"
-                class="p-0.5 rounded opacity-0 group-hover:opacity-100 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all"
+                class="shrink-0 rounded p-0.5 opacity-0 transition-all hover:bg-gray-200 group-hover:opacity-100 dark:hover:bg-gray-700"
                 :title="
                   copiedIndex === index
                     ? t('resultCard.copied', 'Copied!')
@@ -1736,7 +1744,17 @@ const showEmptyState = computed(() => {
 </template>
 
 <style scoped>
+.result-detail-label {
+  overflow-wrap: anywhere;
+}
+
+.result-detail-content {
+  min-width: 0;
+}
+
 .result-detail-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
   text-align: end;
 }
 

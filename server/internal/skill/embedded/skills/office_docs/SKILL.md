@@ -137,6 +137,43 @@ blue a11y action=screenshot
 - Do not try to use `docx`, `xlsx`, `pptx`, or `pdf` to click through native application chrome; that is `a11y` work.
 - Do not use `a11y` as a substitute for structured file edits when the artifact can be produced directly with `docx`, `xlsx`, `pptx`, or `pdf`.
 
+## A11y Fast Path
+
+Think of host automation as `snapshot cache -> index -> query -> runtime`.
+
+- Treat the LLM as a semantic compiler, not the UI controller.
+- Prefer scenario actions first: `message`, `type`, `select`, `click`, `toggle`.
+- Prefer `focus` plus a scenario action over taking a snapshot when the user intent is already specific.
+- Prefer `snapshot_interactive` only for debugging, ambiguity resolution, or when you need a human-readable ref map.
+- Treat full `snapshot` as a last resort for label-anchor or structural debugging, not the default fast path.
+- Reuse warmed windows when possible; avoid repeated list/snapshot cycles if `app_name`, `window_title`, or the focused window already identify the host target.
+
+## Fallback Discipline
+
+- Start with the narrowest deterministic selector you already know: `app_name`, `window_title`, `conversation`, `control`, or `setting`.
+- If the scenario action can express the goal, do not drop to raw `act` or `ref` first.
+- If a fast path fails, inspect whether it was a cache miss, ambiguity, or runtime fallback before escalating to a full snapshot.
+- Keep OCR and broad visual fallbacks for verification or the final recovery step; do not pay that cost early when the host tree is enough.
+- When reporting or reviewing a11y work, include latency percentiles (`P50/P90/P99`), cache-hit ratio, and fallback ratio so future optimizations stay measurable.
+
+## Post-Task Reflection
+
+When the task changes a11y runtime behavior or benchmarks, capture reusable lessons with `blue self_reflect` after verification:
+
+```bash
+blue self_reflect goal="Upgrade a11y runtime cache/index path" \
+  final_status=completed \
+  result_summary="Added structured snapshot cache, query runtime, telemetry, and quickpaths coverage" \
+  verification_output="go test ./internal/a11y passed; python3 -m unittest scripts/a11y_quickpaths_report_test.py passed" \
+  --json
+```
+
+Use the reflection output to record:
+
+- what made the fast path faster
+- which fallback paths still triggered
+- which benchmark or telemetry evidence proved the change
+
 ---
 
 ## Quick Paths (High Success)

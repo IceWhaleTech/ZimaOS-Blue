@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
 )
@@ -106,6 +107,59 @@ func TestResolveA11yTargetRef_PrefersConversationRolePriorityBeforeAmbiguity(t *
 	}
 	if ref != 2 {
 		t.Fatalf("ref = %d, want 2 for preferred conversation role", ref)
+	}
+}
+
+func TestResolveA11yTargetRef_ConversationRoleDoesNotTreatGenericButtonAsConversation(t *testing.T) {
+	entries := parseA11ySnapshotEntries("@1 [button] \"Orca\"")
+
+	_, err := resolveA11yTargetRef(entries, a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err == nil {
+		t.Fatal("resolveA11yTargetRef() error = nil, want target_not_found")
+	}
+	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+	if !ok {
+		t.Fatalf("error type = %T, want *RuntimeError", err)
+	}
+	if runtimeErr.Code != "target_not_found" {
+		t.Fatalf("code = %q, want target_not_found", runtimeErr.Code)
+	}
+}
+
+func TestA11yConversationSearchPlans_PrefersPlatformShortcuts(t *testing.T) {
+	darwinPlans := a11yConversationSearchPlans("darwin")
+	if len(darwinPlans) != 2 {
+		t.Fatalf("len(darwinPlans) = %d, want 2", len(darwinPlans))
+	}
+	if got := darwinPlans[0].Open; len(got) != 1 || len(got[0]) != 2 || got[0][0] != "command" || got[0][1] != "k" {
+		t.Fatalf("darwinPlans[0].Open = %#v, want [[command k]]", got)
+	}
+	if got := darwinPlans[1].Open; len(got) != 2 || len(got[0]) != 2 || len(got[1]) != 2 || got[0][0] != "command" || got[0][1] != "f" || got[1][0] != "command" || got[1][1] != "f" {
+		t.Fatalf("darwinPlans[1].Open = %#v, want [[command f] [command f]]", got)
+	}
+
+	windowsPlans := a11yConversationSearchPlans("windows")
+	if len(windowsPlans) != 2 {
+		t.Fatalf("len(windowsPlans) = %d, want 2", len(windowsPlans))
+	}
+	if got := windowsPlans[0].Open; len(got) != 1 || len(got[0]) != 2 || got[0][0] != "ctrl" || got[0][1] != "k" {
+		t.Fatalf("windowsPlans[0].Open = %#v, want [[ctrl k]]", got)
+	}
+	if got := windowsPlans[1].Open; len(got) != 2 || len(got[0]) != 2 || len(got[1]) != 2 || got[0][0] != "ctrl" || got[0][1] != "f" || got[1][0] != "ctrl" || got[1][1] != "f" {
+		t.Fatalf("windowsPlans[1].Open = %#v, want [[ctrl f] [ctrl f]]", got)
+	}
+}
+
+func TestA11yAllowsConversationSearchFallback_OnlyForFeishuAliasesAndTargetNotFound(t *testing.T) {
+	notFoundErr := a11yruntime.NewError("target_not_found", "missing", nil)
+	if !a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Feishu,飞书,Lark"}, notFoundErr) {
+		t.Fatal("expected Feishu aliases to enable conversation search fallback")
+	}
+	if a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Slack"}, notFoundErr) {
+		t.Fatal("expected non-Feishu app aliases to skip conversation search fallback")
+	}
+	if a11yAllowsConversationSearchFallback(map[string]interface{}{"app_name": "Feishu"}, a11yruntime.NewError("ambiguous_target", "ambiguous", nil)) {
+		t.Fatal("expected non-target_not_found errors to skip conversation search fallback")
 	}
 }
 
@@ -867,8 +921,8 @@ func TestA11yToolExecute_ActIntentMessageHonorsExplicitSubmitFalse(t *testing.T)
 	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "click" || backend.actTypeHistory[1] != "type" {
 		t.Fatalf("actTypeHistory = %#v, want [click type]", backend.actTypeHistory)
 	}
-	if len(backend.keyHistory) != 0 {
-		t.Fatalf("keyHistory = %#v, want no submit fallback when submit=false", backend.keyHistory)
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want one Orca fast-path search sequence when submit=false", backend.keyHistory)
 	}
 
 	var out map[string]interface{}
@@ -1042,6 +1096,616 @@ func TestA11yToolExecute_ActionMessageAliasUsesTopLevelConversationAndDefaultsTo
 	}
 }
 
+func TestA11yToolExecute_ActionMessageAliasStopsWhenConversationSearchRemainsFocused(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-orca-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-orca-conversation",
+				},
+			},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [search_field] \"Orca\"\n@2 [list_item] \"Orca\"",
+			RefMap: map[int]string{
+				1: "token-search",
+				2: "token-orca-conversation",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "啊啊，Orca！啊啊Blueaaa.aa",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 1 || backend.actTypeHistory[0] != "click" {
+		t.Fatalf("actTypeHistory = %#v, want [click]", backend.actTypeHistory)
+	}
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want one Orca fast-path search sequence before confirmation failure", backend.keyHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error"] != "conversation switch could not be confirmed" {
+		t.Fatalf("error = %v, want conversation switch could not be confirmed", out["error"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasStopsWhenConversationSearchStillContainsTarget(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "你好，Orca",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 1 || backend.actTypeHistory[0] != "click" {
+		t.Fatalf("actTypeHistory = %#v, want [click]", backend.actTypeHistory)
+	}
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want one Orca fast-path search sequence before confirmation failure", backend.keyHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error"] != "conversation switch could not be confirmed" {
+		t.Fatalf("error = %v, want conversation switch could not be confirmed", out["error"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasDoesNotSendWhenConversationOnlyMatchesButton(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-orca-button",
+				2: "token-editor",
+				3: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "你好，Orca",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no click/type/submit when conversation is not found", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "target_not_found" {
+		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasFallsBackToFeishuShortcutSearchWhenDirectConversationMatchIsMissing(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Echo\"\n@2 [list_item] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-echo-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Echo",
+		"value":        "你好，Echo",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want 4 search key steps", backend.keyHistory)
+	}
+	if want := []string{"command", "k"}; len(backend.keyHistory[0]) != len(want) || backend.keyHistory[0][0] != want[0] || backend.keyHistory[0][1] != want[1] {
+		t.Fatalf("keyHistory[0] = %#v, want %v", backend.keyHistory[0], want)
+	}
+	if want := []string{"command", "a"}; len(backend.keyHistory[1]) != len(want) || backend.keyHistory[1][0] != want[0] || backend.keyHistory[1][1] != want[1] {
+		t.Fatalf("keyHistory[1] = %#v, want %v", backend.keyHistory[1], want)
+	}
+	if want := []string{"delete"}; len(backend.keyHistory[2]) != len(want) || backend.keyHistory[2][0] != want[0] {
+		t.Fatalf("keyHistory[2] = %#v, want %v", backend.keyHistory[2], want)
+	}
+	if want := []string{"Echo"}; len(backend.keyHistory[3]) != len(want) || backend.keyHistory[3][0] != want[0] {
+		t.Fatalf("keyHistory[3] = %#v, want %v", backend.keyHistory[3], want)
+	}
+	if len(backend.actTypeHistory) != 3 || backend.actTypeHistory[0] != "click" || backend.actTypeHistory[1] != "type" || backend.actTypeHistory[2] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [click type submit]", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "Host action completed and submitted" {
+		t.Fatalf("message = %v, want Host action completed and submitted", out["message"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasShortcutSearchDoesNotTypeBodyWhenConversationStillMissing(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Echo",
+		"value":        "你好，Echo",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no click/type/submit when shortcut search still cannot resolve conversation", backend.actTypeHistory)
+	}
+	if len(backend.keyHistory) == 0 {
+		t.Fatal("keyHistory = 0, want shortcut search attempts before failing closed")
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "target_not_found" {
+		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasUsesCachedOrcaPointBeforeShortcutSearch(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	key := a11yConversationClickCacheKey(a11yWindowQueryHint("", "Feishu,飞书,Lark"), "Orca")
+	tool.clickCache = map[string]a11yConversationClickPoint{
+		key: {X: 0.18, Y: 0.27},
+	}
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+		"value":        "你好，Orca",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.pointClickHistory) != 1 {
+		t.Fatalf("pointClickHistory = %#v, want one cached click", backend.pointClickHistory)
+	}
+	if len(backend.keyHistory) != 0 {
+		t.Fatalf("keyHistory = %#v, want no shortcut search when cache is valid", backend.keyHistory)
+	}
+	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [type submit]", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "Host action completed and submitted" {
+		t.Fatalf("message = %v, want Host action completed and submitted", out["message"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasInvalidatesStaleOrcaPointCacheAndRefreshesViaVisualFallback(t *testing.T) {
+	prevLocate := a11yLocateConversationVisualHit
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	a11yMessageConversationConfirmationTimeout = 0
+	a11yLocateConversationVisualHit = func(context.Context, string, string) (a11yConversationVisualHit, error) {
+		return a11yConversationVisualHit{
+			Point:      a11yruntime.NormalizedPoint{X: 0.61, Y: 0.34},
+			Confidence: 0.93,
+		}, nil
+	}
+	defer func() {
+		a11yLocateConversationVisualHit = prevLocate
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+	}()
+
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		screenshotImagePath: "/tmp/feishu-orca-search.png",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	key := a11yConversationClickCacheKey(a11yWindowQueryHint("", "Feishu,飞书,Lark"), "Orca")
+	tool.clickCache = map[string]a11yConversationClickPoint{
+		key: {X: 0.12, Y: 0.21},
+	}
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+		"value":        "你好，Orca",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.pointClickHistory) != 2 {
+		t.Fatalf("pointClickHistory = %#v, want cached click then visual click", backend.pointClickHistory)
+	}
+	if backend.pointClickHistory[1].X != 0.61 || backend.pointClickHistory[1].Y != 0.34 {
+		t.Fatalf("visual click = %#v, want refreshed point", backend.pointClickHistory[1])
+	}
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want one shortcut search attempt after stale cache", backend.keyHistory)
+	}
+	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [type submit]", backend.actTypeHistory)
+	}
+	if got, ok := tool.clickCache[key]; !ok || got.X != 0.61 || got.Y != 0.34 {
+		t.Fatalf("clickCache[%q] = %#v, want refreshed visual point", key, got)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "Host action completed and submitted" {
+		t.Fatalf("message = %v, want Host action completed and submitted", out["message"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasFailsClosedWhenOrcaVisualFallbackIsAmbiguous(t *testing.T) {
+	prevLocate := a11yLocateConversationVisualHit
+	a11yLocateConversationVisualHit = func(context.Context, string, string) (a11yConversationVisualHit, error) {
+		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", map[string]interface{}{
+			"target_name": "Orca",
+		})
+	}
+	defer func() { a11yLocateConversationVisualHit = prevLocate }()
+
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		screenshotImagePath: "/tmp/feishu-orca-search.png",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+		"value":        "你好，Orca",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.pointClickHistory) != 0 {
+		t.Fatalf("pointClickHistory = %#v, want no click when visual fallback is ambiguous", backend.pointClickHistory)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no body typing when visual fallback is ambiguous", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "target_not_found" {
+		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasOrcaVisualFastPathOnlyRunsOnDarwin(t *testing.T) {
+	visualCalls := 0
+	prevLocate := a11yLocateConversationVisualHit
+	a11yLocateConversationVisualHit = func(context.Context, string, string) (a11yConversationVisualHit, error) {
+		visualCalls++
+		return a11yConversationVisualHit{
+			Point:      a11yruntime.NormalizedPoint{X: 0.61, Y: 0.34},
+			Confidence: 0.93,
+		}, nil
+	}
+	defer func() { a11yLocateConversationVisualHit = prevLocate }()
+
+	backend := &a11yCompatBackend{
+		hostOS: "windows",
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "windows",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "windows",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "windows",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "windows",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+		"value":        "你好，Orca",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if visualCalls != 0 {
+		t.Fatalf("visualCalls = %d, want 0 on non-darwin hosts", visualCalls)
+	}
+	if len(backend.pointClickHistory) != 0 {
+		t.Fatalf("pointClickHistory = %#v, want no visual point click on non-darwin hosts", backend.pointClickHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "target_not_found" {
+		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
+	}
+}
+
 func TestA11yToolExecute_ActionTypeAliasUsesTopLevelConversationAndDefaultsToDraftOnly(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{
@@ -1086,8 +1750,8 @@ func TestA11yToolExecute_ActionTypeAliasUsesTopLevelConversationAndDefaultsToDra
 	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "click" || backend.actTypeHistory[1] != "type" {
 		t.Fatalf("actTypeHistory = %#v, want [click type]", backend.actTypeHistory)
 	}
-	if len(backend.keyHistory) != 0 {
-		t.Fatalf("keyHistory = %#v, want no submit fallback by default", backend.keyHistory)
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want one Orca fast-path search sequence by default", backend.keyHistory)
 	}
 
 	var out map[string]interface{}
@@ -1799,6 +2463,15 @@ func TestA11yToolExecute_TypeWithSubmitFallsBackToEnterWhenLikelySendButtonFails
 }
 
 func TestA11yToolExecute_TypeWithSubmitFallsBackWhenPostSubmitSnapshotStillShowsTypedValue(t *testing.T) {
+	prevTimeout := a11ySubmitConfirmationTimeout
+	prevPoll := a11ySubmitConfirmationPollInterval
+	a11ySubmitConfirmationTimeout = time.Second
+	a11ySubmitConfirmationPollInterval = time.Second
+	defer func() {
+		a11ySubmitConfirmationTimeout = prevTimeout
+		a11ySubmitConfirmationPollInterval = prevPoll
+	}()
+
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{
 			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
@@ -1993,6 +2666,15 @@ func TestA11yToolExecute_TypeWithSubmitFallsBackToPlatformChordAfterEnterFailure
 }
 
 func TestA11yToolExecute_TypeWithSubmitFailsWhenAllFallbacksLeaveTypedValuePending(t *testing.T) {
+	prevTimeout := a11ySubmitConfirmationTimeout
+	prevPoll := a11ySubmitConfirmationPollInterval
+	a11ySubmitConfirmationTimeout = time.Second
+	a11ySubmitConfirmationPollInterval = time.Second
+	defer func() {
+		a11ySubmitConfirmationTimeout = prevTimeout
+		a11ySubmitConfirmationPollInterval = prevPoll
+	}()
+
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{
 			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
@@ -2155,5 +2837,93 @@ func TestA11yToolExecute_TypeWithSubmitTargetSelectorUsesSubmitAction(t *testing
 	}
 	if out["message"] != "Host action completed and submitted" {
 		t.Fatalf("message = %v, want Host action completed and submitted", out["message"])
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_PollsUntilComposerReady(t *testing.T) {
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yMessageConversationConfirmationPollInterval
+	a11yMessageConversationConfirmationTimeout = 2 * time.Second
+	a11yMessageConversationConfirmationPollInterval = time.Second
+	defer func() {
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yMessageConversationConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [list_item] \"Orca\"",
+				RefMap:   map[int]string{1: "token-search", 2: "token-orca"},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(context.Background(), backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if backend.interactiveCalls != 2 {
+		t.Fatalf("interactiveCalls = %d, want 2 polls", backend.interactiveCalls)
+	}
+}
+
+func TestA11ySubmitNeedsRetry_PollsUntilPendingTextClears(t *testing.T) {
+	prevTimeout := a11ySubmitConfirmationTimeout
+	prevPoll := a11ySubmitConfirmationPollInterval
+	a11ySubmitConfirmationTimeout = 3 * time.Second
+	a11ySubmitConfirmationPollInterval = time.Second
+	defer func() {
+		a11ySubmitConfirmationTimeout = prevTimeout
+		a11ySubmitConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"你好，Orca\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"你好，Orca\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	needsRetry := tool.a11ySubmitNeedsRetry(context.Background(), backend, "win-feishu", a11ySubmitConfirmation{
+		TypedValue: "你好，Orca",
+		InputToken: "token-editor",
+	})
+	if needsRetry {
+		t.Fatal("a11ySubmitNeedsRetry() = true, want false after polling clears pending text")
+	}
+	if backend.interactiveCalls != 3 {
+		t.Fatalf("interactiveCalls = %d, want 3 polls", backend.interactiveCalls)
 	}
 }

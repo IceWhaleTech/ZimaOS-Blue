@@ -4551,6 +4551,7 @@ export default mergeHarnessLocale('ga-IE', {
   resultCard: {
     labels: {
       backend: 'Inneall',
+      path: 'Conair',
     },
     values: {
       strategy: {
@@ -4559,6 +4560,8 @@ export default mergeHarnessLocale('ga-IE', {
     },
     messages: {
       no_result_data: 'Níl sonraí toraidh ann',
+      file_written_successfully: 'Scriobhadh an comhad go rathúil',
+      document_converted: 'Doiciméad tiontaithe',
     },
     warnings: {
       listing_truncated: 'Gearradh an liosta; cúng an cosán nó méadaigh max_entries.',

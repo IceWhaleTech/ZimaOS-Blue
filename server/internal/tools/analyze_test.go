@@ -129,6 +129,11 @@ type mockBrowserBackend struct {
 	navCalls      int
 	a11yCalls     int
 	waitIdleCalls int
+	exportedState *SessionCoreState
+	exportErr     error
+	applyStateErr error
+	exportCalls   int
+	appliedStates []SessionCoreState
 }
 
 func (m *mockBrowserBackend) Start(_ context.Context) error { return m.startErr }
@@ -164,6 +169,24 @@ func (m *mockBrowserBackend) CookieHeader(_ context.Context, targetID, url strin
 	m.cookieTabID = targetID
 	m.cookieURL = url
 	return m.cookieValue, m.cookieErr
+}
+func (m *mockBrowserBackend) ExportSessionState(_ context.Context, _ string, _ string) (*SessionCoreState, error) {
+	m.exportCalls++
+	if m.exportErr != nil {
+		return nil, m.exportErr
+	}
+	if m.exportedState == nil {
+		return nil, nil
+	}
+	cloned := cloneSessionCoreState(*m.exportedState)
+	return &cloned, nil
+}
+func (m *mockBrowserBackend) ApplySessionState(_ context.Context, _ string, _ string, state SessionCoreState) error {
+	if m.applyStateErr != nil {
+		return m.applyStateErr
+	}
+	m.appliedStates = append(m.appliedStates, cloneSessionCoreState(state))
+	return nil
 }
 func (m *mockBrowserBackend) ObserveNetwork(_ context.Context, _ string, _ int, _ bool) (BrowserObservedNetworkResult, error) {
 	return m.observed, m.observeErr

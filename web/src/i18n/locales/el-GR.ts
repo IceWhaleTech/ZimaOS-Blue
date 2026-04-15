@@ -4579,6 +4579,7 @@ export default mergeHarnessLocale('el-GR', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Διαδρομή',
     },
     values: {
       strategy: {
@@ -4587,6 +4588,8 @@ export default mergeHarnessLocale('el-GR', {
     },
     messages: {
       no_result_data: 'Δεν υπάρχουν δεδομένα αποτελέσματος',
+      file_written_successfully: 'Το αρχείο γράφτηκε με επιτυχία',
+      document_converted: 'Το έγγραφο μετατράπηκε',
     },
     warnings: {
       listing_truncated: 'Η λίστα περικόπηκε. Περιορίστε τη διαδρομή ή αυξήστε το max_entries.',

@@ -316,6 +316,92 @@ func (b *HybridCapabilityBrowserBackend) chromiumForTarget(ctx context.Context, 
 	return nil
 }
 
+func (b *HybridCapabilityBrowserBackend) explicitPlannedRuntime(ctx context.Context) string {
+	plan, ok := WebExecutionPlanFromContext(ctx)
+	if !ok {
+		return ""
+	}
+	if strings.TrimSpace(plan.PrimaryRuntime) != "" {
+		return strings.TrimSpace(plan.PrimaryRuntime)
+	}
+	if len(plan.Steps) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(plan.Steps[0].Runtime)
+}
+
+func (b *HybridCapabilityBrowserBackend) plannedChromiumBackend(ctx context.Context, rawURL string) sessionBrowserBackend {
+	switch strings.TrimSpace(b.explicitPlannedRuntime(ctx)) {
+	case string(browser.SessionEngineDetailChromiumRelay), webAccessLaneBrowser + ":relay":
+		if b.relay != nil && b.relayAvailable(ctx) {
+			return b.relay
+		}
+		return b.managed
+	case string(browser.SessionEngineDetailChromiumManaged), webAccessLaneBrowser + ":managed":
+		if b.managed != nil {
+			return b.managed
+		}
+		if b.relayAvailable(ctx) {
+			return b.relay
+		}
+		return nil
+	default:
+		primary, _ := b.chromiumCandidatesForNewSession(ctx, rawURL)
+		return primary
+	}
+}
+
+func (b *HybridCapabilityBrowserBackend) ExportSessionState(ctx context.Context, targetID string, rawURL string) (*SessionCoreState, error) {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
+		return nil, unsupportedLightpandaAction("session export")
+	default:
+		chromiumBackend := b.chromiumForTarget(ctx, targetID)
+		if chromiumBackend == nil {
+			chromiumBackend = b.plannedChromiumBackend(ctx, rawURL)
+		}
+		exporter, ok := chromiumBackend.(sessionStateBrowserBackend)
+		if !ok || exporter == nil {
+			return nil, fmt.Errorf("session export not supported")
+		}
+		return exporter.ExportSessionState(ctx, targetID, rawURL)
+	}
+}
+
+func (b *HybridCapabilityBrowserBackend) ApplySessionState(ctx context.Context, targetID string, rawURL string, state SessionCoreState) error {
+	switch b.targetDetail(ctx, targetID) {
+	case browser.SessionEngineDetailLightpandaShim, browser.SessionEngineDetailLightpandaBinary:
+		return unsupportedLightpandaAction("session apply")
+	default:
+		chromiumBackend := b.chromiumForTarget(ctx, targetID)
+		if chromiumBackend == nil {
+			chromiumBackend = b.plannedChromiumBackend(ctx, rawURL)
+		}
+		applier, ok := chromiumBackend.(sessionStateBrowserBackend)
+		if !ok || applier == nil {
+			return fmt.Errorf("session apply not supported")
+		}
+		return applier.ApplySessionState(ctx, targetID, rawURL, state)
+	}
+}
+
+func (b *HybridCapabilityBrowserBackend) MirrorSessionState(ctx context.Context, rawURL string, state SessionCoreState) error {
+	if b == nil {
+		return nil
+	}
+	var errs []error
+	for _, candidate := range b.chromiumCandidateList(rawURL) {
+		applier, ok := candidate.(sessionStateBrowserBackend)
+		if !ok || applier == nil {
+			continue
+		}
+		if err := applier.ApplySessionState(ctx, "", rawURL, state); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
 func (b *HybridCapabilityBrowserBackend) sessionInfoForTarget(ctx context.Context, targetID string) (*browser.SessionInfo, error) {
 	switch b.targetDetail(ctx, targetID) {
 	case browser.SessionEngineDetailLightpandaShim:
@@ -393,6 +479,25 @@ func (b *HybridCapabilityBrowserBackend) Navigate(ctx context.Context, rawURL st
 		return b.lightpandaBinary.Navigate(ctx, rawURL, targetID)
 	case browser.SessionEngineDetailChromiumManaged, browser.SessionEngineDetailChromiumRelay:
 		return b.navigateChromium(ctx, rawURL, targetID)
+	}
+
+	if strings.TrimSpace(targetID) == "" {
+		switch strings.TrimSpace(b.explicitPlannedRuntime(ctx)) {
+		case string(browser.SessionEngineDetailChromiumRelay), string(browser.SessionEngineDetailChromiumManaged):
+			if planned := b.plannedChromiumBackend(ctx, rawURL); planned != nil {
+				return planned.Navigate(ctx, rawURL, "")
+			}
+		case string(browser.SessionEngineDetailLightpandaShim):
+			resp, err := b.lightpanda.Navigate(ctx, &browser.NavigateRequest{URL: rawURL})
+			if err != nil {
+				return BrowserNavResult{}, err
+			}
+			return BrowserNavResult{URL: resp.URL, Title: resp.Title, TargetID: resp.TargetID}, nil
+		case string(browser.SessionEngineDetailLightpandaBinary):
+			if b.lightpandaBinary != nil {
+				return b.lightpandaBinary.Navigate(ctx, rawURL, "")
+			}
+		}
 	}
 
 	if strings.TrimSpace(targetID) == "" {

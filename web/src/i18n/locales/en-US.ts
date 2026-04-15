@@ -4498,6 +4498,7 @@ export default mergeHarnessLocale('en-US', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Path',
     },
     values: {
       strategy: {
@@ -4506,6 +4507,8 @@ export default mergeHarnessLocale('en-US', {
     },
     messages: {
       no_result_data: 'No result data',
+      file_written_successfully: 'File written successfully',
+      document_converted: 'Document converted',
     },
     warnings: {
       listing_truncated: 'Listing was truncated; narrow the path or increase max_entries.',

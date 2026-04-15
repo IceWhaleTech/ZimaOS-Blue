@@ -4410,6 +4410,7 @@ export default mergeHarnessLocale('zh-CN', {
   resultCard: {
     labels: {
       backend: '后端',
+      path: '路径',
     },
     values: {
       strategy: {
@@ -4418,6 +4419,8 @@ export default mergeHarnessLocale('zh-CN', {
     },
     messages: {
       no_result_data: '没有结果数据',
+      file_written_successfully: '文件写入成功',
+      document_converted: '文档已转换',
     },
     warnings: {
       listing_truncated: '列表已截断；请缩小路径范围或增大 max_entries。',

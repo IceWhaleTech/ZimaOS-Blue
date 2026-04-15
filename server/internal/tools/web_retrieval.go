@@ -376,14 +376,24 @@ func (o *FetchOrchestrator) Fetch(ctx context.Context, req FetchRequest) (FetchR
 		effectiveTargetID = strings.TrimSpace(session.BrowserTargetID)
 		sessionReused = true
 	}
-
-	lanes := o.planLanes(req, autoAllowed, effectiveTargetID != "", hasStrategy, strategy, hasAdapter, adapter)
+	_, hasSessionCore := o.tool.loadSessionCore(ctx, req.URL, effectiveTargetID)
+	plan := o.planExecution(ctx, req, webRetrievePlanningHints{
+		AutoAllowed:       autoAllowed,
+		EffectiveTargetID: effectiveTargetID,
+		HasBrowserTarget:  effectiveTargetID != "",
+		HasStrategy:       hasStrategy,
+		Strategy:          strategy,
+		HasAdapter:        hasAdapter,
+		Adapter:           adapter,
+		HasSessionCore:    hasSessionCore,
+	})
 	var (
 		bestResult FetchResult
 		bestScore  = -1
 		errs       []error
 	)
-	for _, lane := range lanes {
+	for _, step := range plan.Steps {
+		lane := strings.TrimSpace(step.Runtime)
 		fetcher, ok := o.fetchers[lane]
 		if !ok {
 			continue
@@ -432,97 +442,19 @@ func (o *FetchOrchestrator) Fetch(ctx context.Context, req FetchRequest) (FetchR
 }
 
 func (o *FetchOrchestrator) planLanes(req FetchRequest, autoAllowed bool, hasBrowserTarget bool, hasStrategy bool, strategy DomainStrategy, hasAdapter bool, adapter AdapterManifest) []string {
-	ordered := make([]string, 0, 5)
-	host := webFetchHostForURL(req.URL)
-	browserPreferred := webFetchPrefersBrowserHost(host) && req.AllowBrowser
-	lightpandaAllowed := webFetchSupportsLightpandaHost(host)
-	appendLane := func(lane string) {
-		lane = strings.TrimSpace(lane)
-		if lane == "" {
-			return
-		}
-		for _, existing := range ordered {
-			if existing == lane {
-				return
-			}
-		}
-		ordered = append(ordered, lane)
+	plan := o.planExecution(context.Background(), req, webRetrievePlanningHints{
+		AutoAllowed:      autoAllowed,
+		HasBrowserTarget: hasBrowserTarget,
+		HasStrategy:      hasStrategy,
+		Strategy:         strategy,
+		HasAdapter:       hasAdapter,
+		Adapter:          adapter,
+	})
+	lanes := make([]string, 0, len(plan.Steps))
+	for _, step := range plan.Steps {
+		lanes = append(lanes, step.Runtime)
 	}
-
-	switch strings.TrimSpace(req.PreferredLane) {
-	case webAccessLaneHTTPNative:
-		appendLane(webAccessLaneHTTPNative)
-	case webAccessLaneHTTP:
-		if req.AllowSession && hasBrowserTarget {
-			appendLane(webFetchStrategySession)
-		}
-		appendLane(webAccessLaneHTTP)
-	case webAccessLaneLightpandaShim:
-		if lightpandaAllowed {
-			appendLane(webAccessLaneLightpandaShim)
-		}
-	case webAccessLaneBrowser:
-		appendLane(webAccessLaneBrowser)
-	case webAccessLaneProxyFetcher:
-		appendLane(webAccessLaneProxyFetcher)
-	}
-	if len(ordered) > 0 {
-		return ordered
-	}
-	if browserPreferred {
-		if req.AllowSession && hasBrowserTarget {
-			appendLane(webFetchStrategySession)
-		}
-		appendLane(webAccessLaneBrowser)
-	}
-
-	if autoAllowed && hasAdapter {
-		switch strings.TrimSpace(adapter.PreferredLane) {
-		case webAccessLaneLightpandaShim:
-			if lightpandaAllowed {
-				appendLane(webAccessLaneLightpandaShim)
-			}
-		case webAccessLaneBrowser:
-			appendLane(webAccessLaneBrowser)
-		case webAccessLaneProxyFetcher:
-			appendLane(webAccessLaneProxyFetcher)
-		case webFetchStrategySession:
-			if req.AllowSession && hasBrowserTarget {
-				appendLane(webFetchStrategySession)
-			}
-		case webAccessLaneHTTP, webAccessLaneHTTPNative:
-			appendLane(adapter.PreferredLane)
-		}
-	}
-	if autoAllowed && hasStrategy {
-		switch strings.TrimSpace(strategy.PreferredLane) {
-		case webAccessLaneBrowser, webAccessLaneProxyFetcher, webAccessLaneHTTPNative, webAccessLaneHTTP:
-			appendLane(strategy.PreferredLane)
-		case webAccessLaneLightpandaShim:
-			if lightpandaAllowed {
-				appendLane(strategy.PreferredLane)
-			}
-		case webFetchStrategySession:
-			if req.AllowSession && hasBrowserTarget {
-				appendLane(webFetchStrategySession)
-			}
-		}
-	}
-	if req.AllowSession && hasBrowserTarget {
-		appendLane(webFetchStrategySession)
-	}
-	appendLane(webAccessLaneHTTP)
-	appendLane(webAccessLaneHTTPNative)
-	if lightpandaAllowed {
-		appendLane(webAccessLaneLightpandaShim)
-	}
-	if req.AllowProxy {
-		appendLane(webAccessLaneProxyFetcher)
-	}
-	if req.AllowBrowser {
-		appendLane(webAccessLaneBrowser)
-	}
-	return ordered
+	return lanes
 }
 
 func (o *FetchOrchestrator) rememberSuccess(ctx context.Context, host, sessionKey string, req FetchRequest, result FetchResult) {
@@ -631,6 +563,9 @@ func (webFetchSessionFetcher) Fetch(ctx context.Context, o *FetchOrchestrator, r
 		return FetchResult{}, errors.New("browser session target is required")
 	}
 	opts := cloneWebFetchRequestOptions(req.Options)
+	if err := o.tool.applySessionCoreToRequestOptions(ctx, req.URL, &opts); err != nil {
+		return FetchResult{}, err
+	}
 	if opts.extraHeaders == nil {
 		opts.extraHeaders = make(map[string]string)
 	}
@@ -668,7 +603,7 @@ func (webFetchSessionFetcher) Fetch(ctx context.Context, o *FetchOrchestrator, r
 func (webFetchLightpandaShimFetcher) Name() string { return webAccessLaneLightpandaShim }
 
 func (webFetchLightpandaShimFetcher) Fetch(ctx context.Context, o *FetchOrchestrator, req FetchRequest) (FetchResult, error) {
-	payload, err := o.tool.fetchViaLightpandaShim(ctx, req.URL, req.Mode)
+	payload, err := o.tool.fetchViaLightpandaShim(ctx, req.URL, req.Mode, req.Options.browserTargetID)
 	if err != nil {
 		return FetchResult{}, err
 	}
@@ -695,6 +630,7 @@ func (webFetchBrowserFetcher) Fetch(ctx context.Context, o *FetchOrchestrator, r
 	}
 	if detailed.TargetID != "" {
 		o.noteSessionUse(ctx, req.URL, detailed.TargetID, webFetchStrategyBrowser)
+		o.tool.rememberSessionCore(ctx, req.URL, detailed.TargetID, webFetchStrategyBrowser)
 	}
 	if o.tool.config.NetworkObserveEnabled && o.tool.browser != nil && detailed.TargetID != "" {
 		_ = o.tool.browser.WaitNetworkIdle(ctx, detailed.TargetID, 400, 2_000)

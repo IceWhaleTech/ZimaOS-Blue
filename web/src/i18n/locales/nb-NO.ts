@@ -4518,6 +4518,7 @@ export default mergeHarnessLocale('nb-NO', {
   resultCard: {
     labels: {
       backend: 'Backend',
+      path: 'Sti',
     },
     values: {
       strategy: {
@@ -4526,6 +4527,8 @@ export default mergeHarnessLocale('nb-NO', {
     },
     messages: {
       no_result_data: 'Ingen resultatdata',
+      file_written_successfully: 'Filen ble skrevet',
+      document_converted: 'Dokument konvertert',
     },
     warnings: {
       listing_truncated: 'Listen ble avkortet; snevr inn stien eller øk max_entries.',

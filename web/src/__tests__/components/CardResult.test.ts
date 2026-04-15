@@ -336,6 +336,40 @@ describe('CardResult', () => {
     expect(wrapper.text()).not.toContain('target_id')
   })
 
+  it('keeps inline detail labels visually separated from their values', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'Browser page',
+          status: 'success',
+          details: [
+            {
+              label: 'fallback_reason',
+              value:
+                'ripgrep execution failed with exit code 2 because the configured binary was unavailable',
+            },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('en-US')],
+      },
+    })
+
+    const row = wrapper.find('.result-detail-row--inline')
+    expect(row.exists()).toBe(true)
+    expect(row.classes()).toContain('gap-3')
+
+    const label = wrapper.find('.result-detail-label')
+    expect(label.exists()).toBe(true)
+    expect(label.text()).toBe('Fallback Reason')
+
+    const value = wrapper.find('.result-detail-content')
+    expect(value.exists()).toBe(true)
+    expect(value.classes()).toContain('min-w-0')
+  })
+
   it('translates exact backend result messages', () => {
     const wrapper = mount(CardResult, {
       props: {

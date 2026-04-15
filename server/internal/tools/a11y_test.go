@@ -11,6 +11,7 @@ import (
 
 type a11yCompatBackend struct {
 	capabilities          a11yruntime.CapabilitiesResult
+	hostOS                string
 	windows               []a11yruntime.WindowInfo
 	windowsResults        [][]a11yruntime.WindowInfo
 	allWindows            []a11yruntime.WindowInfo
@@ -39,6 +40,10 @@ type a11yCompatBackend struct {
 	lastScrollLines       int
 	lastPointerMoveX      int
 	lastPointerMoveY      int
+	lastPointClickWindow  string
+	lastPointClick        a11yruntime.NormalizedPoint
+	pointClickHistory     []a11yruntime.NormalizedPoint
+	pointClickWindowIDs   []string
 	lastKeyWindowID       string
 	lastKeys              []string
 	lastKeyHoldMS         int
@@ -59,6 +64,7 @@ type a11yCompatBackend struct {
 	activateAppErrs       map[string]error
 	actErrorsByType       map[string]error
 	keyErrorsByChord      map[string]error
+	pointClickErr         error
 }
 
 type a11yBrowserCompatBackend struct {
@@ -85,7 +91,12 @@ type a11yBrowserCompatBackend struct {
 	lastPressedHoldMS       int
 }
 
-func (b *a11yCompatBackend) HostOS() string { return "darwin" }
+func (b *a11yCompatBackend) HostOS() string {
+	if strings.TrimSpace(b.hostOS) != "" {
+		return strings.TrimSpace(b.hostOS)
+	}
+	return "darwin"
+}
 
 func (b *a11yCompatBackend) Capabilities(context.Context) (a11yruntime.CapabilitiesResult, error) {
 	if b.capabilities.HostOS == "" {
@@ -241,6 +252,26 @@ func (b *a11yCompatBackend) Scroll(_ context.Context, windowID string, direction
 
 func (b *a11yCompatBackend) PointerMove(context.Context, int, int) (a11yruntime.ActionResult, error) {
 	return a11yruntime.ActionResult{ExecutionMode: "input", Message: "moved"}, nil
+}
+
+func (b *a11yCompatBackend) ClickWindowPoint(_ context.Context, windowID string, point a11yruntime.NormalizedPoint, holdMS int) (a11yruntime.ActionResult, error) {
+	b.lastPointClickWindow = windowID
+	b.lastPointClick = point
+	b.pointClickWindowIDs = append(b.pointClickWindowIDs, windowID)
+	b.pointClickHistory = append(b.pointClickHistory, point)
+	if b.pointClickErr != nil {
+		return a11yruntime.ActionResult{}, b.pointClickErr
+	}
+	return a11yruntime.ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_click",
+		VerificationPassed: true,
+		VerificationMethod: "point_click",
+		Message:            "Host action completed",
+	}, nil
 }
 
 func (b *a11yCompatBackend) Key(_ context.Context, windowID string, keys []string, holdMS int) (a11yruntime.ActionResult, error) {

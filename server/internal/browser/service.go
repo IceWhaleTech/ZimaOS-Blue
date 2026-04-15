@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -2113,6 +2114,192 @@ func (s *RodService) CookieHeader(ctx context.Context, targetID string, targetUR
 		parts = append(parts, cookie.Name+"="+cookie.Value)
 	}
 	return strings.Join(parts, "; "), nil
+}
+
+// ExportSessionProfile exports cookies plus best-effort storage state from a Chromium tab.
+func (s *RodService) ExportSessionProfile(ctx context.Context, targetID string, targetURL string) (*Profile, error) {
+	normalizedURL, err := s.security.NormalizeAndCheckURL(targetURL)
+	if err != nil {
+		return nil, err
+	}
+	tab, err := s.getTab(ctx, targetID)
+	if err != nil {
+		return nil, err
+	}
+	cookies, err := tab.page.Cookies([]string{normalizedURL})
+	if err != nil {
+		if isConnectionClosed(err) {
+			s.removeTab(tab)
+		}
+		return nil, err
+	}
+
+	profile := &Profile{
+		ID:             targetID,
+		UserAgent:      strings.TrimSpace(s.config.UserAgent),
+		Headers:        map[string]string{},
+		LocalStorage:   map[string]map[string]string{},
+		SessionStorage: map[string]map[string]string{},
+	}
+	for _, cookie := range cookies {
+		if cookie == nil || strings.TrimSpace(cookie.Name) == "" {
+			continue
+		}
+		item := Cookie{
+			Name:     cookie.Name,
+			Value:    cookie.Value,
+			Domain:   cookie.Domain,
+			Path:     cookie.Path,
+			HTTPOnly: cookie.HTTPOnly,
+			Secure:   cookie.Secure,
+			SameSite: string(cookie.SameSite),
+		}
+		if cookie.Expires > 0 {
+			expires := time.Unix(int64(cookie.Expires), 0).UTC()
+			item.Expires = &expires
+		}
+		profile.Cookies = append(profile.Cookies, item)
+	}
+	origin := browserStorageOrigin(firstNonEmptyBrowserValue(tab.url, normalizedURL))
+	localStorage, sessionStorage, storageErr := browserExportStorageState(tab.page)
+	if storageErr == nil {
+		if len(localStorage) > 0 {
+			profile.LocalStorage[origin] = localStorage
+		}
+		if len(sessionStorage) > 0 {
+			profile.SessionStorage[origin] = sessionStorage
+		}
+	}
+	return profile, nil
+}
+
+// ApplySessionProfile applies cookies plus best-effort storage state to a Chromium tab.
+func (s *RodService) ApplySessionProfile(ctx context.Context, targetID string, targetURL string, profile *Profile) error {
+	if profile == nil {
+		return nil
+	}
+	if strings.TrimSpace(targetID) == "" {
+		return ErrTabNotFound
+	}
+	normalizedURL, err := s.security.NormalizeAndCheckURL(targetURL)
+	if err != nil {
+		return err
+	}
+	tab, err := s.getTab(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if ua := strings.TrimSpace(profile.UserAgent); ua != "" {
+		if err := tab.page.SetUserAgent(&proto.NetworkSetUserAgentOverride{UserAgent: ua}); err != nil {
+			return err
+		}
+	}
+	if len(profile.Cookies) > 0 {
+		params := make([]*proto.NetworkCookieParam, 0, len(profile.Cookies))
+		for _, cookie := range profile.Cookies {
+			if strings.TrimSpace(cookie.Name) == "" {
+				continue
+			}
+			param := &proto.NetworkCookieParam{
+				Name:     cookie.Name,
+				Value:    cookie.Value,
+				Domain:   strings.TrimSpace(cookie.Domain),
+				Path:     browserCookiePath(cookie.Path),
+				Secure:   cookie.Secure,
+				HTTPOnly: cookie.HTTPOnly,
+			}
+			if param.Domain == "" {
+				param.URL = normalizedURL
+			}
+			if cookie.Expires != nil {
+				param.Expires = proto.TimeSinceEpoch(cookie.Expires.UTC().Unix())
+			}
+			params = append(params, param)
+		}
+		if len(params) > 0 {
+			if err := (proto.StorageSetCookies{Cookies: params}).Call(tab.browser); err != nil {
+				return err
+			}
+		}
+	}
+	origin := browserStorageOrigin(normalizedURL)
+	if storage := profile.LocalStorage[origin]; len(storage) > 0 {
+		if err := browserApplyStorageState(tab.page, "localStorage", storage); err != nil {
+			return err
+		}
+	}
+	if storage := profile.SessionStorage[origin]; len(storage) > 0 {
+		if err := browserApplyStorageState(tab.page, "sessionStorage", storage); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func browserExportStorageState(page *rod.Page) (map[string]string, map[string]string, error) {
+	result, err := page.Eval(`() => ({
+		local: Object.assign({}, window.localStorage),
+		session: Object.assign({}, window.sessionStorage),
+	})`)
+	if err != nil {
+		return nil, nil, err
+	}
+	local := make(map[string]string)
+	for key, value := range result.Value.Get("local").Map() {
+		local[key] = value.String()
+	}
+	session := make(map[string]string)
+	for key, value := range result.Value.Get("session").Map() {
+		session[key] = value.String()
+	}
+	return local, session, nil
+}
+
+func browserApplyStorageState(page *rod.Page, target string, values map[string]string) error {
+	if page == nil || len(values) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(values)
+	if err != nil {
+		return err
+	}
+	_, err = page.Eval(fmt.Sprintf(`() => {
+		const store = window[%q];
+		const values = %s;
+		for (const [key, value] of Object.entries(values)) {
+			store.setItem(key, String(value));
+		}
+		return true;
+	}`, target, string(data)))
+	return err
+}
+
+func browserStorageOrigin(rawURL string) string {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	return parsed.Scheme + "://" + parsed.Host
+}
+
+func browserCookiePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "/"
+	}
+	return path
+}
+
+func firstNonEmptyBrowserValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // ObserveNetwork returns recent network activity recorded for a tab.

@@ -53,28 +53,44 @@ type WindowInfo struct {
 	Focused bool   `json:"focused,omitempty"`
 }
 
+type ActionTelemetry struct {
+	SnapshotRevision int64    `json:"snapshot_revision,omitempty"`
+	CacheHit         bool     `json:"cache_hit,omitempty"`
+	NodeCount        int      `json:"node_count,omitempty"`
+	CandidateCount   int      `json:"candidate_count,omitempty"`
+	TreeFetchMS      int64    `json:"tree_fetch_ms,omitempty"`
+	TreeSerializeMS  int64    `json:"tree_serialize_ms,omitempty"`
+	QueryMS          int64    `json:"query_ms,omitempty"`
+	ActionMS         int64    `json:"action_ms,omitempty"`
+	VerificationMS   int64    `json:"verification_ms,omitempty"`
+	EndToEndMS       int64    `json:"end_to_end_ms,omitempty"`
+	Fallbacks        []string `json:"fallbacks,omitempty"`
+}
+
 type SnapshotResult struct {
-	HostOS    string         `json:"host_os"`
-	WindowID  string         `json:"window_id"`
-	Title     string         `json:"title,omitempty"`
-	Tree      string         `json:"tree,omitempty"`
-	RefMap    map[int]string `json:"ref_map,omitempty"`
-	ImagePath string         `json:"image_path,omitempty"`
-	Message   string         `json:"message,omitempty"`
+	HostOS          string         `json:"host_os"`
+	WindowID        string         `json:"window_id"`
+	Title           string         `json:"title,omitempty"`
+	Tree            string         `json:"tree,omitempty"`
+	RefMap          map[int]string `json:"ref_map,omitempty"`
+	ImagePath       string         `json:"image_path,omitempty"`
+	Message         string         `json:"message,omitempty"`
+	ActionTelemetry ActionTelemetry `json:"telemetry,omitempty"`
 }
 
 type ActionResult struct {
-	HostOS             string   `json:"host_os,omitempty"`
-	WindowID           string   `json:"window_id,omitempty"`
-	ExecutionMode      string   `json:"execution_mode,omitempty"`
-	Intent             string   `json:"intent,omitempty"`
-	TargetHit          bool     `json:"target_hit,omitempty"`
-	VerificationPassed bool     `json:"verification_passed,omitempty"`
-	VerificationMethod string   `json:"verification_method,omitempty"`
-	InputMethod        string   `json:"input_method,omitempty"`
-	Fallbacks          []string `json:"fallbacks,omitempty"`
-	OverlayMode        string   `json:"overlay_mode,omitempty"`
-	Message            string   `json:"message,omitempty"`
+	HostOS             string          `json:"host_os,omitempty"`
+	WindowID           string          `json:"window_id,omitempty"`
+	ExecutionMode      string          `json:"execution_mode,omitempty"`
+	Intent             string          `json:"intent,omitempty"`
+	TargetHit          bool            `json:"target_hit,omitempty"`
+	VerificationPassed bool            `json:"verification_passed,omitempty"`
+	VerificationMethod string          `json:"verification_method,omitempty"`
+	InputMethod        string          `json:"input_method,omitempty"`
+	Fallbacks          []string        `json:"fallbacks,omitempty"`
+	OverlayMode        string          `json:"overlay_mode,omitempty"`
+	Message            string          `json:"message,omitempty"`
+	ActionTelemetry    ActionTelemetry `json:"telemetry,omitempty"`
 }
 
 type ScreenshotResult struct {
@@ -82,6 +98,24 @@ type ScreenshotResult struct {
 	WindowID  string `json:"window_id,omitempty"`
 	ImagePath string `json:"image_path,omitempty"`
 	Message   string `json:"message,omitempty"`
+}
+
+type NormalizedPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+type NormalizedRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Width  float64 `json:"width"`
+	Height float64 `json:"height"`
+}
+
+type TextLine struct {
+	Text       string         `json:"text,omitempty"`
+	Bounds     NormalizedRect `json:"bounds"`
+	Confidence float64        `json:"confidence,omitempty"`
 }
 
 type RuntimeError struct {
@@ -115,6 +149,15 @@ type Backend interface {
 	Act(ctx context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (ActionResult, error)
 	Scroll(ctx context.Context, windowID string, direction string, lines int) (ActionResult, error)
 	PointerMove(ctx context.Context, x int, y int) (ActionResult, error)
+	ClickWindowPoint(ctx context.Context, windowID string, point NormalizedPoint, holdMS int) (ActionResult, error)
 	Key(ctx context.Context, windowID string, keys []string, holdMS int) (ActionResult, error)
 	Screenshot(ctx context.Context, windowID string) (ScreenshotResult, error)
+}
+
+type TargetResolver interface {
+	ResolveTarget(ctx context.Context, windowID string, selector TargetSelector) (TargetResolution, error)
+}
+
+type SnapshotRuntime interface {
+	UpdateSnapshotAfterAction(windowID string, token string, actType string, value string)
 }

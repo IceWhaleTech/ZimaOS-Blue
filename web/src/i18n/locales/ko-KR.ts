@@ -4470,6 +4470,7 @@ export default mergeHarnessLocale('ko-KR', {
   resultCard: {
     labels: {
       backend: '백엔드',
+      path: '경로',
     },
     values: {
       strategy: {
@@ -4478,6 +4479,8 @@ export default mergeHarnessLocale('ko-KR', {
     },
     messages: {
       no_result_data: '결과 데이터가 없습니다',
+      file_written_successfully: '파일을 성공적으로 작성했습니다',
+      document_converted: '문서를 변환했습니다',
     },
     warnings: {
       listing_truncated: '목록이 잘렸습니다. 경로 범위를 좁히거나 max_entries를 늘리세요.',

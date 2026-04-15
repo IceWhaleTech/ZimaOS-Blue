@@ -8,16 +8,19 @@ import (
 )
 
 type darwinBackend struct {
-	mediaDir string
-	mu       sync.Mutex
-	nextRef  int
-	elements map[string]darwinElementRef
+	mediaDir      string
+	mu            sync.Mutex
+	nextRef       int
+	snapshotWindow string
+	elements      map[string]darwinElementRef
+	snapshots     *SnapshotStore
 }
 
 func DefaultHostBackend(mediaDir string) Backend {
 	return &darwinBackend{
-		mediaDir: mediaDir,
-		elements: make(map[string]darwinElementRef),
+		mediaDir:  mediaDir,
+		elements:  make(map[string]darwinElementRef),
+		snapshots: NewSnapshotStore(),
 	}
 }
 
@@ -82,6 +85,10 @@ func (b *darwinBackend) Scroll(ctx context.Context, windowID string, direction s
 
 func (b *darwinBackend) PointerMove(ctx context.Context, x int, y int) (ActionResult, error) {
 	return b.pointerMove(ctx, x, y)
+}
+
+func (b *darwinBackend) ClickWindowPoint(ctx context.Context, windowID string, point NormalizedPoint, holdMS int) (ActionResult, error) {
+	return b.clickWindowPoint(ctx, windowID, point, holdMS)
 }
 
 func (b *darwinBackend) Key(ctx context.Context, windowID string, keys []string, holdMS int) (ActionResult, error) {

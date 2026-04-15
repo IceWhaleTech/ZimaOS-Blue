@@ -23,6 +23,21 @@
     "metadata": {
       "primary_route": "a11y",
       "allow_fallback": false,
+      "latency_report_fields": [
+        "end_to_end_ms",
+        "tree_fetch_ms",
+        "tree_serialize_ms",
+        "query_ms",
+        "action_ms",
+        "verification_ms",
+        "llm_latency_ms"
+      ],
+      "benchmark_dimensions": [
+        "os",
+        "action_family",
+        "latency_tier",
+        "warm_cache_expected"
+      ],
       "task_fallback_plan": [
         "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
         "If native a11y is unavailable, stop and report the blocker instead of changing routes."
@@ -58,6 +73,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "message_type",
+        "latency_tier": "warm-write",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "focus-select-type",
         "success_rubric": "Deliver the greeting in Feishu to Orca and return raw a11y JSON proving target hit and verification success.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -93,6 +113,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "message_type",
+        "latency_tier": "warm-write",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "focus-select-type",
         "success_rubric": "Deliver the greeting in Feishu to Orca and return raw a11y JSON proving target hit and verification success.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -128,6 +153,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "toggle",
+        "latency_tier": "warm-control",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "toggle-setting",
         "success_rubric": "Use a deterministic settings toggle path and return raw a11y JSON proving the labeled setting was hit and verified.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -163,6 +193,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "toggle",
+        "latency_tier": "warm-control",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "toggle-setting",
         "success_rubric": "Use a deterministic settings toggle path and return raw a11y JSON proving the labeled setting was hit and verified.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -198,6 +233,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "click",
+        "latency_tier": "warm-control",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "click-address-bar",
         "success_rubric": "Hit the browser chrome address bar through host a11y and return raw JSON with positive target and verification telemetry.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -233,6 +273,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "click",
+        "latency_tier": "warm-control",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "click-address-bar",
         "success_rubric": "Hit the browser chrome address bar through host a11y and return raw JSON with positive target and verification telemetry.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -268,6 +313,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "select",
+        "latency_tier": "warm-list",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "select-downloads",
         "success_rubric": "Select the Finder Downloads entry deterministically and return raw JSON with positive target and verification telemetry.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -303,6 +353,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "select",
+        "latency_tier": "warm-list",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "select-downloads",
         "success_rubric": "Select the Explorer Downloads entry deterministically and return raw JSON with positive target and verification telemetry.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -338,6 +393,11 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "click",
+        "latency_tier": "warm-control",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "click-compose-entry",
         "success_rubric": "Open the mail compose entry point deterministically and return raw JSON with positive target and verification telemetry.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
@@ -373,7 +433,572 @@
         "primary_route": "a11y",
         "allow_fallback": false,
         "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "click",
+        "latency_tier": "warm-control",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "click-compose-entry",
         "success_rubric": "Open the mail compose entry point deterministically and return raw JSON with positive target and verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-feishu-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus app_name=\"Feishu,飞书,Lark\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "im",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-feishu",
+        "success_rubric": "Focus the Feishu host window and return raw a11y JSON confirming the focused window path.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-feishu-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus app_name=\"Feishu,飞书,Lark\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "im",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-feishu",
+        "success_rubric": "Focus the Feishu host window and return raw a11y JSON confirming the focused window path.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-browser-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus app_name=\"Google Chrome,Chrome,Microsoft Edge,Edge,Safari\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "browser",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-browser",
+        "success_rubric": "Focus the browser host window deterministically and return raw a11y JSON confirming the focus path.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-browser-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus app_name=\"Google Chrome,Chrome,Microsoft Edge,Edge,Safari\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "browser",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-browser",
+        "success_rubric": "Focus the browser host window deterministically and return raw a11y JSON confirming the focus path.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-file-manager-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus app_name=\"Finder,访达,Explorer,文件资源管理器\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "file_manager",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-file-manager",
+        "success_rubric": "Focus the file manager window and return raw a11y JSON confirming the focus operation succeeded.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-file-manager-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus app_name=\"Explorer,文件资源管理器,Finder,访达\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "file_manager",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-file-manager",
+        "success_rubric": "Focus the file manager window and return raw a11y JSON confirming the focus operation succeeded.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-settings-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus window_title=\"Settings,System Settings,设置\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "settings",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-settings",
+        "success_rubric": "Focus the settings window and return raw a11y JSON confirming the focus path was used.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-settings-focus-window",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=focus window_title=\"Settings,System Settings,设置\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "settings",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "focus",
+        "latency_tier": "cold-focus",
+        "latency_budget_ms": 250,
+        "warm_cache_expected": false,
+        "benchmark_flow": "focus-settings",
+        "success_rubric": "Focus the settings window and return raw a11y JSON confirming the focus path was used.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-browser-type-address-bar-example",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=type app_name=\"Google Chrome,Chrome,Microsoft Edge,Edge,Safari\" control=\"Address Bar\" value=\"https://example.com\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "browser",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "type",
+        "latency_tier": "warm-write",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "type-address-bar",
+        "success_rubric": "Type a deterministic URL into the browser address bar and return raw a11y JSON with positive verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-browser-type-address-bar-example",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=type app_name=\"Google Chrome,Chrome,Microsoft Edge,Edge,Safari\" control=\"Address Bar\" value=\"https://example.com\"。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "browser",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "type",
+        "latency_tier": "warm-write",
+        "latency_budget_ms": 200,
+        "warm_cache_expected": true,
+        "benchmark_flow": "type-address-bar",
+        "success_rubric": "Type a deterministic URL into the browser address bar and return raw a11y JSON with positive verification telemetry.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-settings-scroll-down",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=scroll window_title=\"Settings,System Settings,设置\" direction=\"down\" lines=6。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "settings",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "scroll",
+        "latency_tier": "warm-scroll",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "scroll-settings",
+        "success_rubric": "Scroll the settings surface downward and return raw a11y JSON confirming the scroll action succeeded.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-settings-scroll-down",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=scroll window_title=\"Settings,System Settings,设置\" direction=\"down\" lines=6。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "settings",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "scroll",
+        "latency_tier": "warm-scroll",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "scroll-settings",
+        "success_rubric": "Scroll the settings surface downward and return raw a11y JSON confirming the scroll action succeeded.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "macos-file-manager-scroll-down",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=scroll app_name=\"Finder,访达,Explorer,文件资源管理器\" direction=\"down\" lines=6。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "macos",
+        "app_category": "file_manager",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "scroll",
+        "latency_tier": "warm-scroll",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "scroll-file-manager",
+        "success_rubric": "Scroll the file manager listing downward and return raw a11y JSON confirming the scroll action path.",
+        "task_fallback_plan": [
+          "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
+          "If native a11y is unavailable, stop and report the blocker instead of changing routes."
+        ],
+        "task_success_criteria": [
+          "Use the native a11y tool directly.",
+          "Return raw JSON from the final a11y tool call only.",
+          "The final JSON must show target_hit=true and verification_passed=true."
+        ]
+      }
+    },
+    {
+      "id": "windows-file-manager-scroll-down",
+      "run_kind": "agent_task",
+      "profile": "a11y_quickpaths",
+      "input": {
+        "goal": "【这是桌面宿主 UI 任务】不要调用 tool_search、config.tools.list、bash、exec 或 blue a11y 命令。直接调用原生 a11y 工具一次完成：action=scroll app_name=\"Explorer,文件资源管理器,Finder,访达\" direction=\"down\" lines=6。只输出该次 a11y 工具返回的原始 JSON，不要添加解释。",
+        "locale": "zh-CN",
+        "lang": "zh-CN"
+      },
+      "expected": {
+        "status": "completed",
+        "result_contains": [
+          "\"target_hit\":true",
+          "\"verification_passed\":true"
+        ]
+      },
+      "metadata": {
+        "os": "windows",
+        "app_category": "file_manager",
+        "critical": false,
+        "primary_route": "a11y",
+        "allow_fallback": false,
+        "policy_model_hint": "claude-sonnet-4.6",
+        "action_family": "scroll",
+        "latency_tier": "warm-scroll",
+        "latency_budget_ms": 180,
+        "warm_cache_expected": true,
+        "benchmark_flow": "scroll-file-manager",
+        "success_rubric": "Scroll the file manager listing downward and return raw a11y JSON confirming the scroll action path.",
         "task_fallback_plan": [
           "Call the native a11y tool directly; do not use tool_search, config.tools.list, bash, exec, or blue a11y shell commands.",
           "If native a11y is unavailable, stop and report the blocker instead of changing routes."

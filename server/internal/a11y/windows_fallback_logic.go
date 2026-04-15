@@ -178,6 +178,10 @@ func windowsExecuteFallbackWithInput(
 			executor.Click,
 			executor.AfterFocus,
 			func(value string) error {
+				if !target.HasBounds && !primarySucceeded && executor.UnicodeInput != nil {
+					inputMethod = "unicode"
+					return executor.UnicodeInput(value)
+				}
 				method, err := windowsSendTextWithClipboardFallback(value, executor.ClipboardPaste, executor.UnicodeInput)
 				if method != "" {
 					inputMethod = method

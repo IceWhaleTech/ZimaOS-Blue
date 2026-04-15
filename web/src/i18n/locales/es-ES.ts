@@ -4561,6 +4561,7 @@ export default mergeHarnessLocale('es-ES', {
   resultCard: {
     labels: {
       backend: 'backend',
+      path: 'Ruta',
     },
     values: {
       strategy: {
@@ -4569,6 +4570,8 @@ export default mergeHarnessLocale('es-ES', {
     },
     messages: {
       no_result_data: 'No hay datos de resultado',
+      file_written_successfully: 'Archivo escrito correctamente',
+      document_converted: 'Documento convertido',
     },
     warnings: {
       listing_truncated: 'La lista se truncó; reduzca la ruta o aumente max_entries.',

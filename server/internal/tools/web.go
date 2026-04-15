@@ -611,36 +611,36 @@ func (t *WebTool) runSearchDiscovery(ctx context.Context, args map[string]interf
 	baseArgs["format"] = webSearchFormatJSON
 	baseArgs["max_results"] = maxResults
 
-	providerRaw := firstCompatValueOrNil(args, "provider")
-	providers := parseProviderChainArg(providerRaw)
-	if len(providers) == 0 {
-		if resolver, ok := t.search.(webQuerySearchProviderResolver); ok {
-			providers = resolver.providerChain(providerRaw)
-		}
-	}
+	plan := t.buildWebQuerySearchProviderPlan(args, query, maxResults)
+	providers := webQuerySearchProvidersFromPlan(plan)
+	searchCtxBase := WithWebExecutionPlan(ctx, plan)
 	if len(providers) <= 1 {
-		outcome := t.executeSearchProvider(ctx, baseArgs, firstNonEmpty(strings.TrimSpace(asString(providerRaw)), firstProviderOrEmpty(providers)))
-		attempts := []webQueryAttempt{{
-			Stage:  "search",
-			Mode:   firstNonEmpty(outcome.Provider, "search"),
-			URL:    query,
-			Status: webQueryAttemptStatus(outcome.Err),
-			Error:  errorString(outcome.Err),
-		}}
+		provider := firstProviderOrEmpty(providers)
+		step := webQuerySearchProviderPlanStep(plan, provider)
+		outcome := t.executeSearchProvider(searchCtxBase, baseArgs, provider)
+		attempts := []webQueryAttempt{webQuerySearchAttempt("search", query, step, outcome.Provider, outcome.Err)}
 		if outcome.Err != nil {
 			return WebSearchResponse{}, attempts, outcome.Err
 		}
 		return outcome.Response, attempts, nil
 	}
 
-	searchCtx, cancel := context.WithCancel(ctx)
+	type plannedOutcome struct {
+		step    PlanStep
+		outcome webQuerySearchOutcome
+	}
+
+	searchCtx, cancel := context.WithCancel(searchCtxBase)
 	defer cancel()
 
-	results := make(chan webQuerySearchOutcome, len(providers))
-	for _, provider := range providers {
-		provider := provider
+	results := make(chan plannedOutcome, len(plan.Steps))
+	for _, step := range plan.Steps {
+		step := step
 		go func() {
-			results <- t.executeSearchProvider(searchCtx, baseArgs, provider)
+			results <- plannedOutcome{
+				step:    step,
+				outcome: t.executeSearchProvider(searchCtx, baseArgs, step.Provider),
+			}
 		}()
 	}
 
@@ -657,31 +657,21 @@ func (t *WebTool) runSearchDiscovery(ctx context.Context, args map[string]interf
 		}
 
 		select {
-		case outcome := <-results:
+		case result := <-results:
 			remaining--
+			outcome := result.outcome
+			attempt := webQuerySearchAttempt("search", query, result.step, outcome.Provider, outcome.Err)
 			if outcome.Err != nil {
 				// Hide provider attempts that were only canceled because another
 				// provider already succeeded and the fanout settle window closed.
 				if len(outcomes) > 0 && errors.Is(outcome.Err, context.Canceled) {
 					continue
 				}
-				attempts = append(attempts, webQueryAttempt{
-					Stage:  "search",
-					Mode:   firstNonEmpty(outcome.Provider, "search"),
-					URL:    query,
-					Status: webQueryAttemptStatus(outcome.Err),
-					Error:  errorString(outcome.Err),
-				})
+				attempts = append(attempts, attempt)
 				searchErrs = append(searchErrs, outcome.Err)
 				continue
 			}
-			attempts = append(attempts, webQueryAttempt{
-				Stage:  "search",
-				Mode:   firstNonEmpty(outcome.Provider, "search"),
-				URL:    query,
-				Status: webQueryAttemptStatus(outcome.Err),
-				Error:  errorString(outcome.Err),
-			})
+			attempts = append(attempts, attempt)
 			outcomes = append(outcomes, outcome)
 			if len(outcome.Results) > 0 && settleTimer == nil && remaining > 0 {
 				settleTimer = time.NewTimer(webQuerySearchSettleWindow)
@@ -699,6 +689,72 @@ func (t *WebTool) runSearchDiscovery(ctx context.Context, args map[string]interf
 	}
 	attempts = hideCanceledSearchAttemptsAfterSearchSuccess(attempts)
 	return mergeWebQuerySearchOutcomes(query, maxResults, outcomes), attempts, nil
+}
+
+func (t *WebTool) buildWebQuerySearchProviderPlan(args map[string]interface{}, query string, maxResults int) ExecutionPlan {
+	providerRaw := firstCompatValueOrNil(args, "provider")
+	providers := parseProviderChainArg(providerRaw)
+	if len(providers) == 0 {
+		if resolver, ok := t.search.(webQuerySearchProviderResolver); ok {
+			providers = resolver.providerChain(providerRaw)
+		}
+	}
+	if len(providers) == 0 {
+		if provider := strings.TrimSpace(asString(providerRaw)); provider != "" {
+			providers = []string{provider}
+		}
+	}
+	return buildWebSearchProviderPlan(providers, query, maxResults)
+}
+
+func webQuerySearchProvidersFromPlan(plan ExecutionPlan) []string {
+	providers := make([]string, 0, len(plan.Steps))
+	for _, step := range plan.Steps {
+		provider := strings.TrimSpace(step.Provider)
+		if provider == "" && strings.HasPrefix(step.Runtime, "search_provider:") {
+			provider = strings.TrimSpace(strings.TrimPrefix(step.Runtime, "search_provider:"))
+		}
+		if provider == "" {
+			continue
+		}
+		providers = append(providers, provider)
+	}
+	return providers
+}
+
+func webQuerySearchProviderPlanStep(plan ExecutionPlan, provider string) PlanStep {
+	provider = strings.TrimSpace(provider)
+	for _, step := range plan.Steps {
+		if strings.EqualFold(strings.TrimSpace(step.Provider), provider) {
+			return step
+		}
+	}
+	for _, step := range plan.Steps {
+		if strings.EqualFold(strings.TrimSpace(strings.TrimPrefix(step.Runtime, "search_provider:")), provider) {
+			return step
+		}
+	}
+	return PlanStep{Kind: WebTaskKindSearch, Runtime: "search_provider", Provider: provider}
+}
+
+func webQuerySearchAttempt(stage, query string, step PlanStep, outcomeProvider string, err error) webQueryAttempt {
+	mode := strings.TrimSpace(outcomeProvider)
+	if mode == "" {
+		mode = strings.TrimSpace(step.Provider)
+	}
+	if mode == "" {
+		mode = strings.TrimSpace(step.Runtime)
+	}
+	if mode == "" {
+		mode = "search"
+	}
+	return webQueryAttempt{
+		Stage:  stage,
+		Mode:   mode,
+		URL:    query,
+		Status: webQueryAttemptStatus(err),
+		Error:  errorString(err),
+	}
 }
 
 func (t *WebTool) executeSearchProvider(ctx context.Context, baseArgs map[string]interface{}, provider string) webQuerySearchOutcome {
@@ -826,9 +882,11 @@ func canAttemptBrowserSearchFallback(browser BrowserBackend, cfg WebSearchBrowse
 }
 
 func (t *WebTool) runBrowserSearchDiscovery(ctx context.Context, query string, maxResults int, cfg WebSearchBrowserFallbackConfig) (WebSearchResponse, webQueryAttempt, error) {
+	plan := buildWebSearchBrowserFallbackPlan(cfg.Engine, query, maxResults, "web_query browser search rescue")
+	execCtx := WithWebExecutionPlan(ctx, plan)
 	attempt := webQueryAttempt{
 		Stage: "search_browser",
-		Mode:  normalizeBrowserSearchFallbackEngine(cfg.Engine),
+		Mode:  firstNonEmpty(strings.TrimSpace(plan.TraceLabels["engine"]), normalizeBrowserSearchFallbackEngine(cfg.Engine)),
 		URL:   query,
 	}
 	if t.browser == nil {
@@ -837,15 +895,15 @@ func (t *WebTool) runBrowserSearchDiscovery(ctx context.Context, query string, m
 		attempt.Error = err.Error()
 		return WebSearchResponse{}, attempt, err
 	}
-	if err := t.browser.Start(ctx); err != nil {
+	if err := t.browser.Start(execCtx); err != nil {
 		attempt.Status = webQueryAttemptStatus(err)
 		attempt.Error = err.Error()
 		return WebSearchResponse{}, attempt, err
 	}
 
-	recipeResult, err := t.browser.ExecuteRecipe(ctx, "search", map[string]string{
+	recipeResult, err := t.browser.ExecuteRecipe(execCtx, "search", map[string]string{
 		"query":       query,
-		"engine":      normalizeBrowserSearchFallbackEngine(cfg.Engine),
+		"engine":      attempt.Mode,
 		"max_results": strconv.Itoa(maxResults),
 	})
 	if err != nil {

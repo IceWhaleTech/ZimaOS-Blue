@@ -563,11 +563,14 @@ func TestWriteToolsInfoTo_IncludesMarkdownConversionCompletionGuidance(t *testin
 		t.Fatal("expected tool guidance to be written")
 	}
 	out := sb.String()
+	if !strings.Contains(out, "native tools over convert") {
+		t.Fatalf("expected native-over-convert guidance, got: %s", out)
+	}
 	if !strings.Contains(out, "hand Markdown directly to those native tools") {
 		t.Fatalf("expected direct markdown handoff guidance, got: %s", out)
 	}
-	if !strings.Contains(out, "stage through Markdown first and then convert") {
-		t.Fatalf("expected staged markdown conversion guidance, got: %s", out)
+	if !strings.Contains(out, "Only stage through Markdown first and then convert") {
+		t.Fatalf("expected convert-fallback guidance, got: %s", out)
 	}
 	if !strings.Contains(out, "intermediate Markdown file is not the finished task") {
 		t.Fatalf("expected conversion completion guidance, got: %s", out)

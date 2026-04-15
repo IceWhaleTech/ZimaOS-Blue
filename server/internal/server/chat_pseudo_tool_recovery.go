@@ -561,16 +561,13 @@ func pseudoRecoverySnippetRangeAt(content string, start int, allowedTools []llm.
 	if start < 0 || start >= len(content) {
 		return 0, 0, false
 	}
-	lower := strings.ToLower(content[start:])
 	switch content[start] {
 	case '[':
-		if strings.HasPrefix(lower, "[tool_call]") {
-			if loc := rePseudoBracketedToolCallBlock.FindStringIndex(content[start:]); len(loc) == 2 && loc[0] == 0 {
-				return start, start + loc[1], true
-			}
-			if loc := rePseudoBracketedToolCallTag.FindStringIndex(content[start:]); len(loc) == 2 && loc[0] == 0 {
-				return start, start + loc[1], true
-			}
+		if loc := rePseudoBracketedToolCallBlock.FindStringIndex(content[start:]); len(loc) == 2 && loc[0] == 0 {
+			return start, start + loc[1], true
+		}
+		if loc := rePseudoBracketedToolCallTag.FindStringIndex(content[start:]); len(loc) == 2 && loc[0] == 0 {
+			return start, start + loc[1], true
 		}
 		fragment, ok := extractBalancedJSONFragment(content[start:])
 		if !ok {
@@ -781,6 +778,8 @@ func pseudoLineContainsLikelyPseudoSnippet(line string) bool {
 	lower := strings.ToLower(trimmed)
 	if strings.Contains(lower, "[tool_call]") ||
 		strings.Contains(lower, "[/tool_call]") ||
+		strings.Contains(lower, "[tool_use]") ||
+		strings.Contains(lower, "[/tool_use]") ||
 		strings.Contains(lower, `<function_calls>`) ||
 		strings.Contains(lower, `<tool_call`) ||
 		strings.Contains(lower, `<function_call`) ||

@@ -7051,6 +7051,139 @@ func TestStreamMessage_RecoversBracketedToolCallPseudoToolCallIntoRealToolExecut
 	}
 }
 
+func TestStreamMessage_RecoversBracketedToolUsePseudoToolCallIntoRealToolExecution(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Recovered bracketed tool_use pseudo tool call stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-stream-bracketed-tool-use",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stream-bracketed-tool-use-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					Content: `[tool_use]
+{"name":"web_query","arguments":{"input":"Apple AAPL stock price today April 2026","max_results":5}}
+[/tool_use]`,
+				},
+				Usage: llm.Usage{PromptTokens: 42, CompletionTokens: 48, TotalTokens: 90},
+			},
+			{
+				ID:    "stream-bracketed-tool-use-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好 AAPL 股价信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 60, CompletionTokens: 12, TotalTokens: 72},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "stream bracketed tool_use finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-stream-bracketed-tool-use","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(strings.ToLower(body), "[tool_use]") || strings.Contains(body, "\"arguments\"") {
+		t.Fatalf("expected bracketed tool_use leakage to be suppressed from stream body, got=%s", body)
+	}
+	if !strings.Contains(body, "已基于真实 web_query 结果整理好 AAPL 股价信息。") {
+		t.Fatalf("expected final content in stream body, got=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	input, _ := webQueryMock.last["input"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if input != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query input = %q, want Apple AAPL stock price today April 2026", input)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "stream bracketed tool_use finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered bracketed tool_use execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(strings.ToLower(m.Content), "[tool_use]") || strings.Contains(m.Content, "\"arguments\"") {
+			t.Fatalf("expected recovered bracketed tool_use to be discarded from persisted assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
 func TestStreamMessage_RecoversNestedFunctionWrapperPseudoToolCallIntoRealToolExecution(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {

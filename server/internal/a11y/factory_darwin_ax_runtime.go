@@ -33,8 +33,8 @@ const (
 	darwinSnapshotMaxChildren     = 96
 	darwinSyntheticClickDelay     = 60 * time.Millisecond
 	darwinSyntheticTextFocusDelay = 80 * time.Millisecond
-	darwinActivationWaitTimeout   = 900 * time.Millisecond
-	darwinActivationPollInterval  = 120 * time.Millisecond
+	darwinActivationWaitTimeout   = 30 * time.Second
+	darwinActivationPollInterval  = 1 * time.Second
 )
 
 var darwinActivateAppFunc = darwinActivateApp
@@ -142,42 +142,28 @@ func (b *darwinBackend) snapshot(ctx context.Context, windowID string, interacti
 	if err := b.ensureAccessibilityPermission(); err != nil {
 		return SnapshotResult{HostOS: b.HostOS()}, b.enrichSnapshotPermissionError(ctx, record, err)
 	}
-	if darwinAXUIElementCreateApplication == nil {
-		return SnapshotResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "AX application lookup is unavailable", map[string]interface{}{"window_id": record.ID})
+	start := time.Now()
+	snapshot, cacheHit, telemetry, err := b.ensureStructuredSnapshot(ctx, record)
+	if err != nil {
+		return SnapshotResult{HostOS: b.HostOS()}, err
 	}
-	app := darwinAXUIElementCreateApplication(int32(record.PID))
-	if app == 0 {
-		return SnapshotResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "AX application lookup failed", map[string]interface{}{"window_id": record.ID})
+	mode := SnapshotProjectionFull
+	if interactiveOnly {
+		mode = SnapshotProjectionInteractive
 	}
-	defer darwinRelease(app)
-
-	window := darwinFindWindowElement(app, record)
-	if window == 0 {
-		return SnapshotResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "AX window lookup failed", map[string]interface{}{"window_id": record.ID})
-	}
-	defer darwinRelease(window)
-
-	b.resetSnapshotElements()
-	defer func() {
-		if r := recover(); r != nil {
-			b.resetSnapshotElements()
-		}
-	}()
-
-	visited := 0
-	root := b.buildSnapshotNode(window, 0, &visited)
-	if root == nil {
-		b.resetSnapshotElements()
-		return SnapshotResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "AX snapshot is empty", map[string]interface{}{"window_id": record.ID})
-	}
-	tree, refMap := BuildSnapshotTree(root, interactiveOnly)
+	projection := snapshot.Projection(mode)
+	telemetry.SnapshotRevision = snapshot.Revision
+	telemetry.CacheHit = cacheHit
+	telemetry.NodeCount = len(snapshot.Nodes)
+	telemetry.EndToEndMS = time.Since(start).Milliseconds()
 	result := SnapshotResult{
-		HostOS:   b.HostOS(),
-		WindowID: record.ID,
-		Title:    record.Title,
-		Tree:     tree,
-		RefMap:   refMap,
-		Message:  "Host accessibility snapshot ready",
+		HostOS:          b.HostOS(),
+		WindowID:        record.ID,
+		Title:           record.Title,
+		Tree:            projection.Tree,
+		RefMap:          projection.RefMap,
+		Message:         "Host accessibility snapshot ready",
+		ActionTelemetry: telemetry,
 	}
 	return attachSnapshotImage(ctx, result, b.screenshot), nil
 }
@@ -189,6 +175,20 @@ func (b *darwinBackend) enrichSnapshotPermissionError(ctx context.Context, recor
 }
 
 func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMap map[int]string, actType string, value string, holdMS int) (ActionResult, error) {
+	start := time.Now()
+	buildTelemetry := func(verificationMS int64, fallbacks []string) ActionTelemetry {
+		total := time.Since(start).Milliseconds()
+		actionMS := total - verificationMS
+		if actionMS < 0 {
+			actionMS = 0
+		}
+		return ActionTelemetry{
+			ActionMS:       actionMS,
+			VerificationMS: verificationMS,
+			EndToEndMS:     total,
+			Fallbacks:      append([]string(nil), fallbacks...),
+		}
+	}
 	if err := b.ensureAccessibilityPermission(); err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
 	}
@@ -220,6 +220,7 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 	fallbacks := make([]string, 0, 3)
 	if plan.SetValue {
 		if err := darwinSetStringAttribute(element, "AXValue", value); err == nil {
+			verifyStart := time.Now()
 			if ok, method := darwinVerifySemanticTextEntry(
 				ctx,
 				value,
@@ -229,6 +230,7 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 				darwinCaptureRegionPNGFunc,
 				darwinExtractTextFromPNGFunc,
 			); ok {
+				verificationMS := time.Since(verifyStart).Milliseconds()
 				return ActionResult{
 					HostOS:             b.HostOS(),
 					WindowID:           strings.TrimSpace(windowID),
@@ -239,6 +241,7 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 					VerificationMethod: method,
 					OverlayMode:        overlayMode,
 					Message:            "Host action completed",
+					ActionTelemetry:    buildTelemetry(verificationMS, nil),
 				}, nil
 			}
 		}
@@ -256,6 +259,7 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 				VerificationMethod: "semantic_action",
 				OverlayMode:        overlayMode,
 				Message:            "Host action completed",
+				ActionTelemetry:    buildTelemetry(0, nil),
 			}, nil
 		}
 	}
@@ -274,7 +278,9 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 	}
 	verificationPassed := true
 	verificationMethod := "input_action"
+	verificationMS := int64(0)
 	if strings.EqualFold(strings.TrimSpace(actType), "type") {
+		verifyStart := time.Now()
 		ok, method := darwinVerifySemanticTextEntry(
 			ctx,
 			value,
@@ -284,6 +290,7 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 			darwinCaptureRegionPNGFunc,
 			darwinExtractTextFromPNGFunc,
 		)
+		verificationMS = time.Since(verifyStart).Milliseconds()
 		verificationPassed = ok
 		verificationMethod = method
 		if !ok {
@@ -304,6 +311,7 @@ func (b *darwinBackend) act(ctx context.Context, windowID string, ref int, refMa
 		Fallbacks:          fallbacks,
 		OverlayMode:        overlayMode,
 		Message:            "Host action completed",
+		ActionTelemetry:    buildTelemetry(verificationMS, fallbacks),
 	}, nil
 }
 
@@ -349,6 +357,47 @@ func (b *darwinBackend) pointerMove(_ context.Context, x int, y int) (ActionResu
 	}
 	darwinCGWarpMouseCursorPosition(darwinPoint{X: float64(x), Y: float64(y)})
 	return ActionResult{HostOS: b.HostOS(), ExecutionMode: "input", Message: "Pointer moved"}, nil
+}
+
+func (b *darwinBackend) clickWindowPoint(ctx context.Context, windowID string, point NormalizedPoint, holdMS int) (ActionResult, error) {
+	if err := b.ensureAccessibilityPermission(); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	if point.X < 0 || point.X > 1 || point.Y < 0 || point.Y > 1 {
+		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "normalized click point must be between 0 and 1", map[string]interface{}{
+			"x": point.X,
+			"y": point.Y,
+		})
+	}
+	record, err := b.resolveWindowRecord(strings.TrimSpace(windowID))
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	if refreshed, refreshErr := b.refreshWindowRecord(record); refreshErr == nil {
+		record = refreshed
+	}
+	if !darwinRectDefined(record.Bounds) || record.Bounds.Size.Width <= 0 || record.Bounds.Size.Height <= 0 {
+		return ActionResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "target window has no visible bounds", map[string]interface{}{
+			"window_id": record.ID,
+		})
+	}
+	clickPoint := darwinPoint{
+		X: record.Bounds.Origin.X + point.X*record.Bounds.Size.Width,
+		Y: record.Bounds.Origin.Y + point.Y*record.Bounds.Size.Height,
+	}
+	if err := darwinClickPoint(clickPoint, darwinCGMouseButtonLeft, false, false, NormalizeHoldMS(holdMS)); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           record.ID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_click",
+		VerificationPassed: true,
+		VerificationMethod: "point_click",
+		Message:            "Host action completed",
+	}, nil
 }
 
 func (b *darwinBackend) key(ctx context.Context, windowID string, keys []string, holdMS int) (ActionResult, error) {
@@ -659,15 +708,51 @@ func (b *darwinBackend) buildSnapshotNode(element uintptr, depth int, visited *i
 func (b *darwinBackend) resetSnapshotElements() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.clearSnapshotElementsLocked()
+	b.clearSnapshotElementsForWindowLocked("")
 	b.nextRef = 0
+	b.snapshotWindow = ""
 	if b.elements == nil {
 		b.elements = make(map[string]darwinElementRef)
 	}
 }
 
-func (b *darwinBackend) clearSnapshotElementsLocked() {
+func (b *darwinBackend) prepareSnapshotElements(windowID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.clearSnapshotElementsForWindowLocked(windowID)
+	b.snapshotWindow = strings.TrimSpace(windowID)
+	if b.elements == nil {
+		b.elements = make(map[string]darwinElementRef)
+	}
+}
+
+func (b *darwinBackend) finishSnapshotElementsBuild() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.snapshotWindow = ""
+}
+
+func (b *darwinBackend) resetSnapshotElementsForWindow(windowID string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.clearSnapshotElementsForWindowLocked(windowID)
+	if strings.TrimSpace(windowID) == strings.TrimSpace(b.snapshotWindow) {
+		b.snapshotWindow = ""
+	}
+	if b.elements == nil {
+		b.elements = make(map[string]darwinElementRef)
+	}
+}
+
+func (b *darwinBackend) clearSnapshotElementsForWindowLocked(windowID string) {
+	prefix := ""
+	if trimmed := strings.TrimSpace(windowID); trimmed != "" {
+		prefix = trimmed + "|"
+	}
 	for token, ref := range b.elements {
+		if prefix != "" && !strings.HasPrefix(token, prefix) {
+			continue
+		}
 		if ref.Element != 0 {
 			darwinRelease(ref.Element)
 		}
@@ -686,6 +771,9 @@ func (b *darwinBackend) storeSnapshotElement(element uintptr) string {
 	}
 	b.nextRef++
 	token := fmt.Sprintf("darwin-%d", b.nextRef)
+	if windowID := strings.TrimSpace(b.snapshotWindow); windowID != "" {
+		token = fmt.Sprintf("%s|darwin-%d", windowID, b.nextRef)
+	}
 	if darwinCFRetain != nil {
 		darwinCFRetain(element)
 	}
@@ -780,16 +868,19 @@ func darwinPasteTextInput(text string) error {
 }
 
 func darwinClickElement(element uintptr, button uint32, doubleClick bool, hold bool, holdMS int) error {
-	if darwinCGEventCreateMouseEvent == nil || darwinCGEventPost == nil {
-		return NewError("backend_unavailable", "pointer event injection is unavailable", nil)
-	}
 	bounds, ok := darwinElementBounds(element)
 	if !ok {
 		return NewError("unsupported_action", "element bounds are unavailable for pointer fallback", nil)
 	}
-	center := darwinPoint{
+	return darwinClickPoint(darwinPoint{
 		X: bounds.Origin.X + bounds.Size.Width/2,
 		Y: bounds.Origin.Y + bounds.Size.Height/2,
+	}, button, doubleClick, hold, holdMS)
+}
+
+func darwinClickPoint(center darwinPoint, button uint32, doubleClick bool, hold bool, holdMS int) error {
+	if darwinCGEventCreateMouseEvent == nil || darwinCGEventPost == nil {
+		return NewError("backend_unavailable", "pointer event injection is unavailable", nil)
 	}
 	if darwinCGWarpMouseCursorPosition != nil {
 		darwinCGWarpMouseCursorPosition(center)

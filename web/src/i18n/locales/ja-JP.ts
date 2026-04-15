@@ -4497,6 +4497,7 @@ export default mergeHarnessLocale('ja-JP', {
   resultCard: {
     labels: {
       backend: 'バックエンド',
+      path: 'パス',
     },
     values: {
       strategy: {
@@ -4505,6 +4506,8 @@ export default mergeHarnessLocale('ja-JP', {
     },
     messages: {
       no_result_data: '結果データがありません',
+      file_written_successfully: 'ファイルの書き込みが完了しました',
+      document_converted: 'ドキュメントを変換しました',
     },
     warnings: {
       listing_truncated: '一覧は切り詰められました。パスを絞り込むか、max_entries を増やしてください。',

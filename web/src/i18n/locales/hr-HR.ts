@@ -4523,6 +4523,7 @@ export default mergeHarnessLocale('hr-HR', {
   resultCard: {
     labels: {
       backend: 'Pozadina',
+      path: 'Putanja',
     },
     values: {
       strategy: {
@@ -4531,6 +4532,8 @@ export default mergeHarnessLocale('hr-HR', {
     },
     messages: {
       no_result_data: 'Nema podataka o rezultatu',
+      file_written_successfully: 'Datoteka je uspješno zapisana',
+      document_converted: 'Dokument je pretvoren',
     },
     warnings: {
       listing_truncated: 'Popis je skraćen; suzite putanju ili povećajte max_entries.',

@@ -4566,6 +4566,7 @@ export default mergeHarnessLocale('ml-IN', {
   resultCard: {
     labels: {
       backend: 'ബാക്ക്എൻഡ്',
+      path: 'പാത',
     },
     values: {
       strategy: {
@@ -4574,6 +4575,8 @@ export default mergeHarnessLocale('ml-IN', {
     },
     messages: {
       no_result_data: 'ഫല ഡാറ്റയില്ല',
+      file_written_successfully: 'ഫയൽ വിജയകരമായി എഴുതിയിരിക്കുന്നു',
+      document_converted: 'രേഖ പരിവർത്തനം ചെയ്തു',
     },
     warnings: {
       listing_truncated: 'പട്ടിക ചുരുക്കിയിരിക്കുന്നു; പാത ചുരുക്കുക അല്ലെങ്കിൽ max_entries കൂട്ടുക.',
