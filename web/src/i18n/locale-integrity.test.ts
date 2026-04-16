@@ -475,6 +475,8 @@ describe('locale integrity', () => {
       'system.cards.memoryChart.chartCaption',
       'system.cards.info.subtitle',
       'settings.failover.errorTypes.timeout',
+      'tools.names.advisor',
+      'tools.descriptions.advisor',
     ]
 
     for (const [modulePath, mod] of entries) {

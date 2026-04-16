@@ -1306,7 +1306,6 @@ export default mergeHarnessLocale('pl-PL', {
       contextCompressionModeSmallModel: 'Preferuj lekki model',
       contextCompressionModeOffline: 'Deterministyczny offline',
       docExtract: 'Przyspieszenie ekstrakcji dokumentów',
-      imageQA: 'Przyspieszenie rozpoznawania obrazów',
       shortQA: 'Przyspieszenie krótkich Q&A',
       statsTitle: 'Statystyki działania (rozwiązywanie problemów)',
       statsHint:
@@ -1315,9 +1314,6 @@ export default mergeHarnessLocale('pl-PL', {
       shortQAAttempts: 'Przyspieszenie krótkich Q&A Liczba',
       shortQASuccessRate: 'Przyspieszenie krótkich Q&A Wskaźnik trafień',
       shortQALatencyMs: 'Przyspieszenie krótkich Q&A Opóźnienie',
-      imageQAAttempts: 'Liczba rozpoznań obrazów',
-      imageQASuccessRate: 'Skuteczność rozpoznawania obrazów',
-      imageQALatencyMs: 'Opóźnienie rozpoznawania obrazów',
       summarySuccessRate: 'Przyspieszenie podsumowań Wskaźnik trafień',
       summaryLatencyMs: 'Przyspieszenie podsumowań Opóźnienie',
       contextCompressionSuccessRate: 'Skuteczność kompresji kontekstu',
@@ -4682,6 +4678,7 @@ export default mergeHarnessLocale('pl-PL', {
       analyze: 'Raport z analizy',
       mediagen: 'Przypomnienia',
       ask: 'Generowanie mediow',
+      advisor: 'Doradca',
       'Web Search': 'Wyszukiwanie',
       Calculator: 'Kalkulator',
       'System Info': 'Informacje o systemie',
@@ -4723,6 +4720,7 @@ export default mergeHarnessLocale('pl-PL', {
       exec: 'Uruchamia polecenia powloki i przechwytuje ich wynik',
       analyze: 'Zbiera dane z internetu i generuje uporzadkowany raport analityczny',
       ask: 'Zadaje uzytkownikowi pytania uzupelniajace potrzebne do kontynuowania zadania',
+      advisor: 'Doradca decyzyjny do pytań o wybór, zastąpienie, migrację i dobre praktyki.',
       mediagen: 'Generuje obrazy, wideo i prezentacje przy uzyciu modeli AI',
       web_query: 'Pobiera i analizuje strone WWW po adresie URL',
       research:

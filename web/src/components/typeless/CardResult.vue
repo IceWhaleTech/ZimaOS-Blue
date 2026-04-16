@@ -1077,16 +1077,23 @@ function tDetailValue(_label: string, value: unknown): string {
 
   const rawValue = typeof value === 'string' ? value.trim() : toDisplayString(value)
   if (!rawValue) return ''
+  const normalizedLabel = normalizeResultCardKey(_label)
+  const normalizedValue = normalizeResultCardKey(rawValue)
 
   const lowered = rawValue.toLowerCase()
   if (lowered === 'true') return t('common.yes', 'Yes')
   if (lowered === 'false') return t('common.no', 'No')
 
-  if (normalizeResultCardKey(_label) === 'strategy') {
-    switch (normalizeResultCardKey(rawValue)) {
+  if (normalizedLabel === 'strategy') {
+    switch (normalizedValue) {
       case 'strict':
         return t('resultCard.values.strategy.strict', rawValue)
     }
+  }
+
+  if (normalizedLabel && normalizedValue) {
+    const valueKey = `resultCard.values.${normalizedLabel}.${normalizedValue}`
+    if (te(valueKey)) return t(valueKey, rawValue)
   }
 
   return rawValue

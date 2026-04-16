@@ -569,12 +569,6 @@ export const useSettingsStore = defineStore('settings', () => {
   const featureIntentIREnabled = computed(
     () => backendSettings.value.feature_intent_ir_enabled ?? true
   )
-  const smallModelRouteImageQAEnabled = computed(
-    () =>
-      backendSettings.value.small_model_route_image_qa_enabled ??
-      backendSettings.value.small_model_route_short_qa_enabled ??
-      false
-  )
   const smallModelRouteShortQAEnabled = computed(
     () => backendSettings.value.small_model_route_short_qa_enabled ?? false
   )
@@ -702,10 +696,6 @@ export const useSettingsStore = defineStore('settings', () => {
 
   async function setSmallModelRouteShortQAEnabled(enabled: boolean) {
     await updateBackendSettings({ small_model_route_short_qa_enabled: enabled })
-  }
-
-  async function setSmallModelRouteImageQAEnabled(enabled: boolean) {
-    await updateBackendSettings({ small_model_route_image_qa_enabled: enabled })
   }
 
   async function setNoLLMDegradeMode(mode: NoLLMDegradeMode) {
@@ -886,7 +876,6 @@ export const useSettingsStore = defineStore('settings', () => {
     smallModelMediaIntentEnabled,
     offlineIRFallbackEnabled,
     featureIntentIREnabled,
-    smallModelRouteImageQAEnabled,
     smallModelRouteShortQAEnabled,
     noLLMDegradeMode,
     smallModelUnavailablePolicy,
@@ -943,7 +932,6 @@ export const useSettingsStore = defineStore('settings', () => {
     setAgentLoopPolicyMissingTodoBudget,
     setAgentLoopPolicyPendingTodoBudget,
     setContextCompressionMode,
-    setSmallModelRouteImageQAEnabled,
     setSmallModelRouteShortQAEnabled,
     setNoLLMDegradeMode,
     setSmallModelUnavailablePolicy,

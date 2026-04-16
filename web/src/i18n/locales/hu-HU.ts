@@ -1315,7 +1315,6 @@ export default mergeHarnessLocale('hu-HU', {
       contextCompressionModeSmallModel: 'Könnyű modell előnyben',
       contextCompressionModeOffline: 'Determinisztikus offline',
       docExtract: 'Dokumentumkinyerés gyorsítása',
-      imageQA: 'Képfelismerési gyorsítás',
       shortQA: 'Rövid kérdés-válasz gyorsítás',
       statsTitle: 'Futási statisztikák (hibaelhárítás)',
       statsHint:
@@ -1324,9 +1323,6 @@ export default mergeHarnessLocale('hu-HU', {
       shortQAAttempts: 'Rövid kérdés-válasz gyorsítás Szám',
       shortQASuccessRate: 'Rövid kérdés-válasz gyorsítás Találati arány',
       shortQALatencyMs: 'Rövid kérdés-válasz gyorsítás Késleltetés',
-      imageQAAttempts: 'Képfelismerések száma',
-      imageQASuccessRate: 'Képfelismerés találati aránya',
-      imageQALatencyMs: 'Képfelismerés késleltetése',
       summarySuccessRate: 'Összegzés gyorsítása Találati arány',
       summaryLatencyMs: 'Összegzés gyorsítása Késleltetés',
       contextCompressionSuccessRate: 'Kontextustömörítési találati arány',
@@ -4700,6 +4696,7 @@ export default mergeHarnessLocale('hu-HU', {
       analyze: 'Elemzési jelentés',
       mediagen: 'Emlkeztetok',
       ask: 'Mediageneralas',
+      advisor: 'Tanácsadó',
       'Web Search': 'Webes keresés',
       Calculator: 'Számológép',
       'System Info': 'Rendszerinformáció',
@@ -4741,6 +4738,7 @@ export default mergeHarnessLocale('hu-HU', {
       exec: 'Shell-parancsokat futtat, es rogzitit a kimenetet',
       analyze: 'Webes adatokat gyujt, es strukturalt elemzesi jelentest keszit',
       ask: 'A felhasznalonak tovabbi kerdeseket tesz fel a feladat folytatasahoz',
+      advisor: 'Döntési tanácsadó kiválasztási, lecserélési, migrációs és bevált gyakorlatokkal kapcsolatos kérdésekhez.',
       mediagen: 'Kepeket, videokat es prezentaciokat general AI-modellekkel',
       web_query: 'URL alapjan letolt es feldolgoz egy weboldalt',
       research:

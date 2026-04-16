@@ -5,6 +5,7 @@ import {
 import advisorCardBackfills from './advisor-card-backfills'
 import automationOperationsRenameBackfills from './automation-operations-rename-backfills'
 import chatQuickNavBackfills from './chat-quick-nav-backfills'
+import channelsBannerBackfills from './channels-banner-backfills'
 import {
   agentcoreRunnerPartDescriptionBase,
   agentcoreRunnerPartDescriptionOverrides,
@@ -9002,7 +9003,10 @@ export function mergeHarnessLocale<T extends Record<string, unknown>>(
   const structuralPatch = mergeLocaleNodes(
     mergeLocaleNodes(
       mergeLocaleNodes(
-        (localeStructuralBackfills[localeKey] ?? {}) as LocaleNode,
+        mergeLocaleNodes(
+          (channelsBannerBackfills[localeKey] ?? {}) as LocaleNode,
+          (localeStructuralBackfills[localeKey] ?? {}) as LocaleNode
+        ),
         (skillStoreHighRiskBackfills[localeKey] ?? {}) as LocaleNode
       ),
       mergeLocaleNodes(

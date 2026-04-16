@@ -30,6 +30,7 @@ type officeDocSpec struct {
 	Title           string
 	Subtitle        string
 	Summary         string
+	Language        string
 	Theme           officeTheme
 	StyleHint       string
 	Sections        []officeDocSection
@@ -498,6 +499,7 @@ func parseOfficeDocSpec(args map[string]interface{}, title, subtitle string, the
 		Title:     title,
 		Subtitle:  subtitle,
 		Theme:     theme,
+		Language:  strings.TrimSpace(firstCompatString(args, "lang", "language", "locale")),
 		StyleHint: strings.TrimSpace(styleHint),
 		Notes:     officeStringSliceArg(args, "notes"),
 	}
@@ -829,7 +831,25 @@ func parseOfficeDocSections(raw interface{}) ([]officeDocSection, error) {
 		if len(section.ParagraphBlocks) == 0 {
 			body := strings.TrimSpace(anyToStringForLLM(firstMapValue(m, "body", "text", "content")))
 			if body != "" {
-				section.ParagraphBlocks = append(section.ParagraphBlocks, officeDocBlocksFromBodyText(body)...)
+				parsedBody := officeParseMarkdownishSectionBody(body)
+				if parsedHeading := strings.TrimSpace(parsedBody.Heading); parsedHeading != "" {
+					switch {
+					case section.Heading == "":
+						section.Heading = parsedHeading
+					case officeLooksLikeGeneratedSlideHeading(section.Heading):
+						section.Heading = parsedHeading
+					case section.Heading != parsedHeading:
+						section.ParagraphBlocks = append(section.ParagraphBlocks, officeDocBlock{Kind: officeDocBlockParagraph, Text: parsedHeading})
+					}
+				}
+				section.ParagraphBlocks = append(section.ParagraphBlocks, parsedBody.Blocks...)
+				section.Bullets = append(section.Bullets, parsedBody.Bullets...)
+				if section.Table == nil {
+					section.Table = parsedBody.Table
+				}
+				if len(section.ParagraphBlocks) == 0 && len(section.Bullets) == 0 && section.Table == nil {
+					section.ParagraphBlocks = append(section.ParagraphBlocks, officeDocBlocksFromBodyText(body)...)
+				}
 			}
 		}
 		if rawTable, ok := m["table"]; ok {

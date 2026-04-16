@@ -7,11 +7,13 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type officePPTXSlide struct {
 	Title      string
 	Theme      officeTheme
+	IsCover    bool
 	Blocks     []officeDocBlock
 	Lines      []string
 	Callouts   []officePPTXCallout
@@ -48,7 +50,15 @@ type officePPTXChartPackage struct {
 	Workbook     *officePPTXChartWorkbookPackage
 }
 
+type officePPTXDeckLabels struct {
+	Presentation    string
+	TableOfContents string
+	Content         string
+	Summary         string
+}
+
 func buildOfficePPTX(spec officeDocSpec) ([]byte, officeBuildInfo, error) {
+	spec = cleanupOfficeDocSpec(spec)
 	slides := officeBuildPresentationSlides(spec)
 	if len(slides) == 0 {
 		return nil, officeBuildInfo{}, fmt.Errorf("pptx output requires at least one slide")
@@ -93,7 +103,7 @@ func buildOfficePPTX(spec officeDocSpec) ([]byte, officeBuildInfo, error) {
 		chartIndex := 0
 		if slide.Chart != nil {
 			chartIndex = nextChartIndex
-			chartPackage, err := officeBuildPPTXChartPackageForTheme(*slide.Chart, slide.Theme, chartIndex)
+			chartPackage, err := officeBuildPPTXChartPackageForTheme(officePPTXChartSpecForSlide(slide), slide.Theme, chartIndex)
 			if err != nil {
 				return nil, officeBuildInfo{}, err
 			}
@@ -158,18 +168,22 @@ func buildOfficePPTX(spec officeDocSpec) ([]byte, officeBuildInfo, error) {
 func officeBuildPresentationSlides(spec officeDocSpec) []officePPTXSlide {
 	slides := make([]officePPTXSlide, 0, len(spec.Sections)+4)
 	theme := officePPTXResolvedTheme(spec.Theme)
+	labels := officePPTXDeckLabelsForSpec(spec)
 
 	title := strings.TrimSpace(spec.Title)
 	subtitle := strings.TrimSpace(spec.Subtitle)
-	sectionTitles := officePPTXSectionTitles(spec.Sections)
+	coverLines := officePPTXNormalizeLines(subtitle)
+	sections := spec.Sections
+	if mergedLines, ok := officePPTXLeadingCoverSectionLines(title, sections); ok {
+		coverLines = officeAppendUniqueOfficeLines(coverLines, mergedLines...)
+		sections = sections[1:]
+	}
+	sectionTitles := officePPTXSectionTitles(sections)
 	if title != "" || subtitle != "" {
-		lines := []string(nil)
-		if subtitle != "" {
-			lines = append(lines, subtitle)
-		}
 		slides = append(slides, officePPTXSlide{
-			Title: firstNonEmptyOfficeString(title, "Presentation"),
-			Lines: lines,
+			Title:   firstNonEmptyOfficeString(title, labels.Presentation),
+			IsCover: true,
+			Lines:   coverLines,
 		})
 	}
 
@@ -178,16 +192,16 @@ func officeBuildPresentationSlides(spec officeDocSpec) []officePPTXSlide {
 		for idx, sectionTitle := range sectionTitles {
 			tocLines = append(tocLines, fmt.Sprintf("%d. %s", idx+1, sectionTitle))
 		}
-		slides = append(slides, officePPTXSlide{Title: "Table of Contents", Lines: tocLines})
+		slides = append(slides, officePPTXSlide{Title: labels.TableOfContents, Lines: tocLines})
 	}
 	if len(spec.ParagraphBlocks) > 0 || len(spec.Paragraphs) > 0 {
 		slides = append(slides, officePPTXSlide{
-			Title:  "Content",
+			Title:  labels.Content,
 			Blocks: officeDocBlocksOrParagraphs(spec.ParagraphBlocks, spec.Paragraphs),
 		})
 	}
 
-	for idx, section := range spec.Sections {
+	for idx, section := range sections {
 		blocks := officeDocBlocksOrParagraphs(section.ParagraphBlocks, section.Paragraphs)
 		for _, bullet := range officePPTXNormalizeLines(section.Bullets...) {
 			blocks = append(blocks, officeDocBlock{
@@ -204,23 +218,17 @@ func officeBuildPresentationSlides(spec officeDocSpec) []officePPTXSlide {
 		if len(blocks) == 0 && len(callouts) == 0 && officePPTXTableRowCount(section.Table) == 0 && section.Chart == nil {
 			continue
 		}
-		title := strings.TrimSpace(section.Heading)
-		if title == "" && section.Chart != nil {
-			title = strings.TrimSpace(section.Chart.Title)
-		}
-		if title == "" {
-			title = fmt.Sprintf("Slide %d", idx+1)
-		}
+		title := officePPTXSectionTitle(section, idx)
 		slides = append(slides, officePPTXSlide{Title: title, Blocks: blocks, Callouts: callouts, Table: section.Table, Chart: section.Chart})
 	}
 
 	if summaryLines := officePPTXSummaryLines(spec); len(summaryLines) > 0 {
-		slides = append(slides, officePPTXSlide{Title: "Summary", Lines: summaryLines})
+		slides = append(slides, officePPTXSlide{Title: labels.Summary, Lines: summaryLines})
 	}
 
 	if len(slides) == 0 {
 		slides = append(slides, officePPTXSlide{
-			Title: firstNonEmptyOfficeString(title, "Presentation"),
+			Title: firstNonEmptyOfficeString(title, labels.Presentation),
 			Lines: officePPTXNormalizeLines(subtitle),
 		})
 	}
@@ -237,6 +245,150 @@ func officePPTXShouldIncludeTOC(spec officeDocSpec, sectionTitles []string) bool
 	return strings.TrimSpace(spec.Title) != "" ||
 		strings.TrimSpace(spec.Subtitle) != "" ||
 		strings.TrimSpace(spec.Summary) != ""
+}
+
+func officePPTXDeckLabelsForSpec(spec officeDocSpec) officePPTXDeckLabels {
+	if officePPTXSpecPrefersChinese(spec) {
+		return officePPTXDeckLabels{
+			Presentation:    "演示文稿",
+			TableOfContents: "目录",
+			Content:         "内容",
+			Summary:         "总结",
+		}
+	}
+	return officePPTXDeckLabels{
+		Presentation:    "Presentation",
+		TableOfContents: "Table of Contents",
+		Content:         "Content",
+		Summary:         "Summary",
+	}
+}
+
+func officePPTXSpecPrefersChinese(spec officeDocSpec) bool {
+	samples := make([]string, 0, len(spec.Sections)*3+4)
+	appendSample := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		samples = append(samples, value)
+	}
+
+	appendSample(spec.Title)
+	appendSample(spec.Subtitle)
+	appendSample(spec.Summary)
+	for _, note := range spec.Notes {
+		appendSample(note)
+	}
+	for _, section := range spec.Sections {
+		appendSample(section.Heading)
+		for _, block := range officeDocBlocksOrParagraphs(section.ParagraphBlocks, section.Paragraphs) {
+			appendSample(block.Text)
+			if len(samples) >= 16 {
+				break
+			}
+		}
+		for _, bullet := range section.Bullets {
+			appendSample(bullet)
+			if len(samples) >= 16 {
+				break
+			}
+		}
+		if len(samples) >= 16 {
+			break
+		}
+	}
+
+	hanCount := 0
+	latinCount := 0
+	for _, sample := range samples {
+		for _, r := range sample {
+			switch {
+			case unicode.In(r, unicode.Han):
+				hanCount++
+			case r <= unicode.MaxASCII && unicode.IsLetter(r):
+				latinCount++
+			}
+		}
+	}
+	return hanCount >= 8 && hanCount > latinCount
+}
+
+func officePPTXLeadingCoverSectionLines(title string, sections []officeDocSection) ([]string, bool) {
+	if strings.TrimSpace(title) == "" || len(sections) == 0 {
+		return nil, false
+	}
+	section := sections[0]
+	if section.Chart != nil || section.Table != nil || len(section.Bullets) > 0 {
+		return nil, false
+	}
+	if !officePPTXEquivalentSlideTitle(officePPTXSectionTitle(section, 0), title) {
+		return nil, false
+	}
+	blocks := officeDocBlocksOrParagraphs(section.ParagraphBlocks, section.Paragraphs)
+	if len(blocks) == 0 || len(blocks) > 3 {
+		return nil, false
+	}
+	lines := make([]string, 0, len(blocks))
+	totalRunes := 0
+	for _, block := range blocks {
+		switch block.Kind {
+		case officeDocBlockParagraph, officeDocBlockQuote:
+		default:
+			return nil, false
+		}
+		normalized := officePPTXNormalizeLines(block.Text)
+		if len(normalized) != 1 {
+			return nil, false
+		}
+		line := normalized[0]
+		if officePPTXEquivalentSlideTitle(line, title) {
+			continue
+		}
+		if line == "" {
+			continue
+		}
+		totalRunes += runeCount(line)
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 || totalRunes > 120 {
+		return nil, false
+	}
+	return lines, true
+}
+
+func officePPTXEquivalentSlideTitle(left, right string) bool {
+	return officePPTXNormalizedSlideTitle(left) == officePPTXNormalizedSlideTitle(right)
+}
+
+func officePPTXNormalizedSlideTitle(value string) string {
+	return strings.Join(strings.Fields(strings.TrimSpace(strings.ToLower(value))), " ")
+}
+
+func officeAppendUniqueOfficeLines(existing []string, candidates ...string) []string {
+	seen := make(map[string]struct{}, len(existing))
+	merged := make([]string, 0, len(existing)+len(candidates))
+	for _, line := range existing {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		key := officePPTXNormalizedSlideTitle(line)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, line)
+	}
+	for _, line := range officePPTXNormalizeLines(candidates...) {
+		key := officePPTXNormalizedSlideTitle(line)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, line)
+	}
+	return merged
 }
 
 func officePPTXShouldUseStandaloneCallouts(section officeDocSection, blocks []officeDocBlock) bool {
@@ -279,13 +431,97 @@ func officePPTXBulletSupportsStandaloneCallout(bullet string) bool {
 func officePPTXSectionTitles(sections []officeDocSection) []string {
 	titles := make([]string, 0, len(sections))
 	for idx, section := range sections {
-		title := strings.TrimSpace(section.Heading)
-		if title == "" {
-			title = fmt.Sprintf("Section %d", idx+1)
-		}
-		titles = append(titles, title)
+		titles = append(titles, officePPTXSectionTitle(section, idx))
 	}
 	return titles
+}
+
+func officePPTXSectionTitle(section officeDocSection, index int) string {
+	if heading := strings.TrimSpace(section.Heading); heading != "" && !officeLooksLikeGeneratedSlideHeading(heading) {
+		return heading
+	}
+	if chartTitle := strings.TrimSpace(section.ChartTitle()); chartTitle != "" && !officeLooksLikeGeneratedSlideHeading(chartTitle) {
+		return chartTitle
+	}
+	if derived := officePPTXDerivedTitleFromSection(section); derived != "" {
+		return derived
+	}
+	if heading := strings.TrimSpace(section.Heading); heading != "" {
+		return heading
+	}
+	if chartTitle := strings.TrimSpace(section.ChartTitle()); chartTitle != "" {
+		return chartTitle
+	}
+	return fmt.Sprintf("Slide %d", index+1)
+}
+
+func (section officeDocSection) ChartTitle() string {
+	if section.Chart == nil {
+		return ""
+	}
+	return section.Chart.Title
+}
+
+func officePPTXDerivedTitleFromSection(section officeDocSection) string {
+	for _, block := range officeDocBlocksOrParagraphs(section.ParagraphBlocks, section.Paragraphs) {
+		switch block.Kind {
+		case officeDocBlockParagraph, officeDocBlockQuote:
+			if title := officePPTXCandidateTitleText(block.Text); title != "" {
+				return title
+			}
+		}
+	}
+	for _, bullet := range section.Bullets {
+		if title := officePPTXCandidateTitleText(officePPTXStripListPrefix(bullet)); title != "" {
+			return title
+		}
+	}
+	if section.Table != nil && len(section.Table.Headers) > 0 {
+		if title := officePPTXCandidateTitleText(strings.Join(section.Table.Headers, " / ")); title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func officePPTXCandidateTitleText(text string) string {
+	text = strings.TrimSpace(strings.ReplaceAll(text, "\r\n", "\n"))
+	if text == "" {
+		return ""
+	}
+	if heading, _, ok := officeMarkdownHeading(text); ok {
+		text = heading
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = officeCleanDocText(line)
+		if line == "" {
+			continue
+		}
+		if officeLooksLikeGeneratedSlideHeading(line) {
+			continue
+		}
+		text = line
+		break
+	}
+	text = officePPTXStripListPrefix(officeCleanDocText(text))
+	if text == "" {
+		return ""
+	}
+	sentences := officeSplitSentences(text)
+	if len(sentences) > 0 {
+		candidate := officeCleanDocText(sentences[0])
+		if candidate != "" && runeCount(candidate) >= 8 && runeCount(candidate) <= 56 {
+			return candidate
+		}
+	}
+	if runeCount(text) <= 56 {
+		return text
+	}
+	runes := []rune(text)
+	if len(runes) <= 56 {
+		return text
+	}
+	return strings.TrimSpace(string(runes[:53])) + "..."
 }
 
 func officePPTXSummaryLines(spec officeDocSpec) []string {
@@ -381,13 +617,27 @@ func officePPTXCalloutFromText(text string, preferListItem bool) (officePPTXCall
 	}
 
 	if label, value, ok := officePPTXSplitCalloutStat(text); ok {
-		tone := officeClassifyDeltaTone(value)
-		if tone == "" || tone == "muted" {
+		if officePPTXCalloutValueUsesStatStyle(value) {
+			tone := officeClassifyDeltaTone(value)
+			if tone == "" || tone == "muted" {
+				tone = "primary"
+			}
+			return officePPTXCallout{
+				Label: label,
+				Value: value,
+				Tone:  tone,
+			}, true
+		}
+		tone := officeNormalizeToneName(value)
+		if tone == "" || tone == "primary" {
+			tone = officeClassifyTone(label + ": " + value)
+		}
+		if tone == "" {
 			tone = "primary"
 		}
 		return officePPTXCallout{
 			Label: label,
-			Value: value,
+			Body:  value,
 			Tone:  tone,
 		}, true
 	}
@@ -406,22 +656,26 @@ func officePPTXCalloutFromText(text string, preferListItem bool) (officePPTXCall
 }
 
 func officePPTXSplitCalloutStat(text string) (string, string, bool) {
-	for _, separator := range []string{":", "："} {
-		left, right, ok := strings.Cut(text, separator)
-		if !ok {
-			continue
-		}
-		left = strings.TrimSpace(left)
-		right = strings.TrimSpace(right)
-		if left == "" || right == "" {
-			continue
-		}
-		if runeCount(left) > 28 || runeCount(right) > 24 {
-			continue
-		}
-		return left, right, true
+	return officeSplitCompactStat(text)
+}
+
+func officePPTXCalloutValueUsesStatStyle(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
 	}
-	return "", "", false
+	for _, r := range value {
+		if unicode.IsDigit(r) {
+			return true
+		}
+	}
+	lower := strings.ToLower(value)
+	for _, marker := range []string{"%", "$", "ms", "s", "x", "kb", "mb", "gb", "tb"} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func officePPTXNormalizeCalloutText(text string) string {
@@ -638,6 +892,17 @@ func officeBuildPPTXChartPackageForTheme(chart officeChartSpec, theme officeThem
 		ChartRelsXML: officePPTXChartRelsXML(workbook),
 		Workbook:     workbook,
 	}, nil
+}
+
+func officePPTXChartSpecForSlide(slide officePPTXSlide) officeChartSpec {
+	if slide.Chart == nil {
+		return officeChartSpec{}
+	}
+	chart := *slide.Chart
+	if strings.TrimSpace(slide.Title) != "" {
+		chart.Title = ""
+	}
+	return chart
 }
 
 func officePPTXChartShouldEmbedWorkbook(chart officeChartSpec) bool {
@@ -861,6 +1126,18 @@ func officePPTXThemeXML(theme officeTheme) string {
 func officePPTXSlideXML(slide officePPTXSlide) string {
 	theme := officePPTXResolvedTheme(slide.Theme)
 	var body strings.Builder
+	titleSize := 2800
+	titleAlignment := ""
+	coverBodySize := 2200
+	coverBodyAlignment := "ctr"
+	coverBodyColor := theme.Slate
+	if slide.IsCover {
+		titleSize = 4400
+		titleAlignment = "l"
+		coverBodySize = 1900
+		coverBodyAlignment = "l"
+		coverBodyColor = theme.Secondary
+	}
 	hasBodyText := len(slide.Blocks) > 0 || len(slide.Lines) > 0
 	useStandaloneCalloutGrid := slide.Chart == nil && slide.Table == nil && len(slide.Callouts) > 0 && !hasBodyText
 	if len(slide.Blocks) > 0 {
@@ -871,6 +1148,16 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 		}
 	} else {
 		for _, line := range slide.Lines {
+			if slide.IsCover {
+				body.WriteString(officePPTXCoverParagraphXML(
+					officePPTXTextRunsXMLWithHyperlinks(line, 2200, false, false, theme.MonospaceFont, slide.hyperlinks),
+					theme.BodyFont,
+					coverBodyColor,
+					coverBodySize,
+					coverBodyAlignment,
+				))
+				continue
+			}
 			body.WriteString(officePPTXStyledParagraphXML(
 				officePPTXTextRunsXMLWithHyperlinks(line, 2200, false, false, theme.MonospaceFont, slide.hyperlinks),
 				theme.BodyFont,
@@ -883,22 +1170,50 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 	if body.Len() == 0 {
 		body.WriteString(`<a:p>` + officePPTXParagraphPropertiesXML("", theme.BodyFont, theme.Slate, 2200) + `</a:p>`)
 	}
+	titleX, titleY, titleW, titleH := officePPTXTitleTextBoxMetrics(slide.IsCover)
+	contentX, contentY, contentW, contentH := officePPTXContentTextBoxMetrics(slide.IsCover, hasBodyText, slide.Chart != nil, slide.Table != nil, len(slide.Callouts) > 0)
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">` +
 		`<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>` +
-		officePPTXThemeChromeXML(theme) +
-		`<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>` +
-		officePPTXStyledParagraphXML(
-			officePPTXTextRunsXMLWithHyperlinks(firstNonEmptyOfficeString(slide.Title, "Slide"), 2800, true, false, theme.MonospaceFont, slide.hyperlinks),
-			theme.DisplayFont,
-			theme.PrimaryDark,
-			2800,
+		officePPTXSlideChromeXML(slide, theme) +
+		officePPTXTextBoxShapeXML(
+			2,
+			"Title",
+			titleX,
+			titleY,
+			titleW,
+			titleH,
 			"",
+			"",
+			"rect",
+			officePPTXStyledParagraphXML(
+				officePPTXTextRunsXMLWithHyperlinks(firstNonEmptyOfficeString(slide.Title, "Slide"), titleSize, true, false, theme.MonospaceFont, slide.hyperlinks),
+				theme.DisplayFont,
+				theme.PrimaryDark,
+				titleSize,
+				titleAlignment,
+			),
 		) +
-		`</p:txBody></p:sp>` +
-		`<p:sp><p:nvSpPr><p:cNvPr id="3" name="Content"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr wrap="square"/><a:lstStyle/>` + body.String() + `</p:txBody></p:sp>` +
+		officePPTXTextBoxShapeXML(
+			3,
+			"Content",
+			contentX,
+			contentY,
+			contentW,
+			contentH,
+			"",
+			"",
+			"rect",
+			body.String(),
+		) +
 		officePPTXSeparatorShapesXML(slide.Blocks, theme) +
 		officePPTXImageShapesXML(slide.Blocks, slide.images) +
+		func() string {
+			if slide.IsCover {
+				return officePPTXCoverSignatureShapeXML(theme)
+			}
+			return ""
+		}() +
 		func() string {
 			if useStandaloneCalloutGrid {
 				return officePPTXStandaloneCalloutShapesXML(slide.Callouts, theme, slide.hyperlinks)
@@ -908,6 +1223,65 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 		officePPTXChartGraphicFrameXML(slide.Chart, slide.chartRelID, hasBodyText, slide.Table != nil, len(slide.Callouts) > 0) +
 		officePPTXTableGraphicFrameXML(slide.Table, hasBodyText, slide.Chart != nil, theme, slide.hyperlinks) +
 		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
+}
+
+func officePPTXSlideChromeXML(slide officePPTXSlide, theme officeTheme) string {
+	if slide.IsCover {
+		return officePPTXCoverChromeXML(theme)
+	}
+	return officePPTXThemeChromeXML(theme)
+}
+
+func officePPTXTitleTextBoxMetrics(isCover bool) (x, y, w, h int) {
+	if isCover {
+		return 1508760, 2971800, 8534400, 1188720
+	}
+	return 685800, 731520, 10858500, 731520
+}
+
+func officePPTXContentTextBoxMetrics(isCover bool, hasBodyText bool, hasChart bool, hasTable bool, hasCallouts bool) (x, y, w, h int) {
+	if isCover {
+		return 1508760, 4343400, 6400800, 731520
+	}
+	const (
+		contentX      = 685800
+		contentY      = 1737360
+		contentW      = 10858500
+		contentH      = 4343400
+		contentGap    = 182880
+		minContentH   = 731520
+		tableTopWith  = 2743200
+		tableTopPlain = 1600200
+		tableTopChart = 5257800
+	)
+	x, y, w, h = contentX, contentY, contentW, contentH
+	if !hasBodyText {
+		return x, y, w, h
+	}
+
+	bottom := y + h
+	if hasChart {
+		chartLayout := officePPTXChartLayoutForSlide(true, hasTable, hasCallouts)
+		if candidate := chartLayout.ChartY - contentGap; candidate > y && candidate < bottom {
+			bottom = candidate
+		}
+	}
+	if hasTable {
+		tableY := tableTopPlain
+		if hasBodyText {
+			tableY = tableTopWith
+		}
+		if hasChart {
+			tableY = tableTopChart
+		}
+		if candidate := tableY - contentGap; candidate > y && candidate < bottom {
+			bottom = candidate
+		}
+	}
+	if bottom-y < minContentH {
+		bottom = y + minContentH
+	}
+	return x, y, w, bottom - y
 }
 
 func officePPTXResolvedTheme(theme officeTheme) officeTheme {
@@ -990,16 +1364,108 @@ func officePPTXThemeChromeXML(theme officeTheme) string {
 	const (
 		slideWidth      = 12192000
 		slideHeight     = 6858000
-		bandHeight      = 548640
-		accentWidth     = 914400
-		accentHeight    = 182880
-		accentRightPad  = 685800
-		accentTopOffset = 182880
+		canvasX         = 274320
+		canvasY         = 182880
+		canvasWidth     = 11643360
+		canvasHeight    = 6492240
+		headerRuleX     = 685800
+		headerRuleY     = 548640
+		headerRuleWidth = 1097280
+		headerRuleH     = 80010
 	)
-	accentX := slideWidth - accentRightPad - accentWidth
 	return officePPTXDecorativeRectShapeXML(10, "Theme Background", 0, 0, slideWidth, slideHeight, theme.SurfaceAlt) +
-		officePPTXDecorativeRectShapeXML(11, "Theme Band", 0, 0, slideWidth, bandHeight, theme.PrimaryTint) +
-		officePPTXDecorativeRectShapeXML(12, "Theme Accent Mark", accentX, accentTopOffset, accentWidth, accentHeight, theme.Accent)
+		officePPTXTextBoxShapeXML(11, "Theme Canvas", canvasX, canvasY, canvasWidth, canvasHeight, theme.Surface, theme.Border, "roundRect", `<a:p/>`) +
+		officePPTXDecorativeRectShapeXML(12, "Theme Header Rule", headerRuleX, headerRuleY, headerRuleWidth, headerRuleH, theme.Accent)
+}
+
+func officePPTXCoverChromeXML(theme officeTheme) string {
+	const (
+		slideWidth  = 12192000
+		slideHeight = 6858000
+		orbX        = 8763000
+		orbY        = -731520
+		orbSize     = 4206240
+		haloX       = 10454640
+		haloY       = 411480
+		haloSize    = 1028700
+		accentRailX = 1188720
+		accentRailY = 2971800
+		accentRailW = 68580
+		accentRailH = 1844040
+		eyebrowX    = 1188720
+		eyebrowY    = 1889760
+		eyebrowW    = 1600200
+		eyebrowH    = 68580
+		anchorX     = 1508760
+		anchorY     = 5791200
+		anchorW     = 3200400
+		anchorH     = 34290
+	)
+	return officePPTXDecorativeRectShapeXML(10, "Cover Background", 0, 0, slideWidth, slideHeight, officePPTXCoverBackgroundFill(theme)) +
+		officePPTXTextBoxShapeXML(11, "Cover Orb", orbX, orbY, orbSize, orbSize, officePPTXCoverOrbFill(theme), "", "ellipse", `<a:p/>`) +
+		officePPTXTextBoxShapeXML(12, "Cover Halo", haloX, haloY, haloSize, haloSize, officePPTXCoverHaloFill(theme), "", "ellipse", `<a:p/>`) +
+		officePPTXDecorativeRectShapeXML(13, "Cover Eyebrow", eyebrowX, eyebrowY, eyebrowW, eyebrowH, officePPTXCoverRuleFill(theme)) +
+		officePPTXDecorativeRectShapeXML(14, "Cover Accent Rail", accentRailX, accentRailY, accentRailW, accentRailH, theme.Accent) +
+		officePPTXDecorativeRectShapeXML(15, "Cover Anchor Line", anchorX, anchorY, anchorW, anchorH, officePPTXCoverRuleFill(theme))
+}
+
+func officePPTXCoverSignatureShapeXML(theme officeTheme) string {
+	const (
+		signatureX = 7772400
+		signatureY = 5943600
+		signatureW = 3048000
+		signatureH = 320040
+	)
+	return officePPTXTextBoxShapeXML(
+		16,
+		"Cover Signature",
+		signatureX,
+		signatureY,
+		signatureW,
+		signatureH,
+		"",
+		"",
+		"rect",
+		officePPTXStyledParagraphXML(
+			officePPTXTextRunsXMLWithHyperlinks("Powered By ZimaOS-Blue", 1200, false, false, theme.MonospaceFont, nil),
+			theme.BodyFont,
+			officePPTXCoverSignatureColor(theme),
+			1200,
+			"r",
+		),
+	)
+}
+
+func officePPTXCoverBackgroundFill(theme officeTheme) string {
+	if theme.Dark {
+		return theme.SurfaceAlt
+	}
+	return theme.Surface
+}
+
+func officePPTXCoverOrbFill(theme officeTheme) string {
+	if theme.Dark {
+		return theme.SurfaceMuted
+	}
+	return theme.PrimaryTint
+}
+
+func officePPTXCoverHaloFill(theme officeTheme) string {
+	if theme.Dark {
+		return theme.Primary
+	}
+	return theme.SurfaceAlt
+}
+
+func officePPTXCoverRuleFill(theme officeTheme) string {
+	return theme.Border
+}
+
+func officePPTXCoverSignatureColor(theme officeTheme) string {
+	if theme.Dark {
+		return theme.Secondary
+	}
+	return theme.Slate
 }
 
 func officePPTXDecorativeRectShapeXML(id int, name string, x, y, cx, cy int, fill string) string {
@@ -1020,6 +1486,10 @@ func officePPTXStyledParagraphXML(runs, font, color string, size int, alignment 
 	return `<a:p>` + officePPTXParagraphPropertiesXML(alignment, font, color, size) + runs + `</a:p>`
 }
 
+func officePPTXCoverParagraphXML(runs, font, color string, size int, alignment string) string {
+	return `<a:p>` + officePPTXCoverParagraphPropertiesXML(font, color, size, alignment) + runs + `</a:p>`
+}
+
 func officePPTXParagraphPropertiesXML(alignment, font, color string, size int) string {
 	font = strings.TrimSpace(font)
 	color = officeWordHex(color)
@@ -1038,6 +1508,39 @@ func officePPTXParagraphPropertiesXML(alignment, font, color string, size int) s
 		return sb.String()
 	}
 	sb.WriteString(`><a:defRPr`)
+	if size > 0 {
+		sb.WriteString(` sz="`)
+		sb.WriteString(strconv.Itoa(size))
+		sb.WriteString(`"`)
+	}
+	sb.WriteString(`>`)
+	if fontXML := officePPTXFontElementsXML(font, ""); fontXML != "" {
+		sb.WriteString(fontXML)
+	}
+	if color != "" {
+		sb.WriteString(`<a:solidFill><a:srgbClr val="`)
+		sb.WriteString(color)
+		sb.WriteString(`"/></a:solidFill>`)
+	}
+	sb.WriteString(`</a:defRPr></a:pPr>`)
+	return sb.String()
+}
+
+func officePPTXCoverParagraphPropertiesXML(font, color string, size int, alignment string) string {
+	font = strings.TrimSpace(font)
+	color = officeWordHex(color)
+	var sb strings.Builder
+	if strings.TrimSpace(alignment) == "" {
+		alignment = "ctr"
+	}
+	sb.WriteString(`<a:pPr algn="`)
+	sb.WriteString(officeXMLText(alignment))
+	sb.WriteString(`"><a:buNone/>`)
+	if font == "" && color == "" && size <= 0 {
+		sb.WriteString(`</a:pPr>`)
+		return sb.String()
+	}
+	sb.WriteString(`<a:defRPr`)
 	if size > 0 {
 		sb.WriteString(` sz="`)
 		sb.WriteString(strconv.Itoa(size))
@@ -1395,9 +1898,9 @@ func officePPTXChartCalloutShapesXML(callouts []officePPTXCallout, theme officeT
 		railPadding        = 182880
 		headerHeight       = 274320
 		cardGap            = 121920
-		accentWidth        = 91440
+		railWidth          = 45720
+		railGap            = 137160
 		railShapeID        = 30
-		accentShapeID      = 31
 		headerShapeID      = 32
 		calloutShapeIDBase = 40
 	)
@@ -1420,30 +1923,18 @@ func officePPTXChartCalloutShapesXML(callouts []officePPTXCallout, theme officeT
 		availableHeight -= cardGap * (cardCount - 1)
 	}
 	cardHeight := availableHeight / cardCount
-	cardWidth := layout.RailWidth - railPadding*2
-	cardX := layout.RailX + railPadding
+	cardWidth := layout.RailWidth - railPadding*2 - railWidth - railGap
+	cardX := layout.RailX + railPadding + railWidth + railGap
 	cardY := layout.RailY + railPadding + headerHeight
 
 	var sb strings.Builder
-	sb.WriteString(officePPTXTextBoxShapeXML(
+	sb.WriteString(officePPTXDecorativeRectShapeXML(
 		railShapeID,
 		"Chart Callout Rail",
-		layout.RailX,
-		layout.RailY,
-		layout.RailWidth,
-		layout.RailHeight,
-		theme.Surface,
-		theme.Border,
-		"roundRect",
-		`<a:p/>`,
-	))
-	sb.WriteString(officePPTXDecorativeRectShapeXML(
-		accentShapeID,
-		"Chart Callout Accent",
-		layout.RailX,
-		layout.RailY,
-		accentWidth,
-		layout.RailHeight,
+		layout.RailX+railPadding,
+		layout.RailY+railPadding,
+		railWidth,
+		layout.RailHeight-railPadding*2,
 		theme.Accent,
 	))
 	sb.WriteString(officePPTXTextBoxShapeXML(
@@ -1484,17 +1975,21 @@ func officePPTXChartCalloutShapesXML(callouts []officePPTXCallout, theme officeT
 }
 
 func officePPTXChartCalloutColors(callout officePPTXCallout, theme officeTheme) (string, string, string, string, string) {
+	baseFill := theme.Surface
+	if !theme.Dark {
+		baseFill = theme.SurfaceAlt
+	}
 	switch officeNormalizeToneName(callout.Tone) {
 	case "success":
-		return theme.SuccessTint, theme.Success, theme.Success, theme.PrimaryDark, theme.Slate
+		return baseFill, theme.Success, theme.Success, theme.PrimaryDark, theme.Slate
 	case "warning":
-		return theme.WarningTint, theme.Warning, theme.Warning, theme.PrimaryDark, theme.PrimaryDark
+		return baseFill, theme.Warning, theme.Warning, theme.PrimaryDark, theme.PrimaryDark
 	case "danger":
-		return theme.DangerTint, theme.Danger, theme.Danger, theme.PrimaryDark, theme.PrimaryDark
+		return baseFill, theme.Danger, theme.Danger, theme.PrimaryDark, theme.PrimaryDark
 	case "muted":
-		return theme.SurfaceMuted, theme.Border, theme.Secondary, theme.PrimaryDark, theme.Slate
+		return baseFill, theme.Border, theme.Secondary, theme.PrimaryDark, theme.Slate
 	default:
-		return theme.PrimaryTint, theme.Accent, theme.Secondary, theme.PrimaryDark, theme.Slate
+		return baseFill, theme.Accent, theme.Accent, theme.PrimaryDark, theme.Slate
 	}
 }
 
@@ -1566,7 +2061,6 @@ func officePPTXStandaloneCalloutShapesXML(callouts []officePPTXCallout, theme of
 		gridTop            = 1600200
 		gridBottomMargin   = 685800
 		gridGap            = 182880
-		backgroundShapeID  = 60
 		calloutShapeIDBase = 70
 		cornerGeometry     = "roundRect"
 	)
@@ -1585,19 +2079,6 @@ func officePPTXStandaloneCalloutShapesXML(callouts []officePPTXCallout, theme of
 	cardHeight := (gridHeight - gridGap*(rows-1)) / rows
 
 	var sb strings.Builder
-	sb.WriteString(officePPTXTextBoxShapeXML(
-		backgroundShapeID,
-		"Standalone Callout Grid",
-		contentMargin,
-		gridTop,
-		gridWidth,
-		gridHeight,
-		theme.Surface,
-		theme.Border,
-		"rect",
-		`<a:p/>`,
-	))
-
 	for idx, callout := range callouts {
 		fill, line, labelColor, valueColor, bodyColor := officePPTXChartCalloutColors(callout, theme)
 		col := idx % columns
@@ -1643,14 +2124,16 @@ func officePPTXTextBoxShapeXML(id int, name string, x, y, cx, cy int, fill strin
 	sb.WriteString(`"/></a:xfrm><a:prstGeom prst="`)
 	sb.WriteString(officeXMLText(geometry))
 	sb.WriteString(`"><a:avLst/></a:prstGeom>`)
-	if fillHex := officeWordHex(fill); fillHex != "" {
+	if strings.TrimSpace(fill) != "" {
+		fillHex := officeWordHex(fill)
 		sb.WriteString(`<a:solidFill><a:srgbClr val="`)
 		sb.WriteString(fillHex)
 		sb.WriteString(`"/></a:solidFill>`)
 	} else {
 		sb.WriteString(`<a:noFill/>`)
 	}
-	if lineHex := officeWordHex(line); lineHex != "" {
+	if strings.TrimSpace(line) != "" {
+		lineHex := officeWordHex(line)
 		sb.WriteString(`<a:ln w="12700"><a:solidFill><a:srgbClr val="`)
 		sb.WriteString(lineHex)
 		sb.WriteString(`"/></a:solidFill></a:ln>`)
@@ -3360,7 +3843,7 @@ func officePPTXTableCellXML(value string, header bool, rowIndex int, alignment s
 	textColor := theme.Slate
 	if header {
 		fill = theme.Primary
-		textColor = theme.Surface
+		textColor = officePPTXTableHeaderTextColor(theme)
 	} else if rowIndex%2 == 1 {
 		fill = theme.SurfaceAlt
 	}
@@ -3375,6 +3858,13 @@ func officePPTXTableCellXML(value string, header bool, rowIndex int, alignment s
 		`</a:txBody><a:tcPr marL="91440" marR="91440" marT="45720" marB="45720" anchor="ctr">` +
 		officePPTXTableCellStyleXML(fill, theme.Border) +
 		`</a:tcPr></a:tc>`
+}
+
+func officePPTXTableHeaderTextColor(theme officeTheme) string {
+	if theme.Dark {
+		return theme.PrimaryDark
+	}
+	return theme.Surface
 }
 
 func officePPTXTableCellStyleXML(fill, border string) string {

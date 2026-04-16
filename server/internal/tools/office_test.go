@@ -265,11 +265,11 @@ func TestOfficeToolExecute_IncludesThemePreviewMetadata(t *testing.T) {
 	if !ok {
 		t.Fatalf("theme_preview.fonts = %#v, want object", preview["fonts"])
 	}
-	if fonts["display"] != "Georgia" || fonts["body"] != "Segoe UI" {
-		t.Fatalf("theme_preview.fonts = %#v, want Georgia/Segoe UI", fonts)
+	if fonts["display"] != "Helvetica Neue" || fonts["body"] != "Helvetica" {
+		t.Fatalf("theme_preview.fonts = %#v, want Helvetica Neue/Helvetica", fonts)
 	}
 	html, ok := preview["html"].(string)
-	if !ok || !containsSubstring(html, "#1E3A5F") || !containsSubstring(html, "#00D4AA") {
+	if !ok || !containsSubstring(html, "#242C38") || !containsSubstring(html, "#4D7CFE") {
 		t.Fatalf("theme_preview.html = %q, want theme colors", html)
 	}
 	swatchValues, ok := preview["swatches"].([]interface{})

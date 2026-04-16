@@ -160,6 +160,15 @@ func compactDocumentWarnings(warnings []string) []string {
 	return out
 }
 
+func mergeValidationFields(dst, src map[string]interface{}) {
+	if dst == nil || src == nil {
+		return
+	}
+	for key, value := range src {
+		dst[key] = value
+	}
+}
+
 func validateZipEntries(path string, required []string) (map[string]interface{}, error) {
 	reader, err := zip.OpenReader(path)
 	if err != nil {
@@ -331,6 +340,15 @@ func executeNativeDocumentRead(ctx context.Context, scope *fsToolScope, toolName
 		return "", err
 	}
 	payload := buildReadPayloadFromDocumentResult("read", relPath, absPath, format, filepath.Ext(absPath), info.Size(), result, nil)
+	if validation, err := validateNativeOfficeArchive(absPath, format, result); err == nil {
+		payload.Validation = validation
+	} else {
+		payload.Validation = map[string]interface{}{
+			"ok":              true,
+			"quality_checked": false,
+			"quality_error":   err.Error(),
+		}
+	}
 	return marshalNativeDocumentPayload(payload)
 }
 

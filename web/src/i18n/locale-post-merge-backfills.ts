@@ -29,6 +29,30 @@ type ResultCardWebQueryLabelBackfill = {
   mode: string
 }
 
+type ResultCardFieldLocalePatch = {
+  labels: {
+    async: string
+    download_url: string
+    host_os: string
+    image_path: string
+    output_path: string
+    output_ref: string
+    rank: string
+    results: string
+    route: string
+    selected: string
+    selected_source_rank: string
+    target_format: string
+    total_count: string
+    warning_count: string
+    window_id: string
+  }
+  messages: {
+    host_screenshot_captured: string
+    host_windows_listed: string
+  }
+}
+
 const protectedHarnessTermReplacementPaths = new Set([
   'harness.group.remediationInfraProviderAuth',
   'harness.group.remediationInfraProviderQuota',
@@ -239,6 +263,720 @@ const askResultCardBackfills: Record<LocaleKey, AskResultCardLocalePatch> = {
   'sv-SE': { title: 'Fråga', question: 'Fråga', options: 'Alternativ', answer: 'Svar' },
   'zh-CN': { title: '提问', question: '问题', options: '选项', answer: '回答' },
   'zh-TW': { title: '提問', question: '問題', options: '選項', answer: '回答' },
+}
+
+const resultCardFieldBackfills: Record<LocaleKey, ResultCardFieldLocalePatch> = {
+  'ca-ES': {
+    labels: {
+      async: 'Assíncron',
+      download_url: 'URL de descàrrega',
+      host_os: "SO de l'amfitrió",
+      image_path: 'Camí de la imatge',
+      output_path: 'Camí de sortida',
+      output_ref: 'Referència de sortida',
+      rank: 'Rànquing',
+      results: 'Resultats',
+      route: 'Ruta',
+      selected: 'Seleccionat',
+      selected_source_rank: 'Rànquing de la font seleccionada',
+      target_format: 'Format de destinació',
+      total_count: 'Recompte total',
+      warning_count: "Recompte d'avisos",
+      window_id: 'ID de la finestra',
+    },
+    messages: {
+      host_screenshot_captured: "S'ha capturat una pantalla de l'amfitrió",
+      host_windows_listed: "S'han llistat les finestres de l'amfitrió",
+    },
+  },
+  'cs-CZ': {
+    labels: {
+      async: 'Asynchronní',
+      download_url: 'URL ke stažení',
+      host_os: 'Hostitelský OS',
+      image_path: 'Cesta k obrázku',
+      output_path: 'Výstupní cesta',
+      output_ref: 'Odkaz na výstup',
+      rank: 'Pořadí',
+      results: 'Výsledky',
+      route: 'Trasa',
+      selected: 'Vybráno',
+      selected_source_rank: 'Pořadí vybraného zdroje',
+      target_format: 'Cílový formát',
+      total_count: 'Celkový počet',
+      warning_count: 'Počet varování',
+      window_id: 'ID okna',
+    },
+    messages: {
+      host_screenshot_captured: 'Snímek obrazovky hostitele byl pořízen',
+      host_windows_listed: 'Okna hostitele byla vypsána',
+    },
+  },
+  'da-DK': {
+    labels: {
+      async: 'Asynkron',
+      download_url: 'Download-URL',
+      host_os: 'Værts-OS',
+      image_path: 'Billedsti',
+      output_path: 'Outputsti',
+      output_ref: 'Outputreference',
+      rank: 'Rang',
+      results: 'Resultater',
+      route: 'Rute',
+      selected: 'Valgt',
+      selected_source_rank: 'Rang for valgt kilde',
+      target_format: 'Målformat',
+      total_count: 'Samlet antal',
+      warning_count: 'Antal advarsler',
+      window_id: 'Vindues-ID',
+    },
+    messages: {
+      host_screenshot_captured: 'Værtsskærmbillede optaget',
+      host_windows_listed: 'Værtsvinduer listet',
+    },
+  },
+  'de-DE': {
+    labels: {
+      async: 'Asynchron',
+      download_url: 'Download-URL',
+      host_os: 'Host-Betriebssystem',
+      image_path: 'Bildpfad',
+      output_path: 'Ausgabepfad',
+      output_ref: 'Ausgabereferenz',
+      rank: 'Rang',
+      results: 'Ergebnisse',
+      route: 'Route',
+      selected: 'Ausgewählt',
+      selected_source_rank: 'Rang der ausgewählten Quelle',
+      target_format: 'Zielformat',
+      total_count: 'Gesamtzahl',
+      warning_count: 'Anzahl Warnungen',
+      window_id: 'Fenster-ID',
+    },
+    messages: {
+      host_screenshot_captured: 'Host-Screenshot erfasst',
+      host_windows_listed: 'Host-Fenster aufgelistet',
+    },
+  },
+  'el-GR': {
+    labels: {
+      async: 'Ασύγχρονο',
+      download_url: 'URL λήψης',
+      host_os: 'ΛΣ κεντρικού υπολογιστή',
+      image_path: 'Διαδρομή εικόνας',
+      output_path: 'Διαδρομή εξόδου',
+      output_ref: 'Αναφορά εξόδου',
+      rank: 'Κατάταξη',
+      results: 'Αποτελέσματα',
+      route: 'Διαδρομή',
+      selected: 'Επιλεγμένο',
+      selected_source_rank: 'Κατάταξη επιλεγμένης πηγής',
+      target_format: 'Μορφή προορισμού',
+      total_count: 'Συνολικός αριθμός',
+      warning_count: 'Αριθμός προειδοποιήσεων',
+      window_id: 'ID παραθύρου',
+    },
+    messages: {
+      host_screenshot_captured: 'Λήφθηκε στιγμιότυπο οθόνης υπολογιστή',
+      host_windows_listed: 'Καταγράφηκαν τα παράθυρα του υπολογιστή',
+    },
+  },
+  'en-GB': {
+    labels: {
+      async: 'Async',
+      download_url: 'Download URL',
+      host_os: 'Host OS',
+      image_path: 'Image Path',
+      output_path: 'Output Path',
+      output_ref: 'Output Reference',
+      rank: 'Rank',
+      results: 'Results',
+      route: 'Route',
+      selected: 'Selected',
+      selected_source_rank: 'Selected Source Rank',
+      target_format: 'Target Format',
+      total_count: 'Total Count',
+      warning_count: 'Warning Count',
+      window_id: 'Window ID',
+    },
+    messages: {
+      host_screenshot_captured: 'Host screenshot captured',
+      host_windows_listed: 'Host windows listed',
+    },
+  },
+  'en-US': {
+    labels: {
+      async: 'Async',
+      download_url: 'Download URL',
+      host_os: 'Host OS',
+      image_path: 'Image Path',
+      output_path: 'Output Path',
+      output_ref: 'Output Reference',
+      rank: 'Rank',
+      results: 'Results',
+      route: 'Route',
+      selected: 'Selected',
+      selected_source_rank: 'Selected Source Rank',
+      target_format: 'Target Format',
+      total_count: 'Total Count',
+      warning_count: 'Warning Count',
+      window_id: 'Window ID',
+    },
+    messages: {
+      host_screenshot_captured: 'Host screenshot captured',
+      host_windows_listed: 'Host windows listed',
+    },
+  },
+  'es-ES': {
+    labels: {
+      async: 'Asíncrono',
+      download_url: 'URL de descarga',
+      host_os: 'SO del host',
+      image_path: 'Ruta de imagen',
+      output_path: 'Ruta de salida',
+      output_ref: 'Referencia de salida',
+      rank: 'Rango',
+      results: 'Resultados',
+      route: 'Ruta',
+      selected: 'Seleccionado',
+      selected_source_rank: 'Rango de la fuente seleccionada',
+      target_format: 'Formato de destino',
+      total_count: 'Conteo total',
+      warning_count: 'Conteo de advertencias',
+      window_id: 'ID de ventana',
+    },
+    messages: {
+      host_screenshot_captured: 'Captura de pantalla del host tomada',
+      host_windows_listed: 'Ventanas del host listadas',
+    },
+  },
+  'fr-FR': {
+    labels: {
+      async: 'Asynchrone',
+      download_url: 'URL de téléchargement',
+      host_os: 'OS hôte',
+      image_path: "Chemin de l'image",
+      output_path: 'Chemin de sortie',
+      output_ref: 'Référence de sortie',
+      rank: 'Rang',
+      results: 'Résultats',
+      route: 'Route',
+      selected: 'Sélectionné',
+      selected_source_rank: 'Rang de la source sélectionnée',
+      target_format: 'Format cible',
+      total_count: 'Nombre total',
+      warning_count: "Nombre d'avertissements",
+      window_id: 'ID de fenêtre',
+    },
+    messages: {
+      host_screenshot_captured: "Capture d'écran hôte effectuée",
+      host_windows_listed: 'Fenêtres hôtes listées',
+    },
+  },
+  'ga-IE': {
+    labels: {
+      async: 'Asioncronach',
+      download_url: 'URL íoslódála',
+      host_os: 'Córas oibriúcháin an ósta',
+      image_path: 'Conair íomhá',
+      output_path: 'Conair aschuir',
+      output_ref: 'Tagairt aschuir',
+      rank: 'Rang',
+      results: 'Torthaí',
+      route: 'Bealach',
+      selected: 'Roghnaithe',
+      selected_source_rank: 'Rang na foinse roghnaithe',
+      target_format: 'Formáid sprice',
+      total_count: 'Comhaireamh iomlán',
+      warning_count: 'Comhaireamh rabhaidh',
+      window_id: 'Aitheantas fuinneoige',
+    },
+    messages: {
+      host_screenshot_captured: 'Gabhadh seat scáileáin den óstach',
+      host_windows_listed: 'Liostaíodh fuinneoga an óstaigh',
+    },
+  },
+  'hr-HR': {
+    labels: {
+      async: 'Asinkrono',
+      download_url: 'URL za preuzimanje',
+      host_os: 'Operativni sustav hosta',
+      image_path: 'Putanja slike',
+      output_path: 'Izlazna putanja',
+      output_ref: 'Referenca izlaza',
+      rank: 'Poredak',
+      results: 'Rezultati',
+      route: 'Ruta',
+      selected: 'Odabrano',
+      selected_source_rank: 'Poredak odabranog izvora',
+      target_format: 'Ciljani format',
+      total_count: 'Ukupan broj',
+      warning_count: 'Broj upozorenja',
+      window_id: 'ID prozora',
+    },
+    messages: {
+      host_screenshot_captured: 'Snimka zaslona hosta je zabilježena',
+      host_windows_listed: 'Prozori hosta su izlistani',
+    },
+  },
+  'hu-HU': {
+    labels: {
+      async: 'Aszinkron',
+      download_url: 'Letöltési URL',
+      host_os: 'Gazda operációs rendszer',
+      image_path: 'Kép elérési útja',
+      output_path: 'Kimeneti útvonal',
+      output_ref: 'Kimeneti hivatkozás',
+      rank: 'Rang',
+      results: 'Eredmények',
+      route: 'Útvonal',
+      selected: 'Kiválasztva',
+      selected_source_rank: 'Kiválasztott forrás rangja',
+      target_format: 'Célformátum',
+      total_count: 'Teljes darabszám',
+      warning_count: 'Figyelmeztetések száma',
+      window_id: 'Ablakazonosító',
+    },
+    messages: {
+      host_screenshot_captured: 'Gazdagép képernyőképe elkészült',
+      host_windows_listed: 'Gazdagép ablakai listázva',
+    },
+  },
+  'it-IT': {
+    labels: {
+      async: 'Asincrono',
+      download_url: 'URL di download',
+      host_os: 'SO host',
+      image_path: 'Percorso immagine',
+      output_path: 'Percorso di output',
+      output_ref: 'Riferimento output',
+      rank: 'Posizione',
+      results: 'Risultati',
+      route: 'Percorso',
+      selected: 'Selezionato',
+      selected_source_rank: 'Posizione della fonte selezionata',
+      target_format: 'Formato di destinazione',
+      total_count: 'Conteggio totale',
+      warning_count: 'Conteggio avvisi',
+      window_id: 'ID finestra',
+    },
+    messages: {
+      host_screenshot_captured: 'Screenshot host acquisito',
+      host_windows_listed: 'Finestre host elencate',
+    },
+  },
+  'ja-JP': {
+    labels: {
+      async: '非同期',
+      download_url: 'ダウンロード URL',
+      host_os: 'ホスト OS',
+      image_path: '画像パス',
+      output_path: '出力パス',
+      output_ref: '出力参照',
+      rank: '順位',
+      results: '結果',
+      route: 'ルート',
+      selected: '選択済み',
+      selected_source_rank: '選択したソースの順位',
+      target_format: '対象フォーマット',
+      total_count: '合計数',
+      warning_count: '警告数',
+      window_id: 'ウィンドウ ID',
+    },
+    messages: {
+      host_screenshot_captured: 'ホストのスクリーンショットを取得しました',
+      host_windows_listed: 'ホストウィンドウを一覧表示しました',
+    },
+  },
+  'ko-KR': {
+    labels: {
+      async: '비동기',
+      download_url: '다운로드 URL',
+      host_os: '호스트 OS',
+      image_path: '이미지 경로',
+      output_path: '출력 경로',
+      output_ref: '출력 참조',
+      rank: '순위',
+      results: '결과',
+      route: '라우트',
+      selected: '선택됨',
+      selected_source_rank: '선택한 소스 순위',
+      target_format: '대상 형식',
+      total_count: '총 개수',
+      warning_count: '경고 수',
+      window_id: '창 ID',
+    },
+    messages: {
+      host_screenshot_captured: '호스트 스크린샷을 캡처했습니다',
+      host_windows_listed: '호스트 창을 나열했습니다',
+    },
+  },
+  'ml-IN': {
+    labels: {
+      async: 'അസിങ്ക്',
+      download_url: 'ഡൗൺലോഡ് URL',
+      host_os: 'ഹോസ്റ്റ് ഓ.എസ്.',
+      image_path: 'ചിത്ര പാത',
+      output_path: 'ഔട്ട്പുട്ട് പാത',
+      output_ref: 'ഔട്ട്പുട്ട് റഫറൻസ്',
+      rank: 'റാങ്ക്',
+      results: 'ഫലങ്ങൾ',
+      route: 'റൂട്ട്',
+      selected: 'തിരഞ്ഞെടുത്തത്',
+      selected_source_rank: 'തിരഞ്ഞെടുത്ത ഉറവിട റാങ്ക്',
+      target_format: 'ലക്ഷ്യ ഫോർമാറ്റ്',
+      total_count: 'മൊത്തം എണ്ണം',
+      warning_count: 'മുന്നറിയിപ്പ് എണ്ണം',
+      window_id: 'വിൻഡോ ഐഡി',
+    },
+    messages: {
+      host_screenshot_captured: 'ഹോസ്റ്റ് സ്ക്രീൻഷോട്ട് എടുത്തു',
+      host_windows_listed: 'ഹോസ്റ്റ് വിൻഡോകൾ പട്ടികപ്പെടുത്തി',
+    },
+  },
+  'nb-NO': {
+    labels: {
+      async: 'Asynkron',
+      download_url: 'Nedlastings-URL',
+      host_os: 'Verts-OS',
+      image_path: 'Bildebane',
+      output_path: 'Utdata-bane',
+      output_ref: 'Utdatareferanse',
+      rank: 'Rang',
+      results: 'Resultater',
+      route: 'Rute',
+      selected: 'Valgt',
+      selected_source_rank: 'Rang for valgt kilde',
+      target_format: 'Målformat',
+      total_count: 'Totalt antall',
+      warning_count: 'Antall advarsler',
+      window_id: 'Vindus-ID',
+    },
+    messages: {
+      host_screenshot_captured: 'Vertsskjermbilde tatt',
+      host_windows_listed: 'Vertsvinduer listet',
+    },
+  },
+  'nl-NL': {
+    labels: {
+      async: 'Asynchroon',
+      download_url: 'Download-URL',
+      host_os: 'Host-OS',
+      image_path: 'Afbeeldingspad',
+      output_path: 'Uitvoerpad',
+      output_ref: 'Uitvoerreferentie',
+      rank: 'Rang',
+      results: 'Resultaten',
+      route: 'Route',
+      selected: 'Geselecteerd',
+      selected_source_rank: 'Rang van geselecteerde bron',
+      target_format: 'Doelformaat',
+      total_count: 'Totaal aantal',
+      warning_count: 'Aantal waarschuwingen',
+      window_id: 'Venster-ID',
+    },
+    messages: {
+      host_screenshot_captured: 'Hostscreenshot vastgelegd',
+      host_windows_listed: 'Hostvensters weergegeven',
+    },
+  },
+  'pl-PL': {
+    labels: {
+      async: 'Asynchroniczne',
+      download_url: 'URL pobierania',
+      host_os: 'System operacyjny hosta',
+      image_path: 'Ścieżka obrazu',
+      output_path: 'Ścieżka wyjściowa',
+      output_ref: 'Odwołanie wyjściowe',
+      rank: 'Ranking',
+      results: 'Wyniki',
+      route: 'Trasa',
+      selected: 'Wybrane',
+      selected_source_rank: 'Ranking wybranego źródła',
+      target_format: 'Format docelowy',
+      total_count: 'Łączna liczba',
+      warning_count: 'Liczba ostrzeżeń',
+      window_id: 'ID okna',
+    },
+    messages: {
+      host_screenshot_captured: 'Zrzut ekranu hosta został wykonany',
+      host_windows_listed: 'Okna hosta zostały wylistowane',
+    },
+  },
+  'pt-BR': {
+    labels: {
+      async: 'Assíncrono',
+      download_url: 'URL de download',
+      host_os: 'SO do host',
+      image_path: 'Caminho da imagem',
+      output_path: 'Caminho de saída',
+      output_ref: 'Referência de saída',
+      rank: 'Classificação',
+      results: 'Resultados',
+      route: 'Rota',
+      selected: 'Selecionado',
+      selected_source_rank: 'Classificação da fonte selecionada',
+      target_format: 'Formato de destino',
+      total_count: 'Contagem total',
+      warning_count: 'Contagem de avisos',
+      window_id: 'ID da janela',
+    },
+    messages: {
+      host_screenshot_captured: 'Captura de tela do host realizada',
+      host_windows_listed: 'Janelas do host listadas',
+    },
+  },
+  'pt-PT': {
+    labels: {
+      async: 'Assíncrono',
+      download_url: 'URL de download',
+      host_os: 'SO do anfitrião',
+      image_path: 'Caminho da imagem',
+      output_path: 'Caminho de saída',
+      output_ref: 'Referência de saída',
+      rank: 'Classificação',
+      results: 'Resultados',
+      route: 'Rota',
+      selected: 'Selecionado',
+      selected_source_rank: 'Classificação da fonte selecionada',
+      target_format: 'Formato de destino',
+      total_count: 'Contagem total',
+      warning_count: 'Contagem de avisos',
+      window_id: 'ID da janela',
+    },
+    messages: {
+      host_screenshot_captured: 'Captura de ecrã do anfitrião efetuada',
+      host_windows_listed: 'Janelas do anfitrião listadas',
+    },
+  },
+  'ro-RO': {
+    labels: {
+      async: 'Asincron',
+      download_url: 'URL descărcare',
+      host_os: 'SO gazdă',
+      image_path: 'Cale imagine',
+      output_path: 'Cale ieșire',
+      output_ref: 'Referință ieșire',
+      rank: 'Rang',
+      results: 'Rezultate',
+      route: 'Rută',
+      selected: 'Selectat',
+      selected_source_rank: 'Rangul sursei selectate',
+      target_format: 'Format țintă',
+      total_count: 'Număr total',
+      warning_count: 'Număr avertismente',
+      window_id: 'ID fereastră',
+    },
+    messages: {
+      host_screenshot_captured: 'Captură de ecran gazdă realizată',
+      host_windows_listed: 'Ferestrele gazdei listate',
+    },
+  },
+  'ru-RU': {
+    labels: {
+      async: 'Асинхронно',
+      download_url: 'URL загрузки',
+      host_os: 'ОС хоста',
+      image_path: 'Путь к изображению',
+      output_path: 'Путь вывода',
+      output_ref: 'Ссылка на вывод',
+      rank: 'Ранг',
+      results: 'Результаты',
+      route: 'Маршрут',
+      selected: 'Выбрано',
+      selected_source_rank: 'Ранг выбранного источника',
+      target_format: 'Целевой формат',
+      total_count: 'Общее количество',
+      warning_count: 'Количество предупреждений',
+      window_id: 'ID окна',
+    },
+    messages: {
+      host_screenshot_captured: 'Снимок экрана хоста сохранен',
+      host_windows_listed: 'Окна хоста перечислены',
+    },
+  },
+  'sk-SK': {
+    labels: {
+      async: 'Asynchrónne',
+      download_url: 'URL na stiahnutie',
+      host_os: 'Operačný systém hostiteľa',
+      image_path: 'Cesta k obrázku',
+      output_path: 'Výstupná cesta',
+      output_ref: 'Odkaz na výstup',
+      rank: 'Poradie',
+      results: 'Výsledky',
+      route: 'Trasa',
+      selected: 'Vybrané',
+      selected_source_rank: 'Poradie vybraného zdroja',
+      target_format: 'Cieľový formát',
+      total_count: 'Celkový počet',
+      warning_count: 'Počet upozornení',
+      window_id: 'ID okna',
+    },
+    messages: {
+      host_screenshot_captured: 'Snímka obrazovky hostiteľa bola zachytená',
+      host_windows_listed: 'Okná hostiteľa boli vypísané',
+    },
+  },
+  'sv-SE': {
+    labels: {
+      async: 'Asynkront',
+      download_url: 'Nedladdnings-URL',
+      host_os: 'Värd-OS',
+      image_path: 'Bildväg',
+      output_path: 'Utmatningsväg',
+      output_ref: 'Utreferens',
+      rank: 'Rang',
+      results: 'Resultat',
+      route: 'Rutt',
+      selected: 'Vald',
+      selected_source_rank: 'Rang för vald källa',
+      target_format: 'Målformat',
+      total_count: 'Totalt antal',
+      warning_count: 'Antal varningar',
+      window_id: 'Fönster-ID',
+    },
+    messages: {
+      host_screenshot_captured: 'Värdskärmbild tagen',
+      host_windows_listed: 'Värdfönster listade',
+    },
+  },
+  'zh-CN': {
+    labels: {
+      async: '异步',
+      download_url: '下载 URL',
+      host_os: '主机系统',
+      image_path: '图像路径',
+      output_path: '输出路径',
+      output_ref: '输出引用',
+      rank: '排名',
+      results: '结果',
+      route: '路由',
+      selected: '已选中',
+      selected_source_rank: '选中来源排名',
+      target_format: '目标格式',
+      total_count: '总数量',
+      warning_count: '警告数量',
+      window_id: '窗口 ID',
+    },
+    messages: {
+      host_screenshot_captured: '已捕获主机截图',
+      host_windows_listed: '已列出主机窗口',
+    },
+  },
+  'zh-TW': {
+    labels: {
+      async: '異步',
+      download_url: '下載 URL',
+      host_os: '主機系統',
+      image_path: '影像路徑',
+      output_path: '輸出路徑',
+      output_ref: '輸出參考',
+      rank: '排名',
+      results: '結果',
+      route: '路由',
+      selected: '已選取',
+      selected_source_rank: '已選取來源排名',
+      target_format: '目標格式',
+      total_count: '總數量',
+      warning_count: '警告數量',
+      window_id: '視窗 ID',
+    },
+    messages: {
+      host_screenshot_captured: '已擷取主機畫面',
+      host_windows_listed: '已列出主機視窗',
+    },
+  },
+}
+
+const resultCardExecutionModeLabels: Record<LocaleKey, string> = {
+  'ca-ES': "Mode d'execucio",
+  'cs-CZ': 'Režim spuštění',
+  'da-DK': 'Udførelsestilstand',
+  'de-DE': 'Ausführungsmodus',
+  'el-GR': 'Λειτουργία εκτέλεσης',
+  'en-GB': 'Execution Mode',
+  'en-US': 'Execution Mode',
+  'es-ES': 'Modo de ejecución',
+  'fr-FR': "Mode d'execution",
+  'ga-IE': 'Modh forghníomhaithe',
+  'hr-HR': 'Način izvršavanja',
+  'hu-HU': 'Végrehajtási mód',
+  'it-IT': 'Modalità di esecuzione',
+  'ja-JP': '実行モード',
+  'ko-KR': '실행 모드',
+  'ml-IN': 'നിർവഹണ മോഡ്',
+  'nb-NO': 'Kjøringsmodus',
+  'nl-NL': 'Uitvoermodus',
+  'pl-PL': 'Tryb wykonania',
+  'pt-BR': 'Modo de execução',
+  'pt-PT': 'Modo de execução',
+  'ro-RO': 'Mod de execuție',
+  'ru-RU': 'Режим выполнения',
+  'sk-SK': 'Režim vykonania',
+  'sv-SE': 'Körläge',
+  'zh-CN': '执行模式',
+  'zh-TW': '執行模式',
+}
+
+const resultCardWindowFocusedMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'Finestra enfocada',
+  'cs-CZ': 'Okno zaměřeno',
+  'da-DK': 'Vindue fokuseret',
+  'de-DE': 'Fenster fokussiert',
+  'el-GR': 'Το παράθυρο εστιάστηκε',
+  'en-GB': 'Window focused',
+  'en-US': 'Window focused',
+  'es-ES': 'Ventana enfocada',
+  'fr-FR': 'Fenetre focalisee',
+  'ga-IE': 'Díríodh ar an bhfuinneog',
+  'hr-HR': 'Prozor fokusiran',
+  'hu-HU': 'Az ablak fókuszálva',
+  'it-IT': 'Finestra focalizzata',
+  'ja-JP': 'ウィンドウにフォーカスしました',
+  'ko-KR': '창에 포커스를 맞췄습니다',
+  'ml-IN': 'വിൻഡോ ഫോകസ് ചെയ്തു',
+  'nb-NO': 'Vindu fokusert',
+  'nl-NL': 'Venster gefocust',
+  'pl-PL': 'Okno aktywne',
+  'pt-BR': 'Janela focada',
+  'pt-PT': 'Janela focada',
+  'ro-RO': 'Fereastră focalizată',
+  'ru-RU': 'Окно в фокусе',
+  'sk-SK': 'Okno zaostrené',
+  'sv-SE': 'Fönster fokuserat',
+  'zh-CN': '窗口已聚焦',
+  'zh-TW': '視窗已聚焦',
+}
+
+const resultCardExecutionModeSemanticValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Semàntic',
+  'cs-CZ': 'Sémantický',
+  'da-DK': 'Semantisk',
+  'de-DE': 'Semantisch',
+  'el-GR': 'Σημασιολογικό',
+  'en-GB': 'Semantic',
+  'en-US': 'Semantic',
+  'es-ES': 'Semántico',
+  'fr-FR': 'Semantique',
+  'ga-IE': 'Séimeantach',
+  'hr-HR': 'Semantički',
+  'hu-HU': 'Szemantikus',
+  'it-IT': 'Semantico',
+  'ja-JP': 'セマンティック',
+  'ko-KR': '의미 기반',
+  'ml-IN': 'സെമാന്റിക്',
+  'nb-NO': 'Semantisk',
+  'nl-NL': 'Semantisch',
+  'pl-PL': 'Semantyczny',
+  'pt-BR': 'Semântico',
+  'pt-PT': 'Semântico',
+  'ro-RO': 'Semantică',
+  'ru-RU': 'Семантический',
+  'sk-SK': 'Sémantický',
+  'sv-SE': 'Semantisk',
+  'zh-CN': '语义',
+  'zh-TW': '語義',
 }
 
 type ProviderRecoveryLocalePatch = {
@@ -1296,6 +2034,7 @@ export function buildLocalePostMergeBackfill(
   const resultCardPatch: LocaleNode = {}
   const resultCardLabelsPatch: LocaleNode = {}
   const resultCardTitlesPatch: LocaleNode = {}
+  const resultCardValuesPatch: LocaleNode = {}
   const routingModePatch: LocaleNode = {}
   const companionPatch: LocaleNode = {}
   const companionPlatformsPatch: LocaleNode = {}
@@ -1569,6 +2308,120 @@ export function buildLocalePostMergeBackfill(
     )
     maybeFillResultCardLabel('materialized', webQueryResultCardLabels.materialized, 'Materialized')
   }
+  const resultCardFieldCopy = resultCardFieldBackfills[localeKey]
+  if (resultCardFieldCopy) {
+    const maybeBackfillResultCardLabel = (
+      key: string,
+      localized: string | null,
+      englishFallback: string
+    ) => {
+      if (!localized) return
+      const current = getString(messages, `resultCard.labels.${key}`)
+      if (!current || current === key || current === englishFallback) {
+        resultCardLabelsPatch[key] = localized
+      }
+    }
+    const maybeBackfillResultCardMessage = (
+      key: string,
+      localized: string | null,
+      englishFallback: string
+    ) => {
+      if (!localized) return
+      const current = getString(messages, `resultCard.messages.${key}`)
+      if (!current || current === englishFallback) {
+        resultCardPatch.messages = {
+          ...(isPlainObject(resultCardPatch.messages) ? resultCardPatch.messages : {}),
+          [key]: localized,
+        }
+      }
+    }
+    const maybeBackfillResultCardValue = (
+      group: string,
+      key: string,
+      localized: string | null,
+      englishFallback: string
+    ) => {
+      if (!localized) return
+      const current = getString(messages, `resultCard.values.${group}.${key}`)
+      if (!current || current === key || current === englishFallback) {
+        resultCardValuesPatch[group] = {
+          ...(isPlainObject(resultCardValuesPatch[group]) ? resultCardValuesPatch[group] : {}),
+          [key]: localized,
+        }
+      }
+    }
+    const firstTranslatedString = (...paths: string[]) => {
+      for (const path of paths) {
+        const value = getString(messages, path)
+        if (value) return value
+      }
+      return null
+    }
+
+    maybeBackfillResultCardLabel(
+      'action',
+      firstTranslatedString('tools.params.action', 'askQuestion.browserCheckpoint.action'),
+      'Action'
+    )
+    maybeBackfillResultCardLabel(
+      'description',
+      getString(messages, 'common.description'),
+      'Description'
+    )
+    maybeBackfillResultCardLabel(
+      'outputs',
+      getString(messages, 'skills.detail.sections.outputs'),
+      'Outputs'
+    )
+    maybeBackfillResultCardLabel('query', getString(messages, 'tools.params.query'), 'Query')
+    maybeBackfillResultCardLabel(
+      'source',
+      getString(messages, 'skillStore.marketplace.filters.source'),
+      'Source'
+    )
+    maybeBackfillResultCardLabel('title', getString(messages, 'common.title'), 'Title')
+    maybeBackfillResultCardLabel(
+      'url',
+      firstTranslatedString('askQuestion.browserCheckpoint.url', 'skillStore.actions.url'),
+      'URL'
+    )
+    maybeBackfillResultCardLabel(
+      'warnings',
+      getString(messages, 'security.scan.warnings'),
+      'Warnings'
+    )
+    maybeBackfillResultCardLabel(
+      'execution_mode',
+      resultCardExecutionModeLabels[localeKey],
+      'Execution Mode'
+    )
+
+    const englishResultCardFieldLabels = resultCardFieldBackfills['en-US'].labels
+    for (const [key, localized] of Object.entries(resultCardFieldCopy.labels)) {
+      maybeBackfillResultCardLabel(
+        key,
+        localized,
+        englishResultCardFieldLabels[key as keyof typeof englishResultCardFieldLabels]
+      )
+    }
+
+    const englishResultCardFieldMessages = resultCardFieldBackfills['en-US'].messages
+    for (const [key, localized] of Object.entries(resultCardFieldCopy.messages)) {
+      maybeBackfillResultCardMessage(
+        key,
+        localized,
+        englishResultCardFieldMessages[key as keyof typeof englishResultCardFieldMessages]
+      )
+    }
+    maybeBackfillResultCardMessage('window_focused', resultCardWindowFocusedMessages[localeKey], 'Window focused')
+    maybeBackfillResultCardValue(
+      'execution_mode',
+      'semantic',
+      resultCardExecutionModeSemanticValues[localeKey],
+      'Semantic'
+    )
+    maybeBackfillResultCardValue('host_os', 'darwin', 'macOS', 'Darwin')
+  }
   const localizedMetricsMin = localizedMetricsMinLabels[localeKey]
   if (localizedMetricsMin) {
     const currentMetricsMin = getString(messages, 'metrics.min')
@@ -1832,6 +2685,9 @@ export function buildLocalePostMergeBackfill(
   }
   if (hasKeys(resultCardTitlesPatch)) {
     resultCardPatch.titles = resultCardTitlesPatch
+  }
+  if (hasKeys(resultCardValuesPatch)) {
+    resultCardPatch.values = resultCardValuesPatch
   }
   if (hasKeys(resultCardPatch)) {
     patch.resultCard = resultCardPatch

@@ -126,8 +126,8 @@ pnpm-debug.log*
 .parcel-cache/
 .turbo/
 
-# Claude
-.claude/
+# Workspace agent aliases
+.agents/settings.local.json
 
 # Codex
 .codex-debug/

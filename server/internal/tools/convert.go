@@ -300,7 +300,7 @@ func (t *ConvertTool) maybeHandleNativeOfficeConvert(ctx context.Context, args m
 		return nil, true, err
 	}
 
-	data, err := buildNativeOfficeConvertBytes(target, mergedArgs)
+	data, err := buildNativeOfficeConvertBytes(ctx, target, mergedArgs)
 	if err != nil {
 		return nil, true, err
 	}
@@ -596,7 +596,7 @@ func nativeOfficeMarkdownTableFromRows(rows [][]string) string {
 	return sb.String()
 }
 
-func buildNativeOfficeConvertBytes(target string, args map[string]interface{}) ([]byte, error) {
+func buildNativeOfficeConvertBytes(ctx context.Context, target string, args map[string]interface{}) ([]byte, error) {
 	styleHint := strings.TrimSpace(firstCompatString(args, "style_hint", "styleHint", "style", "visual_style", "visualStyle"))
 	if target == "pptx" && styleHint == "" {
 		styleHint = "board presentation"
@@ -624,6 +624,11 @@ func buildNativeOfficeConvertBytes(target string, args map[string]interface{}) (
 		spec, err := parseOfficeDocSpec(args, title, subtitle, theme, styleHint)
 		if err != nil {
 			return nil, err
+		}
+		if strings.TrimSpace(spec.Language) == "" {
+			if lang := strings.TrimSpace(GetLang(ctx)); lang != "" && !strings.EqualFold(lang, "en-US") {
+				spec.Language = lang
+			}
 		}
 		data, _, err := buildOfficePPTX(spec)
 		return data, err

@@ -1304,7 +1304,6 @@ export default mergeHarnessLocale('sk-SK', {
       contextCompressionModeSmallModel: 'Uprednostniť ľahký model',
       contextCompressionModeOffline: 'Deterministicky offline',
       docExtract: 'Akcelerácia extrakcie dokumentov',
-      imageQA: 'Zrýchlenie rozpoznávania obrázkov',
       shortQA: 'Akcelerácia krátkych Q&A',
       statsTitle: 'Štatistiky behu (riešenie problémov)',
       statsHint:
@@ -1313,9 +1312,6 @@ export default mergeHarnessLocale('sk-SK', {
       shortQAAttempts: 'Akcelerácia krátkych Q&A Počet',
       shortQASuccessRate: 'Akcelerácia krátkych Q&A Miera zásahu',
       shortQALatencyMs: 'Akcelerácia krátkych Q&A Latencia',
-      imageQAAttempts: 'Počet rozpoznaní obrázkov',
-      imageQASuccessRate: 'Miera zásahu rozpoznávania obrázkov',
-      imageQALatencyMs: 'Latencia rozpoznávania obrázkov',
       summarySuccessRate: 'Akcelerácia súhrnu Miera zásahu',
       summaryLatencyMs: 'Akcelerácia súhrnu Latencia',
       contextCompressionSuccessRate: 'Úspešnosť kompresie kontextu',
@@ -4672,6 +4668,7 @@ export default mergeHarnessLocale('sk-SK', {
       analyze: 'Správa o analýze',
       mediagen: 'Pripomienky',
       ask: 'Generovanie medii',
+      advisor: 'Poradca',
       'Web Search': 'Webové vyhľadávanie',
       Calculator: 'Kalkulačka',
       'System Info': 'Systémové informácie',
@@ -4712,6 +4709,7 @@ export default mergeHarnessLocale('sk-SK', {
       exec: 'Spusta shell prikazy a zachytava ich vystup',
       analyze: 'Zhromazdi data z webu a vytvori strukturovanu analyticku spravu',
       ask: 'Polozi pouzivatelovi doplnujuce otazky potrebne na pokracovanie ulohy',
+      advisor: 'Rozhodovací poradca pre otázky výberu, náhrady, migrácie a osvedčených postupov.',
       mediagen: 'Generuje obrazky, videa a prezentacie pomocou AI modelov',
       web_query: 'Nacita a spracuje webovu stranku cez URL',
       research:

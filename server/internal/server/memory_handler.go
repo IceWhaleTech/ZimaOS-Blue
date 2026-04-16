@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -18,6 +19,7 @@ import (
 type MemoryHandler struct {
 	unifiedService *memory.UnifiedMemoryService
 	layeredService *memory.LayeredMemoryService
+	dreamService   *memory.DreamService
 
 	// Lazy init support
 	initOnce sync.Once
@@ -74,6 +76,11 @@ func (h *MemoryHandler) SetLayeredService(svc *memory.LayeredMemoryService) {
 	}
 }
 
+// SetDreamService sets the dream memory service.
+func (h *MemoryHandler) SetDreamService(svc *memory.DreamService) {
+	h.dreamService = svc
+}
+
 // GetUnifiedService returns the unified memory service.
 func (h *MemoryHandler) GetUnifiedService() *memory.UnifiedMemoryService {
 	return h.unifiedService
@@ -98,6 +105,8 @@ func (h *MemoryHandler) RegisterRoutes(g *echo.Group) {
 	g.POST("/memory/longterm", h.PromoteToLongTerm)
 	g.GET("/memory/longterm", h.GetLongTermMemory)
 	g.POST("/memory/daily/prune", h.PruneDailyLogs)
+	g.GET("/memory/dream/status", h.DreamStatus)
+	g.POST("/memory/dream/run", h.RunDream)
 }
 
 // Store stores a new memory.
@@ -544,4 +553,47 @@ func (h *MemoryHandler) PruneDailyLogs(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"deleted": deleted,
 	})
+}
+
+// DreamStatus returns dream pipeline status counters.
+func (h *MemoryHandler) DreamStatus(c echo.Context) error {
+	h.ensureInit()
+	if h.dreamService == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "dream service not configured")
+	}
+
+	status, err := h.dreamService.Status(c.Request().Context())
+	if err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+
+	resp := map[string]interface{}{
+		"enabled":             status.Enabled,
+		"archive_dir":         status.ArchiveDir,
+		"pending_capsules":    status.PendingCapsules,
+		"archived_daily_logs": status.ArchivedDailyLogs,
+		"promoted_count":      status.PromotedCount,
+		"last_run_at":         nil,
+	}
+	if status.LastRunAt != nil {
+		resp["last_run_at"] = status.LastRunAt.Format(time.RFC3339)
+	}
+	return c.JSON(http.StatusOK, resp)
+}
+
+// RunDream runs one consolidation pass immediately.
+func (h *MemoryHandler) RunDream(c echo.Context) error {
+	h.ensureInit()
+	if h.dreamService == nil {
+		return echo.NewHTTPError(http.StatusServiceUnavailable, "dream service not configured")
+	}
+
+	result, err := h.dreamService.RunConsolidation(c.Request().Context())
+	if err != nil {
+		if errors.Is(err, memory.ErrDreamDisabled) {
+			return echo.NewHTTPError(http.StatusConflict, err.Error())
+		}
+		return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(http.StatusOK, result)
 }

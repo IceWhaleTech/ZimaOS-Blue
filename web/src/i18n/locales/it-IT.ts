@@ -1317,7 +1317,6 @@ export default mergeHarnessLocale('it-IT', {
       contextCompressionModeSmallModel: 'Preferisci il modello leggero',
       contextCompressionModeOffline: 'Offline deterministico',
       docExtract: "Accelerazione dell'estrazione documenti",
-      imageQA: 'Accelerazione del riconoscimento immagini',
       shortQA: 'Accelerazione Q&A brevi',
       statsTitle: 'Statistiche di runtime (risoluzione problemi)',
       statsHint:
@@ -1326,9 +1325,6 @@ export default mergeHarnessLocale('it-IT', {
       shortQAAttempts: 'Accelerazione Q&A brevi Conteggio',
       shortQASuccessRate: 'Accelerazione Q&A brevi Tasso di successo',
       shortQALatencyMs: 'Accelerazione Q&A brevi Latenza',
-      imageQAAttempts: 'Conteggio riconoscimento immagini',
-      imageQASuccessRate: 'Tasso di successo del riconoscimento immagini',
-      imageQALatencyMs: 'Latenza del riconoscimento immagini',
       summarySuccessRate: 'Accelerazione riepilogo Tasso di successo',
       summaryLatencyMs: 'Accelerazione riepilogo Latenza',
       contextCompressionSuccessRate: 'Tasso di successo della compressione del contesto',
@@ -4700,6 +4696,7 @@ export default mergeHarnessLocale('it-IT', {
       analyze: 'Rapporto di analisi',
       mediagen: 'Promemoria',
       ask: 'Generazione media',
+      advisor: 'Consulente',
       'Web Search': 'Ricerca web',
       Calculator: 'Calcolatrice',
       'System Info': 'Info sistema',
@@ -4741,6 +4738,7 @@ export default mergeHarnessLocale('it-IT', {
       exec: 'Esegue comandi della shell e ne cattura l output',
       analyze: 'Raccoglie dati dal web e genera un report di analisi strutturato',
       ask: 'Pone all utente le domande di follow-up necessarie per continuare il compito',
+      advisor: 'Consulente decisionale per domande su selezione, sostituzione, migrazione e buone pratiche.',
       mediagen: 'Genera immagini, video e presentazioni con modelli di IA',
       web_query: 'Recupera e analizza una pagina web tramite URL',
       research:

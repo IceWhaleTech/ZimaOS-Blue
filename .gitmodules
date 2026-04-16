@@ -1,11 +1,11 @@
 [submodule ".agent/skills/planning-with-files"]
-	path = .agent/skills/planning-with-files
+	path = .agents/skills/planning-with-files
 	url = https://github.com/OthmanAdi/planning-with-files.git
 [submodule ".agent/skills/superpowers"]
-	path = .agent/skills/superpowers
+	path = .agents/skills/superpowers
 	url = https://github.com/obra/superpowers.git
 [submodule ".agent/skills/ui-ux-pro-max-skill"]
-	path = .agent/skills/ui-ux-pro-max-skill
+	path = .agents/skills/ui-ux-pro-max-skill
 	url = https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git
 [submodule "third_party/espeak-ng"]
 	path = third_party/espeak-ng

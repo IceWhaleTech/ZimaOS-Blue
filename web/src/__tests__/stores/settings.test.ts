@@ -75,7 +75,6 @@ describe('settings store - small model integration', () => {
     expect(store.smallModelDocExtractEnabled).toBe(false)
     expect(store.smallModelRerankEnabled).toBe(false)
     expect(store.contextCompressionMode).toBe('auto')
-    expect(store.smallModelRouteImageQAEnabled).toBe(false)
     expect(store.smallModelRouteShortQAEnabled).toBe(false)
     expect(store.noLLMDegradeMode).toBe('deepresearch')
     expect(store.smallModelUnavailablePolicy).toBe('ir_first')
@@ -256,13 +255,8 @@ describe('settings store - small model integration', () => {
       context_compression_mode: 'offline',
     })
 
-    await store.setSmallModelRouteImageQAEnabled(false)
-    expect(settingsApi.patch).toHaveBeenNthCalledWith(4, {
-      small_model_route_image_qa_enabled: false,
-    })
-
     await store.setSmallModelRouteShortQAEnabled(false)
-    expect(settingsApi.patch).toHaveBeenNthCalledWith(5, {
+    expect(settingsApi.patch).toHaveBeenNthCalledWith(4, {
       small_model_route_short_qa_enabled: false,
     })
   })

@@ -505,11 +505,30 @@ func desktopChatVerificationStatusSeen(structured map[string]interface{}, want s
 	if want == "" {
 		return false
 	}
-	if strings.EqualFold(metadataString(nestedMetadataMap(structured, "verification"), "status"), want) {
+	if desktopChatVerificationStatusMatches(want, metadataString(nestedMetadataMap(structured, "verification"), "status")) {
 		return true
 	}
 	for _, stage := range desktopChatTaskStages(structured) {
-		if strings.EqualFold(metadataString(nestedMetadataMap(stage, "verification"), "status"), want) {
+		if desktopChatVerificationStatusMatches(want, metadataString(nestedMetadataMap(stage, "verification"), "status")) {
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatVerificationStatusMatches(want string, got string) bool {
+	want = strings.TrimSpace(strings.ToLower(want))
+	got = strings.TrimSpace(strings.ToLower(got))
+	if want == "" || got == "" {
+		return false
+	}
+	if want == got {
+		return true
+	}
+	switch want {
+	case "sent":
+		switch got {
+		case "delivered", "posted":
 			return true
 		}
 	}

@@ -6,20 +6,27 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
 )
 
 type a11yChatGrounderStub struct {
-	results map[string]a11yChatGroundingResult
-	errs    map[string]error
-	calls   []a11yChatGroundingRequest
+	results         map[string]a11yChatGroundingResult
+	resultSequences map[string][]a11yChatGroundingResult
+	errs            map[string]error
+	calls           []a11yChatGroundingRequest
 }
 
 func (s *a11yChatGrounderStub) Ground(ctx context.Context, req a11yChatGroundingRequest) (a11yChatGroundingResult, error) {
 	s.calls = append(s.calls, req)
 	if err := s.errs[string(req.TaskHint)]; err != nil {
 		return a11yChatGroundingResult{}, err
+	}
+	if sequence := s.resultSequences[string(req.TaskHint)]; len(sequence) > 0 {
+		result := sequence[0]
+		s.resultSequences[string(req.TaskHint)] = sequence[1:]
+		return result, nil
 	}
 	if result, ok := s.results[string(req.TaskHint)]; ok {
 		return result, nil
@@ -119,6 +126,170 @@ func TestA11yToolExecute_MessageIncludesChatTaskMetadata(t *testing.T) {
 	}
 }
 
+func TestA11yToolExecute_MessageWaitsForSendVerificationWhenVisualStatusAppearsLate(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("verify-send-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	grounder := &a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateComposer): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "composer", Label: "Message", Confidence: 0.98},
+				},
+			},
+		},
+		resultSequences: map[string][]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskVerifySend): {
+				{
+					Source: "vision_model",
+					Verification: map[string]interface{}{
+						"status": "pending",
+					},
+				},
+				{
+					Source: "vision_model",
+					Verification: map[string]interface{}{
+						"status": "sent",
+					},
+				},
+			},
+		},
+	}
+	tool.SetChatGrounder(grounder)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != nil {
+		t.Fatalf("failure_code = %v, want nil", out["failure_code"])
+	}
+	verification, ok := out["verification"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("verification = %#v, want object", out["verification"])
+	}
+	if verification["status"] != "sent" {
+		t.Fatalf("verification.status = %v, want sent", verification["status"])
+	}
+	if len(grounder.calls) < 3 {
+		t.Fatalf("grounder.calls = %#v, want repeated verify_send attempts", grounder.calls)
+	}
+}
+
+func TestA11yToolExecute_MessageAcceptsAppAwareDeliveredSendVerificationStatus(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("verify-send-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateComposer): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "composer", Label: "Message", Confidence: 0.98},
+				},
+			},
+			string(a11yChatGroundingTaskVerifySend): {
+				Source: "vision_model",
+				Verification: map[string]interface{}{
+					"status": "delivered",
+				},
+			},
+		},
+	})
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != nil {
+		t.Fatalf("failure_code = %v, want nil", out["failure_code"])
+	}
+	verification, ok := out["verification"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("verification = %#v, want object", out["verification"])
+	}
+	if verification["status"] != "delivered" {
+		t.Fatalf("verification.status = %v, want delivered", verification["status"])
+	}
+}
+
 func TestA11yToolExecute_MessageFailsClosedWhenGrounderRejectsComposer(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{
@@ -193,6 +364,116 @@ func TestA11yToolExecute_MessageFailsClosedWhenGrounderRejectsComposer(t *testin
 	}
 }
 
+func TestA11yToolExecute_MessageWaitsForComposerVisualConfirmationWhenGroundingMismatchIsTransient(t *testing.T) {
+	prevTimeout := a11yChatComposerConfirmationTimeout
+	prevPoll := a11yChatComposerConfirmationPollInterval
+	a11yChatComposerConfirmationTimeout = 100 * time.Millisecond
+	a11yChatComposerConfirmationPollInterval = time.Millisecond
+	defer func() {
+		a11yChatComposerConfirmationTimeout = prevTimeout
+		a11yChatComposerConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("composer-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	grounder := &a11yChatGrounderStub{
+		resultSequences: map[string][]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateComposer): {
+				{
+					Source: "vision_model",
+					Candidates: []a11yChatGroundingCandidate{
+						{Role: "search_field", Label: "Search", Confidence: 0.99, RationaleTags: []string{"search_field"}},
+					},
+				},
+				{
+					Source: "vision_model",
+					Candidates: []a11yChatGroundingCandidate{
+						{Role: "composer", Label: "Message", Confidence: 0.98},
+					},
+				},
+			},
+			string(a11yChatGroundingTaskVerifySend): {
+				{
+					Source: "vision_model",
+					Verification: map[string]interface{}{
+						"status": "sent",
+					},
+				},
+			},
+		},
+	}
+	tool.SetChatGrounder(grounder)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 3 || backend.actTypeHistory[0] != "click" || backend.actTypeHistory[1] != "type" || backend.actTypeHistory[2] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [click type submit]", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != nil {
+		t.Fatalf("failure_code = %v, want nil", out["failure_code"])
+	}
+	locateComposerCalls := 0
+	for _, call := range grounder.calls {
+		if call.TaskHint == a11yChatGroundingTaskLocateComposer {
+			locateComposerCalls++
+		}
+	}
+	if locateComposerCalls < 2 {
+		t.Fatalf("grounder.calls = %#v, want repeated locate_composer attempts", grounder.calls)
+	}
+}
+
 func TestA11yToolExecute_MessageReportsSearchBoxStillActiveFailureCode(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{
@@ -242,6 +523,151 @@ func TestA11yToolExecute_MessageReportsSearchBoxStillActiveFailureCode(t *testin
 	}
 	if out["failure_code"] != "search_box_still_active" {
 		t.Fatalf("failure_code = %v, want search_box_still_active", out["failure_code"])
+	}
+}
+
+func TestA11yToolExecute_MessageIgnoresStaleComposerCacheFromDifferentWindow(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [document]\n@2 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-editor",
+				2: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.lastWindow = "win-slack"
+	tool.lastRefs = parseA11ySnapshotEntries("@1 [search_field] \"Search\"")
+	tool.lastRefMap = map[int]string{1: "token-stale-search"}
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "message",
+		"app_name": "Feishu",
+		"value":    "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [type submit]", backend.actTypeHistory)
+	}
+	if backend.lastActWindowID != "win-feishu" {
+		t.Fatalf("lastActWindowID = %q, want win-feishu", backend.lastActWindowID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != nil {
+		t.Fatalf("failure_code = %v, want nil", out["failure_code"])
+	}
+}
+
+func TestA11yToolExecute_MessageDoesNotTrustComposerCacheFromDifferentWindow(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [search_field] \"Search\"",
+			RefMap: map[int]string{
+				1: "token-search",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.lastWindow = "win-slack"
+	tool.lastRefs = parseA11ySnapshotEntries("@1 [document]\n@2 [button] \"Send\"")
+	tool.lastRefMap = map[int]string{
+		1: "token-stale-editor",
+		2: "token-stale-send",
+	}
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "message",
+		"app_name": "Feishu",
+		"value":    "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want fail-closed before typing", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["phase"] != "composer" {
+		t.Fatalf("phase = %v, want composer", out["phase"])
+	}
+	if out["failure_code"] != "composer_not_found" {
+		t.Fatalf("failure_code = %v, want composer_not_found", out["failure_code"])
+	}
+}
+
+func TestA11yToolExecute_MessageWaitsForComposerWhenCurrentChatInputAppearsLate(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "message",
+		"app_name": "Feishu",
+		"value":    "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [type submit]", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != nil {
+		t.Fatalf("failure_code = %v, want nil", out["failure_code"])
 	}
 }
 
@@ -443,5 +869,135 @@ func TestA11yToolExecute_MessageEmitsChatStageEvents(t *testing.T) {
 	}
 	if !foundVerify {
 		t.Fatalf("events = %#v, want verify_outcome stage", events)
+	}
+}
+
+func TestA11yToolExecute_SelectConversationStopsAfterConfirmConversation(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+	})
+	if err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["stage"] != "confirm_conversation" {
+		t.Fatalf("stage = %v, want confirm_conversation", out["stage"])
+	}
+	stages, ok := out["task_stages"].([]interface{})
+	if !ok || len(stages) < 2 {
+		t.Fatalf("task_stages = %#v, want select chat stage trace", out["task_stages"])
+	}
+	for _, rawStage := range stages {
+		stage, _ := rawStage.(map[string]interface{})
+		if stage["stage"] == "type_or_send" || stage["stage"] == "verify_outcome" {
+			t.Fatalf("task_stages = %#v, do not want submit stages for select conversation flow", out["task_stages"])
+		}
+	}
+}
+
+func TestA11yToolExecute_SelectConversationFailsClosedWhenGrounderRejectsConversationConfirmation(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "search_field", Label: "Search", Confidence: 0.99, RationaleTags: []string{"search_field"}},
+				},
+				Verification: map[string]interface{}{
+					"rejected": true,
+					"reason":   "search_field_detected",
+				},
+			},
+		},
+	})
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+	})
+	if err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["phase"] != "conversation" {
+		t.Fatalf("phase = %v, want conversation", out["phase"])
+	}
+	if out["failure_code"] != "search_box_still_active" {
+		t.Fatalf("failure_code = %v, want search_box_still_active", out["failure_code"])
+	}
+	if out["grounding_source"] != "vision_model" {
+		t.Fatalf("grounding_source = %v, want vision_model", out["grounding_source"])
+	}
+	if out["stage"] != "confirm_conversation" {
+		t.Fatalf("stage = %v, want confirm_conversation", out["stage"])
 	}
 }

@@ -203,7 +203,7 @@ func TestAssistiveRoutingAndSmallModelSwitchesHTTPE2E_SettingsPatchGetAndRouting
 		}
 	})
 
-	t.Run("image-qa switch defaults to inheriting short-qa when unset", func(t *testing.T) {
+	t.Run("image attachments never route to small-model vision reasoning", func(t *testing.T) {
 		resetStats(t)
 
 		// Enable global gate + short-qa route; do not set small_model_route_image_qa_enabled.
@@ -222,8 +222,8 @@ func TestAssistiveRoutingAndSmallModelSwitchesHTTPE2E_SettingsPatchGetAndRouting
 				},
 			},
 		})
-		if resp.Provider != "smallmodel" || resp.Content != "SM" {
-			t.Fatalf("expected small model image-qa response, got provider=%q content=%q", resp.Provider, resp.Content)
+		if resp.Provider == "smallmodel" || resp.Content == "SM" {
+			t.Fatalf("expected image request to stay on main model path, got provider=%q content=%q", resp.Provider, resp.Content)
 		}
 	})
 

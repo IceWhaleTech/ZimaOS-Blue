@@ -149,6 +149,38 @@ func TestDeriveVerificationObservations_CapturesDesktopChatSuccessSignals(t *tes
 	}
 }
 
+func TestDeriveVerificationObservations_AcceptsDesktopChatDeliveredStatusAlias(t *testing.T) {
+	run := &Run{
+		Status: RunStatusCompleted,
+		Result: `{
+			"stage":"verify_outcome",
+			"strategy":"visual_verification",
+			"attempt_count":6,
+			"grounding_source":"vision_model",
+			"verification":{"status":"delivered"},
+			"task_stages":[
+				{"stage":"activate_app","status":"ok","strategy":"activate_app_retry"},
+				{"stage":"acquire_window","status":"ok","strategy":"window_resolve"},
+				{"stage":"locate_conversation","status":"ok","strategy":"visual_sidebar_hit","grounding_source":"vision_model"},
+				{"stage":"confirm_conversation","status":"ok","strategy":"post_click_confirmation"},
+				{"stage":"locate_composer","status":"ok","strategy":"visual_grounding_check","grounding_source":"vision_model"},
+				{"stage":"verify_outcome","status":"ok","strategy":"visual_verification","grounding_source":"vision_model","verification":{"status":"delivered"}}
+			],
+			"artifact_paths":["artifacts/computer_use/run-1/step-01/06-stage_trace.json"]
+		}`,
+	}
+	artifacts := []ArtifactRef{
+		{Kind: "file", Label: "stage_trace", PathOrURL: "/tmp/stage_trace.json", MIMEType: "application/json"},
+		{Kind: "file", Label: "final_result", PathOrURL: "/tmp/final_result.json", MIMEType: "application/json"},
+		{Kind: "file", Label: "key_screenshot", PathOrURL: "/tmp/key_screenshot.bin", MIMEType: "application/octet-stream"},
+	}
+
+	observations := deriveVerificationObservations(run, nil, artifacts, []string{"computer_use"})
+	if !observationSeen(observations, "send_verified") {
+		t.Fatalf("observations = %#v, want send_verified for delivered alias", observations)
+	}
+}
+
 func TestDeriveVerificationObservations_CapturesDesktopChatFailClosedSignals(t *testing.T) {
 	run := &Run{
 		Status: RunStatusCompleted,

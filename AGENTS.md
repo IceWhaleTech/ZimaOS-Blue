@@ -4,12 +4,12 @@ This is the canonical cross-agent instructions document for this repository.
 
 ## Skills Reference
 
-This project uses the following skills from `.agent/skills/` and `.agent/skill/`:
+This project uses the following skills from `.agents/skills/` and `.agents/skill/`:
 
-### Mobile Toggle UX Optimization (.agent/skill)
+### Mobile Toggle UX Optimization (.agents/skill)
 A focused design skill for optimizing crowded mobile toggle UI and making `Auto` mode clearly visible.
 
-**Usage:** Read `.agent/skill/mobile-toggle-ux/SKILL.md`
+**Usage:** Read `.agents/skill/mobile-toggle-ux/SKILL.md`
 
 ### Superpowers (obra/superpowers)
 A complete software development workflow with composable skills.
@@ -29,7 +29,7 @@ A complete software development workflow with composable skills.
 - `finishing-a-development-branch` - Merge/PR decision workflow
 - `writing-skills` - Create new skills
 
-**Usage:** Read skill files from `.agent/skills/superpowers/skills/<skill-name>/SKILL.md`
+**Usage:** Read skill files from `.agents/skills/superpowers/skills/<skill-name>/SKILL.md`
 
 ### Golang Best Practices (golang-best-practices)
 Coding standards and best practices for Golang development.
@@ -49,7 +49,7 @@ Coding standards and best practices for Golang development.
 - Always write tests first
 - No production code without a failing test
 
-**Usage:** Read `.agent/skills/golang-best-practices/SKILL.md`
+**Usage:** Read `.agents/skills/golang-best-practices/SKILL.md`
 
 ### Planning with Files (planning-with-files)
 Manus-style file-based planning for complex tasks. Creates persistent markdown files as "working memory on disk."
@@ -73,7 +73,7 @@ Manus-style file-based planning for complex tasks. Creates persistent markdown f
 - Building/creating projects
 - Tasks spanning many tool calls
 
-**Usage:** Read `.agent/skills/planning-with-files/skills/planning-with-files/SKILL.md`
+**Usage:** Read `.agents/skills/planning-with-files/skills/planning-with-files/SKILL.md`
 
 ### UI/UX Pro Max (ui-ux-pro-max-skill)
 Comprehensive UI/UX design intelligence with 50+ styles, 97 color palettes, 57 font pairings, and 9 technology stacks.
@@ -96,7 +96,7 @@ Comprehensive UI/UX design intelligence with 50+ styles, 97 color palettes, 57 f
 3. Supplement with detailed domain searches as needed
 4. Get stack-specific guidelines (default: html-tailwind)
 
-**Usage:** Read `.agent/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
+**Usage:** Read `.agents/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
 
 ### Product Skills (assets/skills/)
 Built-in skills shipped with the product. Located in `assets/skills/<name>/SKILL.md`.
@@ -105,13 +105,13 @@ Built-in skills shipped with the product. Located in `assets/skills/<name>/SKILL
 
 When working on tasks, reference the appropriate skill:
 
-1. **For brainstorming/design:** Read `.agent/skills/superpowers/skills/brainstorming/SKILL.md`
-2. **For planning:** Read `.agent/skills/superpowers/skills/writing-plans/SKILL.md`
-3. **For TDD:** Read `.agent/skills/superpowers/skills/test-driven-development/SKILL.md`
-4. **For debugging:** Read `.agent/skills/superpowers/skills/systematic-debugging/SKILL.md`
-5. **For Golang best practices:** Read `.agent/skills/golang-best-practices/SKILL.md`
-6. **For file-based planning:** Read `.agent/skills/planning-with-files/skills/planning-with-files/SKILL.md`
-7. **For UI/UX design:** Read `.agent/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
+1. **For brainstorming/design:** Read `.agents/skills/superpowers/skills/brainstorming/SKILL.md`
+2. **For planning:** Read `.agents/skills/superpowers/skills/writing-plans/SKILL.md`
+3. **For TDD:** Read `.agents/skills/superpowers/skills/test-driven-development/SKILL.md`
+4. **For debugging:** Read `.agents/skills/superpowers/skills/systematic-debugging/SKILL.md`
+5. **For Golang best practices:** Read `.agents/skills/golang-best-practices/SKILL.md`
+6. **For file-based planning:** Read `.agents/skills/planning-with-files/skills/planning-with-files/SKILL.md`
+7. **For UI/UX design:** Read `.agents/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/SKILL.md`
 8. **For product skills:** Read `assets/skills/<name>/SKILL.md`
 
 ## Task Execution Rules

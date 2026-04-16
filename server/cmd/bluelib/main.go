@@ -1390,6 +1390,29 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 		} else {
 			h.SetLayeredService(layeredService)
 			zapLogger.Info("Layered memory service initialized", zap.String("dir", memoryDir))
+
+			dreamArchiveDir := cfg.Memory.Dream.ArchiveDir
+			if strings.TrimSpace(dreamArchiveDir) == "" {
+				dreamArchiveDir = filepath.Join(dataDir, "archives", "dream")
+			}
+			dreamService, dreamErr := memory.NewDreamService(layeredService, workspaceMgr.Dir(), memory.DreamConfig{
+				Enabled:               cfg.Memory.Dream.Enabled,
+				ArchiveDir:            dreamArchiveDir,
+				Schedule:              cfg.Memory.Dream.Schedule,
+				PromoteDailyAfterDays: cfg.Memory.Dream.PromoteDailyAfterDays,
+				ArchiveDailyAfterDays: cfg.Memory.Dream.ArchiveDailyAfterDays,
+				SessionMinMessages:    cfg.Memory.Dream.SessionMinMessages,
+				MaxPromotionsPerRun:   cfg.Memory.Dream.MaxPromotionsPerRun,
+			})
+			if dreamErr != nil {
+				zapLogger.Warn("Failed to initialize dream memory service", zap.Error(dreamErr))
+			} else {
+				h.SetDreamService(dreamService)
+				bootstrap.BindRuntimeDreamCron(cronHandler, dreamService)
+				if cfg.Memory.Dream.Enabled && cronHandler != nil {
+					go cronHandler.GetService()
+				}
+			}
 		}
 
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)

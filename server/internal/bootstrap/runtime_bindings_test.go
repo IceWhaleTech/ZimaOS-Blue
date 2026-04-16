@@ -781,8 +781,8 @@ func TestBindDeferredRuntimeWiring_ComposesDeferredRuntimeTargets(t *testing.T) 
 	if auxiliarySmallModel.runtime != smallRuntime || auxiliarySmallModel.calls != 1 {
 		t.Fatalf("expected small model auxiliary wiring, got %#v", auxiliarySmallModel)
 	}
-	if imageSmallModel.runtime != smallRuntime || imageSmallModel.calls != 1 || imageSmallModel.enabledFunc == nil {
-		t.Fatalf("expected small model image wiring, got %#v", imageSmallModel)
+	if imageSmallModel.runtime != nil || imageSmallModel.calls != 0 || imageSmallModel.enabledFunc != nil {
+		t.Fatalf("expected image tooling to skip small model vision wiring, got %#v", imageSmallModel)
 	}
 	if analyzeSmallModel.runtime != smallRuntime || analyzeSmallModel.runtimeCalls != 1 || analyzeSmallModel.statsRecorder == nil {
 		t.Fatalf("expected small model analyze wiring, got %#v", analyzeSmallModel)
@@ -2495,7 +2495,7 @@ func TestBindRuntimeImageTools_PreservesLegacyImageRegistrationWithoutMediaServi
 func TestBindRuntimeSmallModel_WiresTargetsAndSettings(t *testing.T) {
 	settings := &stubRuntimeSmallModelSettingsSource{
 		enabled:      true,
-		imageQA:      true,
+		imageQA:      false,
 		docExtract:   true,
 		toggleResult: true,
 	}

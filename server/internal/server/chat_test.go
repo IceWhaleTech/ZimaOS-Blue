@@ -9628,7 +9628,7 @@ func TestSmallModelStatsHandlers(t *testing.T) {
 	}
 }
 
-func TestShouldRouteImageQA_SeparatesImageTrafficFromShortQA(t *testing.T) {
+func TestShouldRouteImageQA_IsDisabledForLocalSmallModelVisionReasoning(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
 
@@ -9650,17 +9650,17 @@ func TestShouldRouteImageQA_SeparatesImageTrafficFromShortQA(t *testing.T) {
 		}},
 	}
 
-	if !handler.shouldRouteImageQA(req, req.Message) {
-		t.Fatal("expected image QA route to inherit short QA enablement for image-only requests")
+	if handler.shouldRouteImageQA(req, req.Message) {
+		t.Fatal("expected image QA route to stay disabled because local small model is OCR-only")
 	}
 	if handler.shouldRouteShortQA(req, req.Message) {
-		t.Fatal("expected short QA route to skip image requests once image QA route is available")
+		t.Fatal("expected short QA route to skip image-bearing requests")
 	}
 
-	disabled := false
-	settings.settings.SmallModelRouteImageQAEnabled = &disabled
+	explicitlyEnabled := true
+	settings.settings.SmallModelRouteImageQAEnabled = &explicitlyEnabled
 	if handler.shouldRouteImageQA(req, req.Message) {
-		t.Fatal("expected explicit image QA disable to override inherited short QA setting")
+		t.Fatal("expected explicit image QA enable to remain disabled for local small model")
 	}
 }
 

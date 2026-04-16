@@ -192,7 +192,6 @@ function primeApiMocks() {
       small_model_context_compress_enabled: true,
       small_model_doc_extract_enabled: true,
       context_compression_mode: 'auto',
-      small_model_route_image_qa_enabled: true,
       small_model_route_short_qa_enabled: true,
       no_llm_degrade_mode: 'deepresearch',
       small_model_unavailable_policy: 'ir_first',
@@ -416,7 +415,6 @@ describe('SettingsView small-model controls', () => {
       .mockResolvedValue()
     const compressionModeSpy = vi.spyOn(store, 'setContextCompressionMode').mockResolvedValue()
     const docExtractSpy = vi.spyOn(store, 'setSmallModelDocExtractEnabled').mockResolvedValue()
-    const imageQASpy = vi.spyOn(store, 'setSmallModelRouteImageQAEnabled').mockResolvedValue()
     const shortQASpy = vi.spyOn(store, 'setSmallModelRouteShortQAEnabled').mockResolvedValue()
     const downloadSpy = vi.spyOn(store, 'startSmallModelDownload').mockResolvedValue({} as never)
     const resetSpy = vi.spyOn(store, 'resetSmallModelStats').mockResolvedValue({} as never)
@@ -434,7 +432,7 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.find('[data-testid="small-model-context-section"]').exists()).toBe(true)
     expect(
       wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')
-    ).toHaveLength(6)
+    ).toHaveLength(5)
     expect(wrapper.find('[data-testid="small-model-pruner-section"]').exists()).toBe(true)
     expect(
       wrapper
@@ -452,6 +450,7 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.find('[data-testid="small-model-advanced-toggle"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="small-model-ir-section-header"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="small-model-ir-grid"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="small-model-image-qa-switch"]').exists()).toBe(false)
     expect(wrapper.get('[data-testid="small-model-resource-status-row"]').text()).toContain(
       'Resource Footprint'
     )
@@ -507,10 +506,6 @@ describe('SettingsView small-model controls', () => {
     await flushPromises()
     expect(knowledgeFixSpy).toHaveBeenCalledWith(false)
 
-    await wrapper.get('[data-testid="small-model-image-qa-switch"]').trigger('click')
-    await flushPromises()
-    expect(imageQASpy).toHaveBeenCalledWith(false)
-
     await wrapper.get('[data-testid="small-model-short-qa-switch"]').trigger('click')
     await flushPromises()
     expect(shortQASpy).toHaveBeenCalledWith(false)
@@ -521,6 +516,9 @@ describe('SettingsView small-model controls', () => {
 
     await wrapper.get('[data-testid="small-model-stats-toggle"]').trigger('click')
     await flushPromises()
+
+    expect(wrapper.text()).not.toContain('Image Recognition Attempts')
+    expect(wrapper.text()).not.toContain('Image Recognition Latency')
 
     await wrapper.get('[data-testid="small-model-stats-reset"]').trigger('click')
     await flushPromises()
@@ -545,7 +543,8 @@ describe('SettingsView small-model controls', () => {
     expect(wrapper.get('[data-testid="small-model-sections"]').findAll('h3')).toHaveLength(0)
     expect(
       wrapper.get('[data-testid="small-model-feature-layout"]').findAll('.small-model-feature-card')
-    ).toHaveLength(6)
+    ).toHaveLength(5)
+    expect(wrapper.find('[data-testid="small-model-image-qa-switch"]').exists()).toBe(false)
     expect(
       wrapper
         .get('[data-testid="small-model-context-section"]')

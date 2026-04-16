@@ -434,8 +434,8 @@ func TestBuildOfficeDOCX_UsesThemeTypographyAndAccentForStyles(t *testing.T) {
 
 	stylesXML := officeZipEntryText(t, docxData, "word/styles.xml")
 	for _, needle := range []string{
-		`<w:style w:type="paragraph" w:styleId="BlueSubtitle"><w:name w:val="Blue Subtitle"/><w:basedOn w:val="Normal"/><w:next w:val="BlueBody"/><w:pPr><w:spacing w:after="40"/><w:keepNext/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:eastAsia="PingFang SC"/>`,
-		`<w:style w:type="paragraph" w:styleId="BlueHeading1"><w:name w:val="Blue Heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="BlueBody"/><w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:spacing w:before="280" w:after="80"/><w:keepNext/></w:pPr><w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" w:eastAsia="PingFang SC"/>`,
+		`<w:style w:type="paragraph" w:styleId="BlueSubtitle"><w:name w:val="Blue Subtitle"/><w:basedOn w:val="Normal"/><w:next w:val="BlueBody"/><w:pPr><w:spacing w:after="40"/><w:keepNext/></w:pPr><w:rPr><w:rFonts w:ascii="Helvetica Neue" w:hAnsi="Helvetica Neue" w:eastAsia="PingFang SC"/>`,
+		`<w:style w:type="paragraph" w:styleId="BlueHeading1"><w:name w:val="Blue Heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="BlueBody"/><w:uiPriority w:val="9"/><w:qFormat/><w:pPr><w:spacing w:before="280" w:after="80"/><w:keepNext/></w:pPr><w:rPr><w:rFonts w:ascii="Helvetica Neue" w:hAnsi="Helvetica Neue" w:eastAsia="PingFang SC"/>`,
 	} {
 		if !containsSubstring(stylesXML, needle) {
 			t.Fatalf("styles.xml missing theme typography snippet %q in %s", needle, stylesXML)
@@ -443,7 +443,7 @@ func TestBuildOfficeDOCX_UsesThemeTypographyAndAccentForStyles(t *testing.T) {
 	}
 
 	documentXML := officeZipEntryText(t, docxData, "word/document.xml")
-	if !containsSubstring(documentXML, `<w:color w:val="00D4AA"/>`) {
+	if !containsSubstring(documentXML, `<w:color w:val="4D7CFE"/>`) {
 		t.Fatalf("document.xml missing theme accent hyperlink color in %s", documentXML)
 	}
 }

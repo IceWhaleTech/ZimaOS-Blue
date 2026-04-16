@@ -48,7 +48,7 @@ export interface Settings {
   offline_ir_fallback_enabled?: boolean // Offline IR fallback (default false)
   feature_intent_ir_enabled?: boolean // Channel feature-intent IR hints (default false)
   deep_research_v2_enabled?: boolean // default false
-  small_model_route_image_qa_enabled?: boolean // default inherits short QA
+  small_model_route_image_qa_enabled?: boolean // deprecated: image QA stays disabled; kept for compatibility
   small_model_route_short_qa_enabled?: boolean // default false
   no_llm_degrade_mode?: NoLLMDegradeMode // Fixed deepresearch
   small_model_unavailable_policy?: SmallModelUnavailablePolicy // Fixed ir_first

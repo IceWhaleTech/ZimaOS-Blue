@@ -257,7 +257,7 @@ func (t *ImageTool) SetProviderVision(vision ProviderAwareImageVision) {
 	t.providerVision = vision
 }
 
-// SetSmallModelRuntime injects the optional local multimodal runtime used for cheap image QA.
+// SetSmallModelRuntime keeps legacy compatibility for callers that still provide a small-model runtime.
 func (t *ImageTool) SetSmallModelRuntime(rt smallmodel.Runtime) {
 	if t == nil {
 		return
@@ -265,7 +265,7 @@ func (t *ImageTool) SetSmallModelRuntime(rt smallmodel.Runtime) {
 	t.smallModel = rt
 }
 
-// SetSmallModelEnabledFunc injects an optional gate for small-model image routing.
+// SetSmallModelEnabledFunc keeps legacy compatibility for callers that still provide small-model gates.
 func (t *ImageTool) SetSmallModelEnabledFunc(fn func() bool) {
 	if t == nil {
 		return
@@ -1006,81 +1006,46 @@ func (t *ImageTool) analyzeImageBytes(ctx context.Context, prompt, visionBase64 
 	case imageAnalysisModeVisionOnly:
 		return t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
 	case imageAnalysisModeCheapFirst:
-		smallPayload, smallErr := t.performSmallModelImageAnalysis(ctx, prompt, visionBase64, meta)
-		if smallErr == nil {
-			assessment := assessSmallModelImageSufficiency(prompt, asString(smallPayload["analysis"]))
-			annotateSmallModelPayloadWithSufficiency(smallPayload, assessment)
-			if assessment.Sufficient {
-				return smallPayload, nil
-			}
-			visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
-			if visionErr == nil {
-				visionPayload["fallback_from"] = "small_model"
-				visionPayload["fallback_reason"] = "small_model_insufficient"
-				annotatePayloadWithSmallModelFallback(visionPayload, smallPayload, assessment)
-				return visionPayload, nil
-			}
-			ocrPayload, ocrErr := t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
-			if ocrErr == nil {
-				ocrPayload["fallback_from"] = "vision"
-				ocrPayload["fallback_reason"] = "vision_unavailable_after_insufficient_small_model"
-				annotatePayloadWithSmallModelFallback(ocrPayload, smallPayload, assessment)
-				ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
-					"small model summary may be incomplete for this prompt; returning OCR fallback after vision was unavailable",
-				})
-				return ocrPayload, nil
-			}
-			smallPayload["fallback_reason"] = "vision_unavailable_after_insufficient_small_model"
-			smallPayload["warnings"] = appendStringSlices(smallPayload["warnings"], []string{
-				"small model summary may be incomplete for this prompt; higher-fidelity fallback unavailable",
-			})
-			return smallPayload, nil
-		}
-		visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
-		if visionErr == nil {
-			visionPayload["fallback_from"] = "small_model"
-			return visionPayload, nil
-		}
-		ocrPayload, ocrErr := t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
-		if ocrErr == nil {
-			ocrPayload["fallback_from"] = "vision"
-			ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
-				"small model and vision analysis were unavailable; returning OCR fallback",
-			})
-			return ocrPayload, nil
-		}
-		return nil, fmt.Errorf("image analysis failed: small_model: %v; vision: %v; ocr: %w", smallErr, visionErr, ocrErr)
+		fallthrough
 	case imageAnalysisModeOCRFirst:
 		ocrPayload, ocrErr := t.performOCRImageAnalysis(ctx, prompt, ocrBytes, meta)
 		if ocrErr == nil {
 			assessment := assessImageOCRSufficiency(prompt, asString(ocrPayload["text"]))
 			annotateOCRPayloadWithSufficiency(ocrPayload, assessment)
 			if assessment.Sufficient {
+				if promptRequestsRawOCRExtraction(prompt) {
+					return ocrPayload, nil
+				}
+				if t.smallModelReady() {
+					smallPayload, smallErr := t.performSmallModelOCRTextAnalysis(ctx, prompt, asString(ocrPayload["text"]), meta)
+					if smallErr == nil {
+						annotatePayloadWithOCRFallback(smallPayload, ocrPayload, assessment)
+						smallAssessment := assessSmallModelImageSufficiency(prompt, asString(smallPayload["analysis"]))
+						annotateSmallModelPayloadWithSufficiency(smallPayload, smallAssessment)
+						if smallAssessment.Sufficient {
+							return smallPayload, nil
+						}
+						visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
+						if visionErr == nil {
+							visionPayload["fallback_from"] = "small_model"
+							visionPayload["fallback_reason"] = "small_model_insufficient_after_ocr"
+							annotatePayloadWithOCRFallback(visionPayload, ocrPayload, assessment)
+							annotatePayloadWithSmallModelFallback(visionPayload, smallPayload, smallAssessment)
+							return visionPayload, nil
+						}
+						ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
+							"OCR-based small-model answer may be incomplete; vision fallback unavailable",
+						})
+						ocrPayload["fallback_from"] = "vision"
+						ocrPayload["fallback_reason"] = "vision_unavailable_after_insufficient_small_model"
+						annotatePayloadWithSmallModelFallback(ocrPayload, smallPayload, smallAssessment)
+						return ocrPayload, nil
+					}
+					ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
+						"OCR-based small-model assist unavailable; returning OCR text",
+					})
+				}
 				return ocrPayload, nil
-			}
-			smallPayload, smallErr := t.performSmallModelImageAnalysis(ctx, prompt, visionBase64, meta)
-			if smallErr == nil {
-				smallAssessment := assessSmallModelImageSufficiency(prompt, asString(smallPayload["analysis"]))
-				annotateSmallModelPayloadWithSufficiency(smallPayload, smallAssessment)
-				smallPayload["fallback_from"] = "ocr"
-				smallPayload["fallback_reason"] = "ocr_insufficient"
-				annotatePayloadWithOCRFallback(smallPayload, ocrPayload, assessment)
-				if smallAssessment.Sufficient {
-					return smallPayload, nil
-				}
-				visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
-				if visionErr == nil {
-					visionPayload["fallback_from"] = "small_model"
-					visionPayload["fallback_reason"] = "small_model_insufficient_after_ocr"
-					annotatePayloadWithOCRFallback(visionPayload, ocrPayload, assessment)
-					annotatePayloadWithSmallModelFallback(visionPayload, smallPayload, smallAssessment)
-					return visionPayload, nil
-				}
-				smallPayload["fallback_reason"] = "vision_unavailable_after_insufficient_small_model"
-				smallPayload["warnings"] = appendStringSlices(smallPayload["warnings"], []string{
-					"small model summary may be incomplete for this prompt; vision fallback unavailable",
-				})
-				return smallPayload, nil
 			}
 			visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
 			if visionErr == nil {
@@ -1092,20 +1057,16 @@ func (t *ImageTool) analyzeImageBytes(ctx context.Context, prompt, visionBase64 
 			ocrPayload["warnings"] = appendStringSlices(ocrPayload["warnings"], []string{
 				"OCR result may be incomplete for this prompt; vision fallback unavailable",
 			})
+			ocrPayload["fallback_from"] = "vision"
 			ocrPayload["fallback_reason"] = "vision_unavailable_after_insufficient_ocr"
 			return ocrPayload, nil
-		}
-		smallPayload, smallErr := t.performSmallModelImageAnalysis(ctx, prompt, visionBase64, meta)
-		if smallErr == nil {
-			smallPayload["fallback_from"] = "ocr"
-			return smallPayload, nil
 		}
 		visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
 		if visionErr == nil {
 			visionPayload["fallback_from"] = "ocr"
 			return visionPayload, nil
 		}
-		return nil, fmt.Errorf("image analysis failed: ocr: %v; small_model: %v; vision: %w", ocrErr, smallErr, visionErr)
+		return nil, fmt.Errorf("image analysis failed: ocr: %v; vision: %w", ocrErr, visionErr)
 	default:
 		visionPayload, visionErr := t.performVisionImageAnalysis(ctx, prompt, visionBase64, meta)
 		if visionErr == nil {
@@ -1152,25 +1113,27 @@ func (t *ImageTool) smallModelReady() bool {
 	return true
 }
 
-func (t *ImageTool) performSmallModelImageAnalysis(ctx context.Context, prompt, visionBase64 string, meta map[string]interface{}) (map[string]interface{}, error) {
+func (t *ImageTool) performSmallModelOCRTextAnalysis(ctx context.Context, prompt, ocrText string, meta map[string]interface{}) (map[string]interface{}, error) {
 	if !t.smallModelReady() {
 		return nil, errImageSmallModelUnavailable
 	}
-	if strings.TrimSpace(visionBase64) == "" {
+	trimmedOCR := strings.TrimSpace(ocrText)
+	if trimmedOCR == "" {
 		return nil, errImageSmallModelUnavailable
 	}
 	trimmedPrompt := strings.TrimSpace(prompt)
 	if trimmedPrompt == "" {
-		trimmedPrompt = "Describe the image briefly."
+		trimmedPrompt = "Summarize the extracted text from this image briefly."
 	}
 	resp, err := t.smallModel.Generate(ctx, smallmodel.GenerateRequest{
-		Prompt:      "You are a concise visual assistant. Answer briefly using the attached image and the user's request. If the image is unclear, say so instead of guessing.\n\nUser: " + trimmedPrompt + "\nAssistant:",
+		Prompt: "You are assisting with text extracted from an image.\n" +
+			"Answer using only the OCR text below.\n" +
+			"Do not infer colors, layout, objects, people, or other visual details that are not explicitly present in the OCR text.\n" +
+			"If the OCR text is insufficient to answer the request, say so briefly instead of guessing.\n\n" +
+			"User request: " + trimmedPrompt + "\n\n" +
+			"OCR text:\n" + trimmedOCR + "\n\nAssistant:",
 		MaxTokens:   400,
 		Temperature: 0.1,
-		Images: []smallmodel.ImageInput{{
-			MimeType: "image/png",
-			Data:     visionBase64,
-		}},
 	})
 	if err != nil {
 		return nil, err
@@ -1179,10 +1142,11 @@ func (t *ImageTool) performSmallModelImageAnalysis(ctx context.Context, prompt, 
 		return nil, errImageSmallModelEmpty
 	}
 	payload := map[string]interface{}{
-		"mode":     "small_model",
-		"prompt":   prompt,
-		"analysis": strings.TrimSpace(resp.Text),
-		"provider": "smallmodel",
+		"mode":      "small_model",
+		"prompt":    prompt,
+		"analysis":  strings.TrimSpace(resp.Text),
+		"provider":  "smallmodel",
+		"ocr_based": true,
 	}
 	mergeImageMeta(payload, meta)
 	return payload, nil
@@ -1351,6 +1315,13 @@ func promptPrefersImageOCR(prompt string) bool {
 	return stringContainsAnyImage(lower,
 		"ocr", "extract the text", "read the text", "transcribe", "visible text",
 		"screenshot", "chart", "table", "dashboard", "diagram", "document", "invoice", "receipt", "menu", "form")
+}
+
+func promptRequestsRawOCRExtraction(prompt string) bool {
+	lower := strings.ToLower(strings.TrimSpace(prompt))
+	return stringContainsAnyImage(lower,
+		"extract the text", "extract the visible text", "read the text", "transcribe",
+		"return only the text", "copy the text", "exact text", "verbatim text")
 }
 
 func promptPrefersImageVision(prompt string) bool {

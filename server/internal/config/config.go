@@ -742,6 +742,14 @@ func defaults() Config {
 		Memory: MemoryConfig{
 			VectorStore: VectorStoreConfig{Enabled: true, DBPath: "./data/memory.db", Dimensions: 0},
 			Search:      MemorySearchConfig{VectorWeight: 0.7, KeywordWeight: 0.3, MinScore: 0.5, MaxResults: 10},
+			Dream: MemoryDreamConfig{
+				Enabled:               true,
+				Schedule:              "0 30 3 * * *",
+				PromoteDailyAfterDays: 7,
+				ArchiveDailyAfterDays: 30,
+				SessionMinMessages:    4,
+				MaxPromotionsPerRun:   5,
+			},
 		},
 
 		Companion: CompanionConfig{

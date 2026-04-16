@@ -271,7 +271,17 @@ function formatFetchFailureMessage(
   return status > 0 ? `${fallback} (${status})` : fallback
 }
 
-const pageErrorMessage = computed(() => pageRuntimeError.value || channelLoadError.value)
+function localizePageErrorMessage(message: string | null): string | null {
+  if (!message) return null
+  if (message.trim() === 'Network Error') {
+    return t('channels.networkError')
+  }
+  return message
+}
+
+const pageErrorMessage = computed(() =>
+  localizePageErrorMessage(pageRuntimeError.value || channelLoadError.value)
+)
 
 // Start collapsed; the primary section still keeps locale favorites,
 // self-hosted channels, and any enabled channels visible by default.
@@ -2194,9 +2204,7 @@ onErrorCaptured((error, _instance, info) => {
               </svg>
             </div>
             <div class="channels-error-banner__copy">
-              <h3 class="channels-error-banner__title">
-                Channels did not fully load
-              </h3>
+              <h3 class="channels-error-banner__title">{{ t('channels.partialLoadTitle') }}</h3>
               <p class="channels-error-banner__description">
                 {{ pageErrorMessage }}
               </p>

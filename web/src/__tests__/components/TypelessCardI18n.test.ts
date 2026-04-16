@@ -221,6 +221,136 @@ describe('Typeless card i18n', () => {
     expect(wrapper.text()).not.toContain('\no\n')
   })
 
+  it('localizes host result messages and compact field labels at render time', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Host screenshot captured',
+          details: [
+            { label: 'host_os', value: 'windows' },
+            { label: 'window_id', value: 'main' },
+            { label: 'image_path', value: '/tmp/host-window-main.png' },
+            { label: 'selected_source_rank', value: '2' },
+            { label: 'output_path', value: '/tmp/output.png' },
+            { label: 'target_format', value: 'png' },
+            { label: 'warning_count', value: '1' },
+          ],
+        },
+      },
+      global: {
+        plugins: [
+          createI18n({
+            legacy: false,
+            locale: 'zh-CN',
+            fallbackLocale: 'en-US',
+            messages: {
+              'en-US': mergeRuntimeHarnessLocale('en-US', {
+                common: {
+                  yes: 'Yes',
+                  no: 'No',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                },
+              }),
+              'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+                common: {
+                  yes: '是',
+                  no: '否',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                },
+              }),
+            },
+          }),
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('已捕获主机截图')
+    expect(wrapper.text()).toContain('主机系统')
+    expect(wrapper.text()).toContain('窗口 ID')
+    expect(wrapper.text()).toContain('图像路径')
+    expect(wrapper.text()).toContain('选中来源排名')
+    expect(wrapper.text()).toContain('输出路径')
+    expect(wrapper.text()).toContain('目标格式')
+    expect(wrapper.text()).toContain('警告数量')
+
+    expect(wrapper.text()).not.toContain('Host screenshot captured')
+    expect(wrapper.text()).not.toContain('host_os')
+    expect(wrapper.text()).not.toContain('selected_source_rank')
+    expect(wrapper.text()).not.toContain('warning_count')
+  })
+
+  it('localizes window focus messages plus execution mode and host OS values at render time', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Window focused',
+          details: [
+            { label: 'execution_mode', value: 'semantic' },
+            { label: 'host_os', value: 'darwin' },
+            { label: 'window_id', value: '14433' },
+          ],
+        },
+      },
+      global: {
+        plugins: [
+          createI18n({
+            legacy: false,
+            locale: 'zh-CN',
+            fallbackLocale: 'en-US',
+            messages: {
+              'en-US': mergeRuntimeHarnessLocale('en-US', {
+                common: {
+                  yes: 'Yes',
+                  no: 'No',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                  values: {},
+                },
+              }),
+              'zh-CN': mergeRuntimeHarnessLocale('zh-CN', {
+                common: {
+                  yes: '是',
+                  no: '否',
+                },
+                resultCard: {
+                  labels: {},
+                  messages: {},
+                  values: {},
+                },
+              }),
+            },
+          }),
+        ],
+      },
+    })
+
+    expect(wrapper.text()).toContain('窗口已聚焦')
+    expect(wrapper.text()).toContain('执行模式')
+    expect(wrapper.text()).toContain('语义')
+    expect(wrapper.text()).toContain('主机系统')
+    expect(wrapper.text()).toContain('macOS')
+    expect(wrapper.text()).toContain('窗口 ID')
+
+    expect(wrapper.text()).not.toContain('Window focused')
+    expect(wrapper.text()).not.toContain('execution_mode')
+    expect(wrapper.text()).not.toContain('semantic')
+    expect(wrapper.text()).not.toContain('darwin')
+  })
+
   it('localizes thinking accordion header', () => {
     const wrapper = mount(CardAccordion, {
       props: {

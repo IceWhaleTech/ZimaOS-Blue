@@ -285,29 +285,17 @@ func (t *XLSXTool) executeValidate(ctx context.Context, args map[string]interfac
 }
 
 func (t *XLSXTool) validatePath(ctx context.Context, absPath string) (map[string]interface{}, error) {
-	validation, err := validateZipEntries(absPath, []string{
-		"[Content_Types].xml",
-		"_rels/.rels",
-		"xl/workbook.xml",
-		"xl/styles.xml",
-		"xl/worksheets/sheet1.xml",
-	})
-	if err != nil {
-		return nil, err
-	}
 	read, err := t.reader.ReadDocument(ctx, absPath)
 	if err != nil {
+		validation, validationErr := validateNativeOfficeArchive(absPath, "xlsx", nil)
+		if validationErr != nil {
+			return nil, validationErr
+		}
 		validation["ok"] = false
 		validation["read_error"] = err.Error()
 		return validation, nil
 	}
-	validation["readable"] = strings.TrimSpace(read.Text) != ""
-	validation["extracted_via"] = read.ExtractedVia
-	validation["char_count"] = len([]rune(read.Text))
-	if read.TabularSummary != nil {
-		validation["tabular_summary"] = read.TabularSummary
-	}
-	return validation, nil
+	return validateNativeOfficeArchive(absPath, "xlsx", read)
 }
 
 func isXLSXXMLEntry(name string) bool {

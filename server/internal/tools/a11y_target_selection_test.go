@@ -131,22 +131,22 @@ func TestA11yConversationSearchPlans_PrefersPlatformShortcuts(t *testing.T) {
 	if len(darwinPlans) != 2 {
 		t.Fatalf("len(darwinPlans) = %d, want 2", len(darwinPlans))
 	}
-	if got := darwinPlans[0].Open; len(got) != 1 || len(got[0]) != 2 || got[0][0] != "command" || got[0][1] != "k" {
-		t.Fatalf("darwinPlans[0].Open = %#v, want [[command k]]", got)
+	if got := darwinPlans[0].Open; len(got) != 2 || len(got[0]) != 2 || len(got[1]) != 2 || got[0][0] != "command" || got[0][1] != "f" || got[1][0] != "command" || got[1][1] != "f" {
+		t.Fatalf("darwinPlans[0].Open = %#v, want [[command f] [command f]]", got)
 	}
-	if got := darwinPlans[1].Open; len(got) != 2 || len(got[0]) != 2 || len(got[1]) != 2 || got[0][0] != "command" || got[0][1] != "f" || got[1][0] != "command" || got[1][1] != "f" {
-		t.Fatalf("darwinPlans[1].Open = %#v, want [[command f] [command f]]", got)
+	if got := darwinPlans[1].Open; len(got) != 1 || len(got[0]) != 2 || got[0][0] != "command" || got[0][1] != "k" {
+		t.Fatalf("darwinPlans[1].Open = %#v, want [[command k]]", got)
 	}
 
 	windowsPlans := a11yConversationSearchPlans("windows")
 	if len(windowsPlans) != 2 {
 		t.Fatalf("len(windowsPlans) = %d, want 2", len(windowsPlans))
 	}
-	if got := windowsPlans[0].Open; len(got) != 1 || len(got[0]) != 2 || got[0][0] != "ctrl" || got[0][1] != "k" {
-		t.Fatalf("windowsPlans[0].Open = %#v, want [[ctrl k]]", got)
+	if got := windowsPlans[0].Open; len(got) != 2 || len(got[0]) != 2 || len(got[1]) != 2 || got[0][0] != "ctrl" || got[0][1] != "f" || got[1][0] != "ctrl" || got[1][1] != "f" {
+		t.Fatalf("windowsPlans[0].Open = %#v, want [[ctrl f] [ctrl f]]", got)
 	}
-	if got := windowsPlans[1].Open; len(got) != 2 || len(got[0]) != 2 || len(got[1]) != 2 || got[0][0] != "ctrl" || got[0][1] != "f" || got[1][0] != "ctrl" || got[1][1] != "f" {
-		t.Fatalf("windowsPlans[1].Open = %#v, want [[ctrl f] [ctrl f]]", got)
+	if got := windowsPlans[1].Open; len(got) != 1 || len(got[0]) != 2 || got[0][0] != "ctrl" || got[0][1] != "k" {
+		t.Fatalf("windowsPlans[1].Open = %#v, want [[ctrl k]]", got)
 	}
 }
 
@@ -408,14 +408,26 @@ func TestA11yToolExecute_ActionSelectAliasPrefersConversationRolePriority(t *tes
 		windows: []a11yruntime.WindowInfo{
 			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
 		},
-		interactiveResult: a11yruntime.SnapshotResult{
-			HostOS:   "darwin",
-			WindowID: "win-feishu",
-			Title:    "Feishu",
-			Tree:     "@1 [button] \"Orca\"\n@2 [list_item] \"Orca\"",
-			RefMap: map[int]string{
-				1: "token-orca-button",
-				2: "token-orca-list-item",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [button] \"Orca\"\n@2 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-orca-button",
+					2: "token-orca-list-item",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
 			},
 		},
 	}
@@ -1419,17 +1431,177 @@ func TestA11yToolExecute_ActionMessageAliasFallsBackToFeishuShortcutSearchWhenDi
 	if err != nil {
 		t.Fatalf("message Execute() error = %v", err)
 	}
-	if len(backend.keyHistory) != 3 {
-		t.Fatalf("keyHistory = %#v, want open + clear-only key steps before search-field typing", backend.keyHistory)
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want structured search open + clear-only key steps before search-field typing", backend.keyHistory)
 	}
-	if want := []string{"command", "k"}; len(backend.keyHistory[0]) != len(want) || backend.keyHistory[0][0] != want[0] || backend.keyHistory[0][1] != want[1] {
+	if want := []string{"command", "f"}; len(backend.keyHistory[0]) != len(want) || backend.keyHistory[0][0] != want[0] || backend.keyHistory[0][1] != want[1] {
 		t.Fatalf("keyHistory[0] = %#v, want %v", backend.keyHistory[0], want)
 	}
-	if want := []string{"command", "a"}; len(backend.keyHistory[1]) != len(want) || backend.keyHistory[1][0] != want[0] || backend.keyHistory[1][1] != want[1] {
+	if want := []string{"command", "f"}; len(backend.keyHistory[1]) != len(want) || backend.keyHistory[1][0] != want[0] || backend.keyHistory[1][1] != want[1] {
 		t.Fatalf("keyHistory[1] = %#v, want %v", backend.keyHistory[1], want)
 	}
-	if want := []string{"delete"}; len(backend.keyHistory[2]) != len(want) || backend.keyHistory[2][0] != want[0] {
+	if want := []string{"command", "a"}; len(backend.keyHistory[2]) != len(want) || backend.keyHistory[2][0] != want[0] || backend.keyHistory[2][1] != want[1] {
 		t.Fatalf("keyHistory[2] = %#v, want %v", backend.keyHistory[2], want)
+	}
+	if want := []string{"delete"}; len(backend.keyHistory[3]) != len(want) || backend.keyHistory[3][0] != want[0] {
+		t.Fatalf("keyHistory[3] = %#v, want %v", backend.keyHistory[3], want)
+	}
+	if len(backend.actTypeHistory) != 4 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "click" || backend.actTypeHistory[2] != "type" || backend.actTypeHistory[3] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [type click type submit]", backend.actTypeHistory)
+	}
+	if len(backend.actRefHistory) != 4 || backend.actRefHistory[0] != 1 || backend.actRefHistory[1] != 2 || backend.actRefHistory[2] != 1 || backend.actRefHistory[3] != 2 {
+		t.Fatalf("actRefHistory = %#v, want [1 2 1 2]", backend.actRefHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "Host action completed and submitted" {
+		t.Fatalf("message = %v, want Host action completed and submitted", out["message"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasShortcutSearchWaitsForDelayedConversationResult(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Echo\"\n@2 [list_item] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-echo-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Echo",
+		"value":        "你好，Echo",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 4 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "click" || backend.actTypeHistory[2] != "type" || backend.actTypeHistory[3] != "submit" {
+		t.Fatalf("actTypeHistory = %#v, want [type click type submit]", backend.actTypeHistory)
+	}
+	if len(backend.actRefHistory) != 4 || backend.actRefHistory[0] != 1 || backend.actRefHistory[1] != 2 || backend.actRefHistory[2] != 1 || backend.actRefHistory[3] != 2 {
+		t.Fatalf("actRefHistory = %#v, want [1 2 1 2]", backend.actRefHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "Host action completed and submitted" {
+		t.Fatalf("message = %v, want Host action completed and submitted", out["message"])
+	}
+}
+
+func TestA11yToolExecute_ActionMessageAliasShortcutSearchAcceptsButtonConversationResultAfterQuery(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Echo\"\n@2 [button] \"Echo\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-echo-conversation-button",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Echo",
+		"value":        "你好，Echo",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
 	}
 	if len(backend.actTypeHistory) != 4 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "click" || backend.actTypeHistory[2] != "type" || backend.actTypeHistory[3] != "submit" {
 		t.Fatalf("actTypeHistory = %#v, want [type click type submit]", backend.actTypeHistory)
@@ -1707,8 +1879,8 @@ func TestA11yToolExecute_ActionMessageAliasShortcutSearchKeepsSearchQueryAndBody
 	if err != nil {
 		t.Fatalf("message Execute() error = %v", err)
 	}
-	if len(backend.keyHistory) != 3 {
-		t.Fatalf("keyHistory = %#v, want open + clear-only key steps before search-field typing", backend.keyHistory)
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want structured search open + clear-only key steps before search-field typing", backend.keyHistory)
 	}
 	if len(backend.actTypeHistory) != 4 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "click" || backend.actTypeHistory[2] != "type" || backend.actTypeHistory[3] != "submit" {
 		t.Fatalf("actTypeHistory = %#v, want [type click type submit]", backend.actTypeHistory)
@@ -1983,8 +2155,8 @@ func TestA11yToolExecute_ActionMessageAliasInvalidatesStaleConversationPointCach
 	if backend.pointClickHistory[1].X != 0.61 || backend.pointClickHistory[1].Y != 0.34 {
 		t.Fatalf("visual click = %#v, want refreshed point", backend.pointClickHistory[1])
 	}
-	if len(backend.keyHistory) != 3 {
-		t.Fatalf("keyHistory = %#v, want open + clear-only key steps before search-field typing", backend.keyHistory)
+	if len(backend.keyHistory) != 4 {
+		t.Fatalf("keyHistory = %#v, want structured search open + clear-only key steps before search-field typing", backend.keyHistory)
 	}
 	if len(backend.actTypeHistory) != 3 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "type" || backend.actTypeHistory[2] != "submit" {
 		t.Fatalf("actTypeHistory = %#v, want [type type submit]", backend.actTypeHistory)
@@ -2275,14 +2447,26 @@ func TestA11yToolExecute_ActionSelectAliasUsesTopLevelConversation(t *testing.T)
 		windows: []a11yruntime.WindowInfo{
 			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
 		},
-		interactiveResult: a11yruntime.SnapshotResult{
-			HostOS:   "darwin",
-			WindowID: "win-feishu",
-			Title:    "Feishu",
-			Tree:     "@1 [list_item] \"Orca\"\n@2 [list_item] \"Team\"",
-			RefMap: map[int]string{
-				1: "token-orca-conversation",
-				2: "token-team-conversation",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [list_item] \"Team\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-team-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
 			},
 		},
 	}
@@ -2318,14 +2502,26 @@ func TestA11yToolExecute_ActionSelectAliasFallsBackToClickWhenSelectUnsupported(
 		windows: []a11yruntime.WindowInfo{
 			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
 		},
-		interactiveResult: a11yruntime.SnapshotResult{
-			HostOS:   "darwin",
-			WindowID: "win-feishu",
-			Title:    "Feishu",
-			Tree:     "@1 [list_item] \"Orca\"\n@2 [list_item] \"Team\"",
-			RefMap: map[int]string{
-				1: "token-orca-conversation",
-				2: "token-team-conversation",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [list_item] \"Team\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-team-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
 			},
 		},
 		actErrorsByType: map[string]error{
@@ -2359,19 +2555,105 @@ func TestA11yToolExecute_ActionSelectAliasFallsBackToClickWhenSelectUnsupported(
 	}
 }
 
+func TestA11yToolExecute_ActionSelectAliasUsesConversationSearchFallbackWhenStructuredMiss(t *testing.T) {
+	backend := &a11yCompatBackend{
+		hostOS: "darwin",
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-orca",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+	})
+	if err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "click" {
+		t.Fatalf("actTypeHistory = %#v, want [type click] from conversation search fallback", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil on recovered select conversation fallback", out["error_code"])
+	}
+	if out["stage"] != "confirm_conversation" {
+		t.Fatalf("stage = %v, want confirm_conversation", out["stage"])
+	}
+}
+
 func TestA11yToolExecute_ActInfersSelectFromConversationWithoutValue(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{
 			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
 		},
-		interactiveResult: a11yruntime.SnapshotResult{
-			HostOS:   "darwin",
-			WindowID: "win-feishu",
-			Title:    "Feishu",
-			Tree:     "@1 [list_item] \"Orca\"\n@2 [list_item] \"Team\"",
-			RefMap: map[int]string{
-				1: "token-orca-conversation",
-				2: "token-team-conversation",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [list_item] \"Team\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-team-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
 			},
 		},
 	}

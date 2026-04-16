@@ -130,6 +130,43 @@ func TestGetThemeByMood(t *testing.T) {
 	}
 }
 
+func TestMidnightThemeUsesDarkSurfaces(t *testing.T) {
+	theme, err := officeThemeByName("midnight")
+	if err != nil {
+		t.Fatalf("officeThemeByName(midnight) error = %v", err)
+	}
+	for field, want := range map[string]string{
+		"Primary":      "#242C38",
+		"PrimaryDark":  "#F5F3EE",
+		"Slate":        "#D8DCE5",
+		"Surface":      "#0B0D12",
+		"SurfaceAlt":   "#05070B",
+		"SurfaceMuted": "#11151B",
+		"Accent":       "#4D7CFE",
+	} {
+		var got string
+		switch field {
+		case "Primary":
+			got = theme.Primary
+		case "PrimaryDark":
+			got = theme.PrimaryDark
+		case "Slate":
+			got = theme.Slate
+		case "Surface":
+			got = theme.Surface
+		case "SurfaceAlt":
+			got = theme.SurfaceAlt
+		case "SurfaceMuted":
+			got = theme.SurfaceMuted
+		case "Accent":
+			got = theme.Accent
+		}
+		if got != want {
+			t.Fatalf("midnight %s = %q, want %q", field, got, want)
+		}
+	}
+}
+
 func TestNewThemeFonts(t *testing.T) {
 	// Verify new themes have diverse fonts (not just Aptos)
 	newThemes := []string{"midnight", "terracotta", "forest", "coral"}
@@ -163,8 +200,8 @@ func TestGetThemePreview(t *testing.T) {
 	if preview.Mood != "trustworthy" {
 		t.Fatalf("preview.Mood = %q, want trustworthy", preview.Mood)
 	}
-	if preview.Fonts.Display != "Georgia" || preview.Fonts.Body != "Segoe UI" {
-		t.Fatalf("preview.Fonts = %+v, want Georgia/Segoe UI", preview.Fonts)
+	if preview.Fonts.Display != "Helvetica Neue" || preview.Fonts.Body != "Helvetica" {
+		t.Fatalf("preview.Fonts = %+v, want Helvetica Neue/Helvetica", preview.Fonts)
 	}
 	if preview.Dominance.Primary != 0.65 || preview.Dominance.Secondary != 0.25 || preview.Dominance.Accent != 0.10 {
 		t.Fatalf("preview.Dominance = %+v, want 0.65/0.25/0.10", preview.Dominance)
@@ -172,10 +209,10 @@ func TestGetThemePreview(t *testing.T) {
 	if len(preview.Swatches) < 3 {
 		t.Fatalf("len(preview.Swatches) = %d, want at least 3", len(preview.Swatches))
 	}
-	if preview.Swatches[0].Role != "primary" || preview.Swatches[0].Hex != "#1E3A5F" {
-		t.Fatalf("preview.Swatches[0] = %+v, want primary #1E3A5F", preview.Swatches[0])
+	if preview.Swatches[0].Role != "primary" || preview.Swatches[0].Hex != "#242C38" {
+		t.Fatalf("preview.Swatches[0] = %+v, want primary #242C38", preview.Swatches[0])
 	}
-	for _, needle := range []string{"#1E3A5F", "#00D4AA", "Georgia", "professional yet distinctive"} {
+	for _, needle := range []string{"#242C38", "#4D7CFE", "Helvetica Neue", "professional yet distinctive"} {
 		if !strings.Contains(preview.HTML, needle) {
 			t.Fatalf("preview.HTML missing %q in %s", needle, preview.HTML)
 		}

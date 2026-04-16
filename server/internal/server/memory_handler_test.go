@@ -6,12 +6,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
+	sessionctx "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 )
 
 func newTestMemoryHandler(t *testing.T) (*MemoryHandler, *echo.Echo) {
@@ -42,6 +46,18 @@ func newTestMemoryHandler(t *testing.T) (*MemoryHandler, *echo.Echo) {
 	handler.RegisterRoutes(e.Group("/api/v1"))
 
 	return handler, e
+}
+
+func newDreamSessionForHandlerTest() *session.Session {
+	sess := session.NewSession(session.SessionID{
+		AgentID:   "chat",
+		ChannelID: "web",
+		PeerID:    "conv-handler",
+	}, 4096)
+	sess.SetSummary("Important decision: dream memory should compress and archive historical context outside the primary storage.")
+	sess.AddMessage(sessionctx.Message{Role: sessionctx.RoleUser, Content: "Please remember the important dream archive design."})
+	sess.AddMessage(sessionctx.Message{Role: sessionctx.RoleAssistant, Content: "Confirmed. Dream memory will archive historical context outside the primary storage."})
+	return sess
 }
 
 func TestMemoryHandlerStatsIncludesDailyDisplayCounters(t *testing.T) {
@@ -231,6 +247,83 @@ func TestMemoryHandlerRejectsInvalidDailyDate(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+}
+
+func TestMemoryHandlerDreamStatusAndRun(t *testing.T) {
+	h, e := newTestMemoryHandler(t)
+
+	cfg := memory.DefaultDreamConfig()
+	cfg.ArchiveDir = t.TempDir()
+	cfg.SessionMinMessages = 2
+	cfg.PromoteDailyAfterDays = 2
+	cfg.ArchiveDailyAfterDays = 2
+	dream, err := memory.NewDreamService(h.layeredService, h.layeredService.GetConfig().LongTermDir, cfg)
+	if err != nil {
+		t.Fatalf("NewDreamService: %v", err)
+	}
+	h.SetDreamService(dream)
+
+	if _, err := dream.ArchiveSession(context.Background(), newDreamSessionForHandlerTest(), session.EndReasonArchive); err != nil {
+		t.Fatalf("ArchiveSession: %v", err)
+	}
+
+	oldDate := time.Now().UTC().AddDate(0, 0, -3).Format("2006-01-02")
+	oldLogPath := h.layeredService.GetConfig().BaseDir + "/daily/" + oldDate + ".md"
+	if err := os.WriteFile(oldLogPath, []byte("# Daily Log - "+oldDate+"\n\n## 08:00:00\n\n**Tags:** important, decision\n\nImportant decision: dream memory should compress and archive historical context outside the primary storage.\n\n---\n"), 0o644); err != nil {
+		t.Fatalf("write old daily log: %v", err)
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/memory/dream/status", nil)
+	statusRec := httptest.NewRecorder()
+	e.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("status code = %d, want 200, body=%s", statusRec.Code, statusRec.Body.String())
+	}
+
+	var statusResp struct {
+		Enabled         bool `json:"enabled"`
+		PendingCapsules int  `json:"pending_capsules"`
+	}
+	if err := json.Unmarshal(statusRec.Body.Bytes(), &statusResp); err != nil {
+		t.Fatalf("decode status response: %v", err)
+	}
+	if !statusResp.Enabled || statusResp.PendingCapsules != 1 {
+		t.Fatalf("status response = %+v, want enabled with pending_capsules=1", statusResp)
+	}
+
+	runReq := httptest.NewRequest(http.MethodPost, "/api/v1/memory/dream/run", bytes.NewBufferString(`{}`))
+	runReq.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	runRec := httptest.NewRecorder()
+	e.ServeHTTP(runRec, runReq)
+	if runRec.Code != http.StatusOK {
+		t.Fatalf("run code = %d, want 200, body=%s", runRec.Code, runRec.Body.String())
+	}
+
+	var runResp struct {
+		RunID              string `json:"run_id"`
+		PromotedCount      int    `json:"promoted_count"`
+		ArchivedDailyCount int    `json:"archived_daily_count"`
+		ProcessedCapsules  int    `json:"processed_capsules"`
+	}
+	if err := json.Unmarshal(runRec.Body.Bytes(), &runResp); err != nil {
+		t.Fatalf("decode run response: %v", err)
+	}
+	if runResp.RunID == "" || runResp.PromotedCount == 0 || runResp.ArchivedDailyCount != 1 || runResp.ProcessedCapsules != 1 {
+		t.Fatalf("run response = %+v", runResp)
+	}
+
+	statusReq = httptest.NewRequest(http.MethodGet, "/api/v1/memory/dream/status", nil)
+	statusRec = httptest.NewRecorder()
+	e.ServeHTTP(statusRec, statusReq)
+	if statusRec.Code != http.StatusOK {
+		t.Fatalf("status code after run = %d, want 200, body=%s", statusRec.Code, statusRec.Body.String())
+	}
+	if err := json.Unmarshal(statusRec.Body.Bytes(), &statusResp); err != nil {
+		t.Fatalf("decode status response after run: %v", err)
+	}
+	if statusResp.PendingCapsules != 0 {
+		t.Fatalf("pending_capsules after run = %d, want 0", statusResp.PendingCapsules)
 	}
 }
 

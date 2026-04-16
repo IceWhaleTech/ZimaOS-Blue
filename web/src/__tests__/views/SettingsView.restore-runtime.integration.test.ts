@@ -179,7 +179,6 @@ function primeApiMocks() {
       small_model_context_compress_enabled: true,
       small_model_doc_extract_enabled: true,
       context_compression_mode: 'auto',
-      small_model_route_image_qa_enabled: true,
       small_model_route_short_qa_enabled: true,
       no_llm_degrade_mode: 'deepresearch',
       small_model_unavailable_policy: 'ir_first',

@@ -1318,7 +1318,6 @@ export default mergeHarnessLocale('ml-IN', {
       contextCompressionModeSmallModel: 'ലഘു മോഡൽ മുൻഗണിക്കുക',
       contextCompressionModeOffline: 'നിശ്ചിത ഓഫ്‌ലൈൻ',
       docExtract: 'രേഖ എക്സ്ട്രാക്ഷൻ വേഗവർധനം',
-      imageQA: 'ചിത്ര തിരിച്ചറിയൽ വേഗവൽക്കരണം',
       shortQA: 'ചെറു Q&A വേഗവർധനം',
       statsTitle: 'റൺടൈം സ്ഥിതിവിവരക്കണക്കുകൾ (ട്രബിൾഷൂട്ടിംഗ്)',
       statsHint:
@@ -1327,9 +1326,6 @@ export default mergeHarnessLocale('ml-IN', {
       shortQAAttempts: 'ചെറു Q&A വേഗവർധനം എണ്ണം',
       shortQASuccessRate: 'ചെറു Q&A വേഗവർധനം ഹിറ്റ് നിരക്ക്',
       shortQALatencyMs: 'ചെറു Q&A വേഗവർധനം ലേറ്റൻസി',
-      imageQAAttempts: 'ചിത്ര തിരിച്ചറിയൽ എണ്ണം',
-      imageQASuccessRate: 'ചിത്ര തിരിച്ചറിയൽ ഹിറ്റ് നിരക്ക്',
-      imageQALatencyMs: 'ചിത്ര തിരിച്ചറിയൽ വിലംബം',
       summarySuccessRate: 'സാരാംശ വേഗവർധനം ഹിറ്റ് നിരക്ക്',
       summaryLatencyMs: 'സാരാംശ വേഗവർധനം ലേറ്റൻസി',
       contextCompressionSuccessRate: 'സന്ദർഭ സംക്ഷേപണ വിജയനിരക്ക്',
@@ -4714,6 +4710,7 @@ export default mergeHarnessLocale('ml-IN', {
       analyze: 'വിശകലന റിപ്പോർട്ട്',
       mediagen: 'ഓര്‍മപ്പെടുത്തലുകള്‍',
       ask: 'മീഡിയ ജനറേഷന്‍',
+      advisor: 'ഉപദേശകൻ',
       'Web Search': 'വെബ് തിരയൽ',
       Calculator: 'കാൽക്കുലേറ്റർ',
       'System Info': 'സിസ്റ്റം വിവരം',
@@ -4755,6 +4752,7 @@ export default mergeHarnessLocale('ml-IN', {
       exec: 'ഷെൽ കമാൻഡുകൾ പ്രവർത്തിപ്പിച്ച് അവയുടെ ഔട്ട്പുട്ട് കൈപ്പറ്റുന്നു',
       analyze: 'വെബിൽ നിന്ന് ഡാറ്റ ശേഖരിച്ച് ഘടനാപരമായ വിശകലന റിപ്പോർട്ട് സൃഷ്ടിക്കുന്നു',
       ask: 'ടാസ്‌ക് തുടരാൻ ആവശ്യമായ അനുബന്ധ ചോദ്യങ്ങൾ ഉപയോക്താവിനോട് ചോദിക്കുന്നു',
+      advisor: 'തിരഞ്ഞെടുപ്പ്, പകരംവയ്‌പ്പ്, മൈഗ്രേഷൻ, മികച്ച പ്രാക്ടീസ് ചോദ്യങ്ങൾക്കായുള്ള തീരുമാന ഉപദേശകൻ.',
       mediagen: 'AI മോഡലുകൾ ഉപയോഗിച്ച് ചിത്രങ്ങൾ, വീഡിയോകൾ, അവതരണങ്ങൾ സൃഷ്ടിക്കുന്നു',
       web_query: 'URL ഉപയോഗിച്ച് ഒരു വെബ് പേജ് നേടി പാഴ്സ് ചെയ്യുന്നു',
       research:

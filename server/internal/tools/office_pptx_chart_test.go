@@ -77,6 +77,24 @@ func TestOfficeBuildPresentationSlidesExtractsChartCalloutsFromBullets(t *testin
 	}
 }
 
+func TestCleanupOfficeDocSpecPreservesDecimalCalloutBullets(t *testing.T) {
+	cleaned := cleanupOfficeDocSpec(officeDocSpec{
+		Sections: []officeDocSection{
+			{
+				Heading: "Revenue Mix",
+				Bullets: []string{"Revenue: $12.4M", "Margin: 31.5%"},
+			},
+		},
+	})
+
+	if got := cleaned.Sections[0].Bullets[0]; got != "Revenue: $12.4M" {
+		t.Fatalf("cleaned bullet[0] = %q, want Revenue: $12.4M", got)
+	}
+	if got := cleaned.Sections[0].Bullets[1]; got != "Margin: 31.5%" {
+		t.Fatalf("cleaned bullet[1] = %q, want Margin: 31.5%%", got)
+	}
+}
+
 func TestOfficeBuildPresentationSlidesSkipsTOCWhenDeckHasNoCoverMetadata(t *testing.T) {
 	slides := officeBuildPresentationSlides(officeDocSpec{
 		Sections: []officeDocSection{
@@ -131,7 +149,7 @@ func TestOfficeBuildPresentationSlidesExtractsStandaloneCalloutsFromShortBullets
 	}
 }
 
-func TestOfficePPTXSlideXMLIncludesCalloutGridForStandaloneCallouts(t *testing.T) {
+func TestOfficePPTXSlideXMLUsesStandaloneCalloutCardsWithoutBackgroundPatch(t *testing.T) {
 	slide := officePPTXSlide{
 		Title: "Core Upgrades",
 		Theme: resolveOfficeTheme("analysis", ""),
@@ -145,7 +163,6 @@ func TestOfficePPTXSlideXMLIncludesCalloutGridForStandaloneCallouts(t *testing.T
 
 	xml := officePPTXSlideXML(slide)
 	for _, needle := range []string{
-		`name="Standalone Callout Grid"`,
 		`name="Standalone Callout 1"`,
 		`name="Standalone Callout 4"`,
 		`<a:t>MoE architecture</a:t>`,
@@ -156,6 +173,9 @@ func TestOfficePPTXSlideXMLIncludesCalloutGridForStandaloneCallouts(t *testing.T
 		if !containsSubstring(xml, needle) {
 			t.Fatalf("slide XML missing %q in %s", needle, xml)
 		}
+	}
+	if containsSubstring(xml, `name="Standalone Callout Grid"`) {
+		t.Fatalf("standalone callouts should not render a large background patch in %s", xml)
 	}
 	if containsSubstring(xml, `name="Content"`) && containsSubstring(xml, `<a:t>MoE architecture</a:t></a:r></a:p></p:txBody></p:sp><p:sp><p:nvSpPr><p:cNvPr id="60"`) {
 		t.Fatalf("standalone callout text should not be duplicated in the default content body: %s", xml)
@@ -182,23 +202,162 @@ func TestOfficePPTXSlideXMLIncludesThemeAwareChartCalloutRail(t *testing.T) {
 	xml := officePPTXSlideXML(slide)
 	for _, needle := range []string{
 		`name="Chart Callout Rail"`,
-		`name="Chart Callout Accent"`,
 		`name="Chart Callout 1"`,
 		`name="Chart Callout 2"`,
 		`<a:t>Key Takeaways</a:t>`,
 		`<a:t>Revenue</a:t>`,
 		`<a:t>$12.4M</a:t>`,
 		`<a:t>Watch conversion quality</a:t>`,
-		`typeface="Georgia"`,
+		`typeface="Helvetica Neue"`,
 		`typeface="Helvetica"`,
 		`typeface="Hiragino Sans GB"`,
-		`val="00D4AA"`,
-		`val="FEF3C7"`,
+		`val="4D7CFE"`,
+		`val="C89A45"`,
 		`cx="8031480"`,
 	} {
 		if !containsSubstring(xml, needle) {
 			t.Fatalf("slide XML missing %q in %s", needle, xml)
 		}
+	}
+	if containsSubstring(xml, `name="Chart Callout Accent"`) {
+		t.Fatalf("chart callout column should not render a separate accent patch in %s", xml)
+	}
+}
+
+func TestBuildOfficePPTXOmitsRedundantChartTitleWhenSlideHeadingExists(t *testing.T) {
+	pptxData, _, err := buildOfficePPTX(officeDocSpec{
+		Theme: resolveOfficeTheme("midnight", ""),
+		Sections: []officeDocSection{
+			{
+				Heading: "趋势对比",
+				Chart: &officeChartSpec{
+					Type:       "combo",
+					Title:      "关键指标趋势",
+					Categories: []string{"Base", "v1", "v2", "v3"},
+					Series: []officeChartSeries{
+						{Name: "准确率", Type: "bar", Values: []float64{72, 81, 88, 93}},
+						{Name: "延迟", Type: "line", Axis: "secondary", Values: []float64{310, 250, 210, 180}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildOfficePPTX returned error: %v", err)
+	}
+
+	slideXML := officeZipEntryText(t, pptxData, "ppt/slides/slide1.xml")
+	chartXML := officeZipEntryText(t, pptxData, "ppt/charts/chart1.xml")
+
+	if !containsSubstring(slideXML, `<a:t>趋势对比</a:t>`) {
+		t.Fatalf("expected slide heading to remain visible in %s", slideXML)
+	}
+	if containsSubstring(chartXML, `<a:t>关键指标趋势</a:t>`) {
+		t.Fatalf("expected chart1.xml to omit redundant in-chart title, got %s", chartXML)
+	}
+	if containsSubstring(chartXML, `<c:autoTitleDeleted val="0"/>`) {
+		t.Fatalf("expected chart1.xml to mark the in-chart title as deleted, got %s", chartXML)
+	}
+}
+
+func TestParseOfficeDocSectionsPreservesCompactMetricLinesForChartCallouts(t *testing.T) {
+	sections, err := parseOfficeDocSections([]interface{}{
+		map[string]interface{}{
+			"heading": "趋势对比",
+			"body":    "准确率：93%\n延迟：180ms\n重点：首轮响应更快",
+			"chart": map[string]interface{}{
+				"type":       "combo",
+				"categories": []interface{}{"Base", "v1", "v2", "v3"},
+				"series": []interface{}{
+					map[string]interface{}{
+						"name":   "准确率",
+						"type":   "bar",
+						"values": []interface{}{72, 81, 88, 93},
+					},
+					map[string]interface{}{
+						"name":   "延迟",
+						"type":   "line",
+						"axis":   "secondary",
+						"values": []interface{}{310, 250, 210, 180},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseOfficeDocSections returned error: %v", err)
+	}
+
+	slides := officeBuildPresentationSlides(officeDocSpec{Sections: sections})
+	if len(slides) != 1 {
+		t.Fatalf("len(slides) = %d, want 1 (%#v)", len(slides), slides)
+	}
+	chartSlide := slides[0]
+	if chartSlide.Chart == nil {
+		t.Fatalf("expected a chart slide in %#v", slides)
+	}
+	if len(chartSlide.Callouts) != 3 {
+		t.Fatalf("len(callouts) = %d, want 3 (%#v)", len(chartSlide.Callouts), chartSlide.Callouts)
+	}
+	if chartSlide.Callouts[0].Label != "准确率" || chartSlide.Callouts[0].Value != "93%" {
+		t.Fatalf("first callout = %#v, want 准确率/93%%", chartSlide.Callouts[0])
+	}
+	if chartSlide.Callouts[1].Label != "延迟" || chartSlide.Callouts[1].Value != "180ms" {
+		t.Fatalf("second callout = %#v, want 延迟/180ms", chartSlide.Callouts[1])
+	}
+	if chartSlide.Callouts[2].Label != "重点" || chartSlide.Callouts[2].Value != "" || chartSlide.Callouts[2].Body != "首轮响应更快" {
+		t.Fatalf("third callout = %#v, want descriptive body callout", chartSlide.Callouts[2])
+	}
+	if len(chartSlide.Blocks) != 0 {
+		t.Fatalf("len(blocks) = %d, want 0 once compact metrics become callouts (%#v)", len(chartSlide.Blocks), chartSlide.Blocks)
+	}
+}
+
+func TestOfficePPTXChartCalloutColorsUseUnifiedSurfaceForDarkThemes(t *testing.T) {
+	theme := resolveOfficeTheme("midnight", "")
+	for _, tc := range []struct {
+		name        string
+		callout     officePPTXCallout
+		wantFill    string
+		wantLine    string
+		wantLabel   string
+		wantValue   string
+		wantBody    string
+	}{
+		{
+			name:      "primary",
+			callout:   officePPTXCallout{Label: "Revenue", Value: "$12.4M", Tone: "primary"},
+			wantFill:  theme.Surface,
+			wantLine:  theme.Accent,
+			wantLabel: theme.Accent,
+			wantValue: theme.PrimaryDark,
+			wantBody:  theme.Slate,
+		},
+		{
+			name:      "warning",
+			callout:   officePPTXCallout{Body: "Watch conversion quality", Tone: "warning"},
+			wantFill:  theme.Surface,
+			wantLine:  theme.Warning,
+			wantLabel: theme.Warning,
+			wantValue: theme.PrimaryDark,
+			wantBody:  theme.PrimaryDark,
+		},
+		{
+			name:      "muted",
+			callout:   officePPTXCallout{Body: "Long context", Tone: "muted"},
+			wantFill:  theme.Surface,
+			wantLine:  theme.Border,
+			wantLabel: theme.Secondary,
+			wantValue: theme.PrimaryDark,
+			wantBody:  theme.Slate,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fill, line, label, value, body := officePPTXChartCalloutColors(tc.callout, theme)
+			if fill != tc.wantFill || line != tc.wantLine || label != tc.wantLabel || value != tc.wantValue || body != tc.wantBody {
+				t.Fatalf("colors = %q/%q/%q/%q/%q, want %q/%q/%q/%q/%q", fill, line, label, value, body, tc.wantFill, tc.wantLine, tc.wantLabel, tc.wantValue, tc.wantBody)
+			}
+		})
 	}
 }
 
@@ -1934,9 +2093,9 @@ func TestOfficePPTXChartXMLForThemeAppliesDefaultSeriesPalette(t *testing.T) {
 		`<c:v>Revenue</c:v>`,
 		`<c:v>Margin</c:v>`,
 		`<c:v>Pipeline</c:v>`,
-		`<a:srgbClr val="1E3A5F"/>`,
-		`<a:srgbClr val="00D4AA"/>`,
-		`<a:srgbClr val="4A5568"/>`,
+		`<a:srgbClr val="242C38"/>`,
+		`<a:srgbClr val="4D7CFE"/>`,
+		`<a:srgbClr val="8A93A2"/>`,
 	} {
 		if !containsSubstring(chartXML, needle) {
 			t.Fatalf("theme-colored chart XML missing %q in %s", needle, chartXML)
@@ -1954,9 +2113,9 @@ func TestOfficePPTXChartXMLForThemeAppliesDefaultPiePointPalette(t *testing.T) {
 	}, resolveOfficeTheme("midnight", ""))
 
 	for _, needle := range []string{
-		`<c:dPt><c:idx val="0"/><c:spPr><a:solidFill><a:srgbClr val="1E3A5F"/></a:solidFill>`,
-		`<c:dPt><c:idx val="1"/><c:spPr><a:solidFill><a:srgbClr val="00D4AA"/></a:solidFill>`,
-		`<c:dPt><c:idx val="2"/><c:spPr><a:solidFill><a:srgbClr val="4A5568"/></a:solidFill>`,
+		`<c:dPt><c:idx val="0"/><c:spPr><a:solidFill><a:srgbClr val="242C38"/></a:solidFill>`,
+		`<c:dPt><c:idx val="1"/><c:spPr><a:solidFill><a:srgbClr val="4D7CFE"/></a:solidFill>`,
+		`<c:dPt><c:idx val="2"/><c:spPr><a:solidFill><a:srgbClr val="8A93A2"/></a:solidFill>`,
 	} {
 		if !containsSubstring(chartXML, needle) {
 			t.Fatalf("theme pie chart XML missing %q in %s", needle, chartXML)
@@ -1978,11 +2137,11 @@ func TestOfficePPTXChartXMLForThemeUsesThemeTypography(t *testing.T) {
 	}, resolveOfficeTheme("midnight", ""))
 
 	for _, needle := range []string{
-		`<a:latin typeface="Georgia"/>`,
+		`<a:latin typeface="Helvetica Neue"/>`,
 		`<a:latin typeface="Helvetica"/>`,
 		`<a:ea typeface="Hiragino Sans GB"/>`,
-		`<a:srgbClr val="0F1D2F"/>`,
-		`<a:srgbClr val="334155"/>`,
+		`<a:srgbClr val="F5F3EE"/>`,
+		`<a:srgbClr val="D8DCE5"/>`,
 		`<c:legend><c:legendPos val="r"/><c:layout/><c:txPr>`,
 	} {
 		if !containsSubstring(chartXML, needle) {

@@ -1141,22 +1141,21 @@ func TestGetContextCompressionMode_LegacyOffNormalizesToAuto(t *testing.T) {
 	}
 }
 
-func TestGetSmallModelRouteImageQAEnabled_InheritsShortQAWhenUnset(t *testing.T) {
+func TestGetSmallModelRouteImageQAEnabled_AlwaysDisabled(t *testing.T) {
 	h := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
 	h.settings.SmallModelRouteShortQAEnabled = &enabled
-	if !h.GetSmallModelRouteImageQAEnabled() {
-		t.Fatal("expected image QA switch to inherit short QA setting when unset")
+	if h.GetSmallModelRouteImageQAEnabled() {
+		t.Fatal("expected image QA switch to stay disabled when route is unsupported")
 	}
 
-	disabled := false
-	h.settings.SmallModelRouteImageQAEnabled = &disabled
+	h.settings.SmallModelRouteImageQAEnabled = &enabled
 	if h.GetSmallModelRouteImageQAEnabled() {
-		t.Fatal("expected explicit image QA switch to override inherited short QA setting")
+		t.Fatal("expected explicit image QA switch to stay disabled")
 	}
 }
 
-func TestPatchSmallModelRouteImageQAEnabled_Persisted(t *testing.T) {
+func TestPatchSmallModelRouteImageQAEnabled_NormalizesToDisabled(t *testing.T) {
 	store := kvstore.NewMemoryStore()
 	h := NewSettingsHandler(store)
 	e := echo.New()
@@ -1172,13 +1171,13 @@ func TestPatchSmallModelRouteImageQAEnabled_Persisted(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
 	}
-	if !h.GetSmallModelRouteImageQAEnabled() {
-		t.Fatal("expected image QA switch enabled after patch")
+	if h.GetSmallModelRouteImageQAEnabled() {
+		t.Fatal("expected image QA switch to remain disabled after patch")
 	}
 
 	h2 := NewSettingsHandler(store)
-	if !h2.GetSmallModelRouteImageQAEnabled() {
-		t.Fatal("expected persisted image QA switch enabled")
+	if h2.GetSmallModelRouteImageQAEnabled() {
+		t.Fatal("expected persisted image QA switch to stay disabled")
 	}
 }
 

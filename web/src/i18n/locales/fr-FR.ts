@@ -1324,7 +1324,6 @@ export default mergeHarnessLocale('fr-FR', {
       contextCompressionModeSmallModel: 'Privilégier le modèle léger',
       contextCompressionModeOffline: 'Hors ligne déterministe',
       docExtract: "Accélération de l'extraction de documents",
-      imageQA: "Accélération de reconnaissance d'images",
       shortQA: 'Accélération des Q&R courtes',
       statsTitle: "Statistiques d'exécution (dépannage)",
       statsHint:
@@ -1333,9 +1332,6 @@ export default mergeHarnessLocale('fr-FR', {
       shortQAAttempts: 'Accélération des Q&R courtes Nombre',
       shortQASuccessRate: 'Accélération des Q&R courtes Taux de réussite',
       shortQALatencyMs: 'Accélération des Q&R courtes Latence',
-      imageQAAttempts: "Nombre de reconnaissances d'images",
-      imageQASuccessRate: "Taux de réussite de la reconnaissance d'images",
-      imageQALatencyMs: "Latence de la reconnaissance d'images",
       summarySuccessRate: 'Accélération du résumé Taux de réussite',
       summaryLatencyMs: 'Accélération du résumé Latence',
       contextCompressionSuccessRate: 'Taux de réussite de la compression du contexte',
@@ -4727,6 +4723,7 @@ export default mergeHarnessLocale('fr-FR', {
       analyze: 'Rapport d’analyse',
       mediagen: 'Rappels',
       ask: 'Generation de medias',
+      advisor: 'Conseiller',
       'Web Search': 'Recherche web',
       Calculator: 'Calculatrice',
       'System Info': 'Infos système',
@@ -4767,6 +4764,7 @@ export default mergeHarnessLocale('fr-FR', {
       exec: 'Execute des commandes shell et capture leur sortie',
       analyze: 'Collecte des donnees sur le Web et genere un rapport d analyse structure',
       ask: 'Pose a l utilisateur les questions de suivi necessaires pour poursuivre la tache',
+      advisor: 'Conseiller décisionnel pour les questions de sélection, de remplacement, de migration et de bonnes pratiques.',
       mediagen: 'Genere des images, des videos et des presentations avec des modeles IA',
       web_query: 'Recupere et analyse une page web via URL',
       research:

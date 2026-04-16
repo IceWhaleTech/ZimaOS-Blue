@@ -1302,7 +1302,6 @@ export default mergeHarnessLocale('hr-HR', {
       contextCompressionModeSmallModel: 'Preferiraj lagani model',
       contextCompressionModeOffline: 'Deterministički offline',
       docExtract: 'Akceleracija izdvajanja dokumenata',
-      imageQA: 'Ubrzanje prepoznavanja slika',
       shortQA: 'Akceleracija kratkih Q&A',
       statsTitle: 'Statistika izvođenja (otklanjanje poteškoća)',
       statsHint:
@@ -1311,9 +1310,6 @@ export default mergeHarnessLocale('hr-HR', {
       shortQAAttempts: 'Akceleracija kratkih Q&A Broj',
       shortQASuccessRate: 'Akceleracija kratkih Q&A Stopa pogodaka',
       shortQALatencyMs: 'Akceleracija kratkih Q&A Latencija',
-      imageQAAttempts: 'Broj prepoznavanja slika',
-      imageQASuccessRate: 'Stopa uspjeha prepoznavanja slika',
-      imageQALatencyMs: 'Latencija prepoznavanja slika',
       summarySuccessRate: 'Akceleracija sažetka Stopa pogodaka',
       summaryLatencyMs: 'Akceleracija sažetka Latencija',
       contextCompressionSuccessRate: 'Stopa uspješnosti sažimanja konteksta',
@@ -4670,6 +4666,7 @@ export default mergeHarnessLocale('hr-HR', {
       analyze: 'Izvješće o analizi',
       mediagen: 'Podsjetnici',
       ask: 'Generiranje medija',
+      advisor: 'Savjetnik',
       'Web Search': 'Web pretraživanje',
       Calculator: 'Kalkulator',
       'System Info': 'Informacije o sustavu',
@@ -4710,6 +4707,7 @@ export default mergeHarnessLocale('hr-HR', {
       exec: 'Pokrece naredbe ljuske i biljezi njihov izlaz',
       analyze: 'Prikuplja podatke s weba i generira strukturirano analiticko izvjesce',
       ask: 'Postavlja korisniku dodatna pitanja potrebna za nastavak zadatka',
+      advisor: 'Savjetnik za odluke za pitanja odabira, zamjene, migracije i dobre prakse.',
       mediagen: 'Generira slike, videozapise i prezentacije pomocu AI modela',
       web_query: 'Dohvaca i parsira web stranicu putem URL-a',
       research:

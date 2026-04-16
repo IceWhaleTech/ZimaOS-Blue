@@ -897,6 +897,7 @@ func (t *A11yTool) doTypeScenarioAct(ctx context.Context, backend a11yruntime.Ba
 func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
 	value := firstCompatString(args, "value", "text")
 	intent := inferA11yActIntent(args, firstCompatString(args, "intent", "scene", "scenario", "goal"), value)
+	conversationSelector := resolveA11yConversationSelector(args, intent)
 	actType := strings.ToLower(strings.TrimSpace(firstCompatString(args, "act_type", "actType")))
 	if actType == "" {
 		actType = a11yIntentDefaultActType(intent)
@@ -929,6 +930,24 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		}
 		return a11yJSON(payload)
 	}
+	chatConversationSuccessPayload := func(result a11yruntime.ActionResult, window string) interface{} {
+		payload := map[string]interface{}{
+			"host_os":   valueOrDefault(result.HostOS, backend.HostOS()),
+			"window_id": strings.TrimSpace(valueOrDefault(result.WindowID, window)),
+			"message":   valueOrDefault(result.Message, "ok"),
+		}
+		if strings.TrimSpace(result.ExecutionMode) != "" {
+			payload["execution_mode"] = result.ExecutionMode
+		}
+		payload["target_hit"] = true
+		applyA11yTelemetryPayload(payload, result.ActionTelemetry)
+		if chatState != nil {
+			chatState.applyToPayload(payload)
+			a11yPersistChatTrajectoryArtifacts(ctx, chatState, payload)
+			chatState.applyToPayload(payload)
+		}
+		return a11yJSON(payload)
+	}
 	resolvedTarget, match, err := t.resolveHostWindowID(ctx, backend, args, windowID)
 	if err != nil {
 		if retriedTarget, retriedMatch, _, retryErr, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, windowID, err); handled {
@@ -954,14 +973,16 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	if gated, handled, err := t.maybeRequireA11yCheckpoint(ctx, "act", actType); handled || err != nil {
 		return gated, err
 	}
-	resolvedTarget, conversationErr := t.maybeActivateA11yMessageConversation(ctx, backend, args, resolvedTarget, holdMS, intent)
-	if conversationErr != nil {
-		return chatErrorPayload(conversationErr), nil
-	}
-	if chatState != nil && chatState.intent == "message" {
-		resolvedTarget, conversationErr = t.confirmA11yChatComposerReady(ctx, backend, resolvedTarget)
+	if normalizeA11yActIntent(intent) == "message" {
+		resolvedTarget, conversationErr := t.maybeActivateA11yMessageConversation(ctx, backend, args, resolvedTarget, holdMS, intent)
 		if conversationErr != nil {
 			return chatErrorPayload(conversationErr), nil
+		}
+		if chatState != nil && chatState.intent == "message" {
+			resolvedTarget, conversationErr = t.confirmA11yChatComposerReady(ctx, backend, resolvedTarget)
+			if conversationErr != nil {
+				return chatErrorPayload(conversationErr), nil
+			}
 		}
 	}
 
@@ -969,6 +990,7 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		ref             int
 		refMap          map[int]string
 		targetTelemetry a11yruntime.TargetResolution
+		selector        a11yTargetSelector
 	)
 	if rawRef, ok := firstCompatValueDeep(args, "ref"); ok {
 		var valid bool
@@ -1002,7 +1024,7 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 			}), nil
 		}
 	} else {
-		selector := resolveA11yActTargetSelector(args, actType, intent)
+		selector = resolveA11yActTargetSelector(args, actType, intent)
 		if !selector.Provided() {
 			if strings.EqualFold(actType, "type") {
 				selector = a11yTargetSelector{Role: "input"}
@@ -1013,7 +1035,25 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		var resolveErr error
 		targetTelemetry, resolveErr = t.resolveActTarget(ctx, backend, resolvedTarget, selector)
 		if resolveErr != nil {
+			if chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
+				activatedWindow, conversationErr, handled := t.tryA11yConversationFallbackChain(ctx, backend, args, resolvedTarget, conversationSelector, holdMS, resolveErr)
+				if handled {
+					if conversationErr != nil {
+						return chatErrorPayload(conversationErr), nil
+					}
+					return chatConversationSuccessPayload(a11yruntime.ActionResult{HostOS: backend.HostOS()}, activatedWindow), nil
+				}
+				activatedWindow, conversationErr = t.maybeActivateA11yMessageConversation(ctx, backend, args, resolvedTarget, holdMS, intent)
+				if conversationErr != nil {
+					return chatErrorPayload(conversationErr), nil
+				}
+				return chatConversationSuccessPayload(a11yruntime.ActionResult{HostOS: backend.HostOS()}, activatedWindow), nil
+			}
 			return chatErrorPayload(resolveErr), nil
+		}
+		if chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
+			a11yRecordChatStage(ctx, chatState, a11yChatStageLocateConversation, a11yChatStageStatusOK, "structured_match", "", "", nil)
+			t.rememberA11yChatStrategy(chatState, a11yChatStageLocateConversation, "structured_match")
 		}
 		ref = targetTelemetry.Ref
 		refMap = cloneA11yRefMap(targetTelemetry.RefMap)
@@ -1025,7 +1065,7 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	if submitPlanErr != nil {
 		return chatErrorPayload(submitPlanErr), nil
 	}
-	if chatState != nil {
+	if chatState != nil && chatState.intent == "message" {
 		typeStrategy := "type"
 		if submitPlan.Enabled {
 			typeStrategy = "type_and_send"
@@ -1045,6 +1085,15 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	if err != nil {
 		return chatErrorPayload(err), nil
 	}
+	if chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
+		confirmedWindow, confirmErr := t.confirmA11yMessageConversationActivated(ctx, backend, valueOrDefault(result.WindowID, resolvedTarget), conversationSelector)
+		if confirmErr != nil {
+			return chatErrorPayload(confirmErr), nil
+		}
+		if strings.TrimSpace(confirmedWindow) != "" {
+			result.WindowID = confirmedWindow
+		}
+	}
 	if submitPlan.Enabled {
 		submitConfirmation := buildA11ySubmitConfirmation(value, ref, refMap)
 		submitResult, submitErr := t.executeActSubmitPlanWithConfirmation(ctx, backend, resolvedTarget, holdMS, submitPlan, submitConfirmation)
@@ -1053,7 +1102,7 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		}
 		result = mergeA11yActionResults(result, submitResult)
 	}
-	if chatState != nil {
+	if chatState != nil && chatState.intent == "message" {
 		if verifyErr := t.verifyA11yChatOutcome(ctx, backend, valueOrDefault(result.WindowID, resolvedTarget), submitPlan.Enabled); verifyErr != nil {
 			return chatErrorPayload(verifyErr), nil
 		}

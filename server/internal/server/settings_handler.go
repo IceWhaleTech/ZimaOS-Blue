@@ -55,6 +55,14 @@ type SettingsHandler struct {
 	skillAdvisor               *skilladvisor.Service
 }
 
+func forceDisableSmallModelImageQASetting(settings *Settings) {
+	if settings == nil {
+		return
+	}
+	disabled := false
+	settings.SmallModelRouteImageQAEnabled = &disabled
+}
+
 type DirectoryWhitelistEntry struct {
 	Path  string `json:"path"`
 	Alias string `json:"alias,omitempty"`
@@ -102,7 +110,7 @@ type Settings struct {
 	OfflineIRFallbackEnabled            *bool                     `json:"offline_ir_fallback_enabled,omitempty"`               // default true
 	FeatureIntentIREnabled              *bool                     `json:"feature_intent_ir_enabled,omitempty"`                 // default true
 	DeepResearchV2Enabled               *bool                     `json:"deep_research_v2_enabled,omitempty"`                  // default false
-	SmallModelRouteImageQAEnabled       *bool                     `json:"small_model_route_image_qa_enabled,omitempty"`        // default inherits short-qa
+	SmallModelRouteImageQAEnabled       *bool                     `json:"small_model_route_image_qa_enabled,omitempty"`        // deprecated: normalized to false because local small model is OCR-only
 	SmallModelRouteShortQAEnabled       *bool                     `json:"small_model_route_short_qa_enabled,omitempty"`        // default false
 	NoLLMDegradeMode                    string                    `json:"no_llm_degrade_mode,omitempty"`                       // fixed default deepresearch
 	SmallModelUnavailablePolicy         string                    `json:"small_model_unavailable_policy,omitempty"`            // default ir_first
@@ -741,6 +749,7 @@ func (h *SettingsHandler) Update(c echo.Context) error {
 	newSettings.ExperimentalAgentcoreRunnerRepoURL = strings.TrimSpace(newSettings.ExperimentalAgentcoreRunnerRepoURL)
 	newSettings.ExperimentalAgentcoreRunnerRef = strings.TrimSpace(newSettings.ExperimentalAgentcoreRunnerRef)
 	applyDefaultDirectoryWhitelist(&newSettings)
+	forceDisableSmallModelImageQASetting(&newSettings)
 
 	h.mu.Lock()
 	h.settings = &newSettings
@@ -991,8 +1000,8 @@ func (h *SettingsHandler) Patch(c echo.Context) error {
 		}
 	}
 	if v, ok := updates["small_model_route_image_qa_enabled"]; ok {
-		if b, isBool := v.(bool); isBool {
-			h.settings.SmallModelRouteImageQAEnabled = &b
+		if _, isBool := v.(bool); isBool {
+			forceDisableSmallModelImageQASetting(h.settings)
 		}
 	}
 	if v, ok := updates["small_model_route_short_qa_enabled"]; ok {
@@ -1631,15 +1640,7 @@ func (h *SettingsHandler) GetDeepResearchV2Enabled() bool {
 }
 
 func (h *SettingsHandler) GetSmallModelRouteImageQAEnabled() bool {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	if h.settings.SmallModelRouteImageQAEnabled != nil {
-		return *h.settings.SmallModelRouteImageQAEnabled
-	}
-	if h.settings.SmallModelRouteShortQAEnabled == nil {
-		return false
-	}
-	return *h.settings.SmallModelRouteShortQAEnabled
+	return false
 }
 
 func (h *SettingsHandler) GetSmallModelRouteShortQAEnabled() bool {
@@ -1673,10 +1674,10 @@ func (h *SettingsHandler) SetSmallModelRouteImageQAEnabled(enabled bool) (bool, 
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if h.settings.SmallModelRouteImageQAEnabled != nil && *h.settings.SmallModelRouteImageQAEnabled == enabled {
+	if h.settings.SmallModelRouteImageQAEnabled != nil && !*h.settings.SmallModelRouteImageQAEnabled {
 		return false, nil
 	}
-	h.settings.SmallModelRouteImageQAEnabled = &enabled
+	forceDisableSmallModelImageQASetting(h.settings)
 	if err := h.save(); err != nil {
 		return false, err
 	}
@@ -2001,6 +2002,7 @@ func (h *SettingsHandler) normalizedSettingsSnapshot() Settings {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	snapshot := *h.settings
+	forceDisableSmallModelImageQASetting(&snapshot)
 	if snapshot.SmallModelContextPruneEnabled == nil {
 		enabled := true
 		snapshot.SmallModelContextPruneEnabled = &enabled

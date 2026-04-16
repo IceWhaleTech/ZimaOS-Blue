@@ -25,6 +25,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
 	"github.com/labstack/echo/v4"
 
 	"golang.org/x/image/font"
@@ -327,7 +328,15 @@ func decodePreviewImage(path string) (image.Image, error) {
 		if err == nil {
 			return img, nil
 		}
-		return decodeWithX2TThumbnail(path)
+		img, x2tErr := decodeWithX2TThumbnail(path)
+		if x2tErr == nil {
+			return img, nil
+		}
+		img, textErr := decodeOfficeTextPreviewImage(path)
+		if textErr == nil {
+			return img, nil
+		}
+		return nil, errors.Join(x2tErr, textErr)
 	case ".odt", ".odp", ".ods":
 		img, err := decodeArchiveThumbnailImage(path, []string{
 			"thumbnails/thumbnail.png",
@@ -637,7 +646,24 @@ func decodeTextPreviewImage(path string) (image.Image, error) {
 		data = []byte(strings.ToValidUTF8(string(data), "�"))
 	}
 
-	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+	return buildTextPreviewImage(filepath.Base(path), string(data)), nil
+}
+
+func decodeOfficeTextPreviewImage(path string) (image.Image, error) {
+	reader := convertpkg.NewDocumentReader()
+	result, err := reader.ReadDocument(context.Background(), path)
+	if err != nil {
+		return nil, err
+	}
+	return buildTextPreviewImage(filepath.Base(path), result.Text), nil
+}
+
+func buildTextPreviewImage(filename, rawText string) image.Image {
+	if strings.TrimSpace(rawText) == "" {
+		rawText = "(empty file)"
+	}
+
+	lines := strings.Split(strings.ReplaceAll(rawText, "\r\n", "\n"), "\n")
 	renderLines := make([]string, 0, textPreviewMaxLines)
 	for _, raw := range lines {
 		line := strings.ReplaceAll(raw, "\t", "  ")
@@ -670,7 +696,7 @@ func decodeTextPreviewImage(path string) (image.Image, error) {
 	draw.Draw(img, image.Rect(0, 0, canvasW, headerH), &image.Uniform{C: color.RGBA{R: 225, G: 232, B: 242, A: 255}}, image.Point{}, draw.Src)
 
 	face := basicfont.Face7x13
-	drawTextLine(img, face, paddingX, 28, filepath.Base(path), color.RGBA{R: 54, G: 63, B: 78, A: 255})
+	drawTextLine(img, face, paddingX, 28, filename, color.RGBA{R: 54, G: 63, B: 78, A: 255})
 
 	for i, line := range renderLines {
 		y := startY + i*lineHeight
@@ -680,7 +706,7 @@ func decodeTextPreviewImage(path string) (image.Image, error) {
 		drawTextLine(img, face, paddingX, y, line, color.RGBA{R: 33, G: 37, B: 43, A: 255})
 	}
 
-	return img, nil
+	return img
 }
 
 func wrapTextForPreview(line string, maxChars int) []string {

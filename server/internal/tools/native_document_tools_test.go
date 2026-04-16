@@ -43,6 +43,13 @@ Polished narrative
 	if _, ok := payload["validation"].(map[string]interface{}); !ok {
 		t.Fatalf("expected validation payload, got %#v", payload["validation"])
 	}
+	validation := payload["validation"].(map[string]interface{})
+	if got, ok := validation["quality_ok"].(bool); !ok || !got {
+		t.Fatalf("quality_ok = %#v, want true with validation=%#v", validation["quality_ok"], validation)
+	}
+	if got := asNativeToolInt(t, validation["quality_issue_count"]); got != 0 {
+		t.Fatalf("quality_issue_count = %d, want 0 (%#v)", got, validation)
+	}
 
 	path := filepath.Join(tmpDir, "reports", "ui_review.docx")
 	assertZipEntryExists(t, path, "word/document.xml")
@@ -70,6 +77,13 @@ Polished narrative
 	readPayload := parseNativeDocumentPayload(t, readResult)
 	if !containsSubstring(asNativeToolString(t, readPayload["text"]), "UI Review Report") {
 		t.Fatalf("unexpected tool read text: %#v", readPayload["text"])
+	}
+	readValidation := readPayload["validation"].(map[string]interface{})
+	if got, ok := readValidation["quality_ok"].(bool); !ok || !got {
+		t.Fatalf("read quality_ok = %#v, want true with validation=%#v", readValidation["quality_ok"], readValidation)
+	}
+	if got := asNativeToolInt(t, readValidation["quality_issue_count"]); got != 0 {
+		t.Fatalf("read quality_issue_count = %d, want 0 (%#v)", got, readValidation)
 	}
 }
 
@@ -361,6 +375,13 @@ func TestXLSXToolCreateAndRead(t *testing.T) {
 	if got := payload["degraded"]; got != false {
 		t.Fatalf("degraded = %v, want false", got)
 	}
+	validation := payload["validation"].(map[string]interface{})
+	if got, ok := validation["quality_ok"].(bool); !ok || !got {
+		t.Fatalf("quality_ok = %#v, want true with validation=%#v", validation["quality_ok"], validation)
+	}
+	if got := asNativeToolInt(t, validation["quality_issue_count"]); got != 0 {
+		t.Fatalf("quality_issue_count = %d, want 0 (%#v)", got, validation)
+	}
 
 	path := filepath.Join(tmpDir, "reports", "ui_review.xlsx")
 	assertZipEntryExists(t, path, "xl/workbook.xml")
@@ -388,6 +409,13 @@ func TestXLSXToolCreateAndRead(t *testing.T) {
 	readPayload := parseNativeDocumentPayload(t, readResult)
 	if _, ok := readPayload["tabular_summary"].(map[string]interface{}); !ok {
 		t.Fatalf("expected tabular_summary, got %#v", readPayload["tabular_summary"])
+	}
+	readValidation := readPayload["validation"].(map[string]interface{})
+	if got, ok := readValidation["quality_ok"].(bool); !ok || !got {
+		t.Fatalf("read quality_ok = %#v, want true with validation=%#v", readValidation["quality_ok"], readValidation)
+	}
+	if got := asNativeToolInt(t, readValidation["quality_issue_count"]); got != 0 {
+		t.Fatalf("read quality_issue_count = %d, want 0 (%#v)", got, readValidation)
 	}
 }
 
@@ -426,6 +454,13 @@ func TestPPTXToolCreateAndRead(t *testing.T) {
 	if got := asNativeToolInt(t, payload["slide_count"]); got != 5 {
 		t.Fatalf("slide_count = %d, want 5", got)
 	}
+	validation := payload["validation"].(map[string]interface{})
+	if got, ok := validation["quality_ok"].(bool); !ok || !got {
+		t.Fatalf("quality_ok = %#v, want true with validation=%#v", validation["quality_ok"], validation)
+	}
+	if got := asNativeToolInt(t, validation["quality_issue_count"]); got != 0 {
+		t.Fatalf("quality_issue_count = %d, want 0 (%#v)", got, validation)
+	}
 
 	path := filepath.Join(tmpDir, "decks", "launch.pptx")
 	assertZipEntryExists(t, path, "ppt/presentation.xml")
@@ -447,6 +482,25 @@ func TestPPTXToolCreateAndRead(t *testing.T) {
 	}
 	if !containsSubstring(doc.Text, "Overview") || !containsSubstring(doc.Text, "Risks") || !containsSubstring(doc.Text, "Summary") {
 		t.Fatalf("expected deck text to include planned slide structure, got %q", doc.Text)
+	}
+
+	readResult, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "read",
+		"path":   "decks/launch.pptx",
+	})
+	if err != nil {
+		t.Fatalf("read failed: %v", err)
+	}
+	readPayload := parseNativeDocumentPayload(t, readResult)
+	if !containsSubstring(asNativeToolString(t, readPayload["text"]), "Launch Plan") {
+		t.Fatalf("unexpected tool read text: %#v", readPayload["text"])
+	}
+	readValidation := readPayload["validation"].(map[string]interface{})
+	if got, ok := readValidation["quality_ok"].(bool); !ok || !got {
+		t.Fatalf("read quality_ok = %#v, want true with validation=%#v", readValidation["quality_ok"], readValidation)
+	}
+	if got := asNativeToolInt(t, readValidation["quality_issue_count"]); got != 0 {
+		t.Fatalf("read quality_issue_count = %d, want 0 (%#v)", got, readValidation)
 	}
 }
 
@@ -507,6 +561,89 @@ func TestPPTXToolCreateWithStructuredTable(t *testing.T) {
 		if !containsSubstring(doc.Text, needle) {
 			t.Fatalf("expected deck text to include %q, got %q", needle, doc.Text)
 		}
+	}
+}
+
+func TestPPTXToolValidateFlagsMarkdownAndPlaceholderQualityIssues(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/quality_validate.pptx",
+		"title":    "Launch Plan",
+		"subtitle": "Q2 roll-out",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "Overview",
+				"paragraphs": []interface{}{"Beta in April", "GA in June"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+	_ = parseNativeDocumentPayload(t, result)
+
+	path := filepath.Join(tmpDir, "decks", "quality_validate.pptx")
+	changed, err := replaceArchiveEntries(path, func(name string) bool {
+		return name == "ppt/slides/slide3.xml" ||
+			name == "docProps/app.xml" ||
+			name == "ppt/presentation.xml" ||
+			name == "ppt/_rels/presentation.xml.rels"
+	}, func(name string, data []byte) ([]byte, bool, error) {
+		text := string(data)
+		updated := text
+		switch name {
+		case "ppt/slides/slide3.xml":
+			updated = strings.ReplaceAll(updated, ">Overview<", ">幻灯片 1：封面<")
+			updated = strings.ReplaceAll(updated, ">Beta in April<", "># Broken heading<")
+		case "docProps/app.xml":
+			updated = strings.ReplaceAll(updated, ">Overview<", ">幻灯片 1：封面<")
+		case "ppt/presentation.xml":
+			updated = regexp.MustCompile(`<p:sldId[^>]+r:id="rId4"\s*/>`).ReplaceAllString(updated, "")
+		case "ppt/_rels/presentation.xml.rels":
+			updated = regexp.MustCompile(`<Relationship[^>]+Id="rId4"[^>]*/>`).ReplaceAllString(updated, "")
+		}
+		return []byte(updated), updated != text, nil
+	})
+	if err != nil {
+		t.Fatalf("replaceArchiveEntries() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("expected test deck patching to change at least one archive entry")
+	}
+
+	validateResult, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "validate",
+		"path":   "decks/quality_validate.pptx",
+	})
+	if err != nil {
+		t.Fatalf("validate failed: %v", err)
+	}
+
+	validatePayload := parseNativeDocumentPayload(t, validateResult)
+	validation := validatePayload["validation"].(map[string]interface{})
+	if got, ok := validation["quality_ok"].(bool); !ok || got {
+		t.Fatalf("quality_ok = %#v, want false with validation=%#v", validation["quality_ok"], validation)
+	}
+	if got := asNativeToolInt(t, validation["quality_issue_count"]); got < 3 {
+		t.Fatalf("quality_issue_count = %d, want at least 3 (%#v)", got, validation)
+	}
+	issues := asNativeToolStringSlice(t, validation["quality_issues"])
+	for _, issue := range []string{"raw_markdown_heading_detected", "placeholder_slide_title_detected", "orphan_slide_part_detected"} {
+		if !hasStringValue(issues, issue) {
+			t.Fatalf("quality issues = %v, want %q", issues, issue)
+		}
+	}
+	if got := asNativeToolInt(t, validation["raw_markdown_heading_detected_count"]); got < 1 {
+		t.Fatalf("raw_markdown_heading_detected_count = %d, want >= 1", got)
+	}
+	if got := asNativeToolInt(t, validation["placeholder_slide_title_detected_count"]); got < 1 {
+		t.Fatalf("placeholder_slide_title_detected_count = %d, want >= 1", got)
+	}
+	if got := asNativeToolInt(t, validation["orphan_slide_part_detected_count"]); got < 1 {
+		t.Fatalf("orphan_slide_part_detected_count = %d, want >= 1", got)
 	}
 }
 
@@ -4831,9 +4968,9 @@ func TestNativeCreateTools_IncludeThemePreviewMetadata(t *testing.T) {
 			},
 			wantTheme:      "midnight",
 			wantMood:       "trustworthy",
-			wantDisplay:    "Georgia",
-			wantBody:       "Segoe UI",
-			wantHTMLNeedle: "#1E3A5F",
+			wantDisplay:    "Helvetica Neue",
+			wantBody:       "Helvetica",
+			wantHTMLNeedle: "#242C38",
 		},
 		{
 			name: "xlsx",
@@ -4955,9 +5092,9 @@ func TestPPTXToolCreate_UsesExplicitThemeMetadataAndThemeXML(t *testing.T) {
 	themeXML := officeZipEntryText(t, data, "ppt/theme/theme1.xml")
 	for _, needle := range []string{
 		`name="Midnight Theme"`,
-		`val="1E3A5F"`,
-		`val="00D4AA"`,
-		`typeface="Georgia"`,
+		`val="242C38"`,
+		`val="4D7CFE"`,
+		`typeface="Helvetica Neue"`,
 		`typeface="Helvetica"`,
 		`typeface="Hiragino Sans GB"`,
 	} {
@@ -4969,18 +5106,26 @@ func TestPPTXToolCreate_UsesExplicitThemeMetadataAndThemeXML(t *testing.T) {
 	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
 	for _, needle := range []string{
 		`name="Theme Background"`,
-		`name="Theme Band"`,
-		`name="Theme Accent Mark"`,
-		`typeface="Georgia"`,
+		`name="Theme Canvas"`,
+		`name="Theme Header Rule"`,
+		`typeface="Helvetica Neue"`,
 		`typeface="Helvetica"`,
 		`typeface="Hiragino Sans GB"`,
-		`val="0F1D2F"`,
-		`val="334155"`,
-		`val="E8EEF4"`,
-		`val="00D4AA"`,
+		`val="F5F3EE"`,
+		`val="D8DCE5"`,
+		`val="4D7CFE"`,
 	} {
 		if !containsSubstring(slideXML, needle) {
 			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+	for _, unwanted := range []string{
+		`name="Theme Header Panel"`,
+		`name="Theme Accent Pill"`,
+		`name="Theme Footer Rule"`,
+	} {
+		if containsSubstring(slideXML, unwanted) {
+			t.Fatalf("expected slide3.xml to avoid layered theme patch %q, got %s", unwanted, slideXML)
 		}
 	}
 }
@@ -5018,7 +5163,7 @@ func TestPPTXToolCreate_DefaultsGenericDecksToMidnightThemeWithSafeFonts(t *test
 	themeXML := officeZipEntryText(t, data, "ppt/theme/theme1.xml")
 	for _, needle := range []string{
 		`name="Midnight Theme"`,
-		`typeface="Georgia"`,
+		`typeface="Helvetica Neue"`,
 		`typeface="Helvetica"`,
 		`typeface="Hiragino Sans GB"`,
 		`script="Hans" typeface="Hiragino Sans GB"`,
@@ -5031,15 +5176,24 @@ func TestPPTXToolCreate_DefaultsGenericDecksToMidnightThemeWithSafeFonts(t *test
 	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
 	for _, needle := range []string{
 		`name="Theme Background"`,
-		`name="Theme Band"`,
-		`name="Theme Accent Mark"`,
-		`<a:latin typeface="Georgia"/>`,
+		`name="Theme Canvas"`,
+		`name="Theme Header Rule"`,
+		`<a:latin typeface="Helvetica Neue"/>`,
 		`<a:latin typeface="Helvetica"/>`,
 		`<a:ea typeface="Hiragino Sans GB"/>`,
 		`<a:cs typeface="Helvetica"/>`,
 	} {
 		if !containsSubstring(slideXML, needle) {
 			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+	for _, unwanted := range []string{
+		`name="Theme Header Panel"`,
+		`name="Theme Accent Pill"`,
+		`name="Theme Footer Rule"`,
+	} {
+		if containsSubstring(slideXML, unwanted) {
+			t.Fatalf("expected slide3.xml to avoid layered theme patch %q, got %s", unwanted, slideXML)
 		}
 	}
 }
@@ -5087,9 +5241,9 @@ func TestPPTXToolCreate_UsesThemePaletteForCharts(t *testing.T) {
 		`<c:v>Revenue</c:v>`,
 		`<c:v>Margin</c:v>`,
 		`<c:v>Pipeline</c:v>`,
-		`<a:srgbClr val="1E3A5F"/>`,
-		`<a:srgbClr val="00D4AA"/>`,
-		`<a:srgbClr val="4A5568"/>`,
+		`<a:srgbClr val="242C38"/>`,
+		`<a:srgbClr val="4D7CFE"/>`,
+		`<a:srgbClr val="8A93A2"/>`,
 	} {
 		if !containsSubstring(chartXML, needle) {
 			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
@@ -5138,12 +5292,12 @@ func TestPPTXToolCreate_UsesThemeTypographyForChartText(t *testing.T) {
 	}
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
 	for _, needle := range []string{
-		`<a:latin typeface="Georgia"/>`,
 		`<a:latin typeface="Helvetica"/>`,
 		`<a:ea typeface="Hiragino Sans GB"/>`,
-		`<a:srgbClr val="0F1D2F"/>`,
-		`<a:srgbClr val="334155"/>`,
+		`<a:srgbClr val="F5F3EE"/>`,
+		`<a:srgbClr val="D8DCE5"/>`,
 		`<c:legend><c:legendPos val="r"/><c:layout/><c:txPr>`,
+		`<c:autoTitleDeleted val="1"/>`,
 	} {
 		if !containsSubstring(chartXML, needle) {
 			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
@@ -5189,9 +5343,9 @@ func TestPPTXToolCreate_UsesThemeAxisChromeForCharts(t *testing.T) {
 	}
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
 	for _, needle := range []string{
-		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="F1F5F9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
-		`<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr lang="en-US" sz="1000"><a:latin typeface="Helvetica"/><a:ea typeface="Hiragino Sans GB"/><a:cs typeface="Helvetica"/><a:solidFill><a:srgbClr val="334155"/></a:solidFill></a:defRPr></a:pPr>`,
-		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
+		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="11151B"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
+		`<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr lang="en-US" sz="1000"><a:latin typeface="Helvetica"/><a:ea typeface="Hiragino Sans GB"/><a:cs typeface="Helvetica"/><a:solidFill><a:srgbClr val="D8DCE5"/></a:solidFill></a:defRPr></a:pPr>`,
+		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="2B313C"/></a:solidFill></a:ln></c:spPr>`,
 	} {
 		if !containsSubstring(chartXML, needle) {
 			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
@@ -5246,15 +5400,18 @@ func TestPPTXToolCreate_UsesThemeCalloutRailForChartSlides(t *testing.T) {
 		`<a:t>Revenue</a:t>`,
 		`<a:t>$12.4M</a:t>`,
 		`<a:t>Watch conversion quality</a:t>`,
-		`typeface="Georgia"`,
+		`typeface="Helvetica Neue"`,
 		`typeface="Helvetica"`,
 		`typeface="Hiragino Sans GB"`,
-		`val="00D4AA"`,
+		`val="4D7CFE"`,
 		`cx="8031480"`,
 	} {
 		if !containsSubstring(slideXML, needle) {
 			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
 		}
+	}
+	if containsSubstring(slideXML, `name="Chart Callout Accent"`) {
+		t.Fatalf("expected slide3.xml to avoid the extra chart accent patch, got %s", slideXML)
 	}
 	if count := strings.Count(slideXML, "Watch conversion quality"); count != 1 {
 		t.Fatalf("expected callout text to appear once in slide3.xml, got %d in %s", count, slideXML)
@@ -5317,6 +5474,23 @@ func asNativeToolInt(t *testing.T, value interface{}) int {
 		t.Fatalf("value type = %T, want numeric", value)
 		return 0
 	}
+}
+
+func asNativeToolStringSlice(t *testing.T, value interface{}) []string {
+	t.Helper()
+	items, ok := value.([]interface{})
+	if !ok {
+		t.Fatalf("value type = %T, want []interface{}", value)
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		text, ok := item.(string)
+		if !ok {
+			t.Fatalf("slice item type = %T, want string", item)
+		}
+		out = append(out, text)
+	}
+	return out
 }
 
 func hasStringValue(values []string, want string) bool {

@@ -1318,7 +1318,6 @@ export default mergeHarnessLocale('ca-ES', {
       contextCompressionModeSmallModel: 'Prioritza el model lleuger',
       contextCompressionModeOffline: 'Offline determinista',
       docExtract: "Acceleració d'extracció de documents",
-      imageQA: "Acceleració del reconeixement d'imatges",
       shortQA: 'Acceleració de preguntes breus',
       statsTitle: "Estadístiques d'execució (resolució de problemes)",
       statsHint:
@@ -1327,9 +1326,6 @@ export default mergeHarnessLocale('ca-ES', {
       shortQAAttempts: 'Acceleració de preguntes breus Nombre',
       shortQASuccessRate: "Acceleració de preguntes breus Taxa d'encert",
       shortQALatencyMs: 'Acceleració de preguntes breus Latència',
-      imageQAAttempts: "Recompte de reconeixement d'imatges",
-      imageQASuccessRate: "Taxa d'encert del reconeixement d'imatges",
-      imageQALatencyMs: "Latència del reconeixement d'imatges",
       summarySuccessRate: "Acceleració del resum Taxa d'encert",
       summaryLatencyMs: 'Acceleració del resum Latència',
       contextCompressionSuccessRate: "Taxa d'encert de la compressió del context",
@@ -4708,6 +4704,7 @@ export default mergeHarnessLocale('ca-ES', {
       analyze: "Informe d'anàlisi",
       mediagen: 'Recordatoris',
       ask: 'Generacio multimedia',
+      advisor: 'Assessor',
       'Web Search': 'Cerca web',
       Calculator: 'Calculadora',
       'System Info': 'Informació del sistema',
@@ -4748,6 +4745,7 @@ export default mergeHarnessLocale('ca-ES', {
       exec: 'Executa ordres de l shell i en captura la sortida',
       analyze: 'Recull dades del web i genera un informe d analisi estructurat',
       ask: 'Fa preguntes de seguiment a l usuari per continuar la tasca',
+      advisor: 'Assessor de decisions per a preguntes de selecció, substitució, migració i bones pràctiques.',
       mediagen: 'Genera imatges, videos i presentacions amb models d IA',
       web_query: 'Obte i analitza una pagina web per URL',
       research:

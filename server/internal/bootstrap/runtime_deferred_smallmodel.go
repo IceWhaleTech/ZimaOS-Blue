@@ -23,9 +23,7 @@ func bindRuntimeSmallModel(
 	if image != nil {
 		image.SetSmallModelRuntime(runtime)
 		if settings != nil {
-			image.SetSmallModelEnabledFunc(func() bool {
-				return settings.GetSmallModelEnabled() && settings.GetSmallModelRouteImageQAEnabled()
-			})
+			image.SetSmallModelEnabledFunc(settings.GetSmallModelEnabled)
 		}
 	}
 	if analyze != nil {

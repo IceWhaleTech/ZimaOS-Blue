@@ -460,20 +460,39 @@ func officeSplitSentences(text string) []string {
 		out []string
 		sb  strings.Builder
 	)
+	runes := []rune(text)
 	flush := func() {
 		if sentence := officeNormalizeInlineWhitespace(sb.String()); sentence != "" {
 			out = append(out, sentence)
 		}
 		sb.Reset()
 	}
-	for _, r := range text {
+	for idx, r := range runes {
 		sb.WriteRune(r)
-		if officeIsSentenceEnding(r) {
+		if officeShouldSplitSentenceAt(runes, idx) {
 			flush()
 		}
 	}
 	flush()
 	return out
+}
+
+func officeShouldSplitSentenceAt(runes []rune, idx int) bool {
+	if idx < 0 || idx >= len(runes) {
+		return false
+	}
+	r := runes[idx]
+	if !officeIsSentenceEnding(r) {
+		return false
+	}
+	if r == '.' {
+		prev := officePrevNonSpaceRune(runes, idx-1)
+		next := officeNextNonSpaceRune(runes, idx+1)
+		if unicode.IsDigit(prev) && unicode.IsDigit(next) {
+			return false
+		}
+	}
+	return true
 }
 
 func officeDocFingerprint(text string) string {
@@ -547,6 +566,15 @@ func officeLastNonSpaceRune(text string) rune {
 
 func officeNextNonSpaceRune(runes []rune, start int) rune {
 	for idx := start; idx < len(runes); idx++ {
+		if !unicode.IsSpace(runes[idx]) {
+			return runes[idx]
+		}
+	}
+	return 0
+}
+
+func officePrevNonSpaceRune(runes []rune, start int) rune {
+	for idx := start; idx >= 0; idx-- {
 		if !unicode.IsSpace(runes[idx]) {
 			return runes[idx]
 		}

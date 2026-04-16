@@ -1314,7 +1314,6 @@ export default mergeHarnessLocale('ga-IE', {
       contextCompressionModeSmallModel: 'Tabhair tosaíocht don tsamhail éadrom',
       contextCompressionModeOffline: 'As líne cinntitheach',
       docExtract: 'Luasú eastóscadh doiciméad',
-      imageQA: 'Luasghéarú aitheantais íomhá',
       shortQA: 'Luasú gearr-Q&A',
       statsTitle: 'Staitisticí ama rite (fabhtcheartú)',
       statsHint:
@@ -1323,9 +1322,6 @@ export default mergeHarnessLocale('ga-IE', {
       shortQAAttempts: 'Luasú gearr-Q&A Líon',
       shortQASuccessRate: 'Luasú gearr-Q&A Ráta buailte',
       shortQALatencyMs: 'Luasú gearr-Q&A Latency',
-      imageQAAttempts: 'Líon na n-aitheantas íomhá',
-      imageQASuccessRate: 'Ráta buailte aitheantais íomhá',
-      imageQALatencyMs: 'Moill aitheantais íomhá',
       summarySuccessRate: 'Luasú achoimre Ráta buailte',
       summaryLatencyMs: 'Luasú achoimre Latency',
       contextCompressionSuccessRate: 'Ráta buailte comhbhrúite comhthéacs',
@@ -4698,6 +4694,7 @@ export default mergeHarnessLocale('ga-IE', {
       analyze: 'Tuarascáil anailíse',
       mediagen: 'Meabhruchain',
       ask: 'Giniuint meán',
+      advisor: 'Comhairleoir',
       'Web Search': 'Cuardach gréasáin',
       Calculator: 'Áireamhán',
       'System Info': 'Eolas córais',
@@ -4739,6 +4736,7 @@ export default mergeHarnessLocale('ga-IE', {
       exec: 'Rith orduithe sliogáin agus gabh a n-aschur',
       analyze: 'Bailigh sonraí ón ngréasán agus gin tuarascáil anailíse struchtúrtha',
       ask: 'Cuir ceisteanna leantacha ar an úsáideoir chun leanúint ar aghaidh leis an tasc',
+      advisor: 'Comhairleoir cinntí do cheisteanna roghnúcháin, athsholáthair, imirce agus dea-chleachtais.',
       mediagen: 'Gin íomhánna, físeáin agus cur i láthair le samhlacha AI',
       web_query: 'Faigheann agus parsálann sé leathanach gréasáin trí URL',
       research:

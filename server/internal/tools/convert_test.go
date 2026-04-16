@@ -291,8 +291,8 @@ func TestConvertToolMaybeHandleNativeOfficeConvertDOCXDefaultsToMidnightTheme(t 
 	}
 	stylesXML := officeZipEntryText(t, data, "word/styles.xml")
 	for _, needle := range []string{
-		`w:ascii="Georgia"`,
-		`w:ascii="Segoe UI"`,
+		`w:ascii="Helvetica Neue"`,
+		`w:ascii="Helvetica"`,
 	} {
 		if !strings.Contains(stylesXML, needle) {
 			t.Fatalf("expected styles.xml to include %q for the default midnight theme, got %s", needle, stylesXML)
@@ -364,9 +364,9 @@ func TestConvertToolMaybeHandleNativeOfficeConvertXLSXFromCSV(t *testing.T) {
 	}
 	stylesXML := officeZipEntryText(t, data, "xl/styles.xml")
 	for _, needle := range []string{
-		`rgb="FF1E3A5F"`,
-		`name val="Georgia"`,
-		`name val="Segoe UI"`,
+		`rgb="FF242C38"`,
+		`name val="Helvetica Neue"`,
+		`name val="Helvetica"`,
 	} {
 		if !strings.Contains(stylesXML, needle) {
 			t.Fatalf("expected xl/styles.xml to include %q, got %s", needle, stylesXML)

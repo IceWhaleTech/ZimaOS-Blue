@@ -267,13 +267,6 @@ const shortQASuccessRate = computed(() => {
   if (!stats || stats.short_qa_route_attempts <= 0) return 0
   return Math.round((stats.short_qa_route_success / stats.short_qa_route_attempts) * 100)
 })
-const imageQASuccessRate = computed(() => {
-  const stats = settingsStore.smallModelStats
-  const attempts = stats?.image_qa_route_attempts ?? 0
-  const success = stats?.image_qa_route_success ?? 0
-  if (attempts <= 0) return 0
-  return Math.round((success / attempts) * 100)
-})
 const contextCompressSuccessRate = computed(() => {
   const stats = settingsStore.smallModelStats
   const attempts = stats?.context_compress_attempts ?? 0
@@ -413,10 +406,6 @@ async function saveGlobalPrunerEnabled(next: boolean) {
 
 async function handleSmallModelRouteShortQAEnabledChange(next: boolean) {
   await withSmallModelSave(() => settingsStore.setSmallModelRouteShortQAEnabled(next))
-}
-
-async function handleSmallModelRouteImageQAEnabledChange(next: boolean) {
-  await withSmallModelSave(() => settingsStore.setSmallModelRouteImageQAEnabled(next))
 }
 
 function formatFallbackReason(reason: string): string {
@@ -1372,48 +1361,6 @@ onUnmounted(() => {
                       </div>
                     </div>
 
-                    <div class="small-model-feature-card small-model-feature-card--image">
-                      <div class="flex items-center justify-between gap-3">
-                        <div class="font-medium text-gray-900 dark:text-white">
-                          {{ t('settings.smallModel.imageQA', 'Image Recognition Acceleration') }}
-                        </div>
-                        <button
-                          data-testid="small-model-image-qa-switch"
-                          type="button"
-                          role="switch"
-                          :aria-checked="settingsStore.smallModelRouteImageQAEnabled"
-                          :disabled="smallModelSaving"
-                          class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:opacity-50"
-                          :class="
-                            settingsStore.smallModelRouteImageQAEnabled
-                              ? 'bg-green-600 dark:bg-green-500'
-                              : 'bg-gray-300 dark:bg-gray-600'
-                          "
-                          @click="
-                            handleSmallModelRouteImageQAEnabledChange(
-                              !settingsStore.smallModelRouteImageQAEnabled
-                            )
-                          "
-                        >
-                          <span
-                            class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
-                            :class="
-                              settingsStore.smallModelRouteImageQAEnabled
-                                ? 'translate-x-5'
-                                : 'translate-x-0'
-                            "
-                          />
-                        </button>
-                      </div>
-                      <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                        {{
-                          settingsStore.smallModelRouteImageQAEnabled
-                            ? t('common.enabled', 'Enabled')
-                            : t('common.disabled', 'Disabled')
-                        }}
-                      </div>
-                    </div>
-
                     <div class="small-model-feature-card small-model-feature-card--knowledge">
                       <div class="flex items-center justify-between gap-3">
                         <div class="font-medium text-gray-900 dark:text-white">
@@ -1573,33 +1520,6 @@ onUnmounted(() => {
                         >
                           <div class="text-gray-500 dark:text-gray-400">
                             {{
-                              t('settings.smallModel.imageQAAttempts', 'Image Recognition Attempts')
-                            }}
-                          </div>
-                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                            {{ settingsStore.smallModelStats?.image_qa_route_attempts ?? 0 }}
-                          </div>
-                        </div>
-                        <div
-                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                        >
-                          <div class="text-gray-500 dark:text-gray-400">
-                            {{
-                              t(
-                                'settings.smallModel.imageQASuccessRate',
-                                'Image Recognition Success'
-                              )
-                            }}
-                          </div>
-                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                            {{ imageQASuccessRate }}%
-                          </div>
-                        </div>
-                        <div
-                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                        >
-                          <div class="text-gray-500 dark:text-gray-400">
-                            {{
                               t('settings.smallModel.deepResearchFallbacks', 'Research Fallbacks')
                             }}
                           </div>
@@ -1670,20 +1590,6 @@ onUnmounted(() => {
                           <div class="mt-1 font-medium text-gray-900 dark:text-white">
                             {{
                               (settingsStore.smallModelStats?.short_qa_latency_ms ?? 0).toFixed(1)
-                            }}ms
-                          </div>
-                        </div>
-                        <div
-                          class="rounded bg-white dark:bg-slate-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-2"
-                        >
-                          <div class="text-gray-500 dark:text-gray-400">
-                            {{
-                              t('settings.smallModel.imageQALatencyMs', 'Image Recognition Latency')
-                            }}
-                          </div>
-                          <div class="mt-1 font-medium text-gray-900 dark:text-white">
-                            {{
-                              (settingsStore.smallModelStats?.image_qa_latency_ms ?? 0).toFixed(1)
                             }}ms
                           </div>
                         </div>

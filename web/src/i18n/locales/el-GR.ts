@@ -1321,7 +1321,6 @@ export default mergeHarnessLocale('el-GR', {
       contextCompressionModeSmallModel: 'Προτίμηση ελαφρού μοντέλου',
       contextCompressionModeOffline: 'Ντετερμινιστικό offline',
       docExtract: 'Επιτάχυνση εξαγωγής εγγράφων',
-      imageQA: 'Επιτάχυνση αναγνώρισης εικόνας',
       shortQA: 'Επιτάχυνση σύντομων Q&A',
       statsTitle: 'Στατιστικά εκτέλεσης (αντιμετώπιση προβλημάτων)',
       statsHint:
@@ -1330,9 +1329,6 @@ export default mergeHarnessLocale('el-GR', {
       shortQAAttempts: 'Επιτάχυνση σύντομων Q&A Πλήθος',
       shortQASuccessRate: 'Επιτάχυνση σύντομων Q&A Ποσοστό επιτυχίας',
       shortQALatencyMs: 'Επιτάχυνση σύντομων Q&A Καθυστέρηση',
-      imageQAAttempts: 'Πλήθος αναγνωρίσεων εικόνας',
-      imageQASuccessRate: 'Ποσοστό επιτυχίας αναγνώρισης εικόνας',
-      imageQALatencyMs: 'Καθυστέρηση αναγνώρισης εικόνας',
       summarySuccessRate: 'Επιτάχυνση σύνοψης Ποσοστό επιτυχίας',
       summaryLatencyMs: 'Επιτάχυνση σύνοψης Καθυστέρηση',
       contextCompressionSuccessRate: 'Ποσοστό επιτυχίας συμπίεσης συμφραζομένων',
@@ -4726,6 +4722,7 @@ export default mergeHarnessLocale('el-GR', {
       analyze: 'Αναφορά ανάλυσης',
       mediagen: 'Υπενθυμίσεις',
       ask: 'Δημιουργία μέσων',
+      advisor: 'Σύμβουλος',
       'Web Search': 'Αναζήτηση ιστού',
       Calculator: 'Αριθμομηχανή',
       'System Info': 'Πληροφορίες συστήματος',
@@ -4767,6 +4764,7 @@ export default mergeHarnessLocale('el-GR', {
       exec: 'Εκτελει εντολες shell και καταγραφει την εξοδο τους',
       analyze: 'Συλλεγει δεδομενα απο τον ιστό και δημιουργει δομημενη αναφορα αναλυσης',
       ask: 'Κανει διευκρινιστικες ερωτησεις στον χρηστη για να συνεχιστει η εργασια',
+      advisor: 'Σύμβουλος αποφάσεων για ερωτήσεις επιλογής, αντικατάστασης, μετεγκατάστασης και βέλτιστων πρακτικών.',
       mediagen: 'Δημιουργει εικονες, βιντεο και παρουσιάσεις με μοντελα AI',
       web_query: 'Ανακτά και αναλύει μια ιστοσελίδα μέσω URL',
       research:

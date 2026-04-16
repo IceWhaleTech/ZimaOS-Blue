@@ -156,6 +156,18 @@ type MemoryConfig struct {
 	Search      MemorySearchConfig `yaml:"search"`
 	Backend     string             `yaml:"backend"`      // "local", "markdown", "mixed" (default: "markdown")
 	MarkdownDir string             `yaml:"markdown_dir"` // Base directory for markdown files
+	Dream       MemoryDreamConfig  `yaml:"dream"`
+}
+
+// MemoryDreamConfig holds dream archive and consolidation configuration.
+type MemoryDreamConfig struct {
+	Enabled               bool   `yaml:"enabled"`
+	ArchiveDir            string `yaml:"archive_dir"`
+	Schedule              string `yaml:"schedule"`
+	PromoteDailyAfterDays int    `yaml:"promote_daily_after_days"`
+	ArchiveDailyAfterDays int    `yaml:"archive_daily_after_days"`
+	SessionMinMessages    int    `yaml:"session_min_messages"`
+	MaxPromotionsPerRun   int    `yaml:"max_promotions_per_run"`
 }
 
 // VectorStoreConfig holds vector store configuration.

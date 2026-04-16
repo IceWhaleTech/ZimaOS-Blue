@@ -1315,7 +1315,6 @@ export default mergeHarnessLocale('nl-NL', {
       contextCompressionModeSmallModel: 'Licht model prefereren',
       contextCompressionModeOffline: 'Deterministisch offline',
       docExtract: 'Versnelling van documentextractie',
-      imageQA: 'Versnelling van beeldherkenning',
       shortQA: 'Versnelling van korte Q&A',
       statsTitle: 'Runtime-statistieken (probleemoplossing)',
       statsHint:
@@ -1324,9 +1323,6 @@ export default mergeHarnessLocale('nl-NL', {
       shortQAAttempts: 'Versnelling van korte Q&A Aantal',
       shortQASuccessRate: 'Versnelling van korte Q&A Trefferpercentage',
       shortQALatencyMs: 'Versnelling van korte Q&A Latentie',
-      imageQAAttempts: 'Aantal beeldherkenningen',
-      imageQASuccessRate: 'Trefferpercentage van beeldherkenning',
-      imageQALatencyMs: 'Latentie van beeldherkenning',
       summarySuccessRate: 'Versnelling van samenvatting Trefferpercentage',
       summaryLatencyMs: 'Versnelling van samenvatting Latentie',
       contextCompressionSuccessRate: 'Trefferpercentage contextcompressie',
@@ -4694,6 +4690,7 @@ export default mergeHarnessLocale('nl-NL', {
       analyze: 'Analyserapport',
       mediagen: 'Herinneringen',
       ask: 'Mediageneratie',
+      advisor: 'Adviseur',
       'Web Search': 'Zoeken op web',
       Calculator: 'Rekenmachine',
       'System Info': 'Systeeminformatie',
@@ -4735,6 +4732,7 @@ export default mergeHarnessLocale('nl-NL', {
       exec: 'Voert shell-opdrachten uit en legt de uitvoer vast',
       analyze: 'Verzamelt gegevens van het web en genereert een gestructureerd analyserapport',
       ask: 'Stelt de gebruiker vervolgvraag om de taak voort te zetten',
+      advisor: 'Beslissingsadviseur voor vragen over selectie, vervanging, migratie en best practices.',
       mediagen: 'Genereert afbeeldingen, videos en presentaties met AI-modellen',
       web_query: 'Haalt een webpagina op en parseert die via URL',
       research:

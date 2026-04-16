@@ -1858,6 +1858,29 @@ func registerAPIRoutes(srv *server.Server, pool *worker.Pool, userHandler *user.
 			logger.Warn("Failed to initialize layered memory service", zap.Error(err))
 		} else {
 			h.SetLayeredService(layeredService)
+
+			dreamArchiveDir := cfg.Memory.Dream.ArchiveDir
+			if strings.TrimSpace(dreamArchiveDir) == "" {
+				dreamArchiveDir = filepath.Join(dataDir, "archives", "dream")
+			}
+			dreamService, dreamErr := memory.NewDreamService(layeredService, workspaceMgr.Dir(), memory.DreamConfig{
+				Enabled:               cfg.Memory.Dream.Enabled,
+				ArchiveDir:            dreamArchiveDir,
+				Schedule:              cfg.Memory.Dream.Schedule,
+				PromoteDailyAfterDays: cfg.Memory.Dream.PromoteDailyAfterDays,
+				ArchiveDailyAfterDays: cfg.Memory.Dream.ArchiveDailyAfterDays,
+				SessionMinMessages:    cfg.Memory.Dream.SessionMinMessages,
+				MaxPromotionsPerRun:   cfg.Memory.Dream.MaxPromotionsPerRun,
+			})
+			if dreamErr != nil {
+				logger.Warn("Failed to initialize dream memory service", zap.Error(dreamErr))
+			} else {
+				h.SetDreamService(dreamService)
+				bootstrap.BindRuntimeDreamCron(cronHandler, dreamService)
+				if cfg.Memory.Dream.Enabled && cronHandler != nil {
+					go cronHandler.GetService()
+				}
+			}
 		}
 		toolsAdapter := memory.NewToolsAdapter(unifiedService)
 		tools.RegisterMemoryTools(toolRegistry, toolsAdapter)

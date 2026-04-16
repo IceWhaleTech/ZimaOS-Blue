@@ -125,6 +125,11 @@ func (t *PPTXTool) executeCreateLike(ctx context.Context, args map[string]interf
 	if err != nil {
 		return "", err
 	}
+	if strings.TrimSpace(spec.Language) == "" {
+		if lang := strings.TrimSpace(GetLang(ctx)); lang != "" && !strings.EqualFold(lang, "en-US") {
+			spec.Language = lang
+		}
+	}
 	slides := officeBuildPresentationSlides(spec)
 	data, info, err := buildOfficePPTX(spec)
 	if err != nil {
@@ -403,28 +408,17 @@ func countMissingPPTXRefs(actual, referenced map[string]struct{}) int {
 }
 
 func (t *PPTXTool) validatePath(ctx context.Context, absPath string) (map[string]interface{}, error) {
-	validation, err := validateZipEntries(absPath, []string{
-		"[Content_Types].xml",
-		"_rels/.rels",
-		"ppt/presentation.xml",
-		"ppt/slides/slide1.xml",
-	})
-	if err != nil {
-		return nil, err
-	}
 	read, err := t.reader.ReadDocument(ctx, absPath)
 	if err != nil {
+		validation, validationErr := validateNativeOfficeArchive(absPath, "pptx", nil)
+		if validationErr != nil {
+			return nil, validationErr
+		}
 		validation["ok"] = false
 		validation["read_error"] = err.Error()
 		return validation, nil
 	}
-	validation["readable"] = strings.TrimSpace(read.Text) != ""
-	validation["extracted_via"] = read.ExtractedVia
-	validation["char_count"] = len([]rune(read.Text))
-	if slideCount, err := countZipEntriesWithPrefix(absPath, "ppt/slides/slide", ".xml"); err == nil {
-		validation["slide_count"] = slideCount
-	}
-	return validation, nil
+	return validateNativeOfficeArchive(absPath, "pptx", read)
 }
 
 func isPPTXXMLEntry(name string) bool {

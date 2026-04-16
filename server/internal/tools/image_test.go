@@ -431,9 +431,11 @@ func TestImageToolReviewOCROnlyBypassesVision(t *testing.T) {
 func TestImageToolReviewOCRFirstUsesOCRBeforeVision(t *testing.T) {
 	vision := &imageVisionMock{resp: "vision should not run"}
 	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Revenue 18%\nARR 120k\nActive users 2400", Engine: "tesseract/wasm", Model: "eng"}}
+	sm := &imageSmallModelMock{ready: true, resp: "should not run"}
 	tool := NewImageTool(nil, nil, nil)
 	tool.SetVisionBridge(vision)
 	tool.SetOCRService(ocr)
+	tool.SetSmallModelRuntime(sm)
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"image":         inlinePNGBase64(t),
@@ -452,6 +454,9 @@ func TestImageToolReviewOCRFirstUsesOCRBeforeVision(t *testing.T) {
 	}
 	if vision.calls != 0 {
 		t.Fatalf("vision calls = %d, want 0", vision.calls)
+	}
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0", sm.calls)
 	}
 }
 
@@ -491,10 +496,10 @@ func TestImageToolReviewOCRFirstFallsBackToVisionWhenOCRIsSparse(t *testing.T) {
 	}
 }
 
-func TestImageToolReviewOCRFirstUsesSmallModelBeforeVisionWhenOCRIsSparse(t *testing.T) {
+func TestImageToolReviewOCRFirstUsesSmallModelOnRichOCRText(t *testing.T) {
 	vision := &imageVisionMock{resp: "vision should not run"}
-	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Q3", Engine: "tesseract/wasm", Model: "eng"}}
-	sm := &imageSmallModelMock{ready: true, resp: "A KPI dashboard with cards and a line chart."}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Revenue +18%\nARR $120,000\nActive users 2,400\nChurn 2.1%\nExpansion revenue 9%", Engine: "tesseract/wasm", Model: "eng"}}
+	sm := &imageSmallModelMock{ready: true, resp: "The dashboard text shows revenue up 18%, ARR at $120,000, active users at 2,400, churn at 2.1%, and expansion revenue at 9%."}
 	tool := NewImageTool(nil, nil, nil)
 	tool.SetVisionBridge(vision)
 	tool.SetOCRService(ocr)
@@ -506,29 +511,35 @@ func TestImageToolReviewOCRFirstUsesSmallModelBeforeVisionWhenOCRIsSparse(t *tes
 		"analysis_mode": "ocr_first",
 	})
 	if err != nil {
-		t.Fatalf("execute sparse-ocr with small model failed: %v", err)
+		t.Fatalf("execute rich-ocr small-model assist failed: %v", err)
 	}
 	payload := result.(map[string]interface{})
 	if payload["mode"] != "small_model" {
 		t.Fatalf("mode = %v, want small_model", payload["mode"])
 	}
-	if payload["fallback_from"] != "ocr" {
-		t.Fatalf("fallback_from = %v, want ocr", payload["fallback_from"])
+	if payload["provider"] != "smallmodel" {
+		t.Fatalf("provider = %v, want smallmodel", payload["provider"])
+	}
+	if payload["ocr_based"] != true {
+		t.Fatalf("ocr_based = %v, want true", payload["ocr_based"])
 	}
 	if sm.calls != 1 {
 		t.Fatalf("small model calls = %d, want 1", sm.calls)
 	}
-	if len(sm.lastReq.Images) != 1 {
-		t.Fatalf("small model images = %d, want 1", len(sm.lastReq.Images))
+	if len(sm.lastReq.Images) != 0 {
+		t.Fatalf("small model images = %d, want 0", len(sm.lastReq.Images))
+	}
+	if !strings.Contains(sm.lastReq.Prompt, "ARR $120,000") {
+		t.Fatalf("small model prompt = %q, want OCR text", sm.lastReq.Prompt)
 	}
 	if vision.calls != 0 {
 		t.Fatalf("vision calls = %d, want 0", vision.calls)
 	}
 }
 
-func TestImageToolReviewOCRFirstFallsBackToVisionWhenSmallModelIsTooSparse(t *testing.T) {
+func TestImageToolReviewOCRFirstFallsBackToVisionWhenSmallModelOCRAnswerIsInsufficient(t *testing.T) {
 	vision := &imageVisionMock{resp: "The screenshot shows a KPI dashboard with cards and a line chart."}
-	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Q3", Engine: "tesseract/wasm", Model: "eng"}}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Revenue +18%\nARR $120,000\nActive users 2,400\nChurn 2.1%\nExpansion revenue 9%", Engine: "tesseract/wasm", Model: "eng"}}
 	sm := &imageSmallModelMock{ready: true, resp: "unclear screenshot"}
 	tool := NewImageTool(nil, nil, nil)
 	tool.SetVisionBridge(vision)
@@ -553,11 +564,17 @@ func TestImageToolReviewOCRFirstFallsBackToVisionWhenSmallModelIsTooSparse(t *te
 	if payload["fallback_reason"] != "small_model_insufficient_after_ocr" {
 		t.Fatalf("fallback_reason = %v, want small_model_insufficient_after_ocr", payload["fallback_reason"])
 	}
-	if payload["small_model_sufficient"] != false {
-		t.Fatalf("small_model_sufficient = %v, want false", payload["small_model_sufficient"])
-	}
 	if payload["small_model_preview"] != "unclear screenshot" {
-		t.Fatalf("small_model_preview = %v, want unclear screenshot", payload["small_model_preview"])
+		t.Fatalf("small_model_preview = %v, want %q", payload["small_model_preview"], "unclear screenshot")
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if len(sm.lastReq.Images) != 0 {
+		t.Fatalf("small model images = %d, want 0", len(sm.lastReq.Images))
+	}
+	if !strings.Contains(sm.lastReq.Prompt, "ARR $120,000") {
+		t.Fatalf("small model prompt = %q, want OCR text", sm.lastReq.Prompt)
 	}
 	if vision.calls != 1 {
 		t.Fatalf("vision calls = %d, want 1", vision.calls)
@@ -652,11 +669,13 @@ func TestImageToolReviewOCRFirstReturnsOCRWhenMiniMaxDirectVisionFails(t *testin
 	}
 }
 
-func TestImageToolReviewCheapFirstUsesSmallModel(t *testing.T) {
+func TestImageToolReviewCheapFirstUsesSmallModelWhenOCRHasRichText(t *testing.T) {
 	vision := &imageVisionMock{resp: "vision should not run"}
-	sm := &imageSmallModelMock{ready: true, resp: "A product hero image with a server device."}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Model Z4 Home Server\n8-core CPU\n32GB RAM\n2TB SSD\nDual 2.5GbE networking\nNVMe cache supported", Engine: "tesseract/wasm", Model: "eng"}}
+	sm := &imageSmallModelMock{ready: true, resp: "The product text shows a Z4 home server with an 8-core CPU, 32GB RAM, 2TB SSD, dual 2.5GbE networking, and NVMe cache support."}
 	tool := NewImageTool(nil, nil, nil)
 	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
 	tool.SetSmallModelRuntime(sm)
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
@@ -665,14 +684,26 @@ func TestImageToolReviewCheapFirstUsesSmallModel(t *testing.T) {
 		"analysis_mode": "cheap_first",
 	})
 	if err != nil {
-		t.Fatalf("execute cheap_first review failed: %v", err)
+		t.Fatalf("execute cheap_first OCR-backed small-model review failed: %v", err)
 	}
 	payload := result.(map[string]interface{})
 	if payload["mode"] != "small_model" {
 		t.Fatalf("mode = %v, want small_model", payload["mode"])
 	}
+	if payload["provider"] != "smallmodel" {
+		t.Fatalf("provider = %v, want smallmodel", payload["provider"])
+	}
+	if payload["ocr_based"] != true {
+		t.Fatalf("ocr_based = %v, want true", payload["ocr_based"])
+	}
 	if sm.calls != 1 {
 		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if len(sm.lastReq.Images) != 0 {
+		t.Fatalf("small model images = %d, want 0", len(sm.lastReq.Images))
+	}
+	if !strings.Contains(sm.lastReq.Prompt, "Model Z4 Home Server") {
+		t.Fatalf("small model prompt = %q, want OCR text", sm.lastReq.Prompt)
 	}
 	if vision.calls != 0 {
 		t.Fatalf("vision calls = %d, want 0", vision.calls)
@@ -681,9 +712,11 @@ func TestImageToolReviewCheapFirstUsesSmallModel(t *testing.T) {
 
 func TestImageToolReviewCheapFirstFallsBackToVision(t *testing.T) {
 	vision := &imageVisionMock{resp: "vision rescue"}
+	ocr := &imageOCRMock{resp: ImageOCRResult{}, allowEmpty: true}
 	sm := &imageSmallModelMock{ready: false}
 	tool := NewImageTool(nil, nil, nil)
 	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
 	tool.SetSmallModelRuntime(sm)
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
@@ -698,8 +731,8 @@ func TestImageToolReviewCheapFirstFallsBackToVision(t *testing.T) {
 	if payload["mode"] != "vision" {
 		t.Fatalf("mode = %v, want vision", payload["mode"])
 	}
-	if payload["fallback_from"] != "small_model" {
-		t.Fatalf("fallback_from = %v, want small_model", payload["fallback_from"])
+	if payload["fallback_from"] != "ocr" {
+		t.Fatalf("fallback_from = %v, want ocr", payload["fallback_from"])
 	}
 	if vision.calls != 1 {
 		t.Fatalf("vision calls = %d, want 1", vision.calls)
@@ -741,11 +774,13 @@ func TestImageToolReviewCheapFirstUsesOCRWhenMiniMaxDirectVisionFails(t *testing
 	}
 }
 
-func TestImageToolReviewCheapFirstFallsBackToVisionWhenSmallModelIsTooSparse(t *testing.T) {
+func TestImageToolReviewCheapFirstFallsBackToVisionWhenSmallModelOCRAnswerIsInsufficient(t *testing.T) {
 	vision := &imageVisionMock{resp: "A product hero image with a server device on a clean backdrop."}
+	ocr := &imageOCRMock{resp: ImageOCRResult{Text: "Model Z4 Home Server\n8-core CPU\n32GB RAM\n2TB SSD\nDual 2.5GbE networking\nNVMe cache supported", Engine: "tesseract/wasm", Model: "eng"}}
 	sm := &imageSmallModelMock{ready: true, resp: "unclear"}
 	tool := NewImageTool(nil, nil, nil)
 	tool.SetVisionBridge(vision)
+	tool.SetOCRService(ocr)
 	tool.SetSmallModelRuntime(sm)
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
@@ -754,7 +789,7 @@ func TestImageToolReviewCheapFirstFallsBackToVisionWhenSmallModelIsTooSparse(t *
 		"analysis_mode": "cheap_first",
 	})
 	if err != nil {
-		t.Fatalf("execute cheap_first sparse-small-model fallback failed: %v", err)
+		t.Fatalf("execute cheap_first sparse-ocr fallback failed: %v", err)
 	}
 	payload := result.(map[string]interface{})
 	if payload["mode"] != "vision" {
@@ -763,14 +798,17 @@ func TestImageToolReviewCheapFirstFallsBackToVisionWhenSmallModelIsTooSparse(t *
 	if payload["fallback_from"] != "small_model" {
 		t.Fatalf("fallback_from = %v, want small_model", payload["fallback_from"])
 	}
-	if payload["fallback_reason"] != "small_model_insufficient" {
-		t.Fatalf("fallback_reason = %v, want small_model_insufficient", payload["fallback_reason"])
-	}
-	if payload["small_model_sufficient"] != false {
-		t.Fatalf("small_model_sufficient = %v, want false", payload["small_model_sufficient"])
+	if payload["fallback_reason"] != "small_model_insufficient_after_ocr" {
+		t.Fatalf("fallback_reason = %v, want small_model_insufficient_after_ocr", payload["fallback_reason"])
 	}
 	if payload["small_model_preview"] != "unclear" {
-		t.Fatalf("small_model_preview = %v, want unclear", payload["small_model_preview"])
+		t.Fatalf("small_model_preview = %v, want %q", payload["small_model_preview"], "unclear")
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if len(sm.lastReq.Images) != 0 {
+		t.Fatalf("small model images = %d, want 0", len(sm.lastReq.Images))
 	}
 	if vision.calls != 1 {
 		t.Fatalf("vision calls = %d, want 1", vision.calls)

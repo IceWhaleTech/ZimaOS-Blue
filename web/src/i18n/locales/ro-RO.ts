@@ -1310,7 +1310,6 @@ export default mergeHarnessLocale('ro-RO', {
       contextCompressionModeSmallModel: 'Preferă modelul ușor',
       contextCompressionModeOffline: 'Offline determinist',
       docExtract: 'Accelerarea extragerii documentelor',
-      imageQA: 'Accelerare pentru recunoașterea imaginilor',
       shortQA: 'Accelerarea întrebărilor scurte',
       statsTitle: 'Statistici de execuție (depanare)',
       statsHint:
@@ -1319,9 +1318,6 @@ export default mergeHarnessLocale('ro-RO', {
       shortQAAttempts: 'Accelerarea întrebărilor scurte Număr',
       shortQASuccessRate: 'Accelerarea întrebărilor scurte Rată de reușită',
       shortQALatencyMs: 'Accelerarea întrebărilor scurte Latență',
-      imageQAAttempts: 'Număr recunoașteri imagini',
-      imageQASuccessRate: 'Rata de reușită a recunoașterii imaginilor',
-      imageQALatencyMs: 'Latența recunoașterii imaginilor',
       summarySuccessRate: 'Accelerarea rezumatelor Rată de reușită',
       summaryLatencyMs: 'Accelerarea rezumatelor Latență',
       contextCompressionSuccessRate: 'Rata de succes a compresiei contextului',
@@ -4700,6 +4696,7 @@ export default mergeHarnessLocale('ro-RO', {
       analyze: 'Raport de analiză',
       mediagen: 'Mementouri',
       ask: 'Generare media',
+      advisor: 'Consilier',
       'Web Search': 'Căutare web',
       Calculator: 'Calculator',
       'System Info': 'Informații sistem',
@@ -4741,6 +4738,7 @@ export default mergeHarnessLocale('ro-RO', {
       exec: 'Executa comenzi shell si captureaza iesirea lor',
       analyze: 'Colecteaza date de pe web si genereaza un raport de analiza structurat',
       ask: 'Pune utilizatorului intrebari suplimentare necesare pentru a continua sarcina',
+      advisor: 'Consilier pentru decizii privind întrebări de selecție, înlocuire, migrare și bune practici.',
       mediagen: 'Genereaza imagini, videoclipuri si prezentari cu modele AI',
       web_query: 'Preia si analizeaza o pagina web prin URL',
       research:
