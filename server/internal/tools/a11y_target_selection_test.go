@@ -3615,6 +3615,77 @@ func TestConfirmA11yMessageConversationActivated_PollsUntilComposerReady(t *test
 	}
 }
 
+func TestConfirmA11yMessageConversationActivated_WaitsForTransientVisualConversationMismatch(t *testing.T) {
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yMessageConversationConfirmationPollInterval
+	a11yMessageConversationConfirmationTimeout = 100 * time.Millisecond
+	a11yMessageConversationConfirmationPollInterval = time.Millisecond
+	defer func() {
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yMessageConversationConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	grounder := &a11yChatGrounderStub{
+		resultSequences: map[string][]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				{
+					Source: "vision_model",
+					Candidates: []a11yChatGroundingCandidate{
+						{Role: "search_field", Label: "Search", Confidence: 0.99, RationaleTags: []string{"search_field"}},
+					},
+				},
+				{
+					Source: "vision_model",
+					Candidates: []a11yChatGroundingCandidate{
+						{Role: "conversation", Label: "Orca", Confidence: 0.98},
+					},
+				},
+			},
+		},
+	}
+	tool.SetChatGrounder(grounder)
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if backend.interactiveCalls < 2 {
+		t.Fatalf("interactiveCalls = %d, want retry after transient visual mismatch", backend.interactiveCalls)
+	}
+	locateConversationCalls := 0
+	for _, call := range grounder.calls {
+		if call.TaskHint == a11yChatGroundingTaskLocateConversation {
+			locateConversationCalls++
+		}
+	}
+	if locateConversationCalls < 2 {
+		t.Fatalf("grounder.calls = %#v, want repeated locate_conversation grounding attempts", grounder.calls)
+	}
+}
+
 func TestA11ySubmitNeedsRetry_PollsUntilPendingTextClears(t *testing.T) {
 	prevTimeout := a11ySubmitConfirmationTimeout
 	prevPoll := a11ySubmitConfirmationPollInterval

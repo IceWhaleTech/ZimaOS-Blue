@@ -1218,7 +1218,7 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 			if useStandaloneCalloutGrid {
 				return officePPTXStandaloneCalloutShapesXML(slide.Callouts, theme, slide.hyperlinks)
 			}
-			return officePPTXChartCalloutShapesXML(slide.Callouts, theme, hasBodyText, slide.Table != nil, slide.hyperlinks)
+			return officePPTXChartCalloutShapesXML(slide.Title, slide.Callouts, theme, hasBodyText, slide.Table != nil, slide.hyperlinks)
 		}() +
 		officePPTXChartGraphicFrameXML(slide.Chart, slide.chartRelID, hasBodyText, slide.Table != nil, len(slide.Callouts) > 0) +
 		officePPTXTableGraphicFrameXML(slide.Table, hasBodyText, slide.Chart != nil, theme, slide.hyperlinks) +
@@ -1884,7 +1884,7 @@ func officePPTXChartGraphicFrameXML(chart *officeChartSpec, relID string, hasBod
 	)
 }
 
-func officePPTXChartCalloutShapesXML(callouts []officePPTXCallout, theme officeTheme, hasBodyText bool, hasTable bool, hyperlinks []officePPTXHyperlink) string {
+func officePPTXChartCalloutShapesXML(slideTitle string, callouts []officePPTXCallout, theme officeTheme, hasBodyText bool, hasTable bool, hyperlinks []officePPTXHyperlink) string {
 	layout := officePPTXChartLayoutForSlide(hasBodyText, hasTable, len(callouts) > 0)
 	if !layout.HasRail || len(callouts) == 0 {
 		return ""
@@ -1912,10 +1912,7 @@ func officePPTXChartCalloutShapesXML(callouts []officePPTXCallout, theme officeT
 			break
 		}
 	}
-	title := "Key Takeaways"
-	if allStats {
-		title = "Key Metrics"
-	}
+	title := officePPTXChartCalloutRailTitle(slideTitle, callouts, allStats)
 
 	cardCount := len(callouts)
 	availableHeight := layout.RailHeight - railPadding*2 - headerHeight
@@ -1972,6 +1969,42 @@ func officePPTXChartCalloutShapesXML(callouts []officePPTXCallout, theme officeT
 		cardY += cardHeight + cardGap
 	}
 	return sb.String()
+}
+
+func officePPTXChartCalloutRailTitle(slideTitle string, callouts []officePPTXCallout, allStats bool) string {
+	if officePPTXCalloutRailPrefersChinese(slideTitle, callouts) {
+		if allStats {
+			return "关键指标"
+		}
+		return "关键要点"
+	}
+	if allStats {
+		return "Key Metrics"
+	}
+	return "Key Takeaways"
+}
+
+func officePPTXCalloutRailPrefersChinese(slideTitle string, callouts []officePPTXCallout) bool {
+	hanCount := 0
+	latinCount := 0
+	collect := func(value string) {
+		for _, r := range strings.TrimSpace(value) {
+			switch {
+			case unicode.In(r, unicode.Han):
+				hanCount++
+			case r <= unicode.MaxASCII && unicode.IsLetter(r):
+				latinCount++
+			}
+		}
+	}
+
+	collect(slideTitle)
+	for _, callout := range callouts {
+		collect(callout.Label)
+		collect(callout.Value)
+		collect(callout.Body)
+	}
+	return hanCount >= 4 && hanCount > latinCount
 }
 
 func officePPTXChartCalloutColors(callout officePPTXCallout, theme officeTheme) (string, string, string, string, string) {

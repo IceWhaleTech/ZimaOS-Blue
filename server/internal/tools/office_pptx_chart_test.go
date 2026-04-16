@@ -224,6 +224,58 @@ func TestOfficePPTXSlideXMLIncludesThemeAwareChartCalloutRail(t *testing.T) {
 	}
 }
 
+func TestOfficePPTXSlideXMLLocalizesChineseChartCalloutRailTitle(t *testing.T) {
+	slide := officePPTXSlide{
+		Title: "趋势对比",
+		Theme: resolveOfficeTheme("midnight", ""),
+		Chart: &officeChartSpec{
+			Type:       "bar",
+			Categories: []string{"Q1", "Q2"},
+			Series: []officeChartSeries{
+				{Name: "准确率", Values: []float64{72, 88}},
+			},
+		},
+		Callouts: []officePPTXCallout{
+			{Label: "准确率", Value: "93%", Tone: "primary"},
+			{Label: "重点", Body: "首轮响应更快", Tone: "primary"},
+		},
+	}
+
+	xml := officePPTXSlideXML(slide)
+	if !containsSubstring(xml, `<a:t>关键要点</a:t>`) {
+		t.Fatalf("expected Chinese mixed callout rail title in %s", xml)
+	}
+	if containsSubstring(xml, `<a:t>Key Takeaways</a:t>`) {
+		t.Fatalf("expected Chinese mixed callout rail title, got English in %s", xml)
+	}
+}
+
+func TestOfficePPTXSlideXMLLocalizesChineseChartMetricsRailTitle(t *testing.T) {
+	slide := officePPTXSlide{
+		Title: "趋势对比",
+		Theme: resolveOfficeTheme("midnight", ""),
+		Chart: &officeChartSpec{
+			Type:       "bar",
+			Categories: []string{"Q1", "Q2"},
+			Series: []officeChartSeries{
+				{Name: "准确率", Values: []float64{72, 88}},
+			},
+		},
+		Callouts: []officePPTXCallout{
+			{Label: "准确率", Value: "93%", Tone: "primary"},
+			{Label: "延迟", Value: "180ms", Tone: "primary"},
+		},
+	}
+
+	xml := officePPTXSlideXML(slide)
+	if !containsSubstring(xml, `<a:t>关键指标</a:t>`) {
+		t.Fatalf("expected Chinese metrics rail title in %s", xml)
+	}
+	if containsSubstring(xml, `<a:t>Key Metrics</a:t>`) {
+		t.Fatalf("expected Chinese metrics rail title, got English in %s", xml)
+	}
+}
+
 func TestBuildOfficePPTXOmitsRedundantChartTitleWhenSlideHeadingExists(t *testing.T) {
 	pptxData, _, err := buildOfficePPTX(officeDocSpec{
 		Theme: resolveOfficeTheme("midnight", ""),

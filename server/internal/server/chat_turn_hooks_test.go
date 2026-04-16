@@ -5,6 +5,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -159,6 +161,150 @@ func TestSendMessage_AutomaticMemoryRecallAndPostTurnSave(t *testing.T) {
 		t.Fatalf("expected memory context in send request, got %+v", captureProvider.LastRequest().Messages)
 	}
 	waitForRefreshCount(t, refresher, 1)
+}
+
+func TestSendMessage_PostTurnArchivesDreamCapsule(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "dream send")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "assistant", Content: "Earlier important context"}); err != nil {
+		t.Fatalf("AddMessage seed: %v", err)
+	}
+
+	captureProvider := &requestCaptureProvider{}
+	registry := llm.NewProviderRegistry()
+	registry.Register(captureProvider)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	defer handler.Close()
+
+	layered, _ := newLayeredMemoryServiceForTest(t)
+	dreamArchiveDir := t.TempDir()
+	dreamSvc, err := memory.NewDreamService(layered, t.TempDir(), memory.DreamConfig{
+		Enabled:               true,
+		ArchiveDir:            dreamArchiveDir,
+		SessionMinMessages:    2,
+		Schedule:              "0 30 3 * * *",
+		PromoteDailyAfterDays: 7,
+		ArchiveDailyAfterDays: 30,
+		MaxPromotionsPerRun:   5,
+	})
+	if err != nil {
+		t.Fatalf("NewDreamService: %v", err)
+	}
+	handler.SetDreamService(dreamSvc)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(`{"message":"Please remember this important archive design","provider":"capture","model":"capture-model"}`))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		matches, err := filepath.Glob(filepath.Join(dreamSvc.WorkspaceArchiveDir(), "sessions", "*", "*", "*", "*.json.gz"))
+		if err != nil {
+			t.Fatalf("Glob dream capsules: %v", err)
+		}
+		if len(matches) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("expected dream capsule after assistant persisted")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	status, err := dreamSvc.Status(context.Background())
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	if status.PendingCapsules == 0 {
+		t.Fatalf("PendingCapsules = %d, want > 0", status.PendingCapsules)
+	}
+}
+
+func TestDeleteConversation_DoesNotArchiveDreamCapsule(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("memory.NewStore: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "dream delete")
+	if err != nil {
+		t.Fatalf("CreateConversation: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "user", Content: "delete me"}); err != nil {
+		t.Fatalf("AddMessage seed: %v", err)
+	}
+	if _, err := store.AddMessage(context.Background(), conv.ID, memory.Message{Role: "assistant", Content: "important memory"}); err != nil {
+		t.Fatalf("AddMessage seed: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+
+	layered, _ := newLayeredMemoryServiceForTest(t)
+	dreamArchiveDir := t.TempDir()
+	dreamSvc, err := memory.NewDreamService(layered, t.TempDir(), memory.DreamConfig{
+		Enabled:               true,
+		ArchiveDir:            dreamArchiveDir,
+		SessionMinMessages:    2,
+		Schedule:              "0 30 3 * * *",
+		PromoteDailyAfterDays: 7,
+		ArchiveDailyAfterDays: 30,
+		MaxPromotionsPerRun:   5,
+	})
+	if err != nil {
+		t.Fatalf("NewDreamService: %v", err)
+	}
+	handler.SetDreamService(dreamSvc)
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/conversations/"+conv.ID, nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.DeleteConversation(c); err != nil {
+		t.Fatalf("DeleteConversation: %v", err)
+	}
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body=%s", rec.Code, rec.Body.String())
+	}
+
+	matches, err := filepath.Glob(filepath.Join(dreamSvc.WorkspaceArchiveDir(), "sessions", "*", "*", "*", "*.json.gz"))
+	if err != nil {
+		t.Fatalf("Glob dream capsules: %v", err)
+	}
+	if len(matches) != 0 {
+		names := make([]string, 0, len(matches))
+		for _, match := range matches {
+			names = append(names, filepath.Base(match))
+		}
+		t.Fatalf("delete should not archive dream capsules, got=%v", names)
+	}
+	if _, err := os.Stat(filepath.Join(dreamArchiveDir, dreamSvc.WorkspaceKey())); err != nil {
+		t.Fatalf("dream archive root should exist, stat err=%v", err)
+	}
 }
 
 func TestStreamMessage_AutomaticMemoryRecallAndPostTurnSave(t *testing.T) {

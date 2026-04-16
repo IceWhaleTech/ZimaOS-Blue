@@ -1408,6 +1408,7 @@ func runServer(ctx context.Context, port int, dataDir string, cfgFile string) er
 				zapLogger.Warn("Failed to initialize dream memory service", zap.Error(dreamErr))
 			} else {
 				h.SetDreamService(dreamService)
+				chatHandler.SetDreamService(dreamService)
 				bootstrap.BindRuntimeDreamCron(cronHandler, dreamService)
 				if cfg.Memory.Dream.Enabled && cronHandler != nil {
 					go cronHandler.GetService()

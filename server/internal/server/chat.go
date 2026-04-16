@@ -7180,6 +7180,7 @@ type ChatHandler struct {
 
 	// Memory service for auto-extraction after conversations
 	layeredMemory *memory.LayeredMemoryService
+	dreamService  *memory.DreamService
 	// Compiled knowledge retriever for product/docs/architecture prompts.
 	knowledgeRetriever KnowledgeRetriever
 	// Optional threshold-triggered memory extractor.
@@ -7188,6 +7189,7 @@ type ChatHandler struct {
 	memoryRatioByConv map[string]float64
 	memoryRatioMu     sync.Mutex
 	turnHooks         *TurnHookManager
+	dreamHookAdded    bool
 
 	// Media interceptor for IR-based media generation (channel path)
 	mediaInterceptor MediaInterceptor
@@ -11791,6 +11793,16 @@ func (h *ChatHandler) SetSTTService(service stt.Service) {
 // SetLayeredMemory sets the layered memory service for auto-extraction.
 func (h *ChatHandler) SetLayeredMemory(svc *memory.LayeredMemoryService) {
 	h.layeredMemory = svc
+}
+
+// SetDreamService enables dream snapshot archiving on persisted assistant turns.
+func (h *ChatHandler) SetDreamService(svc *memory.DreamService) {
+	h.dreamService = svc
+	if svc == nil || h.turnHooks == nil || h.dreamHookAdded {
+		return
+	}
+	h.turnHooks.Register(NewDreamTurnHook(h))
+	h.dreamHookAdded = true
 }
 
 // SetCompactorMemoryIntegration enables threshold-triggered memory extraction

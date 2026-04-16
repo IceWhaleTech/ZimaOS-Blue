@@ -1651,9 +1651,30 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 		resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
 		t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
 		entries := parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
-		if !a11ySnapshotHasPendingConversationSearch(entries, selector.Name) && a11ySnapshotHasComposer(entries) {
-			if groundingSource, verification, grounded, groundErr := t.confirmA11yConversationWithGrounding(ctx, backend, resolvedWindow, selector); groundErr != nil {
+		pendingSearch := a11ySnapshotHasPendingConversationSearch(entries, selector.Name)
+		composerReady := a11ySnapshotHasComposer(entries)
+		if !pendingSearch && composerReady {
+			if groundingSource, verification, grounded, retryable, groundErr := t.confirmA11yConversationWithGrounding(ctx, backend, resolvedWindow, selector); groundErr != nil {
 				return "", groundErr
+			} else if retryable {
+				if timeout <= 0 || time.Now().After(deadline) {
+					if state != nil {
+						a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusTerminalFailure, "visual_grounding_check", groundingSource, "search_box_still_active", verification)
+					}
+					return "", a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", map[string]interface{}{
+						"confirmation":            "search_box_still_active",
+						"search_box_still_active": true,
+						"grounding_source":        groundingSource,
+						"verification":            verification,
+					})
+				}
+				if state != nil {
+					a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusRetryableFailure, "visual_grounding_check", groundingSource, "", verification)
+				}
+				if err := a11yWaitForPollInterval(ctx, a11yMessageConversationConfirmationPollInterval); err != nil {
+					return "", err
+				}
+				continue
 			} else if state != nil {
 				if grounded {
 					a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusOK, "visual_grounding_check", groundingSource, "", verification)
@@ -1663,7 +1684,7 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 			}
 			return resolvedWindow, nil
 		}
-		if a11ySnapshotHasPendingConversationSearch(entries, selector.Name) {
+		if pendingSearch && composerReady {
 			if state != nil {
 				a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusTerminalFailure, "post_click_confirmation", "", "search_box_still_active", nil)
 			}
@@ -1671,6 +1692,24 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 				"confirmation":            "composer_not_ready",
 				"search_box_still_active": true,
 			})
+		}
+		if pendingSearch {
+			if timeout <= 0 || time.Now().After(deadline) {
+				if state != nil {
+					a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusTerminalFailure, "post_click_confirmation", "", "search_box_still_active", nil)
+				}
+				return "", a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", map[string]interface{}{
+					"confirmation":            "composer_not_ready",
+					"search_box_still_active": true,
+				})
+			}
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusRetryableFailure, "post_click_confirmation", "", "", nil)
+			}
+			if err := a11yWaitForPollInterval(ctx, a11yMessageConversationConfirmationPollInterval); err != nil {
+				return "", err
+			}
+			continue
 		}
 		if timeout <= 0 || time.Now().After(deadline) {
 			if state != nil {
@@ -1684,10 +1723,10 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 	}
 }
 
-func (t *A11yTool) confirmA11yConversationWithGrounding(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (string, map[string]interface{}, bool, error) {
+func (t *A11yTool) confirmA11yConversationWithGrounding(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (string, map[string]interface{}, bool, bool, error) {
 	state := getA11yChatExecutionState(ctx)
 	if state == nil || t.a11yChatGrounder() == nil {
-		return "", nil, false, nil
+		return "", nil, false, false, nil
 	}
 	req := a11yChatGroundingRequest{
 		WindowID:   strings.TrimSpace(windowID),
@@ -1703,30 +1742,29 @@ func (t *A11yTool) confirmA11yConversationWithGrounding(ctx context.Context, bac
 	}
 	groundingResult, used, groundErr := t.groundA11yChat(ctx, req)
 	if !used || groundErr != nil {
-		return "", nil, false, nil
+		return "", nil, false, false, nil
 	}
 	source := strings.TrimSpace(valueOrDefault(groundingResult.Source, "grounding_model"))
 	verification := cloneA11yJSONMap(groundingResult.Verification)
 	if verification == nil {
 		verification = map[string]interface{}{}
 	}
-	rejected := false
 	searchFieldDetected := false
 	for _, candidate := range groundingResult.Candidates {
 		role := normalizeA11yTargetRole(candidate.Role)
 		if role == "search_field" || role == "search" {
-			rejected = true
 			searchFieldDetected = true
 			break
 		}
 	}
+	explicitReject := false
 	if value, ok := groundingResult.Verification["rejected"].(bool); ok && value {
-		rejected = true
+		explicitReject = true
 	}
 	if reason := strings.TrimSpace(a11yFirstNonEmptyString(groundingResult.Verification["reason"])); strings.Contains(reason, "search_field") {
 		searchFieldDetected = true
 	}
-	if rejected {
+	if explicitReject {
 		details := map[string]interface{}{
 			"grounding_source": source,
 			"verification":     verification,
@@ -1744,9 +1782,12 @@ func (t *A11yTool) confirmA11yConversationWithGrounding(ctx context.Context, bac
 			}
 			a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusTerminalFailure, "visual_grounding_check", source, failureCode, verification)
 		}
-		return source, verification, true, a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", details)
+		return source, verification, true, false, a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", details)
 	}
-	return source, verification, true, nil
+	if searchFieldDetected {
+		return source, verification, true, true, nil
+	}
+	return source, verification, true, false, nil
 }
 
 func a11ySnapshotHasComposer(entries []a11ySnapshotEntry) bool {

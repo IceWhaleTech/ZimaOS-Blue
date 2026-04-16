@@ -2,13 +2,16 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 
+	sessionctx "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/context"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/llm"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/logger"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/memory"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/session"
 )
 
 // TurnContext captures the normalized chat-turn state shared by internal hooks.
@@ -186,4 +189,101 @@ func memorySourceTag(source MemoryRecallSource) string {
 	default:
 		return "web"
 	}
+}
+
+// DreamTurnHook persists compact dream capsules from the active chat lifecycle.
+type DreamTurnHook struct {
+	handler *ChatHandler
+	seenMu  sync.Mutex
+	seenIDs map[string]struct{}
+}
+
+func NewDreamTurnHook(handler *ChatHandler) *DreamTurnHook {
+	return &DreamTurnHook{
+		handler: handler,
+		seenIDs: make(map[string]struct{}),
+	}
+}
+
+func (h *DreamTurnHook) BeforeModelCall(_ context.Context, _ TurnContext) ([]llm.Message, error) {
+	return nil, nil
+}
+
+func (h *DreamTurnHook) AfterAssistantPersisted(ctx context.Context, turn TurnContext, assistantMsg *memory.Message) error {
+	if h == nil || h.handler == nil || assistantMsg == nil || h.handler.dreamService == nil {
+		return nil
+	}
+	messageID := strings.TrimSpace(assistantMsg.ID)
+	if messageID == "" || !h.markSeen(messageID) {
+		return nil
+	}
+
+	sess, err := h.handler.buildDreamSession(ctx, turn.ConversationID, memorySourceTag(turn.Source))
+	if err != nil {
+		return err
+	}
+	if sess == nil {
+		return nil
+	}
+	_, err = h.handler.dreamService.ArchiveSession(ctx, sess, session.EndReasonArchive)
+	return err
+}
+
+func (h *DreamTurnHook) markSeen(messageID string) bool {
+	h.seenMu.Lock()
+	defer h.seenMu.Unlock()
+	if _, exists := h.seenIDs[messageID]; exists {
+		return false
+	}
+	h.seenIDs[messageID] = struct{}{}
+	if len(h.seenIDs) > 4096 {
+		for key := range h.seenIDs {
+			if key == messageID {
+				continue
+			}
+			delete(h.seenIDs, key)
+			break
+		}
+	}
+	return true
+}
+
+func (h *ChatHandler) buildDreamSession(ctx context.Context, conversationID, channelID string) (*session.Session, error) {
+	if h == nil || h.store == nil {
+		return nil, nil
+	}
+
+	conv, err := h.store.GetConversation(ctx, conversationID)
+	if err != nil {
+		return nil, fmt.Errorf("load dream conversation: %w", err)
+	}
+	messages, err := h.store.GetRecentMessages(ctx, conversationID, 200)
+	if err != nil {
+		return nil, fmt.Errorf("load dream messages: %w", err)
+	}
+	if len(messages) == 0 {
+		return nil, nil
+	}
+
+	sess := session.NewSession(session.SessionID{
+		AgentID:   "chat",
+		ChannelID: channelID,
+		PeerID:    conversationID,
+	}, session.LegacyDefaultContextTokenBudget)
+	sess.SetTitle(conv.Title)
+	sess.CreatedAt = conv.CreatedAt.UTC()
+	sess.UpdatedAt = conv.UpdatedAt.UTC()
+	for _, msg := range messages {
+		if strings.TrimSpace(msg.Content) == "" {
+			continue
+		}
+		sess.AddMessage(sessionctx.Message{
+			Role:    sessionctx.Role(msg.Role),
+			Content: msg.Content,
+		})
+	}
+	sess.CreatedAt = conv.CreatedAt.UTC()
+	sess.UpdatedAt = conv.UpdatedAt.UTC()
+	sess.LastActiveAt = conv.UpdatedAt.UTC()
+	return sess, nil
 }
