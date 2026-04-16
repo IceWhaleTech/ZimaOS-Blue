@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
 const verifierEventLimit = 1000
@@ -505,18 +507,19 @@ func desktopChatVerificationStatusSeen(structured map[string]interface{}, want s
 	if want == "" {
 		return false
 	}
-	if desktopChatVerificationStatusMatches(want, metadataString(nestedMetadataMap(structured, "verification"), "status")) {
+	appProfile := desktopChatAppProfile(structured)
+	if desktopChatVerificationStatusMatches(want, metadataString(nestedMetadataMap(structured, "verification"), "status"), appProfile) {
 		return true
 	}
 	for _, stage := range desktopChatTaskStages(structured) {
-		if desktopChatVerificationStatusMatches(want, metadataString(nestedMetadataMap(stage, "verification"), "status")) {
+		if desktopChatVerificationStatusMatches(want, metadataString(nestedMetadataMap(stage, "verification"), "status"), appProfile) {
 			return true
 		}
 	}
 	return false
 }
 
-func desktopChatVerificationStatusMatches(want string, got string) bool {
+func desktopChatVerificationStatusMatches(want string, got string, appProfile string) bool {
 	want = strings.TrimSpace(strings.ToLower(want))
 	got = strings.TrimSpace(strings.ToLower(got))
 	if want == "" || got == "" {
@@ -527,12 +530,21 @@ func desktopChatVerificationStatusMatches(want string, got string) bool {
 	}
 	switch want {
 	case "sent":
-		switch got {
-		case "delivered", "posted":
+		if tools.A11yChatSendVerificationDisposition(appProfile, got) == "success" {
+			return true
+		}
+		if strings.TrimSpace(appProfile) == "" && got == "delivered" {
 			return true
 		}
 	}
 	return false
+}
+
+func desktopChatAppProfile(structured map[string]interface{}) string {
+	if len(structured) == 0 {
+		return ""
+	}
+	return metadataString(structured, "app_profile")
 }
 
 func desktopChatConversationConfirmed(structured map[string]interface{}) bool {

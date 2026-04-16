@@ -118,6 +118,9 @@ func TestA11yToolExecute_MessageIncludesChatTaskMetadata(t *testing.T) {
 	if out["grounding_source"] != "vision_model" {
 		t.Fatalf("grounding_source = %v, want vision_model", out["grounding_source"])
 	}
+	if out["app_profile"] != "feishu_lark" {
+		t.Fatalf("app_profile = %v, want feishu_lark", out["app_profile"])
+	}
 	if _, ok := out["verification"].(map[string]interface{}); !ok {
 		t.Fatalf("verification = %#v, want object", out["verification"])
 	}

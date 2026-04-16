@@ -170,3 +170,7 @@ func a11yChatSendVerificationDisposition(profileID string, status string) string
 		return "fail"
 	}
 }
+
+func A11yChatSendVerificationDisposition(profileID string, status string) string {
+	return a11yChatSendVerificationDisposition(profileID, status)
+}

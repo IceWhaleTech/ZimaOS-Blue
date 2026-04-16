@@ -303,6 +303,9 @@ func (s *a11yChatExecutionState) applyToPayload(payload map[string]interface{}) 
 	if s.groundingSource != "" {
 		payload["grounding_source"] = s.groundingSource
 	}
+	if s.appProfile != "" {
+		payload["app_profile"] = s.appProfile
+	}
 	if len(s.verification) > 0 {
 		payload["verification"] = cloneA11yJSONMap(s.verification)
 	}

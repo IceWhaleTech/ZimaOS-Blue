@@ -1370,6 +1370,9 @@ func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend 
 		result, err := grounding.ScreenshotForGrounding(ctx, windowID)
 		if err == nil && len(result.ImageBytes) > 0 && a11yLocateConversationVisualHitFromPNG != nil {
 			a11yMaybeWriteChatArtifact(ctx, state, a11yChatStageLocateConversation, "conversation_grounding", result.ImageBytes)
+			if hit, ok := t.locateA11yConversationGroundingHit(ctx, strings.TrimSpace(windowID), selector, result.ImageBytes, state); ok {
+				return hit, nil
+			}
 			hit, locateErr := a11yLocateConversationVisualHitFromPNG(ctx, result.ImageBytes, selector.Name)
 			if locateErr == nil {
 				if state != nil && strings.TrimSpace(state.groundingSource) == "" {
@@ -1395,6 +1398,110 @@ func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend 
 		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", a11yTargetSelectorDetails(selector, nil))
 	}
 	return hit, nil
+}
+
+func (t *A11yTool) locateA11yConversationGroundingHit(ctx context.Context, windowID string, selector a11yTargetSelector, screenshot []byte, state *a11yChatExecutionState) (a11yConversationVisualHit, bool) {
+	req := a11yChatGroundingRequest{
+		WindowID:         strings.TrimSpace(windowID),
+		WindowScreenshot: append([]byte(nil), screenshot...),
+		TaskHint:         a11yChatGroundingTaskLocateConversation,
+		TargetText:       selector.Name,
+	}
+	if state != nil {
+		req.AppProfile = state.appProfile
+	}
+	result, used, err := t.groundA11yChat(ctx, req)
+	if err != nil || !used {
+		return a11yConversationVisualHit{}, false
+	}
+	hit, ok := resolveA11yConversationVisualHitFromGroundingCandidates(result.Candidates, selector.Name)
+	if !ok {
+		return a11yConversationVisualHit{}, false
+	}
+	if state != nil && strings.TrimSpace(state.groundingSource) == "" {
+		state.groundingSource = strings.TrimSpace(valueOrDefault(result.Source, "grounding_model"))
+	}
+	return hit, true
+}
+
+func resolveA11yConversationVisualHitFromGroundingCandidates(candidates []a11yChatGroundingCandidate, selectorName string) (a11yConversationVisualHit, bool) {
+	normalizedSelector := normalizeA11yTargetName(selectorName)
+	if normalizedSelector == "" || len(candidates) == 0 {
+		return a11yConversationVisualHit{}, false
+	}
+	terms := parseA11yTargetMatchTerms(selectorName)
+	best := a11yConversationVisualHit{}
+	bestScore := 0
+	tied := false
+	for _, candidate := range candidates {
+		score := a11yConversationGroundingCandidateScore(candidate, normalizedSelector, terms)
+		if score <= 0 {
+			continue
+		}
+		hit := a11yConversationVisualHit{
+			Point: a11yruntime.NormalizedPoint{
+				X: candidate.Bounds.X + candidate.Bounds.Width/2,
+				Y: candidate.Bounds.Y + candidate.Bounds.Height/2,
+			},
+			Confidence: candidate.Confidence,
+		}
+		switch {
+		case score > bestScore:
+			best = hit
+			bestScore = score
+			tied = false
+		case score == bestScore:
+			tied = true
+		}
+	}
+	if bestScore <= 0 || tied {
+		return a11yConversationVisualHit{}, false
+	}
+	return best, true
+}
+
+func a11yConversationGroundingCandidateScore(candidate a11yChatGroundingCandidate, normalizedSelector string, terms []string) int {
+	if !a11yConversationGroundingRoleAllowed(candidate.Role) {
+		return 0
+	}
+	if candidate.Confidence < a11yConversationVisualConfidenceThreshold {
+		return 0
+	}
+	if candidate.Bounds.Width <= 0 || candidate.Bounds.Height <= 0 {
+		return 0
+	}
+	if candidate.Bounds.X < 0 || candidate.Bounds.Y < 0 || candidate.Bounds.X+candidate.Bounds.Width > 1 || candidate.Bounds.Y+candidate.Bounds.Height > 1 {
+		return 0
+	}
+	score := 0
+	candidateName := normalizeA11yTargetName(candidate.Label)
+	switch {
+	case candidateName == normalizedSelector:
+		score += 200
+	default:
+		matchScore := a11yTargetNameMatchScore(candidate.Label, terms)
+		if matchScore <= 0 {
+			return 0
+		}
+		score += matchScore
+	}
+	switch normalizeA11yTargetRole(candidate.Role) {
+	case "conversation", "chat", "thread", "contact":
+		score += 50
+	case "list_item", "item", "option", "selectable":
+		score += 25
+	}
+	score += int(candidate.Confidence * 100)
+	return score
+}
+
+func a11yConversationGroundingRoleAllowed(role string) bool {
+	switch normalizeA11yTargetRole(role) {
+	case "conversation", "chat", "thread", "contact", "list_item", "item", "option", "selectable":
+		return true
+	default:
+		return false
+	}
 }
 
 func (t *A11yTool) tryTypeA11yConversationSearchQuery(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int) (string, bool, error) {
