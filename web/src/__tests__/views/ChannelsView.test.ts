@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount, shallowMount } from '@vue/test-utils'
 import { createI18n } from 'vue-i18n'
+import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 
 const settingsStoreMock = {
   backendSettings: {},
@@ -99,6 +100,8 @@ function createTestI18n() {
           subtitle: 'Connect external channels',
           enabledChannels: 'Enabled channels',
           connectedChannels: 'Connected channels',
+          partialLoadTitle: 'Channels did not fully load',
+          networkError: 'Network Error',
           statusConnected: 'Connected',
           statusConnecting: 'Connecting',
           statusError: 'Error',
@@ -228,6 +231,39 @@ describe('ChannelsView', () => {
     expect(wrapper.find('.channels-board__detail-empty').exists()).toBe(true)
     expect(wrapper.find('.channel-detail-stub').exists()).toBe(false)
     expect(wrapper.findAll('channel-card-stub').length).toBeGreaterThan(0)
+  })
+
+  it('localizes the partial-load banner title and exact network error description', async () => {
+    listChannelsMock.mockRejectedValueOnce(new Error('Network Error'))
+
+    const zhCNMessages = mergeHarnessLocale(
+      'zh-CN',
+      (await import('@/i18n/locales/zh-CN')).default as Record<string, unknown>
+    )
+    const i18n = createI18n({
+      legacy: false,
+      locale: 'zh-CN',
+      fallbackLocale: 'zh-CN',
+      missingWarn: false,
+      fallbackWarn: false,
+      messages: {
+        'zh-CN': zhCNMessages,
+      },
+    })
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+
+    const wrapper = shallowMount(ChannelsView, {
+      global: {
+        plugins: [i18n],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('频道未完全加载')
+    expect(wrapper.text()).toContain('网络错误')
+    expect(wrapper.text()).not.toContain('Channels did not fully load')
+    expect(wrapper.text()).not.toContain('Network Error')
   })
 
   it('renders group access as the fourth summary card and opens the modal', async () => {
