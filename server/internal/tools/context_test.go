@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/skill"
@@ -119,6 +120,66 @@ func TestFSRootOverrideContext(t *testing.T) {
 	}
 	if aliases["workspace"] == "" {
 		t.Fatalf("expected workspace alias, got %#v", aliases)
+	}
+}
+
+func TestWithMergedFSScope_PreservesRootOverrideForRelativeResolution(t *testing.T) {
+	workspaceRoot := t.TempDir()
+	whitelistRoot := t.TempDir()
+
+	ctx := WithFSRootOverride(context.Background(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot})
+	ctx = WithMergedFSScope(ctx, []string{whitelistRoot}, map[string]string{"tmp": whitelistRoot})
+
+	scope, ok := getFSScopeContext(ctx)
+	if !ok {
+		t.Fatal("expected fs scope context")
+	}
+	if !scope.replaceRoots {
+		t.Fatal("expected merged scope to preserve replaceRoots")
+	}
+	if len(scope.roots) != 2 {
+		t.Fatalf("roots len = %d, want 2", len(scope.roots))
+	}
+	if scope.roots[0] != filepath.Clean(workspaceRoot) {
+		t.Fatalf("primary root = %q, want %q", scope.roots[0], filepath.Clean(workspaceRoot))
+	}
+	if scope.roots[1] != filepath.Clean(whitelistRoot) {
+		t.Fatalf("secondary root = %q, want %q", scope.roots[1], filepath.Clean(whitelistRoot))
+	}
+	if got := scope.aliases["workspace"]; got != filepath.Clean(workspaceRoot) {
+		t.Fatalf("workspace alias = %q, want %q", got, filepath.Clean(workspaceRoot))
+	}
+	if got := scope.aliases["tmp"]; got != filepath.Clean(whitelistRoot) {
+		t.Fatalf("tmp alias = %q, want %q", got, filepath.Clean(whitelistRoot))
+	}
+
+	resolver := newFSToolScope(nil)
+	absPath, relPath, root, err := resolver.resolvePathWithContext(ctx, "file_write", "reports/out.pdf", false)
+	if err != nil {
+		t.Fatalf("resolve relative path: %v", err)
+	}
+	if want := filepath.Join(workspaceRoot, "reports", "out.pdf"); absPath != want {
+		t.Fatalf("absPath = %q, want %q", absPath, want)
+	}
+	if relPath != "reports/out.pdf" {
+		t.Fatalf("relPath = %q, want reports/out.pdf", relPath)
+	}
+	if root != filepath.Clean(workspaceRoot) {
+		t.Fatalf("root = %q, want %q", root, filepath.Clean(workspaceRoot))
+	}
+
+	aliasAbs, aliasRel, aliasRoot, err := resolver.resolvePathWithContext(ctx, "file_write", "@tmp/note.txt", false)
+	if err != nil {
+		t.Fatalf("resolve alias path: %v", err)
+	}
+	if want := filepath.Join(whitelistRoot, "note.txt"); aliasAbs != want {
+		t.Fatalf("alias absPath = %q, want %q", aliasAbs, want)
+	}
+	if aliasRel != "note.txt" {
+		t.Fatalf("alias relPath = %q, want note.txt", aliasRel)
+	}
+	if aliasRoot != filepath.Clean(whitelistRoot) {
+		t.Fatalf("alias root = %q, want %q", aliasRoot, filepath.Clean(whitelistRoot))
 	}
 }
 

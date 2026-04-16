@@ -118,6 +118,22 @@ func TestPDFToolInfoExecute(t *testing.T) {
 	}
 }
 
+func TestPDFToolDefinitionIncludesMarkdownAliases(t *testing.T) {
+	tool := NewPDFTool(nil)
+	def := tool.Definition()
+
+	properties, ok := def.Parameters["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("properties type = %T, want object", def.Parameters["properties"])
+	}
+
+	for _, key := range []string{"content", "markdown", "body", "text"} {
+		if _, ok := properties[key]; !ok {
+			t.Fatalf("expected pdf schema to expose %q", key)
+		}
+	}
+}
+
 func TestPDFToolFillInspectExecute(t *testing.T) {
 	path := writeTestPDF(t, "form.pdf", 256)
 	svc := &stubPDFService{

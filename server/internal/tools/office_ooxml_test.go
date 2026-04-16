@@ -212,6 +212,59 @@ func TestBuildOfficeArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildOfficeXLSXUsesExplicitLocaleForCoreProps(t *testing.T) {
+	xlsxData, _, err := buildOfficeXLSX(officeWorkbookSpec{
+		Title:    "Resumen trimestral",
+		Language: "es-ES",
+		Sheets: []officeSheetSpec{
+			{
+				Name: "Metricas",
+				Columns: []officeColumnSpec{
+					{Header: "Metrica", Key: "metric"},
+					{Header: "Valor", Key: "value"},
+				},
+				Rows: [][]interface{}{
+					{"Ingresos", "18%"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildOfficeXLSX failed: %v", err)
+	}
+
+	coreXML := officeZipEntryText(t, xlsxData, "docProps/core.xml")
+	if !containsSubstring(coreXML, `<dc:language>es-ES</dc:language>`) {
+		t.Fatalf("expected core.xml to contain es-ES language metadata, got %s", coreXML)
+	}
+}
+
+func TestBuildOfficeDOCXUsesExplicitLocaleForDefaultLanguageMetadata(t *testing.T) {
+	docxData, _, err := buildOfficeDOCX(officeDocSpec{
+		Title:    "Resumen trimestral",
+		Language: "es-ES",
+		Summary:  "Ingresos y adopcion crecieron con fuerza.",
+	})
+	if err != nil {
+		t.Fatalf("buildOfficeDOCX failed: %v", err)
+	}
+
+	stylesXML := officeZipEntryText(t, docxData, "word/styles.xml")
+	if !containsSubstring(stylesXML, `<w:lang w:val="es-ES" w:eastAsia="es-ES" w:bidi="es-ES"/>`) {
+		t.Fatalf("expected styles.xml to contain es-ES default language metadata, got %s", stylesXML)
+	}
+
+	settingsXML := officeZipEntryText(t, docxData, "word/settings.xml")
+	if !containsSubstring(settingsXML, `<w:themeFontLang w:val="es-ES" w:eastAsia="es-ES" w:bidi="es-ES"/>`) {
+		t.Fatalf("expected settings.xml to contain es-ES theme font language metadata, got %s", settingsXML)
+	}
+
+	coreXML := officeZipEntryText(t, docxData, "docProps/core.xml")
+	if !containsSubstring(coreXML, `<dc:language>es-ES</dc:language>`) {
+		t.Fatalf("expected core.xml to contain es-ES language metadata, got %s", coreXML)
+	}
+}
+
 func TestBuildOfficeDOCX_ConvertsInlineMarkdownToOfficeRuns(t *testing.T) {
 	docxData, _, err := buildOfficeDOCX(officeDocSpec{
 		Title:      "Quarterly Update",

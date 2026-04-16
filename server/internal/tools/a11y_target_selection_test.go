@@ -235,6 +235,54 @@ func TestExecuteA11yConversationSearchPlan_TypesQueryViaSearchFieldAction(t *tes
 	}
 }
 
+func TestResolveA11yConversationSearchResultTarget_UsesFullSnapshotLabelFallbackWhenInteractiveMisses(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+			RefMap: map[int]string{
+				1: "token-search",
+				2: "token-results",
+			},
+		},
+		snapshotResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [search_field] \"Orca\"\n@2 [static_text] \"Orca\"\n@3 [row]",
+			RefMap: map[int]string{
+				1: "token-search",
+				2: "token-label",
+				3: "token-orca-result",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	ref, refMap, windowID, err := tool.resolveA11yConversationSearchResultTarget(
+		context.Background(),
+		backend,
+		"win-feishu",
+		a11yTargetSelector{Name: "Orca", Role: "conversation"},
+		1,
+	)
+	if err != nil {
+		t.Fatalf("resolveA11yConversationSearchResultTarget() error = %v", err)
+	}
+	if ref != 3 {
+		t.Fatalf("ref = %d, want 3 from full snapshot label fallback", ref)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if got := refMap[3]; got != "token-orca-result" {
+		t.Fatalf("refMap[3] = %q, want token-orca-result", got)
+	}
+}
+
 func TestResolveA11yTargetRef_PrefersControlRolePriorityBeforeAmbiguity(t *testing.T) {
 	entries := parseA11ySnapshotEntries("@1 [row] \"Open Network\"\n@2 [button] \"Open Network\"")
 
@@ -2174,6 +2222,115 @@ func TestA11yToolExecute_ActionMessageAliasInvalidatesStaleConversationPointCach
 	}
 }
 
+func TestA11yToolExecute_ActionSelectAliasRecoversViaGroundingButtonConversationCandidate(t *testing.T) {
+	prevLocate := a11yLocateConversationVisualHitFromPNG
+	a11yLocateConversationVisualHitFromPNG = func(context.Context, []byte, string) (a11yConversationVisualHit, error) {
+		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", nil)
+	}
+	defer func() { a11yLocateConversationVisualHitFromPNG = prevLocate }()
+
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [document]\n@2 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-editor",
+				2: "token-send",
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{
+						Role:       "button",
+						Label:      "Echo",
+						Confidence: 0.98,
+						Bounds: a11yruntime.NormalizedRect{
+							X:      0.22,
+							Y:      0.18,
+							Width:  0.24,
+							Height: 0.08,
+						},
+					},
+				},
+			},
+		},
+	})
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Echo",
+	})
+	if err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if len(backend.pointClickHistory) != 1 {
+		t.Fatalf("pointClickHistory = %#v, want one grounding-driven point click", backend.pointClickHistory)
+	}
+	if len(backend.keyHistory) == 0 {
+		t.Fatalf("keyHistory = %#v, want structured search fallback attempts before grounding recovery", backend.keyHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "ok" {
+		t.Fatalf("message = %v, want ok", out["message"])
+	}
+	if out["grounding_source"] != "vision_model" {
+		t.Fatalf("grounding_source = %v, want vision_model", out["grounding_source"])
+	}
+	stages, ok := out["task_stages"].([]interface{})
+	if !ok || len(stages) == 0 {
+		t.Fatalf("task_stages = %#v, want non-empty stage trace", out["task_stages"])
+	}
+	confirmed := false
+	for _, rawStage := range stages {
+		stage, _ := rawStage.(map[string]interface{})
+		if stage["stage"] == "confirm_conversation" && stage["status"] == "ok" {
+			confirmed = true
+			break
+		}
+	}
+	if !confirmed {
+		t.Fatalf("task_stages = %#v, want confirm_conversation ok entry", out["task_stages"])
+	}
+}
+
 func TestA11yToolExecute_ActionMessageAliasFailsClosedWhenConversationVisualFallbackIsAmbiguous(t *testing.T) {
 	prevLocate := a11yLocateConversationVisualHit
 	a11yLocateConversationVisualHit = func(context.Context, string, string) (a11yConversationVisualHit, error) {
@@ -2327,6 +2484,289 @@ func TestA11yToolExecute_ActionMessageAliasConversationVisualFastPathOnlyRunsOnD
 	}
 	if out["original_error_code"] != "target_not_found" {
 		t.Fatalf("original_error_code = %v, want target_not_found", out["original_error_code"])
+	}
+}
+
+func TestA11yToolExecute_SelectConversationPrefersVisualFallbackWhenMemoryRemembersVisualStrategy(t *testing.T) {
+	backend := &a11yCompatBackend{
+		hostOS: "darwin",
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-results",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-results",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-results",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-results",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-results",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-results",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{
+						Role:       "conversation",
+						Label:      "Orca",
+						Confidence: 0.98,
+						Bounds: a11yruntime.NormalizedRect{
+							X:      0.12,
+							Y:      0.22,
+							Width:  0.25,
+							Height: 0.08,
+						},
+						RationaleTags: []string{"current", "selected"},
+					},
+				},
+			},
+		},
+	})
+	tool.chatMemory.Remember("darwin", "feishu_lark", "select", string(a11yChatStageLocateConversation), "visual_sidebar_hit")
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+	})
+	if err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 0 {
+		t.Fatalf("keyHistory = %#v, want no keyboard-search fallback before remembered visual path", backend.keyHistory)
+	}
+	if len(backend.pointClickHistory) != 1 {
+		t.Fatalf("pointClickHistory = %#v, want single visual point click", backend.pointClickHistory)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no search typing or body typing in select flow", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["stage"] != "locate_conversation" {
+		t.Fatalf("stage = %v, want locate_conversation after remembered visual fallback success", out["stage"])
+	}
+}
+
+func TestA11yToolExecute_SelectConversationContinuesToKeyboardSearchAfterStaleVisualCacheMiss(t *testing.T) {
+	prevSettle := a11yMessageConversationSettleDelay
+	a11yMessageConversationSettleDelay = 0
+	defer func() {
+		a11yMessageConversationSettleDelay = prevSettle
+	}()
+
+	args := map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+	}
+	backend := &a11yCompatBackend{
+		hostOS: "darwin",
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-orca",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-grounding"),
+		pointClickErr: a11yruntime.NewError("confirmation_failed", "cached point no longer maps to the conversation", nil),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	cacheKey := tool.a11yConversationClickCacheKeyForArgs(args, a11yTargetSelector{Name: "Orca", Role: "conversation"}, "win-feishu")
+	tool.a11yConversationClickCacheSet(cacheKey, a11yConversationClickPoint{X: 0.20, Y: 0.30})
+
+	raw, err := tool.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if len(backend.pointClickHistory) != 1 {
+		t.Fatalf("pointClickHistory = %#v, want one stale cached click attempt", backend.pointClickHistory)
+	}
+	if len(backend.keyHistory) == 0 {
+		t.Fatalf("keyHistory = %#v, want keyboard-search fallback after stale visual cache miss", backend.keyHistory)
+	}
+	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "type" || backend.actTypeHistory[1] != "click" {
+		t.Fatalf("actTypeHistory = %#v, want [type click] after keyboard-search recovery", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after keyboard-search recovery", out["error_code"])
 	}
 }
 
@@ -3683,6 +4123,188 @@ func TestConfirmA11yMessageConversationActivated_WaitsForTransientVisualConversa
 	}
 	if locateConversationCalls < 2 {
 		t.Fatalf("grounder.calls = %#v, want repeated locate_conversation grounding attempts", grounder.calls)
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_UsesGroundingToOverrideStaleSearchField(t *testing.T) {
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yMessageConversationConfirmationPollInterval
+	a11yMessageConversationConfirmationTimeout = 0
+	a11yMessageConversationConfirmationPollInterval = time.Millisecond
+	defer func() {
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yMessageConversationConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [document] \"Type a message\"\n@3 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-search", 2: "token-editor", 3: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "conversation", Label: "Orca", Confidence: 0.98},
+				},
+			},
+		},
+	})
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_DoesNotOverrideStaleSearchFieldForMismatchedGroundingCandidate(t *testing.T) {
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yMessageConversationConfirmationPollInterval
+	a11yMessageConversationConfirmationTimeout = 0
+	a11yMessageConversationConfirmationPollInterval = time.Millisecond
+	defer func() {
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yMessageConversationConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [document] \"Type a message\"\n@3 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-search", 2: "token-editor", 3: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "conversation", Label: "Team Ops", Confidence: 0.98},
+				},
+			},
+		},
+	})
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	_, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err == nil {
+		t.Fatal("confirmA11yMessageConversationActivated() error = nil, want confirmation_failed")
+	}
+	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+	if !ok {
+		t.Fatalf("error type = %T, want *RuntimeError", err)
+	}
+	if runtimeErr.Code != "confirmation_failed" {
+		t.Fatalf("code = %q, want confirmation_failed", runtimeErr.Code)
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_UsesActiveGroundingRationaleTagToBreakConfirmationTie(t *testing.T) {
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yMessageConversationConfirmationPollInterval
+	a11yMessageConversationConfirmationTimeout = 0
+	a11yMessageConversationConfirmationPollInterval = time.Millisecond
+	defer func() {
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yMessageConversationConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [document] \"Type a message\"\n@3 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-search", 2: "token-editor", 3: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "conversation", Label: "Orca", Confidence: 0.98},
+					{Role: "conversation", Label: "Orca", Confidence: 0.98, RationaleTags: []string{"current", "selected"}},
+				},
+			},
+		},
+	})
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_DoesNotRetryWhenSearchFieldAndConfirmedConversationAreBothGrounded(t *testing.T) {
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yMessageConversationConfirmationPollInterval
+	a11yMessageConversationConfirmationTimeout = 0
+	a11yMessageConversationConfirmationPollInterval = time.Millisecond
+	defer func() {
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yMessageConversationConfirmationPollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [document] \"Type a message\"\n@3 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-search", 2: "token-editor", 3: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "search_field", Label: "Search", Confidence: 0.99, RationaleTags: []string{"search_field"}},
+					{Role: "conversation", Label: "Orca", Confidence: 0.98, RationaleTags: []string{"current", "selected"}},
+				},
+			},
+		},
+	})
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
 	}
 }
 

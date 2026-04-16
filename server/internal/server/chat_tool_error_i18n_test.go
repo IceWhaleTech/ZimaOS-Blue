@@ -80,6 +80,12 @@ func TestLocalizeToolExecutionErrorMessage(t *testing.T) {
 			want: i18n.T(i18n.LangZhCN, i18n.MsgNavigationFailed, "net::ERR_NAME_NOT_RESOLVED"),
 		},
 		{
+			name: "native document verification failed translated",
+			lang: i18n.LangZhCN,
+			raw:  "native document output verification failed",
+			want: i18n.T(i18n.LangZhCN, i18n.MsgNativeDocumentOutputVerificationFailed),
+		},
+		{
 			name: "unknown error unchanged",
 			lang: i18n.LangZhCN,
 			raw:  "some custom error",

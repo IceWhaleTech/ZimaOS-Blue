@@ -20,6 +20,7 @@ type OfficeTool struct {
 type officeWorkbookSpec struct {
 	Title    string
 	Subtitle string
+	Language string
 	Theme    officeTheme
 	Stats    []officeStat
 	Notes    []string
@@ -430,6 +431,7 @@ func parseOfficeWorkbookSpec(args map[string]interface{}, title, subtitle string
 	spec := officeWorkbookSpec{
 		Title:    title,
 		Subtitle: subtitle,
+		Language: strings.TrimSpace(firstCompatString(args, "lang", "language", "locale")),
 		Theme:    theme,
 		Notes:    officeStringSliceArg(args, "notes"),
 	}

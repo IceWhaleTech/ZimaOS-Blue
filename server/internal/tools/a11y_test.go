@@ -1998,13 +1998,25 @@ func TestA11yToolExecute_ActionSelectActivatesAppWhenWindowIsNotYetVisible(t *te
 				{ID: "win-feishu", Title: "Lark - Orca", AppName: "Lark", Focused: true},
 			},
 		},
-		interactiveResult: a11yruntime.SnapshotResult{
-			HostOS:   "darwin",
-			WindowID: "win-feishu",
-			Title:    "Lark - Orca",
-			Tree:     "@1 [list_item] \"Orca\"",
-			RefMap: map[int]string{
-				1: "token-orca-conversation",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Lark - Orca",
+				Tree:     "@1 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Lark - Orca",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
 			},
 		},
 	}
@@ -2037,13 +2049,25 @@ func TestA11yToolExecute_ActionSelectUsesAllWindowsFallbackWhenWindowIsOnAnother
 		allWindows: []a11yruntime.WindowInfo{
 			{ID: "win-feishu", Title: "飞书", AppName: "飞书"},
 		},
-		interactiveResult: a11yruntime.SnapshotResult{
-			HostOS:   "darwin",
-			WindowID: "win-feishu",
-			Title:    "飞书",
-			Tree:     "@1 [list_item] \"Orca\"",
-			RefMap: map[int]string{
-				1: "token-orca-conversation",
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "飞书",
+				Tree:     "@1 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "飞书",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
 			},
 		},
 	}

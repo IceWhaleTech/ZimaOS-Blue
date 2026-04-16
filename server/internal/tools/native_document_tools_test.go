@@ -4864,6 +4864,85 @@ func TestPDFToolCreate(t *testing.T) {
 	}
 }
 
+func TestPDFToolCreate_UsesMarkdownAlias(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPDFTool(nil)
+	tool.scope = newFSToolScope([]string{tmpDir})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "reports/markdown_alias.pdf",
+		"markdown": `# Product Update
+
+## Highlights
+
+- Direct markdown input should render without a temp markdown file.
+- Invalid outputs should fail loudly instead of reporting success.
+
+Prepared for the native PDF path.`,
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["engine"]; got != "native_pdf_ir" {
+		t.Fatalf("engine = %v, want native_pdf_ir", got)
+	}
+	if got := payload["path"]; got != "reports/markdown_alias.pdf" {
+		t.Fatalf("path = %v, want reports/markdown_alias.pdf", got)
+	}
+	validation, ok := payload["validation"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected validation payload, got %#v", payload["validation"])
+	}
+	if got := asNativeToolInt(t, validation["page_count"]); got < 1 {
+		t.Fatalf("page_count = %d, want >= 1", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "markdown_alias.pdf")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if len(data) == 0 || string(data[:5]) != "%PDF-" {
+		t.Fatalf("unexpected PDF header: %q", string(data))
+	}
+	text := string(data)
+	for _, needle := range []string{
+		"Product Update",
+		"Highlights",
+		"Direct markdown input should render without a temp markdown file.",
+		"Invalid outputs should fail loudly instead of reporting success.",
+		"Prepared for the native PDF path.",
+	} {
+		if !containsSubstring(text, needle) {
+			t.Fatalf("expected generated PDF bytes to contain %q", needle)
+		}
+	}
+}
+
+func TestExecuteCreateLikeDocumentWrite_RejectsInvalidPDFBytes(t *testing.T) {
+	tmpDir := t.TempDir()
+	scope := newFSToolScope([]string{tmpDir})
+
+	_, _, err := executeCreateLikeDocumentWrite(
+		context.Background(),
+		"pdf",
+		scope,
+		"reports/invalid.pdf",
+		true,
+		[]byte("not a pdf"),
+	)
+	if err == nil {
+		t.Fatal("expected invalid pdf bytes to fail validation")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(tmpDir, "reports", "invalid.pdf")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected invalid pdf output to be removed, stat err=%v", statErr)
+	}
+}
+
 func TestPDFToolReformat(t *testing.T) {
 	tmpDir := t.TempDir()
 	sourcePath := filepath.Join(tmpDir, "source.pdf")
@@ -5126,6 +5205,72 @@ func TestPPTXToolCreate_UsesExplicitThemeMetadataAndThemeXML(t *testing.T) {
 	} {
 		if containsSubstring(slideXML, unwanted) {
 			t.Fatalf("expected slide3.xml to avoid layered theme patch %q, got %s", unwanted, slideXML)
+		}
+	}
+}
+
+func TestPPTXToolCreate_UsesEditorialThemeMetadataAndThemeXML(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "decks/editorial_signal.pptx",
+		"theme":    "editorial",
+		"title":    "Signal Systems",
+		"subtitle": "High-Contrast Story Deck",
+		"sections": []interface{}{map[string]interface{}{"heading": "Core Frames", "paragraphs": []interface{}{"Bold typographic pacing", "High-contrast editorial rhythm"}}},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "editorial" {
+		t.Fatalf("theme = %v, want editorial", got)
+	}
+	preview, ok := payload["theme_preview"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("theme_preview = %#v, want object", payload["theme_preview"])
+	}
+	if got := preview["mood"]; got != "bold" {
+		t.Fatalf("theme_preview.mood = %v, want bold", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "editorial_signal.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	themeXML := officeZipEntryText(t, data, "ppt/theme/theme1.xml")
+	for _, needle := range []string{
+		`name="Editorial Theme"`,
+		`val="0A0D14"`,
+		`val="FFB700"`,
+		`val="00E5FF"`,
+		`typeface="Arial Black"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
+	} {
+		if !containsSubstring(themeXML, needle) {
+			t.Fatalf("expected theme1.xml to include %q, got %s", needle, themeXML)
+		}
+	}
+
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`name="Theme Background"`,
+		`name="Theme Canvas"`,
+		`name="Theme Header Rule"`,
+		`typeface="Arial Black"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
+		`val="11131A"`,
+		`val="727A8F"`,
+		`val="FFB700"`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
 		}
 	}
 }

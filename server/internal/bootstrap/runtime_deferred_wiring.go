@@ -10,7 +10,7 @@ func bindDeferredRuntimeWiring(ctx context.Context, wiring runtimeDeferredWiring
 		wiring.smallRuntime,
 		wiring.chatSmallModel,
 		wiring.auxiliarySmallModel,
-		wiring.imageSmallModel,
+		nil,
 		wiring.analyzeSmallModel,
 		wiring.smallModelStats,
 	)

@@ -1017,6 +1017,24 @@ func TestCollectWorkspaceArtifactEvidence_PrefersStructuredPDFMarkdownAndLayout(
 	}
 }
 
+func TestCollectWorkspaceArtifactEvidence_IgnoresFailedPDFPayloads(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "pdf"},
+	}
+	toolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"error":"Generated document output could not be verified","path":"reports/failed.pdf","text":"stale success text that must be ignored","markdown":"# ignored"}`,
+		},
+	}
+
+	evidence := collectWorkspaceArtifactEvidence(toolCalls, toolResults)
+	if len(evidence) != 0 {
+		t.Fatalf("expected failed pdf payload to be ignored, got=%q", strings.Join(evidence, "\n\n"))
+	}
+}
+
 func TestScoreWorkspaceQuestionEvidence_PrefersExactAPIPhrase(t *testing.T) {
 	question := "What type of API does the OpenClaw gateway expose?"
 	generic := "The system exposes an API and several clients."

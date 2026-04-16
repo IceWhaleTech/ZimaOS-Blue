@@ -446,6 +446,13 @@ func a11yFirstNonEmptyString(values ...interface{}) string {
 	return ""
 }
 
+func a11yChatHasPositiveSendVerificationCue(verification map[string]interface{}) bool {
+	if len(verification) == 0 {
+		return false
+	}
+	return compatBoolValue(verification["composer_cleared"], false)
+}
+
 func a11yMaybeWriteChatArtifact(ctx context.Context, state *a11yChatExecutionState, stage a11yChatStage, label string, data []byte) {
 	if state == nil || len(data) == 0 {
 		return
@@ -818,6 +825,13 @@ func (t *A11yTool) verifyA11yChatOutcome(ctx context.Context, backend a11yruntim
 							"verification":     verification,
 						})
 					}
+				} else if !a11yChatHasPositiveSendVerificationCue(verification) {
+					a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusTerminalFailure, "visual_verification", source, "send_not_verified", verification)
+					return a11yruntime.NewError("confirmation_failed", "send outcome could not be verified", map[string]interface{}{
+						"phase":            "submit",
+						"grounding_source": source,
+						"verification":     verification,
+					})
 				}
 			}
 			if _, ok := verification["status"]; !ok {

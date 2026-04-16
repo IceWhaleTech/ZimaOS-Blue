@@ -293,6 +293,153 @@ func TestA11yToolExecute_MessageAcceptsAppAwareDeliveredSendVerificationStatus(t
 	}
 }
 
+func TestA11yToolExecute_MessageAcceptsComposerClearedSendVerificationCue(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("verify-send-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateComposer): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "composer", Label: "Message", Confidence: 0.98},
+				},
+			},
+			string(a11yChatGroundingTaskVerifySend): {
+				Source: "vision_model",
+				Verification: map[string]interface{}{
+					"composer_cleared": true,
+				},
+			},
+		},
+	})
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != nil {
+		t.Fatalf("failure_code = %v, want nil", out["failure_code"])
+	}
+	verification, ok := out["verification"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("verification = %#v, want object", out["verification"])
+	}
+	if verification["composer_cleared"] != true {
+		t.Fatalf("verification.composer_cleared = %#v, want true", verification["composer_cleared"])
+	}
+	if verification["status"] != "sent" {
+		t.Fatalf("verification.status = %v, want sent default after positive cue", verification["status"])
+	}
+}
+
+func TestA11yToolExecute_MessageFailsClosedWhenSendVerificationHasNoPositiveCue(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("verify-send-grounding"),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.SetChatGrounder(&a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateComposer): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "composer", Label: "Message", Confidence: 0.98},
+				},
+			},
+			string(a11yChatGroundingTaskVerifySend): {
+				Source:       "vision_model",
+				Verification: map[string]interface{}{},
+			},
+		},
+	})
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != "send_not_verified" {
+		t.Fatalf("failure_code = %v, want send_not_verified", out["failure_code"])
+	}
+	if out["phase"] != "submit" {
+		t.Fatalf("phase = %v, want submit", out["phase"])
+	}
+}
+
 func TestA11yToolExecute_MessageFailsClosedWhenGrounderRejectsComposer(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{

@@ -86,16 +86,26 @@ func officePackageRelsXML(mainTarget string) string {
 }
 
 func officeCorePropsXML(title, subject string) string {
+	return officeCorePropsXMLWithLanguage(title, subject, "")
+}
+
+func officeCorePropsXMLWithLanguage(title, subject, language string) string {
 	now := officeNowISO()
 	title = strings.TrimSpace(title)
 	subject = strings.TrimSpace(subject)
+	language = strings.TrimSpace(language)
+	languageXML := ""
+	if language != "" {
+		languageXML = "\n  <dc:language>" + officeXMLText(language) + "</dc:language>"
+	}
 	return fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>%s</dc:title>
   <dc:subject>%s</dc:subject>
+%s
   <dc:creator>ZimaOS Blue</dc:creator>
   <cp:lastModifiedBy>ZimaOS Blue</cp:lastModifiedBy>
   <dcterms:created xsi:type="dcterms:W3CDTF">%s</dcterms:created>
   <dcterms:modified xsi:type="dcterms:W3CDTF">%s</dcterms:modified>
-</cp:coreProperties>`, officeXMLText(title), officeXMLText(subject), now, now)
+</cp:coreProperties>`, officeXMLText(title), officeXMLText(subject), languageXML, now, now)
 }

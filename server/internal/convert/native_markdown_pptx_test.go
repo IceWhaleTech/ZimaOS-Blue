@@ -74,6 +74,47 @@ func TestBuildNativeMarkdownPPTX_AppliesThemeFromStyleHint(t *testing.T) {
 	}
 }
 
+func TestBuildNativeMarkdownPPTX_AppliesEditorialThemeFromStyleHint(t *testing.T) {
+	data, err := buildNativeMarkdownPPTXWithOptions([]nativeMarkdownPPTXSlide{{
+		Title: "Signal Systems",
+		Lines: []string{"Editorial layout", "High-contrast narrative"},
+	}}, PresentationOptions{
+		StyleHint: "editorial poster manifesto",
+	})
+	if err != nil {
+		t.Fatalf("buildNativeMarkdownPPTXWithOptions failed: %v", err)
+	}
+
+	themeXML := nativeMarkdownPPTXZipEntryText(t, data, "ppt/theme/theme1.xml")
+	for _, needle := range []string{
+		`name="Editorial Theme"`,
+		`val="0A0D14"`,
+		`val="FFB700"`,
+		`val="00E5FF"`,
+		`typeface="Arial Black"`,
+		`typeface="Helvetica"`,
+	} {
+		if !strings.Contains(themeXML, needle) {
+			t.Fatalf("expected theme1.xml to include %q, got %s", needle, themeXML)
+		}
+	}
+
+	slideXML := nativeMarkdownPPTXZipEntryText(t, data, "ppt/slides/slide1.xml")
+	for _, needle := range []string{
+		`name="Background"`,
+		`name="Band"`,
+		`name="Accent"`,
+		`val="F5F6F8"`,
+		`val="FFB700"`,
+		`typeface="Arial Black"`,
+		`typeface="Helvetica"`,
+	} {
+		if !strings.Contains(slideXML, needle) {
+			t.Fatalf("expected slide1.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+}
+
 func nativeMarkdownPPTXZipEntryText(t *testing.T, data []byte, name string) string {
 	t.Helper()
 

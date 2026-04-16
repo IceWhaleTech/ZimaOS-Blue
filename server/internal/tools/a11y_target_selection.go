@@ -1068,7 +1068,28 @@ func (t *A11yTool) tryA11yConversationFallbackChain(ctx context.Context, backend
 	}
 	if hadCache {
 		if fastWindow, fastErr, handled := t.tryA11yConversationVisualSearchFallback(ctx, backend, args, windowID, selector, holdMS); handled {
-			return fastWindow, fastErr, true
+			if fastErr == nil {
+				return fastWindow, nil, true
+			}
+			if !a11yCanContinueConversationFallbackAfterVisualMiss(fastErr) {
+				return "", fastErr, true
+			}
+		}
+	}
+	preferVisual := false
+	if state := getA11yChatExecutionState(ctx); state != nil {
+		if memory := t.a11yChatMemory(); memory != nil {
+			preferVisual = a11yLocateConversationStrategyPrefersVisual(memory.strategyFor(state.platform, state.appProfile, state.intent, string(a11yChatStageLocateConversation)))
+		}
+	}
+	if preferVisual {
+		if fastWindow, fastErr, handled := t.tryA11yConversationVisualFastPath(ctx, backend, args, windowID, selector, holdMS); handled {
+			if fastErr == nil {
+				return fastWindow, nil, true
+			}
+			if !a11yCanContinueConversationFallbackAfterVisualMiss(fastErr) {
+				return "", fastErr, true
+			}
 		}
 	}
 	if fastWindow, fastErr, handled := t.tryA11yConversationSearchFallback(ctx, backend, args, windowID, selector, holdMS, originalErr); handled {
@@ -1083,6 +1104,26 @@ func (t *A11yTool) tryA11yConversationFallbackChain(ctx context.Context, backend
 		return fastWindow, fastErr, true
 	}
 	return "", nil, false
+}
+
+func a11yLocateConversationStrategyPrefersVisual(strategy string) bool {
+	switch strings.TrimSpace(strings.ToLower(strategy)) {
+	case "visual_cache_hit", "visual_sidebar_hit", "visual_search":
+		return true
+	default:
+		return false
+	}
+}
+
+func a11yCanContinueConversationFallbackAfterVisualMiss(err error) bool {
+	if err == nil {
+		return false
+	}
+	runtimeErr, ok := err.(*a11yruntime.RuntimeError)
+	if !ok {
+		return false
+	}
+	return runtimeErr.Code == "fallback_exhausted" || runtimeErr.Code == "target_not_found"
 }
 
 func a11yShouldContinueConversationFallbackToVisual(backend a11yruntime.Backend, args map[string]interface{}, selector a11yTargetSelector, err error) bool {
@@ -1490,18 +1531,94 @@ func a11yConversationGroundingCandidateScore(candidate a11yChatGroundingCandidat
 		score += 50
 	case "list_item", "item", "option", "selectable":
 		score += 25
+	case "button", "push_button":
+		score += 15
+	case "link":
+		score += 10
 	}
+	score += a11yConversationGroundingRationaleBonus(candidate.RationaleTags)
 	score += int(candidate.Confidence * 100)
 	return score
 }
 
 func a11yConversationGroundingRoleAllowed(role string) bool {
 	switch normalizeA11yTargetRole(role) {
-	case "conversation", "chat", "thread", "contact", "list_item", "item", "option", "selectable":
+	case "conversation", "chat", "thread", "contact", "list_item", "item", "option", "selectable", "button", "push_button", "link":
 		return true
 	default:
 		return false
 	}
+}
+
+func a11yConversationGroundingConfirmsTarget(candidates []a11yChatGroundingCandidate, selectorName string) bool {
+	normalizedSelector := normalizeA11yTargetName(selectorName)
+	if normalizedSelector == "" || len(candidates) == 0 {
+		return false
+	}
+	terms := parseA11yTargetMatchTerms(selectorName)
+	bestScore := 0
+	tied := false
+	for _, candidate := range candidates {
+		score := a11yConversationGroundingConfirmationScore(candidate, normalizedSelector, terms)
+		if score <= 0 {
+			continue
+		}
+		switch {
+		case score > bestScore:
+			bestScore = score
+			tied = false
+		case score == bestScore:
+			tied = true
+		}
+	}
+	return bestScore > 0 && !tied
+}
+
+func a11yConversationGroundingConfirmationScore(candidate a11yChatGroundingCandidate, normalizedSelector string, terms []string) int {
+	if !a11yConversationGroundingRoleAllowed(candidate.Role) {
+		return 0
+	}
+	if candidate.Confidence < a11yConversationVisualConfidenceThreshold {
+		return 0
+	}
+	score := 0
+	candidateName := normalizeA11yTargetName(candidate.Label)
+	switch {
+	case candidateName == normalizedSelector:
+		score += 200
+	default:
+		matchScore := a11yTargetNameMatchScore(candidate.Label, terms)
+		if matchScore <= 0 {
+			return 0
+		}
+		score += matchScore
+	}
+	switch normalizeA11yTargetRole(candidate.Role) {
+	case "conversation", "chat", "thread", "contact":
+		score += 50
+	case "list_item", "item", "option", "selectable":
+		score += 25
+	case "button", "push_button":
+		score += 15
+	case "link":
+		score += 10
+	}
+	score += a11yConversationGroundingRationaleBonus(candidate.RationaleTags)
+	score += int(candidate.Confidence * 100)
+	return score
+}
+
+func a11yConversationGroundingRationaleBonus(tags []string) int {
+	bonus := 0
+	for _, tag := range tags {
+		switch strings.ReplaceAll(strings.ReplaceAll(strings.ToLower(strings.TrimSpace(tag)), "-", "_"), " ", "_") {
+		case "active", "current", "selected":
+			bonus += 30
+		case "focused":
+			bonus += 20
+		}
+	}
+	return bonus
 }
 
 func (t *A11yTool) tryTypeA11yConversationSearchQuery(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, holdMS int) (string, bool, error) {
@@ -1559,6 +1676,16 @@ func (t *A11yTool) resolveA11yConversationSearchResultTarget(ctx context.Context
 				lastErr = resolveErr
 			}
 		}
+		if fallbackRef, fallbackRefMap, fallbackWindow, fallbackErr, ok := t.resolveA11yConversationSearchResultFromFullSnapshot(ctx, backend, resolvedWindow, candidates, lastErr); ok {
+			if fallbackErr == nil {
+				return fallbackRef, fallbackRefMap, fallbackWindow, nil
+			}
+			resolvedWindow = strings.TrimSpace(valueOrDefault(fallbackWindow, resolvedWindow))
+			if !a11yIsTargetNotFound(fallbackErr) {
+				return 0, nil, resolvedWindow, fallbackErr
+			}
+			lastErr = fallbackErr
+		}
 		if !a11ySnapshotHasConversationSearch(entries) {
 			return 0, nil, resolvedWindow, lastErr
 		}
@@ -1570,6 +1697,42 @@ func (t *A11yTool) resolveA11yConversationSearchResultTarget(ctx context.Context
 		}
 	}
 	return 0, nil, resolvedWindow, lastErr
+}
+
+func (t *A11yTool) resolveA11yConversationSearchResultFromFullSnapshot(ctx context.Context, backend a11yruntime.Backend, windowID string, candidates []a11yTargetSelector, originalErr error) (int, map[int]string, string, error, bool) {
+	if len(candidates) == 0 {
+		return 0, nil, strings.TrimSpace(windowID), nil, false
+	}
+	eligible := make([]a11yTargetSelector, 0, len(candidates))
+	for _, candidate := range candidates {
+		if a11yAllowsFullSnapshotLabelFallback(candidate, originalErr) {
+			eligible = append(eligible, candidate)
+		}
+	}
+	if len(eligible) == 0 {
+		return 0, nil, strings.TrimSpace(windowID), nil, false
+	}
+	result, err := backend.Snapshot(ctx, windowID)
+	if err != nil {
+		return 0, nil, strings.TrimSpace(windowID), nil, false
+	}
+	resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
+	t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
+	lines := parseA11ySnapshotLines(result.Tree)
+	lastErr := originalErr
+	for idx, candidate := range eligible {
+		ref, resolveErr := resolveA11yLabelAnchoredTargetRef(lines, candidate)
+		if resolveErr == nil {
+			return ref, cloneA11yRefMap(result.RefMap), resolvedWindow, nil, true
+		}
+		if !a11yIsTargetNotFound(resolveErr) {
+			return 0, nil, resolvedWindow, resolveErr, true
+		}
+		if idx == 0 {
+			lastErr = resolveErr
+		}
+	}
+	return 0, nil, resolvedWindow, lastErr, true
 }
 
 func (t *A11yTool) resolveA11yConversationSearchField(ctx context.Context, backend a11yruntime.Backend, windowID string) (int, map[int]string, string, error) {
@@ -1760,7 +1923,7 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 		entries := parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
 		pendingSearch := a11ySnapshotHasPendingConversationSearch(entries, selector.Name)
 		composerReady := a11ySnapshotHasComposer(entries)
-		if !pendingSearch && composerReady {
+		if composerReady {
 			if groundingSource, verification, grounded, retryable, groundErr := t.confirmA11yConversationWithGrounding(ctx, backend, resolvedWindow, selector); groundErr != nil {
 				return "", groundErr
 			} else if retryable {
@@ -1782,14 +1945,28 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 					return "", err
 				}
 				continue
-			} else if state != nil {
-				if grounded {
+			} else if grounded {
+				if pendingSearch && !compatBoolValue(verification["conversation_confirmed"], false) {
+					if state != nil {
+						a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusTerminalFailure, "visual_grounding_check", groundingSource, "search_box_still_active", verification)
+					}
+					return "", a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", map[string]interface{}{
+						"confirmation":            "composer_not_ready",
+						"search_box_still_active": true,
+						"grounding_source":        groundingSource,
+						"verification":            verification,
+					})
+				}
+				if state != nil {
 					a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusOK, "visual_grounding_check", groundingSource, "", verification)
-				} else {
+				}
+				return resolvedWindow, nil
+			} else if !pendingSearch {
+				if state != nil {
 					a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusOK, "post_click_confirmation", "", "", nil)
 				}
+				return resolvedWindow, nil
 			}
-			return resolvedWindow, nil
 		}
 		if pendingSearch && composerReady {
 			if state != nil {
@@ -1871,6 +2048,10 @@ func (t *A11yTool) confirmA11yConversationWithGrounding(ctx context.Context, bac
 	if reason := strings.TrimSpace(a11yFirstNonEmptyString(groundingResult.Verification["reason"])); strings.Contains(reason, "search_field") {
 		searchFieldDetected = true
 	}
+	if a11yConversationGroundingConfirmsTarget(groundingResult.Candidates, selector.Name) {
+		verification["conversation_confirmed"] = true
+	}
+	conversationConfirmed := compatBoolValue(verification["conversation_confirmed"], false)
 	if explicitReject {
 		details := map[string]interface{}{
 			"grounding_source": source,
@@ -1891,7 +2072,7 @@ func (t *A11yTool) confirmA11yConversationWithGrounding(ctx context.Context, bac
 		}
 		return source, verification, true, false, a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", details)
 	}
-	if searchFieldDetected {
+	if searchFieldDetected && !conversationConfirmed {
 		return source, verification, true, true, nil
 	}
 	return source, verification, true, false, nil

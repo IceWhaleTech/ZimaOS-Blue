@@ -8384,12 +8384,19 @@ func TestChatHandlerSendMessage_ShortQARoutesToSmallModel(t *testing.T) {
 	}
 }
 
-func TestChatHandlerSendMessage_ShortQAWithImageAttachmentRoutesToSmallModel(t *testing.T) {
+func TestChatHandlerSendMessage_ShortQAWithImageAttachmentStaysOnMainModelPath(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
 
 	conv, _ := store.CreateConversation(context.Background(), "Short QA Image")
 	registry := llm.NewProviderRegistry()
+	mockProvider := llm.NewMockProvider()
+	mockProvider.SetResponse(llm.ChatResponse{
+		ID:      "resp-image-main-model",
+		Model:   "mock-model",
+		Message: llm.Message{Role: llm.RoleAssistant, Content: "main model image answer"},
+	})
+	registry.Register(mockProvider)
 	handler := NewChatHandler(store, registry, tools.NewRegistry())
 	settings := NewSettingsHandler(kvstore.NewMemoryStore())
 	enabled := true
@@ -8406,7 +8413,7 @@ func TestChatHandlerSendMessage_ShortQAWithImageAttachmentRoutesToSmallModel(t *
 	reqBody := `{
 		"message":"这张图里有什么？",
 		"provider":"",
-		"model":"",
+		"model":"mock-model",
 		"attachments":[
 			{
 				"type":"image",
@@ -8429,28 +8436,19 @@ func TestChatHandlerSendMessage_ShortQAWithImageAttachmentRoutesToSmallModel(t *
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
 	}
-	if sm.calls == 0 {
-		t.Fatal("expected small model runtime to be called")
-	}
-	if len(sm.lastReq.Images) != 1 {
-		t.Fatalf("small model images = %d, want 1", len(sm.lastReq.Images))
-	}
-	if sm.lastReq.Images[0].MimeType != "image/png" {
-		t.Fatalf("image mime_type = %q, want image/png", sm.lastReq.Images[0].MimeType)
-	}
-	if sm.lastReq.Images[0].Data != "aGVsbG8=" {
-		t.Fatalf("image data mismatch")
+	if sm.calls != 0 {
+		t.Fatalf("small model calls = %d, want 0 for image-bearing requests", sm.calls)
 	}
 
 	var resp map[string]interface{}
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got := resp["provider"]; got != "smallmodel" {
-		t.Fatalf("provider = %v, want smallmodel", got)
+	if got := resp["provider"]; got == "smallmodel" {
+		t.Fatalf("provider = %v, want non-smallmodel provider for image-bearing request", got)
 	}
-	if got := resp["content"]; got != "image small model answer" {
-		t.Fatalf("content = %v, want image small model answer", got)
+	if got := resp["content"]; got != "main model image answer" {
+		t.Fatalf("content = %v, want main model image answer", got)
 	}
 }
 
@@ -9073,6 +9071,157 @@ func TestChatHandlerSendMessage_DirectPPTXHelperScriptDetourContinuesUntilFinalA
 	}
 	if info.Size() == 0 {
 		t.Fatalf("expected final pptx to be non-empty")
+	}
+}
+
+func TestChatHandlerSendMessage_PDFFollowUpCarriesCreatedMarkdownArtifact(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Direct PDF Markdown Create")
+	workspaceRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted-pdf-create",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "pdf-create-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{{
+						ID:   "call_pdf_create_1",
+						Name: "pdf",
+						Arguments: `{"action":"create","path":"reports/direct_markdown.pdf","markdown":"# Weekly Brief\n\n## Highlights\n\n- Native PDF creation should accept markdown directly.\n- Failed writes must never report success.\n\nPrepared for chat e2e."}`,
+					}},
+				},
+			},
+			{
+				ID:    "pdf-create-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `Saved the requested file to "reports/direct_markdown.pdf".`,
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewPDFTool(nil))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"Create a PDF from direct markdown and save it to reports/direct_markdown.pdf.","provider":"scripted-pdf-create","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req = req.WithContext(tools.WithFSRootOverride(req.Context(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("SendMessage failed: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected exactly 2 LLM rounds (pdf tool + final reply), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	toolMsg, payload := requireToolPayloadMessage(t, secondReq, "pdf")
+	if len(toolMsg.Content) == 0 {
+		t.Fatal("expected non-empty pdf tool payload in follow-up request")
+	}
+	if _, ok := payload["error"]; ok {
+		t.Fatalf("unexpected payload error = %#v", payload["error"])
+	}
+
+	path := anyToStringForLLM(payload["path"])
+	engine := anyToStringForLLM(payload["engine"])
+	pageCount := 0
+	if doc, ok := payload["document"].(map[string]interface{}); ok {
+		if path == "" {
+			path = anyToStringForLLM(doc["path"])
+		}
+		if engine == "" {
+			engine = anyToStringForLLM(doc["engine"])
+		}
+		if pageCount == 0 {
+			pageCount = anyToIntForLLM(doc["page_count"])
+		}
+	}
+	if pageCount == 0 {
+		if validation, ok := payload["validation"].(map[string]interface{}); ok {
+			pageCount = anyToIntForLLM(validation["page_count"])
+		}
+	}
+	if pageCount == 0 {
+		if pages, ok := payload["pages"].([]interface{}); ok {
+			pageCount = len(pages)
+		}
+	}
+
+	if path != "reports/direct_markdown.pdf" {
+		t.Fatalf("payload path = %q, want reports/direct_markdown.pdf; content=%q payload=%#v", path, toolMsg.Content, payload)
+	}
+	if engine != "native_pdf_ir" {
+		t.Fatalf("payload engine = %q, want native_pdf_ir; content=%q payload=%#v", engine, toolMsg.Content, payload)
+	}
+	if pageCount < 1 {
+		t.Fatalf("page_count = %d, want >= 1; content=%q payload=%#v", pageCount, toolMsg.Content, payload)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, `reports/direct_markdown.pdf`) {
+		t.Fatalf("expected final response to mention saved pdf target, got %q", content)
+	}
+
+	pdfPath := filepath.Join(workspaceRoot, "reports", "direct_markdown.pdf")
+	info, err := os.Stat(pdfPath)
+	if err != nil {
+		t.Fatalf("expected final pdf to exist, stat error: %v", err)
+	}
+	if info.Size() == 0 {
+		t.Fatalf("expected final pdf to be non-empty")
+	}
+	data, err := os.ReadFile(pdfPath)
+	if err != nil {
+		t.Fatalf("read final pdf: %v", err)
+	}
+	if len(data) < 5 || string(data[:5]) != "%PDF-" {
+		t.Fatalf("unexpected PDF header: %q", string(data))
+	}
+	text := string(data)
+	for _, needle := range []string{
+		"Weekly Brief",
+		"Highlights",
+		"Native PDF creation should accept markdown directly.",
+		"Failed writes must never report success.",
+		"Prepared for chat e2e.",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("expected generated pdf bytes to contain %q", needle)
+		}
+	}
+
+	markdownDetourPath := filepath.Join(workspaceRoot, "reports", "direct_markdown.md")
+	if _, statErr := os.Stat(markdownDetourPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected no workspace markdown detour artifact, stat err=%v", statErr)
 	}
 }
 

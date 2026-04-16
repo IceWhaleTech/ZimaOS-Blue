@@ -42,7 +42,7 @@ func (t *XLSXTool) Definition() ToolDefinition {
 				},
 				"title":    map[string]interface{}{"type": "string"},
 				"subtitle": map[string]interface{}{"type": "string"},
-				"theme":    map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"}},
+				"theme":    map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "editorial", "terracotta", "forest", "coral"}},
 				"style_hint": map[string]interface{}{
 					"type":        "string",
 					"description": "Optional tone/style hint used to infer the workbook theme when theme is omitted.",

@@ -74,6 +74,29 @@ func TestOfficeToolExecute_XLSXCreatesStyledWorkbook(t *testing.T) {
 	}
 }
 
+func TestParseOfficeWorkbookSpecCapturesExplicitLocale(t *testing.T) {
+	spec, err := parseOfficeWorkbookSpec(map[string]interface{}{
+		"locale": "ja-JP",
+		"sheets": []interface{}{
+			map[string]interface{}{
+				"name": "Overview",
+				"columns": []interface{}{
+					map[string]interface{}{"header": "Metric", "key": "metric"},
+				},
+				"rows": []interface{}{
+					[]interface{}{"品質"},
+				},
+			},
+		},
+	}, "Locale Workbook", "", resolveOfficeTheme("", ""))
+	if err != nil {
+		t.Fatalf("parseOfficeWorkbookSpec() error = %v", err)
+	}
+	if spec.Language != "ja-JP" {
+		t.Fatalf("Language = %q, want ja-JP", spec.Language)
+	}
+}
+
 func TestOfficeToolExecute_DOCXCreatesStyledDocument(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewOfficeTool([]string{tmpDir}, nil, nil)

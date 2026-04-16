@@ -182,3 +182,57 @@ func TestValidateToolArguments_HonorsEnumStringSlices(t *testing.T) {
 		t.Fatal("expected enum validation error, got nil")
 	}
 }
+
+func TestDocumentToolThemeEnumsIncludeEditorial(t *testing.T) {
+	tests := []struct {
+		name string
+		enum []string
+	}{
+		{
+			name: "docx",
+			enum: NewDOCXTool(nil, nil, nil).Definition().Parameters["properties"].(map[string]interface{})["theme"].(map[string]interface{})["enum"].([]string),
+		},
+		{
+			name: "xlsx",
+			enum: NewXLSXTool(nil, nil, nil).Definition().Parameters["properties"].(map[string]interface{})["theme"].(map[string]interface{})["enum"].([]string),
+		},
+		{
+			name: "pptx",
+			enum: NewPPTXTool(nil, nil, nil).Definition().Parameters["properties"].(map[string]interface{})["theme"].(map[string]interface{})["enum"].([]string),
+		},
+	}
+
+	convertProps := NewConvertTool(nil, nil, nil, nil).Definition().Parameters["properties"].(map[string]interface{})
+	convertOptions := convertProps["options"].(map[string]interface{})["properties"].(map[string]interface{})
+	tests = append(tests,
+		struct {
+			name string
+			enum []string
+		}{
+			name: "convert.presentation",
+			enum: convertOptions["presentation"].(map[string]interface{})["properties"].(map[string]interface{})["theme"].(map[string]interface{})["enum"].([]string),
+		},
+		struct {
+			name string
+			enum []string
+		}{
+			name: "convert.pptx",
+			enum: convertOptions["pptx"].(map[string]interface{})["properties"].(map[string]interface{})["theme"].(map[string]interface{})["enum"].([]string),
+		},
+	)
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			found := false
+			for _, candidate := range tc.enum {
+				if candidate == "editorial" {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("theme enum = %v, want editorial", tc.enum)
+			}
+		})
+	}
+}

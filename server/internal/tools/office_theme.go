@@ -142,6 +142,18 @@ func ensureOfficeThemeCatalog() {
 				UseCases:    []string{"executive_summary", "board_presentation", "annual_report", "investor_deck"},
 				Mood:        "trustworthy",
 			},
+			"editorial": {
+				Name:    "editorial",
+				Primary: "#0A0D14", PrimaryDark: "#11131A", PrimaryTint: "#FFF4D1",
+				Secondary: "#00E5FF", Accent: "#FFB700", AccentTint: "#FFF2CC",
+				Success: "#2FA56B", SuccessTint: "#E4F5EC", Warning: "#FF8A3D", WarningTint: "#FFE9D9",
+				Danger: "#F25B45", DangerTint: "#FDE6E2", Slate: "#727A8F", SlateTint: "#E6E9F1",
+				Border: "#DADDE5", Surface: "#FFFFFF", SurfaceAlt: "#F5F6F8", SurfaceMuted: "#ECECF0",
+				DisplayFont: "Arial Black", BodyFont: "Helvetica", EastAsiaFont: "PingFang SC", MonospaceFont: "Menlo",
+				Personality: "editorial and high-contrast",
+				UseCases:    []string{"brand_story", "thought_leadership", "campaign_narrative", "bold_keynote", "concept_deck"},
+				Mood:        "bold",
+			},
 			"terracotta": {
 				Name: "terracotta", Primary: "#B85C38", PrimaryDark: "#6B341F", PrimaryTint: "#FBEDE7",
 				Secondary: "#B08968", Accent: "#1F8A70", AccentTint: "#DFF4EE",
@@ -197,6 +209,10 @@ func resolveOfficeTheme(name, styleHint string) officeTheme {
 
 	// NEW: Grapwork-inspired purpose-based theme matching
 	switch {
+	case officeContainsAny(hint, "editorial", "poster", "manifesto", "magazine", "typographic", "high contrast", "bold type",
+		"海报", "宣言", "杂志感", "编排感", "高对比", "强对比", "大字标题", "粗体标题"):
+		return officeThemeCatalog["editorial"]
+
 	// Sustainability/eco contexts → forest (natural, trustworthy)
 	case officeContainsAny(hint, "sustainability", "environment", "green", "eco", "carbon", "climate",
 		"wellness", "health", "csr", "esg",

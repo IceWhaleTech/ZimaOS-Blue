@@ -13,7 +13,6 @@ func newRuntimeActivationDeferredWiring(
 		smallRuntime:           smallmodel.NewLlamaCppRuntime(options.smallModelManager, smallmodel.LlamaCppRuntimeOptions{AutoDownload: autoDownload}),
 		chatSmallModel:         options.chatSmallModel,
 		auxiliarySmallModel:    activation.auxiliaryLLM,
-		imageSmallModel:        runtimeActivationImageTool(options.services),
 		analyzeSmallModel:      options.analyzeSmallModel,
 		smallModelStats:        options.smallModelStats,
 		harnessRuntime:         options.harnessRuntime,

@@ -82,6 +82,49 @@ func TestOfficeBuildPresentationSlidesDerivesTitleFromPlaceholderHeading(t *test
 	}
 }
 
+func TestOfficeBuildPresentationSlidesCleansChinesePagePlaceholdersAndGuidanceLabels(t *testing.T) {
+	slides := officeBuildPresentationSlides(officeDocSpec{
+		Title:    "Qwen3 最新优化介绍",
+		Subtitle: "Think Deeper, Act Faster · 混合思考 AI 模型",
+		Sections: []officeDocSection{
+			{
+				Heading: "第1页：封面",
+				ParagraphBlocks: []officeDocBlock{
+					{Kind: officeDocBlockParagraph, Text: "标题：Qwen3 最新优化介绍"},
+					{Kind: officeDocBlockParagraph, Text: "副标题：Think Deeper, Act Faster · 混合思考 AI 模型"},
+					{Kind: officeDocBlockParagraph, Text: "风格：科技感、现代"},
+				},
+			},
+			{
+				Heading: "第2页：什么是 Qwen3？",
+				ParagraphBlocks: []officeDocBlock{
+					{Kind: officeDocBlockParagraph, Text: "标题：Qwen3 是什么？"},
+					{Kind: officeDocBlockParagraph, Text: "Qwen3 是阿里巴巴通义千问推出的最新一代大语言模型系列。"},
+				},
+			},
+		},
+	})
+
+	if len(slides) != 3 {
+		t.Fatalf("len(slides) = %d, want 3 (%#v)", len(slides), slides)
+	}
+	if slides[0].Title != "Qwen3 最新优化介绍" {
+		t.Fatalf("cover title = %q, want clean deck title", slides[0].Title)
+	}
+	if len(slides[0].Lines) != 1 || slides[0].Lines[0] != "Think Deeper, Act Faster · 混合思考 AI 模型" {
+		t.Fatalf("cover lines = %#v, want only cleaned subtitle", slides[0].Lines)
+	}
+	if slides[1].Title != "目录" || len(slides[1].Lines) != 1 || slides[1].Lines[0] != "1. Qwen3 是什么？" {
+		t.Fatalf("toc = %#v, want cleaned section title without 第X页 prefix", slides[1])
+	}
+	if slides[2].Title != "Qwen3 是什么？" {
+		t.Fatalf("section title = %q, want cleaned title guidance value", slides[2].Title)
+	}
+	if len(slides[2].Blocks) != 1 || slides[2].Blocks[0].Text != "Qwen3 是阿里巴巴通义千问推出的最新一代大语言模型系列。" {
+		t.Fatalf("section blocks = %#v, want guidance labels stripped from body", slides[2].Blocks)
+	}
+}
+
 func TestOfficeBuildPresentationSlidesMergesLeadingDuplicateCoverSection(t *testing.T) {
 	slides := officeBuildPresentationSlides(officeDocSpec{
 		Title:    "Qwen3.5 最新优化介绍",

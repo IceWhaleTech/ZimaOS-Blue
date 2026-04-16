@@ -18,11 +18,8 @@ var (
 	officeMarkdownFenceLeakPattern   = regexp.MustCompile("```")
 	officeMarkdownImageLeakPattern   = regexp.MustCompile(`!\[[^\]\n]*\]\([^)]+\)`)
 	officeMarkdownTableLeakPattern   = regexp.MustCompile(`(?m)^\s*\|?(?:\s*:?-{3,}:?\s*\|){1,}\s*$`)
-
-	officePlaceholderSlideTitlePattern    = regexp.MustCompile(`(?im)^(?:slide|幻灯片)\s*\d+(?:\s*[:：-].*)?$`)
-	officePlaceholderSlideTitleXMLPattern = regexp.MustCompile(`(?i)<vt:lpstr>(?:slide|幻灯片)\s*\d+(?:\s*[:：-][^<]*)?</vt:lpstr>`)
-	officePPTXSlidePartPattern            = regexp.MustCompile(`(?i)^ppt/slides/slide\d+\.xml$`)
-	officePPTXSlideTargetPattern          = regexp.MustCompile(`(?i)Target="slides/(slide\d+\.xml)"`)
+	officePPTXSlidePartPattern       = regexp.MustCompile(`(?i)^ppt/slides/slide\d+\.xml$`)
+	officePPTXSlideTargetPattern     = regexp.MustCompile(`(?i)Target="slides/(slide\d+\.xml)"`)
 )
 
 func validateOfficeArchiveQuality(path, format, readText string) (map[string]interface{}, error) {

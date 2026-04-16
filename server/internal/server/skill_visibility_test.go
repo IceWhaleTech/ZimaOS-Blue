@@ -1622,17 +1622,17 @@ version: 1.0.0
 		registry := skill.NewRegistry()
 		handler := newTestSkillHandler(t, registry)
 
-		skillDir := filepath.Join(handler.skillsDir, "team-browser")
+		skillDir := filepath.Join(handler.skillsDir, "team-config")
 		if err := os.MkdirAll(skillDir, 0o755); err != nil {
 			t.Fatalf("mkdir skill dir: %v", err)
 		}
 		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
-name: browser
-description: Browser skill
+name: config
+description: Config skill
 version: 1.0.0
 ---
 
-# Browser
+# Config
 `), 0o644); err != nil {
 			t.Fatalf("write skill file: %v", err)
 		}
@@ -1663,7 +1663,7 @@ version: 1.0.0
 			t.Fatalf("expected 1 skill, got %d", len(skills))
 		}
 		item := skills[0].(map[string]interface{})
-		if item["id"] != "browser" || item["installed"] != true {
+		if item["id"] != "config" || item["installed"] != true {
 			t.Fatalf("unexpected local skill payload: %#v", item)
 		}
 	})

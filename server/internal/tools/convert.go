@@ -152,7 +152,7 @@ func (t *ConvertTool) Definition() ToolDefinition {
 								"title":      map[string]interface{}{"type": "string"},
 								"subtitle":   map[string]interface{}{"type": "string"},
 								"summary":    map[string]interface{}{},
-								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"}},
+								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "editorial", "terracotta", "forest", "coral"}},
 								"style_hint": map[string]interface{}{"type": "string"},
 							},
 						},
@@ -163,7 +163,7 @@ func (t *ConvertTool) Definition() ToolDefinition {
 								"title":      map[string]interface{}{"type": "string"},
 								"subtitle":   map[string]interface{}{"type": "string"},
 								"summary":    map[string]interface{}{},
-								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"}},
+								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "editorial", "terracotta", "forest", "coral"}},
 								"style_hint": map[string]interface{}{"type": "string"},
 							},
 						},
@@ -305,9 +305,9 @@ func (t *ConvertTool) maybeHandleNativeOfficeConvert(ctx context.Context, args m
 		return nil, true, err
 	}
 
-	outputPath := strings.TrimSpace(firstCompatString(args, "output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to"))
-	if outputPath == "" {
-		return nil, true, errors.New("output_path is required for native office convert")
+	outputPath, err := resolveNativeOfficeOutputPath(target, sourcePath, args)
+	if err != nil {
+		return nil, true, err
 	}
 	createDirs, err := parseCreateDirsArg(mergedArgs)
 	if err != nil {
@@ -337,6 +337,29 @@ func (t *ConvertTool) maybeHandleNativeOfficeConvert(ctx context.Context, args m
 		}},
 	}
 	return simpleConvertTaskResult(task, false), true, nil
+}
+
+func resolveNativeOfficeOutputPath(target, sourcePath string, args map[string]interface{}) (string, error) {
+	outputPath := strings.TrimSpace(firstCompatString(args, "output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to"))
+	if outputPath != "" {
+		return outputPath, nil
+	}
+
+	sourcePath = strings.TrimSpace(sourcePath)
+	if sourcePath == "" {
+		return "", errors.New("output_path is required for native office convert")
+	}
+
+	base := strings.TrimSuffix(filepath.Base(sourcePath), filepath.Ext(sourcePath))
+	if base == "" || base == "." {
+		base = "converted"
+	}
+	target = normalizeConvertFormatName(target)
+	outputPath = filepath.Join(filepath.Dir(sourcePath), base+"."+target)
+	if strings.EqualFold(filepath.Clean(outputPath), filepath.Clean(sourcePath)) {
+		outputPath = filepath.Join(filepath.Dir(sourcePath), base+"_converted."+target)
+	}
+	return outputPath, nil
 }
 
 func isNativeOfficeConvertTarget(target string) bool {

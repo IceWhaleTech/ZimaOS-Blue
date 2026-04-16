@@ -1,11 +1,8 @@
 package tools
 
 import (
-	"regexp"
 	"strings"
 )
-
-var officeGeneratedSlideHeadingPattern = regexp.MustCompile(`(?i)^(?:slide|幻灯片)\s*\d+(?:\s*[:：-].*)?$`)
 
 func officeDocBlocksFromLegacyParagraphs(values []string) []officeDocBlock {
 	out := make([]officeDocBlock, 0, len(values))

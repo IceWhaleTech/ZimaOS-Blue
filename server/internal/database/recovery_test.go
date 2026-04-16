@@ -196,6 +196,61 @@ exec "$REAL_SQLITE3" "$@"
 	}
 }
 
+func TestOpenSQLiteSimpleRepairsRecoverableCorruptionFallsBackToDumpWhenRecoverUnsupported(t *testing.T) {
+	realSQLite, err := exec.LookPath("sqlite3")
+	if err != nil {
+		t.Skipf("sqlite3 CLI unavailable: %v", err)
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "recoverable-dump-fallback.db")
+	writeSQLiteEntry(t, path, "hello")
+	requireSQLiteRepairableSample(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
+
+	wrapperDir := t.TempDir()
+	wrapperPath := filepath.Join(wrapperDir, "sqlite3")
+	wrapper := `#!/bin/sh
+if [ "$#" -ge 3 ] && [ "$1" = "-batch" ]; then
+  case "$3" in
+    ".recover --ignore-freelist"|".recover")
+      echo "sql error: no such table: sqlite_dbpage (1)" >&2
+      exit 1
+      ;;
+  esac
+fi
+exec "$REAL_SQLITE3" "$@"
+`
+	if err := os.WriteFile(wrapperPath, []byte(wrapper), 0o755); err != nil {
+		t.Fatalf("write sqlite3 wrapper: %v", err)
+	}
+	t.Setenv("REAL_SQLITE3", realSQLite)
+	t.Setenv("PATH", wrapperDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	corruptSQLiteBytes(t, path, 8192, []byte("garbagegarbagegarbagegarbage"))
+
+	db, err := database.OpenSQLiteSimple(path)
+	if err != nil {
+		t.Fatalf("expected recoverable db to open after dump fallback, got %v", err)
+	}
+	defer db.Close()
+
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM entries").Scan(&count); err != nil {
+		t.Fatalf("failed to count repaired rows after dump fallback: %v", err)
+	}
+	if count == 0 {
+		t.Fatal("expected dump fallback repair to retain at least one row")
+	}
+	if err := database.CheckDatabaseIntegrity(path); err != nil {
+		t.Fatalf("dump fallback repaired db failed integrity check: %v", err)
+	}
+	if matches, err := filepath.Glob(path + ".bak.*"); err != nil {
+		t.Fatalf("glob dump fallback backup: %v", err)
+	} else if len(matches) != 0 {
+		t.Fatalf("expected dump fallback repair to remove temporary .bak files, got %v", matches)
+	}
+}
+
 func TestRotateCorruptSQLiteDatabaseMovesPrimaryAndAuxFiles(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "blue.db")

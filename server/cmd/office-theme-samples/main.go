@@ -107,6 +107,8 @@ func themeLabel(theme string) string {
 		return "极简留白"
 	case "midnight":
 		return "深夜蓝"
+	case "editorial":
+		return "高对比编辑"
 	case "terracotta":
 		return "暖陶土"
 	case "forest":

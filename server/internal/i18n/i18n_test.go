@@ -147,6 +147,7 @@ func TestT_AllLanguagesHaveBrowserToolErrorKeys(t *testing.T) {
 		key  string
 		args []interface{}
 	}{
+		{key: MsgNativeDocumentOutputVerificationFailed},
 		{key: MsgBrowserNotRunning},
 		{key: MsgBrowserServiceNotAvailable},
 		{key: MsgBrowserServiceNotAvailableReviewURL},
@@ -173,30 +174,43 @@ func TestT_BrowserToolErrorKeysAreLocalizedOutsideEnglish(t *testing.T) {
 		key  string
 		args []interface{}
 	}{
+		{lang: LangZhTW, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangZhTW, key: MsgBrowserServiceNotAvailableReviewURL},
 		{lang: LangJaJP, key: MsgBrowserStartFailed, args: []interface{}{"launch timeout"}},
+		{lang: LangJaJP, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangKoKR, key: MsgProxyBridgeNotAvailableCallVLM},
 		{lang: LangDeDE, key: MsgNavigationURLNotAllowed},
+		{lang: LangFrFR, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangFrFR, key: MsgBrowserServiceNotAvailable},
 		{lang: LangEsES, key: MsgNavigationFailed, args: []interface{}{"net::ERR_NAME_NOT_RESOLVED"}},
+		{lang: LangEsES, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangItIT, key: MsgBrowserNotRunning},
 		{lang: LangPtBR, key: MsgBrowserStartFailed, args: []interface{}{"launch timeout"}},
+		{lang: LangPtBR, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangPtPT, key: MsgNavigationFailed, args: []interface{}{"net::ERR_NAME_NOT_RESOLVED"}},
 		{lang: LangRuRU, key: MsgProxyBridgeNotAvailable},
+		{lang: LangRuRU, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangPlPL, key: MsgBrowserServiceNotAvailableReviewURL},
 		{lang: LangNlNL, key: MsgBrowserStartFailed, args: []interface{}{"launch timeout"}},
+		{lang: LangNlNL, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangSvSE, key: MsgNavigationURLNotAllowed},
 		{lang: LangDaDK, key: MsgBrowserNotRunning},
+		{lang: LangDaDK, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangNbNO, key: MsgProxyBridgeNotAvailableCallVLM},
 		{lang: LangCsCZ, key: MsgNavigationFailed, args: []interface{}{"net::ERR_NAME_NOT_RESOLVED"}},
+		{lang: LangCsCZ, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangSkSK, key: MsgBrowserServiceNotAvailable},
 		{lang: LangHuHU, key: MsgBrowserStartFailed, args: []interface{}{"launch timeout"}},
+		{lang: LangHuHU, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangRoRO, key: MsgNavigationURLNotAllowed},
 		{lang: LangHrHR, key: MsgProxyBridgeNotAvailable},
+		{lang: LangHrHR, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangElGR, key: MsgBrowserServiceNotAvailableReviewURL},
 		{lang: LangCaES, key: MsgBrowserStartFailed, args: []interface{}{"launch timeout"}},
+		{lang: LangCaES, key: MsgNativeDocumentOutputVerificationFailed},
 		{lang: LangGaIE, key: MsgNavigationFailed, args: []interface{}{"net::ERR_NAME_NOT_RESOLVED"}},
 		{lang: LangMlIN, key: MsgBrowserServiceNotAvailable},
+		{lang: LangMlIN, key: MsgNativeDocumentOutputVerificationFailed},
 	}
 
 	for _, tt := range protected {

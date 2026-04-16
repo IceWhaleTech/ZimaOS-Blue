@@ -53,6 +53,12 @@ func nativeMarkdownPPTXThemeCatalog() map[string]nativeMarkdownPPTXTheme {
 			Slate: "#334155", Surface: "#FFFFFF", SurfaceAlt: "#F8FAFC",
 			DisplayFont: "Georgia", BodyFont: "Segoe UI", EastAsiaFont: "PingFang SC", Monospace: "Consolas",
 		},
+		"editorial": {
+			Name: "editorial", Primary: "#0A0D14", PrimaryDark: "#11131A", PrimaryTint: "#FFF4D1",
+			Secondary: "#00E5FF", Accent: "#FFB700", Success: "#2FA56B", Warning: "#FF8A3D", Danger: "#F25B45",
+			Slate: "#727A8F", Surface: "#FFFFFF", SurfaceAlt: "#F5F6F8",
+			DisplayFont: "Arial Black", BodyFont: "Helvetica", EastAsiaFont: "PingFang SC", Monospace: "Menlo",
+		},
 		"terracotta": {
 			Name: "terracotta", Primary: "#C65D3B", PrimaryDark: "#8B4513", PrimaryTint: "#FDF2ED",
 			Secondary: "#D4A574", Accent: "#2E8B57", Success: "#15803D", Warning: "#B45309", Danger: "#B91C1C",
@@ -84,6 +90,8 @@ func resolveNativeMarkdownPPTXTheme(name, styleHint string) nativeMarkdownPPTXTh
 
 	hint := strings.ToLower(strings.TrimSpace(styleHint))
 	switch {
+	case nativeMarkdownContainsAny(hint, "editorial", "poster", "manifesto", "magazine", "typographic", "high contrast", "bold type", "海报", "宣言", "杂志感", "编排感", "高对比", "强对比", "大字标题", "粗体标题"):
+		return nativeMarkdownPPTXResolvedTheme(catalog["editorial"])
 	case nativeMarkdownContainsAny(hint, "sustainability", "environment", "green", "eco", "carbon", "climate", "wellness", "health", "csr", "esg", "可持续", "环境", "绿色", "碳", "气候", "健康", "社会责任"):
 		return nativeMarkdownPPTXResolvedTheme(catalog["forest"])
 	case nativeMarkdownContainsAny(hint, "creative", "design", "brand", "visual", "aesthetic", "illustration", "创意", "设计", "品牌", "视觉", "艺术"):

@@ -420,6 +420,72 @@ func WithFSRootOverride(ctx context.Context, roots []string, aliases map[string]
 	return withFSScope(ctx, roots, aliases, true)
 }
 
+// WithMergedFSScope merges additional filesystem roots and aliases into the
+// existing FS scope while preserving whether the current scope replaces tool
+// default roots or merely appends to them.
+func WithMergedFSScope(ctx context.Context, roots []string, aliases map[string]string) context.Context {
+	existing, ok := getFSScopeContext(ctx)
+	if !ok {
+		return WithFSScope(ctx, roots, aliases)
+	}
+
+	mergedRoots := make([]string, 0, len(existing.roots)+len(roots))
+	seenRoots := make(map[string]struct{}, len(existing.roots)+len(roots))
+	appendRoot := func(raw string) {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			return
+		}
+		abs, err := filepath.Abs(trimmed)
+		if err != nil {
+			return
+		}
+		clean := filepath.Clean(abs)
+		if _, exists := seenRoots[clean]; exists {
+			return
+		}
+		seenRoots[clean] = struct{}{}
+		mergedRoots = append(mergedRoots, clean)
+	}
+	for _, root := range existing.roots {
+		appendRoot(root)
+	}
+	for _, root := range roots {
+		appendRoot(root)
+	}
+
+	mergedAliases := make(map[string]string, len(existing.aliases)+len(aliases))
+	appendAlias := func(rawAlias, rawPath string, overwrite bool) {
+		alias := normalizeFSAliasKey(rawAlias)
+		if alias == "" {
+			return
+		}
+		trimmed := strings.TrimSpace(rawPath)
+		if trimmed == "" {
+			return
+		}
+		abs, err := filepath.Abs(trimmed)
+		if err != nil {
+			return
+		}
+		if _, exists := mergedAliases[alias]; exists && !overwrite {
+			return
+		}
+		mergedAliases[alias] = filepath.Clean(abs)
+	}
+	for alias, path := range aliases {
+		appendAlias(alias, path, false)
+	}
+	for alias, path := range existing.aliases {
+		appendAlias(alias, path, true)
+	}
+
+	if len(mergedRoots) == 0 && len(mergedAliases) == 0 {
+		return ctx
+	}
+	return withFSScope(ctx, mergedRoots, mergedAliases, existing.replaceRoots)
+}
+
 func withFSScope(ctx context.Context, roots []string, aliases map[string]string, replaceRoots bool) context.Context {
 	normalizedRoots := make([]string, 0, len(roots))
 	seenRoots := make(map[string]struct{}, len(roots))

@@ -368,7 +368,51 @@ func executeCreateLikeDocumentWrite(ctx context.Context, toolName string, scope 
 	if err := os.WriteFile(absPath, data, 0o644); err != nil {
 		return "", "", fmt.Errorf("failed to write file: %w", err)
 	}
+	if err := validateWrittenNativeDocumentOutput(absPath, toolName, len(data)); err != nil {
+		_ = os.Remove(absPath)
+		return "", "", err
+	}
 	return absPath, relPath, nil
+}
+
+func validateWrittenNativeDocumentOutput(absPath, format string, expectedSize int) error {
+	const verifyErr = "native document output verification failed"
+
+	info, err := os.Stat(absPath)
+	if err != nil || info.IsDir() || info.Size() <= 0 {
+		return fmt.Errorf(verifyErr)
+	}
+	if expectedSize > 0 && info.Size() != int64(expectedSize) {
+		return fmt.Errorf(verifyErr)
+	}
+
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "pdf":
+		file, err := os.Open(absPath)
+		if err != nil {
+			return fmt.Errorf(verifyErr)
+		}
+		defer file.Close()
+
+		head := make([]byte, 32)
+		n, readErr := file.Read(head)
+		if readErr != nil && readErr != io.EOF {
+			return fmt.Errorf(verifyErr)
+		}
+		if !bytes.HasPrefix(bytes.TrimSpace(head[:n]), []byte("%PDF-")) {
+			return fmt.Errorf(verifyErr)
+		}
+	case "docx", "xlsx", "pptx":
+		validation, err := validateNativeOfficeArchive(absPath, format, nil)
+		if err != nil {
+			return fmt.Errorf(verifyErr)
+		}
+		if ok, _ := validation["ok"].(bool); !ok {
+			return fmt.Errorf(verifyErr)
+		}
+	}
+
+	return nil
 }
 
 func parseCreateDirsArg(args map[string]interface{}) (bool, error) {

@@ -16495,7 +16495,7 @@ func (h *ChatHandler) withDirectoryWhitelistFSScope(ctx context.Context) context
 	if len(roots) == 0 && len(aliases) == 0 {
 		return ctx
 	}
-	return tools.WithFSScope(ctx, roots, aliases)
+	return tools.WithMergedFSScope(ctx, roots, aliases)
 }
 
 func localizeToolExecutionErrorMessage(lang i18n.Language, raw string) string {
@@ -16515,6 +16515,8 @@ func localizeToolExecutionErrorMessage(lang i18n.Language, raw string) string {
 	switch {
 	case normalized == "path escapes workspace root":
 		return i18n.T(lang, i18n.MsgPathEscapesWorkspaceRoot)
+	case normalized == "native document output verification failed":
+		return i18n.T(lang, i18n.MsgNativeDocumentOutputVerificationFailed)
 	case normalized == "browser not running":
 		return i18n.T(lang, i18n.MsgBrowserNotRunning)
 	case normalized == "browser service not available":
@@ -18790,6 +18792,30 @@ func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interfac
 		for _, key := range []string{"file_name", "path", "page_count", "engine", "size_bytes"} {
 			if value, exists := doc[key]; exists {
 				docOut[key] = compactJSONValueForLLM(value, 1)
+			}
+		}
+		if len(docOut) > 0 {
+			out["document"] = docOut
+		}
+	} else {
+		docOut := make(map[string]interface{}, 5)
+		if path := strings.TrimSpace(anyToStringForLLM(payload["path"])); path != "" {
+			docOut["path"] = path
+			if fileName := strings.TrimSpace(filepath.Base(path)); fileName != "" && fileName != "." && fileName != string(filepath.Separator) {
+				docOut["file_name"] = fileName
+			}
+		}
+		if engine := strings.TrimSpace(anyToStringForLLM(payload["engine"])); engine != "" {
+			docOut["engine"] = engine
+		}
+		if sizeBytes := anyToIntForLLM(payload["size_bytes"]); sizeBytes > 0 {
+			docOut["size_bytes"] = sizeBytes
+		} else if size := anyToIntForLLM(payload["size"]); size > 0 {
+			docOut["size_bytes"] = size
+		}
+		if validation, ok := payload["validation"].(map[string]interface{}); ok {
+			if pageCount := anyToIntForLLM(validation["page_count"]); pageCount > 0 {
+				docOut["page_count"] = pageCount
 			}
 		}
 		if len(docOut) > 0 {

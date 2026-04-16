@@ -1,6 +1,7 @@
 package database
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"database/sql"
@@ -385,6 +386,18 @@ func RepairSQLiteDatabase(dbPath string) (result *SQLiteRepairResult, err error)
 	}
 	sourceSchemaCount, sourceSchemaErr := sqliteUserSchemaObjectCount(snapshotPath)
 	recoverErr := runSQLiteRecover(snapshotPath, recoveredPath)
+	if recoverErr != nil && shouldFallbackToSQLiteDumpRecover(recoverErr) {
+		reason, err := recoveredSQLitePlainRecoverFallbackReason(recoveredPath, sourceSchemaCount, sourceSchemaErr)
+		if err != nil {
+			return nil, err
+		}
+		if reason != "" {
+			sqliteLogf("retrying sqlite repair via .dump fallback src_path=%s reason=%s error=%v", snapshotPath, reason, recoverErr)
+			if dumpErr := runSQLiteDumpRecover(snapshotPath, recoveredPath); dumpErr != nil {
+				recoverErr = fmt.Errorf("%s: %v; fallback dump recover failed: %w", reason, recoverErr, dumpErr)
+			}
+		}
+	}
 	if recoverErr == nil {
 		if err := retryPlainSQLiteRecoverIfRecoveredOutputUnusable(snapshotPath, recoveredPath, sourceSchemaCount, sourceSchemaErr); err != nil {
 			return nil, err
@@ -654,6 +667,127 @@ func shouldRetrySQLiteRecoverWithoutIgnoreFreelist(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "sqlite_dbpage") ||
 		strings.Contains(msg, "ignore-freelist")
+}
+
+func shouldFallbackToSQLiteDumpRecover(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "sqlite_dbpage") ||
+		(strings.Contains(msg, "unknown command") && strings.Contains(msg, "recover"))
+}
+
+func runSQLiteDumpRecover(srcPath, dstPath string) error {
+	_ = os.Remove(dstPath)
+
+	ctx, cancel := context.WithTimeout(context.Background(), sqliteRecoverTimeout)
+	defer cancel()
+
+	dumpCmd := exec.CommandContext(ctx, "sqlite3", "-batch", srcPath, ".dump")
+	importCmd := exec.CommandContext(
+		ctx,
+		"sqlite3",
+		"-batch",
+		"-cmd", "PRAGMA journal_mode=OFF",
+		"-cmd", "PRAGMA synchronous=OFF",
+		"-cmd", "PRAGMA temp_store=MEMORY",
+		dstPath,
+	)
+
+	dumpOut, err := dumpCmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("create dump stdout pipe: %w", err)
+	}
+
+	pipeReader, pipeWriter := io.Pipe()
+	rewriteErrCh := make(chan error, 1)
+
+	var dumpStderr bytes.Buffer
+	var importStdout bytes.Buffer
+	var importStderr bytes.Buffer
+	dumpCmd.Stderr = &dumpStderr
+	importCmd.Stdin = pipeReader
+	importCmd.Stdout = &importStdout
+	importCmd.Stderr = &importStderr
+
+	if err := importCmd.Start(); err != nil {
+		_ = pipeReader.Close()
+		return fmt.Errorf("start sqlite dump import: %w", err)
+	}
+	if err := dumpCmd.Start(); err != nil {
+		_ = importCmd.Process.Kill()
+		_, _ = importCmd.Process.Wait()
+		_ = pipeReader.Close()
+		return fmt.Errorf("start sqlite dump: %w", err)
+	}
+	go func() {
+		rewriteErrCh <- rewriteSQLiteDumpForImport(dumpOut, pipeWriter)
+	}()
+
+	importErr := importCmd.Wait()
+	rewriteErr := <-rewriteErrCh
+	dumpErr := dumpCmd.Wait()
+	if ctx.Err() != nil {
+		return fmt.Errorf("sqlite dump recover timed out after %s", sqliteRecoverTimeout)
+	}
+	if rewriteErr != nil {
+		return fmt.Errorf("rewrite sqlite dump for import: %w", rewriteErr)
+	}
+	if dumpErr != nil || importErr != nil {
+		var details []string
+		if dumpErr != nil {
+			details = append(details, fmt.Sprintf("dump command failed: %v", dumpErr))
+		}
+		if msg := strings.TrimSpace(dumpStderr.String()); msg != "" {
+			details = append(details, "dump stderr: "+msg)
+		}
+		if importErr != nil {
+			details = append(details, fmt.Sprintf("import command failed: %v", importErr))
+		}
+		if msg := strings.TrimSpace(importStderr.String()); msg != "" {
+			details = append(details, "import stderr: "+msg)
+		}
+		if msg := strings.TrimSpace(importStdout.String()); msg != "" {
+			details = append(details, "import stdout: "+msg)
+		}
+		return fmt.Errorf("%s", strings.Join(details, "; "))
+	}
+
+	return nil
+}
+
+func rewriteSQLiteDumpForImport(src io.Reader, dst *io.PipeWriter) error {
+	defer dst.Close()
+
+	reader := bufio.NewReader(src)
+	for {
+		line, err := reader.ReadString('\n')
+		if line != "" {
+			if _, writeErr := io.WriteString(dst, normalizeSQLiteDumpTransactionLine(line)); writeErr != nil {
+				return writeErr
+			}
+		}
+		if err == nil {
+			continue
+		}
+		if err == io.EOF {
+			return nil
+		}
+		_ = dst.CloseWithError(err)
+		return err
+	}
+}
+
+func normalizeSQLiteDumpTransactionLine(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "ROLLBACK;" || strings.HasPrefix(trimmed, "ROLLBACK; -- due to errors") {
+		if strings.HasSuffix(line, "\n") {
+			return "COMMIT;\n"
+		}
+		return "COMMIT;"
+	}
+	return line
 }
 
 func retryPlainSQLiteRecoverIfRecoveredOutputUnusable(srcPath, dstPath string, sourceSchemaCount int, sourceSchemaErr error) error {

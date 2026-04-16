@@ -14,6 +14,7 @@ func TestThemeColorDominance(t *testing.T) {
 		expectedCount int
 	}{
 		{"midnight", "trustworthy", 4},
+		{"editorial", "bold", 5},
 		{"terracotta", "warm", 3},
 		{"forest", "natural", 4},
 		{"coral", "energetic", 4},
@@ -68,6 +69,9 @@ func TestThemeInference(t *testing.T) {
 		{"board presentation", "midnight"},
 		{"investor deck", "midnight"},
 		{"annual report", "midnight"},
+		{"editorial poster", "editorial"},
+		{"bold typographic deck", "editorial"},
+		{"高对比海报感", "editorial"},
 
 		// Original matches preserved
 		{"ui review", "ui_review"},
@@ -88,7 +92,7 @@ func TestThemeInference(t *testing.T) {
 
 func TestListThemes(t *testing.T) {
 	themes := ListThemes()
-	expected := []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"}
+	expected := []string{"analysis", "ui_review", "executive", "clean", "midnight", "editorial", "terracotta", "forest", "coral"}
 
 	if len(themes) != len(expected) {
 		t.Errorf("got %d themes, want %d", len(themes), len(expected))
@@ -113,6 +117,7 @@ func TestGetThemeByMood(t *testing.T) {
 		expected int
 	}{
 		{"trustworthy", 1}, // midnight
+		{"bold", 1},        // editorial
 		{"energetic", 1},   // coral
 		{"warm", 1},        // terracotta
 		{"natural", 1},     // forest
@@ -169,7 +174,7 @@ func TestMidnightThemeUsesDarkSurfaces(t *testing.T) {
 
 func TestNewThemeFonts(t *testing.T) {
 	// Verify new themes have diverse fonts (not just Aptos)
-	newThemes := []string{"midnight", "terracotta", "forest", "coral"}
+	newThemes := []string{"midnight", "editorial", "terracotta", "forest", "coral"}
 	aptosCount := 0
 
 	for _, name := range newThemes {
@@ -182,6 +187,61 @@ func TestNewThemeFonts(t *testing.T) {
 	// At most 1 new theme should use Aptos/Aptos Display
 	if aptosCount > 1 {
 		t.Errorf("too many new themes using Aptos fonts: %d, want diversity", aptosCount)
+	}
+}
+
+func TestEditorialThemeUsesGenericHighContrastPalette(t *testing.T) {
+	theme, err := officeThemeByName("editorial")
+	if err != nil {
+		t.Fatalf("officeThemeByName(editorial) error = %v", err)
+	}
+	for field, want := range map[string]string{
+		"Primary":      "#0A0D14",
+		"PrimaryDark":  "#11131A",
+		"Secondary":    "#00E5FF",
+		"Accent":       "#FFB700",
+		"Success":      "#2FA56B",
+		"Danger":       "#F25B45",
+		"Surface":      "#FFFFFF",
+		"SurfaceAlt":   "#F5F6F8",
+		"SurfaceMuted": "#ECECF0",
+		"DisplayFont":  "Arial Black",
+		"BodyFont":     "Helvetica",
+	} {
+		var got string
+		switch field {
+		case "Primary":
+			got = theme.Primary
+		case "PrimaryDark":
+			got = theme.PrimaryDark
+		case "Secondary":
+			got = theme.Secondary
+		case "Accent":
+			got = theme.Accent
+		case "Success":
+			got = theme.Success
+		case "Danger":
+			got = theme.Danger
+		case "Surface":
+			got = theme.Surface
+		case "SurfaceAlt":
+			got = theme.SurfaceAlt
+		case "SurfaceMuted":
+			got = theme.SurfaceMuted
+		case "DisplayFont":
+			got = theme.DisplayFont
+		case "BodyFont":
+			got = theme.BodyFont
+		}
+		if got != want {
+			t.Fatalf("editorial %s = %q, want %q", field, got, want)
+		}
+	}
+	if theme.Personality != "editorial and high-contrast" {
+		t.Fatalf("theme.Personality = %q, want editorial and high-contrast", theme.Personality)
+	}
+	if theme.Mood != "bold" {
+		t.Fatalf("theme.Mood = %q, want bold", theme.Mood)
 	}
 }
 

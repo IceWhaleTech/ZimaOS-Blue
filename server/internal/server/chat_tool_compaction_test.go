@@ -635,6 +635,52 @@ func TestCompactToolResultContentForLLM_PDFSynthesizesPagesFromMarkdownWhenPages
 	}
 }
 
+func TestCompactToolResultContentForLLM_PDFCreateKeepsArtifactMetadata(t *testing.T) {
+	payload := map[string]interface{}{
+		"action": "create",
+		"path":   "reports/direct_markdown.pdf",
+		"format": "pdf",
+		"engine": "native_pdf_ir",
+		"validation": map[string]interface{}{
+			"ok":         true,
+			"readable":   true,
+			"page_count": 1,
+		},
+		"size":    1234,
+		"success": true,
+	}
+	contentBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal pdf create payload: %v", err)
+	}
+
+	compacted := compactToolResultContentForLLM("pdf", string(contentBytes))
+	if len(compacted) > maxLLMToolOutputBytes {
+		t.Fatalf("compacted pdf output too large: %d", len(compacted))
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted pdf create payload: %v", err)
+	}
+	doc, ok := out["document"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("document = %#v, want object", out["document"])
+	}
+	if got := anyToStringForLLM(doc["path"]); got != "reports/direct_markdown.pdf" {
+		t.Fatalf("document.path = %q, want reports/direct_markdown.pdf", got)
+	}
+	if got := anyToStringForLLM(doc["engine"]); got != "native_pdf_ir" {
+		t.Fatalf("document.engine = %q, want native_pdf_ir", got)
+	}
+	if got := anyToIntForLLM(doc["page_count"]); got != 1 {
+		t.Fatalf("document.page_count = %d, want 1", got)
+	}
+	if got := anyToIntForLLM(doc["size_bytes"]); got != 1234 {
+		t.Fatalf("document.size_bytes = %d, want 1234", got)
+	}
+}
+
 func TestCompactToolResultContentForLLM_PDFKeepsStructuredMarkdownOutlineBlocksAndTables(t *testing.T) {
 	payload := map[string]interface{}{
 		"document": map[string]interface{}{
