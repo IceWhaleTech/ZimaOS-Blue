@@ -118,7 +118,7 @@ func (t *PPTXTool) executeCreateLike(ctx context.Context, args map[string]interf
 	subtitle := strings.TrimSpace(firstCompatString(args, "subtitle"))
 	styleHint := firstCompatString(args, "style_hint", "styleHint", "style", "visual_style", "visualStyle")
 	if strings.TrimSpace(styleHint) == "" {
-		styleHint = "presentation"
+		styleHint = "board presentation"
 	}
 	theme := resolveOfficeTheme(firstCompatString(args, "theme"), styleHint)
 	spec, err := parseOfficeDocSpec(args, title, subtitle, theme, styleHint)

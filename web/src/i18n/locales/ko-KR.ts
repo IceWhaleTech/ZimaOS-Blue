@@ -2982,7 +2982,7 @@ export default mergeHarnessLocale('ko-KR', {
       loadingStore: '스토어 데이터 로딩 중...',
       noFeatured: '추천 스킬이 없습니다',
       noLocal: '로컬 스킬을 찾을 수 없습니다',
-      localHint: 'SKILL.md 파일을 ~/.claude/skills/ 디렉터리에 넣으세요',
+      localHint: 'SKILL.md 파일을 ~/.agents/skills/ 디렉터리에 넣으세요',
       noResultsTitle: '「{query}」에 대한 결과 없음',
       suggestions: '제안',
       tryClearFilters: '필터 지우기',

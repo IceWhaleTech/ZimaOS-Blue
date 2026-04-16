@@ -75,7 +75,7 @@ func TestOfficePPTXSlideXMLConvertsInlineMarkdownToNativeRuns(t *testing.T) {
 	for _, needle := range []string{
 		`<a:r><a:rPr lang="en-US" b="1" sz="2200"/><a:t>bold</a:t></a:r>`,
 		`<a:r><a:rPr lang="en-US" i="1" sz="2200"/><a:t>italic</a:t></a:r>`,
-		`<a:r><a:rPr lang="en-US" sz="2200"><a:latin typeface="Aptos Mono"/></a:rPr><a:t>code</a:t></a:r>`,
+		`<a:r><a:rPr lang="en-US" sz="2200"><a:latin typeface="Menlo"/><a:ea typeface="Hiragino Sans GB"/><a:cs typeface="Menlo"/></a:rPr><a:t>code</a:t></a:r>`,
 	} {
 		if !containsSubstring(xml, needle) {
 			t.Fatalf("slide XML missing %q in %s", needle, xml)
@@ -163,7 +163,8 @@ func TestBuildOfficePPTX_ConvertsBlockMarkdownToNativeText(t *testing.T) {
 	for _, needle := range []string{
 		`Keep the UX obvious`,
 		`Prefer native docs`,
-		`<a:latin typeface="Aptos Mono"/>`,
+		`<a:latin typeface="Menlo"/>`,
+		`<a:ea typeface="Hiragino Sans GB"/>`,
 		`fmt.Println(&#34;hello&#34;)`,
 		`fmt.Println(&#34;world&#34;)`,
 		`<a:br/>`,
@@ -287,8 +288,9 @@ func TestOfficePPTXSlideXMLUsesThemeTypographyAndSeparatorColor(t *testing.T) {
 		`name="Theme Background"`,
 		`name="Theme Band"`,
 		`name="Theme Accent Mark"`,
-		`typeface="Palatino Linotype"`,
-		`typeface="Inter"`,
+		`typeface="Georgia"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
 		`val="8B4513"`,
 		`val="57534E"`,
 		`val="FFF8F5"`,
@@ -322,7 +324,8 @@ func TestOfficePPTXSlideXMLUsesThemeAwareTableChrome(t *testing.T) {
 		`<a:solidFill><a:srgbClr val="FFFCFA"/></a:solidFill>`,
 		`<a:solidFill><a:srgbClr val="FFF8F5"/></a:solidFill>`,
 		`<a:srgbClr val="D6D3D1"/>`,
-		`typeface="Inter"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
 	} {
 		if !containsSubstring(xml, needle) {
 			t.Fatalf("slide XML missing %q in %s", needle, xml)

@@ -234,7 +234,7 @@ func NewManager(cfg Config, dataDir, configDir string) (*Manager, error) {
 		cfg.RetentionDays = 7
 	}
 	if cfg.SkillsPath == "" {
-		cfg.SkillsPath = filepath.Join(dataDir, "workspace", ".claude", "skills")
+		cfg.SkillsPath = filepath.Join(dataDir, "workspace", ".agents", "skills")
 	}
 	if cfg.AutoBackupInterval <= 0 {
 		cfg.AutoBackupInterval = 6 * time.Hour

@@ -58,8 +58,8 @@ func TestBuildSkillIndex_IncludesEmbeddedBuiltinFallback(t *testing.T) {
 	if _, ok := findSkillDocByName(docs, "research"); !ok {
 		t.Fatalf("expected embedded research skill in index, got %v", docs)
 	}
-	if _, ok := findSkillDocByName(docs, "browser"); ok {
-		t.Fatalf("did not expect embedded browser skill in index, got %v", docs)
+	if _, ok := findSkillDocByName(docs, "browser"); !ok {
+		t.Fatalf("expected embedded browser skill in index, got %v", docs)
 	}
 	_, hasComputerUse := findSkillDocByName(docs, "computer_use")
 	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {

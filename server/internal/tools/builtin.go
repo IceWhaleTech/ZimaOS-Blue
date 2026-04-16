@@ -1,10 +1,12 @@
 package tools
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,7 +195,7 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 
 	if info.Size() > f.MaxFileSize {
-		return nil, fmt.Errorf("file too large: %d bytes (max: %d bytes)", info.Size(), f.MaxFileSize)
+		return f.executeOversizedTextRead(absPath, relPath, info, startLine, endLine, maxBytes)
 	}
 
 	// Read file
@@ -237,14 +239,164 @@ func (f *FileReadTool) Execute(ctx context.Context, args map[string]interface{})
 	}
 	sliced := strings.Join(lines[from:to], "\n")
 
+	return f.buildTextReadResponse(absPath, relPath, info, startLine, to, totalLines, truncated, sliced)
+}
+
+func (f *FileReadTool) executeOversizedTextRead(absPath, relPath string, info os.FileInfo, startLine, endLine, maxBytes int) (interface{}, error) {
+	if startLine == 1 && endLine == 0 {
+		content, err := readUTF8Prefix(absPath, maxBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file: %w", err)
+		}
+		sliced, rangeEnd, totalLines, err := sliceReadContentByLines(content, startLine, endLine)
+		if err != nil {
+			return nil, err
+		}
+		return f.buildTextReadResponse(absPath, relPath, info, startLine, rangeEnd, totalLines, true, sliced)
+	}
+
+	content, rangeEnd, totalLines, truncated, err := readUTF8LinesWithinLimit(absPath, relPath, startLine, endLine, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	return f.buildTextReadResponse(absPath, relPath, info, startLine, rangeEnd, totalLines, truncated, content)
+}
+
+func readUTF8Prefix(path string, maxBytes int) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	content, err := io.ReadAll(io.LimitReader(file, int64(maxBytes)))
+	if err != nil {
+		return "", err
+	}
+	for len(content) > 0 && !utf8.Valid(content) {
+		content = content[:len(content)-1]
+	}
+	if !utf8.Valid(content) {
+		return "", errors.New("file is not valid UTF-8 text")
+	}
+	return string(content), nil
+}
+
+func readUTF8LinesWithinLimit(path, relPath string, startLine, endLine, maxBytes int) (string, int, int, bool, error) {
+	if startLine < 1 {
+		return "", 0, 0, false, errors.New("start_line must be >= 1")
+	}
+	if endLine > 0 && endLine < startLine {
+		return "", 0, 0, false, errors.New("end_line must be >= start_line")
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return "", 0, 0, false, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer file.Close()
+
+	reader := bufio.NewReader(file)
+	var content []byte
+	totalLines := 0
+	selectedLines := 0
+	truncated := false
+	endedWithNewline := false
+
+	appendSelectedLine := func(line string) {
+		if selectedLines > 0 {
+			var cut bool
+			content, cut = appendUTF8Limited(content, "\n", maxBytes)
+			truncated = truncated || cut
+		}
+		var cut bool
+		content, cut = appendUTF8Limited(content, line, maxBytes)
+		truncated = truncated || cut
+		selectedLines++
+	}
+
+	processLine := func(line string) error {
+		totalLines++
+		if !utf8.ValidString(line) {
+			return fmt.Errorf("file is not valid UTF-8 text: %s", relPath)
+		}
+		if totalLines >= startLine && (endLine == 0 || totalLines <= endLine) {
+			appendSelectedLine(line)
+		}
+		return nil
+	}
+
+	for {
+		line, readErr := reader.ReadString('\n')
+		if len(line) > 0 {
+			endedWithNewline = strings.HasSuffix(line, "\n")
+			if endedWithNewline {
+				line = strings.TrimSuffix(line, "\n")
+			}
+			if err := processLine(line); err != nil {
+				return "", 0, 0, false, err
+			}
+		}
+		if readErr == nil {
+			continue
+		}
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		return "", 0, 0, false, fmt.Errorf("failed to read file: %w", readErr)
+	}
+
+	switch {
+	case totalLines == 0:
+		totalLines = 1
+	case endedWithNewline:
+		if err := processLine(""); err != nil {
+			return "", 0, 0, false, err
+		}
+	}
+
+	if startLine > totalLines {
+		return "", 0, totalLines, false, fmt.Errorf("start_line %d out of range (total lines: %d)", startLine, totalLines)
+	}
+
+	rangeEnd := totalLines
+	if endLine > 0 && endLine < rangeEnd {
+		rangeEnd = endLine
+	}
+	return string(content), rangeEnd, totalLines, truncated, nil
+}
+
+func appendUTF8Limited(dst []byte, text string, maxBytes int) ([]byte, bool) {
+	if maxBytes <= 0 {
+		return dst, len(text) > 0
+	}
+	if len(dst) >= maxBytes {
+		return dst, len(text) > 0
+	}
+	remaining := maxBytes - len(dst)
+	if len(text) <= remaining {
+		return append(dst, text...), false
+	}
+	cut := remaining
+	for cut > 0 && !utf8.ValidString(text[:cut]) {
+		cut--
+	}
+	if cut == 0 {
+		return dst, true
+	}
+	return append(dst, text[:cut]...), true
+}
+
+func (f *FileReadTool) buildTextReadResponse(absPath, relPath string, info os.FileInfo, startLine, endLine, totalLines int, truncated bool, content string) (interface{}, error) {
+
 	response := map[string]interface{}{
 		"path":        relPath,
 		"size":        info.Size(),
 		"start_line":  startLine,
-		"end_line":    to,
+		"end_line":    endLine,
 		"total_lines": totalLines,
 		"truncated":   truncated,
-		"content":     sliced,
+		"content":     content,
 	}
 	switch strings.ToLower(strings.TrimPrefix(filepath.Ext(absPath), ".")) {
 	case "csv", "tsv":

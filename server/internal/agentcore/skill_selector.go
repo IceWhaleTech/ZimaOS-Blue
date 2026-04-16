@@ -531,7 +531,35 @@ func shouldSuppressDefinitionLikeSkillQuery(signals sel.QueryIntentSignals, matc
 	if signals.HowToQuestion {
 		return true
 	}
+	if looksLikeDefinitionStyleQuery(signals.Normalized) && len(match.ActionHits) == 0 {
+		return true
+	}
 	return signals.QuestionPrefix && len(match.ObjectHits) == 0
+}
+
+func looksLikeDefinitionStyleQuery(normalized string) bool {
+	normalized = strings.ToLower(strings.TrimSpace(normalized))
+	if normalized == "" {
+		return false
+	}
+	for _, prefix := range []string{
+		"what is ",
+		"what's ",
+		"define ",
+		"definition of ",
+		"explain ",
+		"tell me about ",
+		"什么是",
+		"啥是",
+		"是什么意思",
+		"解释一下",
+		"介绍一下",
+	} {
+		if strings.HasPrefix(normalized, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func applySkillBM25TieBreak(query string, ranked []skillRankedCandidate) {

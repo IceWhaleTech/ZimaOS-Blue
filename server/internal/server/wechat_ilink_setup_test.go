@@ -93,6 +93,58 @@ func TestWeChatILinkSetupHandler_CreateSessionReturnsUpstreamScanURLAndQRCode(t 
 	}
 }
 
+func TestWeChatILinkSetupHandler_CreateSessionAcceptsStoredBotAPIBaseURL(t *testing.T) {
+	var qrRequests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ilink/bot/get_bot_qrcode":
+			qrRequests++
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"qrcode":             "qr-key-compat",
+				"qrcode_img_content": "https://ilink.example.com/scan/compat",
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	if err := store.Set(wechatILinkSetupChannelID, &ChannelConfig{
+		ID:      wechatILinkSetupChannelID,
+		Enabled: false,
+		Config: map[string]string{
+			"api_base_url": upstream.URL + "/ilink/bot",
+		},
+	}); err != nil {
+		t.Fatalf("store.Set error = %v", err)
+	}
+
+	handler := NewWeChatILinkSetupHandler(
+		store,
+		channel.NewManager(channel.DefaultConfig(), zap.NewNop()),
+		NewChannelFactory(zap.NewNop()),
+		zap.NewNop(),
+	)
+
+	response := callWeChatILinkCreateSession(t, handler)
+
+	if qrRequests != 1 {
+		t.Fatalf("qrRequests = %d, want 1", qrRequests)
+	}
+	if got := stringValue(response["scan_url"]); got != "https://ilink.example.com/scan/compat" {
+		t.Fatalf("scan_url = %q, want %q", got, "https://ilink.example.com/scan/compat")
+	}
+
+	session, ok := handler.getSession(stringValue(response["session_id"]))
+	if !ok {
+		t.Fatal("expected stored setup session")
+	}
+	if session.ResolvedAPIBaseURL != upstream.URL {
+		t.Fatalf("session.ResolvedAPIBaseURL = %q, want %q", session.ResolvedAPIBaseURL, upstream.URL)
+	}
+}
+
 func TestWeChatILinkSetupHandler_GetSessionMapsWaitToPending(t *testing.T) {
 	var pollHeader string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +220,7 @@ func TestWeChatILinkSetupHandler_GetSessionConfirmedAutoActivatesChannel(t *test
 				"ilink_user_id": "user@im.wechat",
 				"baseurl":       upstream.URL,
 			})
-		case "/getupdates":
+		case "/ilink/bot/getupdates":
 			getUpdatesCalls++
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"ret":             0,
@@ -234,7 +286,7 @@ func TestWeChatILinkSetupHandler_GetSessionConfirmedDoesNotReactivate(t *testing
 				"ilink_bot_id": "bot-1",
 				"baseurl":      upstream.URL,
 			})
-		case "/getupdates":
+		case "/ilink/bot/getupdates":
 			getUpdatesCalls++
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"ret":             0,
@@ -389,7 +441,7 @@ func TestWeChatILinkSetupHandler_CompletePersistsAndEnablesChannel(t *testing.T)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/getupdates":
+		case "/ilink/bot/getupdates":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"ret":             0,
 				"msgs":            []any{},

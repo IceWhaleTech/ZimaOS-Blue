@@ -422,7 +422,9 @@ function formatScreenshotScope(value: string | undefined): string {
 
 function screenshotDataUrl(value: string | undefined | null): string {
   const data = String(value || '').trim()
-  return data ? `data:image/png;base64,${data}` : ''
+  if (!data) return ''
+  if (data.startsWith('data:image/')) return data
+  return `data:image/png;base64,${data}`
 }
 
 function sessionPreviewFallback(session: BrowserSession | null | undefined): string {
@@ -1855,7 +1857,7 @@ onUnmounted(() => {
               @click="activeScreenshotKey = screenshotFrameKey(frame)"
             >
               <img
-                :src="`data:image/png;base64,${frame.data}`"
+                :src="screenshotDataUrl(frame.data)"
                 :alt="tr('browserMonitor.previewAlt', 'Browser preview')"
                 class="browser-monitor__timeline-image"
               >

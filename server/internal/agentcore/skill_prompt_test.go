@@ -208,11 +208,14 @@ func TestScanSkillsDir_PrioritySort(t *testing.T) {
 }
 
 func TestSkillSortPriority_LegacyWebAliasesAreDeprioritized(t *testing.T) {
-	if got := skillSortPriority("web_query"); got != 0 {
-		t.Fatalf("web_query priority = %d, want 0", got)
+	if got := skillSortPriority("browser"); got != 0 {
+		t.Fatalf("browser priority = %d, want 0", got)
 	}
-	if got := skillSortPriority("research"); got != 1 {
-		t.Fatalf("research priority = %d, want 1", got)
+	if got := skillSortPriority("web_query"); got != 1 {
+		t.Fatalf("web_query priority = %d, want 1", got)
+	}
+	if got := skillSortPriority("research"); got != 2 {
+		t.Fatalf("research priority = %d, want 2", got)
 	}
 	for _, alias := range []string{"web_search", "web-search", "websearch"} {
 		if got := skillSortPriority(alias); got != 100 {
@@ -332,6 +335,7 @@ func TestPinnedSkills_ContainsCoreRoutedSkillSet(t *testing.T) {
 	}
 
 	required := []string{
+		"browser",
 		"web_query",
 		"research",
 		"reminder",
@@ -350,7 +354,7 @@ func TestPinnedSkills_ContainsCoreRoutedSkillSet(t *testing.T) {
 			t.Fatalf("PinnedSkills should not pin %q by default; got=%v", id, got)
 		}
 	}
-	for _, id := range []string{"browser", "deep_research", "analyze", "ui_reviewer"} {
+	for _, id := range []string{"deep_research", "analyze", "ui_reviewer"} {
 		if _, ok := gotSet[id]; ok {
 			t.Fatalf("PinnedSkills should not pin legacy/removed skill %q; got=%v", id, got)
 		}

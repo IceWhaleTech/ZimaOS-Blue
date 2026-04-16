@@ -753,6 +753,60 @@ describe('BrowserMonitorWidget', () => {
     )
   })
 
+  it('renders session screenshots that already include a data URL without forcing a PNG prefix', async () => {
+    const monitor = useBrowserMonitor()
+    monitor.setCollapsed(true)
+
+    const screenshot = 'data:image/webp;base64,compact-live-base64'
+
+    getBrowserOverviewMock.mockResolvedValue(
+      makeBrowserOverviewResponse({
+        tasks: [],
+        sessions: [
+          {
+            id: 'tab-1',
+            status: 'active',
+            current_url: 'https://live.example.com',
+            page_title: 'Live Session',
+            created_at: '2026-03-23T00:00:00.000Z',
+            last_activity: '2026-03-23T00:00:00.000Z',
+            engine: 'chromium_managed',
+            monitor_kind: 'image',
+          },
+        ],
+      })
+    )
+    getSessionMonitorMock.mockResolvedValue({
+      kind: 'image',
+      image: {
+        screenshot,
+        history: [
+          {
+            data: screenshot,
+            captured_at: '2026-03-23T00:00:00.000Z',
+            title: 'Live Session',
+            url: 'https://live.example.com',
+            scope: 'viewport',
+          },
+        ],
+      },
+      error: '',
+    })
+
+    const wrapper = mount(BrowserMonitorWidget, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.get('.browser-monitor__compact-image').attributes('src')).toBe(screenshot)
+  })
+
   it('auto-advances the compact preview to the newest screenshot frame', async () => {
     const monitor = useBrowserMonitor()
     monitor.setCollapsed(true)

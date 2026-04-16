@@ -61,9 +61,9 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 		return validator.NewMissingFieldResult("botToken")
 	}
 
-	targetURL := strings.TrimRight(baseURL, "/") + "/getupdates"
+	targetURL := resolveILinkBotBaseURL(baseURL) + "/getupdates"
 	if strings.TrimSpace(v.baseURL) != "" {
-		targetURL = strings.TrimRight(v.baseURL, "/") + "/getupdates"
+		targetURL = resolveILinkBotBaseURL(v.baseURL) + "/getupdates"
 	}
 
 	payload := []byte(`{"get_updates_buf":""}`)

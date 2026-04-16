@@ -25,6 +25,7 @@ import (
 const (
 	channelName = "wechat_ilink"
 	channelType = "wechat_ilink"
+	iLinkBotAPI = "/ilink/bot"
 
 	iLinkMessageTypeUser = 1
 	iLinkItemTypeText    = 1
@@ -405,7 +406,7 @@ func (c *Channel) ilinkGetUpdates(ctx context.Context, cursor string) (iLinkGetU
 }
 
 func (c *Channel) postILinkJSON(ctx context.Context, endpoint string, payload any, out any) error {
-	baseURL := strings.TrimRight(strings.TrimSpace(c.config.APIBaseURL), "/")
+	baseURL := resolveILinkBotBaseURL(c.config.APIBaseURL)
 	if baseURL == "" {
 		return fmt.Errorf("missing iLink api_base_url")
 	}
@@ -449,6 +450,17 @@ func (c *Channel) postILinkJSON(ctx context.Context, endpoint string, payload an
 		return fmt.Errorf("decode iLink response: %w", err)
 	}
 	return nil
+}
+
+func resolveILinkBotBaseURL(raw string) string {
+	baseURL := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if baseURL == "" {
+		return ""
+	}
+	if strings.HasSuffix(baseURL, iLinkBotAPI) {
+		return baseURL
+	}
+	return baseURL + iLinkBotAPI
 }
 
 func validateILinkResponse(resp iLinkResponseEnvelope) error {

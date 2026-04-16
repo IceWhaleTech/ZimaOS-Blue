@@ -29,6 +29,7 @@ const (
 	wechatILinkSetupChannelID           = "wechat_ilink"
 	wechatILinkSetupSessionTTL          = 10 * time.Minute
 	wechatILinkDefaultAPIBaseURL        = "https://ilinkai.weixin.qq.com"
+	wechatILinkBotAPIPath               = "/ilink/bot"
 )
 
 type wechatILinkSetupSession struct {
@@ -270,11 +271,11 @@ func (h *WeChatILinkSetupHandler) resolveWeChatILinkAPIBaseURL() string {
 	if h.store != nil {
 		if cfg, ok := h.store.Get(wechatILinkSetupChannelID); ok && cfg != nil {
 			if raw := strings.TrimSpace(cfg.Config["api_base_url"]); raw != "" {
-				return strings.TrimRight(raw, "/")
+				return normalizeWeChatILinkAPIBaseURL(raw)
 			}
 		}
 	}
-	return wechatILinkDefaultAPIBaseURL
+	return normalizeWeChatILinkAPIBaseURL(wechatILinkDefaultAPIBaseURL)
 }
 
 func (h *WeChatILinkSetupHandler) refreshWeChatILinkSetupSession(ctx context.Context, session *wechatILinkSetupSession) {
@@ -381,7 +382,7 @@ type wechatILinkQRCodeStatus struct {
 }
 
 func (h *WeChatILinkSetupHandler) fetchWeChatILinkQRCode(ctx context.Context, apiBaseURL string) (*wechatILinkQRCodeResponse, error) {
-	endpoint, err := url.Parse(strings.TrimRight(apiBaseURL, "/") + "/")
+	endpoint, err := url.Parse(normalizeWeChatILinkAPIBaseURL(apiBaseURL) + "/")
 	if err != nil {
 		return nil, fmt.Errorf("invalid iLink api_base_url: %w", err)
 	}
@@ -413,7 +414,7 @@ func (h *WeChatILinkSetupHandler) fetchWeChatILinkQRCode(ctx context.Context, ap
 }
 
 func (h *WeChatILinkSetupHandler) pollWeChatILinkQRCodeStatus(ctx context.Context, apiBaseURL, qrKey string) (*wechatILinkQRCodeStatus, error) {
-	endpoint, err := url.Parse(strings.TrimRight(apiBaseURL, "/") + "/")
+	endpoint, err := url.Parse(normalizeWeChatILinkAPIBaseURL(apiBaseURL) + "/")
 	if err != nil {
 		return nil, fmt.Errorf("invalid iLink api_base_url: %w", err)
 	}
@@ -483,12 +484,14 @@ func (h *WeChatILinkSetupHandler) activateChannel(ctx context.Context, apiBaseUR
 		return fmt.Errorf("wechat_ilink setup runtime is not available")
 	}
 
+	normalizedAPIBaseURL := normalizeWeChatILinkAPIBaseURL(apiBaseURL)
+
 	newCfg := &ChannelConfig{
 		ID:      wechatILinkSetupChannelID,
 		Enabled: true,
 		Status:  string(channel.StatusConnecting),
 		Config: map[string]string{
-			"api_base_url": apiBaseURL,
+			"api_base_url": normalizedAPIBaseURL,
 			"bot_token":    botToken,
 		},
 	}
@@ -556,6 +559,17 @@ func (h *WeChatILinkSetupHandler) activateChannel(ctx context.Context, apiBaseUR
 	}
 
 	return nil
+}
+
+func normalizeWeChatILinkAPIBaseURL(raw string) string {
+	baseURL := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if baseURL == "" {
+		return ""
+	}
+	if strings.HasSuffix(baseURL, wechatILinkBotAPIPath) {
+		return strings.TrimSuffix(baseURL, wechatILinkBotAPIPath)
+	}
+	return baseURL
 }
 
 func cloneChannelConfig(cfg *ChannelConfig) *ChannelConfig {

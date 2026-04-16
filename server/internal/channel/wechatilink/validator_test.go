@@ -39,7 +39,7 @@ func TestValidator_MissingBotToken(t *testing.T) {
 
 func TestValidator_ValidCredentials(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/getupdates" {
+		if r.URL.Path != "/ilink/bot/getupdates" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodPost {

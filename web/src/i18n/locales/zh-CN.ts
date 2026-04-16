@@ -2959,7 +2959,7 @@ export default mergeHarnessLocale('zh-CN', {
       loadingStore: '正在加载商店数据...',
       noFeatured: '暂无精选技能',
       noLocal: '未找到本地技能',
-      localHint: '将 SKILL.md 放在 ~/.claude/skills/ 目录',
+      localHint: '将 SKILL.md 放在 ~/.agents/skills/ 目录',
       noResultsTitle: '「{query}」无结果',
       suggestions: '建议',
       tryClearFilters: '尝试清除筛选',

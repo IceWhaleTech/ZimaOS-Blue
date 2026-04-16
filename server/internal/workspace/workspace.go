@@ -558,18 +558,20 @@ func writeIfMissing(path, content string) error {
 	return err
 }
 
-// ReleaseSkills writes embedded SKILL.md files to {workspace}/.claude/skills/{name}/SKILL.md.
+// ReleaseSkills writes embedded SKILL.md files to {workspace}/.agents/skills/{name}/SKILL.md.
 // Content-aware: only overwrites if the embedded content differs from the on-disk content
 // (ignoring the `enabled` field which is user-managed state).
 // Platform-aware: skips skills whose `os` field doesn't match runtime.GOOS.
-// Preserves the `enabled` field from the existing on-disk file across upgrades.
+// Preserves the `enabled` field from the existing on-disk file across upgrades,
+// including legacy peer copies that still live under {workspace}/.claude/skills.
 func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 	entries, err := fs.ReadDir(fsys, "skills")
 	if err != nil {
 		return fmt.Errorf("workspace: read embedded skills: %w", err)
 	}
 
-	skillsDir := filepath.Join(m.dir, ".claude", "skills")
+	skillsDir := filepath.Join(m.dir, ".agents", "skills")
+	legacySkillsDir := filepath.Join(m.dir, ".claude", "skills")
 	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
 		return fmt.Errorf("workspace: mkdir %s: %w", skillsDir, err)
 	}
@@ -587,7 +589,9 @@ func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 	}
 
 	migrateLegacyBundledSkillDirs(skillsDir, embeddedSkillData)
+	migrateLegacyBundledPeerSkillDirs(skillsDir, legacySkillsDir, embeddedSkillData)
 	pruneRemovedPlaceholderSkills(skillsDir)
+	pruneRemovedPlaceholderSkills(legacySkillsDir)
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -608,6 +612,11 @@ func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 				os.RemoveAll(dir)
 				log.Printf("workspace: removed platform-mismatched skill %s", entry.Name())
 			}
+			legacyDir := filepath.Join(legacySkillsDir, entry.Name())
+			if _, err := os.Stat(legacyDir); err == nil {
+				os.RemoveAll(legacyDir)
+				log.Printf("workspace: removed legacy platform-mismatched skill %s", entry.Name())
+			}
 			continue
 		}
 
@@ -624,6 +633,14 @@ func (m *Manager) ReleaseSkills(fsys fs.FS) error {
 			existingMeta := parseSkillFrontmatter(existingData)
 			if existingMeta.Enabled != "" {
 				data = setFrontmatterField(data, "enabled", existingMeta.Enabled)
+			}
+		} else {
+			legacyData, legacyErr := os.ReadFile(filepath.Join(legacySkillsDir, entry.Name(), "SKILL.md"))
+			if legacyErr == nil {
+				legacyMeta := parseSkillFrontmatter(legacyData)
+				if legacyMeta.Enabled != "" {
+					data = setFrontmatterField(data, "enabled", legacyMeta.Enabled)
+				}
 			}
 		}
 
@@ -853,6 +870,10 @@ func migrateLegacyBundledSkillDirs(skillsDir string, embeddedSkillData map[strin
 	migrateLegacyBundledSkillDir(skillsDir, "web_search", "web_query", embeddedSkillData["web_query"])
 }
 
+func migrateLegacyBundledPeerSkillDirs(targetSkillsDir, legacySkillsDir string, embeddedSkillData map[string][]byte) {
+	migrateLegacyBundledPeerSkillDir(targetSkillsDir, legacySkillsDir, "web_search", "web_query", embeddedSkillData["web_query"])
+}
+
 func migrateLegacyBundledSkillDir(skillsDir, legacyName, canonicalName string, canonicalData []byte) {
 	if len(canonicalData) == 0 {
 		return
@@ -911,6 +932,66 @@ func migrateLegacyBundledSkillDir(skillsDir, legacyName, canonicalName string, c
 		return
 	}
 	log.Printf("workspace: migrated legacy bundled skill dir %s -> %s", legacyName, canonicalName)
+}
+
+func migrateLegacyBundledPeerSkillDir(targetSkillsDir, legacySkillsDir, legacyName, canonicalName string, canonicalData []byte) {
+	if len(canonicalData) == 0 {
+		return
+	}
+
+	legacyDir := filepath.Join(legacySkillsDir, legacyName)
+	entries, err := os.ReadDir(legacyDir)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("workspace: read legacy peer bundled skill dir %s: %v", legacyName, err)
+		}
+		return
+	}
+	if len(entries) != 1 || entries[0].IsDir() || entries[0].Name() != "SKILL.md" {
+		return
+	}
+
+	legacyPath := filepath.Join(legacyDir, "SKILL.md")
+	legacyData, err := os.ReadFile(legacyPath)
+	if err != nil {
+		log.Printf("workspace: read legacy peer bundled skill %s: %v", legacyName, err)
+		return
+	}
+	if !contentEqual(legacyData, canonicalData) {
+		return
+	}
+
+	migratedData := canonicalData
+	legacyMeta := parseSkillFrontmatter(legacyData)
+	if legacyMeta.Enabled != "" {
+		migratedData = setFrontmatterField(migratedData, "enabled", legacyMeta.Enabled)
+	}
+
+	canonicalDir := filepath.Join(targetSkillsDir, canonicalName)
+	canonicalPath := filepath.Join(canonicalDir, "SKILL.md")
+	if existingData, readErr := os.ReadFile(canonicalPath); readErr == nil {
+		if !contentEqual(existingData, canonicalData) {
+			return
+		}
+		existingMeta := parseSkillFrontmatter(existingData)
+		if existingMeta.Enabled != "" {
+			migratedData = setFrontmatterField(canonicalData, "enabled", existingMeta.Enabled)
+		}
+	}
+
+	if err := os.MkdirAll(canonicalDir, 0o755); err != nil {
+		log.Printf("workspace: mkdir migrated peer bundled skill dir %s: %v", canonicalName, err)
+		return
+	}
+	if err := os.WriteFile(canonicalPath, migratedData, 0o644); err != nil {
+		log.Printf("workspace: write migrated peer bundled skill %s: %v", canonicalName, err)
+		return
+	}
+	if err := os.RemoveAll(legacyDir); err != nil {
+		log.Printf("workspace: remove legacy peer bundled skill dir %s: %v", legacyName, err)
+		return
+	}
+	log.Printf("workspace: migrated legacy peer bundled skill dir %s -> %s", legacyName, canonicalName)
 }
 
 func matchesRemovedPlaceholderSkill(name string, data []byte) bool {

@@ -49,7 +49,7 @@ func TestChannel_NameAndType(t *testing.T) {
 
 func TestChannel_Send_UsesBotAPI(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/sendmessage" {
+		if r.URL.Path != "/ilink/bot/sendmessage" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodPost {
@@ -123,7 +123,7 @@ func TestChannel_Send_UsesBotAPI(t *testing.T) {
 func TestChannel_Start_PollsIncomingMessages(t *testing.T) {
 	var calls atomic.Int32
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/getupdates" {
+		if r.URL.Path != "/ilink/bot/getupdates" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodPost {
@@ -216,7 +216,7 @@ func TestChannel_Start_PollsIncomingMessages(t *testing.T) {
 
 func TestChannel_Start_ReturnsAuthErrorBeforeConnecting(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/getupdates" {
+		if r.URL.Path != "/ilink/bot/getupdates" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusUnauthorized)
@@ -247,5 +247,43 @@ func TestChannel_Start_ReturnsAuthErrorBeforeConnecting(t *testing.T) {
 	}
 	if info.ConnectedAt != nil {
 		t.Fatal("expected ConnectedAt to remain nil")
+	}
+}
+
+func TestChannel_Start_DoesNotDuplicateBotSubpath(t *testing.T) {
+	var calls atomic.Int32
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/getupdates" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		calls.Add(1)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret":             0,
+			"msgs":            []any{},
+			"get_updates_buf": "cursor-1",
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL + "/ilink/bot",
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := ch.Start(ctx); err != nil {
+		t.Fatalf("Start error = %v", err)
+	}
+	defer func() {
+		if err := ch.Stop(context.Background()); err != nil {
+			t.Fatalf("Stop error = %v", err)
+		}
+	}()
+
+	if calls.Load() == 0 {
+		t.Fatal("expected getupdates probe call")
 	}
 }

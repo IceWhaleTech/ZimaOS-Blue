@@ -1441,15 +1441,7 @@ func (s *RodService) Screenshot(ctx context.Context, req *ScreenshotRequest) (*S
 	}
 
 	var data []byte
-	format := req.Format
-	if format == "" {
-		format = FormatPNG
-	}
-
-	quality := req.Quality
-	if quality <= 0 {
-		quality = 90
-	}
+	format, quality := normalizeScreenshotCaptureOptions(req.Format, req.Quality)
 
 	if req.Selector != nil && *req.Selector != "" {
 		// Screenshot specific element
@@ -2832,7 +2824,11 @@ func (s *RodService) ScreenshotTab(ctx context.Context, targetID string) (string
 		return "", err
 	}
 
-	data, err := tab.page.Screenshot(true, nil)
+	format, quality := normalizeScreenshotCaptureOptions("", 0)
+	data, err := tab.page.Screenshot(true, &proto.PageCaptureScreenshot{
+		Format:  format.toProto(),
+		Quality: &quality,
+	})
 	if err != nil {
 		if isConnectionClosed(err) {
 			s.removeTab(tab)
@@ -2841,22 +2837,30 @@ func (s *RodService) ScreenshotTab(ctx context.Context, targetID string) (string
 		return "", fmt.Errorf("screenshot failed: %w", err)
 	}
 
-	encoded := base64.StdEncoding.EncodeToString(data)
+	encoded := encodeInlineScreenshot(data, format)
 	s.rememberSessionScreenshot(tab, encoded, "full_page")
 	return encoded, nil
 }
 
 // ScreenshotViewport takes a viewport-only screenshot (no full-page scroll capture).
 func (s *RodService) ScreenshotViewport(ctx context.Context, targetID string) (string, error) {
-	data, err := s.ScreenshotViewportRaw(ctx, targetID)
-	if err != nil {
-		return "", err
-	}
 	tab, tabErr := s.getTab(ctx, targetID)
 	if tabErr != nil {
 		return "", tabErr
 	}
-	encoded := base64.StdEncoding.EncodeToString(data)
+	format, quality := normalizeScreenshotCaptureOptions("", 0)
+	data, err := tab.page.Screenshot(false, &proto.PageCaptureScreenshot{
+		Format:  format.toProto(),
+		Quality: &quality,
+	})
+	if err != nil {
+		if isConnectionClosed(err) {
+			s.removeTab(tab)
+			return "", fmt.Errorf("browser connection lost (tab removed): %w", err)
+		}
+		return "", fmt.Errorf("screenshot failed: %w", err)
+	}
+	encoded := encodeInlineScreenshot(data, format)
 	s.rememberSessionScreenshot(tab, encoded, "viewport")
 	return encoded, nil
 }

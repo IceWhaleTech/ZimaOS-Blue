@@ -69,6 +69,24 @@ const visibleBuiltinToolLocaleCoverage = {
 } as const
 
 describe('tool locale labels', () => {
+  it('points local skill hints at the primary ~/.agents/skills directory', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    for (const [modulePath, mod] of entries) {
+      const file = fileNameFromModulePath(modulePath)
+      const localHint = getPathValue(mod.default, 'skillStore.empty.localHint')
+
+      expect(typeof localHint, `${file} missing skillStore.empty.localHint`).toBe('string')
+      expect(String(localHint), `${file} should mention ~/.agents/skills`).toContain(
+        '~/.agents/skills'
+      )
+      expect(String(localHint), `${file} should not point only at ~/.claude/skills`).not.toContain(
+        '~/.claude/skills'
+      )
+    }
+  })
+
   it('keeps tool-related details and tags localized for all 27 locales', () => {
     const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
     expect(entries).toHaveLength(27)

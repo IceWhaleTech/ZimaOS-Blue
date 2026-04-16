@@ -694,7 +694,7 @@ type SkillHandler struct {
 	syncService         *skillstore.SyncService          // Sync service for periodic updates
 	featuredLoader      *skillstore.FeaturedSkillsLoader // Featured skills fallback
 	localScanner        *skillstore.LocalSkillScanner    // Local skill discovery
-	skillsDir           string                           // active managed install dir, typically {dataDir}/workspace/.claude/skills/
+	skillsDir           string                           // active managed install dir, typically {dataDir}/workspace/.agents/skills/
 	eventBroker         SkillEventPublisher              // Unified SSE event broker
 	sources             map[string]*SkillSource
 	remoteSkills        map[string]*RemoteSkill

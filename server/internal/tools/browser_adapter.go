@@ -409,7 +409,17 @@ func (a *RodBrowserBackend) Screenshot(ctx context.Context, url string) (string,
 	if err != nil {
 		return "", err
 	}
-	return resp.Data, nil
+	if resp == nil {
+		return "", nil
+	}
+	switch resp.Format {
+	case browser.FormatJPEG:
+		return "data:image/jpeg;base64," + strings.TrimSpace(resp.Data), nil
+	case browser.FormatWebP:
+		return "data:image/webp;base64," + strings.TrimSpace(resp.Data), nil
+	default:
+		return resp.Data, nil
+	}
 }
 
 func (a *RodBrowserBackend) ScreenshotTab(ctx context.Context, targetID string) (string, error) {

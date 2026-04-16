@@ -4958,7 +4958,8 @@ func TestPPTXToolCreate_UsesExplicitThemeMetadataAndThemeXML(t *testing.T) {
 		`val="1E3A5F"`,
 		`val="00D4AA"`,
 		`typeface="Georgia"`,
-		`typeface="Segoe UI"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
 	} {
 		if !containsSubstring(themeXML, needle) {
 			t.Fatalf("expected theme1.xml to include %q, got %s", needle, themeXML)
@@ -4971,11 +4972,71 @@ func TestPPTXToolCreate_UsesExplicitThemeMetadataAndThemeXML(t *testing.T) {
 		`name="Theme Band"`,
 		`name="Theme Accent Mark"`,
 		`typeface="Georgia"`,
-		`typeface="Segoe UI"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
 		`val="0F1D2F"`,
 		`val="334155"`,
 		`val="E8EEF4"`,
 		`val="00D4AA"`,
+	} {
+		if !containsSubstring(slideXML, needle) {
+			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+}
+
+func TestPPTXToolCreate_DefaultsGenericDecksToMidnightThemeWithSafeFonts(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/qwen3_intro_default_theme.pptx",
+		"title":  "Qwen3 最新优化介绍",
+		"sections": []interface{}{
+			map[string]interface{}{
+				"heading":    "核心更新",
+				"paragraphs": []interface{}{"混合思考模式升级", "性能与多语言能力继续提升"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "midnight" {
+		t.Fatalf("theme = %v, want midnight", got)
+	}
+
+	path := filepath.Join(tmpDir, "decks", "qwen3_intro_default_theme.pptx")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+
+	themeXML := officeZipEntryText(t, data, "ppt/theme/theme1.xml")
+	for _, needle := range []string{
+		`name="Midnight Theme"`,
+		`typeface="Georgia"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
+		`script="Hans" typeface="Hiragino Sans GB"`,
+	} {
+		if !containsSubstring(themeXML, needle) {
+			t.Fatalf("expected theme1.xml to include %q, got %s", needle, themeXML)
+		}
+	}
+
+	slideXML := officeZipEntryText(t, data, "ppt/slides/slide3.xml")
+	for _, needle := range []string{
+		`name="Theme Background"`,
+		`name="Theme Band"`,
+		`name="Theme Accent Mark"`,
+		`<a:latin typeface="Georgia"/>`,
+		`<a:latin typeface="Helvetica"/>`,
+		`<a:ea typeface="Hiragino Sans GB"/>`,
+		`<a:cs typeface="Helvetica"/>`,
 	} {
 		if !containsSubstring(slideXML, needle) {
 			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
@@ -5078,7 +5139,8 @@ func TestPPTXToolCreate_UsesThemeTypographyForChartText(t *testing.T) {
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
 	for _, needle := range []string{
 		`<a:latin typeface="Georgia"/>`,
-		`<a:latin typeface="Segoe UI"/>`,
+		`<a:latin typeface="Helvetica"/>`,
+		`<a:ea typeface="Hiragino Sans GB"/>`,
 		`<a:srgbClr val="0F1D2F"/>`,
 		`<a:srgbClr val="334155"/>`,
 		`<c:legend><c:legendPos val="r"/><c:layout/><c:txPr>`,
@@ -5128,7 +5190,7 @@ func TestPPTXToolCreate_UsesThemeAxisChromeForCharts(t *testing.T) {
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
 	for _, needle := range []string{
 		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="F1F5F9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
-		`<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr lang="en-US" sz="1000"><a:latin typeface="Segoe UI"/><a:solidFill><a:srgbClr val="334155"/></a:solidFill></a:defRPr></a:pPr>`,
+		`<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr lang="en-US" sz="1000"><a:latin typeface="Helvetica"/><a:ea typeface="Hiragino Sans GB"/><a:cs typeface="Helvetica"/><a:solidFill><a:srgbClr val="334155"/></a:solidFill></a:defRPr></a:pPr>`,
 		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
 	} {
 		if !containsSubstring(chartXML, needle) {
@@ -5185,7 +5247,8 @@ func TestPPTXToolCreate_UsesThemeCalloutRailForChartSlides(t *testing.T) {
 		`<a:t>$12.4M</a:t>`,
 		`<a:t>Watch conversion quality</a:t>`,
 		`typeface="Georgia"`,
-		`typeface="Segoe UI"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
 		`val="00D4AA"`,
 		`cx="8031480"`,
 	} {

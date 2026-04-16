@@ -3,27 +3,34 @@ package tools
 import (
 	"encoding/base64"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func decodeBrowserScreenshotBase64(encoded string) ([]byte, error) {
+func decodeBrowserScreenshotBase64(encoded string) ([]byte, string, error) {
 	trimmed := strings.TrimSpace(encoded)
 	if trimmed == "" {
-		return nil, fmt.Errorf("screenshot payload is empty")
+		return nil, "", fmt.Errorf("screenshot payload is empty")
 	}
+	mimeType := ""
 	if idx := strings.Index(trimmed, ","); idx >= 0 && strings.Contains(trimmed[:idx], ";base64") {
+		header := strings.TrimSpace(trimmed[:idx])
+		if strings.HasPrefix(header, "data:") {
+			mimeType = strings.TrimPrefix(header, "data:")
+			mimeType = strings.TrimSuffix(mimeType, ";base64")
+		}
 		trimmed = trimmed[idx+1:]
 	}
 	raw, err := base64.StdEncoding.DecodeString(trimmed)
 	if err != nil {
-		return nil, fmt.Errorf("decode screenshot: %w", err)
+		return nil, "", fmt.Errorf("decode screenshot: %w", err)
 	}
 	if len(raw) == 0 {
-		return nil, fmt.Errorf("screenshot payload is empty")
+		return nil, "", fmt.Errorf("screenshot payload is empty")
 	}
-	return raw, nil
+	return raw, mimeType, nil
 }
 
 func browserScreenshotStorageDir(mediaDir string) string {
@@ -34,9 +41,29 @@ func browserScreenshotStorageDir(mediaDir string) string {
 	return filepath.Join(os.TempDir(), "zimaos-blue", "browser")
 }
 
+func browserScreenshotExtension(mimeType string, raw []byte) string {
+	switch strings.TrimSpace(strings.ToLower(mimeType)) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	case "image/png":
+		return ".png"
+	}
+
+	switch http.DetectContentType(raw) {
+	case "image/jpeg":
+		return ".jpg"
+	case "image/webp":
+		return ".webp"
+	default:
+		return ".png"
+	}
+}
+
 // SaveBrowserScreenshotBase64 persists a browser screenshot and returns the saved file path.
 func SaveBrowserScreenshotBase64(mediaDir string, encoded string) (string, error) {
-	raw, err := decodeBrowserScreenshotBase64(encoded)
+	raw, mimeType, err := decodeBrowserScreenshotBase64(encoded)
 	if err != nil {
 		return "", err
 	}
@@ -44,7 +71,7 @@ func SaveBrowserScreenshotBase64(mediaDir string, encoded string) (string, error
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("create browser media dir: %w", err)
 	}
-	file, err := os.CreateTemp(dir, "screenshot-*.png")
+	file, err := os.CreateTemp(dir, "screenshot-*"+browserScreenshotExtension(mimeType, raw))
 	if err != nil {
 		return "", fmt.Errorf("create screenshot file: %w", err)
 	}

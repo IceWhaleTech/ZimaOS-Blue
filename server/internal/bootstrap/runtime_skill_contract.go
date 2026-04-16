@@ -2,8 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"path/filepath"
-	"strings"
 
 	serverpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/server"
 )
@@ -19,7 +17,7 @@ func (binding *runtimeContractBinding) BindSkillRuntime(
 
 func bindRouteRuntimeSkills(options routeRuntimeContractSkillOptions) routeRuntimeContractSkillResult {
 	result := routeRuntimeContractSkillResult{
-		skillsDir: filepath.Join(strings.TrimSpace(options.dataDir), "workspace", ".claude", "skills"),
+		skillsDir: ResolveWorkspaceSkillsDir(options.dataDir, options.appConfig),
 	}
 	if options.services == nil {
 		return result

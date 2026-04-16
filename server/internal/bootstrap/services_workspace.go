@@ -61,5 +61,5 @@ func ResolveBuiltinToolAllowedPaths(appCfg *config.Config, dataDir string) []str
 }
 
 func ResolveWorkspaceSkillsDir(dataDir string, appCfg *config.Config) string {
-	return filepath.Join(ResolveWorkspaceDir(dataDir, appCfg), ".claude", "skills")
+	return filepath.Join(ResolveWorkspaceDir(dataDir, appCfg), ".agents", "skills")
 }

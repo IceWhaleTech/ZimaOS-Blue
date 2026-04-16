@@ -136,6 +136,54 @@ describe('CardFile', () => {
     expect(wrapper.text()).toContain('PPTX')
   })
 
+  it.each([
+    ['presentation.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '📽️'],
+    ['document.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '📝'],
+    ['spreadsheet.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', '📊'],
+    ['report.pdf', 'application/pdf', '📄'],
+  ])(
+    'falls back to the file icon when the thumbnail fails for %s',
+    async (filename, mimeType, expectedIcon) => {
+      const encodedPath = encodeURIComponent(`/Users/orca/Documents/${filename}`)
+      resolveLocalFileMock.mockResolvedValueOnce({
+        data: {
+          path: `/Users/orca/Documents/${filename}`,
+          name: filename,
+          size_bytes: 2048,
+          mime_type: mimeType,
+          download_url: `/api/v1/system/local-file/content?path=${encodedPath}`,
+          thumbnail_url: `/api/v1/system/local-file/thumbnail?path=${encodedPath}`,
+        },
+      })
+
+      const wrapper = mount(CardFile, {
+        props: {
+          card: {
+            type: 'file',
+            filename,
+            downloadUrl: `/Users/orca/Documents/${filename}`,
+            mimeType,
+          },
+        },
+        global: {
+          plugins: [createTestI18n()],
+        },
+      })
+
+      await flushPromises()
+
+      const image = wrapper.find('img')
+      expect(image.exists()).toBe(true)
+
+      await image.trigger('error')
+      await flushPromises()
+
+      expect(wrapper.find('img').exists()).toBe(false)
+      expect(wrapper.findAll('span').some((node) => node.text() === expectedIcon)).toBe(true)
+      expect(wrapper.text()).toContain(filename.split('.').pop()!.toUpperCase())
+    }
+  )
+
   it('thumbnail click opens resolved download URL', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
     const wrapper = mount(CardFile, {

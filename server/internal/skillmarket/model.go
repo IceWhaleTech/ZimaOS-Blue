@@ -99,7 +99,7 @@ func DefaultConfig(dataDir, activeSkillsDir string) Config {
 	home, _ := os.UserHomeDir()
 	cacheRoot := filepath.Join(home, ".zima", "skills")
 	if strings.TrimSpace(activeSkillsDir) == "" {
-		activeSkillsDir = filepath.Join(dataDir, "workspace", ".claude", "skills")
+		activeSkillsDir = filepath.Join(dataDir, "workspace", ".agents", "skills")
 	}
 	return Config{
 		Enabled:                    true,

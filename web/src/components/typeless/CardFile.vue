@@ -78,6 +78,7 @@ const isLocalDownloadPath = computed(() => {
 })
 
 const localFile = ref<LocalFileResolveResponse | null>(null)
+const thumbnailLoadFailed = ref(false)
 let resolveSeq = 0
 
 const resolvedDownloadUrl = computed(() => String(localFile.value?.download_url || '').trim())
@@ -88,6 +89,15 @@ const thumbnailDisplayUrl = computed(() => {
     ? `${thumbnailUrl.value}&size=128`
     : `${thumbnailUrl.value}?size=128`
 })
+const showThumbnail = computed(() => Boolean(thumbnailDisplayUrl.value) && !thumbnailLoadFailed.value)
+
+watch(
+  thumbnailDisplayUrl,
+  () => {
+    thumbnailLoadFailed.value = false
+  },
+  { immediate: true }
+)
 
 watch(
   () => props.card.downloadUrl,
@@ -164,6 +174,10 @@ async function handleThumbnailClick() {
   }
   void handleDownload()
 }
+
+function handleThumbnailError() {
+  thumbnailLoadFailed.value = true
+}
 </script>
 
 <template>
@@ -176,7 +190,7 @@ async function handleThumbnailClick() {
         class="flex-shrink-0 w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl overflow-hidden"
       >
         <button
-          v-if="thumbnailDisplayUrl"
+          v-if="showThumbnail"
           class="w-full h-full"
           :title="t('common.download', 'Download')"
           :aria-label="t('common.download', 'Download')"
@@ -187,6 +201,7 @@ async function handleThumbnailClick() {
             :alt="card.filename"
             class="w-full h-full object-cover"
             loading="lazy"
+            @error="handleThumbnailError"
           >
         </button>
         <span v-else>{{ getFileIcon() }}</span>

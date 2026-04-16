@@ -1514,11 +1514,9 @@ func TestFileReadToolMissingPath(t *testing.T) {
 	}
 }
 
-// Test FileRead tool file too large
-func TestFileReadToolFileTooLarge(t *testing.T) {
+func TestFileReadToolLargeTextIsTruncated(t *testing.T) {
 	tmpDir := t.TempDir()
 	testFile := tmpDir + "/large.txt"
-	// Create a file larger than the limit
 	largeContent := make([]byte, 1024)
 	for i := range largeContent {
 		largeContent[i] = 'x'
@@ -1527,14 +1525,61 @@ func TestFileReadToolFileTooLarge(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	// Tool with small max size
-	tool := NewFileReadTool(nil, 100)
+	tool := NewFileReadTool([]string{tmpDir}, 100)
 
-	_, err := tool.Execute(context.Background(), map[string]interface{}{
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
 		"path": testFile,
 	})
-	if err == nil {
-		t.Error("expected error for file too large")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("failed to decode read result: %v", err)
+	}
+	if got := payload["truncated"]; got != true {
+		t.Fatalf("truncated = %v, want true", got)
+	}
+	if got := payload["size"]; got != float64(len(largeContent)) {
+		t.Fatalf("size = %v, want %d", got, len(largeContent))
+	}
+	if got := len(payload["content"].(string)); got != 100 {
+		t.Fatalf("content length = %d, want 100", got)
+	}
+}
+
+func TestFileReadToolLargeTextAllowsLineSliceWithinMaxBytes(t *testing.T) {
+	tmpDir := t.TempDir()
+	testFile := filepath.Join(tmpDir, "slice.txt")
+	content := strings.Repeat("a", 120) + "\nneedle\n" + strings.Repeat("b", 120)
+	if err := writeTestFile(testFile, content); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	tool := NewFileReadTool([]string{tmpDir}, 100)
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"path":       testFile,
+		"start_line": 2,
+		"end_line":   2,
+		"max_bytes":  16,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.(string)), &payload); err != nil {
+		t.Fatalf("failed to decode read result: %v", err)
+	}
+	if got := payload["content"]; got != "needle" {
+		t.Fatalf("content = %v, want %q", got, "needle")
+	}
+	if got := payload["start_line"]; got != float64(2) {
+		t.Fatalf("start_line = %v, want 2", got)
+	}
+	if got := payload["end_line"]; got != float64(2) {
+		t.Fatalf("end_line = %v, want 2", got)
 	}
 }
 

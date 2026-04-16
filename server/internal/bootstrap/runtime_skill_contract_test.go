@@ -25,7 +25,7 @@ func TestBindRouteRuntimeSkills_ReturnsWorkspaceSkillsDirWithoutServices(t *test
 		ctx:     context.Background(),
 	})
 
-	want := filepath.Join(dataDir, "workspace", ".claude", "skills")
+	want := filepath.Join(dataDir, "workspace", ".agents", "skills")
 	if result.skillsDir != want {
 		t.Fatalf("skillsDir=%q, want %q", result.skillsDir, want)
 	}
@@ -191,7 +191,7 @@ func TestBindRouteRuntimeSkills_ReturnsFirstClassSkillContractState(t *testing.T
 		},
 	})
 
-	want := filepath.Join(tmp, "workspace", ".claude", "skills")
+	want := filepath.Join(tmp, "workspace", ".agents", "skills")
 	if result.skillsDir != want {
 		t.Fatalf("skillsDir=%q, want %q", result.skillsDir, want)
 	}

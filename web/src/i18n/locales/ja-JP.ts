@@ -3010,7 +3010,7 @@ export default mergeHarnessLocale('ja-JP', {
       loadingStore: 'ストアデータを読み込み中...',
       noFeatured: 'おすすめスキルはありません',
       noLocal: 'ローカルスキルが見つかりません',
-      localHint: 'SKILL.md を ~/.claude/skills/ に配置してください',
+      localHint: 'SKILL.md を ~/.agents/skills/ に配置してください',
       noResultsTitle: '「{query}」の結果はありません',
       suggestions: '提案',
       tryClearFilters: 'フィルターをクリアしてみてください',

@@ -6809,6 +6809,8 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		originalRoutedDefs := selection.RoutedDefs
 		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
 		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
+		selection.RoutedDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.RoutedDefs)
+		selection.NativeDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.NativeDefs)
 		selection.RoutedDefs = ensureExplicitNamedNativeTools(userMessage, originalRoutedDefs, selection.RoutedDefs)
 		selection.NativeDefs = ensureExplicitNamedNativeTools(userMessage, originalRoutedDefs, selection.NativeDefs)
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
@@ -7858,6 +7860,45 @@ func ensureExplicitNamedNativeTools(userMessage string, allDefs, current []tools
 		return current
 	}
 	return mergeToolDefsByName(current, filterToolDefsToNames(allDefs, explicit...))
+}
+
+func shouldKeepComputerUseForLiveArtifactWorkflow(userMessage string) bool {
+	trimmed := strings.TrimSpace(userMessage)
+	if trimmed == "" {
+		return false
+	}
+	lower := strings.ToLower(trimmed)
+	if hasAnyExplicitNamedNativeToolCue(lower, "computer_use", "computer-use", "computer use") {
+		return true
+	}
+	return computerUseLiveStateCueMatcher.ContainsAnyFold(trimmed) &&
+		computerUseInspectionCueMatcher.ContainsAnyFold(trimmed)
+}
+
+func (h *ChatHandler) ensureComputerUseForLiveArtifactWorkflow(userMessage string, policyReq tools.ToolPolicyRequest, current []tools.ToolDefinition) []tools.ToolDefinition {
+	if h == nil || len(current) == 0 || !shouldKeepComputerUseForLiveArtifactWorkflow(userMessage) {
+		return current
+	}
+	if hasToolDefName(current, "computer_use") {
+		return current
+	}
+
+	candidateDefs := h.toolDefinitionsForPolicy(policyReq)
+	if len(filterToolDefsToNames(candidateDefs, "computer_use")) == 0 &&
+		policyReq.RouteKind == tools.ToolRouteKindChat &&
+		!policyReq.SkipDefaultChatDirectAllowlist {
+		expandedReq := policyReq
+		expandedReq.SkipDefaultChatDirectAllowlist = true
+		if expandedDefs := h.toolDefinitionsForPolicy(expandedReq); len(expandedDefs) > 0 {
+			candidateDefs = expandedDefs
+		}
+	}
+
+	computerUseDefs := filterToolDefsToNames(candidateDefs, "computer_use")
+	if len(computerUseDefs) == 0 {
+		return current
+	}
+	return mergeToolDefsByName(current, computerUseDefs)
 }
 
 func suppressConvertForNativeArtifactRouting(userMessage string, current []tools.ToolDefinition) []tools.ToolDefinition {
@@ -8950,6 +8991,8 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
 		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
 		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
+		selection.RoutedDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.RoutedDefs)
+		selection.NativeDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.NativeDefs)
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	}
 

@@ -20,7 +20,7 @@ import (
 type UserSkillHandler struct {
 	db        *sql.DB
 	readDB    *sql.DB
-	skillsDir string // active managed install dir, typically {dataDir}/workspace/.claude/skills/
+	skillsDir string // active managed install dir, typically {dataDir}/workspace/.agents/skills/
 }
 
 // NewUserSkillHandler creates a new user skill handler and runs migrations.

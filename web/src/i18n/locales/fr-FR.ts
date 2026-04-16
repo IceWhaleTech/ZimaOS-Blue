@@ -3060,7 +3060,7 @@ export default mergeHarnessLocale('fr-FR', {
       loadingStore: 'Loading store data...',
       noFeatured: 'No featured skills at the moment',
       noLocal: 'No local skills found',
-      localHint: 'Place SKILL.md files in ~/.claude/skills/ directory',
+      localHint: 'Place SKILL.md files in ~/.agents/skills/ directory',
       noResultsTitle: 'No results for "{query}"',
       suggestions: 'Suggestions',
       tryClearFilters: 'Try clearing filters',

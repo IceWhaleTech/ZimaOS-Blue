@@ -143,6 +143,13 @@ func BuildSkillIndexFromViews(views []skillmanifest.SkillExposureView) []SkillDo
 		doc.ActivationSource = strings.TrimSpace(view.ActivationSource)
 		docs = append(docs, doc)
 	}
+	sort.Slice(docs, func(i, j int) bool {
+		pi, pj := skillSortPriority(docs[i].Name), skillSortPriority(docs[j].Name)
+		if pi != pj {
+			return pi < pj
+		}
+		return docs[i].Name < docs[j].Name
+	})
 	return docs
 }
 

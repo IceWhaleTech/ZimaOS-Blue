@@ -439,6 +439,7 @@ card_support: none
 func TestPinnedBuiltinSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 	pinned := []string{
 		"ask",
+		"browser",
 		"web_query",
 		"research",
 		"config",
@@ -610,7 +611,7 @@ func TestSupplementalSkills_StrictContractAndEmbeddedSync(t *testing.T) {
 }
 
 func TestLegacyResearchAndEmailEmbeddedAssetsAreRemoved(t *testing.T) {
-	for _, id := range []string{"browser", "analyze", "ui_reviewer", "deep_research", "himalaya"} {
+	for _, id := range []string{"analyze", "ui_reviewer", "deep_research", "himalaya"} {
 		t.Run(id, func(t *testing.T) {
 			if _, _, err := ReadEmbedded(id, Options{}); err == nil {
 				t.Fatalf("expected %q embedded asset to be removed", id)

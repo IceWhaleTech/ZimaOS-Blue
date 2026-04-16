@@ -190,7 +190,8 @@ func TestOfficePPTXSlideXMLIncludesThemeAwareChartCalloutRail(t *testing.T) {
 		`<a:t>$12.4M</a:t>`,
 		`<a:t>Watch conversion quality</a:t>`,
 		`typeface="Georgia"`,
-		`typeface="Segoe UI"`,
+		`typeface="Helvetica"`,
+		`typeface="Hiragino Sans GB"`,
 		`val="00D4AA"`,
 		`val="FEF3C7"`,
 		`cx="8031480"`,
@@ -1978,7 +1979,8 @@ func TestOfficePPTXChartXMLForThemeUsesThemeTypography(t *testing.T) {
 
 	for _, needle := range []string{
 		`<a:latin typeface="Georgia"/>`,
-		`<a:latin typeface="Segoe UI"/>`,
+		`<a:latin typeface="Helvetica"/>`,
+		`<a:ea typeface="Hiragino Sans GB"/>`,
 		`<a:srgbClr val="0F1D2F"/>`,
 		`<a:srgbClr val="334155"/>`,
 		`<c:legend><c:legendPos val="r"/><c:layout/><c:txPr>`,
@@ -2010,7 +2012,8 @@ func TestOfficePPTXChartXMLForThemeUsesThemeAxisChrome(t *testing.T) {
 
 	for _, needle := range []string{
 		`<c:txPr>`,
-		`<a:latin typeface="Segoe UI"/>`,
+		`<a:latin typeface="Helvetica"/>`,
+		`<a:ea typeface="Hiragino Sans GB"/>`,
 		`<a:srgbClr val="334155"/>`,
 		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
 	} {
@@ -2022,7 +2025,8 @@ func TestOfficePPTXChartXMLForThemeUsesThemeAxisChrome(t *testing.T) {
 	for _, needle := range []string{
 		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="F1F5F9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
 		`<c:txPr>`,
-		`<a:latin typeface="Segoe UI"/>`,
+		`<a:latin typeface="Helvetica"/>`,
+		`<a:ea typeface="Hiragino Sans GB"/>`,
 		`<a:srgbClr val="334155"/>`,
 		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
 	} {

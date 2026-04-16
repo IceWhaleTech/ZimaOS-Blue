@@ -1022,7 +1022,7 @@ func TestReleaseSkills_ContentChanged(t *testing.T) {
 	mgr := NewManager(dir)
 
 	// Write old content on disk with enabled: true
-	skillDir := filepath.Join(dir, ".claude", "skills", "test-skill")
+	skillDir := filepath.Join(dir, ".agents", "skills", "test-skill")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: test-skill\nenabled: true\n---\n# Old Content"), 0o644)
 
@@ -1049,7 +1049,7 @@ func TestReleaseSkills_ContentSame(t *testing.T) {
 	mgr := NewManager(dir)
 
 	// Write content on disk with user's enabled state
-	skillDir := filepath.Join(dir, ".claude", "skills", "test-skill")
+	skillDir := filepath.Join(dir, ".agents", "skills", "test-skill")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: test-skill\nenabled: false\n---\n# Same Content"), 0o644)
 
@@ -1075,9 +1075,37 @@ func TestReleaseSkills_NewSkill(t *testing.T) {
 	}}}
 	mgr.ReleaseSkills(fsys)
 
-	data, _ := os.ReadFile(filepath.Join(dir, ".claude", "skills", "new-skill", "SKILL.md"))
+	data, _ := os.ReadFile(filepath.Join(dir, ".agents", "skills", "new-skill", "SKILL.md"))
 	if !strings.Contains(string(data), "New Skill") {
 		t.Error("new skill should be written")
+	}
+}
+
+func TestReleaseSkills_PreservesLegacyClaudeEnabledStateWhenWritingAgentsRoot(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+
+	legacyDir := filepath.Join(dir, ".claude", "skills", "test-skill")
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatalf("mkdir legacy skill dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyDir, "SKILL.md"), []byte("---\nname: test-skill\nenabled: false\n---\n# Legacy Content"), 0o644); err != nil {
+		t.Fatalf("write legacy skill: %v", err)
+	}
+
+	fsys := &testFSAdapter{&testFS{skills: map[string]string{
+		"test-skill": "---\nname: test-skill\n---\n# Legacy Content",
+	}}}
+	if err := mgr.ReleaseSkills(fsys); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, ".agents", "skills", "test-skill", "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read agents skill: %v", err)
+	}
+	if !strings.Contains(string(data), "enabled: false") {
+		t.Fatalf("expected agents root to preserve enabled=false from legacy claude root, got %q", string(data))
 	}
 }
 
@@ -1092,7 +1120,7 @@ func TestReleaseSkills_PlatformFilter(t *testing.T) {
 	}}}
 	mgr.ReleaseSkills(fsys)
 
-	skillDir := filepath.Join(dir, ".claude", "skills", "platform-skill")
+	skillDir := filepath.Join(dir, ".agents", "skills", "platform-skill")
 	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
 		t.Error("platform-mismatched skill should not be released")
 	}
@@ -1103,7 +1131,7 @@ func TestReleaseSkills_CleanupMismatch(t *testing.T) {
 	mgr := NewManager(dir)
 
 	// Pre-create a skill directory (simulating previous release on different platform)
-	skillDir := filepath.Join(dir, ".claude", "skills", "mac-only")
+	skillDir := filepath.Join(dir, ".agents", "skills", "mac-only")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("old"), 0o644)
 
@@ -1123,7 +1151,7 @@ func TestReleaseSkills_PreserveEnabled(t *testing.T) {
 	mgr := NewManager(dir)
 
 	// Write on disk with enabled: false
-	skillDir := filepath.Join(dir, ".claude", "skills", "test-skill")
+	skillDir := filepath.Join(dir, ".agents", "skills", "test-skill")
 	os.MkdirAll(skillDir, 0o755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: test-skill\nenabled: false\n---\n# Old"), 0o644)
 
@@ -1143,7 +1171,7 @@ func TestReleaseSkills_PrunesRemovedPlaceholderSkill(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager(dir)
 
-	skillDir := filepath.Join(dir, ".claude", "skills", "search")
+	skillDir := filepath.Join(dir, ".agents", "skills", "search")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
@@ -1165,7 +1193,7 @@ func TestReleaseSkills_PreservesCustomSkillUsingRemovedName(t *testing.T) {
 	dir := t.TempDir()
 	mgr := NewManager(dir)
 
-	skillDir := filepath.Join(dir, ".claude", "skills", "search")
+	skillDir := filepath.Join(dir, ".agents", "skills", "search")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
@@ -1193,7 +1221,7 @@ func TestReleaseSkills_PreservesRemovedPlaceholderSkillWithExtraFiles(t *testing
 	dir := t.TempDir()
 	mgr := NewManager(dir)
 
-	skillDir := filepath.Join(dir, ".claude", "skills", "search")
+	skillDir := filepath.Join(dir, ".agents", "skills", "search")
 	if err := os.MkdirAll(skillDir, 0o755); err != nil {
 		t.Fatalf("mkdir skill dir: %v", err)
 	}
@@ -1219,7 +1247,7 @@ func TestReleaseSkills_MigratesLegacyWebSearchBuiltinToCanonicalWebQuery(t *test
 	dir := t.TempDir()
 	mgr := NewManager(dir)
 
-	legacyDir := filepath.Join(dir, ".claude", "skills", "web_search")
+	legacyDir := filepath.Join(dir, ".agents", "skills", "web_search")
 	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
 		t.Fatalf("mkdir legacy dir: %v", err)
 	}
@@ -1239,7 +1267,7 @@ func TestReleaseSkills_MigratesLegacyWebSearchBuiltinToCanonicalWebQuery(t *test
 		t.Fatalf("expected legacy web_search dir to be removed after migration, err=%v", err)
 	}
 
-	canonicalPath := filepath.Join(dir, ".claude", "skills", "web_query", "SKILL.md")
+	canonicalPath := filepath.Join(dir, ".agents", "skills", "web_query", "SKILL.md")
 	data, err := os.ReadFile(canonicalPath)
 	if err != nil {
 		t.Fatalf("read canonical skill: %v", err)
@@ -1253,7 +1281,7 @@ func TestReleaseSkills_PreservesCustomLegacyWebSearchDirWhileReleasingCanonicalW
 	dir := t.TempDir()
 	mgr := NewManager(dir)
 
-	legacyDir := filepath.Join(dir, ".claude", "skills", "web_search")
+	legacyDir := filepath.Join(dir, ".agents", "skills", "web_search")
 	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
 		t.Fatalf("mkdir legacy dir: %v", err)
 	}
@@ -1278,7 +1306,7 @@ func TestReleaseSkills_PreservesCustomLegacyWebSearchDirWhileReleasingCanonicalW
 		t.Fatalf("expected custom legacy web_search skill to remain, got %q", string(data))
 	}
 
-	canonicalPath := filepath.Join(dir, ".claude", "skills", "web_query", "SKILL.md")
+	canonicalPath := filepath.Join(dir, ".agents", "skills", "web_query", "SKILL.md")
 	if _, err := os.Stat(canonicalPath); err != nil {
 		t.Fatalf("expected canonical web_query skill to be released alongside preserved custom legacy dir: %v", err)
 	}

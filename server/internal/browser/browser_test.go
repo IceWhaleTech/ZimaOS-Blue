@@ -182,8 +182,8 @@ func TestMonitorActivityListenerFiresOnNetworkIdle(t *testing.T) {
 	require.NoError(t, err)
 
 	var seen []struct {
-		targetID    string
-		observedAt  string
+		targetID   string
+		observedAt string
 	}
 	service.SetMonitorActivityListener(func(targetID string, observedAt string) {
 		seen = append(seen, struct {
@@ -503,6 +503,19 @@ func TestScreenshotFormat_toProto(t *testing.T) {
 			assert.Equal(t, tt.expected, string(result))
 		})
 	}
+}
+
+func TestNormalizeScreenshotCaptureOptions_DefaultsToWebP(t *testing.T) {
+	format, quality := normalizeScreenshotCaptureOptions("", 0)
+
+	assert.Equal(t, FormatWebP, format)
+	assert.Equal(t, 88, quality)
+}
+
+func TestEncodeInlineScreenshot_UsesDataURLForWebP(t *testing.T) {
+	got := encodeInlineScreenshot([]byte("abc"), FormatWebP)
+
+	assert.Equal(t, "data:image/webp;base64,YWJj", got)
 }
 
 func TestDefaultViewport(t *testing.T) {

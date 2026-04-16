@@ -840,9 +840,7 @@ func officePPTXSlideLayoutRelsXML() string {
 }
 
 func officePPTXThemeXML(theme officeTheme) string {
-	if strings.TrimSpace(theme.Name) == "" {
-		theme = resolveOfficeTheme("analysis", "")
-	}
+	theme = officePPTXResolvedTheme(theme)
 	themeName := officeHumanizeThemeToken(theme.Name)
 	primaryDark := officeWordHex(theme.PrimaryDark)
 	primary := officeWordHex(theme.Primary)
@@ -856,7 +854,7 @@ func officePPTXThemeXML(theme officeTheme) string {
 	surfaceAlt := officeWordHex(theme.SurfaceAlt)
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="` + officeXMLText(themeName) + ` Theme">` +
-		`<a:themeElements><a:clrScheme name="` + officeXMLText(themeName) + `"><a:dk1><a:srgbClr val="` + primaryDark + `"/></a:dk1><a:lt1><a:srgbClr val="` + surface + `"/></a:lt1><a:dk2><a:srgbClr val="` + slate + `"/></a:dk2><a:lt2><a:srgbClr val="` + surfaceAlt + `"/></a:lt2><a:accent1><a:srgbClr val="` + primary + `"/></a:accent1><a:accent2><a:srgbClr val="` + accent + `"/></a:accent2><a:accent3><a:srgbClr val="` + secondary + `"/></a:accent3><a:accent4><a:srgbClr val="` + success + `"/></a:accent4><a:accent5><a:srgbClr val="` + warning + `"/></a:accent5><a:accent6><a:srgbClr val="` + danger + `"/></a:accent6><a:hlink><a:srgbClr val="` + accent + `"/></a:hlink><a:folHlink><a:srgbClr val="` + secondary + `"/></a:folHlink></a:clrScheme><a:fontScheme name="` + officeXMLText(themeName) + `"><a:majorFont><a:latin typeface="` + officeXMLText(theme.DisplayFont) + `"/></a:majorFont><a:minorFont><a:latin typeface="` + officeXMLText(theme.BodyFont) + `"/></a:minorFont></a:fontScheme><a:fmtScheme name="` + officeXMLText(themeName) + `"><a:fillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle/></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements>` +
+		`<a:themeElements><a:clrScheme name="` + officeXMLText(themeName) + `"><a:dk1><a:srgbClr val="` + primaryDark + `"/></a:dk1><a:lt1><a:srgbClr val="` + surface + `"/></a:lt1><a:dk2><a:srgbClr val="` + slate + `"/></a:dk2><a:lt2><a:srgbClr val="` + surfaceAlt + `"/></a:lt2><a:accent1><a:srgbClr val="` + primary + `"/></a:accent1><a:accent2><a:srgbClr val="` + accent + `"/></a:accent2><a:accent3><a:srgbClr val="` + secondary + `"/></a:accent3><a:accent4><a:srgbClr val="` + success + `"/></a:accent4><a:accent5><a:srgbClr val="` + warning + `"/></a:accent5><a:accent6><a:srgbClr val="` + danger + `"/></a:accent6><a:hlink><a:srgbClr val="` + accent + `"/></a:hlink><a:folHlink><a:srgbClr val="` + secondary + `"/></a:folHlink></a:clrScheme><a:fontScheme name="` + officeXMLText(themeName) + `"><a:majorFont>` + officePPTXThemeFontCollectionXML(theme.DisplayFont, theme.EastAsiaFont) + `</a:majorFont><a:minorFont>` + officePPTXThemeFontCollectionXML(theme.BodyFont, theme.EastAsiaFont) + `</a:minorFont></a:fontScheme><a:fmtScheme name="` + officeXMLText(themeName) + `"><a:fillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle/></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements>` +
 		`</a:theme>`
 }
 
@@ -874,7 +872,7 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 	} else {
 		for _, line := range slide.Lines {
 			body.WriteString(officePPTXStyledParagraphXML(
-				officePPTXTextRunsXMLWithHyperlinks(line, 2200, false, false, "", slide.hyperlinks),
+				officePPTXTextRunsXMLWithHyperlinks(line, 2200, false, false, theme.MonospaceFont, slide.hyperlinks),
 				theme.BodyFont,
 				theme.Slate,
 				2200,
@@ -891,7 +889,7 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 		officePPTXThemeChromeXML(theme) +
 		`<p:sp><p:nvSpPr><p:cNvPr id="2" name="Title"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>` +
 		officePPTXStyledParagraphXML(
-			officePPTXTextRunsXMLWithHyperlinks(firstNonEmptyOfficeString(slide.Title, "Slide"), 2800, true, false, "", slide.hyperlinks),
+			officePPTXTextRunsXMLWithHyperlinks(firstNonEmptyOfficeString(slide.Title, "Slide"), 2800, true, false, theme.MonospaceFont, slide.hyperlinks),
 			theme.DisplayFont,
 			theme.PrimaryDark,
 			2800,
@@ -914,9 +912,78 @@ func officePPTXSlideXML(slide officePPTXSlide) string {
 
 func officePPTXResolvedTheme(theme officeTheme) officeTheme {
 	if strings.TrimSpace(theme.Name) == "" {
-		return resolveOfficeTheme("analysis", "")
+		theme = resolveOfficeTheme("analysis", "")
 	}
+	theme.DisplayFont = firstNonEmptyOfficeString(officePPTXSafeFontName(theme.DisplayFont), "Georgia")
+	theme.BodyFont = firstNonEmptyOfficeString(officePPTXSafeFontName(theme.BodyFont), "Helvetica")
+	theme.EastAsiaFont = firstNonEmptyOfficeString(officePPTXSafeEastAsiaFont(theme.EastAsiaFont), "Hiragino Sans GB")
+	theme.MonospaceFont = firstNonEmptyOfficeString(officePPTXSafeFontName(theme.MonospaceFont), "Menlo")
 	return theme
+}
+
+func officePPTXSafeFontName(font string) string {
+	switch strings.TrimSpace(font) {
+	case "Aptos Display", "Palatino Linotype":
+		return "Georgia"
+	case "Aptos", "Segoe UI", "Open Sans", "Nunito", "Inter":
+		return "Helvetica"
+	case "Poppins":
+		return "Helvetica Neue"
+	case "Aptos Mono", "Consolas", "Fira Code", "Cascadia Code", "SF Mono":
+		return "Menlo"
+	default:
+		return strings.TrimSpace(font)
+	}
+}
+
+func officePPTXSafeEastAsiaFont(font string) string {
+	switch strings.TrimSpace(font) {
+	case "", "PingFang SC":
+		return "Hiragino Sans GB"
+	default:
+		return strings.TrimSpace(font)
+	}
+}
+
+func officePPTXFontElementsXML(font, eastAsia string) string {
+	font = officePPTXSafeFontName(font)
+	eastAsia = officePPTXSafeEastAsiaFont(eastAsia)
+	if font == "" && eastAsia == "" {
+		return ""
+	}
+	var sb strings.Builder
+	if font != "" {
+		sb.WriteString(`<a:latin typeface="`)
+		sb.WriteString(officeXMLText(font))
+		sb.WriteString(`"/>`)
+	}
+	if eastAsia != "" {
+		sb.WriteString(`<a:ea typeface="`)
+		sb.WriteString(officeXMLText(eastAsia))
+		sb.WriteString(`"/>`)
+	}
+	if font != "" {
+		sb.WriteString(`<a:cs typeface="`)
+		sb.WriteString(officeXMLText(font))
+		sb.WriteString(`"/>`)
+	}
+	return sb.String()
+}
+
+func officePPTXThemeFontCollectionXML(font, eastAsia string) string {
+	eastAsia = officePPTXSafeEastAsiaFont(eastAsia)
+	var sb strings.Builder
+	sb.WriteString(officePPTXFontElementsXML(font, eastAsia))
+	if eastAsia != "" {
+		for _, script := range []string{"Jpan", "Hang", "Hans", "Hant"} {
+			sb.WriteString(`<a:font script="`)
+			sb.WriteString(script)
+			sb.WriteString(`" typeface="`)
+			sb.WriteString(officeXMLText(eastAsia))
+			sb.WriteString(`"/>`)
+		}
+	}
+	return sb.String()
 }
 
 func officePPTXThemeChromeXML(theme officeTheme) string {
@@ -977,10 +1044,8 @@ func officePPTXParagraphPropertiesXML(alignment, font, color string, size int) s
 		sb.WriteString(`"`)
 	}
 	sb.WriteString(`>`)
-	if font != "" {
-		sb.WriteString(`<a:latin typeface="`)
-		sb.WriteString(officeXMLText(font))
-		sb.WriteString(`"/>`)
+	if fontXML := officePPTXFontElementsXML(font, ""); fontXML != "" {
+		sb.WriteString(fontXML)
 	}
 	if color != "" {
 		sb.WriteString(`<a:solidFill><a:srgbClr val="`)
@@ -1039,10 +1104,10 @@ func officePPTXParagraphXML(block officeDocBlock, theme officeTheme, hyperlinks 
 	size := 2200
 	switch block.Kind {
 	case officeDocBlockQuote:
-		runs = officePPTXTextRunsXMLWithHyperlinks(block.Text, 2200, false, true, "", hyperlinks)
+		runs = officePPTXTextRunsXMLWithHyperlinks(block.Text, 2200, false, true, theme.MonospaceFont, hyperlinks)
 		color = theme.Secondary
 	case officeDocBlockCode:
-		runs = officePPTXTextRunsXMLWithOptions(block.Text, 1800, false, false, officeResolvedMonospaceFont(""), false, nil)
+		runs = officePPTXTextRunsXMLWithOptions(block.Text, 1800, false, false, theme.MonospaceFont, false, nil)
 		color = theme.PrimaryDark
 		size = 1800
 	case officeDocBlockSeparator:
@@ -1056,7 +1121,7 @@ func officePPTXParagraphXML(block officeDocBlock, theme officeTheme, hyperlinks 
 		if text, ok := officeExplicitUnorderedListBody(block.Text); ok {
 			return officePPTXListParagraphXML(text, theme, hyperlinks, false, 0)
 		}
-		runs = officePPTXTextRunsXMLWithHyperlinks(block.Text, 2200, false, false, "", hyperlinks)
+		runs = officePPTXTextRunsXMLWithHyperlinks(block.Text, 2200, false, false, theme.MonospaceFont, hyperlinks)
 	}
 	return officePPTXStyledParagraphXML(runs, font, color, size, "")
 }
@@ -1075,9 +1140,11 @@ func officePPTXListParagraphXML(text string, theme officeTheme, hyperlinks []off
 	sb.WriteString(strconv.Itoa(listMargin))
 	sb.WriteString(`" indent="-`)
 	sb.WriteString(strconv.Itoa(listIndent))
-	sb.WriteString(`"><a:defRPr sz="2200"><a:latin typeface="`)
-	sb.WriteString(officeXMLText(theme.BodyFont))
-	sb.WriteString(`"/><a:solidFill><a:srgbClr val="`)
+	sb.WriteString(`"><a:defRPr sz="2200">`)
+	if fontXML := officePPTXFontElementsXML(theme.BodyFont, theme.EastAsiaFont); fontXML != "" {
+		sb.WriteString(fontXML)
+	}
+	sb.WriteString(`<a:solidFill><a:srgbClr val="`)
 	sb.WriteString(officeWordHex(theme.Slate))
 	sb.WriteString(`"/></a:solidFill></a:defRPr>`)
 	if ordered {
@@ -1091,7 +1158,7 @@ func officePPTXListParagraphXML(text string, theme officeTheme, hyperlinks []off
 		sb.WriteString(`<a:buChar char="•"/>`)
 	}
 	sb.WriteString(`</a:pPr>`)
-	sb.WriteString(officePPTXTextRunsXMLWithHyperlinks(text, 2200, false, false, "", hyperlinks))
+	sb.WriteString(officePPTXTextRunsXMLWithHyperlinks(text, 2200, false, false, theme.MonospaceFont, hyperlinks))
 	sb.WriteString(`</a:p>`)
 	return sb.String()
 }
@@ -1227,10 +1294,8 @@ func officePPTXTextRunXML(text string, size int, bold, italic, strike bool, font
 		sb.WriteString(`"/><a:t>`)
 	} else {
 		sb.WriteString(`">`)
-		if font != "" {
-			sb.WriteString(`<a:latin typeface="`)
-			sb.WriteString(officeXMLText(font))
-			sb.WriteString(`"/>`)
+		if fontXML := officePPTXFontElementsXML(font, ""); fontXML != "" {
+			sb.WriteString(fontXML)
 		}
 		if hyperlinkRelID != "" {
 			sb.WriteString(`<a:solidFill><a:schemeClr val="hlink"/></a:solidFill>`)
@@ -1392,7 +1457,7 @@ func officePPTXChartCalloutShapesXML(callouts []officePPTXCallout, theme officeT
 		"",
 		"rect",
 		officePPTXStyledParagraphXML(
-			officePPTXTextRunsXMLWithHyperlinks(title, 1000, true, false, "", hyperlinks),
+			officePPTXTextRunsXMLWithHyperlinks(title, 1000, true, false, theme.MonospaceFont, hyperlinks),
 			theme.BodyFont,
 			theme.Secondary,
 			1000,
@@ -1452,7 +1517,7 @@ func officePPTXChartCalloutBodyXML(callout officePPTXCallout, theme officeTheme,
 	}
 
 	sb.WriteString(officePPTXStyledParagraphXML(
-		officePPTXTextRunsXMLWithHyperlinks(label, 900, true, false, "", hyperlinks),
+		officePPTXTextRunsXMLWithHyperlinks(label, 900, true, false, theme.MonospaceFont, hyperlinks),
 		theme.BodyFont,
 		labelColor,
 		900,
@@ -1460,7 +1525,7 @@ func officePPTXChartCalloutBodyXML(callout officePPTXCallout, theme officeTheme,
 	))
 	if value != "" {
 		sb.WriteString(officePPTXStyledParagraphXML(
-			officePPTXTextRunsXMLWithHyperlinks(value, 2200, true, false, "", hyperlinks),
+			officePPTXTextRunsXMLWithHyperlinks(value, 2200, true, false, theme.MonospaceFont, hyperlinks),
 			theme.DisplayFont,
 			valueColor,
 			2200,
@@ -1468,7 +1533,7 @@ func officePPTXChartCalloutBodyXML(callout officePPTXCallout, theme officeTheme,
 		))
 		if body != "" {
 			sb.WriteString(officePPTXStyledParagraphXML(
-				officePPTXTextRunsXMLWithHyperlinks(body, 1000, false, false, "", hyperlinks),
+				officePPTXTextRunsXMLWithHyperlinks(body, 1000, false, false, theme.MonospaceFont, hyperlinks),
 				theme.BodyFont,
 				bodyColor,
 				1000,
@@ -1478,7 +1543,7 @@ func officePPTXChartCalloutBodyXML(callout officePPTXCallout, theme officeTheme,
 		return sb.String()
 	}
 	sb.WriteString(officePPTXStyledParagraphXML(
-		officePPTXTextRunsXMLWithHyperlinks(firstNonEmptyOfficeString(body, label), 1200, false, false, "", hyperlinks),
+		officePPTXTextRunsXMLWithHyperlinks(firstNonEmptyOfficeString(body, label), 1200, false, false, theme.MonospaceFont, hyperlinks),
 		theme.BodyFont,
 		bodyColor,
 		1200,
@@ -3123,10 +3188,8 @@ func officePPTXChartRunPropertiesXML(font, color string, size int, bold bool) st
 		sb.WriteString(` b="1"`)
 	}
 	sb.WriteString(`>`)
-	if strings.TrimSpace(font) != "" {
-		sb.WriteString(`<a:latin typeface="`)
-		sb.WriteString(officeXMLText(font))
-		sb.WriteString(`"/>`)
+	if fontXML := officePPTXFontElementsXML(font, ""); fontXML != "" {
+		sb.WriteString(fontXML)
 	}
 	if colorHex := officeWordHex(color); colorHex != "" {
 		sb.WriteString(`<a:solidFill><a:srgbClr val="`)
@@ -3149,10 +3212,8 @@ func officePPTXChartTextPropertiesXML(font, color string, size int, bold bool) s
 		sb.WriteString(` b="1"`)
 	}
 	sb.WriteString(`>`)
-	if strings.TrimSpace(font) != "" {
-		sb.WriteString(`<a:latin typeface="`)
-		sb.WriteString(officeXMLText(font))
-		sb.WriteString(`"/>`)
+	if fontXML := officePPTXFontElementsXML(font, ""); fontXML != "" {
+		sb.WriteString(fontXML)
 	}
 	if colorHex := officeWordHex(color); colorHex != "" {
 		sb.WriteString(`<a:solidFill><a:srgbClr val="`)
@@ -3169,10 +3230,8 @@ func officePPTXChartTextPropertiesXML(font, color string, size int, bold bool) s
 		sb.WriteString(` b="1"`)
 	}
 	sb.WriteString(`>`)
-	if strings.TrimSpace(font) != "" {
-		sb.WriteString(`<a:latin typeface="`)
-		sb.WriteString(officeXMLText(font))
-		sb.WriteString(`"/>`)
+	if fontXML := officePPTXFontElementsXML(font, ""); fontXML != "" {
+		sb.WriteString(fontXML)
 	}
 	if colorHex := officeWordHex(color); colorHex != "" {
 		sb.WriteString(`<a:solidFill><a:srgbClr val="`)
@@ -3307,7 +3366,7 @@ func officePPTXTableCellXML(value string, header bool, rowIndex int, alignment s
 	}
 	return `<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>` +
 		officePPTXStyledParagraphXML(
-			officePPTXTextRunsXMLWithHyperlinks(value, 1800, header, false, "", hyperlinks),
+			officePPTXTextRunsXMLWithHyperlinks(value, 1800, header, false, theme.MonospaceFont, hyperlinks),
 			theme.BodyFont,
 			textColor,
 			1800,

@@ -1536,12 +1536,28 @@ function closeWeChatILinkSetupModal() {
   wechatILinkSetupSession.value = null
 }
 
+function getWeChatILinkSetupResponseMessage(payload: unknown, fallback: string) {
+  if (payload && typeof payload === 'object') {
+    const response = payload as { error?: unknown; message?: unknown }
+    if (typeof response.error === 'string' && response.error.trim()) {
+      return response.error.trim()
+    }
+    if (typeof response.message === 'string' && response.message.trim()) {
+      return response.message.trim()
+    }
+  }
+  return fallback
+}
+
 async function refreshWeChatILinkSetupSession(sessionId: string) {
   try {
     const response = await getWeChatILinkSetupSession(sessionId)
     if (!isSuccessfulStatus(response.status)) {
       wechatILinkSetupError.value =
-        response.data?.error || t('channels.wechatILinkSetupLoadFailed')
+        getWeChatILinkSetupResponseMessage(
+          response.data,
+          t('channels.wechatILinkSetupLoadFailed')
+        )
       stopWeChatILinkSetupPolling()
       return
     }
@@ -1582,7 +1598,10 @@ async function startWeChatILinkSetup() {
     const response = await createWeChatILinkSetupSession()
     if (!isSuccessfulStatus(response.status)) {
       wechatILinkSetupError.value =
-        response.data?.error || t('channels.wechatILinkSetupCreateFailed')
+        getWeChatILinkSetupResponseMessage(
+          response.data,
+          t('channels.wechatILinkSetupCreateFailed')
+        )
       return
     }
 
@@ -2388,6 +2407,7 @@ onErrorCaptured((error, _instance, info) => {
                 </section>
 
                 <ChannelDetailPanel
+                  v-if="!isWeChatILinkSelected"
                   :key="selectedChannelRenderKey"
                   :channel="selectedChannel"
                   :toggling="toggling === selectedChannelId"

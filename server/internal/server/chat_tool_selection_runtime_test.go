@@ -482,7 +482,7 @@ func TestSelectChatToolSurfacesForRequest_GenericDocxResearchUsesToolSearchInste
 	}
 }
 
-func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndComputerUseTools(t *testing.T) {
+func TestSelectChatToolsForRequest_FirstTurnKeepsComputerUseVisibleWhileDeferringOfficeTools(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.Register(tools.NewToolSearchTool(registry))
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "computer_use", Description: "Inspect and interact with host UI through the computer-use tool"})
@@ -504,10 +504,11 @@ func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndComputerUseT
 		nil,
 	)
 	initialNames := toolNameSet(initial)
-	for _, hidden := range []string{"computer_use", "docx"} {
-		if _, ok := initialNames[hidden]; ok {
-			t.Fatalf("expected %q to stay hidden until tool_search activation, got=%v", hidden, selectedToolNames(initial))
-		}
+	if _, ok := initialNames["computer_use"]; !ok {
+		t.Fatalf("expected computer_use to stay visible on the default chat surface, got=%v", selectedToolNames(initial))
+	}
+	if _, ok := initialNames["docx"]; ok {
+		t.Fatalf("expected docx to stay hidden until tool_search activation, got=%v", selectedToolNames(initial))
 	}
 	if _, ok := initialNames["tool_search"]; !ok {
 		t.Fatalf("expected tool_search to stay visible for discovery, got=%v", selectedToolNames(initial))
@@ -530,13 +531,119 @@ func TestSelectChatToolsForRequest_ToolSearchHydratesHiddenOfficeAndComputerUseT
 		nil,
 	)
 	activatedNames := toolNameSet(activated)
-	for _, required := range []string{"tool_search", "computer_use", "docx"} {
+	for _, required := range []string{"tool_search", "docx"} {
 		if _, ok := activatedNames[required]; !ok {
 			t.Fatalf("expected %q after tool_search hydration, got=%v", required, selectedToolNames(activated))
 		}
 	}
 	if _, ok := activatedNames["a11y"]; ok {
 		t.Fatalf("did not expect legacy a11y name after tool_search hydration, got=%v", selectedToolNames(activated))
+	}
+}
+
+func TestSelectChatToolsForRequest_LiveUIArtifactWorkflowKeepsComputerUseAlongsideDocx(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "computer_use", Description: "Inspect and interact with host UI through the computer-use tool"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "docx", Description: "Read, create, edit, validate, or template native .docx workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+	searchTool := bindToolSearchTestRuntime(t, handler, nil, "")
+
+	ctx := tools.WithSessionID(context.Background(), "conv-live-ui-docx")
+	ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
+	if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:computer_use,docx"}); err != nil {
+		t.Fatalf("tool_search Execute returned error: %v", err)
+	}
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		"检查当前页面的可访问性和可见控件，然后把结论整理进 report.docx。",
+		"claude-3-5-haiku-20241022",
+		"conv-live-ui-docx",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-live-ui-docx"},
+		nil,
+		nil,
+	)
+
+	names := toolNameSet(got)
+	for _, required := range []string{"computer_use", "docx", "tool_search"} {
+		if _, ok := names[required]; !ok {
+			t.Fatalf("expected %q for live UI + docx workflow, got=%v", required, selectedToolNames(got))
+		}
+	}
+}
+
+func TestSelectChatToolsForRequest_LiveUIArtifactWorkflowKeepsComputerUseForCurrentTabAndDialogPhrasing(t *testing.T) {
+	testCases := []struct {
+		name    string
+		message string
+	}{
+		{
+			name:    "current_tab",
+			message: "检查当前标签页，然后把结论整理进 report.docx。",
+		},
+		{
+			name:    "current_dialog",
+			message: "审查当前对话框，然后把结论整理进 report.docx。",
+		},
+		{
+			name:    "side_panel",
+			message: "检查当前侧边栏，然后把结论整理进 report.docx。",
+		},
+		{
+			name:    "sheet",
+			message: "检查当前 sheet，然后把结论整理进 report.docx。",
+		},
+		{
+			name:    "drawer",
+			message: "检查当前 drawer，然后把结论整理进 report.docx。",
+		},
+		{
+			name:    "popover",
+			message: "检查当前 popover，然后把结论整理进 report.docx。",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			registry := tools.NewRegistry()
+			registry.Register(tools.NewToolSearchTool(registry))
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "computer_use", Description: "Inspect and interact with host UI through the computer-use tool"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "docx", Description: "Read, create, edit, validate, or template native .docx workspace files"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+			registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+			handler := newChatToolSelectionTestHandler(registry)
+			searchTool := bindToolSearchTestRuntime(t, handler, nil, "")
+
+			ctx := tools.WithSessionID(context.Background(), "conv-live-ui-phrase-"+tc.name)
+			ctx = tools.WithRouteKind(ctx, tools.ToolRouteKindChat)
+			if _, err := searchTool.Execute(ctx, map[string]interface{}{"query": "select:computer_use,docx"}); err != nil {
+				t.Fatalf("tool_search Execute returned error: %v", err)
+			}
+
+			got := handler.selectChatToolsForRequest(
+				context.Background(),
+				tc.message,
+				"claude-3-5-haiku-20241022",
+				"conv-live-ui-phrase-"+tc.name,
+				"",
+				memory.ConversationCommandState{ConversationID: "conv-live-ui-phrase-" + tc.name},
+				nil,
+				nil,
+			)
+
+			names := toolNameSet(got)
+			for _, required := range []string{"computer_use", "docx", "tool_search"} {
+				if _, ok := names[required]; !ok {
+					t.Fatalf("expected %q for live UI phrasing %q, got=%v", required, tc.name, selectedToolNames(got))
+				}
+			}
+		})
 	}
 }
 

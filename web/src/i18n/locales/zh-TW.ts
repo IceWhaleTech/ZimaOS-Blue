@@ -2954,7 +2954,7 @@ export default mergeHarnessLocale('zh-TW', {
       loadingStore: '正在載入商店資料...',
       noFeatured: '暫無精選技能',
       noLocal: '未找到本機技能',
-      localHint: '將 SKILL.md 放在 ~/.claude/skills/ 目錄',
+      localHint: '將 SKILL.md 放在 ~/.agents/skills/ 目錄',
       noResultsTitle: '「{query}」無結果',
       suggestions: '建議',
       tryClearFilters: '嘗試清除篩選',

@@ -591,11 +591,11 @@ func nativeMarkdownPPTXSlideLayoutRelsXML() string {
 
 func nativeMarkdownPPTXThemeXML() string {
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-		`<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Analysis Theme">` +
+		`<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Midnight Theme">` +
 		`<a:themeElements>` +
-		`<a:clrScheme name="Analysis"><a:dk1><a:srgbClr val="0D4A8A"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="475569"/></a:dk2><a:lt2><a:srgbClr val="F8FAFC"/></a:lt2><a:accent1><a:srgbClr val="1A6FC4"/></a:accent1><a:accent2><a:srgbClr val="0EA5E9"/></a:accent2><a:accent3><a:srgbClr val="64748B"/></a:accent3><a:accent4><a:srgbClr val="166534"/></a:accent4><a:accent5><a:srgbClr val="B45309"/></a:accent5><a:accent6><a:srgbClr val="B91C1C"/></a:accent6><a:hlink><a:srgbClr val="0EA5E9"/></a:hlink><a:folHlink><a:srgbClr val="64748B"/></a:folHlink></a:clrScheme>` +
-		`<a:fontScheme name="Analysis"><a:majorFont><a:latin typeface="Aptos Display"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/></a:minorFont></a:fontScheme>` +
-		`<a:fmtScheme name="Analysis"><a:fillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle/></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>` +
+		`<a:clrScheme name="Midnight"><a:dk1><a:srgbClr val="0F1D2F"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="334155"/></a:dk2><a:lt2><a:srgbClr val="F8FAFC"/></a:lt2><a:accent1><a:srgbClr val="1E3A5F"/></a:accent1><a:accent2><a:srgbClr val="00D4AA"/></a:accent2><a:accent3><a:srgbClr val="4A5568"/></a:accent3><a:accent4><a:srgbClr val="059669"/></a:accent4><a:accent5><a:srgbClr val="D97706"/></a:accent5><a:accent6><a:srgbClr val="DC2626"/></a:accent6><a:hlink><a:srgbClr val="00D4AA"/></a:hlink><a:folHlink><a:srgbClr val="4A5568"/></a:folHlink></a:clrScheme>` +
+		`<a:fontScheme name="Midnight"><a:majorFont>` + nativeMarkdownPPTXThemeFontCollectionXML("Georgia") + `</a:majorFont><a:minorFont>` + nativeMarkdownPPTXThemeFontCollectionXML("Helvetica") + `</a:minorFont></a:fontScheme>` +
+		`<a:fmtScheme name="Midnight"><a:fillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle/></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>` +
 		`</a:themeElements></a:theme>`
 }
 
@@ -622,10 +622,10 @@ func nativeMarkdownPPTXSlideXML(slide nativeMarkdownPPTXSlide) string {
 		`<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">` +
 		`<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>` +
 		nativeMarkdownPPTXDecorativeRectShapeXML(10, "Background", 0, 0, slideWidth, slideHeight, "F8FAFC") +
-		nativeMarkdownPPTXDecorativeRectShapeXML(11, "Band", 0, 0, slideWidth, bandHeight, "EAF4FF") +
-		nativeMarkdownPPTXDecorativeRectShapeXML(12, "Accent", accentX, accentTopOffset, accentWidth, accentHeight, "0EA5E9") +
-		nativeMarkdownPPTXTextBoxShapeXML(20, "Title", titleX, titleY, titleW, titleH, nativeMarkdownPPTXParagraphsXML([]string{firstNonEmptyDeckValue(slide.Title, "Slide")}, 2800, true, "Aptos Display", "0D4A8A")) +
-		nativeMarkdownPPTXTextBoxShapeXML(21, "Content", bodyX, bodyY, bodyW, bodyH, nativeMarkdownPPTXParagraphsXML(slide.Lines, 2200, false, "Aptos", "475569")) +
+		nativeMarkdownPPTXDecorativeRectShapeXML(11, "Band", 0, 0, slideWidth, bandHeight, "E8EEF4") +
+		nativeMarkdownPPTXDecorativeRectShapeXML(12, "Accent", accentX, accentTopOffset, accentWidth, accentHeight, "00D4AA") +
+		nativeMarkdownPPTXTextBoxShapeXML(20, "Title", titleX, titleY, titleW, titleH, nativeMarkdownPPTXParagraphsXML([]string{firstNonEmptyDeckValue(slide.Title, "Slide")}, 2800, true, "Georgia", "0F1D2F")) +
+		nativeMarkdownPPTXTextBoxShapeXML(21, "Content", bodyX, bodyY, bodyW, bodyH, nativeMarkdownPPTXParagraphsXML(slide.Lines, 2200, false, "Helvetica", "334155")) +
 		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
 }
 
@@ -683,9 +683,7 @@ func nativeMarkdownPPTXParagraphsXML(lines []string, size int, bold bool, font, 
 		}
 		sb.WriteString(`>`)
 		if strings.TrimSpace(font) != "" {
-			sb.WriteString(`<a:latin typeface="`)
-			sb.WriteString(nativeMarkdownPPTXXMLText(font))
-			sb.WriteString(`"/>`)
+			sb.WriteString(nativeMarkdownPPTXFontElementsXML(font))
 		}
 		sb.WriteString(`</a:rPr><a:t>`)
 		sb.WriteString(nativeMarkdownPPTXXMLText(line))
@@ -707,9 +705,7 @@ func nativeMarkdownPPTXParagraphPropertiesXML(font, color string, size int) stri
 	}
 	sb.WriteString(`>`)
 	if strings.TrimSpace(font) != "" {
-		sb.WriteString(`<a:latin typeface="`)
-		sb.WriteString(nativeMarkdownPPTXXMLText(font))
-		sb.WriteString(`"/>`)
+		sb.WriteString(nativeMarkdownPPTXFontElementsXML(font))
 	}
 	if hex := nativeMarkdownPPTXHex(color); hex != "" {
 		sb.WriteString(`<a:solidFill><a:srgbClr val="`)
@@ -734,6 +730,25 @@ func nativeMarkdownPPTXXMLText(value string) string {
 func nativeMarkdownPPTXHex(value string) string {
 	value = strings.TrimSpace(strings.TrimPrefix(value, "#"))
 	return strings.ToUpper(value)
+}
+
+func nativeMarkdownPPTXFontElementsXML(font string) string {
+	font = strings.TrimSpace(font)
+	if font == "" {
+		return ""
+	}
+	return `<a:latin typeface="` + nativeMarkdownPPTXXMLText(font) + `"/><a:ea typeface="Hiragino Sans GB"/><a:cs typeface="` + nativeMarkdownPPTXXMLText(font) + `"/>`
+}
+
+func nativeMarkdownPPTXThemeFontCollectionXML(font string) string {
+	var sb strings.Builder
+	sb.WriteString(nativeMarkdownPPTXFontElementsXML(font))
+	for _, script := range []string{"Jpan", "Hang", "Hans", "Hant"} {
+		sb.WriteString(`<a:font script="`)
+		sb.WriteString(script)
+		sb.WriteString(`" typeface="Hiragino Sans GB"/>`)
+	}
+	return sb.String()
 }
 
 func firstNonEmptyDeckValue(values ...string) string {
