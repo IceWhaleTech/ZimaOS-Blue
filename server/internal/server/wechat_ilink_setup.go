@@ -154,11 +154,12 @@ func (h *WeChatILinkSetupHandler) CompleteSession(c echo.Context) error {
 		current.Message = ""
 	})
 
-	apiBaseURL, botToken, parseErr := parseWechatILinkPairingPayload(req.PairingPayload)
+	_, botToken, parseErr := parseWechatILinkPairingPayload(req.PairingPayload)
 	if parseErr != nil {
 		h.markSessionError(session.ID, parseErr.Error())
 		return echo.NewHTTPError(http.StatusBadRequest, parseErr.Error())
 	}
+	apiBaseURL := h.resolveWeChatILinkAPIBaseURL()
 
 	h.updateSession(session.ID, func(current *wechatILinkSetupSession) {
 		current.Status = wechatILinkSessionStatusConfiguring
@@ -271,7 +272,10 @@ func (h *WeChatILinkSetupHandler) resolveWeChatILinkAPIBaseURL() string {
 	if h.store != nil {
 		if cfg, ok := h.store.Get(wechatILinkSetupChannelID); ok && cfg != nil {
 			if raw := strings.TrimSpace(cfg.Config["api_base_url"]); raw != "" {
-				return normalizeWeChatILinkAPIBaseURL(raw)
+				normalized := normalizeWeChatILinkAPIBaseURL(raw)
+				if isValidWeChatILinkAPIBaseURL(normalized) {
+					return normalized
+				}
 			}
 		}
 	}
@@ -325,11 +329,15 @@ func (h *WeChatILinkSetupHandler) refreshWeChatILinkSetupSession(ctx context.Con
 				h.markSessionError(session.ID, err.Error())
 				return
 			}
+			resolvedAPIBaseURL := normalizeWeChatILinkAPIBaseURL(apiBaseURL)
+			if !isValidWeChatILinkAPIBaseURL(resolvedAPIBaseURL) {
+				resolvedAPIBaseURL = wechatILinkDefaultAPIBaseURL
+			}
 			h.updateSession(session.ID, func(current *wechatILinkSetupSession) {
 				current.Status = wechatILinkSessionStatusConnected
 				current.Error = ""
 				current.Message = "configured"
-				current.ResolvedAPIBaseURL = strings.TrimRight(apiBaseURL, "/")
+				current.ResolvedAPIBaseURL = resolvedAPIBaseURL
 			})
 			return
 		}
@@ -382,7 +390,12 @@ type wechatILinkQRCodeStatus struct {
 }
 
 func (h *WeChatILinkSetupHandler) fetchWeChatILinkQRCode(ctx context.Context, apiBaseURL string) (*wechatILinkQRCodeResponse, error) {
-	endpoint, err := url.Parse(normalizeWeChatILinkAPIBaseURL(apiBaseURL) + "/")
+	normalizedAPIBaseURL := normalizeWeChatILinkAPIBaseURL(apiBaseURL)
+	if !isValidWeChatILinkAPIBaseURL(normalizedAPIBaseURL) {
+		return nil, fmt.Errorf("invalid iLink api_base_url")
+	}
+
+	endpoint, err := url.Parse(normalizedAPIBaseURL + "/")
 	if err != nil {
 		return nil, fmt.Errorf("invalid iLink api_base_url: %w", err)
 	}
@@ -414,7 +427,12 @@ func (h *WeChatILinkSetupHandler) fetchWeChatILinkQRCode(ctx context.Context, ap
 }
 
 func (h *WeChatILinkSetupHandler) pollWeChatILinkQRCodeStatus(ctx context.Context, apiBaseURL, qrKey string) (*wechatILinkQRCodeStatus, error) {
-	endpoint, err := url.Parse(normalizeWeChatILinkAPIBaseURL(apiBaseURL) + "/")
+	normalizedAPIBaseURL := normalizeWeChatILinkAPIBaseURL(apiBaseURL)
+	if !isValidWeChatILinkAPIBaseURL(normalizedAPIBaseURL) {
+		return nil, fmt.Errorf("invalid iLink api_base_url")
+	}
+
+	endpoint, err := url.Parse(normalizedAPIBaseURL + "/")
 	if err != nil {
 		return nil, fmt.Errorf("invalid iLink api_base_url: %w", err)
 	}
@@ -485,6 +503,9 @@ func (h *WeChatILinkSetupHandler) activateChannel(ctx context.Context, apiBaseUR
 	}
 
 	normalizedAPIBaseURL := normalizeWeChatILinkAPIBaseURL(apiBaseURL)
+	if !isValidWeChatILinkAPIBaseURL(normalizedAPIBaseURL) {
+		normalizedAPIBaseURL = wechatILinkDefaultAPIBaseURL
+	}
 
 	newCfg := &ChannelConfig{
 		ID:      wechatILinkSetupChannelID,
@@ -572,6 +593,20 @@ func normalizeWeChatILinkAPIBaseURL(raw string) string {
 	return baseURL
 }
 
+func isValidWeChatILinkAPIBaseURL(raw string) bool {
+	if strings.TrimSpace(raw) == "" {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+	return strings.TrimSpace(parsed.Host) != ""
+}
+
 func cloneChannelConfig(cfg *ChannelConfig) *ChannelConfig {
 	if cfg == nil {
 		return nil
@@ -624,22 +659,15 @@ func parseWechatILinkPairingPayload(raw json.RawMessage) (string, string, error)
 		return ""
 	}
 
-	apiBaseURL := getString(payload, "api_base_url", "apiBaseURL")
 	botToken := getString(payload, "bot_token", "botToken")
 	if nested, ok := payload["config"].(map[string]interface{}); ok {
-		if apiBaseURL == "" {
-			apiBaseURL = getString(nested, "api_base_url", "apiBaseURL")
-		}
 		if botToken == "" {
 			botToken = getString(nested, "bot_token", "botToken")
 		}
 	}
 
-	if apiBaseURL == "" {
-		return "", "", fmt.Errorf("pairing_payload missing api_base_url")
-	}
 	if botToken == "" {
 		return "", "", fmt.Errorf("pairing_payload missing bot_token")
 	}
-	return apiBaseURL, botToken, nil
+	return "", botToken, nil
 }

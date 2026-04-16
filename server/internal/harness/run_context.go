@@ -2,7 +2,9 @@ package harness
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
@@ -96,6 +98,48 @@ func annotateRunExecutionContext(ctx context.Context, run *Run) context.Context 
 	}
 	if agentID := strings.TrimSpace(run.AgentID); agentID != "" {
 		ctx = tools.WithAgentID(ctx, agentID)
+	}
+	if artifactRoot := strings.TrimSpace(run.ArtifactRoot); artifactRoot != "" {
+		ctx = tools.WithRunArtifactRoot(ctx, artifactRoot)
+	}
+	if runCtx := GetRunContext(ctx); runCtx != nil && runCtx.Controller != nil && strings.TrimSpace(run.ID) != "" {
+		ctx = tools.WithArtifactEmitter(ctx, func(emitCtx context.Context, artifact tools.ToolArtifact) error {
+			metadataJSON := ""
+			if len(artifact.Metadata) > 0 {
+				if raw, err := json.Marshal(artifact.Metadata); err == nil {
+					metadataJSON = string(raw)
+				}
+			}
+			return runCtx.Controller.AttachArtifact(emitCtx, ArtifactRef{
+				RunID:        strings.TrimSpace(run.ID),
+				Kind:         strings.TrimSpace(artifact.Kind),
+				Label:        strings.TrimSpace(artifact.Label),
+				PathOrURL:    strings.TrimSpace(artifact.PathOrURL),
+				MIMEType:     strings.TrimSpace(artifact.MimeType),
+				SizeBytes:    artifact.SizeBytes,
+				MetadataJSON: metadataJSON,
+			})
+		})
+		ctx = tools.WithEventEmitter(ctx, func(emitCtx context.Context, event tools.ToolEvent) error {
+			payloadJSON := ""
+			if len(event.Payload) > 0 {
+				if raw, err := json.Marshal(event.Payload); err == nil {
+					payloadJSON = string(raw)
+				}
+			}
+			return runCtx.Controller.AppendEvent(emitCtx, RunEvent{
+				RunID:          strings.TrimSpace(run.ID),
+				RootRunID:      strings.TrimSpace(run.RootRunID),
+				ParentRunID:    strings.TrimSpace(run.ParentRunID),
+				Type:           strings.TrimSpace(event.Type),
+				StepIndex:      event.StepIndex,
+				ToolName:       strings.TrimSpace(event.ToolName),
+				CapabilityKind: strings.TrimSpace(event.CapabilityKind),
+				Message:        strings.TrimSpace(event.Message),
+				PayloadJSON:    payloadJSON,
+				CreatedAt:      time.Now().UTC(),
+			})
+		})
 	}
 	return ctx
 }

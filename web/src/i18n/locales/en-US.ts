@@ -2505,7 +2505,7 @@ export default mergeHarnessLocale('en-US', {
     wechatILinkSetupStateExpired: "Expired",
     wechatILinkPairingPayload: 'Pairing Payload',
     wechatILinkPairingPayloadPlaceholder:
-      'Paste the iLink pairing payload here, or leave it empty and fill API Base URL + Bot Token below.',
+      'Paste the iLink pairing payload here, or leave it empty and fill in the Bot Token below.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Access token',
@@ -2584,7 +2584,7 @@ export default mergeHarnessLocale('en-US', {
     qqHint: 'Create a bot in QQ Open Platform',
     wechatHint: 'Use enterprise WeChat credentials for your WeChat Work app',
     wechatILinkHint:
-      'Use WeChat QR authorization as the primary path, or fill API Base URL and Bot Token manually if needed',
+      'Use WeChat QR authorization as the primary path, or provide the Bot Token manually if needed',
     matrixHint: 'Configure Matrix bot',
     imessageHint: 'Configure iMessage bridge',
     blueBubblesHint: 'Configure BlueBubbles server',

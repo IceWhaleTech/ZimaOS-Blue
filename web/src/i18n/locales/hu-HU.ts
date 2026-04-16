@@ -2521,7 +2521,7 @@ export default mergeHarnessLocale('hu-HU', {
     wechatILinkSetupStateError: "Hiba",
     wechatILinkSetupStateExpired: "Lejart",
     wechatILinkPairingPayload: 'Parositasi adat',
-    wechatILinkPairingPayloadPlaceholder: 'Illessze be ide az iLink parositasi adatot, vagy hagyja uresen, es toltse ki alabb az API alap URL-t es a bot tokent.',
+    wechatILinkPairingPayloadPlaceholder: 'Illessze be ide az iLink parositasi adatot, vagy hagyja uresen, es toltse ki alabb a bot tokent.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Hozzáférési token',
@@ -2601,7 +2601,7 @@ export default mergeHarnessLocale('hu-HU', {
     dingtalkHint: 'Hozzon létre robotot a DingTalk Developer Platformon',
     qqHint: 'Hozzon létre botot a QQ Open Platformon (q.qq.com)',
     wechatHint: 'Hozzon létre alkalmazást a WeChat Work Admin konzolon',
-    wechatILinkHint: 'Elsodleges utkent hasznalja a WeChat QR-hitelesitest, vagy szukseg eseten adja meg kezzel az API alap URL-t es a bot tokent',
+    wechatILinkHint: 'Elsodleges utkent hasznalja a WeChat QR-hitelesitest, vagy szukseg eseten adja meg kezzel a bot tokent',
     matrixHint: 'Használja a Matrix homeserverét és a bot fiók hitelesítő adatait',
     imessageHint: 'Használja a mautrix-imessage-t macOS-on',
     blueBubblesHint:

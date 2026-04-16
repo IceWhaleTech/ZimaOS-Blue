@@ -60,18 +60,23 @@ func (d *stubDriver) PerformAction(_ context.Context, run *Run, action string, i
 }
 
 type runContextDriver struct {
-	kind         RunKind
-	order        *[]string
-	lastEnv      RunEnv
-	lastRunCtx   *RunContext
-	toolRunID    string
-	toolUserID   string
-	toolSession  string
-	toolProvider string
-	toolModel    string
-	toolAgentID  string
-	startErr     error
-	startedCount int
+	kind             RunKind
+	order            *[]string
+	lastEnv          RunEnv
+	lastRunCtx       *RunContext
+	toolRunID        string
+	toolUserID       string
+	toolSession      string
+	toolProvider     string
+	toolModel        string
+	toolAgentID      string
+	toolArtifactRoot string
+	artifactToEmit   *tools.ToolArtifact
+	eventToEmit      *tools.ToolEvent
+	emitArtifactErr  error
+	emitEventErr     error
+	startErr         error
+	startedCount     int
 }
 
 func (d *runContextDriver) Kind() RunKind { return d.kind }
@@ -91,8 +96,15 @@ func (d *runContextDriver) Start(ctx context.Context, run *Run, env RunEnv) erro
 	d.toolProvider = tools.GetProviderID(ctx)
 	d.toolModel = tools.GetModel(ctx)
 	d.toolAgentID = tools.GetAgentID(ctx)
+	d.toolArtifactRoot = tools.GetRunArtifactRoot(ctx)
 	if d.order != nil {
 		*d.order = append(*d.order, "start")
+	}
+	if d.artifactToEmit != nil {
+		d.emitArtifactErr = tools.EmitArtifact(ctx, *d.artifactToEmit)
+	}
+	if d.eventToEmit != nil {
+		d.emitEventErr = tools.EmitEvent(ctx, *d.eventToEmit)
 	}
 	if d.startErr != nil {
 		return d.startErr
@@ -597,6 +609,107 @@ func TestController_SubmitExposesRunContextToMiddlewareAndDriver(t *testing.T) {
 	}
 	if driver.toolAgentID != "main" {
 		t.Fatalf("tools agent_id = %q, want %q", driver.toolAgentID, "main")
+	}
+	if driver.toolArtifactRoot != run.ArtifactRoot {
+		t.Fatalf("tools artifact_root = %q, want %q", driver.toolArtifactRoot, run.ArtifactRoot)
+	}
+}
+
+func TestController_RunContextAnnotatesToolArtifactEmitter(t *testing.T) {
+	controller := newTestController(t)
+	artifact := tools.ToolArtifact{
+		Kind:      "file",
+		Label:     "stage_trace",
+		PathOrURL: "/tmp/stage-trace.json",
+		MimeType:  "application/json",
+		SizeBytes: 42,
+		Metadata: map[string]interface{}{
+			"stage": "locate_conversation",
+		},
+	}
+	driver := &runContextDriver{
+		kind:           RunKindAgentTask,
+		artifactToEmit: &artifact,
+	}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:      RunKindAgentTask,
+		Goal:      "emit tool artifact",
+		UserID:    "user-1",
+		SessionID: "session-1",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if driver.emitArtifactErr != nil {
+		t.Fatalf("EmitArtifact returned error: %v", driver.emitArtifactErr)
+	}
+	artifacts, err := controller.ListArtifacts(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("ListArtifacts failed: %v", err)
+	}
+	if len(artifacts) != 1 {
+		t.Fatalf("artifacts = %#v, want one attached artifact", artifacts)
+	}
+	if artifacts[0].Label != "stage_trace" {
+		t.Fatalf("artifact label = %q, want stage_trace", artifacts[0].Label)
+	}
+	if artifacts[0].PathOrURL != artifact.PathOrURL {
+		t.Fatalf("artifact path = %q, want %q", artifacts[0].PathOrURL, artifact.PathOrURL)
+	}
+	if !strings.Contains(artifacts[0].MetadataJSON, "locate_conversation") {
+		t.Fatalf("artifact metadata = %q, want stage metadata", artifacts[0].MetadataJSON)
+	}
+}
+
+func TestController_RunContextAnnotatesToolEventEmitter(t *testing.T) {
+	controller := newTestController(t)
+	event := tools.ToolEvent{
+		Type:     "stage_changed",
+		ToolName: "computer_use",
+		Message:  "chat stage updated",
+		Payload: map[string]interface{}{
+			"stage":    "computer_use_chat.locate_conversation",
+			"status":   "ok",
+			"strategy": "visual_sidebar_hit",
+		},
+	}
+	driver := &runContextDriver{
+		kind:        RunKindAgentTask,
+		eventToEmit: &event,
+	}
+	controller.RegisterDriver(driver)
+
+	run, err := controller.Submit(context.Background(), RunSpec{
+		Kind:      RunKindAgentTask,
+		Goal:      "emit tool event",
+		UserID:    "user-1",
+		SessionID: "session-1",
+	})
+	if err != nil {
+		t.Fatalf("Submit failed: %v", err)
+	}
+	if driver.emitEventErr != nil {
+		t.Fatalf("EmitEvent returned error: %v", driver.emitEventErr)
+	}
+	events, err := controller.ListEvents(context.Background(), run.ID, 20)
+	if err != nil {
+		t.Fatalf("ListEvents failed: %v", err)
+	}
+	found := false
+	for _, got := range events {
+		if got.Type != "stage_changed" || got.ToolName != "computer_use" {
+			continue
+		}
+		if !strings.Contains(got.PayloadJSON, "computer_use_chat.locate_conversation") {
+			continue
+		}
+		found = true
+		break
+	}
+	if !found {
+		t.Fatalf("events = %#v, want emitted computer_use stage_changed event", events)
 	}
 }
 

@@ -11,28 +11,51 @@ import (
 type toolContextKey string
 
 const (
-	langKey        toolContextKey = "tool_lang"
-	channelKey     toolContextKey = "tool_channel"
-	deviceKey      toolContextKey = "tool_device"
-	imageInputsKey toolContextKey = "tool_image_inputs"
-	cardEmitKey    toolContextKey = "tool_card_emit"
-	sessionIDKey   toolContextKey = "tool_session_id"
-	providerKey    toolContextKey = "tool_provider"
-	providerIDKey  toolContextKey = "tool_provider_id"
-	modelKey       toolContextKey = "tool_model"
-	agentIDKey     toolContextKey = "tool_agent_id"
-	routeKindKey   toolContextKey = "tool_route_kind"
-	runIDKey       toolContextKey = "tool_run_id"
-	runStepKey     toolContextKey = "tool_run_step"
-	autoConfirmKey toolContextKey = "tool_auto_confirm"
-	checkpointKey  toolContextKey = "tool_browser_checkpoint"
-	browserModeKey toolContextKey = "tool_browser_launch_mode"
-	browserHintKey toolContextKey = "tool_browser_route_hint"
-	fsScopeKey     toolContextKey = "tool_fs_scope"
+	langKey         toolContextKey = "tool_lang"
+	channelKey      toolContextKey = "tool_channel"
+	deviceKey       toolContextKey = "tool_device"
+	imageInputsKey  toolContextKey = "tool_image_inputs"
+	cardEmitKey     toolContextKey = "tool_card_emit"
+	sessionIDKey    toolContextKey = "tool_session_id"
+	providerKey     toolContextKey = "tool_provider"
+	providerIDKey   toolContextKey = "tool_provider_id"
+	modelKey        toolContextKey = "tool_model"
+	agentIDKey      toolContextKey = "tool_agent_id"
+	routeKindKey    toolContextKey = "tool_route_kind"
+	runIDKey        toolContextKey = "tool_run_id"
+	runStepKey      toolContextKey = "tool_run_step"
+	autoConfirmKey  toolContextKey = "tool_auto_confirm"
+	checkpointKey   toolContextKey = "tool_browser_checkpoint"
+	browserModeKey  toolContextKey = "tool_browser_launch_mode"
+	browserHintKey  toolContextKey = "tool_browser_route_hint"
+	fsScopeKey      toolContextKey = "tool_fs_scope"
+	artifactEmitKey toolContextKey = "tool_artifact_emit"
+	eventEmitKey    toolContextKey = "tool_event_emit"
+	artifactRootKey toolContextKey = "tool_artifact_root"
 )
 
 type BrowserLaunchMode string
 type ToolRouteKind string
+type ArtifactEmitFunc func(ctx context.Context, artifact ToolArtifact) error
+type EventEmitFunc func(ctx context.Context, event ToolEvent) error
+
+type ToolArtifact struct {
+	Kind      string
+	Label     string
+	PathOrURL string
+	MimeType  string
+	SizeBytes int64
+	Metadata  map[string]interface{}
+}
+
+type ToolEvent struct {
+	Type           string
+	Message        string
+	StepIndex      int
+	ToolName       string
+	CapabilityKind string
+	Payload        map[string]interface{}
+}
 
 // BrowserRouteHint carries high-level browser intent so the backend can choose
 // the right runtime before a request turns into engine-specific calls.
@@ -130,6 +153,45 @@ func RequestBrowserCheckpoint(ctx context.Context, req BrowserCheckpointRequest)
 	}
 	result, err := fn(ctx, req)
 	return result, true, err
+}
+
+func WithArtifactEmitter(ctx context.Context, fn ArtifactEmitFunc) context.Context {
+	return context.WithValue(ctx, artifactEmitKey, fn)
+}
+
+func EmitArtifact(ctx context.Context, artifact ToolArtifact) error {
+	fn, ok := ctx.Value(artifactEmitKey).(ArtifactEmitFunc)
+	if !ok || fn == nil {
+		return nil
+	}
+	return fn(ctx, artifact)
+}
+
+func WithEventEmitter(ctx context.Context, fn EventEmitFunc) context.Context {
+	return context.WithValue(ctx, eventEmitKey, fn)
+}
+
+func EmitEvent(ctx context.Context, event ToolEvent) error {
+	fn, ok := ctx.Value(eventEmitKey).(EventEmitFunc)
+	if !ok || fn == nil {
+		return nil
+	}
+	return fn(ctx, event)
+}
+
+func WithRunArtifactRoot(ctx context.Context, root string) context.Context {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, artifactRootKey, root)
+}
+
+func GetRunArtifactRoot(ctx context.Context) string {
+	if v, ok := ctx.Value(artifactRootKey).(string); ok {
+		return strings.TrimSpace(v)
+	}
+	return ""
 }
 
 // WithUserID returns a context carrying the user ID for tool/skill execution.

@@ -31,16 +31,13 @@ func supportsNativeMarkdownPPTXConversion(sourceExt, targetExt string) bool {
 	return normalizeFormat(sourceExt, "") == "md" && normalizeFormat(targetExt, "") == "pptx"
 }
 
-func buildNativeMarkdownPPTXFromFile(sourcePath string) ([]byte, error) {
+func buildNativeMarkdownPPTXFromFile(sourcePath string, options PresentationOptions) ([]byte, error) {
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		return nil, err
 	}
 	slides := parseNativeMarkdownPPTXSlides(string(data))
-	if len(slides) == 0 {
-		return nil, fmt.Errorf("markdown deck contained no slide content")
-	}
-	return buildNativeMarkdownPPTX(slides)
+	return buildNativeMarkdownPPTXWithOptions(slides, options)
 }
 
 func parseNativeMarkdownPPTXSlides(content string) []nativeMarkdownPPTXSlide {
@@ -407,6 +404,16 @@ func nativeMarkdownCompactLines(lines []string) []string {
 }
 
 func buildNativeMarkdownPPTX(slides []nativeMarkdownPPTXSlide) ([]byte, error) {
+	return buildNativeMarkdownPPTXWithOptions(slides, PresentationOptions{})
+}
+
+func buildNativeMarkdownPPTXWithOptions(slides []nativeMarkdownPPTXSlide, options PresentationOptions) ([]byte, error) {
+	slides = nativeMarkdownApplyPresentationOptions(slides, options)
+	if len(slides) == 0 {
+		return nil, fmt.Errorf("markdown deck contained no slide content")
+	}
+	theme := resolveNativeMarkdownPPTXTheme(options.Theme, options.StyleHint)
+
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	addString := func(name, content string) error {
@@ -426,7 +433,7 @@ func buildNativeMarkdownPPTX(slides []nativeMarkdownPPTXSlide) ([]byte, error) {
 	if err := addString("_rels/.rels", nativeMarkdownPPTXPackageRelsXML()); err != nil {
 		return nil, err
 	}
-	if err := addString("docProps/core.xml", nativeMarkdownPPTXCorePropsXML(firstNonEmptyDeckValue(slides[0].Title, "Presentation"))); err != nil {
+	if err := addString("docProps/core.xml", nativeMarkdownPPTXCorePropsXML(firstNonEmptyDeckValue(options.Title, slides[0].Title, "Presentation"))); err != nil {
 		return nil, err
 	}
 	if err := addString("docProps/app.xml", nativeMarkdownPPTXAppPropsXML(slides)); err != nil {
@@ -450,11 +457,11 @@ func buildNativeMarkdownPPTX(slides []nativeMarkdownPPTXSlide) ([]byte, error) {
 	if err := addString("ppt/slideLayouts/_rels/slideLayout1.xml.rels", nativeMarkdownPPTXSlideLayoutRelsXML()); err != nil {
 		return nil, err
 	}
-	if err := addString("ppt/theme/theme1.xml", nativeMarkdownPPTXThemeXML()); err != nil {
+	if err := addString("ppt/theme/theme1.xml", nativeMarkdownPPTXThemeXML(theme)); err != nil {
 		return nil, err
 	}
 	for i, slide := range slides {
-		if err := addString(fmt.Sprintf("ppt/slides/slide%d.xml", i+1), nativeMarkdownPPTXSlideXML(slide)); err != nil {
+		if err := addString(fmt.Sprintf("ppt/slides/slide%d.xml", i+1), nativeMarkdownPPTXSlideXML(slide, theme)); err != nil {
 			return nil, err
 		}
 		if err := addString(fmt.Sprintf("ppt/slides/_rels/slide%d.xml.rels", i+1), nativeMarkdownPPTXSlideRelsXML()); err != nil {
@@ -465,6 +472,63 @@ func buildNativeMarkdownPPTX(slides []nativeMarkdownPPTXSlide) ([]byte, error) {
 		return nil, fmt.Errorf("close pptx zip: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+func nativeMarkdownApplyPresentationOptions(slides []nativeMarkdownPPTXSlide, options PresentationOptions) []nativeMarkdownPPTXSlide {
+	if len(slides) == 0 {
+		lines := nativeMarkdownCompactLines([]string{options.Subtitle, options.Summary})
+		if strings.TrimSpace(options.Title) == "" && len(lines) == 0 {
+			return nil
+		}
+		return []nativeMarkdownPPTXSlide{{
+			Title: firstNonEmptyDeckValue(options.Title, "Slide"),
+			Lines: lines,
+		}}
+	}
+
+	out := make([]nativeMarkdownPPTXSlide, len(slides))
+	for i, slide := range slides {
+		out[i] = nativeMarkdownPPTXSlide{
+			Title: slide.Title,
+			Lines: append([]string(nil), slide.Lines...),
+		}
+	}
+
+	if strings.TrimSpace(options.Title) != "" {
+		out[0].Title = strings.TrimSpace(options.Title)
+	}
+	if prefixed := nativeMarkdownPresentationPrefixLines(out[0].Lines, options); len(prefixed) > 0 {
+		out[0].Lines = prefixed
+	}
+	if strings.TrimSpace(out[0].Title) == "" {
+		out[0].Title = "Slide"
+	}
+	return out
+}
+
+func nativeMarkdownPresentationPrefixLines(lines []string, options PresentationOptions) []string {
+	combined := append([]string(nil), lines...)
+	for _, text := range []string{options.Summary, options.Subtitle} {
+		text = strings.TrimSpace(text)
+		if text == "" || nativeMarkdownLineExists(combined, text) {
+			continue
+		}
+		combined = append([]string{text}, combined...)
+	}
+	return nativeMarkdownCompactLines(combined)
+}
+
+func nativeMarkdownLineExists(lines []string, target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == target {
+			return true
+		}
+	}
+	return false
 }
 
 func nativeMarkdownPPTXContentTypesXML(slideCount int) string {
@@ -589,17 +653,19 @@ func nativeMarkdownPPTXSlideLayoutRelsXML() string {
 		`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`
 }
 
-func nativeMarkdownPPTXThemeXML() string {
+func nativeMarkdownPPTXThemeXML(theme nativeMarkdownPPTXTheme) string {
+	theme = nativeMarkdownPPTXResolvedTheme(theme)
+	themeName := nativeMarkdownHumanizeThemeToken(theme.Name)
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
-		`<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="Midnight Theme">` +
+		`<a:theme xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" name="` + nativeMarkdownPPTXXMLText(themeName) + ` Theme">` +
 		`<a:themeElements>` +
-		`<a:clrScheme name="Midnight"><a:dk1><a:srgbClr val="0F1D2F"/></a:dk1><a:lt1><a:srgbClr val="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="334155"/></a:dk2><a:lt2><a:srgbClr val="F8FAFC"/></a:lt2><a:accent1><a:srgbClr val="1E3A5F"/></a:accent1><a:accent2><a:srgbClr val="00D4AA"/></a:accent2><a:accent3><a:srgbClr val="4A5568"/></a:accent3><a:accent4><a:srgbClr val="059669"/></a:accent4><a:accent5><a:srgbClr val="D97706"/></a:accent5><a:accent6><a:srgbClr val="DC2626"/></a:accent6><a:hlink><a:srgbClr val="00D4AA"/></a:hlink><a:folHlink><a:srgbClr val="4A5568"/></a:folHlink></a:clrScheme>` +
-		`<a:fontScheme name="Midnight"><a:majorFont>` + nativeMarkdownPPTXThemeFontCollectionXML("Georgia") + `</a:majorFont><a:minorFont>` + nativeMarkdownPPTXThemeFontCollectionXML("Helvetica") + `</a:minorFont></a:fontScheme>` +
-		`<a:fmtScheme name="Midnight"><a:fillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle/></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>` +
+		`<a:clrScheme name="` + nativeMarkdownPPTXXMLText(themeName) + `"><a:dk1><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.PrimaryDark) + `"/></a:dk1><a:lt1><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Surface) + `"/></a:lt1><a:dk2><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Slate) + `"/></a:dk2><a:lt2><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.SurfaceAlt) + `"/></a:lt2><a:accent1><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Primary) + `"/></a:accent1><a:accent2><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Accent) + `"/></a:accent2><a:accent3><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Secondary) + `"/></a:accent3><a:accent4><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Success) + `"/></a:accent4><a:accent5><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Warning) + `"/></a:accent5><a:accent6><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Danger) + `"/></a:accent6><a:hlink><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Accent) + `"/></a:hlink><a:folHlink><a:srgbClr val="` + nativeMarkdownPPTXHex(theme.Secondary) + `"/></a:folHlink></a:clrScheme>` +
+		`<a:fontScheme name="` + nativeMarkdownPPTXXMLText(themeName) + `"><a:majorFont>` + nativeMarkdownPPTXThemeFontCollectionXML(theme.DisplayFont) + `</a:majorFont><a:minorFont>` + nativeMarkdownPPTXThemeFontCollectionXML(theme.BodyFont) + `</a:minorFont></a:fontScheme>` +
+		`<a:fmtScheme name="` + nativeMarkdownPPTXXMLText(themeName) + `"><a:fillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="accent1"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle/></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme>` +
 		`</a:themeElements></a:theme>`
 }
 
-func nativeMarkdownPPTXSlideXML(slide nativeMarkdownPPTXSlide) string {
+func nativeMarkdownPPTXSlideXML(slide nativeMarkdownPPTXSlide, theme nativeMarkdownPPTXTheme) string {
 	const (
 		slideWidth      = 12192000
 		slideHeight     = 6858000
@@ -617,15 +683,16 @@ func nativeMarkdownPPTXSlideXML(slide nativeMarkdownPPTXSlide) string {
 		bodyW           = 10858500
 		bodyH           = 4343400
 	)
+	theme = nativeMarkdownPPTXResolvedTheme(theme)
 	accentX := slideWidth - accentRightPad - accentWidth
 	return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
 		`<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">` +
 		`<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>` +
-		nativeMarkdownPPTXDecorativeRectShapeXML(10, "Background", 0, 0, slideWidth, slideHeight, "F8FAFC") +
-		nativeMarkdownPPTXDecorativeRectShapeXML(11, "Band", 0, 0, slideWidth, bandHeight, "E8EEF4") +
-		nativeMarkdownPPTXDecorativeRectShapeXML(12, "Accent", accentX, accentTopOffset, accentWidth, accentHeight, "00D4AA") +
-		nativeMarkdownPPTXTextBoxShapeXML(20, "Title", titleX, titleY, titleW, titleH, nativeMarkdownPPTXParagraphsXML([]string{firstNonEmptyDeckValue(slide.Title, "Slide")}, 2800, true, "Georgia", "0F1D2F")) +
-		nativeMarkdownPPTXTextBoxShapeXML(21, "Content", bodyX, bodyY, bodyW, bodyH, nativeMarkdownPPTXParagraphsXML(slide.Lines, 2200, false, "Helvetica", "334155")) +
+		nativeMarkdownPPTXDecorativeRectShapeXML(10, "Background", 0, 0, slideWidth, slideHeight, theme.SurfaceAlt) +
+		nativeMarkdownPPTXDecorativeRectShapeXML(11, "Band", 0, 0, slideWidth, bandHeight, theme.PrimaryTint) +
+		nativeMarkdownPPTXDecorativeRectShapeXML(12, "Accent", accentX, accentTopOffset, accentWidth, accentHeight, theme.Accent) +
+		nativeMarkdownPPTXTextBoxShapeXML(20, "Title", titleX, titleY, titleW, titleH, nativeMarkdownPPTXParagraphsXML([]string{firstNonEmptyDeckValue(slide.Title, "Slide")}, 2800, true, theme.DisplayFont, theme.PrimaryDark)) +
+		nativeMarkdownPPTXTextBoxShapeXML(21, "Content", bodyX, bodyY, bodyW, bodyH, nativeMarkdownPPTXParagraphsXML(slide.Lines, 2200, false, theme.BodyFont, theme.Slate)) +
 		`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`
 }
 

@@ -456,6 +456,83 @@ func TestConvertDocumentFallsBackToNativeMarkdownPPTXWithoutEnginesForChineseLab
 	}
 }
 
+func TestConvertDocumentFallsBackToNativeMarkdownPPTXWithPresentationOptions(t *testing.T) {
+	svc := setupConvertTestService(t)
+	tmpDir := t.TempDir()
+	sourcePath := filepath.Join(tmpDir, "source.md")
+	markdown := "" +
+		"## Highlights\n\n" +
+		"- Existing bullet\n" +
+		"- Native fallback\n"
+	if err := os.WriteFile(sourcePath, []byte(markdown), 0o640); err != nil {
+		t.Fatalf("write source: %v", err)
+	}
+
+	svc.locator = commandLocator{
+		lookPath: func(name string) (string, error) {
+			return "", exec.ErrNotFound
+		},
+		stat: func(path string) (fs.FileInfo, error) {
+			return nil, os.ErrNotExist
+		},
+		runVersion: func(ctx context.Context, name string, args ...string) (string, error) {
+			return "", nil
+		},
+	}
+
+	task := &ConvertTask{
+		ID: "task-native-markdown-pptx-options",
+		Request: &TaskRequest{
+			Options: TaskOptions{
+				Presentation: PresentationOptions{
+					Theme:    "coral",
+					Title:    "Launch Deck",
+					Subtitle: "Spring 2026",
+					Summary:  "Faster setup and smoother onboarding",
+				},
+			},
+		},
+	}
+	source := ResolvedSource{Name: filepath.Base(sourcePath), Path: sourcePath, Category: "document"}
+	outputs, message, err := svc.convertDocument(context.Background(), task, source, "pptx")
+	if err != nil {
+		t.Fatalf("convertDocument failed: %v", err)
+	}
+	if message != "Document converted" {
+		t.Fatalf("message = %q, want %q", message, "Document converted")
+	}
+	if len(outputs) != 1 {
+		t.Fatalf("outputs = %d, want 1", len(outputs))
+	}
+
+	data, err := os.ReadFile(outputs[0].Path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", outputs[0].Path, err)
+	}
+	themeXML := nativeMarkdownPPTXZipEntryText(t, data, "ppt/theme/theme1.xml")
+	for _, needle := range []string{
+		`name="Coral Theme"`,
+		`val="FF6B6B"`,
+		`typeface="Helvetica Neue"`,
+	} {
+		if !strings.Contains(themeXML, needle) {
+			t.Fatalf("expected theme1.xml to include %q, got %s", needle, themeXML)
+		}
+	}
+
+	slideXML := nativeMarkdownPPTXZipEntryText(t, data, "ppt/slides/slide1.xml")
+	for _, needle := range []string{
+		"Launch Deck",
+		"Spring 2026",
+		"Faster setup and smoother onboarding",
+		"Existing bullet",
+	} {
+		if !strings.Contains(slideXML, needle) {
+			t.Fatalf("expected slide1.xml to include %q, got %s", needle, slideXML)
+		}
+	}
+}
+
 func TestConvertDocumentMarkdownToPDFFallsBackWithoutCallingTextutil(t *testing.T) {
 	svc := setupConvertTestService(t)
 	tmpDir := t.TempDir()

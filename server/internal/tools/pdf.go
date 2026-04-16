@@ -931,11 +931,16 @@ func nativePDFCreateRequest(spec officeDocSpec) pdfextract.CreateRequest {
 		}
 	}
 	req := pdfextract.CreateRequest{
-		Title:      spec.Title,
-		Subtitle:   spec.Subtitle,
-		Summary:    spec.Summary,
-		Paragraphs: paragraphs,
-		Notes:      append([]string(nil), spec.Notes...),
+		Title:         spec.Title,
+		Subtitle:      spec.Subtitle,
+		Summary:       spec.Summary,
+		Paragraphs:    paragraphs,
+		Notes:         append([]string(nil), spec.Notes...),
+		TitleColor:    spec.Theme.PrimaryDark,
+		SubtitleColor: spec.Theme.Secondary,
+		HeadingColor:  spec.Theme.PrimaryDark,
+		BodyColor:     spec.Theme.Slate,
+		MutedColor:    spec.Theme.Secondary,
 	}
 	for _, section := range spec.Sections {
 		sectionParagraphs := make([]string, 0, len(section.ParagraphBlocks)+len(section.Paragraphs))

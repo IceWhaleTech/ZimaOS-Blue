@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	a11yBackendFactoryMu sync.RWMutex
-	a11yBackendFactory   = a11yruntime.DefaultHostBackend
+	a11yBackendFactoryMu       sync.RWMutex
+	a11yBackendFactory         = a11yruntime.DefaultHostBackend
 	a11yHostInputActionTimeout = 10 * time.Second
 )
 
@@ -29,16 +29,26 @@ type A11yTool struct {
 	lastRefs       []a11ySnapshotEntry
 	mediaDir       string
 	clickCache     map[string]a11yConversationClickPoint
+	chatGrounder   a11yChatGrounder
+	chatMemory     *a11yChatStageMemory
 }
 
 func NewA11yTool() *A11yTool {
-	return &A11yTool{}
+	return &A11yTool{
+		chatMemory: newA11yChatStageMemory(),
+	}
 }
 
 func (t *A11yTool) SetBackend(backend a11yruntime.Backend) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.backend = backend
+}
+
+func (t *A11yTool) SetChatGrounder(grounder a11yChatGrounder) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.chatGrounder = grounder
 }
 
 func (t *A11yTool) Backend() a11yruntime.Backend {
@@ -905,17 +915,37 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		holdMS = a11yruntime.DefaultHoldMS
 	}
 	holdMS = a11yruntime.NormalizeHoldMS(holdMS)
+	chatState, _ := t.maybeStartA11yChatExecution(args, intent, backend.HostOS())
+	if chatState != nil {
+		ctx = withA11yChatExecutionState(ctx, chatState)
+		a11yRecordChatStage(ctx, chatState, a11yChatStageActivateApp, a11yChatStageStatusOK, "reuse_existing_window", "", "", nil)
+	}
+	chatErrorPayload := func(err error) interface{} {
+		annotated := a11yAnnotateChatError(err, chatState)
+		payload := a11yErrorPayloadMap(annotated)
+		if chatState != nil {
+			a11yPersistChatTrajectoryArtifacts(ctx, chatState, payload)
+			chatState.applyToPayload(payload)
+		}
+		return a11yJSON(payload)
+	}
 	resolvedTarget, match, err := t.resolveHostWindowID(ctx, backend, args, windowID)
 	if err != nil {
 		if retriedTarget, retriedMatch, _, retryErr, handled := t.tryActivateHostAppForWindowResolve(ctx, backend, args, windowID, err); handled {
 			if retryErr != nil {
-				return a11yErrorPayload(retryErr), nil
+				return chatErrorPayload(retryErr), nil
 			}
 			resolvedTarget = retriedTarget
 			match = retriedMatch
+			if chatState != nil {
+				a11yRecordChatStage(ctx, chatState, a11yChatStageActivateApp, a11yChatStageStatusOK, "activate_app_retry", "", "", nil)
+			}
 		} else {
-			return a11yErrorPayload(err), nil
+			return chatErrorPayload(err), nil
 		}
+	}
+	if chatState != nil {
+		a11yRecordChatStage(ctx, chatState, a11yChatStageAcquireWindow, a11yChatStageStatusOK, "window_resolve", "", "", nil)
 	}
 	t.maybeAutoFocusExactMatch(ctx, backend, match, resolvedTarget)
 	if degraded, handled, err := t.maybeHandleHostPermissionFallback(ctx, backend, a11yruntime.ActionAct, strings.TrimSpace(resolvedTarget)); handled || err != nil {
@@ -926,7 +956,13 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	}
 	resolvedTarget, conversationErr := t.maybeActivateA11yMessageConversation(ctx, backend, args, resolvedTarget, holdMS, intent)
 	if conversationErr != nil {
-		return a11yErrorPayload(conversationErr), nil
+		return chatErrorPayload(conversationErr), nil
+	}
+	if chatState != nil && chatState.intent == "message" {
+		resolvedTarget, conversationErr = t.confirmA11yChatComposerReady(ctx, backend, resolvedTarget)
+		if conversationErr != nil {
+			return chatErrorPayload(conversationErr), nil
+		}
 	}
 
 	var (
@@ -977,7 +1013,7 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		var resolveErr error
 		targetTelemetry, resolveErr = t.resolveActTarget(ctx, backend, resolvedTarget, selector)
 		if resolveErr != nil {
-			return a11yErrorPayload(resolveErr), nil
+			return chatErrorPayload(resolveErr), nil
 		}
 		ref = targetTelemetry.Ref
 		refMap = cloneA11yRefMap(targetTelemetry.RefMap)
@@ -987,7 +1023,14 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 	}
 	submitPlan, submitPlanErr := t.resolveActSubmitPlan(ctx, backend, args, resolvedTarget, actType, ref, intent)
 	if submitPlanErr != nil {
-		return a11yErrorPayload(submitPlanErr), nil
+		return chatErrorPayload(submitPlanErr), nil
+	}
+	if chatState != nil {
+		typeStrategy := "type"
+		if submitPlan.Enabled {
+			typeStrategy = "type_and_send"
+		}
+		a11yRecordChatStage(ctx, chatState, a11yChatStageTypeOrSend, a11yChatStageStatusOK, typeStrategy, "", "", nil)
 	}
 	result, err := a11yRunActionResultWithTimeout(ctx, actType, resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
 		return backend.Act(actionCtx, resolvedTarget, ref, refMap, actType, value, holdMS)
@@ -1000,15 +1043,20 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		}
 	}
 	if err != nil {
-		return a11yErrorPayload(err), nil
+		return chatErrorPayload(err), nil
 	}
 	if submitPlan.Enabled {
 		submitConfirmation := buildA11ySubmitConfirmation(value, ref, refMap)
 		submitResult, submitErr := t.executeActSubmitPlanWithConfirmation(ctx, backend, resolvedTarget, holdMS, submitPlan, submitConfirmation)
 		if submitErr != nil {
-			return a11yErrorPayload(submitErr), nil
+			return chatErrorPayload(submitErr), nil
 		}
 		result = mergeA11yActionResults(result, submitResult)
+	}
+	if chatState != nil {
+		if verifyErr := t.verifyA11yChatOutcome(ctx, backend, valueOrDefault(result.WindowID, resolvedTarget), submitPlan.Enabled); verifyErr != nil {
+			return chatErrorPayload(verifyErr), nil
+		}
 	}
 	if runtime, ok := backend.(a11yruntime.SnapshotRuntime); ok {
 		runtime.UpdateSnapshotAfterAction(valueOrDefault(result.WindowID, resolvedTarget), refMap[ref], actType, value)
@@ -1047,6 +1095,11 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		payload["overlay_mode"] = result.OverlayMode
 	}
 	applyA11yTelemetryPayload(payload, telemetry)
+	if chatState != nil {
+		chatState.applyToPayload(payload)
+		a11yPersistChatTrajectoryArtifacts(ctx, chatState, payload)
+		chatState.applyToPayload(payload)
+	}
 	return a11yJSON(payload), nil
 }
 
@@ -1642,8 +1695,12 @@ func compatStringSlice(args map[string]interface{}, keys ...string) ([]string, b
 }
 
 func a11yErrorPayload(err error) string {
+	return a11yJSON(a11yErrorPayloadMap(err))
+}
+
+func a11yErrorPayloadMap(err error) map[string]interface{} {
 	if err == nil {
-		return a11yJSON(map[string]interface{}{})
+		return map[string]interface{}{}
 	}
 	if runtimeErr, ok := err.(*a11yruntime.RuntimeError); ok {
 		payload := map[string]interface{}{
@@ -1653,12 +1710,12 @@ func a11yErrorPayload(err error) string {
 		for key, value := range runtimeErr.Details {
 			payload[key] = value
 		}
-		return a11yJSON(payload)
+		return payload
 	}
-	return a11yJSON(map[string]interface{}{
+	return map[string]interface{}{
 		"error":      err.Error(),
 		"error_code": "backend_unavailable",
-	})
+	}
 }
 
 func a11yRunActionResultWithTimeout(ctx context.Context, action string, windowID string, fn func(context.Context) (a11yruntime.ActionResult, error)) (a11yruntime.ActionResult, error) {

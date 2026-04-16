@@ -877,7 +877,11 @@ func (s *Service) convertDocument(ctx context.Context, task *ConvertTask, source
 
 	if supportsNativeMarkdownPPTXConversion(sourceExt, target) {
 		_ = os.Remove(outputPath)
-		data, err := buildNativeMarkdownPPTXFromFile(source.Path)
+		var presentation PresentationOptions
+		if task != nil && task.Request != nil {
+			presentation = task.Request.Options.Presentation
+		}
+		data, err := buildNativeMarkdownPPTXFromFile(source.Path, presentation)
 		if err != nil {
 			attempts = append(attempts, fmt.Sprintf("native_markdown_pptx: %v", err))
 		} else {

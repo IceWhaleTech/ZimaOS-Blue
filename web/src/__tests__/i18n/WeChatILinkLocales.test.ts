@@ -77,7 +77,7 @@ const nonEnglishGuardedKeys = {
   'channels.wechatILinkSetupTitle': 'Finish WeChat iLink Setup',
   'channels.wechatILinkDesc': 'Connect personal WeChat via iLink bot credentials',
   'channels.wechatILinkHint':
-    'Use WeChat QR authorization as the primary path, or fill API Base URL and Bot Token manually if needed',
+    'Use WeChat QR authorization as the primary path, or provide the Bot Token manually if needed',
 } as const
 
 const staleLegacyDirectConnectCopyByLocale = {
@@ -441,6 +441,32 @@ describe('WeChat iLink locale coverage', () => {
       expect(value, `${locale} should no longer use the old scan-to-config hint`).not.toBe(
         staleValue
       )
+    }
+  })
+
+  it('removes API Base URL references from the bot-only fallback copy in all 27 locales', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    expect(entries).toHaveLength(27)
+
+    for (const [modulePath, mod] of entries) {
+      const locale = getLocaleCode(modulePath)
+      const messages = mod.default
+      const apiBaseURLLabel = String(getPathValue(messages, 'channels.apiBaseURL') || '').trim()
+      const hint = String(getPathValue(messages, 'channels.wechatILinkHint') || '').trim()
+      const placeholder = String(
+        getPathValue(messages, 'channels.wechatILinkPairingPayloadPlaceholder') || ''
+      ).trim()
+
+      expect(apiBaseURLLabel, `${locale} missing channels.apiBaseURL`).not.toBe('')
+      expect(hint, `${locale} missing channels.wechatILinkHint`).not.toBe('')
+      expect(
+        hint,
+        `${locale} should not mention API Base URL in channels.wechatILinkHint`
+      ).not.toContain(apiBaseURLLabel)
+      expect(
+        placeholder,
+        `${locale} should not mention API Base URL in channels.wechatILinkPairingPayloadPlaceholder`
+      ).not.toContain(apiBaseURLLabel)
     }
   })
 })

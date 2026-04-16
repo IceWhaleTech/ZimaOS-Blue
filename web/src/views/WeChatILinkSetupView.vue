@@ -17,7 +17,6 @@ const submitting = ref(false)
 const errorMessage = ref('')
 const success = ref(false)
 const pairingPayload = ref('')
-const apiBaseURL = ref('')
 const botToken = ref('')
 
 const sessionId = computed(() => String(route.query.session_id || '').trim())
@@ -62,27 +61,17 @@ function extractAutoSetupPayload() {
     }
   }
 
-  const apiBaseURLParam = readQueryParam(['api_base_url', 'apiBaseURL'])
   const botTokenParam = readQueryParam(['bot_token', 'botToken'])
 
-  if (apiBaseURLParam.value) {
-    apiBaseURL.value = apiBaseURLParam.value
-  }
   if (botTokenParam.value) {
     botToken.value = botTokenParam.value
   }
-  if (apiBaseURLParam.value || botTokenParam.value) {
+  if (readQueryParam(['api_base_url', 'apiBaseURL']).value || botTokenParam.value) {
     removeKeys('api_base_url', 'apiBaseURL', 'bot_token', 'botToken')
   }
 
   return {
-    payload:
-      apiBaseURLParam.value && botTokenParam.value
-        ? {
-            api_base_url: apiBaseURLParam.value,
-            bot_token: botTokenParam.value,
-          }
-        : null,
+    payload: botTokenParam.value ? { bot_token: botTokenParam.value } : null,
     cleanedQuery,
     changed,
   }
@@ -98,7 +87,6 @@ function buildPairingPayload(): unknown {
   }
 
   return {
-    api_base_url: apiBaseURL.value.trim(),
     bot_token: botToken.value.trim(),
   }
 }
@@ -216,16 +204,6 @@ onMounted(() => {
         <div class="wechat-ilink-setup__divider">
           {{ t('common.optional') }}
         </div>
-
-        <label class="wechat-ilink-setup__field">
-          <span>{{ t('channels.apiBaseURL') }}</span>
-          <input
-            v-model="apiBaseURL"
-            type="url"
-            class="wechat-ilink-setup__input"
-            :placeholder="t('channels.placeholderILinkAPIBaseURL')"
-          >
-        </label>
 
         <label class="wechat-ilink-setup__field">
           <span>{{ t('channels.botToken') }}</span>

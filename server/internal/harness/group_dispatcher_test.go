@@ -1,8 +1,8 @@
 package harness
 
 import (
-	"encoding/base64"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -968,6 +968,156 @@ func TestGroupDispatcher_VerificationSummaryTracksArtifactBackedPass(t *testing.
 	}
 	if got := report.Group.Summary["evidence_backed_pass_rate"]; got != float64(1) {
 		t.Fatalf("evidence_backed_pass_rate = %#v, want 1", got)
+	}
+}
+
+func TestGroupDispatcher_VerificationPassesDesktopChatTrajectoryContract(t *testing.T) {
+	controller := newTestController(t)
+	artifactRoot := t.TempDir()
+	result := `{
+		"stage":"verify_outcome",
+		"strategy":"visual_verification",
+		"attempt_count":6,
+		"grounding_source":"vision_model",
+		"verification":{"status":"sent"},
+		"task_stages":[
+			{"stage":"activate_app","status":"ok","strategy":"activate_app_retry"},
+			{"stage":"acquire_window","status":"ok","strategy":"window_resolve"},
+			{"stage":"locate_conversation","status":"ok","strategy":"visual_sidebar_hit","grounding_source":"vision_model"},
+			{"stage":"confirm_conversation","status":"ok","strategy":"post_click_confirmation"},
+			{"stage":"locate_composer","status":"ok","strategy":"visual_grounding_check","grounding_source":"vision_model"},
+			{"stage":"verify_outcome","status":"ok","strategy":"visual_verification","grounding_source":"vision_model","verification":{"status":"sent"}}
+		],
+		"artifact_paths":[
+			"artifacts/computer_use/run-1/step-01/06-stage_trace.json",
+			"artifacts/computer_use/run-1/step-01/06-final_result.json",
+			"artifacts/computer_use/run-1/step-01/06-key_screenshot.bin",
+			"artifacts/computer_use/run-1/step-01/06-failure_classification.json"
+		]
+	}`
+	controller.RegisterDriver(&autoCompleteGroupDriver{
+		kind:   RunKindAgentTask,
+		status: RunStatusCompleted,
+		result: result,
+		delay:  10 * time.Millisecond,
+		onStart: func(run *Run, env RunEnv) error {
+			if err := env.Manager.AppendEvent(context.Background(), RunEvent{
+				RunID:       run.ID,
+				Type:        "tool_finished",
+				ToolName:    "computer_use",
+				Message:     "desktop chat flow completed",
+				PayloadJSON: `{"tool_name":"computer_use","result":"ok"}`,
+				CreatedAt:   time.Now().UTC(),
+			}); err != nil {
+				return err
+			}
+			labels := []string{"stage_trace", "final_result", "key_screenshot", "failure_classification"}
+			for _, label := range labels {
+				target := filepath.Join(artifactRoot, label+".json")
+				if err := os.WriteFile(target, []byte(label), 0o644); err != nil {
+					return err
+				}
+				mimeType := "application/json"
+				if label == "key_screenshot" {
+					mimeType = "application/octet-stream"
+				}
+				if err := env.Manager.AttachArtifact(context.Background(), ArtifactRef{
+					RunID:     run.ID,
+					Kind:      "file",
+					Label:     label,
+					PathOrURL: target,
+					MIMEType:  mimeType,
+				}); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	})
+	dispatcher := NewGroupDispatcher(controller)
+	dispatcher.SetRunPollInterval(10 * time.Millisecond)
+
+	group, err := controller.SubmitGroup(context.Background(), RunGroupSpec{
+		Kind:        RunGroupKindEval,
+		Title:       "desktop chat contract",
+		OwnerUserID: "user-1",
+		ScoringConfig: GroupScoringConfig{
+			Mode:          ScoringModeRule,
+			PassThreshold: 0.5,
+		},
+		Items: []RunGroupItemSpec{
+			{
+				RunKind: RunKindAgentTask,
+				Profile: "computer_use_desktop_chat",
+				Input: map[string]interface{}{
+					"goal": "switch conversation and send a message",
+				},
+				Expected: map[string]interface{}{
+					"status": "completed",
+					"required_observations": []interface{}{
+						"task_stage_trace_emitted",
+						"computer_use_metadata_emitted",
+						"send_verified",
+						"conversation_confirmed",
+						"focus_recovered",
+						"visual_grounding_used",
+					},
+					"expected_artifacts": []interface{}{
+						map[string]interface{}{"label": "stage_trace", "must_exist": true},
+						map[string]interface{}{"label": "final_result", "must_exist": true},
+						map[string]interface{}{"label": "key_screenshot", "must_exist": true},
+						map[string]interface{}{"label": "failure_classification", "must_exist": true},
+					},
+					"required_tool_calls": []interface{}{"computer_use"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("SubmitGroup failed: %v", err)
+	}
+
+	if err := dispatcher.DispatchOnce(context.Background()); err != nil {
+		t.Fatalf("DispatchOnce failed: %v", err)
+	}
+
+	waitForCondition(t, "desktop chat verification terminal state", func() bool {
+		report, err := controller.GetGroupReport(context.Background(), group.ID)
+		return err == nil && report != nil && len(report.Scorecards) >= 1
+	})
+
+	report, err := controller.GetGroupReport(context.Background(), group.ID)
+	if err != nil {
+		t.Fatalf("GetGroupReport failed: %v", err)
+	}
+	if len(report.Items) != 1 || report.Items[0].Status != RunGroupItemStatusPassed {
+		t.Fatalf("unexpected item statuses: %#v", report.Items)
+	}
+	breakdown := decodeJSONMap(report.Scorecards[0].BreakdownJSON)
+	if label := metadataString(breakdown, "failure_label"); label != "" {
+		t.Fatalf("failure_label = %q, want empty (breakdown=%#v)", label, breakdown)
+	}
+	trace := decodeJSONMap(report.Scorecards[0].JudgeTraceJSON)
+	verification, _ := trace["verification"].(map[string]interface{})
+	observations, _ := verification["observations"].([]interface{})
+	for _, want := range []string{
+		"task_stage_trace_emitted",
+		"computer_use_metadata_emitted",
+		"send_verified",
+		"conversation_confirmed",
+		"focus_recovered",
+		"visual_grounding_used",
+	} {
+		found := false
+		for _, observation := range observations {
+			if observation == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("observations = %#v, want %q", observations, want)
+		}
 	}
 }
 

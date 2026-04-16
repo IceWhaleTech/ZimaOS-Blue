@@ -2,14 +2,17 @@ package tools
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"fmt"
+	"mime"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
+	pdfextract "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pdf"
 )
 
 type ConvertTool struct {
@@ -48,7 +51,7 @@ func RegisterConvertTool(registry *Registry, service *convertpkg.Service, approv
 func (t *ConvertTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "convert",
-		Description: "Convert local files, attachments, and prior outputs. Preferred form: input_path + output_path using relative paths. Normal single-file jobs return synchronously; only heavier jobs return async=true with a task_id for polling.",
+		Description: "Convert local files, attachments, and prior outputs. Preferred form: input_path + output_path using relative paths. Normal single-file jobs return synchronously; only heavier jobs return async=true with a task_id for polling. For styled office outputs (`docx`, `xlsx`, `pptx`, `pdf`), you can also provide theme/title/summary and other native document-structure hints.",
 		Icon:        "wand-sparkles",
 		Parameters: map[string]interface{}{
 			"type": "object",
@@ -76,13 +79,115 @@ func (t *ConvertTool) Definition() ToolDefinition {
 					"description": "Optional legacy format override. Usually omit this and let output_path's extension decide the format.",
 				},
 				"text": map[string]interface{}{"type": "string"},
+				"markdown": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional native office seed content for styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
+				},
+				"body": map[string]interface{}{
+					"type":        "string",
+					"description": "Alias of markdown/content for native office-style output routing.",
+				},
+				"title": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional native office title override for styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
+				},
+				"subtitle": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional native office subtitle override for styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
+				},
+				"summary": map[string]interface{}{
+					"description": "Optional native office summary override. Strings are preferred; objects with text/body/content are also accepted.",
+				},
+				"theme": map[string]interface{}{
+					"type":        "string",
+					"enum":        []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"},
+					"description": "Optional native office theme used by styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
+				},
+				"style_hint": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional native office tone/style hint used to infer a theme when theme is omitted.",
+				},
+				"notes": map[string]interface{}{
+					"type":        "array",
+					"description": "Optional notes applied to native office outputs.",
+				},
+				"paragraphs": map[string]interface{}{
+					"type":        "array",
+					"description": "Optional paragraph blocks for styled `docx`/`pptx`/`pdf` outputs.",
+				},
+				"sections": map[string]interface{}{
+					"type":        "array",
+					"description": "Optional structured sections for styled `docx`/`pptx`/`pdf` outputs.",
+				},
+				"sheets": map[string]interface{}{
+					"type":        "array",
+					"description": "Optional workbook sheets for styled `xlsx` outputs.",
+				},
+				"sheet": map[string]interface{}{
+					"description": "Optional single-sheet workbook seed for styled `xlsx` outputs.",
+				},
+				"columns": map[string]interface{}{
+					"type":        "array",
+					"description": "Optional workbook columns for styled `xlsx` outputs.",
+				},
+				"rows": map[string]interface{}{
+					"type":        "array",
+					"description": "Optional workbook rows for styled `xlsx` outputs.",
+				},
+				"table": map[string]interface{}{
+					"description": "Optional table data for styled `xlsx` or document-section generation.",
+				},
 				"task_id": map[string]interface{}{
 					"type":        "string",
 					"description": "Use only to check/cancel an async task, or after convert returned async=true.",
 				},
 				"wait_ms": map[string]interface{}{"type": "integer"},
 				"options": map[string]interface{}{
-					"type":                 "object",
+					"type": "object",
+					"properties": map[string]interface{}{
+						"presentation": map[string]interface{}{
+							"type":        "object",
+							"description": "PPTX-oriented advanced controls for native markdown -> pptx fallback generation.",
+							"properties": map[string]interface{}{
+								"title":      map[string]interface{}{"type": "string"},
+								"subtitle":   map[string]interface{}{"type": "string"},
+								"summary":    map[string]interface{}{},
+								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"}},
+								"style_hint": map[string]interface{}{"type": "string"},
+							},
+						},
+						"pptx": map[string]interface{}{
+							"type":        "object",
+							"description": "Alias of options.presentation.",
+							"properties": map[string]interface{}{
+								"title":      map[string]interface{}{"type": "string"},
+								"subtitle":   map[string]interface{}{"type": "string"},
+								"summary":    map[string]interface{}{},
+								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"}},
+								"style_hint": map[string]interface{}{"type": "string"},
+							},
+						},
+						"office": map[string]interface{}{
+							"type":                 "object",
+							"description":          "Common native office overrides shared by styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
+							"additionalProperties": true,
+						},
+						"docx": map[string]interface{}{
+							"type":                 "object",
+							"description":          "Native `docx`-specific office overrides.",
+							"additionalProperties": true,
+						},
+						"xlsx": map[string]interface{}{
+							"type":                 "object",
+							"description":          "Native `xlsx`-specific office overrides.",
+							"additionalProperties": true,
+						},
+						"pdf": map[string]interface{}{
+							"type":                 "object",
+							"description":          "Native `pdf`-specific office overrides.",
+							"additionalProperties": true,
+						},
+					},
 					"additionalProperties": true,
 				},
 			},
@@ -129,6 +234,9 @@ func (t *ConvertTool) Execute(ctx context.Context, args map[string]interface{}) 
 	if err != nil {
 		return nil, err
 	}
+	if nativeResult, handled, nativeErr := t.maybeHandleNativeOfficeConvert(ctx, args, req); handled {
+		return nativeResult, nativeErr
+	}
 	task, err := t.service.Submit(ctx, userID, conversationID, req)
 	if err != nil {
 		return nil, err
@@ -161,6 +269,398 @@ func (t *ConvertTool) Execute(ctx context.Context, args map[string]interface{}) 
 		}
 	}
 	return task, nil
+}
+
+func (t *ConvertTool) maybeHandleNativeOfficeConvert(ctx context.Context, args map[string]interface{}, req convertpkg.TaskRequest) (interface{}, bool, error) {
+	if normalizeConvertFormatName(req.Action) != "" && strings.TrimSpace(req.Action) != convertpkg.ActionConvert {
+		return nil, false, nil
+	}
+	target := normalizeConvertFormatName(req.TargetFormat)
+	if !isNativeOfficeConvertTarget(target) {
+		return nil, false, nil
+	}
+
+	mergedArgs, wantsNative := buildNativeOfficeConvertArgs(args, target)
+	if !wantsNative {
+		return nil, false, nil
+	}
+	if len(req.Sources) > 1 {
+		return nil, true, fmt.Errorf("styled native %s convert currently supports exactly one source file", target)
+	}
+
+	sourcePath := ""
+	if len(req.Sources) == 1 {
+		sourcePath = strings.TrimSpace(req.Sources[0])
+		if strings.HasPrefix(sourcePath, "att:") || strings.HasPrefix(sourcePath, "out:") || !filepath.IsAbs(sourcePath) {
+			return nil, true, fmt.Errorf("styled native %s convert requires a local workspace source file", target)
+		}
+	}
+
+	if err := prepareNativeOfficeConvertSourceArgs(ctx, mergedArgs, target, sourcePath); err != nil {
+		return nil, true, err
+	}
+
+	data, err := buildNativeOfficeConvertBytes(target, mergedArgs)
+	if err != nil {
+		return nil, true, err
+	}
+
+	outputPath := strings.TrimSpace(firstCompatString(args, "output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to"))
+	if outputPath == "" {
+		return nil, true, errors.New("output_path is required for native office convert")
+	}
+	createDirs, err := parseCreateDirsArg(mergedArgs)
+	if err != nil {
+		return nil, true, err
+	}
+	absPath, _, err := executeCreateLikeDocumentWrite(ctx, target, t.pathScope(), outputPath, createDirs, data)
+	if err != nil {
+		return nil, true, err
+	}
+
+	previewKind := convertpkg.PreviewFile
+	if target == "pdf" {
+		previewKind = convertpkg.PreviewPDF
+	}
+	task := &convertpkg.ConvertTask{
+		Action:       convertpkg.ActionConvert,
+		Status:       convertpkg.StatusSucceeded,
+		Message:      "Document converted",
+		TargetFormat: target,
+		Outputs: []convertpkg.ConvertOutput{{
+			ID:          "native-office-output",
+			Name:        filepath.Base(absPath),
+			MimeType:    firstNonEmptyConvertValue(mime.TypeByExtension(filepath.Ext(absPath)), convertMimeTypeForFormat(target)),
+			SizeBytes:   int64(len(data)),
+			PreviewKind: previewKind,
+			Path:        absPath,
+		}},
+	}
+	return simpleConvertTaskResult(task, false), true, nil
+}
+
+func isNativeOfficeConvertTarget(target string) bool {
+	switch normalizeConvertFormatName(target) {
+	case "docx", "xlsx", "pptx", "pdf":
+		return true
+	default:
+		return false
+	}
+}
+
+func buildNativeOfficeConvertArgs(args map[string]interface{}, target string) (map[string]interface{}, bool) {
+	merged := cloneConvertArgs(args)
+	rawOptions, ok := compatArgValue(args, "options")
+	if ok {
+		if options, ok := coerceCompatMap(rawOptions); ok {
+			for _, key := range nativeOfficeOptionKeysForTarget(target) {
+				if nested, ok := coerceCompatMap(options[key]); ok {
+					mergeMissingConvertArgs(merged, nested)
+				}
+			}
+		}
+	}
+	return merged, hasNativeOfficeConvertInputs(merged, target)
+}
+
+func nativeOfficeOptionKeysForTarget(target string) []string {
+	keys := []string{"office"}
+	switch normalizeConvertFormatName(target) {
+	case "docx":
+		return append(keys, "docx", "document")
+	case "xlsx":
+		return append(keys, "xlsx", "spreadsheet", "workbook")
+	case "pdf":
+		return append(keys, "pdf", "document")
+	case "pptx":
+		return append(keys, "presentation", "pptx")
+	default:
+		return keys
+	}
+}
+
+func cloneConvertArgs(args map[string]interface{}) map[string]interface{} {
+	cloned := make(map[string]interface{}, len(args))
+	for key, value := range args {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func mergeMissingConvertArgs(dst, src map[string]interface{}) {
+	for key, value := range src {
+		if _, exists := dst[key]; !exists {
+			dst[key] = value
+		}
+	}
+}
+
+func hasNativeOfficeConvertInputs(args map[string]interface{}, target string) bool {
+	keys := []string{
+		"theme", "style_hint", "styleHint", "title", "subtitle", "summary",
+		"content", "markdown", "body", "text", "notes",
+	}
+	switch normalizeConvertFormatName(target) {
+	case "xlsx":
+		keys = append(keys, "sheets", "sheet", "columns", "headers", "rows", "table")
+	default:
+		keys = append(keys, "sections", "paragraphs")
+	}
+	for _, key := range keys {
+		if value, ok := compatArgValue(args, key); ok && value != nil {
+			if text, ok := value.(string); ok {
+				if strings.TrimSpace(text) == "" {
+					continue
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func prepareNativeOfficeConvertSourceArgs(ctx context.Context, args map[string]interface{}, target, sourcePath string) error {
+	if nativeOfficeHasContentArgs(args, target) {
+		return nil
+	}
+	if strings.TrimSpace(sourcePath) == "" {
+		return fmt.Errorf("styled native %s convert requires a source file or explicit structured content", target)
+	}
+
+	sourceExt := normalizeConvertFormatName(filepath.Ext(sourcePath))
+	switch normalizeConvertFormatName(target) {
+	case "xlsx":
+		switch {
+		case sourceExt == "csv" || sourceExt == "tsv":
+			rows, err := readNativeOfficeDelimitedRows(sourcePath)
+			if err != nil {
+				return err
+			}
+			populateNativeOfficeWorkbookArgsFromRows(args, rows)
+			return nil
+		case isNativeOfficeTextSource(sourceExt):
+			content, err := os.ReadFile(sourcePath)
+			if err != nil {
+				return err
+			}
+			args["content"] = string(content)
+			return nil
+		default:
+			return fmt.Errorf("styled native xlsx convert currently supports markdown/text/html/csv/tsv sources or explicit workbook content")
+		}
+	default:
+		switch {
+		case sourceExt == "csv" || sourceExt == "tsv":
+			rows, err := readNativeOfficeDelimitedRows(sourcePath)
+			if err != nil {
+				return err
+			}
+			args["content"] = nativeOfficeMarkdownTableFromRows(rows)
+			return nil
+		case isNativeOfficeTextSource(sourceExt):
+			content, err := os.ReadFile(sourcePath)
+			if err != nil {
+				return err
+			}
+			args["content"] = string(content)
+			return nil
+		case convertpkg.SupportsDocumentReadFormat(sourceExt):
+			reader := convertpkg.NewDocumentReader()
+			doc, err := reader.ReadDocument(ctx, sourcePath)
+			if err != nil {
+				return err
+			}
+			args["content"] = doc.Text
+			return nil
+		default:
+			return fmt.Errorf("styled native %s convert currently supports markdown/text/html/csv/tsv or readable office sources", target)
+		}
+	}
+}
+
+func nativeOfficeHasContentArgs(args map[string]interface{}, target string) bool {
+	keys := []string{"content", "markdown", "body", "text"}
+	switch normalizeConvertFormatName(target) {
+	case "xlsx":
+		keys = append(keys, "sheets", "sheet", "columns", "headers", "rows", "table")
+	default:
+		keys = append(keys, "sections", "paragraphs")
+	}
+	for _, key := range keys {
+		if value, ok := compatArgValue(args, key); ok && value != nil {
+			if text, ok := value.(string); ok && strings.TrimSpace(text) == "" {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func isNativeOfficeTextSource(ext string) bool {
+	switch normalizeConvertFormatName(ext) {
+	case "txt", "text", "md", "markdown", "html", "htm":
+		return true
+	default:
+		return false
+	}
+}
+
+func readNativeOfficeDelimitedRows(path string) ([][]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1
+	if normalizeConvertFormatName(filepath.Ext(path)) == "tsv" {
+		reader.Comma = '\t'
+	}
+	rows, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, errors.New("source table contained no rows")
+	}
+	return rows, nil
+}
+
+func populateNativeOfficeWorkbookArgsFromRows(args map[string]interface{}, rows [][]string) {
+	if len(rows) == 0 {
+		return
+	}
+	columns := make([]interface{}, 0, len(rows[0]))
+	dataRows := make([][]string, 0)
+	if len(rows) > 1 {
+		for _, header := range rows[0] {
+			columns = append(columns, header)
+		}
+		dataRows = rows[1:]
+	} else {
+		for idx := range rows[0] {
+			columns = append(columns, fmt.Sprintf("Column %d", idx+1))
+		}
+		dataRows = rows
+	}
+
+	normalizedRows := make([]interface{}, 0, len(dataRows))
+	for _, row := range dataRows {
+		items := make([]interface{}, len(row))
+		for idx, value := range row {
+			items[idx] = value
+		}
+		normalizedRows = append(normalizedRows, items)
+	}
+	args["columns"] = columns
+	args["rows"] = normalizedRows
+}
+
+func nativeOfficeMarkdownTableFromRows(rows [][]string) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	headers := append([]string(nil), rows[0]...)
+	dataRows := rows[1:]
+	if len(dataRows) == 0 {
+		headers = make([]string, len(rows[0]))
+		for idx := range headers {
+			headers[idx] = fmt.Sprintf("Column %d", idx+1)
+		}
+		dataRows = rows
+	}
+
+	var sb strings.Builder
+	sb.WriteString("| ")
+	sb.WriteString(strings.Join(headers, " | "))
+	sb.WriteString(" |\n| ")
+	separators := make([]string, len(headers))
+	for idx := range separators {
+		separators[idx] = "---"
+	}
+	sb.WriteString(strings.Join(separators, " | "))
+	sb.WriteString(" |\n")
+	for _, row := range dataRows {
+		cells := make([]string, len(headers))
+		for idx := range headers {
+			if idx < len(row) {
+				cells[idx] = row[idx]
+			}
+		}
+		sb.WriteString("| ")
+		sb.WriteString(strings.Join(cells, " | "))
+		sb.WriteString(" |\n")
+	}
+	return sb.String()
+}
+
+func buildNativeOfficeConvertBytes(target string, args map[string]interface{}) ([]byte, error) {
+	styleHint := strings.TrimSpace(firstCompatString(args, "style_hint", "styleHint", "style", "visual_style", "visualStyle"))
+	if target == "pptx" && styleHint == "" {
+		styleHint = "board presentation"
+	}
+	theme := resolveOfficeTheme(firstCompatString(args, "theme"), styleHint)
+	title := strings.TrimSpace(firstCompatString(args, "title"))
+	subtitle := strings.TrimSpace(firstCompatString(args, "subtitle"))
+
+	switch normalizeConvertFormatName(target) {
+	case "docx":
+		spec, err := parseOfficeDocSpec(args, title, subtitle, theme, styleHint)
+		if err != nil {
+			return nil, err
+		}
+		data, _, err := buildOfficeDOCX(spec)
+		return data, err
+	case "xlsx":
+		spec, err := parseOfficeWorkbookSpec(args, title, subtitle, theme)
+		if err != nil {
+			return nil, err
+		}
+		data, _, err := buildOfficeXLSX(spec)
+		return data, err
+	case "pptx":
+		spec, err := parseOfficeDocSpec(args, title, subtitle, theme, styleHint)
+		if err != nil {
+			return nil, err
+		}
+		data, _, err := buildOfficePPTX(spec)
+		return data, err
+	case "pdf":
+		spec, err := parseOfficeDocSpec(args, title, subtitle, theme, styleHint)
+		if err != nil {
+			return nil, errors.New(strings.Replace(err.Error(), "docx", "pdf", 1))
+		}
+		data, _, err := pdfextract.CreateDocument(nativePDFCreateRequest(spec))
+		return data, err
+	default:
+		return nil, fmt.Errorf("unsupported native office convert target %q", target)
+	}
+}
+
+func firstNonEmptyConvertValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+func convertMimeTypeForFormat(format string) string {
+	switch normalizeConvertFormatName(format) {
+	case "docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case "xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case "pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case "pdf":
+		return "application/pdf"
+	default:
+		return ""
+	}
 }
 
 func (t *ConvertTool) pathScope() *fsToolScope {
@@ -396,6 +896,7 @@ func parseConvertTaskRequest(args map[string]interface{}) (parsedConvertTaskRequ
 			req.Options = parseOptions(optMap)
 		}
 	}
+	req.Options.Presentation = mergePresentationOptions(req.Options.Presentation, parsePresentationOptions(args))
 	if req.Action == convertpkg.ActionTTS {
 		req.TargetFormat = strings.TrimSpace(nonEmpty(req.Options.Speech.TTS.Format, req.TargetFormat))
 	}
@@ -419,6 +920,12 @@ func parseOptions(raw map[string]interface{}) convertpkg.TaskOptions {
 		if pages, ok := doc["pages"]; ok {
 			out.Document.Pages = toIntSlice(pages)
 		}
+	}
+	if presentation, ok := coerceCompatMap(raw["presentation"]); ok {
+		out.Presentation = mergePresentationOptions(out.Presentation, parsePresentationOptions(presentation))
+	}
+	if pptx, ok := coerceCompatMap(raw["pptx"]); ok {
+		out.Presentation = mergePresentationOptions(out.Presentation, parsePresentationOptions(pptx))
 	}
 	if image, ok := raw["image"].(map[string]interface{}); ok {
 		out.Image.Quality = compatInt(image, "quality")
@@ -456,6 +963,67 @@ func parseOptions(raw map[string]interface{}) convertpkg.TaskOptions {
 		}
 	}
 	return out
+}
+
+func parsePresentationOptions(raw map[string]interface{}) convertpkg.PresentationOptions {
+	var out convertpkg.PresentationOptions
+	out.Theme = strings.TrimSpace(firstCompatString(raw, "theme"))
+	out.StyleHint = strings.TrimSpace(firstCompatString(raw, "style_hint", "styleHint", "style", "visual_style", "visualStyle"))
+	out.Title = strings.TrimSpace(firstCompatString(raw, "title"))
+	out.Subtitle = strings.TrimSpace(firstCompatString(raw, "subtitle"))
+	if value, ok := compatArgValue(raw, "summary"); ok {
+		out.Summary = parsePresentationText(value)
+	}
+	return out
+}
+
+func mergePresentationOptions(base, override convertpkg.PresentationOptions) convertpkg.PresentationOptions {
+	if value := strings.TrimSpace(override.Theme); value != "" {
+		base.Theme = value
+	}
+	if value := strings.TrimSpace(override.StyleHint); value != "" {
+		base.StyleHint = value
+	}
+	if value := strings.TrimSpace(override.Title); value != "" {
+		base.Title = value
+	}
+	if value := strings.TrimSpace(override.Subtitle); value != "" {
+		base.Subtitle = value
+	}
+	if value := strings.TrimSpace(override.Summary); value != "" {
+		base.Summary = value
+	}
+	return base
+}
+
+func parsePresentationText(raw interface{}) string {
+	switch typed := raw.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]interface{}:
+		for _, key := range []string{"text", "body", "content", "summary"} {
+			if value, ok := compatArgValue(typed, key); ok {
+				if text := parsePresentationText(value); text != "" {
+					return text
+				}
+			}
+		}
+		return ""
+	case []interface{}:
+		lines := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text := parsePresentationText(item); text != "" {
+				lines = append(lines, text)
+			}
+		}
+		return strings.TrimSpace(strings.Join(lines, "\n"))
+	default:
+		rendered := strings.TrimSpace(fmt.Sprintf("%v", raw))
+		if rendered == "" || rendered == "<nil>" {
+			return ""
+		}
+		return rendered
+	}
 }
 
 func parseSegments(raw interface{}) []convertpkg.TimeSegment {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,28 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/kvstore"
 )
+
+type wechatILinkRewriteHostTransport struct {
+	t      *testing.T
+	target *url.URL
+}
+
+func (r wechatILinkRewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	cloned.URL.Scheme = r.target.Scheme
+	cloned.URL.Host = r.target.Host
+	cloned.Host = req.URL.Host
+	return http.DefaultTransport.RoundTrip(cloned)
+}
+
+func newWeChatILinkRewriteHostTransport(t *testing.T, server *httptest.Server) http.RoundTripper {
+	t.Helper()
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("url.Parse(server.URL) error = %v", err)
+	}
+	return wechatILinkRewriteHostTransport{t: t, target: target}
+}
 
 func TestWeChatILinkSetupHandler_CreateSessionReturnsUpstreamScanURLAndQRCode(t *testing.T) {
 	var qrRequests int
@@ -90,6 +113,60 @@ func TestWeChatILinkSetupHandler_CreateSessionReturnsUpstreamScanURLAndQRCode(t 
 	}
 	if session.ResolvedAPIBaseURL != upstream.URL {
 		t.Fatalf("session.ResolvedAPIBaseURL = %q, want %q", session.ResolvedAPIBaseURL, upstream.URL)
+	}
+}
+
+func TestWeChatILinkSetupHandler_CreateSessionFallsBackToDefaultAPIBaseURLWhenStoredValueIsRelative(t *testing.T) {
+	var qrRequests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/get_bot_qrcode" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		qrRequests++
+		if got := r.Host; got != "ilinkai.weixin.qq.com" {
+			t.Fatalf("host = %q, want %q", got, "ilinkai.weixin.qq.com")
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"qrcode":             "qr-key-default",
+			"qrcode_img_content": "https://ilink.example.com/scan/default",
+		})
+	}))
+	defer upstream.Close()
+
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	if err := store.Set(wechatILinkSetupChannelID, &ChannelConfig{
+		ID:      wechatILinkSetupChannelID,
+		Enabled: false,
+		Config: map[string]string{
+			"api_base_url": "admin",
+		},
+	}); err != nil {
+		t.Fatalf("store.Set error = %v", err)
+	}
+
+	handler := NewWeChatILinkSetupHandler(
+		store,
+		channel.NewManager(channel.DefaultConfig(), zap.NewNop()),
+		NewChannelFactory(zap.NewNop()),
+		zap.NewNop(),
+	)
+	handler.httpClient = &http.Client{Transport: newWeChatILinkRewriteHostTransport(t, upstream)}
+
+	response := callWeChatILinkCreateSession(t, handler)
+
+	if qrRequests != 1 {
+		t.Fatalf("qrRequests = %d, want 1", qrRequests)
+	}
+	if got := stringValue(response["scan_url"]); got != "https://ilink.example.com/scan/default" {
+		t.Fatalf("scan_url = %q, want %q", got, "https://ilink.example.com/scan/default")
+	}
+
+	session, ok := handler.getSession(stringValue(response["session_id"]))
+	if !ok {
+		t.Fatal("expected stored setup session")
+	}
+	if session.ResolvedAPIBaseURL != wechatILinkDefaultAPIBaseURL {
+		t.Fatalf("session.ResolvedAPIBaseURL = %q, want %q", session.ResolvedAPIBaseURL, wechatILinkDefaultAPIBaseURL)
 	}
 }
 
@@ -425,20 +502,6 @@ func TestWeChatILinkSetupHandler_GetSessionMarksErrorOnInvalidJSON(t *testing.T)
 }
 
 func TestWeChatILinkSetupHandler_CompletePersistsAndEnablesChannel(t *testing.T) {
-	store := NewChannelConfigStore(kvstore.NewMemoryStore())
-	manager := channel.NewManager(channel.DefaultConfig(), zap.NewNop())
-	factory := NewChannelFactory(zap.NewNop())
-	handler := NewWeChatILinkSetupHandler(
-		store,
-		manager,
-		factory,
-		zap.NewNop(),
-	)
-	handler.now = func() time.Time { return time.Date(2026, 4, 14, 10, 0, 0, 0, time.UTC) }
-
-	session := handler.newSession("user-1")
-	handler.storeSession(session)
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/ilink/bot/getupdates":
@@ -453,7 +516,30 @@ func TestWeChatILinkSetupHandler_CompletePersistsAndEnablesChannel(t *testing.T)
 	}))
 	defer server.Close()
 
-	body := `{"pairing_payload":{"api_base_url":"` + server.URL + `","bot_token":"bot-token"}}`
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	if err := store.Set(wechatILinkSetupChannelID, &ChannelConfig{
+		ID:      wechatILinkSetupChannelID,
+		Enabled: false,
+		Config: map[string]string{
+			"api_base_url": server.URL,
+		},
+	}); err != nil {
+		t.Fatalf("store.Set error = %v", err)
+	}
+	manager := channel.NewManager(channel.DefaultConfig(), zap.NewNop())
+	factory := NewChannelFactory(zap.NewNop())
+	handler := NewWeChatILinkSetupHandler(
+		store,
+		manager,
+		factory,
+		zap.NewNop(),
+	)
+	handler.now = func() time.Time { return time.Date(2026, 4, 14, 10, 0, 0, 0, time.UTC) }
+
+	session := handler.newSession("user-1")
+	handler.storeSession(session)
+
+	body := `{"pairing_payload":{"bot_token":"bot-token"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/channels/wechat_ilink/setup/session/"+session.ID+"/complete", strings.NewReader(body))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{

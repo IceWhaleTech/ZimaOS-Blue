@@ -208,11 +208,11 @@ func TestScanSkillsDir_PrioritySort(t *testing.T) {
 }
 
 func TestSkillSortPriority_LegacyWebAliasesAreDeprioritized(t *testing.T) {
-	if got := skillSortPriority("browser"); got != 0 {
-		t.Fatalf("browser priority = %d, want 0", got)
+	if got := skillSortPriority("web_query"); got != 0 {
+		t.Fatalf("web_query priority = %d, want 0", got)
 	}
-	if got := skillSortPriority("web_query"); got != 1 {
-		t.Fatalf("web_query priority = %d, want 1", got)
+	if got := skillSortPriority("browser"); got != 1 {
+		t.Fatalf("browser priority = %d, want 1", got)
 	}
 	if got := skillSortPriority("research"); got != 2 {
 		t.Fatalf("research priority = %d, want 2", got)
@@ -428,6 +428,43 @@ description: Research from home path
 	}
 	if contains(got, `desc="Research from home path"`) {
 		t.Fatalf("did not expect home description when workspace exists, got: %q", got)
+	}
+}
+
+func TestFormatPinnedSkills_PrefersWebQueryBeforeBrowser(t *testing.T) {
+	workspaceDir := t.TempDir()
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	for _, tc := range []struct {
+		id   string
+		desc string
+	}{
+		{id: "browser", desc: "Live browser interaction"},
+		{id: "web_query", desc: "Public web discovery and reading"},
+	} {
+		skillDir := filepath.Join(workspaceDir, ".claude", "skills", tc.id)
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			t.Fatalf("mkdir skill dir: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: `+tc.id+`
+description: `+tc.desc+`
+---
+# `+tc.id+`
+`), 0o644); err != nil {
+			t.Fatalf("write skill: %v", err)
+		}
+	}
+
+	got := FormatPinnedSkills(workspaceDir)
+	webIdx := strings.Index(got, `name="web_query"`)
+	browserIdx := strings.Index(got, `name="browser"`)
+	if webIdx == -1 || browserIdx == -1 {
+		t.Fatalf("expected both web_query and browser in pinned output, got: %q", got)
+	}
+	if webIdx > browserIdx {
+		t.Fatalf("expected web_query to appear before browser in pinned output, got: %q", got)
 	}
 }
 

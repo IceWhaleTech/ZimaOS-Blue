@@ -85,11 +85,12 @@ func TestBuildSkillIndex_WorkspaceOverridesHome(t *testing.T) {
 	if len(docs) == 0 {
 		t.Fatalf("expected docs")
 	}
-	if docs[0].Name != "browser" {
-		t.Fatalf("expected browser doc, got %q", docs[0].Name)
+	doc, ok := findSkillDocByName(docs, "browser")
+	if !ok {
+		t.Fatalf("expected browser doc, got %v", docs)
 	}
-	if docs[0].Description != "workspace browser" {
-		t.Fatalf("expected workspace override, got %q", docs[0].Description)
+	if doc.Description != "workspace browser" {
+		t.Fatalf("expected workspace override, got %q", doc.Description)
 	}
 }
 
@@ -119,8 +120,12 @@ func TestBuildSkillIndex_AgentsRootOverridesClaudeRoot(t *testing.T) {
 	if len(docs) == 0 {
 		t.Fatalf("expected docs")
 	}
-	if docs[0].Description != "workspace agents browser" {
-		t.Fatalf("expected agents root override, got %q", docs[0].Description)
+	doc, ok := findSkillDocByName(docs, "browser")
+	if !ok {
+		t.Fatalf("expected browser doc, got %v", docs)
+	}
+	if doc.Description != "workspace agents browser" {
+		t.Fatalf("expected agents root override, got %q", doc.Description)
 	}
 }
 
@@ -457,6 +462,33 @@ func TestSelect_PinnedSkillsAlwaysLoaded(t *testing.T) {
 	}
 	if decision.TokenBudgetUsed != 200 {
 		t.Fatalf("token_budget_used = %d, want 200", decision.TokenBudgetUsed)
+	}
+}
+
+func TestSelect_PinnedSkillsPreferWebQueryBeforeBrowser(t *testing.T) {
+	decision, err := applyTokenBudgetToDecision(Decision{
+		SelectedSkill: "alpha_helper",
+		Candidates: []SkillCandidate{
+			{Name: "alpha_helper"},
+		},
+	}, []SkillDoc{
+		{Name: "browser"},
+		{Name: "web_query"},
+		{Name: "alpha_helper"},
+	}, TokenBudget{
+		MaxTokens: 50,
+	}, false)
+	if err != nil {
+		t.Fatalf("applyTokenBudgetToDecision error: %v", err)
+	}
+	if got := decision.LoadedSkills; len(got) < 2 || got[0] != "web_query" || got[1] != "browser" {
+		t.Fatalf("loaded_skills = %#v, want pinned order [web_query browser]", got)
+	}
+	if got := decision.SkippedSkills; len(got) != 1 || got[0] != "alpha_helper" {
+		t.Fatalf("skipped_skills = %#v, want [alpha_helper]", got)
+	}
+	if decision.TokenBudgetUsed != 400 {
+		t.Fatalf("token_budget_used = %d, want 400", decision.TokenBudgetUsed)
 	}
 }
 

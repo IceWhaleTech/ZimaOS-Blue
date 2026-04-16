@@ -2537,7 +2537,7 @@ export default mergeHarnessLocale('de-DE', {
     wechatILinkSetupStateError: "Fehler",
     wechatILinkSetupStateExpired: "Abgelaufen",
     wechatILinkPairingPayload: 'Kopplungsnutzdaten',
-    wechatILinkPairingPayloadPlaceholder: 'Fugen Sie hier die iLink-Kopplungsnutzdaten ein oder lassen Sie das Feld leer und fullen Sie unten API-Basis-URL und Bot-Token aus.',
+    wechatILinkPairingPayloadPlaceholder: 'Fugen Sie hier die iLink-Kopplungsnutzdaten ein oder lassen Sie das Feld leer und fullen Sie unten den Bot-Token aus.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Access-Token',
@@ -2615,7 +2615,7 @@ export default mergeHarnessLocale('de-DE', {
     dingtalkHint: 'Erstellen Sie einen Bot in der DingTalk Developer Platform',
     qqHint: 'Erstellen Sie einen Bot in der QQ Open Platform (q.qq.com)',
     wechatHint: 'Erstellen Sie eine App in der WeChat Work Admin Console',
-    wechatILinkHint: 'Verwenden Sie die WeChat-QR-Autorisierung als primaren Weg oder tragen Sie API-Basis-URL und Bot-Token bei Bedarf manuell ein',
+    wechatILinkHint: 'Verwenden Sie die WeChat-QR-Autorisierung als primaren Weg oder tragen Sie den Bot-Token bei Bedarf manuell ein',
     matrixHint: 'Verwenden Sie Ihren Matrix-Homeserver und die Bot-Account-Zugangsdaten',
     imessageHint: 'mautrix-imessage unter macOS verwenden',
     blueBubblesHint:

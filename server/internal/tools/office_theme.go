@@ -188,6 +188,10 @@ func resolveOfficeTheme(name, styleHint string) officeTheme {
 	}
 
 	hint := strings.ToLower(strings.TrimSpace(styleHint))
+	if hint == "" {
+		// Default to a more polished preset when users omit theme selection entirely.
+		return officeThemeCatalog["midnight"]
+	}
 
 	// NEW: Grapwork-inspired purpose-based theme matching
 	switch {

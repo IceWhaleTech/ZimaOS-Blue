@@ -97,6 +97,6 @@ func a11yConversationShortcutModifier(hostOS string) string {
 func a11yConversationQuickSwitcherSearchPlans(hostOS string) []a11yConversationSearchPlan {
 	modifier := a11yConversationShortcutModifier(hostOS)
 	return []a11yConversationSearchPlan{
-		{Open: [][]string{{modifier, "k"}}},
+		{Name: "quick_switcher", Open: [][]string{{modifier, "k"}}},
 	}
 }

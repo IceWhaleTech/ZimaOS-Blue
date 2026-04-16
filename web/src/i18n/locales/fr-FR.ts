@@ -2544,7 +2544,7 @@ export default mergeHarnessLocale('fr-FR', {
     wechatILinkSetupStateError: "Erreur",
     wechatILinkSetupStateExpired: "Expiree",
     wechatILinkPairingPayload: 'Charge utile d appairage',
-    wechatILinkPairingPayloadPlaceholder: 'Collez ici la charge utile d appairage iLink, ou laissez vide et renseignez ci-dessous l URL de base de l API et le jeton du bot.',
+    wechatILinkPairingPayloadPlaceholder: 'Collez ici la charge utile d appairage iLink, ou laissez vide et renseignez ci-dessous le jeton du bot.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Jeton d’accès',
@@ -2622,7 +2622,7 @@ export default mergeHarnessLocale('fr-FR', {
     dingtalkHint: 'Créez un robot dans DingTalk Developer Platform',
     qqHint: 'Créez un bot sur QQ Open Platform (q.qq.com)',
     wechatHint: "Créez une app dans la console d'administration WeChat Work",
-    wechatILinkHint: 'Utilisez l autorisation QR WeChat comme voie principale, ou saisissez manuellement l URL de base de l API et le jeton du bot si necessaire',
+    wechatILinkHint: 'Utilisez l autorisation QR WeChat comme voie principale, ou saisissez manuellement le jeton du bot si necessaire',
     matrixHint: 'Utilisez votre homeserver Matrix et les identifiants du compte bot',
     imessageHint: 'Utiliser mautrix-imessage sur macOS',
     blueBubblesHint:

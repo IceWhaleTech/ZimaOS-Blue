@@ -50,6 +50,30 @@ func TestBuildNativeMarkdownPPTX_UsesSafeMidnightLikeThemeAndFonts(t *testing.T)
 	}
 }
 
+func TestBuildNativeMarkdownPPTX_AppliesThemeFromStyleHint(t *testing.T) {
+	data, err := buildNativeMarkdownPPTXWithOptions([]nativeMarkdownPPTXSlide{{
+		Title: "Launch Deck",
+		Lines: []string{"Fast install"},
+	}}, PresentationOptions{
+		StyleHint: "startup pitch",
+	})
+	if err != nil {
+		t.Fatalf("buildNativeMarkdownPPTXWithOptions failed: %v", err)
+	}
+
+	themeXML := nativeMarkdownPPTXZipEntryText(t, data, "ppt/theme/theme1.xml")
+	for _, needle := range []string{
+		`name="Coral Theme"`,
+		`val="FF6B6B"`,
+		`typeface="Helvetica Neue"`,
+		`typeface="Helvetica"`,
+	} {
+		if !strings.Contains(themeXML, needle) {
+			t.Fatalf("expected theme1.xml to include %q, got %s", needle, themeXML)
+		}
+	}
+}
+
 func nativeMarkdownPPTXZipEntryText(t *testing.T, data []byte, name string) string {
 	t.Helper()
 

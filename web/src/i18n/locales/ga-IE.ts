@@ -2523,7 +2523,7 @@ export default mergeHarnessLocale('ga-IE', {
     wechatILinkSetupStateError: "Earraidh",
     wechatILinkSetupStateExpired: "As feidhm",
     wechatILinkPairingPayload: 'Ualach peireala',
-    wechatILinkPairingPayloadPlaceholder: 'Greamaigh ualach peireala iLink anseo, no fag ban e agus lion isteach Bun-URL an API agus comhartha an bhota thios.',
+    wechatILinkPairingPayloadPlaceholder: 'Greamaigh ualach peireala iLink anseo, no fag ban e agus lion isteach comhartha an bhota thios.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Comhartha rochtana',
@@ -2601,7 +2601,7 @@ export default mergeHarnessLocale('ga-IE', {
     dingtalkHint: 'Cruthaigh robot i DingTalk Developer Platform',
     qqHint: 'Cruthaigh bot i QQ Open Platform (q.qq.com)',
     wechatHint: 'Cruthaigh aip i gConsól Riaracháin WeChat Work',
-    wechatILinkHint: 'Usaid udu QR WeChat mar phriomhbhealach, no lion isteach Bun-URL an API agus comhartha an bhota de laimh nuair is ga',
+    wechatILinkHint: 'Usaid udu QR WeChat mar phriomhbhealach, no lion isteach comhartha an bhota de laimh nuair is ga',
     matrixHint: 'Bain úsáid as do Matrix homeserver agus dintiúirí cuntais bhot',
     imessageHint: 'Bain úsáid as mautrix-imessage ar macOS',
     blueBubblesHint:

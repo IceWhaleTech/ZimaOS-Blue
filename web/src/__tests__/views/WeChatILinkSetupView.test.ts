@@ -44,10 +44,9 @@ function createTestI18n() {
           wechatILinkSetupSubmitFailed: 'Failed to submit setup.',
           wechatILinkSetupSuccess: 'Configuration complete, you can close this page.',
           wechatILinkPairingPayload: 'Pairing payload',
-          wechatILinkPairingPayloadPlaceholder: 'Paste pairing payload JSON',
-          apiBaseURL: 'API Base URL',
+          wechatILinkPairingPayloadPlaceholder:
+            'Paste pairing payload JSON, or leave it empty and fill in the bot token below.',
           botToken: 'Bot Token',
-          placeholderILinkAPIBaseURL: 'https://example.com',
           placeholderBotTokenGeneric: 'token',
           wechatILinkSetupSubmitting: 'Submitting...',
           wechatILinkSetupSubmit: 'Complete setup',
@@ -95,7 +94,7 @@ describe('WeChatILinkSetupView (legacy fallback)', () => {
     expect(wrapper.text()).toContain('Missing setup session.')
   })
 
-  it('loads the session and submits manual fallback credentials', async () => {
+  it('loads the session and submits only the bot token for manual fallback', async () => {
     routeMock.query = { session_id: 'session-1' }
 
     const View = (await import('@/views/WeChatILinkSetupView.vue')).default
@@ -109,25 +108,53 @@ describe('WeChatILinkSetupView (legacy fallback)', () => {
 
     expect(getWeChatILinkSetupSessionMock).toHaveBeenCalledWith('session-1')
 
-    await wrapper.find('input[type="url"]').setValue('https://ilink.example.com')
+    expect(wrapper.find('input[type="url"]').exists()).toBe(false)
     await wrapper.find('input[type="password"]').setValue('bot-token')
     await wrapper.find('button').trigger('click')
     await flushPromises()
 
     expect(completeWeChatILinkSetupSessionMock).toHaveBeenCalledWith('session-1', {
-      api_base_url: 'https://ilink.example.com',
       bot_token: 'bot-token',
     })
     expect(wrapper.text()).toContain('Configuration complete, you can close this page.')
   })
 
-  it('auto-submits pairing data from the URL and clears sensitive query params', async () => {
+  it('auto-submits only the bot token from URL params and clears legacy api_base_url query params', async () => {
+    routeMock.query = {
+      session_id: 'session-1',
+      api_base_url: 'admin',
+      bot_token: 'bot-token',
+    }
+
+    const View = (await import('@/views/WeChatILinkSetupView.vue')).default
+    const wrapper = mount(View, {
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    await flushPromises()
+
+    expect(getWeChatILinkSetupSessionMock).toHaveBeenCalledWith('session-1')
+    expect(completeWeChatILinkSetupSessionMock).toHaveBeenCalledWith('session-1', {
+      bot_token: 'bot-token',
+    })
+    expect(routerReplaceMock).toHaveBeenCalledWith({
+      query: {
+        session_id: 'session-1',
+      },
+    })
+    expect(wrapper.text()).toContain('Configuration complete, you can close this page.')
+  })
+
+  it('still forwards raw pairing payload strings for legacy debugging links', async () => {
     routeMock.query = {
       session_id: 'session-1',
       pairing_payload: JSON.stringify({
         api_base_url: 'https://ilink.example.com',
         bot_token: 'bot-token',
       }),
+      api_base_url: 'admin',
       bot_token: 'bot-token',
     }
 

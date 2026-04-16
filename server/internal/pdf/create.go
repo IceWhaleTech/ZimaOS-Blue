@@ -28,12 +28,17 @@ const (
 )
 
 type CreateRequest struct {
-	Title      string
-	Subtitle   string
-	Summary    string
-	Paragraphs []string
-	Notes      []string
-	Sections   []CreateSection
+	Title         string
+	Subtitle      string
+	Summary       string
+	Paragraphs    []string
+	Notes         []string
+	Sections      []CreateSection
+	TitleColor    string
+	SubtitleColor string
+	HeadingColor  string
+	BodyColor     string
+	MutedColor    string
 }
 
 type CreateSection struct {
@@ -62,6 +67,9 @@ type createStyledLine struct {
 	FontSize  float64
 	GapAfter  float64
 	CharCount int
+	ColorR    int
+	ColorG    int
+	ColorB    int
 }
 
 type createFontPlan struct {
@@ -182,12 +190,13 @@ func buildCreateStyledLines(req CreateRequest, fontPlan createFontPlan) ([]creat
 	warnings := make([]string, 0, 1)
 	replacedRunes := false
 
-	appendLine := func(text, font string, fontSize, gapAfter float64) {
+	appendLine := func(text, font string, fontSize, gapAfter float64, color string) {
 		sanitized, replaced := sanitizeCreateText(text, fontPlan)
 		if sanitized == "" {
 			return
 		}
 		replacedRunes = replacedRunes || replaced
+		colorR, colorG, colorB := createColorRGB(color)
 		lines = append(lines, createStyledLine{
 			Text:      sanitized,
 			Align:     createTextAlign(sanitized),
@@ -195,41 +204,44 @@ func buildCreateStyledLines(req CreateRequest, fontPlan createFontPlan) ([]creat
 			FontSize:  fontSize,
 			GapAfter:  gapAfter,
 			CharCount: utf8.RuneCountInString(sanitized),
+			ColorR:    colorR,
+			ColorG:    colorG,
+			ColorB:    colorB,
 		})
 	}
 
 	appendBodyParagraphs := func(items []string) {
 		for _, item := range items {
-			appendLine(item, createFontRegular, 11, 6)
+			appendLine(item, createFontRegular, 11, 6, req.BodyColor)
 		}
 	}
 
 	appendBullets := func(items []string) {
 		for _, item := range items {
-			appendLine("- "+item, createFontRegular, 11, 4)
+			appendLine("- "+item, createFontRegular, 11, 4, req.BodyColor)
 		}
 	}
 
-	appendLine(req.Title, createFontBold, 22, 8)
-	appendLine(req.Subtitle, createFontRegular, 14, 12)
+	appendLine(req.Title, createFontBold, 22, 8, req.TitleColor)
+	appendLine(req.Subtitle, createFontRegular, 14, 12, req.SubtitleColor)
 
 	if strings.TrimSpace(req.Summary) != "" {
-		appendLine("Summary", createFontBold, 13, 3)
-		appendLine(req.Summary, createFontRegular, 11, 10)
+		appendLine("Summary", createFontBold, 13, 3, req.HeadingColor)
+		appendLine(req.Summary, createFontRegular, 11, 10, req.BodyColor)
 	}
 
 	appendBodyParagraphs(req.Paragraphs)
 
 	for _, section := range req.Sections {
-		appendLine(section.Heading, createFontBold, 16, 5)
+		appendLine(section.Heading, createFontBold, 16, 5, req.HeadingColor)
 		appendBodyParagraphs(section.Paragraphs)
 		appendBullets(section.Bullets)
 		if section.Table != nil {
 			if len(section.Table.Headers) > 0 {
-				appendLine(strings.Join(section.Table.Headers, " | "), createFontBold, 10, 2)
+				appendLine(strings.Join(section.Table.Headers, " | "), createFontBold, 10, 2, req.HeadingColor)
 			}
 			for _, row := range section.Table.Rows {
-				appendLine(strings.Join(row, " | "), createFontRegular, 10, 2)
+				appendLine(strings.Join(row, " | "), createFontRegular, 10, 2, req.BodyColor)
 			}
 			if len(section.Table.Headers) > 0 || len(section.Table.Rows) > 0 {
 				lines = append(lines, createStyledLine{GapAfter: 6})
@@ -238,8 +250,10 @@ func buildCreateStyledLines(req CreateRequest, fontPlan createFontPlan) ([]creat
 	}
 
 	if len(req.Notes) > 0 {
-		appendLine("Notes", createFontBold, 12, 3)
-		appendBullets(req.Notes)
+		appendLine("Notes", createFontBold, 12, 3, req.HeadingColor)
+		for _, item := range req.Notes {
+			appendLine("- "+item, createFontRegular, 11, 4, req.MutedColor)
+		}
 	}
 
 	if replacedRunes {
@@ -366,6 +380,7 @@ func renderCreatePDF(lines []createStyledLine, fontPlan createFontPlan) ([]byte,
 
 		family, style := fontPlan.fontFor(line.Font)
 		doc.SetFont(family, style, line.FontSize)
+		doc.SetTextColor(line.ColorR, line.ColorG, line.ColorB)
 		align := line.Align
 		if align == "" {
 			align = "L"
@@ -392,4 +407,23 @@ func renderCreatePDF(lines []createStyledLine, fontPlan createFontPlan) ([]byte,
 		return nil, 0, 0, err
 	}
 	return out.Bytes(), doc.PageNo(), lineCount, nil
+}
+
+func createColorRGB(raw string) (int, int, int) {
+	value := strings.TrimSpace(strings.TrimPrefix(raw, "#"))
+	if len(value) != 6 {
+		return 17, 24, 39
+	}
+	var rgb [3]int
+	for idx := 0; idx < 3; idx++ {
+		component := value[idx*2 : idx*2+2]
+		var parsed int
+		if _, err := fmt.Sscanf(component, "%02X", &parsed); err != nil {
+			if _, err := fmt.Sscanf(strings.ToUpper(component), "%02X", &parsed); err != nil {
+				return 17, 24, 39
+			}
+		}
+		rgb[idx] = parsed
+	}
+	return rgb[0], rgb[1], rgb[2]
 }

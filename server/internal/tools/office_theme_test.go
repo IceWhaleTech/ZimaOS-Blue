@@ -53,6 +53,8 @@ func TestThemeInference(t *testing.T) {
 		hint string
 		want string
 	}{
+		{"", "midnight"},
+
 		// New Grapwork-inspired matches
 		{"startup pitch deck", "coral"},
 		{"growth report", "coral"},

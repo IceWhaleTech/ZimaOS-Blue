@@ -2451,7 +2451,7 @@ export default mergeHarnessLocale('zh-CN', {
     wechatILinkSetupStateExpired: "已过期",
     wechatILinkPairingPayload: '配对结果原文',
     wechatILinkPairingPayloadPlaceholder:
-      '请粘贴 iLink 配对结果；如果没有，也可以留空并在下方填写 API 基础地址和 Bot Token。',
+      '请粘贴 iLink 配对结果；如果没有，也可以留空并在下方填写 Bot Token。',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: '访问令牌',
@@ -2529,7 +2529,7 @@ export default mergeHarnessLocale('zh-CN', {
     dingtalkHint: '在钉钉开放平台创建机器人',
     qqHint: '在 QQ 开放平台创建机器人',
     wechatHint: '使用企业微信应用凭据完成企业微信接入',
-    wechatILinkHint: '默认优先使用微信扫码授权，必要时也可手动填写 API 基础地址和 Bot Token',
+    wechatILinkHint: '默认优先使用微信扫码授权，必要时也可手动填写 Bot Token',
     matrixHint: '配置 Matrix 机器人',
     imessageHint: '配置 iMessage 桥接',
     blueBubblesHint: '配置 BlueBubbles 服务器',

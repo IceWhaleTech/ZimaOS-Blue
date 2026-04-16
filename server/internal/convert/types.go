@@ -55,6 +55,14 @@ type DocumentOptions struct {
 	Pages []int `json:"pages,omitempty"`
 }
 
+type PresentationOptions struct {
+	Theme     string `json:"theme,omitempty"`
+	StyleHint string `json:"style_hint,omitempty"`
+	Title     string `json:"title,omitempty"`
+	Subtitle  string `json:"subtitle,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+}
+
 type ImageOptions struct {
 	Quality int `json:"quality,omitempty"`
 	Width   int `json:"width,omitempty"`
@@ -97,11 +105,12 @@ type SpeechOptions struct {
 }
 
 type TaskOptions struct {
-	Document DocumentOptions `json:"document,omitempty"`
-	Image    ImageOptions    `json:"image,omitempty"`
-	Audio    AudioOptions    `json:"audio,omitempty"`
-	Video    VideoOptions    `json:"video,omitempty"`
-	Speech   SpeechOptions   `json:"speech,omitempty"`
+	Document     DocumentOptions     `json:"document,omitempty"`
+	Presentation PresentationOptions `json:"presentation,omitempty"`
+	Image        ImageOptions        `json:"image,omitempty"`
+	Audio        AudioOptions        `json:"audio,omitempty"`
+	Video        VideoOptions        `json:"video,omitempty"`
+	Speech       SpeechOptions       `json:"speech,omitempty"`
 }
 
 type TaskRequest struct {

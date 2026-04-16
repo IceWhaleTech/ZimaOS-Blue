@@ -1,9 +1,12 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,6 +97,367 @@ func TestParseConvertTaskRequestSupportsSimpleInputOutputPaths(t *testing.T) {
 	}
 	if req.TargetFormat != "pdf" {
 		t.Fatalf("target_format = %q, want pdf", req.TargetFormat)
+	}
+}
+
+func TestParseConvertTaskRequestSupportsPresentationOptions(t *testing.T) {
+	parsed, err := parseConvertTaskRequest(map[string]interface{}{
+		"input_path":  "docs/deck.md",
+		"output_path": "exports/deck.pptx",
+		"theme":       "coral",
+		"subtitle":    "Launch Week",
+		"options": map[string]interface{}{
+			"presentation": map[string]interface{}{
+				"theme":     "forest",
+				"styleHint": "startup pitch",
+				"title":     "Quarterly Product Launch",
+			},
+			"pptx": map[string]interface{}{
+				"summary": map[string]interface{}{
+					"text": "Fast install and smoother onboarding",
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("parseConvertTaskRequest() error = %v", err)
+	}
+
+	presentation := parsed.TaskRequest.Options.Presentation
+	if presentation.Theme != "coral" {
+		t.Fatalf("theme = %q, want coral", presentation.Theme)
+	}
+	if presentation.StyleHint != "startup pitch" {
+		t.Fatalf("style_hint = %q, want startup pitch", presentation.StyleHint)
+	}
+	if presentation.Title != "Quarterly Product Launch" {
+		t.Fatalf("title = %q, want Quarterly Product Launch", presentation.Title)
+	}
+	if presentation.Subtitle != "Launch Week" {
+		t.Fatalf("subtitle = %q, want Launch Week", presentation.Subtitle)
+	}
+	if presentation.Summary != "Fast install and smoother onboarding" {
+		t.Fatalf("summary = %q, want Fast install and smoother onboarding", presentation.Summary)
+	}
+}
+
+func TestConvertToolMaybeHandleNativeOfficeConvertDOCX(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_docx_native.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	service, err := convertpkg.NewService(db, t.TempDir())
+	if err != nil {
+		t.Fatalf("new convert service: %v", err)
+	}
+	defer service.Close()
+
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace): %v", err)
+	}
+	sourcePath := filepath.Join(workspaceDir, "launch.md")
+	sourceMarkdown := "# Launch Brief\n\nVisit [Portal](https://example.com) for rollout details.\n"
+	if err := os.WriteFile(sourcePath, []byte(sourceMarkdown), 0o644); err != nil {
+		t.Fatalf("WriteFile(source): %v", err)
+	}
+
+	tool := NewConvertTool(service, nil, nil, []string{workspaceDir})
+	args := map[string]interface{}{
+		"input_path":  "launch.md",
+		"output_path": "exports/launch.docx",
+		"theme":       "forest",
+		"summary":     "Executive recap",
+	}
+
+	parsed, err := parseConvertTaskRequest(args)
+	if err != nil {
+		t.Fatalf("parseConvertTaskRequest() error = %v", err)
+	}
+	req, err := tool.resolveTaskPaths(context.Background(), parsed.TaskRequest)
+	if err != nil {
+		t.Fatalf("resolveTaskPaths() error = %v", err)
+	}
+
+	raw, handled, err := tool.maybeHandleNativeOfficeConvert(context.Background(), args, req)
+	if err != nil {
+		t.Fatalf("maybeHandleNativeOfficeConvert() error = %v", err)
+	}
+	if !handled {
+		t.Fatal("expected native office convert path to handle docx request")
+	}
+
+	result, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want map[string]interface{}", raw)
+	}
+	outputPath, _ := result["output_path"].(string)
+	if outputPath == "" {
+		t.Fatalf("missing output_path in result: %#v", result)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile(output): %v", err)
+	}
+	stylesXML := officeZipEntryText(t, data, "word/styles.xml")
+	for _, needle := range []string{
+		`w:ascii="Times New Roman"`,
+		`w:ascii="Open Sans"`,
+	} {
+		if !strings.Contains(stylesXML, needle) {
+			t.Fatalf("expected styles.xml to include %q, got %s", needle, stylesXML)
+		}
+	}
+
+	documentXML := officeZipEntryText(t, data, "word/document.xml")
+	if !strings.Contains(documentXML, `w:color w:val="D4A017"`) {
+		t.Fatalf("expected document.xml to include forest accent color, got %s", documentXML)
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), outputPath)
+	if err != nil {
+		t.Fatalf("ReadDocument(%s) error = %v", outputPath, err)
+	}
+	for _, needle := range []string{"Launch Brief", "Executive recap", "Portal"} {
+		if !strings.Contains(doc.Text, needle) {
+			t.Fatalf("document text missing %q in %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestConvertToolMaybeHandleNativeOfficeConvertDOCXDefaultsToMidnightTheme(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_docx_native_default_theme.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	service, err := convertpkg.NewService(db, t.TempDir())
+	if err != nil {
+		t.Fatalf("new convert service: %v", err)
+	}
+	defer service.Close()
+
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace): %v", err)
+	}
+	sourcePath := filepath.Join(workspaceDir, "brief.md")
+	sourceMarkdown := "# Weekly Brief\n\nA stronger default theme should still look intentional.\n"
+	if err := os.WriteFile(sourcePath, []byte(sourceMarkdown), 0o644); err != nil {
+		t.Fatalf("WriteFile(source): %v", err)
+	}
+
+	tool := NewConvertTool(service, nil, nil, []string{workspaceDir})
+	args := map[string]interface{}{
+		"input_path":  "brief.md",
+		"output_path": "exports/brief.docx",
+		"summary":     "No explicit theme provided",
+	}
+
+	parsed, err := parseConvertTaskRequest(args)
+	if err != nil {
+		t.Fatalf("parseConvertTaskRequest() error = %v", err)
+	}
+	req, err := tool.resolveTaskPaths(context.Background(), parsed.TaskRequest)
+	if err != nil {
+		t.Fatalf("resolveTaskPaths() error = %v", err)
+	}
+
+	raw, handled, err := tool.maybeHandleNativeOfficeConvert(context.Background(), args, req)
+	if err != nil {
+		t.Fatalf("maybeHandleNativeOfficeConvert() error = %v", err)
+	}
+	if !handled {
+		t.Fatal("expected native office convert path to handle docx request")
+	}
+
+	result, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want map[string]interface{}", raw)
+	}
+	outputPath, _ := result["output_path"].(string)
+	if outputPath == "" {
+		t.Fatalf("missing output_path in result: %#v", result)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile(output): %v", err)
+	}
+	stylesXML := officeZipEntryText(t, data, "word/styles.xml")
+	for _, needle := range []string{
+		`w:ascii="Georgia"`,
+		`w:ascii="Segoe UI"`,
+	} {
+		if !strings.Contains(stylesXML, needle) {
+			t.Fatalf("expected styles.xml to include %q for the default midnight theme, got %s", needle, stylesXML)
+		}
+	}
+}
+
+func TestConvertToolMaybeHandleNativeOfficeConvertXLSXFromCSV(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_xlsx_native.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	service, err := convertpkg.NewService(db, t.TempDir())
+	if err != nil {
+		t.Fatalf("new convert service: %v", err)
+	}
+	defer service.Close()
+
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace): %v", err)
+	}
+	sourcePath := filepath.Join(workspaceDir, "metrics.csv")
+	sourceCSV := "Metric,Value\nSignups,42\nActivation,0.63\n"
+	if err := os.WriteFile(sourcePath, []byte(sourceCSV), 0o644); err != nil {
+		t.Fatalf("WriteFile(source): %v", err)
+	}
+
+	tool := NewConvertTool(service, nil, nil, []string{workspaceDir})
+	args := map[string]interface{}{
+		"input_path":  "metrics.csv",
+		"output_path": "exports/metrics.xlsx",
+		"theme":       "midnight",
+		"title":       "Launch Scorecard",
+		"subtitle":    "Spring 2026",
+	}
+
+	parsed, err := parseConvertTaskRequest(args)
+	if err != nil {
+		t.Fatalf("parseConvertTaskRequest() error = %v", err)
+	}
+	req, err := tool.resolveTaskPaths(context.Background(), parsed.TaskRequest)
+	if err != nil {
+		t.Fatalf("resolveTaskPaths() error = %v", err)
+	}
+
+	raw, handled, err := tool.maybeHandleNativeOfficeConvert(context.Background(), args, req)
+	if err != nil {
+		t.Fatalf("maybeHandleNativeOfficeConvert() error = %v", err)
+	}
+	if !handled {
+		t.Fatal("expected native office convert path to handle xlsx request")
+	}
+
+	result, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want map[string]interface{}", raw)
+	}
+	outputPath, _ := result["output_path"].(string)
+	if outputPath == "" {
+		t.Fatalf("missing output_path in result: %#v", result)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile(output): %v", err)
+	}
+	stylesXML := officeZipEntryText(t, data, "xl/styles.xml")
+	for _, needle := range []string{
+		`rgb="FF1E3A5F"`,
+		`name val="Georgia"`,
+		`name val="Segoe UI"`,
+	} {
+		if !strings.Contains(stylesXML, needle) {
+			t.Fatalf("expected xl/styles.xml to include %q, got %s", needle, stylesXML)
+		}
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), outputPath)
+	if err != nil {
+		t.Fatalf("ReadDocument(%s) error = %v", outputPath, err)
+	}
+	for _, needle := range []string{"Launch Scorecard", "Signups", "Activation", "42"} {
+		if !strings.Contains(doc.Text, needle) {
+			t.Fatalf("workbook text missing %q in %q", needle, doc.Text)
+		}
+	}
+}
+
+func TestConvertToolMaybeHandleNativeOfficeConvertPDF(t *testing.T) {
+	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "convert_tool_pdf_native.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer db.Close()
+
+	service, err := convertpkg.NewService(db, t.TempDir())
+	if err != nil {
+		t.Fatalf("new convert service: %v", err)
+	}
+	defer service.Close()
+
+	workspaceDir := filepath.Join(t.TempDir(), "workspace")
+	if err := os.MkdirAll(workspaceDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(workspace): %v", err)
+	}
+	sourcePath := filepath.Join(workspaceDir, "weekly.md")
+	sourceMarkdown := "# Weekly Update\n\n## Highlights\n\n- Faster setup\n- Smoother onboarding\n"
+	if err := os.WriteFile(sourcePath, []byte(sourceMarkdown), 0o644); err != nil {
+		t.Fatalf("WriteFile(source): %v", err)
+	}
+
+	tool := NewConvertTool(service, nil, nil, []string{workspaceDir})
+	args := map[string]interface{}{
+		"input_path":  "weekly.md",
+		"output_path": "exports/weekly.pdf",
+		"title":       "Weekly Update",
+		"summary":     "Executive recap",
+		"theme":       "midnight",
+	}
+
+	parsed, err := parseConvertTaskRequest(args)
+	if err != nil {
+		t.Fatalf("parseConvertTaskRequest() error = %v", err)
+	}
+	req, err := tool.resolveTaskPaths(context.Background(), parsed.TaskRequest)
+	if err != nil {
+		t.Fatalf("resolveTaskPaths() error = %v", err)
+	}
+
+	raw, handled, err := tool.maybeHandleNativeOfficeConvert(context.Background(), args, req)
+	if err != nil {
+		t.Fatalf("maybeHandleNativeOfficeConvert() error = %v", err)
+	}
+	if !handled {
+		t.Fatal("expected native office convert path to handle pdf request")
+	}
+
+	result, ok := raw.(map[string]interface{})
+	if !ok {
+		t.Fatalf("result type = %T, want map[string]interface{}", raw)
+	}
+	outputPath, _ := result["output_path"].(string)
+	if outputPath == "" {
+		t.Fatalf("missing output_path in result: %#v", result)
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("ReadFile(output): %v", err)
+	}
+	if !bytes.HasPrefix(data, []byte("%PDF")) {
+		t.Fatalf("expected PDF header, got %q", string(data[:minInt(len(data), 8)]))
+	}
+	for _, needle := range [][]byte{
+		[]byte("Weekly Update"),
+		[]byte("Executive recap"),
+		[]byte("Faster setup"),
+	} {
+		if !bytes.Contains(data, needle) {
+			t.Fatalf("expected generated PDF bytes to contain %q", string(needle))
+		}
 	}
 }
 

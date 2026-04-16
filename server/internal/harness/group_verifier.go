@@ -369,6 +369,7 @@ func deriveVerificationObservations(run *Run, events []RunEvent, artifacts []Art
 			observed.add("dom_snapshot_captured")
 		}
 	}
+	deriveDesktopChatVerificationObservations(observed, run, artifacts, toolNames)
 	sawToolError := false
 	for _, event := range events {
 		switch event.Type {
@@ -415,6 +416,219 @@ func deriveVerificationObservations(run *Run, events []RunEvent, artifacts []Art
 		observed.add("provider_infra_blocked")
 	}
 	return observed.values()
+}
+
+func deriveDesktopChatVerificationObservations(observed *observationSet, run *Run, artifacts []ArtifactRef, toolNames []string) {
+	if observed == nil {
+		return
+	}
+	structured := desktopChatStructuredResult(run)
+	if len(structured) == 0 && !desktopChatArtifactsSeen(artifacts) && !toolNameSeen(toolNames, "computer_use") {
+		return
+	}
+	if desktopChatStageTraceSeen(structured, artifacts) {
+		observed.add("task_stage_trace_emitted")
+	}
+	if desktopChatMetadataSeen(structured) {
+		observed.add("computer_use_metadata_emitted")
+	}
+	if desktopChatVerificationStatusSeen(structured, "drafted") {
+		observed.add("draft_verified")
+	}
+	if desktopChatVerificationStatusSeen(structured, "sent") {
+		observed.add("send_verified")
+	}
+	if desktopChatConversationConfirmed(structured) {
+		observed.add("conversation_confirmed")
+	}
+	if failureCode := desktopChatFailureCode(structured); failureCode != "" {
+		observed.add("failure_code_" + failureCode)
+		if desktopChatSafeFailClosed(failureCode) && !desktopChatVerificationStatusSeen(structured, "sent") {
+			observed.add("safe_fail_closed")
+		}
+	}
+	if desktopChatFocusRecovered(structured) {
+		observed.add("focus_recovered")
+	}
+	if desktopChatVisualGroundingUsed(structured) {
+		observed.add("visual_grounding_used")
+	}
+}
+
+func desktopChatStructuredResult(run *Run) map[string]interface{} {
+	if run == nil {
+		return nil
+	}
+	return decodeJSONMap(run.Result)
+}
+
+func desktopChatArtifactsSeen(artifacts []ArtifactRef) bool {
+	for _, artifact := range artifacts {
+		label := strings.TrimSpace(strings.ToLower(artifact.Label))
+		switch label {
+		case "stage_trace", "final_result", "failure_classification", "key_screenshot":
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatStageTraceSeen(structured map[string]interface{}, artifacts []ArtifactRef) bool {
+	if desktopChatArtifactHintSeen(artifacts, "stage_trace") {
+		return true
+	}
+	if desktopChatArtifactPathHintSeen(structured, "stage_trace") {
+		return true
+	}
+	return len(desktopChatTaskStages(structured)) > 0
+}
+
+func desktopChatMetadataSeen(structured map[string]interface{}) bool {
+	if len(structured) == 0 {
+		return false
+	}
+	if metadataString(structured, "stage") == "" {
+		return false
+	}
+	if len(desktopChatTaskStages(structured)) == 0 {
+		return false
+	}
+	if metadataString(structured, "strategy") == "" && metadataString(structured, "failure_code") == "" {
+		return false
+	}
+	_, hasAttempts := structured["attempt_count"]
+	return hasAttempts
+}
+
+func desktopChatVerificationStatusSeen(structured map[string]interface{}, want string) bool {
+	want = strings.TrimSpace(strings.ToLower(want))
+	if want == "" {
+		return false
+	}
+	if strings.EqualFold(metadataString(nestedMetadataMap(structured, "verification"), "status"), want) {
+		return true
+	}
+	for _, stage := range desktopChatTaskStages(structured) {
+		if strings.EqualFold(metadataString(nestedMetadataMap(stage, "verification"), "status"), want) {
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatConversationConfirmed(structured map[string]interface{}) bool {
+	for _, stage := range desktopChatTaskStages(structured) {
+		if strings.EqualFold(metadataString(stage, "stage"), "confirm_conversation") &&
+			strings.EqualFold(metadataString(stage, "status"), "ok") {
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatFailureCode(structured map[string]interface{}) string {
+	if code := metadataString(structured, "failure_code"); code != "" {
+		return code
+	}
+	for _, stage := range desktopChatTaskStages(structured) {
+		if code := metadataString(stage, "failure_code"); code != "" {
+			return code
+		}
+	}
+	return ""
+}
+
+func desktopChatSafeFailClosed(failureCode string) bool {
+	switch strings.TrimSpace(strings.ToLower(failureCode)) {
+	case "conversation_not_found",
+		"conversation_not_confirmed",
+		"search_box_still_active",
+		"composer_not_found",
+		"composer_not_confirmed",
+		"grounding_unavailable",
+		"strategy_budget_exhausted":
+		return true
+	default:
+		return false
+	}
+}
+
+func desktopChatFocusRecovered(structured map[string]interface{}) bool {
+	for _, stage := range desktopChatTaskStages(structured) {
+		if strings.EqualFold(metadataString(stage, "stage"), "activate_app") &&
+			strings.EqualFold(metadataString(stage, "status"), "ok") &&
+			strings.EqualFold(metadataString(stage, "strategy"), "activate_app_retry") {
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatVisualGroundingUsed(structured map[string]interface{}) bool {
+	if metadataString(structured, "grounding_source") != "" {
+		return true
+	}
+	for _, stage := range desktopChatTaskStages(structured) {
+		if metadataString(stage, "grounding_source") != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatArtifactHintSeen(artifacts []ArtifactRef, want string) bool {
+	want = strings.TrimSpace(strings.ToLower(want))
+	if want == "" {
+		return false
+	}
+	for _, artifact := range artifacts {
+		if strings.EqualFold(strings.TrimSpace(artifact.Label), want) {
+			return true
+		}
+		if strings.Contains(strings.ToLower(strings.TrimSpace(artifact.PathOrURL)), want) {
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatArtifactPathHintSeen(structured map[string]interface{}, want string) bool {
+	want = strings.TrimSpace(strings.ToLower(want))
+	if want == "" || len(structured) == 0 {
+		return false
+	}
+	raw, ok := structured["artifact_paths"].([]interface{})
+	if !ok {
+		return false
+	}
+	for _, item := range raw {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(fmt.Sprint(item))), want) {
+			return true
+		}
+	}
+	return false
+}
+
+func desktopChatTaskStages(structured map[string]interface{}) []map[string]interface{} {
+	if len(structured) == 0 {
+		return nil
+	}
+	raw, ok := structured["task_stages"].([]interface{})
+	if !ok || len(raw) == 0 {
+		return nil
+	}
+	stages := make([]map[string]interface{}, 0, len(raw))
+	for _, item := range raw {
+		stage, ok := item.(map[string]interface{})
+		if !ok || len(stage) == 0 {
+			continue
+		}
+		stages = append(stages, stage)
+	}
+	if len(stages) == 0 {
+		return nil
+	}
+	return stages
 }
 
 func verificationResponderEmpty(run *Run) bool {

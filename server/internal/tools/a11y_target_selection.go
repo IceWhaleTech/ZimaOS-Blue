@@ -32,6 +32,7 @@ type a11yActSubmitPlan struct {
 }
 
 type a11yConversationSearchPlan struct {
+	Name string
 	Open [][]string
 }
 
@@ -1030,6 +1031,7 @@ func (t *A11yTool) maybeActivateA11yMessageConversation(ctx context.Context, bac
 	if !selector.Provided() {
 		return strings.TrimSpace(windowID), nil
 	}
+	state := getA11yChatExecutionState(ctx)
 	ref, refMap, resolvedWindow, err := t.resolveActRefByTarget(ctx, backend, windowID, selector)
 	if err != nil {
 		if fastWindow, fastErr, handled := t.tryA11yConversationVisualFastPath(ctx, backend, args, strings.TrimSpace(valueOrDefault(resolvedWindow, windowID)), selector, holdMS); handled {
@@ -1046,6 +1048,10 @@ func (t *A11yTool) maybeActivateA11yMessageConversation(ctx context.Context, bac
 		}
 		return "", enrichA11yActionPhaseError(err, "conversation", false)
 	}
+	if state != nil {
+		a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusOK, "structured_match", "", "", nil)
+		t.rememberA11yChatStrategy(state, a11yChatStageLocateConversation, "structured_match")
+	}
 	confirmedWindow, confirmErr := t.activateA11yMessageConversationTarget(ctx, backend, resolvedWindow, ref, refMap, selector, holdMS)
 	if confirmErr != nil {
 		return "", enrichA11yActionPhaseError(confirmErr, "conversation", false)
@@ -1057,19 +1063,51 @@ func (t *A11yTool) tryA11yConversationVisualFastPath(ctx context.Context, backen
 	if !a11yAllowsConversationVisualFastPath(backend, args, selector) {
 		return "", nil, false
 	}
+	state := getA11yChatExecutionState(ctx)
 	resolvedWindow := strings.TrimSpace(windowID)
 	cacheKey := t.a11yConversationClickCacheKeyForArgs(args, selector, resolvedWindow)
+	cacheInvalidated := false
 	if cachedPoint, ok := t.a11yConversationClickCacheGet(cacheKey); ok {
 		nextWindow, err := t.tryA11yConversationPointClick(ctx, backend, resolvedWindow, selector, holdMS, cachedPoint)
 		if err == nil {
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusOK, "visual_cache_hit", state.groundingSource, "", nil)
+				t.rememberA11yChatStrategy(state, a11yChatStageLocateConversation, "visual_cache_hit")
+			}
 			return nextWindow, nil, true
 		}
 		t.a11yConversationClickCacheDelete(cacheKey)
+		cacheInvalidated = true
 		if strings.TrimSpace(nextWindow) != "" {
 			resolvedWindow = strings.TrimSpace(nextWindow)
 		}
 	}
+	if !cacheInvalidated {
+		if hit, locateErr := t.locateA11yConversationVisualHit(ctx, backend, resolvedWindow, selector); locateErr == nil {
+			nextWindow, clickErr := t.tryA11yConversationPointClick(ctx, backend, resolvedWindow, selector, holdMS, a11yConversationClickPoint{
+				X: hit.Point.X,
+				Y: hit.Point.Y,
+			})
+			if clickErr == nil {
+				t.a11yConversationClickCacheSet(cacheKey, a11yConversationClickPoint{X: hit.Point.X, Y: hit.Point.Y})
+				if state != nil {
+					a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusOK, "visual_sidebar_hit", state.groundingSource, "", nil)
+					t.rememberA11yChatStrategy(state, a11yChatStageLocateConversation, "visual_sidebar_hit")
+				}
+				return nextWindow, nil, true
+			}
+			if !a11yIsTargetNotFound(clickErr) {
+				if state != nil {
+					a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusTerminalFailure, "visual_sidebar_hit", state.groundingSource, "", nil)
+				}
+				return "", clickErr, true
+			}
+		}
+	}
 	plans := a11yConversationSearchPlansForArgs(args, backend.HostOS())
+	if state != nil {
+		plans = t.orderA11yChatConversationPlans(state, plans)
+	}
 	if len(plans) == 0 {
 		return "", a11yruntime.NewError("target_not_found", "target selector did not match any interactive element", a11yTargetSelectorDetails(selector, nil)), true
 	}
@@ -1080,10 +1118,20 @@ func (t *A11yTool) tryA11yConversationVisualFastPath(ctx context.Context, backen
 			if point != nil {
 				t.a11yConversationClickCacheSet(cacheKey, *point)
 			}
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusOK, valueOrDefault(plan.Name, "visual_search"), state.groundingSource, "", nil)
+				t.rememberA11yChatStrategy(state, a11yChatStageLocateConversation, valueOrDefault(plan.Name, "visual_search"))
+			}
 			return nextWindow, nil, true
 		}
 		if !a11yIsTargetNotFound(err) {
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusTerminalFailure, valueOrDefault(plan.Name, "visual_search"), state.groundingSource, "", nil)
+			}
 			return "", err, true
+		}
+		if state != nil {
+			a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusRetryableFailure, valueOrDefault(plan.Name, "visual_search"), state.groundingSource, "", nil)
 		}
 		lastErr = err
 		if strings.TrimSpace(nextWindow) != "" {
@@ -1101,15 +1149,29 @@ func (t *A11yTool) tryA11yConversationSearchFallback(ctx context.Context, backen
 	if len(plans) == 0 {
 		return "", nil, false
 	}
+	state := getA11yChatExecutionState(ctx)
+	if state != nil {
+		plans = t.orderA11yChatConversationPlans(state, plans)
+	}
 	resolvedWindow := strings.TrimSpace(windowID)
 	lastErr := originalErr
 	for _, plan := range plans {
 		nextWindow, err := t.executeA11yConversationSearchPlan(ctx, backend, resolvedWindow, selector, holdMS, plan)
 		if err == nil {
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusOK, valueOrDefault(plan.Name, "keyboard_search"), "", "", nil)
+				t.rememberA11yChatStrategy(state, a11yChatStageLocateConversation, valueOrDefault(plan.Name, "keyboard_search"))
+			}
 			return nextWindow, nil, true
 		}
 		if !a11yIsTargetNotFound(err) {
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusTerminalFailure, valueOrDefault(plan.Name, "keyboard_search"), "", "", nil)
+			}
 			return "", err, true
+		}
+		if state != nil {
+			a11yRecordChatStage(ctx, state, a11yChatStageLocateConversation, a11yChatStageStatusRetryableFailure, valueOrDefault(plan.Name, "keyboard_search"), "", "", nil)
 		}
 		lastErr = err
 		if strings.TrimSpace(nextWindow) != "" {
@@ -1241,11 +1303,16 @@ func (t *A11yTool) tryA11yConversationPointClick(ctx context.Context, backend a1
 }
 
 func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (a11yConversationVisualHit, error) {
+	state := getA11yChatExecutionState(ctx)
 	if grounding, ok := backend.(a11yruntime.GroundingScreenshotter); ok {
 		result, err := grounding.ScreenshotForGrounding(ctx, windowID)
 		if err == nil && len(result.ImageBytes) > 0 && a11yLocateConversationVisualHitFromPNG != nil {
+			a11yMaybeWriteChatArtifact(ctx, state, a11yChatStageLocateConversation, "conversation_grounding", result.ImageBytes)
 			hit, locateErr := a11yLocateConversationVisualHitFromPNG(ctx, result.ImageBytes, selector.Name)
 			if locateErr == nil {
+				if state != nil && strings.TrimSpace(state.groundingSource) == "" {
+					state.groundingSource = "grounding_screenshot"
+				}
 				return hit, nil
 			}
 		}
@@ -1379,8 +1446,8 @@ func a11yIsTargetNotFound(err error) bool {
 func a11yConversationSearchPlans(hostOS string) []a11yConversationSearchPlan {
 	modifier := a11yConversationShortcutModifier(hostOS)
 	return []a11yConversationSearchPlan{
-		{Open: [][]string{{modifier, "k"}}},
-		{Open: [][]string{{modifier, "f"}, {modifier, "f"}}},
+		{Name: "quick_switcher", Open: [][]string{{modifier, "k"}}},
+		{Name: "structured_search", Open: [][]string{{modifier, "f"}, {modifier, "f"}}},
 	}
 }
 
@@ -1419,6 +1486,7 @@ func a11yWaitForPollInterval(ctx context.Context, interval time.Duration) error 
 func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (string, error) {
 	timeout := a11yMessageConversationConfirmationTimeout
 	deadline := time.Now().Add(timeout)
+	state := getA11yChatExecutionState(ctx)
 	for {
 		result, err := backend.SnapshotInteractive(ctx, windowID)
 		if err != nil {
@@ -1428,9 +1496,24 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 		t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
 		entries := parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
 		if !a11ySnapshotHasPendingConversationSearch(entries, selector.Name) && a11ySnapshotHasComposer(entries) {
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusOK, "post_click_confirmation", "", "", nil)
+			}
 			return resolvedWindow, nil
 		}
+		if a11ySnapshotHasPendingConversationSearch(entries, selector.Name) {
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusTerminalFailure, "post_click_confirmation", "", "search_box_still_active", nil)
+			}
+			return "", a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", map[string]interface{}{
+				"confirmation":            "composer_not_ready",
+				"search_box_still_active": true,
+			})
+		}
 		if timeout <= 0 || time.Now().After(deadline) {
+			if state != nil {
+				a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusTerminalFailure, "post_click_confirmation", "", "conversation_not_confirmed", nil)
+			}
 			return "", a11yConversationConfirmationError(selector)
 		}
 		if err := a11yWaitForPollInterval(ctx, a11yMessageConversationConfirmationPollInterval); err != nil {

@@ -65,4 +65,4 @@ blue config.users.list
 
 - `config` is for system administration and diagnostics; avoid using it for normal user conversation tasks.
 - `config` is intentionally a namespaced admin umbrella (`config.<domain>.<action>`) so low-frequency operational controls stay in one place instead of being split across many tiny operator-only skills.
-- Prefer domain skills like `web_query`, `research`, `reminder`, or `scheduler` for ordinary user-facing work. If live page interaction is needed, use the built-in `browser` tool rather than treating Browser as a standalone public skill.
+- Prefer domain skills like `web_query`, `research`, `reminder`, or `scheduler` for ordinary user-facing work. If live page interaction is needed, route to the canonical `browser` skill; `web_query` remains the default for discovery and straightforward readable content.
