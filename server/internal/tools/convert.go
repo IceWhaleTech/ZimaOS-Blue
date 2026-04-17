@@ -51,143 +51,41 @@ func RegisterConvertTool(registry *Registry, service *convertpkg.Service, approv
 func (t *ConvertTool) Definition() ToolDefinition {
 	return ToolDefinition{
 		Name:        "convert",
-		Description: "Convert local files, attachments, and prior outputs. Preferred form: input_path + output_path using relative paths. Normal single-file jobs return synchronously; only heavier jobs return async=true with a task_id for polling. For styled office outputs (`docx`, `xlsx`, `pptx`, `pdf`), you can also provide theme/title/summary and other native document-structure hints.",
+		Description: "Convert local files. Prefer input_path/output_path. Large jobs may return async with task_id. For office-specific args, reuse docx/xlsx/pptx/pdf params.",
 		Icon:        "wand-sparkles",
 		Parameters: map[string]interface{}{
 			"type": "object",
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Optional. Omit for normal conversions: input_path/output_path defaults to convert, and task_id alone defaults to status.",
+					"description": "Optional. Omit for convert; task_id alone means status.",
 					"enum":        []string{"convert", "merge", "split", "trim", "extract_audio", "extract_frames", "tts", "asr", "status", "list", "cancel", "capabilities"},
 				},
 				"input_path": map[string]interface{}{
-					"type":        "string",
-					"description": "Preferred source file path for simple conversions. Relative paths resolve from the workspace root; absolute local paths are allowed with approval.",
+					"type": "string",
 				},
 				"output_path": map[string]interface{}{
-					"type":        "string",
-					"description": "Preferred destination file path for simple conversions. Relative paths resolve from the workspace root; the output format is inferred from the file extension when possible.",
+					"type": "string",
 				},
 				"sources": map[string]interface{}{
 					"type":        "array",
 					"items":       map[string]interface{}{"type": "string"},
-					"description": "Legacy multi-source input. Supports att:<id>, out:<task_id>:<output_id>, relative workspace paths, and absolute local paths.",
+					"description": "Legacy multi-source input (att:, out:, workspace path, or absolute path).",
 				},
 				"target_format": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional legacy format override. Usually omit this and let output_path's extension decide the format.",
+					"type": "string",
 				},
-				"text": map[string]interface{}{"type": "string"},
-				"markdown": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional native office seed content for styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
-				},
-				"body": map[string]interface{}{
-					"type":        "string",
-					"description": "Alias of markdown/content for native office-style output routing.",
-				},
-				"title": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional native office title override for styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
-				},
-				"subtitle": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional native office subtitle override for styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
-				},
-				"summary": map[string]interface{}{
-					"description": "Optional native office summary override. Strings are preferred; objects with text/body/content are also accepted.",
-				},
-				"theme": map[string]interface{}{
-					"type":        "string",
-					"enum":        []string{"analysis", "ui_review", "executive", "clean", "midnight", "terracotta", "forest", "coral"},
-					"description": "Optional native office theme used by styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
-				},
-				"style_hint": map[string]interface{}{
-					"type":        "string",
-					"description": "Optional native office tone/style hint used to infer a theme when theme is omitted.",
-				},
-				"notes": map[string]interface{}{
-					"type":        "array",
-					"description": "Optional notes applied to native office outputs.",
-				},
-				"paragraphs": map[string]interface{}{
-					"type":        "array",
-					"description": "Optional paragraph blocks for styled `docx`/`pptx`/`pdf` outputs.",
-				},
-				"sections": map[string]interface{}{
-					"type":        "array",
-					"description": "Optional structured sections for styled `docx`/`pptx`/`pdf` outputs.",
-				},
-				"sheets": map[string]interface{}{
-					"type":        "array",
-					"description": "Optional workbook sheets for styled `xlsx` outputs.",
-				},
-				"sheet": map[string]interface{}{
-					"description": "Optional single-sheet workbook seed for styled `xlsx` outputs.",
-				},
-				"columns": map[string]interface{}{
-					"type":        "array",
-					"description": "Optional workbook columns for styled `xlsx` outputs.",
-				},
-				"rows": map[string]interface{}{
-					"type":        "array",
-					"description": "Optional workbook rows for styled `xlsx` outputs.",
-				},
-				"table": map[string]interface{}{
-					"description": "Optional table data for styled `xlsx` or document-section generation.",
-				},
+				"content": map[string]interface{}{"type": "string"},
+				"title":   map[string]interface{}{"type": "string"},
+				"summary": map[string]interface{}{},
+				"theme":   map[string]interface{}{"type": "string"},
 				"task_id": map[string]interface{}{
-					"type":        "string",
-					"description": "Use only to check/cancel an async task, or after convert returned async=true.",
+					"type": "string",
 				},
 				"wait_ms": map[string]interface{}{"type": "integer"},
 				"options": map[string]interface{}{
-					"type": "object",
-					"properties": map[string]interface{}{
-						"presentation": map[string]interface{}{
-							"type":        "object",
-							"description": "PPTX-oriented advanced controls for native markdown -> pptx fallback generation.",
-							"properties": map[string]interface{}{
-								"title":      map[string]interface{}{"type": "string"},
-								"subtitle":   map[string]interface{}{"type": "string"},
-								"summary":    map[string]interface{}{},
-								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "editorial", "terracotta", "forest", "coral"}},
-								"style_hint": map[string]interface{}{"type": "string"},
-							},
-						},
-						"pptx": map[string]interface{}{
-							"type":        "object",
-							"description": "Alias of options.presentation.",
-							"properties": map[string]interface{}{
-								"title":      map[string]interface{}{"type": "string"},
-								"subtitle":   map[string]interface{}{"type": "string"},
-								"summary":    map[string]interface{}{},
-								"theme":      map[string]interface{}{"type": "string", "enum": []string{"analysis", "ui_review", "executive", "clean", "midnight", "editorial", "terracotta", "forest", "coral"}},
-								"style_hint": map[string]interface{}{"type": "string"},
-							},
-						},
-						"office": map[string]interface{}{
-							"type":                 "object",
-							"description":          "Common native office overrides shared by styled `docx`/`xlsx`/`pptx`/`pdf` outputs.",
-							"additionalProperties": true,
-						},
-						"docx": map[string]interface{}{
-							"type":                 "object",
-							"description":          "Native `docx`-specific office overrides.",
-							"additionalProperties": true,
-						},
-						"xlsx": map[string]interface{}{
-							"type":                 "object",
-							"description":          "Native `xlsx`-specific office overrides.",
-							"additionalProperties": true,
-						},
-						"pdf": map[string]interface{}{
-							"type":                 "object",
-							"description":          "Native `pdf`-specific office overrides.",
-							"additionalProperties": true,
-						},
-					},
+					"type":                 "object",
+					"description":          "Office overrides; reuse docx/xlsx/pptx/pdf params.",
 					"additionalProperties": true,
 				},
 			},

@@ -4490,7 +4490,7 @@ func TestChatHandlerSendMessageAutoContinue_PseudoToolCallCommandWorkdirJSON(t *
 	conv, _ := store.CreateConversation(context.Background(), "Pseudo Tool Call SendMessage")
 
 	registry := llm.NewProviderRegistry()
-	pseudoContent := "好的，我来给你设一个 10 秒后的提醒。to=functions.exec {\"command\":\"blue reminder add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"...\"}\n```\nLet's do that exactly.{\"command\":\"blue help reminder\",...}\n```"
+	pseudoContent := "好的，我来给你设一个 10 秒后的提醒。to=functions.exec {\"command\":\"blue reminder add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/tmp/test-workspace\"}{\"command\":\"...\"}\n```\nLet's do that exactly.{\"command\":\"blue help reminder\",...}\n```"
 	scripted := &scriptedChatProvider{
 		name: "scripted",
 		responses: []llm.ChatResponse{

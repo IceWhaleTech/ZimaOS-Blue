@@ -672,6 +672,7 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 	deadline := time.Now().Add(timeout)
 	snapshotAttempts := 0
 	forceSnapshotRefresh := false
+	visualRecoveryAttempted := false
 	for {
 		if forceSnapshotRefresh || !a11ySnapshotHasComposer(entries) {
 			if snapshotAttempts > 0 && !forceSnapshotRefresh {
@@ -693,6 +694,20 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 			t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
 			entries = parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
 			snapshotAttempts++
+			if !a11ySnapshotHasComposer(entries) && !visualRecoveryAttempted {
+				recoveredWindow, attempted, recovered, recoveryErr := t.tryA11yChatComposerVisualRecovery(ctx, backend, resolvedWindow)
+				if recoveryErr != nil {
+					return "", recoveryErr
+				}
+				if attempted {
+					visualRecoveryAttempted = true
+				}
+				if recovered {
+					resolvedWindow = recoveredWindow
+					forceSnapshotRefresh = true
+					continue
+				}
+			}
 			forceSnapshotRefresh = false
 			continue
 		}
@@ -722,12 +737,19 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 				explicitReject = true
 			}
 			searchFieldMismatch := false
+			composerConfirmed := compatBoolValue(verification["composer_confirmed"], false)
 			for _, candidate := range groundingResult.Candidates {
 				role := normalizeA11yTargetRole(candidate.Role)
 				if role == "search_field" || role == "search" {
 					searchFieldMismatch = true
-					break
+					continue
 				}
+				if role == "composer" || a11ySnapshotRoleCouldBeComposer(role, candidate.Label) {
+					composerConfirmed = true
+				}
+			}
+			if composerConfirmed {
+				verification["composer_confirmed"] = true
 			}
 			if explicitReject {
 				a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusTerminalFailure, "visual_grounding_check", source, "composer_not_confirmed", verification)
@@ -737,7 +759,7 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 					"verification":     verification,
 				})
 			}
-			if searchFieldMismatch {
+			if searchFieldMismatch && !composerConfirmed {
 				if timeout <= 0 || time.Now().After(deadline) {
 					a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusTerminalFailure, "visual_grounding_check", source, "composer_not_confirmed", verification)
 					return "", a11yruntime.NewError("confirmation_failed", "composer could not be confirmed", map[string]interface{}{
@@ -759,6 +781,139 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 		a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusOK, "structured_snapshot", "", "", nil)
 		return resolvedWindow, nil
 	}
+}
+
+func (t *A11yTool) tryA11yChatComposerVisualRecovery(ctx context.Context, backend a11yruntime.Backend, windowID string) (string, bool, bool, error) {
+	state := getA11yChatExecutionState(ctx)
+	if state == nil || state.intent != "message" {
+		return strings.TrimSpace(windowID), false, false, nil
+	}
+
+	req := a11yChatGroundingRequest{
+		WindowID:   strings.TrimSpace(windowID),
+		TaskHint:   a11yChatGroundingTaskLocateComposer,
+		AppProfile: state.appProfile,
+		TargetText: state.conversation,
+	}
+	if t.a11yChatGrounder() != nil {
+		if grounding, ok := backend.(a11yruntime.GroundingScreenshotter); ok {
+			if shot, shotErr := grounding.ScreenshotForGrounding(ctx, windowID); shotErr == nil {
+				req.WindowScreenshot = append([]byte(nil), shot.ImageBytes...)
+				a11yMaybeWriteChatArtifact(ctx, state, a11yChatStageLocateComposer, "composer_grounding_recovery", shot.ImageBytes)
+			}
+		}
+	}
+
+	groundingResult, used, groundErr := t.groundA11yChat(ctx, req)
+	if !used || groundErr != nil {
+		return strings.TrimSpace(windowID), false, false, nil
+	}
+
+	if strings.TrimSpace(groundingResult.Source) == "" && len(groundingResult.Verification) == 0 && len(groundingResult.Candidates) == 0 {
+		return strings.TrimSpace(windowID), false, false, nil
+	}
+
+	source := strings.TrimSpace(valueOrDefault(groundingResult.Source, "grounding_model"))
+	verification := cloneA11yJSONMap(groundingResult.Verification)
+	if verification == nil {
+		verification = map[string]interface{}{}
+	}
+	if compatBoolValue(verification["rejected"], false) {
+		a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusTerminalFailure, "visual_grounding_recovery", source, "composer_not_confirmed", verification)
+		return "", true, false, a11yruntime.NewError("confirmation_failed", "composer could not be confirmed", map[string]interface{}{
+			"phase":            "composer",
+			"grounding_source": source,
+			"verification":     verification,
+		})
+	}
+
+	hit, ok := resolveA11yChatComposerVisualHitFromGroundingCandidates(groundingResult.Candidates)
+	if !ok {
+		a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusRetryableFailure, "visual_grounding_recovery", source, "", verification)
+		return strings.TrimSpace(windowID), true, false, nil
+	}
+	verification["composer_confirmed"] = true
+
+	result, err := a11yRunActionResultWithTimeout(ctx, "point_click", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return backend.ClickWindowPoint(actionCtx, windowID, hit.Point, a11yruntime.DefaultHoldMS)
+	})
+	if err != nil {
+		return "", true, false, err
+	}
+	resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
+	t.syncWindowContext(resolvedWindow)
+	t.clearSnapshotRefs()
+	if err := a11yWaitForConversationSettle(ctx); err != nil {
+		return resolvedWindow, true, false, err
+	}
+	t.rememberA11yChatStrategy(state, a11yChatStageLocateComposer, "visual_grounding_recovery")
+	a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusOK, "visual_grounding_recovery", source, "", verification)
+	return resolvedWindow, true, true, nil
+}
+
+func resolveA11yChatComposerVisualHitFromGroundingCandidates(candidates []a11yChatGroundingCandidate) (a11yConversationVisualHit, bool) {
+	best := a11yConversationVisualHit{}
+	bestScore := 0
+	tied := false
+	for _, candidate := range candidates {
+		score := a11yChatComposerGroundingCandidateScore(candidate)
+		if score <= 0 {
+			continue
+		}
+		hit := a11yConversationVisualHit{
+			Point: a11yruntime.NormalizedPoint{
+				X: candidate.Bounds.X + candidate.Bounds.Width/2,
+				Y: candidate.Bounds.Y + candidate.Bounds.Height/2,
+			},
+			Confidence: candidate.Confidence,
+		}
+		switch {
+		case score > bestScore:
+			best = hit
+			bestScore = score
+			tied = false
+		case score == bestScore:
+			tied = true
+		}
+	}
+	if bestScore <= 0 || tied {
+		return a11yConversationVisualHit{}, false
+	}
+	return best, true
+}
+
+func a11yChatComposerGroundingCandidateScore(candidate a11yChatGroundingCandidate) int {
+	if candidate.Confidence < a11yConversationVisualConfidenceThreshold {
+		return 0
+	}
+	if candidate.Bounds.Width <= 0 || candidate.Bounds.Height <= 0 {
+		return 0
+	}
+	if candidate.Bounds.X < 0 || candidate.Bounds.Y < 0 || candidate.Bounds.X+candidate.Bounds.Width > 1 || candidate.Bounds.Y+candidate.Bounds.Height > 1 {
+		return 0
+	}
+	role := normalizeA11yTargetRole(candidate.Role)
+	if role == "search_field" || role == "search" {
+		return 0
+	}
+	if role != "composer" && !a11ySnapshotRoleCouldBeComposer(role, candidate.Label) {
+		return 0
+	}
+
+	score := 100
+	if role == "composer" {
+		score += 80
+	}
+	if a11yTargetLabelContainsAny(normalizeA11yTargetName(candidate.Label), "message", "reply", "compose", "input", "chat", "消息", "回复", "输入", "发送") {
+		score += 20
+	}
+	for _, tag := range candidate.RationaleTags {
+		switch normalizeA11yTargetName(tag) {
+		case "active", "current", "focused", "selected":
+			score += 15
+		}
+	}
+	return score
 }
 
 func (t *A11yTool) verifyA11yChatOutcome(ctx context.Context, backend a11yruntime.Backend, windowID string, sent bool) error {
@@ -839,6 +994,17 @@ func (t *A11yTool) verifyA11yChatOutcome(ctx context.Context, backend a11yruntim
 			}
 			a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "visual_verification", source, "", verification)
 			return nil
+		}
+		if sent {
+			verification := map[string]interface{}{}
+			if groundErr != nil {
+				verification["reason"] = groundErr.Error()
+			}
+			a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusTerminalFailure, "visual_verification", "", "send_not_verified", verification)
+			return a11yruntime.NewError("grounding_unavailable", "send outcome could not be verified", map[string]interface{}{
+				"phase":        "submit",
+				"verification": verification,
+			})
 		}
 		a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "structured_confirmation", "", "", map[string]interface{}{"status": status})
 		return nil

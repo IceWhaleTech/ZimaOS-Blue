@@ -50,15 +50,27 @@ func resolveCreateUnicodeFont(required map[rune]struct{}) ([]byte, error) {
 	}
 
 	seen := make(map[string]struct{})
+	bestCoverage := 0
+	var bestData []byte
 	for _, path := range prioritizedCreateFontPaths(index) {
 		if _, ok := seen[path]; ok {
 			continue
 		}
 		seen[path] = struct{}{}
-		data, ok, err := createFontFileSupports(path, required)
-		if err == nil && ok {
+		data, coverage, err := createFontFileCoverage(path, required)
+		if err != nil {
+			continue
+		}
+		if coverage == len(required) {
 			return data, nil
 		}
+		if coverage > bestCoverage {
+			bestCoverage = coverage
+			bestData = data
+		}
+	}
+	if bestCoverage > 0 {
+		return bestData, nil
 	}
 
 	return nil, fmt.Errorf("no unicode TTF font found with required glyph coverage")
@@ -172,24 +184,25 @@ func prioritizedCreateFontPaths(index map[string][]string) []string {
 	return paths
 }
 
-func createFontFileSupports(path string, required map[rune]struct{}) ([]byte, bool, error) {
+func createFontFileCoverage(path string, required map[rune]struct{}) ([]byte, int, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, err
 	}
 	font, err := sfnt.Parse(data)
 	if err != nil {
-		return nil, false, err
+		return nil, 0, err
 	}
 
 	var buf sfnt.Buffer
+	covered := 0
 	for r := range required {
 		index, glyphErr := font.GlyphIndex(&buf, r)
-		if glyphErr != nil || index == 0 {
-			return nil, false, nil
+		if glyphErr == nil && index != 0 {
+			covered++
 		}
 	}
-	return data, true, nil
+	return data, covered, nil
 }
 
 func createFontSearchDirs() []string {

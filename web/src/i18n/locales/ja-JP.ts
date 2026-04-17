@@ -1627,6 +1627,17 @@ export default mergeHarnessLocale('ja-JP', {
     searchPlaceholder: 'メモリを検索...',
     noResults: 'クエリに一致するメモリが見つかりません',
     recallSettings: 'メモリー想起モード',
+    dreamTitle: 'Dream統合',
+    dreamDescription:
+      '古いチャット文脈をアーカイブし、長期保持に値する記憶候補を昇格させます。',
+    dreamPendingCapsules: '保留中のカプセル',
+    dreamPromotedCount: '昇格した記憶',
+    dreamArchivedDailyLogs: 'アーカイブ済み日次ログ',
+    dreamLastRun: '最終実行',
+    dreamRun: 'Dream を実行',
+    dreamRunning: 'Dream を実行中...',
+    dreamRunSuccess:
+      'Dream 完了: {processed} 件のカプセルを処理し、{promoted} 件の記憶を昇格し、{archived} 件の日次ログをアーカイブしました。',
     prune: '古いものを削除',
     pruneSuccess: '{count} 件の古いメモリを削除しました',
     clearAll: 'すべてクリア',

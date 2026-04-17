@@ -41,6 +41,8 @@ type nativeDocumentPayload struct {
 	Success        bool                   `json:"success"`
 }
 
+var nativeDocumentStatForPayload = os.Stat
+
 type zipArchiveEntry struct {
 	Name   string
 	Data   []byte
@@ -158,6 +160,14 @@ func compactDocumentWarnings(warnings []string) []string {
 		out = append(out, warning)
 	}
 	return out
+}
+
+func nativeDocumentPayloadSize(path string) int64 {
+	info, err := nativeDocumentStatForPayload(path)
+	if err != nil || info == nil {
+		return 0
+	}
+	return info.Size()
 }
 
 func mergeValidationFields(dst, src map[string]interface{}) {

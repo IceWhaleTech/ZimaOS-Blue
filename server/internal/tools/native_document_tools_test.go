@@ -5024,6 +5024,11 @@ func TestPDFToolReformat(t *testing.T) {
 }
 
 func TestNativeCreateTools_IncludeThemePreviewMetadata(t *testing.T) {
+	forestTheme, err := officeThemeByName("forest")
+	if err != nil {
+		t.Fatalf("officeThemeByName(forest) error = %v", err)
+	}
+
 	testCases := []struct {
 		name           string
 		run            func(tmpDir string) (interface{}, error)
@@ -5097,7 +5102,7 @@ func TestNativeCreateTools_IncludeThemePreviewMetadata(t *testing.T) {
 			wantMood:       "natural",
 			wantDisplay:    "Times New Roman",
 			wantBody:       "Open Sans",
-			wantHTMLNeedle: "#2D5A3D",
+			wantHTMLNeedle: forestTheme.Primary,
 		},
 	}
 

@@ -61,6 +61,9 @@ const visibleBuiltinSkillLocaleCoverage = {
   'skills.catalog.contacts.description': 'Access and manage native contacts',
   'skills.catalog.config.name': 'Configuration',
   'skills.catalog.config.description': 'Manage runtime settings, providers, users, and admin controls.',
+  'skills.catalog.research.name': 'Research',
+  'skills.catalog.research.description':
+    'Unified research family for citation-first investigation, bounded analysis, decision support, and UI or accessibility review.',
   'skills.catalog.deep_research.name': 'Deep Research',
   'skills.catalog.deep_research.description':
     'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',

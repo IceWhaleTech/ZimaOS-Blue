@@ -1645,6 +1645,17 @@ export default mergeHarnessLocale('ml-IN', {
     searchPlaceholder: 'ഓർമ്മകൾ തിരയുക...',
     noResults: 'നിങ്ങളുടെ അന്വേഷണവുമായി പൊരുത്തപ്പെടുന്ന ഓർമ്മകളൊന്നും കണ്ടെത്തിയില്ല',
     recallSettings: 'മെമ്മറി റീകോൾ മോഡ്',
+    dreamTitle: 'Dream ഏകീകരണം',
+    dreamDescription:
+      'പഴയ ചാറ്റ് സന്ദർഭം ശേഖരിച്ച് ദീർഘകാലമായി സൂക്ഷിക്കാവുന്ന മെമ്മറി സ്ഥാനാർത്ഥികളെ പ്രമോട്ട് ചെയ്യുന്നു.',
+    dreamPendingCapsules: 'കാത്തിരിക്കുന്ന ക്യാപ്സ്യൂളുകൾ',
+    dreamPromotedCount: 'പ്രമോട്ട് ചെയ്ത മെമ്മറികൾ',
+    dreamArchivedDailyLogs: 'ആർക്കൈവ് ചെയ്ത ദിനപ്പതിപ്പുകൾ',
+    dreamLastRun: 'അവസാന പ്രവർത്തനം',
+    dreamRun: 'Dream പ്രവർത്തിപ്പിക്കുക',
+    dreamRunning: 'Dream പ്രവർത്തിക്കുന്നു...',
+    dreamRunSuccess:
+      'Dream പൂർത്തിയായി: {processed} ക്യാപ്സ്യൂളുകൾ പ്രോസസ് ചെയ്തു, {promoted} മെമ്മറികൾ പ്രമോട്ട് ചെയ്തു, {archived} ദിനപ്പതിപ്പുകൾ ആർക്കൈവ് ചെയ്തു.',
     prune: 'പഴയ പ്രൂൺ',
     pruneSuccess: 'വെട്ടിമാറ്റിയ {count} പഴയ ഓർമ്മകൾ',
     clearAll: 'എല്ലാം മായ്‌ക്കുക',

@@ -10,7 +10,7 @@ import (
 
 func TestFindTool_BareFilenameFallsBackToWorkspaceRoot(t *testing.T) {
 	tmpDir := t.TempDir()
-	targetName := "orca_命理完整报告.pdf"
+	targetName := "sample_report.pdf"
 	if err := os.WriteFile(filepath.Join(tmpDir, targetName), []byte("pdf"), 0o644); err != nil {
 		t.Fatalf("write target file: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestFindTool_BareFilenameFallsBackToWorkspaceRoot(t *testing.T) {
 
 func TestLsTool_BareFilenameFallsBackToWorkspaceRoot(t *testing.T) {
 	tmpDir := t.TempDir()
-	targetName := "orca_命理完整报告.pdf"
+	targetName := "sample_report.pdf"
 	if err := os.WriteFile(filepath.Join(tmpDir, targetName), []byte("pdf"), 0o644); err != nil {
 		t.Fatalf("write target file: %v", err)
 	}

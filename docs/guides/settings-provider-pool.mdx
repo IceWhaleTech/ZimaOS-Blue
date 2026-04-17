@@ -237,6 +237,41 @@ Settings is also where Blue collects the day-two controls that usually get scatt
 - Backup creation, restore, and deletion
 - General runtime behaviors such as update and service settings
 
+### Dream memory consolidation
+
+Inside `Settings -> User Data`, the memory management surface now also exposes the current dream-memory state when the backend feature is enabled.
+
+That panel is meant for operational visibility rather than raw memory editing. In practice it lets you:
+
+- See whether dream consolidation is enabled
+- Inspect pending session capsules, promoted memories, archived daily logs, and the last run time
+- Trigger one manual dream pass when you want to process backlog immediately instead of waiting for the next scheduled run
+
+The current dream pipeline is designed for "cooler storage plus promotion" behavior:
+
+- Recent chat turns can be compacted into archived dream capsules
+- Consolidation can promote durable facts into longer-term memory
+- Older daily logs can be archived after they age out of the hot path
+
+If you prefer declarative deployment, the same behavior can be tuned in `config.yaml`:
+
+```yaml
+memory:
+  backend: "markdown"
+  markdown_dir: "./data/memory"
+
+  dream:
+    enabled: true
+    archive_dir: ""  # Empty = ./data/archives/dream
+    schedule: "0 30 3 * * *"  # Daily at 03:30 UTC
+    promote_daily_after_days: 7
+    archive_daily_after_days: 30
+    session_min_messages: 4
+    max_promotions_per_run: 5
+```
+
+Use the manual run button for catch-up, validation, or migration windows. Use the scheduled run for normal steady-state maintenance.
+
 ## Recommended operator path
 
 If you are setting up a new Blue deployment, this sequence is usually the shortest path:

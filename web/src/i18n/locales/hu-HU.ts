@@ -1640,6 +1640,17 @@ export default mergeHarnessLocale('hu-HU', {
     searchPlaceholder: 'Memóriák keresése...',
     noResults: 'Nem található a lekérdezésének megfelelő emlék',
     recallSettings: 'Memóriafelidézési mód',
+    dreamTitle: 'Dream-konszolidáció',
+    dreamDescription:
+      'Archiválja a régebbi csevegési kontextust, és előlépteti a tartós memóriajelölteket.',
+    dreamPendingCapsules: 'Függő kapszulák',
+    dreamPromotedCount: 'Előléptetett emlékek',
+    dreamArchivedDailyLogs: 'Archivált napi naplók',
+    dreamLastRun: 'Utolsó futás',
+    dreamRun: 'Dream futtatása',
+    dreamRunning: 'A Dream fut...',
+    dreamRunSuccess:
+      'A Dream befejeződött: {processed} kapszula feldolgozva, {promoted} emlék előléptetve és {archived} napi napló archiválva.',
     prune: 'Régi elemek ritkítása',
     pruneSuccess: 'Lemetszett {count} régi emlék',
     clearAll: 'Összes törlése',

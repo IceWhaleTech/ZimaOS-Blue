@@ -275,10 +275,11 @@ func TestBuildOfficeDOCX_ConvertsInlineMarkdownToOfficeRuns(t *testing.T) {
 	}
 
 	xml := officeZipEntryText(t, docxData, "word/document.xml")
+	defaultTheme := resolveOfficeTheme("", "")
 	for _, needle := range []string{
 		`<w:rPr><w:b/></w:rPr><w:t xml:space="preserve">bold</w:t>`,
 		`<w:rPr><w:i/></w:rPr><w:t xml:space="preserve">italic</w:t>`,
-		`<w:rPr><w:rFonts w:ascii="Aptos Mono" w:hAnsi="Aptos Mono" w:eastAsia="Aptos Mono"/></w:rPr><w:t xml:space="preserve">code</w:t>`,
+		`<w:rPr><w:rFonts w:ascii="` + defaultTheme.MonospaceFont + `" w:hAnsi="` + defaultTheme.MonospaceFont + `" w:eastAsia="` + defaultTheme.MonospaceFont + `"/></w:rPr><w:t xml:space="preserve">code</w:t>`,
 	} {
 		if !containsSubstring(xml, needle) {
 			t.Fatalf("document.xml missing %q in %s", needle, xml)

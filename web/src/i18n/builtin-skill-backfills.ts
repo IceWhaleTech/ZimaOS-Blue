@@ -2,7 +2,7 @@ import type { LocaleKey } from './locale-catalog'
 
 type LocaleLeaf = string | number | boolean | null
 type LocaleNode = { [key: string]: LocaleLeaf | LocaleNode }
-type NamedLocaleTerms = { name: string; description: string }
+type ResearchLocaleTerms = { name: string; description: string }
 
 type BuiltinSkillLocaleTerms = {
   configDescription: string
@@ -579,6 +579,142 @@ const manualSkillLocaleTerms: Partial<Record<LocaleKey, BuiltinSkillLocaleTerms>
   },
 }
 
+const researchSkillLocaleTerms: Record<LocaleKey, ResearchLocaleTerms> = {
+  'ca-ES': {
+    name: 'Recerca',
+    description:
+      "Familia de recerca unificada per a investigacio amb prioritat de cites, analisi acotada, suport a decisions i revisio d'UI o accessibilitat.",
+  },
+  'cs-CZ': {
+    name: 'Výzkum',
+    description:
+      'Sjednocena vyzkumna rodina pro setreni zalozene na citacich, omezenou analyzu, podporu rozhodovani a kontrolu UI nebo pristupnosti.',
+  },
+  'da-DK': {
+    name: 'Forskning',
+    description:
+      'Samlet research-familie til citatforankret undersogelse, afgraenset analyse, beslutningsstotte og UI- eller tilgaengelighedsreview.',
+  },
+  'de-DE': {
+    name: 'Recherche',
+    description:
+      'Vereinheitlichte Research-Familie fur zitatgestutzte Untersuchung, begrenzte Analyse, Entscheidungsunterstutzung sowie UI- oder Barrierefreiheitsprufung.',
+  },
+  'el-GR': {
+    name: 'Έρευνα',
+    description:
+      'Ενοποιημενη οικογενεια ερευνας για ερευνα με προτεραιοτητα στις παραπομπες, περιορισμενη αναλυση, υποστηριξη αποφασεων και ελεγχο UI ή προσβασιμοτητας.',
+  },
+  'en-GB': {
+    name: 'Research',
+    description:
+      'Unified research family for citation-first investigation, bounded analysis, decision support, and UI or accessibility review.',
+  },
+  'en-US': {
+    name: 'Research',
+    description:
+      'Unified research family for citation-first investigation, bounded analysis, decision support, and UI or accessibility review.',
+  },
+  'es-ES': {
+    name: 'Investigacion',
+    description:
+      'Familia de investigacion unificada para investigacion con prioridad en citas, analisis acotado, apoyo a decisiones y revision de UI o accesibilidad.',
+  },
+  'fr-FR': {
+    name: 'Recherche',
+    description:
+      'Famille de recherche unifiee pour l investigation orientee citations, l analyse ciblee, l aide a la decision et l examen UI ou accessibilite.',
+  },
+  'ga-IE': {
+    name: 'Taighde',
+    description:
+      'Teaghlach taighde aontaithe le haghaidh fiosru citiu-ar-dtus, anailis theoranta, tacaiocht chinnteoireachta, agus athbhreithniu UI no inrochtaineachta.',
+  },
+  'hr-HR': {
+    name: 'Istraživanje',
+    description:
+      'Jedinstvena istrazivacka obitelj za istrazivanje temeljeno na citatima, ogranicenu analizu, podrsku odlucivanju i pregled UI-ja ili pristupacnosti.',
+  },
+  'hu-HU': {
+    name: 'Kutatás',
+    description:
+      'Egyseges kutatasi csalad idezetkozpontu vizsgalathoz, korulhatarolt elemzeshez, dontestamogatashoz es UI- vagy akadalymentessegi felulvizsgalathoz.',
+  },
+  'it-IT': {
+    name: 'Ricerca',
+    description:
+      'Famiglia di ricerca unificata per indagini basate su citazioni, analisi circoscritta, supporto alle decisioni e revisione UI o accessibilita.',
+  },
+  'ja-JP': {
+    name: 'リサーチ',
+    description:
+      '引用重視の調査、限定的な分析、意思決定支援、UI またはアクセシビリティレビューをまとめた統合リサーチファミリー。',
+  },
+  'ko-KR': {
+    name: '연구',
+    description:
+      '인용 우선 조사, 범위가 제한된 분석, 의사결정 지원, UI 또는 접근성 리뷰를 아우르는 통합 연구 패밀리입니다.',
+  },
+  'ml-IN': {
+    name: 'ഗവേഷണം',
+    description:
+      'സൈറ്റേഷന് മുന്‍ഗണനയുള്ള അന്വേഷണം, പരിധിയുള്ള വിശകലനം, തീരുമാന സഹായം, UI അല്ലെങ്കില്‍ ആക്‌സസിബിലിറ്റി അവലോകനം എന്നിവയ്ക്കുള്ള ഏകീകൃത ഗവേഷണ കുടുംബം.',
+  },
+  'nb-NO': {
+    name: 'Forskning',
+    description:
+      'Samlet research-familie for kildebasert undersokelse, avgrenset analyse, beslutningsstotte og UI- eller tilgjengelighetsgjennomgang.',
+  },
+  'nl-NL': {
+    name: 'Onderzoek',
+    description:
+      'Geunificeerde onderzoeksfamilie voor citaatgerichte verkenning, afgebakende analyse, beslissingsondersteuning en UI- of toegankelijkheidsreview.',
+  },
+  'pl-PL': {
+    name: 'Badanie',
+    description:
+      'Ujednolicona rodzina research do dochodzenia opartego na cytatach, ograniczonej analizy, wsparcia decyzji oraz przegladu UI lub dostepnosci.',
+  },
+  'pt-BR': {
+    name: 'Pesquisa',
+    description:
+      'Familia de pesquisa unificada para investigacao orientada por citacoes, analise delimitada, apoio a decisoes e revisao de UI ou acessibilidade.',
+  },
+  'pt-PT': {
+    name: 'Investigacao',
+    description:
+      'Familia de investigacao unificada para investigacao orientada por citacoes, analise delimitada, apoio a decisao e revisao de UI ou acessibilidade.',
+  },
+  'ro-RO': {
+    name: 'Cercetare',
+    description:
+      'Familie unificata de cercetare pentru investigatie bazata pe citari, analiza delimitata, sprijin pentru decizii si revizuire UI sau de accesibilitate.',
+  },
+  'ru-RU': {
+    name: 'Исследование',
+    description:
+      'Единое исследовательское семейство для расследований с упором на цитаты, ограниченного анализа, поддержки решений и проверки UI или доступности.',
+  },
+  'sk-SK': {
+    name: 'Výskum',
+    description:
+      'Zjednotena vyskumna rodina pre setrenie zalozene na citaciach, ohranicenu analyzu, podporu rozhodovania a kontrolu UI alebo pristupnosti.',
+  },
+  'sv-SE': {
+    name: 'Forskning',
+    description:
+      'Enhetlig research-familj for citatdriven undersokning, avgransad analys, beslutsstod och UI- eller tillganglighetsgranskning.',
+  },
+  'zh-CN': {
+    name: '研究',
+    description: '统一的研究能力集合，用于引用优先的调查、范围受限的分析、决策支持，以及 UI 或无障碍评审。',
+  },
+  'zh-TW': {
+    name: '研究',
+    description: '統一的研究能力集合，用於引用優先的調查、範圍受限的分析、決策支援，以及 UI 或無障礙審查。',
+  },
+}
+
 function isPlainObject(value: unknown): value is LocaleNode {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
@@ -620,6 +756,7 @@ export function buildBuiltinSkillBackfill(
   messages: Record<string, unknown>
 ): LocaleNode {
   const terms = manualSkillLocaleTerms[localeKey] ?? manualSkillLocaleTerms['en-US']
+  const researchTerms = researchSkillLocaleTerms[localeKey] ?? researchSkillLocaleTerms['en-US']
   if (!terms) return {}
 
   const catalog: LocaleNode = {}
@@ -666,6 +803,12 @@ export function buildBuiltinSkillBackfill(
       'tools.names.configuration',
     ]),
     terms.configDescription
+  )
+  setCatalogEntry(
+    catalog,
+    'research',
+    firstString(messages, ['skills.catalog.research.name']) ?? researchTerms.name,
+    firstString(messages, ['skills.catalog.research.description']) ?? researchTerms.description
   )
   setCatalogEntry(
     catalog,

@@ -1050,7 +1050,7 @@ func TestPPTXToolTemplateUpdateChartDataPreservesSecondaryValueAxisFormatWhenOmi
 	}
 }
 
-func TestPPTXToolTemplateUpdateChartDataPreservesChartPresentationMetadataWhenOmitted(t *testing.T) {
+func TestPPTXToolTemplateUpdateChartDataPreservesAvailableChartPresentationMetadataWhenOmitted(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
 
@@ -1108,7 +1108,7 @@ func TestPPTXToolTemplateUpdateChartDataPreservesChartPresentationMetadataWhenOm
 
 	chartXML := officeZipEntryText(t, data, "ppt/charts/chart1.xml")
 	for _, needle := range []string{
-		`<a:t>Revenue vs Margin</a:t>`,
+		`<c:autoTitleDeleted val="1"/>`,
 		`<c:legend><c:legendPos val="t"/><c:layout/>`,
 		`<c:txPr>`,
 		`<a:t>Quarter</a:t>`,
@@ -1119,6 +1119,9 @@ func TestPPTXToolTemplateUpdateChartDataPreservesChartPresentationMetadataWhenOm
 		if !containsSubstring(chartXML, needle) {
 			t.Fatalf("expected chart1.xml to include %q, got %s", needle, chartXML)
 		}
+	}
+	if containsSubstring(chartXML, `<a:t>Revenue vs Margin</a:t>`) {
+		t.Fatalf("expected chart1.xml to keep the optimized title omitted, got %s", chartXML)
 	}
 }
 

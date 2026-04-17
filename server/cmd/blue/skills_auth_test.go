@@ -4,15 +4,22 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/auth"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/user"
 )
 
 // TestDoSkillsRequest_SendsAuthorizationHeader 验证 skills 请求携带 Authorization header
 func TestDoSkillsRequest_SendsAuthorizationHeader(t *testing.T) {
+	resetHarnessCLIState(t)
+
 	var receivedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedAuth = r.Header.Get("Authorization")
@@ -42,6 +49,8 @@ func TestDoSkillsRequest_SendsAuthorizationHeader(t *testing.T) {
 
 // TestDoSkillsRequest_WorksWithoutAuth 验证没有认证时也能工作
 func TestDoSkillsRequest_WorksWithoutAuth(t *testing.T) {
+	resetHarnessCLIState(t)
+
 	var receivedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedAuth = r.Header.Get("Authorization")
@@ -62,6 +71,56 @@ func TestDoSkillsRequest_WorksWithoutAuth(t *testing.T) {
 
 	if receivedAuth != "" {
 		t.Errorf("Authorization header should be empty when no token set, got %q", receivedAuth)
+	}
+}
+
+func TestDoSkillsRequest_UsesImplicitLocalHarnessAuthForLocalSkillsAPI(t *testing.T) {
+	resetHarnessCLIState(t)
+
+	const jwtSecret = "0123456789abcdef0123456789abcdef"
+	cfgFile = writeHarnessCLITestConfig(t, jwtSecret)
+	t.Setenv("BLUE_USER_ID", "release-user")
+
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"skills":[],"count":0}`))
+	}))
+	defer server.Close()
+
+	host, port, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "http://"))
+	if err != nil {
+		t.Fatalf("SplitHostPort(server.URL): %v", err)
+	}
+	t.Setenv("BLUE_SERVER_HOST", host)
+	t.Setenv("BLUE_SERVER_PORT", port)
+
+	resp, err := doSkillsRequest(http.MethodGet, getSkillsBaseURL()+"/installed", nil)
+	if err != nil {
+		t.Fatalf("doSkillsRequest failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if !strings.HasPrefix(receivedAuth, "Bearer ") {
+		t.Fatalf("Authorization header = %q, want bearer token", receivedAuth)
+	}
+	jwtSvc := auth.NewJWTService(&auth.JWTConfig{
+		Secret:            jwtSecret,
+		Expiration:        24 * time.Hour,
+		RefreshExpiration: 720 * time.Hour,
+		Issuer:            "zimaos-blue",
+	})
+	claims, err := jwtSvc.ValidateToken(strings.TrimSpace(strings.TrimPrefix(receivedAuth, "Bearer ")))
+	if err != nil {
+		t.Fatalf("ValidateToken() error = %v", err)
+	}
+	if claims.UserID != "release-user" {
+		t.Fatalf("claims.UserID = %q, want %q", claims.UserID, "release-user")
+	}
+	if claims.Role != string(user.RoleAdmin) {
+		t.Fatalf("claims.Role = %q, want %q", claims.Role, string(user.RoleAdmin))
 	}
 }
 

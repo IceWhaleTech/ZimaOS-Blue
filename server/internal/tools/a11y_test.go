@@ -50,6 +50,11 @@ type a11yCompatBackend struct {
 	lastKeys                      []string
 	lastKeyHoldMS                 int
 	keyHistory                    [][]string
+	lastFocusedTypeWindowID       string
+	lastFocusedTypeValue          string
+	lastFocusedTypeHoldMS         int
+	focusedTypeHistory            []string
+	focusedTypeWindowHistory      []string
 	actBlockCh                    chan struct{}
 	keyBlockCh                    chan struct{}
 	pointClickBlockCh             chan struct{}
@@ -60,6 +65,8 @@ type a11yCompatBackend struct {
 	keyExecutionMode              string
 	screenshotImagePath           string
 	screenshotGroundingBytes      []byte
+	focusedTypeResultSet          bool
+	focusedTypeResult             a11yruntime.ActionResult
 	actResultSet                  bool
 	actResult                     a11yruntime.ActionResult
 	actCalls                      int
@@ -71,6 +78,7 @@ type a11yCompatBackend struct {
 	activateAppErrs               map[string]error
 	actErrorsByType               map[string]error
 	keyErrorsByChord              map[string]error
+	focusedTypeErr                error
 	pointClickErr                 error
 }
 
@@ -304,6 +312,51 @@ func (b *a11yCompatBackend) Key(_ context.Context, windowID string, keys []strin
 		mode = "input"
 	}
 	return a11yruntime.ActionResult{WindowID: b.keyResultWindowID, ExecutionMode: mode, Message: "keys"}, nil
+}
+
+func (b *a11yCompatBackend) TypeFocusedText(_ context.Context, windowID string, value string, holdMS int) (a11yruntime.ActionResult, error) {
+	b.lastFocusedTypeWindowID = windowID
+	b.lastFocusedTypeValue = value
+	b.lastFocusedTypeHoldMS = holdMS
+	b.focusedTypeWindowHistory = append(b.focusedTypeWindowHistory, windowID)
+	b.focusedTypeHistory = append(b.focusedTypeHistory, value)
+	if b.focusedTypeErr != nil {
+		return a11yruntime.ActionResult{}, b.focusedTypeErr
+	}
+	if b.focusedTypeResultSet {
+		result := b.focusedTypeResult
+		if strings.TrimSpace(result.WindowID) == "" {
+			result.WindowID = windowID
+		}
+		if strings.TrimSpace(result.HostOS) == "" {
+			result.HostOS = b.HostOS()
+		}
+		if strings.TrimSpace(result.ExecutionMode) == "" {
+			result.ExecutionMode = "input"
+		}
+		if strings.TrimSpace(result.InputMethod) == "" {
+			result.InputMethod = "clipboard"
+		}
+		if strings.TrimSpace(result.VerificationMethod) == "" {
+			result.VerificationMethod = "focused_text"
+		}
+		if strings.TrimSpace(result.Message) == "" {
+			result.Message = "Host action completed"
+		}
+		result.TargetHit = true
+		result.VerificationPassed = true
+		return result, nil
+	}
+	return a11yruntime.ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		VerificationPassed: true,
+		VerificationMethod: "focused_text",
+		InputMethod:        "clipboard",
+		Message:            "Host action completed",
+	}, nil
 }
 
 func (b *a11yCompatBackend) Screenshot(_ context.Context, windowID string) (a11yruntime.ScreenshotResult, error) {
@@ -1582,6 +1635,624 @@ func TestA11yToolExecute_KeyDefaultsAndForwardsHoldMS(t *testing.T) {
 	}
 	if backend.lastKeyHoldMS != 900 {
 		t.Fatalf("custom lastKeyHoldMS = %d, want 900", backend.lastKeyHoldMS)
+	}
+}
+
+func TestA11yToolExecute_KeyNormalizesSingleShortcutLiteralString(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "key",
+		"params": map[string]interface{}{
+			"keys": "command+k",
+		},
+	})
+	if err != nil {
+		t.Fatalf("key Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "cmd" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [cmd k]", got)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_KeyUsesSubmitKeysWhenKeysMissing(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "key",
+		"params": map[string]interface{}{
+			"submit_keys": []interface{}{"Meta+k"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("key Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded submit key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "cmd" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [cmd k]", got)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_KeyboardInputAliasUsesKeyAction(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "keyboard_input",
+		"params": map[string]interface{}{
+			"keys": "command+k",
+		},
+	})
+	if err != nil {
+		t.Fatalf("keyboard_input Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "cmd" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [cmd k]", got)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_KeySequenceAliasParsesShortcutLiteralValue(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "key_sequence",
+		"value":  "command+k",
+	})
+	if err != nil {
+		t.Fatalf("key_sequence Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "cmd" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [cmd k]", got)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_KeyActionPlainValueDoesNotBecomeShortcut(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "key",
+		"value":  "hello",
+	}); err == nil {
+		t.Fatal("key Execute() error = nil, want missing-keys error")
+	}
+	if len(backend.keyHistory) != 0 {
+		t.Fatalf("keyHistory = %#v, want no key dispatch for plain value", backend.keyHistory)
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithoutValueUsesSubmitKeysAsKeyChord(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "type",
+		"submit_keys": []interface{}{"command", "f"},
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "command" || got[1] != "f" {
+		t.Fatalf("keyHistory[0] = %#v, want [command f]", got)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic type action", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithoutValueUsesKeysAsKeyChord(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "type",
+		"params": map[string]interface{}{
+			"keys": []interface{}{"cmd", "k"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "cmd" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [cmd k]", got)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic type action", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithValueFallsBackToFocusedTextWhenInputSelectorMisses(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "type",
+		"window_title": "Feishu",
+		"value":        "后端之家",
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 1 {
+		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
+	}
+	if backend.lastFocusedTypeValue != "后端之家" {
+		t.Fatalf("lastFocusedTypeValue = %q, want 后端之家", backend.lastFocusedTypeValue)
+	}
+	if backend.lastFocusedTypeWindowID != "win-feishu" {
+		t.Fatalf("lastFocusedTypeWindowID = %q, want win-feishu", backend.lastFocusedTypeWindowID)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic act call", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after focused text fallback", out["error_code"])
+	}
+	if out["input_method"] != "clipboard" {
+		t.Fatalf("input_method = %v, want clipboard", out["input_method"])
+	}
+	if out["verification_method"] != "focused_text" {
+		t.Fatalf("verification_method = %v, want focused_text", out["verification_method"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithValueFallbackStillRunsSubmitKeys(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "type",
+		"window_title": "Feishu",
+		"value":        "后端之家",
+		"submit_keys":  []interface{}{"command", "k"},
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 1 {
+		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one submit key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "command" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [command k]", got)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic act call", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after focused text fallback + submit keys", out["error_code"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithShortcutLiteralValueUsesKeyChord(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "type",
+		"value":  "command+k",
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "cmd" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [cmd k]", got)
+	}
+	if len(backend.focusedTypeHistory) != 0 {
+		t.Fatalf("focusedTypeHistory = %#v, want no focused text typing", backend.focusedTypeHistory)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic type action", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithPlainPlusTextDoesNotUseShortcutFallback(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "type",
+		"window_title": "Feishu",
+		"value":        "a+b",
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 0 {
+		t.Fatalf("keyHistory = %#v, want no key chord fallback for plain plus text", backend.keyHistory)
+	}
+	if got := len(backend.focusedTypeHistory); got != 1 {
+		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
+	}
+	if backend.lastFocusedTypeValue != "a+b" {
+		t.Fatalf("lastFocusedTypeValue = %q, want a+b", backend.lastFocusedTypeValue)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after focused text fallback", out["error_code"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithSingleSubmitShortcutLiteralStillSubmits(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "type",
+		"window_title": "Feishu",
+		"value":        "后端之家",
+		"submit_keys":  []interface{}{"Meta+k"},
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 1 {
+		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one submit key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 2 || got[0] != "cmd" || got[1] != "k" {
+		t.Fatalf("keyHistory[0] = %#v, want [cmd k]", got)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after focused text fallback + normalized submit chord", out["error_code"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasMessageValueDoesNotUseShortcutFallback(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document]\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca-conversation",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "type",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "command+k",
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 0 {
+		t.Fatalf("keyHistory = %#v, want no key chord fallback for message text", backend.keyHistory)
+	}
+	if len(backend.actTypeHistory) != 2 || backend.actTypeHistory[0] != "click" || backend.actTypeHistory[1] != "type" {
+		t.Fatalf("actTypeHistory = %#v, want [click type]", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "ok" {
+		t.Fatalf("message = %v, want ok", out["message"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithExplicitInputRoleFallsBackToFocusedText(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "type",
+		"window_title": "Feishu",
+		"target_role":  "input",
+		"value":        "后端之家",
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 1 {
+		t.Fatalf("focusedTypeHistory len = %d, want 1", got)
+	}
+	if backend.lastFocusedTypeValue != "后端之家" {
+		t.Fatalf("lastFocusedTypeValue = %q, want 后端之家", backend.lastFocusedTypeValue)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic act call", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after explicit input-role focused fallback", out["error_code"])
+	}
+}
+
+func TestA11yToolExecute_TypeAliasWithNamedInputTargetDoesNotUseFocusedTextFallback(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "type",
+		"window_title": "Feishu",
+		"target_role":  "input",
+		"target_name":  "Composer",
+		"value":        "后端之家",
+	})
+	if err != nil {
+		t.Fatalf("type Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 0 {
+		t.Fatalf("focusedTypeHistory len = %d, want 0 for named target", got)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic act call on unresolved named target", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "target_not_found" {
+		t.Fatalf("error_code = %v, want target_not_found for named target miss", out["error_code"])
+	}
+}
+
+func TestA11yToolExecute_ActTypeDoesNotUseFocusedTextAliasFallback(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "act",
+		"window_title": "Feishu",
+		"params": map[string]interface{}{
+			"act_type": "type",
+			"value":    "后端之家",
+		},
+	})
+	if err != nil {
+		t.Fatalf("act Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 0 {
+		t.Fatalf("focusedTypeHistory len = %d, want 0 for generic act", got)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic act call on unresolved target", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != "target_not_found" {
+		t.Fatalf("error_code = %v, want target_not_found", out["error_code"])
 	}
 }
 

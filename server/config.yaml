@@ -167,6 +167,22 @@ llm:
       - "openai"
       - "ollama"
 
+# =============================================================================
+# Memory Configuration
+# =============================================================================
+memory:
+  backend: "markdown"
+  markdown_dir: "./data/memory"
+
+  dream:
+    enabled: true
+    archive_dir: ""  # Empty = ./data/archives/dream
+    schedule: "0 30 3 * * *"  # Run daily at 03:30 UTC
+    promote_daily_after_days: 7
+    archive_daily_after_days: 30
+    session_min_messages: 4
+    max_promotions_per_run: 5
+
 # First-run wizard
 first_run:
   enabled: true

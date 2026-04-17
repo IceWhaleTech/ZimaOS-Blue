@@ -161,7 +161,6 @@ func (t *PPTXTool) executeTemplateMutation(ctx context.Context, args map[string]
 	if err != nil {
 		return "", err
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       action,
 		Path:         relPath,
@@ -172,7 +171,7 @@ func (t *PPTXTool) executeTemplateMutation(ctx context.Context, args map[string]
 		EngineChain:  []string{"native_pptx_ooxml"},
 		Degraded:     false,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Summary:      summary,
 		Success:      true,
 	}

@@ -110,6 +110,18 @@ const harnessProviderRemediationProtectedPaths = [
   'harness.group.remediationInfraProviderBlocked',
 ] as const
 
+const dreamMemoryProtectedPaths = [
+  'memory.dreamTitle',
+  'memory.dreamDescription',
+  'memory.dreamPendingCapsules',
+  'memory.dreamPromotedCount',
+  'memory.dreamArchivedDailyLogs',
+  'memory.dreamLastRun',
+  'memory.dreamRun',
+  'memory.dreamRunning',
+  'memory.dreamRunSuccess',
+] as const
+
 describe('locale integrity', () => {
   it('keeps the full 27-locale set', () => {
     expect(Object.keys(localeModules)).toHaveLength(27)
@@ -239,6 +251,29 @@ describe('locale integrity', () => {
         expect(typeof value, `${locale} missing raw locale key ${path}`).toBe('string')
         expect(String(value).trim().length, `${locale} empty raw locale key ${path}`).toBeGreaterThan(
           0
+        )
+      }
+    }
+  })
+
+  it('keeps dream memory copy in raw locale files without runtime-only backfills', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+
+    for (const [modulePath, mod] of entries) {
+      const locale = localeFromModulePath(modulePath)
+      const runtimeMessages = resolveRuntimeMessages(locale as LocaleKey, mod.default)
+
+      for (const path of dreamMemoryProtectedPaths) {
+        const rawValue = getPathValue(mod.default, path)
+        const runtimeValue = getPathValue(runtimeMessages, path)
+
+        expect(typeof rawValue, `${locale} missing raw locale key ${path}`).toBe('string')
+        expect(
+          String(rawValue).trim().length,
+          `${locale} empty raw locale key ${path}`
+        ).toBeGreaterThan(0)
+        expect(rawValue, `${locale} should keep raw locale key ${path} aligned with runtime copy`).toBe(
+          runtimeValue
         )
       }
     }

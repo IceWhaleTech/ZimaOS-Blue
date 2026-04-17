@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -281,6 +282,73 @@ func TestPDFToolFillInspectExecuteReportsUnsupportedFormType(t *testing.T) {
 	if got := validation["fillable"]; got != false {
 		t.Fatalf("fillable = %v, want false", got)
 	}
+}
+
+func TestNativePDFCreateRequestUsesReadableInkOnWhitePage(t *testing.T) {
+	theme := resolveOfficeTheme("", "")
+	if !theme.Dark {
+		t.Fatalf("expected default no-hint theme to be dark, got %#v", theme)
+	}
+
+	req := nativePDFCreateRequest(officeDocSpec{
+		Title:    "Launch Brief",
+		Subtitle: "Q2 roll-out",
+		Summary:  "Readable output matters.",
+		Theme:    theme,
+	})
+
+	checkContrast := func(name, color string, min float64) {
+		t.Helper()
+		if got := pdfTestContrastAgainstWhite(color); got < min {
+			t.Fatalf("%s contrast = %.2f for %s, want >= %.2f on white PDF pages", name, got, color, min)
+		}
+	}
+
+	checkContrast("title", req.TitleColor, 7.0)
+	checkContrast("heading", req.HeadingColor, 7.0)
+	checkContrast("body", req.BodyColor, 4.5)
+	checkContrast("subtitle", req.SubtitleColor, 4.5)
+	checkContrast("muted", req.MutedColor, 4.5)
+}
+
+func pdfTestContrastAgainstWhite(hex string) float64 {
+	return pdfTestContrastRatio(hex, "#FFFFFF")
+}
+
+func pdfTestContrastRatio(foreground, background string) float64 {
+	l1 := pdfTestRelativeLuminance(foreground)
+	l2 := pdfTestRelativeLuminance(background)
+	if l1 < l2 {
+		l1, l2 = l2, l1
+	}
+	return (l1 + 0.05) / (l2 + 0.05)
+}
+
+func pdfTestRelativeLuminance(hex string) float64 {
+	r, g, b := pdfTestHexToRGB(hex)
+	return 0.2126*pdfTestLinearize(r) + 0.7152*pdfTestLinearize(g) + 0.0722*pdfTestLinearize(b)
+}
+
+func pdfTestHexToRGB(hex string) (float64, float64, float64) {
+	value := strings.TrimSpace(strings.TrimPrefix(hex, "#"))
+	if len(value) != 6 {
+		return 0, 0, 0
+	}
+	var rgb [3]int
+	for idx := 0; idx < 3; idx++ {
+		component := value[idx*2 : idx*2+2]
+		if _, err := fmt.Sscanf(component, "%02x", &rgb[idx]); err != nil {
+			return 0, 0, 0
+		}
+	}
+	return float64(rgb[0]) / 255.0, float64(rgb[1]) / 255.0, float64(rgb[2]) / 255.0
+}
+
+func pdfTestLinearize(v float64) float64 {
+	if v <= 0.04045 {
+		return v / 12.92
+	}
+	return math.Pow((v+0.055)/1.055, 2.4)
 }
 
 func TestPDFToolFillWriteRejectsUnsupportedFormTypeBeforeNativeWrite(t *testing.T) {

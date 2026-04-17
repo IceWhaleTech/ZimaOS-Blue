@@ -48,7 +48,6 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "computer_use"},
 		{Name: "ask"},
 		{Name: "bash"},
-		{Name: "calendar"},
 		{Name: "docx"},
 		{Name: "file_read"},
 		{Name: "file_write"},
@@ -69,14 +68,13 @@ func TestToolPolicyResolver_DefaultChatDirectAllowlist(t *testing.T) {
 		{Name: "xlsx"},
 	}
 	filtered := resolver.Filter(ToolPolicyRequest{RouteKind: ToolRouteKindChat}, defs)
-	if len(filtered) != 16 {
-		t.Fatalf("expected 16 tools after narrowed default chat allowlist, got %d (%#v)", len(filtered), filtered)
+	if len(filtered) != 15 {
+		t.Fatalf("expected 15 tools after narrowed default chat allowlist, got %d (%#v)", len(filtered), filtered)
 	}
 	allowed := map[string]bool{
 		"ask":          true,
 		"bash":         true,
 		"browser":      true,
-		"calendar":     true,
 		"computer_use": true,
 		"file_read":    true,
 		"file_write":   true,

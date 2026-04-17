@@ -1643,6 +1643,17 @@ export default mergeHarnessLocale('nl-NL', {
     searchPlaceholder: 'Zoek herinneringen...',
     noResults: 'Er zijn geen herinneringen gevonden die overeenkomen met uw zoekopdracht',
     recallSettings: 'Geheugenophaalmodus',
+    dreamTitle: 'Dream-consolidatie',
+    dreamDescription:
+      'Archiveert oudere chatcontext en promoveert duurzame geheugenkandidaten.',
+    dreamPendingCapsules: 'Openstaande capsules',
+    dreamPromotedCount: 'Gepromoveerde herinneringen',
+    dreamArchivedDailyLogs: 'Gearchiveerde daglogs',
+    dreamLastRun: 'Laatste uitvoering',
+    dreamRun: 'Dream uitvoeren',
+    dreamRunning: 'Dream wordt uitgevoerd...',
+    dreamRunSuccess:
+      'Dream voltooid: {processed} capsules verwerkt, {promoted} herinneringen gepromoveerd en {archived} daglogs gearchiveerd.',
     prune: 'Snoei oud',
     pruneSuccess: '{count} oude herinneringen gesnoeid',
     clearAll: 'Alles wissen',

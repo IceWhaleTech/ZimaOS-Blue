@@ -197,7 +197,6 @@ func (t *DOCXTool) executeEdit(ctx context.Context, args map[string]interface{})
 	if !changed {
 		warnings = append(warnings, "no matching replacement tokens were found in document/header/footer XML")
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       "edit",
 		Path:         relPath,
@@ -209,7 +208,7 @@ func (t *DOCXTool) executeEdit(ctx context.Context, args map[string]interface{})
 		Degraded:     false,
 		Warnings:     warnings,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Success:      true,
 	}
 	return marshalNativeDocumentPayload(payload)
@@ -264,7 +263,6 @@ func (t *DOCXTool) executeApplyTemplate(ctx context.Context, args map[string]int
 	if err != nil {
 		return "", err
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       "apply_template",
 		Path:         relPath,
@@ -275,7 +273,7 @@ func (t *DOCXTool) executeApplyTemplate(ctx context.Context, args map[string]int
 		EngineChain:  []string{"native_docx_ooxml"},
 		Degraded:     false,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Success:      true,
 	}
 	return marshalNativeDocumentPayload(payload)
@@ -298,7 +296,6 @@ func (t *DOCXTool) executeValidate(ctx context.Context, args map[string]interfac
 	if err != nil {
 		return "", err
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       "validate",
 		Path:         relPath,
@@ -309,7 +306,7 @@ func (t *DOCXTool) executeValidate(ctx context.Context, args map[string]interfac
 		EngineChain:  []string{"native_docx_ooxml"},
 		Degraded:     false,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Success:      true,
 	}
 	return marshalNativeDocumentPayload(payload)

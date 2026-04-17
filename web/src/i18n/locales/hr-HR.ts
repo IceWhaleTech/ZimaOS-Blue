@@ -1627,6 +1627,17 @@ export default mergeHarnessLocale('hr-HR', {
     searchPlaceholder: 'Pretraži memorije...',
     noResults: 'Nisu pronađene memorije koje odgovaraju upitu',
     recallSettings: 'Način prisjećanja memorije',
+    dreamTitle: 'Dream konsolidacija',
+    dreamDescription:
+      'Arhivira stariji kontekst chata i promiče trajne kandidate za memoriju.',
+    dreamPendingCapsules: 'Kapsule na čekanju',
+    dreamPromotedCount: 'Promaknute memorije',
+    dreamArchivedDailyLogs: 'Arhivirani dnevni zapisi',
+    dreamLastRun: 'Zadnje pokretanje',
+    dreamRun: 'Pokreni Dream',
+    dreamRunning: 'Dream se pokreće...',
+    dreamRunSuccess:
+      'Dream dovršen: obrađeno {processed} kapsula, promaknuto {promoted} memorija i arhivirano {archived} dnevnih zapisa.',
     prune: 'Orezati staru',
     pruneSuccess: 'Obrezano {count} starih sjećanja',
     clearAll: 'Obriši sve',

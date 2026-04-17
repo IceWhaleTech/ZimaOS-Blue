@@ -368,13 +368,13 @@ func TestParseOfficeDocSectionsPreservesCompactMetricLinesForChartCallouts(t *te
 func TestOfficePPTXChartCalloutColorsUseUnifiedSurfaceForDarkThemes(t *testing.T) {
 	theme := resolveOfficeTheme("midnight", "")
 	for _, tc := range []struct {
-		name        string
-		callout     officePPTXCallout
-		wantFill    string
-		wantLine    string
-		wantLabel   string
-		wantValue   string
-		wantBody    string
+		name      string
+		callout   officePPTXCallout
+		wantFill  string
+		wantLine  string
+		wantLabel string
+		wantValue string
+		wantBody  string
 	}{
 		{
 			name:      "primary",
@@ -2203,6 +2203,7 @@ func TestOfficePPTXChartXMLForThemeUsesThemeTypography(t *testing.T) {
 }
 
 func TestOfficePPTXChartXMLForThemeUsesThemeAxisChrome(t *testing.T) {
+	theme := resolveOfficeTheme("midnight", "")
 	chartXML := officePPTXChartXMLForTheme(officeChartSpec{
 		Type:       "bar",
 		Categories: []string{"Q1", "Q2"},
@@ -2210,7 +2211,7 @@ func TestOfficePPTXChartXMLForThemeUsesThemeAxisChrome(t *testing.T) {
 			{Name: "Revenue", Values: []float64{120, 132}},
 			{Name: "Margin", Values: []float64{28, 31}},
 		},
-	}, resolveOfficeTheme("midnight", ""))
+	}, theme)
 
 	categoryAxisBlocks := regexp.MustCompile(`<c:catAx>.*?</c:catAx>`).FindAllString(chartXML, -1)
 	if len(categoryAxisBlocks) != 1 {
@@ -2225,8 +2226,8 @@ func TestOfficePPTXChartXMLForThemeUsesThemeAxisChrome(t *testing.T) {
 		`<c:txPr>`,
 		`<a:latin typeface="Helvetica"/>`,
 		`<a:ea typeface="Hiragino Sans GB"/>`,
-		`<a:srgbClr val="334155"/>`,
-		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
+		`<a:srgbClr val="` + officeWordHex(theme.Slate) + `"/>`,
+		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="` + officeWordHex(theme.Border) + `"/></a:solidFill></a:ln></c:spPr>`,
 	} {
 		if !containsSubstring(categoryAxisBlocks[0], needle) {
 			t.Fatalf("theme category-axis XML missing %q in %s", needle, categoryAxisBlocks[0])
@@ -2234,12 +2235,12 @@ func TestOfficePPTXChartXMLForThemeUsesThemeAxisChrome(t *testing.T) {
 	}
 
 	for _, needle := range []string{
-		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="F1F5F9"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
+		`<c:majorGridlines><c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="` + officeWordHex(theme.SurfaceMuted) + `"/></a:solidFill></a:ln></c:spPr></c:majorGridlines>`,
 		`<c:txPr>`,
 		`<a:latin typeface="Helvetica"/>`,
 		`<a:ea typeface="Hiragino Sans GB"/>`,
-		`<a:srgbClr val="334155"/>`,
-		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="CBD5E1"/></a:solidFill></a:ln></c:spPr>`,
+		`<a:srgbClr val="` + officeWordHex(theme.Slate) + `"/>`,
+		`<c:spPr><a:ln w="12700"><a:solidFill><a:srgbClr val="` + officeWordHex(theme.Border) + `"/></a:solidFill></a:ln></c:spPr>`,
 	} {
 		if !containsSubstring(valueAxisBlocks[0], needle) {
 			t.Fatalf("theme value-axis XML missing %q in %s", needle, valueAxisBlocks[0])

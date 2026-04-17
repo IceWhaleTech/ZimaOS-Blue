@@ -296,6 +296,16 @@ func skillsHTTPClient() *http.Client {
 	return &http.Client{Timeout: 20 * time.Second}
 }
 
+func skillsRequestAuthorizationHeader(endpoint string) (string, error) {
+	if token := strings.TrimSpace(os.Getenv("BLUE_HARNESS_BEARER_TOKEN")); token != "" {
+		return "Bearer " + token, nil
+	}
+	if !strings.HasPrefix(strings.TrimSpace(endpoint), getSkillsBaseURL()) {
+		return "", nil
+	}
+	return localHarnessAuthorizationHeader()
+}
+
 func doSkillsRequest(method, endpoint string, payload interface{}) (*http.Response, error) {
 	var body io.Reader
 	if payload != nil {
@@ -312,7 +322,7 @@ func doSkillsRequest(method, endpoint string, payload interface{}) (*http.Respon
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	if authHeader, err := localHarnessAuthorizationHeader(); err == nil && authHeader != "" {
+	if authHeader, err := skillsRequestAuthorizationHeader(endpoint); err == nil && authHeader != "" {
 		req.Header.Set("Authorization", authHeader)
 	}
 	return skillsHTTPClient().Do(req)

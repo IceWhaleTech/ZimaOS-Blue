@@ -213,8 +213,13 @@ func TestConvertToolMaybeHandleNativeOfficeConvertDOCX(t *testing.T) {
 	}
 
 	documentXML := officeZipEntryText(t, data, "word/document.xml")
-	if !strings.Contains(documentXML, `w:color w:val="D4A017"`) {
-		t.Fatalf("expected document.xml to include forest accent color, got %s", documentXML)
+	forestTheme, err := officeThemeByName("forest")
+	if err != nil {
+		t.Fatalf("officeThemeByName(forest): %v", err)
+	}
+	expectedAccent := officeWordHex(forestTheme.Accent)
+	if !strings.Contains(documentXML, `w:color w:val="`+expectedAccent+`"`) {
+		t.Fatalf("expected document.xml to include forest accent color %q, got %s", expectedAccent, documentXML)
 	}
 
 	reader := convertpkg.NewDocumentReader()

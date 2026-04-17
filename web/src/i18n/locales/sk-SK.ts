@@ -1629,6 +1629,17 @@ export default mergeHarnessLocale('sk-SK', {
     searchPlaceholder: 'Hľadajte spomienky...',
     noResults: 'Nenašli sa žiadne spomienky zodpovedajúce vášmu dopytu',
     recallSettings: 'Režim vyvolania pamäte',
+    dreamTitle: 'Konsolidácia Dream',
+    dreamDescription:
+      'Archivuje starší kontext chatu a povyšuje trvalých kandidátov pamäte.',
+    dreamPendingCapsules: 'Čakajúce kapsule',
+    dreamPromotedCount: 'Povýšené spomienky',
+    dreamArchivedDailyLogs: 'Archivované denné záznamy',
+    dreamLastRun: 'Posledné spustenie',
+    dreamRun: 'Spustiť Dream',
+    dreamRunning: 'Dream sa spúšťa...',
+    dreamRunSuccess:
+      'Dream dokončený: spracovaných kapsúl {processed}, povýšených spomienok {promoted} a archivovaných denných záznamov {archived}.',
     prune: 'Prerezať starý',
     pruneSuccess: 'Orezané {count} staré spomienky',
     clearAll: 'Vymazať všetko',

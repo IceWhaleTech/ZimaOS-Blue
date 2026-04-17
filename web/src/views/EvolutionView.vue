@@ -24,6 +24,7 @@ import EvolutionKnowledgePane from '@/components/automation/EvolutionKnowledgePa
 import AgentcoreRunnerPanel from '@/components/harness/AgentcoreRunnerPanel.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useSettingsStore } from '@/stores/settings'
+import { countKnowledgeConflicts, countKnowledgeGaps } from '@/utils/knowledgeSummary'
 import { getErrorMessage } from '@/utils/error'
 
 type EvolutionPane = 'knowledge' | 'skills' | 'runner' | 'instructions'
@@ -3823,11 +3824,8 @@ async function loadKnowledgeLaneSummary() {
 
     const pages = pagesResult.value.data || []
     const issues = lintResult.status === 'fulfilled' ? lintResult.value.data?.issues || [] : []
-    const conflicts =
-      pages.filter((page) => page.status === 'conflicted').length ||
-      issues.filter((issue) => issue.category === 'review_required').length ||
-      0
-    const gaps = issues.filter((issue) => issue.category === 'research_suggestions').length || 0
+    const conflicts = countKnowledgeConflicts(pages, issues)
+    const gaps = countKnowledgeGaps(issues)
 
     knowledgeLaneSummary.value = {
       visiblePages: pages.length,

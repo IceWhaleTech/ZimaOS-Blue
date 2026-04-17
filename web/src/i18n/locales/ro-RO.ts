@@ -1637,6 +1637,17 @@ export default mergeHarnessLocale('ro-RO', {
     searchPlaceholder: 'Caută amintiri...',
     noResults: 'Nu s-au găsit amintiri care să corespundă interogării dvs',
     recallSettings: 'Mod de reamintire a memoriei',
+    dreamTitle: 'Consolidare Dream',
+    dreamDescription:
+      'Arhivează contextul de chat mai vechi și promovează candidații de memorie durabili.',
+    dreamPendingCapsules: 'Capsule în așteptare',
+    dreamPromotedCount: 'Memorii promovate',
+    dreamArchivedDailyLogs: 'Jurnale zilnice arhivate',
+    dreamLastRun: 'Ultima rulare',
+    dreamRun: 'Rulează Dream',
+    dreamRunning: 'Dream rulează...',
+    dreamRunSuccess:
+      'Dream finalizat: {processed} capsule procesate, {promoted} memorii promovate și {archived} jurnale zilnice arhivate.',
     prune: 'Curăță elementele vechi',
     pruneSuccess: 'S-au tăiat {count} amintiri vechi',
     clearAll: 'Ștergeți tot',

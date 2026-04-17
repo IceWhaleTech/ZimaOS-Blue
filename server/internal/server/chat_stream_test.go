@@ -7796,7 +7796,7 @@ func TestStreamMessageAutoContinue_PseudoToolCall_CommandWorkdirJSON(t *testing.
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	pseudo := "收到，开始设置提醒。\n- [ ] 创建“10秒后喝水”提醒\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}{\"command\":\"blue help reminder\",...}"
+	pseudo := "收到，开始设置提醒。\n- [ ] 创建“10秒后喝水”提醒\nWorking on task: add reminder for 10 seconds later.{\"command\":\"blue reminder add message=\\\"喝水\\\" time=10s\",\"workdir\":\"/tmp/test-workspace\"}{\"command\":\"blue help reminder\",...}"
 	fakeProxy := &autoContinueScriptedProxyHandler{
 		firstRoundContent:  pseudo,
 		secondRoundContent: "已切换为真实工具调用并完成提醒创建。",
@@ -7871,7 +7871,7 @@ func TestStreamMessage_SanitizesLeakedCommandWorkdirPrefixOnFinalPersist(t *test
 	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
 	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
 
-	leaked := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+	leaked := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/tmp/test-workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
 	fakeProxy := &autoContinueScriptedProxyHandler{
 		firstRoundContent: leaked,
 	}

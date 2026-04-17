@@ -7510,6 +7510,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	if policyReq.RouteKind == tools.ToolRouteKindChat &&
 		!policyReq.SkipDefaultChatDirectAllowlist &&
 		(shouldExpandChatToolAllowlistForEmailIntent(userMessage) ||
+			shouldExpandChatToolAllowlistForCalendarIntent(userMessage) ||
 			shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage) ||
 			shouldExpandChatToolAllowlistForExplicitNamedNativeTool(userMessage)) {
 		expandedReq := policyReq
@@ -7532,6 +7533,7 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 	routed = ensureExplicitNamedNativeTools(userMessage, allDefs, routed)
 	routed = suppressConvertForNativeArtifactRouting(userMessage, routed)
 	routed = applyEmailToolPreference(routed, userMessage)
+	routed = applyCalendarToolPreference(routed, userMessage)
 	routed = keepAlwaysExposedChatTools(allDefs, routed)
 
 	names := make([]string, len(routed))
@@ -7553,6 +7555,10 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 
 func shouldExpandChatToolAllowlistForEmailIntent(userMessage string) bool {
 	return isEmailIntentMessage(userMessage)
+}
+
+func shouldExpandChatToolAllowlistForCalendarIntent(userMessage string) bool {
+	return isCalendarIntentMessage(userMessage) && !isReminderIntentMessage(userMessage)
 }
 
 func shouldExpandChatToolAllowlistForExplicitNativeArtifact(userMessage string) bool {

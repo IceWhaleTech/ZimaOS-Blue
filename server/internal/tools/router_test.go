@@ -65,6 +65,12 @@ func TestToolRouterSchemaCompression(t *testing.T) {
 	}
 
 	schema := got[0].Parameters
+	if got[0].Icon != "" {
+		t.Fatalf("compressed tool icon should be removed: %+v", got[0])
+	}
+	if defs[0].Description != "" && (got[0].Description == "" || len(got[0].Description) > compactToolDescriptionMaxLen) {
+		t.Fatalf("compressed tool description should be short and non-empty: %q", got[0].Description)
+	}
 	if _, ok := schema["description"]; ok {
 		t.Fatalf("schema top-level description should be removed: %+v", schema)
 	}

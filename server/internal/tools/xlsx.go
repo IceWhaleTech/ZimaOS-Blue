@@ -3,7 +3,6 @@ package tools
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	convertpkg "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/convert"
@@ -223,7 +222,6 @@ func (t *XLSXTool) executeEdit(ctx context.Context, args map[string]interface{},
 		if !changed {
 			warnings = append(warnings, "no matching replacement tokens were found in workbook XML")
 		}
-		info, _ := os.Stat(absPath)
 		payload := nativeDocumentPayload{
 			Action:       action,
 			Path:         relPath,
@@ -235,7 +233,7 @@ func (t *XLSXTool) executeEdit(ctx context.Context, args map[string]interface{},
 			Degraded:     false,
 			Warnings:     warnings,
 			Validation:   validation,
-			Size:         info.Size(),
+			Size:         nativeDocumentPayloadSize(absPath),
 			Success:      true,
 		}
 		return marshalNativeDocumentPayload(payload)
@@ -267,7 +265,6 @@ func (t *XLSXTool) executeValidate(ctx context.Context, args map[string]interfac
 	if err != nil {
 		return "", err
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       "validate",
 		Path:         relPath,
@@ -278,7 +275,7 @@ func (t *XLSXTool) executeValidate(ctx context.Context, args map[string]interfac
 		EngineChain:  []string{"native_xlsx_ooxml"},
 		Degraded:     false,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Success:      true,
 	}
 	return marshalNativeDocumentPayload(payload)
@@ -464,7 +461,6 @@ func (t *XLSXTool) executeSemanticMutation(ctx context.Context, args map[string]
 	if err != nil {
 		return "", err
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       action,
 		Path:         relPath,
@@ -475,7 +471,7 @@ func (t *XLSXTool) executeSemanticMutation(ctx context.Context, args map[string]
 		EngineChain:  []string{"native_xlsx_ooxml"},
 		Degraded:     false,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Summary:      summary,
 		Success:      true,
 	}
@@ -582,7 +578,6 @@ func (t *XLSXTool) executeAnalysisAction(ctx context.Context, args map[string]in
 		return "", fmt.Errorf("unsupported xlsx analysis action %q", action)
 	}
 
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       action,
 		Path:         relPath,
@@ -592,7 +587,7 @@ func (t *XLSXTool) executeAnalysisAction(ctx context.Context, args map[string]in
 		Engine:       "native_xlsx_ooxml",
 		EngineChain:  []string{"native_xlsx_ooxml"},
 		Degraded:     false,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Result:       result,
 		Summary:      summary,
 		Success:      true,

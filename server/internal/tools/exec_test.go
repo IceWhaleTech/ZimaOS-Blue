@@ -2985,8 +2985,8 @@ func TestExtractAbsolutePaths(t *testing.T) {
 		{"echo /dev/null", nil}, // /dev/null skipped
 		{"ls /foo/bar /baz/qux", []string{"/foo/bar", "/baz/qux"}},
 		{
-			"cat > /Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js << 'STORE_EOF'\n</StoreContext.Provider>\nSTORE_EOF",
-			[]string{"/Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js"},
+			"cat > /tmp/test-workspace/photos-app/src/store.js << 'STORE_EOF'\n</StoreContext.Provider>\nSTORE_EOF",
+			[]string{"/tmp/test-workspace/photos-app/src/store.js"},
 		},
 	}
 	for _, tt := range tests {
@@ -3024,14 +3024,14 @@ func TestExtractCommandPaths(t *testing.T) {
 		{name: "blue slash command", command: "blue /install humanizer", want: nil},
 		{
 			name: "ignores malformed jsx-like absolute tokens",
-			command: `cat > /Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js << 'STORE_EOF'
+			command: `cat > /tmp/test-workspace/photos-app/src/store.js << 'STORE_EOF'
 return (
   <StoreContext.Provider value={{ state, actions }}>
     {children}
   </StoreContext.Provider>
 )
 STORE_EOF`,
-			want: []string{"/Users/orca/.zimaos-blue/data/workspace/photos-app/src/store.js"},
+			want: []string{"/tmp/test-workspace/photos-app/src/store.js"},
 		},
 	}
 

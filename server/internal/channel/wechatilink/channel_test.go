@@ -250,6 +250,77 @@ func TestChannel_Start_ReturnsAuthErrorBeforeConnecting(t *testing.T) {
 	}
 }
 
+func TestChannel_Start_ContinuesWhenStartupProbeTimesOut(t *testing.T) {
+	oldProbeTimeout := iLinkStartupProbeTimeout
+	oldHTTPTimeout := iLinkHTTPTimeout
+	t.Cleanup(func() {
+		iLinkStartupProbeTimeout = oldProbeTimeout
+		iLinkHTTPTimeout = oldHTTPTimeout
+	})
+
+	iLinkStartupProbeTimeout = 20 * time.Millisecond
+	iLinkHTTPTimeout = 200 * time.Millisecond
+
+	var calls atomic.Int32
+	secondRequestStarted := make(chan struct{}, 1)
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/getupdates" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		call := calls.Add(1)
+		if call == 1 {
+			time.Sleep(50 * time.Millisecond)
+			return
+		}
+
+		select {
+		case secondRequestStarted <- struct{}{}:
+		default:
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret":                    0,
+			"msgs":                   []any{},
+			"get_updates_buf":        "cursor-1",
+			"longpolling_timeout_ms": 1,
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL,
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := ch.Start(ctx); err != nil {
+		t.Fatalf("Start error = %v", err)
+	}
+	defer func() {
+		if err := ch.Stop(context.Background()); err != nil {
+			t.Fatalf("Stop error = %v", err)
+		}
+	}()
+
+	select {
+	case <-secondRequestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected background iLink poller to continue after startup probe timeout")
+	}
+
+	info := ch.Info()
+	if info.Status != channel.StatusConnected {
+		t.Fatalf("Status = %q, want %q", info.Status, channel.StatusConnected)
+	}
+	if info.ConnectedAt == nil {
+		t.Fatal("expected ConnectedAt to be set after successful start")
+	}
+}
+
 func TestChannel_Start_DoesNotDuplicateBotSubpath(t *testing.T) {
 	var calls atomic.Int32
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

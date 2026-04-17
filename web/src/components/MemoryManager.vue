@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { memoryApi, type MemorySearchResult, type MemoryStats } from '@/api/memory'
+import {
+  memoryApi,
+  type DreamStatusResponse,
+  type MemorySearchResult,
+  type MemoryStats,
+} from '@/api/memory'
 import SemanticSearchField from '@/components/ui/SemanticSearchField.vue'
 import type { MemoryRecallMode } from '@/stores/settings'
 
@@ -40,17 +45,22 @@ const memoryError = ref<string | null>(null)
 const memoryImportFile = ref<File | null>(null)
 const memoryImportMode = ref<'append' | 'replace'>('append')
 const memoryFileInputRef = ref<HTMLInputElement | null>(null)
+const dreamStatus = ref<DreamStatusResponse | null>(null)
+const dreamRunning = ref(false)
 
 const operationMessage = ref<{ type: 'success' | 'error'; text: string } | null>(null)
 
 const hasMemories = computed(() => (stats.value?.total_chunks ?? 0) > 0)
 const hasSearchQuery = computed(() => searchQuery.value.trim().length > 0)
+const hasDreamPanel = computed(() => dreamStatus.value !== null)
+const dreamEnabled = computed(() => dreamStatus.value?.enabled ?? false)
 const displayCount = computed(
   () => stats.value?.total_display_count ?? stats.value?.total_chunks ?? 0
 )
 const totalSizeText = computed(() =>
   formatBytes(stats.value?.total_display_size_bytes ?? stats.value?.total_size_bytes ?? 0)
 )
+const dreamLastRunText = computed(() => formatDate(dreamStatus.value?.last_run_at ?? undefined))
 
 let searchDebounceTimer: number | null = null
 let messageTimer: number | null = null
@@ -91,6 +101,19 @@ async function loadStats() {
   } catch (error) {
     console.error('Failed to load memory stats:', error)
     setOperationMessage('error', t('common.error'))
+  }
+}
+
+async function loadDreamStatus(silent = true) {
+  try {
+    const response = await memoryApi.dreamStatus()
+    dreamStatus.value = response.data
+  } catch (error) {
+    dreamStatus.value = null
+    if (!silent) {
+      console.error('Failed to load dream status:', error)
+      setOperationMessage('error', t('common.error'))
+    }
   }
 }
 
@@ -247,6 +270,28 @@ async function handleMemoryExport() {
   }
 }
 
+async function runDreamPass() {
+  if (dreamRunning.value || !dreamEnabled.value) return
+
+  dreamRunning.value = true
+  try {
+    const response = await memoryApi.runDream()
+    await loadDreamStatus()
+    const message = t('memory.dreamRunSuccess', {
+      processed: response.data.processed_capsules,
+      promoted: response.data.promoted_count,
+      archived: response.data.archived_daily_count,
+    })
+    emit('status-change', message)
+    setOperationMessage('success', message)
+  } catch (error) {
+    console.error('Failed to run dream pass:', error)
+    setOperationMessage('error', error instanceof Error ? error.message : t('common.error'))
+  } finally {
+    dreamRunning.value = false
+  }
+}
+
 function handleMemoryFileSelect(event: Event) {
   const input = event.target as HTMLInputElement
   if (input.files && input.files.length > 0) {
@@ -345,6 +390,7 @@ watch(searchQuery, () => {
 
 onMounted(() => {
   void loadStats()
+  void loadDreamStatus()
 })
 
 onBeforeUnmount(() => {
@@ -446,6 +492,86 @@ onBeforeUnmount(() => {
           </div>
           <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
             {{ formatDate(stats?.newest_chunk) }}
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="hasDreamPanel"
+        data-testid="memory-dream-panel"
+        class="mt-3 rounded-xl border border-sky-200/70 dark:border-sky-700/60 bg-sky-50/70 dark:bg-sky-950/20 px-4 py-4"
+      >
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+              {{ t('memory.dreamTitle') }}
+            </h3>
+            <p class="text-sm text-gray-600 dark:text-gray-300 mt-1">
+              {{ t('memory.dreamDescription') }}
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <span
+              class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium"
+              :class="
+                dreamEnabled
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                  : 'bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+              "
+            >
+              {{ dreamEnabled ? t('common.enabled') : t('common.disabled') }}
+            </span>
+            <button
+              data-testid="memory-dream-run"
+              :disabled="dreamRunning || !dreamEnabled"
+              class="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              @click="runDreamPass"
+            >
+              {{ dreamRunning ? t('memory.dreamRunning') : t('memory.dreamRun') }}
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-3">
+          <div
+            class="rounded-lg border border-sky-200/80 dark:border-sky-800/80 bg-white/80 dark:bg-slate-900/40 px-3 py-2.5"
+          >
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('memory.dreamPendingCapsules') }}
+            </div>
+            <div class="text-base font-semibold text-gray-900 dark:text-white">
+              {{ dreamStatus?.pending_capsules ?? 0 }}
+            </div>
+          </div>
+          <div
+            class="rounded-lg border border-sky-200/80 dark:border-sky-800/80 bg-white/80 dark:bg-slate-900/40 px-3 py-2.5"
+          >
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('memory.dreamPromotedCount') }}
+            </div>
+            <div class="text-base font-semibold text-gray-900 dark:text-white">
+              {{ dreamStatus?.promoted_count ?? 0 }}
+            </div>
+          </div>
+          <div
+            class="rounded-lg border border-sky-200/80 dark:border-sky-800/80 bg-white/80 dark:bg-slate-900/40 px-3 py-2.5"
+          >
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('memory.dreamArchivedDailyLogs') }}
+            </div>
+            <div class="text-base font-semibold text-gray-900 dark:text-white">
+              {{ dreamStatus?.archived_daily_logs ?? 0 }}
+            </div>
+          </div>
+          <div
+            class="rounded-lg border border-sky-200/80 dark:border-sky-800/80 bg-white/80 dark:bg-slate-900/40 px-3 py-2.5"
+          >
+            <div class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t('memory.dreamLastRun') }}
+            </div>
+            <div class="text-sm font-medium text-gray-900 dark:text-white truncate">
+              {{ dreamLastRunText }}
+            </div>
           </div>
         </div>
       </div>

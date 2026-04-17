@@ -1641,6 +1641,17 @@ export default mergeHarnessLocale('ga-IE', {
     searchPlaceholder: 'Cuimhní cuardaigh...',
     noResults: 'Níor aimsíodh aon chuimhní a thagann le do cheist',
     recallSettings: 'Mód athghairme cuimhne',
+    dreamTitle: 'Comhdhlúthú Dream',
+    dreamDescription:
+      'Cartlannaíonn sé comhthéacs comhrá níos sine agus ardaíonn sé iarrthóirí cuimhne buana.',
+    dreamPendingCapsules: 'Capsúil ar feitheamh',
+    dreamPromotedCount: 'Cuimhní curtha chun cinn',
+    dreamArchivedDailyLogs: 'Logaí laethúla curtha i gcartlann',
+    dreamLastRun: 'An rith is déanaí',
+    dreamRun: 'Rith Dream',
+    dreamRunning: 'Ag rith Dream...',
+    dreamRunSuccess:
+      'Críochnaíodh Dream: próiseáladh {processed} capsúl, cuireadh {promoted} cuimhne chun cinn, agus cuireadh {archived} loga laethúil i gcartlann.',
     prune: 'Prune Sean',
     pruneSuccess: 'Bearradh {count} seanchuimhní',
     clearAll: 'Glan Uile',

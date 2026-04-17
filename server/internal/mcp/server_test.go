@@ -751,7 +751,7 @@ func TestWorkspaceTools_CompatPayloadArgs(t *testing.T) {
 
 func TestWorkspaceListFiles_BareFilenameFallsBackToWorkspaceRoot(t *testing.T) {
 	root := t.TempDir()
-	targetName := "orca_命理完整报告.pdf"
+	targetName := "sample_report.pdf"
 	if err := os.WriteFile(filepath.Join(root, targetName), []byte("pdf"), 0o644); err != nil {
 		t.Fatalf("write target file: %v", err)
 	}

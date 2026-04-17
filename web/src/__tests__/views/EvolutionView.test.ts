@@ -1009,6 +1009,65 @@ describe('EvolutionView', () => {
     expect(knowledgeApi.getPage).not.toHaveBeenCalled()
   })
 
+  it('clears the knowledge lane conflict badge when current pages are no longer conflicted even if the latest lint report is stale', async () => {
+    vi.mocked(knowledgeApi.listPages).mockResolvedValue({
+      data: [
+        {
+          title: 'Blue Knowledge',
+          slug: 'readme',
+          page_type: 'source_summary',
+          summary: 'Compiled entry page.',
+          source_refs: ['README.md'],
+          keywords: ['blue', 'knowledge'],
+          backlinks: ['architecture'],
+          generated_at: '2026-04-05T12:00:00Z',
+          updated_at: '2026-04-05T12:20:00Z',
+          source_hash: 'hash-1',
+          status: 'active',
+          confidence: 'low',
+          conflicts_with: [],
+          superseded_by: [],
+          derived_from_query: '',
+        },
+        {
+          title: 'Blue Architecture',
+          slug: 'architecture',
+          page_type: 'source_summary',
+          summary: 'Architecture detail.',
+          source_refs: ['ARCHITECTURE.md'],
+          keywords: ['architecture'],
+          backlinks: ['readme'],
+          generated_at: '2026-04-05T12:00:00Z',
+          updated_at: '2026-04-05T12:20:00Z',
+          source_hash: 'hash-2',
+          status: 'active',
+          confidence: 'low',
+          conflicts_with: [],
+          superseded_by: [],
+          derived_from_query: '',
+        },
+      ],
+    } as never)
+    vi.mocked(knowledgeApi.getLatestLint).mockResolvedValue({
+      data: {
+        generated_at: '2026-04-05T12:00:00Z',
+        issues: [
+          {
+            kind: 'conflicting_claim',
+            message: 'readme conflicts with architecture',
+            category: 'review_required',
+            severity: 'high',
+            related_pages: ['readme', 'architecture'],
+          },
+        ],
+      },
+    } as never)
+
+    const wrapper = await mountView()
+
+    expect(wrapper.get('[data-testid="evolution-lane-supporting-knowledge"]').text()).toBe('Pages')
+  })
+
   it('loads the evolution overview on first load and defers selected skill detail lists until the skills lane opens', async () => {
     const wrapper = await mountView('en-US', { defaultPane: null })
 

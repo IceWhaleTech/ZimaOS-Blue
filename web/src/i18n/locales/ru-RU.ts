@@ -1638,6 +1638,17 @@ export default mergeHarnessLocale('ru-RU', {
     searchPlaceholder: 'Поиск воспоминаний...',
     noResults: 'Воспоминаний, соответствующих вашему запросу, не обнаружено.',
     recallSettings: 'Режим вызова памяти',
+    dreamTitle: 'Консолидация Dream',
+    dreamDescription:
+      'Архивирует более старый контекст чата и продвигает долговечные кандидаты в память.',
+    dreamPendingCapsules: 'Ожидающие капсулы',
+    dreamPromotedCount: 'Продвинутые воспоминания',
+    dreamArchivedDailyLogs: 'Архивированные дневные журналы',
+    dreamLastRun: 'Последний запуск',
+    dreamRun: 'Запустить Dream',
+    dreamRunning: 'Dream выполняется...',
+    dreamRunSuccess:
+      'Dream завершен: обработано {processed} капсул, продвинуто {promoted} воспоминаний и архивировано {archived} дневных журналов.',
     prune: 'Чернослив старый',
     pruneSuccess: 'Обрезаны {count} старые воспоминания',
     clearAll: 'Очистить все',

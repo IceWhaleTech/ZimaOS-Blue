@@ -1646,6 +1646,17 @@ export default mergeHarnessLocale('es-ES', {
     searchPlaceholder: 'Buscar recuerdos...',
     noResults: 'No se encontraron recuerdos que coincidan con su consulta',
     recallSettings: 'Modo de recuperación de memoria',
+    dreamTitle: 'Consolidación Dream',
+    dreamDescription:
+      'Archiva el contexto de chat más antiguo y promueve candidatos de memoria duraderos.',
+    dreamPendingCapsules: 'Cápsulas pendientes',
+    dreamPromotedCount: 'Memorias promovidas',
+    dreamArchivedDailyLogs: 'Registros diarios archivados',
+    dreamLastRun: 'Última ejecución',
+    dreamRun: 'Ejecutar Dream',
+    dreamRunning: 'Ejecutando Dream...',
+    dreamRunSuccess:
+      'Dream completado: {processed} cápsulas procesadas, {promoted} memorias promovidas y {archived} registros diarios archivados.',
     prune: 'podar viejo',
     pruneSuccess: 'Podados {count} viejos recuerdos',
     clearAll: 'Borrar todo',

@@ -6,6 +6,8 @@ import (
 	"sync/atomic"
 )
 
+const compactToolDescriptionMaxLen = 64
+
 // ToolRouterStats holds cumulative stats for tool routing and schema compression.
 type ToolRouterStats struct {
 	Requests          int64 `json:"requests"`
@@ -151,12 +153,30 @@ func (tr *ToolRouter) applySchemaCompression(defs []ToolDefinition) []ToolDefini
 	for i, def := range defs {
 		out[i] = ToolDefinition{
 			Name:        def.Name,
-			Description: def.Description,
-			Icon:        def.Icon,
+			Description: compressToolDescription(def.Description),
 			Parameters:  compressSchemaMap(def.Parameters),
 		}
 	}
 	return out
+}
+
+func compressToolDescription(raw string) string {
+	desc := strings.Join(strings.Fields(strings.TrimSpace(raw)), " ")
+	if len(desc) <= compactToolDescriptionMaxLen {
+		return desc
+	}
+
+	for _, sep := range []string{". ", "。", "; ", "；", ": "} {
+		if idx := strings.Index(desc, sep); idx > 0 && idx <= compactToolDescriptionMaxLen {
+			return strings.TrimSpace(desc[:idx])
+		}
+	}
+
+	cut := desc[:compactToolDescriptionMaxLen]
+	if idx := strings.LastIndexAny(cut, " ,;:"); idx >= compactToolDescriptionMaxLen/2 {
+		cut = cut[:idx]
+	}
+	return strings.TrimSpace(cut)
 }
 
 func estimateSchemaBytes(defs []ToolDefinition) int {

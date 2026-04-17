@@ -17,6 +17,7 @@ import {
   type KnowledgePageSummary,
 } from '@/api/knowledge'
 import { useKnowledgeJobs } from '@/composables/useKnowledgeJobs'
+import { countKnowledgeConflicts, countKnowledgeGaps } from '@/utils/knowledgeSummary'
 import { pickKnowledgeGraphDefaultFocusSlug } from '@/utils/knowledgeGraph'
 
 type KnowledgePaneSummary = {
@@ -293,16 +294,9 @@ const groupedPages = computed<Record<KnowledgeGroupName, KnowledgePageSummary[]>
 const selectedKeywords = computed(() => selectedPage.value?.keywords || [])
 const selectedAnswers = computed(() => selectedPage.value?.answers || [])
 const conflictIssueCount = computed(
-  () =>
-    pages.value.filter((page) => page.status === 'conflicted').length ||
-    latestLint.value?.issues?.filter((issue) => issue.category === 'review_required').length ||
-    0
+  () => countKnowledgeConflicts(pages.value, latestLint.value?.issues)
 )
-const gapIssueCount = computed(
-  () =>
-    latestLint.value?.issues?.filter((issue) => issue.category === 'research_suggestions').length ||
-    0
-)
+const gapIssueCount = computed(() => countKnowledgeGaps(latestLint.value?.issues))
 const latestIngestEntry = computed(
   () => recentActivity.value.find((entry) => entry.operation === 'ingest') || null
 )

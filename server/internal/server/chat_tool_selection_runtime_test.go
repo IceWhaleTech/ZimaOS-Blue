@@ -160,7 +160,7 @@ func bindToolSearchTestRuntime(t *testing.T, handler *ChatHandler, cfg *config.C
 	return searchTool
 }
 
-func TestSelectTools_FirstTurnStaticAllowlistOmitsEmailWithoutEmailIntent(t *testing.T) {
+func TestSelectTools_FirstTurnStaticAllowlistOmitsEmailAndCalendarWithoutExplicitIntent(t *testing.T) {
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run real shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
@@ -187,7 +187,6 @@ func TestSelectTools_FirstTurnStaticAllowlistOmitsEmailWithoutEmailIntent(t *tes
 	names := toolNameSet(got)
 	for _, required := range []string{
 		"bash",
-		"calendar",
 		"deep_research",
 		"plan_append",
 		"plan_create",
@@ -202,6 +201,9 @@ func TestSelectTools_FirstTurnStaticAllowlistOmitsEmailWithoutEmailIntent(t *tes
 	}
 	if _, ok := names["email"]; ok {
 		t.Fatalf("expected email to stay hidden without explicit email intent, got=%v", got)
+	}
+	if _, ok := names["calendar"]; ok {
+		t.Fatalf("expected calendar to stay hidden without explicit calendar intent, got=%v", got)
 	}
 	if _, ok := names["process"]; ok {
 		t.Fatalf("expected non-allowlisted tool to stay hidden, got=%v", got)
@@ -240,6 +242,41 @@ func TestSelectTools_EmailIntentExpandsAllowlistAndNarrowsToEmail(t *testing.T) 
 	}
 	if _, ok := names["deep_research"]; ok {
 		t.Fatalf("expected unrelated research tool to stay hidden for email intent, got=%v", got)
+	}
+}
+
+func TestSelectTools_CalendarIntentExpandsAllowlistAndNarrowsToCalendar(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run real shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "calendar", Description: "Calendar scheduling and agenda"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research or check an existing research job status"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "email", Description: "Email inbox search and triage"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_append", Description: "Append checklist items"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_create", Description: "Create a checklist"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "plan_update", Description: "Update checklist item states"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "read", Description: "Read workspace files"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	got := handler.selectTools("Do I have any meetings tomorrow afternoon?", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	})
+	if len(got) == 0 {
+		t.Fatal("expected non-empty tool selection")
+	}
+
+	names := toolNameSet(got)
+	if _, ok := names["calendar"]; !ok {
+		t.Fatalf("expected calendar to be exposed for explicit calendar intent, got=%v", got)
+	}
+	if _, ok := names["email"]; ok {
+		t.Fatalf("expected unrelated email tool to stay hidden for calendar intent, got=%v", got)
+	}
+	if _, ok := names["deep_research"]; ok {
+		t.Fatalf("expected unrelated deep research tool to stay hidden for calendar intent, got=%v", got)
 	}
 }
 

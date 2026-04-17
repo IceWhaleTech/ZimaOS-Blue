@@ -1652,6 +1652,17 @@ export default mergeHarnessLocale('de-DE', {
     searchPlaceholder: 'Erinnerungen suchen...',
     noResults: 'Es wurden keine Erinnerungen gefunden, die Ihrer Suchanfrage entsprechen',
     recallSettings: 'Speicherabrufmodus',
+    dreamTitle: 'Dream-Konsolidierung',
+    dreamDescription:
+      'Archiviert älteren Chat-Kontext und übernimmt dauerhafte Erinnerungskandidaten.',
+    dreamPendingCapsules: 'Ausstehende Kapseln',
+    dreamPromotedCount: 'Übernommene Erinnerungen',
+    dreamArchivedDailyLogs: 'Archivierte Tagesprotokolle',
+    dreamLastRun: 'Letzter Lauf',
+    dreamRun: 'Dream ausführen',
+    dreamRunning: 'Dream läuft...',
+    dreamRunSuccess:
+      'Dream abgeschlossen: {processed} Kapseln verarbeitet, {promoted} Erinnerungen übernommen und {archived} Tagesprotokolle archiviert.',
     prune: 'Alt beschneiden',
     pruneSuccess: '{count} alte Erinnerungen beschnitten',
     clearAll: 'Alles löschen',

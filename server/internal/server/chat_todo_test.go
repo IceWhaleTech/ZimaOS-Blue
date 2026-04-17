@@ -664,7 +664,7 @@ func TestCompactAdditionalSearchToolResultForLLM_KeptPreview(t *testing.T) {
 }
 
 func TestSanitizeResponseContent_StripsMalformedCommandWorkdirPrefix(t *testing.T) {
-	leaked := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+	leaked := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/tmp/test-workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
 	got := sanitizeResponseContentWithProvider(leaked, "MockProxy", "prov_auto_continue_scripted", "gpt-5.3-codex-spark")
 	if strings.Contains(got, `"command":"blue web_search`) {
 		t.Fatalf("expected leaked command json removed from sanitized content, got=%q", got)
@@ -884,7 +884,7 @@ Need include in assistant message header not possible in plaintext.
 	})
 
 	t.Run("does not auto-continue for leaked command/workdir prefix when answer body is already concrete", func(t *testing.T) {
-		current := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/Users/orca/.zimaos-blue/data/workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
+		current := "{\"command\":\"blue web_search query=\\\"BlueAgent GitHub release\\\"\"\"workdir\":\"/tmp/test-workspace\"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：\n- SecurityWeek"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", false, false)
 		if ok {
 			t.Fatalf("expected no auto-continue for leaked command/workdir prefix with concrete answer body, got reason=%q", reason)
@@ -3022,8 +3022,8 @@ func TestSanitizeResponseContent_StripsPseudoDirectiveArtifactsButKeepsAnswer(t 
 to=functions.exec  乐盈json ...
 Let's do correctly.
 to=functions.exec  菲娱json
-{"command":"blue help browser","workdir":"/Users/orca/.zimaos-blue/data/workspace"}to=functions.exec d天天json
-{"command":"blue help browser","workdir":"/Users/orca/.zimaos-blue/data/workspace"}收到，你选 **2**。
+{"command":"blue help browser","workdir":"/tmp/test-workspace"}to=functions.exec d天天json
+{"command":"blue help browser","workdir":"/tmp/test-workspace"}收到，你选 **2**。
 
 第 2 条是这篇：
 - 标题：别再用旧版了！BlueAgent 2026.2.9 更新迁移避坑指南`
@@ -3100,7 +3100,7 @@ func TestSanitizeResponseContent_DoesNotStripListItemGuidanceXMLProse(t *testing
 }
 
 func TestSanitizeResponseContent_StripsLeakedCommandWorkdirPrefixButKeepsAnswer(t *testing.T) {
-	raw := `{"command":"blue web_search query=\"BlueAgent GitHub release\"""workdir":"/Users/orca/.zimaos-blue/data/workspace"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：`
+	raw := `{"command":"blue web_search query=\"BlueAgent GitHub release\"""workdir":"/tmp/test-workspace"}我先帮你搜到一批 BlueAgent 相关最新结果（当前检索到 5 条）：`
 	got := sanitizeResponseContent(raw)
 	if strings.Contains(got, `"command":"blue web_search`) {
 		t.Fatalf("expected leaked command json removed, got=%q", got)
@@ -3115,7 +3115,7 @@ func TestSanitizeResponseContent_StripsLeakedCommandWorkdirPrefixButKeepsAnswer(
 
 func TestSanitizeResponseContentWithProvider_NormalizesEscapedChecklistMarkdownForGPT54(t *testing.T) {
 	raw := "- [ ] 检查现有三份报告文件是否存在且内容完整- [ ] 合并为一份 Markdown 总报告- [ ] 转换为 PDF- [ ] 验证 PDF 文件生成成功- [ ] 返回文件路径和使用说明我这轮无法直接执行工具调用。你可以先在工作区跑这一步检查文件是否齐全：\\n\\n" +
-		"```bashcd /Users/orca/.zimaos-blue/data/workspace \\u0026\\u0026 ls -l orca_bazi_analysis.md orca_career_fortune_love_analysis.md orca_2026_monthly_analysis.md```\\n\\n" +
+		"```bashcd /tmp/test-workspace \\u0026\\u0026 ls -l sample_a.md sample_b.md sample_c.md```\\n\\n" +
 		"预期应看到这 3 个文件都存在。下一步我会继续做：合并 Markdown → 导出 PDF → 验证文件。\\n\\n" +
 		"如果你愿意，我下一条可以直接给你一套可执行命令，一次性在本机生成 PDF。"
 
@@ -3136,7 +3136,7 @@ func TestSanitizeResponseContentWithProvider_NormalizesEscapedChecklistMarkdownF
 	if strings.Count(checklist, "\n") != 4 {
 		t.Fatalf("expected 5 checklist items after normalization, got checklist=%q", checklist)
 	}
-	if !strings.Contains(got, "```bash\ncd /Users/orca/.zimaos-blue/data/workspace && ls -l") {
+	if !strings.Contains(got, "```bash\ncd /tmp/test-workspace && ls -l") {
 		t.Fatalf("expected code fence and shell command to be restored, got=%q", got)
 	}
 }

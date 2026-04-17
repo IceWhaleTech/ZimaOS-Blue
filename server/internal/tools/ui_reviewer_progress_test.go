@@ -64,7 +64,9 @@ func TestUIReviewerReviewURL_EmitsIntermediateStageCards(t *testing.T) {
 		emitted = append(emitted, cp)
 	})
 
-	result, err := tool.reviewURL(ctx, "https://example.com", map[string]interface{}{}, 75, "json", i18n.LangEnUS)
+	result, err := tool.reviewURL(ctx, "https://example.com", map[string]interface{}{
+		"wait_ms": 1,
+	}, 75, "json", i18n.LangEnUS)
 	if err != nil {
 		t.Fatalf("reviewURL failed: %v", err)
 	}
@@ -146,7 +148,8 @@ func TestUIReviewerExecuteInfersReviewURLActionFromURL(t *testing.T) {
 	tool.SetMediaDir(t.TempDir())
 
 	result, err := tool.Execute(context.Background(), map[string]interface{}{
-		"url": "https://example.com",
+		"url":     "https://example.com",
+		"wait_ms": 1,
 	})
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)

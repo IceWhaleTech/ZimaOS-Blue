@@ -414,6 +414,30 @@ func (b *darwinBackend) key(ctx context.Context, windowID string, keys []string,
 	return ActionResult{HostOS: b.HostOS(), WindowID: resolvedWindowID, ExecutionMode: "input", Message: "Keys sent"}, nil
 }
 
+func (b *darwinBackend) typeFocusedText(ctx context.Context, windowID string, value string, _ int) (ActionResult, error) {
+	if err := b.ensureAccessibilityPermission(); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	resolvedWindowID, err := b.resolveWindowForAction(ctx, windowID)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	inputMethod, err := darwinSendTextWithClipboardFallback(value, darwinPasteTextFunc, darwinUnicodeTextInputFunc)
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           resolvedWindowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		VerificationPassed: true,
+		VerificationMethod: "focused_text",
+		InputMethod:        inputMethod,
+		Message:            "Host action completed",
+	}, nil
+}
+
 func (b *darwinBackend) resolveWindowForAction(ctx context.Context, windowID string) (string, error) {
 	windowID = strings.TrimSpace(windowID)
 	if windowID == "" {

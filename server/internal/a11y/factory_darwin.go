@@ -95,6 +95,10 @@ func (b *darwinBackend) Key(ctx context.Context, windowID string, keys []string,
 	return b.key(ctx, windowID, keys, holdMS)
 }
 
+func (b *darwinBackend) TypeFocusedText(ctx context.Context, windowID string, value string, holdMS int) (ActionResult, error) {
+	return b.typeFocusedText(ctx, windowID, value, holdMS)
+}
+
 func (b *darwinBackend) Screenshot(ctx context.Context, windowID string) (ScreenshotResult, error) {
 	return b.screenshot(ctx, windowID)
 }

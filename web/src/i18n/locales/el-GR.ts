@@ -1649,6 +1649,17 @@ export default mergeHarnessLocale('el-GR', {
     searchPlaceholder: 'Αναζήτηση μνημών...',
     noResults: 'Δεν βρέθηκαν μνήμες',
     recallSettings: 'Λειτουργία ανάκλησης μνήμης',
+    dreamTitle: 'Ενοποίηση Dream',
+    dreamDescription:
+      'Αρχειοθετεί παλαιότερο περιεχόμενο συνομιλιών και προάγει ανθεκτικούς υποψηφίους μνήμης.',
+    dreamPendingCapsules: 'Εκκρεμείς κάψουλες',
+    dreamPromotedCount: 'Προαχθείσες μνήμες',
+    dreamArchivedDailyLogs: 'Αρχειοθετημένα ημερήσια αρχεία',
+    dreamLastRun: 'Τελευταία εκτέλεση',
+    dreamRun: 'Εκτέλεση Dream',
+    dreamRunning: 'Εκτελείται το Dream...',
+    dreamRunSuccess:
+      'Το Dream ολοκληρώθηκε: επεξεργάστηκε {processed} κάψουλες, προήγαγε {promoted} μνήμες και αρχειοθέτησε {archived} ημερήσια αρχεία.',
     prune: 'Κλαδέψτε παλιά',
     pruneSuccess: 'Κλάδεψε {count} παλιές αναμνήσεις',
     clearAll: 'Εκκαθάριση όλων',

@@ -389,6 +389,105 @@ func TestDarwinResolveWindowForAction_LeavesEmptyWindowUntouched(t *testing.T) {
 	}
 }
 
+func TestDarwinTypeFocusedText_ResolvesWindowAndUsesClipboardPaste(t *testing.T) {
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevFocus := darwinFocusWindowForHostAction
+	prevPaste := darwinPasteTextFunc
+	prevUnicode := darwinUnicodeTextInputFunc
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinFocusWindowForHostAction = func(_ context.Context, _ *darwinBackend, windowID string) (ActionResult, error) {
+		if windowID != "win-1" {
+			t.Fatalf("focus windowID = %q, want win-1", windowID)
+		}
+		return ActionResult{WindowID: "win-9", ExecutionMode: "automation", Message: "Window focused"}, nil
+	}
+	pasteCalls := 0
+	unicodeCalls := 0
+	darwinPasteTextFunc = func(value string) error {
+		pasteCalls++
+		if value != "hello" {
+			t.Fatalf("paste value = %q, want hello", value)
+		}
+		return nil
+	}
+	darwinUnicodeTextInputFunc = func(string) error {
+		unicodeCalls++
+		return nil
+	}
+	defer func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinFocusWindowForHostAction = prevFocus
+		darwinPasteTextFunc = prevPaste
+		darwinUnicodeTextInputFunc = prevUnicode
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	result, err := backend.TypeFocusedText(context.Background(), "win-1", "hello", 600)
+	if err != nil {
+		t.Fatalf("TypeFocusedText() error = %v", err)
+	}
+	if result.WindowID != "win-9" {
+		t.Fatalf("window_id = %q, want win-9", result.WindowID)
+	}
+	if result.InputMethod != "clipboard" {
+		t.Fatalf("input_method = %q, want clipboard", result.InputMethod)
+	}
+	if result.VerificationMethod != "focused_text" {
+		t.Fatalf("verification_method = %q, want focused_text", result.VerificationMethod)
+	}
+	if pasteCalls != 1 {
+		t.Fatalf("pasteCalls = %d, want 1", pasteCalls)
+	}
+	if unicodeCalls != 0 {
+		t.Fatalf("unicodeCalls = %d, want 0", unicodeCalls)
+	}
+}
+
+func TestDarwinTypeFocusedText_FallsBackToUnicodeInput(t *testing.T) {
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevFocus := darwinFocusWindowForHostAction
+	prevPaste := darwinPasteTextFunc
+	prevUnicode := darwinUnicodeTextInputFunc
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinFocusWindowForHostAction = func(_ context.Context, _ *darwinBackend, windowID string) (ActionResult, error) {
+		return ActionResult{WindowID: windowID, ExecutionMode: "automation", Message: "Window focused"}, nil
+	}
+	pasteCalls := 0
+	unicodeCalls := 0
+	darwinPasteTextFunc = func(string) error {
+		pasteCalls++
+		return errors.New("clipboard busy")
+	}
+	darwinUnicodeTextInputFunc = func(value string) error {
+		unicodeCalls++
+		if value != "hello" {
+			t.Fatalf("unicode value = %q, want hello", value)
+		}
+		return nil
+	}
+	defer func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinFocusWindowForHostAction = prevFocus
+		darwinPasteTextFunc = prevPaste
+		darwinUnicodeTextInputFunc = prevUnicode
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	result, err := backend.TypeFocusedText(context.Background(), "win-1", "hello", 600)
+	if err != nil {
+		t.Fatalf("TypeFocusedText() error = %v", err)
+	}
+	if result.InputMethod != "unicode" {
+		t.Fatalf("input_method = %q, want unicode", result.InputMethod)
+	}
+	if pasteCalls != 1 {
+		t.Fatalf("pasteCalls = %d, want 1", pasteCalls)
+	}
+	if unicodeCalls != 1 {
+		t.Fatalf("unicodeCalls = %d, want 1", unicodeCalls)
+	}
+}
+
 func TestDarwinScreenshot_RetriesWithRefreshedWindowIDAfterFailure(t *testing.T) {
 	prevResolve := darwinResolveWindowRecordForCapture
 	prevRefresh := darwinRefreshWindowRecordForCapture

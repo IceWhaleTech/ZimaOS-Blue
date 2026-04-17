@@ -34,6 +34,20 @@ func TestResolveA11yTargetRef_PrefersLikelyComposerInputOverSearchField(t *testi
 	}
 }
 
+func TestResolveA11yTargetRef_ExplicitSearchRoleMatchesSearchFieldAliases(t *testing.T) {
+	entries := parseA11ySnapshotEntries("@1 [search_field] \"Search\"\n@2 [button] \"Send\"")
+
+	for _, role := range []string{"search", "searchbox"} {
+		ref, err := resolveA11yTargetRef(entries, a11yTargetSelector{Role: role})
+		if err != nil {
+			t.Fatalf("resolveA11yTargetRef(%q) error = %v", role, err)
+		}
+		if ref != 1 {
+			t.Fatalf("resolveA11yTargetRef(%q) ref = %d, want 1 for search field alias", role, ref)
+		}
+	}
+}
+
 func TestResolveA11yTargetRef_PrefersInputNearestLikelySubmitControl(t *testing.T) {
 	entries := parseA11ySnapshotEntries("@1 [document]\n@2 [document]\n@3 [button] \"Send\"")
 
@@ -2770,6 +2784,111 @@ func TestA11yToolExecute_SelectConversationContinuesToKeyboardSearchAfterStaleVi
 	}
 }
 
+func TestA11yToolExecute_SelectConversationFallsBackToKeyboardSearchAfterRememberedVisualConfirmationFailure(t *testing.T) {
+	prevLocate := a11yLocateConversationVisualHit
+	a11yLocateConversationVisualHit = func(context.Context, string, string) (a11yConversationVisualHit, error) {
+		return a11yConversationVisualHit{
+			Point:      a11yruntime.NormalizedPoint{X: 0.61, Y: 0.34},
+			Confidence: 0.93,
+		}, nil
+	}
+	defer func() { a11yLocateConversationVisualHit = prevLocate }()
+
+	backend := &a11yCompatBackend{
+		hostOS: "darwin",
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap: map[int]string{
+					1: "token-sidebar",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [group] \"Results\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-results",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap: map[int]string{
+					1: "token-search",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [search_field] \"Orca\"\n@2 [list_item] \"Orca\"",
+				RefMap: map[int]string{
+					1: "token-search",
+					2: "token-orca",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document]\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		screenshotImagePath: "/tmp/example.png",
+		pointClickErr:       a11yruntime.NewError("confirmation_failed", "conversation switch could not be confirmed", nil),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.chatMemory.Remember("darwin", "feishu_lark", "select", string(a11yChatStageLocateConversation), "visual_sidebar_hit")
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "select",
+		"app_name":     "Feishu,飞书,Lark",
+		"conversation": "Orca",
+	})
+	if err != nil {
+		t.Fatalf("select Execute() error = %v", err)
+	}
+	if len(backend.pointClickHistory) == 0 {
+		t.Fatalf("pointClickHistory = %#v, want remembered visual attempt before keyboard fallback", backend.pointClickHistory)
+	}
+	if len(backend.actTypeHistory) < 2 || backend.actTypeHistory[len(backend.actTypeHistory)-1] != "click" {
+		t.Fatalf("actTypeHistory = %#v, want keyboard-search recovery ending with click", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after keyboard-search fallback", out["error_code"])
+	}
+}
+
 func TestA11yToolExecute_ActionTypeAliasUsesTopLevelConversationAndDefaultsToDraftOnly(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{
@@ -2996,6 +3115,12 @@ func TestA11yToolExecute_ActionSelectAliasFallsBackToClickWhenSelectUnsupported(
 }
 
 func TestA11yToolExecute_ActionSelectAliasUsesConversationSearchFallbackWhenStructuredMiss(t *testing.T) {
+	prevSettle := a11yMessageConversationSettleDelay
+	a11yMessageConversationSettleDelay = 0
+	defer func() {
+		a11yMessageConversationSettleDelay = prevSettle
+	}()
+
 	backend := &a11yCompatBackend{
 		hostOS: "darwin",
 		windows: []a11yruntime.WindowInfo{

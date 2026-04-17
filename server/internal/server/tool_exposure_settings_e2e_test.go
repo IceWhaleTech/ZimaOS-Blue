@@ -63,7 +63,7 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 	server := httptest.NewServer(e)
 	defer server.Close()
 
-	t.Run("default first turn omits email without email intent", func(t *testing.T) {
+	t.Run("default first turn omits email and calendar without explicit productivity intent", func(t *testing.T) {
 		conv, err := store.CreateConversation(context.Background(), "tool exposure e2e")
 		if err != nil {
 			t.Fatalf("create conversation: %v", err)
@@ -89,7 +89,6 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 			names[tool.Name] = struct{}{}
 		}
 		for _, required := range []string{
-			"calendar",
 			"deep_research",
 			"plan_append",
 			"plan_create",
@@ -104,6 +103,9 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		}
 		if _, ok := names["email"]; ok {
 			t.Fatalf("expected email to stay hidden without explicit email intent, got=%v", capture.LastRequest().Tools)
+		}
+		if _, ok := names["calendar"]; ok {
+			t.Fatalf("expected calendar to stay hidden without explicit calendar intent, got=%v", capture.LastRequest().Tools)
 		}
 		if _, ok := names["process"]; ok {
 			t.Fatalf("expected non-allowlisted tool to stay hidden, got=%v", capture.LastRequest().Tools)
@@ -143,6 +145,42 @@ func TestChatToolExposureHTTPE2E_FirstTurnStaticAllowlistAndCapabilityToggles(t 
 		}
 		if _, ok := names["deep_research"]; ok {
 			t.Fatalf("expected unrelated deep research tool to stay hidden for email intent, got=%v", capture.LastRequest().Tools)
+		}
+	})
+
+	t.Run("calendar intent exposes calendar without re-widening unrelated tools", func(t *testing.T) {
+		conv, err := store.CreateConversation(context.Background(), "tool exposure calendar intent e2e")
+		if err != nil {
+			t.Fatalf("create conversation: %v", err)
+		}
+
+		body := map[string]any{
+			"message":  "Do I have any meetings tomorrow afternoon?",
+			"provider": "capture",
+			"model":    "capture-model",
+		}
+		reqBody, _ := json.Marshal(body)
+		resp, err := http.Post(server.URL+"/api/v1/conversations/"+conv.ID+"/messages", "application/json", bytes.NewReader(reqBody))
+		if err != nil {
+			t.Fatalf("post send message: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, want 200", resp.StatusCode)
+		}
+
+		names := make(map[string]struct{}, len(capture.LastRequest().Tools))
+		for _, tool := range capture.LastRequest().Tools {
+			names[tool.Name] = struct{}{}
+		}
+		if _, ok := names["calendar"]; !ok {
+			t.Fatalf("expected calendar tool for explicit calendar intent, got=%v", capture.LastRequest().Tools)
+		}
+		if _, ok := names["email"]; ok {
+			t.Fatalf("expected unrelated email tool to stay hidden for calendar intent, got=%v", capture.LastRequest().Tools)
+		}
+		if _, ok := names["deep_research"]; ok {
+			t.Fatalf("expected unrelated deep research tool to stay hidden for calendar intent, got=%v", capture.LastRequest().Tools)
 		}
 	})
 

@@ -391,6 +391,80 @@ describe('KnowledgeView', () => {
     expect(progressCard.text()).toContain('architecture, readme')
   })
 
+  it('resets the visible unresolved conflict count when current pages are no longer conflicted even if lint still contains an older conflict issue', async () => {
+    vi.mocked(knowledgeApi.listPages).mockResolvedValue({
+      data: [
+        {
+          title: 'Blue Knowledge',
+          slug: 'readme',
+          page_type: 'source_summary',
+          summary: 'Compiled entry page.',
+          source_refs: ['README.md'],
+          keywords: ['blue', 'knowledge'],
+          backlinks: ['architecture'],
+          generated_at: '2026-04-05T12:00:00Z',
+          updated_at: '2026-04-05T12:20:00Z',
+          source_hash: 'hash-1',
+          status: 'active',
+          confidence: 'low',
+          conflicts_with: [],
+          superseded_by: [],
+          derived_from_query: '',
+        },
+        {
+          title: 'Blue Architecture',
+          slug: 'architecture',
+          page_type: 'source_summary',
+          summary: 'Architecture detail.',
+          source_refs: ['ARCHITECTURE.md'],
+          keywords: ['architecture'],
+          backlinks: ['readme'],
+          generated_at: '2026-04-05T12:00:00Z',
+          updated_at: '2026-04-05T12:20:00Z',
+          source_hash: 'hash-2',
+          status: 'active',
+          confidence: 'low',
+          conflicts_with: [],
+          superseded_by: [],
+          derived_from_query: '',
+        },
+      ],
+    } as never)
+    vi.mocked(knowledgeApi.getLatestLint).mockResolvedValue({
+      data: {
+        generated_at: '2026-04-05T12:00:00Z',
+        issues: [
+          {
+            kind: 'conflicting_claim',
+            message: 'readme conflicts with architecture',
+            category: 'review_required',
+            severity: 'high',
+            related_pages: ['readme', 'architecture'],
+          },
+        ],
+      },
+    } as never)
+
+    const wrapper = mount(KnowledgeView, {
+      global: {
+        plugins: [i18n],
+        stubs: {
+          RouterLink: {
+            props: ['to'],
+            template: '<a :data-to="JSON.stringify(to)"><slot /></a>',
+          },
+        },
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('0 unresolved conflicts')
+    expect(wrapper.get('[data-testid="knowledge-repair-conflicts-button"]').attributes('disabled')).toBe(
+      ''
+    )
+  })
+
   it('rehydrates active maintenance jobs when the user re-enters the page', async () => {
     mount(KnowledgeView, {
       global: {

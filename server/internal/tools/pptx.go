@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/xml"
 	"fmt"
-	"os"
 	"path"
 	"strings"
 
@@ -214,7 +213,6 @@ func (t *PPTXTool) executeEdit(ctx context.Context, args map[string]interface{})
 	if !changed {
 		warnings = append(warnings, "no matching replacement tokens were found in slide XML")
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       "edit",
 		Path:         relPath,
@@ -226,7 +224,7 @@ func (t *PPTXTool) executeEdit(ctx context.Context, args map[string]interface{})
 		Degraded:     false,
 		Warnings:     warnings,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Success:      true,
 	}
 	return marshalNativeDocumentPayload(payload)
@@ -268,7 +266,6 @@ func (t *PPTXTool) executeValidateWithAction(ctx context.Context, args map[strin
 			}
 		}
 	}
-	info, _ := os.Stat(absPath)
 	payload := nativeDocumentPayload{
 		Action:       action,
 		Path:         relPath,
@@ -279,7 +276,7 @@ func (t *PPTXTool) executeValidateWithAction(ctx context.Context, args map[strin
 		EngineChain:  []string{"native_pptx_ooxml"},
 		Degraded:     false,
 		Validation:   validation,
-		Size:         info.Size(),
+		Size:         nativeDocumentPayloadSize(absPath),
 		Success:      true,
 	}
 	return marshalNativeDocumentPayload(payload)

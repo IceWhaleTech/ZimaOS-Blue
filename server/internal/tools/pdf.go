@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -933,17 +934,22 @@ func nativePDFCreateRequest(spec officeDocSpec) pdfextract.CreateRequest {
 			paragraphs = append(paragraphs, text)
 		}
 	}
+	titleColor := officePDFReadableInk(spec.Theme.PrimaryDark, 7.0, spec.Theme.Primary, spec.Theme.Slate, "#111827")
+	subtitleColor := officePDFReadableInk(spec.Theme.Secondary, 4.5, spec.Theme.Slate, spec.Theme.Primary, "#475569")
+	headingColor := officePDFReadableInk(spec.Theme.PrimaryDark, 7.0, spec.Theme.Primary, spec.Theme.Slate, "#111827")
+	bodyColor := officePDFReadableInk(spec.Theme.Slate, 4.5, spec.Theme.Primary, spec.Theme.Secondary, "#111827")
+	mutedColor := officePDFReadableInk(spec.Theme.Secondary, 4.5, spec.Theme.Slate, spec.Theme.Primary, "#475569")
 	req := pdfextract.CreateRequest{
 		Title:         spec.Title,
 		Subtitle:      spec.Subtitle,
 		Summary:       spec.Summary,
 		Paragraphs:    paragraphs,
 		Notes:         append([]string(nil), spec.Notes...),
-		TitleColor:    spec.Theme.PrimaryDark,
-		SubtitleColor: spec.Theme.Secondary,
-		HeadingColor:  spec.Theme.PrimaryDark,
-		BodyColor:     spec.Theme.Slate,
-		MutedColor:    spec.Theme.Secondary,
+		TitleColor:    titleColor,
+		SubtitleColor: subtitleColor,
+		HeadingColor:  headingColor,
+		BodyColor:     bodyColor,
+		MutedColor:    mutedColor,
 	}
 	for _, section := range spec.Sections {
 		sectionParagraphs := make([]string, 0, len(section.ParagraphBlocks)+len(section.Paragraphs))
@@ -969,6 +975,70 @@ func nativePDFCreateRequest(spec officeDocSpec) pdfextract.CreateRequest {
 		req.Sections = append(req.Sections, next)
 	}
 	return req
+}
+
+func officePDFReadableInk(primary string, minContrast float64, fallbacks ...string) string {
+	candidates := make([]string, 0, 1+len(fallbacks))
+	candidates = append(candidates, primary)
+	candidates = append(candidates, fallbacks...)
+	last := ""
+	for _, color := range candidates {
+		color = strings.TrimSpace(color)
+		if color == "" {
+			continue
+		}
+		last = color
+		if officePDFContrastAgainstWhite(color) >= minContrast {
+			return color
+		}
+	}
+	if last != "" {
+		return last
+	}
+	if minContrast >= 7.0 {
+		return "#111827"
+	}
+	return "#475569"
+}
+
+func officePDFContrastAgainstWhite(hex string) float64 {
+	return officePDFContrastRatio(hex, "#FFFFFF")
+}
+
+func officePDFContrastRatio(foreground, background string) float64 {
+	l1 := officePDFRelativeLuminance(foreground)
+	l2 := officePDFRelativeLuminance(background)
+	if l1 < l2 {
+		l1, l2 = l2, l1
+	}
+	return (l1 + 0.05) / (l2 + 0.05)
+}
+
+func officePDFRelativeLuminance(hex string) float64 {
+	r, g, b := officePDFHexToUnitRGB(hex)
+	return 0.2126*officePDFLinearize(r) + 0.7152*officePDFLinearize(g) + 0.0722*officePDFLinearize(b)
+}
+
+func officePDFHexToUnitRGB(hex string) (float64, float64, float64) {
+	value := strings.TrimSpace(strings.TrimPrefix(hex, "#"))
+	if len(value) != 6 {
+		return 0, 0, 0
+	}
+	var rgb [3]int
+	for idx := 0; idx < 3; idx++ {
+		component := strings.ToUpper(value[idx*2 : idx*2+2])
+		if _, err := fmt.Sscanf(component, "%02X", &rgb[idx]); err != nil {
+			return 0, 0, 0
+		}
+	}
+	return float64(rgb[0]) / 255.0, float64(rgb[1]) / 255.0, float64(rgb[2]) / 255.0
+}
+
+func officePDFLinearize(value float64) float64 {
+	if value <= 0.04045 {
+		return value / 12.92
+	}
+	return math.Pow((value+0.055)/1.055, 2.4)
 }
 
 func officePDFTextForDocBlock(block officeDocBlock) string {

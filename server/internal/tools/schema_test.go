@@ -1,6 +1,9 @@
 package tools
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestValidateToolSchema_AllowsTypedCompositeSlices(t *testing.T) {
 	schema := map[string]interface{}{
@@ -202,25 +205,6 @@ func TestDocumentToolThemeEnumsIncludeEditorial(t *testing.T) {
 		},
 	}
 
-	convertProps := NewConvertTool(nil, nil, nil, nil).Definition().Parameters["properties"].(map[string]interface{})
-	convertOptions := convertProps["options"].(map[string]interface{})["properties"].(map[string]interface{})
-	tests = append(tests,
-		struct {
-			name string
-			enum []string
-		}{
-			name: "convert.presentation",
-			enum: convertOptions["presentation"].(map[string]interface{})["properties"].(map[string]interface{})["theme"].(map[string]interface{})["enum"].([]string),
-		},
-		struct {
-			name string
-			enum []string
-		}{
-			name: "convert.pptx",
-			enum: convertOptions["pptx"].(map[string]interface{})["properties"].(map[string]interface{})["theme"].(map[string]interface{})["enum"].([]string),
-		},
-	)
-
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			found := false
@@ -234,5 +218,18 @@ func TestDocumentToolThemeEnumsIncludeEditorial(t *testing.T) {
 				t.Fatalf("theme enum = %v, want editorial", tc.enum)
 			}
 		})
+	}
+}
+
+func TestConvertToolOptionsReferenceNativeToolParameters(t *testing.T) {
+	def := NewConvertTool(nil, nil, nil, nil).Definition()
+	if !strings.Contains(def.Description, "docx/xlsx/pptx/pdf") {
+		t.Fatalf("definition description = %q, want native tool reference", def.Description)
+	}
+	props := def.Parameters["properties"].(map[string]interface{})
+	options := props["options"].(map[string]interface{})
+	desc, _ := options["description"].(string)
+	if !strings.Contains(desc, "docx/xlsx/pptx/pdf") {
+		t.Fatalf("options description = %q, want native tool reference", desc)
 	}
 }

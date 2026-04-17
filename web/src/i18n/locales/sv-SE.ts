@@ -1633,6 +1633,17 @@ export default mergeHarnessLocale('sv-SE', {
     searchPlaceholder: 'Sök minnen...',
     noResults: 'Inga minnen hittades som matchar din fråga',
     recallSettings: 'Minnesåterkallningsläge',
+    dreamTitle: 'Dream-konsolidering',
+    dreamDescription:
+      'Arkiverar äldre chattkontext och lyfter fram varaktiga minneskandidater.',
+    dreamPendingCapsules: 'Väntande kapslar',
+    dreamPromotedCount: 'Främjade minnen',
+    dreamArchivedDailyLogs: 'Arkiverade dagsloggar',
+    dreamLastRun: 'Senaste körning',
+    dreamRun: 'Kör Dream',
+    dreamRunning: 'Dream körs...',
+    dreamRunSuccess:
+      'Dream slutfört: {processed} kapslar bearbetade, {promoted} minnen främjade och {archived} dagsloggar arkiverade.',
     prune: 'Beskär gammal',
     pruneSuccess: 'Beskärade {count} gamla minnen',
     clearAll: 'Rensa alla',

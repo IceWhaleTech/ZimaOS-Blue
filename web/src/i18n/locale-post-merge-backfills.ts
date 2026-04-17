@@ -1000,6 +1000,19 @@ const providerRecoveryEnglishDefaults: ProviderRecoveryLocalePatch = {
   builtinProfile: 'Built-in profile',
 }
 
+const memoryDreamEnglishDefaults = {
+  dreamTitle: 'Dream Consolidation',
+  dreamDescription: 'Archive older chat context and promote durable memory candidates.',
+  dreamPendingCapsules: 'Pending Capsules',
+  dreamPromotedCount: 'Promoted Memories',
+  dreamArchivedDailyLogs: 'Archived Daily Logs',
+  dreamLastRun: 'Last Run',
+  dreamRun: 'Run Dream Pass',
+  dreamRunning: 'Running Dream Pass...',
+  dreamRunSuccess:
+    'Dream run complete: {processed} capsules processed, {promoted} memories promoted, {archived} daily logs archived.',
+} as const
+
 const providerRecoveryLocaleBackfills: Partial<Record<LocaleKey, ProviderRecoveryLocalePatch>> = {
   'ca-ES': {
     recoverableEyebrow: 'Incidència temporal del proveïdor',
@@ -2050,6 +2063,7 @@ export function buildLocalePostMergeBackfill(
   const toolsNamesPatch: LocaleNode = {}
   const userdataPatch: LocaleNode = {}
   const userdataMemoryPatch: LocaleNode = {}
+  const memoryPatch: LocaleNode = {}
   const usersPatch: LocaleNode = {}
   const usersRolesPatch: LocaleNode = {}
   const workspacePatch: LocaleNode = {}
@@ -2244,6 +2258,12 @@ export function buildLocalePostMergeBackfill(
     maybeFillEnglishBackendFallback(apiProxyPatch, 'prunerBackend', 'apiProxy.prunerBackend')
     maybeFillEnglishBackendFallback(resultCardLabelsPatch, 'backend', 'resultCard.labels.backend')
     maybeFillEnglishBackendFallback(userdataMemoryPatch, 'backend', 'userdata.memory.backend')
+  }
+  for (const [key, englishFallback] of Object.entries(memoryDreamEnglishDefaults)) {
+    const current = getString(messages, `memory.${key}`)
+    if (!current || current === englishFallback) {
+      memoryPatch[key] = englishFallback
+    }
   }
   const askResultCardLabels = askResultCardBackfills[localeKey]
   if (askResultCardLabels) {
@@ -2736,6 +2756,12 @@ export function buildLocalePostMergeBackfill(
   }
   if (hasKeys(toolsPatch)) {
     patch.tools = toolsPatch
+  }
+  if (hasKeys(memoryPatch)) {
+    patch.memory = {
+      ...(patch.memory as LocaleNode | undefined),
+      ...memoryPatch,
+    }
   }
   if (hasKeys(userdataMemoryPatch)) {
     userdataPatch.memory = userdataMemoryPatch

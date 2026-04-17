@@ -13,6 +13,8 @@ vi.mock('@/api/memory', () => ({
     prune: vi.fn(),
     clear: vi.fn(),
     stats: vi.fn(),
+    dreamStatus: vi.fn(),
+    runDream: vi.fn(),
     exportMarkdown: vi.fn(),
     importMarkdown: vi.fn(),
   },
@@ -29,6 +31,20 @@ function statsPayload(overrides: Record<string, unknown> = {}) {
       daily_entries_count: 0,
       daily_total_size_bytes: 0,
       backend: 'markdown',
+      ...overrides,
+    },
+  } as never
+}
+
+function dreamStatusPayload(overrides: Record<string, unknown> = {}) {
+  return {
+    data: {
+      enabled: true,
+      archive_dir: '/tmp/dream-archive',
+      pending_capsules: 0,
+      archived_daily_logs: 0,
+      promoted_count: 0,
+      last_run_at: null,
       ...overrides,
     },
   } as never
@@ -104,6 +120,15 @@ describe('MemoryManager', () => {
     vi.mocked(memoryApi.delete).mockResolvedValue({} as never)
     vi.mocked(memoryApi.prune).mockResolvedValue({ data: { deleted: 0 } } as never)
     vi.mocked(memoryApi.clear).mockResolvedValue({} as never)
+    vi.mocked(memoryApi.dreamStatus).mockRejectedValue(new Error('dream service not configured'))
+    vi.mocked(memoryApi.runDream).mockResolvedValue({
+      data: {
+        run_id: 'dream-run-1',
+        promoted_count: 0,
+        archived_daily_count: 0,
+        processed_capsules: 0,
+      },
+    } as never)
     vi.mocked(memoryApi.exportMarkdown).mockResolvedValue({ data: '# export' } as never)
     vi.mocked(memoryApi.importMarkdown).mockResolvedValue({
       data: { imported: 0, skipped: 0, errors: [] },
@@ -123,6 +148,81 @@ describe('MemoryManager', () => {
     await byId(wrapper, 'memory-recall-mode-aggressive').trigger('click')
 
     expect(wrapper.emitted('memory-recall-mode-change')).toEqual([['aggressive']])
+  })
+
+  it('loads dream status and shows the dream panel when the feature is available', async () => {
+    vi.mocked(memoryApi.dreamStatus).mockResolvedValueOnce(
+      dreamStatusPayload({
+        pending_capsules: 3,
+        archived_daily_logs: 4,
+        promoted_count: 7,
+        last_run_at: '2026-04-17T09:30:00Z',
+      })
+    )
+
+    const wrapper = mountManager()
+    await flushPromises()
+
+    expect(memoryApi.dreamStatus).toHaveBeenCalledTimes(1)
+    expect(byId(wrapper, 'memory-dream-panel').text()).toContain('3')
+    expect(byId(wrapper, 'memory-dream-panel').text()).toContain('4')
+    expect(byId(wrapper, 'memory-dream-panel').text()).toContain('7')
+    expect(byId(wrapper, 'memory-dream-run').exists()).toBe(true)
+
+    wrapper.unmount()
+  })
+
+  it('runs dream consolidation and refreshes dream status', async () => {
+    vi.mocked(memoryApi.dreamStatus)
+      .mockResolvedValueOnce(
+        dreamStatusPayload({
+          pending_capsules: 2,
+          archived_daily_logs: 1,
+          promoted_count: 5,
+        })
+      )
+      .mockResolvedValueOnce(
+        dreamStatusPayload({
+          pending_capsules: 0,
+          archived_daily_logs: 2,
+          promoted_count: 7,
+          last_run_at: '2026-04-17T10:00:00Z',
+        })
+      )
+    vi.mocked(memoryApi.runDream).mockResolvedValueOnce({
+      data: {
+        run_id: 'dream-run-42',
+        promoted_count: 2,
+        archived_daily_count: 1,
+        processed_capsules: 2,
+      },
+    } as never)
+
+    const wrapper = mountManager()
+    await flushPromises()
+
+    await byId(wrapper, 'memory-dream-run').trigger('click')
+    await flushPromises()
+
+    expect(memoryApi.runDream).toHaveBeenCalledTimes(1)
+    expect(memoryApi.dreamStatus).toHaveBeenCalledTimes(2)
+    expect(byId(wrapper, 'memory-dream-panel').text()).toContain('7')
+    expect(wrapper.emitted('status-change')).toBeTruthy()
+
+    wrapper.unmount()
+  })
+
+  it('keeps dream controls hidden when dream status is unavailable', async () => {
+    vi.mocked(memoryApi.dreamStatus).mockRejectedValueOnce(new Error('dream service not configured'))
+
+    const wrapper = mountManager()
+    await flushPromises()
+
+    expect(memoryApi.dreamStatus).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-testid="memory-dream-panel"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="memory-dream-run"]').exists()).toBe(false)
+
+    wrapper.unmount()
   })
 
   it('adds memory with normalized tags and emits a status update', async () => {

@@ -35,6 +35,11 @@ const (
 	iLinkItemTypeVideo   = 5
 )
 
+var (
+	iLinkStartupProbeTimeout = 60 * time.Second
+	iLinkHTTPTimeout         = 75 * time.Second
+)
+
 type Channel struct {
 	config   channel.WeChatILinkConfig
 	logger   *zap.Logger
@@ -70,7 +75,7 @@ func New(cfg channel.WeChatILinkConfig, logger *zap.Logger) *Channel {
 		messages: make(chan channel.Message, 100),
 		status:   channel.StatusDisconnected,
 		httpClient: &http.Client{
-			Timeout: 45 * time.Second,
+			Timeout: iLinkHTTPTimeout,
 		},
 		ilinkContextTokens: make(map[string]string),
 	}
@@ -111,15 +116,31 @@ func (c *Channel) Start(ctx context.Context) error {
 		return fmt.Errorf("missing iLink bot_token")
 	}
 	if c.httpClient == nil {
-		c.httpClient = &http.Client{Timeout: 45 * time.Second}
+		c.httpClient = &http.Client{Timeout: iLinkHTTPTimeout}
 	}
 	_ = c.ensureILinkUINHeader()
 
-	probeCtx, cancel := context.WithTimeout(c.ctx, 10*time.Second)
+	probeCtx, cancel := context.WithTimeout(c.ctx, iLinkStartupProbeTimeout)
 	defer cancel()
 
 	initialResp, err := c.ilinkGetUpdates(probeCtx, "")
 	if err != nil {
+		if probeCtx.Err() == context.DeadlineExceeded {
+			now := time.Now()
+			c.mu.Lock()
+			c.status = channel.StatusConnected
+			c.connectedAt = &now
+			c.lastError = ""
+			c.lastErrorAt = nil
+			c.mu.Unlock()
+
+			c.wg.Add(1)
+			go c.runILinkPoller("", false, 0)
+
+			c.logger.Info("wechat iLink startup probe timed out; continuing with background poller",
+				zap.Duration("probe_timeout", iLinkStartupProbeTimeout))
+			return nil
+		}
 		c.setError(fmt.Sprintf("failed to initialize iLink polling: %v", err))
 		return fmt.Errorf("failed to initialize iLink channel: %w", err)
 	}
@@ -135,7 +156,7 @@ func (c *Channel) Start(ctx context.Context) error {
 	c.handleILinkIncomingMessages(initialResp.Msgs)
 
 	c.wg.Add(1)
-	go c.runILinkPoller(initialResp.GetUpdatesBuf)
+	go c.runILinkPoller(initialResp.GetUpdatesBuf, len(initialResp.Msgs) == 0, initialResp.LongPollingTimeoutMS)
 
 	c.logger.Info("wechat iLink channel started", zap.String("api_base_url", c.config.APIBaseURL))
 	return nil
@@ -324,8 +345,14 @@ type iLinkNamedItem struct {
 	Name     string `json:"filename,omitempty"`
 }
 
-func (c *Channel) runILinkPoller(cursor string) {
+func (c *Channel) runILinkPoller(cursor string, waitBeforeNext bool, longPollingTimeoutMS int) {
 	defer c.wg.Done()
+
+	if waitBeforeNext {
+		if !sleepWithContext(c.ctx, iLinkPollDelay(longPollingTimeoutMS)) {
+			return
+		}
+	}
 
 	for {
 		resp, err := c.ilinkGetUpdates(c.ctx, cursor)
@@ -355,15 +382,19 @@ func (c *Channel) runILinkPoller(cursor string) {
 		c.handleILinkIncomingMessages(resp.Msgs)
 
 		if len(resp.Msgs) == 0 {
-			delay := 250 * time.Millisecond
-			if resp.LongPollingTimeoutMS > 0 && resp.LongPollingTimeoutMS < 250 {
-				delay = time.Duration(resp.LongPollingTimeoutMS) * time.Millisecond
-			}
-			if !sleepWithContext(c.ctx, delay) {
+			if !sleepWithContext(c.ctx, iLinkPollDelay(resp.LongPollingTimeoutMS)) {
 				return
 			}
 		}
 	}
+}
+
+func iLinkPollDelay(longPollingTimeoutMS int) time.Duration {
+	delay := 250 * time.Millisecond
+	if longPollingTimeoutMS > 0 && longPollingTimeoutMS < 250 {
+		delay = time.Duration(longPollingTimeoutMS) * time.Millisecond
+	}
+	return delay
 }
 
 func (c *Channel) handleILinkIncomingMessages(messages []iLinkMessage) {
@@ -427,7 +458,7 @@ func (c *Channel) postILinkJSON(ctx context.Context, endpoint string, payload an
 
 	client := c.httpClient
 	if client == nil {
-		client = &http.Client{Timeout: 45 * time.Second}
+		client = &http.Client{Timeout: iLinkHTTPTimeout}
 	}
 
 	resp, err := client.Do(req)

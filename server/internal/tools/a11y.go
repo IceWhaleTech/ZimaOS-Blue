@@ -265,6 +265,8 @@ func normalizeA11yAction(action string) string {
 		return a11yruntime.ActionWindows
 	case "snapshotinteractive", "interactivesnapshot":
 		return a11yruntime.ActionSnapshotInteractive
+	case "keysequence", "keyboardinput":
+		return a11yruntime.ActionKey
 	case "message", "chat", "reply", "sendmessage":
 		return "message"
 	case "type", "input", "write":
@@ -320,6 +322,14 @@ type hostAllWindowsLister interface {
 
 type hostAppActivator interface {
 	ActivateApp(ctx context.Context, appName string) (a11yruntime.ActionResult, error)
+}
+
+type hostFocusedTextTyper interface {
+	TypeFocusedText(ctx context.Context, windowID string, value string, holdMS int) (a11yruntime.ActionResult, error)
+}
+
+type a11yActOptions struct {
+	allowFocusedTypeAliasFallback bool
 }
 
 func (t *A11yTool) doBrowser(ctx context.Context, browser *BrowserTool, action string, args map[string]interface{}) (interface{}, error) {
@@ -521,7 +531,7 @@ func (t *A11yTool) doBrowserKey(ctx context.Context, browser *BrowserTool, args 
 		}), nil
 	}
 	targetID := browserTargetIDFromArgs(args, browser.cachedTarget())
-	keys, ok := compatStringSlice(args, "keys", "key")
+	keys, ok := resolveA11yKeySequenceArgs(args)
 	if !ok {
 		return nil, errors.New("keys are required for browser key")
 	}
@@ -883,6 +893,33 @@ func (t *A11yTool) doScenarioAct(ctx context.Context, backend a11yruntime.Backen
 }
 
 func (t *A11yTool) doTypeScenarioAct(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
+	value := strings.TrimSpace(firstCompatString(args, "value", "text"))
+	if value == "" {
+		if keys, ok := compatStringSlice(args, "keys"); ok && len(keys) > 0 {
+			cloned := make(map[string]interface{}, len(args)+1)
+			for key, value := range args {
+				cloned[key] = value
+			}
+			cloned["keys"] = append([]string(nil), keys...)
+			return t.doKey(ctx, backend, cloned, windowID)
+		}
+		if submitKeys, ok := compatStringSlice(args, "submit_keys", "submitKeys"); ok && len(submitKeys) > 0 {
+			cloned := make(map[string]interface{}, len(args)+1)
+			for key, value := range args {
+				cloned[key] = value
+			}
+			cloned["keys"] = append([]string(nil), submitKeys...)
+			return t.doKey(ctx, backend, cloned, windowID)
+		}
+	}
+	if shortcutKeys, ok := parseA11yShortcutLiteral(value); ok && a11yTypeAliasShortcutLiteralEligible(args) {
+		cloned := make(map[string]interface{}, len(args)+1)
+		for key, value := range args {
+			cloned[key] = value
+		}
+		cloned["keys"] = append([]string(nil), shortcutKeys...)
+		return t.doKey(ctx, backend, cloned, windowID)
+	}
 	cloned := make(map[string]interface{}, len(args)+2)
 	for key, value := range args {
 		cloned[key] = value
@@ -891,10 +928,16 @@ func (t *A11yTool) doTypeScenarioAct(ctx context.Context, backend a11yruntime.Ba
 	if _, provided := compatBoolArg(args, "submit"); !provided {
 		cloned["submit"] = false
 	}
-	return t.doAct(ctx, backend, cloned, windowID)
+	return t.doActWithOptions(ctx, backend, cloned, windowID, a11yActOptions{
+		allowFocusedTypeAliasFallback: true,
+	})
 }
 
 func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
+	return t.doActWithOptions(ctx, backend, args, windowID, a11yActOptions{})
+}
+
+func (t *A11yTool) doActWithOptions(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, opts a11yActOptions) (interface{}, error) {
 	value := firstCompatString(args, "value", "text")
 	intent := inferA11yActIntent(args, firstCompatString(args, "intent", "scene", "scenario", "goal"), value)
 	conversationSelector := resolveA11yConversationSelector(args, intent)
@@ -991,6 +1034,8 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		refMap          map[int]string
 		targetTelemetry a11yruntime.TargetResolution
 		selector        a11yTargetSelector
+		result          a11yruntime.ActionResult
+		usedFocusedType bool
 	)
 	if rawRef, ok := firstCompatValueDeep(args, "ref"); ok {
 		var valid bool
@@ -1035,6 +1080,18 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		var resolveErr error
 		targetTelemetry, resolveErr = t.resolveActTarget(ctx, backend, resolvedTarget, selector)
 		if resolveErr != nil {
+			if focusedResult, handled, focusedErr := t.tryFocusedTypeAliasFallback(ctx, backend, args, resolvedTarget, actType, intent, holdMS, selector, resolveErr, opts); handled {
+				if focusedErr != nil {
+					return chatErrorPayload(focusedErr), nil
+				}
+				result = focusedResult
+				usedFocusedType = true
+				if strings.TrimSpace(result.WindowID) != "" {
+					resolvedTarget = strings.TrimSpace(result.WindowID)
+				}
+			}
+		}
+		if resolveErr != nil && !usedFocusedType {
 			if chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
 				activatedWindow, conversationErr, handled := t.tryA11yConversationFallbackChain(ctx, backend, args, resolvedTarget, conversationSelector, holdMS, resolveErr)
 				if handled {
@@ -1051,14 +1108,16 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 			}
 			return chatErrorPayload(resolveErr), nil
 		}
-		if chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
+		if !usedFocusedType && chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
 			a11yRecordChatStage(ctx, chatState, a11yChatStageLocateConversation, a11yChatStageStatusOK, "structured_match", "", "", nil)
 			t.rememberA11yChatStrategy(chatState, a11yChatStageLocateConversation, "structured_match")
 		}
-		ref = targetTelemetry.Ref
-		refMap = cloneA11yRefMap(targetTelemetry.RefMap)
-		if strings.TrimSpace(targetTelemetry.WindowID) != "" {
-			resolvedTarget = strings.TrimSpace(targetTelemetry.WindowID)
+		if !usedFocusedType {
+			ref = targetTelemetry.Ref
+			refMap = cloneA11yRefMap(targetTelemetry.RefMap)
+			if strings.TrimSpace(targetTelemetry.WindowID) != "" {
+				resolvedTarget = strings.TrimSpace(targetTelemetry.WindowID)
+			}
 		}
 	}
 	submitPlan, submitPlanErr := t.resolveActSubmitPlan(ctx, backend, args, resolvedTarget, actType, ref, intent)
@@ -1072,20 +1131,23 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		}
 		a11yRecordChatStage(ctx, chatState, a11yChatStageTypeOrSend, a11yChatStageStatusOK, typeStrategy, "", "", nil)
 	}
-	result, err := a11yRunActionResultWithTimeout(ctx, actType, resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
-		return backend.Act(actionCtx, resolvedTarget, ref, refMap, actType, value, holdMS)
-	})
-	if err != nil {
-		if fallbackActType, ok := a11yFallbackActTypeOnUnsupported(actType, intent, err); ok {
-			result, err = a11yRunActionResultWithTimeout(ctx, fallbackActType, resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
-				return backend.Act(actionCtx, resolvedTarget, ref, refMap, fallbackActType, value, holdMS)
-			})
+	if !usedFocusedType {
+		actionErr := error(nil)
+		result, actionErr = a11yRunActionResultWithTimeout(ctx, actType, resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+			return backend.Act(actionCtx, resolvedTarget, ref, refMap, actType, value, holdMS)
+		})
+		if actionErr != nil {
+			if fallbackActType, ok := a11yFallbackActTypeOnUnsupported(actType, intent, actionErr); ok {
+				result, actionErr = a11yRunActionResultWithTimeout(ctx, fallbackActType, resolvedTarget, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+					return backend.Act(actionCtx, resolvedTarget, ref, refMap, fallbackActType, value, holdMS)
+				})
+			}
+		}
+		if actionErr != nil {
+			return chatErrorPayload(actionErr), nil
 		}
 	}
-	if err != nil {
-		return chatErrorPayload(err), nil
-	}
-	if chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
+	if !usedFocusedType && chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
 		confirmedWindow, confirmErr := t.confirmA11yMessageConversationActivated(ctx, backend, valueOrDefault(result.WindowID, resolvedTarget), conversationSelector)
 		if confirmErr != nil {
 			return chatErrorPayload(confirmErr), nil
@@ -1150,6 +1212,85 @@ func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args 
 		chatState.applyToPayload(payload)
 	}
 	return a11yJSON(payload), nil
+}
+
+func (t *A11yTool) tryFocusedTypeAliasFallback(
+	ctx context.Context,
+	backend a11yruntime.Backend,
+	args map[string]interface{},
+	windowID string,
+	actType string,
+	intent string,
+	holdMS int,
+	selector a11yTargetSelector,
+	resolveErr error,
+	opts a11yActOptions,
+) (a11yruntime.ActionResult, bool, error) {
+	if !opts.allowFocusedTypeAliasFallback {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	if strings.TrimSpace(strings.ToLower(backend.HostOS())) != "darwin" {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	if normalizeA11yActIntent(intent) != "" {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	if strings.TrimSpace(strings.ToLower(actType)) != "type" {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	explicitSelector := a11yTargetSelector{
+		Name: firstCompatString(args, "target_name", "targetName"),
+		Role: firstCompatString(args, "target_role", "targetRole"),
+	}
+	if explicitSelector.Provided() {
+		if strings.TrimSpace(explicitSelector.Name) != "" {
+			return a11yruntime.ActionResult{}, false, nil
+		}
+		switch normalizeA11yTargetRole(explicitSelector.Role) {
+		case "input", "text_input", "text", "editor":
+		default:
+			return a11yruntime.ActionResult{}, false, nil
+		}
+	}
+	runtimeErr, ok := resolveErr.(*a11yruntime.RuntimeError)
+	if !ok || runtimeErr.Code != "target_not_found" {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	switch normalizeA11yTargetRole(selector.Role) {
+	case "input", "text_input", "text", "editor":
+	default:
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	typer, ok := backend.(hostFocusedTextTyper)
+	if !ok {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	value := firstCompatString(args, "value", "text")
+	result, err := a11yRunActionResultWithTimeout(ctx, actType, windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return typer.TypeFocusedText(actionCtx, windowID, value, holdMS)
+	})
+	if err != nil {
+		return a11yruntime.ActionResult{}, true, err
+	}
+	if strings.TrimSpace(result.HostOS) == "" {
+		result.HostOS = backend.HostOS()
+	}
+	if strings.TrimSpace(result.WindowID) == "" {
+		result.WindowID = windowID
+	}
+	if strings.TrimSpace(result.ExecutionMode) == "" {
+		result.ExecutionMode = "input"
+	}
+	if strings.TrimSpace(result.VerificationMethod) == "" {
+		result.VerificationMethod = "focused_text"
+	}
+	if strings.TrimSpace(result.Message) == "" {
+		result.Message = "Host action completed"
+	}
+	result.TargetHit = true
+	result.VerificationPassed = true
+	result.Fallbacks = mergeA11yFallbacks(result.Fallbacks, []string{"focused_text"})
+	return result, true, nil
 }
 
 func a11yActionResultHasTelemetry(result a11yruntime.ActionResult) bool {
@@ -1368,7 +1509,7 @@ func (t *A11yTool) doKey(ctx context.Context, backend a11yruntime.Backend, args 
 		}
 	}
 	t.maybeAutoFocusExactMatch(ctx, backend, match, resolvedTarget)
-	keys, ok := compatStringSlice(args, "keys")
+	keys, ok := resolveA11yKeySequenceArgs(args)
 	if !ok || len(keys) == 0 {
 		return nil, errors.New("keys is required for key")
 	}

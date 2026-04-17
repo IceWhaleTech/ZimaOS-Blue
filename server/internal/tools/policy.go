@@ -36,7 +36,6 @@ var defaultChatDirectToolAllowlist = map[string]struct{}{
 	"ask":          {},
 	"bash":         {},
 	"browser":      {},
-	"calendar":     {},
 	"computer_use": {},
 	"convert":      {},
 	"edit":         {},

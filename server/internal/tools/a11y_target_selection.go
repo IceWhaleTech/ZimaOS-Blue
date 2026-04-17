@@ -861,7 +861,13 @@ func normalizeA11yTargetRole(value string) string {
 	normalized = strings.ReplaceAll(normalized, "-", " ")
 	normalized = strings.ReplaceAll(normalized, "_", " ")
 	fields := strings.Fields(normalized)
-	return strings.Join(fields, "_")
+	normalized = strings.Join(fields, "_")
+	switch normalized {
+	case "search", "searchbox", "search_box", "searchbar", "search_bar":
+		return "search_field"
+	default:
+		return normalized
+	}
 }
 
 func a11ySnapshotRoleMatches(role string, selectorRole string) bool {
@@ -1123,7 +1129,12 @@ func a11yCanContinueConversationFallbackAfterVisualMiss(err error) bool {
 	if !ok {
 		return false
 	}
-	return runtimeErr.Code == "fallback_exhausted" || runtimeErr.Code == "target_not_found"
+	switch runtimeErr.Code {
+	case "fallback_exhausted", "target_not_found", "confirmation_failed":
+		return true
+	default:
+		return false
+	}
 }
 
 func a11yShouldContinueConversationFallbackToVisual(backend a11yruntime.Backend, args map[string]interface{}, selector a11yTargetSelector, err error) bool {
@@ -2358,6 +2369,7 @@ func (t *A11yTool) resolveActSubmitPlan(ctx context.Context, backend a11yruntime
 		}, nil
 	}
 	if hasSubmitKeys {
+		submitKeys = normalizeA11yShortcutLiteralKeys(submitKeys)
 		return a11yActSubmitPlan{
 			Enabled:      true,
 			KeySequences: [][]string{append([]string(nil), submitKeys...)},

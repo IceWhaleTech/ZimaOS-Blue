@@ -1708,7 +1708,6 @@ func (r *Runner) execute(ctx context.Context, task *Task, conversationCtx string
 		r.cancelTask(task, "task cancelled")
 		return
 	}
-	_ = r.store.Update(ctx, task)
 	if err := r.transitionState(ctx, task, RuntimeStateDone, "task completed", nil, TaskStatusCompleted); err != nil {
 		r.failTask(ctx, task, fmt.Sprintf("runtime transition failed before done: %v", err))
 		return
@@ -3399,7 +3398,6 @@ func (r *Runner) failTask(ctx context.Context, task *Task, errMsg string) {
 		task.Result = task.Result + "\n\n" + learned
 	}
 	task.VerifiedOutput = task.Result
-	_ = r.store.Update(persistCtx, task)
 	if task.RuntimeState != RuntimeStateDone {
 		if err := r.transitionState(persistCtx, task, RuntimeStateDone, "task failed", nil, TaskStatusFailed); err != nil {
 			logger.Warn().Err(err).Str("task_id", task.ID).Msg("[agent] done transition failed during failure finalization")

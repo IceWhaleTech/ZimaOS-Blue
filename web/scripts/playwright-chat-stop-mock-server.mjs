@@ -30,6 +30,15 @@ const bootstrapPayload = {
   pending_exec_approval: null,
 }
 
+const dreamState = {
+  enabled: true,
+  archive_dir: '/tmp/playwright-dream-archive',
+  pending_capsules: 2,
+  archived_daily_logs: 1,
+  promoted_count: 5,
+  last_run_at: '2026-04-17T10:00:00.000Z',
+}
+
 function writeJson(res, statusCode, payload) {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -99,7 +108,63 @@ function handleRequest(req, res) {
   }
 
   if (method === 'GET' && pathname === '/api/v1/settings') {
-    return writeJson(res, 200, { locale: 'zh-CN', timezone: 'Asia/Shanghai' })
+    return writeJson(res, 200, {
+      locale: 'zh-CN',
+      timezone: 'Asia/Shanghai',
+      memory_recall_mode: 'balanced',
+    })
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/companion/settings') {
+    return writeJson(res, 200, {
+      retention: {
+        events_days: 30,
+        sessions_days: 30,
+        alerts_days: 30,
+      },
+      storage_info: {
+        session_count: 0,
+        alert_count: 0,
+        event_count: 0,
+      },
+    })
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/backup') {
+    return writeJson(res, 200, [])
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/memory/stats') {
+    return writeJson(res, 200, {
+      total_chunks: 1,
+      total_size_bytes: 256,
+      total_display_count: 1,
+      total_display_size_bytes: 256,
+      daily_logs_count: 0,
+      daily_entries_count: 0,
+      daily_total_size_bytes: 0,
+      backend: 'markdown',
+      oldest_chunk: '2026-04-17T09:00:00.000Z',
+      newest_chunk: '2026-04-17T09:30:00.000Z',
+    })
+  }
+
+  if (method === 'GET' && pathname === '/api/v1/memory/dream/status') {
+    return writeJson(res, 200, dreamState)
+  }
+
+  if (method === 'POST' && pathname === '/api/v1/memory/dream/run') {
+    dreamState.pending_capsules = 0
+    dreamState.archived_daily_logs = 2
+    dreamState.promoted_count = 7
+    dreamState.last_run_at = '2026-04-17T10:05:00.000Z'
+
+    return writeJson(res, 200, {
+      run_id: 'dream-run-playwright',
+      promoted_count: 2,
+      archived_daily_count: 1,
+      processed_capsules: 2,
+    })
   }
 
   if (method === 'GET' && pathname === '/api/v1/conversations') {

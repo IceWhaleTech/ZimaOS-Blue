@@ -32,6 +32,22 @@ export interface MemoryStats {
   daily_total_size_bytes?: number
 }
 
+export interface DreamStatusResponse {
+  enabled: boolean
+  archive_dir: string
+  pending_capsules: number
+  archived_daily_logs: number
+  promoted_count: number
+  last_run_at?: string | null
+}
+
+export interface RunDreamResponse {
+  run_id: string
+  promoted_count: number
+  archived_daily_count: number
+  processed_capsules: number
+}
+
 export interface StoreMemoryRequest {
   content: string
   tags?: string[]
@@ -80,6 +96,12 @@ export const memoryApi = {
 
   /** Get memory statistics */
   stats: () => api.get<MemoryStats>('/memory/stats'),
+
+  /** Get dream memory status */
+  dreamStatus: () => api.get<DreamStatusResponse>('/memory/dream/status'),
+
+  /** Run one dream consolidation pass */
+  runDream: () => api.post<RunDreamResponse>('/memory/dream/run', {}),
 
   /** Export memories as Markdown */
   exportMarkdown: () =>
