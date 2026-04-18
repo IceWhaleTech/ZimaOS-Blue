@@ -1380,7 +1380,6 @@ func (t *A11yTool) sendA11yConversationSearchKeySequences(ctx context.Context, b
 		}
 		resolvedWindow = strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow))
 		t.syncWindowContext(resolvedWindow)
-		t.clearSnapshotRefs()
 		nextWindow, err := t.waitForA11yConversationSearchField(ctx, backend, resolvedWindow)
 		if err != nil {
 			return resolvedWindow, err
