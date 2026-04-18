@@ -3,6 +3,7 @@ package wechatilink
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,12 @@ import (
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func newTCP4Server(tb testing.TB, handler http.Handler) *httptest.Server {
 	tb.Helper()
@@ -310,6 +317,68 @@ func TestChannel_Start_ContinuesWhenStartupProbeTimesOut(t *testing.T) {
 	case <-secondRequestStarted:
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected background iLink poller to continue after startup probe timeout")
+	}
+
+	info := ch.Info()
+	if info.Status != channel.StatusConnected {
+		t.Fatalf("Status = %q, want %q", info.Status, channel.StatusConnected)
+	}
+	if info.ConnectedAt == nil {
+		t.Fatal("expected ConnectedAt to be set after successful start")
+	}
+}
+
+func TestChannel_Start_ContinuesWhenStartupProbeReturnsEOF(t *testing.T) {
+	secondRequestStarted := make(chan struct{}, 1)
+	var calls atomic.Int32
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: "https://ilinkai.weixin.qq.com",
+		BotToken:   "bot-token",
+	}, zap.NewNop())
+	ch.httpClient = &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path != "/ilink/bot/getupdates" {
+				t.Fatalf("unexpected path: %s", req.URL.Path)
+			}
+
+			call := calls.Add(1)
+			if call == 1 {
+				return nil, io.EOF
+			}
+
+			select {
+			case secondRequestStarted <- struct{}{}:
+			default:
+			}
+
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(
+					`{"ret":0,"msgs":[],"get_updates_buf":"cursor-1","longpolling_timeout_ms":1}`,
+				)),
+			}, nil
+		}),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := ch.Start(ctx); err != nil {
+		t.Fatalf("Start error = %v", err)
+	}
+	defer func() {
+		if err := ch.Stop(context.Background()); err != nil {
+			t.Fatalf("Stop error = %v", err)
+		}
+	}()
+
+	select {
+	case <-secondRequestStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("expected background iLink poller to continue after startup EOF")
 	}
 
 	info := ch.Info()

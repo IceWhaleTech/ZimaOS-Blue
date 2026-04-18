@@ -4537,6 +4537,16 @@ export default mergeHarnessLocale('hr-HR', {
     labels: {
       backend: 'Pozadina',
       path: 'Putanja',
+      char_count: 'Broj znakova',
+      document: 'Dokument',
+      engine: 'Pogon',
+      file_name: 'Naziv datoteke',
+      page_count: 'Broj stranica',
+      size_bytes: 'Veličina (bajtovi)',
+      markdown: 'Markdown',
+      outline: 'Pregled',
+      pages: 'Stranice',
+      selected_pages: 'Odabrane stranice',
     },
     values: {
       strategy: {
@@ -4550,6 +4560,22 @@ export default mergeHarnessLocale('hr-HR', {
     },
     warnings: {
       listing_truncated: 'Popis je skraćen; suzite putanju ili povećajte max_entries.',
+    },
+    badges: {
+      list: 'POPIS',
+      find: 'TRAŽI',
+      file: 'DATOTEKA',
+      dir: 'MAPA',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Nema podudaranja za {pattern} u {basePath}',
+      noMatchesIn: 'Nema podudaranja u {basePath}',
+      matchesForIn: '{count} podudaranja za {pattern} u {basePath}',
+      matchesIn: '{count} podudaranja u {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Prikazujem prvih {count} stavki u {basePath} (više izostavljeno)',
+      noEntriesIn: 'Nema stavki u {basePath}',
+      oneEntryIn: '1 stavka u {basePath}',
+      entriesIn: '{count} stavki u {basePath}',
     },
     copy: 'Kopiraj',
     copied: 'Kopirano!',

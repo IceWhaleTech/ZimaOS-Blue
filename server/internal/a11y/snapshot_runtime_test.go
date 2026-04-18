@@ -1,6 +1,10 @@
 package a11y
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestBuildStructuredSnapshot_ProjectsFullAndInteractiveTrees(t *testing.T) {
 	root := &Node{
@@ -64,6 +68,163 @@ func TestBuildStructuredSnapshot_ProjectsFullAndInteractiveTrees(t *testing.T) {
 	if got := interactive.NodeToRef[snapshot.LookupToken("token-message")]; got == 0 {
 		t.Fatalf("interactive NodeToRef missing token-message node: %#v", interactive.NodeToRef)
 	}
+}
+
+func TestBuildStructuredSnapshot_ProjectsNodeBoundsWhenPresent(t *testing.T) {
+	root := &Node{
+		Role: "window",
+		Name: "Feishu",
+		Children: []*Node{
+			{
+				Token:       "token-orca",
+				Role:        "list_item",
+				Name:        "Orca",
+				Interactive: true,
+			},
+		},
+	}
+	setNodeBoundsForTest(t, root, NormalizedRect{X: 0, Y: 0, Width: 1, Height: 1})
+	setNodeBoundsForTest(t, root.Children[0], NormalizedRect{X: 0.10, Y: 0.20, Width: 0.30, Height: 0.10})
+
+	snapshot := BuildStructuredSnapshot(BuildStructuredSnapshotOptions{
+		WindowID: "win-1",
+		Title:    "Feishu",
+	}, root)
+	if snapshot == nil {
+		t.Fatal("BuildStructuredSnapshot() = nil")
+	}
+	nodeID := snapshot.LookupToken("token-orca")
+	if nodeID == 0 {
+		t.Fatal("LookupToken(token-orca) = 0, want node id")
+	}
+	node, ok := snapshotNodeByID(snapshot, nodeID)
+	if !ok {
+		t.Fatalf("snapshotNodeByID(%d) = missing, want node", nodeID)
+	}
+	want := (NormalizedRect{X: 0.10, Y: 0.20, Width: 0.30, Height: 0.10})
+	if node.Bounds != want {
+		t.Fatalf("node.Bounds = %#v, want %#v", node.Bounds, want)
+	}
+}
+
+func TestBuildStructuredSnapshot_AssignsStableIDIndependentOfFocusState(t *testing.T) {
+	buildSnapshot := func(description string) *Snapshot {
+		root := &Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*Node{
+				{
+					Token:       "token-message",
+					Role:        "text_field",
+					Name:        "Type a message",
+					Description: description,
+					Interactive: true,
+				},
+			},
+		}
+		setNodeBoundsForTest(t, root, NormalizedRect{X: 0, Y: 0, Width: 1, Height: 1})
+		setNodeBoundsForTest(t, root.Children[0], NormalizedRect{X: 0.10, Y: 0.70, Width: 0.80, Height: 0.12})
+		return BuildStructuredSnapshot(BuildStructuredSnapshotOptions{
+			WindowID: "win-1",
+			Title:    "Feishu",
+		}, root)
+	}
+
+	unfocused := buildSnapshot("")
+	focused := buildSnapshot("focused editable")
+	if unfocused == nil || focused == nil {
+		t.Fatal("BuildStructuredSnapshot() = nil, want snapshots")
+	}
+
+	unfocusedID := unfocused.LookupToken("token-message")
+	focusedID := focused.LookupToken("token-message")
+	if unfocusedID == 0 || focusedID == 0 {
+		t.Fatalf("LookupToken(token-message) = (%d, %d), want non-zero ids", unfocusedID, focusedID)
+	}
+
+	unfocusedNode, ok := snapshotNodeByID(unfocused, unfocusedID)
+	if !ok {
+		t.Fatalf("snapshotNodeByID(%d) missing in unfocused snapshot", unfocusedID)
+	}
+	focusedNode, ok := snapshotNodeByID(focused, focusedID)
+	if !ok {
+		t.Fatalf("snapshotNodeByID(%d) missing in focused snapshot", focusedID)
+	}
+	if strings.TrimSpace(unfocusedNode.StableID) == "" {
+		t.Fatal("unfocusedNode.StableID = empty, want stable id")
+	}
+	if unfocusedNode.StableID != focusedNode.StableID {
+		t.Fatalf("StableID changed across focus-state drift: %q vs %q", unfocusedNode.StableID, focusedNode.StableID)
+	}
+}
+
+func TestBuildStructuredSnapshot_AssignsStableIDIndependentOfComposerNameDrift(t *testing.T) {
+	buildSnapshot := func(name string) *Snapshot {
+		root := &Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*Node{
+				{
+					Token:       "token-message",
+					Role:        "document",
+					Name:        name,
+					Description: "focused editable",
+					Interactive: true,
+				},
+			},
+		}
+		setNodeBoundsForTest(t, root, NormalizedRect{X: 0, Y: 0, Width: 1, Height: 1})
+		setNodeBoundsForTest(t, root.Children[0], NormalizedRect{X: 0.10, Y: 0.70, Width: 0.80, Height: 0.12})
+		return BuildStructuredSnapshot(BuildStructuredSnapshotOptions{
+			WindowID: "win-1",
+			Title:    "Feishu",
+		}, root)
+	}
+
+	preSubmit := buildSnapshot("Message")
+	postSubmit := buildSnapshot("Type a message")
+	if preSubmit == nil || postSubmit == nil {
+		t.Fatal("BuildStructuredSnapshot() = nil, want snapshots")
+	}
+
+	preSubmitID := preSubmit.LookupToken("token-message")
+	postSubmitID := postSubmit.LookupToken("token-message")
+	if preSubmitID == 0 || postSubmitID == 0 {
+		t.Fatalf("LookupToken(token-message) = (%d, %d), want non-zero ids", preSubmitID, postSubmitID)
+	}
+
+	preSubmitNode, ok := snapshotNodeByID(preSubmit, preSubmitID)
+	if !ok {
+		t.Fatalf("snapshotNodeByID(%d) missing in pre-submit snapshot", preSubmitID)
+	}
+	postSubmitNode, ok := snapshotNodeByID(postSubmit, postSubmitID)
+	if !ok {
+		t.Fatalf("snapshotNodeByID(%d) missing in post-submit snapshot", postSubmitID)
+	}
+	if strings.TrimSpace(preSubmitNode.StableID) == "" {
+		t.Fatal("preSubmitNode.StableID = empty, want stable id")
+	}
+	if preSubmitNode.StableID != postSubmitNode.StableID {
+		t.Fatalf("StableID changed across composer name drift: %q vs %q", preSubmitNode.StableID, postSubmitNode.StableID)
+	}
+}
+
+func setNodeBoundsForTest(t *testing.T, node *Node, bounds NormalizedRect) {
+	t.Helper()
+	if node == nil {
+		t.Fatal("node = nil, want non-nil")
+	}
+	value := reflect.ValueOf(node).Elem().FieldByName("Bounds")
+	if !value.IsValid() {
+		t.Fatal("Node.Bounds field is missing")
+	}
+	if !value.CanSet() {
+		t.Fatal("Node.Bounds field is not settable")
+	}
+	if value.Type() != reflect.TypeOf(NormalizedRect{}) {
+		t.Fatalf("Node.Bounds type = %v, want %v", value.Type(), reflect.TypeOf(NormalizedRect{}))
+	}
+	value.Set(reflect.ValueOf(bounds))
 }
 
 func TestSnapshotStore_SwapMarkDirtyAndPatch(t *testing.T) {

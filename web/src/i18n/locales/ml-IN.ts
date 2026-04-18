@@ -4580,6 +4580,16 @@ export default mergeHarnessLocale('ml-IN', {
     labels: {
       backend: 'ബാക്ക്എൻഡ്',
       path: 'പാത',
+      char_count: 'അക്ഷരങ്ങളുടെ എണ്ണം',
+      document: 'പ്രമാണം',
+      engine: 'എഞ്ചിൻ',
+      file_name: 'ഫയൽ പേര്',
+      page_count: 'പേജുകളുടെ എണ്ണം',
+      size_bytes: 'വലുപ്പം (ബൈറ്റുകൾ)',
+      markdown: 'Markdown',
+      outline: 'ഔട്ട്‌ലൈൻ',
+      pages: 'പേജുകൾ',
+      selected_pages: 'തിരഞ്ഞെടുത്ത പേജുകൾ',
     },
     values: {
       strategy: {
@@ -4593,6 +4603,22 @@ export default mergeHarnessLocale('ml-IN', {
     },
     warnings: {
       listing_truncated: 'പട്ടിക ചുരുക്കിയിരിക്കുന്നു; പാത ചുരുക്കുക അല്ലെങ്കിൽ max_entries കൂട്ടുക.',
+    },
+    badges: {
+      list: 'ലിസ്റ്റ്',
+      find: 'തിരയുക',
+      file: 'ഫയൽ',
+      dir: 'ഫോൾഡർ',
+    },
+    directoryListing: {
+      noMatchesForIn: '{basePath} ൽ {pattern} ന് പൊരുത്തങ്ങൾ ഇല്ല',
+      noMatchesIn: '{basePath} ൽ പൊരുത്തങ്ങൾ ഇല്ല',
+      matchesForIn: '{basePath} ൽ {pattern} ന് {count} പൊരുത്തങ്ങൾ',
+      matchesIn: '{basePath} ൽ {count} പൊരുത്തങ്ങൾ',
+      showingFirstEntriesInMoreOmitted: '{basePath} ൽ ആദ്യ {count} എൻട്രികൾ കാണിക്കുന്നു (കൂടുതൽ ഒഴിവാക്കി)',
+      noEntriesIn: '{basePath} ൽ എൻട്രികൾ ഇല്ല',
+      oneEntryIn: '{basePath} ൽ 1 എൻട്രി',
+      entriesIn: '{basePath} ൽ {count} എൻട്രികൾ',
     },
     copy: 'പകർത്തുക',
     copied: 'പകർത്തി!',

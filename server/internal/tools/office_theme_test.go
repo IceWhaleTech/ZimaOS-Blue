@@ -72,6 +72,12 @@ func TestThemeInference(t *testing.T) {
 		{"editorial poster", "editorial"},
 		{"bold typographic deck", "editorial"},
 		{"高对比海报感", "editorial"},
+		{"杂志风", "editorial"},
+		{"杂志版", "editorial"},
+		{"杂志风格", "editorial"},
+		{"海报风", "editorial"},
+		{"品牌杂志风", "editorial"},
+		{"编辑感", "editorial"},
 
 		// Original matches preserved
 		{"ui review", "ui_review"},
@@ -87,6 +93,23 @@ func TestThemeInference(t *testing.T) {
 				t.Errorf("hint=%q got=%q want=%q", tc.hint, got.Name, tc.want)
 			}
 		})
+	}
+}
+
+func TestResolveOfficeTheme_ExplicitMagazineAliasUsesEditorial(t *testing.T) {
+	theme := resolveOfficeTheme("magazine", "")
+	if theme.Name != "editorial" {
+		t.Fatalf("resolveOfficeTheme(magazine) = %q, want editorial", theme.Name)
+	}
+}
+
+func TestOfficeThemeByName_MagazineAliasUsesEditorial(t *testing.T) {
+	theme, err := officeThemeByName("magazine")
+	if err != nil {
+		t.Fatalf("officeThemeByName(magazine) error = %v", err)
+	}
+	if theme.Name != "editorial" {
+		t.Fatalf("officeThemeByName(magazine) = %q, want editorial", theme.Name)
 	}
 }
 

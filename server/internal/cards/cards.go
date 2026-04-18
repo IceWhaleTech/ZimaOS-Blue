@@ -1974,6 +1974,7 @@ func nativeDocumentCard(toolName, content string) map[string]interface{} {
 		"type":        "file",
 		"id":          "native-document-" + url.QueryEscape(downloadPath),
 		"filename":    filename,
+		"displayPath": nativeDocumentCardDisplayPath(data),
 		"downloadUrl": downloadPath,
 		"mimeType":    nativeDocumentMimeType(strings.TrimSpace(formatValue(data["format"]))),
 	}
@@ -2027,6 +2028,19 @@ func nativeDocumentCardFilename(data map[string]interface{}, downloadPath string
 		base := filepath.Base(candidate)
 		if strings.TrimSpace(base) != "" && base != "." && base != string(filepath.Separator) {
 			return base
+		}
+	}
+	return ""
+}
+
+func nativeDocumentCardDisplayPath(data map[string]interface{}) string {
+	for _, candidate := range []string{
+		strings.TrimSpace(formatValue(data["original_path"])),
+		strings.TrimSpace(formatValue(data["path"])),
+		strings.TrimSpace(formatValue(data["absolute_path"])),
+	} {
+		if candidate != "" {
+			return candidate
 		}
 	}
 	return ""

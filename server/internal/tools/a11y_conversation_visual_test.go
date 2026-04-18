@@ -251,3 +251,182 @@ func TestLocateA11yConversationVisualHit_FallsBackToOCRLocatorWhenChatGrounderMi
 		t.Fatalf("point = %#v, want OCR fallback hit", hit.Point)
 	}
 }
+
+func TestLocateA11yConversationVisualHit_PrefersStructuredSnapshotBoundsBeforeScreenshot(t *testing.T) {
+	backend := &a11yCompatBackend{
+		hostOS: "darwin",
+		structuredSnapshot: &a11yruntime.Snapshot{
+			WindowID: "win-feishu",
+			Nodes: []a11yruntime.FlatNode{
+				{
+					NodeID:        1,
+					Role:          "list_item",
+					Name:          "Orca",
+					Bounds:        a11yruntime.NormalizedRect{X: 0.10, Y: 0.20, Width: 0.30, Height: 0.10},
+					Visible:       true,
+					Enabled:       true,
+					Interactive:   true,
+					Description:   "visible",
+					DefaultAction: "press",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("grounding-png"),
+	}
+	tool := NewA11yTool()
+
+	prevLocate := a11yLocateConversationVisualHitFromPNG
+	a11yLocateConversationVisualHitFromPNG = func(context.Context, []byte, string) (a11yConversationVisualHit, error) {
+		t.Fatal("expected structured snapshot bounds to short-circuit screenshot OCR locator")
+		return a11yConversationVisualHit{}, nil
+	}
+	defer func() { a11yLocateConversationVisualHitFromPNG = prevLocate }()
+
+	hit, err := tool.locateA11yConversationVisualHit(context.Background(), backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("locateA11yConversationVisualHit() error = %v", err)
+	}
+	if hit.Point.X != 0.25 || hit.Point.Y != 0.25 {
+		t.Fatalf("point = %#v, want center of structured snapshot bounds", hit.Point)
+	}
+	if backend.lastGroundingScreenshotWindow != "" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want empty when structured snapshot bounds are enough", backend.lastGroundingScreenshotWindow)
+	}
+	if backend.lastScreenshotWindow != "" {
+		t.Fatalf("lastScreenshotWindow = %q, want public screenshot path to stay unused", backend.lastScreenshotWindow)
+	}
+}
+
+func TestLocateA11yConversationVisualHit_DoesNotUseAmbiguousStructuredSnapshotBounds(t *testing.T) {
+	backend := &a11yCompatBackend{
+		hostOS: "darwin",
+		structuredSnapshot: &a11yruntime.Snapshot{
+			WindowID: "win-feishu",
+			Nodes: []a11yruntime.FlatNode{
+				{
+					NodeID:        1,
+					Role:          "list_item",
+					Name:          "Orca",
+					Bounds:        a11yruntime.NormalizedRect{X: 0.10, Y: 0.20, Width: 0.30, Height: 0.10},
+					Visible:       true,
+					Enabled:       true,
+					Interactive:   true,
+					Description:   "visible",
+					DefaultAction: "press",
+				},
+				{
+					NodeID:        2,
+					Role:          "list_item",
+					Name:          "Orca Bot",
+					Bounds:        a11yruntime.NormalizedRect{X: 0.10, Y: 0.36, Width: 0.30, Height: 0.10},
+					Visible:       true,
+					Enabled:       true,
+					Interactive:   true,
+					Description:   "visible",
+					DefaultAction: "press",
+				},
+			},
+		},
+		screenshotGroundingBytes: []byte("grounding-png"),
+	}
+	tool := NewA11yTool()
+
+	prevLocate := a11yLocateConversationVisualHitFromPNG
+	ocrCalled := 0
+	a11yLocateConversationVisualHitFromPNG = func(_ context.Context, imagePNG []byte, selectorName string) (a11yConversationVisualHit, error) {
+		ocrCalled++
+		if !bytes.Equal(imagePNG, []byte("grounding-png")) {
+			t.Fatalf("png bytes = %q, want grounding-png", string(imagePNG))
+		}
+		if selectorName != "Orca" {
+			t.Fatalf("selectorName = %q, want Orca", selectorName)
+		}
+		return a11yConversationVisualHit{
+			Point:      a11yruntime.NormalizedPoint{X: 0.41, Y: 0.52},
+			Confidence: 0.90,
+		}, nil
+	}
+	defer func() { a11yLocateConversationVisualHitFromPNG = prevLocate }()
+
+	hit, err := tool.locateA11yConversationVisualHit(context.Background(), backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("locateA11yConversationVisualHit() error = %v", err)
+	}
+	if ocrCalled != 1 {
+		t.Fatalf("ocrCalled = %d, want 1 fallback invocation when structured bounds are ambiguous", ocrCalled)
+	}
+	if hit.Point.X != 0.41 || hit.Point.Y != 0.52 {
+		t.Fatalf("point = %#v, want OCR fallback hit", hit.Point)
+	}
+	if backend.lastGroundingScreenshotWindow != "win-feishu" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want win-feishu when structured bounds are ambiguous", backend.lastGroundingScreenshotWindow)
+	}
+}
+
+func TestLocateA11yConversationVisualHit_PrefersRememberedStableIDAnchorWhenStructuredBoundsAreAmbiguous(t *testing.T) {
+	snapshot := a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+		WindowID: "win-feishu",
+		Title:    "Feishu",
+		Mode:     "ax",
+	}, &a11yruntime.Node{
+		Role: "window",
+		Name: "Feishu",
+		Children: []*a11yruntime.Node{
+			{
+				Token:       "token-orca",
+				Role:        "list_item",
+				Name:        "Orca",
+				Bounds:      a11yruntime.NormalizedRect{X: 0.10, Y: 0.20, Width: 0.30, Height: 0.10},
+				Interactive: true,
+			},
+			{
+				Token:       "token-orca-bot",
+				Role:        "list_item",
+				Name:        "Orca Bot",
+				Bounds:      a11yruntime.NormalizedRect{X: 0.10, Y: 0.36, Width: 0.30, Height: 0.10},
+				Interactive: true,
+			},
+		},
+	})
+	if snapshot == nil {
+		t.Fatal("BuildStructuredSnapshot() = nil")
+	}
+
+	rememberedStableID := ""
+	for _, node := range snapshot.Nodes {
+		if node.BackendToken == "token-orca" {
+			rememberedStableID = node.StableID
+			break
+		}
+	}
+	if rememberedStableID == "" {
+		t.Fatal("rememberedStableID = empty, want stable id for Orca conversation")
+	}
+
+	backend := &a11yCompatBackend{
+		hostOS:             "darwin",
+		structuredSnapshot: snapshot,
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.chatMemory.RememberAnchor("darwin", "feishu_lark", "select", string(a11yChatStageLocateConversation), rememberedStableID)
+	state := newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca")
+
+	prevLocate := a11yLocateConversationVisualHitFromPNG
+	a11yLocateConversationVisualHitFromPNG = func(context.Context, []byte, string) (a11yConversationVisualHit, error) {
+		t.Fatal("expected remembered stable_id anchor to avoid OCR fallback")
+		return a11yConversationVisualHit{}, nil
+	}
+	defer func() { a11yLocateConversationVisualHitFromPNG = prevLocate }()
+
+	hit, err := tool.locateA11yConversationVisualHit(withA11yChatExecutionState(context.Background(), state), backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("locateA11yConversationVisualHit() error = %v", err)
+	}
+	if hit.Point.X != 0.25 || hit.Point.Y != 0.25 {
+		t.Fatalf("point = %#v, want remembered Orca center", hit.Point)
+	}
+	if backend.lastGroundingScreenshotWindow != "" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want empty when remembered anchor resolves ambiguity", backend.lastGroundingScreenshotWindow)
+	}
+}

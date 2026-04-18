@@ -33,17 +33,16 @@ vi.mock('@/api/chat', () => ({
 
 vi.mock('@/utils/typeless', () => ({
   parseTypelessContent: vi.fn((content: string) => {
-    const match = content.match(/phone_specs_2026\/完整报告_含截图证据\.md/)
+    const matches = Array.from(
+      content.matchAll(/"label":"path","value":"([^"]+)"/g),
+      (match) => match[1]
+    )
     return {
-      cards: match
-        ? [
-            {
-              type: 'result',
-              id: 'card-1',
-              details: [{ label: 'path', value: match[0] }],
-            },
-          ]
-        : [],
+      cards: matches.map((path, index) => ({
+        type: 'result',
+        id: `card-${index + 1}`,
+        details: [{ label: 'path', value: path }],
+      })),
     }
   }),
 }))
@@ -118,6 +117,10 @@ function createTestRouter() {
 
 function findButtonByText(wrapper: ReturnType<typeof mount>, text: string) {
   return wrapper.findAll('button').find((button) => button.text().includes(text))
+}
+
+function findWorkspaceTreeRow(wrapper: ReturnType<typeof mount>, text: string) {
+  return wrapper.findAll('[data-current-conversation]').find((row) => row.text().includes(text))
 }
 
 async function mountSidebar(initialPath = '/home') {
@@ -561,6 +564,169 @@ describe('AppSidebar', () => {
     expect(highlightedRows.length).toBeGreaterThan(0)
     expect(highlightedRows.some((row) => row.text().includes('完整报告_含截图证据.md'))).toBe(true)
     expect(wrapper.text()).toContain('Current conversation')
+  })
+
+  it('scopes the workspace tree to the current conversation directory when generated files share a subtree', async () => {
+    vi.mocked(workspaceApi.getTree).mockResolvedValue({
+      data: {
+        root: '/tmp/workspace',
+        entries: [
+          {
+            path: 'phone_specs_2026',
+            abs_path: '/tmp/workspace/phone_specs_2026',
+            name: 'phone_specs_2026',
+            type: 'dir',
+            depth: 1,
+          },
+          {
+            path: 'phone_specs_2026/完整报告_含截图证据.md',
+            abs_path: '/tmp/workspace/phone_specs_2026/完整报告_含截图证据.md',
+            name: '完整报告_含截图证据.md',
+            type: 'file',
+            depth: 2,
+            size_bytes: 27690,
+          },
+          {
+            path: 'phone_specs_2026/assets',
+            abs_path: '/tmp/workspace/phone_specs_2026/assets',
+            name: 'assets',
+            type: 'dir',
+            depth: 2,
+          },
+          {
+            path: 'phone_specs_2026/assets/spec-sheet.png',
+            abs_path: '/tmp/workspace/phone_specs_2026/assets/spec-sheet.png',
+            name: 'spec-sheet.png',
+            type: 'file',
+            depth: 3,
+            size_bytes: 1024,
+          },
+        ],
+      },
+    } as never)
+    vi.mocked(conversationApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'conv-phone-specs',
+          title: '2026年1月至今（3月17日）已经发布的新手机',
+          created_at: '2026-03-17T15:54:21Z',
+          updated_at: '2026-03-17T17:18:51Z',
+        },
+      ],
+    } as never)
+    vi.mocked(messageApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'msg-1',
+          conversation_id: 'conv-phone-specs',
+          role: 'assistant',
+          content:
+            '```typeless\n' +
+            '{"details":[{"label":"path","value":"phone_specs_2026/完整报告_含截图证据.md"},{"label":"path","value":"phone_specs_2026/assets/spec-sheet.png"}],"status":"success","title":"write_commit","type":"result"}\n' +
+            '```',
+          created_at: '2026-03-17T17:13:00Z',
+        },
+      ],
+    } as never)
+
+    const { wrapper } = await mountSidebar('/chat')
+    const chatStore = useChatStore()
+    chatStore.currentConversationId = 'conv-phone-specs'
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(
+      vi.mocked(workspaceApi.getTree).mock.calls.some(
+        ([params]) =>
+          params?.max_depth === 16 && params?.root === '/tmp/workspace/phone_specs_2026'
+      )
+    ).toBe(true)
+  })
+
+  it('defaults memory and knowledge directories to collapsed in the workspace tree', async () => {
+    vi.mocked(workspaceApi.getTree).mockResolvedValue({
+      data: {
+        root: '/tmp/workspace',
+        entries: [
+          {
+            path: 'memory',
+            abs_path: '/tmp/workspace/memory',
+            name: 'memory',
+            type: 'dir',
+            depth: 1,
+          },
+          {
+            path: 'memory/daily',
+            abs_path: '/tmp/workspace/memory/daily',
+            name: 'daily',
+            type: 'dir',
+            depth: 2,
+          },
+          {
+            path: 'memory/daily/report.txt',
+            abs_path: '/tmp/workspace/memory/daily/report.txt',
+            name: 'report.txt',
+            type: 'file',
+            depth: 3,
+            size_bytes: 128,
+          },
+          {
+            path: 'knowledge',
+            abs_path: '/tmp/workspace/knowledge',
+            name: 'knowledge',
+            type: 'dir',
+            depth: 1,
+          },
+          {
+            path: 'knowledge/overview.md',
+            abs_path: '/tmp/workspace/knowledge/overview.md',
+            name: 'overview.md',
+            type: 'file',
+            depth: 2,
+            size_bytes: 256,
+          },
+          {
+            path: 'project',
+            abs_path: '/tmp/workspace/project',
+            name: 'project',
+            type: 'dir',
+            depth: 1,
+          },
+          {
+            path: 'project/notes.md',
+            abs_path: '/tmp/workspace/project/notes.md',
+            name: 'notes.md',
+            type: 'file',
+            depth: 2,
+            size_bytes: 512,
+          },
+        ],
+      },
+    } as never)
+
+    const { wrapper } = await mountSidebar('/chat')
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+
+    const memoryRow = findWorkspaceTreeRow(wrapper, 'memory')
+    const knowledgeRow = findWorkspaceTreeRow(wrapper, 'knowledge')
+    const projectRow = findWorkspaceTreeRow(wrapper, 'project')
+
+    expect(memoryRow).toBeTruthy()
+    expect(knowledgeRow).toBeTruthy()
+    expect(projectRow).toBeTruthy()
+    expect(memoryRow!.get('button').attributes('title')).toBe('Expand folder')
+    expect(knowledgeRow!.get('button').attributes('title')).toBe('Expand folder')
+    expect(projectRow!.get('button').attributes('title')).toBe('Collapse folder')
+    expect(wrapper.text()).not.toContain('memory/daily')
+    expect(wrapper.text()).not.toContain('knowledge/overview.md')
+    expect(wrapper.text()).toContain('project/notes.md')
   })
 
   it('shows token estimate for visible core workspace files only', async () => {

@@ -4548,6 +4548,16 @@ export default mergeHarnessLocale('pl-PL', {
     labels: {
       backend: 'Zaplecze',
       path: 'Sciezka',
+      char_count: 'Liczba znaków',
+      document: 'Dokument',
+      engine: 'Silnik',
+      file_name: 'Nazwa pliku',
+      page_count: 'Liczba stron',
+      size_bytes: 'Rozmiar (bajty)',
+      markdown: 'Markdown',
+      outline: 'Konspekt',
+      pages: 'Strony',
+      selected_pages: 'Wybrane strony',
     },
     values: {
       strategy: {
@@ -4561,6 +4571,23 @@ export default mergeHarnessLocale('pl-PL', {
     },
     warnings: {
       listing_truncated: 'Lista została obcięta; zawęź ścieżkę lub zwiększ max_entries.',
+    },
+    badges: {
+      list: 'LISTA',
+      find: 'SZUKAJ',
+      file: 'PLIK',
+      dir: 'KATALOG',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Brak dopasowań dla {pattern} w {basePath}',
+      noMatchesIn: 'Brak dopasowań w {basePath}',
+      matchesForIn: '{count} dopasowań dla {pattern} w {basePath}',
+      matchesIn: '{count} dopasowań w {basePath}',
+      showingFirstEntriesInMoreOmitted:
+        'Wyświetlam pierwsze {count} wpisów w {basePath} (pozostałe pominięto)',
+      noEntriesIn: 'Brak wpisów w {basePath}',
+      oneEntryIn: '1 wpis w {basePath}',
+      entriesIn: '{count} wpisów w {basePath}',
     },
     copy: 'Kopiuj',
     copied: 'Skopiowano!',

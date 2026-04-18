@@ -4483,6 +4483,16 @@ export default mergeHarnessLocale('ko-KR', {
     labels: {
       backend: '백엔드',
       path: '경로',
+      char_count: '문자 수',
+      document: '문서',
+      engine: '엔진',
+      file_name: '파일 이름',
+      page_count: '페이지 수',
+      size_bytes: '크기(바이트)',
+      markdown: 'Markdown',
+      outline: '개요',
+      pages: '페이지',
+      selected_pages: '선택한 페이지',
     },
     values: {
       strategy: {
@@ -4496,6 +4506,22 @@ export default mergeHarnessLocale('ko-KR', {
     },
     warnings: {
       listing_truncated: '목록이 잘렸습니다. 경로 범위를 좁히거나 max_entries를 늘리세요.',
+    },
+    badges: {
+      list: '목록',
+      find: '검색',
+      file: '파일',
+      dir: '폴더',
+    },
+    directoryListing: {
+      noMatchesForIn: '{basePath}에서 {pattern}에 대한 일치 항목이 없습니다',
+      noMatchesIn: '{basePath}에서 일치 항목이 없습니다',
+      matchesForIn: '{basePath}에서 {pattern}에 대한 일치 항목 {count}개',
+      matchesIn: '{basePath}에서 일치 항목 {count}개',
+      showingFirstEntriesInMoreOmitted: '{basePath}에서 처음 {count}개 항목 표시 중(추가 항목 생략)',
+      noEntriesIn: '{basePath}에 항목이 없습니다',
+      oneEntryIn: '{basePath}에 1개 항목',
+      entriesIn: '{basePath}에 {count}개 항목',
     },
     copy: '복사',
     copied: '복사됨!',

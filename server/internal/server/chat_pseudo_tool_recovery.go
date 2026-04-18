@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"io"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -476,13 +477,23 @@ func pseudoRecoveryMarkdownProtectedRanges(content string) []pseudoContentRange 
 		if !strings.HasPrefix(content[i:], "```") {
 			continue
 		}
+		header := ""
+		if lineEnd := strings.IndexByte(content[i+3:], '\n'); lineEnd >= 0 {
+			header = strings.TrimSpace(content[i+3 : i+3+lineEnd])
+		} else {
+			header = strings.TrimSpace(content[i+3:])
+		}
 		end := strings.Index(content[i+3:], "```")
 		if end < 0 {
-			ranges = append(ranges, pseudoContentRange{Start: i, End: len(content)})
+			if !strings.EqualFold(header, "typeless") {
+				ranges = append(ranges, pseudoContentRange{Start: i, End: len(content)})
+			}
 			return ranges
 		}
 		end += i + 6
-		ranges = append(ranges, pseudoContentRange{Start: i, End: end})
+		if !strings.EqualFold(header, "typeless") {
+			ranges = append(ranges, pseudoContentRange{Start: i, End: end})
+		}
 		i = end - 1
 	}
 	for i := 0; i < len(content); i++ {
@@ -830,6 +841,9 @@ func recoverPseudoJSONToolCallsValue(value interface{}, allowedTools []llm.Tool)
 			}
 			return []llm.ToolCall{{Name: name, Arguments: arguments}}, true
 		}
+		if call, ok := recoverImplicitPseudoToolCallFromArgsMap(typed, allowedTools); ok {
+			return []llm.ToolCall{call}, true
+		}
 
 		var recovered []llm.ToolCall
 		for _, key := range []string{"tool_calls", "toolcalls", "choices", "choice", "delta", "message", "response", "data"} {
@@ -864,6 +878,180 @@ func recoverPseudoJSONToolCallsValue(value interface{}, allowedTools []llm.Tool)
 	default:
 		return nil, false
 	}
+}
+
+func recoverImplicitPseudoToolCallFromArgsMap(values map[string]interface{}, allowedTools []llm.Tool) (llm.ToolCall, bool) {
+	if !looksLikeImplicitNativeDocumentArgObject(values) {
+		return llm.ToolCall{}, false
+	}
+	toolName, ok := inferImplicitNativeDocumentToolName(values, allowedTools)
+	if !ok || !implicitNativeDocumentArgsAreRecoverable(toolName, values) {
+		return llm.ToolCall{}, false
+	}
+	normalized, _ := normalizeRecoveredPseudoWrapperArgsValue(values).(map[string]interface{})
+	if len(normalized) == 0 {
+		normalized = values
+	}
+	arguments, ok := marshalRecoveredPseudoToolArgs(toolName, normalized, allowedTools)
+	if !ok {
+		return llm.ToolCall{}, false
+	}
+	return llm.ToolCall{Name: toolName, Arguments: arguments}, true
+}
+
+func looksLikeImplicitNativeDocumentArgObject(values map[string]interface{}) bool {
+	if len(values) == 0 {
+		return false
+	}
+	score := 0
+	if strings.TrimSpace(anyToStringForLLM(values["action"])) != "" {
+		score++
+	}
+	if implicitNativeDocumentPathHint(values) != "" || implicitNativeDocumentSeedHint(values) != "" {
+		score++
+	}
+	for _, key := range []string{"title", "subtitle", "summary", "content", "markdown", "body", "text", "style_hint", "styleHint", "theme"} {
+		if strings.TrimSpace(anyToStringForLLM(values[key])) != "" {
+			score++
+			break
+		}
+	}
+	for _, key := range []string{"sections", "paragraphs", "notes", "fields", "include", "pages"} {
+		switch typed := values[key].(type) {
+		case []interface{}:
+			if len(typed) > 0 {
+				score++
+			}
+		case map[string]interface{}:
+			if len(typed) > 0 {
+				score++
+			}
+		}
+	}
+	return score >= 2
+}
+
+func inferImplicitNativeDocumentToolName(values map[string]interface{}, allowedTools []llm.Tool) (string, bool) {
+	candidates := make(map[string]struct{}, 2)
+	for _, path := range []string{
+		implicitNativeDocumentPathHint(values),
+		implicitNativeDocumentSeedHint(values),
+	} {
+		if path == "" {
+			continue
+		}
+		if tool := nativeDocumentArtifactToolForPath(path); tool != "" && containsLLMToolName(allowedTools, tool) {
+			candidates[tool] = struct{}{}
+		}
+	}
+	if len(candidates) == 1 {
+		for tool := range candidates {
+			return tool, true
+		}
+	}
+	if len(candidates) > 1 {
+		return "", false
+	}
+
+	unique := ""
+	for _, tool := range []string{"docx", "xlsx", "pptx", "pdf"} {
+		if !containsLLMToolName(allowedTools, tool) {
+			continue
+		}
+		if unique != "" {
+			return "", false
+		}
+		unique = tool
+	}
+	if unique == "" {
+		return "", false
+	}
+	return unique, true
+}
+
+func implicitNativeDocumentArgsAreRecoverable(toolName string, values map[string]interface{}) bool {
+	action := strings.ToLower(strings.TrimSpace(anyToStringForLLM(values["action"])))
+	if action == "" {
+		action = "create"
+	}
+	switch action {
+	case "create":
+		return implicitNativeDocumentCreateHasRenderableContent(toolName, values)
+	case "read", "info", "fill", "reformat":
+		return implicitNativeDocumentPathHint(values) != "" || implicitNativeDocumentSeedHint(values) != ""
+	default:
+		_ = toolName
+		return false
+	}
+}
+
+func implicitNativeDocumentCreateHasRenderableContent(toolName string, values map[string]interface{}) bool {
+	if implicitNativeDocumentCreateHasSeedInputForTool(toolName, values) {
+		return true
+	}
+	for _, key := range []string{"title", "subtitle", "content", "markdown", "body", "text"} {
+		if strings.TrimSpace(anyToStringForLLM(values[key])) != "" {
+			return true
+		}
+	}
+	for _, key := range []string{"sections", "paragraphs", "notes"} {
+		if rows, ok := values[key].([]interface{}); ok && len(rows) > 0 {
+			return true
+		}
+	}
+	if summary := values["summary"]; summary != nil {
+		switch typed := summary.(type) {
+		case string:
+			return strings.TrimSpace(typed) != ""
+		case map[string]interface{}:
+			for _, key := range []string{"text", "body", "content", "summary"} {
+				if strings.TrimSpace(anyToStringForLLM(typed[key])) != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func implicitNativeDocumentPathHint(values map[string]interface{}) string {
+	for _, key := range []string{"output_path", "outputPath", "path"} {
+		if value := strings.TrimSpace(anyToStringForLLM(values[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func implicitNativeDocumentSeedHint(values map[string]interface{}) string {
+	for _, key := range []string{"input_path", "inputPath", "source_path", "sourcePath", "source", "from"} {
+		if value := strings.TrimSpace(anyToStringForLLM(values[key])); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func implicitNativeDocumentCreateHasSeedInputForTool(toolName string, values map[string]interface{}) bool {
+	normalizedTool := normalizeFileToolCompatName(toolName)
+	outputExt := ""
+	switch normalizedTool {
+	case "docx", "xlsx", "pptx", "pdf":
+		outputExt = "." + normalizedTool
+	}
+
+	if implicitNativeDocumentSeedHint(values) != "" {
+		return true
+	}
+
+	pathValue := strings.TrimSpace(anyToStringForLLM(values["path"]))
+	if pathValue == "" {
+		return false
+	}
+	if outputExt == "" {
+		return filepath.Ext(pathValue) != ""
+	}
+	return !strings.EqualFold(filepath.Ext(pathValue), outputExt)
 }
 
 func recoverDirectPseudoXMLToolCall(node *pseudoXMLNode, allowedTools []llm.Tool) (llm.ToolCall, bool) {

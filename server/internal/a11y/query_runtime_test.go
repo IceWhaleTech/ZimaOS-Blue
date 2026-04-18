@@ -74,3 +74,48 @@ func TestResolveSnapshotTarget_FallsBackToLabelAnchorForSetting(t *testing.T) {
 		t.Fatal("Fallbacks = nil, want label anchor fallback marker")
 	}
 }
+
+func TestResolveSnapshotTarget_ConversationRoleIncludesStableIDAndBounds(t *testing.T) {
+	snapshot := BuildStructuredSnapshot(BuildStructuredSnapshotOptions{
+		WindowID: "win-4",
+		Title:    "Feishu",
+	}, &Node{
+		Role: "window",
+		Name: "Feishu",
+		Children: []*Node{
+			{
+				Token:       "token-orca",
+				Role:        "list_item",
+				Name:        "Orca Team",
+				Interactive: true,
+				Bounds:      NormalizedRect{X: 0.08, Y: 0.14, Width: 0.30, Height: 0.09},
+			},
+			{
+				Token:       "token-send",
+				Role:        "button",
+				Name:        "Send",
+				Interactive: true,
+			},
+		},
+	})
+
+	result, err := ResolveSnapshotTarget(snapshot, TargetSelector{Name: "Orca Team", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("ResolveSnapshotTarget() error = %v", err)
+	}
+	if got := result.Token; got != "token-orca" {
+		t.Fatalf("Token = %q, want token-orca", got)
+	}
+	if got := result.Role; got != "list_item" {
+		t.Fatalf("Role = %q, want list_item", got)
+	}
+	if got := result.Label; got != "Orca Team" {
+		t.Fatalf("Label = %q, want Orca Team", got)
+	}
+	if got := result.Bounds; got != (NormalizedRect{X: 0.08, Y: 0.14, Width: 0.30, Height: 0.09}) {
+		t.Fatalf("Bounds = %#v, want structured bounds", got)
+	}
+	if result.StableID == "" {
+		t.Fatal("StableID = empty, want stable id")
+	}
+}

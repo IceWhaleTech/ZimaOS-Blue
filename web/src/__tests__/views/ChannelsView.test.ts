@@ -56,7 +56,7 @@ vi.mock('@/components/channels/ChannelCard.vue', () => ({
     name: 'ChannelCard',
     props: ['channel'],
     template:
-      '<div class="channel-card-stub" :data-id="channel.id">{{ channel.id }}<button class="channel-card-select-stub" @click="$emit(\'toggle\')">select</button></div>',
+      '<div class="channel-card-stub" :data-id="channel.id" :data-enabled="channel.enabled ? \'true\' : \'false\'" :data-status="channel.status">{{ channel.id }}<button class="channel-card-select-stub" @click="$emit(\'toggle\')">select</button></div>',
   },
 }))
 
@@ -564,7 +564,7 @@ describe('ChannelsView', () => {
     expect(mobileLink.attributes('href')).not.toContain('/channels/setup/wechat_ilink')
   })
 
-  it('keeps the QR code visible during polling, uses the upstream scan link, auto-refreshes on connected, hides retry before failure, and removes the manual action', async () => {
+  it('keeps the QR code visible during polling, uses the upstream scan link, auto-refreshes on connected, closes the modal, enables the channel, hides retry before failure, and removes the manual action', async () => {
     vi.useFakeTimers()
     createWeChatILinkSetupSessionMock.mockResolvedValue({
       status: 200,
@@ -600,8 +600,8 @@ describe('ChannelsView', () => {
         channels: [
           {
             id: 'wechat_ilink',
-            enabled: false,
-            status: 'disconnected',
+            enabled: true,
+            status: 'connected',
             config: {},
           },
         ],
@@ -658,11 +658,128 @@ describe('ChannelsView', () => {
     await vi.advanceTimersByTimeAsync(1500)
     await flushPromises()
 
-    expect(wrapper.find('.channels-ilink-modal__status').text()).toContain('Connected')
-    expect(wrapper.find('.channels-ilink-modal__qr-image').attributes('src')).toBe(
-      'data:image/png;base64,abc'
-    )
+    expect(wrapper.find('.channels-ilink-modal').exists()).toBe(false)
     expect(listChannelsMock).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('.channel-card-stub[data-id="wechat_ilink"]').attributes('data-enabled')).toBe(
+      'true'
+    )
+    expect(wrapper.find('.channel-card-stub[data-id="wechat_ilink"]').attributes('data-status')).toBe(
+      'connected'
+    )
+
+    wrapper.unmount()
+  })
+
+  it('keeps the latest WeChat iLink setup status when older poll responses resolve later', async () => {
+    vi.useFakeTimers()
+    createWeChatILinkSetupSessionMock.mockResolvedValue({
+      status: 200,
+      data: {
+        session_id: 'session-1',
+        status: 'pending',
+        qrcode: 'data:image/png;base64,abc',
+        scan_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
+        mobile_url: 'https://ilinkai.weixin.qq.com/connect/scan-session-1',
+        expires_at: '2026-04-14T10:10:00Z',
+      },
+    })
+
+    let resolveFirstPoll:
+      | ((value: { status: number; data: Record<string, unknown> }) => void)
+      | null = null
+
+    getWeChatILinkSetupSessionMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFirstPoll = resolve
+        })
+    )
+    getWeChatILinkSetupSessionMock.mockResolvedValueOnce({
+      status: 200,
+      data: {
+        session_id: 'session-1',
+        status: 'connected',
+        message: 'configured',
+        expires_at: '2026-04-14T10:10:00Z',
+      },
+    })
+    listChannelsMock.mockResolvedValue({
+      status: 200,
+      data: {
+        channels: [
+          {
+            id: 'wechat_ilink',
+            enabled: true,
+            status: 'connected',
+            config: {},
+          },
+        ],
+      },
+    })
+    getChannelSettingsMock.mockResolvedValue({
+      status: 200,
+      data: {},
+    })
+
+    const ChannelsView = (await import('@/views/ChannelsView.vue')).default
+    const wrapper = mount(ChannelsView, {
+      global: {
+        plugins: [createTestI18n()],
+        stubs: {
+          teleport: true,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    const loadMoreButton = wrapper.find('.channels-load-more')
+    if (loadMoreButton.exists()) {
+      await loadMoreButton.trigger('click')
+      await flushPromises()
+    }
+
+    const wechatILinkCard = wrapper.find('.channel-card-stub[data-id="wechat_ilink"]')
+    expect(wechatILinkCard.exists()).toBe(true)
+    await wechatILinkCard.find('.channel-card-select-stub').trigger('click')
+    await flushPromises()
+
+    await wrapper.find('.channels-ilink-setup-card__primary').trigger('click')
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(1500)
+    await flushPromises()
+    expect(getWeChatILinkSetupSessionMock).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(1500)
+    await flushPromises()
+    expect(getWeChatILinkSetupSessionMock).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('.channels-ilink-modal').exists()).toBe(false)
+    expect(wrapper.find('.channel-card-stub[data-id="wechat_ilink"]').attributes('data-enabled')).toBe(
+      'true'
+    )
+    expect(wrapper.find('.channel-card-stub[data-id="wechat_ilink"]').attributes('data-status')).toBe(
+      'connected'
+    )
+
+    expect(resolveFirstPoll).not.toBeNull()
+    resolveFirstPoll?.({
+      status: 200,
+      data: {
+        session_id: 'session-1',
+        status: 'configuring',
+        expires_at: '2026-04-14T10:10:00Z',
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.channels-ilink-modal').exists()).toBe(false)
+    expect(wrapper.find('.channel-card-stub[data-id="wechat_ilink"]').attributes('data-enabled')).toBe(
+      'true'
+    )
+    expect(wrapper.find('.channel-card-stub[data-id="wechat_ilink"]').attributes('data-status')).toBe(
+      'connected'
+    )
 
     wrapper.unmount()
   })

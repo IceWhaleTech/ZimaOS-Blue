@@ -637,10 +637,11 @@ func TestCompactToolResultContentForLLM_PDFSynthesizesPagesFromMarkdownWhenPages
 
 func TestCompactToolResultContentForLLM_PDFCreateKeepsArtifactMetadata(t *testing.T) {
 	payload := map[string]interface{}{
-		"action": "create",
-		"path":   "reports/direct_markdown.pdf",
-		"format": "pdf",
-		"engine": "native_pdf_ir",
+		"action":        "create",
+		"path":          "reports/direct_markdown.pdf",
+		"absolute_path": "/Users/orca/.zimaos-blue/data/workspace/reports/direct_markdown.pdf",
+		"format":        "pdf",
+		"engine":        "native_pdf_ir",
 		"validation": map[string]interface{}{
 			"ok":         true,
 			"readable":   true,
@@ -667,8 +668,8 @@ func TestCompactToolResultContentForLLM_PDFCreateKeepsArtifactMetadata(t *testin
 	if !ok {
 		t.Fatalf("document = %#v, want object", out["document"])
 	}
-	if got := anyToStringForLLM(doc["path"]); got != "reports/direct_markdown.pdf" {
-		t.Fatalf("document.path = %q, want reports/direct_markdown.pdf", got)
+	if got := anyToStringForLLM(doc["path"]); got != "/Users/orca/.zimaos-blue/data/workspace/reports/direct_markdown.pdf" {
+		t.Fatalf("document.path = %q, want absolute follow-up path", got)
 	}
 	if got := anyToStringForLLM(doc["engine"]); got != "native_pdf_ir" {
 		t.Fatalf("document.engine = %q, want native_pdf_ir", got)
@@ -678,6 +679,26 @@ func TestCompactToolResultContentForLLM_PDFCreateKeepsArtifactMetadata(t *testin
 	}
 	if got := anyToIntForLLM(doc["size_bytes"]); got != 1234 {
 		t.Fatalf("document.size_bytes = %d, want 1234", got)
+	}
+}
+
+func TestCompactToolResultContentForLLM_PDFPreservesErrorPayload(t *testing.T) {
+	raw := `{"code":"invalid_tool_arguments","details":{"cause":"$.{\"action\": unexpected field","tool":"pdf"},"error":"tool \"pdf\" arguments did not match schema"}`
+
+	compacted := compactToolResultContentForLLM("pdf", raw)
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(compacted), &out); err != nil {
+		t.Fatalf("unmarshal compacted payload: %v (content=%q)", err, compacted)
+	}
+	if errMsg := strings.TrimSpace(anyToStringForLLM(out["error"])); errMsg == "" {
+		t.Fatalf("expected error preserved, got %#v (content=%q)", out, compacted)
+	}
+	if code := strings.TrimSpace(anyToStringForLLM(out["code"])); code == "" {
+		t.Fatalf("expected code preserved, got %#v (content=%q)", out, compacted)
+	}
+	if details, ok := out["details"].(map[string]interface{}); !ok || len(details) == 0 {
+		t.Fatalf("expected details preserved, got %#v (content=%q)", out["details"], compacted)
 	}
 }
 

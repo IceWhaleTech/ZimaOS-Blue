@@ -91,6 +91,10 @@ func (b *darwinBackend) ClickWindowPoint(ctx context.Context, windowID string, p
 	return b.clickWindowPoint(ctx, windowID, point, holdMS)
 }
 
+func (b *darwinBackend) ClickWindowPixel(ctx context.Context, windowID string, x int, y int, holdMS int) (ActionResult, error) {
+	return b.clickWindowPixel(ctx, windowID, x, y, holdMS)
+}
+
 func (b *darwinBackend) Key(ctx context.Context, windowID string, keys []string, holdMS int) (ActionResult, error) {
 	return b.key(ctx, windowID, keys, holdMS)
 }

@@ -140,7 +140,7 @@ func (h *ChatHandler) finalizeWorkspaceArtifactOrchestrationWrite(ctx context.Co
 
 func shouldUseLLMWorkspaceArtifactOrchestration(userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) bool {
 	target := extractRequestedArtifactWriteTarget(userMessage)
-	if target == "" || isImageArtifactPath(target) {
+	if target == "" || isImageArtifactPath(target) || isNativeDocumentArtifactPath(target) {
 		return false
 	}
 	if !shouldPreferWorkspaceFileWorkflow(userMessage) {
@@ -170,6 +170,9 @@ func shouldUseImmediateWorkspaceArtifactOrchestration(userMessage string, curren
 	}
 	target := extractRequestedArtifactWriteTarget(userMessage)
 	if target == "" {
+		return false
+	}
+	if isNativeDocumentArtifactPath(target) {
 		return false
 	}
 	evidence := collectWorkspaceArtifactEvidence(historyToolCalls, historyToolResults)

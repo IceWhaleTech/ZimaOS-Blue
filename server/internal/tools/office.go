@@ -536,10 +536,19 @@ func parseOfficeDocSpec(args map[string]interface{}, title, subtitle string, the
 	if topParagraphs := officeStringSliceArg(args, "paragraphs"); len(topParagraphs) > 0 {
 		spec.ParagraphBlocks = append(spec.ParagraphBlocks, officeDocBlocksFromLegacyParagraphs(topParagraphs)...)
 	}
-	if len(spec.Sections) == 0 && len(spec.ParagraphBlocks) == 0 && len(spec.Paragraphs) == 0 && strings.TrimSpace(spec.Summary) == "" {
-		return spec, errors.New("docx content requires sections, content/markdown, paragraphs, or summary")
+	if !officeDocSpecHasRenderableContent(spec) {
+		return spec, errors.New("docx content requires title, subtitle, sections, content/markdown, paragraphs, or summary")
 	}
 	return spec, nil
+}
+
+func officeDocSpecHasRenderableContent(spec officeDocSpec) bool {
+	return strings.TrimSpace(spec.Title) != "" ||
+		strings.TrimSpace(spec.Subtitle) != "" ||
+		strings.TrimSpace(spec.Summary) != "" ||
+		len(spec.Sections) > 0 ||
+		len(spec.ParagraphBlocks) > 0 ||
+		len(spec.Paragraphs) > 0
 }
 
 func parseOfficeSummaryStats(args map[string]interface{}) ([]officeStat, []string) {

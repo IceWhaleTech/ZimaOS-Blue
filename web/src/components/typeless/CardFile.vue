@@ -83,6 +83,7 @@ let resolveSeq = 0
 
 const resolvedDownloadUrl = computed(() => String(localFile.value?.download_url || '').trim())
 const thumbnailUrl = computed(() => String(localFile.value?.thumbnail_url || '').trim())
+const displayPath = computed(() => String(props.card.displayPath || '').trim())
 const thumbnailDisplayUrl = computed(() => {
   if (!thumbnailUrl.value) return ''
   return thumbnailUrl.value.includes('?')
@@ -212,6 +213,13 @@ function handleThumbnailError() {
         <h4 class="font-medium text-gray-900 dark:text-white truncate">
           {{ card.filename }}
         </h4>
+        <p
+          v-if="displayPath"
+          class="mt-1 truncate text-xs font-mono text-gray-500 dark:text-gray-400"
+          :title="displayPath"
+        >
+          {{ displayPath }}
+        </p>
         <div class="flex items-center gap-2 mt-1 text-sm text-gray-500 dark:text-gray-400">
           <span class="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-xs font-medium">
             {{ getFileExtension() }}

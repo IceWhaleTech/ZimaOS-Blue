@@ -78,9 +78,9 @@ func (t *PDFTool) Definition() ToolDefinition {
 					"enum":        []string{"info", "read", "create", "fill", "reformat"},
 					"description": "Operation to perform. Defaults to read.",
 				},
-				"path":        map[string]interface{}{"type": "string", "description": "Path or URL to a single PDF."},
-				"input_path":  map[string]interface{}{"type": "string", "description": "Optional explicit source PDF path for action=reformat."},
-				"output_path": map[string]interface{}{"type": "string", "description": "Destination workspace path for action=fill or action=reformat."},
+				"path":        map[string]interface{}{"type": "string", "description": "Path or URL to a single PDF. For action=create, this can also be a single source file path; the tool will derive a sibling .pdf output with the same basename."},
+				"input_path":  map[string]interface{}{"type": "string", "description": "Optional source file for action=create or source PDF for action=reformat. When create omits path/output_path, the tool derives the output .pdf beside this file using the same basename."},
+				"output_path": map[string]interface{}{"type": "string", "description": "Optional destination .pdf path for action=create, or destination workspace path for action=fill/reformat. Omit it on create to let the tool derive a sibling output path from input_path/path."},
 				"paths":       map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "Multiple PDF paths or URLs. Deduped and capped at 10."},
 				"pages":       map[string]interface{}{"description": "Page selection as '1,3-5', a single number, or an array of page numbers."},
 				"max_pages":   map[string]interface{}{"type": "integer", "description": "Maximum pages to extract."},
@@ -308,6 +308,9 @@ func (t *PDFTool) executeFill(ctx context.Context, args map[string]interface{}) 
 }
 
 func (t *PDFTool) executeCreate(ctx context.Context, args map[string]interface{}) (string, error) {
+	if err := maybeSeedNativeDocumentCreateFromSingleInputPath(ctx, t.scope, "pdf", args); err != nil {
+		return "", err
+	}
 	path := strings.TrimSpace(firstCompatPathString(args))
 	if path == "" {
 		var err error

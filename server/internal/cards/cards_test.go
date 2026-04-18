@@ -84,6 +84,9 @@ func TestNativeDocumentCard_PPTXCreateBecomesFileCard(t *testing.T) {
 	if got := card["previewUrl"]; got != "/tmp/workspace/reports/launch_deck.pptx" {
 		t.Fatalf("previewUrl=%v, want absolute pptx path", got)
 	}
+	if got := card["displayPath"]; got != "reports/launch_deck.pptx" {
+		t.Fatalf("displayPath=%v, want relative workspace path", got)
+	}
 	if got := card["mimeType"]; got != "application/vnd.openxmlformats-officedocument.presentationml.presentation" {
 		t.Fatalf("mimeType=%v, want pptx mime type", got)
 	}

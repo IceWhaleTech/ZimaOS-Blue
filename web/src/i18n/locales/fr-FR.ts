@@ -4594,6 +4594,16 @@ export default mergeHarnessLocale('fr-FR', {
     labels: {
       backend: 'Back-end',
       path: 'Chemin',
+      char_count: 'Nombre de caractères',
+      document: 'Document',
+      engine: 'Moteur',
+      file_name: 'Nom du fichier',
+      page_count: 'Nombre de pages',
+      size_bytes: 'Taille (octets)',
+      markdown: 'Markdown',
+      outline: 'Plan',
+      pages: 'Pages',
+      selected_pages: 'Pages sélectionnées',
     },
     values: {
       strategy: {
@@ -4607,6 +4617,23 @@ export default mergeHarnessLocale('fr-FR', {
     },
     warnings: {
       listing_truncated: 'La liste a été tronquée ; réduisez le chemin ou augmentez max_entries.',
+    },
+    badges: {
+      list: 'LISTE',
+      find: 'CHERCHER',
+      file: 'FICHIER',
+      dir: 'DOSSIER',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Aucun résultat pour {pattern} dans {basePath}',
+      noMatchesIn: 'Aucun résultat dans {basePath}',
+      matchesForIn: '{count} résultats pour {pattern} dans {basePath}',
+      matchesIn: '{count} résultats dans {basePath}',
+      showingFirstEntriesInMoreOmitted:
+        'Affichage des {count} premières entrées dans {basePath} (d’autres ont été omises)',
+      noEntriesIn: 'Aucune entrée dans {basePath}',
+      oneEntryIn: '1 entrée dans {basePath}',
+      entriesIn: '{count} entrées dans {basePath}',
     },
     copy: 'Copier',
     copied: 'Copié !',

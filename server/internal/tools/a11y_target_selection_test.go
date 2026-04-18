@@ -1681,6 +1681,117 @@ func TestA11yToolExecute_ActionMessageAliasShortcutSearchAcceptsButtonConversati
 	}
 }
 
+func TestSendA11yConversationSearchKeySequences_PollsForSearchFieldInsteadOfFixedDelay(t *testing.T) {
+	prevDelay := a11yMessageConversationSettleDelay
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yConversationSearchResultResolvePollInterval
+	a11yMessageConversationSettleDelay = time.Second
+	a11yMessageConversationConfirmationTimeout = 40 * time.Millisecond
+	a11yConversationSearchResultResolvePollInterval = time.Millisecond
+	defer func() {
+		a11yMessageConversationSettleDelay = prevDelay
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yConversationSearchResultResolvePollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [group] \"Sidebar\"",
+				RefMap:   map[int]string{1: "token-sidebar"},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [search_field] \"Search\"",
+				RefMap:   map[int]string{1: "token-search"},
+			},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+
+	windowID, err := tool.sendA11yConversationSearchKeySequences(ctx, backend, "win-feishu", [][]string{{"command", "k"}}, 0)
+	if err != nil {
+		t.Fatalf("sendA11yConversationSearchKeySequences() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one shortcut sequence", backend.keyHistory)
+	}
+	if backend.interactiveCalls != 2 {
+		t.Fatalf("interactiveCalls = %d, want two polls until search field appears", backend.interactiveCalls)
+	}
+}
+
+func TestActivateA11yMessageConversationTarget_UsesConfirmationInsteadOfFixedDelay(t *testing.T) {
+	prevDelay := a11yMessageConversationSettleDelay
+	a11yMessageConversationSettleDelay = time.Second
+	defer func() { a11yMessageConversationSettleDelay = prevDelay }()
+
+	backend := &a11yCompatBackend{
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-orca",
+					Role:        "list_item",
+					Name:        "Orca",
+					Description: "selected active",
+					Interactive: true,
+				},
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	ctx, cancel := context.WithTimeout(
+		withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca")),
+		80*time.Millisecond,
+	)
+	defer cancel()
+
+	windowID, err := tool.activateA11yMessageConversationTarget(ctx, backend, "win-feishu", 1, map[int]string{1: "token-orca"}, a11yTargetSelector{Name: "Orca", Role: "conversation"}, 0)
+	if err != nil {
+		t.Fatalf("activateA11yMessageConversationTarget() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if backend.actCalls != 1 || backend.lastActType != "click" {
+		t.Fatalf("actCalls/lastActType = (%d, %q), want (1, click)", backend.actCalls, backend.lastActType)
+	}
+	if backend.interactiveCalls != 0 {
+		t.Fatalf("interactiveCalls = %d, want 0 when structured confirmation is already available", backend.interactiveCalls)
+	}
+}
+
 func TestA11yToolExecute_ActionMessageAliasFailsClosedWhenShortcutSearchKeyInjectionHangs(t *testing.T) {
 	prevTimeout := a11yHostInputActionTimeout
 	a11yHostInputActionTimeout = 10 * time.Millisecond
@@ -2754,7 +2865,7 @@ func TestA11yToolExecute_SelectConversationContinuesToKeyboardSearchAfterStaleVi
 			},
 		},
 		screenshotGroundingBytes: []byte("conversation-grounding"),
-		pointClickErr: a11yruntime.NewError("confirmation_failed", "cached point no longer maps to the conversation", nil),
+		pointClickErr:            a11yruntime.NewError("confirmation_failed", "cached point no longer maps to the conversation", nil),
 	}
 	tool := NewA11yTool()
 	tool.SetBackend(backend)
@@ -2886,6 +2997,91 @@ func TestA11yToolExecute_SelectConversationFallsBackToKeyboardSearchAfterRemembe
 	}
 	if out["error_code"] != nil {
 		t.Fatalf("error_code = %v, want nil after keyboard-search fallback", out["error_code"])
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_RemembersStructuredSelectedConversationStableID(t *testing.T) {
+	prevTimeout := a11yMessageConversationConfirmationTimeout
+	prevPoll := a11yMessageConversationConfirmationPollInterval
+	a11yMessageConversationConfirmationTimeout = 0
+	a11yMessageConversationConfirmationPollInterval = 0
+	defer func() {
+		a11yMessageConversationConfirmationTimeout = prevTimeout
+		a11yMessageConversationConfirmationPollInterval = prevPoll
+	}()
+
+	snapshot := a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+		WindowID: "win-feishu",
+		Title:    "Feishu",
+		Mode:     "ax",
+	}, &a11yruntime.Node{
+		Role: "window",
+		Name: "Feishu",
+		Children: []*a11yruntime.Node{
+			{
+				Token:       "token-orca",
+				Role:        "list_item",
+				Name:        "Orca",
+				Description: "selected",
+				Interactive: true,
+			},
+			{
+				Token:       "token-editor",
+				Role:        "document",
+				Name:        "Type a message",
+				Description: "focused editable",
+				Interactive: true,
+			},
+		},
+	})
+	if snapshot == nil {
+		t.Fatal("BuildStructuredSnapshot() = nil")
+	}
+
+	backend := &a11yCompatBackend{
+		hostOS: "darwin",
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [list_item] \"Orca\"\n@2 [document]",
+			RefMap: map[int]string{
+				1: "token-orca",
+				2: "token-editor",
+			},
+		},
+		structuredSnapshot: snapshot,
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	state := newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca")
+
+	resolvedWindow, err := tool.confirmA11yMessageConversationActivated(
+		withA11yChatExecutionState(context.Background(), state),
+		backend,
+		"win-feishu",
+		a11yTargetSelector{Name: "Orca", Role: "conversation"},
+	)
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if resolvedWindow != "win-feishu" {
+		t.Fatalf("resolvedWindow = %q, want win-feishu", resolvedWindow)
+	}
+
+	got := tool.chatMemory.anchorFor("darwin", "feishu_lark", "select", string(a11yChatStageLocateConversation))
+	if got == "" {
+		t.Fatal("remembered conversation anchor = empty, want stable id")
+	}
+	expected := ""
+	for _, node := range snapshot.Nodes {
+		if node.BackendToken == "token-orca" {
+			expected = node.StableID
+			break
+		}
+	}
+	if got != expected {
+		t.Fatalf("remembered anchor = %q, want %q", got, expected)
 	}
 }
 
@@ -4433,6 +4629,304 @@ func TestConfirmA11yMessageConversationActivated_DoesNotRetryWhenSearchFieldAndC
 	}
 }
 
+func TestConfirmA11yMessageConversationActivated_SkipsGroundingWhenStructuredSnapshotShowsSelectedConversation(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-orca",
+					Role:        "list_item",
+					Name:        "Orca",
+					Description: "selected active",
+					Interactive: true,
+				},
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	grounder := &a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "conversation", Label: "Orca", Confidence: 0.98},
+				},
+			},
+		},
+	}
+	tool.SetChatGrounder(grounder)
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if backend.lastGroundingScreenshotWindow != "" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want empty when structured confirmation is enough", backend.lastGroundingScreenshotWindow)
+	}
+	if backend.interactiveCalls != 0 {
+		t.Fatalf("interactiveCalls = %d, want 0 when current structured snapshot already proves the selected conversation", backend.interactiveCalls)
+	}
+	if len(grounder.calls) != 0 {
+		t.Fatalf("grounder.calls = %#v, want none when structured confirmation is enough", grounder.calls)
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_UsesRememberedWindowForStructuredSelectedConversation(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu-current",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu-current",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-orca",
+					Role:        "list_item",
+					Name:        "Orca",
+					Description: "selected active",
+					Interactive: true,
+				},
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.lastWindow = "win-feishu-current"
+	grounder := &a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "conversation", Label: "Orca", Confidence: 0.98},
+				},
+			},
+		},
+	}
+	tool.SetChatGrounder(grounder)
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu-stale", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu-current" {
+		t.Fatalf("windowID = %q, want win-feishu-current from remembered structured window", windowID)
+	}
+	if backend.lastGroundingScreenshotWindow != "" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want empty when remembered structured confirmation is enough", backend.lastGroundingScreenshotWindow)
+	}
+	if backend.interactiveCalls != 0 {
+		t.Fatalf("interactiveCalls = %d, want 0 when remembered structured snapshot already proves the selected conversation", backend.interactiveCalls)
+	}
+	if len(grounder.calls) != 0 {
+		t.Fatalf("grounder.calls = %#v, want none when remembered structured confirmation is enough", grounder.calls)
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_SkipsGroundingWhenStructuredSnapshotShowsConversationHeader(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Role: "group",
+					Name: "Chat Header",
+					Children: []*a11yruntime.Node{
+						{
+							Role: "static_text",
+							Name: "Orca",
+						},
+					},
+				},
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	grounder := &a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "conversation", Label: "Orca", Confidence: 0.98},
+				},
+			},
+		},
+	}
+	tool.SetChatGrounder(grounder)
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if backend.lastGroundingScreenshotWindow != "" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want empty when structured conversation header is enough", backend.lastGroundingScreenshotWindow)
+	}
+	if len(grounder.calls) != 0 {
+		t.Fatalf("grounder.calls = %#v, want none when structured conversation header is enough", grounder.calls)
+	}
+}
+
+func TestConfirmA11yMessageConversationActivated_DoesNotSkipGroundingForUnselectedSidebarConversation(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+				RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+			},
+		},
+		screenshotGroundingBytes: []byte("conversation-confirm-grounding"),
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-orca",
+					Role:        "list_item",
+					Name:        "Orca",
+					Description: "visible",
+					Interactive: true,
+				},
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	grounder := &a11yChatGrounderStub{
+		results: map[string]a11yChatGroundingResult{
+			string(a11yChatGroundingTaskLocateConversation): {
+				Source: "vision_model",
+				Candidates: []a11yChatGroundingCandidate{
+					{Role: "conversation", Label: "Orca", Confidence: 0.98, RationaleTags: []string{"current", "selected"}},
+				},
+			},
+		},
+	}
+	tool.SetChatGrounder(grounder)
+	ctx := withA11yChatExecutionState(context.Background(), newA11yChatExecutionState("darwin", "feishu_lark", "select", "Orca"))
+
+	windowID, err := tool.confirmA11yMessageConversationActivated(ctx, backend, "win-feishu", a11yTargetSelector{Name: "Orca", Role: "conversation"})
+	if err != nil {
+		t.Fatalf("confirmA11yMessageConversationActivated() error = %v", err)
+	}
+	if windowID != "win-feishu" {
+		t.Fatalf("windowID = %q, want win-feishu", windowID)
+	}
+	if backend.lastGroundingScreenshotWindow != "win-feishu" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want win-feishu when sidebar-only evidence still needs grounding", backend.lastGroundingScreenshotWindow)
+	}
+	if len(grounder.calls) != 1 {
+		t.Fatalf("grounder.calls = %#v, want one grounding call when sidebar-only evidence is not enough", grounder.calls)
+	}
+}
+
 func TestA11ySubmitNeedsRetry_PollsUntilPendingTextClears(t *testing.T) {
 	prevTimeout := a11ySubmitConfirmationTimeout
 	prevPoll := a11ySubmitConfirmationPollInterval
@@ -4477,5 +4971,257 @@ func TestA11ySubmitNeedsRetry_PollsUntilPendingTextClears(t *testing.T) {
 	}
 	if backend.interactiveCalls != 3 {
 		t.Fatalf("interactiveCalls = %d, want 3 polls", backend.interactiveCalls)
+	}
+}
+
+func TestA11ySubmitNeedsRetry_UsesRememberedWindowForStructuredPostSubmitConfirmation(t *testing.T) {
+	backend := &a11yCompatBackend{
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu-current",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.lastWindow = "win-feishu-current"
+	state := newA11yChatExecutionState("darwin", "feishu_lark", "message", "Orca")
+
+	needsRetry := tool.a11ySubmitNeedsRetry(
+		withA11yChatExecutionState(context.Background(), state),
+		backend,
+		"win-feishu-stale",
+		a11ySubmitConfirmation{
+			TypedValue: "hello",
+			InputToken: "token-editor",
+		},
+	)
+	if needsRetry {
+		t.Fatal("a11ySubmitNeedsRetry() = true, want false when remembered structured post-submit confirmation is enough")
+	}
+	verification := state.submitEvidenceSnapshot()
+	if verification["confirmation"] != "structured_post_submit_confirmation" {
+		t.Fatalf("submitEvidence.confirmation = %v, want structured_post_submit_confirmation", verification["confirmation"])
+	}
+	if verification["composer_cleared"] != true {
+		t.Fatalf("submitEvidence.composer_cleared = %#v, want true", verification["composer_cleared"])
+	}
+	if backend.interactiveCalls != 0 {
+		t.Fatalf("interactiveCalls = %d, want 0 when remembered structured post-submit confirmation is enough", backend.interactiveCalls)
+	}
+}
+
+func TestA11ySubmitNeedsRetry_UsesRememberedWindowForInteractivePostSubmitCheckWhenStructuredStateIsPending(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu-current",
+			Tree:     "@1 [document] \"Type a message\"\n@2 [button] \"Send\"",
+			RefMap:   map[int]string{1: "token-editor", 2: "token-send"},
+		},
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu-current",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "hello",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.lastWindow = "win-feishu-current"
+	state := newA11yChatExecutionState("darwin", "feishu_lark", "message", "Orca")
+
+	needsRetry := tool.a11ySubmitNeedsRetry(
+		withA11yChatExecutionState(context.Background(), state),
+		backend,
+		"win-feishu-stale",
+		a11ySubmitConfirmation{
+			TypedValue: "hello",
+			InputToken: "token-editor",
+		},
+	)
+	if needsRetry {
+		t.Fatal("a11ySubmitNeedsRetry() = true, want false when remembered current window interactive post-submit check confirms success")
+	}
+	verification := state.submitEvidenceSnapshot()
+	if verification["confirmation"] != "interactive_post_submit_confirmation" {
+		t.Fatalf("submitEvidence.confirmation = %v, want interactive_post_submit_confirmation", verification["confirmation"])
+	}
+	if backend.lastSnapshotWindowID != "win-feishu-current" {
+		t.Fatalf("lastSnapshotWindowID = %q, want remembered current window for interactive post-submit check", backend.lastSnapshotWindowID)
+	}
+	if backend.interactiveCalls != 1 {
+		t.Fatalf("interactiveCalls = %d, want 1 interactive post-submit check on remembered current window", backend.interactiveCalls)
+	}
+}
+
+func TestA11ySubmitNeedsRetry_UsesStructuredUniqueComposerAfterSubmitWithoutFocusedAnchor(t *testing.T) {
+	backend := &a11yCompatBackend{
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	state := newA11yChatExecutionState("darwin", "feishu_lark", "message", "Orca")
+
+	needsRetry := tool.a11ySubmitNeedsRetry(
+		withA11yChatExecutionState(context.Background(), state),
+		backend,
+		"win-feishu",
+		a11ySubmitConfirmation{
+			TypedValue: "hello",
+			InputToken: "token-editor",
+		},
+	)
+	if needsRetry {
+		t.Fatal("a11ySubmitNeedsRetry() = true, want false when unique structured composer confirmation is enough")
+	}
+	verification := state.submitEvidenceSnapshot()
+	if verification["confirmation"] != "structured_post_submit_confirmation" {
+		t.Fatalf("submitEvidence.confirmation = %v, want structured_post_submit_confirmation", verification["confirmation"])
+	}
+	if verification["composer_cleared"] != true {
+		t.Fatalf("submitEvidence.composer_cleared = %#v, want true", verification["composer_cleared"])
+	}
+	if backend.interactiveCalls != 0 {
+		t.Fatalf("interactiveCalls = %d, want 0 when unique structured composer confirmation is enough", backend.interactiveCalls)
+	}
+}
+
+func TestA11ySubmitNeedsRetry_WaitsForStructuredPostSubmitCueBeforeInteractive(t *testing.T) {
+	prevPoll := a11yChatVerifyOutcomePollInterval
+	a11yChatVerifyOutcomePollInterval = 0
+	defer func() {
+		a11yChatVerifyOutcomePollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		structuredSnapshots: []*a11yruntime.Snapshot{
+			a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Mode:     "ax",
+			}, &a11yruntime.Node{
+				Role: "window",
+				Name: "Feishu",
+				Children: []*a11yruntime.Node{
+					{
+						Token:       "token-editor",
+						Role:        "document",
+						Name:        "hello",
+						Interactive: true,
+					},
+					{
+						Token:       "token-send",
+						Role:        "button",
+						Name:        "Send",
+						Interactive: true,
+					},
+				},
+			}),
+			a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Mode:     "ax",
+			}, &a11yruntime.Node{
+				Role: "window",
+				Name: "Feishu",
+				Children: []*a11yruntime.Node{
+					{
+						Token:       "token-editor",
+						Role:        "document",
+						Name:        "Type a message",
+						Interactive: true,
+					},
+					{
+						Token:       "token-send",
+						Role:        "button",
+						Name:        "Send",
+						Interactive: true,
+					},
+				},
+			}),
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	state := newA11yChatExecutionState("darwin", "feishu_lark", "message", "Orca")
+
+	needsRetry := tool.a11ySubmitNeedsRetry(
+		withA11yChatExecutionState(context.Background(), state),
+		backend,
+		"win-feishu",
+		a11ySubmitConfirmation{
+			TypedValue: "hello",
+			InputToken: "token-editor",
+		},
+	)
+	if needsRetry {
+		t.Fatal("a11ySubmitNeedsRetry() = true, want false when late structured cue arrives before interactive fallback")
+	}
+	verification := state.submitEvidenceSnapshot()
+	if verification["confirmation"] != "structured_post_submit_confirmation" {
+		t.Fatalf("submitEvidence.confirmation = %v, want structured_post_submit_confirmation", verification["confirmation"])
+	}
+	if backend.interactiveCalls != 0 {
+		t.Fatalf("interactiveCalls = %d, want 0 when late structured cue arrives before interactive fallback", backend.interactiveCalls)
+	}
+	if backend.structuredSnapshotCalls < 2 {
+		t.Fatalf("structuredSnapshotCalls = %d, want >= 2 while waiting for late structured cue", backend.structuredSnapshotCalls)
 	}
 }

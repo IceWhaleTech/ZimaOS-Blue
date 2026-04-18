@@ -4593,6 +4593,16 @@ export default mergeHarnessLocale('el-GR', {
     labels: {
       backend: 'Backend',
       path: 'Διαδρομή',
+      char_count: 'Αριθμός χαρακτήρων',
+      document: 'Έγγραφο',
+      engine: 'Μηχανή',
+      file_name: 'Όνομα αρχείου',
+      page_count: 'Αριθμός σελίδων',
+      size_bytes: 'Μέγεθος (bytes)',
+      markdown: 'Markdown',
+      outline: 'Περίγραμμα',
+      pages: 'Σελίδες',
+      selected_pages: 'Επιλεγμένες σελίδες',
     },
     values: {
       strategy: {
@@ -4606,6 +4616,23 @@ export default mergeHarnessLocale('el-GR', {
     },
     warnings: {
       listing_truncated: 'Η λίστα περικόπηκε. Περιορίστε τη διαδρομή ή αυξήστε το max_entries.',
+    },
+    badges: {
+      list: 'ΛΙΣΤΑ',
+      find: 'ΑΝΑΖΗΤΗΣΗ',
+      file: 'ΑΡΧΕΙΟ',
+      dir: 'ΦΑΚΕΛΟΣ',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Δεν βρέθηκαν αντιστοιχίες για {pattern} στο {basePath}',
+      noMatchesIn: 'Δεν βρέθηκαν αντιστοιχίες στο {basePath}',
+      matchesForIn: '{count} αντιστοιχίες για {pattern} στο {basePath}',
+      matchesIn: '{count} αντιστοιχίες στο {basePath}',
+      showingFirstEntriesInMoreOmitted:
+        'Εμφάνιση των πρώτων {count} καταχωρίσεων στο {basePath} (παραλείπονται περισσότερες)',
+      noEntriesIn: 'Δεν υπάρχουν καταχωρίσεις στο {basePath}',
+      oneEntryIn: '1 καταχώριση στο {basePath}',
+      entriesIn: '{count} καταχωρίσεις στο {basePath}',
     },
     copy: 'Αντιγραφή',
     copied: 'Αντιγράφηκε!',

@@ -340,6 +340,32 @@ type checklistToolRoundNoUpdateProxyHandler struct {
 	sawPendingTodoNudge  bool
 }
 
+// continuationChecklistBootstrapProxyHandler simulates:
+//  1. a continuation-style request whose first round emits a planning-first checklist
+//  2. the chat loop should reject that bootstrap and inject a missing_todo rewrite nudge
+//  3. the next round emits a discovery-first checklist, after which pending_todo can continue normally
+//  4. the final round returns a completion summary
+type continuationChecklistBootstrapProxyHandler struct {
+	callCount            int
+	secondRequestMessage string
+	thirdRequestMessage  string
+	sawMissingTodoNudge  bool
+	sawPendingTodoNudge  bool
+}
+
+// toolRoundChecklistBootstrapProxyHandler simulates:
+//  1. first round emits a plan_create tool call whose tool result returns a planning-first checklist
+//  2. the loop should reject that tool-produced bootstrap and request missing_todo rewrite
+//  3. second round emits a discovery-first checklist
+//  4. third round completes with the same checklist fully checked
+type toolRoundChecklistBootstrapProxyHandler struct {
+	callCount            int
+	secondRequestMessage string
+	thirdRequestMessage  string
+	sawMissingTodoNudge  bool
+	sawPendingTodoNudge  bool
+}
+
 func hasMissingNextStepsNudge(s string) bool {
 	return strings.Contains(s, "Suggested next steps") ||
 		strings.Contains(s, "If you'd like, I can help with") ||
@@ -1953,6 +1979,127 @@ func (h *questionLikeMissingTodoContinuationProxyHandler) ServeHTTP(w http.Respo
 		flush()
 	default:
 		fmt.Fprintf(w, "data: %s\n\n", `{"id":"question_like_missing_todo_round_3","choices":[{"delta":{"content":"任务已完成。最终总结：我已继续执行验证并写出结果。\n\nIf you'd like, I can also help with:\n1. No further action needed."},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	}
+}
+
+func (h *continuationChecklistBootstrapProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if h.callCount > 1 {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		lastUser := ""
+		for i := len(body.Messages) - 1; i >= 0; i-- {
+			if body.Messages[i].Role != "user" {
+				continue
+			}
+			lastUser = body.Messages[i].Content
+			if h.callCount == 2 {
+				if strings.Contains(body.Messages[i].Content, "checklist bootstrap required") {
+					h.secondRequestMessage = body.Messages[i].Content
+					h.sawMissingTodoNudge = true
+					break
+				}
+			}
+			if h.callCount == 3 {
+				if strings.Contains(body.Messages[i].Content, "A canonical TODO checklist already exists") {
+					h.thirdRequestMessage = body.Messages[i].Content
+					h.sawPendingTodoNudge = true
+					break
+				}
+			}
+		}
+		if h.callCount == 2 && h.secondRequestMessage == "" {
+			h.secondRequestMessage = lastUser
+		}
+		if h.callCount == 3 && h.thirdRequestMessage == "" {
+			h.thirdRequestMessage = lastUser
+		}
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_continuation_checklist_bootstrap"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"continuation_bootstrap_round_1","choices":[{"delta":{"content":"- [ ] 制定长期实施计划\n- [ ] 调研当前代码状态\n\n我先规划一下。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	case 2:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"continuation_bootstrap_round_2","choices":[{"delta":{"content":"- [ ] 调研当前代码状态\n- [ ] 根据发现调整执行计划\n\n我先查一下当前状态。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"continuation_bootstrap_round_3","choices":[{"delta":{"content":"任务已完成。最终总结：已先完成调研，再继续推进剩余工作。\n\n如果你愿意，我还可以帮你：\n1. 当前无需进一步操作。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	}
+}
+
+func (h *toolRoundChecklistBootstrapProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	h.callCount++
+
+	if h.callCount > 1 {
+		var body struct {
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		for i := len(body.Messages) - 1; i >= 0; i-- {
+			if body.Messages[i].Role != "user" {
+				continue
+			}
+			if h.callCount == 2 {
+				h.secondRequestMessage = body.Messages[i].Content
+				h.sawMissingTodoNudge = strings.Contains(h.secondRequestMessage, "checklist bootstrap required")
+			}
+			if h.callCount == 3 {
+				h.thirdRequestMessage = body.Messages[i].Content
+				h.sawPendingTodoNudge = strings.Contains(h.thirdRequestMessage, "A canonical TODO checklist already exists")
+			}
+			break
+		}
+	}
+
+	if rr := proxy.GetResolvedRouteFromContext(r.Context()); rr != nil {
+		rr.Provider = "MockProxy"
+		rr.ProviderID = "prov_tool_round_checklist_bootstrap"
+		rr.Model = "gpt-5.3-codex-spark"
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.WriteHeader(http.StatusOK)
+	flush := func() {
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
+
+	switch h.callCount {
+	case 1:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_bootstrap_round_1","choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_plan_bootstrap_1","type":"function","function":{"name":"plan_create","arguments":"{\"tasks\":[\"制定长期实施计划\",\"调研当前代码状态\"]}"}}]},"finish_reason":"tool_calls"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	case 2:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_bootstrap_round_2","choices":[{"delta":{"content":"- [ ] 调研当前代码状态\n- [ ] 根据发现调整执行计划\n\n我先查一下当前状态。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
+		flush()
+	default:
+		fmt.Fprintf(w, "data: %s\n\n", `{"id":"tool_bootstrap_round_3","choices":[{"delta":{"content":"任务已完成。最终总结：\n\n- [x] 调研当前代码状态\n- [x] 根据发现调整执行计划\n\n如果你愿意，我还可以帮你：\n1. 当前无需进一步操作。"},"finish_reason":"stop"}],"model":"gpt-5.3-codex-spark"}`)
 		flush()
 	}
 }
@@ -4317,6 +4464,110 @@ func TestStreamMessageAutoContinue_QuestionLikeMissingTodoContinuationBypassesSt
 	}
 }
 
+func TestStreamMessageAutoContinue_AgentMode_ContinuationChecklistBootstrapRewritesDiscoveryFirst(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test continuation bootstrap rewrite")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), newAutoContinueMockToolRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &continuationChecklistBootstrapProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"继续推进这个任务直到完成","model":"gpt-5.3-codex-spark"}`)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (bad bootstrap + rewrite + completion), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawMissingTodoNudge {
+		t.Fatalf("expected second request to include missing_todo rewrite nudge, got=%q", fakeProxy.secondRequestMessage)
+	}
+	if strings.Contains(fakeProxy.secondRequestMessage, "A canonical TODO checklist already exists") {
+		t.Fatalf("expected second request to reject the bad checklist bootstrap, got=%q", fakeProxy.secondRequestMessage)
+	}
+	if !fakeProxy.sawPendingTodoNudge {
+		t.Fatalf("expected third request to continue from rewritten canonical checklist, got=%q", fakeProxy.thirdRequestMessage)
+	}
+	if !strings.Contains(body, "已先完成调研，再继续推进剩余工作") {
+		t.Fatalf("expected final completion summary in body, got=%s", body)
+	}
+}
+
+func TestStreamMessageAutoContinue_AgentMode_ToolRoundChecklistBootstrapRewritesDiscoveryFirst(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Test tool-round bootstrap rewrite")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{Name: "plan_create"},
+		result: map[string]interface{}{
+			"operation":       "create",
+			"task_count":      2,
+			"completed_count": 0,
+			"pending_count":   2,
+			"all_completed":   false,
+			"checklist":       "- [ ] 制定长期实施计划\n- [ ] 调研当前代码状态",
+		},
+	})
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	fakeProxy := &toolRoundChecklistBootstrapProxyHandler{}
+	handler.SetProxyBridge(proxybridge.NewBridge(fakeProxy))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"继续推进这个任务直到完成","model":"gpt-5.3-codex-spark"}`)
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if fakeProxy.callCount != 3 {
+		t.Fatalf("expected 3 proxy calls (tool bootstrap + rewrite + completion), got %d", fakeProxy.callCount)
+	}
+	if !fakeProxy.sawMissingTodoNudge {
+		t.Fatalf("expected second request to include missing_todo rewrite nudge, got=%q", fakeProxy.secondRequestMessage)
+	}
+	if !fakeProxy.sawPendingTodoNudge {
+		t.Fatalf("expected third request to continue from rewritten checklist, got=%q", fakeProxy.thirdRequestMessage)
+	}
+	if !strings.Contains(body, "- [x] 调研当前代码状态") {
+		t.Fatalf("expected final corrected discovery-first checklist in body, got=%s", body)
+	}
+	if strings.Contains(body, `"content":"- [ ] 制定长期实施计划`) {
+		t.Fatalf("expected planning-first checklist to stay out of todo_updated/todo_completed flow, body=%s", body)
+	}
+}
+
 func TestStreamMessageAutoContinue_ToolRoundWithoutChecklistUpdate_ReconcilesPersistedTodoAfterCompletion(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -6219,6 +6470,143 @@ func TestStreamMessage_RecoversDirectXMLPseudoToolCallIntoRealToolExecution(t *t
 	}
 }
 
+func TestStreamMessage_UsesSmallModelToRepairCodexPseudoToolDirective(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Small model repaired pseudo tool call stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "我先查一下。\n" +
+		`to=functions.exec {"command":"blue web_query query=\"Apple AAPL stock price today April 2026\" max_results=5","workdir":"/tmp/test-workspace"}` +
+		"\n整理好后发你。"
+	if calls, ok := recoverSanitizedPseudoToolCallsFromContent(pseudoContent, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+		t.Fatalf("expected deterministic pseudo recovery to miss codex directive sample, got %#v", calls)
+	}
+	scripted := &scriptedChatProvider{
+		name: "scripted-stream-smallmodel-pseudo-repair",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stream-smallmodel-pseudo-repair-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 42, CompletionTokens: 54, TotalTokens: 96},
+			},
+			{
+				ID:    "stream-smallmodel-pseudo-repair-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "AAPL 当前股价页面已获取，并已基于真实 web_query 结果完成总结。",
+				},
+				Usage: llm.Usage{PromptTokens: 58, CompletionTokens: 12, TotalTokens: 70},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "stream small model repaired finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{
+		respText: `{"tool_calls":[{"name":"web_query","arguments":{"query":"Apple AAPL stock price today April 2026","max_results":5}}]}`,
+	}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-stream-smallmodel-pseudo-repair","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, "to=functions.exec") {
+		t.Fatalf("expected repaired pseudo tool-call leakage to be suppressed from stream body, got=%s", body)
+	}
+	if !strings.Contains(body, "AAPL 当前股价页面已获取，并已基于真实 web_query 结果完成总结。") {
+		t.Fatalf("expected final content in stream body, got=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if !strings.Contains(sm.lastReq.Prompt, `to=functions.exec {"command":"blue web_query query=\"Apple AAPL stock price today April 2026\" max_results=5","workdir":"/tmp/test-workspace"}`) {
+		t.Fatalf("expected small-model repair prompt to include raw pseudo tool text, got %q", sm.lastReq.Prompt)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query query = %q, want Apple AAPL stock price today April 2026", query)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "stream small model repaired finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected repaired tool execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include repaired web_query tool result, got %#v", secondReq.Messages)
+	}
+}
+
 func TestStreamMessage_FileReadToolResultPreservesMidFileContentInFollowUpRound(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -7448,6 +7836,227 @@ func TestStreamMessage_RecoversBareJSONWrapperPseudoToolCallIntoRealToolExecutio
 	}
 }
 
+func TestStreamMessage_RecoversTypelessPDFArgumentBlockIntoRealToolExecution(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Recovered typeless pdf argument block stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+	workspaceRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "继续用 PDF 工具创建：\n\n```typeless\n" +
+		"{\"action\":\"create\",\"output_path\":\"reports/qwen36_growth.pdf\",\"title\":\"Qwen3.6 Benchmark 大幅增长分析\",\"markdown\":\"# Qwen3.6 Benchmark 大幅增长分析\\n\\n- SkillsBench Avg5: +552%\\n- NL2Repo: +43%\\n- QwenWebBench: +43%\"}\n" +
+		"```\n\n这次我直接生成杂志版 PDF。"
+	scripted := &scriptedChatProvider{
+		name: "scripted-stream-typeless-pdf",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stream-typeless-pdf-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 88, TotalTokens: 132},
+			},
+			{
+				ID:    "stream-typeless-pdf-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `已把 PDF 保存到 "reports/qwen36_growth.pdf"。`,
+				},
+				Usage: llm.Usage{PromptTokens: 62, CompletionTokens: 12, TotalTokens: 74},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewPDFTool(nil))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请生成一份 PDF 报告并保存到 reports/qwen36_growth.pdf。","provider":"scripted-stream-typeless-pdf","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req = req.WithContext(tools.WithFSRootOverride(req.Context(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"output_path":"reports/qwen36_growth.pdf"`) || strings.Contains(body, `继续用 PDF 工具创建`) {
+		t.Fatalf("expected typeless pseudo tool-call text to be suppressed from stream body, got=%s", body)
+	}
+	if !strings.Contains(body, `已把 PDF 保存到 \"reports/qwen36_growth.pdf\"。`) &&
+		!strings.Contains(body, "已把 PDF 保存到 \"reports/qwen36_growth.pdf\"。") {
+		t.Fatalf("expected final content in stream body, got=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	toolMsg, payload := requireToolPayloadMessage(t, secondReq, "pdf")
+	if len(toolMsg.Content) == 0 {
+		t.Fatal("expected non-empty pdf tool payload in follow-up request")
+	}
+	if _, ok := payload["error"]; ok {
+		t.Fatalf("unexpected payload error = %#v", payload["error"])
+	}
+	path := anyToStringForLLM(payload["path"])
+	engine := anyToStringForLLM(payload["engine"])
+	pageCount := 0
+	if doc, ok := payload["document"].(map[string]interface{}); ok {
+		if path == "" {
+			path = anyToStringForLLM(doc["path"])
+		}
+		if engine == "" {
+			engine = anyToStringForLLM(doc["engine"])
+		}
+		if pageCount == 0 {
+			pageCount = anyToIntForLLM(doc["page_count"])
+		}
+	}
+	if pageCount == 0 {
+		if validation, ok := payload["validation"].(map[string]interface{}); ok {
+			pageCount = anyToIntForLLM(validation["page_count"])
+		}
+	}
+	wantPDFPath := filepath.Join(workspaceRoot, "reports", "qwen36_growth.pdf")
+	if path != wantPDFPath {
+		t.Fatalf("payload path = %q, want %q; content=%q payload=%#v", path, wantPDFPath, toolMsg.Content, payload)
+	}
+	if engine != "native_pdf_ir" {
+		t.Fatalf("payload engine = %q, want native_pdf_ir; content=%q payload=%#v", engine, toolMsg.Content, payload)
+	}
+	if pageCount < 1 {
+		t.Fatalf("page_count = %d, want >= 1; content=%q payload=%#v", pageCount, toolMsg.Content, payload)
+	}
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered pdf execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+
+	pdfPath := wantPDFPath
+	if info, err := os.Stat(pdfPath); err != nil {
+		t.Fatalf("expected pdf to exist, stat error: %v", err)
+	} else if info.Size() == 0 {
+		t.Fatal("expected pdf to be non-empty")
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, `"output_path":"reports/qwen36_growth.pdf"`) || strings.Contains(m.Content, `继续用 PDF 工具创建`) {
+			t.Fatalf("expected recovered typeless pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
+func TestStreamMessage_RecoversExactTypelessPDFMagazinePayloadIntoRealToolExecution(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Recovered exact typeless pdf magazine payload stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+	workspaceRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "现在用 PDF 原生工具生成：\n```typeless\n" +
+		"{\"action\":\"create\",\"outputPath\":\"qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf\",\"styleHint\":\"杂志版PDF样式，双栏排版，强调大幅增长数据，高亮关键数字，用深紫色标题栏，引用来源脚注\",\"title\":\"Qwen3.6 Benchmark 大幅增长分析\",\"theme\":\"magazine\"}\n" +
+		"```\n这次我用 pdf 工具直接创建杂志版 PDF。"
+	scripted := &scriptedChatProvider{
+		name: "scripted-stream-typeless-pdf-magazine",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stream-typeless-pdf-magazine-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 88, TotalTokens: 132},
+			},
+			{
+				ID:    "stream-typeless-pdf-magazine-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `已把 PDF 保存到 "qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf"。`,
+				},
+				Usage: llm.Usage{PromptTokens: 62, CompletionTokens: 12, TotalTokens: 74},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewPDFTool(nil))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请生成一份杂志风 PDF 并保存到 qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf。","provider":"scripted-stream-typeless-pdf-magazine","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req = req.WithContext(tools.WithFSRootOverride(req.Context(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, `"outputPath":"qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf"`) || strings.Contains(body, "现在用 PDF 原生工具生成") {
+		t.Fatalf("expected raw typeless payload to be suppressed from stream body, got %q", body)
+	}
+	if !strings.Contains(body, "Qwen3.6_Benchmark大幅增长分析_杂志版.pdf") {
+		t.Fatalf("expected stream body to mention generated pdf, got %q", body)
+	}
+}
+
 func TestStreamMessage_RecoversBareJSONToolCallsArrayPseudoToolCallIntoRealToolExecution(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {
@@ -8224,6 +8833,62 @@ func TestStreamMessageDiscoverFirstCutoverUsesExecOnlySurface(t *testing.T) {
 	lastReq := capture.LastRequest()
 	if len(lastReq.Tools) != 1 || lastReq.Tools[0].Name != "exec" {
 		t.Fatalf("stream provider tools = %#v, want exec-only discover-first cutover", lastReq.Tools)
+	}
+}
+
+func TestStreamMessageInjectsAgentModeDiscoveryFirstHint(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "agent-mode discovery-first stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settings.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settings)
+
+	e := echo.New()
+	reqBody := `{"message":"继续推进这个任务直到完成","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+	if !strings.Contains(rec.Body.String(), `"done":true`) {
+		t.Fatalf("expected done marker in stream body, got: %s", rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	found := false
+	for _, m := range lastReq.Messages {
+		if m.Role != llm.RoleSystem {
+			continue
+		}
+		if strings.Contains(m.Content, "bounded discovery pass") &&
+			strings.Contains(m.Content, "currently exposed research-family tool") &&
+			strings.Contains(m.Content, "long-range plan") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected agent-mode discovery-first hint in system messages, got %+v", lastReq.Messages)
 	}
 }
 

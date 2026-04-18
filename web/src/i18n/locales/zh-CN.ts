@@ -4423,6 +4423,16 @@ export default mergeHarnessLocale('zh-CN', {
     labels: {
       backend: '后端',
       path: '路径',
+      char_count: '字符数',
+      document: '文档',
+      engine: '引擎',
+      file_name: '文件名',
+      page_count: '页数',
+      size_bytes: '大小（字节）',
+      markdown: 'Markdown',
+      outline: '大纲',
+      pages: '页面',
+      selected_pages: '选定页',
     },
     values: {
       strategy: {
@@ -4436,6 +4446,22 @@ export default mergeHarnessLocale('zh-CN', {
     },
     warnings: {
       listing_truncated: '列表已截断；请缩小路径范围或增大 max_entries。',
+    },
+    badges: {
+      list: '列表',
+      find: '查找',
+      file: '文件',
+      dir: '目录',
+    },
+    directoryListing: {
+      noMatchesForIn: '在 {basePath} 中没有匹配 {pattern} 的结果',
+      noMatchesIn: '在 {basePath} 中没有匹配结果',
+      matchesForIn: '在 {basePath} 中匹配 {pattern} 的结果：{count} 条',
+      matchesIn: '在 {basePath} 中匹配结果：{count} 条',
+      showingFirstEntriesInMoreOmitted: '在 {basePath} 中仅显示前 {count} 条条目（更多已省略）',
+      noEntriesIn: '{basePath} 中没有条目',
+      oneEntryIn: '{basePath} 中有 1 条条目',
+      entriesIn: '{basePath} 中有 {count} 条条目',
     },
     copy: '复制',
     copied: '已复制！',

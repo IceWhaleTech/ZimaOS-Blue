@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -125,7 +126,7 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	initialResp, err := c.ilinkGetUpdates(probeCtx, "")
 	if err != nil {
-		if probeCtx.Err() == context.DeadlineExceeded {
+		if isNonFatalILinkStartupProbeError(err, probeCtx) {
 			now := time.Now()
 			c.mu.Lock()
 			c.status = channel.StatusConnected
@@ -137,8 +138,9 @@ func (c *Channel) Start(ctx context.Context) error {
 			c.wg.Add(1)
 			go c.runILinkPoller("", false, 0)
 
-			c.logger.Info("wechat iLink startup probe timed out; continuing with background poller",
-				zap.Duration("probe_timeout", iLinkStartupProbeTimeout))
+			c.logger.Info("wechat iLink startup probe did not complete; continuing with background poller",
+				zap.Duration("probe_timeout", iLinkStartupProbeTimeout),
+				zap.Error(err))
 			return nil
 		}
 		c.setError(fmt.Sprintf("failed to initialize iLink polling: %v", err))
@@ -160,6 +162,12 @@ func (c *Channel) Start(ctx context.Context) error {
 
 	c.logger.Info("wechat iLink channel started", zap.String("api_base_url", c.config.APIBaseURL))
 	return nil
+}
+
+func isNonFatalILinkStartupProbeError(err error, probeCtx context.Context) bool {
+	return probeCtx.Err() == context.DeadlineExceeded ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func (c *Channel) Stop(ctx context.Context) error {

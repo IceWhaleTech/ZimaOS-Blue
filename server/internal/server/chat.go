@@ -68,7 +68,10 @@ const (
 	// titleGenerationLLMTimeout gives background title generation a bit more
 	// headroom without letting it linger like full chat requests.
 	titleGenerationLLMTimeout = 60 * time.Second
-	responseStoppedMarker     = "[Response stopped]"
+	// smallModelTitleGenerationTimeout gives the local small-model title path
+	// extra headroom for cold starts / model loading.
+	smallModelTitleGenerationTimeout = 12 * time.Second
+	responseStoppedMarker            = "[Response stopped]"
 )
 
 // getMessageSlice gets a message slice from the pool.
@@ -266,6 +269,24 @@ func prependSystemMessages(messages []llm.Message, systemMessages []llm.Message)
 	out = append(out, systemMessages...)
 	out = append(out, messages...)
 	return out
+}
+
+func buildInitialAgentModeSystemMessages(policy PromptPolicy, requestAgentModeEnabled, globalAgentModeEnabled bool) []llm.Message {
+	if !requestAgentModeEnabled {
+		return nil
+	}
+	systemMessages := make([]llm.Message, 0, 2)
+	if !globalAgentModeEnabled {
+		systemMessages = append(systemMessages, llm.Message{
+			Role:    llm.RoleSystem,
+			Content: "Agent Mode is auto-enabled for this deep-research request. Plan, search, verify, use tools proactively, and continue until the task is complete.",
+		})
+	}
+	systemMessages = append(systemMessages, llm.Message{
+		Role:    llm.RoleSystem,
+		Content: policy.InitialAgentModeTurnNudge(),
+	})
+	return systemMessages
 }
 
 // reSystemReminder matches <system-reminder>...</system-reminder> blocks that LLMs sometimes echo back.
@@ -1010,7 +1031,25 @@ func shouldMentionPDFReadPathHint(userMessage, target, genericFormat string) boo
 	return pdfPathMentions > 0 || hasGenericPDFWord
 }
 
-func nativeDocumentArtifactHint(target, genericFormat string) string {
+func extractNamedWorkspaceSourcePathForNativeArtifact(userMessage, target string) string {
+	normalizedTarget := normalizeWorkspaceArtifactComparablePath(target)
+	for _, candidate := range extractArtifactPathCandidates(userMessage) {
+		path := normalizeWorkspaceArtifactComparablePath(candidate.path)
+		if path == "" {
+			continue
+		}
+		if normalizedTarget != "" && path == normalizedTarget {
+			continue
+		}
+		if isImageArtifactPath(path) {
+			continue
+		}
+		return strings.TrimSpace(candidate.path)
+	}
+	return ""
+}
+
+func nativeDocumentArtifactHint(userMessage, target, genericFormat string) string {
 	tool := nativeDocumentArtifactToolForPath(target)
 	format := strings.ToLower(strings.TrimSpace(filepath.Ext(strings.TrimSpace(target))))
 	scope := ""
@@ -1028,12 +1067,22 @@ func nativeDocumentArtifactHint(target, genericFormat string) string {
 	if tool == "pptx" {
 		extraRoutingNote = " Do not treat this as slide-asset generation unless the user explicitly asks for a visual-only slide image."
 	}
+	sourceSeedHint := ""
+	if sourcePath := extractNamedWorkspaceSourcePathForNativeArtifact(userMessage, target); sourcePath != "" {
+		sourceSeedHint = fmt.Sprintf(
+			" When the request already names a workspace source file such as %q, prefer passing that file path directly to the native %s tool via `path`/`input_path` and let the tool produce the requested final %s artifact. Do not read the whole source file and copy it back as a long inline `content` or `markdown` payload unless no suitable source file path is available.",
+			sourcePath,
+			tool,
+			format,
+		)
+	}
 	return fmt.Sprintf(
-		" When the %s, prefer the native %s tool instead of convert, raw file_write, or helper scripts so %s are preserved.%s For writing-heavy document tasks, you can hand Markdown content directly to the native %s tool when its schema accepts it. Only write Markdown first and then convert it when the native tool cannot safely express the request or when format bridging is genuinely needed. If you use an intermediate Markdown file, that intermediate Markdown file does not complete the task. Likewise, a helper script, code generator, or automation file does not complete the task by itself; the task is complete only after the requested final %s artifact exists.",
+		" When the %s, prefer the native %s tool instead of convert, raw file_write, or helper scripts so %s are preserved.%s%s For writing-heavy document tasks, when no suitable source file path is already available, you can hand Markdown content directly to the native %s tool when its schema accepts it. Only write Markdown first and then convert it when the native tool cannot safely express the request or when format bridging is genuinely needed. If you use an intermediate Markdown file, that intermediate Markdown file does not complete the task. Likewise, a helper script, code generator, or automation file does not complete the task by itself; the task is complete only after the requested final %s artifact exists.",
 		scope,
 		tool,
 		nativeDocumentArtifactBenefit(tool),
 		extraRoutingNote,
+		sourceSeedHint,
 		tool,
 		format,
 	)
@@ -1077,7 +1126,7 @@ func buildArtifactWorkflowExecutionHint(userMessage string) string {
 	if target == "" && !hasGenericDocumentOutput && !isImageGenerationIntentMessage(userMessage) {
 		return ""
 	}
-	nativeDocumentHint := nativeDocumentArtifactHint(target, genericDocumentFormat)
+	nativeDocumentHint := nativeDocumentArtifactHint(userMessage, target, genericDocumentFormat)
 	genericDocumentTarget := nativeDocumentArtifactTargetDescription(genericDocumentFormat)
 	genericDocumentTool := nativeDocumentArtifactToolForFormat(genericDocumentFormat)
 	if shouldPreferExplicitMemoryFileWorkflow(userMessage) {
@@ -3050,6 +3099,11 @@ func filterPseudoDirectiveDeltaForStreaming(delta string, allowedTools []llm.Too
 	if delta == "" {
 		return ""
 	}
+	if !*suppressing && shouldSuppressWholeTypelessNativeDocPseudoDelta(delta, allowedTools) {
+		*suppressing = true
+		*suppressedChunks = 1
+		return ""
+	}
 	visible := delta
 	hasStart := false
 	if start := pseudoDirectiveStartIndex(delta, allowedTools); start >= 0 {
@@ -3072,6 +3126,23 @@ func filterPseudoDirectiveDeltaForStreaming(delta string, allowedTools []llm.Too
 		return visible
 	}
 	return ""
+}
+
+func shouldSuppressWholeTypelessNativeDocPseudoDelta(delta string, allowedTools []llm.Tool) bool {
+	if len(allowedTools) == 0 || !strings.Contains(delta, "```typeless") {
+		return false
+	}
+	recoveredCalls, ok := recoverSanitizedPseudoToolCallsFromContent(delta, allowedTools)
+	if !ok || len(recoveredCalls) == 0 {
+		return false
+	}
+	for _, call := range recoveredCalls {
+		switch normalizeFileToolCompatName(call.Name) {
+		case "pdf", "docx", "xlsx", "pptx":
+			return true
+		}
+	}
+	return false
 }
 
 // shouldAutoContinueForPseudoToolCall detects malformed "fake tool call"
@@ -3246,6 +3317,10 @@ func claimsPendingToolResultsWithoutStructuredCalls(currentContent string) bool 
 // shouldAutoContinueAfterToollessReply returns whether we should nudge the
 // model into another round after it stopped without tool calls, and why.
 func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent string, agentMode bool, options ...bool) (bool, string) {
+	return shouldAutoContinueAfterToollessReplyForRequest(currentContent, trackedTodoContent, "", agentMode, options...)
+}
+
+func shouldAutoContinueAfterToollessReplyForRequest(currentContent, trackedTodoContent, userMessage string, agentMode bool, options ...bool) (bool, string) {
 	allowMissingTodo := false
 	planCompletedByTool := false
 	preferReminderTool := false
@@ -3271,6 +3346,9 @@ func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent str
 	if shouldAutoContinueForSummaryIntro(currentContent) {
 		return true, "summary_intro"
 	}
+	if shouldAutoContinueForRejectedContinuationTodoBootstrap(currentContent, trackedTodoContent, userMessage, agentMode, planCompletedByTool) {
+		return true, "missing_todo"
+	}
 	if agentMode && shouldAutoContinueForTodoReconcile(currentContent, trackedTodoContent, agentMode) {
 		return true, "todo_reconcile"
 	}
@@ -3290,6 +3368,275 @@ func shouldAutoContinueAfterToollessReply(currentContent, trackedTodoContent str
 		return true, "action_pledge"
 	}
 	return false, ""
+}
+
+func shouldAutoContinueForRejectedContinuationTodoBootstrap(currentContent, trackedTodoContent, userMessage string, agentMode, planCompletedByTool bool) bool {
+	if !agentMode || planCompletedByTool {
+		return false
+	}
+	if strings.TrimSpace(trackedTodoContent) != "" {
+		return false
+	}
+	if strings.TrimSpace(currentContent) == "" {
+		return false
+	}
+	if isAwaitingUserInput(currentContent) || isLikelyTodoFinalizationResponse(currentContent) {
+		return false
+	}
+	checklist := extractTodoChecklistFromContent(currentContent)
+	if checklist == "" {
+		return false
+	}
+	return shouldRejectInitialContinuationTodoBootstrap(checklist, userMessage)
+}
+
+func looksLikeOpenEndedContinuationRequest(userMessage string) bool {
+	trimmed := strings.TrimSpace(userMessage)
+	if trimmed == "" {
+		return false
+	}
+	if isAffirmativeContinuationMessage(trimmed) {
+		return true
+	}
+	if trimmed == "[CONTINUE]" || trimmed == "[CONTINUE_AFTER_CANCEL]" {
+		return true
+	}
+	if strings.Contains(trimmed, "智能续跑") {
+		return true
+	}
+
+	lower := strings.ToLower(trimmed)
+	if strings.Contains(lower, "smart resume") {
+		return true
+	}
+
+	rx := contextCompressionRegexes()
+	hasResumeCue := rx.latestIntentResume.MatchString(trimmed)
+	if !hasResumeCue {
+		for _, cue := range []string{
+			"continue this task",
+			"continue the task",
+			"resume this task",
+			"resume the task",
+			"continue until complete",
+			"continue to completion",
+			"keep going",
+			"keep iterating",
+			"carry on",
+		} {
+			if strings.Contains(lower, cue) {
+				hasResumeCue = true
+				break
+			}
+		}
+	}
+	if !hasResumeCue {
+		for _, cue := range []string{
+			"继续推进",
+			"继续完善",
+			"继续优化",
+			"继续完成",
+			"继续处理",
+			"继续这个任务",
+			"继续该任务",
+			"继续这个实现",
+			"继续下去",
+			"恢复这个任务",
+			"恢复上次任务",
+			"接着推进",
+			"接着做",
+			"直到完成",
+		} {
+			if strings.Contains(trimmed, cue) {
+				hasResumeCue = true
+				break
+			}
+		}
+	}
+	if !hasResumeCue {
+		return false
+	}
+	if utf8.RuneCountInString(trimmed) <= 18 {
+		return true
+	}
+
+	for _, cue := range []string{
+		"this task",
+		"the task",
+		"this implementation",
+		"the implementation",
+		"this issue",
+		"this work",
+		"to completion",
+		"until complete",
+		"until it's done",
+		"until it is done",
+	} {
+		if strings.Contains(lower, cue) {
+			return true
+		}
+	}
+	for _, cue := range []string{
+		"任务",
+		"这个任务",
+		"该任务",
+		"这个实现",
+		"实现",
+		"这个问题",
+		"直到完成",
+		"收尾",
+	} {
+		if strings.Contains(trimmed, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractTodoChecklistFromContent(currentContent string) string {
+	if candidate, ok := extractChecklistFromJSONResult(currentContent); ok {
+		return strings.TrimSpace(candidate)
+	}
+	if candidate, ok := extractFirstTodoChecklist(currentContent); ok {
+		return strings.TrimSpace(candidate)
+	}
+	return ""
+}
+
+func firstPendingTodoTitle(checklist string) string {
+	ensureChatMiscRegexes()
+	matches := reTodoAnyItem.FindAllStringSubmatch(checklist, -1)
+	for _, match := range matches {
+		if len(match) < 3 {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(match[1]), "x") {
+			continue
+		}
+		title := strings.TrimSpace(match[2])
+		if title != "" {
+			return title
+		}
+	}
+	return ""
+}
+
+func todoChecklistHasCompletedDiscoveryStep(checklist string) bool {
+	ensureChatMiscRegexes()
+	matches := reTodoAnyItem.FindAllStringSubmatch(checklist, -1)
+	for _, match := range matches {
+		if len(match) < 3 || !strings.EqualFold(strings.TrimSpace(match[1]), "x") {
+			continue
+		}
+		if todoTitleLooksLikeDiscovery(match[2]) {
+			return true
+		}
+	}
+	return false
+}
+
+func firstPendingTodoLooksLikeDiscovery(checklist string) bool {
+	title := firstPendingTodoTitle(checklist)
+	if title == "" {
+		return false
+	}
+	return todoTitleLooksLikeDiscovery(title)
+}
+
+func todoTitleLooksLikeDiscovery(title string) bool {
+	trimmed := strings.TrimSpace(title)
+	if trimmed == "" {
+		return false
+	}
+	normalized := strings.ToLower(strings.Join(strings.Fields(trimmed), " "))
+
+	for _, cue := range []string{
+		"research",
+		"investigate",
+		"investigation",
+		"inspect",
+		"capture",
+		"check",
+		"verify",
+		"review",
+		"audit",
+		"analyze",
+		"analyse",
+		"gather",
+		"collect",
+		"understand",
+		"read",
+		"scan",
+		"explore",
+		"search",
+		"screenshot",
+		"snapshot",
+		"look up",
+		"discover",
+		"current state",
+		"current implementation",
+		"current code",
+		"existing implementation",
+		"existing code",
+		"baseline",
+		"context",
+		"root cause",
+	} {
+		if strings.Contains(normalized, cue) {
+			return true
+		}
+	}
+	for _, cue := range []string{
+		"调研",
+		"研究",
+		"调查",
+		"排查",
+		"检查",
+		"确认",
+		"验证",
+		"截图",
+		"截屏",
+		"抓图",
+		"抓取",
+		"收集",
+		"梳理",
+		"盘点",
+		"了解",
+		"熟悉",
+		"阅读",
+		"查看",
+		"检索",
+		"搜索",
+		"查找",
+		"分析",
+		"现状",
+		"当前状态",
+		"当前实现",
+		"现有实现",
+		"现有代码",
+		"根因",
+		"背景",
+		"上下文",
+	} {
+		if strings.Contains(trimmed, cue) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldRejectInitialContinuationTodoBootstrap(checklist, userMessage string) bool {
+	if !looksLikeOpenEndedContinuationRequest(userMessage) {
+		return false
+	}
+	checklist = strings.TrimSpace(checklist)
+	if checklist == "" {
+		return false
+	}
+	if todoChecklistHasCompletedDiscoveryStep(checklist) {
+		return false
+	}
+	return !firstPendingTodoLooksLikeDiscovery(checklist)
 }
 
 func hasClarifyNoneActionableTools(allowedTools []llm.Tool) bool {
@@ -3666,17 +4013,19 @@ func buildToolRoundTodoCompletionSignal(userMessage string, toolCalls []llm.Tool
 // bootstrapping the initial checklist, or when a completion-style reply
 // explicitly returns the same checklist fully completed.
 func syncTrackedTodoAfterToollessChecklist(trackedTodoContent, currentContent string) (string, bool) {
-	checklist := ""
-	if candidate, ok := extractChecklistFromJSONResult(currentContent); ok {
-		checklist = strings.TrimSpace(candidate)
-	} else if candidate, ok := extractFirstTodoChecklist(currentContent); ok {
-		checklist = strings.TrimSpace(candidate)
-	}
+	return syncTrackedTodoAfterToollessChecklistForRequest(trackedTodoContent, currentContent, "")
+}
+
+func syncTrackedTodoAfterToollessChecklistForRequest(trackedTodoContent, currentContent, userMessage string) (string, bool) {
+	checklist := extractTodoChecklistFromContent(currentContent)
 	if checklist == "" {
 		return trackedTodoContent, false
 	}
 
 	if strings.TrimSpace(trackedTodoContent) == "" {
+		if shouldRejectInitialContinuationTodoBootstrap(checklist, userMessage) {
+			return trackedTodoContent, false
+		}
 		return checklist, true
 	}
 
@@ -3726,6 +4075,44 @@ func isLikelyTaskCompletionResponse(content string) bool {
 		if strings.Contains(s, cue) {
 			return true
 		}
+	}
+
+	zhResearchSectionCues := []string{
+		"执行摘要",
+		"关键发现",
+		"风险与不确定性",
+		"时间线",
+		"版本事实",
+		"来源：",
+	}
+	zhResearchMatches := 0
+	for _, cue := range zhResearchSectionCues {
+		if strings.Contains(s, cue) {
+			zhResearchMatches++
+		}
+	}
+	if zhResearchMatches >= 3 && (strings.Contains(s, "来源：") || strings.Contains(lower, "https://") || strings.Contains(lower, "http://")) {
+		return true
+	}
+
+	enResearchSectionCues := []string{
+		"executive summary",
+		"key findings",
+		"risks",
+		"uncertainties",
+		"timeline",
+		"version facts",
+		"source urls",
+		"sources:",
+	}
+	enResearchMatches := 0
+	for _, cue := range enResearchSectionCues {
+		if strings.Contains(lower, cue) {
+			enResearchMatches++
+		}
+	}
+	if enResearchMatches >= 3 && (strings.Contains(lower, "sources:") || strings.Contains(lower, "source urls") || strings.Contains(lower, "https://") || strings.Contains(lower, "http://")) {
+		return true
 	}
 
 	// Generic "completed" wording should only count when paired with delivery signals,
@@ -3947,6 +4334,7 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 	if req == nil || resp == nil || state == nil {
 		return false
 	}
+	latestUserMessage := latestUserMessageFromLLM(req.Messages)
 
 	if strings.TrimSpace(resp.Message.Content) != "" {
 		state.AwaitingPostToolSummary = false
@@ -4000,7 +4388,7 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 	if updatedChecklist, changed := syncTrackedTodoAfterCompletionSignal(state.TodoContent, resp.Message.Content); changed {
 		state.TodoContent = updatedChecklist
 		state.PlanCompletedByTool = !hasPendingTodo(state.TodoContent)
-	} else if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(state.TodoContent, resp.Message.Content); changed {
+	} else if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklistForRequest(state.TodoContent, resp.Message.Content, latestUserMessage); changed {
 		state.TodoContent = updatedChecklist
 		state.PlanCompletedByTool = !hasPendingTodo(state.TodoContent)
 	}
@@ -4010,7 +4398,7 @@ func (h *ChatHandler) maybeAutoContinueIMToollessResponse(req *llm.ChatRequest, 
 	}
 
 	preferReminderTool := round == 0 && shouldPreferReminderToolForRetry(req.Messages, req.Tools)
-	shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, state.TodoContent, agentMode, round > 0, state.PlanCompletedByTool, preferReminderTool, state.MissingTodoAutoContinueCount == 0)
+	shouldContinue, reason := shouldAutoContinueAfterToollessReplyForRequest(resp.Message.Content, state.TodoContent, latestUserMessage, agentMode, round > 0, state.PlanCompletedByTool, preferReminderTool, state.MissingTodoAutoContinueCount == 0)
 	if !shouldContinue {
 		return false
 	}
@@ -4157,6 +4545,144 @@ func buildToollessAutoContinueNudgeForReasonWithPolicy(policy PromptPolicy, agen
 
 func buildPostToolAutoContinueNudgeWithPolicy(policy PromptPolicy, agentMode bool) string {
 	return policy.PostToolAutoContinueNudge(agentMode)
+}
+
+func shouldInjectComputerUseDesktopChatContinuationNudge(previousResponseID string, toolCalls []llm.ToolCall) bool {
+	return shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(previousResponseID, "", toolCalls)
+}
+
+func shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(previousResponseID string, routingMessage string, toolCalls []llm.ToolCall) bool {
+	if strings.TrimSpace(previousResponseID) == "" {
+		return false
+	}
+	routingSuggestsDesktopChat := isComputerUseDesktopChatRoutingMessage(routingMessage)
+	for _, call := range toolCalls {
+		if !strings.EqualFold(strings.TrimSpace(call.Name), "computer_use") {
+			continue
+		}
+		if isComputerUseDesktopChatContinuationArgs(call.Arguments) {
+			return true
+		}
+		if routingSuggestsDesktopChat {
+			return true
+		}
+	}
+	return false
+}
+
+func isComputerUseDesktopChatContinuationArgs(arguments string) bool {
+	lowerArgs := strings.ToLower(arguments)
+	if strings.Contains(lowerArgs, "\"conversation\"") ||
+		strings.Contains(lowerArgs, "\"thread\"") ||
+		strings.Contains(lowerArgs, "\"chat\"") ||
+		strings.Contains(lowerArgs, "\"contact\"") {
+		return true
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(arguments), &payload); err == nil {
+		if continuationCompatString(payload, "conversation", "thread", "chat", "contact") != "" {
+			return true
+		}
+		if intent := strings.ToLower(strings.TrimSpace(continuationCompatString(payload, "intent", "scene", "scenario", "goal"))); intent == "message" {
+			return true
+		}
+		switch strings.ToLower(strings.TrimSpace(continuationCompatString(payload, "action"))) {
+		case "message", "chat", "reply", "sendmessage":
+			return true
+		}
+	}
+
+	return strings.Contains(lowerArgs, "\"intent\":\"message\"") ||
+		strings.Contains(lowerArgs, "\"scene\":\"message\"") ||
+		strings.Contains(lowerArgs, "\"scenario\":\"message\"") ||
+		strings.Contains(lowerArgs, "\"goal\":\"message\"") ||
+		strings.Contains(lowerArgs, "\"action\":\"message\"") ||
+		strings.Contains(lowerArgs, "\"action\":\"reply\"") ||
+		strings.Contains(lowerArgs, "\"action\":\"sendmessage\"")
+}
+
+func continuationCompatString(payload map[string]interface{}, keys ...string) string {
+	for _, key := range keys {
+		if payload == nil {
+			return ""
+		}
+		if value, ok := payload[key]; ok {
+			if text, ok := value.(string); ok && strings.TrimSpace(text) != "" {
+				return strings.TrimSpace(text)
+			}
+		}
+	}
+	return ""
+}
+
+func isComputerUseDesktopChatAppHintArgs(arguments string) bool {
+	lowerArgs := strings.ToLower(arguments)
+	for _, hint := range []string{"feishu", "lark"} {
+		if strings.Contains(lowerArgs, hint) {
+			return true
+		}
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(arguments), &payload); err == nil {
+		appHint := strings.ToLower(strings.TrimSpace(continuationCompatString(payload, "app_name", "appName", "application", "app")))
+		for _, hint := range []string{"feishu", "lark"} {
+			if strings.Contains(appHint, hint) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func isComputerUseDesktopChatRoutingMessage(routingMessage string) bool {
+	lowerMessage := strings.ToLower(strings.TrimSpace(routingMessage))
+	if lowerMessage == "" {
+		return false
+	}
+	if !continuationMessageContainsAny(lowerMessage,
+		"飞书",
+		"feishu",
+		"lark",
+		"桌面应用",
+		"聊天框",
+		"当前聊天",
+		"聊天",
+		"会话",
+		"conversation",
+		"thread",
+		"composer",
+		"reply box",
+		"message box",
+	) {
+		return false
+	}
+	return continuationMessageContainsAny(lowerMessage,
+		"回复",
+		"回一句",
+		"发一句",
+		"发送",
+		"发出",
+		"发消息",
+		"打一个招呼",
+		"打招呼",
+		"问候",
+		"reply",
+		"send",
+		"greet",
+		"say hi",
+	)
+}
+
+func continuationMessageContainsAny(message string, fragments ...string) bool {
+	for _, fragment := range fragments {
+		if strings.Contains(message, fragment) {
+			return true
+		}
+	}
+	return false
 }
 
 func classifyEmptyPostToolAutoContinueReason(trackedTodoContent string, agentMode bool, planCompletedByTool bool) string {
@@ -4965,11 +5491,35 @@ func todoAwarePersistedContent(content, trackedTodoContent string, persistTodoIn
 	return sanitized
 }
 
+func normalizeToolRoundChecklistForRequest(trackedTodoContent, planChecklist, userMessage string, planChecklistUpdated bool) (string, bool) {
+	if !planChecklistUpdated {
+		return "", false
+	}
+	checklist := strings.TrimSpace(planChecklist)
+	if checklist == "" {
+		return "", false
+	}
+	if strings.TrimSpace(trackedTodoContent) == "" && shouldRejectInitialContinuationTodoBootstrap(checklist, userMessage) {
+		return "", false
+	}
+	return checklist, true
+}
+
+func shouldInjectMissingTodoAfterRejectedToolChecklist(agentMode, rejected bool, trackedTodoContent string, planCompletedByTool bool) bool {
+	if !agentMode || !rejected || planCompletedByTool {
+		return false
+	}
+	return strings.TrimSpace(trackedTodoContent) == ""
+}
+
 func syncTrackedTodoAfterToolRound(trackedTodoContent, planChecklist string, planChecklistUpdated, planCompletedByTool bool) (string, bool) {
+	return syncTrackedTodoAfterToolRoundForRequest(trackedTodoContent, "", planChecklist, planChecklistUpdated, planCompletedByTool)
+}
+
+func syncTrackedTodoAfterToolRoundForRequest(trackedTodoContent, userMessage, planChecklist string, planChecklistUpdated, planCompletedByTool bool) (string, bool) {
 	updated := trackedTodoContent
 	changed := false
-	if planChecklistUpdated {
-		checklist := strings.TrimSpace(planChecklist)
+	if checklist, accepted := normalizeToolRoundChecklistForRequest(trackedTodoContent, planChecklist, userMessage, planChecklistUpdated); accepted {
 		if checklist != "" && checklist != strings.TrimSpace(updated) {
 			updated = checklist
 			changed = true
@@ -4985,7 +5535,11 @@ func syncTrackedTodoAfterToolRound(trackedTodoContent, planChecklist string, pla
 }
 
 func reconcileTrackedTodoAfterToolRound(trackedTodoContent, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message, planChecklist string, planChecklistUpdated, planCompletedByTool bool) (string, bool) {
-	updated, changed := syncTrackedTodoAfterToolRound(trackedTodoContent, planChecklist, planChecklistUpdated, planCompletedByTool)
+	return reconcileTrackedTodoAfterToolRoundForRequest(trackedTodoContent, userMessage, toolCalls, toolResults, planChecklist, planChecklistUpdated, planCompletedByTool)
+}
+
+func reconcileTrackedTodoAfterToolRoundForRequest(trackedTodoContent, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message, planChecklist string, planChecklistUpdated, planCompletedByTool bool) (string, bool) {
+	updated, changed := syncTrackedTodoAfterToolRoundForRequest(trackedTodoContent, userMessage, planChecklist, planChecklistUpdated, planCompletedByTool)
 	if completionSignal := buildToolRoundTodoCompletionSignal(userMessage, toolCalls, toolResults); completionSignal != "" {
 		if finalized, finalizedChanged := syncTrackedTodoAfterCompletionSignal(updated, completionSignal); finalizedChanged {
 			updated = finalized
@@ -6844,6 +7398,7 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		}
 		selection.NativeDefs = []tools.ToolDefinition{execDef}
 		selection.NativeMode = chatNativeToolSurfaceModeSkillExec
+		selection = h.preserveAdvisorToolOnResearchCutover(policyReq, selection)
 		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 	default:
 		// NativeSurfaceModeLegacy: keep routed native defs
@@ -6875,17 +7430,40 @@ func cutoverSkillAllowedByPreferences(_ string, _ *bool, _ *bool) bool {
 	return true
 }
 
-func (h *ChatHandler) lookupCutoverNativeExecToolDefinition(kind tools.ToolRouteKind) (tools.ToolDefinition, bool) {
+func (h *ChatHandler) lookupNativeToolDefinitionForRoute(name string, kind tools.ToolRouteKind) (tools.ToolDefinition, bool) {
 	if h == nil || h.toolRegistry == nil {
 		return tools.ToolDefinition{}, false
 	}
-	if def, ok := h.toolRegistry.LookupDefinitionForRoute("exec", kind); ok {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return tools.ToolDefinition{}, false
+	}
+	if def, ok := h.toolRegistry.LookupDefinitionForRoute(name, kind); ok {
 		return def, true
 	}
-	if tool := h.toolRegistry.Get("exec"); tool != nil {
+	if tool := h.toolRegistry.Get(name); tool != nil {
 		return tool.Definition(), true
 	}
 	return tools.ToolDefinition{}, false
+}
+
+func (h *ChatHandler) lookupCutoverNativeExecToolDefinition(kind tools.ToolRouteKind) (tools.ToolDefinition, bool) {
+	return h.lookupNativeToolDefinitionForRoute("exec", kind)
+}
+
+func (h *ChatHandler) preserveAdvisorToolOnResearchCutover(policyReq tools.ToolPolicyRequest, selection chatToolSurfaceSelection) chatToolSurfaceSelection {
+	if h == nil || selection.NativeMode != chatNativeToolSurfaceModeSkillExec || selection.SkillDecision == nil {
+		return selection
+	}
+	if !strings.EqualFold(strings.TrimSpace(selection.SkillDecision.ResearchMode), "advisor") {
+		return selection
+	}
+	advisorDef, ok := h.lookupNativeToolDefinitionForRoute("advisor", policyReq.RouteKind)
+	if !ok {
+		return selection
+	}
+	selection.NativeDefs = mergeToolDefsByName(selection.NativeDefs, []tools.ToolDefinition{advisorDef})
+	return selection
 }
 
 func estimateCurrentRequestMessages(req SendMessageRequest) []llm.Message {
@@ -9041,6 +9619,7 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 
 	selection.NativeDefs = []tools.ToolDefinition{execDef}
 	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
+	selection = h.preserveAdvisorToolOnResearchCutover(policyReq, selection)
 	return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
 }
 
@@ -13604,7 +14183,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		accumulatedResults = append(accumulatedResults, remainingDone...)
 		doneCalls := append([]llm.ToolCall{pendingState.PendingToolCall}, remainingDoneCalls...)
 		doneResults := append([]llm.Message{pendingResults[0]}, remainingDone...)
-		h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, doneCalls, doneResults)
+		h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, pendingState.RoutingMessage, doneCalls, doneResults)
 		if nextPending != nil {
 			h.setIMCheckpointState(convID, &imCheckpointResumeState{
 				CheckpointID:           nextCheckpointID,
@@ -13639,6 +14218,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		req := pendingState.ResumeReq
 		req.Messages = append(req.Messages, pendingState.AssistantMsg)
 		req.Messages = append(req.Messages, accumulatedResults...)
+		if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(req.PreviousResponseID, pendingState.RoutingMessage, pendingState.AssistantMsg.ToolCalls) {
+			promptPolicy := h.resolvePromptPolicy()
+			req.Messages = append(req.Messages,
+				llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, pendingState.AgentMode)},
+			)
+		}
 		clarifyNoneToolSurface := h.isClarifyNoneToolSurfaceForRequest(ctx, pendingState.RoutingMessage, tools.ToolPolicyRequest{
 			Model:               req.Model,
 			SessionID:           convID,
@@ -13689,11 +14274,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				resp.Message.ToolCalls = sanitizedCalls
 			}
 			if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, req.Tools) {
-				if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, req.Tools); recovered {
+				if recoveredCalls, recoveryStage, recovered := h.recoverPseudoToolCallsForContent(ctx, resp.Message.Content, req.Tools); recovered {
 					resp.Message.ToolCalls = recoveredCalls
 					resp.Message.Content = ""
 					logger.Warn().
 						Int("round", imRound).
+						Str("recovery_stage", recoveryStage).
 						Int("tool_calls", len(recoveredCalls)).
 						Msg("[im] recovered pseudo tool-call text into assistant tool calls")
 				}
@@ -13731,7 +14317,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			roundToolCtx := withToolProviderContext(checkpointToolCtx, resp.Provider, resp.ProviderID, resp.Model)
 			completedCalls, completed, pendingCall, stillRemaining, checkpointID, pendingMsg := h.executeIMToolCallsUntilCheckpoint(roundToolCtx, resp.Message.ToolCalls)
 			h.sendIMToolResultCards(ctx, msg.ChannelName, msg.ChatID, msg.ID, lang, completedCalls, completed)
-			h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, completedCalls, completed)
+			h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, pendingState.RoutingMessage, completedCalls, completed)
 			if pendingCall != nil {
 				h.setIMCheckpointState(convID, &imCheckpointResumeState{
 					CheckpointID:           checkpointID,
@@ -13764,13 +14350,21 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			}
 			req.Messages = append(req.Messages, resp.Message)
 			req.Messages = append(req.Messages, completed...)
-			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(resp.Message.ToolCalls, completed)
+			if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(req.PreviousResponseID, pendingState.RoutingMessage, resp.Message.ToolCalls) {
+				promptPolicy := h.resolvePromptPolicy()
+				req.Messages = append(req.Messages,
+					llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, pendingState.AgentMode)},
+				)
+			}
+			rawPlanChecklist, rawPlanChecklistUpdated := extractPlanChecklistFromToolRound(resp.Message.ToolCalls, completed)
+			planChecklist, planChecklistUpdated := normalizeToolRoundChecklistForRequest(autoContinueState.TodoContent, rawPlanChecklist, pendingState.RoutingMessage, rawPlanChecklistUpdated)
+			rejectedToolChecklistBootstrap := rawPlanChecklistUpdated && !planChecklistUpdated && strings.TrimSpace(rawPlanChecklist) != ""
 			if planDone, ok := extractPlanCompletionFromToolRound(resp.Message.ToolCalls, completed); ok {
 				autoContinueState.PlanCompletedByTool = planDone
 			} else if planChecklistUpdated {
 				autoContinueState.PlanCompletedByTool = !hasPendingTodo(planChecklist)
 			}
-			autoContinueState.TodoContent, _ = reconcileTrackedTodoAfterToolRound(
+			autoContinueState.TodoContent, _ = reconcileTrackedTodoAfterToolRoundForRequest(
 				autoContinueState.TodoContent,
 				pendingState.RoutingMessage,
 				resp.Message.ToolCalls,
@@ -13780,6 +14374,11 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 				autoContinueState.PlanCompletedByTool,
 			)
 			autoContinueState.AwaitingPostToolSummary = len(completed) > 0
+			if shouldInjectMissingTodoAfterRejectedToolChecklist(pendingState.AgentMode, rejectedToolChecklistBootstrap, autoContinueState.TodoContent, autoContinueState.PlanCompletedByTool) &&
+				h.shouldAutoContinueForReasonWithinBudget("missing_todo", pendingState.AgentMode, autoContinueState.PseudoToolCallAutoContinueCount, autoContinueState.ActionPledgeAutoContinueCount, autoContinueState.MissingTodoAutoContinueCount, autoContinueState.PendingTodoAutoContinueCount) {
+				promptPolicy := h.resolvePromptPolicy()
+				applyMissingTodoBootstrapNudgeToIMRequest(&req, &autoContinueState, promptPolicy)
+			}
 		}
 
 		if resp == nil || strings.TrimSpace(resp.Message.Content) == "" {
@@ -14217,11 +14816,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 			}
 		}
 		if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, req.Tools) {
-			if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, req.Tools); recovered {
+			if recoveredCalls, recoveryStage, recovered := h.recoverPseudoToolCallsForContent(ctx, resp.Message.Content, req.Tools); recovered {
 				resp.Message.ToolCalls = recoveredCalls
 				resp.Message.Content = ""
 				logger.Warn().
 					Int("round", imRound).
+					Str("recovery_stage", recoveryStage).
 					Int("tool_calls", len(recoveredCalls)).
 					Msg("[im] recovered pseudo tool-call text into assistant tool calls")
 			}
@@ -14274,7 +14874,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		roundToolCtx := withToolProviderContext(toolCtx, resp.Provider, resp.ProviderID, resp.Model)
 		completedCalls, completed, pendingCall, remainingCalls, checkpointID, pendingMessage := h.executeIMToolCallsUntilCheckpoint(roundToolCtx, resp.Message.ToolCalls)
 		h.sendIMToolResultCards(ctx, msg.ChannelName, msg.ChatID, msg.ID, lang, completedCalls, completed)
-		h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, completedCalls, completed)
+		h.syncIMTodoChecklistAfterToolRound(ctx, &autoContinueState, &todoMessageState, msg.ChannelName, msg.ChatID, msg.ID, convID, routingMessage, completedCalls, completed)
 		if pendingCall != nil {
 			h.setIMCheckpointState(convID, &imCheckpointResumeState{
 				CheckpointID:           checkpointID,
@@ -14337,6 +14937,20 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		}
 		req.Messages = append(req.Messages, resp.Message)
 		req.Messages = append(req.Messages, completed...)
+		if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(req.PreviousResponseID, routingMessage, completedCalls) {
+			promptPolicy := h.resolvePromptPolicy()
+			req.Messages = append(req.Messages,
+				llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, channelAgentModeEnabled)},
+			)
+		}
+		rawPlanChecklist, rawPlanChecklistUpdated := extractPlanChecklistFromToolRound(completedCalls, completed)
+		_, acceptedPlanChecklist := normalizeToolRoundChecklistForRequest(autoContinueState.TodoContent, rawPlanChecklist, routingMessage, rawPlanChecklistUpdated)
+		rejectedToolChecklistBootstrap := rawPlanChecklistUpdated && !acceptedPlanChecklist && strings.TrimSpace(rawPlanChecklist) != ""
+		if shouldInjectMissingTodoAfterRejectedToolChecklist(channelAgentModeEnabled, rejectedToolChecklistBootstrap, autoContinueState.TodoContent, autoContinueState.PlanCompletedByTool) &&
+			h.shouldAutoContinueForReasonWithinBudget("missing_todo", channelAgentModeEnabled, autoContinueState.PseudoToolCallAutoContinueCount, autoContinueState.ActionPledgeAutoContinueCount, autoContinueState.MissingTodoAutoContinueCount, autoContinueState.PendingTodoAutoContinueCount) {
+			promptPolicy := h.resolvePromptPolicy()
+			applyMissingTodoBootstrapNudgeToIMRequest(&req, &autoContinueState, promptPolicy)
+		}
 	}
 
 	if resp == nil || strings.TrimSpace(resp.Message.Content) == "" {
@@ -14455,20 +15069,21 @@ func (h *ChatHandler) upsertIMTodoChecklist(baseCtx context.Context, state *imTo
 	state.Content = content
 }
 
-func (h *ChatHandler) syncIMTodoChecklistAfterToolRound(baseCtx context.Context, autoState *imToollessAutoContinueState, todoState *imTodoMessageState, channelName, chatID, replyToID, convID string, toolCalls []llm.ToolCall, toolResults []llm.Message) {
+func (h *ChatHandler) syncIMTodoChecklistAfterToolRound(baseCtx context.Context, autoState *imToollessAutoContinueState, todoState *imTodoMessageState, channelName, chatID, replyToID, convID, userMessage string, toolCalls []llm.ToolCall, toolResults []llm.Message) {
 	if autoState == nil || todoState == nil {
 		return
 	}
 	prevContent := strings.TrimSpace(autoState.TodoContent)
 	planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(toolCalls, toolResults)
+	planChecklist, planChecklistUpdated = normalizeToolRoundChecklistForRequest(autoState.TodoContent, planChecklist, userMessage, planChecklistUpdated)
 	if planDone, ok := extractPlanCompletionFromToolRound(toolCalls, toolResults); ok {
 		autoState.PlanCompletedByTool = planDone
 	} else if planChecklistUpdated {
 		autoState.PlanCompletedByTool = !hasPendingTodo(planChecklist)
 	}
-	autoState.TodoContent, _ = reconcileTrackedTodoAfterToolRound(
+	autoState.TodoContent, _ = reconcileTrackedTodoAfterToolRoundForRequest(
 		autoState.TodoContent,
-		"",
+		userMessage,
 		toolCalls,
 		toolResults,
 		planChecklist,
@@ -14479,6 +15094,24 @@ func (h *ChatHandler) syncIMTodoChecklistAfterToolRound(baseCtx context.Context,
 	if nextContent := strings.TrimSpace(autoState.TodoContent); nextContent != "" && nextContent != prevContent {
 		h.upsertIMTodoChecklist(baseCtx, todoState, channelName, chatID, replyToID, convID, autoState.TodoContent)
 	}
+}
+
+func applyMissingTodoBootstrapNudgeToIMRequest(req *llm.ChatRequest, state *imToollessAutoContinueState, policy PromptPolicy) bool {
+	if req == nil || state == nil {
+		return false
+	}
+	req.Messages = append(req.Messages,
+		llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
+		llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReasonWithPolicy(policy, true, "missing_todo")},
+	)
+	state.AutoContinueCount++
+	state.PseudoToolCallAutoContinueCount = 0
+	state.ActionPledgeAutoContinueCount = 0
+	state.PendingTodoAutoContinueCount = 0
+	state.MissingTodoAutoContinueCount++
+	state.PrevToollessAutoContinueSig = ""
+	state.ConsecutiveToollessDups = 0
+	return true
 }
 
 func (h *ChatHandler) persistChannelResponseMessage(ctx context.Context, convID, content string) (*memory.Message, error) {
@@ -17339,7 +17972,15 @@ func buildPostWorkspaceArtifactWriteRetryNudge(userMessage string) string {
 	if target == "" {
 		return ""
 	}
-	nudge := fmt.Sprintf("The local evidence is already sufficient and the final artifact is still not saved. Do not keep reading the same files, do not switch to a narrower late-file subset unless one specific answer is still missing, and do not continue analysis-only replies. Use file_write (or edit/write_begin/write_chunk/write_commit if needed) to save the completed deliverable to %q now, using the evidence already gathered in the conversation.", target)
+	nudge := ""
+	if tool := nativeDocumentArtifactToolForPath(target); tool != "" {
+		nudge = fmt.Sprintf("The local evidence is already sufficient and the final artifact is still not saved. Do not keep reading the same files, do not switch to a narrower late-file subset unless one specific answer is still missing, and do not continue analysis-only replies. Use the native %s tool to create the completed deliverable at %q now, using the evidence already gathered in the conversation.", tool, target)
+		if hint := strings.TrimSpace(nativeDocumentArtifactHint(userMessage, target, "")); hint != "" {
+			nudge += hint
+		}
+	} else {
+		nudge = fmt.Sprintf("The local evidence is already sufficient and the final artifact is still not saved. Do not keep reading the same files, do not switch to a narrower late-file subset unless one specific answer is still missing, and do not continue analysis-only replies. Use file_write (or edit/write_begin/write_chunk/write_commit if needed) to save the completed deliverable to %q now, using the evidence already gathered in the conversation.", target)
+	}
 	if shouldRequireExhaustiveWorkspaceArtifactRead(userMessage) {
 		nudge += " Cover each discovered relevant source exactly once in the final artifact and leave clearly unrelated noise out."
 	}
@@ -18446,7 +19087,15 @@ func compactToolResultContentForLLM(toolName, content string) string {
 		}
 	case "pdf":
 		if m, ok := payload.(map[string]interface{}); ok {
-			payload = compactPDFPayloadForLLM(m)
+			// `pdf` tool failures may return a generic error payload that is not a PDF
+			// extraction/create envelope. Compacting those through the PDF shape (and
+			// ordered marshalling) can drop the error details entirely, resulting in
+			// `{}` and "No result data" in the UI.
+			if isPDFPayloadForLLM(m) {
+				payload = compactPDFPayloadForLLM(m)
+			} else {
+				payload = compactJSONValueForLLM(m, 0)
+			}
 		} else {
 			payload = compactJSONValueForLLM(payload, 0)
 		}
@@ -18474,7 +19123,7 @@ func compactToolResultContentForLLM(toolName, content string) string {
 func marshalCompactToolPayloadForLLM(toolName string, payload interface{}) ([]byte, error) {
 	switch normalizeFileToolCompatName(toolName) {
 	case "pdf":
-		if m, ok := payload.(map[string]interface{}); ok {
+		if m, ok := payload.(map[string]interface{}); ok && isPDFPayloadForLLM(m) {
 			return marshalOrderedCompactPDFPayloadForLLM(m)
 		}
 	case "file_read", "read":
@@ -18800,12 +19449,15 @@ func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interfac
 				docOut[key] = compactJSONValueForLLM(value, 1)
 			}
 		}
+		if followupPath := compactPDFFollowupPathForLLM(payload); followupPath != "" {
+			docOut["path"] = followupPath
+		}
 		if len(docOut) > 0 {
 			out["document"] = docOut
 		}
 	} else {
 		docOut := make(map[string]interface{}, 5)
-		if path := strings.TrimSpace(anyToStringForLLM(payload["path"])); path != "" {
+		if path := compactPDFFollowupPathForLLM(payload); path != "" {
 			docOut["path"] = path
 			if fileName := strings.TrimSpace(filepath.Base(path)); fileName != "" && fileName != "." && fileName != string(filepath.Separator) {
 				docOut["file_name"] = fileName
@@ -18885,6 +19537,18 @@ func compactPDFPayloadForLLM(payload map[string]interface{}) map[string]interfac
 		return map[string]interface{}{}
 	}
 	return out
+}
+
+func compactPDFFollowupPathForLLM(payload map[string]interface{}) string {
+	action := strings.ToLower(strings.TrimSpace(anyToStringForLLM(payload["action"])))
+	absolutePath := strings.TrimSpace(anyToStringForLLM(payload["absolute_path"]))
+	if absolutePath != "" {
+		switch action {
+		case "create", "fill", "reformat":
+			return absolutePath
+		}
+	}
+	return strings.TrimSpace(anyToStringForLLM(payload["path"]))
 }
 
 func compactFileReadPayloadForLLM(payload map[string]interface{}) map[string]interface{} {
@@ -21433,12 +22097,10 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 	}
 	globalAgentModeEnabled := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	requestAgentModeEnabled := globalAgentModeEnabled || shouldForceRequestAgentMode(routingMessage, req.DeepResearchEnabled)
-	if requestAgentModeEnabled && !globalAgentModeEnabled {
-		compactedMessages = append([]llm.Message{{
-			Role:    llm.RoleSystem,
-			Content: "Agent Mode is auto-enabled for this deep-research request. Plan, search, verify, use tools proactively, and continue until the task is complete.",
-		}}, compactedMessages...)
-	}
+	compactedMessages = prependSystemMessages(
+		compactedMessages,
+		buildInitialAgentModeSystemMessages(h.resolvePromptPolicy(), requestAgentModeEnabled, globalAgentModeEnabled),
+	)
 	explicitProviderID := strings.TrimSpace(req.Provider)
 	providerExplicit := explicitProviderID != ""
 	if explicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
@@ -21867,11 +22529,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				resp.Message.ToolCalls = sanitizedCalls
 			}
 			if len(resp.Message.ToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, chatReq.Tools) {
-				if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(resp.Message.Content, chatReq.Tools); recovered {
+				if recoveredCalls, recoveryStage, recovered := h.recoverPseudoToolCallsForContent(llmCtx, resp.Message.Content, chatReq.Tools); recovered {
 					resp.Message.ToolCalls = recoveredCalls
 					resp.Message.Content = ""
 					logger.Warn().
 						Int("round", round).
+						Str("recovery_stage", recoveryStage).
 						Int("tool_calls", len(recoveredCalls)).
 						Msg("[chat] recovered pseudo tool-call text into assistant tool calls")
 				}
@@ -21975,7 +22638,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				if updatedChecklist, changed := syncTrackedTodoAfterCompletionSignal(todoContent, resp.Message.Content); changed {
 					todoContent = updatedChecklist
 					planCompletedByTool = !hasPendingTodo(todoContent)
-				} else if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklist(todoContent, resp.Message.Content); changed {
+				} else if updatedChecklist, changed := syncTrackedTodoAfterToollessChecklistForRequest(todoContent, resp.Message.Content, routingMessage); changed {
 					todoContent = updatedChecklist
 					planCompletedByTool = !hasPendingTodo(todoContent)
 				}
@@ -22068,7 +22731,7 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 
 				if autoContinueCount < maxAutoContinueRetries {
 					preferReminderTool := round == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
-					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(resp.Message.Content, todoContent, agentModeAutoContinue, round > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
+					if shouldContinue, reason := shouldAutoContinueAfterToollessReplyForRequest(resp.Message.Content, todoContent, routingMessage, agentModeAutoContinue, round > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
 						if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {
 							resp.Message.Content = buildClarifyNoneToolFallbackReply(routingMessage)
 							break
@@ -22291,13 +22954,15 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				workspaceArtifactEvidenceRoundsWithoutWrite = 0
 			}
 			deepSearchState.observeToolRound(resp.Message.ToolCalls, toolResults)
-			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(resp.Message.ToolCalls, toolResults)
+			rawPlanChecklist, rawPlanChecklistUpdated := extractPlanChecklistFromToolRound(resp.Message.ToolCalls, toolResults)
+			planChecklist, planChecklistUpdated := normalizeToolRoundChecklistForRequest(todoContent, rawPlanChecklist, routingMessage, rawPlanChecklistUpdated)
+			rejectedToolChecklistBootstrap := rawPlanChecklistUpdated && !planChecklistUpdated && strings.TrimSpace(rawPlanChecklist) != ""
 			if planDone, ok := extractPlanCompletionFromToolRound(resp.Message.ToolCalls, toolResults); ok {
 				planCompletedByTool = planDone
 			} else if planChecklistUpdated {
 				planCompletedByTool = !hasPendingTodo(planChecklist)
 			}
-			todoContent, _ = reconcileTrackedTodoAfterToolRound(
+			todoContent, _ = reconcileTrackedTodoAfterToolRoundForRequest(
 				todoContent,
 				routingMessage,
 				resp.Message.ToolCalls,
@@ -22306,11 +22971,19 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 				planChecklistUpdated,
 				planCompletedByTool,
 			)
-			planCompletedByTool = !hasPendingTodo(todoContent)
+			if strings.TrimSpace(todoContent) != "" {
+				planCompletedByTool = !hasPendingTodo(todoContent)
+			}
 			toolResultsForLLM := compactToolResultsForLLM(resp.Message.ToolCalls, toolResults)
 			// Append assistant message (with compacted tool_calls) + tool results to conversation
 			chatReq.Messages = append(chatReq.Messages, compactAssistantToolContextForLLM(resp.Message))
 			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
+			if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(chatReq.PreviousResponseID, routingMessage, resp.Message.ToolCalls) {
+				promptPolicy := h.resolvePromptPolicy()
+				chatReq.Messages = append(chatReq.Messages,
+					llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, agentModeAutoContinue)},
+				)
+			}
 			awaitingPostToolSummary = len(toolResults) > 0
 			if shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(
 				routingMessage,
@@ -22509,6 +23182,21 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 						Str("target", extractRequestedArtifactPath(routingMessage)).
 						Msg("[chat] repeated search-only rounds without write progress; forcing artifact write recovery")
 				}
+			}
+			if shouldInjectMissingTodoAfterRejectedToolChecklist(agentModeAutoContinue, rejectedToolChecklistBootstrap, todoContent, planCompletedByTool) &&
+				h.shouldAutoContinueForReasonWithinBudget("missing_todo", agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
+				promptPolicy := h.resolvePromptPolicy()
+				chatReq.Messages = append(chatReq.Messages,
+					llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
+					llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReasonWithPolicy(promptPolicy, agentModeAutoContinue, "missing_todo")},
+				)
+				autoContinueCount++
+				pseudoToolCallAutoContinueCount = 0
+				actionPledgeAutoContinueCount = 0
+				pendingTodoAutoContinueCount = 0
+				missingTodoAutoContinueCount++
+				prevToollessAutoContinueSig = ""
+				consecutiveToollessAutoContinueDups = 0
 			}
 			toolSummaries := make([]string, 0, len(toolResults))
 			for _, item := range toolResults {
@@ -23811,12 +24499,10 @@ func (h *ChatHandler) StreamMessage(c echo.Context) error {
 	globalAgentModeEnabled := h.settingsHandler != nil && h.settingsHandler.GetAgentMode()
 	globalAgentAutoConfirm := h.settingsHandler != nil && h.settingsHandler.GetAgentAutoConfirm()
 	requestAgentModeEnabled := globalAgentModeEnabled || shouldForceRequestAgentMode(routingMessage, req.DeepResearchEnabled)
-	if requestAgentModeEnabled && !globalAgentModeEnabled {
-		compactedMessages = append([]llm.Message{{
-			Role:    llm.RoleSystem,
-			Content: "Agent Mode is auto-enabled for this deep-research request. Plan, search, verify, use tools proactively, and continue until the task is complete.",
-		}}, compactedMessages...)
-	}
+	compactedMessages = prependSystemMessages(
+		compactedMessages,
+		buildInitialAgentModeSystemMessages(h.resolvePromptPolicy(), requestAgentModeEnabled, globalAgentModeEnabled),
+	)
 	explicitProviderID := strings.TrimSpace(req.Provider)
 	providerExplicit := explicitProviderID != ""
 	if explicitProviderID == "" && strings.TrimSpace(convState.SelectedProviderID) != "" {
@@ -24960,7 +25646,7 @@ STREAM_LOOP:
 				// Auto-continue: if LLM stopped without tool calls but the content
 				// indicates a pending next action, defer done and nudge another round.
 				if len(streamToolCalls) == 0 && fullContent != "" && autoContinueCount < maxAutoContinueRetries && !providerFailoverAutoSwitchedThisRound {
-					if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, false, missingTodoAutoContinueCount == 0); shouldContinue {
+					if shouldContinue, reason := shouldAutoContinueAfterToollessReplyForRequest(fullContent, todoContent, routingMessage, agentModeAutoContinue, toolRound > 0, planCompletedByTool, false, missingTodoAutoContinueCount == 0); shouldContinue {
 						if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {
 							streamCompleted = true
 							return nil
@@ -25275,77 +25961,6 @@ STREAM_LOOP:
 					nil,
 				)
 			}
-			if err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil && primaryStreamProviderAvailable {
-				reducedRecoveryReq, originalBytes, reducedBytes, ok := buildReducedToolRoundRecoveryRequest(chatReq, toolRound, fullContent, err)
-				if ok {
-					hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy := continuationRequestStats(chatReq)
-					reducedHasPrevResponseID, _, reducedInputItemsCount, reducedToolItemsCount, _ := continuationRequestStats(reducedRecoveryReq)
-					logger.Warn().
-						Err(err).
-						Int("tool_round", toolRound).
-						Bool("has_prev_response_id", hasPrevResponseID).
-						Int("instructions_len", instructionsLen).
-						Int("input_items_count", inputItemsCount).
-						Int("tool_items_count", toolItemsCount).
-						Int("request_bytes", originalBytes).
-						Int("reduced_request_bytes", reducedBytes).
-						Str("store_policy", storePolicy).
-						Str("recovery_stage", continuationRecoveryStage2).
-						Msg("[chat] tool round pre-content failed — attempting reduced recovery payload")
-					emitProcessEvent(
-						"continuation_recovery_started",
-						"active",
-						"Recovering response",
-						continuationRecoveryStage2,
-						map[string]interface{}{
-							"process_original_bytes": originalBytes,
-							"process_reduced_bytes":  reducedBytes,
-						},
-					)
-					streamErrorHandled = false
-					recoveryErr := h.chatStreamCallback(ctx, reducedRecoveryReq, streamCb)
-					if recoveryErr == nil {
-						if hasPrevResponseID || reducedHasPrevResponseID {
-							h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage2, true, err)
-						}
-						chatReq = reducedRecoveryReq
-						err = nil
-						emitProcessEvent(
-							"continuation_recovery_succeeded",
-							"success",
-							"Recovery succeeded",
-							continuationRecoveryStage2,
-							nil,
-						)
-						logger.Info().
-							Int("tool_round", toolRound).
-							Bool("has_prev_response_id", reducedHasPrevResponseID).
-							Int("input_items_count", reducedInputItemsCount).
-							Int("tool_items_count", reducedToolItemsCount).
-							Int("request_bytes", originalBytes).
-							Int("reduced_request_bytes", reducedBytes).
-							Str("recovery_stage", continuationRecoveryStage2).
-							Msg("[chat] tool round reduced recovery succeeded")
-					} else {
-						err = recoveryErr
-						emitProcessEvent(
-							"continuation_recovery_failed",
-							"error",
-							"Recovery failed",
-							continuationRecoveryStage2,
-							nil,
-						)
-						logger.Warn().
-							Err(recoveryErr).
-							Int("tool_round", toolRound).
-							Int("request_bytes", originalBytes).
-							Int("reduced_request_bytes", reducedBytes).
-							Str("recovery_stage", continuationRecoveryStage2).
-							Msg("[chat] tool round reduced recovery failed")
-					}
-				}
-			}
-
 			// Tool-round resilience: if a follow-up round fails pre-content on a
 			// pinned provider, retry once without pinning so router failover can
 			// choose another provider. Keep explicit user-selected provider untouched.
@@ -25472,6 +26087,76 @@ STREAM_LOOP:
 							retryLog = retryLog.Int("proxy_status", pe.StatusCode).Str("proxy_body", pe.Body)
 						}
 						retryLog.Msg("[chat] tool round pre-content retry without pinned provider failed")
+					}
+				}
+			}
+			if err != nil && fullContent == "" && !streamErrorHandled && ctx.Err() == nil && primaryStreamProviderAvailable {
+				reducedRecoveryReq, originalBytes, reducedBytes, ok := buildReducedToolRoundRecoveryRequest(chatReq, toolRound, fullContent, err)
+				if ok {
+					hasPrevResponseID, instructionsLen, inputItemsCount, toolItemsCount, storePolicy := continuationRequestStats(chatReq)
+					reducedHasPrevResponseID, _, reducedInputItemsCount, reducedToolItemsCount, _ := continuationRequestStats(reducedRecoveryReq)
+					logger.Warn().
+						Err(err).
+						Int("tool_round", toolRound).
+						Bool("has_prev_response_id", hasPrevResponseID).
+						Int("instructions_len", instructionsLen).
+						Int("input_items_count", inputItemsCount).
+						Int("tool_items_count", toolItemsCount).
+						Int("request_bytes", originalBytes).
+						Int("reduced_request_bytes", reducedBytes).
+						Str("store_policy", storePolicy).
+						Str("recovery_stage", continuationRecoveryStage2).
+						Msg("[chat] tool round pre-content failed — attempting reduced recovery payload")
+					emitProcessEvent(
+						"continuation_recovery_started",
+						"active",
+						"Recovering response",
+						continuationRecoveryStage2,
+						map[string]interface{}{
+							"process_original_bytes": originalBytes,
+							"process_reduced_bytes":  reducedBytes,
+						},
+					)
+					streamErrorHandled = false
+					recoveryErr := h.chatStreamCallback(ctx, reducedRecoveryReq, streamCb)
+					if recoveryErr == nil {
+						if hasPrevResponseID || reducedHasPrevResponseID {
+							h.recordContinuationDegradation(convID, toolRound, continuationRecoveryStage2, true, err)
+						}
+						chatReq = reducedRecoveryReq
+						err = nil
+						emitProcessEvent(
+							"continuation_recovery_succeeded",
+							"success",
+							"Recovery succeeded",
+							continuationRecoveryStage2,
+							nil,
+						)
+						logger.Info().
+							Int("tool_round", toolRound).
+							Bool("has_prev_response_id", reducedHasPrevResponseID).
+							Int("input_items_count", reducedInputItemsCount).
+							Int("tool_items_count", reducedToolItemsCount).
+							Int("request_bytes", originalBytes).
+							Int("reduced_request_bytes", reducedBytes).
+							Str("recovery_stage", continuationRecoveryStage2).
+							Msg("[chat] tool round reduced recovery succeeded")
+					} else {
+						err = recoveryErr
+						emitProcessEvent(
+							"continuation_recovery_failed",
+							"error",
+							"Recovery failed",
+							continuationRecoveryStage2,
+							nil,
+						)
+						logger.Warn().
+							Err(recoveryErr).
+							Int("tool_round", toolRound).
+							Int("request_bytes", originalBytes).
+							Int("reduced_request_bytes", reducedBytes).
+							Str("recovery_stage", continuationRecoveryStage2).
+							Msg("[chat] tool round reduced recovery failed")
 					}
 				}
 			}
@@ -25641,11 +26326,12 @@ STREAM_LOOP:
 			streamToolCalls = sanitizedCalls
 		}
 		if len(streamToolCalls) == 0 && shouldRecoverPseudoToolCallsForSurface(clarifyNoneToolSurface, chatReq.Tools) {
-			if recoveredCalls, recovered := recoverSanitizedPseudoToolCallsFromContent(fullContent, chatReq.Tools); recovered {
+			if recoveredCalls, recoveryStage, recovered := h.recoverPseudoToolCallsForContent(ctx, fullContent, chatReq.Tools); recovered {
 				streamToolCalls = recoveredCalls
 				fullContent = ""
 				logger.Warn().
 					Int("tool_round", toolRound).
+					Str("recovery_stage", recoveryStage).
 					Int("tool_calls", len(recoveredCalls)).
 					Msg("[chat] stream: recovered pseudo tool-call text into assistant tool calls")
 				if streamingMsgID != "" {
@@ -25892,10 +26578,9 @@ STREAM_LOOP:
 				streamWorkspaceArtifactHistoryResults = append(streamWorkspaceArtifactHistoryResults, toolAuditResults...)
 			}
 			deepSearchState.observeToolRound(streamToolCalls, toolResults)
-			planChecklist, planChecklistUpdated := extractPlanChecklistFromToolRound(streamToolCalls, toolResults)
-			if planChecklistUpdated {
-				todoContent = planChecklist
-			}
+			rawPlanChecklist, rawPlanChecklistUpdated := extractPlanChecklistFromToolRound(streamToolCalls, toolResults)
+			planChecklist, planChecklistUpdated := normalizeToolRoundChecklistForRequest(todoContent, rawPlanChecklist, routingMessage, rawPlanChecklistUpdated)
+			rejectedToolChecklistBootstrap := rawPlanChecklistUpdated && !planChecklistUpdated && strings.TrimSpace(rawPlanChecklist) != ""
 			if planDone, ok := extractPlanCompletionFromToolRound(streamToolCalls, toolResults); ok {
 				planCompletedByTool = planDone
 			} else if planChecklistUpdated {
@@ -25963,7 +26648,7 @@ STREAM_LOOP:
 			// Reconcile the tracked checklist after each tool round. Prefer explicit
 			// plan tool state, but also close the loop when the tool round clearly
 			// produced the final requested deliverable.
-			updatedTodoContent, todoContentChanged := reconcileTrackedTodoAfterToolRound(
+			updatedTodoContent, todoContentChanged := reconcileTrackedTodoAfterToolRoundForRequest(
 				todoContent,
 				routingMessage,
 				streamToolCalls,
@@ -26002,6 +26687,12 @@ STREAM_LOOP:
 			toolResultsForLLM := compactToolResultsForLLM(streamToolCalls, toolResults)
 			chatReq.Messages = append(chatReq.Messages, assistantMsg)
 			chatReq.Messages = append(chatReq.Messages, toolResultsForLLM...)
+			if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(chatReq.PreviousResponseID, routingMessage, streamToolCalls) {
+				promptPolicy := h.resolvePromptPolicy()
+				chatReq.Messages = append(chatReq.Messages,
+					llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, agentModeAutoContinue)},
+				)
+			}
 			awaitingPostToolSummary = len(toolResults) > 0
 			if completion := buildSuccessfulArtifactCompletion(routingMessage, streamToolCalls, toolResults); completion != "" {
 				delta := completion
@@ -26080,6 +26771,21 @@ STREAM_LOOP:
 				chatReq.Tools = buildResearchFailureRecoveryTools(chatReq.Tools, routingMessage)
 				researchFailureWriteRecoveryPending = true
 				researchFailureWriteRecoveryRetries = 0
+			}
+			if shouldInjectMissingTodoAfterRejectedToolChecklist(agentModeAutoContinue, rejectedToolChecklistBootstrap, todoContent, planCompletedByTool) &&
+				h.shouldAutoContinueForReasonWithinBudget("missing_todo", agentModeAutoContinue, pseudoToolCallAutoContinueCount, actionPledgeAutoContinueCount, missingTodoAutoContinueCount, pendingTodoAutoContinueCount) {
+				promptPolicy := h.resolvePromptPolicy()
+				chatReq.Messages = append(chatReq.Messages,
+					llm.Message{Role: llm.RoleAssistant, Content: "(continuing)"},
+					llm.Message{Role: llm.RoleUser, Content: buildToollessAutoContinueNudgeForReasonWithPolicy(promptPolicy, agentModeAutoContinue, "missing_todo")},
+				)
+				autoContinueCount++
+				pseudoToolCallAutoContinueCount = 0
+				actionPledgeAutoContinueCount = 0
+				pendingTodoAutoContinueCount = 0
+				missingTodoAutoContinueCount++
+				prevToollessAutoContinueSig = ""
+				consecutiveToollessAutoContinueDups = 0
 			}
 			if loopDetection.Abort {
 				if !toolLoopRecoveryUsed {
@@ -26192,7 +26898,7 @@ STREAM_LOOP:
 				// Capture the first message that contains a TODO checklist.
 				// We'll advance its checkboxes after each successful tool round.
 				if todoMsgID == "" && streamingMsgID != "" {
-					if checklist, ok := extractFirstTodoChecklist(roundContent); ok {
+					if checklist, ok := syncTrackedTodoAfterToollessChecklistForRequest("", roundContent, routingMessage); ok {
 						todoMsgID = streamingMsgID
 						todoContent = checklist
 					}
@@ -26567,7 +27273,7 @@ STREAM_LOOP:
 				h.conversationCache.Invalidate(convID)
 			}
 			if todoMsgID == "" && persistedMsgID != "" {
-				if checklist, ok := extractFirstTodoChecklist(roundContent); ok {
+				if checklist, ok := syncTrackedTodoAfterToollessChecklistForRequest("", roundContent, routingMessage); ok {
 					todoMsgID = persistedMsgID
 					todoContent = checklist
 				}
@@ -26650,7 +27356,7 @@ STREAM_LOOP:
 		// still implies pending action, inject a continuation prompt and loop back.
 		if streamCompleted && !streamDoneSent && fullContent != "" && len(streamToolCalls) == 0 && autoContinueCount < maxAutoContinueRetries && !providerFailoverAutoSwitchedThisRound {
 			preferReminderTool := toolRound == 0 && shouldPreferReminderToolForRetry(chatReq.Messages, chatReq.Tools)
-			if shouldContinue, reason := shouldAutoContinueAfterToollessReply(fullContent, todoContent, agentModeAutoContinue, toolRound > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
+			if shouldContinue, reason := shouldAutoContinueAfterToollessReplyForRequest(fullContent, todoContent, routingMessage, agentModeAutoContinue, toolRound > 0, planCompletedByTool, preferReminderTool, missingTodoAutoContinueCount == 0); shouldContinue {
 				if !shouldAllowToolDependentAutoContinue(reason, clarifyNoneToolSurface, chatReq.Tools) {
 					fallback := buildClarifyNoneToolFallbackReply(routingMessage)
 					if strings.TrimSpace(fallback) != "" && strings.TrimSpace(fullContent) != strings.TrimSpace(fallback) {
@@ -26830,7 +27536,7 @@ STREAM_LOOP:
 					// where the LLM first outputs a checklist plan).
 					capturedTodoThisRound := false
 					if todoMsgID == "" && persistedMsgID != "" {
-						if checklist, ok := extractFirstTodoChecklist(roundContent); ok {
+						if checklist, ok := syncTrackedTodoAfterToollessChecklistForRequest("", roundContent, routingMessage); ok {
 							todoMsgID = persistedMsgID
 							todoContent = checklist
 							planCompletedByTool = !hasPendingTodo(todoContent)
@@ -27945,6 +28651,28 @@ func (h *ChatHandler) generateConversationTitleWithOptions(
 		return
 	}
 
+	updateIfEligible := func(title string) {
+		title = sanitizeTitle(strings.TrimSpace(title))
+		if title == "" {
+			return
+		}
+
+		// Title generation may take long enough that the conversation title changes
+		// (e.g., user renames it or another device updates it). Re-check eligibility
+		// right before writing to avoid overwriting a non-default title.
+		convNow, err := h.store.GetConversation(context.Background(), convID)
+		if err == nil && convNow != nil {
+			if convNow.AutoTitleFinalized {
+				return
+			}
+			if !shouldAutoGenerateConversationTitle(convNow.Title, userMessage, opts) {
+				return
+			}
+		}
+
+		h.updateTitleAndNotify(convID, userID, title)
+	}
+
 	// Recover from any panics to prevent crashing the server
 	defer func() {
 		if r := recover(); r != nil {
@@ -27965,7 +28693,7 @@ func (h *ChatHandler) generateConversationTitleWithOptions(
 
 	// Prefer semantic markdown headings, but ignore checklist/planning replies.
 	if title := extractConversationTitleFromAIResponse(aiResponse); title != "" {
-		h.updateTitleAndNotify(convID, userID, title)
+		updateIfEligible(title)
 		return
 	}
 
@@ -27973,14 +28701,14 @@ func (h *ChatHandler) generateConversationTitleWithOptions(
 	// into preferring a generated title even for short messages.
 	msgRunes := []rune(sanitizeTitle(userMessage))
 	if !opts.PreferModelTitle && len(msgRunes) <= 30 {
-		h.updateTitleAndNotify(convID, userID, string(msgRunes))
+		updateIfEligible(string(msgRunes))
 		return
 	}
 
 	// Prefer local small-model summary path when enabled.
 	if h.shouldUseSmallModelSummary() {
 		if title := h.generateTitleWithSmallModel(userMessage, targetLang); title != "" {
-			h.updateTitleAndNotify(convID, userID, sanitizeTitle(title))
+			updateIfEligible(title)
 			return
 		}
 		logger.Info().
@@ -27990,7 +28718,7 @@ func (h *ChatHandler) generateConversationTitleWithOptions(
 		// small-model title path already ran and failed, prefer a deterministic
 		// local fallback over making an extra remote title request.
 		if fallback := truncateAutoTitleFallback(userMessage, 30); fallback != "" {
-			h.updateTitleAndNotify(convID, userID, fallback)
+			updateIfEligible(fallback)
 		}
 		return
 	} else {
@@ -28018,13 +28746,12 @@ func (h *ChatHandler) generateConversationTitleWithOptions(
 		// fallback rather than leaving the placeholder in place.
 		if opts.PreferModelTitle {
 			if fallback := truncateAutoTitleFallback(userMessage, 30); fallback != "" {
-				h.updateTitleAndNotify(convID, userID, fallback)
+				updateIfEligible(fallback)
 			}
 		}
 		return
 	}
-	title = sanitizeTitle(title)
-	h.updateTitleAndNotify(convID, userID, title)
+	updateIfEligible(title)
 }
 
 func (h *ChatHandler) shouldUseSmallModelSummary() bool {
@@ -28083,7 +28810,7 @@ func (h *ChatHandler) generateTitleWithSmallModel(userMessage, targetLang string
 		"\n\n[lang=" + targetLang + "] "
 	suffix := content + "\nTitle:"
 
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), smallModelTitleGenerationTimeout)
 	defer cancel()
 
 	started := time.Now()

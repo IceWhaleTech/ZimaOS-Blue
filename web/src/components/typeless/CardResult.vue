@@ -648,27 +648,40 @@ function buildDirectoryListingMessage(listing: DirectoryListingData): string {
   if (listing.kind === 'find') {
     if (count === 0) {
       return listing.pattern
-        ? `No matches for ${listing.pattern} in ${basePath}`
-        : `No matches in ${basePath}`
+        ? t('resultCard.directoryListing.noMatchesForIn', { pattern: listing.pattern, basePath })
+        : t('resultCard.directoryListing.noMatchesIn', { basePath })
     }
     if (listing.pattern) {
-      return `${count} matches for ${listing.pattern} in ${basePath}`
+      return t('resultCard.directoryListing.matchesForIn', {
+        count,
+        pattern: listing.pattern,
+        basePath,
+      })
     }
-    return `${count} matches in ${basePath}`
+    return t('resultCard.directoryListing.matchesIn', { count, basePath })
   }
   if (listing.truncated) {
-    return `Showing first ${count} entries in ${basePath} (more omitted)`
+    return t('resultCard.directoryListing.showingFirstEntriesInMoreOmitted', { count, basePath })
   }
-  if (count === 0) return `No entries in ${basePath}`
-  if (count === 1) return `1 entry in ${basePath}`
-  return `${count} entries in ${basePath}`
+  if (count === 0) return t('resultCard.directoryListing.noEntriesIn', { basePath })
+  if (count === 1) return t('resultCard.directoryListing.oneEntryIn', { basePath })
+  return t('resultCard.directoryListing.entriesIn', { count, basePath })
 }
 
 function buildTextSearchMessage(search: TextSearchData): string {
   const basePath = search.basePath || '.'
   const count = search.count ?? search.matches.length
-  if (count === 0) return `No matches for ${search.pattern} in ${basePath}`
-  return `${count} matches for ${search.pattern} in ${basePath}`
+  if (count === 0) {
+    return t('resultCard.directoryListing.noMatchesForIn', {
+      pattern: search.pattern,
+      basePath,
+    })
+  }
+  return t('resultCard.directoryListing.matchesForIn', {
+    count,
+    pattern: search.pattern,
+    basePath,
+  })
 }
 
 function directoryEntryBadgeClass(entry: DirectoryListingEntry): string {
@@ -1555,7 +1568,11 @@ const showEmptyState = computed(() => {
                 : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
             "
           >
-            {{ directoryListing.kind === 'find' ? 'FIND' : 'LIST' }}
+            {{
+              directoryListing.kind === 'find'
+                ? t('resultCard.badges.find')
+                : t('resultCard.badges.list')
+            }}
           </span>
           <span
             v-for="item in listingSummaryItems"
@@ -1577,7 +1594,7 @@ const showEmptyState = computed(() => {
                 class="mt-0.5 inline-flex min-w-[3.5rem] items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide"
                 :class="directoryEntryBadgeClass(entry)"
               >
-                {{ entry.type === 'dir' ? 'DIR' : 'FILE' }}
+                {{ entry.type === 'dir' ? t('resultCard.badges.dir') : t('resultCard.badges.file') }}
               </span>
               <div class="min-w-0 flex-1">
                 <div class="break-all font-mono text-xs text-gray-800 dark:text-gray-100">

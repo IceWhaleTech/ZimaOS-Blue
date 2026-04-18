@@ -37,7 +37,15 @@ func (t *XLSXTool) Definition() ToolDefinition {
 				},
 				"path": map[string]interface{}{
 					"type":        "string",
-					"description": "Workspace path to the target .xlsx file.",
+					"description": "Workspace path to the target .xlsx file. For action=create, this can also be a single source file path; the tool will derive a sibling .xlsx output with the same basename.",
+				},
+				"input_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional source file for action=create. When path/output_path is omitted, the tool derives the output .xlsx beside this file using the same basename.",
+				},
+				"output_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional destination .xlsx path for action=create. Omit it to let create derive a sibling output path from input_path/path.",
 				},
 				"title":    map[string]interface{}{"type": "string"},
 				"subtitle": map[string]interface{}{"type": "string"},
@@ -93,7 +101,6 @@ func (t *XLSXTool) Definition() ToolDefinition {
 					"description": "Create parent directories when needed. Default true.",
 				},
 			},
-			"required": []string{"path"},
 		},
 	}
 }
@@ -122,6 +129,9 @@ func (t *XLSXTool) Execute(ctx context.Context, args map[string]interface{}) (in
 }
 
 func (t *XLSXTool) executeCreateLike(ctx context.Context, args map[string]interface{}, action string) (string, error) {
+	if err := maybeSeedNativeDocumentCreateFromSingleInputPath(ctx, t.scope, "xlsx", args); err != nil {
+		return "", err
+	}
 	path := strings.TrimSpace(firstCompatPathString(args))
 	if path == "" {
 		var err error

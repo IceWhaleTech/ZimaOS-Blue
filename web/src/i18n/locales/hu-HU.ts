@@ -4566,6 +4566,16 @@ export default mergeHarnessLocale('hu-HU', {
     labels: {
       backend: 'Háttérrendszer',
       path: 'Ut',
+      char_count: 'Karakterszám',
+      document: 'Dokumentum',
+      engine: 'Motor',
+      file_name: 'Fájlnév',
+      page_count: 'Oldalszám',
+      size_bytes: 'Méret (bájt)',
+      markdown: 'Markdown',
+      outline: 'Vázlat',
+      pages: 'Oldalak',
+      selected_pages: 'Kijelölt oldalak',
     },
     values: {
       strategy: {
@@ -4579,6 +4589,23 @@ export default mergeHarnessLocale('hu-HU', {
     },
     warnings: {
       listing_truncated: 'A lista csonkolva lett; szűkítsd az útvonalat, vagy növeld a max_entries értékét.',
+    },
+    badges: {
+      list: 'LISTA',
+      find: 'KERESÉS',
+      file: 'FÁJL',
+      dir: 'MAPPA',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Nincs találat a(z) {pattern} mintára itt: {basePath}',
+      noMatchesIn: 'Nincs találat itt: {basePath}',
+      matchesForIn: '{count} találat a(z) {pattern} mintára itt: {basePath}',
+      matchesIn: '{count} találat itt: {basePath}',
+      showingFirstEntriesInMoreOmitted:
+        'Az első {count} bejegyzés megjelenítése itt: {basePath} (továbbiak kihagyva)',
+      noEntriesIn: 'Nincsenek bejegyzések itt: {basePath}',
+      oneEntryIn: '1 bejegyzés itt: {basePath}',
+      entriesIn: '{count} bejegyzés itt: {basePath}',
     },
     copy: 'Másolás',
     copied: 'Másolva!',

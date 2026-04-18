@@ -157,6 +157,52 @@ func TestResolveCreateFontPlanKeepsUnicodeCoverageWhenEmojiPresent(t *testing.T)
 	}
 }
 
+func TestBuildCreateStyledLines_DropsVariationSelectorWithoutReplacementWarning(t *testing.T) {
+	plan := createFontPlan{
+		family:       createUnicodeFontFamily,
+		unicodeBytes: []byte{1},
+		supportsRune: func(r rune) bool {
+			return r != '\ufe0f' && unicode.IsGraphic(r)
+		},
+	}
+	lines, warnings := buildCreateStyledLines(CreateRequest{
+		Paragraphs: []string{"⚠️ 严重缺水和"},
+	}, plan)
+
+	if len(lines) == 0 {
+		t.Fatal("expected at least one rendered line")
+	}
+	if got := lines[0].Text; got != "⚠ 严重缺水和" {
+		t.Fatalf("lines[0].Text = %q, want %q", got, "⚠ 严重缺水和")
+	}
+	for _, warning := range warnings {
+		if strings.Contains(warning, "replaced unsupported characters") {
+			t.Fatalf("warnings = %#v, want variation-selector-only cleanup to stay silent", warnings)
+		}
+	}
+}
+
+func TestSanitizeCreateText_FallsBackWarningSignWithoutQuestionMarkCorruption(t *testing.T) {
+	plan := createFontPlan{
+		family:       createUnicodeFontFamily,
+		unicodeBytes: []byte{1},
+		supportsRune: func(r rune) bool {
+			return r != '⚠' && r != '\ufe0f' && unicode.IsGraphic(r)
+		},
+	}
+
+	sanitized, replaced := sanitizeCreateText("⚠️ 严重缺水和", plan)
+	if !replaced {
+		t.Fatal("expected warning-sign fallback to count as replacement")
+	}
+	if strings.Contains(sanitized, "?") {
+		t.Fatalf("sanitizeCreateText() = %q, want warning-sign fallback without question marks", sanitized)
+	}
+	if sanitized != "[!] 严重缺水和" {
+		t.Fatalf("sanitizeCreateText() = %q, want %q", sanitized, "[!] 严重缺水和")
+	}
+}
+
 func TestBuildCreateStyledLinesStripsInlineMarkdownMarkers(t *testing.T) {
 	lines, _ := buildCreateStyledLines(CreateRequest{
 		Title: "示例报告",

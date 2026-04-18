@@ -141,6 +141,42 @@ func TestBuildPostWorkspaceArtifactWriteRetryNudge_NumberedQuestionsPreserveExac
 	}
 }
 
+func TestBuildPostWorkspaceArtifactWriteRetryNudge_PrefersNativePDFTool(t *testing.T) {
+	nudge := buildPostWorkspaceArtifactWriteRetryNudge(
+		"Read report.md and save the reformatted report to launch_plan.pdf.",
+	)
+	if nudge == "" {
+		t.Fatal("expected retry nudge for native pdf artifact")
+	}
+	if !containsSubstring(strings.ToLower(nudge), "native pdf tool") {
+		t.Fatalf("expected retry nudge to point to native pdf tool, got=%q", nudge)
+	}
+	if containsSubstring(nudge, "Use file_write") {
+		t.Fatalf("expected retry nudge to avoid file_write-first guidance for pdf, got=%q", nudge)
+	}
+	if !containsSubstring(nudge, "`path`/`input_path`") {
+		t.Fatalf("expected retry nudge to prefer source seed path args for pdf, got=%q", nudge)
+	}
+}
+
+func TestBuildPostWorkspaceArtifactWriteRetryNudge_PrefersNativeDOCXTool(t *testing.T) {
+	nudge := buildPostWorkspaceArtifactWriteRetryNudge(
+		"Read findings.md and save the polished report to ui_review.docx.",
+	)
+	if nudge == "" {
+		t.Fatal("expected retry nudge for native docx artifact")
+	}
+	if !containsSubstring(strings.ToLower(nudge), "native docx tool") {
+		t.Fatalf("expected retry nudge to point to native docx tool, got=%q", nudge)
+	}
+	if containsSubstring(nudge, "Use file_write") {
+		t.Fatalf("expected retry nudge to avoid file_write-first guidance for docx, got=%q", nudge)
+	}
+	if !containsSubstring(nudge, "`path`/`input_path`") {
+		t.Fatalf("expected retry nudge to prefer source seed path args for docx, got=%q", nudge)
+	}
+}
+
 func TestWorkspaceArtifactWriteRecoveryThreshold_NumberedQuestionsRecoverEarlier(t *testing.T) {
 	if got := workspaceArtifactWriteRecoveryThreshold("Write a summary to output.txt."); got != 3 {
 		t.Fatalf("threshold for ordinary artifact = %d, want 3", got)
@@ -616,6 +652,16 @@ func TestBuildArtifactWorkflowExecutionHint_PrefersDocxForDocxArtifacts(t *testi
 	}
 }
 
+func TestBuildArtifactWorkflowExecutionHint_PrefersSourceSeedPathForNativeDocx(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the polished report to ui_review.docx.")
+	if !containsSubstring(hint, "`path`/`input_path`") {
+		t.Fatalf("expected docx hint to prefer source seed path args, got=%q", hint)
+	}
+	if !containsSubstring(hint, "long inline `content`") {
+		t.Fatalf("expected docx hint to warn against long inline content payloads, got=%q", hint)
+	}
+}
+
 func TestBuildArtifactWorkflowExecutionHint_ForConvertedDocxWorkflow_AllowsDirectMarkdownOrStagedConversion(t *testing.T) {
 	hint := buildArtifactWorkflowExecutionHint("Read findings.md, write the polished report to report.md, then convert it to report.docx.")
 	if !containsSubstring(hint, "prefer the native docx tool") {
@@ -716,6 +762,16 @@ func TestBuildArtifactWorkflowExecutionHint_PrefersPDFForPDFArtifacts(t *testing
 	hint := buildArtifactWorkflowExecutionHint("Read findings.md and save the reformatted report to launch_plan.pdf.")
 	if !containsSubstring(hint, "prefer the native pdf tool") {
 		t.Fatalf("expected pdf hint, got=%q", hint)
+	}
+}
+
+func TestBuildArtifactWorkflowExecutionHint_PrefersSourceSeedPathForNativePDF(t *testing.T) {
+	hint := buildArtifactWorkflowExecutionHint("Read report.md and save the reformatted report to launch_plan.pdf.")
+	if !containsSubstring(hint, "`path`/`input_path`") {
+		t.Fatalf("expected pdf hint to prefer source seed path args, got=%q", hint)
+	}
+	if !containsSubstring(hint, "long inline `content`") {
+		t.Fatalf("expected pdf hint to warn against long inline content payloads, got=%q", hint)
 	}
 }
 

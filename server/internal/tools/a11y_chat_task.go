@@ -81,11 +81,13 @@ type a11yChatStageRecord struct {
 type a11yChatStageMemory struct {
 	mu         sync.RWMutex
 	strategies map[string]string
+	anchors    map[string]string
 }
 
 func newA11yChatStageMemory() *a11yChatStageMemory {
 	return &a11yChatStageMemory{
 		strategies: make(map[string]string),
+		anchors:    make(map[string]string),
 	}
 }
 
@@ -101,6 +103,20 @@ func (m *a11yChatStageMemory) Remember(platform string, appProfile string, inten
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.strategies[key] = strategy
+}
+
+func (m *a11yChatStageMemory) RememberAnchor(platform string, appProfile string, intent string, stage string, stableID string) {
+	if m == nil {
+		return
+	}
+	key := a11yChatStageMemoryKey(platform, appProfile, intent, stage)
+	stableID = strings.TrimSpace(stableID)
+	if key == "" || stableID == "" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.anchors[key] = stableID
 }
 
 func (m *a11yChatStageMemory) OrderConversationPlans(platform string, appProfile string, intent string, plans []a11yConversationSearchPlan) []a11yConversationSearchPlan {
@@ -144,6 +160,19 @@ func (m *a11yChatStageMemory) strategyFor(platform string, appProfile string, in
 	return strings.TrimSpace(m.strategies[key])
 }
 
+func (m *a11yChatStageMemory) anchorFor(platform string, appProfile string, intent string, stage string) string {
+	if m == nil {
+		return ""
+	}
+	key := a11yChatStageMemoryKey(platform, appProfile, intent, stage)
+	if key == "" {
+		return ""
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return strings.TrimSpace(m.anchors[key])
+}
+
 func a11yChatStageMemoryKey(platform string, appProfile string, intent string, stage string) string {
 	parts := []string{
 		strings.TrimSpace(strings.ToLower(platform)),
@@ -169,6 +198,7 @@ type a11yChatExecutionState struct {
 	groundingSource string
 	attemptCount    int
 	verification    map[string]interface{}
+	submitEvidence  map[string]interface{}
 	failureCode     string
 	artifactPaths   []string
 	taskStages      []a11yChatStageRecord
@@ -182,6 +212,7 @@ var a11yChatComposerConfirmationTimeout = 5 * time.Second
 var a11yChatComposerConfirmationPollInterval = 250 * time.Millisecond
 var a11yChatVerifyOutcomeTimeout = 5 * time.Second
 var a11yChatVerifyOutcomePollInterval = 250 * time.Millisecond
+var a11yChatVerifyOutcomeStructuredPollAttempts = 2
 
 func withA11yChatExecutionState(ctx context.Context, state *a11yChatExecutionState) context.Context {
 	if state == nil {
@@ -285,6 +316,20 @@ func (s *a11yChatExecutionState) addArtifactPath(path string) {
 		}
 	}
 	s.artifactPaths = append(s.artifactPaths, trimmed)
+}
+
+func (s *a11yChatExecutionState) rememberSubmitEvidence(verification map[string]interface{}) {
+	if s == nil {
+		return
+	}
+	s.submitEvidence = cloneA11yJSONMap(verification)
+}
+
+func (s *a11yChatExecutionState) submitEvidenceSnapshot() map[string]interface{} {
+	if s == nil {
+		return nil
+	}
+	return cloneA11yJSONMap(s.submitEvidence)
 }
 
 func (s *a11yChatExecutionState) applyToPayload(payload map[string]interface{}) {
@@ -631,6 +676,25 @@ func (t *A11yTool) rememberA11yChatStrategy(state *a11yChatExecutionState, stage
 	}
 }
 
+func (t *A11yTool) rememberA11yChatAnchor(state *a11yChatExecutionState, stage a11yChatStage, stableID string) {
+	if t == nil || state == nil {
+		return
+	}
+	if memory := t.a11yChatMemory(); memory != nil {
+		memory.RememberAnchor(state.platform, state.appProfile, state.intent, string(stage), stableID)
+	}
+}
+
+func (t *A11yTool) preferredA11yChatAnchor(state *a11yChatExecutionState, stage a11yChatStage) string {
+	if state == nil {
+		return ""
+	}
+	if memory := t.a11yChatMemory(); memory != nil {
+		return memory.anchorFor(state.platform, state.appProfile, state.intent, string(stage))
+	}
+	return ""
+}
+
 func (t *A11yTool) orderA11yChatConversationPlans(state *a11yChatExecutionState, plans []a11yConversationSearchPlan) []a11yConversationSearchPlan {
 	if state == nil {
 		return append([]a11yConversationSearchPlan(nil), plans...)
@@ -674,6 +738,16 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 	forceSnapshotRefresh := false
 	visualRecoveryAttempted := false
 	for {
+		if snapshot, structuredWindow, ok := t.currentA11yChatStructuredSnapshot(backend, resolvedWindow); ok {
+			if verification, ok := a11yStructuredSnapshotFocusedComposerVerification(snapshot); ok {
+				resolvedWindow = valueOrDefault(structuredWindow, resolvedWindow)
+				if stableID := strings.TrimSpace(a11yFirstNonEmptyString(verification["element_stable_id"])); stableID != "" {
+					t.rememberA11yChatAnchor(state, a11yChatStageLocateComposer, stableID)
+				}
+				a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusOK, "structured_snapshot", "", "", verification)
+				return resolvedWindow, nil
+			}
+		}
 		if forceSnapshotRefresh || !a11ySnapshotHasComposer(entries) {
 			if snapshotAttempts > 0 && !forceSnapshotRefresh {
 				if timeout <= 0 || time.Now().After(deadline) {
@@ -695,7 +769,16 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 			entries = parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
 			snapshotAttempts++
 			if !a11ySnapshotHasComposer(entries) && !visualRecoveryAttempted {
-				recoveredWindow, attempted, recovered, recoveryErr := t.tryA11yChatComposerVisualRecovery(ctx, backend, resolvedWindow)
+				recoveredWindow, attempted, recovered, recoveryErr := t.tryA11yChatComposerStructuredRecovery(ctx, backend, resolvedWindow)
+				if recoveryErr != nil {
+					return "", recoveryErr
+				}
+				if attempted && recovered {
+					resolvedWindow = recoveredWindow
+					forceSnapshotRefresh = true
+					continue
+				}
+				recoveredWindow, attempted, recovered, recoveryErr = t.tryA11yChatComposerVisualRecovery(ctx, backend, resolvedWindow)
 				if recoveryErr != nil {
 					return "", recoveryErr
 				}
@@ -783,6 +866,248 @@ func (t *A11yTool) confirmA11yChatComposerReady(ctx context.Context, backend a11
 	}
 }
 
+func (t *A11yTool) tryA11yChatComposerStructuredRecovery(ctx context.Context, backend a11yruntime.Backend, windowID string) (string, bool, bool, error) {
+	state := getA11yChatExecutionState(ctx)
+	if state == nil || state.intent != "message" {
+		return strings.TrimSpace(windowID), false, false, nil
+	}
+	provider, ok := backend.(a11yStructuredSnapshotProvider)
+	if !ok {
+		return strings.TrimSpace(windowID), false, false, nil
+	}
+	snapshot, ok := provider.CurrentStructuredSnapshot(strings.TrimSpace(windowID))
+	if !ok || snapshot == nil || a11yStructuredSnapshotHasFocusedSearchField(snapshot) {
+		return strings.TrimSpace(windowID), false, false, nil
+	}
+	preferredStableID := t.preferredA11yChatAnchor(state, a11yChatStageLocateComposer)
+	hit, stableID, ok := resolveA11yChatComposerStructuredRecoveryHit(snapshot, preferredStableID)
+	if !ok {
+		return strings.TrimSpace(windowID), false, false, nil
+	}
+	verification := map[string]interface{}{
+		"composer_confirmed": true,
+		"confirmation":       "structured_bounds_recovery",
+	}
+	if stableID != "" {
+		verification["element_stable_id"] = stableID
+	}
+	result, err := a11yRunActionResultWithTimeout(ctx, "point_click", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return backend.ClickWindowPoint(actionCtx, windowID, hit.Point, a11yruntime.DefaultHoldMS)
+	})
+	if err != nil {
+		return "", true, false, err
+	}
+	resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
+	t.syncWindowContext(resolvedWindow)
+	t.clearSnapshotRefs()
+	if stableID != "" {
+		t.rememberA11yChatAnchor(state, a11yChatStageLocateComposer, stableID)
+	}
+	t.rememberA11yChatStrategy(state, a11yChatStageLocateComposer, "structured_bounds_recovery")
+	a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusOK, "structured_bounds_recovery", "", "", verification)
+	return resolvedWindow, true, true, nil
+}
+
+func resolveA11yChatComposerStructuredRecoveryHit(snapshot *a11yruntime.Snapshot, preferredStableID string) (a11yConversationVisualHit, string, bool) {
+	if snapshot == nil || len(snapshot.Nodes) == 0 {
+		return a11yConversationVisualHit{}, "", false
+	}
+	candidates := make([]a11yConversationVisualHit, 0, 2)
+	candidateStableIDs := make([]string, 0, 2)
+	focusedCandidates := make([]a11yConversationVisualHit, 0, 1)
+	focusedStableIDs := make([]string, 0, 1)
+	for _, node := range snapshot.Nodes {
+		if !a11yStructuredNodeCouldBeComposerRecoveryTarget(node) {
+			continue
+		}
+		if node.Bounds.Width <= 0 || node.Bounds.Height <= 0 {
+			continue
+		}
+		hit := a11yConversationVisualHit{
+			Point: a11yruntime.NormalizedPoint{
+				X: node.Bounds.X + node.Bounds.Width/2,
+				Y: node.Bounds.Y + node.Bounds.Height/2,
+			},
+			Confidence: 1,
+		}
+		candidates = append(candidates, hit)
+		candidateStableIDs = append(candidateStableIDs, strings.TrimSpace(node.StableID))
+		if a11yStructuredSnapshotNodeHasExplicitFocus(node) {
+			focusedCandidates = append(focusedCandidates, hit)
+			focusedStableIDs = append(focusedStableIDs, strings.TrimSpace(node.StableID))
+		}
+	}
+	preferredStableID = strings.TrimSpace(preferredStableID)
+	if preferredStableID != "" {
+		for idx, stableID := range focusedStableIDs {
+			if stableID == preferredStableID {
+				return focusedCandidates[idx], stableID, true
+			}
+		}
+		for idx, stableID := range candidateStableIDs {
+			if stableID == preferredStableID {
+				return candidates[idx], stableID, true
+			}
+		}
+	}
+	if len(focusedCandidates) == 1 {
+		return focusedCandidates[0], focusedStableIDs[0], true
+	}
+	if len(focusedCandidates) > 1 {
+		return a11yConversationVisualHit{}, "", false
+	}
+	if len(candidates) == 1 {
+		return candidates[0], candidateStableIDs[0], true
+	}
+	return a11yConversationVisualHit{}, "", false
+}
+
+func a11yStructuredNodeCouldBeComposerRecoveryTarget(node a11yruntime.FlatNode) bool {
+	label := a11yStructuredSnapshotNodeLabel(node)
+	role := normalizeA11yTargetRole(node.Role)
+	if !a11ySnapshotRoleCouldBeComposer(role, label) {
+		return false
+	}
+	if a11ySnapshotRoleLooksLikeConversationSearch(role, label) {
+		return false
+	}
+	return node.Visible && node.Enabled
+}
+
+func a11yStructuredSnapshotConfirmsFocusedComposer(backend a11yruntime.Backend, windowID string) (map[string]interface{}, bool) {
+	provider, ok := backend.(a11yStructuredSnapshotProvider)
+	if !ok {
+		return nil, false
+	}
+	snapshot, ok := provider.CurrentStructuredSnapshot(strings.TrimSpace(windowID))
+	if !ok || snapshot == nil {
+		return nil, false
+	}
+	return a11yStructuredSnapshotFocusedComposerVerification(snapshot)
+}
+
+func a11yStructuredSnapshotFocusedComposerVerification(snapshot *a11yruntime.Snapshot) (map[string]interface{}, bool) {
+	if snapshot == nil {
+		return nil, false
+	}
+	if a11yStructuredSnapshotHasFocusedSearchField(snapshot) {
+		return nil, false
+	}
+	composer, ok := a11yStructuredSnapshotFocusedComposerNode(snapshot)
+	if !ok {
+		return nil, false
+	}
+	verification := map[string]interface{}{
+		"composer_confirmed": true,
+		"confirmation":       "structured_focused_composer",
+	}
+	if stableID := strings.TrimSpace(composer.StableID); stableID != "" {
+		verification["element_stable_id"] = stableID
+	}
+	return verification, true
+}
+
+func a11yStructuredSnapshotHasFocusedSearchField(snapshot *a11yruntime.Snapshot) bool {
+	if snapshot == nil {
+		return false
+	}
+	for _, node := range snapshot.Nodes {
+		if !a11ySnapshotRoleLooksLikeConversationSearch(node.Role, a11yStructuredSnapshotNodeLabel(node)) {
+			continue
+		}
+		if a11yStructuredSnapshotNodeHasExplicitFocus(node) {
+			return true
+		}
+	}
+	return false
+}
+
+func a11yStructuredSnapshotHasFocusedComposer(snapshot *a11yruntime.Snapshot) bool {
+	_, ok := a11yStructuredSnapshotFocusedComposerNode(snapshot)
+	return ok
+}
+
+func a11yStructuredSnapshotFocusedComposerNode(snapshot *a11yruntime.Snapshot) (a11yruntime.FlatNode, bool) {
+	if snapshot == nil {
+		return a11yruntime.FlatNode{}, false
+	}
+	for _, node := range snapshot.Nodes {
+		if !a11ySnapshotRoleCouldBeComposer(node.Role, a11yStructuredSnapshotNodeLabel(node)) {
+			continue
+		}
+		if a11yStructuredSnapshotNodeHasExplicitFocus(node) {
+			return node, true
+		}
+	}
+	return a11yruntime.FlatNode{}, false
+}
+
+func a11yStructuredSnapshotComposerNodeByStableID(snapshot *a11yruntime.Snapshot, stableID string) (a11yruntime.FlatNode, bool) {
+	if snapshot == nil {
+		return a11yruntime.FlatNode{}, false
+	}
+	stableID = strings.TrimSpace(stableID)
+	if stableID == "" {
+		return a11yruntime.FlatNode{}, false
+	}
+	match := a11yruntime.FlatNode{}
+	found := false
+	for _, node := range snapshot.Nodes {
+		if strings.TrimSpace(node.StableID) != stableID {
+			continue
+		}
+		label := a11yStructuredSnapshotNodeLabel(node)
+		if !a11ySnapshotRoleCouldBeComposer(node.Role, label) || !node.Visible || !node.Enabled {
+			continue
+		}
+		if found {
+			return a11yruntime.FlatNode{}, false
+		}
+		match = node
+		found = true
+	}
+	return match, found
+}
+
+func a11yStructuredSnapshotUniqueComposerNode(snapshot *a11yruntime.Snapshot) (a11yruntime.FlatNode, bool) {
+	if snapshot == nil {
+		return a11yruntime.FlatNode{}, false
+	}
+	match := a11yruntime.FlatNode{}
+	found := false
+	for _, node := range snapshot.Nodes {
+		label := a11yStructuredSnapshotNodeLabel(node)
+		if !a11ySnapshotRoleCouldBeComposer(node.Role, label) || !node.Visible || !node.Enabled {
+			continue
+		}
+		if normalizeA11yTargetRole(node.Role) == "search_field" || a11ySnapshotRoleLooksLikeConversationSearch(node.Role, label) {
+			continue
+		}
+		if found {
+			return a11yruntime.FlatNode{}, false
+		}
+		match = node
+		found = true
+	}
+	return match, found
+}
+
+func a11yStructuredSnapshotNodeHasExplicitFocus(node a11yruntime.FlatNode) bool {
+	state := normalizeA11yTargetName(strings.TrimSpace(node.Description + " " + node.State))
+	return a11yTargetLabelContainsAny(state, "focused", "active", "current", "selected")
+}
+
+func a11yStructuredSnapshotNodeLabel(node a11yruntime.FlatNode) string {
+	switch {
+	case strings.TrimSpace(node.Name) != "":
+		return strings.TrimSpace(node.Name)
+	case strings.TrimSpace(node.Value) != "":
+		return strings.TrimSpace(node.Value)
+	default:
+		return strings.TrimSpace(node.Description)
+	}
+}
+
 func (t *A11yTool) tryA11yChatComposerVisualRecovery(ctx context.Context, backend a11yruntime.Backend, windowID string) (string, bool, bool, error) {
 	state := getA11yChatExecutionState(ctx)
 	if state == nil || state.intent != "message" {
@@ -843,9 +1168,6 @@ func (t *A11yTool) tryA11yChatComposerVisualRecovery(ctx context.Context, backen
 	resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
 	t.syncWindowContext(resolvedWindow)
 	t.clearSnapshotRefs()
-	if err := a11yWaitForConversationSettle(ctx); err != nil {
-		return resolvedWindow, true, false, err
-	}
 	t.rememberA11yChatStrategy(state, a11yChatStageLocateComposer, "visual_grounding_recovery")
 	a11yRecordChatStage(ctx, state, a11yChatStageLocateComposer, a11yChatStageStatusOK, "visual_grounding_recovery", source, "", verification)
 	return resolvedWindow, true, true, nil
@@ -916,9 +1238,28 @@ func a11yChatComposerGroundingCandidateScore(candidate a11yChatGroundingCandidat
 	return score
 }
 
-func (t *A11yTool) verifyA11yChatOutcome(ctx context.Context, backend a11yruntime.Backend, windowID string, sent bool) error {
+func (t *A11yTool) verifyA11yChatOutcome(ctx context.Context, backend a11yruntime.Backend, windowID string, sent bool, typedValue string) error {
 	state := getA11yChatExecutionState(ctx)
 	if state == nil {
+		return nil
+	}
+	if !sent {
+		a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "draft_no_outcome_verify", "", "", map[string]interface{}{"status": "drafted"})
+		return nil
+	}
+	if verification := state.submitEvidenceSnapshot(); len(verification) > 0 {
+		if _, ok := verification["status"]; !ok {
+			verification["status"] = "sent"
+		}
+		a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "submit_phase_confirmation", "", "", verification)
+		return nil
+	}
+	if verification, ok := t.awaitA11yStructuredPostSubmitVerification(ctx, backend, windowID, typedValue); ok {
+		a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "structured_post_submit_confirmation", "", "", verification)
+		return nil
+	}
+	if verification, ok := t.a11yStructuredPostSubmitVerification(ctx, backend, windowID, typedValue); ok {
+		a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "structured_post_submit_confirmation", "", "", verification)
 		return nil
 	}
 	taskHint := a11yChatGroundingTaskVerifyDraft
@@ -995,18 +1336,272 @@ func (t *A11yTool) verifyA11yChatOutcome(ctx context.Context, backend a11yruntim
 			a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "visual_verification", source, "", verification)
 			return nil
 		}
-		if sent {
-			verification := map[string]interface{}{}
-			if groundErr != nil {
-				verification["reason"] = groundErr.Error()
-			}
-			a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusTerminalFailure, "visual_verification", "", "send_not_verified", verification)
-			return a11yruntime.NewError("grounding_unavailable", "send outcome could not be verified", map[string]interface{}{
-				"phase":        "submit",
-				"verification": verification,
-			})
+		verification := map[string]interface{}{}
+		if groundErr != nil {
+			verification["reason"] = groundErr.Error()
 		}
-		a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusOK, "structured_confirmation", "", "", map[string]interface{}{"status": status})
-		return nil
+		a11yRecordChatStage(ctx, state, a11yChatStageVerifyOutcome, a11yChatStageStatusTerminalFailure, "visual_verification", "", "send_not_verified", verification)
+		return a11yruntime.NewError("grounding_unavailable", "send outcome could not be verified", map[string]interface{}{
+			"phase":        "submit",
+			"verification": verification,
+		})
 	}
+}
+
+func (t *A11yTool) awaitA11yStructuredPostSubmitVerification(ctx context.Context, backend a11yruntime.Backend, windowID string, typedValue string) (map[string]interface{}, bool) {
+	expected := normalizeA11ySubmitConfirmationText(strings.TrimSpace(typedValue))
+	if expected == "" {
+		return nil, false
+	}
+	state := getA11yChatExecutionState(ctx)
+	conversation := ""
+	preferredStableID := ""
+	if state != nil {
+		conversation = strings.TrimSpace(state.conversation)
+		preferredStableID = t.preferredA11yChatAnchor(state, a11yChatStageLocateComposer)
+	}
+	resolvedWindow := strings.TrimSpace(windowID)
+	attempts := a11yChatVerifyOutcomeStructuredPollAttempts
+	if attempts < 1 {
+		attempts = 1
+	}
+	for attempt := 0; attempt < attempts; attempt++ {
+		snapshot, structuredWindow, ok := t.currentA11yChatStructuredSnapshot(backend, resolvedWindow)
+		if !ok {
+			break
+		}
+		resolvedWindow = valueOrDefault(structuredWindow, resolvedWindow)
+		if verification, ok := a11yStructuredPostSubmitVerificationFromStructuredSnapshot(snapshot, expected, conversation, preferredStableID); ok {
+			return verification, true
+		}
+		if attempt == attempts-1 {
+			break
+		}
+		if err := a11yWaitForPollInterval(ctx, a11yChatVerifyOutcomePollInterval); err != nil {
+			return nil, false
+		}
+	}
+	return nil, false
+}
+
+func (t *A11yTool) a11yStructuredPostSubmitVerification(ctx context.Context, backend a11yruntime.Backend, windowID string, typedValue string) (map[string]interface{}, bool) {
+	expected := normalizeA11ySubmitConfirmationText(strings.TrimSpace(typedValue))
+	if expected == "" {
+		return nil, false
+	}
+	state := getA11yChatExecutionState(ctx)
+	conversation := ""
+	resolvedWindow := strings.TrimSpace(windowID)
+	preferredStableID := ""
+	if state != nil {
+		conversation = strings.TrimSpace(state.conversation)
+		preferredStableID = t.preferredA11yChatAnchor(state, a11yChatStageLocateComposer)
+	}
+	if snapshot, structuredWindow, ok := t.currentA11yChatStructuredSnapshot(backend, resolvedWindow); ok {
+		resolvedWindow = valueOrDefault(structuredWindow, resolvedWindow)
+		if verification, ok := a11yStructuredPostSubmitVerificationFromStructuredSnapshot(snapshot, expected, conversation, preferredStableID); ok {
+			return verification, true
+		}
+	}
+	result, err := backend.SnapshotInteractive(ctx, resolvedWindow)
+	if err != nil {
+		return nil, false
+	}
+	resolvedWindow = strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow))
+	t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
+	entries := parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
+	if verification, _, ok := t.currentA11yChatStructuredPostSubmitVerification(backend, resolvedWindow, expected, conversation, preferredStableID); ok {
+		return verification, true
+	}
+	if len(entries) == 0 || !a11ySnapshotHasComposer(entries) {
+		return nil, false
+	}
+	confirmation := buildA11ySubmitConfirmation(typedValue, 0, nil)
+	if a11ySubmitSnapshotShowsPendingTypedValue(entries, confirmation, expected) {
+		return nil, false
+	}
+	return map[string]interface{}{
+		"status":            "sent",
+		"composer_cleared":  true,
+		"confirmation":      "structured_post_submit_confirmation",
+		"grounding_skipped": true,
+	}, true
+}
+
+func (t *A11yTool) currentA11yChatStructuredPostSubmitVerification(backend a11yruntime.Backend, windowID string, expected string, conversation string, preferredStableID string) (map[string]interface{}, string, bool) {
+	snapshot, structuredWindow, ok := t.currentA11yChatStructuredSnapshot(backend, windowID)
+	if !ok || snapshot == nil {
+		return nil, "", false
+	}
+	verification, ok := a11yStructuredPostSubmitVerificationFromStructuredSnapshot(snapshot, expected, conversation, preferredStableID)
+	if !ok {
+		return nil, "", false
+	}
+	return verification, structuredWindow, true
+}
+
+func (t *A11yTool) a11yStructuredPostSubmitVerificationFromSnapshot(backend a11yruntime.Backend, windowID string, expected string, conversation string, preferredStableID string) (map[string]interface{}, bool) {
+	provider, ok := backend.(a11yStructuredSnapshotProvider)
+	if !ok {
+		return nil, false
+	}
+	snapshot, ok := provider.CurrentStructuredSnapshot(strings.TrimSpace(windowID))
+	if !ok || snapshot == nil {
+		return nil, false
+	}
+	return a11yStructuredPostSubmitVerificationFromStructuredSnapshot(snapshot, expected, conversation, preferredStableID)
+}
+
+func a11yStructuredPostSubmitVerificationFromStructuredSnapshot(snapshot *a11yruntime.Snapshot, expected string, conversation string, preferredStableID string) (map[string]interface{}, bool) {
+	if snapshot == nil {
+		return nil, false
+	}
+	if a11yStructuredSnapshotHasFocusedSearchField(snapshot) {
+		return nil, false
+	}
+	if a11yStructuredSnapshotHasVisibleSentMessage(snapshot, expected, conversation) {
+		return map[string]interface{}{
+			"status":               "sent",
+			"message_list_matched": true,
+			"confirmation":         "structured_sent_message_visible",
+			"grounding_skipped":    true,
+		}, true
+	}
+	if verification, ok := a11yStructuredPostSubmitComposerAnchorVerification(snapshot, preferredStableID, expected); ok {
+		return verification, true
+	}
+	if verification, ok := a11yStructuredPostSubmitUniqueComposerVerification(snapshot, expected); ok {
+		return verification, true
+	}
+	return a11yStructuredPostSubmitFocusedComposerVerification(snapshot, expected)
+}
+
+func a11yStructuredPostSubmitComposerAnchorVerification(snapshot *a11yruntime.Snapshot, preferredStableID string, expected string) (map[string]interface{}, bool) {
+	preferredStableID = strings.TrimSpace(preferredStableID)
+	if snapshot == nil || preferredStableID == "" || expected == "" {
+		return nil, false
+	}
+	composer, ok := a11yStructuredSnapshotComposerNodeByStableID(snapshot, preferredStableID)
+	if !ok {
+		return nil, false
+	}
+	if a11ySubmitObservedTextMatches(a11yStructuredSnapshotNodeLabel(composer), expected) {
+		return nil, false
+	}
+	return map[string]interface{}{
+		"status":            "sent",
+		"composer_cleared":  true,
+		"confirmation":      "structured_post_submit_anchor_confirmation",
+		"grounding_skipped": true,
+		"element_stable_id": preferredStableID,
+	}, true
+}
+
+func a11yStructuredPostSubmitFocusedComposerVerification(snapshot *a11yruntime.Snapshot, expected string) (map[string]interface{}, bool) {
+	if snapshot == nil || expected == "" {
+		return nil, false
+	}
+	composer, ok := a11yStructuredSnapshotFocusedComposerNode(snapshot)
+	if !ok {
+		return nil, false
+	}
+	if a11ySubmitObservedTextMatches(a11yStructuredSnapshotNodeLabel(composer), expected) {
+		return nil, false
+	}
+	verification := map[string]interface{}{
+		"status":            "sent",
+		"composer_cleared":  true,
+		"confirmation":      "structured_post_submit_confirmation",
+		"grounding_skipped": true,
+	}
+	if stableID := strings.TrimSpace(composer.StableID); stableID != "" {
+		verification["element_stable_id"] = stableID
+	}
+	return verification, true
+}
+
+func a11yStructuredPostSubmitUniqueComposerVerification(snapshot *a11yruntime.Snapshot, expected string) (map[string]interface{}, bool) {
+	if snapshot == nil || expected == "" {
+		return nil, false
+	}
+	composer, ok := a11yStructuredSnapshotUniqueComposerNode(snapshot)
+	if !ok {
+		return nil, false
+	}
+	if a11ySubmitObservedTextMatches(a11yStructuredSnapshotNodeLabel(composer), expected) {
+		return nil, false
+	}
+	verification := map[string]interface{}{
+		"status":            "sent",
+		"composer_cleared":  true,
+		"confirmation":      "structured_post_submit_confirmation",
+		"grounding_skipped": true,
+	}
+	if stableID := strings.TrimSpace(composer.StableID); stableID != "" {
+		verification["element_stable_id"] = stableID
+	}
+	return verification, true
+}
+
+func a11yStructuredSnapshotHasVisibleSentMessage(snapshot *a11yruntime.Snapshot, expected string, conversation string) bool {
+	if snapshot == nil || expected == "" || len(snapshot.Nodes) == 0 {
+		return false
+	}
+	nodesByID := make(map[int]a11yruntime.FlatNode, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
+		nodesByID[node.NodeID] = node
+	}
+	for _, node := range snapshot.Nodes {
+		if !a11yStructuredNodeCouldBeSentMessageText(node) {
+			continue
+		}
+		if a11yStructuredNodeMatchesConversationSidebar(snapshot, nodesByID, node, conversation) {
+			continue
+		}
+		if a11ySubmitObservedTextMatches(a11yStructuredSnapshotNodeLabel(node), expected) {
+			return true
+		}
+	}
+	return false
+}
+
+func a11yStructuredNodeCouldBeSentMessageText(node a11yruntime.FlatNode) bool {
+	role := normalizeA11yTargetRole(node.Role)
+	label := a11yStructuredSnapshotNodeLabel(node)
+	if strings.TrimSpace(label) == "" {
+		return false
+	}
+	if a11ySnapshotRoleCouldBeComposer(role, label) || a11ySnapshotRoleLooksLikeConversationSearch(role, label) {
+		return false
+	}
+	switch role {
+	case "static_text", "text", "label":
+		return true
+	}
+	return false
+}
+
+func a11yStructuredNodeMatchesConversationSidebar(snapshot *a11yruntime.Snapshot, nodesByID map[int]a11yruntime.FlatNode, node a11yruntime.FlatNode, conversation string) bool {
+	if snapshot == nil || len(nodesByID) == 0 {
+		return false
+	}
+	normalizedConversation := normalizeA11yTargetName(conversation)
+	if normalizedConversation == "" {
+		return false
+	}
+	parentID := node.ParentID
+	for parentID != 0 {
+		parent, ok := nodesByID[parentID]
+		if !ok {
+			return false
+		}
+		label := normalizeA11yTargetName(a11yStructuredSnapshotNodeLabel(parent))
+		if label == normalizedConversation || strings.Contains(label, normalizedConversation) {
+			if a11ySnapshotRoleIsConversation(parent.Role) || parent.Interactive {
+				return true
+			}
+		}
+		parentID = parent.ParentID
+	}
+	return false
 }

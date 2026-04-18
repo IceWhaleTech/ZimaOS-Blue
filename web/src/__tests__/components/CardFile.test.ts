@@ -136,6 +136,26 @@ describe('CardFile', () => {
     expect(wrapper.text()).toContain('PPTX')
   })
 
+  it('shows the saved display path when provided', async () => {
+    const wrapper = mount(CardFile, {
+      props: {
+        card: {
+          type: 'file',
+          filename: 'launch_deck.pptx',
+          displayPath: 'reports/launch_deck.pptx',
+          downloadUrl: '/Users/orca/Documents/launch_deck.pptx',
+        },
+      },
+      global: {
+        plugins: [createTestI18n()],
+      },
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('reports/launch_deck.pptx')
+  })
+
   it.each([
     ['presentation.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '📽️'],
     ['document.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '📝'],

@@ -256,6 +256,24 @@ func TestShouldUseImmediateWorkspaceArtifactOrchestration_UsesCompactPDFPages(t 
 	}
 }
 
+func TestShouldUseImmediateWorkspaceArtifactOrchestration_SkipsNativeDocumentTargets(t *testing.T) {
+	userMessage := "Read report.md and save the reformatted report to launch_plan.pdf."
+	currentToolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "file_read"},
+	}
+	currentToolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"path":"report.md","content":"# Launch Report\n\nPreserve the structured source instead of flattening it."}`,
+		},
+	}
+
+	if shouldUseImmediateWorkspaceArtifactOrchestration(userMessage, currentToolCalls, currentToolResults, currentToolCalls, currentToolResults) {
+		t.Fatal("expected immediate workspace artifact orchestration to skip native document targets")
+	}
+}
+
 func TestMaybeOverrideWorkspaceArtifactWriteWithDeterministicDraft_SkipsPreemptiveOverrideForNumberedQuestions(t *testing.T) {
 	userMessage := "I have a research report about OpenClaw agent use cases in my workspace as `openclaw_report.pdf`. I need you to extract several pieces of information from it and write them to `answer.txt`. Please answer the following questions, one answer per line:\n\n1. How many community-built skills were in the public registry before filtering?\n2. How many skills remained after filtering out spam, duplicates, non-English, crypto/finance/trading, and malicious content?\n3. What is the largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n4. What is the second-largest skill category by count, and how many skills does it have? (format: \"Category Name: count\")\n5. What is the name of the file that defines an OpenClaw skill?\n6. What type of API does the OpenClaw gateway expose?\n7. What date was the skills registry data collected?\n8. How many new benchmark tasks does the paper propose? (just the number)"
 	historyToolCalls := []llm.ToolCall{
@@ -738,6 +756,27 @@ func TestShouldUseLLMWorkspaceArtifactOrchestration_SkipsWorkspaceEditTask(t *te
 		toolResults,
 	) {
 		t.Fatal("expected workspace artifact orchestration to skip direct edit tasks")
+	}
+}
+
+func TestShouldUseLLMWorkspaceArtifactOrchestration_SkipsNativeDocumentTargets(t *testing.T) {
+	toolCalls := []llm.ToolCall{
+		{ID: "call-1", Name: "file_read"},
+	}
+	toolResults := []llm.Message{
+		{
+			Role:       llm.RoleTool,
+			ToolCallID: "call-1",
+			Content:    `{"path":"report.md","content":"# Launch Report\n\nPreserve the structured source instead of flattening it."}`,
+		},
+	}
+
+	if shouldUseLLMWorkspaceArtifactOrchestration(
+		"Read report.md and save the reformatted report to launch_plan.pdf.",
+		toolCalls,
+		toolResults,
+	) {
+		t.Fatal("expected workspace artifact orchestration to skip native document targets that should be written by native doc tools")
 	}
 }
 

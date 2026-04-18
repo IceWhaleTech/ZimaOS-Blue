@@ -4511,6 +4511,16 @@ export default mergeHarnessLocale('ja-JP', {
     labels: {
       backend: 'バックエンド',
       path: 'パス',
+      char_count: '文字数',
+      document: 'ドキュメント',
+      engine: 'エンジン',
+      file_name: 'ファイル名',
+      page_count: 'ページ数',
+      size_bytes: 'サイズ（バイト）',
+      markdown: 'Markdown',
+      outline: 'アウトライン',
+      pages: 'ページ',
+      selected_pages: '選択したページ',
     },
     values: {
       strategy: {
@@ -4524,6 +4534,23 @@ export default mergeHarnessLocale('ja-JP', {
     },
     warnings: {
       listing_truncated: '一覧は切り詰められました。パスを絞り込むか、max_entries を増やしてください。',
+    },
+    badges: {
+      list: '一覧',
+      find: '検索',
+      file: 'ファイル',
+      dir: 'フォルダ',
+    },
+    directoryListing: {
+      noMatchesForIn: '{basePath} で {pattern} に一致する結果はありません',
+      noMatchesIn: '{basePath} で一致する結果はありません',
+      matchesForIn: '{basePath} で {pattern} に一致: {count} 件',
+      matchesIn: '{basePath} で一致: {count} 件',
+      showingFirstEntriesInMoreOmitted:
+        '{basePath} の最初の {count} 件のエントリを表示中（さらに省略）',
+      noEntriesIn: '{basePath} にエントリはありません',
+      oneEntryIn: '{basePath} に 1 件のエントリ',
+      entriesIn: '{basePath} に {count} 件のエントリ',
     },
     copy: 'コピー',
     copied: 'コピーしました！',

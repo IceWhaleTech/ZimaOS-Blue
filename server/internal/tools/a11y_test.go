@@ -20,6 +20,10 @@ type a11yCompatBackend struct {
 	snapshotResult                a11yruntime.SnapshotResult
 	interactiveResult             a11yruntime.SnapshotResult
 	interactiveResults            []a11yruntime.SnapshotResult
+	structuredSnapshot            *a11yruntime.Snapshot
+	structuredSnapshots           []*a11yruntime.Snapshot
+	interactiveResultAfterSubmit  a11yruntime.SnapshotResult
+	structuredSnapshotAfterSubmit *a11yruntime.Snapshot
 	snapshotErr                   error
 	focusResultWindowID           string
 	scrollResultWindowID          string
@@ -46,6 +50,11 @@ type a11yCompatBackend struct {
 	lastPointClick                a11yruntime.NormalizedPoint
 	pointClickHistory             []a11yruntime.NormalizedPoint
 	pointClickWindowIDs           []string
+	lastPixelClickWindow          string
+	lastPixelClickX               int
+	lastPixelClickY               int
+	lastPixelClickHoldMS          int
+	pixelClickHistory             []a11yWindowPixelClick
 	lastKeyWindowID               string
 	lastKeys                      []string
 	lastKeyHoldMS                 int
@@ -80,6 +89,24 @@ type a11yCompatBackend struct {
 	keyErrorsByChord              map[string]error
 	focusedTypeErr                error
 	pointClickErr                 error
+	pixelClickErr                 error
+	runtimeUpdateHistory          []a11ySnapshotRuntimeUpdate
+	interactiveCallsAfterSubmit   int
+	structuredSnapshotCalls       int
+}
+
+type a11yWindowPixelClick struct {
+	WindowID string
+	X        int
+	Y        int
+	HoldMS   int
+}
+
+type a11ySnapshotRuntimeUpdate struct {
+	WindowID string
+	Token    string
+	ActType  string
+	Value    string
 }
 
 type a11yBrowserCompatBackend struct {
@@ -195,6 +222,9 @@ func (b *a11yCompatBackend) SnapshotInteractive(_ context.Context, windowID stri
 	b.lastSnapshotWindowID = windowID
 	b.snapshotWindowHistory = append(b.snapshotWindowHistory, windowID)
 	b.interactiveCalls++
+	if len(b.runtimeUpdateHistory) > 0 && b.runtimeUpdateHistory[len(b.runtimeUpdateHistory)-1].ActType == "submit" {
+		b.interactiveCallsAfterSubmit++
+	}
 	if len(b.interactiveResults) > 0 {
 		result := b.interactiveResults[0]
 		b.interactiveResults = b.interactiveResults[1:]
@@ -296,6 +326,32 @@ func (b *a11yCompatBackend) ClickWindowPoint(_ context.Context, windowID string,
 	}, nil
 }
 
+func (b *a11yCompatBackend) ClickWindowPixel(_ context.Context, windowID string, x int, y int, holdMS int) (a11yruntime.ActionResult, error) {
+	b.lastPixelClickWindow = windowID
+	b.lastPixelClickX = x
+	b.lastPixelClickY = y
+	b.lastPixelClickHoldMS = holdMS
+	b.pixelClickHistory = append(b.pixelClickHistory, a11yWindowPixelClick{
+		WindowID: windowID,
+		X:        x,
+		Y:        y,
+		HoldMS:   holdMS,
+	})
+	if b.pixelClickErr != nil {
+		return a11yruntime.ActionResult{}, b.pixelClickErr
+	}
+	return a11yruntime.ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           windowID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_click",
+		VerificationPassed: true,
+		VerificationMethod: "point_click",
+		Message:            "Host action completed",
+	}, nil
+}
+
 func (b *a11yCompatBackend) Key(_ context.Context, windowID string, keys []string, holdMS int) (a11yruntime.ActionResult, error) {
 	if b.keyBlockCh != nil {
 		<-b.keyBlockCh
@@ -383,6 +439,48 @@ func (b *a11yCompatBackend) ScreenshotForGrounding(_ context.Context, windowID s
 		WindowID:   resultWindow,
 		ImageBytes: append([]byte(nil), b.screenshotGroundingBytes...),
 	}, nil
+}
+
+func (b *a11yCompatBackend) CurrentStructuredSnapshot(windowID string) (*a11yruntime.Snapshot, bool) {
+	if b == nil {
+		return nil, false
+	}
+	b.structuredSnapshotCalls++
+	snapshot := b.structuredSnapshot
+	if len(b.structuredSnapshots) > 0 {
+		snapshot = b.structuredSnapshots[0]
+		if len(b.structuredSnapshots) > 1 {
+			b.structuredSnapshots = b.structuredSnapshots[1:]
+		}
+	}
+	if snapshot == nil {
+		return nil, false
+	}
+	if strings.TrimSpace(windowID) != "" && strings.TrimSpace(snapshot.WindowID) != "" && strings.TrimSpace(windowID) != strings.TrimSpace(snapshot.WindowID) {
+		return nil, false
+	}
+	return snapshot.Clone(), true
+}
+
+func (b *a11yCompatBackend) UpdateSnapshotAfterAction(windowID string, token string, actType string, value string) {
+	if b == nil {
+		return
+	}
+	update := a11ySnapshotRuntimeUpdate{
+		WindowID: strings.TrimSpace(windowID),
+		Token:    strings.TrimSpace(token),
+		ActType:  strings.TrimSpace(strings.ToLower(actType)),
+		Value:    value,
+	}
+	b.runtimeUpdateHistory = append(b.runtimeUpdateHistory, update)
+	if update.ActType == "submit" {
+		if b.structuredSnapshotAfterSubmit != nil {
+			b.structuredSnapshot = b.structuredSnapshotAfterSubmit.Clone()
+		}
+		if strings.TrimSpace(b.interactiveResultAfterSubmit.Tree) != "" || strings.TrimSpace(b.interactiveResultAfterSubmit.WindowID) != "" || len(b.interactiveResultAfterSubmit.RefMap) > 0 {
+			b.interactiveResult = b.interactiveResultAfterSubmit
+		}
+	}
 }
 
 func (b *a11yBrowserCompatBackend) Start(context.Context) error { return nil }
@@ -616,6 +714,64 @@ func TestA11yToolExecute_ListWindowsAliasMapsToWindows(t *testing.T) {
 	}
 	if out["message"] != "Host windows listed" {
 		t.Fatalf("message = %v, want Host windows listed", out["message"])
+	}
+}
+
+func TestA11yToolExecute_FocusWindowAliasMapsToFocus(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "focus_window",
+		"window_id": "win-2",
+	})
+	if err != nil {
+		t.Fatalf("focus_window Execute() error = %v", err)
+	}
+	if backend.lastFocusWindowID != "win-2" {
+		t.Fatalf("lastFocusWindowID = %q, want win-2", backend.lastFocusWindowID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["message"] != "focused" {
+		t.Fatalf("message = %v, want focused", out["message"])
+	}
+}
+
+func TestA11yToolExecute_InspectWindowUITreeAliasMapsToSnapshotInteractive(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-tree",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Continue\"",
+			RefMap:   map[int]string{1: "token-1"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "inspect_window_ui_tree",
+		"window_id": "win-tree",
+	})
+	if err != nil {
+		t.Fatalf("inspect_window_ui_tree Execute() error = %v", err)
+	}
+	if backend.interactiveCalls != 1 {
+		t.Fatalf("interactiveCalls = %d, want 1", backend.interactiveCalls)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["tree"] != "@1 [button] \"Continue\"" {
+		t.Fatalf("tree = %v, want interactive tree", out["tree"])
 	}
 }
 
@@ -1499,6 +1655,110 @@ func TestA11yToolExecute_KeyPendingCheckpointShortCircuits(t *testing.T) {
 	}
 }
 
+func TestA11yToolExecute_HighRiskApprovalCachedForSession(t *testing.T) {
+	backend := &a11yCompatBackend{
+		snapshotResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-risk",
+			Title:    "Risky",
+			Tree:     "@1 [button] \"Continue\"",
+			RefMap:   map[int]string{1: "token-risk"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	seen := 0
+	ctx := WithUserID(WithSessionID(context.Background(), "conv-a11y-approve-once"), "user-a11y")
+	ctx = WithBrowserCheckpointRequester(ctx, func(_ context.Context, req BrowserCheckpointRequest) (BrowserCheckpointResult, error) {
+		seen++
+		return BrowserCheckpointResult{
+			Decision:     BrowserCheckpointApprove,
+			CheckpointID: "cp-a11y-approve-once",
+		}, nil
+	})
+
+	if _, err := tool.Execute(ctx, map[string]interface{}{"action": "snapshot", "window_id": "win-risk"}); err != nil {
+		t.Fatalf("snapshot error = %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if i > 0 {
+			if _, err := tool.Execute(ctx, map[string]interface{}{"action": "snapshot", "window_id": "win-risk"}); err != nil {
+				t.Fatalf("snapshot #%d error = %v", i+1, err)
+			}
+		}
+		if _, err := tool.Execute(ctx, map[string]interface{}{
+			"action": "act",
+			"params": map[string]interface{}{
+				"ref":      "@1",
+				"act_type": "click",
+			},
+		}); err != nil {
+			t.Fatalf("act Execute() #%d error = %v", i+1, err)
+		}
+	}
+	if seen != 1 {
+		t.Fatalf("checkpoint seen = %d, want 1 after repeated high-risk actions in same session", seen)
+	}
+	if backend.actCalls != 2 {
+		t.Fatalf("actCalls = %d, want 2 successful act dispatches", backend.actCalls)
+	}
+}
+
+func TestA11yToolExecute_HighRiskApprovalCoversKeyAndActInSameSession(t *testing.T) {
+	backend := &a11yCompatBackend{
+		snapshotResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-risk",
+			Title:    "Risky",
+			Tree:     "@1 [button] \"Continue\"",
+			RefMap:   map[int]string{1: "token-risk"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	seen := 0
+	ctx := WithUserID(WithSessionID(context.Background(), "conv-a11y-mixed-approve-once"), "user-a11y")
+	ctx = WithBrowserCheckpointRequester(ctx, func(_ context.Context, req BrowserCheckpointRequest) (BrowserCheckpointResult, error) {
+		seen++
+		return BrowserCheckpointResult{
+			Decision:     BrowserCheckpointApprove,
+			CheckpointID: "cp-a11y-mixed-approve-once",
+		}, nil
+	})
+
+	if _, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "key",
+		"params": map[string]interface{}{
+			"keys": []interface{}{"cmd", "k"},
+		},
+	}); err != nil {
+		t.Fatalf("key Execute() error = %v", err)
+	}
+	if _, err := tool.Execute(ctx, map[string]interface{}{"action": "snapshot", "window_id": "win-risk"}); err != nil {
+		t.Fatalf("snapshot error = %v", err)
+	}
+	if _, err := tool.Execute(ctx, map[string]interface{}{
+		"action": "act",
+		"params": map[string]interface{}{
+			"ref":      "@1",
+			"act_type": "click",
+		},
+	}); err != nil {
+		t.Fatalf("act Execute() error = %v", err)
+	}
+	if seen != 1 {
+		t.Fatalf("checkpoint seen = %d, want 1 across key + act in same session", seen)
+	}
+	if len(backend.lastKeys) == 0 {
+		t.Fatalf("lastKeys = %#v, want key dispatch to succeed", backend.lastKeys)
+	}
+	if backend.actCalls != 1 {
+		t.Fatalf("actCalls = %d, want 1 successful act dispatch", backend.actCalls)
+	}
+}
+
 func TestA11yToolExecute_ActForwardsHoldMS(t *testing.T) {
 	backend := &a11yCompatBackend{
 		snapshotResult: a11yruntime.SnapshotResult{
@@ -1604,6 +1864,89 @@ func TestA11yToolExecute_ActIncludesTelemetryFieldsWhenVerificationFails(t *test
 	fallbacks, ok := out["fallbacks"].([]interface{})
 	if !ok || len(fallbacks) != 3 {
 		t.Fatalf("fallbacks = %#v, want 3 entries", out["fallbacks"])
+	}
+}
+
+func TestA11yToolExecute_ActClickWithWindowPixelCoordinatesUsesPixelClickCompat(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "act",
+		"params": map[string]interface{}{
+			"act_type":  "click",
+			"window_id": "win-pixel",
+			"x":         100,
+			"y":         120,
+			"hold_ms":   750,
+		},
+	})
+	if err != nil {
+		t.Fatalf("act Execute() error = %v", err)
+	}
+	if backend.actCalls != 0 {
+		t.Fatalf("actCalls = %d, want 0 when pixel click compat handles the request", backend.actCalls)
+	}
+	if len(backend.pixelClickHistory) != 1 {
+		t.Fatalf("pixelClickHistory = %#v, want one pixel click", backend.pixelClickHistory)
+	}
+	if got := backend.pixelClickHistory[0]; got.WindowID != "win-pixel" || got.X != 100 || got.Y != 120 || got.HoldMS != 750 {
+		t.Fatalf("pixelClickHistory[0] = %#v, want window=win-pixel x=100 y=120 hold=750", got)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["execution_mode"] != "input" {
+		t.Fatalf("execution_mode = %v, want input", out["execution_mode"])
+	}
+	if out["window_id"] != "win-pixel" {
+		t.Fatalf("window_id = %v, want win-pixel", out["window_id"])
+	}
+}
+
+func TestA11yToolExecute_ActClickWithCoordinatesAndSelectorStaysSemantic(t *testing.T) {
+	backend := &a11yCompatBackend{
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-semantic",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Continue\"",
+			RefMap:   map[int]string{1: "token-continue"},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "act",
+		"params": map[string]interface{}{
+			"act_type":    "click",
+			"window_id":   "win-semantic",
+			"target_role": "button",
+			"target_name": "Continue",
+			"x":           100,
+			"y":           120,
+		},
+	})
+	if err != nil {
+		t.Fatalf("act Execute() error = %v", err)
+	}
+	if len(backend.pixelClickHistory) != 0 {
+		t.Fatalf("pixelClickHistory = %#v, want no pixel click when selector is explicit", backend.pixelClickHistory)
+	}
+	if backend.actCalls != 1 {
+		t.Fatalf("actCalls = %d, want 1 semantic click", backend.actCalls)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["execution_mode"] != "semantic" {
+		t.Fatalf("execution_mode = %v, want semantic", out["execution_mode"])
 	}
 }
 

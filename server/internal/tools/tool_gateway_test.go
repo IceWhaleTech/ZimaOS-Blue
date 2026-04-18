@@ -468,6 +468,213 @@ func TestToolGatewayCompactsPDFPayloadForLLM_DerivesPagesBeforeSanitize(t *testi
 	}
 }
 
+func TestToolGatewayPDFCreate_CompactPayloadIncludesFilePaths(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	registry := NewRegistry()
+	tool := NewPDFTool(nil)
+	tool.scope = newFSToolScope([]string{tmpDir})
+	registry.Register(tool)
+
+	gateway := NewToolGateway(registry, NewExecutor(registry))
+
+	result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+		ToolCallID: "call-pdf-create",
+		ToolName:   "pdf",
+		Arguments: `{
+			"action": "create",
+			"path": "reports/magazine_brief.pdf",
+			"title": "Magazine Brief",
+			"subtitle": "Native PDF create",
+			"summary": "This is a compact create payload regression test.",
+			"style_hint": "杂志感"
+		}`,
+		RouteKind: ToolRouteKindChat,
+	})
+	if err != nil {
+		if gatewayErr, ok := err.(*ToolGatewayError); ok {
+			t.Fatalf("Execute() error = %v (code=%q details=%#v audit=%q compact=%q)", err, gatewayErr.Code, gatewayErr.Details, result.AuditContent, result.CompactLLMContent)
+		}
+		t.Fatalf("Execute() error = %v (audit=%q compact=%q)", err, result.AuditContent, result.CompactLLMContent)
+	}
+
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+		t.Fatalf("decode compact payload: %v (content=%q)", err, result.CompactLLMContent)
+	}
+	if got := strings.ToLower(strings.TrimSpace(formatValue(payload["action"]))); got != "create" {
+		t.Fatalf("action = %q, want create (payload=%#v)", got, payload)
+	}
+	if got := strings.TrimSpace(formatValue(payload["path"])); got != "reports/magazine_brief.pdf" {
+		t.Fatalf("path = %q, want reports/magazine_brief.pdf (payload=%#v)", got, payload)
+	}
+	absPath := strings.TrimSpace(formatValue(payload["absolute_path"]))
+	if absPath == "" {
+		t.Fatalf("expected absolute_path to be present (payload=%#v)", payload)
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		t.Fatalf("expected created PDF to exist at %q: %v", absPath, err)
+	}
+}
+
+func TestToolGatewayNativeDocumentCreateAcceptsCompatAliases(t *testing.T) {
+	testCases := []struct {
+		name          string
+		toolName      string
+		register      func(tmpDir string, registry *Registry)
+		argumentsJSON string
+		wantPath      string
+		wantTheme     string
+	}{
+		{
+			name:     "pdf inputPath and styleHint",
+			toolName: "pdf",
+			register: func(tmpDir string, registry *Registry) {
+				tool := NewPDFTool(nil)
+				tool.scope = newFSToolScope([]string{tmpDir})
+				registry.Register(tool)
+			},
+			argumentsJSON: `{
+				"action": "create",
+				"inputPath": "reports/seed.md",
+				"styleHint": "杂志风"
+			}`,
+			wantPath:  "reports/seed.pdf",
+			wantTheme: "editorial",
+		},
+		{
+			name:     "pdf exact llm payload outputPath styleHint title theme",
+			toolName: "pdf",
+			register: func(tmpDir string, registry *Registry) {
+				tool := NewPDFTool(nil)
+				tool.scope = newFSToolScope([]string{tmpDir})
+				registry.Register(tool)
+			},
+			argumentsJSON: `{
+				"action": "create",
+				"outputPath": "qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf",
+				"styleHint": "杂志版PDF样式，双栏排版，强调大幅增长数据，高亮关键数字，用深紫色标题栏，引用来源脚注",
+				"title": "Qwen3.6 Benchmark 大幅增长分析",
+				"theme": "magazine"
+			}`,
+			wantPath:  "qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf",
+			wantTheme: "editorial",
+		},
+		{
+			name:     "pdf single input path exact llm payload",
+			toolName: "pdf",
+			register: func(tmpDir string, registry *Registry) {
+				tool := NewPDFTool(nil)
+				tool.scope = newFSToolScope([]string{tmpDir})
+				registry.Register(tool)
+			},
+			argumentsJSON: `{
+				"action": "create",
+				"path": "reports/seed.md",
+				"styleHint": "编辑感"
+			}`,
+			wantPath:  "reports/seed.pdf",
+			wantTheme: "editorial",
+		},
+		{
+			name:     "docx outputPath markdown and theme alias",
+			toolName: "docx",
+			register: func(tmpDir string, registry *Registry) {
+				registry.Register(NewDOCXTool([]string{tmpDir}, nil, nil))
+			},
+			argumentsJSON: `{
+				"action": "create",
+				"outputPath": "reports/brief.docx",
+				"markdown": "# Brief\n\nDirect markdown alias should work.",
+				"theme": "magazine"
+			}`,
+			wantPath:  "reports/brief.docx",
+			wantTheme: "editorial",
+		},
+		{
+			name:     "xlsx outputPath and theme alias",
+			toolName: "xlsx",
+			register: func(tmpDir string, registry *Registry) {
+				registry.Register(NewXLSXTool([]string{tmpDir}, nil, nil))
+			},
+			argumentsJSON: `{
+				"action": "create",
+				"outputPath": "reports/metrics.xlsx",
+				"markdown": "# Metrics\n\n| Name | Value |\n| --- | --- |\n| ARR | 42 |",
+				"theme": "magazine"
+			}`,
+			wantPath:  "reports/metrics.xlsx",
+			wantTheme: "editorial",
+		},
+		{
+			name:     "pptx outputPath markdown and theme alias",
+			toolName: "pptx",
+			register: func(tmpDir string, registry *Registry) {
+				registry.Register(NewPPTXTool([]string{tmpDir}, nil, nil))
+			},
+			argumentsJSON: `{
+				"action": "create",
+				"outputPath": "decks/brief.pptx",
+				"markdown": "# Slide Title\n\n- Point A",
+				"theme": "magazine"
+			}`,
+			wantPath:  "decks/brief.pptx",
+			wantTheme: "editorial",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(tmpDir, "reports"), 0o755); err != nil {
+				t.Fatalf("MkdirAll(reports) error = %v", err)
+			}
+			if err := os.MkdirAll(filepath.Join(tmpDir, "decks"), 0o755); err != nil {
+				t.Fatalf("MkdirAll(decks) error = %v", err)
+			}
+			if err := os.MkdirAll(filepath.Join(tmpDir, "qwen36_ppt"), 0o755); err != nil {
+				t.Fatalf("MkdirAll(qwen36_ppt) error = %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(tmpDir, "reports", "seed.md"), []byte("# Seed\n\nThis is seeded content.\n"), 0o644); err != nil {
+				t.Fatalf("WriteFile(seed.md) error = %v", err)
+			}
+
+			registry := NewRegistry()
+			tc.register(tmpDir, registry)
+			gateway := NewToolGateway(registry, NewExecutor(registry))
+
+			result, err := gateway.Execute(context.Background(), ToolGatewayRequest{
+				ToolCallID: "call-native-doc-alias",
+				ToolName:   tc.toolName,
+				Arguments:  tc.argumentsJSON,
+				RouteKind:  ToolRouteKindChat,
+			})
+			if err != nil {
+				if gatewayErr, ok := err.(*ToolGatewayError); ok {
+					t.Fatalf("Execute() error = %v (code=%q details=%#v compact=%q)", err, gatewayErr.Code, gatewayErr.Details, result.CompactLLMContent)
+				}
+				t.Fatalf("Execute() error = %v (compact=%q)", err, result.CompactLLMContent)
+			}
+
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(result.CompactLLMContent), &payload); err != nil {
+				t.Fatalf("decode compact payload: %v (content=%q)", err, result.CompactLLMContent)
+			}
+			if got := strings.TrimSpace(formatValue(payload["path"])); got != tc.wantPath {
+				t.Fatalf("path = %q, want %q (payload=%#v)", got, tc.wantPath, payload)
+			}
+			if tc.wantTheme != "" && strings.TrimSpace(formatValue(payload["theme"])) != tc.wantTheme {
+				got := strings.TrimSpace(formatValue(payload["theme"]))
+				t.Fatalf("theme = %q, want %q (payload=%#v)", got, tc.wantTheme, payload)
+			}
+			if _, err := os.Stat(filepath.Join(tmpDir, filepath.FromSlash(tc.wantPath))); err != nil {
+				t.Fatalf("expected created artifact %q: %v", tc.wantPath, err)
+			}
+		})
+	}
+}
+
 func TestToolGatewayHonorsApprovalDeny(t *testing.T) {
 	registry := NewRegistry()
 	tool := &gatewayResultTool{

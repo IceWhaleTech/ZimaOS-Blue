@@ -112,6 +112,7 @@ const wechatILinkSetupPending = ref(false)
 const wechatILinkSetupError = ref('')
 const wechatILinkSetupSession = ref<WeChatILinkSetupSessionResponse | null>(null)
 let wechatILinkSetupPoller: ReturnType<typeof setInterval> | null = null
+let wechatILinkSetupPollRequestSeq = 0
 const wechatILinkSetupFailureStatuses = new Set(['error', 'expired'])
 
 function getWeChatILinkSetupStatusLabel(status?: string): string {
@@ -1540,6 +1541,7 @@ function stopWeChatILinkSetupPolling() {
 }
 
 function closeWeChatILinkSetupModal() {
+  wechatILinkSetupPollRequestSeq += 1
   stopWeChatILinkSetupPolling()
   wechatILinkSetupOpen.value = false
   wechatILinkSetupError.value = ''
@@ -1559,9 +1561,25 @@ function getWeChatILinkSetupResponseMessage(payload: unknown, fallback: string) 
   return fallback
 }
 
+function markWeChatILinkConnectedLocally() {
+  const channelDef = channelMap.value.get('wechat_ilink')
+  if (!channelDef) return
+
+  channelDef.enabled = true
+  channelDef.status = 'connected'
+  channelDef.lastError = undefined
+  channelDef.lastErrorKey = undefined
+  triggerRef(channelDefs)
+}
+
 async function refreshWeChatILinkSetupSession(sessionId: string) {
+  const requestSeq = ++wechatILinkSetupPollRequestSeq
+
   try {
     const response = await getWeChatILinkSetupSession(sessionId)
+    if (requestSeq !== wechatILinkSetupPollRequestSeq) {
+      return
+    }
     if (!isSuccessfulStatus(response.status)) {
       wechatILinkSetupError.value =
         getWeChatILinkSetupResponseMessage(
@@ -1589,16 +1607,22 @@ async function refreshWeChatILinkSetupSession(sessionId: string) {
     ) {
       stopWeChatILinkSetupPolling()
       if (response.data.status === 'connected') {
+        markWeChatILinkConnectedLocally()
+        closeWeChatILinkSetupModal()
         await loadChannelConfigs()
       }
     }
   } catch (error) {
+    if (requestSeq !== wechatILinkSetupPollRequestSeq) {
+      return
+    }
     wechatILinkSetupError.value = getErrorMessage(error) || t('channels.wechatILinkSetupLoadFailed')
     stopWeChatILinkSetupPolling()
   }
 }
 
 async function startWeChatILinkSetup() {
+  wechatILinkSetupPollRequestSeq += 1
   wechatILinkSetupPending.value = true
   wechatILinkSetupError.value = ''
   wechatILinkSetupSession.value = null

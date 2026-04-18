@@ -79,6 +79,7 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 
 	registry := tools.NewRegistry()
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask the user clarifying questions."})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "advisor", Description: "Decision advisor for tradeoffs and replacements."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "config", Description: "Manage providers, settings, and diagnostics."})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Search the web for latest sources."})
@@ -97,6 +98,7 @@ func newSelectorDryRunTestHandler(t *testing.T) *SettingsHandler {
 
 	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs")
 	writeSettingsSelectorSkill(t, workspaceDir, "ask", "ask the user clarifying questions and wait for their answer", `blue ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'`, "clarify", "interactive", "question")
+	writeSettingsSelectorSkill(t, workspaceDir, "advisor", "decision advisor for technology selection replacement migration and tradeoff questions", `blue research mode=advisor question="Go vs Python" --json`, "advisor", "recommend", "replace", "replacement", "migration", "tradeoff", "best practice")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze reports and urls", `blue analyze topic="url report" --json`, "analysis", "report", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "reminder", "schedule reminders and user notifications at a specific time", `blue reminder add message="Standup" time="2026-03-01 09:00"`, "reminder", "notify", "schedule")
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages", "blue browser.navigate url=https://example.com", "browser", "web")
@@ -906,6 +908,32 @@ func TestSelectorDryRun_DynamicExposureCollapsesReminderUIReviewerAndHimalayaToE
 				t.Fatalf("skill_exec_cutover = %#v, want true", body["skill_exec_cutover"])
 			}
 		})
+	}
+}
+
+func TestSelectorDryRun_DynamicExposureKeepsAdvisorVisibleForAdvisorResearchMode(t *testing.T) {
+	h := newSelectorDryRunTestHandler(t)
+
+	body := runSelectorDryRun(t, h, "Use advisor to recommend a replacement migration from Python to Go for backend services.")
+	if body["canonical_skill_id"] != "research" {
+		t.Fatalf("canonical_skill_id = %#v, want research", body["canonical_skill_id"])
+	}
+	skillDecision, ok := body["skill_decision"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected skill_decision payload, got=%T", body["skill_decision"])
+	}
+	if skillDecision["research_mode"] != "advisor" {
+		t.Fatalf("skill_decision.research_mode = %#v, want advisor", skillDecision["research_mode"])
+	}
+	selectedNativeTools, ok := body["selected_native_tools"].([]any)
+	if !ok {
+		t.Fatalf("expected selected_native_tools payload, got=%T", body["selected_native_tools"])
+	}
+	if len(selectedNativeTools) != 2 || selectedNativeTools[0] != "exec" || selectedNativeTools[1] != "advisor" {
+		t.Fatalf("selected_native_tools = %#v, want [exec advisor]", selectedNativeTools)
+	}
+	if body["selected_native_surface_mode"] != "skill_exec" {
+		t.Fatalf("selected_native_surface_mode = %#v, want skill_exec", body["selected_native_surface_mode"])
 	}
 }
 

@@ -4561,6 +4561,16 @@ export default mergeHarnessLocale('nl-NL', {
     labels: {
       backend: 'Achterkant',
       path: 'Pad',
+      char_count: 'Aantal tekens',
+      document: 'Document',
+      engine: 'Engine',
+      file_name: 'Bestandsnaam',
+      page_count: 'Aantal pagina’s',
+      size_bytes: 'Grootte (bytes)',
+      markdown: 'Markdown',
+      outline: 'Overzicht',
+      pages: 'Pagina’s',
+      selected_pages: 'Geselecteerde pagina’s',
     },
     values: {
       strategy: {
@@ -4574,6 +4584,22 @@ export default mergeHarnessLocale('nl-NL', {
     },
     warnings: {
       listing_truncated: 'De lijst is afgekapt; beperk het pad of verhoog max_entries.',
+    },
+    badges: {
+      list: 'LIJST',
+      find: 'ZOEK',
+      file: 'BESTAND',
+      dir: 'MAP',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Geen resultaten voor {pattern} in {basePath}',
+      noMatchesIn: 'Geen resultaten in {basePath}',
+      matchesForIn: '{count} resultaten voor {pattern} in {basePath}',
+      matchesIn: '{count} resultaten in {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Toont de eerste {count} items in {basePath} (meer weggelaten)',
+      noEntriesIn: 'Geen items in {basePath}',
+      oneEntryIn: '1 item in {basePath}',
+      entriesIn: '{count} items in {basePath}',
     },
     copy: 'Kopiëren',
     copied: 'Gekopieerd!',

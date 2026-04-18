@@ -13,6 +13,7 @@ type Node struct {
 	Role          string
 	Name          string
 	Value         string
+	Bounds        NormalizedRect
 	Description   string
 	DefaultAction string
 	Interactive   bool

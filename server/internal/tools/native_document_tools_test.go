@@ -87,6 +87,43 @@ Polished narrative
 	}
 }
 
+func TestDOCXToolCreate_FromSingleMarkdownInputDerivesOutputPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewDOCXTool([]string{tmpDir}, nil, nil)
+
+	if err := os.MkdirAll(filepath.Join(tmpDir, "reports"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	seed := "# Seed Docx Title\n\nThis is a seeded DOCX.\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "reports", "seed.md"), []byte(seed), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	args := map[string]interface{}{
+		"action": "create",
+		"path":   "reports/seed.md",
+		"theme":  "editorial",
+	}
+	result, err := tool.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatalf("create failed: %v (args=%#v)", err, args)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["path"]; got != "reports/seed.docx" {
+		t.Fatalf("path = %v, want reports/seed.docx", got)
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), filepath.Join(tmpDir, "reports", "seed.docx"))
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	if !containsSubstring(doc.Text, "Seed Docx Title") {
+		t.Fatalf("expected docx text to include title, got %q", doc.Text)
+	}
+}
+
 func TestDOCXToolCreateWithStructuredTableColumnWidths(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewDOCXTool([]string{tmpDir}, nil, nil)
@@ -419,6 +456,48 @@ func TestXLSXToolCreateAndRead(t *testing.T) {
 	}
 }
 
+func TestXLSXToolCreate_FromSingleMarkdownInputDerivesOutputPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewXLSXTool([]string{tmpDir}, nil, nil)
+
+	if err := os.MkdirAll(filepath.Join(tmpDir, "reports"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	seed := `# Seed XLSX
+
+| Area | Score |
+| --- | ---: |
+| Visual clarity | 92 |
+| Layout rhythm | 84 |
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "reports", "seed.md"), []byte(seed), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "reports/seed.md",
+		"theme":  "analysis",
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["path"]; got != "reports/seed.xlsx" {
+		t.Fatalf("path = %v, want reports/seed.xlsx", got)
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), filepath.Join(tmpDir, "reports", "seed.xlsx"))
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	if !containsSubstring(doc.Text, "Seed XLSX") || !containsSubstring(doc.Text, "Visual clarity") {
+		t.Fatalf("unexpected workbook text: %q", doc.Text)
+	}
+}
+
 func TestPPTXToolCreateAndRead(t *testing.T) {
 	tmpDir := t.TempDir()
 	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
@@ -501,6 +580,47 @@ func TestPPTXToolCreateAndRead(t *testing.T) {
 	}
 	if got := asNativeToolInt(t, readValidation["quality_issue_count"]); got != 0 {
 		t.Fatalf("read quality_issue_count = %d, want 0 (%#v)", got, readValidation)
+	}
+}
+
+func TestPPTXToolCreate_FromSingleMarkdownInputDerivesOutputPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPPTXTool([]string{tmpDir}, nil, nil)
+
+	if err := os.MkdirAll(filepath.Join(tmpDir, "decks"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	seed := `# Seed Deck Title
+
+## Overview
+- Slide one bullet
+- Slide one follow-up
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "decks", "seed.md"), []byte(seed), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "create",
+		"path":   "decks/seed.md",
+		"theme":  "editorial",
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["path"]; got != "decks/seed.pptx" {
+		t.Fatalf("path = %v, want decks/seed.pptx", got)
+	}
+
+	reader := convertpkg.NewDocumentReader()
+	doc, err := reader.ReadDocument(context.Background(), filepath.Join(tmpDir, "decks", "seed.pptx"))
+	if err != nil {
+		t.Fatalf("ReadDocument() error = %v", err)
+	}
+	if !containsSubstring(doc.Text, "Seed Deck Title") || !containsSubstring(doc.Text, "Slide one bullet") {
+		t.Fatalf("unexpected deck text: %q", doc.Text)
 	}
 }
 
@@ -4922,6 +5042,74 @@ Prepared for the native PDF path.`,
 	}
 }
 
+func TestPDFToolCreate_UsesOutputPathAliasWhenPathEmpty(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPDFTool(nil)
+	tool.scope = newFSToolScope([]string{tmpDir})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "create",
+		"path":        "",
+		"output_path": "reports/output_path_alias.pdf",
+		"summary":     "This should render to PDF.",
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["path"]; got != "reports/output_path_alias.pdf" {
+		t.Fatalf("path = %v, want reports/output_path_alias.pdf", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "output_path_alias.pdf")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if len(data) == 0 || string(data[:5]) != "%PDF-" {
+		t.Fatalf("unexpected PDF header: %q", string(data))
+	}
+}
+
+func TestPDFToolCreate_FromSingleMarkdownInputDerivesOutputPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPDFTool(nil)
+	tool.scope = newFSToolScope([]string{tmpDir})
+
+	if err := os.MkdirAll(filepath.Join(tmpDir, "reports"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	seed := "# Seed PDF Title\n\nThis is a seeded PDF.\n"
+	if err := os.WriteFile(filepath.Join(tmpDir, "reports", "seed.md"), []byte(seed), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	args := map[string]interface{}{
+		"action": "create",
+		"path":   "reports/seed.md",
+		"theme":  "editorial",
+	}
+	result, err := tool.Execute(context.Background(), args)
+	if err != nil {
+		t.Fatalf("create failed: %v (args=%#v)", err, args)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["path"]; got != "reports/seed.pdf" {
+		t.Fatalf("path = %v, want reports/seed.pdf", got)
+	}
+
+	path := filepath.Join(tmpDir, "reports", "seed.pdf")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if len(data) == 0 || string(data[:5]) != "%PDF-" {
+		t.Fatalf("unexpected PDF header: %q", string(data))
+	}
+}
+
 func TestExecuteCreateLikeDocumentWrite_RejectsInvalidPDFBytes(t *testing.T) {
 	tmpDir := t.TempDir()
 	scope := newFSToolScope([]string{tmpDir})
@@ -5277,6 +5465,36 @@ func TestPPTXToolCreate_UsesEditorialThemeMetadataAndThemeXML(t *testing.T) {
 		if !containsSubstring(slideXML, needle) {
 			t.Fatalf("expected slide3.xml to include %q, got %s", needle, slideXML)
 		}
+	}
+}
+
+func TestPDFToolCreate_UsesMagazineThemeAliasMetadata(t *testing.T) {
+	tmpDir := t.TempDir()
+	tool := NewPDFTool(nil)
+	tool.scope = newFSToolScope([]string{tmpDir})
+
+	result, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":   "create",
+		"path":     "reports/magazine_alias.pdf",
+		"theme":    "magazine",
+		"title":    "Magazine Alias",
+		"subtitle": "Explicit alias should map to editorial",
+		"content":  "# Cover\n\nA magazine-style report should keep the editorial theme.",
+	})
+	if err != nil {
+		t.Fatalf("create failed: %v", err)
+	}
+
+	payload := parseNativeDocumentPayload(t, result)
+	if got := payload["theme"]; got != "editorial" {
+		t.Fatalf("theme = %v, want editorial", got)
+	}
+	preview, ok := payload["theme_preview"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("theme_preview = %#v, want object", payload["theme_preview"])
+	}
+	if got := preview["mood"]; got != "bold" {
+		t.Fatalf("theme_preview.mood = %v, want bold", got)
 	}
 }
 

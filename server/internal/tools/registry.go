@@ -437,9 +437,65 @@ func normalizeCompatArgs(rawName, normalizedName string, args map[string]interfa
 		return normalizeBrowserCompatArgs(rawName, args)
 	case "research", "deep_research", "research_run", "research_status", "deep-research":
 		return normalizeDeepResearchCompatArgs(rawName, args)
+	case "docx", "xlsx", "pptx", "pdf":
+		return normalizeNativeDocumentCompatArgs(args)
 	default:
 		return args
 	}
+}
+
+func normalizeNativeDocumentCompatArgs(args map[string]interface{}) map[string]interface{} {
+	if len(args) == 0 {
+		return args
+	}
+
+	normalized := make(map[string]interface{}, len(args)+8)
+	for k, v := range args {
+		normalized[k] = v
+	}
+
+	assignCompatString := func(target string, aliases ...string) {
+		keys := append([]string{target}, aliases...)
+		if value := strings.TrimSpace(firstCompatStringDeep(normalized, keys...)); value != "" {
+			normalized[target] = value
+		}
+		for _, alias := range aliases {
+			delete(normalized, alias)
+		}
+	}
+
+	assignCompatBool := func(target string, aliases ...string) {
+		if _, exists := normalized[target]; !exists {
+			keys := append([]string{target}, aliases...)
+			if value, ok := firstCompatValueDeep(normalized, keys...); ok {
+				normalized[target] = value
+			}
+		}
+		for _, alias := range aliases {
+			delete(normalized, alias)
+		}
+	}
+
+	assignCompatString("path",
+		"file_path", "filePath", "filepath",
+		"path_name", "pathName", "pathname",
+		"filename", "fileName",
+		"target_path", "targetPath",
+		"target_file", "targetFile",
+		"file",
+	)
+	assignCompatString("input_path", "inputPath", "source_path", "sourcePath")
+	assignCompatString("output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to")
+	assignCompatString("template_path", "templatePath", "template_file", "templateFile")
+	assignCompatString("style_hint", "styleHint", "style", "visual_style", "visualStyle")
+	assignCompatString("content", "markdown", "body", "text")
+	assignCompatBool("create_dirs", "createDirs")
+
+	if theme := strings.TrimSpace(firstCompatStringDeep(normalized, "theme")); theme != "" {
+		normalized["theme"] = normalizeOfficeThemeName(theme)
+	}
+
+	return normalized
 }
 
 func normalizeDeepResearchCompatArgs(rawName string, args map[string]interface{}) map[string]interface{} {
@@ -1276,11 +1332,44 @@ func firstCompatValueDeep(args map[string]interface{}, keys ...string) (interfac
 }
 
 func firstCompatStringDeep(args map[string]interface{}, keys ...string) string {
-	if value, ok := firstCompatValueDeep(args, keys...); ok {
+	if args == nil {
+		return ""
+	}
+
+	// Compatibility keys should behave like "first non-empty string". Many callers
+	// (notably native document tools) provide multiple aliases (e.g. path vs
+	// output_path). If the primary key is present but empty, we must keep looking.
+	for _, key := range keys {
+		value, ok := args[key]
+		if !ok || value == nil {
+			continue
+		}
+		if key == "arguments" || key == "input" || key == "params" || key == "payload" {
+			if _, nested := coerceCompatMap(value); nested {
+				continue
+			}
+		}
 		if s := strings.TrimSpace(asString(value)); s != "" {
 			return s
 		}
 	}
+
+	for _, key := range []string{"arguments", "input", "params", "payload"} {
+		nested, ok := coerceCompatMap(args[key])
+		if !ok {
+			continue
+		}
+		for _, k := range keys {
+			value, ok := nested[k]
+			if !ok || value == nil {
+				continue
+			}
+			if s := strings.TrimSpace(asString(value)); s != "" {
+				return s
+			}
+		}
+	}
+
 	return ""
 }
 
@@ -1472,6 +1561,11 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 			return args, true
 		}
 	}
+	if repaired := repairMalformedJSONObjectSyntax(raw); repaired != raw {
+		if json.Unmarshal([]byte(repaired), &args) == nil {
+			return args, true
+		}
+	}
 	if normalized := normalizeLooseJSON(raw); normalized != raw {
 		if json.Unmarshal([]byte(normalized), &args) == nil {
 			return args, true
@@ -1481,15 +1575,30 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 				return args, true
 			}
 		}
+		if repaired := repairMalformedJSONObjectSyntax(normalized); repaired != normalized {
+			if json.Unmarshal([]byte(repaired), &args) == nil {
+				return args, true
+			}
+		}
 		if closed := closeIncompleteJSON(normalized); closed != normalized {
 			if json.Unmarshal([]byte(closed), &args) == nil {
 				return args, true
+			}
+			if repaired := repairMalformedJSONObjectSyntax(closed); repaired != closed {
+				if json.Unmarshal([]byte(repaired), &args) == nil {
+					return args, true
+				}
 			}
 		}
 	}
 	if closed := closeIncompleteJSON(raw); closed != raw {
 		if json.Unmarshal([]byte(closed), &args) == nil {
 			return args, true
+		}
+		if repaired := repairMalformedJSONObjectSyntax(closed); repaired != closed {
+			if json.Unmarshal([]byte(repaired), &args) == nil {
+				return args, true
+			}
 		}
 	}
 
@@ -1506,6 +1615,11 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 		if json.Unmarshal([]byte(inner), &args) == nil {
 			return args, true
 		}
+		if repaired := repairMalformedJSONObjectSyntax(inner); repaired != inner {
+			if json.Unmarshal([]byte(repaired), &args) == nil {
+				return args, true
+			}
+		}
 		if normalized := normalizeLooseJSON(inner); normalized != inner {
 			if json.Unmarshal([]byte(normalized), &args) == nil {
 				return args, true
@@ -1514,11 +1628,21 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 				if json.Unmarshal([]byte(closed), &args) == nil {
 					return args, true
 				}
+				if repaired := repairMalformedJSONObjectSyntax(closed); repaired != closed {
+					if json.Unmarshal([]byte(repaired), &args) == nil {
+						return args, true
+					}
+				}
 			}
 		}
 		if closed := closeIncompleteJSON(inner); closed != inner {
 			if json.Unmarshal([]byte(closed), &args) == nil {
 				return args, true
+			}
+			if repaired := repairMalformedJSONObjectSyntax(closed); repaired != closed {
+				if json.Unmarshal([]byte(repaired), &args) == nil {
+					return args, true
+				}
 			}
 		}
 		current = inner
@@ -1539,6 +1663,225 @@ func parseJSONObjectArgs(raw string) (map[string]interface{}, bool) {
 	}
 
 	return nil, false
+}
+
+func repairMalformedJSONObjectSyntax(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "[") {
+		return raw
+	}
+	repaired := repairMissingJSONValues(raw)
+	repaired = stripDanglingObjectKeys(repaired)
+	return repaired
+}
+
+func repairMissingJSONValues(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "{") && !strings.HasPrefix(trimmed, "[") {
+		return raw
+	}
+
+	var out strings.Builder
+	out.Grow(len(raw) + 16)
+
+	inString := false
+	escapeNext := false
+
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		out.WriteByte(c)
+
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+		if inString {
+			if c == '\\' {
+				escapeNext = true
+			} else if c == '"' {
+				inString = false
+			}
+			continue
+		}
+		if c == '"' {
+			inString = true
+			continue
+		}
+
+		if c != ':' {
+			continue
+		}
+
+		j := i + 1
+		for j < len(raw) {
+			switch raw[j] {
+			case ' ', '\t', '\n', '\r':
+				j++
+				continue
+			default:
+			}
+			break
+		}
+		if j >= len(raw) {
+			out.WriteString(" null")
+			continue
+		}
+		switch raw[j] {
+		case ',', '}', ']':
+			out.WriteString(" null")
+		}
+	}
+
+	repaired := out.String()
+	if repaired == raw {
+		return raw
+	}
+	return repaired
+}
+
+func stripDanglingObjectKeys(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "{") {
+		return raw
+	}
+
+	var out strings.Builder
+	out.Grow(len(raw))
+
+	var stack []byte
+	inString := false
+	escapeNext := false
+
+	for i := 0; i < len(raw); {
+		c := raw[i]
+
+		if inString {
+			out.WriteByte(c)
+			i++
+			if escapeNext {
+				escapeNext = false
+				continue
+			}
+			if c == '\\' {
+				escapeNext = true
+				continue
+			}
+			if c == '"' {
+				inString = false
+			}
+			continue
+		}
+
+		switch c {
+		case '"':
+			inString = true
+			out.WriteByte(c)
+			i++
+			continue
+		case '{', '[':
+			stack = append(stack, c)
+			out.WriteByte(c)
+			i++
+			continue
+		case '}', ']':
+			if len(stack) > 0 {
+				top := stack[len(stack)-1]
+				if (c == '}' && top == '{') || (c == ']' && top == '[') {
+					stack = stack[:len(stack)-1]
+				}
+			}
+			out.WriteByte(c)
+			i++
+			continue
+		case ',':
+			if len(stack) == 0 || stack[len(stack)-1] != '{' {
+				out.WriteByte(c)
+				i++
+				continue
+			}
+
+			j := i + 1
+			for j < len(raw) {
+				switch raw[j] {
+				case ' ', '\t', '\n', '\r':
+					j++
+					continue
+				default:
+				}
+				break
+			}
+			if j >= len(raw) {
+				// Trailing comma at end of payload.
+				return out.String()
+			}
+			if raw[j] != '"' {
+				out.WriteByte(c)
+				i++
+				continue
+			}
+
+			endQuote, ok := scanJSONStringEnd(raw, j)
+			if !ok {
+				out.WriteByte(c)
+				i++
+				continue
+			}
+			k := endQuote + 1
+			for k < len(raw) {
+				switch raw[k] {
+				case ' ', '\t', '\n', '\r':
+					k++
+					continue
+				default:
+				}
+				break
+			}
+			if k >= len(raw) {
+				// Dangling key at end: drop it.
+				return out.String()
+			}
+			if raw[k] == '}' {
+				// Dangling key just before object close: drop the comma + key.
+				i = k
+				continue
+			}
+			out.WriteByte(c)
+			i++
+			continue
+		default:
+			out.WriteByte(c)
+			i++
+			continue
+		}
+	}
+
+	repaired := out.String()
+	if repaired == raw {
+		return raw
+	}
+	return repaired
+}
+
+func scanJSONStringEnd(raw string, start int) (int, bool) {
+	if start < 0 || start >= len(raw) || raw[start] != '"' {
+		return 0, false
+	}
+	escapeNext := false
+	for i := start + 1; i < len(raw); i++ {
+		c := raw[i]
+		if escapeNext {
+			escapeNext = false
+			continue
+		}
+		if c == '\\' {
+			escapeNext = true
+			continue
+		}
+		if c == '"' {
+			return i, true
+		}
+	}
+	return 0, false
 }
 
 func escapeLiteralJSONStringControlChars(raw string) string {

@@ -4565,6 +4565,16 @@ export default mergeHarnessLocale('ga-IE', {
     labels: {
       backend: 'Inneall',
       path: 'Conair',
+      char_count: 'Líon carachtar',
+      document: 'Doiciméad',
+      engine: 'Inneall',
+      file_name: 'Ainm comhaid',
+      page_count: 'Líon leathanach',
+      size_bytes: 'Méid (bearta)',
+      markdown: 'Markdown',
+      outline: 'Imlíne',
+      pages: 'Leathanaigh',
+      selected_pages: 'Leathanaigh roghnaithe',
     },
     values: {
       strategy: {
@@ -4578,6 +4588,23 @@ export default mergeHarnessLocale('ga-IE', {
     },
     warnings: {
       listing_truncated: 'Gearradh an liosta; cúng an cosán nó méadaigh max_entries.',
+    },
+    badges: {
+      list: 'LIOSTA',
+      find: 'CUARDAIGH',
+      file: 'COMHAD',
+      dir: 'FILLTEÁN',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Gan torthaí do {pattern} i {basePath}',
+      noMatchesIn: 'Gan torthaí i {basePath}',
+      matchesForIn: '{count} torthaí do {pattern} i {basePath}',
+      matchesIn: '{count} torthaí i {basePath}',
+      showingFirstEntriesInMoreOmitted:
+        'Ag taispeáint na chéad {count} iontrálacha i {basePath} (tuilleadh fágtha ar lár)',
+      noEntriesIn: 'Níl aon iontrálacha i {basePath}',
+      oneEntryIn: '1 iontráil i {basePath}',
+      entriesIn: '{count} iontrálacha i {basePath}',
     },
     copy: 'Cóipeáil',
     copied: 'Cóipeáilte!',

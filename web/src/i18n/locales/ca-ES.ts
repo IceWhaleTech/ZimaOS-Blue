@@ -4574,6 +4574,16 @@ export default mergeHarnessLocale('ca-ES', {
     labels: {
       backend: 'Backend',
       path: 'Cami',
+      char_count: 'Nombre de caràcters',
+      document: 'Document',
+      engine: 'Motor',
+      file_name: 'Nom del fitxer',
+      page_count: 'Nombre de pàgines',
+      size_bytes: 'Mida (bytes)',
+      markdown: 'Markdown',
+      outline: 'Esquema',
+      pages: 'Pàgines',
+      selected_pages: 'Pàgines seleccionades',
     },
     values: {
       strategy: {
@@ -4587,6 +4597,23 @@ export default mergeHarnessLocale('ca-ES', {
     },
     warnings: {
       listing_truncated: 'La llista ha estat truncada; reduiu el cami o augmenteu max_entries.',
+    },
+    badges: {
+      list: 'LLISTA',
+      find: 'CERCA',
+      file: 'FITXER',
+      dir: 'DIRECTORI',
+    },
+    directoryListing: {
+      noMatchesForIn: "No s'han trobat coincidències per a {pattern} a {basePath}",
+      noMatchesIn: "No s'han trobat coincidències a {basePath}",
+      matchesForIn: '{count} coincidències per a {pattern} a {basePath}',
+      matchesIn: '{count} coincidències a {basePath}',
+      showingFirstEntriesInMoreOmitted:
+        "Mostrant les primeres {count} entrades a {basePath} (s'han omès més elements)",
+      noEntriesIn: "No hi ha entrades a {basePath}",
+      oneEntryIn: '1 entrada a {basePath}',
+      entriesIn: '{count} entrades a {basePath}',
     },
     copy: 'Copia',
     copied: 'Copiat!',

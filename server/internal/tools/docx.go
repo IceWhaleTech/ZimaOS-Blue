@@ -38,7 +38,15 @@ func (t *DOCXTool) Definition() ToolDefinition {
 				},
 				"path": map[string]interface{}{
 					"type":        "string",
-					"description": "Workspace path to the target .docx file.",
+					"description": "Workspace path to the target .docx file. For action=create, this can also be a single source file path; the tool will derive a sibling .docx output with the same basename.",
+				},
+				"input_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional source file for action=create. When path/output_path is omitted, the tool derives the output .docx beside this file using the same basename.",
+				},
+				"output_path": map[string]interface{}{
+					"type":        "string",
+					"description": "Optional destination .docx path for action=create. Omit it to let create derive a sibling output path from input_path/path.",
 				},
 				"template_path": map[string]interface{}{
 					"type":        "string",
@@ -69,7 +77,6 @@ func (t *DOCXTool) Definition() ToolDefinition {
 					"description": "Create parent directories when needed. Default true.",
 				},
 			},
-			"required": []string{"path"},
 		},
 	}
 }
@@ -96,6 +103,9 @@ func (t *DOCXTool) Execute(ctx context.Context, args map[string]interface{}) (in
 }
 
 func (t *DOCXTool) executeCreateLike(ctx context.Context, args map[string]interface{}, action string) (string, error) {
+	if err := maybeSeedNativeDocumentCreateFromSingleInputPath(ctx, t.scope, "docx", args); err != nil {
+		return "", err
+	}
 	path := strings.TrimSpace(firstCompatPathString(args))
 	if path == "" {
 		var err error

@@ -670,7 +670,9 @@ func sanitizeCreateText(text string, fontPlan createFontPlan) (string, bool) {
 		if replacement, ok := createRuneFallback(r); ok {
 			if createStringWritable(replacement, fontPlan) {
 				b.WriteString(replacement)
-				replaced = true
+				if !(replacement == "" && createRuneIsSilentFormattingDrop(r)) {
+					replaced = true
+				}
 				continue
 			}
 		}
@@ -725,6 +727,8 @@ func createRuneFallback(r rune) (string, bool) {
 		return "-", true
 	case '•':
 		return "-", true
+	case '⚠':
+		return "[!]", true
 	case '☑':
 		return "[x]", true
 	case '☐':
@@ -749,6 +753,15 @@ func createRuneShouldDropWhenUnsupported(r rune) bool {
 	case r >= 0x1F000 && r <= 0x1FAFF:
 		return true
 	case r >= 0x2600 && r <= 0x27BF:
+		return true
+	default:
+		return false
+	}
+}
+
+func createRuneIsSilentFormattingDrop(r rune) bool {
+	switch r {
+	case '\u200b', '\u200c', '\u200d', '\ufe0f':
 		return true
 	default:
 		return false

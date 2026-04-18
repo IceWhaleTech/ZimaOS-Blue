@@ -196,7 +196,7 @@ func ensureOfficeThemeCatalog() {
 func resolveOfficeTheme(name, styleHint string) officeTheme {
 	ensureOfficeThemeCatalog()
 
-	key := strings.ToLower(strings.TrimSpace(name))
+	key := normalizeOfficeThemeName(name)
 	if theme, ok := officeThemeCatalog[key]; ok {
 		return theme
 	}
@@ -210,7 +210,7 @@ func resolveOfficeTheme(name, styleHint string) officeTheme {
 	// NEW: Grapwork-inspired purpose-based theme matching
 	switch {
 	case officeContainsAny(hint, "editorial", "poster", "manifesto", "magazine", "typographic", "high contrast", "bold type",
-		"海报", "宣言", "杂志感", "编排感", "高对比", "强对比", "大字标题", "粗体标题"):
+		"海报", "宣言", "杂志感", "杂志风", "杂志版", "杂志风格", "编辑感", "编排感", "高对比", "强对比", "大字标题", "粗体标题"):
 		return officeThemeCatalog["editorial"]
 
 	// Sustainability/eco contexts → forest (natural, trustworthy)
@@ -449,10 +449,20 @@ func officeHex(raw string) string {
 	return strings.ToUpper(trimmed)
 }
 
+func normalizeOfficeThemeName(name string) string {
+	key := strings.ToLower(strings.TrimSpace(name))
+	switch key {
+	case "magazine", "magazine_style", "magazine-style", "杂志", "杂志风", "杂志风格":
+		return "editorial"
+	default:
+		return key
+	}
+}
+
 func officeThemeByName(name string) (officeTheme, error) {
 	ensureOfficeThemeCatalog()
 
-	key := strings.ToLower(strings.TrimSpace(name))
+	key := normalizeOfficeThemeName(name)
 	theme, ok := officeThemeCatalog[key]
 	if !ok {
 		return officeTheme{}, fmt.Errorf("unknown office theme: %s", name)

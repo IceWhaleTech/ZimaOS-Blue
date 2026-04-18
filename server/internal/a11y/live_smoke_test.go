@@ -99,11 +99,10 @@ func TestLiveLarkSmoke(t *testing.T) {
 	if strings.TrimSpace(snapshot.Tree) == "" {
 		t.Fatalf("Snapshot() returned empty tree: %+v", snapshot)
 	}
-	if strings.TrimSpace(snapshot.ImagePath) == "" {
-		t.Fatalf("Snapshot() returned empty image_path: %+v", snapshot)
-	}
 	t.Logf("snapshot title=%q refs=%d", snapshot.Title, len(snapshot.RefMap))
-	t.Logf("snapshot image path: %s", snapshot.ImagePath)
+	if strings.TrimSpace(snapshot.ImagePath) != "" {
+		t.Logf("snapshot image path (optional on success): %s", snapshot.ImagePath)
+	}
 	t.Logf("snapshot preview:\n%s", liveTreePreview(snapshot.Tree, 24))
 }
 

@@ -4539,6 +4539,16 @@ export default mergeHarnessLocale('sk-SK', {
     labels: {
       backend: 'Backend',
       path: 'Cesta',
+      char_count: 'Počet znakov',
+      document: 'Dokument',
+      engine: 'Engine',
+      file_name: 'Názov súboru',
+      page_count: 'Počet strán',
+      size_bytes: 'Veľkosť (bajty)',
+      markdown: 'Markdown',
+      outline: 'Osnova',
+      pages: 'Strany',
+      selected_pages: 'Vybrané strany',
     },
     values: {
       strategy: {
@@ -4552,6 +4562,22 @@ export default mergeHarnessLocale('sk-SK', {
     },
     warnings: {
       listing_truncated: 'Zoznam bol skrátený; zúžte cestu alebo zvýšte max_entries.',
+    },
+    badges: {
+      list: 'ZOZNAM',
+      find: 'HĽADAŤ',
+      file: 'SÚBOR',
+      dir: 'PRIEČINOK',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Žiadne zhody pre {pattern} v {basePath}',
+      noMatchesIn: 'Žiadne zhody v {basePath}',
+      matchesForIn: '{count} zhôd pre {pattern} v {basePath}',
+      matchesIn: '{count} zhôd v {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Zobrazujem prvých {count} položiek v {basePath} (ďalšie vynechané)',
+      noEntriesIn: 'Žiadne položky v {basePath}',
+      oneEntryIn: '1 položka v {basePath}',
+      entriesIn: '{count} položiek v {basePath}',
     },
     copy: 'Kopírovať',
     copied: 'Skopírované!',

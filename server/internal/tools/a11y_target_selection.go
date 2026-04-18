@@ -51,6 +51,10 @@ type a11yConversationVisualHit struct {
 	Confidence float64
 }
 
+type a11yStructuredSnapshotProvider interface {
+	CurrentStructuredSnapshot(windowID string) (*a11yruntime.Snapshot, bool)
+}
+
 var a11ySubmitConfirmationTimeout = 45 * time.Second
 var a11ySubmitConfirmationPollInterval = 1 * time.Second
 var a11yMessageConversationSettleDelay = 1 * time.Second
@@ -1377,9 +1381,11 @@ func (t *A11yTool) sendA11yConversationSearchKeySequences(ctx context.Context, b
 		resolvedWindow = strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow))
 		t.syncWindowContext(resolvedWindow)
 		t.clearSnapshotRefs()
-		if err := a11yWaitForConversationSettle(ctx); err != nil {
+		nextWindow, err := t.waitForA11yConversationSearchField(ctx, backend, resolvedWindow)
+		if err != nil {
 			return resolvedWindow, err
 		}
+		resolvedWindow = nextWindow
 	}
 	return resolvedWindow, nil
 }
@@ -1394,9 +1400,6 @@ func (t *A11yTool) activateA11yMessageConversationTarget(ctx context.Context, ba
 	resolvedWindow := valueOrDefault(result.WindowID, windowID)
 	t.syncWindowContext(resolvedWindow)
 	t.clearSnapshotRefs()
-	if err := a11yWaitForConversationSettle(ctx); err != nil {
-		return resolvedWindow, err
-	}
 	return t.confirmA11yMessageConversationActivated(ctx, backend, resolvedWindow, selector)
 }
 
@@ -1410,14 +1413,15 @@ func (t *A11yTool) tryA11yConversationPointClick(ctx context.Context, backend a1
 	resolvedWindow := valueOrDefault(result.WindowID, windowID)
 	t.syncWindowContext(resolvedWindow)
 	t.clearSnapshotRefs()
-	if err := a11yWaitForConversationSettle(ctx); err != nil {
-		return resolvedWindow, err
-	}
 	return t.confirmA11yMessageConversationActivated(ctx, backend, resolvedWindow, selector)
 }
 
 func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (a11yConversationVisualHit, error) {
 	state := getA11yChatExecutionState(ctx)
+	preferredStableID := t.preferredA11yChatAnchor(state, a11yChatStageLocateConversation)
+	if hit, ok := a11yStructuredConversationVisualHit(backend, windowID, selector, preferredStableID); ok {
+		return hit, nil
+	}
 	if grounding, ok := backend.(a11yruntime.GroundingScreenshotter); ok {
 		result, err := grounding.ScreenshotForGrounding(ctx, windowID)
 		if err == nil && len(result.ImageBytes) > 0 && a11yLocateConversationVisualHitFromPNG != nil {
@@ -1450,6 +1454,71 @@ func (t *A11yTool) locateA11yConversationVisualHit(ctx context.Context, backend 
 		return a11yConversationVisualHit{}, a11yruntime.NewError("target_not_found", "conversation visual locator did not find a unique high-confidence match", a11yTargetSelectorDetails(selector, nil))
 	}
 	return hit, nil
+}
+
+func a11yStructuredConversationVisualHit(backend a11yruntime.Backend, windowID string, selector a11yTargetSelector, preferredStableID string) (a11yConversationVisualHit, bool) {
+	provider, ok := backend.(a11yStructuredSnapshotProvider)
+	if !ok {
+		return a11yConversationVisualHit{}, false
+	}
+	snapshot, ok := provider.CurrentStructuredSnapshot(strings.TrimSpace(windowID))
+	if !ok || snapshot == nil {
+		return a11yConversationVisualHit{}, false
+	}
+	return resolveA11yConversationVisualHitFromStructuredSnapshot(snapshot, selector.Name, preferredStableID)
+}
+
+func resolveA11yConversationVisualHitFromStructuredSnapshot(snapshot *a11yruntime.Snapshot, selectorName string, preferredStableID string) (a11yConversationVisualHit, bool) {
+	if snapshot == nil || len(snapshot.Nodes) == 0 {
+		return a11yConversationVisualHit{}, false
+	}
+	terms := parseA11yTargetMatchTerms(selectorName)
+	if len(terms) == 0 {
+		return a11yConversationVisualHit{}, false
+	}
+	preferredStableID = strings.TrimSpace(preferredStableID)
+	matches := make([]a11yConversationVisualHit, 0, 2)
+	matchStableIDs := make([]string, 0, 2)
+	for _, node := range snapshot.Nodes {
+		if !a11yStructuredNodeCouldBeConversationTarget(node) {
+			continue
+		}
+		if a11yTargetNameMatchScore(a11yStructuredSnapshotNodeLabel(node), terms) <= 0 {
+			continue
+		}
+		if node.Bounds.Width <= 0 || node.Bounds.Height <= 0 {
+			continue
+		}
+		matches = append(matches, a11yConversationVisualHit{
+			Point: a11yruntime.NormalizedPoint{
+				X: node.Bounds.X + node.Bounds.Width/2,
+				Y: node.Bounds.Y + node.Bounds.Height/2,
+			},
+			Confidence: 1,
+		})
+		matchStableIDs = append(matchStableIDs, strings.TrimSpace(node.StableID))
+	}
+	if preferredStableID != "" {
+		for idx, stableID := range matchStableIDs {
+			if stableID == preferredStableID {
+				return matches[idx], true
+			}
+		}
+	}
+	if len(matches) != 1 {
+		return a11yConversationVisualHit{}, false
+	}
+	return matches[0], true
+}
+
+func a11yStructuredNodeCouldBeConversationTarget(node a11yruntime.FlatNode) bool {
+	if !a11ySnapshotRoleIsConversation(node.Role) {
+		return false
+	}
+	if !node.Interactive && strings.TrimSpace(node.DefaultAction) == "" {
+		return false
+	}
+	return node.Visible && node.Enabled
 }
 
 func (t *A11yTool) locateA11yConversationGroundingHit(ctx context.Context, windowID string, selector a11yTargetSelector, screenshot []byte, state *a11yChatExecutionState) (a11yConversationVisualHit, bool) {
@@ -1748,6 +1817,21 @@ func (t *A11yTool) resolveA11yConversationSearchResultFromFullSnapshot(ctx conte
 
 func (t *A11yTool) resolveA11yConversationSearchField(ctx context.Context, backend a11yruntime.Backend, windowID string) (int, map[int]string, string, error) {
 	snapshotTarget := strings.TrimSpace(windowID)
+	t.mu.RLock()
+	cachedWindow := strings.TrimSpace(t.lastWindow)
+	cachedRefMap := cloneA11yRefMap(t.lastRefMap)
+	cachedRefs := cloneA11ySnapshotEntries(t.lastRefs)
+	t.mu.RUnlock()
+	if len(cachedRefMap) > 0 && len(cachedRefs) > 0 {
+		if snapshotTarget == "" || cachedWindow == "" || cachedWindow == snapshotTarget {
+			if ref, err := resolveA11yConversationSearchRef(cachedRefs); err == nil {
+				if snapshotTarget == "" {
+					snapshotTarget = cachedWindow
+				}
+				return ref, cachedRefMap, strings.TrimSpace(valueOrDefault(snapshotTarget, cachedWindow)), nil
+			}
+		}
+	}
 	result, err := backend.SnapshotInteractive(ctx, snapshotTarget)
 	if err != nil {
 		return 0, nil, snapshotTarget, err
@@ -1908,6 +1992,31 @@ func a11yWaitForConversationSettle(ctx context.Context) error {
 	}
 }
 
+func (t *A11yTool) waitForA11yConversationSearchField(ctx context.Context, backend a11yruntime.Backend, windowID string) (string, error) {
+	resolvedWindow := strings.TrimSpace(windowID)
+	timeout := a11yMessageConversationConfirmationTimeout
+	deadline := time.Now().Add(timeout)
+	for {
+		_, _, nextWindow, err := t.resolveA11yConversationSearchField(ctx, backend, resolvedWindow)
+		if err == nil {
+			if strings.TrimSpace(nextWindow) != "" {
+				return strings.TrimSpace(nextWindow), nil
+			}
+			return resolvedWindow, nil
+		}
+		if !a11yIsTargetNotFound(err) {
+			return strings.TrimSpace(valueOrDefault(nextWindow, resolvedWindow)), err
+		}
+		resolvedWindow = strings.TrimSpace(valueOrDefault(nextWindow, resolvedWindow))
+		if timeout <= 0 || time.Now().After(deadline) {
+			return resolvedWindow, err
+		}
+		if err := a11yWaitForPollInterval(ctx, a11yConversationSearchResultResolvePollInterval); err != nil {
+			return resolvedWindow, err
+		}
+	}
+}
+
 func a11yWaitForPollInterval(ctx context.Context, interval time.Duration) error {
 	if interval <= 0 {
 		return nil
@@ -1924,17 +2033,41 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 	timeout := a11yMessageConversationConfirmationTimeout
 	deadline := time.Now().Add(timeout)
 	state := getA11yChatExecutionState(ctx)
+	resolvedWindow := strings.TrimSpace(windowID)
 	for {
-		result, err := backend.SnapshotInteractive(ctx, windowID)
+		if snapshot, structuredWindow, ok := t.currentA11yChatStructuredSnapshot(backend, resolvedWindow); ok {
+			if verification, ok := a11yStructuredSnapshotSelectedConversationVerification(snapshot, selector); ok {
+				resolvedWindow = valueOrDefault(structuredWindow, resolvedWindow)
+				if state != nil {
+					if stableID := strings.TrimSpace(a11yFirstNonEmptyString(verification["element_stable_id"])); stableID != "" {
+						t.rememberA11yChatAnchor(state, a11yChatStageLocateConversation, stableID)
+					}
+					a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusOK, "structured_selected_conversation", "", "", verification)
+				}
+				return resolvedWindow, nil
+			}
+		}
+		result, err := backend.SnapshotInteractive(ctx, resolvedWindow)
 		if err != nil {
 			return "", err
 		}
-		resolvedWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
+		resolvedWindow = strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow))
 		t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
 		entries := parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
 		pendingSearch := a11ySnapshotHasPendingConversationSearch(entries, selector.Name)
 		composerReady := a11ySnapshotHasComposer(entries)
 		if composerReady {
+			if !pendingSearch {
+				if verification, ok := a11yStructuredSnapshotConfirmsSelectedConversation(backend, resolvedWindow, selector); ok {
+					if state != nil {
+						if stableID := strings.TrimSpace(a11yFirstNonEmptyString(verification["element_stable_id"])); stableID != "" {
+							t.rememberA11yChatAnchor(state, a11yChatStageLocateConversation, stableID)
+						}
+						a11yRecordChatStage(ctx, state, a11yChatStageConfirmConversation, a11yChatStageStatusOK, "structured_selected_conversation", "", "", verification)
+					}
+					return resolvedWindow, nil
+				}
+			}
 			if groundingSource, verification, grounded, retryable, groundErr := t.confirmA11yConversationWithGrounding(ctx, backend, resolvedWindow, selector); groundErr != nil {
 				return "", groundErr
 			} else if retryable {
@@ -2015,6 +2148,155 @@ func (t *A11yTool) confirmA11yMessageConversationActivated(ctx context.Context, 
 		if err := a11yWaitForPollInterval(ctx, a11yMessageConversationConfirmationPollInterval); err != nil {
 			return "", err
 		}
+	}
+}
+
+func a11yStructuredSnapshotConfirmsSelectedConversation(backend a11yruntime.Backend, windowID string, selector a11yTargetSelector) (map[string]interface{}, bool) {
+	provider, ok := backend.(a11yStructuredSnapshotProvider)
+	if !ok {
+		return nil, false
+	}
+	snapshot, ok := provider.CurrentStructuredSnapshot(strings.TrimSpace(windowID))
+	if !ok || snapshot == nil {
+		return nil, false
+	}
+	return a11yStructuredSnapshotSelectedConversationVerification(snapshot, selector)
+}
+
+func a11yStructuredSnapshotSelectedConversationVerification(snapshot *a11yruntime.Snapshot, selector a11yTargetSelector) (map[string]interface{}, bool) {
+	if snapshot == nil {
+		return nil, false
+	}
+	if a11yStructuredSnapshotHasFocusedSearchField(snapshot) {
+		return nil, false
+	}
+	if node, ok := a11yStructuredSnapshotSelectedConversationNode(snapshot, selector.Name); ok {
+		verification := map[string]interface{}{
+			"conversation_confirmed": true,
+			"confirmation":           "structured_selected_conversation",
+		}
+		if stableID := strings.TrimSpace(node.StableID); stableID != "" {
+			verification["element_stable_id"] = stableID
+		}
+		return verification, true
+	}
+	if a11yStructuredSnapshotHasVisibleConversationContext(snapshot, selector.Name) {
+		return map[string]interface{}{
+			"conversation_confirmed": true,
+			"confirmation":           "structured_conversation_context_visible",
+		}, true
+	}
+	return nil, false
+}
+
+func a11yStructuredSnapshotHasSelectedConversation(snapshot *a11yruntime.Snapshot, selectorName string) bool {
+	_, ok := a11yStructuredSnapshotSelectedConversationNode(snapshot, selectorName)
+	return ok
+}
+
+func a11yStructuredSnapshotSelectedConversationNode(snapshot *a11yruntime.Snapshot, selectorName string) (a11yruntime.FlatNode, bool) {
+	if snapshot == nil || len(snapshot.Nodes) == 0 {
+		return a11yruntime.FlatNode{}, false
+	}
+	normalizedSelector := normalizeA11yTargetName(selectorName)
+	if normalizedSelector == "" {
+		return a11yruntime.FlatNode{}, false
+	}
+	terms := parseA11yTargetMatchTerms(normalizedSelector)
+	matches := make([]a11yruntime.FlatNode, 0, 2)
+	for _, node := range snapshot.Nodes {
+		if !a11ySnapshotRoleIsConversation(node.Role) {
+			continue
+		}
+		label := normalizeA11yTargetName(strings.TrimSpace(node.Name))
+		if label == "" {
+			label = normalizeA11yTargetName(strings.TrimSpace(node.Value))
+		}
+		if !a11yStructuredConversationLabelMatches(label, normalizedSelector, terms) {
+			continue
+		}
+		if a11yStructuredConversationNodeIsSelected(node) {
+			matches = append(matches, node)
+		}
+	}
+	if len(matches) != 1 {
+		return a11yruntime.FlatNode{}, false
+	}
+	return matches[0], true
+}
+
+func a11yStructuredConversationLabelMatches(label string, normalizedSelector string, terms []string) bool {
+	if label == "" || normalizedSelector == "" {
+		return false
+	}
+	if label == normalizedSelector || strings.Contains(label, normalizedSelector) {
+		return true
+	}
+	if len(terms) == 0 {
+		return false
+	}
+	for _, term := range terms {
+		if !strings.Contains(label, term) {
+			return false
+		}
+	}
+	return true
+}
+
+func a11yStructuredConversationNodeIsSelected(node a11yruntime.FlatNode) bool {
+	if node.Focused {
+		return true
+	}
+	state := normalizeA11yTargetName(strings.TrimSpace(node.Description + " " + node.State))
+	return a11yTargetLabelContainsAny(state, "selected", "focused", "active", "current")
+}
+
+func a11yStructuredSnapshotHasVisibleConversationContext(snapshot *a11yruntime.Snapshot, selectorName string) bool {
+	if snapshot == nil || len(snapshot.Nodes) == 0 {
+		return false
+	}
+	normalizedSelector := normalizeA11yTargetName(selectorName)
+	if normalizedSelector == "" {
+		return false
+	}
+	terms := parseA11yTargetMatchTerms(normalizedSelector)
+	nodesByID := make(map[int]a11yruntime.FlatNode, len(snapshot.Nodes))
+	for _, node := range snapshot.Nodes {
+		nodesByID[node.NodeID] = node
+	}
+	for _, node := range snapshot.Nodes {
+		if !a11yStructuredNodeCouldBeConversationContextText(node) {
+			continue
+		}
+		label := normalizeA11yTargetName(a11yStructuredSnapshotNodeLabel(node))
+		if !a11yStructuredConversationLabelMatches(label, normalizedSelector, terms) {
+			continue
+		}
+		if a11yStructuredNodeMatchesConversationSidebar(snapshot, nodesByID, node, selectorName) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func a11yStructuredNodeCouldBeConversationContextText(node a11yruntime.FlatNode) bool {
+	role := normalizeA11yTargetRole(node.Role)
+	label := a11yStructuredSnapshotNodeLabel(node)
+	if strings.TrimSpace(label) == "" {
+		return false
+	}
+	if node.Interactive || a11ySnapshotRoleIsConversation(role) {
+		return false
+	}
+	if a11ySnapshotRoleCouldBeComposer(role, label) || a11ySnapshotRoleLooksLikeConversationSearch(role, label) {
+		return false
+	}
+	switch role {
+	case "static_text", "text", "label", "heading":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -2397,12 +2679,22 @@ func (t *A11yTool) executeActSubmitPlanWithConfirmation(ctx context.Context, bac
 	if !plan.Enabled {
 		return a11yruntime.ActionResult{}, nil
 	}
+	submitToken := ""
+	if plan.Ref != 0 && len(plan.RefMap) > 0 {
+		submitToken = strings.TrimSpace(plan.RefMap[plan.Ref])
+	}
 	var lastErr error
 	if plan.Ref != 0 && len(plan.RefMap) > 0 {
 		result, err := a11yRunActionResultWithTimeout(ctx, "submit", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
 			return backend.Act(actionCtx, windowID, plan.Ref, plan.RefMap, "submit", "", holdMS)
 		})
-		if err == nil && !t.a11ySubmitNeedsRetry(ctx, backend, windowID, confirmation) {
+		attemptWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
+		if err == nil {
+			if runtime, ok := backend.(a11yruntime.SnapshotRuntime); ok {
+				runtime.UpdateSnapshotAfterAction(attemptWindow, submitToken, "submit", "")
+			}
+		}
+		if err == nil && !t.a11ySubmitNeedsRetry(ctx, backend, attemptWindow, confirmation) {
 			return result, nil
 		}
 		if err != nil {
@@ -2418,7 +2710,13 @@ func (t *A11yTool) executeActSubmitPlanWithConfirmation(ctx context.Context, bac
 		result, err := a11yRunActionResultWithTimeout(ctx, "key", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
 			return backend.Key(actionCtx, windowID, keys, holdMS)
 		})
-		if err == nil && !t.a11ySubmitNeedsRetry(ctx, backend, windowID, confirmation) {
+		attemptWindow := strings.TrimSpace(valueOrDefault(result.WindowID, windowID))
+		if err == nil {
+			if runtime, ok := backend.(a11yruntime.SnapshotRuntime); ok {
+				runtime.UpdateSnapshotAfterAction(attemptWindow, submitToken, "submit", "")
+			}
+		}
+		if err == nil && !t.a11ySubmitNeedsRetry(ctx, backend, attemptWindow, confirmation) {
 			return result, nil
 		}
 		if err != nil {
@@ -2448,7 +2746,16 @@ func (t *A11yTool) a11ySubmitNeedsRetry(ctx context.Context, backend a11yruntime
 	if expected == "" {
 		return false
 	}
-	if !t.a11ySubmitSnapshotShowsPendingTypedValue(ctx, backend, windowID, confirmation, expected) {
+	state := getA11yChatExecutionState(ctx)
+	if state != nil {
+		state.rememberSubmitEvidence(nil)
+	}
+	if verification, pending, confirmed := t.a11ySubmitPositiveVerification(ctx, backend, windowID, confirmation, expected); confirmed {
+		if state != nil && state.intent == "message" {
+			state.rememberSubmitEvidence(verification)
+		}
+		return false
+	} else if !pending {
 		return false
 	}
 	timeout := a11ySubmitConfirmationTimeout
@@ -2460,10 +2767,62 @@ func (t *A11yTool) a11ySubmitNeedsRetry(ctx context.Context, backend a11yruntime
 		if err := a11yWaitForPollInterval(ctx, a11ySubmitConfirmationPollInterval); err != nil {
 			return true
 		}
-		if !t.a11ySubmitSnapshotShowsPendingTypedValue(ctx, backend, windowID, confirmation, expected) {
+		if verification, pending, confirmed := t.a11ySubmitPositiveVerification(ctx, backend, windowID, confirmation, expected); confirmed {
+			if state != nil && state.intent == "message" {
+				state.rememberSubmitEvidence(verification)
+			}
+			return false
+		} else if !pending {
 			return false
 		}
 	}
+}
+
+func (t *A11yTool) a11ySubmitPositiveVerification(ctx context.Context, backend a11yruntime.Backend, windowID string, confirmation a11ySubmitConfirmation, expected string) (map[string]interface{}, bool, bool) {
+	if expected == "" {
+		return nil, false, false
+	}
+	state := getA11yChatExecutionState(ctx)
+	conversation := ""
+	preferredStableID := ""
+	resolvedWindow := strings.TrimSpace(windowID)
+	if state != nil && state.intent == "message" {
+		conversation = strings.TrimSpace(state.conversation)
+		preferredStableID = t.preferredA11yChatAnchor(state, a11yChatStageLocateComposer)
+		if verification, ok := t.awaitA11yStructuredPostSubmitVerification(ctx, backend, resolvedWindow, confirmation.TypedValue); ok {
+			return verification, false, true
+		}
+		if snapshot, structuredWindow, ok := t.currentA11yChatStructuredSnapshot(backend, resolvedWindow); ok {
+			resolvedWindow = valueOrDefault(structuredWindow, resolvedWindow)
+			if verification, ok := a11yStructuredPostSubmitVerificationFromStructuredSnapshot(snapshot, expected, conversation, preferredStableID); ok {
+				return verification, false, true
+			}
+		}
+	}
+	result, err := backend.SnapshotInteractive(ctx, resolvedWindow)
+	if err != nil {
+		return nil, false, false
+	}
+	resolvedWindow = strings.TrimSpace(valueOrDefault(result.WindowID, resolvedWindow))
+	t.cacheSnapshotContext(resolvedWindow, result.RefMap, result.Tree)
+	if state != nil && state.intent == "message" {
+		if verification, _, ok := t.currentA11yChatStructuredPostSubmitVerification(backend, resolvedWindow, expected, conversation, preferredStableID); ok {
+			return verification, false, true
+		}
+	}
+	entries := parseA11ySnapshotEntriesWithTokens(result.Tree, result.RefMap)
+	if len(entries) == 0 || !a11ySnapshotHasComposer(entries) {
+		return nil, false, false
+	}
+	if a11ySubmitSnapshotShowsPendingTypedValue(entries, confirmation, expected) {
+		return nil, true, false
+	}
+	return map[string]interface{}{
+		"status":            "sent",
+		"composer_cleared":  true,
+		"confirmation":      "interactive_post_submit_confirmation",
+		"grounding_skipped": true,
+	}, false, true
 }
 
 func (t *A11yTool) a11ySubmitSnapshotShowsPendingTypedValue(ctx context.Context, backend a11yruntime.Backend, windowID string, confirmation a11ySubmitConfirmation, expected string) bool {

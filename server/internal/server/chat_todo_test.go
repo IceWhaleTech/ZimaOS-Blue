@@ -899,6 +899,14 @@ Need include in assistant message header not possible in plaintext.
 		}
 	})
 
+	t.Run("agent mode continuation-style planning-first checklist forces missing_todo rewrite", func(t *testing.T) {
+		current := "- [ ] 制定长期实施计划\n- [ ] 调研当前代码状态"
+		ok, reason := shouldAutoContinueAfterToollessReplyForRequest(current, "", "继续推进这个任务直到完成", true, false)
+		if !ok || reason != "missing_todo" {
+			t.Fatalf("expected missing_todo rewrite for continuation bootstrap, got ok=%v reason=%q", ok, reason)
+		}
+	})
+
 	t.Run("agent mode completion reply without next-step guidance requests follow-up", func(t *testing.T) {
 		current := "任务已完成。最终总结：功能可用。"
 		ok, reason := shouldAutoContinueAfterToollessReply(current, "", true, true)
@@ -1159,6 +1167,39 @@ func TestSyncTrackedTodoAfterToolRound(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects planning-first tool bootstrap for open-ended continuation request", func(t *testing.T) {
+		got, changed := syncTrackedTodoAfterToolRoundForRequest(
+			"",
+			"继续推进这个任务直到完成",
+			"- [ ] 制定长期实施计划\n- [ ] 调研当前代码状态",
+			true,
+			false,
+		)
+		if changed {
+			t.Fatalf("expected planning-first tool bootstrap to be rejected, got=%q", got)
+		}
+		if got != "" {
+			t.Fatalf("expected no tracked checklist after rejection, got=%q", got)
+		}
+	})
+
+	t.Run("accepts discovery-first tool bootstrap for open-ended continuation request", func(t *testing.T) {
+		want := "- [ ] 调研当前代码状态\n- [ ] 根据发现调整执行计划"
+		got, changed := syncTrackedTodoAfterToolRoundForRequest(
+			"",
+			"继续推进这个任务直到完成",
+			want,
+			true,
+			false,
+		)
+		if !changed {
+			t.Fatal("expected discovery-first tool bootstrap to be accepted")
+		}
+		if got != want {
+			t.Fatalf("unexpected accepted tool bootstrap: %q", got)
+		}
+	})
+
 	t.Run("completes remaining items when tool round produces the requested artifact", func(t *testing.T) {
 		tracked := "- [x] gather facts\n- [ ] save final report"
 		toolCalls := []llm.ToolCall{{ID: "call-write-1", Name: "write_commit"}}
@@ -1242,6 +1283,30 @@ func TestSyncTrackedTodoAfterToollessChecklist(t *testing.T) {
 		}
 		if got != want {
 			t.Fatalf("unexpected completed checklist: %q", got)
+		}
+	})
+
+	t.Run("rejects planning-first initial checklist for open-ended continuation bootstrap", func(t *testing.T) {
+		current := "- [ ] 制定长期实施计划\n- [ ] 调研当前代码状态"
+
+		got, changed := syncTrackedTodoAfterToollessChecklistForRequest("", current, "继续推进这个任务直到完成")
+		if changed {
+			t.Fatalf("expected planning-first bootstrap to be rejected, got=%q", got)
+		}
+		if got != "" {
+			t.Fatalf("expected no canonical checklist capture for rejected bootstrap, got=%q", got)
+		}
+	})
+
+	t.Run("accepts discovery-first initial checklist for open-ended continuation bootstrap", func(t *testing.T) {
+		current := "- [ ] 调研当前代码状态\n- [ ] 根据发现调整执行计划"
+
+		got, changed := syncTrackedTodoAfterToollessChecklistForRequest("", current, "继续推进这个任务直到完成")
+		if !changed {
+			t.Fatal("expected discovery-first bootstrap to be accepted")
+		}
+		if got != current {
+			t.Fatalf("unexpected accepted checklist: %q", got)
 		}
 	})
 }
@@ -1506,6 +1571,36 @@ func TestFilterPseudoDirectiveDeltaForStreaming(t *testing.T) {
 			t.Fatal("expected suppressing=true after envelope-only initial chunk")
 		}
 	})
+
+	t.Run("fully suppresses recoverable typeless native-doc pseudo call chunk", func(t *testing.T) {
+		suppressing := false
+		suppressedChunks := 0
+		visible := filterPseudoDirectiveDeltaForStreaming(
+			"继续用 PDF 工具创建：\n\n```typeless\n"+
+				"{\"action\":\"create\",\"output_path\":\"reports/qwen36_growth.pdf\",\"title\":\"Qwen3.6 Benchmark 大幅增长分析\",\"markdown\":\"# Qwen3.6 Benchmark 大幅增长分析\\n\\n- SkillsBench Avg5: +552%\"}\n"+
+				"```\n\n这次我直接生成杂志版 PDF。",
+			[]llm.Tool{{Name: "pdf"}},
+			&suppressing,
+			&suppressedChunks,
+		)
+		if visible != "" {
+			t.Fatalf("expected recoverable typeless native-doc chunk to be fully suppressed, got %q", visible)
+		}
+		if !suppressing {
+			t.Fatal("expected suppressing=true after typeless native-doc pseudo call chunk")
+		}
+	})
+}
+
+func TestIsLikelyTaskCompletionResponse_RecognizesDeepSearchFinalReport(t *testing.T) {
+	content := "执行摘要：BlueAgent 近期版本更新集中在工具链与文档。\n" +
+		"关键发现：发布说明与文档更新一致。\n" +
+		"风险与不确定性：社区二手信息存在时效偏差。\n" +
+		"来源：https://github.com/blueagent/blueagent/releases"
+
+	if !isLikelyTaskCompletionResponse(content) {
+		t.Fatalf("expected deep-search final report to count as completion, got false for %q", content)
+	}
 }
 
 func TestBuildAutoContinueNudges(t *testing.T) {
@@ -1542,6 +1637,12 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if !strings.Contains(agentToolless, "existing canonical TODO checklist") || !strings.Contains(agentToolless, "reprint the full checklist with updated checkbox states") {
 		t.Fatalf("expected agent toolless nudge to enforce checklist reprint guidance, got=%q", agentToolless)
 	}
+	if !strings.Contains(agentToolless, "research") || !strings.Contains(agentToolless, "currently exposed") || !strings.Contains(agentToolless, "long-range planning") {
+		t.Fatalf("expected agent toolless nudge to prefer exposed discovery before long-range planning, got=%q", agentToolless)
+	}
+	if strings.Contains(agentToolless, "advisor") {
+		t.Fatalf("expected agent toolless nudge not to name hidden advisor directly, got=%q", agentToolless)
+	}
 	if !strings.Contains(agentToolless, "Tool guidance constraints") {
 		t.Fatalf("expected agent toolless nudge to include tool guidance constraints, got=%q", agentToolless)
 	}
@@ -1552,6 +1653,12 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	}
 	if !strings.Contains(agentPostTool, "existing canonical TODO checklist") || !strings.Contains(agentPostTool, "reprint the full checklist with updated checkbox states") {
 		t.Fatalf("expected agent post-tool nudge to enforce checklist reprint guidance, got=%q", agentPostTool)
+	}
+	if !strings.Contains(agentPostTool, "discovery pass") || !strings.Contains(agentPostTool, "long-range plan") {
+		t.Fatalf("expected agent post-tool nudge to tighten planning after discovery evidence, got=%q", agentPostTool)
+	}
+	if strings.Contains(agentPostTool, "advisor") {
+		t.Fatalf("expected agent post-tool nudge not to name hidden advisor directly, got=%q", agentPostTool)
 	}
 	if !strings.Contains(agentPostTool, "append=true") || !strings.Contains(agentPostTool, "Tool guidance constraints") {
 		t.Fatalf("expected agent post-tool nudge to include chunked write tool guidance, got=%q", agentPostTool)
@@ -1584,12 +1691,24 @@ func TestBuildAutoContinueNudges(t *testing.T) {
 	if !strings.Contains(missingTodo, "Reprint the full checklist with updated checkbox states before each new action or summary") {
 		t.Fatalf("expected missing_todo nudge to require checklist reprint before progress, got=%q", missingTodo)
 	}
+	if !strings.Contains(missingTodo, "currently exposed research-family tool") || !strings.Contains(missingTodo, "before broad long-range planning") {
+		t.Fatalf("expected missing_todo nudge to bootstrap discovery with exposed tools before broad planning, got=%q", missingTodo)
+	}
+	if strings.Contains(missingTodo, "research/advisor") {
+		t.Fatalf("expected missing_todo nudge not to use research/advisor wording when advisor is hidden, got=%q", missingTodo)
+	}
 	pendingTodo := buildToollessAutoContinueNudgeForReason(true, "pending_todo")
 	if !strings.Contains(pendingTodo, "FIRST re-output the full checklist with updated checkbox states") || !strings.Contains(pendingTodo, "rewriting the full checklist on each progress turn") {
 		t.Fatalf("expected pending_todo nudge to require full checklist rewrite each progress turn, got=%q", pendingTodo)
 	}
 	if !strings.Contains(pendingTodo, "at least one real tool call") {
 		t.Fatalf("expected pending_todo nudge to enforce real execution, got=%q", pendingTodo)
+	}
+	if !strings.Contains(pendingTodo, "currently exposed research-family tool") || !strings.Contains(pendingTodo, "before broadening the long-range checklist") {
+		t.Fatalf("expected pending_todo nudge to prefer exposed discovery before broadening the long-range checklist, got=%q", pendingTodo)
+	}
+	if strings.Contains(pendingTodo, "research/advisor") {
+		t.Fatalf("expected pending_todo nudge not to use research/advisor wording when advisor is hidden, got=%q", pendingTodo)
 	}
 	todoReconcile := buildToollessAutoContinueNudgeForReason(true, "todo_reconcile")
 	if !strings.Contains(todoReconcile, "plan_update") || !strings.Contains(todoReconcile, "canonical TODO checklist") {

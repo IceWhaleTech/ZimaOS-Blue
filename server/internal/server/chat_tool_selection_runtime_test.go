@@ -33,6 +33,7 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	registry.Register(tools.NewToolSearchTool(registry))
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "ask", Description: "Ask the user clarifying questions"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "advisor", Description: "Decision advisor for tradeoffs and replacements"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "deep_research", Description: "Run deep research"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "exec", Description: "Execute skill and shell commands"})
 	registry.ExposeDefinition(tools.ToolDefinition{Name: "config", Description: "Manage runtime settings and providers"})
@@ -49,6 +50,7 @@ func newDiscoverFirstSelectionHandler(t *testing.T, dynamicExposure bool) *ChatH
 	writeSettingsSelectorCanonicalWebQuerySkill(t, workspaceDir, "search the web for latest docs and official references", `blue web_query input="OpenAI Responses API docs"`, "search", "web", "docs", "latest")
 	writeSettingsSelectorSkill(t, workspaceDir, "ask", "ask the user clarifying questions and wait for an answer", `blue ask q="Choose a deploy strategy" a='["Canary","Blue-Green"]'`, "clarify", "interactive", "question")
 	writeSettingsSelectorSkill(t, workspaceDir, "browser", "browse urls and interact with web pages after login or click flows", "blue browser.navigate url=https://example.com", "browser", "login", "click", "page")
+	writeSettingsSelectorSkill(t, workspaceDir, "advisor", "decision advisor for technology selection replacement migration and tradeoff questions", `blue research mode=advisor question="Go vs Python" --json`, "advisor", "recommend", "replace", "replacement", "migration", "tradeoff", "best practice")
 	writeSettingsSelectorSkill(t, workspaceDir, "analyze", "analyze multiple links and synthesize a report", `blue analyze topic="multi-link report" --json`, "analysis", "report", "summary", "link", "url")
 	writeSettingsSelectorSkill(t, workspaceDir, "deep_research", "perform cited timeline comparisons and deep research", `blue deep_research query="OpenAI vs Anthropic agent runtime"`, "research", "citation", "timeline", "compare")
 	writeSettingsSelectorSkill(t, workspaceDir, "ui_reviewer", "review screenshots and UI layouts for accessibility and visual issues", `blue ui_reviewer target="https://example.com"`, "ui", "review", "screenshot", "layout", "accessibility")
@@ -1268,6 +1270,31 @@ func TestSelectChatToolSurfacesForRequest_DiscoverFirstClarifyAndLegacyFlagsDoNo
 	}
 	if fallbackSelection.DiscoveryDecision == nil || fallbackSelection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalWebQuery {
 		t.Fatalf("legacy-flag DiscoveryDecision = %#v, want canonical web_query", fallbackSelection.DiscoveryDecision)
+	}
+}
+
+func TestSelectChatToolSurfacesForRequest_DiscoverFirstAdvisorKeepsAdvisorVisible(t *testing.T) {
+	handler := newDiscoverFirstSelectionHandler(t, true)
+
+	selection := handler.selectChatToolSurfacesForRequest(context.Background(), "Use advisor to recommend a replacement migration from Python to Go for backend services.", tools.ToolPolicyRequest{
+		Model:     "claude-3-5-haiku-20241022",
+		RouteKind: tools.ToolRouteKindChat,
+	}, nil, nil)
+
+	if selection.NativeMode != chatNativeToolSurfaceModeSkillExec {
+		t.Fatalf("NativeMode = %q, want %q", selection.NativeMode, chatNativeToolSurfaceModeSkillExec)
+	}
+	if selection.SkillDecision == nil {
+		t.Fatal("expected SkillDecision")
+	}
+	if selection.SkillDecision.ResearchMode != "advisor" {
+		t.Fatalf("ResearchMode = %q, want %q", selection.SkillDecision.ResearchMode, "advisor")
+	}
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 3 || got[0] != "exec" || got[1] != "advisor" || got[2] != "tool_search" {
+		t.Fatalf("NativeDefs = %v, want [exec advisor tool_search]", got)
+	}
+	if selection.DiscoveryDecision == nil || selection.DiscoveryDecision.CanonicalTarget != agentcore.CanonicalResearch {
+		t.Fatalf("DiscoveryDecision = %#v, want canonical research", selection.DiscoveryDecision)
 	}
 }
 

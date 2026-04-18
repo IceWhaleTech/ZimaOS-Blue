@@ -4539,6 +4539,16 @@ export default mergeHarnessLocale('sv-SE', {
     labels: {
       backend: 'Backend',
       path: 'Sokvag',
+      char_count: 'Antal tecken',
+      document: 'Dokument',
+      engine: 'Motor',
+      file_name: 'Filnamn',
+      page_count: 'Antal sidor',
+      size_bytes: 'Storlek (byte)',
+      markdown: 'Markdown',
+      outline: 'Disposition',
+      pages: 'Sidor',
+      selected_pages: 'Valda sidor',
     },
     values: {
       strategy: {
@@ -4552,6 +4562,22 @@ export default mergeHarnessLocale('sv-SE', {
     },
     warnings: {
       listing_truncated: 'Listan trunkerades; begränsa sökvägen eller öka max_entries.',
+    },
+    badges: {
+      list: 'LISTA',
+      find: 'SÖK',
+      file: 'FIL',
+      dir: 'MAPP',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Inga träffar för {pattern} i {basePath}',
+      noMatchesIn: 'Inga träffar i {basePath}',
+      matchesForIn: '{count} träffar för {pattern} i {basePath}',
+      matchesIn: '{count} träffar i {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Visar de första {count} posterna i {basePath} (fler utelämnade)',
+      noEntriesIn: 'Inga poster i {basePath}',
+      oneEntryIn: '1 post i {basePath}',
+      entriesIn: '{count} poster i {basePath}',
     },
     copy: 'Kopiera',
     copied: 'Kopierat!',

@@ -134,6 +134,25 @@ func TestParseMarkdownishOfficeDoc_PreservesBlockquotesAndCodeBlocks(t *testing.
 	}
 }
 
+func TestParseOfficeDocSpec_AcceptsMarkdownThatOnlyMapsToSubtitle(t *testing.T) {
+	theme, err := officeThemeByName("editorial")
+	if err != nil {
+		t.Fatalf("officeThemeByName() error = %v", err)
+	}
+	spec, err := parseOfficeDocSpec(map[string]interface{}{
+		"markdown": "# Seed Docx Title\n\nThis is a seeded DOCX.\n",
+	}, "", "", theme, "")
+	if err != nil {
+		t.Fatalf("parseOfficeDocSpec() error = %v", err)
+	}
+	if spec.Title != "Seed Docx Title" {
+		t.Fatalf("Title = %q, want Seed Docx Title", spec.Title)
+	}
+	if spec.Subtitle != "This is a seeded DOCX." {
+		t.Fatalf("Subtitle = %q, want This is a seeded DOCX.", spec.Subtitle)
+	}
+}
+
 func TestParseMarkdownishOfficeDoc_PreservesThematicBreaks(t *testing.T) {
 	spec := parseMarkdownishOfficeDoc("" +
 		"# Release Notes\n\n" +

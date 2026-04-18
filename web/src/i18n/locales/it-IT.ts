@@ -4567,6 +4567,16 @@ export default mergeHarnessLocale('it-IT', {
     labels: {
       backend: 'Backend',
       path: 'Percorso',
+      char_count: 'Numero di caratteri',
+      document: 'Documento',
+      engine: 'Motore',
+      file_name: 'Nome file',
+      page_count: 'Numero di pagine',
+      size_bytes: 'Dimensione (byte)',
+      markdown: 'Markdown',
+      outline: 'Struttura',
+      pages: 'Pagine',
+      selected_pages: 'Pagine selezionate',
     },
     values: {
       strategy: {
@@ -4580,6 +4590,22 @@ export default mergeHarnessLocale('it-IT', {
     },
     warnings: {
       listing_truncated: 'L\'elenco è stato troncato; restringi il percorso o aumenta max_entries.',
+    },
+    badges: {
+      list: 'ELENCO',
+      find: 'CERCA',
+      file: 'FILE',
+      dir: 'CARTELLA',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Nessuna corrispondenza per {pattern} in {basePath}',
+      noMatchesIn: 'Nessuna corrispondenza in {basePath}',
+      matchesForIn: '{count} corrispondenze per {pattern} in {basePath}',
+      matchesIn: '{count} corrispondenze in {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Mostro le prime {count} voci in {basePath} (altre omesse)',
+      noEntriesIn: 'Nessuna voce in {basePath}',
+      oneEntryIn: '1 voce in {basePath}',
+      entriesIn: '{count} voci in {basePath}',
     },
     copy: 'Copia',
     copied: 'Copiato!',

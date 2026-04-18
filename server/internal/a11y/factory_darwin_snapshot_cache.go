@@ -27,11 +27,21 @@ func (b *darwinBackend) ResolveTarget(ctx context.Context, windowID string, sele
 		return TargetResolution{}, err
 	}
 	result.WindowID = record.ID
+	if strings.TrimSpace(snapshot.WindowID) != "" {
+		result.WindowID = snapshot.WindowID
+	}
 	result.CacheHit = cacheHit
 	if result.QueryMS == 0 {
 		result.QueryMS = time.Since(start).Milliseconds()
 	}
 	return result, nil
+}
+
+func (b *darwinBackend) CurrentStructuredSnapshot(windowID string) (*Snapshot, bool) {
+	if b == nil || b.snapshots == nil {
+		return nil, false
+	}
+	return b.snapshots.Current(strings.TrimSpace(windowID))
 }
 
 func (b *darwinBackend) UpdateSnapshotAfterAction(windowID string, token string, actType string, value string) {
@@ -82,7 +92,7 @@ func (b *darwinBackend) ensureStructuredSnapshot(_ context.Context, record darwi
 	}
 	defer darwinRelease(app)
 
-	window := darwinFindWindowElement(app, record)
+	record, window := b.findSnapshotWindowElement(app, record)
 	if window == 0 {
 		return nil, false, ActionTelemetry{}, NewError("backend_unavailable", "AX window lookup failed", map[string]interface{}{"window_id": record.ID})
 	}
@@ -126,4 +136,23 @@ func (b *darwinBackend) ensureStructuredSnapshot(_ context.Context, record darwi
 		Fallbacks:        []string{"watch_unavailable"},
 	}
 	return snapshot, false, telemetry, nil
+}
+
+func (b *darwinBackend) findSnapshotWindowElement(app uintptr, record darwinWindowRecord) (darwinWindowRecord, uintptr) {
+	window := darwinFindWindowElementForSnapshot(app, record)
+	if window != 0 {
+		return record, window
+	}
+	refreshed, err := darwinRefreshWindowRecordForSnapshot(b, record)
+	if err != nil {
+		return record, 0
+	}
+	if strings.TrimSpace(refreshed.ID) == "" {
+		return record, 0
+	}
+	window = darwinFindWindowElementForSnapshot(app, refreshed)
+	if window != 0 {
+		return refreshed, window
+	}
+	return record, 0
 }

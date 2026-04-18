@@ -20,22 +20,24 @@ var (
 )
 
 type A11yTool struct {
-	mu             sync.RWMutex
-	backend        a11yruntime.Backend
-	browser        *BrowserTool
-	lastWindow     string
-	lastWindowHint string
-	lastRefMap     map[int]string
-	lastRefs       []a11ySnapshotEntry
-	mediaDir       string
-	clickCache     map[string]a11yConversationClickPoint
-	chatGrounder   a11yChatGrounder
-	chatMemory     *a11yChatStageMemory
+	mu               sync.RWMutex
+	backend          a11yruntime.Backend
+	browser          *BrowserTool
+	lastWindow       string
+	lastWindowHint   string
+	lastRefMap       map[int]string
+	lastRefs         []a11ySnapshotEntry
+	mediaDir         string
+	clickCache       map[string]a11yConversationClickPoint
+	chatGrounder     a11yChatGrounder
+	chatMemory       *a11yChatStageMemory
+	approvedSessions map[string]struct{}
 }
 
 func NewA11yTool() *A11yTool {
 	return &A11yTool{
-		chatMemory: newA11yChatStageMemory(),
+		chatMemory:       newA11yChatStageMemory(),
+		approvedSessions: make(map[string]struct{}),
 	}
 }
 
@@ -263,7 +265,11 @@ func normalizeA11yAction(action string) string {
 	switch normalized {
 	case "list", "listwindow", "listwindows", "windowlist", "windowslist", "tabs", "listtab", "listtabs":
 		return a11yruntime.ActionWindows
+	case "focuswindow", "activate", "activatewindow", "activateapp":
+		return a11yruntime.ActionFocus
 	case "snapshotinteractive", "interactivesnapshot":
+		return a11yruntime.ActionSnapshotInteractive
+	case "inspectwindowuitree", "accessibilitytree", "uitree":
 		return a11yruntime.ActionSnapshotInteractive
 	case "keysequence", "keyboardinput":
 		return a11yruntime.ActionKey
@@ -273,11 +279,11 @@ func normalizeA11yAction(action string) string {
 		return "type"
 	case "select", "choose", "pick", "switchto":
 		return "select"
-	case "click", "tap", "press":
+	case "click", "tap", "press", "mouseclick", "leftclick":
 		return "click"
 	case "toggle", "switch":
 		return "toggle"
-	case "pointermove", "movepointer", "mousemove":
+	case "pointermove", "movepointer", "mousemove", "moveto":
 		return a11yruntime.ActionPointerMove
 	}
 	return trimmed
@@ -328,8 +334,13 @@ type hostFocusedTextTyper interface {
 	TypeFocusedText(ctx context.Context, windowID string, value string, holdMS int) (a11yruntime.ActionResult, error)
 }
 
+type hostWindowPixelClicker interface {
+	ClickWindowPixel(ctx context.Context, windowID string, x int, y int, holdMS int) (a11yruntime.ActionResult, error)
+}
+
 type a11yActOptions struct {
 	allowFocusedTypeAliasFallback bool
+	skipOutcomeVerificationWithoutGrounder bool
 }
 
 func (t *A11yTool) doBrowser(ctx context.Context, browser *BrowserTool, action string, args map[string]interface{}) (interface{}, error) {
@@ -531,7 +542,7 @@ func (t *A11yTool) doBrowserKey(ctx context.Context, browser *BrowserTool, args 
 		}), nil
 	}
 	targetID := browserTargetIDFromArgs(args, browser.cachedTarget())
-	keys, ok := resolveA11yKeySequenceArgs(args)
+	keys, ok := resolveA11yBrowserKeySequenceArgs(args)
 	if !ok {
 		return nil, errors.New("keys are required for browser key")
 	}
@@ -556,6 +567,19 @@ func (t *A11yTool) doBrowserKey(ctx context.Context, browser *BrowserTool, args 
 		"execution_mode": "automation",
 		"message":        "Browser keys sent",
 	}), nil
+}
+
+func resolveA11yBrowserKeySequenceArgs(args map[string]interface{}) ([]string, bool) {
+	if keys, ok := compatStringSlice(args, "keys", "key"); ok && len(keys) > 0 {
+		return keys, true
+	}
+	if submitKeys, ok := compatStringSlice(args, "submit_keys", "submitKeys"); ok && len(submitKeys) > 0 {
+		return submitKeys, true
+	}
+	if raw := strings.TrimSpace(firstCompatString(args, "value", "text")); raw != "" && strings.Contains(raw, "+") {
+		return []string{raw}, true
+	}
+	return nil, false
 }
 
 func (t *A11yTool) wrapBrowserPayload(browser *BrowserTool, action string, raw interface{}) string {
@@ -882,14 +906,14 @@ func (t *A11yTool) doScenarioAct(ctx context.Context, backend a11yruntime.Backen
 		return t.doTypeScenarioAct(ctx, backend, args, windowID)
 	}
 	if normalizeA11yActIntent(firstCompatString(args, "intent", "scene", "scenario", "goal")) != "" {
-		return t.doAct(ctx, backend, args, windowID)
+		return t.doActWithOptions(ctx, backend, args, windowID, a11yActOptions{})
 	}
 	cloned := make(map[string]interface{}, len(args)+1)
 	for key, value := range args {
 		cloned[key] = value
 	}
 	cloned["intent"] = intent
-	return t.doAct(ctx, backend, cloned, windowID)
+	return t.doActWithOptions(ctx, backend, cloned, windowID, a11yActOptions{})
 }
 
 func (t *A11yTool) doTypeScenarioAct(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
@@ -934,7 +958,9 @@ func (t *A11yTool) doTypeScenarioAct(ctx context.Context, backend a11yruntime.Ba
 }
 
 func (t *A11yTool) doAct(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
-	return t.doActWithOptions(ctx, backend, args, windowID, a11yActOptions{})
+	return t.doActWithOptions(ctx, backend, args, windowID, a11yActOptions{
+		skipOutcomeVerificationWithoutGrounder: true,
+	})
 }
 
 func (t *A11yTool) doActWithOptions(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string, opts a11yActOptions) (interface{}, error) {
@@ -1015,6 +1041,36 @@ func (t *A11yTool) doActWithOptions(ctx context.Context, backend a11yruntime.Bac
 	}
 	if gated, handled, err := t.maybeRequireA11yCheckpoint(ctx, "act", actType); handled || err != nil {
 		return gated, err
+	}
+	if pointResult, handled, pointErr := t.tryWindowPixelClickCompat(ctx, backend, args, resolvedTarget, actType, holdMS); handled {
+		if pointErr != nil {
+			return chatErrorPayload(pointErr), nil
+		}
+		resolvedWindow := strings.TrimSpace(valueOrDefault(pointResult.WindowID, resolvedTarget))
+		t.syncWindowContextWithHint(resolvedWindow, a11yWindowQueryHintFromArgs(args))
+		t.clearSnapshotRefs()
+		payload := map[string]interface{}{
+			"host_os":        valueOrDefault(pointResult.HostOS, backend.HostOS()),
+			"window_id":      resolvedWindow,
+			"execution_mode": pointResult.ExecutionMode,
+			"message":        valueOrDefault(pointResult.Message, "Host action completed"),
+			"target_hit":     pointResult.TargetHit || pointResult.VerificationPassed,
+		}
+		if pointResult.InputMethod != "" {
+			payload["input_method"] = pointResult.InputMethod
+		}
+		if pointResult.VerificationMethod != "" {
+			payload["verification_method"] = pointResult.VerificationMethod
+		}
+		if a11yShouldExposeVerification(pointResult, actType, intent) {
+			payload["verification_passed"] = pointResult.VerificationPassed
+		}
+		if chatState != nil {
+			chatState.applyToPayload(payload)
+			a11yPersistChatTrajectoryArtifacts(ctx, chatState, payload)
+			chatState.applyToPayload(payload)
+		}
+		return a11yJSON(payload), nil
 	}
 	if normalizeA11yActIntent(intent) == "message" {
 		resolvedTarget, conversationErr := t.maybeActivateA11yMessageConversation(ctx, backend, args, resolvedTarget, holdMS, intent)
@@ -1147,6 +1203,13 @@ func (t *A11yTool) doActWithOptions(ctx context.Context, backend a11yruntime.Bac
 			return chatErrorPayload(actionErr), nil
 		}
 	}
+	if runtime, ok := backend.(a11yruntime.SnapshotRuntime); ok {
+		token := ""
+		if !usedFocusedType && len(refMap) > 0 {
+			token = refMap[ref]
+		}
+		runtime.UpdateSnapshotAfterAction(valueOrDefault(result.WindowID, resolvedTarget), token, actType, value)
+	}
 	if !usedFocusedType && chatState != nil && chatState.intent == "select" && conversationSelector.Provided() {
 		confirmedWindow, confirmErr := t.confirmA11yMessageConversationActivated(ctx, backend, valueOrDefault(result.WindowID, resolvedTarget), conversationSelector)
 		if confirmErr != nil {
@@ -1165,12 +1228,23 @@ func (t *A11yTool) doActWithOptions(ctx context.Context, backend a11yruntime.Bac
 		result = mergeA11yActionResults(result, submitResult)
 	}
 	if chatState != nil && chatState.intent == "message" {
-		if verifyErr := t.verifyA11yChatOutcome(ctx, backend, valueOrDefault(result.WindowID, resolvedTarget), submitPlan.Enabled); verifyErr != nil {
-			return chatErrorPayload(verifyErr), nil
+		if submitPlan.Enabled {
+			if verification := chatState.submitEvidenceSnapshot(); len(verification) > 0 {
+				if _, ok := verification["status"]; !ok {
+					verification["status"] = "sent"
+				}
+				a11yRecordChatStage(ctx, chatState, a11yChatStageTypeOrSend, a11yChatStageStatusOK, "submit_phase_confirmation", "", "", verification)
+			} else if t.a11yChatGrounder() == nil && (opts.skipOutcomeVerificationWithoutGrounder || strings.TrimSpace(chatState.conversation) != "") {
+			} else if verifyErr := t.verifyA11yChatOutcome(ctx, backend, valueOrDefault(result.WindowID, resolvedTarget), true, value); verifyErr != nil {
+				return chatErrorPayload(verifyErr), nil
+			}
+		} else {
+			a11yRecordChatStage(ctx, chatState, a11yChatStageTypeOrSend, a11yChatStageStatusOK, "draft_confirmation", "", "", map[string]interface{}{
+				"status":            "drafted",
+				"confirmation":      "draft_confirmation",
+				"grounding_skipped": true,
+			})
 		}
-	}
-	if runtime, ok := backend.(a11yruntime.SnapshotRuntime); ok {
-		runtime.UpdateSnapshotAfterAction(valueOrDefault(result.WindowID, resolvedTarget), refMap[ref], actType, value)
 	}
 	t.syncWindowContextWithHint(valueOrDefault(result.WindowID, resolvedTarget), a11yWindowQueryHintFromArgs(args))
 	t.clearSnapshotRefs()
@@ -1212,6 +1286,53 @@ func (t *A11yTool) doActWithOptions(ctx context.Context, backend a11yruntime.Bac
 		chatState.applyToPayload(payload)
 	}
 	return a11yJSON(payload), nil
+}
+
+func (t *A11yTool) tryWindowPixelClickCompat(
+	ctx context.Context,
+	backend a11yruntime.Backend,
+	args map[string]interface{},
+	windowID string,
+	actType string,
+	holdMS int,
+) (a11yruntime.ActionResult, bool, error) {
+	if strings.TrimSpace(strings.ToLower(actType)) != "click" {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	if strings.TrimSpace(windowID) == "" {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	if _, ok := firstCompatValueDeep(args, "ref"); ok {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	if firstCompatString(args, "target_name", "targetName", "target_role", "targetRole") != "" {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	x, ok := firstCompatIntDeep(args, "x")
+	if !ok {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	y, ok := firstCompatIntDeep(args, "y")
+	if !ok {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	clicker, ok := backend.(hostWindowPixelClicker)
+	if !ok {
+		return a11yruntime.ActionResult{}, false, nil
+	}
+	result, err := a11yRunActionResultWithTimeout(ctx, "pixel_click", windowID, func(actionCtx context.Context) (a11yruntime.ActionResult, error) {
+		return clicker.ClickWindowPixel(actionCtx, windowID, x, y, holdMS)
+	})
+	if err != nil {
+		return a11yruntime.ActionResult{}, true, err
+	}
+	if strings.TrimSpace(result.HostOS) == "" {
+		result.HostOS = backend.HostOS()
+	}
+	if strings.TrimSpace(result.WindowID) == "" {
+		result.WindowID = strings.TrimSpace(windowID)
+	}
+	return result, true, nil
 }
 
 func (t *A11yTool) tryFocusedTypeAliasFallback(
@@ -1643,6 +1764,26 @@ func (t *A11yTool) effectiveWindowContext() (string, string) {
 	return t.lastWindow, t.lastWindowHint
 }
 
+func (t *A11yTool) currentA11yChatStructuredSnapshot(backend a11yruntime.Backend, windowID string) (*a11yruntime.Snapshot, string, bool) {
+	provider, ok := backend.(a11yStructuredSnapshotProvider)
+	if !ok {
+		return nil, "", false
+	}
+	requestedWindow := strings.TrimSpace(windowID)
+	if snapshot, ok := provider.CurrentStructuredSnapshot(requestedWindow); ok && snapshot != nil {
+		return snapshot, valueOrDefault(strings.TrimSpace(snapshot.WindowID), requestedWindow), true
+	}
+	rememberedWindow, _ := t.effectiveWindowContext()
+	rememberedWindow = strings.TrimSpace(rememberedWindow)
+	if rememberedWindow == "" || rememberedWindow == requestedWindow {
+		return nil, "", false
+	}
+	if snapshot, ok := provider.CurrentStructuredSnapshot(rememberedWindow); ok && snapshot != nil {
+		return snapshot, valueOrDefault(strings.TrimSpace(snapshot.WindowID), rememberedWindow), true
+	}
+	return nil, "", false
+}
+
 func (t *A11yTool) maybeAutoFocusExactMatch(ctx context.Context, backend a11yruntime.Backend, match *a11yWindowMatch, windowID string) {
 	if match == nil || !match.Exact || !match.Unique {
 		return
@@ -1777,6 +1918,10 @@ func (t *A11yTool) maybeRequireA11yCheckpoint(ctx context.Context, operation str
 	if !IsA11yActionHighRisk(operation, action) {
 		return nil, false, nil
 	}
+	sessionKey := t.a11yApprovalKey(ctx)
+	if t.a11yApprovedForSession(sessionKey) {
+		return nil, false, nil
+	}
 	result, hasRequester, err := RequestBrowserCheckpoint(ctx, BrowserCheckpointRequest{
 		Required:  true,
 		RiskLevel: "high",
@@ -1806,7 +1951,43 @@ func (t *A11yTool) maybeRequireA11yCheckpoint(ctx context.Context, operation str
 			"error_code": "checkpoint_denied",
 		}), true, nil
 	}
+	t.markA11yApprovedForSession(sessionKey)
 	return nil, false, nil
+}
+
+func (t *A11yTool) a11yApprovalKey(ctx context.Context) string {
+	sessionID := strings.TrimSpace(GetSessionID(ctx))
+	userID := strings.TrimSpace(GetUserID(ctx))
+	switch {
+	case userID != "" && sessionID != "":
+		return userID + ":" + sessionID
+	case sessionID != "":
+		return sessionID
+	default:
+		return ""
+	}
+}
+
+func (t *A11yTool) a11yApprovedForSession(key string) bool {
+	if strings.TrimSpace(key) == "" {
+		return false
+	}
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, ok := t.approvedSessions[key]
+	return ok
+}
+
+func (t *A11yTool) markA11yApprovedForSession(key string) {
+	if strings.TrimSpace(key) == "" {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.approvedSessions == nil {
+		t.approvedSessions = make(map[string]struct{})
+	}
+	t.approvedSessions[key] = struct{}{}
 }
 
 func IsA11yActionHighRisk(action string, actType string) bool {

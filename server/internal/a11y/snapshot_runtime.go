@@ -2,7 +2,9 @@ package a11y
 
 import (
 	"fmt"
+	"hash/fnv"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -23,6 +25,7 @@ type BuildStructuredSnapshotOptions struct {
 
 type FlatNode struct {
 	NodeID           int
+	StableID         string
 	BackendToken     string
 	ParentID         int
 	Role             string
@@ -81,21 +84,21 @@ func BuildStructuredSnapshot(options BuildStructuredSnapshotOptions, root *Node)
 		return nil
 	}
 	snapshot := &Snapshot{
-		WindowID: strings.TrimSpace(options.WindowID),
-		Title:    strings.TrimSpace(options.Title),
-		Mode:     strings.TrimSpace(options.Mode),
-		Nodes:    make([]FlatNode, 0, 32),
-		NameIndex: make(map[string][]int),
-		RoleIndex: make(map[string][]int),
+		WindowID:   strings.TrimSpace(options.WindowID),
+		Title:      strings.TrimSpace(options.Title),
+		Mode:       strings.TrimSpace(options.Mode),
+		Nodes:      make([]FlatNode, 0, 32),
+		NameIndex:  make(map[string][]int),
+		RoleIndex:  make(map[string][]int),
 		TokenIndex: make(map[string]int),
 	}
 	nextID := 1
-	buildStructuredSnapshotNodes(root, 0, 0, 0, &nextID, snapshot)
+	buildStructuredSnapshotNodes(root, 0, "", 0, 0, &nextID, snapshot)
 	snapshot.rebuildDerived()
 	return snapshot
 }
 
-func buildStructuredSnapshotNodes(node *Node, parentID int, depth int, interactiveDepth int, nextID *int, snapshot *Snapshot) {
+func buildStructuredSnapshotNodes(node *Node, parentID int, parentStableID string, depth int, interactiveDepth int, nextID *int, snapshot *Snapshot) {
 	if node == nil || snapshot == nil || nextID == nil {
 		return
 	}
@@ -110,11 +113,11 @@ func buildStructuredSnapshotNodes(node *Node, parentID int, depth int, interacti
 
 	flat := FlatNode{
 		NodeID:           nodeID,
-		BackendToken:     strings.TrimSpace(node.Token),
 		ParentID:         parentID,
 		Role:             strings.TrimSpace(node.Role),
 		Name:             strings.TrimSpace(node.Name),
 		Value:            strings.TrimSpace(node.Value),
+		Bounds:           node.Bounds,
 		State:            description,
 		Description:      description,
 		DefaultAction:    strings.TrimSpace(node.DefaultAction),
@@ -125,6 +128,8 @@ func buildStructuredSnapshotNodes(node *Node, parentID int, depth int, interacti
 		Depth:            max(depth, 0),
 		InteractiveDepth: max(interactiveDepth, 0),
 	}
+	flat.StableID = snapshotStableID(parentStableID, flat)
+	flat.BackendToken = strings.TrimSpace(node.Token)
 	snapshot.Nodes = append(snapshot.Nodes, flat)
 
 	if key := normalizeSnapshotMatchValue(flat.Name); key != "" {
@@ -147,8 +152,40 @@ func buildStructuredSnapshotNodes(node *Node, parentID int, depth int, interacti
 		nextInteractiveDepth++
 	}
 	for _, child := range node.Children {
-		buildStructuredSnapshotNodes(child, nodeID, depth+1, nextInteractiveDepth, nextID, snapshot)
+		buildStructuredSnapshotNodes(child, nodeID, flat.StableID, depth+1, nextInteractiveDepth, nextID, snapshot)
 	}
+}
+
+func snapshotStableID(parentStableID string, node FlatNode) string {
+	hasher := fnv.New64a()
+	for _, part := range []string{
+		strings.TrimSpace(parentStableID),
+		normalizeSnapshotMatchValue(node.Role),
+		normalizeSnapshotMatchValue(strings.TrimSpace(node.DefaultAction)),
+		snapshotStableBoundsKey(node.Bounds),
+		strconv.Itoa(max(node.Depth, 0)),
+	} {
+		_, _ = hasher.Write([]byte(part))
+		_, _ = hasher.Write([]byte{0})
+	}
+	return "node_" + strconv.FormatUint(hasher.Sum64(), 16)
+}
+
+func snapshotStableBoundsKey(bounds NormalizedRect) string {
+	return strings.Join([]string{
+		snapshotStableCoordinate(bounds.X),
+		snapshotStableCoordinate(bounds.Y),
+		snapshotStableCoordinate(bounds.Width),
+		snapshotStableCoordinate(bounds.Height),
+	}, ":")
+}
+
+func snapshotStableCoordinate(value float64) string {
+	const precision = 1000
+	if value <= 0 {
+		return "0"
+	}
+	return strconv.Itoa(int(value*precision + 0.5))
 }
 
 func (s *Snapshot) LookupToken(token string) int {

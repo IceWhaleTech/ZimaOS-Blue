@@ -7,19 +7,26 @@ import (
 )
 
 type TargetSelector struct {
-	Name   string
-	Role   string
-	Intent string
+	Name    string
+	Role    string
+	Intent  string
 	ActType string
 }
 
 type TargetResolution struct {
 	WindowID         string
 	NodeID           int
+	StableID         string
 	Ref              int
 	RefMap           map[int]string
 	Tree             string
 	Token            string
+	Role             string
+	Label            string
+	Bounds           NormalizedRect
+	Focused          bool
+	Visible          bool
+	Enabled          bool
 	SnapshotRevision int64
 	CacheHit         bool
 	NodeCount        int
@@ -271,10 +278,17 @@ func buildTargetResolution(snapshot *Snapshot, node FlatNode, candidateCount int
 	return TargetResolution{
 		WindowID:         snapshot.WindowID,
 		NodeID:           node.NodeID,
+		StableID:         node.StableID,
 		Ref:              projection.NodeToRef[node.NodeID],
 		RefMap:           projection.RefMap,
 		Tree:             projection.Tree,
 		Token:            node.BackendToken,
+		Role:             node.Role,
+		Label:            node.label(),
+		Bounds:           node.Bounds,
+		Focused:          node.Focused,
+		Visible:          node.Visible,
+		Enabled:          node.Enabled,
 		SnapshotRevision: snapshot.Revision,
 		NodeCount:        len(snapshot.Nodes),
 		CandidateCount:   candidateCount,
@@ -297,6 +311,8 @@ func normalizeQueryRoleFamily(role string) string {
 	switch normalizeSnapshotMatchValue(role) {
 	case "", "element":
 		return ""
+	case "conversation", "thread", "chat", "contact":
+		return "conversation"
 	case "input", "field", "text", "text_field", "search", "search_field", "textbox", "composer", "message":
 		return "input"
 	case "button", "submit":
@@ -312,6 +328,8 @@ func normalizeQueryRoleFamily(role string) string {
 
 func queryRoleAliases(roleFamily string) []string {
 	switch roleFamily {
+	case "conversation":
+		return []string{"list_item", "tree_item", "row", "cell", "tab", "button", "link", "static_text", "text"}
 	case "input":
 		return []string{"editable_text", "text_field", "text_area", "search_field", "combo_box", "document", "editor"}
 	case "button":

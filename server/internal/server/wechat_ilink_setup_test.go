@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -346,6 +348,265 @@ func TestWeChatILinkSetupHandler_GetSessionConfirmedAutoActivatesChannel(t *test
 		t.Fatal("expected wechat_ilink channel to be registered")
 	} else if got.Info().Status != channel.StatusConnected {
 		t.Fatalf("status = %q, want %q", got.Info().Status, channel.StatusConnected)
+	}
+}
+
+func TestWeChatILinkSetupHandler_EndToEndCreateThenConfirmedConnectsDespiteInitialGetUpdatesEOF(t *testing.T) {
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	manager := channel.NewManager(channel.DefaultConfig(), zap.NewNop())
+	var getUpdatesCalls atomic.Int32
+	var upstream *httptest.Server
+	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ilink/bot/get_bot_qrcode":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"qrcode":             "qr-key-e2e",
+				"qrcode_img_content": "https://ilink.example.com/scan/e2e",
+			})
+		case "/ilink/bot/get_qrcode_status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":        "confirmed",
+				"bot_token":     "bot-token-e2e",
+				"ilink_bot_id":  "bot-e2e",
+				"ilink_user_id": "user@im.wechat",
+				"baseurl":       upstream.URL,
+			})
+		case "/ilink/bot/getupdates":
+			call := getUpdatesCalls.Add(1)
+			if call == 1 {
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					t.Fatal("response writer does not support hijacking")
+				}
+				conn, _, err := hj.Hijack()
+				if err != nil {
+					t.Fatalf("Hijack error = %v", err)
+				}
+				_ = conn.Close()
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ret":                    0,
+				"msgs":                   []any{},
+				"get_updates_buf":        "cursor-e2e",
+				"longpolling_timeout_ms": 1,
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	handler := NewWeChatILinkSetupHandler(
+		store,
+		manager,
+		NewChannelFactory(zap.NewNop()),
+		zap.NewNop(),
+	)
+	if err := store.Set(wechatILinkSetupChannelID, &ChannelConfig{
+		ID:      wechatILinkSetupChannelID,
+		Enabled: false,
+		Config: map[string]string{
+			"api_base_url": upstream.URL,
+		},
+	}); err != nil {
+		t.Fatalf("store.Set error = %v", err)
+	}
+
+	createResp := callWeChatILinkCreateSession(t, handler)
+	sessionID := stringValue(createResp["session_id"])
+	if sessionID == "" {
+		t.Fatal("expected session_id from CreateSession")
+	}
+	if got := stringValue(createResp["status"]); got != wechatILinkSessionStatusPending {
+		t.Fatalf("create status = %q, want %q", got, wechatILinkSessionStatusPending)
+	}
+	if got := stringValue(createResp["scan_url"]); got != "https://ilink.example.com/scan/e2e" {
+		t.Fatalf("scan_url = %q, want %q", got, "https://ilink.example.com/scan/e2e")
+	}
+
+	getResp := callWeChatILinkGetSession(t, handler, sessionID)
+	if got := stringValue(getResp["status"]); got != wechatILinkSessionStatusConnected {
+		t.Fatalf("poll status = %q, want %q", got, wechatILinkSessionStatusConnected)
+	}
+	if got := stringValue(getResp["message"]); got != "configured" {
+		t.Fatalf("message = %q, want %q", got, "configured")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for getUpdatesCalls.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := getUpdatesCalls.Load(); got < 2 {
+		t.Fatalf("getUpdatesCalls = %d, want at least 2 to prove background poller continued after EOF", got)
+	}
+
+	cfg, ok := store.Get(wechatILinkSetupChannelID)
+	if !ok {
+		t.Fatal("expected persisted wechat_ilink config")
+	}
+	if cfg.Config["api_base_url"] != upstream.URL {
+		t.Fatalf("api_base_url = %q, want %q", cfg.Config["api_base_url"], upstream.URL)
+	}
+	if cfg.Config["bot_token"] != "bot-token-e2e" {
+		t.Fatalf("bot_token = %q, want %q", cfg.Config["bot_token"], "bot-token-e2e")
+	}
+	if got, exists := manager.Get(wechatILinkSetupChannelID); !exists {
+		t.Fatal("expected wechat_ilink channel to be registered")
+	} else {
+		defer func() {
+			_ = manager.StopChannel(context.Background(), wechatILinkSetupChannelID)
+			_ = manager.Unregister(wechatILinkSetupChannelID)
+		}()
+		if got.Info().Status != channel.StatusConnected {
+			t.Fatalf("status = %q, want %q", got.Info().Status, channel.StatusConnected)
+		}
+	}
+}
+
+func TestWeChatILinkSetupHandler_HTTPRoutesEndToEndCreateThenConfirmedConnects(t *testing.T) {
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	manager := channel.NewManager(channel.DefaultConfig(), zap.NewNop())
+	var getUpdatesCalls atomic.Int32
+	var upstream *httptest.Server
+	upstream = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ilink/bot/get_bot_qrcode":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"qrcode":             "qr-key-http-e2e",
+				"qrcode_img_content": "https://ilink.example.com/scan/http-e2e",
+			})
+		case "/ilink/bot/get_qrcode_status":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"status":        "confirmed",
+				"bot_token":     "bot-token-http-e2e",
+				"ilink_bot_id":  "bot-http-e2e",
+				"ilink_user_id": "user@im.wechat",
+				"baseurl":       upstream.URL,
+			})
+		case "/ilink/bot/getupdates":
+			call := getUpdatesCalls.Add(1)
+			if call == 1 {
+				hj, ok := w.(http.Hijacker)
+				if !ok {
+					t.Fatal("response writer does not support hijacking")
+				}
+				conn, _, err := hj.Hijack()
+				if err != nil {
+					t.Fatalf("Hijack error = %v", err)
+				}
+				_ = conn.Close()
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"ret":                    0,
+				"msgs":                   []any{},
+				"get_updates_buf":        "cursor-http-e2e",
+				"longpolling_timeout_ms": 1,
+			})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer upstream.Close()
+
+	if err := store.Set(wechatILinkSetupChannelID, &ChannelConfig{
+		ID:      wechatILinkSetupChannelID,
+		Enabled: false,
+		Config: map[string]string{
+			"api_base_url": upstream.URL,
+		},
+	}); err != nil {
+		t.Fatalf("store.Set error = %v", err)
+	}
+
+	handler := NewWeChatILinkSetupHandler(
+		store,
+		manager,
+		NewChannelFactory(zap.NewNop()),
+		zap.NewNop(),
+	)
+
+	e := echo.New()
+	api := e.Group("/api/v1")
+	api.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			req := c.Request().WithContext(context.WithValue(c.Request().Context(), auth.UserContextKey, &auth.UserClaims{
+				UserID:   "user-1",
+				Username: "user-1",
+			}))
+			c.SetRequest(req)
+			return next(c)
+		}
+	})
+	handler.RegisterRoutes(api)
+
+	server := httptest.NewServer(e)
+	defer server.Close()
+
+	createResp, err := http.Post(server.URL+"/api/v1/channels/wechat_ilink/setup/session", "application/json", nil)
+	if err != nil {
+		t.Fatalf("create session request error = %v", err)
+	}
+	defer createResp.Body.Close()
+	if createResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(createResp.Body)
+		t.Fatalf("create status = %d, want %d body=%s", createResp.StatusCode, http.StatusOK, string(body))
+	}
+
+	createBody, err := io.ReadAll(createResp.Body)
+	if err != nil {
+		t.Fatalf("read create response: %v", err)
+	}
+	createData := decodeWeChatILinkSetupResponse(t, createBody)
+	sessionID := stringValue(createData["session_id"])
+	if sessionID == "" {
+		t.Fatal("expected session_id from create response")
+	}
+	if got := stringValue(createData["status"]); got != wechatILinkSessionStatusPending {
+		t.Fatalf("create status = %q, want %q", got, wechatILinkSessionStatusPending)
+	}
+
+	getResp, err := http.Get(server.URL + "/api/v1/channels/wechat_ilink/setup/session/" + sessionID)
+	if err != nil {
+		t.Fatalf("get session request error = %v", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(getResp.Body)
+		t.Fatalf("get status = %d, want %d body=%s", getResp.StatusCode, http.StatusOK, string(body))
+	}
+
+	getBody, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("read get response: %v", err)
+	}
+	getData := decodeWeChatILinkSetupResponse(t, getBody)
+	if got := stringValue(getData["status"]); got != wechatILinkSessionStatusConnected {
+		t.Fatalf("poll status = %q, want %q", got, wechatILinkSessionStatusConnected)
+	}
+	if got := stringValue(getData["message"]); got != "configured" {
+		t.Fatalf("message = %q, want %q", got, "configured")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for getUpdatesCalls.Load() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := getUpdatesCalls.Load(); got < 2 {
+		t.Fatalf("getUpdatesCalls = %d, want at least 2 to prove background poller continued after EOF", got)
+	}
+
+	if got, exists := manager.Get(wechatILinkSetupChannelID); !exists {
+		t.Fatal("expected wechat_ilink channel to be registered")
+	} else {
+		defer func() {
+			_ = manager.StopChannel(context.Background(), wechatILinkSetupChannelID)
+			_ = manager.Unregister(wechatILinkSetupChannelID)
+		}()
+		if got.Info().Status != channel.StatusConnected {
+			t.Fatalf("status = %q, want %q", got.Info().Status, channel.StatusConnected)
+		}
 	}
 }
 

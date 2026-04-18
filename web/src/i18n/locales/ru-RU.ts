@@ -4551,6 +4551,16 @@ export default mergeHarnessLocale('ru-RU', {
     labels: {
       backend: 'Бэкенд',
       path: 'Путь',
+      char_count: 'Количество символов',
+      document: 'Документ',
+      engine: 'Движок',
+      file_name: 'Имя файла',
+      page_count: 'Количество страниц',
+      size_bytes: 'Размер (байты)',
+      markdown: 'Markdown',
+      outline: 'Оглавление',
+      pages: 'Страницы',
+      selected_pages: 'Выбранные страницы',
     },
     values: {
       strategy: {
@@ -4564,6 +4574,22 @@ export default mergeHarnessLocale('ru-RU', {
     },
     warnings: {
       listing_truncated: 'Список был обрезан; сузьте путь или увеличьте max_entries.',
+    },
+    badges: {
+      list: 'СПИСОК',
+      find: 'ПОИСК',
+      file: 'ФАЙЛ',
+      dir: 'ПАПКА',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Нет совпадений для {pattern} в {basePath}',
+      noMatchesIn: 'Нет совпадений в {basePath}',
+      matchesForIn: '{count} совпадений для {pattern} в {basePath}',
+      matchesIn: '{count} совпадений в {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Показаны первые {count} записей в {basePath} (остальные пропущены)',
+      noEntriesIn: 'Нет записей в {basePath}',
+      oneEntryIn: '1 запись в {basePath}',
+      entriesIn: '{count} записей в {basePath}',
     },
     copy: 'Копировать',
     copied: 'Скопировано!',

@@ -229,6 +229,7 @@ export interface ListItem {
 export interface TypelessCardFile extends TypelessCardBase {
   type: 'file'
   filename: string
+  displayPath?: string
   size?: string
   mimeType?: string
   downloadUrl?: string

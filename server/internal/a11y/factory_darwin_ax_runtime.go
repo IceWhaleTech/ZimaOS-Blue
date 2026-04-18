@@ -44,6 +44,16 @@ var darwinWaitForActivatedWindowRecord = func(ctx context.Context, b *darwinBack
 var darwinResolveWindowRecordForSnapshot = func(b *darwinBackend, windowID string) (darwinWindowRecord, error) {
 	return b.resolveWindowRecord(windowID)
 }
+var darwinRefreshWindowRecordForSnapshot = func(b *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
+	return b.refreshWindowRecord(current)
+}
+var darwinFindWindowElementForSnapshot = darwinFindWindowElement
+var darwinResolveWindowRecordForPointClick = func(b *darwinBackend, windowID string) (darwinWindowRecord, error) {
+	return b.resolveWindowRecord(windowID)
+}
+var darwinRefreshWindowRecordForPointClick = func(b *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
+	return b.refreshWindowRecord(current)
+}
 var darwinCaptureSnapshotScreenshot = func(ctx context.Context, b *darwinBackend, record darwinWindowRecord) (ScreenshotResult, error) {
 	return b.screenshotWindowRecord(ctx, record)
 }
@@ -55,6 +65,7 @@ var darwinUnicodeTextInputFunc = darwinSendText
 var darwinHighlightInputBoundsFunc = func(bounds darwinRect, duration time.Duration) error {
 	return darwinCLIFallback.showHighlightOverlay(nil, bounds, duration)
 }
+var darwinClickPointForHostAction = darwinClickPoint
 var darwinCaptureRegionPNGFunc = darwinCaptureRegionPNG
 var darwinExtractTextFromPNGFunc = darwinExtractTextFromPNG
 
@@ -145,7 +156,15 @@ func (b *darwinBackend) snapshot(ctx context.Context, windowID string, interacti
 	start := time.Now()
 	snapshot, cacheHit, telemetry, err := b.ensureStructuredSnapshot(ctx, record)
 	if err != nil {
-		return SnapshotResult{HostOS: b.HostOS()}, err
+		return SnapshotResult{HostOS: b.HostOS()}, enrichSnapshotErrorWithImage(ctx, err, record.ID, func(ctx context.Context, _ string) (ScreenshotResult, error) {
+			return darwinCaptureSnapshotScreenshot(ctx, b, record)
+		})
+	}
+	if strings.TrimSpace(snapshot.WindowID) != "" {
+		record.ID = snapshot.WindowID
+	}
+	if strings.TrimSpace(snapshot.Title) != "" {
+		record.Title = snapshot.Title
 	}
 	mode := SnapshotProjectionFull
 	if interactiveOnly {
@@ -165,7 +184,7 @@ func (b *darwinBackend) snapshot(ctx context.Context, windowID string, interacti
 		Message:         "Host accessibility snapshot ready",
 		ActionTelemetry: telemetry,
 	}
-	return attachSnapshotImage(ctx, result, b.screenshot), nil
+	return result, nil
 }
 
 func (b *darwinBackend) enrichSnapshotPermissionError(ctx context.Context, record darwinWindowRecord, err error) error {
@@ -385,7 +404,55 @@ func (b *darwinBackend) clickWindowPoint(ctx context.Context, windowID string, p
 		X: record.Bounds.Origin.X + point.X*record.Bounds.Size.Width,
 		Y: record.Bounds.Origin.Y + point.Y*record.Bounds.Size.Height,
 	}
-	if err := darwinClickPoint(clickPoint, darwinCGMouseButtonLeft, false, false, NormalizeHoldMS(holdMS)); err != nil {
+	if err := darwinClickPointForHostAction(clickPoint, darwinCGMouseButtonLeft, false, false, NormalizeHoldMS(holdMS)); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	return ActionResult{
+		HostOS:             b.HostOS(),
+		WindowID:           record.ID,
+		ExecutionMode:      "input",
+		TargetHit:          true,
+		InputMethod:        "input_click",
+		VerificationPassed: true,
+		VerificationMethod: "point_click",
+		Message:            "Host action completed",
+	}, nil
+}
+
+func (b *darwinBackend) clickWindowPixel(ctx context.Context, windowID string, x int, y int, holdMS int) (ActionResult, error) {
+	if err := b.ensureAccessibilityPermission(); err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	if x < 0 || y < 0 {
+		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "window pixel click point must be non-negative", map[string]interface{}{
+			"x": x,
+			"y": y,
+		})
+	}
+	record, err := darwinResolveWindowRecordForPointClick(b, strings.TrimSpace(windowID))
+	if err != nil {
+		return ActionResult{HostOS: b.HostOS()}, err
+	}
+	if refreshed, refreshErr := darwinRefreshWindowRecordForPointClick(b, record); refreshErr == nil {
+		record = refreshed
+	}
+	if !darwinRectDefined(record.Bounds) || record.Bounds.Size.Width <= 0 || record.Bounds.Size.Height <= 0 {
+		return ActionResult{HostOS: b.HostOS()}, NewError("backend_unavailable", "target window has no visible bounds", map[string]interface{}{
+			"window_id": record.ID,
+		})
+	}
+	if float64(x) > record.Bounds.Size.Width || float64(y) > record.Bounds.Size.Height {
+		return ActionResult{HostOS: b.HostOS()}, NewError("unsupported_action", "window pixel click point is outside visible bounds", map[string]interface{}{
+			"window_id": record.ID,
+			"x":         x,
+			"y":         y,
+		})
+	}
+	clickPoint := darwinPoint{
+		X: record.Bounds.Origin.X + float64(x),
+		Y: record.Bounds.Origin.Y + float64(y),
+	}
+	if err := darwinClickPointForHostAction(clickPoint, darwinCGMouseButtonLeft, false, false, NormalizeHoldMS(holdMS)); err != nil {
 		return ActionResult{HostOS: b.HostOS()}, err
 	}
 	return ActionResult{
@@ -671,10 +738,20 @@ func darwinRectDefined(rect darwinRect) bool {
 }
 
 func (b *darwinBackend) buildSnapshotNode(element uintptr, depth int, visited *int) *Node {
+	return b.buildSnapshotNodeWithinWindow(element, depth, visited, darwinRect{}, false)
+}
+
+func (b *darwinBackend) buildSnapshotNodeWithinWindow(element uintptr, depth int, visited *int, windowBounds darwinRect, hasWindowBounds bool) *Node {
 	if element == 0 || depth > darwinSnapshotMaxDepth || visited == nil || *visited >= darwinSnapshotMaxNodes {
 		return nil
 	}
 	*visited = *visited + 1
+
+	elementBounds, hasElementBounds := darwinElementBounds(element)
+	if !hasWindowBounds && hasElementBounds && darwinRectDefined(elementBounds) {
+		windowBounds = elementBounds
+		hasWindowBounds = true
+	}
 
 	roleRaw := darwinCopyStringAttribute(element, "AXSubrole")
 	if strings.TrimSpace(roleRaw) == "" {
@@ -689,7 +766,15 @@ func (b *darwinBackend) buildSnapshotNode(element uintptr, depth int, visited *i
 	valueRef := darwinMustCopyAttributeValue(element, "AXValue")
 	value := darwinCFTypeValueString(valueRef)
 	darwinRelease(valueRef)
-	description := darwinCopyStringAttribute(element, "AXDescription")
+	focused, hasFocused := darwinCopyBoolAttribute(element, "AXFocused")
+	selected, hasSelected := darwinCopyBoolAttribute(element, "AXSelected")
+	expanded, hasExpanded := darwinCopyBoolAttribute(element, "AXExpanded")
+	description := darwinSnapshotDescriptionWithState(
+		darwinCopyStringAttribute(element, "AXDescription"),
+		hasFocused && focused,
+		hasSelected && selected,
+		hasExpanded && expanded,
+	)
 	actions := darwinCopyActionNamesForElement(element)
 	valueSettable := darwinAttributeSettable(element, "AXValue")
 	defaultAction := darwinDefaultActionLabel(actions)
@@ -702,6 +787,9 @@ func (b *darwinBackend) buildSnapshotNode(element uintptr, depth int, visited *i
 		Description:   description,
 		DefaultAction: defaultAction,
 		Interactive:   interactive,
+	}
+	if normalizedBounds, ok := darwinNormalizeSnapshotBounds(elementBounds, hasElementBounds, windowBounds, hasWindowBounds); ok {
+		node.Bounds = normalizedBounds
 	}
 	if interactive || strings.TrimSpace(defaultAction) != "" {
 		node.Token = b.storeSnapshotElement(element)
@@ -722,11 +810,30 @@ func (b *darwinBackend) buildSnapshotNode(element uintptr, depth int, visited *i
 		if child == 0 {
 			continue
 		}
-		if childNode := b.buildSnapshotNode(child, depth+1, visited); childNode != nil {
+		if childNode := b.buildSnapshotNodeWithinWindow(child, depth+1, visited, windowBounds, hasWindowBounds); childNode != nil {
 			node.Children = append(node.Children, childNode)
 		}
 	}
 	return node
+}
+
+func darwinNormalizeSnapshotBounds(bounds darwinRect, hasBounds bool, windowBounds darwinRect, hasWindowBounds bool) (NormalizedRect, bool) {
+	if !hasBounds || !hasWindowBounds {
+		return NormalizedRect{}, false
+	}
+	if windowBounds.Size.Width <= 0 || windowBounds.Size.Height <= 0 {
+		return NormalizedRect{}, false
+	}
+	if bounds.Size.Width <= 0 || bounds.Size.Height <= 0 {
+		return NormalizedRect{}, false
+	}
+	rect := NormalizedRect{
+		X:      (bounds.Origin.X - windowBounds.Origin.X) / windowBounds.Size.Width,
+		Y:      (bounds.Origin.Y - windowBounds.Origin.Y) / windowBounds.Size.Height,
+		Width:  bounds.Size.Width / windowBounds.Size.Width,
+		Height: bounds.Size.Height / windowBounds.Size.Height,
+	}
+	return clampNormalizedRect(rect), true
 }
 
 func (b *darwinBackend) resetSnapshotElements() {
@@ -1080,6 +1187,9 @@ func darwinFindWindowElement(app uintptr, record darwinWindowRecord) uintptr {
 		if darwinWindowElementMatches(focused, record) {
 			return focused
 		}
+		if record.Focused {
+			return focused
+		}
 		darwinRelease(focused)
 	}
 	windowsRef, err := darwinCopyAttributeValue(app, "AXWindows")
@@ -1291,6 +1401,9 @@ func darwinCopyBoolAttribute(element uintptr, attribute string) (bool, bool) {
 		return false, false
 	}
 	defer darwinRelease(value)
+	if value < 0x1000 {
+		return false, false
+	}
 	if darwinCFGetTypeID == nil || darwinCFBooleanGetTypeID == nil || darwinCFBooleanGetValue == nil {
 		return false, false
 	}
@@ -1368,6 +1481,38 @@ func darwinDefaultActionLabel(actions []string) string {
 		}
 	}
 	return ""
+}
+
+func darwinSnapshotDescriptionWithState(base string, focused bool, selected bool, expanded bool) string {
+	parts := make([]string, 0, 4)
+	appendPart := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		for _, existing := range parts {
+			if strings.EqualFold(existing, value) {
+				return
+			}
+		}
+		parts = append(parts, value)
+	}
+
+	base = strings.TrimSpace(base)
+	if base != "" {
+		parts = append(parts, base)
+	}
+	normalizedBase := strings.ToLower(base)
+	if focused && !strings.Contains(normalizedBase, "focused") {
+		appendPart("focused")
+	}
+	if selected && !strings.Contains(normalizedBase, "selected") {
+		appendPart("selected")
+	}
+	if expanded && !strings.Contains(normalizedBase, "expanded") {
+		appendPart("expanded")
+	}
+	return strings.Join(parts, " ")
 }
 
 func darwinRoleLikelyInteractive(role string) bool {

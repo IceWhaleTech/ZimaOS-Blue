@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 func TestDarwinCapabilities_DoesNotRequestPromptWhenDenied(t *testing.T) {
@@ -488,6 +489,226 @@ func TestDarwinTypeFocusedText_FallsBackToUnicodeInput(t *testing.T) {
 	}
 }
 
+func TestDarwinClickWindowPixel_RefreshesWindowRecordAndClicksRelativePoint(t *testing.T) {
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevResolve := darwinResolveWindowRecordForPointClick
+	prevRefresh := darwinRefreshWindowRecordForPointClick
+	prevClick := darwinClickPointForHostAction
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinResolveWindowRecordForPointClick = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
+		if windowID != "win-1" {
+			t.Fatalf("resolve windowID = %q, want win-1", windowID)
+		}
+		return darwinWindowRecord{
+			ID:    "win-1",
+			Title: "Feishu",
+			PID:   123,
+			Bounds: darwinRect{
+				Origin: darwinPoint{X: 10, Y: 20},
+				Size:   darwinSize{Width: 320, Height: 240},
+			},
+		}, nil
+	}
+	darwinRefreshWindowRecordForPointClick = func(_ *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
+		if current.ID != "win-1" {
+			t.Fatalf("refresh current.ID = %q, want win-1", current.ID)
+		}
+		current.ID = "win-9"
+		current.Bounds = darwinRect{
+			Origin: darwinPoint{X: 40, Y: 60},
+			Size:   darwinSize{Width: 400, Height: 300},
+		}
+		return current, nil
+	}
+	var clicked darwinPoint
+	clickHoldMS := 0
+	darwinClickPointForHostAction = func(center darwinPoint, button uint32, doubleClick bool, hold bool, holdMS int) error {
+		clicked = center
+		clickHoldMS = holdMS
+		if button != darwinCGMouseButtonLeft {
+			t.Fatalf("button = %d, want left", button)
+		}
+		if doubleClick {
+			t.Fatal("doubleClick = true, want false")
+		}
+		if hold {
+			t.Fatal("hold = true, want false")
+		}
+		return nil
+	}
+	defer func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinResolveWindowRecordForPointClick = prevResolve
+		darwinRefreshWindowRecordForPointClick = prevRefresh
+		darwinClickPointForHostAction = prevClick
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	result, err := backend.ClickWindowPixel(context.Background(), "win-1", 100, 120, 750)
+	if err != nil {
+		t.Fatalf("ClickWindowPixel() error = %v", err)
+	}
+	if result.WindowID != "win-9" {
+		t.Fatalf("window_id = %q, want win-9", result.WindowID)
+	}
+	if result.ExecutionMode != "input" {
+		t.Fatalf("execution_mode = %q, want input", result.ExecutionMode)
+	}
+	if clicked.X != 140 || clicked.Y != 180 {
+		t.Fatalf("clicked = %#v, want {X:140 Y:180}", clicked)
+	}
+	if clickHoldMS != 750 {
+		t.Fatalf("clickHoldMS = %d, want 750", clickHoldMS)
+	}
+}
+
+func TestDarwinClickWindowPixel_RejectsOutOfBoundsPoint(t *testing.T) {
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevResolve := darwinResolveWindowRecordForPointClick
+	prevRefresh := darwinRefreshWindowRecordForPointClick
+	prevClick := darwinClickPointForHostAction
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinResolveWindowRecordForPointClick = func(_ *darwinBackend, _ string) (darwinWindowRecord, error) {
+		return darwinWindowRecord{
+			ID: "win-1",
+			Bounds: darwinRect{
+				Origin: darwinPoint{X: 10, Y: 20},
+				Size:   darwinSize{Width: 80, Height: 60},
+			},
+		}, nil
+	}
+	darwinRefreshWindowRecordForPointClick = func(_ *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
+		return current, nil
+	}
+	clickCalls := 0
+	darwinClickPointForHostAction = func(darwinPoint, uint32, bool, bool, int) error {
+		clickCalls++
+		return nil
+	}
+	defer func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinResolveWindowRecordForPointClick = prevResolve
+		darwinRefreshWindowRecordForPointClick = prevRefresh
+		darwinClickPointForHostAction = prevClick
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	_, err := backend.ClickWindowPixel(context.Background(), "win-1", 100, 10, 600)
+	if err == nil {
+		t.Fatal("ClickWindowPixel() error = nil, want out-of-bounds error")
+	}
+	runtimeErr, ok := err.(*RuntimeError)
+	if !ok {
+		t.Fatalf("error = %T, want *RuntimeError", err)
+	}
+	if runtimeErr.Code != "unsupported_action" {
+		t.Fatalf("code = %q, want unsupported_action", runtimeErr.Code)
+	}
+	if clickCalls != 0 {
+		t.Fatalf("clickCalls = %d, want 0", clickCalls)
+	}
+}
+
+func TestDarwinFindSnapshotWindowElement_RetriesWithRefreshedRecord(t *testing.T) {
+	prevRefresh := darwinRefreshWindowRecordForSnapshot
+	prevFind := darwinFindWindowElementForSnapshot
+	findCalls := make([]string, 0, 2)
+	darwinRefreshWindowRecordForSnapshot = func(_ *darwinBackend, current darwinWindowRecord) (darwinWindowRecord, error) {
+		if current.ID != "win-1" {
+			t.Fatalf("refresh current.ID = %q, want win-1", current.ID)
+		}
+		current.ID = "win-9"
+		return current, nil
+	}
+	darwinFindWindowElementForSnapshot = func(_ uintptr, record darwinWindowRecord) uintptr {
+		findCalls = append(findCalls, record.ID)
+		if record.ID == "win-9" {
+			return 2
+		}
+		return 0
+	}
+	defer func() {
+		darwinRefreshWindowRecordForSnapshot = prevRefresh
+		darwinFindWindowElementForSnapshot = prevFind
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	record, window := backend.findSnapshotWindowElement(1, darwinWindowRecord{ID: "win-1", PID: 123, Title: "Feishu"})
+	if record.ID != "win-9" {
+		t.Fatalf("record.ID = %q, want win-9", record.ID)
+	}
+	if window != 2 {
+		t.Fatalf("window = %d, want 2", window)
+	}
+	if len(findCalls) == 0 {
+		t.Fatal("expected AX window lookup attempts")
+	}
+	if len(findCalls) != 2 || findCalls[0] != "win-1" || findCalls[1] != "win-9" {
+		t.Fatalf("findCalls = %#v, want [win-1 win-9]", findCalls)
+	}
+}
+
+func TestDarwinFindWindowElement_UsesFocusedWindowFallbackWhenFocusedRecordAndWindowListUnavailable(t *testing.T) {
+	initDarwinRuntime()
+	prevCopyAttr := darwinAXUIElementCopyAttributeValue
+	prevStringCreate := darwinCFStringCreate
+	prevRelease := darwinCFRelease
+	attrNames := map[uintptr]string{}
+	nextAttrRef := uintptr(100)
+	darwinCFStringCreate = func(_ uintptr, cstr *byte, _ uint32) uintptr {
+		if cstr == nil {
+			return 0
+		}
+		buf := make([]byte, 0, 32)
+		for ptr := uintptr(unsafe.Pointer(cstr)); ; ptr++ {
+			ch := *(*byte)(unsafe.Pointer(ptr))
+			if ch == 0 {
+				break
+			}
+			buf = append(buf, ch)
+		}
+		ref := nextAttrRef
+		nextAttrRef++
+		attrNames[ref] = string(buf)
+		return ref
+	}
+	darwinAXUIElementCopyAttributeValue = func(element uintptr, attrRef uintptr, out *uintptr) int32 {
+		switch {
+		case element == 1 && attrNames[attrRef] == "AXFocusedWindow":
+			if out != nil {
+				*out = 2
+			}
+			return darwinAXErrorSuccess
+		case element == 1 && attrNames[attrRef] == "AXWindows":
+			if out != nil {
+				*out = 0
+			}
+			return 1
+		default:
+			if out != nil {
+				*out = 0
+			}
+			return 1
+		}
+	}
+	darwinCFRelease = func(uintptr) {}
+	defer func() {
+		darwinAXUIElementCopyAttributeValue = prevCopyAttr
+		darwinCFStringCreate = prevStringCreate
+		darwinCFRelease = prevRelease
+	}()
+
+	got := darwinFindWindowElement(1, darwinWindowRecord{
+		ID:      "win-1",
+		AppName: "Feishu",
+		Title:   "Feishu",
+		Focused: true,
+	})
+	if got != 2 {
+		t.Fatalf("darwinFindWindowElement() = %d, want focused window fallback 2", got)
+	}
+}
+
 func TestDarwinScreenshot_RetriesWithRefreshedWindowIDAfterFailure(t *testing.T) {
 	prevResolve := darwinResolveWindowRecordForCapture
 	prevRefresh := darwinRefreshWindowRecordForCapture
@@ -668,6 +889,66 @@ func TestDarwinSnapshot_PermissionDeniedIncludesNativeScreenshotHint(t *testing.
 	}
 	if got := runtimeErr.Details["image_path"]; got != "/tmp/host-window-6263.png" {
 		t.Fatalf("image_path = %v, want /tmp/host-window-6263.png", got)
+	}
+}
+
+func TestDarwinSnapshot_DoesNotCaptureNativeScreenshotOnSuccess(t *testing.T) {
+	prevGranted := darwinAccessibilityGrantedProbe
+	prevResolve := darwinResolveWindowRecordForSnapshot
+	prevResolveCapture := darwinResolveWindowRecordForCapture
+	prevCapture := darwinCaptureWindowImage
+	darwinAccessibilityGrantedProbe = func() bool { return true }
+	darwinResolveWindowRecordForSnapshot = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
+		return darwinWindowRecord{ID: windowID, AppName: "Feishu", Title: "Feishu", PID: 100}, nil
+	}
+	captureCalls := 0
+	darwinResolveWindowRecordForCapture = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
+		captureCalls++
+		return darwinWindowRecord{ID: windowID, AppName: "Feishu", Title: "Feishu", PID: 100}, nil
+	}
+	darwinCaptureWindowImage = func(_ context.Context, _ string, _ string) (string, error) {
+		captureCalls++
+		return "", nil
+	}
+	defer func() {
+		darwinAccessibilityGrantedProbe = prevGranted
+		darwinResolveWindowRecordForSnapshot = prevResolve
+		darwinResolveWindowRecordForCapture = prevResolveCapture
+		darwinCaptureWindowImage = prevCapture
+	}()
+
+	backend := DefaultHostBackend("").(*darwinBackend)
+	snapshot := BuildStructuredSnapshot(BuildStructuredSnapshotOptions{
+		WindowID: "6263",
+		Title:    "Feishu",
+		Mode:     "ax",
+	}, &Node{
+		Role: "window",
+		Name: "Feishu",
+		Children: []*Node{{
+			Token:       "token-search",
+			Role:        "search_field",
+			Name:        "Search",
+			Interactive: true,
+		}},
+	})
+	if snapshot == nil {
+		t.Fatal("BuildStructuredSnapshot() = nil")
+	}
+	backend.snapshots.Swap(snapshot)
+
+	result, err := backend.snapshot(context.Background(), "6263", false)
+	if err != nil {
+		t.Fatalf("snapshot() error = %v", err)
+	}
+	if captureCalls != 0 {
+		t.Fatalf("captureCalls = %d, want 0", captureCalls)
+	}
+	if result.ImagePath != "" {
+		t.Fatalf("image_path = %q, want empty on successful AX snapshot", result.ImagePath)
+	}
+	if result.Tree == "" {
+		t.Fatal("tree = empty, want cached snapshot tree")
 	}
 }
 
@@ -884,6 +1165,20 @@ func TestDarwinBuildSnapshotNode_ToleratesMissingArrayValueGetter(t *testing.T) 
 	}
 }
 
+func TestDarwinSnapshotDescriptionWithState_AppendsSelectedAndKeepsFocusedUndeduped(t *testing.T) {
+	got := darwinSnapshotDescriptionWithState("editable focused", true, true, false)
+	if got != "editable focused selected" {
+		t.Fatalf("description = %q, want %q", got, "editable focused selected")
+	}
+}
+
+func TestDarwinSnapshotDescriptionWithState_UsesStateWhenBaseIsEmpty(t *testing.T) {
+	got := darwinSnapshotDescriptionWithState("", false, true, true)
+	if got != "selected expanded" {
+		t.Fatalf("description = %q, want %q", got, "selected expanded")
+	}
+}
+
 func TestDarwinDictionaryValue_ToleratesMissingCFRelease(t *testing.T) {
 	initDarwinRuntime()
 	prevDictGet := darwinCFDictionaryGetValue
@@ -963,15 +1258,29 @@ func TestDarwinSnapshot_ReturnsBackendUnavailableWhenCreateApplicationBindingMis
 	prevGranted := darwinAccessibilityGrantedProbe
 	prevResolve := darwinResolveWindowRecordForSnapshot
 	prevCreateApp := darwinAXUIElementCreateApplication
+	prevSnapshotCapture := darwinCaptureSnapshotScreenshot
 	darwinAccessibilityGrantedProbe = func() bool { return true }
 	darwinResolveWindowRecordForSnapshot = func(_ *darwinBackend, windowID string) (darwinWindowRecord, error) {
 		return darwinWindowRecord{ID: windowID, AppName: "Feishu", Title: "Feishu", PID: 100}, nil
 	}
 	darwinAXUIElementCreateApplication = nil
+	captureCalls := 0
+	darwinCaptureSnapshotScreenshot = func(_ context.Context, _ *darwinBackend, record darwinWindowRecord) (ScreenshotResult, error) {
+		captureCalls++
+		if record.ID != "6263" {
+			t.Fatalf("record.ID = %q, want 6263", record.ID)
+		}
+		return ScreenshotResult{
+			HostOS:    "darwin",
+			WindowID:  record.ID,
+			ImagePath: "/tmp/host-window-6263.png",
+		}, nil
+	}
 	defer func() {
 		darwinAccessibilityGrantedProbe = prevGranted
 		darwinResolveWindowRecordForSnapshot = prevResolve
 		darwinAXUIElementCreateApplication = prevCreateApp
+		darwinCaptureSnapshotScreenshot = prevSnapshotCapture
 	}()
 
 	backend := DefaultHostBackend("").(*darwinBackend)
@@ -993,6 +1302,15 @@ func TestDarwinSnapshot_ReturnsBackendUnavailableWhenCreateApplicationBindingMis
 	}
 	if runtimeErr.Code != "backend_unavailable" {
 		t.Fatalf("code = %q, want backend_unavailable", runtimeErr.Code)
+	}
+	if captureCalls != 1 {
+		t.Fatalf("captureCalls = %d, want 1", captureCalls)
+	}
+	if got := runtimeErr.Details["window_id"]; got != "6263" {
+		t.Fatalf("window_id = %v, want 6263", got)
+	}
+	if got := runtimeErr.Details["image_path"]; got != "/tmp/host-window-6263.png" {
+		t.Fatalf("image_path = %v, want /tmp/host-window-6263.png", got)
 	}
 }
 

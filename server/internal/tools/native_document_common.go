@@ -49,6 +49,8 @@ type zipArchiveEntry struct {
 	Method uint16
 }
 
+const maxNativeDocumentCreateSeedBytes = 8 << 20 // 8 MiB
+
 func marshalNativeDocumentPayload(payload nativeDocumentPayload) (string, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -98,6 +100,127 @@ func nativeDocumentEngineForFormat(format string) string {
 	default:
 		return "native_document"
 	}
+}
+
+func maybeSeedNativeDocumentCreateFromSingleInputPath(ctx context.Context, scope *fsToolScope, format string, args map[string]interface{}) error {
+	if scope == nil || args == nil {
+		return nil
+	}
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		return nil
+	}
+	outputExt := "." + format
+
+	rawPath := strings.TrimSpace(asString(args["path"]))
+	explicitOutputPath := strings.TrimSpace(firstCompatString(args, "output_path", "outputPath", "destination_path", "destinationPath", "output", "destination", "dest", "to"))
+	seedPath := strings.TrimSpace(firstCompatString(args, "input_path", "inputPath", "source_path", "sourcePath", "source", "from"))
+
+	// If `path` is present but doesn't target the requested format, interpret it
+	// as the single input/seed file and derive the output path from it.
+	derivedOutputFromPath := false
+	if seedPath == "" && rawPath != "" && !strings.HasSuffix(strings.ToLower(rawPath), outputExt) {
+		seedPath = rawPath
+		rawPath = ""
+		derivedOutputFromPath = true
+	}
+
+	outputPath := strings.TrimSpace(rawPath)
+	if outputPath == "" {
+		outputPath = explicitOutputPath
+	}
+	if outputPath == "" && seedPath != "" {
+		base := strings.TrimSuffix(filepath.Base(seedPath), filepath.Ext(seedPath))
+		if strings.TrimSpace(base) == "" || base == "." {
+			base = "document"
+		}
+		outputPath = filepath.Join(filepath.Dir(seedPath), base+outputExt)
+		if strings.EqualFold(filepath.Clean(outputPath), filepath.Clean(seedPath)) {
+			outputPath = filepath.Join(filepath.Dir(seedPath), base+"_generated"+outputExt)
+		}
+	}
+
+	if seedPath != "" && !nativeDocumentCreateHasSeedContent(args, format) {
+		absSeed, _, _, err := scope.resolvePathWithContext(ctx, format, seedPath, false)
+		if err != nil {
+			return err
+		}
+		info, err := os.Stat(absSeed)
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return fmt.Errorf("input_path must be a file, got directory")
+		}
+		if info.Size() > maxNativeDocumentCreateSeedBytes {
+			return fmt.Errorf("input file is too large to seed native %s create (%d bytes > %d bytes)", format, info.Size(), int64(maxNativeDocumentCreateSeedBytes))
+		}
+		data, err := os.ReadFile(absSeed)
+		if err != nil {
+			return err
+		}
+		args["markdown"] = string(data)
+	}
+
+	// Ensure create-like actions see a valid output path. In the "single input"
+	// mode (seed path passed via `path`), `path` must be rewritten so the tool
+	// writes to the derived location.
+	if outputPath != "" && (strings.TrimSpace(asString(args["path"])) == "" || derivedOutputFromPath) {
+		args["path"] = outputPath
+	}
+
+	return nil
+}
+
+func nativeDocumentCreateHasSeedContent(args map[string]interface{}, format string) bool {
+	if args == nil {
+		return false
+	}
+
+	if strings.TrimSpace(firstCompatString(args, "content", "markdown", "body", "text")) != "" {
+		return true
+	}
+	if raw, ok := compatArgValue(args, "summary"); ok && raw != nil {
+		switch typed := raw.(type) {
+		case string:
+			return strings.TrimSpace(typed) != ""
+		case map[string]interface{}:
+			return len(typed) > 0
+		default:
+			return true
+		}
+	}
+	if raw, ok := compatArgValue(args, "sections", "paragraphs", "notes"); ok && raw != nil {
+		switch typed := raw.(type) {
+		case []interface{}:
+			return len(typed) > 0
+		case []string:
+			return len(typed) > 0
+		case map[string]interface{}:
+			return len(typed) > 0
+		case string:
+			return strings.TrimSpace(typed) != ""
+		default:
+			return true
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(format), "xlsx") {
+		if raw, ok := compatArgValue(args, "sheets", "sheet", "columns", "rows", "table", "cells"); ok && raw != nil {
+			switch typed := raw.(type) {
+			case []interface{}:
+				return len(typed) > 0
+			case map[string]interface{}:
+				return len(typed) > 0
+			case string:
+				return strings.TrimSpace(typed) != ""
+			default:
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func buildReadPayloadFromDocumentResult(action, relPath, absPath, format, inputExt string, size int64, result *convertpkg.DocumentReadResult, warnings []string) nativeDocumentPayload {

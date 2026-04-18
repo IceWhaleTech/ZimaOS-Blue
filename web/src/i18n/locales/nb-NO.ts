@@ -4531,6 +4531,16 @@ export default mergeHarnessLocale('nb-NO', {
     labels: {
       backend: 'Backend',
       path: 'Sti',
+      char_count: 'Antall tegn',
+      document: 'Dokument',
+      engine: 'Motor',
+      file_name: 'Filnavn',
+      page_count: 'Antall sider',
+      size_bytes: 'Størrelse (byte)',
+      markdown: 'Markdown',
+      outline: 'Oversikt',
+      pages: 'Sider',
+      selected_pages: 'Valgte sider',
     },
     values: {
       strategy: {
@@ -4544,6 +4554,22 @@ export default mergeHarnessLocale('nb-NO', {
     },
     warnings: {
       listing_truncated: 'Listen ble avkortet; snevr inn stien eller øk max_entries.',
+    },
+    badges: {
+      list: 'LISTE',
+      find: 'SØK',
+      file: 'FIL',
+      dir: 'MAPPE',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Ingen treff for {pattern} i {basePath}',
+      noMatchesIn: 'Ingen treff i {basePath}',
+      matchesForIn: '{count} treff for {pattern} i {basePath}',
+      matchesIn: '{count} treff i {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Viser de første {count} oppføringene i {basePath} (flere utelatt)',
+      noEntriesIn: 'Ingen oppføringer i {basePath}',
+      oneEntryIn: '1 oppføring i {basePath}',
+      entriesIn: '{count} oppføringer i {basePath}',
     },
     copy: 'Kopier',
     copied: 'Kopiert!',

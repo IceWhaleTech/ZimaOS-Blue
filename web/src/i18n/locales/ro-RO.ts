@@ -4567,6 +4567,16 @@ export default mergeHarnessLocale('ro-RO', {
     labels: {
       backend: 'Backend',
       path: 'Cale',
+      char_count: 'Număr de caractere',
+      document: 'Document',
+      engine: 'Motor',
+      file_name: 'Nume fișier',
+      page_count: 'Număr de pagini',
+      size_bytes: 'Dimensiune (octeți)',
+      markdown: 'Markdown',
+      outline: 'Structură',
+      pages: 'Pagini',
+      selected_pages: 'Pagini selectate',
     },
     values: {
       strategy: {
@@ -4580,6 +4590,22 @@ export default mergeHarnessLocale('ro-RO', {
     },
     warnings: {
       listing_truncated: 'Lista a fost trunchiată; restrânge calea sau mărește max_entries.',
+    },
+    badges: {
+      list: 'LISTĂ',
+      find: 'CAUTĂ',
+      file: 'FIȘIER',
+      dir: 'DOSAR',
+    },
+    directoryListing: {
+      noMatchesForIn: 'Nicio potrivire pentru {pattern} în {basePath}',
+      noMatchesIn: 'Nicio potrivire în {basePath}',
+      matchesForIn: '{count} potriviri pentru {pattern} în {basePath}',
+      matchesIn: '{count} potriviri în {basePath}',
+      showingFirstEntriesInMoreOmitted: 'Se afișează primele {count} intrări în {basePath} (mai multe omise)',
+      noEntriesIn: 'Nicio intrare în {basePath}',
+      oneEntryIn: '1 intrare în {basePath}',
+      entriesIn: '{count} intrări în {basePath}',
     },
     copy: 'Copiază',
     copied: 'Copiat!',

@@ -101,6 +101,7 @@ const GENERATED_SCAN_CONVERSATION_LIMIT = 20
 const GENERATED_SCAN_MESSAGE_LIMIT = 120
 const GENERATED_REFRESH_DEBOUNCE_MS = 1200
 const GENERATED_RECENT_WINDOW_MS = 2 * 60 * 1000
+const DEFAULT_COLLAPSED_WORKSPACE_DIRS = new Set(['memory', 'knowledge'])
 
 const coreWorkspaceFileInfo: Record<string, CoreWorkspaceFileInfo> = {
   'SOUL.md': { icon: '🧠', labelKey: 'workspace.label.soul', descKey: 'workspace.desc.soul' },
@@ -274,6 +275,88 @@ function toPathKey(value: string): string {
   return normalized
 }
 
+function pathSegments(path: string): { segments: string[]; absolute: boolean } {
+  const normalized = toPathKey(path)
+  if (!normalized) return { segments: [], absolute: false }
+  return {
+    segments: normalized.split('/').filter(Boolean),
+    absolute: normalized.startsWith('/'),
+  }
+}
+
+function joinPathSegments(segments: string[], absolute: boolean): string {
+  if (!segments.length) return absolute ? '/' : ''
+  const joined = segments.join('/')
+  return absolute ? `/${joined}` : joined
+}
+
+function pathLooksLikeFile(path: string): boolean {
+  const normalized = toPathKey(path)
+  if (!normalized) return false
+  const lastSegment = normalized.split('/').filter(Boolean).pop() || ''
+  return /\.[^./\\]+$/.test(lastSegment)
+}
+
+function getPathParent(path: string): string {
+  const normalized = toPathKey(path)
+  if (!normalized) return ''
+  const lastSlash = normalized.lastIndexOf('/')
+  if (lastSlash <= 0) return ''
+  return normalized.slice(0, lastSlash)
+}
+
+function getGeneratedPathScopeCandidate(path: string): string {
+  const normalized = toPathKey(path)
+  if (!normalized) return ''
+  if (!pathLooksLikeFile(normalized)) return normalized
+  return getPathParent(normalized)
+}
+
+function commonAncestorPath(paths: string[]): string {
+  const normalizedPaths = paths.map((path) => toPathKey(path)).filter(Boolean)
+  if (!normalizedPaths.length) return ''
+  const first = pathSegments(normalizedPaths[0])
+  if (!first.segments.length) return ''
+
+  let common = [...first.segments]
+  for (const path of normalizedPaths.slice(1)) {
+    const next = pathSegments(path)
+    const limit = Math.min(common.length, next.segments.length)
+    let shared = 0
+    while (shared < limit && common[shared] === next.segments[shared]) {
+      shared += 1
+    }
+    common = common.slice(0, shared)
+    if (!common.length) break
+  }
+
+  return joinPathSegments(common, first.absolute)
+}
+
+function inferConversationWorkspaceTreeRoot(
+  workspaceRootPath: string,
+  conversationId: string,
+  records: GeneratedWorkspaceFile[]
+): string {
+  const workspaceRoot = toPathKey(workspaceRootPath)
+  const activeConversation = normalizeConversationId(conversationId)
+  if (!workspaceRoot || !activeConversation) return ''
+
+  const candidates = records
+    .filter((record) => record.conversationId === activeConversation)
+    .map((record) => getGeneratedPathScopeCandidate(record.path))
+    .filter((candidate) => candidate && candidate !== workspaceRoot)
+    .filter(
+      (candidate) => candidate === workspaceRoot || candidate.startsWith(`${workspaceRoot}/`)
+    )
+
+  if (!candidates.length) return ''
+
+  const ancestor = commonAncestorPath(candidates)
+  if (!ancestor || ancestor === workspaceRoot) return ''
+  return ancestor
+}
+
 function getAncestorPathKeys(path: string): string[] {
   const normalized = toPathKey(path)
   if (!normalized) return []
@@ -303,6 +386,32 @@ function isWorkspaceTreeDir(entry: WorkspaceTreeEntry): boolean {
   return String(entry.type || '').toLowerCase() === 'dir'
 }
 
+function shouldDefaultCollapseWorkspaceTreeDir(entry: WorkspaceTreeEntry): boolean {
+  if (!isWorkspaceTreeDir(entry)) return false
+  const key = toPathKey(entry.path)
+  if (!key) return false
+  const segments = key.split('/').filter(Boolean)
+  if (segments.length !== 1) return false
+  return DEFAULT_COLLAPSED_WORKSPACE_DIRS.has(segments[0].toLowerCase())
+}
+
+function buildInitialWorkspaceTreeCollapsedDirs(entries: WorkspaceTreeEntry[]): Set<string> {
+  const collapsed = new Set<string>()
+  for (const entry of entries) {
+    if (!shouldDefaultCollapseWorkspaceTreeDir(entry)) continue
+    const key = toPathKey(entry.path)
+    if (!key) continue
+    collapsed.add(key)
+  }
+  return collapsed
+}
+
+function resetWorkspaceTreeCollapsedDirs(): void {
+  workspaceTreeCollapsedDirs.value = buildInitialWorkspaceTreeCollapsedDirs(
+    workspaceTreeEntries.value
+  )
+}
+
 function isWorkspaceTreeDirCollapsed(path: string): boolean {
   const key = toPathKey(path)
   if (!key) return false
@@ -325,7 +434,7 @@ function toggleWorkspaceTreeDir(entry: WorkspaceTreeEntry): void {
 function toggleWorkspaceTreeLinkedFilter(): void {
   workspaceTreeShowLinkedOnly.value = !workspaceTreeShowLinkedOnly.value
   if (workspaceTreeShowLinkedOnly.value) {
-    workspaceTreeCollapsedDirs.value = new Set()
+    resetWorkspaceTreeCollapsedDirs()
   }
 }
 
@@ -333,7 +442,7 @@ function toggleWorkspaceTreeCurrentConversationFocus(): void {
   if (!workspaceTreeHasCurrentConversationMatches.value) return
   workspaceTreeFocusCurrentConversation.value = !workspaceTreeFocusCurrentConversation.value
   if (workspaceTreeFocusCurrentConversation.value) {
-    workspaceTreeCollapsedDirs.value = new Set()
+    resetWorkspaceTreeCollapsedDirs()
   }
 }
 
@@ -465,12 +574,20 @@ async function ensureWorkspaceTree(force = false) {
   workspaceTreeError.value = ''
   try {
     const workspaceApi = await loadWorkspaceApi()
-    const res = await workspaceApi.getTree({ max_depth: 16 })
+    const root = inferConversationWorkspaceTreeRoot(
+      workspaceDir.value.trim() || workspaceTreeRoot.value.trim(),
+      activeConversationId.value,
+      generatedWorkspaceFiles.value
+    )
+    const res = await workspaceApi.getTree({
+      max_depth: 16,
+      ...(root ? { root } : {}),
+    })
     workspaceTreeRoot.value = String(res.data?.root || '').trim()
     const baseEntries = Array.isArray(res.data?.entries) ? res.data.entries : []
     const whitelistEntries = await loadWhitelistWorkspaceTreeEntries(workspaceTreeRoot.value)
     workspaceTreeEntries.value = [...baseEntries, ...whitelistEntries]
-    workspaceTreeCollapsedDirs.value = new Set()
+    resetWorkspaceTreeCollapsedDirs()
     workspaceTreeLoaded.value = true
     if (!workspaceDir.value && workspaceTreeRoot.value) {
       workspaceDir.value = workspaceTreeRoot.value
@@ -545,7 +662,8 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
 
 async function refreshGeneratedWorkspaceView() {
   clearWorkspaceGeneratedRefreshTimer()
-  await Promise.all([ensureWorkspaceTree(true), ensureGeneratedWorkspaceFiles(true)])
+  await ensureGeneratedWorkspaceFiles(true)
+  await ensureWorkspaceTree(true)
 }
 
 function clearWorkspaceGeneratedRefreshTimer(): void {
@@ -1120,10 +1238,11 @@ const workspaceGeneratedRefreshSignal = computed(() => {
 })
 
 watch(activeConversationId, (next, previous) => {
-  if (!next || next === previous) return
+  if (next === previous) return
   workspaceTreeFocusCurrentConversation.value = true
   if (showWorkspacePanel.value && activeWorkspaceTab.value === 'generated') {
-    workspaceTreeCollapsedDirs.value = new Set()
+    resetWorkspaceTreeCollapsedDirs()
+    void refreshGeneratedWorkspaceView()
   }
 })
 

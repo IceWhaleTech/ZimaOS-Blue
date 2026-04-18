@@ -4575,6 +4575,16 @@ export default mergeHarnessLocale('es-ES', {
     labels: {
       backend: 'backend',
       path: 'Ruta',
+      char_count: 'Número de caracteres',
+      document: 'Documento',
+      engine: 'Motor',
+      file_name: 'Nombre de archivo',
+      page_count: 'Número de páginas',
+      size_bytes: 'Tamaño (bytes)',
+      markdown: 'Markdown',
+      outline: 'Esquema',
+      pages: 'Páginas',
+      selected_pages: 'Páginas seleccionadas',
     },
     values: {
       strategy: {
@@ -4588,6 +4598,23 @@ export default mergeHarnessLocale('es-ES', {
     },
     warnings: {
       listing_truncated: 'La lista se truncó; reduzca la ruta o aumente max_entries.',
+    },
+    badges: {
+      list: 'LISTA',
+      find: 'BUSCAR',
+      file: 'ARCHIVO',
+      dir: 'CARPETA',
+    },
+    directoryListing: {
+      noMatchesForIn: 'No hay coincidencias para {pattern} en {basePath}',
+      noMatchesIn: 'No hay coincidencias en {basePath}',
+      matchesForIn: '{count} coincidencias para {pattern} en {basePath}',
+      matchesIn: '{count} coincidencias en {basePath}',
+      showingFirstEntriesInMoreOmitted:
+        'Mostrando las primeras {count} entradas en {basePath} (se omitieron más)',
+      noEntriesIn: 'No hay entradas en {basePath}',
+      oneEntryIn: '1 entrada en {basePath}',
+      entriesIn: '{count} entradas en {basePath}',
     },
     copy: 'Copiar',
     copied: '¡Copiado!',

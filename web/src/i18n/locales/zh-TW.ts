@@ -4445,6 +4445,16 @@ export default mergeHarnessLocale('zh-TW', {
     labels: {
       backend: '後端',
       path: '路徑',
+      char_count: '字元數',
+      document: '文件',
+      engine: '引擎',
+      file_name: '檔名',
+      page_count: '頁數',
+      size_bytes: '大小（位元組）',
+      markdown: 'Markdown',
+      outline: '大綱',
+      pages: '頁面',
+      selected_pages: '選取頁面',
     },
     values: {
       strategy: {
@@ -4458,6 +4468,22 @@ export default mergeHarnessLocale('zh-TW', {
     },
     warnings: {
       listing_truncated: '列表已截斷；請縮小路徑範圍或增大 max_entries。',
+    },
+    badges: {
+      list: '清單',
+      find: '搜尋',
+      file: '檔案',
+      dir: '目錄',
+    },
+    directoryListing: {
+      noMatchesForIn: '在 {basePath} 中找不到符合 {pattern} 的結果',
+      noMatchesIn: '在 {basePath} 中找不到符合的結果',
+      matchesForIn: '在 {basePath} 中符合 {pattern} 的結果：{count} 筆',
+      matchesIn: '在 {basePath} 中符合的結果：{count} 筆',
+      showingFirstEntriesInMoreOmitted: '在 {basePath} 中僅顯示前 {count} 筆項目（已省略更多）',
+      noEntriesIn: '{basePath} 中沒有項目',
+      oneEntryIn: '{basePath} 中有 1 個項目',
+      entriesIn: '{basePath} 中有 {count} 個項目',
     },
     copy: '複製',
     copied: '已複製！',

@@ -1299,6 +1299,62 @@ func TestGenerateConversationTitle_FinalizesOnlyOnce(t *testing.T) {
 	}
 }
 
+func TestGenerateConversationTitle_DoesNotOverwriteWhenTitleChangesDuringGeneration(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "New Conversation")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+
+	started := make(chan struct{})
+	proceed := make(chan struct{})
+	handler.SetProxyBridge(proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-proceed
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, `{"id":"title_1","model":"","choices":[{"message":{"role":"assistant","content":"远端标题"},"finish_reason":"stop"}]}`)
+	})))
+
+	userMessage := strings.Repeat("这是一个仍然需要远端标题生成的长问题。", 4)
+	done := make(chan struct{})
+	go func() {
+		handler.generateConversationTitle(conv.ID, "", userMessage, "ok", "zh")
+		close(done)
+	}()
+
+	<-started
+	updated, err := store.PreviewAutoConversationTitle(context.Background(), conv.ID, "Local rename")
+	if err != nil {
+		t.Fatalf("failed to preview title: %v", err)
+	}
+	if !updated {
+		t.Fatal("expected preview title update to succeed")
+	}
+
+	close(proceed)
+	<-done
+
+	updatedConv, err := store.GetConversation(context.Background(), conv.ID)
+	if err != nil {
+		t.Fatalf("failed to load conversation: %v", err)
+	}
+	if updatedConv.Title != "Local rename" {
+		t.Fatalf("conversation title = %q, want %q", updatedConv.Title, "Local rename")
+	}
+}
+
 func TestChatOnce_InjectsLocaleFromSettingsToProxyBridge(t *testing.T) {
 	var gotLocale string
 	bridge := proxybridge.NewBridge(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -4710,6 +4766,735 @@ func TestChatHandlerSendMessage_RecoversPseudoFunctionCallsIntoRealToolExecution
 	}
 }
 
+func TestChatHandlerSendMessage_RecoversTypelessPDFArgumentBlockIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered typeless pdf argument block send message")
+	workspaceRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "继续用 PDF 工具创建：\n\n```typeless\n" +
+		"{\"action\":\"create\",\"output_path\":\"reports/qwen36_growth.pdf\",\"title\":\"Qwen3.6 Benchmark 大幅增长分析\",\"markdown\":\"# Qwen3.6 Benchmark 大幅增长分析\\n\\n- SkillsBench Avg5: +552%\\n- NL2Repo: +43%\\n- QwenWebBench: +43%\"}\n" +
+		"```\n\n这次我直接生成杂志版 PDF。"
+	scripted := &scriptedChatProvider{
+		name: "scripted-typeless-pdf-pseudo",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-typeless-pdf-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 88, TotalTokens: 132},
+			},
+			{
+				ID:    "recovered-typeless-pdf-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `已把 PDF 保存到 "reports/qwen36_growth.pdf"。`,
+				},
+				Usage: llm.Usage{PromptTokens: 62, CompletionTokens: 12, TotalTokens: 74},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewPDFTool(nil))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请生成一份 PDF 报告并保存到 reports/qwen36_growth.pdf。","provider":"scripted-typeless-pdf-pseudo","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req = req.WithContext(tools.WithFSRootOverride(req.Context(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	toolMsg, payload := requireToolPayloadMessage(t, secondReq, "pdf")
+	if len(toolMsg.Content) == 0 {
+		t.Fatal("expected non-empty pdf tool payload in follow-up request")
+	}
+	if _, ok := payload["error"]; ok {
+		t.Fatalf("unexpected payload error = %#v", payload["error"])
+	}
+	path := anyToStringForLLM(payload["path"])
+	engine := anyToStringForLLM(payload["engine"])
+	pageCount := 0
+	if doc, ok := payload["document"].(map[string]interface{}); ok {
+		if path == "" {
+			path = anyToStringForLLM(doc["path"])
+		}
+		if engine == "" {
+			engine = anyToStringForLLM(doc["engine"])
+		}
+		if pageCount == 0 {
+			pageCount = anyToIntForLLM(doc["page_count"])
+		}
+	}
+	if pageCount == 0 {
+		if validation, ok := payload["validation"].(map[string]interface{}); ok {
+			pageCount = anyToIntForLLM(validation["page_count"])
+		}
+	}
+	wantPDFPath := filepath.Join(workspaceRoot, "reports", "qwen36_growth.pdf")
+	if path != wantPDFPath {
+		t.Fatalf("payload path = %q, want %q; content=%q payload=%#v", path, wantPDFPath, toolMsg.Content, payload)
+	}
+	if engine != "native_pdf_ir" {
+		t.Fatalf("payload engine = %q, want native_pdf_ir", engine)
+	}
+	if pageCount < 1 {
+		t.Fatalf("page_count = %d, want >= 1; content=%q payload=%#v", pageCount, toolMsg.Content, payload)
+	}
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered pdf execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+
+	pdfPath := filepath.Join(workspaceRoot, "reports", "qwen36_growth.pdf")
+	if info, err := os.Stat(pdfPath); err != nil {
+		t.Fatalf("expected pdf to exist, stat error: %v", err)
+	} else if info.Size() == 0 {
+		t.Fatal("expected pdf to be non-empty")
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, `已把 PDF 保存到 "reports/qwen36_growth.pdf"。`) {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, `"output_path":"reports/qwen36_growth.pdf"`) || strings.Contains(content, `继续用 PDF 工具创建`) {
+		t.Fatalf("expected typeless pseudo tool-call text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversExactTypelessPDFMagazinePayloadIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered exact typeless pdf magazine payload send message")
+	workspaceRoot := t.TempDir()
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "现在用 PDF 原生工具生成：\n```typeless\n" +
+		"{\"action\":\"create\",\"outputPath\":\"qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf\",\"styleHint\":\"杂志版PDF样式，双栏排版，强调大幅增长数据，高亮关键数字，用深紫色标题栏，引用来源脚注\",\"title\":\"Qwen3.6 Benchmark 大幅增长分析\",\"theme\":\"magazine\"}\n" +
+		"```\n这次我用 pdf 工具直接创建杂志版 PDF。"
+	scripted := &scriptedChatProvider{
+		name: "scripted-typeless-pdf-magazine-pseudo",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-typeless-pdf-magazine-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 44, CompletionTokens: 88, TotalTokens: 132},
+			},
+			{
+				ID:    "recovered-typeless-pdf-magazine-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `已把 PDF 保存到 "qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf"。`,
+				},
+				Usage: llm.Usage{PromptTokens: 62, CompletionTokens: 12, TotalTokens: 74},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewPDFTool(nil))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请生成一份杂志风 PDF 并保存到 qwen36_ppt/Qwen3.6_Benchmark大幅增长分析_杂志版.pdf。","provider":"scripted-typeless-pdf-magazine-pseudo","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req = req.WithContext(tools.WithFSRootOverride(req.Context(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	toolMsg, payload := requireToolPayloadMessage(t, secondReq, "pdf")
+	if _, ok := payload["error"]; ok {
+		t.Fatalf("unexpected payload error = %#v", payload["error"])
+	}
+	path := anyToStringForLLM(payload["path"])
+	if doc, ok := payload["document"].(map[string]interface{}); ok && path == "" {
+		path = anyToStringForLLM(doc["path"])
+	}
+	if want := filepath.Join(workspaceRoot, "qwen36_ppt", "Qwen3.6_Benchmark大幅增长分析_杂志版.pdf"); path != want {
+		t.Fatalf("payload path = %q, want %q; content=%q payload=%#v", path, want, toolMsg.Content, payload)
+	}
+
+	artifactPath := filepath.Join(workspaceRoot, "qwen36_ppt", "Qwen3.6_Benchmark大幅增长分析_杂志版.pdf")
+	if _, err := os.Stat(artifactPath); err != nil {
+		t.Fatalf("expected artifact to exist at %q: %v", artifactPath, err)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "Qwen3.6_Benchmark大幅增长分析_杂志版.pdf") {
+		t.Fatalf("expected final content to mention generated pdf, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_RecoversTypelessDOCXSingleInputCreateIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Recovered typeless docx single-input send message")
+	workspaceRoot := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(workspaceRoot, "reports"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceRoot, "reports", "seed.md"), []byte("# Seed Docx Title\n\nThis is a seeded DOCX.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "继续用 DOCX 工具创建：\n\n```typeless\n" +
+		"{\"action\":\"create\",\"path\":\"reports/seed.md\",\"theme\":\"editorial\"}\n" +
+		"```\n\n这次直接生成 Word 报告。"
+	scripted := &scriptedChatProvider{
+		name: "scripted-typeless-docx-seed",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "recovered-typeless-docx-seed-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 40, CompletionTokens: 58, TotalTokens: 98},
+			},
+			{
+				ID:    "recovered-typeless-docx-seed-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `已把 DOCX 保存到 "reports/seed.docx"。`,
+				},
+				Usage: llm.Usage{PromptTokens: 56, CompletionTokens: 12, TotalTokens: 68},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewDOCXTool(nil, nil, nil))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"请把 reports/seed.md 生成成 DOCX 报告。","provider":"scripted-typeless-docx-seed","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req = req.WithContext(tools.WithFSRootOverride(req.Context(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot}))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	toolMsg, payload := requireToolPayloadMessage(t, secondReq, "docx")
+	if len(toolMsg.Content) == 0 {
+		t.Fatal("expected non-empty docx tool payload in follow-up request")
+	}
+	if _, ok := payload["error"]; ok {
+		t.Fatalf("unexpected payload error = %#v", payload["error"])
+	}
+	path := anyToStringForLLM(payload["path"])
+	absolutePath := anyToStringForLLM(payload["absolute_path"])
+	if path != "reports/seed.docx" {
+		t.Fatalf("payload path = %q, want reports/seed.docx; content=%q payload=%#v", path, toolMsg.Content, payload)
+	}
+	if absolutePath != filepath.Join(workspaceRoot, "reports", "seed.docx") {
+		t.Fatalf("payload absolute_path = %q, want %q; content=%q payload=%#v", absolutePath, filepath.Join(workspaceRoot, "reports", "seed.docx"), toolMsg.Content, payload)
+	}
+	if got := anyToStringForLLM(payload["engine"]); got != "native_docx_ooxml" {
+		t.Fatalf("payload engine = %q, want native_docx_ooxml", got)
+	}
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered docx execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+
+	docxPath := filepath.Join(workspaceRoot, "reports", "seed.docx")
+	if info, err := os.Stat(docxPath); err != nil {
+		t.Fatalf("expected docx to exist, stat error: %v", err)
+	} else if info.Size() == 0 {
+		t.Fatal("expected docx to be non-empty")
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, `已把 DOCX 保存到 "reports/seed.docx"。`) {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, `"path":"reports/seed.md"`) || strings.Contains(content, `继续用 DOCX 工具创建`) {
+		t.Fatalf("expected typeless pseudo tool-call text to be removed from response body, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_UsesSmallModelToRepairCodexPseudoToolDirective(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Small model repaired pseudo tool call send message")
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "我先查一下。\n" +
+		`to=functions.exec {"command":"blue web_query query=\"Apple AAPL stock price today April 2026\" max_results=5","workdir":"/tmp/test-workspace"}` +
+		"\n整理好后发你。"
+	if calls, ok := recoverSanitizedPseudoToolCallsFromContent(pseudoContent, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+		t.Fatalf("expected deterministic pseudo recovery to miss codex directive sample, got %#v", calls)
+	}
+	scripted := &scriptedChatProvider{
+		name: "scripted-smallmodel-pseudo-repair",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "smallmodel-pseudo-repair-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+				Usage: llm.Usage{PromptTokens: 42, CompletionTokens: 54, TotalTokens: 96},
+			},
+			{
+				ID:    "smallmodel-pseudo-repair-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好 AAPL 股价信息。",
+				},
+				Usage: llm.Usage{PromptTokens: 58, CompletionTokens: 12, TotalTokens: 70},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "small model repaired finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{
+		respText: `{"tool_calls":[{"name":"web_query","arguments":{"query":"Apple AAPL stock price today April 2026","max_results":5}}]}`,
+	}
+	handler.SetSmallModelRuntime(sm)
+
+	e := echo.New()
+	reqBody := `{"message":"Apple AAPL stock price today April 2026","provider":"scripted-smallmodel-pseudo-repair","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if !strings.Contains(sm.lastReq.Prompt, `to=functions.exec {"command":"blue web_query query=\"Apple AAPL stock price today April 2026\" max_results=5","workdir":"/tmp/test-workspace"}`) {
+		t.Fatalf("expected small-model repair prompt to include raw pseudo tool text, got %q", sm.lastReq.Prompt)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query query = %q, want Apple AAPL stock price today April 2026", query)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "small model repaired finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected repaired tool execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include repaired web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if got := strings.TrimSpace(content); !strings.Contains(got, "已基于真实 web_query 结果整理好 AAPL 股价信息。") {
+		t.Fatalf("expected final content from second round, got %q", got)
+	}
+	if strings.Contains(content, "to=functions.exec") {
+		t.Fatalf("expected repaired pseudo tool-call text to be removed from response body, got %q", content)
+	}
+}
+
+func TestProcessChannelMessage_UsesSmallModelToRepairCodexPseudoToolDirective(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_smallmodel_pseudo_repair")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "我先查一下。\n" +
+		`to=functions.exec {"command":"blue web_query query=\"Apple AAPL stock price today April 2026\" max_results=5","workdir":"/tmp/test-workspace"}` +
+		"\n整理好后发你。"
+	if calls, ok := recoverSanitizedPseudoToolCallsFromContent(pseudoContent, []llm.Tool{{Name: "web_query"}}); ok || len(calls) > 0 {
+		t.Fatalf("expected deterministic pseudo recovery to miss codex directive sample, got %#v", calls)
+	}
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-smallmodel-pseudo-repair",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "im-smallmodel-pseudo-repair-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+			},
+			{
+				ID:    "im-smallmodel-pseudo-repair-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已基于真实 web_query 结果整理好 AAPL 股价信息。",
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	webQueryMock := &webSearchToolMock{
+		name: "web_query",
+		result: map[string]interface{}{
+			"status":      "ok",
+			"mode":        "search_read",
+			"input":       "Apple AAPL stock price today April 2026",
+			"query":       "Apple AAPL stock price today April 2026",
+			"title":       "Apple Inc. (AAPL) Stock Price",
+			"target_url":  "https://example.com/aapl",
+			"final_url":   "https://example.com/aapl",
+			"content":     "im small model repaired finance result",
+			"next_action": "none",
+		},
+	}
+	toolRegistry.Register(webQueryMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settings := NewSettingsHandler(kvstore.NewMemoryStore())
+	enabled := true
+	settings.settings.SmallModelEnabled = &enabled
+	handler.SetSettingsHandler(settings)
+	sm := &smallModelRuntimeMock{
+		respText: `{"tool_calls":[{"name":"web_query","arguments":{"query":"Apple AAPL stock price today April 2026","max_results":5}}]}`,
+	}
+	handler.SetSmallModelRuntime(sm)
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_smallmodel_pseudo_repair",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "Apple AAPL stock price today April 2026",
+		Metadata: map[string]interface{}{
+			"language": "zh-CN",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+	if got := strings.TrimSpace(resp); !strings.Contains(got, "已基于真实 web_query 结果整理好 AAPL 股价信息。") {
+		t.Fatalf("expected final IM response, got %q", got)
+	}
+	if strings.Contains(resp, "to=functions.exec") {
+		t.Fatalf("expected repaired pseudo tool-call text to be removed from IM response, got %q", resp)
+	}
+	if sm.calls != 1 {
+		t.Fatalf("small model calls = %d, want 1", sm.calls)
+	}
+	if !strings.Contains(sm.lastReq.Prompt, `to=functions.exec {"command":"blue web_query query=\"Apple AAPL stock price today April 2026\" max_results=5","workdir":"/tmp/test-workspace"}`) {
+		t.Fatalf("expected small-model repair prompt to include raw pseudo tool text, got %q", sm.lastReq.Prompt)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 IM LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	webQueryMock.mu.Lock()
+	calls := webQueryMock.calls
+	query, _ := webQueryMock.last["query"].(string)
+	maxResults, _ := webQueryMock.last["max_results"].(float64)
+	webQueryMock.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("web_query calls = %d, want 1", calls)
+	}
+	if query != "Apple AAPL stock price today April 2026" {
+		t.Fatalf("web_query query = %q, want Apple AAPL stock price today April 2026", query)
+	}
+	if maxResults != 5 {
+		t.Fatalf("web_query max_results = %v, want 5", maxResults)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "web_query" && strings.Contains(msg.Content, "im small model repaired finance result") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected repaired tool execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include repaired web_query tool result, got %#v", secondReq.Messages)
+	}
+
+	messages, err := store.GetMessages(context.Background(), convID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted IM messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "to=functions.exec") {
+			t.Fatalf("expected repaired pseudo tool-call text to be discarded from persisted IM assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
+func TestProcessChannelMessage_RecoversTypelessDOCXSingleInputCreateIntoRealToolExecution(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	convID := channelConversationID("feishu", "chat_im_typeless_docx_seed")
+	if _, err := store.CreateConversationWithID(context.Background(), convID, "feishu - user_1"); err != nil {
+		t.Fatalf("CreateConversationWithID: %v", err)
+	}
+	workspaceRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspaceRoot, "reports"), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspaceRoot, "reports", "seed.md"), []byte("# Seed Docx Title\n\nThis is a seeded DOCX.\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := "继续用 DOCX 工具创建：\n\n```typeless\n" +
+		"{\"action\":\"create\",\"path\":\"reports/seed.md\",\"theme\":\"editorial\"}\n" +
+		"```\n\n这次直接生成 Word 报告。"
+	scripted := &scriptedChatProvider{
+		name: "scripted-im-typeless-docx-seed",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "im-typeless-docx-seed-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+			},
+			{
+				ID:    "im-typeless-docx-seed-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: `已把 DOCX 保存到 "reports/seed.docx"。`,
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(tools.NewDOCXTool(nil, nil, nil))
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	resp, err := handler.ProcessChannelMessage(
+		tools.WithFSRootOverride(context.Background(), []string{workspaceRoot}, map[string]string{"workspace": workspaceRoot}),
+		channel.Message{
+			ChannelName: "feishu",
+			ChatID:      "chat_im_typeless_docx_seed",
+			ID:          "msg_1",
+			UserID:      "user_1",
+			Username:    "user_1",
+			Content:     "请把 reports/seed.md 生成成 DOCX 报告。",
+			Metadata: map[string]interface{}{
+				"language": "zh-CN",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+	if got := strings.TrimSpace(resp); !strings.Contains(got, `已把 DOCX 保存到 "reports/seed.docx"。`) {
+		t.Fatalf("expected final IM response, got %q", got)
+	}
+	if strings.Contains(resp, `"path":"reports/seed.md"`) || strings.Contains(resp, `继续用 DOCX 工具创建`) {
+		t.Fatalf("expected typeless pseudo tool-call text to be removed from IM response, got %q", resp)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 IM LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "docx" && strings.Contains(msg.Content, `"path":"reports/seed.docx"`) {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered docx execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered docx tool result, got %#v", secondReq.Messages)
+	}
+
+	docxPath := filepath.Join(workspaceRoot, "reports", "seed.docx")
+	if info, err := os.Stat(docxPath); err != nil {
+		t.Fatalf("expected docx to exist, stat error: %v", err)
+	} else if info.Size() == 0 {
+		t.Fatal("expected docx to be non-empty")
+	}
+
+	messages, err := store.GetMessages(context.Background(), convID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted IM messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, `"path":"reports/seed.md"`) || strings.Contains(m.Content, `继续用 DOCX 工具创建`) {
+			t.Fatalf("expected recovered typeless pseudo tool-call text to be discarded from persisted IM assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
 func TestChatHandlerSendMessage_PreservesXMLToolExampleProseWithoutExecutingTools(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -7285,6 +8070,143 @@ func TestChatHandlerSendMessageAutoContinue_TracksPlanStateAcrossToolAndToolless
 	}
 }
 
+func TestChatHandlerSendMessageAutoContinue_AgentMode_ToolRoundChecklistBootstrapRewritesDiscoveryFirst(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Plan State Non-Stream Bootstrap Rewrite")
+
+	registry := llm.NewProviderRegistry()
+	scripted := &scriptedChatProvider{
+		name: "scripted",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "plan-bootstrap-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					ToolCalls: []llm.ToolCall{
+						{
+							ID:        "call_plan_create_bootstrap_1",
+							Name:      "plan_create",
+							Arguments: `{"tasks":["制定长期实施计划","调研当前代码状态"]}`,
+						},
+					},
+				},
+				Usage: llm.Usage{PromptTokens: 80, CompletionTokens: 20, TotalTokens: 100},
+			},
+			{
+				ID:    "plan-bootstrap-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					Content: `- [ ] 调研当前代码状态
+- [ ] 根据发现调整执行计划
+
+我先完成调研，再继续推进剩余工作。`,
+				},
+				Usage: llm.Usage{PromptTokens: 110, CompletionTokens: 30, TotalTokens: 140},
+			},
+			{
+				ID:    "plan-bootstrap-round-3",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					Content: `- [x] 调研当前代码状态
+- [x] 根据发现调整执行计划
+
+任务已完成。最终总结：已先完成调研并继续推进剩余工作，当前任务已经全部完成。如果你愿意，我还可以帮你：1. 继续整理结论；2. 补充验证记录。`,
+				},
+				Usage: llm.Usage{PromptTokens: 130, CompletionTokens: 35, TotalTokens: 165},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	toolRegistry.Register(&staticToolMock{
+		def: tools.ToolDefinition{
+			Name:        "plan_create",
+			Description: "plan create mock",
+		},
+		result: map[string]interface{}{
+			"operation":       "create",
+			"task_count":      2,
+			"completed_count": 0,
+			"pending_count":   2,
+			"all_completed":   false,
+			"checklist":       "- [ ] 制定长期实施计划\n- [ ] 调研当前代码状态",
+		},
+	})
+	handler := NewChatHandler(store, registry, toolRegistry)
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	reqBody := `{"message":"继续推进这个任务直到完成","provider":"scripted","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if scripted.CallCount() != 3 {
+		t.Fatalf("expected 3 LLM rounds (tool bootstrap + rewrite + completion), got %d", scripted.CallCount())
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	secondLast := secondReq.Messages[len(secondReq.Messages)-1]
+	if secondLast.Role != llm.RoleUser || !strings.Contains(secondLast.Content, "checklist bootstrap required") {
+		t.Fatalf("expected missing_todo rewrite nudge in second request, got role=%s content=%q", secondLast.Role, secondLast.Content)
+	}
+	if strings.Contains(secondLast.Content, "A canonical TODO checklist already exists") {
+		t.Fatalf("expected second request to reject planning-first bootstrap, got content=%q", secondLast.Content)
+	}
+
+	thirdReq, ok := scripted.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	thirdLast := thirdReq.Messages[len(thirdReq.Messages)-1]
+	if thirdLast.Role != llm.RoleUser || !strings.Contains(thirdLast.Content, "A canonical TODO checklist already exists") {
+		t.Fatalf("expected pending_todo continuation nudge in third request, got role=%s content=%q", thirdLast.Role, thirdLast.Content)
+	}
+	sawCorrectedChecklist := false
+	for _, msg := range thirdReq.Messages {
+		if msg.Role != llm.RoleAssistant {
+			continue
+		}
+		if strings.Contains(msg.Content, "- [ ] 调研当前代码状态") && strings.Contains(msg.Content, "- [ ] 根据发现调整执行计划") {
+			sawCorrectedChecklist = true
+			break
+		}
+	}
+	if !sawCorrectedChecklist {
+		t.Fatalf("expected third request to preserve corrected discovery-first checklist before the pending_todo nudge, got %#v", thirdReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(content, "任务已完成。最终总结：已先完成调研并继续推进剩余工作") {
+		t.Fatalf("expected final completion summary, got %q", content)
+	}
+}
+
 func TestChatHandlerSendMessage_StripsDuplicateChecklistFromFinalResponse(t *testing.T) {
 	store, _ := memory.NewStore(":memory:")
 	defer store.Close()
@@ -7805,6 +8727,56 @@ func TestChatHandlerSendMessageInjectsConversationAnchor(t *testing.T) {
 	lastReq := capture.LastRequest()
 	if !hasSystemAnchor(lastReq.Messages, "Anchor Test Title", "Initial objective: fix context continuity") {
 		t.Fatalf("expected conversation anchor in system messages, got %d messages", len(lastReq.Messages))
+	}
+}
+
+func TestChatHandlerSendMessageInjectsAgentModeDiscoveryFirstHint(t *testing.T) {
+	store, _ := memory.NewStore(":memory:")
+	defer store.Close()
+
+	conv, _ := store.CreateConversation(context.Background(), "Agent mode discovery-first send")
+
+	registry := llm.NewProviderRegistry()
+	capture := &requestCaptureProvider{}
+	registry.Register(capture)
+
+	handler := NewChatHandler(store, registry, tools.NewRegistry())
+	settingsHandler := NewSettingsHandler(kvstore.NewMemoryStore())
+	agentModeOn := true
+	settingsHandler.settings.AgentMode = &agentModeOn
+	handler.SetSettingsHandler(settingsHandler)
+
+	e := echo.New()
+	reqBody := `{"message":"继续推进这个任务直到完成","provider":"capture","model":"capture-model"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	lastReq := capture.LastRequest()
+	found := false
+	for _, m := range lastReq.Messages {
+		if m.Role != llm.RoleSystem {
+			continue
+		}
+		if strings.Contains(m.Content, "bounded discovery pass") &&
+			strings.Contains(m.Content, "currently exposed research-family tool") &&
+			strings.Contains(m.Content, "long-range plan") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected agent-mode discovery-first hint in system messages, got %+v", lastReq.Messages)
 	}
 }
 
@@ -9091,8 +10063,8 @@ func TestChatHandlerSendMessage_PDFFollowUpCarriesCreatedMarkdownArtifact(t *tes
 				Message: llm.Message{
 					Role: llm.RoleAssistant,
 					ToolCalls: []llm.ToolCall{{
-						ID:   "call_pdf_create_1",
-						Name: "pdf",
+						ID:        "call_pdf_create_1",
+						Name:      "pdf",
 						Arguments: `{"action":"create","path":"reports/direct_markdown.pdf","markdown":"# Weekly Brief\n\n## Highlights\n\n- Native PDF creation should accept markdown directly.\n- Failed writes must never report success.\n\nPrepared for chat e2e."}`,
 					}},
 				},
@@ -9172,8 +10144,9 @@ func TestChatHandlerSendMessage_PDFFollowUpCarriesCreatedMarkdownArtifact(t *tes
 		}
 	}
 
-	if path != "reports/direct_markdown.pdf" {
-		t.Fatalf("payload path = %q, want reports/direct_markdown.pdf; content=%q payload=%#v", path, toolMsg.Content, payload)
+	wantPDFPath := filepath.Join(workspaceRoot, "reports", "direct_markdown.pdf")
+	if path != wantPDFPath {
+		t.Fatalf("payload path = %q, want %q; content=%q payload=%#v", path, wantPDFPath, toolMsg.Content, payload)
 	}
 	if engine != "native_pdf_ir" {
 		t.Fatalf("payload engine = %q, want native_pdf_ir; content=%q payload=%#v", engine, toolMsg.Content, payload)
@@ -9191,7 +10164,7 @@ func TestChatHandlerSendMessage_PDFFollowUpCarriesCreatedMarkdownArtifact(t *tes
 		t.Fatalf("expected final response to mention saved pdf target, got %q", content)
 	}
 
-	pdfPath := filepath.Join(workspaceRoot, "reports", "direct_markdown.pdf")
+	pdfPath := wantPDFPath
 	info, err := os.Stat(pdfPath)
 	if err != nil {
 		t.Fatalf("expected final pdf to exist, stat error: %v", err)
