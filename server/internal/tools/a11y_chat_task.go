@@ -1516,6 +1516,9 @@ func a11yStructuredPostSubmitVerificationFromStructuredSnapshot(snapshot *a11yru
 	if verification, ok := a11yStructuredPostSubmitComposerAnchorVerification(snapshot, preferredStableID, expected); ok {
 		return verification, true
 	}
+	if verification, ok := a11yStructuredPostSubmitPreferredComposerAnchorFallbackVerification(snapshot, preferredStableID, expected); ok {
+		return verification, true
+	}
 	if verification, ok := a11yStructuredPostSubmitUniqueComposerVerification(snapshot, expected); ok {
 		return verification, true
 	}
@@ -1541,6 +1544,45 @@ func a11yStructuredPostSubmitComposerAnchorVerification(snapshot *a11yruntime.Sn
 		"grounding_skipped": true,
 		"element_stable_id": preferredStableID,
 	}, true
+}
+
+func a11yStructuredPostSubmitPreferredComposerAnchorFallbackVerification(snapshot *a11yruntime.Snapshot, preferredStableID string, expected string) (map[string]interface{}, bool) {
+	preferredStableID = strings.TrimSpace(preferredStableID)
+	if snapshot == nil || preferredStableID == "" || expected == "" {
+		return nil, false
+	}
+	if composer, ok := a11yStructuredSnapshotFocusedComposerNode(snapshot); ok {
+		if verification, ok := a11yStructuredPostSubmitPreferredComposerAnchorFallbackFromNode(composer, preferredStableID, expected); ok {
+			return verification, true
+		}
+	}
+	if composer, ok := a11yStructuredSnapshotUniqueComposerNode(snapshot); ok {
+		return a11yStructuredPostSubmitPreferredComposerAnchorFallbackFromNode(composer, preferredStableID, expected)
+	}
+	return nil, false
+}
+
+func a11yStructuredPostSubmitPreferredComposerAnchorFallbackFromNode(composer a11yruntime.FlatNode, preferredStableID string, expected string) (map[string]interface{}, bool) {
+	if expected == "" {
+		return nil, false
+	}
+	if a11ySubmitObservedTextMatches(a11yStructuredSnapshotNodeLabel(composer), expected) {
+		return nil, false
+	}
+	stableID := strings.TrimSpace(composer.StableID)
+	if stableID == "" {
+		stableID = strings.TrimSpace(preferredStableID)
+	}
+	verification := map[string]interface{}{
+		"status":            "sent",
+		"composer_cleared":  true,
+		"confirmation":      "structured_post_submit_anchor_confirmation",
+		"grounding_skipped": true,
+	}
+	if stableID != "" {
+		verification["element_stable_id"] = stableID
+	}
+	return verification, true
 }
 
 func a11yStructuredPostSubmitFocusedComposerVerification(snapshot *a11yruntime.Snapshot, expected string) (map[string]interface{}, bool) {

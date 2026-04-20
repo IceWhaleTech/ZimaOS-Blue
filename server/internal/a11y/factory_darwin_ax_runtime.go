@@ -539,7 +539,8 @@ func (b *darwinBackend) ensureAccessibilityPermission() error {
 }
 
 func darwinAccessibilityPermissionMessage() string {
-	return fmt.Sprintf("Grant Accessibility permission to %q in System Settings > Privacy & Security > Accessibility to enable snapshots and synthetic input", darwinAccessibilityAppName())
+	appName := darwinAccessibilityAppName()
+	return fmt.Sprintf("If macOS shows an Accessibility prompt for %q, click Allow. If no prompt appears, open System Settings > Privacy & Security > Accessibility and enable %q to use snapshots and synthetic input", appName, appName)
 }
 
 func (b *darwinBackend) listWindowRecords() ([]darwinWindowRecord, error) {

@@ -2523,10 +2523,12 @@ export default mergeHarnessLocale('de-DE', {
     wechatILinkPrimaryAction: 'Primare Aktion',
     wechatILinkScanAction: 'Zum Verbinden scannen',
     wechatILinkManualAction: 'Manuelle Konfiguration',
-    wechatILinkScanHint: 'Scannen Sie den iLink-QR-Code mit WeChat und bestatigen Sie die Anmeldung auf Ihrem Telefon.',
+    wechatILinkScanHint:
+      'Scannen Sie den iLink-QR-Code mit WeChat und bestatigen Sie die Anmeldung auf Ihrem Telefon.',
     wechatILinkSetupCreating: 'Sitzung wird erstellt...',
     wechatILinkSetupCreateFailed: 'Einrichtungssitzung konnte nicht erstellt werden',
-    wechatILinkSetupDescription: 'Scannen Sie den QR-Code mit WeChat und bestatigen Sie die iLink-Anmeldung. Blue aktiviert den Kanal automatisch.',
+    wechatILinkSetupDescription:
+      'Scannen Sie den QR-Code mit WeChat und bestatigen Sie die iLink-Anmeldung. Blue aktiviert den Kanal automatisch.',
     wechatILinkSetupStatus: 'Einrichtungsstatus',
     wechatILinkOpenOnPhone: 'Autorisierungslink offnen',
     wechatILinkSetupEyebrow: 'Mobile Einrichtung',
@@ -2536,15 +2538,17 @@ export default mergeHarnessLocale('de-DE', {
     wechatILinkSetupSubmit: 'Einrichtung abschliessen',
     wechatILinkSetupSubmitting: 'Wird abgeschlossen...',
     wechatILinkSetupSubmitFailed: 'Einrichtung konnte nicht abgeschlossen werden',
-    wechatILinkSetupSuccess: 'Die Konfiguration ist abgeschlossen. Sie konnen diese Seite jetzt schliessen.',
-    wechatILinkSetupStatePending: "Ausstehend",
-    wechatILinkSetupStateAuthorizing: "Autorisierung laeuft",
-    wechatILinkSetupStateConfiguring: "Wird konfiguriert",
-    wechatILinkSetupStateConnected: "Verbunden",
-    wechatILinkSetupStateError: "Fehler",
-    wechatILinkSetupStateExpired: "Abgelaufen",
+    wechatILinkSetupSuccess:
+      'Die Konfiguration ist abgeschlossen. Sie konnen diese Seite jetzt schliessen.',
+    wechatILinkSetupStatePending: 'Ausstehend',
+    wechatILinkSetupStateAuthorizing: 'Autorisierung laeuft',
+    wechatILinkSetupStateConfiguring: 'Wird konfiguriert',
+    wechatILinkSetupStateConnected: 'Verbunden',
+    wechatILinkSetupStateError: 'Fehler',
+    wechatILinkSetupStateExpired: 'Abgelaufen',
     wechatILinkPairingPayload: 'Kopplungsnutzdaten',
-    wechatILinkPairingPayloadPlaceholder: 'Fugen Sie hier die iLink-Kopplungsnutzdaten ein oder lassen Sie das Feld leer und fullen Sie unten den Bot-Token aus.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Fugen Sie hier die iLink-Kopplungsnutzdaten ein oder lassen Sie das Feld leer und fullen Sie unten den Bot-Token aus.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Access-Token',
@@ -2622,7 +2626,8 @@ export default mergeHarnessLocale('de-DE', {
     dingtalkHint: 'Erstellen Sie einen Bot in der DingTalk Developer Platform',
     qqHint: 'Erstellen Sie einen Bot in der QQ Open Platform (q.qq.com)',
     wechatHint: 'Erstellen Sie eine App in der WeChat Work Admin Console',
-    wechatILinkHint: 'Verwenden Sie die WeChat-QR-Autorisierung als primaren Weg oder tragen Sie den Bot-Token bei Bedarf manuell ein',
+    wechatILinkHint:
+      'Verwenden Sie die WeChat-QR-Autorisierung als primaren Weg oder tragen Sie den Bot-Token bei Bedarf manuell ein',
     matrixHint: 'Verwenden Sie Ihren Matrix-Homeserver und die Bot-Account-Zugangsdaten',
     imessageHint: 'mautrix-imessage unter macOS verwenden',
     blueBubblesHint:
@@ -3688,7 +3693,8 @@ export default mergeHarnessLocale('de-DE', {
     customCompatibleProvider: 'Benutzerdefinierter kompatibler Anbieter',
     customCompatibleProviderHint:
       'Verwenden Sie Ihren eigenen kompatiblen Endpunkt und behalten Sie die Unterstützung für dynamische Verifizierung/Sondierung bei.',
-    addProviderHint: 'Wählen Sie einen führenden Anbieter oder fügen Sie einen benutzerdefinierten kompatiblen Endpoint hinzu.',
+    addProviderHint:
+      'Wählen Sie einen führenden Anbieter oder fügen Sie einen benutzerdefinierten kompatiblen Endpoint hinzu.',
     officialProvider: 'Führende Anbieter',
     noProviders: 'Keine Anbieter konfiguriert',
     noModels: 'Keine Modelle verfügbar',
@@ -4876,6 +4882,7 @@ export default mergeHarnessLocale('de-DE', {
   browserProgress: {
     title: 'Browser-Fortschritt',
     steps: {
+      screenshot: 'Screenshot wird erstellt',
       recipe: '{recipe} wird ausgeführt',
     },
   },

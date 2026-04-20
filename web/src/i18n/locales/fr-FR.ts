@@ -340,7 +340,7 @@ export default mergeHarnessLocale('fr-FR', {
     cache: 'Cache',
     billing: 'Facturation',
     workspace: 'Espace de travail',
-    workspacePanelTitle: 'Fichiers de l\'espace de travail',
+    workspacePanelTitle: "Fichiers de l'espace de travail",
     openWorkspaceIn: 'Ouvrir dans le gestionnaire de fichiers',
     openWorkspaceInFinder: 'Ouvrir dans le Finder',
     openWorkspaceInExplorer: "Ouvrir dans l'Explorateur",
@@ -350,7 +350,7 @@ export default mergeHarnessLocale('fr-FR', {
     workspaceFilesLoadFailed: "Échec du chargement des fichiers de l'espace de travail",
     workspaceOpenFailed: "Impossible d'ouvrir l'espace de travail dans le gestionnaire de fichiers",
     workspaceCoreTab: 'Fichiers de contexte principal',
-    workspaceGeneratedTab: 'Fichiers de l\'espace de travail',
+    workspaceGeneratedTab: "Fichiers de l'espace de travail",
     workspaceGeneratedTitle: "Arborescence du répertoire de l'espace de travail",
     workspaceGeneratedDescription:
       "Affichez les vrais répertoires et fichiers avec une hiérarchie et liez les fichiers générés aux conversations sources lorsqu'ils sont disponibles.",
@@ -1627,7 +1627,7 @@ export default mergeHarnessLocale('fr-FR', {
     checkpointDescription: 'Point de contrôle avant restauration ({reason})',
     reason: {
       pre_restore: 'Avant la restauration',
-      approval_needed: 'Avant la pause d\'approbation',
+      approval_needed: "Avant la pause d'approbation",
     },
     nameOptional: 'Nom de la sauvegarde (facultatif)',
     loading: 'Chargement des sauvegardes...',
@@ -2526,14 +2526,16 @@ export default mergeHarnessLocale('fr-FR', {
     placeholderAgentId: '1000001',
     placeholderSecret: 'Clé secrète',
     placeholderILinkAPIBaseURL: 'https://ilink.example.com',
-    apiBaseURL: 'URL de base de l\'API',
+    apiBaseURL: "URL de base de l'API",
     wechatILinkPrimaryAction: 'Action principale',
     wechatILinkScanAction: 'Scanner pour se connecter',
     wechatILinkManualAction: 'Configuration manuelle',
-    wechatILinkScanHint: 'Scannez le code QR iLink avec WeChat et confirmez la connexion sur votre telephone.',
+    wechatILinkScanHint:
+      'Scannez le code QR iLink avec WeChat et confirmez la connexion sur votre telephone.',
     wechatILinkSetupCreating: 'Creation de la session...',
     wechatILinkSetupCreateFailed: 'Impossible de creer la session de configuration',
-    wechatILinkSetupDescription: 'Scannez le code QR avec WeChat et confirmez la connexion iLink. Blue activera automatiquement le canal.',
+    wechatILinkSetupDescription:
+      'Scannez le code QR avec WeChat et confirmez la connexion iLink. Blue activera automatiquement le canal.',
     wechatILinkSetupStatus: 'Statut de configuration',
     wechatILinkOpenOnPhone: 'Ouvrir le lien d autorisation',
     wechatILinkSetupEyebrow: 'Configuration mobile',
@@ -2544,14 +2546,15 @@ export default mergeHarnessLocale('fr-FR', {
     wechatILinkSetupSubmitting: 'Finalisation...',
     wechatILinkSetupSubmitFailed: 'Impossible de terminer la configuration',
     wechatILinkSetupSuccess: 'Configuration terminee. Vous pouvez maintenant fermer cette page.',
-    wechatILinkSetupStatePending: "En attente",
-    wechatILinkSetupStateAuthorizing: "Autorisation en cours",
-    wechatILinkSetupStateConfiguring: "Configuration en cours",
-    wechatILinkSetupStateConnected: "Connecte",
-    wechatILinkSetupStateError: "Erreur",
-    wechatILinkSetupStateExpired: "Expiree",
+    wechatILinkSetupStatePending: 'En attente',
+    wechatILinkSetupStateAuthorizing: 'Autorisation en cours',
+    wechatILinkSetupStateConfiguring: 'Configuration en cours',
+    wechatILinkSetupStateConnected: 'Connecte',
+    wechatILinkSetupStateError: 'Erreur',
+    wechatILinkSetupStateExpired: 'Expiree',
     wechatILinkPairingPayload: 'Charge utile d appairage',
-    wechatILinkPairingPayloadPlaceholder: 'Collez ici la charge utile d appairage iLink, ou laissez vide et renseignez ci-dessous le jeton du bot.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Collez ici la charge utile d appairage iLink, ou laissez vide et renseignez ci-dessous le jeton du bot.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Jeton d’accès',
@@ -2629,7 +2632,8 @@ export default mergeHarnessLocale('fr-FR', {
     dingtalkHint: 'Créez un robot dans DingTalk Developer Platform',
     qqHint: 'Créez un bot sur QQ Open Platform (q.qq.com)',
     wechatHint: "Créez une app dans la console d'administration WeChat Work",
-    wechatILinkHint: 'Utilisez l autorisation QR WeChat comme voie principale, ou saisissez manuellement le jeton du bot si necessaire',
+    wechatILinkHint:
+      'Utilisez l autorisation QR WeChat comme voie principale, ou saisissez manuellement le jeton du bot si necessaire',
     matrixHint: 'Utilisez votre homeserver Matrix et les identifiants du compte bot',
     imessageHint: 'Utiliser mautrix-imessage sur macOS',
     blueBubblesHint:
@@ -3698,7 +3702,8 @@ export default mergeHarnessLocale('fr-FR', {
     customCompatibleProvider: 'Fournisseur compatible personnalisé',
     customCompatibleProviderHint:
       'Utilisez votre propre point de terminaison compatible tout en conservant la prise en charge de la vérification/du sondage dynamiques.',
-    addProviderHint: 'Sélectionnez un fournisseur principal ou ajoutez un endpoint compatible personnalisé.',
+    addProviderHint:
+      'Sélectionnez un fournisseur principal ou ajoutez un endpoint compatible personnalisé.',
     officialProvider: 'Fournisseurs principaux',
     noProviders: 'Aucun fournisseur configuré',
     noModels: 'Aucun modèle disponible',
@@ -4359,7 +4364,7 @@ export default mergeHarnessLocale('fr-FR', {
     initComplete: 'Kokoro prêt',
     initStage: {
       loading_dictionary: 'Chargement du dictionnaire',
-      loading_runtime: 'Chargement de l\'environnement d\'exécution',
+      loading_runtime: "Chargement de l'environnement d'exécution",
       loading_voice: 'Chargement de la voix',
       loading_model: 'Chargement du modèle',
       ready: 'Prêt',
@@ -4802,7 +4807,8 @@ export default mergeHarnessLocale('fr-FR', {
       exec: 'Execute des commandes shell et capture leur sortie',
       analyze: 'Collecte des donnees sur le Web et genere un rapport d analyse structure',
       ask: 'Pose a l utilisateur les questions de suivi necessaires pour poursuivre la tache',
-      advisor: 'Conseiller décisionnel pour les questions de sélection, de remplacement, de migration et de bonnes pratiques.',
+      advisor:
+        'Conseiller décisionnel pour les questions de sélection, de remplacement, de migration et de bonnes pratiques.',
       mediagen: 'Genere des images, des videos et des presentations avec des modeles IA',
       web_query: 'Recupere et analyse une page web via URL',
       research:
@@ -4886,6 +4892,7 @@ export default mergeHarnessLocale('fr-FR', {
   browserProgress: {
     title: 'Progression du navigateur',
     steps: {
+      screenshot: 'Capture d’écran',
       recipe: 'Exécution de {recipe}',
     },
   },

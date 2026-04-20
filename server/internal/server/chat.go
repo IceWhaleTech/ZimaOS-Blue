@@ -7671,6 +7671,7 @@ var providerPoolToLLM = map[string]string{
 	"bedrock":   "bedrock",
 	"glm":       "glm",
 	"claude":    "claude",
+	"mock":      "mock", // For testing
 }
 
 // mapProviderID converts a Provider Pool ID to an LLM provider name.
@@ -15272,7 +15273,7 @@ func (h *ChatHandler) persistChannelResponseMessage(ctx context.Context, convID,
 		Role:           "assistant",
 		Content:        content,
 	}
-	ids := h.persistConversationMessages(convID, false, *assistantMsg)
+	ids := h.persistConversationMessages(convID, h.shouldBlockOnResponsePersistence(), *assistantMsg)
 	if len(ids) == 0 || strings.TrimSpace(ids[0]) == "" {
 		err := fmt.Errorf("failed to persist IM assistant message")
 		logger.Warn().Err(err).Str("conv_id", convID).Msg("failed to persist IM assistant message")

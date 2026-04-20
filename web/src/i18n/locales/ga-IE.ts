@@ -2509,10 +2509,12 @@ export default mergeHarnessLocale('ga-IE', {
     wechatILinkPrimaryAction: 'Priomhghniomh',
     wechatILinkScanAction: 'Scanail chun ceangal',
     wechatILinkManualAction: 'Cumraiocht de laimh',
-    wechatILinkScanHint: 'Scanail cod QR iLink le WeChat agus dearbhaigh an logail isteach ar do ghuthan.',
+    wechatILinkScanHint:
+      'Scanail cod QR iLink le WeChat agus dearbhaigh an logail isteach ar do ghuthan.',
     wechatILinkSetupCreating: 'Seisiun a chruthu...',
     wechatILinkSetupCreateFailed: 'Theip ar chruthu an tseisiuin socraithe',
-    wechatILinkSetupDescription: 'Scanail an cod QR le WeChat agus dearbhaigh logail isteach iLink. Cumasoidh Blue an cainéal go huathoibrioch.',
+    wechatILinkSetupDescription:
+      'Scanail an cod QR le WeChat agus dearbhaigh logail isteach iLink. Cumasoidh Blue an cainéal go huathoibrioch.',
     wechatILinkSetupStatus: 'Stadas socraithe',
     wechatILinkOpenOnPhone: 'Oscail nasc udaruithe',
     wechatILinkSetupEyebrow: 'Socru moibíleach',
@@ -2522,15 +2524,17 @@ export default mergeHarnessLocale('ga-IE', {
     wechatILinkSetupSubmit: 'Criochnaigh an socru',
     wechatILinkSetupSubmitting: 'A chríochnú...',
     wechatILinkSetupSubmitFailed: 'Theip ar chríochnú an tsocraithe',
-    wechatILinkSetupSuccess: 'Ta an chumraiocht criochnaithe. Is feidir leat an leathanach seo a dhunadh anois.',
-    wechatILinkSetupStatePending: "Ar feitheamh",
-    wechatILinkSetupStateAuthorizing: "Ag ughdaru",
-    wechatILinkSetupStateConfiguring: "Ag cumru",
-    wechatILinkSetupStateConnected: "Ceangailte",
-    wechatILinkSetupStateError: "Earraidh",
-    wechatILinkSetupStateExpired: "As feidhm",
+    wechatILinkSetupSuccess:
+      'Ta an chumraiocht criochnaithe. Is feidir leat an leathanach seo a dhunadh anois.',
+    wechatILinkSetupStatePending: 'Ar feitheamh',
+    wechatILinkSetupStateAuthorizing: 'Ag ughdaru',
+    wechatILinkSetupStateConfiguring: 'Ag cumru',
+    wechatILinkSetupStateConnected: 'Ceangailte',
+    wechatILinkSetupStateError: 'Earraidh',
+    wechatILinkSetupStateExpired: 'As feidhm',
     wechatILinkPairingPayload: 'Ualach peireala',
-    wechatILinkPairingPayloadPlaceholder: 'Greamaigh ualach peireala iLink anseo, no fag ban e agus lion isteach comhartha an bhota thios.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Greamaigh ualach peireala iLink anseo, no fag ban e agus lion isteach comhartha an bhota thios.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Comhartha rochtana',
@@ -2608,7 +2612,8 @@ export default mergeHarnessLocale('ga-IE', {
     dingtalkHint: 'Cruthaigh robot i DingTalk Developer Platform',
     qqHint: 'Cruthaigh bot i QQ Open Platform (q.qq.com)',
     wechatHint: 'Cruthaigh aip i gConsól Riaracháin WeChat Work',
-    wechatILinkHint: 'Usaid udu QR WeChat mar phriomhbhealach, no lion isteach comhartha an bhota de laimh nuair is ga',
+    wechatILinkHint:
+      'Usaid udu QR WeChat mar phriomhbhealach, no lion isteach comhartha an bhota de laimh nuair is ga',
     matrixHint: 'Bain úsáid as do Matrix homeserver agus dintiúirí cuntais bhot',
     imessageHint: 'Bain úsáid as mautrix-imessage ar macOS',
     blueBubblesHint:
@@ -4774,7 +4779,8 @@ export default mergeHarnessLocale('ga-IE', {
       exec: 'Rith orduithe sliogáin agus gabh a n-aschur',
       analyze: 'Bailigh sonraí ón ngréasán agus gin tuarascáil anailíse struchtúrtha',
       ask: 'Cuir ceisteanna leantacha ar an úsáideoir chun leanúint ar aghaidh leis an tasc',
-      advisor: 'Comhairleoir cinntí do cheisteanna roghnúcháin, athsholáthair, imirce agus dea-chleachtais.',
+      advisor:
+        'Comhairleoir cinntí do cheisteanna roghnúcháin, athsholáthair, imirce agus dea-chleachtais.',
       mediagen: 'Gin íomhánna, físeáin agus cur i láthair le samhlacha AI',
       web_query: 'Faigheann agus parsálann sé leathanach gréasáin trí URL',
       research:
@@ -4858,6 +4864,7 @@ export default mergeHarnessLocale('ga-IE', {
   browserProgress: {
     title: 'Dul chun cinn an bhrabhsálaí',
     steps: {
+      screenshot: 'Gabháil scáileáin á dhéanamh',
       recipe: '{recipe} á rith',
     },
   },

@@ -1628,8 +1628,7 @@ export default mergeHarnessLocale('ja-JP', {
     noResults: 'クエリに一致するメモリが見つかりません',
     recallSettings: 'メモリー想起モード',
     dreamTitle: 'Dream統合',
-    dreamDescription:
-      '古いチャット文脈をアーカイブし、長期保持に値する記憶候補を昇格させます。',
+    dreamDescription: '古いチャット文脈をアーカイブし、長期保持に値する記憶候補を昇格させます。',
     dreamPendingCapsules: '保留中のカプセル',
     dreamPromotedCount: '昇格した記憶',
     dreamArchivedDailyLogs: 'アーカイブ済み日次ログ',
@@ -2480,10 +2479,12 @@ export default mergeHarnessLocale('ja-JP', {
     wechatILinkPrimaryAction: '主要操作',
     wechatILinkScanAction: 'スキャンして接続',
     wechatILinkManualAction: '手動設定',
-    wechatILinkScanHint: 'WeChat で iLink の QR コードをスキャンし、スマートフォンでログインを確認してください。',
+    wechatILinkScanHint:
+      'WeChat で iLink の QR コードをスキャンし、スマートフォンでログインを確認してください。',
     wechatILinkSetupCreating: 'セッションを作成中...',
     wechatILinkSetupCreateFailed: 'セットアップセッションの作成に失敗しました',
-    wechatILinkSetupDescription: 'WeChat で QR コードをスキャンして iLink へのログインを確認すると、Blue がチャンネルを自動で有効化します。',
+    wechatILinkSetupDescription:
+      'WeChat で QR コードをスキャンして iLink へのログインを確認すると、Blue がチャンネルを自動で有効化します。',
     wechatILinkSetupStatus: '設定状況',
     wechatILinkOpenOnPhone: '認可リンクを開く',
     wechatILinkSetupEyebrow: 'モバイル設定',
@@ -2494,14 +2495,15 @@ export default mergeHarnessLocale('ja-JP', {
     wechatILinkSetupSubmitting: '完了中...',
     wechatILinkSetupSubmitFailed: '設定の完了に失敗しました',
     wechatILinkSetupSuccess: '設定が完了しました。このページは閉じてかまいません。',
-    wechatILinkSetupStatePending: "保留中",
-    wechatILinkSetupStateAuthorizing: "認証中",
-    wechatILinkSetupStateConfiguring: "設定中",
-    wechatILinkSetupStateConnected: "接続済み",
-    wechatILinkSetupStateError: "エラー",
-    wechatILinkSetupStateExpired: "期限切れ",
+    wechatILinkSetupStatePending: '保留中',
+    wechatILinkSetupStateAuthorizing: '認証中',
+    wechatILinkSetupStateConfiguring: '設定中',
+    wechatILinkSetupStateConnected: '接続済み',
+    wechatILinkSetupStateError: 'エラー',
+    wechatILinkSetupStateExpired: '期限切れ',
     wechatILinkPairingPayload: 'ペアリングペイロード',
-    wechatILinkPairingPayloadPlaceholder: 'iLink のペアリングペイロードをここに貼り付けるか、空欄のまま下の Bot トークンを入力してください。',
+    wechatILinkPairingPayloadPlaceholder:
+      'iLink のペアリングペイロードをここに貼り付けるか、空欄のまま下の Bot トークンを入力してください。',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'アクセストークン',
@@ -2579,7 +2581,8 @@ export default mergeHarnessLocale('ja-JP', {
     dingtalkHint: 'DingTalk Developer Platform でロボットを作成してください',
     qqHint: 'QQ Open Platform (q.qq.com) でボットを作成してください',
     wechatHint: 'WeChat Work 管理コンソールでアプリを作成してください',
-    wechatILinkHint: '基本は WeChat の QR 認可を使い、必要な場合のみ Bot トークンを手動入力してください',
+    wechatILinkHint:
+      '基本は WeChat の QR 認可を使い、必要な場合のみ Bot トークンを手動入力してください',
     matrixHint: 'Matrix のホームサーバーとボットアカウントの認証情報を使用してください',
     imessageHint: 'macOS で mautrix-imessage を使用',
     blueBubblesHint: 'macOS で BlueBubbles サーバーを設定しサーバー URL とパスワードを取得',
@@ -4533,7 +4536,8 @@ export default mergeHarnessLocale('ja-JP', {
       document_converted: 'ドキュメントを変換しました',
     },
     warnings: {
-      listing_truncated: '一覧は切り詰められました。パスを絞り込むか、max_entries を増やしてください。',
+      listing_truncated:
+        '一覧は切り詰められました。パスを絞り込むか、max_entries を増やしてください。',
     },
     badges: {
       list: '一覧',
@@ -4824,6 +4828,7 @@ export default mergeHarnessLocale('ja-JP', {
   browserProgress: {
     title: 'ブラウザ進行状況',
     steps: {
+      screenshot: 'スクリーンショットを撮影中',
       recipe: '{recipe} を実行中',
     },
   },

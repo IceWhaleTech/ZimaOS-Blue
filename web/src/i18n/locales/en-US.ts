@@ -2487,8 +2487,7 @@ export default mergeHarnessLocale('en-US', {
     wechatILinkPrimaryAction: 'Primary Action',
     wechatILinkScanAction: 'Scan To Connect',
     wechatILinkManualAction: 'Manual Config',
-    wechatILinkScanHint:
-      'Scan the iLink QR code with WeChat and confirm the login on your phone.',
+    wechatILinkScanHint: 'Scan the iLink QR code with WeChat and confirm the login on your phone.',
     wechatILinkSetupCreating: 'Creating Session...',
     wechatILinkSetupCreateFailed: 'Failed to create setup session',
     wechatILinkSetupDescription:
@@ -2503,12 +2502,12 @@ export default mergeHarnessLocale('en-US', {
     wechatILinkSetupSubmitting: 'Completing...',
     wechatILinkSetupSubmitFailed: 'Failed to complete setup',
     wechatILinkSetupSuccess: 'Configuration complete. You can close this page now.',
-    wechatILinkSetupStatePending: "Pending",
-    wechatILinkSetupStateAuthorizing: "Authorizing",
-    wechatILinkSetupStateConfiguring: "Configuring",
-    wechatILinkSetupStateConnected: "Connected",
-    wechatILinkSetupStateError: "Error",
-    wechatILinkSetupStateExpired: "Expired",
+    wechatILinkSetupStatePending: 'Pending',
+    wechatILinkSetupStateAuthorizing: 'Authorizing',
+    wechatILinkSetupStateConfiguring: 'Configuring',
+    wechatILinkSetupStateConnected: 'Connected',
+    wechatILinkSetupStateError: 'Error',
+    wechatILinkSetupStateExpired: 'Expired',
     wechatILinkPairingPayload: 'Pairing Payload',
     wechatILinkPairingPayloadPlaceholder:
       'Paste the iLink pairing payload here, or leave it empty and fill in the Bot Token below.',
@@ -4546,7 +4545,8 @@ export default mergeHarnessLocale('en-US', {
       noMatchesIn: 'No matches in {basePath}',
       matchesForIn: '{count} matches for {pattern} in {basePath}',
       matchesIn: '{count} matches in {basePath}',
-      showingFirstEntriesInMoreOmitted: 'Showing first {count} entries in {basePath} (more omitted)',
+      showingFirstEntriesInMoreOmitted:
+        'Showing first {count} entries in {basePath} (more omitted)',
       noEntriesIn: 'No entries in {basePath}',
       oneEntryIn: '1 entry in {basePath}',
       entriesIn: '{count} entries in {basePath}',
@@ -4703,7 +4703,8 @@ export default mergeHarnessLocale('en-US', {
       exec: 'Run shell commands and capture their output',
       analyze: 'Collect data from the web and generate a structured analysis report',
       ask: 'Ask the user follow-up questions needed to continue the task',
-      advisor: 'Decision advisor for selection, replacement, migration, and best-practice questions.',
+      advisor:
+        'Decision advisor for selection, replacement, migration, and best-practice questions.',
       computer_use:
         'Control supported host OS windows and accessibility-backed browser flows for snapshots, targeting, scrolling, input, screenshots, and chat-style actions.',
       mediagen: 'Generate images, videos, and slide decks with AI models',
@@ -4786,6 +4787,7 @@ export default mergeHarnessLocale('en-US', {
   browserProgress: {
     title: 'Browser Progress',
     steps: {
+      screenshot: 'Capturing screenshot',
       recipe: 'Running {recipe}',
     },
   },

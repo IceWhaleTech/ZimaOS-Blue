@@ -1644,8 +1644,7 @@ export default mergeHarnessLocale('nl-NL', {
     noResults: 'Er zijn geen herinneringen gevonden die overeenkomen met uw zoekopdracht',
     recallSettings: 'Geheugenophaalmodus',
     dreamTitle: 'Dream-consolidatie',
-    dreamDescription:
-      'Archiveert oudere chatcontext en promoveert duurzame geheugenkandidaten.',
+    dreamDescription: 'Archiveert oudere chatcontext en promoveert duurzame geheugenkandidaten.',
     dreamPendingCapsules: 'Openstaande capsules',
     dreamPromotedCount: 'Gepromoveerde herinneringen',
     dreamArchivedDailyLogs: 'Gearchiveerde daglogs',
@@ -2510,10 +2509,12 @@ export default mergeHarnessLocale('nl-NL', {
     wechatILinkPrimaryAction: 'Primaire actie',
     wechatILinkScanAction: 'Scannen om te verbinden',
     wechatILinkManualAction: 'Handmatige configuratie',
-    wechatILinkScanHint: 'Scan de iLink-QR-code met WeChat en bevestig het inloggen op je telefoon.',
+    wechatILinkScanHint:
+      'Scan de iLink-QR-code met WeChat en bevestig het inloggen op je telefoon.',
     wechatILinkSetupCreating: 'Sessie maken...',
     wechatILinkSetupCreateFailed: 'Kon configuratiesessie niet maken',
-    wechatILinkSetupDescription: 'Scan de QR-code met WeChat en bevestig het inloggen bij iLink. Blue schakelt het kanaal automatisch in.',
+    wechatILinkSetupDescription:
+      'Scan de QR-code met WeChat en bevestig het inloggen bij iLink. Blue schakelt het kanaal automatisch in.',
     wechatILinkSetupStatus: 'Configuratiestatus',
     wechatILinkOpenOnPhone: 'Autorisatielink openen',
     wechatILinkSetupEyebrow: 'Mobiele configuratie',
@@ -2524,14 +2525,15 @@ export default mergeHarnessLocale('nl-NL', {
     wechatILinkSetupSubmitting: 'Bezig met voltooien...',
     wechatILinkSetupSubmitFailed: 'Kon configuratie niet voltooien',
     wechatILinkSetupSuccess: 'Configuratie voltooid. Je kunt deze pagina nu sluiten.',
-    wechatILinkSetupStatePending: "In behandeling",
-    wechatILinkSetupStateAuthorizing: "Bezig met autoriseren",
-    wechatILinkSetupStateConfiguring: "Bezig met configureren",
-    wechatILinkSetupStateConnected: "Verbonden",
-    wechatILinkSetupStateError: "Fout",
-    wechatILinkSetupStateExpired: "Verlopen",
+    wechatILinkSetupStatePending: 'In behandeling',
+    wechatILinkSetupStateAuthorizing: 'Bezig met autoriseren',
+    wechatILinkSetupStateConfiguring: 'Bezig met configureren',
+    wechatILinkSetupStateConnected: 'Verbonden',
+    wechatILinkSetupStateError: 'Fout',
+    wechatILinkSetupStateExpired: 'Verlopen',
     wechatILinkPairingPayload: 'Koppelpayload',
-    wechatILinkPairingPayloadPlaceholder: 'Plak hier de iLink-koppelpayload, of laat het leeg en vul hieronder het bottoken in.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Plak hier de iLink-koppelpayload, of laat het leeg en vul hieronder het bottoken in.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Toegangstoken',
@@ -2609,7 +2611,8 @@ export default mergeHarnessLocale('nl-NL', {
     dingtalkHint: 'Maak een robot in DingTalk Developer Platform',
     qqHint: 'Maak een bot in QQ Open Platform (q.qq.com)',
     wechatHint: 'Maak een app in WeChat Work Admin Console',
-    wechatILinkHint: 'Gebruik WeChat-QR-autorisatie als hoofdpad, of vul het bottoken handmatig in als dat nodig is',
+    wechatILinkHint:
+      'Gebruik WeChat-QR-autorisatie als hoofdpad, of vul het bottoken handmatig in als dat nodig is',
     matrixHint: 'Gebruik je Matrix-homeserver en botaccountgegevens',
     imessageHint: 'Gebruik mautrix-imessage op macOS',
     blueBubblesHint: 'Stel BlueBubbles-server in op macOS en krijg de server-URL en het wachtwoord',
@@ -3674,7 +3677,8 @@ export default mergeHarnessLocale('nl-NL', {
     customCompatibleProvider: 'Aangepaste compatibele provider',
     customCompatibleProviderHint:
       'Gebruik je eigen compatibele endpoint en behoud ondersteuning voor dynamische verificatie/probing.',
-    addProviderHint: 'Kies een toonaangevende provider of voeg een aangepast compatibel endpoint toe.',
+    addProviderHint:
+      'Kies een toonaangevende provider of voeg een aangepast compatibel endpoint toe.',
     officialProvider: 'Toonaangevende providers',
     noProviders: 'Geen providers geconfigureerd',
     noModels: 'Geen modellen beschikbaar',
@@ -4596,7 +4600,8 @@ export default mergeHarnessLocale('nl-NL', {
       noMatchesIn: 'Geen resultaten in {basePath}',
       matchesForIn: '{count} resultaten voor {pattern} in {basePath}',
       matchesIn: '{count} resultaten in {basePath}',
-      showingFirstEntriesInMoreOmitted: 'Toont de eerste {count} items in {basePath} (meer weggelaten)',
+      showingFirstEntriesInMoreOmitted:
+        'Toont de eerste {count} items in {basePath} (meer weggelaten)',
       noEntriesIn: 'Geen items in {basePath}',
       oneEntryIn: '1 item in {basePath}',
       entriesIn: '{count} items in {basePath}',
@@ -4769,7 +4774,8 @@ export default mergeHarnessLocale('nl-NL', {
       exec: 'Voert shell-opdrachten uit en legt de uitvoer vast',
       analyze: 'Verzamelt gegevens van het web en genereert een gestructureerd analyserapport',
       ask: 'Stelt de gebruiker vervolgvraag om de taak voort te zetten',
-      advisor: 'Beslissingsadviseur voor vragen over selectie, vervanging, migratie en best practices.',
+      advisor:
+        'Beslissingsadviseur voor vragen over selectie, vervanging, migratie en best practices.',
       mediagen: 'Genereert afbeeldingen, videos en presentaties met AI-modellen',
       web_query: 'Haalt een webpagina op en parseert die via URL',
       research:
@@ -4852,6 +4858,7 @@ export default mergeHarnessLocale('nl-NL', {
   browserProgress: {
     title: 'Browservoortgang',
     steps: {
+      screenshot: 'Screenshot maken',
       recipe: '{recipe} uitvoeren',
     },
   },

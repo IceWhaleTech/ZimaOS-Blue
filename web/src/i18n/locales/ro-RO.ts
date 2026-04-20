@@ -2511,7 +2511,8 @@ export default mergeHarnessLocale('ro-RO', {
     wechatILinkScanHint: 'Scaneaza codul QR iLink cu WeChat si confirma autentificarea pe telefon.',
     wechatILinkSetupCreating: 'Se creeaza sesiunea...',
     wechatILinkSetupCreateFailed: 'Nu s-a putut crea sesiunea de configurare',
-    wechatILinkSetupDescription: 'Scaneaza codul QR cu WeChat si confirma autentificarea in iLink. Blue va activa automat canalul.',
+    wechatILinkSetupDescription:
+      'Scaneaza codul QR cu WeChat si confirma autentificarea in iLink. Blue va activa automat canalul.',
     wechatILinkSetupStatus: 'Starea configurarii',
     wechatILinkOpenOnPhone: 'Deschide linkul de autorizare',
     wechatILinkSetupEyebrow: 'Configurare mobila',
@@ -2522,14 +2523,15 @@ export default mergeHarnessLocale('ro-RO', {
     wechatILinkSetupSubmitting: 'Se finalizeaza...',
     wechatILinkSetupSubmitFailed: 'Nu s-a putut finaliza configurarea',
     wechatILinkSetupSuccess: 'Configurarea este completa. Acum puteti inchide aceasta pagina.',
-    wechatILinkSetupStatePending: "In asteptare",
-    wechatILinkSetupStateAuthorizing: "Se autorizeaza",
-    wechatILinkSetupStateConfiguring: "Se configureaza",
-    wechatILinkSetupStateConnected: "Conectat",
-    wechatILinkSetupStateError: "Eroare",
-    wechatILinkSetupStateExpired: "Expirata",
+    wechatILinkSetupStatePending: 'In asteptare',
+    wechatILinkSetupStateAuthorizing: 'Se autorizeaza',
+    wechatILinkSetupStateConfiguring: 'Se configureaza',
+    wechatILinkSetupStateConnected: 'Conectat',
+    wechatILinkSetupStateError: 'Eroare',
+    wechatILinkSetupStateExpired: 'Expirata',
     wechatILinkPairingPayload: 'Payload de asociere',
-    wechatILinkPairingPayloadPlaceholder: 'Lipiti aici payload-ul de asociere iLink sau lasati-l gol si completati mai jos tokenul botului.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Lipiti aici payload-ul de asociere iLink sau lasati-l gol si completati mai jos tokenul botului.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Jeton de acces',
@@ -2607,7 +2609,8 @@ export default mergeHarnessLocale('ro-RO', {
     dingtalkHint: 'Creați un robot în DingTalk Developer Platform',
     qqHint: 'Creați un bot în QQ Open Platform (q.qq.com)',
     wechatHint: 'Creați o aplicație în consola WeChat Work Admin',
-    wechatILinkHint: 'Folositi autorizarea QR WeChat ca drum principal sau completati manual tokenul botului daca este necesar',
+    wechatILinkHint:
+      'Folositi autorizarea QR WeChat ca drum principal sau completati manual tokenul botului daca este necesar',
     matrixHint: 'Folosiți homeserverul Matrix și credențialele contului bot',
     imessageHint: 'Folosiți mautrix-imessage pe macOS',
     blueBubblesHint: 'Configurați serverul BlueBubbles pe macOS și obțineți URL-ul și parola',
@@ -3671,7 +3674,8 @@ export default mergeHarnessLocale('ro-RO', {
     customCompatibleProvider: 'Furnizor compatibil personalizat',
     customCompatibleProviderHint:
       'Folosiți propriul endpoint compatibil și păstrați suportul pentru verificare/sondare dinamică.',
-    addProviderHint: 'Selectați un furnizor principal sau adăugați un endpoint compatibil personalizat.',
+    addProviderHint:
+      'Selectați un furnizor principal sau adăugați un endpoint compatibil personalizat.',
     officialProvider: 'Furnizori principali',
     noProviders: 'Niciun furnizor configurat',
     noModels: 'Niciun model disponibil',
@@ -4602,7 +4606,8 @@ export default mergeHarnessLocale('ro-RO', {
       noMatchesIn: 'Nicio potrivire în {basePath}',
       matchesForIn: '{count} potriviri pentru {pattern} în {basePath}',
       matchesIn: '{count} potriviri în {basePath}',
-      showingFirstEntriesInMoreOmitted: 'Se afișează primele {count} intrări în {basePath} (mai multe omise)',
+      showingFirstEntriesInMoreOmitted:
+        'Se afișează primele {count} intrări în {basePath} (mai multe omise)',
       noEntriesIn: 'Nicio intrare în {basePath}',
       oneEntryIn: '1 intrare în {basePath}',
       entriesIn: '{count} intrări în {basePath}',
@@ -4775,7 +4780,8 @@ export default mergeHarnessLocale('ro-RO', {
       exec: 'Executa comenzi shell si captureaza iesirea lor',
       analyze: 'Colecteaza date de pe web si genereaza un raport de analiza structurat',
       ask: 'Pune utilizatorului intrebari suplimentare necesare pentru a continua sarcina',
-      advisor: 'Consilier pentru decizii privind întrebări de selecție, înlocuire, migrare și bune practici.',
+      advisor:
+        'Consilier pentru decizii privind întrebări de selecție, înlocuire, migrare și bune practici.',
       mediagen: 'Genereaza imagini, videoclipuri si prezentari cu modele AI',
       web_query: 'Preia si analizeaza o pagina web prin URL',
       research:
@@ -4858,6 +4864,7 @@ export default mergeHarnessLocale('ro-RO', {
   browserProgress: {
     title: 'Progres browser',
     steps: {
+      screenshot: 'Realizare captură de ecran',
       recipe: 'Rulare {recipe}',
     },
   },

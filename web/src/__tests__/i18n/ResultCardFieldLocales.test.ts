@@ -9,8 +9,10 @@ const requiredLabelKeys = [
   'description',
   'download_url',
   'execution_mode',
+  'fallbacks',
   'host_os',
   'image_path',
+  'input_method',
   'output_path',
   'output_ref',
   'outputs',
@@ -22,36 +24,54 @@ const requiredLabelKeys = [
   'selected_source_rank',
   'source',
   'target_format',
+  'target_hit',
   'title',
   'total_count',
   'url',
+  'verification_method',
+  'verification_passed',
   'warning_count',
   'warnings',
   'window_id',
 ] as const
 
 const requiredMessageKeys = [
+  'keys_sent',
+  'host_action_completed_and_submitted',
   'host_screenshot_captured',
   'host_windows_listed',
   'window_focused',
 ] as const
 
 const requiredValuePaths = [
+  'resultCard.values.execution_mode.input',
   'resultCard.values.execution_mode.semantic',
   'resultCard.values.host_os.darwin',
+  'resultCard.values.input_method.clipboard',
+  'resultCard.values.verification_method.focused_text',
 ] as const
 
-const localizedValuePaths = ['resultCard.values.execution_mode.semantic'] as const
+const localizedValuePaths = [
+  'resultCard.values.execution_mode.input',
+  'resultCard.values.execution_mode.semantic',
+  'resultCard.values.input_method.clipboard',
+  'resultCard.values.verification_method.focused_text',
+] as const
 
 const localizedLabelKeys = [
   'execution_mode',
+  'fallbacks',
   'host_os',
   'image_path',
+  'input_method',
   'output_path',
   'query',
   'selected_source_rank',
   'target_format',
+  'target_hit',
   'total_count',
+  'verification_method',
+  'verification_passed',
   'warning_count',
   'warnings',
   'window_id',
@@ -95,9 +115,10 @@ describe('result-card field locale coverage', () => {
         const path = `resultCard.labels.${key}`
         const value = getPathValue(enhancedMessages, path)
         expect(typeof value, `${locale} should expose ${path}`).toBe('string')
-        expect(String(value).trim().length, `${locale} should not leave ${path} empty`).toBeGreaterThan(
-          0
-        )
+        expect(
+          String(value).trim().length,
+          `${locale} should not leave ${path} empty`
+        ).toBeGreaterThan(0)
         expect(value, `${locale} should not leave ${path} as the raw compact key`).not.toBe(key)
       }
 
@@ -105,17 +126,19 @@ describe('result-card field locale coverage', () => {
         const path = `resultCard.messages.${key}`
         const value = getPathValue(enhancedMessages, path)
         expect(typeof value, `${locale} should expose ${path}`).toBe('string')
-        expect(String(value).trim().length, `${locale} should not leave ${path} empty`).toBeGreaterThan(
-          0
-        )
+        expect(
+          String(value).trim().length,
+          `${locale} should not leave ${path} empty`
+        ).toBeGreaterThan(0)
       }
 
       for (const path of requiredValuePaths) {
         const value = getPathValue(enhancedMessages, path)
         expect(typeof value, `${locale} should expose ${path}`).toBe('string')
-        expect(String(value).trim().length, `${locale} should not leave ${path} empty`).toBeGreaterThan(
-          0
-        )
+        expect(
+          String(value).trim().length,
+          `${locale} should not leave ${path} empty`
+        ).toBeGreaterThan(0)
       }
 
       if (locale === 'en-US' || locale === 'en-GB') continue

@@ -340,7 +340,7 @@ export default mergeHarnessLocale('it-IT', {
     cache: 'Cache',
     billing: 'Fatturazione',
     workspace: 'Spazio di lavoro',
-    workspacePanelTitle: 'File dell\'area di lavoro',
+    workspacePanelTitle: "File dell'area di lavoro",
     openWorkspaceIn: 'Apri nel file manager',
     openWorkspaceInFinder: 'Apri nel Finder',
     openWorkspaceInExplorer: 'Apri in Esplora risorse',
@@ -350,7 +350,7 @@ export default mergeHarnessLocale('it-IT', {
     workspaceFilesLoadFailed: "Impossibile caricare i file dell'area di lavoro",
     workspaceOpenFailed: "Impossibile aprire l'area di lavoro nel file manager",
     workspaceCoreTab: 'File del contesto principale',
-    workspaceGeneratedTab: 'File dell\'area di lavoro',
+    workspaceGeneratedTab: "File dell'area di lavoro",
     workspaceGeneratedTitle: "Albero delle directory dell'area di lavoro",
     workspaceGeneratedDescription:
       'Mostra directory e file reali con gerarchia e collega i file generati alle conversazioni di origine quando disponibili.',
@@ -2516,10 +2516,12 @@ export default mergeHarnessLocale('it-IT', {
     wechatILinkPrimaryAction: 'Azione principale',
     wechatILinkScanAction: 'Scansiona per connettere',
     wechatILinkManualAction: 'Configurazione manuale',
-    wechatILinkScanHint: 'Scansiona il codice QR di iLink con WeChat e conferma l accesso sul telefono.',
+    wechatILinkScanHint:
+      'Scansiona il codice QR di iLink con WeChat e conferma l accesso sul telefono.',
     wechatILinkSetupCreating: 'Creazione sessione...',
     wechatILinkSetupCreateFailed: 'Impossibile creare la sessione di configurazione',
-    wechatILinkSetupDescription: 'Scansiona il codice QR con WeChat e conferma l accesso a iLink. Blue abilitera automaticamente il canale.',
+    wechatILinkSetupDescription:
+      'Scansiona il codice QR con WeChat e conferma l accesso a iLink. Blue abilitera automaticamente il canale.',
     wechatILinkSetupStatus: 'Stato configurazione',
     wechatILinkOpenOnPhone: 'Apri link di autorizzazione',
     wechatILinkSetupEyebrow: 'Configurazione mobile',
@@ -2530,14 +2532,15 @@ export default mergeHarnessLocale('it-IT', {
     wechatILinkSetupSubmitting: 'Completamento...',
     wechatILinkSetupSubmitFailed: 'Impossibile completare la configurazione',
     wechatILinkSetupSuccess: 'Configurazione completata. Ora puoi chiudere questa pagina.',
-    wechatILinkSetupStatePending: "In attesa",
-    wechatILinkSetupStateAuthorizing: "Autorizzazione in corso",
-    wechatILinkSetupStateConfiguring: "Configurazione in corso",
-    wechatILinkSetupStateConnected: "Connesso",
-    wechatILinkSetupStateError: "Errore",
-    wechatILinkSetupStateExpired: "Scaduta",
+    wechatILinkSetupStatePending: 'In attesa',
+    wechatILinkSetupStateAuthorizing: 'Autorizzazione in corso',
+    wechatILinkSetupStateConfiguring: 'Configurazione in corso',
+    wechatILinkSetupStateConnected: 'Connesso',
+    wechatILinkSetupStateError: 'Errore',
+    wechatILinkSetupStateExpired: 'Scaduta',
     wechatILinkPairingPayload: 'Payload di associazione',
-    wechatILinkPairingPayloadPlaceholder: 'Incolla qui il payload di associazione iLink, oppure lascialo vuoto e compila sotto il token del bot.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Incolla qui il payload di associazione iLink, oppure lascialo vuoto e compila sotto il token del bot.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Token di accesso',
@@ -2615,7 +2618,8 @@ export default mergeHarnessLocale('it-IT', {
     dingtalkHint: 'Crea un robot su DingTalk Developer Platform',
     qqHint: 'Crea un bot su QQ Open Platform (q.qq.com)',
     wechatHint: 'Crea un’app nella console di amministrazione WeChat Work',
-    wechatILinkHint: 'Usa l autorizzazione QR di WeChat come percorso principale oppure inserisci manualmente il token del bot se necessario',
+    wechatILinkHint:
+      'Usa l autorizzazione QR di WeChat come percorso principale oppure inserisci manualmente il token del bot se necessario',
     matrixHint: 'Usa il tuo homeserver Matrix e le credenziali dell’account bot',
     imessageHint: 'Usa mautrix-imessage su macOS',
     blueBubblesHint: 'Configura il server BlueBubbles su macOS e ottieni URL e password',
@@ -3678,7 +3682,8 @@ export default mergeHarnessLocale('it-IT', {
     customCompatibleProvider: 'Provider compatibile personalizzato',
     customCompatibleProviderHint:
       'Usa il tuo endpoint compatibile e mantieni il supporto per verifica/rilevamento dinamici.',
-    addProviderHint: 'Seleziona un provider principale oppure aggiungi un endpoint compatibile personalizzato.',
+    addProviderHint:
+      'Seleziona un provider principale oppure aggiungi un endpoint compatibile personalizzato.',
     officialProvider: 'Provider principali',
     noProviders: 'Nessun provider configurato',
     noModels: 'Nessun modello disponibile',
@@ -4334,7 +4339,7 @@ export default mergeHarnessLocale('it-IT', {
     initComplete: 'Kokoro pronto',
     initStage: {
       loading_dictionary: 'Caricamento del dizionario',
-      loading_runtime: 'Caricamento dell\'ambiente di esecuzione',
+      loading_runtime: "Caricamento dell'ambiente di esecuzione",
       loading_voice: 'Caricamento della voce',
       loading_model: 'Caricamento del modello',
       ready: 'Pronto',
@@ -4589,7 +4594,7 @@ export default mergeHarnessLocale('it-IT', {
       document_converted: 'Documento convertito',
     },
     warnings: {
-      listing_truncated: 'L\'elenco è stato troncato; restringi il percorso o aumenta max_entries.',
+      listing_truncated: "L'elenco è stato troncato; restringi il percorso o aumenta max_entries.",
     },
     badges: {
       list: 'ELENCO',
@@ -4775,7 +4780,8 @@ export default mergeHarnessLocale('it-IT', {
       exec: 'Esegue comandi della shell e ne cattura l output',
       analyze: 'Raccoglie dati dal web e genera un report di analisi strutturato',
       ask: 'Pone all utente le domande di follow-up necessarie per continuare il compito',
-      advisor: 'Consulente decisionale per domande su selezione, sostituzione, migrazione e buone pratiche.',
+      advisor:
+        'Consulente decisionale per domande su selezione, sostituzione, migrazione e buone pratiche.',
       mediagen: 'Genera immagini, video e presentazioni con modelli di IA',
       web_query: 'Recupera e analizza una pagina web tramite URL',
       research:
@@ -4859,6 +4865,7 @@ export default mergeHarnessLocale('it-IT', {
   browserProgress: {
     title: 'Avanzamento browser',
     steps: {
+      screenshot: 'Acquisizione schermata',
       recipe: 'Esecuzione di {recipe}',
     },
   },

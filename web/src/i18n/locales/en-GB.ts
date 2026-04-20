@@ -2488,7 +2488,8 @@ export default mergeHarnessLocale('en-GB', {
     wechatILinkScanHint: 'Scan the iLink QR code with WeChat and confirm the login on your phone.',
     wechatILinkSetupCreating: 'Creating Session...',
     wechatILinkSetupCreateFailed: 'Failed to create setup session',
-    wechatILinkSetupDescription: 'Scan the QR code with WeChat and confirm the iLink login. Blue will enable the channel automatically.',
+    wechatILinkSetupDescription:
+      'Scan the QR code with WeChat and confirm the iLink login. Blue will enable the channel automatically.',
     wechatILinkSetupStatus: 'Setup Status',
     wechatILinkOpenOnPhone: 'Open Authorisation Link',
     wechatILinkSetupEyebrow: 'Mobile Setup',
@@ -2499,14 +2500,15 @@ export default mergeHarnessLocale('en-GB', {
     wechatILinkSetupSubmitting: 'Completing...',
     wechatILinkSetupSubmitFailed: 'Failed to complete setup',
     wechatILinkSetupSuccess: 'Configuration complete. You can close this page now.',
-    wechatILinkSetupStatePending: "Pending",
-    wechatILinkSetupStateAuthorizing: "Authorizing",
-    wechatILinkSetupStateConfiguring: "Configuring",
-    wechatILinkSetupStateConnected: "Connected",
-    wechatILinkSetupStateError: "Error",
-    wechatILinkSetupStateExpired: "Expired",
+    wechatILinkSetupStatePending: 'Pending',
+    wechatILinkSetupStateAuthorizing: 'Authorizing',
+    wechatILinkSetupStateConfiguring: 'Configuring',
+    wechatILinkSetupStateConnected: 'Connected',
+    wechatILinkSetupStateError: 'Error',
+    wechatILinkSetupStateExpired: 'Expired',
     wechatILinkPairingPayload: 'Pairing Payload',
-    wechatILinkPairingPayloadPlaceholder: 'Paste the iLink pairing payload here, or leave it empty and fill in the Bot Token below.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Paste the iLink pairing payload here, or leave it empty and fill in the Bot Token below.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Access token',
@@ -2584,7 +2586,8 @@ export default mergeHarnessLocale('en-GB', {
     dingtalkHint: 'Create a bot in DingTalk Open Platform',
     qqHint: 'Create a bot in QQ Open Platform',
     wechatHint: 'Create a bot in WeChat Work',
-    wechatILinkHint: 'Use WeChat QR authorisation as the primary path, or provide the Bot Token manually if needed',
+    wechatILinkHint:
+      'Use WeChat QR authorisation as the primary path, or provide the Bot Token manually if needed',
     matrixHint: 'Configure Matrix bot',
     imessageHint: 'Configure iMessage bridge',
     blueBubblesHint: 'Configure BlueBubbles server',
@@ -4544,7 +4547,8 @@ export default mergeHarnessLocale('en-GB', {
       noMatchesIn: 'No matches in {basePath}',
       matchesForIn: '{count} matches for {pattern} in {basePath}',
       matchesIn: '{count} matches in {basePath}',
-      showingFirstEntriesInMoreOmitted: 'Showing first {count} entries in {basePath} (more omitted)',
+      showingFirstEntriesInMoreOmitted:
+        'Showing first {count} entries in {basePath} (more omitted)',
       noEntriesIn: 'No entries in {basePath}',
       oneEntryIn: '1 entry in {basePath}',
       entriesIn: '{count} entries in {basePath}',
@@ -4715,7 +4719,8 @@ export default mergeHarnessLocale('en-GB', {
       exec: 'Run shell commands and capture their output',
       analyze: 'Collect data from the web and generate a structured analysis report',
       ask: 'Ask the user follow-up questions needed to continue the task',
-      advisor: 'Decision advisor for selection, replacement, migration, and best-practice questions.',
+      advisor:
+        'Decision advisor for selection, replacement, migration, and best-practice questions.',
       mediagen: 'Generate images, videos, and slide decks with AI models',
       research:
         'Run a Deep Research workflow. You can wait for the final report or get a job ID to check later.',
@@ -4796,6 +4801,7 @@ export default mergeHarnessLocale('en-GB', {
   browserProgress: {
     title: 'Browser progress',
     steps: {
+      screenshot: 'Capturing screenshot',
       recipe: 'Running {recipe}',
     },
   },

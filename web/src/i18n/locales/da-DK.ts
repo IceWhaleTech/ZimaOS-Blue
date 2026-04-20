@@ -1628,7 +1628,8 @@ export default mergeHarnessLocale('da-DK', {
     noResults: 'Der blev ikke fundet nogen minder, der matcher din forespørgsel',
     recallSettings: 'Tilstand for hukommelsesgenkaldelse',
     dreamTitle: 'Dream-konsolidering',
-    dreamDescription: 'Arkiverer ældre chatsammenhæng og promoverer holdbare hukommelseskandidater.',
+    dreamDescription:
+      'Arkiverer ældre chatsammenhæng og promoverer holdbare hukommelseskandidater.',
     dreamPendingCapsules: 'Afventende kapsler',
     dreamPromotedCount: 'Promoverede minder',
     dreamArchivedDailyLogs: 'Arkiverede dagslogger',
@@ -2493,7 +2494,8 @@ export default mergeHarnessLocale('da-DK', {
     wechatILinkScanHint: 'Scan iLink QR-koden med WeChat, og bekraft loginen pa din telefon.',
     wechatILinkSetupCreating: 'Opretter session...',
     wechatILinkSetupCreateFailed: 'Kunne ikke oprette opsaetningssession',
-    wechatILinkSetupDescription: 'Scan QR-koden med WeChat, og bekraft iLink-loginen. Blue aktiverer kanalen automatisk.',
+    wechatILinkSetupDescription:
+      'Scan QR-koden med WeChat, og bekraft iLink-loginen. Blue aktiverer kanalen automatisk.',
     wechatILinkSetupStatus: 'Opsaetningsstatus',
     wechatILinkOpenOnPhone: 'Aben autorisationslink',
     wechatILinkSetupEyebrow: 'Mobilopsaetning',
@@ -2504,14 +2506,15 @@ export default mergeHarnessLocale('da-DK', {
     wechatILinkSetupSubmitting: 'Fuldforer...',
     wechatILinkSetupSubmitFailed: 'Kunne ikke fuldfore opsaetning',
     wechatILinkSetupSuccess: 'Konfigurationen er fuldfort. Du kan nu lukke siden.',
-    wechatILinkSetupStatePending: "Afventer",
-    wechatILinkSetupStateAuthorizing: "Godkender",
-    wechatILinkSetupStateConfiguring: "Konfigurerer",
-    wechatILinkSetupStateConnected: "Forbundet",
-    wechatILinkSetupStateError: "Fejl",
-    wechatILinkSetupStateExpired: "Udlobet",
+    wechatILinkSetupStatePending: 'Afventer',
+    wechatILinkSetupStateAuthorizing: 'Godkender',
+    wechatILinkSetupStateConfiguring: 'Konfigurerer',
+    wechatILinkSetupStateConnected: 'Forbundet',
+    wechatILinkSetupStateError: 'Fejl',
+    wechatILinkSetupStateExpired: 'Udlobet',
     wechatILinkPairingPayload: 'Parringsdata',
-    wechatILinkPairingPayloadPlaceholder: 'Indsaet iLink-parringsdata her, eller lad feltet vaere tomt og udfyld bottoken nedenfor.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Indsaet iLink-parringsdata her, eller lad feltet vaere tomt og udfyld bottoken nedenfor.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Adgangstoken',
@@ -2589,7 +2592,8 @@ export default mergeHarnessLocale('da-DK', {
     dingtalkHint: 'Opret en robot i DingTalk Developer Platform',
     qqHint: 'Opret en bot i QQ Open Platform (q.qq.com)',
     wechatHint: 'Opret en app i WeChat Work Admin Console',
-    wechatILinkHint: 'Brug WeChat QR-godkendelse som primaer vej, eller udfyld bottoken manuelt efter behov',
+    wechatILinkHint:
+      'Brug WeChat QR-godkendelse som primaer vej, eller udfyld bottoken manuelt efter behov',
     matrixHint: 'Brug din Matrix-homeserver og botkontos legitimationsoplysninger',
     imessageHint: 'Brug mautrix-imessage på macOS',
     blueBubblesHint: 'Sæt BlueBubbles-server op på macOS og få server-URL og adgangskode',
@@ -3649,7 +3653,8 @@ export default mergeHarnessLocale('da-DK', {
     customCompatibleProvider: 'Tilpasset kompatibel udbyder',
     customCompatibleProviderHint:
       'Brug dit eget kompatible endpoint, og bevar understøttelsen af dynamisk verifikation/probing.',
-    addProviderHint: 'Vælg en førende udbyder eller tilføj et brugerdefineret kompatibelt endpoint.',
+    addProviderHint:
+      'Vælg en førende udbyder eller tilføj et brugerdefineret kompatibelt endpoint.',
     officialProvider: 'Førende udbydere',
     noProviders: 'Ingen udbydere konfigureret',
     noModels: 'Ingen modeller tilgængelige',
@@ -4566,7 +4571,8 @@ export default mergeHarnessLocale('da-DK', {
       noMatchesIn: 'Ingen match i {basePath}',
       matchesForIn: '{count} match for {pattern} i {basePath}',
       matchesIn: '{count} match i {basePath}',
-      showingFirstEntriesInMoreOmitted: 'Viser de første {count} poster i {basePath} (flere udeladt)',
+      showingFirstEntriesInMoreOmitted:
+        'Viser de første {count} poster i {basePath} (flere udeladt)',
       noEntriesIn: 'Ingen poster i {basePath}',
       oneEntryIn: '1 post i {basePath}',
       entriesIn: '{count} poster i {basePath}',
@@ -4738,7 +4744,8 @@ export default mergeHarnessLocale('da-DK', {
       exec: 'Korer shell-kommandoer og fanger deres output',
       analyze: 'Indsamler data fra nettet og genererer en struktureret analyserapport',
       ask: 'Stiller brugeren opfolgende sporgsmal for at fortsaette opgaven',
-      advisor: 'Beslutningsrådgiver til spørgsmål om valg, udskiftning, migrering og bedste praksis.',
+      advisor:
+        'Beslutningsrådgiver til spørgsmål om valg, udskiftning, migrering og bedste praksis.',
       mediagen: 'Genererer billeder, videoer og praesentationer med AI-modeller',
       web_query: 'Henter og parser en webside via URL',
       research:
@@ -4821,6 +4828,7 @@ export default mergeHarnessLocale('da-DK', {
   browserProgress: {
     title: 'Browserfremskridt',
     steps: {
+      screenshot: 'Tager skærmbillede',
       recipe: 'Kører {recipe}',
     },
   },

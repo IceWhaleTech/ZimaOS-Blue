@@ -10,22 +10,20 @@ import (
 )
 
 var (
-	darwinPermissionsOnce           sync.Once
-	darwinPromptBindingsOnce        sync.Once
-	darwinPromptDispatchOnce        sync.Once
-	darwinAccessibilityPromptMu     sync.Mutex
-	darwinAccessibilityPromptIssued bool
-	axIsProcessTrusted              func() bool
-	axIsProcessTrustedWithOptions   func(options uintptr) bool
-	darwinCFDictionaryCreate        func(allocator uintptr, keys uintptr, values uintptr, numValues int64, keyCallbacks uintptr, valueCallbacks uintptr) uintptr
-	darwinCFBooleanTrue             uintptr
-	darwinDispatchMainQueue         uintptr
-	darwinDispatchAsyncF            func(queue uintptr, context uintptr, work uintptr)
-	darwinAccessibilityGrantedProbe = darwinAccessibilityGranted
-	// The native AX prompt path is disabled by default because invoking
-	// AXIsProcessTrustedWithOptions through purego has crashed the server.
-	darwinAccessibilityPromptProbe      func() bool
-	darwinAccessibilityPromptDispatch   func(func() bool) bool
+	darwinPermissionsOnce               sync.Once
+	darwinPromptBindingsOnce            sync.Once
+	darwinPromptDispatchOnce            sync.Once
+	darwinAccessibilityPromptMu         sync.Mutex
+	darwinAccessibilityPromptIssued     bool
+	axIsProcessTrusted                  func() bool
+	axIsProcessTrustedWithOptions       func(options uintptr) bool
+	darwinCFDictionaryCreate            func(allocator uintptr, keys uintptr, values uintptr, numValues int64, keyCallbacks uintptr, valueCallbacks uintptr) uintptr
+	darwinCFBooleanTrue                 uintptr
+	darwinDispatchMainQueue             uintptr
+	darwinDispatchAsyncF                func(queue uintptr, context uintptr, work uintptr)
+	darwinAccessibilityGrantedProbe     = darwinAccessibilityGranted
+	darwinAccessibilityPromptProbe      = darwinRequestAccessibilityPrompt
+	darwinAccessibilityPromptDispatch   = darwinDispatchAccessibilityPromptToMainThread
 	darwinOpenAccessibilitySettingsFunc = darwinOpenAccessibilitySettings
 	darwinPendingPromptWorkMu           sync.Mutex
 	darwinPendingPromptWorkID           uintptr
@@ -104,9 +102,6 @@ func darwinRequestAccessibilityPrompt() bool {
 }
 
 func darwinRequestAccessibilityPromptIfNeeded() {
-	if darwinOpenAccessibilitySettingsFunc == nil {
-		return
-	}
 	darwinAccessibilityPromptMu.Lock()
 	if darwinAccessibilityPromptIssued {
 		darwinAccessibilityPromptMu.Unlock()
@@ -114,7 +109,17 @@ func darwinRequestAccessibilityPromptIfNeeded() {
 	}
 	darwinAccessibilityPromptIssued = true
 	darwinAccessibilityPromptMu.Unlock()
-	_ = darwinOpenAccessibilitySettingsFunc()
+
+	if darwinAccessibilityPromptProbe != nil && darwinAccessibilityPromptDispatch != nil {
+		if darwinAccessibilityPromptDispatch(func() bool {
+			return darwinAccessibilityPromptProbe()
+		}) {
+			return
+		}
+	}
+	if darwinOpenAccessibilitySettingsFunc != nil {
+		_ = darwinOpenAccessibilitySettingsFunc()
+	}
 }
 
 func darwinResetAccessibilityPromptState() {

@@ -2491,7 +2491,8 @@ export default mergeHarnessLocale('nb-NO', {
     wechatILinkScanHint: 'Skann iLink QR-koden med WeChat og bekreft innloggingen pa telefonen.',
     wechatILinkSetupCreating: 'Oppretter okt...',
     wechatILinkSetupCreateFailed: 'Kunne ikke opprette oppsettsokt',
-    wechatILinkSetupDescription: 'Skann QR-koden med WeChat og bekreft iLink-innloggingen. Blue aktiverer kanalen automatisk.',
+    wechatILinkSetupDescription:
+      'Skann QR-koden med WeChat og bekreft iLink-innloggingen. Blue aktiverer kanalen automatisk.',
     wechatILinkSetupStatus: 'Oppsettstatus',
     wechatILinkOpenOnPhone: 'Apne autorisasjonslenke',
     wechatILinkSetupEyebrow: 'Mobilt oppsett',
@@ -2502,14 +2503,15 @@ export default mergeHarnessLocale('nb-NO', {
     wechatILinkSetupSubmitting: 'Fullforer...',
     wechatILinkSetupSubmitFailed: 'Kunne ikke fullfore oppsettet',
     wechatILinkSetupSuccess: 'Konfigurasjonen er fullfort. Du kan na lukke denne siden.',
-    wechatILinkSetupStatePending: "Venter",
-    wechatILinkSetupStateAuthorizing: "Autoriserer",
-    wechatILinkSetupStateConfiguring: "Konfigurerer",
-    wechatILinkSetupStateConnected: "Tilkoblet",
-    wechatILinkSetupStateError: "Feil",
-    wechatILinkSetupStateExpired: "Utlopt",
+    wechatILinkSetupStatePending: 'Venter',
+    wechatILinkSetupStateAuthorizing: 'Autoriserer',
+    wechatILinkSetupStateConfiguring: 'Konfigurerer',
+    wechatILinkSetupStateConnected: 'Tilkoblet',
+    wechatILinkSetupStateError: 'Feil',
+    wechatILinkSetupStateExpired: 'Utlopt',
     wechatILinkPairingPayload: 'Paringspayload',
-    wechatILinkPairingPayloadPlaceholder: 'Lim inn iLink-paringspayload her, eller la feltet sta tomt og fyll inn bottoken nedenfor.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Lim inn iLink-paringspayload her, eller la feltet sta tomt og fyll inn bottoken nedenfor.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Tilgangstoken',
@@ -2587,7 +2589,8 @@ export default mergeHarnessLocale('nb-NO', {
     dingtalkHint: 'Opprett en robot i DingTalk Developer Platform',
     qqHint: 'Opprett en bot i QQ Open Platform (q.qq.com)',
     wechatHint: 'Opprett en app i WeChat Work Admin Console',
-    wechatILinkHint: 'Bruk WeChat QR-autorisasjon som hovedvei, eller fyll inn bottoken manuelt ved behov',
+    wechatILinkHint:
+      'Bruk WeChat QR-autorisasjon som hovedvei, eller fyll inn bottoken manuelt ved behov',
     matrixHint: 'Bruk Matrix-homeserveren og botkontoinformasjonen',
     imessageHint: 'Bruk mautrix-imessage på macOS',
     blueBubblesHint: 'Sett opp BlueBubbles-server på macOS og få server-URL og passord',
@@ -3647,7 +3650,8 @@ export default mergeHarnessLocale('nb-NO', {
     customCompatibleProvider: 'Egendefinert kompatibel leverandør',
     customCompatibleProviderHint:
       'Bruk ditt eget kompatible endepunkt og behold støtte for dynamisk verifisering/probing.',
-    addProviderHint: 'Velg en ledende leverandør eller legg til et egendefinert kompatibelt endepunkt.',
+    addProviderHint:
+      'Velg en ledende leverandør eller legg til et egendefinert kompatibelt endepunkt.',
     officialProvider: 'Ledende leverandører',
     noProviders: 'Ingen leverandører konfigurert',
     noModels: 'Ingen modeller tilgjengelig',
@@ -4566,7 +4570,8 @@ export default mergeHarnessLocale('nb-NO', {
       noMatchesIn: 'Ingen treff i {basePath}',
       matchesForIn: '{count} treff for {pattern} i {basePath}',
       matchesIn: '{count} treff i {basePath}',
-      showingFirstEntriesInMoreOmitted: 'Viser de første {count} oppføringene i {basePath} (flere utelatt)',
+      showingFirstEntriesInMoreOmitted:
+        'Viser de første {count} oppføringene i {basePath} (flere utelatt)',
       noEntriesIn: 'Ingen oppføringer i {basePath}',
       oneEntryIn: '1 oppføring i {basePath}',
       entriesIn: '{count} oppføringer i {basePath}',
@@ -4821,6 +4826,7 @@ export default mergeHarnessLocale('nb-NO', {
   browserProgress: {
     title: 'Nettleserfremdrift',
     steps: {
+      screenshot: 'Tar skjermbilde',
       recipe: 'Kjører {recipe}',
     },
   },

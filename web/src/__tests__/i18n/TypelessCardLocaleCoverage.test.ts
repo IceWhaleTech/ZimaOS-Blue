@@ -15,6 +15,7 @@ const requiredPaths = [
   'askQuestion.other',
   'askQuestion.otherPlaceholder',
   'browserProgress.title',
+  'browserProgress.steps.screenshot',
   'browserProgress.steps.recipe',
   'codeBlock.toolCall',
   'countdownCard.expired',
@@ -119,6 +120,7 @@ const requiredPaths = [
 const localizedPaths = [
   'accordionCard.thinking',
   'browserProgress.title',
+  'browserProgress.steps.screenshot',
   'browserProgress.steps.recipe',
   'countdownCard.expired',
   'countdownCard.days',

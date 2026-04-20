@@ -2521,10 +2521,12 @@ export default mergeHarnessLocale('el-GR', {
     wechatILinkPrimaryAction: 'Kyria energeia',
     wechatILinkScanAction: 'Sarosi gia syndesi',
     wechatILinkManualAction: 'Cheirokiniti rythmisi',
-    wechatILinkScanHint: 'Saroste ton kodiko QR tou iLink me WeChat kai epivevaioste ti syndesi sto tilefono sas.',
+    wechatILinkScanHint:
+      'Saroste ton kodiko QR tou iLink me WeChat kai epivevaioste ti syndesi sto tilefono sas.',
     wechatILinkSetupCreating: 'Dimiourgia synedrias...',
     wechatILinkSetupCreateFailed: 'Αποτυχία δημιουργίας συνεδρίας ρύθμισης',
-    wechatILinkSetupDescription: 'Saroste ton kodiko QR me WeChat kai epivevaioste ti syndesi sto iLink. To Blue tha energopoiisei to kanali automata.',
+    wechatILinkSetupDescription:
+      'Saroste ton kodiko QR me WeChat kai epivevaioste ti syndesi sto iLink. To Blue tha energopoiisei to kanali automata.',
     wechatILinkSetupStatus: 'Katastasi rythmisis',
     wechatILinkOpenOnPhone: 'Anoigma syndesmou exousiodotisis',
     wechatILinkSetupEyebrow: 'Rythmisi kinhtou',
@@ -2535,14 +2537,15 @@ export default mergeHarnessLocale('el-GR', {
     wechatILinkSetupSubmitting: 'Oloklirosi...',
     wechatILinkSetupSubmitFailed: 'Apetyche i oloklirosi tis rythmisis',
     wechatILinkSetupSuccess: 'I rythmisi oloklirothike. Boreite tora na kleisete auti ti selida.',
-    wechatILinkSetupStatePending: "Σε εκκρεμότητα",
-    wechatILinkSetupStateAuthorizing: "Γίνεται εξουσιοδότηση",
-    wechatILinkSetupStateConfiguring: "Γίνεται διαμόρφωση",
-    wechatILinkSetupStateConnected: "Συνδέθηκε",
-    wechatILinkSetupStateError: "Σφάλμα",
-    wechatILinkSetupStateExpired: "Έληξε",
+    wechatILinkSetupStatePending: 'Σε εκκρεμότητα',
+    wechatILinkSetupStateAuthorizing: 'Γίνεται εξουσιοδότηση',
+    wechatILinkSetupStateConfiguring: 'Γίνεται διαμόρφωση',
+    wechatILinkSetupStateConnected: 'Συνδέθηκε',
+    wechatILinkSetupStateError: 'Σφάλμα',
+    wechatILinkSetupStateExpired: 'Έληξε',
     wechatILinkPairingPayload: 'Payload syzevxis',
-    wechatILinkPairingPayloadPlaceholder: 'Epikolliste edo to payload syzevxis iLink i afiste to keno kai sympliroste parakato to token tou bot.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Epikolliste edo to payload syzevxis iLink i afiste to keno kai sympliroste parakato to token tou bot.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Διακριτικό πρόσβασης',
@@ -2620,7 +2623,8 @@ export default mergeHarnessLocale('el-GR', {
     dingtalkHint: 'Δημιουργήστε robot στο DingTalk Developer Platform',
     qqHint: 'Δημιουργήστε bot στο QQ Open Platform (q.qq.com)',
     wechatHint: 'Δημιουργήστε εφαρμογή στην κονσόλα WeChat Work Admin',
-    wechatILinkHint: 'Xrisimopoiiste tin exousiodotisi WeChat QR os kyria diadromi i sympliroste cheirokinita to token tou bot an xreiazetai',
+    wechatILinkHint:
+      'Xrisimopoiiste tin exousiodotisi WeChat QR os kyria diadromi i sympliroste cheirokinita to token tou bot an xreiazetai',
     matrixHint: 'Χρησιμοποιήστε τον Matrix homeserver και τα διαπιστευτήρια λογαριασμού bot',
     imessageHint: 'Χρησιμοποιήστε mautrix-imessage σε macOS',
     blueBubblesHint: 'Ρυθμίστε τον διακομιστή BlueBubbles στο macOS και λάβετε URL και κωδικό',
@@ -4802,7 +4806,8 @@ export default mergeHarnessLocale('el-GR', {
       exec: 'Εκτελει εντολες shell και καταγραφει την εξοδο τους',
       analyze: 'Συλλεγει δεδομενα απο τον ιστό και δημιουργει δομημενη αναφορα αναλυσης',
       ask: 'Κανει διευκρινιστικες ερωτησεις στον χρηστη για να συνεχιστει η εργασια',
-      advisor: 'Σύμβουλος αποφάσεων για ερωτήσεις επιλογής, αντικατάστασης, μετεγκατάστασης και βέλτιστων πρακτικών.',
+      advisor:
+        'Σύμβουλος αποφάσεων για ερωτήσεις επιλογής, αντικατάστασης, μετεγκατάστασης και βέλτιστων πρακτικών.',
       mediagen: 'Δημιουργει εικονες, βιντεο και παρουσιάσεις με μοντελα AI',
       web_query: 'Ανακτά και αναλύει μια ιστοσελίδα μέσω URL',
       research:
@@ -4886,6 +4891,7 @@ export default mergeHarnessLocale('el-GR', {
   browserProgress: {
     title: 'Πρόοδος προγράμματος περιήγησης',
     steps: {
+      screenshot: 'Λήψη στιγμιότυπου οθόνης',
       recipe: 'Εκτέλεση {recipe}',
     },
   },

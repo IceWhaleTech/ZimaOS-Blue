@@ -184,6 +184,12 @@ function tryParseObject(val: unknown): Record<string, unknown> | null {
   return null
 }
 
+function tryParseList(val: unknown): unknown[] | null {
+  if (Array.isArray(val)) return val
+  const parsed = tryParseJSON(val)
+  return Array.isArray(parsed) ? parsed : null
+}
+
 /** Flatten a value to a copyable string */
 function toDisplayString(val: unknown): string {
   if (typeof val === 'string') return val
@@ -633,10 +639,10 @@ function extractDirectoryListingFromDetails(
   }
 }
 
-function normalizeSyntheticDetailValue(value: unknown): string | Record<string, unknown> {
+function normalizeSyntheticDetailValue(value: unknown): unknown {
   if (value === null || value === undefined) return ''
   if (isMapValue(value)) return value
-  if (Array.isArray(value)) return JSON.stringify(value, null, 2)
+  if (Array.isArray(value)) return value
   if (typeof value === 'string') return value
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
   return JSON.stringify(value, null, 2)
@@ -1352,6 +1358,7 @@ const visibleDetails = computed(() => {
       return {
         ...d,
         parsedObject: tryParseObject(d.value),
+        parsedList: tryParseList(d.value),
         isMultiline: d.multiline || (typeof d.value === 'string' && d.value.includes('\n')),
         isLink: typeof d.value === 'string' && (isHttpUrl(d.value) || isApiPath(d.value)),
         localPathTarget,
@@ -1594,7 +1601,9 @@ const showEmptyState = computed(() => {
                 class="mt-0.5 inline-flex min-w-[3.5rem] items-center justify-center rounded-full px-2 py-0.5 text-[11px] font-semibold tracking-wide"
                 :class="directoryEntryBadgeClass(entry)"
               >
-                {{ entry.type === 'dir' ? t('resultCard.badges.dir') : t('resultCard.badges.file') }}
+                {{
+                  entry.type === 'dir' ? t('resultCard.badges.dir') : t('resultCard.badges.file')
+                }}
               </span>
               <div class="min-w-0 flex-1">
                 <div class="break-all font-mono text-xs text-gray-800 dark:text-gray-100">
@@ -1622,7 +1631,7 @@ const showEmptyState = computed(() => {
             :key="index"
             class="result-detail-row px-3.5 py-2.5 text-sm group"
             :class="
-              detail.parsedObject || detail.isMultiline
+              detail.parsedObject || detail.parsedList || detail.isMultiline
                 ? 'result-detail-row--stacked flex flex-col gap-1.5'
                 : 'result-detail-row--inline grid grid-cols-[fit-content(8rem)_minmax(0,1fr)] items-center gap-3'
             "
@@ -1647,6 +1656,18 @@ const showEmptyState = computed(() => {
                   class="result-detail-value text-gray-700 dark:text-gray-300 font-mono min-w-0 break-all"
                   >{{ toDisplayString(subVal) }}</span
                 >
+              </div>
+            </div>
+            <div
+              v-else-if="detail.parsedList"
+              class="rounded border border-gray-200 dark:border-gray-700/60 bg-white dark:bg-gray-800/60 divide-y divide-gray-100 dark:divide-gray-700/40 overflow-hidden"
+            >
+              <div
+                v-for="(subVal, subIndex) in detail.parsedList"
+                :key="subIndex"
+                class="px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 font-mono break-all"
+              >
+                {{ tDetailValue(detail.label, subVal) }}
               </div>
             </div>
             <!-- Multiline text value (e.g. stdout) -->
@@ -1687,11 +1708,9 @@ const showEmptyState = computed(() => {
               </button>
             </div>
             <!-- Simple string value -->
-            <div
-              v-else
-              class="result-detail-content flex min-w-0 items-center justify-end gap-1.5"
-            >
-              <span class="min-w-0 break-all text-right text-gray-700 dark:text-gray-300 font-mono text-xs"
+            <div v-else class="result-detail-content flex min-w-0 items-center justify-end gap-1.5">
+              <span
+                class="min-w-0 break-all text-right text-gray-700 dark:text-gray-300 font-mono text-xs"
                 >{{ tDetailValue(detail.label, detail.value)
                 }}<template v-if="detail.suffix"> {{ tLabel(detail.suffix) }}</template></span
               >

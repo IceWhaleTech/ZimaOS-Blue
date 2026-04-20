@@ -389,6 +389,55 @@ func TestPersistResponsePathMessageWaitsForBarrierWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestPersistChannelResponseMessageWaitsForBarrierWhenEnabled(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	coordinator := &PersistenceCoordinator{
+		queue: make(chan persistenceOp, 2),
+		done:  make(chan struct{}),
+	}
+	go func() {
+		first := <-coordinator.queue
+		if first.kind != persistenceOpMessageUpdate {
+			return
+		}
+		select {
+		case second := <-coordinator.queue:
+			if second.kind != persistenceOpFlush || second.ack == nil {
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+			close(second.ack)
+		case <-time.After(100 * time.Millisecond):
+			return
+		}
+	}()
+
+	handler := NewChatHandler(store, nil, nil)
+	handler.chatPersistAsync = true
+	handler.chatPersistFlushOnResponse = true
+	handler.persistCoordinator = coordinator
+	defer handler.Close()
+
+	start := time.Now()
+	msg, err := handler.persistChannelResponseMessage(context.Background(), "ch:wechat_ilink:user-1", "wait-for-im-barrier")
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("persistChannelResponseMessage() error = %v", err)
+	}
+	if msg == nil || strings.TrimSpace(msg.ID) == "" {
+		t.Fatal("persistChannelResponseMessage() returned nil or empty message id")
+	}
+	if elapsed < 20*time.Millisecond {
+		t.Fatalf("persistChannelResponseMessage() took %s with barrier enabled, want at least 20ms", elapsed)
+	}
+}
+
 func TestPersistConversationMessagesWithBarrierFlushesQueuedMessagesInOrder(t *testing.T) {
 	ctx := context.Background()
 	dbDir := t.TempDir()

@@ -2523,7 +2523,8 @@ export default mergeHarnessLocale('ml-IN', {
     wechatILinkScanHint: 'WeChat ഉപയോഗിച്ച് iLink QR കോഡ് സ്കാൻ ചെയ്ത് ഫോണിൽ ലോഗിൻ സ്ഥിരീകരിക്കുക.',
     wechatILinkSetupCreating: 'സെഷൻ സൃഷ്ടിക്കുന്നു...',
     wechatILinkSetupCreateFailed: 'സജ്ജീകരണ സെഷൻ സൃഷ്ടിക്കാൻ കഴിഞ്ഞില്ല',
-    wechatILinkSetupDescription: 'WeChat ഉപയോഗിച്ച് QR കോഡ് സ്കാൻ ചെയ്ത് iLink ലോഗിൻ സ്ഥിരീകരിക്കൂ. Blue ചാനൽ സ്വമേധയാ സജീവമാക്കും.',
+    wechatILinkSetupDescription:
+      'WeChat ഉപയോഗിച്ച് QR കോഡ് സ്കാൻ ചെയ്ത് iLink ലോഗിൻ സ്ഥിരീകരിക്കൂ. Blue ചാനൽ സ്വമേധയാ സജീവമാക്കും.',
     wechatILinkSetupStatus: 'സജ്ജീകരണ നില',
     wechatILinkOpenOnPhone: 'അംഗീകാര ലിങ്ക് തുറക്കുക',
     wechatILinkSetupEyebrow: 'മൊബൈൽ സജ്ജീകരണം',
@@ -2534,14 +2535,15 @@ export default mergeHarnessLocale('ml-IN', {
     wechatILinkSetupSubmitting: 'പൂർത്തിയാക്കുന്നു...',
     wechatILinkSetupSubmitFailed: 'സജ്ജീകരണം പൂർത്തിയാക്കാൻ കഴിഞ്ഞില്ല',
     wechatILinkSetupSuccess: 'ക്രമീകരണം പൂർത്തിയായി. ഇനി ഈ പേജ് അടയ്ക്കാം.',
-    wechatILinkSetupStatePending: "കാത്തിരിക്കുന്നു",
-    wechatILinkSetupStateAuthorizing: "അംഗീകാരം നടക്കുന്നു",
-    wechatILinkSetupStateConfiguring: "ക്രമീകരിക്കുന്നു",
-    wechatILinkSetupStateConnected: "കണക്റ്റ് ചെയ്തു",
-    wechatILinkSetupStateError: "പിശക്",
-    wechatILinkSetupStateExpired: "കാലഹരണപ്പെട്ടു",
+    wechatILinkSetupStatePending: 'കാത്തിരിക്കുന്നു',
+    wechatILinkSetupStateAuthorizing: 'അംഗീകാരം നടക്കുന്നു',
+    wechatILinkSetupStateConfiguring: 'ക്രമീകരിക്കുന്നു',
+    wechatILinkSetupStateConnected: 'കണക്റ്റ് ചെയ്തു',
+    wechatILinkSetupStateError: 'പിശക്',
+    wechatILinkSetupStateExpired: 'കാലഹരണപ്പെട്ടു',
     wechatILinkPairingPayload: 'ജോടിയാക്കൽ പേലോഡ്',
-    wechatILinkPairingPayloadPlaceholder: 'iLink ജോടിയാക്കൽ പേലോഡ് ഇവിടെ ഒട്ടിക്കുക, അല്ലെങ്കിൽ ശൂന്യമായി വിടുകയും താഴെ ബോട്ട് ടോക്കൺ പൂരിപ്പിക്കുകയും ചെയ്യുക.',
+    wechatILinkPairingPayloadPlaceholder:
+      'iLink ജോടിയാക്കൽ പേലോഡ് ഇവിടെ ഒട്ടിക്കുക, അല്ലെങ്കിൽ ശൂന്യമായി വിടുകയും താഴെ ബോട്ട് ടോക്കൺ പൂരിപ്പിക്കുകയും ചെയ്യുക.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'പ്രവേശന ടോക്കൺ',
@@ -2619,7 +2621,8 @@ export default mergeHarnessLocale('ml-IN', {
     dingtalkHint: 'DingTalk Developer Platform-ൽ ഒരു റോബോട്ട് സൃഷ്ടിക്കുക',
     qqHint: 'QQ Open Platform (q.qq.com)-ൽ ഒരു ബോട്ട് സൃഷ്ടിക്കുക',
     wechatHint: 'WeChat Work Admin Console-ൽ ഒരു ആപ്പ് സൃഷ്ടിക്കുക',
-    wechatILinkHint: 'പ്രധാന മാർഗമായി WeChat QR അംഗീകാരം ഉപയോഗിക്കുക; ആവശ്യമെങ്കിൽ ബോട്ട് ടോക്കൺ കൈയോടെ നൽകാം',
+    wechatILinkHint:
+      'പ്രധാന മാർഗമായി WeChat QR അംഗീകാരം ഉപയോഗിക്കുക; ആവശ്യമെങ്കിൽ ബോട്ട് ടോക്കൺ കൈയോടെ നൽകാം',
     matrixHint: 'നിങ്ങളുടെ Matrix homeserver, ബോട്ട് അക്കൗണ്ട് ക്രെഡൻഷ്യലുകൾ ഉപയോഗിക്കുക',
     imessageHint: 'macOS-ൽ mautrix-imessage ഉപയോഗിക്കുക',
     blueBubblesHint: 'macOS-ൽ BlueBubbles സെർവർ സജ്ജമാക്കി സെർവർ URL, പാസ്‌വേഡ് നേടുക',
@@ -3685,7 +3688,8 @@ export default mergeHarnessLocale('ml-IN', {
     customCompatibleProvider: 'ഇഷ്ടാനുസൃത അനുയോജ്യ പ്രൊവൈഡർ',
     customCompatibleProviderHint:
       'നിങ്ങളുടെ സ്വന്തം അനുയോജ്യമായ എൻഡ്‌പോയിന്റ് ഉപയോഗിക്കുകയും ഡൈനാമിക് പരിശോധന/പ്രോബിംഗ് പിന്തുണ സൂക്ഷിക്കുകയും ചെയ്യുക.',
-    addProviderHint: 'ഒരു പ്രധാന ദാതാവിനെ തിരഞ്ഞെടുക്കുക അല്ലെങ്കിൽ ഇഷ്ടാനുസൃത അനുയോജ്യ എൻഡ്‌പോയിന്റ് ചേർക്കുക.',
+    addProviderHint:
+      'ഒരു പ്രധാന ദാതാവിനെ തിരഞ്ഞെടുക്കുക അല്ലെങ്കിൽ ഇഷ്ടാനുസൃത അനുയോജ്യ എൻഡ്‌പോയിന്റ് ചേർക്കുക.',
     officialProvider: 'പ്രധാന ദാതാക്കൾ',
     noProviders: 'പ്രൊവൈഡർമാർ കോൺഫിഗർ ചെയ്തിട്ടില്ല',
     noModels: 'മോഡലുകൾ ലഭ്യമല്ല',
@@ -4602,7 +4606,8 @@ export default mergeHarnessLocale('ml-IN', {
       document_converted: 'രേഖ പരിവർത്തനം ചെയ്തു',
     },
     warnings: {
-      listing_truncated: 'പട്ടിക ചുരുക്കിയിരിക്കുന്നു; പാത ചുരുക്കുക അല്ലെങ്കിൽ max_entries കൂട്ടുക.',
+      listing_truncated:
+        'പട്ടിക ചുരുക്കിയിരിക്കുന്നു; പാത ചുരുക്കുക അല്ലെങ്കിൽ max_entries കൂട്ടുക.',
     },
     badges: {
       list: 'ലിസ്റ്റ്',
@@ -4615,7 +4620,8 @@ export default mergeHarnessLocale('ml-IN', {
       noMatchesIn: '{basePath} ൽ പൊരുത്തങ്ങൾ ഇല്ല',
       matchesForIn: '{basePath} ൽ {pattern} ന് {count} പൊരുത്തങ്ങൾ',
       matchesIn: '{basePath} ൽ {count} പൊരുത്തങ്ങൾ',
-      showingFirstEntriesInMoreOmitted: '{basePath} ൽ ആദ്യ {count} എൻട്രികൾ കാണിക്കുന്നു (കൂടുതൽ ഒഴിവാക്കി)',
+      showingFirstEntriesInMoreOmitted:
+        '{basePath} ൽ ആദ്യ {count} എൻട്രികൾ കാണിക്കുന്നു (കൂടുതൽ ഒഴിവാക്കി)',
       noEntriesIn: '{basePath} ൽ എൻട്രികൾ ഇല്ല',
       oneEntryIn: '{basePath} ൽ 1 എൻട്രി',
       entriesIn: '{basePath} ൽ {count} എൻട്രികൾ',
@@ -4789,7 +4795,8 @@ export default mergeHarnessLocale('ml-IN', {
       exec: 'ഷെൽ കമാൻഡുകൾ പ്രവർത്തിപ്പിച്ച് അവയുടെ ഔട്ട്പുട്ട് കൈപ്പറ്റുന്നു',
       analyze: 'വെബിൽ നിന്ന് ഡാറ്റ ശേഖരിച്ച് ഘടനാപരമായ വിശകലന റിപ്പോർട്ട് സൃഷ്ടിക്കുന്നു',
       ask: 'ടാസ്‌ക് തുടരാൻ ആവശ്യമായ അനുബന്ധ ചോദ്യങ്ങൾ ഉപയോക്താവിനോട് ചോദിക്കുന്നു',
-      advisor: 'തിരഞ്ഞെടുപ്പ്, പകരംവയ്‌പ്പ്, മൈഗ്രേഷൻ, മികച്ച പ്രാക്ടീസ് ചോദ്യങ്ങൾക്കായുള്ള തീരുമാന ഉപദേശകൻ.',
+      advisor:
+        'തിരഞ്ഞെടുപ്പ്, പകരംവയ്‌പ്പ്, മൈഗ്രേഷൻ, മികച്ച പ്രാക്ടീസ് ചോദ്യങ്ങൾക്കായുള്ള തീരുമാന ഉപദേശകൻ.',
       mediagen: 'AI മോഡലുകൾ ഉപയോഗിച്ച് ചിത്രങ്ങൾ, വീഡിയോകൾ, അവതരണങ്ങൾ സൃഷ്ടിക്കുന്നു',
       web_query: 'URL ഉപയോഗിച്ച് ഒരു വെബ് പേജ് നേടി പാഴ്സ് ചെയ്യുന്നു',
       research:
@@ -4873,6 +4880,7 @@ export default mergeHarnessLocale('ml-IN', {
   browserProgress: {
     title: 'ബ്രൗസർ പുരോഗതി',
     steps: {
+      screenshot: 'സ്ക്രീൻഷോട്ട് പകർത്തുന്നു',
       recipe: '{recipe} പ്രവർത്തിപ്പിക്കുന്നു',
     },
   },

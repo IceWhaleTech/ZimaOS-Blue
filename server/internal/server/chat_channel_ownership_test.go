@@ -99,3 +99,61 @@ func TestChatHandlerGetMessages_StillRejectsUnownedNonChannelConversationForAuth
 		t.Fatalf("status = %d, want %d", httpErr.Code, http.StatusNotFound)
 	}
 }
+
+func TestChatHandlerListConversations_IncludesSystemScopedChannelConversationForAuthenticatedUser(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	defer store.Close()
+
+	channelConv, err := store.CreateConversationWithID(context.Background(), "ch:wechat_ilink:user-123", "wechat_ilink - user-123")
+	if err != nil {
+		t.Fatalf("CreateConversationWithID(channel): %v", err)
+	}
+	if _, err := store.CreateConversationWithID(context.Background(), "system-conversation", "system chat"); err != nil {
+		t.Fatalf("CreateConversationWithID(system): %v", err)
+	}
+	ownedConv, err := store.CreateConversation(context.Background(), "owned chat", "user-a")
+	if err != nil {
+		t.Fatalf("CreateConversation(owned): %v", err)
+	}
+
+	handler := NewChatHandler(store, llm.NewProviderRegistry(), tools.NewRegistry())
+	defer handler.Close()
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/conversations", nil)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
+		UserID: "user-a",
+		Role:   "user",
+	}))
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := handler.ListConversations(c); err != nil {
+		t.Fatalf("ListConversations: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+
+	var resp []memory.Conversation
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	seen := make(map[string]bool, len(resp))
+	for _, conv := range resp {
+		seen[conv.ID] = true
+	}
+	if !seen[channelConv.ID] {
+		t.Fatalf("expected channel conversation %q in response, got %+v", channelConv.ID, resp)
+	}
+	if !seen[ownedConv.ID] {
+		t.Fatalf("expected owned conversation %q in response, got %+v", ownedConv.ID, resp)
+	}
+	if seen["system-conversation"] {
+		t.Fatalf("unexpected unowned non-channel conversation in response: %+v", resp)
+	}
+}

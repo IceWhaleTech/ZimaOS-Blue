@@ -53,6 +53,14 @@ type ResultCardFieldLocalePatch = {
   }
 }
 
+type ResultCardHostActionLabelLocalePatch = {
+  fallbacks: string
+  input_method: string
+  target_hit: string
+  verification_method: string
+  verification_passed: string
+}
+
 const protectedHarnessTermReplacementPaths = new Set([
   'harness.group.remediationInfraProviderAuth',
   'harness.group.remediationInfraProviderQuota',
@@ -109,7 +117,7 @@ export const workspaceNavigationLocaleBackfills: Record<
   { coreTab: string; generatedTab: string }
 > = {
   'ca-ES': {
-    coreTab: "Fitxers de context principal",
+    coreTab: 'Fitxers de context principal',
     generatedTab: "Fitxers de l'espai de treball",
   },
   'cs-CZ': {
@@ -949,6 +957,319 @@ const resultCardWindowFocusedMessages: Record<LocaleKey, string> = {
   'zh-TW': '視窗已聚焦',
 }
 
+const resultCardHostActionLabelBackfills: Record<LocaleKey, ResultCardHostActionLabelLocalePatch> =
+  {
+    'ca-ES': {
+      fallbacks: 'Alternatives',
+      input_method: "Metode d'entrada",
+      target_hit: 'Objectiu encertat',
+      verification_method: 'Mètode de verificació',
+      verification_passed: 'Verificació superada',
+    },
+    'cs-CZ': {
+      fallbacks: 'Záložní postupy',
+      input_method: 'Metoda vstupu',
+      target_hit: 'Cíl zasažen',
+      verification_method: 'Metoda ověření',
+      verification_passed: 'Ověření úspěšné',
+    },
+    'da-DK': {
+      fallbacks: 'Reserveveje',
+      input_method: 'Inputmetode',
+      target_hit: 'Mål ramt',
+      verification_method: 'Verifikationsmetode',
+      verification_passed: 'Verifikation bestået',
+    },
+    'de-DE': {
+      fallbacks: 'Ausweichpfade',
+      input_method: 'Eingabemethode',
+      target_hit: 'Ziel getroffen',
+      verification_method: 'Verifikationsmethode',
+      verification_passed: 'Verifikation bestanden',
+    },
+    'el-GR': {
+      fallbacks: 'Εναλλακτικές διαδρομές',
+      input_method: 'Μέθοδος εισαγωγής',
+      target_hit: 'Ο στόχος επιτεύχθηκε',
+      verification_method: 'Μέθοδος επαλήθευσης',
+      verification_passed: 'Η επαλήθευση πέτυχε',
+    },
+    'en-GB': {
+      fallbacks: 'Fallbacks',
+      input_method: 'Input Method',
+      target_hit: 'Target Hit',
+      verification_method: 'Verification Method',
+      verification_passed: 'Verification Passed',
+    },
+    'en-US': {
+      fallbacks: 'Fallbacks',
+      input_method: 'Input Method',
+      target_hit: 'Target Hit',
+      verification_method: 'Verification Method',
+      verification_passed: 'Verification Passed',
+    },
+    'es-ES': {
+      fallbacks: 'Alternativas',
+      input_method: 'Método de entrada',
+      target_hit: 'Objetivo acertado',
+      verification_method: 'Método de verificación',
+      verification_passed: 'Verificación superada',
+    },
+    'fr-FR': {
+      fallbacks: 'Solutions de repli',
+      input_method: "Méthode d'entrée",
+      target_hit: 'Cible atteinte',
+      verification_method: 'Méthode de vérification',
+      verification_passed: 'Vérification réussie',
+    },
+    'ga-IE': {
+      fallbacks: 'Aisfhillte',
+      input_method: 'Modh ionchuir',
+      target_hit: 'Sprioc buailte',
+      verification_method: 'Modh fíoraithe',
+      verification_passed: 'Fíorú rite',
+    },
+    'hr-HR': {
+      fallbacks: 'Rezervni koraci',
+      input_method: 'Način unosa',
+      target_hit: 'Cilj pogođen',
+      verification_method: 'Metoda provjere',
+      verification_passed: 'Provjera uspješna',
+    },
+    'hu-HU': {
+      fallbacks: 'Tartalék lépések',
+      input_method: 'Beviteli mód',
+      target_hit: 'Cél eltalálva',
+      verification_method: 'Ellenőrzési mód',
+      verification_passed: 'Ellenőrzés sikeres',
+    },
+    'it-IT': {
+      fallbacks: 'Fallback',
+      input_method: 'Metodo di input',
+      target_hit: 'Obiettivo colpito',
+      verification_method: 'Metodo di verifica',
+      verification_passed: 'Verifica superata',
+    },
+    'ja-JP': {
+      fallbacks: 'フォールバック',
+      input_method: '入力方法',
+      target_hit: '対象命中',
+      verification_method: '検証方法',
+      verification_passed: '検証通過',
+    },
+    'ko-KR': {
+      fallbacks: '대체 경로',
+      input_method: '입력 방식',
+      target_hit: '대상 적중',
+      verification_method: '검증 방식',
+      verification_passed: '검증 통과',
+    },
+    'ml-IN': {
+      fallbacks: 'ഫോൾബാക്കുകൾ',
+      input_method: 'ഇൻപുട്ട് രീതി',
+      target_hit: 'ലക്ഷ്യം തൊട്ടു',
+      verification_method: 'സ്ഥിരീകരണ രീതി',
+      verification_passed: 'സ്ഥിരീകരണം വിജയിച്ചു',
+    },
+    'nb-NO': {
+      fallbacks: 'Reservevalg',
+      input_method: 'Inndatametode',
+      target_hit: 'Mål truffet',
+      verification_method: 'Verifiseringsmetode',
+      verification_passed: 'Verifisering bestått',
+    },
+    'nl-NL': {
+      fallbacks: 'Terugvalopties',
+      input_method: 'Invoermethode',
+      target_hit: 'Doel geraakt',
+      verification_method: 'Verificatiemethode',
+      verification_passed: 'Verificatie geslaagd',
+    },
+    'pl-PL': {
+      fallbacks: 'Ścieżki awaryjne',
+      input_method: 'Metoda wprowadzania',
+      target_hit: 'Cel trafiony',
+      verification_method: 'Metoda weryfikacji',
+      verification_passed: 'Weryfikacja zakończona powodzeniem',
+    },
+    'pt-BR': {
+      fallbacks: 'Alternativas',
+      input_method: 'Método de entrada',
+      target_hit: 'Alvo atingido',
+      verification_method: 'Método de verificação',
+      verification_passed: 'Verificação aprovada',
+    },
+    'pt-PT': {
+      fallbacks: 'Alternativas',
+      input_method: 'Método de entrada',
+      target_hit: 'Alvo atingido',
+      verification_method: 'Método de verificação',
+      verification_passed: 'Verificação aprovada',
+    },
+    'ro-RO': {
+      fallbacks: 'Rezerve',
+      input_method: 'Metodă de introducere',
+      target_hit: 'Țintă atinsă',
+      verification_method: 'Metodă de verificare',
+      verification_passed: 'Verificare reușită',
+    },
+    'ru-RU': {
+      fallbacks: 'Резервные пути',
+      input_method: 'Способ ввода',
+      target_hit: 'Цель достигнута',
+      verification_method: 'Метод проверки',
+      verification_passed: 'Проверка пройдена',
+    },
+    'sk-SK': {
+      fallbacks: 'Záložné postupy',
+      input_method: 'Spôsob vstupu',
+      target_hit: 'Cieľ zasiahnutý',
+      verification_method: 'Metóda overenia',
+      verification_passed: 'Overenie úspešné',
+    },
+    'sv-SE': {
+      fallbacks: 'Reservvägar',
+      input_method: 'Inmatningsmetod',
+      target_hit: 'Mål träffat',
+      verification_method: 'Verifieringsmetod',
+      verification_passed: 'Verifiering godkänd',
+    },
+    'zh-CN': {
+      fallbacks: '回退方式',
+      input_method: '输入方式',
+      target_hit: '目标命中',
+      verification_method: '验证方式',
+      verification_passed: '验证通过',
+    },
+    'zh-TW': {
+      fallbacks: '回退方式',
+      input_method: '輸入方式',
+      target_hit: '目標命中',
+      verification_method: '驗證方式',
+      verification_passed: '驗證通過',
+    },
+  }
+
+const resultCardHostActionCompletedMessages: Record<LocaleKey, string> = {
+  'ca-ES': "L'acció de l'amfitrió s'ha completat i enviat",
+  'cs-CZ': 'Akce hostitele byla dokončena a odeslána',
+  'da-DK': 'Værtshandling fuldført og sendt',
+  'de-DE': 'Host-Aktion abgeschlossen und gesendet',
+  'el-GR': 'Η ενέργεια του κεντρικού υπολογιστή ολοκληρώθηκε και υποβλήθηκε',
+  'en-GB': 'Host action completed and submitted',
+  'en-US': 'Host action completed and submitted',
+  'es-ES': 'La acción del host se completó y se envió',
+  'fr-FR': "L'action hôte a été terminée et envoyée",
+  'ga-IE': 'Críochnaíodh agus cuireadh gníomh an óstaigh isteach',
+  'hr-HR': 'Radnja hosta dovršena i poslana',
+  'hu-HU': 'A gazdagép művelete befejeződött és elküldésre került',
+  'it-IT': "L'azione host è stata completata e inviata",
+  'ja-JP': 'ホスト操作が完了して送信されました',
+  'ko-KR': '호스트 작업이 완료되어 제출되었습니다',
+  'ml-IN': 'ഹോസ്റ്റ് പ്രവർത്തനം പൂർത്തിയാക്കി സമർപ്പിച്ചു',
+  'nb-NO': 'Verts-handlingen er fullført og sendt inn',
+  'nl-NL': 'Hostactie voltooid en verzonden',
+  'pl-PL': 'Działanie hosta ukończono i wysłano',
+  'pt-BR': 'A ação do host foi concluída e enviada',
+  'pt-PT': 'A ação do anfitrião foi concluída e enviada',
+  'ro-RO': 'Acțiunea gazdei a fost finalizată și trimisă',
+  'ru-RU': 'Действие хоста завершено и отправлено',
+  'sk-SK': 'Akcia hostiteľa bola dokončená a odoslaná',
+  'sv-SE': 'Värdåtgärden slutfördes och skickades',
+  'zh-CN': '主机操作已完成并提交',
+  'zh-TW': '主機操作已完成並提交',
+}
+
+const resultCardKeysSentMessages: Record<LocaleKey, string> = {
+  'ca-ES': 'Tecles enviades',
+  'cs-CZ': 'Klávesy odeslány',
+  'da-DK': 'Taster sendt',
+  'de-DE': 'Tasten gesendet',
+  'el-GR': 'Τα πλήκτρα στάλθηκαν',
+  'en-GB': 'Keys sent',
+  'en-US': 'Keys sent',
+  'es-ES': 'Teclas enviadas',
+  'fr-FR': 'Touches envoyées',
+  'ga-IE': 'Seoladh na heochracha',
+  'hr-HR': 'Tipke poslane',
+  'hu-HU': 'Billentyűk elküldve',
+  'it-IT': 'Tasti inviati',
+  'ja-JP': 'キーを送信しました',
+  'ko-KR': '키를 전송했습니다',
+  'ml-IN': 'കീസുകൾ അയച്ചു',
+  'nb-NO': 'Taster sendt',
+  'nl-NL': 'Toetsen verzonden',
+  'pl-PL': 'Klawisze wysłane',
+  'pt-BR': 'Teclas enviadas',
+  'pt-PT': 'Teclas enviadas',
+  'ro-RO': 'Taste trimise',
+  'ru-RU': 'Клавиши отправлены',
+  'sk-SK': 'Klávesy odoslané',
+  'sv-SE': 'Tangenter skickade',
+  'zh-CN': '按键已发送',
+  'zh-TW': '按鍵已送出',
+}
+
+const resultCardClipboardValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Porta-retalls',
+  'cs-CZ': 'Schránka',
+  'da-DK': 'Udklipsholder',
+  'de-DE': 'Zwischenablage',
+  'el-GR': 'Πρόχειρο',
+  'en-GB': 'Clipboard',
+  'en-US': 'Clipboard',
+  'es-ES': 'Portapapeles',
+  'fr-FR': 'Presse-papiers',
+  'ga-IE': 'Gearrthaisce',
+  'hr-HR': 'Međuspremnik',
+  'hu-HU': 'Vágólap',
+  'it-IT': 'Appunti',
+  'ja-JP': 'クリップボード',
+  'ko-KR': '클립보드',
+  'ml-IN': 'ക്ലിപ്പ്ബോർഡ്',
+  'nb-NO': 'Utklippstavle',
+  'nl-NL': 'Klembord',
+  'pl-PL': 'Schowek',
+  'pt-BR': 'Área de transferência',
+  'pt-PT': 'Área de transferência',
+  'ro-RO': 'Memorie temporară',
+  'ru-RU': 'Буфер обмена',
+  'sk-SK': 'Schránka',
+  'sv-SE': 'Urklipp',
+  'zh-CN': '剪贴板',
+  'zh-TW': '剪貼簿',
+}
+
+const resultCardFocusedTextValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Text enfocat',
+  'cs-CZ': 'Zaměřený text',
+  'da-DK': 'Fokuseret tekst',
+  'de-DE': 'Fokussierter Text',
+  'el-GR': 'Εστιασμένο κείμενο',
+  'en-GB': 'Focused Text',
+  'en-US': 'Focused Text',
+  'es-ES': 'Texto enfocado',
+  'fr-FR': 'Texte focalisé',
+  'ga-IE': 'Téacs faoi fhócas',
+  'hr-HR': 'Fokusirani tekst',
+  'hu-HU': 'Fókuszált szöveg',
+  'it-IT': 'Testo focalizzato',
+  'ja-JP': 'フォーカス中のテキスト',
+  'ko-KR': '포커스된 텍스트',
+  'ml-IN': 'ഫോകസ് ചെയ്ത ടെക്സ്റ്റ്',
+  'nb-NO': 'Fokusert tekst',
+  'nl-NL': 'Gefocuste tekst',
+  'pl-PL': 'Tekst w fokusu',
+  'pt-BR': 'Texto em foco',
+  'pt-PT': 'Texto em foco',
+  'ro-RO': 'Text focalizat',
+  'ru-RU': 'Текст в фокусе',
+  'sk-SK': 'Text vo fokuse',
+  'sv-SE': 'Fokuserad text',
+  'zh-CN': '聚焦文本',
+  'zh-TW': '聚焦文字',
+}
+
 const resultCardExecutionModeSemanticValues: Record<LocaleKey, string> = {
   'ca-ES': 'Semàntic',
   'cs-CZ': 'Sémantický',
@@ -977,6 +1298,36 @@ const resultCardExecutionModeSemanticValues: Record<LocaleKey, string> = {
   'sv-SE': 'Semantisk',
   'zh-CN': '语义',
   'zh-TW': '語義',
+}
+
+const resultCardExecutionModeInputValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Entrada',
+  'cs-CZ': 'Vstup',
+  'da-DK': 'Indtastning',
+  'de-DE': 'Eingabe',
+  'el-GR': 'Εισαγωγή',
+  'en-GB': 'Input',
+  'en-US': 'Input',
+  'es-ES': 'Entrada',
+  'fr-FR': 'Saisie',
+  'ga-IE': 'Ionchur',
+  'hr-HR': 'Unos',
+  'hu-HU': 'Bevitel',
+  'it-IT': 'Inserimento',
+  'ja-JP': '入力',
+  'ko-KR': '입력',
+  'ml-IN': 'ഇൻപുട്ട്',
+  'nb-NO': 'Inndata',
+  'nl-NL': 'Invoer',
+  'pl-PL': 'Wprowadzanie',
+  'pt-BR': 'Entrada',
+  'pt-PT': 'Entrada',
+  'ro-RO': 'Intrare',
+  'ru-RU': 'Ввод',
+  'sk-SK': 'Vstup',
+  'sv-SE': 'Inmatning',
+  'zh-CN': '输入',
+  'zh-TW': '輸入',
 }
 
 type ProviderRecoveryLocalePatch = {
@@ -2163,16 +2514,13 @@ export function buildLocalePostMergeBackfill(
       deepResearchRuntimeCopy.reportStyleKnowledgeBase
     chatPatch.deepResearchActionResearchBriefPrepared =
       deepResearchRuntimeCopy.researchBriefPrepared
-    chatPatch.deepResearchActionDraftSynthesisReady =
-      deepResearchRuntimeCopy.draftSynthesisReady
-    chatPatch.deepResearchActionDetectedResearchGap =
-      deepResearchRuntimeCopy.detectedResearchGap
+    chatPatch.deepResearchActionDraftSynthesisReady = deepResearchRuntimeCopy.draftSynthesisReady
+    chatPatch.deepResearchActionDetectedResearchGap = deepResearchRuntimeCopy.detectedResearchGap
   }
   if (deepResearchSummaryCopy) {
     chatPatch.deepResearchSummaryGapCoverage = deepResearchSummaryCopy.summaryGapCoverage
     chatPatch.deepResearchSummaryOfficialGap = deepResearchSummaryCopy.summaryOfficialGap
-    chatPatch.deepResearchSummaryResolvedCoverage =
-      deepResearchSummaryCopy.summaryResolvedCoverage
+    chatPatch.deepResearchSummaryResolvedCoverage = deepResearchSummaryCopy.summaryResolvedCoverage
     chatPatch.deepResearchSummaryDomainCoverage = deepResearchSummaryCopy.summaryDomainCoverage
     chatPatch.deepResearchSummaryFreshnessCoverage =
       deepResearchSummaryCopy.summaryFreshnessCoverage
@@ -2425,6 +2773,16 @@ export function buildLocalePostMergeBackfill(
       )
     }
 
+    const hostActionLabels = resultCardHostActionLabelBackfills[localeKey]
+    const englishHostActionLabels = resultCardHostActionLabelBackfills['en-US']
+    for (const [key, localized] of Object.entries(hostActionLabels)) {
+      maybeBackfillResultCardLabel(
+        key,
+        localized,
+        englishHostActionLabels[key as keyof typeof englishHostActionLabels]
+      )
+    }
+
     const englishResultCardFieldMessages = resultCardFieldBackfills['en-US'].messages
     for (const [key, localized] of Object.entries(resultCardFieldCopy.messages)) {
       maybeBackfillResultCardMessage(
@@ -2433,14 +2791,58 @@ export function buildLocalePostMergeBackfill(
         englishResultCardFieldMessages[key as keyof typeof englishResultCardFieldMessages]
       )
     }
-    maybeBackfillResultCardMessage('window_focused', resultCardWindowFocusedMessages[localeKey], 'Window focused')
+    maybeBackfillResultCardMessage(
+      'host_action_completed_and_submitted',
+      resultCardHostActionCompletedMessages[localeKey],
+      resultCardHostActionCompletedMessages['en-US']
+    )
+    maybeBackfillResultCardMessage(
+      'keys_sent',
+      resultCardKeysSentMessages[localeKey],
+      resultCardKeysSentMessages['en-US']
+    )
+    maybeBackfillResultCardMessage(
+      'window_focused',
+      resultCardWindowFocusedMessages[localeKey],
+      'Window focused'
+    )
+    maybeBackfillResultCardValue(
+      'execution_mode',
+      'input',
+      resultCardExecutionModeInputValues[localeKey],
+      resultCardExecutionModeInputValues['en-US']
+    )
     maybeBackfillResultCardValue(
       'execution_mode',
       'semantic',
       resultCardExecutionModeSemanticValues[localeKey],
       'Semantic'
     )
+    maybeBackfillResultCardValue(
+      'fallbacks',
+      'clipboard',
+      resultCardClipboardValues[localeKey],
+      resultCardClipboardValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'fallbacks',
+      'focused_text',
+      resultCardFocusedTextValues[localeKey],
+      resultCardFocusedTextValues['en-US']
+    )
     maybeBackfillResultCardValue('host_os', 'darwin', 'macOS', 'Darwin')
+    maybeBackfillResultCardValue(
+      'input_method',
+      'clipboard',
+      resultCardClipboardValues[localeKey],
+      resultCardClipboardValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'verification_method',
+      'focused_text',
+      resultCardFocusedTextValues[localeKey],
+      resultCardFocusedTextValues['en-US']
+    )
   }
   const localizedMetricsMin = localizedMetricsMinLabels[localeKey]
   if (localizedMetricsMin) {

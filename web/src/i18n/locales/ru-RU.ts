@@ -2508,7 +2508,8 @@ export default mergeHarnessLocale('ru-RU', {
     wechatILinkScanHint: 'Отсканируйте QR-код iLink в WeChat и подтвердите вход на телефоне.',
     wechatILinkSetupCreating: 'Создание сессии...',
     wechatILinkSetupCreateFailed: 'Не удалось создать сессию настройки',
-    wechatILinkSetupDescription: 'Отсканируйте QR-код в WeChat и подтвердите вход в iLink. Blue автоматически включит канал.',
+    wechatILinkSetupDescription:
+      'Отсканируйте QR-код в WeChat и подтвердите вход в iLink. Blue автоматически включит канал.',
     wechatILinkSetupStatus: 'Статус настройки',
     wechatILinkOpenOnPhone: 'Открыть ссылку авторизации',
     wechatILinkSetupEyebrow: 'Мобильная настройка',
@@ -2519,14 +2520,15 @@ export default mergeHarnessLocale('ru-RU', {
     wechatILinkSetupSubmitting: 'Завершение...',
     wechatILinkSetupSubmitFailed: 'Не удалось завершить настройку',
     wechatILinkSetupSuccess: 'Настройка завершена. Теперь можно закрыть эту страницу.',
-    wechatILinkSetupStatePending: "Ожидание",
-    wechatILinkSetupStateAuthorizing: "Авторизация",
-    wechatILinkSetupStateConfiguring: "Настройка",
-    wechatILinkSetupStateConnected: "Подключено",
-    wechatILinkSetupStateError: "Ошибка",
-    wechatILinkSetupStateExpired: "Истекло",
+    wechatILinkSetupStatePending: 'Ожидание',
+    wechatILinkSetupStateAuthorizing: 'Авторизация',
+    wechatILinkSetupStateConfiguring: 'Настройка',
+    wechatILinkSetupStateConnected: 'Подключено',
+    wechatILinkSetupStateError: 'Ошибка',
+    wechatILinkSetupStateExpired: 'Истекло',
     wechatILinkPairingPayload: 'Данные сопряжения',
-    wechatILinkPairingPayloadPlaceholder: 'Вставьте сюда данные сопряжения iLink или оставьте поле пустым и заполните ниже токен бота.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Вставьте сюда данные сопряжения iLink или оставьте поле пустым и заполните ниже токен бота.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Токен доступа',
@@ -2604,7 +2606,8 @@ export default mergeHarnessLocale('ru-RU', {
     dingtalkHint: 'Создайте робота в DingTalk Developer Platform',
     qqHint: 'Создайте бота в QQ Open Platform (q.qq.com)',
     wechatHint: 'Создайте приложение в WeChat Work Admin Console',
-    wechatILinkHint: 'Используйте QR-авторизацию WeChat как основной путь или вручную заполните токен бота при необходимости',
+    wechatILinkHint:
+      'Используйте QR-авторизацию WeChat как основной путь или вручную заполните токен бота при необходимости',
     matrixHint: 'Используйте ваш Matrix homeserver и учетные данные аккаунта бота',
     imessageHint: 'Используйте mautrix-imessage в macOS',
     blueBubblesHint: 'Настройте сервер BlueBubbles в macOS и получите URL и пароль',
@@ -4586,7 +4589,8 @@ export default mergeHarnessLocale('ru-RU', {
       noMatchesIn: 'Нет совпадений в {basePath}',
       matchesForIn: '{count} совпадений для {pattern} в {basePath}',
       matchesIn: '{count} совпадений в {basePath}',
-      showingFirstEntriesInMoreOmitted: 'Показаны первые {count} записей в {basePath} (остальные пропущены)',
+      showingFirstEntriesInMoreOmitted:
+        'Показаны первые {count} записей в {basePath} (остальные пропущены)',
       noEntriesIn: 'Нет записей в {basePath}',
       oneEntryIn: '1 запись в {basePath}',
       entriesIn: '{count} записей в {basePath}',
@@ -4758,7 +4762,8 @@ export default mergeHarnessLocale('ru-RU', {
       exec: 'Выполняет команды оболочки и сохраняет их вывод',
       analyze: 'Собирает данные из интернета и формирует структурированный аналитический отчет',
       ask: 'Задает пользователю уточняющие вопросы, чтобы продолжить задачу',
-      advisor: 'Помощник по принятию решений для вопросов выбора, замены, миграции и лучших практик.',
+      advisor:
+        'Помощник по принятию решений для вопросов выбора, замены, миграции и лучших практик.',
       mediagen: 'Создает изображения, видео и презентации с помощью моделей ИИ',
       web_query: 'Получает и разбирает веб-страницу по URL',
       research:
@@ -4842,6 +4847,7 @@ export default mergeHarnessLocale('ru-RU', {
   browserProgress: {
     title: 'Прогресс браузера',
     steps: {
+      screenshot: 'Создание снимка экрана',
       recipe: 'Запуск {recipe}',
     },
   },

@@ -2433,8 +2433,7 @@ export default mergeHarnessLocale('zh-CN', {
     wechatILinkPrimaryAction: '主要操作',
     wechatILinkScanAction: '扫码授权登录',
     wechatILinkManualAction: '手动配置',
-    wechatILinkScanHint:
-      '请使用微信扫描 iLink 二维码，并在手机上确认登录授权。',
+    wechatILinkScanHint: '请使用微信扫描 iLink 二维码，并在手机上确认登录授权。',
     wechatILinkSetupCreating: '正在创建配置会话...',
     wechatILinkSetupCreateFailed: '创建配置会话失败',
     wechatILinkSetupDescription:
@@ -2449,12 +2448,12 @@ export default mergeHarnessLocale('zh-CN', {
     wechatILinkSetupSubmitting: '提交中...',
     wechatILinkSetupSubmitFailed: '完成配置失败',
     wechatILinkSetupSuccess: '配置完成，现在可以关闭此页面。',
-    wechatILinkSetupStatePending: "等待中",
-    wechatILinkSetupStateAuthorizing: "授权中",
-    wechatILinkSetupStateConfiguring: "配置中",
-    wechatILinkSetupStateConnected: "已连接",
-    wechatILinkSetupStateError: "出错",
-    wechatILinkSetupStateExpired: "已过期",
+    wechatILinkSetupStatePending: '等待中',
+    wechatILinkSetupStateAuthorizing: '授权中',
+    wechatILinkSetupStateConfiguring: '配置中',
+    wechatILinkSetupStateConnected: '已连接',
+    wechatILinkSetupStateError: '出错',
+    wechatILinkSetupStateExpired: '已过期',
     wechatILinkPairingPayload: '配对结果原文',
     wechatILinkPairingPayloadPlaceholder:
       '请粘贴 iLink 配对结果；如果没有，也可以留空并在下方填写 Bot Token。',
@@ -4617,7 +4616,8 @@ export default mergeHarnessLocale('zh-CN', {
       analyze: '从网页收集数据并生成结构化分析报告',
       ask: '向用户提出继续任务所需的追问问题',
       advisor: '用于选型、替换、迁移和最佳实践问题的决策顾问。',
-      computer_use: '控制受支持的宿主操作系统窗口和基于辅助功能树的浏览器流程，可执行快照、定位、滚动、输入、截图和聊天式操作。',
+      computer_use:
+        '控制受支持的宿主操作系统窗口和基于辅助功能树的浏览器流程，可执行快照、定位、滚动、输入、截图和聊天式操作。',
       mediagen: '使用 AI 模型生成图片、视频和演示文稿',
       web_query: '根据 URL 获取并解析网页',
       research: '运行深度研究工作流。你可以等待最终报告，或先获取任务 ID 稍后再查看。',
@@ -4696,6 +4696,7 @@ export default mergeHarnessLocale('zh-CN', {
   browserProgress: {
     title: '浏览器进度',
     steps: {
+      screenshot: '正在截取屏幕截图',
       recipe: '正在运行 {recipe}',
     },
   },

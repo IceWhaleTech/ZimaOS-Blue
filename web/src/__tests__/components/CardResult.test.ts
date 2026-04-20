@@ -31,6 +31,7 @@ function createTestI18n(locale = 'en-US') {
           titles: {
             browser_page: 'Browser page',
             browser: 'Browser',
+            computer_use: 'Computer Use',
             file_write: 'File Write',
             ls: 'ls',
             find: 'find',
@@ -39,12 +40,16 @@ function createTestI18n(locale = 'en-US') {
             analyze: 'analyze',
           },
           labels: {
+            execution_mode: 'Execution Mode',
             final_url: 'Final URL',
             title: 'Title',
             checkpoint: 'Checkpoint',
             pending: 'Pending',
             completed: 'Completed',
+            fallbacks: 'Fallbacks',
+            input_method: 'Input Method',
             target_id: 'Target ID',
+            target_hit: 'Target Hit',
             strategy: 'Strategy',
             include_hidden: 'Include Hidden',
             pattern: 'Pattern',
@@ -53,10 +58,25 @@ function createTestI18n(locale = 'en-US') {
             backend: 'Backend',
             backend_source: 'Backend Source',
             fallback_reason: 'Fallback Reason',
+            verification_method: 'Verification Method',
+            verification_passed: 'Verification Passed',
           },
           values: {
+            execution_mode: {
+              input: 'Input',
+            },
+            fallbacks: {
+              clipboard: 'Clipboard',
+              focused_text: 'Focused Text',
+            },
+            input_method: {
+              clipboard: 'Clipboard',
+            },
             strategy: {
               strict: 'Strict',
+            },
+            verification_method: {
+              focused_text: 'Focused Text',
             },
           },
           actions: {
@@ -76,6 +96,8 @@ function createTestI18n(locale = 'en-US') {
             browser_scroll_direction_right: 'right',
             no_result_data: 'No result data',
             file_written_successfully: 'File written successfully',
+            host_action_completed_and_submitted: 'Host action completed and submitted',
+            keys_sent: 'Keys sent',
             navigation_failed_url_not_allowed: 'Navigation failed: URL not allowed',
             proxy_bridge_not_available: 'Proxy bridge not available',
             proxy_bridge_not_available_cannot_call_vlm:
@@ -145,6 +167,7 @@ function createTestI18n(locale = 'en-US') {
           titles: {
             browser_page: 'Browser page',
             browser: '浏览器',
+            computer_use: '计算机操作',
             file_write: '写入文件',
             ls: 'ls',
             find: 'find',
@@ -153,12 +176,16 @@ function createTestI18n(locale = 'en-US') {
             analyze: '分析',
           },
           labels: {
+            execution_mode: '执行模式',
             final_url: '最终 URL',
             title: '标题',
             checkpoint: '检查点',
             pending: '待处理',
             completed: '已完成',
+            fallbacks: '回退方式',
+            input_method: '输入方式',
             target_id: '目标 ID',
+            target_hit: '目标命中',
             strategy: '策略',
             include_hidden: '包含隐藏项',
             pattern: '模式',
@@ -167,10 +194,25 @@ function createTestI18n(locale = 'en-US') {
             backend: '后端',
             backend_source: '后端来源',
             fallback_reason: '回退原因',
+            verification_method: '验证方式',
+            verification_passed: '验证通过',
           },
           values: {
+            execution_mode: {
+              input: '输入',
+            },
+            fallbacks: {
+              clipboard: '剪贴板',
+              focused_text: '聚焦文本',
+            },
+            input_method: {
+              clipboard: '剪贴板',
+            },
             strategy: {
               strict: '严格',
+            },
+            verification_method: {
+              focused_text: '聚焦文本',
             },
           },
           actions: {
@@ -189,6 +231,8 @@ function createTestI18n(locale = 'en-US') {
             browser_scroll_direction_right: '右',
             no_result_data: '没有结果数据',
             file_written_successfully: '文件写入成功',
+            host_action_completed_and_submitted: '主机操作已完成并提交',
+            keys_sent: '按键已发送',
             navigation_failed_url_not_allowed: '导航失败：URL 不被允许',
             proxy_bridge_not_available: '代理桥不可用',
             proxy_bridge_not_available_cannot_call_vlm: '代理桥不可用：无法调用 VLM',
@@ -334,6 +378,72 @@ describe('CardResult', () => {
     expect(wrapper.text()).toContain('严格')
     expect(wrapper.text()).toContain('是')
     expect(wrapper.text()).not.toContain('target_id')
+  })
+
+  it('translates host-action result messages plus verification labels and values', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Host action completed and submitted',
+          details: [
+            { label: 'fallbacks', value: ['clipboard', 'focused_text'] },
+            { label: 'input_method', value: 'clipboard' },
+            { label: 'target_hit', value: true },
+            { label: 'verification_method', value: 'focused_text' },
+            { label: 'verification_passed', value: false },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('主机操作已完成并提交')
+    expect(wrapper.text()).toContain('回退方式')
+    expect(wrapper.text()).toContain('剪贴板')
+    expect(wrapper.text()).toContain('目标命中')
+    expect(wrapper.text()).toContain('验证方式')
+    expect(wrapper.text()).toContain('聚焦文本')
+    expect(wrapper.text()).toContain('验证通过')
+    expect(wrapper.text()).toContain('是')
+    expect(wrapper.text()).toContain('否')
+
+    expect(wrapper.text()).not.toContain('Host action completed and submitted')
+    expect(wrapper.text()).not.toContain('input_method')
+    expect(wrapper.text()).not.toContain('clipboard')
+    expect(wrapper.text()).not.toContain('verification_method')
+    expect(wrapper.text()).not.toContain('focused_text')
+    expect(wrapper.text()).not.toContain('verification_passed')
+  })
+
+  it('translates keyboard action messages plus execution mode input values', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Keys sent',
+          details: [
+            { label: 'execution_mode', value: 'input' },
+            { label: 'window_id', value: 'win-77' },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('按键已发送')
+    expect(wrapper.text()).toContain('执行模式')
+    expect(wrapper.text()).toContain('输入')
+    expect(wrapper.text()).not.toContain('Keys sent')
+    expect(wrapper.text()).not.toContain('execution_mode')
   })
 
   it('keeps inline detail labels visually separated from their values', () => {

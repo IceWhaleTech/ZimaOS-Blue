@@ -66,7 +66,7 @@ func TestDarwinCapabilities_IncludesPermissionGuidanceWhenDenied(t *testing.T) {
 	}
 }
 
-func TestEnsureAccessibilityPermission_OpensSettingsWhenDenied(t *testing.T) {
+func TestEnsureAccessibilityPermission_RequestsNativePromptWhenSupported(t *testing.T) {
 	prevGranted := darwinAccessibilityGrantedProbe
 	prevPrompt := darwinAccessibilityPromptProbe
 	prevDispatch := darwinAccessibilityPromptDispatch
@@ -104,14 +104,14 @@ func TestEnsureAccessibilityPermission_OpensSettingsWhenDenied(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected permission error")
 	}
-	if promptCalls != 0 {
-		t.Fatalf("prompt calls = %d, want 0", promptCalls)
+	if promptCalls != 1 {
+		t.Fatalf("prompt calls = %d, want 1", promptCalls)
 	}
-	if dispatchCalls != 0 {
-		t.Fatalf("dispatch calls = %d, want 0", dispatchCalls)
+	if dispatchCalls != 1 {
+		t.Fatalf("dispatch calls = %d, want 1", dispatchCalls)
 	}
-	if openSettingsCalls != 1 {
-		t.Fatalf("open settings calls = %d, want 1", openSettingsCalls)
+	if openSettingsCalls != 0 {
+		t.Fatalf("open settings calls = %d, want 0", openSettingsCalls)
 	}
 }
 
@@ -130,7 +130,7 @@ func TestDarwinActivationWaitBudget_AllowsSlowWindowFocus(t *testing.T) {
 	}
 }
 
-func TestEnsureAccessibilityPermission_ThrottlesRepeatedSettingsOpens(t *testing.T) {
+func TestEnsureAccessibilityPermission_ThrottlesRepeatedNativePromptRequests(t *testing.T) {
 	prevGranted := darwinAccessibilityGrantedProbe
 	prevPrompt := darwinAccessibilityPromptProbe
 	prevDispatch := darwinAccessibilityPromptDispatch
@@ -170,18 +170,18 @@ func TestEnsureAccessibilityPermission_ThrottlesRepeatedSettingsOpens(t *testing
 	if err := backend.ensureAccessibilityPermission(); err == nil {
 		t.Fatal("second ensureAccessibilityPermission() error = nil, want permission error")
 	}
-	if promptCalls != 0 {
-		t.Fatalf("prompt calls = %d, want 0", promptCalls)
+	if promptCalls != 1 {
+		t.Fatalf("prompt calls = %d, want 1", promptCalls)
 	}
-	if dispatchCalls != 0 {
-		t.Fatalf("dispatch calls = %d, want 0", dispatchCalls)
+	if dispatchCalls != 1 {
+		t.Fatalf("dispatch calls = %d, want 1", dispatchCalls)
 	}
-	if openSettingsCalls != 1 {
-		t.Fatalf("open settings calls = %d, want 1", openSettingsCalls)
+	if openSettingsCalls != 0 {
+		t.Fatalf("open settings calls = %d, want 0", openSettingsCalls)
 	}
 }
 
-func TestEnsureAccessibilityPermission_StillReturnsErrorWhenSettingsOpenUnavailable(t *testing.T) {
+func TestEnsureAccessibilityPermission_FallsBackToSettingsWhenPromptUnsupported(t *testing.T) {
 	prevGranted := darwinAccessibilityGrantedProbe
 	prevPrompt := darwinAccessibilityPromptProbe
 	prevDispatch := darwinAccessibilityPromptDispatch
@@ -197,14 +197,11 @@ func TestEnsureAccessibilityPermission_StillReturnsErrorWhenSettingsOpenUnavaila
 	}
 	darwinAccessibilityPromptDispatch = func(fn func() bool) bool {
 		dispatchCalls++
-		if fn != nil {
-			fn()
-		}
-		return true
+		return false
 	}
 	darwinOpenAccessibilitySettingsFunc = func() error {
 		openSettingsCalls++
-		return errors.New("open failed")
+		return nil
 	}
 	defer func() {
 		darwinAccessibilityGrantedProbe = prevGranted
@@ -222,8 +219,8 @@ func TestEnsureAccessibilityPermission_StillReturnsErrorWhenSettingsOpenUnavaila
 	if promptCalls != 0 {
 		t.Fatalf("prompt calls = %d, want 0", promptCalls)
 	}
-	if dispatchCalls != 0 {
-		t.Fatalf("dispatch calls = %d, want 0", dispatchCalls)
+	if dispatchCalls != 1 {
+		t.Fatalf("dispatch calls = %d, want 1", dispatchCalls)
 	}
 	if openSettingsCalls != 1 {
 		t.Fatalf("open settings calls = %d, want 1", openSettingsCalls)
@@ -985,8 +982,11 @@ func TestEnsureAccessibilityPermission_ReturnsGuidedRuntimeError(t *testing.T) {
 	if runtimeErr.Code != "permission_required" {
 		t.Fatalf("code = %q, want permission_required", runtimeErr.Code)
 	}
-	if runtimeErr.Message == "" {
-		t.Fatal("expected guidance message")
+	if !strings.Contains(runtimeErr.Message, "click Allow") {
+		t.Fatalf("message = %q, want click-Allow guidance", runtimeErr.Message)
+	}
+	if !strings.Contains(runtimeErr.Message, "System Settings > Privacy & Security > Accessibility") {
+		t.Fatalf("message = %q, want settings fallback guidance", runtimeErr.Message)
 	}
 	if _, ok := runtimeErr.Details["permissions"]; !ok {
 		t.Fatal("expected permissions detail")

@@ -2517,10 +2517,12 @@ export default mergeHarnessLocale('es-ES', {
     wechatILinkPrimaryAction: 'Accion principal',
     wechatILinkScanAction: 'Escanear para conectar',
     wechatILinkManualAction: 'Configuracion manual',
-    wechatILinkScanHint: 'Escanea el codigo QR de iLink con WeChat y confirma el inicio de sesion en tu telefono.',
+    wechatILinkScanHint:
+      'Escanea el codigo QR de iLink con WeChat y confirma el inicio de sesion en tu telefono.',
     wechatILinkSetupCreating: 'Creando sesion...',
     wechatILinkSetupCreateFailed: 'No se pudo crear la sesion de configuracion',
-    wechatILinkSetupDescription: 'Escanea el codigo QR con WeChat y confirma el inicio de sesion de iLink. Blue habilitara el canal automaticamente.',
+    wechatILinkSetupDescription:
+      'Escanea el codigo QR con WeChat y confirma el inicio de sesion de iLink. Blue habilitara el canal automaticamente.',
     wechatILinkSetupStatus: 'Estado de configuracion',
     wechatILinkOpenOnPhone: 'Abrir enlace de autorizacion',
     wechatILinkSetupEyebrow: 'Configuracion movil',
@@ -2531,14 +2533,15 @@ export default mergeHarnessLocale('es-ES', {
     wechatILinkSetupSubmitting: 'Completando...',
     wechatILinkSetupSubmitFailed: 'No se pudo completar la configuracion',
     wechatILinkSetupSuccess: 'Configuracion completada. Ya puedes cerrar esta pagina.',
-    wechatILinkSetupStatePending: "Pendiente",
-    wechatILinkSetupStateAuthorizing: "Autorizando",
-    wechatILinkSetupStateConfiguring: "Configurando",
-    wechatILinkSetupStateConnected: "Conectado",
-    wechatILinkSetupStateError: "Error",
-    wechatILinkSetupStateExpired: "Expirada",
+    wechatILinkSetupStatePending: 'Pendiente',
+    wechatILinkSetupStateAuthorizing: 'Autorizando',
+    wechatILinkSetupStateConfiguring: 'Configurando',
+    wechatILinkSetupStateConnected: 'Conectado',
+    wechatILinkSetupStateError: 'Error',
+    wechatILinkSetupStateExpired: 'Expirada',
     wechatILinkPairingPayload: 'Carga de emparejamiento',
-    wechatILinkPairingPayloadPlaceholder: 'Pega aqui la carga de emparejamiento de iLink o dejala vacia y completa abajo el token del bot.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Pega aqui la carga de emparejamiento de iLink o dejala vacia y completa abajo el token del bot.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Token de acceso',
@@ -2616,7 +2619,8 @@ export default mergeHarnessLocale('es-ES', {
     dingtalkHint: 'Crea un robot en DingTalk Developer Platform',
     qqHint: 'Crea un bot en QQ Open Platform (q.qq.com)',
     wechatHint: 'Crea una app en la consola de administración de WeChat Work',
-    wechatILinkHint: 'Usa la autorizacion QR de WeChat como via principal o rellena manualmente el token del bot si hace falta',
+    wechatILinkHint:
+      'Usa la autorizacion QR de WeChat como via principal o rellena manualmente el token del bot si hace falta',
     matrixHint: 'Usa tu homeserver de Matrix y credenciales de la cuenta del bot',
     imessageHint: 'Usar mautrix-imessage en macOS',
     blueBubblesHint: 'Configura el servidor BlueBubbles en macOS y obtén la URL y la contraseña',
@@ -3682,7 +3686,8 @@ export default mergeHarnessLocale('es-ES', {
     customCompatibleProvider: 'Proveedor compatible personalizado',
     customCompatibleProviderHint:
       'Use su propio endpoint compatible y mantenga el soporte para verificación/sondeo dinámicos.',
-    addProviderHint: 'Selecciona un proveedor principal o añade un endpoint compatible personalizado.',
+    addProviderHint:
+      'Selecciona un proveedor principal o añade un endpoint compatible personalizado.',
     officialProvider: 'Proveedores principales',
     noProviders: 'Ningún proveedor configurado',
     noModels: 'Ningún modelo disponible',
@@ -4784,7 +4789,8 @@ export default mergeHarnessLocale('es-ES', {
       exec: 'Ejecuta comandos del shell y captura su salida',
       analyze: 'Recopila datos de la web y genera un informe de analisis estructurado',
       ask: 'Hace preguntas de seguimiento al usuario para continuar la tarea',
-      advisor: 'Asesor de decisiones para preguntas de selección, reemplazo, migración y buenas prácticas.',
+      advisor:
+        'Asesor de decisiones para preguntas de selección, reemplazo, migración y buenas prácticas.',
       mediagen: 'Genera imagenes, videos y presentaciones con modelos de IA',
       web_query: 'Obtiene y analiza una pagina web por URL',
       research:
@@ -4868,6 +4874,7 @@ export default mergeHarnessLocale('es-ES', {
   browserProgress: {
     title: 'Progreso del navegador',
     steps: {
+      screenshot: 'Capturando pantalla',
       recipe: 'Ejecutando {recipe}',
     },
   },

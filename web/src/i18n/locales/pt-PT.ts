@@ -2507,10 +2507,12 @@ export default mergeHarnessLocale('pt-PT', {
     wechatILinkPrimaryAction: 'Acao principal',
     wechatILinkScanAction: 'Digitalizar para ligar',
     wechatILinkManualAction: 'Configuracao manual',
-    wechatILinkScanHint: 'Digitalize o codigo QR do iLink com o WeChat e confirme o inicio de sessao no telemovel.',
+    wechatILinkScanHint:
+      'Digitalize o codigo QR do iLink com o WeChat e confirme o inicio de sessao no telemovel.',
     wechatILinkSetupCreating: 'A criar sessao...',
     wechatILinkSetupCreateFailed: 'Falha ao criar a sessao de configuracao',
-    wechatILinkSetupDescription: 'Digitalize o codigo QR com o WeChat e confirme o inicio de sessao do iLink. O Blue ativara o canal automaticamente.',
+    wechatILinkSetupDescription:
+      'Digitalize o codigo QR com o WeChat e confirme o inicio de sessao do iLink. O Blue ativara o canal automaticamente.',
     wechatILinkSetupStatus: 'Estado da configuracao',
     wechatILinkOpenOnPhone: 'Abrir link de autorizacao',
     wechatILinkSetupEyebrow: 'Configuracao movel',
@@ -2521,14 +2523,15 @@ export default mergeHarnessLocale('pt-PT', {
     wechatILinkSetupSubmitting: 'A concluir...',
     wechatILinkSetupSubmitFailed: 'Falha ao concluir a configuracao',
     wechatILinkSetupSuccess: 'Configuracao concluida. Ja pode fechar esta pagina.',
-    wechatILinkSetupStatePending: "Pendente",
-    wechatILinkSetupStateAuthorizing: "A autorizar",
-    wechatILinkSetupStateConfiguring: "A configurar",
-    wechatILinkSetupStateConnected: "Ligado",
-    wechatILinkSetupStateError: "Erro",
-    wechatILinkSetupStateExpired: "Expirada",
+    wechatILinkSetupStatePending: 'Pendente',
+    wechatILinkSetupStateAuthorizing: 'A autorizar',
+    wechatILinkSetupStateConfiguring: 'A configurar',
+    wechatILinkSetupStateConnected: 'Ligado',
+    wechatILinkSetupStateError: 'Erro',
+    wechatILinkSetupStateExpired: 'Expirada',
     wechatILinkPairingPayload: 'Carga de emparelhamento',
-    wechatILinkPairingPayloadPlaceholder: 'Cole aqui a carga de emparelhamento do iLink ou deixe em branco e preencha abaixo o token do bot.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Cole aqui a carga de emparelhamento do iLink ou deixe em branco e preencha abaixo o token do bot.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Token de acesso',
@@ -2606,7 +2609,8 @@ export default mergeHarnessLocale('pt-PT', {
     dingtalkHint: 'Crie um robô no DingTalk Developer Platform',
     qqHint: 'Crie um bot no QQ Open Platform (q.qq.com)',
     wechatHint: 'Crie um app no console de administração do WeChat Work',
-    wechatILinkHint: 'Use a autorizacao por QR do WeChat como via principal ou preencha manualmente o token do bot se necessario',
+    wechatILinkHint:
+      'Use a autorizacao por QR do WeChat como via principal ou preencha manualmente o token do bot se necessario',
     matrixHint: 'Use seu homeserver Matrix e credenciais da conta do bot',
     imessageHint: 'Use mautrix-imessage no macOS',
     blueBubblesHint: 'Configure o servidor BlueBubbles no macOS e obtenha a URL e a senha',
@@ -3670,7 +3674,8 @@ export default mergeHarnessLocale('pt-PT', {
     customCompatibleProvider: 'Provedor compatível personalizado',
     customCompatibleProviderHint:
       'Utilize o seu próprio endpoint compatível e mantenha o suporte para verificação/sondagem dinâmicos.',
-    addProviderHint: 'Selecione um fornecedor principal ou adicione um endpoint compatível personalizado.',
+    addProviderHint:
+      'Selecione um fornecedor principal ou adicione um endpoint compatível personalizado.',
     officialProvider: 'Fornecedores principais',
     noProviders: 'Nenhum provedor configurado',
     noModels: 'Nenhum modelo disponível',
@@ -4594,7 +4599,8 @@ export default mergeHarnessLocale('pt-PT', {
       noMatchesIn: 'Sem correspondências em {basePath}',
       matchesForIn: '{count} correspondências para {pattern} em {basePath}',
       matchesIn: '{count} correspondências em {basePath}',
-      showingFirstEntriesInMoreOmitted: 'A mostrar as primeiras {count} entradas em {basePath} (mais omitidas)',
+      showingFirstEntriesInMoreOmitted:
+        'A mostrar as primeiras {count} entradas em {basePath} (mais omitidas)',
       noEntriesIn: 'Sem entradas em {basePath}',
       oneEntryIn: '1 entrada em {basePath}',
       entriesIn: '{count} entradas em {basePath}',
@@ -4767,7 +4773,8 @@ export default mergeHarnessLocale('pt-PT', {
       exec: 'Executa comandos de shell e captura a respetiva saida',
       analyze: 'Recolhe dados da web e gera um relatorio de analise estruturado',
       ask: 'Faz perguntas de seguimento ao utilizador para continuar a tarefa',
-      advisor: 'Consultor de decisão para questões de seleção, substituição, migração e boas práticas.',
+      advisor:
+        'Consultor de decisão para questões de seleção, substituição, migração e boas práticas.',
       mediagen: 'Gera imagens, videos e apresentacoes com modelos de IA',
       web_query: 'Obtém e analisa uma pagina web por URL',
       research:
@@ -4850,6 +4857,7 @@ export default mergeHarnessLocale('pt-PT', {
   browserProgress: {
     title: 'Progresso do navegador',
     steps: {
+      screenshot: 'A capturar imagem do ecrã',
       recipe: 'A executar {recipe}',
     },
   },

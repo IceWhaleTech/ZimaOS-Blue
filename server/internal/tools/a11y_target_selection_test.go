@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -5487,6 +5488,122 @@ func TestA11ySubmitNeedsRetry_UsesRememberedWindowForStructuredPostSubmitConfirm
 	}
 	if backend.interactiveCalls != 0 {
 		t.Fatalf("interactiveCalls = %d, want 0 when remembered structured post-submit confirmation is enough", backend.interactiveCalls)
+	}
+}
+
+func TestA11ySubmitNeedsRetry_UsesStructuredComposerAnchorAfterSubmitWhenStableIDDrifts(t *testing.T) {
+	preSubmit := a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+		WindowID: "win-feishu",
+		Title:    "Feishu",
+		Mode:     "ax",
+	}, &a11yruntime.Node{
+		Role: "window",
+		Name: "Feishu",
+		Children: []*a11yruntime.Node{
+			{
+				Token:       "token-editor",
+				Role:        "document",
+				Name:        "Message",
+				Description: "focused editable",
+				Interactive: true,
+			},
+			{
+				Token:       "token-send",
+				Role:        "button",
+				Name:        "Send",
+				Interactive: true,
+			},
+		},
+	})
+	postSubmit := a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+		WindowID: "win-feishu",
+		Title:    "Feishu",
+		Mode:     "ax",
+	}, &a11yruntime.Node{
+		Role: "window",
+		Name: "Feishu",
+		Children: []*a11yruntime.Node{
+			{
+				Token:       "token-editor",
+				Role:        "document",
+				Name:        "Type a message",
+				Description: "focused editable",
+				Interactive: true,
+			},
+			{
+				Token:       "token-send",
+				Role:        "button",
+				Name:        "Send",
+				Interactive: true,
+			},
+		},
+	})
+	if preSubmit == nil || postSubmit == nil {
+		t.Fatal("BuildStructuredSnapshot() = nil, want snapshots")
+	}
+
+	rememberedStableID := ""
+	preSubmitNodeID := preSubmit.LookupToken("token-editor")
+	if preSubmitNodeID == 0 {
+		t.Fatal("preSubmit.LookupToken(token-editor) = 0, want node id")
+	}
+	for _, node := range preSubmit.Nodes {
+		if node.NodeID == preSubmitNodeID {
+			rememberedStableID = strings.TrimSpace(node.StableID)
+			break
+		}
+	}
+	if rememberedStableID == "" {
+		t.Fatal("rememberedStableID = empty, want pre-submit composer stable id")
+	}
+
+	currentStableID := ""
+	postSubmitNodeID := postSubmit.LookupToken("token-editor")
+	if postSubmitNodeID == 0 {
+		t.Fatal("postSubmit.LookupToken(token-editor) = 0, want node id")
+	}
+	for _, node := range postSubmit.Nodes {
+		if node.NodeID == postSubmitNodeID {
+			currentStableID = strings.TrimSpace(node.StableID)
+			break
+		}
+	}
+	if currentStableID == "" {
+		t.Fatal("currentStableID = empty, want post-submit composer stable id")
+	}
+	if currentStableID == rememberedStableID {
+		t.Fatalf("composer stable id = %q, want drift when zero-bounds label changes", currentStableID)
+	}
+
+	backend := &a11yCompatBackend{
+		structuredSnapshot: postSubmit,
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+	tool.chatMemory.RememberAnchor("darwin", "feishu_lark", "message", string(a11yChatStageLocateComposer), rememberedStableID)
+	state := newA11yChatExecutionState("darwin", "feishu_lark", "message", "Orca")
+
+	needsRetry := tool.a11ySubmitNeedsRetry(
+		withA11yChatExecutionState(context.Background(), state),
+		backend,
+		"win-feishu",
+		a11ySubmitConfirmation{
+			TypedValue: "hello",
+			InputToken: "token-editor",
+		},
+	)
+	if needsRetry {
+		t.Fatal("a11ySubmitNeedsRetry() = true, want false when remembered composer anchor plus structured post-submit cue is enough")
+	}
+	verification := state.submitEvidenceSnapshot()
+	if verification["confirmation"] != "structured_post_submit_anchor_confirmation" {
+		t.Fatalf("submitEvidence.confirmation = %v, want structured_post_submit_anchor_confirmation", verification["confirmation"])
+	}
+	if stableID := strings.TrimSpace(a11yFirstNonEmptyString(verification["element_stable_id"])); stableID == "" {
+		t.Fatalf("submitEvidence.element_stable_id = %#v, want remembered or refreshed composer anchor", verification["element_stable_id"])
+	}
+	if backend.interactiveCalls != 0 {
+		t.Fatalf("interactiveCalls = %d, want 0 when structured composer anchor confirmation is enough", backend.interactiveCalls)
 	}
 }
 

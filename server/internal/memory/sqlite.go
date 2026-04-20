@@ -299,16 +299,35 @@ func normalizeConversationScope(userID []string) string {
 	return strings.TrimSpace(userID[0])
 }
 
+func conversationVisibilityCond(scopedUserID string) interface{} {
+	scopedUserID = strings.TrimSpace(scopedUserID)
+	if scopedUserID == "" {
+		return nil
+	}
+	return z.Or(
+		z.Eq("user_id", scopedUserID),
+		z.And(
+			z.Eq("user_id", ""),
+			z.Like("id", "ch:%"),
+		),
+	)
+}
+
 func (s *Store) ensureConversationAccess(ctx context.Context, conversationID, scopedUserID string) error {
 	conversationID = strings.TrimSpace(conversationID)
 	if conversationID == "" || scopedUserID == "" {
 		return nil
 	}
 
+	conds := []interface{}{z.Eq("id", conversationID)}
+	if visibility := conversationVisibilityCond(scopedUserID); visibility != nil {
+		conds = append(conds, visibility)
+	}
+
 	var count int64
 	_, err := s.conversationsRead(ctx).Select(&count,
 		z.Fields("count(1)"),
-		z.Where(z.Eq("id", conversationID), z.Eq("user_id", scopedUserID)),
+		z.Where(conds...),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to verify conversation ownership: %w", err)
@@ -366,8 +385,8 @@ func (s *Store) CreateConversationWithID(ctx context.Context, id, title string) 
 func (s *Store) GetConversation(ctx context.Context, id string, userID ...string) (*Conversation, error) {
 	scopedUserID := normalizeConversationScope(userID)
 	conds := []interface{}{z.Eq("id", id)}
-	if scopedUserID != "" {
-		conds = append(conds, z.Eq("user_id", scopedUserID))
+	if visibility := conversationVisibilityCond(scopedUserID); visibility != nil {
+		conds = append(conds, visibility)
 	}
 
 	var rows []conversationRow
@@ -391,9 +410,9 @@ func (s *Store) ListConversations(ctx context.Context, limit, offset int, userID
 		z.OrderBy("pinned DESC", "updated_at DESC", "created_at DESC", "rowid DESC"),
 		z.Limit(limit, offset),
 	}
-	if scopedUserID := normalizeConversationScope(userID); scopedUserID != "" {
+	if visibility := conversationVisibilityCond(normalizeConversationScope(userID)); visibility != nil {
 		opts = append([]z.ZormItem{
-			z.Where(z.Eq("user_id", scopedUserID)),
+			z.Where(visibility),
 		}, opts...)
 	}
 
@@ -558,8 +577,8 @@ func (s *Store) UnpinConversation(ctx context.Context, id string, userID ...stri
 // SearchConversations searches conversations by title, optionally filtered by userID.
 func (s *Store) SearchConversations(ctx context.Context, query string, limit int, userID ...string) ([]Conversation, error) {
 	conds := []interface{}{z.Like("title", "%"+query+"%")}
-	if scopedUserID := normalizeConversationScope(userID); scopedUserID != "" {
-		conds = append(conds, z.Eq("user_id", scopedUserID))
+	if visibility := conversationVisibilityCond(normalizeConversationScope(userID)); visibility != nil {
+		conds = append(conds, visibility)
 	}
 
 	var rows []conversationRow

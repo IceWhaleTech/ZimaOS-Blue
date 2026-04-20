@@ -2507,10 +2507,12 @@ export default mergeHarnessLocale('hu-HU', {
     wechatILinkPrimaryAction: 'Elsodleges muvelet',
     wechatILinkScanAction: 'Beolvasas a csatlakozashoz',
     wechatILinkManualAction: 'Kezi beallitas',
-    wechatILinkScanHint: 'Olvassa be az iLink QR-kodjat WeChattel, majd erositse meg a bejelentkezest a telefonjan.',
+    wechatILinkScanHint:
+      'Olvassa be az iLink QR-kodjat WeChattel, majd erositse meg a bejelentkezest a telefonjan.',
     wechatILinkSetupCreating: 'Munkamenet letrehozasa...',
     wechatILinkSetupCreateFailed: 'Nem sikerult letrehozni a beallitasi munkamenetet',
-    wechatILinkSetupDescription: 'Olvassa be a QR-kodot WeChattel, majd erositse meg az iLink-bejelentkezest. A Blue automatikusan engedelyezi a csatornat.',
+    wechatILinkSetupDescription:
+      'Olvassa be a QR-kodot WeChattel, majd erositse meg az iLink-bejelentkezest. A Blue automatikusan engedelyezi a csatornat.',
     wechatILinkSetupStatus: 'Beallitas allapota',
     wechatILinkOpenOnPhone: 'Hitelesitesi hivatkozas megnyitasa',
     wechatILinkSetupEyebrow: 'Mobilos beallitas',
@@ -2521,14 +2523,15 @@ export default mergeHarnessLocale('hu-HU', {
     wechatILinkSetupSubmitting: 'Befejezes...',
     wechatILinkSetupSubmitFailed: 'Nem sikerult befejezni a beallitast',
     wechatILinkSetupSuccess: 'A konfiguracio elkeszult. Most bezarhatja ezt az oldalt.',
-    wechatILinkSetupStatePending: "Fuggoben",
-    wechatILinkSetupStateAuthorizing: "Hitelesites folyamatban",
-    wechatILinkSetupStateConfiguring: "Konfiguralas folyamatban",
-    wechatILinkSetupStateConnected: "Csatlakoztatva",
-    wechatILinkSetupStateError: "Hiba",
-    wechatILinkSetupStateExpired: "Lejart",
+    wechatILinkSetupStatePending: 'Fuggoben',
+    wechatILinkSetupStateAuthorizing: 'Hitelesites folyamatban',
+    wechatILinkSetupStateConfiguring: 'Konfiguralas folyamatban',
+    wechatILinkSetupStateConnected: 'Csatlakoztatva',
+    wechatILinkSetupStateError: 'Hiba',
+    wechatILinkSetupStateExpired: 'Lejart',
     wechatILinkPairingPayload: 'Parositasi adat',
-    wechatILinkPairingPayloadPlaceholder: 'Illessze be ide az iLink parositasi adatot, vagy hagyja uresen, es toltse ki alabb a bot tokent.',
+    wechatILinkPairingPayloadPlaceholder:
+      'Illessze be ide az iLink parositasi adatot, vagy hagyja uresen, es toltse ki alabb a bot tokent.',
     placeholderMatrixHomeserver: 'https://matrix.org',
     placeholderMatrixUserId: "{'@'}bot:matrix.org",
     placeholderAccessToken: 'Hozzáférési token',
@@ -2608,7 +2611,8 @@ export default mergeHarnessLocale('hu-HU', {
     dingtalkHint: 'Hozzon létre robotot a DingTalk Developer Platformon',
     qqHint: 'Hozzon létre botot a QQ Open Platformon (q.qq.com)',
     wechatHint: 'Hozzon létre alkalmazást a WeChat Work Admin konzolon',
-    wechatILinkHint: 'Elsodleges utkent hasznalja a WeChat QR-hitelesitest, vagy szukseg eseten adja meg kezzel a bot tokent',
+    wechatILinkHint:
+      'Elsodleges utkent hasznalja a WeChat QR-hitelesitest, vagy szukseg eseten adja meg kezzel a bot tokent',
     matrixHint: 'Használja a Matrix homeserverét és a bot fiók hitelesítő adatait',
     imessageHint: 'Használja a mautrix-imessage-t macOS-on',
     blueBubblesHint:
@@ -4588,7 +4592,8 @@ export default mergeHarnessLocale('hu-HU', {
       document_converted: 'A dokumentum konvertálva',
     },
     warnings: {
-      listing_truncated: 'A lista csonkolva lett; szűkítsd az útvonalat, vagy növeld a max_entries értékét.',
+      listing_truncated:
+        'A lista csonkolva lett; szűkítsd az útvonalat, vagy növeld a max_entries értékét.',
     },
     badges: {
       list: 'LISTA',
@@ -4776,7 +4781,8 @@ export default mergeHarnessLocale('hu-HU', {
       exec: 'Shell-parancsokat futtat, es rogzitit a kimenetet',
       analyze: 'Webes adatokat gyujt, es strukturalt elemzesi jelentest keszit',
       ask: 'A felhasznalonak tovabbi kerdeseket tesz fel a feladat folytatasahoz',
-      advisor: 'Döntési tanácsadó kiválasztási, lecserélési, migrációs és bevált gyakorlatokkal kapcsolatos kérdésekhez.',
+      advisor:
+        'Döntési tanácsadó kiválasztási, lecserélési, migrációs és bevált gyakorlatokkal kapcsolatos kérdésekhez.',
       mediagen: 'Kepeket, videokat es prezentaciokat general AI-modellekkel',
       web_query: 'URL alapjan letolt es feldolgoz egy weboldalt',
       research:
@@ -4859,6 +4865,7 @@ export default mergeHarnessLocale('hu-HU', {
   browserProgress: {
     title: 'Böngésző állapota',
     steps: {
+      screenshot: 'Képernyőkép készítése',
       recipe: '{recipe} futtatása',
     },
   },
