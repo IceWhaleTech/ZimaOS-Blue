@@ -21,6 +21,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/buildinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/channel"
 )
 
@@ -532,12 +533,12 @@ func buildILinkBaseInfo() iLinkBaseInfo {
 
 func resolveILinkChannelVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
-		version := strings.TrimSpace(info.Main.Version)
-		if version != "" && version != "(devel)" {
+		version := normalizeILinkVersion(info.Main.Version)
+		if version != "" {
 			return version
 		}
 	}
-	return "unknown"
+	return normalizeILinkVersion(buildinfo.Version)
 }
 
 func buildILinkClientVersion(version string) uint64 {
@@ -572,6 +573,30 @@ func buildILinkClientVersion(version string) uint64 {
 		return 0
 	}
 	return uint64((major << 16) | (minor << 8) | patch)
+}
+
+func normalizeILinkVersion(raw string) string {
+	version := strings.TrimSpace(strings.TrimPrefix(raw, "v"))
+	if version == "" || version == "(devel)" || version == "unknown" {
+		return ""
+	}
+
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 3 {
+		return version
+	}
+
+	patchPart := parts[2]
+	for i, ch := range patchPart {
+		if ch < '0' || ch > '9' {
+			patchPart = patchPart[:i]
+			break
+		}
+	}
+	if patchPart == "" {
+		return ""
+	}
+	return parts[0] + "." + parts[1] + "." + patchPart
 }
 
 func generateILinkClientID() string {

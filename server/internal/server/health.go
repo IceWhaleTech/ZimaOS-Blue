@@ -9,6 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/buildinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/sysinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/timeutil"
 )
@@ -29,7 +30,7 @@ type HealthStatus struct {
 
 var (
 	startTime   = timeutil.NowTime()
-	version     = "0.10.39"
+	version     = buildinfo.Version
 	readyStatus atomic.Bool
 )
 

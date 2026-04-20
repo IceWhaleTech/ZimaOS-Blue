@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/buildinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/tools"
 )
 
@@ -48,7 +49,7 @@ const (
 const (
 	ProtocolVersion = "2024-11-05"
 	ServerName      = "blue-mcp"
-	ServerVersion   = "0.10.39"
+	ServerVersion   = buildinfo.Version
 )
 
 const (

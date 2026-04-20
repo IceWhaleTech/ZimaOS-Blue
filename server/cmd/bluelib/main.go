@@ -29,6 +29,7 @@ import (
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/backup"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/bootstrap"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
+	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/buildinfo"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/companion"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/config"
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/contextpack"
@@ -67,7 +68,7 @@ import (
 )
 
 var (
-	version   = "0.10.39"
+	version   = buildinfo.Version
 	buildTime = "unknown"
 	gitCommit = "unknown"
 )

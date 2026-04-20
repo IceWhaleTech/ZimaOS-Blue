@@ -77,6 +77,9 @@ func TestChannel_Send_UsesBotAPI(t *testing.T) {
 		if got := r.Header.Get("iLink-App-ClientVersion"); strings.TrimSpace(got) == "" {
 			t.Fatal("expected iLink-App-ClientVersion header to be set")
 		}
+		if got := strings.TrimSpace(r.Header.Get("iLink-App-ClientVersion")); got == "0" {
+			t.Fatal("expected iLink-App-ClientVersion to be non-zero")
+		}
 
 		var req struct {
 			BaseInfo struct {
@@ -117,6 +120,9 @@ func TestChannel_Send_UsesBotAPI(t *testing.T) {
 		}
 		if strings.TrimSpace(req.BaseInfo.ChannelVersion) == "" {
 			t.Fatal("expected base_info.channel_version to be set")
+		}
+		if req.BaseInfo.ChannelVersion == "unknown" {
+			t.Fatal("expected base_info.channel_version to avoid unknown fallback")
 		}
 		if req.Msg.ContextToken != "ctx-123" {
 			t.Fatalf("context_token = %q, want %q", req.Msg.ContextToken, "ctx-123")
