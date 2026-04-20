@@ -2482,37 +2482,30 @@ func TestWebQueryToolURLPipelinePrefersBrowserAfterAdapterMemory(t *testing.T) {
 	}
 }
 
-func TestWebQueryToolFansOutSearchProviders(t *testing.T) {
-	started := make(chan string, 2)
-	release := make(chan struct{})
-	done := make(chan struct{})
-
+func TestWebQueryToolStopsAfterFirstSuccessfulSearchProvider(t *testing.T) {
 	searchTool := &scriptedWebSearchFanoutTool{
 		providers: []string{"alpha", "beta"},
 		scriptedWebTool: scriptedWebTool{
 			def: ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
 			exec: func(args map[string]interface{}) (interface{}, error) {
-				provider, _ := args["provider"].(string)
-				started <- provider
-				<-release
-
-				resp := WebSearchResponse{Query: "parallel fetchers", Provider: provider}
-				switch provider {
+				switch provider := strings.TrimSpace(asString(args["provider"])); provider {
 				case "alpha":
-					resp.Results = []WebSearchResult{
-						{Title: "Shared Result", URL: "https://example.com/shared", Description: "Shared official page"},
-						{Title: "Alpha Result", URL: "https://example.com/alpha", Description: "Alpha source"},
+					resp := WebSearchResponse{
+						Query: "ordered fallback",
+						Results: []WebSearchResult{
+							{Title: "Alpha Result", URL: "https://example.com/alpha", Description: "Alpha source"},
+						},
+						TotalCount: 1,
+						Provider:   "alpha",
 					}
+					b, _ := json.Marshal(resp)
+					return string(b), nil
 				case "beta":
-					resp.Results = []WebSearchResult{
-						{Title: "Shared Result", URL: "https://example.com/shared", Description: "Shared official page"},
-						{Title: "Beta Result", URL: "https://example.com/beta", Description: "Beta source"},
-					}
+					t.Fatal("beta should not be called after alpha already succeeded")
 				default:
 					t.Fatalf("unexpected provider %q", provider)
 				}
-				b, _ := json.Marshal(resp)
-				return string(b), nil
+				return nil, nil
 			},
 		},
 	}
@@ -2525,16 +2518,8 @@ func TestWebQueryToolFansOutSearchProviders(t *testing.T) {
 				FinalURL: url,
 				Format:   "text",
 				Source:   webAccessSourceHTTP,
-				Title:    "Shared Result",
-				Content:  "Shared result carries the densest readable content and should win after provider aggregation.",
-			}
-			if strings.HasSuffix(url, "/alpha") {
-				resp.Title = "Alpha Result"
-				resp.Content = "Alpha content."
-			}
-			if strings.HasSuffix(url, "/beta") {
-				resp.Title = "Beta Result"
-				resp.Content = "Beta content."
+				Title:    "Alpha Result",
+				Content:  "Alpha provider content is already strong enough to complete the search-read flow without trying a fallback provider. It includes enough readable detail, concrete implementation notes, and extra explanatory text to comfortably satisfy the result selection heuristics.",
 			}
 			b, _ := json.Marshal(resp)
 			return string(b), nil
@@ -2542,31 +2527,10 @@ func TestWebQueryToolFansOutSearchProviders(t *testing.T) {
 	}
 	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
 
-	var (
-		raw interface{}
-		err error
-	)
-	go func() {
-		defer close(done)
-		raw, err = tool.Execute(context.Background(), map[string]interface{}{
-			"input": "parallel fetchers",
-			"depth": "standard",
-		})
-	}()
-
-	for idx := 0; idx < 2; idx++ {
-		select {
-		case <-started:
-		case <-time.After(2 * time.Second):
-			t.Fatal("search providers did not start concurrently")
-		}
-	}
-	close(release)
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("web query did not finish after releasing provider fanout")
-	}
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"input": "ordered fallback",
+		"depth": "standard",
+	})
 	if err != nil {
 		t.Fatalf("execute failed: %v", err)
 	}
@@ -2575,14 +2539,14 @@ func TestWebQueryToolFansOutSearchProviders(t *testing.T) {
 	if err := json.Unmarshal([]byte(raw.(string)), &envelope); err != nil {
 		t.Fatalf("decode envelope: %v", err)
 	}
-	if envelope.TargetURL != "https://example.com/shared" {
-		t.Fatalf("target_url = %q, want shared merged result", envelope.TargetURL)
+	if envelope.TargetURL != "https://example.com/alpha" {
+		t.Fatalf("target_url = %q, want alpha result", envelope.TargetURL)
 	}
-	if len(searchTool.lastArgs) != 2 {
-		t.Fatalf("search calls = %d, want 2", len(searchTool.lastArgs))
+	if len(searchTool.lastArgs) != 1 {
+		t.Fatalf("search calls = %d, want 1", len(searchTool.lastArgs))
 	}
-	if len(envelope.Diagnostics.Attempts) < 2 {
-		t.Fatalf("attempts len = %d, want at least 2", len(envelope.Diagnostics.Attempts))
+	if got := strings.TrimSpace(asString(searchTool.lastArgs[0]["provider"])); got != "alpha" {
+		t.Fatalf("first provider = %q, want alpha", got)
 	}
 }
 
@@ -2678,7 +2642,7 @@ func TestWebQueryToolReadsCandidatesInParallel(t *testing.T) {
 	}
 }
 
-func TestWebQueryToolHidesCanceledSearchAttemptsAfterProviderFanoutSuccess(t *testing.T) {
+func TestWebQueryToolFallsBackToNextSearchProviderAfterFailure(t *testing.T) {
 	searchTool := &contextAwareWebSearchFanoutTool{
 		def:       ToolDefinition{Name: "web_search", Description: "search", Parameters: map[string]interface{}{"type": "object", "additionalProperties": true}},
 		providers: []string{"alpha", "beta"},
@@ -2686,19 +2650,18 @@ func TestWebQueryToolHidesCanceledSearchAttemptsAfterProviderFanoutSuccess(t *te
 			provider := strings.TrimSpace(asString(args["provider"]))
 			switch provider {
 			case "alpha":
+				return nil, errors.New("alpha failed")
+			case "beta":
 				resp := WebSearchResponse{
-					Query: "fanout cancel hide",
+					Query: "ordered fallback after failure",
 					Results: []WebSearchResult{
 						{Title: "Winner", URL: "https://example.com/winner", Description: "Winning provider result"},
 					},
 					TotalCount: 1,
-					Provider:   "alpha",
+					Provider:   "beta",
 				}
 				b, _ := json.Marshal(resp)
 				return string(b), nil
-			case "beta":
-				<-ctx.Done()
-				return nil, ctx.Err()
 			default:
 				t.Fatalf("unexpected provider %q", provider)
 				return nil, nil
@@ -2725,7 +2688,7 @@ func TestWebQueryToolHidesCanceledSearchAttemptsAfterProviderFanoutSuccess(t *te
 	tool := NewWebQueryTool(searchTool, nil, readTool, nil, nil)
 
 	raw, err := tool.Execute(context.Background(), map[string]interface{}{
-		"input": "fanout cancel hide",
+		"input": "ordered fallback after failure",
 		"depth": "standard",
 	})
 	if err != nil {
@@ -2739,10 +2702,17 @@ func TestWebQueryToolHidesCanceledSearchAttemptsAfterProviderFanoutSuccess(t *te
 	if envelope.Status != webQueryStatusOK {
 		t.Fatalf("status = %q, want %q", envelope.Status, webQueryStatusOK)
 	}
-	for _, attempt := range envelope.Diagnostics.Attempts {
-		if attempt.Stage == "search" && strings.EqualFold(strings.TrimSpace(attempt.Mode), "beta") {
-			t.Fatalf("attempts = %+v, want canceled beta fanout attempt hidden", envelope.Diagnostics.Attempts)
-		}
+	if envelope.TargetURL != "https://example.com/winner" {
+		t.Fatalf("target_url = %q, want beta winner", envelope.TargetURL)
+	}
+	if len(envelope.Diagnostics.Attempts) < 2 {
+		t.Fatalf("attempts = %+v, want alpha failure then beta success", envelope.Diagnostics.Attempts)
+	}
+	if envelope.Diagnostics.Attempts[0].Mode != "alpha" || envelope.Diagnostics.Attempts[0].Status != "error" {
+		t.Fatalf("attempt 0 = %+v, want alpha error", envelope.Diagnostics.Attempts[0])
+	}
+	if envelope.Diagnostics.Attempts[1].Mode != "beta" || envelope.Diagnostics.Attempts[1].Status != "ok" {
+		t.Fatalf("attempt 1 = %+v, want beta ok", envelope.Diagnostics.Attempts[1])
 	}
 }
 

@@ -686,6 +686,63 @@ func TestSelectChatToolsForRequest_LiveUIArtifactWorkflowKeepsComputerUseForCurr
 	}
 }
 
+func TestSelectChatToolsForRequest_DesktopChatSendRequestNarrowsToComputerUse(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "computer_use", Description: "Inspect and interact with host UI through the computer-use tool"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "image", Description: "Review or edit images"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Research current public web information"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	got := handler.selectChatToolsForRequest(
+		context.Background(),
+		"帮我在飞书桌面应用里给【后端之家】的小伙伴们打个招呼，告诉他们是Blue发的消息",
+		"claude-3-5-haiku-20241022",
+		"conv-desktop-chat-send",
+		"",
+		memory.ConversationCommandState{ConversationID: "conv-desktop-chat-send"},
+		nil,
+		nil,
+	)
+
+	names := selectedToolNames(got)
+	if len(names) != 1 || names[0] != "computer_use" {
+		t.Fatalf("selectChatToolsForRequest() = %v, want [computer_use] for desktop chat send request", names)
+	}
+}
+
+func TestPreviewChatToolSurfacesForRequest_DesktopChatSendNarrowsNativeSurfaceToComputerUse(t *testing.T) {
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewToolSearchTool(registry))
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "computer_use", Description: "Inspect and interact with host UI through the computer-use tool"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "bash", Description: "Run shell commands"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "browser", Description: "Open and interact with web pages"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "image", Description: "Review or edit images"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "web_query", Description: "Research current public web information"})
+	registry.ExposeDefinition(tools.ToolDefinition{Name: "write", Description: "Write workspace files"})
+
+	handler := newChatToolSelectionTestHandler(registry)
+
+	selection := handler.previewChatToolSurfacesForRequest(
+		context.Background(),
+		"帮我在飞书桌面应用里给【后端之家】的小伙伴们打个招呼，告诉他们是Blue发的消息",
+		tools.ToolPolicyRequest{
+			Model:     "claude-3-5-haiku-20241022",
+			RouteKind: tools.ToolRouteKindChat,
+		},
+		nil,
+		nil,
+	)
+
+	if got := selectedToolNames(selection.NativeDefs); len(got) != 1 || got[0] != "computer_use" {
+		t.Fatalf("preview NativeDefs = %v, want [computer_use] for desktop chat send request", got)
+	}
+}
+
 func TestSelectChatToolsForRequest_ExplicitNamedHiddenNativeToolsExposeDirectly(t *testing.T) {
 	testCases := []struct {
 		name    string

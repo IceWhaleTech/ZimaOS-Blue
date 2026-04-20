@@ -5050,9 +5050,11 @@ func resolveResponseSanitizeProfile(provider, providerID, model string) response
 	providerID = strings.ToLower(strings.TrimSpace(providerID))
 	model = strings.ToLower(strings.TrimSpace(model))
 
-	// Codex-style models/providers are more prone to leaking tool directive text
-	// into assistant content; force strict cleanup for deterministic persistence.
-	if strings.Contains(model, "codex") ||
+	// Codex-style and GPT-5 chat models are more prone to leaking tool
+	// directive text into assistant content; force strict cleanup for
+	// deterministic persistence.
+	if strings.HasPrefix(model, "gpt-5") ||
+		strings.Contains(model, "codex") ||
 		strings.Contains(provider, "codex") ||
 		strings.Contains(providerID, "codex") ||
 		strings.Contains(provider, "agentcore") ||
@@ -6010,6 +6012,12 @@ func buildToolFallbackTextWithOptions(messages []llm.Message, maxLen int, opts t
 		}
 		return "Tool execution completed, but final summary is not available yet. Please review tool cards/history for details.", 0
 	}
+	if pendingDesktopChat := buildPendingDesktopChatToolFallback(messages, opts); pendingDesktopChat != "" {
+		if maxLen > 0 && len(pendingDesktopChat) > maxLen {
+			pendingDesktopChat = pendingDesktopChat[:maxLen]
+		}
+		return pendingDesktopChat, toolCount
+	}
 
 	summaries := buildSafeToolFallbackSummaries(messages, 2)
 	if shouldUseChineseToolFallbackMessage(messages, summaries) {
@@ -6135,6 +6143,67 @@ func buildToolFallbackTextWithOptions(messages []llm.Message, maxLen int, opts t
 		out = out[:maxLen]
 	}
 	return out, toolCount
+}
+
+func buildPendingDesktopChatToolFallback(messages []llm.Message, opts toolFallbackTextOptions) string {
+	if !hasPendingDesktopChatToolFallback(messages) {
+		return ""
+	}
+	useChinese := shouldUseChineseToolFallbackMessage(messages, nil)
+	if useChinese {
+		if opts.toolCardsVisible {
+			return "这次桌面聊天任务还没有确认发送成功。我目前只拿到了部分界面操作结果，请查看上方工具卡片后继续重试发送。"
+		}
+		return "这次桌面聊天任务还没有确认发送成功。我目前只拿到了部分界面操作结果，如需我可以继续重试并完成发送。"
+	}
+	if opts.toolCardsVisible {
+		return "This desktop chat task has not been confirmed as sent yet. I only have partial UI operation results so far; please review the tool cards above before continuing the send."
+	}
+	return "This desktop chat task has not been confirmed as sent yet. I only have partial UI operation results so far, and I can keep retrying to finish the send."
+}
+
+func hasPendingDesktopChatToolFallback(messages []llm.Message) bool {
+	sawDesktopChatTask := false
+	sawComputerUseResult := false
+	sawVerifiedSend := false
+
+	for _, msg := range messages {
+		switch msg.Role {
+		case llm.RoleUser, llm.RoleAssistant, llm.RoleSystem:
+			if isComputerUseDesktopChatRoutingMessage(msg.Content) ||
+				(strings.Contains(msg.Content, "desktop chat or messaging task") &&
+					strings.Contains(msg.Content, "`message`, `select`, and `type`")) {
+				sawDesktopChatTask = true
+			}
+		case llm.RoleTool:
+			if !strings.EqualFold(strings.TrimSpace(msg.ToolName), "computer_use") &&
+				!strings.Contains(strings.ToLower(msg.Content), "\"title\":\"computer_use\"") {
+				continue
+			}
+			sawComputerUseResult = true
+
+			var payload map[string]interface{}
+			if err := json.Unmarshal([]byte(msg.Content), &payload); err == nil {
+				status := strings.ToLower(strings.TrimSpace(continuationCompatString(payload, "status")))
+				action := strings.ToLower(strings.TrimSpace(continuationCompatString(payload, "action", "intent")))
+				message := strings.ToLower(strings.TrimSpace(continuationCompatString(payload, "message")))
+				if status == "success" && (action == "message" || strings.Contains(message, "completed and submitted") || strings.Contains(message, "sent")) {
+					sawVerifiedSend = true
+				}
+				continue
+			}
+
+			lowerContent := strings.ToLower(msg.Content)
+			if strings.Contains(lowerContent, "\"status\":\"success\"") &&
+				(strings.Contains(lowerContent, "\"action\":\"message\"") ||
+					strings.Contains(lowerContent, "completed and submitted") ||
+					strings.Contains(lowerContent, "\"message\":\"sent")) {
+				sawVerifiedSend = true
+			}
+		}
+	}
+
+	return sawDesktopChatTask && sawComputerUseResult && !sawVerifiedSend
 }
 
 func buildSummaryIntroFallback(messages []llm.Message, maxLen int, opts toolFallbackTextOptions) (string, bool) {
@@ -7305,6 +7374,9 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 	if selection.NativeMode != chatNativeToolSurfaceModeLegacy || selection.PromptCacheUnsafe {
 		h.clearPromptCacheToolSurface(sessionID)
 		selectedTools = sortToolDefsByName(selectedTools)
+		if narrowed := narrowDesktopChatSendToolSurface(selectedTools, userMessage); len(narrowed) > 0 {
+			selectedTools = narrowed
+		}
 		snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
 		logger.Info().
 			Int("routed", snapshot.Routed).
@@ -7322,6 +7394,9 @@ func (h *ChatHandler) selectChatToolsForRequest(ctx context.Context, userMessage
 		return selectedTools
 	}
 	selectedTools = h.stabilizePromptCacheToolSurface(sessionID, explicitProviderID, state, webSearchEnabled, deepResearchEnabled, selectedTools)
+	if narrowed := narrowDesktopChatSendToolSurface(selectedTools, userMessage); len(narrowed) > 0 {
+		selectedTools = narrowed
+	}
 	snapshot := buildChatToolSurfaceLogSnapshotWithSelected(selection, selectedTools)
 	logger.Info().
 		Int("routed", snapshot.Routed).
@@ -7354,6 +7429,9 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		NativeDefs: routedDefs,
 		NativeMode: chatNativeToolSurfaceModeLegacy,
 	}
+	if narrowed := narrowDesktopChatSendToolSurface(selection.NativeDefs, userMessage); len(narrowed) > 0 {
+		selection.NativeDefs = narrowed
+	}
 
 	// Public-information research tasks with an explicit saved deliverable need a
 	// mixed tool surface (web retrieval + file write). Skipping discover-first
@@ -7367,12 +7445,12 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 		selection.NativeDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.NativeDefs)
 		selection.RoutedDefs = ensureExplicitNamedNativeTools(userMessage, originalRoutedDefs, selection.RoutedDefs)
 		selection.NativeDefs = ensureExplicitNamedNativeTools(userMessage, originalRoutedDefs, selection.NativeDefs)
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 
 	decision, ok := h.resolveSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
 	if !ok {
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 	selection.SkillDecision = &decision
 
@@ -7386,24 +7464,85 @@ func (h *ChatHandler) selectChatToolSurfacesForRequest(ctx context.Context, user
 	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	case agentcore.NativeSurfaceModeSkillExec:
 		// Validate capability toggles for cutover-eligible canonical skills
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
-			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 		}
 		execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
 		if !ok {
-			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 		}
 		selection.NativeDefs = []tools.ToolDefinition{execDef}
 		selection.NativeMode = chatNativeToolSurfaceModeSkillExec
 		selection = h.preserveAdvisorToolOnResearchCutover(policyReq, selection)
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	default:
 		// NativeSurfaceModeLegacy: keep routed native defs
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
+}
+
+func narrowDesktopChatSendToolSurface(defs []tools.ToolDefinition, userMessage string) []tools.ToolDefinition {
+	if len(defs) == 0 || !shouldNarrowDesktopChatSendToolSurface(userMessage) {
+		return nil
+	}
+	narrowed := filterToolDefsToNames(defs, "computer_use")
+	if len(narrowed) == 0 {
+		return nil
+	}
+	return narrowed
+}
+
+func finalizeDesktopChatSendSurfaceSelection(selection chatToolSurfaceSelection, userMessage string) chatToolSurfaceSelection {
+	if narrowed := narrowDesktopChatSendToolSurface(selection.NativeDefs, userMessage); len(narrowed) > 0 {
+		selection.NativeDefs = narrowed
+	}
+	return selection
+}
+
+func shouldNarrowDesktopChatSendToolSurface(userMessage string) bool {
+	trimmed := strings.TrimSpace(userMessage)
+	if trimmed == "" {
+		return false
+	}
+	if isComputerUseDesktopChatRoutingMessage(trimmed) {
+		return true
+	}
+	lower := strings.ToLower(trimmed)
+	if !continuationMessageContainsAny(lower,
+		"飞书",
+		"feishu",
+		"lark",
+		"桌面应用",
+		"桌面 app",
+		"desktop app",
+		"desktop application",
+		"群聊",
+		"会话",
+		"聊天",
+		"chat",
+		"conversation",
+		"thread",
+	) {
+		return false
+	}
+	return continuationMessageContainsAny(lower,
+		"发送",
+		"发出",
+		"发消息",
+		"回复",
+		"打个招呼",
+		"打一个招呼",
+		"打招呼",
+		"问候",
+		"say hi",
+		"greet",
+		"reply",
+		"send",
+		"message",
+	)
 }
 
 // discoveryCutoverAllowedByPreferences checks if a canonical skill is allowed by capability toggles.
@@ -9573,18 +9712,21 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 		NativeDefs: routedDefs,
 		NativeMode: chatNativeToolSurfaceModeLegacy,
 	}
+	if narrowed := narrowDesktopChatSendToolSurface(selection.NativeDefs, userMessage); len(narrowed) > 0 {
+		selection.NativeDefs = narrowed
+	}
 
 	if shouldPreferPublicArtifactResearchWorkflow(userMessage) || shouldPreferWorkspaceArtifactWorkflow(userMessage) {
 		selection.RoutedDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.RoutedDefs)
 		selection.NativeDefs = filterWorkspaceArtifactWorkflowToolDefs(userMessage, selection.NativeDefs)
 		selection.RoutedDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.RoutedDefs)
 		selection.NativeDefs = h.ensureComputerUseForLiveArtifactWorkflow(userMessage, policyReq, selection.NativeDefs)
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 
 	decision, ok := h.previewSkillDecisionForRequest(ctx, userMessage, deepResearchEnabled)
 	if !ok {
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 	selection.SkillDecision = &decision
 
@@ -9596,31 +9738,31 @@ func (h *ChatHandler) previewChatToolSurfacesForRequest(ctx context.Context, use
 	case agentcore.NativeSurfaceModeClarifyNone:
 		selection.NativeDefs = nil
 		selection.NativeMode = chatNativeToolSurfaceModeClarifyNone
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	case agentcore.NativeSurfaceModeLegacy:
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 
 	if skillDynamicExposure {
 		if !discoveryCutoverAllowedByPreferences(discoveryDecision.CanonicalTarget, webSearchEnabled, deepResearchEnabled) {
-			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 		}
 	} else {
 		selectedSkill := strings.TrimSpace(decision.SelectedSkill)
 		if selectedSkill == "" || !cutoverSkillAllowedByPreferences(selectedSkill, webSearchEnabled, deepResearchEnabled) {
-			return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+			return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 		}
 	}
 
 	execDef, ok := h.lookupCutoverNativeExecToolDefinition(policyReq.RouteKind)
 	if !ok {
-		return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+		return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 	}
 
 	selection.NativeDefs = []tools.ToolDefinition{execDef}
 	selection.NativeMode = chatNativeToolSurfaceModeSkillExec
 	selection = h.preserveAdvisorToolOnResearchCutover(policyReq, selection)
-	return h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection)
+	return finalizeDesktopChatSendSurfaceSelection(h.applyToolSearchSurfaceSelection(policyReq, webSearchEnabled, deepResearchEnabled, selection), userMessage)
 }
 
 func (h *ChatHandler) resolveSkillSelectionForRequest(ctx context.Context, userMessage string, deepResearchEnabled *bool) (string, string) {
@@ -13655,9 +13797,9 @@ func (h *ChatHandler) sendIMCardMessage(baseCtx context.Context, channelName, ch
 		Content:     content,
 		Attachments: attachments,
 		Format:      "markdown",
-		Metadata: map[string]interface{}{
+		Metadata: mergeChannelReplyMetadata(baseCtx, map[string]interface{}{
 			"show_details": true,
-		},
+		}),
 	})
 	if persist && strings.TrimSpace(content) != "" {
 		h.persistChannelResponse(baseCtx, channelConversationID(channelName, chatID), content)
@@ -13896,7 +14038,9 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 				Content:     confirmMessage,
 				Attachments: attachments,
 				Format:      "markdown",
-				Metadata:    map[string]interface{}{"show_details": true},
+				Metadata: mergeChannelReplyMetadata(baseCtx, map[string]interface{}{
+					"show_details": true,
+				}),
 			})
 			cancel()
 			if sendErr != nil && len(attachments) > 0 {
@@ -13906,7 +14050,9 @@ func (h *ChatHandler) buildBrowserCheckpointRequester(baseCtx context.Context, c
 					ReplyToID: replyToID,
 					Content:   confirmMessage,
 					Format:    "markdown",
-					Metadata:  map[string]interface{}{"show_details": true},
+					Metadata: mergeChannelReplyMetadata(baseCtx, map[string]interface{}{
+						"show_details": true,
+					}),
 				})
 				fallbackCancel()
 			}
@@ -13996,6 +14142,7 @@ func (h *ChatHandler) persistChannelUserMessage(ctx context.Context, convID, con
 
 func (h *ChatHandler) buildIMToolContext(baseCtx context.Context, msg channel.Message, convID string, lang i18n.Language, withCheckpoint bool) context.Context {
 	toolCtx := context.WithoutCancel(baseCtx)
+	toolCtx = withChannelReplyMetadata(toolCtx, msg.Metadata)
 	toolCtx = tools.WithChannel(toolCtx, msg.ChannelName)
 	toolCtx = tools.WithLang(toolCtx, string(lang))
 	toolCtx = tools.WithUserID(toolCtx, msg.UserID)
@@ -14062,6 +14209,7 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 	}
 
 	// Inject channel and lang into context for tool execution
+	ctx = withChannelReplyMetadata(ctx, msg.Metadata)
 	ctx = tools.WithChannel(ctx, msg.ChannelName)
 	ctx = tools.WithLang(ctx, string(lang))
 
@@ -15027,9 +15175,9 @@ func (h *ChatHandler) upsertIMTodoChecklist(baseCtx context.Context, state *imTo
 		ReplyToID: replyToID,
 		Content:   content,
 		Format:    "markdown",
-		Metadata: map[string]interface{}{
+		Metadata: mergeChannelReplyMetadata(baseCtx, map[string]interface{}{
 			"show_details": true,
-		},
+		}),
 	}
 
 	if state.ChannelMessageID != "" && h.channelMessageUpdater != nil {

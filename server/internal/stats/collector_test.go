@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"math"
 	"testing"
 	"time"
 )
@@ -293,11 +294,11 @@ func TestStatisticsCollector_RecordMediaEvent(t *testing.T) {
 
 	event := &MediaEvent{
 		Provider:   "mulerouter",
-		Model:      "dall-e-3",
+		Model:      "qwen-image-max",
 		Type:       "image",
 		Category:   "t2i",
 		ImageCount: 2,
-		CostUSD:    0.08,
+		CostUSD:    0.06,
 		Success:    true,
 		LatencyMs:  3000,
 	}
@@ -319,8 +320,8 @@ func TestStatisticsCollector_RecordMediaEvent_Disabled(t *testing.T) {
 
 	err := collector.RecordMediaEvent(&MediaEvent{
 		Provider: "mulerouter",
-		Model:    "dall-e-3",
-		CostUSD:  0.04,
+		Model:    "qwen-image-max",
+		CostUSD:  0.03,
 		Success:  true,
 	})
 	if err != nil {
@@ -340,10 +341,10 @@ func TestStatisticsCollector_MediaCostAggregation(t *testing.T) {
 
 	// Record media events
 	events := []MediaEvent{
-		{Provider: "mulerouter", Model: "dall-e-3", Type: "image", ImageCount: 1, CostUSD: 0.04, Success: true},
+		{Provider: "mulerouter", Model: "qwen-image-max", Type: "image", ImageCount: 1, CostUSD: 0.03, Success: true},
 		{Provider: "mulerouter", Model: "nano-banana-pro", Type: "image", ImageCount: 1, CostUSD: 0.15, Success: true},
 		{Provider: "mulerouter", Model: "wan2.6-t2v", Type: "video", DurationSec: 5, CostUSD: 0.50, Success: true},
-		{Provider: "mulerouter", Model: "dall-e-3", Type: "image", ImageCount: 1, CostUSD: 0.04, Success: false}, // failed — should not count
+		{Provider: "mulerouter", Model: "qwen-image-max", Type: "image", ImageCount: 1, CostUSD: 0.03, Success: false}, // failed — should not count
 	}
 
 	for _, e := range events {
@@ -361,19 +362,19 @@ func TestStatisticsCollector_MediaCostAggregation(t *testing.T) {
 		t.Errorf("MediaCalls = %d, want 3", stats.MediaCalls)
 	}
 
-	expectedMediaCost := 0.04 + 0.15 + 0.50
-	if stats.MediaCostUSD != expectedMediaCost {
+	expectedMediaCost := 0.03 + 0.15 + 0.50
+	if math.Abs(stats.MediaCostUSD-expectedMediaCost) > 1e-9 {
 		t.Errorf("MediaCostUSD = %f, want %f", stats.MediaCostUSD, expectedMediaCost)
 	}
 
 	// Media cost should be included in total estimated cost
-	if stats.EstimatedCostUSD != expectedMediaCost {
+	if math.Abs(stats.EstimatedCostUSD-expectedMediaCost) > 1e-9 {
 		t.Errorf("EstimatedCostUSD = %f, want %f (media only)", stats.EstimatedCostUSD, expectedMediaCost)
 	}
 
 	// Check per-model breakdown
-	if stats.MediaCostByModel["dall-e-3"] != 0.04 {
-		t.Errorf("MediaCostByModel[dall-e-3] = %f, want 0.04", stats.MediaCostByModel["dall-e-3"])
+	if math.Abs(stats.MediaCostByModel["qwen-image-max"]-0.03) > 1e-9 {
+		t.Errorf("MediaCostByModel[qwen-image-max] = %f, want 0.03", stats.MediaCostByModel["qwen-image-max"])
 	}
 	if stats.MediaCostByModel["wan2.6-t2v"] != 0.50 {
 		t.Errorf("MediaCostByModel[wan2.6-t2v] = %f, want 0.50", stats.MediaCostByModel["wan2.6-t2v"])
@@ -389,10 +390,10 @@ func TestStatisticsCollector_MediaEventPersistence(t *testing.T) {
 
 	collector.RecordMediaEvent(&MediaEvent{
 		Provider:   "mulerouter",
-		Model:      "dall-e-3",
+		Model:      "qwen-image-max",
 		Type:       "image",
 		ImageCount: 1,
-		CostUSD:    0.04,
+		CostUSD:    0.03,
 		Success:    true,
 	})
 	collector.RecordMediaEvent(&MediaEvent{
@@ -422,8 +423,8 @@ func TestStatisticsCollector_ClearIncludesMedia(t *testing.T) {
 
 	collector.RecordMediaEvent(&MediaEvent{
 		Provider: "mulerouter",
-		Model:    "dall-e-3",
-		CostUSD:  0.04,
+		Model:    "qwen-image-max",
+		CostUSD:  0.03,
 		Success:  true,
 	})
 

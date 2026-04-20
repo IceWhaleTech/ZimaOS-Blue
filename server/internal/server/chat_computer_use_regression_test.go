@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -48,6 +49,16 @@ type computerUseDesktopChatMultiRoundRecoveryProvider struct {
 	mu                sync.Mutex
 	callCount         int
 	requests          []llm.ChatRequest
+}
+
+type computerUseDesktopChatPostToolFailureProvider struct {
+	name          string
+	firstToolArgs string
+	firstContent  string
+	err           error
+	mu            sync.Mutex
+	callCount     int
+	requests      []llm.ChatRequest
 }
 
 func (p *computerUseDesktopChatRecoveryProvider) Name() string {
@@ -226,6 +237,109 @@ func (p *computerUseDesktopChatMultiRoundRecoveryProvider) Name() string {
 
 func (p *computerUseDesktopChatMultiRoundRecoveryProvider) Models() []string {
 	return []string{"gpt-5.3-codex-spark"}
+}
+
+func (p *computerUseDesktopChatPostToolFailureProvider) Name() string {
+	if strings.TrimSpace(p.name) != "" {
+		return strings.TrimSpace(p.name)
+	}
+	return "scripted-computer-use-post-tool-failure"
+}
+
+func (p *computerUseDesktopChatPostToolFailureProvider) Models() []string {
+	return []string{"gpt-5.3-codex-spark"}
+}
+
+func (p *computerUseDesktopChatPostToolFailureProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	p.mu.Lock()
+	p.requests = append(p.requests, cloneChatRequestForTest(req))
+	round := p.callCount
+	p.callCount++
+	p.mu.Unlock()
+
+	if round == 0 {
+		firstContent := strings.TrimSpace(p.firstContent)
+		if firstContent == "" {
+			firstContent = "我先确认一下飞书当前窗口。"
+		}
+		firstToolArgs := strings.TrimSpace(p.firstToolArgs)
+		if firstToolArgs == "" {
+			firstToolArgs = `{"action":"screenshot","app_name":"Feishu,Lark"}`
+		}
+		return &llm.ChatResponse{
+			ID:    "computer-use-post-tool-failure-round-1",
+			Model: req.Model,
+			Message: llm.Message{
+				Role:    llm.RoleAssistant,
+				Content: firstContent,
+				ToolCalls: []llm.ToolCall{{
+					ID:        "call_computer_use_screenshot_post_tool_failure",
+					Name:      "computer_use",
+					Arguments: firstToolArgs,
+				}},
+			},
+		}, nil
+	}
+
+	if p.err != nil {
+		return nil, p.err
+	}
+	return nil, fmt.Errorf("proxy returned 401: provider auth error")
+}
+
+func (p *computerUseDesktopChatPostToolFailureProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 1)
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		close(ch)
+		return nil, err
+	}
+	ch <- llm.StreamChunk{
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (p *computerUseDesktopChatPostToolFailureProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		return err
+	}
+	return callback(llm.StreamChunk{
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
+	})
+}
+
+func (p *computerUseDesktopChatPostToolFailureProvider) CallCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.callCount
+}
+
+func (p *computerUseDesktopChatPostToolFailureProvider) RequestAt(idx int) (llm.ChatRequest, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if idx < 0 || idx >= len(p.requests) {
+		return llm.ChatRequest{}, false
+	}
+	return p.requests[idx], true
 }
 
 func (p *computerUseDesktopChatMultiRoundRecoveryProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
@@ -660,6 +774,29 @@ func TestShouldInjectComputerUseDesktopChatContinuationNudgeForRequest_DetectsDe
 		}},
 	) {
 		t.Fatal("expected desktop-chat routing message to trigger continuation nudge even when the first computer_use action is an interactive snapshot")
+	}
+}
+
+func TestBuildToolFallbackTextWithOptions_DesktopChatPendingDoesNotClaimCompletion(t *testing.T) {
+	fallback, toolCount := buildToolFallbackTextWithOptions([]llm.Message{
+		{
+			Role:    llm.RoleUser,
+			Content: "帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成",
+		},
+		{
+			Role:     llm.RoleTool,
+			ToolName: "computer_use",
+			Content:  `{"title":"computer_use","type":"result","status":"success","action":"screenshot","message":"Host screenshot captured"}`,
+		},
+	}, 4096, toolFallbackTextOptions{toolCardsVisible: true})
+	if toolCount != 1 {
+		t.Fatalf("toolCount = %d, want 1", toolCount)
+	}
+	if strings.Contains(fallback, "我已完成这些工具步骤") {
+		t.Fatalf("expected desktop-chat pending fallback to avoid completion wording, got %q", fallback)
+	}
+	if !strings.Contains(fallback, "还没有确认发送成功") {
+		t.Fatalf("expected desktop-chat pending fallback to state incomplete send, got %q", fallback)
 	}
 }
 
@@ -3209,6 +3346,70 @@ func TestStreamMessage_ComputerUseDesktopChatRequestRecoversFromScreenshotToMess
 	}
 	if !strings.Contains(body, "已经在飞书桌面应用里给【后端之家】发出问候。") {
 		t.Fatalf("expected final streamed completion summary, got body=%s", body)
+	}
+}
+
+func TestStreamMessage_ComputerUseDesktopChatPostToolFailureFallbackStaysIncomplete(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Computer use desktop chat post-tool failure fallback stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	provider := &computerUseDesktopChatPostToolFailureProvider{
+		name: "scripted-computer-use-post-tool-failure-stream",
+		err:  fmt.Errorf("proxy returned 401: provider prov_test auth error (401): {\"error\":{\"message\":\"未提供令牌\"}}"),
+	}
+	registry.Register(provider)
+
+	toolRegistry := tools.NewRegistry()
+	computerUseMock := &computerUseScenarioToolMock{}
+	toolRegistry.Register(computerUseMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-computer-use-post-tool-failure-stream","model":"gpt-5.3-codex-spark"}`)
+
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected fallback response instead of STREAM_ERROR, body=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected done marker in stream body, got: %s", body)
+	}
+	if strings.Contains(body, "我已完成这些工具步骤") {
+		t.Fatalf("expected post-tool desktop chat failure to avoid completion wording, got body=%s", body)
+	}
+	if !strings.Contains(body, "还没有确认发送成功") {
+		t.Fatalf("expected post-tool desktop chat failure to remain explicitly incomplete, got body=%s", body)
+	}
+	if provider.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (tool call + failed follow-up), got %d", provider.CallCount())
+	}
+
+	calls := computerUseMock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("computer_use calls = %d, want 1", len(calls))
+	}
+	if got := anyToStringForLLM(calls[0]["action"]); got != "screenshot" {
+		t.Fatalf("first computer_use action = %q, want screenshot", got)
+	}
+
+	secondReq, ok := provider.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	if !requestCarriesDesktopChatComputerUseGuardrails(secondReq) {
+		t.Fatalf("expected failed follow-up request to carry desktop chat guardrails, got %#v", secondReq.Messages)
+	}
+	if !requestContainsComputerUseToolResult(secondReq, "Host screenshot captured") {
+		t.Fatalf("expected failed follow-up request to include screenshot result, got %#v", secondReq.Messages)
 	}
 }
 

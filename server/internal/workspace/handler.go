@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/IceWhaleTech/ZimaOS-Blue/server/internal/pruner"
 	"github.com/labstack/echo/v4"
@@ -56,12 +58,13 @@ func (h *Handler) getMeta(c echo.Context) error {
 }
 
 type workspaceTreeEntry struct {
-	Path      string `json:"path"`
-	AbsPath   string `json:"abs_path"`
-	Name      string `json:"name"`
-	Type      string `json:"type"` // "file" | "dir"
-	Depth     int    `json:"depth"`
-	SizeBytes int64  `json:"size_bytes,omitempty"`
+	Path       string `json:"path"`
+	AbsPath    string `json:"abs_path"`
+	Name       string `json:"name"`
+	Type       string `json:"type"` // "file" | "dir"
+	Depth      int    `json:"depth"`
+	SizeBytes  int64  `json:"size_bytes,omitempty"`
+	ModifiedAt string `json:"modified_at,omitempty"`
 }
 
 // getTree returns the real workspace directory tree for browsing files.
@@ -90,6 +93,26 @@ func (h *Handler) getTree(c echo.Context) error {
 		includeHidden = true
 	}
 
+	limit := maxEntries
+	if raw := strings.TrimSpace(c.QueryParam("limit")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			if v < 1 {
+				limit = 1
+			} else if v > maxEntries {
+				limit = maxEntries
+			} else {
+				limit = v
+			}
+		}
+	}
+
+	offset := 0
+	if raw := strings.TrimSpace(c.QueryParam("offset")); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			offset = v
+		}
+	}
+
 	root := strings.TrimSpace(h.mgr.Dir())
 	if requestedRoot := strings.TrimSpace(c.QueryParam("root")); requestedRoot != "" {
 		resolvedRoot, err := h.resolveTreeRoot(requestedRoot)
@@ -102,16 +125,20 @@ func (h *Handler) getTree(c echo.Context) error {
 	}
 	if root == "" {
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"root":    "",
-			"entries": []workspaceTreeEntry{},
+			"root":        "",
+			"entries":     []workspaceTreeEntry{},
+			"next_offset": offset,
+			"has_more":    false,
 		})
 	}
 	info, statErr := os.Stat(root)
 	if statErr != nil {
 		if os.IsNotExist(statErr) {
 			return c.JSON(http.StatusOK, map[string]interface{}{
-				"root":    root,
-				"entries": []workspaceTreeEntry{},
+				"root":        root,
+				"entries":     []workspaceTreeEntry{},
+				"next_offset": offset,
+				"has_more":    false,
 			})
 		}
 		return c.JSON(http.StatusInternalServerError, map[string]string{
@@ -124,8 +151,10 @@ func (h *Handler) getTree(c echo.Context) error {
 		})
 	}
 
-	entries := make([]workspaceTreeEntry, 0, 512)
+	entries := make([]workspaceTreeEntry, 0, min(limit, 512))
 	count := 0
+	hasMore := false
+	stopWalk := errors.New("workspace tree page complete")
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -134,13 +163,6 @@ func (h *Handler) getTree(c echo.Context) error {
 		if path == root {
 			return nil
 		}
-		if count >= maxEntries {
-			if d.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-
 		rel, err := filepath.Rel(root, path)
 		if err != nil {
 			return nil
@@ -172,33 +194,55 @@ func (h *Handler) getTree(c echo.Context) error {
 		}
 
 		var sizeBytes int64
-		if !d.IsDir() {
-			if info, err := d.Info(); err == nil {
+		var modifiedAt string
+		if info, err := d.Info(); err == nil {
+			if !d.IsDir() {
 				sizeBytes = info.Size()
 			}
+			modifiedAt = info.ModTime().UTC().Format(time.RFC3339Nano)
+		}
+
+		if count < offset {
+			count++
+			return nil
+		}
+
+		if len(entries) >= limit {
+			hasMore = true
+			return stopWalk
 		}
 
 		entries = append(entries, workspaceTreeEntry{
-			Path:      rel,
-			AbsPath:   path,
-			Name:      d.Name(),
-			Type:      entryType,
-			Depth:     depth,
-			SizeBytes: sizeBytes,
+			Path:       rel,
+			AbsPath:    path,
+			Name:       d.Name(),
+			Type:       entryType,
+			Depth:      depth,
+			SizeBytes:  sizeBytes,
+			ModifiedAt: modifiedAt,
 		})
 		count++
 		return nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, stopWalk) {
 		return c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": err.Error(),
 		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
-		"root":    root,
-		"entries": entries,
+		"root":        root,
+		"entries":     entries,
+		"next_offset": offset + len(entries),
+		"has_more":    hasMore,
 	})
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (h *Handler) resolveTreeRoot(raw string) (string, error) {

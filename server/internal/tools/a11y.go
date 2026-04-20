@@ -905,15 +905,19 @@ func (t *A11yTool) doScenarioAct(ctx context.Context, backend a11yruntime.Backen
 	if strings.EqualFold(strings.TrimSpace(intent), "type") {
 		return t.doTypeScenarioAct(ctx, backend, args, windowID)
 	}
+	opts := a11yActOptions{}
+	if normalizeA11yActIntent(intent) == "message" {
+		opts.allowFocusedTypeAliasFallback = true
+	}
 	if normalizeA11yActIntent(firstCompatString(args, "intent", "scene", "scenario", "goal")) != "" {
-		return t.doActWithOptions(ctx, backend, args, windowID, a11yActOptions{})
+		return t.doActWithOptions(ctx, backend, args, windowID, opts)
 	}
 	cloned := make(map[string]interface{}, len(args)+1)
 	for key, value := range args {
 		cloned[key] = value
 	}
 	cloned["intent"] = intent
-	return t.doActWithOptions(ctx, backend, cloned, windowID, a11yActOptions{})
+	return t.doActWithOptions(ctx, backend, cloned, windowID, opts)
 }
 
 func (t *A11yTool) doTypeScenarioAct(ctx context.Context, backend a11yruntime.Backend, args map[string]interface{}, windowID string) (interface{}, error) {
@@ -1353,8 +1357,12 @@ func (t *A11yTool) tryFocusedTypeAliasFallback(
 	if strings.TrimSpace(strings.ToLower(backend.HostOS())) != "darwin" {
 		return a11yruntime.ActionResult{}, false, nil
 	}
-	if normalizeA11yActIntent(intent) != "" {
-		return a11yruntime.ActionResult{}, false, nil
+	normalizedIntent := normalizeA11yActIntent(intent)
+	if normalizedIntent != "" {
+		state := getA11yChatExecutionState(ctx)
+		if normalizedIntent != "message" || state == nil || state.intent != "message" {
+			return a11yruntime.ActionResult{}, false, nil
+		}
 	}
 	if strings.TrimSpace(strings.ToLower(actType)) != "type" {
 		return a11yruntime.ActionResult{}, false, nil

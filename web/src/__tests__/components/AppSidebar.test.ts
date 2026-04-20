@@ -490,6 +490,32 @@ describe('AppSidebar', () => {
     )
   })
 
+  it('refreshes the workspace tree while the generated workspace view stays open', async () => {
+    vi.useFakeTimers()
+    try {
+      const { wrapper } = await mountSidebar('/chat')
+
+      await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+      await flushPromises()
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      const initialTreeCalls = vi.mocked(workspaceApi.getTree).mock.calls.length
+      const initialConversationCalls = vi.mocked(conversationApi.list).mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(6000)
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(vi.mocked(workspaceApi.getTree).mock.calls.length).toBeGreaterThan(initialTreeCalls)
+      expect(vi.mocked(conversationApi.list).mock.calls.length).toBe(initialConversationCalls)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('focuses and highlights files linked to the current conversation', async () => {
     vi.mocked(workspaceApi.getTree).mockResolvedValue({
       data: {
@@ -563,6 +589,169 @@ describe('AppSidebar', () => {
     const highlightedRows = wrapper.findAll('[data-current-conversation="true"]')
     expect(highlightedRows.length).toBeGreaterThan(0)
     expect(highlightedRows.some((row) => row.text().includes('完整报告_含截图证据.md'))).toBe(true)
+    expect(wrapper.text()).toContain('Current conversation')
+  })
+
+  it('continues scanning older conversation pages for generated workspace files', async () => {
+    vi.mocked(workspaceApi.getTree).mockResolvedValue({
+      data: {
+        root: '/tmp/workspace',
+        entries: [
+          {
+            path: 'archived/recovered.md',
+            abs_path: '/tmp/workspace/archived/recovered.md',
+            name: 'recovered.md',
+            type: 'file',
+            depth: 2,
+            size_bytes: 512,
+          },
+        ],
+      },
+    } as never)
+    vi.mocked(conversationApi.list).mockImplementation(async (limit = 50, offset = 0) => {
+      if (limit !== 20) {
+        return { data: [] } as never
+      }
+      if (offset === 0) {
+        return {
+          data: Array.from({ length: 20 }, (_, index) => ({
+            id: `conv-${index + 1}`,
+            title: `Conv ${index + 1}`,
+            created_at: '2026-04-18T10:00:00Z',
+            updated_at: '2026-04-18T10:00:00Z',
+          })),
+        } as never
+      }
+      if (offset === 20) {
+        return {
+          data: [
+            {
+              id: 'conv-target',
+              title: 'Recovered conversation',
+              created_at: '2026-04-18T10:00:00Z',
+              updated_at: '2026-04-18T10:00:00Z',
+            },
+          ],
+        } as never
+      }
+      return { data: [] } as never
+    })
+    vi.mocked(messageApi.list).mockImplementation(async (conversationId: string) => {
+      if (conversationId === 'conv-target') {
+        return {
+          data: [
+            {
+              id: 'msg-target',
+              conversation_id: 'conv-target',
+              role: 'assistant',
+              content:
+                '```typeless\n' +
+                '{"details":[{"label":"path","value":"archived/recovered.md"}],"status":"success","title":"write_commit","type":"result"}\n' +
+                '```',
+              created_at: '2026-04-18T10:30:00Z',
+            },
+          ],
+        } as never
+      }
+      return { data: [] } as never
+    })
+
+    const { wrapper } = await mountSidebar('/chat')
+    const chatStore = useChatStore()
+    chatStore.currentConversationId = 'conv-target'
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(
+      vi.mocked(conversationApi.list).mock.calls.some(
+        ([limit, offset]) => limit === 20 && offset === 20
+      )
+    ).toBe(true)
+    expect(wrapper.text()).toContain('Current conversation')
+  })
+
+  it('continues scanning older message pages for generated workspace files', async () => {
+    vi.mocked(workspaceApi.getTree).mockResolvedValue({
+      data: {
+        root: '/tmp/workspace',
+        entries: [
+          {
+            path: 'reports/deep-history.md',
+            abs_path: '/tmp/workspace/reports/deep-history.md',
+            name: 'deep-history.md',
+            type: 'file',
+            depth: 2,
+            size_bytes: 640,
+          },
+        ],
+      },
+    } as never)
+    vi.mocked(conversationApi.list).mockResolvedValue({
+      data: [
+        {
+          id: 'conv-history',
+          title: 'Historical report conversation',
+          created_at: '2026-04-18T10:00:00Z',
+          updated_at: '2026-04-18T10:00:00Z',
+        },
+      ],
+    } as never)
+    vi.mocked(messageApi.list).mockImplementation(
+      async (conversationId: string, limit = 100, offset = 0) => {
+        if (conversationId !== 'conv-history' || limit !== 120) {
+          return { data: [] } as never
+        }
+        if (offset === 0) {
+          return {
+            data: Array.from({ length: 120 }, (_, index) => ({
+              id: `msg-${index + 1}`,
+              conversation_id: 'conv-history',
+              role: 'assistant',
+              content: 'no generated path here',
+              created_at: '2026-04-18T10:00:00Z',
+            })),
+          } as never
+        }
+        if (offset === 120) {
+          return {
+            data: [
+              {
+                id: 'msg-target',
+                conversation_id: 'conv-history',
+                role: 'assistant',
+                content:
+                  '```typeless\n' +
+                  '{"details":[{"label":"path","value":"reports/deep-history.md"}],"status":"success","title":"write_commit","type":"result"}\n' +
+                  '```',
+                created_at: '2026-04-18T10:30:00Z',
+              },
+            ],
+          } as never
+        }
+        return { data: [] } as never
+      }
+    )
+
+    const { wrapper } = await mountSidebar('/chat')
+    const chatStore = useChatStore()
+    chatStore.currentConversationId = 'conv-history'
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(
+      vi.mocked(messageApi.list).mock.calls.some(
+        ([conversationId, limit, offset]) =>
+          conversationId === 'conv-history' && limit === 120 && offset === 120
+      )
+    ).toBe(true)
     expect(wrapper.text()).toContain('Current conversation')
   })
 
@@ -645,6 +834,320 @@ describe('AppSidebar', () => {
           params?.max_depth === 16 && params?.root === '/tmp/workspace/phone_specs_2026'
       )
     ).toBe(true)
+  })
+
+  it('continues loading paginated workspace tree responses until later entries are included', async () => {
+    vi.mocked(workspaceApi.getTree).mockImplementation(async (params?: Record<string, unknown>) => {
+      const offset = Number(params?.offset || 0)
+      if (offset === 0) {
+        return {
+          data: {
+            root: '/tmp/workspace',
+            entries: [
+              {
+                path: 'batch/a.txt',
+                abs_path: '/tmp/workspace/batch/a.txt',
+                name: 'a.txt',
+                type: 'file',
+                depth: 2,
+                size_bytes: 16,
+              },
+              {
+                path: 'batch/b.txt',
+                abs_path: '/tmp/workspace/batch/b.txt',
+                name: 'b.txt',
+                type: 'file',
+                depth: 2,
+                size_bytes: 16,
+              },
+            ],
+            next_offset: 2,
+            has_more: true,
+          },
+        } as never
+      }
+      if (offset === 2) {
+        return {
+          data: {
+            root: '/tmp/workspace',
+            entries: [
+              {
+                path: 'batch/late-report.md',
+                abs_path: '/tmp/workspace/batch/late-report.md',
+                name: 'late-report.md',
+                type: 'file',
+                depth: 2,
+                size_bytes: 64,
+              },
+            ],
+            next_offset: 3,
+            has_more: false,
+          },
+        } as never
+      }
+      return {
+        data: { root: '/tmp/workspace', entries: [], next_offset: offset, has_more: false },
+      } as never
+    })
+
+    const { wrapper } = await mountSidebar('/chat')
+
+    await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    await vi.dynamicImportSettled()
+    await flushPromises()
+
+    expect(
+      vi.mocked(workspaceApi.getTree).mock.calls.some(
+        ([params]) => params?.max_depth === 16 && params?.offset === 2
+      )
+    ).toBe(true)
+    expect(wrapper.text()).toContain('late-report.md')
+  })
+
+  it('background workspace tree polling preserves expanded folders without rescanning links', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.mocked(workspaceApi.getTree).mockResolvedValue({
+        data: {
+          root: '/tmp/workspace',
+          entries: [
+            {
+              path: 'memory',
+              abs_path: '/tmp/workspace/memory',
+              name: 'memory',
+              type: 'dir',
+              depth: 1,
+            },
+            {
+              path: 'memory/daily',
+              abs_path: '/tmp/workspace/memory/daily',
+              name: 'daily',
+              type: 'dir',
+              depth: 2,
+            },
+            {
+              path: 'memory/daily/report.txt',
+              abs_path: '/tmp/workspace/memory/daily/report.txt',
+              name: 'report.txt',
+              type: 'file',
+              depth: 3,
+              size_bytes: 128,
+            },
+          ],
+        },
+      } as never)
+
+      const { wrapper } = await mountSidebar('/chat')
+
+      await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+      await flushPromises()
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      const collapsedMemoryRow = findWorkspaceTreeRow(wrapper, 'memory')
+      expect(collapsedMemoryRow).toBeTruthy()
+      expect(collapsedMemoryRow!.get('button').attributes('title')).toBe('Expand folder')
+
+      await collapsedMemoryRow!.get('button').trigger('click')
+      await flushPromises()
+
+      const expandedMemoryRow = findWorkspaceTreeRow(wrapper, 'memory')
+      expect(expandedMemoryRow).toBeTruthy()
+      expect(expandedMemoryRow!.get('button').attributes('title')).toBe('Collapse folder')
+      expect(wrapper.text()).toContain('memory/daily')
+
+      const initialTreeCalls = vi.mocked(workspaceApi.getTree).mock.calls.length
+      const initialConversationCalls = vi.mocked(conversationApi.list).mock.calls.length
+
+      await vi.advanceTimersByTimeAsync(6000)
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      const refreshedMemoryRow = findWorkspaceTreeRow(wrapper, 'memory')
+      expect(refreshedMemoryRow).toBeTruthy()
+      expect(vi.mocked(workspaceApi.getTree).mock.calls.length).toBeGreaterThan(initialTreeCalls)
+      expect(vi.mocked(conversationApi.list).mock.calls.length).toBe(initialConversationCalls)
+      expect(refreshedMemoryRow!.get('button').attributes('title')).toBe('Collapse folder')
+      expect(wrapper.text()).toContain('memory/daily')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('highlights entries added or deleted after the initial workspace tree fetch', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-19T10:00:00Z'))
+    try {
+      vi.mocked(workspaceApi.getTree).mockImplementation(async () => {
+        const callCount = vi.mocked(workspaceApi.getTree).mock.calls.length
+        if (callCount <= 1) {
+          return {
+            data: {
+              root: '/tmp/workspace',
+              entries: [
+                {
+                  path: 'keep.md',
+                  abs_path: '/tmp/workspace/keep.md',
+                  name: 'keep.md',
+                  type: 'file',
+                  depth: 1,
+                  size_bytes: 64,
+                  modified_at: '2026-04-19T09:55:00Z',
+                },
+                {
+                  path: 'remove.md',
+                  abs_path: '/tmp/workspace/remove.md',
+                  name: 'remove.md',
+                  type: 'file',
+                  depth: 1,
+                  size_bytes: 32,
+                  modified_at: '2026-04-19T09:56:00Z',
+                },
+              ],
+            },
+          } as never
+        }
+        return {
+          data: {
+            root: '/tmp/workspace',
+            entries: [
+              {
+                path: 'keep.md',
+                abs_path: '/tmp/workspace/keep.md',
+                name: 'keep.md',
+                type: 'file',
+                depth: 1,
+                size_bytes: 64,
+                modified_at: '2026-04-19T09:55:00Z',
+              },
+              {
+                path: 'added.md',
+                abs_path: '/tmp/workspace/added.md',
+                name: 'added.md',
+                type: 'file',
+                depth: 1,
+                size_bytes: 48,
+                modified_at: '2026-04-19T10:00:03Z',
+              },
+            ],
+          },
+        } as never
+      })
+
+      const { wrapper } = await mountSidebar('/chat')
+
+      await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+      await flushPromises()
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(wrapper.text()).toContain('keep.md')
+      expect(wrapper.text()).toContain('remove.md')
+      expect(wrapper.text()).not.toContain('Added')
+      expect(wrapper.text()).not.toContain('Deleted')
+
+      await vi.advanceTimersByTimeAsync(6000)
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      const keepRow = findWorkspaceTreeRow(wrapper, 'keep.md')
+      const addedRow = findWorkspaceTreeRow(wrapper, 'added.md')
+      const deletedRow = findWorkspaceTreeRow(wrapper, 'remove.md')
+
+      expect(keepRow).toBeTruthy()
+      expect(addedRow).toBeTruthy()
+      expect(deletedRow).toBeTruthy()
+      expect(keepRow!.text()).not.toContain('Added')
+      expect(addedRow!.text()).toContain('Added')
+      expect(deletedRow!.text()).toContain('Deleted')
+      expect(wrapper.findAll('span').some((node) => node.text().includes('Files 2'))).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('expires deleted workspace tree markers after a short delay', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-04-19T10:00:00Z'))
+    try {
+      vi.mocked(workspaceApi.getTree).mockImplementation(async () => {
+        const callCount = vi.mocked(workspaceApi.getTree).mock.calls.length
+        if (callCount <= 1) {
+          return {
+            data: {
+              root: '/tmp/workspace',
+              entries: [
+                {
+                  path: 'keep.md',
+                  abs_path: '/tmp/workspace/keep.md',
+                  name: 'keep.md',
+                  type: 'file',
+                  depth: 1,
+                  size_bytes: 64,
+                  modified_at: '2026-04-19T09:55:00Z',
+                },
+                {
+                  path: 'remove.md',
+                  abs_path: '/tmp/workspace/remove.md',
+                  name: 'remove.md',
+                  type: 'file',
+                  depth: 1,
+                  size_bytes: 32,
+                  modified_at: '2026-04-19T09:56:00Z',
+                },
+              ],
+            },
+          } as never
+        }
+        return {
+          data: {
+            root: '/tmp/workspace',
+            entries: [
+              {
+                path: 'keep.md',
+                abs_path: '/tmp/workspace/keep.md',
+                name: 'keep.md',
+                type: 'file',
+                depth: 1,
+                size_bytes: 64,
+                modified_at: '2026-04-19T09:55:00Z',
+              },
+            ],
+          },
+        } as never
+      })
+
+      const { wrapper } = await mountSidebar('/chat')
+
+      await wrapper.get('[data-testid="sidebar-nav-workspace"]').trigger('click')
+      await flushPromises()
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      await vi.advanceTimersByTimeAsync(6000)
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(findWorkspaceTreeRow(wrapper, 'remove.md')?.text()).toContain('Deleted')
+
+      await vi.advanceTimersByTimeAsync(16000)
+      await flushPromises()
+      await vi.dynamicImportSettled()
+      await flushPromises()
+
+      expect(findWorkspaceTreeRow(wrapper, 'remove.md')).toBeFalsy()
+      expect(wrapper.findAll('span').some((node) => node.text().includes('Files 1'))).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('defaults memory and knowledge directories to collapsed in the workspace tree', async () => {

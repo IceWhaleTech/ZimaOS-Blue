@@ -769,6 +769,7 @@ func (b *darwinBackend) buildSnapshotNodeWithinWindow(element uintptr, depth int
 	focused, hasFocused := darwinCopyBoolAttribute(element, "AXFocused")
 	selected, hasSelected := darwinCopyBoolAttribute(element, "AXSelected")
 	expanded, hasExpanded := darwinCopyBoolAttribute(element, "AXExpanded")
+	enabled, hasEnabled := darwinCopyBoolAttribute(element, "AXEnabled")
 	description := darwinSnapshotDescriptionWithState(
 		darwinCopyStringAttribute(element, "AXDescription"),
 		hasFocused && focused,
@@ -786,7 +787,15 @@ func (b *darwinBackend) buildSnapshotNodeWithinWindow(element uintptr, depth int
 		Value:         value,
 		Description:   description,
 		DefaultAction: defaultAction,
+		Actions:       append([]string(nil), actions...),
+		Enabled:       !hasEnabled || enabled,
+		Selected:      hasSelected && selected,
+		Focused:       hasFocused && focused,
+		ValueSettable: valueSettable,
 		Interactive:   interactive,
+	}
+	if hasExpanded {
+		node.Expanded = &expanded
 	}
 	if normalizedBounds, ok := darwinNormalizeSnapshotBounds(elementBounds, hasElementBounds, windowBounds, hasWindowBounds); ok {
 		node.Bounds = normalizedBounds

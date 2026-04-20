@@ -31,6 +31,9 @@ type FlatNode struct {
 	Role             string
 	Name             string
 	Value            string
+	Path             string
+	Section          string
+	Capabilities     []string
 	Bounds           NormalizedRect
 	State            string
 	Description      string
@@ -64,16 +67,18 @@ type SnapshotProjection struct {
 }
 
 type Snapshot struct {
-	WindowID    string
-	Title       string
-	Revision    int64
-	Mode        string
-	Dirty       bool
-	DirtyReason string
-	Nodes       []FlatNode
-	NameIndex   map[string][]int
-	RoleIndex   map[string][]int
-	TokenIndex  map[string]int
+	WindowID        string
+	Title           string
+	Revision        int64
+	Mode            string
+	Dirty           bool
+	DirtyReason     string
+	Nodes           []FlatNode
+	NameIndex       map[string][]int
+	RoleIndex       map[string][]int
+	TokenIndex      map[string]int
+	StableIndex     map[string]int
+	CapabilityIndex map[string][]int
 
 	fullProjection        SnapshotProjection
 	interactiveProjection SnapshotProjection
@@ -84,13 +89,15 @@ func BuildStructuredSnapshot(options BuildStructuredSnapshotOptions, root *Node)
 		return nil
 	}
 	snapshot := &Snapshot{
-		WindowID:   strings.TrimSpace(options.WindowID),
-		Title:      strings.TrimSpace(options.Title),
-		Mode:       strings.TrimSpace(options.Mode),
-		Nodes:      make([]FlatNode, 0, 32),
-		NameIndex:  make(map[string][]int),
-		RoleIndex:  make(map[string][]int),
-		TokenIndex: make(map[string]int),
+		WindowID:        strings.TrimSpace(options.WindowID),
+		Title:           strings.TrimSpace(options.Title),
+		Mode:            strings.TrimSpace(options.Mode),
+		Nodes:           make([]FlatNode, 0, 32),
+		NameIndex:       make(map[string][]int),
+		RoleIndex:       make(map[string][]int),
+		TokenIndex:      make(map[string]int),
+		StableIndex:     make(map[string]int),
+		CapabilityIndex: make(map[string][]int),
 	}
 	nextID := 1
 	buildStructuredSnapshotNodes(root, 0, "", 0, 0, &nextID, snapshot)
@@ -158,11 +165,21 @@ func buildStructuredSnapshotNodes(node *Node, parentID int, parentStableID strin
 
 func snapshotStableID(parentStableID string, node FlatNode) string {
 	hasher := fnv.New64a()
+	boundsKey := snapshotStableBoundsKey(node.Bounds)
+	labelKey := ""
+	if boundsKey == "0:0:0:0" {
+		labelKey = normalizeSnapshotMatchValue(strings.TrimSpace(node.Name))
+		if labelKey == "" {
+			labelKey = normalizeSnapshotMatchValue(strings.TrimSpace(node.Value))
+		}
+	}
 	for _, part := range []string{
 		strings.TrimSpace(parentStableID),
 		normalizeSnapshotMatchValue(node.Role),
+		normalizeSnapshotMatchValue(node.Path),
 		normalizeSnapshotMatchValue(strings.TrimSpace(node.DefaultAction)),
-		snapshotStableBoundsKey(node.Bounds),
+		boundsKey,
+		labelKey,
 		strconv.Itoa(max(node.Depth, 0)),
 	} {
 		_, _ = hasher.Write([]byte(part))
@@ -212,16 +229,18 @@ func (s *Snapshot) Clone() *Snapshot {
 		return nil
 	}
 	out := &Snapshot{
-		WindowID:    s.WindowID,
-		Title:       s.Title,
-		Revision:    s.Revision,
-		Mode:        s.Mode,
-		Dirty:       s.Dirty,
-		DirtyReason: s.DirtyReason,
-		Nodes:       append([]FlatNode(nil), s.Nodes...),
-		NameIndex:   cloneNodeIndex(s.NameIndex),
-		RoleIndex:   cloneNodeIndex(s.RoleIndex),
-		TokenIndex:  cloneTokenIndex(s.TokenIndex),
+		WindowID:        s.WindowID,
+		Title:           s.Title,
+		Revision:        s.Revision,
+		Mode:            s.Mode,
+		Dirty:           s.Dirty,
+		DirtyReason:     s.DirtyReason,
+		Nodes:           cloneFlatNodes(s.Nodes),
+		NameIndex:       cloneNodeIndex(s.NameIndex),
+		RoleIndex:       cloneNodeIndex(s.RoleIndex),
+		TokenIndex:      cloneTokenIndex(s.TokenIndex),
+		StableIndex:     cloneTokenIndex(s.StableIndex),
+		CapabilityIndex: cloneNodeIndex(s.CapabilityIndex),
 	}
 	return out
 }
@@ -233,6 +252,8 @@ func (s *Snapshot) rebuildDerived() {
 	s.NameIndex = make(map[string][]int)
 	s.RoleIndex = make(map[string][]int)
 	s.TokenIndex = make(map[string]int)
+	s.StableIndex = make(map[string]int)
+	s.CapabilityIndex = make(map[string][]int)
 	for _, node := range s.Nodes {
 		if key := normalizeSnapshotMatchValue(node.Name); key != "" {
 			s.NameIndex[key] = append(s.NameIndex[key], node.NodeID)
@@ -247,6 +268,16 @@ func (s *Snapshot) rebuildDerived() {
 		s.RoleIndex[roleKey] = append(s.RoleIndex[roleKey], node.NodeID)
 		if token := strings.TrimSpace(node.BackendToken); token != "" {
 			s.TokenIndex[token] = node.NodeID
+		}
+		if stableID := strings.TrimSpace(node.StableID); stableID != "" {
+			s.StableIndex[stableID] = node.NodeID
+		}
+		for _, capability := range node.Capabilities {
+			key := normalizeSnapshotMatchValue(capability)
+			if key == "" {
+				continue
+			}
+			s.CapabilityIndex[key] = append(s.CapabilityIndex[key], node.NodeID)
 		}
 	}
 	s.fullProjection = buildSnapshotProjection(s.Nodes, SnapshotProjectionFull)
@@ -453,6 +484,18 @@ func cloneNodeIndex(in map[string][]int) map[string][]int {
 	out := make(map[string][]int, len(in))
 	for key, value := range in {
 		out[key] = append([]int(nil), value...)
+	}
+	return out
+}
+
+func cloneFlatNodes(in []FlatNode) []FlatNode {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]FlatNode, len(in))
+	copy(out, in)
+	for idx := range out {
+		out[idx].Capabilities = append([]string(nil), in[idx].Capabilities...)
 	}
 	return out
 }

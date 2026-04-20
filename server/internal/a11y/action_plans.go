@@ -44,11 +44,16 @@ func planDarwinAction(actType string, meta darwinActionMetadata) darwinActionPla
 	defaultAction := strings.TrimSpace(strings.ToLower(meta.DefaultAction))
 
 	switch actType {
-	case "click", "submit":
+	case "click", "submit", "press":
 		if hasAnyDarwinAction(meta.AvailableActions, "AXPress", "AXConfirm") || containsAny(defaultAction, "press", "click", "confirm") {
 			return darwinActionPlan{ExecutionMode: "semantic", SemanticAction: "AXPress"}
 		}
 		return darwinActionPlan{ExecutionMode: "input", InputFallback: darwinInputFallbackClick}
+	case "show_menu":
+		if hasAnyDarwinAction(meta.AvailableActions, "AXShowMenu") || containsAny(defaultAction, "show_menu") {
+			return darwinActionPlan{ExecutionMode: "semantic", SemanticAction: "AXShowMenu"}
+		}
+		return darwinActionPlan{Unsupported: true, UnsupportedReason: "element does not expose a show-menu semantic action"}
 	case "double_click":
 		return darwinActionPlan{ExecutionMode: "input", InputFallback: darwinInputFallbackDoubleClick}
 	case "right_click":
@@ -60,7 +65,7 @@ func planDarwinAction(actType string, meta darwinActionMetadata) darwinActionPla
 			return darwinActionPlan{ExecutionMode: "semantic", SemanticAction: "AXRaise"}
 		}
 		return darwinActionPlan{ExecutionMode: "input", InputFallback: darwinInputFallbackClick}
-	case "type":
+	case "type", "set_value":
 		if meta.ValueSettable {
 			return darwinActionPlan{ExecutionMode: "semantic", SetValue: true, InputFallback: darwinInputFallbackType}
 		}

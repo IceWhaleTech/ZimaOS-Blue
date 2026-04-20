@@ -625,70 +625,22 @@ func (t *WebTool) runSearchDiscovery(ctx context.Context, args map[string]interf
 		return outcome.Response, attempts, nil
 	}
 
-	type plannedOutcome struct {
-		step    PlanStep
-		outcome webQuerySearchOutcome
-	}
-
-	searchCtx, cancel := context.WithCancel(searchCtxBase)
-	defer cancel()
-
-	results := make(chan plannedOutcome, len(plan.Steps))
+	attempts := make([]webQueryAttempt, 0, len(plan.Steps))
+	searchErrs := make([]error, 0, len(plan.Steps))
 	for _, step := range plan.Steps {
-		step := step
-		go func() {
-			results <- plannedOutcome{
-				step:    step,
-				outcome: t.executeSearchProvider(searchCtx, baseArgs, step.Provider),
-			}
-		}()
-	}
-
-	var (
-		attempts    []webQueryAttempt
-		outcomes    []webQuerySearchOutcome
-		searchErrs  []error
-		settleTimer *time.Timer
-	)
-	for remaining := len(providers); remaining > 0; {
-		var settle <-chan time.Time
-		if settleTimer != nil {
-			settle = settleTimer.C
+		outcome := t.executeSearchProvider(searchCtxBase, baseArgs, step.Provider)
+		attemptErr := outcome.Err
+		if attemptErr == nil && len(outcome.Results) == 0 {
+			attemptErr = fmt.Errorf("%s: search returned no results", firstNonEmpty(strings.TrimSpace(outcome.Provider), strings.TrimSpace(step.Provider)))
 		}
-
-		select {
-		case result := <-results:
-			remaining--
-			outcome := result.outcome
-			attempt := webQuerySearchAttempt("search", query, result.step, outcome.Provider, outcome.Err)
-			if outcome.Err != nil {
-				// Hide provider attempts that were only canceled because another
-				// provider already succeeded and the fanout settle window closed.
-				if len(outcomes) > 0 && errors.Is(outcome.Err, context.Canceled) {
-					continue
-				}
-				attempts = append(attempts, attempt)
-				searchErrs = append(searchErrs, outcome.Err)
-				continue
-			}
-			attempts = append(attempts, attempt)
-			outcomes = append(outcomes, outcome)
-			if len(outcome.Results) > 0 && settleTimer == nil && remaining > 0 {
-				settleTimer = time.NewTimer(webQuerySearchSettleWindow)
-			}
-		case <-settle:
-			cancel()
-			settleTimer = nil
+		attempts = append(attempts, webQuerySearchAttempt("search", query, step, outcome.Provider, attemptErr))
+		if attemptErr != nil {
+			searchErrs = append(searchErrs, attemptErr)
+			continue
 		}
+		return outcome.Response, attempts, nil
 	}
-	if settleTimer != nil {
-		settleTimer.Stop()
-	}
-	if len(outcomes) == 0 {
-		return WebSearchResponse{}, attempts, firstNonNilErr(searchErrs...)
-	}
-	attempts = hideCanceledSearchAttemptsAfterSearchSuccess(attempts)
-	return mergeWebQuerySearchOutcomes(query, maxResults, outcomes), attempts, nil
+	return WebSearchResponse{}, attempts, firstNonNilErr(searchErrs...)
 }
 
 func (t *WebTool) buildWebQuerySearchProviderPlan(args map[string]interface{}, query string, maxResults int) ExecutionPlan {

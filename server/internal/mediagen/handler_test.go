@@ -72,6 +72,41 @@ func TestHandlerDirectGenerateNoProviderReturnsActionableError(t *testing.T) {
 	}
 }
 
+func TestHandlerDirectGenerateUnsupportedModelReturnsAvailableModelHint(t *testing.T) {
+	manager := NewManager(nil, nil, "")
+	manager.RegisterProvider(NewFakeMediaProvider())
+	h := NewHandler(manager, nil, "")
+	e := echo.New()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/media/generate",
+		bytes.NewBufferString(`{"category":"t2i","prompt":"draw a cat","model":"removed-image-model"}`),
+	)
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	if err := h.DirectGenerate(c); err != nil {
+		t.Fatalf("DirectGenerate returned error: %v", err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "requested media model is not available" {
+		t.Fatalf("error = %q", body["error"])
+	}
+	if !strings.Contains(body["hint"], "removed-image-model") {
+		t.Fatalf("hint = %q, want mention of requested model", body["hint"])
+	}
+	if !strings.Contains(body["hint"], fakeMediaModelID) {
+		t.Fatalf("hint = %q, want available model %q", body["hint"], fakeMediaModelID)
+	}
+}
+
 func TestHandlerUpdateProviderPersistsPriorityAndBaseURL(t *testing.T) {
 	store := NewConfigStore(t.TempDir())
 	manager := NewManager(nil, store, "")

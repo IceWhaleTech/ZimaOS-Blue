@@ -68,7 +68,7 @@ func TestGetMediaModelPricing_InitializesBuiltinPricingOnDemand(t *testing.T) {
 		t.Fatal("expected media pricing map to start uninitialized")
 	}
 
-	pricing := GetMediaModelPricing("dall-e-3")
+	pricing := GetMediaModelPricing("nano-banana-pro")
 	if pricing == nil {
 		t.Fatal("GetMediaModelPricing() = nil, want lazy initialization to restore builtin media pricing")
 	}

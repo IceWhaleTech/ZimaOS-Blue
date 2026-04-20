@@ -4,6 +4,7 @@ import "errors"
 
 var (
 	ErrProviderNotFound    = errors.New("mediagen: no provider found for model")
+	ErrModelUnavailable    = errors.New("mediagen: requested model is not available")
 	ErrTaskNotFound        = errors.New("mediagen: task not found")
 	ErrUnsupportedType     = errors.New("mediagen: unsupported media type")
 	ErrGenerationFailed    = errors.New("mediagen: generation failed")

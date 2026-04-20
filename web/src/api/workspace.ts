@@ -29,17 +29,22 @@ export interface WorkspaceTreeEntry {
   type: 'file' | 'dir' | string
   depth: number
   size_bytes?: number
+  modified_at?: string
 }
 
 export interface WorkspaceTree {
   root: string
   entries: WorkspaceTreeEntry[]
+  next_offset?: number
+  has_more?: boolean
 }
 
 export interface WorkspaceTreeParams {
   max_depth?: number
   include_hidden?: boolean
   root?: string
+  limit?: number
+  offset?: number
 }
 
 export const workspaceApi = {

@@ -1140,6 +1140,260 @@ func TestA11yToolExecute_MessageReusesSubmitPhaseInteractiveConfirmationBeforeVe
 	}
 }
 
+func TestA11yToolExecute_MessageWithConversationStillRunsLateStructuredVerifyWithoutGrounder(t *testing.T) {
+	prevPoll := a11yChatVerifyOutcomePollInterval
+	a11yChatVerifyOutcomePollInterval = 0
+	defer func() {
+		a11yChatVerifyOutcomePollInterval = prevPoll
+	}()
+
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [document] \"Message\"\n@3 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca",
+					2: "token-editor",
+					3: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [document] \"Message\"\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-editor",
+					2: "token-send",
+				},
+			},
+		},
+		interactiveResultAfterSubmit: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [group] \"Sending\"",
+			RefMap: map[int]string{
+				1: "token-sending",
+			},
+		},
+		structuredSnapshots: []*a11yruntime.Snapshot{
+			a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Mode:     "ax",
+			}, &a11yruntime.Node{
+				Role: "window",
+				Name: "Feishu",
+				Children: []*a11yruntime.Node{
+					{
+						Token:       "token-status",
+						Role:        "group",
+						Name:        "Sending",
+						Interactive: false,
+					},
+				},
+			}),
+			a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Mode:     "ax",
+			}, &a11yruntime.Node{
+				Role: "window",
+				Name: "Feishu",
+				Children: []*a11yruntime.Node{
+					{
+						Token:       "token-message-hello",
+						Role:        "static_text",
+						Name:        "hello",
+						Interactive: false,
+					},
+				},
+			}),
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["failure_code"] != nil {
+		t.Fatalf("failure_code = %v, want nil", out["failure_code"])
+	}
+	verification, ok := out["verification"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("verification = %#v, want object", out["verification"])
+	}
+	if verification["status"] != "sent" {
+		t.Fatalf("verification.status = %v, want sent", verification["status"])
+	}
+	if verification["message_list_matched"] != true {
+		t.Fatalf("verification.message_list_matched = %#v, want true", verification["message_list_matched"])
+	}
+	if verification["confirmation"] != "structured_sent_message_visible" {
+		t.Fatalf("verification.confirmation = %v, want structured_sent_message_visible", verification["confirmation"])
+	}
+	if backend.lastGroundingScreenshotWindow != "" {
+		t.Fatalf("lastGroundingScreenshotWindow = %q, want empty when structured verify completes without grounder", backend.lastGroundingScreenshotWindow)
+	}
+	if backend.structuredSnapshotCalls < 2 {
+		t.Fatalf("structuredSnapshotCalls = %d, want >= 2 so verify_outcome waits for the late structured cue", backend.structuredSnapshotCalls)
+	}
+}
+
+func TestA11yToolExecute_MessageUsesFocusedClipboardFallbackAfterComposerConfirmation(t *testing.T) {
+	backend := &a11yCompatBackend{
+		windows: []a11yruntime.WindowInfo{
+			{ID: "win-feishu", Title: "Feishu", AppName: "Feishu"},
+		},
+		interactiveResults: []a11yruntime.SnapshotResult{
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [list_item] \"Orca\"\n@2 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-orca",
+					2: "token-send",
+				},
+			},
+			{
+				HostOS:   "darwin",
+				WindowID: "win-feishu",
+				Title:    "Feishu",
+				Tree:     "@1 [button] \"Send\"",
+				RefMap: map[int]string{
+					1: "token-send",
+				},
+			},
+		},
+		interactiveResult: a11yruntime.SnapshotResult{
+			HostOS:   "darwin",
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Tree:     "@1 [button] \"Send\"",
+			RefMap: map[int]string{
+				1: "token-send",
+			},
+		},
+		structuredSnapshot: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-orca",
+					Role:        "list_item",
+					Name:        "Orca",
+					Description: "selected",
+					Interactive: true,
+				},
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+		structuredSnapshotAfterSubmit: a11yruntime.BuildStructuredSnapshot(a11yruntime.BuildStructuredSnapshotOptions{
+			WindowID: "win-feishu",
+			Title:    "Feishu",
+			Mode:     "ax",
+		}, &a11yruntime.Node{
+			Role: "window",
+			Name: "Feishu",
+			Children: []*a11yruntime.Node{
+				{
+					Token:       "token-orca",
+					Role:        "list_item",
+					Name:        "Orca",
+					Description: "selected",
+					Interactive: true,
+				},
+				{
+					Token:       "token-editor",
+					Role:        "document",
+					Name:        "Type a message",
+					Description: "focused editable",
+					Interactive: true,
+				},
+				{
+					Token:       "token-send",
+					Role:        "button",
+					Name:        "Send",
+					Interactive: true,
+				},
+			},
+		}),
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":       "message",
+		"app_name":     "Feishu",
+		"conversation": "Orca",
+		"value":        "hello",
+	})
+	if err != nil {
+		t.Fatalf("message Execute() error = %v", err)
+	}
+	if got := len(backend.focusedTypeHistory); got != 1 {
+		t.Fatalf("focusedTypeHistory len = %d, want 1 focused clipboard fallback after composer confirmation", got)
+	}
+	if backend.lastFocusedTypeValue != "hello" {
+		t.Fatalf("lastFocusedTypeValue = %q, want hello", backend.lastFocusedTypeValue)
+	}
+	for _, actType := range backend.actTypeHistory {
+		if actType == "type" {
+			t.Fatalf("actTypeHistory = %#v, want no semantic type act when focused clipboard fallback is available", backend.actTypeHistory)
+		}
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["error_code"] != nil {
+		t.Fatalf("error_code = %v, want nil after focused clipboard fallback", out["error_code"])
+	}
+	if out["input_method"] != "clipboard" {
+		t.Fatalf("input_method = %v, want clipboard", out["input_method"])
+	}
+	if out["verification_method"] != "focused_text" {
+		t.Fatalf("verification_method = %v, want focused_text", out["verification_method"])
+	}
+}
+
 func TestA11yToolExecute_MessageStopsAtTypeOrSendWhenSubmitEvidenceAlreadyConfirmsSuccess(t *testing.T) {
 	backend := &a11yCompatBackend{
 		windows: []a11yruntime.WindowInfo{

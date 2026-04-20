@@ -95,13 +95,22 @@ interface WorkspaceTreeRow {
   isCurrentConversation: boolean
   isCurrentConversationDirectMatch: boolean
   isRecentCurrentConversationDirectMatch: boolean
+  changeKind: 'added' | 'deleted' | null
+}
+
+interface WorkspaceTreeDeletedEntryMarker {
+  entry: WorkspaceTreeEntry
+  deletedAtMs: number
 }
 
 const GENERATED_SCAN_CONVERSATION_LIMIT = 20
 const GENERATED_SCAN_MESSAGE_LIMIT = 120
 const GENERATED_REFRESH_DEBOUNCE_MS = 1200
+const GENERATED_REFRESH_POLL_MS = 5000
+const WORKSPACE_TREE_DELETED_MARKER_TTL_MS = 15000
 const GENERATED_RECENT_WINDOW_MS = 2 * 60 * 1000
 const DEFAULT_COLLAPSED_WORKSPACE_DIRS = new Set(['memory', 'knowledge'])
+const WORKSPACE_TREE_PAGE_LIMIT = 5000
 
 const coreWorkspaceFileInfo: Record<string, CoreWorkspaceFileInfo> = {
   'SOUL.md': { icon: '🧠', labelKey: 'workspace.label.soul', descKey: 'workspace.desc.soul' },
@@ -186,9 +195,15 @@ const workspaceTreeError = ref('')
 const workspaceTreeRoot = ref('')
 const workspaceTreeEntries = ref<WorkspaceTreeEntry[]>([])
 const workspaceTreeCollapsedDirs = ref<Set<string>>(new Set())
+const workspaceTreeBaselineCapturedAtMs = ref<number | null>(null)
+const workspaceTreeBaselinePathKeys = ref<Set<string>>(new Set())
+const workspaceTreeDeletedEntries = ref<WorkspaceTreeDeletedEntryMarker[]>([])
 const workspaceTreeShowLinkedOnly = ref(false)
 const workspaceTreeFocusCurrentConversation = ref(true)
 let workspaceGeneratedRefreshTimer: ReturnType<typeof setTimeout> | null = null
+let workspaceGeneratedPollTimer: ReturnType<typeof setTimeout> | null = null
+let workspaceGeneratedRefreshInFlight: Promise<void> | null = null
+let workspaceTreeDeletedEntriesPruneTimer: ReturnType<typeof setTimeout> | null = null
 
 function getStorageItem(key: string): string | null {
   try {
@@ -406,10 +421,153 @@ function buildInitialWorkspaceTreeCollapsedDirs(entries: WorkspaceTreeEntry[]): 
   return collapsed
 }
 
+function buildWorkspaceTreeEntryByPath(entries: WorkspaceTreeEntry[]): Map<string, WorkspaceTreeEntry> {
+  const map = new Map<string, WorkspaceTreeEntry>()
+  for (const entry of entries) {
+    const key = toPathKey(String(entry.path || ''))
+    if (!key) continue
+    map.set(key, entry)
+  }
+  return map
+}
+
+function collectWorkspaceTreePathKeys(entries: WorkspaceTreeEntry[]): Set<string> {
+  return new Set(buildWorkspaceTreeEntryByPath(entries).keys())
+}
+
+function collectWorkspaceTreeDirKeys(entries: WorkspaceTreeEntry[]): Set<string> {
+  const dirKeys = new Set<string>()
+  for (const entry of entries) {
+    if (!isWorkspaceTreeDir(entry)) continue
+    const key = toPathKey(entry.path)
+    if (!key) continue
+    dirKeys.add(key)
+  }
+  return dirKeys
+}
+
+function buildPreservedWorkspaceTreeCollapsedDirs(
+  entries: WorkspaceTreeEntry[],
+  previousEntries: WorkspaceTreeEntry[],
+  previousCollapsed: Set<string>
+): Set<string> {
+  const next = new Set<string>()
+  const previousDirKeys = collectWorkspaceTreeDirKeys(previousEntries)
+
+  for (const entry of entries) {
+    if (!isWorkspaceTreeDir(entry)) continue
+    const key = toPathKey(entry.path)
+    if (!key) continue
+
+    if (previousDirKeys.has(key)) {
+      if (previousCollapsed.has(key)) next.add(key)
+      continue
+    }
+
+    if (shouldDefaultCollapseWorkspaceTreeDir(entry)) {
+      next.add(key)
+    }
+  }
+
+  return next
+}
+
 function resetWorkspaceTreeCollapsedDirs(): void {
   workspaceTreeCollapsedDirs.value = buildInitialWorkspaceTreeCollapsedDirs(
     workspaceTreeEntries.value
   )
+}
+
+function clearWorkspaceTreeDeletedEntriesPruneTimer(): void {
+  if (workspaceTreeDeletedEntriesPruneTimer === null) return
+  clearTimeout(workspaceTreeDeletedEntriesPruneTimer)
+  workspaceTreeDeletedEntriesPruneTimer = null
+}
+
+function pruneExpiredWorkspaceTreeDeletedEntries(nowMs = Date.now()): void {
+  workspaceTreeDeletedEntries.value = workspaceTreeDeletedEntries.value.filter(
+    (marker) => nowMs - marker.deletedAtMs < WORKSPACE_TREE_DELETED_MARKER_TTL_MS
+  )
+}
+
+function scheduleWorkspaceTreeDeletedEntriesPrune(): void {
+  clearWorkspaceTreeDeletedEntriesPruneTimer()
+  if (!workspaceTreeDeletedEntries.value.length) return
+
+  const nextExpiryAt = Math.min(
+    ...workspaceTreeDeletedEntries.value.map(
+      (marker) => marker.deletedAtMs + WORKSPACE_TREE_DELETED_MARKER_TTL_MS
+    )
+  )
+  const delayMs = Math.max(0, nextExpiryAt - Date.now())
+  workspaceTreeDeletedEntriesPruneTimer = setTimeout(() => {
+    workspaceTreeDeletedEntriesPruneTimer = null
+    pruneExpiredWorkspaceTreeDeletedEntries()
+    scheduleWorkspaceTreeDeletedEntriesPrune()
+  }, delayMs)
+}
+
+function resetWorkspaceTreeChangeTracking(entries: WorkspaceTreeEntry[]): void {
+  workspaceTreeBaselineCapturedAtMs.value = Date.now()
+  workspaceTreeBaselinePathKeys.value = collectWorkspaceTreePathKeys(entries)
+  workspaceTreeDeletedEntries.value = []
+  clearWorkspaceTreeDeletedEntriesPruneTimer()
+}
+
+function clearWorkspaceTreeChangeTracking(): void {
+  workspaceTreeBaselineCapturedAtMs.value = null
+  workspaceTreeBaselinePathKeys.value = new Set()
+  workspaceTreeDeletedEntries.value = []
+  clearWorkspaceTreeDeletedEntriesPruneTimer()
+}
+
+function reconcileWorkspaceTreeChangeTracking(
+  nextEntries: WorkspaceTreeEntry[],
+  previousEntries: WorkspaceTreeEntry[],
+  nextRoot: string,
+  previousRoot: string
+): void {
+  const trimmedNextRoot = nextRoot.trim()
+  const trimmedPreviousRoot = previousRoot.trim()
+  const rootChanged = trimmedNextRoot !== trimmedPreviousRoot
+  if (workspaceTreeBaselineCapturedAtMs.value === null || rootChanged) {
+    resetWorkspaceTreeChangeTracking(nextEntries)
+    return
+  }
+
+  const previousByPath = buildWorkspaceTreeEntryByPath(previousEntries)
+  const nextByPath = buildWorkspaceTreeEntryByPath(nextEntries)
+  const deletedByPath = new Map<string, WorkspaceTreeDeletedEntryMarker>()
+  for (const marker of workspaceTreeDeletedEntries.value) {
+    const key = toPathKey(String(marker.entry.path || ''))
+    if (!key) continue
+    deletedByPath.set(key, marker)
+  }
+
+  for (const [pathKey, entry] of previousByPath) {
+    if (!nextByPath.has(pathKey)) {
+      if (!deletedByPath.has(pathKey)) {
+        deletedByPath.set(pathKey, {
+          entry,
+          deletedAtMs: Date.now(),
+        })
+      }
+    }
+  }
+  for (const pathKey of nextByPath.keys()) {
+    deletedByPath.delete(pathKey)
+  }
+
+  workspaceTreeDeletedEntries.value = [...deletedByPath.values()]
+  pruneExpiredWorkspaceTreeDeletedEntries()
+  scheduleWorkspaceTreeDeletedEntriesPrune()
+}
+
+function isWorkspaceTreeEntryAddedSinceBaseline(entry: WorkspaceTreeEntry): boolean {
+  if (workspaceTreeBaselineCapturedAtMs.value === null) return false
+  const key = toPathKey(String(entry.path || ''))
+  if (!key || workspaceTreeBaselinePathKeys.value.has(key)) return false
+  return true
 }
 
 function isWorkspaceTreeDirCollapsed(path: string): boolean {
@@ -469,6 +627,73 @@ async function loadWhitelistWorkspaceTreeEntries(
 ): Promise<WorkspaceTreeEntry[]> {
   void workspaceRootPath
   return []
+}
+
+async function loadAllWorkspaceTreeEntries(
+  workspaceApi: Awaited<ReturnType<typeof loadWorkspaceApi>>,
+  params: { max_depth: number; root?: string }
+): Promise<{ root: string; entries: WorkspaceTreeEntry[] }> {
+  const entries: WorkspaceTreeEntry[] = []
+  let root = ''
+  let offset = 0
+
+  for (;;) {
+    const res = await workspaceApi.getTree({
+      ...params,
+      limit: WORKSPACE_TREE_PAGE_LIMIT,
+      offset,
+    })
+    const pageRoot = String(res.data?.root || '').trim()
+    if (!root) root = pageRoot
+
+    const pageEntries = Array.isArray(res.data?.entries) ? res.data.entries : []
+    entries.push(...pageEntries)
+
+    if (res.data?.has_more !== true) break
+
+    const nextOffset = Number(res.data?.next_offset)
+    if (!Number.isFinite(nextOffset) || nextOffset <= offset) break
+    offset = nextOffset
+  }
+
+  return { root, entries }
+}
+
+async function loadAllConversationsForGeneratedWorkspaceFiles(
+  conversationApi: Awaited<ReturnType<typeof loadConversationApi>>
+): Promise<Conversation[]> {
+  const conversations: Conversation[] = []
+  let offset = 0
+
+  for (;;) {
+    const res = await conversationApi.list(GENERATED_SCAN_CONVERSATION_LIMIT, offset)
+    const page = Array.isArray(res.data) ? res.data : []
+    if (!page.length) break
+    conversations.push(...page)
+    if (page.length < GENERATED_SCAN_CONVERSATION_LIMIT) break
+    offset += page.length
+  }
+
+  return conversations
+}
+
+async function loadAllMessagesForGeneratedWorkspaceFiles(
+  messageApi: Awaited<ReturnType<typeof loadMessageApi>>,
+  conversationId: string
+): Promise<Message[]> {
+  const messages: Message[] = []
+  let offset = 0
+
+  for (;;) {
+    const res = await messageApi.list(conversationId, GENERATED_SCAN_MESSAGE_LIMIT, offset)
+    const page = Array.isArray(res.data) ? res.data : []
+    if (!page.length) break
+    messages.push(...page)
+    if (page.length < GENERATED_SCAN_MESSAGE_LIMIT) break
+    offset += page.length
+  }
+
+  return messages
 }
 
 function buildGeneratedFileRecord(
@@ -567,11 +792,18 @@ async function ensureWorkspaceFiles(force = false) {
   }
 }
 
-async function ensureWorkspaceTree(force = false) {
+async function ensureWorkspaceTree(
+  options: { force?: boolean; silent?: boolean; preserveCollapsed?: boolean } = {}
+) {
+  const force = options.force === true
+  const silent = options.silent === true
+  const preserveCollapsed = options.preserveCollapsed === true
   if (workspaceTreeLoaded.value && !force) return
 
-  workspaceTreeLoading.value = true
-  workspaceTreeError.value = ''
+  if (!silent) {
+    workspaceTreeLoading.value = true
+    workspaceTreeError.value = ''
+  }
   try {
     const workspaceApi = await loadWorkspaceApi()
     const root = inferConversationWorkspaceTreeRoot(
@@ -579,27 +811,48 @@ async function ensureWorkspaceTree(force = false) {
       activeConversationId.value,
       generatedWorkspaceFiles.value
     )
-    const res = await workspaceApi.getTree({
+    const previousEntries = workspaceTreeEntries.value
+    const previousRoot = workspaceTreeRoot.value
+    const previousCollapsed = new Set(workspaceTreeCollapsedDirs.value)
+    const tree = await loadAllWorkspaceTreeEntries(workspaceApi, {
       max_depth: 16,
       ...(root ? { root } : {}),
     })
-    workspaceTreeRoot.value = String(res.data?.root || '').trim()
-    const baseEntries = Array.isArray(res.data?.entries) ? res.data.entries : []
+    workspaceTreeRoot.value = tree.root
+    const baseEntries = tree.entries
     const whitelistEntries = await loadWhitelistWorkspaceTreeEntries(workspaceTreeRoot.value)
     workspaceTreeEntries.value = [...baseEntries, ...whitelistEntries]
-    resetWorkspaceTreeCollapsedDirs()
+    reconcileWorkspaceTreeChangeTracking(
+      workspaceTreeEntries.value,
+      previousEntries,
+      workspaceTreeRoot.value,
+      previousRoot
+    )
+    if (preserveCollapsed) {
+      workspaceTreeCollapsedDirs.value = buildPreservedWorkspaceTreeCollapsedDirs(
+        workspaceTreeEntries.value,
+        previousEntries,
+        previousCollapsed
+      )
+    } else {
+      resetWorkspaceTreeCollapsedDirs()
+    }
     workspaceTreeLoaded.value = true
     if (!workspaceDir.value && workspaceTreeRoot.value) {
       workspaceDir.value = workspaceTreeRoot.value
     }
   } catch (e) {
     console.error('Failed to load workspace tree:', e)
-    workspaceTreeError.value = tr(
-      'nav.workspaceTreeLoadFailed',
-      'Failed to load workspace directory tree'
-    )
+    if (!silent) {
+      workspaceTreeError.value = tr(
+        'nav.workspaceTreeLoadFailed',
+        'Failed to load workspace directory tree'
+      )
+    }
   } finally {
-    workspaceTreeLoading.value = false
+    if (!silent) {
+      workspaceTreeLoading.value = false
+    }
   }
 }
 
@@ -617,15 +870,13 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
       await ensureWorkspaceMeta({ silent: true })
     }
     const workspaceRootPath = workspaceDir.value.trim() || workspaceTreeRoot.value.trim()
-    const convRes = await conversationApi.list(GENERATED_SCAN_CONVERSATION_LIMIT, 0)
-    const conversations = Array.isArray(convRes.data) ? convRes.data : []
+    const conversations = await loadAllConversationsForGeneratedWorkspaceFiles(conversationApi)
 
     const allRecords: GeneratedWorkspaceFile[] = []
 
     for (const conversation of conversations) {
       try {
-        const msgRes = await messageApi.list(conversation.id, GENERATED_SCAN_MESSAGE_LIMIT, 0)
-        const messages = Array.isArray(msgRes.data) ? msgRes.data : []
+        const messages = await loadAllMessagesForGeneratedWorkspaceFiles(messageApi, conversation.id)
         for (const message of messages) {
           allRecords.push(
             ...(await extractGeneratedFilesFromMessage(conversation, message, workspaceRootPath))
@@ -660,10 +911,60 @@ async function ensureGeneratedWorkspaceFiles(force = false) {
   }
 }
 
+function isGeneratedWorkspaceViewActive(): boolean {
+  return showWorkspacePanel.value && activeWorkspaceTab.value === 'generated'
+}
+
+function clearWorkspaceGeneratedPollTimer(): void {
+  if (workspaceGeneratedPollTimer === null) return
+  clearTimeout(workspaceGeneratedPollTimer)
+  workspaceGeneratedPollTimer = null
+}
+
+function scheduleWorkspaceGeneratedPoll(reset = false): void {
+  if (!isGeneratedWorkspaceViewActive()) return
+  if (reset) clearWorkspaceGeneratedPollTimer()
+  if (workspaceGeneratedPollTimer !== null) return
+  workspaceGeneratedPollTimer = setTimeout(() => {
+    workspaceGeneratedPollTimer = null
+    void ensureWorkspaceTree({
+      force: true,
+      silent: true,
+      preserveCollapsed: true,
+    })
+      .catch(() => {})
+      .finally(() => {
+        if (isGeneratedWorkspaceViewActive()) {
+          scheduleWorkspaceGeneratedPoll(true)
+        }
+      })
+  }, GENERATED_REFRESH_POLL_MS)
+}
+
 async function refreshGeneratedWorkspaceView() {
   clearWorkspaceGeneratedRefreshTimer()
-  await ensureGeneratedWorkspaceFiles(true)
-  await ensureWorkspaceTree(true)
+  if (workspaceGeneratedRefreshInFlight) {
+    return await workspaceGeneratedRefreshInFlight
+  }
+
+  const task = (async () => {
+    await ensureGeneratedWorkspaceFiles(true)
+    await ensureWorkspaceTree({ force: true })
+  })()
+  workspaceGeneratedRefreshInFlight = task
+
+  try {
+    await task
+  } finally {
+    if (workspaceGeneratedRefreshInFlight === task) {
+      workspaceGeneratedRefreshInFlight = null
+    }
+    if (isGeneratedWorkspaceViewActive()) {
+      scheduleWorkspaceGeneratedPoll(true)
+    } else {
+      clearWorkspaceGeneratedPollTimer()
+    }
+  }
 }
 
 function clearWorkspaceGeneratedRefreshTimer(): void {
@@ -673,7 +974,7 @@ function clearWorkspaceGeneratedRefreshTimer(): void {
 }
 
 function scheduleWorkspaceGeneratedRefresh(): void {
-  if (!showWorkspacePanel.value || activeWorkspaceTab.value !== 'generated') return
+  if (!isGeneratedWorkspaceViewActive()) return
   clearWorkspaceGeneratedRefreshTimer()
   workspaceGeneratedRefreshTimer = setTimeout(() => {
     workspaceGeneratedRefreshTimer = null
@@ -722,6 +1023,8 @@ async function saveCoreEdit(name: string) {
 
 function closeWorkspacePanel() {
   clearWorkspaceGeneratedRefreshTimer()
+  clearWorkspaceGeneratedPollTimer()
+  clearWorkspaceTreeChangeTracking()
   cancelCoreEdit()
   showWorkspacePanel.value = false
   activeWorkspaceTab.value = 'generated'
@@ -825,6 +1128,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearWorkspaceGeneratedRefreshTimer()
+  clearWorkspaceGeneratedPollTimer()
+  clearWorkspaceTreeDeletedEntriesPruneTimer()
   window.removeEventListener('keydown', handleKeydown)
 })
 
@@ -1060,7 +1365,7 @@ const generatedRecordByAbsPathKey = computed(() => {
 const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
   const currentConversationId = activeConversationId.value
   const now = Date.now()
-  const baseRows = workspaceTreeEntries.value.map((entry) => {
+  const currentBaseRows = workspaceTreeEntries.value.map((entry) => {
     const absPathKey = toPathKey(String(entry.abs_path || ''))
     const directGeneratedRecord = absPathKey
       ? generatedRecordByAbsPathKey.value.get(absPathKey) || null
@@ -1069,7 +1374,7 @@ const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
   })
 
   const inheritedRecordByTreePath = new Map<string, GeneratedWorkspaceFile>()
-  const linkedRows = [...baseRows]
+  const linkedRows = [...currentBaseRows]
     .filter(
       (
         row
@@ -1094,7 +1399,7 @@ const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
     }
   }
 
-  return baseRows.map((row) => {
+  const currentRows = currentBaseRows.map((row) => {
     const entryPathKey = toPathKey(String(row.entry.path || ''))
     const generatedRecord =
       row.directGeneratedRecord ||
@@ -1119,8 +1424,36 @@ const workspaceTreeRows = computed<WorkspaceTreeRow[]>(() => {
       isCurrentConversation,
       isCurrentConversationDirectMatch,
       isRecentCurrentConversationDirectMatch,
+      changeKind: isWorkspaceTreeEntryAddedSinceBaseline(row.entry) ? 'added' : null,
     }
   })
+
+  const deletedRows = workspaceTreeDeletedEntries.value.map((marker) => {
+    const entry = marker.entry
+    const absPathKey = toPathKey(String(entry.abs_path || ''))
+    const directGeneratedRecord = absPathKey
+      ? generatedRecordByAbsPathKey.value.get(absPathKey) || null
+      : null
+    const isCurrentConversation =
+      !!directGeneratedRecord &&
+      !!currentConversationId &&
+      directGeneratedRecord.conversationId === currentConversationId
+    return {
+      entry,
+      directGeneratedRecord,
+      generatedRecord: directGeneratedRecord,
+      isCurrentConversation,
+      isCurrentConversationDirectMatch: false,
+      isRecentCurrentConversationDirectMatch: false,
+      changeKind: 'deleted' as const,
+    }
+  })
+
+  return [...currentRows, ...deletedRows]
+})
+
+const workspaceTreeLiveRows = computed(() => {
+  return workspaceTreeRows.value.filter((row) => row.changeKind !== 'deleted')
 })
 
 const workspaceTreeCurrentConversationPathKeys = computed(() => {
@@ -1179,15 +1512,15 @@ const workspaceTreeVisibleRows = computed<WorkspaceTreeRow[]>(() => {
 })
 
 const workspaceTreeDirectoryCount = computed(() => {
-  return workspaceTreeRows.value.filter((row) => isWorkspaceTreeDir(row.entry)).length
+  return workspaceTreeLiveRows.value.filter((row) => isWorkspaceTreeDir(row.entry)).length
 })
 
 const workspaceTreeFileCount = computed(() => {
-  return workspaceTreeRows.value.filter((row) => !isWorkspaceTreeDir(row.entry)).length
+  return workspaceTreeLiveRows.value.filter((row) => !isWorkspaceTreeDir(row.entry)).length
 })
 
 const workspaceTreeLinkedCount = computed(() => {
-  return workspaceTreeRows.value.filter((row) => row.generatedRecord).length
+  return workspaceTreeLiveRows.value.filter((row) => row.generatedRecord).length
 })
 
 const workspaceGeneratedLoading = computed(() => {
@@ -1255,7 +1588,10 @@ watch(
   ([panelOpen, activeTab]) => {
     if (!panelOpen || activeTab !== 'generated') {
       clearWorkspaceGeneratedRefreshTimer()
+      clearWorkspaceGeneratedPollTimer()
+      return
     }
+    scheduleWorkspaceGeneratedPoll(true)
   }
 )
 
@@ -2206,9 +2542,14 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                   :class="
                     row.isCurrentConversation
                       ? 'bg-blue-50/80 dark:bg-blue-950/30'
-                      : 'bg-transparent'
+                      : row.changeKind === 'added'
+                        ? 'bg-emerald-50/80 dark:bg-emerald-950/20'
+                        : row.changeKind === 'deleted'
+                          ? 'bg-rose-50/80 dark:bg-rose-950/20'
+                          : 'bg-transparent'
                   "
                   :data-current-conversation="row.isCurrentConversation ? 'true' : 'false'"
+                  :data-workspace-tree-change="row.changeKind || 'none'"
                 >
                   <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0 flex-1">
@@ -2222,6 +2563,18 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
                           {{ row.entry.name }}
                         </p>
+                        <span
+                          v-if="row.changeKind === 'added'"
+                          class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200 flex-shrink-0"
+                        >
+                          {{ tr('nav.workspaceTreeAddedBadge', 'Added') }}
+                        </span>
+                        <span
+                          v-else-if="row.changeKind === 'deleted'"
+                          class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200 flex-shrink-0"
+                        >
+                          {{ tr('nav.workspaceTreeDeletedBadge', 'Deleted') }}
+                        </span>
                         <span
                           v-if="row.isCurrentConversation"
                           class="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200 flex-shrink-0"
@@ -2238,7 +2591,7 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                           {{ tr('nav.workspaceTreeRecentGeneratedBadge', 'New') }}
                         </span>
                         <button
-                          v-if="isWorkspaceTreeDir(row.entry)"
+                          v-if="isWorkspaceTreeDir(row.entry) && row.changeKind !== 'deleted'"
                           class="h-4 w-4 rounded text-gray-500 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center transition-colors flex-shrink-0"
                           :title="
                             isWorkspaceTreeDirCollapsed(row.entry.path)
@@ -2272,7 +2625,12 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                         </span>
                       </div>
                       <p
-                        class="text-xs text-gray-500 dark:text-slate-400 truncate mt-0.5"
+                        class="text-xs truncate mt-0.5"
+                        :class="
+                          row.changeKind === 'deleted'
+                            ? 'text-rose-500 dark:text-rose-300 line-through'
+                            : 'text-gray-500 dark:text-slate-400'
+                        "
                         :style="treeIndentStyle(row.entry.depth)"
                       >
                         {{ row.entry.path }}
@@ -2293,14 +2651,14 @@ function handleWindowDragMouseDown(event: MouseEvent): void {
                     </div>
                     <div class="flex items-center gap-1.5 flex-wrap justify-end flex-shrink-0">
                       <button
-                        v-if="!isWorkspaceTreeDir(row.entry)"
+                        v-if="!isWorkspaceTreeDir(row.entry) && row.changeKind !== 'deleted'"
                         class="px-2 py-1 text-xs rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors"
                         @click="handleOpenWorkspaceTreeEntry(row.entry)"
                       >
                         {{ tr('common.download', 'Download') }}
                       </button>
                       <button
-                        v-if="isLocalAbsolutePath(row.entry.abs_path)"
+                        v-if="row.changeKind !== 'deleted' && isLocalAbsolutePath(row.entry.abs_path)"
                         class="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-slate-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                         @click="handleRevealWorkspaceTreeEntry(row.entry)"
                       >

@@ -74,6 +74,9 @@ type a11yChatStageRecord struct {
 	Status          string                 `json:"status,omitempty"`
 	Strategy        string                 `json:"strategy,omitempty"`
 	GroundingSource string                 `json:"grounding_source,omitempty"`
+	LocateStrategy  string                 `json:"conversation_locate_strategy,omitempty"`
+	ConfirmSource   string                 `json:"conversation_confirmation_source,omitempty"`
+	ComposerSource  string                 `json:"composer_entry_source,omitempty"`
 	FailureCode     string                 `json:"failure_code,omitempty"`
 	Verification    map[string]interface{} `json:"verification,omitempty"`
 }
@@ -196,6 +199,9 @@ type a11yChatExecutionState struct {
 	stage           a11yChatStage
 	strategy        string
 	groundingSource string
+	locateStrategy  string
+	confirmSource   string
+	composerSource  string
 	attemptCount    int
 	verification    map[string]interface{}
 	submitEvidence  map[string]interface{}
@@ -252,6 +258,18 @@ func (s *a11yChatExecutionState) record(stage a11yChatStage, status a11yChatStag
 	if len(verification) > 0 {
 		record.Verification = cloneA11yJSONMap(verification)
 	}
+	if stage == a11yChatStageLocateConversation && record.Strategy != "" {
+		s.locateStrategy = record.Strategy
+	}
+	if record.LocateStrategy = strings.TrimSpace(a11yFirstNonEmptyString(record.Verification["conversation_locate_strategy"], s.locateStrategy)); record.LocateStrategy != "" {
+		s.locateStrategy = record.LocateStrategy
+	}
+	if record.ConfirmSource = strings.TrimSpace(a11yFirstNonEmptyString(record.Verification["conversation_confirmation_source"], s.confirmSource)); record.ConfirmSource != "" {
+		s.confirmSource = record.ConfirmSource
+	}
+	if record.ComposerSource = strings.TrimSpace(a11yFirstNonEmptyString(record.Verification["composer_entry_source"], s.composerSource)); record.ComposerSource != "" {
+		s.composerSource = record.ComposerSource
+	}
 	s.attemptCount++
 	if stage != "" {
 		s.stage = stage
@@ -293,6 +311,15 @@ func a11yRecordChatStage(ctx context.Context, state *a11yChatExecutionState, sta
 	}
 	if len(verification) > 0 {
 		payload["verification"] = cloneA11yJSONMap(verification)
+	}
+	if state.locateStrategy != "" {
+		payload["conversation_locate_strategy"] = state.locateStrategy
+	}
+	if state.confirmSource != "" {
+		payload["conversation_confirmation_source"] = state.confirmSource
+	}
+	if state.composerSource != "" {
+		payload["composer_entry_source"] = state.composerSource
 	}
 	_ = EmitEvent(ctx, ToolEvent{
 		Type:     "stage_changed",
@@ -348,6 +375,15 @@ func (s *a11yChatExecutionState) applyToPayload(payload map[string]interface{}) 
 	if s.groundingSource != "" {
 		payload["grounding_source"] = s.groundingSource
 	}
+	if s.locateStrategy != "" {
+		payload["conversation_locate_strategy"] = s.locateStrategy
+	}
+	if s.confirmSource != "" {
+		payload["conversation_confirmation_source"] = s.confirmSource
+	}
+	if s.composerSource != "" {
+		payload["composer_entry_source"] = s.composerSource
+	}
 	if s.appProfile != "" {
 		payload["app_profile"] = s.appProfile
 	}
@@ -366,6 +402,15 @@ func (s *a11yChatExecutionState) applyToPayload(payload map[string]interface{}) 
 			}
 			if stage.GroundingSource != "" {
 				item["grounding_source"] = stage.GroundingSource
+			}
+			if stage.LocateStrategy != "" {
+				item["conversation_locate_strategy"] = stage.LocateStrategy
+			}
+			if stage.ConfirmSource != "" {
+				item["conversation_confirmation_source"] = stage.ConfirmSource
+			}
+			if stage.ComposerSource != "" {
+				item["composer_entry_source"] = stage.ComposerSource
 			}
 			if stage.FailureCode != "" {
 				item["failure_code"] = stage.FailureCode
@@ -671,6 +716,7 @@ func (t *A11yTool) rememberA11yChatStrategy(state *a11yChatExecutionState, stage
 	if t == nil || state == nil {
 		return
 	}
+	state.strategy = strings.TrimSpace(strategy)
 	if memory := t.a11yChatMemory(); memory != nil {
 		memory.Remember(state.platform, state.appProfile, state.intent, string(stage), strategy)
 	}

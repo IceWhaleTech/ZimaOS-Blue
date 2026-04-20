@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/labstack/echo/v4"
 )
@@ -132,10 +134,11 @@ func TestHandlerTree(t *testing.T) {
 	var got struct {
 		Root    string `json:"root"`
 		Entries []struct {
-			Path    string `json:"path"`
-			AbsPath string `json:"abs_path"`
-			Type    string `json:"type"`
-			Depth   int    `json:"depth"`
+			Path       string `json:"path"`
+			AbsPath    string `json:"abs_path"`
+			Type       string `json:"type"`
+			Depth      int    `json:"depth"`
+			ModifiedAt string `json:"modified_at"`
 		} `json:"entries"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -160,6 +163,12 @@ func TestHandlerTree(t *testing.T) {
 			}
 			if entry.Depth != 3 {
 				t.Fatalf("expected depth 3, got %d", entry.Depth)
+			}
+			if entry.ModifiedAt == "" {
+				t.Fatal("expected modified_at to be present for report entry")
+			}
+			if _, err := time.Parse(time.RFC3339Nano, entry.ModifiedAt); err != nil {
+				t.Fatalf("expected modified_at to be RFC3339Nano, got %q: %v", entry.ModifiedAt, err)
 			}
 			break
 		}
@@ -306,5 +315,94 @@ func TestHandlerTreeRejectsNonAllowedRoot(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHandlerTreePaginatesEntries(t *testing.T) {
+	workspaceDir := t.TempDir()
+	mgr := NewManager(workspaceDir)
+	if err := mgr.EnsureWorkspace(); err != nil {
+		t.Fatalf("EnsureWorkspace: %v", err)
+	}
+
+	pagedDir := filepath.Join(workspaceDir, "paged")
+	if err := os.MkdirAll(pagedDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll paged: %v", err)
+	}
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		if err := os.WriteFile(filepath.Join(pagedDir, name), []byte(name), 0o644); err != nil {
+			t.Fatalf("WriteFile %s: %v", name, err)
+		}
+	}
+
+	h := NewHandler(mgr)
+	e := echo.New()
+	h.RegisterRoutes(e.Group("/workspace"))
+
+	run := func(offset int) struct {
+		Root    string `json:"root"`
+		Entries []struct {
+			Path string `json:"path"`
+			Type string `json:"type"`
+		} `json:"entries"`
+		NextOffset int  `json:"next_offset"`
+		HasMore    bool `json:"has_more"`
+	} {
+		req := httptest.NewRequest(
+			http.MethodGet,
+			"/workspace/tree?root=paged&max_depth=2&limit=2&offset="+strconv.Itoa(offset),
+			nil,
+		)
+		rec := httptest.NewRecorder()
+		e.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status 200 for offset=%d, got %d: %s", offset, rec.Code, rec.Body.String())
+		}
+
+		var got struct {
+			Root    string `json:"root"`
+			Entries []struct {
+				Path string `json:"path"`
+				Type string `json:"type"`
+			} `json:"entries"`
+			NextOffset int  `json:"next_offset"`
+			HasMore    bool `json:"has_more"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("unmarshal response offset=%d: %v", offset, err)
+		}
+		return got
+	}
+
+	page0 := run(0)
+	if page0.Root != pagedDir {
+		t.Fatalf("page0 root = %q, want %q", page0.Root, pagedDir)
+	}
+	if len(page0.Entries) != 2 {
+		t.Fatalf("page0 len = %d, want 2", len(page0.Entries))
+	}
+	if page0.Entries[0].Path != "a.txt" || page0.Entries[1].Path != "b.txt" {
+		t.Fatalf("page0 paths = %+v, want [a.txt b.txt]", page0.Entries)
+	}
+	if !page0.HasMore {
+		t.Fatal("page0 has_more = false, want true")
+	}
+	if page0.NextOffset != 2 {
+		t.Fatalf("page0 next_offset = %d, want 2", page0.NextOffset)
+	}
+
+	page1 := run(page0.NextOffset)
+	if len(page1.Entries) != 1 {
+		t.Fatalf("page1 len = %d, want 1", len(page1.Entries))
+	}
+	if page1.Entries[0].Path != "c.txt" || page1.Entries[0].Type != "file" {
+		t.Fatalf("page1 entries = %+v, want c.txt file", page1.Entries)
+	}
+	if page1.HasMore {
+		t.Fatal("page1 has_more = true, want false")
+	}
+	if page1.NextOffset != 3 {
+		t.Fatalf("page1 next_offset = %d, want 3", page1.NextOffset)
 	}
 }

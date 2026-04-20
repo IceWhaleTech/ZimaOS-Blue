@@ -83,7 +83,8 @@ func bindRouteRuntimeChannelHandler(
 		if autoreplySvc != nil {
 			response, rule, err := autoreplySvc.Match(ctx, msg.Content, msg.ChannelName, msg.UserID, "", msg.ChatID)
 			if err == nil && response != "" && rule != nil {
-				return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: response}, nil
+				out := buildRuntimeChannelReply(msg, response)
+				return &out, nil
 			}
 		}
 		if chat != nil {
@@ -92,7 +93,8 @@ func bindRouteRuntimeChannelHandler(
 				return nil, err
 			}
 			if aiResponse != "" {
-				return &channel.OutgoingMessage{ChatID: msg.ChatID, Content: aiResponse}, nil
+				out := buildRuntimeChannelReply(msg, aiResponse)
+				return &out, nil
 			}
 		}
 		return nil, nil

@@ -12372,7 +12372,11 @@ func TestBuildIMCardEmitter_DeepResearchProgressDedupesButKeepsMeaningfulUpdates
 		return nil
 	})
 
-	emitter := h.buildIMCardEmitter(context.Background(), "feishu", "chat_1", "msg_1", i18n.LangEnUS)
+	baseCtx := withChannelReplyMetadata(context.Background(), map[string]interface{}{
+		"context_token": "ctx-card",
+		"session_id":    "session-card",
+	})
+	emitter := h.buildIMCardEmitter(baseCtx, "feishu", "chat_1", "msg_1", i18n.LangEnUS)
 	if emitter == nil {
 		t.Fatal("expected IM card emitter")
 	}
@@ -12414,6 +12418,12 @@ func TestBuildIMCardEmitter_DeepResearchProgressDedupesButKeepsMeaningfulUpdates
 	if got, _ := sent[0].Metadata["show_details"].(bool); !got {
 		t.Fatalf("expected show_details metadata, got %#v", sent[0].Metadata)
 	}
+	if got := sent[0].Metadata["context_token"]; got != "ctx-card" {
+		t.Fatalf("context_token = %v, want %q", got, "ctx-card")
+	}
+	if got := sent[0].Metadata["session_id"]; got != "session-card" {
+		t.Fatalf("session_id = %v, want %q", got, "session-card")
+	}
 	for _, token := range []string{"Current iteration: 2", "Latest action: Verification completed", "Latest gap: Need primary evidence"} {
 		if !strings.Contains(sent[0].Content, token) {
 			t.Fatalf("first emitted content missing %q: %q", token, sent[0].Content)
@@ -12439,7 +12449,12 @@ func TestSendIMToolResultCards_DeepResearchPreservesVNextSummaryAndMetadata(t *t
 		return nil
 	})
 
-	h.sendIMToolResultCards(context.Background(), "slack", "chat_dr", "msg_root", i18n.LangEnUS,
+	baseCtx := withChannelReplyMetadata(context.Background(), map[string]interface{}{
+		"context_token": "ctx-tool",
+		"session_id":    "session-tool",
+	})
+
+	h.sendIMToolResultCards(baseCtx, "slack", "chat_dr", "msg_root", i18n.LangEnUS,
 		[]llm.ToolCall{{Name: "deep_research"}},
 		[]llm.Message{{Content: `{"query":"ZimaOS","mode":"deep","answer":"summary","confidence":0.9,"evidence_count":2,"iterations":2,"stop_reason":"coverage_sufficient","latest_action":"loop_stopped","latest_gap":"Need primary evidence","strict_entity":true,"time_windows":["2024","2025"],"report_style":"timeline","research_trace":[{"iteration":1,"focus":"Official","gap":"Need primary evidence","follow_up_query":"topic official source","evidence_added":1,"verification_outcome":"insufficient"}],"verification_summary":{"resolved_count":1,"conflicted_count":0,"insufficient_count":1,"items":[{"focus":"Official","gap":"Need primary evidence","status":"insufficient"}]},"citations":[{"title":"Doc A","url":"https://example.com/a"}]}`}},
 	)
@@ -12456,6 +12471,12 @@ func TestSendIMToolResultCards_DeepResearchPreservesVNextSummaryAndMetadata(t *t
 	}
 	if got, _ := msg.Metadata["show_details"].(bool); !got {
 		t.Fatalf("expected show_details metadata, got %#v", msg.Metadata)
+	}
+	if got := msg.Metadata["context_token"]; got != "ctx-tool" {
+		t.Fatalf("context_token = %v, want %q", got, "ctx-tool")
+	}
+	if got := msg.Metadata["session_id"]; got != "session-tool" {
+		t.Fatalf("session_id = %v, want %q", got, "session-tool")
 	}
 	for _, token := range []string{"Research", "Iterations: 2", "Stop reason: Coverage target reached", "Latest action: Research loop stopped", "Latest gap: Need primary evidence", "Verification:", "Research trace:", "Doc A"} {
 		if !strings.Contains(msg.Content, token) {
@@ -12506,6 +12527,7 @@ func TestUpsertIMTodoChecklist_UpdatesExistingIMMessage(t *testing.T) {
 		chatID      string
 		messageID   string
 		content     string
+		metadata    map[string]interface{}
 	}
 
 	h.SetChannelSenderWithID(func(_ context.Context, channelName string, out channel.OutgoingMessage) (string, error) {
@@ -12521,19 +12543,30 @@ func TestUpsertIMTodoChecklist_UpdatesExistingIMMessage(t *testing.T) {
 			chatID      string
 			messageID   string
 			content     string
-		}{channelName: channelName, chatID: chatID, messageID: messageID, content: out.Content})
+			metadata    map[string]interface{}
+		}{channelName: channelName, chatID: chatID, messageID: messageID, content: out.Content, metadata: out.Metadata})
 		return nil
 	})
 
 	state := &imTodoMessageState{}
-	h.upsertIMTodoChecklist(context.Background(), state, "feishu", "chat-1", "msg-root", "conv-1", "- [ ] gather facts\n- [ ] write summary")
-	h.upsertIMTodoChecklist(context.Background(), state, "feishu", "chat-1", "msg-root", "conv-1", "- [x] gather facts\n- [ ] write summary")
+	baseCtx := withChannelReplyMetadata(context.Background(), map[string]interface{}{
+		"context_token": "ctx-todo",
+		"session_id":    "session-todo",
+	})
+	h.upsertIMTodoChecklist(baseCtx, state, "feishu", "chat-1", "msg-root", "conv-1", "- [ ] gather facts\n- [ ] write summary")
+	h.upsertIMTodoChecklist(baseCtx, state, "feishu", "chat-1", "msg-root", "conv-1", "- [x] gather facts\n- [ ] write summary")
 
 	if len(sent) != 1 {
 		t.Fatalf("initial sends = %d, want 1", len(sent))
 	}
 	if len(updates) != 1 {
 		t.Fatalf("updates = %d, want 1", len(updates))
+	}
+	if got := sent[0].Metadata["context_token"]; got != "ctx-todo" {
+		t.Fatalf("initial send context_token = %v, want %q", got, "ctx-todo")
+	}
+	if got := sent[0].Metadata["session_id"]; got != "session-todo" {
+		t.Fatalf("initial send session_id = %v, want %q", got, "session-todo")
 	}
 	if state.ChannelMessageID != "todo-msg-1" {
 		t.Fatalf("state.ChannelMessageID = %q, want todo-msg-1", state.ChannelMessageID)
@@ -12543,6 +12576,12 @@ func TestUpsertIMTodoChecklist_UpdatesExistingIMMessage(t *testing.T) {
 	}
 	if !strings.Contains(updates[0].content, "[x] gather facts") {
 		t.Fatalf("updated content = %q, want completed checklist", updates[0].content)
+	}
+	if got := updates[0].metadata["context_token"]; got != "ctx-todo" {
+		t.Fatalf("update context_token = %v, want %q", got, "ctx-todo")
+	}
+	if got := updates[0].metadata["session_id"]; got != "session-todo" {
+		t.Fatalf("update session_id = %v, want %q", got, "session-todo")
 	}
 }
 
@@ -12569,8 +12608,12 @@ func TestUpsertIMTodoChecklist_FallsBackToResendWhenNoEditableMessageID(t *testi
 	})
 
 	state := &imTodoMessageState{}
-	h.upsertIMTodoChecklist(context.Background(), state, "slack", "chat-1", "msg-root", "conv-1", "- [ ] gather facts\n- [ ] write summary")
-	h.upsertIMTodoChecklist(context.Background(), state, "slack", "chat-1", "msg-root", "conv-1", "- [x] gather facts\n- [ ] write summary")
+	baseCtx := withChannelReplyMetadata(context.Background(), map[string]interface{}{
+		"context_token": "ctx-resend",
+		"session_id":    "session-resend",
+	})
+	h.upsertIMTodoChecklist(baseCtx, state, "slack", "chat-1", "msg-root", "conv-1", "- [ ] gather facts\n- [ ] write summary")
+	h.upsertIMTodoChecklist(baseCtx, state, "slack", "chat-1", "msg-root", "conv-1", "- [x] gather facts\n- [ ] write summary")
 
 	if len(sent) != 2 {
 		t.Fatalf("resend count = %d, want 2", len(sent))
@@ -12580,6 +12623,12 @@ func TestUpsertIMTodoChecklist_FallsBackToResendWhenNoEditableMessageID(t *testi
 	}
 	if !strings.Contains(sent[1].Content, "[x] gather facts") {
 		t.Fatalf("second send content = %q, want updated checklist", sent[1].Content)
+	}
+	if got := sent[1].Metadata["context_token"]; got != "ctx-resend" {
+		t.Fatalf("second send context_token = %v, want %q", got, "ctx-resend")
+	}
+	if got := sent[1].Metadata["session_id"]; got != "session-resend" {
+		t.Fatalf("second send session_id = %v, want %q", got, "session-resend")
 	}
 }
 
@@ -12673,8 +12722,13 @@ func TestBrowserCheckpointRequesterIM_LocalizesConfirmMessage(t *testing.T) {
 		return nil
 	})
 
+	baseCtx := withChannelReplyMetadata(context.Background(), map[string]interface{}{
+		"context_token": "ctx-checkpoint",
+		"session_id":    "session-checkpoint",
+	})
+
 	requester := handler.buildBrowserCheckpointRequester(
-		context.Background(),
+		baseCtx,
 		"feishu",
 		"user-im-zh",
 		"session-im-zh",
@@ -12705,6 +12759,12 @@ func TestBrowserCheckpointRequesterIM_LocalizesConfirmMessage(t *testing.T) {
 	}
 	if sent.Content != want {
 		t.Fatalf("sent content = %q, want %q", sent.Content, want)
+	}
+	if got := sent.Metadata["context_token"]; got != "ctx-checkpoint" {
+		t.Fatalf("context_token = %v, want %q", got, "ctx-checkpoint")
+	}
+	if got := sent.Metadata["session_id"]; got != "session-checkpoint" {
+		t.Fatalf("session_id = %v, want %q", got, "session-checkpoint")
 	}
 }
 

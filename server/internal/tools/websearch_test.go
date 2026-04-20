@@ -46,6 +46,21 @@ func (t rewriteHostTransport) RoundTrip(req *http.Request) (*http.Response, erro
 	return base.RoundTrip(cloned)
 }
 
+func newRewrittenHostClient(t *testing.T, server *httptest.Server) *http.Client {
+	t.Helper()
+	parsed, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
+	}
+	return &http.Client{
+		Transport: rewriteHostTransport{
+			base:   server.Client().Transport,
+			host:   parsed.Host,
+			scheme: parsed.Scheme,
+		},
+	}
+}
+
 func TestWebSearchTool_Definition(t *testing.T) {
 	tool := NewWebSearchTool(WebSearchConfig{})
 	def := tool.Definition()
@@ -500,6 +515,131 @@ func TestWebSearchTool_ProviderFallback(t *testing.T) {
 	}
 }
 
+func TestWebSearchTool_SearchWithProvidersStopsAfterFirstSuccessfulProvider(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/html/":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse form: %v", err)
+			}
+			if got := r.Form.Get("q"); got != "openai responses api" {
+				t.Fatalf("duckduckgo query = %q, want openai responses api", got)
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`
+<html><body>
+  <a rel="nofollow" class="result__a" href="https://platform.openai.com/docs/api-reference/responses">OpenAI Responses API</a>
+  <a class="result__snippet">Official reference.</a>
+</body></html>`))
+		case "/search":
+			t.Fatal("bing fallback should not be called when duckduckgo already returned usable results")
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:  "duckduckgo",
+		Providers: []string{"duckduckgo", "bing"},
+	})
+	tool.httpClient = newRewrittenHostClient(t, server)
+
+	resp, err := tool.searchWithProviders(context.Background(), []string{"duckduckgo", "bing"}, "openai responses api", 3, "wt-wt")
+	if err != nil {
+		t.Fatalf("searchWithProviders() error = %v", err)
+	}
+	if resp.Provider != "duckduckgo" {
+		t.Fatalf("provider = %q, want duckduckgo", resp.Provider)
+	}
+	if len(resp.Results) != 1 || resp.Results[0].URL != "https://platform.openai.com/docs/api-reference/responses" {
+		t.Fatalf("unexpected response: %+v", resp)
+	}
+}
+
+func TestWebSearchTool_SearchWithProvidersFallsBackToBingAfterDuckDuckGoFailure(t *testing.T) {
+	var paths []string
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		switch r.URL.Path {
+		case "/html/":
+			http.Error(w, "duckduckgo unavailable", http.StatusBadGateway)
+		case "/search":
+			if got := r.URL.Query().Get("q"); got != "test query" {
+				t.Fatalf("bing query = %q, want test query", got)
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="https://example.com/fallback">Test Query Result</a></h2>
+    <div class="b_caption"><p>Relevant fallback result for the same test query.</p></div>
+  </li>
+</ol></body></html>`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:  "duckduckgo",
+		Providers: []string{"duckduckgo", "bing"},
+	})
+	tool.httpClient = newRewrittenHostClient(t, server)
+	tool.retryMax = 0
+
+	resp, err := tool.searchWithProviders(context.Background(), []string{"duckduckgo", "bing"}, "test query", 3, "wt-wt")
+	if err != nil {
+		t.Fatalf("searchWithProviders() error = %v", err)
+	}
+	if resp.Provider != "bing" {
+		t.Fatalf("provider = %q, want bing", resp.Provider)
+	}
+	if want := []string{"/html/", "/search"}; len(paths) != len(want) || paths[0] != want[0] || paths[1] != want[1] {
+		t.Fatalf("paths = %#v, want %#v", paths, want)
+	}
+}
+
+func TestWebSearchTool_SearchWithProvidersRejectsLowRelevanceBingFallback(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/html/":
+			http.Error(w, "duckduckgo unavailable", http.StatusBadGateway)
+		case "/search":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`
+<html><body><ol id="b_results">
+  <li class="b_algo">
+    <h2><a href="https://example.com/codex-app">How to use OpenAI Codex App</a></h2>
+    <div class="b_caption"><p>General OpenAI product discussion with no responses api reference details.</p></div>
+  </li>
+  <li class="b_algo">
+    <h2><a href="https://example.com/chatgpt">How to use ChatGPT</a></h2>
+    <div class="b_caption"><p>General OpenAI account help.</p></div>
+  </li>
+</ol></body></html>`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	tool := NewWebSearchTool(WebSearchConfig{
+		Provider:  "duckduckgo",
+		Providers: []string{"duckduckgo", "bing"},
+	})
+	tool.httpClient = newRewrittenHostClient(t, server)
+
+	_, err := tool.searchWithProviders(context.Background(), []string{"duckduckgo", "bing"}, "openai responses api", 3, "wt-wt")
+	if err == nil {
+		t.Fatal("expected low-relevance bing fallback to be rejected")
+	}
+	if !strings.Contains(strings.ToLower(err.Error()), "low relevance") {
+		t.Fatalf("error = %v, want low relevance hint", err)
+	}
+}
+
 func TestWebSearchTool_RetriesRetryableProviderFailures(t *testing.T) {
 	var hits atomic.Int32
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -574,14 +714,10 @@ func TestWebSearchTool_DoesNotRetryAuthFailures(t *testing.T) {
 	}
 }
 
-func TestWebSearchTool_ProviderFanoutAggregatesResults(t *testing.T) {
-	started := make(chan string, 2)
-	release := make(chan struct{})
+func TestWebSearchTool_ProviderFallbackStopsAfterFirstSuccessfulProvider(t *testing.T) {
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/search":
-			started <- "searxng"
-			<-release
 			response := map[string]interface{}{
 				"results": []map[string]interface{}{
 					{"title": "Shared Result", "url": "https://example.com/shared", "content": "Shared result from searxng", "engine": "searxng"},
@@ -594,18 +730,7 @@ func TestWebSearchTool_ProviderFanoutAggregatesResults(t *testing.T) {
 			if got := r.Header.Get("X-Subscription-Token"); got != "test-api-key" {
 				t.Fatalf("unexpected brave token: %q", got)
 			}
-			started <- "brave"
-			<-release
-			response := map[string]interface{}{
-				"web": map[string]interface{}{
-					"results": []map[string]interface{}{
-						{"title": "Shared Result", "url": "https://example.com/shared", "description": "Shared result from brave"},
-						{"title": "Brave Result", "url": "https://example.com/brave", "description": "Brave unique"},
-					},
-				},
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(response)
+			t.Fatal("brave fallback should not run after searxng already succeeded")
 		default:
 			http.NotFound(w, r)
 		}
@@ -631,51 +756,27 @@ func TestWebSearchTool_ProviderFanoutAggregatesResults(t *testing.T) {
 	}
 	tool.httpClient = client
 
-	done := make(chan struct{})
-	var raw interface{}
-	go func() {
-		defer close(done)
-		raw, err = tool.Execute(context.Background(), map[string]interface{}{
-			"query":       "fanout query",
-			"format":      "json",
-			"max_results": 3,
-		})
-	}()
-
-	seen := map[string]struct{}{}
-	for idx := 0; idx < 2; idx++ {
-		select {
-		case provider := <-started:
-			seen[provider] = struct{}{}
-		case <-time.After(2 * time.Second):
-			t.Fatal("search providers did not fan out in parallel")
-		}
-	}
-	close(release)
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("search execute did not finish after releasing provider fanout")
-	}
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"query":       "fallback query",
+		"format":      "json",
+		"max_results": 3,
+	})
 	if err != nil {
 		t.Fatalf("execute failed: %v", err)
-	}
-	if len(seen) != 2 {
-		t.Fatalf("providers started = %v, want both providers", seen)
 	}
 
 	var response WebSearchResponse
 	if err := json.Unmarshal([]byte(raw.(string)), &response); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
-	if response.Provider != "searxng,brave" {
-		t.Fatalf("provider = %q, want %q", response.Provider, "searxng,brave")
+	if response.Provider != "searxng" {
+		t.Fatalf("provider = %q, want %q", response.Provider, "searxng")
 	}
-	if len(response.Results) != 3 {
-		t.Fatalf("len(results) = %d, want 3 merged unique results", len(response.Results))
+	if len(response.Results) != 2 {
+		t.Fatalf("len(results) = %d, want 2 searxng results", len(response.Results))
 	}
 	if response.Results[0].URL != "https://example.com/shared" {
-		t.Fatalf("top url = %q, want shared merged result", response.Results[0].URL)
+		t.Fatalf("top url = %q, want shared searxng result", response.Results[0].URL)
 	}
 }
 
@@ -1151,11 +1252,11 @@ func TestWebSearchConfig_Defaults(t *testing.T) {
 		t.Errorf("expected default Timeout 5m, got %v", tool.config.Timeout)
 	}
 
-	if tool.config.Provider != "bing" {
-		t.Errorf("expected default Provider 'bing', got '%s'", tool.config.Provider)
+	if tool.config.Provider != "duckduckgo" {
+		t.Errorf("expected default Provider 'duckduckgo', got '%s'", tool.config.Provider)
 	}
-	if len(tool.config.Providers) != 2 || tool.config.Providers[0] != "bing" || tool.config.Providers[1] != "duckduckgo" {
-		t.Errorf("expected default Providers ['bing', 'duckduckgo'], got %#v", tool.config.Providers)
+	if len(tool.config.Providers) != 2 || tool.config.Providers[0] != "duckduckgo" || tool.config.Providers[1] != "bing" {
+		t.Errorf("expected default Providers ['duckduckgo', 'bing'], got %#v", tool.config.Providers)
 	}
 
 	if tool.config.Region != "wt-wt" {

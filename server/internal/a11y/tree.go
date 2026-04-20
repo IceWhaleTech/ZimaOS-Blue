@@ -16,6 +16,12 @@ type Node struct {
 	Bounds        NormalizedRect
 	Description   string
 	DefaultAction string
+	Actions       []string
+	Enabled       bool
+	Selected      bool
+	Focused       bool
+	Expanded      *bool
+	ValueSettable bool
 	Interactive   bool
 	Children      []*Node
 }

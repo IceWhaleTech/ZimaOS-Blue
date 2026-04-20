@@ -78,7 +78,60 @@ func mediaScopedContext(c echo.Context, fallbackUserID string) context.Context {
 	return tools.WithUserID(ctx, fallbackUserID)
 }
 
-func writeMediaRequestError(c echo.Context, err error) error {
+func unavailableMediaModelID(err error) string {
+	if err == nil || !errors.Is(err, ErrModelUnavailable) {
+		return ""
+	}
+	prefix := ErrModelUnavailable.Error() + ":"
+	msg := err.Error()
+	if !strings.HasPrefix(msg, prefix) {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(msg, prefix))
+}
+
+func availableMediaModelIDs(models []MediaModelInfo) []string {
+	ids := make([]string, 0, len(models))
+	seen := make(map[string]struct{}, len(models))
+	for _, model := range models {
+		if strings.TrimSpace(model.ID) == "" {
+			continue
+		}
+		if _, ok := seen[model.ID]; ok {
+			continue
+		}
+		seen[model.ID] = struct{}{}
+		ids = append(ids, model.ID)
+	}
+	return ids
+}
+
+func buildUnavailableModelHint(modelID string, models []MediaModelInfo) string {
+	available := availableMediaModelIDs(models)
+	if len(available) == 0 {
+		if modelID == "" {
+			return "Choose one of the configured media models, or omit the model field to let mediagen choose a default."
+		}
+		return fmt.Sprintf("Model %q is not available from the configured media providers. Omit the model field to let mediagen choose a default.", modelID)
+	}
+
+	const maxHintModels = 6
+	display := available
+	if len(display) > maxHintModels {
+		display = display[:maxHintModels]
+	}
+	hint := fmt.Sprintf(
+		"Model %q is not available from the configured media providers. Available models include: %s. Omit the model field to let mediagen choose a default.",
+		modelID,
+		strings.Join(display, ", "),
+	)
+	if len(available) > maxHintModels {
+		hint += " Query /api/v1/media/models for the full list."
+	}
+	return hint
+}
+
+func (h *Handler) writeMediaRequestError(c echo.Context, err error) error {
 	if err == nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "unknown media generation error"})
 	}
@@ -86,6 +139,13 @@ func writeMediaRequestError(c echo.Context, err error) error {
 		return c.JSON(http.StatusServiceUnavailable, map[string]string{
 			"error": "no media provider is configured and enabled",
 			"hint":  "Configure a provider in /api/v1/media/providers, add an API key, and enable it before generating media.",
+		})
+	}
+	if errors.Is(err, ErrModelUnavailable) {
+		modelID := unavailableMediaModelID(err)
+		return c.JSON(http.StatusBadRequest, map[string]string{
+			"error": "requested media model is not available",
+			"hint":  buildUnavailableModelHint(modelID, h.manager.Models()),
 		})
 	}
 	if errors.Is(err, ErrUnsupportedType) {
@@ -166,7 +226,7 @@ func (h *Handler) GenerateImage(c echo.Context) error {
 
 	task, err := h.manager.Generate(c.Request().Context(), &req)
 	if err != nil {
-		return writeMediaRequestError(c, err)
+		return h.writeMediaRequestError(c, err)
 	}
 
 	// For sync providers, wait for completion
@@ -205,7 +265,7 @@ func (h *Handler) GenerateVideo(c echo.Context) error {
 
 	task, err := h.manager.Generate(c.Request().Context(), &req)
 	if err != nil {
-		return writeMediaRequestError(c, err)
+		return h.writeMediaRequestError(c, err)
 	}
 
 	// Video always returns task ID immediately (too slow to block)
@@ -337,7 +397,7 @@ func (h *Handler) ListModels(c echo.Context) error {
 func (h *Handler) streamGeneration(c echo.Context, req *MediaRequest) error {
 	task, err := h.manager.Generate(c.Request().Context(), req)
 	if err != nil {
-		return writeMediaRequestError(c, err)
+		return h.writeMediaRequestError(c, err)
 	}
 
 	w := c.Response()
@@ -460,7 +520,7 @@ func (h *Handler) GetMediaStats(c echo.Context) error {
 	}
 	stats, err := h.manager.taskStore.GetStats(mediaScopeArgs(c)...)
 	if err != nil {
-		return writeMediaRequestError(c, err)
+		return h.writeMediaRequestError(c, err)
 	}
 	return c.JSON(http.StatusOK, stats)
 }
@@ -721,7 +781,7 @@ func (h *Handler) DirectGenerate(c echo.Context) error {
 	// Create persistent task and start async generation
 	task, err := h.manager.CreateTask(scopedCtx, mediaReq, req.MessageID, string(req.Category), source)
 	if err != nil {
-		return writeMediaRequestError(c, err)
+		return h.writeMediaRequestError(c, err)
 	}
 
 	// If conversation_id is provided and we have a message store, persist messages into the conversation.

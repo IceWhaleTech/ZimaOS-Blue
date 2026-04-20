@@ -77,7 +77,7 @@ func TestGetMediaModelPricing_Builtin(t *testing.T) {
 		wantUnit MediaPricingUnit
 	}{
 		{"nano-banana-pro", PricingPerImage},
-		{"dall-e-3", PricingPerImage},
+		{"qwen-image-max", PricingPerImage},
 		{"wan2.6-t2v", PricingPerSecond},
 		{"midjourney-video", PricingPerVideo},
 	}
@@ -139,7 +139,7 @@ func TestCalculateMediaCost(t *testing.T) {
 		durationSec float64
 		want        float64
 	}{
-		{"image model", "dall-e-3", 2, 0, 0.08},
+		{"image model", "qwen-image-max", 2, 0, 0.06},
 		{"video model per second", "wan2.6-t2v", 0, 5.0, 0.50},
 		{"video model flat", "midjourney-video", 0, 0, 0.51},
 		{"unknown model", "nonexistent", 1, 10, 0},

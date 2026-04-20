@@ -60,8 +60,6 @@ func buildBuiltinMediaPricing() map[string]*MediaModelPricing {
 		"imagen-4.0-generate-001":               {OutputPrice: 0.04, Unit: PricingPerImage},
 		"imagen-4.0-fast-generate-001":          {OutputPrice: 0.02, Unit: PricingPerImage},
 		"imagen-4.0-ultra-generate-001":         {OutputPrice: 0.06, Unit: PricingPerImage},
-		"dall-e-3":                              {OutputPrice: 0.04, Unit: PricingPerImage},
-		"dall-e-2":                              {OutputPrice: 0.02, Unit: PricingPerImage},
 		"midjourney":                            {OutputPrice: 0.085, Unit: PricingPerImage},
 		"qwen-image-max":                        {OutputPrice: 0.03, Unit: PricingPerImage},
 		"qwen-image-edit-max":                   {OutputPrice: 0.03, Unit: PricingPerImage},

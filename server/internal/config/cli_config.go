@@ -367,13 +367,13 @@ func DefaultToolCallingConfig() *ToolCallingConfig {
 			"group:automation": {"cron", "gateway", "nodes"},
 			"group:messaging":  {"message"},
 		},
-		WebSearch: ToolCallingWebSearchConfig{
-			Provider:        "bing",
-			Providers:       []string{"bing", "duckduckgo"},
-			MaxResults:      5,
-			Timeout:         5 * time.Minute,
-			SafeSearch:      false,
-			Region:          "wt-wt",
+			WebSearch: ToolCallingWebSearchConfig{
+				Provider:        "duckduckgo",
+				Providers:       []string{"duckduckgo", "bing"},
+				MaxResults:      5,
+				Timeout:         5 * time.Minute,
+				SafeSearch:      false,
+				Region:          "wt-wt",
 			CacheTTL:        3 * time.Minute,
 			CacheMaxEntries: 256,
 			BrowserFallback: ToolCallingWebSearchBrowserFallbackConfig{

@@ -80,13 +80,13 @@ func TestFormatChannelResult(t *testing.T) {
 			name: "succeeded image",
 			task: &MediaTask{
 				BaseTask: task.BaseTask{Status: TaskStatusSucceeded},
-				Model:    "dall-e-3",
+				Model:    "nano-banana-pro",
 				Category: "t2i",
 				Response: &MediaResponse{
 					Data: []MediaResult{{URL: "https://example.com/cat.png"}},
 				},
 			},
-			wantContent: "✅ Image generated (dall-e-3)",
+			wantContent: "✅ Image generated (nano-banana-pro)",
 			wantAttach:  1,
 			wantType:    channel.MessageTypeImage,
 		},
@@ -119,14 +119,14 @@ func TestFormatChannelResult(t *testing.T) {
 				completed := time.Now()
 				return &MediaTask{
 					BaseTask: task.BaseTask{Status: TaskStatusSucceeded, CreatedAt: created, CompletedAt: &completed},
-					Model:    "dall-e-3",
+					Model:    "nano-banana-pro",
 					Category: "t2i",
 					Response: &MediaResponse{
 						Data: []MediaResult{{URL: "https://example.com/cat.png"}},
 					},
 				}
 			}(),
-			wantContent: "✅ Image generated (dall-e-3)  ⏱ 1m5s",
+			wantContent: "✅ Image generated (nano-banana-pro)  ⏱ 1m5s",
 			wantAttach:  1,
 			wantType:    channel.MessageTypeImage,
 		},

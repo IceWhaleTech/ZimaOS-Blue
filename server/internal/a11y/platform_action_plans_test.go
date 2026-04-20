@@ -64,6 +64,20 @@ func TestPlanDarwinAction(t *testing.T) {
 			},
 		},
 		{
+			name: "show menu uses AXShowMenu semantics",
+			act:  "show_menu",
+			meta: darwinActionMetadata{
+				Role:             "menu",
+				DefaultAction:    "show_menu",
+				AvailableActions: []string{"AXShowMenu"},
+			},
+			check: func(t *testing.T, plan darwinActionPlan) {
+				if plan.SemanticAction != "AXShowMenu" || plan.ExecutionMode != "semantic" {
+					t.Fatalf("plan = %#v, want semantic AXShowMenu", plan)
+				}
+			},
+		},
+		{
 			name: "long press falls back to pointer input",
 			act:  "long_press",
 			meta: darwinActionMetadata{

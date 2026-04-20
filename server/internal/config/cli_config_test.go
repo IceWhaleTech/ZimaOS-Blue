@@ -184,11 +184,11 @@ func TestDefaultToolCallingConfig(t *testing.T) {
 		t.Fatalf("expected group:research to expose only research, got %#v", got)
 	}
 
-	if cfg.WebSearch.Provider != "bing" {
-		t.Errorf("expected WebSearch.Provider 'bing', got %q", cfg.WebSearch.Provider)
+	if cfg.WebSearch.Provider != "duckduckgo" {
+		t.Errorf("expected WebSearch.Provider 'duckduckgo', got %q", cfg.WebSearch.Provider)
 	}
-	if len(cfg.WebSearch.Providers) != 2 || cfg.WebSearch.Providers[0] != "bing" || cfg.WebSearch.Providers[1] != "duckduckgo" {
-		t.Errorf("expected WebSearch.Providers ['bing', 'duckduckgo'], got %#v", cfg.WebSearch.Providers)
+	if len(cfg.WebSearch.Providers) != 2 || cfg.WebSearch.Providers[0] != "duckduckgo" || cfg.WebSearch.Providers[1] != "bing" {
+		t.Errorf("expected WebSearch.Providers ['duckduckgo', 'bing'], got %#v", cfg.WebSearch.Providers)
 	}
 	if cfg.WebSearch.MaxResults != 5 {
 		t.Errorf("expected WebSearch.MaxResults 5, got %d", cfg.WebSearch.MaxResults)

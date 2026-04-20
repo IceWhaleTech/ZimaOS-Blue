@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	xhtml "golang.org/x/net/html"
 )
@@ -33,7 +34,40 @@ const (
 	webSearchProviderRetryLimit   = 2
 )
 
-var defaultWebSearchProviders = []string{"bing", "duckduckgo"}
+var defaultWebSearchProviders = []string{"duckduckgo", "bing"}
+
+const webSearchBingLowRelevanceThreshold = 0.5
+
+var webSearchRelevanceStopwords = map[string]struct{}{
+	"a":             {},
+	"an":            {},
+	"about":         {},
+	"and":           {},
+	"doc":           {},
+	"docs":          {},
+	"documentation": {},
+	"find":          {},
+	"for":           {},
+	"from":          {},
+	"give":          {},
+	"guide":         {},
+	"guides":        {},
+	"it":            {},
+	"latest":        {},
+	"official":      {},
+	"overview":      {},
+	"page":          {},
+	"pages":         {},
+	"public":        {},
+	"show":          {},
+	"site":          {},
+	"summarize":     {},
+	"summary":       {},
+	"tell":          {},
+	"the":           {},
+	"website":       {},
+	"with":          {},
+}
 
 const (
 	defaultWebSearchBrowserFallbackEngine           = "bing"
@@ -461,7 +495,14 @@ func (w *WebSearchTool) searchWithProviderOnce(ctx context.Context, provider, qu
 	if err != nil {
 		return nil, err
 	}
-	return searchProvider.Search(ctx, query, maxResults, region)
+	resp, err := searchProvider.Search(ctx, query, maxResults, region)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateSearchProviderResponse(provider, query, resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (w *WebSearchTool) providerFor(provider string) (SearchProvider, error) {
@@ -558,63 +599,163 @@ func (w *WebSearchTool) searchWithProviders(ctx context.Context, providers []str
 		return w.searchWithProvider(ctx, providers[0], query, maxResults, region)
 	}
 
-	searchCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	results := make(chan webSearchProviderOutcome, len(providers))
+	failures := make([]error, 0, len(providers))
 	for _, provider := range providers {
-		provider := provider
-		go func() {
-			resp, err := w.searchWithProvider(searchCtx, provider, query, maxResults, region)
-			results <- webSearchProviderOutcome{
-				Provider: provider,
-				Response: resp,
-				Err:      err,
-			}
-		}()
+		resp, err := w.searchWithProvider(ctx, provider, query, maxResults, region)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("%s: %w", provider, err))
+			continue
+		}
+		if resp == nil || len(resp.Results) == 0 {
+			failures = append(failures, fmt.Errorf("%s: search returned no results", provider))
+			continue
+		}
+		return resp, nil
 	}
 
+	if len(failures) == 1 {
+		return nil, failures[0]
+	}
+	return nil, fmt.Errorf("all search providers failed (%s): %w", strings.Join(providers, ","), errors.Join(failures...))
+}
+
+func validateSearchProviderResponse(provider, query string, resp *WebSearchResponse) error {
+	if resp == nil || len(resp.Results) == 0 {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "bing":
+		if bingSearchResponseLooksLowRelevance(query, resp) {
+			return &webSearchProviderError{
+				Message: fmt.Sprintf("%s search results were rejected for low relevance", provider),
+			}
+		}
+	}
+	return nil
+}
+
+func bingSearchResponseLooksLowRelevance(query string, resp *WebSearchResponse) bool {
+	terms := webSearchRelevanceTerms(query)
+	if len(terms) == 0 || resp == nil || len(resp.Results) == 0 {
+		return false
+	}
+	limit := minWebQueryInt(3, len(resp.Results))
+	for idx := 0; idx < limit; idx++ {
+		if webSearchResultRelevanceOverlap(terms, resp.Results[idx]) >= webSearchBingLowRelevanceThreshold {
+			return false
+		}
+	}
+	return true
+}
+
+type webSearchRelevanceTerm struct {
+	Value      string
+	ExactToken bool
+}
+
+func webSearchRelevanceTerms(query string) []webSearchRelevanceTerm {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return nil
+	}
+
+	terms := make([]webSearchRelevanceTerm, 0, 8)
+	seen := make(map[string]struct{}, 8)
+	add := func(value string, exactToken bool) {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			return
+		}
+		key := value
+		if exactToken {
+			key = "token:" + value
+		} else {
+			key = "substr:" + value
+		}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		terms = append(terms, webSearchRelevanceTerm{Value: value, ExactToken: exactToken})
+	}
+
+	for _, token := range uniqueWebQueryTokens(webQueryTokens(query)) {
+		if len([]rune(token)) < 2 {
+			continue
+		}
+		if _, ok := webSearchRelevanceStopwords[token]; ok {
+			continue
+		}
+		add(token, true)
+	}
+
+	for _, run := range webSearchExtractCJKRuns(query) {
+		runes := []rune(run)
+		if len(runes) >= 4 {
+			add(string(runes), false)
+		}
+		for idx := 0; idx+1 < len(runes); idx += 2 {
+			add(string(runes[idx:idx+2]), false)
+		}
+	}
+
+	if len(terms) == 0 {
+		normalized := strings.ToLower(strings.Join(strings.Fields(query), " "))
+		if normalized != "" {
+			add(normalized, false)
+		}
+	}
+
+	return terms
+}
+
+func webSearchResultRelevanceOverlap(terms []webSearchRelevanceTerm, result WebSearchResult) float64 {
+	if len(terms) == 0 {
+		return 0
+	}
+	text := strings.ToLower(strings.TrimSpace(strings.Join([]string{result.Title, result.URL}, " ")))
+	if text == "" {
+		return 0
+	}
+	textTokens := make(map[string]struct{}, len(terms))
+	for _, token := range webQueryTokens(text) {
+		textTokens[token] = struct{}{}
+	}
+	matches := 0
+	for _, term := range terms {
+		if term.ExactToken {
+			if _, ok := textTokens[term.Value]; ok {
+				matches++
+			}
+			continue
+		}
+		if strings.Contains(text, term.Value) {
+			matches++
+		}
+	}
+	return float64(matches) / float64(len(terms))
+}
+
+func webSearchExtractCJKRuns(input string) []string {
 	var (
-		successes   []webSearchProviderOutcome
-		failures    []error
-		settleTimer *time.Timer
+		runs    []string
+		current []rune
 	)
-	for remaining := len(providers); remaining > 0; {
-		var settle <-chan time.Time
-		if settleTimer != nil {
-			settle = settleTimer.C
+	flush := func() {
+		if len(current) >= 2 {
+			runs = append(runs, string(current))
 		}
-
-		select {
-		case outcome := <-results:
-			remaining--
-			if outcome.Err != nil {
-				failures = append(failures, fmt.Errorf("%s: %w", outcome.Provider, outcome.Err))
-				continue
-			}
-			successes = append(successes, outcome)
-			if len(outcome.Response.Results) > 0 && settleTimer == nil && remaining > 0 {
-				settleTimer = time.NewTimer(webSearchProviderSettleWindow)
-			}
-		case <-settle:
-			cancel()
-			settleTimer = nil
+		current = current[:0]
+	}
+	for _, r := range input {
+		if unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) {
+			current = append(current, r)
+			continue
 		}
+		flush()
 	}
-	if settleTimer != nil {
-		settleTimer.Stop()
-	}
-
-	if len(successes) == 0 {
-		if len(failures) == 1 {
-			return nil, failures[0]
-		}
-		return nil, fmt.Errorf("all search providers failed (%s): %w", strings.Join(providers, ","), errors.Join(failures...))
-	}
-	if len(successes) == 1 {
-		return successes[0].Response, nil
-	}
-	return mergeWebSearchResponses(query, maxResults, providers, successes), nil
+	flush()
+	return runs
 }
 
 func parseProviderChainArg(raw interface{}) []string {

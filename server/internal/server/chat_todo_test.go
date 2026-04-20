@@ -3542,7 +3542,10 @@ func TestSanitizeResponseContentWithProvider_SplitsTrailingSummaryAliases(t *tes
 
 func TestResolveResponseSanitizeProfile_Deterministic(t *testing.T) {
 	if got := resolveResponseSanitizeProfile("openai", "openai", "gpt-4o"); got != responseSanitizeProfileBalanced {
-		t.Fatalf("expected openai profile balanced, got=%s", got)
+		t.Fatalf("expected non-gpt-5 openai profile balanced, got=%s", got)
+	}
+	if got := resolveResponseSanitizeProfile("openai", "openai", "gpt-5.4"); got != responseSanitizeProfileStrict {
+		t.Fatalf("expected gpt-5 profile strict, got=%s", got)
 	}
 	if got := resolveResponseSanitizeProfile("deepresearch", "deepresearch", "deepresearch-fallback"); got != responseSanitizeProfileMinimal {
 		t.Fatalf("expected deepresearch profile minimal, got=%s", got)
@@ -3569,9 +3572,17 @@ func TestSanitizeResponseContentWithProvider_ProfileStrategy(t *testing.T) {
 		t.Fatalf("expected strict profile to keep user-facing answer, got=%q", strict)
 	}
 
-	balanced := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-4o")
-	if balanced != raw {
-		t.Fatalf("expected balanced profile to keep benign single command example, got=%q", balanced)
+	gpt4o := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-4o")
+	if gpt4o != raw {
+		t.Fatalf("expected non-gpt-5 openai profile to keep benign single command example, got=%q", gpt4o)
+	}
+
+	gpt54 := sanitizeResponseContentWithProvider(raw, "openai", "openai", "gpt-5.4")
+	if strings.Contains(gpt54, `"command":"blue help browser"`) {
+		t.Fatalf("expected gpt-5 profile to strip leaked command json, got=%q", gpt54)
+	}
+	if !strings.Contains(gpt54, "这是正文") {
+		t.Fatalf("expected gpt-5 profile to keep user-facing answer, got=%q", gpt54)
 	}
 
 	minimal := sanitizeResponseContentWithProvider(raw, "deepresearch", "deepresearch", "deepresearch-fallback")

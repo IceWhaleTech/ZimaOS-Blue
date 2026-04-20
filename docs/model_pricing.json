@@ -95,8 +95,6 @@
     "imagen-4.0-fast-generate-001":             {"output": 0.02,   "unit": "image", "provider": "gemini"},
     "imagen-4.0-ultra-generate-001":            {"output": 0.06,   "unit": "image", "provider": "gemini"},
 
-    "dall-e-3":             {"output": 0.04,   "unit": "image", "provider": "mulerouter", "note": "std 1024x1024; HD=$0.08-$0.12"},
-    "dall-e-2":             {"output": 0.02,   "unit": "image", "provider": "mulerouter"},
     "midjourney":           {"output": 0.085,  "unit": "image", "provider": "mulerouter", "note": "fast mode; turbo=$0.17"},
 
     "qwen-image-max":       {"output": 0.03,   "unit": "image", "provider": "mulerouter"},

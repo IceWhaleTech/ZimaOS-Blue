@@ -1370,14 +1370,17 @@ func (m *Manager) findProviderLocked(modelID string) (MediaProvider, error) {
 		}
 		return nil, ErrProviderNotFound
 	}
+	if len(m.providers) == 0 {
+		return nil, ErrProviderNotFound
+	}
 
 	providerName, ok := m.modelMap[modelID]
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrProviderNotFound, modelID)
+		return nil, fmt.Errorf("%w: %s", ErrModelUnavailable, modelID)
 	}
 	p, ok := m.providers[providerName]
 	if !ok {
-		return nil, fmt.Errorf("%w: provider %s not registered", ErrProviderNotFound, providerName)
+		return nil, fmt.Errorf("%w: %s", ErrModelUnavailable, modelID)
 	}
 	return p, nil
 }
