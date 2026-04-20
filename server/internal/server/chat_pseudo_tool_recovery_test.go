@@ -156,6 +156,44 @@ func TestRecoverPseudoToolCallsFromContent_RecoversTypelessSingleInputNativeDocu
 	}
 }
 
+func TestRecoverPseudoToolCallsFromContent_RecoversRequestToolEnvelopeForComputerUse(t *testing.T) {
+	content := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"后端之家\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
+
+	calls, ok := recoverPseudoToolCallsFromContent(content, []llm.Tool{{Name: "computer_use"}})
+	if !ok {
+		t.Fatal("expected request tool envelope recovery to succeed")
+	}
+	if len(calls) != 1 {
+		t.Fatalf("recovered calls = %d, want 1", len(calls))
+	}
+	if calls[0].Name != "computer_use" {
+		t.Fatalf("call name = %q, want computer_use", calls[0].Name)
+	}
+
+	var args map[string]interface{}
+	if err := json.Unmarshal([]byte(calls[0].Arguments), &args); err != nil {
+		t.Fatalf("unmarshal arguments: %v", err)
+	}
+	if got, _ := args["action"].(string); got != "message" {
+		t.Fatalf("action = %q, want message", got)
+	}
+	if got, _ := args["app_name"].(string); got != "飞书" {
+		t.Fatalf("app_name = %q, want 飞书", got)
+	}
+	if got, _ := args["conversation"].(string); got != "后端之家" {
+		t.Fatalf("conversation = %q, want 后端之家", got)
+	}
+	if got, _ := args["intent"].(string); got != "send_greeting" {
+		t.Fatalf("intent = %q, want send_greeting", got)
+	}
+	if got, _ := args["value"].(string); !strings.Contains(got, "ZimaOS Blue 助手发来的招呼信息") {
+		t.Fatalf("value = %q, want greeting payload preserved", got)
+	}
+	if got, _ := args["submit"].(bool); !got {
+		t.Fatalf("submit = %v, want true", args["submit"])
+	}
+}
+
 func TestPseudoJSONToolCallStartIndex_RecoversTypelessSingleInputNativeDocumentCreate(t *testing.T) {
 	delta := "继续创建 DOCX：\n\n```typeless\n" +
 		"{\"action\":\"create\",\"path\":\"reports/seed.md\",\"theme\":\"editorial\"}\n" +

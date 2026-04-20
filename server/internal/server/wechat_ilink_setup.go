@@ -154,7 +154,7 @@ func (h *WeChatILinkSetupHandler) CompleteSession(c echo.Context) error {
 		current.Message = ""
 	})
 
-	_, botToken, parseErr := parseWechatILinkPairingPayload(req.PairingPayload)
+	userID, botToken, parseErr := parseWechatILinkPairingPayload(req.PairingPayload)
 	if parseErr != nil {
 		h.markSessionError(session.ID, parseErr.Error())
 		return echo.NewHTTPError(http.StatusBadRequest, parseErr.Error())
@@ -165,7 +165,7 @@ func (h *WeChatILinkSetupHandler) CompleteSession(c echo.Context) error {
 		current.Status = wechatILinkSessionStatusConfiguring
 	})
 
-	if err := h.activateChannel(c.Request().Context(), apiBaseURL, botToken); err != nil {
+	if err := h.activateChannel(c.Request().Context(), apiBaseURL, botToken, userID); err != nil {
 		h.markSessionError(session.ID, err.Error())
 		return echo.NewHTTPError(http.StatusBadGateway, err.Error())
 	}
@@ -325,7 +325,12 @@ func (h *WeChatILinkSetupHandler) refreshWeChatILinkSetupSession(ctx context.Con
 				h.markSessionError(session.ID, "confirmed QR status missing api_base_url")
 				return
 			}
-			if err := h.activateChannel(ctx, apiBaseURL, strings.TrimSpace(status.BotToken)); err != nil {
+			if err := h.activateChannel(
+				ctx,
+				apiBaseURL,
+				strings.TrimSpace(status.BotToken),
+				resolveWechatILinkTargetUserIDFromStatus(status),
+			); err != nil {
 				h.markSessionError(session.ID, err.Error())
 				return
 			}
@@ -386,6 +391,7 @@ type wechatILinkQRCodeStatus struct {
 	BotToken    string `json:"bot_token"`
 	IlinkBotID  string `json:"ilink_bot_id"`
 	BaseURL     string `json:"baseurl"`
+	UserID      string `json:"user_id"`
 	IlinkUserID string `json:"ilink_user_id"`
 }
 
@@ -497,7 +503,7 @@ func truncateWeChatILinkBody(body []byte, max int) string {
 	return text[:max] + "..."
 }
 
-func (h *WeChatILinkSetupHandler) activateChannel(ctx context.Context, apiBaseURL, botToken string) error {
+func (h *WeChatILinkSetupHandler) activateChannel(ctx context.Context, apiBaseURL, botToken, userID string) error {
 	if h.store == nil || h.manager == nil || h.factory == nil {
 		return fmt.Errorf("wechat_ilink setup runtime is not available")
 	}
@@ -514,6 +520,7 @@ func (h *WeChatILinkSetupHandler) activateChannel(ctx context.Context, apiBaseUR
 		Config: map[string]string{
 			"api_base_url": normalizedAPIBaseURL,
 			"bot_token":    botToken,
+			"user_id":      strings.TrimSpace(userID),
 		},
 	}
 
@@ -659,8 +666,19 @@ func parseWechatILinkPairingPayload(raw json.RawMessage) (string, string, error)
 		return ""
 	}
 
+	userID := getString(payload, "user_id", "userId", "target_user_id", "targetUserId")
+	if userID == "" {
+		userID = getString(payload, "ilink_user_id", "ilinkUserId")
+	}
+
 	botToken := getString(payload, "bot_token", "botToken")
 	if nested, ok := payload["config"].(map[string]interface{}); ok {
+		if userID == "" {
+			userID = getString(nested, "user_id", "userId", "target_user_id", "targetUserId")
+		}
+		if userID == "" {
+			userID = getString(nested, "ilink_user_id", "ilinkUserId")
+		}
 		if botToken == "" {
 			botToken = getString(nested, "bot_token", "botToken")
 		}
@@ -669,5 +687,15 @@ func parseWechatILinkPairingPayload(raw json.RawMessage) (string, string, error)
 	if botToken == "" {
 		return "", "", fmt.Errorf("pairing_payload missing bot_token")
 	}
-	return "", botToken, nil
+	return strings.TrimSpace(userID), botToken, nil
+}
+
+func resolveWechatILinkTargetUserIDFromStatus(status *wechatILinkQRCodeStatus) string {
+	if status == nil {
+		return ""
+	}
+	if userID := strings.TrimSpace(status.UserID); userID != "" {
+		return userID
+	}
+	return strings.TrimSpace(status.IlinkUserID)
 }

@@ -856,6 +856,237 @@ const webTermBackfills: Partial<Record<LocaleKey, { web: string }>> = {
   'sk-SK': { web: 'Webový' },
 }
 
+const resultCardSearchDetailBackfills: Partial<
+  Record<
+    LocaleKey,
+    {
+      resultCard: {
+        messages: {
+          backend_source: string
+          fallback_reason: string
+        }
+      }
+    }
+  >
+> = {
+  'ca-ES': {
+    resultCard: {
+      messages: {
+        backend_source: 'Origen del backend',
+        fallback_reason: 'Motiu de fallback',
+      },
+    },
+  },
+  'cs-CZ': {
+    resultCard: {
+      messages: {
+        backend_source: 'Zdroj backendu',
+        fallback_reason: 'Důvod fallbacku',
+      },
+    },
+  },
+  'da-DK': {
+    resultCard: {
+      messages: {
+        backend_source: 'Backend-kilde',
+        fallback_reason: 'Fallback-årsag',
+      },
+    },
+  },
+  'de-DE': {
+    resultCard: {
+      messages: {
+        backend_source: 'Backend-Quelle',
+        fallback_reason: 'Fallback-Grund',
+      },
+    },
+  },
+  'el-GR': {
+    resultCard: {
+      messages: {
+        backend_source: 'Πηγή backend',
+        fallback_reason: 'Λόγος εναλλακτικής λύσης',
+      },
+    },
+  },
+  'en-GB': {
+    resultCard: {
+      messages: {
+        backend_source: 'Backend source',
+        fallback_reason: 'Fallback reason',
+      },
+    },
+  },
+  'en-US': {
+    resultCard: {
+      messages: {
+        backend_source: 'Backend Source',
+        fallback_reason: 'Fallback Reason',
+      },
+    },
+  },
+  'es-ES': {
+    resultCard: {
+      messages: {
+        backend_source: 'Origen del backend',
+        fallback_reason: 'Motivo de respaldo',
+      },
+    },
+  },
+  'fr-FR': {
+    resultCard: {
+      messages: {
+        backend_source: 'Source du back-end',
+        fallback_reason: 'Raison du repli',
+      },
+    },
+  },
+  'ga-IE': {
+    resultCard: {
+      messages: {
+        backend_source: 'Foinse an innill',
+        fallback_reason: 'Cúis chúlaithe',
+      },
+    },
+  },
+  'hr-HR': {
+    resultCard: {
+      messages: {
+        backend_source: 'Izvor pozadinskog sustava',
+        fallback_reason: 'Razlog povrata',
+      },
+    },
+  },
+  'hu-HU': {
+    resultCard: {
+      messages: {
+        backend_source: 'Háttérrendszer forrása',
+        fallback_reason: 'Visszalépési ok',
+      },
+    },
+  },
+  'it-IT': {
+    resultCard: {
+      messages: {
+        backend_source: 'Origine del backend',
+        fallback_reason: 'Motivo del fallback',
+      },
+    },
+  },
+  'ja-JP': {
+    resultCard: {
+      messages: {
+        backend_source: 'バックエンドのソース元',
+        fallback_reason: 'フォールバック理由',
+      },
+    },
+  },
+  'ko-KR': {
+    resultCard: {
+      messages: {
+        backend_source: '백엔드 출처',
+        fallback_reason: '폴백 사유',
+      },
+    },
+  },
+  'ml-IN': {
+    resultCard: {
+      messages: {
+        backend_source: 'ബാക്ക്എൻഡ് ഉറവിടം',
+        fallback_reason: 'Fallback കാരണം',
+      },
+    },
+  },
+  'nb-NO': {
+    resultCard: {
+      messages: {
+        backend_source: 'Backend-kilde',
+        fallback_reason: 'Fallback-årsak',
+      },
+    },
+  },
+  'nl-NL': {
+    resultCard: {
+      messages: {
+        backend_source: 'Bron van de backend',
+        fallback_reason: 'Fallback-reden',
+      },
+    },
+  },
+  'pl-PL': {
+    resultCard: {
+      messages: {
+        backend_source: 'Źródło zaplecza',
+        fallback_reason: 'Przyczyna fallbacku',
+      },
+    },
+  },
+  'pt-BR': {
+    resultCard: {
+      messages: {
+        backend_source: 'Origem do back-end',
+        fallback_reason: 'Motivo do fallback',
+      },
+    },
+  },
+  'pt-PT': {
+    resultCard: {
+      messages: {
+        backend_source: 'Origem do back-end',
+        fallback_reason: 'Motivo do fallback',
+      },
+    },
+  },
+  'ro-RO': {
+    resultCard: {
+      messages: {
+        backend_source: 'Sursa backendului',
+        fallback_reason: 'Motiv de fallback',
+      },
+    },
+  },
+  'ru-RU': {
+    resultCard: {
+      messages: {
+        backend_source: 'Источник бэкенда',
+        fallback_reason: 'Причина fallback',
+      },
+    },
+  },
+  'sk-SK': {
+    resultCard: {
+      messages: {
+        backend_source: 'Zdroj backendu',
+        fallback_reason: 'Dôvod fallbacku',
+      },
+    },
+  },
+  'sv-SE': {
+    resultCard: {
+      messages: {
+        backend_source: 'Backend-källa',
+        fallback_reason: 'Fallback-skäl',
+      },
+    },
+  },
+  'zh-CN': {
+    resultCard: {
+      messages: {
+        backend_source: '后端来源',
+        fallback_reason: '回退原因',
+      },
+    },
+  },
+  'zh-TW': {
+    resultCard: {
+      messages: {
+        backend_source: '後端來源',
+        fallback_reason: '回退原因',
+      },
+    },
+  },
+}
+
 const browserResultCardMessageBackfills: Partial<
   Record<
     LocaleKey,
@@ -1994,6 +2225,35 @@ for (const [localeKey, patch] of Object.entries(webTermBackfills) as Array<
       names: {
         ...currentToolNames,
         web: patch.web,
+      },
+    },
+  }
+}
+
+for (const [localeKey, patch] of Object.entries(resultCardSearchDetailBackfills) as Array<
+  [
+    LocaleKey,
+    {
+      resultCard: {
+        messages: {
+          backend_source: string
+          fallback_reason: string
+        }
+      }
+    },
+  ]
+>) {
+  const current = (mutableLocaleStructuralBackfills[localeKey] ?? {}) as Record<string, unknown>
+  const currentResultCard = (current.resultCard ?? {}) as Record<string, unknown>
+  const currentResultCardMessages = (currentResultCard.messages ?? {}) as Record<string, unknown>
+
+  mutableLocaleStructuralBackfills[localeKey] = {
+    ...current,
+    resultCard: {
+      ...currentResultCard,
+      messages: {
+        ...currentResultCardMessages,
+        ...patch.resultCard.messages,
       },
     },
   }

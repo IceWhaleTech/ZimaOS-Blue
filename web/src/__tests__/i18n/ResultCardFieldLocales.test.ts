@@ -4,15 +4,21 @@ import { mergeHarnessLocale } from '@/i18n/harness-locale-additions'
 type LocaleMessages = Record<string, unknown>
 
 const requiredLabelKeys = [
+  'action_ms',
   'action',
   'async',
+  'cache_hit',
+  'candidate_count',
   'description',
   'download_url',
+  'end_to_end_ms',
   'execution_mode',
   'fallbacks',
   'host_os',
   'image_path',
   'input_method',
+  'intent',
+  'node_count',
   'output_path',
   'output_ref',
   'outputs',
@@ -22,6 +28,7 @@ const requiredLabelKeys = [
   'route',
   'selected',
   'selected_source_rank',
+  'snapshot_revision',
   'source',
   'target_format',
   'target_hit',
@@ -36,6 +43,7 @@ const requiredLabelKeys = [
 ] as const
 
 const requiredMessageKeys = [
+  'host_action_completed',
   'keys_sent',
   'host_action_completed_and_submitted',
   'host_screenshot_captured',
@@ -46,27 +54,44 @@ const requiredMessageKeys = [
 const requiredValuePaths = [
   'resultCard.values.execution_mode.input',
   'resultCard.values.execution_mode.semantic',
+  'resultCard.values.fallbacks.click',
+  'resultCard.values.fallbacks.input_click',
   'resultCard.values.host_os.darwin',
   'resultCard.values.input_method.clipboard',
+  'resultCard.values.input_method.input_click',
+  'resultCard.values.intent.click',
+  'resultCard.values.verification_method.input_action',
   'resultCard.values.verification_method.focused_text',
 ] as const
 
 const localizedValuePaths = [
   'resultCard.values.execution_mode.input',
   'resultCard.values.execution_mode.semantic',
+  'resultCard.values.fallbacks.click',
+  'resultCard.values.fallbacks.input_click',
   'resultCard.values.input_method.clipboard',
+  'resultCard.values.input_method.input_click',
+  'resultCard.values.intent.click',
+  'resultCard.values.verification_method.input_action',
   'resultCard.values.verification_method.focused_text',
 ] as const
 
 const localizedLabelKeys = [
+  'action_ms',
+  'cache_hit',
+  'candidate_count',
+  'end_to_end_ms',
   'execution_mode',
   'fallbacks',
   'host_os',
   'image_path',
   'input_method',
+  'intent',
+  'node_count',
   'output_path',
   'query',
   'selected_source_rank',
+  'snapshot_revision',
   'target_format',
   'target_hit',
   'total_count',

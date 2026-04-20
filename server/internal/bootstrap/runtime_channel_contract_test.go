@@ -153,8 +153,9 @@ func TestBindRouteRuntimeChannelHandler_PrefersAutoreplyThenFallsBackToChat(t *t
 			UserID:      "user-1",
 			Content:     "hello",
 			Metadata: map[string]interface{}{
-				"context_token": "ctx-123",
-				"session_id":    "session-456",
+				"context_token":  "ctx-123",
+				"session_id":     "session-456",
+				"target_user_id": "wxid-peer-123",
 			},
 		})
 		if err != nil {
@@ -168,6 +169,9 @@ func TestBindRouteRuntimeChannelHandler_PrefersAutoreplyThenFallsBackToChat(t *t
 		}
 		if got := resp.Metadata["session_id"]; got != "session-456" {
 			t.Fatalf("session_id = %v, want %q", got, "session-456")
+		}
+		if got := resp.Metadata["target_user_id"]; got != "wxid-peer-123" {
+			t.Fatalf("target_user_id = %v, want %q", got, "wxid-peer-123")
 		}
 		if chat.calls != 0 {
 			t.Fatalf("chat calls = %d, want 0", chat.calls)
@@ -186,8 +190,9 @@ func TestBindRouteRuntimeChannelHandler_PrefersAutoreplyThenFallsBackToChat(t *t
 			UserID:      "user-1",
 			Content:     "need help",
 			Metadata: map[string]interface{}{
-				"context_token": "ctx-789",
-				"session_id":    "session-999",
+				"context_token":  "ctx-789",
+				"session_id":     "session-999",
+				"target_user_id": "wxid-peer-789",
 			},
 		})
 		if err != nil {
@@ -201,6 +206,9 @@ func TestBindRouteRuntimeChannelHandler_PrefersAutoreplyThenFallsBackToChat(t *t
 		}
 		if got := resp.Metadata["session_id"]; got != "session-999" {
 			t.Fatalf("session_id = %v, want %q", got, "session-999")
+		}
+		if got := resp.Metadata["target_user_id"]; got != "wxid-peer-789" {
+			t.Fatalf("target_user_id = %v, want %q", got, "wxid-peer-789")
 		}
 		if chat.calls != 1 {
 			t.Fatalf("chat calls = %d, want 1", chat.calls)

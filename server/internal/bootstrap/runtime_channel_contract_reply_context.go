@@ -15,13 +15,13 @@ func runtimeChannelReplyMetadata(metadata map[string]interface{}) map[string]int
 		return nil
 	}
 	var out map[string]interface{}
-	for _, key := range []string{"context_token", "session_id"} {
+	for _, key := range []string{"context_token", "session_id", "target_user_id"} {
 		value, ok := metadata[key]
 		if !ok {
 			continue
 		}
 		if out == nil {
-			out = make(map[string]interface{}, 2)
+			out = make(map[string]interface{}, 3)
 		}
 		out[key] = value
 	}

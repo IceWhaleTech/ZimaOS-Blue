@@ -130,6 +130,7 @@ type WeChatILinkConfig struct {
 	Enabled    bool   `yaml:"enabled"`
 	APIBaseURL string `yaml:"api_base_url" json:"api_base_url"`
 	BotToken   string `yaml:"bot_token" json:"bot_token"`
+	UserID     string `yaml:"user_id" json:"user_id"`
 }
 
 // FeishuConfig contains Feishu/Lark configuration.

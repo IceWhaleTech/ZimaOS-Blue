@@ -195,6 +195,7 @@ func (f *ChannelFactory) createWechatILink(cfg *ChannelConfig) (channel.Channel,
 		Enabled:    cfg.Enabled,
 		APIBaseURL: cfg.Config["api_base_url"],
 		BotToken:   cfg.Config["bot_token"],
+		UserID:     cfg.Config["user_id"],
 	}
 	return wechatilink.New(wechatCfg, f.logger), nil
 }

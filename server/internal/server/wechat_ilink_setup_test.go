@@ -344,6 +344,9 @@ func TestWeChatILinkSetupHandler_GetSessionConfirmedAutoActivatesChannel(t *test
 	if cfg.Config["bot_token"] != "bot-token" {
 		t.Fatalf("bot_token = %q, want %q", cfg.Config["bot_token"], "bot-token")
 	}
+	if cfg.Config["user_id"] != "user@im.wechat" {
+		t.Fatalf("user_id = %q, want %q", cfg.Config["user_id"], "user@im.wechat")
+	}
 	if got, exists := manager.Get(wechatILinkSetupChannelID); !exists {
 		t.Fatal("expected wechat_ilink channel to be registered")
 	} else if got.Info().Status != channel.StatusConnected {
@@ -450,6 +453,9 @@ func TestWeChatILinkSetupHandler_EndToEndCreateThenConfirmedConnectsDespiteIniti
 	}
 	if cfg.Config["bot_token"] != "bot-token-e2e" {
 		t.Fatalf("bot_token = %q, want %q", cfg.Config["bot_token"], "bot-token-e2e")
+	}
+	if cfg.Config["user_id"] != "user@im.wechat" {
+		t.Fatalf("user_id = %q, want %q", cfg.Config["user_id"], "user@im.wechat")
 	}
 	if got, exists := manager.Get(wechatILinkSetupChannelID); !exists {
 		t.Fatal("expected wechat_ilink channel to be registered")
@@ -836,6 +842,69 @@ func TestWeChatILinkSetupHandler_CompletePersistsAndEnablesChannel(t *testing.T)
 		t.Fatal("expected wechat_ilink channel to be registered")
 	} else if got.Info().Status != channel.StatusConnected {
 		t.Fatalf("status = %q, want %q", got.Info().Status, channel.StatusConnected)
+	}
+}
+
+func TestWeChatILinkSetupHandler_CompleteSessionPersistsConfiguredUserIDFromPairingPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/getupdates" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret":             0,
+			"msgs":            []any{},
+			"get_updates_buf": "cursor-1",
+		})
+	}))
+	defer server.Close()
+
+	store := NewChannelConfigStore(kvstore.NewMemoryStore())
+	if err := store.Set(wechatILinkSetupChannelID, &ChannelConfig{
+		ID:      wechatILinkSetupChannelID,
+		Enabled: false,
+		Config: map[string]string{
+			"api_base_url": server.URL,
+		},
+	}); err != nil {
+		t.Fatalf("store.Set error = %v", err)
+	}
+	manager := channel.NewManager(channel.DefaultConfig(), zap.NewNop())
+	factory := NewChannelFactory(zap.NewNop())
+	handler := NewWeChatILinkSetupHandler(
+		store,
+		manager,
+		factory,
+		zap.NewNop(),
+	)
+
+	session := handler.newSession("user-1")
+	handler.storeSession(session)
+
+	body := `{"pairing_payload":{"bot_token":"bot-token","user_id":"pairing-user-id"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/channels/wechat_ilink/setup/session/"+session.ID+"/complete", strings.NewReader(body))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	req = req.WithContext(context.WithValue(req.Context(), auth.UserContextKey, &auth.UserClaims{
+		UserID:   "user-1",
+		Username: "user-1",
+	}))
+	rec := httptest.NewRecorder()
+	c := echo.New().NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(session.ID)
+
+	if err := handler.CompleteSession(c); err != nil {
+		t.Fatalf("CompleteSession error = %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	cfg, ok := store.Get(wechatILinkSetupChannelID)
+	if !ok {
+		t.Fatal("expected persisted wechat_ilink config")
+	}
+	if cfg.Config["user_id"] != "pairing-user-id" {
+		t.Fatalf("user_id = %q, want %q", cfg.Config["user_id"], "pairing-user-id")
 	}
 }
 

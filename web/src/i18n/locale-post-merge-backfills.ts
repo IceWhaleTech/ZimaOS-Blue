@@ -21,12 +21,14 @@ type HarnessTermGlossary = {
 
 type ResultCardWebQueryLabelBackfill = {
   has_results: string
+  omitted_results: string
   selected_result: string
   key_facts: string
   research_artifact_path: string
   llm_compacted: string
   materialized: string
   mode: string
+  search_card_emitted: string
 }
 
 type ResultCardFieldLocalePatch = {
@@ -59,6 +61,16 @@ type ResultCardHostActionLabelLocalePatch = {
   target_hit: string
   verification_method: string
   verification_passed: string
+}
+
+type ResultCardHostActionTelemetryLabelLocalePatch = {
+  action_ms: string
+  cache_hit: string
+  candidate_count: string
+  end_to_end_ms: string
+  intent: string
+  node_count: string
+  snapshot_revision: string
 }
 
 const protectedHarnessTermReplacementPaths = new Set([
@@ -1150,6 +1162,285 @@ const resultCardHostActionLabelBackfills: Record<LocaleKey, ResultCardHostAction
     },
   }
 
+const resultCardHostActionTelemetryLabelBackfills: Record<
+  LocaleKey,
+  ResultCardHostActionTelemetryLabelLocalePatch
+> = {
+  'ca-ES': {
+    action_ms: "Temps d'acció (ms)",
+    cache_hit: 'Encert de memòria cau',
+    candidate_count: 'Nombre de candidats',
+    end_to_end_ms: 'Temps de punta a punta (ms)',
+    intent: 'Intenció',
+    node_count: 'Nombre de nodes',
+    snapshot_revision: 'Revisió de la instantània',
+  },
+  'cs-CZ': {
+    action_ms: 'Čas akce (ms)',
+    cache_hit: 'Zásah mezipaměti',
+    candidate_count: 'Počet kandidátů',
+    end_to_end_ms: 'Čas od začátku do konce (ms)',
+    intent: 'Záměr',
+    node_count: 'Počet uzlů',
+    snapshot_revision: 'Revize snímku',
+  },
+  'da-DK': {
+    action_ms: 'Handlingstid (ms)',
+    cache_hit: 'Cachetræf',
+    candidate_count: 'Antal kandidater',
+    end_to_end_ms: 'Samlet tid (ms)',
+    intent: 'Hensigt',
+    node_count: 'Antal noder',
+    snapshot_revision: 'Snapshot-revision',
+  },
+  'de-DE': {
+    action_ms: 'Aktionszeit (ms)',
+    cache_hit: 'Cache-Treffer',
+    candidate_count: 'Anzahl der Kandidaten',
+    end_to_end_ms: 'Ende-zu-Ende-Zeit (ms)',
+    intent: 'Absicht',
+    node_count: 'Anzahl der Knoten',
+    snapshot_revision: 'Snapshot-Revision',
+  },
+  'el-GR': {
+    action_ms: 'Χρόνος ενέργειας (ms)',
+    cache_hit: 'Επιτυχία cache',
+    candidate_count: 'Πλήθος υποψηφίων',
+    end_to_end_ms: 'Χρόνος από άκρο σε άκρο (ms)',
+    intent: 'Πρόθεση',
+    node_count: 'Πλήθος κόμβων',
+    snapshot_revision: 'Αναθεώρηση στιγμιότυπου',
+  },
+  'en-GB': {
+    action_ms: 'Action Time (ms)',
+    cache_hit: 'Cache Hit',
+    candidate_count: 'Candidate Count',
+    end_to_end_ms: 'End-to-End Time (ms)',
+    intent: 'Intent',
+    node_count: 'Node Count',
+    snapshot_revision: 'Snapshot Revision',
+  },
+  'en-US': {
+    action_ms: 'Action Time (ms)',
+    cache_hit: 'Cache Hit',
+    candidate_count: 'Candidate Count',
+    end_to_end_ms: 'End-to-End Time (ms)',
+    intent: 'Intent',
+    node_count: 'Node Count',
+    snapshot_revision: 'Snapshot Revision',
+  },
+  'es-ES': {
+    action_ms: 'Tiempo de acción (ms)',
+    cache_hit: 'Acierto de caché',
+    candidate_count: 'Número de candidatos',
+    end_to_end_ms: 'Tiempo de extremo a extremo (ms)',
+    intent: 'Intención',
+    node_count: 'Número de nodos',
+    snapshot_revision: 'Revisión de instantánea',
+  },
+  'fr-FR': {
+    action_ms: "Temps d'action (ms)",
+    cache_hit: 'Succès du cache',
+    candidate_count: 'Nombre de candidats',
+    end_to_end_ms: 'Temps de bout en bout (ms)',
+    intent: 'Intention',
+    node_count: 'Nombre de nœuds',
+    snapshot_revision: "Révision de l'instantané",
+  },
+  'ga-IE': {
+    action_ms: 'Am gnímh (ms)',
+    cache_hit: 'Aimsiú taisce',
+    candidate_count: 'Líon iarrthóirí',
+    end_to_end_ms: 'Am deireadh go deireadh (ms)',
+    intent: 'Rún',
+    node_count: 'Líon na nóid',
+    snapshot_revision: 'Athbhreithniú seatghraif',
+  },
+  'hr-HR': {
+    action_ms: 'Vrijeme radnje (ms)',
+    cache_hit: 'Pogodak predmemorije',
+    candidate_count: 'Broj kandidata',
+    end_to_end_ms: 'Vrijeme od početka do kraja (ms)',
+    intent: 'Namjera',
+    node_count: 'Broj čvorova',
+    snapshot_revision: 'Revizija snimke',
+  },
+  'hu-HU': {
+    action_ms: 'Műveleti idő (ms)',
+    cache_hit: 'Gyorsítótár-találat',
+    candidate_count: 'Jelöltek száma',
+    end_to_end_ms: 'Teljes átfutási idő (ms)',
+    intent: 'Szándék',
+    node_count: 'Csomópontok száma',
+    snapshot_revision: 'Pillanatkép-verzió',
+  },
+  'it-IT': {
+    action_ms: 'Tempo di azione (ms)',
+    cache_hit: 'Hit della cache',
+    candidate_count: 'Numero di candidati',
+    end_to_end_ms: 'Tempo end-to-end (ms)',
+    intent: 'Intenzione',
+    node_count: 'Numero di nodi',
+    snapshot_revision: 'Revisione snapshot',
+  },
+  'ja-JP': {
+    action_ms: '操作時間 (ms)',
+    cache_hit: 'キャッシュヒット',
+    candidate_count: '候補数',
+    end_to_end_ms: 'エンドツーエンド時間 (ms)',
+    intent: '意図',
+    node_count: 'ノード数',
+    snapshot_revision: 'スナップショット改訂',
+  },
+  'ko-KR': {
+    action_ms: '작업 시간 (ms)',
+    cache_hit: '캐시 적중',
+    candidate_count: '후보 수',
+    end_to_end_ms: '종단간 시간 (ms)',
+    intent: '의도',
+    node_count: '노드 수',
+    snapshot_revision: '스냅샷 리비전',
+  },
+  'ml-IN': {
+    action_ms: 'പ്രവർത്തന സമയം (ms)',
+    cache_hit: 'കാഷെ ഹിറ്റ്',
+    candidate_count: 'സ്ഥാനാർത്ഥികളുടെ എണ്ണം',
+    end_to_end_ms: 'എൻഡ്-ടു-എൻഡ് സമയം (ms)',
+    intent: 'ഉദ്ദേശ്യം',
+    node_count: 'നോഡുകളുടെ എണ്ണം',
+    snapshot_revision: 'സ്നാപ്പ്ഷോട്ട് പരിഷ്കരണം',
+  },
+  'nb-NO': {
+    action_ms: 'Handlingstid (ms)',
+    cache_hit: 'Cachetreff',
+    candidate_count: 'Antall kandidater',
+    end_to_end_ms: 'Ende-til-ende-tid (ms)',
+    intent: 'Hensikt',
+    node_count: 'Antall noder',
+    snapshot_revision: 'Snapshot-revisjon',
+  },
+  'nl-NL': {
+    action_ms: 'Actietijd (ms)',
+    cache_hit: 'Cachetreffer',
+    candidate_count: 'Aantal kandidaten',
+    end_to_end_ms: 'End-to-end-tijd (ms)',
+    intent: 'Intentie',
+    node_count: 'Aantal knooppunten',
+    snapshot_revision: 'Snapshotrevisie',
+  },
+  'pl-PL': {
+    action_ms: 'Czas działania (ms)',
+    cache_hit: 'Trafienie pamięci podręcznej',
+    candidate_count: 'Liczba kandydatów',
+    end_to_end_ms: 'Czas end-to-end (ms)',
+    intent: 'Intencja',
+    node_count: 'Liczba węzłów',
+    snapshot_revision: 'Wersja migawki',
+  },
+  'pt-BR': {
+    action_ms: 'Tempo da ação (ms)',
+    cache_hit: 'Acerto de cache',
+    candidate_count: 'Número de candidatos',
+    end_to_end_ms: 'Tempo de ponta a ponta (ms)',
+    intent: 'Intenção',
+    node_count: 'Número de nós',
+    snapshot_revision: 'Revisão do instantâneo',
+  },
+  'pt-PT': {
+    action_ms: 'Tempo da ação (ms)',
+    cache_hit: 'Acerto de cache',
+    candidate_count: 'Número de candidatos',
+    end_to_end_ms: 'Tempo de ponta a ponta (ms)',
+    intent: 'Intenção',
+    node_count: 'Número de nós',
+    snapshot_revision: 'Revisão do instantâneo',
+  },
+  'ro-RO': {
+    action_ms: 'Timp de acțiune (ms)',
+    cache_hit: 'Potrivire cache',
+    candidate_count: 'Număr de candidați',
+    end_to_end_ms: 'Timp cap-la-cap (ms)',
+    intent: 'Intenție',
+    node_count: 'Număr de noduri',
+    snapshot_revision: 'Revizie instantaneu',
+  },
+  'ru-RU': {
+    action_ms: 'Время действия (мс)',
+    cache_hit: 'Попадание в кеш',
+    candidate_count: 'Количество кандидатов',
+    end_to_end_ms: 'Время от начала до конца (мс)',
+    intent: 'Намерение',
+    node_count: 'Количество узлов',
+    snapshot_revision: 'Ревизия снимка',
+  },
+  'sk-SK': {
+    action_ms: 'Čas akcie (ms)',
+    cache_hit: 'Zásah vyrovnávacej pamäte',
+    candidate_count: 'Počet kandidátov',
+    end_to_end_ms: 'Čas od začiatku do konca (ms)',
+    intent: 'Zámer',
+    node_count: 'Počet uzlov',
+    snapshot_revision: 'Revízia snímky',
+  },
+  'sv-SE': {
+    action_ms: 'Åtgärdstid (ms)',
+    cache_hit: 'Cacheträff',
+    candidate_count: 'Antal kandidater',
+    end_to_end_ms: 'Tid från början till slut (ms)',
+    intent: 'Avsikt',
+    node_count: 'Antal noder',
+    snapshot_revision: 'Snapshot-revision',
+  },
+  'zh-CN': {
+    action_ms: '操作耗时 (ms)',
+    cache_hit: '命中缓存',
+    candidate_count: '候选数量',
+    end_to_end_ms: '端到端耗时 (ms)',
+    intent: '意图',
+    node_count: '节点数量',
+    snapshot_revision: '快照修订号',
+  },
+  'zh-TW': {
+    action_ms: '操作耗時 (ms)',
+    cache_hit: '命中快取',
+    candidate_count: '候選數量',
+    end_to_end_ms: '端對端耗時 (ms)',
+    intent: '意圖',
+    node_count: '節點數量',
+    snapshot_revision: '快照修訂號',
+  },
+}
+
+const resultCardHostActionCompletedPlainMessages: Record<LocaleKey, string> = {
+  'ca-ES': "L'acció de l'amfitrió s'ha completat",
+  'cs-CZ': 'Akce hostitele byla dokončena',
+  'da-DK': 'Værtshandling fuldført',
+  'de-DE': 'Host-Aktion abgeschlossen',
+  'el-GR': 'Η ενέργεια του κεντρικού υπολογιστή ολοκληρώθηκε',
+  'en-GB': 'Host action completed',
+  'en-US': 'Host action completed',
+  'es-ES': 'La acción del host se completó',
+  'fr-FR': "L'action hôte a été terminée",
+  'ga-IE': 'Críochnaíodh gníomh an óstaigh',
+  'hr-HR': 'Radnja hosta dovršena',
+  'hu-HU': 'A gazdagép művelete befejeződött',
+  'it-IT': "L'azione host è stata completata",
+  'ja-JP': 'ホスト操作が完了しました',
+  'ko-KR': '호스트 작업이 완료되었습니다',
+  'ml-IN': 'ഹോസ്റ്റ് പ്രവർത്തനം പൂർത്തിയായി',
+  'nb-NO': 'Verts-handlingen er fullført',
+  'nl-NL': 'Hostactie voltooid',
+  'pl-PL': 'Działanie hosta ukończono',
+  'pt-BR': 'A ação do host foi concluída',
+  'pt-PT': 'A ação do anfitrião foi concluída',
+  'ro-RO': 'Acțiunea gazdei a fost finalizată',
+  'ru-RU': 'Действие хоста завершено',
+  'sk-SK': 'Akcia hostiteľa bola dokončená',
+  'sv-SE': 'Värdåtgärden slutfördes',
+  'zh-CN': '主机操作已完成',
+  'zh-TW': '主機操作已完成',
+}
+
 const resultCardHostActionCompletedMessages: Record<LocaleKey, string> = {
   'ca-ES': "L'acció de l'amfitrió s'ha completat i enviat",
   'cs-CZ': 'Akce hostitele byla dokončena a odeslána',
@@ -1328,6 +1619,96 @@ const resultCardExecutionModeInputValues: Record<LocaleKey, string> = {
   'sv-SE': 'Inmatning',
   'zh-CN': '输入',
   'zh-TW': '輸入',
+}
+
+const resultCardClickValues: Record<LocaleKey, string> = {
+  'ca-ES': 'Clic',
+  'cs-CZ': 'Kliknutí',
+  'da-DK': 'Klik',
+  'de-DE': 'Klick',
+  'el-GR': 'Κλικ',
+  'en-GB': 'Click',
+  'en-US': 'Click',
+  'es-ES': 'Clic',
+  'fr-FR': 'Clic',
+  'ga-IE': 'Cliceáil',
+  'hr-HR': 'Klik',
+  'hu-HU': 'Kattintás',
+  'it-IT': 'Clic',
+  'ja-JP': 'クリック',
+  'ko-KR': '클릭',
+  'ml-IN': 'ക്ലിക്ക്',
+  'nb-NO': 'Klikk',
+  'nl-NL': 'Klik',
+  'pl-PL': 'Kliknięcie',
+  'pt-BR': 'Clique',
+  'pt-PT': 'Clique',
+  'ro-RO': 'Clic',
+  'ru-RU': 'Щелчок',
+  'sk-SK': 'Kliknutie',
+  'sv-SE': 'Klick',
+  'zh-CN': '点击',
+  'zh-TW': '點擊',
+}
+
+const resultCardInputClickValues: Record<LocaleKey, string> = {
+  'ca-ES': "Clic d'entrada",
+  'cs-CZ': 'Vstupní kliknutí',
+  'da-DK': 'Inputklik',
+  'de-DE': 'Eingabeklick',
+  'el-GR': 'Κλικ εισόδου',
+  'en-GB': 'Input Click',
+  'en-US': 'Input Click',
+  'es-ES': 'Clic de entrada',
+  'fr-FR': 'Clic de saisie',
+  'ga-IE': 'Cliceáil ionchuir',
+  'hr-HR': 'Klik unosom',
+  'hu-HU': 'Beviteli kattintás',
+  'it-IT': 'Clic di input',
+  'ja-JP': '入力クリック',
+  'ko-KR': '입력 클릭',
+  'ml-IN': 'ഇൻപുട്ട് ക്ലിക്ക്',
+  'nb-NO': 'Inndataklikk',
+  'nl-NL': 'Invoerklik',
+  'pl-PL': 'Klik wejściowy',
+  'pt-BR': 'Clique de entrada',
+  'pt-PT': 'Clique de entrada',
+  'ro-RO': 'Clic de intrare',
+  'ru-RU': 'Клик ввода',
+  'sk-SK': 'Vstupné kliknutie',
+  'sv-SE': 'Inmatningsklick',
+  'zh-CN': '输入点击',
+  'zh-TW': '輸入點擊',
+}
+
+const resultCardInputActionValues: Record<LocaleKey, string> = {
+  'ca-ES': "Acció d'entrada",
+  'cs-CZ': 'Vstupní akce',
+  'da-DK': 'Inputhandling',
+  'de-DE': 'Eingabeaktion',
+  'el-GR': 'Ενέργεια εισόδου',
+  'en-GB': 'Input Action',
+  'en-US': 'Input Action',
+  'es-ES': 'Acción de entrada',
+  'fr-FR': 'Action de saisie',
+  'ga-IE': 'Gníomh ionchuir',
+  'hr-HR': 'Radnja unosa',
+  'hu-HU': 'Beviteli művelet',
+  'it-IT': 'Azione di input',
+  'ja-JP': '入力アクション',
+  'ko-KR': '입력 동작',
+  'ml-IN': 'ഇൻപുട്ട് പ്രവർത്തനം',
+  'nb-NO': 'Inndatahandling',
+  'nl-NL': 'Invoeractie',
+  'pl-PL': 'Akcja wejściowa',
+  'pt-BR': 'Ação de entrada',
+  'pt-PT': 'Ação de entrada',
+  'ro-RO': 'Acțiune de intrare',
+  'ru-RU': 'Действие ввода',
+  'sk-SK': 'Vstupná akcia',
+  'sv-SE': 'Inmatningsåtgärd',
+  'zh-CN': '输入操作',
+  'zh-TW': '輸入操作',
 }
 
 type ProviderRecoveryLocalePatch = {
@@ -1851,246 +2232,300 @@ const localizedBackendLabels: Partial<Record<LocaleKey, string>> = {
 const webQueryResultCardLabelBackfills: Record<LocaleKey, ResultCardWebQueryLabelBackfill> = {
   'ca-ES': {
     has_results: 'Té resultats',
+    omitted_results: 'Resultats omesos',
     selected_result: 'Resultat seleccionat',
     key_facts: 'Fets clau',
     research_artifact_path: "Ruta de l'artefacte de recerca",
     llm_compacted: 'Compactat per LLM',
     materialized: 'Materialitzat',
     mode: 'Mode',
+    search_card_emitted: 'Targeta de cerca emesa',
   },
   'cs-CZ': {
     has_results: 'Má výsledky',
+    omitted_results: 'Vynechané výsledky',
     selected_result: 'Vybraný výsledek',
     key_facts: 'Klíčová fakta',
     research_artifact_path: 'Cesta k artefaktu výzkumu',
     llm_compacted: 'Zkompaktováno LLM',
     materialized: 'Materializováno',
     mode: 'Režim',
+    search_card_emitted: 'Karta hledání vygenerována',
   },
   'da-DK': {
     has_results: 'Har resultater',
+    omitted_results: 'Udeladte resultater',
     selected_result: 'Valgt resultat',
     key_facts: 'Nøglefakta',
     research_artifact_path: 'Sti til research-artefakt',
     llm_compacted: 'Komprimeret af LLM',
     materialized: 'Materialiseret',
     mode: 'Tilstand',
+    search_card_emitted: 'Søgekort udsendt',
   },
   'de-DE': {
     has_results: 'Hat Ergebnisse',
+    omitted_results: 'Ausgelassene Ergebnisse',
     selected_result: 'Ausgewähltes Ergebnis',
     key_facts: 'Kernfakten',
     research_artifact_path: 'Pfad zum Recherche-Artefakt',
     llm_compacted: 'Durch LLM komprimiert',
     materialized: 'Materialisiert',
     mode: 'Modus',
+    search_card_emitted: 'Suchkarte ausgegeben',
   },
   'el-GR': {
     has_results: 'Έχει αποτελέσματα',
+    omitted_results: 'Παραλειφθέντα αποτελέσματα',
     selected_result: 'Επιλεγμένο αποτέλεσμα',
     key_facts: 'Βασικά στοιχεία',
     research_artifact_path: 'Διαδρομή τεχνήματος έρευνας',
     llm_compacted: 'Συμπτυγμένο από LLM',
     materialized: 'Υλοποιημένο',
     mode: 'Λειτουργία',
+    search_card_emitted: 'Κάρτα αναζήτησης εκδόθηκε',
   },
   'en-GB': {
     has_results: 'Has Results',
+    omitted_results: 'Omitted Results',
     selected_result: 'Selected Result',
     key_facts: 'Key Facts',
     research_artifact_path: 'Research Artifact Path',
     llm_compacted: 'LLM Compacted',
     materialized: 'Materialized',
     mode: 'Mode',
+    search_card_emitted: 'Search Card Emitted',
   },
   'en-US': {
     has_results: 'Has Results',
+    omitted_results: 'Omitted Results',
     selected_result: 'Selected Result',
     key_facts: 'Key Facts',
     research_artifact_path: 'Research Artifact Path',
     llm_compacted: 'LLM Compacted',
     materialized: 'Materialized',
     mode: 'Mode',
+    search_card_emitted: 'Search Card Emitted',
   },
   'es-ES': {
     has_results: 'Tiene resultados',
+    omitted_results: 'Resultados omitidos',
     selected_result: 'Resultado seleccionado',
     key_facts: 'Datos clave',
     research_artifact_path: 'Ruta del artefacto de investigacion',
     llm_compacted: 'Compactado por LLM',
     materialized: 'Materializado',
     mode: 'Modo',
+    search_card_emitted: 'Tarjeta de busqueda emitida',
   },
   'fr-FR': {
     has_results: 'Contient des resultats',
+    omitted_results: 'Resultats omis',
     selected_result: 'Resultat selectionne',
     key_facts: 'Faits cles',
     research_artifact_path: "Chemin de l'artefact de recherche",
     llm_compacted: 'Compacte par le LLM',
     materialized: 'Materialise',
     mode: 'Mode',
+    search_card_emitted: 'Carte de recherche emise',
   },
   'ga-IE': {
     has_results: 'Tá torthaí ann',
+    omitted_results: 'Torthaí fágtha ar lár',
     selected_result: 'Toradh roghnaithe',
     key_facts: 'Príomhfhíricí',
     research_artifact_path: 'Conair go déantán taighde',
     llm_compacted: 'Comhdhlúite ag LLM',
     materialized: 'Cruthaithe',
     mode: 'Mód',
+    search_card_emitted: 'Cárta cuardaigh eisithe',
   },
   'hr-HR': {
     has_results: 'Ima rezultate',
+    omitted_results: 'Izostavljeni rezultati',
     selected_result: 'Odabrani rezultat',
     key_facts: 'Ključne činjenice',
     research_artifact_path: 'Putanja artefakta istraživanja',
     llm_compacted: 'Kompaktirano LLM-om',
     materialized: 'Materijalizirano',
     mode: 'Način',
+    search_card_emitted: 'Kartica pretrage emitirana',
   },
   'hu-HU': {
     has_results: 'Van találat',
+    omitted_results: 'Kihagyott eredmények',
     selected_result: 'Kiválasztott eredmény',
     key_facts: 'Kulcstények',
     research_artifact_path: 'Kutatási artefaktum útvonala',
     llm_compacted: 'LLM által tömörítve',
     materialized: 'Materializálva',
     mode: 'Mód',
+    search_card_emitted: 'Keresési kártya kiadva',
   },
   'it-IT': {
     has_results: 'Ha risultati',
+    omitted_results: 'Risultati omessi',
     selected_result: 'Risultato selezionato',
     key_facts: 'Fatti chiave',
     research_artifact_path: "Percorso dell'artefatto di ricerca",
     llm_compacted: 'Compattato da LLM',
     materialized: 'Materializzato',
     mode: 'Modalità',
+    search_card_emitted: 'Scheda di ricerca emessa',
   },
   'ja-JP': {
     has_results: '結果あり',
+    omitted_results: '省略された結果',
     selected_result: '選択結果',
     key_facts: '重要事項',
     research_artifact_path: '調査成果物パス',
     llm_compacted: 'LLM圧縮済み',
     materialized: '実体化済み',
     mode: 'モード',
+    search_card_emitted: '検索カード出力済み',
   },
   'ko-KR': {
     has_results: '결과 있음',
+    omitted_results: '생략된 결과',
     selected_result: '선택된 결과',
     key_facts: '핵심 사실',
     research_artifact_path: '조사 아티팩트 경로',
     llm_compacted: 'LLM 압축됨',
     materialized: '생성됨',
     mode: '모드',
+    search_card_emitted: '검색 카드 출력됨',
   },
   'ml-IN': {
     has_results: 'ഫലങ്ങളുണ്ട്',
+    omitted_results: 'ഒഴിവാക്കിയ ഫലങ്ങൾ',
     selected_result: 'തിരഞ്ഞെടുത്ത ഫലം',
     key_facts: 'പ്രധാന വിവരങ്ങള്',
     research_artifact_path: 'ഗവേഷണ ആര്‍ട്ടിഫാക്റ്റ് പാത',
     llm_compacted: 'LLM ചുരുക്കിയത്',
     materialized: 'സൃഷ്ടിച്ചത്',
     mode: 'മോഡ്',
+    search_card_emitted: 'തിരച്ചിൽ കാർഡ് പുറപ്പെടുവിച്ചു',
   },
   'nb-NO': {
     has_results: 'Har resultater',
+    omitted_results: 'Utelatte resultater',
     selected_result: 'Valgt resultat',
     key_facts: 'Nøkkelfakta',
     research_artifact_path: 'Sti til forskningsartefakt',
     llm_compacted: 'Komprimert av LLM',
     materialized: 'Materialisert',
     mode: 'Modus',
+    search_card_emitted: 'Søkekort sendt ut',
   },
   'nl-NL': {
     has_results: 'Heeft resultaten',
+    omitted_results: 'Weggelaten resultaten',
     selected_result: 'Geselecteerd resultaat',
     key_facts: 'Kernfeiten',
     research_artifact_path: 'Pad naar onderzoeksartefact',
     llm_compacted: 'Gecompacteerd door LLM',
     materialized: 'Gematerialiseerd',
     mode: 'Modus',
+    search_card_emitted: 'Zoekkaart uitgegeven',
   },
   'pl-PL': {
     has_results: 'Ma wyniki',
+    omitted_results: 'Pominięte wyniki',
     selected_result: 'Wybrany wynik',
     key_facts: 'Kluczowe fakty',
     research_artifact_path: 'Sciezka artefaktu badawczego',
     llm_compacted: 'Skondensowane przez LLM',
     materialized: 'Zmaterializowane',
     mode: 'Tryb',
+    search_card_emitted: 'Karta wyszukiwania wyemitowana',
   },
   'pt-BR': {
     has_results: 'Tem resultados',
+    omitted_results: 'Resultados omitidos',
     selected_result: 'Resultado selecionado',
     key_facts: 'Fatos-chave',
     research_artifact_path: 'Caminho do artefato de pesquisa',
     llm_compacted: 'Compactado por LLM',
     materialized: 'Materializado',
     mode: 'Modo',
+    search_card_emitted: 'Cartão de busca emitido',
   },
   'pt-PT': {
     has_results: 'Tem resultados',
+    omitted_results: 'Resultados omitidos',
     selected_result: 'Resultado selecionado',
     key_facts: 'Factos-chave',
     research_artifact_path: 'Caminho do artefacto de pesquisa',
     llm_compacted: 'Compactado por LLM',
     materialized: 'Materializado',
     mode: 'Modo',
+    search_card_emitted: 'Cartão de pesquisa emitido',
   },
   'ro-RO': {
     has_results: 'Are rezultate',
+    omitted_results: 'Rezultate omise',
     selected_result: 'Rezultat selectat',
     key_facts: 'Fapte cheie',
     research_artifact_path: 'Calea artefactului de cercetare',
     llm_compacted: 'Compactat de LLM',
     materialized: 'Materializat',
     mode: 'Mod',
+    search_card_emitted: 'Card de căutare emis',
   },
   'ru-RU': {
     has_results: 'Есть результаты',
+    omitted_results: 'Пропущенные результаты',
     selected_result: 'Выбранный результат',
     key_facts: 'Ключевые факты',
     research_artifact_path: 'Путь к артефакту исследования',
     llm_compacted: 'Сжато LLM',
     materialized: 'Материализовано',
     mode: 'Режим',
+    search_card_emitted: 'Карточка поиска отправлена',
   },
   'sk-SK': {
     has_results: 'Má výsledky',
+    omitted_results: 'Vynechané výsledky',
     selected_result: 'Vybraný výsledok',
     key_facts: 'Kľúčové fakty',
     research_artifact_path: 'Cesta k artefaktu výskumu',
     llm_compacted: 'Zhutnené pomocou LLM',
     materialized: 'Materializované',
     mode: 'Režim',
+    search_card_emitted: 'Karta vyhľadávania odoslaná',
   },
   'sv-SE': {
     has_results: 'Har resultat',
+    omitted_results: 'Utelämnade resultat',
     selected_result: 'Valt resultat',
     key_facts: 'Nyckelfakta',
     research_artifact_path: 'Sökväg till forskningsartefakt',
     llm_compacted: 'Kompakterad av LLM',
     materialized: 'Materialiserad',
     mode: 'Läge',
+    search_card_emitted: 'Sökkort utsänt',
   },
   'zh-CN': {
     has_results: '有结果',
+    omitted_results: '省略结果数',
     selected_result: '已选结果',
     key_facts: '关键信息',
     research_artifact_path: '研究产物路径',
     llm_compacted: 'LLM 压缩',
     materialized: '已生成',
     mode: '模式',
+    search_card_emitted: '已生成搜索卡片',
   },
   'zh-TW': {
     has_results: '有結果',
+    omitted_results: '省略結果數',
     selected_result: '已選結果',
     key_facts: '關鍵資訊',
     research_artifact_path: '研究產物路徑',
     llm_compacted: 'LLM 壓縮',
     materialized: '已生成',
     mode: '模式',
+    search_card_emitted: '已生成搜尋卡片',
   },
 }
 
@@ -2654,6 +3089,11 @@ export function buildLocalePostMergeBackfill(
     maybeFillResultCardLabel('mode', webQueryResultCardLabels.mode, 'Mode')
     maybeFillResultCardLabel('has_results', webQueryResultCardLabels.has_results, 'Has Results')
     maybeFillResultCardLabel(
+      'omitted_results',
+      webQueryResultCardLabels.omitted_results,
+      'Omitted Results'
+    )
+    maybeFillResultCardLabel(
       'selected_result',
       webQueryResultCardLabels.selected_result,
       'Selected Result'
@@ -2675,6 +3115,11 @@ export function buildLocalePostMergeBackfill(
       'LLM Compacted'
     )
     maybeFillResultCardLabel('materialized', webQueryResultCardLabels.materialized, 'Materialized')
+    maybeFillResultCardLabel(
+      'search_card_emitted',
+      webQueryResultCardLabels.search_card_emitted,
+      'Search Card Emitted'
+    )
   }
   const resultCardFieldCopy = resultCardFieldBackfills[localeKey]
   if (resultCardFieldCopy) {
@@ -2783,6 +3228,16 @@ export function buildLocalePostMergeBackfill(
       )
     }
 
+    const hostActionTelemetryLabels = resultCardHostActionTelemetryLabelBackfills[localeKey]
+    const englishHostActionTelemetryLabels = resultCardHostActionTelemetryLabelBackfills['en-US']
+    for (const [key, localized] of Object.entries(hostActionTelemetryLabels)) {
+      maybeBackfillResultCardLabel(
+        key,
+        localized,
+        englishHostActionTelemetryLabels[key as keyof typeof englishHostActionTelemetryLabels]
+      )
+    }
+
     const englishResultCardFieldMessages = resultCardFieldBackfills['en-US'].messages
     for (const [key, localized] of Object.entries(resultCardFieldCopy.messages)) {
       maybeBackfillResultCardMessage(
@@ -2791,6 +3246,11 @@ export function buildLocalePostMergeBackfill(
         englishResultCardFieldMessages[key as keyof typeof englishResultCardFieldMessages]
       )
     }
+    maybeBackfillResultCardMessage(
+      'host_action_completed',
+      resultCardHostActionCompletedPlainMessages[localeKey],
+      resultCardHostActionCompletedPlainMessages['en-US']
+    )
     maybeBackfillResultCardMessage(
       'host_action_completed_and_submitted',
       resultCardHostActionCompletedMessages[localeKey],
@@ -2820,6 +3280,12 @@ export function buildLocalePostMergeBackfill(
     )
     maybeBackfillResultCardValue(
       'fallbacks',
+      'click',
+      resultCardClickValues[localeKey],
+      resultCardClickValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'fallbacks',
       'clipboard',
       resultCardClipboardValues[localeKey],
       resultCardClipboardValues['en-US']
@@ -2830,12 +3296,36 @@ export function buildLocalePostMergeBackfill(
       resultCardFocusedTextValues[localeKey],
       resultCardFocusedTextValues['en-US']
     )
+    maybeBackfillResultCardValue(
+      'fallbacks',
+      'input_click',
+      resultCardInputClickValues[localeKey],
+      resultCardInputClickValues['en-US']
+    )
     maybeBackfillResultCardValue('host_os', 'darwin', 'macOS', 'Darwin')
     maybeBackfillResultCardValue(
       'input_method',
       'clipboard',
       resultCardClipboardValues[localeKey],
       resultCardClipboardValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'input_method',
+      'input_click',
+      resultCardInputClickValues[localeKey],
+      resultCardInputClickValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'intent',
+      'click',
+      resultCardClickValues[localeKey],
+      resultCardClickValues['en-US']
+    )
+    maybeBackfillResultCardValue(
+      'verification_method',
+      'input_action',
+      resultCardInputActionValues[localeKey],
+      resultCardInputActionValues['en-US']
     )
     maybeBackfillResultCardValue(
       'verification_method',

@@ -40,14 +40,22 @@ function createTestI18n(locale = 'en-US') {
             analyze: 'analyze',
           },
           labels: {
+            action_ms: 'Action Time (ms)',
+            cache_hit: 'Cache Hit',
+            candidate_count: 'Candidate Count',
             execution_mode: 'Execution Mode',
+            end_to_end_ms: 'End-to-End Time (ms)',
             final_url: 'Final URL',
+            host_os: 'Host OS',
             title: 'Title',
             checkpoint: 'Checkpoint',
             pending: 'Pending',
             completed: 'Completed',
             fallbacks: 'Fallbacks',
             input_method: 'Input Method',
+            intent: 'Intent',
+            node_count: 'Node Count',
+            snapshot_revision: 'Snapshot Revision',
             target_id: 'Target ID',
             target_hit: 'Target Hit',
             strategy: 'Strategy',
@@ -60,23 +68,31 @@ function createTestI18n(locale = 'en-US') {
             fallback_reason: 'Fallback Reason',
             verification_method: 'Verification Method',
             verification_passed: 'Verification Passed',
+            window_id: 'Window ID',
           },
           values: {
             execution_mode: {
               input: 'Input',
             },
             fallbacks: {
+              click: 'Click',
               clipboard: 'Clipboard',
               focused_text: 'Focused Text',
+              input_click: 'Input Click',
             },
             input_method: {
               clipboard: 'Clipboard',
+              input_click: 'Input Click',
+            },
+            intent: {
+              click: 'Click',
             },
             strategy: {
               strict: 'Strict',
             },
             verification_method: {
               focused_text: 'Focused Text',
+              input_action: 'Input Action',
             },
           },
           actions: {
@@ -96,6 +112,7 @@ function createTestI18n(locale = 'en-US') {
             browser_scroll_direction_right: 'right',
             no_result_data: 'No result data',
             file_written_successfully: 'File written successfully',
+            host_action_completed: 'Host action completed',
             host_action_completed_and_submitted: 'Host action completed and submitted',
             keys_sent: 'Keys sent',
             navigation_failed_url_not_allowed: 'Navigation failed: URL not allowed',
@@ -139,6 +156,23 @@ function createTestI18n(locale = 'en-US') {
             screenshot_captured_for: 'Screenshot captured for {target}',
             screenshot_captured_for_tab: 'Screenshot captured for tab {target}',
           },
+          directoryListing: {
+            entriesIn: '{count} entries in {basePath}',
+            oneEntryIn: '1 entry in {basePath}',
+            noEntriesIn: 'No entries in {basePath}',
+            showingFirstEntriesInMoreOmitted:
+              'Showing first {count} entries in {basePath} (more omitted)',
+            matchesForIn: '{count} matches for {pattern} in {basePath}',
+            noMatchesForIn: 'No matches for {pattern} in {basePath}',
+            matchesIn: '{count} matches in {basePath}',
+            noMatchesIn: 'No matches in {basePath}',
+          },
+          badges: {
+            list: 'LIST',
+            find: 'FIND',
+            dir: 'DIR',
+            file: 'FILE',
+          },
           warnings: {
             listing_truncated: 'Listing was truncated; narrow the path or increase max_entries.',
           },
@@ -176,14 +210,22 @@ function createTestI18n(locale = 'en-US') {
             analyze: '分析',
           },
           labels: {
+            action_ms: '操作耗时 (ms)',
+            cache_hit: '命中缓存',
+            candidate_count: '候选数量',
             execution_mode: '执行模式',
+            end_to_end_ms: '端到端耗时 (ms)',
             final_url: '最终 URL',
+            host_os: '主机系统',
             title: '标题',
             checkpoint: '检查点',
             pending: '待处理',
             completed: '已完成',
             fallbacks: '回退方式',
             input_method: '输入方式',
+            intent: '意图',
+            node_count: '节点数量',
+            snapshot_revision: '快照修订号',
             target_id: '目标 ID',
             target_hit: '目标命中',
             strategy: '策略',
@@ -196,23 +238,31 @@ function createTestI18n(locale = 'en-US') {
             fallback_reason: '回退原因',
             verification_method: '验证方式',
             verification_passed: '验证通过',
+            window_id: '窗口 ID',
           },
           values: {
             execution_mode: {
               input: '输入',
             },
             fallbacks: {
+              click: '点击',
               clipboard: '剪贴板',
               focused_text: '聚焦文本',
+              input_click: '输入点击',
             },
             input_method: {
               clipboard: '剪贴板',
+              input_click: '输入点击',
+            },
+            intent: {
+              click: '点击',
             },
             strategy: {
               strict: '严格',
             },
             verification_method: {
               focused_text: '聚焦文本',
+              input_action: '输入操作',
             },
           },
           actions: {
@@ -231,6 +281,7 @@ function createTestI18n(locale = 'en-US') {
             browser_scroll_direction_right: '右',
             no_result_data: '没有结果数据',
             file_written_successfully: '文件写入成功',
+            host_action_completed: '主机操作已完成',
             host_action_completed_and_submitted: '主机操作已完成并提交',
             keys_sent: '按键已发送',
             navigation_failed_url_not_allowed: '导航失败：URL 不被允许',
@@ -271,6 +322,22 @@ function createTestI18n(locale = 'en-US') {
               '页面：{title} ({url})\n\n主要内容：\n{content}\n\n{section}：\n{body}',
             screenshot_captured_for: '已为 {target} 捕获截图',
             screenshot_captured_for_tab: '已为标签页 {target} 捕获截图',
+          },
+          directoryListing: {
+            entriesIn: '{basePath} 中有 {count} 个条目',
+            oneEntryIn: '{basePath} 中有 1 个条目',
+            noEntriesIn: '{basePath} 中没有条目',
+            showingFirstEntriesInMoreOmitted: '显示 {basePath} 中前 {count} 个条目（更多已省略）',
+            matchesForIn: '{basePath} 中找到 {count} 处匹配 {pattern}',
+            noMatchesForIn: '{basePath} 中未找到 {pattern} 的匹配',
+            matchesIn: '{basePath} 中有 {count} 处匹配',
+            noMatchesIn: '{basePath} 中没有匹配',
+          },
+          badges: {
+            list: '列表',
+            find: '查找',
+            dir: '目录',
+            file: '文件',
           },
           warnings: {
             listing_truncated: '列表已截断；请缩小路径范围或增大 max_entries。',
@@ -444,6 +511,69 @@ describe('CardResult', () => {
     expect(wrapper.text()).toContain('输入')
     expect(wrapper.text()).not.toContain('Keys sent')
     expect(wrapper.text()).not.toContain('execution_mode')
+  })
+
+  it('translates host action telemetry labels and values from the runtime payload', () => {
+    const wrapper = mount(CardResult, {
+      props: {
+        card: {
+          type: 'result',
+          title: 'computer_use',
+          status: 'success',
+          message: 'Host action completed',
+          details: [
+            { label: 'action_ms', value: 66 },
+            { label: 'cache_hit', value: true },
+            { label: 'candidate_count', value: 1 },
+            { label: 'end_to_end_ms', value: 66 },
+            { label: 'execution_mode', value: 'input' },
+            { label: 'fallbacks', value: ['click', 'input_click'] },
+            { label: 'host_os', value: 'macOS' },
+            { label: 'input_method', value: 'input_click' },
+            { label: 'intent', value: 'click' },
+            { label: 'node_count', value: 20 },
+            { label: 'snapshot_revision', value: 19 },
+            { label: 'target_hit', value: true },
+            { label: 'verification_method', value: 'input_action' },
+            { label: 'verification_passed', value: true },
+            { label: 'window_id', value: 176 },
+          ],
+        },
+      },
+      global: {
+        plugins: [createTestI18n('zh-CN')],
+      },
+    })
+
+    expect(wrapper.text()).toContain('主机操作已完成')
+    expect(wrapper.text()).toContain('操作耗时 (ms)')
+    expect(wrapper.text()).toContain('命中缓存')
+    expect(wrapper.text()).toContain('候选数量')
+    expect(wrapper.text()).toContain('端到端耗时 (ms)')
+    expect(wrapper.text()).toContain('执行模式')
+    expect(wrapper.text()).toContain('输入')
+    expect(wrapper.text()).toContain('回退方式')
+    expect(wrapper.text()).toContain('点击')
+    expect(wrapper.text()).toContain('输入点击')
+    expect(wrapper.text()).toContain('输入方式')
+    expect(wrapper.text()).toContain('意图')
+    expect(wrapper.text()).toContain('节点数量')
+    expect(wrapper.text()).toContain('快照修订号')
+    expect(wrapper.text()).toContain('验证方式')
+    expect(wrapper.text()).toContain('输入操作')
+    expect(wrapper.text()).toContain('验证通过')
+    expect(wrapper.text()).toContain('窗口 ID')
+    expect(wrapper.text()).toContain('是')
+    expect(wrapper.text()).not.toContain('Host action completed')
+    expect(wrapper.text()).not.toContain('action_ms')
+    expect(wrapper.text()).not.toContain('cache_hit')
+    expect(wrapper.text()).not.toContain('candidate_count')
+    expect(wrapper.text()).not.toContain('end_to_end_ms')
+    expect(wrapper.text()).not.toContain('input_click')
+    expect(wrapper.text()).not.toContain('input_action')
+    expect(wrapper.text()).not.toContain('intent')
+    expect(wrapper.text()).not.toContain('node_count')
+    expect(wrapper.text()).not.toContain('snapshot_revision')
   })
 
   it('keeps inline detail labels visually separated from their values', () => {

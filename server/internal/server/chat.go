@@ -2846,6 +2846,9 @@ func pseudoDirectiveStartIndex(delta string, allowedTools []llm.Tool) int {
 	if idx := pseudoJSONToolCallStartIndex(maskedDelta, allowedTools); idx >= 0 {
 		mark(idx)
 	}
+	if matches := extractRecoverableRequestPseudoToolEnvelopes(maskedDelta, allowedTools); len(matches) > 0 {
+		mark(matches[0].Start)
+	}
 	if idx := pseudoXMLToolTagStartIndex(maskedDelta, allowedTools); idx >= 0 {
 		mark(idx)
 	}
@@ -2977,6 +2980,11 @@ func looksLikeToolProtocolDeliberationLeak(s string) bool {
 		return true
 	}
 	lower := strings.ToLower(trimmed)
+	if strings.Contains(lower, "request tool=") &&
+		strings.Contains(lower, "args=") &&
+		(strings.Contains(lower, "msg_index=") || strings.Contains(lower, "total_msgs=") || strings.Contains(lower, "count=")) {
+		return true
+	}
 
 	hasFunctionToken := strings.Contains(lower, "functions.web_query") ||
 		strings.Contains(lower, "functions.web_search") ||
@@ -3045,6 +3053,11 @@ func isPseudoDirectiveNoiseChunk(delta string) bool {
 			strings.Contains(lower, `"max_results":`) ||
 			strings.Contains(lower, `"region":"`) ||
 			strings.Contains(lower, `"query":"`)) {
+		return true
+	}
+	if strings.Contains(lower, "request tool=") &&
+		strings.Contains(lower, "args=") &&
+		(strings.Contains(lower, "msg_index=") || strings.Contains(lower, "total_msgs=") || strings.Contains(lower, "count=")) {
 		return true
 	}
 	if looksLikeXMLToolCallLeak(s) {

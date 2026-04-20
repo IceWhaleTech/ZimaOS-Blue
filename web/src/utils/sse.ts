@@ -66,6 +66,7 @@ function isNetworkError(err: unknown): boolean {
 
 const MAX_CONNECT_RETRIES = 2
 const CONNECT_RETRY_DELAY = 2000
+const FINAL_DONE_FALLBACK_MS = 1500
 const RE_AWAITING_USER_INPUT = /<awaiting_user_input>\s*true\s*<\/awaiting_user_input>/gi
 const RE_ASK_GATE_BLOCK = /<ask_gate>[\s\S]*?<\/ask_gate>/gi
 
@@ -76,6 +77,15 @@ function stripControlMarkers(delta: string): { cleaned: string; awaiting: boolea
   RE_ASK_GATE_BLOCK.lastIndex = 0
   const cleaned = delta.replace(RE_AWAITING_USER_INPUT, '').replace(RE_ASK_GATE_BLOCK, '')
   return { cleaned, awaiting }
+}
+
+function hasMeaningfulFinalChunk(finalChunk?: StreamChunk): boolean {
+  if (!finalChunk) return false
+  if (finalChunk.empty_response) return true
+  if (typeof finalChunk.message_id === 'string' && finalChunk.message_id.trim()) return true
+  if (typeof finalChunk.content === 'string' && finalChunk.content.length > 0) return true
+  if (typeof finalChunk.delta === 'string' && finalChunk.delta.length > 0) return true
+  return false
 }
 
 export class SSEClient {
@@ -100,6 +110,34 @@ export class SSEClient {
     let connectAttempt = 0
 
     while (connectAttempt <= MAX_CONNECT_RETRIES && this.isConnected) {
+      let finalChunkData: StreamChunk | undefined
+      let finalChunkFallbackTimer: ReturnType<typeof setTimeout> | null = null
+      let finalChunkFallbackPromise:
+        | Promise<{ timedOut: true }>
+        | Promise<{
+            done: boolean
+            value?: Uint8Array
+          }>
+        | null = null
+
+      const clearFinalChunkFallback = () => {
+        if (finalChunkFallbackTimer) {
+          clearTimeout(finalChunkFallbackTimer)
+          finalChunkFallbackTimer = null
+        }
+        finalChunkFallbackPromise = null
+      }
+
+      const armFinalChunkFallback = () => {
+        clearFinalChunkFallback()
+        finalChunkFallbackPromise = new Promise<{ timedOut: true }>((resolve) => {
+          finalChunkFallbackTimer = setTimeout(
+            () => resolve({ timedOut: true }),
+            FINAL_DONE_FALLBACK_MS
+          )
+        })
+      }
+
       try {
         const token = getStoredAccessToken()
         const headers: Record<string, string> = {
@@ -214,14 +252,30 @@ export class SSEClient {
 
         const decoder = new TextDecoder()
         let buffer = ''
-        let finalChunkData: StreamChunk | undefined
 
         while (this.isConnected) {
-          const { done, value } = await reader.read()
+          const nextRead = reader.read() as Promise<{ done: boolean; value?: Uint8Array }>
+          const readResult = finalChunkFallbackPromise
+            ? await Promise.race([nextRead, finalChunkFallbackPromise])
+            : await nextRead
+
+          if ('timedOut' in readResult) {
+            clearFinalChunkFallback()
+            if (!receivedData && !hasMeaningfulFinalChunk(finalChunkData)) {
+              options.onError?.(new Error('PROVIDER_NO_RESPONSE'))
+            } else {
+              options.onComplete?.(finalChunkData)
+            }
+            this.isConnected = false
+            break
+          }
+
+          const { done, value } = readResult
 
           if (done) {
+            clearFinalChunkFallback()
             // Stream closed without [DONE] - check if we received any data
-            if (!receivedData) {
+            if (!receivedData && !hasMeaningfulFinalChunk(finalChunkData)) {
               options.onError?.(new Error('STREAM_EMPTY'))
             } else {
               // Stream closed — treat as complete even if done:true chunk was missing.
@@ -241,9 +295,10 @@ export class SSEClient {
               const data = line.slice(6).trim()
 
               if (data === '[DONE]') {
+                clearFinalChunkFallback()
                 // [DONE] arrives after the server has persisted the message to DB.
                 // Fire onComplete here (not on done:true) so fetchMessages sees the saved data.
-                if (!receivedData) {
+                if (!receivedData && !hasMeaningfulFinalChunk(finalChunkData)) {
                   options.onError?.(new Error('PROVIDER_NO_RESPONSE'))
                 } else {
                   options.onComplete?.(finalChunkData)
@@ -336,6 +391,7 @@ export class SSEClient {
                 }
                 // Check for error in chunk
                 if (chunk.error) {
+                  clearFinalChunkFallback()
                   options.onError?.(new Error(chunk.error))
                   this.isConnected = false
                   break
@@ -389,7 +445,7 @@ export class SSEClient {
                   continue
                 }
                 // Mark that we received actual content
-                if (chunk.delta) {
+                if (chunk.delta || hasMeaningfulFinalChunk(chunk)) {
                   receivedData = true
                 }
                 options.onMessage(chunk)
@@ -422,6 +478,7 @@ export class SSEClient {
                   } else {
                     finalChunkData = chunk
                   }
+                  armFinalChunkFallback()
                 }
               } catch {
                 // Ignore parse errors for non-JSON data
@@ -465,6 +522,7 @@ export class SSEClient {
         options.onError?.(error instanceof Error ? error : new Error(String(error)))
         return
       } finally {
+        clearFinalChunkFallback()
         // Only clean up if we're not going to retry
         if (connectAttempt > MAX_CONNECT_RETRIES || !this.isConnected) {
           this.isConnected = false

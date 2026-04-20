@@ -8,12 +8,14 @@ const requiredLabelKeys = [
   'provider',
   'mode',
   'has_results',
+  'omitted_results',
   'selected_result',
   'key_facts',
   'key_factsanalysis',
   'research_artifact_path',
   'llm_compacted',
   'materialized',
+  'search_card_emitted',
 ] as const
 
 const localeModules = import.meta.glob('@/i18n/locales/*.ts', { eager: true }) as Record<
@@ -70,9 +72,11 @@ describe('web query result-card locale coverage', () => {
         'input',
         'provider',
         'has_results',
+        'omitted_results',
         'key_facts',
         'llm_compacted',
         'materialized',
+        'search_card_emitted',
       ]) {
         expect(
           getPathValue(enhancedMessages, `resultCard.labels.${key}`),

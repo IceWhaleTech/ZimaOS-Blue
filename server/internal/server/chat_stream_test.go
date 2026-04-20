@@ -6607,6 +6607,119 @@ func TestStreamMessage_UsesSmallModelToRepairCodexPseudoToolDirective(t *testing
 	}
 }
 
+func TestStreamMessage_RecoversRequestToolEnvelopeComputerUseIntoRealToolExecution(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Recovered request tool envelope computer use stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	pseudoContent := `request tool=computer_use args="\"{\\\"action\\\":\\\"message\\\",\\\"app_name\\\":\\\"飞书\\\",\\\"conversation\\\":\\\"后端之家\\\",\\\"intent\\\":\\\"send_greeting\\\",\\\"value\\\":\\\"嗨！我是 blue，这是从我的 ZimaOS Blue 助手发来的招呼信息\\\",\\\"submit\\\":true}\"" count=1 msg_index=65 total_msgs=67`
+	scripted := &scriptedChatProvider{
+		name: "scripted-stream-computer-use-request-envelope",
+		responses: []llm.ChatResponse{
+			{
+				ID:    "stream-computer-use-request-envelope-round-1",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: pseudoContent,
+				},
+			},
+			{
+				ID:    "stream-computer-use-request-envelope-round-2",
+				Model: "gpt-5.3-codex-spark",
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: "已经在飞书会话【后端之家】里发出问候。",
+				},
+			},
+		},
+	}
+	registry.Register(scripted)
+
+	toolRegistry := tools.NewRegistry()
+	computerUseMock := &computerUseScenarioToolMock{}
+	toolRegistry.Register(computerUseMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我在飞书桌面应用上和【后端之家】打一个招呼，告诉他们是Blue发送的消息，你可以使用辅助（computer_use）工具来完成","provider":"scripted-stream-computer-use-request-envelope","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages/stream", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.StreamMessage(c); err != nil {
+		t.Fatalf("StreamMessage error: %v", err)
+	}
+
+	body := rec.Body.String()
+	if strings.Contains(body, "request tool=computer_use") {
+		t.Fatalf("expected request tool pseudo-call leakage to be suppressed from stream body, got=%s", body)
+	}
+	if !strings.Contains(body, "已经在飞书会话【后端之家】里发出问候。") {
+		t.Fatalf("expected final content in stream body, got=%s", body)
+	}
+	if !strings.Contains(body, `"done":true`) {
+		t.Fatalf("expected final done chunk, body=%s", body)
+	}
+	if scripted.CallCount() != 2 {
+		t.Fatalf("expected 2 LLM rounds (pseudo + post-tool summary), got %d", scripted.CallCount())
+	}
+
+	calls := computerUseMock.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("computer_use calls = %d, want 1", len(calls))
+	}
+	if got := anyToStringForLLM(calls[0]["action"]); got != "message" {
+		t.Fatalf("computer_use action = %q, want message", got)
+	}
+	if got := anyToStringForLLM(calls[0]["conversation"]); got != "后端之家" {
+		t.Fatalf("computer_use conversation = %q, want 后端之家", got)
+	}
+
+	secondReq, ok := scripted.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	var sawToolResult bool
+	for _, msg := range secondReq.Messages {
+		if msg.Role == llm.RoleTool && msg.ToolName == "computer_use" && strings.Contains(msg.Content, "Host action completed and submitted") {
+			sawToolResult = true
+		}
+		if msg.Role == llm.RoleUser && strings.Contains(msg.Content, "Now actually execute by calling available tools") {
+			t.Fatalf("expected recovered computer_use execution instead of generic execution nudge, got user message %q", msg.Content)
+		}
+	}
+	if !sawToolResult {
+		t.Fatalf("expected second request to include recovered computer_use tool result, got %#v", secondReq.Messages)
+	}
+
+	messages, err := store.GetMessages(context.Background(), conv.ID, 20, 0)
+	if err != nil {
+		t.Fatalf("failed to load persisted messages: %v", err)
+	}
+	for _, m := range messages {
+		if m.Role != "assistant" {
+			continue
+		}
+		if strings.Contains(m.Content, "request tool=computer_use") {
+			t.Fatalf("expected recovered pseudo tool-call text to be discarded from persisted assistant messages, got=%q", m.Content)
+		}
+	}
+}
+
 func TestStreamMessage_FileReadToolResultPreservesMidFileContentInFollowUpRound(t *testing.T) {
 	store, err := memory.NewStore(":memory:")
 	if err != nil {

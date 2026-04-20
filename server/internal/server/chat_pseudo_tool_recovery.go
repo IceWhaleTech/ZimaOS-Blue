@@ -30,6 +30,8 @@ var pseudoXMLCompatAliasGroups = map[string][]string{
 	"write":       {"write", "write_file", "file_write"},
 }
 
+var reRequestPseudoToolEnvelope = regexp.MustCompile(`(?is)\brequest\s+tool\s*=\s*([[:alnum:]_.:-]+)\s+args\s*=`)
+
 var defaultPseudoXMLToolNames = []string{
 	"analyze",
 	"ask",
@@ -67,6 +69,9 @@ func recoverPseudoToolCallsFromContent(content string, allowedTools []llm.Tool) 
 	}
 	maskedContent := maskPseudoRecoveryExcludedRanges(content, allowedTools)
 	var recovered []llm.ToolCall
+	if requestCalls, ok := recoverRequestPseudoToolCallsFromContent(maskedContent, allowedTools); ok {
+		recovered = append(recovered, requestCalls...)
+	}
 	if jsonCalls, ok := recoverBareJSONPseudoToolCallsFromContent(maskedContent, allowedTools); ok {
 		recovered = append(recovered, jsonCalls...)
 	}
@@ -92,6 +97,134 @@ func recoverPseudoToolCallsFromContent(content string, allowedTools []llm.Tool) 
 		return nil, false
 	}
 	return recovered, true
+}
+
+type recoverableRequestPseudoToolEnvelope struct {
+	Start int
+	End   int
+	Call  llm.ToolCall
+}
+
+func recoverRequestPseudoToolCallsFromContent(content string, allowedTools []llm.Tool) ([]llm.ToolCall, bool) {
+	matches := extractRecoverableRequestPseudoToolEnvelopes(content, allowedTools)
+	if len(matches) == 0 {
+		return nil, false
+	}
+	recovered := make([]llm.ToolCall, 0, len(matches))
+	for _, match := range matches {
+		recovered = append(recovered, match.Call)
+	}
+	if len(recovered) == 0 {
+		return nil, false
+	}
+	return recovered, true
+}
+
+func extractRecoverableRequestPseudoToolEnvelopes(content string, allowedTools []llm.Tool) []recoverableRequestPseudoToolEnvelope {
+	if strings.TrimSpace(content) == "" || len(allowedTools) == 0 {
+		return nil
+	}
+	locs := reRequestPseudoToolEnvelope.FindAllStringSubmatchIndex(content, -1)
+	if len(locs) == 0 {
+		return nil
+	}
+	recovered := make([]recoverableRequestPseudoToolEnvelope, 0, len(locs))
+	for _, loc := range locs {
+		if len(loc) < 4 {
+			continue
+		}
+		rawToolName := strings.TrimSpace(content[loc[2]:loc[3]])
+		if rawToolName == "" {
+			continue
+		}
+		argsValue, consumed, ok := extractRequestPseudoToolEnvelopeArgs(content[loc[1]:])
+		if !ok {
+			continue
+		}
+		name, ok := resolveRecoveredPseudoToolName(rawToolName, allowedTools)
+		if !ok {
+			continue
+		}
+		arguments, ok := marshalRecoveredPseudoToolArgs(name, argsValue, allowedTools)
+		if !ok {
+			continue
+		}
+		recovered = append(recovered, recoverableRequestPseudoToolEnvelope{
+			Start: loc[0],
+			End:   loc[1] + consumed,
+			Call: llm.ToolCall{
+				Name:      name,
+				Arguments: arguments,
+			},
+		})
+	}
+	if len(recovered) == 0 {
+		return nil
+	}
+	return recovered
+}
+
+func extractRequestPseudoToolEnvelopeArgs(input string) (interface{}, int, bool) {
+	s := strings.TrimLeft(input, " \t\r\n")
+	consumedPrefix := len(input) - len(s)
+	if s == "" {
+		return nil, 0, false
+	}
+	switch s[0] {
+	case '"', '\'':
+		rawValue, remaining, ok := consumePseudoToolCodeQuotedValue(s, s[0])
+		if !ok {
+			return nil, 0, false
+		}
+		consumed := consumedPrefix + len(s) - len(remaining)
+		return normalizeRecoveredPseudoEnvelopeArgsValue(rawValue), consumed, true
+	case '{', '[':
+		fragment, ok := extractBalancedJSONFragment(s)
+		if !ok {
+			return nil, 0, false
+		}
+		return normalizeRecoveredPseudoEnvelopeArgsValue(fragment), consumedPrefix + len(fragment), true
+	default:
+		valueEnd := 0
+		for valueEnd < len(s) && !isPseudoToolCodeWhitespace(s[valueEnd]) {
+			valueEnd++
+		}
+		if valueEnd == 0 {
+			return nil, 0, false
+		}
+		return normalizeRecoveredPseudoEnvelopeArgsValue(s[:valueEnd]), consumedPrefix + valueEnd, true
+	}
+}
+
+func normalizeRecoveredPseudoEnvelopeArgsValue(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case string:
+		current := strings.TrimSpace(typed)
+		for i := 0; i < 4 && current != ""; i++ {
+			var decoded interface{}
+			if err := json.Unmarshal([]byte(current), &decoded); err == nil {
+				if nested, ok := decoded.(string); ok {
+					current = strings.TrimSpace(nested)
+					continue
+				}
+				return normalizeRecoveredPseudoWrapperArgsValue(decoded)
+			}
+			if len(current) >= 2 && current[0] == '"' && current[len(current)-1] == '"' {
+				if unquoted, err := strconv.Unquote(current); err == nil {
+					current = strings.TrimSpace(unquoted)
+					continue
+				}
+			}
+			if len(current) >= 2 && current[0] == '\'' && current[len(current)-1] == '\'' {
+				current = strings.TrimSpace(current[1 : len(current)-1])
+				continue
+			}
+			break
+		}
+		return normalizeRecoveredPseudoWrapperArgsValue(current)
+	default:
+		return normalizeRecoveredPseudoWrapperArgsValue(value)
+	}
 }
 
 func recoverBareJSONPseudoToolCallsFromContent(content string, allowedTools []llm.Tool) ([]llm.ToolCall, bool) {
@@ -572,6 +705,12 @@ func pseudoRecoverySnippetRangeAt(content string, start int, allowedTools []llm.
 	if start < 0 || start >= len(content) {
 		return 0, 0, false
 	}
+	if strings.HasPrefix(strings.ToLower(content[start:]), "request tool=") {
+		matches := extractRecoverableRequestPseudoToolEnvelopes(content[start:], allowedTools)
+		if len(matches) > 0 {
+			return start + matches[0].Start, start + matches[0].End, true
+		}
+	}
 	switch content[start] {
 	case '[':
 		if loc := rePseudoBracketedToolCallBlock.FindStringIndex(content[start:]); len(loc) == 2 && loc[0] == 0 {
@@ -802,6 +941,9 @@ func pseudoLineContainsLikelyPseudoSnippet(line string) bool {
 	}
 	if strings.Contains(lower, `"arguments"`) &&
 		(strings.Contains(lower, `"name"`) || strings.Contains(lower, `"tool_calls"`) || strings.Contains(lower, `"function"`)) {
+		return true
+	}
+	if strings.Contains(lower, "request tool=") && strings.Contains(lower, "args=") {
 		return true
 	}
 	return looksLikeDirectXMLPseudoToolCall(trimmed)

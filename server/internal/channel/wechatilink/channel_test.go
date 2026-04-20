@@ -71,10 +71,23 @@ func TestChannel_Send_UsesBotAPI(t *testing.T) {
 		if got := r.Header.Get("X-WECHAT-UIN"); strings.TrimSpace(got) == "" {
 			t.Fatal("expected X-WECHAT-UIN header to be set")
 		}
+		if got := r.Header.Get("iLink-App-Id"); got != "bot" {
+			t.Fatalf("iLink-App-Id = %q, want %q", got, "bot")
+		}
+		if got := r.Header.Get("iLink-App-ClientVersion"); strings.TrimSpace(got) == "" {
+			t.Fatal("expected iLink-App-ClientVersion header to be set")
+		}
 
 		var req struct {
+			BaseInfo struct {
+				ChannelVersion string `json:"channel_version"`
+			} `json:"base_info"`
 			Msg struct {
+				FromUserID   string `json:"from_user_id"`
 				ToUserID     string `json:"to_user_id"`
+				ClientID     string `json:"client_id"`
+				MessageType  int    `json:"message_type"`
+				MessageState int    `json:"message_state"`
 				ContextToken string `json:"context_token"`
 				ItemList     []struct {
 					Type     int `json:"type"`
@@ -89,6 +102,21 @@ func TestChannel_Send_UsesBotAPI(t *testing.T) {
 		}
 		if req.Msg.ToUserID != "wxid-user" {
 			t.Fatalf("to_user_id = %q, want %q", req.Msg.ToUserID, "wxid-user")
+		}
+		if req.Msg.FromUserID != "" {
+			t.Fatalf("from_user_id = %q, want empty", req.Msg.FromUserID)
+		}
+		if strings.TrimSpace(req.Msg.ClientID) == "" {
+			t.Fatal("expected client_id to be set")
+		}
+		if req.Msg.MessageType != 2 {
+			t.Fatalf("message_type = %d, want %d", req.Msg.MessageType, 2)
+		}
+		if req.Msg.MessageState != 2 {
+			t.Fatalf("message_state = %d, want %d", req.Msg.MessageState, 2)
+		}
+		if strings.TrimSpace(req.BaseInfo.ChannelVersion) == "" {
+			t.Fatal("expected base_info.channel_version to be set")
 		}
 		if req.Msg.ContextToken != "ctx-123" {
 			t.Fatalf("context_token = %q, want %q", req.Msg.ContextToken, "ctx-123")
@@ -127,6 +155,121 @@ func TestChannel_Send_UsesBotAPI(t *testing.T) {
 	}
 }
 
+func TestChannel_Send_UsesChatIDByDefaultEvenWhenConfiguredUserIDPresent(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/sendmessage" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req struct {
+			Msg struct {
+				FromUserID   string `json:"from_user_id"`
+				ToUserID     string `json:"to_user_id"`
+				ClientID     string `json:"client_id"`
+				MessageType  int    `json:"message_type"`
+				MessageState int    `json:"message_state"`
+			} `json:"msg"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.Msg.ToUserID != "wxid-user" {
+			t.Fatalf("to_user_id = %q, want %q", req.Msg.ToUserID, "wxid-user")
+		}
+		if req.Msg.FromUserID != "" {
+			t.Fatalf("from_user_id = %q, want empty", req.Msg.FromUserID)
+		}
+		if strings.TrimSpace(req.Msg.ClientID) == "" {
+			t.Fatal("expected client_id to be set")
+		}
+		if req.Msg.MessageType != 2 {
+			t.Fatalf("message_type = %d, want %d", req.Msg.MessageType, 2)
+		}
+		if req.Msg.MessageState != 2 {
+			t.Fatalf("message_state = %d, want %d", req.Msg.MessageState, 2)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret": 0,
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL,
+		BotToken:   "bot-token",
+		UserID:     "userdb-user-id",
+	}, zap.NewNop())
+
+	err := ch.Send(context.Background(), channel.OutgoingMessage{
+		ChatID:  "wxid-user",
+		Content: "hello from Blue",
+	})
+	if err != nil {
+		t.Fatalf("Send error = %v", err)
+	}
+}
+
+func TestChannel_Send_AllowsExplicitTargetUserIDOverride(t *testing.T) {
+	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/ilink/bot/sendmessage" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		var req struct {
+			Msg struct {
+				FromUserID   string `json:"from_user_id"`
+				ToUserID     string `json:"to_user_id"`
+				ClientID     string `json:"client_id"`
+				MessageType  int    `json:"message_type"`
+				MessageState int    `json:"message_state"`
+			} `json:"msg"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.Msg.ToUserID != "explicit-target-user-id" {
+			t.Fatalf("to_user_id = %q, want %q", req.Msg.ToUserID, "explicit-target-user-id")
+		}
+		if req.Msg.FromUserID != "" {
+			t.Fatalf("from_user_id = %q, want empty", req.Msg.FromUserID)
+		}
+		if strings.TrimSpace(req.Msg.ClientID) == "" {
+			t.Fatal("expected client_id to be set")
+		}
+		if req.Msg.MessageType != 2 {
+			t.Fatalf("message_type = %d, want %d", req.Msg.MessageType, 2)
+		}
+		if req.Msg.MessageState != 2 {
+			t.Fatalf("message_state = %d, want %d", req.Msg.MessageState, 2)
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ret": 0,
+		})
+	}))
+	defer server.Close()
+
+	ch := New(channel.WeChatILinkConfig{
+		Enabled:    true,
+		APIBaseURL: server.URL,
+		BotToken:   "bot-token",
+		UserID:     "userdb-user-id",
+	}, zap.NewNop())
+
+	err := ch.Send(context.Background(), channel.OutgoingMessage{
+		ChatID:  "wxid-user",
+		Content: "hello from Blue",
+		Metadata: map[string]any{
+			"target_user_id": "explicit-target-user-id",
+		},
+	})
+	if err != nil {
+		t.Fatalf("Send error = %v", err)
+	}
+}
+
 func TestChannel_Start_PollsIncomingMessages(t *testing.T) {
 	var calls atomic.Int32
 	server := newTCP4Server(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -141,6 +284,25 @@ func TestChannel_Start_PollsIncomingMessages(t *testing.T) {
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer bot-token" {
 			t.Fatalf("Authorization = %q, want Bearer bot-token", got)
+		}
+		if got := r.Header.Get("iLink-App-Id"); got != "bot" {
+			t.Fatalf("iLink-App-Id = %q, want %q", got, "bot")
+		}
+		if got := r.Header.Get("iLink-App-ClientVersion"); strings.TrimSpace(got) == "" {
+			t.Fatal("expected iLink-App-ClientVersion header to be set")
+		}
+
+		var req struct {
+			GetUpdatesBuf string `json:"get_updates_buf"`
+			BaseInfo      struct {
+				ChannelVersion string `json:"channel_version"`
+			} `json:"base_info"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if strings.TrimSpace(req.BaseInfo.ChannelVersion) == "" {
+			t.Fatal("expected base_info.channel_version to be set")
 		}
 
 		call := calls.Add(1)
@@ -215,6 +377,9 @@ func TestChannel_Start_PollsIncomingMessages(t *testing.T) {
 		}
 		if got := msg.Metadata["context_token"]; got != "ctx-1" {
 			t.Fatalf("context_token = %v, want %q", got, "ctx-1")
+		}
+		if got := msg.Metadata["target_user_id"]; got != "wxid-user" {
+			t.Fatalf("target_user_id = %v, want %q", got, "wxid-user")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for iLink message")

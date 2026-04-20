@@ -496,6 +496,80 @@ describe('SSE Client', () => {
       expect(onError).not.toHaveBeenCalled()
     })
 
+    it('falls back to the final done chunk when [DONE] never arrives after completion', async () => {
+      vi.useFakeTimers()
+
+      try {
+        const encoder = new TextEncoder()
+        let callCount = 0
+        let resolveBlockedRead:
+          | ((value: { done: boolean; value: Uint8Array | undefined }) => void)
+          | null = null
+        const mockReader = {
+          read: vi.fn().mockImplementation(() => {
+            callCount++
+            if (callCount === 1) {
+              return Promise.resolve({
+                done: false,
+                value: encoder.encode('data: {"delta":"Final answer"}\n\n'),
+              })
+            }
+            if (callCount === 2) {
+              return Promise.resolve({
+                done: false,
+                value: encoder.encode(
+                  'data: {"delta":"","done":true,"message_id":"msg-final-timeout","provider":"openai","model":"gpt-4o-mini"}\n\n'
+                ),
+              })
+            }
+            return new Promise((resolve) => {
+              resolveBlockedRead = resolve
+            })
+          }),
+        }
+
+        const mockFetch = vi.fn().mockResolvedValue({
+          ok: true,
+          body: { getReader: () => mockReader },
+        })
+        global.fetch = mockFetch
+
+        const onMessage = vi.fn()
+        const onError = vi.fn()
+        const onComplete = vi.fn()
+
+        const connectPromise = client.connect(
+          'conv-1',
+          { message: 'test', provider: 'openai', model: 'gpt-4o-mini' },
+          { onMessage, onError, onComplete }
+        )
+
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(onComplete).not.toHaveBeenCalled()
+
+        await vi.advanceTimersByTimeAsync(1500)
+
+        expect(onComplete).toHaveBeenCalledTimes(1)
+        expect(onComplete).toHaveBeenCalledWith(
+          expect.objectContaining({
+            done: true,
+            message_id: 'msg-final-timeout',
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+          })
+        )
+        expect(onError).not.toHaveBeenCalled()
+        expect(onMessage).toHaveBeenCalledTimes(2)
+
+        resolveBlockedRead?.({ done: true, value: undefined })
+        await connectPromise
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('smoke: should strip ask_gate marker and set awaiting_user_input', async () => {
       const encoder = new TextEncoder()
       let callCount = 0

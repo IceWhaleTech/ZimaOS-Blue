@@ -54,6 +54,28 @@ func TestValidator_ValidCredentials(t *testing.T) {
 		if got := r.Header.Get("X-WECHAT-UIN"); strings.TrimSpace(got) == "" {
 			t.Fatal("expected X-WECHAT-UIN header to be set")
 		}
+		if got := r.Header.Get("iLink-App-Id"); got != "bot" {
+			t.Fatalf("iLink-App-Id = %q, want %q", got, "bot")
+		}
+		if got := r.Header.Get("iLink-App-ClientVersion"); strings.TrimSpace(got) == "" {
+			t.Fatal("expected iLink-App-ClientVersion header to be set")
+		}
+
+		var req struct {
+			GetUpdatesBuf string `json:"get_updates_buf"`
+			BaseInfo      struct {
+				ChannelVersion string `json:"channel_version"`
+			} `json:"base_info"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if req.GetUpdatesBuf != "" {
+			t.Fatalf("get_updates_buf = %q, want empty", req.GetUpdatesBuf)
+		}
+		if strings.TrimSpace(req.BaseInfo.ChannelVersion) == "" {
+			t.Fatal("expected base_info.channel_version to be set")
+		}
 
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ret":             0,

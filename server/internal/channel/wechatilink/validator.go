@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -66,7 +67,13 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 		targetURL = resolveILinkBotBaseURL(v.baseURL) + "/getupdates"
 	}
 
-	payload := []byte(`{"get_updates_buf":""}`)
+	payload, err := json.Marshal(iLinkGetUpdatesRequest{
+		GetUpdatesBuf: "",
+		BaseInfo:      buildILinkBaseInfo(),
+	})
+	if err != nil {
+		return validator.NewErrorResult("connectionFailed", fmt.Sprintf("failed to marshal request: %v", err))
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(payload))
 	if err != nil {
 		return validator.NewErrorResult("connectionFailed", fmt.Sprintf("failed to create request: %v", err))
@@ -75,6 +82,8 @@ func (v *Validator) Validate(ctx context.Context, config map[string]string) vali
 	req.Header.Set("AuthorizationType", "ilink_bot_token")
 	req.Header.Set("Authorization", "Bearer "+botToken)
 	req.Header.Set("X-WECHAT-UIN", validatorILinkUINHeader())
+	req.Header.Set("iLink-App-Id", iLinkAppID)
+	req.Header.Set("iLink-App-ClientVersion", strconv.FormatUint(buildILinkClientVersion(resolveILinkChannelVersion()), 10))
 
 	resp, err := v.client.Do(req)
 	if err != nil {

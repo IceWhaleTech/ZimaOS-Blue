@@ -96,13 +96,17 @@ type stubScenePlannerLLM struct {
 	content string
 	err     error
 	chat    func(req llm.ChatRequest) (*llm.ChatResponse, error)
+	chatCtx func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error)
 }
 
 type stubFallbackVLM struct {
 	chat func(ctx context.Context, prompt string, imageBase64 string) (string, error)
 }
 
-func (s stubScenePlannerLLM) Chat(_ context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+func (s stubScenePlannerLLM) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	if s.chatCtx != nil {
+		return s.chatCtx(ctx, req)
+	}
 	if s.chat != nil {
 		return s.chat(req)
 	}
@@ -545,6 +549,48 @@ func TestFallbackSearchPromptAppendsPlannerEnglishSearchHintsWhenAvailable(t *te
 	}
 	if !containsString(queries, "snowy winter outdoor background landscape photo") {
 		t.Fatalf("queries = %v, want English background query", queries)
+	}
+}
+
+func TestSearchQueriesForPromptUsesThirtySecondPlannerTimeoutBudget(t *testing.T) {
+	engine := NewFallbackEngine(FallbackConfig{
+		Enabled:          true,
+		SearchMaxResults: 6,
+	}, nil, stubFallbackSearcher{}, func() FallbackBrowserService { return nil }, "zh-CN")
+
+	var remaining time.Duration
+	engine.SetScenePlannerLLM(stubScenePlannerLLM{
+		chatCtx: func(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+			deadline, ok := ctx.Deadline()
+			if !ok {
+				t.Fatal("planner context missing deadline")
+			}
+			remaining = time.Until(deadline)
+			return &llm.ChatResponse{
+				Message: llm.Message{
+					Role: llm.RoleAssistant,
+					Content: `{
+						"background": "data center",
+						"style": "editorial infographic",
+						"lighting": "studio",
+						"time_of_day": "day",
+						"weather": "clear",
+						"camera_view": "front",
+						"scene_query": "AI hardware cost comparison infographic",
+						"background_query": "clean tech background",
+						"foreground": []
+					}`,
+				},
+			}, nil
+		},
+	})
+
+	queries := engine.searchQueriesForPrompt(context.Background(), "Create a poster-style comparison chart about AI model hardware requirements and costs")
+	if len(queries) == 0 {
+		t.Fatal("expected planner-backed queries")
+	}
+	if remaining < 25*time.Second {
+		t.Fatalf("planner timeout budget = %v, want at least 25s", remaining)
 	}
 }
 

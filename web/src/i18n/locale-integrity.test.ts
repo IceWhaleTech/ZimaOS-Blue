@@ -300,6 +300,41 @@ describe('locale integrity', () => {
     }
   })
 
+  it('provides localized backend source and fallback reason labels in runtime locale merges', () => {
+    const entries = Object.entries(localeModules).sort(([a], [b]) => a.localeCompare(b))
+    const enUSEntry = entries.find(([modulePath]) => modulePath.endsWith('/en-US.ts'))
+
+    expect(enUSEntry).toBeTruthy()
+    if (!enUSEntry) {
+      throw new Error('Missing en-US locale module')
+    }
+
+    const referenceMessages = resolveRuntimeMessages('en-US', enUSEntry[1].default)
+    const protectedPaths = [
+      'resultCard.messages.backend_source',
+      'resultCard.messages.fallback_reason',
+    ] as const
+
+    for (const [modulePath, mod] of entries) {
+      const locale = localeFromModulePath(modulePath)
+      const runtimeMessages = resolveRuntimeMessages(locale, mod.default)
+
+      for (const path of protectedPaths) {
+        const value = getPathValue(runtimeMessages, path)
+        expect(typeof value, `${locale} missing runtime locale key ${path}`).toBe('string')
+        expect(String(value).trim().length, `${locale} empty runtime locale key ${path}`).toBeGreaterThan(
+          0
+        )
+
+        if (locale !== 'en-US' && locale !== 'en-GB') {
+          expect(value, `${locale} should translate ${path}`).not.toEqual(
+            getPathValue(referenceMessages, path)
+          )
+        }
+      }
+    }
+  })
+
   it('provides localized workspace tab labels in runtime locale merges for all 27 locales', () => {
     for (const [locale, labels] of Object.entries(workspaceNavigationLocaleBackfills)) {
       const rawMessages = localeMessages(locale)

@@ -61,7 +61,7 @@ const (
 	fallbackMaxHTMLBytes        = 1 << 20
 	fallbackMaxImageBytes       = 10 << 20
 
-	fallbackSearchPlannerTimeout       = 1200 * time.Millisecond
+	fallbackSearchPlannerTimeout       = 30 * time.Second
 	fallbackSearchStageTimeout         = 30 * time.Second
 	fallbackSearchQueryTimeout         = 12 * time.Second
 	fallbackSourceQueryTimeout         = 4 * time.Second

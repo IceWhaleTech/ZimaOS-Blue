@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,8 +28,11 @@ const (
 	channelName = "wechat_ilink"
 	channelType = "wechat_ilink"
 	iLinkBotAPI = "/ilink/bot"
+	iLinkAppID  = "bot"
 
 	iLinkMessageTypeUser = 1
+	iLinkMessageTypeBot  = 2
+	iLinkMessageStateFin = 2
 	iLinkItemTypeText    = 1
 	iLinkItemTypeImage   = 2
 	iLinkItemTypeVoice   = 3
@@ -201,8 +205,13 @@ func (c *Channel) Send(ctx context.Context, msg channel.OutgoingMessage) error {
 	}
 
 	req := iLinkSendMessageRequest{
+		BaseInfo: buildILinkBaseInfo(),
 		Msg: iLinkOutgoingMessage{
-			ToUserID:     msg.ChatID,
+			FromUserID:   "",
+			ToUserID:     c.resolveILinkTargetUserID(msg),
+			ClientID:     generateILinkClientID(),
+			MessageType:  iLinkMessageTypeBot,
+			MessageState: iLinkMessageStateFin,
 			ContextToken: c.resolveILinkContextToken(msg),
 			ItemList: []iLinkMessageItem{
 				{
@@ -303,7 +312,8 @@ type iLinkResponseEnvelope struct {
 }
 
 type iLinkGetUpdatesRequest struct {
-	GetUpdatesBuf string `json:"get_updates_buf"`
+	GetUpdatesBuf string        `json:"get_updates_buf"`
+	BaseInfo      iLinkBaseInfo `json:"base_info"`
 }
 
 type iLinkGetUpdatesResponse struct {
@@ -314,11 +324,16 @@ type iLinkGetUpdatesResponse struct {
 }
 
 type iLinkSendMessageRequest struct {
-	Msg iLinkOutgoingMessage `json:"msg"`
+	BaseInfo iLinkBaseInfo        `json:"base_info"`
+	Msg      iLinkOutgoingMessage `json:"msg"`
 }
 
 type iLinkOutgoingMessage struct {
+	FromUserID   string             `json:"from_user_id"`
 	ToUserID     string             `json:"to_user_id"`
+	ClientID     string             `json:"client_id"`
+	MessageType  int                `json:"message_type"`
+	MessageState int                `json:"message_state"`
 	ContextToken string             `json:"context_token,omitempty"`
 	ItemList     []iLinkMessageItem `json:"item_list"`
 }
@@ -346,6 +361,10 @@ type iLinkMessageItem struct {
 
 type iLinkTextItem struct {
 	Text string `json:"text"`
+}
+
+type iLinkBaseInfo struct {
+	ChannelVersion string `json:"channel_version"`
 }
 
 type iLinkNamedItem struct {
@@ -435,7 +454,10 @@ func (c *Channel) handleILinkIncomingMessages(messages []iLinkMessage) {
 
 func (c *Channel) ilinkGetUpdates(ctx context.Context, cursor string) (iLinkGetUpdatesResponse, error) {
 	var resp iLinkGetUpdatesResponse
-	if err := c.postILinkJSON(ctx, "getupdates", iLinkGetUpdatesRequest{GetUpdatesBuf: cursor}, &resp); err != nil {
+	if err := c.postILinkJSON(ctx, "getupdates", iLinkGetUpdatesRequest{
+		GetUpdatesBuf: cursor,
+		BaseInfo:      buildILinkBaseInfo(),
+	}, &resp); err != nil {
 		return resp, err
 	}
 	if err := validateILinkResponse(resp.iLinkResponseEnvelope); err != nil {
@@ -463,6 +485,8 @@ func (c *Channel) postILinkJSON(ctx context.Context, endpoint string, payload an
 	req.Header.Set("AuthorizationType", "ilink_bot_token")
 	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(c.config.BotToken))
 	req.Header.Set("X-WECHAT-UIN", c.ensureILinkUINHeader())
+	req.Header.Set("iLink-App-Id", iLinkAppID)
+	req.Header.Set("iLink-App-ClientVersion", strconv.FormatUint(buildILinkClientVersion(resolveILinkChannelVersion()), 10))
 
 	client := c.httpClient
 	if client == nil {
@@ -500,6 +524,62 @@ func resolveILinkBotBaseURL(raw string) string {
 		return baseURL
 	}
 	return baseURL + iLinkBotAPI
+}
+
+func buildILinkBaseInfo() iLinkBaseInfo {
+	return iLinkBaseInfo{ChannelVersion: resolveILinkChannelVersion()}
+}
+
+func resolveILinkChannelVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		version := strings.TrimSpace(info.Main.Version)
+		if version != "" && version != "(devel)" {
+			return version
+		}
+	}
+	return "unknown"
+}
+
+func buildILinkClientVersion(version string) uint64 {
+	version = strings.TrimSpace(strings.TrimPrefix(version, "v"))
+	if version == "" || version == "unknown" {
+		return 0
+	}
+	parts := strings.SplitN(version, ".", 3)
+	if len(parts) < 3 {
+		return 0
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0
+	}
+	minor, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0
+	}
+	patchPart := parts[2]
+	for i, ch := range patchPart {
+		if ch < '0' || ch > '9' {
+			patchPart = patchPart[:i]
+			break
+		}
+	}
+	if patchPart == "" {
+		return 0
+	}
+	patch, err := strconv.Atoi(patchPart)
+	if err != nil {
+		return 0
+	}
+	return uint64((major << 16) | (minor << 8) | patch)
+}
+
+func generateILinkClientID() string {
+	var raw [12]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return fmt.Sprintf("zimaos-ilink-%d", time.Now().UnixNano())
+	}
+	return "zimaos-ilink-" + base64.RawURLEncoding.EncodeToString(raw[:])
 }
 
 func validateILinkResponse(resp iLinkResponseEnvelope) error {
@@ -543,6 +623,15 @@ func (c *Channel) resolveILinkContextToken(msg channel.OutgoingMessage) string {
 	c.ilinkMu.RLock()
 	defer c.ilinkMu.RUnlock()
 	return c.ilinkContextTokens[msg.ChatID]
+}
+
+func (c *Channel) resolveILinkTargetUserID(msg channel.OutgoingMessage) string {
+	if msg.Metadata != nil {
+		if raw, ok := msg.Metadata["target_user_id"].(string); ok && strings.TrimSpace(raw) != "" {
+			return strings.TrimSpace(raw)
+		}
+	}
+	return strings.TrimSpace(msg.ChatID)
 }
 
 func (c *Channel) storeILinkContextToken(chatID, token string) {
@@ -591,9 +680,10 @@ func (c *Channel) convertILinkMessage(msg iLinkMessage) (channel.Message, bool) 
 		Attachments: attachments,
 		Timestamp:   timestamp,
 		Metadata: map[string]interface{}{
-			"context_token": msg.ContextToken,
-			"session_id":    msg.SessionID,
-			"to_user_id":    msg.ToUserID,
+			"context_token":  msg.ContextToken,
+			"session_id":     msg.SessionID,
+			"target_user_id": fromUserID,
+			"to_user_id":     msg.ToUserID,
 		},
 	}, true
 }

@@ -47,7 +47,7 @@ func channelReplyMetadataSubset(metadata map[string]interface{}) map[string]inte
 		return nil
 	}
 	var out map[string]interface{}
-	for _, key := range []string{"context_token", "session_id"} {
+	for _, key := range []string{"context_token", "session_id", "target_user_id"} {
 		value, ok := metadata[key]
 		if !ok {
 			continue
@@ -60,7 +60,7 @@ func channelReplyMetadataSubset(metadata map[string]interface{}) map[string]inte
 			value = text
 		}
 		if out == nil {
-			out = make(map[string]interface{}, 2)
+			out = make(map[string]interface{}, 3)
 		}
 		out[key] = value
 	}
