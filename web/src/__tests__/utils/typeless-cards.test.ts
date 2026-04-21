@@ -74,6 +74,20 @@ describe('Typeless Card Parsing', () => {
     expect(card.downloadUrl).toBe('/Users/orca/Documents/GitHub/ZimaOS-Blue')
   })
 
+  it('does not parse broken html tag fragments as local file cards', () => {
+    const content = [
+      '/html>',
+      '',
+      "printf '%s\\n' '<!DOCTYPE html>' > /Users/orca/.zimaos-blue/data/workspace/solar-system.html",
+    ].join('\n')
+
+    const result = parseTypelessContent(content)
+
+    expect(result.cards).toHaveLength(0)
+    expect(result.text).toContain('/html>')
+    expect(result.text).toContain('/Users/orca/.zimaos-blue/data/workspace/solar-system.html')
+  })
+
   it('does not parse /api paths as local file cards', () => {
     const result = parseTypelessContent('/api/v1/media/analyze/r1.html')
 

@@ -221,6 +221,63 @@ func TestDocumentToolThemeEnumsIncludeEditorial(t *testing.T) {
 	}
 }
 
+func TestA11yToolDefinition_ExposesKeyShortcutField(t *testing.T) {
+	schema := NewA11yTool().Definition().Parameters
+
+	props, ok := schema["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("properties type = %T, want map[string]interface{}", schema["properties"])
+	}
+	keys, ok := props["keys"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("keys schema type = %T, want map[string]interface{}", props["keys"])
+	}
+	if keys["type"] != "array" {
+		t.Fatalf("keys.type = %v, want array", keys["type"])
+	}
+}
+
+func TestA11yToolDefinition_RejectsUnsupportedActionsAndMissingMessageValue(t *testing.T) {
+	schema := NewA11yTool().Definition().Parameters
+
+	if err := ValidateToolArguments(schema, map[string]interface{}{
+		"action": "open",
+	}); err == nil {
+		t.Fatal("expected unsupported action to fail schema validation")
+	}
+
+	if err := ValidateToolArguments(schema, map[string]interface{}{
+		"action":       "message",
+		"conversation": "后端之家",
+	}); err == nil {
+		t.Fatal("expected message without value to fail schema validation")
+	}
+
+	if err := ValidateToolArguments(schema, map[string]interface{}{
+		"action":       "message",
+		"conversation": "后端之家",
+		"value":        "你好，我是 blue",
+	}); err != nil {
+		t.Fatalf("expected valid message payload to pass schema validation, got %v", err)
+	}
+
+	if err := ValidateToolArguments(schema, map[string]interface{}{
+		"action":      "key",
+		"submit_keys": []interface{}{"enter"},
+	}); err != nil {
+		t.Fatalf("expected key submit_keys payload to pass schema validation, got %v", err)
+	}
+
+	if err := ValidateToolArguments(schema, map[string]interface{}{
+		"action": "key",
+		"params": map[string]interface{}{
+			"submit_keys": []interface{}{"enter"},
+		},
+	}); err != nil {
+		t.Fatalf("expected key params.submit_keys payload to pass schema validation, got %v", err)
+	}
+}
+
 func TestConvertToolOptionsReferenceNativeToolParameters(t *testing.T) {
 	def := NewConvertTool(nil, nil, nil, nil).Definition()
 	if !strings.Contains(def.Description, "docx/xlsx/pptx/pdf") {

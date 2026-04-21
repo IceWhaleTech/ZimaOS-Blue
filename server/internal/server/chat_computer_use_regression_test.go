@@ -61,6 +61,22 @@ type computerUseDesktopChatPostToolFailureProvider struct {
 	requests      []llm.ChatRequest
 }
 
+type computerUseDesktopChatSelectorMissRecoveryProvider struct {
+	name              string
+	firstToolArgs     string
+	recoveredToolArgs string
+	finalToolArgs     string
+	firstContent      string
+	recoveredContent  string
+	finalToolContent  string
+	finalContent      string
+	fallbackContent   string
+	finalFallbackText string
+	mu                sync.Mutex
+	callCount         int
+	requests          []llm.ChatRequest
+}
+
 func (p *computerUseDesktopChatRecoveryProvider) Name() string {
 	if strings.TrimSpace(p.name) != "" {
 		return strings.TrimSpace(p.name)
@@ -250,6 +266,17 @@ func (p *computerUseDesktopChatPostToolFailureProvider) Models() []string {
 	return []string{"gpt-5.3-codex-spark"}
 }
 
+func (p *computerUseDesktopChatSelectorMissRecoveryProvider) Name() string {
+	if strings.TrimSpace(p.name) != "" {
+		return strings.TrimSpace(p.name)
+	}
+	return "scripted-computer-use-selector-miss-recovery"
+}
+
+func (p *computerUseDesktopChatSelectorMissRecoveryProvider) Models() []string {
+	return []string{"gpt-5.3-codex-spark"}
+}
+
 func (p *computerUseDesktopChatPostToolFailureProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
 	select {
 	case <-ctx.Done():
@@ -334,6 +361,192 @@ func (p *computerUseDesktopChatPostToolFailureProvider) CallCount() int {
 }
 
 func (p *computerUseDesktopChatPostToolFailureProvider) RequestAt(idx int) (llm.ChatRequest, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if idx < 0 || idx >= len(p.requests) {
+		return llm.ChatRequest{}, false
+	}
+	return p.requests[idx], true
+}
+
+func (p *computerUseDesktopChatSelectorMissRecoveryProvider) Chat(ctx context.Context, req llm.ChatRequest) (*llm.ChatResponse, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	p.mu.Lock()
+	p.requests = append(p.requests, cloneChatRequestForTest(req))
+	round := p.callCount
+	p.callCount++
+	p.mu.Unlock()
+
+	switch round {
+	case 0:
+		firstContent := strings.TrimSpace(p.firstContent)
+		if firstContent == "" {
+			firstContent = "我先直接给目标会话发消息。"
+		}
+		firstToolArgs := strings.TrimSpace(p.firstToolArgs)
+		if firstToolArgs == "" {
+			firstToolArgs = `{"action":"message","app_name":"Feishu,Lark","conversation":"selector_miss_group","value":"你好，我是 Blue。","submit":true}`
+		}
+		return &llm.ChatResponse{
+			ID:    "computer-use-selector-miss-round-1",
+			Model: req.Model,
+			Message: llm.Message{
+				Role:    llm.RoleAssistant,
+				Content: firstContent,
+				ToolCalls: []llm.ToolCall{{
+					ID:        "call_computer_use_selector_miss_1",
+					Name:      "computer_use",
+					Arguments: firstToolArgs,
+				}},
+			},
+		}, nil
+	case 1:
+		if requestCarriesDesktopChatSelectorMissRecovery(req) &&
+			requestContainsComputerUseToolResult(req, "target selector did not match any interactive element") {
+			recoveredContent := strings.TrimSpace(p.recoveredContent)
+			if recoveredContent == "" {
+				recoveredContent = "消息动作没命中，我先切到目标会话。"
+			}
+			recoveredToolArgs := strings.TrimSpace(p.recoveredToolArgs)
+			if recoveredToolArgs == "" {
+				recoveredToolArgs = `{"action":"select","app_name":"Feishu,Lark","conversation":"selector_miss_group"}`
+			}
+			return &llm.ChatResponse{
+				ID:    "computer-use-selector-miss-round-2",
+				Model: req.Model,
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: recoveredContent,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_computer_use_selector_miss_2",
+						Name:      "computer_use",
+						Arguments: recoveredToolArgs,
+					}},
+				},
+			}, nil
+		}
+	case 2:
+		if requestCarriesDesktopChatSelectorMissRecovery(req) &&
+			requestContainsComputerUseToolResult(req, "target selector did not match any interactive element") &&
+			requestContainsComputerUseToolResult(req, "Host selection completed") {
+			finalToolContent := strings.TrimSpace(p.finalToolContent)
+			if finalToolContent == "" {
+				finalToolContent = "会话已切换完成，现在直接发送消息。"
+			}
+			finalToolArgs := strings.TrimSpace(p.finalToolArgs)
+			if finalToolArgs == "" {
+				finalToolArgs = `{"action":"message","app_name":"Feishu,Lark","conversation":"selector_miss_group","value":"你好，我是 Blue。","submit":true}`
+			}
+			return &llm.ChatResponse{
+				ID:    "computer-use-selector-miss-round-3",
+				Model: req.Model,
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: finalToolContent,
+					ToolCalls: []llm.ToolCall{{
+						ID:        "call_computer_use_selector_miss_3",
+						Name:      "computer_use",
+						Arguments: finalToolArgs,
+					}},
+				},
+			}, nil
+		}
+	default:
+		if requestContainsComputerUseToolResult(req, "Host action completed and submitted") {
+			finalContent := strings.TrimSpace(p.finalContent)
+			if finalContent == "" {
+				finalContent = "已经在飞书桌面应用里给【selector_miss_group】发出问候。"
+			}
+			return &llm.ChatResponse{
+				ID:    "computer-use-selector-miss-round-4",
+				Model: req.Model,
+				Message: llm.Message{
+					Role:    llm.RoleAssistant,
+					Content: finalContent,
+				},
+			}, nil
+		}
+	}
+
+	fallbackContent := strings.TrimSpace(p.fallbackContent)
+	if fallbackContent == "" {
+		fallbackContent = "我继续截图确认界面。"
+	}
+	if round >= 2 {
+		finalFallbackText := strings.TrimSpace(p.finalFallbackText)
+		if finalFallbackText == "" {
+			finalFallbackText = "还停留在选择会话之前，没有完成发送。"
+		}
+		return &llm.ChatResponse{
+			ID:    "computer-use-selector-miss-fallback-final",
+			Model: req.Model,
+			Message: llm.Message{
+				Role:    llm.RoleAssistant,
+				Content: finalFallbackText,
+			},
+		}, nil
+	}
+	return &llm.ChatResponse{
+		ID:    "computer-use-selector-miss-fallback",
+		Model: req.Model,
+		Message: llm.Message{
+			Role:    llm.RoleAssistant,
+			Content: fallbackContent,
+			ToolCalls: []llm.ToolCall{{
+				ID:        "call_computer_use_selector_miss_fallback",
+				Name:      "computer_use",
+				Arguments: `{"action":"screenshot","app_name":"Feishu,Lark"}`,
+			}},
+		},
+	}, nil
+}
+
+func (p *computerUseDesktopChatSelectorMissRecoveryProvider) ChatStream(ctx context.Context, req llm.ChatRequest) (<-chan llm.StreamChunk, error) {
+	ch := make(chan llm.StreamChunk, 1)
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		close(ch)
+		return nil, err
+	}
+	ch <- llm.StreamChunk{
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
+	}
+	close(ch)
+	return ch, nil
+}
+
+func (p *computerUseDesktopChatSelectorMissRecoveryProvider) ChatStreamCallback(ctx context.Context, req llm.ChatRequest, callback llm.StreamCallback) error {
+	resp, err := p.Chat(ctx, req)
+	if err != nil {
+		return err
+	}
+	return callback(llm.StreamChunk{
+		ID:        resp.ID,
+		Model:     resp.Model,
+		Delta:     resp.Message.Content,
+		Done:      true,
+		Usage:     &resp.Usage,
+		ToolCalls: resp.Message.ToolCalls,
+	})
+}
+
+func (p *computerUseDesktopChatSelectorMissRecoveryProvider) CallCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.callCount
+}
+
+func (p *computerUseDesktopChatSelectorMissRecoveryProvider) RequestAt(idx int) (llm.ChatRequest, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if idx < 0 || idx >= len(p.requests) {
@@ -556,6 +769,17 @@ func (m *computerUseScenarioToolMock) Execute(_ context.Context, args map[string
 
 	m.mu.Lock()
 	m.calls = append(m.calls, cloned)
+	conversation := strings.TrimSpace(anyToStringForLLM(cloned["conversation"]))
+	selectedConversation := false
+	for _, call := range m.calls[:len(m.calls)-1] {
+		if strings.TrimSpace(anyToStringForLLM(call["action"])) != "select" {
+			continue
+		}
+		if strings.TrimSpace(anyToStringForLLM(call["conversation"])) == conversation && conversation != "" {
+			selectedConversation = true
+			break
+		}
+	}
 	m.mu.Unlock()
 
 	action := strings.TrimSpace(anyToStringForLLM(cloned["action"]))
@@ -570,12 +794,22 @@ func (m *computerUseScenarioToolMock) Execute(_ context.Context, args map[string
 			"message":    "invalid action: ocr",
 		}, nil
 	case "message":
+		if conversation == "selector_miss_group" && !selectedConversation {
+			return map[string]interface{}{
+				"title":      "computer_use",
+				"type":       "result",
+				"status":     "error",
+				"error_code": "invalid_target",
+				"action":     action,
+				"message":    "target selector did not match any interactive element",
+			}, nil
+		}
 		return map[string]interface{}{
 			"title":        "computer_use",
 			"type":         "result",
 			"status":       "success",
 			"action":       action,
-			"conversation": anyToStringForLLM(cloned["conversation"]),
+			"conversation": conversation,
 			"value":        anyToStringForLLM(cloned["value"]),
 			"message":      "Host action completed and submitted",
 		}, nil
@@ -671,6 +905,17 @@ func requestCarriesDesktopChatComputerUseGuardrails(req llm.ChatRequest) bool {
 			strings.Contains(msg.Content, "desktop chat or messaging tasks")) &&
 			strings.Contains(msg.Content, "`message`, `select`, and `type`") &&
 			strings.Contains(msg.Content, "`activate`, `mouse_click`, `move_to`, `accessibility_tree`, or `ocr`") {
+			return true
+		}
+	}
+	return false
+}
+
+func requestCarriesDesktopChatSelectorMissRecovery(req llm.ChatRequest) bool {
+	for _, msg := range req.Messages {
+		content := strings.ToLower(msg.Content)
+		if strings.Contains(content, "selector-miss recovery:") &&
+			strings.Contains(content, "emit exactly one `computer_use` call next") {
 			return true
 		}
 	}
@@ -2913,6 +3158,9 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMe
 			if !strings.Contains(msg.Content, "`message`, `select`, and `type`") {
 				t.Fatalf("expected second request guardrails to prefer high-level computer_use actions, got %q", msg.Content)
 			}
+			if !strings.Contains(msg.Content, "`ocr` is not a supported computer_use action") {
+				t.Fatalf("expected second request guardrails to include unsupported-action recovery hint, got %q", msg.Content)
+			}
 		}
 	}
 	if !sawGuardrails {
@@ -2937,6 +3185,222 @@ func TestChatHandlerSendMessage_ComputerUseDesktopChatRecoversFromInvalidOCRToMe
 	}
 	if strings.Contains(content, "Host screenshot captured") || strings.Contains(content, "invalid action") {
 		t.Fatalf("expected final response to avoid screenshot/error drift details, got %q", content)
+	}
+}
+
+func TestChatHandlerSendMessage_ComputerUseDesktopChatRecoversFromSelectorMissViaSelectThenMessage(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Computer use desktop chat selector miss recovery")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	provider := &computerUseDesktopChatSelectorMissRecoveryProvider{}
+	registry.Register(provider)
+
+	toolRegistry := tools.NewRegistry()
+	computerUseMock := &computerUseScenarioToolMock{}
+	toolRegistry.Register(computerUseMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	e := echo.New()
+	reqBody := `{"message":"帮我在飞书桌面应用上和【selector_miss_group】打一个招呼，告诉他们是Blue。","provider":"scripted-computer-use-selector-miss-recovery","model":"gpt-5.3-codex-spark"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/conversations/"+conv.ID+"/messages", bytes.NewBufferString(reqBody))
+	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	c.SetPath("/api/v1/conversations/:id/messages")
+	c.SetParamNames("id")
+	c.SetParamValues(conv.ID)
+
+	if err := handler.SendMessage(c); err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if provider.CallCount() != 4 {
+		t.Fatalf("expected 4 LLM rounds (selector-miss message + select recovery + recovered message + final summary), got %d", provider.CallCount())
+	}
+
+	calls := computerUseMock.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("computer_use calls = %d, want 3", len(calls))
+	}
+	if got := anyToStringForLLM(calls[0]["action"]); got != "message" {
+		t.Fatalf("first computer_use action = %q, want message", got)
+	}
+	if got := anyToStringForLLM(calls[1]["action"]); got != "select" {
+		secondReq, _ := provider.RequestAt(1)
+		t.Fatalf("second computer_use action = %q, want select; second request=%s", got, summarizeChatRequestMessagesForDebug(secondReq))
+	}
+	if got := anyToStringForLLM(calls[2]["action"]); got != "message" {
+		thirdReq, _ := provider.RequestAt(2)
+		t.Fatalf("third computer_use action = %q, want message; third request=%s", got, summarizeChatRequestMessagesForDebug(thirdReq))
+	}
+
+	secondReq, ok := provider.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	assertLLMRequestToolNames(t, secondReq.Tools, "computer_use")
+	if !requestCarriesDesktopChatComputerUseGuardrails(secondReq) {
+		t.Fatalf("expected second request to carry desktop chat guardrails, got %#v", secondReq.Messages)
+	}
+	if !requestCarriesDesktopChatSelectorMissRecovery(secondReq) {
+		t.Fatalf("expected second request to carry selector-miss recovery directive, got %#v", secondReq.Messages)
+	}
+	if !requestContainsComputerUseToolResult(secondReq, "target selector did not match any interactive element") {
+		t.Fatalf("expected second request to include selector-miss tool result, got %#v", secondReq.Messages)
+	}
+
+	thirdReq, ok := provider.RequestAt(2)
+	if !ok {
+		t.Fatalf("missing third request capture")
+	}
+	assertLLMRequestToolNames(t, thirdReq.Tools, "computer_use")
+	if !requestContainsComputerUseToolResult(thirdReq, "Host selection completed") {
+		t.Fatalf("expected third request to include successful select result, got %#v", thirdReq.Messages)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to decode response: %v body=%s", err, rec.Body.String())
+	}
+	content, _ := resp["content"].(string)
+	if !strings.Contains(strings.TrimSpace(content), "已经在飞书桌面应用里给【selector_miss_group】发出问候。") {
+		t.Fatalf("expected final desktop-chat completion summary, got %q", content)
+	}
+}
+
+func TestStreamMessage_ComputerUseDesktopChatRecoversFromSelectorMissViaSelectThenMessage(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	conv, err := store.CreateConversation(context.Background(), "Computer use desktop chat selector miss recovery stream")
+	if err != nil {
+		t.Fatalf("failed to create conversation: %v", err)
+	}
+
+	registry := llm.NewProviderRegistry()
+	provider := &computerUseDesktopChatSelectorMissRecoveryProvider{
+		name: "scripted-computer-use-selector-miss-recovery-stream",
+	}
+	registry.Register(provider)
+
+	toolRegistry := tools.NewRegistry()
+	computerUseMock := &computerUseScenarioToolMock{}
+	toolRegistry.Register(computerUseMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	body := runStreamTurn(t, handler, conv.ID, `{"message":"帮我在飞书桌面应用上和【selector_miss_group】打一个招呼，告诉他们是Blue。","provider":"scripted-computer-use-selector-miss-recovery-stream","model":"gpt-5.3-codex-spark"}`)
+
+	if strings.Contains(body, `"error":"STREAM_ERROR"`) {
+		t.Fatalf("expected no STREAM_ERROR, body=%s", body)
+	}
+	if provider.CallCount() != 4 {
+		t.Fatalf("expected 4 LLM rounds (selector-miss message + select recovery + recovered message + final summary), got %d", provider.CallCount())
+	}
+
+	calls := computerUseMock.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("computer_use calls = %d, want 3", len(calls))
+	}
+	if got := anyToStringForLLM(calls[1]["action"]); got != "select" {
+		secondReq, _ := provider.RequestAt(1)
+		t.Fatalf("second computer_use action = %q, want select; second request=%s", got, summarizeChatRequestMessagesForDebug(secondReq))
+	}
+	if got := anyToStringForLLM(calls[2]["action"]); got != "message" {
+		thirdReq, _ := provider.RequestAt(2)
+		t.Fatalf("third computer_use action = %q, want message; third request=%s", got, summarizeChatRequestMessagesForDebug(thirdReq))
+	}
+
+	secondReq, ok := provider.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	assertLLMRequestToolNames(t, secondReq.Tools, "computer_use")
+	if !requestCarriesDesktopChatSelectorMissRecovery(secondReq) {
+		t.Fatalf("expected second stream request to carry selector-miss recovery directive, got %#v", secondReq.Messages)
+	}
+
+	if !strings.Contains(body, "已经在飞书桌面应用里给【selector_miss_group】发出问候。") {
+		t.Fatalf("expected final streamed completion summary, got body=%s", body)
+	}
+}
+
+func TestProcessChannelMessage_ComputerUseDesktopChatRecoversFromSelectorMissViaSelectThenMessage(t *testing.T) {
+	store, err := memory.NewStore(":memory:")
+	if err != nil {
+		t.Fatalf("failed to create store: %v", err)
+	}
+	defer store.Close()
+
+	registry := llm.NewProviderRegistry()
+	provider := &computerUseDesktopChatSelectorMissRecoveryProvider{
+		name: "scripted-computer-use-selector-miss-recovery-im",
+	}
+	registry.Register(provider)
+
+	toolRegistry := tools.NewRegistry()
+	computerUseMock := &computerUseScenarioToolMock{}
+	toolRegistry.Register(computerUseMock)
+
+	handler := NewChatHandler(store, registry, toolRegistry)
+	handler.SetSettingsHandler(NewSettingsHandler(kvstore.NewMemoryStore()))
+
+	resp, err := handler.ProcessChannelMessage(context.Background(), channel.Message{
+		ChannelName: "feishu",
+		ChatID:      "chat_im_selector_miss_recovery",
+		ID:          "msg_1",
+		UserID:      "user_1",
+		Username:    "user_1",
+		Content:     "帮我在飞书桌面应用上和【selector_miss_group】打一个招呼，告诉他们是Blue。",
+	})
+	if err != nil {
+		t.Fatalf("ProcessChannelMessage() error = %v", err)
+	}
+
+	if provider.CallCount() != 4 {
+		t.Fatalf("expected 4 LLM rounds (selector-miss message + select recovery + recovered message + final summary), got %d", provider.CallCount())
+	}
+
+	calls := computerUseMock.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("computer_use calls = %d, want 3", len(calls))
+	}
+	if got := anyToStringForLLM(calls[1]["action"]); got != "select" {
+		secondReq, _ := provider.RequestAt(1)
+		t.Fatalf("second computer_use action = %q, want select; second request=%s", got, summarizeChatRequestMessagesForDebug(secondReq))
+	}
+	if got := anyToStringForLLM(calls[2]["action"]); got != "message" {
+		thirdReq, _ := provider.RequestAt(2)
+		t.Fatalf("third computer_use action = %q, want message; third request=%s", got, summarizeChatRequestMessagesForDebug(thirdReq))
+	}
+
+	secondReq, ok := provider.RequestAt(1)
+	if !ok {
+		t.Fatalf("missing second request capture")
+	}
+	assertLLMRequestToolNames(t, secondReq.Tools, "computer_use")
+	if !requestCarriesDesktopChatSelectorMissRecovery(secondReq) {
+		t.Fatalf("expected second IM request to carry selector-miss recovery directive, got %#v", secondReq.Messages)
+	}
+	if !strings.Contains(resp, "已经在飞书桌面应用里给【selector_miss_group】发出问候。") {
+		t.Fatalf("expected final IM completion summary, got %q", resp)
 	}
 }
 

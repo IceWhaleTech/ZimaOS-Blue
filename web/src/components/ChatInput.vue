@@ -835,13 +835,17 @@ function handleSend() {
   preTTFTCancelSent.value = false
 
   // Reset textarea height
-  resizeTextarea()
+  void nextTick(() => {
+    resizeTextarea()
+  })
 }
 
 function clearMessage() {
   message.value = ''
-  resizeTextarea()
-  textareaRef.value?.focus()
+  void nextTick(() => {
+    resizeTextarea()
+    textareaRef.value?.focus()
+  })
 }
 
 function toggleCompactModeInfo(kind: 'research' | 'loop') {

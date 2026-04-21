@@ -8,6 +8,7 @@ import (
 	"time"
 
 	a11yruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/a11y"
+	browserruntime "github.com/IceWhaleTech/ZimaOS-Blue/server/internal/browser"
 )
 
 type a11yCompatBackend struct {
@@ -115,6 +116,7 @@ type a11yBrowserCompatBackend struct {
 	interactiveResult       BrowserInteractiveResult
 	screenshotTabData       string
 	screenshotURLData       string
+	focusErr                error
 	lastA11yTargetID        string
 	lastInteractiveTargetID string
 	lastActMode             string
@@ -608,6 +610,9 @@ func (b *a11yBrowserCompatBackend) PageScroll(_ context.Context, targetID string
 
 func (b *a11yBrowserCompatBackend) FocusTab(_ context.Context, targetID string) error {
 	b.lastFocusedTargetID = targetID
+	if b.focusErr != nil {
+		return b.focusErr
+	}
 	return nil
 }
 
@@ -2118,6 +2123,37 @@ func TestA11yToolExecute_KeyboardInputAliasUsesKeyAction(t *testing.T) {
 	}
 }
 
+func TestA11yToolExecute_PressWithSubmitKeysUsesKeyAction(t *testing.T) {
+	backend := &a11yCompatBackend{}
+	tool := NewA11yTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":      "press",
+		"submit_keys": []interface{}{"enter"},
+	})
+	if err != nil {
+		t.Fatalf("press Execute() error = %v", err)
+	}
+	if len(backend.keyHistory) != 1 {
+		t.Fatalf("keyHistory = %#v, want one forwarded submit key chord", backend.keyHistory)
+	}
+	if got := backend.keyHistory[0]; len(got) != 1 || got[0] != "enter" {
+		t.Fatalf("keyHistory[0] = %#v, want [enter]", got)
+	}
+	if len(backend.actTypeHistory) != 0 {
+		t.Fatalf("actTypeHistory = %#v, want no semantic click action", backend.actTypeHistory)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if _, ok := out["message"].(string); !ok {
+		t.Fatalf("message = %#v, want string", out["message"])
+	}
+}
+
 func TestA11yToolExecute_KeySequenceAliasParsesShortcutLiteralValue(t *testing.T) {
 	backend := &a11yCompatBackend{}
 	tool := NewA11yTool()
@@ -2831,6 +2867,49 @@ func TestA11yToolExecute_BrowserFocusCachesTargetForFollowups(t *testing.T) {
 	}
 	if browser.lastA11yTargetID != "tab-9" {
 		t.Fatalf("browser lastA11yTargetID = %q, want cached focused target tab-9", browser.lastA11yTargetID)
+	}
+}
+
+func TestA11yToolExecute_BrowserFocusRecoversFromStaleTargetUsingActiveTab(t *testing.T) {
+	browser := &a11yBrowserCompatBackend{
+		focusErr: browserruntime.ErrTabNotFound,
+		tabs: []BrowserTabResult{
+			{TargetID: "tab-2", URL: "https://example.com/chat", Title: "Chat", Active: true},
+			{TargetID: "tab-3", URL: "https://example.com/other", Title: "Other", Active: false},
+		},
+	}
+	tool := NewA11yTool()
+	tool.SetBackend(&a11yCompatBackend{})
+	tool.SetBrowser(browser)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":    "focus",
+		"surface":   "browser",
+		"target_id": "tab-stale",
+	})
+	if err != nil {
+		t.Fatalf("browser focus error = %v", err)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if out["target_id"] != "tab-2" {
+		t.Fatalf("target_id = %v, want tab-2", out["target_id"])
+	}
+	if out["message"] != "Browser tab focus recovered using active tab" {
+		t.Fatalf("message = %v, want recovery message", out["message"])
+	}
+
+	if _, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action":  "snapshot",
+		"surface": "browser",
+	}); err != nil {
+		t.Fatalf("browser snapshot error = %v", err)
+	}
+	if browser.lastA11yTargetID != "tab-2" {
+		t.Fatalf("browser lastA11yTargetID = %q, want recovered active tab tab-2", browser.lastA11yTargetID)
 	}
 }
 

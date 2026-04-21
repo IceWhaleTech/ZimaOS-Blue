@@ -3275,7 +3275,10 @@ async function handleMobileDelete() {
                 >
               </div>
               <!-- Text content (hide placeholder patterns like [filename.txt], [Attachments:...]) -->
-              <span v-if="userTextContent && !isPlaceholderContent(userTextContent)">{{
+              <span
+                v-if="userTextContent && !isPlaceholderContent(userTextContent)"
+                class="whitespace-pre-wrap break-words"
+              >{{
                 userTextContent
               }}</span>
               <!-- Show continue icon when content is [CONTINUE] and no attachments -->

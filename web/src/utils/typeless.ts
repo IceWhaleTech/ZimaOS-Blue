@@ -48,10 +48,11 @@ const RE_UL_ITEM = /^(\s*)[-*+]\s+(.+)$/
 const RE_OL_ITEM = /^(\s*)\d+\.\s+(.+)$/
 const RE_IMAGE_INLINE = /!\[([^\]]*)\]\(([^)]+)\)/g
 const RE_STANDALONE_URL = /^(https?:\/\/[^\s]+)$/
-const RE_LOCAL_PATH_LINE = /^\s*(?:[a-zA-Z]:[\\/][^\s]+|\\\\[^\s]+|\/(?!api\/)[^\s]+)\s*$/m
+const RE_LOCAL_PATH_LINE = /^\s*(?:[a-zA-Z]:[\\/][^\s<>|]+|\\\\[^\s<>|]+|\/(?!api\/)[^\s<>|]+)\s*$/m
 const RE_TABLE_SEP_CONTENT = /^[\s:-]+$/
 const RE_WINDOWS_ABS_PATH = /^[a-zA-Z]:\\/
 const RE_VALID_TYPELESS_CARD_TYPE = /^[a-z][a-z0-9-]*$/
+const RE_SUSPICIOUS_LOCAL_PATH_CARD_CHAR = /[<>|]/
 
 // Language display names for code blocks
 const languageAliases: Record<string, string> = {
@@ -1907,6 +1908,13 @@ function getDomainFromUrl(url: string): string {
   }
 }
 
+function looksLikeStandaloneLocalPathCardCandidate(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed || /\s/.test(trimmed)) return false
+  if (!isLocalAbsolutePath(trimmed)) return false
+  return !RE_SUSPICIOUS_LOCAL_PATH_CARD_CHAR.test(trimmed)
+}
+
 function mightContainMarkdownElements(content: string): boolean {
   if (!content) return false
   if (content.includes('```')) return true
@@ -2282,7 +2290,7 @@ function parseMarkdownElementsSinglePass(
     }
 
     // File path
-    if (!/\s/.test(trimmed) && isLocalAbsolutePath(trimmed)) {
+    if (looksLikeStandaloneLocalPathCardCandidate(trimmed)) {
       const normalizedPath = trimmed.replace(/[\\/]+$/, '') || trimmed
       const filename = normalizedPath.split(/[/\\]/).pop() || normalizedPath
       const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() || '' : ''

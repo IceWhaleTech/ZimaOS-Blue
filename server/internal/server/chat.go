@@ -4567,6 +4567,168 @@ func buildPostToolAutoContinueNudgeWithPolicy(policy PromptPolicy, agentMode boo
 	return policy.PostToolAutoContinueNudge(agentMode)
 }
 
+func buildComputerUseDesktopChatContinuationNudgeWithPolicy(policy PromptPolicy, agentMode bool, toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	base := buildPostToolAutoContinueNudgeWithPolicy(policy, agentMode)
+	hint := buildComputerUseDesktopChatRecoveryHint(toolCalls, toolResults)
+	if strings.TrimSpace(hint) == "" {
+		return base
+	}
+	return base + " " + hint
+}
+
+func buildComputerUseDesktopChatRecoveryHint(toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	call, callPayload, resultPayload, ok := latestComputerUseCallAndResult(toolCalls, toolResults)
+	if !ok {
+		return ""
+	}
+
+	status := strings.ToLower(strings.TrimSpace(continuationCompatString(resultPayload, "status")))
+	if status == "success" {
+		return ""
+	}
+
+	action := strings.ToLower(strings.TrimSpace(continuationCompatString(callPayload, "action", "op", "operation", "command")))
+	if action == "" {
+		action = strings.ToLower(strings.TrimSpace(call.Name))
+	}
+	value := strings.TrimSpace(continuationCompatString(callPayload, "value", "text"))
+	conversation := strings.TrimSpace(continuationCompatString(callPayload, "conversation", "thread", "chat", "contact"))
+	resultMessage := strings.ToLower(strings.TrimSpace(continuationCompatString(resultPayload, "error", "message")))
+	resultCode := strings.ToLower(strings.TrimSpace(continuationCompatString(resultPayload, "error_code", "code")))
+
+	switch {
+	case action == "press":
+		return "Recovery hint: do not use top-level `press` for desktop-chat submit or shortcuts. Use `action=key` with `keys` or `submit_keys` instead."
+	case action == "message" && (value == "" || strings.Contains(resultMessage, "value is required")):
+		return "Recovery hint: if you use `action=message`, include a non-empty `value` with the text to send."
+	case action == "message" && conversation != "" && value != "" && strings.Contains(resultMessage, "target selector did not match any interactive element"):
+		return "Recovery hint: do not use `message` as a search-only step when the target selector misses. Use `select` to switch conversations first, or `type` if the composer is already focused."
+	case isComputerUseUnsupportedRecoveryAction(action) || resultCode == "unsupported_action" || strings.Contains(resultMessage, "invalid action"):
+		label := action
+		if label == "" {
+			label = "that action"
+		}
+		return fmt.Sprintf("Recovery hint: `%s` is not a supported computer_use action here. Retry with a supported action like `focus`, `message`, `select`, `type`, `click`, `toggle`, or `key`, and do not repeat `%s`.", label, label)
+	}
+
+	return ""
+}
+
+func buildComputerUseDesktopChatDirectedRecoveryNudge(toolCalls []llm.ToolCall, toolResults []llm.Message) string {
+	_, callPayload, resultPayload, ok := latestComputerUseCallAndResult(toolCalls, toolResults)
+	if !ok || !isComputerUseDesktopChatSelectorMissPayload(callPayload, resultPayload) {
+		return ""
+	}
+
+	conversation := strings.TrimSpace(continuationCompatString(callPayload, "conversation", "thread", "chat", "contact"))
+	parts := []string{
+		"Selector-miss recovery: the last `message` step failed because the target selector missed.",
+		"Emit exactly one `computer_use` call next.",
+		"Do not use `message` as a search-only step.",
+		"Do not use `screenshot`, `snapshot`, `snapshot_interactive`, or `ocr` for this recovery.",
+	}
+	if conversation != "" {
+		parts = append(parts, fmt.Sprintf("Use `select` with `conversation=%s` first.", conversation))
+	} else {
+		parts = append(parts, "Use `select` to switch to the target conversation first.")
+	}
+	parts = append(parts, "After a successful `select`, continue with `message` or `type`.")
+	return strings.Join(parts, " ")
+}
+
+func buildComputerUseDesktopChatDirectedRecoveryTools(tools []llm.Tool, toolCalls []llm.ToolCall, toolResults []llm.Message) []llm.Tool {
+	_, callPayload, resultPayload, ok := latestComputerUseCallAndResult(toolCalls, toolResults)
+	if !ok || !isComputerUseDesktopChatSelectorMissPayload(callPayload, resultPayload) {
+		return tools
+	}
+	filtered := make([]llm.Tool, 0, 1)
+	for _, tool := range tools {
+		if strings.EqualFold(strings.TrimSpace(tool.Name), "computer_use") {
+			filtered = append(filtered, tool)
+		}
+	}
+	if len(filtered) == 0 {
+		return tools
+	}
+	return filtered
+}
+
+func isComputerUseDesktopChatSelectorMissPayload(callPayload, resultPayload map[string]interface{}) bool {
+	action := strings.ToLower(strings.TrimSpace(continuationCompatString(callPayload, "action", "op", "operation", "command")))
+	if action != "message" {
+		return false
+	}
+	value := strings.TrimSpace(continuationCompatString(callPayload, "value", "text"))
+	conversation := strings.TrimSpace(continuationCompatString(callPayload, "conversation", "thread", "chat", "contact"))
+	if value == "" || conversation == "" {
+		return false
+	}
+	status := strings.ToLower(strings.TrimSpace(continuationCompatString(resultPayload, "status")))
+	if status == "success" {
+		return false
+	}
+	resultMessage := strings.ToLower(strings.TrimSpace(continuationCompatString(resultPayload, "error", "message")))
+	return strings.Contains(resultMessage, "target selector did not match any interactive element")
+}
+
+func latestComputerUseCallAndResult(toolCalls []llm.ToolCall, toolResults []llm.Message) (llm.ToolCall, map[string]interface{}, map[string]interface{}, bool) {
+	for i := len(toolCalls) - 1; i >= 0; i-- {
+		call := toolCalls[i]
+		if !strings.EqualFold(strings.TrimSpace(call.Name), "computer_use") {
+			continue
+		}
+
+		callPayload := parseContinuationJSONObject(call.Arguments)
+		resultPayload, ok := findComputerUseToolResultPayload(call.ID, toolResults)
+		if ok {
+			return call, callPayload, resultPayload, true
+		}
+		return call, callPayload, nil, true
+	}
+	return llm.ToolCall{}, nil, nil, false
+}
+
+func findComputerUseToolResultPayload(callID string, toolResults []llm.Message) (map[string]interface{}, bool) {
+	trimmedID := strings.TrimSpace(callID)
+	for i := len(toolResults) - 1; i >= 0; i-- {
+		msg := toolResults[i]
+		if trimmedID != "" && strings.TrimSpace(msg.ToolCallID) != "" && strings.TrimSpace(msg.ToolCallID) != trimmedID {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(msg.ToolName), "computer_use") {
+			if trimmedID == "" || strings.TrimSpace(msg.ToolCallID) != trimmedID {
+				continue
+			}
+		}
+		payload := parseContinuationJSONObject(msg.Content)
+		if payload != nil {
+			return payload, true
+		}
+	}
+	return nil, false
+}
+
+func parseContinuationJSONObject(raw string) map[string]interface{} {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return nil
+	}
+	return payload
+}
+
+func isComputerUseUnsupportedRecoveryAction(action string) bool {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "open", "open_location", "list_apps", "read", "ocr":
+		return true
+	default:
+		return false
+	}
+}
+
 func shouldInjectComputerUseDesktopChatContinuationNudge(previousResponseID string, toolCalls []llm.ToolCall) bool {
 	return shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(previousResponseID, "", toolCalls)
 }
@@ -8468,8 +8630,6 @@ func (h *ChatHandler) selectToolsDetailed(userMessage string, policyReq tools.To
 		debugCopy := selection.Debug
 		toolDebug = &debugCopy
 		switch {
-		case len(selection.Selected) > 0:
-			routed = selection.Selected
 		case shouldSuppressEmptyToolSelection(debugCopy) && !shouldPreserveDeferredSelectorSurface(selectorBase):
 			routed = nil
 		}
@@ -15369,8 +15529,12 @@ func (h *ChatHandler) ProcessChannelMessage(ctx context.Context, msg channel.Mes
 		if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(req.PreviousResponseID, routingMessage, completedCalls) {
 			promptPolicy := h.resolvePromptPolicy()
 			req.Messages = append(req.Messages,
-				llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, channelAgentModeEnabled)},
+				llm.Message{Role: llm.RoleUser, Content: buildComputerUseDesktopChatContinuationNudgeWithPolicy(promptPolicy, channelAgentModeEnabled, completedCalls, completed)},
 			)
+			if recoveryNudge := buildComputerUseDesktopChatDirectedRecoveryNudge(completedCalls, completed); strings.TrimSpace(recoveryNudge) != "" {
+				req.Messages = append(req.Messages, llm.Message{Role: llm.RoleUser, Content: recoveryNudge})
+				req.Tools = buildComputerUseDesktopChatDirectedRecoveryTools(req.Tools, completedCalls, completed)
+			}
 		}
 		rawPlanChecklist, rawPlanChecklistUpdated := extractPlanChecklistFromToolRound(completedCalls, completed)
 		_, acceptedPlanChecklist := normalizeToolRoundChecklistForRequest(autoContinueState.TodoContent, rawPlanChecklist, routingMessage, rawPlanChecklistUpdated)
@@ -19096,6 +19260,67 @@ func ensureArtifactWriteTargetRegexes() {
 	})
 }
 
+func looksLikeShellSnippetArtifactMessage(message string) bool {
+	lower := strings.ToLower(strings.TrimSpace(message))
+	if lower == "" {
+		return false
+	}
+
+	commandCue := false
+	for _, cue := range []string{
+		"printf ",
+		"\nprintf ",
+		"cat ",
+		"\ncat ",
+		"echo ",
+		"\necho ",
+		"sed ",
+		"\nsed ",
+		"awk ",
+		"\nawk ",
+		"grep ",
+		"\ngrep ",
+		"tee ",
+		"\ntee ",
+		"bash ",
+		"\nbash ",
+		"sh ",
+		"\nsh ",
+		"zsh ",
+		"\nzsh ",
+		"python ",
+		"\npython ",
+		"python3 ",
+		"\npython3 ",
+		"node ",
+		"\nnode ",
+	} {
+		if strings.Contains(lower, cue) {
+			commandCue = true
+			break
+		}
+	}
+	if !commandCue {
+		return false
+	}
+
+	for _, syntaxCue := range []string{
+		"&&",
+		"||",
+		"<<",
+		">>",
+		" > ",
+		"\n> ",
+		" | ",
+		"\n| ",
+	} {
+		if strings.Contains(message, syntaxCue) {
+			return true
+		}
+	}
+	return false
+}
+
 type artifactPathCandidate struct {
 	path  string
 	start int
@@ -19142,6 +19367,9 @@ func isNativeDocumentArtifactPath(path string) bool {
 
 func extractArtifactPathCandidates(userMessage string) []artifactPathCandidate {
 	if strings.TrimSpace(userMessage) == "" {
+		return nil
+	}
+	if looksLikeShellSnippetArtifactMessage(userMessage) {
 		return nil
 	}
 	ensureArtifactPathRegexes()
@@ -23566,8 +23794,12 @@ func (h *ChatHandler) SendMessage(c echo.Context) error {
 			if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(chatReq.PreviousResponseID, routingMessage, resp.Message.ToolCalls) {
 				promptPolicy := h.resolvePromptPolicy()
 				chatReq.Messages = append(chatReq.Messages,
-					llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, agentModeAutoContinue)},
+					llm.Message{Role: llm.RoleUser, Content: buildComputerUseDesktopChatContinuationNudgeWithPolicy(promptPolicy, agentModeAutoContinue, resp.Message.ToolCalls, toolResults)},
 				)
+				if recoveryNudge := buildComputerUseDesktopChatDirectedRecoveryNudge(resp.Message.ToolCalls, toolResults); strings.TrimSpace(recoveryNudge) != "" {
+					chatReq.Messages = append(chatReq.Messages, llm.Message{Role: llm.RoleUser, Content: recoveryNudge})
+					chatReq.Tools = buildComputerUseDesktopChatDirectedRecoveryTools(chatReq.Tools, resp.Message.ToolCalls, toolResults)
+				}
 			}
 			awaitingPostToolSummary = len(toolResults) > 0
 			if shouldRepairSuccessfulStructuredWorkspaceArtifactWrite(
@@ -27299,8 +27531,12 @@ STREAM_LOOP:
 			if shouldInjectComputerUseDesktopChatContinuationNudgeForRequest(chatReq.PreviousResponseID, routingMessage, streamToolCalls) {
 				promptPolicy := h.resolvePromptPolicy()
 				chatReq.Messages = append(chatReq.Messages,
-					llm.Message{Role: llm.RoleUser, Content: buildPostToolAutoContinueNudgeWithPolicy(promptPolicy, agentModeAutoContinue)},
+					llm.Message{Role: llm.RoleUser, Content: buildComputerUseDesktopChatContinuationNudgeWithPolicy(promptPolicy, agentModeAutoContinue, streamToolCalls, toolResults)},
 				)
+				if recoveryNudge := buildComputerUseDesktopChatDirectedRecoveryNudge(streamToolCalls, toolResults); strings.TrimSpace(recoveryNudge) != "" {
+					chatReq.Messages = append(chatReq.Messages, llm.Message{Role: llm.RoleUser, Content: recoveryNudge})
+					chatReq.Tools = buildComputerUseDesktopChatDirectedRecoveryTools(chatReq.Tools, streamToolCalls, toolResults)
+				}
 			}
 			awaitingPostToolSummary = len(toolResults) > 0
 			if completion := buildSuccessfulArtifactCompletion(routingMessage, streamToolCalls, toolResults); completion != "" {

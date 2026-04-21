@@ -373,10 +373,16 @@ func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map
 	emitBrowserProgress(ctx, "start", "Starting browser", "success", url)
 
 	emitBrowserProgress(ctx, "navigate", "Navigating", "running", url)
-	nav, err := b.Navigate(ctx, url, targetID)
-	if err != nil {
-		emitBrowserProgress(ctx, "navigate", "Navigating", "failed", url)
-		return jsonErr(fmt.Sprintf("navigation failed: %s", err)), nil
+	nav := BrowserNavResult{URL: url, TargetID: strings.TrimSpace(targetID)}
+	if existingTargetID := resolveBrowserNavigateTargetFromTabs(ctx, b, url, targetID); existingTargetID != "" {
+		nav.TargetID = existingTargetID
+	} else {
+		var err error
+		nav, err = b.Navigate(ctx, url, targetID)
+		if err != nil {
+			emitBrowserProgress(ctx, "navigate", "Navigating", "failed", url)
+			return jsonErr(fmt.Sprintf("navigation failed: %s", err)), nil
+		}
 	}
 	emitBrowserProgress(ctx, "navigate", "Navigating", "success", url)
 
@@ -388,6 +394,32 @@ func (t *BrowserTool) doNavigate(ctx context.Context, b BrowserBackend, args map
 		emitBrowserProgress(ctx, "snapshot", "Reading page", "success", url)
 	}
 	return result, rErr
+}
+
+func resolveBrowserNavigateTargetFromTabs(ctx context.Context, b BrowserBackend, requestedURL, targetID string) string {
+	requestedURL = strings.TrimSpace(requestedURL)
+	targetID = strings.TrimSpace(targetID)
+	if requestedURL == "" || b == nil {
+		return ""
+	}
+	tabs, err := b.Tabs(ctx)
+	if err != nil {
+		return ""
+	}
+	if targetID != "" {
+		for _, tab := range tabs {
+			if strings.TrimSpace(tab.TargetID) == targetID && sameWebQueryCanonicalURL(tab.URL, requestedURL) {
+				return targetID
+			}
+		}
+		return ""
+	}
+	for _, tab := range tabs {
+		if tab.Active && sameWebQueryCanonicalURL(tab.URL, requestedURL) {
+			return strings.TrimSpace(tab.TargetID)
+		}
+	}
+	return ""
 }
 
 func (t *BrowserTool) doSnapshot(ctx context.Context, b BrowserBackend, targetID string) (interface{}, error) {

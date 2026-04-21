@@ -467,7 +467,45 @@ func a11yAnnotateChatError(err error, state *a11yChatExecutionState) error {
 	if state.stage != "" && strings.TrimSpace(a11yFirstNonEmptyString(details["stage"])) == "" {
 		details["stage"] = string(state.stage)
 	}
+	a11yAnnotateChatRecovery(details, state, phase)
 	return a11yruntime.NewError(runtimeErr.Code, runtimeErr.Message, details)
+}
+
+func a11yAnnotateChatRecovery(details map[string]interface{}, state *a11yChatExecutionState, phase string) {
+	if len(details) == 0 || state == nil {
+		return
+	}
+	failureCode := strings.TrimSpace(a11yFirstNonEmptyString(details["failure_code"]))
+	if failureCode == "" {
+		return
+	}
+	if strings.TrimSpace(a11yFirstNonEmptyString(details["recovery_hint"])) != "" {
+		return
+	}
+
+	switch {
+	case strings.EqualFold(strings.TrimSpace(phase), "conversation") && failureCode == "search_box_still_active":
+		conversation := strings.TrimSpace(state.conversation)
+		details["recovery_hint"] = "The conversation search is still active. Continue the current search with computer_use action=type instead of reopening navigation."
+		if conversation != "" {
+			details["recommended_action"] = "type"
+			details["recommended_args"] = map[string]interface{}{
+				"action": "type",
+				"value":  conversation,
+			}
+		}
+	case strings.EqualFold(strings.TrimSpace(phase), "submit") && failureCode == "send_not_verified":
+		submitKeys := defaultA11ySubmitKeySequences(state.platform)
+		args := map[string]interface{}{
+			"action": "key",
+		}
+		if len(submitKeys) > 0 && len(submitKeys[0]) > 0 {
+			args["submit_keys"] = append([]string(nil), submitKeys[0]...)
+		}
+		details["recovery_hint"] = "The draft is still present, but submission was not verified. Retry submission with computer_use action=key from the current composer before navigating again."
+		details["recommended_action"] = "key"
+		details["recommended_args"] = args
+	}
 }
 
 func a11yChatFailureCode(runtimeErr *a11yruntime.RuntimeError, state *a11yChatExecutionState, phase string) string {

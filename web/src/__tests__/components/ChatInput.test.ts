@@ -566,6 +566,48 @@ describe('ChatInput cancel affordance', () => {
     expect((textarea.element as HTMLTextAreaElement).style.overflowY).toBe('hidden')
   })
 
+  it('resets the composer height after sending a multiline message', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+
+    const wrapper = mount(ChatInput, {
+      shallow: true,
+      global: {
+        plugins: [pinia, i18n],
+        stubs: {
+          ImagePreview: true,
+          ModelDownloadPrompt: true,
+        },
+      },
+    })
+
+    await settleComposer(wrapper)
+
+    const textarea = wrapper.find('textarea')
+    Object.defineProperty(textarea.element, 'scrollHeight', {
+      configurable: true,
+      get() {
+        const value = (textarea.element as HTMLTextAreaElement).value
+        return value.includes('\n') ? 96 : 43
+      },
+    })
+
+    await textarea.setValue('first line\nsecond line')
+    expect((textarea.element as HTMLTextAreaElement).style.height).toBe('96px')
+
+    const sendButton = wrapper
+      .findAll('button')
+      .find((button) => button.classes().includes('chat-send-btn'))
+    expect(sendButton?.exists()).toBe(true)
+
+    await sendButton!.trigger('click')
+    await settleComposer(wrapper)
+
+    expect((textarea.element as HTMLTextAreaElement).value).toBe('')
+    expect((textarea.element as HTMLTextAreaElement).style.height).toBe('43px')
+    expect((textarea.element as HTMLTextAreaElement).style.overflowY).toBe('hidden')
+  })
+
   it('shows skill guidance for natural-language tasks and opens the skill store with the suggested query', async () => {
     vi.useFakeTimers()
     vi.mocked(skillApi.adviseMarket).mockResolvedValue({

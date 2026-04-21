@@ -70,9 +70,87 @@ func (t *A11yTool) SetMediaDir(dir string) {
 }
 
 func (t *A11yTool) Definition() ToolDefinition {
+	actionEnum := []string{
+		a11yruntime.ActionCapabilities,
+		a11yruntime.ActionWindows,
+		a11yruntime.ActionFocus,
+		a11yruntime.ActionSnapshot,
+		a11yruntime.ActionSnapshotInteractive,
+		a11yruntime.ActionAct,
+		"message",
+		"type",
+		"select",
+		"click",
+		"toggle",
+		a11yruntime.ActionScroll,
+		a11yruntime.ActionPointerMove,
+		a11yruntime.ActionKey,
+		a11yruntime.ActionScreenshot,
+	}
+	nonStrictActionEnum := []string{
+		a11yruntime.ActionCapabilities,
+		a11yruntime.ActionWindows,
+		a11yruntime.ActionFocus,
+		a11yruntime.ActionSnapshot,
+		a11yruntime.ActionSnapshotInteractive,
+		a11yruntime.ActionAct,
+		"type",
+		"select",
+		"click",
+		"toggle",
+		a11yruntime.ActionScroll,
+		a11yruntime.ActionPointerMove,
+		a11yruntime.ActionScreenshot,
+	}
+	shortcutArraySchema := map[string]interface{}{
+		"type":        "array",
+		"description": "Shortcut key sequence",
+		"items": map[string]interface{}{
+			"type": "string",
+		},
+	}
+	shortcutLiteralSchema := map[string]interface{}{
+		"type":        "string",
+		"description": "Shortcut literal like `enter` or `cmd+k`.",
+	}
+	topLevelFieldBranch := func(action, field string, fieldSchema map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"action": map[string]interface{}{
+					"type": "string",
+					"enum": []string{action},
+				},
+				field: fieldSchema,
+			},
+			"required":             []string{"action", field},
+			"additionalProperties": true,
+		}
+	}
+	paramsFieldBranch := func(action, field string, fieldSchema map[string]interface{}) map[string]interface{} {
+		return map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"action": map[string]interface{}{
+					"type": "string",
+					"enum": []string{action},
+				},
+				"params": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						field: fieldSchema,
+					},
+					"required":             []string{field},
+					"additionalProperties": true,
+				},
+			},
+			"required":             []string{"action", "params"},
+			"additionalProperties": true,
+		}
+	}
 	return ToolDefinition{
 		Name:        "computer_use",
-		Description: "Desktop/browser computer-use actions. Prefer `message|type|select|click|toggle`. For `act`, put fields under `params`.",
+		Description: "Desktop/browser computer-use actions. Prefer `message|type|select|click|toggle`; use `key` with `keys`/`submit_keys` for shortcuts. For `act`, put fields under `params`.",
 		Icon:        "sparkles",
 		SearchHints: []string{
 			"computer use automation",
@@ -82,7 +160,8 @@ func (t *A11yTool) Definition() ToolDefinition {
 			"properties": map[string]interface{}{
 				"action": map[string]interface{}{
 					"type":        "string",
-					"description": "Action. Common: `message|type|select|click|toggle`.",
+					"enum":        actionEnum,
+					"description": "Action. Prefer `message|type|select|click|toggle`; use `key` with `keys`/`submit_keys` for shortcuts. Do not use `open`, `open_location`, `list_apps`, browser `read`, or top-level `press`.",
 				},
 				"surface": map[string]interface{}{
 					"type":        "string",
@@ -110,7 +189,7 @@ func (t *A11yTool) Definition() ToolDefinition {
 				},
 				"params": map[string]interface{}{
 					"type":                 "object",
-					"description":          "Args (top-level or params)",
+					"description":          "Args (top-level or params). For `message`, include `value`. For keyboard submit/shortcuts, use `key` with `keys` or `submit_keys`.",
 					"additionalProperties": true,
 				},
 				"ref": map[string]interface{}{
@@ -129,6 +208,7 @@ func (t *A11yTool) Definition() ToolDefinition {
 					"type":        "string",
 					"description": "Act type",
 				},
+				"keys": shortcutArraySchema,
 				"value": map[string]interface{}{
 					"type":        "string",
 					"description": "Text value",
@@ -190,6 +270,27 @@ func (t *A11yTool) Definition() ToolDefinition {
 				},
 			},
 			"required": []string{"action"},
+			"anyOf": []map[string]interface{}{
+				topLevelFieldBranch("message", "value", map[string]interface{}{"type": "string"}),
+				paramsFieldBranch("message", "value", map[string]interface{}{"type": "string"}),
+				topLevelFieldBranch(a11yruntime.ActionKey, "keys", shortcutArraySchema),
+				topLevelFieldBranch(a11yruntime.ActionKey, "submit_keys", shortcutArraySchema),
+				topLevelFieldBranch(a11yruntime.ActionKey, "value", shortcutLiteralSchema),
+				paramsFieldBranch(a11yruntime.ActionKey, "keys", shortcutArraySchema),
+				paramsFieldBranch(a11yruntime.ActionKey, "submit_keys", shortcutArraySchema),
+				paramsFieldBranch(a11yruntime.ActionKey, "value", shortcutLiteralSchema),
+				map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"action": map[string]interface{}{
+							"type": "string",
+							"enum": nonStrictActionEnum,
+						},
+					},
+					"required":             []string{"action"},
+					"additionalProperties": true,
+				},
+			},
 		},
 	}
 }
@@ -200,7 +301,7 @@ func (t *A11yTool) Execute(ctx context.Context, args map[string]interface{}) (in
 	browser := t.browser
 	t.mu.RUnlock()
 
-	action := normalizeA11yAction(firstCompatString(args, "action", "op", "operation", "command"))
+	action := resolveA11yAction(args)
 	if action == "" {
 		return nil, errors.New("action is required")
 	}
@@ -295,6 +396,21 @@ func normalizeA11yAction(action string) string {
 		return a11yruntime.ActionPointerMove
 	}
 	return trimmed
+}
+
+func resolveA11yAction(args map[string]interface{}) string {
+	rawAction := firstCompatString(args, "action", "op", "operation", "command")
+	action := normalizeA11yAction(rawAction)
+	if !strings.EqualFold(strings.TrimSpace(rawAction), "press") {
+		return action
+	}
+	if action != "click" {
+		return action
+	}
+	if _, ok := resolveA11yKeySequenceArgs(args); ok {
+		return a11yruntime.ActionKey
+	}
+	return action
 }
 
 func (t *A11yTool) SetBrowser(backend BrowserBackend) {
@@ -453,6 +569,18 @@ func (t *A11yTool) doBrowserFocus(ctx context.Context, browser *BrowserTool, arg
 		}), nil
 	}
 	if err := focuser.FocusTab(ctx, targetID); err != nil {
+		if recoveredTarget, ok := recoverBrowserFocusTargetFromTabs(ctx, browser, targetID, err); ok {
+			syncBrowserToolTarget(browser, recoveredTarget)
+			return a11yJSON(map[string]interface{}{
+				"surface":             "browser",
+				"host_os":             "browser",
+				"target_id":           recoveredTarget,
+				"window_id":           recoveredTarget,
+				"execution_mode":      "automation",
+				"recovered_target_id": recoveredTarget,
+				"message":             "Browser tab focus recovered using active tab",
+			}), nil
+		}
 		return a11yJSON(map[string]interface{}{
 			"surface":    "browser",
 			"error":      err.Error(),
@@ -468,6 +596,25 @@ func (t *A11yTool) doBrowserFocus(ctx context.Context, browser *BrowserTool, arg
 		"execution_mode": "automation",
 		"message":        "Browser tab focused",
 	}), nil
+}
+
+func recoverBrowserFocusTargetFromTabs(ctx context.Context, browser *BrowserTool, requestedTargetID string, focusErr error) (string, bool) {
+	if browser == nil || focusErr == nil {
+		return "", false
+	}
+	lower := strings.ToLower(strings.TrimSpace(focusErr.Error()))
+	if !strings.Contains(lower, "tab not found") {
+		return "", false
+	}
+	tabs, err := browser.Backend().Tabs(ctx)
+	if err != nil {
+		return "", false
+	}
+	recoveredTarget := strings.TrimSpace(rememberedBrowserTargetFromTabs(tabs))
+	if recoveredTarget == "" || strings.EqualFold(recoveredTarget, strings.TrimSpace(requestedTargetID)) {
+		return "", false
+	}
+	return recoveredTarget, true
 }
 
 func (t *A11yTool) doBrowserDelegated(ctx context.Context, browser *BrowserTool, action string, args map[string]interface{}) (interface{}, error) {

@@ -14,6 +14,7 @@ import (
 type browserCompatBackend struct {
 	navigateURL               string
 	navigateTargetID          string
+	navigateCalls             int
 	lastRouteHint             BrowserRouteHint
 	tabs                      []BrowserTabResult
 	recipes                   []BrowserRecipeInfo
@@ -49,6 +50,7 @@ func (b *browserCompatBackend) Navigate(ctx context.Context, url string, targetI
 	if ctxHint := GetBrowserRouteHint(ctx); ctxHint.Action != "" {
 		b.lastRouteHint = ctxHint
 	}
+	b.navigateCalls++
 	b.navigateURL = url
 	b.navigateTargetID = targetID
 	if targetID == "" {
@@ -416,6 +418,54 @@ func TestBrowserToolSnapshotAutoWithURLIgnoresStaleCachedTarget(t *testing.T) {
 	}
 	if got := out["strategy"]; got != "interactive" {
 		t.Fatalf("strategy = %v, want interactive snapshot output after navigate", got)
+	}
+}
+
+func TestBrowserToolNavigateReusesActiveTabWhenURLAlreadyLoaded(t *testing.T) {
+	backend := &browserCompatBackend{
+		tabs: []BrowserTabResult{
+			{TargetID: "tab-7", URL: "https://example.com/docs", Title: "Docs", Active: true},
+			{TargetID: "tab-8", URL: "https://example.com/other", Title: "Other", Active: false},
+		},
+		interactiveResult: BrowserInteractiveResult{
+			Tree:  "[@1] link \"Home\"",
+			URL:   "https://example.com/docs",
+			Title: "Docs",
+			RefMap: map[int]string{
+				1: "link",
+			},
+			Count: 1,
+		},
+	}
+	tool := NewBrowserTool()
+	tool.SetBackend(backend)
+
+	raw, err := tool.Execute(context.Background(), map[string]interface{}{
+		"action": "navigate",
+		"url":    "https://example.com/docs",
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if backend.navigateCalls != 0 {
+		t.Fatalf("navigateCalls = %d, want 0 when active tab already has requested URL", backend.navigateCalls)
+	}
+	if backend.lastCountTargetID != "tab-7" {
+		t.Fatalf("lastCountTargetID = %q, want active tab target", backend.lastCountTargetID)
+	}
+	if backend.lastInteractiveTargetID != "tab-7" {
+		t.Fatalf("lastInteractiveTargetID = %q, want active tab target", backend.lastInteractiveTargetID)
+	}
+
+	var out map[string]interface{}
+	if err := json.Unmarshal([]byte(raw.(string)), &out); err != nil {
+		t.Fatalf("unmarshal output error = %v", err)
+	}
+	if got := out["target_id"]; got != "tab-7" {
+		t.Fatalf("target_id = %v, want active tab target", got)
+	}
+	if got := out["strategy"]; got != "interactive" {
+		t.Fatalf("strategy = %v, want interactive snapshot output after dedupe", got)
 	}
 }
 

@@ -63,3 +63,14 @@ func TestArtifactRegexes_InitializeOnDemand(t *testing.T) {
 		t.Fatal("expected saved image path regex to initialize on demand")
 	}
 }
+
+func TestExtractRequestedArtifactPath_IgnoresShellSnippetPaths(t *testing.T) {
+	message := "/html>\n\nprintf '%s\\n' '<!DOCTYPE html>' '<html lang=\"zh-CN\">' > /Users/orca/.zimaos-blue/data/workspace/solar-system.html && cat /Users/orca/.zimaos-blue/data/workspace/solar-system.html\n\n解析到的目录不对"
+
+	if got := extractRequestedArtifactPath(message); got != "" {
+		t.Fatalf("extractRequestedArtifactPath() = %q, want empty for shell snippet", got)
+	}
+	if got := extractRequestedArtifactWriteTarget(message); got != "" {
+		t.Fatalf("extractRequestedArtifactWriteTarget() = %q, want empty for shell snippet", got)
+	}
+}

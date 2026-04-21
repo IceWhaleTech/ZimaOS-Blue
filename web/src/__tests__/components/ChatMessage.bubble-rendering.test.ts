@@ -294,6 +294,16 @@ describe('ChatMessage bubble rendering', () => {
     expect(wrapper.find('.chat-assistant-bubble').exists()).toBe(false)
   })
 
+  it('preserves multiline user replies with pre-wrap bubble styling', async () => {
+    const wrapper = await mountMessage('user', 'First line\nSecond line')
+    const bubble = wrapper.get('.chat-user-bubble')
+    const text = bubble.get('span')
+
+    expect(text.classes()).toContain('whitespace-pre-wrap')
+    expect(bubble.text()).toContain('First line')
+    expect(bubble.text()).toContain('Second line')
+  })
+
   it('keeps card-only deep research timelines inside the assistant bubble', async () => {
     const timelineCard = {
       type: 'deep-research-timeline',

@@ -13,6 +13,8 @@ func TestPromptPolicyToolGuidanceConstraints_IncludeComputerUseMessageFlowGuardr
 		"`computer_use`",
 		"`message`, `select`, and `type`",
 		"`activate`, `mouse_click`, `move_to`, `accessibility_tree`, or `ocr`",
+		"`open`, `open_location`, `list_apps`, browser `read`, or top-level `press`",
+		"`key` with `keys`/`submit_keys`",
 		"`screenshot` only for evidence capture or last-resort debugging",
 	}
 	for _, want := range required {

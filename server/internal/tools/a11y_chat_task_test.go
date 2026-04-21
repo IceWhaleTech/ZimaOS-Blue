@@ -534,6 +534,22 @@ func TestA11yToolExecute_MessageFailsClosedWhenSendVerificationHasNoPositiveCue(
 	if out["phase"] != "submit" {
 		t.Fatalf("phase = %v, want submit", out["phase"])
 	}
+	if recoveryHint := a11yFirstNonEmptyString(out["recovery_hint"]); !strings.Contains(recoveryHint, "submission") {
+		t.Fatalf("recovery_hint = %v, want submission guidance", out["recovery_hint"])
+	}
+	if out["recommended_action"] != "key" {
+		t.Fatalf("recommended_action = %v, want key", out["recommended_action"])
+	}
+	recommendedArgs, ok := out["recommended_args"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("recommended_args = %#v, want object", out["recommended_args"])
+	}
+	if recommendedArgs["action"] != "key" {
+		t.Fatalf("recommended_args.action = %v, want key", recommendedArgs["action"])
+	}
+	if submitKeys, ok := recommendedArgs["submit_keys"].([]interface{}); !ok || len(submitKeys) != 1 || submitKeys[0] != "enter" {
+		t.Fatalf("recommended_args.submit_keys = %#v, want [enter]", recommendedArgs["submit_keys"])
+	}
 }
 
 func TestA11yToolExecute_MessageUsesStructuredPostSubmitConfirmationBeforeGrounding(t *testing.T) {
@@ -2193,6 +2209,22 @@ func TestA11yToolExecute_MessageReportsSearchBoxStillActiveFailureCode(t *testin
 	}
 	if out["failure_code"] != "search_box_still_active" {
 		t.Fatalf("failure_code = %v, want search_box_still_active", out["failure_code"])
+	}
+	if recoveryHint := a11yFirstNonEmptyString(out["recovery_hint"]); !strings.Contains(recoveryHint, "search") {
+		t.Fatalf("recovery_hint = %v, want search guidance", out["recovery_hint"])
+	}
+	if out["recommended_action"] != "type" {
+		t.Fatalf("recommended_action = %v, want type", out["recommended_action"])
+	}
+	recommendedArgs, ok := out["recommended_args"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("recommended_args = %#v, want object", out["recommended_args"])
+	}
+	if recommendedArgs["action"] != "type" {
+		t.Fatalf("recommended_args.action = %v, want type", recommendedArgs["action"])
+	}
+	if recommendedArgs["value"] != "Orca" {
+		t.Fatalf("recommended_args.value = %v, want Orca", recommendedArgs["value"])
 	}
 }
 
